@@ -1,8 +1,8 @@
 # Mechanic Decisions Log
 
-Running log of mechanics verified against the `pokeemerald` decompilation,
-plus any judgment calls made where the source was ambiguous or where
-Gen III behavior needed to be disambiguated from other generations.
+Running log of mechanics verified against the `pokeemerald_expansion` source,
+plus any judgment calls made where the source was ambiguous or where a
+mechanic's exact behavior needed to be confirmed rather than assumed.
 
 Format per entry:
 

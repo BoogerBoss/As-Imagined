@@ -2,11 +2,12 @@
 
 ## What this project is
 
-A faithful, standalone recreation of Pokémon Emerald's (Gen III, Game Boy
-Advance) turn-based battle system in Godot 4.x, using GDScript. This is NOT
-a new battle system "inspired by" Pokémon — the goal is mechanical accuracy
-to vanilla Emerald, era-correct down to specific quirks (no Physical/Special
-split, Gen III critical hit rate, Gen III status mechanics, etc.).
+A standalone recreation of Pokémon Emerald's turn-based battle system in
+Godot 4.x, using GDScript, based on the **expanded/upgraded battle engine**
+(DizzyEgg's battle engine upgrade, as found in `pokeemerald_expansion`) rather
+than vanilla Gen III mechanics. This means modern conveniences and later-gen
+mechanics are in scope and expected — Physical/Special split, newer abilities,
+newer moves, etc. — not just what shipped in the original 2004 release.
 
 This is a separate project from my other Godot project (a farming/action-RPG
 hybrid). Do not assume any code, autoloads, or conventions from that project
@@ -14,16 +15,16 @@ carry over here unless I explicitly say so.
 
 ## Ground truth / reference
 
-The authoritative source for "what should this do" is the `pokeemerald`
-decompilation project (PRET community), NOT the Bulbapedia prose description,
-NOT a remake's mechanics, and NOT any of the `_expansion` / `battle_engine_v2`
-modded branches — those add later-generation mechanics (Physical/Special
-split, Fairy type, newer abilities) which would break fidelity to vanilla
-Emerald.
+The authoritative source for "what should this do" is the
+`pokeemerald_expansion` repository (DizzyEgg / ROM Hacking Hideout community),
+NOT the Bulbapedia prose description and NOT vanilla `pret/pokeemerald` —
+vanilla Emerald is missing the mechanics this project wants (Physical/Special
+split, newer movepool, newer abilities), so it's not the right reference here.
 
-- Primary reference repo: `pret/pokeemerald` (vanilla decompilation)
-- Located at: `/home/claude/emerald-battle-clone/reference/pokeemerald` (clone
-  this in if not present — see Setup below)
+- Primary reference repo: `pokeemerald_expansion` (battle engine upgrade
+  branch / merged `master`)
+- Located at: `/home/claude/emerald-battle-clone/reference/pokeemerald_expansion`
+  (clone this in if not present — see Setup below)
 - Key files to consult when implementing a mechanic:
   - `src/battle_script_commands.c` — move/effect execution logic
   - `src/battle_util.c` — damage calc helpers, status application
@@ -32,33 +33,13 @@ Emerald.
   - `src/data/abilities.h` — ability definitions
   - `include/constants/battle_move_effects.h` — move effect IDs
 
-When implementing any mechanic, the workflow is: **look at the disassembly
-logic first, then port the behavior to GDScript** — don't guess from memory
-of "how Pokémon battles work," because Gen III has specific numeric constants
-and edge cases that differ from later/earlier generations.
+When implementing any mechanic, the workflow is: **look at the source logic
+first, then port the behavior to GDScript** — don't guess from memory of "how
+Pokémon battles work," since even the expanded engine has specific numeric
+constants and edge cases worth confirming against source rather than assuming.
 
-If a mechanic's source location is unclear, search the pokeemerald repo
-structure before implementing, or ask me to confirm before making something up.
-
-## Era-correct rules (do not "fix" these — they are intentional)
-
-- **No Physical/Special split.** Move category (physical/special) is
-  determined by TYPE, not by the move individually. Type → category mapping
-  must match Gen III exactly (e.g. all Dark-type moves are physical in Gen III).
-- **Critical hit rate base is 1/16**, before stage modifiers (high-crit moves,
-  Focus Energy, etc.) — NOT the later-gen 1/24.
-- **No Fairy type.** 17 types only (later games add Fairy as an 18th).
-- **No abilities beyond Gen III's list.** Don't add Drizzle/Drought-era weather
-  abilities if they weren't in Emerald, etc.
-- **Confusion, paralysis, and freeze chances** must match Gen III values exactly
-  (e.g. paralysis = 25% full-para chance, not later-gen 50%→25% adjustments... verify exact value against source, don't assume).
-- **Damage formula constants** (random factor range 85–100%, STAB 1.5x, etc.)
-  must match Gen III exactly.
-
-Whenever in doubt about a numeric constant, treat it as a fact to verify
-against the decompilation source, not something to recall from general
-Pokémon knowledge — general knowledge tends to blend mechanics across
-generations.
+If a mechanic's source location is unclear, search the repo structure before
+implementing, or ask me to confirm before making something up.
 
 ## Tech stack
 
@@ -89,7 +70,7 @@ data/
   abilities/      # Per-ability data files
   items/          # Per-item data files
 reference/
-  pokeemerald/    # Cloned decompilation source, read-only reference — never edit
+  pokeemerald_expansion/  # Cloned source, read-only reference — never edit
 docs/             # Design notes, decisions log, mechanic verification notes
 ```
 
@@ -122,16 +103,17 @@ Get the loop solid first.
    prove the loop works and a winner is declared.
 
 2. **Damage formula + type chart**
-   Implement the Gen III damage formula exactly (base power, attack/defense
-   stat use depending on category, STAB, type effectiveness, random factor,
-   critical hits). Build the full 17-type effectiveness chart. Verify against
-   known damage calc examples from the decompilation or community damage
-   calculators that explicitly target Gen III.
+   Implement the damage formula exactly as the expanded engine computes it
+   (base power, attack/defense stat use via the Physical/Special split,
+   STAB, type effectiveness, random factor, critical hits). Build the full
+   18-type effectiveness chart (including Fairy). Verify against known
+   damage calc examples from the source or community damage calculators
+   that target this engine.
 
 3. **Status conditions**
    Burn, poison, toxic, paralysis, sleep, freeze, confusion — implement each
    condition's application rules, turn-start/turn-end effects, and cure
-   conditions, matching Gen III specifics.
+   conditions, matching the expanded engine's specifics.
 
 4. **Move effects — Tier 1 (simple damage)**
    Implement ~15–20 simple attacking moves with no secondary effect, across
@@ -154,9 +136,8 @@ Get the loop solid first.
    abilities like Static).
 
 9. **Trainer AI**
-   Port Gen III's actual rule-based decision logic from
-   `battle_ai_script_commands.c` / `battle_ai_main.c` — this is simpler than
-   modern Pokémon AI and well documented in the decompilation.
+   Port the expanded engine's actual rule-based decision logic from
+   `battle_ai_script_commands.c` / `battle_ai_main.c`.
 
 10. **UI / animation layer**
     Battle HUD, health bars, menu navigation, text box sequencing, basic move
@@ -171,11 +152,11 @@ convincing, which masks logic bugs.
 
 - Work one milestone at a time. Do not implement Tier 3 moves while Tier 1
   is still unverified.
-- When implementing a move or ability, state which decompilation source file
-  and function you're basing the behavior on.
-- When a mechanic seems ambiguous or you're not fully certain of the Gen III
-  -specific behavior (vs. a later-gen change), stop and ask rather than
-  guessing — call out the ambiguity explicitly.
+- When implementing a move or ability, state which source file and function
+  you're basing the behavior on.
+- When a mechanic seems ambiguous or you're not fully certain of the engine's
+  specific behavior, stop and ask rather than guessing — call out the
+  ambiguity explicitly.
 - Write unit-test-style verification scenes/scripts for damage calc and status
   logic as they're built (e.g. a debug scene that runs known move/stat
   combinations and prints expected vs. actual damage), since correctness here
@@ -183,15 +164,16 @@ convincing, which masks logic bugs.
 - Keep `docs/decisions.md` updated with any mechanic verified against source,
   especially when a constant or rule was ambiguous and required a judgment
   call — so we don't re-litigate it later.
-- Don't add quality-of-life features, balance changes, or later-gen mechanics
-  "because they're better" — flag them as ideas in `docs/` instead, fidelity
-  to vanilla Emerald is the point of this project.
+- The scope is "what the expanded engine does," not "whatever I think would
+  be cool." If you have an idea for a mechanic or balance change beyond what
+  `pokeemerald_expansion` implements, flag it as an idea in `docs/` rather
+  than just adding it.
 
 ## Setup
 
 ```bash
 # From project root
-git clone https://github.com/pret/pokeemerald reference/pokeemerald
+git clone https://github.com/rh-hideout/pokeemerald-expansion reference/pokeemerald_expansion
 ```
 
 This reference clone is for reading only — never modify it, never build it,

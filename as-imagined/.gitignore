@@ -14,5 +14,5 @@ mono_crash.*.json
 .DS_Store
 Thumbs.db
 
-# Reference decompilation clone — large, and not ours to version
-reference/pokeemerald/
+# Reference source clone — large, and not ours to version
+reference/pokeemerald_expansion/
