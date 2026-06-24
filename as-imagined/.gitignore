@@ -1,0 +1,18 @@
+# Godot 4 specific
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+*.translation
+
+# Mono/C# (not used here, but harmless to ignore if ever added)
+.mono/
+data_*/
+mono_crash.*.json
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Reference decompilation clone — large, and not ours to version
+reference/pokeemerald/
