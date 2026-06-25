@@ -15,7 +15,8 @@ extends RefCounted
 #   B_CRIT_MULTIPLIER: 1.5× (Gen 6+)
 #   B_CRIT_CHANCE: Gen 7+ odds table {stage 0→1/24, 1→1/8, 2→1/2, 3+→always}
 #   B_UPDATED_TYPE_MATCHUPS: Gen-latest chart (see TypeChart)
-# Scope for M2: no abilities, no held items, no weather, no field effects, no doubles.
+#   B_BURN_DAMAGE: burn also halves physical attack (GEN_LATEST)
+# Scope for M2/M3: no abilities, no held items, no weather, no field effects, no doubles.
 
 # Stat stage multiplier table — source: src/pokemon.c :: gStatStageRatios
 # Index 0 = stage -6 (MIN), index 6 = stage 0 (DEFAULT), index 12 = stage +6 (MAX).
@@ -157,8 +158,16 @@ static func calculate(
 			return {"damage": 0, "is_crit": is_crit, "effectiveness": 0.0}
 		dmg = _uq412_half_down(dmg, type_mod)
 
-	# Burn modifier (GetBurnOrFrostBiteModifier) — M3+
-	# Other modifiers (items, abilities) — M8+
+	# --- Burn modifier (applied after type effectiveness) ---
+	# Source: src/battle_util.c :: GetBurnOrFrostBiteModifier (L7278–7291)
+	# Source: src/battle_util.c :: ApplyModifiersAfterDmgRoll (L7617–7624)
+	# Burn halves the damage of Physical moves used by the burned attacker.
+	# Condition: attacker has burn AND move.category == 0 (Physical).
+	# (Guts ability bypasses this but is not in M3 scope.)
+	if attacker.status == BattlePokemon.STATUS_BURN and move.category == 0:
+		dmg = _uq412_half_down(dmg, 2048)  # UQ_4_12(0.5) = 2048
+
+	# Other modifiers (items, abilities, weather) — M8+
 
 	# Minimum damage: always deal at least 1 if not immune
 	if dmg == 0:
@@ -195,6 +204,22 @@ static func _uq412_half_down(value: int, factor: int) -> int:
 static func _apply_stage(base_stat: int, stage: int) -> int:
 	var idx: int = clampi(stage + 6, 0, 12)
 	return base_stat * STAGE_RATIOS[idx][0] / STAGE_RATIOS[idx][1]
+
+
+# Confusion self-hit damage.
+# Source: src/battle_move_resolution.c :: CancelerConfused (L402–413)
+#   DamageContext: battlerAtk==battlerDef, move=MOVE_NONE (Physical), moveType=TYPE_MYSTERY,
+#                  isCrit=FALSE, randomFactor=FALSE, fixedBasePower=40, isSelfInflicted=TRUE
+# Because randomFactor=FALSE the function returns before ApplyModifiersAfterDmgRoll — no
+# random roll, no STAB, no type effectiveness, no burn halving.
+# MOVE_NONE has category=DAMAGE_CATEGORY_PHYSICAL (data/moves_info.h L38), so Attack/Defense.
+# Stat stages are applied normally. Formula:
+#   40 * attack_staged * (2 * level / 5 + 2) / defense_staged / 50 + 2
+static func calculate_confusion_damage(mon: BattlePokemon) -> int:
+	var atk: int = _apply_stage(mon.attack,   mon.stat_stages[BattlePokemon.STAGE_ATK])
+	var def: int = _apply_stage(mon.defense,  mon.stat_stages[BattlePokemon.STAGE_DEF])
+	var dmg: int = 40 * atk * (2 * mon.level / 5 + 2) / def / 50 + 2
+	return max(1, dmg)
 
 
 # Roll for a critical hit using Gen 7+ odds.

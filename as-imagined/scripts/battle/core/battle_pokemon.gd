@@ -54,7 +54,9 @@ var ability: AbilityData = null
 var held_item: ItemData = null  # null = no item
 
 var status: int = STATUS_NONE
-var sleep_turns: int = 0  # turns of sleep remaining (drawn on application)
+var sleep_turns: int = 0    # turns of sleep remaining (set on application)
+var toxic_counter: int = 0  # bad-poison escalation counter; 0 before first EOT tick
+var confusion_turns: int = 0  # volatile; 0 = not confused; set to 2-5 on application
 
 # In-battle stat modifiers. Ranges: −6 to +6 per stage.
 # Index order matches STAGE_* constants above.
@@ -76,6 +78,8 @@ static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokem
 	bp.held_item = null
 	bp.status = STATUS_NONE
 	bp.sleep_turns = 0
+	bp.toxic_counter = 0
+	bp.confusion_turns = 0
 	bp.stat_stages = [0, 0, 0, 0, 0, 0, 0]
 	bp.fainted = false
 	bp._calculate_stats()

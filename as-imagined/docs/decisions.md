@@ -193,6 +193,109 @@ Format per entry:
   the source gives 4; our implementation matches.
 - Notes: TYPE_STELLAR (20) row/column all 1.0 (Tera mechanic not in scope). 2026-06-24.
 
+---
+
+## [M3] Burn: 1/16 HP end-of-turn; halves Physical attack damage
+
+- Source: `src/battle_end_turn.c` :: `HandleEndTurnBurn` (L565–590)
+- Source: `src/battle_util.c` :: `GetBurnOrFrostBiteModifier` (L7278–7292)
+- Source: `include/config/battle.h` line 28 (`B_BURN_DAMAGE = GEN_LATEST`)
+- Behavior:
+  - End-of-turn: `maxHP / 16` (integer division), minimum 1. (`B_BURN_DAMAGE >= GEN_7` → 1/16, not 1/8 of Gen I–VI).
+  - Attack halving: If the burned Pokémon uses a Physical move, the damage is halved via `_uq412_half_down(dmg, 2048)` applied **after** type effectiveness in `ApplyModifiersAfterDmgRoll`. Special moves are unaffected.
+  - Type immunity: Fire-types cannot be burned (L5291–5294).
+  - (Facade exception and Guts ability: not in M3 scope.)
+- Notes: Burn halving is applied to the move's damage, not to the Attack stat directly. This matters because it occurs after the random roll (unlike the old Gen I–V interpretation). GDScript implementation in `DamageCalculator.calculate` at the burn-modifier step. 2026-06-24.
+
+## [M3] Poison: 1/8 HP end-of-turn
+
+- Source: `src/battle_end_turn.c` :: `HandleEndTurnPoison` (L517–563) — `else` branch (L554–558)
+- Behavior: `maxHP / 8` (integer division), minimum 1 per turn.
+- Type immunity: Poison-types and Steel-types cannot be poisoned (L5250–5252). No Corrosion ability in M3.
+- Notes: 2026-06-24.
+
+## [M3] Toxic (badly poisoned): escalating 1/16 per turn
+
+- Source: `src/battle_end_turn.c` :: `HandleEndTurnPoison` (L545–553)
+- Source: `include/constants/battle.h` :: `STATUS1_TOXIC_COUNTER` (L190–191)
+- Behavior: Counter starts at 0 on application. Each end-of-turn:
+  1. Counter increments (capped at 15).
+  2. Damage = `(maxHP / 16) * counter`.
+  - Turn 1: counter 0→1, damage = maxHP/16 × 1.
+  - Turn 15+: counter stays at 15, damage = maxHP/16 × 15.
+- Same type immunity as Poison (Poison/Steel immune).
+- Switch-out counter reset: not yet implemented (requires switching mechanics, M5+).
+- Notes: `STATUS1_TOXIC_TURN(num) = (num) << 8`; the counter occupies bits 8–11 of status1. In GDScript, tracked as `toxic_counter: int` on BattlePokemon. 2026-06-24.
+
+## [M3] Paralysis: 25% full-para; Gen7+ 50% speed cut
+
+- Source: `src/battle_move_resolution.c` :: `CancelerParalyzed` (L447–458)
+- Source: `src/battle_main.c` L4712–4714 (speed calculation)
+- Source: `include/config/battle.h` lines 7, 43
+- Behavior:
+  - Full-para: `!RandomPercentage(RNG_PARALYSIS, 75)` → 25% chance to fail to move. Implemented as `randi() % 4 == 0`.
+  - Speed: `B_PARALYSIS_SPEED >= GEN_7` → `speed /= 2` (50% cut). (Pre-Gen7 was `/ 4 = 75% cut`.)
+  - Type immunity: `B_PARALYZE_ELECTRIC >= GEN_6` = GEN_LATEST → Electric-types cannot be paralyzed (L5272–5274).
+- Notes: Speed cut applies to the value used for turn-order priority resolution (`StatusManager.effective_speed`). The raw `BattlePokemon.speed` field is unchanged; the cut is applied on read. 2026-06-24.
+
+## [M3] Sleep: 2–4 turn duration; wakes and moves same turn
+
+- Source: `src/battle_script_commands.c` L2176–2177 (application)
+- Source: `src/battle_move_resolution.c` :: `CancelerSleep` (~L120–169)
+- Source: `include/config/battle.h` line 57 (`B_SLEEP_TURNS = GEN_LATEST`)
+- Behavior:
+  - Duration on application: `RandomUniform(2, 4)` inclusive (B_SLEEP_TURNS >= GEN_5 path). Pin via `force_sleep_turns` in tests.
+  - Each pre-move check: decrement `sleep_turns` by 1. If still > 0 → can't move. If reaches 0 → wake, status cleared, **can use move that same turn**.
+  - (Early Bird halves decrement — not in M3 scope.)
+- Notes: No type immunity to sleep. Nightmare and Uproar interactions: M4+. 2026-06-24.
+
+## [M3] Freeze: 20% thaw chance per turn; thawed mon moves that turn
+
+- Source: `src/battle_move_resolution.c` L172–186
+- Behavior:
+  - Each pre-move check: `RandomPercentage(RNG_FROZEN, 20)` = 20% thaw. Implemented as `randi() % 100 < 20`.
+  - If thaws → status cleared, **can use move that same turn**.
+  - If stays frozen → can't move.
+  - Moves that thaw (`MoveThawsUser`) skip the freeze check — not in M3 scope (Flame Wheel, Sacred Fire, etc. are M4+ move effects).
+- Type immunity: Ice-types cannot be frozen (L5342). Sun weather also prevents freeze but weather is not in M3 scope.
+- Notes: 2026-06-24.
+
+## [M3] Confusion: 33% self-hit (Gen7+); 2–5 turn volatile duration
+
+- Source: `src/battle_move_resolution.c` :: `CancelerConfused` (L389–430)
+- Source: `include/config/battle.h` lines 8, 199 (`B_CONFUSION_SELF_DMG_CHANCE = GEN_LATEST`, `B_CONFUSION_TURNS = 5`)
+- Source: `src/battle_script_commands.c` L2363 (application duration)
+- Behavior:
+  - Duration on application: `RandomUniform(2, B_CONFUSION_TURNS=5)` = 2–5 turns.
+  - Each pre-move check: decrement `confusion_turns` by 1.
+    - If still > 0: 33% chance self-hit (`B_CONFUSION_SELF_DMG_CHANCE >= GEN_7`). If self-hit → deal damage and skip move. If no self-hit → move executes.
+    - If hits 0: snap out, **move executes that turn**.
+  - Confusion is a volatile status — coexists with any major status (burn, para, etc.).
+- Notes: Self-hit damage formula below. 2026-06-24.
+
+## [M3] Confusion self-hit damage: base power 40, Physical, no roll
+
+- Source: `src/battle_move_resolution.c` :: `CancelerConfused` (L402–413)
+- Source: `src/data/moves_info.h` L38 (`MOVE_NONE.category = DAMAGE_CATEGORY_PHYSICAL`)
+- Source: `src/battle_util.c` L7598–7607 (`randomFactor = FALSE` → returns before roll and `ApplyModifiersAfterDmgRoll`)
+- Behavior: `DamageContext` with `battlerAtk==battlerDef`, `MOVE_NONE` (Physical), `TYPE_MYSTERY`, `isCrit=FALSE`, `randomFactor=FALSE`, `fixedBasePower=40`.
+  - Because `randomFactor=FALSE` the function returns **before** `ApplyModifiersAfterDmgRoll`: no random roll, no STAB, no type effectiveness, **no burn halving**.
+  - Formula: `40 * attack_staged * (2*level/5+2) / defense_staged / 50 + 2`
+  - Stat stages applied normally; minimum damage = 1.
+- Notes: This is the only place in M3 where Physical Attack/Defense is used for a non-move calculation. The formula is identical to the base damage formula but with fixed power=40, self-targeting, and no post-roll modifiers. 2026-06-24.
+
+## [M3] One major status at a time
+
+- Source: `src/battle_util.c` :: `CanSetNonVolatileStatus` (L5391)
+- Behavior: If `gBattleMons[battlerDef].status1 & STATUS1_ANY` → fails (`BattleScript_ButItFailed`). A Pokémon can have at most one of: burn, freeze, paralysis, poison, toxic, sleep.
+- Notes: Confusion is a volatile status (not in STATUS1_ANY) and CAN coexist with any major status. 2026-06-24.
+
+## [M3] Pre-move check order: sleep → freeze → confusion → paralysis
+
+- Source: `src/battle_move_resolution.c` canceler dispatch table (verified order: `CancelerSleep` before `CancelerFrozen` before `CancelerConfused` before `CancelerParalyzed`)
+- Behavior: Checked in that order. Each canceler either fails early (returns CANCELER_RESULT_FAILURE) or passes through. A confusion self-hit returns before the paralysis check — so a confused+paralyzed Pokémon that would self-hit does so without triggering the full-para roll.
+- Notes: Flinch, taunt, disable, choice lock, etc. are later in the chain (M4+). 2026-06-24.
+
 ## [M1] PokemonSpecies.learnset: defined now, empty for Milestone 1
 
 - Source: `include/pokemon.h`, `struct SpeciesInfo`, field `levelUpLearnset`

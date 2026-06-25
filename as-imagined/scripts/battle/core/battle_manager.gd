@@ -28,6 +28,9 @@ signal action_needed(phase: BattlePhase)
 signal move_executed(attacker: BattlePokemon, defender: BattlePokemon, move: MoveData, damage: int)
 signal pokemon_fainted(pokemon: BattlePokemon)
 signal battle_ended(winner_side: int)  # 0 = player/side-0 wins, 1 = opponent/side-1 wins
+signal status_damage(pokemon: BattlePokemon, amount: int)  # end-of-turn status tick
+signal move_skipped(pokemon: BattlePokemon, reason: String)  # sleep/freeze/para/confusion
+signal confusion_self_hit(pokemon: BattlePokemon, damage: int)
 
 
 var _phase: BattlePhase = BattlePhase.BATTLE_START
@@ -96,8 +99,12 @@ func _phase_priority_resolution() -> void:
 		var pb: int = move_b.priority if move_b else 0
 		if pa != pb:
 			return pa > pb
-		if a.speed != b.speed:
-			return a.speed > b.speed
+		# Use effective speed (paralysis halves speed in Gen7+)
+		# Source: StatusManager.effective_speed → battle_main.c L4712–4714
+		var sa: int = StatusManager.effective_speed(a)
+		var sb: int = StatusManager.effective_speed(b)
+		if sa != sb:
+			return sa > sb
 		return randi() % 2 == 0  # random tiebreak
 	)
 	_current_actor_index = 0
@@ -115,8 +122,32 @@ func _phase_action_execution() -> void:
 
 
 func _phase_pre_move_checks() -> void:
-	# M1: no status conditions yet — always proceed to execution.
-	# M3+: check paralysis, sleep, freeze, confusion, flinch here.
+	var actor: BattlePokemon = _turn_order[_current_actor_index]
+
+	if actor.fainted:
+		_set_phase(BattlePhase.MOVE_EXECUTION)
+		advance()
+		return
+
+	# Status pre-move checks — source: battle_move_resolution.c canceler chain
+	# Order: sleep → freeze → confusion → paralysis (matching source canceler order)
+	var check: Dictionary = StatusManager.pre_move_check(actor)
+
+	if check["self_hit_damage"] > 0:
+		var dmg: int = check["self_hit_damage"]
+		actor.current_hp = max(0, actor.current_hp - dmg)
+		confusion_self_hit.emit(actor, dmg)
+
+	if not check["can_move"]:
+		var reason: String = "paralyzed" if actor.status == BattlePokemon.STATUS_PARALYSIS else \
+				"asleep" if actor.status == BattlePokemon.STATUS_SLEEP else \
+				"frozen" if actor.status == BattlePokemon.STATUS_FREEZE else "confused"
+		move_skipped.emit(actor, reason)
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		advance()
+		return
+
 	_set_phase(BattlePhase.MOVE_EXECUTION)
 	advance()
 
@@ -164,8 +195,20 @@ func _phase_faint_check() -> void:
 
 
 func _phase_end_of_turn() -> void:
-	# M1: no weather damage, no burn/poison tick, no held-item effects.
-	# M3+: apply end-of-turn effects here in source-defined order.
+	# Apply end-of-turn status damage in speed order (matching source ENDTURN_POISON
+	# and ENDTURN_BURN handlers in battle_end_turn.c which iterate by battler order).
+	# Source: battle_end_turn.c :: HandleEndTurnPoison (L517), HandleEndTurnBurn (L565)
+	for mon: BattlePokemon in _turn_order:
+		if mon.fainted:
+			continue
+		var dmg: int = StatusManager.end_of_turn_damage(mon)
+		if dmg > 0:
+			mon.current_hp = max(0, mon.current_hp - dmg)
+			status_damage.emit(mon, dmg)
+			if mon.current_hp == 0:
+				mon.fainted = true
+				pokemon_fainted.emit(mon)
+
 	_set_phase(BattlePhase.BATTLE_END_CHECK)
 	advance()
 
