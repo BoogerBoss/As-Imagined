@@ -163,6 +163,7 @@ static func pre_move_check(
 		"woke_up":         false,
 		"thawed":          false,
 		"snapped_out":     false,
+		"flinched":        false,
 	}
 
 	# ── Sleep ──────────────────────────────────────────────────────────────
@@ -207,6 +208,16 @@ static func pre_move_check(
 		else:
 			result["can_move"] = false
 			return result
+
+	# ── Flinch ────────────────────────────────────────────────────────────────
+	# Source: battle_move_resolution.c :: CancelerFlinch (L298–316)
+	# CANCELER_FLINCH (pos 34) fires before CANCELER_CONFUSED (pos 39).
+	# Flinch is a volatile: cleared here after firing so it lasts exactly one turn.
+	if mon.flinched:
+		mon.flinched = false
+		result["flinched"] = true
+		result["can_move"] = false
+		return result
 
 	# ── Confusion ─────────────────────────────────────────────────────────
 	# Source: battle_move_resolution.c :: CancelerConfused L389–430
@@ -287,6 +298,136 @@ static func check_user_thaw(attacker: BattlePokemon, move: MoveData) -> bool:
 	if move.thaws_user and attacker.status == BattlePokemon.STATUS_FREEZE:
 		attacker.status = BattlePokemon.STATUS_NONE
 		return true
+	return false
+
+
+# ── Accuracy check ───────────────────────────────────────────────────────────
+#
+# Returns true if the move hits the target, false if it misses.
+# move.accuracy == 0 means always hits (accuracy = 0 is the "never misses" flag).
+#
+# Accuracy stage multiplier table — source: battle_script_commands.c L825
+# Index 0 = combined stage -6, index 6 = stage 0 (neutral), index 12 = stage +6.
+# Applied as: calc = moveAcc * ratio[idx][0] / ratio[idx][1]  (integer division).
+# Combined stage = attacker_acc_stage - defender_eva_stage, clamped to [-6, +6].
+# Source: src/battle_util.c :: GetTotalAccuracy (L10241–10281), no abilities/items for M5.
+const ACCURACY_STAGE_RATIOS: Array = [
+	[ 33, 100],  # -6
+	[ 36, 100],  # -5
+	[ 43, 100],  # -4
+	[ 50, 100],  # -3
+	[ 60, 100],  # -2
+	[ 75, 100],  # -1
+	[  1,   1],  #  0
+	[133, 100],  # +1
+	[166, 100],  # +2
+	[  2,   1],  # +3
+	[233, 100],  # +4
+	[133,  50],  # +5
+	[  3,   1],  # +6
+]
+#
+# force_hit: null = use RNG; true = force hit; false = force miss.
+# Stat stages for accuracy (STAGE_ACCURACY) and evasion (STAGE_EVASION) are applied.
+# Abilities, held items, and weather are M8+ scope.
+static func check_accuracy(
+		attacker: BattlePokemon,
+		defender: BattlePokemon,
+		move: MoveData,
+		force_hit: Variant = null) -> bool:
+	if move.accuracy == 0:
+		return true  # always hits (Swift, Aerial Ace, Swords Dance, etc.)
+	var acc_stage: int = attacker.stat_stages[BattlePokemon.STAGE_ACCURACY]
+	var eva_stage: int = defender.stat_stages[BattlePokemon.STAGE_EVASION]
+	var combined: int = clampi(acc_stage - eva_stage, -6, 6)
+	var idx: int = combined + 6
+	var calc: int = move.accuracy * ACCURACY_STAGE_RATIOS[idx][0] / ACCURACY_STAGE_RATIOS[idx][1]
+	if force_hit != null:
+		return bool(force_hit)
+	return randi() % 100 < calc
+
+
+# ── Stat stage application ────────────────────────────────────────────────────
+#
+# Apply a stage change to a single stat on target. Returns the actual number of
+# stages changed (0 if the stat was already at the limit and nothing changed).
+#
+# Source: src/battle_stat_change.c :: IncreaseStat / DecreaseStat / StatChanged
+#   statStages[stat] += stage; then clamp [MIN_STAT_STAGE=0, MAX_STAT_STAGE=12].
+#   In our -6..+6 system: clamp to [-6, +6].
+#   At-limit behaviour: if already at max/min, returns 0 (caller should emit fail).
+static func apply_stat_change(
+		target: BattlePokemon,
+		stat_idx: int,
+		amount: int) -> int:
+	var old_stage: int = target.stat_stages[stat_idx]
+	if amount > 0 and old_stage >= 6:
+		return 0   # already at +6 — nothing changed
+	if amount < 0 and old_stage <= -6:
+		return 0   # already at -6 — nothing changed
+	var new_stage: int = clampi(old_stage + amount, -6, 6)
+	var actual: int = new_stage - old_stage
+	target.stat_stages[stat_idx] = new_stage
+	return actual
+
+
+# ── Secondary effect application ─────────────────────────────────────────────
+#
+# Roll and apply a move's secondary_effect to the target.  Returns true if the
+# effect fired and was successfully applied; false if blocked or not rolled.
+#
+# For damaging moves: call only when damage > 0.
+# For guaranteed effects (secondary_chance == 0): roll is skipped.
+# force_secondary: null = RNG; true = force fire; false = force miss.
+#   Setting force_secondary = false suppresses the effect but does NOT suppress
+#   damage — the caller handles damage separately.
+#
+# Flinch (SE_FLINCH) is a special case: this function returns true to signal
+# the caller that the flinch rolled, but the caller must decide whether to
+# actually set the flinched flag based on turn order. The defender is NOT
+# modified here for flinch.
+#
+# Source: src/battle_script_commands.c :: Cmd_setadditionaleffects (L3506)
+#   RandomPercentage(RNG_SECONDARY_EFFECT, percentChance): fires if roll < chance.
+#   Passes through SetMoveEffect → try_apply_status / try_apply_confusion for
+#   status effects; for flinch sets volatiles.flinched = TRUE.
+static func try_secondary_effect(
+		attacker: BattlePokemon,
+		defender: BattlePokemon,
+		move: MoveData,
+		force_secondary: Variant = null) -> bool:
+
+	if move.secondary_effect == MoveData.SE_NONE:
+		return false
+
+	# Roll for secondary (skip if guaranteed: chance == 0)
+	if move.secondary_chance > 0:
+		var fires: bool
+		if force_secondary == null:
+			# RandomPercentage(RNG_SECONDARY_EFFECT, chance) → true with prob chance/100
+			fires = randi() % 100 < move.secondary_chance
+		else:
+			fires = bool(force_secondary)
+		if not fires:
+			return false
+
+	match move.secondary_effect:
+		MoveData.SE_BURN:
+			return try_apply_status(defender, BattlePokemon.STATUS_BURN)
+		MoveData.SE_FREEZE:
+			return try_apply_status(defender, BattlePokemon.STATUS_FREEZE)
+		MoveData.SE_PARALYSIS:
+			return try_apply_status(defender, BattlePokemon.STATUS_PARALYSIS)
+		MoveData.SE_SLEEP:
+			return try_apply_status(defender, BattlePokemon.STATUS_SLEEP)
+		MoveData.SE_TOXIC:
+			return try_apply_status(defender, BattlePokemon.STATUS_TOXIC)
+		MoveData.SE_CONFUSION:
+			return try_apply_confusion(defender)
+		MoveData.SE_FLINCH:
+			# Flinch: caller must check turn order and set defender.flinched.
+			# We return true to signal the roll succeeded.
+			return true
 	return false
 
 

@@ -10,3 +10,5 @@ type = 11
 category = 1
 power = 40
 pp = 25
+secondary_effect = 1
+secondary_chance = 10

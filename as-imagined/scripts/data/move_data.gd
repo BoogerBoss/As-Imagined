@@ -53,3 +53,32 @@ const BAN_DAMP: int          = 1 << 13
 
 # Packed ban flags. Test with: move.ban_flags & MoveData.BAN_X
 @export var ban_flags: int = 0
+
+# ── Secondary effect (fires after damage on hit) ────────────────────────────
+# Source: src/data/moves_info.h :: additionalEffects → moveEffect / chance
+# secondary_chance: 0 = guaranteed (primary effect, or pure status/confusion
+#   moves where the effect IS the move); 1–100 = percent chance roll.
+const SE_NONE: int      = 0
+const SE_BURN: int      = 1
+const SE_FREEZE: int    = 2
+const SE_PARALYSIS: int = 3
+const SE_SLEEP: int     = 4
+const SE_TOXIC: int     = 5
+const SE_CONFUSION: int = 6
+const SE_FLINCH: int    = 7
+
+@export var secondary_effect: int = 0   # SE_* constant above
+@export var secondary_chance: int = 0   # 0 = guaranteed; 1–100 = % roll
+
+# ── Stat change effect ──────────────────────────────────────────────────────
+# Source: src/data/moves_info.h :: additionalEffects → STAT_CHANGE_EFFECT_PLUS/MINUS
+# stat_change_stat: -1 = no stat change; else BattlePokemon.STAGE_* index.
+# stat_change_amount: positive = raise, negative = lower (e.g. +2 for Swords Dance, -1 for Growl).
+# stat_change_self: true = applies to the attacker (Swords Dance); false = applies to the opponent.
+@export var stat_change_stat: int = -1
+@export var stat_change_amount: int = 0
+@export var stat_change_self: bool = false
+
+# powder_move (already declared above in move flags) is set for Sleep Powder et al.
+# Blocked by Overcoat and Grass-type immunity (Gen 6+, M8+ scope).
+# Source: struct MoveInfo.powderMove — Sleep Powder, Stun Spore, Spore, etc.

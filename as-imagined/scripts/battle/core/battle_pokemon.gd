@@ -58,6 +58,11 @@ var sleep_turns: int = 0    # turns of sleep remaining (set on application)
 var toxic_counter: int = 0  # bad-poison escalation counter; 0 before first EOT tick
 var confusion_turns: int = 0  # volatile; 0 = not confused; set to 2-5 on application
 
+# Volatile: flinched. Set when a move with MOVE_EFFECT_FLINCH hits this Pokémon
+# before it has acted this turn. Cleared at the start of each turn (PRIORITY_RESOLUTION).
+# Source: battle_move_resolution.c :: CancelerFlinch (L298)
+var flinched: bool = false
+
 # In-battle stat modifiers. Ranges: −6 to +6 per stage.
 # Index order matches STAGE_* constants above.
 var stat_stages: Array[int] = []
@@ -80,6 +85,7 @@ static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokem
 	bp.sleep_turns = 0
 	bp.toxic_counter = 0
 	bp.confusion_turns = 0
+	bp.flinched = false
 	bp.stat_stages = [0, 0, 0, 0, 0, 0, 0]
 	bp.fainted = false
 	bp._calculate_stats()

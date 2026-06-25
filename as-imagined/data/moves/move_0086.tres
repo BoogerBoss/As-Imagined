@@ -5,10 +5,9 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Psybeam"
-type = 15
-category = 1
-power = 65
+move_name = "Thunder Wave"
+type = 14
+category = 2
+accuracy = 90
 pp = 20
-secondary_effect = 6
-secondary_chance = 10
+secondary_effect = 3

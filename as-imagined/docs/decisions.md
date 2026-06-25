@@ -391,3 +391,87 @@ Format per entry:
   Milestone 1 test Pokémon have their moves assigned directly on `BattlePokemon`
   rather than derived from the learnset.
 - Notes: 2026-06-24.
+
+---
+
+## [M5] Stat-stage system: gStatStageRatios integer path
+
+- Source: `src/battle_util.c` :: `GetStatValue` / `gStatStageRatios` table (L825 approx.)
+- Behavior: 13-entry table indexed by stage+6 (0=-6, 6=neutral, 12=+6). Applied as
+  `stat = base * ratio[0] / ratio[1]` (integer division). Values:
+  -6=[2,8], -5=[2,7], -4=[2,6], -3=[2,5], -2=[2,4], -1=[2,3], 0=[2,2],
+  +1=[3,2], +2=[4,2], +3=[5,2], +4=[6,2], +5=[7,2], +6=[8,2].
+  Stat stages flow into DamageCalculator via `_apply_stage()` (already in place from M2/M3).
+  `StatusManager.apply_stat_change()` applies and clamps to [-6, +6]; returns 0 if already at limit.
+- Notes: Accuracy/evasion stages (Sand Attack, etc.) enter the accuracy check path via
+  ACCURACY_STAGE_RATIOS (separate table, see accuracy decision below), NOT the damage-stat
+  multiplier path. Verified 2026-06-25.
+
+## [M5] Accuracy check: gAccuracyStageRatios and check_accuracy()
+
+- Source: `src/battle_script_commands.c` :: `Cmd_accuracycheck` (L1058); `gAccuracyStageRatios` (L825)
+- Source: `src/battle_util.c` :: `GetTotalAccuracy` (L10241–10281)
+- Behavior: All moves pass through `StatusManager.check_accuracy()` before effect application.
+  Combined stage = attacker.STAGE_ACCURACY - defender.STAGE_EVASION, clamped to [-6,+6].
+  `calc = moveAcc * ACCURACY_STAGE_RATIOS[stage+6][0] / ACCURACY_STAGE_RATIOS[stage+6][1]`
+  (integer division). Roll succeeds if `randi() % 100 < calc`. `move.accuracy == 0` always hits.
+  ACCURACY_STAGE_RATIOS: -6=[33,100], -5=[36,100], -4=[43,100], -3=[50,100],
+  -2=[60,100], -1=[75,100], 0=[1,1], +1=[133,100], +2=[166,100], +3=[2,1],
+  +4=[233,100], +5=[133,50], +6=[3,1].
+  Weather, abilities, and held items are M8+ scope.
+- Notes: Added to BattleManager._phase_move_execution() for ALL moves (status and damaging).
+  Verified 2026-06-25.
+
+## [M5] Secondary effects: Cmd_setadditionaleffects and SE_* constants
+
+- Source: `src/battle_script_commands.c` :: `Cmd_setadditionaleffects` (L3506)
+- Source: `src/data/moves_info.h` :: `additionalEffects` array per move
+- Behavior: `StatusManager.try_secondary_effect(attacker, defender, move, force_secondary)`.
+  If `secondary_chance == 0`, roll is skipped (effect is guaranteed — used for primary-effect
+  status moves like Thunder Wave, Toxic, Confuse Ray). If `secondary_chance > 0`, roll
+  `randi() % 100 < secondary_chance`. SE_FLINCH is special: `try_secondary_effect` returns
+  true if roll passes but does NOT set `defender.flinched` — BattleManager does that after
+  a turn-order check (flinch only effective if defender_idx > current_actor_index).
+  Status/confusion effects route through existing `try_apply_status` / `try_apply_confusion`
+  so type immunities and already-has-status guards are respected.
+- SE_* constants (MoveData): NONE=0, BURN=1, FREEZE=2, PARALYSIS=3, SLEEP=4, TOXIC=5,
+  CONFUSION=6, FLINCH=7. Verified 2026-06-25.
+
+## [M5] Type immunity for status moves
+
+- Source: `src/battle_util.c` :: `CanSetNonVolatileStatus` → `IsBattlerUnaffectedByMove` (L5276)
+- Source: `data/battle_scripts_1.s` :: `BattleScript_EffectNonVolatileStatus` order:
+  `trynonvolatilestatus` → `accuracycheck` → `setnonvolatilestatus`
+- Behavior: For power==0 moves that target the opponent (`stat_change_self == false`):
+  if `TypeChart.get_effectiveness(move.type, defender.species.types) == 0.0`, the move fails
+  before the accuracy check (emits `move_missed(attacker, "immune")`). Examples:
+  Thunder Wave (Electric) vs Ground-type: 0.0× → fails.
+  Confuse Ray (Ghost) vs Normal-type: 0.0× → fails.
+  Will-O-Wisp (Fire) vs Fire-type: 0.5× → does NOT fail here; `try_apply_status` blocks burn.
+  Self-targeting stat changes (Swords Dance) skip this check.
+- Notes: `move.type == TYPE_NONE` also skips this check (no type = no type immunity).
+  Verified 2026-06-25.
+
+## [M5] Flinch: volatile, cleared at turn start, ordered before confusion/paralysis
+
+- Source: `src/battle_move_resolution.c` :: `CancelerFlinch` (L298–316)
+- Source: `include/constants/battle_move_resolution.h` :: CANCELER_FLINCH=34, CANCELER_CONFUSED=39,
+  CANCELER_PARALYZED=41 (flinch fires before confusion and paralysis in the canceler chain)
+- Behavior: `BattlePokemon.flinched` is a volatile bool. Cleared in `_phase_priority_resolution`
+  at the start of each turn. Set by `BattleManager._phase_move_execution()` when the SE_FLINCH
+  roll passes AND `defender_idx > _current_actor_index` (defender hasn't acted yet this turn).
+  `StatusManager.pre_move_check()` checks `mon.flinched` between the freeze check and the
+  confusion check. If flinched: clears the flag, sets `result["flinched"]=true`, `can_move=false`.
+- Notes: Flinch is silently wasted if the defender already acted this turn. Verified 2026-06-25.
+
+## [M5] Move data: new M5 moves and wired secondaries
+
+- Source: `src/data/moves_info.h` (GEN_LATEST); `include/constants/moves.h` (IDs)
+- New stat-change moves: Swords Dance(14), Sand Attack(28), Tail Whip(39), Leer(43), Growl(45)
+- New status moves: Sleep Powder(79), Thunder Wave(86), Toxic(92), Confuse Ray(109), Will-O-Wisp(261)
+- New damaging move: Flame Wheel(172) — closes M4 user-thaw gap (thaws_user=true, 10% burn)
+- Wired secondaries on existing Tier-1 moves: Body Slam(34)=30% para, Ember(52)=10% burn,
+  Flamethrower(53)=10% burn, Ice Beam(58)=10% freeze, Psybeam(60)=10% confusion,
+  Thunder Shock(84)=10% para, Rock Slide(157)=30% flinch.
+- gen_moves.py redesigned to dict-based entries; now generates 31 .tres files.
+  Verified 2026-06-25. move_test 43/43 still passes after regeneration.

@@ -29,9 +29,13 @@ signal move_executed(attacker: BattlePokemon, defender: BattlePokemon, move: Mov
 signal pokemon_fainted(pokemon: BattlePokemon)
 signal battle_ended(winner_side: int)  # 0 = player/side-0 wins, 1 = opponent/side-1 wins
 signal status_damage(pokemon: BattlePokemon, amount: int)  # end-of-turn status tick
-signal move_skipped(pokemon: BattlePokemon, reason: String)  # sleep/freeze/para/confusion
+signal move_skipped(pokemon: BattlePokemon, reason: String)  # sleep/freeze/para/confusion/flinch
 signal confusion_self_hit(pokemon: BattlePokemon, damage: int)
 signal pokemon_thawed(pokemon: BattlePokemon)  # freeze cleared mid-battle
+signal move_missed(attacker: BattlePokemon, reason: String)  # "accuracy" or "immune"
+signal stat_stage_changed(target: BattlePokemon, stat_idx: int, actual_change: int)
+signal move_effect_failed(target: BattlePokemon, reason: String)  # "stat_limit", "immune", "already_status"
+signal secondary_applied(target: BattlePokemon, effect: int)  # MoveData.SE_* value
 
 
 var _phase: BattlePhase = BattlePhase.BATTLE_START
@@ -90,6 +94,11 @@ func _phase_move_selection() -> void:
 
 
 func _phase_priority_resolution() -> void:
+	# Clear flinch volatile at the start of each turn so it lasts exactly one turn.
+	# Source: battle_move_resolution.c :: CancelerFlinch — flinched is set by move execution
+	# and checked on the NEXT turn's pre-move canceler chain.
+	for mon: BattlePokemon in _combatants:
+		mon.flinched = false
 	_turn_order = _combatants.duplicate()
 	_turn_order.sort_custom(func(a: BattlePokemon, b: BattlePokemon) -> bool:
 		var ia := _combatants.find(a)
@@ -149,9 +158,17 @@ func _phase_pre_move_checks() -> void:
 		confusion_self_hit.emit(actor, dmg)
 
 	if not check["can_move"]:
-		var reason: String = "paralyzed" if actor.status == BattlePokemon.STATUS_PARALYSIS else \
-				"asleep" if actor.status == BattlePokemon.STATUS_SLEEP else \
-				"frozen" if actor.status == BattlePokemon.STATUS_FREEZE else "confused"
+		var reason: String
+		if check["flinched"]:
+			reason = "flinched"
+		elif actor.status == BattlePokemon.STATUS_PARALYSIS:
+			reason = "paralyzed"
+		elif actor.status == BattlePokemon.STATUS_SLEEP:
+			reason = "asleep"
+		elif actor.status == BattlePokemon.STATUS_FREEZE:
+			reason = "frozen"
+		else:
+			reason = "confused"
 		move_skipped.emit(actor, reason)
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
@@ -180,17 +197,83 @@ func _phase_move_execution() -> void:
 	if StatusManager.check_user_thaw(attacker, move):
 		pokemon_thawed.emit(attacker)
 
-	var result: Dictionary = DamageCalculator.calculate(attacker, defender, move)
-	var damage: int = result["damage"]
-	defender.current_hp = max(0, defender.current_hp - damage)
-	move_executed.emit(attacker, defender, move, damage)
+	# ── Accuracy check ────────────────────────────────────────────────────────
+	# Source: all move BattleScripts include accuracycheck before effect application.
+	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
+	if not StatusManager.check_accuracy(attacker, defender, move):
+		move_missed.emit(attacker, "accuracy")
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		advance()
+		return
 
-	# Target-thaw: Fire-type damaging move clears freeze on the defender.
-	# Source: battle_script_commands.c :: CanFireMoveThawTarget (L11036–11038);
-	#   B_HIT_THAW = GEN_LATEST >= GEN_3: TYPE_FIRE && power > 0 && damage > 0
-	# Source: battle_move_resolution.c :: MoveEndDefrost (L3288–3314)
-	if StatusManager.check_target_thaw(defender, move, damage):
-		pokemon_thawed.emit(defender)
+	if move.power > 0:
+		# ── Damaging move ──────────────────────────────────────────────────────
+		var result: Dictionary = DamageCalculator.calculate(attacker, defender, move)
+		var damage: int = result["damage"]
+		defender.current_hp = max(0, defender.current_hp - damage)
+		move_executed.emit(attacker, defender, move, damage)
+
+		# Target-thaw: Fire-type damaging move clears freeze on the defender.
+		# Source: battle_script_commands.c :: CanFireMoveThawTarget (L11036–11038);
+		#   B_HIT_THAW = GEN_LATEST >= GEN_3: TYPE_FIRE && power > 0 && damage > 0
+		# Source: battle_move_resolution.c :: MoveEndDefrost (L3288–3314)
+		if StatusManager.check_target_thaw(defender, move, damage):
+			pokemon_thawed.emit(defender)
+
+		# ── Secondary effect (only fires if move connected: damage > 0) ────────
+		# Source: battle_script_commands.c :: Cmd_setadditionaleffects (L3506)
+		# For flinch: only apply if defender hasn't acted this turn.
+		# Source: battle_move_resolution.c :: CancelerFlinch (L298)
+		if damage > 0 and move.secondary_effect != MoveData.SE_NONE:
+			var effect_hit: bool = StatusManager.try_secondary_effect(attacker, defender, move)
+			if effect_hit:
+				if move.secondary_effect == MoveData.SE_FLINCH:
+					var defender_idx: int = _turn_order.find(defender)
+					if defender_idx > _current_actor_index:
+						defender.flinched = true
+						secondary_applied.emit(defender, MoveData.SE_FLINCH)
+					# else: flinch rolled but defender already acted — wasted, no signal
+				else:
+					secondary_applied.emit(defender, move.secondary_effect)
+	else:
+		# ── Status / stat-change move ─────────────────────────────────────────
+		# Type immunity check for opponent-targeting moves:
+		#   e.g. Thunder Wave (Electric) vs Ground-type: 0.0× → blocked.
+		#   e.g. Confuse Ray (Ghost) vs Normal-type: 0.0× → blocked.
+		# Source: battle_util.c :: CanSetNonVolatileStatus → IsBattlerUnaffectedByMove (L5276)
+		# Self-targeting moves (Swords Dance) skip this check.
+		var targets_foe: bool = not move.stat_change_self
+		if targets_foe and move.type != TypeChart.TYPE_NONE:
+			var eff: float = TypeChart.get_effectiveness(move.type, defender.species.types)
+			if eff == 0.0:
+				move_missed.emit(attacker, "immune")
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				advance()
+				return
+
+		if move.stat_change_stat >= 0:
+			# ── Stat-change move (Swords Dance, Growl, Tail Whip, etc.) ────────
+			var stat_target: BattlePokemon = attacker if move.stat_change_self else defender
+			var actual: int = StatusManager.apply_stat_change(
+					stat_target, move.stat_change_stat, move.stat_change_amount)
+			if actual == 0:
+				move_effect_failed.emit(stat_target, "stat_limit")
+			else:
+				stat_stage_changed.emit(stat_target, move.stat_change_stat, actual)
+
+		elif move.secondary_effect != MoveData.SE_NONE:
+			# ── Primary status/confusion move (Thunder Wave, Toxic, Confuse Ray, etc.) ─
+			# secondary_chance == 0 means the effect is guaranteed (it's the whole point).
+			# Source: BattleScript_EffectNonVolatileStatus / BattleScript_EffectConfuse
+			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move)
+			if applied:
+				secondary_applied.emit(defender, move.secondary_effect)
+			else:
+				move_effect_failed.emit(defender, "immune")
+
+		move_executed.emit(attacker, defender, move, 0)
 
 	_current_actor_index += 1
 	_set_phase(BattlePhase.FAINT_CHECK)

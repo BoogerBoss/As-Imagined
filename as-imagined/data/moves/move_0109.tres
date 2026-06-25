@@ -5,10 +5,8 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Psybeam"
-type = 15
-category = 1
-power = 65
-pp = 20
+move_name = "Confuse Ray"
+type = 8
+category = 2
+pp = 10
 secondary_effect = 6
-secondary_chance = 10

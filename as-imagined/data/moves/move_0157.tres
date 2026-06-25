@@ -10,3 +10,5 @@ type = 6
 power = 75
 accuracy = 90
 pp = 10
+secondary_effect = 7
+secondary_chance = 30
