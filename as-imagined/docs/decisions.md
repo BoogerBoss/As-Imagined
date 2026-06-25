@@ -321,6 +321,68 @@ Format per entry:
 - `CANCELER_GHOST` (pos 16) sits between CONFUSED and PARALYZED — it's the Gen I Pokémon Tower ghost mechanic and is irrelevant to the modern engine.
 - Notes: The M3 status_test.gd S11b and S12 tests pin the ordering. 2026-06-25.
 
+---
+
+## [M4] Move data format: one .tres per move, path-convention loading
+
+- Source: project decision (Milestone 1 locked) — see `[M1] Data format: .tres, one file per entry`
+- Behavior: Each move is stored at `res://data/moves/move_NNNN.tres` where NNNN is the move's
+  canonical ID zero-padded to 4 digits, matching `include/constants/moves.h` in pokeemerald_expansion.
+  `MoveRegistry.get_move(id)` constructs the path from the ID and calls `ResourceLoader.load()`.
+  No dictionary or preload table. Adding a move = drop a correctly-named file, nothing else.
+- Loader approach rationale: Convention-based beats a preloaded dictionary at scale.
+  A dictionary of `preload()` calls embeds all resource paths at startup and requires a
+  two-step add (file + dictionary entry). Convention-based is lazy (loads on demand, Godot
+  caches), single-step to add, and the path is derivable from the move ID alone.
+  Re-evaluate if lookup latency matters at full scale (~900 moves); if so, build a path
+  cache from `DirAccess.get_files_at("res://data/moves/")` on first use.
+- Validated at 20 files (Tier-1, Milestone 4). 2026-06-25.
+
+## [M4] Tier-1 moves: 20 pure-damage moves, GEN_LATEST values
+
+- Source: `src/data/moves_info.h` (power, type, category, accuracy, pp, flags per move)
+- Source: `include/constants/moves.h` (canonical move IDs)
+- Behavior: 20 moves with IDs and GEN_LATEST values:
+  - Pure damage (EFFECT_HIT, no secondary): Pound(1), Karate Chop(2), Scratch(10),
+    Wing Attack(17), Vine Whip(22), Tackle(33), Strength(70), Rock Throw(88),
+    Quick Attack(98), Swift(129), Aerial Ace(332), Water Gun(55), Surf(57)
+  - Damage with M5 secondaries (effect field present in data, not yet wired):
+    Body Slam(34) 30% para, Ember(52) 10% burn, Flamethrower(53) 10% burn,
+    Ice Beam(58) 10% freeze, Psybeam(60) 10% confusion, Thunder Shock(84) 10% para,
+    Rock Slide(157) 30% flinch
+  - Moves swapped out / not included: Earthquake (EFFECT_EARTHQUAKE, doubles-aware special
+    behavior), Headbutt (flinch secondary), Iron Head (flinch secondary), Flash Cannon
+    (SpDef drop secondary) — all M5+ effects.
+  - Karate Chop: critical_hit_stage=1 (high-crit flag, source L79). Not a secondary effect
+    — crits are already wired in DamageCalculator.
+  - Quick Attack: priority=1 (confirmed in source L641).
+  - Tackle: power=40 (B_UPDATED_MOVE_DATA >= GEN_7 path, source L893).
+  - Vine Whip: power=45, pp=25 (B_UPDATED_MOVE_DATA >= GEN_6 path, source L614–615).
+  - Surf: power=90 (B_UPDATED_MOVE_DATA >= GEN_6 path, source L1536).
+  - Swift, Aerial Ace: accuracy=0 = always hits (source L3508, L9062).
+- Notes: Move `description` field intentionally left empty for all Tier-1 moves; fill during
+  UI milestone. `effect` field left at 0 (EFFECT_HIT); real secondary effects wired in M5. 2026-06-25.
+
+## [M4] Freeze-thaw hooks: target-thaw and user-thaw now live
+
+- Source: `src/battle_script_commands.c` :: `CanFireMoveThawTarget` (L11036–11038)
+- Source: `src/battle_move_resolution.c` :: `MoveEndDefrost` (L3288–3314)
+- Source: `src/battle_move_resolution.c` :: `CancelerThaw` (L586–622); `!MoveThawsUser` guard at L172
+- Behavior — two hooks in `BattleManager._phase_move_execution()`:
+  1. **User-thaw** (fires before damage): `StatusManager.check_user_thaw(attacker, move)` —
+     clears attacker's STATUS_FREEZE if `move.thaws_user=true`. Also wires the bypass in
+     PRE_MOVE_CHECKS: a frozen Pokémon using a thawsUser move gets `force_freeze_thaw=true`
+     passed to `pre_move_check` so the freeze block is skipped.
+  2. **Target-thaw** (fires after damage): `StatusManager.check_target_thaw(defender, move, damage)` —
+     clears defender's STATUS_FREEZE if `move.type==FIRE && move.power>0 && damage>0`.
+     Both helpers live in `StatusManager` so move_test.gd can call them directly without
+     going through the full BattleManager loop.
+- Exercise status at Tier-1: target-thaw is exercised by Flamethrower (Tier-1 Fire move)
+  hitting a frozen target — verified in move_test.gd T3a. User-thaw hook is wired but not
+  exercised until Flame Wheel/Sacred Fire/Scald/etc. are added in a later milestone.
+- Notes: `CanMoveThawTarget` (Gen6+ `thawsUser` moves also thaw the defender) is not yet
+  wired; add when thawsUser moves are added (same point user-thaw becomes exercisable). 2026-06-25.
+
 ## [M1] PokemonSpecies.learnset: defined now, empty for Milestone 1
 
 - Source: `include/pokemon.h`, `struct SpeciesInfo`, field `levelUpLearnset`

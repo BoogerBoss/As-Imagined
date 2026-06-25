@@ -251,6 +251,45 @@ static func pre_move_check(
 	return result
 
 
+# ── Freeze-thaw hooks (called from BattleManager.MOVE_EXECUTION) ─────────
+#
+# Both functions are extracted here so move_test.gd can call them directly
+# rather than testing only through the full BattleManager loop.
+
+# Target-thaw: clear freeze on a Pokémon that was hit by a Fire-type damaging move.
+# Returns true if thaw occurred.
+#
+# Source: battle_script_commands.c :: CanFireMoveThawTarget (L11036–11038)
+#   B_HIT_THAW >= GEN_3: moveType == TYPE_FIRE && power > 0 && damage > 0
+# Source: battle_move_resolution.c :: MoveEndDefrost (L3288–3314)
+#   Runs after damage; checks IsBattlerTurnDamaged (damage > 0 covers this in singles).
+static func check_target_thaw(defender: BattlePokemon, move: MoveData, damage: int) -> bool:
+	if move.type == TypeChart.TYPE_FIRE \
+			and move.power > 0 \
+			and damage > 0 \
+			and defender.status == BattlePokemon.STATUS_FREEZE:
+		defender.status = BattlePokemon.STATUS_NONE
+		return true
+	return false
+
+
+# User-thaw: clear the attacker's freeze when using a thawsUser move.
+# Returns true if thaw occurred.
+#
+# Source: battle_move_resolution.c :: CancelerThaw (L586–622)
+#   Fires after the attacker-canceler chain when MoveThawsUser(cv->move) is true.
+# Source: move.h L455–457 (MoveThawsUser); moves: Flame Wheel, Sacred Fire,
+#   Flare Blitz, Scald, Fusion Flare, Steam Eruption, Burn Up, Sizzly Slide,
+#   Pyro Ball, Scorching Sands, Hydro Steam, Matcha Gotcha.
+# None of the 20 Tier-1 moves carry thaws_user=true; this hook is wired now
+# so it fires correctly when those moves are added in later milestones.
+static func check_user_thaw(attacker: BattlePokemon, move: MoveData) -> bool:
+	if move.thaws_user and attacker.status == BattlePokemon.STATUS_FREEZE:
+		attacker.status = BattlePokemon.STATUS_NONE
+		return true
+	return false
+
+
 # ── Speed for priority resolution ─────────────────────────────────────────
 #
 # Returns the effective speed value used for turn-order sorting.

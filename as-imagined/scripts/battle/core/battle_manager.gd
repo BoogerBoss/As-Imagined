@@ -31,6 +31,7 @@ signal battle_ended(winner_side: int)  # 0 = player/side-0 wins, 1 = opponent/si
 signal status_damage(pokemon: BattlePokemon, amount: int)  # end-of-turn status tick
 signal move_skipped(pokemon: BattlePokemon, reason: String)  # sleep/freeze/para/confusion
 signal confusion_self_hit(pokemon: BattlePokemon, damage: int)
+signal pokemon_thawed(pokemon: BattlePokemon)  # freeze cleared mid-battle
 
 
 var _phase: BattlePhase = BattlePhase.BATTLE_START
@@ -129,9 +130,18 @@ func _phase_pre_move_checks() -> void:
 		advance()
 		return
 
+	# User-thaw bypass: if the actor is frozen but their chosen move has thaws_user,
+	# the frozen check in CancelerAsleepOrFrozen is skipped (source: L172 !MoveThawsUser).
+	# Pass force_freeze_thaw=true so pre_move_check doesn't block on the freeze.
+	# The actual status clear happens in _phase_move_execution via check_user_thaw.
+	var chosen_move: MoveData = _chosen_moves[_combatants.find(actor)]
+	var freeze_bypass: bool = (actor.status == BattlePokemon.STATUS_FREEZE
+			and chosen_move != null and chosen_move.thaws_user)
+
 	# Status pre-move checks — source: battle_move_resolution.c canceler chain
 	# Order: sleep → freeze → confusion → paralysis (matching source canceler order)
-	var check: Dictionary = StatusManager.pre_move_check(actor)
+	var check: Dictionary = StatusManager.pre_move_check(
+			actor, null, true if freeze_bypass else null)
 
 	if check["self_hit_damage"] > 0:
 		var dmg: int = check["self_hit_damage"]
@@ -164,10 +174,23 @@ func _phase_move_execution() -> void:
 	var defender: BattlePokemon = _get_opponent(attacker)
 	var move: MoveData = _chosen_moves[_combatants.find(attacker)]
 
+	# User-thaw: frozen Pokémon using a thawsUser move thaws before dealing damage.
+	# Source: battle_move_resolution.c :: CancelerThaw (L586–622); fires after the
+	# attacker-canceler chain when MoveThawsUser(cv->move) is true.
+	if StatusManager.check_user_thaw(attacker, move):
+		pokemon_thawed.emit(attacker)
+
 	var result: Dictionary = DamageCalculator.calculate(attacker, defender, move)
 	var damage: int = result["damage"]
 	defender.current_hp = max(0, defender.current_hp - damage)
 	move_executed.emit(attacker, defender, move, damage)
+
+	# Target-thaw: Fire-type damaging move clears freeze on the defender.
+	# Source: battle_script_commands.c :: CanFireMoveThawTarget (L11036–11038);
+	#   B_HIT_THAW = GEN_LATEST >= GEN_3: TYPE_FIRE && power > 0 && damage > 0
+	# Source: battle_move_resolution.c :: MoveEndDefrost (L3288–3314)
+	if StatusManager.check_target_thaw(defender, move, damage):
+		pokemon_thawed.emit(defender)
 
 	_current_actor_index += 1
 	_set_phase(BattlePhase.FAINT_CHECK)
