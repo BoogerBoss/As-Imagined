@@ -181,5 +181,30 @@ it exists purely to look up exact source logic.
 
 ## Current status
 
-Project scaffolded, no milestones started yet. Next step: Milestone 1
-(data schema + state machine skeleton).
+- M1 (data schema + state machine skeleton): **COMPLETE** — 2026-06-24
+- M2 (damage formula + type chart): **COMPLETE** — 2026-06-24, 24/24 tests pass
+- M3 (status conditions): **COMPLETE** — 2026-06-24, 75/75 tests pass
+- M4 (Tier-1 move pipeline + freeze-thaw hooks): **COMPLETE** — 2026-06-25, 43/43 tests pass
+- M5 (move effects — stat changes & status infliction): **next**
+- M6–M10: not started
+
+## Development workflow
+
+Run a verification scene headless (from project root):
+
+```bash
+/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/SCENE.tscn
+```
+
+**Verification scenes:**
+- `scenes/battle/battle_test.tscn` — M1 battle loop (Struggle to faint)
+- `scenes/battle/damage_test.tscn` — M2 damage formula and type chart (24 tests)
+- `scenes/battle/status_test.tscn` — M3 status conditions (75 tests)
+- `scenes/battle/move_test.tscn` — M4 move registry, damage via loaded moves, freeze-thaw (43 tests)
+
+**Note:** if you add a new file with `class_name`, run an import pass before the test scenes
+will see it:
+
+```bash
+/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . --import
+```
