@@ -23,7 +23,7 @@ split, newer movepool, newer abilities), so it's not the right reference here.
 
 - Primary reference repo: `pokeemerald_expansion` (battle engine upgrade
   branch / merged `master`)
-- Located at: `/home/claude/emerald-battle-clone/reference/pokeemerald_expansion`
+- Located at: `reference/pokeemerald_expansion` (relative to project root)
   (clone this in if not present — see Setup below)
 - Key files to consult when implementing a mechanic:
   - `src/battle_script_commands.c` — move/effect execution logic
