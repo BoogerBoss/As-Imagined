@@ -358,12 +358,37 @@ func _ready() -> void:
 			sq_both.status, BattlePokemon.STATUS_PARALYSIS)
 	_check_exact("S11 confusion_turns=3", sq_both.confusion_turns, 3)
 
-	# S11 combined check: confusion self-hit overrides paralysis check order
-	# (confusion checked before paralysis in source — if self-hit, returns early)
+	# S11 combined check: both forced same direction (para would pass; self-hit fires)
 	var both_c := StatusManager.pre_move_check(sq_both, null, null, true, false)
-	_check_exact("S11 confusion self-hit wins even with para: can_move=false",
+	_check_exact("S11 confusion self-hit fires: can_move=false",
 			int(both_c["can_move"]), 0)
 	_check_exact("S11 self_hit_damage > 0", int(both_c["self_hit_damage"] > 0), 1)
+
+	# S11b: ORDER pin — confusion fires BEFORE paralysis
+	# Source: CANCELER_CONFUSED (pos 15) < CANCELER_PARALYZED (pos 17)
+	#   in include/constants/battle_move_resolution.h enum CancelerState
+	# Force BOTH self-hit=true AND full-para=true.
+	# If confusion runs first: returns early → self_hit_damage > 0, paralysis never evaluated.
+	# If paralysis ran first: would return early → self_hit_damage == 0.
+	var sq_order := _clone(squirtle)
+	StatusManager.try_apply_status(sq_order, BattlePokemon.STATUS_PARALYSIS)
+	StatusManager.try_apply_confusion(sq_order, 3)
+	var order_c := StatusManager.pre_move_check(sq_order, null, null, true, true)
+	_check_exact("S11b confusion before paralysis: self_hit_damage > 0 (confusion ran first)",
+			int(order_c["self_hit_damage"] > 0), 1)
+
+	# S12: ORDER pin — sleep (CANCELER_ASLEEP_OR_FROZEN, pos 5) fires BEFORE
+	#   confusion (CANCELER_CONFUSED, pos 15)
+	# Pokémon has both STATUS_SLEEP and confusion_turns=3. Force stay-asleep.
+	# Sleep returns early → confusion check never runs → self_hit_damage == 0 even
+	# though force_confusion_hit=true.
+	var sq_sleep_conf := _clone(squirtle)
+	StatusManager.try_apply_status(sq_sleep_conf, BattlePokemon.STATUS_SLEEP, 3)
+	StatusManager.try_apply_confusion(sq_sleep_conf, 3)
+	var sc_c := StatusManager.pre_move_check(sq_sleep_conf, false, null, true)
+	_check_exact("S12 sleep fires before confusion: self_hit_damage=0 (sleep returned early)",
+			sc_c["self_hit_damage"], 0)
+	_check_exact("S12 can_move=false (blocked by sleep, not confusion)", int(sc_c["can_move"]), 0)
 
 	# ─── RESULTS ─────────────────────────────────────────────────────────────
 

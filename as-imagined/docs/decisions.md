@@ -251,14 +251,35 @@ Format per entry:
 
 ## [M3] Freeze: 20% thaw chance per turn; thawed mon moves that turn
 
-- Source: `src/battle_move_resolution.c` L172–186
+- Source: `src/battle_move_resolution.c` :: `CancelerAsleepOrFrozen` (L172–186)
+- Source: `include/config/battle.h` line 49 (`B_FROZEN_STATUS_FAIL = GEN_LATEST`), line 50 (`B_REFREEZE = GEN_LATEST`)
 - Behavior:
-  - Each pre-move check: `RandomPercentage(RNG_FROZEN, 20)` = 20% thaw. Implemented as `randi() % 100 < 20`.
+  - Checked in `CancelerAsleepOrFrozen` as `else if` branch (after sleep). Condition: `STATUS1_FREEZE && !MoveThawsUser(cv->move)`. If the frozen Pokémon is using a `thawsUser` move, the entire freeze block is skipped — handled instead by `CancelerThaw` (position 22 in the dispatch table, M4+ scope).
+  - If frozen (and move doesn't thaw): `RandomPercentage(RNG_FROZEN, 20)` = 20% thaw. Implemented as `randi() % 100 < 20`.
   - If thaws → status cleared, **can use move that same turn**.
   - If stays frozen → can't move.
-  - Moves that thaw (`MoveThawsUser`) skip the freeze check — not in M3 scope (Flame Wheel, Sacred Fire, etc. are M4+ move effects).
-- Type immunity: Ice-types cannot be frozen (L5342). Sun weather also prevents freeze but weather is not in M3 scope.
-- Notes: 2026-06-24.
+- Type immunity: Ice-types cannot be frozen (L5342). Sun weather also prevents freeze (not in M3 scope).
+- Notes: `!MoveThawsUser(cv->move)` guard at L172 is not yet wired into our StatusManager since no `thawsUser` moves exist until M4. The flag will need to be checked during M4 move execution. 2026-06-24.
+
+## [M3] Freeze — user-thaw via `thawsUser` move flag (M4+ hook)
+
+- Source: `include/move.h` L141 (`bool32 thawsUser:1`) and L455–457 (`MoveThawsUser`)
+- Source: `src/battle_move_resolution.c` :: `CancelerAsleepOrFrozen` L172 (`!MoveThawsUser(cv->move)`) and `CancelerThaw` (L586–622)
+- Source: `src/data/moves_info.h` — `thawsUser = TRUE` on: Flame Wheel, Sacred Fire, Flare Blitz, Scald, Fusion Flare, Steam Eruption, Burn Up, Sizzly Slide, Pyro Ball, Scorching Sands, Hydro Steam, Matcha Gotcha (12 moves)
+- Behavior: When a frozen Pokémon uses a move with `thawsUser=TRUE`, the standard 20% thaw roll in `CancelerAsleepOrFrozen` is bypassed — the move executes. `CancelerThaw` (position 22) then fires: if still frozen AND the move doesn't have `MOVE_EFFECT_REMOVE_ARG_TYPE=TYPE_FIRE` for non-Fire-types, status is cleared and a defrost message plays.
+- M3 status: not implementable — requires knowing which move is being used during MOVE_EXECUTION. Hook will be: in M4 move execution, before damage, check `move.thaws_user && attacker.status == STATUS_FREEZE` → clear freeze.
+- Notes: The `MOVE_EFFECT_REMOVE_ARG_TYPE/TYPE_FIRE` edge-case at L594 means a move that specifically removes "your own Fire type" won't thaw a non-Fire frozen Pokémon — only relevant to Burn Up specifically; skip for M4. 2026-06-25.
+
+## [M3] Freeze — target-thaw when hit by Fire-type damaging move (M4+ hook)
+
+- Source: `src/battle_script_commands.c` :: `CanFireMoveThawTarget` (L11036–11038): `B_HIT_THAW >= GEN_3 && moveType == TYPE_FIRE && GetMovePower(move) != 0`
+- Source: `src/battle_script_commands.c` :: `CanMoveThawTarget` (L11031–11033): `B_HIT_THAW >= GEN_6 && !IsSheerForceAffected(move, abilityAtk) && MoveThawsUser(move)`
+- Source: `src/battle_move_resolution.c` :: `MoveEndDefrost` (L3288–3329) — loops non-attacker battlers; condition: `STATUS1_ICY_ANY && IsBattlerTurnDamaged(battler, EXCLUDING_SUBSTITUTES) && IsBattlerAlive(battler)`; if `CanFireMoveThawTarget || CanBurnHitThaw` → call `DefrostBattler`; else if `CanMoveThawTarget` → call `DefrostBattler`
+- Source: `include/config/battle.h` line 118 (`B_HIT_THAW = GEN_LATEST`)
+- Behavior (GEN_LATEST = GEN_6+ path): Any Fire-type move with power > 0 that deals damage to a frozen target clears STATUS1_FREEZE after damage is dealt. `thawsUser` moves (Scald etc.) additionally thaw the target (Gen6+). The thaw is a post-damage move-end effect, not a pre-damage effect.
+- M3 status: **not implementable now** — `MoveEndDefrost` requires `IsBattlerTurnDamaged`, which is move-execution state (did the hit connect and deal damage this turn?). Not tracked until M4.
+- M4 hook: In MOVE_EXECUTION's post-damage step, after damage is applied to the target, check: `(move.type == TYPE_FIRE && move.power > 0) && target.status == STATUS_FREEZE` → clear freeze. Mirror the `MoveEndDefrost` loop. Add to the post-damage processing that M4 will build.
+- Notes: `CanBurnHitThaw` (L10010) applies only to `B_HIT_THAW <= GEN_2` (burn-inflicting moves thaw) — irrelevant at GEN_LATEST. 2026-06-25.
 
 ## [M3] Confusion: 33% self-hit (Gen7+); 2–5 turn volatile duration
 
@@ -290,11 +311,15 @@ Format per entry:
 - Behavior: If `gBattleMons[battlerDef].status1 & STATUS1_ANY` → fails (`BattleScript_ButItFailed`). A Pokémon can have at most one of: burn, freeze, paralysis, poison, toxic, sleep.
 - Notes: Confusion is a volatile status (not in STATUS1_ANY) and CAN coexist with any major status. 2026-06-24.
 
-## [M3] Pre-move check order: sleep → freeze → confusion → paralysis
+## [M3] Pre-move check order: (sleep+freeze) → confusion → paralysis
 
-- Source: `src/battle_move_resolution.c` canceler dispatch table (verified order: `CancelerSleep` before `CancelerFrozen` before `CancelerConfused` before `CancelerParalyzed`)
-- Behavior: Checked in that order. Each canceler either fails early (returns CANCELER_RESULT_FAILURE) or passes through. A confusion self-hit returns before the paralysis check — so a confused+paralyzed Pokémon that would self-hit does so without triggering the full-para roll.
-- Notes: Flinch, taunt, disable, choice lock, etc. are later in the chain (M4+). 2026-06-24.
+- Source: `include/constants/battle_move_resolution.h` `enum CancelerState` (L22–46): `CANCELER_ASLEEP_OR_FROZEN` (pos 5) < `CANCELER_CONFUSED` (pos 15) < `CANCELER_PARALYZED` (pos 17)
+- Source: `src/battle_move_resolution.c` dispatch table (L2399–2438): each enum value maps to its function; functions run in enum order
+- Source: `src/battle_move_resolution.c` :: `CancelerAsleepOrFrozen` (L115–189) — sleep and freeze are handled in a **single combined** function: checks `STATUS1_SLEEP` first, then `else if STATUS1_FREEZE`. Since a Pokémon can only have one major status, checking them in a single function is equivalent to checking them sequentially.
+- Behavior: The effective order for M3 conditions is: **(sleep or freeze) → confusion → paralysis**. Each canceler returns `CANCELER_RESULT_FAILURE` on block, causing the chain to abort — later cancelers don't run. A self-hitting-confused Pokémon that is also paralyzed: confusion fires first and returns early; the full-para roll is never evaluated.
+- Intermediate cancelers between ASLEEP_OR_FROZEN and CONFUSED (power-points check, obedience, truant, focus-punch, flinch, disabled, volatile blocked, taunted, imprisoned) are M4+ scope and are not implemented in M3.
+- `CANCELER_GHOST` (pos 16) sits between CONFUSED and PARALYZED — it's the Gen I Pokémon Tower ghost mechanic and is irrelevant to the modern engine.
+- Notes: The M3 status_test.gd S11b and S12 tests pin the ordering. 2026-06-25.
 
 ## [M1] PokemonSpecies.learnset: defined now, empty for Milestone 1
 
