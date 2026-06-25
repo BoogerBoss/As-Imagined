@@ -178,6 +178,16 @@ func _ready() -> void:
 	_check_exact("T3d Flamethrower.thaws_user=false → check_user_thaw=false", int(thawed_d), 0)
 	_check_exact("T3d attacker status unchanged (still FREEZE)", ch_frozen.status, BattlePokemon.STATUS_FREEZE)
 
+	# T3e: User-thaw with Flame Wheel (thaws_user=true) — closes the M4 gap.
+	# A frozen attacker using Flame Wheel must thaw before acting this turn.
+	# Source: StatusManager.check_user_thaw (wrapping CancelerThaw L586)
+	var flame_wheel := MoveRegistry.get_move(172)
+	var ch_frozen2 := _clone(charmander)
+	StatusManager.try_apply_status(ch_frozen2, BattlePokemon.STATUS_FREEZE)
+	var thawed_e := StatusManager.check_user_thaw(ch_frozen2, flame_wheel)
+	_check_exact("T3e Flame Wheel.thaws_user=true → check_user_thaw=true", int(thawed_e), 1)
+	_check_exact("T3e attacker status cleared to NONE", ch_frozen2.status, BattlePokemon.STATUS_NONE)
+
 	# ─── RESULTS ──────────────────────────────────────────────────────────────
 	print("")
 	print("=== Results: " + str(_pass) + " passed, " + str(_fail) + " failed ===")
