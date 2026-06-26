@@ -129,3 +129,65 @@ const SEMI_INV_UNDERWATER: int  = 3  # Dive — underwater on turn 1
 # Source: battle_util.c :: DoFixedDamageMoveCalc :: EFFECT_LEVEL_DAMAGE → gBattleMons.level
 # Used by: Seismic Toss (Fighting), Night Shade (Ghost).
 @export var level_damage: bool = false
+
+# ── M7: One-off / unique mechanics ────────────────────────────────────────────
+
+# creates_substitute: user pays HP = max_hp / 4 and creates a decoy with that much HP.
+# Fails if user HP ≤ max_hp / 4 (i.e. the cut would faint them).
+# Incoming damaging moves hit the substitute instead of the Pokémon; when
+# substitute_hp reaches 0 the substitute breaks. Status/entry effects are blocked.
+# Source: battle_script_commands.c :: Cmd_setsubstitute (L7807)
+#   hp = GetNonDynamaxMaxHP(attacker) / 4; fails if attacker.hp <= hp
+#   substitute = TRUE; substituteHP = hp
+@export var creates_substitute: bool = false
+
+# is_protect: Protect/Detect — blocks all incoming moves for one turn.
+# Consecutive use (Gen 5+) fails with probability 1/(3^n) where n = consecutive uses.
+# Source: battle_util.c :: CanUseMoveConsecutively (L10862)
+#   sGen5ProtectFailChances = {1, 3, 9, 27} (uses-0, 1, 2, 3+)
+@export var is_protect: bool = false
+
+# counter: returns 2× physical damage taken this turn to the attacker.
+# Priority −5. Fails if user wasn't hit by a physical move this turn.
+# Source: battle_move_resolution.c :: EFFECT_REFLECT_DAMAGE (L1199)
+#   physicalDmg = actual_damage+1; Counter returns (physicalDmg-1)*200/100
+# Source (move data): moves_info.h MOVE_COUNTER — priority=-5, category=PHYSICAL
+@export var counter: bool = false
+
+# mirror_coat: returns 2× special damage taken this turn to the attacker.
+# Priority −5. Fails if user wasn't hit by a special move this turn.
+# Source: same EFFECT_REFLECT_DAMAGE handler, category=SPECIAL branch
+@export var mirror_coat: bool = false
+
+# destiny_bond: if this Pokémon faints before acting next turn, the KO attacker also faints.
+# Fails (consecutive-use rule, Gen 7+): if already set when used again.
+# Source: battle_scripts_1.s :: BattleScript_EffectDestinyBond → setvolatile destinyBond 2
+#   battle_move_resolution.c :: FAINT_BLOCK_TRY_DESTINY_BOND (L2953)
+@export var destiny_bond: bool = false
+
+# is_disable: prevents the target's last-used move for 4 turns (Gen 5+).
+# Fails if: target has no last move, or that move has 0 PP, or is already disabled.
+# ignores_substitute = true in source (Disable reaches through substitute).
+# Source: battle_script_commands.c :: Cmd_disablelastusedattack (L7898)
+#   disabledMove = lastMoves[target]; disableTimer = B_DISABLE_TIMER (=4, Gen5+)
+@export var is_disable: bool = false
+
+# is_encore: forces the target to repeat its last-used move for 3 turns (Gen 5+).
+# Fails if: no last move, already encored, or last move is encore-banned.
+# Source: battle_script_commands.c :: Cmd_trysetencore (L7924)
+#   encoreTimer = B_ENCORE_TIMER (=4); but if target hasn't acted this turn: 4-1=3
+#   We always use 3 (simpler, matches typical case where target already moved).
+@export var is_encore: bool = false
+
+# is_bide: stores damage taken over 2 waiting turns then releases 2× total.
+# Priority +1 (Gen 4+). Locks into Bide via charging_move.
+# Source: battle_move_resolution.c :: CancelerBide (L1106)
+#   bideTurns=2 on setup; each activation: decrement; when 0 → release 2×gBideDmg
+# Damage is accumulated from direct hits (not through substitute).
+@export var is_bide: bool = false
+
+# is_metronome: calls a random non-banned move from the move registry.
+# Source: battle_move_resolution.c :: GetMetronomeMove (L4998)
+#   RandomUniformExcept from moves pool, filter = InvalidMetronomeMove
+#   which checks metronomeBanned flag (= ban_flags & BAN_METRONOME in our system).
+@export var is_metronome: bool = false

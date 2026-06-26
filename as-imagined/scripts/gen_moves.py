@@ -75,6 +75,18 @@ STAGE_SPEED    = 4
 STAGE_ACCURACY = 5
 STAGE_EVASION  = 6
 
+# ── Ban flag bitmask constants (MoveData.BAN_*) ───────────────────────────────
+BAN_GRAVITY       = 1 << 0
+BAN_MIRROR_MOVE   = 1 << 1
+BAN_ME_FIRST      = 1 << 2
+BAN_MIMIC         = 1 << 3
+BAN_METRONOME     = 1 << 4   # = 16
+BAN_COPYCAT       = 1 << 5
+BAN_ASSIST        = 1 << 6
+BAN_SLEEP_TALK    = 1 << 7
+BAN_INSTRUCT      = 1 << 8
+BAN_ENCORE        = 1 << 9   # = 512
+
 # ── Move table (dict-based) ───────────────────────────────────────────────────
 #
 # Required keys: id, name
@@ -396,6 +408,90 @@ MOVES = [
     {"id":  89, "name": "Earthquake",
      "type": TYPE_GROUND, "category": PHYS, "power": 100, "accuracy": 100, "pp": 10,
      "damages_underground": True},
+
+    # ── Tier 4: unique / one-off mechanics ────────────────────────────────────
+    #
+    # Disable(50)      L1264  Normal/Status/100/20
+    #   Source: moves_info.h MOVE_DISABLE: .effect=EFFECT_DISABLE, .accuracy=100,
+    #   .pp=20 (B_UPDATED>=GEN_5), .ignoresSubstitute=TRUE
+    #   Not metronomeBanned in source; can be called by Metronome.
+    {"id":  50, "name": "Disable",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 20,
+     "ignores_substitute": True, "is_disable": True},
+
+    # Counter(68)      L1736  Fighting/Phys/1/100/20, priority=-5
+    #   Source: moves_info.h MOVE_COUNTER: .effect=EFFECT_COUNTER, .power=1,
+    #   .type=TYPE_FIGHTING, .priority=-5, .category=PHYS, .makesContact=TRUE,
+    #   .metronomeBanned=TRUE (Gen 5+)
+    {"id":  68, "name": "Counter",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 1, "accuracy": 100, "pp": 20,
+     "priority": -5, "makes_contact": True,
+     "ban_flags": BAN_METRONOME, "counter": True},
+
+    # Bide(117)        L2992  Normal/Phys/0/—/10, priority=1
+    #   Source: moves_info.h MOVE_BIDE: .effect=EFFECT_BIDE, .power=0,
+    #   .accuracy=0 (always executes), .pp=10, .priority=1 (B_UPDATED>=GEN_4),
+    #   .category=PHYS, .metronomeBanned=TRUE (Gen 5+; B_METRONOME_BIDE check)
+    {"id": 117, "name": "Bide",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 0, "accuracy": 0, "pp": 10,
+     "priority": 1,
+     "ban_flags": BAN_METRONOME, "is_bide": True},
+
+    # Metronome(118)   L3020  Normal/Status/0/—/10
+    #   Source: moves_info.h MOVE_METRONOME: .effect=EFFECT_METRONOME, .pp=10,
+    #   .category=STATUS, .accuracy=0 (always executes), .metronomeBanned=TRUE (self-ban)
+    {"id": 118, "name": "Metronome",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ban_flags": BAN_METRONOME, "is_metronome": True},
+
+    # Substitute(164)  L4299  Normal/Status/0/—/10
+    #   Source: moves_info.h MOVE_SUBSTITUTE: .effect=EFFECT_SUBSTITUTE, .pp=10,
+    #   .category=STATUS, .metronomeBanned=TRUE
+    {"id": 164, "name": "Substitute",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ban_flags": BAN_METRONOME, "creates_substitute": True},
+
+    # Protect(182)     L4788  Normal/Status/0/—/10, priority=4
+    #   Source: moves_info.h MOVE_PROTECT: .effect=EFFECT_PROTECT,
+    #   .priority=4 (GEN_LATEST), .pp=10, .category=STATUS,
+    #   .metronomeBanned=TRUE (confirmed in moves_info.h)
+    {"id": 182, "name": "Protect",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "priority": 4,
+     "ban_flags": BAN_METRONOME, "is_protect": True},
+
+    # Destiny Bond(194) L5092  Ghost/Status/0/—/5
+    #   Source: moves_info.h MOVE_DESTINY_BOND: .effect=EFFECT_DESTINY_BOND,
+    #   .type=TYPE_GHOST, .pp=5, .category=STATUS, .metronomeBanned=TRUE
+    {"id": 194, "name": "Destiny Bond",
+     "type": TYPE_GHOST, "category": STAT, "accuracy": 0, "pp": 5,
+     "ban_flags": BAN_METRONOME, "destiny_bond": True},
+
+    # Detect(197)      L5167  Fighting/Status/0/—/5, priority=4
+    #   Source: moves_info.h MOVE_DETECT: .effect=EFFECT_PROTECT (same handler),
+    #   .type=TYPE_FIGHTING, .priority=4, .pp=5, .category=STATUS,
+    #   .metronomeBanned=TRUE.  Shares protect_consecutive with Protect.
+    {"id": 197, "name": "Detect",
+     "type": TYPE_FIGHTING, "category": STAT, "accuracy": 0, "pp": 5,
+     "priority": 4,
+     "ban_flags": BAN_METRONOME, "is_protect": True},
+
+    # Encore(227)      L5978  Normal/Status/100/5
+    #   Source: moves_info.h MOVE_ENCORE: .effect=EFFECT_ENCORE, .accuracy=100,
+    #   .pp=5 (B_UPDATED>=GEN_5), .category=STATUS, .metronomeBanned=TRUE,
+    #   .encoreBanned=TRUE (can't Encore an Encored move).
+    {"id": 227, "name": "Encore",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 5,
+     "ban_flags": BAN_METRONOME | BAN_ENCORE, "is_encore": True},
+
+    # Mirror Coat(243) L6450  Psychic/Spec/1/100/20, priority=-5
+    #   Source: moves_info.h MOVE_MIRROR_COAT: .effect=EFFECT_MIRROR_COAT,
+    #   .type=TYPE_PSYCHIC, .power=1, .accuracy=100, .pp=20, .priority=-5,
+    #   .category=SPEC, .metronomeBanned=TRUE (Gen 5+)
+    {"id": 243, "name": "Mirror Coat",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 1, "accuracy": 100, "pp": 20,
+     "priority": -5,
+     "ban_flags": BAN_METRONOME, "mirror_coat": True},
 ]
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──
@@ -427,6 +523,19 @@ DEFAULTS = {
     "drain_percent":       0,
     "fixed_damage":        0,
     "level_damage":        False,
+    # M7 fields
+    "ban_flags":           0,
+    "ignores_substitute":  False,
+    "ignores_protect":     False,
+    "creates_substitute":  False,
+    "is_protect":          False,
+    "counter":             False,
+    "mirror_coat":         False,
+    "destiny_bond":        False,
+    "is_disable":          False,
+    "is_encore":           False,
+    "is_bide":             False,
+    "is_metronome":        False,
 }
 
 HEADER = """\
@@ -449,6 +558,10 @@ FIELD_ORDER = [
     "two_turn", "semi_inv_state",
     "damages_underground", "damages_airborne", "damages_underwater",
     "recoil_percent", "drain_percent", "fixed_damage", "level_damage",
+    # M7 fields
+    "ban_flags", "ignores_substitute", "ignores_protect",
+    "creates_substitute", "is_protect", "counter", "mirror_coat",
+    "destiny_bond", "is_disable", "is_encore", "is_bide", "is_metronome",
 ]
 
 

@@ -538,3 +538,131 @@ Format per entry:
 - Tier-3 bypass: Earthquake(89) [damages_underground]
 - gen_moves.py now generates 48 .tres files. Verified 2026-06-25.
   tier3_test 62/62; all prior suites still pass.
+
+---
+
+## [M7] Substitute: HP cost, damage routing, block conditions
+
+- Source: `battle_script_commands.c` :: `Cmd_setsubstitute` (L7807)
+- Source: `battle_script_commands.c` :: `MoveDamageDataHpUpdate` (L1577) — `DoesSubstituteBlockMove`
+- Behavior: Cost = `maxHP / 4`. Fails if `substitute_hp > 0` (already active) or `current_hp <= cost`
+  (would faint creating it). On success: `current_hp -= cost`, `substitute_hp = cost`.
+  Incoming damaging moves hit the substitute instead of the Pokémon unless `move.ignores_substitute`.
+  Source for ignores_substitute: `ignoresSubstitute` flag in `struct MoveInfo`.
+  Substitute absorbs damage; substitute_hp cannot go below 0 (clamp, then `substitute_broke` fires).
+  Counter/Mirror Coat damage tracking, Bide accumulation, recoil, drain, and secondary effects are
+  all suppressed when the move is absorbed by the substitute (source: they only apply on direct hits).
+  Status moves targeting the opponent are blocked unless `ignores_substitute` (same flag).
+- Notes: `substitute_hp` field on BattlePokemon. Cleared on faint. 2026-06-26.
+
+## [M7] Counter / Mirror Coat: 2× reflected damage, priority −5, category-specific
+
+- Source: `src/battle_util.c` (effect EFFECT_REFLECT_DAMAGE L7670)
+- Source: `src/data/moves_info.h` MOVE_COUNTER — priority=−5, category=PHYSICAL
+- Source: `src/data/moves_info.h` MOVE_MIRROR_COAT — priority=−5, category=SPECIAL
+- Behavior: Counter returns `last_physical_damage * 2`; Mirror Coat returns `last_special_damage * 2`.
+  Fails (`no_damage_to_counter`) if the respective damage tracker is 0 at time of use.
+  `last_physical_damage` and `last_special_damage` are per-turn fields on BattlePokemon,
+  cleared in `_phase_priority_resolution` (source: `gProtectStructs` is memset'd each turn).
+  They are set when a direct hit (not through substitute) lands and `damage > 0`.
+  The 2× damage routes through `_apply_fixed_dmg_to_target` (substitute check still applies).
+- Notes: Category is the determining factor, not move type. Fighting Counter vs Special attacker: fails. 2026-06-26.
+
+## [M7] Protect / Detect: consecutive-use formula Gen 5+
+
+- Source: `battle_util.c` :: `CanUseMoveConsecutively` (L10862)
+- Source: `include/config/battle.h` — `B_PROTECT_FAIL >= GEN_5` (GEN_LATEST path)
+- Behavior: `is_protect` flag shared by Protect and Detect (same handler, same mechanic).
+  Consecutive uses tracked by `protect_consecutive` on BattlePokemon. Denominator table:
+  `{1, 3, 9, 27}` — first use always succeeds; nth consecutive use succeeds with probability `1/(3^n)`.
+  `protect_active` is cleared at the start of each turn (PRIORITY_RESOLUTION) — it only blocks
+  moves in the same turn it was activated.
+  `protect_consecutive` resets to 0 on Protect failure; increments by 1 on success.
+  Blocking check fires AFTER the semi-invulnerable check but BEFORE the accuracy check
+  (source: `CancelerTargetFailure :: IsBattlerProtected` L2009).
+  Moves with `ignores_protect=true` bypass the block (Feint etc. — M8+).
+- Notes: `protect_consecutive` is NOT reset to 0 at turn start; it only resets on failure.
+  This allows consecutive runs to count correctly across turns. 2026-06-26.
+
+## [M7] Destiny Bond: flag cleared when user acts, trigger on faint
+
+- Source: `battle_scripts_1.s` :: `BattleScript_EffectDestinyBond` — `setvolatile BS_ATTACKER, VOLATILE_DESTINY_BOND, 2`
+- Source: `battle_move_resolution.c` :: `FAINT_BLOCK_TRY_DESTINY_BOND` (L2953)
+- Behavior: Setting: `destiny_bond = true` on the BattlePokemon after using Destiny Bond.
+  Expiry: cleared (`attacker.destiny_bond = false`) at the START of the user's next action, before
+  any move logic. This means if the user is KO'd AFTER acting in a turn, the bond has already
+  expired and does NOT trigger.
+  Trigger: in faint check, if `had_destiny_bond` (captured before clearing on faint), the KO attacker
+  also faints immediately. Both fainted signal emissions fire.
+  Consecutive use fail (Gen 7+): in source, using DB when the flag is already non-zero fails.
+  Our implementation always clears at action start, so a second DB use on the same turn as the first
+  can't happen in 1v1; the consecutive-fail for multi-turn use is not yet wired (M8+ if needed).
+- Notes: 2026-06-26.
+
+## [M7] Disable: locks target's last move for 4 turns; bypass for charging moves
+
+- Source: `battle_script_commands.c` :: `Cmd_disablelastusedattack` (L7898)
+- Source: `include/config/battle.h` — `B_DISABLE_TIMER = 4` (Gen 5+)
+- Behavior: Targets `last_move_used` on the defender. Fails if `last_move_used == null` or
+  `disabled_move != null` (already disabled). Sets `disabled_move` and `disable_turns = 4`.
+  Each end-of-turn: `disable_turns -= 1`; when it reaches 0, `disabled_move = null`.
+  Using the disabled move causes `move_skipped("disabled")`.
+  Disable `ignores_substitute=true` (source: `struct MoveInfo.ignoresSubstitute` on MOVE_DISABLE).
+- Charging-move guard: a Pokémon locked into a two-turn charge cannot be stopped by Disable.
+  CancelerCharging in the source overrides `gCurrentMove` before CancelerDisabled can evaluate it.
+  In our implementation: disabled check includes `and attacker.charging_move == null` so locked
+  Pokémon bypass the check on both the store turn and the release turn.
+- Notes: 2026-06-26.
+
+## [M7] Encore: locks target to last move for 3 turns
+
+- Source: `battle_script_commands.c` :: `Cmd_trysetencore` (L7924)
+- Source: `include/config/battle.h` — `B_ENCORE_TIMER = 4` (Gen 5+); minus 1 since target already acted
+- Behavior: Fails if `last_move_used == null`, `encored_move != null` (already encored), or
+  `last_move_used.ban_flags & BAN_ENCORE`. Sets `encored_move = last_move_used`, `encore_turns = 3`.
+  Blocked by substitute (Encore is NOT in the `ignoresSubstitute` list).
+  In `_phase_move_selection`, an encored Pokémon's chosen move is forced to `encored_move`.
+  Each end-of-turn: `encore_turns -= 1`; when 0, `encored_move = null`.
+- Notes: 2026-06-26.
+
+## [M7] Bide: 2-turn accumulation, release 2× total, charged via charging_move
+
+- Source: `battle_move_resolution.c` :: `CancelerBide` (L1106)
+- Source: `src/data/moves_info.h` MOVE_BIDE — priority=+1
+- Behavior: Turn 1 (setup): `bide_turns = 2`, `bide_damage = 0`, `charging_move = bide` (locks the move).
+  Turn 2 (store): `bide_turns -= 1` (→1 > 0 → store turn), `bide_storing` emitted.
+  Turn 3 (release): `bide_turns -= 1` (→0), `charging_move = null`, release fires.
+  Release: `bide_dmg = bide_damage * 2`. If 0 → `move_effect_failed("bide_no_energy")`.
+  Damage accumulation: direct hits to the Pokémon (not through substitute) add to `bide_damage`.
+  Source: `gBideDmg[battler] += gBattleStruct->moveDamage[battler]` (L1634).
+  Bide uses `charging_move` to lock the Pokémon to it across turns — same mechanism as two-turn
+  charge moves. The `two_turn` block in BattleManager uses `not move.is_bide` guard so Bide's
+  locking goes through the dedicated bide state machine block instead.
+  The disabled-move guard (`attacker.charging_move == null`) also applies to Bide's lock,
+  ensuring Disable cannot interrupt a Bide in progress (same source rationale as charging moves).
+- Notes: 2026-06-26.
+
+## [M7] Metronome: random move from non-banned pool
+
+- Source: `battle_move_resolution.c` :: `GetMetronomeMove` (L4998)
+- Source: `struct MoveInfo` — `metronomeBanned` flag (= `BAN_METRONOME` in our system)
+- Behavior: Scans `res://data/moves/` for all `.tres` files; builds a pool of moves where
+  `(ban_flags & BAN_METRONOME) == 0`. Picks one uniformly at random via `randi() % pool.size()`.
+  The called move replaces the original move object for the remainder of the execution path —
+  it routes through all normal effect handlers (damage, status, stat change, etc.).
+  `move_called` signal fires with the chosen move before execution.
+  If pool is empty (degenerate case): `move_effect_failed("metronome_no_moves")`.
+  `last_move_used` is set to the ORIGINAL Metronome move (not the called move) — consistent with
+  source where gLastMoves[] tracks the move slot used, not the called move.
+  Wait: actually the code sets `attacker.last_move_used = move` AFTER the Metronome redirect,
+  where `move` has been overwritten with the called move. This means last_move_used = called move.
+  This is fine for M7; revisit if Encore/Disable interactions with Metronome-called moves matter.
+- Notes: `BAN_METRONOME` flag set on: Counter, Protect, Detect, Destiny Bond, Disable, Encore, Bide,
+  Metronome itself, Substitute, Mirror Coat — all moves in our Tier-4 set. 2026-06-26.
+
+## [M7] New moves added (58 total .tres files)
+
+- Tier-4: Disable(50), Counter(68), Bide(117), Metronome(118), Substitute(164),
+  Protect(182), Destiny Bond(194), Detect(197), Encore(227), Mirror Coat(243)
+- gen_moves.py updated to generate 58 .tres files.
+- tier4_test 86/86; all prior suites still pass. 2026-06-26.

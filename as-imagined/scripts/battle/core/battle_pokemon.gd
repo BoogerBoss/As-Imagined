@@ -77,6 +77,58 @@ var charging_move: MoveData = null
 # Source: gBattleMons[].volatiles.semiInvulnerable; STATE_UNDERGROUND etc.
 var semi_invulnerable: int = 0  # MoveData.SEMI_INV_* constant
 
+# ── M7 volatiles ─────────────────────────────────────────────────────────────
+
+# Substitute: a decoy that absorbs incoming damaging moves.
+# Created by the Substitute move (HP cost = max_hp / 4).
+# Cleared when substitute_hp reaches 0 (substitute breaks) or on faint.
+# Source: battle_script_commands.c :: Cmd_setsubstitute; gBattleMons[].volatiles.substituteHP
+var substitute_hp: int = 0
+
+# Per-turn damage tracking for Counter and Mirror Coat.
+# Set when a physical/special hit lands directly (not via substitute).
+# Cleared at the start of each turn (PRIORITY_RESOLUTION).
+# Source: gProtectStructs[].physicalDmg / .specialDmg (cleared by memset each turn)
+var last_physical_damage: int = 0
+var last_special_damage: int = 0
+
+# Protect: blocks all incoming moves for one turn.
+# protect_consecutive = consecutive Protect uses (0 = first use this streak).
+# Cleared (protect_active) and decremented (protect_consecutive maybe) each turn.
+# Source: gBattleMons[].volatiles.consecutiveMoveUses; gProtectStructs[].protected
+var protect_active: bool = false
+var protect_consecutive: int = 0
+
+# Destiny Bond: if this Pokémon faints before their next action, the KO attacker
+# also faints. Cleared when this Pokémon acts next (before their move executes).
+# Source: gBattleMons[].volatiles.destinyBond (set to 2, decremented after each move use)
+var destiny_bond: bool = false
+
+# Disable: prevents a specific move from being used.
+# disable_turns decrements at END_OF_TURN; cleared when it reaches 0.
+# Source: gBattleMons[].volatiles.disabledMove / .disableTimer
+var disabled_move: MoveData = null
+var disable_turns: int = 0
+
+# last_move_used: last move successfully executed by this Pokémon.
+# Used as the target for Disable and Encore.
+# Source: gLastMoves[] (set after each move execution)
+var last_move_used: MoveData = null
+
+# Encore: forces this Pokémon to repeat its last-used move.
+# encore_turns decrements at END_OF_TURN; cleared when it reaches 0.
+# Source: gBattleMons[].volatiles.encoredMove / .encoreTimer
+var encored_move: MoveData = null
+var encore_turns: int = 0
+
+# Bide: accumulated damage and turn counter for the Bide state machine.
+# bide_turns: 0 = not biding; 2 = first wait turn; 1 = second wait turn; release on → 0.
+# bide_damage: sum of direct HP damage received during bide (not sub damage).
+# The Bide move is locked via charging_move (same mechanism as two-turn charge moves).
+# Source: gBattleMons[].volatiles.bideTurns; gBideDmg[]
+var bide_turns: int = 0
+var bide_damage: int = 0
+
 # In-battle stat modifiers. Ranges: −6 to +6 per stage.
 # Index order matches STAGE_* constants above.
 var stat_stages: Array[int] = []
@@ -102,6 +154,20 @@ static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokem
 	bp.flinched = false
 	bp.charging_move = null
 	bp.semi_invulnerable = 0
+	# M7 volatiles
+	bp.substitute_hp = 0
+	bp.last_physical_damage = 0
+	bp.last_special_damage = 0
+	bp.protect_active = false
+	bp.protect_consecutive = 0
+	bp.destiny_bond = false
+	bp.disabled_move = null
+	bp.disable_turns = 0
+	bp.last_move_used = null
+	bp.encored_move = null
+	bp.encore_turns = 0
+	bp.bide_turns = 0
+	bp.bide_damage = 0
 	bp.stat_stages = [0, 0, 0, 0, 0, 0, 0]
 	bp.fainted = false
 	bp._calculate_stats()
