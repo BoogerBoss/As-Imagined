@@ -792,3 +792,25 @@ Format per entry:
   Pure Power=74.
 - Notes: gen_abilities.py generates ability_NNNN.tres files with ability_id matching these
   constants. 2026-06-26.
+
+## [Bug fix] Turn-order tiebreak: sort_custom comparator must not call randi() live
+
+- Source: `battle_manager.gd` :: `_phase_priority_resolution()` (L~160–184)
+- **The bug:** The `sort_custom` comparator called `randi() % 2 == 0` directly as the
+  tiebreak when priority and effective speed were both equal. `sort_custom` requires a
+  comparator to return a consistent answer for the same pair within one sort call; calling
+  `randi()` live means the same pair can compare differently on successive calls within a
+  single sort, which Godot flags as "bad comparison function; sorting will be broken."
+- **Why it went unnoticed:** Latent since M1. The Milestone 1 dummy battle (Dummy-A vs
+  Dummy-B) was designed with different speeds specifically to avoid a tiebreak. The warning
+  only surfaced in M8's `ability_test` fixture, which creates matched combatants with
+  identical priority and speed (e.g., the Intimidate and Synchronize tests).
+- **The fix:** Pre-roll one `randi()` value per combatant into a `Dictionary` once per
+  turn, keyed by `BattlePokemon` object, before calling `sort_custom`. The comparator's
+  tiebreak line reads `return tiebreak[a] > tiebreak[b]` against those pre-rolled values.
+  This is deterministic within the sort call while still randomizing tie order turn-to-turn
+  via a fresh seed each call to `_phase_priority_resolution`.
+- **Rule going forward:** Never call `randi()` (or any non-deterministic function) directly
+  inside a `sort_custom` comparator. If randomized tiebreaking is needed, pre-compute the
+  random values before sorting.
+- Notes: 2026-06-26.

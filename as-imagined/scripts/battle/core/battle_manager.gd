@@ -158,6 +158,9 @@ func _phase_priority_resolution() -> void:
 		mon.last_physical_damage = 0
 		mon.last_special_damage = 0
 	_turn_order = _combatants.duplicate()
+	var tiebreak: Dictionary = {}
+	for mon in _combatants:
+		tiebreak[mon] = randi()
 	_turn_order.sort_custom(func(a: BattlePokemon, b: BattlePokemon) -> bool:
 		var ia := _combatants.find(a)
 		var ib := _combatants.find(b)
@@ -173,7 +176,7 @@ func _phase_priority_resolution() -> void:
 		var sb: int = StatusManager.effective_speed(b)
 		if sa != sb:
 			return sa > sb
-		return randi() % 2 == 0  # random tiebreak
+		return tiebreak[a] > tiebreak[b]
 	)
 	_current_actor_index = 0
 	_set_phase(BattlePhase.ACTION_EXECUTION)
