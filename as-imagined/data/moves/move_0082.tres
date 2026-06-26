@@ -5,9 +5,9 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Surf"
-type = 12
+move_name = "Dragon Rage"
+type = 17
 category = 1
-power = 90
-pp = 15
-damages_underwater = true
+power = 1
+pp = 10
+fixed_damage = 40

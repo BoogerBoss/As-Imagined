@@ -5,9 +5,11 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Surf"
-type = 12
-category = 1
-power = 90
-pp = 15
-damages_underwater = true
+move_name = "Sky Attack"
+type = 3
+power = 140
+accuracy = 90
+critical_hit_stage = 1
+secondary_effect = 7
+secondary_chance = 30
+two_turn = true

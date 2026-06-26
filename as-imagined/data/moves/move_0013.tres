@@ -5,9 +5,10 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Surf"
-type = 12
+move_name = "Razor Wind"
+type = 1
 category = 1
-power = 90
-pp = 15
-damages_underwater = true
+power = 80
+pp = 10
+critical_hit_stage = 1
+two_turn = true

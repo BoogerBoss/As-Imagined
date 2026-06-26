@@ -82,3 +82,50 @@ const SE_FLINCH: int    = 7
 # powder_move (already declared above in move flags) is set for Sleep Powder et al.
 # Blocked by Overcoat and Grass-type immunity (Gen 6+, M8+ scope).
 # Source: struct MoveInfo.powderMove — Sleep Powder, Stun Spore, Spore, etc.
+
+# ── Two-turn / semi-invulnerable (M6) ────────────────────────────────────────
+# Source: src/data/moves_info.h :: .argument.twoTurnAttack.status
+# Semi-invulnerable state constants (set on the user on the charge turn):
+const SEMI_INV_NONE: int        = 0
+const SEMI_INV_UNDERGROUND: int = 1  # Dig — underground on turn 1
+const SEMI_INV_ON_AIR: int      = 2  # Fly, Bounce, Sky Attack — on-air on turn 1
+const SEMI_INV_UNDERWATER: int  = 3  # Dive — underwater on turn 1
+
+# two_turn: Move requires a charge turn before releasing damage.
+# Source: struct MoveInfo.effect == EFFECT_TWO_TURNS_ATTACK or EFFECT_SEMI_INVULNERABLE
+@export var two_turn: bool = false
+
+# semi_inv_state: State applied to the user on the charge turn.
+# 0 = no invulnerability (Razor Wind, Solar Beam); >0 = one of SEMI_INV_* above.
+# Source: struct MoveInfo.argument.twoTurnAttack.status
+@export var semi_inv_state: int = 0
+
+# Bypass flags — the move can hit a target in the corresponding state.
+# Source: struct MoveInfo.damagesUnderground / .damagesAirborne / .damagesUnderwater
+# Evaluated in battle_util.c :: CanBreakThroughSemiInvulnerablityInternal
+@export var damages_underground: bool = false  # hits Dig users (e.g. Earthquake)
+@export var damages_airborne: bool = false     # hits Fly/Bounce users (e.g. Gust, Thunder)
+@export var damages_underwater: bool = false   # hits Dive users (e.g. Surf)
+
+# ── Recoil and drain (M6) ─────────────────────────────────────────────────────
+# recoil_percent: fraction of damage dealt that the attacker receives as recoil.
+# Source: struct MoveInfo.argument.recoilPercentage; applied as damage * pct / 100.
+# Common values: 25 (Take Down), 33 (Double-Edge, Brave Bird, Flare Blitz).
+@export var recoil_percent: int = 0
+
+# drain_percent: fraction of damage dealt that the attacker heals.
+# Source: struct MoveInfo.argument.absorbPercentage (default 50 for all Absorb moves).
+# Applied as heal = damage * pct / 100; heal is capped at max_hp.
+@export var drain_percent: int = 0
+
+# ── Fixed-damage moves (M6) ────────────────────────────────────────────────────
+# fixed_damage > 0: always deals this exact HP regardless of stats or type eff.
+# Type immunity (0.0×) still blocks the move entirely.
+# Source: struct MoveInfo.argument.fixedDamage; EFFECT_FIXED_HP_DAMAGE in source.
+# Examples: Dragon Rage (40), Sonic Boom (20), Night Shade / Seismic Toss use level_damage.
+@export var fixed_damage: int = 0
+
+# level_damage: damage equals the attacker's current level. Respects type immunity.
+# Source: battle_util.c :: DoFixedDamageMoveCalc :: EFFECT_LEVEL_DAMAGE → gBattleMons.level
+# Used by: Seismic Toss (Fighting), Night Shade (Ghost).
+@export var level_damage: bool = false

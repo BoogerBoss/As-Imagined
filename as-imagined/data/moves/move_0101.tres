@@ -5,9 +5,9 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Surf"
-type = 12
+move_name = "Night Shade"
+type = 8
 category = 1
-power = 90
+power = 1
 pp = 15
-damages_underwater = true
+level_damage = true

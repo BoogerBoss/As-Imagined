@@ -63,6 +63,20 @@ var confusion_turns: int = 0  # volatile; 0 = not confused; set to 2-5 on applic
 # Source: battle_move_resolution.c :: CancelerFlinch (L298)
 var flinched: bool = false
 
+# Volatile: two-turn charge state.
+# Non-null on the turn AFTER a charge: the Pokémon is locked to this move and
+# it fires when their action executes (release turn).
+# Set by BattleManager._phase_move_execution() on turn 1 of a two_turn move;
+# cleared by BattleManager._phase_move_execution() on turn 2, and on faint.
+# Source: battle_move_resolution.c :: CancelerCharging (L1737); gLockedMoves
+var charging_move: MoveData = null
+
+# Volatile: semi-invulnerable state (underground, on-air, underwater).
+# Set on the charge turn of a semi-invulnerable two-turn move; cleared on release.
+# Incoming moves miss unless their bypass flag matches (damages_underground etc.).
+# Source: gBattleMons[].volatiles.semiInvulnerable; STATE_UNDERGROUND etc.
+var semi_invulnerable: int = 0  # MoveData.SEMI_INV_* constant
+
 # In-battle stat modifiers. Ranges: −6 to +6 per stage.
 # Index order matches STAGE_* constants above.
 var stat_stages: Array[int] = []
@@ -86,6 +100,8 @@ static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokem
 	bp.toxic_counter = 0
 	bp.confusion_turns = 0
 	bp.flinched = false
+	bp.charging_move = null
+	bp.semi_invulnerable = 0
 	bp.stat_stages = [0, 0, 0, 0, 0, 0, 0]
 	bp.fainted = false
 	bp._calculate_stats()

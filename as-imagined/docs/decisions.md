@@ -475,3 +475,66 @@ Format per entry:
   Thunder Shock(84)=10% para, Rock Slide(157)=30% flinch.
 - gen_moves.py redesigned to dict-based entries; now generates 31 .tres files.
   Verified 2026-06-25. move_test 43/43 still passes after regeneration.
+
+## [M6] Two-turn charge/release state machine
+
+- Source: `src/battle_move_resolution.c` :: `CancelerCharging` (L1737); `gLockedMoves`
+- Decision: simplified from source's three-way system (`chargingTurn` in gProtectStructs,
+  `multipleTurns` in gBattleMons.volatiles, `gLockedMoves` array) to a single
+  `BattlePokemon.charging_move: MoveData` field. Non-null = locked to this move on turn 2.
+  Produces the same observable behavior without replicating all internal machinery.
+- State cleared on: turn 2 release (by BattleManager before accuracy check), or on faint
+  (in `_phase_faint_check()`). Not cleared by sleep/paralysis/confusion — state persists
+  through cancelers, matching source behavior (CancelerCharging fires AFTER sleep/para/confusion
+  cancelers; if the Pokémon can't move, chargingTurn persists until the next turn).
+- `semi_invulnerable: int` on BattlePokemon is set from `move.semi_inv_state` on charge turn;
+  cleared with `charging_move` on release or faint. Source: `gBattleMons[].volatiles.semiInvulnerable`.
+
+## [M6] Semi-invulnerable accuracy bypass
+
+- Source: `battle_move_resolution.c` :: `CancelerAccuracyCheck` (L1993);
+  `CanBreakThroughSemiInvulnerablityInternal` (battle_util.c L10464)
+- Order: semi-inv check fires BEFORE accuracy roll AND before always-hit (acc==0) moves.
+  Swift and Aerial Ace (acc=0) STILL miss against semi-invulnerable targets unless they have
+  specific bypass flags. Source: `CanMoveSkipAccuracyCheck` only returns true for Toxic
+  (always-hit-on-same-type), not for acc=0 moves in general.
+- Our `check_accuracy()` places the semi-inv check AFTER `force_hit` override (test convenience)
+  but BEFORE the `acc==0` return. This matches the source for all non-No-Guard scenarios.
+- Bypass table: UNDERGROUND → `damages_underground` (Earthquake); ON_AIR → `damages_airborne`
+  (Gust, Thunder etc — M8+; Earthquake does NOT hit airborne); UNDERWATER → `damages_underwater`
+  (Surf). Source: per-state flag checks in `CanBreakThroughSemiInvulnerablityInternal`.
+- Surf (57) updated with `damages_underwater=True`; Earthquake (89) added with `damages_underground=True`.
+
+## [M6] Fixed damage and level damage: type immunity applies, modifiers do not
+
+- Source: `battle_util.c` :: `DoMoveDamageCalc` (L7725–7727);
+  `CalcTypeEffectivenessMultiplier` runs before `DoFixedDamageMoveCalc`
+- Decision: type immunity (0.0×) blocks fixed/level damage moves (Dragon Rage vs Fairy = 0).
+  Type effectiveness multipliers beyond 0 do NOT apply (Dragon Rage vs Steel still = 40).
+  Critical hits, STAB, stat stages, and random roll are all skipped.
+- Implementation: after the `effectiveness==0.0` early return in `DamageCalculator.calculate()`,
+  insert `if fixed_damage > 0: return {damage: fixed_damage}` and
+  `if level_damage: return {damage: attacker.level}`.
+
+## [M6] Recoil and drain fractions — no artificial floor on result
+
+- Recoil source: `battle_move_resolution.c` EFFECT_RECOIL case (L3371)
+  `recoil = savedDmg * max(1, GetMoveRecoil(move)) / 100`
+  The `max(1, ...)` applies to the PERCENTAGE (ensuring ≥1% is used), not to the result.
+  So `3 * 25 / 100 = 0` — zero recoil is possible for tiny-damage hits. No floor.
+- Drain source: `battle_move_resolution.c` EFFECT_ABSORB case (L2635)
+  `heal = moveDamage * GetMoveAbsorbPercentage(move) / 100`
+  Same pattern: `1 * 50 / 100 = 0`. No floor on heal either.
+- Heal is capped at max_hp (`min(max_hp, current_hp + heal)`).
+
+## [M6] New moves added (48 total .tres files)
+
+- Tier-3 charge (no semi-inv): Razor Wind(13), Solar Beam(76), Sky Attack(143)
+- Tier-3 semi-invulnerable: Fly(19) [ON_AIR], Dig(91) [UNDERGROUND]
+- Tier-3 recoil: Take Down(36) 25%, Double-Edge(38) 33%, Brave Bird(413) 33%
+- Tier-3 drain: Absorb(71), Mega Drain(72), Giga Drain(202), Drain Punch(409) — all 50%
+- Tier-3 fixed: Dragon Rage(82)=40, Sonic Boom(49)=20
+- Tier-3 level: Seismic Toss(69), Night Shade(101)
+- Tier-3 bypass: Earthquake(89) [damages_underground]
+- gen_moves.py now generates 48 .tres files. Verified 2026-06-25.
+  tier3_test 62/62; all prior suites still pass.

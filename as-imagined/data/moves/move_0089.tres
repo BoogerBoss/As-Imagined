@@ -5,9 +5,8 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Surf"
-type = 12
-category = 1
-power = 90
-pp = 15
-damages_underwater = true
+move_name = "Earthquake"
+type = 5
+power = 100
+pp = 10
+damages_underground = true

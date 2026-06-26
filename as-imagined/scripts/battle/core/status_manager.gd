@@ -306,6 +306,14 @@ static func check_user_thaw(attacker: BattlePokemon, move: MoveData) -> bool:
 # Returns true if the move hits the target, false if it misses.
 # move.accuracy == 0 means always hits (accuracy = 0 is the "never misses" flag).
 #
+# Semi-invulnerable check fires BEFORE accuracy and before always-hit:
+#   source: battle_move_resolution.c :: CancelerAccuracyCheck (L1993)
+#   if !CanBreakThroughSemiInvulnerablity(attacker, defender, ...) → miss
+#   CanBreakThroughSemiInvulnerablityInternal checks per-state move flags:
+#     STATE_UNDERGROUND → MoveDamagesUnderground(move)  (e.g. Earthquake)
+#     STATE_UNDERWATER  → MoveDamagesUnderWater(move)   (e.g. Surf)
+#     STATE_ON_AIR      → MoveDamagesAirborne(move) || MoveDamagesAirborneDoubleDamage(move)
+#
 # Accuracy stage multiplier table — source: battle_script_commands.c L825
 # Index 0 = combined stage -6, index 6 = stage 0 (neutral), index 12 = stage +6.
 # Applied as: calc = moveAcc * ratio[idx][0] / ratio[idx][1]  (integer division).
@@ -328,6 +336,8 @@ const ACCURACY_STAGE_RATIOS: Array = [
 ]
 #
 # force_hit: null = use RNG; true = force hit; false = force miss.
+#   When force_hit is non-null it overrides EVERYTHING including semi-invulnerable,
+#   making it a pure test override (the source equivalent is No Guard ability).
 # Stat stages for accuracy (STAGE_ACCURACY) and evasion (STAGE_EVASION) are applied.
 # Abilities, held items, and weather are M8+ scope.
 static func check_accuracy(
@@ -335,6 +345,16 @@ static func check_accuracy(
 		defender: BattlePokemon,
 		move: MoveData,
 		force_hit: Variant = null) -> bool:
+	# Test override — highest priority; bypasses all checks including semi-inv.
+	if force_hit != null:
+		return bool(force_hit)
+
+	# Semi-invulnerable check: fires before accuracy roll and before always-hit.
+	# Source: battle_move_resolution.c :: CancelerAccuracyCheck (L1993)
+	if defender.semi_invulnerable != MoveData.SEMI_INV_NONE:
+		if not _can_hit_semi_invulnerable(move, defender.semi_invulnerable):
+			return false
+
 	if move.accuracy == 0:
 		return true  # always hits (Swift, Aerial Ace, Swords Dance, etc.)
 	var acc_stage: int = attacker.stat_stages[BattlePokemon.STAGE_ACCURACY]
@@ -342,9 +362,21 @@ static func check_accuracy(
 	var combined: int = clampi(acc_stage - eva_stage, -6, 6)
 	var idx: int = combined + 6
 	var calc: int = move.accuracy * ACCURACY_STAGE_RATIOS[idx][0] / ACCURACY_STAGE_RATIOS[idx][1]
-	if force_hit != null:
-		return bool(force_hit)
 	return randi() % 100 < calc
+
+
+# Helper: can the attacking move hit a target in the given semi-invulnerable state?
+# Source: battle_util.c :: CanBreakThroughSemiInvulnerablityInternal (L10464)
+#   STATE_UNDERGROUND → MoveDamagesUnderground
+#   STATE_UNDERWATER  → MoveDamagesUnderWater
+#   STATE_ON_AIR      → MoveDamagesAirborne || MoveDamagesAirborneDoubleDamage
+# In our model, damages_airborne covers both Airborne and AirborneDoubleDamage flags.
+static func _can_hit_semi_invulnerable(move: MoveData, state: int) -> bool:
+	match state:
+		MoveData.SEMI_INV_UNDERGROUND: return move.damages_underground
+		MoveData.SEMI_INV_ON_AIR:      return move.damages_airborne
+		MoveData.SEMI_INV_UNDERWATER:  return move.damages_underwater
+	return true  # STATE_NONE or unknown: no restriction
 
 
 # ── Stat stage application ────────────────────────────────────────────────────

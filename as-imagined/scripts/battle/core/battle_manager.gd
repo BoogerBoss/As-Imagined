@@ -32,10 +32,14 @@ signal status_damage(pokemon: BattlePokemon, amount: int)  # end-of-turn status 
 signal move_skipped(pokemon: BattlePokemon, reason: String)  # sleep/freeze/para/confusion/flinch
 signal confusion_self_hit(pokemon: BattlePokemon, damage: int)
 signal pokemon_thawed(pokemon: BattlePokemon)  # freeze cleared mid-battle
-signal move_missed(attacker: BattlePokemon, reason: String)  # "accuracy" or "immune"
+signal move_missed(attacker: BattlePokemon, reason: String)  # "accuracy", "immune", or "semi_invulnerable"
 signal stat_stage_changed(target: BattlePokemon, stat_idx: int, actual_change: int)
 signal move_effect_failed(target: BattlePokemon, reason: String)  # "stat_limit", "immune", "already_status"
 signal secondary_applied(target: BattlePokemon, effect: int)  # MoveData.SE_* value
+# M6 signals
+signal charge_started(attacker: BattlePokemon, move: MoveData)  # turn 1 of a two-turn move
+signal recoil_damage(attacker: BattlePokemon, amount: int)       # attacker took recoil
+signal drain_heal(attacker: BattlePokemon, amount: int)          # attacker healed via drain
 
 
 var _phase: BattlePhase = BattlePhase.BATTLE_START
@@ -87,8 +91,13 @@ func _phase_battle_start() -> void:
 func _phase_move_selection() -> void:
 	# M1: auto-select first available move for each side.
 	# M2+: emit action_needed, wait for player input and AI choice.
+	# M6: charging Pokémon (two-turn turn 2) have their move forced to charging_move.
+	# Source: battle_main.c — gLockedMoves forces action selection for two-turn moves.
 	for i in range(_combatants.size()):
-		_chosen_moves[i] = _combatants[i].moves[0] if _combatants[i].moves.size() > 0 else null
+		if _combatants[i].charging_move != null:
+			_chosen_moves[i] = _combatants[i].charging_move
+		else:
+			_chosen_moves[i] = _combatants[i].moves[0] if _combatants[i].moves.size() > 0 else null
 	_set_phase(BattlePhase.PRIORITY_RESOLUTION)
 	advance()
 
@@ -197,9 +206,31 @@ func _phase_move_execution() -> void:
 	if StatusManager.check_user_thaw(attacker, move):
 		pokemon_thawed.emit(attacker)
 
+	# ── Two-turn charge/release ───────────────────────────────────────────────
+	# Source: battle_move_resolution.c :: CancelerCharging (L1737)
+	# Turn 1 (charge): attacker.charging_move == null → lock the move, set semi-inv,
+	#   emit charge_started, record 0-damage move_executed, then skip to faint check.
+	# Turn 2 (release): attacker.charging_move != null → clear charging state, fall
+	#   through to the normal accuracy → damage pipeline.
+	if move.two_turn:
+		if attacker.charging_move == null:
+			attacker.charging_move = move
+			attacker.semi_invulnerable = move.semi_inv_state
+			charge_started.emit(attacker, move)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			advance()
+			return
+		else:
+			# Turn 2: release — clear charge state before the attack resolves.
+			attacker.charging_move = null
+			attacker.semi_invulnerable = MoveData.SEMI_INV_NONE
+
 	# ── Accuracy check ────────────────────────────────────────────────────────
 	# Source: all move BattleScripts include accuracycheck before effect application.
 	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
+	# Includes semi-invulnerable miss check (source: CancelerAccuracyCheck L1993).
 	if not StatusManager.check_accuracy(attacker, defender, move):
 		move_missed.emit(attacker, "accuracy")
 		_current_actor_index += 1
@@ -209,6 +240,7 @@ func _phase_move_execution() -> void:
 
 	if move.power > 0:
 		# ── Damaging move ──────────────────────────────────────────────────────
+		# DamageCalculator.calculate handles fixed_damage and level_damage internally.
 		var result: Dictionary = DamageCalculator.calculate(attacker, defender, move)
 		var damage: int = result["damage"]
 		defender.current_hp = max(0, defender.current_hp - damage)
@@ -220,6 +252,28 @@ func _phase_move_execution() -> void:
 		# Source: battle_move_resolution.c :: MoveEndDefrost (L3288–3314)
 		if StatusManager.check_target_thaw(defender, move, damage):
 			pokemon_thawed.emit(defender)
+
+		# ── Recoil ─────────────────────────────────────────────────────────────
+		# Source: battle_move_resolution.c :: EFFECT_RECOIL case (L3371)
+		#   recoil = savedDmg * max(1, GetMoveRecoil(move)) / 100
+		# We omit the max(1, pct) on the percentage because recoil_percent is
+		# always ≥ 25 in practice; the floor means min damage is 0 (not 1).
+		# Recoil can faint the attacker; faint_check handles it.
+		if move.recoil_percent > 0 and damage > 0:
+			var recoil: int = damage * move.recoil_percent / 100
+			if recoil > 0:
+				attacker.current_hp = max(0, attacker.current_hp - recoil)
+				recoil_damage.emit(attacker, recoil)
+
+		# ── Drain (absorb) ─────────────────────────────────────────────────────
+		# Source: battle_move_resolution.c :: EFFECT_ABSORB case (L2635)
+		#   heal = moveDamage * GetMoveAbsorbPercentage(move) / 100
+		# heal capped at max_hp; 0 heal is possible for very small damage.
+		if move.drain_percent > 0 and damage > 0:
+			var heal: int = damage * move.drain_percent / 100
+			if heal > 0:
+				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
+				drain_heal.emit(attacker, heal)
 
 		# ── Secondary effect (only fires if move connected: damage > 0) ────────
 		# Source: battle_script_commands.c :: Cmd_setadditionaleffects (L3506)
@@ -284,6 +338,10 @@ func _phase_faint_check() -> void:
 	for combatant: BattlePokemon in _combatants:
 		if combatant.current_hp <= 0 and not combatant.fainted:
 			combatant.fainted = true
+			# Clear charge state on faint so stale charging_move can't persist.
+			# Source: FaintClearSetData in battle_main.c clears all volatiles on faint.
+			combatant.charging_move = null
+			combatant.semi_invulnerable = MoveData.SEMI_INV_NONE
 			pokemon_fainted.emit(combatant)
 
 	for combatant: BattlePokemon in _combatants:

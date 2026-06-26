@@ -60,6 +60,12 @@ SE_TOXIC     = 5
 SE_CONFUSION = 6
 SE_FLINCH    = 7
 
+# ── Semi-invulnerable state constants (MoveData.SEMI_INV_* values) ───────────
+SEMI_INV_NONE        = 0
+SEMI_INV_UNDERGROUND = 1  # Dig
+SEMI_INV_ON_AIR      = 2  # Fly, Bounce
+SEMI_INV_UNDERWATER  = 3  # Dive
+
 # ── Stat stage index constants (BattlePokemon.STAGE_* values) ────────────────
 STAGE_ATK      = 0
 STAGE_DEF      = 1
@@ -164,7 +170,8 @@ MOVES = [
      "type": TYPE_WATER, "category": SPEC, "power": 40, "accuracy": 100, "pp": 25},
 
     {"id":  57, "name": "Surf",
-     "type": TYPE_WATER, "category": SPEC, "power": 90, "accuracy": 100, "pp": 15},
+     "type": TYPE_WATER, "category": SPEC, "power": 90, "accuracy": 100, "pp": 15,
+     "damages_underwater": True},
 
     # Ice Beam: 10% freeze secondary
     {"id":  58, "name": "Ice Beam",
@@ -268,6 +275,127 @@ MOVES = [
      "type": TYPE_FIRE, "category": PHYS, "power": 60, "accuracy": 100, "pp": 25,
      "makes_contact": True, "thaws_user": True,
      "secondary_effect": SE_BURN, "secondary_chance": 10},
+
+    # ── Tier 3: two-turn charge moves (no semi-invulnerability) ──────────────
+    #
+    # Razor Wind(13)   L344   Normal/Spec/80/100/10, two-turn, crit=1
+    #   Source: .effect=EFFECT_TWO_TURNS_ATTACK; B_UPDATED>=GEN_4 → critStage=1
+    {"id":  13, "name": "Razor Wind",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 80, "accuracy": 100, "pp": 10,
+     "critical_hit_stage": 1, "two_turn": True},
+
+    # Solar Beam(76)   L2052  Grass/Spec/120/100/10, two-turn
+    #   Source: .effect=EFFECT_SOLAR_BEAM (same two-turn structure; weather skip is M8+ scope)
+    {"id":  76, "name": "Solar Beam",
+     "type": TYPE_GRASS, "category": SPEC, "power": 120, "accuracy": 100, "pp": 10,
+     "two_turn": True},
+
+    # Sky Attack(143)  L3887  Flying/Phys/140/90/5, two-turn, crit=1, 30% flinch
+    #   Source: .effect=EFFECT_TWO_TURNS_ATTACK; critStage=1; 30% flinch secondary (GEN_3+)
+    {"id": 143, "name": "Sky Attack",
+     "type": TYPE_FLYING, "category": PHYS, "power": 140, "accuracy": 90, "pp": 5,
+     "critical_hit_stage": 1, "two_turn": True,
+     "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    # ── Tier 3: semi-invulnerable two-turn moves ──────────────────────────────
+    #
+    # Fly(19)          L522   Flying/Phys/90/95/15, contact, two-turn, STATE_ON_AIR
+    #   Source: .effect=EFFECT_SEMI_INVULNERABLE; .argument.twoTurnAttack.status=STATE_ON_AIR
+    #   Power=90 (B_UPDATED>=GEN_4); gravityBanned.
+    {"id":  19, "name": "Fly",
+     "type": TYPE_FLYING, "category": PHYS, "power": 90, "accuracy": 95, "pp": 15,
+     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_ON_AIR},
+
+    # Dig(91)          L2441  Ground/Phys/80/100/10, contact, two-turn, STATE_UNDERGROUND
+    #   Source: .effect=EFFECT_SEMI_INVULNERABLE; .argument.twoTurnAttack.status=STATE_UNDERGROUND
+    #   Power=80 (B_UPDATED>=GEN_4).
+    {"id":  91, "name": "Dig",
+     "type": TYPE_GROUND, "category": PHYS, "power": 80, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_UNDERGROUND},
+
+    # ── Tier 3: recoil moves ──────────────────────────────────────────────────
+    #
+    # Take Down(36)    L972   Normal/Phys/90/85/20, contact, 25% recoil
+    #   Source: .effect=EFFECT_RECOIL; .argument.recoilPercentage=25
+    {"id":  36, "name": "Take Down",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 90, "accuracy": 85, "pp": 20,
+     "makes_contact": True, "recoil_percent": 25},
+
+    # Double-Edge(38)  L1024  Normal/Phys/120/100/15, contact, 33% recoil
+    #   Source: .effect=EFFECT_RECOIL; .argument.recoilPercentage=33 (B_UPDATED>=GEN_3)
+    #   Power=120 (B_UPDATED>=GEN_2).
+    {"id":  38, "name": "Double-Edge",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 120, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "recoil_percent": 33},
+
+    # Brave Bird(413)  L11116 Flying/Phys/120/100/15, contact, 33% recoil
+    #   Source: .effect=EFFECT_RECOIL; .argument.recoilPercentage=33
+    {"id": 413, "name": "Brave Bird",
+     "type": TYPE_FLYING, "category": PHYS, "power": 120, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "recoil_percent": 33},
+
+    # ── Tier 3: drain (absorb) moves ─────────────────────────────────────────
+    #
+    # Absorb(71)       L1919  Grass/Spec/20/100/25, 50% drain
+    #   Source: .effect=EFFECT_ABSORB; .argument.absorbPercentage=50; pp=25 (B_UPDATED>=GEN_4)
+    {"id":  71, "name": "Absorb",
+     "type": TYPE_GRASS, "category": SPEC, "power": 20, "accuracy": 100, "pp": 25,
+     "drain_percent": 50},
+
+    # Mega Drain(72)   L1943  Grass/Spec/40/100/15, 50% drain
+    #   Source: .effect=EFFECT_ABSORB; .argument.absorbPercentage=50; pp=15 (B_UPDATED>=GEN_4)
+    {"id":  72, "name": "Mega Drain",
+     "type": TYPE_GRASS, "category": SPEC, "power": 40, "accuracy": 100, "pp": 15,
+     "drain_percent": 50},
+
+    # Giga Drain(202)  L5530  Grass/Spec/75/100/10, 50% drain
+    #   Source: .effect=EFFECT_ABSORB; .argument.absorbPercentage=50
+    #   Power=75 (B_UPDATED>=GEN_5); pp=10 (B_UPDATED>=GEN_4).
+    {"id": 202, "name": "Giga Drain",
+     "type": TYPE_GRASS, "category": SPEC, "power": 75, "accuracy": 100, "pp": 10,
+     "drain_percent": 50},
+
+    # Drain Punch(409) L11016 Fighting/Phys/75/100/10, contact, punching, 50% drain
+    #   Source: .effect=EFFECT_ABSORB; .argument.absorbPercentage=50
+    #   Power=75 (B_UPDATED>=GEN_5); pp=10 (B_UPDATED>=GEN_5); makesContact, punchingMove.
+    {"id": 409, "name": "Drain Punch",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 75, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "punching_move": True, "drain_percent": 50},
+
+    # ── Tier 3: fixed-damage moves ────────────────────────────────────────────
+    #
+    # Sonic Boom(49)   L1322  Normal/Spec/1/90/20, fixed 20 HP
+    #   Source: .effect=EFFECT_FIXED_HP_DAMAGE; .argument.fixedDamage=20; power=1 (placeholder)
+    {"id":  49, "name": "Sonic Boom",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 1, "accuracy": 90, "pp": 20,
+     "fixed_damage": 20},
+
+    # Dragon Rage(82)  L2217  Dragon/Spec/1/100/10, fixed 40 HP
+    #   Source: .effect=EFFECT_FIXED_HP_DAMAGE; .argument.fixedDamage=40; power=1 (placeholder)
+    {"id":  82, "name": "Dragon Rage",
+     "type": TYPE_DRAGON, "category": SPEC, "power": 1, "accuracy": 100, "pp": 10,
+     "fixed_damage": 40},
+
+    # Seismic Toss(69) L1872  Fighting/Phys/1/100/20, damage=level, contact
+    #   Source: .effect=EFFECT_LEVEL_DAMAGE; power=1 (placeholder); makesContact
+    {"id":  69, "name": "Seismic Toss",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 1, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "level_damage": True},
+
+    # Night Shade(101) L2719  Ghost/Spec/1/100/15, damage=level
+    #   Source: .effect=EFFECT_LEVEL_DAMAGE; power=1 (placeholder)
+    {"id": 101, "name": "Night Shade",
+     "type": TYPE_GHOST, "category": SPEC, "power": 1, "accuracy": 100, "pp": 15,
+     "level_damage": True},
+
+    # ── Tier 3: semi-invulnerable bypass move ─────────────────────────────────
+    #
+    # Earthquake(89)   L2394  Ground/Phys/100/100/10, damages_underground
+    #   Source: .effect=EFFECT_EARTHQUAKE; .damagesUnderground=TRUE (B_UPDATED>=GEN_2)
+    #   Hits Dig users on their charge turn; deals double damage (M8+ scope).
+    {"id":  89, "name": "Earthquake",
+     "type": TYPE_GROUND, "category": PHYS, "power": 100, "accuracy": 100, "pp": 10,
+     "damages_underground": True},
 ]
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──
@@ -278,6 +406,7 @@ DEFAULTS = {
     "accuracy":            100,
     "pp":                  5,
     "makes_contact":       False,
+    "punching_move":       False,
     "priority":            0,
     "critical_hit_stage":  0,
     "thaws_user":          False,
@@ -288,6 +417,16 @@ DEFAULTS = {
     "stat_change_stat":    -1,
     "stat_change_amount":  0,
     "stat_change_self":    False,
+    # M6 fields
+    "two_turn":            False,
+    "semi_inv_state":      SEMI_INV_NONE,
+    "damages_underground": False,
+    "damages_airborne":    False,
+    "damages_underwater":  False,
+    "recoil_percent":      0,
+    "drain_percent":       0,
+    "fixed_damage":        0,
+    "level_damage":        False,
 }
 
 HEADER = """\
@@ -302,10 +441,14 @@ script = ExtResource("1")
 # Fields to emit in .tres, in canonical order.
 FIELD_ORDER = [
     "type", "category", "power", "accuracy", "pp",
-    "makes_contact", "priority", "critical_hit_stage",
+    "makes_contact", "punching_move", "priority", "critical_hit_stage",
     "thaws_user", "powder_move", "sound_move",
     "secondary_effect", "secondary_chance",
     "stat_change_stat", "stat_change_amount", "stat_change_self",
+    # M6 fields
+    "two_turn", "semi_inv_state",
+    "damages_underground", "damages_airborne", "damages_underwater",
+    "recoil_percent", "drain_percent", "fixed_damage", "level_damage",
 ]
 
 

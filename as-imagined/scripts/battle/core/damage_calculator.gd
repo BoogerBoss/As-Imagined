@@ -74,6 +74,16 @@ static func calculate(
 	if effectiveness == 0.0:
 		return {"damage": 0, "is_crit": false, "effectiveness": 0.0}
 
+	# --- Fixed-damage and level-damage bypass the formula but not type immunity ---
+	# Source: battle_util.c :: DoMoveDamageCalc (L7725–7727)
+	#   typeEffectivenessModifier == 0 → return 0 (handled above)
+	#   DoFixedDamageMoveCalc → returns fixedDamage or level as appropriate
+	# These skip all stages, STAB, crit, and type modifiers.
+	if move.fixed_damage > 0:
+		return {"damage": move.fixed_damage, "is_crit": false, "effectiveness": effectiveness}
+	if move.level_damage:
+		return {"damage": attacker.level, "is_crit": false, "effectiveness": effectiveness}
+
 	# --- Critical hit determination ---
 	# Source: src/battle_util.c :: IsCriticalHit → CalcCritChanceStage (L7820)
 	var is_crit: bool = _roll_crit(move.critical_hit_stage) if force_crit == null else bool(force_crit)

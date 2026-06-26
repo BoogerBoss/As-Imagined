@@ -5,9 +5,9 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Surf"
-type = 12
+move_name = "Solar Beam"
+type = 13
 category = 1
-power = 90
-pp = 15
-damages_underwater = true
+power = 120
+pp = 10
+two_turn = true

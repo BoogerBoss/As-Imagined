@@ -5,9 +5,10 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Surf"
-type = 12
+move_name = "Sonic Boom"
+type = 1
 category = 1
-power = 90
-pp = 15
-damages_underwater = true
+power = 1
+accuracy = 90
+pp = 20
+fixed_damage = 20

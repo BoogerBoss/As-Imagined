@@ -5,9 +5,9 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Surf"
-type = 12
-category = 1
-power = 90
+move_name = "Brave Bird"
+type = 3
+power = 120
 pp = 15
-damages_underwater = true
+makes_contact = true
+recoil_percent = 33
