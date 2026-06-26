@@ -188,7 +188,8 @@ it exists purely to look up exact source logic.
 - M5 (move effects — stat changes & status infliction): **COMPLETE** — 2026-06-25, 78/78 tests pass
 - M6 (move effects — multi-turn, recoil, drain, fixed damage): **COMPLETE** — 2026-06-25, 62/62 tests pass
 - M7 (move effects — Tier 4 one-off/unique): **COMPLETE** — 2026-06-26, 86/86 tests pass
-- M8–M10: not started
+- M8 (abilities): **COMPLETE** — 2026-06-26, 59/59 tests pass
+- M9–M10: not started
 
 ## Development workflow
 
@@ -206,6 +207,7 @@ Run a verification scene headless (from project root):
 - `scenes/battle/stat_test.tscn` — M5 stat stages, secondary effects, accuracy, flinch (78 tests)
 - `scenes/battle/tier3_test.tscn` — M6 multi-turn, semi-inv, fixed damage, recoil, drain (62 tests)
 - `scenes/battle/tier4_test.tscn` — M7 Substitute, Counter/Mirror Coat, Protect, Destiny Bond, Disable, Encore, Bide, Metronome (86 tests)
+- `scenes/battle/ability_test.tscn` — M8 abilities: Huge Power/Pure Power, Levitate, Thick Fat, Intimidate, Drizzle/Drought stubs, Speed Boost, Static, Flame Body, Rough Skin, Synchronize (59 tests)
 
 **Note:** if you add a new file with `class_name`, run an import pass before the test scenes
 will see it:

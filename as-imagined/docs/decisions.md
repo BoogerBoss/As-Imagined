@@ -666,3 +666,129 @@ Format per entry:
   Protect(182), Destiny Bond(194), Detect(197), Encore(227), Mirror Coat(243)
 - gen_moves.py updated to generate 58 .tres files.
 - tier4_test 86/86; all prior suites still pass. 2026-06-26.
+
+---
+
+## [M8] Advance() iterative refactor (pre-M8)
+
+- Source: N/A (internal engine architecture)
+- Behavior: `BattleManager.advance()` was already iterative by M7 completion (the while-loop
+  with `_is_advancing` guard and `MAX_PHASES_PER_ADVANCE = 4096` cap). No phase handler calls
+  `advance()` directly — each sets `_phase` and returns; the while-loop drives the next phase.
+  Confirmed all 7 prior suites passed without change. No standalone commit needed since the
+  refactor was already in the M7 staged work.
+- Notes: 2026-06-26.
+
+## [M8] Ability dispatch architecture
+
+- Source: `battle_util.c` :: `AbilityBattleEffects(enum AbilityEffect caseID, ...)` (L2919)
+- Behavior: Implemented as a static class `AbilityManager` with named entry points per trigger
+  type, mirroring the source's `ABILITYEFFECT_*` enum cases:
+  - `attack_modifier_uq412(attacker, move)` → Huge Power / Pure Power (Physical ×2)
+  - `defense_damage_modifier_uq412(defender, move)` → Thick Fat (Fire/Ice ×0.5)
+  - `blocks_move_type(defender, move_type)` → Levitate (Ground immunity)
+  - `try_switch_in(pokemon, opponent)` → Intimidate
+  - `try_end_of_turn(pokemon)` → Speed Boost
+  - `try_contact_effects(attacker, defender, move, damage)` → Static / Flame Body / Rough Skin
+  - `try_synchronize(holder, attacker, applied_status)` → Synchronize
+- Notes: Hooks are inserted at specific points in DamageCalculator and BattleManager to mirror
+  the ordering in the source. 2026-06-26.
+
+## [M8] Huge Power / Pure Power: attack modifier position in damage pipeline
+
+- Source: `battle_util.c` :: `GetAttackStatModifier` (L6800); called after stat stages are applied,
+  returns UQ_4_12(2.0) = 8192 for Huge Power/Pure Power + Physical moves.
+- Behavior: Applied to `atk` via `_uq412_half_down(atk, 8192)` AFTER stat-stage clamping and
+  BEFORE the base damage formula. Pure Power treated identically (same case in source).
+- Notes: The damage formula's `+2` constant means final output damage is NOT exactly 2× the
+  baseline — the ratio is ≈1.9×. Tests verify the modifier value (UQ4.12=8192) rather than
+  a 2× damage ratio. 2026-06-26.
+
+## [M8] Thick Fat: damage modifier position in damage pipeline
+
+- Source: `battle_util.c` :: `GetDefenseStatModifier` (L6933–6941)
+- Behavior: Applied to `dmg` AFTER type effectiveness and BEFORE the burn modifier. If the
+  incoming move is TYPE_FIRE or TYPE_ICE, damage is multiplied by 0.5× (UQ4.12=2048).
+  Inserted as a Thick Fat hook between the type-effectiveness block and burn block in
+  DamageCalculator.calculate().
+- Notes: 2026-06-26.
+
+## [M8] Levitate: immunity check position in damage pipeline
+
+- Source: `battle_util.c` :: `CalcTypeEffectivenessMultiplierInternal` — Levitate check at
+  top of type lookup before any multiplier is applied.
+- Behavior: Checked BEFORE the type-immunity chart in DamageCalculator. If
+  `AbilityManager.blocks_move_type(defender, move.type)` returns true (Levitate + Ground),
+  returns `{damage: 0, is_crit: false, effectiveness: 0.0}` immediately. This ensures Levitate
+  takes precedence over type effectiveness (Ground is normally 1× vs Normal, so no conflict in
+  current tests, but the ordering is correct for future type matchups).
+- Notes: No gravity or mold breaker in M8 scope. 2026-06-26.
+
+## [M8] Synchronize: reflected status and attacker reference
+
+- Source: `battle_script_commands.c` :: `TrySynchronizeActivation` (L2130–2162)
+- Behavior: Fires for BURN, PARALYSIS, POISON, TOXIC applied to the holder. Does NOT fire for
+  SLEEP or FREEZE (verified against source's trigger list). Attempts to apply the same status
+  back to the attacker via `StatusManager.try_apply_status`. Returns 0 if the back-application
+  fails (attacker already has a status, or attacker is immune).
+  `_try_synchronize` in BattleManager takes `(holder, attacker, applied_status)` — the "attacker"
+  is the pokemon that inflicted the status (NOT a BattleManager combatant index).
+- Notes: The signature passes the attacker directly rather than looking up by side index.
+  Synchronize for contact-based status (Static/Flame Body) fires in the contact-effects path.
+  2026-06-26.
+
+## [M8] Static / Flame Body: 30% trigger chance
+
+- Source: `battle_util.c` :: `AbilityBattleEffects(ABILITYEFFECT_MOVE_END, ...)` (L4091, L4114)
+  `B_ABILITY_TRIGGER_CHANCE >= GEN_4` → 30% (not 1/3 ≈ 33.3%)
+- Behavior: On contact moves, rolls `randi() % 100 < 30`. Static applies STATUS_PARALYSIS;
+  Flame Body applies STATUS_BURN. Only fires if the target doesn't already have a status
+  (checked via `StatusManager.try_apply_status` return value).
+- Notes: The `force_contact_roll` parameter to `try_contact_effects` bypasses the RNG for
+  deterministic testing. 2026-06-26.
+
+## [M8] Rough Skin: damage = maxHP/8
+
+- Source: `battle_util.c` L3965: `B_ROUGH_SKIN_DMG >= GEN_4` → `max_hp / 8` (not / 16)
+- Behavior: On contact moves, deals `defender.max_hp / 8` damage to the attacker. Emitted via
+  the existing `recoil_damage` signal in BattleManager. Applied as actual HP reduction.
+- Notes: Gen-3 would use maxHP/16; we use GEN_4+ constant as this targets the expanded engine.
+  2026-06-26.
+
+## [M8] Speed Boost: BattlerJustSwitchedIn treatment
+
+- Source: `battle_util.c` :: `AbilityBattleEffects(ABILITYEFFECT_ENDTURN, ...)` (L3605):
+  `if (!BattlerJustSwitchedIn(battler))` guard before applying the +1 Speed.
+- Behavior: Since M8 has no mid-battle switching, `BattlerJustSwitchedIn` is treated as always
+  false (never true). Speed Boost fires every end-of-turn without restriction. If switching is
+  added later, this guard must be revisited.
+- Notes: 2026-06-26.
+
+## [M8] Drizzle / Drought: stubbed, weather is M9+ scope
+
+- Source: `battle_util.c` :: `AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...)` — weather
+  setter path for ABILITY_DRIZZLE / ABILITY_DROUGHT.
+- Behavior: Ability IDs and .tres files exist (ability_0002.tres, ability_0070.tres). No effect
+  in the current engine — weather system is not implemented. When weather is added in M9+, the
+  `try_switch_in` path in AbilityManager is where the weather-set call goes.
+- Notes: Descriptions in the .tres files note the stub status. 2026-06-26.
+
+## [M8] Intimidate: switch-in order and opponent targeting
+
+- Source: `battle_util.c` :: `AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...)` (L3310):
+  `SetStatChange(all opponents, STAT_ATK, -1)`.
+- Behavior: Called in `_phase_battle_start()` for each combatant against its opponent. Emits
+  `stat_stage_changed(opponent, STAGE_ATK, -1)` and `ability_triggered(holder, "intimidate")`.
+  In a 1v1 battle (M8 scope), this means at most one opponent is targeted.
+  `BattlePokemon.apply_stat_stage_change` clamps to -6 and returns the actual delta applied.
+- Notes: In doubles/multi battles, all opponents are targeted simultaneously; deferred to M9+.
+  2026-06-26.
+
+## [M8] Ability IDs: sourced from include/constants/abilities.h
+
+- Source: `pokeemerald-expansion/include/constants/abilities.h`
+- 12 M8 abilities verified: Drizzle=2, Speed Boost=3, Static=9, Levitate=26, Intimidate=22,
+  Rough Skin=24, Synchronize=28, Huge Power=37, Thick Fat=47, Flame Body=49, Drought=70,
+  Pure Power=74.
+- Notes: gen_abilities.py generates ability_NNNN.tres files with ability_id matching these
+  constants. 2026-06-26.

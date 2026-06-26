@@ -67,6 +67,13 @@ static func calculate(
 		force_roll: int = -1,
 		force_crit: Variant = null) -> Dictionary:
 
+	# --- Ability type immunity (Levitate vs Ground, etc.) ---
+	# Source: battle_util.c :: CalcTypeEffectivenessMultiplierInternal (L8257):
+	#   moveType == TYPE_GROUND && abilityDef == ABILITY_LEVITATE && !gravity → 0.0
+	# Checked before TypeChart to produce the same 0-damage early return.
+	if AbilityManager.blocks_move_type(defender, move.type):
+		return {"damage": 0, "is_crit": false, "effectiveness": 0.0}
+
 	# --- Type immunity check (before any calculation) ---
 	# Source: src/battle_util.c :: DoMoveDamageCalc (L7718–7727)
 	var effectiveness: float = TypeChart.get_effectiveness(
@@ -116,6 +123,14 @@ static func calculate(
 
 	var atk: int = _apply_stage(atk_base, atk_stage)
 	var def: int = _apply_stage(def_base, def_stage)
+
+	# --- Ability attack modifier (Huge Power / Pure Power) ---
+	# Source: battle_util.c :: GetAttackStatModifier (L6800–6808): attacker abilities switch.
+	#   ABILITY_HUGE_POWER / ABILITY_PURE_POWER: IsBattleMovePhysical → modifier ×2.0
+	# Applied to the staged attack stat before the base damage formula.
+	var atk_ability_mod: int = AbilityManager.attack_modifier_uq412(attacker, move)
+	if atk_ability_mod != 4096:
+		atk = _uq412_half_down(atk, atk_ability_mod)
 
 	# --- Base damage formula ---
 	# Source: src/battle_util.c :: CalculateBaseDamage (L7215–7218)
@@ -167,6 +182,15 @@ static func calculate(
 		if type_mod == 0:
 			return {"damage": 0, "is_crit": is_crit, "effectiveness": 0.0}
 		dmg = _uq412_half_down(dmg, type_mod)
+
+	# --- Ability defense modifier (Thick Fat) ---
+	# Source: battle_util.c :: GetDefenseStatModifier — target abilities switch (L6933–6941):
+	#   ABILITY_THICK_FAT: (TYPE_FIRE || TYPE_ICE) → modifier ×0.5 applied to atkStat.
+	# The modifier is on the attacker's effective attack (halving it), which halves the damage.
+	# Applied after type effectiveness, before burn.
+	var def_ability_mod: int = AbilityManager.defense_damage_modifier_uq412(defender, move)
+	if def_ability_mod != 4096:
+		dmg = _uq412_half_down(dmg, def_ability_mod)
 
 	# --- Burn modifier (applied after type effectiveness) ---
 	# Source: src/battle_util.c :: GetBurnOrFrostBiteModifier (L7278–7291)

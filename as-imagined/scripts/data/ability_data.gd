@@ -2,7 +2,9 @@ class_name AbilityData
 extends Resource
 
 # Source struct: include/pokemon.h :: struct AbilityInfo
+# Canonical ability IDs from include/constants/abilities.h
 
+@export var ability_id: int = 0
 @export var ability_name: String = ""
 @export var description: String = ""
 @export var ai_rating: int = 0

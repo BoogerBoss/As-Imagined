@@ -40,6 +40,8 @@ signal secondary_applied(target: BattlePokemon, effect: int)  # MoveData.SE_* va
 signal charge_started(attacker: BattlePokemon, move: MoveData)  # turn 1 of a two-turn move
 signal recoil_damage(attacker: BattlePokemon, amount: int)       # attacker took recoil
 signal drain_heal(attacker: BattlePokemon, amount: int)          # attacker healed via drain
+# M8 signals
+signal ability_triggered(pokemon: BattlePokemon, effect_key: String)      # any ability fires
 # M7 signals
 signal substitute_created(attacker: BattlePokemon, sub_hp: int)          # Substitute put up
 signal substitute_broke(defender: BattlePokemon)                          # Substitute HP → 0
@@ -113,6 +115,16 @@ func get_phase() -> BattlePhase:
 # --- Phase handlers ---
 
 func _phase_battle_start() -> void:
+	# Fire switch-in ability effects for both starting Pokémon (they enter simultaneously).
+	# Source: AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...) (battle_util.c L3310)
+	# In 1v1, each Pokémon's switch-in effects target the single opponent.
+	for i in range(_combatants.size()):
+		var mon: BattlePokemon = _combatants[i]
+		var opp: BattlePokemon = _get_opponent(mon)
+		var actual: int = AbilityManager.try_switch_in(mon, opp)
+		if actual != 0:
+			stat_stage_changed.emit(opp, BattlePokemon.STAGE_ATK, actual)
+			ability_triggered.emit(mon, "intimidate")
 	_set_phase(BattlePhase.MOVE_SELECTION)
 
 
@@ -451,6 +463,26 @@ func _phase_move_execution() -> void:
 							secondary_applied.emit(defender, MoveData.SE_FLINCH)
 					else:
 						secondary_applied.emit(defender, move.secondary_effect)
+						# Synchronize: defender received a status secondary — check back-reflect.
+						# Source: TrySynchronizeActivation called from SetNonVolatileStatus.
+						_try_synchronize(defender, attacker, _se_to_status(move.secondary_effect))
+
+			# Contact ability effects: defender's ability reacts to being hit directly.
+			# Source: AbilityBattleEffects(ABILITYEFFECT_MOVE_END, ...) (battle_util.c L3965+)
+			#   Fires after damage, after secondary effects, on direct hits only (not sub).
+			var contact_result: Dictionary = AbilityManager.try_contact_effects(
+					attacker, defender, move, damage)
+			if contact_result["rough_skin_damage"] > 0:
+				var rs_dmg: int = contact_result["rough_skin_damage"]
+				attacker.current_hp = max(0, attacker.current_hp - rs_dmg)
+				recoil_damage.emit(attacker, rs_dmg)
+				ability_triggered.emit(defender, contact_result["ability_name"])
+			if contact_result["status_applied"] != 0:
+				var contact_status: int = contact_result["status_applied"]
+				secondary_applied.emit(attacker, _status_to_se(contact_status))
+				ability_triggered.emit(defender, contact_result["ability_name"])
+				# Synchronize: attacker received a status from contact ability — check reflect.
+				_try_synchronize(attacker, defender, contact_status)
 	else:
 		# ── Status / stat-change / unique-effect move ─────────────────────────
 
@@ -561,6 +593,8 @@ func _phase_move_execution() -> void:
 			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move)
 			if applied:
 				secondary_applied.emit(defender, move.secondary_effect)
+				# Synchronize: defender received a primary status — check back-reflect.
+				_try_synchronize(defender, attacker, _se_to_status(move.secondary_effect))
 			else:
 				move_effect_failed.emit(defender, "immune")
 
@@ -638,6 +672,16 @@ func _phase_end_of_turn() -> void:
 		# Simple approach: reset here if not active (cleared at priority resolution next turn).
 		# (protect_consecutive is already kept across turns — only reset on Protect-fail.)
 
+	# End-of-turn ability effects (Speed Boost, etc.)
+	# Source: AbilityBattleEffects(ABILITYEFFECT_ENDTURN, ...) (battle_util.c L3605)
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		var spd_actual: int = AbilityManager.try_end_of_turn(mon)
+		if spd_actual != 0:
+			stat_stage_changed.emit(mon, BattlePokemon.STAGE_SPEED, spd_actual)
+			ability_triggered.emit(mon, "speed_boost")
+
 	_set_phase(BattlePhase.BATTLE_END_CHECK)
 
 
@@ -690,6 +734,37 @@ func _roll_protect_success(consecutive: int) -> bool:
 	var idx: int = clampi(consecutive, 0, DENOMS.size() - 1)
 	var denom: int = DENOMS[idx]
 	return denom == 1 or (randi() % denom == 0)
+
+
+# Synchronize back-reflect helper: if holder has Synchronize and received an eligible
+# status from source, apply the same status back to source. Emits signals on fire.
+# Source: TrySynchronizeActivation (battle_script_commands.c L2130)
+func _try_synchronize(holder: BattlePokemon, source: BattlePokemon, applied_status: int) -> void:
+	var back: int = AbilityManager.try_synchronize(holder, source, applied_status)
+	if back != 0:
+		secondary_applied.emit(source, _status_to_se(back))
+		ability_triggered.emit(holder, "synchronize")
+
+
+# Convert a BattlePokemon.STATUS_* to the closest MoveData.SE_* value.
+# Used for signal emission when an ability or Synchronize applies a status.
+func _se_to_status(se: int) -> int:
+	match se:
+		MoveData.SE_BURN:      return BattlePokemon.STATUS_BURN
+		MoveData.SE_FREEZE:    return BattlePokemon.STATUS_FREEZE
+		MoveData.SE_PARALYSIS: return BattlePokemon.STATUS_PARALYSIS
+		MoveData.SE_SLEEP:     return BattlePokemon.STATUS_SLEEP
+		MoveData.SE_TOXIC:     return BattlePokemon.STATUS_TOXIC
+	return 0
+
+
+func _status_to_se(status: int) -> int:
+	match status:
+		BattlePokemon.STATUS_BURN:      return MoveData.SE_BURN
+		BattlePokemon.STATUS_PARALYSIS: return MoveData.SE_PARALYSIS
+		BattlePokemon.STATUS_POISON:    return MoveData.SE_TOXIC  # no distinct SE for regular poison
+		BattlePokemon.STATUS_TOXIC:     return MoveData.SE_TOXIC
+	return MoveData.SE_NONE
 
 
 # Returns a random MoveData not banned from Metronome, or null if pool is empty.
