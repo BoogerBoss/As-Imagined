@@ -98,6 +98,10 @@ var _force_roar_rng: int = -1
 # M9: pre-queued Baton Pass target slots per side (-1 = auto-select first valid).
 var _baton_pass_queues: Array = [[], []]
 
+# M10: per-side TrainerAI instances (null = human / test-queue side).
+# Set before start_battle*() with set_trainer_ai(side, ai).
+var _trainer_ais: Array = [null, null]
+
 
 # ── Entry points ────────────────────────────────────────────────────────────────
 
@@ -136,6 +140,12 @@ func queue_replacement(side: int, slot: int) -> void:
 
 func queue_baton_pass_target(side: int, slot: int) -> void:
 	_baton_pass_queues[side].append(slot)
+
+
+# M10: attach a TrainerAI to one side. null = human / test-queue control.
+# Source: BattleAI_SetupFlags assigns AI flags per battler (battle_ai_main.c L302).
+func set_trainer_ai(side: int, ai) -> void:
+	_trainer_ais[side] = ai
 
 
 # Pump the state machine until it reaches a terminal phase or a phase handler
@@ -206,6 +216,20 @@ func _phase_move_selection() -> void:
 			_chosen_moves[i] = mon.encored_move
 		elif not _action_queues[i].is_empty():
 			var action: Dictionary = _action_queues[i].pop_front()
+			if action["type"] == "switch":
+				_chosen_switch_slots[i] = action["slot"]
+				_chosen_moves[i] = null
+			else:
+				var idx: int = action.get("index", 0)
+				_chosen_moves[i] = mon.moves[idx] if idx < mon.moves.size() else null
+		elif _trainer_ais[i] != null:
+			# M10: TrainerAI decides. Same seam as queue_move/queue_switch.
+			# Source: ComputeAiBattlerDecisions (battle_ai_main.c L401) →
+			#   ChooseMoveOrAction / AI_TrySwitchOrUseItem.
+			var ai: TrainerAI = _trainer_ais[i]
+			var opponent: BattlePokemon = _get_opponent(mon)
+			var action: Dictionary = ai.choose_action(
+					mon, opponent, _parties[i], _parties[1 - i])
 			if action["type"] == "switch":
 				_chosen_switch_slots[i] = action["slot"]
 				_chosen_moves[i] = null
@@ -1015,13 +1039,19 @@ func _do_switch_in(side: int, slot: int) -> void:
 		ability_triggered.emit(new_mon, "intimidate")
 
 
-# M9: determine replacement slot from queue or auto-select first valid non-active.
+# M9/M10: determine replacement slot — priority: test queue, then AI, then auto-select.
 func _get_replacement_slot(side: int) -> int:
 	if not _replacement_queues[side].is_empty():
 		var slot: int = _replacement_queues[side].pop_front()
 		var party: BattleParty = _parties[side]
 		if slot >= 0 and slot < party.members.size() and not party.members[slot].fainted:
 			return slot
+	# M10: AI chooses the best matchup replacement.
+	# Source: Ai_InitPartyStruct + GetSwitchinCandidate SWITCHIN_CONSIDER_MOST_SUITABLE
+	#   (battle_ai_switch.c L55+). AI has the opponent's data to make this choice.
+	if _trainer_ais[side] != null:
+		var opponent: BattlePokemon = _get_opponent(_combatants[side])
+		return _trainer_ais[side].choose_replacement(_parties[side], opponent)
 	return _parties[side].get_first_non_fainted_not_active()
 
 

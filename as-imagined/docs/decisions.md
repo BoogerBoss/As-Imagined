@@ -902,3 +902,62 @@ Format per entry:
 - Rule going forward: Never assign a plain Array literal or untyped Array to a typed
   `Array[T]` field. Always iterate element-by-element.
 - Notes: 2026-06-26.
+
+
+---
+
+## [M10] Trainer AI — rule-based, not search-based
+
+- Confirmed: `pokeemerald_expansion` AI is flag-driven scoring, NOT minimax/deep search.
+  Source: `ChooseMoveOrAction_Singles` (battle_ai_main.c L856) iterates AI_FLAG bits
+  and runs one scoring pass per enabled flag; highest score wins, ties random.
+- Implemented two tiers:
+  - **BASIC** (`AI_FLAG_BASIC_TRAINER` = CHECK_BAD_MOVE | TRY_TO_FAINT | CHECK_VIABILITY):
+    move scoring only, no proactive switches.
+  - **SMART** (adds `AI_FLAG_SMART_SWITCHING`): adds ShouldSwitchIfAllMovesBad and
+    ShouldSwitchIfHasBadOdds proactive switch evaluation.
+- Notes: 2026-06-26.
+
+## [M10] Trainer AI — score constants (source: include/battle_ai_main.h L21-41)
+
+- AI_SCORE_DEFAULT = 100.
+- FAST_KILL = +6 (KO + attacker faster or equal speed). SLOW_KILL = +4 (KO + slower).
+- BEST_EFFECT = +4 (4× effective). DECENT_EFFECT = +2 (2× effective or useful status).
+- Immune move: score - 20 (RETURN_SCORE_MINUS(20), AI_CheckBadMove L1294).
+- Wasted status move (target already has status): score - 10 (AI_CheckBadMove L2933).
+- Two-turn non-semi-inv when being OHKOd: score - 10 (AI_CheckBadMove L1254).
+- Status move on fresh target: +2 (IncreasePoisonScore/etc in AI_CalcMoveEffectScore).
+- Notes: 2026-06-26.
+
+## [M10] Trainer AI — switch thresholds (source: battle_ai_switch.c)
+
+- `ShouldSwitchIfAllMovesBad` (L481): all damaging moves type-immune → 100% switch.
+  SHOULD_SWITCH_ALL_MOVES_BAD_PERCENTAGE = 100. No flag gate within SMART tier.
+- `ShouldSwitchIfHasBadOdds` (L367): being OHKOd + no super-effective move + HP ≥ 50%
+  → 50% switch chance. SHOULD_SWITCH_HASBADODDS_PERCENTAGE = 50.
+  `_force_switch_rng` on TrainerAI overrides to 0 (stay) or 1 (switch) for tests.
+- BASIC tier: NO proactive switch logic. `AI_FLAG_SMART_SWITCHING` absent from
+  `AI_FLAG_BASIC_TRAINER` (constants/battle_ai.h L46), so no ShouldSwitch* calls.
+- Faint replacement: `GetSwitchinCandidate SWITCHIN_CONSIDER_MOST_SUITABLE` —
+  pick party member with best type effectiveness against current opponent.
+  Implemented in `TrainerAI.choose_replacement`.
+- Notes: 2026-06-26.
+
+## [M10] Trainer AI — deferred scope
+
+- Doubles AI (`AI_FLAG_DOUBLE_BATTLE`): no doubles engine implemented yet.
+- Item usage AI (`battle_ai_items.c`): no held items implemented.
+- Weather-based scoring: weather still stubbed (M8 decision).
+- `AI_FLAG_PREDICT_SWITCH`, `AI_FLAG_OMNISCIENT`, and other advanced flag tier scoring:
+  beyond basic/smart scope for this milestone.
+- Notes: 2026-06-26.
+
+## [M10] Integration seam — AI plugs in at _phase_move_selection
+
+- `BattleManager.set_trainer_ai(side, ai)` marks a side as AI-controlled.
+- In `_phase_move_selection`: AI fires after lock-in (charging/encore) and after
+  test queues, but before the auto-select fallback. Same ordering constraint as
+  test queue_move calls — tests can pre-queue actions that override AI.
+- In `_get_replacement_slot`: AI `choose_replacement` fires after test
+  `_replacement_queues` but before `get_first_non_fainted_not_active` fallback.
+- Notes: 2026-06-26.

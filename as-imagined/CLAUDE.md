@@ -190,7 +190,7 @@ it exists purely to look up exact source logic.
 - M7 (move effects — Tier 4 one-off/unique): **COMPLETE** — 2026-06-26, 86/86 tests pass
 - M8 (abilities): **COMPLETE** — 2026-06-26, 59/59 tests pass
 - M9 (switching mechanics): **COMPLETE** — 2026-06-26, 64/64 tests pass
-- M10: not started
+- M10 (Trainer AI): **COMPLETE** — 2026-06-26, 26/26 tests pass
 
 ## Development workflow
 
@@ -210,6 +210,7 @@ Run a verification scene headless (from project root):
 - `scenes/battle/tier4_test.tscn` — M7 Substitute, Counter/Mirror Coat, Protect, Destiny Bond, Disable, Encore, Bide, Metronome (86 tests)
 - `scenes/battle/ability_test.tscn` — M8 abilities: Huge Power/Pure Power, Levitate, Thick Fat, Intimidate, Drizzle/Drought stubs, Speed Boost, Static, Flame Body, Rough Skin, Synchronize (59 tests)
 - `scenes/battle/switch_test.tscn` — M9 switching: BattleParty unit tests, voluntary switch, volatile clear, non-volatile persist, Intimidate on switch-in, Roar/Whirlwind forced switch, Baton Pass passable transfer, faint replacement, full-party-faint battle end (64 tests)
+- `scenes/battle/ai_test.tscn` — M10 Trainer AI: type effectiveness scoring, KO preference, type immunity avoidance, wasted status avoidance, two-turn penalty, BASIC vs SMART tier, proactive switch (all-immune / has-bad-odds), faint replacement, full battle integration (26 tests)
 
 **Note:** if you add a new file with `class_name`, run an import pass before the test scenes
 will see it:
