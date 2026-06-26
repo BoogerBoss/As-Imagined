@@ -144,9 +144,53 @@ Get the loop solid first.
     animations. Deliberately last — logic must be solid first so the UI has
     something correct to display.
 
+    
+
 Do not jump to UI or "make it look like the game" before the move/damage/
 status core is working — visuals are the easiest part to get wrong-but-
 convincing, which masks logic bugs.
+
+## Build order — Phase 2 (post-core-engine expansion)
+
+These milestones build on the complete M1–M10 core. Same rules: one milestone
+at a time, verify against source, regression-sweep before moving on.
+
+11. **Weather**
+    Field-wide weather state (rain / sun / sandstorm / hail). End-of-turn tick
+    following the same burn/poison trigger pattern established in M3. Damage
+    modifiers in `DamageCalculator`: rain ×1.5 Water / ×0.5 Fire; sun the
+    reverse; sand and hail deal end-of-turn chip to non-immune types. Un-stub
+    the weather-setting abilities (`Drizzle`, `Drought`) left as placeholders in
+    M8. Weather-aware AI scoring (explicitly deferred in M10's `decisions.md`).
+
+12. **Held items**
+    `ItemData` exists from M1 but is unpopulated. Build item mechanics before
+    item AI: passive stat items (e.g. Choice Band); single-use consumables
+    (berries triggered by HP thresholds, using the same trigger-shape as M8's
+    contact abilities); choice-lock items (source already references
+    `AI_DoesChoiceEffectBlockMove`, found during M10's source read).
+
+13. **Item AI**
+    Extend `TrainerAI` to consider held items in move scoring and switch
+    decisions. Source: `battle_ai_items.c` (located but deferred during M10).
+    This is a sequel to M10, not new architecture — requires M12 complete first.
+
+14. **Doubles battle support**
+    The largest item. Must not start until M11 and M12/M13 are stable and
+    verified, since doubles must correctly interact with weather and items. Treat
+    as three separate milestone passes with a full regression sweep after each —
+    do not collapse into one combined effort.
+
+    - **14a — State machine + turn order for 4 combatants:** spread/ally
+      targeting changes core assumptions in `BattleManager`,
+      `DamageCalculator`, and every move/ability that currently assumes a
+      single attacker/defender pair. Fix the foundations here before touching
+      move or AI logic.
+    - **14b — Spread moves and ally-targeting effects:** move effects that hit
+      multiple targets or interact with the ally slot.
+    - **14c — Doubles AI:** source is `ChooseMoveOrAction_Doubles`,
+      `AI_FLAG_DOUBLE_BATTLE`, `AI_DoubleBattle` / `AI_AttacksPartner` — all
+      located but skipped during M10's source read.
 
 ## Working style / instructions for Claude Code
 
@@ -191,6 +235,10 @@ it exists purely to look up exact source logic.
 - M8 (abilities): **COMPLETE** — 2026-06-26, 59/59 tests pass
 - M9 (switching mechanics): **COMPLETE** — 2026-06-26, 64/64 tests pass
 - M10 (Trainer AI): **COMPLETE** — 2026-06-26, 26/26 tests pass
+- M11 (Weather)
+- M12 (Held Items)
+- M13 (Item AI)
+- M14 (Double Battle Support)
 
 ## Development workflow
 
