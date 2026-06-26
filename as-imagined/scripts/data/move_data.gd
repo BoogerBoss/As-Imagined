@@ -191,3 +191,23 @@ const SEMI_INV_UNDERWATER: int  = 3  # Dive — underwater on turn 1
 #   RandomUniformExcept from moves pool, filter = InvalidMetronomeMove
 #   which checks metronomeBanned flag (= ban_flags & BAN_METRONOME in our system).
 @export var is_metronome: bool = false
+
+# ── M9: Switching mechanics ────────────────────────────────────────────────────
+
+# is_roar: forces the target to switch to a random party member (Roar, Whirlwind).
+# Priority −6 (GEN_LATEST). Accuracy 0 (always hits in Gen6+). Fails if the
+# target has no valid non-fainted, non-active party member to switch in.
+# Source: src/data/moves_info.h MOVE_ROAR (L1234) / MOVE_WHIRLWIND (L482)
+#   .effect = EFFECT_ROAR; .priority = -6; .accuracy = 0 (B_UPDATED >= GEN_6)
+#   .ignoresProtect = TRUE; .ignoresSubstitute = TRUE (B_UPDATED_MOVE_FLAGS >= GEN_6)
+#   .soundMove = TRUE
+@export var is_roar: bool = false
+
+# is_baton_pass: user switches out, passing stat stages and certain volatiles to
+# the incoming Pokémon (confusion_turns, substitute_hp; stat_stages always passed).
+# Source: src/data/moves_info.h MOVE_BATON_PASS (L6164); .effect = EFFECT_BATON_PASS
+# Source: battle_main.c :: SwitchInClearSetData() (L3117) — baton-passable list
+#   Stat stages NOT cleared (L3122 skipped for Baton Pass).
+#   confusionTurns (VOLATILE_CONFUSION) — V_BATON_PASSABLE (constants/battle.h L210)
+#   substituteHP — explicitly copied (L3185)
+@export var is_baton_pass: bool = false

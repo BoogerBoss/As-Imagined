@@ -492,6 +492,38 @@ MOVES = [
      "type": TYPE_PSYCHIC, "category": SPEC, "power": 1, "accuracy": 100, "pp": 20,
      "priority": -5,
      "ban_flags": BAN_METRONOME, "mirror_coat": True},
+
+    # ── M9: Switching mechanics ───────────────────────────────────────────────
+    #
+    # Whirlwind(18)  L482  Normal/Status/0/priority=-6/pp=20
+    #   Source: moves_info.h MOVE_WHIRLWIND: .effect=EFFECT_ROAR, .accuracy=0
+    #   (B_UPDATED_MOVE_DATA>=GEN_6), .priority=-6 (B_UPDATED_MOVE_DATA>=GEN_3),
+    #   .pp=20, .ignoresProtect=B_UPDATED_MOVE_FLAGS>=GEN_6 (TRUE),
+    #   .ignoresSubstitute=B_UPDATED_MOVE_FLAGS>=GEN_6 (TRUE), .soundMove=TRUE
+    {"id":  18, "name": "Whirlwind",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
+     "priority": -6,
+     "ignores_protect": True, "ignores_substitute": True, "sound_move": True,
+     "is_roar": True},
+
+    # Roar(46)       L1234 Normal/Status/0/priority=-6/pp=20
+    #   Source: moves_info.h MOVE_ROAR: .effect=EFFECT_ROAR, .accuracy=0
+    #   (B_UPDATED_MOVE_DATA>=GEN_6), .priority=-6 (B_UPDATED_MOVE_DATA>=GEN_3),
+    #   .pp=20, .ignoresProtect=B_UPDATED_MOVE_FLAGS>=GEN_6 (TRUE),
+    #   .ignoresSubstitute=B_UPDATED_MOVE_FLAGS>=GEN_6 (TRUE), .soundMove=TRUE
+    {"id":  46, "name": "Roar",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
+     "priority": -6,
+     "ignores_protect": True, "ignores_substitute": True, "sound_move": True,
+     "is_roar": True},
+
+    # Baton Pass(226) L6164 Normal/Status/0/pp=40
+    #   Source: moves_info.h MOVE_BATON_PASS: .effect=EFFECT_BATON_PASS,
+    #   .accuracy=0, .pp=40, .ignoresProtect=TRUE, .mirrorMoveBanned=TRUE
+    {"id": 226, "name": "Baton Pass",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 40,
+     "ignores_protect": True,
+     "is_baton_pass": True},
 ]
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──
@@ -536,6 +568,9 @@ DEFAULTS = {
     "is_encore":           False,
     "is_bide":             False,
     "is_metronome":        False,
+    # M9 fields
+    "is_roar":             False,
+    "is_baton_pass":       False,
 }
 
 HEADER = """\
@@ -562,6 +597,8 @@ FIELD_ORDER = [
     "ban_flags", "ignores_substitute", "ignores_protect",
     "creates_substitute", "is_protect", "counter", "mirror_coat",
     "destiny_bond", "is_disable", "is_encore", "is_bide", "is_metronome",
+    # M9 fields
+    "is_roar", "is_baton_pass",
 ]
 
 

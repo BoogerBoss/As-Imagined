@@ -814,3 +814,91 @@ Format per entry:
   inside a `sort_custom` comparator. If randomized tiebreaking is needed, pre-compute the
   random values before sorting.
 - Notes: 2026-06-26.
+
+---
+
+## [M9] Switching — volatile clear / non-volatile persist on switch-out
+
+- Source: `battle_main.c :: SwitchInClearSetData()` (L3117)
+- Behavior: Everything listed as a volatile in `constants/battle.h :: VOLATILE_DEFINITIONS`
+  is cleared on switch-out (confusion_turns, charging_move, substitute_hp, flinched,
+  protect flags, etc.). `STATUS1` bits (burn, poison, paralysis, sleep, freeze, toxic
+  counter) are **not touched** — they persist through switch-out and switch-in.
+- Toxic counter specifically: stored in `STATUS1` bits 8–11 in source. `SwitchInClearSetData`
+  does not touch these bits. The toxic counter therefore persists through any voluntary switch
+  (GEN_LATEST behavior). Verified via S3.09.
+- Notes: 2026-06-26.
+
+## [M9] Switch action ordering — switches before moves
+
+- Source: `battle_main.c` L4967–4990 (action loop, `gActionsByTurnOrder`)
+- Behavior: Switch actions always resolve before all move actions in the same turn, regardless
+  of speed. Switch order between two switching sides follows battler index (0 before 1).
+- Implementation: `_phase_priority_resolution` sorts the turn order with a key of
+  `(is_switch=0 → sorts first, priority, effective_speed, pre-rolled tiebreak)`. The
+  `_chosen_switch_slots[side]` Array drives whether that side's action is a switch.
+- Notes: 2026-06-26.
+
+## [M9] Baton Pass — exact passable fields
+
+- Source: `constants/battle.h :: VOLATILE_DEFINITIONS` V_BATON_PASSABLE flag (L210);
+  `battle_main.c :: SwitchInClearSetData()` stat_stages guard (L3122), substituteHP
+  explicit copy (L3185).
+- Behavior: **Passed through** — stat_stages (all 7), confusion_turns (VOLATILE_CONFUSION
+  is V_BATON_PASSABLE), substitute_hp. **Not passed** — charging_move, flinched, protect
+  flags, last_move_used, and all other non-BP-flagged volatiles.
+- Notes: confusion_turns passability cannot be trivially tested end-to-end because
+  `StatusManager.pre_move_check` decrements the counter before the Baton Pass save occurs
+  in MOVE_EXECUTION. The `baton_passed` signal captures the post-decrement value. Verified
+  via source reference + S6.11 comment. substitute_hp and stat_stages verified via S6.09–12.
+  2026-06-26.
+
+## [M9] Roar / Whirlwind — forced-switch mechanics
+
+- Source: `data/moves_info.h :: MOVE_ROAR` (L1234), `MOVE_WHIRLWIND` (L482);
+  `battle_script_commands.c` L7421 (target selection).
+- Behavior: Both are `EFFECT_ROAR`. Priority −6; accuracy 0 (never miss in GEN_LATEST);
+  ignoresProtect; ignoresSubstitute; soundMove (Roar). Forces the defending side's active
+  mon to be replaced by a random non-fainted non-active party member. If the defending side
+  has no valid switch targets, the move fails with `move_effect_failed("no_switch_target")`.
+  The forced-out mon undergoes full `_switch_out_clear` (all volatiles including
+  confusion_turns and charging_move reset to 0 / null).
+- Implementation: `_force_roar_rng` field on BattleManager (set to -1 for real battles,
+  0 for tests) overrides the random slot selection for deterministic testing.
+- Notes: 2026-06-26.
+
+## [M9] Faint replacement flow — SWITCH_PROMPT before BATTLE_END_CHECK
+
+- Source: `battle_main.c` L3671+ (faint handling loop)
+- Behavior: When a mon faints mid-turn (during ACTION_EXECUTION), the engine routes to
+  FAINT_CHECK → SWITCH_PROMPT (sends in replacement) → BATTLE_END_CHECK → MOVE_SELECTION
+  (if still alive). Battle does NOT end immediately on a faint — replacements are sent in
+  first. Only when `_parties[side].is_fully_fainted()` returns true does BATTLE_END_CHECK
+  declare a winner.
+- Notes: 2026-06-26.
+
+## [M9] GDScript lambda capture — scalar types are copies, not references
+
+- Source: GDScript 4.x language semantics (observed via debugging in M9 test suite)
+- Behavior: Lambda closures in GDScript 4.x capture **value types** (int, float, bool,
+  String) **by copy** at closure creation time. Assigning to the captured copy inside the
+  lambda does NOT update the variable in the enclosing scope.
+- Fix: wrap any scalar that must be updated by a signal lambda in a single-element Array:
+  `var result := [-1]; signal.connect(func(w): result[0] = w)`. Arrays (and all Objects)
+  are reference types and share state correctly across lambda boundaries.
+- Rule going forward: Never write `var x := 0; fn.connect(func(v): x = v)` and then check
+  `x` after the signal fires. Use `var x := [0]; fn.connect(func(v): x[0] = v)` instead.
+- Notes: 2026-06-26.
+
+## [M9] GDScript typed Array assignment from untyped Array literal
+
+- Source: GDScript 4.x language semantics (observed via debugging in M9 BattleManager)
+- Behavior: `var arr: Array[int] = [...]; arr = [0, 0, 0]` silently fails or produces
+  incorrect behavior when the right-hand side is an untyped Array literal or a plain Array
+  variable. The typed Array property is not updated as expected.
+- Fix: always use a loop: `for i in range(arr.size()): arr[i] = 0`. Applied in
+  `BattleManager._switch_out_clear` (stat_stages reset) and `_baton_pass_apply`
+  (stat_stages copy from saved data).
+- Rule going forward: Never assign a plain Array literal or untyped Array to a typed
+  `Array[T]` field. Always iterate element-by-element.
+- Notes: 2026-06-26.

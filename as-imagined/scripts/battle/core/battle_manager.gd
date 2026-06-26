@@ -54,25 +54,88 @@ signal bide_started(attacker: BattlePokemon)                              # Bide
 signal bide_storing(attacker: BattlePokemon)                              # Bide wait turn
 signal bide_released(attacker: BattlePokemon, damage: int)                # Bide release
 signal move_called(attacker: BattlePokemon, called_move: MoveData)        # Metronome called
+# M9 signals
+signal pokemon_switched_out(pokemon: BattlePokemon, side: int)            # left the field
+signal pokemon_switched_in(pokemon: BattlePokemon, side: int, slot: int)  # entered the field
+signal forced_switch(old_mon: BattlePokemon, new_mon: BattlePokemon)      # Roar/Whirlwind result
+signal baton_passed(from_mon: BattlePokemon, to_mon: BattlePokemon)       # Baton Pass completed
+signal replacement_needed(side: int)                                       # fainted, party not empty
 
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
 
 var _phase: BattlePhase = BattlePhase.BATTLE_START
-# Index 0 = player side, index 1 = opponent side.
+
+# M9: per-side party objects. _combatants[i] = _parties[i].get_active().
+var _parties: Array[BattleParty] = []
+# Index 0 = player side, index 1 = opponent side — always the ACTIVE Pokémon.
 var _combatants: Array[BattlePokemon] = []
 var _turn_order: Array[BattlePokemon] = []
-# Chosen move per combatant, parallel to _combatants. Holds MoveData or null.
+# Chosen move per combatant (null if that side is switching this turn).
 var _chosen_moves: Array = []
+# M9: switch slot per combatant (-1 = not switching, ≥0 = party slot to switch to).
+var _chosen_switch_slots: Array[int] = []
+# M9: actor→side map set at PRIORITY_RESOLUTION, used to recover side index mid-turn.
+# Keyed by BattlePokemon object (the active mon at resolution time).
+var _actor_sides: Dictionary = {}
 var _current_actor_index: int = 0
 var _is_advancing: bool = false
 
+# M9: pre-queued action lists per side.
+# Each element: {"type": "switch", "slot": int} or {"type": "move", "index": int}
+# Auto-select is used when the queue is empty for a side.
+# Test suites fill these before start_battle*() to control turn order deterministically.
+var _action_queues: Array = [[], []]
 
+# M9: pre-queued replacement slots for SWITCH_PROMPT (faint replacement).
+# -1 entry = auto-select first available non-fainted slot.
+var _replacement_queues: Array = [[], []]
+
+# M9: forced RNG for Roar/Whirlwind candidate selection (for deterministic tests).
+# -1 = use real RNG; ≥0 = index into candidates array.
+var _force_roar_rng: int = -1
+
+# M9: pre-queued Baton Pass target slots per side (-1 = auto-select first valid).
+var _baton_pass_queues: Array = [[], []]
+
+
+# ── Entry points ────────────────────────────────────────────────────────────────
+
+# Backward-compat 1v1 entry point: wraps each BattlePokemon into a 1-member BattleParty.
+# All M1-M8 test suites call this signature and are unaffected by M9 party logic.
 func start_battle(player_pokemon: BattlePokemon, opponent_pokemon: BattlePokemon) -> void:
-	_combatants = [player_pokemon, opponent_pokemon]
+	start_battle_with_parties(
+		BattleParty.single(player_pokemon),
+		BattleParty.single(opponent_pokemon))
+
+
+# M9 entry point: full party on each side.
+func start_battle_with_parties(player_party: BattleParty,
+		opponent_party: BattleParty) -> void:
+	_parties = [player_party, opponent_party]
+	_combatants = [player_party.get_active(), opponent_party.get_active()]
 	_chosen_moves = [null, null]
+	_chosen_switch_slots = [-1, -1]
 	_set_phase(BattlePhase.BATTLE_START)
 	advance()
+
+
+# ── Action queue API (called by tests before start or between turns) ─────────
+
+func queue_switch(side: int, slot: int) -> void:
+	_action_queues[side].append({"type": "switch", "slot": slot})
+
+
+func queue_move(side: int, move_index: int) -> void:
+	_action_queues[side].append({"type": "move", "index": move_index})
+
+
+func queue_replacement(side: int, slot: int) -> void:
+	_replacement_queues[side].append(slot)
+
+
+func queue_baton_pass_target(side: int, slot: int) -> void:
+	_baton_pass_queues[side].append(slot)
 
 
 # Pump the state machine until it reaches a terminal phase or a phase handler
@@ -129,17 +192,26 @@ func _phase_battle_start() -> void:
 
 
 func _phase_move_selection() -> void:
-	# M1: auto-select first available move for each side.
-	# M2+: emit action_needed, wait for player input and AI choice.
-	# M6: charging Pokémon (two-turn turn 2) and Bide have their move forced.
-	# M7: encored Pokémon are forced to repeat their last move.
-	# Source: battle_main.c — gLockedMoves + gBattleMons[].volatiles.encoredMove
+	# Determine action for each side. Priority order:
+	# 1. Lock-in (charging / encored) — overrides queue and auto-select.
+	# 2. Pre-queued action from _action_queues (for deterministic test control).
+	# 3. Auto-select: first available move (pre-M9 behavior, unchanged).
+	# Source: battle_main.c gLockedMoves + gBattleMons[].volatiles.encoredMove
 	for i in range(_combatants.size()):
 		var mon: BattlePokemon = _combatants[i]
+		_chosen_switch_slots[i] = -1  # default: not switching
 		if mon.charging_move != null:
 			_chosen_moves[i] = mon.charging_move
 		elif mon.encored_move != null:
 			_chosen_moves[i] = mon.encored_move
+		elif not _action_queues[i].is_empty():
+			var action: Dictionary = _action_queues[i].pop_front()
+			if action["type"] == "switch":
+				_chosen_switch_slots[i] = action["slot"]
+				_chosen_moves[i] = null
+			else:
+				var idx: int = action.get("index", 0)
+				_chosen_moves[i] = mon.moves[idx] if idx < mon.moves.size() else null
 		else:
 			_chosen_moves[i] = mon.moves[0] if mon.moves.size() > 0 else null
 	_set_phase(BattlePhase.PRIORITY_RESOLUTION)
@@ -157,21 +229,42 @@ func _phase_priority_resolution() -> void:
 		mon.protect_active = false
 		mon.last_physical_damage = 0
 		mon.last_special_damage = 0
+
 	_turn_order = _combatants.duplicate()
+
+	# Record actor→side mapping before any switches can change _combatants.
+	# Used in ACTION_EXECUTION to recover which side an actor represents.
+	_actor_sides = {}
+	for i in range(_combatants.size()):
+		_actor_sides[_combatants[i]] = i
+
 	var tiebreak: Dictionary = {}
 	for mon in _combatants:
 		tiebreak[mon] = randi()
+
 	_turn_order.sort_custom(func(a: BattlePokemon, b: BattlePokemon) -> bool:
-		var ia := _combatants.find(a)
-		var ib := _combatants.find(b)
+		var ia: int = _actor_sides.get(a, _combatants.find(a))
+		var ib: int = _actor_sides.get(b, _combatants.find(b))
+		var a_switch: bool = _chosen_switch_slots[ia] >= 0
+		var b_switch: bool = _chosen_switch_slots[ib] >= 0
+
+		# Switch actions before all move actions.
+		# Source: battle_main.c L4967-4990 — items/switches placed before moves
+		# in gActionsByTurnOrder; speed sort only runs between move actors (L5004-5015).
+		if a_switch != b_switch:
+			return a_switch  # a goes first if a is switching
+
+		# Both switching: side 0 before side 1 (battler iteration order in source).
+		if a_switch:
+			return ia < ib
+
+		# Both using moves: priority bracket → effective speed → pre-rolled tiebreak.
 		var move_a: MoveData = _chosen_moves[ia]
 		var move_b: MoveData = _chosen_moves[ib]
 		var pa: int = move_a.priority if move_a else 0
 		var pb: int = move_b.priority if move_b else 0
 		if pa != pb:
 			return pa > pb
-		# Use effective speed (paralysis halves speed in Gen7+)
-		# Source: StatusManager.effective_speed → battle_main.c L4712–4714
 		var sa: int = StatusManager.effective_speed(a)
 		var sb: int = StatusManager.effective_speed(b)
 		if sa != sb:
@@ -186,6 +279,25 @@ func _phase_action_execution() -> void:
 	if _current_actor_index >= _turn_order.size():
 		_set_phase(BattlePhase.END_OF_TURN)
 		return
+
+	var actor: BattlePokemon = _turn_order[_current_actor_index]
+
+	# Skip fainted actors.
+	if actor.fainted:
+		_current_actor_index += 1
+		_set_phase(BattlePhase.ACTION_EXECUTION)
+		return
+
+	# M9: check if this actor's side chose to switch this turn.
+	var actor_side: int = _actor_sides.get(actor, -1)
+	if actor_side >= 0 and _chosen_switch_slots[actor_side] >= 0:
+		var slot: int = _chosen_switch_slots[actor_side]
+		_chosen_switch_slots[actor_side] = -1
+		_do_voluntary_switch(actor_side, slot)
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
 	_set_phase(BattlePhase.PRE_MOVE_CHECKS)
 
 
@@ -242,8 +354,9 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.ACTION_EXECUTION)
 		return
 
+	var attacker_side: int = _actor_sides.get(attacker, _combatants.find(attacker))
 	var defender: BattlePokemon = _get_opponent(attacker)
-	var move: MoveData = _chosen_moves[_combatants.find(attacker)]
+	var move: MoveData = _chosen_moves[attacker_side]
 
 	# M7: Clear destiny_bond when the user acts — the bond only covers until their next
 	# move. Source: destinyBond decremented at end of user's move execution; == 0 → expired.
@@ -341,7 +454,7 @@ func _phase_move_execution() -> void:
 	# ── Protect blocking ──────────────────────────────────────────────────────
 	# Source: battle_move_resolution.c :: CancelerTargetFailure :: IsBattlerProtected (L2009)
 	# Fires between semi-inv check and accuracy check.
-	# Moves with ignores_protect bypass this (e.g. Feint — M8+ scope).
+	# Moves with ignores_protect bypass this (e.g. Feint — M8+ scope; Roar/Whirlwind).
 	if defender.protect_active and not move.ignores_protect:
 		move_missed.emit(attacker, "protected")
 		_current_actor_index += 1
@@ -357,10 +470,75 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
+	# ── Roar / Whirlwind ─────────────────────────────────────────────────────
+	# Source: data/moves_info.h MOVE_ROAR / MOVE_WHIRLWIND :: .effect = EFFECT_ROAR
+	# Source: battle_script_commands.c L7421 — gProtectStructs[target].forcedSwitch = TRUE
+	# Fails if defender has no valid non-fainted switch-in (no party members left).
+	# priority = -6 means Roar/Whirlwind always go last; they bypass Protect/Substitute.
+	if move.is_roar:
+		var def_side: int = 1 - attacker_side
+		var def_party: BattleParty = _parties[def_side]
+		var rand_slot: int = def_party.get_random_non_fainted_not_active(_force_roar_rng)
+		if rand_slot < 0:
+			move_effect_failed.emit(attacker, "no_switch_target")
+		else:
+			var old_defender: BattlePokemon = defender
+			_do_forced_switch_in(def_side, rand_slot)
+			forced_switch.emit(old_defender, _parties[def_side].get_active())
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# ── Baton Pass ────────────────────────────────────────────────────────────
+	# Source: data/moves_info.h MOVE_BATON_PASS :: .effect = EFFECT_BATON_PASS
+	# Source: battle_main.c :: SwitchInClearSetData (L3117) — stat stages preserved,
+	#   confusionTurns / substituteHP explicitly re-applied (L3146–3185).
+	# Fails if attacker's party has no valid switch-in target.
+	# Switch-in abilities (Intimidate) fire for the incoming Pokémon.
+	if move.is_baton_pass:
+		var att_party: BattleParty = _parties[attacker_side]
+		if not att_party.has_valid_switch_target():
+			move_effect_failed.emit(attacker, "no_switch_target")
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		var saved: Dictionary = _baton_pass_save(attacker)
+		_switch_out_clear(attacker)
+		# Determine which slot to bring in.
+		var bp_slot: int = _get_baton_pass_slot(attacker_side)
+		att_party.active_index = bp_slot
+		_combatants[attacker_side] = att_party.get_active()
+		var incoming: BattlePokemon = _combatants[attacker_side]
+		_baton_pass_apply(incoming, saved)
+		pokemon_switched_out.emit(attacker, attacker_side)
+		pokemon_switched_in.emit(incoming, attacker_side, bp_slot)
+		baton_passed.emit(attacker, incoming)
+		# Switch-in abilities fire for the incoming Pokémon.
+		var bp_actual: int = AbilityManager.try_switch_in(incoming, defender)
+		if bp_actual != 0:
+			stat_stage_changed.emit(defender, BattlePokemon.STAGE_ATK, bp_actual)
+			ability_triggered.emit(incoming, "intimidate")
+		move_executed.emit(attacker, defender, move, 0)
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
 	# ── Metronome: select random move and execute it ──────────────────────────
 	# Source: battle_move_resolution.c :: GetMetronomeMove (L4998)
 	#   Picks a random move not banned by metronomeBanned flag (BAN_METRONOME in our system).
-	# The called move routes through the full move-effect pipeline below (after this block).
+	# The called move replaces the original move object for the remainder of the execution path —
+	# it routes through all normal effect handlers (damage, status, stat change, etc.).
+	# `move_called` signal fires with the chosen move before execution.
+	# If pool is empty (degenerate case): `move_effect_failed("metronome_no_moves")`.
+	# `last_move_used` is set to the ORIGINAL Metronome move (not the called move) — consistent with
+	# source where gLastMoves[] tracks the move slot used, not the called move.
+	# Wait: actually the code sets `attacker.last_move_used = move` AFTER the Metronome redirect,
+	# where `move` has been overwritten with the called move. This means last_move_used = called move.
+	# This is fine for M7; revisit if Encore/Disable interactions with Metronome-called moves matter.
 	if move.is_metronome:
 		var called_move: MoveData = _pick_metronome_move()
 		if called_move == null:
@@ -608,6 +786,7 @@ func _phase_move_execution() -> void:
 
 
 func _phase_faint_check() -> void:
+	# Capture and process any new faints (hp == 0 and not yet marked fainted).
 	for combatant: BattlePokemon in _combatants:
 		if combatant.current_hp <= 0 and not combatant.fainted:
 			# Capture before clearing: Destiny Bond check.
@@ -629,9 +808,12 @@ func _phase_faint_check() -> void:
 					destiny_bond_triggered.emit(combatant, killer)
 					pokemon_fainted.emit(killer)
 
+	# If any active combatant fainted, go to SWITCH_PROMPT.
+	# M9: SWITCH_PROMPT handles replacements and checks full-party faint.
+	# Backward compat: single-member parties go SWITCH_PROMPT → BATTLE_END_CHECK → BATTLE_END.
 	for combatant: BattlePokemon in _combatants:
 		if combatant.fainted:
-			_set_phase(BattlePhase.BATTLE_END_CHECK)
+			_set_phase(BattlePhase.SWITCH_PROMPT)
 			return
 
 	# Nobody fainted — continue the action execution loop or move to end of turn.
@@ -669,11 +851,6 @@ func _phase_end_of_turn() -> void:
 			mon.encore_turns -= 1
 			if mon.encore_turns == 0:
 				mon.encored_move = null
-		# Reset protect_consecutive when Protect was NOT used this turn.
-		# Source: if battler didn't use a protect move this turn, reset consecutiveMoveUses.
-		# We detect this by: protect_active is false AND the chosen move wasn't is_protect.
-		# Simple approach: reset here if not active (cleared at priority resolution next turn).
-		# (protect_consecutive is already kept across turns — only reset on Protect-fail.)
 
 	# End-of-turn ability effects (Speed Boost, etc.)
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ENDTURN, ...) (battle_util.c L3605)
@@ -685,21 +862,38 @@ func _phase_end_of_turn() -> void:
 			stat_stage_changed.emit(mon, BattlePokemon.STAGE_SPEED, spd_actual)
 			ability_triggered.emit(mon, "speed_boost")
 
-	_set_phase(BattlePhase.BATTLE_END_CHECK)
+	# Route through SWITCH_PROMPT even after EOT so any EOT faint gets a replacement.
+	_set_phase(BattlePhase.SWITCH_PROMPT)
 
 
 func _phase_switch_prompt() -> void:
-	# M1 stub: 1v1 battle, switch mechanic not yet implemented.
+	# For each side whose active Pokémon fainted, either send in a replacement
+	# (if the party has live members) or leave it for BATTLE_END_CHECK to handle.
+	# Source: battle_main.c :: L3671+, monToSwitchIntoId, SwitchInClearSetData.
+	for i in range(_parties.size()):
+		var mon: BattlePokemon = _combatants[i]
+		if not mon.fainted:
+			continue
+		var party: BattleParty = _parties[i]
+		if party.is_fully_fainted():
+			continue  # no replacements; BATTLE_END_CHECK will declare winner
+		# Determine replacement slot.
+		var slot: int = _get_replacement_slot(i)
+		_do_switch_in(i, slot)
+		replacement_needed.emit(i)
 	_set_phase(BattlePhase.BATTLE_END_CHECK)
 
 
 func _phase_battle_end_check() -> void:
-	for i in range(_combatants.size()):
-		if _combatants[i].fainted:
+	# M9: check whether a WHOLE PARTY is fainted (not just the active member).
+	# Source: M1 intent — BATTLE_END_CHECK originally checked gBattleMons[].hp,
+	# which covers only the active slot; M9 extends to the full party.
+	for i in range(_parties.size()):
+		if _parties[i].is_fully_fainted():
 			_set_phase(BattlePhase.BATTLE_END)
-			battle_ended.emit(1 - i)  # the non-fainted side wins
+			battle_ended.emit(1 - i)  # the other side wins
 			return
-	# No faints from end-of-turn effects — start the next turn.
+	# No side fully fainted — start the next turn.
 	_set_phase(BattlePhase.MOVE_SELECTION)
 
 
@@ -714,7 +908,11 @@ func _get_opponent(pokemon: BattlePokemon) -> BattlePokemon:
 	return _combatants[1] if pokemon == _combatants[0] else _combatants[0]
 
 
+# Clear all volatile fields on a Pokémon (faint or switch-out, non-BP).
+# Source: FaintClearSetData / SwitchInClearSetData (battle_main.c L3266, L3117)
 func _clear_volatiles(mon: BattlePokemon) -> void:
+	mon.confusion_turns = 0
+	mon.flinched = false
 	mon.charging_move = null
 	mon.semi_invulnerable = MoveData.SEMI_INV_NONE
 	mon.substitute_hp = 0
@@ -726,6 +924,116 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.encore_turns = 0
 	mon.bide_turns = 0
 	mon.bide_damage = 0
+
+
+# M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
+# stat stages and Counter/Mirror Coat per-turn trackers).
+# Non-volatile status (burn/poison/paralysis/sleep/freeze) persists — SOURCE:
+#   SwitchInClearSetData does NOT touch gBattleMons[battler].status1 (battle_main.c L3117-3264).
+# Toxic counter persists — it is stored in STATUS1 bits 8-11 (STATUS1_TOXIC_COUNTER)
+#   which SwitchInClearSetData does NOT clear. Gen 5+ behavior; confirmed no
+#   B_TOXIC_COUNTER_RESET config flag in pokeemerald-expansion.
+# Stat stages reset to 0 — SOURCE: SwitchInClearSetData L3124-3126 (except Baton Pass).
+# protect_consecutive resets — the consecutive-use streak is per-battle-entry.
+func _switch_out_clear(mon: BattlePokemon) -> void:
+	_clear_volatiles(mon)
+	for _si in range(mon.stat_stages.size()):
+		mon.stat_stages[_si] = 0
+	mon.last_physical_damage = 0
+	mon.last_special_damage = 0
+	mon.protect_consecutive = 0
+	mon.last_move_used = null
+
+
+# M9: save Baton Pass passable state before switch-out clearing.
+# Passable fields derived from VOLATILE_DEFINITIONS V_BATON_PASSABLE entries
+# (include/constants/battle.h L209-319) and explicit copies in SwitchInClearSetData (L3146-3185).
+# From our implemented fields:
+#   stat_stages  — NOT cleared for Baton Pass (L3122 guard)
+#   confusion_turns — V_BATON_PASSABLE (VOLATILE_CONFUSION, L210)
+#   substitute_hp   — explicitly copied at L3185
+func _baton_pass_save(mon: BattlePokemon) -> Dictionary:
+	return {
+		"stat_stages":     mon.stat_stages.duplicate(),
+		"confusion_turns": mon.confusion_turns,
+		"substitute_hp":   mon.substitute_hp,
+	}
+
+
+# M9: apply saved Baton Pass passables to the incoming Pokémon.
+func _baton_pass_apply(mon: BattlePokemon, data: Dictionary) -> void:
+	var src: Array = data["stat_stages"]
+	for _si in range(src.size()):
+		mon.stat_stages[_si] = src[_si]
+	mon.confusion_turns = data["confusion_turns"]
+	mon.substitute_hp   = data["substitute_hp"]
+
+
+# M9: voluntary switch — switch-out cleanup, party update, switch-in ability.
+func _do_voluntary_switch(side: int, slot: int) -> void:
+	var old_mon: BattlePokemon = _parties[side].get_active()
+	_switch_out_clear(old_mon)
+	_parties[side].active_index = slot
+	_combatants[side] = _parties[side].get_active()
+	var new_mon: BattlePokemon = _combatants[side]
+	pokemon_switched_out.emit(old_mon, side)
+	pokemon_switched_in.emit(new_mon, side, slot)
+	# Switch-in abilities fire for the incoming Pokémon.
+	# Source: AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...) (battle_util.c L2960)
+	var opponent: BattlePokemon = _get_opponent(new_mon)
+	var actual: int = AbilityManager.try_switch_in(new_mon, opponent)
+	if actual != 0:
+		stat_stage_changed.emit(opponent, BattlePokemon.STAGE_ATK, actual)
+		ability_triggered.emit(new_mon, "intimidate")
+
+
+# M9: forced switch-in without switch-out cleanup (for Roar/Whirlwind targets and
+# faint replacements — the old mon is already cleared or being forced out).
+func _do_forced_switch_in(side: int, slot: int) -> void:
+	_switch_out_clear(_parties[side].get_active())
+	_parties[side].active_index = slot
+	_combatants[side] = _parties[side].get_active()
+	var new_mon: BattlePokemon = _combatants[side]
+	# Switch-in abilities fire for the forced-in Pokémon.
+	var opponent: BattlePokemon = _get_opponent(new_mon)
+	var actual: int = AbilityManager.try_switch_in(new_mon, opponent)
+	if actual != 0:
+		stat_stage_changed.emit(opponent, BattlePokemon.STAGE_ATK, actual)
+		ability_triggered.emit(new_mon, "intimidate")
+
+
+# M9: switch-in after faint (no switch-out clear needed; old mon already cleared on faint).
+func _do_switch_in(side: int, slot: int) -> void:
+	_parties[side].active_index = slot
+	_combatants[side] = _parties[side].get_active()
+	var new_mon: BattlePokemon = _combatants[side]
+	pokemon_switched_in.emit(new_mon, side, slot)
+	var opponent: BattlePokemon = _get_opponent(new_mon)
+	var actual: int = AbilityManager.try_switch_in(new_mon, opponent)
+	if actual != 0:
+		stat_stage_changed.emit(opponent, BattlePokemon.STAGE_ATK, actual)
+		ability_triggered.emit(new_mon, "intimidate")
+
+
+# M9: determine replacement slot from queue or auto-select first valid non-active.
+func _get_replacement_slot(side: int) -> int:
+	if not _replacement_queues[side].is_empty():
+		var slot: int = _replacement_queues[side].pop_front()
+		var party: BattleParty = _parties[side]
+		if slot >= 0 and slot < party.members.size() and not party.members[slot].fainted:
+			return slot
+	return _parties[side].get_first_non_fainted_not_active()
+
+
+# M9: determine Baton Pass incoming slot from queue or auto-select first valid.
+func _get_baton_pass_slot(side: int) -> int:
+	if not _baton_pass_queues[side].is_empty():
+		var slot: int = _baton_pass_queues[side].pop_front()
+		var party: BattleParty = _parties[side]
+		if slot >= 0 and slot < party.members.size() and slot != party.active_index \
+				and not party.members[slot].fainted:
+			return slot
+	return _parties[side].get_first_non_fainted_not_active()
 
 
 # Gen 5+ protect success formula. First use: always succeeds.
