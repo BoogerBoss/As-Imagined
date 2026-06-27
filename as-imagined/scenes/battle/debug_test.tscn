@@ -1,4 +1,0 @@
-[gd_scene load_steps=2 format=3 uid="uid://debugtest"]
-[ext_resource type="Script" path="res://scenes/battle/debug_test.gd" id="1_dbg"]
-[node name="DebugTest" type="Node"]
-script = ExtResource("1_dbg")

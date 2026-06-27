@@ -129,6 +129,12 @@ var encore_turns: int = 0
 var bide_turns: int = 0
 var bide_damage: int = 0
 
+# M12: choice lock — the move this Pokémon is locked to by a choice item.
+# Set the first time a move is used while holding a choice item.
+# Cleared by BattleManager._switch_out_clear() on switch-out (NOT by _clear_volatiles).
+# Source: gBattleStruct->chosenMovePositions[battler]; cleared in SwitchInClearSetData.
+var choice_locked_move: MoveData = null
+
 # In-battle stat modifiers. Ranges: −6 to +6 per stage.
 # Index order matches STAGE_* constants above.
 var stat_stages: Array[int] = []
@@ -168,6 +174,7 @@ static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokem
 	bp.encore_turns = 0
 	bp.bide_turns = 0
 	bp.bide_damage = 0
+	bp.choice_locked_move = null
 	bp.stat_stages = [0, 0, 0, 0, 0, 0, 0]
 	bp.fainted = false
 	bp._calculate_stats()

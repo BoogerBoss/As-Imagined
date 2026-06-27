@@ -475,4 +475,6 @@ static func effective_speed(mon: BattlePokemon) -> int:
 			mon.speed, mon.stat_stages[BattlePokemon.STAGE_SPEED])
 	if mon.status == BattlePokemon.STATUS_PARALYSIS:
 		spd /= 2
-	return spd
+	# M12: Choice Scarf — (speed * 150) / 100 integer arithmetic.
+	# Source: battle_main.c GetChoiceScarf case (L4703–4704).
+	return ItemManager.apply_speed_modifier(mon, spd)

@@ -88,14 +88,16 @@ static func calculate(
 	#   moveType == TYPE_GROUND && abilityDef == ABILITY_LEVITATE && !gravity → 0.0
 	# Checked before TypeChart to produce the same 0-damage early return.
 	if AbilityManager.blocks_move_type(defender, move.type):
-		return {"damage": 0, "is_crit": false, "effectiveness": 0.0}
+		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
+				"defender_item_consumed": false}
 
 	# --- Type immunity check (before any calculation) ---
 	# Source: src/battle_util.c :: DoMoveDamageCalc (L7718–7727)
 	var effectiveness: float = TypeChart.get_effectiveness(
 			move.type, defender.species.types)
 	if effectiveness == 0.0:
-		return {"damage": 0, "is_crit": false, "effectiveness": 0.0}
+		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
+				"defender_item_consumed": false}
 
 	# --- Fixed-damage and level-damage bypass the formula but not type immunity ---
 	# Source: battle_util.c :: DoMoveDamageCalc (L7725–7727)
@@ -103,9 +105,11 @@ static func calculate(
 	#   DoFixedDamageMoveCalc → returns fixedDamage or level as appropriate
 	# These skip all stages, STAB, crit, and type modifiers.
 	if move.fixed_damage > 0:
-		return {"damage": move.fixed_damage, "is_crit": false, "effectiveness": effectiveness}
+		return {"damage": move.fixed_damage, "is_crit": false, "effectiveness": effectiveness,
+				"defender_item_consumed": false}
 	if move.level_damage:
-		return {"damage": attacker.level, "is_crit": false, "effectiveness": effectiveness}
+		return {"damage": attacker.level, "is_crit": false, "effectiveness": effectiveness,
+				"defender_item_consumed": false}
 
 	# --- Critical hit determination ---
 	# Source: src/battle_util.c :: IsCriticalHit → CalcCritChanceStage (L7820)
@@ -148,6 +152,12 @@ static func calculate(
 	if atk_ability_mod != 4096:
 		atk = _uq412_half_down(atk, atk_ability_mod)
 
+	# M12: Choice Band/Specs attack modifier — applied to stat BEFORE base formula.
+	# Source: GetAttackStatModifier (battle_util.c L6989–6996): BAND→physical ×1.5, SPECS→special ×1.5.
+	var atk_item_mod: int = ItemManager.attack_modifier_uq412(attacker, move)
+	if atk_item_mod != 4096:
+		atk = _uq412_half_down(atk, atk_item_mod)
+
 	# --- Base damage formula ---
 	# Source: src/battle_util.c :: CalculateBaseDamage (L7215–7218)
 	# Formula (integer division, left-to-right):
@@ -160,8 +170,15 @@ static func calculate(
 	# Source: GetWeatherDamageModifier (L7251–7276):
 	#   SUN:  Water → UQ_4_12(0.5)=2048; Fire → UQ_4_12(1.5)=6144. Others → 1.0.
 	#   RAIN: Fire  → UQ_4_12(0.5)=2048; Water→ UQ_4_12(1.5)=6144. Others → 1.0.
-	#   (Utility Umbrella, primal weather overrides — deferred to M12/items scope.)
-	var weather_mod: int = _get_weather_modifier(move.type, weather)
+	# M12: Utility Umbrella on either battler strips rain/sun modifier.
+	#   Attacker: GetAttackerWeather (L9281–9290) returns WEATHER_NONE for rain/sun.
+	#   Defender: GetWeatherDamageModifier (L7258) returns UQ_4_12(1.0) immediately.
+	var weather_mod: int
+	if ItemManager.blocks_weather_modifier(attacker) or \
+			ItemManager.blocks_weather_modifier(defender):
+		weather_mod = 4096
+	else:
+		weather_mod = _get_weather_modifier(move.type, weather)
 	if weather_mod != 4096:
 		dmg = _uq412_half_down(dmg, weather_mod)
 
@@ -228,13 +245,28 @@ static func calculate(
 	if attacker.status == BattlePokemon.STATUS_BURN and move.category == 0:
 		dmg = _uq412_half_down(dmg, 2048)  # UQ_4_12(0.5) = 2048
 
-	# Held item modifiers — M12+
+	# M12: Life Orb damage modifier — AFTER roll, STAB, type eff, burn (and ability mods).
+	# Source: GetAttackerItemsModifier (battle_util.c L7497–7499), called from GetOtherModifiers
+	#   which is called inside ApplyModifiersAfterDmgRoll after all other per-modifier steps.
+	var life_orb_mod: int = ItemManager.post_roll_modifier_uq412(attacker)
+	if life_orb_mod != 4096:
+		dmg = _uq412_half_down(dmg, life_orb_mod)
+
+	# M12: Resist Berry — AFTER Life Orb, AFTER type effectiveness.
+	# Source: GetDefenderItemsModifier (battle_util.c L7510–7524).
+	# Triggers only on super-effective (≥2.0×) moves matching the berry's type param.
+	# BattleManager must consume the item when defender_item_consumed is true.
+	var defender_item_consumed: bool = ItemManager.defender_berry_consumed(
+			defender, move, effectiveness)
+	if defender_item_consumed:
+		dmg = _uq412_half_down(dmg, ItemManager.UQ412_RESIST_BERRY)
 
 	# Minimum damage: always deal at least 1 if not immune
 	if dmg == 0:
 		dmg = 1
 
-	return {"damage": dmg, "is_crit": is_crit, "effectiveness": effectiveness}
+	return {"damage": dmg, "is_crit": is_crit, "effectiveness": effectiveness,
+			"defender_item_consumed": defender_item_consumed}
 
 
 # UQ4.12 × UQ4.12 multiply — source: include/fpmath.h :: uq4_12_multiply (L50–54)

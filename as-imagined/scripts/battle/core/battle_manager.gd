@@ -77,6 +77,10 @@ signal replacement_needed(side: int)                                       # fai
 signal weather_set(by_pokemon: BattlePokemon, weather_type: int)          # weather changed
 signal weather_expired(weather_type: int)                                  # weather duration ran out
 signal weather_damage(pokemon: BattlePokemon, amount: int)                 # sandstorm/hail chip
+# M12 signals
+signal item_consumed(pokemon: BattlePokemon, item: ItemData)               # one-use item activated
+signal item_healed(pokemon: BattlePokemon, amount: int)                    # Leftovers / Sitrus Berry
+signal item_damage(pokemon: BattlePokemon, amount: int)                    # Life Orb recoil
 
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
@@ -171,18 +175,18 @@ func set_trainer_ai(side: int, ai) -> void:
 	_trainer_ais[side] = ai
 
 
-# M11: Attempt to set field weather. Returns true if weather changed, false if same
-# weather was already active (no-op per source TryChangeBattleWeather L1971).
+# M11/M12: Attempt to set field weather. Returns true if weather changed.
 # Source: TryChangeBattleWeather (battle_util.c L1969–2015):
 #   — Returns FALSE if gBattleWeather already has the requested weather flag active.
-#   — Otherwise sets gBattleWeather and gBattleStruct->weatherDuration = 5
-#     (or 8 with rock extension item — not in M11 scope; item effects are M12).
-#   — Primal weather override logic: not in M11 scope (no Primal/Delta Stream abilities).
-func try_set_weather(weather_type: int) -> bool:
+#   — Duration = 8 if setter holds the matching rock item, else 5.
+#     (M12: rock extension via ItemManager.weather_duration; by_pokemon=null → default 5.)
+#   — Primal weather override logic: not in scope.
+func try_set_weather(weather_type: int, by_pokemon: BattlePokemon = null) -> bool:
 	if weather == weather_type:
-		return false  # same weather already active — source returns FALSE
+		return false
 	weather = weather_type
-	weather_duration = WEATHER_DURATION_DEFAULT if weather_type != WEATHER_NONE else 0
+	weather_duration = ItemManager.weather_duration(by_pokemon, weather_type) \
+		if weather_type != WEATHER_NONE else 0
 	return true
 
 
@@ -240,7 +244,7 @@ func _phase_battle_start() -> void:
 		# Source: ABILITY_DRIZZLE / ABILITY_DROUGHT case in ABILITYEFFECT_ON_SWITCHIN
 		#   calls TryChangeBattleWeather (battle_util.c L3213, L3242).
 		var set_w: int = AbilityManager.get_switch_in_weather(mon)
-		if set_w != WEATHER_NONE and try_set_weather(set_w):
+		if set_w != WEATHER_NONE and try_set_weather(set_w, mon):
 			weather_set.emit(mon, set_w)
 	_set_phase(BattlePhase.MOVE_SELECTION)
 
@@ -283,6 +287,12 @@ func _phase_move_selection() -> void:
 				_chosen_moves[i] = mon.moves[idx] if idx < mon.moves.size() else null
 		else:
 			_chosen_moves[i] = mon.moves[0] if mon.moves.size() > 0 else null
+		# M12: Choice lock enforcement — overrides whatever path set above.
+		# Source: gBattleStruct->chosenMovePositions[battler] checked in CanChooseMove.
+		# Only applies when not switching and not already locked by a charge move.
+		if mon.choice_locked_move != null and _chosen_switch_slots[i] < 0 \
+				and mon.charging_move == null:
+			_chosen_moves[i] = mon.choice_locked_move
 	_set_phase(BattlePhase.PRIORITY_RESOLUTION)
 
 
@@ -426,6 +436,13 @@ func _phase_move_execution() -> void:
 	var attacker_side: int = _actor_sides.get(attacker, _combatants.find(attacker))
 	var defender: BattlePokemon = _get_opponent(attacker)
 	var move: MoveData = _chosen_moves[attacker_side]
+
+	# M12: Set choice lock immediately when a choice-item holder commits to a move.
+	# Source: ProcessChoiceItem in battle_script_commands.c — fires before accuracy check.
+	# Not set during a charge lock (charging_move handles that separately).
+	if move != null and ItemManager.is_choice_item(attacker) \
+			and attacker.choice_locked_move == null and attacker.charging_move == null:
+		attacker.choice_locked_move = move
 
 	# M7: Clear destiny_bond when the user acts — the bond only covers until their next
 	# move. Source: destinyBond decremented at end of user's move execution; == 0 → expired.
@@ -592,7 +609,7 @@ func _phase_move_execution() -> void:
 			stat_stage_changed.emit(defender, BattlePokemon.STAGE_ATK, bp_actual)
 			ability_triggered.emit(incoming, "intimidate")
 		var bp_set_w: int = AbilityManager.get_switch_in_weather(incoming)
-		if bp_set_w != WEATHER_NONE and try_set_weather(bp_set_w):
+		if bp_set_w != WEATHER_NONE and try_set_weather(bp_set_w, incoming):
 			weather_set.emit(incoming, bp_set_w)
 		move_executed.emit(attacker, defender, move, 0)
 		_current_actor_index += 1
@@ -720,6 +737,10 @@ func _phase_move_execution() -> void:
 						# Synchronize: defender received a status secondary — check back-reflect.
 						# Source: TrySynchronizeActivation called from SetNonVolatileStatus.
 						_try_synchronize(defender, attacker, _se_to_status(move.secondary_effect))
+						# M12: Lum Berry cures status inflicted by damaging move secondary.
+						if ItemManager.lum_berry_cures(defender):
+							defender.status = BattlePokemon.STATUS_NONE
+							_consume_item(defender)
 
 			# Contact ability effects: defender's ability reacts to being hit directly.
 			# Source: AbilityBattleEffects(ABILITYEFFECT_MOVE_END, ...) (battle_util.c L3965+)
@@ -737,6 +758,32 @@ func _phase_move_execution() -> void:
 				ability_triggered.emit(defender, contact_result["ability_name"])
 				# Synchronize: attacker received a status from contact ability — check reflect.
 				_try_synchronize(attacker, defender, contact_status)
+				# M12: Lum Berry cures status inflicted by contact ability.
+				if ItemManager.lum_berry_cures(attacker):
+					attacker.status = BattlePokemon.STATUS_NONE
+					_consume_item(attacker)
+
+			# M12: Consume resist berry if DamageCalculator flagged it.
+			# BattleManager owns item consumption so item_consumed signal can fire.
+			if result.get("defender_item_consumed", false):
+				_consume_item(defender)
+
+			# M12: Life Orb recoil — fires at MoveEnd after damage and contact effects.
+			# Source: MoveEndLifeOrbShellBell (battle_move_resolution.c L3819).
+			if damage > 0 and not attacker.fainted:
+				var lo_recoil: int = ItemManager.life_orb_recoil(attacker)
+				if lo_recoil > 0:
+					attacker.current_hp = max(0, attacker.current_hp - lo_recoil)
+					item_damage.emit(attacker, lo_recoil)
+
+			# M12: Sitrus Berry — MoveEnd HP threshold check for defender.
+			# Source: MoveEndHpThresholdItemsTarget (battle_move_resolution.c).
+			if not defender.fainted:
+				var sitrus_heal: int = ItemManager.sitrus_berry_heal(defender)
+				if sitrus_heal > 0:
+					defender.current_hp = min(defender.max_hp, defender.current_hp + sitrus_heal)
+					item_healed.emit(defender, sitrus_heal)
+					_consume_item(defender)
 	else:
 		# ── Status / stat-change / unique-effect move ─────────────────────────
 
@@ -849,6 +896,10 @@ func _phase_move_execution() -> void:
 				secondary_applied.emit(defender, move.secondary_effect)
 				# Synchronize: defender received a primary status — check back-reflect.
 				_try_synchronize(defender, attacker, _se_to_status(move.secondary_effect))
+				# M12: Lum Berry cures status inflicted by status move primary effect.
+				if ItemManager.lum_berry_cures(defender):
+					defender.status = BattlePokemon.STATUS_NONE
+					_consume_item(defender)
 			else:
 				move_effect_failed.emit(defender, "immune")
 
@@ -947,6 +998,17 @@ func _phase_end_of_turn() -> void:
 			if mon.current_hp == 0:
 				mon.fainted = true
 				pokemon_fainted.emit(mon)
+
+	# M12: Leftovers EOT heal (FIRST_EVENT_BLOCK_HEAL_ITEMS, after status damage).
+	# Source: TryLeftovers (battle_hold_effects.c L634–648); fires via FIRST_EVENT_BLOCK_HEAL_ITEMS
+	#   which is position 19 in battle_end_turn.c handler table (after ENDTURN_BURN=13).
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		var lft_heal: int = ItemManager.leftovers_heal(mon)
+		if lft_heal > 0:
+			mon.current_hp = min(mon.max_hp, mon.current_hp + lft_heal)
+			item_healed.emit(mon, lft_heal)
 
 	# M7: Decrement Disable and Encore turn counters.
 	# Source: battle_end_turn.c :: HandleTurnStartFunctionOrder (Disable/Encore decrements)
@@ -1053,6 +1115,9 @@ func _switch_out_clear(mon: BattlePokemon) -> void:
 	mon.last_special_damage = 0
 	mon.protect_consecutive = 0
 	mon.last_move_used = null
+	# M12: Choice lock clears on switch-out (not on faint — fainted mon has no future turns).
+	# Source: SwitchInClearSetData (battle_main.c L3117) clears chosenMovePositions.
+	mon.choice_locked_move = null
 
 
 # M9: save Baton Pass passable state before switch-out clearing.
@@ -1096,7 +1161,7 @@ func _do_voluntary_switch(side: int, slot: int) -> void:
 		stat_stage_changed.emit(opponent, BattlePokemon.STAGE_ATK, actual)
 		ability_triggered.emit(new_mon, "intimidate")
 	var set_w: int = AbilityManager.get_switch_in_weather(new_mon)
-	if set_w != WEATHER_NONE and try_set_weather(set_w):
+	if set_w != WEATHER_NONE and try_set_weather(set_w, new_mon):
 		weather_set.emit(new_mon, set_w)
 
 
@@ -1114,7 +1179,7 @@ func _do_forced_switch_in(side: int, slot: int) -> void:
 		stat_stage_changed.emit(opponent, BattlePokemon.STAGE_ATK, actual)
 		ability_triggered.emit(new_mon, "intimidate")
 	var set_w: int = AbilityManager.get_switch_in_weather(new_mon)
-	if set_w != WEATHER_NONE and try_set_weather(set_w):
+	if set_w != WEATHER_NONE and try_set_weather(set_w, new_mon):
 		weather_set.emit(new_mon, set_w)
 
 
@@ -1130,7 +1195,7 @@ func _do_switch_in(side: int, slot: int) -> void:
 		stat_stage_changed.emit(opponent, BattlePokemon.STAGE_ATK, actual)
 		ability_triggered.emit(new_mon, "intimidate")
 	var set_w: int = AbilityManager.get_switch_in_weather(new_mon)
-	if set_w != WEATHER_NONE and try_set_weather(set_w):
+	if set_w != WEATHER_NONE and try_set_weather(set_w, new_mon):
 		weather_set.emit(new_mon, set_w)
 
 
@@ -1259,3 +1324,12 @@ func _apply_fixed_dmg_to_target(attacker: BattlePokemon, defender: BattlePokemon
 	else:
 		defender.current_hp = max(0, defender.current_hp - damage)
 		move_executed.emit(attacker, defender, move, damage)
+
+
+# M12: Consume a held item (berries, Life Orb consumed indirectly by PP drain in source,
+# but for our engine all one-use items use this path). Emits item_consumed signal.
+# Source: ConsumeItem / RemoveBattlerItem (battle_util.c) called by TryCureAnyStatus etc.
+func _consume_item(mon: BattlePokemon) -> void:
+	var item: ItemData = mon.held_item
+	mon.held_item = null
+	item_consumed.emit(mon, item)
