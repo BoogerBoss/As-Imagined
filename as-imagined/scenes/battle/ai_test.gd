@@ -1,30 +1,43 @@
 extends Node
 
-# Milestone 10 test suite — Trainer AI decision logic
+# Trainer AI decision test suite — M10 (A1-A13) and M13 (A14-A20).
 #
-# Verification methodology (per project spec): decision tests, not exact-value
-# unit tests. Each test constructs a scenario where one choice is clearly correct
-# given already-verified mechanics (damage calc, type chart, status system) and
-# asserts the AI makes that choice. RNG is forced deterministically where needed.
+# Verification methodology: decision tests, not exact-value unit tests. Each test
+# constructs a scenario where one choice is clearly correct given already-verified
+# mechanics (damage calc, type chart, status, items) and asserts the AI makes it.
+# RNG is forced deterministically where needed.
 #
 # Confirmed from source: the AI IS rule-based / scoring-based, not deep search.
 # Source: ChooseMoveOrAction_Singles (battle_ai_main.c L856) iterates AI_FLAG
 # bits and runs a scoring pass per flag. Tie-breaking is random (L915).
 #
+# M13 confirmed from source:
+#   - Items compose through DamageCalculator automatically (no scoring changes needed).
+#   - Choice-lock: moveLimitations prefilter (battle_ai_main.c L174-187).
+#   - ShouldSwitchIfBadChoiceLock (battle_ai_switch.c L1170-1213): 100% deterministic.
+#   - Berry-triggered awareness: confirmed absent from source (see docs/decisions.md).
+#
 # Sections:
-#   A1: TrainerAI unit — type effectiveness scoring
-#   A2: TrainerAI unit — KO move preference (FAST_KILL / SLOW_KILL)
-#   A3: AI_CheckBadMove — type immunity avoidance
-#   A4: AI_CheckBadMove — status move vs already-statused target
-#   A5: AI_CheckBadMove — two-turn non-semi-inv avoided when being OHKOd
-#   A6: AI_CheckViability — status bonus on fresh target
-#   A7: BASIC tier does NOT proactively switch
-#   A8: SMART tier switches when all moves are type-immune
-#   A9: SMART tier switches when being OHKOd (force_switch_rng=1)
+#   A1:  TrainerAI unit — type effectiveness scoring
+#   A2:  TrainerAI unit — KO move preference (FAST_KILL / SLOW_KILL)
+#   A3:  AI_CheckBadMove — type immunity avoidance
+#   A4:  AI_CheckBadMove — status move vs already-statused target
+#   A5:  AI_CheckBadMove — two-turn non-semi-inv avoided when being OHKOd
+#   A6:  AI_CheckViability — status bonus on fresh target
+#   A7:  BASIC tier does NOT proactively switch
+#   A8:  SMART tier switches when all moves are type-immune
+#   A9:  SMART tier switches when being OHKOd (force_switch_rng=1)
 #   A10: SMART tier stays when force_switch_rng=0
 #   A11: Faint replacement picks best type matchup
 #   A12: BattleManager integration — AI drives a full singles battle
 #   A13: Integration — AI avoids wasted status move (Thunder Wave on Ground)
+#   A14: M13 — choice-locked AI returns locked move (positive)
+#   A15: M13 — pre-lock AI scores freely (negative/contrast to A14)
+#   A16: M13 — SMART switches when locked into status move (positive)
+#   A17: M13 — SMART stays when locked into effective move (negative)
+#   A18: M13 — SMART switches when locked into type-immune move (positive)
+#   A19: M13 — Choice Band makes previously-non-KO move KO → AI picks it (positive)
+#   A20: M13 — Without Band, other move wins (negative/contrast to A19)
 
 var _pass := 0
 var _fail := 0
@@ -44,6 +57,13 @@ func _ready() -> void:
 	_test_section_a11_faint_replacement()
 	_test_section_a12_full_battle()
 	_test_section_a13_integration_immune_status()
+	_test_section_a14_choice_lock_returns_locked()
+	_test_section_a15_pre_lock_free_scoring()
+	_test_section_a16_bad_lock_switch_status()
+	_test_section_a17_bad_lock_stay_effective()
+	_test_section_a18_bad_lock_switch_immune()
+	_test_section_a19_band_changes_move_selection()
+	_test_section_a20_without_band_other_move_wins()
 
 	var total := _pass + _fail
 	print("ai_test: %d/%d passed" % [_pass, total])
@@ -98,6 +118,12 @@ func _make_move(move_name: String, move_type: int, category: int, power: int,
 
 func _load_move(id: int) -> MoveData:
 	return load("res://data/moves/move_%04d.tres" % id) as MoveData
+
+
+func _make_item(hold_effect: int) -> ItemData:
+	var item := ItemData.new()
+	item.hold_effect = hold_effect
+	return item
 
 
 # ── A1: Type effectiveness scoring ───────────────────────────────────────────
@@ -567,3 +593,262 @@ func _test_section_a13_integration_immune_status() -> void:
 			ai_moves_used.all(func(n): return n == "Tackle"))
 
 	bm.queue_free()
+
+
+# ── A14: Choice-lock — AI returns locked move (positive) ─────────────────────
+# If choice_locked_move is set, AI must return it regardless of scoring.
+# Source: BattleAI_SetupAIData (battle_ai_main.c L174-187) — moveLimitations
+#   prefilter sets score=0 for all non-locked moves; only locked move is scored.
+
+func _test_section_a14_choice_lock_returns_locked() -> void:
+	var ai := TrainerAI.new()
+	ai._force_tie_rng = 0
+
+	# Attacker: Bug type (no STAB). Moves: Tackle(0) and Water Gun(1).
+	# Defender: Fire type. Water Gun is 2× effective → would score 102 vs Tackle 100.
+	# If NOT locked, AI picks Water Gun. If locked to Tackle, AI must return Tackle.
+	var attacker := _make_mon("Bug", TypeChart.TYPE_BUG, TypeChart.TYPE_NONE,
+			160, 80, 80, 80, 80, 100)
+	var defender := _make_mon("Fire", TypeChart.TYPE_FIRE, TypeChart.TYPE_NONE,
+			500, 40, 80, 40, 80, 80)
+	defender.current_hp = 500  # no KO risk
+
+	var tackle  := _make_move("Tackle",   TypeChart.TYPE_NORMAL, 0, 40)
+	var water   := _make_move("WaterGun", TypeChart.TYPE_WATER,  1, 40)
+	attacker.add_move(tackle)
+	attacker.add_move(water)
+
+	attacker.choice_locked_move = tackle  # locked into index 0
+
+	var action := ai.choose_action(attacker, defender,
+			BattleParty.single(attacker), BattleParty.single(defender))
+	_chk("A14.01 choice-locked AI returns move (not switch)", action["type"] == "move")
+	_chk("A14.02 returns locked move index (0), not higher-scoring Water Gun",
+			action["index"] == 0)
+
+
+# ── A15: Pre-lock — AI scores freely (negative/contrast to A14) ──────────────
+# Same setup as A14 but NO choice_locked_move. AI should score Water Gun higher
+# (2× vs Fire) and pick it — proving lock removal restores free scoring.
+
+func _test_section_a15_pre_lock_free_scoring() -> void:
+	var ai := TrainerAI.new()
+	ai._force_tie_rng = 0
+
+	var attacker := _make_mon("Bug", TypeChart.TYPE_BUG, TypeChart.TYPE_NONE,
+			160, 80, 80, 80, 80, 100)
+	var defender := _make_mon("Fire", TypeChart.TYPE_FIRE, TypeChart.TYPE_NONE,
+			500, 40, 80, 40, 80, 80)
+	defender.current_hp = 500
+
+	var tackle := _make_move("Tackle",   TypeChart.TYPE_NORMAL, 0, 40)
+	var water  := _make_move("WaterGun", TypeChart.TYPE_WATER,  1, 40)
+	attacker.add_move(tackle)
+	attacker.add_move(water)
+	# NO choice_locked_move set — free scoring
+
+	var action := ai.choose_action(attacker, defender,
+			BattleParty.single(attacker), BattleParty.single(defender))
+	# Water Gun: 100 + 2 (DECENT_EFFECT 2×) = 102. Tackle: 100. Water Gun wins.
+	_chk("A15.01 unlocked AI picks best move (not forced to index 0)",
+			action["index"] == 1)
+	_chk("A15.02 returns move (not switch)", action["type"] == "move")
+
+
+# ── A16: Bad choice lock — switch when locked into status move (positive) ─────
+# SMART tier should switch when locked into a status move with a choice item.
+# Source: ShouldSwitchIfBadChoiceLock (battle_ai_switch.c L1206-1209, singles):
+#   GetMoveCategory(choicedMove) == DAMAGE_CATEGORY_STATUS → switch at 100%.
+
+func _test_section_a16_bad_lock_switch_status() -> void:
+	var ai := TrainerAI.new()
+	ai.tier = TrainerAI.Tier.SMART
+
+	# Attacker holds Choice Band, locked into Toxic (status).
+	# Also has Tackle so AllMovesBad (all-immune) doesn't fire.
+	var attacker := _make_mon("Poke", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			160, 80, 80, 80, 80, 80)
+	var tackle := _make_move("Tackle", TypeChart.TYPE_NORMAL, 0, 40)
+	var toxic  := _make_move("Toxic",  TypeChart.TYPE_POISON, 2, 0, MoveData.SE_TOXIC)
+	attacker.add_move(tackle)
+	attacker.add_move(toxic)
+	attacker.held_item = _make_item(ItemManager.HOLD_EFFECT_CHOICE_BAND)
+	attacker.choice_locked_move = toxic  # locked into index 1 (status move)
+
+	# Defender: Normal type. Tackle is effective (1×), so AllMovesBad = false.
+	# Defender has no damaging moves → can't OHKO → HasBadOdds = false.
+	var defender := _make_mon("Def", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			500, 40, 200, 40, 200, 50)
+	defender.current_hp = 500
+	var splash := _make_move("Splash", TypeChart.TYPE_NORMAL, 2, 0)
+	defender.add_move(splash)
+
+	var backup := _make_mon("Backup", TypeChart.TYPE_WATER, TypeChart.TYPE_NONE,
+			160, 80, 80, 80, 80, 80)
+	var water := _make_move("WaterGun", TypeChart.TYPE_WATER, 1, 40)
+	backup.add_move(water)
+
+	var my_party := BattleParty.new()
+	my_party.members = [attacker, backup]
+	my_party.active_index = 0
+
+	var action := ai.choose_action(attacker, defender, my_party, BattleParty.single(defender))
+	_chk("A16.01 SMART switches when locked into status move", action["type"] == "switch")
+	_chk("A16.02 switches to backup (slot 1)", action["slot"] == 1)
+
+
+# ── A17: Bad lock — stays when locked into effective move (negative) ───────────
+# Same party as A16 but locked into Tackle (damaging, effective vs Normal).
+# BadChoiceLock condition not met (not status, not immune) → no switch.
+# Source: ShouldSwitchIfBadChoiceLock returns FALSE when move can affect target.
+
+func _test_section_a17_bad_lock_stay_effective() -> void:
+	var ai := TrainerAI.new()
+	ai.tier = TrainerAI.Tier.SMART
+
+	var attacker := _make_mon("Poke", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			160, 80, 80, 80, 80, 80)
+	var tackle := _make_move("Tackle", TypeChart.TYPE_NORMAL, 0, 40)
+	var toxic  := _make_move("Toxic",  TypeChart.TYPE_POISON, 2, 0, MoveData.SE_TOXIC)
+	attacker.add_move(tackle)
+	attacker.add_move(toxic)
+	attacker.held_item = _make_item(ItemManager.HOLD_EFFECT_CHOICE_BAND)
+	attacker.choice_locked_move = tackle  # locked into index 0 (damaging, 1× vs Normal)
+
+	var defender := _make_mon("Def", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			500, 40, 200, 40, 200, 50)
+	defender.current_hp = 500
+	var splash := _make_move("Splash", TypeChart.TYPE_NORMAL, 2, 0)
+	defender.add_move(splash)
+
+	var backup := _make_mon("Backup", TypeChart.TYPE_WATER, TypeChart.TYPE_NONE,
+			160, 80, 80, 80, 80, 80)
+	var water := _make_move("WaterGun", TypeChart.TYPE_WATER, 1, 40)
+	backup.add_move(water)
+
+	var my_party := BattleParty.new()
+	my_party.members = [attacker, backup]
+	my_party.active_index = 0
+
+	var action := ai.choose_action(attacker, defender, my_party, BattleParty.single(defender))
+	# BadChoiceLock: Tackle is not status AND Normal vs Normal ≠ immune → no switch.
+	# Choice-lock early return: choice_locked_move=Tackle → return {move, index 0}.
+	_chk("A17.01 stays when locked into effective move (not switch)", action["type"] == "move")
+	_chk("A17.02 returns locked move index 0", action["index"] == 0)
+
+
+# ── A18: Bad lock — switch when locked into type-immune move (positive) ────────
+# SMART tier switches when locked into a move that cannot affect the target.
+# Source: ShouldSwitchIfBadChoiceLock L1208: !CanMoveAffectTarget (type immunity).
+
+func _test_section_a18_bad_lock_switch_immune() -> void:
+	var ai := TrainerAI.new()
+	ai.tier = TrainerAI.Tier.SMART
+
+	# Attacker locked into Tackle (Normal) vs Ghost defender — Normal is immune vs Ghost.
+	# Has Shadow Ball (Ghost) too so AllMovesBad doesn't fire (Ghost 0.5× vs Ghost is ≠ 0).
+	var attacker := _make_mon("Poke", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			160, 80, 80, 80, 80, 80)
+	var tackle       := _make_move("Tackle",     TypeChart.TYPE_NORMAL, 0, 60)
+	var shadow_ball  := _make_move("ShadowBall", TypeChart.TYPE_GHOST,  1, 80)
+	attacker.add_move(tackle)
+	attacker.add_move(shadow_ball)
+	attacker.held_item = _make_item(ItemManager.HOLD_EFFECT_CHOICE_BAND)
+	attacker.choice_locked_move = tackle  # locked into Normal vs Ghost = 0× immune
+
+	# Defender: Ghost type. Normal vs Ghost = 0.0× (immune). Ghost vs Ghost = 0.5× > 0.
+	var defender := _make_mon("Ghost", TypeChart.TYPE_GHOST, TypeChart.TYPE_NONE,
+			500, 40, 200, 40, 200, 50)
+	defender.current_hp = 500
+	var splash := _make_move("Splash", TypeChart.TYPE_NORMAL, 2, 0)
+	defender.add_move(splash)
+
+	var backup := _make_mon("Backup", TypeChart.TYPE_FIGHTING, TypeChart.TYPE_NONE,
+			160, 80, 80, 80, 80, 80)
+	var close_combat := _make_move("CC", TypeChart.TYPE_FIGHTING, 0, 120)
+	backup.add_move(close_combat)
+
+	var my_party := BattleParty.new()
+	my_party.members = [attacker, backup]
+	my_party.active_index = 0
+
+	var action := ai.choose_action(attacker, defender, my_party, BattleParty.single(defender))
+	_chk("A18.01 SMART switches when locked into type-immune move", action["type"] == "switch")
+	_chk("A18.02 switches to backup (slot 1)", action["slot"] == 1)
+
+
+# ── A19: Choice Band changes move selection — Band makes Tackle KO (positive) ──
+# Discriminating test: Band boosts physical attack, making Tackle KO the defender.
+# Without Band, Water Gun (2× vs Fire, DECENT_EFFECT +2) would score higher.
+# With Band, Tackle KOs → FAST_KILL +6 → score 106 > Water Gun 102.
+#
+# Damage derivation (force_roll=100, force_crit=false, level=50):
+#   Attacker: Bug type (no STAB), base_atk=120→actual 125, base_spatk=80→actual 85,
+#             base_spd=200→faster than defender for FAST_KILL.
+#   Defender: Fire type, base_def=50→actual 55, current_hp=60.
+#
+#   Tackle (Normal, physical, power 40):
+#     Without Band: 40*125*22/55/50+2 = 110000/55/50+2 = 2000/50+2 = 42. No KO (42<60).
+#     Band (atk→(125*6144+2047)/4096=187): 40*187*22/55/50+2 = 164560/55/50+2 = 2992/50+2 = 61. KO! (61≥60).
+#   Water Gun (Water, special, power 40, no STAB, 2× vs Fire):
+#     spatk=85: 40*85*22/55/50+2=74800/55/50+2=1360/50+2=29. After 2× UQ412: (29*8192+2047)/4096=58. No KO (58<60).
+#
+#   Scores WITH Band: Tackle = 100 + FAST_KILL(6) = 106 > Water Gun = 102. AI picks Tackle.
+#   Confirmed: items compose through DamageCalculator automatically — no AI scoring changes.
+#   Source: ItemManager.attack_modifier_uq412 called from DamageCalculator L157-159.
+
+func _test_section_a19_band_changes_move_selection() -> void:
+	var ai := TrainerAI.new()
+	ai._force_roll = 100
+	ai._force_crit = false
+	ai._force_tie_rng = 0
+
+	var attacker := _make_mon("Bug", TypeChart.TYPE_BUG, TypeChart.TYPE_NONE,
+			160, 120, 80, 80, 80, 200)
+	attacker.held_item = _make_item(ItemManager.HOLD_EFFECT_CHOICE_BAND)
+
+	var defender := _make_mon("Fire", TypeChart.TYPE_FIRE, TypeChart.TYPE_NONE,
+			160, 40, 50, 40, 50, 80)
+	defender.current_hp = 60
+
+	var tackle   := _make_move("Tackle",   TypeChart.TYPE_NORMAL, 0, 40)
+	var water    := _make_move("WaterGun", TypeChart.TYPE_WATER,  1, 40)
+	attacker.add_move(tackle)
+	attacker.add_move(water)
+
+	var action := ai.choose_action(attacker, defender,
+			BattleParty.single(attacker), BattleParty.single(defender))
+	# Band: Tackle 61 ≥ 60 → KO → FAST_KILL → score 106. Water Gun 58 < 60 → score 102.
+	_chk("A19.01 with Band: Tackle KOs → AI picks Tackle (index 0)", action["index"] == 0)
+	_chk("A19.02 returns move", action["type"] == "move")
+
+
+# ── A20: Without Band — Water Gun wins (negative/contrast to A19) ─────────────
+# Same scenario as A19 but no held item. Tackle does NOT KO (42<60) so it scores 100.
+# Water Gun scores 102 (DECENT_EFFECT +2 for 2× vs Fire). AI picks Water Gun.
+
+func _test_section_a20_without_band_other_move_wins() -> void:
+	var ai := TrainerAI.new()
+	ai._force_roll = 100
+	ai._force_crit = false
+	ai._force_tie_rng = 0
+
+	var attacker := _make_mon("Bug", TypeChart.TYPE_BUG, TypeChart.TYPE_NONE,
+			160, 120, 80, 80, 80, 200)
+	# No held item.
+
+	var defender := _make_mon("Fire", TypeChart.TYPE_FIRE, TypeChart.TYPE_NONE,
+			160, 40, 50, 40, 50, 80)
+	defender.current_hp = 60
+
+	var tackle   := _make_move("Tackle",   TypeChart.TYPE_NORMAL, 0, 40)
+	var water    := _make_move("WaterGun", TypeChart.TYPE_WATER,  1, 40)
+	attacker.add_move(tackle)
+	attacker.add_move(water)
+
+	var action := ai.choose_action(attacker, defender,
+			BattleParty.single(attacker), BattleParty.single(defender))
+	# No Band: Tackle 42 < 60 → no KO → score 100. Water Gun 58 < 60 → score 102. Water Gun wins.
+	_chk("A20.01 without Band: Water Gun scores higher → AI picks Water Gun (index 1)",
+			action["index"] == 1)
+	_chk("A20.02 returns move", action["type"] == "move")

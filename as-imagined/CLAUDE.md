@@ -236,8 +236,8 @@ it exists purely to look up exact source logic.
 - M9 (switching mechanics): **COMPLETE** — 2026-06-26, 64/64 tests pass
 - M10 (Trainer AI): **COMPLETE** — 2026-06-26, 26/26 tests pass
 - M11 (Weather): **COMPLETE** — 2026-06-27, 64/64 tests pass
-- M12 (Held Items)
-- M13 (Item AI)
+- M12 (Held Items): **COMPLETE** — 2026-06-27, 60/60 tests pass
+- M13 (Item AI): **COMPLETE** — 2026-06-27, 40/40 tests pass (includes M10's 26 + 14 new)
 - M14 (Double Battle Support)
 
 ## Development workflow
@@ -260,6 +260,8 @@ Run a verification scene headless (from project root):
 - `scenes/battle/switch_test.tscn` — M9 switching: BattleParty unit tests, voluntary switch, volatile clear, non-volatile persist, Intimidate on switch-in, Roar/Whirlwind forced switch, Baton Pass passable transfer, faint replacement, full-party-faint battle end (64 tests)
 - `scenes/battle/ai_test.tscn` — M10 Trainer AI: type effectiveness scoring, KO preference, type immunity avoidance, wasted status avoidance, two-turn penalty, BASIC vs SMART tier, proactive switch (all-immune / has-bad-odds), faint replacement, full battle integration (26 tests)
 - `scenes/battle/weather_test.tscn` — M11 Weather: Drizzle/Drought set weather, duration countdown, expiry, no-clear-on-switch, same-weather no-op, overwrite, rain/sun damage modifiers (discriminating composition test), sandstorm/hail chip immunity, modifier revert on expiry, AI weather-aware scoring (64 tests)
+- `scenes/battle/item_test.tscn` — M12 Held Items: Choice Band/Scarf/Specs stat boosts, Life Orb damage + recoil, Sitrus Berry HP heal, Lum Berry status cure, Leftovers EOT heal, resist berry, Utility Umbrella, choice-lock enforcement (60 tests)
+- `scenes/battle/ai_test.tscn` — M10+M13 Trainer AI: effectiveness scoring, KO preference, type immunity, status avoidance, two-turn penalty, BASIC/SMART tiers, switch decisions, faint replacement, full battle integration; M13 adds choice-lock, bad-lock switch, item-boost discrimination (40 tests)
 
 **Note:** if you add a new file with `class_name`, run an import pass before the test scenes
 will see it:

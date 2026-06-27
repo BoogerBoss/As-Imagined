@@ -1025,3 +1025,133 @@ Format per entry:
 - Verified by W13: under RAIN, Surf estimate = 85 > 70 HP → FAST_KILL (+6) chosen over Ember
   (estimate = 13). Under no weather, both estimates < 70 HP → tie, both score 100.
 - Notes: 2026-06-27.
+# Mechanic Decisions Log
+
+Mechanic-specific decisions verified against `reference/pokeemerald_expansion` source.
+Every claim here has a live source citation — nothing from memory.
+
+---
+
+## M11: Weather (2026-06-27)
+
+### Weather damage modifiers
+- Rain: Water ×1.5, Fire ×0.5. Sun: Fire ×1.5, Water ×0.5.
+- Source: `GetWeatherDamageModifier` (battle_util.c L7251–7276).
+- UQ4.12 values: 6144 (1.5×), 2048 (0.5×). Source: include/fpmath.h.
+
+### Weather duration
+- Default 5 turns. Rock items extend to 8.
+- Source: `TryChangeBattleWeather` (battle_util.c L1993–1996).
+
+### Utility Umbrella
+- Strips rain/sun modifier for holder (attacker or defender).
+- Source: `GetAttackerWeather` (L9281–9290) and `GetWeatherDamageModifier` (L7258).
+
+### AI weather-aware scoring
+- AI calls `DamageCalculator.calculate` with the current weather field. The damage
+  calculator already applies weather modifiers, so the AI's KO detection reflects
+  weather automatically — zero AI-specific weather logic needed.
+- Source: M11 architecture decision — proven by discriminating test (rain boosts
+  Water Gun past KO threshold vs sun where it falls short).
+
+---
+
+## M12: Held Items (2026-06-27)
+
+### Damage composition order
+Full pipeline (source: `CalculateBaseDamage` + `ApplyModifiersAfterDmgRoll`, battle_util.c):
+1. Ability atk modifier (Huge Power / Pure Power) — `GetAttackStatModifier` L6800.
+2. **Item atk modifier** (Choice Band/Specs) — `GetAttackStatModifier` L6989–6996. Applied to stat BEFORE base formula.
+3. Base formula: `power * atk * (2*level/5+2) / def / 50 + 2` (integer left-to-right).
+4. Weather modifier — `GetWeatherDamageModifier` L7251.
+5. Crit — `GetCriticalModifier` L7294.
+6. Random roll — `DoMoveDamageCalcVars` L7598 (85–100, applied as `dmg*roll/100`).
+7. STAB — `GetSameTypeAttackBonusModifier` L7239.
+8. Type effectiveness — `CalcTypeEffectivenessMultiplierInternal` L8134 (combined UQ4.12 apply).
+9. Ability def modifier (Thick Fat) — `GetDefenseStatModifier` L6933.
+10. Burn — `GetBurnOrFrostBiteModifier` L7278.
+11. **Life Orb** — `GetAttackerItemsModifier` L7497 (post-roll, after STAB/type/burn).
+12. **Resist Berry** — `GetDefenderItemsModifier` L7510 (after Life Orb).
+
+### UQ4.12 constants
+- Choice Band/Specs: 6144 (=1.5 × 4096). Source: `UQ_4_12(1.5)` in fpmath.h.
+- Life Orb: 5324 (=floor(1.3 × 4096)). Source: `UQ_4_12_FLOORED(1.3)`.
+- Resist berry: 2048 (=0.5 × 4096). Source: `UQ_4_12(0.5)`.
+
+### Choice lock
+- `choice_locked_move` set by BattleManager when a choice-item holder uses a move (first use only).
+- Cleared on switch-out (`_switch_out_clear`). NOT cleared on faint (fainted mon has no future turns).
+- Source: `SwitchInClearSetData` (battle_main.c L3117) clears `chosenMovePositions`.
+- In `_phase_move_selection`: if locked, that move is returned directly without re-querying the AI.
+
+### Berry triggers
+- Resist berry: triggers on super-effective hit (≥2.0×) matching berry's type param.
+  Source: `GetDefenderItemsModifier` L7510–7524. Consumed after damage.
+- Sitrus Berry: heals 25% max HP at MoveEnd when HP falls to ≤50% max.
+  Source: `MoveEndHpThresholdItemsTarget` (battle_move_resolution.c).
+- Lum Berry: cures any non-volatile status on infliction (secondary, primary, contact ability).
+  Source: `TryCureAnyStatus` (battle_hold_effects.c L764).
+- Leftovers: heals max_hp/16 at EOT (FIRST_EVENT_BLOCK_HEAL_ITEMS, position 19 in handler table).
+  Source: `TryLeftovers` (battle_hold_effects.c L634–648).
+
+### Utility Umbrella
+- Blocks rain/sun modifier for the holder (attacker or defender).
+- Source: `GetAttackerWeather` L9281 and `GetWeatherDamageModifier` L7258.
+
+---
+
+## M13: Item AI (2026-06-27)
+
+### Items compose through DamageCalculator automatically
+- `TrainerAI._score_move` calls `DamageCalculator.calculate(attacker, defender, move, ...)`.
+- M12 threads `ItemManager.attack_modifier_uq412` (Choice Band/Specs) and
+  `ItemManager.post_roll_modifier_uq412` (Life Orb) into the calculator pipeline.
+- Result: the AI's KO detection and effectiveness scoring already reflect held items
+  with zero changes to `TrainerAI` scoring code.
+- Confirmed by discriminating test: Choice Band makes Tackle KO a Fire-type defender
+  at current_hp=60 (damage 61≥60), while without Band Tackle only deals 42. The AI
+  picks Tackle with Band (score 106 via FAST_KILL) and Water Gun without (score 102).
+
+### Choice-lock: score-prefilter mechanism
+- Source: `BattleAI_SetupAIData` (battle_ai_main.c L164–191).
+  When `moveLimitations & (1<<moveIndex)`: `SET_SCORE(battler, moveIndex, 0)`.
+  `BattleAI_DoAIProcessing` (L1053) skips scoring for moves with score==0.
+  Only the locked move keeps its score; it is automatically chosen.
+- Port: if `attacker.choice_locked_move != null`, return that move's index directly,
+  bypassing all scoring. Equivalent outcome to the prefilter.
+- Source of move limitation: `CheckMoveLimitations` (battle_util.c L1621):
+  `MOVE_LIMITATION_CHOICE_ITEM` — if `IsHoldEffectChoice(holdEffect) && *choicedMove != MOVE_NONE && *choicedMove != move` → mark unusable.
+
+### ShouldSwitchIfBadChoiceLock
+- Source: `ShouldSwitchIfBadChoiceLock` (battle_ai_switch.c L1170–1213).
+  Called from `ShouldSwitch` L1449 (after HasBadOdds, before AttackingStatsLowered).
+  Singles branch (L1206–1209): if choice-item held AND
+  (locked move is STATUS category OR locked move cannot affect target / type-immune)
+  AND `RandomPercentage(RNG_AI_SWITCH_CHOICE_LOCKED, SHOULD_SWITCH_CHOICE_LOCKED_PERCENTAGE)`.
+- `SHOULD_SWITCH_CHOICE_LOCKED_PERCENTAGE = 100` (config/ai.h L23).
+  Always switches — no RNG seam needed.
+- Port: if `attacker.choice_locked_move != null` AND (move.category == 2 OR type-immune),
+  call `_best_switch_target` and return. Placed after HasBadOdds in `_should_switch`.
+
+### battle_ai_items.c scope
+- `battle_ai_items.c` covers **trainer bag consumables only** (Potions, Revives, X-items).
+  Source: `ShouldUseItem()` (L28–196) iterates `gBattleHistory->trainerItems` (bag items),
+  not `gBattleMons[battler].item` (held items). Completely unrelated to held-item AI.
+- Held-item effects on AI behavior are handled implicitly through the damage pipeline
+  (see "Items compose through DamageCalculator automatically" above).
+
+### AI_FLAG_SMART_SWITCHING scope for BadChoiceLock
+- `ShouldSwitchIfBadChoiceLock` is inside `ShouldSwitch`, which in source is only
+  called when `AI_FLAG_SMART_SWITCHING` is set. Our implementation gates all of
+  `_should_switch` behind `tier == Tier.SMART`, matching this behavior.
+
+### Berry-triggered awareness: CONFIRMED ABSENT
+- Checked `ShouldSwitch` (battle_ai_switch.c L1391–1455) in full.
+  None of the switch checks examine the AI's own berry HP threshold or the opponent's
+  held item for defensive consideration.
+- Checked `AI_CheckBadMove` and `AI_CheckViability` in `battle_ai_main.c` — no logic
+  for "avoid recoil move to stay above Sitrus threshold" or similar berry-aware scoring.
+- Conclusion: berry-triggered awareness does not exist in this version of the source AI.
+  Not implemented. If a future session asks "does the AI consider its own Sitrus Berry
+  threshold?", the answer is: no, confirmed absent from `battle_ai_switch.c` and
+  `battle_ai_main.c` scoring passes.

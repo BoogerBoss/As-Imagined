@@ -13,12 +13,17 @@ extends RefCounted
 #            AI_FLAG_CHECK_BAD_MOVE | AI_FLAG_TRY_TO_FAINT | AI_FLAG_CHECK_VIABILITY
 #            Move scoring only. No proactive switches.
 #   SMART — adds AI_FLAG_SMART_SWITCHING (source L24):
-#            Includes ShouldSwitchIfAllMovesBad and ShouldSwitchIfHasBadOdds.
+#            Includes ShouldSwitchIfAllMovesBad, ShouldSwitchIfHasBadOdds,
+#            and ShouldSwitchIfBadChoiceLock (M13).
+#
+# M11: weather passes through to DamageCalculator — no separate AI weather code.
+# M13: choice-lock awareness via score-prefilter (moveLimitations, battle_ai_main.c L174-187)
+#   and ShouldSwitchIfBadChoiceLock (battle_ai_switch.c L1170-1213).
+#   Items compose through DamageCalculator automatically — no scoring changes needed.
+#   Berry-triggered awareness: confirmed absent from source (docs/decisions.md).
 #
 # Explicitly deferred (not implemented, documented in docs/decisions.md):
 #   - Doubles AI (AI_FLAG_DOUBLE_BATTLE): no doubles engine yet.
-#   - Item usage AI (battle_ai_items.c): no held items implemented.
-#   - Weather-based scoring: weather is still stubbed (M8 decision).
 #   - AI_FLAG_PREDICT_SWITCH, AI_FLAG_OMNISCIENT, and other advanced flags:
 #     scope beyond basic + smart tier.
 
@@ -71,6 +76,17 @@ func choose_action(attacker: BattlePokemon, defender: BattlePokemon,
 		var switch_slot: int = _should_switch(attacker, defender, my_party, weather)
 		if switch_slot >= 0:
 			return {"type": "switch", "slot": switch_slot}
+
+	# M13: Choice-lock early return — return locked move index directly.
+	# Source: BattleAI_SetupAIData (battle_ai_main.c L174-187): moveLimitations prefilter
+	#   sets SET_SCORE(battler, moveIndex, 0) for all non-locked moves when choice-locked.
+	#   BattleAI_DoAIProcessing (L1053) skips scoring for moves with score==0, leaving
+	#   only the locked move with a non-zero score. It is automatically chosen.
+	# Port: skip all scoring and return the locked move's index immediately.
+	if attacker.choice_locked_move != null:
+		var locked_idx: int = attacker.moves.find(attacker.choice_locked_move)
+		if locked_idx >= 0:
+			return {"type": "move", "index": locked_idx}
 
 	# Score each available move, pick best.
 	# Source: ChooseMoveOrAction_Singles runs each enabled AI_FLAG pass.
@@ -231,6 +247,20 @@ func _should_switch(attacker: BattlePokemon, defender: BattlePokemon,
 			if attacker.current_hp >= attacker.max_hp / 2:
 				if _roll_switch_decision(50):
 					return _best_switch_target(my_party, defender)
+
+	# M13: ShouldSwitchIfBadChoiceLock — 100% deterministic, no RNG seam needed.
+	# Source: battle_ai_switch.c L1170-1213 (singles branch L1206-1209).
+	#   Condition: choice-locked AND (locked move is status OR locked move is type-immune).
+	#   SHOULD_SWITCH_CHOICE_LOCKED_PERCENTAGE = 100 (config/ai.h L23).
+	# Port: if choice_locked_move != null, the mon IS locked (set by BattleManager when
+	#   a choice-item holder uses a move). No need to re-check the item.
+	if attacker.choice_locked_move != null:
+		var locked: MoveData = attacker.choice_locked_move
+		var is_status: bool = (locked.category == 2)
+		var is_immune: bool = (TypeChart.get_effectiveness(
+				locked.type, defender.species.types) == 0.0)
+		if is_status or is_immune:
+			return _best_switch_target(my_party, defender)
 
 	return -1
 
