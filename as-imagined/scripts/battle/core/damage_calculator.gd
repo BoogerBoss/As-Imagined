@@ -11,12 +11,24 @@ extends RefCounted
 #   src/battle_util.c :: GetCriticalModifier (L7294)
 #   src/pokemon.c     :: gStatStageRatios (L505)
 #   include/fpmath.h  :: uq4_12_multiply_by_int_half_down (L70)
+#   src/battle_util.c :: GetWeatherDamageModifier (L7251) — M11
 # Config assumptions (matching expansion defaults, all GEN_LATEST):
 #   B_CRIT_MULTIPLIER: 1.5× (Gen 6+)
 #   B_CRIT_CHANCE: Gen 7+ odds table {stage 0→1/24, 1→1/8, 2→1/2, 3+→always}
 #   B_UPDATED_TYPE_MATCHUPS: Gen-latest chart (see TypeChart)
 #   B_BURN_DAMAGE: burn also halves physical attack (GEN_LATEST)
-# Scope for M2/M3: no abilities, no held items, no weather, no field effects, no doubles.
+
+# M11: Field weather constants — source: include/constants/battle.h :: enum BattleWeather
+# gBattleWeather is a bitmask in source; we simplify to a plain enum int per battle.
+# The weather modifier is applied in DoMoveDamageCalcVars (L7594): after base damage,
+# before the critical hit modifier, before the random roll.
+# Primal weather (Desolate Land / Primordial Sea) and Snow, Fog, Strong Winds are out of
+# M11 scope; Sandstorm and Hail are in scope for end-of-turn chip only (no damage modifier).
+const WEATHER_NONE:      int = 0  # B_WEATHER_NONE
+const WEATHER_RAIN:      int = 1  # B_WEATHER_RAIN_NORMAL (Drizzle, Rain Dance)
+const WEATHER_SUN:       int = 2  # B_WEATHER_SUN_NORMAL  (Drought, Sunny Day)
+const WEATHER_SANDSTORM: int = 3  # B_WEATHER_SANDSTORM   (Sand Stream, Sandstorm)
+const WEATHER_HAIL:      int = 4  # B_WEATHER_HAIL        (Snow Warning, Hail)
 
 # Stat stage multiplier table — source: src/pokemon.c :: gStatStageRatios
 # Index 0 = stage -6 (MIN), index 6 = stage 0 (DEFAULT), index 12 = stage +6 (MAX).
@@ -60,12 +72,16 @@ const UQ412_1_5: int = 6144
 # force_crit  : Variant — null (default) = use normal crit RNG
 #                         true            = always crit
 #                         false           = suppress crit (use for deterministic tests)
+# weather     : int     — WEATHER_* constant (default WEATHER_NONE = no modifier)
+#                         M11: rain boosts Water/reduces Fire; sun boosts Fire/reduces Water.
+#                         Source: GetWeatherDamageModifier (battle_util.c L7251)
 static func calculate(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
 		move: MoveData,
 		force_roll: int = -1,
-		force_crit: Variant = null) -> Dictionary:
+		force_crit: Variant = null,
+		weather: int = WEATHER_NONE) -> Dictionary:
 
 	# --- Ability type immunity (Levitate vs Ground, etc.) ---
 	# Source: battle_util.c :: CalcTypeEffectivenessMultiplierInternal (L8257):
@@ -138,6 +154,17 @@ static func calculate(
 	#   power * attack * (2 * level / 5 + 2) / defense / 50 + 2
 	var dmg: int = move.power * atk * (2 * attacker.level / 5 + 2) / def / 50 + 2
 
+	# --- Weather damage modifier (before crit, before random roll) ---
+	# Source: src/battle_util.c :: DoMoveDamageCalcVars (L7594) — DAMAGE_APPLY_MODIFIER
+	#   applied in this order: target mod → parental bond → WEATHER → crit → roll.
+	# Source: GetWeatherDamageModifier (L7251–7276):
+	#   SUN:  Water → UQ_4_12(0.5)=2048; Fire → UQ_4_12(1.5)=6144. Others → 1.0.
+	#   RAIN: Fire  → UQ_4_12(0.5)=2048; Water→ UQ_4_12(1.5)=6144. Others → 1.0.
+	#   (Utility Umbrella, primal weather overrides — deferred to M12/items scope.)
+	var weather_mod: int = _get_weather_modifier(move.type, weather)
+	if weather_mod != 4096:
+		dmg = _uq412_half_down(dmg, weather_mod)
+
 	# --- Critical hit modifier (applied before random roll) ---
 	# Source: src/battle_util.c :: GetCriticalModifier (L7294–7298); B_CRIT_MULTIPLIER=GEN_LATEST → 1.5×
 	# Source: include/fpmath.h :: uq4_12_multiply_by_int_half_down (L70–73)
@@ -201,7 +228,7 @@ static func calculate(
 	if attacker.status == BattlePokemon.STATUS_BURN and move.category == 0:
 		dmg = _uq412_half_down(dmg, 2048)  # UQ_4_12(0.5) = 2048
 
-	# Other modifiers (items, abilities, weather) — M8+
+	# Held item modifiers — M12+
 
 	# Minimum damage: always deal at least 1 if not immune
 	if dmg == 0:
@@ -264,3 +291,20 @@ static func _roll_crit(move_crit_stage: int) -> bool:
 	var stage: int = clampi(move_crit_stage, 0, 3)
 	var odds: int = CRIT_ODDS_GEN7[stage]
 	return randi() % odds == 0
+
+
+# Weather damage modifier — source: GetWeatherDamageModifier (battle_util.c L7251–7276).
+# Returns a UQ4.12 value: 4096=1.0×, 2048=0.5×, 6144=1.5×.
+# Applied BEFORE the critical hit modifier and BEFORE the random roll (DoMoveDamageCalcVars L7594).
+# Sun:  Water→0.5× (2048), Fire→1.5× (6144). Others→1.0 (4096).
+# Rain: Fire→0.5×  (2048), Water→1.5× (6144). Others→1.0 (4096).
+# Sandstorm/Hail: no damage modifier (chip handled in end-of-turn; see BattleManager).
+static func _get_weather_modifier(move_type: int, weather: int) -> int:
+	match weather:
+		WEATHER_SUN:
+			if move_type == TypeChart.TYPE_WATER: return 2048   # 0.5×
+			if move_type == TypeChart.TYPE_FIRE:  return 6144   # 1.5×
+		WEATHER_RAIN:
+			if move_type == TypeChart.TYPE_FIRE:  return 2048   # 0.5×
+			if move_type == TypeChart.TYPE_WATER: return 6144   # 1.5×
+	return 4096  # 1.0× — no modifier

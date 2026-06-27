@@ -1,6 +1,19 @@
 class_name BattleManager
 extends Node
 
+# M11: Field-wide weather constants — mirrors DamageCalculator.WEATHER_*.
+# Defined here for callers who reference BattleManager directly (tests, UI).
+# Source: include/constants/battle.h :: enum BattleWeather / B_WEATHER_* bitmask.
+# In source, gBattleWeather is a bitmask; we use a plain int enum (one active at a time).
+const WEATHER_NONE:      int = DamageCalculator.WEATHER_NONE
+const WEATHER_RAIN:      int = DamageCalculator.WEATHER_RAIN
+const WEATHER_SUN:       int = DamageCalculator.WEATHER_SUN
+const WEATHER_SANDSTORM: int = DamageCalculator.WEATHER_SANDSTORM
+const WEATHER_HAIL:      int = DamageCalculator.WEATHER_HAIL
+
+# Duration of ability-set weather in turns (no held-item extension in M11 scope).
+# Source: TryChangeBattleWeather (battle_util.c L1996): gBattleStruct->weatherDuration = 5.
+const WEATHER_DURATION_DEFAULT: int = 5
 
 enum BattlePhase {
 	BATTLE_START,
@@ -60,6 +73,10 @@ signal pokemon_switched_in(pokemon: BattlePokemon, side: int, slot: int)  # ente
 signal forced_switch(old_mon: BattlePokemon, new_mon: BattlePokemon)      # Roar/Whirlwind result
 signal baton_passed(from_mon: BattlePokemon, to_mon: BattlePokemon)       # Baton Pass completed
 signal replacement_needed(side: int)                                       # fainted, party not empty
+# M11 signals
+signal weather_set(by_pokemon: BattlePokemon, weather_type: int)          # weather changed
+signal weather_expired(weather_type: int)                                  # weather duration ran out
+signal weather_damage(pokemon: BattlePokemon, amount: int)                 # sandstorm/hail chip
 
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
@@ -101,6 +118,12 @@ var _baton_pass_queues: Array = [[], []]
 # M10: per-side TrainerAI instances (null = human / test-queue side).
 # Set before start_battle*() with set_trainer_ai(side, ai).
 var _trainer_ais: Array = [null, null]
+
+# M11: Field-wide weather state. Weather is NOT per-Pokémon — it's a battle-field
+# effect that persists through switches (gBattleWeather + gBattleStruct->weatherDuration).
+# Source: gBattleWeather (battle_util.c global), weatherDuration (gBattleStruct field).
+var weather: int = WEATHER_NONE
+var weather_duration: int = 0  # turns remaining; 0 when no weather is active
 
 
 # ── Entry points ────────────────────────────────────────────────────────────────
@@ -146,6 +169,21 @@ func queue_baton_pass_target(side: int, slot: int) -> void:
 # Source: BattleAI_SetupFlags assigns AI flags per battler (battle_ai_main.c L302).
 func set_trainer_ai(side: int, ai) -> void:
 	_trainer_ais[side] = ai
+
+
+# M11: Attempt to set field weather. Returns true if weather changed, false if same
+# weather was already active (no-op per source TryChangeBattleWeather L1971).
+# Source: TryChangeBattleWeather (battle_util.c L1969–2015):
+#   — Returns FALSE if gBattleWeather already has the requested weather flag active.
+#   — Otherwise sets gBattleWeather and gBattleStruct->weatherDuration = 5
+#     (or 8 with rock extension item — not in M11 scope; item effects are M12).
+#   — Primal weather override logic: not in M11 scope (no Primal/Delta Stream abilities).
+func try_set_weather(weather_type: int) -> bool:
+	if weather == weather_type:
+		return false  # same weather already active — source returns FALSE
+	weather = weather_type
+	weather_duration = WEATHER_DURATION_DEFAULT if weather_type != WEATHER_NONE else 0
+	return true
 
 
 # Pump the state machine until it reaches a terminal phase or a phase handler
@@ -198,6 +236,12 @@ func _phase_battle_start() -> void:
 		if actual != 0:
 			stat_stage_changed.emit(opp, BattlePokemon.STAGE_ATK, actual)
 			ability_triggered.emit(mon, "intimidate")
+		# M11: Drizzle / Drought — set field weather on switch-in.
+		# Source: ABILITY_DRIZZLE / ABILITY_DROUGHT case in ABILITYEFFECT_ON_SWITCHIN
+		#   calls TryChangeBattleWeather (battle_util.c L3213, L3242).
+		var set_w: int = AbilityManager.get_switch_in_weather(mon)
+		if set_w != WEATHER_NONE and try_set_weather(set_w):
+			weather_set.emit(mon, set_w)
 	_set_phase(BattlePhase.MOVE_SELECTION)
 
 
@@ -228,8 +272,9 @@ func _phase_move_selection() -> void:
 			#   ChooseMoveOrAction / AI_TrySwitchOrUseItem.
 			var ai: TrainerAI = _trainer_ais[i]
 			var opponent: BattlePokemon = _get_opponent(mon)
+			# M11: pass current field weather so AI scoring uses weather-modified damage.
 			var action: Dictionary = ai.choose_action(
-					mon, opponent, _parties[i], _parties[1 - i])
+					mon, opponent, _parties[i], _parties[1 - i], weather)
 			if action["type"] == "switch":
 				_chosen_switch_slots[i] = action["slot"]
 				_chosen_moves[i] = null
@@ -546,6 +591,9 @@ func _phase_move_execution() -> void:
 		if bp_actual != 0:
 			stat_stage_changed.emit(defender, BattlePokemon.STAGE_ATK, bp_actual)
 			ability_triggered.emit(incoming, "intimidate")
+		var bp_set_w: int = AbilityManager.get_switch_in_weather(incoming)
+		if bp_set_w != WEATHER_NONE and try_set_weather(bp_set_w):
+			weather_set.emit(incoming, bp_set_w)
 		move_executed.emit(attacker, defender, move, 0)
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
@@ -606,7 +654,8 @@ func _phase_move_execution() -> void:
 
 	if move.power > 0:
 		# ── Damaging move ──────────────────────────────────────────────────────
-		var result: Dictionary = DamageCalculator.calculate(attacker, defender, move)
+		# M11: pass current field weather so the damage calculator applies the modifier.
+		var result: Dictionary = DamageCalculator.calculate(attacker, defender, move, -1, null, weather)
 		var damage: int = result["damage"]
 
 		# Substitute routing: damaging moves hit the substitute if one is active,
@@ -848,6 +897,43 @@ func _phase_faint_check() -> void:
 
 
 func _phase_end_of_turn() -> void:
+	# ── M11: Weather duration tick (ENDTURN_WEATHER, position 2 in source handler table) ──
+	# Source: HandleEndTurnWeather → EndOrContinueWeather (battle_util.c L244):
+	#   if (weatherDuration > 0 && --weatherDuration == 0) → gBattleWeather = B_WEATHER_NONE
+	# Tick fires BEFORE weather chip damage and BEFORE status damage.
+	if weather != WEATHER_NONE and weather_duration > 0:
+		weather_duration -= 1
+		if weather_duration == 0:
+			var expired_w: int = weather
+			weather = WEATHER_NONE
+			weather_expired.emit(expired_w)
+
+	# ── M11: Weather chip damage (ENDTURN_WEATHER_DAMAGE, position 3) ────────────────────
+	# Source: HandleEndTurnWeatherDamage (battle_end_turn.c L100–186).
+	# Fires BEFORE poison/burn (ENDTURN_POISON=12, ENDTURN_BURN=13 in handler table).
+	# SANDSTORM: immune if any type is Rock(6)/Ground(5)/Steel(9), or semi-invulnerable.
+	#   Source: IS_BATTLER_ANY_TYPE(battler, TYPE_ROCK, TYPE_GROUND, TYPE_STEEL) (L148).
+	#   Ability-based immunities (Sand Veil, Sand Force, Sand Rush, Overcoat, Magic Guard)
+	#   deferred to M12 — not in scope while those abilities are absent.
+	# HAIL: immune if any type is Ice(16), or semi-invulnerable.
+	#   Source: IS_BATTLER_OF_TYPE(battler, TYPE_ICE) (L171).
+	#   Ability-based immunities (Snow Cloak, Ice Body, Overcoat) deferred to M12.
+	# Damage = maxHP / 16 (integer division). Source: GetNonDynamaxMaxHP(battler) / 16 (L154, L177).
+	if weather == WEATHER_SANDSTORM or weather == WEATHER_HAIL:
+		for mon: BattlePokemon in _turn_order:
+			if mon.fainted:
+				continue
+			if _is_weather_damage_immune(mon, weather):
+				continue
+			var chip: int = mon.max_hp / 16
+			if chip > 0:
+				mon.current_hp = max(0, mon.current_hp - chip)
+				weather_damage.emit(mon, chip)
+				if mon.current_hp == 0:
+					mon.fainted = true
+					pokemon_fainted.emit(mon)
+
+	# ── Status damage (ENDTURN_POISON=12, ENDTURN_BURN=13 in source handler table) ────────
 	# Apply end-of-turn status damage in speed order (matching source ENDTURN_POISON
 	# and ENDTURN_BURN handlers in battle_end_turn.c which iterate by battler order).
 	# Source: battle_end_turn.c :: HandleEndTurnPoison (L517), HandleEndTurnBurn (L565)
@@ -1009,6 +1095,9 @@ func _do_voluntary_switch(side: int, slot: int) -> void:
 	if actual != 0:
 		stat_stage_changed.emit(opponent, BattlePokemon.STAGE_ATK, actual)
 		ability_triggered.emit(new_mon, "intimidate")
+	var set_w: int = AbilityManager.get_switch_in_weather(new_mon)
+	if set_w != WEATHER_NONE and try_set_weather(set_w):
+		weather_set.emit(new_mon, set_w)
 
 
 # M9: forced switch-in without switch-out cleanup (for Roar/Whirlwind targets and
@@ -1024,6 +1113,9 @@ func _do_forced_switch_in(side: int, slot: int) -> void:
 	if actual != 0:
 		stat_stage_changed.emit(opponent, BattlePokemon.STAGE_ATK, actual)
 		ability_triggered.emit(new_mon, "intimidate")
+	var set_w: int = AbilityManager.get_switch_in_weather(new_mon)
+	if set_w != WEATHER_NONE and try_set_weather(set_w):
+		weather_set.emit(new_mon, set_w)
 
 
 # M9: switch-in after faint (no switch-out clear needed; old mon already cleared on faint).
@@ -1037,6 +1129,9 @@ func _do_switch_in(side: int, slot: int) -> void:
 	if actual != 0:
 		stat_stage_changed.emit(opponent, BattlePokemon.STAGE_ATK, actual)
 		ability_triggered.emit(new_mon, "intimidate")
+	var set_w: int = AbilityManager.get_switch_in_weather(new_mon)
+	if set_w != WEATHER_NONE and try_set_weather(set_w):
+		weather_set.emit(new_mon, set_w)
 
 
 # M9/M10: determine replacement slot — priority: test queue, then AI, then auto-select.
@@ -1127,6 +1222,27 @@ func _pick_metronome_move() -> MoveData:
 	if pool.is_empty():
 		return null
 	return pool[randi() % pool.size()]
+
+
+# M11: Check whether a Pokémon is immune to weather chip damage.
+# Source: HandleEndTurnWeatherDamage (battle_end_turn.c L143–182).
+# Sandstorm: immune if any type is Rock(6), Ground(5), or Steel(9), OR semi-invulnerable.
+# Hail:      immune if any type is Ice(16), OR semi-invulnerable.
+# Ability-based immunities (Sand Veil, Overcoat, Magic Guard, Ice Body, etc.) deferred to M12.
+func _is_weather_damage_immune(mon: BattlePokemon, current_weather: int) -> bool:
+	if mon.semi_invulnerable != MoveData.SEMI_INV_NONE:
+		return true
+	var types: Array = mon.species.types
+	match current_weather:
+		WEATHER_SANDSTORM:
+			for t in types:
+				if t == TypeChart.TYPE_ROCK or t == TypeChart.TYPE_GROUND or t == TypeChart.TYPE_STEEL:
+					return true
+		WEATHER_HAIL:
+			for t in types:
+				if t == TypeChart.TYPE_ICE:
+					return true
+	return false
 
 
 # Apply a pre-calculated damage amount to defender, routing through substitute if active.

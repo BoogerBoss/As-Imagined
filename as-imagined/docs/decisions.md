@@ -764,14 +764,17 @@ Format per entry:
   added later, this guard must be revisited.
 - Notes: 2026-06-26.
 
-## [M8] Drizzle / Drought: stubbed, weather is M9+ scope
+## [M8→M11] Drizzle / Drought: un-stubbed in M11
 
-- Source: `battle_util.c` :: `AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...)` — weather
-  setter path for ABILITY_DRIZZLE / ABILITY_DROUGHT.
-- Behavior: Ability IDs and .tres files exist (ability_0002.tres, ability_0070.tres). No effect
-  in the current engine — weather system is not implemented. When weather is added in M9+, the
-  `try_switch_in` path in AbilityManager is where the weather-set call goes.
-- Notes: Descriptions in the .tres files note the stub status. 2026-06-26.
+- Source: `battle_util.c` :: `AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...)` —
+  `ABILITY_DRIZZLE` (L3213) → `TryChangeBattleWeather(BATTLE_WEATHER_RAIN)`;
+  `ABILITY_DROUGHT` (L3242) → `TryChangeBattleWeather(BATTLE_WEATHER_SUN)`.
+- Behavior: In M11 the weather system is fully implemented. Drizzle and Drought now set field
+  weather on switch-in. The call goes through `AbilityManager.get_switch_in_weather(mon)` (a
+  query function returning WEATHER_RAIN or WEATHER_SUN), which BattleManager then passes to
+  `try_set_weather()`. This split keeps AbilityManager stateless while BattleManager owns the
+  weather field effect.
+- Notes: 2026-06-26 (stub), un-stubbed 2026-06-27.
 
 ## [M8] Intimidate: switch-in order and opponent targeting
 
@@ -947,7 +950,7 @@ Format per entry:
 
 - Doubles AI (`AI_FLAG_DOUBLE_BATTLE`): no doubles engine implemented yet.
 - Item usage AI (`battle_ai_items.c`): no held items implemented.
-- Weather-based scoring: weather still stubbed (M8 decision).
+- Weather-based scoring: deferred in M10, resolved in M11 — see [M11] AI weather scoring below.
 - `AI_FLAG_PREDICT_SWITCH`, `AI_FLAG_OMNISCIENT`, and other advanced flag tier scoring:
   beyond basic/smart scope for this milestone.
 - Notes: 2026-06-26.
@@ -961,3 +964,64 @@ Format per entry:
 - In `_get_replacement_slot`: AI `choose_replacement` fires after test
   `_replacement_queues` but before `get_first_non_fainted_not_active` fallback.
 - Notes: 2026-06-26.
+
+---
+
+## [M11] Weather — field effect architecture
+
+- Source: `gBattleWeather` (global bitmask) + `gBattleStruct->weatherDuration` in source.
+  Simplified to `BattleManager.weather: int` (WEATHER_NONE/RAIN/SUN/SANDSTORM/HAIL) +
+  `BattleManager.weather_duration: int`.
+- Weather is a **field effect**: lives on BattleManager, not BattlePokemon. Persists through
+  switches because `_switch_out_clear` only touches per-Pokémon fields.
+  Source: `SwitchInClearSetData` (battle_main.c L3117) does not touch `gBattleWeather`.
+- Duration = 5 turns by default (source: `TryChangeBattleWeather` L1996, no rock-item extension
+  in M11 scope — items are M12).
+- Notes: 2026-06-27.
+
+## [M11] Weather damage modifier — composition order
+
+- Source: `DoMoveDamageCalcVars` (battle_util.c L7577-7614); `GetWeatherDamageModifier` (L7251).
+  Order: base_damage → [WEATHER] → crit → random roll → STAB → type effectiveness → ability.
+- Constants: UQ_4_12(1.5)=6144, UQ_4_12(0.5)=2048. All applied via `_uq412_half_down`.
+  SUN→Fire ×1.5, SUN→Water ×0.5; RAIN→Water ×1.5, RAIN→Fire ×0.5.
+- Sandstorm and Hail: no damage modifier (chip damage only, separate EOT handler).
+- Discriminating test (W8a/W9a): force_roll=85, base=14 → weather-before-roll gives 17,
+  weather-after-roll gives 16. Used to catch composition order mistakes.
+- Notes: 2026-06-27.
+
+## [M11] End-of-turn handler order — weather before status
+
+- Source: `sEndTurnEffectHandlers` (battle_end_turn.c L1545):
+  `ENDTURN_WEATHER(2)` → `ENDTURN_WEATHER_DAMAGE(3)` → ... → `ENDTURN_POISON(12)` → `ENDTURN_BURN(13)`.
+- Weather duration ticks (and may expire) BEFORE weather chip damage fires.
+  Both fire BEFORE poison/burn status damage.
+- Chip damage: `GetNonDynamaxMaxHP(battler) / 16` (integer division).
+  Source: `HandleEndTurnWeatherDamage` (battle_end_turn.c L100-186).
+- Notes: 2026-06-27.
+
+## [M11] Sandstorm/Hail immunity — type-based only
+
+- Source: `HandleEndTurnWeatherDamage` (battle_end_turn.c L148/L171).
+  Sandstorm immune: any type is Rock(6), Ground(5), or Steel(9); also semi-invulnerable.
+  Hail immune: any type is Ice(16); also semi-invulnerable.
+  `IS_BATTLER_ANY_TYPE` (sandstorm) vs `IS_BATTLER_OF_TYPE` (hail) — sandstorm matches any
+  of three types, hail matches exactly one. Both use the same macro family.
+- Ability-based immunities (Sand Veil, Sand Force, Sand Rush, Overcoat, Magic Guard) deferred
+  to M12 — not in scope while those abilities are absent.
+- Notes: 2026-06-27.
+
+## [M11] AI weather-aware scoring — architecture proof
+
+- The M10 deferral ("weather-aware scoring") is closed by the M10 architecture paying off:
+  `TrainerAI._score_move` calls `DamageCalculator.calculate(..., weather)`. Since calculate()
+  now applies the weather modifier, the AI's damage estimate automatically reflects the field
+  weather. No AI-specific weather logic was added.
+- `choose_action(weather)` → `_score_move(weather)` → `DamageCalculator.calculate(..., weather)`.
+  Weather propagates as a parameter; the AI sees the boosted/reduced estimate with zero
+  TrainerAI code change.
+- Test seams `_force_roll: int` and `_force_crit: Variant` added to TrainerAI to make the
+  AI's damage estimate deterministic in tests (W13 suite).
+- Verified by W13: under RAIN, Surf estimate = 85 > 70 HP → FAST_KILL (+6) chosen over Ember
+  (estimate = 13). Under no weather, both estimates < 70 HP → tie, both score 100.
+- Notes: 2026-06-27.

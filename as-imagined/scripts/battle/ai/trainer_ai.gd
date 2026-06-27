@@ -43,21 +43,32 @@ var _force_tie_rng: int = -1
 # -1 = real RNG (50% chance per source config); 0 = always stay; 1 = always switch.
 var _force_switch_rng: int = -1
 
+# M11 test seams for deterministic damage estimates in AI scoring.
+# The AI's damage estimate for KO detection uses DamageCalculator.calculate; pinning
+# force_roll and force_crit makes the AI's damage output deterministic in tests.
+# -1 / null = real RNG (default). Pinned values are only set by test code.
+var _force_roll: int = -1         # passed as force_roll to DamageCalculator.calculate
+var _force_crit: Variant = null   # passed as force_crit to DamageCalculator.calculate
+
 
 # ── Main entry: choose an action for this turn ────────────────────────────────
 #
 # Source: ChooseMoveOrAction_Singles (battle_ai_main.c L856) for move scoring.
 #         AI_TrySwitchOrUseItem (L456) for the switch-vs-attack decision.
+# M11: weather parameter passes the current field weather so DamageCalculator picks
+#   it up automatically — no AI-specific weather handling needed (proof that the M10
+#   architecture pays off: the AI calls the real damage calc, not a separate estimate).
 # Returns {"type": "move", "index": int} or {"type": "switch", "slot": int}.
 
 func choose_action(attacker: BattlePokemon, defender: BattlePokemon,
-		my_party: BattleParty, _opp_party: BattleParty) -> Dictionary:
+		my_party: BattleParty, _opp_party: BattleParty,
+		weather: int = DamageCalculator.WEATHER_NONE) -> Dictionary:
 	# SMART tier: proactive switch evaluation before move scoring.
 	# Basic trainers never proactively switch in source — that logic is gated
 	# behind AI_FLAG_SMART_SWITCHING which is absent from AI_FLAG_BASIC_TRAINER.
 	# Source: AI_TrySwitchOrUseItem L456, gAiLogicData->shouldSwitch.
 	if tier == Tier.SMART:
-		var switch_slot: int = _should_switch(attacker, defender, my_party)
+		var switch_slot: int = _should_switch(attacker, defender, my_party, weather)
 		if switch_slot >= 0:
 			return {"type": "switch", "slot": switch_slot}
 
@@ -69,7 +80,7 @@ func choose_action(attacker: BattlePokemon, defender: BattlePokemon,
 		if move == null:
 			scores.append(-999)
 		else:
-			scores.append(_score_move(attacker, defender, move))
+			scores.append(_score_move(attacker, defender, move, weather))
 
 	return {"type": "move", "index": _pick_best(scores, attacker.moves)}
 
@@ -115,7 +126,7 @@ func choose_replacement(my_party: BattleParty, opponent: BattlePokemon) -> int:
 #   3. AI_CheckViability (partial) — bonus for type advantage and useful status.
 
 func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
-		move: MoveData) -> int:
+		move: MoveData, weather: int = DamageCalculator.WEATHER_NONE) -> int:
 	var score: int = AI_SCORE_DEFAULT
 
 	# ── Pass 1: AI_CheckBadMove (battle_ai_main.c L1201) ──────────────────────
@@ -132,7 +143,7 @@ func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
 	#   RETURN_SCORE_MINUS(10). Semi-inv moves (Dig/Fly) gain invulnerability that
 	#   partially offsets the cost, so we only penalise the non-inv variant here.
 	if move.two_turn and move.semi_inv_state == MoveData.SEMI_INV_NONE:
-		if _can_defender_ko_attacker(attacker, defender):
+		if _can_defender_ko_attacker(attacker, defender, weather):
 			score -= 10
 
 	# Pure status move: penalise if target already has a non-volatile status.
@@ -147,8 +158,12 @@ func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
 	# ── Pass 2: AI_TryToFaint (battle_ai_main.c L3000) ───────────────────────
 
 	# Status moves always return early here: "if (IsBattleMoveStatus(move)) return score"
+	# M11: DamageCalculator.calculate now receives weather so the estimated damage
+	# automatically reflects the current field boost/reduction — no AI-specific logic needed.
+	# _force_roll / _force_crit are null/-1 in production; pinnable in tests for determinism.
 	if move.category != 2 and move.power > 0:
-		var result: Dictionary = DamageCalculator.calculate(attacker, defender, move)
+		var result: Dictionary = DamageCalculator.calculate(
+				attacker, defender, move, _force_roll, _force_crit, weather)
 		if result["damage"] >= defender.current_hp:
 			# Source: L3015-3019 — FAST_KILL if AI is faster, SLOW_KILL otherwise.
 			if StatusManager.effective_speed(attacker) >= StatusManager.effective_speed(defender):
@@ -199,7 +214,7 @@ func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
 #     ≥ 50% HP, switch out. Switch chance = 50% (SHOULD_SWITCH_HASBADODDS = 50).
 
 func _should_switch(attacker: BattlePokemon, defender: BattlePokemon,
-		my_party: BattleParty) -> int:
+		my_party: BattleParty, weather: int = DamageCalculator.WEATHER_NONE) -> int:
 	if not my_party.has_valid_switch_target():
 		return -1  # no candidates: must stay
 
@@ -211,7 +226,7 @@ func _should_switch(attacker: BattlePokemon, defender: BattlePokemon,
 	# ShouldSwitchIfHasBadOdds — 50% chance.
 	# Source: battle_ai_switch.c L367-419. SHOULD_SWITCH_HASBADODDS_PERCENTAGE=50.
 	# Conditions (all must be true): being OHKO'd, no SE move, HP >= 50%.
-	if _can_defender_ko_attacker(attacker, defender):
+	if _can_defender_ko_attacker(attacker, defender, weather):
 		if not _has_super_effective_move(attacker, defender):
 			if attacker.current_hp >= attacker.max_hp / 2:
 				if _roll_switch_decision(50):
@@ -243,12 +258,14 @@ func _has_super_effective_move(attacker: BattlePokemon,
 
 
 func _can_defender_ko_attacker(attacker: BattlePokemon,
-		defender: BattlePokemon) -> bool:
+		defender: BattlePokemon,
+		weather: int = DamageCalculator.WEATHER_NONE) -> bool:
 	# Uses current (not maximum) attacker HP per source L387: hp >= maxHP / 2 check.
 	for move: MoveData in defender.moves:
 		if move == null or move.category == 2 or move.power == 0:
 			continue
-		var result: Dictionary = DamageCalculator.calculate(defender, attacker, move)
+		var result: Dictionary = DamageCalculator.calculate(
+				defender, attacker, move, _force_roll, _force_crit, weather)
 		if result["damage"] >= attacker.current_hp:
 			return true
 	return false

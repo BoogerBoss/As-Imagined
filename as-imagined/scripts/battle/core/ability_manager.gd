@@ -82,7 +82,7 @@ static func blocks_move_type(defender: BattlePokemon, move_type: int) -> bool:
 # Source: battle_util.c :: AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...) (L3310):
 #   ABILITY_INTIMIDATE: shouldAbilityTrigger && !IsOpposingSideEmpty →
 #     SetStatChange(all opponents, STAT_ATK, -1). In 1v1, one opponent only.
-# Drizzle/Drought: stub — sets weather (M9+ scope); noted in decisions.md.
+# Drizzle/Drought: weather is set via get_switch_in_weather() + BattleManager.try_set_weather().
 #
 # Returns the actual Attack stat stage change applied to opponent (0 = nothing happened).
 static func try_switch_in(pokemon: BattlePokemon, opponent: BattlePokemon) -> int:
@@ -93,9 +93,26 @@ static func try_switch_in(pokemon: BattlePokemon, opponent: BattlePokemon) -> in
 		if not opponent.fainted:
 			return StatusManager.apply_stat_change(
 					opponent, BattlePokemon.STAGE_ATK, -1)
-	# ABILITY_DRIZZLE / ABILITY_DROUGHT: stub — weather system is M9+ scope.
-	# State field for weather not yet on BattleManager; record in decisions.md.
+	# Drizzle/Drought weather-set is handled by BattleManager calling get_switch_in_weather()
+	# immediately after try_switch_in() — the weather call is separated so BattleManager
+	# owns the weather state (it's a field effect, not per-Pokémon).
 	return 0
+
+
+# Return the WEATHER_* value (DamageCalculator constants) that should be set when this
+# Pokémon switches in, or WEATHER_NONE (0) if the ability has no weather effect.
+# Source: ABILITYEFFECT_ON_SWITCHIN — ABILITY_DRIZZLE → TryChangeBattleWeather(RAIN) (L3213)
+#                                    — ABILITY_DROUGHT → TryChangeBattleWeather(SUN)  (L3242)
+# BattleManager calls try_set_weather(get_switch_in_weather(mon)) after try_switch_in().
+static func get_switch_in_weather(pokemon: BattlePokemon) -> int:
+	if pokemon.ability == null:
+		return DamageCalculator.WEATHER_NONE
+	match pokemon.ability.ability_id:
+		ABILITY_DRIZZLE:
+			return DamageCalculator.WEATHER_RAIN
+		ABILITY_DROUGHT:
+			return DamageCalculator.WEATHER_SUN
+	return DamageCalculator.WEATHER_NONE
 
 
 # ── Tier 2: End-of-turn effects ───────────────────────────────────────────────
