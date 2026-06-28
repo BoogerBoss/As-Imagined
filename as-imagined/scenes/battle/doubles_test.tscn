@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://doublestest"]
+
+[ext_resource type="Script" path="res://scenes/battle/doubles_test.gd" id="1_doublestest"]
+
+[node name="DoublesTest" type="Node"]
+script = ExtResource("1_doublestest")

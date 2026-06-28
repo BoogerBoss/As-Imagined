@@ -238,7 +238,9 @@ it exists purely to look up exact source logic.
 - M11 (Weather): **COMPLETE** — 2026-06-27, 64/64 tests pass
 - M12 (Held Items): **COMPLETE** — 2026-06-27, 60/60 tests pass
 - M13 (Item AI): **COMPLETE** — 2026-06-27, 40/40 tests pass (includes M10's 26 + 14 new)
-- M14 (Double Battle Support)
+- M14a (Doubles — state machine + turn order for 4 combatants): **COMPLETE** — 2026-06-28, 25/25 tests pass
+- M14b (Doubles — spread moves and ally-targeting effects): pending
+- M14c (Doubles — AI): pending
 
 ## Development workflow
 
@@ -262,6 +264,7 @@ Run a verification scene headless (from project root):
 - `scenes/battle/weather_test.tscn` — M11 Weather: Drizzle/Drought set weather, duration countdown, expiry, no-clear-on-switch, same-weather no-op, overwrite, rain/sun damage modifiers (discriminating composition test), sandstorm/hail chip immunity, modifier revert on expiry, AI weather-aware scoring (64 tests)
 - `scenes/battle/item_test.tscn` — M12 Held Items: Choice Band/Scarf/Specs stat boosts, Life Orb damage + recoil, Sitrus Berry HP heal, Lum Berry status cure, Leftovers EOT heal, resist berry, Utility Umbrella, choice-lock enforcement (60 tests)
 - `scenes/battle/ai_test.tscn` — M10+M13 Trainer AI: effectiveness scoring, KO preference, type immunity, status avoidance, two-turn penalty, BASIC/SMART tiers, switch decisions, faint replacement, full battle integration; M13 adds choice-lock, bad-lock switch, item-boost discrimination (40 tests)
+- `scenes/battle/doubles_test.tscn` — M14a Doubles foundation: BattleParty active_indices API, 4-combatant setup, turn order by speed, full-side faint required to end battle, targeted moves hit correct slot, faint replacement (slot-specific), voluntary switch in doubles (25 tests)
 
 **Note:** if you add a new file with `class_name`, run an import pass before the test scenes
 will see it:

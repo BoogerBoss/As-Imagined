@@ -1155,3 +1155,75 @@ Full pipeline (source: `CalculateBaseDamage` + `ApplyModifiersAfterDmgRoll`, bat
   Not implemented. If a future session asks "does the AI consider its own Sitrus Berry
   threshold?", the answer is: no, confirmed absent from `battle_ai_switch.c` and
   `battle_ai_main.c` scoring passes.
+
+---
+
+## M14a — Doubles foundation (state machine + turn order for 4 combatants)
+
+### Combatant layout (side-grouped, not source-alternating)
+- Source uses alternating layout: B_POSITION_PLAYER_LEFT=0, B_POSITION_OPPONENT_LEFT=1,
+  B_POSITION_PLAYER_RIGHT=2, B_POSITION_OPPONENT_RIGHT=3 (battle.h).
+- Our layout groups by side: [side0_slot0, side0_slot1, side1_slot0, side1_slot1].
+  Formula: `side = combatant_idx // _active_per_side`, `field_slot = combatant_idx % _active_per_side`.
+- Rationale: side-grouped is simpler for existing party/side indexing; the alternating
+  source layout is an artifact of how the GBA battler IDs were assigned and does not
+  carry semantic meaning in our implementation.
+
+### BattleParty.active_indices
+- Replaced `active_index: int` (single active slot) with `active_indices: Array[int]`
+  (list of party slot indices currently on the field).
+- Backward-compat property `active_index` wraps `active_indices[0]` via GDScript 4
+  getter/setter; all M1–M13 test code using `party.active_index` unchanged.
+- `get_active_at(field_slot)`, `num_active()` added for doubles access.
+- `has_valid_switch_target`, `get_random_non_fainted_not_active`,
+  `get_first_non_fainted_not_active` updated to exclude ALL active indices (not just [0]).
+
+### _active_per_side, _actor_indices, _chosen_targets (BattleManager)
+- `_active_per_side: int = 1` (singles) or 2 (doubles); governs all layout formulas.
+- `_actor_indices: Dictionary` (BattlePokemon → combatant_idx 0..N-1); distinct from
+  `_actor_sides` (BattlePokemon → side 0 or 1). Used for `_chosen_moves`/`_chosen_targets` indexing.
+- `_chosen_targets: Array[int]` — per-combatant target combatant index. Defaults to
+  `_default_target(i) = (1 - side) * _active_per_side` (first slot of opposing side).
+  Overridden by `queue_move_targeted` "target" field.
+
+### _get_first_opponent vs _get_opponent
+- Old `_get_opponent(mon)` assumed exactly 2 combatants and returned the other one.
+- New `_get_first_opponent(mon)` returns first active slot of opposing side.
+- All 9 former call sites updated; actual move damage uses `_combatants[_chosen_targets[i]]` instead.
+
+### Target redirection for fainted targets (M14a addition)
+- In doubles, a target can faint earlier in the same turn (before the attacker's action).
+  Added redirect at top of `_phase_move_execution`: if `defender.fainted`, find first
+  non-fainted mon on the opposing side. If none found, skip the move silently.
+- This is required for any doubles battle to complete; without it, live attackers keep
+  targeting fainted slots and the battle never ends.
+- Singles not affected: the only opponent slot has a replacement or the battle ends.
+
+### ACTION_EXECUTION fainted-skip fix (M14a bug fix)
+- Old code: skipped fainted actor by re-dispatching to ACTION_EXECUTION (same phase).
+  In singles this was harmless because replacements prevented permanently fainted slots.
+  In doubles with no bench replacement, the fainted slot stays in `_turn_order` every turn,
+  causing the `_phase == phase_before → break` guard in `advance()` to halt the loop.
+- Fix: replaced `if actor.fainted: re-dispatch ACTION_EXECUTION` with a while loop that
+  skips fainted actors before entering the main dispatch path. ACTION_EXECUTION now always
+  changes phase on exit.
+
+### Destiny Bond in doubles (M14a simplification)
+- `_get_first_opponent` is used for the DB killer lookup; only the first opposing slot is
+  considered. Full doubles DB (potentially two KB targets) is M14b scope.
+
+### _do_forced_switch_in M14b note
+- Kept `(side, slot)` signature; uses `active_indices[0]` (primary slot only).
+  In doubles, forced switches (Roar/Whirlwind) should ideally target the specific
+  combatant that used Roar — this is M14b scope.
+
+### TrainerAI active_index in doubles (M14c simplification)
+- `trainer_ai.gd` reads `my_party.active_index` (lines 115, 310) via the backward-compat
+  property — sees only slot 0 of the active pair. Full doubles AI awareness is M14c scope.
+
+### Queue API for doubles
+- `queue_move_targeted(combatant_idx, move_index, target_idx)` — explicit targeting.
+- `queue_switch_for(combatant_idx, slot)` — switch for a specific field position.
+- `queue_replacement_for(combatant_idx, slot)` — faint replacement for a specific slot.
+- Legacy `queue_move(side, slot)` / `queue_switch(side, slot)` / `queue_replacement(side, slot)`
+  remain for backward compat; they address combatant `side * _active_per_side` (slot 0 of side).

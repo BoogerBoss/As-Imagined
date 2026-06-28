@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path as-imagined scenes/battle/damage_test.tscn)",
+      "Bash(/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path as-imagined res://scenes/battle/battle_test.tscn)",
+      "Bash(/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path as-imagined res://scenes/battle/tier4_test.tscn)"
+    ]
+  }
+}
