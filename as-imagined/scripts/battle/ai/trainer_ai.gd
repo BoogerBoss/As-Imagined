@@ -222,10 +222,13 @@ func choose_action(attacker: BattlePokemon, defender: BattlePokemon,
 
 # ── Faint replacement: which party slot to send in ────────────────────────────
 #
-# Source: GetSwitchinCandidate(SWITCHIN_CONSIDER_MOST_SUITABLE) in
-#   battle_ai_switch.c L55+. Simplified: pick the party member whose moves
-#   have the highest type effectiveness against the current opponent.
-#   Falls back to first alive non-active if no move data available.
+# Source: GetSwitchinCandidate (battle_ai_switch.c L2004). The real source picks
+#   the last eligible party member by priority tier (trappers, revenge killers,
+#   type-advantage candidates, etc.), not by move type effectiveness.
+# Simplification: pick the party member whose moves have the highest type
+#   effectiveness against the current opponent. Kept as-is — a different valid
+#   simplification (see decisions.md F15/F32 entry). Falls back to first alive
+#   non-active if no move data available.
 
 func choose_replacement(my_party: BattleParty, opponent: BattlePokemon) -> int:
 	var best_slot: int = -1
@@ -306,7 +309,7 @@ func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
 			else:
 				score += SLOW_KILL
 
-	# ── Pass 3: AI_CheckViability partial (battle_ai_main.c L5862) ───────────
+	# ── Pass 3: AI_CalcMoveEffectScore (battle_ai_main.c L4143), called by AI_CheckViability (L5862) ──
 	#
 	# Source-accurate ports of IncreasePoisonScore / IncreaseBurnScore /
 	# IncreaseParalyzeScore / IncreaseSleepScore (battle_ai_util.c L4791-4907).
@@ -420,7 +423,7 @@ func _score_move_doubles(attacker: BattlePokemon, defender: BattlePokemon,
 #   eval via gAiLogicData->shouldSwitch, populated by ShouldSwitch* calls in
 #   battle_ai_switch.c. We implement two:
 #
-#   ShouldSwitchIfAllMovesBad (battle_ai_switch.c L481):
+#   ShouldSwitchIfAllMovesBad (battle_ai_switch.c L484):
 #     If every damaging move the AI has is type-immune against the current
 #     defender, switch out. Switch chance = 100% (SHOULD_SWITCH_ALL_MOVES_BAD = 100).
 #
@@ -434,7 +437,7 @@ func _should_switch(attacker: BattlePokemon, defender: BattlePokemon,
 		return -1  # no candidates: must stay
 
 	# ShouldSwitchIfAllMovesBad — 100% chance when all moves immune.
-	# Source: battle_ai_switch.c L481-538. SHOULD_SWITCH_ALL_MOVES_BAD_PERCENTAGE=100.
+	# Source: battle_ai_switch.c L484-538. SHOULD_SWITCH_ALL_MOVES_BAD_PERCENTAGE=100.
 	if _all_damaging_moves_immune(attacker, defender):
 		return _best_switch_target(my_party, defender)
 
@@ -501,8 +504,9 @@ func _can_defender_ko_attacker(attacker: BattlePokemon,
 
 
 func _best_switch_target(my_party: BattleParty, opponent: BattlePokemon) -> int:
-	# Pick party member with best type effectiveness against the opponent.
-	# Source: GetSwitchinCandidate SWITCHIN_CONSIDER_MOST_SUITABLE (battle_ai_switch.c L55+).
+	# Source: GetSwitchinCandidate (battle_ai_switch.c L2004). Real source picks by
+	#   priority tier (not type effectiveness). Simplification: pick by highest type
+	#   effectiveness. Kept as-is — see decisions.md F15/F32 entry.
 	var best_slot: int = -1
 	var best_eff: float = -1.0
 	for i in range(my_party.members.size()):

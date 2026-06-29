@@ -934,7 +934,7 @@ Format per entry:
 
 ## [M10] Trainer AI — switch thresholds (source: battle_ai_switch.c)
 
-- `ShouldSwitchIfAllMovesBad` (L481): all damaging moves type-immune → 100% switch.
+- `ShouldSwitchIfAllMovesBad` (L484): all damaging moves type-immune → 100% switch.
   SHOULD_SWITCH_ALL_MOVES_BAD_PERCENTAGE = 100. No flag gate within SMART tier.
 - `ShouldSwitchIfHasBadOdds` (L367): being OHKOd + no super-effective move + HP ≥ 50%
   → 50% switch chance. SHOULD_SWITCH_HASBADODDS_PERCENTAGE = 50.
@@ -1424,6 +1424,58 @@ and status moves (category 2) are excluded as in source.
 - Notes: The only test exercising status bonus scoring is A6 (Toxic vs Splash vs helpless
   Normal defender). Under new scoring: Splash=100, Toxic=103 (DECENT_EFFECT for no-damage
   defender + WEAK_EFFECT base). A6 passes; no test required redesign. 2026-06-29.
+
+## ShouldSwitchIfHasBadOdds — typeMatchup > 2.0 branch not ported (F28/F30 known gap)
+
+- Source: `ShouldSwitchIfHasBadOdds` (battle_ai_switch.c L367).
+- The source contains two distinct switch-out conditions:
+  1. **OHKO branch** (L387): AI would be KO'd by a single hit AND HP ≥ 50% → 50% switch.
+  2. **Type-disadvantage branch** (L399): `typeMatchup > UQ_4_12(2.0)` — switch out even
+     without an imminent OHKO when the offensive type matchup is sufficiently unfavourable,
+     subject to the same HP and no-super-effective-move conditions.
+- **What is ported:** The OHKO branch only. `_should_switch` triggers `ShouldSwitchIfHasBadOdds`
+  via `_can_defender_ko_attacker`.
+- **What is omitted:** The typeMatchup > 2.0 branch. Our implementation never switches out
+  of a bad type matchup unless the AI is simultaneously threatened with a one-hit KO.
+- **Why safe to leave:** All existing tests pass under OHKO-only logic. The gap means AI is
+  slightly less willing to switch in cases of unfavourable matchup without an OHKO threat —
+  a known conservative deviation, not a logic error. 2026-06-29.
+
+## ShouldSwitchIfBadChoiceLock — missing IsHoldEffectChoice/IsBattlerItemEnabled precondition (F31)
+
+- Source: `ShouldSwitchIfBadChoiceLock` (battle_ai_switch.c L1170), singles branch L1206–1209.
+- The source singles branch guards the entire switch check with:
+  `else if (IsHoldEffectChoice(ctx.holdEffects[ctx.battlerAtk]) && IsBattlerItemEnabled(switchContext->battler))`.
+  This verifies that (a) the held item is a choice item and (b) the item is currently enabled
+  (not disabled by Embargo, Klutz, or similar mechanics).
+- **What is ported:** `if attacker.choice_locked_move != null` — the presence of a lock implies
+  the item was active when the lock was set. No further item re-check is done.
+- **Why the gap is not currently reachable as a bug:** `choice_locked_move` is set by
+  `BattleManager` only when a choice-item holder uses a move. No implemented mechanic can
+  remove or disable a held item mid-battle (no Knock Off, no Thief, no Embargo, no Klutz,
+  no Corrosive Gas). Therefore `choice_locked_move != null` currently implies a choice item
+  IS held and enabled with 100% reliability. If item-removal mechanics are ever added, the
+  `IsHoldEffectChoice && IsBattlerItemEnabled` guard must be added at that point. 2026-06-29.
+
+## GetSwitchinCandidate — type-effectiveness simplification (F15/F32)
+
+- Source: `GetSwitchinCandidate` (battle_ai_switch.c L2004). The source selects a switch-in
+  candidate by priority tier: trappers > revenge killers > slow revenge killers > fast
+  threaters > slow threaters > type-advantage effective > type-advantage neutral > healing
+  candidates > Baton Pass holders > generic 1v1 mons > damage dealers. Within each tier that
+  uses `GetSwitchinCandidate`, the function returns either the **last** eligible party member
+  in party order (default) or a **random** eligible member (under `AI_FLAG_RANDOMIZE_SWITCHIN`).
+  There is no "SWITCHIN_CONSIDER_MOST_SUITABLE" enum — that name does not exist in the source.
+- **What is implemented:** Both `choose_replacement` and `_best_switch_target` pick the party
+  member whose damaging moves have the highest type effectiveness against the current opponent,
+  falling back to the first non-fainted non-active slot if no type data is available.
+- **Kept as-is.** This is a different, also-valid simplification: it prefers the mon with the
+  best offensive typing rather than the last eligible mon in party order. It skips the
+  multi-tier priority logic (trappers, revenge killers, etc.) that would require access to
+  speed stats, predicted moves, and damage estimates for all bench members. The behaviour is
+  correct enough to pass all existing AI tests and is a deliberate scope reduction. If a more
+  faithful port of `GetSwitchinCandidate`'s priority tiers is wanted later, it would be a
+  standalone improvement, not a bug fix. 2026-06-29.
 
 ## [M14c] B8 Destiny Bond fixture non-determinism (fixed)
 
