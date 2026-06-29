@@ -1335,6 +1335,45 @@ Full pipeline (source: `CalculateBaseDamage` + `ApplyModifiersAfterDmgRoll`, bat
   three targeted decisions (spread preference, target selection, AI_AttacksPartner check).
   Documented as confirmed-partial — the source HAS this logic but it is out of scope.
 
+## AI_CompareDamagingMoves — bounded port (post-M14c audit fix)
+
+- Source: `battle_ai_main.c` L3940–4112, called at L881 (singles) and L964 (doubles).
+- Behavior: After the per-move scoring passes, the move requiring the **fewest hits to KO**
+  the defender receives `BEST_DAMAGE_MOVE (+1)`. If multiple moves tie for fewest hits,
+  all tied moves receive +1 equally. Implemented as `TrainerAI._apply_best_damage_move`,
+  called from `choose_action` and from the per-opponent loop in `choose_action_doubles`.
+- Why added: A post-M14c source audit found that the prior `_score_move` carried a
+  fabricated effectiveness bonus (DECENT_EFFECT for 2×, BEST_EFFECT for 4×) with no
+  source backing. After removing it, four tests (A1.02, A1.03, A15.01) relied on a real
+  source mechanism — `AI_CompareDamagingMoves` — that simply hadn't been ported yet.
+  A20 required a test redesign (see below).
+
+**What is ported:**
+The core rule: among all damaging moves with power > 0 and non-zero type effectiveness,
+compute `ceil(defender.current_hp / estimated_damage)` for each. The move(s) with the
+strictly lowest hit count receive BEST_DAMAGE_MOVE (+1). Immune moves (effectiveness 0)
+and status moves (category 2) are excluded as in source.
+
+**What is deliberately omitted:**
+
+1. **Tiebreaker cascade** (source L3986–4091 when multiple moves share the fewest hit
+   count): resist-berry avoidance, speed/priority for OHKOs, guaranteed-KO at min roll,
+   two-turn preference, accuracy comparison, effect comparison. None of the current test
+   scenarios exercise a tied hit-count, so this would be untested dead code. To add later
+   if a test requires it — do not add speculatively.
+
+2. **Spread-move carve-out** (source sets `noOfHits = -1` for `ShouldUseSpreadDamageMove`
+   to exclude spread moves from the hit-count comparison, because their full-damage
+   estimate ignores the 0.75× reduction): our port calls `DamageCalculator.calculate`
+   with `is_spread=true` for spread moves, so the 0.75× is already baked into the
+   estimated damage. The carve-out's purpose is moot here.
+
+3. **Self-sacrifice exception** (source sets `noOfHits = maxHP` when the AI decided
+   against self-sacrifice for that move): no Explosion/Selfdestruct in the current moveset.
+   If self-sacrifice moves are added later, revisit.
+
+4. **`ShouldCompareMove` filter**: replaced by existing null / power==0 guards.
+
 ## [M14c] B8 Destiny Bond fixture non-determinism (fixed)
 
 - Source: test fixture correctness (not a mechanic issue).

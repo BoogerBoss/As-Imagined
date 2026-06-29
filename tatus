@@ -1,0 +1,5 @@
+[33m45fdbd27[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Milestone 14c: doubles AI (per-slot target scoring, choose_action_doubles), fix non-deterministic B8 fixture (Destiny Bond OHKO not guaranteed at worst roll), 46/46 doubles_test verified, zero regressions across 13 prior suites
+[33mafb9f6cc[m Milestone 14b: spread moves, Helping Hand, Follow Me/Rage Powder, Destiny Bond and Roar doubles fixes; fix repeated SWITCH_PROMPT bug in _phase_faint_check; 40/40 verified, zero regressions across 12 prior suites
+[33m95d93e48[m Milestone 14a: doubles foundation (4-combatant state machine, turn order, targeting resolver), fix ACTION_EXECUTION fainted-skip and mid-turn target-faint redirect, 25/25 verified, zero regressions across 13 suites
+[33m180769a6[m Milestone 12+13: Held items and Item AI, decisions.md location fixed and merged, 60/60 + 40/40 verified, zero regressions across 12 suites
+[33m1164479d[m M12 follow-up: close Life Orb recoil test gaps (HP deduction, miss/non-damaging suppression, faint-by-recoil), audit and confirm no other lambda-capture bugs in suite, remove stale debug_test scratch file

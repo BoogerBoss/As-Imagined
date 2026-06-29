@@ -8,7 +8,8 @@
       "Bash(/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path /home/rob/GodotAsImagined scenes/battle/doubles_test.tscn)",
       "Bash(pkill -f \"Godot.*doubles_test\")",
       "Bash(timeout 15 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/doubles_test.tscn)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path as-imagined scenes/battle/doubles_test.tscn)"
     ]
   }
 }

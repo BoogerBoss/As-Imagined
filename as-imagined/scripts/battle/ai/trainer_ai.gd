@@ -32,11 +32,12 @@ extends RefCounted
 enum Tier { BASIC, SMART }
 
 # Score constants — source: include/battle_ai_main.h L21-41
-const AI_SCORE_DEFAULT: int = 100  # constants/battle_ai.h L57
-const FAST_KILL: int        = 6    # AI faster and faints target
-const SLOW_KILL: int        = 4    # AI slower and faints target
-const BEST_EFFECT: int      = 4    # 4× effective or very strong secondary
-const DECENT_EFFECT: int    = 2    # 2× effective or useful secondary
+const AI_SCORE_DEFAULT: int  = 100  # constants/battle_ai.h L57
+const FAST_KILL: int         = 6    # AI faster and faints target
+const SLOW_KILL: int         = 4    # AI slower and faints target
+const BEST_DAMAGE_MOVE: int  = 1    # battle_ai_main.h L13 — move with fewest hits to KO
+const BEST_EFFECT: int       = 4    # 4× effective or very strong secondary
+const DECENT_EFFECT: int     = 2    # 2× effective or useful secondary
 
 var tier: Tier = Tier.BASIC
 
@@ -149,6 +150,9 @@ func choose_action_doubles(
 						attacker, opp, move, weather,
 						move.is_spread and is_spread_active))
 
+		# AI_CompareDamagingMoves pass, per-target (battle_ai_main.c L964).
+		_apply_best_damage_move(attacker, opp, scores, weather, is_spread_active)
+
 		var best_idx: int = _pick_best(scores, attacker.moves)
 		best_score[oi] = scores[best_idx] if not scores.is_empty() else AI_SCORE_DEFAULT
 		best_move[oi]  = best_idx
@@ -207,6 +211,9 @@ func choose_action(attacker: BattlePokemon, defender: BattlePokemon,
 			scores.append(-999)
 		else:
 			scores.append(_score_move(attacker, defender, move, weather))
+
+	# AI_CompareDamagingMoves pass (battle_ai_main.c L881).
+	_apply_best_damage_move(attacker, defender, scores, weather)
 
 	return {"type": "move", "index": _pick_best(scores, attacker.moves)}
 
@@ -297,25 +304,16 @@ func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
 			else:
 				score += SLOW_KILL
 
-	# ── Pass 3: AI_CheckViability partial (battle_ai_main.c L4143) ───────────
+	# ── Pass 3: AI_CheckViability partial (battle_ai_main.c L5862) ───────────
 	#
 	# Full AI_CalcMoveEffectScore is ~1400 lines of per-move-effect handling.
-	# We implement the two universally applicable rules from source:
-	#   a) Effectiveness bonus for damaging moves (from AI_CompareDamagingMoves).
-	#   b) Status move bonus when target has no status (IncreasePoisonScore etc.).
+	# We implement one universally applicable rule from source:
+	#   Status move bonus when target has no status (IncreasePoisonScore etc.).
 
-	if move.category != 2:
-		# Source: AI_CompareDamagingMoves penalises relatively lower-power moves;
-		# CheckViability scores DECENT_EFFECT(2) for 2× and BEST_EFFECT(4) for 4×.
-		if effectiveness >= 4.0:
-			score += BEST_EFFECT
-		elif effectiveness >= 2.0:
-			score += DECENT_EFFECT
-	else:
-		# Status move bonus when applicable status CAN be inflicted.
-		# Source: IncreasePoisonScore/IncreaseParalyzeScore/IncreaseSleepScore/IncreaseBurnScore
-		#   each add DECENT_EFFECT(2) when AI_Can*(…) returns TRUE. AI_Can* is TRUE when
-		#   target has STATUS_NONE, type not immune, no substitute blocking.
+	# Status move bonus when applicable status CAN be inflicted.
+	# Source: IncreasePoisonScore/IncreaseParalyzeScore/IncreaseSleepScore/IncreaseBurnScore
+	#   each add score when AI_Can*(…) returns TRUE (target has STATUS_NONE, type not immune).
+	if move.category == 2:
 		if move.secondary_effect in [
 				MoveData.SE_BURN, MoveData.SE_PARALYSIS, MoveData.SE_SLEEP,
 				MoveData.SE_TOXIC, MoveData.SE_FREEZE]:
@@ -361,12 +359,7 @@ func _score_move_doubles(attacker: BattlePokemon, defender: BattlePokemon,
 			else:
 				score += SLOW_KILL
 
-	if move.category != 2:
-		if effectiveness >= 4.0:
-			score += BEST_EFFECT
-		elif effectiveness >= 2.0:
-			score += DECENT_EFFECT
-	else:
+	if move.category == 2:
 		if move.secondary_effect in [
 				MoveData.SE_BURN, MoveData.SE_PARALYSIS, MoveData.SE_SLEEP,
 				MoveData.SE_TOXIC, MoveData.SE_FREEZE]:
@@ -487,6 +480,57 @@ func _best_switch_target(my_party: BattleParty, opponent: BattlePokemon) -> int:
 	if best_slot >= 0:
 		return best_slot
 	return my_party.get_first_non_fainted_not_active()
+
+
+# ── AI_CompareDamagingMoves (battle_ai_main.c L3940) — bounded port ───────────
+#
+# Port: the move requiring strictly the fewest hits to KO the defender gets
+#   BEST_DAMAGE_MOVE (+1). If multiple moves tie for fewest hits, all tied moves
+#   get +1 equally (no cascade tiebreaker — see decisions.md for rationale).
+#
+# Deliberately omitted (each documented in decisions.md):
+#   Tiebreaker cascade (resist-berry, speed/priority, guaranteed-KO, two-turn,
+#     accuracy, effect) — none of the test scenarios exercise tied hit counts;
+#     adding untested logic would be undocumented dead code.
+#   Spread-move carve-out (source excludes spread moves because their full-damage
+#     estimate is un-reduced; our estimate already incorporates the 0.75× reduction
+#     from is_spread=true in DamageCalculator, so the concern is moot).
+#   Self-sacrifice exception (source sets noOfHits=maxHP when AI declines
+#     self-sacrifice; no Explosion/Selfdestruct in scope).
+
+func _apply_best_damage_move(
+		attacker: BattlePokemon, defender: BattlePokemon,
+		scores: Array[int],
+		weather: int,
+		is_spread_active: bool = false) -> void:
+	const INF_HITS: int = 1_000_000
+	var hits_to_ko: Array[int] = []
+	var least_hits: int = INF_HITS
+
+	for move: MoveData in attacker.moves:
+		if move == null or move.category == 2 or move.power == 0:
+			hits_to_ko.append(INF_HITS)
+			continue
+		if TypeChart.get_effectiveness(move.type, defender.species.types) == 0.0:
+			hits_to_ko.append(INF_HITS)
+			continue
+		var spread_this: bool = is_spread_active and move.is_spread
+		var result: Dictionary = DamageCalculator.calculate(
+				attacker, defender, move, _force_roll, _force_crit, weather, spread_this)
+		var dmg: int = result["damage"]
+		if dmg <= 0:
+			hits_to_ko.append(INF_HITS)
+			continue
+		var hits: int = ceili(float(defender.current_hp) / float(dmg))
+		hits_to_ko.append(hits)
+		if hits < least_hits:
+			least_hits = hits
+
+	if least_hits >= INF_HITS:
+		return
+	for i in range(mini(hits_to_ko.size(), scores.size())):
+		if hits_to_ko[i] == least_hits:
+			scores[i] += BEST_DAMAGE_MOVE
 
 
 # Pick highest-scoring available move index; ties broken by RNG or _force_tie_rng.

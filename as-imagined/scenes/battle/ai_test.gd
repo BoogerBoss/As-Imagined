@@ -127,8 +127,10 @@ func _make_item(hold_effect: int) -> ItemData:
 
 
 # ── A1: Type effectiveness scoring ───────────────────────────────────────────
-# AI should prefer a 4× move > 2× move > 1× move.
-# Source: AI_CheckViability — BEST_EFFECT(+4) for 4×, DECENT_EFFECT(+2) for 2×.
+# AI should prefer a 4× move > 2× move > 0.5× move when neither KOs.
+# Mechanism: AI_CompareDamagingMoves (battle_ai_main.c L3940) — the move with the
+# fewest hits to KO the defender gets BEST_DAMAGE_MOVE (+1). Higher effectiveness
+# means more damage per hit → fewer hits to KO → wins the comparison.
 
 func _test_section_a1_effectiveness_scoring() -> void:
 	var ai := TrainerAI.new()
@@ -649,7 +651,9 @@ func _test_section_a15_pre_lock_free_scoring() -> void:
 
 	var action := ai.choose_action(attacker, defender,
 			BattleParty.single(attacker), BattleParty.single(defender))
-	# Water Gun: 100 + 2 (DECENT_EFFECT 2×) = 102. Tackle: 100. Water Gun wins.
+	# Water Gun (2× vs Fire): base=19 dmg, ×2=38 → hits-to-KO 500hp = ceil(500/38)=14.
+	# Tackle (1× vs Fire): base=19 dmg, ×1=19 → hits-to-KO 500hp = ceil(500/19)=27.
+	# WaterGun is outright fewest-hits → BEST_DAMAGE_MOVE(+1) → 101. Tackle: 100.
 	_chk("A15.01 unlocked AI picks best move (not forced to index 0)",
 			action["index"] == 1)
 	_chk("A15.02 returns move (not switch)", action["type"] == "move")
@@ -779,22 +783,21 @@ func _test_section_a18_bad_lock_switch_immune() -> void:
 
 # ── A19: Choice Band changes move selection — Band makes Tackle KO (positive) ──
 # Discriminating test: Band boosts physical attack, making Tackle KO the defender.
-# Without Band, Water Gun (2× vs Fire, DECENT_EFFECT +2) would score higher.
-# With Band, Tackle KOs → FAST_KILL +6 → score 106 > Water Gun 102.
+# Without Band (A20), only Water Gun KOs → Water Gun wins via FAST_KILL.
+# With Band, both KOs → both get FAST_KILL → tie → force_tie_rng=0 → index 0 (Tackle).
 #
 # Damage derivation (force_roll=100, force_crit=false, level=50):
 #   Attacker: Bug type (no STAB), base_atk=120→actual 125, base_spatk=80→actual 85,
-#             base_spd=200→faster than defender for FAST_KILL.
-#   Defender: Fire type, base_def=50→actual 55, current_hp=60.
+#             base_spd=200→faster than defender (spd 85) → FAST_KILL.
+#   Defender: Fire type, base_def=50→actual 55, current_hp=45.
 #
 #   Tackle (Normal, physical, power 40):
-#     Without Band: 40*125*22/55/50+2 = 110000/55/50+2 = 2000/50+2 = 42. No KO (42<60).
-#     Band (atk→(125*6144+2047)/4096=187): 40*187*22/55/50+2 = 164560/55/50+2 = 2992/50+2 = 61. KO! (61≥60).
+#     Without Band: 40*125*22/55/50+2 = 110000/55/50+2 = 2000/50+2 = 42. No KO (42<45).
+#     With Band (atk→(125*6144+2047)/4096=187): 40*187*22/55/50+2 = 164560/55/50+2 = 2992/50+2 = 61. KO! (61≥45).
 #   Water Gun (Water, special, power 40, no STAB, 2× vs Fire):
-#     spatk=85: 40*85*22/55/50+2=74800/55/50+2=1360/50+2=29. After 2× UQ412: (29*8192+2047)/4096=58. No KO (58<60).
+#     spatk=85: 40*85*22/55/50+2 = 74800/55/50+2 = 1360/50+2 = 29; ×2.0 = 58. KO! (58≥45).
 #
-#   Scores WITH Band: Tackle = 100 + FAST_KILL(6) = 106 > Water Gun = 102. AI picks Tackle.
-#   Confirmed: items compose through DamageCalculator automatically — no AI scoring changes.
+#   Scores WITH Band: Tackle=106 (FAST_KILL), WaterGun=106 (FAST_KILL). Tie → index 0.
 #   Source: ItemManager.attack_modifier_uq412 called from DamageCalculator L157-159.
 
 func _test_section_a19_band_changes_move_selection() -> void:
@@ -809,7 +812,7 @@ func _test_section_a19_band_changes_move_selection() -> void:
 
 	var defender := _make_mon("Fire", TypeChart.TYPE_FIRE, TypeChart.TYPE_NONE,
 			160, 40, 50, 40, 50, 80)
-	defender.current_hp = 60
+	defender.current_hp = 45
 
 	var tackle   := _make_move("Tackle",   TypeChart.TYPE_NORMAL, 0, 40)
 	var water    := _make_move("WaterGun", TypeChart.TYPE_WATER,  1, 40)
@@ -818,14 +821,14 @@ func _test_section_a19_band_changes_move_selection() -> void:
 
 	var action := ai.choose_action(attacker, defender,
 			BattleParty.single(attacker), BattleParty.single(defender))
-	# Band: Tackle 61 ≥ 60 → KO → FAST_KILL → score 106. Water Gun 58 < 60 → score 102.
-	_chk("A19.01 with Band: Tackle KOs → AI picks Tackle (index 0)", action["index"] == 0)
+	# Band: Tackle 61≥45 → FAST_KILL 106. WaterGun 58≥45 → FAST_KILL 106. Tie → index 0.
+	_chk("A19.01 with Band: both KO, tie-break favors index 0 (Tackle)", action["index"] == 0)
 	_chk("A19.02 returns move", action["type"] == "move")
 
 
 # ── A20: Without Band — Water Gun wins (negative/contrast to A19) ─────────────
-# Same scenario as A19 but no held item. Tackle does NOT KO (42<60) so it scores 100.
-# Water Gun scores 102 (DECENT_EFFECT +2 for 2× vs Fire). AI picks Water Gun.
+# Same scenario as A19 but no held item. Tackle 42<45 → no KO → score 100.
+# Water Gun 58≥45 → KO → FAST_KILL → score 106. AI picks Water Gun.
 
 func _test_section_a20_without_band_other_move_wins() -> void:
 	var ai := TrainerAI.new()
@@ -839,7 +842,7 @@ func _test_section_a20_without_band_other_move_wins() -> void:
 
 	var defender := _make_mon("Fire", TypeChart.TYPE_FIRE, TypeChart.TYPE_NONE,
 			160, 40, 50, 40, 50, 80)
-	defender.current_hp = 60
+	defender.current_hp = 45
 
 	var tackle   := _make_move("Tackle",   TypeChart.TYPE_NORMAL, 0, 40)
 	var water    := _make_move("WaterGun", TypeChart.TYPE_WATER,  1, 40)
@@ -848,7 +851,7 @@ func _test_section_a20_without_band_other_move_wins() -> void:
 
 	var action := ai.choose_action(attacker, defender,
 			BattleParty.single(attacker), BattleParty.single(defender))
-	# No Band: Tackle 42 < 60 → no KO → score 100. Water Gun 58 < 60 → score 102. Water Gun wins.
-	_chk("A20.01 without Band: Water Gun scores higher → AI picks Water Gun (index 1)",
+	# No Band: Tackle 42<45 → no KO → 100. WaterGun 58≥45 → KO → FAST_KILL → 106. WaterGun wins.
+	_chk("A20.01 without Band: Water Gun KOs → AI picks Water Gun (index 1)",
 			action["index"] == 1)
 	_chk("A20.02 returns move", action["type"] == "move")
