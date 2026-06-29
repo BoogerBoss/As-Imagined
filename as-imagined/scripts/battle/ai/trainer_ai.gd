@@ -23,7 +23,9 @@ extends RefCounted
 #   Berry-triggered awareness: confirmed absent from source (docs/decisions.md).
 #
 # Explicitly deferred (not implemented, documented in docs/decisions.md):
-#   - Doubles AI (AI_FLAG_DOUBLE_BATTLE): no doubles engine yet.
+#   - Partner coordination (AI_DoubleBattle's partnerMove checks): confirmed-partial;
+#     source has it but it is out of scope for M14c's three targeted decisions.
+#   - AI_AttacksPartner: confirmed absent for trainer AI (only wild natural enemies).
 #   - AI_FLAG_PREDICT_SWITCH, AI_FLAG_OMNISCIENT, and other advanced flags:
 #     scope beyond basic + smart tier.
 
@@ -54,6 +56,111 @@ var _force_switch_rng: int = -1
 # -1 / null = real RNG (default). Pinned values are only set by test code.
 var _force_roll: int = -1         # passed as force_roll to DamageCalculator.calculate
 var _force_crit: Variant = null   # passed as force_crit to DamageCalculator.calculate
+
+
+# ── Doubles entry: choose action for one combatant in a doubles battle ────────
+#
+# Source: ChooseMoveOrAction_Doubles (battle_ai_main.c L918-1038).
+#
+# Scoring architecture (from source):
+#   For each candidate target slot, run the full AI scoring pipeline with that
+#   slot as the nominal defender. Record the best-move score per target. Then
+#   pick the target with the highest best-move score. Return that (move, target).
+#   This means each (move, target) pair is scored independently — the AI does NOT
+#   score a move once and bolt on a target separately.
+#
+# Spread moves (M14c extension of _score_move):
+#   When ≥2 live opponents exist, DamageCalculator.calculate is called with
+#   is_spread=true so the 0.75× reduction is applied in KO estimation. An
+#   additional DECENT_EFFECT (+2) bonus is added to reflect hitting two targets.
+#   Source: ShouldUseSpreadDamageMove (AI_CompareDamagingMoves L3915) treats
+#   spread moves as "preferred" when they hit both sides — the +2 captures that.
+#
+# AI_AttacksPartner (flag 30, L6045) — confirmed absent for trainer AI:
+#   Only fires for IsNaturalEnemy (wild battles) or AI_FLAG_ATTACKS_PARTNER_FOCUSES_PARTNER.
+#   Trainer doubles AI never deliberately targets its own ally. Documented in
+#   docs/decisions.md as confirmed-absent.
+#
+# Returns {"type": "move", "index": int, "target": int}.
+# "target" is opp0_idx or opp1_idx (the combatant index used by BattleManager).
+
+func choose_action_doubles(
+		attacker: BattlePokemon,
+		_ally: BattlePokemon,
+		opp0: BattlePokemon, opp0_idx: int,
+		opp1: BattlePokemon, opp1_idx: int,
+		my_party: BattleParty,
+		_opp_party: BattleParty,
+		weather: int = DamageCalculator.WEATHER_NONE) -> Dictionary:
+	# SMART tier: proactive switch vs first live opponent (same logic as singles).
+	if tier == Tier.SMART:
+		var first_opp: BattlePokemon = opp0 if (opp0 != null and not opp0.fainted) else opp1
+		if first_opp != null and not first_opp.fainted:
+			var switch_slot: int = _should_switch(attacker, first_opp, my_party, weather)
+			if switch_slot >= 0:
+				return {"type": "switch", "slot": switch_slot}
+
+	# Choice lock — same as singles; target the first live opponent.
+	if attacker.choice_locked_move != null:
+		var locked_idx: int = attacker.moves.find(attacker.choice_locked_move)
+		if locked_idx >= 0:
+			var tgt_idx: int = opp0_idx if (opp0 != null and not opp0.fainted) else opp1_idx
+			return {"type": "move", "index": locked_idx, "target": tgt_idx}
+
+	# Count live opponents to determine spread-reduction applicability.
+	var live_opp_count: int = 0
+	if opp0 != null and not opp0.fainted and opp0.current_hp > 0:
+		live_opp_count += 1
+	if opp1 != null and not opp1.fainted and opp1.current_hp > 0:
+		live_opp_count += 1
+
+	# Score each move vs each live opponent slot independently.
+	# Source: L930-1008 — outer loop over battlerIndex, inner scoring per move.
+	# GDScript 4.x: typed Arrays from literals need loop assignment (gotcha: silent fail).
+	var best_score: Array[int] = []
+	best_score.resize(2)
+	best_score[0] = -1
+	best_score[1] = -1
+	var best_move: Array[int] = []
+	best_move.resize(2)
+	best_move[0] = 0
+	best_move[1] = 0
+	var opps: Array = [opp0, opp1]
+	var opp_idxs: Array[int] = []
+	opp_idxs.append(opp0_idx)
+	opp_idxs.append(opp1_idx)
+
+	for oi in range(2):
+		var opp: BattlePokemon = opps[oi]
+		if opp == null or opp.fainted or opp.current_hp <= 0:
+			continue
+		var is_spread_active: bool = live_opp_count >= 2
+
+		var scores: Array[int] = []
+		for move: MoveData in attacker.moves:
+			if move == null:
+				scores.append(-999)
+			else:
+				scores.append(_score_move_doubles(
+						attacker, opp, move, weather,
+						move.is_spread and is_spread_active,
+						live_opp_count))
+
+		var best_idx: int = _pick_best(scores, attacker.moves)
+		best_score[oi] = scores[best_idx] if not scores.is_empty() else AI_SCORE_DEFAULT
+		best_move[oi]  = best_idx
+
+	# Pick target with highest best-move score.
+	# Source: L1011-1034 — track mostMovePoints across target loop.
+	var chosen_oi: int = 0
+	if best_score[1] > best_score[0]:
+		chosen_oi = 1
+
+	return {
+		"type":   "move",
+		"index":  best_move[chosen_oi],
+		"target": opp_idxs[chosen_oi]
+	}
 
 
 # ── Main entry: choose an action for this turn ────────────────────────────────
@@ -206,6 +313,62 @@ func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
 		# Source: IncreasePoisonScore/IncreaseParalyzeScore/IncreaseSleepScore/IncreaseBurnScore
 		#   each add DECENT_EFFECT(2) when AI_Can*(…) returns TRUE. AI_Can* is TRUE when
 		#   target has STATUS_NONE, type not immune, no substitute blocking.
+		if move.secondary_effect in [
+				MoveData.SE_BURN, MoveData.SE_PARALYSIS, MoveData.SE_SLEEP,
+				MoveData.SE_TOXIC, MoveData.SE_FREEZE]:
+			if defender.status == BattlePokemon.STATUS_NONE:
+				score += DECENT_EFFECT
+
+	return score
+
+
+# ── Doubles move scoring ──────────────────────────────────────────────────────
+#
+# Extends _score_move with two doubles-specific adjustments:
+#   1. is_spread_active passed to DamageCalculator so KO estimation uses 0.75×.
+#   2. Spread bonus (+DECENT_EFFECT) when the move hits ≥2 live opponents.
+
+func _score_move_doubles(attacker: BattlePokemon, defender: BattlePokemon,
+		move: MoveData, weather: int,
+		is_spread_active: bool, live_opp_count: int) -> int:
+	var score: int = AI_SCORE_DEFAULT
+
+	var effectiveness: float = TypeChart.get_effectiveness(
+			move.type, defender.species.types)
+	if effectiveness == 0.0:
+		return score - 20
+
+	if move.two_turn and move.semi_inv_state == MoveData.SEMI_INV_NONE:
+		if _can_defender_ko_attacker(attacker, defender, weather):
+			score -= 10
+
+	if move.category == 2 and move.secondary_effect in [
+			MoveData.SE_BURN, MoveData.SE_PARALYSIS, MoveData.SE_SLEEP,
+			MoveData.SE_TOXIC, MoveData.SE_FREEZE]:
+		if defender.status != BattlePokemon.STATUS_NONE:
+			score -= 10
+
+	if move.category != 2 and move.power > 0:
+		var result: Dictionary = DamageCalculator.calculate(
+				attacker, defender, move, _force_roll, _force_crit, weather,
+				is_spread_active)
+		if result["damage"] >= defender.current_hp:
+			if StatusManager.effective_speed(attacker) >= StatusManager.effective_speed(defender):
+				score += FAST_KILL
+			else:
+				score += SLOW_KILL
+
+	if move.category != 2:
+		if effectiveness >= 4.0:
+			score += BEST_EFFECT
+		elif effectiveness >= 2.0:
+			score += DECENT_EFFECT
+		# Spread bonus: hitting 2 targets is worth more than hitting 1.
+		# Source: ShouldUseSpreadDamageMove (AI_CompareDamagingMoves L3915) — prefers
+		# spread moves that hit both sides without crossing the friendly-fire threshold.
+		if move.is_spread and live_opp_count >= 2:
+			score += DECENT_EFFECT
+	else:
 		if move.secondary_effect in [
 				MoveData.SE_BURN, MoveData.SE_PARALYSIS, MoveData.SE_SLEEP,
 				MoveData.SE_TOXIC, MoveData.SE_FREEZE]:

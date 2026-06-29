@@ -239,8 +239,8 @@ it exists purely to look up exact source logic.
 - M12 (Held Items): **COMPLETE** — 2026-06-27, 60/60 tests pass
 - M13 (Item AI): **COMPLETE** — 2026-06-27, 40/40 tests pass (includes M10's 26 + 14 new)
 - M14a (Doubles — state machine + turn order for 4 combatants): **COMPLETE** — 2026-06-28, 25/25 tests pass
-- M14b (Doubles — spread moves and ally-targeting effects): pending
-- M14c (Doubles — AI): pending
+- M14b (Doubles — spread moves and ally-targeting effects): **COMPLETE** — 2026-06-28, 46/46 tests pass (40 M14a + 9 M14b + B8 fixture fix; all prior suites green)
+- M14c (Doubles — AI): **COMPLETE** — 2026-06-28, 46/46 tests pass (C1–C3 added; all prior suites green)
 
 ## Development workflow
 

@@ -1227,3 +1227,113 @@ Full pipeline (source: `CalculateBaseDamage` + `ApplyModifiersAfterDmgRoll`, bat
 - `queue_replacement_for(combatant_idx, slot)` — faint replacement for a specific slot.
 - Legacy `queue_move(side, slot)` / `queue_switch(side, slot)` / `queue_replacement(side, slot)`
   remain for backward compat; they address combatant `side * _active_per_side` (slot 0 of side).
+
+---
+
+## [M14b] Spread move damage reduction
+
+- Source: `battle_util.c` :: `GetTargetDamageModifier` (L7220–7229)
+- Behavior: When a spread move (is_spread=true) is used and ≥2 live opposing targets
+  exist, each hit is multiplied by 0.75 (UQ4.12 = 3072). Applied as the first modifier
+  after CalculateBaseDamage, before weather/crit/roll. When only 1 live target exists
+  at execution time, no reduction — the lone target takes full power.
+- Notes: `live_target_count` is computed at move-execution time (not selection time).
+  If one opponent faints mid-turn (from another combatant's action), the later spread
+  hits the survivor at full power. This matches source behavior (GetMoveTargetCount
+  counts non-absent battlers at the time the move fires).
+
+## [M14b] Helping Hand base-power boost
+
+- Source: `battle_util.c` :: `CalcMoveBasePowerAfterModifiers` (L6436–6437)
+- Behavior: Helping Hand multiplies the receiver's next move's base power by 1.5
+  (UQ4.12 = 6144). Applied to effective_power before the damage formula, NOT to the
+  final damage. The boost flag is cleared at the start of each turn's priority
+  resolution (TurnValuesCleanUp / memset gProtectStructs).
+- Notes: STAB is applied AFTER the random roll (ApplyModifiersAfterDmgRoll L7617).
+  The unboosted Normal-type damage range is 43–52 (with STAB, at level 50 in tests);
+  HH-boosted range is 66–78. Threshold 60 discriminates cleanly with margins of 8/6.
+
+## [M14b] Follow Me target redirect
+
+- Source: `battle_move_resolution.c` :: `IsAffectedByFollowMe` (L799)
+- Behavior: Follow Me redirects all incoming single-target moves toward the Follow Me
+  user. Spread moves (is_spread=true) bypass Follow Me — they still hit all live
+  opponents. AI and queued targets are overridden at execution time.
+- Notes: Follow Me redirect stored in `_follow_me_targets[side]` (per-side index).
+  Cleared at start of priority resolution alongside Helping Hand.
+
+## [M14b] Destiny Bond killer tracking in doubles
+
+- Source: `_last_attacker` dict, populated by `_do_damaging_hit` on every damaging hit.
+- Behavior: When a Destiny Bond user faints, the killer is looked up from `_last_attacker`.
+  In doubles, multiple combatants may hit the DB user in the same turn; `_last_attacker`
+  records the most recent hit, correctly identifying the actual fatal attacker.
+- Notes: `_get_first_opponent` fallback is only reached if `_last_attacker` has no entry
+  for the fainted mon (e.g., damage-over-time faint at end-of-turn with no attacking hit).
+
+## [M14b] _phase_faint_check — "all-time fainted" semantics bug (fixed)
+
+- Source: project-internal state-machine semantics (no direct source analogue).
+- Behavior: `_phase_faint_check` must only trigger `SWITCH_PROMPT` for mons that fainted
+  THIS tick (`current_hp ≤ 0 and not fainted`), not for mons that fainted in prior turns
+  (`fainted = true`). The old second scanning loop checked `if combatant.fainted:`, which
+  re-triggered SWITCH_PROMPT on every subsequent tick in doubles no-bench scenarios,
+  preventing later actors from ever executing.
+- Fix: replaced second loop with `any_new_faint` flag tracked during the first loop.
+
+## [M14c] Doubles AI scoring architecture
+
+- Source: `battle_ai_main.c` :: `ChooseMoveOrAction_Doubles` (L918–1038)
+- Behavior: For each candidate target slot (excluding self and fainted mons), run the full
+  AI scoring pipeline with that slot as the nominal defender. Each (move, target) pair is
+  scored independently — the AI does NOT score a move once and bolt a target onto it.
+  After all targets are evaluated, pick the target with the highest best-move score.
+  The chosen move is whichever move scored highest against that target.
+- Notes: Implemented as `TrainerAI.choose_action_doubles` with per-slot outer loop.
+  Returns {"type": "move", "index": int, "target": int}. The "target" is the combatant
+  index used directly by BattleManager's `_chosen_targets[i]`.
+
+## [M14c] Doubles AI spread move preference
+
+- Source: `battle_ai_main.c` :: `ShouldUseSpreadDamageMove` in `AI_CompareDamagingMoves` (L3915)
+- Behavior: When ≥2 live opponents exist, spread moves are treated as "preferred" in
+  AI_CompareDamagingMoves by assigning them noOfHits=-1, excluding them from direct
+  KO-hit-count comparison. This effectively gives spread moves priority over single-target
+  moves when they can hit both opponents.
+- Port: `_score_move_doubles` adds DECENT_EFFECT (+2) to any spread move's score when
+  live_opp_count ≥ 2. DamageCalculator.calculate is called with is_spread=true so KO
+  estimation correctly applies the 0.75× reduction.
+- Notes: The +2 captures the source's preference for spread moves without replicating the
+  full KO-counting machinery. With STAB at roll=100, spread (power=90, +2 bonus) scores
+  108 vs tackle (power=40) scoring 106 in the C1 fixture — correct winner margin 2.
+
+## [M14c] AI_AttacksPartner — confirmed absent for trainer AI
+
+- Source: `battle_ai_main.c` :: `AI_AttacksPartner` (L6045–6067); flag index 30
+- Behavior: This function only fires when (a) `IsNaturalEnemy(attacker, ally)` is true
+  (wild battle species-pair logic), or (b) `AI_FLAG_ATTACKS_PARTNER_FOCUSES_PARTNER`
+  is set. Neither condition applies to trainer battles in this project.
+- Port: `choose_action_doubles` never scores targeting the ally slot. Confirmed absent —
+  no trainer doubles AI in pokeemerald_expansion deliberately targets its own partner.
+
+## [M14c] Doubles AI partner coordination — confirmed absent
+
+- Source: `battle_ai_main.c` :: `AI_DoubleBattle` (L3034) — partner move awareness
+- Behavior: The source's AI_DoubleBattle does check `aiData->partnerMove` for specific
+  interactions (e.g., penalize duplicate moves, respond to Helping Hand). These partner-
+  state checks require knowing what the ally will do this turn (via `GetAllyChosenMove`).
+- Port: Not implemented. `choose_action_doubles` scores each battler independently
+  without reading the ally's chosen move for the current turn. Matches the scope of M14c:
+  "does the AI factor in partner state?" — source does, but only for specific move effects
+  (Helping Hand response, equivalent move deduplication). These are not in scope for the
+  three targeted decisions (spread preference, target selection, AI_AttacksPartner check).
+  Documented as confirmed-partial — the source HAS this logic but it is out of scope.
+
+## [M14c] B8 Destiny Bond fixture non-determinism (fixed)
+
+- Source: test fixture correctness (not a mechanic issue).
+- Behavior: The original B8 fixture used B1 base_atk=200 (stat=205), which gives a damage
+  range of 55–66 against A0 (max_hp=61). OHKO probability = 7/16 ≈ 44%. The comment
+  claimed "min=82>61" which was arithmetically wrong (omitted STAB application).
+- Fix: raised B1's base_atk to 230 (stat=235). New range: 63–76. Guaranteed OHKO at all
+  rolls. Verified: base=50, roll=85 → 42, STAB → 63 ≥ 61.

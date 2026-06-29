@@ -360,22 +360,35 @@ func _phase_move_selection() -> void:
 				if action.has("target"):
 					_chosen_targets[i] = action["target"]
 		elif _trainer_ais[side] != null:
-			# M10: TrainerAI decides. Same seam as queue_move/queue_switch.
-			# Source: ComputeAiBattlerDecisions (battle_ai_main.c L401) →
-			#   ChooseMoveOrAction / AI_TrySwitchOrUseItem.
-			# M14a: AI sees the first opponent only (_get_first_opponent).
-			#   Full doubles AI targeting is M14c scope.
+			# TrainerAI decides. Source: ComputeAiBattlerDecisions (battle_ai_main.c L401).
+			# M14c: doubles uses choose_action_doubles (per-slot target scoring);
+			#   singles uses choose_action (single defender).
 			var ai: TrainerAI = _trainer_ais[side]
-			var opponent: BattlePokemon = _get_first_opponent(mon)
-			# M11: pass current field weather so AI scoring uses weather-modified damage.
-			var action: Dictionary = ai.choose_action(
-					mon, opponent, _parties[side], _parties[1 - side], weather)
+			var action: Dictionary
+			if _active_per_side == 2:
+				# Doubles: pass both opponent slots so AI can pick (move, target) jointly.
+				# Source: ChooseMoveOrAction_Doubles (battle_ai_main.c L918).
+				var opp_start: int = (1 - side) * _active_per_side
+				var ally_idx: int = side * _active_per_side + (1 - i % _active_per_side)
+				action = ai.choose_action_doubles(
+						mon,
+						_combatants[ally_idx],
+						_combatants[opp_start], opp_start,
+						_combatants[opp_start + 1], opp_start + 1,
+						_parties[side], _parties[1 - side], weather)
+			else:
+				# Singles: original path, unchanged.
+				var opponent: BattlePokemon = _get_first_opponent(mon)
+				action = ai.choose_action(
+						mon, opponent, _parties[side], _parties[1 - side], weather)
 			if action["type"] == "switch":
 				_chosen_switch_slots[i] = action["slot"]
 				_chosen_moves[i] = null
 			else:
 				var idx: int = action.get("index", 0)
 				_chosen_moves[i] = mon.moves[idx] if idx < mon.moves.size() else null
+				if action.has("target"):
+					_chosen_targets[i] = action["target"]
 		else:
 			_chosen_moves[i] = mon.moves[0] if mon.moves.size() > 0 else null
 		# M12: Choice lock enforcement — overrides whatever path set above.

@@ -54,6 +54,9 @@ func _ready() -> void:
 	_test_b7_follow_me_bypasses_spread()
 	_test_b8_destiny_bond_real_killer()
 	_test_b9_roar_targets_field_slot()
+	_test_c1_ai_prefers_spread_two_targets()
+	_test_c2_ai_avoids_immune_spread()
+	_test_c3_ai_targets_weak_slot()
 
 	var total := _pass + _fail
 	print("doubles_test: %d/%d passed" % [_pass, total])
@@ -815,9 +818,10 @@ func _test_b8_destiny_bond_real_killer() -> void:
 
 	var a0 := _make_mon("A0",   1,  80, 80, 80, 80, 100)  # HP=1 → max_hp=61
 	var a1 := _make_mon("A1", 100,  80, 80, 80, 80,  60)
-	# B1 atk=200 → atk=205. A0 def=85. base=40*205*22/85/50+2=97. min=82>61(A0 max_hp). ✓
+	# B1 base_atk=230 → stat=235. A0 base_def=80 → stat=85.
+	# Damage: base=40*235*22/85/50+2=50. roll=85: 42. STAB: 63 ≥ 61. Guaranteed OHKO. ✓
 	var b0 := _make_mon("B0", 100,  80, 80, 80, 80,  80)
-	var b1 := _make_mon("B1", 100, 200, 80, 80, 80,  40)
+	var b1 := _make_mon("B1", 100, 230, 80, 80, 80,  40)
 	a0.add_move(db)
 	for mon in [a1, b0, b1]:
 		mon.add_move(tackle)
@@ -904,3 +908,129 @@ func _test_b9_roar_targets_field_slot() -> void:
 
 	_chk("B9.02 Roar targeting combatant 2 forced out B0 (not B1)", roar_out_b[0] == b0b)
 	bm_b.queue_free()
+
+
+# ── C1-C3: Doubles AI decision tests ─────────────────────────────────────────
+#
+# All three are TrainerAI unit tests (no BattleManager) using choose_action_doubles
+# directly. Force-roll=100 and force-crit=false make damage estimates deterministic.
+#
+# Source: ChooseMoveOrAction_Doubles (battle_ai_main.c L918-1038).
+#   Per-(move, target) scoring: scores all moves vs each opponent slot independently,
+#   then picks the (move, target) pair with the highest score.
+#
+# AI_AttacksPartner (flag 30, L6045) — confirmed absent for trainer AI.
+#   Only fires for IsNaturalEnemy wild battles or AI_FLAG_ATTACKS_PARTNER_FOCUSES_PARTNER.
+#   Trainer doubles AI never deliberately targets its own ally. See docs/decisions.md.
+
+
+# ── C1: AI prefers spread move when 2 live opponents ──────────────────────────
+#
+# AI has spread (Normal, power=90) and tackle (Normal, power=40). Both opponents alive.
+# Spread scores higher than tackle due to the spread bonus (+DECENT_EFFECT=+2)
+# even though both moves KO at force-roll=100.
+#
+# Arithmetic (AI base_atk=200→stat=205, defender base_def=80→stat=85, max_hp=61):
+#
+#   Spread (is_spread=true, 2 live targets), power=90:
+#     Base: 90*205*22/85/50+2 = 97.  Spread: (97*3072+2047)/4096 = 73.
+#     Roll=100: 73.  STAB: (73*6144+2047)/4096 = 109 ≥ 61 → KO → +FAST_KILL(6).
+#     Spread bonus for live_opp_count≥2: +DECENT_EFFECT(2).  Score = 108.
+#
+#   Tackle (is_spread=false), power=40:
+#     Base: 40*205*22/85/50+2 = 44.  Roll=100: 44.  STAB: 66 ≥ 61 → KO → +FAST_KILL(6).
+#     No spread bonus.  Score = 106.
+#
+# Threshold: 108 > 106 → AI chooses spread (index 0).
+
+func _test_c1_ai_prefers_spread_two_targets() -> void:
+	var ai := TrainerAI.new()
+	ai._force_roll = 100
+	ai._force_crit = false
+
+	var spread_move := _make_spread("TestSpread", 90, TypeChart.TYPE_NORMAL)
+	var tackle := _load_move(33)
+
+	var ai_mon := _make_mon("AI", 100, 200, 80, 80, 80, 100)
+	ai_mon.add_move(spread_move)   # index 0
+	ai_mon.add_move(tackle)        # index 1
+
+	var b0 := _make_mon("B0", 1, 80, 80, 80, 80, 80)
+	var b1 := _make_mon("B1", 1, 80, 80, 80, 80, 40)
+
+	var action := ai.choose_action_doubles(
+			ai_mon, null,
+			b0, 2, b1, 3,
+			BattleParty.new(), BattleParty.new())
+
+	_chk("C1.01 AI picks spread (index 0) when 2 live opponents", action["index"] == 0)
+	_chk("C1.02 action type is move", action["type"] == "move")
+
+
+# ── C2: AI avoids immune spread, picks non-immune single-target move ───────────
+#
+# AI has ground-spread (Ground, power=80) and tackle (Normal, power=40).
+# Only 1 live opponent (B0 is Flying type, immune to Ground; B1 is fainted).
+# Ground effectiveness vs Flying = 0.0 → spread scores -20 (early return = 80).
+# Tackle scores 100 (no KO at force-roll=100, no type bonus; Normal vs Flying = 1×).
+#
+# Score ground-spread vs B0: 80.  Score tackle vs B0: 100.  Tackle wins → index 1.
+
+func _test_c2_ai_avoids_immune_spread() -> void:
+	var ai := TrainerAI.new()
+	ai._force_roll = 100
+	ai._force_crit = false
+
+	var ground_spread := _make_spread("TestGroundSpread", 80, TypeChart.TYPE_GROUND)
+	var tackle := _load_move(33)
+
+	var ai_mon := _make_mon("AI", 100, 80, 80, 80, 80, 80)
+	ai_mon.add_move(ground_spread)  # index 0
+	ai_mon.add_move(tackle)         # index 1
+
+	var b0 := _make_mon_typed("B0", TypeChart.TYPE_FLYING)
+	var b1 := _make_mon("B1", 1, 80, 80, 80, 80, 40)
+	b1.fainted = true  # only B0 is alive
+
+	var action := ai.choose_action_doubles(
+			ai_mon, null,
+			b0, 2, b1, 3,
+			BattleParty.new(), BattleParty.new())
+
+	_chk("C2.01 AI picks tackle (index 1) over immune ground-spread", action["index"] == 1)
+	_chk("C2.02 AI targets live opponent (B0 slot, opp0_idx=2)", action["target"] == 2)
+
+
+# ── C3: AI targets the weakened slot (KO opportunity) ─────────────────────────
+#
+# AI has tackle (Normal, power=40). Two live opponents: B0 at full HP, B1 at 1 HP.
+# Score tackle vs B0: 100 (no KO).
+# Score tackle vs B1: 106 (KO → +FAST_KILL=6).
+# B1 wins → AI targets opp1_idx=3.
+#
+# Arithmetic (AI base_atk=100→stat=105, base_spd=100→stat=105 > B1 spd stat=85):
+#   Base: 40*105*22/85/50+2 = 23.  Roll=100: 23.  STAB: (23*6144+2047)/4096 = 34.
+#   B1.current_hp=1 → 34 ≥ 1 → KO → AI faster → FAST_KILL(+6) → score=106.
+#   B0 max_hp=61, damage=34 < 61 → no KO → score=100.
+
+func _test_c3_ai_targets_weak_slot() -> void:
+	var ai := TrainerAI.new()
+	ai._force_roll = 100
+	ai._force_crit = false
+
+	var tackle := _load_move(33)
+
+	var ai_mon := _make_mon("AI", 100, 100, 80, 80, 80, 100)
+	ai_mon.add_move(tackle)
+
+	var b0 := _make_mon("B0", 1, 80, 80, 80, 80, 80)   # full HP (max_hp=61)
+	var b1 := _make_mon("B1", 1, 80, 80, 80, 80, 80)   # at 1 HP
+	b1.current_hp = 1
+
+	var action := ai.choose_action_doubles(
+			ai_mon, null,
+			b0, 2, b1, 3,
+			BattleParty.new(), BattleParty.new())
+
+	_chk("C3.01 AI targets weakened B1 (opp1_idx=3)", action["target"] == 3)
+	_chk("C3.02 AI chooses tackle (index 0)", action["index"] == 0)
