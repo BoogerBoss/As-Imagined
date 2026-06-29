@@ -188,6 +188,43 @@ func _ready() -> void:
 	_check_exact("T3e Flame Wheel.thaws_user=true → check_user_thaw=true", int(thawed_e), 1)
 	_check_exact("T3e attacker status cleared to NONE", ch_frozen2.status, BattlePokemon.STATUS_NONE)
 
+	# ─── SECTION 4: BattleManager integration — freeze-thaw wiring ───────────────
+	print("")
+	print("--- Section 4: BattleManager freeze-thaw wiring (integration) ---")
+
+	# T4a: Frozen attacker using Flame Wheel — full BattleManager turn wiring.
+	# Verifies that _phase_pre_move_checks skips the freeze canceler (attacker can move),
+	# then _phase_move_execution's check_user_thaw fires pokemon_thawed.
+	# T3e tests check_user_thaw in isolation; T4a tests the BattleManager phase wiring —
+	# the gap that existed before the !MoveThawsUser gate was ported into pre_move_check.
+	# Source: battle_move_resolution.c L172 !MoveThawsUser gate + CancelerThaw L586-622.
+	var flame_wheel4a := MoveRegistry.get_move(172)
+	var wgun4a        := MoveRegistry.get_move(55)
+	var atk4a := _make_mon("FrzChar", [TypeChart.TYPE_FIRE],  39, 52, 43, 60, 50, 100)
+	var def4a := _make_mon("FrzSqtl", [TypeChart.TYPE_WATER], 44, 48, 65, 50, 64, 50)
+	atk4a.add_move(flame_wheel4a)
+	def4a.add_move(wgun4a)
+	StatusManager.try_apply_status(atk4a, BattlePokemon.STATUS_FREEZE)
+	def4a.current_hp = 1  # Flame Wheel KOs def4a on turn 1 — keeps battle finite
+	var thaw_count4a    := [0]
+	var thawed_correct4a := [false]
+	var fw_damage4a     := [0]
+	var bm4a := BattleManager.new()
+	add_child(bm4a)
+	bm4a.pokemon_thawed.connect(func(mon: BattlePokemon):
+		thaw_count4a[0] += 1
+		thawed_correct4a[0] = (mon == atk4a))
+	bm4a.move_executed.connect(func(exec_atk: BattlePokemon, _exec_def: BattlePokemon,
+			mv: MoveData, dmg: int):
+		if mv == flame_wheel4a and exec_atk == atk4a:
+			fw_damage4a[0] = dmg)
+	bm4a.start_battle(atk4a, def4a)
+	bm4a.queue_free()
+	_check_exact("T4a pokemon_thawed fired exactly once",             thaw_count4a[0],          1)
+	_check_exact("T4a thawed mon is the frozen attacker",             int(thawed_correct4a[0]), 1)
+	_check_exact("T4a attacker status NONE after turn",               atk4a.status,             BattlePokemon.STATUS_NONE)
+	_check_exact("T4a Flame Wheel dealt damage > 0 (attacker acted)", int(fw_damage4a[0] > 0),  1)
+
 	# ─── RESULTS ──────────────────────────────────────────────────────────────
 	print("")
 	print("=== Results: " + str(_pass) + " passed, " + str(_fail) + " failed ===")

@@ -155,7 +155,8 @@ static func pre_move_check(
 		force_sleep_wake: Variant = null,
 		force_freeze_thaw: Variant = null,
 		force_confusion_hit: Variant = null,
-		force_full_para: Variant = null) -> Dictionary:
+		force_full_para: Variant = null,
+		move: MoveData = null) -> Dictionary:
 
 	var result := {
 		"can_move":        true,
@@ -192,9 +193,11 @@ static func pre_move_check(
 			return result
 
 	# ── Freeze ────────────────────────────────────────────────────────────
-	# Source: battle_move_resolution.c L172–186
-	# 20% chance to thaw each turn (RandomPercentage(RNG_FROZEN, 20)).
-	elif mon.status == BattlePokemon.STATUS_FREEZE:
+	# Source: battle_move_resolution.c L172–186, gated on !MoveThawsUser(cv->move).
+	# When the attacker uses a thaws_user move, this block is skipped entirely —
+	# the Pokémon stays frozen but can_move remains true; CancelerThaw
+	# (our check_user_thaw in MOVE_EXECUTION) handles the thaw after the move fires.
+	elif mon.status == BattlePokemon.STATUS_FREEZE and (move == null or not move.thaws_user):
 		var thaws: bool
 		if force_freeze_thaw == null:
 			# 20% thaw: randi() % 100 < 20

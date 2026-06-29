@@ -510,18 +510,14 @@ func _phase_pre_move_checks() -> void:
 		_set_phase(BattlePhase.MOVE_EXECUTION)
 		return
 
-	# User-thaw bypass: if the actor is frozen but their chosen move has thaws_user,
-	# the frozen check in CancelerAsleepOrFrozen is skipped (source: L172 !MoveThawsUser).
-	# Pass force_freeze_thaw=true so pre_move_check doesn't block on the freeze.
-	# The actual status clear happens in _phase_move_execution via check_user_thaw.
-	var chosen_move: MoveData = _chosen_moves[_combatants.find(actor)]
-	var freeze_bypass: bool = (actor.status == BattlePokemon.STATUS_FREEZE
-			and chosen_move != null and chosen_move.thaws_user)
-
 	# Status pre-move checks — source: battle_move_resolution.c canceler chain
 	# Order: sleep → freeze → confusion → paralysis (matching source canceler order)
+	# Pass chosen_move so pre_move_check gates the freeze block on !MoveThawsUser
+	# (source L172); a thaws_user move skips the 20% roll and leaves the Pokémon
+	# frozen-but-acting; check_user_thaw in MOVE_EXECUTION then thaws it.
+	var chosen_move: MoveData = _chosen_moves[_combatants.find(actor)]
 	var check: Dictionary = StatusManager.pre_move_check(
-			actor, null, true if freeze_bypass else null)
+			actor, null, null, null, null, chosen_move)
 
 	if check["self_hit_damage"] > 0:
 		var dmg: int = check["self_hit_damage"]
