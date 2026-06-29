@@ -211,3 +211,53 @@ const SEMI_INV_UNDERWATER: int  = 3  # Dive — underwater on turn 1
 #   confusionTurns (VOLATILE_CONFUSION) — V_BATON_PASSABLE (constants/battle.h L210)
 #   substituteHP — explicitly copied (L3185)
 @export var is_baton_pass: bool = false
+
+# ── M14b: Doubles move effects ─────────────────────────────────────────────────
+
+# Target type constants — source: include/constants/battle.h :: enum MoveTarget
+# These mirror the C enum values used in moves_info.h .target fields.
+const TARGET_NONE:           int = 0
+const TARGET_SELECTED:       int = 1  # single selected target (most moves)
+const TARGET_SMART:          int = 2  # like SELECTED but can smart-redirect with multi-hit
+const TARGET_DEPENDS:        int = 3
+const TARGET_OPPONENT:       int = 4  # one random opponent
+const TARGET_RANDOM:         int = 5  # random target including ally
+const TARGET_BOTH:           int = 6  # all opponents (Earthquake, Surf, etc.)
+const TARGET_USER:           int = 7  # user only (Follow Me, Protect)
+const TARGET_ALLY:           int = 8  # partner only (Helping Hand, Gen 4+)
+const TARGET_USER_AND_ALLY:  int = 9
+const TARGET_USER_OR_ALLY:   int = 10
+const TARGET_FOES_AND_ALLY:  int = 11 # all opponents + user's ally (Explosion, etc.)
+const TARGET_FIELD:          int = 12 # whole-field effects (Rain Dance, etc.)
+const TARGET_OPPONENTS_FIELD: int = 13
+const TARGET_ALL_BATTLERS:   int = 14
+
+# is_spread: move hits all opponents simultaneously in doubles (TARGET_BOTH or
+# TARGET_FOES_AND_ALLY). Spread moves receive a 0.75× damage reduction per target
+# when ≥2 targets are live at move-use time (Gen 4+).
+# Source: IsSpreadMove (include/battle.h L1163):
+#   moveTarget == TARGET_BOTH || moveTarget == TARGET_FOES_AND_ALLY
+# Source: GetTargetDamageModifier (battle_util.c L7220):
+#   if GetMoveTargetCount >= 2 → UQ_4_12(0.75) = 3072; applied as first post-base modifier.
+# Examples: Earthquake, Surf, Discharge, Rock Slide (doubles spread flag set in source).
+@export var is_spread: bool = false
+
+# is_helping_hand: grants the user's ally a 1.5× base-power boost on their next move.
+# Fails in singles, or if the ally has already moved this turn or is fainted.
+# Source: Cmd_trysethelpinghand (battle_script_commands.c L8850): sets
+#   gProtectStructs[ally].helpingHand++; cleared by TurnValuesCleanUp at turn end.
+# Source: CalcMoveBasePowerAfterModifiers (battle_util.c L6436):
+#   1.5× applied to base power; priority = 5.
+# Target: TARGET_ALLY (Gen 4+), priority = +5.
+@export var is_helping_hand: bool = false
+
+# is_follow_me: redirects all incoming single-target moves toward the user this turn.
+# Also covers Rage Powder (same EFFECT_FOLLOW_ME in source; adds powder_move flag).
+# Source: Cmd_setforcedtarget (battle_script_commands.c L8748):
+#   gSideTimers[GetBattlerSide(self)].followmeTimer = 1; followmeTarget = self.
+# Source: IsAffectedByFollowMe (battle_move_resolution.c L799):
+#   redirects TARGET_SELECTED/SMART/OPPONENT/RANDOM; spread moves bypass entirely.
+# Source: GetBattleMoveTarget (battle_util.c L5529): redirect at target resolution.
+# Cleared by TurnValuesCleanUp at turn end.
+# Target: TARGET_USER; priority = +2.
+@export var is_follow_me: bool = false

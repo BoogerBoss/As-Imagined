@@ -1,0 +1,30 @@
+import re
+
+input_file = "/home/rob/GodotAsImagined/pokeemerald-expansion/src/data/pokemon/all_learnables.json"
+output_file = "/home/rob/GodotAsImagined/pokemon_moves.csv"
+
+current_pokemon = None
+rows = []
+
+with open(input_file, "r") as f:
+    for line in f:
+        line = line.strip()
+
+        # detect Pokémon name like "PINCURCHIN"
+        m = re.match(r'"?([A-Z0-9_]+)"?\s*:', line)
+        if m:
+            current_pokemon = m.group(1)
+            continue
+
+        # extract all MOVE_ tokens in any line
+        moves = re.findall(r'MOVE_[A-Z0-9_]+', line)
+        for move in moves:
+            if current_pokemon:
+                rows.append((current_pokemon, move))
+
+with open(output_file, "w") as f:
+    f.write("Pokemon,Move\n")
+    for p, m in rows:
+        f.write(f"{p},{m}\n")
+
+print("Total rows written:", len(rows))

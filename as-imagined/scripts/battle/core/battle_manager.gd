@@ -81,6 +81,9 @@ signal weather_damage(pokemon: BattlePokemon, amount: int)                 # san
 signal item_consumed(pokemon: BattlePokemon, item: ItemData)               # one-use item activated
 signal item_healed(pokemon: BattlePokemon, amount: int)                    # Leftovers / Sitrus Berry
 signal item_damage(pokemon: BattlePokemon, amount: int)                    # Life Orb recoil
+# M14b signals
+signal helping_hand_used(user: BattlePokemon, ally: BattlePokemon)         # Helping Hand boosted ally
+signal follow_me_used(user: BattlePokemon)                                 # Follow Me/Rage Powder active
 
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
@@ -139,6 +142,27 @@ var _baton_pass_queues: Array = [[], [], [], []]
 # M10: per-side TrainerAI instances (null = human / test-queue side).
 # Set before start_battle*() with set_trainer_ai(side, ai).
 var _trainer_ais: Array = [null, null]
+
+# M14b: tracks the last Pokémon to deal damage to each target this turn.
+# Key: BattlePokemon (defender), Value: BattlePokemon (attacker that last hit them).
+# Cleared at the start of each turn (PRIORITY_RESOLUTION).
+# Used by Destiny Bond: when a Destiny Bond holder faints, the killer is _last_attacker
+# rather than _get_first_opponent (which is wrong in doubles if the second slot lands the KO).
+# Source: FAINT_BLOCK_TRY_DESTINY_BOND (battle_move_resolution.c L2953) uses gBattlerAttacker
+#   global at time of lethal hit — equivalent to tracking last attacker per target.
+var _last_attacker: Dictionary = {}
+
+# M14b: per-side Follow Me/Rage Powder state. -1 = no Follow Me active this turn.
+# Value = combatant index of the Pokémon that used Follow Me/Rage Powder.
+# Source: gSideTimers[side].followmeTimer / followmeTarget (battle_main.c L5060–5061).
+# Cleared at the start of each turn (PRIORITY_RESOLUTION / TurnValuesCleanUp equivalent).
+var _follow_me_targets: Array[int] = [-1, -1]
+
+# M14b: per-combatant Helping Hand boost flag for this turn.
+# True = this combatant's ally used Helping Hand; next damaging move gets 1.5× base power.
+# Source: gProtectStructs[battler].helpingHand (battle_util.c L6436).
+# Cleared at the start of each turn (PRIORITY_RESOLUTION / TurnValuesCleanUp equivalent).
+var _helping_hand: Array[bool] = [false, false, false, false]
 
 # M11: Field-wide weather state. Weather is NOT per-Pokémon — it's a battle-field
 # effect that persists through switches (gBattleWeather + gBattleStruct->weatherDuration).
@@ -375,6 +399,14 @@ func _phase_priority_resolution() -> void:
 		mon.protect_active = false
 		mon.last_physical_damage = 0
 		mon.last_special_damage = 0
+	# M14b: clear per-turn Follow Me, Helping Hand, and last-attacker state.
+	# Source: TurnValuesCleanUp (battle_main.c L5022): memset gProtectStructs (helpingHand),
+	#   gSideTimers[].followmeTimer = 0 (L5060–5061).
+	_last_attacker.clear()
+	_follow_me_targets[0] = -1
+	_follow_me_targets[1] = -1
+	for _hi in range(_helping_hand.size()):
+		_helping_hand[_hi] = false
 
 	_turn_order = _combatants.duplicate()
 
@@ -534,6 +566,21 @@ func _phase_move_execution() -> void:
 			return
 		defender = redirect
 
+	# M14b: Follow Me / Rage Powder redirect — single-target damaging moves aimed at
+	# a side with an active Follow Me user are redirected to that user instead.
+	# Source: IsAffectedByFollowMe (battle_move_resolution.c L799):
+	#   redirects TARGET_SELECTED/SMART/OPPONENT/RANDOM moves; spread moves bypass entirely.
+	# Source: GetBattleMoveTarget (battle_util.c L5529): check fires at target resolution.
+	# Only applies to moves with power > 0 (damaging). Status moves targeting the opponent
+	# can also be redirected in source, but limit to damaging moves for M14b scope.
+	if not move.is_spread and move.power > 0:
+		var def_side: int = 1 - attacker_side
+		var fm_idx: int = _follow_me_targets[def_side]
+		if fm_idx >= 0 and fm_idx < _combatants.size():
+			var fm_user: BattlePokemon = _combatants[fm_idx]
+			if not fm_user.fainted and fm_user != attacker:
+				defender = fm_user
+
 	# M12: Set choice lock immediately when a choice-item holder commits to a move.
 	# Source: ProcessChoiceItem in battle_script_commands.c — fires before accuracy check.
 	# Not set during a charge lock (charging_move handles that separately).
@@ -666,8 +713,13 @@ func _phase_move_execution() -> void:
 			move_effect_failed.emit(attacker, "no_switch_target")
 		else:
 			var old_defender: BattlePokemon = defender
-			_do_forced_switch_in(def_side, rand_slot)
-			forced_switch.emit(old_defender, _parties[def_side].get_active())
+			# M14b: force out the targeted combatant's field slot, not always slot 0.
+			# Source: Cmd_BS_JumpIfRoarFails (battle_script_commands.c L7426):
+			#   gProtectStructs[gBattlerTarget].forcedSwitch = TRUE — applies to the
+			#   actual targeted battler, not a hardcoded position.
+			var def_field_slot: int = _combatants.find(defender) % _active_per_side
+			_do_forced_switch_in(def_side, rand_slot, def_field_slot)
+			forced_switch.emit(old_defender, _parties[def_side].get_active_at(def_field_slot))
 		move_executed.emit(attacker, defender, move, 0)
 		attacker.last_move_used = move
 		_current_actor_index += 1
@@ -769,121 +821,72 @@ func _phase_move_execution() -> void:
 
 	if move.power > 0:
 		# ── Damaging move ──────────────────────────────────────────────────────
-		# M11: pass current field weather so the damage calculator applies the modifier.
-		var result: Dictionary = DamageCalculator.calculate(attacker, defender, move, -1, null, weather)
-		var damage: int = result["damage"]
-
-		# Substitute routing: damaging moves hit the substitute if one is active,
-		# UNLESS the move explicitly ignores it (e.g. sound-based moves — M8+ scope).
-		# Source: battle_script_commands.c :: MoveDamageDataHpUpdate (L1577)
-		#   DoesSubstituteBlockMove → substitute absorbs; else → Pokémon takes damage.
-		var went_to_sub: bool = (defender.substitute_hp > 0 and not move.ignores_substitute)
-		if went_to_sub:
-			var sub_dmg: int = min(damage, defender.substitute_hp)
-			defender.substitute_hp -= damage
-			if defender.substitute_hp <= 0:
-				defender.substitute_hp = 0
-				substitute_broke.emit(defender)
-			# No Counter/recoil/drain/secondary when hitting substitute.
-			move_executed.emit(attacker, defender, move, sub_dmg)
+		# M14b: spread moves hit all live opposing combatants independently.
+		# Source: IsSpreadMove (include/battle.h L1163): TARGET_BOTH or TARGET_FOES_AND_ALLY.
+		# Source: IsDoubleSpreadMove (battle_util.c L10662): numSpreadTargets > 1 AND spread.
+		# Each target gets a full independent calc (accuracy, damage, secondary effects).
+		if move.is_spread and _active_per_side > 1:
+			# Count live targets on opposing side to determine if spread reduction applies.
+			# Source: GetMoveTargetCount (battle_util.c L5982): counts non-absent (non-fainted).
+			# Immune targets are alive → still count → spread reduction applies even if immune.
+			var opp_start: int = (1 - attacker_side) * _active_per_side
+			var live_target_count: int = 0
+			for _fi in range(_active_per_side):
+				var _c: BattlePokemon = _combatants[opp_start + _fi]
+				if not _c.fainted and _c.current_hp > 0:
+					live_target_count += 1
+			var spread_dmg_reduction: bool = live_target_count >= 2
+			var hh_boost: bool = _helping_hand[attacker_idx]
+			for _fi in range(_active_per_side):
+				var tgt: BattlePokemon = _combatants[opp_start + _fi]
+				if tgt.fainted or tgt.current_hp <= 0:
+					continue
+				_do_damaging_hit(attacker, tgt, move, spread_dmg_reduction, hh_boost)
 		else:
-			defender.current_hp = max(0, defender.current_hp - damage)
-			move_executed.emit(attacker, defender, move, damage)
-
-			# Track for Counter/Mirror Coat (direct hits only, not through sub).
-			# Source: gProtectStructs[battler].physicalDmg = moveDamage + 1 (L1673).
-			if damage > 0:
-				if move.category == 0:
-					defender.last_physical_damage = damage
-				else:
-					defender.last_special_damage = damage
-
-			# Bide damage accumulation (direct hits only).
-			# Source: gBideDmg[battler] += gBattleStruct->moveDamage[battler] (L1634).
-			if defender.bide_turns > 0 and damage > 0:
-				defender.bide_damage += damage
-
-			# Target-thaw: Fire-type damaging move clears freeze on the defender.
-			if StatusManager.check_target_thaw(defender, move, damage):
-				pokemon_thawed.emit(defender)
-
-			# Recoil
-			if move.recoil_percent > 0 and damage > 0:
-				var recoil: int = damage * move.recoil_percent / 100
-				if recoil > 0:
-					attacker.current_hp = max(0, attacker.current_hp - recoil)
-					recoil_damage.emit(attacker, recoil)
-
-			# Drain
-			if move.drain_percent > 0 and damage > 0:
-				var heal: int = damage * move.drain_percent / 100
-				if heal > 0:
-					attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
-					drain_heal.emit(attacker, heal)
-
-			# Secondary effects (only on direct hits, not when sub absorbs).
-			if damage > 0 and move.secondary_effect != MoveData.SE_NONE:
-				var effect_hit: bool = StatusManager.try_secondary_effect(attacker, defender, move)
-				if effect_hit:
-					if move.secondary_effect == MoveData.SE_FLINCH:
-						var defender_idx: int = _turn_order.find(defender)
-						if defender_idx > _current_actor_index:
-							defender.flinched = true
-							secondary_applied.emit(defender, MoveData.SE_FLINCH)
-					else:
-						secondary_applied.emit(defender, move.secondary_effect)
-						# Synchronize: defender received a status secondary — check back-reflect.
-						# Source: TrySynchronizeActivation called from SetNonVolatileStatus.
-						_try_synchronize(defender, attacker, _se_to_status(move.secondary_effect))
-						# M12: Lum Berry cures status inflicted by damaging move secondary.
-						if ItemManager.lum_berry_cures(defender):
-							defender.status = BattlePokemon.STATUS_NONE
-							_consume_item(defender)
-
-			# Contact ability effects: defender's ability reacts to being hit directly.
-			# Source: AbilityBattleEffects(ABILITYEFFECT_MOVE_END, ...) (battle_util.c L3965+)
-			#   Fires after damage, after secondary effects, on direct hits only (not sub).
-			var contact_result: Dictionary = AbilityManager.try_contact_effects(
-					attacker, defender, move, damage)
-			if contact_result["rough_skin_damage"] > 0:
-				var rs_dmg: int = contact_result["rough_skin_damage"]
-				attacker.current_hp = max(0, attacker.current_hp - rs_dmg)
-				recoil_damage.emit(attacker, rs_dmg)
-				ability_triggered.emit(defender, contact_result["ability_name"])
-			if contact_result["status_applied"] != 0:
-				var contact_status: int = contact_result["status_applied"]
-				secondary_applied.emit(attacker, _status_to_se(contact_status))
-				ability_triggered.emit(defender, contact_result["ability_name"])
-				# Synchronize: attacker received a status from contact ability — check reflect.
-				_try_synchronize(attacker, defender, contact_status)
-				# M12: Lum Berry cures status inflicted by contact ability.
-				if ItemManager.lum_berry_cures(attacker):
-					attacker.status = BattlePokemon.STATUS_NONE
-					_consume_item(attacker)
-
-			# M12: Consume resist berry if DamageCalculator flagged it.
-			# BattleManager owns item consumption so item_consumed signal can fire.
-			if result.get("defender_item_consumed", false):
-				_consume_item(defender)
-
-			# M12: Life Orb recoil — fires at MoveEnd after damage and contact effects.
-			# Source: MoveEndLifeOrbShellBell (battle_move_resolution.c L3819).
-			if damage > 0 and not attacker.fainted:
-				var lo_recoil: int = ItemManager.life_orb_recoil(attacker)
-				if lo_recoil > 0:
-					attacker.current_hp = max(0, attacker.current_hp - lo_recoil)
-					item_damage.emit(attacker, lo_recoil)
-
-			# M12: Sitrus Berry — MoveEnd HP threshold check for defender.
-			# Source: MoveEndHpThresholdItemsTarget (battle_move_resolution.c).
-			if not defender.fainted:
-				var sitrus_heal: int = ItemManager.sitrus_berry_heal(defender)
-				if sitrus_heal > 0:
-					defender.current_hp = min(defender.max_hp, defender.current_hp + sitrus_heal)
-					item_healed.emit(defender, sitrus_heal)
-					_consume_item(defender)
+			# Single-target damaging move.
+			var hh_boost: bool = _helping_hand[attacker_idx]
+			_do_damaging_hit(attacker, defender, move, false, hh_boost)
 	else:
 		# ── Status / stat-change / unique-effect move ─────────────────────────
+
+		# ── Helping Hand ──────────────────────────────────────────────────────
+		# Grants the user's ally a 1.5× base-power boost on their next damaging move.
+		# Source: Cmd_trysethelpinghand (battle_script_commands.c L8850):
+		#   fails if not doubles, ally is fainted, or ally has already acted this turn.
+		#   Sets gProtectStructs[ally].helpingHand++ (cleared by TurnValuesCleanUp EOT).
+		# Source: target = TARGET_ALLY (Gen 4+), priority = +5.
+		if move.is_helping_hand:
+			if _active_per_side < 2:
+				move_effect_failed.emit(attacker, "not_doubles")
+			else:
+				var ally_idx: int = attacker_side * _active_per_side \
+						+ (1 - attacker_idx % _active_per_side)
+				var ally: BattlePokemon = _combatants[ally_idx]
+				var ally_turn_pos: int = _turn_order.find(ally)
+				var ally_has_acted: bool = ally_turn_pos >= 0 \
+						and ally_turn_pos <= _current_actor_index
+				if ally.fainted or ally_has_acted:
+					move_effect_failed.emit(attacker, "helping_hand_failed")
+				else:
+					_helping_hand[ally_idx] = true
+					helping_hand_used.emit(attacker, ally)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Follow Me / Rage Powder ───────────────────────────────────────────
+		# Redirects all incoming single-target moves toward the user this turn.
+		# Source: Cmd_setforcedtarget (battle_script_commands.c L8748):
+		#   gSideTimers[user_side].followmeTimer = 1; followmeTarget = user.
+		# Source: target = TARGET_USER, priority = +2.
+		if move.is_follow_me:
+			_follow_me_targets[attacker_side] = attacker_idx
+			follow_me_used.emit(attacker)
+			move_executed.emit(attacker, attacker, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
 
 		# ── Substitute creation ───────────────────────────────────────────────
 		# Source: battle_script_commands.c :: Cmd_setsubstitute (L7807)
@@ -1009,8 +1012,14 @@ func _phase_move_execution() -> void:
 
 func _phase_faint_check() -> void:
 	# Capture and process any new faints (hp == 0 and not yet marked fainted).
+	# Track whether ANY new faint occurred this tick — only these warrant SWITCH_PROMPT.
+	# Previously-fainted slots (fainted=true from an earlier turn) must NOT re-trigger
+	# SWITCH_PROMPT or the doubles no-bench scenario loops forever: every post-turn-1
+	# action would jump back to SWITCH_PROMPT because B0.fainted is still true.
+	var any_new_faint := false
 	for combatant: BattlePokemon in _combatants:
 		if combatant.current_hp <= 0 and not combatant.fainted:
+			any_new_faint = true
 			# Capture before clearing: Destiny Bond check.
 			# Source: battle_main.c :: FAINT_BLOCK_TRY_DESTINY_BOND (battle_move_resolution.c L2953)
 			#   If the fainted mon had destinyBond active, the Pokémon who KO'd it also faints.
@@ -1020,10 +1029,15 @@ func _phase_faint_check() -> void:
 			# Source: FaintClearSetData in battle_main.c clears gBattleMons[].volatiles.
 			_clear_volatiles(combatant)
 			pokemon_fainted.emit(combatant)
-			# Destiny Bond: KO the attacker too (if still standing).
-			# M14a: KOs first opponent only; full doubles DB is M14b scope.
+			# Destiny Bond: KO the Pokémon that dealt the fatal blow (if still standing).
+			# M14b: use _last_attacker[combatant] rather than _get_first_opponent — in doubles
+			# the fatal hit may come from the second opposing slot, not the first.
+			# Source: FAINT_BLOCK_TRY_DESTINY_BOND (battle_move_resolution.c L2953):
+			#   checks gBattlerAttacker (the attacker that caused the faint), not a side index.
 			if had_destiny_bond:
-				var killer: BattlePokemon = _get_first_opponent(combatant)
+				var killer: BattlePokemon = _last_attacker.get(combatant, null)
+				if killer == null:
+					killer = _get_first_opponent(combatant)  # fallback for edge cases
 				if not killer.fainted:
 					killer.current_hp = 0
 					killer.fainted = true
@@ -1031,15 +1045,13 @@ func _phase_faint_check() -> void:
 					destiny_bond_triggered.emit(combatant, killer)
 					pokemon_fainted.emit(killer)
 
-	# If any active combatant fainted, go to SWITCH_PROMPT.
+	# If any new faint occurred this tick, go to SWITCH_PROMPT.
 	# M9: SWITCH_PROMPT handles replacements and checks full-party faint.
-	# Backward compat: single-member parties go SWITCH_PROMPT → BATTLE_END_CHECK → BATTLE_END.
-	for combatant: BattlePokemon in _combatants:
-		if combatant.fainted:
-			_set_phase(BattlePhase.SWITCH_PROMPT)
-			return
+	if any_new_faint:
+		_set_phase(BattlePhase.SWITCH_PROMPT)
+		return
 
-	# Nobody fainted — continue the action execution loop or move to end of turn.
+	# Nobody newly fainted — continue the action execution loop or move to end of turn.
 	if _current_actor_index < _turn_order.size():
 		_set_phase(BattlePhase.ACTION_EXECUTION)
 	else:
@@ -1287,13 +1299,17 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 		weather_set.emit(new_mon, set_w)
 
 
-# M9/M14a: forced switch-in for Roar/Whirlwind — always affects field slot 0 of
-# the given side. In doubles, slot-specific Roar targeting is M14b scope.
-func _do_forced_switch_in(side: int, slot: int) -> void:
-	var combatant_idx: int = side * _active_per_side
+# M9/M14b: forced switch-in for Roar/Whirlwind — forces out the combatant at
+# the given field_slot of the specified side.
+# M14b: field_slot parameter defaults to 0 (singles-compatible) but is now passed
+# correctly from Roar execution using the actual targeted combatant's field slot.
+# Source: Cmd_BS_JumpIfRoarFails (battle_script_commands.c L7426): applies forced
+#   switch to gBattlerTarget — the specific targeted combatant, not always position 0.
+func _do_forced_switch_in(side: int, slot: int, field_slot: int = 0) -> void:
+	var combatant_idx: int = side * _active_per_side + field_slot
 	_switch_out_clear(_combatants[combatant_idx])
-	_parties[side].active_indices[0] = slot
-	_combatants[combatant_idx] = _parties[side].get_active_at(0)
+	_parties[side].active_indices[field_slot] = slot
+	_combatants[combatant_idx] = _parties[side].get_active_at(field_slot)
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
 	# Switch-in abilities fire for the forced-in Pokémon.
 	var opponent: BattlePokemon = _get_first_opponent(new_mon)
@@ -1458,6 +1474,106 @@ func _apply_fixed_dmg_to_target(attacker: BattlePokemon, defender: BattlePokemon
 	else:
 		defender.current_hp = max(0, defender.current_hp - damage)
 		move_executed.emit(attacker, defender, move, damage)
+
+
+# M14b: Execute one damaging hit from attacker onto target.
+# Handles DamageCalculator call, substitute routing, Counter tracking, Bide accumulation,
+# target-thaw, recoil, drain, secondary effects, contact abilities, item triggers, and
+# _last_attacker tracking (used by Destiny Bond killer lookup in _phase_faint_check).
+# is_spread: pass true when this is a spread move with ≥2 live targets → 0.75× reduction.
+# helping_hand: pass true when attacker's ally used Helping Hand → 1.5× base power.
+# Source: battle_script_commands.c :: MoveDamageDataHpUpdate + downstream effect handlers.
+func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
+		move: MoveData, is_spread: bool = false, helping_hand: bool = false) -> void:
+	var result: Dictionary = DamageCalculator.calculate(
+			attacker, target, move, -1, null, weather, is_spread, helping_hand)
+	var damage: int = result["damage"]
+
+	var went_to_sub: bool = (target.substitute_hp > 0 and not move.ignores_substitute)
+	if went_to_sub:
+		var sub_dmg: int = min(damage, target.substitute_hp)
+		target.substitute_hp -= damage
+		if target.substitute_hp <= 0:
+			target.substitute_hp = 0
+			substitute_broke.emit(target)
+		move_executed.emit(attacker, target, move, sub_dmg)
+		return
+
+	target.current_hp = max(0, target.current_hp - damage)
+	move_executed.emit(attacker, target, move, damage)
+
+	if damage > 0:
+		# M14b: track for Destiny Bond killer lookup.
+		_last_attacker[target] = attacker
+		if move.category == 0:
+			target.last_physical_damage = damage
+		else:
+			target.last_special_damage = damage
+
+	if target.bide_turns > 0 and damage > 0:
+		target.bide_damage += damage
+
+	if StatusManager.check_target_thaw(target, move, damage):
+		pokemon_thawed.emit(target)
+
+	if move.recoil_percent > 0 and damage > 0:
+		var recoil: int = damage * move.recoil_percent / 100
+		if recoil > 0:
+			attacker.current_hp = max(0, attacker.current_hp - recoil)
+			recoil_damage.emit(attacker, recoil)
+
+	if move.drain_percent > 0 and damage > 0:
+		var heal: int = damage * move.drain_percent / 100
+		if heal > 0:
+			attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
+			drain_heal.emit(attacker, heal)
+
+	if damage > 0 and move.secondary_effect != MoveData.SE_NONE:
+		var effect_hit: bool = StatusManager.try_secondary_effect(attacker, target, move)
+		if effect_hit:
+			if move.secondary_effect == MoveData.SE_FLINCH:
+				var target_turn_pos: int = _turn_order.find(target)
+				if target_turn_pos > _current_actor_index:
+					target.flinched = true
+					secondary_applied.emit(target, MoveData.SE_FLINCH)
+			else:
+				secondary_applied.emit(target, move.secondary_effect)
+				_try_synchronize(target, attacker, _se_to_status(move.secondary_effect))
+				if ItemManager.lum_berry_cures(target):
+					target.status = BattlePokemon.STATUS_NONE
+					_consume_item(target)
+
+	var contact_result: Dictionary = AbilityManager.try_contact_effects(
+			attacker, target, move, damage)
+	if contact_result["rough_skin_damage"] > 0:
+		var rs_dmg: int = contact_result["rough_skin_damage"]
+		attacker.current_hp = max(0, attacker.current_hp - rs_dmg)
+		recoil_damage.emit(attacker, rs_dmg)
+		ability_triggered.emit(target, contact_result["ability_name"])
+	if contact_result["status_applied"] != 0:
+		var contact_status: int = contact_result["status_applied"]
+		secondary_applied.emit(attacker, _status_to_se(contact_status))
+		ability_triggered.emit(target, contact_result["ability_name"])
+		_try_synchronize(attacker, target, contact_status)
+		if ItemManager.lum_berry_cures(attacker):
+			attacker.status = BattlePokemon.STATUS_NONE
+			_consume_item(attacker)
+
+	if result.get("defender_item_consumed", false):
+		_consume_item(target)
+
+	if damage > 0 and not attacker.fainted:
+		var lo_recoil: int = ItemManager.life_orb_recoil(attacker)
+		if lo_recoil > 0:
+			attacker.current_hp = max(0, attacker.current_hp - lo_recoil)
+			item_damage.emit(attacker, lo_recoil)
+
+	if not target.fainted:
+		var sitrus_heal: int = ItemManager.sitrus_berry_heal(target)
+		if sitrus_heal > 0:
+			target.current_hp = min(target.max_hp, target.current_hp + sitrus_heal)
+			item_healed.emit(target, sitrus_heal)
+			_consume_item(target)
 
 
 # M12: Consume a held item (berries, Life Orb consumed indirectly by PP drain in source,

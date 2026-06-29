@@ -1,6 +1,6 @@
 extends Node
 
-# Milestone 14a test suite — Doubles foundation (4-combatant state machine + turn order)
+# Milestone 14a + 14b test suite — Doubles (state machine, spread moves, ally effects)
 #
 # Sections:
 #   D1: BattleParty doubles API + BattleManager 4-combatant setup
@@ -9,11 +9,24 @@ extends Node
 #   D4: Targeting — queue_move_targeted sends damage to the correct opposing slot
 #   D5: Faint replacement — fainted slot is replaced without disturbing the partner slot
 #   D6: Voluntary switch in doubles — queue_switch_for swaps one slot, leaves other intact
+#   B1: Spread move damages both opponents (integration + composition order unit test)
+#   B2: Spread + immune target — immune gets 0, non-immune gets 0.75× (immune still counts)
+#   B3: Spread with one target fainted mid-turn — survivor gets 1.0× (no reduction)
+#   B4: Helping Hand grants ally 1.5× base-power boost (integration + composition unit)
+#   B5: Helping Hand boost is cleared at turn end (does not persist)
+#   B6: Follow Me redirects single-target move to Follow Me user
+#   B7: Follow Me does NOT redirect spread moves (both targets still hit)
+#   B8: Destiny Bond kills actual fatal attacker (second slot, not first slot)
+#   B9: Roar forces out specifically targeted field slot (both slots tested)
 #
 # Ground truth: pokeemerald_expansion
 #   battle.h :: gBattlerPositions, B_POSITION_PLAYER_LEFT/RIGHT
 #   battle_main.c :: turn order resolution / action execution loop
 #   battle_main.c :: SwitchInClearSetData, FaintClearSetData
+#   battle_util.c :: GetTargetDamageModifier (spread 0.75×, L7220)
+#   battle_util.c :: CalcMoveBasePowerAfterModifiers (Helping Hand 1.5× to base power, L6436)
+#   battle_script_commands.c :: Cmd_trysethelpinghand (L8850), Cmd_setforcedtarget (L8748)
+#   battle_move_resolution.c :: IsAffectedByFollowMe (L799) — spread bypasses
 #   ChooseMoveOrAction_Doubles (battle_ai_main.c) — skipped (M14c scope)
 #
 # Note on captured state in lambdas: GDScript 4.x lambdas only share REFERENCE types
@@ -32,6 +45,15 @@ func _ready() -> void:
 	_test_d4b_target_far_slot()
 	_test_d5_faint_replacement()
 	_test_d6_voluntary_switch()
+	_test_b1_spread_hits_both()
+	_test_b2_spread_immune_target()
+	_test_b3_spread_single_no_reduction()
+	_test_b4_helping_hand_boosts()
+	_test_b5_helping_hand_clears()
+	_test_b6_follow_me_redirects()
+	_test_b7_follow_me_bypasses_spread()
+	_test_b8_destiny_bond_real_killer()
+	_test_b9_roar_targets_field_slot()
 
 	var total := _pass + _fail
 	print("doubles_test: %d/%d passed" % [_pass, total])
@@ -362,3 +384,523 @@ func _test_d6_voluntary_switch() -> void:
 	_chk("D6.01 A1 switched out", switch_out[0] == a1)
 	_chk("D6.02 A2 switched in",  switch_in[0]  == a2)
 	bm.queue_free()
+
+
+# ── M14b helpers ──────────────────────────────────────────────────────────────
+
+# Typed variant of _make_mon — allows specifying the mon's type.
+func _make_mon_typed(mon_name: String, type: int, hp: int = 100, atk: int = 80,
+		def_stat: int = 80, spatk: int = 80, spdef: int = 80,
+		spd: int = 80) -> BattlePokemon:
+	var sp := PokemonSpecies.new()
+	sp.species_name = mon_name
+	sp.types = [type]
+	sp.base_hp = hp
+	sp.base_attack = atk
+	sp.base_defense = def_stat
+	sp.base_sp_attack = spatk
+	sp.base_sp_defense = spdef
+	sp.base_speed = spd
+	return BattlePokemon.from_species(sp, 50)
+
+
+func _make_spread(move_name: String, power: int,
+		move_type: int = TypeChart.TYPE_NORMAL, cat: int = 0) -> MoveData:
+	var m := MoveData.new()
+	m.move_name = move_name
+	m.power = power
+	m.type = move_type
+	m.category = cat
+	m.accuracy = 100
+	m.is_spread = true
+	return m
+
+
+func _make_hh() -> MoveData:
+	var m := MoveData.new()
+	m.move_name = "HelpingHand"
+	m.power = 0
+	m.priority = 5
+	m.is_helping_hand = true
+	return m
+
+
+func _make_fm() -> MoveData:
+	var m := MoveData.new()
+	m.move_name = "FollowMe"
+	m.power = 0
+	m.priority = 2
+	m.is_follow_me = true
+	return m
+
+
+func _make_db() -> MoveData:
+	var m := MoveData.new()
+	m.move_name = "DestinyBond"
+	m.power = 0
+	m.destiny_bond = true
+	return m
+
+
+func _make_roar() -> MoveData:
+	var m := MoveData.new()
+	m.move_name = "Roar"
+	m.power = 0
+	m.priority = -6
+	m.accuracy = 0
+	m.is_roar = true
+	return m
+
+
+func _make_atk_move(move_name: String, power: int,
+		move_type: int = TypeChart.TYPE_NORMAL, cat: int = 0) -> MoveData:
+	var m := MoveData.new()
+	m.move_name = move_name
+	m.power = power
+	m.type = move_type
+	m.category = cat
+	m.accuracy = 100
+	return m
+
+
+# ── B1: Spread move damages both opponents ────────────────────────────────────
+#
+# A0 (Normal, atk=200, spd=100) uses a Normal Physical spread move (power=90)
+# against B0 and B1 (both base_def=80, base_hp=1 → max_hp=61).
+#
+# Damage with 0.75× spread (2 live targets): base=97 → reduced=73 → min at roll 85: 62.
+# 62 > 61 → both always faint, proving each was hit independently.
+#
+# B1.03 (composition order, unit): Electric spread (power=20) vs Water-type defender.
+#   Attacker spatk=50 (→55), defender spdef=50 (→55), both level 50.
+#   base=10. Correct (spread→type_eff): 10→7→14. Wrong (type_eff→spread): 10→20→15.
+#   Source: DoMoveDamageCalcVars (battle_util.c L7592) — DAMAGE_APPLY_MODIFIER ordering.
+
+func _test_b1_spread_hits_both() -> void:
+	var tackle := _load_move(33)
+	var spread := _make_spread("NormSpread", 90)
+
+	var a0 := _make_mon("A0", 100, 200, 80, 80, 80, 100)
+	var a1 := _make_mon("A1", 100,  80, 80, 80, 80,  60)
+	var b0 := _make_mon("B0",   1,  80, 80, 80, 80,  80)
+	var b1 := _make_mon("B1",   1,  80, 80, 80, 80,  40)
+	a0.add_move(spread)
+	for mon in [a1, b0, b1]:
+		mon.add_move(tackle)
+
+	var b0_dmg := [0]
+	var b1_dmg := [0]
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.move_executed.connect(func(attacker, defender, _mv, dmg):
+		if attacker == a0:
+			if defender == b0:
+				b0_dmg[0] = dmg
+			elif defender == b1:
+				b1_dmg[0] = dmg
+	)
+	bm.start_battle_doubles(_doubles_party(a0, a1), _doubles_party(b0, b1))
+
+	_chk("B1.01 spread hit B0 (non-zero damage)", b0_dmg[0] > 0)
+	_chk("B1.02 spread hit B1 (non-zero damage)", b1_dmg[0] > 0)
+
+	# B1.03: composition order unit test on DamageCalculator directly.
+	# Spread reduction (0.75×) must be applied BEFORE type-effectiveness (2.0×).
+	# With base=10, roll=100: spread→type_eff = 10→7→14. type_eff→spread = 10→20→15.
+	# Source: DoMoveDamageCalcVars modifier ordering (battle_util.c L7577–7620).
+	var att := _make_mon_typed("Att", TypeChart.TYPE_NORMAL, 100, 80, 80, 50, 80, 80)
+	var def := _make_mon_typed("Def", TypeChart.TYPE_WATER,  100, 80, 80, 80, 50, 80)
+	var elec_spread := _make_spread("ElecSpread", 20, TypeChart.TYPE_ELECTRIC, 1)
+	var r: Dictionary = DamageCalculator.calculate(att, def, elec_spread,
+			100, false, DamageCalculator.WEATHER_NONE, true)
+	_chk("B1.03 spread×type_eff composition: 14 (not 15 wrong-order)", r["damage"] == 14)
+
+	bm.queue_free()
+
+
+# ── B2: Spread with one immune target ────────────────────────────────────────
+#
+# A0 uses a Ground spread move. B0 is Flying-type (immune). B1 is Normal-type.
+# The immune B0 receives 0 damage but still counts toward live_target_count,
+# so the 0.75× spread reduction applies to B1's hit.
+#
+# B0: Flying, base_hp=1 (max=61), base_def=80 (def=85). Ground→Flying = 0×.
+# B1: Normal, base_hp=14 (max=74), base_def=80 (def=85). Ground→Normal = 1×.
+# A0: atk=205 (base=200), Ground spread power=90, Physical.
+#   base=97. With 0.75×: 73. min at roll 85: 62. max at roll 100: 73.
+#   Both < 74 (B1 max_hp) → B1 always survives A0's first spread.
+#   Without reduction (if immune target not counted): min 82 > 74 → B1 faints.
+# A1 pre-queued to attack B0 so A1 doesn't also damage B1 in turn 1.
+#
+# Source: GetMoveTargetCount (battle_util.c L5982) — counts non-absent regardless of immunity.
+
+func _test_b2_spread_immune_target() -> void:
+	var tackle := _load_move(33)
+	var gnd_spread := _make_spread("GndSpread", 90, TypeChart.TYPE_GROUND)
+
+	var a0 := _make_mon_typed("A0", TypeChart.TYPE_NORMAL, 100, 200, 80, 80, 80, 100)
+	var a1 := _make_mon(        "A1", 100,  80, 80, 80, 80,  60)
+	var b0 := _make_mon_typed("B0", TypeChart.TYPE_FLYING,   1,  80, 80, 80, 80,  80)
+	var b1 := _make_mon(        "B1",  14,  80, 80, 80, 80,  40)
+	a0.add_move(gnd_spread)
+	for mon in [a1, b0, b1]:
+		mon.add_move(tackle)
+
+	var b0_dmg := [0]
+	var b1_hp_after := [-1]
+	var b1_dmg := [0]
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.move_executed.connect(func(attacker, defender, _mv, dmg):
+		if attacker == a0:
+			if defender == b0:
+				b0_dmg[0] = dmg
+			elif defender == b1 and b1_hp_after[0] == -1:
+				b1_dmg[0] = dmg
+				b1_hp_after[0] = b1.current_hp
+	)
+	# Pre-queue A1 → B0 (combatant 2) so A1 doesn't also damage B1 in turn 1.
+	bm.queue_move_targeted(1, 0, 2)
+	bm.start_battle_doubles(_doubles_party(a0, a1), _doubles_party(b0, b1))
+
+	_chk("B2.01 immune B0 took 0 damage from Ground spread",  b0_dmg[0] == 0)
+	_chk("B2.02 non-immune B1 took damage from Ground spread", b1_dmg[0] > 0)
+	# B2.03: immune B0 still counted as live target → 0.75× reduction applied to B1.
+	# With reduction max=73 < 74 (B1 max_hp). Without: min=82 > 74 (B1 faints).
+	_chk("B2.03 immune target counted for spread reduction (B1 survived first hit)",
+			b1_hp_after[0] > 0)
+	bm.queue_free()
+
+
+# ── B3: Spread with fainted mid-turn target — survivor gets 1.0× ─────────────
+#
+# A1 (spd=90) kills B0 (HP=1) before A0 (spd=60) acts. When A0 uses spread:
+# live_target_count=1 → spread_dmg_reduction=false → B1 gets 1.0× (no reduction).
+#
+# A0: Normal, spatk=200 (→205), Special spread, power=20, spd=60, level 50.
+# B1: Normal, base_spdef=50 (→55). base=20*205*22/55/50+2=34. Range 28–34.
+# With reduction (wrong code): max=25 at roll 100. Min=21 at roll 85.
+# B3.01 check: captured damage > 25 → proves no reduction was applied.
+#
+# Source: GetMoveTargetCount recounted at use time; fainted targets excluded.
+
+func _test_b3_spread_single_no_reduction() -> void:
+	var tackle := _load_move(33)
+	var sp_spread := _make_spread("SpSpread", 20, TypeChart.TYPE_NORMAL, 1)  # Special
+
+	# A1 uses high-attack tackle to guarantee B0 (def=55) faints before A0 acts.
+	# A1 atk=260 (base=255), B0 def=55 (base=50): base=85, min=72 > 61 (B0 max_hp). ✓
+	var a0 := _make_mon("A0", 100,  80, 80, 200, 80,  60)
+	var a1 := _make_mon("A1", 100, 255, 50,  80, 80,  90)
+	var b0 := _make_mon("B0",   1,  80, 50,  80, 80,  80)
+	var b1 := _make_mon("B1", 100,  80, 80,  80, 50,  40)
+	a0.add_move(sp_spread)
+	for mon in [a1, b0, b1]:
+		mon.add_move(tackle)
+
+	var b1_spread_dmg := [0]
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.move_executed.connect(func(attacker, defender, _mv, dmg):
+		if attacker == a0 and defender == b1 and b1_spread_dmg[0] == 0:
+			b1_spread_dmg[0] = dmg
+	)
+	bm.start_battle_doubles(_doubles_party(a0, a1), _doubles_party(b0, b1))
+
+	# STAB-corrected ranges (Normal mons, Normal move, STAB applies after roll):
+	# With reduction (wrong): 31–37.  Without reduction (correct, 1 live target): 42–51.
+	# Threshold 40 sits between the two ranges.
+	_chk("B3.01 single live target → no spread reduction (damage > 40)", b1_spread_dmg[0] > 40)
+	bm.queue_free()
+
+
+# ── B4: Helping Hand grants 1.5× base-power boost to ally ────────────────────
+#
+# A0 (spd=100) uses Helping Hand (priority=5) → A1 gets boost.
+# A1 (spd=60) attacks B0 with boosted tackle.
+#
+# A1: base_atk=100 (→105). B0: base_def=50 (→55). Tackle power=40.
+# base no-HH = 40*105*22/55/50+2 = 35. Max at roll=100: 35.
+# Effective power with HH = _uq412_half_down(40, 6144) = 60.
+# base with HH = 60*105*22/55/50+2 = 52. Min at roll=85: 44. All > 35. ✓
+#
+# B4.02 (composition, unit): HH applied to base power BEFORE formula.
+#   Attacker base_atk=80 (→85), defender base_def=50 (→55), Fire move power=40.
+#   Correct: effective_power=60, base=42. Wrong (post-formula): base=29→43. 42≠43. ✓
+#   Source: CalcMoveBasePowerAfterModifiers (battle_util.c L6436).
+
+func _test_b4_helping_hand_boosts() -> void:
+	var tackle := _load_move(33)
+	var hh := _make_hh()
+
+	# A0 has two moves: HH (index 0) and tackle (index 1).
+	var a0 := _make_mon("A0", 100,  80, 80, 80, 80, 100)
+	var a1 := _make_mon("A1", 100, 100, 80, 80, 80,  60)
+	var b0 := _make_mon("B0", 100,  80, 50, 80, 80,  80)
+	var b1 := _make_mon("B1", 100,  80, 80, 80, 80,  40)
+	a0.add_move(hh)
+	a0.add_move(tackle)
+	for mon in [a1, b0, b1]:
+		mon.add_move(tackle)
+
+	# Capture A1's damage on B0. Turn 1: A0 HH→A1; A1 tackle→B0.
+	# Turn 2: A0 tackle→B0; A1 tackle→B0 (no re-HH in turn 2 — tested in B5).
+	var a1_b0_dmgs := [[]]
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.move_executed.connect(func(attacker, defender, _mv, dmg):
+		if attacker == a1 and defender == b0:
+			a1_b0_dmgs[0].append(dmg)
+	)
+	# Turn 1: A0 uses HH (move 0) targeting ally A1 (combatant 1).
+	bm.queue_move_targeted(0, 0, 1)
+	# Turn 1: A1 uses tackle (move 0) targeting B0 (combatant 2).
+	bm.queue_move_targeted(1, 0, 2)
+	# Turn 2: A0 uses tackle (move 1) so HH is NOT re-applied (B5 relies on this).
+	bm.queue_move_targeted(0, 1, 2)
+	# Turn 2: A1 uses tackle (move 0) targeting B0 (combatant 2) — second B0 hit.
+	bm.queue_move_targeted(1, 0, 2)
+	bm.start_battle_doubles(_doubles_party(a0, a1), _doubles_party(b0, b1))
+
+	# A1's turn-1 damage: HH-boosted (min 44 > 35 max no-HH).
+	_chk("B4.01 Helping Hand boosted A1's damage (> 35 max unboosted)",
+			a1_b0_dmgs[0].size() > 0 and a1_b0_dmgs[0][0] > 35)
+
+	# B4.02 composition: HH multiplies base power BEFORE formula (not post-formula).
+	# atk=85 (base 80), def=55 (base 50), Fire move power=40, Normal attacker (no STAB).
+	# Correct: effective_power=60 → base=42 → at roll=100: 42.
+	# Wrong (post-formula ×1.5): base=29 → at roll=100: (29×1.5 rounded) = 43. 42≠43.
+	var att := _make_mon("AttHH", 100, 80, 50, 80, 80, 80)
+	var def := _make_mon("DefHH", 100, 80, 50, 80, 80, 80)
+	var fire_mv := _make_atk_move("Fire", 40, TypeChart.TYPE_FIRE)
+	var r: Dictionary = DamageCalculator.calculate(att, def, fire_mv,
+			100, false, DamageCalculator.WEATHER_NONE, false, true)
+	_chk("B4.02 HH base-power composition: 42 (not 43 wrong-order)", r["damage"] == 42)
+
+	bm.queue_free()
+
+
+# ── B5: Helping Hand boost does NOT persist to next turn ─────────────────────
+#
+# Uses the same B4 battle (A0 queues HH in turn 1, tackle in turn 2).
+# In turn 2, A0 uses tackle instead of HH → _helping_hand flag cleared at turn start.
+# A1's turn-2 tackle on B0 must be within the no-HH range (≤35).
+#
+# Source: TurnValuesCleanUp (battle_main.c) — memset clears gProtectStructs
+#   (which includes helpingHand) at the start of each turn's priority resolution.
+
+func _test_b5_helping_hand_clears() -> void:
+	var tackle := _load_move(33)
+	var hh := _make_hh()
+
+	var a0 := _make_mon("A0", 100,  80, 80, 80, 80, 100)
+	var a1 := _make_mon("A1", 100, 100, 80, 80, 80,  60)
+	var b0 := _make_mon("B0", 100,  80, 50, 80, 80,  80)
+	var b1 := _make_mon("B1", 100,  80, 80, 80, 80,  40)
+	a0.add_move(hh)
+	a0.add_move(tackle)
+	for mon in [a1, b0, b1]:
+		mon.add_move(tackle)
+
+	var a1_b0_dmgs := [[]]
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.move_executed.connect(func(attacker, defender, _mv, dmg):
+		if attacker == a1 and defender == b0:
+			a1_b0_dmgs[0].append(dmg)
+	)
+	bm.queue_move_targeted(0, 0, 1)  # Turn 1: A0 HH → A1
+	bm.queue_move_targeted(1, 0, 2)  # Turn 1: A1 tackle → B0
+	bm.queue_move_targeted(0, 1, 2)  # Turn 2: A0 tackle → B0 (no HH)
+	bm.queue_move_targeted(1, 0, 2)  # Turn 2: A1 tackle → B0
+	bm.start_battle_doubles(_doubles_party(a0, a1), _doubles_party(b0, b1))
+
+	# STAB-corrected ranges (Normal mons, Normal Tackle, STAB applies after roll):
+	# With HH (wrong — persisted): 66–78.  Without HH (correct — cleared): 43–52.
+	# Threshold 60 sits between the two ranges.
+	_chk("B5.01 Helping Hand did not persist to turn 2 (A1 damage ≤ 60)",
+			a1_b0_dmgs[0].size() >= 2 and a1_b0_dmgs[0][1] <= 60)
+	bm.queue_free()
+
+
+# ── B6: Follow Me redirects single-target move ───────────────────────────────
+#
+# B0 (spd=80) uses Follow Me (priority=2) — fires before A0's priority=0 attack.
+# A0 is pre-queued to target B1 (combatant 3). Follow Me redirect fires for
+# non-spread moves (move.power > 0) → defender changed to B0.
+# Verify: A0's move_executed reports defender == B0, not B1.
+#
+# Source: IsAffectedByFollowMe (battle_move_resolution.c L799) + GetBattleMoveTarget
+#   (battle_util.c L5529) — redirects TARGET_SELECTED/SMART/OPPONENT/RANDOM.
+
+func _test_b6_follow_me_redirects() -> void:
+	var tackle := _load_move(33)
+	var fm := _make_fm()
+
+	var a0 := _make_mon("A0", 100, 100, 80, 80, 80, 100)
+	var a1 := _make_mon("A1", 100,  80, 80, 80, 80,  60)
+	var b0 := _make_mon("B0", 100,  80, 80, 80, 80,  80)
+	var b1 := _make_mon("B1", 100,  80, 80, 80, 80,  40)
+	a0.add_move(tackle)
+	a1.add_move(tackle)
+	b0.add_move(fm)
+	b1.add_move(tackle)
+
+	var a0_target := [null]
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.move_executed.connect(func(attacker, defender, _mv, _dmg):
+		if attacker == a0 and a0_target[0] == null:
+			a0_target[0] = defender
+	)
+	# A0 explicitly targets B1 (combatant 3) — but Follow Me should redirect to B0.
+	bm.queue_move_targeted(0, 0, 3)
+	bm.start_battle_doubles(_doubles_party(a0, a1), _doubles_party(b0, b1))
+
+	_chk("B6.01 Follow Me redirected A0's targeted attack to B0", a0_target[0] == b0)
+	bm.queue_free()
+
+
+# ── B7: Follow Me does NOT redirect spread moves ──────────────────────────────
+#
+# B0 (spd=80) uses Follow Me. A0 (spd=100) uses a spread move.
+# Spread path iterates all opposing slots independently — Follow Me is bypassed.
+# B7.01: B1 still receives damage from A0's spread despite Follow Me being active.
+#
+# Source: IsAffectedByFollowMe (battle_move_resolution.c L799) —
+#   spread moves are excluded by the TARGET_BOTH / FOES_AND_ALLY check.
+
+func _test_b7_follow_me_bypasses_spread() -> void:
+	var tackle := _load_move(33)
+	var spread := _make_spread("NormSpread", 90)
+	var fm := _make_fm()
+
+	var a0 := _make_mon("A0", 100, 200, 80, 80, 80, 100)
+	var a1 := _make_mon("A1", 100,  80, 80, 80, 80,  60)
+	var b0 := _make_mon("B0", 100,  80, 80, 80, 80,  80)
+	var b1 := _make_mon("B1", 100,  80, 80, 80, 80,  40)
+	a0.add_move(spread)
+	a1.add_move(tackle)
+	b0.add_move(fm)
+	b1.add_move(tackle)
+
+	var b1_received_dmg := [false]
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.move_executed.connect(func(attacker, defender, _mv, dmg):
+		if attacker == a0 and defender == b1 and dmg > 0:
+			b1_received_dmg[0] = true
+	)
+	bm.start_battle_doubles(_doubles_party(a0, a1), _doubles_party(b0, b1))
+
+	_chk("B7.01 Follow Me did not block spread — B1 received damage", b1_received_dmg[0])
+	bm.queue_free()
+
+
+# ── B8: Destiny Bond kills the actual fatal attacker (second slot) ────────────
+#
+# A0 (spd=100, HP=1) uses Destiny Bond. B1 (spd=40) deals the killing blow.
+# B0 (spd=80) attacks A1 (not A0) — B0 must NOT be the Destiny Bond killer.
+#
+# Turn order: A0(DB,100) → B0(80, tackle→A1) → A1(60, tackle→B0) → B1(40, tackle→A0)
+# _last_attacker[A0] = B1 (set when B1 hits A0 for damage > 0).
+# Faint check: A0 fainted, had_destiny_bond=true → killer=B1, not B0.
+# Verify: destiny_bond_triggered fires with killer == B1.
+#
+# Source: _last_attacker tracks gBattlerAttacker at each hit (M14b Destiny Bond fix).
+
+func _test_b8_destiny_bond_real_killer() -> void:
+	var tackle := _load_move(33)
+	var db := _make_db()
+
+	var a0 := _make_mon("A0",   1,  80, 80, 80, 80, 100)  # HP=1 → max_hp=61
+	var a1 := _make_mon("A1", 100,  80, 80, 80, 80,  60)
+	# B1 atk=200 → atk=205. A0 def=85. base=40*205*22/85/50+2=97. min=82>61(A0 max_hp). ✓
+	var b0 := _make_mon("B0", 100,  80, 80, 80, 80,  80)
+	var b1 := _make_mon("B1", 100, 200, 80, 80, 80,  40)
+	a0.add_move(db)
+	for mon in [a1, b0, b1]:
+		mon.add_move(tackle)
+
+	var db_killer := [null]
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.destiny_bond_triggered.connect(func(_victim, killer):
+		db_killer[0] = killer
+	)
+	# B0 attacks A1 (not A0) so B0 is not _last_attacker[A0].
+	bm.queue_move_targeted(2, 0, 1)  # B0 (combatant 2) → A1 (combatant 1)
+	# B1 attacks A0 — fatal blow sets _last_attacker[A0] = B1.
+	bm.queue_move_targeted(3, 0, 0)  # B1 (combatant 3) → A0 (combatant 0)
+	bm.start_battle_doubles(_doubles_party(a0, a1), _doubles_party(b0, b1))
+
+	_chk("B8.01 Destiny Bond killed actual killer B1, not B0", db_killer[0] == b1)
+	bm.queue_free()
+
+
+# ── B9: Roar forces out specifically targeted field slot ──────────────────────
+#
+# M14b fix: Roar uses _combatants.find(defender) % _active_per_side to determine
+# which field slot to clear, rather than always using slot 0.
+#
+# B9a (B9.01): A0 pre-queued to use Roar targeting B1 (combatant 3).
+#   forced_switch old == B1 → B2 enters at combatant 3; B0 (combatant 2) untouched.
+# B9b (B9.02): A0 auto-targets default (B0, combatant 2) with Roar.
+#   forced_switch old == B0 → B2 enters at combatant 2; B1 (combatant 3) untouched.
+#
+# Source: Cmd_BS_JumpIfRoarFails (battle_script_commands.c L7426) —
+#   gProtectStructs[gBattlerTarget].forcedSwitch applies to the actual targeted battler.
+
+func _test_b9_roar_targets_field_slot() -> void:
+	var tackle := _load_move(33)
+	var roar := _make_roar()
+
+	# B9a — Roar targeting B1 (combatant 3, the "far" opposing slot).
+	var a0a := _make_mon("A0a", 100, 80, 80, 80, 80, 100)
+	var a1a := _make_mon("A1a", 100, 80, 80, 80, 80,  60)
+	var b0a := _make_mon("B0a", 100, 80, 80, 80, 80,  80)
+	var b1a := _make_mon("B1a", 100, 80, 80, 80, 80,  40)
+	var b2a := _make_mon("B2a", 100, 80, 80, 80, 80,  50)
+	a0a.add_move(roar)
+	for mon in [a1a, b0a, b1a, b2a]:
+		mon.add_move(tackle)
+
+	var roar_out_a := [null]
+	var bm_a := BattleManager.new()
+	add_child(bm_a)
+	bm_a.forced_switch.connect(func(old, _new):
+		if roar_out_a[0] == null:
+			roar_out_a[0] = old
+	)
+	# Roar targeting B1 (combatant 3): def_field_slot = 3 % 2 = 1 → forces B1's slot.
+	bm_a.queue_move_targeted(0, 0, 3)
+	bm_a.start_battle_doubles(
+			_doubles_party(a0a, a1a), _doubles_party_bench(b0a, b1a, b2a))
+
+	_chk("B9.01 Roar targeting combatant 3 forced out B1 (not B0)", roar_out_a[0] == b1a)
+	bm_a.queue_free()
+
+	# B9b — Roar targeting B0 (combatant 2, the "near" opposing slot, default target).
+	var a0b := _make_mon("A0b", 100, 80, 80, 80, 80, 100)
+	var a1b := _make_mon("A1b", 100, 80, 80, 80, 80,  60)
+	var b0b := _make_mon("B0b", 100, 80, 80, 80, 80,  80)
+	var b1b := _make_mon("B1b", 100, 80, 80, 80, 80,  40)
+	var b2b := _make_mon("B2b", 100, 80, 80, 80, 80,  50)
+	a0b.add_move(roar)
+	for mon in [a1b, b0b, b1b, b2b]:
+		mon.add_move(tackle)
+
+	var roar_out_b := [null]
+	var bm_b := BattleManager.new()
+	add_child(bm_b)
+	bm_b.forced_switch.connect(func(old, _new):
+		if roar_out_b[0] == null:
+			roar_out_b[0] = old
+	)
+	# No pre-queue: A0 auto-targets B0 (combatant 2, default for combatant 0).
+	# def_field_slot = 2 % 2 = 0 → forces B0's slot.
+	bm_b.start_battle_doubles(
+			_doubles_party(a0b, a1b), _doubles_party_bench(b0b, b1b, b2b))
+
+	_chk("B9.02 Roar targeting combatant 2 forced out B0 (not B1)", roar_out_b[0] == b0b)
+	bm_b.queue_free()

@@ -81,7 +81,9 @@ static func calculate(
 		move: MoveData,
 		force_roll: int = -1,
 		force_crit: Variant = null,
-		weather: int = WEATHER_NONE) -> Dictionary:
+		weather: int = WEATHER_NONE,
+		is_spread: bool = false,
+		helping_hand: bool = false) -> Dictionary:
 
 	# --- Ability type immunity (Levitate vs Ground, etc.) ---
 	# Source: battle_util.c :: CalcTypeEffectivenessMultiplierInternal (L8257):
@@ -162,7 +164,26 @@ static func calculate(
 	# Source: src/battle_util.c :: CalculateBaseDamage (L7215–7218)
 	# Formula (integer division, left-to-right):
 	#   power * attack * (2 * level / 5 + 2) / defense / 50 + 2
-	var dmg: int = move.power * atk * (2 * attacker.level / 5 + 2) / def / 50 + 2
+	#
+	# M14b: Helping Hand modifies the base power before the formula.
+	# Source: CalcMoveBasePowerAfterModifiers (battle_util.c L6436):
+	#   for (i < helpingHand) modifier = uq4_12_multiply(modifier, UQ_4_12(1.5)); (L6436–6437)
+	#   returned power = uq4_12_multiply_by_int_half_down(modifier, basePower) (L6603).
+	var effective_power: int = move.power
+	if helping_hand:
+		effective_power = _uq412_half_down(effective_power, 6144)  # UQ_4_12(1.5)
+	var dmg: int = effective_power * atk * (2 * attacker.level / 5 + 2) / def / 50 + 2
+
+	# M14b: Spread damage reduction — first modifier after base formula.
+	# Source: DoMoveDamageCalcVars (battle_util.c L7592): DAMAGE_APPLY_MODIFIER(GetTargetDamageModifier)
+	#   applied immediately after CalculateBaseDamage, before weather, crit, or random roll.
+	# Source: GetTargetDamageModifier (battle_util.c L7220–7229):
+	#   if IsDoubleBattle() && GetMoveTargetCount >= 2 → UQ_4_12(0.75) = 3072 (Gen 4+).
+	# is_spread here means the caller determined ≥2 live targets exist; caller counts them.
+	# Source: GetMoveTargetCount (L5982): counts non-absent (non-fainted) opposing battlers.
+	# Immune targets are still alive → count as targets → spread reduction still applies.
+	if is_spread:
+		dmg = _uq412_half_down(dmg, 3072)  # UQ_4_12(0.75)
 
 	# --- Weather damage modifier (before crit, before random roll) ---
 	# Source: src/battle_util.c :: DoMoveDamageCalcVars (L7594) — DAMAGE_APPLY_MODIFIER
