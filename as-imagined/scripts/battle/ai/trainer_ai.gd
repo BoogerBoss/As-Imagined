@@ -71,10 +71,14 @@ var _force_crit: Variant = null   # passed as force_crit to DamageCalculator.cal
 #
 # Spread moves (M14c extension of _score_move):
 #   When ≥2 live opponents exist, DamageCalculator.calculate is called with
-#   is_spread=true so the 0.75× reduction is applied in KO estimation. An
-#   additional DECENT_EFFECT (+2) bonus is added to reflect hitting two targets.
-#   Source: ShouldUseSpreadDamageMove (AI_CompareDamagingMoves L3915) treats
-#   spread moves as "preferred" when they hit both sides — the +2 captures that.
+#   is_spread=true so the 0.75× reduction is applied in KO estimation.
+#   No separate spread bonus is needed: AI_CalcDamage (battle_ai_util.c L887)
+#   calls CalculateMoveDamageVars → GetTargetDamageModifier (battle_util.c L7220)
+#   which applies 0.75× when GetMoveTargetCount==2. The per-target simulatedDmg
+#   already incorporates the reduction, so GetNoOfHitsToKOBattler is naturally
+#   target-count-aware. FAST_KILL/SLOW_KILL scoring handles the comparison correctly
+#   with zero special-casing. ShouldUseSpreadDamageMove (L3915) only applies to
+#   TARGET_FOES_AND_ALLY — irrelevant to TARGET_BOTH spread moves.
 #
 # AI_AttacksPartner (flag 30, L6045) — confirmed absent for trainer AI:
 #   Only fires for IsNaturalEnemy (wild battles) or AI_FLAG_ATTACKS_PARTNER_FOCUSES_PARTNER.
@@ -143,8 +147,7 @@ func choose_action_doubles(
 			else:
 				scores.append(_score_move_doubles(
 						attacker, opp, move, weather,
-						move.is_spread and is_spread_active,
-						live_opp_count))
+						move.is_spread and is_spread_active))
 
 		var best_idx: int = _pick_best(scores, attacker.moves)
 		best_score[oi] = scores[best_idx] if not scores.is_empty() else AI_SCORE_DEFAULT
@@ -324,13 +327,13 @@ func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
 
 # ── Doubles move scoring ──────────────────────────────────────────────────────
 #
-# Extends _score_move with two doubles-specific adjustments:
-#   1. is_spread_active passed to DamageCalculator so KO estimation uses 0.75×.
-#   2. Spread bonus (+DECENT_EFFECT) when the move hits ≥2 live opponents.
+# Extends _score_move with one doubles-specific adjustment:
+#   is_spread_active passed to DamageCalculator so KO estimation uses 0.75×.
+# No spread bonus: simulatedDmg already incorporates the reduction (see header).
 
 func _score_move_doubles(attacker: BattlePokemon, defender: BattlePokemon,
 		move: MoveData, weather: int,
-		is_spread_active: bool, live_opp_count: int) -> int:
+		is_spread_active: bool) -> int:
 	var score: int = AI_SCORE_DEFAULT
 
 	var effectiveness: float = TypeChart.get_effectiveness(
@@ -362,11 +365,6 @@ func _score_move_doubles(attacker: BattlePokemon, defender: BattlePokemon,
 		if effectiveness >= 4.0:
 			score += BEST_EFFECT
 		elif effectiveness >= 2.0:
-			score += DECENT_EFFECT
-		# Spread bonus: hitting 2 targets is worth more than hitting 1.
-		# Source: ShouldUseSpreadDamageMove (AI_CompareDamagingMoves L3915) — prefers
-		# spread moves that hit both sides without crossing the friendly-fire threshold.
-		if move.is_spread and live_opp_count >= 2:
 			score += DECENT_EFFECT
 	else:
 		if move.secondary_effect in [

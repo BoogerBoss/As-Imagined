@@ -924,24 +924,26 @@ func _test_b9_roar_targets_field_slot() -> void:
 #   Trainer doubles AI never deliberately targets its own ally. See docs/decisions.md.
 
 
-# ── C1: AI prefers spread move when 2 live opponents ──────────────────────────
+# ── C1: AI picks spread move that KOs despite 0.75× reduction ─────────────────
 #
 # AI has spread (Normal, power=90) and tackle (Normal, power=40). Both opponents alive.
-# Spread scores higher than tackle due to the spread bonus (+DECENT_EFFECT=+2)
-# even though both moves KO at force-roll=100.
+# Spread triggers 0.75× per-target reduction. Spread still OHKOs (109 ≥ 70) → FAST_KILL.
+# Tackle does not OHKO (66 < 70) → no bonus. No separate spread bonus exists in source:
+# AI_CalcDamage → GetTargetDamageModifier already incorporates 0.75× into simulatedDmg.
 #
-# Arithmetic (AI base_atk=200→stat=205, defender base_def=80→stat=85, max_hp=61):
+# Arithmetic (AI base_atk=200→stat=205, Normal type, defenders base_def=80→stat=85,
+#              base_hp=10→max_hp=70 at L50, force_roll=100, no weather, AI faster):
 #
 #   Spread (is_spread=true, 2 live targets), power=90:
-#     Base: 90*205*22/85/50+2 = 97.  Spread: (97*3072+2047)/4096 = 73.
-#     Roll=100: 73.  STAB: (73*6144+2047)/4096 = 109 ≥ 61 → KO → +FAST_KILL(6).
-#     Spread bonus for live_opp_count≥2: +DECENT_EFFECT(2).  Score = 108.
+#     Base: 90*205*22/85/50+2 = 97.  Spread 0.75×: (97*3072+2047)/4096 = 73.
+#     Roll=100: 73.  STAB: (73*6144+2047)/4096 = 109 ≥ 70 → OHKO → +FAST_KILL(6).
+#     Score = 106.
 #
 #   Tackle (is_spread=false), power=40:
-#     Base: 40*205*22/85/50+2 = 44.  Roll=100: 44.  STAB: 66 ≥ 61 → KO → +FAST_KILL(6).
-#     No spread bonus.  Score = 106.
+#     Base: 40*205*22/85/50+2 = 44.  Roll=100: 44.  STAB: (44*6144+2047)/4096 = 66.
+#     66 < 70 → no OHKO.  Score = 100.
 #
-# Threshold: 108 > 106 → AI chooses spread (index 0).
+# 106 > 100 → AI chooses spread (index 0).
 
 func _test_c1_ai_prefers_spread_two_targets() -> void:
 	var ai := TrainerAI.new()
@@ -955,8 +957,8 @@ func _test_c1_ai_prefers_spread_two_targets() -> void:
 	ai_mon.add_move(spread_move)   # index 0
 	ai_mon.add_move(tackle)        # index 1
 
-	var b0 := _make_mon("B0", 1, 80, 80, 80, 80, 80)
-	var b1 := _make_mon("B1", 1, 80, 80, 80, 80, 40)
+	var b0 := _make_mon("B0", 10, 80, 80, 80, 80, 80)
+	var b1 := _make_mon("B1", 10, 80, 80, 80, 80, 40)
 
 	var action := ai.choose_action_doubles(
 			ai_mon, null,

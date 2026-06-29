@@ -1293,19 +1293,25 @@ Full pipeline (source: `CalculateBaseDamage` + `ApplyModifiersAfterDmgRoll`, bat
   Returns {"type": "move", "index": int, "target": int}. The "target" is the combatant
   index used directly by BattleManager's `_chosen_targets[i]`.
 
-## [M14c] Doubles AI spread move preference
+## [M14c] Doubles AI spread move preference — no explicit bonus
 
-- Source: `battle_ai_main.c` :: `ShouldUseSpreadDamageMove` in `AI_CompareDamagingMoves` (L3915)
-- Behavior: When ≥2 live opponents exist, spread moves are treated as "preferred" in
-  AI_CompareDamagingMoves by assigning them noOfHits=-1, excluding them from direct
-  KO-hit-count comparison. This effectively gives spread moves priority over single-target
-  moves when they can hit both opponents.
-- Port: `_score_move_doubles` adds DECENT_EFFECT (+2) to any spread move's score when
-  live_opp_count ≥ 2. DamageCalculator.calculate is called with is_spread=true so KO
-  estimation correctly applies the 0.75× reduction.
-- Notes: The +2 captures the source's preference for spread moves without replicating the
-  full KO-counting machinery. With STAB at roll=100, spread (power=90, +2 bonus) scores
-  108 vs tackle (power=40) scoring 106 in the C1 fixture — correct winner margin 2.
+- Source: `battle_ai_util.c` :: `AI_CalcDamage` (L887) → `CalculateMoveDamageVars` →
+  `GetTargetDamageModifier` (`battle_util.c` L7220); `CalcBattlerAiMovesData` (L715)
+- Behavior: The source does NOT add a flat bonus for spread moves. Instead,
+  `AI_CalcDamage` calls `CalculateMoveDamageVars` which calls `GetTargetDamageModifier`,
+  which applies the 0.75× reduction when `GetMoveTargetCount == 2`. This means
+  `simulatedDmg[atk][def][moveIndex]` already stores per-target damage with the reduction
+  baked in. `GetNoOfHitsToKOBattler` reads that pre-computed value and is therefore
+  naturally target-count-aware. `ShouldUseSpreadDamageMove` (L3915) only applies to
+  `TARGET_FOES_AND_ALLY` (moves that also hit the user's own partner) — it is irrelevant
+  to `TARGET_BOTH` spread moves that target only opponents.
+- Port: `_score_move_doubles` passes `is_spread_active=true` to `DamageCalculator.calculate`
+  so our KO estimate applies the 0.75× reduction, exactly mirroring what the source bakes
+  into `simulatedDmg`. No spread bonus constant is added. The existing FAST_KILL/SLOW_KILL
+  scoring handles spread vs single-target correctly with zero special-casing.
+- C1 fixture (post-correction): spread (power=90) deals 109 to a max_hp=70 target
+  despite 0.75× → OHKO → score 106. Tackle (power=40) deals 66 < 70 → no OHKO → score 100.
+  Spread wins on real KO advantage, not a phantom bonus.
 
 ## [M14c] AI_AttacksPartner — confirmed absent for trainer AI
 
