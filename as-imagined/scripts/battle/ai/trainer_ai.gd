@@ -36,8 +36,10 @@ const AI_SCORE_DEFAULT: int  = 100  # constants/battle_ai.h L57
 const FAST_KILL: int         = 6    # AI faster and faints target
 const SLOW_KILL: int         = 4    # AI slower and faints target
 const BEST_DAMAGE_MOVE: int  = 1    # battle_ai_main.h L13 — move with fewest hits to KO
-const BEST_EFFECT: int       = 4    # 4× effective or very strong secondary
-const DECENT_EFFECT: int     = 2    # 2× effective or useful secondary
+const WEAK_EFFECT: int       = 1    # small bonus
+const DECENT_EFFECT: int     = 2    # moderate bonus
+const GOOD_EFFECT: int       = 3    # good bonus
+const BEST_EFFECT: int       = 4    # large bonus
 
 var tier: Tier = Tier.BASIC
 
@@ -306,19 +308,42 @@ func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
 
 	# ── Pass 3: AI_CheckViability partial (battle_ai_main.c L5862) ───────────
 	#
-	# Full AI_CalcMoveEffectScore is ~1400 lines of per-move-effect handling.
-	# We implement one universally applicable rule from source:
-	#   Status move bonus when target has no status (IncreasePoisonScore etc.).
-
-	# Status move bonus when applicable status CAN be inflicted.
-	# Source: IncreasePoisonScore/IncreaseParalyzeScore/IncreaseSleepScore/IncreaseBurnScore
-	#   each add score when AI_Can*(…) returns TRUE (target has STATUS_NONE, type not immune).
-	if move.category == 2:
-		if move.secondary_effect in [
-				MoveData.SE_BURN, MoveData.SE_PARALYSIS, MoveData.SE_SLEEP,
-				MoveData.SE_TOXIC, MoveData.SE_FREEZE]:
-			if defender.status == BattlePokemon.STATUS_NONE:
-				score += DECENT_EFFECT
+	# Source-accurate ports of IncreasePoisonScore / IncreaseBurnScore /
+	# IncreaseParalyzeScore / IncreaseSleepScore (battle_ai_util.c L4791-4907).
+	# Common guard: skip bonus if AI can already KO the target this turn.
+	# See decisions.md for what is ported vs omitted per function.
+	if move.category == 2 and defender.status == BattlePokemon.STATUS_NONE:
+		var can_faint: bool = _can_attacker_ko_defender(attacker, defender, weather)
+		match move.secondary_effect:
+			MoveData.SE_TOXIC:
+				# IncreasePoisonScore (L4791): base +WEAK_EFFECT.
+				# Extra +DECENT_EFFECT when defender has no damaging moves (helpless).
+				if not can_faint:
+					if not _has_damaging_moves(defender):
+						score += DECENT_EFFECT
+					score += WEAK_EFFECT
+			MoveData.SE_BURN:
+				# IncreaseBurnScore (L4814): 0 if defender is not a physical attacker.
+				# +DECENT_EFFECT if has explicit physical moves; +WEAK_EFFECT if stat heuristic only.
+				if not can_faint:
+					if _has_physical_moves(defender):
+						score += DECENT_EFFECT
+					elif defender.species.base_attack >= defender.species.base_sp_attack + 10:
+						score += WEAK_EFFECT
+			MoveData.SE_PARALYSIS:
+				# IncreaseParalyzeScore (L4855): +GOOD_EFFECT if paralysis flips turn order
+				# (defSpeed >= atkSpeed and defSpeed/2 < atkSpeed); +DECENT_EFFECT otherwise.
+				if not can_faint:
+					var atk_spd: int = StatusManager.effective_speed(attacker)
+					var def_spd: int = StatusManager.effective_speed(defender)
+					if def_spd >= atk_spd and def_spd / 2 < atk_spd:
+						score += GOOD_EFFECT
+					else:
+						score += DECENT_EFFECT
+			MoveData.SE_SLEEP:
+				# IncreaseSleepScore (L4877): unconditional +DECENT_EFFECT when applicable.
+				if not can_faint:
+					score += DECENT_EFFECT
 
 	return score
 
@@ -359,12 +384,32 @@ func _score_move_doubles(attacker: BattlePokemon, defender: BattlePokemon,
 			else:
 				score += SLOW_KILL
 
-	if move.category == 2:
-		if move.secondary_effect in [
-				MoveData.SE_BURN, MoveData.SE_PARALYSIS, MoveData.SE_SLEEP,
-				MoveData.SE_TOXIC, MoveData.SE_FREEZE]:
-			if defender.status == BattlePokemon.STATUS_NONE:
-				score += DECENT_EFFECT
+	# Mirrors _score_move Pass 3 — same source functions, same conditions.
+	if move.category == 2 and defender.status == BattlePokemon.STATUS_NONE:
+		var can_faint: bool = _can_attacker_ko_defender(attacker, defender, weather)
+		match move.secondary_effect:
+			MoveData.SE_TOXIC:
+				if not can_faint:
+					if not _has_damaging_moves(defender):
+						score += DECENT_EFFECT
+					score += WEAK_EFFECT
+			MoveData.SE_BURN:
+				if not can_faint:
+					if _has_physical_moves(defender):
+						score += DECENT_EFFECT
+					elif defender.species.base_attack >= defender.species.base_sp_attack + 10:
+						score += WEAK_EFFECT
+			MoveData.SE_PARALYSIS:
+				if not can_faint:
+					var atk_spd: int = StatusManager.effective_speed(attacker)
+					var def_spd: int = StatusManager.effective_speed(defender)
+					if def_spd >= atk_spd and def_spd / 2 < atk_spd:
+						score += GOOD_EFFECT
+					else:
+						score += DECENT_EFFECT
+			MoveData.SE_SLEEP:
+				if not can_faint:
+					score += DECENT_EFFECT
 
 	return score
 
@@ -531,6 +576,40 @@ func _apply_best_damage_move(
 	for i in range(mini(hits_to_ko.size(), scores.size())):
 		if hits_to_ko[i] == least_hits:
 			scores[i] += BEST_DAMAGE_MOVE
+
+
+func _can_attacker_ko_defender(attacker: BattlePokemon, defender: BattlePokemon,
+		weather: int = DamageCalculator.WEATHER_NONE) -> bool:
+	# CanAIFaintTarget equivalent — does any of attacker's damaging moves KO the defender?
+	# Source: used as early-return guard in Increase*Score (battle_ai_util.c L4793).
+	for move: MoveData in attacker.moves:
+		if move == null or move.category == 2 or move.power == 0:
+			continue
+		if TypeChart.get_effectiveness(move.type, defender.species.types) == 0.0:
+			continue
+		var result: Dictionary = DamageCalculator.calculate(
+				attacker, defender, move, _force_roll, _force_crit, weather)
+		if result["damage"] >= defender.current_hp:
+			return true
+	return false
+
+
+func _has_damaging_moves(mon: BattlePokemon) -> bool:
+	# HasDamagingMove — does mon have any non-status, non-zero-power move?
+	# Source: battle_ai_util.c — used in IncreasePoisonScore to detect helpless defenders.
+	for move: MoveData in mon.moves:
+		if move != null and move.category != 2 and move.power > 0:
+			return true
+	return false
+
+
+func _has_physical_moves(mon: BattlePokemon) -> bool:
+	# HasMoveWithCategory(DAMAGE_CATEGORY_PHYSICAL) — does mon have physical damaging moves?
+	# Source: battle_ai_util.c — used in IncreaseBurnScore to detect physical attackers.
+	for move: MoveData in mon.moves:
+		if move != null and move.category == 0 and move.power > 0:
+			return true
+	return false
 
 
 # Pick highest-scoring available move index; ties broken by RNG or _force_tie_rng.

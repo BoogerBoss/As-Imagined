@@ -929,7 +929,7 @@ Format per entry:
 - Immune move: score - 20 (RETURN_SCORE_MINUS(20), AI_CheckBadMove L1294).
 - Wasted status move (target already has status): score - 10 (AI_CheckBadMove L2933).
 - Two-turn non-semi-inv when being OHKOd: score - 10 (AI_CheckBadMove L1254).
-- Status move on fresh target: +2 (IncreasePoisonScore/etc in AI_CalcMoveEffectScore).
+- Status move scoring: condition-specific, not flat (see F25 entry below).
 - Notes: 2026-06-26.
 
 ## [M10] Trainer AI — switch thresholds (source: battle_ai_switch.c)
@@ -1373,6 +1373,57 @@ and status moves (category 2) are excluded as in source.
    If self-sacrifice moves are added later, revisit.
 
 4. **`ShouldCompareMove` filter**: replaced by existing null / power==0 guards.
+
+## IncreasePoisonScore/BurnScore/ParalyzeScore/SleepScore — bounded port (F25 audit fix)
+
+- Source: `battle_ai_util.c` L4791–4907 (four functions); called from `AI_CalcMoveEffectScore`
+  in `battle_ai_main.c`.
+- **Why added:** The prior implementation applied a flat `DECENT_EFFECT (+2)` to all four
+  status types unconditionally when `defender.status == STATUS_NONE`. A post-M14c audit
+  (F25) found this was a fabrication pattern — the source functions each have distinct
+  conditions and bonus amounts, with the flat +2 being wrong for most cases.
+
+**What is ported (per function):**
+
+- **Common guard** (all four): If AI can already KO the defender this turn
+  (`CanAIFaintTarget`), skip the bonus. Ported as `_can_attacker_ko_defender`.
+
+- **IncreasePoisonScore (SE_TOXIC)**: base `+WEAK_EFFECT (+1)`. Additional
+  `+DECENT_EFFECT (+2)` if `!HasDamagingMove(battlerDef)` (defender is helpless).
+  Total: +1 common case; +3 when defender has no attacking moves.
+
+- **IncreaseBurnScore (SE_BURN)**: 0 if defender is not a physical attacker (no physical
+  moves AND `base_atk < base_spatk + 10`). `+DECENT_EFFECT (+2)` if defender has explicit
+  physical moves. `+WEAK_EFFECT (+1)` if only the stat heuristic applies
+  (`base_atk >= base_spatk + 10`) but no known physical moves.
+
+- **IncreaseParalyzeScore (SE_PARALYSIS)**: `+GOOD_EFFECT (+3)` when paralysis flips turn
+  order (`defSpeed >= atkSpeed && defSpeed/2 < atkSpeed`). `+DECENT_EFFECT (+2)` otherwise.
+
+- **IncreaseSleepScore (SE_SLEEP)**: unconditional `+DECENT_EFFECT (+2)`.
+
+**What is deliberately omitted:**
+
+1. **Synergy bonuses** — Poison: Venoshock/Merciless/STALL+Protect combos. Burn:
+   Hex/Smelling Salts power-boost. Paralysis: flinch-move setup, defender confusion/
+   infatuation volatile. Sleep: Dream Eater/Nightmare bonus, Focus Punch exception to the
+   KO guard. None of these moves/abilities are in current scope.
+
+2. **Hold-item guards** — each function checks `HOLD_EFFECT_CURE_PSN/BRN/PAR/SLP` on the
+   defender. Not tracked in this project.
+
+3. **Burn: "best moves" filtering** — source calls `GetBestDmgMovesFromBattler` and checks
+   if the *best* defender moves are physical; our port checks if *any* physical move exists.
+   Simplification: over-awards `+DECENT_EFFECT` when a mon has a physical move but its best
+   moves are all special. Documentably conservative — no test exercises this distinction.
+
+4. **Freeze** — no `IncreaseFreeze` function exists in source (freeze is always a secondary
+   on damaging moves, not a pure status move). `SE_FREEZE` removed from Pass 3 matching;
+   retained in Pass 1's already-statused penalty check for completeness.
+
+- Notes: The only test exercising status bonus scoring is A6 (Toxic vs Splash vs helpless
+  Normal defender). Under new scoring: Splash=100, Toxic=103 (DECENT_EFFECT for no-damage
+  defender + WEAK_EFFECT base). A6 passes; no test required redesign. 2026-06-29.
 
 ## [M14c] B8 Destiny Bond fixture non-determinism (fixed)
 
