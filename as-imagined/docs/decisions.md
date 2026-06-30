@@ -1522,3 +1522,295 @@ and status moves (category 2) are excluded as in source.
   integration test using `bm._force_hit = true`.
 - Going forward: any test that needs a guaranteed hit on a move with accuracy < 100 should
   set `bm._force_hit = true` rather than substituting an always-hit move as a workaround.
+
+---
+
+## [Reference] DamageCalculator.calculate() — full modifier pipeline
+
+Source: `as-imagined/scripts/battle/core/damage_calculator.gd` — read directly 2026-06-30.  
+This section supersedes any informal ordering claims in milestone notes; those were written
+before later milestones (M11/M12/M14b) inserted additional steps. Use this table as the
+single source of truth for ordering questions.
+
+### Critical design note — two UQ4.12 rounding conventions, not one
+
+This pipeline uses **two different UQ4.12 rounding conventions** for two distinct purposes.
+
+- **`_uq412_half_down(v, f)` — rounds ties DOWN** (`(v * f + 2047) / 4096`).  
+  Used for every sequential application of a single modifier to the running integer `dmg`:
+  weather, crit multiplier, roll, STAB, type effectiveness (apply step), Thick Fat, burn,
+  Life Orb, Resist Berry, Helping Hand power boost, and ability/item atk boosts (steps 3–5).
+  This is the helper for "integer × UQ4.12 modifier → integer result."
+
+- **`_uq412_multiply(a, b)` — rounds ties UP** (`(a * b + 2048) >> 12`).  
+  Used **only** to accumulate two UQ4.12 type-effectiveness values into one combined modifier,
+  which is then applied once via `_uq412_half_down`. This is the helper for "UQ4.12 × UQ4.12
+  → UQ4.12 result."
+
+**Counterexample retracted — the original claim was incorrect arithmetic.** A previous
+version of this section asserted `_uq412_half_down(2048, 2048) = 1023` while
+`_uq412_multiply(2048, 2048) = 1024`, claiming the helpers diverge for a dual 0.5×
+type-effectiveness scenario. That is wrong. Full arithmetic for both:
+
+- `_uq412_multiply(2048, 2048)` = `(a*b + 2048) >> 12`:
+  `2048×2048 = 4,194,304`; `4,194,304+2048 = 4,196,352`;
+  `4,196,352>>12`: `4096×1024 = 4,194,304`, remainder `4,196,352−4,194,304 = 2,048 < 4,096`
+  → quotient = **1024**.
+
+- `_uq412_half_down(2048, 2048)` = `(v*f + 2047) / 4096`:
+  `4,194,304+2047 = 4,196,351`;
+  `4,196,351/4096`: `4096×1024 = 4,194,304`, remainder `4,196,351−4,194,304 = 2,047 < 4,096`
+  → quotient = **1024**.
+
+Both return **1024**. The rounding-tie case where the two helpers diverge requires the raw
+product to have remainder exactly 2048 when divided by 4096. For `2048×2048 = 4,194,304`,
+the remainder is 0 — there is no tie to break.
+
+More generally: every standard type-effectiveness modifier is a power of 2 in UQ4.12 space
+(`{0, 2048, 4096, 8192}`). The product of any two powers of 2 is itself a power of 2, hence
+an exact multiple of 4096. So every pair of real type-effectiveness values produces a raw
+product with remainder 0, and `_uq412_multiply` and `_uq412_half_down` are **numerically
+identical** for every type-effectiveness accumulation that can occur in this codebase.
+
+**Why the distinction still matters and the rule is still correct.** The choice of helper
+matches the structural API boundary in the source's `fpmath.h`:
+`uq4_12_multiply` (half-UP) is the documented UQ4.12 × UQ4.12 → UQ4.12 operation;
+`uq4_12_multiply_by_int_half_down` (half-DOWN) is the documented integer × UQ4.12 → integer
+operation. Using the wrong helper for accumulation is structurally incorrect even though it
+produces the same numbers today. A hypothetical future modifier with a non-power-of-2 UQ4.12
+value (e.g. a 0.6× or 0.8× modifier) would have a product with a non-zero remainder, and at
+the exact halfway point the two helpers diverge. Matching the source's intent now prevents a
+silent wrong answer if such a modifier is ever added.
+
+**The rule: accumulating a UQ4.12 modifier against another UQ4.12 modifier →
+`_uq412_multiply`; applying any modifier to the integer `dmg` value → `_uq412_half_down`.**
+
+### Rounding helpers used inside calculate()
+
+Four distinct rounding behaviors appear; which one is used matters for specific inputs.
+
+| Helper | Formula | Behavior |
+|---|---|---|
+| `_uq412_half_down(v, f)` (line 311) | `(v * f + 2047) / 4096` | Integer result; rounds ties DOWN. Used for every `dmg` modifier at steps 3–16 below. |
+| `_uq412_multiply(a, b)` (line 298) | `(a * b + 2048) >> 12` | UQ4.12 result; rounds ties UP. Used **only** to accumulate dual-type effectiveness (step 12). |
+| `_apply_stage(base, stage)` (line 320) | `base * STAGE_RATIOS[stage+6][0] / STAGE_RATIOS[stage+6][1]` | GDScript `/` — truncates toward zero. Used at step 2. |
+| Inline `/` (lines 175, 218) | GDScript integer division | Truncates toward zero. Used in base formula (step 6) and random roll (step 10). |
+
+### Pre-conditions (short-circuit before any formula)
+
+| Check | Lines | Result |
+|---|---|---|
+| Ability type immunity (`AbilityManager.blocks_move_type`) | 92–94 | Returns `{damage:0, effectiveness:0.0}` immediately |
+| Type chart immunity (effectiveness == 0.0) | 98–102 | Returns `{damage:0, effectiveness:0.0}` immediately |
+| Fixed-damage move (`move.fixed_damage > 0`) | 109–111 | Returns `{damage: fixed_damage}` — all modifiers below skipped |
+| Level-damage move (`move.level_damage == true`) | 112–114 | Returns `{damage: attacker.level}` — all modifiers below skipped |
+
+### Modifier pipeline — execution order
+
+Steps 2–5 modify the intermediate `atk` or `effective_power` values fed into the base
+formula; they are not applied to `dmg` directly. Steps 6–17 operate on `dmg`.
+
+| Step | Modifier | Lines | Constant / formula | Rounding | Conditional? |
+|---|---|---|---|---|---|
+| 1 | Crit determination | 118 | Gen 7+ odds: stage 0 → 1/24, 1 → 1/8, 2 → 1/2, 3+ → always. `force_crit != null` bypasses RNG. | n/a (produces `is_crit` bool) | Always; RNG or forced |
+| 2 | Stat stage → `atk` | 146 | `_apply_stage(atk_base, atk_stage)` = `base × STAGE_RATIOS[idx][0] / STAGE_RATIOS[idx][1]` | Truncation | Always; stage 0 is neutral (×10/10 = unchanged) |
+| 2 | Stat stage → `def` | 147 | same formula for def_base/def_stage | Truncation | Always |
+| 2a | Crit clamps attacker drops | 141–143 | `if atk_stage < 0: atk_stage = 0` (applied before `_apply_stage`) | n/a | `is_crit == true` |
+| 2b | Crit clamps defender boosts | 144 | `if def_stage > 0: def_stage = 0` (applied before `_apply_stage`) | n/a | `is_crit == true` |
+| 3 | Ability atk modifier (Huge Power / Pure Power) | 153–155 | `atk = _uq412_half_down(atk, mod)`, mod = 8192 (×2.0) | `_uq412_half_down` | mod ≠ 4096 (i.e. attacker has Huge Power or Pure Power for physical moves) |
+| 4 | Item atk modifier (Choice Band / Specs) | 159–161 | `atk = _uq412_half_down(atk, mod)`, mod = 6144 (×1.5) | `_uq412_half_down` | Physical + Choice Band, or Special + Choice Specs; mod ≠ 4096 |
+| 5 | Helping Hand power boost | 173–174 | `effective_power = _uq412_half_down(effective_power, 6144)` — UQ4.12(1.5) = 6144 | `_uq412_half_down` | `helping_hand == true` |
+| **6** | **Base damage formula** | **175** | `effective_power × atk × (2 × level / 5 + 2) / def / 50 + 2` | Inline truncation, left-to-right; each `/` truncates independently | Always |
+| 7 | Spread-move reduction | 185–186 | `_uq412_half_down(dmg, 3072)` — UQ4.12(0.75) = 3072 | `_uq412_half_down` | `is_spread == true` AND caller confirmed ≥ 2 live targets |
+| 8 | Weather modifier | 197–204 | RAIN+Water or SUN+Fire: 6144 (×1.5); RAIN+Fire or SUN+Water: 2048 (×0.5). Applied via `_uq412_half_down`. | `_uq412_half_down` | weather ≠ NONE AND move type matches AND no Utility Umbrella on either battler |
+| 9 | Critical hit multiplier | 209–210 | `_uq412_half_down(dmg, 6144)` — UQ4.12(1.5) = 6144 = `UQ412_1_5` | `_uq412_half_down` | `is_crit == true` |
+| **10** | **Random roll** | **216–218** | `dmg × roll / 100`, roll ∈ [85, 100] uniform. `force_roll ≥ 85` pins it. | Inline truncation | Always |
+| 11 | STAB | 226–227 | `_uq412_half_down(dmg, 6144)` — UQ4.12(1.5) = 6144 = `UQ412_1_5` | `_uq412_half_down` | move.type ∈ attacker.species.types AND move.type ≠ TYPE_MYSTERY |
+| 12 | Type effectiveness | 239–249 | For dual-type defender: accumulate via `_uq412_multiply(type_mod, next_uq412)` (one call per additional type); then apply once via `_uq412_half_down(dmg, type_mod)`. For mono-type: only the `_uq412_half_down` apply step (no accumulation). Returns `{damage:0}` if combined mod == 0. | Accumulate: `_uq412_multiply` (half-UP); Apply: `_uq412_half_down` | move.type ≠ TYPE_MYSTERY |
+| 13 | Thick Fat (defender ability) | 256–258 | `_uq412_half_down(dmg, mod)`, mod = 2048 (×0.5) | `_uq412_half_down` | defender has ABILITY_THICK_FAT AND move type is FIRE or ICE |
+| 14 | Burn halving | 266–267 | `_uq412_half_down(dmg, 2048)` — UQ4.12(0.5) = 2048 | `_uq412_half_down` | attacker.status == STATUS_BURN AND move.category == 0 (Physical) |
+| 15 | Life Orb (post-roll, attacker item) | 272–274 | `_uq412_half_down(dmg, 5324)` — UQ_4_12_FLOORED(1.3) = 5324 | `_uq412_half_down` | attacker holds Life Orb (HOLD_EFFECT_LIFE_ORB = 60) |
+| 16 | Resist Berry (post-roll, defender item) | 280–283 | `_uq412_half_down(dmg, 2048)` — UQ412_RESIST_BERRY = 2048 (×0.5) | `_uq412_half_down` | defender holds matching resist berry AND effectiveness ≥ 2.0× |
+| 17 | Minimum damage floor | 286–287 | `if dmg == 0: dmg = 1` | n/a | dmg == 0 after all modifiers |
+
+**Key ordering facts to remember (each is non-obvious and has been tested with
+discriminating expected values):**
+- Weather (step 8) comes **before** crit (9) and roll (10).
+- Roll (10) comes **before** STAB (11) and type effectiveness (12).
+- Life Orb (15) comes **after** STAB (11), type effectiveness (12), Thick Fat (13), and burn (14).
+- Resist Berry (16) comes **after** Life Orb (15).
+- Choice Band/Specs (step 4) modifies `atk` before the formula, not `dmg` after it.
+
+---
+
+### Verification hand-traces — three existing discriminating tests
+
+Each trace below applies every step in the table order. Pre-conditions that do not
+trigger are listed with "→ skip". Computed with `_uq412_half_down(v, f) = (v×f+2047)/4096`
+(GDScript integer division, truncates toward zero).
+
+---
+
+#### Trace 1 — damage_test.gd T6c: Ember roll=100 (expected 54)
+
+**Setup:**
+- Attacker: Charmander, type=[FIRE], base_spatk=60 → sp_atk=65, level=50. No held item. abilities=[].
+- Defender: Bulbasaur, type=[GRASS, POISON], base_spdef=65 → sp_def=70. No held item. abilities=[].
+- Move: Ember — type=FIRE, category=1 (Special), power=40, crit_stage=0.
+- force_roll=100, force_crit=false, weather=WEATHER_NONE, is_spread=false.
+
+**Pre-conditions:** blocks_move_type → skip. Fire vs [GRASS, POISON] = 2.0× ≠ 0.0 → proceed. No fixed/level damage → proceed.
+
+| Step | Calculation | Result |
+|---|---|---|
+| 1 | force_crit=false → is_crit=false | — |
+| 2 | Special: atk_base=65, atk_stage=0, def_base=70, def_stage=0. `_apply_stage(65,0)=65×10/10=65`. `_apply_stage(70,0)=70`. | atk=65, def=70 |
+| 3 | No Huge Power (abilities=[]) → mod=4096 | → skip |
+| 4 | No held item → mod=4096 | → skip |
+| 5 | helping_hand=false → effective_power=40 | — |
+| 6 | `40×65×(2×50/5+2)/70/50+2` = `40×65×22/70/50+2` = `2600×22/70/50+2` = `57200/70/50+2` = `817/50+2` = `16+2` = **18** | dmg=18 |
+| 7 | is_spread=false | → skip |
+| 8 | WEATHER_NONE → mod=4096 | → skip |
+| 9 | is_crit=false | → skip |
+| 10 | `18×100/100 = 18` | dmg=18 |
+| 11 | FIRE ∈ [FIRE] → STAB. `(18×6144+2047)/4096 = (110592+2047)/4096 = 112639/4096 = 27` | dmg=27 |
+| 12 | type_mod = get_uq412(FIRE, GRASS) = 8192 (2.0×). Second type POISON ≠ GRASS: `_uq412_multiply(8192, get_uq412(FIRE,POISON))` = `_uq412_multiply(8192, 4096)` = `(8192×4096+2048)>>12` = `(33554432+2048)>>12` = `33556480>>12` = 8192 (×2.0 unchanged). Apply: `(27×8192+2047)/4096 = (221184+2047)/4096 = 223231/4096 = 54` | dmg=54 |
+| 13–16 | No Thick Fat, no burn, no Life Orb, no resist berry | → all skip |
+| 17 | dmg=54 > 0 | — |
+
+**Result: 54. Asserted value: 54. ✓ MATCH**
+
+---
+
+#### Trace 2 — weather_test.gd W8a.02: Water Gun under rain, roll=85 (expected 17)
+
+**Setup:**
+- Attacker: type=[NORMAL], base_spatk=50 → sp_atk=55, level=50. No item. No ability. No status.
+- Defender: type=[NORMAL], base_spdef=70 → sp_def=75. No item. No ability.
+- Move: Water Gun — type=WATER, category=1 (Special), power=40, crit_stage=0.
+- force_roll=85, force_crit=false, weather=WEATHER_RAIN, is_spread=false, helping_hand=false.
+
+**Pre-conditions:** blocks_move_type → no ability → skip. WATER vs [NORMAL] = 1.0× ≠ 0.0 → proceed. No fixed/level damage.
+
+**Step 1 — crit:** force_crit=false → `is_crit=false`
+
+**Step 2 — stat stages:** category=Special → atk_base=55, atk_stage=0, def_base=75, def_stage=0. is_crit=false → no clamp.
+- `_apply_stage(55, 0)`: STAGE_RATIOS[6]=[10,10]; `55×10=550`; `550/10=55` → **atk=55**
+- `_apply_stage(75, 0)`: `75×10=750`; `750/10=75` → **def=75**
+
+**Step 3 — ability atk mod:** no ability → mod=4096 → skip. atk=55
+
+**Step 4 — item atk mod:** no held item → mod=4096 → skip. atk=55
+
+**Step 5 — Helping Hand:** false → effective_power=40
+
+**Step 6 — base formula:** `40 × 55 × (2×50/5+2) / 75 / 50 + 2`
+- `2×50=100`; `100/5=20`; `20+2=22`
+- `40×55=2200`; `2200×22=48400`
+- `48400/75`: `75×645=48375`; `48400−48375=25` → quotient **645**
+- `645/50`: `50×12=600`; `645−600=45` → quotient **12**
+- `12+2=14` → **dmg=14**
+
+**Step 7 — spread:** is_spread=false → skip. dmg=14
+
+**Step 8 — weather:** WEATHER_RAIN + move type WATER → mod=6144. Neither mon holds Utility Umbrella.
+- `14×6144=86016`; `86016+2047=88063`
+- `88063/4096`: `4096×21=86016`; `88063−86016=2047` → quotient **21** → **dmg=21**
+
+**Step 9 — crit multiplier:** is_crit=false → skip. dmg=21
+
+**Step 10 — roll:** force_roll=85
+- `21×85=1785`; `1785/100`: `100×17=1700`; `1785−1700=85` → quotient **17** → **dmg=17**
+
+**Step 11 — STAB:** WATER ∉ [NORMAL] → skip. dmg=17
+
+**Step 12 — type effectiveness:** get_uq412(WATER, NORMAL)=4096 (×1.0). Mono-type → no `_uq412_multiply`.
+- `17×4096=69632`; `69632+2047=71679`
+- `71679/4096`: `4096×17=69632`; `71679−69632=2047` → quotient **17** → **dmg=17**
+
+**Steps 13–16:** No Thick Fat, no burn, no Life Orb, no resist berry → all skip. dmg=17
+
+**Step 17 — floor:** 17 > 0 → no change.
+
+**Result: 17. Asserted value: 17. ✓ MATCH**
+
+**Wrong-order check** (weather placed after roll instead of before):
+- dmg=14 after step 6 (same).
+- Roll at wrong position: `14×85=1190`; `1190/100`: `100×11=1100`; `1190−1100=90` → quotient **11**; dmg=11.
+- Weather at wrong position: `11×6144=67584`; `67584+2047=69631`; `69631/4096`: `4096×16=65536`; `4096×17=69632`; `69631<69632` → quotient **16**.
+- Wrong order gives **16 ≠ 17**. Test is genuinely discriminating.
+
+---
+
+#### Trace 3 — item_test.gd I4.02: Life Orb Psychic, roll=85 (expected 94)
+
+**Setup:**
+- Attacker: type=[PSYCHIC], base_spatk=100 → sp_atk=105, level=50. Holds Life Orb (HOLD_EFFECT=60). No ability. No status.
+- Defender: type=[NORMAL], base_spdef=70 → sp_def=75. No item. No ability.
+- Move: Psychic — type=PSYCHIC, category=1 (Special), power=90, crit_stage=0.
+- force_roll=85, force_crit=false, weather=WEATHER_NONE, is_spread=false, helping_hand=false.
+
+**Pre-conditions:** blocks_move_type → no ability → skip. PSYCHIC vs [NORMAL] = 1.0× ≠ 0.0 → proceed. No fixed/level damage.
+
+**Step 1 — crit:** force_crit=false → `is_crit=false`
+
+**Step 2 — stat stages:** category=Special → atk_base=105, atk_stage=0, def_base=75, def_stage=0. is_crit=false → no clamp.
+- `_apply_stage(105, 0)`: STAGE_RATIOS[6]=[10,10]; `105×10=1050`; `1050/10=105` → **atk=105**
+- `_apply_stage(75, 0)`: `75×10=750`; `750/10=75` → **def=75**
+
+**Step 3 — ability atk mod:** no ability → mod=4096 → skip. atk=105
+
+**Step 4 — item atk mod:** Life Orb is not Band/Specs → `attack_modifier_uq412` returns 4096 → skip. atk=105
+
+**Step 5 — Helping Hand:** false → effective_power=90
+
+**Step 6 — base formula:** `90 × 105 × (2×50/5+2) / 75 / 50 + 2`
+- `2×50=100`; `100/5=20`; `20+2=22`
+- `90×105=9450`
+- `9450×22`: `9000×22=198000`; `450×22=9900`; `198000+9900=207900`
+- `207900/75`: `75×2772=207900` exactly → quotient **2772**
+- `2772/50`: `50×55=2750`; `2772−2750=22` → quotient **55**
+- `55+2=57` → **dmg=57**
+
+**Step 7 — spread:** is_spread=false → skip. dmg=57
+
+**Step 8 — weather:** WEATHER_NONE → mod=4096 → skip. dmg=57
+
+**Step 9 — crit multiplier:** is_crit=false → skip. dmg=57
+
+**Step 10 — roll:** force_roll=85
+- `57×85`: `50×85=4250`; `7×85=595`; `4250+595=4845`
+- `4845/100`: `100×48=4800`; `4845−4800=45` → quotient **48** → **dmg=48**
+
+**Step 11 — STAB:** PSYCHIC ∈ [PSYCHIC] → apply.
+- `48×6144`: `40×6144=245760`; `8×6144=49152`; `245760+49152=294912`
+- `294912+2047=296959`
+- `296959/4096`: `4096×72=294912`; `296959−294912=2047` → quotient **72** → **dmg=72**
+
+**Step 12 — type effectiveness:** get_uq412(PSYCHIC, NORMAL)=4096 (×1.0). Mono-type → no `_uq412_multiply`.
+- `72×4096`: `70×4096=286720`; `2×4096=8192`; `286720+8192=294912`
+- `294912+2047=296959`
+- `296959/4096`: `4096×72=294912`; `296959−294912=2047` → quotient **72** → **dmg=72**
+
+**Step 13 — Thick Fat:** no ability → skip. dmg=72
+
+**Step 14 — burn:** no burn → skip. dmg=72
+
+**Step 15 — Life Orb:** `post_roll_modifier_uq412` returns 5324. 5324 ≠ 4096 → apply.
+- `72×5324`: `70×5324=372680`; `2×5324=10648`; `372680+10648=383328`
+- `383328+2047=385375`
+- `385375/4096`: `4096×90=368640`; `4096×4=16384`; `368640+16384=385024` (=94×4096); `4096×95=389120`; `385375−385024=351` → quotient **94** → **dmg=94**
+
+**Step 16 — Resist Berry:** no item → skip. dmg=94
+
+**Step 17 — floor:** 94 > 0 → no change.
+
+**Result: 94. Asserted value: 94. ✓ MATCH**
+
+**Wrong-order check** (Life Orb before roll, per I4.02 discriminating comment):
+- dmg=57 after step 9 (same).
+- Life Orb at wrong position (before roll): `57×5324`: `50×5324=266200`; `7×5324=37268`; `266200+37268=303468`; `303468+2047=305515`; `305515/4096`: `4096×74`: `4096×70=286720`; `4096×4=16384`; `286720+16384=303104`; `305515−303104=2411`; `4096×75=307200`; `305515<307200` → quotient **74**; dmg=74.
+- Roll at wrong position (after Life Orb): `74×85`: `70×85=5950`; `4×85=340`; `5950+340=6290`; `6290/100`: `100×62=6200`; `6290−6200=90` → quotient **62**; dmg=62.
+- STAB: `62×6144`: `60×6144=368640`; `2×6144=12288`; `368640+12288=380928`; `380928+2047=382975`; `382975/4096`: `4096×93`: `4096×90=368640`; `4096×3=12288`; `368640+12288=380928`; `382975−380928=2047`; `4096×94=385024`; `382975<385024` → quotient **93**; dmg=93.
+- Type eff ×1.0: `93×4096=380928`; `380928+2047=382975`; `382975/4096=93` (identical to STAB computation) → dmg=93.
+- Wrong order gives **93 ≠ 94**. Test is genuinely discriminating.
