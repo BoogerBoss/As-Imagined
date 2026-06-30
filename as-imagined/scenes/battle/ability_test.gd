@@ -33,6 +33,7 @@ func _ready() -> void:
 	_test_section_2c_levitate()
 	_test_section_3a_intimidate()
 	_test_section_3b_speed_boost()
+	_test_section_3b2_speed_boost_switch_in()
 	_test_section_4a_static()
 	_test_section_4b_static_electric_immune()
 	_test_section_4c_flame_body()
@@ -325,6 +326,78 @@ func _test_section_3b_speed_boost() -> void:
 	_chk("S3B.06 Speed stage still = 6 after cap", sb_mon.stat_stages[BattlePokemon.STAGE_SPEED] == 6)
 
 
+# ── Section 3B2: Speed Boost — no boost on switch-in turn (A7) ───────────────
+#
+# Source: !BattlerJustSwitchedIn gate (battle_util.c L10982) — isFirstTurn==2 is
+#   set at mid-battle switch-in (battle_main.c L3198/L3309) and decremented at L5038.
+# Mirrored via BattlePokemon.switched_in_this_turn + _phase_priority_resolution clear.
+#
+# Damage math (hand-verified, bench_mon ATK stat=10, opp DEF stat=5005, Tackle BP=40,
+# Normal vs Normal STAB applies):
+#   base = 40*10*22 / 5005 / 50 + 2 = 8800/5005/50+2 = 1/50+2 = 0+2 = 2
+#   after roll (dmg*roll/100 integer): roll 85–99 → 2*roll/100 = 1; roll 100 → 2
+#   after STAB (_uq412_half_down): 1 → 1; 2 → 3
+#   without crit: damage is 1 on 15/16 rolls, 3 on roll=100
+#   with crit (base→3 before roll): roll 85–99 → 2 (STAB→3); roll 100 → 3 (STAB→4)
+#   absolute worst-case single-turn damage: 4 (crit + roll 100, rare)
+#
+# opp.current_hp = 8 > 4 (worst-case damage) → opp CANNOT be KO'd on turn 1 (bench_mon
+# doesn't attack; it switches in) or turn 2 (max damage 4 leaves opp at ≥4 HP) under
+# any roll or crit combination. Both EOT1 and EOT2 are therefore guaranteed to fire and
+# be captured by the phase_changed(BATTLE_END_CHECK) snapshots — test is RNG-safe.
+# Turn 1: player switches in bench_mon; opp attacks bench_mon (200 HP, 205 DEF — safe).
+# Turn 2+: bench_mon auto-selects Tackle; opp auto-selects Tackle.
+
+func _test_section_3b2_speed_boost_switch_in() -> void:
+	var speed_boost := _load_ability(3)
+	var tackle      := _load_move(33)
+
+	var starter   := _make_mon("Starter", 50, [TypeChart.TYPE_NORMAL],
+			200, 80, 200, 5, 200, 100)
+	var bench_mon := _make_mon("SBench",  50, [TypeChart.TYPE_NORMAL],
+			200, 5, 200, 5, 200, 50)
+	bench_mon.ability = speed_boost
+
+	var opp       := _make_mon("OppTank", 50, [TypeChart.TYPE_NORMAL],
+			200, 5, 5000, 5, 200, 30)
+	opp.current_hp = 8
+
+	starter.add_move(tackle)
+	bench_mon.add_move(tackle)
+	opp.add_move(tackle)
+
+	var speed_stage_after_eot1 := [-1]
+	var speed_stage_after_eot2 := [-1]
+	var eot_count              := [0]
+
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.phase_changed.connect(func(phase: BattleManager.BattlePhase):
+		if phase == BattleManager.BattlePhase.BATTLE_END_CHECK:
+			eot_count[0] += 1
+			if eot_count[0] == 1:
+				speed_stage_after_eot1[0] = bench_mon.stat_stages[BattlePokemon.STAGE_SPEED]
+			elif eot_count[0] == 2:
+				speed_stage_after_eot2[0] = bench_mon.stat_stages[BattlePokemon.STAGE_SPEED])
+
+	var player_party := BattleParty.new()
+	player_party.members = [starter, bench_mon]
+	player_party.active_index = 0
+
+	bm.queue_switch(0, 1)  # Turn 1: switch starter out, bench_mon in.
+	bm.start_battle_with_parties(player_party, BattleParty.single(opp))
+	bm.queue_free()
+
+	_chk("S3B.07 Speed stage 0 after switch-in turn EOT (gate active)",
+			speed_stage_after_eot1[0] == 0)
+	_chk("S3B.08 Speed stage 1 after turn-2 EOT (gate lifted)",
+			speed_stage_after_eot2[0] == 1)
+	_chk("S3B.09 switched_in_this_turn false by turn 2",
+			not bench_mon.switched_in_this_turn)
+	_chk("S3B.10 Speed Boost fired at least once over battle",
+			bench_mon.stat_stages[BattlePokemon.STAGE_SPEED] >= 1)
+
+
 # ── Section 4A: Static ────────────────────────────────────────────────────────
 #
 # Source: AbilityBattleEffects(ABILITYEFFECT_MOVE_END, ...) (battle_util.c L4091):
@@ -471,12 +544,13 @@ func _test_section_4d_rough_skin() -> void:
 #
 # Source: TrySynchronizeActivation (battle_script_commands.c L2130):
 #   Fires for BURN, PARALYSIS, POISON, TOXIC; NOT SLEEP, NOT FREEZE.
-# Test via BattleManager: attacker uses Thunder Wave on Synchronize holder →
-# attacker gets paralyzed back.
+# S4E.01–05 use direct API calls (StatusManager + AbilityManager) — no BattleManager,
+# no accuracy roll, no turn-order dependency. Same pattern as the sleep tests.
+# S4E.06 verifies the full integration path (BattleManager → _try_synchronize →
+# ability_triggered) with _force_hit = true so Thunder Wave always lands.
 
 func _test_section_4e_synchronize_status_move() -> void:
-	var thunder_wave := _load_move(86)   # Electric/Status/guaranteed paralysis
-	var sleep_powder := _load_move(79)   # Grass/Status/guaranteed sleep
+	var thunder_wave := _load_move(86)   # Electric/Status
 	var synchronize_ab := _load_ability(28)
 
 	var sp_fast := PokemonSpecies.new()
@@ -491,44 +565,69 @@ func _test_section_4e_synchronize_status_move() -> void:
 	sp_normal.base_hp = 200; sp_normal.base_attack = 5; sp_normal.base_defense = 200
 	sp_normal.base_sp_attack = 5; sp_normal.base_sp_defense = 200; sp_normal.base_speed = 80
 
-	# twave_attacker has higher speed so it always goes first — no RNG tiebreak.
-	var twave_attacker := BattlePokemon.from_species(sp_fast, 50)
-	var synch_holder   := BattlePokemon.from_species(sp_normal, 50)
+	# S4E.01–03: Direct API — paralysis applied to Synchronize holder, reflected back.
+	var para_source  := BattlePokemon.from_species(sp_fast, 50)
+	var synch_holder := BattlePokemon.from_species(sp_normal, 50)
 	synch_holder.ability = synchronize_ab
 
-	var secondary_events := []
-	var ability_events := []
+	var para_applied := StatusManager.try_apply_status(synch_holder, BattlePokemon.STATUS_PARALYSIS)
+	_chk("S4E.01 paralysis applied to Synchronize holder",
+		para_applied and synch_holder.status == BattlePokemon.STATUS_PARALYSIS)
+	var synch_back := AbilityManager.try_synchronize(synch_holder, para_source, BattlePokemon.STATUS_PARALYSIS)
+	_chk("S4E.02 Synchronize reflected paralysis back",  synch_back == BattlePokemon.STATUS_PARALYSIS)
+	_chk("S4E.03 source now paralyzed by Synchronize",   para_source.status == BattlePokemon.STATUS_PARALYSIS)
 
-	var bm := BattleManager.new()
-	add_child(bm)
-	bm.secondary_applied.connect(func(p, se): secondary_events.push_back([p, se]))
-	bm.ability_triggered.connect(func(p, ek): ability_events.push_back([p, ek]))
-
-	twave_attacker.add_move(thunder_wave)
-	synch_holder.add_move(thunder_wave)
-	bm.start_battle(twave_attacker, synch_holder)
-
-	# After the first turn (Thunder Wave used), holder got paralyzed, Synchronize fires back.
-	_chk("S4E.01 Synchronize holder paralyzed",   synch_holder.status == BattlePokemon.STATUS_PARALYSIS)
-	_chk("S4E.02 Synchronize reflected back",      twave_attacker.status == BattlePokemon.STATUS_PARALYSIS)
-	_chk("S4E.03 ability_triggered = synchronize",
-		ability_events.any(func(e): return e[1] == "synchronize"))
-
-	bm.queue_free()
-
-	# Sleep is NOT reflected by Synchronize.
+	# S4E.04–05: Sleep is NOT reflected by Synchronize.
 	# Source: TrySynchronizeActivation — MOVE_EFFECT_SLEEP not in the trigger list.
-	# Test directly via StatusManager + AbilityManager to avoid BattleManager accuracy/turn-order RNG.
-	var sleep_source   := BattlePokemon.from_species(sp_normal, 50)
-	var synch_holder2  := BattlePokemon.from_species(sp_normal, 50)
+	var sleep_source  := BattlePokemon.from_species(sp_normal, 50)
+	var synch_holder2 := BattlePokemon.from_species(sp_normal, 50)
 	synch_holder2.ability = synchronize_ab
 
 	var slept := StatusManager.try_apply_status(synch_holder2, BattlePokemon.STATUS_SLEEP)
 	_chk("S4E.04 Sleep applied to Synchronize holder",
 		slept and synch_holder2.status == BattlePokemon.STATUS_SLEEP)
-	var synch_back := AbilityManager.try_synchronize(synch_holder2, sleep_source, BattlePokemon.STATUS_SLEEP)
+	var synch_back2 := AbilityManager.try_synchronize(synch_holder2, sleep_source, BattlePokemon.STATUS_SLEEP)
 	_chk("S4E.05 Sleep NOT reflected by Synchronize",
-		synch_back == 0 and sleep_source.status == BattlePokemon.STATUS_NONE)
+		synch_back2 == 0 and sleep_source.status == BattlePokemon.STATUS_NONE)
+
+	# S4E.06: Integration — full BattleManager turn with _force_hit = true confirms
+	# _try_synchronize → ability_triggered fires through the ACTION_EXECUTION pipeline.
+	# Thunder Wave has accuracy=90; without _force_hit the test was intermittently flaky.
+	#
+	# Fixture is designed to end in 2-3 turns (not at the 4096-phase cap):
+	#   twave_attacker moveset: [tackle (idx 0), thunder_wave (idx 1)]
+	#     → queue_move(0, 1) forces Thunder Wave on turn 1 only.
+	#     → auto-select picks idx 0 (Tackle) from turn 2 onward.
+	#   synch_holder3: base_hp=1, base_def=1 → HP=61, def_stat=6 at L50.
+	#   Tackle damage (sp_fast base_atk=5 → stat=10): base=31, STAB range 39-46.
+	#   Two hits guaranteed KO (39+39=78 > 61), so battle ends by turn 3.
+	var tackle := _load_move(33)
+
+	var sp_weak := PokemonSpecies.new()
+	sp_weak.species_name = "Weak"
+	sp_weak.types = [TypeChart.TYPE_NORMAL]
+	sp_weak.base_hp = 1; sp_weak.base_attack = 5; sp_weak.base_defense = 1
+	sp_weak.base_sp_attack = 5; sp_weak.base_sp_defense = 5; sp_weak.base_speed = 80
+
+	var bm := BattleManager.new()
+	add_child(bm)
+	var ability_events := []
+	bm.ability_triggered.connect(func(p, ek): ability_events.push_back([p, ek]))
+
+	var twave_attacker := BattlePokemon.from_species(sp_fast, 50)
+	var synch_holder3  := BattlePokemon.from_species(sp_weak, 50)
+	synch_holder3.ability = synchronize_ab
+	twave_attacker.add_move(tackle)         # index 0 — auto-selected from turn 2 on
+	twave_attacker.add_move(thunder_wave)   # index 1 — queued for turn 1 only
+	synch_holder3.add_move(tackle)
+
+	bm.queue_move(0, 1)   # turn 1: twave_attacker uses Thunder Wave (index 1)
+	bm._force_hit = true
+	bm.start_battle(twave_attacker, synch_holder3)
+
+	_chk("S4E.06 integration: ability_triggered fires via BattleManager with _force_hit",
+		ability_events.any(func(e): return e[1] == "synchronize"))
+	bm.queue_free()
 
 
 # ── Section 4F: Synchronize reflects contact-ability status ──────────────────

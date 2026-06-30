@@ -135,6 +135,13 @@ var bide_damage: int = 0
 # Source: gBattleStruct->chosenMovePositions[battler]; cleared in SwitchInClearSetData.
 var choice_locked_move: MoveData = null
 
+# Per-turn flag: true on the turn this Pokémon switches in mid-battle (voluntary,
+# forced, or faint replacement). Cleared at the start of the NEXT turn in
+# _phase_priority_resolution. Mirrors isFirstTurn == 2 (battle_main.c L3198/L3309;
+# decremented at L5038). Used by AbilityManager to gate !BattlerJustSwitchedIn
+# (battle_util.c L10982) — Speed Boost must not fire on the switch-in turn EOT.
+var switched_in_this_turn: bool = false
+
 # In-battle stat modifiers. Ranges: −6 to +6 per stage.
 # Index order matches STAGE_* constants above.
 var stat_stages: Array[int] = []
@@ -175,6 +182,7 @@ static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokem
 	bp.bide_turns = 0
 	bp.bide_damage = 0
 	bp.choice_locked_move = null
+	bp.switched_in_this_turn = false
 	bp.stat_stages = [0, 0, 0, 0, 0, 0, 0]
 	bp.fainted = false
 	bp._calculate_stats()

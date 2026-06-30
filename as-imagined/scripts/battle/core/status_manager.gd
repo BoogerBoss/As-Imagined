@@ -215,7 +215,9 @@ static func pre_move_check(
 	# ── Flinch ────────────────────────────────────────────────────────────────
 	# Source: battle_move_resolution.c :: CancelerFlinch (L298–316)
 	# CANCELER_FLINCH (pos 34) fires before CANCELER_CONFUSED (pos 39).
-	# Flinch is a volatile: cleared here after firing so it lasts exactly one turn.
+	# Source clears the flag in the turn-boundary cleanup block (battle_main.c L5038
+	# memset of gProtectStructs, same block that decrements isFirstTurn), NOT inside
+	# CancelerFlinch itself. We clear it here on read for the same one-turn effect.
 	if mon.flinched:
 		mon.flinched = false
 		result["flinched"] = true
@@ -273,7 +275,7 @@ static func pre_move_check(
 # Target-thaw: clear freeze on a Pokémon that was hit by a Fire-type damaging move.
 # Returns true if thaw occurred.
 #
-# Source: battle_script_commands.c :: CanFireMoveThawTarget (L11036–11038)
+# Source: battle_script_commands.c :: CanFireMoveThawTarget (~L11041–11044)
 #   B_HIT_THAW >= GEN_3: moveType == TYPE_FIRE && power > 0 && damage > 0
 # Source: battle_move_resolution.c :: MoveEndDefrost (L3288–3314)
 #   Runs after damage; checks IsBattlerTurnDamaged (damage > 0 covers this in singles).

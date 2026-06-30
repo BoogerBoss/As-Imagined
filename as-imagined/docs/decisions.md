@@ -237,6 +237,9 @@ Format per entry:
   - Speed: `B_PARALYSIS_SPEED >= GEN_7` → `speed /= 2` (50% cut). (Pre-Gen7 was `/ 4 = 75% cut`.)
   - Type immunity: `B_PARALYZE_ELECTRIC >= GEN_6` = GEN_LATEST → Electric-types cannot be paralyzed (L5272–5274).
 - Notes: Speed cut applies to the value used for turn-order priority resolution (`StatusManager.effective_speed`). The raw `BattlePokemon.speed` field is unchanged; the cut is applied on read. 2026-06-24.
+- Known gap (S19): source gates the paralysis speed halving on `ability != ABILITY_QUICK_FEET`
+  (battle_main.c L4712). This check is absent. Currently safe — Quick Feet (ability_id 7) is
+  unimplemented. Revisit when Quick Feet is added.
 
 ## [M3] Sleep: 2–4 turn duration; wakes and moves same turn
 
@@ -272,7 +275,7 @@ Format per entry:
 
 ## [M3] Freeze — target-thaw when hit by Fire-type damaging move (M4+ hook)
 
-- Source: `src/battle_script_commands.c` :: `CanFireMoveThawTarget` (L11036–11038): `B_HIT_THAW >= GEN_3 && moveType == TYPE_FIRE && GetMovePower(move) != 0`
+- Source: `src/battle_script_commands.c` :: `CanFireMoveThawTarget` (~L11041–11044): `B_HIT_THAW >= GEN_3 && moveType == TYPE_FIRE && GetMovePower(move) != 0`
 - Source: `src/battle_script_commands.c` :: `CanMoveThawTarget` (L11031–11033): `B_HIT_THAW >= GEN_6 && !IsSheerForceAffected(move, abilityAtk) && MoveThawsUser(move)`
 - Source: `src/battle_move_resolution.c` :: `MoveEndDefrost` (L3288–3329) — loops non-attacker battlers; condition: `STATUS1_ICY_ANY && IsBattlerTurnDamaged(battler, EXCLUDING_SUBSTITUTES) && IsBattlerAlive(battler)`; if `CanFireMoveThawTarget || CanBurnHitThaw` → call `DefrostBattler`; else if `CanMoveThawTarget` → call `DefrostBattler`
 - Source: `include/config/battle.h` line 118 (`B_HIT_THAW = GEN_LATEST`)
@@ -365,7 +368,7 @@ Format per entry:
 
 ## [M4] Freeze-thaw hooks: target-thaw and user-thaw now live
 
-- Source: `src/battle_script_commands.c` :: `CanFireMoveThawTarget` (L11036–11038)
+- Source: `src/battle_script_commands.c` :: `CanFireMoveThawTarget` (~L11041–11044)
 - Source: `src/battle_move_resolution.c` :: `MoveEndDefrost` (L3288–3314)
 - Source: `src/battle_move_resolution.c` :: `CancelerThaw` (L586–622); `!MoveThawsUser` guard at L172
 - Behavior — two hooks in `BattleManager._phase_move_execution()`:
@@ -755,14 +758,20 @@ Format per entry:
 - Notes: Gen-3 would use maxHP/16; we use GEN_4+ constant as this targets the expanded engine.
   2026-06-26.
 
-## [M8] Speed Boost: BattlerJustSwitchedIn treatment
+## [M8→A7] Speed Boost: BattlerJustSwitchedIn gate
 
 - Source: `battle_util.c` :: `AbilityBattleEffects(ABILITYEFFECT_ENDTURN, ...)` (L3605):
   `if (!BattlerJustSwitchedIn(battler))` guard before applying the +1 Speed.
-- Behavior: Since M8 has no mid-battle switching, `BattlerJustSwitchedIn` is treated as always
-  false (never true). Speed Boost fires every end-of-turn without restriction. If switching is
-  added later, this guard must be revisited.
-- Notes: 2026-06-26.
+- Source: `BattlerJustSwitchedIn` (battle_util.c L10982): returns true when `isFirstTurn == 2`.
+  `isFirstTurn` is set to 2 at mid-battle switch-in (battle_main.c L3198/L3309) and decremented
+  at turn-end cleanup (L5038).
+- Behavior (A7, post-M9 fix): Mirrored via `BattlePokemon.switched_in_this_turn`. Set to true in
+  `_do_voluntary_switch`, `_do_forced_switch_in`, and `_do_switch_in` (all mid-battle switch-in
+  paths). Cleared at the start of each turn in `_phase_priority_resolution`. Speed Boost is gated
+  on `not pokemon.switched_in_this_turn` in `AbilityManager.try_end_of_turn`.
+- Notes: M8 stub ("always false, revisit with switching") replaced by correct implementation
+  after M9 added switching. Verified by S3B.07–S3B.10 in ability_test. 2026-06-26 (stub),
+  2026-06-30 (A7 fix).
 
 ## [M8→M11] Drizzle / Drought: un-stubbed in M11
 
@@ -1087,6 +1096,12 @@ Full pipeline (source: `CalculateBaseDamage` + `ApplyModifiersAfterDmgRoll`, bat
 ### Berry triggers
 - Resist berry: triggers on super-effective hit (≥2.0×) matching berry's type param.
   Source: `GetDefenderItemsModifier` L7510–7524. Consumed after damage.
+  Known gap (I2): source has a second trigger branch — `moveType == TYPE_NORMAL` bypasses
+  the ≥2.0× threshold entirely (Normal moves can never be super-effective, so the threshold
+  check would always fail). This is what allows Chilan Berry (Normal-type resist berry,
+  `hold_effect_param == TYPE_NORMAL`) to function. Currently unreachable: no Chilan Berry
+  exists in the implemented item set (`hold_effect_param` is never TYPE_NORMAL). Revisit
+  when Chilan Berry is added.
 - Sitrus Berry: heals 25% max HP at MoveEnd when HP falls to ≤50% max.
   Source: `MoveEndHpThresholdItemsTarget` (battle_move_resolution.c).
 - Lum Berry: cures any non-volatile status on infliction (secondary, primary, contact ability).
@@ -1485,3 +1500,25 @@ and status moves (category 2) are excluded as in source.
   claimed "min=82>61" which was arithmetically wrong (omitted STAB application).
 - Fix: raised B1's base_atk to 230 (stat=235). New range: 63–76. Guaranteed OHKO at all
   rolls. Verified: base=50, roll=85 → 42, STAB → 63 ≥ 61.
+
+## [Audit] BattleManager._force_hit — accuracy seam added (Prompt 2 audit)
+
+- Source: `StatusManager.check_accuracy()` (status_manager.gd); `BattleManager._phase_move_execution()`.
+- Behavior: `StatusManager.check_accuracy` has always had a `force_hit: Variant = null`
+  parameter (added during M5), but `BattleManager` called it with only 3 positional arguments,
+  never passing a fourth. This meant no test in the project's history could force a guaranteed
+  hit on a non-accuracy=0 move through a real BattleManager turn.
+- Root cause found via: S4E.03 (`ability_triggered = synchronize`) failed intermittently
+  (~1/9 runs). Thunder Wave has accuracy=90. When twave_attacker's first Thunder Wave missed
+  and synch_holder's own Thunder Wave hit first, twave_attacker was already paralyzed by the
+  time synch_holder received paralysis — Synchronize's reflect attempt (`try_apply_status`)
+  returned false (already statused), `back=0`, and `ability_triggered` was never emitted.
+  Both mons ended up paralyzed via direct application, not Synchronize, so S4E.01/02 passed
+  while S4E.03 failed.
+- Fix: Added `var _force_hit: Variant = null` to BattleManager (same block as `_force_roar_rng`);
+  threaded it through to `StatusManager.check_accuracy(attacker, defender, move, _force_hit)`.
+  S4E.01–05 rewritten as direct API calls (StatusManager + AbilityManager, no BattleManager —
+  same pattern as the sleep tests that had already avoided this trap). S4E.06 added as the
+  integration test using `bm._force_hit = true`.
+- Going forward: any test that needs a guaranteed hit on a move with accuracy < 100 should
+  set `bm._force_hit = true` rather than substituting an always-hit move as a workaround.

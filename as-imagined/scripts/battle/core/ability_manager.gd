@@ -121,8 +121,9 @@ static func get_switch_in_weather(pokemon: BattlePokemon) -> int:
 # Source: battle_util.c :: AbilityBattleEffects(ABILITYEFFECT_ENDTURN, ...) (L3605–3621):
 #   ABILITY_SPEED_BOOST: CompareStat(speed < MAX) && !BattlerJustSwitchedIn →
 #     SetStatChange(battler, STAT_SPEED, +1).
-# Since we have no mid-battle switching in M8, BattlerJustSwitchedIn is always false;
-# Speed Boost fires every end-of-turn the holder is alive and below +6 Speed.
+# !BattlerJustSwitchedIn (battle_util.c L10982): returns true when isFirstTurn == 2,
+#   set at mid-battle switch-in (battle_main.c L3198/L3309), cleared at L5038.
+# Mirrored via BattlePokemon.switched_in_this_turn; cleared in _phase_priority_resolution.
 #
 # Returns the actual Speed stat stage change (0 = nothing happened).
 static func try_end_of_turn(pokemon: BattlePokemon) -> int:
@@ -131,7 +132,7 @@ static func try_end_of_turn(pokemon: BattlePokemon) -> int:
 	if pokemon.fainted:
 		return 0
 	var id: int = pokemon.ability.ability_id
-	if id == ABILITY_SPEED_BOOST:
+	if id == ABILITY_SPEED_BOOST and not pokemon.switched_in_this_turn:
 		return StatusManager.apply_stat_change(
 				pokemon, BattlePokemon.STAGE_SPEED, 1)
 	return 0

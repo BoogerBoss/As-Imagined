@@ -135,6 +135,12 @@ var _replacement_queues: Array = [[], [], [], []]
 # -1 = use real RNG; ≥0 = index into candidates array.
 var _force_roar_rng: int = -1
 
+# Test seam: force accuracy check result for all moves this battle.
+# null = use real RNG via StatusManager.check_accuracy; true = always hit; false = always miss.
+# Mirrors the force_hit: Variant = null parameter already on StatusManager.check_accuracy.
+# Use bm._force_hit = true in tests that need a guaranteed hit on a non-accuracy=0 move.
+var _force_hit: Variant = null
+
 # M9: pre-queued Baton Pass target slots per combatant index (-1 = auto-select first valid).
 # M14a: indexed by combatant index; singles uses [0] and [1].
 var _baton_pass_queues: Array = [[], [], [], []]
@@ -412,6 +418,7 @@ func _phase_priority_resolution() -> void:
 		mon.protect_active = false
 		mon.last_physical_damage = 0
 		mon.last_special_damage = 0
+		mon.switched_in_this_turn = false
 	# M14b: clear per-turn Follow Me, Helping Hand, and last-attacker state.
 	# Source: TurnValuesCleanUp (battle_main.c L5022): memset gProtectStructs (helpingHand),
 	#   gSideTimers[].followmeTimer = 0 (L5060–5061).
@@ -703,7 +710,7 @@ func _phase_move_execution() -> void:
 	# ── Accuracy check ────────────────────────────────────────────────────────
 	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
 	# Includes semi-invulnerable miss check (source: CancelerAccuracyCheck L1993).
-	if not StatusManager.check_accuracy(attacker, defender, move):
+	if not StatusManager.check_accuracy(attacker, defender, move, _force_hit):
 		move_missed.emit(attacker, "accuracy")
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
@@ -1294,6 +1301,7 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 	_parties[side].active_indices[field_slot] = slot
 	_combatants[combatant_idx] = _parties[side].get_active_at(field_slot)
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
+	new_mon.switched_in_this_turn = true
 	pokemon_switched_out.emit(old_mon, side)
 	pokemon_switched_in.emit(new_mon, side, slot)
 	# Switch-in abilities fire for the incoming Pokémon.
@@ -1320,6 +1328,7 @@ func _do_forced_switch_in(side: int, slot: int, field_slot: int = 0) -> void:
 	_parties[side].active_indices[field_slot] = slot
 	_combatants[combatant_idx] = _parties[side].get_active_at(field_slot)
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
+	new_mon.switched_in_this_turn = true
 	# Switch-in abilities fire for the forced-in Pokémon.
 	var opponent: BattlePokemon = _get_first_opponent(new_mon)
 	var actual: int = AbilityManager.try_switch_in(new_mon, opponent)
@@ -1339,6 +1348,7 @@ func _do_switch_in(combatant_idx: int, slot: int) -> void:
 	_parties[side].active_indices[field_slot] = slot
 	_combatants[combatant_idx] = _parties[side].get_active_at(field_slot)
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
+	new_mon.switched_in_this_turn = true
 	pokemon_switched_in.emit(new_mon, side, slot)
 	var opponent: BattlePokemon = _get_first_opponent(new_mon)
 	var actual: int = AbilityManager.try_switch_in(new_mon, opponent)
