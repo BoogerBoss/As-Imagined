@@ -534,6 +534,42 @@ func _test_i6_sitrus_berry() -> void:
 			heal_count[0] == 1)
 	bm.queue_free()
 
+	# I6.06–I6.08: Integration — berry fires on first hit when HP already starts below
+	# threshold. Confirms level-triggered implementation: sitrus_berry_heal checks
+	# current_hp ≤ max_hp/2 at move-end regardless of HP before the move.
+	# sit_def2.current_hp=60 < 80 (=max_hp/2=160/2) before any action.
+	# Heal = max_hp*25/100 = 160*25/100 = 40 (deterministic; independent of roll).
+	# Note: damage varies 28–34 depending on random roll (85–100), so HP at berry fire
+	# is in [66, 72]. The heal amount is the roll-independent quantity asserted here.
+	var sit_atk2 := _make_mon("SIT_Atk2", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			100, 100, 80, 80, 80, 100)
+	sit_atk2.add_move(_make_move("Tackle", TypeChart.TYPE_NORMAL, 0, 40))
+
+	var sit_def2 := _make_mon("SIT_Def2", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			100, 80, 80, 80, 80, 20)
+	sit_def2.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25)
+	sit_def2.add_move(_make_move("Tackle", TypeChart.TYPE_NORMAL, 0, 40))
+	sit_def2.current_hp = 60  # already below threshold (80=max_hp/2)
+
+	var bm2 := _make_bm()
+	var consume_count2 := [0]
+	var heal_count2    := [0]
+	var heal_amount2   := [0]
+	bm2.item_consumed.connect(func(m, _i): if m == sit_def2: consume_count2[0] += 1)
+	bm2.item_healed.connect(func(m, amt):
+			if m == sit_def2:
+				heal_count2[0] += 1
+				heal_amount2[0] = amt)
+	bm2.start_battle(sit_atk2, sit_def2)
+
+	_chk("I6.06 Sitrus fires when HP starts below threshold: item_consumed once",
+			consume_count2[0] == 1)
+	_chk("I6.07 Sitrus fires when HP starts below threshold: item_healed once",
+			heal_count2[0] == 1)
+	_chk("I6.08 Sitrus heal=40 when starting below threshold (max_hp*25/100=160*25/100=40)",
+			heal_amount2[0] == 40)
+	bm2.queue_free()
+
 
 # ── I7: Lum Berry ─────────────────────────────────────────────────────────────
 # Source: gHoldEffectsInfo CURE_STATUS: onStatusChange=TRUE.
