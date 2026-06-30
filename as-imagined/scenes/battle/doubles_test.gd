@@ -57,6 +57,7 @@ func _ready() -> void:
 	_test_c1_ai_prefers_spread_two_targets()
 	_test_c2_ai_avoids_immune_spread()
 	_test_c3_ai_targets_weak_slot()
+	_test_d7_intimidate_both_opponents()
 
 	var total := _pass + _fail
 	print("doubles_test: %d/%d passed" % [_pass, total])
@@ -708,6 +709,10 @@ func _test_b5_helping_hand_clears() -> void:
 	var a1_b0_dmgs := [[]]
 	var bm := BattleManager.new()
 	add_child(bm)
+	# M14x: pin roll and suppress crit so this test is fully deterministic instead of
+	# relying on a range wide enough to absorb live RNG variance. See decisions.md.
+	bm._force_roll = 100
+	bm._force_crit = false
 	bm.move_executed.connect(func(attacker, defender, _mv, dmg):
 		if attacker == a1 and defender == b0:
 			a1_b0_dmgs[0].append(dmg)
@@ -718,11 +723,32 @@ func _test_b5_helping_hand_clears() -> void:
 	bm.queue_move_targeted(1, 0, 2)  # Turn 2: A1 tackle → B0
 	bm.start_battle_doubles(_doubles_party(a0, a1), _doubles_party(b0, b1))
 
-	# STAB-corrected ranges (Normal mons, Normal Tackle, STAB applies after roll):
-	# With HH (wrong — persisted): 66–78.  Without HH (correct — cleared): 43–52.
-	# Threshold 60 sits between the two ranges.
+	# Recomputed at the pinned roll=100 (previously a variable-roll range; see decisions.md
+	# for why ranges were replaced with exact pinned values).
+	# A1.attack = base_attack(100)+5 = 105; B0.defense = base_defense(50)+5 = 55
+	#   (level 50, IV=0/EV=0 → stat = floor(2*base*50/100)+5 = base+5, exact since 2*50/100=1).
+	# Tackle: power=40, type=Normal/category=Physical. A1 and B0 are both TYPE_NORMAL → STAB
+	#   applies; type effectiveness Normal-vs-Normal = 1.0× (UQ4.12 4096, no-op after rounding).
+	#
+	# Turn 1 — WITH Helping Hand (bug-check value, must NOT be what turn 2 also produces):
+	#   effective_power = _uq412_half_down(40, 6144) = (40*6144+2047)/4096 = 247807/4096 = 60
+	#   base = 60*105*22/55/50+2 = 6300*22/55/50+2 = 138600/55/50+2 = 2520/50+2 = 50+2 = 52
+	#   roll=100 (no-op): 52*100/100 = 52
+	#   STAB: _uq412_half_down(52, 6144) = (52*6144+2047)/4096 = 321535/4096 = 78
+	#   type eff 1.0×: _uq412_half_down(78, 4096) = 78  →  dmg = 78
+	#
+	# Turn 2 — WITHOUT Helping Hand (correct value, after the clear):
+	#   base = 40*105*22/55/50+2 = 4200*22/55/50+2 = 92400/55/50+2 = 1680/50+2 = 33+2 = 35
+	#   roll=100 (no-op): 35*100/100 = 35
+	#   STAB: _uq412_half_down(35, 6144) = (35*6144+2047)/4096 = 217087/4096 = 52
+	#   type eff 1.0×: _uq412_half_down(52, 4096) = 52  →  dmg = 52
+	#
+	# 78 (turn 1, with HH) vs 52 (turn 2, without HH) — threshold 60 still cleanly separates
+	# them at this exact pinned roll, same as the old 66–78 / 43–52 variable-roll ranges did.
 	_chk("B5.01 Helping Hand did not persist to turn 2 (A1 damage ≤ 60)",
 			a1_b0_dmgs[0].size() >= 2 and a1_b0_dmgs[0][1] <= 60)
+	_chk("B5.02 Turn 1 damage (with HH) == 78 exactly at roll=100", a1_b0_dmgs[0][0] == 78)
+	_chk("B5.03 Turn 2 damage (no HH) == 52 exactly at roll=100", a1_b0_dmgs[0][1] == 52)
 	bm.queue_free()
 
 
@@ -1036,3 +1062,60 @@ func _test_c3_ai_targets_weak_slot() -> void:
 
 	_chk("C3.01 AI targets weakened B1 (opp1_idx=3)", action["target"] == 3)
 	_chk("C3.02 AI chooses tackle (index 0)", action["index"] == 0)
+
+
+# ── D7: Intimidate in doubles drops Attack on BOTH opposing slots ──────────────
+#
+# Structural bug fixed in M14x: _get_first_opponent always returned combatant 2
+# (slot 0 of side 1), so B1 (combatant 3) was never Intimidated.
+# Source loop (battle_util.c L3315): iterates ALL battlers; skips IsBattlerAlly
+# (same side) and !IsBattlerAlive (hp==0 or absent). In doubles, both B0 and B1
+# are opposing and alive → both receive -1 ATK.
+# BattleScript_IntimidateActivates is called once per activation (not per target),
+# so ability_triggered fires once even though two stat drops occur.
+#
+# Setup: A0 has Intimidate; A1, B0, B1 have no ability. All alive at battle start.
+# Expected per D7.01-04: B0.stat_stages[ATK]==-1, B1.stat_stages[ATK]==-1.
+# Expected per D7.05:    ability_triggered("intimidate") fires exactly once.
+# Expected per D7.06:    A0 and A1 Attack stages are 0 (Intimidate doesn't affect own side).
+
+func _test_d7_intimidate_both_opponents() -> void:
+	var tackle := _load_move(33)
+	var intimidate_ab := load("res://data/abilities/ability_0022.tres") as AbilityData
+
+	var a0 := _make_mon("A0_intimidate", 100, 80, 80, 80, 80, 80)
+	a0.ability = intimidate_ab
+	a0.add_move(tackle)
+
+	var a1 := _make_mon("A1_no_ability", 100, 80, 80, 80, 80, 60)
+	a1.add_move(tackle)
+
+	var b0 := _make_mon("B0", 100, 80, 80, 80, 80, 40)
+	b0.add_move(tackle)
+
+	var b1 := _make_mon("B1", 100, 80, 80, 80, 80, 20)
+	b1.add_move(tackle)
+
+	var atk_drops := {}   # BattlePokemon → cumulative ATK stage change from signals
+	var ability_fires := [0]
+
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.stat_stage_changed.connect(func(t, si, ac):
+		if si == BattlePokemon.STAGE_ATK and ac < 0:
+			atk_drops[t] = atk_drops.get(t, 0) + ac)
+	bm.ability_triggered.connect(func(_p, ek):
+		if ek == "intimidate":
+			ability_fires[0] += 1)
+	bm.start_battle_doubles(_doubles_party(a0, a1), _doubles_party(b0, b1))
+
+	_chk("D7.01 Intimidate: stat_stage_changed fired for B0 (ATK -1)", atk_drops.get(b0, 0) == -1)
+	_chk("D7.02 Intimidate: stat_stage_changed fired for B1 (ATK -1)", atk_drops.get(b1, 0) == -1)
+	_chk("D7.03 Intimidate: B0 ATK stage == -1", b0.stat_stages[BattlePokemon.STAGE_ATK] == -1)
+	_chk("D7.04 Intimidate: B1 ATK stage == -1", b1.stat_stages[BattlePokemon.STAGE_ATK] == -1)
+	_chk("D7.05 Intimidate: ability_triggered fired once (one activation, two targets)",
+		ability_fires[0] == 1)
+	_chk("D7.06 Intimidate: A0 and A1 ATK stages unaffected (own side skipped)",
+		a0.stat_stages[BattlePokemon.STAGE_ATK] == 0
+		and a1.stat_stages[BattlePokemon.STAGE_ATK] == 0)
+	bm.queue_free()

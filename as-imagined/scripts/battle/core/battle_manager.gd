@@ -141,6 +141,20 @@ var _force_roar_rng: int = -1
 # Use bm._force_hit = true in tests that need a guaranteed hit on a non-accuracy=0 move.
 var _force_hit: Variant = null
 
+# Test seam: force the damage roll for all damaging hits this battle.
+# null = use real RNG (85-100 random roll, the same convention as _force_hit's null);
+# 85-100 = pin to that exact roll. DamageCalculator.calculate's own force_roll param uses
+# -1 as its "use real RNG" sentinel (int-typed, can't hold null), so this is converted at
+# the _do_damaging_hit call site: _force_roll if _force_roll != null else -1.
+# Use bm._force_roll = 100 in tests that need deterministic damage instead of a wide range.
+var _force_roll: Variant = null
+
+# Test seam: force the crit result for all damaging hits this battle.
+# null = use real RNG; true = always crit; false = suppress crit (deterministic tests).
+# Mirrors the force_crit: Variant = null parameter already on DamageCalculator.calculate —
+# same null-sentinel convention on both sides, no conversion needed at the call site.
+var _force_crit: Variant = null
+
 # M9: pre-queued Baton Pass target slots per combatant index (-1 = auto-select first valid).
 # M14a: indexed by combatant index; singles uses [0] and [1].
 var _baton_pass_queues: Array = [[], [], [], []]
@@ -316,20 +330,9 @@ func get_phase() -> BattlePhase:
 func _phase_battle_start() -> void:
 	# Fire switch-in ability effects for all starting Pokémon (they enter simultaneously).
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...) (battle_util.c L3310)
-	# M14a: uses _get_first_opponent; full doubles multi-target Intimidate is M14c scope.
 	for i in range(_combatants.size()):
 		var mon: BattlePokemon = _combatants[i]
-		var opp: BattlePokemon = _get_first_opponent(mon)
-		var actual: int = AbilityManager.try_switch_in(mon, opp)
-		if actual != 0:
-			stat_stage_changed.emit(opp, BattlePokemon.STAGE_ATK, actual)
-			ability_triggered.emit(mon, "intimidate")
-		# M11: Drizzle / Drought — set field weather on switch-in.
-		# Source: ABILITY_DRIZZLE / ABILITY_DROUGHT case in ABILITYEFFECT_ON_SWITCHIN
-		#   calls TryChangeBattleWeather (battle_util.c L3213, L3242).
-		var set_w: int = AbilityManager.get_switch_in_weather(mon)
-		if set_w != WEATHER_NONE and try_set_weather(set_w, mon):
-			weather_set.emit(mon, set_w)
+		_apply_switch_in_abilities(mon, i / _active_per_side)
 	_set_phase(BattlePhase.MOVE_SELECTION)
 
 
@@ -1209,13 +1212,45 @@ func _set_phase(p: BattlePhase) -> void:
 
 # M14a: returns the first active mon on the opposing side.
 # In singles: identical to the old binary _get_opponent.
-# In doubles: returns field slot 0 of the opposing side (first opponent).
-# Used for ability switch-in effects, Destiny Bond, AI targeting, and replacements.
-# Full doubles multi-target mechanics (e.g. spread Intimidate) are M14c scope.
+# In doubles: returns field slot 0 of the opposing side.
+# Used for Destiny Bond fallback, singles AI targeting, and faint-replacement AI.
+# Intimidate switch-in now uses _apply_switch_in_abilities (loops all live opponents).
 func _get_first_opponent(mon: BattlePokemon) -> BattlePokemon:
 	var idx: int = _combatants.find(mon)
 	var side: int = idx / _active_per_side if idx >= 0 else 0
 	return _combatants[(1 - side) * _active_per_side]
+
+
+# Fire switch-in ability effects for new_mon against all live opposing combatants.
+# Source: AbilityBattleEffects ABILITYEFFECT_ON_SWITCHIN (battle_util.c L3310–3323):
+#   for i in 0..gBattlersCount: if IsBattlerAlly(battler,i) || !IsBattlerAlive(i): continue
+#   SetStatChange(i, STAT_ATK, -1); then BattleScriptCall(BattleScript_IntimidateActivates).
+# Loop shape: iterate ALL _combatants and filter by side — mirrors source loop exactly.
+#   (Not "iterate only the opposing half") so the logic stays correct under layout changes.
+# ability_triggered fires once per activation (one BattleScriptCall in source), not per target.
+# Gen 8 Intimidate immunity (Inner Focus, Scrappy, Own Tempo, Oblivious, Guard Dog) is
+#   intentionally omitted — none of those abilities exist in this codebase. Port when added.
+#   See decisions.md [M14x Intimidate doubles + Gen 8 immunity].
+func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
+	var any_intimidated := false
+	for j in range(_combatants.size()):
+		if j / _active_per_side == mon_side:  # IsBattlerAlly: same side → skip
+			continue
+		var opp: BattlePokemon = _combatants[j]
+		if opp.fainted or opp.current_hp == 0:  # !IsBattlerAlive: skip
+			continue
+		var actual: int = AbilityManager.try_switch_in(new_mon, opp)
+		if actual != 0:
+			stat_stage_changed.emit(opp, BattlePokemon.STAGE_ATK, actual)
+			any_intimidated = true
+	if any_intimidated:
+		ability_triggered.emit(new_mon, "intimidate")
+	# M11: Drizzle / Drought — set field weather on switch-in.
+	# Source: ABILITY_DRIZZLE / ABILITY_DROUGHT case in ABILITYEFFECT_ON_SWITCHIN
+	#   calls TryChangeBattleWeather (battle_util.c L3213, L3242).
+	var set_w: int = AbilityManager.get_switch_in_weather(new_mon)
+	if set_w != WEATHER_NONE and try_set_weather(set_w, new_mon):
+		weather_set.emit(new_mon, set_w)
 
 
 # M14a: default target combatant index for a given attacker.
@@ -1306,14 +1341,7 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 	pokemon_switched_in.emit(new_mon, side, slot)
 	# Switch-in abilities fire for the incoming Pokémon.
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...) (battle_util.c L2960)
-	var opponent: BattlePokemon = _get_first_opponent(new_mon)
-	var actual: int = AbilityManager.try_switch_in(new_mon, opponent)
-	if actual != 0:
-		stat_stage_changed.emit(opponent, BattlePokemon.STAGE_ATK, actual)
-		ability_triggered.emit(new_mon, "intimidate")
-	var set_w: int = AbilityManager.get_switch_in_weather(new_mon)
-	if set_w != WEATHER_NONE and try_set_weather(set_w, new_mon):
-		weather_set.emit(new_mon, set_w)
+	_apply_switch_in_abilities(new_mon, side)
 
 
 # M9/M14b: forced switch-in for Roar/Whirlwind — forces out the combatant at
@@ -1330,14 +1358,7 @@ func _do_forced_switch_in(side: int, slot: int, field_slot: int = 0) -> void:
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
 	new_mon.switched_in_this_turn = true
 	# Switch-in abilities fire for the forced-in Pokémon.
-	var opponent: BattlePokemon = _get_first_opponent(new_mon)
-	var actual: int = AbilityManager.try_switch_in(new_mon, opponent)
-	if actual != 0:
-		stat_stage_changed.emit(opponent, BattlePokemon.STAGE_ATK, actual)
-		ability_triggered.emit(new_mon, "intimidate")
-	var set_w: int = AbilityManager.get_switch_in_weather(new_mon)
-	if set_w != WEATHER_NONE and try_set_weather(set_w, new_mon):
-		weather_set.emit(new_mon, set_w)
+	_apply_switch_in_abilities(new_mon, side)
 
 
 # M9/M14a: switch-in after faint (no switch-out clear; old mon already cleared on faint).
@@ -1350,14 +1371,7 @@ func _do_switch_in(combatant_idx: int, slot: int) -> void:
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
 	new_mon.switched_in_this_turn = true
 	pokemon_switched_in.emit(new_mon, side, slot)
-	var opponent: BattlePokemon = _get_first_opponent(new_mon)
-	var actual: int = AbilityManager.try_switch_in(new_mon, opponent)
-	if actual != 0:
-		stat_stage_changed.emit(opponent, BattlePokemon.STAGE_ATK, actual)
-		ability_triggered.emit(new_mon, "intimidate")
-	var set_w: int = AbilityManager.get_switch_in_weather(new_mon)
-	if set_w != WEATHER_NONE and try_set_weather(set_w, new_mon):
-		weather_set.emit(new_mon, set_w)
+	_apply_switch_in_abilities(new_mon, side)
 
 
 # M9/M10/M14a: determine replacement slot — priority: test queue, then AI, then auto-select.
@@ -1504,8 +1518,9 @@ func _apply_fixed_dmg_to_target(attacker: BattlePokemon, defender: BattlePokemon
 # Source: battle_script_commands.c :: MoveDamageDataHpUpdate + downstream effect handlers.
 func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		move: MoveData, is_spread: bool = false, helping_hand: bool = false) -> void:
+	var roll: int = _force_roll if _force_roll != null else -1
 	var result: Dictionary = DamageCalculator.calculate(
-			attacker, target, move, -1, null, weather, is_spread, helping_hand)
+			attacker, target, move, roll, _force_crit, weather, is_spread, helping_hand)
 	var damage: int = result["damage"]
 
 	var went_to_sub: bool = (target.substitute_hp > 0 and not move.ignores_substitute)

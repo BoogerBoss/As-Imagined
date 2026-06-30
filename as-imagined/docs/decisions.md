@@ -796,6 +796,35 @@ Format per entry:
 - Notes: In doubles/multi battles, all opponents are targeted simultaneously; deferred to M9+.
   2026-06-26.
 
+## [M14x] Intimidate in doubles: all live opponents targeted; Gen 8 immunity omitted
+
+- **The bug:** `_phase_battle_start`, `_do_voluntary_switch`, `_do_forced_switch_in`, and
+  `_do_switch_in` all called `_get_first_opponent` + `AbilityManager.try_switch_in` once,
+  meaning only slot 0 of the opposing side received the Attack drop. In doubles both active
+  opposing Pokémon should be affected.
+- **Source:** `battle_util.c` `AbilityBattleEffects` Intimidate case (L3310–3323):
+  ```c
+  for (enum BattlerId i = 0; i < gBattlersCount; i++) {
+      if (IsBattlerAlly(battler, i) || !IsBattlerAlive(i)) continue;
+      SetStatChange(i, STAT_ATK, -1);
+  }
+  BattleScriptCall(BattleScript_IntimidateActivates);  // once per activation
+  ```
+  `IsBattlerAlly` = same side. `IsBattlerAlive` = hp>0 AND not in gAbsentBattlerFlags.
+  `SetStatChange` is a queue-append (no immunity check). The immunity check lives in
+  `IsIntimidateBlocked` called inside `TryStatChange` → `Cmd_trystatchanges`.
+- **Fix:** Extracted `_apply_switch_in_abilities(new_mon, mon_side)` in `BattleManager`.
+  Loop shape: iterate ALL `_combatants` and filter by side — directly mirrors source loop
+  structure rather than iterating only the opposing half. `ability_triggered` fires ONCE per
+  activation (matching source's single `BattleScriptCall`), not once per opponent targeted.
+- **Gen 8 immunity intentionally omitted:** `IsIntimidateBlocked` in `battle_stat_change.c`
+  blocks Inner Focus, Scrappy, Own Tempo, and Oblivious (when `B_UPDATED_INTIMIDATE >= GEN_8`)
+  and redirects Guard Dog. None of those five abilities exist in this codebase yet. If any is
+  added, port `IsIntimidateBlocked`'s immunity check into `AbilityManager.try_switch_in`
+  (check `opponent.ability` before calling `StatusManager.apply_stat_change`). Substitute does
+  NOT protect against Intimidate — confirmed: no Substitute skip anywhere in the source path.
+  2026-06-30.
+
 ## [M8] Ability IDs: sourced from include/constants/abilities.h
 
 - Source: `pokeemerald-expansion/include/constants/abilities.h`
@@ -1522,6 +1551,46 @@ and status moves (category 2) are excluded as in source.
   integration test using `bm._force_hit = true`.
 - Going forward: any test that needs a guaranteed hit on a move with accuracy < 100 should
   set `bm._force_hit = true` rather than substituting an always-hit move as a workaround.
+
+---
+
+## [Audit] BattleManager._force_roll / _force_crit — damage determinism seams added
+
+- Source: `DamageCalculator.calculate()` (damage_calculator.gd L60-86);
+  `BattleManager._do_damaging_hit()`.
+- Same root-cause class as `_force_hit` above: `DamageCalculator.calculate` has always had
+  `force_roll: int = -1` and `force_crit: Variant = null` parameters, but `_do_damaging_hit`
+  hardcoded `-1` and `null` at its call site, so no BattleManager-integration test could pin
+  a damage roll or crit result — tests had to rely on a numeric range wide enough to absorb
+  live RNG variance instead (e.g. B5's old "≤ 60" threshold spanning a 43-78 possible spread).
+- Found while reviewing B5 (`_test_b5_helping_hand_clears`, doubles_test.gd) — its threshold
+  check happened to still be correct, but the surrounding range comments couldn't be verified
+  by arithmetic without pinning the roll, and crit RNG (~1/24 per hit, two hits checked) gave
+  a non-trivial chance of spurious failure across repeated runs.
+- **The two parameters do NOT share one sentinel convention** — confirmed by re-reading
+  `damage_calculator.gd` fresh rather than assuming symmetry with `_force_hit`:
+  - `force_roll: int` is **int-sentinel**: `-1` = real RNG, any value `>= DMG_ROLL_LO` (85)
+    pins that exact roll (L216-217: `roll = force_roll if force_roll >= DMG_ROLL_LO else ...`).
+    It cannot hold `null` (it's `int`-typed), so `BattleManager._force_roll` is declared
+    `Variant = null` (matching `_force_hit`'s style) and converted at the call site:
+    `_force_roll if _force_roll != null else -1`.
+  - `force_crit: Variant` is **null-sentinel**, identical convention to `_force_hit`: `null` =
+    real RNG, `true`/`false` force the result directly (L118). No conversion needed —
+    `BattleManager._force_crit` passes straight through.
+- Fix: added `var _force_roll: Variant = null` and `var _force_crit: Variant = null` to
+  BattleManager (same declaration block as `_force_hit`/`_force_roar_rng`); threaded both
+  into the `DamageCalculator.calculate` call in `_do_damaging_hit`.
+- B5 updated to set `bm._force_roll = 100` and `bm._force_crit = false` before
+  `start_battle_doubles`, replacing the old variable-roll range comments with exact
+  hand-computed values at that pinned roll (A1.attack=105, B0.defense=55, Tackle
+  power=40/Normal/Physical, STAB and 1.0× type eff apply): turn 1 (with Helping Hand,
+  effective_power=60) = 78 damage exactly; turn 2 (without Helping Hand) = 52 damage
+  exactly. New exact-value assertions (B5.02/B5.03) added alongside the original
+  threshold assertion (B5.01).
+- Going forward: any BattleManager-integration test needing deterministic damage should set
+  `bm._force_roll` / `bm._force_crit` rather than relying on a wide-enough numeric range to
+  absorb live RNG variance — the same lesson as `_force_hit`, now extended to damage rolls
+  and crit results.
 
 ---
 

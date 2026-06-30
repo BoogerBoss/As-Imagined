@@ -81,7 +81,8 @@ static func blocks_move_type(defender: BattlePokemon, move_type: int) -> bool:
 # Fire switch-in ability effects for a Pokémon entering battle.
 # Source: battle_util.c :: AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...) (L3310):
 #   ABILITY_INTIMIDATE: shouldAbilityTrigger && !IsOpposingSideEmpty →
-#     SetStatChange(all opponents, STAT_ATK, -1). In 1v1, one opponent only.
+#     SetStatChange(all opponents, STAT_ATK, -1).
+#     BattleManager calls this once per live opposing combatant via _apply_switch_in_abilities.
 # Drizzle/Drought: weather is set via get_switch_in_weather() + BattleManager.try_set_weather().
 #
 # Returns the actual Attack stat stage change applied to opponent (0 = nothing happened).
