@@ -1594,6 +1594,129 @@ and status moves (category 2) are excluded as in source.
 
 ---
 
+## [Audit] BattleManager integration test coverage — RNG determinism sweep
+
+**Scope:** All `randi()`, `randi_range()`, and probability-based branches in
+`battle_manager.gd`, `status_manager.gd`, and `trainer_ai.gd`.  
+**Coverage criterion:** a `_force_X` property exists on `BattleManager` and is threaded
+through to the RNG site — same pattern as `_force_hit`, `_force_roll`, `_force_crit`,
+`_force_roar_rng`.  
+**Result: zero FLAKY findings.** No test claims a "guaranteed" assertion that fails at
+worst-case RNG values.
+
+### Complete site table (18 sites, in file order)
+
+| ID | File | Lines | Code | Classification |
+|----|------|-------|------|----------------|
+| BM-1 | battle_manager.gd | L449 | `tiebreak[mon] = randi()` (speed-tie tiebreak) | **UNCOVERED-SAFE** |
+| BM-2 | battle_manager.gd | L690 / L1420 | `randi() % denom` (Protect consecutive success roll) | **UNCOVERED-SAFE** |
+| BM-3 | battle_manager.gd | L716 | `check_accuracy(..., _force_hit)` | **COVERED** (`_force_hit`) |
+| BM-4 | battle_manager.gd | L730 | `get_random_non_fainted_not_active(_force_roar_rng)` | **COVERED** (`_force_roar_rng`) |
+| BM-5 | battle_manager.gd | L1014 | `try_secondary_effect(...)` — status-move path | **UNCOVERED-SAFE** |
+| BM-6 | battle_manager.gd | L1472 | `pool[randi() % pool.size()]` (Metronome move selection) | **UNCOVERED-SAFE** |
+| BM-7 | battle_manager.gd | L1566 | `try_secondary_effect(...)` — damaging-move path | **UNCOVERED-SAFE** |
+| BM-8 | battle_manager.gd | L1521–1523 | `DamageCalculator.calculate(..., roll, _force_crit, ...)` | **COVERED** (`_force_roll`, `_force_crit`) |
+| BM-9 | battle_manager.gd | L1580–1581 | `try_contact_effects(attacker, target, move, damage)` — Static / Flame Body 30% | **NOT EXERCISED through BM** |
+| SM-1 | status_manager.gd | L76 | `randi_range(2, 4)` (sleep duration on infliction) | **NOT EXERCISED through BM** |
+| SM-2 | status_manager.gd | L99 | `randi_range(2, 5)` (confusion duration on infliction) | **NOT EXERCISED through BM** |
+| SM-3 | status_manager.gd | L204 | `randi() % 100 < 20` (20% freeze thaw) | **NOT EXERCISED through BM** |
+| SM-4 | status_manager.gd | L239 | `randi() % 100 < 33` (33% confusion self-hit) | **UNCOVERED-SAFE** |
+| SM-5 | status_manager.gd | L259 | `randi() % 4 == 0` (25% full paralysis) | **NOT EXERCISED through BM** |
+| SM-6 | status_manager.gd | L370 | `randi() % 100 < calc` (accuracy roll) | **COVERED** (`_force_hit`) |
+| SM-7 | status_manager.gd | L445 | `randi() % 100 < move.secondary_chance` (secondary effect roll) | **UNCOVERED-SAFE** |
+| AI-1 | trainer_ai.gd | L639 | `randi() % best_indices.size()` (AI move tie-break) | **UNCOVERED-SAFE** |
+| AI-2 | trainer_ai.gd | L649 | `(randi() % 100) < pct` (ShouldSwitchIfHasBadOdds 50%) | **NOT EXERCISED through BM** |
+
+### COVERED sites (4)
+
+SM-6 and BM-3 describe the same accuracy-check RNG path from two vantage points (BM call
+site vs. StatusManager implementation); both are covered by the same seam.
+
+| Site | Seam | Threading path |
+|------|------|----------------|
+| BM-3 (accuracy call site) | `_force_hit: Variant = null` on BM | `_force_hit` → `StatusManager.check_accuracy(attacker, defender, move, _force_hit)` |
+| SM-6 (accuracy roll) | same as BM-3 | same mechanism; SM-6 is the implementation that BM-3 drives |
+| BM-4 (Roar/Whirlwind target) | `_force_roar_rng: int = -1` on BM | `_force_roar_rng` → `BattleParty.get_random_non_fainted_not_active(_force_roar_rng)` |
+| BM-8 (damage roll + crit) | `_force_roll: Variant = null` and `_force_crit: Variant = null` on BM | `_do_damaging_hit` converts `_force_roll` via `_force_roll if _force_roll != null else -1` and passes `_force_crit` directly to `DamageCalculator.calculate` |
+
+### UNCOVERED-SAFE sites (8) — arithmetic summaries
+
+- **BM-1** (speed-tie): All equal-speed BM integration tests (D1/D3/D5/D6, all spd=80) have
+  order-independent assertions. D5 worst case: A0/A1 deal min 69 damage to B0.max_hp=61
+  regardless of turn order — OHKO is guaranteed either way. (`base=40×260×22/85/50+2=55`,
+  `roll=85→46`, `STAB→69≥61`.)
+- **BM-2** (Protect first use): `consecutive=0` → `denom=1` → always succeeds deterministically.
+  S4.01–S4.04 assert only "at least one Protect fired," which requires only the first use.
+- **BM-5** (status-move secondary): All BM-integrated status moves use `secondary_chance=0`;
+  `try_secondary_effect` short-circuits before the RNG roll — application is guaranteed.
+- **BM-6** (Metronome selection): S9.02–S9.05 assert only "a valid non-banned move was
+  selected" — satisfied by any member of the pool regardless of which is picked.
+- **BM-7** (damaging-move secondary): Only BM integration test with `secondary_chance>0` is
+  T4a (Flame Wheel, 10% burn). T4a's defender has HP=1 and faints from the main hit; the
+  burn secondary does not affect any T4a assertion.
+- **SM-4** (confusion self-hit 33%): S5 — opp1.max_hp=220; max confusion self-hit =
+  `40×65×22/65/50+2 = 19` (no roll, no STAB, no type eff at confusion path). 19 << 220;
+  opp1 cannot faint. Roar fires regardless of whether confusion self-hit occurs.
+- **SM-7** (secondary effect roll): covered by same reasoning as BM-5 (all secondary-capable
+  status moves in BM tests have `secondary_chance=0`) and BM-7 (T4a defender faints before
+  secondary matters).
+- **AI-1** (AI move tie-break): BM integration tests A12/A13 have either one move per AI
+  (no tie possible) or two moves with different scores (no tie). The live-RNG tie path is
+  unreachable. (`_force_tie_rng` exists on `TrainerAI` directly but is not threaded through BM.)
+
+### NOT-EXERCISED-through-BM sites — 6 sites (named systemic gap)
+
+These six RNG sites have force-override parameters at the `StatusManager` or `AbilityManager`
+level, but those parameters are never passed from BattleManager's call sites, and no BM
+integration test currently exercises these code paths through a full battle turn. They are not
+FLAKY because they are unreached; they are coverage gaps.
+
+**Named gap:** BM-level integration testing has no coverage of:
+- sleep infliction via a secondary effect through a full turn (SM-1)
+- confusion infliction via a secondary effect through a full turn (SM-2)
+- Static / Flame Body contact-ability triggering through a full turn (BM-9)
+- full-paralysis immobility (25% roll) through a full turn (SM-5)
+- freeze-thaw randomness (20% roll) through a full turn (SM-3)
+- AI switch probability (`ShouldSwitchIfHasBadOdds` 50% roll) in a real BM battle (AI-2)
+
+This is a **deliberate known gap**, not an oversight. These paths are all exercised at the
+direct-API level (StatusManager and AbilityManager called directly with pinned force params
+in their respective test suites). BM-level integration coverage for these mechanics is
+deferred to a future Prompt 9 integration suite rather than being shoehorned in individually.
+
+| Site | Description | Force param location (not yet threaded to BM) |
+|------|-------------|-----------------------------------------------|
+| BM-9 | `try_contact_effects` call (L1580) passes only 4 args; 5th param `force_contact_roll` on `AbilityManager.try_contact_effects` never passed. Static/Flame Body 30% roll is always live in BM battles. | `AbilityManager.try_contact_effects` 5th param |
+| SM-1 | Sleep duration `randi_range(2,4)`: no BM integration test inflicts sleep through a secondary or status move. | `StatusManager.try_apply_status` `force_sleep_turns` |
+| SM-2 | Confusion duration `randi_range(2,5)`: same — no BM integration test inflicts confusion through a secondary. | `StatusManager.try_apply_confusion` `force_confusion_turns` |
+| SM-3 | 20% freeze-thaw roll: the only BM integration test with a frozen attacker (T4a, Flame Wheel) uses `thaws_user=true`, which the `MoveThawsUser` gate in `pre_move_check` bypasses before the 20% roll is ever reached. | `StatusManager.pre_move_check` `force_freeze_thaw` |
+| SM-5 | Full-paralysis 25% roll: no BM integration test has a paralyzed combatant where immobility is required for any assertion. | `StatusManager.pre_move_check` `force_full_para` |
+| AI-2 | `ShouldSwitchIfHasBadOdds` 50% roll: BM integration tests use BASIC tier; SMART tier is required to reach `_roll_switch_decision`. | `TrainerAI._force_switch_rng` (on TrainerAI; not threaded to BM at all) |
+
+### BM-9 — third instance of the incomplete-BM-seam pattern
+
+BM-9 (`try_contact_effects`) is the **third confirmed instance** of the same root-cause
+class documented in the two prior audit entries:
+
+1. **`_force_hit`** (Prompt 2 audit): `StatusManager.check_accuracy` had `force_hit:
+   Variant = null` since M5, but BM called it with 3 positional args — no test could pin
+   an accuracy roll through a real BM turn. Fix: added `_force_hit` to BM and threaded it.
+2. **`_force_roll` / `_force_crit`** (prior session): `DamageCalculator.calculate` had both
+   params since M2, but `_do_damaging_hit` hardcoded `-1`/`null`. Fix: added `_force_roll`
+   and `_force_crit` to BM and threaded them.
+3. **BM-9** (this audit, not yet fixed): `AbilityManager.try_contact_effects` has
+   `force_contact_roll: Variant = null` as its 5th parameter, but BM's call at L1580
+   passes only 4 arguments.
+
+Pattern: the lower-level function is correctly designed with a determinism seam; the gap is
+always at the BM call site. When a BM-level integration test for contact abilities is added
+(Prompt 9 scope), the fix follows the established template: add
+`var _force_contact_roll: Variant = null` to BattleManager (same declaration block as
+`_force_hit`/`_force_roll`/`_force_crit`) and pass it as the 5th argument at L1580–1581:
+`AbilityManager.try_contact_effects(attacker, target, move, damage, _force_contact_roll)`.
+
+---
+
 ## [Reference] DamageCalculator.calculate() — full modifier pipeline
 
 Source: `as-imagined/scripts/battle/core/damage_calculator.gd` — read directly 2026-06-30.  
