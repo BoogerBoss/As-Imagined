@@ -23,7 +23,8 @@
     "ability2": 0,
     "ability_h": 34,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 2,
@@ -49,7 +50,8 @@
     "ability2": 0,
     "ability_h": 34,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 3,
@@ -75,7 +77,8 @@
     "ability2": 0,
     "ability_h": 34,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 4,
@@ -101,7 +104,8 @@
     "ability2": 0,
     "ability_h": 94,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 5,
@@ -127,7 +131,8 @@
     "ability2": 0,
     "ability_h": 94,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 6,
@@ -153,7 +158,8 @@
     "ability2": 0,
     "ability_h": 94,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 7,
@@ -179,7 +185,8 @@
     "ability2": 0,
     "ability_h": 44,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 8,
@@ -205,7 +212,8 @@
     "ability2": 0,
     "ability_h": 44,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 9,
@@ -231,7 +239,8 @@
     "ability2": 0,
     "ability_h": 44,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 10,
@@ -257,7 +266,8 @@
     "ability2": 0,
     "ability_h": 50,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 11,
@@ -283,7 +293,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 12,
@@ -309,7 +320,8 @@
     "ability2": 0,
     "ability_h": 110,
     "item_common": null,
-    "item_rare": "ITEM_SILVER_POWDER"
+    "item_rare": "ITEM_SILVER_POWDER",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 13,
@@ -335,7 +347,8 @@
     "ability2": 0,
     "ability_h": 50,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 14,
@@ -361,7 +374,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 15,
@@ -387,7 +401,8 @@
     "ability2": 0,
     "ability_h": 97,
     "item_common": null,
-    "item_rare": "ITEM_POISON_BARB"
+    "item_rare": "ITEM_POISON_BARB",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 16,
@@ -413,7 +428,8 @@
     "ability2": 77,
     "ability_h": 145,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 17,
@@ -439,7 +455,8 @@
     "ability2": 77,
     "ability_h": 145,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 18,
@@ -465,7 +482,8 @@
     "ability2": 77,
     "ability_h": 145,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 19,
@@ -491,7 +509,8 @@
     "ability2": 62,
     "ability_h": 55,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 20,
@@ -517,7 +536,8 @@
     "ability2": 62,
     "ability_h": 55,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 21,
@@ -543,7 +563,8 @@
     "ability2": 0,
     "ability_h": 97,
     "item_common": null,
-    "item_rare": "ITEM_SHARP_BEAK"
+    "item_rare": "ITEM_SHARP_BEAK",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 22,
@@ -569,7 +590,8 @@
     "ability2": 0,
     "ability_h": 97,
     "item_common": null,
-    "item_rare": "ITEM_SHARP_BEAK"
+    "item_rare": "ITEM_SHARP_BEAK",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 23,
@@ -595,7 +617,8 @@
     "ability2": 61,
     "ability_h": 127,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 24,
@@ -621,7 +644,8 @@
     "ability2": 61,
     "ability_h": 127,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 25,
@@ -647,7 +671,8 @@
     "ability2": 0,
     "ability_h": 31,
     "item_common": null,
-    "item_rare": "ITEM_LIGHT_BALL"
+    "item_rare": "ITEM_LIGHT_BALL",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 26,
@@ -673,7 +698,8 @@
     "ability2": 0,
     "ability_h": 31,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 27,
@@ -699,7 +725,8 @@
     "ability2": 0,
     "ability_h": 146,
     "item_common": null,
-    "item_rare": "ITEM_GRIP_CLAW"
+    "item_rare": "ITEM_GRIP_CLAW",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 28,
@@ -725,7 +752,8 @@
     "ability2": 0,
     "ability_h": 146,
     "item_common": null,
-    "item_rare": "ITEM_GRIP_CLAW"
+    "item_rare": "ITEM_GRIP_CLAW",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 29,
@@ -751,7 +779,8 @@
     "ability2": 79,
     "ability_h": 55,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 30,
@@ -777,7 +806,8 @@
     "ability2": 79,
     "ability_h": 55,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 31,
@@ -803,7 +833,8 @@
     "ability2": 79,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 32,
@@ -829,7 +860,8 @@
     "ability2": 79,
     "ability_h": 55,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 33,
@@ -855,7 +887,8 @@
     "ability2": 79,
     "ability_h": 55,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 34,
@@ -881,7 +914,8 @@
     "ability2": 79,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 35,
@@ -907,7 +941,8 @@
     "ability2": 98,
     "ability_h": 132,
     "item_common": null,
-    "item_rare": "ITEM_MOON_STONE"
+    "item_rare": "ITEM_MOON_STONE",
+    "growth_rate": "Fast"
   },
   {
     "dex": 36,
@@ -933,7 +968,8 @@
     "ability2": 98,
     "ability_h": 109,
     "item_common": null,
-    "item_rare": "ITEM_MOON_STONE"
+    "item_rare": "ITEM_MOON_STONE",
+    "growth_rate": "Fast"
   },
   {
     "dex": 37,
@@ -959,7 +995,8 @@
     "ability2": 0,
     "ability_h": 70,
     "item_common": null,
-    "item_rare": "ITEM_CHARCOAL"
+    "item_rare": "ITEM_CHARCOAL",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 38,
@@ -985,7 +1022,8 @@
     "ability2": 0,
     "ability_h": 70,
     "item_common": null,
-    "item_rare": "ITEM_CHARCOAL"
+    "item_rare": "ITEM_CHARCOAL",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 39,
@@ -1011,7 +1049,8 @@
     "ability2": 172,
     "ability_h": 132,
     "item_common": null,
-    "item_rare": "ITEM_MOON_STONE"
+    "item_rare": "ITEM_MOON_STONE",
+    "growth_rate": "Fast"
   },
   {
     "dex": 40,
@@ -1037,7 +1076,8 @@
     "ability2": 172,
     "ability_h": 119,
     "item_common": null,
-    "item_rare": "ITEM_MOON_STONE"
+    "item_rare": "ITEM_MOON_STONE",
+    "growth_rate": "Fast"
   },
   {
     "dex": 41,
@@ -1063,7 +1103,8 @@
     "ability2": 0,
     "ability_h": 151,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 42,
@@ -1089,7 +1130,8 @@
     "ability2": 0,
     "ability_h": 151,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 43,
@@ -1115,7 +1157,8 @@
     "ability2": 0,
     "ability_h": 50,
     "item_common": null,
-    "item_rare": "ITEM_ABSORB_BULB"
+    "item_rare": "ITEM_ABSORB_BULB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 44,
@@ -1141,7 +1184,8 @@
     "ability2": 0,
     "ability_h": 1,
     "item_common": null,
-    "item_rare": "ITEM_ABSORB_BULB"
+    "item_rare": "ITEM_ABSORB_BULB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 45,
@@ -1167,7 +1211,8 @@
     "ability2": 0,
     "ability_h": 27,
     "item_common": null,
-    "item_rare": "ITEM_ABSORB_BULB"
+    "item_rare": "ITEM_ABSORB_BULB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 46,
@@ -1193,7 +1238,8 @@
     "ability2": 87,
     "ability_h": 6,
     "item_common": "ITEM_TINY_MUSHROOM",
-    "item_rare": "ITEM_BIG_MUSHROOM"
+    "item_rare": "ITEM_BIG_MUSHROOM",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 47,
@@ -1219,7 +1265,8 @@
     "ability2": 87,
     "ability_h": 6,
     "item_common": "ITEM_TINY_MUSHROOM",
-    "item_rare": "ITEM_BIG_MUSHROOM"
+    "item_rare": "ITEM_BIG_MUSHROOM",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 48,
@@ -1245,7 +1292,8 @@
     "ability2": 110,
     "ability_h": 50,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 49,
@@ -1271,7 +1319,8 @@
     "ability2": 110,
     "ability_h": 147,
     "item_common": null,
-    "item_rare": "ITEM_SHED_SHELL"
+    "item_rare": "ITEM_SHED_SHELL",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 50,
@@ -1297,7 +1346,8 @@
     "ability2": 71,
     "ability_h": 159,
     "item_common": null,
-    "item_rare": "ITEM_SOFT_SAND"
+    "item_rare": "ITEM_SOFT_SAND",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 51,
@@ -1323,7 +1373,8 @@
     "ability2": 71,
     "ability_h": 159,
     "item_common": null,
-    "item_rare": "ITEM_SOFT_SAND"
+    "item_rare": "ITEM_SOFT_SAND",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 52,
@@ -1349,7 +1400,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": "ITEM_QUICK_CLAW"
+    "item_rare": "ITEM_QUICK_CLAW",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 53,
@@ -1375,7 +1427,8 @@
     "ability2": 101,
     "ability_h": 127,
     "item_common": null,
-    "item_rare": "ITEM_QUICK_CLAW"
+    "item_rare": "ITEM_QUICK_CLAW",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 54,
@@ -1401,7 +1454,8 @@
     "ability2": 13,
     "ability_h": 33,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 55,
@@ -1427,7 +1481,8 @@
     "ability2": 13,
     "ability_h": 33,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 56,
@@ -1453,7 +1508,8 @@
     "ability2": 83,
     "ability_h": 128,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 57,
@@ -1479,7 +1535,8 @@
     "ability2": 83,
     "ability_h": 128,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 58,
@@ -1505,7 +1562,8 @@
     "ability2": 18,
     "ability_h": 154,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 59,
@@ -1531,7 +1589,8 @@
     "ability2": 18,
     "ability_h": 154,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 60,
@@ -1557,7 +1616,8 @@
     "ability2": 6,
     "ability_h": 33,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 61,
@@ -1583,7 +1643,8 @@
     "ability2": 6,
     "ability_h": 33,
     "item_common": null,
-    "item_rare": "ITEM_KINGS_ROCK"
+    "item_rare": "ITEM_KINGS_ROCK",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 62,
@@ -1609,7 +1670,8 @@
     "ability2": 6,
     "ability_h": 33,
     "item_common": null,
-    "item_rare": "ITEM_KINGS_ROCK"
+    "item_rare": "ITEM_KINGS_ROCK",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 63,
@@ -1635,7 +1697,8 @@
     "ability2": 39,
     "ability_h": 98,
     "item_common": null,
-    "item_rare": "ITEM_TWISTED_SPOON"
+    "item_rare": "ITEM_TWISTED_SPOON",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 64,
@@ -1661,7 +1724,8 @@
     "ability2": 39,
     "ability_h": 98,
     "item_common": null,
-    "item_rare": "ITEM_TWISTED_SPOON"
+    "item_rare": "ITEM_TWISTED_SPOON",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 65,
@@ -1687,7 +1751,8 @@
     "ability2": 39,
     "ability_h": 98,
     "item_common": null,
-    "item_rare": "ITEM_TWISTED_SPOON"
+    "item_rare": "ITEM_TWISTED_SPOON",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 66,
@@ -1713,7 +1778,8 @@
     "ability2": 99,
     "ability_h": 80,
     "item_common": null,
-    "item_rare": "ITEM_FOCUS_BAND"
+    "item_rare": "ITEM_FOCUS_BAND",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 67,
@@ -1739,7 +1805,8 @@
     "ability2": 99,
     "ability_h": 80,
     "item_common": null,
-    "item_rare": "ITEM_FOCUS_BAND"
+    "item_rare": "ITEM_FOCUS_BAND",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 68,
@@ -1765,7 +1832,8 @@
     "ability2": 99,
     "ability_h": 80,
     "item_common": null,
-    "item_rare": "ITEM_FOCUS_BAND"
+    "item_rare": "ITEM_FOCUS_BAND",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 69,
@@ -1791,7 +1859,8 @@
     "ability2": 0,
     "ability_h": 82,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 70,
@@ -1817,7 +1886,8 @@
     "ability2": 0,
     "ability_h": 82,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 71,
@@ -1843,7 +1913,8 @@
     "ability2": 0,
     "ability_h": 82,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 72,
@@ -1869,7 +1940,8 @@
     "ability2": 64,
     "ability_h": 44,
     "item_common": null,
-    "item_rare": "ITEM_POISON_BARB"
+    "item_rare": "ITEM_POISON_BARB",
+    "growth_rate": "Slow"
   },
   {
     "dex": 73,
@@ -1895,7 +1967,8 @@
     "ability2": 64,
     "ability_h": 44,
     "item_common": null,
-    "item_rare": "ITEM_POISON_BARB"
+    "item_rare": "ITEM_POISON_BARB",
+    "growth_rate": "Slow"
   },
   {
     "dex": 74,
@@ -1921,7 +1994,8 @@
     "ability2": 5,
     "ability_h": 8,
     "item_common": null,
-    "item_rare": "ITEM_EVERSTONE"
+    "item_rare": "ITEM_EVERSTONE",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 75,
@@ -1947,7 +2021,8 @@
     "ability2": 5,
     "ability_h": 8,
     "item_common": null,
-    "item_rare": "ITEM_EVERSTONE"
+    "item_rare": "ITEM_EVERSTONE",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 76,
@@ -1973,7 +2048,8 @@
     "ability2": 5,
     "ability_h": 8,
     "item_common": null,
-    "item_rare": "ITEM_EVERSTONE"
+    "item_rare": "ITEM_EVERSTONE",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 77,
@@ -1999,7 +2075,8 @@
     "ability2": 18,
     "ability_h": 49,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 78,
@@ -2025,7 +2102,8 @@
     "ability2": 18,
     "ability_h": 49,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 79,
@@ -2051,7 +2129,8 @@
     "ability2": 20,
     "ability_h": 144,
     "item_common": null,
-    "item_rare": "ITEM_LAGGING_TAIL"
+    "item_rare": "ITEM_LAGGING_TAIL",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 80,
@@ -2077,7 +2156,8 @@
     "ability2": 20,
     "ability_h": 144,
     "item_common": null,
-    "item_rare": "ITEM_KINGS_ROCK"
+    "item_rare": "ITEM_KINGS_ROCK",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 81,
@@ -2103,7 +2183,8 @@
     "ability2": 5,
     "ability_h": 148,
     "item_common": null,
-    "item_rare": "ITEM_METAL_COAT"
+    "item_rare": "ITEM_METAL_COAT",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 82,
@@ -2129,7 +2210,8 @@
     "ability2": 5,
     "ability_h": 148,
     "item_common": null,
-    "item_rare": "ITEM_METAL_COAT"
+    "item_rare": "ITEM_METAL_COAT",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 83,
@@ -2155,7 +2237,8 @@
     "ability2": 39,
     "ability_h": 128,
     "item_common": null,
-    "item_rare": "ITEM_LEEK"
+    "item_rare": "ITEM_LEEK",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 84,
@@ -2181,7 +2264,8 @@
     "ability2": 48,
     "ability_h": 77,
     "item_common": null,
-    "item_rare": "ITEM_SHARP_BEAK"
+    "item_rare": "ITEM_SHARP_BEAK",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 85,
@@ -2207,7 +2291,8 @@
     "ability2": 48,
     "ability_h": 77,
     "item_common": null,
-    "item_rare": "ITEM_SHARP_BEAK"
+    "item_rare": "ITEM_SHARP_BEAK",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 86,
@@ -2233,7 +2318,8 @@
     "ability2": 93,
     "ability_h": 115,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 87,
@@ -2259,7 +2345,8 @@
     "ability2": 93,
     "ability_h": 115,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 88,
@@ -2285,7 +2372,8 @@
     "ability2": 60,
     "ability_h": 143,
     "item_common": null,
-    "item_rare": "ITEM_BLACK_SLUDGE"
+    "item_rare": "ITEM_BLACK_SLUDGE",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 89,
@@ -2311,7 +2399,8 @@
     "ability2": 60,
     "ability_h": 143,
     "item_common": null,
-    "item_rare": "ITEM_BLACK_SLUDGE"
+    "item_rare": "ITEM_BLACK_SLUDGE",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 90,
@@ -2337,7 +2426,8 @@
     "ability2": 92,
     "ability_h": 142,
     "item_common": "ITEM_PEARL",
-    "item_rare": "ITEM_BIG_PEARL"
+    "item_rare": "ITEM_BIG_PEARL",
+    "growth_rate": "Slow"
   },
   {
     "dex": 91,
@@ -2363,7 +2453,8 @@
     "ability2": 92,
     "ability_h": 142,
     "item_common": "ITEM_PEARL",
-    "item_rare": "ITEM_BIG_PEARL"
+    "item_rare": "ITEM_BIG_PEARL",
+    "growth_rate": "Slow"
   },
   {
     "dex": 92,
@@ -2389,7 +2480,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 93,
@@ -2415,7 +2507,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 94,
@@ -2441,7 +2534,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 95,
@@ -2467,7 +2561,8 @@
     "ability2": 5,
     "ability_h": 133,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 96,
@@ -2493,7 +2588,8 @@
     "ability2": 108,
     "ability_h": 39,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 97,
@@ -2519,7 +2615,8 @@
     "ability2": 108,
     "ability_h": 39,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 98,
@@ -2545,7 +2642,8 @@
     "ability2": 75,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 99,
@@ -2571,7 +2669,8 @@
     "ability2": 75,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 100,
@@ -2597,7 +2696,8 @@
     "ability2": 9,
     "ability_h": 106,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 101,
@@ -2623,7 +2723,8 @@
     "ability2": 9,
     "ability_h": 106,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 102,
@@ -2649,7 +2750,8 @@
     "ability2": 0,
     "ability_h": 139,
     "item_common": null,
-    "item_rare": "ITEM_PSYCHIC_SEED"
+    "item_rare": "ITEM_PSYCHIC_SEED",
+    "growth_rate": "Slow"
   },
   {
     "dex": 103,
@@ -2675,7 +2777,8 @@
     "ability2": 0,
     "ability_h": 139,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 104,
@@ -2701,7 +2804,8 @@
     "ability2": 31,
     "ability_h": 4,
     "item_common": null,
-    "item_rare": "ITEM_THICK_CLUB"
+    "item_rare": "ITEM_THICK_CLUB",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 105,
@@ -2727,7 +2831,8 @@
     "ability2": 31,
     "ability_h": 4,
     "item_common": null,
-    "item_rare": "ITEM_THICK_CLUB"
+    "item_rare": "ITEM_THICK_CLUB",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 106,
@@ -2753,7 +2858,8 @@
     "ability2": 120,
     "ability_h": 84,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 107,
@@ -2779,7 +2885,8 @@
     "ability2": 89,
     "ability_h": 39,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 108,
@@ -2805,7 +2912,8 @@
     "ability2": 12,
     "ability_h": 13,
     "item_common": null,
-    "item_rare": "ITEM_LAGGING_TAIL"
+    "item_rare": "ITEM_LAGGING_TAIL",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 109,
@@ -2831,7 +2939,8 @@
     "ability2": 256,
     "ability_h": 1,
     "item_common": null,
-    "item_rare": "ITEM_SMOKE_BALL"
+    "item_rare": "ITEM_SMOKE_BALL",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 110,
@@ -2857,7 +2966,8 @@
     "ability2": 256,
     "ability_h": 1,
     "item_common": null,
-    "item_rare": "ITEM_SMOKE_BALL"
+    "item_rare": "ITEM_SMOKE_BALL",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 111,
@@ -2883,7 +2993,8 @@
     "ability2": 69,
     "ability_h": 120,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 112,
@@ -2909,7 +3020,8 @@
     "ability2": 69,
     "ability_h": 120,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 113,
@@ -2935,7 +3047,8 @@
     "ability2": 32,
     "ability_h": 131,
     "item_common": "ITEM_OVAL_STONE",
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 114,
@@ -2961,7 +3074,8 @@
     "ability2": 102,
     "ability_h": 144,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 115,
@@ -2987,7 +3101,8 @@
     "ability2": 113,
     "ability_h": 39,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 116,
@@ -3013,7 +3128,8 @@
     "ability2": 97,
     "ability_h": 6,
     "item_common": null,
-    "item_rare": "ITEM_DRAGON_SCALE"
+    "item_rare": "ITEM_DRAGON_SCALE",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 117,
@@ -3039,7 +3155,8 @@
     "ability2": 97,
     "ability_h": 6,
     "item_common": null,
-    "item_rare": "ITEM_DRAGON_SCALE"
+    "item_rare": "ITEM_DRAGON_SCALE",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 118,
@@ -3065,7 +3182,8 @@
     "ability2": 41,
     "ability_h": 31,
     "item_common": null,
-    "item_rare": "ITEM_MYSTIC_WATER"
+    "item_rare": "ITEM_MYSTIC_WATER",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 119,
@@ -3091,7 +3209,8 @@
     "ability2": 41,
     "ability_h": 31,
     "item_common": null,
-    "item_rare": "ITEM_MYSTIC_WATER"
+    "item_rare": "ITEM_MYSTIC_WATER",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 120,
@@ -3117,7 +3236,8 @@
     "ability2": 30,
     "ability_h": 148,
     "item_common": "ITEM_STARDUST",
-    "item_rare": "ITEM_STAR_PIECE"
+    "item_rare": "ITEM_STAR_PIECE",
+    "growth_rate": "Slow"
   },
   {
     "dex": 121,
@@ -3143,7 +3263,8 @@
     "ability2": 30,
     "ability_h": 148,
     "item_common": "ITEM_STARDUST",
-    "item_rare": "ITEM_STAR_PIECE"
+    "item_rare": "ITEM_STAR_PIECE",
+    "growth_rate": "Slow"
   },
   {
     "dex": 122,
@@ -3169,7 +3290,8 @@
     "ability2": 111,
     "ability_h": 101,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 123,
@@ -3195,7 +3317,8 @@
     "ability2": 101,
     "ability_h": 80,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 124,
@@ -3221,7 +3344,8 @@
     "ability2": 108,
     "ability_h": 87,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 125,
@@ -3247,7 +3371,8 @@
     "ability2": 0,
     "ability_h": 72,
     "item_common": null,
-    "item_rare": "ITEM_ELECTIRIZER"
+    "item_rare": "ITEM_ELECTIRIZER",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 126,
@@ -3273,7 +3398,8 @@
     "ability2": 0,
     "ability_h": 72,
     "item_common": null,
-    "item_rare": "ITEM_MAGMARIZER"
+    "item_rare": "ITEM_MAGMARIZER",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 127,
@@ -3299,7 +3425,8 @@
     "ability2": 104,
     "ability_h": 153,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 128,
@@ -3325,7 +3452,8 @@
     "ability2": 83,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 129,
@@ -3351,7 +3479,8 @@
     "ability2": 0,
     "ability_h": 155,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 130,
@@ -3377,7 +3506,8 @@
     "ability2": 0,
     "ability_h": 153,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 131,
@@ -3403,7 +3533,8 @@
     "ability2": 75,
     "ability_h": 93,
     "item_common": "ITEM_MYSTIC_WATER",
-    "item_rare": "ITEM_MYSTIC_WATER"
+    "item_rare": "ITEM_MYSTIC_WATER",
+    "growth_rate": "Slow"
   },
   {
     "dex": 132,
@@ -3429,7 +3560,8 @@
     "ability2": 0,
     "ability_h": 150,
     "item_common": "ITEM_QUICK_POWDER",
-    "item_rare": "ITEM_METAL_POWDER"
+    "item_rare": "ITEM_METAL_POWDER",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 133,
@@ -3455,7 +3587,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 134,
@@ -3481,7 +3614,8 @@
     "ability2": 11,
     "ability_h": 93,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 135,
@@ -3507,7 +3641,8 @@
     "ability2": 10,
     "ability_h": 95,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 136,
@@ -3533,7 +3668,8 @@
     "ability2": 18,
     "ability_h": 62,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 137,
@@ -3559,7 +3695,8 @@
     "ability2": 88,
     "ability_h": 148,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 138,
@@ -3585,7 +3722,8 @@
     "ability2": 75,
     "ability_h": 133,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 139,
@@ -3611,7 +3749,8 @@
     "ability2": 75,
     "ability_h": 133,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 140,
@@ -3637,7 +3776,8 @@
     "ability2": 4,
     "ability_h": 133,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 141,
@@ -3663,7 +3803,8 @@
     "ability2": 4,
     "ability_h": 133,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 142,
@@ -3689,7 +3830,8 @@
     "ability2": 46,
     "ability_h": 127,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 143,
@@ -3715,7 +3857,8 @@
     "ability2": 47,
     "ability_h": 82,
     "item_common": "ITEM_LEFTOVERS",
-    "item_rare": "ITEM_LEFTOVERS"
+    "item_rare": "ITEM_LEFTOVERS",
+    "growth_rate": "Slow"
   },
   {
     "dex": 144,
@@ -3741,7 +3884,8 @@
     "ability2": 0,
     "ability_h": 81,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 145,
@@ -3767,7 +3911,8 @@
     "ability2": 0,
     "ability_h": 9,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 146,
@@ -3793,7 +3938,8 @@
     "ability2": 0,
     "ability_h": 49,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 147,
@@ -3819,7 +3965,8 @@
     "ability2": 0,
     "ability_h": 63,
     "item_common": null,
-    "item_rare": "ITEM_DRAGON_SCALE"
+    "item_rare": "ITEM_DRAGON_SCALE",
+    "growth_rate": "Slow"
   },
   {
     "dex": 148,
@@ -3845,7 +3992,8 @@
     "ability2": 0,
     "ability_h": 63,
     "item_common": null,
-    "item_rare": "ITEM_DRAGON_SCALE"
+    "item_rare": "ITEM_DRAGON_SCALE",
+    "growth_rate": "Slow"
   },
   {
     "dex": 149,
@@ -3871,7 +4019,8 @@
     "ability2": 0,
     "ability_h": 136,
     "item_common": null,
-    "item_rare": "ITEM_DRAGON_SCALE"
+    "item_rare": "ITEM_DRAGON_SCALE",
+    "growth_rate": "Slow"
   },
   {
     "dex": 150,
@@ -3897,7 +4046,8 @@
     "ability2": 0,
     "ability_h": 127,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 151,
@@ -3923,7 +4073,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": "ITEM_LUM_BERRY",
-    "item_rare": "ITEM_LUM_BERRY"
+    "item_rare": "ITEM_LUM_BERRY",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 152,
@@ -3949,7 +4100,8 @@
     "ability2": 0,
     "ability_h": 102,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 153,
@@ -3975,7 +4127,8 @@
     "ability2": 0,
     "ability_h": 102,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 154,
@@ -4001,7 +4154,8 @@
     "ability2": 0,
     "ability_h": 102,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 155,
@@ -4027,7 +4181,8 @@
     "ability2": 0,
     "ability_h": 18,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 156,
@@ -4053,7 +4208,8 @@
     "ability2": 0,
     "ability_h": 18,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 157,
@@ -4079,7 +4235,8 @@
     "ability2": 0,
     "ability_h": 18,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 158,
@@ -4105,7 +4262,8 @@
     "ability2": 0,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 159,
@@ -4131,7 +4289,8 @@
     "ability2": 0,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 160,
@@ -4157,7 +4316,8 @@
     "ability2": 0,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 161,
@@ -4183,7 +4343,8 @@
     "ability2": 51,
     "ability_h": 119,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 162,
@@ -4209,7 +4370,8 @@
     "ability2": 51,
     "ability_h": 119,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 163,
@@ -4235,7 +4397,8 @@
     "ability2": 51,
     "ability_h": 110,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 164,
@@ -4261,7 +4424,8 @@
     "ability2": 51,
     "ability_h": 110,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 165,
@@ -4287,7 +4451,8 @@
     "ability2": 48,
     "ability_h": 155,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 166,
@@ -4313,7 +4478,8 @@
     "ability2": 48,
     "ability_h": 89,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 167,
@@ -4339,7 +4505,8 @@
     "ability2": 15,
     "ability_h": 97,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 168,
@@ -4365,7 +4532,8 @@
     "ability2": 15,
     "ability_h": 97,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 169,
@@ -4391,7 +4559,8 @@
     "ability2": 0,
     "ability_h": 151,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 170,
@@ -4417,7 +4586,8 @@
     "ability2": 35,
     "ability_h": 11,
     "item_common": null,
-    "item_rare": "ITEM_DEEP_SEA_SCALE"
+    "item_rare": "ITEM_DEEP_SEA_SCALE",
+    "growth_rate": "Slow"
   },
   {
     "dex": 171,
@@ -4443,7 +4613,8 @@
     "ability2": 35,
     "ability_h": 11,
     "item_common": null,
-    "item_rare": "ITEM_DEEP_SEA_SCALE"
+    "item_rare": "ITEM_DEEP_SEA_SCALE",
+    "growth_rate": "Slow"
   },
   {
     "dex": 172,
@@ -4469,7 +4640,8 @@
     "ability2": 0,
     "ability_h": 31,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 173,
@@ -4495,7 +4667,8 @@
     "ability2": 98,
     "ability_h": 132,
     "item_common": null,
-    "item_rare": "ITEM_MOON_STONE"
+    "item_rare": "ITEM_MOON_STONE",
+    "growth_rate": "Fast"
   },
   {
     "dex": 174,
@@ -4521,7 +4694,8 @@
     "ability2": 172,
     "ability_h": 132,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 175,
@@ -4547,7 +4721,8 @@
     "ability2": 32,
     "ability_h": 105,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 176,
@@ -4573,7 +4748,8 @@
     "ability2": 32,
     "ability_h": 105,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 177,
@@ -4599,7 +4775,8 @@
     "ability2": 48,
     "ability_h": 156,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 178,
@@ -4625,7 +4802,8 @@
     "ability2": 48,
     "ability_h": 156,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 179,
@@ -4651,7 +4829,8 @@
     "ability2": 0,
     "ability_h": 57,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 180,
@@ -4677,7 +4856,8 @@
     "ability2": 0,
     "ability_h": 57,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 181,
@@ -4703,7 +4883,8 @@
     "ability2": 0,
     "ability_h": 57,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 182,
@@ -4729,7 +4910,8 @@
     "ability2": 0,
     "ability_h": 131,
     "item_common": null,
-    "item_rare": "ITEM_ABSORB_BULB"
+    "item_rare": "ITEM_ABSORB_BULB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 183,
@@ -4755,7 +4937,8 @@
     "ability2": 37,
     "ability_h": 157,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 184,
@@ -4781,7 +4964,8 @@
     "ability2": 37,
     "ability_h": 157,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 185,
@@ -4807,7 +4991,8 @@
     "ability2": 69,
     "ability_h": 155,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 186,
@@ -4833,7 +5018,8 @@
     "ability2": 6,
     "ability_h": 2,
     "item_common": null,
-    "item_rare": "ITEM_KINGS_ROCK"
+    "item_rare": "ITEM_KINGS_ROCK",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 187,
@@ -4859,7 +5045,8 @@
     "ability2": 102,
     "ability_h": 151,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 188,
@@ -4885,7 +5072,8 @@
     "ability2": 102,
     "ability_h": 151,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 189,
@@ -4911,7 +5099,8 @@
     "ability2": 102,
     "ability_h": 151,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 190,
@@ -4937,7 +5126,8 @@
     "ability2": 53,
     "ability_h": 92,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 191,
@@ -4963,7 +5153,8 @@
     "ability2": 94,
     "ability_h": 48,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 192,
@@ -4989,7 +5180,8 @@
     "ability2": 94,
     "ability_h": 48,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 193,
@@ -5015,7 +5207,8 @@
     "ability2": 14,
     "ability_h": 119,
     "item_common": null,
-    "item_rare": "ITEM_WIDE_LENS"
+    "item_rare": "ITEM_WIDE_LENS",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 194,
@@ -5041,7 +5234,8 @@
     "ability2": 11,
     "ability_h": 109,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 195,
@@ -5067,7 +5261,8 @@
     "ability2": 11,
     "ability_h": 109,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 196,
@@ -5093,7 +5288,8 @@
     "ability2": 28,
     "ability_h": 156,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 197,
@@ -5119,7 +5315,8 @@
     "ability2": 28,
     "ability_h": 39,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 198,
@@ -5145,7 +5342,8 @@
     "ability2": 105,
     "ability_h": 158,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 199,
@@ -5171,7 +5369,8 @@
     "ability2": 20,
     "ability_h": 144,
     "item_common": null,
-    "item_rare": "ITEM_KINGS_ROCK"
+    "item_rare": "ITEM_KINGS_ROCK",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 200,
@@ -5197,7 +5396,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 201,
@@ -5223,7 +5423,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 202,
@@ -5249,7 +5450,8 @@
     "ability2": 0,
     "ability_h": 140,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 203,
@@ -5275,7 +5477,8 @@
     "ability2": 48,
     "ability_h": 157,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 204,
@@ -5301,7 +5504,8 @@
     "ability2": 0,
     "ability_h": 142,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 205,
@@ -5327,7 +5531,8 @@
     "ability2": 0,
     "ability_h": 142,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 206,
@@ -5353,7 +5558,8 @@
     "ability2": 50,
     "ability_h": 155,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 207,
@@ -5379,7 +5585,8 @@
     "ability2": 8,
     "ability_h": 17,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 208,
@@ -5405,7 +5612,8 @@
     "ability2": 5,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": "ITEM_METAL_COAT"
+    "item_rare": "ITEM_METAL_COAT",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 209,
@@ -5431,7 +5639,8 @@
     "ability2": 50,
     "ability_h": 155,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 210,
@@ -5457,7 +5666,8 @@
     "ability2": 95,
     "ability_h": 155,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 211,
@@ -5483,7 +5693,8 @@
     "ability2": 33,
     "ability_h": 22,
     "item_common": null,
-    "item_rare": "ITEM_POISON_BARB"
+    "item_rare": "ITEM_POISON_BARB",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 212,
@@ -5509,7 +5720,8 @@
     "ability2": 101,
     "ability_h": 135,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 213,
@@ -5535,7 +5747,8 @@
     "ability2": 82,
     "ability_h": 126,
     "item_common": "ITEM_BERRY_JUICE",
-    "item_rare": "ITEM_BERRY_JUICE"
+    "item_rare": "ITEM_BERRY_JUICE",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 214,
@@ -5561,7 +5774,8 @@
     "ability2": 62,
     "ability_h": 153,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 215,
@@ -5587,7 +5801,8 @@
     "ability2": 51,
     "ability_h": 124,
     "item_common": null,
-    "item_rare": "ITEM_QUICK_CLAW"
+    "item_rare": "ITEM_QUICK_CLAW",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 216,
@@ -5613,7 +5828,8 @@
     "ability2": 95,
     "ability_h": 118,
     "item_common": null,
-    "item_rare": "ITEM_HONEY"
+    "item_rare": "ITEM_HONEY",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 217,
@@ -5639,7 +5855,8 @@
     "ability2": 95,
     "ability_h": 127,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 218,
@@ -5665,7 +5882,8 @@
     "ability2": 49,
     "ability_h": 133,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 219,
@@ -5691,7 +5909,8 @@
     "ability2": 49,
     "ability_h": 133,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 220,
@@ -5717,7 +5936,8 @@
     "ability2": 81,
     "ability_h": 47,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 221,
@@ -5743,7 +5963,8 @@
     "ability2": 81,
     "ability_h": 47,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 222,
@@ -5769,7 +5990,8 @@
     "ability2": 30,
     "ability_h": 144,
     "item_common": null,
-    "item_rare": "ITEM_LUMINOUS_MOSS"
+    "item_rare": "ITEM_LUMINOUS_MOSS",
+    "growth_rate": "Fast"
   },
   {
     "dex": 223,
@@ -5795,7 +6017,8 @@
     "ability2": 97,
     "ability_h": 141,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 224,
@@ -5821,7 +6044,8 @@
     "ability2": 97,
     "ability_h": 141,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 225,
@@ -5847,7 +6071,8 @@
     "ability2": 55,
     "ability_h": 15,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 226,
@@ -5873,7 +6098,8 @@
     "ability2": 11,
     "ability_h": 41,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 227,
@@ -5899,7 +6125,8 @@
     "ability2": 5,
     "ability_h": 133,
     "item_common": null,
-    "item_rare": "ITEM_METAL_COAT"
+    "item_rare": "ITEM_METAL_COAT",
+    "growth_rate": "Slow"
   },
   {
     "dex": 228,
@@ -5925,7 +6152,8 @@
     "ability2": 18,
     "ability_h": 127,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 229,
@@ -5951,7 +6179,8 @@
     "ability2": 18,
     "ability_h": 127,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 230,
@@ -5977,7 +6206,8 @@
     "ability2": 97,
     "ability_h": 6,
     "item_common": null,
-    "item_rare": "ITEM_DRAGON_SCALE"
+    "item_rare": "ITEM_DRAGON_SCALE",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 231,
@@ -6003,7 +6233,8 @@
     "ability2": 0,
     "ability_h": 8,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 232,
@@ -6029,7 +6260,8 @@
     "ability2": 0,
     "ability_h": 8,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 233,
@@ -6055,7 +6287,8 @@
     "ability2": 88,
     "ability_h": 148,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 234,
@@ -6081,7 +6314,8 @@
     "ability2": 119,
     "ability_h": 157,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 235,
@@ -6107,7 +6341,8 @@
     "ability2": 101,
     "ability_h": 141,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 236,
@@ -6133,7 +6368,8 @@
     "ability2": 80,
     "ability_h": 72,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 237,
@@ -6159,7 +6395,8 @@
     "ability2": 101,
     "ability_h": 80,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 238,
@@ -6185,7 +6422,8 @@
     "ability2": 108,
     "ability_h": 93,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 239,
@@ -6211,7 +6449,8 @@
     "ability2": 0,
     "ability_h": 72,
     "item_common": null,
-    "item_rare": "ITEM_ELECTIRIZER"
+    "item_rare": "ITEM_ELECTIRIZER",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 240,
@@ -6237,7 +6476,8 @@
     "ability2": 0,
     "ability_h": 72,
     "item_common": null,
-    "item_rare": "ITEM_MAGMARIZER"
+    "item_rare": "ITEM_MAGMARIZER",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 241,
@@ -6263,7 +6503,8 @@
     "ability2": 113,
     "ability_h": 157,
     "item_common": "ITEM_MOOMOO_MILK",
-    "item_rare": "ITEM_MOOMOO_MILK"
+    "item_rare": "ITEM_MOOMOO_MILK",
+    "growth_rate": "Slow"
   },
   {
     "dex": 242,
@@ -6289,7 +6530,8 @@
     "ability2": 32,
     "ability_h": 131,
     "item_common": "ITEM_OVAL_STONE",
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 243,
@@ -6315,7 +6557,8 @@
     "ability2": 0,
     "ability_h": 39,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 244,
@@ -6341,7 +6584,8 @@
     "ability2": 0,
     "ability_h": 39,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 245,
@@ -6367,7 +6611,8 @@
     "ability2": 0,
     "ability_h": 39,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 246,
@@ -6393,7 +6638,8 @@
     "ability2": 0,
     "ability_h": 8,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 247,
@@ -6419,7 +6665,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 248,
@@ -6445,7 +6692,8 @@
     "ability2": 0,
     "ability_h": 127,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 249,
@@ -6471,7 +6719,8 @@
     "ability2": 0,
     "ability_h": 136,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 250,
@@ -6497,7 +6746,8 @@
     "ability2": 0,
     "ability_h": 144,
     "item_common": "ITEM_SACRED_ASH",
-    "item_rare": "ITEM_SACRED_ASH"
+    "item_rare": "ITEM_SACRED_ASH",
+    "growth_rate": "Slow"
   },
   {
     "dex": 251,
@@ -6523,7 +6773,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": "ITEM_LUM_BERRY",
-    "item_rare": "ITEM_LUM_BERRY"
+    "item_rare": "ITEM_LUM_BERRY",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 252,
@@ -6549,7 +6800,8 @@
     "ability2": 0,
     "ability_h": 84,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 253,
@@ -6575,7 +6827,8 @@
     "ability2": 0,
     "ability_h": 84,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 254,
@@ -6601,7 +6854,8 @@
     "ability2": 0,
     "ability_h": 84,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 255,
@@ -6627,7 +6881,8 @@
     "ability2": 0,
     "ability_h": 3,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 256,
@@ -6653,7 +6908,8 @@
     "ability2": 0,
     "ability_h": 3,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 257,
@@ -6679,7 +6935,8 @@
     "ability2": 0,
     "ability_h": 3,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 258,
@@ -6705,7 +6962,8 @@
     "ability2": 0,
     "ability_h": 6,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 259,
@@ -6731,7 +6989,8 @@
     "ability2": 0,
     "ability_h": 6,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 260,
@@ -6757,7 +7016,8 @@
     "ability2": 0,
     "ability_h": 6,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 261,
@@ -6783,7 +7043,8 @@
     "ability2": 95,
     "ability_h": 155,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 262,
@@ -6809,7 +7070,8 @@
     "ability2": 95,
     "ability_h": 153,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 263,
@@ -6835,7 +7097,8 @@
     "ability2": 82,
     "ability_h": 95,
     "item_common": "ITEM_POTION",
-    "item_rare": "ITEM_REVIVE"
+    "item_rare": "ITEM_REVIVE",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 264,
@@ -6861,7 +7124,8 @@
     "ability2": 82,
     "ability_h": 95,
     "item_common": "ITEM_POTION",
-    "item_rare": "ITEM_MAX_REVIVE"
+    "item_rare": "ITEM_MAX_REVIVE",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 265,
@@ -6887,7 +7151,8 @@
     "ability2": 0,
     "ability_h": 50,
     "item_common": "ITEM_PECHA_BERRY",
-    "item_rare": "ITEM_BRIGHT_POWDER"
+    "item_rare": "ITEM_BRIGHT_POWDER",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 266,
@@ -6913,7 +7178,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 267,
@@ -6939,7 +7205,8 @@
     "ability2": 0,
     "ability_h": 79,
     "item_common": null,
-    "item_rare": "ITEM_SHED_SHELL"
+    "item_rare": "ITEM_SHED_SHELL",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 268,
@@ -6965,7 +7232,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 269,
@@ -6991,7 +7259,8 @@
     "ability2": 0,
     "ability_h": 14,
     "item_common": null,
-    "item_rare": "ITEM_SHED_SHELL"
+    "item_rare": "ITEM_SHED_SHELL",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 270,
@@ -7017,7 +7286,8 @@
     "ability2": 44,
     "ability_h": 20,
     "item_common": null,
-    "item_rare": "ITEM_MENTAL_HERB"
+    "item_rare": "ITEM_MENTAL_HERB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 271,
@@ -7043,7 +7313,8 @@
     "ability2": 44,
     "ability_h": 20,
     "item_common": null,
-    "item_rare": "ITEM_MENTAL_HERB"
+    "item_rare": "ITEM_MENTAL_HERB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 272,
@@ -7069,7 +7340,8 @@
     "ability2": 44,
     "ability_h": 20,
     "item_common": null,
-    "item_rare": "ITEM_MENTAL_HERB"
+    "item_rare": "ITEM_MENTAL_HERB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 273,
@@ -7095,7 +7367,8 @@
     "ability2": 48,
     "ability_h": 124,
     "item_common": null,
-    "item_rare": "ITEM_POWER_HERB"
+    "item_rare": "ITEM_POWER_HERB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 274,
@@ -7121,7 +7394,8 @@
     "ability2": 48,
     "ability_h": 124,
     "item_common": null,
-    "item_rare": "ITEM_POWER_HERB"
+    "item_rare": "ITEM_POWER_HERB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 275,
@@ -7147,7 +7421,8 @@
     "ability2": 274,
     "ability_h": 124,
     "item_common": null,
-    "item_rare": "ITEM_POWER_HERB"
+    "item_rare": "ITEM_POWER_HERB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 276,
@@ -7173,7 +7448,8 @@
     "ability2": 0,
     "ability_h": 113,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 277,
@@ -7199,7 +7475,8 @@
     "ability2": 0,
     "ability_h": 113,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 278,
@@ -7225,7 +7502,8 @@
     "ability2": 93,
     "ability_h": 44,
     "item_common": "ITEM_PRETTY_FEATHER",
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 279,
@@ -7251,7 +7529,8 @@
     "ability2": 2,
     "ability_h": 44,
     "item_common": "ITEM_PRETTY_FEATHER",
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 280,
@@ -7277,7 +7556,8 @@
     "ability2": 36,
     "ability_h": 140,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 281,
@@ -7303,7 +7583,8 @@
     "ability2": 36,
     "ability_h": 140,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 282,
@@ -7329,7 +7610,8 @@
     "ability2": 36,
     "ability_h": 140,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 283,
@@ -7355,7 +7637,8 @@
     "ability2": 0,
     "ability_h": 44,
     "item_common": null,
-    "item_rare": "ITEM_HONEY"
+    "item_rare": "ITEM_HONEY",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 284,
@@ -7381,7 +7664,8 @@
     "ability2": 0,
     "ability_h": 127,
     "item_common": null,
-    "item_rare": "ITEM_SILVER_POWDER"
+    "item_rare": "ITEM_SILVER_POWDER",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 285,
@@ -7407,7 +7691,8 @@
     "ability2": 90,
     "ability_h": 95,
     "item_common": "ITEM_TINY_MUSHROOM",
-    "item_rare": "ITEM_BIG_MUSHROOM"
+    "item_rare": "ITEM_BIG_MUSHROOM",
+    "growth_rate": "Fluctuating"
   },
   {
     "dex": 286,
@@ -7433,7 +7718,8 @@
     "ability2": 90,
     "ability_h": 101,
     "item_common": "ITEM_TINY_MUSHROOM",
-    "item_rare": "ITEM_BIG_MUSHROOM"
+    "item_rare": "ITEM_BIG_MUSHROOM",
+    "growth_rate": "Fluctuating"
   },
   {
     "dex": 287,
@@ -7459,7 +7745,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 288,
@@ -7485,7 +7772,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 289,
@@ -7511,7 +7799,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 290,
@@ -7537,7 +7826,8 @@
     "ability2": 0,
     "ability_h": 50,
     "item_common": null,
-    "item_rare": "ITEM_SOFT_SAND"
+    "item_rare": "ITEM_SOFT_SAND",
+    "growth_rate": "Erratic"
   },
   {
     "dex": 291,
@@ -7563,7 +7853,8 @@
     "ability2": 0,
     "ability_h": 151,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Erratic"
   },
   {
     "dex": 292,
@@ -7589,7 +7880,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Erratic"
   },
   {
     "dex": 293,
@@ -7615,7 +7907,8 @@
     "ability2": 0,
     "ability_h": 155,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 294,
@@ -7641,7 +7934,8 @@
     "ability2": 0,
     "ability_h": 113,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 295,
@@ -7667,7 +7961,8 @@
     "ability2": 0,
     "ability_h": 113,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 296,
@@ -7693,7 +7988,8 @@
     "ability2": 62,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": "ITEM_BLACK_BELT"
+    "item_rare": "ITEM_BLACK_BELT",
+    "growth_rate": "Fluctuating"
   },
   {
     "dex": 297,
@@ -7719,7 +8015,8 @@
     "ability2": 62,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": "ITEM_KINGS_ROCK"
+    "item_rare": "ITEM_KINGS_ROCK",
+    "growth_rate": "Fluctuating"
   },
   {
     "dex": 298,
@@ -7745,7 +8042,8 @@
     "ability2": 37,
     "ability_h": 157,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 299,
@@ -7771,7 +8069,8 @@
     "ability2": 42,
     "ability_h": 159,
     "item_common": null,
-    "item_rare": "ITEM_MAGNET"
+    "item_rare": "ITEM_MAGNET",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 300,
@@ -7797,7 +8096,8 @@
     "ability2": 96,
     "ability_h": 147,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 301,
@@ -7823,7 +8123,8 @@
     "ability2": 96,
     "ability_h": 147,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 302,
@@ -7849,7 +8150,8 @@
     "ability2": 100,
     "ability_h": 158,
     "item_common": null,
-    "item_rare": "ITEM_WIDE_LENS"
+    "item_rare": "ITEM_WIDE_LENS",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 303,
@@ -7875,7 +8177,8 @@
     "ability2": 22,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": "ITEM_IRON_BALL"
+    "item_rare": "ITEM_IRON_BALL",
+    "growth_rate": "Fast"
   },
   {
     "dex": 304,
@@ -7901,7 +8204,8 @@
     "ability2": 69,
     "ability_h": 134,
     "item_common": null,
-    "item_rare": "ITEM_HARD_STONE"
+    "item_rare": "ITEM_HARD_STONE",
+    "growth_rate": "Slow"
   },
   {
     "dex": 305,
@@ -7927,7 +8231,8 @@
     "ability2": 69,
     "ability_h": 134,
     "item_common": null,
-    "item_rare": "ITEM_HARD_STONE"
+    "item_rare": "ITEM_HARD_STONE",
+    "growth_rate": "Slow"
   },
   {
     "dex": 306,
@@ -7953,7 +8258,8 @@
     "ability2": 69,
     "ability_h": 134,
     "item_common": null,
-    "item_rare": "ITEM_HARD_STONE"
+    "item_rare": "ITEM_HARD_STONE",
+    "growth_rate": "Slow"
   },
   {
     "dex": 307,
@@ -7979,7 +8285,8 @@
     "ability2": 0,
     "ability_h": 140,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 308,
@@ -8005,7 +8312,8 @@
     "ability2": 0,
     "ability_h": 140,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 309,
@@ -8031,7 +8339,8 @@
     "ability2": 31,
     "ability_h": 58,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 310,
@@ -8057,7 +8366,8 @@
     "ability2": 31,
     "ability_h": 58,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 311,
@@ -8083,7 +8393,8 @@
     "ability2": 0,
     "ability_h": 31,
     "item_common": null,
-    "item_rare": "ITEM_CELL_BATTERY"
+    "item_rare": "ITEM_CELL_BATTERY",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 312,
@@ -8109,7 +8420,8 @@
     "ability2": 0,
     "ability_h": 10,
     "item_common": null,
-    "item_rare": "ITEM_CELL_BATTERY"
+    "item_rare": "ITEM_CELL_BATTERY",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 313,
@@ -8135,7 +8447,8 @@
     "ability2": 68,
     "ability_h": 158,
     "item_common": null,
-    "item_rare": "ITEM_BRIGHT_POWDER"
+    "item_rare": "ITEM_BRIGHT_POWDER",
+    "growth_rate": "Erratic"
   },
   {
     "dex": 314,
@@ -8161,7 +8474,8 @@
     "ability2": 110,
     "ability_h": 158,
     "item_common": null,
-    "item_rare": "ITEM_BRIGHT_POWDER"
+    "item_rare": "ITEM_BRIGHT_POWDER",
+    "growth_rate": "Fluctuating"
   },
   {
     "dex": 315,
@@ -8187,7 +8501,8 @@
     "ability2": 38,
     "ability_h": 102,
     "item_common": null,
-    "item_rare": "ITEM_POISON_BARB"
+    "item_rare": "ITEM_POISON_BARB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 316,
@@ -8213,7 +8528,8 @@
     "ability2": 60,
     "ability_h": 82,
     "item_common": "ITEM_ORAN_BERRY",
-    "item_rare": "ITEM_SITRUS_BERRY"
+    "item_rare": "ITEM_SITRUS_BERRY",
+    "growth_rate": "Fluctuating"
   },
   {
     "dex": 317,
@@ -8239,7 +8555,8 @@
     "ability2": 60,
     "ability_h": 82,
     "item_common": "ITEM_ORAN_BERRY",
-    "item_rare": "ITEM_SITRUS_BERRY"
+    "item_rare": "ITEM_SITRUS_BERRY",
+    "growth_rate": "Fluctuating"
   },
   {
     "dex": 318,
@@ -8265,7 +8582,8 @@
     "ability2": 0,
     "ability_h": 3,
     "item_common": null,
-    "item_rare": "ITEM_DEEP_SEA_TOOTH"
+    "item_rare": "ITEM_DEEP_SEA_TOOTH",
+    "growth_rate": "Slow"
   },
   {
     "dex": 319,
@@ -8291,7 +8609,8 @@
     "ability2": 0,
     "ability_h": 3,
     "item_common": null,
-    "item_rare": "ITEM_DEEP_SEA_TOOTH"
+    "item_rare": "ITEM_DEEP_SEA_TOOTH",
+    "growth_rate": "Slow"
   },
   {
     "dex": 320,
@@ -8317,7 +8636,8 @@
     "ability2": 12,
     "ability_h": 46,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fluctuating"
   },
   {
     "dex": 321,
@@ -8343,7 +8663,8 @@
     "ability2": 12,
     "ability_h": 46,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fluctuating"
   },
   {
     "dex": 322,
@@ -8369,7 +8690,8 @@
     "ability2": 86,
     "ability_h": 20,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 323,
@@ -8395,7 +8717,8 @@
     "ability2": 116,
     "ability_h": 83,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 324,
@@ -8421,7 +8744,8 @@
     "ability2": 70,
     "ability_h": 75,
     "item_common": null,
-    "item_rare": "ITEM_CHARCOAL"
+    "item_rare": "ITEM_CHARCOAL",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 325,
@@ -8447,7 +8771,8 @@
     "ability2": 20,
     "ability_h": 82,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 326,
@@ -8473,7 +8798,8 @@
     "ability2": 20,
     "ability_h": 82,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 327,
@@ -8499,7 +8825,8 @@
     "ability2": 77,
     "ability_h": 126,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 328,
@@ -8525,7 +8852,8 @@
     "ability2": 71,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": "ITEM_SOFT_SAND"
+    "item_rare": "ITEM_SOFT_SAND",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 329,
@@ -8551,7 +8879,8 @@
     "ability2": 26,
     "ability_h": 26,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 330,
@@ -8577,7 +8906,8 @@
     "ability2": 26,
     "ability_h": 26,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 331,
@@ -8603,7 +8933,8 @@
     "ability2": 0,
     "ability_h": 11,
     "item_common": null,
-    "item_rare": "ITEM_STICKY_BARB"
+    "item_rare": "ITEM_STICKY_BARB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 332,
@@ -8629,7 +8960,8 @@
     "ability2": 0,
     "ability_h": 11,
     "item_common": null,
-    "item_rare": "ITEM_STICKY_BARB"
+    "item_rare": "ITEM_STICKY_BARB",
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 333,
@@ -8655,7 +8987,8 @@
     "ability2": 0,
     "ability_h": 13,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Erratic"
   },
   {
     "dex": 334,
@@ -8681,7 +9014,8 @@
     "ability2": 0,
     "ability_h": 13,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Erratic"
   },
   {
     "dex": 335,
@@ -8707,7 +9041,8 @@
     "ability2": 0,
     "ability_h": 137,
     "item_common": null,
-    "item_rare": "ITEM_QUICK_CLAW"
+    "item_rare": "ITEM_QUICK_CLAW",
+    "growth_rate": "Erratic"
   },
   {
     "dex": 336,
@@ -8733,7 +9068,8 @@
     "ability2": 0,
     "ability_h": 151,
     "item_common": null,
-    "item_rare": "ITEM_SHED_SHELL"
+    "item_rare": "ITEM_SHED_SHELL",
+    "growth_rate": "Fluctuating"
   },
   {
     "dex": 337,
@@ -8759,7 +9095,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": "ITEM_STARDUST",
-    "item_rare": "ITEM_MOON_STONE"
+    "item_rare": "ITEM_MOON_STONE",
+    "growth_rate": "Fast"
   },
   {
     "dex": 338,
@@ -8785,7 +9122,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": "ITEM_STARDUST",
-    "item_rare": "ITEM_SUN_STONE"
+    "item_rare": "ITEM_SUN_STONE",
+    "growth_rate": "Fast"
   },
   {
     "dex": 339,
@@ -8811,7 +9149,8 @@
     "ability2": 107,
     "ability_h": 93,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 340,
@@ -8837,7 +9176,8 @@
     "ability2": 107,
     "ability_h": 93,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 341,
@@ -8863,7 +9203,8 @@
     "ability2": 75,
     "ability_h": 91,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fluctuating"
   },
   {
     "dex": 342,
@@ -8889,7 +9230,8 @@
     "ability2": 75,
     "ability_h": 91,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fluctuating"
   },
   {
     "dex": 343,
@@ -8915,7 +9257,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": "ITEM_LIGHT_CLAY"
+    "item_rare": "ITEM_LIGHT_CLAY",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 344,
@@ -8941,7 +9284,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": "ITEM_LIGHT_CLAY"
+    "item_rare": "ITEM_LIGHT_CLAY",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 345,
@@ -8967,7 +9311,8 @@
     "ability2": 0,
     "ability_h": 114,
     "item_common": null,
-    "item_rare": "ITEM_BIG_ROOT"
+    "item_rare": "ITEM_BIG_ROOT",
+    "growth_rate": "Erratic"
   },
   {
     "dex": 346,
@@ -8993,7 +9338,8 @@
     "ability2": 0,
     "ability_h": 114,
     "item_common": null,
-    "item_rare": "ITEM_BIG_ROOT"
+    "item_rare": "ITEM_BIG_ROOT",
+    "growth_rate": "Erratic"
   },
   {
     "dex": 347,
@@ -9019,7 +9365,8 @@
     "ability2": 0,
     "ability_h": 33,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Erratic"
   },
   {
     "dex": 348,
@@ -9045,7 +9392,8 @@
     "ability2": 0,
     "ability_h": 33,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Erratic"
   },
   {
     "dex": 349,
@@ -9071,7 +9419,8 @@
     "ability2": 12,
     "ability_h": 91,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Erratic"
   },
   {
     "dex": 350,
@@ -9097,7 +9446,8 @@
     "ability2": 172,
     "ability_h": 56,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Erratic"
   },
   {
     "dex": 351,
@@ -9123,7 +9473,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": "ITEM_MYSTIC_WATER",
-    "item_rare": "ITEM_MYSTIC_WATER"
+    "item_rare": "ITEM_MYSTIC_WATER",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 352,
@@ -9149,7 +9500,8 @@
     "ability2": 0,
     "ability_h": 168,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 353,
@@ -9175,7 +9527,8 @@
     "ability2": 119,
     "ability_h": 130,
     "item_common": null,
-    "item_rare": "ITEM_SPELL_TAG"
+    "item_rare": "ITEM_SPELL_TAG",
+    "growth_rate": "Fast"
   },
   {
     "dex": 354,
@@ -9201,7 +9554,8 @@
     "ability2": 119,
     "ability_h": 130,
     "item_common": null,
-    "item_rare": "ITEM_SPELL_TAG"
+    "item_rare": "ITEM_SPELL_TAG",
+    "growth_rate": "Fast"
   },
   {
     "dex": 355,
@@ -9227,7 +9581,8 @@
     "ability2": 0,
     "ability_h": 119,
     "item_common": null,
-    "item_rare": "ITEM_SPELL_TAG"
+    "item_rare": "ITEM_SPELL_TAG",
+    "growth_rate": "Fast"
   },
   {
     "dex": 356,
@@ -9253,7 +9608,8 @@
     "ability2": 0,
     "ability_h": 119,
     "item_common": null,
-    "item_rare": "ITEM_SPELL_TAG"
+    "item_rare": "ITEM_SPELL_TAG",
+    "growth_rate": "Fast"
   },
   {
     "dex": 357,
@@ -9279,7 +9635,8 @@
     "ability2": 94,
     "ability_h": 139,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 358,
@@ -9305,7 +9662,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": "ITEM_CLEANSE_TAG"
+    "item_rare": "ITEM_CLEANSE_TAG",
+    "growth_rate": "Fast"
   },
   {
     "dex": 359,
@@ -9331,7 +9689,8 @@
     "ability2": 105,
     "ability_h": 154,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 360,
@@ -9357,7 +9716,8 @@
     "ability2": 0,
     "ability_h": 140,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 361,
@@ -9383,7 +9743,8 @@
     "ability2": 115,
     "ability_h": 141,
     "item_common": null,
-    "item_rare": "ITEM_SNOWBALL"
+    "item_rare": "ITEM_SNOWBALL",
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 362,
@@ -9409,7 +9770,8 @@
     "ability2": 115,
     "ability_h": 141,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumFast"
   },
   {
     "dex": 363,
@@ -9435,7 +9797,8 @@
     "ability2": 115,
     "ability_h": 12,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 364,
@@ -9461,7 +9824,8 @@
     "ability2": 115,
     "ability_h": 12,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 365,
@@ -9487,7 +9851,8 @@
     "ability2": 115,
     "ability_h": 12,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "MediumSlow"
   },
   {
     "dex": 366,
@@ -9513,7 +9878,8 @@
     "ability2": 0,
     "ability_h": 155,
     "item_common": "ITEM_PEARL",
-    "item_rare": "ITEM_BIG_PEARL"
+    "item_rare": "ITEM_BIG_PEARL",
+    "growth_rate": "Erratic"
   },
   {
     "dex": 367,
@@ -9539,7 +9905,8 @@
     "ability2": 0,
     "ability_h": 41,
     "item_common": null,
-    "item_rare": "ITEM_DEEP_SEA_TOOTH"
+    "item_rare": "ITEM_DEEP_SEA_TOOTH",
+    "growth_rate": "Erratic"
   },
   {
     "dex": 368,
@@ -9565,7 +9932,8 @@
     "ability2": 0,
     "ability_h": 93,
     "item_common": null,
-    "item_rare": "ITEM_DEEP_SEA_SCALE"
+    "item_rare": "ITEM_DEEP_SEA_SCALE",
+    "growth_rate": "Erratic"
   },
   {
     "dex": 369,
@@ -9591,7 +9959,8 @@
     "ability2": 69,
     "ability_h": 5,
     "item_common": null,
-    "item_rare": "ITEM_DEEP_SEA_SCALE"
+    "item_rare": "ITEM_DEEP_SEA_SCALE",
+    "growth_rate": "Slow"
   },
   {
     "dex": 370,
@@ -9617,7 +9986,8 @@
     "ability2": 0,
     "ability_h": 93,
     "item_common": "ITEM_HEART_SCALE",
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Fast"
   },
   {
     "dex": 371,
@@ -9643,7 +10013,8 @@
     "ability2": 0,
     "ability_h": 125,
     "item_common": null,
-    "item_rare": "ITEM_DRAGON_FANG"
+    "item_rare": "ITEM_DRAGON_FANG",
+    "growth_rate": "Slow"
   },
   {
     "dex": 372,
@@ -9669,7 +10040,8 @@
     "ability2": 0,
     "ability_h": 142,
     "item_common": null,
-    "item_rare": "ITEM_DRAGON_FANG"
+    "item_rare": "ITEM_DRAGON_FANG",
+    "growth_rate": "Slow"
   },
   {
     "dex": 373,
@@ -9695,7 +10067,8 @@
     "ability2": 0,
     "ability_h": 153,
     "item_common": null,
-    "item_rare": "ITEM_DRAGON_FANG"
+    "item_rare": "ITEM_DRAGON_FANG",
+    "growth_rate": "Slow"
   },
   {
     "dex": 374,
@@ -9721,7 +10094,8 @@
     "ability2": 0,
     "ability_h": 135,
     "item_common": null,
-    "item_rare": "ITEM_METAL_COAT"
+    "item_rare": "ITEM_METAL_COAT",
+    "growth_rate": "Slow"
   },
   {
     "dex": 375,
@@ -9747,7 +10121,8 @@
     "ability2": 0,
     "ability_h": 135,
     "item_common": null,
-    "item_rare": "ITEM_METAL_COAT"
+    "item_rare": "ITEM_METAL_COAT",
+    "growth_rate": "Slow"
   },
   {
     "dex": 376,
@@ -9773,7 +10148,8 @@
     "ability2": 0,
     "ability_h": 135,
     "item_common": null,
-    "item_rare": "ITEM_METAL_COAT"
+    "item_rare": "ITEM_METAL_COAT",
+    "growth_rate": "Slow"
   },
   {
     "dex": 377,
@@ -9799,7 +10175,8 @@
     "ability2": 0,
     "ability_h": 5,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 378,
@@ -9825,7 +10202,8 @@
     "ability2": 0,
     "ability_h": 115,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 379,
@@ -9851,7 +10229,8 @@
     "ability2": 0,
     "ability_h": 135,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 380,
@@ -9877,7 +10256,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 381,
@@ -9903,7 +10283,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 382,
@@ -9929,7 +10310,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 383,
@@ -9955,7 +10337,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 384,
@@ -9981,7 +10364,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   },
   {
     "dex": 385,
@@ -10007,7 +10391,8 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": "ITEM_STAR_PIECE",
-    "item_rare": "ITEM_STAR_PIECE"
+    "item_rare": "ITEM_STAR_PIECE",
+    "growth_rate": "Slow"
   },
   {
     "dex": 386,
@@ -10033,6 +10418,7 @@
     "ability2": 0,
     "ability_h": 0,
     "item_common": null,
-    "item_rare": null
+    "item_rare": null,
+    "growth_rate": "Slow"
   }
 ]

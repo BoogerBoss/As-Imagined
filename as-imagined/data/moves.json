@@ -6166,7 +6166,7 @@
     "pp": 5,
     "priority": 0,
     "target": 1,
-    "critical_hit_stage": 0,
+    "critical_hit_stage": 1,
     "always_critical_hit": false,
     "makes_contact": false,
     "punching_move": false,

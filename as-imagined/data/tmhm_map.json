@@ -1,0 +1,350 @@
+{
+  "1": {
+    "tm_name": "TM01",
+    "move_name": "MOVE_FOCUS_PUNCH",
+    "move_id": 264,
+    "name": "Focus Punch"
+  },
+  "2": {
+    "tm_name": "TM02",
+    "move_name": "MOVE_DRAGON_CLAW",
+    "move_id": 337,
+    "name": "Dragon Claw"
+  },
+  "3": {
+    "tm_name": "TM03",
+    "move_name": "MOVE_WATER_PULSE",
+    "move_id": 352,
+    "name": "Water Pulse"
+  },
+  "4": {
+    "tm_name": "TM04",
+    "move_name": "MOVE_CALM_MIND",
+    "move_id": 347,
+    "name": "Calm Mind"
+  },
+  "5": {
+    "tm_name": "TM05",
+    "move_name": "MOVE_ROAR",
+    "move_id": 46,
+    "name": "Roar"
+  },
+  "6": {
+    "tm_name": "TM06",
+    "move_name": "MOVE_TOXIC",
+    "move_id": 92,
+    "name": "Toxic"
+  },
+  "7": {
+    "tm_name": "TM07",
+    "move_name": "MOVE_HAIL",
+    "move_id": 258,
+    "name": "Hail"
+  },
+  "8": {
+    "tm_name": "TM08",
+    "move_name": "MOVE_BULK_UP",
+    "move_id": 339,
+    "name": "Bulk Up"
+  },
+  "9": {
+    "tm_name": "TM09",
+    "move_name": "MOVE_BULLET_SEED",
+    "move_id": 331,
+    "name": "Bullet Seed"
+  },
+  "10": {
+    "tm_name": "TM10",
+    "move_name": "MOVE_HIDDEN_POWER",
+    "move_id": 237,
+    "name": "Hidden Power"
+  },
+  "11": {
+    "tm_name": "TM11",
+    "move_name": "MOVE_SUNNY_DAY",
+    "move_id": 241,
+    "name": "Sunny Day"
+  },
+  "12": {
+    "tm_name": "TM12",
+    "move_name": "MOVE_TAUNT",
+    "move_id": 269,
+    "name": "Taunt"
+  },
+  "13": {
+    "tm_name": "TM13",
+    "move_name": "MOVE_ICE_BEAM",
+    "move_id": 58,
+    "name": "Ice Beam"
+  },
+  "14": {
+    "tm_name": "TM14",
+    "move_name": "MOVE_BLIZZARD",
+    "move_id": 59,
+    "name": "Blizzard"
+  },
+  "15": {
+    "tm_name": "TM15",
+    "move_name": "MOVE_HYPER_BEAM",
+    "move_id": 63,
+    "name": "Hyper Beam"
+  },
+  "16": {
+    "tm_name": "TM16",
+    "move_name": "MOVE_LIGHT_SCREEN",
+    "move_id": 113,
+    "name": "Light Screen"
+  },
+  "17": {
+    "tm_name": "TM17",
+    "move_name": "MOVE_PROTECT",
+    "move_id": 182,
+    "name": "Protect"
+  },
+  "18": {
+    "tm_name": "TM18",
+    "move_name": "MOVE_RAIN_DANCE",
+    "move_id": 240,
+    "name": "Rain Dance"
+  },
+  "19": {
+    "tm_name": "TM19",
+    "move_name": "MOVE_GIGA_DRAIN",
+    "move_id": 202,
+    "name": "Giga Drain"
+  },
+  "20": {
+    "tm_name": "TM20",
+    "move_name": "MOVE_SAFEGUARD",
+    "move_id": 219,
+    "name": "Safeguard"
+  },
+  "21": {
+    "tm_name": "TM21",
+    "move_name": "MOVE_FRUSTRATION",
+    "move_id": 218,
+    "name": "Frustration"
+  },
+  "22": {
+    "tm_name": "TM22",
+    "move_name": "MOVE_SOLAR_BEAM",
+    "move_id": 76,
+    "name": "Solar Beam"
+  },
+  "23": {
+    "tm_name": "TM23",
+    "move_name": "MOVE_IRON_TAIL",
+    "move_id": 231,
+    "name": "Iron Tail"
+  },
+  "24": {
+    "tm_name": "TM24",
+    "move_name": "MOVE_THUNDERBOLT",
+    "move_id": 85,
+    "name": "Thunderbolt"
+  },
+  "25": {
+    "tm_name": "TM25",
+    "move_name": "MOVE_THUNDER",
+    "move_id": 87,
+    "name": "Thunder"
+  },
+  "26": {
+    "tm_name": "TM26",
+    "move_name": "MOVE_EARTHQUAKE",
+    "move_id": 89,
+    "name": "Earthquake"
+  },
+  "27": {
+    "tm_name": "TM27",
+    "move_name": "MOVE_RETURN",
+    "move_id": 216,
+    "name": "Return"
+  },
+  "28": {
+    "tm_name": "TM28",
+    "move_name": "MOVE_DIG",
+    "move_id": 91,
+    "name": "Dig"
+  },
+  "29": {
+    "tm_name": "TM29",
+    "move_name": "MOVE_PSYCHIC",
+    "move_id": 94,
+    "name": "Psychic"
+  },
+  "30": {
+    "tm_name": "TM30",
+    "move_name": "MOVE_SHADOW_BALL",
+    "move_id": 247,
+    "name": "Shadow Ball"
+  },
+  "31": {
+    "tm_name": "TM31",
+    "move_name": "MOVE_BRICK_BREAK",
+    "move_id": 280,
+    "name": "Brick Break"
+  },
+  "32": {
+    "tm_name": "TM32",
+    "move_name": "MOVE_DOUBLE_TEAM",
+    "move_id": 104,
+    "name": "Double Team"
+  },
+  "33": {
+    "tm_name": "TM33",
+    "move_name": "MOVE_REFLECT",
+    "move_id": 115,
+    "name": "Reflect"
+  },
+  "34": {
+    "tm_name": "TM34",
+    "move_name": "MOVE_SHOCK_WAVE",
+    "move_id": 351,
+    "name": "Shock Wave"
+  },
+  "35": {
+    "tm_name": "TM35",
+    "move_name": "MOVE_FLAMETHROWER",
+    "move_id": 53,
+    "name": "Flamethrower"
+  },
+  "36": {
+    "tm_name": "TM36",
+    "move_name": "MOVE_SLUDGE_BOMB",
+    "move_id": 188,
+    "name": "Sludge Bomb"
+  },
+  "37": {
+    "tm_name": "TM37",
+    "move_name": "MOVE_SANDSTORM",
+    "move_id": 201,
+    "name": "Sandstorm"
+  },
+  "38": {
+    "tm_name": "TM38",
+    "move_name": "MOVE_FIRE_BLAST",
+    "move_id": 126,
+    "name": "Fire Blast"
+  },
+  "39": {
+    "tm_name": "TM39",
+    "move_name": "MOVE_ROCK_TOMB",
+    "move_id": 317,
+    "name": "Rock Tomb"
+  },
+  "40": {
+    "tm_name": "TM40",
+    "move_name": "MOVE_AERIAL_ACE",
+    "move_id": 332,
+    "name": "Aerial Ace"
+  },
+  "41": {
+    "tm_name": "TM41",
+    "move_name": "MOVE_TORMENT",
+    "move_id": 259,
+    "name": "Torment"
+  },
+  "42": {
+    "tm_name": "TM42",
+    "move_name": "MOVE_FACADE",
+    "move_id": 263,
+    "name": "Facade"
+  },
+  "43": {
+    "tm_name": "TM43",
+    "move_name": "MOVE_SECRET_POWER",
+    "move_id": 290,
+    "name": "Secret Power"
+  },
+  "44": {
+    "tm_name": "TM44",
+    "move_name": "MOVE_REST",
+    "move_id": 156,
+    "name": "Rest"
+  },
+  "45": {
+    "tm_name": "TM45",
+    "move_name": "MOVE_ATTRACT",
+    "move_id": 213,
+    "name": "Attract"
+  },
+  "46": {
+    "tm_name": "TM46",
+    "move_name": "MOVE_THIEF",
+    "move_id": 168,
+    "name": "Thief"
+  },
+  "47": {
+    "tm_name": "TM47",
+    "move_name": "MOVE_STEEL_WING",
+    "move_id": 211,
+    "name": "Steel Wing"
+  },
+  "48": {
+    "tm_name": "TM48",
+    "move_name": "MOVE_SKILL_SWAP",
+    "move_id": 285,
+    "name": "Skill Swap"
+  },
+  "49": {
+    "tm_name": "TM49",
+    "move_name": "MOVE_SNATCH",
+    "move_id": 289,
+    "name": "Snatch"
+  },
+  "50": {
+    "tm_name": "TM50",
+    "move_name": "MOVE_OVERHEAT",
+    "move_id": 315,
+    "name": "Overheat"
+  },
+  "51": {
+    "tm_name": "HM01",
+    "move_name": "MOVE_CUT",
+    "move_id": 15,
+    "name": "Cut"
+  },
+  "52": {
+    "tm_name": "HM02",
+    "move_name": "MOVE_FLY",
+    "move_id": 19,
+    "name": "Fly"
+  },
+  "53": {
+    "tm_name": "HM03",
+    "move_name": "MOVE_SURF",
+    "move_id": 57,
+    "name": "Surf"
+  },
+  "54": {
+    "tm_name": "HM04",
+    "move_name": "MOVE_STRENGTH",
+    "move_id": 70,
+    "name": "Strength"
+  },
+  "55": {
+    "tm_name": "HM05",
+    "move_name": "MOVE_FLASH",
+    "move_id": 148,
+    "name": "Flash"
+  },
+  "56": {
+    "tm_name": "HM06",
+    "move_name": "MOVE_ROCK_SMASH",
+    "move_id": 249,
+    "name": "Rock Smash"
+  },
+  "57": {
+    "tm_name": "HM07",
+    "move_name": "MOVE_WATERFALL",
+    "move_id": 127,
+    "name": "Waterfall"
+  },
+  "58": {
+    "tm_name": "HM08",
+    "move_name": "MOVE_DIVE",
+    "move_id": 291,
+    "name": "Dive"
+  }
+}

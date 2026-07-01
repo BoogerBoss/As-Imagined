@@ -5,10 +5,10 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Solar Beam"
-type = 13
-category = 1
-power = 120
+move_name = "Skull Bash"
+type = 1
+power = 130
 pp = 10
+makes_contact = true
 two_turn = true
-is_solar_beam = true
+charge_turn_defense_boost = 1

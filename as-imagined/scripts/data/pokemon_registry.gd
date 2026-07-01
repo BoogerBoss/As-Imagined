@@ -1,6 +1,6 @@
 extends Node
 
-# Autoload singleton. Loads the three JSON files produced by tools/convert_pokedata.py
+# Autoload singleton. Loads the JSON files produced by tools/convert_pokedata.py
 # at startup and exposes indexed lookups for the battle engine and overworld layers.
 
 var _species_by_dex: Dictionary = {}
@@ -9,6 +9,10 @@ var _learnsets_by_dex: Dictionary = {}
 var _learnable_moves_by_dex: Dictionary = {}
 var _universal_moves: Array = []
 var _all_species: Array = []
+var _items_by_id: Dictionary = {}
+var _evolutions_by_dex: Dictionary = {}
+var _tmhm_map: Dictionary = {}
+var _exp_curves: Dictionary = {}
 
 
 func _ready() -> void:
@@ -16,6 +20,10 @@ func _ready() -> void:
 	_load_moves()
 	_load_learnsets()
 	_load_learnable_moves()
+	_load_items()
+	_load_evolutions()
+	_load_tmhm()
+	_load_exp_curves()
 	_smoke_test()
 
 
@@ -47,6 +55,44 @@ func _load_learnable_moves() -> void:
 		var dex := int(entry["dex"])
 		var key := _name_to_learnable_key(entry["name"])
 		_learnable_moves_by_dex[dex] = all_learnables.get(key, []) if typeof(all_learnables) == TYPE_DICTIONARY else []
+
+
+func _load_items() -> void:
+	var data = _load_json("res://data/items.json")
+	if typeof(data) == TYPE_ARRAY:
+		for entry in data:
+			_items_by_id[int(entry["id"])] = entry
+
+
+func _load_evolutions() -> void:
+	var data = _load_json("res://data/evolutions.json")
+	if typeof(data) == TYPE_DICTIONARY:
+		for key in data:
+			_evolutions_by_dex[int(key)] = data[key]
+
+
+func _load_tmhm() -> void:
+	var data = _load_json("res://data/tmhm_map.json")
+	if typeof(data) == TYPE_DICTIONARY:
+		for key in data:
+			var entry: Dictionary = data[key]
+			_tmhm_map[key] = {
+				"tm_name":   entry.get("tm_name", ""),
+				"move_name": entry.get("move_name", ""),
+				"move_id":   int(entry.get("move_id", 0)),
+				"name":      entry.get("name", ""),
+			}
+
+
+func _load_exp_curves() -> void:
+	var data = _load_json("res://data/exp_curves.json")
+	if typeof(data) == TYPE_DICTIONARY:
+		for curve_name in data:
+			var raw_arr: Array = data[curve_name]
+			var int_arr: Array = []
+			for v in raw_arr:
+				int_arr.append(int(v))
+			_exp_curves[curve_name] = int_arr
 
 
 func _name_to_learnable_key(name: String) -> String:
@@ -103,6 +149,25 @@ func get_learnable_moves(dex_number: int) -> Array:
 	return combined
 
 
+func get_item(item_id: int) -> Dictionary:
+	return _items_by_id.get(item_id, {})
+
+
+func get_evolutions(dex_number: int) -> Array:
+	return _evolutions_by_dex.get(dex_number, [])
+
+
+func get_tm_move(tm_number: int) -> Dictionary:
+	return _tmhm_map.get(str(tm_number), {})
+
+
+func get_exp_for_level(growth_rate: String, level: int) -> int:
+	var curve: Array = _exp_curves.get(growth_rate, [])
+	if curve.is_empty() or level < 0 or level >= curve.size():
+		return 0
+	return curve[level]
+
+
 func _smoke_test() -> void:
 	var bulbasaur := get_species(1)
 	assert(bulbasaur.get("base_hp", 0) > 0, "Bulbasaur (#1) failed to load or has zero base_hp")
@@ -124,6 +189,31 @@ func _smoke_test() -> void:
 	assert(bulbasaur_learnables.size() > 0, "Bulbasaur (#1) learnable moves list is empty")
 	assert("MOVE_TACKLE" in bulbasaur_learnables, "Bulbasaur (#1) learnable moves missing MOVE_TACKLE")
 
-	print("PokemonRegistry: smoke test passed — %d species, %d moves, %d learnsets, %d learnable-move lists loaded" % [
-		_species_by_dex.size(), _moves_by_id.size(), _learnsets_by_dex.size(), _learnable_moves_by_dex.size()
+	# M15 Task 4a new assertions
+	# Evolution: Bulbasaur evolves to Ivysaur (#2) at level 16
+	var bulbasaur_evos := get_evolutions(1)
+	assert(bulbasaur_evos.size() > 0, "Bulbasaur evolutions list is empty")
+	var first_evo: Dictionary = bulbasaur_evos[0]
+	assert(first_evo.get("target_dex", 0) == 2, "Bulbasaur evo target_dex should be 2 (Ivysaur)")
+	assert(first_evo.get("method", "") == "level_up", "Bulbasaur evo method should be level_up")
+	assert(first_evo.get("condition", 0) == 16, "Bulbasaur evo condition should be 16")
+
+	# TM: TM01 → MOVE_FOCUS_PUNCH (move_id 264)
+	var tm01 := get_tm_move(1)
+	assert(tm01.get("move_name", "") == "MOVE_FOCUS_PUNCH", "TM01 should map to MOVE_FOCUS_PUNCH")
+	assert(tm01.get("move_id", 0) == 264, "TM01 move_id should be 264")
+
+	# EXP: Charizard is Medium Slow; level 100 = 1,059,860
+	assert(charizard.get("growth_rate", "") == "MediumSlow", "Charizard growth_rate should be MediumSlow")
+	var charizard_exp_100 := get_exp_for_level("MediumSlow", 100)
+	assert(charizard_exp_100 == 1059860, "MediumSlow level 100 EXP should be 1059860, got %d" % charizard_exp_100)
+
+	# Item: Potion (id=28) exists and has correct pocket
+	var potion := get_item(28)
+	assert(potion.get("name", "") == "Potion", "Item 28 should be Potion, got %s" % potion.get("name", ""))
+	assert(potion.get("pocket", "") == "items", "Potion pocket should be 'items'")
+
+	print("PokemonRegistry: smoke test passed — %d species, %d moves, %d learnsets, %d learnable-move lists, %d items, %d evo-lists, %d TM/HMs, %d exp curves loaded" % [
+		_species_by_dex.size(), _moves_by_id.size(), _learnsets_by_dex.size(), _learnable_moves_by_dex.size(),
+		_items_by_id.size(), _evolutions_by_dex.size(), _tmhm_map.size(), _exp_curves.size()
 	])

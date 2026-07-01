@@ -2,24 +2,32 @@
 """
 M15 Data Pipeline: convert_pokedata.py
 
-Extracts three JSON files from the pokeemerald_expansion reference source:
-  pokemon.json   — all 386 Gen III Pokémon (Dex #1–386)
-  moves.json     — all moves in the expansion
-  learnsets.json — level-up learnsets per Pokémon
+Extracts JSON files from the pokeemerald_expansion reference source:
+  pokemon.json       — all 386 Gen III Pokémon (Dex #1–386), now includes growth_rate
+  moves.json         — all moves in the expansion
+  learnsets.json     — level-up learnsets per Pokémon
+  items.json         — items with id, name, price, pocket, hold_effect, hold_effect_param, description
+  evolutions.json    — per-dex evolution lists (method, condition, target_dex)
+  tmhm_map.json      — TM01–TM50 / HM01–HM08 → move_id, move_name
+  exp_curves.json    — pre-computed EXP tables for all 6 growth curves, levels 0–100
 
-Output: as-imagined/data/{pokemon,moves,learnsets}.json
+Output: as-imagined/data/*.json
 
 Sources:
-  include/constants/species.h       — SPECIES_* enum (species ID)
-  include/constants/pokedex.h       — NATIONAL_DEX_* enum (dex number)
+  include/constants/species.h       — SPECIES_* enum
+  include/constants/pokedex.h       — NATIONAL_DEX_* enum
   include/constants/abilities.h     — ABILITY_* enum
   include/constants/moves.h         — MOVE_* enum
-  include/constants/battle.h        — MOVE_EFFECT_* values
   include/constants/battle_move_effects.h — EFFECT_* enum
-  include/constants/pokemon.h       — TYPE_*, EGG_GROUP_* enums
+  include/constants/pokemon.h       — TYPE_*, EGG_GROUP_*, GROWTH_* enums
+  include/constants/items.h         — ITEM_* enum (numeric IDs)
+  include/constants/hold_effects.h  — HOLD_EFFECT_* enum
+  include/constants/tms_hms.h       — FOREACH_TM / FOREACH_HM lists
   src/data/pokemon/species_info/gen_{1,2,3}_families.h
   src/data/moves_info.h
+  src/data/items.h                  — gItemsInfo[] struct array
   src/data/pokemon/level_up_learnsets/gen_{1,2,3}.h
+  src/data/pokemon/experience_tables.h — formulas verified; computed in Python
 """
 
 import json
@@ -141,6 +149,59 @@ STAT_FIELD_TO_INDEX = {
     "evasion":  6,
 }
 
+# ── New constants ─────────────────────────────────────────────────────────────
+
+# Bag pocket enum (include/constants/item.h)
+POCKET_NAMES = {
+    "POCKET_ITEMS":     "items",
+    "POCKET_POKE_BALLS": "poke_balls",
+    "POCKET_TM_HM":     "tm_hm",
+    "POCKET_BERRIES":   "berries",
+    "POCKET_KEY_ITEMS": "key_items",
+    "POCKET_DUMMY":     "dummy",
+    "POCKETS_COUNT":    "dummy",
+}
+
+# Growth rate name strings
+# Source: include/constants/pokemon.h enum (values 0–5)
+GROWTH_RATE_NAMES = {
+    "GROWTH_MEDIUM_FAST": "MediumFast",
+    "GROWTH_ERRATIC":      "Erratic",
+    "GROWTH_FLUCTUATING":  "Fluctuating",
+    "GROWTH_MEDIUM_SLOW":  "MediumSlow",
+    "GROWTH_FAST":         "Fast",
+    "GROWTH_SLOW":         "Slow",
+}
+
+# Evolution method name strings
+EVO_METHOD_NAMES = {
+    "EVO_LEVEL":            "level_up",
+    "EVO_TRADE":            "trade",
+    "EVO_ITEM":             "item",
+    "EVO_LEVEL_BATTLE_ONLY": "level_up_battle",
+    "EVO_BATTLE_END":       "battle_end",
+    "EVO_SPIN":             "spin",
+    "EVO_SCRIPT_TRIGGER":   "script",
+}
+
+# TM01–TM50 move name suffixes (from include/constants/tms_hms.h :: FOREACH_TM)
+TM_MOVES = [
+    'FOCUS_PUNCH', 'DRAGON_CLAW', 'WATER_PULSE', 'CALM_MIND', 'ROAR',
+    'TOXIC', 'HAIL', 'BULK_UP', 'BULLET_SEED', 'HIDDEN_POWER',
+    'SUNNY_DAY', 'TAUNT', 'ICE_BEAM', 'BLIZZARD', 'HYPER_BEAM',
+    'LIGHT_SCREEN', 'PROTECT', 'RAIN_DANCE', 'GIGA_DRAIN', 'SAFEGUARD',
+    'FRUSTRATION', 'SOLAR_BEAM', 'IRON_TAIL', 'THUNDERBOLT', 'THUNDER',
+    'EARTHQUAKE', 'RETURN', 'DIG', 'PSYCHIC', 'SHADOW_BALL',
+    'BRICK_BREAK', 'DOUBLE_TEAM', 'REFLECT', 'SHOCK_WAVE', 'FLAMETHROWER',
+    'SLUDGE_BOMB', 'SANDSTORM', 'FIRE_BLAST', 'ROCK_TOMB', 'AERIAL_ACE',
+    'TORMENT', 'FACADE', 'SECRET_POWER', 'REST', 'ATTRACT',
+    'THIEF', 'STEEL_WING', 'SKILL_SWAP', 'SNATCH', 'OVERHEAT',
+]
+
+# HM01–HM08 move name suffixes (from include/constants/tms_hms.h :: FOREACH_HM)
+HM_MOVES = ['CUT', 'FLY', 'SURF', 'STRENGTH', 'FLASH', 'ROCK_SMASH', 'WATERFALL', 'DIVE']
+
+
 # ── Utility functions ─────────────────────────────────────────────────────────
 
 def _read(path):
@@ -151,7 +212,7 @@ def _read(path):
 def _eval_gen_cond(cond_text):
     """
     Evaluate a preprocessor condition involving GEN comparisons.
-    Assumes all B_/P_/C_ config flags == GEN_LATEST == 9.
+    Assumes all B_/P_/C_/I_ config flags == GEN_LATEST == 9.
     Returns True or False.
     """
     text = cond_text.strip()
@@ -159,8 +220,8 @@ def _eval_gen_cond(cond_text):
     for n in range(9, 0, -1):
         text = text.replace(f"GEN_{n}", str(n))
     text = text.replace("GEN_LATEST", str(GEN_LATEST))
-    # Replace all config flags (B_xxx, P_xxx, C_xxx) with GEN_LATEST
-    text = re.sub(r'\b[BPC]_[A-Z_0-9]+\b', str(GEN_LATEST), text)
+    # Replace all config flags (B_xxx, P_xxx, C_xxx, I_xxx) with GEN_LATEST
+    text = re.sub(r'\b[BPCI]_[A-Z_0-9]+\b', str(GEN_LATEST), text)
     # Replace remaining identifier words with 1 (truthy) — P_FAMILY_xxx etc.
     text = re.sub(r'\b[A-Z_][A-Z_0-9]*\b', "1", text)
     # Replace C logical operators
@@ -284,7 +345,7 @@ def _resolve_ternary(expr):
     for n in range(9, 0, -1):
         cond = cond.replace(f"GEN_{n}", str(n))
     cond = cond.replace("GEN_LATEST", str(GEN_LATEST))
-    cond = re.sub(r'\b[BPC]_[A-Z_0-9]+\b', str(GEN_LATEST), cond)
+    cond = re.sub(r'\b[BPCI]_[A-Z_0-9]+\b', str(GEN_LATEST), cond)
     cond = re.sub(r'\b[A-Z_][A-Z_0-9]*\b', "1", cond)
     cond = cond.replace("&&", " and ").replace("||", " or ").replace("!", " not ")
     try:
@@ -345,6 +406,13 @@ def _parse_int(expr, enum_map=None):
     if enum_map:
         for name, val in enum_map.items():
             resolved = re.sub(r'\b' + re.escape(name) + r'\b', str(val), resolved)
+    # Apply gen-constant substitution so that expressions like
+    # "B_UPDATED_MOVE_DATA >= GEN_3" evaluate correctly (→ int(True) = 1).
+    for n in range(9, 0, -1):
+        resolved = resolved.replace(f"GEN_{n}", str(n))
+    resolved = resolved.replace("GEN_LATEST", str(GEN_LATEST))
+    resolved = re.sub(r'\b[BPCI]_[A-Z_0-9]+\b', str(GEN_LATEST), resolved)
+    resolved = resolved.replace("&&", " and ").replace("||", " or ")
     try:
         return int(eval(resolved))  # noqa: S307
     except Exception:
@@ -430,6 +498,62 @@ def _field_int(content, field_name, enum_map=None, default=0):
         return default
     v = _parse_int(raw, enum_map)
     return v if v is not None else default
+
+
+# ── New utility helpers ───────────────────────────────────────────────────────
+
+def _join_string_literals(text):
+    """Extract and join all C string literals from a text block."""
+    parts = re.findall(r'"([^"]*)"', text)
+    return ''.join(parts)
+
+
+def _extract_named_strings(text):
+    """
+    Pre-scan C source for named u8 string arrays:
+      static const u8 sXxxDesc[] = _("..." "...");
+      const u8 gXxxName[]        = _("...");
+    Returns dict: {var_name: joined_string_content}
+    """
+    named = {}
+    for m in re.finditer(
+        r'(?:static\s+)?const\s+u8\s+(\w+)\s*\[\s*\]\s*=\s*_?\s*\(([^;]+)\)\s*;',
+        text, re.DOTALL
+    ):
+        var_name = m.group(1)
+        raw_content = m.group(2)
+        named[var_name] = _join_string_literals(raw_content)
+    return named
+
+
+def _extract_item_string(raw, named_strings):
+    """
+    Resolve an item name or description field value to a plain string.
+    Handles: ITEM_NAME("..."), COMPOUND_STRING("..."), sXxxDesc, "..." bare.
+    """
+    if raw is None:
+        return ""
+    raw = raw.strip()
+
+    # ITEM_NAME("...")
+    m = re.match(r'ITEM_NAME\s*\(\s*"([^"]+)"\s*\)', raw)
+    if m:
+        return m.group(1)
+
+    # COMPOUND_STRING(...)
+    if raw.startswith('COMPOUND_STRING'):
+        return _join_string_literals(raw)
+
+    # Named reference (e.g., sFullHealDesc, gQuestionMarksItemName)
+    if raw in named_strings:
+        return named_strings[raw]
+
+    # Bare quoted string
+    m = re.match(r'"([^"]*)"', raw)
+    if m:
+        return m.group(1)
+
+    return raw
 
 
 # ── Species parsing ───────────────────────────────────────────────────────────
@@ -561,6 +685,11 @@ def parse_species_info(gen_files, species_ids, nat_dex_ids, ability_ids):
             species["item_common"] = item_common.strip() if item_common else None
             species["item_rare"]   = item_rare.strip()   if item_rare   else None
 
+            # Growth rate (M15 Task 4a addition)
+            # Source: include/constants/pokemon.h enum GROWTH_MEDIUM_FAST=0 ... GROWTH_SLOW=5
+            growth_raw = _field_value(content, 'growthRate')
+            species["growth_rate"] = GROWTH_RATE_NAMES.get(growth_raw, "MediumFast") if growth_raw else "MediumFast"
+
             # Learnset variable name (for linking with learnsets)
             ls_raw = _field_value(content, 'levelUpLearnset')
             species["_learnset_var"] = ls_raw.strip() if ls_raw else None
@@ -586,6 +715,7 @@ def parse_species_info(gen_files, species_ids, nat_dex_ids, ability_ids):
             "ability_h": 0,
             "item_common": None,
             "item_rare":   None,
+            "growth_rate": "MediumFast",  # Unown: GROWTH_MEDIUM_FAST
             "_learnset_var": "sUnownLevelUpLearnset",
         }
 
@@ -842,6 +972,326 @@ def parse_learnsets(gen_files, move_ids):
     return learnsets
 
 
+# ── Items parsing ─────────────────────────────────────────────────────────────
+
+def parse_items(filepath, item_ids, hold_effect_ids):
+    """
+    Parse src/data/items.h and return a list of item dicts.
+    Source: src/data/items.h :: gItemsInfo[] struct array.
+    Fields extracted: id, name, price, pocket, hold_effect, hold_effect_param, description.
+    """
+    raw = _read(filepath)
+
+    # Pre-scan raw text for named string arrays (descriptions + item names)
+    # These appear as:  static const u8 sXxxDesc[] = _("...");
+    # or:               const u8 gXxxItemName[]    = _("...");
+    named_strings = _extract_named_strings(raw)
+
+    # Preprocess to resolve #if blocks
+    text = preprocess(raw)
+    text = _strip_comments(text)
+
+    items = []
+    seen_ids = set()
+
+    blocks = extract_struct_blocks(text, r'ITEM_\w+')
+    for label, content in blocks:
+        item_id = item_ids.get(label)
+        if item_id is None:
+            continue
+        if item_id in seen_ids:
+            continue
+        seen_ids.add(item_id)
+
+        item = {"id": item_id}
+
+        # Name
+        name_raw = _field_value(content, 'name')
+        item["name"] = _extract_item_string(name_raw, named_strings)
+
+        # Price
+        item["price"] = _field_int(content, 'price', default=0)
+
+        # Pocket
+        pocket_raw = _field_value(content, 'pocket')
+        if pocket_raw:
+            pocket_resolved = _resolve_ternary(pocket_raw.strip())
+            item["pocket"] = POCKET_NAMES.get(pocket_resolved.strip(), "items")
+        else:
+            item["pocket"] = "items"
+
+        # Hold effect (numeric ID from HOLD_EFFECT_* enum)
+        he_raw = _field_value(content, 'holdEffect')
+        if he_raw:
+            he_name = _resolve_ternary(he_raw.strip())
+            item["hold_effect"] = hold_effect_ids.get(he_name.strip(), 0)
+        else:
+            item["hold_effect"] = 0
+
+        # Hold effect parameter
+        item["hold_effect_param"] = _field_int(content, 'holdEffectParam', default=0)
+
+        # Description
+        desc_raw = _field_value(content, 'description')
+        item["description"] = _extract_item_string(desc_raw, named_strings)
+
+        items.append(item)
+
+    return sorted(items, key=lambda x: x["id"])
+
+
+# ── Evolution parsing ─────────────────────────────────────────────────────────
+
+def _split_evo_tuples(content):
+    """
+    Split the content inside EVOLUTION(...) into individual {}-tuples.
+    Returns list of tuple content strings (without outer braces).
+    """
+    tuples = []
+    i = 0
+    while i < len(content):
+        if content[i] == '{':
+            depth = 1
+            j = i + 1
+            while j < len(content) and depth > 0:
+                if content[j] == '{':
+                    depth += 1
+                elif content[j] == '}':
+                    depth -= 1
+                j += 1
+            tuples.append(content[i+1:j-1])  # content inside {}
+            i = j
+        else:
+            i += 1
+    return tuples
+
+
+def _split_at_depth_zero(text, sep=','):
+    """Split text by sep only at paren/brace depth 0."""
+    tokens = []
+    current = []
+    depth = 0
+    for ch in text:
+        if ch in '({':
+            depth += 1
+            current.append(ch)
+        elif ch in ')}':
+            depth -= 1
+            current.append(ch)
+        elif ch == sep and depth == 0:
+            tokens.append(''.join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        tokens.append(''.join(current).strip())
+    return tokens
+
+
+def _parse_evo_tuple(tuple_str, nat_dex_ids):
+    """
+    Parse one evolution tuple like:
+      EVO_LEVEL, 16, SPECIES_IVYSAUR
+      EVO_ITEM, ITEM_THUNDER_STONE, SPECIES_RAICHU, CONDITIONS({IF_REGION, ...})
+    Returns a dict or None (if out-of-scope or EVO_NONE).
+    """
+    tokens = _split_at_depth_zero(tuple_str, ',')
+    if len(tokens) < 3:
+        return None
+
+    method_name = tokens[0].strip()
+    cond_raw    = tokens[1].strip()
+    target_name = tokens[2].strip()
+
+    if method_name in ('EVO_NONE', 'EVO_SPLIT_FROM_EVO'):
+        return None
+
+    method = EVO_METHOD_NAMES.get(method_name, method_name.lower())
+
+    # Condition: level (int) for level_up methods, item name string otherwise
+    if method in ('level_up', 'level_up_battle', 'battle_end', 'spin'):
+        cond = _parse_int(cond_raw) or 0
+    else:
+        cond = cond_raw if cond_raw else None
+
+    # Resolve target SPECIES_X → National Dex number
+    target_dex = None
+    if target_name.startswith('SPECIES_'):
+        suffix = target_name[len('SPECIES_'):]
+        nat_key = f'NATIONAL_DEX_{suffix}'
+        target_dex = nat_dex_ids.get(nat_key)
+
+    # Only include targets with dex numbers 1–386
+    if target_dex is None or not (1 <= target_dex <= 386):
+        return None
+
+    evo = {
+        "method":     method,
+        "condition":  cond,
+        "target_dex": target_dex,
+    }
+
+    # Collect optional condition flags from CONDITIONS({IF_X, ...})
+    conditions = []
+    for extra in tokens[3:]:
+        if 'CONDITIONS' in extra:
+            conditions.extend(re.findall(r'\bIF_[A-Z_]+\b', extra))
+    if conditions:
+        evo["conditions"] = conditions
+
+    return evo
+
+
+def parse_evolutions(gen_files, nat_dex_ids):
+    """
+    Extract evolutions from gen_{1,2,3}_families.h.
+    Returns dict: {str(nat_dex_num): [evo_dict, ...]}.
+    """
+    results = {}  # nat_dex_int -> evo_list
+
+    for filepath in gen_files:
+        raw = _read(filepath)
+        text = preprocess(raw)
+        text = _strip_comments(text)
+
+        blocks = extract_struct_blocks(text, r'SPECIES_\w+')
+        for label, content in blocks:
+            # Resolve nat dex number (same logic as parse_species_info)
+            nat_raw = _field_value(content, 'natDexNum')
+            if nat_raw is None:
+                continue
+            nat_num = nat_dex_ids.get(nat_raw)
+            if nat_num is None:
+                nat_num = _parse_int(nat_raw, nat_dex_ids)
+            if nat_num is None or not (1 <= nat_num <= 386):
+                continue
+
+            if nat_num in results:
+                continue  # base form only
+
+            evo_raw = _field_value(content, 'evolutions')
+            if not evo_raw:
+                results[nat_num] = []
+                continue
+
+            # Strip EVOLUTION() wrapper
+            evo_inner_m = re.match(r'EVOLUTION\s*\((.+)\)\s*$', evo_raw.strip(), re.DOTALL)
+            if not evo_inner_m:
+                results[nat_num] = []
+                continue
+
+            evo_content = evo_inner_m.group(1)
+            evo_list = []
+            for tuple_str in _split_evo_tuples(evo_content):
+                evo = _parse_evo_tuple(tuple_str, nat_dex_ids)
+                if evo:
+                    evo_list.append(evo)
+
+            results[nat_num] = evo_list
+
+    # Unown (#201) has no evolutions
+    if 201 not in results:
+        results[201] = []
+
+    return {str(k): v for k, v in sorted(results.items())}
+
+
+# ── TM/HM map ─────────────────────────────────────────────────────────────────
+
+def build_tmhm_map(move_ids, moves):
+    """
+    Build a TM/HM number → move mapping.
+    Source: include/constants/tms_hms.h FOREACH_TM / FOREACH_HM lists.
+    Keys: "1"–"50" for TM01–TM50, "51"–"58" for HM01–HM08.
+    """
+    move_id_to_display = {m["id"]: m["name"] for m in moves}
+    result = {}
+
+    for i, mv_suffix in enumerate(TM_MOVES, 1):
+        mv_const = "MOVE_" + mv_suffix
+        mv_id    = move_ids.get(mv_const, 0)
+        result[str(i)] = {
+            "tm_name":   f"TM{i:02d}",
+            "move_name": mv_const,
+            "move_id":   mv_id,
+            "name":      move_id_to_display.get(mv_id, ""),
+        }
+
+    for i, mv_suffix in enumerate(HM_MOVES, 1):
+        num      = 50 + i
+        mv_const = "MOVE_" + mv_suffix
+        mv_id    = move_ids.get(mv_const, 0)
+        result[str(num)] = {
+            "tm_name":   f"HM{i:02d}",
+            "move_name": mv_const,
+            "move_id":   mv_id,
+            "name":      move_id_to_display.get(mv_id, ""),
+        }
+
+    return result
+
+
+# ── EXP curves ────────────────────────────────────────────────────────────────
+
+def compute_exp_curves():
+    """
+    Compute EXP required per level (1–100) for each of the 6 growth curves.
+    Formulas from: src/data/pokemon/experience_tables.h
+    Uses C-style integer division (Python //) throughout, matching the source.
+
+    Growth curve enum order (include/constants/pokemon.h):
+      GROWTH_MEDIUM_FAST=0, GROWTH_ERRATIC=1, GROWTH_FLUCTUATING=2,
+      GROWTH_MEDIUM_SLOW=3, GROWTH_FAST=4, GROWTH_SLOW=5
+
+    Returns dict keyed by curve name string, each value is a list of 101 ints
+    (index 0 = level 0 = 0, index 1 = level 1 = 1, index n = EXP to reach level n).
+    """
+    def exp_medium_fast(n):
+        return n ** 3
+
+    def exp_erratic(n):
+        if n <= 50:
+            return (100 - n) * n ** 3 // 50
+        elif n <= 68:
+            return (150 - n) * n ** 3 // 100
+        elif n <= 98:
+            return ((1911 - 10 * n) // 3) * n ** 3 // 500
+        else:
+            return (160 - n) * n ** 3 // 100
+
+    def exp_fluctuating(n):
+        if n <= 15:
+            return ((n + 1) // 3 + 24) * n ** 3 // 50
+        elif n <= 36:
+            return (n + 14) * n ** 3 // 50
+        else:
+            return (n // 2 + 32) * n ** 3 // 50
+
+    def exp_medium_slow(n):
+        return 6 * n ** 3 // 5 - 15 * n ** 2 + 100 * n - 140
+
+    def exp_fast(n):
+        return 4 * n ** 3 // 5
+
+    def exp_slow(n):
+        return 5 * n ** 3 // 4
+
+    def _build(formula):
+        table = [0, 1]  # levels 0 and 1 are always 0 and 1
+        for n in range(2, 101):
+            table.append(formula(n))
+        return table
+
+    return {
+        "MediumFast":  _build(exp_medium_fast),
+        "Erratic":     _build(exp_erratic),
+        "Fluctuating": _build(exp_fluctuating),
+        "MediumSlow":  _build(exp_medium_slow),
+        "Fast":        _build(exp_fast),
+        "Slow":        _build(exp_slow),
+    }
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -868,6 +1318,14 @@ def main():
     # Effect IDs
     effect_ids = parse_c_enum(_read(os.path.join(REF, "include/constants/battle_move_effects.h")))
     print(f"  {len(effect_ids)} battle move effect constants")
+
+    # Item IDs (from include/constants/items.h)
+    item_ids = parse_c_enum(_read(os.path.join(REF, "include/constants/items.h")))
+    print(f"  {len(item_ids)} item constants")
+
+    # Hold Effect IDs
+    hold_effect_ids = parse_c_enum(_read(os.path.join(REF, "include/constants/hold_effects.h")))
+    print(f"  {len(hold_effect_ids)} hold effect constants")
 
     # ── Pokémon ───────────────────────────────────────────────────────────────
     print("\nParsing species info...")
@@ -901,7 +1359,35 @@ def main():
     learnset_map = parse_learnsets(learnset_files, move_ids)
     print(f"  {len(learnset_map)} learnset arrays parsed")
 
-    # Build learnsets.json: {dex_num: [{level, move_id}]}
+    # ── Items ─────────────────────────────────────────────────────────────────
+    print("\nParsing items...")
+    items = parse_items(
+        os.path.join(REF, "src/data/items.h"),
+        item_ids, hold_effect_ids
+    )
+    print(f"  {len(items)} items extracted")
+
+    # ── Evolutions ────────────────────────────────────────────────────────────
+    print("\nParsing evolutions...")
+    evolutions = parse_evolutions(species_files, nat_dex_ids)
+    evo_count = sum(len(v) for v in evolutions.values())
+    print(f"  {len(evolutions)} species with evolution data, {evo_count} total evolution entries")
+
+    # ── TM/HM map ─────────────────────────────────────────────────────────────
+    print("\nBuilding TM/HM map...")
+    tmhm_map = build_tmhm_map(move_ids, moves)
+    print(f"  {len(tmhm_map)} TM/HM entries (50 TMs + 8 HMs)")
+
+    # ── EXP curves ────────────────────────────────────────────────────────────
+    print("\nComputing EXP curves...")
+    exp_curves = compute_exp_curves()
+    print(f"  {len(exp_curves)} growth curves computed (levels 0–100 each)")
+    # Spot-check: MediumSlow level 100 = 1059860
+    ms_100 = exp_curves["MediumSlow"][100]
+    assert ms_100 == 1059860, f"MediumSlow[100] = {ms_100}, expected 1059860"
+    print(f"  MediumSlow[100] = {ms_100} ✓")
+
+    # ── Build learnsets.json ──────────────────────────────────────────────────
     learnsets_out = {}
     for pkmn in pokemon:
         ls_var = pkmn.get("_learnset_var")
@@ -916,9 +1402,13 @@ def main():
         pkmn.pop("_learnset_var", None)
 
     # ── Write JSON ────────────────────────────────────────────────────────────
-    pokemon_path   = os.path.join(OUT, "pokemon.json")
-    moves_path     = os.path.join(OUT, "moves.json")
-    learnsets_path = os.path.join(OUT, "learnsets.json")
+    pokemon_path    = os.path.join(OUT, "pokemon.json")
+    moves_path      = os.path.join(OUT, "moves.json")
+    learnsets_path  = os.path.join(OUT, "learnsets.json")
+    items_path      = os.path.join(OUT, "items.json")
+    evolutions_path = os.path.join(OUT, "evolutions.json")
+    tmhm_path       = os.path.join(OUT, "tmhm_map.json")
+    exp_path        = os.path.join(OUT, "exp_curves.json")
 
     with open(pokemon_path, "w", encoding="utf-8") as f:
         json.dump(pokemon, f, indent=2, ensure_ascii=False)
@@ -932,6 +1422,22 @@ def main():
         json.dump(learnsets_out, f, indent=2, ensure_ascii=False)
     print(f"Wrote {learnsets_path} ({len(learnsets_out)} entries)")
 
+    with open(items_path, "w", encoding="utf-8") as f:
+        json.dump(items, f, indent=2, ensure_ascii=False)
+    print(f"Wrote {items_path} ({len(items)} entries)")
+
+    with open(evolutions_path, "w", encoding="utf-8") as f:
+        json.dump(evolutions, f, indent=2, ensure_ascii=False)
+    print(f"Wrote {evolutions_path} ({len(evolutions)} species)")
+
+    with open(tmhm_path, "w", encoding="utf-8") as f:
+        json.dump(tmhm_map, f, indent=2, ensure_ascii=False)
+    print(f"Wrote {tmhm_path} ({len(tmhm_map)} entries)")
+
+    with open(exp_path, "w", encoding="utf-8") as f:
+        json.dump(exp_curves, f, indent=2, ensure_ascii=False)
+    print(f"Wrote {exp_path} ({len(exp_curves)} curves)")
+
     # ── Spot-checks ───────────────────────────────────────────────────────────
     print("\n── Spot-check ──────────────────────────────────────────")
     spot_dex = {1: "Bulbasaur", 6: "Charizard", 150: "Mewtwo", 384: "Rayquaza"}
@@ -942,29 +1448,60 @@ def main():
         if pkmn:
             ls = learnsets_out.get(str(dex), [])
             print(f"\n#{dex} {pkmn['name']} (expected: {expected_name})")
-            print(f"  Types:     {pkmn['types']}")
-            print(f"  Stats:     HP={pkmn['base_hp']} Atk={pkmn['base_atk']} Def={pkmn['base_def']}"
+            print(f"  Types:      {pkmn['types']}")
+            print(f"  Stats:      HP={pkmn['base_hp']} Atk={pkmn['base_atk']} Def={pkmn['base_def']}"
                   f" SpA={pkmn['base_spa']} SpD={pkmn['base_spd']} Spe={pkmn['base_spe']}")
-            print(f"  CatchRate: {pkmn['catch_rate']}")
-            print(f"  Friendship:{pkmn['base_friendship']}")
-            print(f"  GenderRat: {pkmn['gender_ratio']}")
-            print(f"  EggGroups: {pkmn['egg_groups']}")
-            print(f"  Abilities: {pkmn['ability1']}, {pkmn['ability2']}, hidden={pkmn['ability_h']}")
-            print(f"  Items:     common={pkmn['item_common']} rare={pkmn['item_rare']}")
-            print(f"  Learnset:  {len(ls)} moves, first={ls[0] if ls else 'none'}")
+            print(f"  GrowthRate: {pkmn['growth_rate']}")
+            print(f"  Learnset:   {len(ls)} moves, first={ls[0] if ls else 'none'}")
         else:
             print(f"\n#{dex} {expected_name}: NOT FOUND")
+
+    # Evolution spot-check
+    print("\nEvolution spot-checks:")
+    for dex, name in [(1, "Bulbasaur"), (133, "Eevee"), (25, "Pikachu"), (64, "Kadabra")]:
+        evos = evolutions.get(str(dex), [])
+        print(f"  #{dex} {name}: {len(evos)} evolution(s)")
+        for e in evos:
+            print(f"    → #{e['target_dex']} via {e['method']} (cond={e['condition']})"
+                  + (f" conditions={e.get('conditions')}" if 'conditions' in e else ""))
+
+    # TM/HM spot-check
+    print("\nTM/HM spot-checks:")
+    for num, expected_name in [(1, "TM01/MOVE_FOCUS_PUNCH"), (6, "TM06/MOVE_TOXIC"),
+                                (19, "TM19/MOVE_GIGA_DRAIN"), (51, "HM01/MOVE_CUT")]:
+        entry = tmhm_map.get(str(num))
+        if entry:
+            print(f"  [{num}] {entry['tm_name']}: {entry['move_name']} (id={entry['move_id']})"
+                  f" name={entry['name']!r}")
+        else:
+            print(f"  [{num}]: NOT FOUND")
+
+    # Item spot-check
+    print("\nItem spot-checks:")
+    items_by_id = {i["id"]: i for i in items}
+    for iid, iname in [(28, "Potion"), (1, "Poke Ball"), (53, "Berry Juice")]:
+        item = items_by_id.get(iid)
+        if item:
+            print(f"  [{iid}] {item['name']!r} pocket={item['pocket']}"
+                  f" price={item['price']} hold={item['hold_effect']}")
+        else:
+            print(f"  [{iid}] {iname}: NOT FOUND")
+
+    # EXP spot-checks
+    print("\nEXP curve spot-checks:")
+    print(f"  MediumSlow[100] = {exp_curves['MediumSlow'][100]} (expected 1059860)")
+    print(f"  MediumFast[100] = {exp_curves['MediumFast'][100]} (expected 1000000)")
+    print(f"  Fast[100]       = {exp_curves['Fast'][100]}       (expected 800000)")
+    print(f"  Slow[100]       = {exp_curves['Slow'][100]}       (expected 1250000)")
 
     # Move spot-check
     move_by_id = {m["id"]: m for m in moves}
     print("\nMove spot-checks:")
-    for mid, mname in [(1, "Pound"), (57, "Surf"), (89, "Earthquake"), (34, "Body Slam")]:
+    for mid, mname in [(1, "Pound"), (57, "Surf"), (89, "Earthquake"), (264, "Focus Punch")]:
         mv = move_by_id.get(mid)
         if mv:
             print(f"  [{mid}] {mv['name']}: type={mv['type']} cat={mv['category']} "
-                  f"pow={mv['power']} acc={mv['accuracy']} pp={mv['pp']} "
-                  f"contact={mv['makes_contact']} sec_eff={mv['secondary_effect']} "
-                  f"sec_ch={mv['secondary_chance']}")
+                  f"pow={mv['power']} acc={mv['accuracy']} pp={mv['pp']}")
         else:
             print(f"  [{mid}] {mname}: NOT FOUND")
 

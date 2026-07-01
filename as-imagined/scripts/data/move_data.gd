@@ -261,3 +261,30 @@ const TARGET_ALL_BATTLERS:   int = 14
 # Cleared by TurnValuesCleanUp at turn end.
 # Target: TARGET_USER; priority = +2.
 @export var is_follow_me: bool = false
+
+# ── M15 Task 5: Two-turn move extras ─────────────────────────────────────────
+
+# is_solar_beam: Solar Beam fires immediately (no charge turn) in harsh sun.
+# Source: CanTwoTurnMoveFireThisTurn (battle_move_resolution.c L1664) — returns
+#   TRUE when attackerWeather|weather & GetMoveTwoTurnAttackWeather == B_WEATHER_SUN.
+#   Only Solar Beam has this field set; all semi-inv moves (Fly/Dig/Dive/Bounce)
+#   can NEVER fire early (CanTwoTurnMoveFireThisTurn returns FALSE for semiInvulnerableEffect).
+@export var is_solar_beam: bool = false
+
+# charge_turn_defense_boost: defense stages added to the user on the charge turn only.
+# Source: moves_info.h MOVE_SKULL_BASH :: additionalEffects {MOVE_EFFECT_STAT_PLUS,
+#   .defense = 1, .self = TRUE, .onChargeTurnOnly = TRUE}.
+# Only Skull Bash uses this; value is 1.
+@export var charge_turn_defense_boost: int = 0
+
+# ── M15 Task 3: PP System ─────────────────────────────────────────────────────
+
+# is_struggle: this move is Struggle — used when all PP are exhausted.
+# Struggle: power=50, TYPE_MYSTERY (typeless — no STAB, no type effectiveness),
+#   Physical, makes_contact=true, accuracy=0 (always hits), recoil=max_hp/4 (NOT
+#   % of damage dealt — see MOVE_EFFECT_RECOIL_HP_25 in battle_script_commands.c L2536).
+# PP is never decremented for Struggle (CancelerPPDeduction skips if cv->move == MOVE_STRUGGLE).
+# Source: moves_info.h MOVE_STRUGGLE; battle_move_resolution.c L979 (PP skip);
+#   battle_script_commands.c L2534–2543 (HP/4 recoil); battle_main.c L4727-4728
+#   (noValidMoves → MOVE_STRUGGLE substitution).
+@export var is_struggle: bool = false

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://twoturntst"]
+
+[ext_resource type="Script" path="res://scenes/battle/two_turn_test.gd" id="1_twoturntst"]
+
+[node name="TwoTurnTest" type="Node"]
+script = ExtResource("1_twoturntst")

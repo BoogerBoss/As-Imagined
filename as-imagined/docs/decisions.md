@@ -2093,3 +2093,16 @@ trigger are listed with "→ skip". Computed with `_uq412_half_down(v, f) = (v×
 - All 386 species map to valid keys in `all_learnables.json` after the transform.
 - Smoke test addition: asserts `get_learnable_moves(1)` is non-empty and contains "MOVE_TACKLE". (MOVE_SURF was incorrectly listed in task spec — Bulbasaur does not have it in all_learnables.json.)
 - All M1–M14 suites (579 tests) still pass. 2026-07-01.
+
+---
+
+## [M15 Task 3] PP System
+
+- Source: `battle_move_resolution.c :: CancelerPPDeduction` (L972), enum position `CANCELER_PPDEDUCTION=51` — fires before `CANCELER_ACCURACY_CHECK=72`. PP costs even on a miss.
+- Skip conditions (matching source L974–980): Struggle (`cv->move == MOVE_STRUGGLE`), charging release turn (`volatiles.multipleTurns` in source, equivalent to `attacker.charging_move != null` at entry to `_phase_move_execution` before the two-turn block clears it), Bide wait/release turns (also covered by `charging_move != null`).
+- **Struggle:** `AreAllMovesUnusable` (battle_util.c L1652) with `MOVE_LIMITATION_PP` marks all moves unusable when all PP=0. `GetChosenMovePriority` (battle_main.c L4727–4728) returns `MOVE_STRUGGLE`. In our engine: `_is_forced_struggle()` checks `current_pp` at move selection time; `_struggle_move` is a permanent MoveData instance built in `BattleManager._ready()`.
+- **Struggle properties** (source: `moves_info.h MOVE_STRUGGLE`): power=50, TYPE_MYSTERY (typeless — no STAB, no type effectiveness), Physical, makes_contact=true, accuracy=0 (always hits). PP never decremented.
+- **Struggle recoil** (source: `MOVE_EFFECT_RECOIL_HP_25`, battle_script_commands.c L2534–2543): `recoil = maxHP / 4; if (recoil == 0) recoil = 1`. This is 25% of the user's **max HP**, NOT % of damage dealt (unlike normal recoil moves). Handled separately from `recoil_percent` path via `is_struggle` flag.
+- **BattlePokemon API added**: `has_pp(move_index)` → bool, `use_pp(move_index)` → decrements by 1, no underflow.
+- **MoveData field added**: `is_struggle: bool` — guards Struggle-specific PP skip and HP recoil.
+- pp_test.gd: 26 assertions covering PP init, has_pp/use_pp, release-turn exemption, forced-Struggle detection, and full 1-PP-then-Struggle scenario with recoil. All 605 tests (M1–M15 Task 3) clean. 2026-07-01.

@@ -196,6 +196,17 @@ func add_move(move: MoveData) -> void:
 		current_pp.append(move.pp)
 
 
+func has_pp(move_index: int) -> bool:
+	if move_index < 0 or move_index >= current_pp.size():
+		return false
+	return current_pp[move_index] > 0
+
+
+func use_pp(move_index: int) -> void:
+	if move_index >= 0 and move_index < current_pp.size() and current_pp[move_index] > 0:
+		current_pp[move_index] -= 1
+
+
 # Recalculates all stats from species base stats + level + IVs + EVs.
 # Call after level-up or EV gain. Does not update current_hp.
 func _calculate_stats() -> void:
