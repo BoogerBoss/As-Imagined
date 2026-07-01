@@ -221,7 +221,13 @@ func _test_t4_solar_beam_sun_instant() -> void:
 
 	var bm := _make_bm()
 	bm.weather = BattleManager.WEATHER_SUN
-	bm.weather_duration = 5
+	# weather_duration intentionally left at 0 so sun lasts the whole battle
+	# (duration=0 → EOT guard `if weather_duration > 0` never ticks → never expires).
+	bm._force_roll = 100
+	bm._force_crit = false
+	# Solar Beam at roll=100, no crit, GRASS vs NORMAL:
+	#   base=120×85×22/85/50+2=54; roll: 54; STAB: (54×6144+2047)/4096=81; eff 1.0 → 81
+	p2.current_hp = 81  # p2 faints on turn 1 so the battle ends before any extra cycles
 
 	var charge_count := [0]
 	var damage_events: Array = []
@@ -259,7 +265,12 @@ func _test_t5_solar_beam_rain_two_turns() -> void:
 
 	var bm := _make_bm()
 	bm.weather = BattleManager.WEATHER_RAIN
-	bm.weather_duration = 5
+	# weather_duration left at 0 (infinite) — rain never expires mid-battle.
+	bm._force_roll = 100
+	bm._force_crit = false
+	# Solar Beam at roll=100, no crit, GRASS vs NORMAL, rain has no modifier on GRASS:
+	#   base=120×85×22/85/50+2=54; roll: 54; STAB: (54×6144+2047)/4096=81; eff 1.0 → 81
+	p2.current_hp = 81  # p2 faints on Solar Beam's release (turn 2) — ends battle at charge_count=1
 
 	var charge_count := [0]
 	var damage_events: Array = []
@@ -300,6 +311,12 @@ func _test_t6_skull_bash_def_boost() -> void:
 	p2.add_move(tackle)
 
 	var bm := _make_bm()
+	bm._force_roll = 100
+	bm._force_crit = false
+	# Skull Bash at roll=100, no crit, NORMAL vs NORMAL (atk=85, def=85, level 50):
+	#   base=130×85×22/85/50+2=59; roll: 59; STAB: (59×6144+2047)/4096=88; eff 1.0 → 88
+	p2.current_hp = 88  # p2 faints on Skull Bash's release (turn 2) — charge_count=1 only
+
 	var def_boosts: Array = []  # array of actual_change values for STAGE_DEF
 	var charge_fired := [false]
 

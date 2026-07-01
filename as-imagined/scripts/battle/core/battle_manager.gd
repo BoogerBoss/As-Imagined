@@ -196,6 +196,22 @@ var _helping_hand: Array[bool] = [false, false, false, false]
 var weather: int = WEATHER_NONE
 var weather_duration: int = 0  # turns remaining; 0 when no weather is active
 
+# M15 Task 3: Struggle instantiated in _ready(); used when all PP are depleted.
+# Source: battle_main.c L4727–4728 — noValidMoves → MOVE_STRUGGLE substitution.
+var _struggle_move: MoveData = null
+
+
+func _ready() -> void:
+	_struggle_move = MoveData.new()
+	_struggle_move.move_name = "Struggle"
+	_struggle_move.type = TypeChart.TYPE_MYSTERY
+	_struggle_move.category = 0
+	_struggle_move.power = 50
+	_struggle_move.pp = 1
+	_struggle_move.accuracy = 0
+	_struggle_move.is_struggle = true
+	_struggle_move.makes_contact = true
+
 
 # ── Entry points ────────────────────────────────────────────────────────────────
 
@@ -412,6 +428,10 @@ func _phase_move_selection() -> void:
 		if mon.choice_locked_move != null and _chosen_switch_slots[i] < 0 \
 				and mon.charging_move == null:
 			_chosen_moves[i] = mon.choice_locked_move
+		# M15 Task 3: Struggle override — all PP depleted forces Struggle.
+		# Source: battle_main.c L4727-4728; CancelerPPDeduction skips Struggle (L979).
+		if _is_forced_struggle(mon) and _chosen_switch_slots[i] < 0:
+			_chosen_moves[i] = _struggle_move
 	_set_phase(BattlePhase.PRIORITY_RESOLUTION)
 
 
@@ -632,10 +652,35 @@ func _phase_move_execution() -> void:
 	if StatusManager.check_user_thaw(attacker, move):
 		pokemon_thawed.emit(attacker)
 
+	# M15 Task 3: Decrement PP (charge turn only for two-turn moves; never for Struggle).
+	# Source: battle_script_commands.c :: Cmd_decrementmovepointvalue (L5960);
+	#   CancelerPPDeduction skips if cv->move == MOVE_STRUGGLE (L979).
+	if not move.is_struggle and attacker.charging_move == null:
+		var move_idx: int = attacker.moves.find(move)
+		if move_idx >= 0:
+			attacker.use_pp(move_idx)
+
 	# ── Two-turn charge/release ───────────────────────────────────────────────
 	# Source: battle_move_resolution.c :: CancelerCharging (L1737)
-	if move.two_turn and not move.is_bide:
+	# Solar Beam shortcut: skip charge turn entirely in harsh sun.
+	# Source: CanTwoTurnMoveFireThisTurn (L1664) — returns TRUE when
+	#   weather & B_WEATHER_SUN and move has twoTurnAttackWeather == B_WEATHER_SUN.
+	#   Semi-inv moves (Fly/Dig/Dive/Bounce) can NEVER fire early.
+	var _solar_skip: bool = (
+		move.is_solar_beam
+		and attacker.charging_move == null
+		and weather == WEATHER_SUN
+	)
+	if move.two_turn and not move.is_bide and not _solar_skip:
 		if attacker.charging_move == null:
+			# Charge-turn stat boost (Skull Bash: +1 Defense on charge turn only).
+			# Source: moves_info.h MOVE_SKULL_BASH additionalEffects
+			#   {MOVE_EFFECT_STAT_PLUS, .defense=1, .self=TRUE, .onChargeTurnOnly=TRUE}
+			if move.charge_turn_defense_boost > 0:
+				var actual_boost: int = StatusManager.apply_stat_change(
+					attacker, BattlePokemon.STAGE_DEF, move.charge_turn_defense_boost)
+				if actual_boost != 0:
+					stat_stage_changed.emit(attacker, BattlePokemon.STAGE_DEF, actual_boost)
 			attacker.charging_move = move
 			attacker.semi_invulnerable = move.semi_inv_state
 			charge_started.emit(attacker, move)
@@ -871,6 +916,12 @@ func _phase_move_execution() -> void:
 			# Single-target damaging move.
 			var hh_boost: bool = _helping_hand[attacker_idx]
 			_do_damaging_hit(attacker, defender, move, false, hh_boost)
+		# M15 Task 3: Struggle recoil — 1/4 max HP (not % of damage dealt).
+		# Source: BattleScript_EffectRecoilHP (battle_script_commands.c L2534–2543).
+		if move.is_struggle and not attacker.fainted:
+			var struggle_recoil: int = max(1, attacker.max_hp / 4)
+			attacker.current_hp = max(0, attacker.current_hp - struggle_recoil)
+			recoil_damage.emit(attacker, struggle_recoil)
 	else:
 		# ── Status / stat-change / unique-effect move ─────────────────────────
 
@@ -1497,6 +1548,17 @@ func _is_weather_damage_immune(mon: BattlePokemon, current_weather: int) -> bool
 				if t == TypeChart.TYPE_ICE:
 					return true
 	return false
+
+
+# M15 Task 3: Returns true when all move slots have 0 PP (or the Pokémon has no moves).
+# Source: battle_main.c L4727-4728 — noValidMoves check before move substitution.
+func _is_forced_struggle(mon: BattlePokemon) -> bool:
+	if mon.moves.is_empty():
+		return true
+	for _pi in range(mon.current_pp.size()):
+		if mon.current_pp[_pi] > 0:
+			return false
+	return true
 
 
 # Apply a pre-calculated damage amount to defender, routing through substitute if active.
