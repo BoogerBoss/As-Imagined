@@ -344,7 +344,9 @@ func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
 					else:
 						score += DECENT_EFFECT
 			MoveData.SE_SLEEP:
-				# IncreaseSleepScore (L4877): unconditional +DECENT_EFFECT when applicable.
+				# IncreaseSleepScore (L4877): +DECENT_EFFECT when not can_faint.
+				# Source has a Focus Punch carve-out (falls through to +DECENT_EFFECT even
+				# when can_faint if all best moves are Focus Punch); omitted — not in scope.
 				if not can_faint:
 					score += DECENT_EFFECT
 
