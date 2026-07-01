@@ -155,6 +155,12 @@ var _force_roll: Variant = null
 # same null-sentinel convention on both sides, no conversion needed at the call site.
 var _force_crit: Variant = null
 
+# Test seam: force the contact-ability roll (Static / Flame Body trigger) for all
+# damaging hits this battle.  null = use real RNG; true = always trigger; false = suppress.
+# Mirrors force_contact_roll already accepted by AbilityManager.try_contact_effects —
+# BM-9 fix threads this value through _do_damaging_hit so integration tests can control it.
+var _force_contact_roll: Variant = null
+
 # M9: pre-queued Baton Pass target slots per combatant index (-1 = auto-select first valid).
 # M14a: indexed by combatant index; singles uses [0] and [1].
 var _baton_pass_queues: Array = [[], [], [], []]
@@ -1578,7 +1584,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 					_consume_item(target)
 
 	var contact_result: Dictionary = AbilityManager.try_contact_effects(
-			attacker, target, move, damage)
+			attacker, target, move, damage, _force_contact_roll)
 	if contact_result["rough_skin_damage"] > 0:
 		var rs_dmg: int = contact_result["rough_skin_damage"]
 		attacker.current_hp = max(0, attacker.current_hp - rs_dmg)
