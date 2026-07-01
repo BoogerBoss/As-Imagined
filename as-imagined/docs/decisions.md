@@ -15,6 +15,28 @@ Format per entry:
 
 ---
 
+## Project Scope (established pre-M15)
+
+**Battle Engine:** All Emerald Expansion moves and abilities. No Z-moves, Mega Evolution, or Dynamax. Two-turn moves in scope. Unique/complex moves and abilities handled individually in dedicated milestones.
+
+**Pokémon:** All 386 Gen III Pokémon. Castform forms included. No Deoxys forms. No Unown.
+
+**Items:** All items through Gen V. Gen VI+ items picked and chosen as needed based on mechanic dependencies.
+
+**Berries:** All berries through Gen V. Gen VI+ picked and chosen as needed.
+
+**Battle formats:** Singles, doubles, and 2v2 multi-battle (two separate trainers per side). Link battles out of scope.
+
+**Testing strategy:** Straight damaging moves implemented freely. One representative test per status-move category, rest implemented with same logic. Full citation audit for complex mechanics.
+
+**Simulator:** Standalone scene architecture. Overworld calls into battle, gets control back after. Experience, leveling, catching, and flee handled at simulator layer not engine layer.
+
+**End goal:** Fully playable Emerald-style game with overworld, trainer data, party building, and UI in Godot.
+
+**Timeline:** ~1 year. Solo developer with Claude Code.
+
+---
+
 ## [M1] Data format: .tres, one file per entry
 
 - Source: project design decision (Milestone 1)
@@ -1999,6 +2021,36 @@ trigger are listed with "→ skip". Computed with `_uq412_half_down(v, f) = (v×
 
 **Result: 94. Asserted value: 94. ✓ MATCH**
 
+---
+
+## [M15] Data pipeline: convert_pokedata.py
+
+- Source: `src/data/pokemon/species_info/gen_{1,2,3}_families.h`, `src/data/moves_info.h`,
+  `src/data/pokemon/level_up_learnsets/gen_{1,2,3}.h`,
+  `include/constants/{species,pokedex,abilities,moves,battle_move_effects,pokemon}.h`
+- Behavior: `tools/convert_pokedata.py` emits three JSON files to `as-imagined/data/`:
+  - `pokemon.json` — 386 entries (#1–#386), deduped by natDexNum (base form only).
+    Fields: dex, name, base_{hp/atk/def/spa/spd/spe}, types[2], catch_rate,
+    base_friendship, gender_ratio, egg_groups[2], ability1/ability2/ability_h,
+    item_common/item_rare.
+  - `moves.json` — 935 moves (all expansion moves). Fields: id, name, effect, effect_name,
+    type, category, power, accuracy, pp, priority, target, makes_contact, punching_move,
+    biting_move, sound_move, powder_move, dance_move, healing_move, ignores_protect,
+    ignores_substitute, thaws_user, critical_hit_stage, always_critical_hit, damages_*,
+    ban_flags, two_turn, semi_inv_state, recoil_percent, drain_percent, fixed_damage,
+    level_damage, secondary_effect (SE_* value), secondary_chance, stat_change_{stat,amount},
+    stat_change_self, is_spread, is_protect, is_baton_pass, is_roar, is_metronome, is_bide,
+    is_disable, is_encore, creates_substitute, destiny_bond, counter, mirror_coat,
+    is_helping_hand, is_follow_me.
+  - `learnsets.json` — keyed by dex number string, value = [{level, move_id, move_name}].
+- All config flags assumed = GEN_LATEST = 9 (matches expansion `include/config/battle.h`).
+- STANDARD_FRIENDSHIP resolves to 50 (GEN_8+ path).
+- Unown (#201) hardcoded: uses UNOWN_MISC_INFO macro not parseable by block extractor.
+- Alternate Deoxys and Unown forms (SPECIES_ID > 386) naturally excluded by natDexNum filter.
+- `moves.json` secondary_effect field maps MOVE_EFFECT_POISON → SE value 2 (same slot as
+  FREEZE); loader must distinguish these by effect_name if needed.
+- 2026-07-01.
+
 **Wrong-order check** (Life Orb before roll, per I4.02 discriminating comment):
 - dmg=57 after step 9 (same).
 - Life Orb at wrong position (before roll): `57×5324`: `50×5324=266200`; `7×5324=37268`; `266200+37268=303468`; `303468+2047=305515`; `305515/4096`: `4096×74`: `4096×70=286720`; `4096×4=16384`; `286720+16384=303104`; `305515−303104=2411`; `4096×75=307200`; `305515<307200` → quotient **74**; dmg=74.
@@ -2006,3 +2058,27 @@ trigger are listed with "→ skip". Computed with `_uq412_half_down(v, f) = (v×
 - STAB: `62×6144`: `60×6144=368640`; `2×6144=12288`; `368640+12288=380928`; `380928+2047=382975`; `382975/4096`: `4096×93`: `4096×90=368640`; `4096×3=12288`; `368640+12288=380928`; `382975−380928=2047`; `4096×94=385024`; `382975<385024` → quotient **93**; dmg=93.
 - Type eff ×1.0: `93×4096=380928`; `380928+2047=382975`; `382975/4096=93` (identical to STAB computation) → dmg=93.
 - Wrong order gives **93 ≠ 94**. Test is genuinely discriminating.
+
+---
+
+## [M15 Task 2] PokemonRegistry autoload singleton
+
+- Source: project design decision (Milestone 15 Task 2)
+- Behavior: `scripts/data/pokemon_registry.gd` is registered as the `PokemonRegistry`
+  autoload in `project.godot`. On `_ready()` it loads all three JSON files produced by
+  `tools/convert_pokedata.py` and builds integer-keyed lookup dicts. API:
+  - `get_species(dex_number: int) -> Dictionary` — raw JSON dict for that dex entry
+  - `get_move(move_id: int) -> Dictionary` — raw JSON dict for that move
+  - `get_learnset(dex_number: int) -> Array` — list of `{level, move_id, move_name}` entries
+  - `get_all_species() -> Array` — all 386 species entries (ordered by dex)
+- Key implementation note: Godot 4.3 `JSON.parse_string()` returns ALL numeric JSON values
+  as `float`, not `int`. Dict keys for dex/id lookups are cast with `int(entry["dex"])` and
+  `int(entry["id"])` at load time so that `get_species(1)` (int argument) resolves correctly.
+  The learnsets file keys are already strings; converted via `int(key)` during load.
+- Autoload registration: `class_name PokemonRegistry` would conflict with the autoload global
+  name in Godot 4 — the script omits `class_name` and is accessed globally as `PokemonRegistry`.
+- Smoke test: eight `assert()` calls in `_ready()` confirm Bulbasaur (#1), Charizard (#6),
+  Mewtwo (#150), Rayquaza (#384) all load with non-zero base_hp and a second non-zero stat.
+  Prints: "PokemonRegistry: smoke test passed — N species, N moves, N learnsets loaded".
+- No battle engine changes — data loading only. All M1–M14 test suites pass without change.
+- 2026-07-01.
