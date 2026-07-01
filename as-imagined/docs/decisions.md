@@ -2082,3 +2082,14 @@ trigger are listed with "→ skip". Computed with `_uq412_half_down(v, f) = (v×
   Prints: "PokemonRegistry: smoke test passed — N species, N moves, N learnsets loaded".
 - No battle engine changes — data loading only. All M1–M14 test suites pass without change.
 - 2026-07-01.
+
+---
+
+## [M15 Task 2b] PokemonRegistry — learnable moves
+
+- Source: `reference/pokeemerald_expansion/src/data/pokemon/all_learnables.json` (TM/tutor teachable moves per species) and `special_movesets.json` (universalMoves + signatureTeachables).
+- Behavior: `get_learnable_moves(dex_number: int) -> Array` returns a flat array of MOVE_X string constants combining species-specific teachable moves with the 10 `universalMoves` (deduped, universal appended at end). The two source JSON files are copied as-is to `data/all_learnables.json` and `data/special_movesets.json`.
+- Name-to-key transform: species names in `pokemon.json` (Title Case, e.g. "Mr. Mime") are converted to `all_learnables.json` keys (SCREAMING_SNAKE_CASE, e.g. "MR_MIME") by: replace ♀→_F, ♂→_M, remove dots and apostrophes, replace spaces/hyphens with underscores, `.to_upper()`. Special case: "Deoxys" maps to "DEOXYS_NORMAL" (base form; file has no bare "DEOXYS" key).
+- All 386 species map to valid keys in `all_learnables.json` after the transform.
+- Smoke test addition: asserts `get_learnable_moves(1)` is non-empty and contains "MOVE_TACKLE". (MOVE_SURF was incorrectly listed in task spec — Bulbasaur does not have it in all_learnables.json.)
+- All M1–M14 suites (579 tests) still pass. 2026-07-01.
