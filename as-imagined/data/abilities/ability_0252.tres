@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 252
 ability_name = "Steely Spirit"
-description = ""
-ai_rating = 0
+description = "Powers up allies' and the user's Steel-type moves."
+ai_rating = 6

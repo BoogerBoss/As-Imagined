@@ -189,6 +189,11 @@ var _force_magnitude_power: Variant = null
 # the user's current types have already been excluded — see _pick_conversion2_type().
 var _force_conversion2_pick: Variant = null
 
+# M17b: force which STAGE_* Moody raises (+2) / lowers (-1) this battle.
+# null = use real RNG. Mirrors the null-sentinel convention of the other _force_* seams.
+var _force_moody_raise: Variant = null
+var _force_moody_lower: Variant = null
+
 # M9: pre-queued Baton Pass target slots per combatant index (-1 = auto-select first valid).
 # M14a: indexed by combatant index; singles uses [0] and [1].
 var _baton_pass_queues: Array = [[], [], [], []]
@@ -645,6 +650,14 @@ func _phase_pre_move_checks() -> void:
 		var reason: String
 		if check["flinched"]:
 			reason = "flinched"
+			# M17b: Steadfast — flinching raises the flinched Pokémon's own Speed +1.
+			# Source: battle_move_resolution.c :: CancelerFlinch (L303-307).
+			if actor.ability != null and actor.ability.ability_id == AbilityManager.ABILITY_STEADFAST:
+				var sf_actual: int = StatusManager.apply_stat_change(
+						actor, BattlePokemon.STAGE_SPEED, 1)
+				if sf_actual != 0:
+					stat_stage_changed.emit(actor, BattlePokemon.STAGE_SPEED, sf_actual)
+					ability_triggered.emit(actor, "steadfast")
 		elif actor.status == BattlePokemon.STATUS_PARALYSIS:
 			reason = "paralyzed"
 		elif actor.status == BattlePokemon.STATUS_SLEEP:
@@ -1010,10 +1023,22 @@ func _phase_move_execution() -> void:
 		baton_passed.emit(attacker, incoming)
 		# Switch-in hazards then abilities fire for the incoming Pokémon.
 		_apply_switch_in_hazards(incoming, attacker_side)
-		var bp_actual: int = AbilityManager.try_switch_in(incoming, defender)
-		if bp_actual != 0:
-			stat_stage_changed.emit(defender, BattlePokemon.STAGE_ATK, bp_actual)
+		var bp_si_result: Dictionary = AbilityManager.try_switch_in(incoming, defender, _get_ally(defender))
+		if bp_si_result["atk_change"] != 0:
+			stat_stage_changed.emit(defender, BattlePokemon.STAGE_ATK, bp_si_result["atk_change"])
 			ability_triggered.emit(incoming, "intimidate")
+		if bp_si_result["opponent_speed_change"] != 0:
+			stat_stage_changed.emit(defender, BattlePokemon.STAGE_SPEED, bp_si_result["opponent_speed_change"])
+			ability_triggered.emit(defender, "rattled")
+		if bp_si_result["opponent_defiant_change"] != 0:
+			stat_stage_changed.emit(defender, bp_si_result["opponent_defiant_stat"], bp_si_result["opponent_defiant_change"])
+			ability_triggered.emit(defender, "defiant_competitive")
+		if bp_si_result["cured_own_poison"]:
+			ability_triggered.emit(incoming, "pastel_veil")
+		var bp_sss_actual: int = AbilityManager.try_switch_in_evasion(incoming, defender)
+		if bp_sss_actual != 0:
+			stat_stage_changed.emit(defender, BattlePokemon.STAGE_EVASION, bp_sss_actual)
+			ability_triggered.emit(incoming, "supersweet_syrup")
 		var bp_set_w: int = AbilityManager.get_switch_in_weather(incoming)
 		if bp_set_w != WEATHER_NONE and try_set_weather(bp_set_w, incoming):
 			weather_set.emit(incoming, bp_set_w)
@@ -1561,6 +1586,16 @@ func _phase_move_execution() -> void:
 				move_effect_failed.emit(stat_target, "stat_limit")
 			else:
 				stat_stage_changed.emit(stat_target, move.stat_change_stat, actual)
+				# M17b: Defiant/Competitive — only for a decrease caused by an
+				# OPPONENT's move (not stat_change_self, e.g. Swords Dance).
+				# Source: battle_util.c :: ShouldDefiantCompetitiveActivate (L1149-1168).
+				if actual < 0 and not move.stat_change_self:
+					var defiant_stat: int = AbilityManager.defiant_competitive_stat(stat_target)
+					if defiant_stat != -1:
+						var defiant_actual: int = StatusManager.apply_stat_change(stat_target, defiant_stat, 2)
+						if defiant_actual != 0:
+							stat_stage_changed.emit(stat_target, defiant_stat, defiant_actual)
+							ability_triggered.emit(stat_target, "defiant_competitive")
 		elif move.secondary_effect != MoveData.SE_NONE:
 			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move)
 			if applied:
@@ -1599,6 +1634,13 @@ func _phase_faint_check() -> void:
 			# Source: FaintClearSetData in battle_main.c clears gBattleMons[].volatiles.
 			_clear_volatiles(combatant)
 			pokemon_fainted.emit(combatant)
+			# M17b: Moxie — Attack +1 for whoever's hit caused this faint.
+			# Source: battle_util.c L4467-4472; killer lookup reuses M14b's _last_attacker.
+			var moxie_killer: BattlePokemon = _last_attacker.get(combatant, null)
+			var moxie_actual: int = AbilityManager.moxie_boost(moxie_killer)
+			if moxie_actual != 0:
+				stat_stage_changed.emit(moxie_killer, BattlePokemon.STAGE_ATK, moxie_actual)
+				ability_triggered.emit(moxie_killer, "moxie")
 			# Destiny Bond: KO the Pokémon that dealt the fatal blow (if still standing).
 			# M14b: use _last_attacker[combatant] rather than _get_first_opponent — in doubles
 			# the fatal hit may come from the second opposing slot, not the first.
@@ -1733,15 +1775,23 @@ func _phase_end_of_turn() -> void:
 		if trick_room_turns == 0:
 			trick_room_ended.emit()
 
-	# End-of-turn ability effects (Speed Boost, etc.)
+	# End-of-turn ability effects (Speed Boost, M17b: Moody)
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ENDTURN, ...) (battle_util.c L3605)
 	for mon: BattlePokemon in _combatants:
 		if mon.fainted:
 			continue
-		var spd_actual: int = AbilityManager.try_end_of_turn(mon)
+		var eot_result: Dictionary = AbilityManager.try_end_of_turn(
+				mon, _force_moody_raise, _force_moody_lower)
+		var spd_actual: int = eot_result["speed_boost_change"]
 		if spd_actual != 0:
 			stat_stage_changed.emit(mon, BattlePokemon.STAGE_SPEED, spd_actual)
 			ability_triggered.emit(mon, "speed_boost")
+		if eot_result["moody_raised_stat"] != -1 and eot_result["moody_raised_amount"] != 0:
+			stat_stage_changed.emit(mon, eot_result["moody_raised_stat"], eot_result["moody_raised_amount"])
+			ability_triggered.emit(mon, "moody")
+		if eot_result["moody_lowered_stat"] != -1 and eot_result["moody_lowered_amount"] != 0:
+			stat_stage_changed.emit(mon, eot_result["moody_lowered_stat"], eot_result["moody_lowered_amount"])
+			ability_triggered.emit(mon, "moody")
 
 	# Route through SWITCH_PROMPT even after EOT so any EOT faint gets a replacement.
 	_set_phase(BattlePhase.SWITCH_PROMPT)
@@ -1798,6 +1848,28 @@ func _get_first_opponent(mon: BattlePokemon) -> BattlePokemon:
 	var idx: int = _combatants.find(mon)
 	var side: int = idx / _active_per_side if idx >= 0 else 0
 	return _combatants[(1 - side) * _active_per_side]
+
+
+# M17a: returns mon's doubles partner (same side, other field slot), or null in singles
+# (_active_per_side <= 1) or if the ally has fainted. Reuses the same _combatants/
+# _active_per_side layout M14a already built — not new infrastructure, just a missing
+# convenience accessor alongside _get_first_opponent. Needed for Battery/Power Spot/
+# Steely Spirit's ally-aura power boost (docs/m17_recon.md Section 9 Bucket A).
+func _get_ally(mon: BattlePokemon) -> BattlePokemon:
+	if _active_per_side <= 1:
+		return null
+	var idx: int = _combatants.find(mon)
+	if idx < 0:
+		return null
+	var side: int = idx / _active_per_side
+	var local_slot: int = idx % _active_per_side
+	for other_local in range(_active_per_side):
+		if other_local == local_slot:
+			continue
+		var ally: BattlePokemon = _combatants[side * _active_per_side + other_local]
+		if not ally.fainted:
+			return ally
+	return null
 
 
 # Fire switch-in ability effects for new_mon against all live opposing combatants.
@@ -1857,10 +1929,11 @@ func _apply_switch_in_hazards(new_mon: BattlePokemon, mon_side: int) -> void:
 			var ts_status: int = BattlePokemon.STATUS_TOXIC if sc["toxic_spikes_layers"] >= 2 \
 					else BattlePokemon.STATUS_POISON
 			# Reuses StatusManager.try_apply_status — already encodes Poison/Steel-type
-			# immunity and the one-major-status-at-a-time guard (M3), so Toxic Spikes
-			# correctly can't poison a Steel-type or a Pokémon already statused, without
-			# re-deriving those checks here.
-			if StatusManager.try_apply_status(new_mon, ts_status):
+			# immunity, the one-major-status-at-a-time guard (M3), and (M17b) Pastel
+			# Veil's ally-wide poison immunity, so Toxic Spikes correctly can't poison a
+			# Steel-type, an already-statused Pokémon, or a Pastel-Veil-protected one,
+			# without re-deriving those checks here.
+			if StatusManager.try_apply_status(new_mon, ts_status, null, _get_ally(new_mon)):
 				hazard_status_applied.emit(new_mon, ts_status)
 
 	# Stealth Rock — NOT grounded-gated (hits Flying-types and Levitate holders too), but
@@ -1902,18 +1975,41 @@ func _stealth_rock_damage(effectiveness: float, max_hp: int) -> int:
 
 func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 	var any_intimidated := false
+	var live_opponents: Array = []
 	for j in range(_combatants.size()):
 		if j / _active_per_side == mon_side:  # IsBattlerAlly: same side → skip
 			continue
 		var opp: BattlePokemon = _combatants[j]
 		if opp.fainted or opp.current_hp == 0:  # !IsBattlerAlive: skip
 			continue
-		var actual: int = AbilityManager.try_switch_in(new_mon, opp)
-		if actual != 0:
-			stat_stage_changed.emit(opp, BattlePokemon.STAGE_ATK, actual)
+		live_opponents.append(opp)
+		var opp_ally: BattlePokemon = _get_ally(opp)
+		var si_result: Dictionary = AbilityManager.try_switch_in(new_mon, opp, opp_ally)
+		if si_result["atk_change"] != 0:
+			stat_stage_changed.emit(opp, BattlePokemon.STAGE_ATK, si_result["atk_change"])
 			any_intimidated = true
+		if si_result["opponent_speed_change"] != 0:
+			stat_stage_changed.emit(opp, BattlePokemon.STAGE_SPEED, si_result["opponent_speed_change"])
+			ability_triggered.emit(opp, "rattled")
+		if si_result["opponent_defiant_change"] != 0:
+			stat_stage_changed.emit(opp, si_result["opponent_defiant_stat"], si_result["opponent_defiant_change"])
+			ability_triggered.emit(opp, "defiant_competitive")
+		if si_result["cured_own_poison"]:
+			ability_triggered.emit(new_mon, "pastel_veil")
+		# M17b: Supersweet Syrup — same per-opponent loop shape as Intimidate, one-time only.
+		var sss_actual: int = AbilityManager.try_switch_in_evasion(new_mon, opp)
+		if sss_actual != 0:
+			stat_stage_changed.emit(opp, BattlePokemon.STAGE_EVASION, sss_actual)
+			ability_triggered.emit(new_mon, "supersweet_syrup")
 	if any_intimidated:
 		ability_triggered.emit(new_mon, "intimidate")
+	# M17b: Download — needs the combined opposing side, not a per-opponent loop.
+	var download_stage: int = AbilityManager.download_stat(new_mon, live_opponents)
+	if download_stage != -1:
+		var dl_actual: int = StatusManager.apply_stat_change(new_mon, download_stage, 1)
+		if dl_actual != 0:
+			stat_stage_changed.emit(new_mon, download_stage, dl_actual)
+			ability_triggered.emit(new_mon, "download")
 	# M11: Drizzle / Drought — set field weather on switch-in.
 	# Source: ABILITY_DRIZZLE / ABILITY_DROUGHT case in ABILITYEFFECT_ON_SWITCHIN
 	#   calls TryChangeBattleWeather (battle_util.c L3213, L3242).
@@ -2355,7 +2451,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	var roll: int = _force_roll if _force_roll != null else -1
 	var result: Dictionary = DamageCalculator.calculate(
 			attacker, target, move, roll, _force_crit, weather, is_spread, helping_hand,
-			power_override, screen_active, _active_per_side > 1)
+			power_override, screen_active, _active_per_side > 1, _get_ally(attacker))
 	var damage: int = result["damage"]
 
 	# M16d: Rapid Spin — clears ONE hazard type from the ATTACKER's own side after dealing
@@ -2390,6 +2486,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		move_executed.emit(attacker, target, move, sub_dmg)
 		return
 
+	var hp_before_hit: int = target.current_hp
 	target.current_hp = max(0, target.current_hp - damage)
 	move_executed.emit(attacker, target, move, damage)
 
@@ -2407,7 +2504,10 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	if StatusManager.check_target_thaw(target, move, damage):
 		pokemon_thawed.emit(target)
 
-	if move.recoil_percent > 0 and damage > 0:
+	# M17a: Rock Head blocks standard move recoil entirely (does not affect Struggle
+	# recoil, handled separately above, or Life Orb recoil, an item effect).
+	# Source: battle_move_resolution.c :: EFFECT_RECOIL handling (L3373-3396).
+	if move.recoil_percent > 0 and damage > 0 and not AbilityManager.blocks_recoil(attacker):
 		var recoil: int = damage * move.recoil_percent / 100
 		if recoil > 0:
 			attacker.current_hp = max(0, attacker.current_hp - recoil)
@@ -2449,6 +2549,59 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		if ItemManager.lum_berry_cures(attacker):
 			attacker.status = BattlePokemon.STATUS_NONE
 			_consume_item(attacker)
+	if contact_result["speed_change"] != 0:
+		stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPEED, contact_result["speed_change"])
+		ability_triggered.emit(target, contact_result["ability_name"])
+
+	# M17b: non-contact-gated reactive stat abilities (Justified, Rattled, Water
+	# Compaction, Stamina, Weak Armor, Anger Point, Berserk, Anger Shell, Steam Engine,
+	# Thermal Exchange, Cotton Down) — fire on ANY damaging hit, not just contact.
+	var hit_result: Dictionary = AbilityManager.try_hit_reactive_effects(
+			attacker, target, move, damage, hp_before_hit, result["is_crit"])
+	if hit_result["justified_change"] != 0:
+		stat_stage_changed.emit(target, BattlePokemon.STAGE_ATK, hit_result["justified_change"])
+		ability_triggered.emit(target, "justified")
+	if hit_result["rattled_change"] != 0:
+		stat_stage_changed.emit(target, BattlePokemon.STAGE_SPEED, hit_result["rattled_change"])
+		ability_triggered.emit(target, "rattled")
+	if hit_result["water_compaction_change"] != 0:
+		stat_stage_changed.emit(target, BattlePokemon.STAGE_DEF, hit_result["water_compaction_change"])
+		ability_triggered.emit(target, "water_compaction")
+	if hit_result["stamina_change"] != 0:
+		stat_stage_changed.emit(target, BattlePokemon.STAGE_DEF, hit_result["stamina_change"])
+		ability_triggered.emit(target, "stamina")
+	if hit_result["weak_armor_def_change"] != 0 or hit_result["weak_armor_speed_change"] != 0:
+		if hit_result["weak_armor_def_change"] != 0:
+			stat_stage_changed.emit(target, BattlePokemon.STAGE_DEF, hit_result["weak_armor_def_change"])
+		if hit_result["weak_armor_speed_change"] != 0:
+			stat_stage_changed.emit(target, BattlePokemon.STAGE_SPEED, hit_result["weak_armor_speed_change"])
+		ability_triggered.emit(target, "weak_armor")
+	if hit_result["anger_point_change"] != 0:
+		stat_stage_changed.emit(target, BattlePokemon.STAGE_ATK, hit_result["anger_point_change"])
+		ability_triggered.emit(target, "anger_point")
+	if hit_result["berserk_change"] != 0:
+		stat_stage_changed.emit(target, BattlePokemon.STAGE_SPATK, hit_result["berserk_change"])
+		ability_triggered.emit(target, "berserk")
+	if not hit_result["anger_shell_changes"].is_empty():
+		for stat_idx: int in hit_result["anger_shell_changes"]:
+			stat_stage_changed.emit(target, stat_idx, hit_result["anger_shell_changes"][stat_idx])
+		ability_triggered.emit(target, "anger_shell")
+	if hit_result["steam_engine_change"] != 0:
+		stat_stage_changed.emit(target, BattlePokemon.STAGE_SPEED, hit_result["steam_engine_change"])
+		ability_triggered.emit(target, "steam_engine")
+	if hit_result["thermal_exchange_change"] != 0:
+		stat_stage_changed.emit(target, BattlePokemon.STAGE_ATK, hit_result["thermal_exchange_change"])
+		ability_triggered.emit(target, "thermal_exchange")
+	if hit_result["cotton_down_fired"]:
+		var cd_ally: BattlePokemon = _get_ally(attacker)
+		var cd_actual: int = StatusManager.apply_stat_change(attacker, BattlePokemon.STAGE_SPEED, -1)
+		if cd_actual != 0:
+			stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPEED, cd_actual)
+		if cd_ally != null and not cd_ally.fainted:
+			var cd_ally_actual: int = StatusManager.apply_stat_change(cd_ally, BattlePokemon.STAGE_SPEED, -1)
+			if cd_ally_actual != 0:
+				stat_stage_changed.emit(cd_ally, BattlePokemon.STAGE_SPEED, cd_ally_actual)
+		ability_triggered.emit(target, "cotton_down")
 
 	if result.get("defender_item_consumed", false):
 		_consume_item(target)

@@ -25,20 +25,46 @@ extends RefCounted
 # ── Status application ────────────────────────────────────────────────────
 #
 # try_apply_status: attempt to inflict a major status condition on `mon`.
-# Returns true if the status was applied, false if blocked by type immunity
-# or by the Pokémon already having a major status.
+# Returns true if the status was applied, false if blocked by type immunity,
+# ability immunity, or by the Pokémon already having a major status.
 #
 # force_sleep_turns: Variant — null = random 2–4; int value = pin duration
 #   (only meaningful when status == BattlePokemon.STATUS_SLEEP)
+# ally: mon's doubles partner (for Sweet Veil/Pastel Veil's ally-wide protection) —
+#   null in singles or when unresolved by the caller.
+#
+# M17b ability-based immunities (the FIRST ability-based status immunities in this
+# codebase — every prior check here was purely type-based):
+#   ABILITY_PURIFYING_SALT (battle_util.c L5359-5361, same shape as Comatose): immune
+#     to ALL non-volatile statuses, self only (no ally-wide check in source).
+#   ABILITY_SWEET_VEIL (battle_util.c L5322-5327): immune to SLEEP specifically,
+#     self OR ally (IsAbilityOnSide).
+#   ABILITY_PASTEL_VEIL (battle_util.c L5254-5259): immune to POISON/TOXIC specifically,
+#     self OR ally (IsAbilityOnSide). (Pastel Veil's OTHER half — curing the holder's
+#     own pre-existing poison on switch-in — is in AbilityManager.try_switch_in.)
 static func try_apply_status(
 		mon: BattlePokemon,
 		status: int,
-		force_sleep_turns: Variant = null) -> bool:
+		force_sleep_turns: Variant = null,
+		ally: BattlePokemon = null) -> bool:
 
 	# One major status at a time.
 	# Source: CanSetNonVolatileStatus L5391 — "already has STATUS1_ANY → fails"
 	if mon.status != BattlePokemon.STATUS_NONE:
 		return false
+
+	if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_PURIFYING_SALT:
+		return false
+
+	var ally_ability_id: int = ally.ability.ability_id if (ally != null and not ally.fainted and ally.ability != null) else -1
+	if status == BattlePokemon.STATUS_SLEEP:
+		if (mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_SWEET_VEIL) \
+				or ally_ability_id == AbilityManager.ABILITY_SWEET_VEIL:
+			return false
+	if status == BattlePokemon.STATUS_POISON or status == BattlePokemon.STATUS_TOXIC:
+		if (mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_PASTEL_VEIL) \
+				or ally_ability_id == AbilityManager.ABILITY_PASTEL_VEIL:
+			return false
 
 	# Type immunities — source: CanSetNonVolatileStatus L5244–5354
 	match status:
@@ -344,7 +370,8 @@ const ACCURACY_STAGE_RATIOS: Array = [
 #   When force_hit is non-null it overrides EVERYTHING including semi-invulnerable,
 #   making it a pure test override (the source equivalent is No Guard ability).
 # Stat stages for accuracy (STAGE_ACCURACY) and evasion (STAGE_EVASION) are applied.
-# Abilities, held items, and weather are M8+ scope.
+# M17a: No Guard (either battler) and Compound Eyes/Hustle (attacker) are now modeled;
+#   other abilities/held items/weather remain future scope.
 static func check_accuracy(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
@@ -353,6 +380,13 @@ static func check_accuracy(
 	# Test override — highest priority; bypasses all checks including semi-inv.
 	if force_hit != null:
 		return bool(force_hit)
+
+	# M17a: No Guard — always hits, bypassing BOTH the accuracy roll and the
+	# semi-invulnerable gate below (matching source's ordering: the No Guard check
+	# happens before CancelerAccuracyCheck's semi-invulnerable test).
+	# Source: battle_util.c L10182-10193.
+	if AbilityManager.bypasses_accuracy_check(attacker, defender):
+		return true
 
 	# Semi-invulnerable check: fires before accuracy roll and before always-hit.
 	# Source: battle_move_resolution.c :: CancelerAccuracyCheck (L1993)
@@ -364,9 +398,24 @@ static func check_accuracy(
 		return true  # always hits (Swift, Aerial Ace, Swords Dance, etc.)
 	var acc_stage: int = attacker.stat_stages[BattlePokemon.STAGE_ACCURACY]
 	var eva_stage: int = defender.stat_stages[BattlePokemon.STAGE_EVASION]
+	# M17b: Unaware (defender) ignores the ATTACKER's own accuracy stage; Unaware or
+	# Keen Eye (attacker) ignores the DEFENDER's evasion stage. Both reset to neutral
+	# (0), not just when positive — source's GetTotalAccuracy (L10251-10257) resets
+	# unconditionally.
+	if AbilityManager.ignores_attacker_accuracy_stage(defender):
+		acc_stage = 0
+	if AbilityManager.ignores_defender_evasion_stage(attacker):
+		eva_stage = 0
 	var combined: int = clampi(acc_stage - eva_stage, -6, 6)
 	var idx: int = combined + 6
 	var calc: int = move.accuracy * ACCURACY_STAGE_RATIOS[idx][0] / ACCURACY_STAGE_RATIOS[idx][1]
+
+	# M17a: Compound Eyes (×1.30) / Hustle (physical ×0.80) — same "calc" integer-percentage
+	# math source uses. Source: battle_util.c :: GetTotalAccuracy (L10283-10295).
+	var ability_pct: int = AbilityManager.accuracy_modifier_percent(attacker, move)
+	if ability_pct != 100:
+		calc = calc * ability_pct / 100
+
 	return randi() % 100 < calc
 
 
@@ -387,22 +436,57 @@ static func _can_hit_semi_invulnerable(move: MoveData, state: int) -> bool:
 # ── Stat stage application ────────────────────────────────────────────────────
 #
 # Apply a stage change to a single stat on target. Returns the actual number of
-# stages changed (0 if the stat was already at the limit and nothing changed).
+# stages changed (0 if the stat was already at the limit, or the change was
+# blocked by an ability, and nothing changed).
 #
 # Source: src/battle_stat_change.c :: IncreaseStat / DecreaseStat / StatChanged
 #   statStages[stat] += stage; then clamp [MIN_STAT_STAGE=0, MAX_STAT_STAGE=12].
 #   In our -6..+6 system: clamp to [-6, +6].
 #   At-limit behaviour: if already at max/min, returns 0 (caller should emit fail).
+#
+# M17b: this single central function is where ALL of this project's stat-stage
+# moves/abilities/items already converge, so the three M17b mechanism shapes hook
+# in here directly rather than touching every call site:
+#   1. AdjustStatStage (battle_stat_change.c L797-815) — Simple/Contrary transform
+#      the raw `amount` BEFORE anything else (matches source's call order: this runs
+#      first, THEN the result's sign determines whether a decrease-block check
+#      applies at all — so a Contrary-flipped "decrease" that becomes an increase is
+#      correctly never blocked by Clear Body etc.).
+#   2. CanAbilityPreventStatLoss / AbilityPreventsSpecificStatDrop / IsFlowerVeilBlocked
+#      (battle_stat_change.c L823-634, called via TrySingleStatChange → CanDecreaseStat,
+#      L294-321) — only evaluated when the (possibly Simple/Contrary-adjusted) amount
+#      is negative.
+#   3. BS_TryDefiantRattled / ShouldDefiantCompetitiveActivate (battle_script_commands.c
+#      L13885, battle_util.c L1149) — Defiant/Competitive's follow-up +2 raise when a
+#      decrease actually lands. NOT folded into this function (would need a Dictionary
+#      return touching every one of this function's 30+ call sites for a follow-up that
+#      only matters at the two places an OPPONENT actually lowers another Pokémon's
+#      stat in this project: direct stat-lowering moves like Growl, and Intimidate).
+#      Wired explicitly at those two call sites instead — see
+#      AbilityManager.defiant_competitive_stat() and its callers in battle_manager.gd's
+#      generic move-stat-change handler and AbilityManager.try_switch_in's Intimidate
+#      branch. Known simplification: indirect opponent-caused decreases (e.g. Cotton
+#      Down lowering the ATTACKER's Speed) don't check Defiant/Competitive on that
+#      attacker — flagged, not silently assumed correct.
+#
+# ally: target's doubles partner (for Flower Veil's ally-wide protection) — null in
+#   singles or when unresolved by the caller.
 static func apply_stat_change(
 		target: BattlePokemon,
 		stat_idx: int,
-		amount: int) -> int:
+		amount: int,
+		ally: BattlePokemon = null) -> int:
+	var adjusted: int = AbilityManager.adjust_stat_stage_amount(target, amount)
+
+	if adjusted < 0 and AbilityManager.blocks_stat_decrease(target, stat_idx, ally):
+		return 0
+
 	var old_stage: int = target.stat_stages[stat_idx]
-	if amount > 0 and old_stage >= 6:
+	if adjusted > 0 and old_stage >= 6:
 		return 0   # already at +6 — nothing changed
-	if amount < 0 and old_stage <= -6:
+	if adjusted < 0 and old_stage <= -6:
 		return 0   # already at -6 — nothing changed
-	var new_stage: int = clampi(old_stage + amount, -6, 6)
+	var new_stage: int = clampi(old_stage + adjusted, -6, 6)
 	var actual: int = new_stage - old_stage
 	target.stat_stages[stat_idx] = new_stage
 	return actual

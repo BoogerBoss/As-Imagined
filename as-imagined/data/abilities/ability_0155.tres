@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 155
 ability_name = "Rattled"
-description = ""
-ai_rating = 0
+description = "Bug, Dark, or Ghost hits, or being intimidated, boost its Speed."
+ai_rating = 5

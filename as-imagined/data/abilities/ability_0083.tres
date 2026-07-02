@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 83
 ability_name = "Anger Point"
-description = ""
-ai_rating = 0
+description = "Maximizes Attack after being hit by a critical hit."
+ai_rating = 4

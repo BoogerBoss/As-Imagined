@@ -3347,3 +3347,411 @@ and the `[M16 Review]` Area 1 finding).
 - No other code paths touched — each of the three fixes is independently scoped, as
   requested.
 - 2026-07-02.
+
+## [M17a] Tier A move effects — damage-pipeline modifiers, no new infrastructure
+
+Scoping source: `docs/m17_recon.md` (the original recon pass, its Addendum Sections 7-12,
+and the Signature-Ability Sweep Section 13). That report — not this entry — is where the
+full ability roster, exclusion reasoning, and tier sequencing were derived; this entry
+only records what M17a actually implemented and cites source per ability. Do not
+re-derive the roster/exclusion reasoning here — read the recon doc.
+
+### Step 0 — finalized ability list
+
+Section 11's original M17a proposal named Shadow Shield/Prism Armor/Neuroforce/Full Metal
+Body/Transistor/Dragon's Maw as "free" duplicate-code-path additions. Section 13 (written
+after Section 11) found all six are legendary/mythical-exclusive in the actual
+`pokeemerald_expansion` species data (Lunala, Necrozma ×2, Solgaleo, Regieleki, Regidrago)
+and recommended excluding them — Rob accepted that recommendation, so this milestone
+re-derived the list from scratch against the final exclusion set rather than trusting
+Section 11's text. Final list, 32 abilities, canonical IDs re-verified against
+`include/constants/abilities.h` directly (not trusted from the recon's tables):
+
+Overgrow(65), Blaze(66), Torrent(67), Swarm(68), Marvel Scale(63), Compound Eyes(14),
+Battle Armor(4), Shell Armor(75), Multiscale(136), Filter(111), Solid Rock(116), Tinted
+Lens(110), Adaptability(91), Rock Head(69), Sniper(97), Toxic Boost(137), Sand Force(159),
+No Guard(99), Guts(62), Hustle(55), Heatproof(85), Iron Barbs(160), Fur Coat(169), Tough
+Claws(181), Steelworker(200), Steely Spirit(252), Battery(217), Power Spot(249), Rocky
+Payload(276), Ice Scales(246), Defeatist(129), Flare Boost(138).
+
+### Source-function reality check
+
+The recon's shallow classification pass assumed most of these lived in the single
+attacker-stat-modifier function (`GetAttackStatModifier`) the 12 M8 abilities already use.
+Re-reading source for every ability before writing code found this project actually needs
+**four** distinct hook points, not one:
+
+1. **`GetAttackStatModifier`** (existing `AbilityManager.attack_modifier_uq412`,
+   pre-formula ATK/SpA stat modifier): Overgrow/Blaze/Torrent/Swarm (L6821-6836, matching
+   type + hp≤maxHP/3 → ×1.5, either category), Guts (L6868-6870, statused + physical →
+   ×1.5), Hustle (L6860-6862, physical → ×1.5), Defeatist (L6812-6813, hp≤maxHP/2 → ×0.5),
+   Rocky Payload (L6891-6893, Rock-type → ×1.5, unconditional).
+2. **`GetDefenseStatModifier`** (usesDefStat-gated = physical-only, L7089-7104) and
+   **`GetDefenderAbilitiesModifier`** (post-type-effectiveness, L7407-7444) and the
+   base-power function's "target's abilities" block (L6607-6611) — three genuinely
+   different source functions this project folds into ONE extended
+   `defense_damage_modifier_uq412(defender, move, effectiveness)` (new `effectiveness`
+   parameter added), matching the simplification precedent M8 already established for
+   Thick Fat (a pre-formula stat modifier in source, applied here as a post-type-
+   effectiveness final-damage multiplier): Marvel Scale (statused+physical → stat ×1.5,
+   translated to the RECIPROCAL damage multiplier ≈0.667/2731, not 1.5/6144 — a bug
+   caught by the test suite, see Bugs below), Fur Coat (physical → stat ×2.0 → damage
+   ×0.5), Multiscale (max HP → ×0.5), Filter/Solid Rock (effectiveness≥2.0 → ×0.75),
+   Ice Scales (special → ×0.5), Heatproof (Fire-type → ×0.5).
+3. **`GetAttackerAbilitiesModifier`** (post-type-effectiveness, attacker-side,
+   L7378-7397): new `AbilityManager.attacker_post_effectiveness_modifier_uq412` —
+   Sniper (crit → ×1.5), Tinted Lens (effectiveness≤0.5 → ×2.0). (Neuroforce, the third
+   case in this same source switch, is excluded per Section 13.)
+4. **`CalcMoveBasePowerAfterModifiers`** (base-power modifier, same pipeline stage as
+   M14b's Helping Hand, L6375-6656): new `AbilityManager.move_power_modifier_uq412` —
+   Toxic Boost (L6469-6471, poisoned+physical → ×1.5), Flare Boost (L6465-6467,
+   burned+special → ×1.5), Sand Force (L6486-6490, {Steel,Rock,Ground}+sandstorm →
+   ×1.3), Tough Claws (L6510-6512, contact → ×1.3), Steelworker (L6526-6528, Steel-type
+   → ×1.5), Steely Spirit self (L6558-6560, Steel-type → ×1.5) AND ally (L6595-6597,
+   same condition, checked independently — see doubles infra below), Battery
+   (L6588-6591, ally + special move → ×1.3, ally-only), Power Spot (L6592-6593, ally,
+   unconditional → ×1.3, ally-only).
+
+Plus four hooks outside the damage-calc pipeline entirely: Battle Armor/Shell Armor (new
+`AbilityManager.blocks_critical_hit`, forces `is_crit = false` even against a forced crit
+— `CalcCritChanceStage` L7848-7859), Adaptability (direct edit to the STAB multiplier in
+`DamageCalculator.calculate`, ×2.0 instead of ×1.5 — `GetSameTypeAttackBonusModifier`
+L7244/L7247), Rock Head (new `AbilityManager.blocks_recoil`, gates the existing recoil
+block in `BattleManager` — `battle_move_resolution.c` L3373-3396, does NOT affect
+Struggle recoil or Life Orb recoil), No Guard (new
+`AbilityManager.bypasses_accuracy_check`, early-return in `StatusManager.check_accuracy`
+before even the semi-invulnerable gate — battle_util.c L10182-10193), Compound
+Eyes/Hustle (new `AbilityManager.accuracy_modifier_percent`, folded into
+`check_accuracy`'s existing integer-percentage math — `GetTotalAccuracy` L10283-10295),
+and Guts' burn-halving exemption (added to the existing burn check in
+`DamageCalculator.calculate` — `GetBurnOrFrostBiteModifier` L7285).
+
+### New doubles infrastructure: `BattleManager._get_ally`
+
+Battery/Power Spot/Steely Spirit's ally-aura boost needed to know the attacker's doubles
+partner, which M14a-c never exposed as a helper (only `_get_first_opponent` existed).
+Added `_get_ally(mon)` mirroring `_get_first_opponent`'s exact shape (reads the existing
+`_combatants`/`_active_per_side` layout M14a already built) — this is NOT new
+infrastructure in the Section 10/11 sense (no new state, no new subsystem), just a
+missing convenience accessor over data that was already fully built. `DamageCalculator
+.calculate()` gained a new `ally: BattlePokemon = null` trailing parameter (defaults to
+null in the one existing singles-context call path that doesn't pass it — none do,
+since the sole call site in `_do_damaging_hit` now always resolves and passes
+`_get_ally(attacker)`).
+
+### Bugs caught by the test suite before merging
+
+- **Marvel Scale direction bug**: initially returned 6144 (×1.5), which INCREASES damage
+  taken — backwards. Source raises the DEFENSE STAT by ×1.5 (a stat that's inversely
+  proportional to damage in the formula); since this project's simplification applies a
+  single post-hoc multiplier to final damage rather than the stat itself, the correct
+  value is the RECIPROCAL, 1/1.5 ≈ 0.667 (UQ4.12 = 2731) — same reciprocal relationship
+  Fur Coat already established (stat ×2.0 → damage ×0.5). Caught by
+  `m17a_test.gd` S3.02 asserting reduced (not increased) damage taken.
+- **GDScript lambda scalar-capture gotcha, recurring** (see `CLAUDE.md`'s gotchas list):
+  the first draft of the Rock Head recoil test captured a plain `bool`/`int` local
+  variable inside a `recoil_damage.connect(func(...): ...)` lambda and mutated it inside
+  the lambda — GDScript captures outer scalars BY VALUE, so the outer variable never
+  actually changed, silently producing a false pass on the positive-case assertion (Rock
+  Head "correctly" showed no recoil, but only because the mechanism could never register
+  ANY recoil, Rock Head or not) while the negative case (which needed the value to
+  become nonzero) failed honestly and exposed the bug. Fixed with the established
+  Array-wrapper pattern (`[false]`/`[0]`, mutate `[0]`).
+- **Test-only bug, Flare Boost's physical negative case**: initially compared a burned
+  Flare Boost holder's physical-move damage against a fully-plain (unburned, no ability)
+  baseline and expected equality — but burn's own physical-damage-halving (a separate,
+  pre-existing M3 mechanic, unrelated to Flare Boost) also applies to the burned
+  attacker, so the two were never going to be equal regardless of Flare Boost's
+  correctness. Fixed by comparing against a burned-but-ability-less baseline instead,
+  isolating just Flare Boost's contribution.
+
+### Testing / Regression
+
+- New `m17a_test.gd`/`.tscn`: 83/83 assertions across 11 sections (ability data
+  spot-checks; attack-stat-modifier additions; defense-modifier additions; crit
+  interactions; Tinted Lens; Adaptability; Rock Head; No Guard; Compound Eyes/Hustle
+  accuracy; move-power-modifier additions including the doubles-ally cases; Guts'
+  burn exemption).
+- `.tres` data: all 32 abilities added to `scripts/gen_abilities.py` (matching its
+  existing description/ai_rating convention) and regenerated via the script — the
+  previously name-only placeholder files for these 32 IDs now carry real descriptions,
+  same as the original 12 M8 abilities.
+- Full regression: all 22 prior suites unchanged and still passing. Total assertions
+  across all 23 numbered suites: 1123 prior + 83 = **1206**.
+- 2026-07-02.
+
+## [M17b] Tier B move effects — stat-stage-system interactions, no new infrastructure
+
+Scoping source: `docs/m17_recon.md` (Section 11's Bucket B proposal, cross-checked
+against Section 13's Signature-Ability Sweep exclusions). As with `[M17a]`, this entry
+records what M17b actually implemented and cites source per ability — it does not
+re-derive the roster/exclusion reasoning, which lives in the recon doc.
+
+### Step 0 — finalized ability list
+
+Section 11's Bucket B proposal was re-derived against the final exclusion set rather
+than trusted as-is. Two corrections were made to the task's own transcription of that
+exclusion set during this cross-check:
+
+- **Beast Boost excluded** — the task's given exclusion list omitted it (transcribed
+  only 22 of Section 13's actual 23 findings). Beast Boost shares its source dispatch
+  case with Moxie/Chilling Neigh/Grim Neigh/As One ×2 (`battle_util.c` L4467-4472) but
+  is Ultra-Beast-exclusive (all 11 holders are UBs, zero non-UB holders) — excluded on
+  the same legendary/mythical/UB-exclusive grounds as the rest of Section 13.
+- **Moxie included** — the recon's shallow pass had flagged Moxie as "not currently
+  hooked anywhere," but this project's `_last_attacker` dict (built for M14b's Destiny
+  Bond) plus the `pokemon_fainted` signal already provide everything Moxie needs (killer
+  lookup available before the faint signal fires in `_phase_faint_check`). Reusing
+  existing infrastructure, not adding new — included despite the task description's own
+  "expected shape" list omitting it.
+- Chilling Neigh, Grim Neigh, As One (Ice Rider), As One (Shadow Rider) — removed per
+  Section 13 (Glastrier/Spectrier/Calyrex-exclusive); no "free rider" carryover, per the
+  task's own instruction.
+- Intrepid Sword / Dauntless Shield — confirmed excluded (Zacian/Zamazenta-exclusive per
+  Section 13), consistent with the task's expectation.
+- **Guard Dog and Opportunist deferred** (not in this tier, matching the task's own
+  expected-shape omission — verified via source why, not just left out silently):
+  - Guard Dog is genuinely two-part: the Intimidate-reversal half is cheap, but the
+    other half (forced-switch/Red-Card immunity) needs a new ability-check gate in the
+    Roar/Whirlwind code path that doesn't exist yet (shared gap with the also-unimplemented
+    Suction Cups). Implementing only the cheap half would misrepresent the ability.
+  - Opportunist's "mirror the opponent's stat raise" mechanism is embedded directly in
+    source's central stat-change-application function (`battle_stat_change.c`
+    L431-447). A faithful port would require threading an opposing-side check through
+    every one of `StatusManager.apply_stat_change`'s ~33 call sites — too broad for a
+    "no new infrastructure" tier.
+
+Final list, 32 abilities, canonical IDs re-verified against
+`include/constants/abilities.h` directly:
+
+Steadfast(80), Anger Point(83), Simple(86), Download(88), Clear Body(29), White
+Smoke(73), Keen Eye(51), Hyper Cutter(52), Moxie(153), Unaware(109), Contrary(126),
+Defiant(128), Weak Armor(133), Moody(141), Big Pecks(145), Justified(154), Rattled(155),
+Flower Veil(166), Sweet Veil(175), Gooey(183), Stamina(192), Water Compaction(195),
+Berserk(201), Tangling Hair(221), Competitive(172), Cotton Down(238), Steam Engine(243),
+Pastel Veil(257), Thermal Exchange(270), Anger Shell(271), Purifying Salt(272),
+Supersweet Syrup(306).
+
+### The three stat-interaction shapes
+
+Per the task brief and confirmed against source, this bucket contains three genuinely
+different mechanisms, not one:
+
+**(1) Magnitude modifiers** — transform the raw stage delta before it's applied, inside
+`StatusManager.apply_stat_change` (the single central function every stat-raising/
+lowering move/ability/item in this codebase already goes through).
+Source: `battle_stat_change.c :: AdjustStatStage` (L797-815).
+- **Simple** (86): stage ×2.
+- **Contrary** (126): stage ×-1.
+New: `AbilityManager.adjust_stat_stage_amount(target, amount)`.
+
+**(2) Change-blocking gates** — checked BEFORE a (already magnitude-adjusted) NEGATIVE
+change is applied, also inside `apply_stat_change`.
+Source: `battle_stat_change.c :: CanAbilityPreventStatLoss` (L823-831, Clear
+Body/White Smoke/Full Metal Body — the third excluded, Solgaleo-exclusive) and
+`AbilityPreventsSpecificStatDrop` (L836-850, Hyper Cutter/Big Pecks/Keen Eye/Minds
+Eye/Illuminate — the last two out of scope) and `IsFlowerVeilBlocked` /
+`StatChange_IsFlowerVeilProtected` (L601-634, Flower Veil).
+- **Clear Body** (29) / **White Smoke** (73): block ALL stat reductions on the holder.
+- **Hyper Cutter** (52): blocks Attack reduction only.
+- **Big Pecks** (145): blocks Defense reduction only.
+- **Keen Eye** (51): blocks Accuracy reduction only (also reused for Unaware's evasion
+  touch-point below).
+- **Flower Veil** (166): blocks ALL reductions on a Grass-type battler if the battler
+  itself OR its doubles ally holds Flower Veil.
+New: `AbilityManager.blocks_stat_decrease(target, stat_idx, ally)`.
+
+**(3) Reactive triggers** — fire a NEW stat change in response to a hit, switch-in, or
+end-of-turn tick, hooking into EXISTING M8/M11/M14b/M16d infrastructure rather than the
+stat-change pipeline itself. Each is detailed per-ability below.
+
+Additionally, **Unaware** (109) doesn't fit any of the three shapes above — it's a
+stage-*ignoring* mechanic touching 4 separate call sites (2 in `DamageCalculator
+.calculate`, 2 in `StatusManager.check_accuracy`), matching source's own split across
+`battle_util.c` L6785 (attacker ATK/SpA stage), L7072 (defender DEF/SpDef stage), L10251
+(evasion stage, shared with Keen Eye), L10256 (attacker's own accuracy stage). New:
+`ignores_defender_def_stage` / `ignores_attacker_atk_stage` (damage calc) and
+`ignores_defender_evasion_stage` / `ignores_attacker_accuracy_stage` (accuracy calc).
+
+### Reactive triggers, per ability
+
+- **Defiant** (128) / **Competitive** (172) — `battle_script_commands.c ::
+  BS_TryDefiantRattled` (L13885-13905) + `battle_util.c ::
+  ShouldDefiantCompetitiveActivate` (L1149-1168): a landed Attack/other-stat decrease
+  from an opponent triggers Atk+2 (Defiant) or SpA+2 (Competitive). New:
+  `AbilityManager.defiant_competitive_stat(target)`. **Known simplification**: rather
+  than changing `apply_stat_change`'s return type to a Dictionary (which would touch
+  ~33 call sites), this is wired explicitly at the two places it matters in this
+  project — the generic move-stat-change handler in `battle_manager.gd`, and
+  Intimidate's branch inside `try_switch_in`. Other indirect opponent-caused decreases
+  (e.g. Cotton Down lowering an attacker's Speed) don't check Defiant/Competitive on
+  that attacker; documented as a deliberate scope limit, not an oversight.
+- **Rattled** (155) — genuinely dual-trigger, confirmed from source rather than assumed:
+  (a) `battle_util.c` L3790-3801, the "being Intimidated" half — wired inside
+  `try_switch_in`, gated specifically on Intimidate actually lowering Attack (not a
+  generic "any Attack decrease" reactor, since Growl also lowers Attack in this project
+  and must not trigger Rattled); (b) `battle_util.c` L3790-3801 (hit half) — Dark/Bug/
+  Ghost-type hit landing on the holder → Speed+1, in the new non-contact-gated
+  `try_hit_reactive_effects`.
+- **Weak Armor** (133) — `battle_util.c` L3826-3841: physical hit landing → Def-1,
+  Spe+2 (`B_WEAK_ARMOR_SPEED >= GEN_7`, this project's config).
+- **Justified** (154) — `battle_util.c` L3772-3783: Dark-type hit landing → Atk+1.
+- **Anger Point** (83) — `battle_util.c` L3911-3920: critical hit received → Atk set to
+  absolute max. Source requests a raw +12 delta in its 0-12 internal scale; this
+  project's normalized -6..+6 `apply_stat_change` correctly clamps the result, so from a
+  neutral starting stage the reported `actual` delta is **+6, not +12** — a test
+  expectation bug (not an implementation bug) caught while writing `m17b_test.gd`
+  (see Bugs below).
+- **Gooey** (183) / **Tangling Hair** (221) — `battle_util.c` L3923-3958 (shared case
+  block): unconditional attacker Speed-1 on CONTACT (confirmed via source's inline
+  `CanBattlerAvoidContactEffects` check — these genuinely require contact, unlike the
+  rest of this reactive group). Added to the EXISTING contact-gated
+  `try_contact_effects` (M8's function), not the new non-contact-gated one.
+- **Stamina** (192) — `battle_util.c` L3814-3825: any damaging hit landing → Def+1.
+- **Water Compaction** (195) — `battle_util.c` L3802-3813: Water-type hit landing →
+  Def+2.
+- **Berserk** (201) — `battle_util.c` L3732-3742: HP crossing from >50% to <=50% on
+  THIS hit specifically (not merely "currently <=50%") → SpA+1.
+- **Anger Shell** (271) — `battle_util.c` L3743-3766: same >50%→<=50% crossing check →
+  Def-1, SpDef-1, Atk+1, SpA+1, Spe+1 (five independent stat changes, each
+  independently gated on not already at its limit).
+- **Steam Engine** (243) — `battle_util.c` L4169-4179: Fire/Water-type hit landing →
+  Speed set to absolute max via a flat +6 raw delta (source: `SetStatChange(battler,
+  STAT_SPEED, 6)` — a flat addition, not a set-to-max instruction like Anger Point, but
+  numerically identical from any non-maxed starting stage since +6 always saturates the
+  -6..+6 range).
+- **Thermal Exchange** (270) — `battle_util.c` L4222-4231: Fire-type hit landing →
+  Atk+1. Thermal Exchange's OTHER half (curing the holder's own burn, mirroring Water
+  Veil/Water Bubble) is NOT wired — no in-battle path in this project can inflict burn
+  on a Thermal-Exchange holder in a way distinguishable from simply not being burned;
+  flagged as a known simplification, not silently dropped.
+- **Cotton Down** (238) — `battle_util.c` L4155-4165: any damaging hit landing → Speed-1
+  on ALL OTHER live battlers (field-wide), not just the attacker. The new
+  `try_hit_reactive_effects` can only see the attacker/defender pair, so it reports a
+  bool flag; `BattleManager` applies Speed-1 to the attacker AND the attacker's doubles
+  ally (via `_get_ally`), matching source's "every battler except the holder" loop.
+- All eleven of Justified/Rattled(hit-half)/Water Compaction/Stamina/Weak
+  Armor/Anger Point/Berserk/Anger Shell/Steam Engine/Thermal Exchange/Cotton Down live in
+  the new **`AbilityManager.try_hit_reactive_effects`**, deliberately separate from the
+  existing contact-gated `try_contact_effects`. This split corrects a real
+  over-generalization in the M8-era comment on `try_contact_effects`, which claimed
+  contact = `makes_contact` as a blanket rule — true only for M8's specific ability
+  subset (Rough Skin/Static/Flame Body), not for the whole `ABILITYEFFECT_MOVE_END`
+  dispatch. Source (`battle_move_resolution.c` L2696) calls
+  `AbilityBattleEffects(ABILITYEFFECT_MOVE_END, ...)` after EVERY damaging hit
+  regardless of contact; individual cases self-gate on contact only where the real
+  ability needs it (Gooey/Tangling Hair do; the eleven above do not).
+- **Steadfast** (80) — `battle_move_resolution.c :: CancelerFlinch` (L303-307):
+  flinching → the flinched Pokémon's own Speed+1. Wired inside the flinch branch of
+  `battle_manager.gd`'s pre-move-check handling (`check["flinched"]`), not inside
+  `AbilityManager` at all, since it's a reaction to the flinch-cancel path M7 already
+  built rather than a hit/switch-in/end-of-turn tick.
+- **Download** (88) — `battle_util.c` L3151-3163 + `GetDownloadStat` (L10957-10979):
+  switch-in, sums BOTH live opposing battlers' stage-adjusted Defense vs Sp. Defense
+  (not a per-opponent loop like Intimidate/Rattled/Pastel Veil/Supersweet Syrup) and
+  raises the holder's Attack or Sp. Atk by 1 (ties go to Sp. Atk). New standalone
+  `AbilityManager.download_stat(pokemon, opponents)` plus a `_staged_stat` helper
+  mirroring `DamageCalculator.STAGE_RATIOS`, since this shape doesn't fit the
+  `try_switch_in` per-opponent loop.
+- **Moody** (141) — `battle_util.c` L3613-3635 (end-of-turn, `AbilityBattleEffects
+  (ABILITYEFFECT_ENDTURN, ...)`): raises one random not-already-maxed stat (from all 7,
+  including Accuracy/Evasion per `B_MOODY_ACC_EVASION >= GEN_8`, this project's
+  GEN_LATEST config) by +2, then lowers a DIFFERENT random not-already-minned stat by -1
+  (excluding whichever stat was just raised). New `AbilityManager._apply_moody`, called
+  from an extended `try_end_of_turn` (now returns a Dictionary carrying both Speed
+  Boost's and Moody's changes — see Bugs below for a real implementation bug caught
+  here).
+- **Moxie** (153) — `battle_util.c` L4467-4472 (shared dispatch case with the
+  UB/legendary-exclusive abilities excluded above): Attack+1 for the Pokémon that just
+  KO'd the opponent. New `AbilityManager.moxie_boost(killer)`, wired in
+  `_phase_faint_check` right after `pokemon_fainted.emit()`, reusing M14b's existing
+  `_last_attacker` dict (built for Destiny Bond) rather than building any new
+  kill-attribution tracking.
+- **Sweet Veil** (175) — `battle_util.c` L5322-5327: immune to Sleep specifically, self
+  OR doubles ally. First-ever ABILITY-based status immunity in
+  `StatusManager.try_apply_status` (every prior check there was purely type-based).
+- **Pastel Veil** (257) — two-part, both wired: (a) `battle_util.c` L5254-5259, immune
+  to Poison/Toxic, self OR doubles ally, in `try_apply_status`; (b) `battle_util.c`
+  L3073-3081, cures the holder's OWN pre-existing poison/toxic on switch-in, in
+  `try_switch_in`.
+- **Purifying Salt** (272) — two-part, both wired (per the task's own flag that this
+  ability is two-part): (a) `battle_util.c` L5359-5361 (same shape as Comatose): immune
+  to ALL non-volatile statuses, self only (no ally-wide check in source), in
+  `try_apply_status`; (b) `battle_util.c :: CalcMoveBasePowerAfterModifiers`, "target's
+  abilities" block (L6941-6947): Ghost-type damage taken ×0.5. The damage half is the
+  same shape as Heatproof (a target-ability post-type-effectiveness multiplier, just
+  Ghost- instead of Fire-typed), so it's kept in the existing M17a-era
+  `defense_damage_modifier_uq412` rather than split into a new function — this is a
+  stat/defense-adjacent mechanic bundled into a stat-stage-tier milestone because the
+  status-immunity half belongs here; noted rather than silently placed.
+- **Supersweet Syrup** (306) — `battle_util.c` L3324-3336: switch-in, lowers ONE
+  opponent's Evasion by 1, but **ONE-TIME-ONLY per Pokémon for the whole battle** (per
+  source's per-party-member `supersweetSyrup` flag), not per switch-in. New persistent
+  `BattlePokemon.supersweet_syrup_used: bool` field, deliberately NOT cleared by
+  `_clear_volatiles`/`_switch_out_clear` (those only clear per-switch state; this is
+  battle-lifetime state). New `AbilityManager.try_switch_in_evasion`.
+
+### Doubles-ally awareness
+
+Flower Veil / Sweet Veil / Pastel Veil all needed ally-awareness for their ally-wide
+protection. Reused the exact `ally: BattlePokemon = null` trailing-parameter pattern
+M17a already established for Battery/Power Spot/Steely Spirit (`BattleManager
+._get_ally(mon)`), threaded into `StatusManager.apply_stat_change` and
+`StatusManager.try_apply_status` — no new infrastructure, same accessor M17a built.
+
+### Bugs caught by the test suite before merging
+
+- **Anger Point test-expectation bug**: test initially asserted `anger_point_change ==
+  12`. Root cause: source's raw +12 delta is in its own 0-12 internal stage scale; this
+  project's `apply_stat_change` correctly clamps to -6..+6, so the real reported delta
+  from a neutral stage is +6. Fixed the test assertion, not the implementation.
+- **Moody force-value validation bug — a REAL implementation bug**: the test forced
+  `force_moody_raise` and `force_moody_lower` to the SAME stat, expecting the lowered
+  stat to fall back to something else (since Moody can never lower the stat it just
+  raised). The first-draft `_apply_moody` used forced test values directly without
+  validating them against the `valid_to_raise`/`valid_to_lower` pools, meaning a forced
+  value could bypass game-rule validity entirely (a bug that would also affect real,
+  unforced random rolls if a stat were simultaneously eligible for both, which it never
+  legitimately is — the test caught the validation gap itself, not just a test-seam
+  quirk). Fixed by only honoring the forced value when it's actually `in` the
+  corresponding valid pool, otherwise falling back to random selection from that pool.
+- **Purifying Salt test bug**: the first-draft test used a Normal-type defender to
+  measure Ghost-type damage halving, but Normal-types are outright TYPE-IMMUNE to
+  Ghost-type moves (a pre-existing, unrelated type-chart rule), so the test measured 0
+  damage regardless of Purifying Salt's correctness. Fixed by switching the defender to
+  an ordinary non-immune type (Water) so the ×0.5 modifier could actually be observed.
+
+### Breaking changes to existing signatures
+
+`AbilityManager.try_switch_in` and `AbilityManager.try_end_of_turn` both changed return
+type from `int` to `Dictionary`, since each needed to report multiple simultaneous
+outputs that didn't exist before this tier (Intimidate + Rattled + Pastel Veil +
+Defiant/Competitive for `try_switch_in`; Speed Boost + Moody-raise + Moody-lower for
+`try_end_of_turn`). This required updating every call site, including the pre-existing
+M8-era `ability_test.gd`, which had two statically-typed `var x: int =
+AbilityManager.try_end_of_turn(...)` assignments (Speed Boost's own cap-check tests)
+that no longer type-checked after the signature change — a real regression caught by
+the mandatory full-suite sweep (a Godot GDScript Parse Error, not a silent behavior
+change), fixed by keying into the new Dictionary's `"speed_boost_change"` entry at both
+call sites. `ability_test.gd` has no direct call to `try_switch_in`, so it needed no
+equivalent fix for that signature change.
+
+### Testing / Regression
+
+- New `m17b_test.gd`/`.tscn`: 109/109 assertions across 14 sections (ability data
+  spot-checks; Simple/Contrary; Unaware's 4 touch-points; change-blocking abilities;
+  Defiant/Competitive incl. full-battle Growl integration; non-contact hit-reactive
+  abilities incl. full-battle Cotton Down integration; contact-reactive Gooey/Tangling
+  Hair incl. composition with Clear Body on the attacker; Steadfast full-battle flinch
+  integration; Download; Moody; Moxie incl. full-battle KO integration; status
+  immunities incl. Ghost-damage halving; Supersweet Syrup's one-time gate; Rattled's
+  dual trigger). Every ability has a negative case confirming it does not
+  trigger/apply when its condition isn't met, per the mandatory convention this tier
+  carried forward from M17a's Rock Head lambda-capture lesson.
+- `.tres` data: all 32 abilities added to `scripts/gen_abilities.py` (matching its
+  existing description/ai_rating convention) and regenerated via the script.
+- Full regression: all 22 prior suites (everything through `m17a_test`) plus the fixed
+  `ability_test` all confirmed passing — 23 numbered suites, **1315 total assertions**,
+  0 failures (verified manually in-terminal per this project's existing convention for
+  Godot test execution).
+- 2026-07-02.

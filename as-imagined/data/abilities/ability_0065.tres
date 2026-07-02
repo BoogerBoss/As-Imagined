@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 65
 ability_name = "Overgrow"
-description = ""
-ai_rating = 0
+description = "Powers up Grass-type moves when the Pokémon's HP is low."
+ai_rating = 6

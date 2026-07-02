@@ -179,6 +179,12 @@ var stat_stages: Array[int] = []
 # so a Conversion-induced type change never survives its user leaving the field.
 var original_types: Array[int] = []
 
+# M17b: Supersweet Syrup fires ONCE per Pokémon for the whole battle (source's
+# GetBattlerPartyState(battler)->supersweetSyrup flag), not once per switch-in — so
+# this must NOT be cleared by _clear_volatiles/_switch_out_clear, unlike ordinary
+# switch-scoped volatiles.
+var supersweet_syrup_used: bool = false
+
 var fainted: bool = false
 
 

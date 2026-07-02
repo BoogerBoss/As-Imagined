@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 109
 ability_name = "Unaware"
-description = ""
-ai_rating = 0
+description = "Ignores the target's stat changes."
+ai_rating = 7

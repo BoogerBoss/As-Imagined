@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 181
 ability_name = "Tough Claws"
-description = ""
-ai_rating = 0
+description = "Powers up moves that make direct contact."
+ai_rating = 7

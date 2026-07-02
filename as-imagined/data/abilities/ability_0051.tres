@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 51
 ability_name = "Keen Eye"
-description = ""
-ai_rating = 0
+description = "Prevents other Pokémon from lowering its accuracy; ignores the target's evasion boosts."
+ai_rating = 5

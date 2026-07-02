@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 63
 ability_name = "Marvel Scale"
-description = ""
-ai_rating = 0
+description = "Boosts the Defense stat if the Pokémon has a status condition."
+ai_rating = 6

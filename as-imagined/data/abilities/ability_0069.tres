@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 69
 ability_name = "Rock Head"
-description = ""
-ai_rating = 0
+description = "Protects the Pokémon from recoil damage."
+ai_rating = 6

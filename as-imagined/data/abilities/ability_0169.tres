@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 169
 ability_name = "Fur Coat"
-description = ""
-ai_rating = 0
+description = "Halves the damage from physical moves."
+ai_rating = 8

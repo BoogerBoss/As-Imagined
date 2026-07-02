@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 160
 ability_name = "Iron Barbs"
-description = ""
-ai_rating = 0
+description = "Inflicts damage on the attacker for making direct contact."
+ai_rating = 6

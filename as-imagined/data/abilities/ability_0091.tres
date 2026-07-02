@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 91
 ability_name = "Adaptability"
-description = ""
-ai_rating = 0
+description = "Powers up moves of the same type as the Pokémon."
+ai_rating = 8

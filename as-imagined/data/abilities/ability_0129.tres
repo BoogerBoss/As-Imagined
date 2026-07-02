@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 129
 ability_name = "Defeatist"
-description = ""
-ai_rating = 0
+description = "Lowers stats when HP becomes half or less."
+ai_rating = 3

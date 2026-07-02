@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 85
 ability_name = "Heatproof"
-description = ""
-ai_rating = 0
+description = "Halves the damage from Fire-type moves that hit the Pokémon."
+ai_rating = 6

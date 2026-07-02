@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 159
 ability_name = "Sand Force"
-description = ""
-ai_rating = 0
+description = "Boosts the power of Rock-, Ground-, and Steel-type moves in a sandstorm."
+ai_rating = 5

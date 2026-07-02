@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 138
 ability_name = "Flare Boost"
-description = ""
-ai_rating = 0
+description = "Powers up special attacks when the Pokémon is burned."
+ai_rating = 6

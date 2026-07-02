@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 75
 ability_name = "Shell Armor"
-description = ""
-ai_rating = 0
+description = "A hard shell protects the Pokémon from critical hits."
+ai_rating = 4

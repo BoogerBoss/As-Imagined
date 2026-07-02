@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 111
 ability_name = "Filter"
-description = ""
-ai_rating = 0
+description = "Reduces the power of supereffective attacks taken."
+ai_rating = 7

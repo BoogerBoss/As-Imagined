@@ -13,7 +13,9 @@
       "Bash(grep -v \"^Ability$\")",
       "Bash(grep -n \"Bad Dreams\\\\|Damp\\\\|Leaf Guard\\\\|Minus\\\\|Pickpocket\\\\|Plus\\\\|Skill Link\\\\|Super Luck\\\\|Tangled Feet\" /tmp/roster_names.txt)",
       "Read(//tmp/**)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(grep -n \"^ABILITIES = \\\\[\\\\|^\\\\]$\" scripts/gen_abilities.py)",
+      "Bash(timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17b_test.tscn)"
     ]
   }
 }

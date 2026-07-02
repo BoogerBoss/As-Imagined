@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 249
 ability_name = "Power Spot"
-description = ""
-ai_rating = 0
+description = "Just being next to the Pokémon powers up moves."
+ai_rating = 4

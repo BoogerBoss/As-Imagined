@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 153
 ability_name = "Moxie"
-description = ""
-ai_rating = 0
+description = "Boosts Attack after knocking out any Pokémon."
+ai_rating = 8

@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 217
 ability_name = "Battery"
-description = ""
-ai_rating = 0
+description = "Powers up its ally's special moves."
+ai_rating = 4

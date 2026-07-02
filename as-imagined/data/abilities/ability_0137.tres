@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 137
 ability_name = "Toxic Boost"
-description = ""
-ai_rating = 0
+description = "Powers up physical attacks when the Pokémon is poisoned."
+ai_rating = 6

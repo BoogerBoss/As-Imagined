@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 80
 ability_name = "Steadfast"
-description = ""
-ai_rating = 0
+description = "Raises Speed each time the Pokémon flinches."
+ai_rating = 4

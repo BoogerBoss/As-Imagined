@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 97
 ability_name = "Sniper"
-description = ""
-ai_rating = 0
+description = "Powers up moves if they become critical hits."
+ai_rating = 6

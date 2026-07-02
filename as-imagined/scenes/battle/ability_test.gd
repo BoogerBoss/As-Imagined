@@ -313,7 +313,9 @@ func _test_section_3b_speed_boost() -> void:
 	# Manually drive end-of-turn to check Speed stage increments.
 	# We call try_end_of_turn directly rather than routing through BattleManager.
 	_chk("S3B.01 Speed stage 0 before any turn", sb_mon.stat_stages[BattlePokemon.STAGE_SPEED] == 0)
-	var actual1: int = AbilityManager.try_end_of_turn(sb_mon)
+	# M17b: try_end_of_turn now returns a Dictionary (also carries Moody's changes);
+	# Speed Boost's own delta is under the "speed_boost_change" key.
+	var actual1: int = AbilityManager.try_end_of_turn(sb_mon)["speed_boost_change"]
 	_chk("S3B.02 Speed Boost returns +1 stage turn 1", actual1 == 1)
 	_chk("S3B.03 Speed stage = 1 after turn 1", sb_mon.stat_stages[BattlePokemon.STAGE_SPEED] == 1)
 
@@ -321,7 +323,7 @@ func _test_section_3b_speed_boost() -> void:
 	for _i in range(5):
 		AbilityManager.try_end_of_turn(sb_mon)
 	_chk("S3B.04 Speed stage = 6 after 6 turns", sb_mon.stat_stages[BattlePokemon.STAGE_SPEED] == 6)
-	var actual_at_cap: int = AbilityManager.try_end_of_turn(sb_mon)
+	var actual_at_cap: int = AbilityManager.try_end_of_turn(sb_mon)["speed_boost_change"]
 	_chk("S3B.05 Speed Boost returns 0 at +6 (capped)", actual_at_cap == 0)
 	_chk("S3B.06 Speed stage still = 6 after cap", sb_mon.stat_stages[BattlePokemon.STAGE_SPEED] == 6)
 

@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 257
 ability_name = "Pastel Veil"
-description = ""
-ai_rating = 0
+description = "Protects itself and ally Pokémon from being poisoned."
+ai_rating = 6

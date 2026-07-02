@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 73
 ability_name = "White Smoke"
-description = ""
-ai_rating = 0
+description = "Prevents other Pokémon from lowering its stats."
+ai_rating = 6

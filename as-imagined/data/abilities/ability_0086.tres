@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 86
 ability_name = "Simple"
-description = ""
-ai_rating = 0
+description = "Doubles the effects of stat changes."
+ai_rating = 8

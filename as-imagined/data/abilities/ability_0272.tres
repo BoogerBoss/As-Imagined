@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 272
 ability_name = "Purifying Salt"
-description = ""
-ai_rating = 0
+description = "Protects itself from status conditions and halves damage from Ghost-type moves."
+ai_rating = 8

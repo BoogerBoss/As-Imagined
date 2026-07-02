@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 145
 ability_name = "Big Pecks"
-description = ""
-ai_rating = 0
+description = "Prevents other Pokémon from lowering its Defense stat."
+ai_rating = 5

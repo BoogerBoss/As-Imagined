@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 243
 ability_name = "Steam Engine"
-description = ""
-ai_rating = 0
+description = "Maximizes Speed when hit by a Fire- or Water-type move."
+ai_rating = 6
