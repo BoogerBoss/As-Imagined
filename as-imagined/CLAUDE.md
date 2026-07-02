@@ -244,6 +244,8 @@ it exists purely to look up exact source logic.
 - M15 Task 3 (PP system): **COMPLETE** — 2026-07-01, 26/26 pp_test assertions; all M1–M14 still green
 - M15 Task 5 (two-turn moves): **COMPLETE** — 2026-07-01, 32/32 two_turn_test assertions; all M1–M15T3 still green
 - M16a (Tier A move effects — RESTORE_HP / FOCUS_ENERGY / GROWTH / OHKO): **COMPLETE** — 2026-07-01, 52/52 m16a_test assertions; all 637 prior assertions still green (689 total)
+- M16b (Tier B move effects — MINIMIZE / DEFENSE_CURL / Stomp minimizeDoubleDamage / ROLLOUT (Ice Ball) / MAGNITUDE): **COMPLETE** — 2026-07-02, 55/55 m16b_test assertions; all 857 prior assertions still green (912 total). Note: Stomp's canonical move ID is 23, not 31 (31 is Fury Attack) — corrected after checking `constants/moves.h`; see decisions.md.
+- M16c (Tier C move effects — REFLECT / LIGHT_SCREEN / AURORA_VEIL / Brick Break screen-break): **COMPLETE** — 2026-07-02, 60/60 m16c_test assertions; all 912 prior assertions still green (972 total). Introduces `BattleManager._side_conditions[side]`, the first per-side (not per-Pokémon, not per-battle) state — designed for reuse by Trick Room / entry hazards in M16d. Next: M16d.
 
 ## Development workflow
 
@@ -269,6 +271,8 @@ Run a verification scene headless (from project root):
 - `scenes/battle/ai_test.tscn` — M10+M13 Trainer AI: effectiveness scoring, KO preference, type immunity, status avoidance, two-turn penalty, BASIC/SMART tiers, switch decisions, faint replacement, full battle integration; M13 adds choice-lock, bad-lock switch, item-boost discrimination (40 tests)
 - `scenes/battle/doubles_test.tscn` — M14a Doubles foundation: BattleParty active_indices API, 4-combatant setup, turn order by speed, full-side faint required to end battle, targeted moves hit correct slot, faint replacement (slot-specific), voluntary switch in doubles (25 tests)
 - `scenes/battle/m16a_test.tscn` — M16a Tier A move effects: RESTORE_HP (Recover/Slack Off/Heal Order), FOCUS_ENERGY (crit stage +2), GROWTH (+1/+2 Atk+SpAtk, sun doubling), OHKO (Guillotine/Horn Drill/Fissure/Sheer Cold — level check, custom accuracy, type immunity, semi-inv bypass) (52 tests)
+- `scenes/battle/m16b_test.tscn` — M16b Tier B move effects: MINIMIZE (+2 evasion, minimized flag gated on success), DEFENSE_CURL (+1 defense, defense_curled set unconditionally), Stomp minimizeDoubleDamage (exact ×2 post-roll modifier), ROLLOUT/Ice Ball (5-hit power doubling 30→60→120→240→480, Defense Curl doubling, interruption/miss resets), MAGNITUDE (weighted power table, power_override plumbing) (55 tests)
+- `scenes/battle/m16c_test.tscn` — M16c Tier C move effects (screens): REFLECT/LIGHT_SCREEN (exact floor(dmg/2) per-category reduction, 5-turn duration, already-up no-refresh, doubles ⅔ reduction, switch persistence), AURORA_VEIL (hail gate, independent coexistence with Reflect/Light Screen, no double-stacking, reduces both categories), crit bypass, Brick Break (clears target's side pre-damage, own hit unaffected) (60 tests)
 
 **Note:** if you add a new file with `class_name`, run an import pass before the test scenes
 will see it:

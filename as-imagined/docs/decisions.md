@@ -2147,3 +2147,373 @@ trigger are listed with "→ skip". Computed with `_uq412_half_down(v, f) = (v×
 - All four OHKO moves: power=1 (placeholder), accuracy=30, pp=5 — confirmed from source.
 - Sheer Cold Ice-type immunity (`B_SHEER_COLD_IMMUNITY >= GEN_7`) deferred to M16b.
 - 2026-07-01.
+
+---
+
+## [M16b] Tier B Move Effects — MINIMIZE / DEFENSE_CURL / Stomp / ROLLOUT / MAGNITUDE
+
+### Canonical ID correction: Stomp is move 23, not 31
+- The task spec named move ID 31 for Stomp. Checked against
+  `include/constants/moves.h` before implementing (per CLAUDE.md workflow): `MOVE_STOMP = 23`;
+  ID 31 is actually `MOVE_FURY_ATTACK`. Used the correct ID (23) to avoid silently overwriting
+  or misnaming the Fury Attack move slot. 2026-07-02.
+
+### EFFECT_MINIMIZE (Minimize)
+- Source: `src/data/moves_info.h MOVE_MINIMIZE` (L2895–2921): `.effect = EFFECT_MINIMIZE`,
+  `.accuracy = 0`, `.pp = 10` (`B_UPDATED_MOVE_DATA >= GEN_6`), `.target = TARGET_USER`,
+  `.ignoresProtect = TRUE`. `additionalEffects = {STAT_CHANGE_EFFECT_PLUS, .evasion = 2}`
+  (`B_MINIMIZE_EVASION >= GEN_5` → GEN_LATEST config resolves to +2, not the pre-Gen5 +1).
+- Source: `src/battle_stat_change.c :: SetAdditionalEffectsOnStatChange`, case
+  `EFFECT_MINIMIZE` (L1000): `volatiles.minimize = TRUE` **only if**
+  `MOVE_RESULT_STAT_CHANGED` — i.e. the evasion raise must have actually succeeded (not
+  already capped at +6) for the `minimized` flag to be set. Contrast with Defense Curl below.
+- Behavior: dedicated block in `_phase_move_execution` (self-targeting, before the generic
+  substitute/type-immunity status-move path — same pattern as Growth/Focus Energy). Raises
+  Evasion +2 via `StatusManager.apply_stat_change`; sets `attacker.minimized = true` only on
+  success; emits `move_effect_failed("stat_limit")` on failure (matches the Growth precedent).
+- `minimized: bool` added to BattlePokemon; cleared in `_clear_volatiles` (faint + switch-out,
+  since `_switch_out_clear` calls `_clear_volatiles`).
+- Minimize (107): Normal/Status, accuracy=0, pp=10, ignores_protect=true.
+- 2026-07-02.
+
+### EFFECT_DEFENSE_CURL (Defense Curl)
+- Source: `src/data/moves_info.h MOVE_DEFENSE_CURL` (L3011–3039): `.effect =
+  EFFECT_DEFENSE_CURL`, `.accuracy = 0`, `.pp = 40`, `.target = TARGET_USER`,
+  `.ignoresProtect = TRUE`. `additionalEffects = {STAT_CHANGE_EFFECT_PLUS, .defense = 1}`.
+- Source: `src/battle_stat_change.c :: SetAdditionalEffectsOnStatChange`, case
+  `EFFECT_DEFENSE_CURL` (L997): `volatiles.defenseCurl = TRUE` **unconditionally** — no
+  `MOVE_RESULT_STAT_CHANGED` guard, unlike Minimize. `defense_curled` is set even when the
+  Defense raise itself fails (already at +6).
+- Behavior: raises Defense +1; on failure emits `move_effect_failed("stat_limit")` (added
+  for consistency with the rest of the codebase's stat-move failure signaling — the source's
+  `additionalEffects` stat-change failure path already implies this message class); sets
+  `attacker.defense_curled = true` unconditionally, even when the stat raise failed. Verified
+  by m16b_test S3.03/S3.04 (defense_curled still true at +6 Defense, despite stat_limit fail).
+- `defense_curled: bool` added to BattlePokemon; cleared in `_clear_volatiles`.
+- Defense Curl (111): Normal/Status, accuracy=0, pp=40, ignores_protect=true.
+- 2026-07-02.
+
+### Stomp — `minimizeDoubleDamage` (×2.0 damage modifier vs minimized targets)
+- Source: `include/move.h` L132: `bool32 minimizeDoubleDamage:1` (per-move flag, not
+  restricted to Stomp — also Astonish, Extrasensory, Needle Arm, Body Slam, Flying Press,
+  Steamroller, Dragon Rush, etc. in the full dataset; only Stomp is in scope for M16b).
+- Source: `src/battle_util.c :: GetMinimizeModifier` (L7319–7323): `if
+  (MoveIncreasesPowerToMinimizedTargets(move) && volatiles[battlerDef].minimize) return
+  UQ_4_12(2.0);`. This function is one of several folded together in `GetOtherModifiers`
+  (L7534–7562), which is applied as a single combined multiplier inside
+  `ApplyModifiersAfterDmgRoll` (L7617–7628) — **after** the random roll, STAB, type
+  effectiveness, and burn. **This is a standalone post-roll damage multiplier, not a
+  doubling of the base-power input** — confirmed from source before implementing, per the
+  task's explicit request to check this. A naive "double `move.power` before the formula"
+  implementation would diverge from source on any hit where an earlier modifier (STAB, type
+  effectiveness, burn) also applies, because those compound multiplicatively on the
+  *already-doubled* value in the power-doubling approach but on the *original* value in the
+  correct (post-roll-modifier) approach.
+- Behavior: `move.double_power_on_minimized: bool` (mirrors `minimizeDoubleDamage`) checked
+  in `DamageCalculator.calculate`, positioned after the burn modifier and before Life
+  Orb/Resist Berry (matching source's ordering: burn → `GetOtherModifiers` → Life
+  Orb/items). `dmg = _uq412_half_down(dmg, 8192)` where `UQ_4_12(2.0) = 8192`; since 8192 is
+  an exact multiple of 4096, this always yields exactly `2 * dmg` with no rounding drift —
+  verified in m16b_test S4.01 (exact equality, not an approximate/ratio check).
+- Stomp (23): power=65, makes_contact=true, double_power_on_minimized=true, 30% flinch
+  secondary (unchanged from its existing EFFECT_HIT shape — Stomp was not yet in the
+  project's move set before M16b).
+- 2026-07-02.
+
+### EFFECT_ROLLOUT (Rollout / Ice Ball)
+- Source: `src/battle_util.c :: CalcRolloutBasePower` (L6034–6042):
+  `basePower = move.power; for (i = 0; i < volatiles.rolloutTimer; i++) basePower *= 2; if
+  (volatiles.defenseCurl) basePower *= 2;`. `rolloutTimer` here is the **pre-hit** count
+  (0 on a fresh start), so the sequence over 5 consecutive successful hits is
+  30→60→120→240→480 (Rollout/Ice Ball both have `power=30`); Defense Curl doubles every
+  step in the sequence (60→120→240→480→960), not just the first hit, since it's a flat ×2
+  applied on top of the already-timer-scaled value each time.
+- Source: `src/battle_move_resolution.c :: SetSameMoveTurnValues`, case `EFFECT_ROLLOUT`
+  (L4899–4909): on a successful hit (`IsAnyTargetAffected() && !unableToUseMove &&
+  gLastResultingMoves[attacker] == gCurrentMove` — this last clause is essentially always
+  true for a landed hit since `gLastResultingMoves` is set to the current move earlier in
+  the same move-end sequence, in `MOVEEND_UPDATE_LAST_MOVES`, which fires before
+  `MOVEEND_CLEAR_BITS`/`SetSameMoveTurnValues`), `rolloutTimer` increments; if the
+  incremented value would reach 5, it resets to 0 instead (fresh start on the *next* use).
+  The `default:` branch of the same switch (L4915–4917, fired whenever **any other move**
+  is used) unconditionally resets `rolloutTimer` to 0 — this is the actual mechanism behind
+  "interruption resets the counter," not a same-move-as-last-turn comparison.
+- Judgment call (scope simplification): the source additionally drives a forced
+  auto-repeat via `gLockedMoves`/`volatiles.multipleTurns` (similar to Thrash/Petal Dance),
+  meaning the game doesn't let the player choose a different move mid-streak. This project's
+  action-queue test harness has no analogous "forced move" plumbing for non-two-turn moves,
+  and the task scope only asked for the power-scaling counter and its resets (not the
+  auto-repeat lock). Not implemented — Rollout/Ice Ball are freely reselectable each turn in
+  this engine; using a different move simply resets the streak (matching the counter-reset
+  behavior, just without preventing the choice in the first place).
+- Miss handling: `IsAnyTargetAffected()` false (the hit missed) also resets `rolloutTimer`
+  to 0 per the `EFFECT_ROLLOUT` case's `else` branch — implemented as an explicit reset in
+  the accuracy-check-failure branch of `_phase_move_execution`, since the power calculation
+  (needed regardless of hit/miss, as it doesn't depend on this hit's own outcome) happens
+  before the accuracy check.
+- Behavior: `attacker.rollout_turns: int` (pre-hit consecutive-count, 0–4) and
+  `attacker.rollout_base_power: int` (the power computed for the current hit) added to
+  BattlePokemon; both cleared in `_clear_volatiles`. Power computed in
+  `_phase_move_execution` before the accuracy check and threaded into `_do_damaging_hit` via
+  a new `power_override` parameter that also reaches `DamageCalculator.calculate`
+  (`power_override >= 0` replaces `move.power` as the base-power input, mirroring source's
+  `gBattleMovePower` being computed once via the per-effect switch in `CalcMoveBasePower`,
+  before Helping Hand's multiplicative modifier is applied on top of it in
+  `CalcMoveBasePowerAfterModifiers`). Reset-on-different-move is a single check
+  (`if not move.is_rollout: attacker.rollout_turns = 0`) placed immediately before
+  `attacker.last_move_used = move` is set — after all of the early-return special-move
+  blocks (OHKO/Roar/Baton Pass/Protect/Bide/two-turn) but before Counter/Mirror Coat/the
+  damaging-move dispatch, so it fires for any move that reaches that point in the pipeline.
+- `is_rollout: bool` added to MoveData (shared by both Rollout and Ice Ball — same
+  `EFFECT_ROLLOUT` handler in source, same power sequence, different type).
+- Rollout (205): Rock/Phys, power=30, accuracy=90, pp=20, makes_contact=true.
+- Ice Ball (301): Ice/Phys, power=30, accuracy=90, pp=20, makes_contact=true,
+  ballistic_move not modeled (no Bullet Seed-style interaction in scope yet).
+- 2026-07-02.
+
+### EFFECT_MAGNITUDE (Magnitude)
+- Source: `src/battle_move_resolution.c :: CalculateMagnitudeDamage` (L5196–5234):
+  `magnitude = RandomUniform(0, 99)` then weighted bands: `[0,5)→10 (magnitude 4)`,
+  `[5,15)→30 (5)`, `[15,35)→50 (6)`, `[35,65)→70 (7)`, `[65,85)→90 (8)`, `[85,95)→110 (9)`,
+  `[95,100)→150 (10)` — i.e. power {10,30,50,70,90,110,150} with probability
+  {5%,10%,20%,30%,20%,10%,5%} respectively (the displayed "Magnitude N" number 4–10 is
+  cosmetic text, not modeled).
+- Source: `src/battle_util.c` L6160–6161: `case EFFECT_MAGNITUDE: basePower =
+  gBattleStruct->magnitudeBasePower;` — the roll happens once per move use and the result
+  is reused for every spread target (not rerolled per target).
+- Source: `src/data/moves_info.h MOVE_MAGNITUDE` (L6063–6084): `.power = 1` (placeholder,
+  always overridden), `.type = TYPE_GROUND`, `.accuracy = 100`, `.pp = 30`, `.target =
+  TARGET_FOES_AND_ALLY` (spread — `is_spread = true` in our data), `.damagesUnderground =
+  TRUE` (hits Dig users, same as Earthquake).
+- Behavior: `is_magnitude: bool` added to MoveData. `_force_magnitude_power: Variant = null`
+  test seam added to BattleManager (same null-sentinel convention as `_force_hit`/
+  `_force_roll`/`_force_crit`/`_force_contact_roll`). New private helper
+  `_roll_magnitude_power()` rolls the weighted table (or returns the forced value); called
+  once per move use in `_phase_move_execution`, before the accuracy check, threaded into
+  `_do_damaging_hit` via the same `power_override` mechanism added for Rollout.
+- Magnitude (222): Ground/Phys, power=1 (placeholder), accuracy=100, pp=30,
+  damages_underground=true, is_spread=true.
+- Known gap: this project's existing spread-move handling (`is_spread`) was not
+  consistently set on prior moves with `TARGET_BOTH`/`TARGET_FOES_AND_ALLY` in source (e.g.
+  Earthquake's `.tres` has no `is_spread` field despite the M14b decisions log stating it
+  should). Not a M16b regression — pre-existing gap, out of scope here; Magnitude's own
+  `is_spread=true` is set correctly per its own source citation above.
+- 2026-07-02.
+
+### Testing
+- `m16b_test.gd`/`.tscn`: 55 assertions covering move-data spot checks, Minimize
+  (evasion +2, `minimized` flag gated on success, stat-limit failure), Defense Curl
+  (defense +1, `defense_curled` set unconditionally even on stat-limit failure), Stomp
+  (exact ×2 damage vs minimized target, unaffected non-flagged moves), Rollout (full
+  30→60→120→240→480→30 power sequence with pre-hit counter values, Defense Curl doubling,
+  interruption-by-different-move reset, always-miss keeps counter at 0, `power_override`
+  plumbing verified byte-for-byte against an equivalent baked-power move), Ice Ball (spot
+  check, shares Rollout's logic), and Magnitude (`_force_magnitude_power` pass-through for
+  all 7 table entries, unforced-roll membership check, `power_override` plumbing in both a
+  direct `DamageCalculator.calculate` call and a real battle turn).
+- All tests use `_force_hit`/`_force_roll`/`_force_crit`/`_force_magnitude_power` — no
+  unforced RNG drives any assertion (one unforced call exists for `_force_magnitude_power =
+  null`, but its assertion only checks table membership, which holds regardless of which
+  value the RNG picks).
+- Full regression: all prior suites (`battle_test` through `m16a_test`, plus `pp_test`,
+  `two_turn_test`, `integration_test`) still pass with 0 failures. Total assertions across
+  all numbered suites: 857 prior + 55 new = 912. (Several suites — `move_test`,
+  `ability_test`, `item_test`, `doubles_test` — carry more assertions today than the counts
+  recorded in their original milestone log entries; this reflects incremental test
+  additions in later milestones, not a discrepancy introduced here.)
+- 2026-07-02.
+
+---
+
+## [M16c] Tier C Move Effects — REFLECT / LIGHT_SCREEN / AURORA_VEIL / Brick Break
+
+### Data shape: `_side_conditions[side]`, side-indexed (0/1), not battler- or field-slot-indexed
+- First mechanic requiring genuinely per-side (not per-Pokémon, not per-battle) state.
+  Confirmed the convention against existing per-side arrays before inventing a new one:
+  `_follow_me_targets: Array[int] = [-1, -1]` (M14b) is already indexed by SIDE (always
+  length 2), independent of `_active_per_side` (doubles just means 2 field slots share one
+  side's Follow Me/screen state) — matches source's `gSideStatuses[side]` /
+  `gSideTimers[side]` shape exactly (side-indexed, not per-battler).
+- Implemented as `_side_conditions: Array = [{"reflect_turns": 0, "light_screen_turns": 0,
+  "aurora_veil_turns": 0}, {...}]` — one dict per side, folding the presence bit
+  (`gSideStatuses` bitmask) and the duration (`gSideTimers[side].xTimer`) into a single int
+  per condition (0 = not active). This shape is intended to be reused for Trick Room
+  (field-wide, not side-wide — would need its own top-level int, not an entry in this dict)
+  and entry hazards (side-wide, WOULD fit as additional keys in this same per-side dict) in
+  M16d, per the task's explicit forward-compat request.
+- 2026-07-02.
+
+### EFFECT_REFLECT / EFFECT_LIGHT_SCREEN
+- Source: `src/battle_script_commands.c :: TrySetReflect` (L2088–2106) / `TrySetLightScreen`
+  (L2109–2127): both fail (return `FALSE`, no refresh) if the respective
+  `gSideStatuses[side]` bit is already set; otherwise set the bit and
+  `gSideTimers[side].{reflectTimer,lightscreenTimer} = 5` (8 with Light Clay — **not
+  modeled**; this project has no held-item duration-extension mechanic yet, noted as a
+  follow-up rather than silently ignored).
+- Source: `src/data/moves_info.h MOVE_REFLECT` (L3123–3147) / `MOVE_LIGHT_SCREEN`
+  (L3071–3095): both `.accuracy = 0`, `.target = TARGET_USER` (self-targeting),
+  `.ignoresProtect = TRUE`. Reflect pp=20, Light Screen pp=30.
+- Behavior: dedicated self-targeting blocks in `_phase_move_execution`, same architectural
+  pattern as Minimize/Defense Curl/Growth (M16b) — placed immediately after Defense Curl,
+  before the generic substitute/type-immunity status-move path. Fail path emits
+  `move_effect_failed(attacker, "already_reflect"/"already_light_screen")`.
+- Verified via `m16c_test` S2.08/S2.09 that re-using Reflect while already active does
+  **not** refresh the timer (matches `TrySetReflect`'s early-return-`FALSE` — no timer
+  write on the failure path). Also verified (S2.06/S2.07) that once a screen's sole-move
+  caster has nothing else to select, it gets legitimately **re-cast** after the timer
+  naturally expires — this is correct real-game behavior (Reflect can be re-applied after
+  wearing off), not a bug; the test windows are bounded to the first 5-turn cycle to avoid
+  conflating a fresh recast with the original cast.
+- 2026-07-02.
+
+### EFFECT_AURORA_VEIL
+- Source: `src/battle_move_resolution.c` (L1191–1193): fails outright
+  (`BattleScript_ButItFailed`) unless `GetWeather() & B_WEATHER_ICY_ANY`
+  (`B_WEATHER_HAIL | B_WEATHER_SNOW`, `include/constants/battle.h` L504) — checked as a
+  pre-move canceler, i.e. **before** the move's own "already up" check runs. This project
+  only models Hail (no separate Snow weather state — confirmed against M11's weather scope
+  in CLAUDE.md, which lists rain/sun/sandstorm/hail as the only four), so the gate
+  simplifies exactly to `weather == WEATHER_HAIL` with no loss of behavior.
+- Source: `src/battle_script_commands.c :: BS_SetAuroraVeil` (L13439–13462): fails only if
+  `SIDE_STATUS_AURORA_VEIL` is already set — it does **not** check Reflect or Light Screen.
+  Confirmed: Aurora Veil, Reflect, and Light Screen are three **independent** bitmask flags
+  (`SIDE_STATUS_REFLECT`, `SIDE_STATUS_LIGHTSCREEN`, `SIDE_STATUS_AURORA_VEIL`, distinct
+  bits in `include/constants/battle.h` L403–405), not a single shared "screen slot" — all
+  three can be simultaneously active on the same side. `auroraVeilTimer = 5` (8 with Light
+  Clay — not modeled, same as Reflect/Light Screen).
+- Stacking / no-double-reduction: confirmed via `GetScreensModifier` (below) that having
+  multiple screens active simultaneously does **not** compound the damage reduction — it's
+  a plain boolean OR over the three conditions, applying the single ×0.5/×0.667 factor once,
+  not multiplied together (e.g. Reflect + Aurora Veil both up ≠ ×0.25). Verified in
+  `m16c_test` S4.10/S4.11 (exact equality against the single-screen reduction, both via a
+  direct `DamageCalculator.calculate` call and a live battle with both flags set).
+- Behavior: hail check first, then "already up" check, matching source's cancel-before-effect
+  ordering — both implemented inline in the `is_aurora_veil` block (this project has no
+  general canceler-chain architecture matching every per-move source precondition; each
+  move's failure conditions are checked inline in its own dedicated block, established
+  precedent since M7).
+- Aurora Veil (657): Ice/Status, accuracy=0, pp=20, ignores_protect=true.
+- 2026-07-02.
+
+### Damage pipeline placement: `GetScreensModifier`, same group as M16b's Minimize modifier
+- Source: `src/battle_util.c :: GetScreensModifier` (L7347–7365):
+  ```
+  bool32 lightScreen = (sideStatus & SIDE_STATUS_LIGHTSCREEN) && IsBattleMoveSpecial(move);
+  bool32 reflect = (sideStatus & SIDE_STATUS_REFLECT) && IsBattleMovePhysical(move);
+  bool32 auroraVeil = sideStatus & SIDE_STATUS_AURORA_VEIL;   // no category gate
+  if (ctx->isCrit || ctx->isSelfInflicted) return UQ_4_12(1.0);
+  if (Infiltrator && not ally) return UQ_4_12(1.0);           // not modeled, see below
+  if (reflect || lightScreen || auroraVeil)
+      return IsDoubleBattle() ? UQ_4_12(0.667) : UQ_4_12(0.5);
+  return UQ_4_12(1.0);
+  ```
+  This function is folded into `GetOtherModifiers` (L7534–7562) in the exact sequence
+  `Minimize → Underground → Dive → Airborne → Screens → CollisionCourseElectroDrift`, which
+  fires inside `ApplyModifiersAfterDmgRoll` — i.e. the **same modifier group** as M16b's
+  Stomp/`GetMinimizeModifier`, confirmed by re-reading that function's neighbors rather than
+  assuming the position from memory (per the task's explicit instruction to verify
+  placement the way M16b did for Stomp).
+- Reduction fraction — confirmed from source rather than assumed: singles `UQ_4_12(0.5) =
+  2048`; doubles `UQ_4_12(0.667) = (uq4_12_t)(0.667 * 4096 + 0.5) = 2732` — matched to
+  source's literal `0.667` decimal bit-for-bit (not recomputed as the mathematically "true"
+  2/3). The doubles gate is `IsDoubleBattle()` alone — **no live-target-count check**,
+  unlike the M14b spread-move 0.75× reduction (`GetTargetDamageModifier` requires ≥2 live
+  targets); confirmed these are different mechanisms with different gating conditions.
+- Crit bypass: `if (ctx->isCrit ...) return UQ_4_12(1.0);` fires first in source — crits
+  ignore screens entirely, confirmed and implemented via an `and not is_crit` guard on the
+  modifier application (`is_crit` is already resolved earlier in `DamageCalculator.calculate`
+  by that point, either forced or rolled). Verified in `m16c_test` S5.02: a screened crit's
+  damage matches an unscreened crit's damage exactly.
+- Infiltrator ability bypass (`ABILITY_INFILTRATOR` ignores screens) — **not modeled**.
+  Infiltrator is outside this project's implemented-ability scope (M8's list: Huge
+  Power/Pure Power, Levitate, Thick Fat, Intimidate, Drizzle/Drought, Speed Boost, Static,
+  Flame Body, Rough Skin, Synchronize — no Infiltrator). Noted as a known gap rather than
+  silently skipped, same treatment as M16a's Sheer Cold Ice-immunity gap.
+- Behavior: `DamageCalculator.calculate` gained two new optional params, `screen_active:
+  bool = false` and `is_doubles: bool = false`. Resolution of *which* screen applies (by
+  move category) happens in `BattleManager._do_damaging_hit` — a stateless static utility
+  like `DamageCalculator` has no access to `_side_conditions`, so the caller pre-resolves
+  the boolean and passes it in, mirroring the existing `power_override`/`helping_hand`
+  pattern from M16a/M16b. `UQ412_SCREEN_SINGLES = 2048` / `UQ412_SCREEN_DOUBLES = 2732`
+  added as named constants next to `UQ412_1_5`.
+- 2026-07-02.
+
+### Brick Break — `MOVE_EFFECT_BREAK_SCREEN`
+- Grepped the reference repo for screen-removal moves per the task's explicit instruction
+  (rather than silently skipping this scope item). Found `MOVE_EFFECT_BREAK_SCREEN` on
+  Brick Break (`src/data/moves_info.h MOVE_BRICK_BREAK`, L7672–7697): `.effect = EFFECT_HIT`
+  (a normal damaging move, not a dedicated top-level effect), power=75, Fighting, contact,
+  `additionalEffects = {MOVE_EFFECT_BREAK_SCREEN, .preAttackEffect = TRUE}`. This is the
+  only screen-removal move in the current move set (Defog/Court Change also interact with
+  `SIDE_STATUS_SCREEN_ANY` in source but are far outside this project's implemented-move
+  scope and out of place to add speculatively here) — implemented as part of this
+  milestone per the task's scoping instruction.
+- Source: `src/battle_script_commands.c` :: `MOVE_EFFECT_BREAK_SCREEN` case (L3308–3336):
+  `B_BRICK_BREAK >= GEN_4` (config default is `GEN_LATEST`, confirmed in
+  `include/config/battle.h` L108) → clears `GetBattlerSide(gBattlerTarget)` — the move's
+  **actual target's** side, not hardcoded to "the opponent's side" (matters if Brick Break
+  is used on an ally in doubles; this project's implementation uses whatever `defender` was
+  resolved to, so it's already correct for that case without special-casing). Clears
+  `SIDE_STATUS_SCREEN_ANY` (all three conditions at once) and only plays the
+  break/animation if something was actually up.
+- `preAttackEffect = TRUE` — the screen removal resolves **before** this hit's own damage
+  calculation, so a screen Brick Break itself just broke does **not** reduce its own
+  damage. Implemented at the very top of `BattleManager._do_damaging_hit` (before the
+  `screen_active` resolution and the `DamageCalculator.calculate` call): if
+  `move.breaks_screens` and any of the three side-condition timers on the target's side are
+  nonzero, zero all three and emit `screens_broken(side)`; the subsequent `screen_active`
+  computation reads the (now-cleared) `_side_conditions` dict, so it naturally sees nothing
+  active for this hit. Verified in `m16c_test` S6.03/S6.04 (Brick Break's own damage against
+  a pre-screened target matches an unscreened baseline exactly).
+- `B_BRICK_BREAK >= GEN_5` additionally gates screen removal on the move actually having
+  affected the target (not blocked by Protect/immunity) — **not separately implemented**,
+  since Protect blocking in this engine already returns early before reaching the
+  damaging-move dispatch (the code path that contains the screen-break logic), so a
+  Protect-blocked Brick Break can never reach `_do_damaging_hit` in the first place; the
+  Gen5+ behavior falls out of the existing control flow for free, without new code.
+- `breaks_screens: bool` added to MoveData. Brick Break (280): Fighting/Phys, power=75,
+  accuracy=100, pp=15, makes_contact=true.
+- 2026-07-02.
+
+### Switch-out / side-clear interaction
+- Confirmed by construction, not by adding new code: `_side_conditions` is a `BattleManager`
+  field, not a `BattlePokemon` field. `_clear_volatiles` and `_switch_out_clear` (both
+  defined in `BattleManager`) operate exclusively on `BattlePokemon` instances passed to
+  them — neither touches `_side_conditions` at all, so screens persist across the owning
+  side's voluntary switches, forced switches (Roar/Whirlwind), and faint replacements
+  automatically. Verified in `m16c_test` S2.12 (Reflect still active on side 0 immediately
+  after a mid-battle voluntary switch, snapshotted via the `pokemon_switched_in` signal
+  rather than checked after the whole battle completes — checking post-battle would
+  observe arbitrarily-later state once the timer naturally expires on its own 5-turn
+  clock, unrelated to the switch itself).
+- 2026-07-02.
+
+### Testing
+- `m16c_test.gd`/`.tscn`: 60 assertions covering move-data spot checks (Light Screen,
+  Reflect, Brick Break, Aurora Veil, plus `_side_conditions` default shape), Reflect
+  (setup, exact floor(dmg/2) Physical reduction, Special immunity, 5-turn duration sequence
+  with exact `screen_expired` firing point, already-up no-refresh, doubles ⅔ reduction
+  exact-match against `UQ_4_12(0.667)`, switch persistence), Light Screen (setup, exact
+  floor(dmg/2) Special reduction, Physical immunity), Aurora Veil (hail gate failure and
+  success, already-up independent of Reflect/Light Screen, coexistence without blocking,
+  reduces both categories, no double-stacking with Reflect both direct-call and live-battle),
+  crit bypass (screened crit == unscreened crit, exact), and Brick Break (clears target's
+  side, own damage unaffected by the screen it just broke, no-op when nothing is up, clears
+  all three condition types at once).
+- All tests use `_force_hit`/`_force_roll`/`_force_crit` plus directly-set `weather`/
+  `_side_conditions` for setup — no unforced RNG drives any assertion.
+- Test-writing note for future milestones: several sole-move-Pokémon test setups (a
+  Pokémon whose only move is the status move under test) legitimately **re-cast** that move
+  after its side condition naturally expires, since auto-select falls back to `moves[0]`
+  every turn once the action queue is drained. Reading `_side_conditions` (or any per-side/
+  per-battle state with its own independent timer) **after** `start_battle` fully returns
+  is unreliable once the battle runs long enough for that natural recast-and-re-expire
+  cycle to occur — several assertions in this suite initially failed this way and were
+  fixed by snapshotting state via a signal callback at the specific moment being tested
+  (`screen_set`, `pokemon_switched_in`, a bounded `phase_changed`-into-`SWITCH_PROMPT`
+  counter) rather than after the whole battle. Apply the same snapshot-not-post-battle
+  discipline to any future side-condition or field-condition test (Trick Room, hazards).
+- Full regression: all prior suites (`battle_test` through `m16b_test`, plus `pp_test`,
+  `two_turn_test`, `integration_test`) still pass with 0 failures. Total assertions across
+  all numbered suites: 912 prior + 60 new = 972.
+- 2026-07-02.

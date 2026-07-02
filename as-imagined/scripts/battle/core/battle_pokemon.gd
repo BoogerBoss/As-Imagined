@@ -134,6 +134,25 @@ var bide_damage: int = 0
 # Source: battle_script_commands.c :: Cmd_setfocusenergy (L7718) — sets volatiles.focusEnergy.
 var focus_energy: bool = false
 
+# M16b: Minimize — volatile that raises Evasion +2 and doubles incoming damage from
+# moves with double_power_on_minimized=true (Stomp etc.).
+# Cleared on faint (_clear_volatiles) and switch-out (_switch_out_clear → _clear_volatiles).
+# Source: battle_stat_change.c :: SetAdditionalEffectsOnStatChange, case EFFECT_MINIMIZE (L1000).
+var minimized: bool = false
+
+# M16b: Defense Curl — volatile that raises Defense +1 and doubles Rollout/Ice Ball's
+# starting power.
+# Cleared on faint (_clear_volatiles) and switch-out (_switch_out_clear → _clear_volatiles).
+# Source: battle_stat_change.c :: SetAdditionalEffectsOnStatChange, case EFFECT_DEFENSE_CURL (L997).
+var defense_curled: bool = false
+
+# M16b: Rollout / Ice Ball consecutive-hit counter (0-4; the exponent for power doubling)
+# and the power computed for the CURRENT hit (informational — recomputed each use).
+# Cleared on faint/switch-out and whenever a different move is used (interruption).
+# Source: gBattleMons[].volatiles.rolloutTimer; CalcRolloutBasePower (battle_util.c L6034).
+var rollout_turns: int = 0
+var rollout_base_power: int = 0
+
 # M12: choice lock — the move this Pokémon is locked to by a choice item.
 # Set the first time a move is used while holding a choice item.
 # Cleared by BattleManager._switch_out_clear() on switch-out (NOT by _clear_volatiles).
@@ -187,6 +206,10 @@ static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokem
 	bp.bide_turns = 0
 	bp.bide_damage = 0
 	bp.focus_energy = false
+	bp.minimized = false
+	bp.defense_curled = false
+	bp.rollout_turns = 0
+	bp.rollout_base_power = 0
 	bp.choice_locked_move = null
 	bp.switched_in_this_turn = false
 	bp.stat_stages = [0, 0, 0, 0, 0, 0, 0]

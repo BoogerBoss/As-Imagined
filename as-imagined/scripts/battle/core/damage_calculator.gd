@@ -61,6 +61,15 @@ const DMG_ROLL_HI: int = 100
 # Source: include/fpmath.h :: UQ_4_12(1.5) = (uq4_12_t)(1.5 * 4096 + 0.5) = 6144
 const UQ412_1_5: int = 6144
 
+# M16c: Screens (Reflect/Light Screen/Aurora Veil) damage-reduction modifiers.
+# Source: battle_util.c :: GetScreensModifier (L7347-7365):
+#   return (IsDoubleBattle()) ? UQ_4_12(0.667) : UQ_4_12(0.5);
+# UQ_4_12(0.5)  = (uq4_12_t)(0.5  * 4096 + 0.5) = 2048
+# UQ_4_12(0.667) = (uq4_12_t)(0.667 * 4096 + 0.5) = 2732 (source's literal 0.667, not the
+#   mathematically "true" 2/3 — matched bit-for-bit rather than recomputed).
+const UQ412_SCREEN_SINGLES: int = 2048
+const UQ412_SCREEN_DOUBLES: int = 2732
+
 
 # Calculate damage for one hit of a standard damaging move.
 # Returns a Dictionary:
@@ -75,6 +84,20 @@ const UQ412_1_5: int = 6144
 # weather     : int     — WEATHER_* constant (default WEATHER_NONE = no modifier)
 #                         M11: rain boosts Water/reduces Fire; sun boosts Fire/reduces Water.
 #                         Source: GetWeatherDamageModifier (battle_util.c L7251)
+# power_override: int   — M16b: pass ≥0 to replace move.power as the base-power input
+#                         (e.g. Rollout's scaled power, Magnitude's rolled power).
+#                         -1 (default) = use move.power. Mirrors source's gBattleMovePower
+#                         being computed once (CalcMoveBasePower's per-effect switch) before
+#                         Helping Hand's multiplicative modifier is applied on top of it.
+# screen_active: bool   — M16c: pass true when the category-appropriate screen (Reflect for
+#                         Physical, Light Screen for Special, Aurora Veil for either) is up
+#                         on the defender's side. Resolved by the caller (BattleManager),
+#                         which has access to per-side state that this static function does
+#                         not. Ignored on a crit (screens are bypassed — see is_crit below).
+# is_doubles: bool      — M16c: selects the ×0.667 (doubles) vs ×0.5 (singles) screen
+#                         reduction. Source: GetScreensModifier gates on IsDoubleBattle()
+#                         alone (unlike the spread-move 0.75× reduction, no live-target-count
+#                         check).
 static func calculate(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
@@ -83,7 +106,10 @@ static func calculate(
 		force_crit: Variant = null,
 		weather: int = WEATHER_NONE,
 		is_spread: bool = false,
-		helping_hand: bool = false) -> Dictionary:
+		helping_hand: bool = false,
+		power_override: int = -1,
+		screen_active: bool = false,
+		is_doubles: bool = false) -> Dictionary:
 
 	# --- Ability type immunity (Levitate vs Ground, etc.) ---
 	# Source: battle_util.c :: CalcTypeEffectivenessMultiplierInternal (L8257):
@@ -170,7 +196,7 @@ static func calculate(
 	# Source: CalcMoveBasePowerAfterModifiers (battle_util.c L6436):
 	#   for (i < helpingHand) modifier = uq4_12_multiply(modifier, UQ_4_12(1.5)); (L6436–6437)
 	#   returned power = uq4_12_multiply_by_int_half_down(modifier, basePower) (L6603).
-	var effective_power: int = move.power
+	var effective_power: int = power_override if power_override >= 0 else move.power
 	if helping_hand:
 		effective_power = _uq412_half_down(effective_power, 6144)  # UQ_4_12(1.5)
 	var dmg: int = effective_power * atk * (2 * attacker.level / 5 + 2) / def / 50 + 2
@@ -266,6 +292,23 @@ static func calculate(
 	# (Guts ability bypasses this but is not in M3 scope.)
 	if attacker.status == BattlePokemon.STATUS_BURN and move.category == 0:
 		dmg = _uq412_half_down(dmg, 2048)  # UQ_4_12(0.5) = 2048
+
+	# M16b: Minimize modifier — Stomp etc. deal ×2.0 damage to a minimized target.
+	# Source: battle_util.c :: GetMinimizeModifier (L7319-7323), folded into GetOtherModifiers,
+	#   which fires inside ApplyModifiersAfterDmgRoll — same modifier group as ability/item
+	#   damage mods, positioned after burn and before Life Orb/Resist Berry in that group.
+	if move.double_power_on_minimized and defender.minimized:
+		dmg = _uq412_half_down(dmg, 8192)  # UQ_4_12(2.0) = 8192
+
+	# M16c: Reflect/Light Screen/Aurora Veil damage reduction. Same modifier group as the
+	# Minimize modifier above (both are folded into GetOtherModifiers in source, in the
+	# order Minimize → Underground → Dive → Airborne → Screens → CollisionCourse).
+	# Source: battle_util.c :: GetScreensModifier (L7347-7365): crits bypass screens
+	#   entirely (checked first in source; mirrored here via the is_crit guard) — Infiltrator
+	#   ability bypass is not modeled (Infiltrator is outside this project's ability scope).
+	if screen_active and not is_crit:
+		var screen_mod: int = UQ412_SCREEN_DOUBLES if is_doubles else UQ412_SCREEN_SINGLES
+		dmg = _uq412_half_down(dmg, screen_mod)
 
 	# M12: Life Orb damage modifier — AFTER roll, STAB, type eff, burn (and ability mods).
 	# Source: GetAttackerItemsModifier (battle_util.c L7497–7499), called from GetOtherModifiers

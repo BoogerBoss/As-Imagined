@@ -316,3 +316,94 @@ const TARGET_ALL_BATTLERS:   int = 14
 # Source: battle_util.c :: DoesOHKOMoveMissTarget (L10378)
 # Source: battle_util.c L7696: case EFFECT_OHKO: dmg = gBattleMons[ctx->battlerDef].hp
 @export var is_ohko: bool = false
+
+# ── M16b move effects ─────────────────────────────────────────────────────────
+
+# is_minimize: Minimize — self-targeting, raises Evasion +2 (Gen 5+, B_MINIMIZE_EVASION
+#   >= GEN_5) and sets attacker.minimized = true if the evasion raise actually landed.
+# Source: src/data/moves_info.h MOVE_MINIMIZE: additionalEffects {STAT_CHANGE_EFFECT_PLUS,
+#   .evasion = (B_MINIMIZE_EVASION >= GEN_5) ? 2 : 1} — GEN_LATEST config → +2.
+# Source: battle_stat_change.c :: SetAdditionalEffectsOnStatChange, case EFFECT_MINIMIZE (L1000):
+#   volatiles.minimize = TRUE only if MOVE_RESULT_STAT_CHANGED (i.e. the raise succeeded).
+@export var is_minimize: bool = false
+
+# is_defense_curl: Defense Curl — self-targeting, raises Defense +1 and unconditionally
+#   sets attacker.defense_curled = true (not gated on the stat raise succeeding).
+# Source: src/data/moves_info.h MOVE_DEFENSE_CURL: additionalEffects
+#   {STAT_CHANGE_EFFECT_PLUS, .defense = 1}.
+# Source: battle_stat_change.c :: SetAdditionalEffectsOnStatChange, case EFFECT_DEFENSE_CURL
+#   (L997): volatiles.defenseCurl = TRUE unconditionally.
+@export var is_defense_curl: bool = false
+
+# double_power_on_minimized: Stomp (and Astonish, Extrasensory, Needle Arm, Steamroller,
+#   Body Slam, Flying Press, etc.) deal a ×2.0 damage modifier against a minimized target.
+# This is a standalone post-roll damage MULTIPLIER, not a doubling of the base power input —
+# confirmed from source: GetMinimizeModifier (battle_util.c L7319) is folded into
+# GetOtherModifiers, which fires inside ApplyModifiersAfterDmgRoll (after the random roll,
+# STAB, type effectiveness, and burn — the same modifier group as ability/item damage mods).
+# Source: struct MoveInfo.minimizeDoubleDamage (include/move.h L132).
+@export var double_power_on_minimized: bool = false
+
+# is_rollout: Rollout / Ice Ball — power doubles each consecutive successful hit
+#   (30→60→120→240→480 over 5 hits), then resets. Defense Curl doubles the starting power.
+# Source: battle_util.c :: CalcRolloutBasePower (L6034-6042):
+#   basePower = move.power; basePower <<= rolloutTimer; if (defenseCurl) basePower *= 2.
+# Source: battle_move_resolution.c :: SetSameMoveTurnValues, case EFFECT_ROLLOUT (L4899-4909):
+#   on a successful consecutive hit, rolloutTimer increments (locks up to 5 uses, then resets
+#   to 0); using any other move (the switch's `default` branch, L4915-4917) unconditionally
+#   resets rolloutTimer to 0 — this is how "interruption" resets the counter.
+@export var is_rollout: bool = false
+
+# is_magnitude: Magnitude — variable base power rolled fresh each use from a weighted table.
+# Source: battle_move_resolution.c :: CalculateMagnitudeDamage (L5196-5234):
+#   roll = RandomUniform(0, 99); weighted bands →
+#   [0,5)=10, [5,15)=30, [15,35)=50, [35,65)=70, [65,85)=90, [85,95)=110, [95,100)=150.
+#   (5%, 10%, 20%, 30%, 20%, 10%, 5% respectively.)
+@export var is_magnitude: bool = false
+
+# ── M16c: Screens (side conditions) ──────────────────────────────────────────
+
+# is_reflect: Reflect — side-wide, halves damage from Physical-category moves hitting the
+#   caster's side for 5 turns. Fails (does not refresh) if already up on that side.
+# Source: src/data/moves_info.h MOVE_REFLECT: .effect = EFFECT_REFLECT, .accuracy = 0,
+#   .pp = 20, .target = TARGET_USER, .ignoresProtect = TRUE.
+# Source: battle_script_commands.c :: TrySetReflect (L2088-2106): fails if
+#   gSideStatuses[side] & SIDE_STATUS_REFLECT already set; else sets it and
+#   gSideTimers[side].reflectTimer = 5 (8 with Light Clay — not modeled, no held-item
+#   duration extension in this project's scope yet).
+@export var is_reflect: bool = false
+
+# is_light_screen: Light Screen — same shape as Reflect, but for Special-category moves.
+# Source: src/data/moves_info.h MOVE_LIGHT_SCREEN: .effect = EFFECT_LIGHT_SCREEN,
+#   .accuracy = 0, .pp = 30, .target = TARGET_USER, .ignoresProtect = TRUE.
+# Source: battle_script_commands.c :: TrySetLightScreen (L2109-2127): same shape as
+#   TrySetReflect but SIDE_STATUS_LIGHTSCREEN / lightscreenTimer.
+@export var is_light_screen: bool = false
+
+# is_aurora_veil: Aurora Veil — combines Reflect + Light Screen in a single slot (reduces
+#   BOTH Physical and Special damage), 5 turns. Requires Hail active or fails outright
+#   (checked BEFORE the "already up" check). Independent bitmask from Reflect/Light Screen —
+#   can coexist with either or both already up on the same side (does not stack the
+#   reduction multiplicatively; see DamageCalculator's screen modifier).
+# Source: src/data/moves_info.h MOVE_AURORA_VEIL: .effect = EFFECT_AURORA_VEIL,
+#   .accuracy = 0, .pp = 20, .target = TARGET_USER, .ignoresProtect = TRUE.
+# Source: battle_move_resolution.c (L1191-1193): case EFFECT_AURORA_VEIL — fails
+#   (BattleScript_ButItFailed) unless GetWeather() & B_WEATHER_ICY_ANY. This project only
+#   models Hail (no separate Snow weather), so the gate simplifies to weather == WEATHER_HAIL.
+# Source: src/battle_script_commands.c :: BS_SetAuroraVeil (L13439-13462): fails only if
+#   SIDE_STATUS_AURORA_VEIL already set (does NOT check Reflect/Light Screen — independent
+#   slot). auroraVeilTimer = 5 (8 with Light Clay — not modeled).
+@export var is_aurora_veil: bool = false
+
+# breaks_screens: Brick Break — clears ALL screens (Reflect/Light Screen/Aurora Veil) on the
+#   target's side, then deals damage as normal. The removal fires BEFORE this hit's own
+#   damage calc (preAttackEffect=TRUE in source), so a screen this move itself breaks does
+#   NOT reduce its own damage.
+# Source: src/data/moves_info.h MOVE_BRICK_BREAK: .effect = EFFECT_HIT, .power = 75,
+#   .type = TYPE_FIGHTING, .accuracy = 100, .pp = 15, .makesContact = TRUE.
+#   additionalEffects = {MOVE_EFFECT_BREAK_SCREEN, .preAttackEffect = TRUE}.
+# Source: src/battle_script_commands.c :: MOVE_EFFECT_BREAK_SCREEN case (L3308-3336):
+#   B_BRICK_BREAK >= GEN_4 (GEN_LATEST config) → clears GetBattlerSide(target) — the
+#   move's actual target's side, not hardcoded to "the opponent's side" (matters if Brick
+#   Break is used on an ally in doubles). Only clears/emits if a screen was actually up.
+@export var breaks_screens: bool = false

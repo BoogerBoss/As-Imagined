@@ -600,6 +600,89 @@ MOVES = [
     {"id": 456, "name": "Heal Order",
      "type": TYPE_BUG, "category": STAT, "accuracy": 0, "pp": 10,
      "ignores_protect": True, "is_restore_hp": True},
+
+    # ── M16b: Tier B move effects ─────────────────────────────────────────────
+
+    # Stomp(23)  L630  Normal/Phys/65/100/20, contact, 30% flinch, double dmg vs minimized
+    #   Source: moves_info.h MOVE_STOMP: .effect=EFFECT_HIT, .power=65, .makesContact=TRUE,
+    #   .minimizeDoubleDamage=TRUE (B_UPDATED_MOVE_FLAGS>=GEN_2), 30% flinch secondary.
+    #   NOTE: canonical ID is 23 (constants/moves.h), not 31 (that's Fury Attack) —
+    #   corrected from the initial task spec after checking source; see decisions.md.
+    {"id":  23, "name": "Stomp",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 65, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "double_power_on_minimized": True,
+     "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    # Minimize(107)  L2895  Normal/Status/0/0/10, self, +2 evasion, ignoresProtect
+    #   Source: moves_info.h MOVE_MINIMIZE: .effect=EFFECT_MINIMIZE, .accuracy=0,
+    #   .pp=10 (B_UPDATED_MOVE_DATA>=GEN_6), .target=TARGET_USER, .ignoresProtect=TRUE.
+    #   additionalEffects {STAT_CHANGE_EFFECT_PLUS, .evasion=2} (B_MINIMIZE_EVASION>=GEN_5).
+    {"id": 107, "name": "Minimize",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "is_minimize": True},
+
+    # Defense Curl(111)  L3011  Normal/Status/0/0/40, self, +1 Defense, ignoresProtect
+    #   Source: moves_info.h MOVE_DEFENSE_CURL: .effect=EFFECT_DEFENSE_CURL, .accuracy=0,
+    #   .pp=40, .target=TARGET_USER, .ignoresProtect=TRUE.
+    #   additionalEffects {STAT_CHANGE_EFFECT_PLUS, .defense=1}.
+    {"id": 111, "name": "Defense Curl",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 40,
+     "ignores_protect": True, "is_defense_curl": True},
+
+    # Rollout(205)  L5618  Rock/Phys/30/90/20, contact, 5-turn power-doubling
+    #   Source: moves_info.h MOVE_ROLLOUT: .effect=EFFECT_ROLLOUT, .power=30, .accuracy=90,
+    #   .pp=20, .makesContact=TRUE.
+    {"id": 205, "name": "Rollout",
+     "type": TYPE_ROCK, "category": PHYS, "power": 30, "accuracy": 90, "pp": 20,
+     "makes_contact": True, "is_rollout": True},
+
+    # Ice Ball(301)  L8228  Ice/Phys/30/90/20, contact, ballistic, 5-turn power-doubling
+    #   Source: moves_info.h MOVE_ICE_BALL: .effect=EFFECT_ROLLOUT (same handler as Rollout),
+    #   .power=30, .accuracy=90, .pp=20, .makesContact=TRUE, .ballisticMove=TRUE.
+    {"id": 301, "name": "Ice Ball",
+     "type": TYPE_ICE, "category": PHYS, "power": 30, "accuracy": 90, "pp": 20,
+     "makes_contact": True, "is_rollout": True},
+
+    # Magnitude(222)  L6063  Ground/Phys/1/100/30, spread, damages_underground, variable power
+    #   Source: moves_info.h MOVE_MAGNITUDE: .effect=EFFECT_MAGNITUDE, .power=1 (placeholder;
+    #   overridden every use), .accuracy=100, .pp=30, .target=TARGET_FOES_AND_ALLY,
+    #   .damagesUnderground=TRUE. Power table rolled in CalculateMagnitudeDamage.
+    {"id": 222, "name": "Magnitude",
+     "type": TYPE_GROUND, "category": PHYS, "power": 1, "accuracy": 100, "pp": 30,
+     "damages_underground": True, "is_spread": True, "is_magnitude": True},
+
+    # ── M16c: Tier C move effects (screens) ───────────────────────────────────
+
+    # Light Screen(113)  L3071  Psychic/Status/0/0/30, self, ignoresProtect, halves Special dmg
+    #   Source: moves_info.h MOVE_LIGHT_SCREEN: .effect=EFFECT_LIGHT_SCREEN, .accuracy=0,
+    #   .pp=30, .target=TARGET_USER, .ignoresProtect=TRUE.
+    {"id": 113, "name": "Light Screen",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 30,
+     "ignores_protect": True, "is_light_screen": True},
+
+    # Reflect(115)  L3123  Psychic/Status/0/0/20, self, ignoresProtect, halves Physical dmg
+    #   Source: moves_info.h MOVE_REFLECT: .effect=EFFECT_REFLECT, .accuracy=0, .pp=20,
+    #   .target=TARGET_USER, .ignoresProtect=TRUE.
+    {"id": 115, "name": "Reflect",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "is_reflect": True},
+
+    # Brick Break(280)  L7672  Fighting/Phys/75/100/15, contact, breaks target's screens
+    #   Source: moves_info.h MOVE_BRICK_BREAK: .effect=EFFECT_HIT, .power=75, .accuracy=100,
+    #   .pp=15, .makesContact=TRUE. additionalEffects {MOVE_EFFECT_BREAK_SCREEN,
+    #   .preAttackEffect=TRUE}.
+    {"id": 280, "name": "Brick Break",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 75, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "breaks_screens": True},
+
+    # Aurora Veil(657)  L17392  Ice/Status/0/0/20, self, ignoresProtect, hail-gated,
+    #   halves both Physical and Special dmg (combines Reflect + Light Screen)
+    #   Source: moves_info.h MOVE_AURORA_VEIL: .effect=EFFECT_AURORA_VEIL, .accuracy=0,
+    #   .pp=20, .target=TARGET_USER, .ignoresProtect=TRUE. Fails unless
+    #   GetWeather() & B_WEATHER_ICY_ANY (this project only models Hail).
+    {"id": 657, "name": "Aurora Veil",
+     "type": TYPE_ICE, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "is_aurora_veil": True},
 ]
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──
@@ -660,6 +743,17 @@ DEFAULTS = {
     "is_focus_energy":     False,
     "is_growth":           False,
     "is_ohko":             False,
+    # M16b fields
+    "is_minimize":              False,
+    "is_defense_curl":          False,
+    "double_power_on_minimized": False,
+    "is_rollout":                False,
+    "is_magnitude":              False,
+    # M16c fields
+    "is_reflect":                False,
+    "is_light_screen":           False,
+    "is_aurora_veil":            False,
+    "breaks_screens":            False,
 }
 
 HEADER = """\
@@ -694,6 +788,11 @@ FIELD_ORDER = [
     "is_solar_beam", "charge_turn_defense_boost", "is_struggle",
     # M16a fields
     "is_restore_hp", "is_focus_energy", "is_growth", "is_ohko",
+    # M16b fields
+    "is_minimize", "is_defense_curl", "double_power_on_minimized",
+    "is_rollout", "is_magnitude",
+    # M16c fields
+    "is_reflect", "is_light_screen", "is_aurora_veil", "breaks_screens",
 ]
 
 

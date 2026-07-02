@@ -85,6 +85,10 @@ signal item_damage(pokemon: BattlePokemon, amount: int)                    # Lif
 signal helping_hand_used(user: BattlePokemon, ally: BattlePokemon)         # Helping Hand boosted ally
 signal follow_me_used(user: BattlePokemon)                                 # Follow Me/Rage Powder active
 
+signal screen_set(side: int, screen_name: String)                          # "reflect"/"light_screen"/"aurora_veil" went up
+signal screen_expired(side: int, screen_name: String)                      # duration ran out
+signal screens_broken(side: int)                                           # Brick Break cleared a side's screens
+
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
 
@@ -161,6 +165,11 @@ var _force_crit: Variant = null
 # BM-9 fix threads this value through _do_damaging_hit so integration tests can control it.
 var _force_contact_roll: Variant = null
 
+# Test seam: force Magnitude's rolled power for all Magnitude uses this battle.
+# null = use real RNG (weighted table roll); one of {10,30,50,70,90,110,150} = pin it.
+# Mirrors the null-sentinel convention of the other _force_* seams above.
+var _force_magnitude_power: Variant = null
+
 # M9: pre-queued Baton Pass target slots per combatant index (-1 = auto-select first valid).
 # M14a: indexed by combatant index; singles uses [0] and [1].
 var _baton_pass_queues: Array = [[], [], [], []]
@@ -195,6 +204,21 @@ var _helping_hand: Array[bool] = [false, false, false, false]
 # Source: gBattleWeather (battle_util.c global), weatherDuration (gBattleStruct field).
 var weather: int = WEATHER_NONE
 var weather_duration: int = 0  # turns remaining; 0 when no weather is active
+
+# M16c: per-side screen conditions (Reflect / Light Screen / Aurora Veil).
+# Indexed by SIDE (0/1) — always length 2 regardless of singles/doubles, same convention as
+# _follow_me_targets above (doubles just means 2 field slots share one side's conditions).
+# These are side-bound, not battler-bound: they persist across the owning side's switches
+# (nothing in _clear_volatiles / _switch_out_clear touches this array — by construction,
+# since those operate on BattlePokemon, not on BattleManager's side-indexed state) and only
+# clear on expiry (duration reaching 0) or an explicit screen-removal move (Brick Break).
+# Source: gSideStatuses[side] (bitmask) + gSideTimers[side].{reflectTimer,lightscreenTimer,
+#   auroraVeilTimer} (include/battle.h). Turns-remaining ints here fold together the
+#   presence bit and the timer into one field per condition (0 = not active).
+var _side_conditions: Array = [
+	{"reflect_turns": 0, "light_screen_turns": 0, "aurora_veil_turns": 0},
+	{"reflect_turns": 0, "light_screen_turns": 0, "aurora_veil_turns": 0},
+]
 
 # M15 Task 3: Struggle instantiated in _ready(); used when all PP are depleted.
 # Source: battle_main.c L4727–4728 — noValidMoves → MOVE_STRUGGLE substitution.
@@ -825,10 +849,37 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
+	# ── Rollout / Ice Ball power scaling ──────────────────────────────────────
+	# Source: battle_util.c :: CalcRolloutBasePower (L6034-6042):
+	#   basePower = move.power; basePower <<= rolloutTimer; if (defenseCurl) basePower *= 2.
+	# rollout_turns holds the pre-hit consecutive-use count (0 = fresh start), carried over
+	# from the previous turn's post-hit bookkeeping below. Computed before the accuracy
+	# check since the power for THIS hit doesn't depend on this hit's own outcome.
+	# _dmg_power_override feeds _do_damaging_hit below; -1 = use move.power unmodified.
+	var _dmg_power_override: int = -1
+	if move.is_rollout:
+		var _rb_power: int = move.power
+		for _ri in range(attacker.rollout_turns):
+			_rb_power *= 2
+		if attacker.defense_curled:
+			_rb_power *= 2
+		attacker.rollout_base_power = _rb_power
+		_dmg_power_override = _rb_power
+
+	# ── Magnitude: roll variable base power once per use ──────────────────────
+	# Source: battle_move_resolution.c :: CalculateMagnitudeDamage (L5196-5234) — weighted
+	#   table {10,30,50,70,90,110,150} with bands {5,10,20,30,20,10,5}% respectively.
+	if move.is_magnitude:
+		_dmg_power_override = _roll_magnitude_power()
+
 	# ── Accuracy check ────────────────────────────────────────────────────────
 	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
 	# Includes semi-invulnerable miss check (source: CancelerAccuracyCheck L1993).
 	if not StatusManager.check_accuracy(attacker, defender, move, _force_hit):
+		# Source: SetSameMoveTurnValues, case EFFECT_ROLLOUT (L4899): increment requires
+		#   IsAnyTargetAffected() — a miss resets the consecutive-hit counter to 0.
+		if move.is_rollout:
+			attacker.rollout_turns = 0
 		move_missed.emit(attacker, "accuracy")
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
@@ -923,6 +974,13 @@ func _phase_move_execution() -> void:
 		move_called.emit(attacker, called_move)
 		move = called_move  # redirect to the called move for the rest of execution
 
+	# ── Rollout / Ice Ball: interruption reset ────────────────────────────────
+	# Source: battle_move_resolution.c :: SetSameMoveTurnValues `default` case
+	#   (L4915-4917): using any move OTHER than Rollout unconditionally resets
+	#   rolloutTimer to 0 — this is how switching moves breaks the power streak.
+	if not move.is_rollout:
+		attacker.rollout_turns = 0
+
 	# Track the last move used by this Pokémon (for Disable / Encore targeting).
 	# Source: gLastMoves[] is set after each successful move execution.
 	attacker.last_move_used = move
@@ -975,11 +1033,21 @@ func _phase_move_execution() -> void:
 				var tgt: BattlePokemon = _combatants[opp_start + _fi]
 				if tgt.fainted or tgt.current_hp <= 0:
 					continue
-				_do_damaging_hit(attacker, tgt, move, spread_dmg_reduction, hh_boost)
+				_do_damaging_hit(attacker, tgt, move, spread_dmg_reduction, hh_boost,
+						_dmg_power_override)
 		else:
 			# Single-target damaging move.
 			var hh_boost: bool = _helping_hand[attacker_idx]
-			_do_damaging_hit(attacker, defender, move, false, hh_boost)
+			_do_damaging_hit(attacker, defender, move, false, hh_boost, _dmg_power_override)
+
+		# ── Rollout / Ice Ball: advance the consecutive-hit counter ───────────────
+		# Source: SetSameMoveTurnValues, case EFFECT_ROLLOUT (L4899-4909): a successful
+		#   hit increments rolloutTimer; reaching 5 resets it back to 0 (fresh start on the
+		#   next use). The accuracy-check branch above already handles the miss-reset case.
+		if move.is_rollout:
+			attacker.rollout_turns += 1
+			if attacker.rollout_turns >= 5:
+				attacker.rollout_turns = 0
 		# M15 Task 3: Struggle recoil — 1/4 max HP (not % of damage dealt).
 		# Source: BattleScript_EffectRecoilHP (battle_script_commands.c L2534–2543).
 		if move.is_struggle and not attacker.fainted:
@@ -1150,6 +1218,93 @@ func _phase_move_execution() -> void:
 				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPATK, g_spatk)
 			if g_atk == 0 and g_spatk == 0:
 				move_effect_failed.emit(attacker, "stat_limit")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Minimize ──────────────────────────────────────────────────────────
+		# Source: moves_info.h MOVE_MINIMIZE additionalEffects {STAT_CHANGE_EFFECT_PLUS,
+		#   .evasion = 2} (B_MINIMIZE_EVASION >= GEN_5, GEN_LATEST config).
+		# Source: battle_stat_change.c :: SetAdditionalEffectsOnStatChange, case
+		#   EFFECT_MINIMIZE (L1000): volatiles.minimize = TRUE only if the evasion raise
+		#   actually succeeded (MOVE_RESULT_STAT_CHANGED).
+		if move.is_minimize:
+			var min_actual: int = StatusManager.apply_stat_change(
+					attacker, BattlePokemon.STAGE_EVASION, 2)
+			if min_actual != 0:
+				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_EVASION, min_actual)
+				attacker.minimized = true
+			else:
+				move_effect_failed.emit(attacker, "stat_limit")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Defense Curl ──────────────────────────────────────────────────────
+		# Source: moves_info.h MOVE_DEFENSE_CURL additionalEffects
+		#   {STAT_CHANGE_EFFECT_PLUS, .defense = 1}.
+		# Source: battle_stat_change.c :: SetAdditionalEffectsOnStatChange, case
+		#   EFFECT_DEFENSE_CURL (L997): volatiles.defenseCurl = TRUE unconditionally,
+		#   regardless of whether the Defense raise itself succeeded.
+		if move.is_defense_curl:
+			var dc_actual: int = StatusManager.apply_stat_change(
+					attacker, BattlePokemon.STAGE_DEF, 1)
+			if dc_actual != 0:
+				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_DEF, dc_actual)
+			else:
+				move_effect_failed.emit(attacker, "stat_limit")
+			attacker.defense_curled = true
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Reflect ───────────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: TrySetReflect (L2088-2106): fails (does not
+		#   refresh) if SIDE_STATUS_REFLECT already set on the caster's side; else sets it
+		#   with a 5-turn timer.
+		if move.is_reflect:
+			if _side_conditions[attacker_side]["reflect_turns"] > 0:
+				move_effect_failed.emit(attacker, "already_reflect")
+			else:
+				_side_conditions[attacker_side]["reflect_turns"] = 5
+				screen_set.emit(attacker_side, "reflect")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Light Screen ─────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: TrySetLightScreen (L2109-2127): same shape as
+		#   TrySetReflect but SIDE_STATUS_LIGHTSCREEN / lightscreenTimer.
+		if move.is_light_screen:
+			if _side_conditions[attacker_side]["light_screen_turns"] > 0:
+				move_effect_failed.emit(attacker, "already_light_screen")
+			else:
+				_side_conditions[attacker_side]["light_screen_turns"] = 5
+				screen_set.emit(attacker_side, "light_screen")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Aurora Veil ──────────────────────────────────────────────────────
+		# Source: battle_move_resolution.c (L1191-1193): fails outright unless
+		#   GetWeather() & B_WEATHER_ICY_ANY — checked BEFORE the "already up" check (this
+		#   project only models Hail, no separate Snow weather, so the gate is
+		#   weather == WEATHER_HAIL). Source: BS_SetAuroraVeil (L13439-13462): fails only if
+		#   SIDE_STATUS_AURORA_VEIL already set — independent of Reflect/Light Screen, so it
+		#   can be set even if either (or both) of those are already up on the same side.
+		if move.is_aurora_veil:
+			if weather != WEATHER_HAIL:
+				move_effect_failed.emit(attacker, "no_hail")
+			elif _side_conditions[attacker_side]["aurora_veil_turns"] > 0:
+				move_effect_failed.emit(attacker, "already_aurora_veil")
+			else:
+				_side_conditions[attacker_side]["aurora_veil_turns"] = 5
+				screen_set.emit(attacker_side, "aurora_veil")
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -1326,6 +1481,25 @@ func _phase_end_of_turn() -> void:
 			if mon.encore_turns == 0:
 				mon.encored_move = null
 
+	# M16c: Decrement Reflect/Light Screen/Aurora Veil timers, both sides.
+	# Source: battle_end_turn.c :: HandleEndTurnSecondEventBlock, cases
+	#   SECOND_EVENT_BLOCK_REFLECT / _LIGHT_SCREEN / _AURORA_VEIL (L1025-1127): decrement;
+	#   at 0, clear the side-status bit and fire the "wore off" message.
+	for side in range(2):
+		var sc: Dictionary = _side_conditions[side]
+		if sc["reflect_turns"] > 0:
+			sc["reflect_turns"] -= 1
+			if sc["reflect_turns"] == 0:
+				screen_expired.emit(side, "reflect")
+		if sc["light_screen_turns"] > 0:
+			sc["light_screen_turns"] -= 1
+			if sc["light_screen_turns"] == 0:
+				screen_expired.emit(side, "light_screen")
+		if sc["aurora_veil_turns"] > 0:
+			sc["aurora_veil_turns"] -= 1
+			if sc["aurora_veil_turns"] == 0:
+				screen_expired.emit(side, "aurora_veil")
+
 	# End-of-turn ability effects (Speed Boost, etc.)
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ENDTURN, ...) (battle_util.c L3605)
 	for mon: BattlePokemon in _combatants:
@@ -1450,6 +1624,10 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.bide_turns = 0
 	mon.bide_damage = 0
 	mon.focus_energy = false
+	mon.minimized = false
+	mon.defense_curled = false
+	mon.rollout_turns = 0
+	mon.rollout_base_power = 0
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
@@ -1593,6 +1771,31 @@ func _roll_protect_success(consecutive: int) -> bool:
 	return denom == 1 or (randi() % denom == 0)
 
 
+# Magnitude's weighted base-power roll.
+# Source: battle_move_resolution.c :: CalculateMagnitudeDamage (L5196-5234):
+#   magnitude = RandomUniform(0, 99); weighted bands →
+#   [0,5)=10, [5,15)=30, [15,35)=50, [35,65)=70, [65,85)=90, [85,95)=110, [95,100)=150.
+# _force_magnitude_power test seam: null = real RNG; else pin to the forced value.
+func _roll_magnitude_power() -> int:
+	if _force_magnitude_power != null:
+		return int(_force_magnitude_power)
+	var roll: int = randi() % 100
+	if roll < 5:
+		return 10
+	elif roll < 15:
+		return 30
+	elif roll < 35:
+		return 50
+	elif roll < 65:
+		return 70
+	elif roll < 85:
+		return 90
+	elif roll < 95:
+		return 110
+	else:
+		return 150
+
+
 # Synchronize back-reflect helper: if holder has Synchronize and received an eligible
 # status from source, apply the same status back to source. Emits signals on fire.
 # Source: TrySynchronizeActivation (battle_script_commands.c L2130)
@@ -1699,12 +1902,45 @@ func _apply_fixed_dmg_to_target(attacker: BattlePokemon, defender: BattlePokemon
 # _last_attacker tracking (used by Destiny Bond killer lookup in _phase_faint_check).
 # is_spread: pass true when this is a spread move with ≥2 live targets → 0.75× reduction.
 # helping_hand: pass true when attacker's ally used Helping Hand → 1.5× base power.
+# power_override: M16b — pass ≥0 to override move.power for this hit (Rollout scaling,
+#   Magnitude's rolled power). -1 (default) = use move.power.
 # Source: battle_script_commands.c :: MoveDamageDataHpUpdate + downstream effect handlers.
 func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
-		move: MoveData, is_spread: bool = false, helping_hand: bool = false) -> void:
+		move: MoveData, is_spread: bool = false, helping_hand: bool = false,
+		power_override: int = -1) -> void:
+	var target_idx: int = _combatants.find(target)
+	var target_side: int = target_idx / _active_per_side
+	var sc: Dictionary = _side_conditions[target_side]
+
+	# M16c: Brick Break-style screen removal fires BEFORE this hit's own damage calc
+	# (preAttackEffect=TRUE in source), so a screen this move itself breaks does NOT
+	# reduce this hit's damage — `sc` is read fresh (already cleared) below.
+	# Source: battle_script_commands.c :: MOVE_EFFECT_BREAK_SCREEN case (L3308-3336).
+	if move.breaks_screens and (sc["reflect_turns"] > 0 or sc["light_screen_turns"] > 0
+			or sc["aurora_veil_turns"] > 0):
+		sc["reflect_turns"] = 0
+		sc["light_screen_turns"] = 0
+		sc["aurora_veil_turns"] = 0
+		screens_broken.emit(target_side)
+
+	# M16c: Reflect/Light Screen/Aurora Veil damage reduction. Resolved here (not inside
+	# DamageCalculator, which is a stateless static utility with no access to side state)
+	# and passed in as a pre-resolved bool + doubles flag.
+	# Source: battle_util.c :: GetScreensModifier (L7347-7365): Aurora Veil applies
+	#   regardless of category; Reflect only vs Physical, Light Screen only vs Special.
+	#   The three do NOT stack multiplicatively — it's a plain OR, single ×0.5/×0.667 either way.
+	var screen_active: bool = false
+	if sc["aurora_veil_turns"] > 0:
+		screen_active = true
+	elif move.category == 0 and sc["reflect_turns"] > 0:
+		screen_active = true
+	elif move.category == 1 and sc["light_screen_turns"] > 0:
+		screen_active = true
+
 	var roll: int = _force_roll if _force_roll != null else -1
 	var result: Dictionary = DamageCalculator.calculate(
-			attacker, target, move, roll, _force_crit, weather, is_spread, helping_hand)
+			attacker, target, move, roll, _force_crit, weather, is_spread, helping_hand,
+			power_override, screen_active, _active_per_side > 1)
 	var damage: int = result["damage"]
 
 	var went_to_sub: bool = (target.substitute_hp > 0 and not move.ignores_substitute)
