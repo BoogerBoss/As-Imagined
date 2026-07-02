@@ -356,3 +356,651 @@ Pulled out from the table above for visibility, per the task's explicit ask:
   `data/abilities/` as a result — a two-file data-pipeline fix needed before or during
   whichever milestone implements either. (Bad Dreams, 123, is a literal ID and its data
   file exists fine — don't conflate the two.)
+
+---
+---
+
+# Addendum: Full-Scope Recon (2026-07-02)
+
+**Scope decision, already made by Rob, not relitigated here:** M17 targets the FULL
+`pokeemerald_expansion` ability list (IDs 1–318), not just the 151 IDs reachable by the
+current 386-species roster. Rob will manually reassign abilities to species later, so every
+ability should be available regardless of which species currently "owns" it in
+`data/pokemon.json`. This addendum extends Section 1's original recon (the 151-roster pass)
+to cover the remaining 166 IDs, then rolls both passes into one tier recommendation.
+
+Two exclusions were decided going into this pass and are not re-litigated: **Imposter
+(150)** and **Bad Dreams (123)** — both already appear, classified, in the original
+Sections 2–5 tables above and are not touched again here.
+
+## 7. The other 166 — enumeration and diff method
+
+Re-read Sections 2–5 above and extracted every ID appearing in a table row (12 implemented
++ 139 remaining + Bad Dreams flagged-but-excluded = **152** distinct IDs — confirmed by
+grep, not re-derived by hand). Diffed against the full 1–318 range from
+`include/constants/abilities.h` (canonical source, resolving symbolic `= ABILITIES_COUNT_GENx`
+enum values the same way Section 6's data-pipeline fix required):
+
+**318 total IDs − 152 already-covered = 166 newly-enumerated IDs.**
+
+Of those 166, 21 are addressed as exclusion/pending-decision candidates (Section 8) rather
+than classified into the six mechanic buckets, leaving **145 classified below** (Section 9).
+
+## 8. Exclusion recommendations — pending Rob's approval, not applied unilaterally
+
+### 8.1 Terastallization-bound (recommend exclude — 3 abilities)
+
+| Ability | ID | Why it's Tera-bound |
+|---|---|---|
+| Tera Shift | 307 | Source-verified: `form_change_tables.h` ties this to `SPECIES_TERAPAGOS_TERASTAL` specifically, triggered via a dedicated `ABILITYEFFECT_TERA_SHIFT` case in `battle_util.c` (L4575) — a switch-in Terapagos-only pre-Tera form change. Meaningless without Terapagos and the Tera gimmick both existing. |
+| Tera Shell | 308 | Source-verified (`battle_util.c` L324): forces all incoming damage to be "not very effective" the first time a Terastallized Terapagos is hit. Entirely defined in terms of the Tera mechanic. |
+| Teraform Zero | 309 | Source-verified (`battle_util.c` L2949): clears all weather/terrain the instant Terapagos Terastallizes into its Stellar form. Same dependency. |
+
+Same precedent as this project's existing Mega/Z-move/Dynamax exclusion. Recommend excluding
+all three.
+
+### 8.2 Paradox-Pokémon-exclusive — recommend KEEP, generically implementable (2 abilities)
+
+| Ability | ID | Finding |
+|---|---|---|
+| Protosynthesis | 281 | Source-verified (`battle_util.c` L4721–4732): triggers on "harsh sunlight active," calls a generic `GetParadoxHighestStatId(battler)` helper and boosts whichever of the holder's OWN stats is currently highest by ×1.3 (×1.5 for Speed). Nothing here references a specific species — the mechanic is fully generic and works on any Pokémon. **Recommend keeping in scope.** Classified normally below (Bucket C), reusing the same weather-change-hook infra Forecast needs (Section 6 flag #5). |
+| Quark Drive | 282 | Source-verified (`battle_util.c` L4754–4765): identical mechanic to Protosynthesis, gated on Electric Terrain instead of sun. Equally generic. **Recommend keeping in scope**, but it is the flagship reason a brand-new **Terrain system** is needed (see Section 10, infra flag #11) — this project has zero terrain code today (confirmed via repo-wide grep for "terrain", zero hits outside `abilities.h`'s enum comment). |
+
+### 8.3 Hack-custom / non-canonical IDs — recommend exclude (6 abilities)
+
+| Ability | ID | Why |
+|---|---|---|
+| Dragonize | 312 | Source-verified (`src/data/abilities.h` L2442-2445): real description ("Normal moves turn Dragon"), but this is a `pokeemerald_expansion` hack-project custom addition, not a mainline ability from any generation. |
+| Eelevate | 313 | Source-verified: description is literally `"Unimplemented."` in the source project itself. |
+| ABILITY_314 | 314 | Source-verified: name is literally `"-------"`, description `"No special ability."` — an empty enum slot, not an ability. |
+| Mega Sol | 315 | Source-verified: custom hack addition ("Acts like under sun"), not mainline. |
+| Fire Mane | 316 | Source-verified: description is literally `"Unimplemented."` in source. |
+| ABILITY_317 | 317 | Source-verified: same empty-slot pattern as 314 (`"-------"` / `"No special ability."`). |
+
+Recommend excluding all six. (Spot-checked the true Gen 9 DLC-era neighbors of this range —
+Toxic Chain 305, Supersweet Syrup 306, Poison Puppeteer 310, Piercing Drill 311, Spicy Spray
+318 — against the same source table: all five have real named signature-Pokémon and real
+mechanic descriptions, confirmed genuine mainline abilities, not hack-custom. They ARE
+classified below.)
+
+### 8.4 Mega-Evolution-trigger-bound / battle-triggered form-change — flagged as an OPEN
+### QUESTION, not excluded (11 abilities)
+
+The task asked for a genuine read on whether these are Imposter-tier costly or cheaper.
+**They are not cheaper — if anything the generic "any ability on any species" scope model
+makes them a DIFFERENT kind of expensive than Imposter, not a lesser one.**
+
+Imposter needs exactly one new subsystem (Transform) that works generically between any two
+Pokémon already in battle — expensive, but a single well-defined problem. These 11 abilities
+are each hard-wired in source to a **specific alternate-form species entry** with its own
+bespoke base stats/typing/sprite (`form_change_tables.h`, confirmed by source-checking three
+of them directly):
+
+- **Disguise** (209): `form_change_tables.h` L1615-1626 — ties to `SPECIES_MIMIKYU_BUSTED`
+  specifically, a wholly separate species record.
+- **Zen Mode** (161): L1069-1082 — ties to `SPECIES_DARMANITAN_ZEN`, another separate
+  species record, HP-threshold-triggered both ways (drops into Zen below 50%, switch-out
+  reverts).
+- **Stance Change** (176): L1316-1318 — ties to `SPECIES_AEGISLASH_BLADE`/`_SHIELD`,
+  triggered by move category (physical/special) or by using King's Shield specifically.
+- **Gulp Missile** (241): `battle_util.c` L4360-4378 — confirmed the retaliation damage and
+  the stat-drop side-effect are BOTH read directly off which Cramorant forme
+  (`SPECIES_CRAMORANT_GORGING` vs `_GULPING`) is currently active; there is no
+  species-agnostic version of this ability's effect.
+
+The other 7 in this bucket (**Battle Bond** 210, **Power Construct** 211, **Schooling**
+208, **Ice Face** 248, **Shields Down** 197, **Hunger Switch** 258, **Zero to Hero** 278)
+follow the identical pattern by well-established public mechanic knowledge — each one's
+entire function IS a swap to a specific named alternate-form species entry this project has
+no data slot for at all (no species in `data/pokemon.json` has an "alternate form" field,
+and this project's scope note explicitly excludes regional/Mega forms already).
+
+**This is a scope question for Rob, not a unilateral exclusion**, because there are three
+genuinely different ways to handle it:
+1. Skip entirely, same treatment as Imposter (simplest, matches existing precedent).
+2. Implement a "simplified reinterpretation" — keep the trigger condition (HP threshold,
+   move category, etc.) but apply only a stat/type shift instead of a true alternate-form
+   species swap, discarding the flavor of an "exact" recreation.
+3. Defer until/unless a general alternate-forme data system gets designed (a bigger
+   milestone of its own, well beyond M17's scope as currently framed).
+
+Recommend Rob pick one of these three before any of these 11 are scheduled into a tier —
+they should NOT default into whatever tier picks up "unique/one-off" abilities, since their
+blocking dependency is a data-modeling decision, not an engine-code gap.
+
+(**Multitype** 121, **RKS System** 225, and **Flower Gift** 122 look superficially similar
+but are NOT part of this pending group — see Section 9's Bucket D, they're cheap.)
+
+### 8.5 Primal-Reversion-bound — recommend KEEP, implement as plain weather-setters (3 abilities)
+
+| Ability | ID | Finding |
+|---|---|---|
+| Primordial Sea | 189 | Source-verified (`battle_util.c` L3400-3407): weather-setting call is `TryChangeBattleWeather(battler, BATTLE_WEATHER_RAIN_PRIMAL, ...)` inside the SAME switch-in ability-effect dispatch Drizzle/Drought/Sand Stream already use. The Primal-Reversion ITEM-trigger (Blue Orb) is a separate, out-of-scope mechanic — but the weather-setting ability effect itself has no dependency on it beyond being gated by `shouldAbilityTrigger`, same gate every switch-in ability uses. |
+| Desolate Land | 190 | Same shape, `BATTLE_WEATHER_SUN_PRIMAL` (L3391-3398). |
+| Delta Stream | 191 | Same shape, but sets a **new** weather value (`BATTLE_WEATHER_STRONG_WINDS`, L3409-3416) that this project's M11 weather system doesn't have yet, and that weather also cancels Flying's four type-weaknesses while active — a genuine type-effectiveness-pipeline touch on top of the plain weather-setter shape. Pricier than the other two, still small. |
+
+**Recommendation:** implement all three as ordinary innate switch-in weather setters (same
+function Drizzle/Drought/Sand Stream already use), dropping the "must be the Primal-Reversion
+form of a specific legendary" gate entirely — consistent with Rob's stated intent to freely
+reassign any ability to any species. Classified normally below (Bucket C).
+
+### 8.6 One more candidate found during this pass, not in the task's original list
+
+| Ability | ID | Why it's gimmick-specific like Tera |
+|---|---|---|
+| Commander | 279 | Public-knowledge mechanic: while Tatsugiri is on the field with Dondozo, it "boards" Dondozo and both act as a single, merged battle unit for the rest of the encounter. This fundamentally requires TWO SPECIFIC PARTY MEMBERS occupying one battle slot together — not a per-Pokémon passive at all, and undefined on any other species pairing. Recommend treating it the same as the Tera trio: **flagged for exclusion**, pending Rob's approval, since (like Tera Shift) its entire function is the gimmick itself, not a general battle mechanic that happens to be showcased by one Pokémon. |
+
+## 9. Classification tables — the 145 abilities remaining in scope
+
+Same six-bucket standard as Sections 4/5. Confidence note carried forward unchanged: shallow
+pass, source-spot-checked wherever a row looked ambiguous, high-risk, or infrastructure-
+dependent (noted inline as "confirmed via source" where that happened).
+
+### Bucket A — Damage-pipeline modifiers (38 abilities)
+
+| Ability | ID | Note |
+|---|---|---|
+| Heatproof | 85 | Fire damage taken ×0.5, plus own burn-damage halved — Thick Fat shape |
+| Slow Start | 112 | Atk/Spe ×0.5 for 5 turns after switch-in — needs a turn-counter volatile |
+| Defeatist | 129 | Atk/SpA ×0.5 while HP ≤50% — Guts-inverse, simple threshold check |
+| Flare Boost | 138 | SpA ×1.5 while burned, special moves only — Toxic Boost shape |
+| Iron Barbs | 160 | Contact → maxHP/8 to attacker — Rough Skin dup |
+| Victory Star | 162 | Self + doubles-ally accuracy ×1.1 — Compound Eyes shape, doubles-aura |
+| Fur Coat | 169 | Physical damage taken ×0.5 — permanent-Reflect shape, physical-only |
+| Strong Jaw | 173 | Biting-move power ×1.5 — needs a "bite" MoveData flag |
+| Refrigerate | 174 | Normal→Ice + power bonus — same move-mutation mechanism as Normalize (Bucket E); grouped here since the multiplier is the dominant effect |
+| Mega Launcher | 178 | Pulse-move power ×1.5 — needs a "pulse" MoveData flag |
+| Grass Pelt | 179 | Def ×1.5 in Grassy Terrain — **needs new Terrain infra** (Section 10 flag #11) |
+| Tough Claws | 181 | Contact-move power ×1.3 |
+| Pixilate | 182 | Normal→Fairy + power bonus — Refrigerate shape |
+| Aerilate | 184 | Normal→Flying + power bonus — Refrigerate shape |
+| Stakeout | 198 | Power ×2 vs a target that switched in this turn — needs "did target switch in this turn" awareness at damage-calc time, Analytic shape |
+| Water Bubble | 199 | Water power ×2 (self), Fire damage taken ×0.5, burn-immune — three-part |
+| Steelworker | 200 | Steel-move power ×1.5, own-type boost regardless of STAB — Technician-shape variant |
+| Long Reach | 203 | Removes the "contact" flag from all the holder's own moves — simple override in the contact-check function |
+| Liquid Voice | 204 | Own sound-category moves become Water-type — Normalize-adjacent move-mutation |
+| Galvanize | 206 | Normal→Electric + power bonus — Refrigerate shape |
+| Battery | 217 | Doubles an ally's SPECIAL move power in doubles — Plus/Minus shape, ally-aware |
+| Fluffy | 218 | Contact damage ×0.5, Fire damage ×2 — confirmed via source (`battle_util.c` L7422-7428), two independent conditions |
+| Shadow Shield | 231 | **Confirmed via source** (`battle_util.c` L7407-7411): literally the SAME case branch as Multiscale (136, already classified in the original 151). "Free" once Multiscale exists. |
+| Prism Armor | 232 | **Confirmed via source** (L7414-7420): same case branch as Filter/Solid Rock (already classified). "Free" once those exist. |
+| Neuroforce | 233 | **Confirmed via source** (L7382-7385): Tinted-Lens-shape but ×1.25 instead of ×2.0 on super-effective hits. "Free" once Tinted Lens exists. |
+| Punk Rock | 244 | Own sound-move power ×1.3, sound-move damage taken ×0.5 — needs the "sound" MoveData flag (already exists per Soundproof's precedent, Section 6) |
+| Ice Scales | 246 | Special-move damage taken ×0.5, unconditional (not type-gated) — simple |
+| Power Spot | 249 | Doubles an adjacent ally's move power in doubles, no type restriction — Battery/Steely-Spirit shape, universal |
+| Steely Spirit | 252 | Doubles an ally's Steel-move power in doubles — Battery-shape variant |
+| Transistor | 262 | Electric-move power ×1.5, own-type boost — Steelworker-shape variant |
+| Dragon's Maw | 263 | Dragon-move power ×1.5 — Steelworker-shape variant |
+| Rocky Payload | 276 | Rock-move power ×1.5 — Steelworker-shape variant |
+| Vessel of Ruin | 284 | **Confirmed via source** (`battle_util.c` L3418-3455, L6968-6971): field-wide, always-on while holder is present — lowers EVERY OTHER Pokémon's SpA. New "field aura" shape (persistent, not switch-in one-shot); the four Ruin abilities share one implementation pattern, design together. |
+| Sword of Ruin | 285 | Same "Ruin" field-aura shape, lowers Def (confirmed via source, L7156) |
+| Tablets of Ruin | 286 | Same shape, lowers Atk (confirmed via source, L6971) |
+| Beads of Ruin | 287 | Same shape, lowers SpDef (confirmed via source, L7159) |
+| Sharpness | 292 | Slicing-move power ×1.5 — needs a "slicing" MoveData flag, Iron-Fist shape |
+| Supreme Overlord | 293 | Power boost scaled by count of fainted party members — needs "party faint count" awareness at damage-calc time, novel but shallow (single new lookup) |
+
+### Bucket B — Stat-stage-system interactions (23 abilities)
+
+| Ability | ID | Note |
+|---|---|---|
+| Flower Veil | 166 | Self + ally (Grass-type only) immune to stat-drops and status — Clear Body shape, typed + ally-wide |
+| Sweet Veil | 175 | Self + ally immune to sleep infliction — Insomnia shape, ally-wide |
+| Gooey | 183 | Contact → attacker Spe -1 — hit-triggered, same shape as Weak Armor's stat-drop half |
+| Stamina | 192 | Def +1 whenever hit by ANY move (not contact-restricted) — simple reactive boost |
+| Water Compaction | 195 | Def +2 when hit by a Water-type move — Weak Armor shape, typed |
+| Berserk | 201 | SpA +1 when a hit drops HP below 50% — Weak Armor shape |
+| Soul-Heart | 220 | SpA +1 whenever ANY Pokémon on the field faints (not just a kill by the holder) — Moxie shape, field-wide trigger instead of self-kill trigger |
+| Tangling Hair | 221 | Contact → attacker Spe -1 — Gooey dup |
+| Beast Boost | 224 | Holder's own highest stat +1 on KO'ing — Moxie-shape variant, needs a "compute highest stat" helper (shared with Protosynthesis/Quark Drive's identical helper) |
+| Full Metal Body | 230 | **Confirmed via source** (`battle_stat_change.c` L823-830): literally the same `CanAbilityPreventStatLoss` case list as Clear Body/White Smoke. "Free" once Clear Body exists. |
+| Intrepid Sword | 234 | Atk +1, one-time, on switch-in — Download-shape, simpler (no conditional, always fires once) |
+| Dauntless Shield | 235 | Def +1, one-time, on switch-in — same shape as Intrepid Sword |
+| Cotton Down | 238 | On being hit, lowers ALL other battlers' Speed -1 — field-wide reactive debuff |
+| Steam Engine | 243 | Speed +6 when hit by a Fire or Water move — extreme Weak-Armor-shape variant |
+| Pastel Veil | 257 | Self + ally immune to poison, cures poison on switch-in — Immunity shape, ally-wide |
+| Chilling Neigh | 264 | Atk +1, permanent, on KO'ing — Moxie shape, but the "As One" composite abilities (266/267 below) bundle this with Unnerve |
+| Grim Neigh | 265 | SpA +1, permanent, on KO'ing — same shape, special |
+| Thermal Exchange | 270 | Atk +1 when hit by a Fire move, plus burn-immune — Weak-Armor shape + status immunity, two-part |
+| Anger Shell | 271 | HP drops below 50% from a hit → Atk/SpA/Spe +1, Def/SpDef -1 — mixed-stat Weak-Armor variant |
+| Purifying Salt | 272 | Immune to ALL status, plus Ghost-type damage taken ×0.5 — two-part, status-immunity + typed damage modifier |
+| Guard Dog | 275 | Intimidate-triggered Atk +1 (instead of the usual -1) and blocks forced switching while active — interacts directly with the EXISTING Intimidate code path, same way Rattled already does (already-built precedent) |
+| Opportunist | 290 | Copies any positive stat-stage change the OPPONENT just received, onto itself — genuinely unique reactive stat-copy, moderate |
+| Supersweet Syrup | 306 | One-time Evasion -1 on the opponent, on switch-in — reverse-Intimidate shape, single-use |
+
+### Bucket C — Switch-in / turn-start / turn-end triggers (26 abilities)
+
+| Ability | ID | Note |
+|---|---|---|
+| Snow Warning | 117 | Sets Hail/Snow on switch-in — Sand Stream dup |
+| Flower Gift | 122 | Sun-triggered Atk/SpDef boost, shared with the doubles ally — Solar-Power-adjacent shape; Cherrim's cosmetic sprite-swap needs no forme-stat data, the boost itself is a plain conditional modifier |
+| Cheek Pouch | 167 | Heals HP when eating ANY berry (not just HP-restore berries) — reuses the existing berry-consumption hook (Gluttony/Harvest precedent) |
+| Primordial Sea | 189 | KEEP per Section 8.5 — plain switch-in Rain setter, Drizzle shape |
+| Desolate Land | 190 | KEEP per Section 8.5 — plain switch-in Sun setter, Drought shape |
+| Delta Stream | 191 | KEEP per Section 8.5 — sets a new "Strong Winds" weather value; pricier than the other two since it also touches type-effectiveness (cancels Flying's 4 type-weaknesses) |
+| Slush Rush | 202 | Speed ×2 in Hail/Snow — Swift Swim shape |
+| Surge Surfer | 207 | Speed ×2 during Electric Terrain — **needs new Terrain infra**, Swift Swim shape otherwise |
+| Electric Surge | 226 | Sets Electric Terrain on switch-in — **needs new Terrain infra** (first of a 4-ability terrain-setter group) |
+| Psychic Surge | 227 | Sets Psychic Terrain on switch-in — same infra need |
+| Misty Surge | 228 | Sets Misty Terrain on switch-in — same infra need |
+| Grassy Surge | 229 | Sets Grassy Terrain on switch-in — same infra need |
+| Sand Spit | 245 | Sets Sandstorm when hit by a move (not switch-in) — reactive weather-setter, Sand-Stream shape but hit-triggered |
+| Ripen | 247 | Doubles the effect of berries the holder eats — ItemManager berry-effect modifier, Gluttony-adjacent |
+| Seed Sower | 269 | Sets Grassy Terrain when hit by a move — Sand-Spit shape, **needs Terrain infra** |
+| Wind Power | 277 | Becomes "charged" (next Electric move ×2) when hit by a wind move — new consumer of the existing "wind move" flag dependency (Section 6 flag #9, originally only Wind Rider) |
+| Electromorphosis | 280 | Same "charged" mechanic as Wind Power but triggers on ANY hit, not wind-specific — simpler trigger, same charged-state pattern |
+| Protosynthesis | 281 | KEEP per Section 8.2 — generic highest-stat boost in harsh sunlight; reuses Forecast's weather-change-hook infra (Section 6 flag #5) plus the "highest stat" helper shared with Beast Boost |
+| Quark Drive | 282 | KEEP per Section 8.2 — same mechanic, Electric-Terrain-gated; **needs new Terrain infra** |
+| Orichalcum Pulse | 288 | Sets Sun on switch-in, plus self-only Atk ×1.33 in sun — Drought + Solar-Power composite, both precedented individually |
+| Hadron Engine | 289 | Sets Electric Terrain on switch-in, plus self-only SpA ×1.33 in that terrain — Electric-Surge + Solar-Power composite, **needs Terrain infra** |
+| Cud Chew | 291 | Re-triggers the last berry eaten, one turn later — needs "last consumed berry" tracking, new consumer of Section 6 flag #6 (previously only Harvest) |
+| Toxic Debris | 295 | Sets Toxic Spikes on the opponent's side when hit by a physical move — reuses M16d's EXISTING hazard-setting infra directly, cheap |
+| Hospitality | 299 | On switch-in, heals an ally 1/4 max HP — doubles-only, simple |
+| Toxic Chain | 305 | Any of the holder's moves that hit have a 30% chance to badly poison — Effect-Spore shape but NOT contact-gated (broader trigger than Poison Touch/Poison Point) |
+| Spicy Spray | 318 | Burns the attacker when the holder takes damage — Flame-Body shape but damage-based rather than contact-gated |
+
+### Bucket D — Form-change / species-mutation, CHEAP (reuses Conversion's type-mutation infra) (4 abilities)
+
+| Ability | ID | Note |
+|---|---|---|
+| Multitype | 121 | **Confirmed via source** (`form_change_tables.h` L979-1013): Arceus's type is driven purely by which "Plate" item it holds, one item per type. Source implements this via a fake multi-species table, but this project has no such table and doesn't need one — the pragmatic implementation is a direct reuse of `_set_mon_type`/`original_types`, checked whenever the held item changes. Cheap. |
+| RKS System | 225 | Same shape as Multitype (Silvally + "Memory" items instead of Arceus + Plates) — same cheap reuse. |
+| Libero | 236 | Public-knowledge: functionally identical twin of Protean (168, already classified in the original 151 as cheap/reuses type-mutation infra) — different Pokémon (Cinderace vs. Greninja), same code path in source. "Free" once Protean exists. |
+| Mimicry | 250 | Type changes to match the active Terrain — reuses the type-mutation infra directly, but **needs new Terrain infra** (same dependency as the terrain-setter group above) before it can trigger at all. |
+
+### Bucket E — Type-effectiveness-pipeline abilities (4 abilities)
+
+| Ability | ID | Note |
+|---|---|---|
+| Motor Drive | 78 | Electric-move immunity + Speed +1 — Volt-Absorb-shape variant (immunity + stat boost instead of heal) |
+| Well-Baked Body | 273 | Fire-move immunity that converts to Def +2 instead of the usual heal — Volt-Absorb-shape variant |
+| Earth Eater | 297 | Ground-move immunity + self-heal 25% — Volt/Water-Absorb-shape variant |
+| Mind's Eye | 300 | Ignores Ghost's Normal/Fighting immunity, plus ignores the opponent's evasion boosts — Scrappy-shape variant (cross-ref Scrappy, already classified in the original 151) |
+
+### Bucket F — Genuinely unique / one-off (50 abilities)
+
+| Ability | ID | Note |
+|---|---|---|
+| Klutz | 103 | Holder's held item has no effect (with a few canonical exceptions) — touches `ItemManager` broadly, same "wide but shallow" shape as Unnerve/Magic Guard |
+| Illusion | 149 | **Confirmed via source** (`battle_util.c` L8722, L8799): only the DISPLAYED species/sprite is faked; the real stats/type/ability used for every calculation are always the true ones, and the disguise breaks on taking direct damage. For a non-visual, text/state-driven battle engine, this has **no mechanical battle-calc effect at all** — same "cosmetic-only" shape already noted for Illuminate/Honey Gather in the original report. |
+| Mummy | 152 | Contact → overwrites the attacker's ability with Mummy permanently. **Needs a brand-new "ability copy/overwrite" mechanism** this project doesn't have (see Section 10 flag #12) — shared dependency with Trace (36, already implemented... wait, not implemented, classified in the original 151's Bucket C without this infra flag being raised there; worth revisiting Trace's cost estimate alongside this group), Receiver, Power of Alchemy, Wandering Spirit, and Lingering Aroma. |
+| Turboblaze | 163 | **Confirmed via source** (`battle_util.c` L3044, L4811-4812): grouped in the exact same "ignores target's ability" bypass array as Mold Breaker. "Free" once Mold Breaker's ability-suppression plumbing (Section 6 flag #4) exists. |
+| Teravolt | 164 | Same as Turboblaze, confirmed via source (L3036, L4811) — "free" alongside it. |
+| Aroma Veil | 165 | Self + ally immunity to Taunt/Disable/Torment/Encore/Heal Block — blocked on those moves not existing yet, new consumer of Section 6 flag #10 |
+| Magician | 170 | Steals the target's item upon hitting it with a move — needs the item-transfer mechanism already flagged for Pickpocket/Sticky Hold (Section 6 flag #10 group) |
+| Bulletproof | 171 | Full immunity to "ballistic" (bomb/ball) moves — needs a new MoveData flag, Soundproof shape |
+| Gale Wings | 177 | +1 priority for Flying-type moves while at full HP — turn-order modifier, Prankster shape (already classified in the original 151), conditional on HP |
+| Symbiosis | 180 | Passes the holder's own item to an ally after the ally's item is consumed — needs item-transfer infra, new consumer of flag #10, doubles-only |
+| Parental Bond | 185 | The holder's attack hits twice, second hit at ¼ power — genuinely reworks the move-execution loop itself (not just a damage-calc multiplier), moderate-high complexity |
+| Dark Aura | 186 | Field-wide, always-on while present: ALL Dark-type moves (from either side) get ×1.33 power — new "field aura" shape, same pattern as the Ruin quartet (Bucket A) but no self-exemption |
+| Fairy Aura | 187 | Same shape, Fairy-type — design alongside Dark Aura |
+| Aura Break | 188 | Inverts Dark Aura/Fairy Aura's boost into a reduction while present — must be designed together with both (a 3-ability group, not 3 independent features) |
+| Wimp Out | 193 | Forces the holder to switch out when a hit drops it below 50% HP — **needs new "HP-threshold forced self-switch" infra** (Section 10 flag #13), doesn't exist in this codebase (M9's switching is voluntary/forced-by-move only, not HP-triggered) |
+| Emergency Exit | 194 | Identical shape to Wimp Out — design together, same new infra |
+| Merciless | 196 | Own moves always crit against a poisoned target — simple crit-pipeline conditional |
+| Triage | 205 | +3 priority for the holder's own healing moves — turn-order modifier, Prankster shape |
+| Corrosion | 212 | Can poison/badly-poison Steel- and Poison-type targets, bypassing their normal type-based status immunity — needs a "bypass status-type-immunity" flag threaded through `StatusManager`, new but shallow (one flag, one call site) |
+| Comatose | 213 | Permanently treated as asleep (enables sleep-only move interactions) without ever holding an actual SLEEP status — confirmed via source touching ~7 separate call sites (`battle_ai_main.c`, `battle_end_turn.c`, `battle_move_resolution.c` ×3, `battle_script_commands.c`, `battle_pike.c`); "touches many systems a little," Magic-Guard shape |
+| Queenly Majesty | 214 | Blocks priority moves targeting the user or an ally — **needs a new "priority-move-block" check**, design alongside Dazzling and Armor Tail (Section 10 flag #14, 3-ability group) |
+| Innards Out | 215 | On fainting from a hit, deals the SAME damage back to the attacker — Aftermath-shape variant (already classified in the original 151), same FAINT_CHECK timing dependency |
+| Dancer | 216 | When any other Pokémon uses a move flagged "dance," the holder immediately copies and uses it for free — needs a new "dance" MoveData flag AND a move-repeat/copy mechanism; genuinely novel, moderate-high complexity |
+| Receiver | 222 | On an ally fainting, copies the ally's ability — needs the SAME new ability-copy infra as Mummy/Trace (flag #12) |
+| Power of Alchemy | 223 | Same mechanism as Receiver — design together |
+| Ball Fetch | 237 | Retrieves a missed Poké Ball after battle — explicitly out-of-battle-engine scope, same shape as Pickup/Honey Gather already flagged in the original report |
+| Propeller Tail | 239 | Ignores target-redirection abilities/moves in doubles (Lightning Rod, Storm Drain, Follow Me, etc.) — ties into the existing M14a doubles targeting-redirect system, moderate |
+| Mirror Armor | 240 | Reflects an incoming stat-lowering effect back at its source instead of applying it to the holder — genuinely unique reactive mechanic |
+| Stalwart | 242 | Same shape as Propeller Tail (ignores redirection) — design together |
+| Screen Cleaner | 251 | Removes all screens (Reflect/Light Screen/Aurora Veil) from BOTH sides on switch-in — reuses M16c's existing `_side_conditions` data structure directly, cheap despite the unusual "affects both sides" framing |
+| Perish Body | 253 | Contact → both the holder and the attacker get a 3-turn Perish-Song-style countdown-to-faint — needs the same countdown mechanic the Perish Song MOVE would need; flagged as a move-dependency (Perish Song itself is unimplemented), not a pure infra gap |
+| Wandering Spirit | 254 | Contact → swaps abilities with the attacker permanently (bidirectional) — needs the same new ability-copy/overwrite infra as Mummy (flag #12), but two-way |
+| Gorilla Tactics | 255 | Locks the holder into its first-used move (like a Choice item) and boosts Atk ×1.5 — reuses M12's EXISTING choice-lock infra directly, cheap |
+| Quick Draw | 259 | Chance to always act first within its priority bracket — turn-order modifier, probabilistic variant of Stall's "always last" (already classified in original 151) |
+| Unseen Fist | 260 | The holder's contact moves ignore Protect and its variants — needs a "bypass Protect" flag; flagged as a move-dependency since Protect itself may not be implemented yet (verify before scoping) |
+| Curious Medicine | 261 | On switch-in, resets an ally's stat stages to 0 — simple, doubles-only |
+| As One (Ice Rider) | 266 | Public-knowledge + source-confirmed naming: this is literally Unnerve + Chilling Neigh bundled into one ability slot (`.name = "As One"` for both 266 and 267, `src/data/abilities.h` L2041-2044). Cheap ONCE both Unnerve (already classified in the original 151) and Chilling Neigh (264, above) exist — it's just both effects unconditionally active together, no new mechanic. |
+| As One (Shadow Rider) | 267 | Same composite shape: Unnerve + Grim Neigh (L2053-2056). "Free" once both parent abilities exist. |
+| Lingering Aroma | 268 | Mummy-shape variant — contact → overwrites the attacker's ability with Lingering Aroma instead of Mummy. Same new ability-copy infra (flag #12). Also required the data-pipeline fix in Section 6 above (symbolic ID, missing `.tres`, now fixed). |
+| Good as Gold | 283 | Full immunity to ALL status moves, even ones that normally bypass other immunities — simple flag check, but touches the move-targeting/status-application pipeline broadly |
+| Costar | 294 | On switch-in, copies an ally's current stat stages (and certain volatiles) — doubles-only, genuinely unique |
+| Armor Tail | 296 | Blocks priority moves targeting the user — cross-ref Queenly Majesty/Dazzling group (flag #14) |
+| Mycelium Might | 298 | Own status moves always act last in their priority bracket, but ignore the target's ability while doing so — hybrid of the Stall shape (turn-order) and the Mold Breaker shape (ability-ignore); cross-ref both groups |
+| Embody Aspect (Teal Mask) | 301 | Public-knowledge: raises Speed once, on switch-in, tied to which Ogerpon mask is worn. The stat boost itself needs no forme data (unlike Section 8.4's group) — cheap IF Rob is fine implementing it without true mask-item gating. Smaller-scale version of the Section 8.4 question; flagging separately rather than folding into that group since the fix is much simpler here (a mask/item condition, not a full alternate species). |
+| Embody Aspect (Hearthflame Mask) | 302 | Same shape, raises Attack |
+| Embody Aspect (Wellspring Mask) | 303 | Same shape, raises Sp. Defense |
+| Embody Aspect (Cornerstone Mask) | 304 | Same shape, raises Defense |
+| Poison Puppeteer | 310 | A target the holder poisons (via any of its own moves) also becomes confused — reactive chain off the holder's own move; genuinely unique but shallow (one new consequence hook) |
+| Piercing Drill | 311 | The holder's contact moves bypass Protect and its variants — identical shape to Unseen Fist (260); design together, same Protect-dependency caveat |
+
+---
+
+## 10. Updated infrastructure dependency flags
+
+Continuing Section 6's numbering. Items 1–10 are unchanged from the original pass (not
+repeated here — see Section 6 above) except where a new consumer is called out below.
+
+**New consumers added to EXISTING flagged dependencies (not new categories):**
+
+- **Flag #5 (weather-change broadcast hook)** — new consumer: Protosynthesis (281).
+- **Flag #6 (item-consumption/loss event tracking)** — new consumers: Cud Chew (291,
+  needs "last consumed berry," same as Harvest), Symbiosis (180) and Magician (170) also
+  touch item-transfer specifically (see flag #10 below, closer fit).
+- **Flag #9 (move-flag additions, data-only)** — new consumers: "bite" flag (Strong Jaw
+  173), "pulse" flag (Mega Launcher 178), "slicing" flag (Sharpness 292), "ballistic" flag
+  (Bulletproof 171), "dance" flag (Dancer 216) — all cheap, batch into whichever `gen_moves.py`
+  pass touches move flags.
+- **Flag #10 (abilities blocked on a currently-unimplemented move)** — new consumers:
+  Aroma Veil (165, needs Taunt/Disable/Torment/Encore/Heal Block), Magician (170) and
+  Symbiosis (180) (both need a general item-transfer mechanism, closer to a new flag than
+  #6 — see #12 below), Perish Body (253, needs Perish Song's countdown mechanic), Unseen
+  Fist (260) and Piercing Drill (311) (both need to confirm whether Protect exists yet).
+
+**New infrastructure categories (not present in the original Section 6 list):**
+
+11. **Terrain system — doesn't exist at all.** Confirmed via a repo-wide grep for "terrain"
+    (zero hits outside the `abilities.h` source reference). M11 built a weather system;
+    terrain is architecturally similar (a field-wide state with switch-in setters, a
+    duration, and passive modifiers) but is a wholly separate piece of state needed by
+    Electric/Psychic/Misty/Grassy Surge (226-229), Surge Surfer (207), Grass Pelt (179),
+    Quark Drive (282), Mimicry (250), and Hadron Engine (289) — 9 consumers, the single
+    largest new-infra item in this pass. Recommend designing once, mirroring M11's weather
+    architecture directly.
+12. **Ability copy/overwrite mechanism — doesn't exist.** Needed by Mummy (152), Receiver
+    (222), Power of Alchemy (223), Wandering Spirit (254, bidirectional), and Lingering
+    Aroma (268) — 5 consumers. Worth designing alongside Trace (36, already in the
+    original 151's remaining list) since Trace is also fundamentally an "ability copy"
+    mechanic and was NOT previously flagged as needing new infra in Section 6 — that was
+    an oversight in the original pass, corrected here. Design once, use for all six.
+13. **HP-threshold forced self-switch — doesn't exist.** Needed by Wimp Out (193) and
+    Emergency Exit (194). Different from the existing switch-out ability-trigger hook
+    (flag #1, Regenerator/Natural Cure) — that hook fires ON a switch that's already
+    happening; this one has to actively INITIATE a forced switch after a damage event,
+    then presumably hand off to the existing forced-switch-in replacement-selection flow
+    (M9's Roar/Whirlwind precedent) for choosing the replacement.
+14. **Priority-move-block check — doesn't exist.** Needed by Queenly Majesty (214),
+    Dazzling (219, originally listed in the 151-roster pass's Bucket F), and Armor Tail
+    (296) — 3 consumers. No "is this move a priority move, and is it targeting me/my
+    ally" gate exists in the move-execution pipeline today.
+15. **Item-transfer mechanism — doesn't exist**, generalizing flag #10's original framing.
+    Confirmed this is now needed by FIVE abilities, not two: Pickpocket (124, original),
+    Sticky Hold (60, original, blocks it), Magician (170, steal-on-hit), Symbiosis (180,
+    give-on-ally-consumption). Recommend designing one shared "transfer/remove/give item"
+    primitive in `ItemManager` rather than four bespoke one-offs.
+
+---
+
+## 11. Tier recommendation — proposed M17a onward
+
+This goes one step further than pure classification: a genuine sequencing proposal, driven
+by (a) shared infrastructure — group abilities needing the same new plumbing together — and
+(b) cost, cheapest/most-precedented first. **Rob has final say on every boundary below; this
+is a starting proposal, not a locked plan.**
+
+**Scope going into this proposal:** 151 (original roster pass) + 145 (this pass, after
+applying ALL of Section 8's recommended exclusions) = **296 abilities** across all tiers,
+minus the 12 already implemented = **284 to schedule**. (See the Summary section below for
+what changes if Rob doesn't approve every Section 8 recommendation.)
+
+- **M17a — Bucket A cleanup, pure damage/accuracy multipliers, no new infra.** The
+  cheapest, highest-confidence batch across BOTH passes: original Bucket A's ~20
+  single-touch-point abilities (Overgrow/Blaze/Torrent/Swarm, Marvel Scale, Compound Eyes,
+  Battle Armor/Shell Armor, Multiscale, Filter/Solid Rock/Tinted Lens, Adaptability, Rock
+  Head, Sniper, Toxic Boost, Sand Force, No Guard) plus this pass's "free once its parent
+  exists" duplicates (Shadow Shield off Multiscale, Prism Armor off Filter/Solid Rock,
+  Neuroforce off Tinted Lens, Full Metal Body off Clear Body — pull Full Metal Body into
+  M17a even though Clear Body itself is Bucket B, since implementing the duplicate case is
+  a zero-cost addition once Clear Body's function exists) plus the straightforward
+  power-multiplier newcomers (Heatproof, Iron Barbs, Fur Coat, Tough Claws, Steelworker,
+  Steely Spirit/Battery/Power Spot doubles-aura trio, Transistor/Dragon's Maw/Rocky Payload
+  Steelworker-shape trio, Ice Scales, Defeatist, Flare Boost). Roughly 35-40 abilities.
+  Batch Guts/Hustle here too (each touches 2 functions but both trivial, matching the
+  original recon's finding).
+- **M17b — Bucket B, stat-stage interactions, no new infra.** Simple/Contrary/Unaware,
+  Clear Body/White Smoke (+ free Full Metal Body carryover if not already done in M17a),
+  Hyper Cutter/Keen Eye/Big Pecks, Competitive/Defiant, Weak Armor/Justified/Rattled/Anger
+  Point/Steadfast (hit-triggered stat swings, all one shape), Download, Moody, plus this
+  pass's newcomers of the same shape (Flower Veil, Sweet Veil, Gooey/Tangling Hair,
+  Stamina, Water Compaction, Berserk, Intrepid Sword/Dauntless Shield, Cotton Down, Steam
+  Engine, Pastel Veil, Chilling Neigh/Grim Neigh, Thermal Exchange, Anger Shell, Purifying
+  Salt, Supersweet Syrup). Guard Dog and Rattled both touch the existing Intimidate code
+  path — sequence together. Roughly 30 abilities.
+- **M17c — Bucket C, switch-in/turn-end triggers not requiring new field-state infra.**
+  Sand Stream, Shed Skin, Rain Dish/Ice Body/Dry Skin, Hydration, Truant, Healer, Cursed
+  Body, Anticipation/Forewarn/Frisk (cosmetic/AI-info only, trivial), Poison Point/Effect
+  Spore/Poison Touch, plus this pass's non-terrain-dependent newcomers (Snow Warning,
+  Flower Gift, Cheek Pouch, Ripen, Toxic Debris [reuses M16d hazard infra directly],
+  Hospitality, Toxic Chain, Spicy Spray, Slush Rush). Bad Dreams excluded (non-roster,
+  Section 1 finding) unless Rob picks scope interpretation (a). Roughly 20 abilities.
+- **M17d — Weather-setter completions + Primal trio + Poison Heal/Solar Power/Dry-Skin-
+  style multi-part abilities.** Poison Heal, Solar Power, plus the newly-approved Primal
+  trio (Primordial Sea, Desolate Land — direct Drizzle/Drought reuse; Delta Stream last,
+  since it alone needs the new "Strong Winds" weather value and a type-effectiveness
+  touch). ~6 abilities, small tier, sequenced right after M17c since it's the same shape
+  plus one new weather value.
+- **M17e — Terrain system (new infra) + everything gated on it.** Build the Terrain
+  system once (infra flag #11), then ship its 9 consumers together: Electric/Psychic/
+  Misty/Grassy Surge, Surge Surfer, Grass Pelt, Quark Drive, Mimicry, Hadron Engine.
+  Natural pairing: Hadron Engine and Orichalcum Pulse (which needs no new infra, just
+  Drought-reuse) are thematically similar Paradox-box-legendary abilities but don't
+  actually share a dependency — don't force them into the same tier just because they're
+  paired in the games; Orichalcum Pulse belongs in M17d instead. ~9 abilities.
+- **M17f — Trapping check (new infra) + Shadow Tag/Arena Trap/Magnet Pull.** Unchanged
+  from the original recon's 3-ability group (infra flag #3). Small, standalone tier.
+- **M17g — Ability-suppression plumbing (new infra) + everything gated on it.** Mold
+  Breaker, Neutralizing Gas (original pair, flag #4) PLUS this pass's newly-identified
+  free-riders once that plumbing exists: Turboblaze, Teravolt (literally the same bypass
+  array, confirmed via source), and (partially) Mycelium Might. ~5 abilities.
+- **M17h — Ability-copy/overwrite plumbing (new infra) + everything gated on it.** Trace
+  (re-scoped here — flagging that its cost was previously understated in the original
+  pass, since it's the same underlying mechanism these need) + Mummy, Receiver, Power of
+  Alchemy, Wandering Spirit, Lingering Aroma. Design once, ship six abilities. ~6
+  abilities.
+- **M17i — Switch-out trigger hook (new infra) + Regenerator/Natural Cure.** Unchanged
+  from the original recon (flag #1). Add HP-threshold forced-switch infra (flag #13) plus
+  Wimp Out/Emergency Exit into the SAME tier only if Rob wants to batch "things that make
+  a Pokémon leave the field automatically" together — otherwise split into its own M17i-2,
+  since the two hooks are mechanically distinct (one reacts to a switch already occurring,
+  the other actively initiates one).
+- **M17j — Item-transfer primitive (new infra) + everything gated on it.** Design the
+  shared "transfer/remove/give item" primitive (flag #15) once, then ship Pickpocket,
+  Sticky Hold, Magician, Symbiosis together — a 4-ability tier that was previously two
+  separate one-off no-ops (Pickpocket, Sticky Hold) in the original pass.
+- **M17k — Priority-move-block check (new infra) + Dazzling/Queenly Majesty/Armor Tail.**
+  New 3-ability tier (flag #14), small and self-contained.
+- **M17l — Doubles-redirect-adjacent + doubles-aura abilities not already scheduled.**
+  Lightning Rod/Storm Drain (original, type-effectiveness + redirect), Telepathy, Friend
+  Guard, Propeller Tail/Stalwart (redirect-ignore pair). Moderate, all touch the existing
+  M14a doubles targeting system.
+- **M17m — Type-effectiveness-pipeline batch (high-risk tier, do last among the
+  "systematic" tiers).** Wonder Guard (highest risk, unchanged), Scrappy, Volt
+  Absorb/Water Absorb/Sap Sipper, Flash Fire, Overcoat, Normalize (+ its now-larger
+  Refrigerate/Pixilate/Aerilate/Galvanize family, all sharing the exact move-mutation
+  mechanism), Motor Drive/Well-Baked Body/Earth Eater (new Volt-Absorb-shape variants),
+  Mind's Eye (Scrappy variant). Recommend sequencing Normalize before its four "-ate"
+  variants since they reuse its exact mechanism once built.
+- **M17n — Genuinely unique / one-off, grab-bag tier(s), lowest sequencing priority.**
+  Everything left in Bucket F across both passes that doesn't share infra with an earlier
+  tier: Aftermath, Color Change/Protean (cheap, type-mutation reuse — could move earlier
+  if Rob wants "cheap wins" prioritized over infra-grouping), Magic Bounce, Prankster (+
+  Gale Wings/Triage/Quick Draw, same turn-order-priority shape), Stall (+ Mycelium Might's
+  turn-order half), Suction Cups, Soundproof (+ Bulletproof, same immunity-flag shape),
+  Shield Dust, Own Tempo/Insomnia/Vital Spirit/Immunity/Limber/Water Veil/Magma Armor/
+  Inner Focus (the whole status-immunity family, batch together — 8 abilities, one shared
+  code shape), Oblivious/Damp/Cute Charm (no-ops pending their dependent moves), Leaf
+  Guard, Air Lock/Cloud Nine, Early Bird, Serene Grace, Sand Veil/Snow Cloak/Swift
+  Swim/Chlorophyll/Sand Rush (weather/terrain evasion+speed family), Unburden, Gluttony,
+  Pressure, Liquid Ooze, Infiltrator, Wonder Skin, Rivalry (blocked on gender infra),
+  Heavy Metal/Light Metal, Wind Rider (+ Wind Power/Electromorphosis, same "wind"/"charged"
+  shape), Stench, Klutz, Parental Bond, Dark Aura/Fairy Aura/Aura Break (3-ability group),
+  Merciless, Corrosion, Comatose, Innards Out, Dancer, Ball Fetch, Mirror Armor, Screen
+  Cleaner, Perish Body (blocked on Perish Song), Gorilla Tactics (cheap, reuses M12 choice-
+  lock), Unseen Fist/Piercing Drill (blocked on Protect), Curious Medicine, As One ×2 (cheap
+  once their parents exist — sequence right after Chilling Neigh/Grim Neigh/Unnerve),
+  Good as Gold, Costar, Embody Aspect ×4 (cheap variant, sequence together), Poison
+  Puppeteer, Illusion (flagged as likely a documentation-only no-op for a non-visual
+  engine — confirm with Rob whether it's even worth a code entry), Pickup, Run Away,
+  Illuminate, Honey Gather (all four likely out of engine scope per the original recon).
+  This is intentionally the largest, least-sequenced tier — recommend splitting it into
+  2-3 sub-tiers by whatever feels natural once M17a-m are actually underway, rather than
+  pre-committing a fixed split now.
+- **Deferred / needs Rob's decision before scheduling at all:** the 11-ability Mega-form-
+  bound group (Section 8.4) and Commander (Section 8.6) — do not assign these to any tier
+  until Rob picks an approach.
+- **Excluded (pending approval), not scheduled anywhere:** Imposter, Bad Dreams (already
+  decided), the Tera trio, the 6 hack-custom IDs, Commander (recommended, see 8.6 — listed
+  twice deliberately since it's both a Section 8.6 recommendation AND explicitly not
+  pre-assigned to a tier either way pending Rob's call).
+
+---
+
+## 12. Updated summary — full-scope counts
+
+- **Total canonical ability IDs, 1-318:** 318.
+- **Already implemented:** 12.
+- **Already excluded (decided, not reclassified):** 2 (Imposter 150, Bad Dreams 123).
+- **Recommended for exclusion this pass (pending Rob's approval):** 10 (Tera Shift/Tera
+  Shell/Teraform Zero, the 6 hack-custom IDs, Commander).
+- **Flagged as an open scope QUESTION, not yet assigned to include or exclude:** 12 (the
+  11-ability Mega-form-bound group + none double-counted with Commander, which is a
+  straight exclusion recommendation, not a pending question).
+- **Remaining to implement, if Rob approves every Section 8 recommendation:**
+  318 − 12 (implemented) − 2 (already excluded) − 10 (newly recommended exclude) − 12
+  (pending question, excluded from the count until resolved) = **282 abilities** across
+  the proposed M17a-n tiers.
+- **Remaining to implement, if Rob rejects every recommendation (maximal scope):**
+  318 − 12 − 2 = **304 abilities** (adds back the 10 recommended-exclude + treats the 12
+  pending as "implement anyway").
+- **The realistic planning number** most likely lands between those two — Rob should
+  resolve Section 8.1/8.3/8.6 (Tera/hack-custom/Commander, low-stakes, probably easy yes)
+  and Section 8.4 (Mega-form group, higher-stakes, needs a real design decision) before
+  M17a actually starts, so the tier boundaries in Section 11 can be finalized with real
+  numbers instead of a range.
+- **Data-pipeline fix applied during this session** (see Section 6, task explicitly
+  permitted this as the one non-investigation action): all 6 symbolically-defined ability
+  IDs (Tangled Feet 77, Pickpocket 124, Aroma Veil 165, Stamina 192, Intrepid Sword 234,
+  Lingering Aroma 268) now have their placeholder `.tres` files — previously only 2 of
+  these 6 were known-missing (Section 3's original finding); this pass's re-verification
+  found FOUR MORE that the original recon didn't catch, since the original recon's
+  Section 3 check was scoped to the 151-roster list and these 4 additional symbolic IDs
+  aren't roster-relevant, so they fell outside that pass's search entirely. A new
+  reusable script, `scripts/gen_ability_placeholders.py`, was added to prevent this class
+  of gap recurring — it resolves both symbolic (`= ABILITIES_COUNT_GENx`) and
+  auto-incrementing (bare `NAME,`) enum entries, unlike whatever undocumented process
+  generated the original 313 files.
+
+---
+
+## 13. Signature-ability sweep (2026-07-02 follow-up)
+
+**Method.** Grepped every `.abilities = { A, B, C }` entry across all 9
+`src/data/pokemon/species_info/gen_*_families.h` files (1,571 species/form entries total)
+and built a full ability-ID → holder-species map for the entire `pokeemerald_expansion`
+Pokédex (not just this project's 386-species roster). For every ability NOT already
+implemented or excluded/pending per Rob's locked-in list, checked whether its holder set
+reduces to one creature (clustering alternate forms of the same base species, e.g. all
+Necrozma forms, both Calyrex fusions, both Zacian forms) and whether that creature is
+legendary/mythical/Ultra-Beast/box-tier. Ordinary species that merely happen to be a
+current sole holder don't count — only genuine legendary/mythical/UB/signature
+exclusivity does, matching the task's bar.
+
+### 13.1 New candidates — genuine legendary/mythical/Ultra-Beast exclusivity, not yet flagged
+
+| Ability | ID | Holder(s) (grep-confirmed) | Status | Currently classified in |
+|---|---|---|---|---|
+| Air Lock | 76 | Rayquaza | Box legendary (Gen 3 weather trio) | Original Section 4/5, Bucket F |
+| Victory Star | 162 | Victini | Mythical | Addendum Bucket A |
+| Dark Aura | 186 | Yveltal | Box legendary (Gen 6) | Addendum Bucket F |
+| Fairy Aura | 187 | Xerneas (+ hack-custom Floette-Mega) | Box legendary (Gen 6) | Addendum Bucket F |
+| Aura Break | 188 | Zygarde (10%/50%/Mega forms) | Legendary | Addendum Bucket F |
+| Turboblaze | 163 | Reshiram, Kyurem-White | Box legendary + legendary fusion | Addendum Bucket F |
+| Teravolt | 164 | Zekrom, Kyurem-Black | Box legendary + legendary fusion | Addendum Bucket F |
+| Soul-Heart | 220 | Magearna (+ its own Mega forms) | Mythical | Addendum Bucket B |
+| Beast Boost | 224 | All 11 Ultra Beasts (Buzzwole, Pheromosa, Xurkitree, Celesteela, Kartana, Guzzlord, Nihilego, Poipole, Naganadel, Stakataka, Blacephalon) — **zero non-UB holders** | Ultra Beast, unanimous | Addendum Bucket B |
+| Full Metal Body | 230 | Solgaleo | Box legendary (Gen 7) | Addendum Bucket B |
+| Shadow Shield | 231 | Lunala | Box legendary (Gen 7) | Addendum Bucket A |
+| Prism Armor | 232 | Necrozma (base/Dusk-Mane/Dawn-Wings) | Legendary | Addendum Bucket A |
+| Neuroforce | 233 | Necrozma-Ultra | Legendary fusion form | Addendum Bucket A |
+| Intrepid Sword | 234 | Zacian (both forms) | Box legendary (Gen 8) | Addendum Bucket B |
+| Dauntless Shield | 235 | Zamazenta (both forms) | Box legendary (Gen 8) | Addendum Bucket B |
+| Transistor | 262 | Regieleki | Legendary (Regi family) | Addendum Bucket A |
+| Dragon's Maw | 263 | Regidrago | Legendary (Regi family) | Addendum Bucket A |
+| Chilling Neigh | 264 | Glastrier | Legendary | Addendum Bucket B |
+| Grim Neigh | 265 | Spectrier | Legendary | Addendum Bucket B |
+| As One (Ice Rider) | 266 | Calyrex-Ice fusion | Box legendary fusion (Gen 8) | Addendum Bucket F |
+| As One (Shadow Rider) | 267 | Calyrex-Shadow fusion | Box legendary fusion (Gen 8) | Addendum Bucket F |
+| Unseen Fist | 260 | Urshifu (both strike forms, + hack-custom Golurk-Mega) | Legendary | Addendum Bucket F |
+| Toxic Chain | 305 | Fezandipiti, Munkidori, Okidogi (the "Loyal Three") | DLC legendary trio — **direct structural parallel to the already-excluded Ruin quartet** (Treasures of Ruin): both are 3-member legendary-trio signature abilities Rob already excluded for the Ruin group on exactly this basis | Addendum Bucket C |
+| Poison Puppeteer | 310 | Pecharunt | Mythical | Addendum Bucket F |
+
+That's **23 abilities** fitting the exact pattern Rob established for the Paradox pair and
+Ruin quartet, not yet caught. Toxic Chain (305) is the strongest of these — it's the same
+"3-legendary-signature-trio, mechanically generic" shape as the already-excluded Ruin
+quartet, just one DLC generation later.
+
+### 13.2 Worth re-litigating — previously recommended KEEP under the OLD (pure-genericness) standard
+
+Section 8.5 recommended keeping these three because the mechanic itself is generic
+(plain switch-in weather setter, no species dependency). That recommendation predates
+Rob's now-established rule that legendary/mythical *thematic* exclusivity is disqualifying
+regardless of genericness — the same reasoning that flipped Protosynthesis/Orichalcum
+Pulse and the Ruin quartet from "keep, it's generic" to "exclude anyway." These three fit
+the identical shape and should get the same reconsideration:
+
+| Ability | ID | Holder | Note |
+|---|---|---|---|
+| Primordial Sea | 189 | Kyogre-Primal only | Box legendary (Gen 3 weather trio), Primal-exclusive |
+| Desolate Land | 190 | Groudon-Primal only | Box legendary (Gen 3 weather trio), Primal-exclusive |
+| Delta Stream | 191 | Rayquaza-Mega only | Box legendary (Gen 3 weather trio) — **also purely Mega-exclusive in this hack's data** (no non-Mega Rayquaza holds it), so this one has two independent reasons to exclude, not just one |
+
+### 13.3 Mega-Evolution-exclusive-only abilities, never explicitly enumerated in Section 8
+
+These aren't legendary — their base species are ordinary — but their ONLY holder in the
+entire `pokeemerald_expansion` dex is a Mega-Evolution form (canon or this hack's custom
+Mega additions), meaning they're already unimplementable under this project's pre-existing
+"no Mega Evolution" scope note. Section 8 never listed them because Section 8's Mega-form
+category (8.4) was specifically about in-battle form-change-triggered abilities, a
+different thing from "this ability's only holder happens to be behind the Mega gimmick."
+Flagging for completeness, not as a new pattern:
+
+| Ability | ID | Holder | Note |
+|---|---|---|---|
+| Parental Bond | 185 | Kangaskhan-Mega only | Canon Mega-exclusive; ordinary base Kangaskhan doesn't have it |
+| Aerilate | 184 | Pinsir-Mega, Salamence-Mega only | Canon Mega-exclusive on both holders |
+| Piercing Drill | 311 | Excadrill-Mega only (this hack's custom Mega, not canon) | Hack-custom-Mega-exclusive |
+| Spicy Spray | 318 | Scovillain-Mega only (this hack's custom Mega, not canon) | Hack-custom-Mega-exclusive |
+
+### 13.4 Considered, NOT flagged — shares a genuinely ordinary co-holder, so not exclusive
+
+Checked and deliberately excluded from 13.1 because an ordinary (non-legendary) species
+is a co-holder, usually the original/primary one — these don't meet the "exclusive" bar
+even though a legendary also happens to have the ability:
+
+- **Slow Start (112)** — Regigigas (legendary) + Varoom (ordinary Gen 9 species, also a
+  genuine holder in this hack's data).
+- **Berserk (201)** — Drampa (ordinary, the original canonical holder) + Moltres-Galar
+  (legendary) + Drampa-Mega.
+- **Guard Dog (275)** — Mabosstiff (ordinary, the original canonical holder) + Okidogi
+  (Loyal-Three legendary, holds it as a secondary/hidden ability alongside Toxic Chain).
+
+### 13.5 Bucket A/B re-check confirmation (task step 5)
+
+Re-read every row in Section 9's Bucket A (38 abilities) and Bucket B (23 abilities)
+specifically, since that's where the Ruin quartet was originally miscategorized as
+ordinary rather than flagged. Result:
+
+- **Bucket A** — 6 of the 23 candidates in 13.1 were sitting here uncaught: Victory Star
+  (162), Shadow Shield (231), Prism Armor (232), Neuroforce (233), Transistor (262),
+  Dragon's Maw (263). Every other Bucket A entry was re-checked against the full-Pokédex
+  ability-to-species map and confirmed to have a genuinely ordinary (non-legendary,
+  non-mythical, non-UB) holder set — clean.
+- **Bucket B** — 6 more were sitting here uncaught: Full Metal Body (230), Intrepid Sword
+  (234), Dauntless Shield (235), Chilling Neigh (264), Grim Neigh (265), plus Soul-Heart
+  (220) and Beast Boost (224) (7 total, counting both). All other Bucket B entries checked
+  clean.
+- **Buckets C, D, E, F** were not part of this task's explicit re-check request, but were
+  covered anyway as a byproduct of building the full ability-to-species map across all
+  318 IDs — the remaining 11 candidates in 13.1 (Dark Aura, Fairy Aura, Aura Break,
+  Turboblaze, Teravolt, As One ×2, Unseen Fist, Toxic Chain, Poison Puppeteer, Air Lock)
+  came from those buckets plus the original (pre-addendum) Section 4/5 table.
+
+**No new exclusions were applied.** Everything in 13.1–13.3 is a recommendation for Rob to
+review, exactly like every other exclusion candidate in this report — Sections 8, 9, 10,
+and 11 above are unmodified.
