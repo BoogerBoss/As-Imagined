@@ -101,6 +101,8 @@ const UQ412_SCREEN_DOUBLES: int = 2732
 # ally: BattlePokemon   — M17a: the attacker's doubles partner (null in singles or if the
 #                         ally has fainted), resolved by BattleManager._get_ally(). Needed
 #                         for Battery/Power Spot/Steely Spirit's ally-aura power boost.
+# defender_ally: BattlePokemon — M17c: the DEFENDER's doubles partner (null in singles or
+#                         if fainted). Needed for Flower Gift's ally-shared Sp. Def boost.
 static func calculate(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
@@ -113,7 +115,8 @@ static func calculate(
 		power_override: int = -1,
 		screen_active: bool = false,
 		is_doubles: bool = false,
-		ally: BattlePokemon = null) -> Dictionary:
+		ally: BattlePokemon = null,
+		defender_ally: BattlePokemon = null) -> Dictionary:
 
 	# --- Ability type immunity (Levitate vs Ground, etc.) ---
 	# Source: battle_util.c :: CalcTypeEffectivenessMultiplierInternal (L8257):
@@ -196,7 +199,7 @@ static func calculate(
 	# Source: battle_util.c :: GetAttackStatModifier (L6800–6808): attacker abilities switch.
 	#   ABILITY_HUGE_POWER / ABILITY_PURE_POWER: IsBattleMovePhysical → modifier ×2.0
 	# Applied to the staged attack stat before the base damage formula.
-	var atk_ability_mod: int = AbilityManager.attack_modifier_uq412(attacker, move)
+	var atk_ability_mod: int = AbilityManager.attack_modifier_uq412(attacker, move, weather)
 	if atk_ability_mod != 4096:
 		atk = _uq412_half_down(atk, atk_ability_mod)
 
@@ -314,7 +317,7 @@ static func calculate(
 	# The modifier is on the attacker's effective attack (halving it), which halves the damage.
 	# Applied after type effectiveness, before burn.
 	var def_ability_mod: int = AbilityManager.defense_damage_modifier_uq412(
-			defender, move, effectiveness)
+			defender, move, effectiveness, weather, defender_ally)
 	if def_ability_mod != 4096:
 		dmg = _uq412_half_down(dmg, def_ability_mod)
 

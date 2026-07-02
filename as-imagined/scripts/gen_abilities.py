@@ -474,6 +474,148 @@ ABILITIES = [
     {"id": 306, "name": "Supersweet Syrup",
      "description": "Releases a sweet scent once when it enters battle, lowering opponents' evasiveness.",
      "ai_rating": 5},
+
+    # ── M17c: Tier C move effects — switch-in/turn-end triggers ─────────────────────
+    # Source: docs/m17_recon.md Sections 4/5 (original) and 9 (addendum) Bucket C;
+    # final list locked in docs/decisions.md [M17c].
+
+    # Source: battle_util.c :: ABILITY_SAND_STREAM case (L3227-3239): switch-in, sets
+    #   Sandstorm.
+    {"id": 45, "name": "Sand Stream",
+     "description": "Summons a sandstorm when the Pokémon enters a battle.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c :: ABILITY_SNOW_WARNING case (L3256-3269): switch-in, sets
+    #   Hail (mapped to this project's single WEATHER_HAIL constant).
+    {"id": 117, "name": "Snow Warning",
+     "description": "Summons a hailstorm when the Pokémon enters a battle.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c :: ABILITY_RAIN_DISH case (L3557-3567): end-of-turn, rain
+    #   active, not at max HP → heal maxHP/16.
+    {"id": 44, "name": "Rain Dish",
+     "description": "The Pokémon gradually regains HP in rain.",
+     "ai_rating": 5},
+
+    # Source: battle_util.c :: ABILITY_ICE_BODY case (L3541-3549): end-of-turn, hail
+    #   active, not at max HP → heal maxHP/16.
+    {"id": 115, "name": "Ice Body",
+     "description": "The Pokémon gradually regains HP in hail or snow.",
+     "ai_rating": 5},
+
+    # Source: battle_util.c :: ABILITY_DRY_SKIN case (L3553-3556, rain heal maxHP/8;
+    #   L2246/L6616, Water-move absorb — deferred, see decisions.md; L6616-6619,
+    #   Fire-type damage taken x1.25; L3660-3667 shared SOLAR_POWER_HP_DROP label, sun
+    #   self-damage maxHP/8).
+    {"id": 87, "name": "Dry Skin",
+     "description": "Restores HP in rain but takes damage in harsh sunlight; takes more damage from Fire-type moves.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c :: ABILITY_HYDRATION case (L3568-3574): end-of-turn, rain
+    #   active, has any status → cure it.
+    {"id": 93, "name": "Hydration",
+     "description": "Heals status conditions if it is raining.",
+     "ai_rating": 5},
+
+    # Source: battle_move_resolution.c :: CancelerTruant (L258-270) + battle_util.c ::
+    #   ABILITY_TRUANT case (L3646-3647, end-of-turn toggle): skips every other turn.
+    {"id": 54, "name": "Truant",
+     "description": "The Pokémon can't use a move if it had used a move on the previous turn.",
+     "ai_rating": 3},
+
+    # Source: battle_util.c :: ABILITY_SHED_SKIN case (L3575-3600): end-of-turn, has any
+    #   status, 1/3 chance (GEN_LATEST config) → cure it.
+    {"id": 61, "name": "Shed Skin",
+     "description": "The Pokémon may heal its own status conditions.",
+     "ai_rating": 7},
+
+    # Source: battle_util.c :: ABILITY_HEALER case (L3669-3677): end-of-turn, doubles
+    #   only, ally has any status, 30% chance → cure the ally's status.
+    {"id": 131, "name": "Healer",
+     "description": "Sometimes heals an ally's status conditions.",
+     "ai_rating": 5},
+
+    # Source: battle_util.c :: ABILITY_CURSED_BODY case (L3843-3858): any damaging hit
+    #   landing, attacker not disabled, not Struggle, 30% chance → disables the
+    #   attacker's just-used move for 4 turns.
+    {"id": 130, "name": "Cursed Body",
+     "description": "May disable a move used on the Pokémon.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c :: ABILITY_ANTICIPATION case (L3083-3119): switch-in,
+    #   message-only — no mechanical battle-calc effect (see ability_manager.gd).
+    {"id": 107, "name": "Anticipation",
+     "description": "Senses an opposing Pokémon's dangerous moves.",
+     "ai_rating": 0},
+
+    # Source: battle_util.c :: ABILITY_FOREWARN case (L3142-3150): switch-in,
+    #   message-only — no mechanical battle-calc effect.
+    {"id": 108, "name": "Forewarn",
+     "description": "Reveals one of the opposing team's moves.",
+     "ai_rating": 0},
+
+    # Source: battle_util.c :: ABILITY_FRISK case (L3121-3141): switch-in,
+    #   message-only — no mechanical battle-calc effect.
+    {"id": 119, "name": "Frisk",
+     "description": "Checks an opposing Pokémon's held item.",
+     "ai_rating": 0},
+
+    # Source: battle_util.c :: ABILITY_POISON_POINT case (L4068-4090): 30% chance to
+    #   poison the attacker on contact.
+    {"id": 38, "name": "Poison Point",
+     "description": "Contact with the Pokémon may poison the attacker.",
+     "ai_rating": 5},
+
+    # Source: battle_util.c :: ABILITY_EFFECT_SPORE case (L4024-4066): weighted 3-way
+    #   contact roll (9% poison / 10% paralysis / 11% sleep); Grass-type attackers immune.
+    {"id": 27, "name": "Effect Spore",
+     "description": "Contact with the Pokémon may inflict poison, paralysis, or sleep.",
+     "ai_rating": 5},
+
+    # Source: battle_util.c :: ABILITY_POISON_TOUCH case: 30% chance to poison the
+    #   attacker on contact (separate switch entry, identical shape to Poison Point).
+    {"id": 143, "name": "Poison Touch",
+     "description": "Contact with the Pokémon may poison the attacker.",
+     "ai_rating": 5},
+
+    # Source: battle_util.c :: ABILITY_FLOWER_GIFT case (L6855-6858, self Atk;
+    #   L7114-7148, self+ally SpDef): sun active → self Atk x1.5 (physical), self+ally
+    #   SpDef x1.5 (special). Species-form gate (Cherrim-Sunshine) dropped per the same
+    #   precedent as the Primal weather trio — see decisions.md [M17c].
+    {"id": 122, "name": "Flower Gift",
+     "description": "Boosts the Attack and Sp. Def stats of itself and allies in harsh sunlight.",
+     "ai_rating": 6},
+
+    # Source: battle_script_commands.c :: TryCheekPouch (L6175-6188): heals maxHP/3
+    #   whenever the holder eats any berry.
+    {"id": 167, "name": "Cheek Pouch",
+     "description": "Restores HP whenever the Pokémon eats a Berry.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c :: GetDefenderItemsModifier (L7519): doubles the resist
+    #   berry's effectiveness (0.25x instead of 0.5x).
+    {"id": 247, "name": "Ripen",
+     "description": "Doubles the effect of Berries the Pokémon eats.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c :: ABILITY_TOXIC_DEBRIS case (L4246-4259): physical hit
+    #   landing → sets one Toxic Spikes layer on the attacker's side (reuses M16d's
+    #   existing hazard infrastructure directly).
+    {"id": 295, "name": "Toxic Debris",
+     "description": "Sets up Toxic Spikes at the feet of the opposing team when the Pokémon takes a physical hit.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c :: ABILITY_HOSPITALITY case (L4662-4674): switch-in,
+    #   doubles only, heals the ally maxHP/4.
+    {"id": 299, "name": "Hospitality",
+     "description": "When the Pokémon enters a battle, it heals its ally by 1/4 of its max HP.",
+     "ai_rating": 5},
+
+    # Source: same weather-conditional speed-multiplier shape as Swift Swim/Chlorophyll/
+    #   Sand Rush (none yet implemented) — Speed x2 in Hail/Snow.
+    {"id": 202, "name": "Slush Rush",
+     "description": "Boosts the Pokémon's Speed stat in snow or hail.",
+     "ai_rating": 6},
 ]
 
 HEADER = """\

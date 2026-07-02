@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 130
 ability_name = "Cursed Body"
-description = ""
-ai_rating = 0
+description = "May disable a move used on the Pokémon."
+ai_rating = 6

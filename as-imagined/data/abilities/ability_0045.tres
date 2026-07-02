@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 45
 ability_name = "Sand Stream"
-description = ""
-ai_rating = 0
+description = "Summons a sandstorm when the Pokémon enters a battle."
+ai_rating = 6

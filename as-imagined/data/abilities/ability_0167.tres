@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 167
 ability_name = "Cheek Pouch"
-description = ""
-ai_rating = 0
+description = "Restores HP whenever the Pokémon eats a Berry."
+ai_rating = 6

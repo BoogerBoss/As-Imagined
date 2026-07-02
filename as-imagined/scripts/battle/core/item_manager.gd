@@ -34,6 +34,7 @@ const WEATHER_DURATION_DEFAULT: int = 5
 const UQ412_CHOICE_MULT: int     = 6144   # 1.5 × — Band, Specs
 const UQ412_LIFE_ORB: int        = 5324   # 1.3 × (floored) — Life Orb damage boost
 const UQ412_RESIST_BERRY: int    = 2048   # 0.5 × — Resist Berry halving
+const UQ412_RIPEN_RESIST_BERRY: int = 1024  # 0.25 × — Resist Berry halving, doubled by Ripen
 
 
 # ── Attack-stat item modifier (applied to stat, BEFORE base formula) ──────────
@@ -80,6 +81,12 @@ static func post_roll_modifier_uq412(mon: BattlePokemon) -> int:
 #   without it — Follow-up fixes session, 2026-07-02; previously an unwired gap (M12
 #   decisions.md gap I2), Chilan Berry was the only resist berry this bypass applies to.
 # The berry is consumed on trigger — BattleManager must call _consume_item().
+#
+# M17c: Ripen doubles the resist berry's effectiveness — 0.25× instead of 0.5×.
+# Source: battle_util.c :: GetDefenderItemsModifier (L7519): `(ctx->abilities[ctx->
+#   battlerDef] == ABILITY_RIPEN) ? UQ_4_12(0.25) : UQ_4_12(0.5)`. Direct extension of
+#   this existing function (it already takes the full BattlePokemon and can read its
+#   ability), no new plumbing needed.
 
 static func defender_item_modifier_uq412(defender: BattlePokemon,
 		move: MoveData, effectiveness: float) -> int:
@@ -92,6 +99,8 @@ static func defender_item_modifier_uq412(defender: BattlePokemon,
 		return 4096
 	if move.type != TypeChart.TYPE_NORMAL and effectiveness < 2.0:
 		return 4096
+	if defender.ability != null and defender.ability.ability_id == AbilityManager.ABILITY_RIPEN:
+		return UQ412_RIPEN_RESIST_BERRY
 	return UQ412_RESIST_BERRY
 
 

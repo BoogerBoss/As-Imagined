@@ -114,6 +114,41 @@ const ABILITY_ANGER_SHELL:    int = 271
 const ABILITY_PURIFYING_SALT: int = 272
 const ABILITY_SUPERSWEET_SYRUP: int = 306
 
+# M17c: Tier C move effects — switch-in/turn-end triggers, no new field-state
+# infrastructure. Source: include/constants/abilities.h. docs/m17_recon.md Section 4/5
+# (original) Bucket C and Section 9 Bucket C (addendum) — final list locked in
+# docs/decisions.md [M17c] after cross-checking Section 13's exclusions (Toxic Chain
+# removed as Loyal-Three-legendary-exclusive) and a correction to the exclusion list
+# itself (Spicy Spray, Scovillain-Mega-exclusive per Section 13.3, falls under this
+# project's pre-existing "no Mega Evolution" scope note — not in the task's Section 13
+# transcription but excluded on separate, already-established grounds). Solar Power and
+# Poison Heal are deferred to M17d per Section 11's own tier proposal (multi-part
+# abilities spanning the damage pipeline, bundled with the Primal weather trio).
+# Harvest is deferred (needs new "last consumed berry" tracking, absent from Section
+# 11's actual M17c list despite being Bucket C in the original table).
+const ABILITY_EFFECT_SPORE:   int = 27
+const ABILITY_POISON_POINT:   int = 38
+const ABILITY_RAIN_DISH:      int = 44
+const ABILITY_SAND_STREAM:    int = 45
+const ABILITY_TRUANT:         int = 54
+const ABILITY_SHED_SKIN:      int = 61
+const ABILITY_DRY_SKIN:       int = 87
+const ABILITY_HYDRATION:      int = 93
+const ABILITY_ANTICIPATION:   int = 107
+const ABILITY_FOREWARN:       int = 108
+const ABILITY_ICE_BODY:       int = 115
+const ABILITY_SNOW_WARNING:   int = 117
+const ABILITY_FRISK:          int = 119
+const ABILITY_FLOWER_GIFT:    int = 122
+const ABILITY_CURSED_BODY:    int = 130
+const ABILITY_HEALER:         int = 131
+const ABILITY_POISON_TOUCH:   int = 143
+const ABILITY_CHEEK_POUCH:    int = 167
+const ABILITY_SLUSH_RUSH:     int = 202
+const ABILITY_RIPEN:          int = 247
+const ABILITY_TOXIC_DEBRIS:   int = 295
+const ABILITY_HOSPITALITY:    int = 299
+
 
 # ── Tier 1: Passive stat modifiers ──────────────────────────────────────────
 
@@ -129,8 +164,19 @@ const ABILITY_SUPERSWEET_SYRUP: int = 306
 #   ABILITY_GUTS (L6868-6870): status1 & STATUS1_ANY (any status) AND IsBattleMovePhysical → ×1.5.
 #   ABILITY_ROCKY_PAYLOAD (L6891-6893): moveType == TYPE_ROCK → ×1.5 (no other condition).
 #   ABILITY_DEFEATIST (L6812-6813): hp <= maxHP/2 → ×0.5 (no category gate).
+#
+# M17c addition, same function:
+#   ABILITY_FLOWER_GIFT (L6855-6858): sun active AND IsBattleMovePhysical → ×1.5. Source
+#     gates this on `species == SPECIES_CHERRIM_SUNSHINE` (a battle-triggered form-change
+#     this project doesn't model — see docs/m17_recon.md Section 8.4/Bucket D). Dropping
+#     the species-form gate and keeping the generic weather-conditional boost matches the
+#     precedent Rob already set for the Primal weather trio (docs/decisions.md [M17c]).
+# weather: int — WEATHER_* constant (DamageCalculator), default WEATHER_NONE, needed only
+#   for Flower Gift's sun check; every existing caller passes it explicitly now.
 # Returns a UQ4.12 integer: 4096 = 1.0×, 8192 = 2.0×.
-static func attack_modifier_uq412(attacker: BattlePokemon, move: MoveData) -> int:
+static func attack_modifier_uq412(
+		attacker: BattlePokemon, move: MoveData,
+		weather: int = DamageCalculator.WEATHER_NONE) -> int:
 	if attacker.ability == null:
 		return 4096  # UQ_4_12(1.0)
 	var id: int = attacker.ability.ability_id
@@ -155,6 +201,9 @@ static func attack_modifier_uq412(attacker: BattlePokemon, move: MoveData) -> in
 	if id == ABILITY_GUTS and attacker.status != BattlePokemon.STATUS_NONE and move.category == 0:
 		return 6144
 	if id == ABILITY_ROCKY_PAYLOAD and move.type == TypeChart.TYPE_ROCK:
+		return 6144
+
+	if id == ABILITY_FLOWER_GIFT and weather == DamageCalculator.WEATHER_SUN and move.category == 0:
 		return 6144
 
 	return 4096
@@ -186,14 +235,39 @@ static func attack_modifier_uq412(attacker: BattlePokemon, move: MoveData) -> in
 #     ABILITY_HEATPROOF: moveType == TYPE_FIRE → ×0.5 (source applies pre-formula to
 #       base power; folded in here for the same reason as Thick Fat/Fur Coat above)
 #
+# M17c additions, same function:
+#   ABILITY_DRY_SKIN (battle_util.c "target's abilities" block, L6616-6619): moveType ==
+#     TYPE_FIRE → ×1.25 (damage taken INCREASES, unlike every other entry here). Dry Skin's
+#     other two parts (Water-move absorb+heal, end-of-turn rain-heal/sun-damage) are handled
+#     elsewhere — see try_end_of_turn and docs/decisions.md [M17c] for why the Water-absorb
+#     half is deferred (needs Bucket-E immunity+heal infra this project doesn't have yet,
+#     shared gap with the still-unimplemented Volt Absorb/Water Absorb).
+#   ABILITY_FLOWER_GIFT (L7114-7117, self; L7145-7148, ally): sun active AND the move is
+#     Special (usesDefStat is false for Sp. Def) → the SAME reciprocal-of-1.5 treatment as
+#     Marvel Scale (2731 ≈ 0.667×). Checked on the defender OR the defender's doubles ally,
+#     matching source's separate "ally's abilities" switch block.
+#
 # effectiveness: the float effectiveness value already computed by DamageCalculator
 #   (0.0/0.25/0.5/1.0/2.0/4.0) — needed for Filter/Solid Rock's >=2.0 gate.
-# Returns a UQ4.12 integer: 4096 = 1.0×, 2048 = 0.5×, 2731 ≈ 0.667×, 3072 = 0.75×.
+# weather: WEATHER_* constant — needed for Flower Gift's sun gate.
+# ally: defender's doubles partner (null in singles or if fainted) — needed for Flower
+#   Gift's ally-wide Sp. Def share.
+# Returns a UQ4.12 integer: 4096 = 1.0×, 2048 = 0.5×, 2731 ≈ 0.667×, 3072 = 0.75×, 5120 = 1.25×.
 static func defense_damage_modifier_uq412(
-		defender: BattlePokemon, move: MoveData, effectiveness: float = 1.0) -> int:
+		defender: BattlePokemon, move: MoveData, effectiveness: float = 1.0,
+		weather: int = DamageCalculator.WEATHER_NONE, ally: BattlePokemon = null) -> int:
+	var flower_gift_holder: bool = defender.ability != null \
+			and defender.ability.ability_id == ABILITY_FLOWER_GIFT
+	var ally_flower_gift: bool = ally != null and not ally.fainted \
+			and ally.ability != null and ally.ability.ability_id == ABILITY_FLOWER_GIFT
+	if (flower_gift_holder or ally_flower_gift) \
+			and weather == DamageCalculator.WEATHER_SUN and move.category == 1:
+		return 2731  # UQ_4_12(1/1.5) ≈ 0.667 — reciprocal of the ×1.5 Sp. Def boost
 	if defender.ability == null:
 		return 4096
 	var id: int = defender.ability.ability_id
+	if id == ABILITY_DRY_SKIN and move.type == TypeChart.TYPE_FIRE:
+		return 5120  # UQ_4_12(1.25) — damage taken INCREASES
 	if id == ABILITY_THICK_FAT:
 		if move.type == TypeChart.TYPE_FIRE or move.type == TypeChart.TYPE_ICE:
 			return 2048  # UQ_4_12(0.5) — halves attacker's effective Attack
@@ -635,10 +709,36 @@ static func try_switch_in_evasion(pokemon: BattlePokemon, opponent: BattlePokemo
 	return StatusManager.apply_stat_change(opponent, BattlePokemon.STAGE_EVASION, -1)
 
 
+# M17c: Hospitality — switch-in, doubles-only, heals the switching-in Pokémon's OWN
+# ally (not an opponent) for maxHP/4.
+# Source: battle_util.c :: ABILITY_HOSPITALITY case (L4662-4674): IsDoubleBattle(), ally
+#   alive, not heal-blocked, not at max HP → heal maxHP/4. This project has no heal-block
+#   volatile yet, so that condition is simply absent (matches how other heal effects in
+#   this codebase, e.g. Leftovers, don't check it either).
+# Returns the heal amount (0 = not this ability, no ally, ally fainted, or already at max).
+static func try_switch_in_ally_heal(pokemon: BattlePokemon, ally: BattlePokemon) -> int:
+	if pokemon.ability == null or pokemon.ability.ability_id != ABILITY_HOSPITALITY:
+		return 0
+	if ally == null or ally.fainted:
+		return 0
+	if ally.current_hp >= ally.max_hp:
+		return 0
+	return max(1, ally.max_hp / 4)
+
+
 # Return the WEATHER_* value (DamageCalculator constants) that should be set when this
 # Pokémon switches in, or WEATHER_NONE (0) if the ability has no weather effect.
 # Source: ABILITYEFFECT_ON_SWITCHIN — ABILITY_DRIZZLE → TryChangeBattleWeather(RAIN) (L3213)
 #                                    — ABILITY_DROUGHT → TryChangeBattleWeather(SUN)  (L3242)
+#
+# M17c additions, same trigger point:
+#   ABILITY_SAND_STREAM (L3227-3239): → TryChangeBattleWeather(SANDSTORM).
+#   ABILITY_SNOW_WARNING (L3256-3269): → TryChangeBattleWeather(HAIL or SNOW, gated on
+#     B_SNOW_WARNING >= GEN_9). This project's WEATHER_HAIL is a single Gen<9-style
+#     constant with no separate Snow value (see DamageCalculator's weather comment) —
+#     mapping to WEATHER_HAIL is the correct, not simplified, choice for this codebase's
+#     existing weather model, not a dropped distinction.
+#
 # BattleManager calls try_set_weather(get_switch_in_weather(mon)) after try_switch_in().
 static func get_switch_in_weather(pokemon: BattlePokemon) -> int:
 	if pokemon.ability == null:
@@ -648,6 +748,10 @@ static func get_switch_in_weather(pokemon: BattlePokemon) -> int:
 			return DamageCalculator.WEATHER_RAIN
 		ABILITY_DROUGHT:
 			return DamageCalculator.WEATHER_SUN
+		ABILITY_SAND_STREAM:
+			return DamageCalculator.WEATHER_SANDSTORM
+		ABILITY_SNOW_WARNING:
+			return DamageCalculator.WEATHER_HAIL
 	return DamageCalculator.WEATHER_NONE
 
 
@@ -671,20 +775,53 @@ static func get_switch_in_weather(pokemon: BattlePokemon) -> int:
 # force_moody_raise/force_moody_lower: BattlePokemon.STAGE_* index to pin instead of
 #   rolling — null = real RNG, matching this codebase's established force_* convention.
 #
+# M17c additions, same trigger point:
+#   ABILITY_RAIN_DISH (L3557-3567): rain active, not at max HP → heal maxHP/16.
+#   ABILITY_ICE_BODY (L3541-3549): hail active, not at max HP → heal maxHP/16.
+#   ABILITY_DRY_SKIN (L3553-3556, rain half, shares Rain Dish's healAmount branch with a
+#     /8 divisor instead of /16 — L3562; L2246/L6616 sun half via the shared
+#     SOLAR_POWER_HP_DROP label, L3663-3667): rain active, not at max HP → heal maxHP/8;
+#     sun active → damage maxHP/8. Dry Skin's third part (Water-move absorb+heal) is
+#     deferred — see defense_damage_modifier_uq412's comment above.
+#   ABILITY_HYDRATION (L3568-3574): rain active, has any status → cure it (shares the
+#     ABILITY_HEAL_MON_STATUS label with Shed Skin below).
+#   ABILITY_SHED_SKIN (L3575-3600): has any status, 1/3 chance (GEN_LATEST: the `==GEN_4`
+#     branch is false, so RandomChance(1,3) applies, NOT the 30% RandomPercentage branch
+#     Static/Poison Point use — a different threshold despite looking similar) → cure it.
+#   ABILITY_HEALER (L3669-3677): doubles-only, ally alive with any status, 30% chance →
+#     cure the ALLY's status (not the holder's own).
+#   ABILITY_TRUANT (L3646-3647): unconditionally toggles `truantCounter` every end of
+#     turn (XOR), matching "skips every other turn" — mirrored via the new
+#     BattlePokemon.truant_loafing bool, checked by StatusManager.pre_move_check.
+#
+# weather: WEATHER_* constant — needed for Rain Dish/Ice Body/Dry Skin/Hydration.
+# ally: doubles partner (null in singles or if fainted) — needed for Healer.
+# force_shed_skin_roll/force_healer_roll: null = real RNG, true/false = pin the outcome.
+#
 # Returns a Dictionary:
 #   "speed_boost_change" : int — Speed Boost's stage change (0 = nothing)
 #   "moody_raised_stat"  : int — STAGE_* raised, or -1 if none
 #   "moody_raised_amount": int — actual stage change applied (0 if blocked/maxed)
 #   "moody_lowered_stat" : int — STAGE_* lowered, or -1 if none
 #   "moody_lowered_amount": int — actual stage change applied (0 if blocked/minned)
+#   "heal_amount"        : int — Rain Dish/Ice Body/Dry Skin heal (0 = none)
+#   "damage_amount"      : int — Dry Skin's sun self-damage (0 = none)
+#   "cured_status"       : bool — Hydration/Shed Skin cured the holder's own status
+#   "healed_ally_status" : bool — Healer cured the ally's status
 static func try_end_of_turn(
 		pokemon: BattlePokemon,
 		force_moody_raise: Variant = null,
-		force_moody_lower: Variant = null) -> Dictionary:
+		force_moody_lower: Variant = null,
+		weather: int = DamageCalculator.WEATHER_NONE,
+		ally: BattlePokemon = null,
+		force_shed_skin_roll: Variant = null,
+		force_healer_roll: Variant = null) -> Dictionary:
 	var result := {
 		"speed_boost_change": 0,
 		"moody_raised_stat": -1, "moody_raised_amount": 0,
 		"moody_lowered_stat": -1, "moody_lowered_amount": 0,
+		"heal_amount": 0, "damage_amount": 0,
+		"cured_status": false, "healed_ally_status": false,
 	}
 	if pokemon.ability == null:
 		return result
@@ -696,6 +833,36 @@ static func try_end_of_turn(
 				pokemon, BattlePokemon.STAGE_SPEED, 1)
 	if id == ABILITY_MOODY:
 		_apply_moody(pokemon, result, force_moody_raise, force_moody_lower)
+	if id == ABILITY_TRUANT:
+		pokemon.truant_loafing = not pokemon.truant_loafing
+
+	var not_at_max: bool = pokemon.current_hp < pokemon.max_hp
+	if id == ABILITY_RAIN_DISH and weather == DamageCalculator.WEATHER_RAIN and not_at_max:
+		result["heal_amount"] = max(1, pokemon.max_hp / 16)
+	elif id == ABILITY_ICE_BODY and weather == DamageCalculator.WEATHER_HAIL and not_at_max:
+		result["heal_amount"] = max(1, pokemon.max_hp / 16)
+	elif id == ABILITY_DRY_SKIN:
+		if weather == DamageCalculator.WEATHER_RAIN and not_at_max:
+			result["heal_amount"] = max(1, pokemon.max_hp / 8)
+		elif weather == DamageCalculator.WEATHER_SUN:
+			result["damage_amount"] = max(1, pokemon.max_hp / 8)
+
+	if id == ABILITY_HYDRATION and weather == DamageCalculator.WEATHER_RAIN \
+			and pokemon.status != BattlePokemon.STATUS_NONE:
+		result["cured_status"] = true
+	elif id == ABILITY_SHED_SKIN and pokemon.status != BattlePokemon.STATUS_NONE:
+		var ss_fires: bool = bool(force_shed_skin_roll) if force_shed_skin_roll != null \
+				else (randi() % 3 == 0)
+		if ss_fires:
+			result["cured_status"] = true
+
+	if id == ABILITY_HEALER and ally != null and not ally.fainted \
+			and ally.status != BattlePokemon.STATUS_NONE:
+		var h_fires: bool = bool(force_healer_roll) if force_healer_roll != null \
+				else (randi() % 100 < 30)
+		if h_fires:
+			result["healed_ally_status"] = true
+
 	return result
 
 
@@ -749,6 +916,20 @@ static func _apply_moody(
 #     calls apply_stat_change directly and reports whatever actually happened (0 if the
 #     attacker's own ability, e.g. Clear Body, blocked it — correctly composes with the
 #     M17b change-blocking abilities without any Gooey-specific bypass logic).
+#   ABILITY_POISON_POINT (M17c, L4068-4090) / ABILITY_POISON_TOUCH (M17c, L4284-...):
+#     same 30% roll shape as Static — poison the attacker on contact if CanBePoisoned
+#     (this project's existing Poison/Steel type-immunity check in try_apply_status
+#     already covers that). Poison Touch's source case is a separate switch entry with
+#     an identical roll+effect, not a shared case block with Poison Point — kept as two
+#     `id ==` checks rather than one combined condition to mirror source's structure.
+#   ABILITY_EFFECT_SPORE (M17c, L4024-4066): weighted 3-way roll — GEN_LATEST config
+#     (B_ABILITY_TRIGGER_CHANCE >= GEN_4 but NOT == GEN_4, matching the same generation
+#     branch Shed Skin uses) gives 9% poison / 10% paralysis / 11% sleep (not an even
+#     10/10/10 split — a genuine GEN_5+ quirk in source's cutoffs) out of a roll in
+#     0-99, else no effect. Also requires `IsAffectedByPowderMove(attacker)` (L4032) —
+#     this project has no general "powder move" immunity system, but the ATTACKER-side
+#     Grass-type/Overcoat exemption that check encodes is a plain type check we already
+#     have infrastructure for (TypeChart), so it's applied directly rather than skipped.
 #
 # Returns a Dictionary:
 #   "rough_skin_damage" : int    — HP deducted from attacker (0 if none)
@@ -756,13 +937,16 @@ static func _apply_moody(
 #   "speed_change"       : int   — Speed stage change applied to attacker (0 = none)
 #   "ability_name"      : String — key identifying which ability fired ("" if none)
 #
-# force_contact_roll: null = RNG; true = force trigger; false = suppress
+# force_contact_roll: null = RNG; true = force trigger; false = suppress (Static/Flame
+#   Body/Poison Point/Poison Touch's shared 30% roll).
+# force_effect_spore_roll: null = RNG; int 0-99 = pin the underlying roll value.
 static func try_contact_effects(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
 		move: MoveData,
 		damage: int,
-		force_contact_roll: Variant = null) -> Dictionary:
+		force_contact_roll: Variant = null,
+		force_effect_spore_roll: Variant = null) -> Dictionary:
 
 	var result := {"rough_skin_damage": 0, "status_applied": 0, "speed_change": 0, "ability_name": ""}
 	if defender.ability == null:
@@ -812,6 +996,34 @@ static func try_contact_effects(
 			result["ability_name"] = "flame_body"
 		return result
 
+	# M17c: Poison Point / Poison Touch — 30% chance to poison the attacker on contact.
+	if id == ABILITY_POISON_POINT or id == ABILITY_POISON_TOUCH:
+		var fires: bool = _roll_contact(force_contact_roll, 30)
+		if fires and StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_POISON):
+			result["status_applied"] = BattlePokemon.STATUS_POISON
+			result["ability_name"] = "poison_touch" if id == ABILITY_POISON_TOUCH else "poison_point"
+		return result
+
+	# M17c: Effect Spore — weighted 3-way roll (9% poison / 10% paralysis / 11% sleep),
+	# skipped entirely if the attacker is immune to powder (Grass-type, the only part of
+	# IsAffectedByPowderMove reachable with this project's current ability roster).
+	if id == ABILITY_EFFECT_SPORE and TypeChart.TYPE_GRASS not in attacker.species.types:
+		var roll: int = int(force_effect_spore_roll) if force_effect_spore_roll != null \
+				else randi() % 100
+		if roll < 9:
+			if StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_POISON):
+				result["status_applied"] = BattlePokemon.STATUS_POISON
+				result["ability_name"] = "effect_spore"
+		elif roll < 19:
+			if StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_PARALYSIS):
+				result["status_applied"] = BattlePokemon.STATUS_PARALYSIS
+				result["ability_name"] = "effect_spore"
+		elif roll < 30:
+			if StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_SLEEP):
+				result["status_applied"] = BattlePokemon.STATUS_SLEEP
+				result["ability_name"] = "effect_spore"
+		return result
+
 	return result
 
 
@@ -858,10 +1070,23 @@ static func try_contact_effects(
 #     attacker/defender pair, so it reports a bool flag; BattleManager applies the
 #     Speed -1 to the attacker AND the attacker's ally (via _get_ally), matching
 #     source's "every battler except the holder" loop.
+#   ABILITY_CURSED_BODY (M17c, L3843-3858): any damaging hit landing (NOT contact-gated
+#     — no CanBattlerAvoidContactEffects check in source, unlike Mummy/Static/etc. right
+#     next to it in the same switch), attacker not already disabled, move used isn't
+#     Struggle, 30% chance → disables the attacker's just-used move for 4 turns (same
+#     B_DISABLE_TIMER this project's Disable move already uses). Reports a bool flag
+#     only; BattleManager applies `disabled_move`/`disable_turns` directly, mirroring how
+#     the Disable move itself is applied in battle_manager.gd (no shared helper exists
+#     for "apply a disable," so this doesn't introduce one just for this one extra caller).
+#   ABILITY_TOXIC_DEBRIS (M17c, L4246-4259): IsBattleMovePhysical, toxic spikes on the
+#     ATTACKER's side not already at 2 layers → sets one layer. Reuses M16d's EXISTING
+#     `_side_conditions[side]["toxic_spikes_layers"]` directly — reports a bool flag since
+#     side-condition state lives in BattleManager, not AbilityManager.
 #
 # hp_before_hit: defender's current_hp BEFORE this hit's damage was applied — needed
 #   only for Berserk/Anger Shell's ">50% before, <=50% after" crossing check.
 # is_crit: whether this hit was a critical hit (for Anger Point).
+# force_cursed_body_roll: null = RNG; true/false = pin Cursed Body's 30% roll.
 #
 # Returns a Dictionary with one key per ability (0/false = did not fire):
 #   "justified_change", "rattled_change", "water_compaction_change", "stamina_change",
@@ -869,19 +1094,23 @@ static func try_contact_effects(
 #   "berserk_change", "steam_engine_change", "thermal_exchange_change" : int
 #   "anger_shell_changes" : Dictionary {stat_idx: actual_change, ...} (only nonzero entries)
 #   "cotton_down_fired" : bool
+#   "cursed_body_fired" : bool
+#   "toxic_debris_fired" : bool
 static func try_hit_reactive_effects(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
 		move: MoveData,
 		damage: int,
 		hp_before_hit: int,
-		is_crit: bool) -> Dictionary:
+		is_crit: bool,
+		force_cursed_body_roll: Variant = null) -> Dictionary:
 
 	var result := {
 		"justified_change": 0, "rattled_change": 0, "water_compaction_change": 0,
 		"stamina_change": 0, "weak_armor_def_change": 0, "weak_armor_speed_change": 0,
 		"anger_point_change": 0, "berserk_change": 0, "steam_engine_change": 0,
 		"thermal_exchange_change": 0, "anger_shell_changes": {}, "cotton_down_fired": false,
+		"cursed_body_fired": false, "toxic_debris_fired": false,
 	}
 	if defender.ability == null:
 		return result
@@ -966,6 +1195,18 @@ static func try_hit_reactive_effects(
 		result["cotton_down_fired"] = true
 		return result
 
+	if id == ABILITY_CURSED_BODY and not attacker.fainted and not move.is_struggle \
+			and attacker.disabled_move == null:
+		var cb_fires: bool = bool(force_cursed_body_roll) if force_cursed_body_roll != null \
+				else (randi() % 100 < 30)
+		if cb_fires:
+			result["cursed_body_fired"] = true
+		return result
+
+	if id == ABILITY_TOXIC_DEBRIS and move.category == 0:
+		result["toxic_debris_fired"] = true
+		return result
+
 	return result
 
 
@@ -973,6 +1214,22 @@ static func _roll_contact(force: Variant, chance_pct: int) -> bool:
 	if force != null:
 		return bool(force)
 	return randi() % 100 < chance_pct
+
+
+# M17c: Cheek Pouch — heals maxHP/3 whenever the holder eats ANY berry.
+# Source: battle_script_commands.c :: TryCheekPouch (L6175-6188): GetItemPocket(itemId)
+#   == POCKET_BERRIES, not at max HP, not heal-blocked → heal maxHP/3.
+# Every item this project's `BattleManager._consume_item` currently handles IS a berry
+# (Lum/Sitrus/resist berries — the only consumed-item mechanics this codebase has), so
+# there's no separate "is this a berry" gate to add; this reuses that single existing
+# choke point directly rather than building a new "berry pocket" check.
+# Returns the heal amount (0 = not this ability, or already at max HP).
+static func cheek_pouch_heal(mon: BattlePokemon) -> int:
+	if mon.ability == null or mon.ability.ability_id != ABILITY_CHEEK_POUCH:
+		return 0
+	if mon.current_hp >= mon.max_hp:
+		return 0
+	return max(1, mon.max_hp / 3)
 
 
 # M17b: Moxie — Attack +1 for the Pokémon that just KO'd the opponent.
@@ -992,6 +1249,21 @@ static func moxie_boost(killer: BattlePokemon) -> int:
 	if killer.ability == null or killer.ability.ability_id != ABILITY_MOXIE:
 		return 0
 	return StatusManager.apply_stat_change(killer, BattlePokemon.STAGE_ATK, 1)
+
+
+# M17c: Anticipation (L3083-3119) / Forewarn (L3142-3150) / Frisk (L3121-3141) — all
+# three fire on switch-in but source-verified to have NO mechanical battle-calc effect
+# in a non-visual, text/state-driven engine: each one only decides WHICH message to show
+# (Anticipation: "shuddered" if any opponent move would be super-effective or is an OHKO
+# move; Forewarn: reveals the opponent's highest-power move; Frisk: reveals an opponent's
+# held item). None of them change any stat, status, or field state. Per this tier's own
+# instruction, these get a no-op registration rather than invented mechanical behavior —
+# the ability IDs above are the actual "registration" (combined with their .tres entries
+# via gen_abilities.py); no dedicated function is needed since there is nothing to gate
+# or apply. Listed here so future work doesn't re-investigate whether they do anything.
+const ABILITY_COSMETIC_INFO_ONLY: Array[int] = [
+	ABILITY_ANTICIPATION, ABILITY_FOREWARN, ABILITY_FRISK,
+]
 
 
 # ── Synchronize ───────────────────────────────────────────────────────────────

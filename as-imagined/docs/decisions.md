@@ -3755,3 +3755,249 @@ equivalent fix for that signature change.
   0 failures (verified manually in-terminal per this project's existing convention for
   Godot test execution).
 - 2026-07-02.
+
+## [M17c] Tier C move effects — switch-in/turn-end triggers, no new field-state infrastructure
+
+Scoping source: `docs/m17_recon.md` (Section 11's Bucket C proposal, cross-checked
+against Section 13's Signature-Ability Sweep exclusions, the same way `[M17a]`/`[M17b]`
+did). This entry records what M17c actually implemented and cites source per ability —
+it does not re-derive the roster/exclusion reasoning, which lives in the recon doc.
+
+### Step 0 — finalized ability list
+
+Section 11's Bucket C proposal was re-derived against the final exclusion set and
+against what the earlier tiers actually shipped, rather than trusted as-is. Corrections
+made during this cross-check:
+
+- **Toxic Chain (305) excluded** — confirmed in the task's Section 13 exclusion list
+  (Loyal Three legendary trio: Fezandipiti/Munkidori/Okidogi).
+- **Spicy Spray (318) excluded** — NOT in the task's Section 13 transcription, but
+  Section 13.3 source-verified it as Mega-exclusive-only (Scovillain-Mega, this hack's
+  custom Mega addition, zero non-Mega holders), which falls under this project's
+  pre-existing "no Mega Evolution" scope note — the same grounds Aerilate/Parental
+  Bond/Piercing Drill are already excluded on. A real gap in the task's transcription,
+  same shape as `[M17b]`'s Beast Boost catch.
+- **Solar Power (94) and Poison Heal (90) deferred to M17d, not included here** —
+  Section 11's own tier proposal explicitly routes these two to M17d ("Weather-setter
+  completions + Primal trio + Poison Heal/Solar Power/Dry-Skin-style multi-part
+  abilities"), bundled with the Primal weather trio specifically because they're
+  multi-part (Solar Power spans the Bucket A damage pipeline AND Bucket C end-of-turn;
+  Poison Heal needs to redirect the existing poison-damage function). Confirmed Solar
+  Power's damage-half was NOT shipped in `[M17a]`'s actual 32-ability list before
+  deferring — the task's own "expected shape" hint included these two in M17c, but the
+  recon's explicit tier assignment was trusted over that hint per the task's own
+  instruction.
+- **Harvest (139) excluded from this tier** — also absent from Section 11's actual M17c
+  list (verified directly, not assumed). It needs new "last consumed berry" tracking on
+  `ItemManager` (recon infra flag #6), which conflicts with this tier's "no new
+  field-state infrastructure" framing. Cheek Pouch/Ripen are fine because they reuse the
+  EXISTING berry-consumption choke point; Harvest needs a genuinely new one.
+- **Dry Skin (87) stays in** despite also touching the damage pipeline (Fire-type
+  damage-taken increase) — Section 11 explicitly keeps it in M17c unlike Solar Power, so
+  trusted as written.
+
+Final list, 22 abilities, canonical IDs re-verified against
+`include/constants/abilities.h` directly:
+
+Effect Spore(27), Poison Point(38), Rain Dish(44), Sand Stream(45), Truant(54), Shed
+Skin(61), Dry Skin(87), Hydration(93), Anticipation(107), Forewarn(108), Ice Body(115),
+Snow Warning(117), Frisk(119), Flower Gift(122), Cursed Body(130), Healer(131), Poison
+Touch(143), Cheek Pouch(167), Slush Rush(202), Ripen(247), Toxic Debris(295),
+Hospitality(299).
+
+### Source citations, per ability
+
+**Weather-setters** (extend the existing `get_switch_in_weather`, same function
+Drizzle/Drought already use):
+- **Sand Stream** (45) — `battle_util.c` L3227-3239: switch-in → Sandstorm.
+- **Snow Warning** (117) — `battle_util.c` L3256-3269: switch-in → Hail/Snow (gated on
+  `B_SNOW_WARNING >= GEN_9`). Mapped to this project's single `WEATHER_HAIL` constant —
+  this codebase never modeled a separate Gen-9 Snow value, so this is the correct
+  mapping for the existing weather model, not a dropped distinction.
+
+**End-of-turn heal/damage/cure** (extend `try_end_of_turn`, the same function
+Speed Boost/Moody already use — new `weather`/`ally` params, new force-roll seams for
+Shed Skin/Healer):
+- **Rain Dish** (44) — `battle_util.c` L3557-3567: rain active, not at max HP → heal
+  maxHP/16.
+- **Ice Body** (115) — `battle_util.c` L3541-3549: hail active, not at max HP → heal
+  maxHP/16.
+- **Dry Skin** (87) — three-part, all three cited and two wired:
+  1. `battle_util.c` L3553-3556 (rain heal, shares Rain Dish's branch with a /8 divisor
+     instead of /16 — L3562) — WIRED.
+  2. `battle_util.c` L2246/L6616 (Water-type move absorb+heal, same `AbsorbedBy
+     DrainHpAbility` mechanism as Volt Absorb/Water Absorb) — **DEFERRED**. This needs
+     the Bucket-E "immunity + heal" pipeline shape (an early-return-zero-damage-plus-heal
+     check) that this project doesn't have for ANY ability yet, since Volt Absorb/Water
+     Absorb themselves are still unimplemented (Bucket E, a later tier). Implementing it
+     only for Dry Skin would mean building that shape from scratch for one ability in a
+     "no new infrastructure" tier — deferred until Volt Absorb/Water Absorb are
+     scheduled, at which point Dry Skin should reuse whatever shape they establish.
+  3. `battle_util.c` L6616-6619 (Fire-type damage taken ×1.25, same post-type-
+     effectiveness slot as Heatproof) — WIRED, in `defense_damage_modifier_uq412`.
+  4. `battle_util.c` L3660-3667, shared `SOLAR_POWER_HP_DROP` label (sun → self-damage
+     maxHP/8) — WIRED.
+- **Hydration** (93) — `battle_util.c` L3568-3574: rain active, has any status → cure
+  it (shares the `ABILITY_HEAL_MON_STATUS` label with Shed Skin).
+- **Shed Skin** (61) — `battle_util.c` L3575-3600: has any status, 1/3 chance (GEN_LATEST
+  config: the `== GEN_4` branch is false, so `RandomChance(1,3)` applies — a genuinely
+  different threshold than Static/Poison Point's 30% `>= GEN_4` branch despite looking
+  similar) → cure it.
+- **Healer** (131) — `battle_util.c` L3669-3677: doubles-only, ally alive with any
+  status, 30% chance → cure the ALLY's status (not the holder's own).
+
+**Truant** (54) — a genuine pre-move canceler PLUS an end-of-turn toggle, two touch
+points:
+- `battle_move_resolution.c :: CancelerTruant` (L258-270): if `truantCounter` is set,
+  the move fails outright ("loafing around"), before PP deduction or anything else.
+  Wired into `StatusManager.pre_move_check`, positioned between Freeze and Flinch to
+  match `CANCELER_TRUANT`'s actual position in source's canceler chain (after
+  `CANCELER_ASLEEP_OR_FROZEN`, before `CANCELER_FLINCH`).
+- `battle_util.c` L3646-3647 (end-of-turn `ABILITY_TRUANT` case): unconditionally
+  toggles `truantCounter` (XOR) every end of turn, regardless of whether the holder
+  moved. New `BattlePokemon.truant_loafing: bool` field — cleared by `_clear_volatiles`
+  like an ordinary switch-scoped volatile (confirmed via
+  `include/constants/battle.h` L307: `VOLATILE_TRUANT_COUNTER` has no
+  `V_BATON_PASSABLE` flag, unlike Supersweet Syrup's deliberately-NOT-cleared
+  `supersweet_syrup_used`).
+
+**Contact status infliction** (extend `try_contact_effects`, same function
+Static/Flame Body already use):
+- **Poison Point** (38) — `battle_util.c` L4068-4090: 30% chance to poison the attacker
+  on contact.
+- **Poison Touch** (143) — separate switch-case entry, identical shape to Poison Point.
+- **Effect Spore** (27) — `battle_util.c` L4024-4066: weighted 3-way roll out of 0-99 —
+  9% poison / 10% paralysis / 11% sleep (a genuine GEN_5+ quirk, NOT an even 10/10/10
+  split), plus `IsAffectedByPowderMove(attacker)` (L4032). This project has no general
+  "powder move" immunity system, but the specific exemption that check encodes for THIS
+  ability — Grass-type attackers — is a plain `TypeChart` check already available
+  everywhere else in this codebase, so it's applied directly rather than skipped
+  outright.
+
+**Non-contact-gated hit-reactive** (extend `try_hit_reactive_effects`, the same
+non-contact-gated function `[M17b]` introduced for Justified/Rattled/etc.):
+- **Cursed Body** (130) — `battle_util.c` L3843-3858: any damaging hit landing (NOT
+  contact-gated, unlike Mummy/Static/Flame Body in the same source switch), attacker not
+  already disabled, move used isn't Struggle, 30% chance → disables the attacker's
+  just-used move for 4 turns (`B_DISABLE_TIMER`, the same constant this project's
+  Disable move already uses). Reports a bool flag only; `BattleManager` applies
+  `disabled_move`/`disable_turns` directly at the call site, mirroring how the Disable
+  MOVE itself is applied (no shared helper exists for "apply a disable" — not worth
+  introducing one for this single extra caller).
+- **Toxic Debris** (295) — `battle_util.c` L4246-4259: physical hit landing, attacker's
+  side not already at 2 Toxic Spikes layers → sets one layer. Reuses M16d's EXISTING
+  `_side_conditions[side]["toxic_spikes_layers"]` directly, confirmed as a pure reuse
+  (no new hazard-adjacent subsystem) — the same state Spikes/Toxic Spikes/Stealth Rock
+  already read and write.
+
+**Weather-conditional stat modifiers**:
+- **Flower Gift** (122) — two source functions, both from the existing M17a-era
+  pipeline hooks, plus a scope decision:
+  - `battle_util.c` L6855-6858 (self Attack ×1.5, sun + physical) — folded into
+    `attack_modifier_uq412` (new `weather` param, one call site updated).
+  - `battle_util.c` L7114-7148 (self OR ally Sp. Def ×1.5→reciprocal damage ×0.667, sun
+    + special) — folded into `defense_damage_modifier_uq412` (new `weather` and `ally`
+    params; `DamageCalculator.calculate` gained a new `defender_ally` trailing param,
+    since Flower Gift's ally-share needs the DEFENDER's doubles partner, a different
+    ally than the attacker-side `ally` param M17a already threaded through for
+    Battery/Power Spot/Steely Spirit).
+  - **Scope decision**: source gates the entire ability on
+    `species == SPECIES_CHERRIM_SUNSHINE`, a battle-triggered form-change this project
+    doesn't model (Section 8.4/Bucket D infra this project deliberately doesn't have).
+    Dropped the species-form gate and kept the generic weather-conditional boost,
+    matching the exact precedent Rob already established for the Primal weather trio
+    (`[M17-recon]` Section 8.5: "implement as ordinary innate... dropping the
+    must-be-the-specific-form gate entirely, consistent with Rob's stated intent to
+    freely reassign any ability to any species").
+- **Slush Rush** (202) — same weather-conditional speed-multiplier shape as the
+  still-unimplemented Swift Swim/Chlorophyll/Sand Rush family (this is the first of
+  that family this project implements): Speed ×2 in Hail. Folded into
+  `StatusManager.effective_speed` (new `weather` param, two call sites in
+  `_phase_priority_resolution` updated; the two `TrainerAI` call sites were left on the
+  `WEATHER_NONE` default — a minor, pre-existing-shape simplification, same category as
+  M11's "weather-aware AI scoring explicitly deferred").
+
+**Item-adjacent**:
+- **Cheek Pouch** (167) — `battle_script_commands.c :: TryCheekPouch` (L6175-6188):
+  heals maxHP/3 whenever the holder eats ANY berry. Every item consumed via this
+  project's existing `BattleManager._consume_item` choke point IS a berry today
+  (Lum/Sitrus/resist berries — the only consumed-item mechanics this codebase has), so
+  this reuses that single existing function directly rather than building a new "is
+  this a berry" gate.
+- **Ripen** (247) — `battle_util.c :: GetDefenderItemsModifier` (L7519): doubles the
+  resist berry's damage reduction (0.25× instead of 0.5×). Direct extension of the
+  existing `ItemManager.defender_item_modifier_uq412` (it already receives the full
+  `BattlePokemon` and can read `.ability`), no new plumbing.
+- **Hospitality** (299) — `battle_util.c` L4662-4674: switch-in, doubles-only, heals the
+  ally maxHP/4 (not an opponent-directed effect like Intimidate/Rattled/Pastel
+  Veil/Supersweet Syrup, nor a combined-opponents effect like Download — a third
+  switch-in shape). New standalone `AbilityManager.try_switch_in_ally_heal(pokemon,
+  ally)`, wired into `_apply_switch_in_abilities`. **Known gap, inherited from
+  `[M17b]`**: the Baton Pass inline switch-in block (battle_manager.gd's separate
+  single-opponent path) does not call this, matching the SAME pre-existing
+  simplification `[M17b]` already accepted for Download in that same code path — not a
+  new gap introduced here.
+
+**Cosmetic / no-op** — Anticipation (107), Forewarn (108), Frisk (119): all three
+source-verified (`battle_util.c` L3083-3150) to only decide WHICH message to display
+on switch-in (a threat warning, the opponent's strongest move, or the opponent's held
+item) — none of them touch any stat, status, or field state. In a non-visual,
+text/state-driven engine, there is nothing to gate or apply. Per the task's own
+instruction, these get ID-constant registration (`AbilityManager
+.ABILITY_COSMETIC_INFO_ONLY`) plus their `.tres` entries, and no dedicated mechanical
+function — building invented behavior for something source confirms has none would be
+worse than a documented no-op.
+
+### Breaking/additive changes to existing signatures
+
+All additive (new trailing parameters with defaults), no existing call site broke:
+- `AbilityManager.attack_modifier_uq412` — added `weather` (Flower Gift).
+- `AbilityManager.defense_damage_modifier_uq412` — added `weather`, `ally` (Dry
+  Skin, Flower Gift).
+- `AbilityManager.try_end_of_turn` — added `weather`, `ally`,
+  `force_shed_skin_roll`, `force_healer_roll` (Rain Dish/Ice Body/Dry
+  Skin/Hydration/Shed Skin/Healer/Truant).
+- `AbilityManager.try_contact_effects` — added `force_effect_spore_roll` (Effect Spore).
+- `AbilityManager.try_hit_reactive_effects` — added `force_cursed_body_roll`
+  (Cursed Body).
+- `DamageCalculator.calculate` — added `defender_ally` (Flower Gift's ally-shared
+  Sp. Def half).
+- `StatusManager.effective_speed` — added `weather` (Slush Rush).
+- `StatusManager.pre_move_check` — no new parameter, but a new `"loafing"` result key
+  (Truant).
+
+### Bugs caught before merging
+
+- **Flower Gift ally-share bug (a real implementation bug)**: the first draft of
+  `defense_damage_modifier_uq412` gated the entire Flower-Gift-ally check inside `if
+  defender.ability != null`, meaning the ally-shares-the-boost case (where the DEFENDER
+  itself holds no ability at all, only its ally does) was unreachable — the exact same
+  shape of bug the Flower Veil/Sweet Veil/Pastel Veil ally checks in `[M17b]` had
+  correctly avoided. Caught by `m17c_test.gd` S8.07 (ally holds Flower Gift, defender
+  does not). Fixed by computing `flower_gift_holder`/`ally_flower_gift` independently,
+  outside any `defender.ability != null` gate.
+- **Test-only bug, Cursed Body integration**: the first draft used a Ghost-type holder
+  for `m17c_test.gd`'s full-battle integration test with a Normal-type attacking move —
+  Normal-type moves are outright type-immune (0×) against Ghost-type defenders (a
+  pre-existing, unrelated type-chart rule), so the test measured zero damage and the
+  hit-reactive dispatch never fired regardless of Cursed Body's correctness. Same
+  pitfall class as `[M17b]`'s Purifying Salt test bug (Normal-vs-Ghost immunity).
+  Fixed by giving the holder an ordinary non-immune type instead.
+
+### Testing / Regression
+
+- New `m17c_test.gd`/`.tscn`: 79/79 assertions across 12 sections (ability data
+  spot-checks; weather-setters; end-of-turn heal/cure; Truant's canceler+toggle cycle;
+  contact status infliction incl. Effect Spore's weighted roll and Grass-type immunity;
+  Cursed Body incl. full-battle integration; Toxic Debris incl. full-battle
+  integration; Flower Gift incl. the ally-share case; Slush Rush; Cheek Pouch/Ripen;
+  Hospitality; the three cosmetic no-ops). Every ability with a real mechanical effect
+  has a negative case; the cosmetic no-ops get a minimal registration + no-side-effect
+  check instead, per the task's own instruction not to invent behavior source confirms
+  doesn't exist.
+- `.tres` data: all 22 abilities added to `scripts/gen_abilities.py` and regenerated —
+  98 total `.tres` files now carry real descriptions (12 M8 + 32 M17a + 32 M17b + 22
+  M17c).
+- Full regression: all 23 prior suites unchanged and still passing. Total assertions
+  across all 24 numbered suites: 1315 prior + 79 = **1394**.
+- 2026-07-02.

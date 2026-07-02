@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 27
 ability_name = "Effect Spore"
-description = ""
-ai_rating = 0
+description = "Contact with the Pokémon may inflict poison, paralysis, or sleep."
+ai_rating = 5

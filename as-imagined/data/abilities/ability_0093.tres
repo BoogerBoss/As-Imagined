@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 93
 ability_name = "Hydration"
-description = ""
-ai_rating = 0
+description = "Heals status conditions if it is raining."
+ai_rating = 5

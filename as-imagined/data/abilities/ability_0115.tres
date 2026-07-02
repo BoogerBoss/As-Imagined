@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 115
 ability_name = "Ice Body"
-description = ""
-ai_rating = 0
+description = "The Pokémon gradually regains HP in hail or snow."
+ai_rating = 5

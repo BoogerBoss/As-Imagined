@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 295
 ability_name = "Toxic Debris"
-description = ""
-ai_rating = 0
+description = "Sets up Toxic Spikes at the feet of the opposing team when the Pokémon takes a physical hit."
+ai_rating = 6

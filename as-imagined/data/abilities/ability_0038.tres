@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 38
 ability_name = "Poison Point"
-description = ""
-ai_rating = 0
+description = "Contact with the Pokémon may poison the attacker."
+ai_rating = 5

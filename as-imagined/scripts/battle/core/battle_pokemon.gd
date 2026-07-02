@@ -185,6 +185,12 @@ var original_types: Array[int] = []
 # switch-scoped volatiles.
 var supersweet_syrup_used: bool = false
 
+# M17c: Truant's per-battler loafing toggle (source: volatiles.truantCounter, XORed every
+# end of turn — include/constants/battle.h L307). NOT V_BATON_PASSABLE (no such flag on
+# VOLATILE_TRUANT_COUNTER) — cleared by _clear_volatiles like an ordinary switch-scoped
+# volatile, unlike Supersweet Syrup above.
+var truant_loafing: bool = false
+
 var fainted: bool = false
 
 

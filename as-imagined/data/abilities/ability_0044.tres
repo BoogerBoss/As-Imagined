@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 44
 ability_name = "Rain Dish"
-description = ""
-ai_rating = 0
+description = "The Pokémon gradually regains HP in rain."
+ai_rating = 5

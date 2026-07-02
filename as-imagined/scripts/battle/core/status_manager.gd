@@ -169,6 +169,7 @@ static func end_of_turn_damage(mon: BattlePokemon) -> int:
 #   "woke_up"         : bool — true if woke from sleep (can still move)
 #   "thawed"          : bool — true if thawed from freeze (can still move)
 #   "snapped_out"     : bool — true if snapped out of confusion (can move)
+#   "loafing"         : bool — true if Truant blocked the move this turn (M17c)
 #
 # Force parameters (all Variant):
 #   null = use RNG   |   true / false = pin the outcome
@@ -191,6 +192,7 @@ static func pre_move_check(
 		"thawed":          false,
 		"snapped_out":     false,
 		"flinched":        false,
+		"loafing":         false,
 	}
 
 	# ── Sleep ──────────────────────────────────────────────────────────────
@@ -237,6 +239,19 @@ static func pre_move_check(
 		else:
 			result["can_move"] = false
 			return result
+
+	# ── Truant ────────────────────────────────────────────────────────────────
+	# Source: battle_move_resolution.c :: CancelerTruant (L258-270) — CANCELER_TRUANT
+	# fires after CANCELER_ASLEEP_OR_FROZEN but before CANCELER_FLINCH, matching this
+	# function's Sleep/Freeze-then-Flinch ordering.
+	# M17c: AbilityManager.try_end_of_turn toggles BattlePokemon.truant_loafing every end
+	# of turn (XOR) when the holder has Truant; if it's currently true, the move fails
+	# outright ("loafing around") with no PP cost and no other side effect.
+	if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_TRUANT \
+			and mon.truant_loafing:
+		result["can_move"] = false
+		result["loafing"] = true
+		return result
 
 	# ── Flinch ────────────────────────────────────────────────────────────────
 	# Source: battle_move_resolution.c :: CancelerFlinch (L298–316)
@@ -559,11 +574,21 @@ static func try_secondary_effect(
 #
 # Source: battle_main.c L4712–4714
 #   B_PARALYSIS_SPEED >= GEN_7 → speed /= 2   (was /= 4 before Gen 7)
-static func effective_speed(mon: BattlePokemon) -> int:
+#
+# M17c: Slush Rush doubles Speed while Hail/Snow is active — same weather-conditional
+# speed-multiplier shape as the (still unimplemented) Swift Swim/Chlorophyll/Sand Rush
+# family; this is the first of that family this project implements.
+# Source: battle_util.c :: GetSpeedModifier-equivalent ability switch (Slush Rush ×2.0
+#   gated on IsBattlerWeatherAffected(..., B_WEATHER_HAIL)).
+# weather: WEATHER_* constant, default WEATHER_NONE (existing callers unaffected).
+static func effective_speed(mon: BattlePokemon, weather: int = DamageCalculator.WEATHER_NONE) -> int:
 	var spd: int = DamageCalculator._apply_stage(
 			mon.speed, mon.stat_stages[BattlePokemon.STAGE_SPEED])
 	if mon.status == BattlePokemon.STATUS_PARALYSIS:
 		spd /= 2
+	if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_SLUSH_RUSH \
+			and weather == DamageCalculator.WEATHER_HAIL:
+		spd *= 2
 	# M12: Choice Scarf — (speed * 150) / 100 integer arithmetic.
 	# Source: battle_main.c GetChoiceScarf case (L4703–4704).
 	return ItemManager.apply_speed_modifier(mon, spd)

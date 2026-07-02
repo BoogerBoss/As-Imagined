@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 299
 ability_name = "Hospitality"
-description = ""
-ai_rating = 0
+description = "When the Pokémon enters a battle, it heals its ally by 1/4 of its max HP."
+ai_rating = 5

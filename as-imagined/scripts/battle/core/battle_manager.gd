@@ -77,6 +77,8 @@ signal replacement_needed(side: int)                                       # fai
 signal weather_set(by_pokemon: BattlePokemon, weather_type: int)          # weather changed
 signal weather_expired(weather_type: int)                                  # weather duration ran out
 signal weather_damage(pokemon: BattlePokemon, amount: int)                 # sandstorm/hail chip
+# M17c signal
+signal ability_healed(pokemon: BattlePokemon, amount: int)                 # Rain Dish/Ice Body/Dry Skin/Hospitality/Cheek Pouch
 # M12 signals
 signal item_consumed(pokemon: BattlePokemon, item: ItemData)               # one-use item activated
 signal item_healed(pokemon: BattlePokemon, amount: int)                    # Leftovers / Sitrus Berry
@@ -193,6 +195,13 @@ var _force_conversion2_pick: Variant = null
 # null = use real RNG. Mirrors the null-sentinel convention of the other _force_* seams.
 var _force_moody_raise: Variant = null
 var _force_moody_lower: Variant = null
+
+# M17c: force Shed Skin's 1/3 end-of-turn status-cure roll and Healer's 30% roll.
+var _force_shed_skin_roll: Variant = null
+var _force_healer_roll: Variant = null
+# M17c: force Effect Spore's 3-way contact roll (int 0-99) and Cursed Body's 30% roll.
+var _force_effect_spore_roll: Variant = null
+var _force_cursed_body_roll: Variant = null
 
 # M9: pre-queued Baton Pass target slots per combatant index (-1 = auto-select first valid).
 # M14a: indexed by combatant index; singles uses [0] and [1].
@@ -585,8 +594,8 @@ func _phase_priority_resolution() -> void:
 		var pb: int = move_b.priority if move_b else 0
 		if pa != pb:
 			return pa > pb
-		var sa: int = StatusManager.effective_speed(a)
-		var sb: int = StatusManager.effective_speed(b)
+		var sa: int = StatusManager.effective_speed(a, weather)
+		var sb: int = StatusManager.effective_speed(b, weather)
 		if sa != sb:
 			return sa < sb if trick_room_turns > 0 else sa > sb
 		return tiebreak[a] > tiebreak[b]
@@ -648,7 +657,9 @@ func _phase_pre_move_checks() -> void:
 
 	if not check["can_move"]:
 		var reason: String
-		if check["flinched"]:
+		if check["loafing"]:
+			reason = "loafing"
+		elif check["flinched"]:
 			reason = "flinched"
 			# M17b: Steadfast — flinching raises the flinched Pokémon's own Speed +1.
 			# Source: battle_move_resolution.c :: CancelerFlinch (L303-307).
@@ -1781,7 +1792,8 @@ func _phase_end_of_turn() -> void:
 		if mon.fainted:
 			continue
 		var eot_result: Dictionary = AbilityManager.try_end_of_turn(
-				mon, _force_moody_raise, _force_moody_lower)
+				mon, _force_moody_raise, _force_moody_lower, weather, _get_ally(mon),
+				_force_shed_skin_roll, _force_healer_roll)
 		var spd_actual: int = eot_result["speed_boost_change"]
 		if spd_actual != 0:
 			stat_stage_changed.emit(mon, BattlePokemon.STAGE_SPEED, spd_actual)
@@ -1792,6 +1804,26 @@ func _phase_end_of_turn() -> void:
 		if eot_result["moody_lowered_stat"] != -1 and eot_result["moody_lowered_amount"] != 0:
 			stat_stage_changed.emit(mon, eot_result["moody_lowered_stat"], eot_result["moody_lowered_amount"])
 			ability_triggered.emit(mon, "moody")
+		# M17c: Rain Dish / Ice Body / Dry Skin end-of-turn heal or (Dry Skin only) sun damage.
+		if eot_result["heal_amount"] > 0:
+			mon.current_hp = min(mon.max_hp, mon.current_hp + eot_result["heal_amount"])
+			ability_healed.emit(mon, eot_result["heal_amount"])
+			ability_triggered.emit(mon, "rain_dish_ice_body_dry_skin")
+		if eot_result["damage_amount"] > 0:
+			mon.current_hp = max(0, mon.current_hp - eot_result["damage_amount"])
+			weather_damage.emit(mon, eot_result["damage_amount"])
+			ability_triggered.emit(mon, "dry_skin")
+		# M17c: Hydration / Shed Skin cure the holder's own status.
+		if eot_result["cured_status"]:
+			mon.status = BattlePokemon.STATUS_NONE
+			mon.toxic_counter = 0
+			ability_triggered.emit(mon, "hydration_shed_skin")
+		# M17c: Healer cures the ally's status (doubles-only).
+		if eot_result["healed_ally_status"]:
+			var healer_ally: BattlePokemon = _get_ally(mon)
+			healer_ally.status = BattlePokemon.STATUS_NONE
+			healer_ally.toxic_counter = 0
+			ability_triggered.emit(mon, "healer")
 
 	# Route through SWITCH_PROMPT even after EOT so any EOT faint gets a replacement.
 	_set_phase(BattlePhase.SWITCH_PROMPT)
@@ -2016,6 +2048,13 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 	var set_w: int = AbilityManager.get_switch_in_weather(new_mon)
 	if set_w != WEATHER_NONE and try_set_weather(set_w, new_mon):
 		weather_set.emit(new_mon, set_w)
+	# M17c: Hospitality — doubles-only, heals the switching-in Pokémon's own ally.
+	var new_mon_ally: BattlePokemon = _get_ally(new_mon)
+	var hosp_heal: int = AbilityManager.try_switch_in_ally_heal(new_mon, new_mon_ally)
+	if hosp_heal > 0:
+		new_mon_ally.current_hp = min(new_mon_ally.max_hp, new_mon_ally.current_hp + hosp_heal)
+		ability_healed.emit(new_mon_ally, hosp_heal)
+		ability_triggered.emit(new_mon, "hospitality")
 
 
 # M14a: default target combatant index for a given attacker.
@@ -2047,6 +2086,7 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.defense_curled = false
 	mon.rollout_turns = 0
 	mon.rollout_base_power = 0
+	mon.truant_loafing = false
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
@@ -2451,7 +2491,8 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	var roll: int = _force_roll if _force_roll != null else -1
 	var result: Dictionary = DamageCalculator.calculate(
 			attacker, target, move, roll, _force_crit, weather, is_spread, helping_hand,
-			power_override, screen_active, _active_per_side > 1, _get_ally(attacker))
+			power_override, screen_active, _active_per_side > 1, _get_ally(attacker),
+			_get_ally(target))
 	var damage: int = result["damage"]
 
 	# M16d: Rapid Spin — clears ONE hazard type from the ATTACKER's own side after dealing
@@ -2535,7 +2576,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 					_consume_item(target)
 
 	var contact_result: Dictionary = AbilityManager.try_contact_effects(
-			attacker, target, move, damage, _force_contact_roll)
+			attacker, target, move, damage, _force_contact_roll, _force_effect_spore_roll)
 	if contact_result["rough_skin_damage"] > 0:
 		var rs_dmg: int = contact_result["rough_skin_damage"]
 		attacker.current_hp = max(0, attacker.current_hp - rs_dmg)
@@ -2557,7 +2598,8 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	# Compaction, Stamina, Weak Armor, Anger Point, Berserk, Anger Shell, Steam Engine,
 	# Thermal Exchange, Cotton Down) — fire on ANY damaging hit, not just contact.
 	var hit_result: Dictionary = AbilityManager.try_hit_reactive_effects(
-			attacker, target, move, damage, hp_before_hit, result["is_crit"])
+			attacker, target, move, damage, hp_before_hit, result["is_crit"],
+			_force_cursed_body_roll)
 	if hit_result["justified_change"] != 0:
 		stat_stage_changed.emit(target, BattlePokemon.STAGE_ATK, hit_result["justified_change"])
 		ability_triggered.emit(target, "justified")
@@ -2602,6 +2644,19 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			if cd_ally_actual != 0:
 				stat_stage_changed.emit(cd_ally, BattlePokemon.STAGE_SPEED, cd_ally_actual)
 		ability_triggered.emit(target, "cotton_down")
+	if hit_result["cursed_body_fired"]:
+		attacker.disabled_move = move
+		attacker.disable_turns = 4
+		disabled.emit(attacker, move)
+		ability_triggered.emit(target, "cursed_body")
+	if hit_result["toxic_debris_fired"]:
+		var td_idx: int = _combatants.find(attacker)
+		var td_side: int = td_idx / _active_per_side
+		var td_sc: Dictionary = _side_conditions[td_side]
+		if td_sc["toxic_spikes_layers"] < 2:
+			td_sc["toxic_spikes_layers"] += 1
+			hazard_set.emit(td_side, "toxic_spikes", td_sc["toxic_spikes_layers"])
+			ability_triggered.emit(target, "toxic_debris")
 
 	if result.get("defender_item_consumed", false):
 		_consume_item(target)
@@ -2627,3 +2682,10 @@ func _consume_item(mon: BattlePokemon) -> void:
 	var item: ItemData = mon.held_item
 	mon.held_item = null
 	item_consumed.emit(mon, item)
+	# M17c: Cheek Pouch — every item consumed via this function today is a berry
+	# (Lum/Sitrus/resist berries), matching source's POCKET_BERRIES gate in practice.
+	var cp_heal: int = AbilityManager.cheek_pouch_heal(mon)
+	if cp_heal > 0:
+		mon.current_hp = min(mon.max_hp, mon.current_hp + cp_heal)
+		ability_healed.emit(mon, cp_heal)
+		ability_triggered.emit(mon, "cheek_pouch")
