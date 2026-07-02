@@ -105,16 +105,33 @@ static func get_uq412(atk_type: int, def_type: int) -> int:
 # Returns the combined effectiveness multiplier (as float) for reporting / immunity checks.
 # Pass a single-element array for mono-type defenders.
 # Source: src/battle_util.c :: CalcTypeEffectivenessMultiplierInternal + MulByTypeEffectiveness
-static func get_effectiveness(atk_type: int, def_types: Array) -> float:
+#
+# M17d: weaken_flying_se — true only under Delta Stream's Strong Winds weather. Source
+#   (battle_util.c :: MulByTypeEffectiveness, L8069-8074) checks this PER defending type
+#   component ("defType == TYPE_FLYING && mod >= 2.0 → mod = 1.0"), not on the combined
+#   product — mirrored here by checking each component before multiplying it in. Plain
+#   bool param (not a WEATHER_* constant) to avoid a cross-reference from this data-layer
+#   script back to DamageCalculator; the one caller that needs this
+#   (DamageCalculator.calculate) computes the bool itself. Every other caller (AI
+#   heuristics, hazard/OHKO type checks) defaults to false — same simplification
+#   precedent as weather-aware AI scoring being explicitly deferred since M11.
+static func get_effectiveness(atk_type: int, def_types: Array,
+		weaken_flying_se: bool = false) -> float:
 	if atk_type == TYPE_MYSTERY:
 		return 1.0
 	var modifier := 1.0
 	var first_type: int = def_types[0] if def_types.size() > 0 else TYPE_NONE
-	modifier *= TABLE[atk_type][first_type]
+	var first_mod: float = TABLE[atk_type][first_type]
+	if weaken_flying_se and first_type == TYPE_FLYING and first_mod >= 2.0:
+		first_mod = 1.0
+	modifier *= first_mod
 	if modifier == 0.0:
 		return 0.0
 	if def_types.size() > 1 and def_types[1] != first_type and def_types[1] != TYPE_NONE:
-		modifier *= TABLE[atk_type][def_types[1]]
+		var second_mod: float = TABLE[atk_type][def_types[1]]
+		if weaken_flying_se and def_types[1] == TYPE_FLYING and second_mod >= 2.0:
+			second_mod = 1.0
+		modifier *= second_mod
 	return modifier
 
 

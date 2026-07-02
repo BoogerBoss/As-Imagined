@@ -616,6 +616,43 @@ ABILITIES = [
     {"id": 202, "name": "Slush Rush",
      "description": "Boosts the Pokémon's Speed stat in snow or hail.",
      "ai_rating": 6},
+
+    # ── M17d: Weather-setter completions + Primal trio + multi-part abilities ───────
+    # Source: docs/m17_recon.md Section 11's M17d proposal; final list locked in
+    # docs/decisions.md [M17d].
+
+    # Source: battle_util.c :: GetAttackStatModifier, ABILITY_SOLAR_POWER case
+    #   (L6809-6811, Sp. Atk x1.5 in sun) + ABILITY_SOLAR_POWER end-of-turn case
+    #   (L3660-3667, sun self-damage maxHP/8).
+    {"id": 94, "name": "Solar Power",
+     "description": "Boosts Sp. Atk in harsh sunlight, but HP decreases every turn.",
+     "ai_rating": 5},
+
+    # Source: battle_end_turn.c :: HandleEndTurnPoison, ABILITY_POISON_HEAL case
+    #   (L533-544): inverts the poison/toxic end-of-turn tick into a maxHP/8 heal.
+    {"id": 90, "name": "Poison Heal",
+     "description": "Restores HP instead of losing HP if poisoned.",
+     "ai_rating": 8},
+
+    # Source: battle_util.c :: ABILITY_PRIMORDIAL_SEA case (L3400-3407): switch-in,
+    #   sets Rain (reuses this project's ordinary WEATHER_RAIN, no separate Primal value
+    #   needed — see decisions.md [M17d]).
+    {"id": 189, "name": "Primordial Sea",
+     "description": "The Pokémon summons heavy rain when it enters a battle.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c :: ABILITY_DESOLATE_LAND case (L3391-3398): switch-in,
+    #   sets Sun (reuses WEATHER_SUN).
+    {"id": 190, "name": "Desolate Land",
+     "description": "The Pokémon summons extremely harsh sunlight when it enters a battle.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c :: ABILITY_DELTA_STREAM case (L3409-3416): switch-in, sets
+    #   Strong Winds (new WEATHER_STRONG_WINDS value) — weakens super-effective hits
+    #   against Flying-type defenders (battle_util.c :: MulByTypeEffectiveness L8069-8074).
+    {"id": 191, "name": "Delta Stream",
+     "description": "The Pokémon summons strong winds when it enters a battle, weakening Flying-type weaknesses.",
+     "ai_rating": 6},
 ]
 
 HEADER = """\

@@ -128,8 +128,12 @@ static func try_apply_confusion(
 
 # ── End-of-turn status damage ─────────────────────────────────────────────
 #
-# Returns the HP to subtract this end-of-turn. 0 = no damage.
-# For toxic this also increments the counter (must call exactly once per turn).
+# Returns the HP to subtract this end-of-turn (positive), or the HP to RESTORE
+# (negative — Poison Heal only). 0 = no effect.
+# For toxic this also increments the counter (must call exactly once per turn) —
+# note Poison Heal's holder still increments the counter while poisoned/toxic
+# (source keeps ticking it even though the ability heals instead of damaging),
+# so the counter advance happens unconditionally before the ability check.
 #
 # Source:
 #   burn   — battle_end_turn.c :: HandleEndTurnBurn L577
@@ -138,21 +142,40 @@ static func try_apply_confusion(
 #             maxHP / 8
 #   toxic  — battle_end_turn.c :: HandleEndTurnPoison L547–550
 #             counter increments first (cap at 15), then damage = (maxHP/16) * counter
+#
+# M17d: ABILITY_POISON_HEAL (L533-544) — inverts the poison/toxic branch entirely:
+#   instead of damage, heals maxHP/8 (flat, NOT counter-scaled even while toxic),
+#   gated on not already at max HP. This is the SAME central function every
+#   poison/toxic/burn end-of-turn tick in this project already goes through — no
+#   parallel poison-damage path, just a branch inside the existing one.
 static func end_of_turn_damage(mon: BattlePokemon) -> int:
+	var has_poison_heal: bool = mon.ability != null \
+			and mon.ability.ability_id == AbilityManager.ABILITY_POISON_HEAL
+
 	match mon.status:
 		BattlePokemon.STATUS_BURN:
 			return max(1, mon.max_hp / 16)
 
 		BattlePokemon.STATUS_POISON:
+			if has_poison_heal:
+				return -_poison_heal_amount(mon)
 			return max(1, mon.max_hp / 8)
 
 		BattlePokemon.STATUS_TOXIC:
 			# Increment then multiply — source: L548–550
 			# "(status & STATUS1_TOXIC_COUNTER) != STATUS1_TOXIC_TURN(15)" = cap at 15
 			mon.toxic_counter = mini(mon.toxic_counter + 1, 15)
+			if has_poison_heal:
+				return -_poison_heal_amount(mon)
 			return max(1, mon.max_hp / 16 * mon.toxic_counter)
 
 	return 0
+
+
+static func _poison_heal_amount(mon: BattlePokemon) -> int:
+	if mon.current_hp >= mon.max_hp:
+		return 0
+	return max(1, mon.max_hp / 8)
 
 
 # ── Pre-move status checks ────────────────────────────────────────────────

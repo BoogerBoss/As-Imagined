@@ -1732,6 +1732,11 @@ func _phase_end_of_turn() -> void:
 			if mon.current_hp == 0:
 				mon.fainted = true
 				pokemon_fainted.emit(mon)
+		elif dmg < 0:
+			# M17d: Poison Heal — negative return means heal, not damage.
+			mon.current_hp = min(mon.max_hp, mon.current_hp - dmg)
+			ability_healed.emit(mon, -dmg)
+			ability_triggered.emit(mon, "poison_heal")
 
 	# M12: Leftovers EOT heal (FIRST_EVENT_BLOCK_HEAL_ITEMS, after status damage).
 	# Source: TryLeftovers (battle_hold_effects.c L634–648); fires via FIRST_EVENT_BLOCK_HEAL_ITEMS
@@ -1812,7 +1817,10 @@ func _phase_end_of_turn() -> void:
 		if eot_result["damage_amount"] > 0:
 			mon.current_hp = max(0, mon.current_hp - eot_result["damage_amount"])
 			weather_damage.emit(mon, eot_result["damage_amount"])
-			ability_triggered.emit(mon, "dry_skin")
+			var eot_dmg_tag: String = "solar_power" \
+					if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_SOLAR_POWER \
+					else "dry_skin"
+			ability_triggered.emit(mon, eot_dmg_tag)
 		# M17c: Hydration / Shed Skin cure the holder's own status.
 		if eot_result["cured_status"]:
 			mon.status = BattlePokemon.STATUS_NONE

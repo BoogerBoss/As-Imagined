@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 191
 ability_name = "Delta Stream"
-description = ""
-ai_rating = 0
+description = "The Pokémon summons strong winds when it enters a battle, weakening Flying-type weaknesses."
+ai_rating = 6

@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 189
 ability_name = "Primordial Sea"
-description = ""
-ai_rating = 0
+description = "The Pokémon summons heavy rain when it enters a battle."
+ai_rating = 6

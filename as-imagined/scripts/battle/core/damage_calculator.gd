@@ -22,13 +22,18 @@ extends RefCounted
 # gBattleWeather is a bitmask in source; we simplify to a plain enum int per battle.
 # The weather modifier is applied in DoMoveDamageCalcVars (L7594): after base damage,
 # before the critical hit modifier, before the random roll.
-# Primal weather (Desolate Land / Primordial Sea) and Snow, Fog, Strong Winds are out of
-# M11 scope; Sandstorm and Hail are in scope for end-of-turn chip only (no damage modifier).
+# Primal weather (Desolate Land / Primordial Sea) reuse WEATHER_SUN/WEATHER_RAIN directly
+# (M17d, docs/decisions.md — no separate "Primal Sun"/"Primal Rain" value needed, since
+# this project has no Air-Lock-blocks-Primal-only or weather-move-resists-Primal-only
+# special-casing that would need to tell them apart from the ordinary versions).
+# Snow and Fog are still out of scope. Sandstorm and Hail are in scope for end-of-turn
+# chip only (no damage modifier).
 const WEATHER_NONE:      int = 0  # B_WEATHER_NONE
 const WEATHER_RAIN:      int = 1  # B_WEATHER_RAIN_NORMAL (Drizzle, Rain Dance)
 const WEATHER_SUN:       int = 2  # B_WEATHER_SUN_NORMAL  (Drought, Sunny Day)
 const WEATHER_SANDSTORM: int = 3  # B_WEATHER_SANDSTORM   (Sand Stream, Sandstorm)
 const WEATHER_HAIL:      int = 4  # B_WEATHER_HAIL        (Snow Warning, Hail)
+const WEATHER_STRONG_WINDS: int = 5  # B_WEATHER_STRONG_WINDS (Delta Stream) — M17d
 
 # Stat stage multiplier table — source: src/pokemon.c :: gStatStageRatios
 # Index 0 = stage -6 (MIN), index 6 = stage 0 (DEFAULT), index 12 = stage +6 (MAX).
@@ -128,8 +133,11 @@ static func calculate(
 
 	# --- Type immunity check (before any calculation) ---
 	# Source: src/battle_util.c :: DoMoveDamageCalc (L7718–7727)
+	# M17d: Delta Stream's Strong Winds weakens super-effective hits against Flying-type
+	# defenders — see TypeChart.get_effectiveness's doc comment for why this is a plain
+	# bool, not a WEATHER_* constant passed into the data layer.
 	var effectiveness: float = TypeChart.get_effectiveness(
-			move.type, defender.species.types)
+			move.type, defender.species.types, weather == WEATHER_STRONG_WINDS)
 	if effectiveness == 0.0:
 		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
 				"defender_item_consumed": false}
@@ -300,12 +308,21 @@ static func calculate(
 	#   vs per-type: (15→7→3) — different; source uses combined-then-apply.
 	if move.type != TypeChart.TYPE_MYSTERY:
 		var def_types: Array = defender.species.types
+		var strong_winds: bool = weather == WEATHER_STRONG_WINDS
 		var first_type: int = def_types[0] if def_types.size() > 0 else TypeChart.TYPE_NONE
 		var type_mod: int = TypeChart.get_uq412(move.type, first_type)
+		# M17d: Delta Stream — a super-effective (>=2.0x) component against a Flying-type
+		# defender is weakened to neutral, checked PER type component to match source's
+		# exact granularity (battle_util.c :: MulByTypeEffectiveness L8069-8074).
+		if strong_winds and first_type == TypeChart.TYPE_FLYING and type_mod >= 8192:
+			type_mod = 4096
 		if def_types.size() > 1:
 			var second_type: int = def_types[1]
 			if second_type != first_type and second_type != TypeChart.TYPE_NONE:
-				type_mod = _uq412_multiply(type_mod, TypeChart.get_uq412(move.type, second_type))
+				var second_mod: int = TypeChart.get_uq412(move.type, second_type)
+				if strong_winds and second_type == TypeChart.TYPE_FLYING and second_mod >= 8192:
+					second_mod = 4096
+				type_mod = _uq412_multiply(type_mod, second_mod)
 		if type_mod == 0:
 			return {"damage": 0, "is_crit": is_crit, "effectiveness": 0.0}
 		dmg = _uq412_half_down(dmg, type_mod)

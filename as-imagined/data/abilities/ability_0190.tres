@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 190
 ability_name = "Desolate Land"
-description = ""
-ai_rating = 0
+description = "The Pokémon summons extremely harsh sunlight when it enters a battle."
+ai_rating = 6

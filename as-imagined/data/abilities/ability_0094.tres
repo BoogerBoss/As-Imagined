@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 94
 ability_name = "Solar Power"
-description = ""
-ai_rating = 0
+description = "Boosts Sp. Atk in harsh sunlight, but HP decreases every turn."
+ai_rating = 5

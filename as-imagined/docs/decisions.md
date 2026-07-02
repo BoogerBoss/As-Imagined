@@ -4001,3 +4001,155 @@ All additive (new trailing parameters with defaults), no existing call site brok
 - Full regression: all 23 prior suites unchanged and still passing. Total assertions
   across all 24 numbered suites: 1315 prior + 79 = **1394**.
 - 2026-07-02.
+
+## [M17d] Weather-setter completions + Primal trio + multi-part abilities deferred from M17c
+
+Scoping source: `docs/m17_recon.md` (Section 11's M17d proposal), cross-checked against
+`[M17c]`'s own deferral language for Solar Power/Poison Heal/Harvest, the same way every
+prior M17 entry has cross-checked against the recon rather than re-deriving scope from
+scratch.
+
+### Step 0 — finalized ability list
+
+Section 11's M17d proposal ("Weather-setter completions + Primal trio +
+Poison Heal/Solar Power/Dry-Skin-style multi-part abilities") was re-derived against the
+current exclusion set and against what `[M17c]` actually shipped:
+
+- **Dry Skin confirmed already shipped in `[M17c]`** — not re-implemented here.
+- **Orichalcum Pulse (288) excluded** — NOT present in Section 13.1's actual candidate
+  table (verified directly), but Section 13.2 documents that Rob's updated
+  legendary-exclusivity standard (thematic exclusivity disqualifies regardless of
+  genericness) "flipped Protosynthesis/Orichalcum Pulse... from keep to exclude."
+  Section 11's own prose mentions Orichalcum Pulse as thematically paired with Hadron
+  Engine and assigns it to this tier — that assignment predates the later policy update
+  and is stale; not included.
+- **Harvest (139) deferred again, not included.** Checked `ItemManager` and
+  `BattlePokemon` directly (not assumed): no "last consumed berry" tracking exists
+  anywhere in this codebase yet. Every other candidate in this tier
+  (Solar Power/Poison Heal/the Primal trio) is a pure extension of an already-existing
+  function; Harvest is the only one needing genuinely new state. Rather than quietly
+  building new `ItemManager` infrastructure into an otherwise-reuse-only tier, Harvest
+  stays deferred — its natural bundling partner whenever that tracker does get built is
+  Cud Chew (291), which the recon's infra flag #6 already flags as needing the identical
+  mechanism.
+
+Final list, 5 abilities, canonical IDs re-verified against
+`include/constants/abilities.h`:
+
+Poison Heal(90), Solar Power(94), Primordial Sea(189), Desolate Land(190), Delta
+Stream(191).
+
+### Source citations, per ability
+
+- **Solar Power** (94) — genuinely two-part, both wired:
+  1. `battle_util.c :: GetAttackStatModifier`, `ABILITY_SOLAR_POWER` case
+     (L6809-6811): `IsBattleMoveSpecial(move)` AND sun active → Sp. Atk ×1.5. Folded
+     into the EXISTING `attack_modifier_uq412` (the same function Huge Power/
+     Overgrow/Guts/Flower Gift already live in), immediately after Flower Gift's
+     entry — category-gated to special only, unlike Flower Gift's physical-only gate
+     right above it.
+  2. `battle_util.c`, end-of-turn `ABILITY_SOLAR_POWER` case (L3660-3667, the shared
+     `SOLAR_POWER_HP_DROP` label Dry Skin's sun half also jumps to in source — this is
+     the ability the label is actually named after): sun active → self-damage maxHP/8,
+     unconditionally (no not-at-max-HP gate, unlike Rain Dish/Ice Body's heal
+     branches). Folded into the EXISTING `try_end_of_turn`, reusing the same
+     `"damage_amount"` result key Dry Skin's sun half already produces — no new key,
+     no new BattleManager wiring needed beyond tagging the correct `ability_triggered`
+     string (`"solar_power"` vs `"dry_skin"`, since both abilities now share that one
+     result key).
+- **Poison Heal** (90) — `battle_end_turn.c :: HandleEndTurnPoison`,
+  `ABILITY_POISON_HEAL` case (L533-544): inverts the poison/toxic end-of-turn tick
+  into a heal instead of damage. Two things confirmed from source and preserved
+  faithfully:
+  1. The heal is a FLAT maxHP/8 regardless of poison vs. toxic — NOT scaled by the
+     toxic counter the way ordinary toxic damage is.
+  2. The toxic counter still increments even though Poison Heal converts the tick into
+     a heal (source keeps ticking `STATUS1_TOXIC_COUNTER` unconditionally).
+  Implemented by extending the EXISTING `StatusManager.end_of_turn_damage` (the single
+  function every burn/poison/toxic tick in this project already goes through, per the
+  task's explicit instruction not to build a parallel poison-damage path) to return a
+  **negative** value for the Poison Heal case — the one call site in
+  `battle_manager.gd` branches on the sign (positive = damage, applied as before;
+  negative = heal, newly wired to reuse the `ability_healed` signal M17c introduced).
+- **Primordial Sea** (189) — `battle_util.c`, `ABILITY_PRIMORDIAL_SEA` case
+  (L3400-3407): switch-in → sets Rain. **Desolate Land** (190) — `ABILITY_DESOLATE_LAND`
+  case (L3391-3398): switch-in → sets Sun. Both folded into the EXISTING
+  `get_switch_in_weather` (the same function Drizzle/Drought/Sand Stream/Snow Warning
+  already use), reusing this project's ordinary `WEATHER_RAIN`/`WEATHER_SUN` constants
+  directly rather than adding separate "Primal Rain"/"Primal Sun" values — per
+  `docs/m17_recon.md` Section 8.5's explicit recommendation, dropping the
+  "must-be-the-Primal-Reversion-form-of-a-specific-legendary" gate entirely, consistent
+  with Rob's stated intent to freely reassign any ability to any species. This project
+  has no Air-Lock-blocks-Primal-only or weather-move-resists-Primal-only
+  special-casing that would ever need the ordinary and Primal versions to be
+  distinguishable, so a plain reuse is the correct port, not a simplification.
+  **Known simplification** (not requested by the task, flagged here proactively): real
+  Primal weather persists indefinitely while the setter remains on the field and
+  reverts immediately on switch-out, rather than decrementing on a fixed turn counter.
+  This project's weather model has only ever had fixed-duration weather (5 turns, 8
+  with a rock item) since M11 — implementing indefinite-while-present weather would be
+  new infrastructure (tracking "is the setter still active" and reacting to its
+  switch-out), out of scope for a tier otherwise made of pure reuse. Primordial
+  Sea/Desolate Land use the same fixed-duration model as Drizzle/Drought here.
+- **Delta Stream** (191) — `battle_util.c`, `ABILITY_DELTA_STREAM` case (L3409-3416):
+  switch-in → sets a weather value this project never had before, Strong Winds. Two
+  parts, both wired:
+  1. New `DamageCalculator.WEATHER_STRONG_WINDS` constant (value 5), folded into
+     `get_switch_in_weather` exactly like the other switch-in weather setters — an
+     additive constant, not new infrastructure in the Section 10/11 sense.
+  2. The type-effectiveness side effect — `battle_util.c ::
+     MulByTypeEffectiveness` (L8069-8074): "weakens Super Effective moves against
+     Flying-type Pokémon," checked PER DEFENDING TYPE COMPONENT (`defType ==
+     TYPE_FLYING && mod >= 2.0 → mod = 1.0`), not on the combined multi-type product.
+     Wired at BOTH of this project's two independent type-effectiveness computations,
+     which had to be kept consistent by hand since they're not unified into one
+     function the way source's single `CalcTypeEffectivenessMultiplierInternal` is:
+     - The early `effectiveness` float in `DamageCalculator.calculate` (used for
+       immunity checks and Filter/Solid Rock/Tinted Lens's threshold gates) —
+       `TypeChart.get_effectiveness` gained a new `weaken_flying_se: bool` parameter
+       (a plain bool, not a `WEATHER_*` constant, to avoid a cross-reference from the
+       data-layer `TypeChart` script back to `DamageCalculator`; the one caller that
+       needs it computes the bool itself from `weather == WEATHER_STRONG_WINDS`).
+     - The actual per-type UQ4.12 damage multiplier block in `calculate()` (the
+       `TypeChart.get_uq412` calls that produce the value actually applied to
+       damage) — corrected inline, matching the same per-component granularity.
+     Every other caller of `get_effectiveness`/`get_uq412` (AI heuristics, Stealth
+     Rock/OHKO-move type checks) was left at the default (no Strong Winds awareness) —
+     the same category of simplification as "weather-aware AI scoring explicitly
+     deferred" since M11.
+
+### Additive changes to existing signatures
+
+All additive (new trailing parameters with defaults or a documented sign convention),
+no existing call site broke:
+- `StatusManager.end_of_turn_damage` — same signature, but now returns a signed `int`
+  (negative = heal) instead of an always-non-negative damage amount. The one call site
+  in `battle_manager.gd` was updated to branch on sign; every OTHER caller (there are
+  none besides that single site) needed no change.
+- `TypeChart.get_effectiveness` — added `weaken_flying_se: bool = false`.
+- `DamageCalculator.WEATHER_STRONG_WINDS` — new constant, additive.
+
+### Testing / Regression
+
+Per CLAUDE.md's type-immunity-precedes-ability-logic convention (the third documented
+testing pitfall, added this session), every damage-calc scenario in `m17d_test.gd` was
+checked against `TypeChart.TABLE` directly before being used — Solar Power's damage-half
+tests use a neutral Normal-vs-Normal matchup to isolate the ability from any type
+interference, and Delta Stream's Flying-type-weakness tests use Electric/Rock-type moves
+against Flying-type defenders, confirmed super-effective (2.0×/4.0×) from the table
+first, never an immunity.
+
+- New `m17d_test.gd`/`.tscn`: 30/30 assertions across 6 sections (ability data
+  spot-checks; Solar Power's damage-pipeline half; Solar Power's end-of-turn
+  self-damage half; Poison Heal incl. the flat-not-counter-scaled toxic heal and the
+  counter-still-increments check; the Primal trio's weather-setting with an explicit
+  no-item-required check; Delta Stream's weather-setting plus both the mono-type and
+  dual-type Flying-weakness-cancellation cases, plus negative cases confirming
+  non-Flying defenders and sub-2.0x hits against Flying are both left untouched).
+- `.tres` data: all 5 abilities added to `scripts/gen_abilities.py` and regenerated —
+  103 total `.tres` files (12 M8 + 32 M17a + 32 M17b + 22 M17c + 5 M17d).
+- Full regression: all 24 prior suites unchanged and still passing (including
+  `damage_test`, re-checked specifically since `TypeChart.get_effectiveness`'s
+  signature changed). Total assertions across all 25 numbered suites:
+  1394 prior + 30 = **1424**.
+- 2026-07-02.

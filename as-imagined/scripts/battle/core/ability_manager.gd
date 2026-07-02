@@ -149,6 +149,20 @@ const ABILITY_RIPEN:          int = 247
 const ABILITY_TOXIC_DEBRIS:   int = 295
 const ABILITY_HOSPITALITY:    int = 299
 
+# M17d: Weather-setter completions + Primal trio + multi-part abilities deferred from
+# M17c. Source: include/constants/abilities.h. docs/m17_recon.md Section 11's M17d
+# proposal — final list locked in docs/decisions.md [M17d] after cross-checking Section
+# 13's exclusions (Orichalcum Pulse excluded as Koraidon-exclusive per Rob's updated
+# legendary-exclusivity standard, despite Section 11's stale prose pairing it with
+# Hadron Engine into this tier) and confirming Dry Skin already shipped in M17c. Harvest
+# deferred again (needs genuinely new "last consumed berry" infra this tier's other 5
+# abilities don't).
+const ABILITY_POISON_HEAL:      int = 90
+const ABILITY_SOLAR_POWER:      int = 94
+const ABILITY_PRIMORDIAL_SEA:   int = 189
+const ABILITY_DESOLATE_LAND:    int = 190
+const ABILITY_DELTA_STREAM:     int = 191
+
 
 # ── Tier 1: Passive stat modifiers ──────────────────────────────────────────
 
@@ -204,6 +218,14 @@ static func attack_modifier_uq412(
 		return 6144
 
 	if id == ABILITY_FLOWER_GIFT and weather == DamageCalculator.WEATHER_SUN and move.category == 0:
+		return 6144
+
+	# M17d: Solar Power — damage-pipeline half (the other half, end-of-turn self-damage,
+	# is in StatusManager.end_of_turn_damage's caller — see [M17d] decisions.md).
+	# Source: battle_util.c :: GetAttackStatModifier, ABILITY_SOLAR_POWER case (L6809-6811):
+	#   IsBattleMoveSpecial(move) AND sun active → ×1.5 (special moves only, unlike
+	#   Flower Gift's physical-only gate right above).
+	if id == ABILITY_SOLAR_POWER and weather == DamageCalculator.WEATHER_SUN and move.category == 1:
 		return 6144
 
 	return 4096
@@ -739,6 +761,21 @@ static func try_switch_in_ally_heal(pokemon: BattlePokemon, ally: BattlePokemon)
 #     mapping to WEATHER_HAIL is the correct, not simplified, choice for this codebase's
 #     existing weather model, not a dropped distinction.
 #
+# M17d additions, same trigger point:
+#   ABILITY_PRIMORDIAL_SEA (L3400-3407) → TryChangeBattleWeather(RAIN_PRIMAL).
+#   ABILITY_DESOLATE_LAND (L3391-3398) → TryChangeBattleWeather(SUN_PRIMAL).
+#   Both reuse this project's ordinary WEATHER_RAIN/WEATHER_SUN directly rather than
+#   adding separate "Primal" weather values — per docs/m17_recon.md Section 8.5's
+#   explicit recommendation, dropping the "must be the Primal-Reversion form of a
+#   specific legendary" gate entirely, consistent with Rob's stated intent to freely
+#   reassign any ability to any species. This project has no Air-Lock-blocks-Primal-only
+#   or weather-move-resists-Primal-only special-casing that would need the ordinary and
+#   Primal versions to be distinguishable, so a plain reuse is correct, not a simplification.
+#   ABILITY_DELTA_STREAM (L3409-3416) → TryChangeBattleWeather(STRONG_WINDS), a genuinely
+#   NEW weather value this project didn't have before (DamageCalculator.WEATHER_STRONG_WINDS)
+#   — see DamageCalculator.calculate for its type-effectiveness side effect (weakens
+#   super-effective hits against Flying-type defenders).
+#
 # BattleManager calls try_set_weather(get_switch_in_weather(mon)) after try_switch_in().
 static func get_switch_in_weather(pokemon: BattlePokemon) -> int:
 	if pokemon.ability == null:
@@ -752,6 +789,12 @@ static func get_switch_in_weather(pokemon: BattlePokemon) -> int:
 			return DamageCalculator.WEATHER_SANDSTORM
 		ABILITY_SNOW_WARNING:
 			return DamageCalculator.WEATHER_HAIL
+		ABILITY_PRIMORDIAL_SEA:
+			return DamageCalculator.WEATHER_RAIN
+		ABILITY_DESOLATE_LAND:
+			return DamageCalculator.WEATHER_SUN
+		ABILITY_DELTA_STREAM:
+			return DamageCalculator.WEATHER_STRONG_WINDS
 	return DamageCalculator.WEATHER_NONE
 
 
@@ -794,7 +837,14 @@ static func get_switch_in_weather(pokemon: BattlePokemon) -> int:
 #     turn (XOR), matching "skips every other turn" — mirrored via the new
 #     BattlePokemon.truant_loafing bool, checked by StatusManager.pre_move_check.
 #
-# weather: WEATHER_* constant — needed for Rain Dish/Ice Body/Dry Skin/Hydration.
+# M17d addition, same trigger point:
+#   ABILITY_SOLAR_POWER (L3660-3667, the SOLAR_POWER_HP_DROP label Dry Skin's sun half
+#     also jumps to — this is the ability the label is actually named after): sun
+#     active → damage maxHP/8, unconditionally (no not-at-max-HP gate, unlike the heal
+#     abilities above). The OTHER half (Special Attack ×1.5 in sun) is in
+#     attack_modifier_uq412.
+#
+# weather: WEATHER_* constant — needed for Rain Dish/Ice Body/Dry Skin/Hydration/Solar Power.
 # ally: doubles partner (null in singles or if fainted) — needed for Healer.
 # force_shed_skin_roll/force_healer_roll: null = real RNG, true/false = pin the outcome.
 #
@@ -805,7 +855,7 @@ static func get_switch_in_weather(pokemon: BattlePokemon) -> int:
 #   "moody_lowered_stat" : int — STAGE_* lowered, or -1 if none
 #   "moody_lowered_amount": int — actual stage change applied (0 if blocked/minned)
 #   "heal_amount"        : int — Rain Dish/Ice Body/Dry Skin heal (0 = none)
-#   "damage_amount"      : int — Dry Skin's sun self-damage (0 = none)
+#   "damage_amount"      : int — Dry Skin/Solar Power sun self-damage (0 = none)
 #   "cured_status"       : bool — Hydration/Shed Skin cured the holder's own status
 #   "healed_ally_status" : bool — Healer cured the ally's status
 static func try_end_of_turn(
@@ -846,6 +896,11 @@ static func try_end_of_turn(
 			result["heal_amount"] = max(1, pokemon.max_hp / 8)
 		elif weather == DamageCalculator.WEATHER_SUN:
 			result["damage_amount"] = max(1, pokemon.max_hp / 8)
+	elif id == ABILITY_SOLAR_POWER and weather == DamageCalculator.WEATHER_SUN:
+		# M17d: shares Dry Skin's SOLAR_POWER_HP_DROP label (battle_util.c L3660-3667) —
+		# this is the ability the label is actually named after. Damage half only; the
+		# ATK boost half lives in attack_modifier_uq412.
+		result["damage_amount"] = max(1, pokemon.max_hp / 8)
 
 	if id == ABILITY_HYDRATION and weather == DamageCalculator.WEATHER_RAIN \
 			and pokemon.status != BattlePokemon.STATUS_NONE:
