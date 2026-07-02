@@ -2106,3 +2106,44 @@ trigger are listed with "→ skip". Computed with `_uq412_half_down(v, f) = (v×
 - **BattlePokemon API added**: `has_pp(move_index)` → bool, `use_pp(move_index)` → decrements by 1, no underflow.
 - **MoveData field added**: `is_struggle: bool` — guards Struggle-specific PP skip and HP recoil.
 - pp_test.gd: 26 assertions covering PP init, has_pp/use_pp, release-turn exemption, forced-Struggle detection, and full 1-PP-then-Struggle scenario with recoil. All 605 tests (M1–M15 Task 3) clean. 2026-07-01.
+
+---
+
+## [M16a] Tier A Move Effects — RESTORE_HP / FOCUS_ENERGY / GROWTH / OHKO
+
+### EFFECT_RESTORE_HP (Recover / Slack Off / Heal Order)
+- Source: `battle_script_commands.c :: Cmd_tryhealhalfhealth` (L7016)
+  - `SetHealAmount(target, GetNonDynamaxMaxHP(target) / 2)`
+  - Fails if `current_hp == max_hp` (already at full health).
+- Behavior: heals `max(1, max_hp / 2)` HP; capped at `max_hp`. Emits `drain_heal` signal. Fails (emits `move_effect_failed("already_full_hp")`) when already at max HP.
+- Move data: `is_restore_hp: bool` field added to MoveData. Moves: Recover(105) pp=5, Slack Off(303) pp=5, Heal Order(456) pp=10.
+- PP values: Recover/Slack Off pp=5 with `B_UPDATED_MOVE_DATA >= GEN_9` (GEN_LATEST). Heal Order pp=10 (hardcoded). Confirmed from source.
+- 2026-07-01.
+
+### EFFECT_FOCUS_ENERGY (Focus Energy)
+- Source: `battle_script_commands.c :: Cmd_setfocusenergy` (L7718) — sets `volatiles.focusEnergy = TRUE`. Fails if already set.
+- Source: `battle_util.c :: CalcCritChanceStage` (L7836) — `critChance = (focusEnergy != 0 ? 2 : 0) + GetMoveCriticalHitStage(move) + ...`
+- Behavior: volatile `focus_energy: bool` on BattlePokemon. When set, adds +2 to the effective crit stage in `DamageCalculator._roll_crit`. Cleared by `_clear_volatiles()` (faint and switch-out).
+- Config used: `B_FOCUS_ENERGY_CRIT_RATIO >= GEN_3` → the +2 crit stage path (not Gen 1 inversion).
+- Focus Energy (116): pp=30, accuracy=0, Normal/Status, ignores_protect=true.
+- 2026-07-01.
+
+### EFFECT_GROWTH (Growth)
+- Source: `src/data/moves_info.h MOVE_GROWTH` (L2003–2026):
+  - `B_UPDATED_MOVE_DATA >= GEN_5` → raises both ATK +1 AND SpATK +1 (GEN_LATEST applies).
+  - `B_UPDATED_MOVE_DATA >= GEN_6` → pp=20 (GEN_LATEST applies; was 40 in Gen5).
+- Source: `battle_stat_change.c :: AdjustStatStage` (L800): if `EFFECT_GROWTH` and weather == `B_WEATHER_SUN` → `stage = 2` (doubles the boost, so +2 to both in harsh sun).
+- Behavior: +1 Atk AND +1 SpAtk normally; +2 each in WEATHER_SUN. Both stats changed simultaneously; each emits `stat_stage_changed`. Fails with `"stat_limit"` only if BOTH are already at +6.
+- Growth (74): pp=20, accuracy=0, Normal/Status, ignores_protect=true.
+- 2026-07-01.
+
+### EFFECT_OHKO (Guillotine / Horn Drill / Fissure / Sheer Cold)
+- Source: `battle_util.c :: DoesOHKOMoveMissTarget` (L10378)
+  - Level check: fail if `def.level > atk.level`.
+  - Custom accuracy: `odds = GetMoveAccuracy(move) + (atk.level - def.level)`, rolled against `randi() % 100`.
+- Source: `battle_util.c` L7696: `case EFFECT_OHKO: dmg = gBattleMons[ctx->battlerDef].hp` — damage = defender's current HP (instant KO).
+- Behavior: inserted BEFORE the normal accuracy check in `_phase_move_execution`. Type immunity (ability + type chart) checked first. Semi-invulnerable check inlined (Fissure has `damages_underground=true` to hit Dig users). Level fail emits `move_missed("ohko_failed")`. Accuracy fail emits `move_missed("accuracy")`. Hit: calls `_apply_fixed_dmg_to_target(attacker, defender, move, defender.current_hp)`.
+- Move data: `is_ohko: bool` field added. Moves: Guillotine(12) Normal/Phys, Horn Drill(32) Normal/Phys, Fissure(90) Ground/Phys+damages_underground, Sheer Cold(329) Ice/Spec.
+- All four OHKO moves: power=1 (placeholder), accuracy=30, pp=5 — confirmed from source.
+- Sheer Cold Ice-type immunity (`B_SHEER_COLD_IMMUNITY >= GEN_7`) deferred to M16b.
+- 2026-07-01.

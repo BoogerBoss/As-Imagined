@@ -115,7 +115,8 @@ static func calculate(
 
 	# --- Critical hit determination ---
 	# Source: src/battle_util.c :: IsCriticalHit → CalcCritChanceStage (L7820)
-	var is_crit: bool = _roll_crit(move.critical_hit_stage) if force_crit == null else bool(force_crit)
+	# Focus Energy adds +2 to the crit stage (CalcCritChanceStage L7836: focusEnergy ? 2 : 0).
+	var is_crit: bool = _roll_crit(move.critical_hit_stage, attacker.focus_energy) if force_crit == null else bool(force_crit)
 
 	# --- Resolve which stat to use (Physical/Special split) ---
 	# Source: src/battle_util.c :: CalcAttackStat (L6769–6778), CalcDefenseStat (L7035–7062)
@@ -339,9 +340,10 @@ static func calculate_confusion_damage(mon: BattlePokemon) -> int:
 # Roll for a critical hit using Gen 7+ odds.
 # Source: src/battle_util.c :: CalcCritChanceStage (L7820–7861) + IsCriticalHit (L7916–7953)
 # Config: B_CRIT_CHANCE = GEN_LATEST → sGen7CriticalHitOdds = {24, 8, 2, 1}
+# focus_energy adds +2 to the effective crit stage (source L7836: critChance = (focusEnergy ? 2 : 0) + ...).
 # stage = move.critical_hit_stage (0 for normal, 1 for high-crit moves like Slash)
-static func _roll_crit(move_crit_stage: int) -> bool:
-	var stage: int = clampi(move_crit_stage, 0, 3)
+static func _roll_crit(move_crit_stage: int, focus_energy: bool = false) -> bool:
+	var stage: int = clampi(move_crit_stage + (2 if focus_energy else 0), 0, 3)
 	var odds: int = CRIT_ODDS_GEN7[stage]
 	return randi() % odds == 0
 

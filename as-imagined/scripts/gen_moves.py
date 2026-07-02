@@ -297,10 +297,11 @@ MOVES = [
      "critical_hit_stage": 1, "two_turn": True},
 
     # Solar Beam(76)   L2052  Grass/Spec/120/100/10, two-turn
-    #   Source: .effect=EFFECT_SOLAR_BEAM (same two-turn structure; weather skip is M8+ scope)
+    #   is_solar_beam=True: fires immediately in harsh sun (M15 Task5).
+    #   Source: .effect=EFFECT_SOLAR_BEAM; CanTwoTurnMoveFireThisTurn returns TRUE when sun.
     {"id":  76, "name": "Solar Beam",
      "type": TYPE_GRASS, "category": SPEC, "power": 120, "accuracy": 100, "pp": 10,
-     "two_turn": True},
+     "two_turn": True, "is_solar_beam": True},
 
     # Sky Attack(143)  L3887  Flying/Phys/140/90/5, two-turn, crit=1, 30% flinch
     #   Source: .effect=EFFECT_TWO_TURNS_ATTACK; critStage=1; 30% flinch secondary (GEN_3+)
@@ -308,6 +309,14 @@ MOVES = [
      "type": TYPE_FLYING, "category": PHYS, "power": 140, "accuracy": 90, "pp": 5,
      "critical_hit_stage": 1, "two_turn": True,
      "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    # Skull Bash(130) L3556  Normal/Phys/130/100/10, contact, two-turn
+    #   Source: .effect=EFFECT_TWO_TURNS_ATTACK; additionalEffects {MOVE_EFFECT_STAT_PLUS,
+    #   .defense=1, .self=TRUE, .onChargeTurnOnly=TRUE} (M15 Task5).
+    #   Power=130 (B_UPDATED>=GEN_2).
+    {"id": 130, "name": "Skull Bash",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 130, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "two_turn": True, "charge_turn_defense_boost": 1},
 
     # ── Tier 3: semi-invulnerable two-turn moves ──────────────────────────────
     #
@@ -524,6 +533,73 @@ MOVES = [
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 40,
      "ignores_protect": True,
      "is_baton_pass": True},
+
+    # ── M16a: Tier A move effects ─────────────────────────────────────────────
+
+    # Guillotine(12)  L295  Normal/Phys/1/30/5, contact, OHKO
+    #   Source: moves_info.h MOVE_GUILLOTINE: .effect=EFFECT_OHKO, .power=1 (placeholder),
+    #   .accuracy=30, .pp=5, .makesContact=TRUE. Level check + custom acc in battle_util.c.
+    {"id":  12, "name": "Guillotine",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 1, "accuracy": 30, "pp": 5,
+     "makes_contact": True, "is_ohko": True},
+
+    # Horn Drill(32)  L838  Normal/Phys/1/30/5, contact, OHKO
+    #   Source: moves_info.h MOVE_HORN_DRILL: .effect=EFFECT_OHKO, .power=1 (placeholder),
+    #   .accuracy=30, .pp=5, .makesContact=TRUE.
+    {"id":  32, "name": "Horn Drill",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 1, "accuracy": 30, "pp": 5,
+     "makes_contact": True, "is_ohko": True},
+
+    # Growth(74)      L2003  Normal/Status/0/0/20
+    #   Source: moves_info.h MOVE_GROWTH: .effect=EFFECT_GROWTH, .pp=20 (B_UPDATED>=GEN_6),
+    #   .accuracy=0, .ignoresProtect=TRUE.
+    #   Raises ATK +1 AND SpATK +1 (GEN_5+); +2 each in harsh sun.
+    {"id":  74, "name": "Growth",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "is_growth": True},
+
+    # Fissure(90)     L2381  Ground/Phys/1/30/5, OHKO, damages_underground
+    #   Source: moves_info.h MOVE_FISSURE: .effect=EFFECT_OHKO, .power=1, .type=TYPE_GROUND,
+    #   .accuracy=30, .pp=5, .damagesUnderground=TRUE (hits Dig users).
+    {"id":  90, "name": "Fissure",
+     "type": TYPE_GROUND, "category": PHYS, "power": 1, "accuracy": 30, "pp": 5,
+     "damages_underground": True, "is_ohko": True},
+
+    # Recover(105)    L2799  Normal/Status/0/0/5
+    #   Source: moves_info.h MOVE_RECOVER: .effect=EFFECT_RESTORE_HP, .pp=5 (B_UPDATED>=GEN_9),
+    #   .accuracy=0, .ignoresProtect=TRUE, .healingMove=TRUE.
+    {"id": 105, "name": "Recover",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True, "is_restore_hp": True},
+
+    # Focus Energy(116) L3008  Normal/Status/0/0/30
+    #   Source: moves_info.h MOVE_FOCUS_ENERGY: .effect=EFFECT_FOCUS_ENERGY, .pp=30,
+    #   .accuracy=0, .ignoresProtect=TRUE. Raises crit stage +2 (Gen3+).
+    {"id": 116, "name": "Focus Energy",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 30,
+     "ignores_protect": True, "is_focus_energy": True},
+
+    # Slack Off(303)  L8253  Normal/Status/0/0/5
+    #   Source: moves_info.h MOVE_SLACK_OFF: .effect=EFFECT_RESTORE_HP, .pp=5 (B_UPDATED>=GEN_9),
+    #   .accuracy=0, .ignoresProtect=TRUE, .healingMove=TRUE.
+    {"id": 303, "name": "Slack Off",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True, "is_restore_hp": True},
+
+    # Sheer Cold(329) L8977  Ice/Spec/1/30/5, OHKO
+    #   Source: moves_info.h MOVE_SHEER_COLD: .effect=EFFECT_OHKO, .power=1, .type=TYPE_ICE,
+    #   .accuracy=30, .pp=5, .category=DAMAGE_CATEGORY_SPECIAL.
+    #   Note: Ice-type targets immune (B_SHEER_COLD_IMMUNITY >= GEN_7) — deferred M16b.
+    {"id": 329, "name": "Sheer Cold",
+     "type": TYPE_ICE, "category": SPEC, "power": 1, "accuracy": 30, "pp": 5,
+     "is_ohko": True},
+
+    # Heal Order(456) L12362  Bug/Status/0/0/10
+    #   Source: moves_info.h MOVE_HEAL_ORDER: .effect=EFFECT_RESTORE_HP, .pp=10,
+    #   .type=TYPE_BUG, .accuracy=0, .ignoresProtect=TRUE, .healingMove=TRUE.
+    {"id": 456, "name": "Heal Order",
+     "type": TYPE_BUG, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "is_restore_hp": True},
 ]
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──
@@ -571,6 +647,19 @@ DEFAULTS = {
     # M9 fields
     "is_roar":             False,
     "is_baton_pass":       False,
+    # M14b fields
+    "is_spread":           False,
+    "is_helping_hand":     False,
+    "is_follow_me":        False,
+    # M15 fields
+    "is_solar_beam":       False,
+    "charge_turn_defense_boost": 0,
+    "is_struggle":         False,
+    # M16a fields
+    "is_restore_hp":       False,
+    "is_focus_energy":     False,
+    "is_growth":           False,
+    "is_ohko":             False,
 }
 
 HEADER = """\
@@ -599,6 +688,12 @@ FIELD_ORDER = [
     "destiny_bond", "is_disable", "is_encore", "is_bide", "is_metronome",
     # M9 fields
     "is_roar", "is_baton_pass",
+    # M14b fields
+    "is_spread", "is_helping_hand", "is_follow_me",
+    # M15 fields
+    "is_solar_beam", "charge_turn_defense_boost", "is_struggle",
+    # M16a fields
+    "is_restore_hp", "is_focus_energy", "is_growth", "is_ohko",
 ]
 
 

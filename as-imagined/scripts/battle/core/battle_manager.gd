@@ -761,6 +761,70 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
+	# ── OHKO (Guillotine / Horn Drill / Fissure / Sheer Cold) ─────────────────
+	# Source: battle_util.c :: DoesOHKOMoveMissTarget (L10378)
+	# Bypasses normal accuracy check entirely; has its own level-based formula.
+	# Protect already blocked above; type immunity checked here before level fail.
+	# On hit: damage = defender.current_hp regardless of stats.
+	# Source: battle_util.c L7696: case EFFECT_OHKO: dmg = gBattleMons[ctx->battlerDef].hp
+	if move.is_ohko:
+		# Type immunity (ability-based and type chart) — same checks as damaging moves.
+		if AbilityManager.blocks_move_type(defender, move.type):
+			move_missed.emit(attacker, "immune")
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		if move.type != TypeChart.TYPE_NONE:
+			var ohko_eff: float = TypeChart.get_effectiveness(move.type, defender.species.types)
+			if ohko_eff == 0.0:
+				move_missed.emit(attacker, "immune")
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				return
+		# Semi-invulnerable check: OHKO moves respect semi-invulnerability like normal moves.
+		# Source: CancelerAccuracyCheck (battle_move_resolution.c L1993) — fires before OHKO check.
+		# Fissure has damages_underground=true so it can hit Dig users.
+		if _force_hit == null and defender.semi_invulnerable != MoveData.SEMI_INV_NONE:
+			var ohko_can_hit: bool = (
+				(defender.semi_invulnerable == MoveData.SEMI_INV_UNDERGROUND and move.damages_underground) or
+				(defender.semi_invulnerable == MoveData.SEMI_INV_ON_AIR and move.damages_airborne) or
+				(defender.semi_invulnerable == MoveData.SEMI_INV_UNDERWATER and move.damages_underwater))
+			if not ohko_can_hit:
+				move_missed.emit(attacker, "semi_invulnerable")
+				attacker.last_move_used = move
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				return
+		# Level check: fail if defender.level > attacker.level.
+		# Source: DoesOHKOMoveMissTarget L10382: battlerDef.level > battlerAtk.level → fail.
+		if defender.level > attacker.level:
+			move_missed.emit(attacker, "ohko_failed")
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		# Custom accuracy roll: odds = move.accuracy + (atk.level − def.level), vs randi() % 100.
+		# Source: DoesOHKOMoveMissTarget L10390: odds = GetMoveAccuracy + (atk.level − def.level).
+		var ohko_acc: int = move.accuracy + (attacker.level - defender.level)
+		var ohko_hit: bool
+		if _force_hit != null:
+			ohko_hit = bool(_force_hit)
+		else:
+			ohko_hit = randi() % 100 < ohko_acc
+		if not ohko_hit:
+			move_missed.emit(attacker, "accuracy")
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		# Hit! Deal defender.current_hp as damage (instant KO).
+		_last_attacker[defender] = attacker
+		_apply_fixed_dmg_to_target(attacker, defender, move, defender.current_hp)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
 	# ── Accuracy check ────────────────────────────────────────────────────────
 	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
 	# Includes semi-invulnerable miss check (source: CancelerAccuracyCheck L1993).
@@ -1035,6 +1099,57 @@ func _phase_move_execution() -> void:
 				defender.encored_move = defender.last_move_used
 				defender.encore_turns = 3
 				encored.emit(defender, defender.encored_move)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Restore HP (Recover / Slack Off / Heal Order) ─────────────────────
+		# Source: battle_script_commands.c :: Cmd_tryhealhalfhealth (L7016)
+		#   heal = GetNonDynamaxMaxHP(target) / 2; fails if current_hp == max_hp.
+		if move.is_restore_hp:
+			if attacker.current_hp >= attacker.max_hp:
+				move_effect_failed.emit(attacker, "already_full_hp")
+			else:
+				var restore_heal: int = max(1, attacker.max_hp / 2)
+				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + restore_heal)
+				drain_heal.emit(attacker, restore_heal)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Focus Energy ──────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: Cmd_setfocusenergy (L7718)
+		#   volatiles.focusEnergy = TRUE; fails if already set.
+		# Crit stage boost wired in DamageCalculator._roll_crit (+2 stages).
+		if move.is_focus_energy:
+			if attacker.focus_energy:
+				move_effect_failed.emit(attacker, "already_focus_energy")
+			else:
+				attacker.focus_energy = true
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Growth ────────────────────────────────────────────────────────────
+		# Source: moves_info.h MOVE_GROWTH (L2003): B_UPDATED_MOVE_DATA >= GEN_5 →
+		#   raises ATK +1 AND SpATK +1 (Gen 5+). In harsh sun: +2 to both.
+		# Source: battle_stat_change.c :: AdjustStatStage (L800):
+		#   if EFFECT_GROWTH and weather == B_WEATHER_SUN → stage = 2.
+		if move.is_growth:
+			var growth_amt: int = 2 if weather == WEATHER_SUN else 1
+			var g_atk: int = StatusManager.apply_stat_change(
+					attacker, BattlePokemon.STAGE_ATK, growth_amt)
+			if g_atk != 0:
+				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_ATK, g_atk)
+			var g_spatk: int = StatusManager.apply_stat_change(
+					attacker, BattlePokemon.STAGE_SPATK, growth_amt)
+			if g_spatk != 0:
+				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPATK, g_spatk)
+			if g_atk == 0 and g_spatk == 0:
+				move_effect_failed.emit(attacker, "stat_limit")
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -1334,6 +1449,7 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.encore_turns = 0
 	mon.bide_turns = 0
 	mon.bide_damage = 0
+	mon.focus_energy = false
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets

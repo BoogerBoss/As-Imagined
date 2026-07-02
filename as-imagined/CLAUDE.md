@@ -241,6 +241,9 @@ it exists purely to look up exact source logic.
 - M14a (Doubles — state machine + turn order for 4 combatants): **COMPLETE** — 2026-06-28, 25/25 tests pass
 - M14b (Doubles — spread moves and ally-targeting effects): **COMPLETE** — 2026-06-28, 46/46 tests pass (40 M14a + 9 M14b + B8 fixture fix; all prior suites green)
 - M14c (Doubles — AI): **COMPLETE** — 2026-06-28, 46/46 tests pass (C1–C3 added; all prior suites green)
+- M15 Task 3 (PP system): **COMPLETE** — 2026-07-01, 26/26 pp_test assertions; all M1–M14 still green
+- M15 Task 5 (two-turn moves): **COMPLETE** — 2026-07-01, 32/32 two_turn_test assertions; all M1–M15T3 still green
+- M16a (Tier A move effects — RESTORE_HP / FOCUS_ENERGY / GROWTH / OHKO): **COMPLETE** — 2026-07-01, 52/52 m16a_test assertions; all 637 prior assertions still green (689 total)
 
 ## Development workflow
 
@@ -265,6 +268,7 @@ Run a verification scene headless (from project root):
 - `scenes/battle/item_test.tscn` — M12 Held Items: Choice Band/Scarf/Specs stat boosts, Life Orb damage + recoil, Sitrus Berry HP heal, Lum Berry status cure, Leftovers EOT heal, resist berry, Utility Umbrella, choice-lock enforcement (60 tests)
 - `scenes/battle/ai_test.tscn` — M10+M13 Trainer AI: effectiveness scoring, KO preference, type immunity, status avoidance, two-turn penalty, BASIC/SMART tiers, switch decisions, faint replacement, full battle integration; M13 adds choice-lock, bad-lock switch, item-boost discrimination (40 tests)
 - `scenes/battle/doubles_test.tscn` — M14a Doubles foundation: BattleParty active_indices API, 4-combatant setup, turn order by speed, full-side faint required to end battle, targeted moves hit correct slot, faint replacement (slot-specific), voluntary switch in doubles (25 tests)
+- `scenes/battle/m16a_test.tscn` — M16a Tier A move effects: RESTORE_HP (Recover/Slack Off/Heal Order), FOCUS_ENERGY (crit stage +2), GROWTH (+1/+2 Atk+SpAtk, sun doubling), OHKO (Guillotine/Horn Drill/Fissure/Sheer Cold — level check, custom accuracy, type immunity, semi-inv bypass) (52 tests)
 
 **Note:** if you add a new file with `class_name`, run an import pass before the test scenes
 will see it:

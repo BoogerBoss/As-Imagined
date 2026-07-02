@@ -288,3 +288,31 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   battle_script_commands.c L2534–2543 (HP/4 recoil); battle_main.c L4727-4728
 #   (noValidMoves → MOVE_STRUGGLE substitution).
 @export var is_struggle: bool = false
+
+# ── M16a move effects ─────────────────────────────────────────────────────────
+
+# is_restore_hp: Recover / Slack Off / Heal Order — heals max_hp / 2.
+# Fails if attacker is already at full HP.
+# Source: battle_script_commands.c :: Cmd_tryhealhalfhealth (L7016)
+#   SetHealAmount(target, GetNonDynamaxMaxHP(target) / 2)
+@export var is_restore_hp: bool = false
+
+# is_focus_energy: Focus Energy — raises crit stage by +2 (Gen 3+, B_FOCUS_ENERGY_CRIT_RATIO >= GEN_3).
+# Volatile; cleared on switch-out and faint. Fails if already active.
+# Source: battle_script_commands.c :: Cmd_setfocusenergy (L7718)
+# Source: battle_util.c :: CalcCritChanceStage (L7836): focusEnergy adds +2 to critChance stage.
+@export var is_focus_energy: bool = false
+
+# is_growth: Growth — raises Atk +1 and SpAtk +1 (Gen 5+, B_UPDATED_MOVE_DATA >= GEN_5).
+# In harsh sun (WEATHER_SUN): raises +2 to both instead.
+# Source: src/data/moves_info.h MOVE_GROWTH (L2003–2026): both attack and spAtk raised.
+# Source: battle_stat_change.c :: AdjustStatStage (L800): sun doubles the stage for EFFECT_GROWTH.
+@export var is_growth: bool = false
+
+# is_ohko: OHKO moves (Guillotine/Horn Drill/Fissure/Sheer Cold) — instant KO on hit.
+# Level check: fails if defender.level > attacker.level.
+# Custom accuracy: move.accuracy + (attacker.level − defender.level), rolled vs randi() % 100.
+# Damage = defender.current_hp (instant KO). Bypasses normal damage formula entirely.
+# Source: battle_util.c :: DoesOHKOMoveMissTarget (L10378)
+# Source: battle_util.c L7696: case EFFECT_OHKO: dmg = gBattleMons[ctx->battlerDef].hp
+@export var is_ohko: bool = false

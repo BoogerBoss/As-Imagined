@@ -129,6 +129,11 @@ var encore_turns: int = 0
 var bide_turns: int = 0
 var bide_damage: int = 0
 
+# M16a: Focus Energy — volatile that raises crit stage by +2.
+# Cleared on faint (_clear_volatiles) and switch-out (_switch_out_clear → _clear_volatiles).
+# Source: battle_script_commands.c :: Cmd_setfocusenergy (L7718) — sets volatiles.focusEnergy.
+var focus_energy: bool = false
+
 # M12: choice lock — the move this Pokémon is locked to by a choice item.
 # Set the first time a move is used while holding a choice item.
 # Cleared by BattleManager._switch_out_clear() on switch-out (NOT by _clear_volatiles).
@@ -181,6 +186,7 @@ static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokem
 	bp.encore_turns = 0
 	bp.bide_turns = 0
 	bp.bide_damage = 0
+	bp.focus_energy = false
 	bp.choice_locked_move = null
 	bp.switched_in_this_turn = false
 	bp.stat_stages = [0, 0, 0, 0, 0, 0, 0]
