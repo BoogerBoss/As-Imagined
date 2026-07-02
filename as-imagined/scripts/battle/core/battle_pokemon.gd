@@ -170,12 +170,22 @@ var switched_in_this_turn: bool = false
 # Index order matches STAGE_* constants above.
 var stat_stages: Array[int] = []
 
+# Follow-up fixes session, 2026-07-02: cache of this Pokémon's NATURAL species types,
+# captured once at construction, before Conversion/Conversion 2 (M16e) can ever mutate
+# `species.types` in place. Restored onto `species.types` on every switch-IN
+# (BattleManager._reset_mon_type) — source repopulates gBattleMons[battler].types from
+# GetSpeciesType() at every switch-in event (CopyMonAbilityAndTypesToBattleMon,
+# battle_util.c L9365-9379; Cmd_switchindataupdate, battle_script_commands.c L5030-5032),
+# so a Conversion-induced type change never survives its user leaving the field.
+var original_types: Array[int] = []
+
 var fainted: bool = false
 
 
 static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokemon:
 	var bp := BattlePokemon.new()
 	bp.species = p_species
+	bp.original_types = p_species.types.duplicate()
 	bp.nickname = p_species.species_name
 	bp.level = p_level
 	bp.ivs = [0, 0, 0, 0, 0, 0]

@@ -407,3 +407,172 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   move's actual target's side, not hardcoded to "the opponent's side" (matters if Brick
 #   Break is used on an ally in doubles). Only clears/emits if a screen was actually up.
 @export var breaks_screens: bool = false
+
+# ── M16d: Entry hazards + Trick Room ─────────────────────────────────────────
+
+# is_spikes: Spikes — layered (max 3) entry hazard set on the OPPONENT's side. Damages
+#   grounded Pokémon on switch-in: maxHP / ((5 - layers) * 2) → 1/8 (1 layer), 1/6 (2),
+#   1/4 (3). Fails (does not wrap) if the opponent's side already has 3 layers.
+# Source: src/data/moves_info.h MOVE_SPIKES: .effect = EFFECT_SPIKES, .accuracy = 0,
+#   .pp = 20, .target = TARGET_OPPONENTS_FIELD, .ignoresProtect = TRUE.
+# Source: src/battle_script_commands.c :: Cmd_trysetspikes (L8373-8390): fails at
+#   spikesAmount == 3; else spikesAmount++.
+# Source: src/battle_switch_in.c :: TryHazardsOnSwitchIn, case HAZARDS_SPIKES
+#   (L306-315): spikesDmg = maxHP / ((5 - spikesAmount) * 2); requires grounded.
+@export var is_spikes: bool = false
+
+# is_toxic_spikes: Toxic Spikes — layered (max 2) entry hazard set on the OPPONENT's side.
+#   1 layer poisons a grounded switch-in; 2 layers badly poisons (toxic) instead. A
+#   grounded Poison-type switch-in ABSORBS (clears) the hazard instead of being poisoned.
+#   Ungrounded Pokémon are entirely unaffected (no absorb, no poison).
+# Source: src/data/moves_info.h MOVE_TOXIC_SPIKES: .effect = EFFECT_TOXIC_SPIKES,
+#   .accuracy = 0, .pp = 20, .target = TARGET_OPPONENTS_FIELD, .ignoresProtect = TRUE.
+# Source: src/battle_script_commands.c :: Cmd_settoxicspikes (L9043-9059): fails at
+#   toxicSpikesAmount >= 2; else toxicSpikesAmount++.
+# Source: src/battle_switch_in.c :: TryHazardsOnSwitchIn, case HAZARDS_TOXIC_SPIKES
+#   (L328-359): ungrounded → no effect; Poison-type → absorb (clear hazard); else
+#   CanBePoisoned → STATUS1_POISON (1 layer) or STATUS1_TOXIC_POISON (2 layers).
+@export var is_toxic_spikes: bool = false
+
+# is_stealth_rock: Stealth Rock — single-application hazard (no layers) set on the
+#   OPPONENT's side. Damages EVERY switch-in (including Flying-types and Levitate holders —
+#   NOT a grounded-only check, unlike Spikes/Toxic Spikes) based on Rock-type effectiveness
+#   against the switching-in Pokémon's typing: 0×→0, 0.25×→maxHP/32, 0.5×→maxHP/16,
+#   1×→maxHP/8, 2×→maxHP/4, 4×→maxHP/2 (each nonzero case floors to a minimum of 1).
+# Source: src/data/moves_info.h MOVE_STEALTH_ROCK: .effect = EFFECT_STEALTH_ROCK,
+#   .accuracy = 0, .pp = 20, .target = TARGET_OPPONENTS_FIELD, .ignoresProtect = TRUE.
+# Source: src/battle_script_commands.c :: MOVE_EFFECT_STEALTH_ROCK case (L2707-2712):
+#   fails if IsHazardOnSide already true (single application, no stacking).
+# Source: src/battle_util.c :: GetStealthHazardDamageByTypesAndHP (L8317-8353) with
+#   hazardType = TYPE_SIDE_HAZARD_POINTED_STONES = TYPE_ROCK (include/constants/battle.h
+#   L430-434).
+@export var is_stealth_rock: bool = false
+
+# is_rapid_spin: Rapid Spin — a normal damaging move (power=50, GEN_8+ config) that ALSO
+#   clears exactly ONE hazard type from the user's OWN side after dealing damage (fires
+#   even if the hit landed on a Substitute). Order of removal when multiple hazard types
+#   are up: Spikes → Toxic Spikes → Stealth Rock (matches this project's implemented subset
+#   of the source's hazard-type enum order; Sticky Web/Steelsurge are out of scope). Only
+#   fires if the move actually dealt damage this turn — a missed or Protect-blocked Rapid
+#   Spin clears nothing.
+# Source: src/data/moves_info.h MOVE_RAPID_SPIN: .effect = EFFECT_RAPID_SPIN, .power = 50
+#   (B_UPDATED_MOVE_DATA >= GEN_8), .type = TYPE_NORMAL, .accuracy = 100, .pp = 40,
+#   .makesContact = TRUE.
+# Source: src/battle_move_resolution.c, case EFFECT_RAPID_SPIN (L3569-3574):
+#   IsAnyTargetTurnDamaged(battlerAtk, INCLUDING_SUBSTITUTES) gates the effect.
+# Source: src/battle_script_commands.c :: Cmd_rapidspinfree (L8578-8612): checks
+#   wrapped → leechSeed → one hazard type (loop-and-return-on-first-match) on the
+#   ATTACKER's own side. This project has no Bind/Wrap trapping moves or Leech Seed
+#   implemented yet, so only the hazard-clearing branch applies here — noted as a
+#   follow-up gap rather than silently ignored.
+@export var is_rapid_spin: bool = false
+
+# is_trick_room: Trick Room — field-wide (not side-wide) effect that reverses turn order
+#   within each priority bracket for 5 turns: the normally-slower Pokémon acts first.
+#   Priority brackets themselves are UNCHANGED — a priority move still always goes before
+#   a non-priority move; Trick Room only inverts the speed tiebreak used when two actions
+#   share the same priority. TOGGLES rather than fails: using Trick Room again while it's
+#   already active immediately cancels it (does not refresh to a fresh 5 turns).
+# Source: src/data/moves_info.h MOVE_TRICK_ROOM: .effect = EFFECT_TRICK_ROOM,
+#   .accuracy = 0, .pp = 5, .target = TARGET_FIELD, .priority = -7 (very low — even lower
+#   than Roar/Whirlwind's -6), .ignoresProtect = TRUE.
+# Source: src/battle_script_commands.c :: HandleRoomMove (L9116-9121): if the field status
+#   is already set, clear it (timer = 0) instead of refreshing; else set it (timer = 5).
+# Source: src/battle_main.c :: GetWhichBattlerFasterArgs (L4775-4821): priority is compared
+#   FIRST (unaffected by Trick Room); only when priority1 == priority2 does the speed
+#   comparison invert under STATUS_FIELD_TRICK_ROOM (lower effective speed strikes first).
+@export var is_trick_room: bool = false
+
+# ── M16e: Tier E move effects ────────────────────────────────────────────────
+
+# is_pursuit: Pursuit — a normal 40-power Dark-type hit that doubles power (80) when its
+#   target chose to switch out THIS turn. Also executes BEFORE the switch resolves, hitting
+#   the still-present outgoing Pokémon (not the incoming replacement). Handled with dedicated
+#   turn-order interception in BattleManager._phase_priority_resolution (switches otherwise
+#   always sort before all move actions in this engine) rather than as a pure damage
+#   modifier — see _pursuit_targets_switcher().
+# Source: src/data/moves_info.h MOVE_PURSUIT: .effect = EFFECT_PURSUIT, .power = 40,
+#   .type = TYPE_DARK, .accuracy = 100, .pp = 20, .category = DAMAGE_CATEGORY_PHYSICAL,
+#   .makesContact = TRUE.
+# Source: src/battle_util.c L6180-6182 (EFFECT_PURSUIT base-power case): `if
+#   (gBattleStruct->battlerState[battlerDef].pursuitTarget) basePower *= 2;`
+# Source: src/battle_util.c :: SetTargetToNextPursuiter (L9827), IsPursuitTargetSet (L9850),
+#   ClearPursuitValues (L9860) — the interception/reordering machinery.
+# Source: src/battle_script_commands.c :: Cmd_jumpifnopursuitswitchdmg (L8494) — fires when
+#   a switch action is about to resolve; reorders a queued Pursuit user (GEN_LATEST:
+#   B_PURSUIT_TARGET >= GEN_4 means ANY opposing Pursuit user intercepts, not only one that
+#   specifically targeted the switcher) to strike first.
+# Known simplification: source supports CHAINING multiple pursuers against the same
+#   switcher one-at-a-time via MoveEndPursuitNextAction (battle_move_resolution.c L4321).
+#   This project instead lets every intercepting Pursuit user act (in normal speed order)
+#   before the switch resolves — same end state for the common 1-pursuer case; documented
+#   as a deliberate gap for the rare multi-pursuer doubles case.
+@export var is_pursuit: bool = false
+
+# is_pain_split: Pain Split — averages the user's and target's CURRENT HP (not max HP) and
+#   sets both to that average: `hpDiff = (attackerHP + targetHP) / 2` (integer division,
+#   floor). Can heal the user and damage the target, or the reverse, depending on which
+#   started higher. Cannot faint either side (floor average of two positive HP totals is
+#   always >= 1). Blocked by the target's Substitute (no ignoresSubstitute flag in source).
+# Source: src/data/moves_info.h MOVE_PAIN_SPLIT: .effect = EFFECT_PAIN_SPLIT, .power = 0,
+#   .type = TYPE_NORMAL, .accuracy = 0, .pp = 20, .target = TARGET_SELECTED.
+# Source: src/battle_script_commands.c :: Cmd_painsplitdmgcalc (L7989-8006):
+#   `hpDiff = (gBattleMons[gBattlerAttacker].hp + GetNonDynamaxHP(gBattlerTarget)) / 2;`
+#   fails via DoesSubstituteBlockMove check before computing hpDiff.
+# Source: src/battle_script_commands.c :: PassiveDataHpUpdate (L1547-1562): negative
+#   passiveHpUpdate = heal (clamped to maxHP); positive = damage (clamped at 0, never negative).
+@export var is_pain_split: bool = false
+
+# is_conversion: Conversion — changes the user's type to match the type of their FIRST
+#   populated move slot (literally moves[0] in scan order — no special-casing of
+#   Curse/Struggle/status moves in source). Fails if the user is already that exact type
+#   (checked against ALL of the user's current types, so a dual-type user with either type
+#   matching still fails). On success the user becomes MONO-typed as that single type
+#   (both type slots set to the same value) — not "add a type," a full replacement.
+# Source: src/data/moves_info.h MOVE_CONVERSION: .effect = EFFECT_CONVERSION, .power = 0,
+#   .type = TYPE_NORMAL, .accuracy = 0, .pp = 30, .target = TARGET_USER,
+#   .ignoresProtect = TRUE.
+# Source: src/battle_script_commands.c :: Cmd_tryconversiontypechange (L7449-7482),
+#   B_UPDATED_CONVERSION >= GEN_6 branch (GEN_LATEST): scans moves[0..3] for the first
+#   non-MOVE_NONE slot; IS_BATTLER_OF_TYPE guards against a no-op change; SET_BATTLER_TYPE
+#   (include/battle.h L797) sets both type slots to the new type (mono-type result).
+@export var is_conversion: bool = false
+
+# is_conversion2: Conversion 2 — changes the user's type to one that RESISTS (0x or 0.5x)
+#   the type of the TARGET's last successfully used move (TARGET_SELECTED in Gen5+ — the
+#   move's chosen target, reusing this project's existing `last_move_used` field; NOT a
+#   "last hit the user" tracker, despite the move's flavor text — that was the pre-Gen5
+#   behavior). Fails if the target has no last_move_used, or that move's type is
+#   TYPE_NONE/TYPE_MYSTERY/TYPE_STELLAR, or every resisting type is one the user already
+#   has. Selection among multiple valid resisting types is UNIFORM RANDOM (not "first
+#   found") — source rejection-samples a random type id, discarding ones the user already
+#   has. Ignores Protect and Substitute (both explicit flags in source).
+# Source: src/data/moves_info.h MOVE_CONVERSION_2: .effect = EFFECT_CONVERSION_2,
+#   .power = 0, .type = TYPE_NORMAL, .accuracy = 0, .pp = 30,
+#   .target = B_UPDATED_MOVE_DATA >= GEN_5 ? TARGET_SELECTED : TARGET_USER,
+#   .ignoresProtect = TRUE, .ignoresSubstitute = B_UPDATED_MOVE_FLAGS >= GEN_5 (GEN_LATEST).
+# Source: include/config/battle.h L73 — B_UPDATED_CONVERSION_2 = GEN_LATEST (>= GEN_5):
+#   "changes the user's type to a type that resists the last move used by the selected
+#   target" (legacy pre-Gen5 used "last move being successfully hit by" instead).
+# Source: src/battle_script_commands.c :: Cmd_settypetorandomresistance (L8009-8077):
+#   GEN_LATEST branch reads `moveToCheck = gLastResultingMoves[gBattlerTarget]` /
+#   `typeToCheck = gLastUsedMoveType[gBattlerTarget]`; builds a resistTypes bitmask via
+#   GetTypeModifier == UQ_4_12(0) or UQ_4_12(0.5); loops `Random() % NUMBER_OF_MON_TYPES`
+#   discarding already-had types until one is found or the mask empties.
+@export var is_conversion2: bool = false
+
+# is_psych_up: Psych Up — copies the TARGET's current 7 stat stages onto the user
+#   (overwrites the user's own stages entirely, including negative stages). ALSO copies
+#   the target's Focus Energy crit-boost volatile (Gen6+: B_PSYCH_UP_CRIT_RATIO >=
+#   GEN_6 = GEN_LATEST) — NOT just the 7 numeric stages, confirmed from source rather than
+#   assumed. (Source also copies Dragon Cheer / bonusCritStages volatiles that this project
+#   does not implement — out of scope, no-op.) Always hits (accuracy=0) and ignores both
+#   Protect and Substitute (explicit flags in source).
+# Source: src/data/moves_info.h MOVE_PSYCH_UP: .effect = EFFECT_PSYCH_UP, .power = 0,
+#   .type = TYPE_NORMAL, .accuracy = 0, .pp = 10, .target = TARGET_SELECTED,
+#   .ignoresProtect = TRUE, .ignoresSubstitute = TRUE.
+# Source: src/battle_script_commands.c :: Cmd_copyfoestats (L8555-8575): copies all
+#   NUM_BATTLE_STATS statStages; then, gated on B_PSYCH_UP_CRIT_RATIO >= GEN_6, also copies
+#   volatiles.focusEnergy (+ dragonCheer/bonusCritStages, unimplemented here).
+# Source: include/config/battle.h L97 — B_PSYCH_UP_CRIT_RATIO = GEN_LATEST.
+@export var is_psych_up: bool = false

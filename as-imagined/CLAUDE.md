@@ -213,6 +213,35 @@ at a time, verify against source, regression-sweep before moving on.
   `pokeemerald_expansion` implements, flag it as an idea in `docs/` rather
   than just adding it.
 
+### Testing convention: snapshot via signals, not post-battle state
+
+  This bit M16c and M16d independently (see `docs/decisions.md`), so it's
+  captured here as a permanent rule rather than something each milestone
+  re-discovers.
+
+  Any Pokémon whose only available move is a **repeatable** effect — a
+  side-condition/hazard-setter that can legitimately be re-cast after its
+  effect naturally expires or gets cleared, or a toggle like Trick Room — will
+  keep re-triggering once the turn's action queue drains and auto-select
+  falls back to `moves[0]`, for as many turns as the test battle runs. A test
+  Pokémon with no other move WILL cast that move again.
+
+  Consequence: any assertion about "what happened after one specific action"
+  must **never** read state (`_side_conditions`, `trick_room_turns`,
+  `attacker.stat_stages`, etc.) after `start_battle()` fully returns — by then
+  the battle may have run many more turns than intended, re-triggering,
+  re-expiring, or re-toggling the exact state under test. Instead, snapshot
+  the state by connecting to the relevant signal (`screen_set`,
+  `hazard_set`, `trick_room_set`, `move_executed`, etc.) and capturing the
+  value at the precise moment the signal fires — guarded to the first
+  matching occurrence if the signal could plausibly fire more than once
+  during the battle.
+
+  Applies to every future milestone that introduces persistent/toggleable
+  battle state (side conditions, field conditions, per-Pokémon volatiles) —
+  see `docs/decisions.md`'s `[M16c]`/`[M16d]` entries for worked examples of
+  tests that broke this way and how they were fixed.
+
 ## Setup
 
 ```bash
@@ -245,7 +274,11 @@ it exists purely to look up exact source logic.
 - M15 Task 5 (two-turn moves): **COMPLETE** — 2026-07-01, 32/32 two_turn_test assertions; all M1–M15T3 still green
 - M16a (Tier A move effects — RESTORE_HP / FOCUS_ENERGY / GROWTH / OHKO): **COMPLETE** — 2026-07-01, 52/52 m16a_test assertions; all 637 prior assertions still green (689 total)
 - M16b (Tier B move effects — MINIMIZE / DEFENSE_CURL / Stomp minimizeDoubleDamage / ROLLOUT (Ice Ball) / MAGNITUDE): **COMPLETE** — 2026-07-02, 55/55 m16b_test assertions; all 857 prior assertions still green (912 total). Note: Stomp's canonical move ID is 23, not 31 (31 is Fury Attack) — corrected after checking `constants/moves.h`; see decisions.md.
-- M16c (Tier C move effects — REFLECT / LIGHT_SCREEN / AURORA_VEIL / Brick Break screen-break): **COMPLETE** — 2026-07-02, 60/60 m16c_test assertions; all 912 prior assertions still green (972 total). Introduces `BattleManager._side_conditions[side]`, the first per-side (not per-Pokémon, not per-battle) state — designed for reuse by Trick Room / entry hazards in M16d. Next: M16d.
+- M16c (Tier C move effects — REFLECT / LIGHT_SCREEN / AURORA_VEIL / Brick Break screen-break): **COMPLETE** — 2026-07-02, 60/60 m16c_test assertions; all 912 prior assertions still green (972 total). Introduces `BattleManager._side_conditions[side]`, the first per-side (not per-Pokémon, not per-battle) state — designed for reuse by Trick Room / entry hazards in M16d.
+- M16d (Tier D move effects — entry hazards SPIKES / TOXIC_SPIKES / STEALTH_ROCK / RAPID_SPIN / TRICK_ROOM): **COMPLETE** — 2026-07-02, 71/71 m16d_test assertions; all 972 prior assertions still green (1043 total). Hazards reuse `_side_conditions[side]` (new layer-count/bool keys); Trick Room adds `trick_room_turns` as a genuinely per-battle field and is the first mechanic to alter turn order itself (inverts only the speed tiebreak within a shared priority bracket). New `AbilityManager.is_grounded()` helper for Spikes/Toxic Spikes immunity (Stealth Rock deliberately does not use it).
+- M16e (Tier E move effects — PURSUIT / PAIN_SPLIT / CONVERSION / CONVERSION_2 / PSYCH_UP / Baton Pass extension): **COMPLETE** — 2026-07-02, 53/53 m16e_test assertions; all 1043 prior assertions still green (1096 total). Pursuit is the first mechanic to reorder turn order for a specific pair of battlers (strikes before an opposing switch resolves) rather than a global rule; reuses M16b's `power_override` for its doubled-power case. Conversion 2 confirmed from source to use the TARGET's last-used-move type, not "last hit the user" (contradicts the move's own flavor text at GEN_LATEST config). Psych Up confirmed to also copy the Focus Energy crit-boost volatile, not just the 7 stat stages. Baton Pass gained the one passable field it was missing (`focus_energy`, added in M16a after M9's original Baton Pass work). **M16 (Tiers A–E) is now fully complete** — 291 new assertions across the 5 sub-milestones, 1096 total across all 19 numbered suites. See `docs/decisions.md`'s consolidated `[M16]` summary entry for the full tier breakdown and the reusable patterns introduced along the way.
+- M16 Milestone-End Review (targeted audit, not a new milestone): **COMPLETE, no fixes required** — 2026-07-02. Audited three risk areas: Baton Pass passable-volatiles completeness (no gap — `focus_energy` was the only omission and it was already fixed in M16e; every other M16a–M16e field correctly excluded per source), Conversion 2's last-used-vs-last-hit-by test coverage (implementation was already correct; a genuine testing gap existed and was closed with a direct-conflict discriminator test), and Trick Room × Pursuit turn-order integrity (the two mechanisms are structurally disjoint in `_phase_priority_resolution`'s comparator — no conflict found; added permanent cross-tier coverage). One real but out-of-scope latent bug was discovered and flagged (not fixed): Conversion/Conversion 2's `species.types` mutation is never reset on ANY switch-out (not just Baton Pass), unlike source where the active-battler struct is fully repopulated per switch — see `docs/decisions.md`'s `[M16 Review]` Area 1 for the recommended fix. New `m16e_test` assertions (53→56) plus new `m16_review_test.gd`/`.tscn` (8 assertions); 1107 total across 22 numbered suites, all green.
+- Follow-up fixes (three independent small fixes, not a milestone): **COMPLETE** — 2026-07-02. (1) Chilan Berry — wired the previously-unreachable `TYPE_NORMAL` bypass in the resist-berry damage modifier (M12 decisions.md gap I2). (2) Heavy Duty Boots — new `ItemManager.is_hazard_immune()`, wired into `_apply_switch_in_hazards` as one shared gate across Spikes/Toxic Spikes/Stealth Rock, respecting the Toxic-Spikes-Poison-absorb-still-applies nuance (closes the gap flagged in M16d's decisions.md). (3) Conversion/Conversion 2 type-reset bug — found during the M16 Review turned out to be misattributed to the wrong source function (`RESTORE_BATTLER_TYPE` is Mimicry-specific, not general); the actual mechanism is switch-IN repopulation (`CopyMonAbilityAndTypesToBattleMon`/`Cmd_switchindataupdate`), so the fix is a new `BattlePokemon.original_types` cache restored via `BattleManager._reset_mon_type` at the same 5 switch-in call sites M16d's hazards use — not at switch-out as originally guessed. `item_test` grew 63→77, `m16e_test` grew 56→58; 1123 total across 22 numbered suites, all green. Air Balloon (a consumed-on-hit mechanic, a different shape of problem) and the rest of the held-item roster remain deferred to the future M18 milestone — not bundled into this session.
 
 ## Development workflow
 
@@ -267,12 +300,15 @@ Run a verification scene headless (from project root):
 - `scenes/battle/switch_test.tscn` — M9 switching: BattleParty unit tests, voluntary switch, volatile clear, non-volatile persist, Intimidate on switch-in, Roar/Whirlwind forced switch, Baton Pass passable transfer, faint replacement, full-party-faint battle end (64 tests)
 - `scenes/battle/ai_test.tscn` — M10 Trainer AI: type effectiveness scoring, KO preference, type immunity avoidance, wasted status avoidance, two-turn penalty, BASIC vs SMART tier, proactive switch (all-immune / has-bad-odds), faint replacement, full battle integration (26 tests)
 - `scenes/battle/weather_test.tscn` — M11 Weather: Drizzle/Drought set weather, duration countdown, expiry, no-clear-on-switch, same-weather no-op, overwrite, rain/sun damage modifiers (discriminating composition test), sandstorm/hail chip immunity, modifier revert on expiry, AI weather-aware scoring (64 tests)
-- `scenes/battle/item_test.tscn` — M12 Held Items: Choice Band/Scarf/Specs stat boosts, Life Orb damage + recoil, Sitrus Berry HP heal, Lum Berry status cure, Leftovers EOT heal, resist berry, Utility Umbrella, choice-lock enforcement (60 tests)
+- `scenes/battle/item_test.tscn` — M12 Held Items: Choice Band/Scarf/Specs stat boosts, Life Orb damage + recoil, Sitrus Berry HP heal, Lum Berry status cure, Leftovers EOT heal, resist berry (Occa/Chilan), Utility Umbrella, choice-lock enforcement, Heavy Duty Boots hazard immunity (77 tests)
 - `scenes/battle/ai_test.tscn` — M10+M13 Trainer AI: effectiveness scoring, KO preference, type immunity, status avoidance, two-turn penalty, BASIC/SMART tiers, switch decisions, faint replacement, full battle integration; M13 adds choice-lock, bad-lock switch, item-boost discrimination (40 tests)
 - `scenes/battle/doubles_test.tscn` — M14a Doubles foundation: BattleParty active_indices API, 4-combatant setup, turn order by speed, full-side faint required to end battle, targeted moves hit correct slot, faint replacement (slot-specific), voluntary switch in doubles (25 tests)
 - `scenes/battle/m16a_test.tscn` — M16a Tier A move effects: RESTORE_HP (Recover/Slack Off/Heal Order), FOCUS_ENERGY (crit stage +2), GROWTH (+1/+2 Atk+SpAtk, sun doubling), OHKO (Guillotine/Horn Drill/Fissure/Sheer Cold — level check, custom accuracy, type immunity, semi-inv bypass) (52 tests)
 - `scenes/battle/m16b_test.tscn` — M16b Tier B move effects: MINIMIZE (+2 evasion, minimized flag gated on success), DEFENSE_CURL (+1 defense, defense_curled set unconditionally), Stomp minimizeDoubleDamage (exact ×2 post-roll modifier), ROLLOUT/Ice Ball (5-hit power doubling 30→60→120→240→480, Defense Curl doubling, interruption/miss resets), MAGNITUDE (weighted power table, power_override plumbing) (55 tests)
 - `scenes/battle/m16c_test.tscn` — M16c Tier C move effects (screens): REFLECT/LIGHT_SCREEN (exact floor(dmg/2) per-category reduction, 5-turn duration, already-up no-refresh, doubles ⅔ reduction, switch persistence), AURORA_VEIL (hail gate, independent coexistence with Reflect/Light Screen, no double-stacking, reduces both categories), crit bypass, Brick Break (clears target's side pre-damage, own hit unaffected) (60 tests)
+- `scenes/battle/m16d_test.tscn` — M16d Tier D move effects: SPIKES (opponent's-side 3-layer stacking, per-layer maxHP fraction, grounded/Levitate immunity, switch persistence), TOXIC_SPIKES (1-layer poison vs 2-layer toxic, Poison-type absorb, Steel-type immunity, ungrounded immunity), STEALTH_ROCK (type-effectiveness damage table, hits Flying-types unlike Spikes), RAPID_SPIN (clears one hazard in Spikes→Toxic Spikes→Stealth Rock order, fires even hitting a Substitute), TRICK_ROOM (exact speed-order reversal within a priority bracket, priority still overrides it, toggle-off, 5-turn expiry) (71 tests)
+- `scenes/battle/m16e_test.tscn` — M16e Tier E move effects: PURSUIT (doubled power + turn-order interception striking the original switcher before its switch resolves, verified against direct `DamageCalculator` calls), PAIN_SPLIT (current-HP averaging both directions, floor rounding, Substitute block), CONVERSION (type from the literal first move slot, already-that-type failure), CONVERSION_2 (resist-type selection against the target's last USED move — not "last hit by" — exclusion-before-indexing, deterministic via `_force_conversion2_pick`, plus a direct-conflict discriminator against an earlier hit of a different type), PSYCH_UP (copies all 7 stat stages plus the Focus Energy volatile, overwrite semantics), Baton Pass (`focus_energy` now passes; `minimized`/`defense_curled`/`rollout_turns` still correctly excluded), type-reset-on-switch (a Conversion-mutated type reverts to the original species type after a voluntary switch-out and back in) (58 tests)
+- `scenes/battle/m16_review_test.tscn` — M16 Milestone-End Review, Area 3: Trick Room × Pursuit turn-order integrity — Pursuit interception still fires correctly under Trick Room regardless of which side is naturally faster, doubled power and switch completion both still correct, and Trick Room's own speed-reversal is unaffected when a Pursuit-carrying Pokémon's target isn't switching (singles only — doubles combination explicitly flagged as untested in `docs/decisions.md`) (8 tests)
 
 **Note:** if you add a new file with `class_name`, run an import pass before the test scenes
 will see it:

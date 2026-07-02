@@ -89,6 +89,19 @@ signal screen_set(side: int, screen_name: String)                          # "re
 signal screen_expired(side: int, screen_name: String)                      # duration ran out
 signal screens_broken(side: int)                                           # Brick Break cleared a side's screens
 
+signal hazard_set(side: int, hazard_name: String, layers: int)             # Spikes/Toxic Spikes/Stealth Rock set (or stacked)
+signal hazard_damage(pokemon: BattlePokemon, amount: int, hazard_name: String)  # switch-in hazard chip
+signal hazard_status_applied(pokemon: BattlePokemon, status: int)          # Toxic Spikes poisoned/badly-poisoned a switch-in
+signal hazard_absorbed(side: int, hazard_name: String)                     # grounded Poison-type absorbed Toxic Spikes
+signal hazards_cleared(side: int, hazard_name: String)                     # Rapid Spin cleared one hazard type
+signal trick_room_set()                                                    # Trick Room activated
+signal trick_room_ended()                                                  # Trick Room deactivated (toggle-off or natural expiry)
+
+# M16e signals
+signal pain_split_used(attacker: BattlePokemon, defender: BattlePokemon)   # HP averaged between both
+signal type_changed(pokemon: BattlePokemon, new_type: int)                 # Conversion / Conversion 2
+signal stat_changes_copied(user: BattlePokemon, from_mon: BattlePokemon)   # Psych Up copied stat_stages (+ focus_energy)
+
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
 
@@ -170,6 +183,12 @@ var _force_contact_roll: Variant = null
 # Mirrors the null-sentinel convention of the other _force_* seams above.
 var _force_magnitude_power: Variant = null
 
+# Test seam: force which candidate Conversion 2 picks from its resist-type pool.
+# null = use real RNG (uniform pick, source's reject-already-had-types loop);
+# else an index into the SORTED candidate list (ascending TypeChart.TYPE_* ids) after
+# the user's current types have already been excluded — see _pick_conversion2_type().
+var _force_conversion2_pick: Variant = null
+
 # M9: pre-queued Baton Pass target slots per combatant index (-1 = auto-select first valid).
 # M14a: indexed by combatant index; singles uses [0] and [1].
 var _baton_pass_queues: Array = [[], [], [], []]
@@ -215,10 +234,26 @@ var weather_duration: int = 0  # turns remaining; 0 when no weather is active
 # Source: gSideStatuses[side] (bitmask) + gSideTimers[side].{reflectTimer,lightscreenTimer,
 #   auroraVeilTimer} (include/battle.h). Turns-remaining ints here fold together the
 #   presence bit and the timer into one field per condition (0 = not active).
+#
+# M16d: extended with entry hazards (Spikes/Toxic Spikes/Stealth Rock), reusing this exact
+# per-side shape rather than inventing a new one (per M16c's explicit forward-compat note).
+# Unlike the screens above, hazards have no natural duration — they persist until cleared
+# by Rapid Spin or the battle ends, so they're stored as plain layer counts / a bool rather
+# than turns-remaining. spikes_layers: 0-3. toxic_spikes_layers: 0-2. stealth_rock: bool
+# (single application, no layers).
+# Source: gSideTimers[side].{spikesAmount, toxicSpikesAmount} + gSideStatuses[side] &
+#   SIDE_STATUS_STEALTH_ROCK (include/constants/battle.h).
 var _side_conditions: Array = [
-	{"reflect_turns": 0, "light_screen_turns": 0, "aurora_veil_turns": 0},
-	{"reflect_turns": 0, "light_screen_turns": 0, "aurora_veil_turns": 0},
+	{"reflect_turns": 0, "light_screen_turns": 0, "aurora_veil_turns": 0,
+			"spikes_layers": 0, "toxic_spikes_layers": 0, "stealth_rock": false},
+	{"reflect_turns": 0, "light_screen_turns": 0, "aurora_veil_turns": 0,
+			"spikes_layers": 0, "toxic_spikes_layers": 0, "stealth_rock": false},
 ]
+
+# M16d: Trick Room — genuinely per-BATTLE (not per-side, not per-Pokémon): reverses the
+# speed tiebreak used in turn-order resolution while active. 0 = inactive.
+# Source: gFieldStatuses & STATUS_FIELD_TRICK_ROOM (bitmask) + gFieldTimers.trickRoomTimer.
+var trick_room_turns: int = 0
 
 # M15 Task 3: Struggle instantiated in _ready(); used when all PP are depleted.
 # Source: battle_main.c L4727–4728 — noValidMoves → MOVE_STRUGGLE substitution.
@@ -374,10 +409,14 @@ func get_phase() -> BattlePhase:
 # --- Phase handlers ---
 
 func _phase_battle_start() -> void:
-	# Fire switch-in ability effects for all starting Pokémon (they enter simultaneously).
+	# Fire switch-in hazard and ability effects for all starting Pokémon (they enter
+	# simultaneously). Hazards before abilities — see _apply_switch_in_hazards for the
+	# source-confirmed FIRST_EVENT_BLOCK ordering.
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...) (battle_util.c L3310)
 	for i in range(_combatants.size()):
 		var mon: BattlePokemon = _combatants[i]
+		_reset_mon_type(mon)
+		_apply_switch_in_hazards(mon, i / _active_per_side)
 		_apply_switch_in_abilities(mon, i / _active_per_side)
 	_set_phase(BattlePhase.MOVE_SELECTION)
 
@@ -506,6 +545,18 @@ func _phase_priority_resolution() -> void:
 		var a_switch: bool = _chosen_switch_slots[ia] >= 0
 		var b_switch: bool = _chosen_switch_slots[ib] >= 0
 
+		# M16e: Pursuit interception — a queued Pursuit move on the OPPOSING side of a
+		# switcher must strike before the switch resolves, overriding the normal
+		# switches-always-first rule. Source: Cmd_jumpifnopursuitswitchdmg
+		# (battle_script_commands.c L8494) reorders the pursuer to the front right as the
+		# switch action is about to run; GEN_LATEST (B_PURSUIT_TARGET >= GEN_4) means ANY
+		# opposing Pursuit user intercepts, not only one that specifically targeted the
+		# switcher. See _pursuit_targets_switcher() for the exact condition.
+		if b_switch and not a_switch and _pursuit_targets_switcher(ia, ib):
+			return true  # a (the pursuer) goes first
+		if a_switch and not b_switch and _pursuit_targets_switcher(ib, ia):
+			return false  # b (the pursuer) goes first
+
 		# Switch actions before all move actions.
 		# Source: battle_main.c L4967-4990 — items/switches placed before moves
 		# in gActionsByTurnOrder; speed sort only runs between move actors (L5004-5015).
@@ -517,6 +568,12 @@ func _phase_priority_resolution() -> void:
 			return ia < ib
 
 		# Both using moves: priority bracket → effective speed → pre-rolled tiebreak.
+		# M16d: Trick Room inverts ONLY the speed tiebreak within a shared priority
+		# bracket — priority itself is compared first and is completely unaffected.
+		# Source: battle_main.c :: GetWhichBattlerFasterArgs (L4775-4821): `if (priority1
+		#   == priority2) { ... speed comparison, inverted under STATUS_FIELD_TRICK_ROOM
+		#   ... } else if (priority1 < priority2) strikesFirst = -1; else strikesFirst = 1;`
+		#   — the priority branch runs first and never consults Trick Room at all.
 		var move_a: MoveData = _chosen_moves[ia]
 		var move_b: MoveData = _chosen_moves[ib]
 		var pa: int = move_a.priority if move_a else 0
@@ -526,7 +583,7 @@ func _phase_priority_resolution() -> void:
 		var sa: int = StatusManager.effective_speed(a)
 		var sb: int = StatusManager.effective_speed(b)
 		if sa != sb:
-			return sa > sb
+			return sa < sb if trick_room_turns > 0 else sa > sb
 		return tiebreak[a] > tiebreak[b]
 	)
 	_current_actor_index = 0
@@ -872,6 +929,18 @@ func _phase_move_execution() -> void:
 	if move.is_magnitude:
 		_dmg_power_override = _roll_magnitude_power()
 
+	# ── Pursuit: doubled power if the target is switching out this turn ──────
+	# Source: battle_util.c L6180-6182 (EFFECT_PURSUIT base-power case).
+	#   Turn-order interception (executing before the switch) is handled in
+	#   _phase_priority_resolution's sort_custom — by the time this runs, Pursuit's
+	#   target hasn't actually switched yet, so _chosen_switch_slots is still set for the
+	#   pursued switcher (it's only cleared when ITS OWN switch action executes, which
+	#   happens AFTER the intercepting Pursuit user's action per the reordering above).
+	if move.is_pursuit:
+		var _pursuit_def_idx: int = _combatants.find(defender)
+		if _pursuit_def_idx >= 0 and _chosen_switch_slots[_pursuit_def_idx] >= 0:
+			_dmg_power_override = move.power * 2
+
 	# ── Accuracy check ────────────────────────────────────────────────────────
 	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
 	# Includes semi-invulnerable miss check (source: CancelerAccuracyCheck L1993).
@@ -935,10 +1004,12 @@ func _phase_move_execution() -> void:
 		_combatants[attacker_idx] = att_party.get_active_at(bp_field_slot)
 		var incoming: BattlePokemon = _combatants[attacker_idx]
 		_baton_pass_apply(incoming, saved)
+		_reset_mon_type(incoming)
 		pokemon_switched_out.emit(attacker, attacker_side)
 		pokemon_switched_in.emit(incoming, attacker_side, bp_slot)
 		baton_passed.emit(attacker, incoming)
-		# Switch-in abilities fire for the incoming Pokémon.
+		# Switch-in hazards then abilities fire for the incoming Pokémon.
+		_apply_switch_in_hazards(incoming, attacker_side)
 		var bp_actual: int = AbilityManager.try_switch_in(incoming, defender)
 		if bp_actual != 0:
 			stat_stage_changed.emit(defender, BattlePokemon.STAGE_ATK, bp_actual)
@@ -1310,6 +1381,159 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Spikes ────────────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: Cmd_trysetspikes (L8373-8390): targets the
+		#   OPPONENT's side (opposite of Reflect/Light Screen/Aurora Veil, which target the
+		#   caster's own side); fails at 3 layers, else increments.
+		if move.is_spikes:
+			var spikes_side: int = 1 - attacker_side
+			if _side_conditions[spikes_side]["spikes_layers"] >= 3:
+				move_effect_failed.emit(attacker, "spikes_maxed")
+			else:
+				_side_conditions[spikes_side]["spikes_layers"] += 1
+				hazard_set.emit(spikes_side, "spikes", _side_conditions[spikes_side]["spikes_layers"])
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Toxic Spikes ──────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: Cmd_settoxicspikes (L9043-9059): targets the
+		#   OPPONENT's side; fails at 2 layers, else increments.
+		if move.is_toxic_spikes:
+			var tspikes_side: int = 1 - attacker_side
+			if _side_conditions[tspikes_side]["toxic_spikes_layers"] >= 2:
+				move_effect_failed.emit(attacker, "toxic_spikes_maxed")
+			else:
+				_side_conditions[tspikes_side]["toxic_spikes_layers"] += 1
+				hazard_set.emit(tspikes_side, "toxic_spikes",
+						_side_conditions[tspikes_side]["toxic_spikes_layers"])
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Stealth Rock ──────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: MOVE_EFFECT_STEALTH_ROCK case (L2707-2712):
+		#   targets the OPPONENT's side; single application — fails if already up (no layers).
+		if move.is_stealth_rock:
+			var srock_side: int = 1 - attacker_side
+			if _side_conditions[srock_side]["stealth_rock"]:
+				move_effect_failed.emit(attacker, "stealth_rock_already_set")
+			else:
+				_side_conditions[srock_side]["stealth_rock"] = true
+				hazard_set.emit(srock_side, "stealth_rock", 1)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Trick Room ────────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: HandleRoomMove (L9116-9121): TOGGLES rather
+		#   than failing — using it again while active cancels it immediately instead of
+		#   refreshing the timer.
+		if move.is_trick_room:
+			if trick_room_turns > 0:
+				trick_room_turns = 0
+				trick_room_ended.emit()
+			else:
+				trick_room_turns = 5
+				trick_room_set.emit()
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Pain Split ────────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: Cmd_painsplitdmgcalc (L7989-8006):
+		#   hpDiff = (attacker.hp + target.hp) / 2 (integer division, floor). Both mons'
+		#   current HP become hpDiff (final HP = min(hpDiff, own maxHP) reproduces source's
+		#   PassiveDataHpUpdate: negative delta = heal clamped to maxHP, positive delta =
+		#   damage — never reaches 0 since floor((a+b)/2) >= 1 whenever a,b >= 1).
+		# Blocked by the target's Substitute — Pain Split has no ignoresSubstitute flag.
+		if move.is_pain_split:
+			if defender.substitute_hp > 0 and not move.ignores_substitute:
+				move_missed.emit(attacker, "substitute")
+			else:
+				var hp_diff: int = (attacker.current_hp + defender.current_hp) / 2
+				attacker.current_hp = min(attacker.max_hp, hp_diff)
+				defender.current_hp = min(defender.max_hp, hp_diff)
+				pain_split_used.emit(attacker, defender)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Conversion ────────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: Cmd_tryconversiontypechange (L7449-7482),
+		#   B_UPDATED_CONVERSION >= GEN_6 (GEN_LATEST) branch: user's type ← type of their
+		#   FIRST populated move slot (literal moves[0] scan, no Curse/Struggle special
+		#   case). Fails if the user is already that type. SET_BATTLER_TYPE makes the user
+		#   mono-typed — this project models mono-type as [type, TYPE_NONE], matching the
+		#   existing PokemonSpecies.types convention (see get_effectiveness's TYPE_NONE
+		#   skip), not source's literal both-slots-equal representation (equivalent result).
+		if move.is_conversion:
+			var conv_type: int = TypeChart.TYPE_NONE
+			for m: MoveData in attacker.moves:
+				if m != null:
+					conv_type = m.type
+					break
+			if conv_type == TypeChart.TYPE_NONE or conv_type in attacker.species.types:
+				move_effect_failed.emit(attacker, "conversion_failed")
+			else:
+				_set_mon_type(attacker, conv_type)
+				type_changed.emit(attacker, conv_type)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Conversion 2 ──────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: Cmd_settypetorandomresistance (L8009-8077),
+		#   GEN_LATEST (B_UPDATED_CONVERSION_2 >= GEN_5) branch: uses the TARGET's last
+		#   successfully used move — this project's existing `last_move_used` field reused
+		#   directly, NOT a "last hit the user" tracker (that was the pre-Gen5 behavior;
+		#   the move's flavor text is stale relative to GEN_LATEST config). Fails if the
+		#   target has no last move, or that move's type is None/Mystery/Stellar, or every
+		#   resisting type is one the user already has. Selection among multiple valid
+		#   resisting types is uniform random (source rejection-samples, not "first found").
+		#   Ignores Protect and Substitute (both explicit flags in source).
+		if move.is_conversion2:
+			var c2_move: MoveData = defender.last_move_used
+			if c2_move == null or c2_move.type == TypeChart.TYPE_NONE \
+					or c2_move.type == TypeChart.TYPE_MYSTERY or c2_move.type == TypeChart.TYPE_STELLAR:
+				move_effect_failed.emit(attacker, "conversion2_failed")
+			else:
+				var c2_chosen: int = _pick_conversion2_type(attacker, c2_move.type)
+				if c2_chosen < 0:
+					move_effect_failed.emit(attacker, "conversion2_failed")
+				else:
+					_set_mon_type(attacker, c2_chosen)
+					type_changed.emit(attacker, c2_chosen)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Psych Up ──────────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: Cmd_copyfoestats (L8555-8575): copies all 7
+		#   stat stages from the target onto the user (full overwrite, including negative
+		#   stages); ALSO copies the target's focus_energy crit-boost volatile (Gen6+ —
+		#   B_PSYCH_UP_CRIT_RATIO = GEN_LATEST — confirmed from source, not assumed; source
+		#   also copies dragonCheer/bonusCritStages, unimplemented here so no-op).
+		#   Always hits (accuracy=0, already passed by the generic accuracy check above);
+		#   ignores Protect (checked earlier in this function) and Substitute (explicit
+		#   ignoresSubstitute=TRUE in source — deliberately no substitute check here).
+		if move.is_psych_up:
+			for _pi in range(attacker.stat_stages.size()):
+				attacker.stat_stages[_pi] = defender.stat_stages[_pi]
+			attacker.focus_energy = defender.focus_energy
+			stat_changes_copied.emit(attacker, defender)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# Substitute blocks most foe-targeting status moves (not self-targeting, not
 		# ignoresSubstitute moves like Disable which is handled above).
 		# Source: IsSubstituteProtected → returns TRUE unless MoveIgnoresSubstitute.
@@ -1500,6 +1724,15 @@ func _phase_end_of_turn() -> void:
 			if sc["aurora_veil_turns"] == 0:
 				screen_expired.emit(side, "aurora_veil")
 
+	# M16d: Decrement Trick Room's field-wide timer.
+	# Source: battle_end_turn.c L1146 — gFieldStatuses &= ~STATUS_FIELD_TRICK_ROOM at 0.
+	# Note: entry hazards (Spikes/Toxic Spikes/Stealth Rock) have NO natural duration —
+	# they persist until Rapid Spin clears them or the battle ends, so nothing to decrement.
+	if trick_room_turns > 0:
+		trick_room_turns -= 1
+		if trick_room_turns == 0:
+			trick_room_ended.emit()
+
 	# End-of-turn ability effects (Speed Boost, etc.)
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ENDTURN, ...) (battle_util.c L3605)
 	for mon: BattlePokemon in _combatants:
@@ -1577,6 +1810,96 @@ func _get_first_opponent(mon: BattlePokemon) -> BattlePokemon:
 # Gen 8 Intimidate immunity (Inner Focus, Scrappy, Own Tempo, Oblivious, Guard Dog) is
 #   intentionally omitted — none of those abilities exist in this codebase. Port when added.
 #   See decisions.md [M14x Intimidate doubles + Gen 8 immunity].
+# M16d: entry hazard damage/status on switch-in (Spikes, Toxic Spikes, Stealth Rock).
+# Called at every switch-in site — voluntary switch, forced switch (Roar/Whirlwind), faint
+# replacement, and the initial battle-start send-out — same call pattern as
+# _apply_switch_in_abilities. Source ordering confirmed: hazards fire BEFORE switch-in
+# abilities (FIRST_EVENT_BLOCK_HAZARDS precedes FIRST_EVENT_BLOCK_GENERAL_ABILITIES /
+# FIRST_EVENT_BLOCK_IMMUNITY_ABILITIES in battle_switch_in.c), so this is called before
+# _apply_switch_in_abilities at each call site.
+# Source: battle_switch_in.c :: TryHazardsOnSwitchIn (L306-378). All three hazard types are
+# checked in a fixed order here (Spikes → Toxic Spikes → Stealth Rock) rather than
+# replicating source's per-side setter-order queue — this produces identical final HP
+# outcomes since independent sequential HP subtractions commute; a faint partway through
+# still correctly stops further hazard checks (mirrors IsBattlerAffectedByHazards's
+# IsBattlerAlive gate on every hazard type).
+func _apply_switch_in_hazards(new_mon: BattlePokemon, mon_side: int) -> void:
+	if new_mon.fainted:
+		return
+	var sc: Dictionary = _side_conditions[mon_side]
+	var grounded: bool = AbilityManager.is_grounded(new_mon)
+	# Follow-up fixes session, 2026-07-02: Heavy Duty Boots — full immunity to all three
+	# hazard types, applied as one shared gate (see ItemManager.is_hazard_immune for the
+	# source citation and the Toxic-Spikes-absorb-still-applies nuance).
+	var hazard_immune: bool = ItemManager.is_hazard_immune(new_mon)
+
+	# Spikes — grounded-only. Source: TryHazardsOnSwitchIn, case HAZARDS_SPIKES (L306-315):
+	#   spikesDmg = maxHP / ((5 - spikesAmount) * 2).
+	if sc["spikes_layers"] > 0 and grounded and not hazard_immune:
+		var spikes_dmg: int = new_mon.max_hp / ((5 - sc["spikes_layers"]) * 2)
+		if spikes_dmg > 0:
+			new_mon.current_hp = max(0, new_mon.current_hp - spikes_dmg)
+			hazard_damage.emit(new_mon, spikes_dmg, "spikes")
+			if new_mon.current_hp == 0:
+				new_mon.fainted = true
+				pokemon_fainted.emit(new_mon)
+
+	# Toxic Spikes — grounded-only; a grounded Poison-type ABSORBS (clears) it instead of
+	# being poisoned — this happens regardless of Heavy Duty Boots (source checks
+	# IS_BATTLER_OF_TYPE(POISON) in an earlier branch than the boots gate), so hazard_immune
+	# must NOT be applied to the absorb branch, only to the "would be poisoned" branch.
+	# Source: TryHazardsOnSwitchIn, case HAZARDS_TOXIC_SPIKES (L328-359).
+	if not new_mon.fainted and sc["toxic_spikes_layers"] > 0:
+		if TypeChart.TYPE_POISON in new_mon.species.types:
+			sc["toxic_spikes_layers"] = 0
+			hazard_absorbed.emit(mon_side, "toxic_spikes")
+		elif grounded and not hazard_immune:
+			var ts_status: int = BattlePokemon.STATUS_TOXIC if sc["toxic_spikes_layers"] >= 2 \
+					else BattlePokemon.STATUS_POISON
+			# Reuses StatusManager.try_apply_status — already encodes Poison/Steel-type
+			# immunity and the one-major-status-at-a-time guard (M3), so Toxic Spikes
+			# correctly can't poison a Steel-type or a Pokémon already statused, without
+			# re-deriving those checks here.
+			if StatusManager.try_apply_status(new_mon, ts_status):
+				hazard_status_applied.emit(new_mon, ts_status)
+
+	# Stealth Rock — NOT grounded-gated (hits Flying-types and Levitate holders too), but
+	# IS gated by Heavy Duty Boots (unconditional block, no type check involved — the boots
+	# gate is checked before Stealth Rock even computes its damage in source).
+	# Source: TryHazardsOnSwitchIn, case HAZARDS_STEALTH_ROCK (L369-378);
+	#   GetStealthHazardDamageByTypesAndHP (L8317-8353).
+	if not new_mon.fainted and sc["stealth_rock"] and not hazard_immune:
+		var srock_eff: float = TypeChart.get_effectiveness(TypeChart.TYPE_ROCK, new_mon.species.types)
+		var srock_dmg: int = _stealth_rock_damage(srock_eff, new_mon.max_hp)
+		if srock_dmg > 0:
+			new_mon.current_hp = max(0, new_mon.current_hp - srock_dmg)
+			hazard_damage.emit(new_mon, srock_dmg, "stealth_rock")
+			if new_mon.current_hp == 0:
+				new_mon.fainted = true
+				pokemon_fainted.emit(new_mon)
+
+
+# M16d: Stealth Rock's type-effectiveness-based damage table.
+# Source: battle_util.c :: GetStealthHazardDamageByTypesAndHP (L8317-8353):
+#   0×→0, 0.25×→maxHP/32, 0.5×→maxHP/16, 1×→maxHP/8, 2×→maxHP/4, 4×→maxHP/2
+#   (each nonzero case floors to a minimum of 1).
+func _stealth_rock_damage(effectiveness: float, max_hp: int) -> int:
+	var dmg: int = 0
+	if effectiveness == 0.25:
+		dmg = max_hp / 32
+	elif effectiveness == 0.5:
+		dmg = max_hp / 16
+	elif effectiveness == 1.0:
+		dmg = max_hp / 8
+	elif effectiveness == 2.0:
+		dmg = max_hp / 4
+	elif effectiveness == 4.0:
+		dmg = max_hp / 2
+	if dmg == 0 and effectiveness != 0.0:
+		dmg = 1
+	return dmg
+
+
 func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 	var any_intimidated := false
 	for j in range(_combatants.size()):
@@ -1652,28 +1975,41 @@ func _switch_out_clear(mon: BattlePokemon) -> void:
 	mon.choice_locked_move = null
 
 
-# M9: save Baton Pass passable state before switch-out clearing.
+# M9/M16e: save Baton Pass passable state before switch-out clearing.
 # Passable fields derived from VOLATILE_DEFINITIONS V_BATON_PASSABLE entries
 # (include/constants/battle.h L209-319) and explicit copies in SwitchInClearSetData (L3146-3185).
 # From our implemented fields:
-#   stat_stages  — NOT cleared for Baton Pass (L3122 guard)
+#   stat_stages     — NOT cleared for Baton Pass (L3122 guard)
 #   confusion_turns — V_BATON_PASSABLE (VOLATILE_CONFUSION, L210)
 #   substitute_hp   — explicitly copied at L3185
+#   focus_energy    — V_BATON_PASSABLE (VOLATILE_FOCUS_ENERGY, L236). M9 predates Focus
+#     Energy (added in M16a), so it was missing from the original passable set — added now
+#     during M16e's Baton Pass review as the task explicitly asked to re-confirm the exact
+#     passable list against every volatile currently implemented, not just the M9-era ones.
+#     Every other V_BATON_PASSABLE volatile in source (leechSeed, perishSong, aquaRing,
+#     root/ingrain, gastroAcid, embargo, telekinesis, magnetRise, healBlock, powerTrick,
+#     noRetreat, escapePrevention, cursed, dragonCheer, mudSport, waterSport,
+#     infiniteConfusion) has no corresponding field in this project — not a gap, since none
+#     of those mechanics are implemented at all yet. minimized/defense_curled/destiny_bond/
+#     protect_active/disabled_move/encored_move/rollout_turns are correctly NOT passed —
+#     none of them appear in VOLATILE_DEFINITIONS' V_BATON_PASSABLE set.
 func _baton_pass_save(mon: BattlePokemon) -> Dictionary:
 	return {
 		"stat_stages":     mon.stat_stages.duplicate(),
 		"confusion_turns": mon.confusion_turns,
 		"substitute_hp":   mon.substitute_hp,
+		"focus_energy":    mon.focus_energy,
 	}
 
 
-# M9: apply saved Baton Pass passables to the incoming Pokémon.
+# M9/M16e: apply saved Baton Pass passables to the incoming Pokémon.
 func _baton_pass_apply(mon: BattlePokemon, data: Dictionary) -> void:
 	var src: Array = data["stat_stages"]
 	for _si in range(src.size()):
 		mon.stat_stages[_si] = src[_si]
 	mon.confusion_turns = data["confusion_turns"]
 	mon.substitute_hp   = data["substitute_hp"]
+	mon.focus_energy    = data["focus_energy"]
 
 
 # M9/M14a: voluntary switch — switch-out cleanup, party update, switch-in ability.
@@ -1688,10 +2024,12 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 	_combatants[combatant_idx] = _parties[side].get_active_at(field_slot)
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
 	new_mon.switched_in_this_turn = true
+	_reset_mon_type(new_mon)
 	pokemon_switched_out.emit(old_mon, side)
 	pokemon_switched_in.emit(new_mon, side, slot)
-	# Switch-in abilities fire for the incoming Pokémon.
+	# Switch-in hazards then abilities fire for the incoming Pokémon.
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...) (battle_util.c L2960)
+	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
 
 
@@ -1708,7 +2046,9 @@ func _do_forced_switch_in(side: int, slot: int, field_slot: int = 0) -> void:
 	_combatants[combatant_idx] = _parties[side].get_active_at(field_slot)
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
 	new_mon.switched_in_this_turn = true
-	# Switch-in abilities fire for the forced-in Pokémon.
+	_reset_mon_type(new_mon)
+	# Switch-in hazards then abilities fire for the forced-in Pokémon.
+	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
 
 
@@ -1721,7 +2061,9 @@ func _do_switch_in(combatant_idx: int, slot: int) -> void:
 	_combatants[combatant_idx] = _parties[side].get_active_at(field_slot)
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
 	new_mon.switched_in_this_turn = true
+	_reset_mon_type(new_mon)
 	pokemon_switched_in.emit(new_mon, side, slot)
+	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
 
 
@@ -1758,6 +2100,79 @@ func _get_baton_pass_slot(combatant_idx: int) -> int:
 				and not party.members[slot].fainted:
 			return slot
 	return _parties[side].get_first_non_fainted_not_active()
+
+
+# M16e: true if the combatant at pursuer_idx has queued Pursuit AND the combatant at
+# switcher_idx has a queued switch AND they're on opposing sides.
+# Source: SetTargetToNextPursuiter (battle_util.c L9827): B_PURSUIT_TARGET >= GEN_4
+#   (GEN_LATEST) means any opposing Pursuit user qualifies, not only one that specifically
+#   targeted the switcher — so this deliberately does not check _chosen_targets.
+func _pursuit_targets_switcher(pursuer_idx: int, switcher_idx: int) -> bool:
+	var mv: MoveData = _chosen_moves[pursuer_idx]
+	if mv == null or not mv.is_pursuit:
+		return false
+	if _chosen_switch_slots[switcher_idx] < 0:
+		return false
+	return (pursuer_idx / _active_per_side) != (switcher_idx / _active_per_side)
+
+
+# M16e: Conversion 2's resist-type selection. Builds the candidate pool — types that
+# resist type_to_resist at 0x or 0.5x, EXCLUDING types the user already has — then picks
+# uniformly at random. Returns -1 if the pool is empty (matches source's fail case when
+# the reject-already-had loop exhausts the resistTypes bitmask).
+# Source: battle_script_commands.c :: Cmd_settypetorandomresistance (L8009-8077):
+#   resistTypes built via GetTypeModifier == UQ_4_12(0) or UQ_4_12(0.5); loop does
+#   `Random() % NUMBER_OF_MON_TYPES`, discarding user's-already-that-type picks.
+# _force_conversion2_pick test seam: null = real RNG; else an index into the pool AFTER
+# it's built in ascending TypeChart.TYPE_* id order (deterministic for tests).
+func _pick_conversion2_type(user: BattlePokemon, type_to_resist: int) -> int:
+	var candidates: Array = []
+	for t in range(1, 20):  # TYPE_NORMAL(1)..TYPE_FAIRY(19); NUMBER_OF_MON_TYPES = 18
+		if t == TypeChart.TYPE_MYSTERY:
+			continue
+		if TypeChart.TABLE[type_to_resist][t] <= 0.5 and not (t in user.species.types):
+			candidates.append(t)
+	if candidates.is_empty():
+		return -1
+	if _force_conversion2_pick != null:
+		var idx: int = clampi(int(_force_conversion2_pick), 0, candidates.size() - 1)
+		return candidates[idx]
+	return candidates[randi() % candidates.size()]
+
+
+# M16e: mono-types a Pokémon (Conversion / Conversion 2). Source's SET_BATTLER_TYPE sets
+# both type slots to the same value; this project instead follows PokemonSpecies.types'
+# existing convention of [type, TYPE_NONE] for a single-typed mon (equivalent result —
+# get_effectiveness() skips the second type whenever it's TYPE_NONE). Uses resize + index
+# assignment rather than a literal-array reassignment: GDScript 4.x typed Array[int]
+# properties silently fail (or reject at parse time, per Array[int](...) constructor
+# syntax) when reassigned from certain literal forms — see the M9 decisions.md note on
+# typed Array assignment; loop/index assignment is the established safe pattern here.
+func _set_mon_type(mon: BattlePokemon, new_type: int) -> void:
+	if mon.species.types.size() < 2:
+		mon.species.types.resize(2)
+	mon.species.types[0] = new_type
+	mon.species.types[1] = TypeChart.TYPE_NONE
+
+
+# Follow-up fixes session, 2026-07-02: restores this Pokémon's natural species types on
+# every switch-in, undoing any Conversion/Conversion 2 mutation from its last time on the
+# field. Source: CopyMonAbilityAndTypesToBattleMon (battle_util.c L9365-9379) and
+# Cmd_switchindataupdate (battle_script_commands.c L5030-5032) both repopulate
+# gBattleMons[battler].types from GetSpeciesType() at every switch-in event — this project's
+# BattlePokemon objects are long-lived (unlike source's per-slot repopulated struct), so the
+# equivalent here is restoring from the `original_types` cache captured once at construction
+# (see BattlePokemon.original_types) rather than a fresh species lookup, since `species.types`
+# itself is the field _set_mon_type mutates and can no longer be trusted as "natural" once a
+# Conversion has happened. A no-op for any Pokémon that has never used Conversion/Conversion 2.
+# Called at all 5 switch-in sites, immediately before hazards/abilities evaluate the mon's
+# type (same 5 sites _apply_switch_in_hazards was wired into during M16d — see that
+# milestone's decisions.md entry for why there are 5, not 3).
+func _reset_mon_type(mon: BattlePokemon) -> void:
+	var orig: Array = mon.original_types
+	mon.species.types.resize(orig.size())
+	for _ti in range(orig.size()):
+		mon.species.types[_ti] = orig[_ti]
 
 
 # Gen 5+ protect success formula. First use: always succeeds.
@@ -1942,6 +2357,28 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			attacker, target, move, roll, _force_crit, weather, is_spread, helping_hand,
 			power_override, screen_active, _active_per_side > 1)
 	var damage: int = result["damage"]
+
+	# M16d: Rapid Spin — clears ONE hazard type from the ATTACKER's own side after dealing
+	# damage. Fires even if the hit was absorbed by a Substitute (INCLUDING_SUBSTITUTES in
+	# source), so this is placed before the went_to_sub branch below, gated only on damage>0.
+	# Source: battle_move_resolution.c, case EFFECT_RAPID_SPIN (L3569-3574):
+	#   IsAnyTargetTurnDamaged(battlerAtk, INCLUDING_SUBSTITUTES).
+	# Source: battle_script_commands.c :: Cmd_rapidspinfree (L8578-8612): clears the FIRST
+	#   matching hazard type only (Spikes → Toxic Spikes → Stealth Rock in this project's
+	#   implemented subset), not all of them at once.
+	if move.is_rapid_spin and damage > 0:
+		var atk_idx: int = _combatants.find(attacker)
+		var atk_side: int = atk_idx / _active_per_side
+		var asc: Dictionary = _side_conditions[atk_side]
+		if asc["spikes_layers"] > 0:
+			asc["spikes_layers"] = 0
+			hazards_cleared.emit(atk_side, "spikes")
+		elif asc["toxic_spikes_layers"] > 0:
+			asc["toxic_spikes_layers"] = 0
+			hazards_cleared.emit(atk_side, "toxic_spikes")
+		elif asc["stealth_rock"]:
+			asc["stealth_rock"] = false
+			hazards_cleared.emit(atk_side, "stealth_rock")
 
 	var went_to_sub: bool = (target.substitute_hp > 0 and not move.ignores_substitute)
 	if went_to_sub:

@@ -21,6 +21,7 @@ const HOLD_EFFECT_LIFE_ORB:      int = 60
 const HOLD_EFFECT_RESIST_BERRY:  int = 80   # type-resist berry (Occa=Fire, Wacan=Electric, …)
 const HOLD_EFFECT_RESTORE_PCT_HP: int = 82  # Sitrus Berry — param=25 (25 %)
 const HOLD_EFFECT_UTILITY_UMBRELLA: int = 115
+const HOLD_EFFECT_HEAVY_DUTY_BOOTS: int = 119  # full immunity to entry hazards on switch-in
 
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
@@ -70,7 +71,14 @@ static func post_roll_modifier_uq412(mon: BattlePokemon) -> int:
 #
 # Source: GetDefenderItemsModifier (battle_util.c L7510–7524) called from
 #   GetOtherModifiers → AFTER Life Orb, AFTER type effectiveness.
-# Triggers only when the move's effectiveness is ≥ 2.0× AND matches berry's param type.
+# Triggers when the move's type matches the berry's param type AND
+#   (the move is TYPE_NORMAL OR effectiveness is ≥ 2.0×):
+#   `ctx->moveType == GetBattlerHoldEffectParam(...) && (ctx->moveType == TYPE_NORMAL ||
+#    ctx->typeEffectivenessModifier >= UQ_4_12(2.0))` (L7513). The TYPE_NORMAL bypass exists
+#   because Normal-type moves can never be super-effective (no type resists Normal at 2×+),
+#   so Chilan Berry (Normal-resist, param=TYPE_NORMAL) would be permanently unreachable
+#   without it — Follow-up fixes session, 2026-07-02; previously an unwired gap (M12
+#   decisions.md gap I2), Chilan Berry was the only resist berry this bypass applies to.
 # The berry is consumed on trigger — BattleManager must call _consume_item().
 
 static func defender_item_modifier_uq412(defender: BattlePokemon,
@@ -79,10 +87,10 @@ static func defender_item_modifier_uq412(defender: BattlePokemon,
 		return 4096
 	if defender.held_item.hold_effect != HOLD_EFFECT_RESIST_BERRY:
 		return 4096
-	if effectiveness < 2.0:
-		return 4096
 	# Berry param = the type it resists (e.g. Occa Berry param = TYPE_FIRE).
 	if defender.held_item.hold_effect_param != move.type:
+		return 4096
+	if move.type != TypeChart.TYPE_NORMAL and effectiveness < 2.0:
 		return 4096
 	return UQ412_RESIST_BERRY
 
@@ -214,3 +222,24 @@ static func is_choice_item(mon: BattlePokemon) -> bool:
 		HOLD_EFFECT_CHOICE_SCARF,
 		HOLD_EFFECT_CHOICE_SPECS,
 	]
+
+
+# ── Heavy Duty Boots — entry hazard immunity ───────────────────────────────────
+#
+# Source: IsBattlerAffectedByHazards (battle_util.c L9209-9228): returns FALSE (blocked)
+#   whenever `holdEffect == HOLD_EFFECT_HEAVY_DUTY_BOOTS`, for ALL of Spikes, Toxic Spikes,
+#   and Stealth Rock (checked at every TryHazardsOnSwitchIn call site — battle_switch_in.c
+#   L306-378) — full immunity, not a damage reduction. Follow-up fixes session, 2026-07-02
+#   (flagged as a known gap in M16d's decisions.md Stealth Rock section).
+# Caller (BattleManager._apply_switch_in_hazards) applies this as one uniform gate across
+#   all three hazard branches rather than three separate checks, matching how source's
+#   IsBattlerAffectedByHazards is the single shared choke point for all of them.
+# Note: for Toxic Spikes specifically, a grounded Poison-type ABSORBS/clears the hazard
+#   regardless of Heavy Duty Boots (source checks IS_BATTLER_OF_TYPE(POISON) in an earlier
+#   else-if branch than the Heavy-Duty-Boots gate — battle_switch_in.c L338-344) — this
+#   helper only decides whether the "would be poisoned" branch is blocked, not the absorb
+#   branch; the caller must NOT gate the Poison-type-absorb check behind this helper.
+
+static func is_hazard_immune(mon: BattlePokemon) -> bool:
+	return mon.held_item != null \
+		and mon.held_item.hold_effect == HOLD_EFFECT_HEAVY_DUTY_BOOTS

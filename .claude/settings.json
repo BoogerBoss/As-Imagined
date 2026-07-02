@@ -9,7 +9,11 @@
       "Bash(pkill -f \"Godot.*doubles_test\")",
       "Bash(timeout 15 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/doubles_test.tscn)",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path as-imagined scenes/battle/doubles_test.tscn)"
+      "Bash(/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path as-imagined scenes/battle/doubles_test.tscn)",
+      "Bash(grep -v \"^Ability$\")",
+      "Bash(grep -n \"Bad Dreams\\\\|Damp\\\\|Leaf Guard\\\\|Minus\\\\|Pickpocket\\\\|Plus\\\\|Skill Link\\\\|Super Luck\\\\|Tangled Feet\" /tmp/roster_names.txt)",
+      "Read(//tmp/**)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

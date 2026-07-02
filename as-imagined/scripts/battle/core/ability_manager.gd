@@ -76,6 +76,24 @@ static func blocks_move_type(defender: BattlePokemon, move_type: int) -> bool:
 	return false
 
 
+# M16d: "grounded" check for entry hazards (Spikes, Toxic Spikes) — Stealth Rock does NOT
+# use this (it hits Flying-types/Levitate holders too; only Spikes/Toxic Spikes gate on it).
+# Source: battle_util.c :: IsBattlerGrounded (L5896) → IsBattlerGroundedInverseCheck (L5879)
+#   → IsBattlerUngroundedByAbilityItemOrEffect (L5866): Levitate ability or Flying-type
+#   makes a battler ungrounded (returns false here).
+# Source (NOT modeled — noted as a known gap, not silently skipped): Air Balloon held item,
+#   Magnet Rise / Telekinesis volatiles, and the grounding overrides (Iron Ball item,
+#   Gravity field status, Ingrain/Smack Down volatiles) are all outside this project's
+#   currently-implemented scope (no held-item-driven grounding, no Gravity field, no
+#   Ingrain/Smack Down volatiles anywhere else in the codebase either).
+static func is_grounded(mon: BattlePokemon) -> bool:
+	if mon.ability != null and mon.ability.ability_id == ABILITY_LEVITATE:
+		return false
+	if TypeChart.TYPE_FLYING in mon.species.types:
+		return false
+	return true
+
+
 # ── Tier 2: Switch-in effects ────────────────────────────────────────────────
 
 # Fire switch-in ability effects for a Pokémon entering battle.

@@ -2517,3 +2517,833 @@ trigger are listed with "→ skip". Computed with `_uq412_half_down(v, f) = (v×
   `two_turn_test`, `integration_test`) still pass with 0 failures. Total assertions across
   all numbered suites: 912 prior + 60 new = 972.
 - 2026-07-02.
+
+---
+
+## [M16d] Tier D Move Effects — Entry Hazards (SPIKES / TOXIC_SPIKES / STEALTH_ROCK) / RAPID_SPIN / TRICK_ROOM
+
+### Reused pattern: hazards live in the SAME `_side_conditions[side]` dict as M16c's screens
+- Per the task's explicit instruction, hazards were added as new keys on the existing
+  per-side dict rather than a new array/shape: `"spikes_layers": int (0-3)`,
+  `"toxic_spikes_layers": int (0-2)`, `"stealth_rock": bool`. Unlike the M16c screens
+  (which store turns-remaining), hazards have no natural duration in source — they persist
+  until explicitly cleared (Rapid Spin) or the battle ends — so they're stored as plain
+  layer counts / a bool instead of a countdown.
+- Confirmed by construction (same reasoning as M16c's persistence note): `_clear_volatiles`
+  / `_switch_out_clear` only ever touch `BattlePokemon` fields, never `_side_conditions`, so
+  hazards persist across the owning side's switches automatically — no new code needed to
+  guarantee this, verified in `m16d_test` S2.11/S2.12.
+- New forward-compat note for a future milestone: this dict is now genuinely mixed-shape
+  (durations AND layer counts AND booleans in one dict) — fine for now, but if a future
+  hazard needs its own per-instance data (e.g. Toxic Spikes tracking *who* set it, or a
+  hazard with its own separate duration), consider whether the flat-dict shape still fits
+  before blindly adding another key.
+
+### New per-battle pattern: `trick_room_turns`, NOT part of `_side_conditions`
+- Trick Room is genuinely field-wide, not side-wide — confirmed from source
+  (`.target = TARGET_FIELD`, and the mechanism reads `gFieldStatuses`/`gFieldTimers`, which
+  are singular per-battle values, not per-side arrays like `gSideStatuses`/`gSideTimers`).
+  Implemented as a plain top-level `BattleManager.trick_room_turns: int` field, mirroring
+  the existing `weather`/`weather_duration` convention (also field-wide, also plain fields)
+  rather than `_side_conditions` (which is specifically for side-wide state). Confirmed this
+  distinction before implementing, per the task's explicit instruction not to conflate the
+  two shapes.
+
+### "Grounded" check: new `AbilityManager.is_grounded()`, reused for both hazards
+- Source: `src/battle_util.c :: IsBattlerGrounded` (L5896) →
+  `IsBattlerGroundedInverseCheck` (L5879) → `IsBattlerUngroundedByAbilityItemOrEffect`
+  (L5866): a battler is ungrounded (immune to Spikes/Toxic Spikes) if it has the Levitate
+  ability or is a Flying-type (checked in that order in source; order doesn't matter here
+  since both are simple independent conditions).
+- Checked this codebase's existing "grounded"-adjacent logic before writing anything new,
+  per the task's explicit instruction: `AbilityManager.blocks_move_type` (M8) already
+  encodes Levitate's Ground-type-move immunity, but that's a *move-type* immunity check
+  (`move.type == TYPE_GROUND`), not a general grounded-status query — Spikes/Toxic Spikes
+  aren't "Ground-type moves" being blocked, they're a switch-in trigger that needs to know
+  the battler's grounded state independent of any specific move. No existing general
+  "grounded" helper existed anywhere in the codebase, confirmed via search. Added
+  `AbilityManager.is_grounded(mon) -> bool` as a new, narrower, reusable query (Levitate
+  ability OR Flying-type → false; else true), called from `_apply_switch_in_hazards`.
+- Known gaps (not modeled, noted rather than silently skipped): Air Balloon held item,
+  Magnet Rise/Telekinesis volatiles (would additionally ungrounded), Iron Ball item /
+  Gravity field status / Ingrain / Smack Down volatiles (would force-ground even a
+  Flying-type or Levitate holder) — all outside this project's currently-implemented scope;
+  none of the underlying mechanics (held-item-driven grounding, Gravity field, Ingrain,
+  Smack Down) exist anywhere else in the codebase either, so this isn't a hazard-specific
+  gap, it's a project-wide scope boundary.
+- **Stealth Rock deliberately does NOT use `is_grounded`** — confirmed from source that
+  `TryHazardsOnSwitchIn`'s `HAZARDS_STEALTH_ROCK` case only checks `IsBattlerAffectedByHazards`
+  (alive + not Heavy Duty Boots, not modeled) and Magic Guard (not modeled, no such ability
+  in this project), with **no** `IsBattlerGrounded` call at all — this is exactly why
+  Flying-types and Levitate holders still take Stealth Rock damage. Verified in `m16d_test`
+  S4.09/S4.10 (Flying-type takes maxHP/4 from Stealth Rock, same as any other 2x-weak type).
+
+### EFFECT_SPIKES
+- Source: `src/battle_script_commands.c :: Cmd_trysetspikes` (L8373–8390): targets
+  `GetBattlerSide(BATTLE_OPPOSITE(gBattlerAttacker))` — the **opponent's** side, the
+  opposite of Reflect/Light Screen/Aurora Veil (M16c) which target the caster's own side.
+  Fails (no wrap-around) at `spikesAmount == 3`; else increments.
+- Source: `src/battle_switch_in.c :: TryHazardsOnSwitchIn`, case `HAZARDS_SPIKES`
+  (L306–315): `spikesDmg = maxHP / ((5 - spikesAmount) * 2)` — 1 layer → maxHP/8, 2 →
+  maxHP/6, 3 → maxHP/4. **Max HP**, not current HP. Requires grounded
+  (`IsBattlerGrounded`) and `IsBattlerAffectedByHazards` (alive + not Heavy Duty Boots).
+- Behavior: dedicated block in `_phase_move_execution`, targeting `1 - attacker_side`
+  (opposite of the screens' `attacker_side`). Switch-in damage computed in the new
+  `_apply_switch_in_hazards` helper, called at every switch-in site (see below).
+- Spikes (191): Ground/Status, accuracy=0, pp=20, ignores_protect=true.
+- 2026-07-02.
+
+### EFFECT_TOXIC_SPIKES
+- Source: `src/battle_script_commands.c :: Cmd_settoxicspikes` (L9043–9059): targets the
+  opponent's side; fails at `toxicSpikesAmount >= 2`; else increments.
+- Source: `src/battle_switch_in.c :: TryHazardsOnSwitchIn`, case `HAZARDS_TOXIC_SPIKES`
+  (L328–359), in order:
+  1. **Not grounded** → no effect at all (`effect = FALSE`) — the grounded check gates
+     *before* the Poison-type absorb check, so an ungrounded Poison-type would neither
+     absorb nor be poisoned. Verified with a plain Flying-type in `m16d_test` S3.10/S3.11.
+  2. **Grounded + Poison-type** → absorbs: clears `toxicSpikesAmount` to 0 and removes the
+     hazard from the field entirely (`RemoveHazardFromField`). The absorbing Pokémon is
+     *not* itself poisoned.
+  3. **Grounded, not Poison-type, `CanBePoisoned`** → 1 layer inflicts regular poison
+     (`STATUS1_POISON`); 2 layers inflicts badly-poisoned/toxic (`STATUS1_TOXIC_POISON`).
+- `CanBePoisoned` reused rather than re-derived: this project's `StatusManager.try_apply_status`
+  already encodes the Poison/Steel-type immunity and the one-major-status-at-a-time guard
+  (established in M3, decisions.md `[M3] Poison`/`[M3] One major status at a time`), so
+  calling `try_apply_status(mon, STATUS_POISON | STATUS_TOXIC)` directly from
+  `_apply_switch_in_hazards` correctly makes a grounded Steel-type immune (verified
+  `m16d_test` S3.07/S3.08) without duplicating that check.
+- Toxic Spikes (390): Poison/Status, accuracy=0, pp=20, ignores_protect=true.
+- 2026-07-02.
+
+### EFFECT_STEALTH_ROCK
+- Source: `src/battle_script_commands.c` :: `MOVE_EFFECT_STEALTH_ROCK` case (L2707–2712):
+  targets the opponent's side; single application (no layer count) — fails outright if
+  already up.
+- Source: `src/battle_util.c :: GetStealthHazardDamageByTypesAndHP` (L8317–8353), called
+  with `hazardType = TYPE_SIDE_HAZARD_POINTED_STONES = TYPE_ROCK`
+  (`include/constants/battle.h` L430–434): combined Rock-type effectiveness against the
+  switching-in Pokémon's typing (both types multiplied together, same UQ4.12 accumulation
+  style as normal damage calc) maps to a table: 0×→0, 0.25×→maxHP/32, 0.5×→maxHP/16,
+  1×→maxHP/8, 2×→maxHP/4, 4×→maxHP/2, each nonzero case floored to a minimum of 1.
+- Behavior: `_stealth_rock_damage(effectiveness, max_hp)` helper implements the table
+  directly (reusing `TypeChart.get_effectiveness(TYPE_ROCK, mon.species.types)` for the
+  combined multiplier — no new type-effectiveness logic needed, this project's existing
+  dual-type combination already produces exactly the {0, 0.25, 0.5, 1, 2, 4} set).
+- Stealth Rock (446): Rock/Status, accuracy=0, pp=20, ignores_protect=true.
+- 2026-07-02.
+
+### EFFECT_RAPID_SPIN
+- Source: `src/data/moves_info.h MOVE_RAPID_SPIN` (L6247–6277): `.power = 50`
+  (`B_UPDATED_MOVE_DATA >= GEN_8`, GEN_LATEST config applies), Normal/Physical, contact,
+  accuracy=100, pp=40 — a normal damaging move, unlike the three status-category
+  hazard-setters above.
+- Source: `src/battle_move_resolution.c`, case `EFFECT_RAPID_SPIN` (L3569–3574):
+  `IsAnyTargetTurnDamaged(battlerAtk, INCLUDING_SUBSTITUTES)` gates the clear effect — it
+  fires even when the hit landed on the *defender's* Substitute, not only on a direct hit.
+  Implemented at the top of `_do_damaging_hit`, right after `damage` is computed and
+  *before* the `went_to_sub` branch that routes damage to a Substitute — placing it after
+  that branch would have missed the Substitute case entirely, since that branch `return`s
+  early. Verified in `m16d_test` S5.09/S5.10 with the opponent deliberately faster so its
+  Substitute is already up before Rapid Spin fires within the same turn (had the user been
+  faster, the hazard would clear from turn 1's direct hit before a Substitute ever existed,
+  failing to isolate the case being tested).
+- Source: `src/battle_script_commands.c :: Cmd_rapidspinfree` (L8578–8612): checks, in
+  order, wrapped (Bind/Wrap) → Leech Seed → hazards on the **user's own** side — and for
+  hazards, loops the hazard-type list and **returns after clearing the first match**, i.e.
+  Rapid Spin clears only ONE hazard type per use, not all of them at once. This project's
+  implemented hazard-type order (Spikes → Toxic Spikes → Stealth Rock, mirroring source's
+  `HAZARDS_SPIKES` → `HAZARDS_STICKY_WEB` → `HAZARDS_TOXIC_SPIKES` → `HAZARDS_STEALTH_ROCK`
+  enum with the unimplemented Sticky Web skipped) is replicated with a plain if/elif chain
+  checked once per use. Verified in `m16d_test` S5.03–S5.07 (only Spikes clears when all
+  three are simultaneously up; Toxic Spikes and Stealth Rock remain untouched).
+- Known gap (not modeled, noted rather than silently skipped): the wrapped/Bind-Wrap-clear
+  and Leech-Seed-clear branches ahead of the hazard-clear in `Cmd_rapidspinfree` are not
+  implemented — this project has no Bind/Wrap-style trapping moves or Leech Seed
+  implemented anywhere yet, so only the hazard-clearing branch (the one actually reachable
+  given this project's current move set) applies.
+- Rapid Spin (229): Normal/Phys, power=50, accuracy=100, pp=40, makes_contact=true.
+- 2026-07-02.
+
+### EFFECT_TRICK_ROOM
+- Source: `src/data/moves_info.h MOVE_TRICK_ROOM` (L11641–11661): `.target = TARGET_FIELD`,
+  `.priority = -7` (even lower than Roar/Whirlwind's -6 — confirmed from the M9 decisions
+  entry), `.ignoresProtect = TRUE`, `.pp = 5`.
+- Source: `src/battle_script_commands.c :: HandleRoomMove` (L9116–9121): **toggles** rather
+  than failing when already active — `if (gFieldStatuses & statusFlag) { clear it, timer=0
+  } else { set it, timer=5 }`. This is a real behavioral difference from every M16c screen
+  and the M16d hazard-setters (all of which *fail* on re-use rather than toggling) —
+  confirmed from source before implementing rather than assuming Trick Room follows the
+  same fail-on-repeat pattern as everything else in this milestone family. Verified in
+  `m16d_test` S6.09–S6.11 (re-using Trick Room while active cancels it immediately, does
+  *not* refresh to a fresh 5 turns).
+- Source: `src/battle_main.c :: GetWhichBattlerFasterArgs` (L4775–4821): priority is
+  compared **first** (`if (priority1 == priority2) { ...speed... } else if (priority1 <
+  priority2) strikesFirst = -1; else strikesFirst = 1;`) — the priority branch runs and
+  returns without ever consulting `STATUS_FIELD_TRICK_ROOM`. Only *within* a tied priority
+  bracket does the speed comparison invert under Trick Room (`speedBattler1 < speedBattler2`
+  normally means battler2 goes first; under Trick Room it means battler1 goes first —
+  i.e. lower effective speed wins the tiebreak). Traced this project's existing turn-order
+  code (`_phase_priority_resolution`'s `_turn_order.sort_custom` comparator,
+  `battle_manager.gd`) before touching it, per the task's explicit instruction, since this
+  is the first mechanic to alter turn order itself rather than just damage/stats: the
+  existing comparator already checks `pa != pb` (priority) *before* falling through to the
+  `sa != sb` (speed) comparison, so the fix is a single-line change — swap `sa > sb` for
+  `sa < sb` when `trick_room_turns > 0`, inserted at that exact point, leaving the priority
+  branch completely untouched. Verified in `m16d_test` S6.03–S6.08 (slower Pokémon acts
+  first under Trick Room; without Trick Room the same matchup has the faster one act first,
+  confirming the effect is really Trick Room's doing; a priority move from the naturally
+  faster Pokémon still goes first even under Trick Room, confirming priority is unaffected).
+- Behavior: `trick_room_turns: int` field on `BattleManager` (per-battle, not
+  `_side_conditions` — see the dedicated pattern note above). Decremented in
+  `_phase_end_of_turn`, same position as the M16c screen decrements. `trick_room_set` /
+  `trick_room_ended` signals added; `trick_room_ended` fires for **both** the toggle-off
+  and the natural 5-turn expiry (source doesn't distinguish the two causes structurally
+  either — both paths clear the same field-status bit via the same code shape).
+- Trick Room (433): Psychic/Status, accuracy=0, pp=5, priority=-7, ignores_protect=true.
+- 2026-07-02.
+
+### Switch-in hazard triggering: 5 call sites, hazards before abilities
+- Confirmed from source before wiring anything: `src/battle_switch_in.c`'s
+  `FIRST_EVENT_BLOCK_*` enum order is `HEALING_WISH → HAZARDS → GENERAL_ABILITIES →
+  IMMUNITY_ABILITIES → ITEMS` — **hazards fire before switch-in abilities** (Intimidate,
+  Drizzle/Drought, etc.), not after. New `_apply_switch_in_hazards(mon, side)` helper is
+  called immediately before every existing `_apply_switch_in_abilities(mon, side)` call
+  site, matching this order.
+- Found **5** switch-in call sites, not the 3 explicitly named in the task (voluntary
+  switch, forced switch, faint replacement) — grepped for every call to
+  `_apply_switch_in_abilities` rather than trusting the task's enumeration, per this
+  project's standing "search the repo structure before implementing" instruction:
+  1. `_phase_battle_start` — the initial simultaneous send-out (not explicitly requested,
+     but wired in for consistency with `_apply_switch_in_abilities` already being called
+     there for Intimidate/weather-setters, and to support pre-set-hazard test scenarios).
+  2. `_do_voluntary_switch` (explicitly requested).
+  3. `_do_forced_switch_in` — Roar/Whirlwind (explicitly requested).
+  4. `_do_switch_in` — faint replacement (explicitly requested).
+  5. The inline Baton Pass switch-in block in `_phase_move_execution` — this one does
+     **not** go through `_apply_switch_in_abilities` at all; it has its own hand-rolled
+     `AbilityManager.try_switch_in` call (a pre-existing simplification from M9, checking
+     only the immediate `defender` rather than looping all opposing combatants). Missing
+     this site would have left Baton Pass as a hazard-free switch-in path, contradicting
+     "every switch-in" — added `_apply_switch_in_hazards` there too, immediately before its
+     existing ability call.
+- A hazard-fainted switch-in is handled via the same generic mechanism as weather/status
+  chip damage (`mon.fainted = true; pokemon_fainted.emit(mon)`), relying on the existing
+  `FAINT_CHECK`/`SWITCH_PROMPT` machinery to prompt a replacement on the next pass through
+  those phases — not given dedicated chain-replacement testing in this milestone (not
+  required by the task's testing checklist), but doesn't crash or leave inconsistent state.
+- 2026-07-02.
+
+### Testing
+- `m16d_test.gd`/`.tscn`: 71 assertions covering move-data spot checks (all 5 moves plus
+  `_side_conditions`/`trick_room_turns` defaults), Spikes (opponent's-side targeting,
+  3-layer stacking with maxed-out failure, exact per-layer damage fraction for all 3
+  layers, Flying-type and Levitate-holder grounded immunity, persistence + damage across a
+  mid-battle switch), Toxic Spikes (1-layer poison vs 2-layer toxic threshold, Poison-type
+  absorb clearing the hazard without self-poisoning, Steel-type immunity without absorbing,
+  ungrounded Flying-type total immunity, 2-layer cap), Stealth Rock (single-application cap,
+  neutral/4×-weak/resistant exact damage fractions, hits a Flying-type switch-in unlike
+  Spikes), Rapid Spin (clears exactly one hazard type in Spikes→Toxic Spikes→Stealth Rock
+  order, no clear on a miss, clears even when the hit lands on the defender's Substitute),
+  and Trick Room (activation, exact speed-order reversal with a faster-vs-slower control
+  case, priority still overriding the reversal, toggle-off-not-refresh, natural 5-turn
+  expiry sequence).
+- Repeated the M16c-identified pitfall and its fix in three more places this milestone
+  (Spikes/Toxic Spikes/Stealth Rock multi-hazard Rapid-Spin ordering, and Trick Room's
+  toggle behavior): several Pokémon in this suite have only ONE repeatable move (Rapid
+  Spin, Trick Room), and since Trick Room *toggles* while Spikes/etc. can be **re-cast**
+  after their own effects clear, a long-running battle (bounded only by the phase cap or an
+  eventual faint) will legitimately cycle through multiple activations/clears/toggles.
+  Every assertion in this suite that depends on "what happened after exactly one specific
+  action" snapshots via a signal callback guarded to the first matching occurrence, never
+  by reading `_side_conditions`/`trick_room_turns` after the whole battle completes.
+- All tests use `_force_hit`/`_force_roll`/`_force_crit` plus directly-set
+  `_side_conditions`/`trick_room_turns`/`weather` for setup — no unforced RNG drives any
+  assertion.
+- Full regression: all prior suites (`battle_test` through `m16c_test`, plus `pp_test`,
+  `two_turn_test`, `integration_test`) still pass with 0 failures. Total assertions across
+  all numbered suites: 972 prior + 71 new = 1043.
+- 2026-07-02.
+
+---
+
+## [M16e] Tier E Move Effects — PURSUIT / PAIN_SPLIT / CONVERSION / CONVERSION_2 / PSYCH_UP / Baton Pass extension
+
+### Process: testing convention codified in CLAUDE.md
+- Before writing any M16e code, added a permanent "Testing convention: snapshot via
+  signals, not post-battle state" section to `CLAUDE.md` (under "Working style / instructions
+  for Claude Code"), since the pitfall had now independently bitten M16c and M16d. Future
+  milestone prompts can reference "see CLAUDE.md testing conventions" rather than
+  re-discovering the rule. M16e's own tests followed the rule from the start — and still hit
+  it twice during development (see Testing section below), confirming the rule is easy to
+  violate even when you know about it; every future milestone introducing persistent/
+  toggleable state should budget for this explicitly.
+
+### Pursuit — doubled power + turn-order interception
+- Source: `src/data/moves_info.h` `MOVE_PURSUIT` (L6223): `.effect = EFFECT_PURSUIT`,
+  `.power = 40`, `.type = TYPE_DARK`, `.accuracy = 100`, `.pp = 20`, `.category =
+  DAMAGE_CATEGORY_PHYSICAL`, `.makesContact = TRUE`.
+- Power doubling — Source: `src/battle_util.c` L6180-6182: `case EFFECT_PURSUIT: if
+  (gBattleStruct->battlerState[battlerDef].pursuitTarget) basePower *= 2;`. Reused the
+  existing M16b `power_override` plumbing (`DamageCalculator.calculate`'s `power_override`
+  param) rather than adding a new mechanism — same pattern as Rollout/Magnitude.
+- Turn-order interception — Source: `src/battle_script_commands.c` ::
+  `Cmd_jumpifnopursuitswitchdmg` (L8494), `src/battle_util.c` :: `SetTargetToNextPursuiter`
+  (L9827), `IsPursuitTargetSet` (L9850). Confirmed the exact detection mechanism: the source
+  fires this check right as a switch action is about to resolve, scanning LATER-in-turn-order
+  battlers for a queued Pursuit move (`gChosenActionByBattler[battler] == B_ACTION_USE_MOVE
+  && GetMoveEffect(...) == EFFECT_PURSUIT`) — it requires the target to have specifically
+  chosen a SWITCH action (not just any move), confirmed via `gCurrentTurnActionNumber`-based
+  lookahead into `gChosenActionByBattler`. `B_PURSUIT_TARGET >= GEN_4` (GEN_LATEST,
+  `include/config/battle.h`) means ANY opposing Pursuit user intercepts, not only one that
+  specifically targeted the switcher.
+- This project's existing turn order (`_phase_priority_resolution`'s `_turn_order.sort_custom`)
+  already sorts ALL switch actions before ALL move actions unconditionally (established in
+  M9, reaffirmed in M16d's Trick Room work) — meaning Pursuit's "hit before the switch"
+  behavior could NOT be modeled as a pure damage multiplier the way the task anticipated; it
+  genuinely requires overriding the switches-always-first rule for the specific
+  pursuer/switcher pair. Added two branches to the top of the comparator (before the existing
+  switch-priority check) plus a new `_pursuit_targets_switcher(pursuer_idx, switcher_idx)`
+  helper. Confirmed the power-doubling check (`_chosen_switch_slots[defender_idx] >= 0` at
+  the moment Pursuit's damage is computed) stays valid because `_chosen_switch_slots` for the
+  switcher is only cleared when THEIR OWN switch action executes — which, with the reordering,
+  happens strictly after the intercepting Pursuit user's action.
+- Deliberate simplification (documented, not fixed): source supports CHAINING multiple
+  pursuers against the same switcher one at a time via `MoveEndPursuitNextAction`
+  (`battle_move_resolution.c` L4321), re-evaluating `IsBattlerAlive` between each. This
+  project instead lets every intercepting Pursuit user act (in normal speed order) before the
+  switch resolves — identical outcome for the common 1-pursuer case; only diverges in the
+  rare multi-pursuer doubles case (out of scope; no test coverage claims accuracy there).
+- Verified: `m16e_test` S2.01–S2.07 — normal power matches the calculator's unmodified
+  result; doubled power (when the target chose to switch) exactly matches
+  `DamageCalculator.calculate(..., power_override=80)`, and is strictly greater than the
+  normal case; the damage lands on the ORIGINAL outgoing Pokémon (not the incoming
+  replacement, which is still at full HP at that exact moment); the queued switch still
+  completes afterward if the target survives.
+- 2026-07-02.
+
+### Pain Split — current-HP averaging (not max HP)
+- Source: `src/battle_script_commands.c` :: `Cmd_painsplitdmgcalc` (L7989-8006):
+  `hpDiff = (gBattleMons[gBattlerAttacker].hp + GetNonDynamaxHP(gBattlerTarget)) / 2` — plain
+  C integer division (floor for positive operands), confirmed CURRENT HP on both sides, not
+  max HP.
+- Rounding: floor, confirmed via `m16e_test` S3.05 with an odd sum (101+100 -> 100, not
+  101 or a fractional value).
+- Both directions verified independently (S3.01-3.04): user-higher-HP heals the target and
+  damages the user down to the average; target-higher-HP is the mirror image. Both mons
+  converge on the exact floored average in both cases.
+- Cannot faint either side: `floor((a+b)/2) >= 1` whenever both operands are `>= 1` (and
+  neither combatant can have `current_hp <= 0` while still eligible to act), so the "damage"
+  branch of `PassiveDataHpUpdate` (`src/battle_script_commands.c` L1547-1562, the non-heal
+  path) can never actually reduce a Pokémon to 0 via this move. Not explicitly asserted as a
+  separate test (would require contriving a fractional-HP edge case that can't occur given
+  integer HP), but relied upon by the implementation (`min(max_hp, hp_diff)` — see below).
+- Blocked by the target's Substitute: Pain Split has no `ignoresSubstitute` flag in source
+  (unlike Conversion 2 / Psych Up below), so the existing substitute-block pattern (mirroring
+  Encore's inline check) applies. Verified `m16e_test` S3.07-3.08.
+- Implementation note: `final_hp = min(own_max_hp, hp_diff)` reproduces source's
+  `PassiveDataHpUpdate` in one line — the negative-delta (heal) branch clamps to maxHP; the
+  positive-delta (damage) branch never needs clamping since `hp_diff < current_hp` implies
+  `hp_diff < max_hp` already. Verified equivalent by construction, not just by testing.
+- Pain Split (220): Normal/Status, accuracy=0, pp=20, power=0 (status category).
+- 2026-07-02.
+
+### Conversion — type <- literal first move slot
+- Source: `src/battle_script_commands.c` :: `Cmd_tryconversiontypechange` (L7449-7482),
+  `B_UPDATED_CONVERSION >= GEN_6` branch (GEN_LATEST, `include/config/battle.h` L72): scans
+  `moves[0..3]` for the first entry that isn't `MOVE_NONE` and uses THAT move's type — no
+  special-casing of Curse/Struggle/status-vs-damaging, confirmed by reading the loop directly
+  (it breaks on the first non-empty slot, full stop). Verified via `m16e_test` S4.06-4.07: a
+  status move (Growl, NORMAL) in slot 0 wins over a damaging move (Ember, FIRE) in slot 1.
+- Fails if the user is already that type — `IS_BATTLER_OF_TYPE(gBattlerAttacker, moveType)`
+  checked against the user's CURRENT types (both, if dual-typed) before the change, matching
+  the task's question directly: yes, it can fail this way, and the check is against the full
+  current typing, not just a single "primary type" slot.
+- On success, `SET_BATTLER_TYPE` (`include/battle.h` L797) makes the user MONO-typed — a
+  genuine replacement of both type slots, not "add a type." This project represents mono-type
+  as `[type, TYPE_NONE]` (the existing `PokemonSpecies.types` convention, confirmed via
+  `get_effectiveness`'s `TYPE_NONE` skip) rather than source's literal both-slots-equal
+  representation — functionally equivalent, verified via existing type-effectiveness code
+  paths rather than re-deriving them.
+- Implementation gotcha: an `Array[int]` typed-property is NOT safely reassignable via
+  `Array[int]([a, b])` constructor syntax in this GDScript 4.3 build in this position — it
+  parses but throws `Cannot call on an expression` at load time. Added a small
+  `_set_mon_type(mon, new_type)` helper using resize + index assignment instead, matching the
+  established typed-Array-assignment safe pattern from M9 (`_baton_pass_apply`).
+- Conversion (160): Normal/Status, accuracy=0, pp=30, ignores_protect=true.
+- 2026-07-02.
+
+### Conversion 2 — resist type <- the TARGET's last used move (not "last hit by")
+- Source: `include/config/battle.h` L73 — `B_UPDATED_CONVERSION_2 = GEN_LATEST` (>= GEN_5):
+  "changes the user's type to a type that resists the **last move used by the selected
+  target**. Before, it would consider the last move being successfully hit by." This directly
+  contradicts the task prompt's own example phrasing ("resists the type of the move that last
+  hit them") — that description is the PRE-Gen5 legacy behavior, not what GEN_LATEST config
+  implements. Confirmed by reading `Cmd_settypetorandomresistance`
+  (`src/battle_script_commands.c` L8009-8077) directly rather than trusting the task's
+  framing: the GEN_LATEST branch reads `gLastResultingMoves[gBattlerTarget]` /
+  `gLastUsedMoveType[gBattlerTarget]` — the move's own TARGET_SELECTED target (an opponent in
+  1v1; could in principle be an ally in doubles), not a "last hit the user" tracker.
+- Reused this project's existing `last_move_used` field directly (per the task's explicit
+  instruction to check for reusable "last move" infrastructure before adding a new tracker —
+  Mirror Coat/Counter's `last_physical_damage`/`last_special_damage` trackers were the wrong
+  fit since those are damage-received trackers, not move-identity trackers; `last_move_used`
+  — already used by Disable/Encore — was the correct match).
+- Fails if the target has no `last_move_used` yet, or that move's type is
+  None/Mystery/Stellar. Verified `m16e_test` S5.03-5.04 (very first action of the battle, no
+  prior move to reference).
+- Selection among multiple valid resisting types is UNIFORM RANDOM, not "first found" —
+  source rejection-samples `Random() % NUMBER_OF_MON_TYPES`, discarding both non-resisting
+  types and types the user already has, until a valid pick is found or the candidate set is
+  exhausted. Modeled the equivalent (and simpler) way: build the exclusion-filtered candidate
+  list up front, then pick uniformly from it — same distribution, confirmed by construction.
+  New `_force_conversion2_pick` test seam (index into the candidate list, sorted ascending by
+  `TypeChart.TYPE_*` id) mirrors the existing `_force_magnitude_power`/`_force_roar_rng`
+  null-sentinel convention. Verified the exclusion happens BEFORE indexing, not after:
+  `m16e_test` S5.05-5.06 forces index 0 with the user already holding the would-be index-0
+  candidate, and confirms the NEXT candidate is chosen instead.
+- Discriminating test (S5.07-5.08): the target's last move was Growl (NORMAL, status,
+  0 power) — dealt no damage to the user at all. Conversion 2 still succeeds and resists
+  NORMAL, proving the implementation is genuinely "target's last used move," not "last move
+  that hit the user" (which a 0-damage status move could never have satisfied).
+- Ignores Protect and Substitute — both explicit flags in source
+  (`.ignoresProtect = TRUE`, `.ignoresSubstitute = B_UPDATED_MOVE_FLAGS >= GEN_5` = GEN_LATEST
+  = true) — set directly on the move data; no extra code needed since Protect-blocking and
+  Substitute-blocking are both keyed off `move.ignores_protect`/`move.ignores_substitute` in
+  the existing pipeline.
+- Conversion 2 (176): Normal/Status, accuracy=0, pp=30, ignores_protect=true,
+  ignores_substitute=true.
+- 2026-07-02.
+
+### Psych Up — copies stat stages AND the Focus Energy crit-boost volatile
+- Source: `src/battle_script_commands.c` :: `Cmd_copyfoestats` (L8555-8575): copies all
+  `NUM_BATTLE_STATS` (7) `statStages` unconditionally (full overwrite, not additive), THEN —
+  gated on `GetConfig(B_PSYCH_UP_CRIT_RATIO) >= GEN_6` (`include/config/battle.h` L97 =
+  GEN_LATEST) — ALSO copies `volatiles.focusEnergy` (plus `dragonCheer`/`bonusCritStages`,
+  neither implemented in this project). Directly answers the task's explicit question: this
+  is NOT strictly-the-7-numeric-stages; confirmed from source rather than assumed, and the
+  Focus Energy copy is real GEN_LATEST behavior, not a legacy/pre-Gen6 footnote.
+- Verified `m16e_test` S6.01-6.02 (full 7-stage copy including negative stages) and S6.04
+  (overwrite semantics specifically — target has `focus_energy=false`, user starts `true`,
+  ends `false`, ruling out an accidental boolean-OR implementation).
+- Always hits (`accuracy=0`, already covered by the existing generic accuracy-check step
+  that runs before status-move dispatch); ignores Protect and Substitute (both explicit flags
+  in source) — same no-extra-code pattern as Conversion 2.
+- Psych Up (244): Normal/Status, accuracy=0, pp=10, ignores_protect=true,
+  ignores_substitute=true.
+- 2026-07-02.
+
+### Baton Pass — added the missing `focus_energy` passable
+- Read the full existing M9 Baton Pass implementation before touching it, per the task's
+  explicit instruction (`_baton_pass_save`/`_baton_pass_apply` in `battle_manager.gd`,
+  and the M9 decisions.md entry "Baton Pass — exact passable fields"). Found that M9 already
+  correctly implements the FULL passable set for every volatile that existed AT M9's time
+  (`stat_stages`, `confusion_turns`, `substitute_hp`) — the task's framing ("this milestone
+  extends it to actually pass stat stages and volatile statuses," implying nothing passed
+  yet) did not match the current code; M9 was already fully correct for its era.
+- The actual gap: `include/constants/battle.h`'s `VOLATILE_DEFINITIONS` macro (L209-266)
+  marks `VOLATILE_FOCUS_ENERGY` as `V_BATON_PASSABLE` (L236) — but Focus Energy wasn't
+  implemented in this project until M16a, seven milestones after M9's Baton Pass work, so it
+  was never added to the passable set. Fixed by adding `focus_energy` to both
+  `_baton_pass_save` and `_baton_pass_apply`, following the exact same shape as the existing
+  three fields.
+- Cross-checked EVERY OTHER volatile currently implemented in this project against the
+  `VOLATILE_DEFINITIONS` table to confirm nothing else was missing: `minimized`,
+  `defense_curled`, `destiny_bond`, `disabled_move`/`disable_turns`, `encored_move`/
+  `encore_turns`, `protect_active`/`protect_consecutive`, `rollout_turns`,
+  `choice_locked_move` — **none** of these appear in `V_BATON_PASSABLE`, so their absence
+  from the passable set is correct, not an oversight. Verified the negative case explicitly
+  (`m16e_test` S7.02): `minimized` does NOT baton pass.
+- Confirmed `confusion_turns` genuinely DOES baton-pass in this specific source
+  (`VOLATILE_CONFUSION` IS `V_BATON_PASSABLE`, L210) — this contradicts the task prompt's own
+  example ("confusion typically does NOT pass"), but the task's instruction is to follow
+  THIS repo's source, and M9 already implemented and tested this correctly (see M9's
+  decisions.md entry) — not re-litigated or changed here, just confirmed still correct and
+  noted explicitly since the task prompt's assumption pointed the other way.
+- Confirmed this doesn't need to interact with the M16d switch-in hazard/ability pipeline in
+  any new way: Baton Pass's own switch-in call site (`_apply_switch_in_hazards` then
+  `AbilityManager.try_switch_in`, wired during M16d) already fires AFTER
+  `_baton_pass_apply(incoming, saved)` in `_phase_move_execution` — passed-in volatiles are
+  already in place on the incoming Pokémon before hazards/abilities evaluate it, matching
+  source's `SwitchInClearSetData` (restores passables) running before
+  `AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...)` and hazard application in the
+  turn-order script. No code change needed here beyond the `focus_energy` field addition
+  itself.
+- Verified `m16e_test` S7.01 (focus_energy passes) and S7.02 (minimized still correctly
+  doesn't).
+- 2026-07-02.
+
+### Testing
+- `m16e_test.gd`/`.tscn`: 53 assertions covering move-data spot checks (all 5 new moves plus
+  Baton Pass's pre-existing field), Pursuit (normal vs. doubled power via direct
+  `DamageCalculator.calculate` comparison, turn-order interception hitting the original
+  switcher rather than the replacement, the switch still completing afterward), Pain Split
+  (both HP-averaging directions, floor rounding on an odd sum, Substitute block), Conversion
+  (type from literal first move slot including a status-move slot 0, already-that-type
+  failure), Conversion 2 (resist-type selection forced deterministic via
+  `_force_conversion2_pick`, no-last-move failure, exclusion-before-indexing, and the
+  discriminating "target's last move was a non-damaging status move" case), Psych Up (full
+  7-stage copy including negatives, focus_energy copy, overwrite-not-OR semantics), and Baton
+  Pass's `focus_energy` extension plus a `minimized`-still-excluded regression check.
+- Hit the CLAUDE.md-documented "snapshot via signals" pitfall TWICE more during this
+  milestone's own test development, despite writing the convention down first — both fixed
+  before being reported as passing:
+  1. The Pursuit replacement-damage check (`bench2.current_hp == bench2.max_hp`) originally
+     read `bench2`'s HP after `start_battle()` fully returned; since both mons survive turn 1,
+     the battle continues and `bench2` legitimately takes normal-power Pursuit damage on a
+     LATER turn once it's the active target — fixed by snapshotting `bench2.current_hp`
+     inside the same guarded `move_executed` callback that captures the Pursuit damage itself.
+  2. The Conversion 2 "fails with no last move" test originally checked
+     `changed2.is_empty()` after the full battle; since the user's only move is Conversion 2
+     and the opponent's Tackle establishes `last_move_used` after turn 1, a LATER Conversion 2
+     attempt legitimately succeeds — fixed by capturing a single combined
+     "first event of either kind" array instead of two independently-accumulating arrays, so
+     the assertion is unambiguously about the very first attempt only. Applied the same
+     combined-first-event pattern to the Pain Split Substitute-block test pre-emptively
+     before it could fail the same way (both mons there also only have one move each).
+  3. Separately (not a signals-vs-post-battle issue, a plain test-setup bug): the Pain Split
+     Substitute-block test initially set the target's `current_hp` below Substitute's own
+     HP cost (`maxHP / 4`), causing Substitute itself to fail on turn 1 for an unrelated
+     reason and confounding the result. A reminder that "keep every unrelated mechanic in a
+     test at full HP unless the test is specifically about that mechanic" is worth defaulting
+     to, not just the signals-vs-post-battle discipline.
+- All tests use `_force_hit`/`_force_roll`/`_force_crit`/`_force_conversion2_pick` for
+  determinism — no unforced RNG drives any assertion.
+- Full regression: all prior suites (`battle_test` through `m16d_test`, plus `pp_test`,
+  `two_turn_test`, `integration_test`) still pass with 0 failures. Total assertions across
+  all numbered suites: 1043 prior + 53 new = 1096.
+- 2026-07-02.
+
+---
+
+## [M16] Milestone complete — Tiers A through E, consolidated summary
+
+All five M16 sub-milestones are now complete. Per-tier assertion counts (each suite's own
+total, including that suite's move-data spot checks):
+
+| Tier | Moves/mechanics | Suite | Assertions |
+|------|------------------|-------|------------|
+| M16a | RESTORE_HP (Recover/Slack Off/Heal Order), FOCUS_ENERGY, GROWTH, OHKO (Guillotine/Horn Drill/Fissure/Sheer Cold) | `m16a_test` | 52 |
+| M16b | MINIMIZE, DEFENSE_CURL, Stomp `minimizeDoubleDamage`, ROLLOUT (+ Ice Ball), MAGNITUDE | `m16b_test` | 55 |
+| M16c | REFLECT, LIGHT_SCREEN, AURORA_VEIL, Brick Break screen-break | `m16c_test` | 60 |
+| M16d | SPIKES, TOXIC_SPIKES, STEALTH_ROCK, RAPID_SPIN, TRICK_ROOM | `m16d_test` | 71 |
+| M16e | PURSUIT, PAIN_SPLIT, CONVERSION, CONVERSION_2, PSYCH_UP, Baton Pass extension | `m16e_test` | 53 |
+
+M16 total new assertions: 52+55+60+71+53 = **291**. Combined with the 805 assertions from
+M1–M15 (the last pre-M16 total), the full regression suite now stands at **1096 assertions
+across 19 numbered scenes**, all green.
+
+New reusable patterns introduced across M16, for reference by future milestones:
+- `power_override` (M16b) — pass a computed base power into `DamageCalculator.calculate`,
+  bypassing `move.power`; reused as-is by Pursuit (M16e) with no changes needed.
+- `_side_conditions[side]` (M16c, extended M16d) — per-side (not per-Pokémon, not
+  per-battle) state: screens (turns-remaining ints) and hazards (layer counts / bool).
+- Per-battle top-level fields (`weather`/`weather_duration` from M11, `trick_room_turns`
+  from M16d) — for genuinely field-wide state, kept structurally distinct from
+  `_side_conditions`.
+- `AbilityManager.is_grounded()` (M16d) — general-purpose grounded check, reused by nothing
+  yet in M16e but available for future hazard/Gravity-adjacent work.
+- `_force_*` test seams with a `null` = real-RNG / non-null = pinned-value convention,
+  extended in M16e with `_force_conversion2_pick` — established as the standard way to make
+  any randomized selection deterministic for tests, going back to `_force_roar_rng` (M9).
+- Turn-order interception (M16e) — the first mechanic to reorder specific actions within a
+  turn based on cross-battler conditions (not just a global rule like Trick Room's speed
+  inversion). If a future move needs similar "jump the queue" behavior, look at
+  `_pursuit_targets_switcher` and the two branches at the top of
+  `_phase_priority_resolution`'s comparator as the template.
+- "Read the source's actual GEN_LATEST-config behavior, not the move's flavor text or a
+  plausible-sounding assumption" bit twice in M16e alone (Conversion 2's target-vs-hit-by
+  distinction, Baton Pass's confusion-passes contradiction) — the single most load-bearing
+  habit across all of M16, worth carrying into every future milestone unchanged.
+- 2026-07-02.
+
+---
+
+## [M16 Review] Milestone-end targeted audit — three risk areas
+
+A review pass over M16 (Tiers A–E), not a new milestone — verifying three specific risk
+areas that the M16a–M16e entries above already flagged or touched, rather than re-deriving
+mechanics from scratch. Per-area verdicts, stated plainly first:
+
+- **Area 1 (Baton Pass passable-volatiles completeness): no gap found, coverage added.**
+- **Area 2 (Conversion 2 last-used vs. last-hit-by test coverage): no code gap — the
+  implementation was already correct; the TEST coverage was incomplete, now fixed.**
+- **Area 3 (Trick Room × Pursuit turn-order integrity): no gap found, coverage added.**
+
+### Area 1 — Baton Pass passable-volatiles completeness
+
+- Re-read `include/constants/battle.h` :: `VOLATILE_DEFINITIONS` in full (not just the
+  `V_BATON_PASSABLE`-flagged subset previously cited) to build a complete cross-reference.
+  The macro list is accurate as previously cited in M9's decisions.md entry — no changes
+  since.
+- `Cmd_copyfoestats` (Psych Up, M16e) additionally copies `dragonCheer` and
+  `bonusCritStages`. Checked whether either exists anywhere in this codebase's
+  `BattlePokemon`: **neither is implemented** (only referenced in comments as
+  "unimplemented here" — `move_data.gd` L568/576, `battle_manager.gd` L1521). No gap,
+  because there's nothing to pass. Also noted: `bonusCritStages` itself is NOT
+  `V_BATON_PASSABLE` in source anyway (only `focusEnergy` and `dragonCheer` are, among the
+  three fields `Cmd_copyfoestats` touches) — so even if it existed, it wouldn't belong in
+  the Baton Pass passable set; Psych Up's copy of it is a separate, move-specific mechanic,
+  unrelated to the general Baton Pass macro.
+- Full audit table — every `BattlePokemon` field added M16a–M16e, cross-referenced against
+  `V_BATON_PASSABLE` and against `_baton_pass_save`/`_baton_pass_apply`:
+
+  | Field | Added | `V_BATON_PASSABLE` per source? | Currently passed? |
+  |---|---|---|---|
+  | `focus_energy` | M16a | YES (`VOLATILE_FOCUS_ENERGY`, L236) | YES (fixed in M16e) |
+  | `minimized` | M16b | NO (`VOLATILE_MINIMIZE`, no flag) | NO — correct |
+  | `defense_curled` | M16b | NO (`VOLATILE_DEFENSE_CURL`, no flag) | NO — correct |
+  | `rollout_turns` / `rollout_base_power` | M16b | N/A — no dedicated Rollout volatile carries the flag (closest analogues `VOLATILE_MULTIPLETURNS`/`VOLATILE_CHARGE_TIMER` also have no flag) | NO — correct |
+  | `_side_conditions` (screens M16c, hazards M16d) | M16c/d | N/A — side-wide (`gSideStatuses`/`gSideTimers`), not a battler volatile at all; untouched by `SwitchInClearSetData` regardless of Baton Pass | N/A — correctly out of scope |
+  | `trick_room_turns` | M16d | N/A — field-wide (`gFieldStatuses`), not a battler volatile | N/A — correctly out of scope |
+  | `species.types` override (Conversion / Conversion 2) | M16e | N/A — not part of `VOLATILE_DEFINITIONS` at all (type is a direct `gBattleMons[].types` field, not a volatile bitfield) | See flagged issue below — not a Baton Pass gap specifically |
+
+  Conclusion: `focus_energy` (already fixed in M16e) was the only implemented+passable
+  volatile that was missing. Every other M16a–M16e field is correctly excluded, matching
+  source exactly.
+- **Flagged (not fixed, out of scope for this review — a different bug class from what Area
+  1 asked about):** `_set_mon_type()` (M16e, `battle_manager.gd`) mutates
+  `attacker.species.types` directly and **nothing anywhere resets it** — not
+  `_clear_volatiles`, not `_switch_out_clear`, not on faint. In source, `gBattleMons[battler]`
+  is a battler-indexed struct that gets fully repopulated from the incoming Pokémon's party
+  data on every switch, so a Conversion-induced type change is implicitly discarded the
+  moment that battler slot is repopulated — it isn't part of the persistent per-Pokémon
+  state at all. In this project's architecture (one long-lived `BattlePokemon` object per
+  party member, not a repopulated-per-slot struct), the type mutation instead sticks to that
+  specific `BattlePokemon` object permanently, surviving even an ordinary voluntary
+  switch-out and switch-back-in later in the same battle — which is NOT what source does.
+  This is a real latent bug, but it's a "does any switch clear a Conversion type-change"
+  question, not a "Baton Pass passable volatiles" question (Baton Pass correctly doesn't
+  pass it either way, since it's not `V_BATON_PASSABLE`). Recommend a small follow-up task:
+  reset `species.types` to the original species types in `_clear_volatiles` (or a new
+  narrower helper), sourced from `RESTORE_BATTLER_TYPE` (`include/battle.h` L802-806).
+- Regression coverage added (`m16e_test.gd` S7.02–S7.04): confirmed `minimized`,
+  `defense_curled`, and `rollout_turns` all still correctly do NOT survive a Baton Pass, in
+  the same battle, alongside the existing `focus_energy`-passes check (S7.01).
+- 2026-07-02.
+
+### Area 2 — Conversion 2's resistance-selection test coverage
+
+- Read the existing Conversion 2 assertions (`m16e_test.gd` S5.01–S5.08 at review time).
+  S5.07/S5.08 already proved the target's last move counts even when it dealt zero damage
+  (Growl) — a necessary check, but not a full discriminator: it only rules out "requires a
+  hit to count at all," not "falls back to a PRIOR hit's type when one exists and differs
+  from the last-used move's type."
+- Added a direct-conflict test (S5.09/S5.10): the target's move that actually HIT the user
+  (Water Gun, WATER, turn 1) and the target's LATER last-used move (Growl, NORMAL, turn 2,
+  no damage) resist to genuinely different pool-index-0 candidates (WATER id 12 vs. ROCK
+  id 6 respectively) — not a coincidental match, deliberately chosen so a "last hit by"
+  implementation and the correct "last used" implementation would produce visibly different
+  results. Confirmed the result is ROCK (last-used/Growl), not WATER (last-hit/Water Gun).
+- **This WAS a testing gap** (no existing assertion could have caught a hypothetical
+  last-hit-by regression), but investigating the implementation
+  (`_phase_move_execution`'s `move.is_conversion2` block, `battle_manager.gd`) confirmed
+  there is no "last hit by" code path in this project at all for Conversion 2 — it reads
+  `defender.last_move_used` directly and unconditionally, the same field Disable/Encore
+  already use. There was no way for the old test suite to have been "accidentally passing
+  despite a bug," because the only implemented code path is already correct by construction.
+  Verdict: implementation was already correct; only the test coverage needed closing.
+- Caught and fixed a real bug in the NEW test itself while writing it (documented here since
+  it's exactly the CLAUDE.md-documented pitfall recurring yet again, this time during a
+  review pass rather than a milestone): the first draft queued 3 turns for the user
+  (tackle, tackle, conversion2) against only 2 queued turns for a FASTER opponent
+  (water_gun, growl). By the user's 3rd turn, the opponent's queue had drained and
+  auto-select re-used Water Gun (`moves[0]`) BEFORE the user's Conversion 2 executed that
+  same turn — silently re-overwriting `last_move_used` back to Water Gun and defeating the
+  discriminator (observed result: type_changed fired with WATER, looking exactly like a
+  real bug, until traced to the test's own turn-timing). Fixed by trimming the user's queue
+  to 2 turns so Conversion 2 lands immediately after Growl within the same turn the
+  opponent's queue provides it, before any auto-select fallback can re-fire.
+- 2026-07-02.
+
+### Area 3 — Turn-order integrity: Trick Room × Pursuit interaction
+
+- Read `_phase_priority_resolution`'s `sort_custom` comparator and `_pursuit_targets_switcher`
+  side by side. `_pursuit_targets_switcher(pursuer_idx, switcher_idx)` consults only
+  `_chosen_moves[pursuer_idx].is_pursuit`, `_chosen_switch_slots[switcher_idx]`, and side
+  membership — it never reads `StatusManager.effective_speed`, `trick_room_turns`, or
+  anything order-dependent. The two new interception branches sit at the TOP of the
+  comparator, before the priority/speed/Trick-Room comparison block, and `return`
+  immediately for any pair where exactly one side is switching and the other has Pursuit
+  queued against it — meaning Trick Room's speed-inversion code is never even reached for
+  that specific pair. For every OTHER pair (no switch involved, or both/neither switching),
+  the two new branches are unconditionally false and control falls through to the
+  pre-existing, unmodified priority/speed/Trick-Room logic. The two mechanisms are
+  structurally disjoint by construction — there is no shared state or code path where one
+  could corrupt the other.
+- Traced source's equivalent: `SetTargetToNextPursuiter` (`battle_util.c` L9827) scans
+  `gBattlerByTurnOrder[i]` for `i` from `gCurrentTurnActionNumber + 1` onward — this array is
+  the ALREADY-RESOLVED turn order (computed once via `GetWhichBattlerFasterArgs`-based
+  sorting earlier in the turn, which is where Trick Room's inversion actually happens).
+  Pursuit's interception is a second, independent reordering pass layered on top of
+  whatever the Trick-Room-aware base order already was — source doesn't special-case
+  Trick Room inside the Pursuit-interception logic at all, because by the time it runs,
+  Trick Room's effect is already baked into the order it's operating on. This project's
+  single-pass comparator (interception branches short-circuiting before the Trick-Room-aware
+  speed comparison) produces the same observable outcome via a different mechanism —
+  verified equivalent by construction, not just by testing.
+- New `scenes/battle/m16_review_test.gd`/`.tscn` (8 assertions, singles only):
+  - S1.01–S1.02: under Trick Room, a Pursuit user SLOWER than its target still intercepts
+    the switch (damage lands on the original switcher; the replacement is undamaged at that
+    exact snapshot moment).
+  - S1.03–S1.04: mirror case, a Pursuit user FASTER than its target — same result, proving
+    the interception decision is genuinely speed-independent in both directions.
+  - S1.05–S1.06: doubled power still exactly matches the calculator's `power_override=80`
+    result under Trick Room, and the queued switch still completes afterward.
+  - S2.01–S2.02: Trick Room's ordinary speed-reversal is UNCHANGED for a Pursuit-carrying
+    Pokémon when its target ISN'T switching this turn (a slower Pursuit user still acts
+    first under Trick Room, exactly like any other slower Pokémon, with a without-Trick-Room
+    control case confirming the effect is really Trick Room's doing) — proving the
+    interception branches don't leak into or suppress ordinary Trick-Room-governed
+    comparisons when no switch is involved.
+- **Explicitly flagged, not tested (per the task's own scope guard):** doubles ×
+  Trick Room × Pursuit (a third or fourth combatant's ordering, multiple simultaneous
+  switchers/pursuers) is untested — both the M16d Trick Room suite and the M16e Pursuit
+  suite are singles-only, and this review didn't expand into doubles. If a future task needs
+  this combination verified, start from `m16_review_test.gd`'s Section 1 as the template and
+  extend to `start_battle_doubles`.
+- 2026-07-02.
+
+### Testing / Regression
+
+- `m16e_test.gd`: 56/56 (was 53; +3 from Area 1's broadened S7 regression check and Area 2's
+  S5.09/S5.10 discriminator).
+- `m16_review_test.gd`/`.tscn` (new): 8/8.
+- Full regression: all prior suites (`battle_test` through `m16e_test`) still pass with 0
+  failures. Total assertions across all 21 numbered suites: 1096 prior + 3 (m16e additions)
+  + 8 (m16_review_test) = **1107**.
+- No production code changes resulted from this review — all three areas confirmed the
+  existing M16 implementation correct; the only changes were test additions and one
+  documented-but-deferred finding (the `species.types` switch-reset gap under Area 1).
+- 2026-07-02.
+
+---
+
+## [Follow-up fixes] Chilan Berry, Heavy Duty Boots, Conversion type-reset-on-switch
+
+Three independent, small, cited fixes — not a milestone. Each closes a gap explicitly
+flagged in an earlier decisions.md entry (M12's item gap I2, M16d's Stealth Rock section,
+and the `[M16 Review]` Area 1 finding).
+
+### Item 1 — Chilan Berry (Normal-type resist berry)
+
+- Source: `src/battle_util.c` :: `GetDefenderItemsModifier` (L7506-7524): `ctx->moveType ==
+  GetBattlerHoldEffectParam(...) && (ctx->moveType == TYPE_NORMAL || ctx->
+  typeEffectivenessModifier >= UQ_4_12(2.0))`. The `TYPE_NORMAL` branch bypasses the
+  effectiveness gate entirely — necessary because Normal-type moves can never reach 2.0×
+  (no type in `gTypeEffectivenessTable` is 2×-weak to Normal), so without this branch Chilan
+  Berry (`hold_effect=RESIST_BERRY`, `param=TYPE_NORMAL`) could never trigger.
+- Fix: `item_manager.gd :: defender_item_modifier_uq412` — changed the effectiveness gate
+  from `if effectiveness < 2.0: return 4096` to `if move.type != TypeChart.TYPE_NORMAL and
+  effectiveness < 2.0: return 4096`, evaluated AFTER the param-match check (order doesn't
+  matter functionally, kept for readability). No other resist-berry logic touched.
+- No canonical item ID was needed in code — this project has no persisted `data/items/*.tres`
+  convention for items despite M1's original stated intent (confirmed: `data/items/`
+  doesn't exist; M12's held-item work always constructed `ItemData` inline via
+  `ItemManager.HOLD_EFFECT_*` constants + explicit `hold_effect_param`, both in tests and in
+  the only production code path that reads items). Chilan Berry reuses the existing
+  `HOLD_EFFECT_RESIST_BERRY` constant (`item_manager.gd`, value 80) with
+  `hold_effect_param = TypeChart.TYPE_NORMAL` — no new constant required.
+- **Adjacent finding, not fixed (out of scope):** `data/items.json` (M15's data pipeline)
+  has `hold_effect_param: 0` for EVERY resist berry (Chilan, Occa, Wacan, Babiri, etc. all
+  checked) instead of their actual resisted type — a pre-existing pipeline gap, invisible
+  until now because `PokemonRegistry`'s item dict isn't wired into any BattlePokemon
+  construction path yet (party-building is future scope, per the Project Scope note). Not
+  fixed here since it's a JSON-pipeline-wide issue, not specific to Chilan Berry.
+- Canonical ID confirmed: `ITEM_CHILAN_BERRY = 549` (`include/constants/items.h` L679) —
+  not currently referenced anywhere in this codebase's GDScript (no ID-keyed item lookup
+  exists yet), recorded here for when that lookup is eventually built.
+- Tested: `item_test.gd` I11.01-I11.06 — halves damage from a Normal move at neutral (1×)
+  effectiveness, `defender_item_consumed` fires correctly, does NOT trigger for a non-Normal
+  move even when super-effective (param-mismatch still gates correctly), and fires in a
+  full battle integration test.
+- 2026-07-02.
+
+### Item 2 — Heavy Duty Boots (entry hazard immunity)
+
+- Source: `IsBattlerAffectedByHazards` (`battle_util.c` L9209-9228) — the single shared gate
+  checked at every `TryHazardsOnSwitchIn` call site (`battle_switch_in.c` L306-378): full
+  immunity (not a damage reduction) whenever `holdEffect == HOLD_EFFECT_HEAVY_DUTY_BOOTS`,
+  for Spikes, Toxic Spikes, and Stealth Rock alike.
+- Exact per-hazard gating order matters and differs subtly:
+  - **Spikes / Stealth Rock**: boots gate is unconditional — blocks regardless of type or
+    grounded status (Stealth Rock already ignores grounded per M16d; boots adds a second,
+    independent unconditional block).
+  - **Toxic Spikes**: source checks grounded FIRST, then `IS_BATTLER_OF_TYPE(POISON)`
+    (absorb) SECOND, and only reaches the boots gate in the else-if branch AFTER both —
+    meaning a grounded Poison-type still ABSORBS/clears Toxic Spikes regardless of Heavy
+    Duty Boots (the absorb check doesn't even look at held item). The boots only block the
+    "would be poisoned" outcome for a grounded NON-Poison-type.
+- Fix: new `ItemManager.HOLD_EFFECT_HEAVY_DUTY_BOOTS = 119` constant (position confirmed by
+  counting `include/constants/hold_effects.h`'s enum — same technique used to verify every
+  other `HOLD_EFFECT_*` constant already in this file, e.g. `RESIST_BERRY=80` and
+  `UTILITY_UMBRELLA=115` both independently re-verified this way as a sanity check) and a
+  new `ItemManager.is_hazard_immune(mon) -> bool` helper. Wired into
+  `BattleManager._apply_switch_in_hazards` as ONE shared `hazard_immune` bool computed once
+  at the top of the function (matching source's single shared gate), applied to: the Spikes
+  branch's `and` condition; the Toxic Spikes branch's "would be poisoned" `elif` condition
+  ONLY (NOT the Poison-type-absorb branch, which stays ungated per the ordering above); and
+  the Stealth Rock branch's `and` condition.
+- Canonical ID confirmed: `ITEM_HEAVY_DUTY_BOOTS = 510` (`include/constants/items.h` L637) —
+  same "no persisted item-data-file" note as Item 1 applies; recorded for future reference.
+- Tested: `item_test.gd` I12.01-I12.09 — holder takes no Spikes/Toxic-Spikes-poison/Stealth-
+  Rock damage or status; a non-holder in an identical setup IS still affected (confirms the
+  check doesn't accidentally suppress hazards globally); a grounded Poison-type holding the
+  boots still absorbs Toxic Spikes (confirms the absorb-before-boots-gate ordering).
+- 2026-07-02.
+
+### Item 3 — Conversion / Conversion 2 type-reset-on-switch bug
+
+- Corrects a misattribution from the `[M16 Review]` Area 1 entry: that entry cited
+  `RESTORE_BATTLER_TYPE` (`include/battle.h` L797-806) as the switch-reset mechanism, but
+  tracing every call site of that macro (`src/battle_util.c` L1731, inside
+  `TryToRevertMimicryAndFlags`) shows it's ONLY invoked for the Mimicry ABILITY's
+  terrain-based type reversion — unrelated to Conversion or general switching.
+- Actual source mechanism, found by tracing where `gBattleMons[battler].types[0] =
+  GetSpeciesType(...)` is set: `CopyMonAbilityAndTypesToBattleMon` (`battle_util.c`
+  L9365-9379) and `Cmd_switchindataupdate` (`battle_script_commands.c` L5030-5032) — both
+  fire at SWITCH-IN (not switch-out), repopulating `gBattleMons[battler].types` fresh from
+  `GetSpeciesType()` every time a Pokémon enters the field. Source's `gBattleMons[]` is a
+  battler-position-indexed struct that gets fully repopulated from party data on every
+  switch, so a Conversion-induced type change is implicitly discarded the moment that
+  battler slot is repopulated — it was never truly "reset on switch-OUT," it simply ceases
+  to be the active data the instant a different (or the same) Pokémon's fresh data is loaded
+  in on switch-IN.
+- Design decision: this project's `BattlePokemon` objects are long-lived (one per party
+  member for the whole battle, never repopulated-per-slot), so the source mechanism doesn't
+  translate directly. Added a `BattlePokemon.original_types: Array[int]` cache, captured
+  once in `from_species()` before any mutation can occur (`p_species.types.duplicate()`),
+  and a new `BattleManager._reset_mon_type(mon)` that restores `species.types` from that
+  cache. Confirmed before choosing this approach that `species` itself is never reassigned
+  after construction (only `.types` is mutated in place by the existing `_set_mon_type`), so
+  caching the ORIGINAL array once at construction time — rather than trying to re-derive
+  "natural" types from `species` after it's already been mutated — was the only viable
+  option; a same-species-shared-Resource concern was also checked and ruled out (every
+  `BattlePokemon` gets its own fresh `PokemonSpecies` instance, confirmed via both the test
+  harness's `_make_mon` helpers and the JSON-based `PokemonRegistry`, which returns plain
+  dicts rather than cached `Resource` objects).
+- Call sites: wired `_reset_mon_type` into the same 5 switch-IN call sites M16d's hazards
+  were wired into (`_phase_battle_start`, the inline Baton Pass switch-in block,
+  `_do_voluntary_switch`, `_do_forced_switch_in`, `_do_switch_in`) — NOT into
+  `_clear_volatiles`/`_switch_out_clear`, since the correct trigger per source is switch-IN,
+  not switch-out. Also reordered each site so `_reset_mon_type` runs BEFORE the
+  `pokemon_switched_in`/`baton_passed` signal emissions (previously the reset would have run
+  after, meaning an observer snapshotting type from those signals would have seen the
+  stale/mutated value) — a pure internal reordering with no behavioral change to hazards or
+  abilities, which already ran after either ordering.
+- No special handling needed for faint: a fainted Pokémon never re-enters the field, so
+  there's no "restore type after faint" scenario — confirmed by construction, since
+  `_reset_mon_type` is only called from switch-IN sites, never from the faint path.
+- Tested: `m16e_test.gd` S8.01-S8.02 — Conversion changes the user's type; the user
+  voluntarily switches out and back in later in the same battle; confirmed the type is back
+  to the original species type, not the Conversion-mutated one.
+- 2026-07-02.
+
+### Testing / Regression
+
+- `item_test.gd`: 77/77 (was 63; +14 across I11 Chilan Berry and I12 Heavy Duty Boots).
+- `m16e_test.gd`: 58/58 (was 56; +2 from the new Section 8 type-reset test).
+- Full regression: all other suites unchanged and still passing. Total assertions across
+  all 22 numbered suites: 1107 prior + 14 + 2 = **1123**.
+- No other code paths touched — each of the three fixes is independently scoped, as
+  requested.
+- 2026-07-02.

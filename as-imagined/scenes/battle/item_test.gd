@@ -29,6 +29,10 @@ extends Node
 #   I8:  Occa Berry (Resist Berry, Fire) — ×0.5 when super-effective (discriminating)
 #   I9:  Damp Rock — rain 8 turns (vs 5 without)
 #   I10: Utility Umbrella — negates rain/sun damage modifier (discriminating)
+#   I11: Chilan Berry (Resist Berry, Normal) — ×0.5 vs a Normal move even at 1× effectiveness
+#        (Follow-up fixes session, 2026-07-02; closes M12 decisions.md gap I2)
+#   I12: Heavy Duty Boots — full immunity to Spikes/Toxic Spikes/Stealth Rock on switch-in
+#        (Follow-up fixes session, 2026-07-02; closes the gap flagged in M16d's decisions.md)
 
 var _pass := 0
 var _fail := 0
@@ -45,6 +49,8 @@ func _ready() -> void:
 	_test_i8_occa_berry()
 	_test_i9_damp_rock()
 	_test_i10_utility_umbrella()
+	_test_i11_chilan_berry()
+	_test_i12_heavy_duty_boots()
 
 	var total := _pass + _fail
 	print("item_test: %d/%d passed" % [_pass, total])
@@ -780,3 +786,197 @@ func _test_i10_utility_umbrella() -> void:
 	_chk("I10.05 Umbrella irrelevant when no weather (same damage both ways)",
 			res_umb_no_weather["damage"] == res_no_weather["damage"])
 	attacker.held_item = null
+
+
+# ── I11: Chilan Berry (Resist Berry, Normal-type bypass) ──────────────────────
+# Follow-up fixes session, 2026-07-02 — closes M12 decisions.md gap I2.
+# Source: GetDefenderItemsModifier (battle_util.c L7510–7524):
+#   `ctx->moveType == GetBattlerHoldEffectParam(...) && (ctx->moveType == TYPE_NORMAL ||
+#    ctx->typeEffectivenessModifier >= UQ_4_12(2.0))` — the TYPE_NORMAL branch bypasses the
+#   effectiveness gate entirely, since a Normal-type move can never reach 2.0× (no type is
+#   2×-weak to Normal in this chart), which is exactly why Chilan Berry was unreachable
+#   before this fix.
+
+func _test_i11_chilan_berry() -> void:
+	var chilan := _make_item(ItemManager.HOLD_EFFECT_RESIST_BERRY, TypeChart.TYPE_NORMAL)
+	_chk("I11.01 Chilan Berry hold_effect=80, param=TYPE_NORMAL(1)",
+			chilan.hold_effect == 80 and chilan.hold_effect_param == TypeChart.TYPE_NORMAL)
+
+	var attacker := _make_mon("NormAtk", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			100, 80, 80, 100, 80, 80)
+	# Water defender: Normal → Water is a NEUTRAL 1.0× matchup (no type is weak to Normal
+	# at all in this chart) — proves the berry triggers WITHOUT any effectiveness boost.
+	var defender := _make_mon("WaterDef", TypeChart.TYPE_WATER, TypeChart.TYPE_NONE,
+			100, 80, 80, 80, 70, 40)
+	var tackle := _make_move("Tackle", TypeChart.TYPE_NORMAL, 0, 40)
+
+	var res_no_berry := DamageCalculator.calculate(attacker, defender, tackle, 100, false)
+	_chk("I11.02 defender_item_consumed=false with no berry", res_no_berry["defender_item_consumed"] == false)
+
+	defender.held_item = chilan
+	var res_berry := DamageCalculator.calculate(attacker, defender, tackle, 100, false)
+	_chk("I11.03 Chilan Berry halves damage from a Normal move at 1× effectiveness",
+			res_berry["damage"] == res_no_berry["damage"] / 2)
+	_chk("I11.04 defender_item_consumed=true when Chilan Berry triggers on a Normal move",
+			res_berry["defender_item_consumed"] == true)
+
+	# I11.05: Does NOT become a second copy of the generic resist-berry (super-effective-only)
+	# behavior — a non-Normal move, even a super-effective one, must NOT trigger a
+	# Normal-param berry (param mismatch: FIRE != NORMAL).
+	var fire_attacker := _make_mon("FireAtk3", TypeChart.TYPE_FIRE, TypeChart.TYPE_NONE,
+			100, 80, 80, 100, 80, 80)
+	var bug_defender := _make_mon("BugDef2", TypeChart.TYPE_BUG, TypeChart.TYPE_NONE,
+			100, 80, 80, 80, 70, 40)
+	var ember := _make_move("Ember", TypeChart.TYPE_FIRE, 1, 40)
+	bug_defender.held_item = chilan  # Normal-resist berry, but the incoming move is Fire
+	var res_fire := DamageCalculator.calculate(fire_attacker, bug_defender, ember, 100, false)
+	_chk("I11.05 Chilan Berry does NOT trigger for a non-Normal move (even super-effective)",
+			res_fire["defender_item_consumed"] == false)
+
+	# I11.06: Integration — item_consumed fires when Chilan Berry activates in a real battle.
+	var chilan_atk := _make_mon("ChilanAtk", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			100, 80, 80, 100, 80, 100)
+	chilan_atk.add_move(_make_move("Tackle", TypeChart.TYPE_NORMAL, 0, 40))
+	var chilan_def := _make_mon("ChilanDef", TypeChart.TYPE_WATER, TypeChart.TYPE_NONE,
+			100, 80, 80, 80, 70, 20)
+	chilan_def.held_item = _make_item(ItemManager.HOLD_EFFECT_RESIST_BERRY, TypeChart.TYPE_NORMAL)
+	chilan_def.add_move(_make_move("Splash", TypeChart.TYPE_WATER, 2, 0))
+
+	var bm := _make_bm()
+	var consumed_chilan := []
+	bm.item_consumed.connect(func(m, _i): consumed_chilan.append(m))
+	bm.start_battle(chilan_atk, chilan_def)
+	_chk("I11.06 item_consumed fired for Chilan Berry holder (berry activated in battle)",
+			consumed_chilan.any(func(m): return m == chilan_def))
+	bm.queue_free()
+
+
+# ── I12: Heavy Duty Boots ───────────────────────────────────────────────────
+# Follow-up fixes session, 2026-07-02 — closes the gap flagged in M16d's decisions.md.
+# Source: IsBattlerAffectedByHazards (battle_util.c L9209-9228): FULL immunity to Spikes,
+#   Toxic Spikes, and Stealth Rock alike (not a damage reduction) — same gate checked at
+#   every TryHazardsOnSwitchIn call site (battle_switch_in.c L306-378). For Toxic Spikes
+#   specifically, a grounded Poison-type still ABSORBS/clears the hazard regardless of the
+#   boots (that check happens in an earlier branch than the boots gate in source).
+# Uses the same signal-snapshot-at-battle-start pattern m16d_test.gd established for
+# hazard testing: pre-set `_side_conditions` before start_battle(), observe via signals.
+
+func _test_i12_heavy_duty_boots() -> void:
+	var boots := _make_item(ItemManager.HOLD_EFFECT_HEAVY_DUTY_BOOTS)
+	_chk("I12.01 Heavy Duty Boots hold_effect=119", boots.hold_effect == 119)
+
+	var tackle := _make_move("Tackle", TypeChart.TYPE_NORMAL, 0, 40)
+
+	# I12.02/I12.03: Spikes — holder takes no damage; a non-holder in the same setup does.
+	var spikes_holder := _make_mon("HDB_Sp1", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			800, 80, 80, 80, 80, 100)
+	spikes_holder.held_item = boots
+	spikes_holder.add_move(tackle)
+	var spikes_opp := _make_mon("HDB_Sp1O", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			80, 5, 80, 80, 80, 50)
+	spikes_opp.add_move(tackle)
+	var spikes_dmg_holder: Array[int] = []
+	var bm1 := _make_bm()
+	bm1._side_conditions[0]["spikes_layers"] = 3
+	bm1.hazard_damage.connect(func(p: BattlePokemon, amount: int, hz: String):
+		if p == spikes_holder and hz == "spikes":
+			spikes_dmg_holder.append(amount))
+	bm1.start_battle(spikes_holder, spikes_opp)
+	bm1.queue_free()
+	_chk("I12.02 Heavy Duty Boots holder takes no Spikes damage", spikes_dmg_holder.is_empty())
+
+	var spikes_nonholder := _make_mon("HDB_Sp2", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			800, 80, 80, 80, 80, 100)
+	spikes_nonholder.add_move(tackle)
+	var spikes_opp2 := _make_mon("HDB_Sp2O", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			80, 5, 80, 80, 80, 50)
+	spikes_opp2.add_move(tackle)
+	var spikes_dmg_nonholder: Array[int] = []
+	var bm2 := _make_bm()
+	bm2._side_conditions[0]["spikes_layers"] = 3
+	bm2.hazard_damage.connect(func(p: BattlePokemon, amount: int, hz: String):
+		if p == spikes_nonholder and hz == "spikes":
+			spikes_dmg_nonholder.append(amount))
+	bm2.start_battle(spikes_nonholder, spikes_opp2)
+	bm2.queue_free()
+	_chk("I12.03 Item absence doesn't suppress Spikes for everyone (non-holder still hit)",
+			spikes_dmg_nonholder.size() == 1 and spikes_dmg_nonholder[0] == spikes_nonholder.max_hp / 4)
+
+	# I12.04: Toxic Spikes — holder (non-Poison-type, grounded) is not poisoned.
+	var ts_holder := _make_mon("HDB_TS1", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			800, 80, 80, 80, 80, 100)
+	ts_holder.held_item = boots
+	ts_holder.add_move(tackle)
+	var ts_opp := _make_mon("HDB_TS1O", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			80, 5, 80, 80, 80, 50)
+	ts_opp.add_move(tackle)
+	var ts_status_holder: Array = []
+	var bm3 := _make_bm()
+	bm3._side_conditions[0]["toxic_spikes_layers"] = 2
+	bm3.hazard_status_applied.connect(func(p: BattlePokemon, s: int):
+		if p == ts_holder:
+			ts_status_holder.append(s))
+	bm3.start_battle(ts_holder, ts_opp)
+	bm3.queue_free()
+	_chk("I12.04 Heavy Duty Boots holder is not poisoned by Toxic Spikes",
+			ts_status_holder.is_empty())
+	_chk("I12.05 Heavy Duty Boots holder's status still STATUS_NONE",
+			ts_holder.status == BattlePokemon.STATUS_NONE)
+
+	# I12.06: Toxic Spikes — a grounded Poison-type STILL absorbs/clears it even while
+	# holding Heavy Duty Boots (absorb branch runs before the boots gate in source).
+	var ts_poison_holder := _make_mon("HDB_TS2", TypeChart.TYPE_POISON, TypeChart.TYPE_NONE,
+			800, 80, 80, 80, 80, 100)
+	ts_poison_holder.held_item = boots
+	ts_poison_holder.add_move(tackle)
+	var ts_opp2 := _make_mon("HDB_TS2O", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			80, 5, 80, 80, 80, 50)
+	ts_opp2.add_move(tackle)
+	var absorbed6: Array = []
+	var bm4 := _make_bm()
+	bm4._side_conditions[0]["toxic_spikes_layers"] = 1
+	bm4.hazard_absorbed.connect(func(side: int, hz: String):
+		if side == 0 and hz == "toxic_spikes":
+			absorbed6.append(true))
+	bm4.start_battle(ts_poison_holder, ts_opp2)
+	bm4.queue_free()
+	_chk("I12.06 A grounded Poison-type still absorbs Toxic Spikes even with Heavy Duty Boots",
+			absorbed6.size() == 1)
+
+	# I12.08/I12.09: Stealth Rock — holder takes no damage; a non-holder does.
+	var sr_holder := _make_mon("HDB_SR1", TypeChart.TYPE_FLYING, TypeChart.TYPE_NONE,
+			800, 80, 80, 80, 80, 100)
+	sr_holder.held_item = boots
+	sr_holder.add_move(tackle)
+	var sr_opp := _make_mon("HDB_SR1O", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			80, 5, 80, 80, 80, 50)
+	sr_opp.add_move(tackle)
+	var sr_dmg_holder: Array[int] = []
+	var bm5 := _make_bm()
+	bm5._side_conditions[0]["stealth_rock"] = true
+	bm5.hazard_damage.connect(func(p: BattlePokemon, amount: int, hz: String):
+		if p == sr_holder and hz == "stealth_rock":
+			sr_dmg_holder.append(amount))
+	bm5.start_battle(sr_holder, sr_opp)
+	bm5.queue_free()
+	_chk("I12.08 Heavy Duty Boots holder takes no Stealth Rock damage (even a 2×-weak Flying-type)",
+			sr_dmg_holder.is_empty())
+
+	var sr_nonholder := _make_mon("HDB_SR2", TypeChart.TYPE_FLYING, TypeChart.TYPE_NONE,
+			800, 80, 80, 80, 80, 100)
+	sr_nonholder.add_move(tackle)
+	var sr_opp2 := _make_mon("HDB_SR2O", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE,
+			80, 5, 80, 80, 80, 50)
+	sr_opp2.add_move(tackle)
+	var sr_dmg_nonholder: Array[int] = []
+	var bm6 := _make_bm()
+	bm6._side_conditions[0]["stealth_rock"] = true
+	bm6.hazard_damage.connect(func(p: BattlePokemon, amount: int, hz: String):
+		if p == sr_nonholder and hz == "stealth_rock":
+			sr_dmg_nonholder.append(amount))
+	bm6.start_battle(sr_nonholder, sr_opp2)
+	bm6.queue_free()
+	# Mono Flying-type vs Rock-type Stealth Rock = 2.0× (not 4.0×, which needs a dual-type
+	# combo) → maxHP/4 per _stealth_rock_damage's table (M16d).
+	_chk("I12.09 Item absence doesn't suppress Stealth Rock for everyone (non-holder still hit)",
+			sr_dmg_nonholder.size() == 1 and sr_dmg_nonholder[0] == sr_nonholder.max_hp / 4)

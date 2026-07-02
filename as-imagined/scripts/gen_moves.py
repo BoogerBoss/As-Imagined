@@ -683,6 +683,86 @@ MOVES = [
     {"id": 657, "name": "Aurora Veil",
      "type": TYPE_ICE, "category": STAT, "accuracy": 0, "pp": 20,
      "ignores_protect": True, "is_aurora_veil": True},
+
+    # ── M16d: Tier D move effects (hazards + Trick Room) ──────────────────────
+
+    # Spikes(191)  L5232  Ground/Status/0/0/20, opponent's field, ignoresProtect, layered (max 3)
+    #   Source: moves_info.h MOVE_SPIKES: .effect=EFFECT_SPIKES, .accuracy=0, .pp=20,
+    #   .target=TARGET_OPPONENTS_FIELD, .ignoresProtect=TRUE.
+    {"id": 191, "name": "Spikes",
+     "type": TYPE_GROUND, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "is_spikes": True},
+
+    # Rapid Spin(229)  L6247  Normal/Phys/50/100/40, contact, clears one hazard on own side
+    #   Source: moves_info.h MOVE_RAPID_SPIN: .effect=EFFECT_RAPID_SPIN,
+    #   .power=50 (B_UPDATED_MOVE_DATA>=GEN_8), .accuracy=100, .pp=40, .makesContact=TRUE.
+    {"id": 229, "name": "Rapid Spin",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 50, "accuracy": 100, "pp": 40,
+     "makes_contact": True, "is_rapid_spin": True},
+
+    # Toxic Spikes(390)  L10542  Poison/Status/0/0/20, opponent's field, ignoresProtect,
+    #   layered (max 2)
+    #   Source: moves_info.h MOVE_TOXIC_SPIKES: .effect=EFFECT_TOXIC_SPIKES, .accuracy=0,
+    #   .pp=20, .target=TARGET_OPPONENTS_FIELD, .ignoresProtect=TRUE.
+    {"id": 390, "name": "Toxic Spikes",
+     "type": TYPE_POISON, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "is_toxic_spikes": True},
+
+    # Trick Room(433)  L11641  Psychic/Status/0/0/5, field, priority=-7, ignoresProtect,
+    #   toggles a 5-turn speed-order reversal
+    #   Source: moves_info.h MOVE_TRICK_ROOM: .effect=EFFECT_TRICK_ROOM, .accuracy=0,
+    #   .pp=5, .target=TARGET_FIELD, .priority=-7, .ignoresProtect=TRUE.
+    {"id": 433, "name": "Trick Room",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 5,
+     "priority": -7, "ignores_protect": True, "is_trick_room": True},
+
+    # Stealth Rock(446)  L11969  Rock/Status/0/0/20, opponent's field, ignoresProtect,
+    #   single application (no layers), type-effectiveness-based damage
+    #   Source: moves_info.h MOVE_STEALTH_ROCK: .effect=EFFECT_STEALTH_ROCK, .accuracy=0,
+    #   .pp=20, .target=TARGET_OPPONENTS_FIELD, .ignoresProtect=TRUE.
+    {"id": 446, "name": "Stealth Rock",
+     "type": TYPE_ROCK, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "is_stealth_rock": True},
+
+    # ── M16e: Tier E move effects ──────────────────────────────────────────────
+
+    # Pursuit(228)  L6223  Dark/Phys/40/100/20, contact, doubles power vs a switching target
+    #   Source: moves_info.h MOVE_PURSUIT: .effect=EFFECT_PURSUIT, .power=40,
+    #   .accuracy=100, .pp=20, .makesContact=TRUE.
+    {"id": 228, "name": "Pursuit",
+     "type": TYPE_DARK, "category": PHYS, "power": 40, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "is_pursuit": True},
+
+    # Pain Split(220)  L6013  Normal/Status/0/0/20, selected target, averages current HP
+    #   Source: moves_info.h MOVE_PAIN_SPLIT: .effect=EFFECT_PAIN_SPLIT, .accuracy=0,
+    #   .pp=20, .target=TARGET_SELECTED.
+    {"id": 220, "name": "Pain Split",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
+     "is_pain_split": True},
+
+    # Conversion(160)  L4358  Normal/Status/0/0/30, self, ignoresProtect, type = first move's type
+    #   Source: moves_info.h MOVE_CONVERSION: .effect=EFFECT_CONVERSION, .accuracy=0,
+    #   .pp=30, .target=TARGET_USER, .ignoresProtect=TRUE.
+    {"id": 160, "name": "Conversion",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 30,
+     "ignores_protect": True, "is_conversion": True},
+
+    # Conversion 2(176)  L4822  Normal/Status/0/0/30, selected target, ignoresProtect,
+    #   ignoresSubstitute, type = a random type resisting the target's last move
+    #   Source: moves_info.h MOVE_CONVERSION_2: .effect=EFFECT_CONVERSION_2, .accuracy=0,
+    #   .pp=30, .target=TARGET_SELECTED (Gen5+), .ignoresProtect=TRUE,
+    #   .ignoresSubstitute=TRUE (B_UPDATED_MOVE_FLAGS >= GEN_5).
+    {"id": 176, "name": "Conversion 2",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 30,
+     "ignores_protect": True, "ignores_substitute": True, "is_conversion2": True},
+
+    # Psych Up(244)  L6673  Normal/Status/0/0/10, selected target, ignoresProtect,
+    #   ignoresSubstitute, copies target's stat stages + focus energy
+    #   Source: moves_info.h MOVE_PSYCH_UP: .effect=EFFECT_PSYCH_UP, .accuracy=0, .pp=10,
+    #   .target=TARGET_SELECTED, .ignoresProtect=TRUE, .ignoresSubstitute=TRUE.
+    {"id": 244, "name": "Psych Up",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "ignores_substitute": True, "is_psych_up": True},
 ]
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──
@@ -754,6 +834,18 @@ DEFAULTS = {
     "is_light_screen":           False,
     "is_aurora_veil":            False,
     "breaks_screens":            False,
+    # M16d fields
+    "is_spikes":                 False,
+    "is_toxic_spikes":           False,
+    "is_stealth_rock":           False,
+    "is_rapid_spin":             False,
+    "is_trick_room":             False,
+    # M16e fields
+    "is_pursuit":                False,
+    "is_pain_split":             False,
+    "is_conversion":             False,
+    "is_conversion2":            False,
+    "is_psych_up":               False,
 }
 
 HEADER = """\
@@ -793,6 +885,10 @@ FIELD_ORDER = [
     "is_rollout", "is_magnitude",
     # M16c fields
     "is_reflect", "is_light_screen", "is_aurora_veil", "breaks_screens",
+    # M16d fields
+    "is_spikes", "is_toxic_spikes", "is_stealth_rock", "is_rapid_spin", "is_trick_room",
+    # M16e fields
+    "is_pursuit", "is_pain_split", "is_conversion", "is_conversion2", "is_psych_up",
 ]
 
 
