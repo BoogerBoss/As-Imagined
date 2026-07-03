@@ -7,5 +7,4 @@ script = ExtResource("1")
 
 ability_id = 180
 ability_name = "Symbiosis"
-description = ""
-ai_rating = 0
+description = "Passes its item to an ally."

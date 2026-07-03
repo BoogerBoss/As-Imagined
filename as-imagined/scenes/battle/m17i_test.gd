@@ -498,9 +498,19 @@ func _test_section_9_neutralizing_gas_suppression() -> void:
 	ng_opp.add_move(tackle)
 
 	var healed_events := []
+	# Signal-snapshot, not post-battle state (CLAUDE.md convention): the battle runs to
+	# completion after this turn, and if `bench` later faints in the ensuing 1v1 fight
+	# against ng_opp, `switcher` gets pulled back in as faint-replacement and takes
+	# further damage in later turns — reading switcher.current_hp AFTER start_battle_
+	# with_parties() returns would then reflect that later combat, not the switch-out
+	# under test. Snapshot HP the instant pokemon_switched_out fires instead.
+	var hp_at_switch_out := [-1]
 	var bm := BattleManager.new()
 	add_child(bm)
 	bm.ability_healed.connect(func(p, amt): healed_events.push_back([p, amt]))
+	bm.pokemon_switched_out.connect(func(p, s):
+		if p == switcher and hp_at_switch_out[0] == -1:
+			hp_at_switch_out[0] = p.current_hp)
 
 	var player_party := BattleParty.new()
 	player_party.members = [switcher, bench]
@@ -512,7 +522,7 @@ func _test_section_9_neutralizing_gas_suppression() -> void:
 	_chk("S9.01 Regenerator did NOT heal the switching-out mon while Neutralizing Gas " +
 			"was active on the field",
 			not healed_events.any(func(e): return e[0] == switcher))
-	_chk("S9.02 the switching-out mon's HP is unchanged",
-			switcher.current_hp == 10)
+	_chk("S9.02 the switching-out mon's HP was unchanged at the moment it switched out",
+			hp_at_switch_out[0] == 10)
 
 	bm.queue_free()

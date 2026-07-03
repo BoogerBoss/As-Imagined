@@ -106,6 +106,8 @@ signal stat_changes_copied(user: BattlePokemon, from_mon: BattlePokemon)   # Psy
 
 signal ability_changed(pokemon: BattlePokemon, new_ability_id: int)       # M17h: Trace/Mummy/Receiver/Wandering Spirit
 
+signal item_transferred(from_mon: BattlePokemon, to_mon: BattlePokemon, item: ItemData)  # M17j: Pickpocket/Magician/Symbiosis
+
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
 
@@ -2733,6 +2735,21 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		ability_changed.emit(attacker, attacker.ability.ability_id)
 		ability_changed.emit(target, target.ability.ability_id)
 		ability_triggered.emit(target, contact_result["ability_name"])
+	if contact_result["pickpocket_stole"]:
+		# target (the Pickpocket holder) already holds the stolen item at this point
+		# (AbilityManager._try_steal_item mutates it directly).
+		item_transferred.emit(attacker, target, target.held_item)
+		ability_triggered.emit(target, contact_result["ability_name"])
+		_try_symbiosis(attacker)
+
+	# M17j: Magician — attacker's own ability firing after ANY damaging hit lands
+	# (contact not required, unlike Pickpocket above) — genuinely attacker-keyed, so
+	# dispatched directly here rather than through either defender-keyed dispatch above.
+	if AbilityManager.try_magician(attacker, target, damage, ng_active):
+		# attacker already holds the stolen item at this point.
+		item_transferred.emit(target, attacker, attacker.held_item)
+		ability_triggered.emit(attacker, "magician")
+		_try_symbiosis(target)
 
 	# M17b: non-contact-gated reactive stat abilities (Justified, Rattled, Water
 	# Compaction, Stamina, Weak Armor, Anger Point, Berserk, Anger Shell, Steam Engine,
@@ -2829,3 +2846,24 @@ func _consume_item(mon: BattlePokemon) -> void:
 		mon.current_hp = min(mon.max_hp, mon.current_hp + cp_heal)
 		ability_healed.emit(mon, cp_heal)
 		ability_triggered.emit(mon, "cheek_pouch")
+	# M17j: Symbiosis — this function is the single existing choke point every item
+	# consumption in this project already routes through (berries via Lum/Sitrus/resist-
+	# berry sites all call _consume_item), so wiring Symbiosis's check here covers every
+	# existing consumption path with one change, matching source's own broad "ally just
+	# lost its item, by any means" trigger shape.
+	_try_symbiosis(mon)
+
+
+# M17j: Symbiosis — called after `mon`'s held item was just removed by any means
+# (consumption via _consume_item, or theft via Pickpocket/Magician). Checks the ALLY's
+# ability (doubles-only; _get_ally already returns null in singles, so this is a
+# guaranteed no-op there with zero extra plumbing, matching [M17c]'s Hospitality/[M17h]'s
+# Receiver precedent).
+func _try_symbiosis(mon: BattlePokemon) -> void:
+	var ally: BattlePokemon = _get_ally(mon)
+	if ally == null:
+		return
+	var given_item: ItemData = ally.held_item
+	if AbilityManager.try_symbiosis(mon, ally, _is_neutralizing_gas_active()):
+		item_transferred.emit(ally, mon, given_item)
+		ability_triggered.emit(ally, "symbiosis")

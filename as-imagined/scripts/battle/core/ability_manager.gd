@@ -241,6 +241,20 @@ const ABILITY_LINGERING_AROMA:   int = 268
 const ABILITY_NATURAL_CURE:  int = 30
 const ABILITY_REGENERATOR:   int = 144
 
+# M17j: Item-transfer primitive (new infrastructure). Step 0 list re-verified against
+# Section 13's full exclusion sweep: none of the four appear anywhere in it.
+# Pickpocket's canonical ID is defined symbolically in source (`= ABILITIES_COUNT_GEN4`,
+# not a literal number) — independently recounted (`ABILITY_AIR_LOCK = 76`, then
+# `ABILITIES_COUNT_GEN3` auto-increments to 77, `ABILITY_TANGLED_FEET = ABILITIES_
+# COUNT_GEN3` restarts the Gen-4 literal sequence at 77, ..., `ABILITY_BAD_DREAMS = 123`,
+# then the unassigned `ABILITIES_COUNT_GEN4` lands on 124) to confirm it resolves to 124,
+# matching this project's pre-existing placeholder `.tres` (already present, unlike
+# Lingering Aroma's M17h-era gap).
+const ABILITY_STICKY_HOLD: int = 60
+const ABILITY_PICKPOCKET:  int = 124
+const ABILITY_MAGICIAN:    int = 170
+const ABILITY_SYMBIOSIS:   int = 180
+
 # M17h: source models FOUR distinct "can this ability be read from / changed away from"
 # flags in `src/data/abilities.h` — `cantBeTraced`, `cantBeCopied`, `cantBeSwapped`,
 # `cantBeOverwritten` — genuinely different from each other and from M17g's
@@ -472,6 +486,105 @@ static func try_switch_out(mon: BattlePokemon, ng_active: bool = false) -> Dicti
 			mon.toxic_counter = 0
 			result["cured_status"] = true
 	return result
+
+
+# M17j: Item-transfer primitive (new infrastructure). Shared low-level primitive that
+# moves `victim`'s held item onto `stealer` (stealer must currently hold none), gated on
+# Sticky Hold — the ONE place this check lives, reused by both Pickpocket's and
+# Magician's trigger logic below rather than duplicated in each.
+# Source: `StealTargetItem` (battle_script_commands.c L2055-2087) for the mechanical
+# move itself (`gBattleMons[itemBattler].item = ITEM_NONE;
+# gBattleMons[battlerStealer].item = gLastUsedItem;` — a plain one-directional move, never
+# an actual two-way swap, since both call sites only ever fire when the stealer already
+# has no item of its own); the explicit `ABILITY_STICKY_HOLD` checks guarding each of its
+# call sites are what's ported here (Pickpocket: battle_move_resolution.c L3971 — checked
+# on the ATTACKER being stolen from; Magician: battle_util.c L4454 — checked on the
+# TARGET being stolen from), both via the suppression-aware ability read (`cv->abilities`
+# is source's pre-resolved-per-turn ability cache; `GetBattlerAbility` respectively) —
+# matching this project's `effective_ability_id`.
+static func _try_steal_item(stealer: BattlePokemon, victim: BattlePokemon,
+		ng_active: bool = false) -> bool:
+	if stealer.held_item != null:
+		return false
+	if victim.held_item == null:
+		return false
+	if effective_ability_id(victim, ng_active) == ABILITY_STICKY_HOLD:
+		return false
+	stealer.held_item = victim.held_item
+	victim.held_item = null
+	return true
+
+
+# M17j: Pickpocket — on being hit by a contact move, steals the ATTACKER's item, if the
+# Pickpocket holder currently has none of its own. Source: `MoveEndPickpocket`
+# (battle_move_resolution.c L3944-3984): the Pickpocket HOLDER must be a battler other
+# than the current attacker that was damaged by a contact move this turn and itself holds
+# no item (`gBattleMons[battlerDef].item == ITEM_NONE`) — i.e. Pickpocket's holder is
+# always the one hit (the defender role in this project's dispatch shape), stealing FROM
+# whoever hit it. Dispatched from `try_contact_effects` below (defender-keyed, already
+# contact/damage/fainted-attacker-gated by that function's shared guards), matching
+# Static/Flame Body/Poison Point's existing inline shape rather than a separate
+# top-level wrapper.
+# `CanStealItem`'s Mail/Z-Crystal/species-form-change/Booster-Energy/Ogerpon-mask
+# exemptions (battle_util.c L8686-8708) are NOT modeled — this project implements none of
+# Mail, Z-moves, Mega/form-change items, Paradox Booster Energy, or Ogerpon, so every one
+# of those categories is a known, out-of-scope gap rather than a silently-dropped check.
+
+
+# M17j: Magician — on landing a damaging hit (contact NOT required — confirmed from
+# source, no `IsMoveMakingContact` check anywhere in this case, unlike Pickpocket),
+# steals the TARGET's item, if the Magician holder currently has none of its own and the
+# target still has one to take. Source: `battle_util.c` L4399-4465
+# (`ABILITYEFFECT_MOVE_END_FOES_FAINTED` switch, `ABILITY_MAGICIAN` case) — genuinely
+# attacker-keyed (the ATTACKER's own ability firing after ITS hit lands), unlike every
+# existing entry in `try_contact_effects`/`try_hit_reactive_effects`, which are all
+# defender-keyed reactions to being hit. This is why Magician gets its own top-level
+# function called directly from `BattleManager._do_damaging_hit`, rather than folded into
+# either of those two dispatches. Source's `EFFECT_FLING`/`EFFECT_NATURAL_GIFT`/
+# `EFFECT_FUTURE_SIGHT` exclusions (moves that already consume/reference an item
+# mid-resolution) are NOT modeled — none of Fling, Natural Gift, or Future Sight exist in
+# this project's move roster (confirmed via grep), a known, out-of-scope gap rather than
+# a silently-dropped check.
+static func try_magician(attacker: BattlePokemon, target: BattlePokemon, damage: int,
+		ng_active: bool = false) -> bool:
+	if damage <= 0:
+		return false
+	if attacker.fainted:
+		return false
+	if effective_ability_id(attacker, ng_active) != ABILITY_MAGICIAN:
+		return false
+	return _try_steal_item(attacker, target, ng_active)
+
+
+# M17j: Symbiosis — when an ally (doubles-only) has its held item removed by ANY means,
+# the Symbiosis holder immediately gives its OWN item to that ally, if the Symbiosis
+# holder currently has an item to give and the ally is now itemless. Source:
+# `TryTriggerSymbiosis`/`TrySymbiosis` (battle_util.c L9962-9990) + `BestowItem`
+# (battle_util.c L9998-10011, the one-directional "giver loses it, receiver gains it"
+# primitive — distinct from `_try_steal_item` above: Sticky Hold does NOT gate this side,
+# since the giver is voluntarily handing its item away, not having it removed by force;
+# whatever effect originally stripped the ally's item already had its own Sticky Hold
+# check, if applicable, before this function is ever reached). Source's further
+# exclusions (already-recorded-stolen no-re-trigger, Eject Button/Eject Pack hold
+# effects, gem-boost consumption, berry-damage-reduction consumption) are NOT modeled —
+# none of gems, Eject Button/Pack, or "berry reduced damage" tracking exist in this
+# project, a known, out-of-scope gap rather than a silently-dropped check.
+# `ally == null` (singles) is the exact value `BattleManager._get_ally` already returns
+# there, matching the established zero-extra-plumbing precedent (`[M17c]`'s Hospitality,
+# `[M17h]`'s Receiver).
+static func try_symbiosis(mon: BattlePokemon, ally: BattlePokemon,
+		ng_active: bool = false) -> bool:
+	if ally == null:
+		return false
+	if mon.held_item != null:
+		return false
+	if ally.held_item == null:
+		return false
+	if effective_ability_id(ally, ng_active) != ABILITY_SYMBIOSIS:
+		return false
+	mon.held_item = ally.held_item
+	ally.held_item = null
+	return true
 
 
 # M17g: the single suppression-aware chokepoint every ability-consuming function in
@@ -1476,6 +1589,7 @@ static func try_contact_effects(
 	var result := {
 		"rough_skin_damage": 0, "status_applied": 0, "speed_change": 0, "ability_name": "",
 		"mummy_overwritten_ability": -1, "wandering_spirit_swapped": false,
+		"pickpocket_stole": false,
 	}
 	if not move.makes_contact:
 		return result
@@ -1486,6 +1600,15 @@ static func try_contact_effects(
 
 	var id: int = effective_ability_id(defender, ng_active)
 	if id == ABILITY_NONE:
+		return result
+
+	# M17j: Pickpocket — defender (the Pickpocket holder, hit by this contact move) steals
+	# the attacker's item, if the defender currently holds none. Gated on Sticky Hold via
+	# the shared `_try_steal_item` primitive (checked on the attacker being stolen from).
+	if id == ABILITY_PICKPOCKET:
+		if _try_steal_item(defender, attacker, ng_active):
+			result["pickpocket_stole"] = true
+			result["ability_name"] = "pickpocket"
 		return result
 
 	if id == ABILITY_GOOEY or id == ABILITY_TANGLING_HAIR:

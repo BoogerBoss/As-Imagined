@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 124
 ability_name = "Pickpocket"
-description = ""
-ai_rating = 0
+description = "Steals the foe's held item."
+ai_rating = 3

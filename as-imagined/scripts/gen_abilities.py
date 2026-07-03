@@ -788,6 +788,50 @@ ABILITIES = [
     {"id": 144, "name": "Regenerator",
      "description": "Restores a little HP when withdrawn from battle.",
      "ai_rating": 8},
+
+    # ── M17j: Item-transfer primitive (new infrastructure) ──────────────────────────
+    # Source: docs/m17_recon.md Section 11's M17j proposal (infra flag #15/#10 group) —
+    # final list locked in docs/decisions.md [M17j]: Pickpocket, Sticky Hold, Magician,
+    # Symbiosis. Canonical IDs re-verified directly against
+    # include/constants/abilities.h (Pickpocket's is defined symbolically, independently
+    # recounted to confirm it resolves to 124 — see the citation on
+    # AbilityManager.ABILITY_PICKPOCKET).
+
+    # Source: src/data/abilities.h L459-465 — `.breakable = TRUE`. This flag has no
+    # reachable consumer among Pickpocket/Magician/Symbiosis's own dispatches in this
+    # project (Mold-Breaker-bypasses-Sticky-Hold requires the CURRENT move's attacker to
+    # BE a Mold Breaker holder while a DIFFERENT battler holds Sticky Hold — impossible
+    # for Pickpocket/Magician's own triggers, since Pickpocket/Magician occupy their own
+    # holder's one ability slot, which can't simultaneously be Mold Breaker). Set for data
+    # fidelity (same precedent as Truant's cant_be_overwritten in [M17h]) — this would
+    # become reachable the moment a Knock-Off/Thief/Covet-style MOVE is implemented, whose
+    # user could hold Mold Breaker while targeting a different Sticky-Hold-holding mon.
+    {"id": 60, "name": "Sticky Hold",
+     "description": "Prevents item theft.",
+     "ai_rating": 3, "breakable": True},
+
+    # Source: battle_move_resolution.c :: MoveEndPickpocket (L3944-3984): on being hit by
+    #   a contact move, steals the ATTACKER's item, if this Pokémon (the holder) itself
+    #   has none. No cant_be_* flags of its own (src/data/abilities.h L936-941).
+    {"id": 124, "name": "Pickpocket",
+     "description": "Steals the foe's held item.",
+     "ai_rating": 3},
+
+    # Source: battle_util.c L4399-4465 (ABILITYEFFECT_MOVE_END_FOES_FAINTED, ABILITY_
+    #   MAGICIAN case): on landing a damaging hit (contact NOT required), steals the
+    #   TARGET's item, if this Pokémon (the holder) itself has none. No cant_be_* flags
+    #   of its own (src/data/abilities.h L1283-1288).
+    {"id": 170, "name": "Magician",
+     "description": "Steals the foe's held item.",
+     "ai_rating": 3},
+
+    # Source: battle_util.c :: TryTriggerSymbiosis/TrySymbiosis (L9962-9990) + BestowItem
+    #   (L9998-10011): when an ally (doubles-only) has its held item removed by any
+    #   means, gives its OWN item to that ally, if this Pokémon (the holder) itself has
+    #   an item to give. No cant_be_* flags of its own (src/data/abilities.h L1362-1367).
+    {"id": 180, "name": "Symbiosis",
+     "description": "Passes its item to an ally.",
+     "ai_rating": 0},
 ]
 
 HEADER = """\

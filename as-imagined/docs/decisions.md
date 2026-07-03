@@ -4991,3 +4991,225 @@ holder's own item to an ally after the ally's item is consumed) and Sticky Hold 
 pure blocker (prevents item removal/theft) — both depend on the same shared
 item-transfer/removal primitive flag #10 first identifies, not separate mechanisms, per
 Section 11's own "design once, ship four abilities" framing.
+
+### Addendum (2026-07-03, during [M17j] resume): a real flaky-test bug found and fixed in this entry's own suite, plus a targeted check of `switch_test.tscn`'s known flakiness
+
+Before starting M17j, a fresh baseline sweep surfaced `m17i_test.tscn` at 34/35 (`FAIL:
+S9.02`) instead of the 35/35 recorded above — re-running several times confirmed it was
+genuinely intermittent, not a one-off fluke. Root cause: `S9.02` read
+`switcher.current_hp` **after** `start_battle_with_parties()` fully returned, the exact
+signal-snapshot-not-post-battle-state pitfall this project's own CLAUDE.md documents —
+the battle runs to completion, and if the bench mon (a 1v1 fight against the opposing
+Neutralizing Gas holder with no decisive stat edge) later lost, `switcher` got pulled
+back in as faint-replacement and took further damage before the assertion ran, corrupting
+the result on the unlucky runs. Fixed by snapshotting `current_hp` via the
+`pokemon_switched_out` signal (an `Array`-wrapped capture, guarded to the first
+occurrence) instead of reading it post-battle. Confirmed stable across 8 consecutive
+reruns after the fix, and the fresh full-sweep baseline reflects it: **1584 total
+assertions**, 0 failures.
+
+Given the shape of that bug (bench mon's fate depending on RNG timing, corrupting a
+post-battle field read), a targeted check of `switch_test.tscn`'s own long-standing,
+never-root-caused flakiness (occasionally reporting 62/64 instead of 64/64, first
+flagged around `[M17f]`) was worth a quick look before assuming it's unrelated. Result:
+`switch_test.gd`'s Section 6 (Baton Pass) already explicitly guards against this exact
+pitfall (its own comment: "Capture passable state at signal time — the substitute may be
+hit and confusion may decrement later in the same turn, so we must snapshot here, not at
+battle end" — `bp_confusion`/`bp_substitute` captured via the `baton_passed` signal).
+Section 5A (Roar) reads `opp1.confusion_turns`/`opp1.charging_move` **after** the full
+battle resolves, which superficially resembles the same risk (opp1 can indeed get pulled
+back onto the field later via faint-replacement once opp2, its 1-HP bench-mate, dies) —
+but tracing it through: neither field can actually be re-set to a nonzero/non-null value
+by anything else in that test's move roster (only Tackle is used anywhere in the test;
+nothing re-inflicts confusion or starts a two-turn move), so the post-battle read is
+safe in practice despite the superficially risky shape. Confirmed via 6 consecutive
+clean reruns (64/64 every time) in this same session. This specific pitfall is therefore
+**checked and ruled out** as `switch_test.tscn`'s flakiness root cause — the actual cause
+remains un-investigated and is out of scope for this quick check, exactly as it was left
+after `[M17f]`.
+
+## [M17j] Item-transfer primitive (new infrastructure) — Pickpocket / Sticky Hold / Magician / Symbiosis
+
+Scoping source: `docs/m17_recon.md` Section 11's M17j proposal ("Item-transfer primitive
+(new infra) + everything gated on it. Design the shared 'transfer/remove/give item'
+primitive (flag #15) once, then ship Pickpocket, Sticky Hold, Magician, Symbiosis
+together"). Fifth genuinely new-infrastructure tier in M17, after `[M17f]`'s trapping
+check, `[M17g]`'s suppression plumbing, `[M17h]`'s copy/overwrite plumbing, and `[M17i]`'s
+switch-out trigger hook.
+
+### Step 0 — finalized ability list
+
+**Pickpocket (124), Sticky Hold (60), Magician (170), Symbiosis (180)** — all four
+canonical IDs re-verified directly against `include/constants/abilities.h`; none appear
+anywhere in Section 13.1-13.4, so no correction was needed to Section 11's original
+four-ability grouping. Pickpocket's ID is defined symbolically in source
+(`ABILITY_PICKPOCKET = ABILITIES_COUNT_GEN4`, not a literal number) — independently
+recounted (`ABILITY_AIR_LOCK = 76` → `ABILITIES_COUNT_GEN3` auto-increments to 77 →
+`ABILITY_TANGLED_FEET = ABILITIES_COUNT_GEN3` restarts the Gen-4 literal sequence at 77 →
+… → `ABILITY_BAD_DREAMS = 123` → the unassigned `ABILITIES_COUNT_GEN4` lands on 124) to
+confirm it resolves to 124 — matching this project's pre-existing placeholder `.tres`,
+which (unlike Lingering Aroma's `[M17h]`-era gap) was already present for all four IDs
+this time, no new placeholder-generation pass needed.
+
+### Four genuinely different shapes, not one uniform "steal" ability
+
+Per this tier's own task framing (and confirmed by tracing each mechanic from source
+before writing any code), these four abilities are NOT interchangeable:
+
+- **Pickpocket (124)** — reactive, **defender-keyed**: on being hit by a contact move,
+  the Pickpocket holder (which must itself hold no item) steals the ATTACKER's item.
+  Source: `MoveEndPickpocket` (battle_move_resolution.c L3944-3984) — the holder must be
+  a battler OTHER than the current attacker that was damaged by a contact move this turn.
+  Dispatched from `try_contact_effects` (already defender-keyed, contact/damage/
+  fainted-attacker-gated by that function's existing shared guards), matching Static/
+  Flame Body/Poison Point's existing inline shape rather than a new top-level wrapper.
+- **Magician (170)** — reactive, but genuinely **attacker-keyed**, the opposite direction
+  from every existing entry in `try_contact_effects`/`try_hit_reactive_effects` (both of
+  which are defender-keyed reactions to being hit): the Magician holder's OWN ability
+  fires after ITS OWN hit lands, stealing the TARGET's item. Source: `battle_util.c`
+  L4399-4465 (`ABILITYEFFECT_MOVE_END_FOES_FAINTED`, `ABILITY_MAGICIAN` case) — confirmed
+  contact is NOT required (no `IsMoveMakingContact` check anywhere in this case, unlike
+  Pickpocket). This is exactly why Magician needed a genuinely new top-level function
+  (`AbilityManager.try_magician`) called directly from `BattleManager._do_damaging_hit`,
+  rather than folded into either existing defender-keyed dispatch.
+- **Sticky Hold (60)** — passive, and structurally a **blocker, not a trigger**: it never
+  fires anything itself, it gates whether Pickpocket/Magician's steal is allowed to
+  happen at all. Implemented as the ONE Sticky Hold check inside the shared
+  `AbilityManager._try_steal_item` primitive (see below), not duplicated per-ability —
+  exactly per this tier's own explicit design ask.
+- **Symbiosis (180)** — passive, **doubles-only**, and a **voluntary give**, not a steal:
+  when an ally's held item is removed by ANY means, the Symbiosis holder immediately
+  hands its OWN item to that ally (if it has one to give and the ally is now itemless).
+  Source: `TryTriggerSymbiosis`/`TrySymbiosis` (battle_util.c L9962-9990) +
+  `BestowItem` (L9998-10011) — a genuinely different one-directional primitive from
+  `StealTargetItem`, and Sticky Hold does NOT gate it (the giver is voluntarily handing
+  its item away, not having it forcibly removed — whatever effect originally stripped the
+  ally's item already had its own Sticky Hold check, if applicable, before Symbiosis is
+  ever reached).
+
+### The shared item-transfer primitive, and where Sticky Hold gates it
+
+`AbilityManager._try_steal_item(stealer, victim, ng_active) -> bool` is the ONE place
+Sticky Hold's block lives — reused by both Pickpocket's inline branch in
+`try_contact_effects` and `try_magician`, per this tier's explicit design requirement
+("that check lives in exactly one place rather than being duplicated"). Mirrors source's
+`StealTargetItem` (battle_script_commands.c L2055-2087): confirmed this is a plain
+one-directional move (`victim.held_item` → `stealer.held_item`, `victim.held_item = null`
+after), never an actual two-way exchange, since both real call sites only ever fire when
+the stealer already holds no item of its own (both Pickpocket's and Magician's own
+preconditions). Sticky Hold's gate is checked via `effective_ability_id(victim,
+ng_active)` — the suppression-aware read `[M17g]` established — matching source's own
+suppression-aware checks at both call sites (Pickpocket: battle_move_resolution.c L3971;
+Magician: battle_util.c L4454).
+
+Symbiosis uses a SEPARATE, simpler one-directional "give" (mirrors `BestowItem`) inlined
+directly in `try_symbiosis` rather than routing through `_try_steal_item` — deliberately,
+since Sticky Hold must NOT gate a voluntary give (see above).
+
+### Reuses existing `ItemManager`/`BattlePokemon` state — no parallel item-tracking mechanism
+
+All three transfer functions read and mutate `BattlePokemon.held_item` directly — the
+exact same field every existing M12/M16/M17c item mechanic already uses (Choice items,
+berries, Life Orb, Leftovers, Cheek Pouch, Ripen, Heavy Duty Boots). No new item-tracking
+field, no parallel "who holds what" registry — confirmed by reading `ItemManager` in full
+before writing any code, per this tier's own explicit ask to trace the existing
+representation first.
+
+### `AbilityData` field check, per the `[M17h]`-established discipline
+
+Checked `AbilityData` (`scripts/data/ability_data.gd`) in full before writing any code,
+per the standing rule `[M17h]` established. No dormant field exists for "this ability's
+item cannot be removed" — the six existing fields
+(`cant_be_copied`/`swapped`/`traced`/`suppressed`/`overwritten`, `breakable`) are all
+ability-copy/suppression concepts, genuinely unrelated to item-removal blocking. Sticky
+Hold's block is therefore correctly a direct ability-ID check inside
+`_try_steal_item`, not a data field — the same precedent `[M17f]`'s trapping check
+already set (Shadow Tag/Arena Trap/Magnet Pull are also direct ID checks inside
+`is_trapped()`, not `AbilityData` fields, since trapping is likewise a concept with no
+matching dormant field).
+
+One EXISTING field turned out to be directly relevant, though: source confirms Sticky
+Hold itself carries `.breakable = TRUE` (`src/data/abilities.h` L459-465) — set on its
+`.tres` for data fidelity (same precedent as Truant's `cant_be_overwritten` in `[M17h]`).
+Traced through carefully whether this has any reachable consumer among these four
+abilities' own dispatches: it does not. Mold-Breaker-bypasses-Sticky-Hold requires the
+CURRENT move's attacker to itself hold Mold Breaker while a DIFFERENT battler holds
+Sticky Hold — structurally impossible through Pickpocket's or Magician's own triggers,
+since each occupies its own holder's single ability slot (a mon can't simultaneously BE
+the Magician/Pickpocket holder AND a Mold Breaker holder). This flag would only become
+reachable once a Knock-Off/Thief/Covet-style MOVE exists, whose user could hold Mold
+Breaker while targeting a DIFFERENT, Sticky-Hold-holding mon — none of those moves exist
+in this project's roster yet (confirmed via grep), so this is untested-but-implemented
+(the `breakable` field is already correctly set and `effective_ability_id` already
+supports the `attacker` parameter that a future move would need to pass), not a
+silently-dropped check.
+
+`CanStealItem`'s further exemptions (Mail, Enigma Berry, species-form-change items,
+Z-Crystals, Paradox Booster Energy, Ogerpon masks — `battle_util.c` L8686-8708) and
+`TrySymbiosis`'s further exclusions (already-recorded-stolen no-re-trigger, Eject
+Button/Eject Pack, gem-boost consumption, berry-damage-reduction consumption) are NOT
+modeled — none of Mail, Z-moves, Mega/form-change items, Paradox forms, Ogerpon, gems, or
+Eject Button/Pack exist anywhere in this project, matching the established "known gap,
+doesn't apply since the mechanic doesn't exist" convention rather than silently dropping
+a real check.
+
+### New infrastructure
+
+- `AbilityManager._try_steal_item(stealer, victim, ng_active) -> bool` — the shared
+  primitive described above.
+- `AbilityManager.try_magician(attacker, target, damage, ng_active) -> bool` — new
+  top-level, attacker-keyed function.
+- `AbilityManager.try_symbiosis(mon, ally, ng_active) -> bool` — new top-level function;
+  `ally == null` (singles) is the exact value `BattleManager._get_ally` already returns
+  there, matching the zero-extra-plumbing precedent `[M17c]`'s Hospitality and `[M17h]`'s
+  Receiver both established.
+- Pickpocket added as a new branch inside the EXISTING `try_contact_effects` dispatch
+  (defender-keyed, contact-gated) — a new `"pickpocket_stole"` result key.
+- New `BattleManager.item_transferred(from_mon, to_mon, item)` signal, mirroring
+  `[M17h]`'s `ability_changed`/`[M16e]`'s `type_changed` shape.
+- New `BattleManager._try_symbiosis(mon)` wrapper, called from exactly ONE new site:
+  inside `_consume_item` itself — the single existing choke point every item consumption
+  in this project already routes through (every berry/Lum-Berry site calls
+  `_consume_item`), so this one addition automatically covers every existing consumption
+  path. Also called directly after Pickpocket's steal (checking the mon that just lost
+  its item, i.e. the attacker) and after Magician's steal (checking the target) in
+  `_do_damaging_hit`, since those two remove an item WITHOUT going through
+  `_consume_item` (a transfer, not a one-use consumption).
+
+### Testing / Regression
+
+New `m17j_test.gd`/`.tscn`: 48/48 assertions across 9 sections — ability data
+spot-checks (including Sticky Hold's `breakable=true`); Pickpocket direct unit tests
+(steal on contact, no-op when holder already has an item, no-op non-contact, no-op zero
+damage, no-op attacker-has-no-item, non-holder no-op); Magician direct unit tests
+(steal on a non-contact damaging hit, no-op when holder already has an item, no-op zero
+damage, no-op when target has no item, non-holder no-op, and a **type-immunity-precedes-
+ability-logic** test using a real `DamageCalculator.calculate()` call — Ground-type
+Earthquake vs. a Flying-type defender — confirming the 0-damage early return, not a
+hand-set `damage=0` stand-in); Symbiosis direct unit tests (ordinary give, singles
+no-op, no-item-to-give no-op, receiver-already-has-item no-op, non-Symbiosis-ally no-op);
+full-battle integration for Pickpocket; **Sticky Hold blocking Pickpocket in a full
+battle** (with the source-verified role correction — Sticky Hold on the ATTACKER being
+stolen from, not "the defender" as a surface reading of the ability's role might suggest,
+since Pickpocket's holder is always the one hit); full-battle Magician; a chained
+full-battle doubles scenario where an opposing Magician holder steals a player mon's item,
+which then triggers Symbiosis (held by that mon's ally) to hand over its own item —
+exercising the real `_do_damaging_hit`-driven removal path rather than a synthetic
+item-loss; and Neutralizing Gas suppression of all three trigger abilities.
+
+Full regression (direct foreground bash sweep, standard `pkill`/`timeout` discipline,
+plus the flaky-test fix and `switch_test.tscn` check documented in the addendum above):
+all 30 prior suite files unchanged and still passing, plus the new `m17j_test` at
+48/48 (stable across 6 consecutive reruns, including the doubles-targeted chained
+scenario). Total across all 31 `.tscn` files (`battle_test.tscn` remains narrative-only):
+1584 prior + 48 = **1632**, 0 failures.
+
+- 2026-07-03.
+
+### Next tier
+
+Section 11's next proposed tier, **M17k — Priority-move-block check (new infra) +
+Dazzling/Queenly Majesty/Armor Tail**, was re-checked against Section 13's full exclusion
+sweep before naming it here (the same discipline every prior tier's Step 0 has applied
+to its own list) — none of the three appears anywhere in Section 13.1-13.4, so no
+correction is needed to Section 11's original three-ability grouping.
