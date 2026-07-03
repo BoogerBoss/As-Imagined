@@ -163,6 +163,14 @@ const ABILITY_PRIMORDIAL_SEA:   int = 189
 const ABILITY_DESOLATE_LAND:    int = 190
 const ABILITY_DELTA_STREAM:     int = 191
 
+# M17f: Trapping check (new infrastructure) — Shadow Tag/Arena Trap/Magnet Pull.
+# Source: include/constants/abilities.h. docs/m17_recon.md Section 11's M17f proposal
+# (unchanged 3-ability group, infra flag #3) — cross-checked against Section 13's
+# exclusion sweep (13.1-13.4): none of the three appear anywhere in it, clean.
+const ABILITY_SHADOW_TAG:       int = 23
+const ABILITY_ARENA_TRAP:       int = 71
+const ABILITY_MAGNET_PULL:      int = 42
+
 
 # ── Tier 1: Passive stat modifiers ──────────────────────────────────────────
 
@@ -484,6 +492,56 @@ static func is_grounded(mon: BattlePokemon) -> bool:
 	if TypeChart.TYPE_FLYING in mon.species.types:
 		return false
 	return true
+
+
+# M17f: "can this Pokémon voluntarily switch" trapping gate.
+# Source: battle_util.c :: IsAbilityPreventingEscape (L4917-4941):
+#   - Ghost-types are exempt from ALL trapping abilities when
+#     B_GHOSTS_ESCAPE >= GEN_6 (this project runs GEN_LATEST throughout, matching
+#     damage_calculator.gd's header convention, so the exemption is unconditional here).
+#   - ABILITY_SHADOW_TAG: traps unconditionally UNLESS the trapped mon ALSO has Shadow
+#     Tag, which only exempts (mirror match, neither side trapped) when
+#     B_SHADOW_TAG_ESCAPE >= GEN_4 — also GEN_LATEST here, so the mirror exception
+#     always applies.
+#   - ABILITY_ARENA_TRAP: traps only a GROUNDED opponent (reuses is_grounded above).
+#   - ABILITY_MAGNET_PULL: traps only a Steel-type opponent.
+# Only gates VOLUNTARY switch selection. battle_manager.gd's _phase_move_selection calls
+# this right after a queued/AI-chosen switch sets _chosen_switch_slots, before it's
+# treated as this turn's real action. Forced switches (Roar/Whirlwind), faint-triggered
+# replacement, and Baton Pass never call this — see the call site's comment for why each
+# of those paths is architecturally separate from _chosen_switch_slots.
+# Shed Shell (the one item exemption source has) is not modeled: this project has no
+# Shed Shell item anywhere in ItemManager/data, so there is nothing to exempt.
+static func is_trapped(mon: BattlePokemon, live_opponents: Array) -> bool:
+	# This Ghost-type gate is deliberately the FIRST check and covers the whole function,
+	# not just the ability loop below. Source confirms this same B_GHOSTS_ESCAPE >= GEN_6
+	# check gates BOTH trapping mechanisms independently: IsAbilityPreventingEscape
+	# (L4919, abilities — what this function currently implements) AND CanBattlerEscape
+	# (L4947, the separate function behind move-based trapping volatiles — escapePrevention
+	# from Mean Look/Block/Spider Web, "wrapped" from Wrap/Fire Spin/Whirlpool/Sand
+	# Tomb/Clamp/Magma Storm/Infestation, "root" from Ingrain, and the STATUS_FIELD_FAIRY_LOCK
+	# field status) — i.e. the immunity is uniform across every trapping SOURCE in source,
+	# not an ability-specific carve-out. This project has none of those move-based
+	# volatiles yet (out of scope for M17, which is abilities only), but when they DO get
+	# built, they should gate through this same is_trapped() (or an equivalent single
+	# choke point) rather than reimplementing the Ghost check per-move — that's the whole
+	# reason this check sits above the loop instead of being threaded into each ability's
+	# own condition.
+	if TypeChart.TYPE_GHOST in mon.species.types:
+		return false
+	for opp: BattlePokemon in live_opponents:
+		if opp.ability == null:
+			continue
+		var opp_id: int = opp.ability.ability_id
+		if opp_id == ABILITY_SHADOW_TAG:
+			if mon.ability != null and mon.ability.ability_id == ABILITY_SHADOW_TAG:
+				continue
+			return true
+		if opp_id == ABILITY_ARENA_TRAP and is_grounded(mon):
+			return true
+		if opp_id == ABILITY_MAGNET_PULL and TypeChart.TYPE_STEEL in mon.species.types:
+			return true
+	return false
 
 
 # ── M17b: Stat-stage-system interactions ─────────────────────────────────────

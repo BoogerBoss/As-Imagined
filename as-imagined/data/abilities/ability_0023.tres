@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 23
 ability_name = "Shadow Tag"
-description = ""
-ai_rating = 0
+description = "Prevents the opposing Pokémon from fleeing or switching out."
+ai_rating = 9

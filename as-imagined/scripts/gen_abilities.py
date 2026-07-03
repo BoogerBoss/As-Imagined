@@ -653,6 +653,30 @@ ABILITIES = [
     {"id": 191, "name": "Delta Stream",
      "description": "The Pokémon summons strong winds when it enters a battle, weakening Flying-type weaknesses.",
      "ai_rating": 6},
+
+    # ── M17f: Trapping check (new infrastructure) ───────────────────────────────────
+    # Source: docs/m17_recon.md Section 11's M17f proposal (infra flag #3); final list
+    # locked in docs/decisions.md [M17f].
+
+    # Source: battle_util.c :: IsAbilityPreventingEscape (L4930-4931): traps all
+    #   opponents unconditionally, except a mirror match (both sides Shadow Tag) at
+    #   B_SHADOW_TAG_ESCAPE >= GEN_4 (GEN_LATEST here), and Ghost-types (always exempt
+    #   from all trapping abilities at B_GHOSTS_ESCAPE >= GEN_6, GEN_LATEST here).
+    {"id": 23, "name": "Shadow Tag",
+     "description": "Prevents the opposing Pokémon from fleeing or switching out.",
+     "ai_rating": 9},
+
+    # Source: battle_util.c :: IsAbilityPreventingEscape (L4933-4934): traps only
+    #   GROUNDED opponents (reuses AbilityManager.is_grounded).
+    {"id": 71, "name": "Arena Trap",
+     "description": "Prevents grounded opposing Pokémon from fleeing or switching out.",
+     "ai_rating": 8},
+
+    # Source: battle_util.c :: IsAbilityPreventingEscape (L4936-4937): traps only
+    #   Steel-type opponents.
+    {"id": 42, "name": "Magnet Pull",
+     "description": "Prevents Steel-type opposing Pokémon from fleeing or switching out.",
+     "ai_rating": 8},
 ]
 
 HEADER = """\

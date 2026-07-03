@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 42
 ability_name = "Magnet Pull"
-description = ""
-ai_rating = 0
+description = "Prevents Steel-type opposing Pokémon from fleeing or switching out."
+ai_rating = 8

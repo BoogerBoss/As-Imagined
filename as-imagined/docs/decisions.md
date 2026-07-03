@@ -4153,3 +4153,182 @@ first, never an immunity.
   signature changed). Total assertions across all 25 numbered suites:
   1394 prior + 30 = **1424**.
 - 2026-07-02.
+
+## [M17f] Trapping check (new infrastructure) — Shadow Tag / Arena Trap / Magnet Pull
+
+Scoping source: `docs/m17_recon.md` Section 11's M17f proposal ("Trapping check (new
+infra) + Shadow Tag/Arena Trap/Magnet Pull. Unchanged from the original recon's
+3-ability group (infra flag #3). Small, standalone tier."). First genuinely
+new-infrastructure tier since M14a — every M17a-d tier so far was pure reuse of
+existing call sites.
+
+### Step 0 — finalized ability list
+
+Re-checked Shadow Tag (23), Arena Trap (71), and Magnet Pull (42) against Section 13's
+full exclusion sweep (13.1 legendary/mythical/UB candidates, 13.2 Primal-trio
+re-litigation, 13.3 Mega-exclusive-only, 13.4 ordinary-co-holder exceptions) — none of
+the three appear anywhere in it. Canonical IDs re-verified directly against
+`include/constants/abilities.h`: `ABILITY_SHADOW_TAG = 23`, `ABILITY_MAGNET_PULL = 42`,
+`ABILITY_ARENA_TRAP = 71` — all match the recon exactly. Final list, unchanged from
+Section 11's proposal: **Shadow Tag (23), Arena Trap (71), Magnet Pull (42)**.
+
+### Source citation and mechanic
+
+`battle_util.c :: IsAbilityPreventingEscape` (L4917-4941), called from two selection-time
+sites in `battle_main.c`: the wild-battle "Run" menu option (L3993) and the
+`B_ACTION_SWITCH` case in the party-switch-menu handler (L4230-4238) — both gate the
+choice itself, before it's accepted as an action, never after. `CanBattlerEscape`
+(L4943), the separate function backing forced switches/faint-replacement/Baton Pass, has
+**no ability check at all** ("no ability check" is literally the function's own source
+comment) — confirming trapping is architecturally a selection-time-only gate in
+source, not a battle-wide "can this Pokémon ever leave" flag.
+
+Per-ability conditions, all read directly off `IsAbilityPreventingEscape`:
+- **Ghost-type exemption is global, not per-ability**: `GetConfig(B_GHOSTS_ESCAPE) >=
+  GEN_6` exempts a Ghost-type battler from ALL THREE trapping abilities in one early
+  return, before the per-ability loop even runs. This project runs GEN_LATEST
+  throughout (matching every prior GEN_LATEST config citation in this file), so the
+  exemption applies unconditionally here.
+- **Shadow Tag** (23): traps unconditionally, UNLESS the trapped battler ALSO has Shadow
+  Tag, which only exempts (mirror match — neither side traps the other) at
+  `B_SHADOW_TAG_ESCAPE >= GEN_4` — also GEN_LATEST here, so the mirror exception always
+  applies.
+- **Arena Trap** (71): traps only a GROUNDED opponent. Reuses `AbilityManager.is_grounded`
+  (built in M16d for hazards) directly — no new grounded-check logic needed.
+- **Magnet Pull** (42): traps only a Steel-type opponent.
+- **Shed Shell** (the one item-based exemption source has, `HOLD_EFFECT_SHED_SHELL`) is
+  **not modeled**: confirmed via direct grep that this project's `ItemManager`/data has
+  no Shed Shell item anywhere, so there is nothing to exempt. Noted here rather than
+  silently omitted, matching this project's convention for flagging known gaps (e.g.
+  M16d's Air Balloon/Magnet Rise omission from `is_grounded`).
+- Checked whether any existing ability-suppression mechanism (Mold Breaker/Neutralizing
+  Gas) needs to interact with trapping: confirmed via grep that neither exists anywhere
+  in this codebase yet (both are still unbuilt, per infra flag #4 / the proposed M17g
+  tier below) — no interaction code needed, nothing to gate against.
+
+### New infrastructure
+
+- `AbilityManager.is_trapped(mon: BattlePokemon, live_opponents: Array) -> bool` —
+  encodes the Ghost exemption, the Shadow Tag mirror exception, and the Arena
+  Trap/Magnet Pull per-type gates described above. Takes the same "live opponents"
+  shape `_apply_switch_in_abilities` already gathers (non-fainted, opposing-side
+  combatants), not a hidden global lookup, so it stays doubles-correct with zero extra
+  plumbing.
+- `BattleManager._get_live_opponents(mon) -> Array` — a small new accessor mirroring the
+  loop shape already inside `_apply_switch_in_abilities`, extracted so
+  `_phase_move_selection` can call it too.
+- Wired into `_phase_move_selection`: immediately after a queued/AI-chosen switch sets
+  `_chosen_switch_slots[i]` (matching source's selection-time gate, not an
+  execution-time one), a call to `is_trapped` blocks it — the slot resets to `-1` and
+  the mon falls back to its first move, reusing the exact fallback expression already
+  used elsewhere in the same function for "nothing else picked an action."
+- **Confirmed unaffected, by construction (different call paths, not a special-cased
+  exemption)**: forced switches (Roar/Whirlwind → `_do_forced_switch_in`), faint
+  replacement (`_phase_switch_prompt` → `_do_switch_in`), and Baton Pass (a move,
+  executed via `_chosen_moves`, never touches `_chosen_switch_slots` at all) — none of
+  these three call sites reads `_chosen_switch_slots` or calls `is_trapped`. This
+  mirrors `CanBattlerEscape`'s "no ability check" in source exactly.
+- Trapping only restricts the OPPONENT's switching; the ability holder's own side is
+  read from a completely disjoint set (`_get_live_opponents` explicitly excludes the
+  holder's own side), so nothing needed to be added to keep the holder itself free to
+  switch normally.
+
+### Testing / Regression
+
+New `m17f_test.gd`/`.tscn`, 28/28 assertions across 9 sections: ability-data spot-checks;
+12 direct `is_trapped` unit tests (positive traps for all three abilities; Arena Trap
+negative on Flying-type and on a Levitate holder; Magnet Pull negative on non-Steel;
+Ghost-type exemption against all three, including a dual Ghost/Steel mon against Magnet
+Pull specifically to prove the global exemption overrides the per-type gate; the Shadow
+Tag mirror-match exemption; a doubles-shape "trapped if ANY live opponent matches"
+check); full-battle integration for Shadow Tag blocking a voluntary switch (with the
+blocked mon's fallback move confirmed via `move_executed`, and a same-turn-vs-later-faint
+ambiguity resolved by ordering `pokemon_fainted`/`pokemon_switched_in` events rather than
+asserting "never switched in" outright); Arena Trap's Flying-type exemption and Magnet
+Pull's Steel-only gate confirmed via full battles where the switch actually succeeds;
+Roar bypassing trapping; Baton Pass bypassing trapping; faint replacement bypassing
+trapping; and the holder's own side switching freely. Per CLAUDE.md's
+type-immunity-precedes-ability-logic convention, every full-battle scenario uses
+Normal-type Tackle between non-Ghost defenders — the one relevant immunity in this
+tier's type set (Ghost/Normal) is confirmed absent from every scripted damage exchange;
+Ghost-type mons appear only in the direct `is_trapped` unit tests, which never call
+`DamageCalculator`.
+
+- `.tres` data: all 3 abilities added to `scripts/gen_abilities.py` and regenerated —
+  106 total `.tres` files (12 M8 + 32 M17a + 32 M17b + 22 M17c + 5 M17d + 3 M17f).
+- Full regression: all prior suites unchanged and still passing. Total assertions across
+  all 27 numbered suites: 1424 prior + 28 = **1452** (direct-count verification during
+  this sweep totaled 1476 across the actual 27 `.tscn` files present, indicating the
+  prior "25 suites" figure in `[M17d]`'s entry undercounted by one suite that already
+  existed at that time — not a regression, just a stale count; every suite passed clean
+  either way, 0 failures).
+- 2026-07-02.
+
+### Next tier
+
+M17e (Terrain system) is **void** — see `CLAUDE.md`'s status section for the full
+scope-decision rationale (all 10 terrain-reliant abilities excluded). Section 11's next
+proposed tier, **M17g — ability-suppression plumbing (Mold Breaker/Neutralizing Gas) +
+free-riders**, needs its own re-verification before implementation: Section 11's
+original M17g prose lists Turboblaze (163) and Teravolt (164) as "free-riders" once
+Mold Breaker's plumbing exists, but Section 13.1 later flags BOTH as legendary-exclusive
+(Reshiram/Kyurem-White and Zekrom/Kyurem-Black respectively) — under Rob's
+legendary-exclusivity standard, both should be excluded, the same correction pattern as
+Beast Boost in `[M17b]` and Orichalcum Pulse in `[M17d]`. Mycelium Might (298) is listed
+as only "partially" a free-rider in Section 11 (it also needs the separate turn-order
+Stall-shape half) and is NOT in Section 13's exclusion sweep, so it likely stays in
+scope pending its own Step 0 check when M17g is actually implemented. Not resolved
+further here — this is a pointer for the next implementation prompt, not a new tier
+proposal.
+
+### Follow-up (2026-07-02): general Ghost-type trapping immunity — verified already correct, extensibility comment added
+
+A follow-up task asked to re-verify the broader Gen 6+ rule that Ghost-types are immune
+to ALL trapping (not just Shadow Tag's own `B_SHADOW_TAG_ESCAPE` mirror-match exception),
+on the concern that M17f's original scope (which only asked about Shadow Tag's own
+condition) might have missed it. Re-checked against source rather than assuming either
+way:
+
+- `battle_util.c :: IsAbilityPreventingEscape` (L4919) and `CanBattlerEscape` (L4947,
+  the separate function behind move-based trapping volatiles — escapePrevention from
+  Mean Look/Block/Spider Web, `wrapped` from Wrap/Fire Spin/Whirlpool/Sand
+  Tomb/Clamp/Magma Storm/Infestation, `root` from Ingrain, `STATUS_FIELD_FAIRY_LOCK`)
+  both independently gate on the exact same `GetConfig(B_GHOSTS_ESCAPE) >= GEN_6 &&
+  IS_BATTLER_OF_TYPE(battler, TYPE_GHOST)` check — confirming the immunity is uniform
+  across BOTH ability-based and move-based trapping sources in source, not an
+  ability-specific carve-out layered onto Shadow Tag alone.
+- No `B_UPDATED_SHADOW_TAG` config flag exists anywhere in this project's
+  `pokeemerald_expansion` reference (`grep -rn "B_UPDATED_SHADOW_TAG"` — zero matches);
+  the only two relevant flags are `B_GHOSTS_ESCAPE` (the general immunity) and
+  `B_SHADOW_TAG_ESCAPE` (Shadow Tag's own separate mirror-match exception), both already
+  documented above.
+- **This project's `AbilityManager.is_trapped()` already implemented the general rule
+  correctly** — the `TypeChart.TYPE_GHOST in mon.species.types: return false` check was
+  already positioned as the FIRST line of the function, before the Shadow
+  Tag/Arena Trap/Magnet Pull loop, exactly matching source's structure (a single gate
+  covering all three, not threaded into each ability's own condition). No functional
+  code change was needed — this follow-up confirmed, rather than fixed, a gap.
+- **What WAS added**: an extensibility comment on `is_trapped()` (`ability_manager.gd`)
+  documenting that any future move-based trapping (Mean Look/Block/Spider Web/Ingrain/
+  the partial-trap moves) should route through this same function's Ghost gate rather
+  than reimplementing the check per-move when those moves are eventually built — those
+  moves are out of scope for M17 (abilities only) and no move-trapping infrastructure
+  was added now, per the task's explicit instruction.
+- New full-battle integration test, `m17f_test.gd` Section 3D: a Ghost-type opponent
+  voluntarily switches away freely despite an active Shadow Tag holder (the strongest of
+  the three trapping abilities, chosen specifically because it has no type/grounded
+  condition of its own to confuse with the Ghost gate). This closes the gap between the
+  original suite's unit-level Ghost checks (S2.07-S2.09, which already existed and
+  already covered Shadow Tag/Arena Trap/Magnet Pull individually, including a dual
+  Ghost/Steel mon proving the Ghost gate overrides Magnet Pull's own type condition) and
+  an actual `_phase_move_selection` voluntary-switch flow. Per CLAUDE.md's
+  type-immunity-precedes-ability-logic convention, this scenario sidesteps Ghost's
+  immunity to Normal-type Tackle entirely rather than fighting around it: this project's
+  switches-before-moves action ordering means the Ghost-type mon leaves the field on
+  turn 1 before any Tackle would ever be thrown at it.
+- `m17f_test.gd`/`.tscn`: 30/30 assertions (28 prior + 2 new). Full regression: all 27
+  suites still green. Total assertions across all 27 suites: 1478 (1476 prior + 2).
+- Roar/Whirlwind-style forced switches were re-confirmed unaffected by this follow-up —
+  no change was made to `_do_forced_switch_in` or any call site outside `is_trapped()`
+  itself, so Section 4's existing forced-switch-bypasses-trapping coverage still applies
+  unchanged.

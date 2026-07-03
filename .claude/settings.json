@@ -17,7 +17,9 @@
       "Bash(grep -n \"^ABILITIES = \\\\[\\\\|^\\\\]$\" scripts/gen_abilities.py)",
       "Bash(timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17b_test.tscn)",
       "Bash(grep -rn \"M17e\" /home/rob/GodotAsImagined/as-imagined/CLAUDE.md /home/rob/GodotAsImagined/as-imagined/docs/decisions.md /home/rob/.claude/projects/-home-rob-GodotAsImagined/memory/*.md)",
-      "Read(//home/rob/.claude/projects/-home-rob-GodotAsImagined/memory/**)"
+      "Read(//home/rob/.claude/projects/-home-rob-GodotAsImagined/memory/**)",
+      "Bash(grep -n \"M12: Choice lock enforcement\\\\|else:\\\\s*$\" /home/rob/GodotAsImagined/as-imagined/scripts/battle/core/battle_manager.gd)",
+      "Bash(timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17f_test.tscn)"
     ]
   }
 }

@@ -499,6 +499,19 @@ func _phase_move_selection() -> void:
 					_chosen_targets[i] = action["target"]
 		else:
 			_chosen_moves[i] = mon.moves[0] if mon.moves.size() > 0 else null
+		# M17f: Trapping check (Shadow Tag/Arena Trap/Magnet Pull) blocks VOLUNTARY
+		# switch selection only. Source: battle_main.c L4230-4238 (B_ACTION_SWITCH case
+		# in the switch-in-menu handler) gates the switch choice itself, before it's
+		# accepted as this turn's action -- same shape here, gating _chosen_switch_slots
+		# right after it's set from either the test queue or TrainerAI, before it's
+		# treated as a real action. Forced switches (Roar/Whirlwind -> _do_forced_switch_in),
+		# faint replacement (_phase_switch_prompt -> _do_switch_in), and Baton Pass (a move,
+		# never touches _chosen_switch_slots) are untouched -- none of them route through
+		# this block. A blocked switch falls back to the mon's first move, same fallback
+		# already used above when nothing else picked an action.
+		if _chosen_switch_slots[i] >= 0 and AbilityManager.is_trapped(mon, _get_live_opponents(mon)):
+			_chosen_switch_slots[i] = -1
+			_chosen_moves[i] = mon.moves[0] if mon.moves.size() > 0 else null
 		# M12: Choice lock enforcement — overrides whatever path set above.
 		# Source: gBattleStruct->chosenMovePositions[battler] checked in CanChooseMove.
 		# Only applies when not switching and not already locked by a charge move.
@@ -1910,6 +1923,23 @@ func _get_ally(mon: BattlePokemon) -> BattlePokemon:
 		if not ally.fainted:
 			return ally
 	return null
+
+
+# M17f: live (non-fainted, opposing-side) combatants for mon — same loop shape as
+# _apply_switch_in_abilities's live_opponents gathering. Used by the voluntary-switch
+# trapping gate (AbilityManager.is_trapped) in _phase_move_selection.
+func _get_live_opponents(mon: BattlePokemon) -> Array:
+	var idx: int = _combatants.find(mon)
+	var side: int = idx / _active_per_side if idx >= 0 else 0
+	var opponents: Array = []
+	for j in range(_combatants.size()):
+		if j / _active_per_side == side:
+			continue
+		var opp: BattlePokemon = _combatants[j]
+		if opp.fainted or opp.current_hp == 0:
+			continue
+		opponents.append(opp)
+	return opponents
 
 
 # Fire switch-in ability effects for new_mon against all live opposing combatants.
