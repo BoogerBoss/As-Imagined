@@ -19,7 +19,10 @@
       "Bash(grep -rn \"M17e\" /home/rob/GodotAsImagined/as-imagined/CLAUDE.md /home/rob/GodotAsImagined/as-imagined/docs/decisions.md /home/rob/.claude/projects/-home-rob-GodotAsImagined/memory/*.md)",
       "Read(//home/rob/.claude/projects/-home-rob-GodotAsImagined/memory/**)",
       "Bash(grep -n \"M12: Choice lock enforcement\\\\|else:\\\\s*$\" /home/rob/GodotAsImagined/as-imagined/scripts/battle/core/battle_manager.gd)",
-      "Bash(timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17f_test.tscn)"
+      "Bash(timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17f_test.tscn)",
+      "Bash(pkill -9 -f \"Godot.*--headless\")",
+      "Bash(timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path /home/rob/GodotAsImagined/as-imagined --import)",
+      "Bash(timeout 20 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path /home/rob/GodotAsImagined/as-imagined scenes/battle/m17h_test.tscn)"
     ]
   }
 }

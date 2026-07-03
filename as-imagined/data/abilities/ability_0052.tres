@@ -9,3 +9,4 @@ ability_id = 52
 ability_name = "Hyper Cutter"
 description = "Prevents other Pokémon from lowering its Attack stat."
 ai_rating = 5
+breakable = true

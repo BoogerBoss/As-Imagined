@@ -9,3 +9,4 @@ ability_id = 116
 ability_name = "Solid Rock"
 description = "Reduces the power of supereffective attacks taken."
 ai_rating = 7
+breakable = true

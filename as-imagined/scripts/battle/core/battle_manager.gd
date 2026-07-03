@@ -104,6 +104,8 @@ signal pain_split_used(attacker: BattlePokemon, defender: BattlePokemon)   # HP 
 signal type_changed(pokemon: BattlePokemon, new_type: int)                 # Conversion / Conversion 2
 signal stat_changes_copied(user: BattlePokemon, from_mon: BattlePokemon)   # Psych Up copied stat_stages (+ focus_energy)
 
+signal ability_changed(pokemon: BattlePokemon, new_ability_id: int)       # M17h: Trace/Mummy/Receiver/Wandering Spirit
+
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
 
@@ -509,7 +511,8 @@ func _phase_move_selection() -> void:
 		# never touches _chosen_switch_slots) are untouched -- none of them route through
 		# this block. A blocked switch falls back to the mon's first move, same fallback
 		# already used above when nothing else picked an action.
-		if _chosen_switch_slots[i] >= 0 and AbilityManager.is_trapped(mon, _get_live_opponents(mon)):
+		if _chosen_switch_slots[i] >= 0 and AbilityManager.is_trapped(
+				mon, _get_live_opponents(mon), _is_neutralizing_gas_active()):
 			_chosen_switch_slots[i] = -1
 			_chosen_moves[i] = mon.moves[0] if mon.moves.size() > 0 else null
 		# M12: Choice lock enforcement — overrides whatever path set above.
@@ -607,8 +610,9 @@ func _phase_priority_resolution() -> void:
 		var pb: int = move_b.priority if move_b else 0
 		if pa != pb:
 			return pa > pb
-		var sa: int = StatusManager.effective_speed(a, weather)
-		var sb: int = StatusManager.effective_speed(b, weather)
+		var ng_active: bool = _is_neutralizing_gas_active()
+		var sa: int = StatusManager.effective_speed(a, weather, ng_active)
+		var sb: int = StatusManager.effective_speed(b, weather, ng_active)
 		if sa != sb:
 			return sa < sb if trick_room_turns > 0 else sa > sb
 		return tiebreak[a] > tiebreak[b]
@@ -660,8 +664,9 @@ func _phase_pre_move_checks() -> void:
 	# (source L172); a thaws_user move skips the 20% roll and leaves the Pokémon
 	# frozen-but-acting; check_user_thaw in MOVE_EXECUTION then thaws it.
 	var chosen_move: MoveData = _chosen_moves[_combatants.find(actor)]
+	var ng_active: bool = _is_neutralizing_gas_active()
 	var check: Dictionary = StatusManager.pre_move_check(
-			actor, null, null, null, null, chosen_move)
+			actor, null, null, null, null, chosen_move, ng_active)
 
 	if check["self_hit_damage"] > 0:
 		var dmg: int = check["self_hit_damage"]
@@ -676,9 +681,9 @@ func _phase_pre_move_checks() -> void:
 			reason = "flinched"
 			# M17b: Steadfast — flinching raises the flinched Pokémon's own Speed +1.
 			# Source: battle_move_resolution.c :: CancelerFlinch (L303-307).
-			if actor.ability != null and actor.ability.ability_id == AbilityManager.ABILITY_STEADFAST:
+			if AbilityManager.effective_ability_id(actor, ng_active) == AbilityManager.ABILITY_STEADFAST:
 				var sf_actual: int = StatusManager.apply_stat_change(
-						actor, BattlePokemon.STAGE_SPEED, 1)
+						actor, BattlePokemon.STAGE_SPEED, 1, null, ng_active)
 				if sf_actual != 0:
 					stat_stage_changed.emit(actor, BattlePokemon.STAGE_SPEED, sf_actual)
 					ability_triggered.emit(actor, "steadfast")
@@ -700,6 +705,10 @@ func _phase_pre_move_checks() -> void:
 
 func _phase_move_execution() -> void:
 	var attacker: BattlePokemon = _turn_order[_current_actor_index]
+	# M17g: computed once for the whole function — every ability check below (Baton
+	# Pass switch-in, the generic stat-change handler, accuracy, Growth/Minimize/
+	# Defense Curl self-buffs, type immunity) shares the same field-wide snapshot.
+	var ng_active: bool = _is_neutralizing_gas_active()
 
 	if attacker.fainted:
 		_current_actor_index += 1
@@ -796,7 +805,7 @@ func _phase_move_execution() -> void:
 			#   {MOVE_EFFECT_STAT_PLUS, .defense=1, .self=TRUE, .onChargeTurnOnly=TRUE}
 			if move.charge_turn_defense_boost > 0:
 				var actual_boost: int = StatusManager.apply_stat_change(
-					attacker, BattlePokemon.STAGE_DEF, move.charge_turn_defense_boost)
+					attacker, BattlePokemon.STAGE_DEF, move.charge_turn_defense_boost, null, ng_active)
 				if actual_boost != 0:
 					stat_stage_changed.emit(attacker, BattlePokemon.STAGE_DEF, actual_boost)
 			attacker.charging_move = move
@@ -887,7 +896,7 @@ func _phase_move_execution() -> void:
 	# Source: battle_util.c L7696: case EFFECT_OHKO: dmg = gBattleMons[ctx->battlerDef].hp
 	if move.is_ohko:
 		# Type immunity (ability-based and type chart) — same checks as damaging moves.
-		if AbilityManager.blocks_move_type(defender, move.type):
+		if AbilityManager.blocks_move_type(defender, move.type, ng_active, attacker):
 			move_missed.emit(attacker, "immune")
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -981,7 +990,7 @@ func _phase_move_execution() -> void:
 	# ── Accuracy check ────────────────────────────────────────────────────────
 	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
 	# Includes semi-invulnerable miss check (source: CancelerAccuracyCheck L1993).
-	if not StatusManager.check_accuracy(attacker, defender, move, _force_hit):
+	if not StatusManager.check_accuracy(attacker, defender, move, _force_hit, ng_active):
 		# Source: SetSameMoveTurnValues, case EFFECT_ROLLOUT (L4899): increment requires
 		#   IsAnyTargetAffected() — a miss resets the consecutive-hit counter to 0.
 		if move.is_rollout:
@@ -1047,7 +1056,14 @@ func _phase_move_execution() -> void:
 		baton_passed.emit(attacker, incoming)
 		# Switch-in hazards then abilities fire for the incoming Pokémon.
 		_apply_switch_in_hazards(incoming, attacker_side)
-		var bp_si_result: Dictionary = AbilityManager.try_switch_in(incoming, defender, _get_ally(defender))
+		# M17g: recomputed fresh (not the outer `ng_active`) since `incoming` has just
+		# replaced `attacker` in `_combatants` — if `incoming` itself holds Neutralizing
+		# Gas, it should already suppress its own switch-in triggers' evaluation here,
+		# matching source's switch-in dispatch order (Neutralizing Gas's own activation
+		# is processed before ABILITYEFFECT_ON_SWITCHIN — battle_switch_in.c L56/L277).
+		var bp_ng_active: bool = _is_neutralizing_gas_active()
+		var bp_si_result: Dictionary = AbilityManager.try_switch_in(
+				incoming, defender, _get_ally(defender), bp_ng_active)
 		if bp_si_result["atk_change"] != 0:
 			stat_stage_changed.emit(defender, BattlePokemon.STAGE_ATK, bp_si_result["atk_change"])
 			ability_triggered.emit(incoming, "intimidate")
@@ -1059,13 +1075,17 @@ func _phase_move_execution() -> void:
 			ability_triggered.emit(defender, "defiant_competitive")
 		if bp_si_result["cured_own_poison"]:
 			ability_triggered.emit(incoming, "pastel_veil")
-		var bp_sss_actual: int = AbilityManager.try_switch_in_evasion(incoming, defender)
+		var bp_sss_actual: int = AbilityManager.try_switch_in_evasion(incoming, defender, bp_ng_active)
 		if bp_sss_actual != 0:
 			stat_stage_changed.emit(defender, BattlePokemon.STAGE_EVASION, bp_sss_actual)
 			ability_triggered.emit(incoming, "supersweet_syrup")
-		var bp_set_w: int = AbilityManager.get_switch_in_weather(incoming)
+		var bp_set_w: int = AbilityManager.get_switch_in_weather(incoming, bp_ng_active)
 		if bp_set_w != WEATHER_NONE and try_set_weather(bp_set_w, incoming):
 			weather_set.emit(incoming, bp_set_w)
+		# M17h: Trace is NOT wired into this separate Baton Pass switch-in block, the
+		# SAME known, already-documented simplification `[M17b]` accepted for Download
+		# and `[M17c]` accepted for Hospitality in this exact code path — not a new gap
+		# introduced by this tier.
 		move_executed.emit(attacker, defender, move, 0)
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
@@ -1329,11 +1349,11 @@ func _phase_move_execution() -> void:
 		if move.is_growth:
 			var growth_amt: int = 2 if weather == WEATHER_SUN else 1
 			var g_atk: int = StatusManager.apply_stat_change(
-					attacker, BattlePokemon.STAGE_ATK, growth_amt)
+					attacker, BattlePokemon.STAGE_ATK, growth_amt, null, ng_active)
 			if g_atk != 0:
 				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_ATK, g_atk)
 			var g_spatk: int = StatusManager.apply_stat_change(
-					attacker, BattlePokemon.STAGE_SPATK, growth_amt)
+					attacker, BattlePokemon.STAGE_SPATK, growth_amt, null, ng_active)
 			if g_spatk != 0:
 				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPATK, g_spatk)
 			if g_atk == 0 and g_spatk == 0:
@@ -1351,7 +1371,7 @@ func _phase_move_execution() -> void:
 		#   actually succeeded (MOVE_RESULT_STAT_CHANGED).
 		if move.is_minimize:
 			var min_actual: int = StatusManager.apply_stat_change(
-					attacker, BattlePokemon.STAGE_EVASION, 2)
+					attacker, BattlePokemon.STAGE_EVASION, 2, null, ng_active)
 			if min_actual != 0:
 				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_EVASION, min_actual)
 				attacker.minimized = true
@@ -1370,7 +1390,7 @@ func _phase_move_execution() -> void:
 		#   regardless of whether the Defense raise itself succeeded.
 		if move.is_defense_curl:
 			var dc_actual: int = StatusManager.apply_stat_change(
-					attacker, BattlePokemon.STAGE_DEF, 1)
+					attacker, BattlePokemon.STAGE_DEF, 1, null, ng_active)
 			if dc_actual != 0:
 				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_DEF, dc_actual)
 			else:
@@ -1604,8 +1624,16 @@ func _phase_move_execution() -> void:
 
 		if move.stat_change_stat >= 0:
 			var stat_target: BattlePokemon = attacker if move.stat_change_self else defender
+			# M17g: `attacker` threaded through here (not just `ng_active`) — this is
+			# THE genuine "a move's stat effect landing on a target" call site, where
+			# Mold Breaker's attacker-scoped bypass of Simple/Contrary/Clear Body/White
+			# Smoke/Hyper Cutter/Big Pecks/Keen Eye/Flower Veil actually matters. Safe to
+			# pass even for stat_change_self (Swords Dance etc.): effective_ability_id's
+			# own `attacker != mon` guard already skips Mold Breaker when stat_target is
+			# the attacker itself, matching source's CanBreakThroughAbility exactly.
 			var actual: int = StatusManager.apply_stat_change(
-					stat_target, move.stat_change_stat, move.stat_change_amount)
+					stat_target, move.stat_change_stat, move.stat_change_amount,
+					null, ng_active, attacker)
 			if actual == 0:
 				move_effect_failed.emit(stat_target, "stat_limit")
 			else:
@@ -1614,14 +1642,14 @@ func _phase_move_execution() -> void:
 				# OPPONENT's move (not stat_change_self, e.g. Swords Dance).
 				# Source: battle_util.c :: ShouldDefiantCompetitiveActivate (L1149-1168).
 				if actual < 0 and not move.stat_change_self:
-					var defiant_stat: int = AbilityManager.defiant_competitive_stat(stat_target)
+					var defiant_stat: int = AbilityManager.defiant_competitive_stat(stat_target, ng_active)
 					if defiant_stat != -1:
-						var defiant_actual: int = StatusManager.apply_stat_change(stat_target, defiant_stat, 2)
+						var defiant_actual: int = StatusManager.apply_stat_change(stat_target, defiant_stat, 2, null, ng_active)
 						if defiant_actual != 0:
 							stat_stage_changed.emit(stat_target, defiant_stat, defiant_actual)
 							ability_triggered.emit(stat_target, "defiant_competitive")
 		elif move.secondary_effect != MoveData.SE_NONE:
-			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move)
+			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move, null, ng_active)
 			if applied:
 				secondary_applied.emit(defender, move.secondary_effect)
 				# Synchronize: defender received a primary status — check back-reflect.
@@ -1661,10 +1689,23 @@ func _phase_faint_check() -> void:
 			# M17b: Moxie — Attack +1 for whoever's hit caused this faint.
 			# Source: battle_util.c L4467-4472; killer lookup reuses M14b's _last_attacker.
 			var moxie_killer: BattlePokemon = _last_attacker.get(combatant, null)
-			var moxie_actual: int = AbilityManager.moxie_boost(moxie_killer)
+			var moxie_actual: int = AbilityManager.moxie_boost(moxie_killer, _is_neutralizing_gas_active())
 			if moxie_actual != 0:
 				stat_stage_changed.emit(moxie_killer, BattlePokemon.STAGE_ATK, moxie_actual)
 				ability_triggered.emit(moxie_killer, "moxie")
+			# M17h: Receiver / Power of Alchemy — doubles-only (via _get_ally, which is
+			# already null in singles — same gating shape as M17c's Hospitality), copies
+			# THIS fainted mon's ability onto its surviving ally if that ally holds
+			# Receiver/Power of Alchemy. Source: `tryactivatereceiver BS_FAINTED`
+			# (data/battle_scripts_1.s L2739), part of the shared BattleScript_FaintBattler
+			# every faint runs through — this project fires it from the same
+			# pokemon_fainted-adjacent point M17b's Moxie already established.
+			var receiver_ally: BattlePokemon = _get_ally(combatant)
+			var received_id: int = AbilityManager.try_receiver_copy(
+					combatant, receiver_ally, _is_neutralizing_gas_active())
+			if received_id != -1:
+				ability_changed.emit(receiver_ally, received_id)
+				ability_triggered.emit(receiver_ally, "receiver_power_of_alchemy")
 			# Destiny Bond: KO the Pokémon that dealt the fatal blow (if still standing).
 			# M14b: use _last_attacker[combatant] rather than _get_first_opponent — in doubles
 			# the fatal hit may come from the second opposing slot, not the first.
@@ -1695,6 +1736,10 @@ func _phase_faint_check() -> void:
 
 
 func _phase_end_of_turn() -> void:
+	# M17g: computed once for the whole end-of-turn tick — Poison Heal, Truant's
+	# implicit gate (via pre_move_check next turn), and every ABILITYEFFECT_ENDTURN
+	# ability below share this same field-wide snapshot.
+	var ng_active: bool = _is_neutralizing_gas_active()
 	# ── M11: Weather duration tick (ENDTURN_WEATHER, position 2 in source handler table) ──
 	# Source: HandleEndTurnWeather → EndOrContinueWeather (battle_util.c L244):
 	#   if (weatherDuration > 0 && --weatherDuration == 0) → gBattleWeather = B_WEATHER_NONE
@@ -1738,7 +1783,7 @@ func _phase_end_of_turn() -> void:
 	for mon: BattlePokemon in _turn_order:
 		if mon.fainted:
 			continue
-		var dmg: int = StatusManager.end_of_turn_damage(mon)
+		var dmg: int = StatusManager.end_of_turn_damage(mon, ng_active)
 		if dmg > 0:
 			mon.current_hp = max(0, mon.current_hp - dmg)
 			status_damage.emit(mon, dmg)
@@ -1811,7 +1856,7 @@ func _phase_end_of_turn() -> void:
 			continue
 		var eot_result: Dictionary = AbilityManager.try_end_of_turn(
 				mon, _force_moody_raise, _force_moody_lower, weather, _get_ally(mon),
-				_force_shed_skin_roll, _force_healer_roll)
+				_force_shed_skin_roll, _force_healer_roll, ng_active)
 		var spd_actual: int = eot_result["speed_boost_change"]
 		if spd_actual != 0:
 			stat_stage_changed.emit(mon, BattlePokemon.STAGE_SPEED, spd_actual)
@@ -1831,7 +1876,7 @@ func _phase_end_of_turn() -> void:
 			mon.current_hp = max(0, mon.current_hp - eot_result["damage_amount"])
 			weather_damage.emit(mon, eot_result["damage_amount"])
 			var eot_dmg_tag: String = "solar_power" \
-					if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_SOLAR_POWER \
+					if AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_SOLAR_POWER \
 					else "dry_skin"
 			ability_triggered.emit(mon, eot_dmg_tag)
 		# M17c: Hydration / Shed Skin cure the holder's own status.
@@ -1942,6 +1987,13 @@ func _get_live_opponents(mon: BattlePokemon) -> Array:
 	return opponents
 
 
+# M17g: whether Neutralizing Gas is active anywhere on the field right now — checked
+# across ALL live combatants (both sides), unlike _get_live_opponents (one side only),
+# since Neutralizing Gas suppresses field-wide including the holder's own side.
+func _is_neutralizing_gas_active() -> bool:
+	return AbilityManager.is_neutralizing_gas_active(_combatants)
+
+
 # Fire switch-in ability effects for new_mon against all live opposing combatants.
 # Source: AbilityBattleEffects ABILITYEFFECT_ON_SWITCHIN (battle_util.c L3310–3323):
 #   for i in 0..gBattlersCount: if IsBattlerAlly(battler,i) || !IsBattlerAlive(i): continue
@@ -1969,7 +2021,8 @@ func _apply_switch_in_hazards(new_mon: BattlePokemon, mon_side: int) -> void:
 	if new_mon.fainted:
 		return
 	var sc: Dictionary = _side_conditions[mon_side]
-	var grounded: bool = AbilityManager.is_grounded(new_mon)
+	var ng_active: bool = _is_neutralizing_gas_active()
+	var grounded: bool = AbilityManager.is_grounded(new_mon, ng_active)
 	# Follow-up fixes session, 2026-07-02: Heavy Duty Boots — full immunity to all three
 	# hazard types, applied as one shared gate (see ItemManager.is_hazard_immune for the
 	# source citation and the Toxic-Spikes-absorb-still-applies nuance).
@@ -2003,7 +2056,7 @@ func _apply_switch_in_hazards(new_mon: BattlePokemon, mon_side: int) -> void:
 			# Veil's ally-wide poison immunity, so Toxic Spikes correctly can't poison a
 			# Steel-type, an already-statused Pokémon, or a Pastel-Veil-protected one,
 			# without re-deriving those checks here.
-			if StatusManager.try_apply_status(new_mon, ts_status, null, _get_ally(new_mon)):
+			if StatusManager.try_apply_status(new_mon, ts_status, null, _get_ally(new_mon), ng_active):
 				hazard_status_applied.emit(new_mon, ts_status)
 
 	# Stealth Rock — NOT grounded-gated (hits Flying-types and Levitate holders too), but
@@ -2046,6 +2099,11 @@ func _stealth_rock_damage(effectiveness: float, max_hp: int) -> int:
 func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 	var any_intimidated := false
 	var live_opponents: Array = []
+	# M17g: new_mon is already in _combatants by the time this runs, so this correctly
+	# reflects new_mon's own Neutralizing Gas if it just switched in with it — matching
+	# source's dispatch order (Neutralizing Gas's own activation is processed before
+	# ABILITYEFFECT_ON_SWITCHIN — battle_switch_in.c L56/L277).
+	var ng_active: bool = _is_neutralizing_gas_active()
 	for j in range(_combatants.size()):
 		if j / _active_per_side == mon_side:  # IsBattlerAlly: same side → skip
 			continue
@@ -2054,7 +2112,7 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 			continue
 		live_opponents.append(opp)
 		var opp_ally: BattlePokemon = _get_ally(opp)
-		var si_result: Dictionary = AbilityManager.try_switch_in(new_mon, opp, opp_ally)
+		var si_result: Dictionary = AbilityManager.try_switch_in(new_mon, opp, opp_ally, ng_active)
 		if si_result["atk_change"] != 0:
 			stat_stage_changed.emit(opp, BattlePokemon.STAGE_ATK, si_result["atk_change"])
 			any_intimidated = true
@@ -2067,28 +2125,35 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 		if si_result["cured_own_poison"]:
 			ability_triggered.emit(new_mon, "pastel_veil")
 		# M17b: Supersweet Syrup — same per-opponent loop shape as Intimidate, one-time only.
-		var sss_actual: int = AbilityManager.try_switch_in_evasion(new_mon, opp)
+		var sss_actual: int = AbilityManager.try_switch_in_evasion(new_mon, opp, ng_active)
 		if sss_actual != 0:
 			stat_stage_changed.emit(opp, BattlePokemon.STAGE_EVASION, sss_actual)
 			ability_triggered.emit(new_mon, "supersweet_syrup")
 	if any_intimidated:
 		ability_triggered.emit(new_mon, "intimidate")
 	# M17b: Download — needs the combined opposing side, not a per-opponent loop.
-	var download_stage: int = AbilityManager.download_stat(new_mon, live_opponents)
+	var download_stage: int = AbilityManager.download_stat(new_mon, live_opponents, ng_active)
 	if download_stage != -1:
-		var dl_actual: int = StatusManager.apply_stat_change(new_mon, download_stage, 1)
+		var dl_actual: int = StatusManager.apply_stat_change(new_mon, download_stage, 1, null, ng_active)
 		if dl_actual != 0:
 			stat_stage_changed.emit(new_mon, download_stage, dl_actual)
 			ability_triggered.emit(new_mon, "download")
+	# M17h: Trace — same "sees all live opponents at once" shape as Download, not the
+	# per-opponent Intimidate-style loop above (source picks between exactly the two
+	# opposing field slots, matching what live_opponents already contains in doubles).
+	var traced_id: int = AbilityManager.try_trace(new_mon, live_opponents, ng_active)
+	if traced_id != -1:
+		ability_changed.emit(new_mon, traced_id)
+		ability_triggered.emit(new_mon, "trace")
 	# M11: Drizzle / Drought — set field weather on switch-in.
 	# Source: ABILITY_DRIZZLE / ABILITY_DROUGHT case in ABILITYEFFECT_ON_SWITCHIN
 	#   calls TryChangeBattleWeather (battle_util.c L3213, L3242).
-	var set_w: int = AbilityManager.get_switch_in_weather(new_mon)
+	var set_w: int = AbilityManager.get_switch_in_weather(new_mon, ng_active)
 	if set_w != WEATHER_NONE and try_set_weather(set_w, new_mon):
 		weather_set.emit(new_mon, set_w)
 	# M17c: Hospitality — doubles-only, heals the switching-in Pokémon's own ally.
 	var new_mon_ally: BattlePokemon = _get_ally(new_mon)
-	var hosp_heal: int = AbilityManager.try_switch_in_ally_heal(new_mon, new_mon_ally)
+	var hosp_heal: int = AbilityManager.try_switch_in_ally_heal(new_mon, new_mon_ally, ng_active)
 	if hosp_heal > 0:
 		new_mon_ally.current_hp = min(new_mon_ally.max_hp, new_mon_ally.current_hp + hosp_heal)
 		ability_healed.emit(new_mon_ally, hosp_heal)
@@ -2389,7 +2454,7 @@ func _roll_magnitude_power() -> int:
 # status from source, apply the same status back to source. Emits signals on fire.
 # Source: TrySynchronizeActivation (battle_script_commands.c L2130)
 func _try_synchronize(holder: BattlePokemon, source: BattlePokemon, applied_status: int) -> void:
-	var back: int = AbilityManager.try_synchronize(holder, source, applied_status)
+	var back: int = AbilityManager.try_synchronize(holder, source, applied_status, _is_neutralizing_gas_active())
 	if back != 0:
 		secondary_applied.emit(source, _status_to_se(back))
 		ability_triggered.emit(holder, "synchronize")
@@ -2500,6 +2565,10 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	var target_idx: int = _combatants.find(target)
 	var target_side: int = target_idx / _active_per_side
 	var sc: Dictionary = _side_conditions[target_side]
+	# M17g: computed once per hit — Neutralizing Gas suppresses every ability check
+	# below field-wide (attacker's own abilities included), same as source's single
+	# GetBattlerAbility chokepoint.
+	var ng_active: bool = _is_neutralizing_gas_active()
 
 	# M16c: Brick Break-style screen removal fires BEFORE this hit's own damage calc
 	# (preAttackEffect=TRUE in source), so a screen this move itself breaks does NOT
@@ -2530,7 +2599,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	var result: Dictionary = DamageCalculator.calculate(
 			attacker, target, move, roll, _force_crit, weather, is_spread, helping_hand,
 			power_override, screen_active, _active_per_side > 1, _get_ally(attacker),
-			_get_ally(target))
+			_get_ally(target), ng_active)
 	var damage: int = result["damage"]
 
 	# M16d: Rapid Spin — clears ONE hazard type from the ATTACKER's own side after dealing
@@ -2586,7 +2655,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	# M17a: Rock Head blocks standard move recoil entirely (does not affect Struggle
 	# recoil, handled separately above, or Life Orb recoil, an item effect).
 	# Source: battle_move_resolution.c :: EFFECT_RECOIL handling (L3373-3396).
-	if move.recoil_percent > 0 and damage > 0 and not AbilityManager.blocks_recoil(attacker):
+	if move.recoil_percent > 0 and damage > 0 and not AbilityManager.blocks_recoil(attacker, ng_active):
 		var recoil: int = damage * move.recoil_percent / 100
 		if recoil > 0:
 			attacker.current_hp = max(0, attacker.current_hp - recoil)
@@ -2599,7 +2668,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			drain_heal.emit(attacker, heal)
 
 	if damage > 0 and move.secondary_effect != MoveData.SE_NONE:
-		var effect_hit: bool = StatusManager.try_secondary_effect(attacker, target, move)
+		var effect_hit: bool = StatusManager.try_secondary_effect(attacker, target, move, null, ng_active)
 		if effect_hit:
 			if move.secondary_effect == MoveData.SE_FLINCH:
 				var target_turn_pos: int = _turn_order.find(target)
@@ -2614,7 +2683,8 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 					_consume_item(target)
 
 	var contact_result: Dictionary = AbilityManager.try_contact_effects(
-			attacker, target, move, damage, _force_contact_roll, _force_effect_spore_roll)
+			attacker, target, move, damage, _force_contact_roll, _force_effect_spore_roll,
+			ng_active)
 	if contact_result["rough_skin_damage"] > 0:
 		var rs_dmg: int = contact_result["rough_skin_damage"]
 		attacker.current_hp = max(0, attacker.current_hp - rs_dmg)
@@ -2631,13 +2701,23 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	if contact_result["speed_change"] != 0:
 		stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPEED, contact_result["speed_change"])
 		ability_triggered.emit(target, contact_result["ability_name"])
+	if contact_result["mummy_overwritten_ability"] != -1:
+		ability_changed.emit(attacker, contact_result["mummy_overwritten_ability"])
+		ability_triggered.emit(target, contact_result["ability_name"])
+	if contact_result["wandering_spirit_swapped"]:
+		# Both sides changed — attacker.ability/target.ability already hold the new
+		# (post-swap) values at this point (AbilityManager.try_wandering_spirit_swap
+		# mutates them directly), so both signals reflect the correct new IDs.
+		ability_changed.emit(attacker, attacker.ability.ability_id)
+		ability_changed.emit(target, target.ability.ability_id)
+		ability_triggered.emit(target, contact_result["ability_name"])
 
 	# M17b: non-contact-gated reactive stat abilities (Justified, Rattled, Water
 	# Compaction, Stamina, Weak Armor, Anger Point, Berserk, Anger Shell, Steam Engine,
 	# Thermal Exchange, Cotton Down) — fire on ANY damaging hit, not just contact.
 	var hit_result: Dictionary = AbilityManager.try_hit_reactive_effects(
 			attacker, target, move, damage, hp_before_hit, result["is_crit"],
-			_force_cursed_body_roll)
+			_force_cursed_body_roll, ng_active)
 	if hit_result["justified_change"] != 0:
 		stat_stage_changed.emit(target, BattlePokemon.STAGE_ATK, hit_result["justified_change"])
 		ability_triggered.emit(target, "justified")
@@ -2674,11 +2754,11 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		ability_triggered.emit(target, "thermal_exchange")
 	if hit_result["cotton_down_fired"]:
 		var cd_ally: BattlePokemon = _get_ally(attacker)
-		var cd_actual: int = StatusManager.apply_stat_change(attacker, BattlePokemon.STAGE_SPEED, -1)
+		var cd_actual: int = StatusManager.apply_stat_change(attacker, BattlePokemon.STAGE_SPEED, -1, null, ng_active)
 		if cd_actual != 0:
 			stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPEED, cd_actual)
 		if cd_ally != null and not cd_ally.fainted:
-			var cd_ally_actual: int = StatusManager.apply_stat_change(cd_ally, BattlePokemon.STAGE_SPEED, -1)
+			var cd_ally_actual: int = StatusManager.apply_stat_change(cd_ally, BattlePokemon.STAGE_SPEED, -1, null, ng_active)
 			if cd_ally_actual != 0:
 				stat_stage_changed.emit(cd_ally, BattlePokemon.STAGE_SPEED, cd_ally_actual)
 		ability_triggered.emit(target, "cotton_down")
@@ -2722,7 +2802,7 @@ func _consume_item(mon: BattlePokemon) -> void:
 	item_consumed.emit(mon, item)
 	# M17c: Cheek Pouch — every item consumed via this function today is a berry
 	# (Lum/Sitrus/resist berries), matching source's POCKET_BERRIES gate in practice.
-	var cp_heal: int = AbilityManager.cheek_pouch_heal(mon)
+	var cp_heal: int = AbilityManager.cheek_pouch_heal(mon, _is_neutralizing_gas_active())
 	if cp_heal > 0:
 		mon.current_hp = min(mon.max_hp, mon.current_hp + cp_heal)
 		ability_healed.emit(mon, cp_heal)

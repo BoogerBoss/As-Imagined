@@ -9,3 +9,4 @@ ability_id = 136
 ability_name = "Multiscale"
 description = "Reduces the amount of damage the Pokémon takes while its HP is full."
 ai_rating = 7
+breakable = true

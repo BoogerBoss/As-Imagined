@@ -9,3 +9,4 @@ ability_id = 145
 ability_name = "Big Pecks"
 description = "Prevents other Pokémon from lowering its Defense stat."
 ai_rating = 5
+breakable = true

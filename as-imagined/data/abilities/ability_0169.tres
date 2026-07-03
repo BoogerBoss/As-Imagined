@@ -9,3 +9,4 @@ ability_id = 169
 ability_name = "Fur Coat"
 description = "Halves the damage from physical moves."
 ai_rating = 8
+breakable = true

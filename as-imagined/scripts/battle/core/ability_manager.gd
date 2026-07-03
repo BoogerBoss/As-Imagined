@@ -171,6 +171,326 @@ const ABILITY_SHADOW_TAG:       int = 23
 const ABILITY_ARENA_TRAP:       int = 71
 const ABILITY_MAGNET_PULL:      int = 42
 
+# M17g: Ability-suppression plumbing (new infrastructure) — Mold Breaker/Neutralizing
+# Gas. Source: include/constants/abilities.h. docs/m17_recon.md Section 11's M17g
+# proposal, re-derived (Step 0) against Section 13: Turboblaze (163)/Teravolt (164)
+# EXCLUDED (both flagged legendary-exclusive in Section 13.1 — Reshiram/Kyurem-White,
+# Zekrom/Kyurem-Black — same correction pattern as Beast Boost in [M17b] and
+# Orichalcum Pulse in [M17d]). Mycelium Might (298) DEFERRED, not included: it's a
+# genuine hybrid (battle_util.c L4805-4820: the ability-ignore half fits this tier's
+# plumbing, but its other half — own status moves always act last in their priority
+# bracket — is the Stall turn-order shape, which isn't built in this project yet).
+# Implementing only the ability-ignore half would misrepresent the ability, the same
+# reasoning [M17b] used to defer Guard Dog's two-part mechanic. Final M17g list: just
+# Mold Breaker and Neutralizing Gas.
+const ABILITY_MOLD_BREAKER:     int = 104
+const ABILITY_NEUTRALIZING_GAS: int = 256
+
+# M17g/M17h: exemption flags live on the AbilityData RESOURCE ITSELF
+# (`AbilityData.breakable`/`.cant_be_suppressed`/`.cant_be_traced`/`.cant_be_copied`/
+# `.cant_be_swapped`/`.cant_be_overwritten` — scripts/data/ability_data.gd), not as
+# hardcoded ID arrays in this file. M17g's original design used two such arrays
+# (MOLD_BREAKER_BREAKABLE, NEUTRALIZING_GAS_UNSUPPRESSABLE); this was retrofitted
+# during M17h after discovering `AbilityData` already had these exact fields defined
+# (with citations to Trace/Wandering Spirit/Neutralizing Gas/Mold Breaker) and
+# `gen_abilities.py` already had full rendering support for them, sitting completely
+# unused. Rather than add a THIRD parallel mechanism for M17h's own new exemption
+# needs (cant_be_traced/cant_be_copied/cant_be_swapped), all five flags were unified
+# onto the one pre-built, purpose-named mechanism — a single source of truth per
+# ability, set once in `gen_abilities.py`, with no separate list to keep in sync.
+# See docs/decisions.md [M17h] for the full migration and the addendum note on [M17g].
+#
+# Every `AbilityData.cant_be_*`/`.breakable` value in this project's data was cross-
+# checked directly against `src/data/abilities.h` for each of the ~115 abilities this
+# project implements (not assumed from the field names alone) — 26 abilities are
+# `breakable` (Battle Armor, Shell Armor, Levitate, Thick Fat, Marvel Scale, Fur Coat,
+# Multiscale, Filter, Solid Rock, Ice Scales, Heatproof, Dry Skin, Purifying Salt,
+# Clear Body, White Smoke, Hyper Cutter, Big Pecks, Keen Eye, Flower Veil, Sweet Veil,
+# Pastel Veil, Simple, Contrary, Unaware, Flower Gift, Thermal Exchange); NONE are
+# `cant_be_suppressed` (every source ability with that flag — Multitype, Zen Mode,
+# Stance Change, Shields Down, Schooling, Disguise, Battle Bond, Power Construct,
+# Comatose, RKS System, Gulp Missile, Ice Face, As One ×2, Zero to Hero, Commander,
+# Tera Shift — is a battle-form-change/Mega/Tera/legendary-exclusive mechanic already
+# out of scope, confirmed via grep: none are implemented); Trace/Receiver/Power of
+# Alchemy/Neutralizing Gas are `cant_be_traced`; Trace/Flower Gift/Receiver/Power of
+# Alchemy/Neutralizing Gas are `cant_be_copied`; only Neutralizing Gas is
+# `cant_be_swapped`; only Truant is `cant_be_overwritten` (though nothing in this
+# project's code currently reads that flag — see the Mummy/Lingering Aroma note below
+# for why, and docs/decisions.md [M17h] for the "populated but not yet consumed" call).
+
+# M17h: Ability-copy/overwrite plumbing (new infrastructure) — Trace, Mummy, Receiver,
+# Power of Alchemy, Wandering Spirit, Lingering Aroma. Third genuinely new-infrastructure
+# tier in M17 (after M17f's trapping check and M17g's suppression plumbing). Source:
+# include/constants/abilities.h. docs/m17_recon.md Section 11's M17h proposal — final
+# list re-verified (Step 0) against Section 13's full exclusion sweep: none of the six
+# appear anywhere in it, clean (unlike the M17f→M17g handoff, no correction needed here).
+# Lingering Aroma's source ID is defined symbolically (`= ABILITIES_COUNT_GEN8`, not a
+# literal number) — independently recounted against `include/constants/abilities.h`
+# (AS_ONE_SHADOW_RIDER=267, then the unassigned ABILITIES_COUNT_GEN8 lands on 268) to
+# confirm it resolves to 268, matching this project's pre-existing placeholder `.tres`
+# from an earlier (pre-M17) data-pipeline fix.
+const ABILITY_TRACE:             int = 36
+const ABILITY_MUMMY:             int = 152
+const ABILITY_RECEIVER:          int = 222
+const ABILITY_POWER_OF_ALCHEMY:  int = 223
+const ABILITY_WANDERING_SPIRIT:  int = 254
+const ABILITY_LINGERING_AROMA:   int = 268
+
+# M17h: source models FOUR distinct "can this ability be read from / changed away from"
+# flags in `src/data/abilities.h` — `cantBeTraced`, `cantBeCopied`, `cantBeSwapped`,
+# `cantBeOverwritten` — genuinely different from each other and from M17g's
+# `cantBeSuppressed` (Truant is `cantBeOverwritten` but NOT `cantBeSuppressed`; Flower
+# Gift is `cantBeCopied` but nothing else; confirmed by direct inspection, not assumed
+# to overlap). Each is checked at a DIFFERENT point per ability, verified from source
+# rather than treated as interchangeable, and each reads straight off the relevant
+# `AbilityData.cant_be_*` field (see the field-based-design comment above) rather than
+# a hardcoded array:
+#   - Trace's `IsAbilityPreventingEscape`-shaped switch-in dispatch (battle_util.c
+#     L2964-3000) checks `cantBeTraced` on the TARGET's raw ability.
+#   - Receiver/Power of Alchemy's `BS_TryActivateReceiver` (battle_script_commands.c
+#     L12946-12968) checks `cantBeCopied` on the FAINTED ALLY's raw ability.
+#   - Wandering Spirit's dispatch (battle_util.c L3884-3909) checks `cantBeSwapped` on
+#     the ATTACKER's CURRENT ability (the one about to be swapped away).
+#   - Mummy/Lingering Aroma's dispatch (battle_util.c L3859-3883) checks
+#     `cantBeSuppressed` (NOT `cantBeOverwritten` — verified directly; `cantBeOverwritten`
+#     is actually consumed by Skill-Swap/Entrainment-style MOVES, which this project
+#     doesn't have) on the ATTACKER's CURRENT ability — this REUSES `AbilityData
+#     .cant_be_suppressed`, the exact same field M17g's Neutralizing Gas exemption
+#     reads, rather than duplicating it.
+# Note: source's `ABILITY_NONE` entry is itself flagged `cantBeTraced`/`cantBeSwapped`
+# (but NOT `cantBeCopied` or `cantBeSuppressed`) — in this project, "no ability" is
+# `mon.ability == null` rather than an explicit id-0 `AbilityData` resource, so every
+# function below checks `== null` directly rather than reading a field off a sentinel.
+
+
+# M17h: Trace — switch-in, copies a LIVE opponent's CURRENT ability onto the Trace
+# holder. Deliberately reads the opponent's RAW `.ability` field, not the suppression-
+# aware `effective_ability_id` — confirmed from source, which reads `gBattleMons
+# [chosenTarget].ability` directly (battle_util.c L2996), NOT through `GetBattlerAbility`.
+# This means Trace copies what an opponent's ability actually IS even if that ability is
+# currently being suppressed by an active Neutralizing Gas elsewhere on the field —
+# suppression is a separate runtime check applied every time the copied ability is
+# later consumed, not a copy-time filter. See docs/decisions.md [M17h] for the
+# cross-tier test confirming this explicitly.
+#
+# Targeting rule (battle_util.c L2971-2988): the two OPPOSING field slots (already
+# exactly what `live_opponents` — built the same way M17f's `_get_live_opponents`
+# already does — contains in this project's doubles layout) are filtered to alive +
+# not-`cantBeTraced`; if BOTH remain eligible, a 50/50 random pick (`RandomPercentage
+# (RNG_TRACE, 50)`); if only ONE is eligible, that one deterministically; if NEITHER,
+# Trace does nothing this switch-in. This project calls its switch-in ability dispatch
+# exactly once per switch-in event (no source-side multi-pass retry loop to guard
+# against), so no `traceActivated`-equivalent volatile flag is needed here — the
+# call-site architecture itself already provides the "exactly once" guarantee source
+# gets from that flag. Ability Shield's early-break (source line ~2993) isn't modeled —
+# this project has no Ability Shield item anywhere (same "not modeled" precedent as
+# M17f's Shed Shell and M17g's various Ability-Shield gates).
+#
+# force_pick_second: null = real RNG (50/50); true/false = pin which of exactly 2
+#   eligible opponents gets chosen (only meaningful when both slots are eligible).
+# ng_active: whether the Trace HOLDER's own ability is currently active — source reads
+#   this through `GetBattlerAbility` (suppression-aware) at the dispatch layer, unlike
+#   the opponent-side read below (deliberately raw — see the function's main comment).
+# Returns the copied ability_id, or -1 if Trace didn't fire (not a Trace holder, or no
+# eligible live opponent).
+static func try_trace(
+		pokemon: BattlePokemon, live_opponents: Array,
+		ng_active: bool = false, force_pick_second: Variant = null) -> int:
+	if effective_ability_id(pokemon, ng_active) != ABILITY_TRACE:
+		return -1
+	var eligible: Array = []
+	for opp: BattlePokemon in live_opponents:
+		if opp.fainted or opp.ability == null:
+			continue
+		if opp.ability.cant_be_traced:
+			continue
+		eligible.append(opp)
+	if eligible.is_empty():
+		return -1
+	var chosen: BattlePokemon
+	if eligible.size() > 1:
+		var pick_second: bool = bool(force_pick_second) if force_pick_second != null \
+				else (randi() % 100 < 50)
+		chosen = eligible[1] if pick_second else eligible[0]
+	else:
+		chosen = eligible[0]
+	pokemon.ability = chosen.ability
+	return chosen.ability.ability_id
+
+
+# M17h: Receiver / Power of Alchemy — on an ally fainting in a doubles battle, copies
+# the fainted ally's ability onto the holder. Source: `BS_TryActivateReceiver`
+# (battle_script_commands.c L12946-12968), dispatched from the shared `BattleScript_
+# FaintBattler` script (`tryactivatereceiver BS_FAINTED`, data/battle_scripts_1.s
+# L2739) that runs for EVERY faint regardless of context — the doubles-only,
+# ally-specific restriction comes entirely from the function's own condition
+# (`receiverBattler = BATTLE_PARTNER(faintedBattler)`; in singles there IS no partner
+# slot, so this project's existing `_get_ally` already returns null there, naturally
+# gating this to doubles with zero extra plumbing, matching M17c's Hospitality
+# precedent exactly). Confirmed from source that Power of Alchemy shares this EXACT
+# same function (`receiverAbility == ABILITY_RECEIVER || receiverAbility ==
+# ABILITY_POWER_OF_ALCHEMY`, L12954) — not a separate near-identical implementation.
+#
+# Reads the FAINTED mon's RAW `.ability` field (source: `gBattleMons[faintedBattler]
+# .ability`, L12959 — NOT through `GetBattlerAbility`, since a fainted battler's
+# suppression-aware ability would read as NONE via `battlerState[...].notOnField` —
+# reading raw is the only way to recover what the fainted mon's ability actually was).
+#
+# fainted: the ally that just fainted. ally: the potential Receiver/Power-of-Alchemy
+# holder (the fainted mon's own doubles partner) — null in singles or if already fainted
+# itself (also correctly handles "the Receiver holder itself is the one fainting": in
+# that case `fainted` IS the Receiver holder, and `ally`'s own ability is checked
+# instead, which won't match unless the ally ALSO happens to hold Receiver).
+# ng_active: whether the potential Receiver/Power-of-Alchemy holder's own ability is
+#   currently active — source reads this through `GetBattlerAbility` (suppression-aware,
+#   `enum Ability receiverAbility = GetBattlerAbility(receiverBattler);` L12951), unlike
+#   the fainted ally's read below (deliberately raw — see the function's main comment).
+# Returns the copied ability_id, or -1 if it didn't fire.
+static func try_receiver_copy(
+		fainted: BattlePokemon, ally: BattlePokemon, ng_active: bool = false) -> int:
+	if ally == null or ally.fainted:
+		return -1
+	var ally_id: int = effective_ability_id(ally, ng_active)
+	if ally_id != ABILITY_RECEIVER and ally_id != ABILITY_POWER_OF_ALCHEMY:
+		return -1
+	if fainted.ability == null:
+		return -1
+	if fainted.ability.cant_be_copied:
+		return -1
+	ally.ability = fainted.ability
+	return fainted.ability.ability_id
+
+
+# M17h: Wandering Spirit — contact hit landing → SWAPS abilities bidirectionally with
+# the attacker (distinct from Mummy's one-directional overwrite just below — confirmed
+# from source: both sides are reassigned, L3904-3905, not just the attacker).
+# Source: battle_util.c L3884-3909. Exemption checked on the ATTACKER's CURRENT ability
+# (the one being swapped away) via `AbilityData.cant_be_swapped` — a genuinely
+# different field than Mummy's `cant_be_suppressed` check, verified directly rather than
+# assumed to be the same gate. `attacker.ability == null` is also exempt (source's
+# `ABILITY_NONE` is itself flagged `cantBeSwapped`). Dynamax exemption
+# (`GetActiveGimmick(gBattlerTarget) == GIMMICK_DYNAMAX`) isn't modeled — this project
+# has no Dynamax. Reads/writes raw `.ability` fields throughout, same as Trace/Receiver —
+# suppression is never a copy-time filter (see try_trace's doc comment).
+#
+# ng_active: whether the Wandering Spirit HOLDER's own ability is currently active
+#   (suppression-aware, matching source's `gLastUsedAbility` dispatch gate) — the
+#   attacker's exemption check just below stays a RAW read (see the function's main
+#   comment for why).
+# Returns true if the swap occurred (caller resolves the two new ability_ids off
+# `defender.ability`/`attacker.ability` directly afterward for signal emission).
+static func try_wandering_spirit_swap(
+		defender: BattlePokemon, attacker: BattlePokemon,
+		move: MoveData, damage: int, ng_active: bool = false) -> bool:
+	if effective_ability_id(defender, ng_active) != ABILITY_WANDERING_SPIRIT:
+		return false
+	if not move.makes_contact or damage <= 0 or attacker.fainted:
+		return false
+	if attacker.ability == null:
+		return false
+	if attacker.ability.cant_be_swapped:
+		return false
+	var attacker_old_ability: AbilityData = attacker.ability
+	attacker.ability = defender.ability
+	defender.ability = attacker_old_ability
+	return true
+
+
+# M17h: Mummy / Lingering Aroma — contact hit landing → overwrites the ATTACKER's
+# ability with Mummy/Lingering Aroma itself (one-directional — the holder's OWN ability
+# never changes, the opposite direction from Wandering Spirit's swap above; confirmed
+# from source: only `gBattleMons[gBattlerAttacker].ability` is reassigned, L3878, never
+# `gBattlerTarget`'s). Source: battle_util.c L3859-3883. Confirmed Lingering Aroma is
+# mechanically identical to Mummy, not just similarly-shaped (shares the exact same
+# switch-case block, `case ABILITY_LINGERING_AROMA: case ABILITY_MUMMY:`, L3859-3860).
+# Exemption checked on the ATTACKER's CURRENT ability via `AbilityData
+# .cant_be_suppressed` — the EXACT SAME field M17g's Neutralizing Gas exemption reads
+# (verified from source this is genuinely the same flag Mummy checks, not a
+# coincidental resemblance to a different exemption) — plus an explicit no-op guard
+# when the attacker already holds Mummy OR
+# Lingering Aroma (source: L3866-3867, avoids a redundant re-trigger/message when the
+# result would be unchanged; also stands in for source's `volatiles.overwrittenAbility
+# != GetBattlerAbility(gBattlerTarget)` check, which only ever matters when the
+# attacker's ability already equals the holder's — impossible here except via these two
+# IDs, since the holder's ability is guaranteed to be one of them by construction).
+# `attacker.ability == null` is NOT exempt (source's `ABILITY_NONE` has no
+# `cantBeSuppressed` flag) — an ability-less attacker correctly gets Mummy applied.
+#
+# Returns the new ability_id assigned to the attacker, or -1 if it didn't fire.
+static func try_mummy_overwrite(
+		defender: BattlePokemon, attacker: BattlePokemon,
+		move: MoveData, damage: int, ng_active: bool = false) -> int:
+	var holder_id: int = effective_ability_id(defender, ng_active)
+	if holder_id != ABILITY_MUMMY and holder_id != ABILITY_LINGERING_AROMA:
+		return -1
+	if not move.makes_contact or damage <= 0 or attacker.fainted:
+		return -1
+	if attacker.ability != null:
+		var atk_id: int = attacker.ability.ability_id
+		if atk_id == ABILITY_MUMMY or atk_id == ABILITY_LINGERING_AROMA:
+			return -1
+		if attacker.ability.cant_be_suppressed:
+			return -1
+	attacker.ability = defender.ability
+	return holder_id
+
+
+# M17g: the single suppression-aware chokepoint every ability-consuming function in
+# this file (and StatusManager/DamageCalculator) should read an ability THROUGH,
+# rather than reading `mon.ability.ability_id` raw. Mirrors source's
+# `GetBattlerAbilityInternal` (battle_util.c L4844-4878) exactly:
+#   1. Neutralizing Gas suppresses every OTHER live battler's ability field-wide
+#      (except one flagged `AbilityData.cant_be_suppressed`, and except its own holder).
+#   2. Mold Breaker (attacker-scoped) additionally suppresses `mon`'s ability if
+#      `attacker` is a DIFFERENT battler currently using a move, `attacker`'s OWN
+#      effective ability (recursion, without an attacker — an ability never
+#      suppresses its own wielder) is Mold Breaker, and `mon`'s ability is flagged
+#      `AbilityData.breakable`. (Turboblaze/Teravolt share the exact same source
+#      bypass array per docs/m17_recon.md L626-627, but both are excluded from this
+#      project's scope per Section 13 — see the Step 0 comment above ABILITY_MOLD_BREAKER.)
+# This recursive self-check means an already-NG-suppressed Mold Breaker holder can't
+# bypass anything either — a real, source-faithful double-suppression interaction,
+# not a special case bolted on afterward.
+# ng_active: whether ANY live battler's CURRENT ability is Neutralizing Gas — computed
+#   once per call site by BattleManager._is_neutralizing_gas_active() (this project has
+#   no Skill Swap/Gastro Acid/Entrainment yet, so "current ability" is a safe stand-in
+#   for source's separate activation-flag tracking; see decisions.md [M17g]).
+# attacker: the Pokémon currently resolving a move against `mon`, or null when there is
+#   no such context (switch-in triggers, end-of-turn ticks, ability-triggered reactions
+#   like Intimidate/Moxie/Anger Point — none of these are "a move," so Mold Breaker
+#   correctly never applies there, matching source's moldBreakerActive being scoped
+#   strictly to the window of processing one specific move).
+static func effective_ability_id(
+		mon: BattlePokemon, ng_active: bool = false, attacker: BattlePokemon = null) -> int:
+	if mon.ability == null:
+		return ABILITY_NONE
+	var id: int = mon.ability.ability_id
+	if ng_active and id != ABILITY_NEUTRALIZING_GAS and not mon.ability.cant_be_suppressed:
+		return ABILITY_NONE
+	if attacker != null and attacker != mon and mon.ability.breakable:
+		var attacker_id: int = effective_ability_id(attacker, ng_active)
+		if attacker_id == ABILITY_MOLD_BREAKER:
+			return ABILITY_NONE
+	return id
+
+
+# M17g: whether Neutralizing Gas is currently active anywhere on the field.
+# Source: battle_util.c :: IsNeutralizingGasOnField (L4794-4803): any live battler
+# with the neutralizingGas volatile set (and not itself Gastro-Acid'd, which this
+# project doesn't model — no Gastro Acid move exists here, so that half is moot).
+# Simplified to a direct ability-identity check (see effective_ability_id's doc
+# comment for why that's valid at this project's current scope).
+# combatants: ALL live battlers on the field (both sides) — BattleManager passes its
+#   full `_combatants` array filtered to non-fainted, mirroring how `_get_live_opponents`
+#   already filters one side.
+static func is_neutralizing_gas_active(combatants: Array) -> bool:
+	for mon: BattlePokemon in combatants:
+		if mon.fainted:
+			continue
+		if mon.ability != null and mon.ability.ability_id == ABILITY_NEUTRALIZING_GAS:
+			return true
+	return false
+
 
 # ── Tier 1: Passive stat modifiers ──────────────────────────────────────────
 
@@ -198,10 +518,10 @@ const ABILITY_MAGNET_PULL:      int = 42
 # Returns a UQ4.12 integer: 4096 = 1.0×, 8192 = 2.0×.
 static func attack_modifier_uq412(
 		attacker: BattlePokemon, move: MoveData,
-		weather: int = DamageCalculator.WEATHER_NONE) -> int:
-	if attacker.ability == null:
+		weather: int = DamageCalculator.WEATHER_NONE, ng_active: bool = false) -> int:
+	var id: int = effective_ability_id(attacker, ng_active)
+	if id == ABILITY_NONE:
 		return 4096  # UQ_4_12(1.0)
-	var id: int = attacker.ability.ability_id
 	if (id == ABILITY_HUGE_POWER or id == ABILITY_PURE_POWER) and move.category == 0:
 		return 8192  # UQ_4_12(2.0) — doubles physical Attack
 
@@ -285,17 +605,18 @@ static func attack_modifier_uq412(
 # Returns a UQ4.12 integer: 4096 = 1.0×, 2048 = 0.5×, 2731 ≈ 0.667×, 3072 = 0.75×, 5120 = 1.25×.
 static func defense_damage_modifier_uq412(
 		defender: BattlePokemon, move: MoveData, effectiveness: float = 1.0,
-		weather: int = DamageCalculator.WEATHER_NONE, ally: BattlePokemon = null) -> int:
-	var flower_gift_holder: bool = defender.ability != null \
-			and defender.ability.ability_id == ABILITY_FLOWER_GIFT
+		weather: int = DamageCalculator.WEATHER_NONE, ally: BattlePokemon = null,
+		ng_active: bool = false, attacker: BattlePokemon = null) -> int:
+	var flower_gift_holder: bool = \
+			effective_ability_id(defender, ng_active, attacker) == ABILITY_FLOWER_GIFT
 	var ally_flower_gift: bool = ally != null and not ally.fainted \
-			and ally.ability != null and ally.ability.ability_id == ABILITY_FLOWER_GIFT
+			and effective_ability_id(ally, ng_active, attacker) == ABILITY_FLOWER_GIFT
 	if (flower_gift_holder or ally_flower_gift) \
 			and weather == DamageCalculator.WEATHER_SUN and move.category == 1:
 		return 2731  # UQ_4_12(1/1.5) ≈ 0.667 — reciprocal of the ×1.5 Sp. Def boost
-	if defender.ability == null:
+	var id: int = effective_ability_id(defender, ng_active, attacker)
+	if id == ABILITY_NONE:
 		return 4096
-	var id: int = defender.ability.ability_id
 	if id == ABILITY_DRY_SKIN and move.type == TypeChart.TYPE_FIRE:
 		return 5120  # UQ_4_12(1.25) — damage taken INCREASES
 	if id == ABILITY_THICK_FAT:
@@ -338,10 +659,11 @@ static func defense_damage_modifier_uq412(
 # Applied after type effectiveness and after Battle Armor/Shell Armor's crit block, so
 # is_crit here already reflects that block (Sniper simply won't fire if crit was blocked).
 static func attacker_post_effectiveness_modifier_uq412(
-		attacker: BattlePokemon, effectiveness: float, is_crit: bool) -> int:
-	if attacker.ability == null:
+		attacker: BattlePokemon, effectiveness: float, is_crit: bool,
+		ng_active: bool = false) -> int:
+	var id: int = effective_ability_id(attacker, ng_active)
+	if id == ABILITY_NONE:
 		return 4096
-	var id: int = attacker.ability.ability_id
 	if id == ABILITY_SNIPER and is_crit:
 		return 6144  # UQ_4_12(1.5)
 	if id == ABILITY_TINTED_LENS and effectiveness <= 0.5:
@@ -355,10 +677,10 @@ static func attacker_post_effectiveness_modifier_uq412(
 #   forcibly set to CRITICAL_HIT_BLOCKED — this overrides even an always-crit move/effect,
 #   so DamageCalculator applies this after crit is determined (by roll OR by force_crit),
 #   not as a pre-roll probability adjustment.
-static func blocks_critical_hit(defender: BattlePokemon) -> bool:
-	if defender.ability == null:
-		return false
-	var id: int = defender.ability.ability_id
+static func blocks_critical_hit(
+		defender: BattlePokemon, ng_active: bool = false,
+		attacker: BattlePokemon = null) -> bool:
+	var id: int = effective_ability_id(defender, ng_active, attacker)
 	return id == ABILITY_BATTLE_ARMOR or id == ABILITY_SHELL_ARMOR
 
 
@@ -382,11 +704,12 @@ static func blocks_critical_hit(defender: BattlePokemon) -> bool:
 #   resolved by BattleManager (this static function has no battle-state access).
 static func move_power_modifier_uq412(
 		attacker: BattlePokemon, move: MoveData, weather: int,
-		ally: BattlePokemon = null) -> int:
+		ally: BattlePokemon = null, ng_active: bool = false) -> int:
 	var modifier: int = 4096
 
-	if attacker.ability != null:
-		var id: int = attacker.ability.ability_id
+	var atk_ability_id: int = effective_ability_id(attacker, ng_active)
+	if atk_ability_id != ABILITY_NONE:
+		var id: int = atk_ability_id
 		if id == ABILITY_TOXIC_BOOST \
 				and (attacker.status == BattlePokemon.STATUS_POISON
 					or attacker.status == BattlePokemon.STATUS_TOXIC) \
@@ -406,8 +729,9 @@ static func move_power_modifier_uq412(
 		if id == ABILITY_STEELY_SPIRIT and move.type == TypeChart.TYPE_STEEL:
 			modifier = DamageCalculator._uq412_multiply(modifier, 6144)
 
-	if ally != null and not ally.fainted and ally.ability != null:
-		var ally_id: int = ally.ability.ability_id
+	var ally_ability_id: int = effective_ability_id(ally, ng_active) if ally != null and not ally.fainted else ABILITY_NONE
+	if ally_ability_id != ABILITY_NONE:
+		var ally_id: int = ally_ability_id
 		if ally_id == ABILITY_BATTERY and move.category == 1:
 			modifier = DamageCalculator._uq412_multiply(modifier, 5325)
 		if ally_id == ABILITY_POWER_SPOT:
@@ -426,10 +750,11 @@ static func move_power_modifier_uq412(
 #   the ability/mechanic is excluded per docs/m17_recon.md Section 8.6). This also
 #   bypasses the semi-invulnerable-turn block (Dig/Fly), matching source's ordering
 #   (checked before the accuracy roll and before the semi-invulnerable gate).
-static func bypasses_accuracy_check(attacker: BattlePokemon, defender: BattlePokemon) -> bool:
-	if attacker.ability != null and attacker.ability.ability_id == ABILITY_NO_GUARD:
+static func bypasses_accuracy_check(
+		attacker: BattlePokemon, defender: BattlePokemon, ng_active: bool = false) -> bool:
+	if effective_ability_id(attacker, ng_active) == ABILITY_NO_GUARD:
 		return true
-	if defender.ability != null and defender.ability.ability_id == ABILITY_NO_GUARD:
+	if effective_ability_id(defender, ng_active) == ABILITY_NO_GUARD:
 		return true
 	return false
 
@@ -442,10 +767,11 @@ static func bypasses_accuracy_check(attacker: BattlePokemon, defender: BattlePok
 # project's scope per docs/m17_recon.md Section 13 — Victini is mythical-exclusive.)
 # Returns a plain percentage (100 = no change), matching StatusManager.check_accuracy's
 # existing integer-percentage math style rather than the DamageCalculator's UQ4.12 style.
-static func accuracy_modifier_percent(attacker: BattlePokemon, move: MoveData) -> int:
-	if attacker.ability == null:
+static func accuracy_modifier_percent(
+		attacker: BattlePokemon, move: MoveData, ng_active: bool = false) -> int:
+	var id: int = effective_ability_id(attacker, ng_active)
+	if id == ABILITY_NONE:
 		return 100
-	var id: int = attacker.ability.ability_id
 	if id == ABILITY_COMPOUND_EYES:
 		return 130
 	if id == ABILITY_HUSTLE and move.category == 0:
@@ -459,8 +785,8 @@ static func accuracy_modifier_percent(attacker: BattlePokemon, move: MoveData) -
 # Does NOT apply to Struggle recoil (a separate, unconditional code path in both source
 # and this project — BattleManager's struggle handling is untouched) or to Life Orb
 # recoil (an item effect, unaffected by Rock Head in source).
-static func blocks_recoil(attacker: BattlePokemon) -> bool:
-	return attacker.ability != null and attacker.ability.ability_id == ABILITY_ROCK_HEAD
+static func blocks_recoil(attacker: BattlePokemon, ng_active: bool = false) -> bool:
+	return effective_ability_id(attacker, ng_active) == ABILITY_ROCK_HEAD
 
 
 # Type immunity from an ability (Levitate → Ground immunity).
@@ -468,10 +794,10 @@ static func blocks_recoil(attacker: BattlePokemon) -> bool:
 # Source: battle_util.c :: CalcTypeEffectivenessMultiplierInternal (L8257):
 #   moveType == TYPE_GROUND && abilityDef == ABILITY_LEVITATE && !gravity → modifier 0.0
 # Gravity field flag not yet in scope; treated as always false here.
-static func blocks_move_type(defender: BattlePokemon, move_type: int) -> bool:
-	if defender.ability == null:
-		return false
-	if defender.ability.ability_id == ABILITY_LEVITATE:
+static func blocks_move_type(
+		defender: BattlePokemon, move_type: int, ng_active: bool = false,
+		attacker: BattlePokemon = null) -> bool:
+	if effective_ability_id(defender, ng_active, attacker) == ABILITY_LEVITATE:
 		return move_type == TypeChart.TYPE_GROUND
 	return false
 
@@ -486,8 +812,15 @@ static func blocks_move_type(defender: BattlePokemon, move_type: int) -> bool:
 #   Gravity field status, Ingrain/Smack Down volatiles) are all outside this project's
 #   currently-implemented scope (no held-item-driven grounding, no Gravity field, no
 #   Ingrain/Smack Down volatiles anywhere else in the codebase either).
-static func is_grounded(mon: BattlePokemon) -> bool:
-	if mon.ability != null and mon.ability.ability_id == ABILITY_LEVITATE:
+# M17g: ng_active added — Neutralizing Gas suppresses Levitate's grounding exemption
+# field-wide, same as every other ability check (source's IsBattlerGrounded reads the
+# ability via GetBattlerAbility, the same suppression-aware chokepoint). No `attacker`
+# param: is_grounded is only ever called outside any move-resolution window (hazard
+# immunity at switch-in, Arena Trap's grounded-check inside is_trapped at selection
+# time) — Mold Breaker's per-move scope structurally cannot apply here (see is_trapped's
+# updated comment below for the source citation proving this).
+static func is_grounded(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	if effective_ability_id(mon, ng_active) == ABILITY_LEVITATE:
 		return false
 	if TypeChart.TYPE_FLYING in mon.species.types:
 		return false
@@ -512,7 +845,28 @@ static func is_grounded(mon: BattlePokemon) -> bool:
 # of those paths is architecturally separate from _chosen_switch_slots.
 # Shed Shell (the one item exemption source has) is not modeled: this project has no
 # Shed Shell item anywhere in ItemManager/data, so there is nothing to exempt.
-static func is_trapped(mon: BattlePokemon, live_opponents: Array) -> bool:
+#
+# M17g correction: Neutralizing Gas DOES suppress trapping — confirmed via source,
+# `IsAbilityPreventingEscape` (battle_util.c L4917-4941) reads every trapper's ability
+# through `GetBattlerAbility(battlerDef)` (L4928), the same suppression-aware chokepoint
+# Neutralizing Gas's field-wide check already routes through everywhere else — so an
+# active Neutralizing Gas holder makes Shadow Tag/Arena Trap/Magnet Pull stop trapping,
+# same as every other ability. Mold Breaker does NOT suppress trapping, though: this
+# corrects an assumption in this tier's own task brief, which is worth stating
+# explicitly rather than silently overriding. `moldBreakerActive`
+# (battle_util.c L9799-9802) is set true only "if (gCurrentMove != MOVE_NONE)",
+# immediately before a specific move's effects are resolved, and reset false at
+# switch-in cleanup (battle_main.c L3326-3327) — it is scoped strictly to the window of
+# processing one Pokémon's current move. `IsAbilityPreventingEscape` is called only
+# from selection-time menu code (the Run option, the party-switch B_ACTION_SWITCH case
+# — battle_main.c L3993/L4230), entirely outside any move-processing window, so
+# moldBreakerActive is never true there regardless of who's on the field. Consequently
+# this function takes an `ng_active` param but no `attacker` param.
+# ng_active: whether Neutralizing Gas is active anywhere on the field (see
+#   AbilityManager.is_neutralizing_gas_active) — suppresses every trapper's ability
+#   uniformly, so it's applied once per opponent in the loop below.
+static func is_trapped(
+		mon: BattlePokemon, live_opponents: Array, ng_active: bool = false) -> bool:
 	# This Ghost-type gate is deliberately the FIRST check and covers the whole function,
 	# not just the ability loop below. Source confirms this same B_GHOSTS_ESCAPE >= GEN_6
 	# check gates BOTH trapping mechanisms independently: IsAbilityPreventingEscape
@@ -530,14 +884,14 @@ static func is_trapped(mon: BattlePokemon, live_opponents: Array) -> bool:
 	if TypeChart.TYPE_GHOST in mon.species.types:
 		return false
 	for opp: BattlePokemon in live_opponents:
-		if opp.ability == null:
+		var opp_id: int = effective_ability_id(opp, ng_active)
+		if opp_id == ABILITY_NONE:
 			continue
-		var opp_id: int = opp.ability.ability_id
 		if opp_id == ABILITY_SHADOW_TAG:
-			if mon.ability != null and mon.ability.ability_id == ABILITY_SHADOW_TAG:
+			if effective_ability_id(mon, ng_active) == ABILITY_SHADOW_TAG:
 				continue
 			return true
-		if opp_id == ABILITY_ARENA_TRAP and is_grounded(mon):
+		if opp_id == ABILITY_ARENA_TRAP and is_grounded(mon, ng_active):
 			return true
 		if opp_id == ABILITY_MAGNET_PULL and TypeChart.TYPE_STEEL in mon.species.types:
 			return true
@@ -565,10 +919,12 @@ static func is_trapped(mon: BattlePokemon, live_opponents: Array) -> bool:
 # Called on cv->battlerDef (the RECEIVING Pokémon), applies to ANY stat change
 # regardless of source (self-inflicted or opponent-inflicted), before the
 # change is checked against MIN/MAX or against ability-blocking.
-static func adjust_stat_stage_amount(target: BattlePokemon, amount: int) -> int:
-	if target.ability == null:
+static func adjust_stat_stage_amount(
+		target: BattlePokemon, amount: int, ng_active: bool = false,
+		attacker: BattlePokemon = null) -> int:
+	var id: int = effective_ability_id(target, ng_active, attacker)
+	if id == ABILITY_NONE:
 		return amount
-	var id: int = target.ability.ability_id
 	if id == ABILITY_CONTRARY:
 		return -amount
 	if id == ABILITY_SIMPLE:
@@ -592,9 +948,10 @@ static func adjust_stat_stage_amount(target: BattlePokemon, amount: int) -> int:
 #   itself OR its ally holds Flower Veil.
 # stat_idx: a BattlePokemon.STAGE_* constant.
 static func blocks_stat_decrease(
-		target: BattlePokemon, stat_idx: int, ally: BattlePokemon = null) -> bool:
-	if target.ability != null:
-		var id: int = target.ability.ability_id
+		target: BattlePokemon, stat_idx: int, ally: BattlePokemon = null,
+		ng_active: bool = false, attacker: BattlePokemon = null) -> bool:
+	var id: int = effective_ability_id(target, ng_active, attacker)
+	if id != ABILITY_NONE:
 		if id == ABILITY_CLEAR_BODY or id == ABILITY_WHITE_SMOKE:
 			return true
 		if id == ABILITY_HYPER_CUTTER and stat_idx == BattlePokemon.STAGE_ATK:
@@ -605,10 +962,10 @@ static func blocks_stat_decrease(
 			return true
 
 	if TypeChart.TYPE_GRASS in target.species.types:
-		if target.ability != null and target.ability.ability_id == ABILITY_FLOWER_VEIL:
+		if id == ABILITY_FLOWER_VEIL:
 			return true
-		if ally != null and not ally.fainted and ally.ability != null \
-				and ally.ability.ability_id == ABILITY_FLOWER_VEIL:
+		if ally != null and not ally.fainted \
+				and effective_ability_id(ally, ng_active, attacker) == ABILITY_FLOWER_VEIL:
 			return true
 
 	return false
@@ -626,10 +983,10 @@ static func blocks_stat_decrease(
 # Swords Dance-style self-RAISES exist), so that distinction is unreachable in
 # practice today. Revisit if a self-stat-lowering move is ever added.
 # Returns the STAGE_* to boost, or -1 if neither ability applies.
-static func defiant_competitive_stat(target: BattlePokemon) -> int:
-	if target.ability == null:
+static func defiant_competitive_stat(target: BattlePokemon, ng_active: bool = false) -> int:
+	var id: int = effective_ability_id(target, ng_active)
+	if id == ABILITY_NONE:
 		return -1
-	var id: int = target.ability.ability_id
 	if id == ABILITY_DEFIANT:
 		return BattlePokemon.STAGE_ATK
 	if id == ABILITY_COMPETITIVE:
@@ -647,28 +1004,39 @@ static func defiant_competitive_stat(target: BattlePokemon) -> int:
 # not just boosts.
 
 # Attacker's Unaware ignores the DEFENDER's Defense/Sp.Def stage in damage calc.
-static func ignores_defender_def_stage(attacker: BattlePokemon) -> bool:
-	return attacker.ability != null and attacker.ability.ability_id == ABILITY_UNAWARE
+# M17g: attacker's OWN ability — only ng_active matters (Mold Breaker never suppresses
+# its own wielder's ability; CanBreakThroughAbility explicitly excludes battlerDef ==
+# battlerAtk, battle_util.c L4824).
+static func ignores_defender_def_stage(attacker: BattlePokemon, ng_active: bool = false) -> bool:
+	return effective_ability_id(attacker, ng_active) == ABILITY_UNAWARE
 
 
 # Defender's Unaware ignores the ATTACKER's Attack/Sp.Atk stage in damage calc.
-static func ignores_attacker_atk_stage(defender: BattlePokemon) -> bool:
-	return defender.ability != null and defender.ability.ability_id == ABILITY_UNAWARE
+# M17g: Unaware is breakable — the DEFENDER's ability, checked against the current
+# attacker, so both ng_active and attacker (for Mold Breaker) apply here.
+static func ignores_attacker_atk_stage(
+		defender: BattlePokemon, ng_active: bool = false,
+		attacker: BattlePokemon = null) -> bool:
+	return effective_ability_id(defender, ng_active, attacker) == ABILITY_UNAWARE
 
 
 # Attacker's Unaware (or Keen Eye) ignores the DEFENDER's evasion stage in the
 # accuracy formula. Source explicitly groups Unaware/Keen Eye/Minds Eye/Illuminate
 # here — only the first two are in this project's ability scope.
-static func ignores_defender_evasion_stage(attacker: BattlePokemon) -> bool:
-	if attacker.ability == null:
-		return false
-	var id: int = attacker.ability.ability_id
+# M17g: attacker's OWN ability — only ng_active matters (see ignores_defender_def_stage).
+static func ignores_defender_evasion_stage(
+		attacker: BattlePokemon, ng_active: bool = false) -> bool:
+	var id: int = effective_ability_id(attacker, ng_active)
 	return id == ABILITY_UNAWARE or id == ABILITY_KEEN_EYE
 
 
 # Defender's Unaware ignores the ATTACKER's own accuracy stage in the accuracy formula.
-static func ignores_attacker_accuracy_stage(defender: BattlePokemon) -> bool:
-	return defender.ability != null and defender.ability.ability_id == ABILITY_UNAWARE
+# M17g: Unaware is breakable — the DEFENDER's ability, checked against the current
+# attacker (both ng_active and attacker/Mold Breaker apply).
+static func ignores_attacker_accuracy_stage(
+		defender: BattlePokemon, ng_active: bool = false,
+		attacker: BattlePokemon = null) -> bool:
+	return effective_ability_id(defender, ng_active, attacker) == ABILITY_UNAWARE
 
 
 # ── Tier 2: Switch-in effects ────────────────────────────────────────────────
@@ -700,30 +1068,29 @@ static func ignores_attacker_accuracy_stage(defender: BattlePokemon) -> bool:
 #   "cured_own_poison"      : bool — true if Pastel Veil cured pokemon's own poison/toxic
 static func try_switch_in(
 		pokemon: BattlePokemon, opponent: BattlePokemon,
-		opponent_ally: BattlePokemon = null) -> Dictionary:
+		opponent_ally: BattlePokemon = null, ng_active: bool = false) -> Dictionary:
 	var result := {
 		"atk_change": 0, "opponent_speed_change": 0, "cured_own_poison": false,
 		"opponent_defiant_stat": -1, "opponent_defiant_change": 0,
 	}
-	if pokemon.ability == null:
+	var id: int = effective_ability_id(pokemon, ng_active)
+	if id == ABILITY_NONE:
 		return result
-	var id: int = pokemon.ability.ability_id
 	if id == ABILITY_INTIMIDATE:
 		if not opponent.fainted:
 			var atk_change: int = StatusManager.apply_stat_change(
-					opponent, BattlePokemon.STAGE_ATK, -1, opponent_ally)
+					opponent, BattlePokemon.STAGE_ATK, -1, opponent_ally, ng_active)
 			result["atk_change"] = atk_change
-			if atk_change < 0 and opponent.ability != null \
-					and opponent.ability.ability_id == ABILITY_RATTLED:
+			if atk_change < 0 and effective_ability_id(opponent, ng_active) == ABILITY_RATTLED:
 				result["opponent_speed_change"] = StatusManager.apply_stat_change(
-						opponent, BattlePokemon.STAGE_SPEED, 1)
+						opponent, BattlePokemon.STAGE_SPEED, 1, null, ng_active)
 			# M17b: Defiant/Competitive — Intimidate is an opponent-caused Attack
 			# decrease, same trigger condition as a stat-lowering move.
 			if atk_change < 0:
-				var dc_stat: int = defiant_competitive_stat(opponent)
+				var dc_stat: int = defiant_competitive_stat(opponent, ng_active)
 				if dc_stat != -1:
 					result["opponent_defiant_stat"] = dc_stat
-					result["opponent_defiant_change"] = StatusManager.apply_stat_change(opponent, dc_stat, 2)
+					result["opponent_defiant_change"] = StatusManager.apply_stat_change(opponent, dc_stat, 2, null, ng_active)
 	if id == ABILITY_PASTEL_VEIL:
 		if pokemon.status == BattlePokemon.STATUS_POISON or pokemon.status == BattlePokemon.STATUS_TOXIC:
 			pokemon.status = BattlePokemon.STATUS_NONE
@@ -746,8 +1113,9 @@ static func try_switch_in(
 # opponents: all LIVE opposing BattlePokemon (1 in singles, up to 2 in doubles).
 # Returns the STAGE_* raised (STAGE_ATK or STAGE_SPATK), or -1 if Download doesn't apply
 # (no ability, or the relevant stat is already at +6).
-static func download_stat(pokemon: BattlePokemon, opponents: Array) -> int:
-	if pokemon.ability == null or pokemon.ability.ability_id != ABILITY_DOWNLOAD:
+static func download_stat(
+		pokemon: BattlePokemon, opponents: Array, ng_active: bool = false) -> int:
+	if effective_ability_id(pokemon, ng_active) != ABILITY_DOWNLOAD:
 		return -1
 	var total_def: float = 0.0
 	var total_spdef: float = 0.0
@@ -778,15 +1146,16 @@ static func _staged_stat(base_stat: int, stage: int) -> float:
 # and back in multiple times.
 # Source: battle_util.c :: ABILITY_SUPERSWEET_SYRUP case (L3324-3336).
 # Returns the actual Evasion stage change applied to opponent (0 = nothing happened).
-static func try_switch_in_evasion(pokemon: BattlePokemon, opponent: BattlePokemon) -> int:
-	if pokemon.ability == null or pokemon.ability.ability_id != ABILITY_SUPERSWEET_SYRUP:
+static func try_switch_in_evasion(
+		pokemon: BattlePokemon, opponent: BattlePokemon, ng_active: bool = false) -> int:
+	if effective_ability_id(pokemon, ng_active) != ABILITY_SUPERSWEET_SYRUP:
 		return 0
 	if pokemon.supersweet_syrup_used:
 		return 0
 	if opponent.fainted:
 		return 0
 	pokemon.supersweet_syrup_used = true
-	return StatusManager.apply_stat_change(opponent, BattlePokemon.STAGE_EVASION, -1)
+	return StatusManager.apply_stat_change(opponent, BattlePokemon.STAGE_EVASION, -1, null, ng_active)
 
 
 # M17c: Hospitality — switch-in, doubles-only, heals the switching-in Pokémon's OWN
@@ -796,8 +1165,9 @@ static func try_switch_in_evasion(pokemon: BattlePokemon, opponent: BattlePokemo
 #   volatile yet, so that condition is simply absent (matches how other heal effects in
 #   this codebase, e.g. Leftovers, don't check it either).
 # Returns the heal amount (0 = not this ability, no ally, ally fainted, or already at max).
-static func try_switch_in_ally_heal(pokemon: BattlePokemon, ally: BattlePokemon) -> int:
-	if pokemon.ability == null or pokemon.ability.ability_id != ABILITY_HOSPITALITY:
+static func try_switch_in_ally_heal(
+		pokemon: BattlePokemon, ally: BattlePokemon, ng_active: bool = false) -> int:
+	if effective_ability_id(pokemon, ng_active) != ABILITY_HOSPITALITY:
 		return 0
 	if ally == null or ally.fainted:
 		return 0
@@ -835,10 +1205,11 @@ static func try_switch_in_ally_heal(pokemon: BattlePokemon, ally: BattlePokemon)
 #   super-effective hits against Flying-type defenders).
 #
 # BattleManager calls try_set_weather(get_switch_in_weather(mon)) after try_switch_in().
-static func get_switch_in_weather(pokemon: BattlePokemon) -> int:
-	if pokemon.ability == null:
+static func get_switch_in_weather(pokemon: BattlePokemon, ng_active: bool = false) -> int:
+	var id: int = effective_ability_id(pokemon, ng_active)
+	if id == ABILITY_NONE:
 		return DamageCalculator.WEATHER_NONE
-	match pokemon.ability.ability_id:
+	match id:
 		ABILITY_DRIZZLE:
 			return DamageCalculator.WEATHER_RAIN
 		ABILITY_DROUGHT:
@@ -923,7 +1294,8 @@ static func try_end_of_turn(
 		weather: int = DamageCalculator.WEATHER_NONE,
 		ally: BattlePokemon = null,
 		force_shed_skin_roll: Variant = null,
-		force_healer_roll: Variant = null) -> Dictionary:
+		force_healer_roll: Variant = null,
+		ng_active: bool = false) -> Dictionary:
 	var result := {
 		"speed_boost_change": 0,
 		"moody_raised_stat": -1, "moody_raised_amount": 0,
@@ -931,16 +1303,16 @@ static func try_end_of_turn(
 		"heal_amount": 0, "damage_amount": 0,
 		"cured_status": false, "healed_ally_status": false,
 	}
-	if pokemon.ability == null:
-		return result
 	if pokemon.fainted:
 		return result
-	var id: int = pokemon.ability.ability_id
+	var id: int = effective_ability_id(pokemon, ng_active)
+	if id == ABILITY_NONE:
+		return result
 	if id == ABILITY_SPEED_BOOST and not pokemon.switched_in_this_turn:
 		result["speed_boost_change"] = StatusManager.apply_stat_change(
-				pokemon, BattlePokemon.STAGE_SPEED, 1)
+				pokemon, BattlePokemon.STAGE_SPEED, 1, null, ng_active)
 	if id == ABILITY_MOODY:
-		_apply_moody(pokemon, result, force_moody_raise, force_moody_lower)
+		_apply_moody(pokemon, result, force_moody_raise, force_moody_lower, ng_active)
 	if id == ABILITY_TRUANT:
 		pokemon.truant_loafing = not pokemon.truant_loafing
 
@@ -981,7 +1353,7 @@ static func try_end_of_turn(
 
 static func _apply_moody(
 		pokemon: BattlePokemon, result: Dictionary,
-		force_raise: Variant, force_lower: Variant) -> void:
+		force_raise: Variant, force_lower: Variant, ng_active: bool = false) -> void:
 	var valid_to_raise: Array = []
 	for i in range(7):
 		if pokemon.stat_stages[i] < 6:
@@ -992,7 +1364,7 @@ static func _apply_moody(
 		raised_stat = int(force_raise) if (force_raise != null and int(force_raise) in valid_to_raise) \
 				else valid_to_raise[randi() % valid_to_raise.size()]
 		result["moody_raised_stat"] = raised_stat
-		result["moody_raised_amount"] = StatusManager.apply_stat_change(pokemon, raised_stat, 2)
+		result["moody_raised_amount"] = StatusManager.apply_stat_change(pokemon, raised_stat, 2, null, ng_active)
 
 	var valid_to_lower: Array = []
 	for i in range(7):
@@ -1003,7 +1375,7 @@ static func _apply_moody(
 		var lowered_stat: int = int(force_lower) if (force_lower != null and int(force_lower) in valid_to_lower) \
 				else valid_to_lower[randi() % valid_to_lower.size()]
 		result["moody_lowered_stat"] = lowered_stat
-		result["moody_lowered_amount"] = StatusManager.apply_stat_change(pokemon, lowered_stat, -1)
+		result["moody_lowered_amount"] = StatusManager.apply_stat_change(pokemon, lowered_stat, -1, null, ng_active)
 
 
 # ── Tier 3: Contact / trigger-based effects (ABILITYEFFECT_MOVE_END) ─────────
@@ -1059,11 +1431,13 @@ static func try_contact_effects(
 		move: MoveData,
 		damage: int,
 		force_contact_roll: Variant = null,
-		force_effect_spore_roll: Variant = null) -> Dictionary:
+		force_effect_spore_roll: Variant = null,
+		ng_active: bool = false) -> Dictionary:
 
-	var result := {"rough_skin_damage": 0, "status_applied": 0, "speed_change": 0, "ability_name": ""}
-	if defender.ability == null:
-		return result
+	var result := {
+		"rough_skin_damage": 0, "status_applied": 0, "speed_change": 0, "ability_name": "",
+		"mummy_overwritten_ability": -1, "wandering_spirit_swapped": false,
+	}
 	if not move.makes_contact:
 		return result
 	if damage <= 0:
@@ -1071,11 +1445,13 @@ static func try_contact_effects(
 	if attacker.fainted:
 		return result
 
-	var id: int = defender.ability.ability_id
+	var id: int = effective_ability_id(defender, ng_active)
+	if id == ABILITY_NONE:
+		return result
 
 	if id == ABILITY_GOOEY or id == ABILITY_TANGLING_HAIR:
 		var speed_actual: int = StatusManager.apply_stat_change(
-				attacker, BattlePokemon.STAGE_SPEED, -1)
+				attacker, BattlePokemon.STAGE_SPEED, -1, null, ng_active)
 		if speed_actual != 0:
 			result["speed_change"] = speed_actual
 			result["ability_name"] = "tangling_hair" if id == ABILITY_TANGLING_HAIR else "gooey"
@@ -1135,6 +1511,24 @@ static func try_contact_effects(
 			if StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_SLEEP):
 				result["status_applied"] = BattlePokemon.STATUS_SLEEP
 				result["ability_name"] = "effect_spore"
+		return result
+
+	# M17h: Wandering Spirit — bidirectional ability swap with the attacker. Checked
+	# before Mummy/Lingering Aroma below since `id` here is already known to be exactly
+	# one ability at a time (this whole function dispatches on a single `id` value), so
+	# ordering between these two branches has no observable effect either way.
+	if id == ABILITY_WANDERING_SPIRIT:
+		if try_wandering_spirit_swap(defender, attacker, move, damage, ng_active):
+			result["wandering_spirit_swapped"] = true
+			result["ability_name"] = "wandering_spirit"
+		return result
+
+	# M17h: Mummy / Lingering Aroma — one-directional overwrite of the attacker's ability.
+	if id == ABILITY_MUMMY or id == ABILITY_LINGERING_AROMA:
+		var new_ability: int = try_mummy_overwrite(defender, attacker, move, damage, ng_active)
+		if new_ability != -1:
+			result["mummy_overwritten_ability"] = new_ability
+			result["ability_name"] = "lingering_aroma" if id == ABILITY_LINGERING_AROMA else "mummy"
 		return result
 
 	return result
@@ -1216,7 +1610,8 @@ static func try_hit_reactive_effects(
 		damage: int,
 		hp_before_hit: int,
 		is_crit: bool,
-		force_cursed_body_roll: Variant = null) -> Dictionary:
+		force_cursed_body_roll: Variant = null,
+		ng_active: bool = false) -> Dictionary:
 
 	var result := {
 		"justified_change": 0, "rattled_change": 0, "water_compaction_change": 0,
@@ -1225,70 +1620,76 @@ static func try_hit_reactive_effects(
 		"thermal_exchange_change": 0, "anger_shell_changes": {}, "cotton_down_fired": false,
 		"cursed_body_fired": false, "toxic_debris_fired": false,
 	}
-	if defender.ability == null:
-		return result
 	if damage <= 0:
 		return result
 	if defender.fainted:
 		return result
 
-	var id: int = defender.ability.ability_id
+	# M17g: Thermal Exchange is the one ability in this function flagged `.breakable =
+	# TRUE` in source (every other reactive trigger here — Justified/Rattled/Water
+	# Compaction/Stamina/Weak Armor/Anger Point/Berserk/Anger Shell/Steam Engine/Cotton
+	# Down/Cursed Body/Toxic Debris — confirmed NOT breakable), so this is the only
+	# function in this reactive-trigger group where Mold Breaker's attacker-scoped
+	# bypass can matter; `attacker` is threaded through for exactly that reason.
+	var id: int = effective_ability_id(defender, ng_active, attacker)
+	if id == ABILITY_NONE:
+		return result
 
 	if id == ABILITY_JUSTIFIED and move.type == TypeChart.TYPE_DARK:
 		result["justified_change"] = StatusManager.apply_stat_change(
-				defender, BattlePokemon.STAGE_ATK, 1)
+				defender, BattlePokemon.STAGE_ATK, 1, null, ng_active)
 		return result
 
 	if id == ABILITY_RATTLED and (move.type == TypeChart.TYPE_DARK
 			or move.type == TypeChart.TYPE_BUG or move.type == TypeChart.TYPE_GHOST):
 		result["rattled_change"] = StatusManager.apply_stat_change(
-				defender, BattlePokemon.STAGE_SPEED, 1)
+				defender, BattlePokemon.STAGE_SPEED, 1, null, ng_active)
 		return result
 
 	if id == ABILITY_WATER_COMPACTION and move.type == TypeChart.TYPE_WATER:
 		result["water_compaction_change"] = StatusManager.apply_stat_change(
-				defender, BattlePokemon.STAGE_DEF, 2)
+				defender, BattlePokemon.STAGE_DEF, 2, null, ng_active)
 		return result
 
 	if id == ABILITY_STAMINA:
 		result["stamina_change"] = StatusManager.apply_stat_change(
-				defender, BattlePokemon.STAGE_DEF, 1)
+				defender, BattlePokemon.STAGE_DEF, 1, null, ng_active)
 		return result
 
 	if id == ABILITY_WEAK_ARMOR and move.category == 0:
 		result["weak_armor_def_change"] = StatusManager.apply_stat_change(
-				defender, BattlePokemon.STAGE_DEF, -1)
+				defender, BattlePokemon.STAGE_DEF, -1, null, ng_active)
 		result["weak_armor_speed_change"] = StatusManager.apply_stat_change(
-				defender, BattlePokemon.STAGE_SPEED, 2)
+				defender, BattlePokemon.STAGE_SPEED, 2, null, ng_active)
 		return result
 
 	if id == ABILITY_ANGER_POINT and is_crit:
 		result["anger_point_change"] = StatusManager.apply_stat_change(
-				defender, BattlePokemon.STAGE_ATK, 12)
+				defender, BattlePokemon.STAGE_ATK, 12, null, ng_active)
 		return result
 
 	var crossed_half: bool = hp_before_hit > defender.max_hp / 2 \
 			and defender.current_hp <= defender.max_hp / 2
 	if id == ABILITY_BERSERK and crossed_half:
 		result["berserk_change"] = StatusManager.apply_stat_change(
-				defender, BattlePokemon.STAGE_SPATK, 1)
+				defender, BattlePokemon.STAGE_SPATK, 1, null, ng_active)
 		return result
 
 	if id == ABILITY_ANGER_SHELL and crossed_half:
 		var changes := {}
-		var def_c: int = StatusManager.apply_stat_change(defender, BattlePokemon.STAGE_DEF, -1)
+		var def_c: int = StatusManager.apply_stat_change(defender, BattlePokemon.STAGE_DEF, -1, null, ng_active)
 		if def_c != 0:
 			changes[BattlePokemon.STAGE_DEF] = def_c
-		var spdef_c: int = StatusManager.apply_stat_change(defender, BattlePokemon.STAGE_SPDEF, -1)
+		var spdef_c: int = StatusManager.apply_stat_change(defender, BattlePokemon.STAGE_SPDEF, -1, null, ng_active)
 		if spdef_c != 0:
 			changes[BattlePokemon.STAGE_SPDEF] = spdef_c
-		var atk_c: int = StatusManager.apply_stat_change(defender, BattlePokemon.STAGE_ATK, 1)
+		var atk_c: int = StatusManager.apply_stat_change(defender, BattlePokemon.STAGE_ATK, 1, null, ng_active)
 		if atk_c != 0:
 			changes[BattlePokemon.STAGE_ATK] = atk_c
-		var spatk_c: int = StatusManager.apply_stat_change(defender, BattlePokemon.STAGE_SPATK, 1)
+		var spatk_c: int = StatusManager.apply_stat_change(defender, BattlePokemon.STAGE_SPATK, 1, null, ng_active)
 		if spatk_c != 0:
 			changes[BattlePokemon.STAGE_SPATK] = spatk_c
-		var speed_c: int = StatusManager.apply_stat_change(defender, BattlePokemon.STAGE_SPEED, 1)
+		var speed_c: int = StatusManager.apply_stat_change(defender, BattlePokemon.STAGE_SPEED, 1, null, ng_active)
 		if speed_c != 0:
 			changes[BattlePokemon.STAGE_SPEED] = speed_c
 		result["anger_shell_changes"] = changes
@@ -1296,12 +1697,12 @@ static func try_hit_reactive_effects(
 
 	if id == ABILITY_STEAM_ENGINE and (move.type == TypeChart.TYPE_FIRE or move.type == TypeChart.TYPE_WATER):
 		result["steam_engine_change"] = StatusManager.apply_stat_change(
-				defender, BattlePokemon.STAGE_SPEED, 6)
+				defender, BattlePokemon.STAGE_SPEED, 6, null, ng_active)
 		return result
 
 	if id == ABILITY_THERMAL_EXCHANGE and move.type == TypeChart.TYPE_FIRE:
 		result["thermal_exchange_change"] = StatusManager.apply_stat_change(
-				defender, BattlePokemon.STAGE_ATK, 1)
+				defender, BattlePokemon.STAGE_ATK, 1, null, ng_active)
 		return result
 
 	if id == ABILITY_COTTON_DOWN:
@@ -1337,8 +1738,8 @@ static func _roll_contact(force: Variant, chance_pct: int) -> bool:
 # there's no separate "is this a berry" gate to add; this reuses that single existing
 # choke point directly rather than building a new "berry pocket" check.
 # Returns the heal amount (0 = not this ability, or already at max HP).
-static func cheek_pouch_heal(mon: BattlePokemon) -> int:
-	if mon.ability == null or mon.ability.ability_id != ABILITY_CHEEK_POUCH:
+static func cheek_pouch_heal(mon: BattlePokemon, ng_active: bool = false) -> int:
+	if effective_ability_id(mon, ng_active) != ABILITY_CHEEK_POUCH:
 		return 0
 	if mon.current_hp >= mon.max_hp:
 		return 0
@@ -1356,12 +1757,12 @@ static func cheek_pouch_heal(mon: BattlePokemon) -> int:
 # killer: the BattlePokemon whose hit caused the faint, or null if unknown (matches
 #   _last_attacker.get(combatant, null) at the call site).
 # Returns the actual Attack stage change (0 = nothing happened, including killer==null).
-static func moxie_boost(killer: BattlePokemon) -> int:
+static func moxie_boost(killer: BattlePokemon, ng_active: bool = false) -> int:
 	if killer == null or killer.fainted:
 		return 0
-	if killer.ability == null or killer.ability.ability_id != ABILITY_MOXIE:
+	if effective_ability_id(killer, ng_active) != ABILITY_MOXIE:
 		return 0
-	return StatusManager.apply_stat_change(killer, BattlePokemon.STAGE_ATK, 1)
+	return StatusManager.apply_stat_change(killer, BattlePokemon.STAGE_ATK, 1, null, ng_active)
 
 
 # M17c: Anticipation (L3083-3119) / Forewarn (L3142-3150) / Frisk (L3121-3141) — all
@@ -1398,11 +1799,10 @@ const ABILITY_COSMETIC_INFO_ONLY: Array[int] = [
 static func try_synchronize(
 		holder: BattlePokemon,
 		attacker: BattlePokemon,
-		applied_status: int) -> int:
+		applied_status: int,
+		ng_active: bool = false) -> int:
 
-	if holder.ability == null:
-		return 0
-	if holder.ability.ability_id != ABILITY_SYNCHRONIZE:
+	if effective_ability_id(holder, ng_active) != ABILITY_SYNCHRONIZE:
 		return 0
 	if holder == attacker:
 		return 0

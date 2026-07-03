@@ -9,3 +9,4 @@ ability_id = 175
 ability_name = "Sweet Veil"
 description = "Prevents itself and ally Pokémon from falling asleep."
 ai_rating = 5
+breakable = true

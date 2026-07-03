@@ -9,3 +9,4 @@ ability_id = 87
 ability_name = "Dry Skin"
 description = "Restores HP in rain but takes damage in harsh sunlight; takes more damage from Fire-type moves."
 ai_rating = 6
+breakable = true

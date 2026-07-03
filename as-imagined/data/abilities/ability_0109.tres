@@ -9,3 +9,4 @@ ability_id = 109
 ability_name = "Unaware"
 description = "Ignores the target's stat changes."
 ai_rating = 7
+breakable = true

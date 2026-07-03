@@ -9,3 +9,4 @@ ability_id = 54
 ability_name = "Truant"
 description = "The Pokémon can't use a move if it had used a move on the previous turn."
 ai_rating = 3
+cant_be_overwritten = true

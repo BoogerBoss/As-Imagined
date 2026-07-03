@@ -9,3 +9,4 @@ ability_id = 257
 ability_name = "Pastel Veil"
 description = "Protects itself and ally Pokémon from being poisoned."
 ai_rating = 6
+breakable = true

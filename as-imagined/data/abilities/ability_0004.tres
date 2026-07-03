@@ -9,3 +9,4 @@ ability_id = 4
 ability_name = "Battle Armor"
 description = "Hard armor protects the Pokémon from critical hits."
 ai_rating = 4
+breakable = true

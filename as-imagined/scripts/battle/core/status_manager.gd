@@ -46,23 +46,32 @@ static func try_apply_status(
 		mon: BattlePokemon,
 		status: int,
 		force_sleep_turns: Variant = null,
-		ally: BattlePokemon = null) -> bool:
+		ally: BattlePokemon = null,
+		ng_active: bool = false,
+		attacker: BattlePokemon = null) -> bool:
 
 	# One major status at a time.
 	# Source: CanSetNonVolatileStatus L5391 — "already has STATUS1_ANY → fails"
 	if mon.status != BattlePokemon.STATUS_NONE:
 		return false
 
-	if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_PURIFYING_SALT:
+	# M17g: Purifying Salt/Sweet Veil/Pastel Veil are all flagged `.breakable = TRUE`
+	# in source, so a Mold-Breaker-holder's status move bypasses these immunities the
+	# same way it bypasses any other breakable defensive ability — `attacker` is
+	# threaded through for exactly that (null at every non-move call site, e.g. hazard
+	# poisoning on switch-in, correctly leaving Mold Breaker inapplicable there).
+	var mon_id: int = AbilityManager.effective_ability_id(mon, ng_active, attacker)
+	if mon_id == AbilityManager.ABILITY_PURIFYING_SALT:
 		return false
 
-	var ally_ability_id: int = ally.ability.ability_id if (ally != null and not ally.fainted and ally.ability != null) else -1
+	var ally_ability_id: int = AbilityManager.effective_ability_id(ally, ng_active, attacker) \
+			if (ally != null and not ally.fainted) else -1
 	if status == BattlePokemon.STATUS_SLEEP:
-		if (mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_SWEET_VEIL) \
+		if mon_id == AbilityManager.ABILITY_SWEET_VEIL \
 				or ally_ability_id == AbilityManager.ABILITY_SWEET_VEIL:
 			return false
 	if status == BattlePokemon.STATUS_POISON or status == BattlePokemon.STATUS_TOXIC:
-		if (mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_PASTEL_VEIL) \
+		if mon_id == AbilityManager.ABILITY_PASTEL_VEIL \
 				or ally_ability_id == AbilityManager.ABILITY_PASTEL_VEIL:
 			return false
 
@@ -148,9 +157,9 @@ static func try_apply_confusion(
 #   gated on not already at max HP. This is the SAME central function every
 #   poison/toxic/burn end-of-turn tick in this project already goes through — no
 #   parallel poison-damage path, just a branch inside the existing one.
-static func end_of_turn_damage(mon: BattlePokemon) -> int:
-	var has_poison_heal: bool = mon.ability != null \
-			and mon.ability.ability_id == AbilityManager.ABILITY_POISON_HEAL
+static func end_of_turn_damage(mon: BattlePokemon, ng_active: bool = false) -> int:
+	var has_poison_heal: bool = \
+			AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_POISON_HEAL
 
 	match mon.status:
 		BattlePokemon.STATUS_BURN:
@@ -206,7 +215,8 @@ static func pre_move_check(
 		force_freeze_thaw: Variant = null,
 		force_confusion_hit: Variant = null,
 		force_full_para: Variant = null,
-		move: MoveData = null) -> Dictionary:
+		move: MoveData = null,
+		ng_active: bool = false) -> Dictionary:
 
 	var result := {
 		"can_move":        true,
@@ -270,7 +280,7 @@ static func pre_move_check(
 	# M17c: AbilityManager.try_end_of_turn toggles BattlePokemon.truant_loafing every end
 	# of turn (XOR) when the holder has Truant; if it's currently true, the move fails
 	# outright ("loafing around") with no PP cost and no other side effect.
-	if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_TRUANT \
+	if AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_TRUANT \
 			and mon.truant_loafing:
 		result["can_move"] = false
 		result["loafing"] = true
@@ -414,7 +424,8 @@ static func check_accuracy(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
 		move: MoveData,
-		force_hit: Variant = null) -> bool:
+		force_hit: Variant = null,
+		ng_active: bool = false) -> bool:
 	# Test override — highest priority; bypasses all checks including semi-inv.
 	if force_hit != null:
 		return bool(force_hit)
@@ -423,7 +434,7 @@ static func check_accuracy(
 	# semi-invulnerable gate below (matching source's ordering: the No Guard check
 	# happens before CancelerAccuracyCheck's semi-invulnerable test).
 	# Source: battle_util.c L10182-10193.
-	if AbilityManager.bypasses_accuracy_check(attacker, defender):
+	if AbilityManager.bypasses_accuracy_check(attacker, defender, ng_active):
 		return true
 
 	# Semi-invulnerable check: fires before accuracy roll and before always-hit.
@@ -440,9 +451,9 @@ static func check_accuracy(
 	# Keen Eye (attacker) ignores the DEFENDER's evasion stage. Both reset to neutral
 	# (0), not just when positive — source's GetTotalAccuracy (L10251-10257) resets
 	# unconditionally.
-	if AbilityManager.ignores_attacker_accuracy_stage(defender):
+	if AbilityManager.ignores_attacker_accuracy_stage(defender, ng_active, attacker):
 		acc_stage = 0
-	if AbilityManager.ignores_defender_evasion_stage(attacker):
+	if AbilityManager.ignores_defender_evasion_stage(attacker, ng_active):
 		eva_stage = 0
 	var combined: int = clampi(acc_stage - eva_stage, -6, 6)
 	var idx: int = combined + 6
@@ -450,7 +461,7 @@ static func check_accuracy(
 
 	# M17a: Compound Eyes (×1.30) / Hustle (physical ×0.80) — same "calc" integer-percentage
 	# math source uses. Source: battle_util.c :: GetTotalAccuracy (L10283-10295).
-	var ability_pct: int = AbilityManager.accuracy_modifier_percent(attacker, move)
+	var ability_pct: int = AbilityManager.accuracy_modifier_percent(attacker, move, ng_active)
 	if ability_pct != 100:
 		calc = calc * ability_pct / 100
 
@@ -513,10 +524,12 @@ static func apply_stat_change(
 		target: BattlePokemon,
 		stat_idx: int,
 		amount: int,
-		ally: BattlePokemon = null) -> int:
-	var adjusted: int = AbilityManager.adjust_stat_stage_amount(target, amount)
+		ally: BattlePokemon = null,
+		ng_active: bool = false,
+		attacker: BattlePokemon = null) -> int:
+	var adjusted: int = AbilityManager.adjust_stat_stage_amount(target, amount, ng_active, attacker)
 
-	if adjusted < 0 and AbilityManager.blocks_stat_decrease(target, stat_idx, ally):
+	if adjusted < 0 and AbilityManager.blocks_stat_decrease(target, stat_idx, ally, ng_active, attacker):
 		return 0
 
 	var old_stage: int = target.stat_stages[stat_idx]
@@ -554,7 +567,8 @@ static func try_secondary_effect(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
 		move: MoveData,
-		force_secondary: Variant = null) -> bool:
+		force_secondary: Variant = null,
+		ng_active: bool = false) -> bool:
 
 	if move.secondary_effect == MoveData.SE_NONE:
 		return false
@@ -572,15 +586,15 @@ static func try_secondary_effect(
 
 	match move.secondary_effect:
 		MoveData.SE_BURN:
-			return try_apply_status(defender, BattlePokemon.STATUS_BURN)
+			return try_apply_status(defender, BattlePokemon.STATUS_BURN, null, null, ng_active, attacker)
 		MoveData.SE_FREEZE:
-			return try_apply_status(defender, BattlePokemon.STATUS_FREEZE)
+			return try_apply_status(defender, BattlePokemon.STATUS_FREEZE, null, null, ng_active, attacker)
 		MoveData.SE_PARALYSIS:
-			return try_apply_status(defender, BattlePokemon.STATUS_PARALYSIS)
+			return try_apply_status(defender, BattlePokemon.STATUS_PARALYSIS, null, null, ng_active, attacker)
 		MoveData.SE_SLEEP:
-			return try_apply_status(defender, BattlePokemon.STATUS_SLEEP)
+			return try_apply_status(defender, BattlePokemon.STATUS_SLEEP, null, null, ng_active, attacker)
 		MoveData.SE_TOXIC:
-			return try_apply_status(defender, BattlePokemon.STATUS_TOXIC)
+			return try_apply_status(defender, BattlePokemon.STATUS_TOXIC, null, null, ng_active, attacker)
 		MoveData.SE_CONFUSION:
 			return try_apply_confusion(defender)
 		MoveData.SE_FLINCH:
@@ -604,12 +618,14 @@ static func try_secondary_effect(
 # Source: battle_util.c :: GetSpeedModifier-equivalent ability switch (Slush Rush ×2.0
 #   gated on IsBattlerWeatherAffected(..., B_WEATHER_HAIL)).
 # weather: WEATHER_* constant, default WEATHER_NONE (existing callers unaffected).
-static func effective_speed(mon: BattlePokemon, weather: int = DamageCalculator.WEATHER_NONE) -> int:
+static func effective_speed(
+		mon: BattlePokemon, weather: int = DamageCalculator.WEATHER_NONE,
+		ng_active: bool = false) -> int:
 	var spd: int = DamageCalculator._apply_stage(
 			mon.speed, mon.stat_stages[BattlePokemon.STAGE_SPEED])
 	if mon.status == BattlePokemon.STATUS_PARALYSIS:
 		spd /= 2
-	if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_SLUSH_RUSH \
+	if AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_SLUSH_RUSH \
 			and weather == DamageCalculator.WEATHER_HAIL:
 		spd *= 2
 	# M12: Choice Scarf — (speed * 150) / 100 integer arithmetic.

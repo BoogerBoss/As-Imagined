@@ -9,3 +9,4 @@ ability_id = 47
 ability_name = "Thick Fat"
 description = "Halves the damage taken from Fire- and Ice-type moves."
 ai_rating = 6
+breakable = true

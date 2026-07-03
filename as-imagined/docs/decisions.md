@@ -4332,3 +4332,459 @@ way:
   no change was made to `_do_forced_switch_in` or any call site outside `is_trapped()`
   itself, so Section 4's existing forced-switch-bypasses-trapping coverage still applies
   unchanged.
+
+## [M17g] Ability-suppression plumbing (new infrastructure) — Mold Breaker / Neutralizing Gas
+
+Scoping source: `docs/m17_recon.md` Section 11's M17g proposal ("Ability-suppression
+plumbing (new infra) + everything gated on it. Mold Breaker, Neutralizing Gas (original
+pair, flag #4) PLUS Turboblaze/Teravolt (same bypass array) and (partially) Mycelium
+Might"). Second genuinely new-infrastructure tier in M17, after `[M17f]`'s trapping check.
+
+### Step 0 — finalized ability list
+
+Re-derived against Section 13's exclusion sweep before implementation, per this
+project's established M17f→M17g cross-check discipline:
+
+- **Turboblaze (163) / Teravolt (164) excluded** — Section 13.1 flags both as
+  legendary-exclusive (Reshiram/Kyurem-White, Zekrom/Kyurem-Black respectively), the
+  same correction pattern as Beast Boost in `[M17b]` and Orichalcum Pulse in `[M17d]`.
+  Section 11's own prose already flagged this as needing re-verification before
+  implementation (see `[M17f]`'s "Next tier" note) — confirmed here, not re-derived from
+  scratch.
+- **Mycelium Might (298) deferred, not included.** Source-verified as a genuine hybrid
+  (`battle_util.c` L4813: `ability == ABILITY_MYCELIUM_MIGHT && IsBattleMoveStatus
+  (gCurrentMove)` — grouped in the EXACT SAME bypass array as Mold Breaker/Turboblaze/
+  Teravolt for its ability-ignore half, but its other half — own status moves always
+  act last in their priority bracket — is the Stall turn-order shape, which this project
+  hasn't built yet (Stall itself is unscheduled, tentatively M17n). Implementing only
+  the ability-ignore half would misrepresent the ability, the same reasoning `[M17b]`
+  used to defer Guard Dog's two-part mechanic. Natural home is whenever Stall gets
+  scheduled.
+
+Final list, canonical IDs re-verified against `include/constants/abilities.h` directly:
+**Mold Breaker (104), Neutralizing Gas (256)**. Just 2 abilities — a pure infrastructure
+tier, no "free rider" abilities actually shipped this time (unlike `[M17a]`'s Full Metal
+Body carryover).
+
+### Source citations — the two genuinely different suppression shapes
+
+**Mold Breaker (104)** — attacker-scoped, move-scoped:
+- `battle_util.c :: IsMoldBreakerTypeAbility` (L4805-4820): identifies Mold Breaker (and
+  Turboblaze/Teravolt/conditionally Mycelium Might, all excluded/deferred above) as
+  "ignore-target's-ability" abilities.
+- `battle_util.c` L9799-9802: `gBattleStruct->moldBreakerActive` is set true only
+  `if (gCurrentMove != MOVE_NONE)`, immediately before a specific move's effects are
+  resolved, and explicitly reset false at switch-in cleanup (`battle_main.c`
+  L3326-3327) — confirming the suppression window is scoped STRICTLY to processing one
+  Pokémon's current move, not a persistent flag.
+- `battle_util.c :: CanBreakThroughAbility` (L4822-4827): `battlerDef == battlerAtk` is
+  an explicit early exclusion — Mold Breaker NEVER suppresses its own wielder's ability,
+  only a DIFFERENT battler's (the move's target).
+- Only suppresses abilities flagged `.breakable = TRUE` in `src/data/abilities.h` — a
+  per-ability data flag, not a blanket "ignore everything" rule. Cross-checked this
+  project's full implemented-ability roster (M8 through `[M17f]`) against that flag
+  directly (not assumed): 26 abilities are both implemented AND breakable — Battle
+  Armor, Shell Armor, Levitate, Thick Fat, Marvel Scale, Fur Coat, Multiscale, Filter,
+  Solid Rock, Ice Scales, Heatproof, Dry Skin, Purifying Salt, Clear Body, White Smoke,
+  Hyper Cutter, Big Pecks, Keen Eye, Flower Veil, Sweet Veil, Pastel Veil, Simple,
+  Contrary, Unaware, Flower Gift, Thermal Exchange (`AbilityManager
+  .MOLD_BREAKER_BREAKABLE`). Confirmed NOT breakable despite looking like plausible
+  candidates: Shadow Tag/Arena Trap/Magnet Pull, No Guard, Guts, Adaptability, Rock
+  Head, Sniper, Tinted Lens, Compound Eyes, and the full M17b/M17c reactive-trigger
+  roster except Thermal Exchange (every other ability in `try_hit_reactive_effects`
+  confirmed non-breakable, one by one, not batch-assumed).
+- A genuinely interesting confirmed nuance: Dry Skin's Fire-type damage-INCREASE and
+  Purifying Salt's Ghost-type damage-DECREASE are both breakable — Mold Breaker
+  suppresses the ability entirely regardless of whether it currently helps or hurts the
+  attacker, so a Mold-Breaker holder's Fire move against a Dry Skin holder does LESS
+  damage than an ordinary attacker's would (the ×1.25 vulnerability is also suppressed),
+  not more. Verified this is exactly source's behavior, not a project-side quirk.
+
+**Neutralizing Gas (256)** — field-wide, holder-presence-scoped:
+- `battle_util.c :: IsNeutralizingGasOnField` (L4794-4803): true if ANY live battler has
+  the ability active — a simple presence check, not move-scoped at all.
+- `battle_util.c :: GetBattlerAbilityInternal` (L4844-4878), the single chokepoint EVERY
+  ability read in source goes through: suppresses every OTHER live battler's ability
+  (never its own — `ability != ABILITY_NEUTRALIZING_GAS` is an explicit exemption) for
+  as long as it's active, touching switch-in triggers, end-of-turn triggers, contact/
+  hit-reactive triggers, stat-change-blocking, status immunities, damage-pipeline
+  modifiers, accuracy modifiers — genuinely everything, confirmed by the fact that
+  `GetBattlerAbilityInternal` is the ONE function every other ability-reading function in
+  source calls through.
+- `abilityCantBeSuppressed` exemption (`gAbilitiesInfo[...].cantBeSuppressed`,
+  `battle_util.c` L4852-4864): a fixed per-ability flag exempting form-defining
+  mechanics (Multitype, Zen Mode, Stance Change, Shields Down, Schooling, Disguise,
+  Battle Bond, Power Construct, Comatose, RKS System, Gulp Missile, Ice Face, As One ×2,
+  Zero to Hero, Commander, Tera Shift) from Neutralizing Gas specifically (though a
+  `.breakable` ability in this set can still be Mold-Broken). Checked directly: NONE of
+  these 16 are implemented anywhere in this project (all are battle-form-change/Mega/
+  Tera/legendary-exclusive mechanics already out of scope) — so
+  `AbilityManager.NEUTRALIZING_GAS_UNSUPPRESSABLE` is correctly left empty rather than
+  populated with unimplemented IDs, with a comment for whoever eventually builds one of
+  those mechanics.
+
+### New infrastructure
+
+- `AbilityManager.effective_ability_id(mon, ng_active=false, attacker=null) -> int` — the
+  single suppression-aware chokepoint, mirroring `GetBattlerAbilityInternal` exactly:
+  Neutralizing Gas suppression first (unless in the unsuppressable set or `mon` IS the
+  NG holder), then Mold Breaker suppression (only if `attacker` is a different battler,
+  currently effectively holding Mold Breaker itself — resolved via a one-level recursive
+  call to `effective_ability_id(attacker, ng_active)`, so an NG-suppressed Mold-Breaker
+  holder correctly can't bypass anything either — a real, source-faithful double-
+  suppression interaction that falls out of the recursive design rather than needing a
+  special case).
+- `AbilityManager.is_neutralizing_gas_active(combatants) -> bool` / `BattleManager
+  ._is_neutralizing_gas_active()` — checks ALL live combatants field-wide (both sides),
+  unlike `[M17f]`'s `_get_live_opponents` (one side only), computed fresh at each call
+  site (cheap: ≤4 combatants) rather than cached, so a Neutralizing Gas holder fainting
+  or switching out mid-turn stops suppressing immediately.
+- **Every existing ability-check call site in `ability_manager.gd`, `status_manager.gd`,
+  and `damage_calculator.gd` was rewritten to route through `effective_ability_id`**
+  instead of reading `mon.ability.ability_id` raw — confirmed via a full grep sweep
+  before and after (zero raw `.ability ==`/`.ability.ability_id` reads remain outside
+  the primitive itself). This touched ~30 `AbilityManager` functions, 6 `StatusManager`
+  functions, and `DamageCalculator.calculate`'s inline Adaptability/Guts checks — exactly
+  the scope the task anticipated ("this touches a lot of existing code — that's expected
+  and correct for a project-wide suppression mechanic"). Every call site in
+  `battle_manager.gd` was updated to compute and pass `ng_active` (via
+  `_is_neutralizing_gas_active()`, once per relevant phase/function) and, where the call
+  site represents an actual move being resolved against a target, the current
+  `attacker` (for Mold Breaker).
+
+### Source-verified correction: the is_trapped() interaction
+
+The task's own brief assumed "Mold Breaker ignores trapping abilities for switching
+purposes too, not just damage-blocking ones." Checked against source rather than
+trusted, per this project's standing discipline (the same kind of check that caught
+Turboblaze/Teravolt's exclusion in `[M17f]`'s own "next tier" note) — **the assumption
+was wrong, in one direction and right in the other**:
+
+- **Neutralizing Gas DOES suppress trapping** — confirmed: `IsAbilityPreventingEscape`
+  (`battle_util.c` L4917-4941) reads every trapper's ability via `GetBattlerAbility
+  (battlerDef)` (L4928), the SAME suppression-aware chokepoint Neutralizing Gas's
+  field-wide check already routes through everywhere else. `AbilityManager.is_trapped`
+  gained an `ng_active` parameter and now correctly lets a trapped Pokémon escape while
+  Neutralizing Gas is active anywhere on the field (including on the escaping Pokémon's
+  own side, matching source's field-wide, not per-side, suppression scope).
+- **Mold Breaker does NOT suppress trapping.** `moldBreakerActive` is scoped strictly to
+  the window of processing one specific move (see the Mold Breaker citations above);
+  `IsAbilityPreventingEscape` is called ONLY from selection-time menu code (the
+  wild-battle Run option, the party-switch-menu's `B_ACTION_SWITCH` case — `battle_main
+  .c` L3993/L4230-4238), entirely outside any move-processing window. `is_trapped`
+  therefore takes an `ng_active` parameter but deliberately NO `attacker` parameter —
+  documented explicitly in its own doc comment so this doesn't get "fixed" into a bug
+  later by someone assuming the task brief's original (incorrect) framing.
+
+### Bugs / gaps found, not fixed (flagged per this project's established convention)
+
+- **Ripen's doubled resist-berry reduction appears to be dead code in the actual damage
+  pipeline**: `ItemManager.defender_item_modifier_uq412` correctly computes the
+  Ripen-aware value, but `DamageCalculator.calculate`'s actual resist-berry application
+  hardcodes `ItemManager.UQ412_RESIST_BERRY` directly rather than calling that function
+  — meaning Ripen's ability-check branch is never reached by the real multiplier applied
+  to damage. This predates M17g (from `[M17c]`'s original Ripen implementation) and is
+  unrelated to ability suppression — flagged here only because the M17g sweep for
+  "every ability-check call site" surfaced it, not fixed, since it's out of this tier's
+  scope (same convention as `[M16 Review]`'s Conversion type-reset finding).
+
+### Testing / Regression
+
+- New `m17g_test.gd`/`.tscn`: 31/31 assertions across 9 sections — ability data
+  spot-checks; `effective_ability_id` direct unit tests (10 assertions covering NG
+  suppression, the NG-doesn't-suppress-itself exemption, Mold Breaker's attacker-scoping
+  in both directions, and the NG-suppresses-Mold-Breaker-itself recursive interaction);
+  `is_neutralizing_gas_active` direct unit tests (including a fainted-holder negative
+  case); Mold Breaker bypassing a defending Levitate holder's Ground immunity via direct
+  `DamageCalculator.calculate` calls (blocked vs. bypassed contrast); Mold Breaker NOT
+  suppressing when its holder isn't the actual attacker of the hit in question; a
+  full-battle Neutralizing-Gas-suppresses-Intimidate scenario; a full-battle
+  Neutralizing-Gas-stops-suppressing-once-its-holder-switches-away scenario (sequenced
+  across 2 turns so the Intimidate holder's own switch-in fires strictly after NG has
+  already left); the `is_trapped()` interaction (both directions: NG suppresses
+  trapping, Mold Breaker does not, each with a direct unit test AND a full-battle
+  integration); and a negative control (an ordinary Pokémon's presence suppresses
+  nothing, paired with a full-battle re-run of the Intimidate scenario WITHOUT
+  Neutralizing Gas to prove the earlier "did not fire" assertions were a real
+  discrimination, not a vacuously-passing negative case per CLAUDE.md's signal-snapshot
+  and type-immunity-precedes-ability-logic conventions).
+- `.tres` data: Mold Breaker (104) and Neutralizing Gas (256) added to
+  `scripts/gen_abilities.py` and regenerated — 108 total `.tres` files (106 prior + 2).
+- **Baseline discrepancy noted and resolved before implementation began**: the task's
+  expected baseline (26 suites, 1444 assertions) and this file's own last-recorded figure
+  (27 suites, 1478 assertions, from `[M17f]`'s follow-up) disagreed with a fresh,
+  directly-measured recount (27 `.tscn` files, 26 reporting assertion counts + the
+  narrative-only `battle_test`, totaling **1454**, 0 failures). Per this project's
+  standing "stop and flag, don't assume" discipline, this was surfaced to Rob before any
+  M17g code was written; Rob confirmed proceeding on the measured 1454 baseline. The
+  actual root cause of the historical drift was not further investigated (out of scope
+  for this tier), consistent with `[M17f]`'s own similar "stale count, not a regression"
+  resolution.
+- Full regression: all 27 prior suite files unchanged and still passing (verified via a
+  fresh direct recount of every suite, not assumed from the prior total). Total
+  assertions across all 28 `.tscn` files: 1454 prior + 31 = **1485**, 0 failures.
+- 2026-07-03.
+
+### Next tier
+
+Section 11's next proposed tier, **M17h — Ability-copy/overwrite plumbing (new infra) +
+Trace/Mummy/Receiver/Power of Alchemy/Wandering Spirit/Lingering Aroma**, was re-checked
+against Section 13's full exclusion sweep before naming it here (the same discipline
+`[M17f]`'s Step 0 applied to `[M17g]` itself) — none of these 6 IDs (36, 152, 222, 223,
+254, 268) appear anywhere in Section 13.1-13.4. Unlike the M17f→M17g handoff, this
+tier's member list needs NO correction; Section 11's original proposal stands as-is.
+
+## [M17h] Ability-copy/overwrite plumbing (new infrastructure) — Trace / Mummy / Receiver / Power of Alchemy / Wandering Spirit / Lingering Aroma
+
+Scoping source: `docs/m17_recon.md` Section 11's M17h proposal ("Ability-copy/overwrite
+plumbing (new infra) + everything gated on it. Trace (re-scoped here — flagging that its
+cost was previously understated in the original pass, since it's the same underlying
+mechanism these need) + Mummy, Receiver, Power of Alchemy, Wandering Spirit, Lingering
+Aroma. Design once, ship six abilities."). Third genuinely new-infrastructure tier in
+M17, after `[M17f]`'s trapping check and `[M17g]`'s suppression plumbing.
+
+### Step 0 — finalized ability list
+
+Re-derived against Section 13's exclusion sweep before implementation, per this
+project's established per-tier cross-check discipline: **Trace (36), Mummy (152),
+Receiver (222), Power of Alchemy (223), Wandering Spirit (254), Lingering Aroma (268)**
+— all six canonical IDs re-verified directly against `include/constants/abilities.h`;
+none appear anywhere in Section 13.1-13.4, so — unlike the M17f→M17g handoff — no
+correction was needed to Section 11's original list. Lingering Aroma's source ID is
+defined symbolically (`ABILITY_LINGERING_AROMA = ABILITIES_COUNT_GEN8`, not a literal
+number); independently recounted (`AS_ONE_SHADOW_RIDER = 267`, then the unassigned
+`ABILITIES_COUNT_GEN8` lands on 268) to confirm it resolves to 268, matching this
+project's pre-existing placeholder `.tres` from an earlier (pre-M17) data-pipeline fix.
+
+### Two genuinely different directions, not one shared "copy" function
+
+Per the task's own instruction not to force these into a single shape, each ability's
+exact mechanic was traced from source before writing any code:
+
+- **Trace (36)** — switch-in, copies an OPPONENT's ability onto the holder. Source:
+  `battle_util.c` L2964-3000 (`ABILITYEFFECT_ON_SWITCHIN` case) +
+  `battle_script_commands.c :: BS_SetTracedAbility` (L12553-12559, the shared script
+  command that actually writes `gBattleMons[battler].ability`). Targeting rule
+  (L2971-2988): the two OPPOSING field slots are filtered to alive + not-`cantBeTraced`;
+  if BOTH remain eligible, a 50/50 random pick (`RandomPercentage(RNG_TRACE, 50)`); if
+  only ONE is eligible, that one deterministically; if NEITHER, Trace does nothing this
+  switch-in. This project's `live_opponents` (built the same way `[M17f]`'s
+  `_get_live_opponents` already does) is positionally equivalent to source's
+  target1/target2 pair, so the same filter-then-pick logic applies directly. No
+  `traceActivated`-equivalent volatile flag was added — this project's switch-in
+  ability dispatch already fires exactly once per switch-in event (unlike source's
+  more generic multi-pass-safe dispatch), so the call-site architecture itself
+  provides the "exactly once" guarantee that volatile exists for in source.
+- **Receiver (222) / Power of Alchemy (223)** — ally-fainting-triggered (doubles-only),
+  copies the FAINTED ALLY's ability onto the holder. Source: `battle_script_commands.c
+  :: BS_TryActivateReceiver` (L12946-12968), dispatched from the shared
+  `BattleScript_FaintBattler` script (`tryactivatereceiver BS_FAINTED`,
+  `data/battle_scripts_1.s` L2739) that runs for every faint regardless of context —
+  confirmed Power of Alchemy shares this EXACT SAME function
+  (`receiverAbility == ABILITY_RECEIVER || receiverAbility == ABILITY_POWER_OF_ALCHEMY`,
+  L12954), not a separate near-identical implementation. The doubles-only restriction
+  falls out entirely from `receiverBattler = BATTLE_PARTNER(faintedBattler)` — in this
+  project, `_get_ally` already returns null in singles, so this needed zero extra
+  plumbing, matching `[M17c]`'s Hospitality precedent exactly.
+- **Mummy (152) / Lingering Aroma (268)** — contact hit landing → overwrites the
+  ATTACKER's ability with Mummy/Lingering Aroma itself (one-directional; the holder's
+  OWN ability never changes). Source: `battle_util.c` L3859-3883 — confirmed Lingering
+  Aroma is mechanically identical to Mummy, sharing the exact same switch-case block
+  (`case ABILITY_LINGERING_AROMA: case ABILITY_MUMMY:`, L3859-3860), not just
+  similarly-shaped.
+- **Wandering Spirit (254)** — contact hit landing → BIDIRECTIONAL ability swap with
+  the attacker (the opposite direction from Mummy's one-way overwrite — both sides
+  reassigned, `battle_util.c` L3904-3905, confirmed directly rather than assumed from
+  the superficial "also contact-triggered" resemblance to Mummy).
+
+Trace/Receiver's copy-ONTO-self and Mummy/Wandering-Spirit's overwrite/swap-WITH-other
+were kept as genuinely separate functions (`try_trace`, `try_receiver_copy`,
+`try_mummy_overwrite`, `try_wandering_spirit_swap`) rather than forced into one shared
+"copy" primitive — they have different triggers (switch-in vs. faint vs. contact),
+different targets (opponent vs. fainted ally vs. attacker), and different
+directionality (one-way copy vs. one-way overwrite vs. two-way swap). All four read
+and write the RAW `.ability` field, never the suppression-aware `effective_ability_id`
+accessor — confirmed from source, which reads/writes `gBattleMons[...].ability`
+directly throughout this entire dispatch (e.g. `gBattleStruct->tracedAbility[battler]
+= gLastUsedAbility = gBattleMons[chosenTarget].ability;`, L2996) — meaning a
+currently-suppressed ability is still copied/overwritten/swapped faithfully; suppression
+is purely a separate, later runtime check (see the cross-tier interaction section
+below). The one exception: each function's check of whether the ACTING mon's own
+ability currently equals Trace/Receiver-or-Power-of-Alchemy/Mummy-or-Lingering-Aroma/
+Wandering-Spirit IS suppression-aware (via `effective_ability_id`, threaded with an
+`ng_active` param) — matching source's own `GetBattlerAbility` read at the dispatch
+layer for the acting battler specifically (e.g. `enum Ability receiverAbility =
+GetBattlerAbility(receiverBattler);`, `BS_TryActivateReceiver` L12951).
+
+### Exemption design: AbilityData fields, not hardcoded arrays (see `[M17g]`'s addendum)
+
+Source models FOUR distinct "can this ability be read from / changed away from" flags
+in `src/data/abilities.h` — `cantBeTraced`, `cantBeCopied`, `cantBeSwapped`,
+`cantBeOverwritten` — genuinely different from each other and from `[M17g]`'s
+`cantBeSuppressed` (Truant is `cantBeOverwritten` but NOT `cantBeSuppressed`; Flower
+Gift is `cantBeCopied` but nothing else — confirmed by direct inspection, not assumed
+to overlap), each checked at a different point:
+
+- Trace's dispatch checks `cantBeTraced` on the TARGET's raw ability.
+- Receiver/Power of Alchemy's dispatch checks `cantBeCopied` on the FAINTED ALLY's raw
+  ability.
+- Wandering Spirit's dispatch checks `cantBeSwapped` on the ATTACKER's CURRENT ability
+  (the one about to be swapped away).
+- **Mummy/Lingering Aroma's dispatch checks `cantBeSuppressed`, NOT `cantBeOverwritten`**
+  — a source-verified correction worth stating explicitly, since the task's own framing
+  assumed `cantBeOverwritten` would be the relevant flag. Directly quoted from source
+  (`battle_util.c` L3868): `!gAbilitiesInfo[gBattleMons[gBattlerAttacker].ability]
+  .cantBeSuppressed`, checked on the ATTACKER's CURRENT ability. `cantBeOverwritten` is
+  actually consumed by Skill-Swap/Entrainment/Simple-Beam/Worry-Seed-style MOVES
+  (`battle_script_commands.c` L10631, L13036), which this project doesn't have —
+  confirmed via grep that `cantBeOverwritten` has no OTHER consumer in source that would
+  apply to Mummy. This REUSES `AbilityData.cant_be_suppressed`, the exact same field
+  `[M17g]`'s Neutralizing Gas exemption reads, rather than a separate flag.
+
+Mid-session design correction (raised and resolved with Rob before implementation):
+`AbilityData` (`scripts/data/ability_data.gd`) was found to already define
+`cant_be_copied`/`cant_be_swapped`/`cant_be_traced`/`cant_be_suppressed`/
+`cant_be_overwritten`/`breakable` as `@export` boolean fields, with comments already
+citing these exact mechanics, and `gen_abilities.py` already had full rendering
+support — all completely unused until this tier. Rather than add hardcoded
+`CANT_BE_TRACED`/`CANT_BE_COPIED`/`CANT_BE_SWAPPED` arrays in `ability_manager.gd`
+(which would create a THIRD parallel exemption mechanism alongside `[M17g]`'s two
+existing arrays and this dormant, purpose-built data), Rob confirmed migrating
+everything to the field-based design: `[M17g]`'s two arrays were retrofitted in the
+same pass (see the addendum on `[M17g]`'s own entry above), and M17h's three new
+exemption needs were built field-based from the start. One consolidated source of
+truth per ability, set once in `gen_abilities.py`, eliminates the "two lists could
+drift out of sync" risk entirely rather than just avoiding it for this tier's own new
+lists.
+
+Every `.tres` field was set from a direct, per-ability source check (not assumed from
+field names) — restricted to abilities this project actually implements, mirroring
+`MOLD_BREAKER_BREAKABLE`'s own original scoping precedent:
+- `cant_be_traced = true`: Trace, Receiver, Power of Alchemy, Neutralizing Gas.
+- `cant_be_copied = true`: Trace, Flower Gift, Receiver, Power of Alchemy,
+  Neutralizing Gas.
+- `cant_be_swapped = true`: Neutralizing Gas (only).
+- `cant_be_overwritten = true`: Truant (only implemented ability with this flag in
+  source) — set for data fidelity even though nothing in this project's code currently
+  reads it (no Entrainment/Simple-Beam/Worry-Seed-style move exists yet); flagged
+  rather than silently omitted, per this project's standing convention for known gaps.
+- Mummy/Wandering Spirit/Lingering Aroma themselves carry NO `cant_be_*`/`breakable`
+  flags in source (confirmed directly, not assumed) — their own exemption logic reads
+  the OTHER battler's ability, never their own.
+- `ABILITY_NONE`'s own flags (`cantBeTraced`/`cantBeSwapped`, but not `cantBeCopied`/
+  `cantBeSuppressed`) aren't representable via an `AbilityData` resource in this
+  project (there is no id-0 placeholder — "no ability" is `mon.ability == null`), so
+  every function checks `== null` directly instead of reading a field off a sentinel.
+
+### Cross-tier interaction: copy-time vs. suppression-time (verified, not assumed)
+
+Confirmed from source (all four functions read/write RAW `.ability` fields — see
+above) and tested explicitly: a traced/copied ability's ID is assigned at copy time
+regardless of any active Neutralizing Gas suppression elsewhere on the field;
+suppression is purely a separate, later runtime check applied every time
+`effective_ability_id` is consulted. A Trace holder that copies Intimidate from an
+opponent still shows `tracer.ability.ability_id == ABILITY_INTIMIDATE` even once a
+Neutralizing Gas holder later joins the field — only `effective_ability_id(tracer,
+ng_active=true)` reports it as suppressed (`ABILITY_NONE`), and reverts to reporting
+`ABILITY_INTIMIDATE` correctly the moment `ng_active` goes false again. This is exactly
+the kind of cross-tier interaction `[M16 Review]` established as worth checking
+deliberately rather than assuming clean — confirmed clean here, with an explicit test.
+
+### New infrastructure
+
+- `AbilityManager.try_trace(pokemon, live_opponents, ng_active=false,
+  force_pick_second=null) -> int` — Trace's switch-in copy, called once (not
+  per-opponent) from `_apply_switch_in_abilities`, mirroring `[M17b]`'s `download_stat`
+  shape exactly (Trace needs to see all live opponents at once, unlike the
+  per-opponent Intimidate-style loop).
+- `AbilityManager.try_receiver_copy(fainted, ally, ng_active=false) -> int` — wired into
+  `_phase_faint_check` immediately after `[M17b]`'s existing Moxie handling, reusing the
+  same `pokemon_fainted`-adjacent point and `_get_ally`.
+- `AbilityManager.try_mummy_overwrite(defender, attacker, move, damage, ng_active=false)
+  -> int` / `AbilityManager.try_wandering_spirit_swap(defender, attacker, move, damage,
+  ng_active=false) -> bool` — both added as new branches inside the EXISTING
+  `try_contact_effects` (the same contact-gated dispatch Static/Flame Body/Gooey/
+  Tangling Hair already use), not a new function — Mummy/Wandering Spirit both target
+  the attacker (or both battlers), the same "effect lands on whoever touched the
+  holder" shape every other entry in that function already has.
+- New `BattleManager.ability_changed(pokemon, new_ability_id)` signal, mirroring
+  `[M16e]`'s `type_changed(pokemon, new_type)` shape exactly — used for Trace's copy,
+  Mummy/Lingering Aroma's overwrite, both halves of Wandering Spirit's swap (emitted
+  twice, once per mon), and Receiver/Power of Alchemy's copy.
+- **Known gap, inherited, not new**: Trace is NOT wired into the separate Baton Pass
+  inline switch-in block in `_phase_move_execution` — the same already-documented
+  simplification `[M17b]` accepted for Download and `[M17c]` accepted for Hospitality
+  in that exact code path.
+
+### Testing / Regression
+
+- New `m17h_test.gd`/`.tscn`: 64/64 assertions across 10 sections — ability data
+  spot-checks (including the M17g-retrofit fields now readable directly off Mold
+  Breaker/Levitate/Neutralizing Gas/Truant's own resources); Trace direct unit tests
+  (single-opponent copy, `cant_be_traced` exemption via Neutralizing Gas, fainted/
+  no-ability/no-opponent negative cases, doubles 50/50 via `force_pick_second`, doubles
+  single-eligible-slot determinism); Mummy/Lingering Aroma direct unit tests (overwrite
+  on contact, non-contact negative, already-holds-Mummy no-op, zero-damage negative,
+  plus an explicit note on the `cant_be_suppressed` exemption having no real
+  implemented case to test against yet); Wandering Spirit direct unit tests (bidirectional
+  swap confirmed on BOTH sides, `cant_be_swapped` exemption via Neutralizing Gas,
+  ability-less-attacker exemption, non-contact negative); Receiver/Power of Alchemy
+  direct unit tests (copy on ally-faint, identical Power-of-Alchemy behavior, singles
+  no-op, non-holder-ally no-op, `cant_be_copied` exemption, holder-itself-fainting
+  no-op); full-battle integration for Trace (switch-in), Mummy (contact), Wandering
+  Spirit (contact, bidirectional confirmed via two separate `ability_changed` events),
+  and Receiver (doubles, ally-faint); the copy-time-vs-suppression-time cross-tier
+  interaction (direct + field-wide `is_neutralizing_gas_active` variant).
+- A caught test-authoring bug (not an implementation bug) during the doubles-targeting
+  tests: the first draft passed `force_pick_second` into `try_trace`'s THIRD positional
+  slot, which is actually `ng_active` — since `force_pick_second` was left at its `null`
+  default, the test silently fell back to real RNG instead of testing determinism,
+  passing or failing unpredictably run-to-run. Caught by re-running the suite multiple
+  times in a row and noticing inconsistent results before it could slip through as a
+  flaky-but-ignored test; fixed by passing both positional arguments explicitly.
+- `.tres` data: Trace/Mummy/Receiver/Power of Alchemy/Wandering Spirit/Lingering Aroma
+  added to `scripts/gen_abilities.py` with real descriptions/ai_ratings (sourced
+  directly from `src/data/abilities.h`, e.g. Mummy/Lingering Aroma's "Spreads with
+  contact.", Wandering Spirit's "Trade abilities on contact.") — all six previously
+  existed only as empty placeholder `.tres` files from an earlier bulk-placeholder
+  pass. Plus the M17g-retrofit field additions on 27 existing abilities (26
+  `breakable`, Truant's `cant_be_overwritten`, Neutralizing Gas's 3 fields) — 114 total
+  `.tres` files (108 prior + 6 new).
+- Full regression: all 27 prior suite files unchanged and still passing, including
+  `m17g_test` at an UNCHANGED 31/31 post-retrofit (confirming the AbilityData-field
+  migration is a pure refactor, not a behavior change). Total assertions across all 29
+  `.tscn` files: 1485 prior + 64 = **1549**, 0 failures.
+- 2026-07-03.
+
+### Next tier
+
+Section 11's next proposed tier, **M17i — Switch-out trigger hook (new infra) +
+Regenerator/Natural Cure**, was re-checked against Section 13's full exclusion sweep
+before naming it here (the same discipline every prior tier's Step 0 has applied to
+its own list) — neither Regenerator (144) nor Natural Cure (30) appears anywhere in
+Section 13.1-13.4. Section 11 also floats optionally batching in HP-threshold
+forced-self-switch (Wimp Out/Emergency Exit, infra flag #13) "only if Rob wants to
+batch things that make a Pokémon leave the field automatically together... otherwise
+split into its own M17i-2, since the two hooks are mechanically distinct" — not
+resolved here, a decision for whoever scopes M17i's own Step 0.
+
+### Addendum (2026-07-03, during [M17h]): exemption arrays retrofitted to AbilityData fields
+
+While building M17h's own exemption needs (cant_be_traced/cant_be_copied/cant_be_swapped
+for Trace/Receiver/Wandering Spirit), discovered that `AbilityData`
+(`scripts/data/ability_data.gd`) already defines `cant_be_copied`/`cant_be_swapped`/
+`cant_be_traced`/`cant_be_suppressed`/`cant_be_overwritten`/`breakable` as `@export`
+boolean fields — complete with comments citing these exact mechanics (Trace, Wandering
+Spirit, Neutralizing Gas, Mold Breaker) — and that `gen_abilities.py` already had full
+rendering support for all six, entirely unused until now. Rather than add a THIRD
+parallel exemption mechanism for M17h on top of this tier's own two hardcoded arrays
+(`MOLD_BREAKER_BREAKABLE`, `NEUTRALIZING_GAS_UNSUPPRESSABLE`), both were retrofitted to
+read `AbilityData.breakable`/`.cant_be_suppressed` directly off each ability's own
+resource — a direct 1:1 data migration (the same 26 `breakable` abilities and the same
+empty `cant_be_suppressed` set this entry already source-cited above, just moved onto
+the `.tres` files themselves), not a re-derivation. Both hardcoded arrays were removed
+from `ability_manager.gd` entirely once the field-based checks were confirmed to
+produce identical behavior (this entry's own `m17g_test.gd` suite re-run clean, 31/31,
+with no test changes needed — a pure refactor). See `docs/decisions.md`'s `[M17h]`
+entry for the full reasoning and the three new exemption fields this same migration
+covers.

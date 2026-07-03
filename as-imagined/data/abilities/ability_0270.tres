@@ -9,3 +9,4 @@ ability_id = 270
 ability_name = "Thermal Exchange"
 description = "Boosts Attack when hit by a Fire-type move."
 ai_rating = 5
+breakable = true

@@ -9,3 +9,4 @@ ability_id = 111
 ability_name = "Filter"
 description = "Reduces the power of supereffective attacks taken."
 ai_rating = 7
+breakable = true

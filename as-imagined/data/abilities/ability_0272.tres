@@ -9,3 +9,4 @@ ability_id = 272
 ability_name = "Purifying Salt"
 description = "Protects itself from status conditions and halves damage from Ghost-type moves."
 ai_rating = 8
+breakable = true

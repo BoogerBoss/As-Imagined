@@ -9,3 +9,4 @@ ability_id = 63
 ability_name = "Marvel Scale"
 description = "Boosts the Defense stat if the Pokémon has a status condition."
 ai_rating = 6
+breakable = true

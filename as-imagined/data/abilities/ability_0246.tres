@@ -9,3 +9,4 @@ ability_id = 246
 ability_name = "Ice Scales"
 description = "Halves the damage from special moves."
 ai_rating = 7
+breakable = true

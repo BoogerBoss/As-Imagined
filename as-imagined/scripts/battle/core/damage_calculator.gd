@@ -108,6 +108,9 @@ const UQ412_SCREEN_DOUBLES: int = 2732
 #                         for Battery/Power Spot/Steely Spirit's ally-aura power boost.
 # defender_ally: BattlePokemon — M17c: the DEFENDER's doubles partner (null in singles or
 #                         if fainted). Needed for Flower Gift's ally-shared Sp. Def boost.
+# ng_active: bool       — M17g: whether Neutralizing Gas is active anywhere on the field
+#                         (BattleManager._is_neutralizing_gas_active()). Suppresses every
+#                         ability check below field-wide, attacker or defender side alike.
 static func calculate(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
@@ -121,13 +124,15 @@ static func calculate(
 		screen_active: bool = false,
 		is_doubles: bool = false,
 		ally: BattlePokemon = null,
-		defender_ally: BattlePokemon = null) -> Dictionary:
+		defender_ally: BattlePokemon = null,
+		ng_active: bool = false) -> Dictionary:
 
 	# --- Ability type immunity (Levitate vs Ground, etc.) ---
 	# Source: battle_util.c :: CalcTypeEffectivenessMultiplierInternal (L8257):
 	#   moveType == TYPE_GROUND && abilityDef == ABILITY_LEVITATE && !gravity → 0.0
 	# Checked before TypeChart to produce the same 0-damage early return.
-	if AbilityManager.blocks_move_type(defender, move.type):
+	# M17g: Levitate is breakable — a Mold-Breaker-holder's Ground move bypasses it.
+	if AbilityManager.blocks_move_type(defender, move.type, ng_active, attacker):
 		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
 				"defender_item_consumed": false}
 
@@ -162,7 +167,7 @@ static func calculate(
 	# M17a: Battle Armor / Shell Armor block crits outright, overriding even a forced
 	# crit (force_crit=true) — source applies this as the final step of crit determination
 	# regardless of how critChance was computed (CalcCritChanceStage L7848-7859).
-	if AbilityManager.blocks_critical_hit(defender):
+	if AbilityManager.blocks_critical_hit(defender, ng_active, attacker):
 		is_crit = false
 
 	# --- Resolve which stat to use (Physical/Special split) ---
@@ -195,9 +200,9 @@ static func calculate(
 	# reset to neutral) — defender's Unaware ignores the attacker's stage; attacker's
 	# Unaware ignores the defender's stage. Two separate checks, not one shared ability.
 	# Source: battle_util.c L6785 (attacker stage), L7072 (defender stage).
-	if AbilityManager.ignores_attacker_atk_stage(defender):
+	if AbilityManager.ignores_attacker_atk_stage(defender, ng_active, attacker):
 		atk_stage = 0
-	if AbilityManager.ignores_defender_def_stage(attacker):
+	if AbilityManager.ignores_defender_def_stage(attacker, ng_active):
 		def_stage = 0
 
 	var atk: int = _apply_stage(atk_base, atk_stage)
@@ -207,7 +212,7 @@ static func calculate(
 	# Source: battle_util.c :: GetAttackStatModifier (L6800–6808): attacker abilities switch.
 	#   ABILITY_HUGE_POWER / ABILITY_PURE_POWER: IsBattleMovePhysical → modifier ×2.0
 	# Applied to the staged attack stat before the base damage formula.
-	var atk_ability_mod: int = AbilityManager.attack_modifier_uq412(attacker, move, weather)
+	var atk_ability_mod: int = AbilityManager.attack_modifier_uq412(attacker, move, weather, ng_active)
 	if atk_ability_mod != 4096:
 		atk = _uq412_half_down(atk, atk_ability_mod)
 
@@ -234,7 +239,7 @@ static func calculate(
 	# Tough Claws, Steelworker, Steely Spirit, Battery, Power Spot) — same pipeline stage
 	# as Helping Hand above (CalcMoveBasePowerAfterModifiers, battle_util.c L6375-6656).
 	var ability_power_mod: int = AbilityManager.move_power_modifier_uq412(
-			attacker, move, weather, ally)
+			attacker, move, weather, ally, ng_active)
 	if ability_power_mod != 4096:
 		effective_power = _uq412_half_down(effective_power, ability_power_mod)
 
@@ -292,7 +297,7 @@ static func calculate(
 	# ABILITY_ADAPTABILITY). Pledge combos still not implemented.
 	if move.type != TypeChart.TYPE_MYSTERY and move.type in attacker.species.types:
 		var stab_mod: int = UQ412_1_5
-		if attacker.ability != null and attacker.ability.ability_id == AbilityManager.ABILITY_ADAPTABILITY:
+		if AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_ADAPTABILITY:
 			stab_mod = 8192  # UQ_4_12(2.0)
 		dmg = _uq412_half_down(dmg, stab_mod)
 
@@ -334,14 +339,14 @@ static func calculate(
 	# The modifier is on the attacker's effective attack (halving it), which halves the damage.
 	# Applied after type effectiveness, before burn.
 	var def_ability_mod: int = AbilityManager.defense_damage_modifier_uq412(
-			defender, move, effectiveness, weather, defender_ally)
+			defender, move, effectiveness, weather, defender_ally, ng_active, attacker)
 	if def_ability_mod != 4096:
 		dmg = _uq412_half_down(dmg, def_ability_mod)
 
 	# M17a: Sniper / Tinted Lens — post-type-effectiveness attacker-side modifier.
 	# Source: battle_util.c :: GetAttackerAbilitiesModifier (L7378-7397).
 	var atk_post_eff_mod: int = AbilityManager.attacker_post_effectiveness_modifier_uq412(
-			attacker, effectiveness, is_crit)
+			attacker, effectiveness, is_crit, ng_active)
 	if atk_post_eff_mod != 4096:
 		dmg = _uq412_half_down(dmg, atk_post_eff_mod)
 
@@ -351,8 +356,8 @@ static func calculate(
 	# Burn halves the damage of Physical moves used by the burned attacker.
 	# Condition: attacker has burn AND move.category == 0 (Physical).
 	# M17a: Guts is exempt (L7285: ctx->abilities[battlerAtk] != ABILITY_GUTS).
-	var guts_exempt: bool = attacker.ability != null \
-			and attacker.ability.ability_id == AbilityManager.ABILITY_GUTS
+	var guts_exempt: bool = \
+			AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_GUTS
 	if attacker.status == BattlePokemon.STATUS_BURN and move.category == 0 and not guts_exempt:
 		dmg = _uq412_half_down(dmg, 2048)  # UQ_4_12(0.5) = 2048
 

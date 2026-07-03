@@ -9,3 +9,4 @@ ability_id = 73
 ability_name = "White Smoke"
 description = "Prevents other Pokémon from lowering its stats."
 ai_rating = 6
+breakable = true

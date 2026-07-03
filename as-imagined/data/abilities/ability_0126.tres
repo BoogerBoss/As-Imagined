@@ -9,3 +9,4 @@ ability_id = 126
 ability_name = "Contrary"
 description = "Makes stat changes have an opposite effect."
 ai_rating = 8
+breakable = true

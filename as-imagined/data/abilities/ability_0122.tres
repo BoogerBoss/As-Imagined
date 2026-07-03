@@ -9,3 +9,5 @@ ability_id = 122
 ability_name = "Flower Gift"
 description = "Boosts the Attack and Sp. Def stats of itself and allies in harsh sunlight."
 ai_rating = 6
+cant_be_copied = true
+breakable = true

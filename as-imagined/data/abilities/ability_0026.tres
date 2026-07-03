@@ -9,3 +9,4 @@ ability_id = 26
 ability_name = "Levitate"
 description = "Gives immunity to Ground-type moves."
 ai_rating = 7
+breakable = true

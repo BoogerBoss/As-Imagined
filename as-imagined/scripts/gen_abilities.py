@@ -54,13 +54,13 @@ ABILITIES = [
     #   TYPE_GROUND && ABILITY_LEVITATE && !gravity → modifier 0.0
     {"id":  26, "name": "Levitate",
      "description": "Gives immunity to Ground-type moves.",
-     "ai_rating": 7},
+     "ai_rating": 7, "breakable": True},
 
     # Source: battle_util.c :: GetDefenseStatModifier — target switch (L6933–6941):
     #   ABILITY_THICK_FAT: (TYPE_FIRE || TYPE_ICE) → modifier ×0.5
     {"id":  47, "name": "Thick Fat",
      "description": "Halves the damage taken from Fire- and Ice-type moves.",
-     "ai_rating": 6},
+     "ai_rating": 6, "breakable": True},
 
     # ── Tier 2: switch-in effects ──────────────────────────────────────────────
     # Source: battle_util.c :: AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...) (L3310):
@@ -132,7 +132,7 @@ ABILITIES = [
     #   physical only): statused AND physical → ×1.5 Defense.
     {"id":  63, "name": "Marvel Scale",
      "description": "Boosts the Defense stat if the Pokémon has a status condition.",
-     "ai_rating": 6},
+     "ai_rating": 6, "breakable": True},
 
     # Source: battle_util.c :: GetTotalAccuracy (L10285-10287): unconditional ×1.30.
     {"id":  14, "name": "Compound Eyes",
@@ -143,25 +143,25 @@ ABILITIES = [
     #   against the holder outright, overriding even an always-crit effect.
     {"id":   4, "name": "Battle Armor",
      "description": "Hard armor protects the Pokémon from critical hits.",
-     "ai_rating": 4},
+     "ai_rating": 4, "breakable": True},
     {"id":  75, "name": "Shell Armor",
      "description": "A hard shell protects the Pokémon from critical hits.",
-     "ai_rating": 4},
+     "ai_rating": 4, "breakable": True},
 
     # Source: battle_util.c :: GetDefenderAbilitiesModifier (L7407-7412): defender at
     #   max HP → ×0.5 damage taken.
     {"id": 136, "name": "Multiscale",
      "description": "Reduces the amount of damage the Pokémon takes while its HP is full.",
-     "ai_rating": 7},
+     "ai_rating": 7, "breakable": True},
 
     # Source: battle_util.c :: GetDefenderAbilitiesModifier (L7414-7420): super-effective
     #   hit (typeEffectivenessModifier >= 2.0) → ×0.75 damage taken.
     {"id": 111, "name": "Filter",
      "description": "Reduces the power of supereffective attacks taken.",
-     "ai_rating": 7},
+     "ai_rating": 7, "breakable": True},
     {"id": 116, "name": "Solid Rock",
      "description": "Reduces the power of supereffective attacks taken.",
-     "ai_rating": 7},
+     "ai_rating": 7, "breakable": True},
 
     # Source: battle_util.c :: GetAttackerAbilitiesModifier (L7392-7395): not-very-effective
     #   hit (typeEffectivenessModifier <= 0.5) → ×2.0 damage dealt.
@@ -210,7 +210,7 @@ ABILITIES = [
     #   defense_damage_modifier_uq412 alongside Thick Fat's equivalent simplification).
     {"id":  85, "name": "Heatproof",
      "description": "Halves the damage from Fire-type moves that hit the Pokémon.",
-     "ai_rating": 6},
+     "ai_rating": 6, "breakable": True},
 
     # Source: battle_util.c :: GetAttackStatModifier (L6812-6813): hp <= maxHP/2 → ×0.5
     #   Attack/Sp.Atk (either category).
@@ -246,7 +246,7 @@ ABILITIES = [
     #   physical only): physical → ×2.0 Defense stat (equivalent to ×0.5 damage taken).
     {"id": 169, "name": "Fur Coat",
      "description": "Halves the damage from physical moves.",
-     "ai_rating": 8},
+     "ai_rating": 8, "breakable": True},
 
     # Source: battle_util.c :: CalcMoveBasePowerAfterModifiers (L6510-6512): move makes
     #   contact → ×1.3 base power.
@@ -271,7 +271,7 @@ ABILITIES = [
     #   Special → ×0.5 damage taken.
     {"id": 246, "name": "Ice Scales",
      "description": "Halves the damage from special moves.",
-     "ai_rating": 7},
+     "ai_rating": 7, "breakable": True},
 
     # Source: battle_util.c :: CalcMoveBasePowerAfterModifiers, "attacker partner's
     #   abilities" block (L6592-6593): ally has Power Spot → ×1.3 base power,
@@ -300,40 +300,40 @@ ABILITIES = [
     # Source: battle_stat_change.c :: AdjustStatStage (L813-815): stage = 2 * stage.
     {"id": 86, "name": "Simple",
      "description": "Doubles the effects of stat changes.",
-     "ai_rating": 8},
+     "ai_rating": 8, "breakable": True},
 
     # Source: battle_stat_change.c :: AdjustStatStage (L808-810): stage = -1 * stage.
     {"id": 126, "name": "Contrary",
      "description": "Makes stat changes have an opposite effect.",
-     "ai_rating": 8},
+     "ai_rating": 8, "breakable": True},
 
     # Source: battle_util.c L6785/L7072 (attacker/defender stage reset in damage calc),
     #   L10251/L10256 (accuracy/evasion stage reset) — 4 touch-points, all reset the
     #   relevant stage to neutral unconditionally.
     {"id": 109, "name": "Unaware",
      "description": "Ignores the target's stat changes.",
-     "ai_rating": 7},
+     "ai_rating": 7, "breakable": True},
 
     # Source: battle_stat_change.c :: CanAbilityPreventStatLoss (L823-828): blocks ALL
     #   stat reductions from other Pokémon.
     {"id": 29, "name": "Clear Body",
      "description": "Prevents other Pokémon from lowering its stats.",
-     "ai_rating": 6},
+     "ai_rating": 6, "breakable": True},
     {"id": 73, "name": "White Smoke",
      "description": "Prevents other Pokémon from lowering its stats.",
-     "ai_rating": 6},
+     "ai_rating": 6, "breakable": True},
 
     # Source: battle_stat_change.c :: AbilityPreventsSpecificStatDrop (L843-850):
     #   blocks only the named stat's reduction from others.
     {"id": 52, "name": "Hyper Cutter",
      "description": "Prevents other Pokémon from lowering its Attack stat.",
-     "ai_rating": 5},
+     "ai_rating": 5, "breakable": True},
     {"id": 51, "name": "Keen Eye",
      "description": "Prevents other Pokémon from lowering its accuracy; ignores the target's evasion boosts.",
-     "ai_rating": 5},
+     "ai_rating": 5, "breakable": True},
     {"id": 145, "name": "Big Pecks",
      "description": "Prevents other Pokémon from lowering its Defense stat.",
-     "ai_rating": 5},
+     "ai_rating": 5, "breakable": True},
 
     # Source: battle_script_commands.c :: BS_TryDefiantRattled (L13885-13905) +
     #   ShouldDefiantCompetitiveActivate (battle_util.c L1149-1168): a stat decrease
@@ -397,13 +397,13 @@ ABILITIES = [
     #   (L601-634): blocks all stat reductions on a Grass-type ally (or self).
     {"id": 166, "name": "Flower Veil",
      "description": "Ally Grass-type Pokémon are protected from stat reduction.",
-     "ai_rating": 5},
+     "ai_rating": 5, "breakable": True},
 
     # Source: battle_util.c :: IsAbilityOnSide(ABILITY_SWEET_VEIL) (L5322-5327): immune
     #   to sleep, self or ally.
     {"id": 175, "name": "Sweet Veil",
      "description": "Prevents itself and ally Pokémon from falling asleep.",
-     "ai_rating": 5},
+     "ai_rating": 5, "breakable": True},
 
     # Source: battle_util.c :: ABILITY_GOOEY/ABILITY_TANGLING_HAIR case (L3923-3958,
     #   shared): contact → attacker Speed -1, unconditional.
@@ -448,13 +448,13 @@ ABILITIES = [
     #   cure) + IsAbilityOnSide(ABILITY_PASTEL_VEIL) (L5254-5259, ally-wide immunity).
     {"id": 257, "name": "Pastel Veil",
      "description": "Protects itself and ally Pokémon from being poisoned.",
-     "ai_rating": 6},
+     "ai_rating": 6, "breakable": True},
 
     # Source: battle_util.c :: ABILITY_THERMAL_EXCHANGE case (L4222-4231): Fire-type
     #   hit → Atk +1.
     {"id": 270, "name": "Thermal Exchange",
      "description": "Boosts Attack when hit by a Fire-type move.",
-     "ai_rating": 5},
+     "ai_rating": 5, "breakable": True},
 
     # Source: battle_util.c :: ABILITY_ANGER_SHELL case (L3743-3766): HP crosses from
     #   >50% to <=50% from this hit → Def -1, SpDef -1, Atk +1, SpA +1, Spe +1.
@@ -467,7 +467,7 @@ ABILITIES = [
     #   Ghost-type damage taken ×0.5).
     {"id": 272, "name": "Purifying Salt",
      "description": "Protects itself from status conditions and halves damage from Ghost-type moves.",
-     "ai_rating": 8},
+     "ai_rating": 8, "breakable": True},
 
     # Source: battle_util.c :: ABILITY_SUPERSWEET_SYRUP case (L3324-3336): switch-in,
     #   ONE-TIME ONLY, lowers all opponents' Evasion by 1.
@@ -509,7 +509,7 @@ ABILITIES = [
     #   self-damage maxHP/8).
     {"id": 87, "name": "Dry Skin",
      "description": "Restores HP in rain but takes damage in harsh sunlight; takes more damage from Fire-type moves.",
-     "ai_rating": 6},
+     "ai_rating": 6, "breakable": True},
 
     # Source: battle_util.c :: ABILITY_HYDRATION case (L3568-3574): end-of-turn, rain
     #   active, has any status → cure it.
@@ -521,7 +521,7 @@ ABILITIES = [
     #   ABILITY_TRUANT case (L3646-3647, end-of-turn toggle): skips every other turn.
     {"id": 54, "name": "Truant",
      "description": "The Pokémon can't use a move if it had used a move on the previous turn.",
-     "ai_rating": 3},
+     "ai_rating": 3, "cant_be_overwritten": True},
 
     # Source: battle_util.c :: ABILITY_SHED_SKIN case (L3575-3600): end-of-turn, has any
     #   status, 1/3 chance (GEN_LATEST config) → cure it.
@@ -584,7 +584,7 @@ ABILITIES = [
     #   precedent as the Primal weather trio — see decisions.md [M17c].
     {"id": 122, "name": "Flower Gift",
      "description": "Boosts the Attack and Sp. Def stats of itself and allies in harsh sunlight.",
-     "ai_rating": 6},
+     "ai_rating": 6, "breakable": True, "cant_be_copied": True},
 
     # Source: battle_script_commands.c :: TryCheekPouch (L6175-6188): heals maxHP/3
     #   whenever the holder eats any berry.
@@ -677,6 +677,93 @@ ABILITIES = [
     {"id": 42, "name": "Magnet Pull",
      "description": "Prevents Steel-type opposing Pokémon from fleeing or switching out.",
      "ai_rating": 8},
+
+    # ── M17g: Ability-suppression plumbing (new infrastructure) ─────────────────────
+    # Source: docs/m17_recon.md Section 11's M17g proposal (infra flag #4), re-derived
+    # (Step 0) against Section 13: Turboblaze/Teravolt excluded as legendary-exclusive
+    # (Reshiram/Kyurem-White, Zekrom/Kyurem-Black); Mycelium Might deferred (genuine
+    # hybrid — the other half needs the not-yet-built Stall turn-order shape). Final
+    # list locked in docs/decisions.md [M17g]: just Mold Breaker and Neutralizing Gas.
+
+    # Source: battle_util.c :: IsMoldBreakerTypeAbility (L4805-4820) + CanBreakThroughAbility
+    #   (L4822-4827): while this Pokémon is attacking, ignores the TARGET's ability if it's
+    #   flagged breakable in source's data (Levitate, Thick Fat, Marvel Scale, Multiscale,
+    #   Filter/Solid Rock, Clear Body/White Smoke, Simple/Contrary, Unaware, etc. — see
+    #   each ability's own "breakable": True entry below, set on the AbilityData resource
+    #   itself rather than a separate list — M17h retrofit, see docs/decisions.md [M17h]).
+    {"id": 104, "name": "Mold Breaker",
+     "description": "Moves can be used on the target regardless of its Abilities.",
+     "ai_rating": 7},
+
+    # Source: battle_util.c :: GetBattlerAbilityInternal (L4844-4878), the
+    # `IsNeutralizingGasOnField` branch (L4869-4872): suppresses every OTHER live
+    # battler's ability field-wide for as long as this Pokémon remains in battle
+    # (except its own ability, and except any ability flagged cant_be_suppressed in
+    # source — none of which are implemented in this project). M17h retrofit: this
+    # exemption is now read directly off each ability's own `.tres` field
+    # (AbilityData.cant_be_suppressed) rather than a hardcoded array — see [M17h].
+    {"id": 256, "name": "Neutralizing Gas",
+     "description": "Nullifies the effects of Abilities of all Pokémon on the field.",
+     "ai_rating": 6, "cant_be_traced": True, "cant_be_copied": True, "cant_be_swapped": True},
+
+    # ── M17h: Ability-copy/overwrite plumbing (new infrastructure) ──────────────────
+    # Source: docs/m17_recon.md Section 11's M17h proposal — final list locked in
+    # docs/decisions.md [M17h]. Every exemption flag below is set directly from
+    # src/data/abilities.h (AbilityManager reads them off the AbilityData resource,
+    # not a hardcoded array — the same field-based design this tier retrofitted onto
+    # Mold Breaker/Neutralizing Gas above).
+
+    # Source: battle_util.c :: ABILITY_TRACE switch-in case (L2964-3000): copies a live
+    #   opponent's current ability. cant_be_copied/cant_be_traced (src/data/abilities.h
+    #   L283-284): Trace itself can't be traced or copied by another copier.
+    {"id": 36, "name": "Trace",
+     "description": "Copies special ability.",
+     "ai_rating": 6, "cant_be_copied": True, "cant_be_traced": True},
+
+    # Source: battle_util.c :: ABILITY_MUMMY/ABILITY_LINGERING_AROMA case (L3859-3883):
+    #   contact → overwrites the ATTACKER's ability with Mummy itself. No cant_be_* flags
+    #   of its own in source (src/data/abilities.h L1146-1151) — the exemption that
+    #   blocks this from firing lives on the ATTACKER's ability (cant_be_suppressed),
+    #   not on Mummy.
+    {"id": 152, "name": "Mummy",
+     "description": "Spreads with contact.",
+     "ai_rating": 5},
+
+    # Source: battle_script_commands.c :: BS_TryActivateReceiver (L12946-12968): ally
+    #   fainting (doubles-only) → copies the fainted ally's ability. cant_be_copied/
+    #   cant_be_traced (src/data/abilities.h L1699-1706): can't be traced, and can't be
+    #   copied via another Receiver/Power of Alchemy chain.
+    {"id": 222, "name": "Receiver",
+     "description": "Copies ally's ability.",
+     "ai_rating": 0, "cant_be_copied": True, "cant_be_traced": True},
+
+    # Source: same BS_TryActivateReceiver function as Receiver above — confirmed from
+    #   source this shares the EXACT dispatch (`receiverAbility == ABILITY_RECEIVER ||
+    #   receiverAbility == ABILITY_POWER_OF_ALCHEMY`, L12954), not a separate near-
+    #   identical implementation. Same flags (src/data/abilities.h L1708-1715).
+    {"id": 223, "name": "Power Of Alchemy",
+     "description": "Copies ally's ability.",
+     "ai_rating": 0, "cant_be_copied": True, "cant_be_traced": True},
+
+    # Source: battle_util.c :: ABILITY_WANDERING_SPIRIT case (L3884-3909): contact →
+    #   BIDIRECTIONAL ability swap with the attacker (the opposite direction from
+    #   Mummy's one-way overwrite). No cant_be_* flags of its own in source
+    #   (src/data/abilities.h L1948-1953) — the exemption lives on the ATTACKER's
+    #   ability (cant_be_swapped), not on Wandering Spirit.
+    {"id": 254, "name": "Wandering Spirit",
+     "description": "Trade abilities on contact.",
+     "ai_rating": 2},
+
+    # Source: confirmed mechanically identical to Mummy (same switch-case block,
+    #   `case ABILITY_LINGERING_AROMA: case ABILITY_MUMMY:`, battle_util.c L3859-3860).
+    #   No cant_be_* flags of its own (src/data/abilities.h L2065-2070), same as Mummy.
+    #   Canonical ID defined symbolically in source (`= ABILITIES_COUNT_GEN8`);
+    #   independently recounted to confirm it resolves to 268 (see docs/decisions.md
+    #   [M17h] Step 0) — matches this project's pre-existing placeholder `.tres` from
+    #   an earlier (pre-M17) data-pipeline fix.
+    {"id": 268, "name": "Lingering Aroma",
+     "description": "Spreads with contact.",
+     "ai_rating": 5},
 ]
 
 HEADER = """\

@@ -9,3 +9,4 @@ ability_id = 166
 ability_name = "Flower Veil"
 description = "Ally Grass-type Pokémon are protected from stat reduction."
 ai_rating = 5
+breakable = true

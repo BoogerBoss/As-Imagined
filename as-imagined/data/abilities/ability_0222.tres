@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 222
 ability_name = "Receiver"
-description = ""
-ai_rating = 0
+description = "Copies ally's ability."
+cant_be_copied = true
+cant_be_traced = true

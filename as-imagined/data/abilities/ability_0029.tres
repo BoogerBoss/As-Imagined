@@ -9,3 +9,4 @@ ability_id = 29
 ability_name = "Clear Body"
 description = "Prevents other Pokémon from lowering its stats."
 ai_rating = 6
+breakable = true

@@ -9,3 +9,4 @@ ability_id = 85
 ability_name = "Heatproof"
 description = "Halves the damage from Fire-type moves that hit the Pokémon."
 ai_rating = 6
+breakable = true
