@@ -832,6 +832,27 @@ ABILITIES = [
     {"id": 180, "name": "Symbiosis",
      "description": "Passes its item to an ally.",
      "ai_rating": 0},
+
+    # ── M17k: Priority-move-block check (new infrastructure) ────────────────────────
+    # Source: docs/m17_recon.md Section 11's M17k proposal (infra flag #14) — final
+    # list locked in docs/decisions.md [M17k]: Queenly Majesty, Dazzling, Armor Tail.
+    # Confirmed from source (IsDazzlingAbility, battle_move_resolution.c L1499-1509)
+    # these three share the EXACT SAME dispatch — a single shared mechanic, not three
+    # near-identical implementations. All three carry breakable=True (genuinely
+    # reachable here, unlike Sticky Hold's non-applicable case in [M17j] — the attacker
+    # and the Dazzling-family holder are always different battlers).
+
+    {"id": 214, "name": "Queenly Majesty",
+     "description": "Protects from priority.",
+     "ai_rating": 6, "breakable": True},
+
+    {"id": 219, "name": "Dazzling",
+     "description": "Protects from priority.",
+     "ai_rating": 5, "breakable": True},
+
+    {"id": 296, "name": "Armor Tail",
+     "description": "Protects from priority.",
+     "ai_rating": 5, "breakable": True},
 ]
 
 HEADER = """\

@@ -255,6 +255,15 @@ const ABILITY_PICKPOCKET:  int = 124
 const ABILITY_MAGICIAN:    int = 170
 const ABILITY_SYMBIOSIS:   int = 180
 
+# M17k: Priority-move-block check (new infrastructure). Step 0 list re-verified against
+# Section 13's full exclusion sweep: none of the three appear anywhere in it. Confirmed
+# from source (`IsDazzlingAbility`, battle_move_resolution.c L1499-1509) that all three
+# share the exact same mechanic — a single shared dispatch, not three near-identical
+# but subtly-different implementations.
+const ABILITY_QUEENLY_MAJESTY: int = 214
+const ABILITY_DAZZLING:        int = 219
+const ABILITY_ARMOR_TAIL:      int = 296
+
 # M17h: source models FOUR distinct "can this ability be read from / changed away from"
 # flags in `src/data/abilities.h` — `cantBeTraced`, `cantBeCopied`, `cantBeSwapped`,
 # `cantBeOverwritten` — genuinely different from each other and from M17g's
@@ -585,6 +594,56 @@ static func try_symbiosis(mon: BattlePokemon, ally: BattlePokemon,
 	mon.held_item = ally.held_item
 	ally.held_item = null
 	return true
+
+
+# M17k: Dazzling / Queenly Majesty / Armor Tail — priority-move-block check (new
+# infrastructure). Source: `IsDazzlingAbility` (battle_move_resolution.c L1499-1509) —
+# all three share this exact same dispatch, not three near-identical implementations.
+static func _is_dazzling_family(id: int) -> bool:
+	return id == ABILITY_DAZZLING or id == ABILITY_QUEENLY_MAJESTY or id == ABILITY_ARMOR_TAIL
+
+
+# M17k: `CancelerPriorityBlock` (battle_move_resolution.c L1511-1548) — an
+# EXECUTION-TIME gate (a "Canceler," dispatched in source's attacker-canceler chain
+# BEFORE `CancelerAccuracyCheck`, confirmed from `sMoveSuccessOrderCancelers`'s ordering
+# at L2434/L2447), not a selection-time block — the move is chosen normally and then
+# FAILS (`BattleScript_PokemonCannotUseMove`), matching this project's existing
+# `move_effect_failed`-then-`move_executed(..., 0)` pattern (e.g. Roar's
+# no-switch-target fail) rather than a `move_skipped` pre-move cancellation.
+# Gated on `move.priority > 0` only (source: `priority <= 0 ... return
+# CANCELER_RESULT_SUCCESS`) — a priority-zero or negative move is never blocked.
+# SIDE-WIDE, not holder-only: source's loop checks every battler on the OPPOSING side of
+# the attacker (skipping the attacker's own allies), so if EITHER the move's actual
+# target OR that target's doubles partner holds one of these three abilities, the move
+# fails — regardless of which specific combatant was chosen as the target. This project
+# models that as checking `defender` and `defender_ally` (the two combatants on the
+# defending side), matching the established defender/defender_ally pairing convention
+# ([M17c]'s Flower Gift) rather than a generic N-battler loop.
+# Does NOT affect the holder's OWN priority moves — this function is only ever consulted
+# with the ATTACKER's move and the OPPOSING side's ability holder(s); an attacking
+# Dazzling holder is simply never checked against its own move here.
+# Source's `moveTarget == TARGET_FIELD || TARGET_OPPONENTS_FIELD` exclusion (field-wide
+# moves like Trick Room/Spikes/Stealth Rock aren't "aimed at" a battler, so can't be
+# blocked) is NOT modeled as a separate check — verified directly that none of this
+# project's three field-targeting moves (is_trick_room/is_spikes/is_stealth_rock) has
+# positive priority (Trick Room is -7; the two hazards are 0), so `move.priority > 0`
+# alone already excludes all of them; a known, confirmed-non-applicable simplification,
+# not an assumed one.
+# All three abilities carry `breakable = TRUE` in source (src/data/abilities.h
+# L1640-1645/L1677-1682/L2296-2301) — genuinely reachable here (unlike Sticky Hold's
+# non-applicable case in [M17j]), since the attacker and the Dazzling-family holder are
+# always DIFFERENT battlers. Threaded through via `effective_ability_id`'s existing
+# `attacker` parameter so a Mold-Breaker-holding attacker correctly bypasses the block.
+static func blocks_priority_move(defender: BattlePokemon, defender_ally: BattlePokemon,
+		attacker: BattlePokemon, move: MoveData, ng_active: bool = false) -> bool:
+	if move.priority <= 0:
+		return false
+	if _is_dazzling_family(effective_ability_id(defender, ng_active, attacker)):
+		return true
+	if defender_ally != null and not defender_ally.fainted \
+			and _is_dazzling_family(effective_ability_id(defender_ally, ng_active, attacker)):
+		return true
+	return false
 
 
 # M17g: the single suppression-aware chokepoint every ability-consuming function in

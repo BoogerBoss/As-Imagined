@@ -989,6 +989,20 @@ func _phase_move_execution() -> void:
 		if _pursuit_def_idx >= 0 and _chosen_switch_slots[_pursuit_def_idx] >= 0:
 			_dmg_power_override = move.power * 2
 
+	# ── Priority-move-block (Dazzling / Queenly Majesty / Armor Tail) ────────────
+	# Source: battle_move_resolution.c :: CancelerPriorityBlock (L1511-1548), dispatched
+	# BEFORE CancelerAccuracyCheck in source's canceler chain — inserted at the same
+	# relative point here. Side-wide: checks both the move's actual target and that
+	# target's doubles partner.
+	if AbilityManager.blocks_priority_move(defender, _get_ally(defender), attacker, move, ng_active):
+		move_effect_failed.emit(attacker, "priority_blocked")
+		ability_triggered.emit(defender, "dazzling_family")
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
 	# ── Accuracy check ────────────────────────────────────────────────────────
 	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
 	# Includes semi-invulnerable miss check (source: CancelerAccuracyCheck L1993).

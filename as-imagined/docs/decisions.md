@@ -5213,3 +5213,146 @@ Dazzling/Queenly Majesty/Armor Tail**, was re-checked against Section 13's full 
 sweep before naming it here (the same discipline every prior tier's Step 0 has applied
 to its own list) — none of the three appears anywhere in Section 13.1-13.4, so no
 correction is needed to Section 11's original three-ability grouping.
+
+## [M17k] Priority-move-block check (new infrastructure) — Dazzling / Queenly Majesty / Armor Tail
+
+Scoping source: `docs/m17_recon.md` Section 11's M17k proposal ("Priority-move-block
+check (new infra) + Dazzling/Queenly Majesty/Armor Tail. New 3-ability tier (flag #14),
+small and self-contained."). Sixth genuinely new-infrastructure tier in M17, after
+`[M17f]`'s trapping check, `[M17g]`'s suppression plumbing, `[M17h]`'s copy/overwrite
+plumbing, `[M17i]`'s switch-out trigger hook, and `[M17j]`'s item-transfer primitive.
+
+### Step 0 — finalized ability list
+
+**Queenly Majesty (214), Dazzling (219), Armor Tail (296)** — all three canonical IDs
+verified directly (literal values, not symbolic) against
+`include/constants/abilities.h`; none appear anywhere in Section 13.1-13.4, so no
+correction was needed to Section 11's original three-ability grouping.
+
+Confirmed from source, not assumed, that the three are genuinely identical in mechanic
+(the task explicitly flagged this as worth verifying rather than taking for granted):
+`IsDazzlingAbility` (battle_move_resolution.c L1499-1509) is the literal shared
+dispatch — `case ABILITY_DAZZLING: case ABILITY_QUEENLY_MAJESTY: case ABILITY_ARMOR_TAIL:
+return TRUE;` — all three route through the exact same `CancelerPriorityBlock` check
+with no per-ability branching anywhere. The only difference is flavor/holder species,
+matching the recon's framing precisely with no subtle real difference found this time
+(unlike some prior "obviously identical" groupings this project has caught real
+divergence in).
+
+### The exact block mechanism
+
+- **Execution-time gate (fails), not selection-time rejection.** Source:
+  `CancelerPriorityBlock` (battle_move_resolution.c L1511-1548) is one of the
+  "attacker canceler" functions dispatched from `DoAttackCanceler`'s
+  `sMoveSuccessOrderCancelers` array (L2420-2448) — the move IS chosen normally by the
+  attacker, and THEN fails at execution time (`gBattlescriptCurrInstr =
+  BattleScript_PokemonCannotUseMove; return CANCELER_RESULT_FAILURE;`). This is the
+  same shape as this project's existing "chosen, then fails" pattern (e.g. Roar's
+  `no_switch_target`), not the `move_skipped`-style pre-move cancellation used for
+  sleep/freeze/paralysis/Disable.
+- **Ordering confirmed relative to M16d/M16e's priority/turn-order work.** `[M16d]`'s
+  Trick Room and `[M16e]`'s Pursuit both touch *turn-order/speed-sorting* — this tier
+  touches something structurally different: not WHEN a move executes relative to other
+  actions, but whether a chosen move is allowed to execute AT ALL once its turn comes
+  up. `sMoveSuccessOrderCancelers`'s fixed array order confirms `CANCELER_PRIORITY_BLOCK`
+  (L2434) is dispatched strictly BEFORE `CANCELER_ACCURACY_CHECK` (L2447) — this
+  project's `AbilityManager.blocks_priority_move` check is inserted at the exact
+  equivalent point in `_phase_move_execution`, immediately before the existing
+  `StatusManager.check_accuracy` call and after the Pursuit power-doubling block. No
+  changes to `_phase_priority_resolution`'s `_turn_order.sort_custom` comparator were
+  needed or made — priority-BRACKET sorting (`[M16d]`) and Pursuit's turn-order
+  interception (`[M16e]`) are both completely unaffected by this tier.
+- **Gated on `move.priority > 0` only.** Source: `if (priority <= 0 ...) return
+  CANCELER_RESULT_SUCCESS;` — a priority-zero or negative-priority move is never
+  blocked, confirmed via a dedicated Tackle (priority 0) test that still deals real
+  damage against a Dazzling holder.
+- **SIDE-WIDE, not holder-only — confirmed from source, matching the recon's own
+  framing** ("blocks priority moves targeting the user OR AN ALLY"). Source's loop
+  iterates every battler on the OPPOSING side of the attacker (skipping the attacker's
+  own allies) and blocks the move if ANY of them holds one of the three abilities —
+  it does not check whether that specific battler was the move's chosen target. This
+  project models the same behavior by checking both `defender` (the move's actual
+  target) and `defender_ally` (that target's doubles partner, via the existing
+  `_get_ally` helper) rather than a full N-battler generic loop, since this project's
+  doubles model is always exactly 2 combatants per side. Verified with a dedicated
+  full-battle doubles test: the move's direct target holds no ability at all, but its
+  ally holds Dazzling, and the priority move still fails.
+- **Does NOT affect the holder's own priority moves.** The function is only ever
+  consulted with the OPPOSING side's ability holder(s) as `defender`/`defender_ally` —
+  an attacking Dazzling holder's own Quick Attack is never checked against itself.
+  Verified with a dedicated test (a Dazzling-holding attacker's own priority move deals
+  real damage against a plain, non-Dazzling-holding defender).
+- **Field-targeting-move exclusion confirmed non-applicable, not modeled as new
+  infrastructure.** Source excludes `moveTarget == TARGET_FIELD ||
+  TARGET_OPPONENTS_FIELD` (field-wide moves like Trick Room/Spikes/Stealth Rock aren't
+  "aimed at" a specific battler, so can't be blocked). This project has no generic
+  move-target-type enum — checked directly whether any of its three field-targeting
+  moves (`is_trick_room`/`is_spikes`/`is_stealth_rock`) has positive priority: Trick
+  Room is -7, both hazards are 0 (unset, defaulting to 0) — none qualifies, so
+  `move.priority > 0` alone already excludes all of them. A confirmed-non-applicable
+  simplification, not an assumed one.
+- **`breakable = TRUE` on all three, genuinely reachable here.** Source:
+  `src/data/abilities.h` L1640-1645/L1677-1682/L2296-2301. Unlike Sticky Hold's
+  non-applicable `breakable` flag in `[M17j]` (where the ability being bypassed and the
+  potential Mold-Breaker holder could never be different battlers), here the attacker
+  attempting the priority move and the Dazzling-family holder are ALWAYS different
+  battlers — a completely ordinary, immediately reachable Mold-Breaker-bypass case.
+  Threaded through via `effective_ability_id`'s existing `attacker` parameter; verified
+  with a dedicated unit test (a Mold-Breaker-holding attacker bypasses Dazzling's
+  block).
+
+### `AbilityData` field check, per the `[M17h]`-established discipline
+
+Checked `AbilityData` in full before writing any code. No dormant field applies —
+priority-move-blocking is a genuinely new concept, unrelated to the six existing
+ability-copy/suppression fields. Sticky-Hold-style, this is correctly a direct
+ability-ID check (`_is_dazzling_family`) rather than a data field, the same precedent
+`[M17f]`'s trapping check (`is_trapped`) and `[M17j]`'s Sticky Hold check
+(`_try_steal_item`) both already established for concepts with no matching dormant
+field.
+
+### New infrastructure
+
+- `AbilityManager._is_dazzling_family(id) -> bool` — mirrors source's
+  `IsDazzlingAbility` directly.
+- `AbilityManager.blocks_priority_move(defender, defender_ally, attacker, move,
+  ng_active) -> bool` — the query function, checked at the confirmed execution-time
+  trigger point.
+- Wired into `BattleManager._phase_move_execution`, immediately before the existing
+  accuracy check: on a block, emits `move_effect_failed(attacker, "priority_blocked")`
+  and `ability_triggered(defender, "dazzling_family")`, then the same
+  `move_executed(attacker, defender, move, 0)` /
+  `attacker.last_move_used = move` / turn-advance shape already used by Roar's
+  no-switch-target fail path.
+
+### Testing / Regression
+
+New `m17k_test.gd`/`.tscn`: 26/26 assertions across 7 sections — ability data
+spot-checks (all three `breakable=true`); `blocks_priority_move` direct unit tests (each
+of the three blocking Quick Attack individually, priority-zero non-block, non-holder
+no-op, side-wide ally-holds-it-but-target-doesn't, a fainted ally does NOT extend
+protection, Mold Breaker bypass, a null-attacker sanity check confirming no bypass
+context means no bypass, Neutralizing Gas suppression); full-battle priority-move-blocked
+(Quick Attack vs. a Dazzling holder); full-battle priority-zero-not-blocked (Tackle vs.
+the same holder, real damage dealt); full-battle side-wide doubles (target has no
+ability, its ally holds Dazzling, the priority move still fails); the holder's own
+priority move unaffected (real damage dealt); and a negative control (an ordinary
+Pokémon with no ability blocks nothing). Stable across 7 consecutive reruns.
+
+Full regression (direct foreground bash sweep, standard `pkill`/`timeout` discipline):
+baseline reconfirmed exactly at 31 `.tscn` files, 1632 total assertions, 0 failures —
+no drift this time (unlike the M17i→M17j handoff). All 31 prior suite files unchanged
+and still passing, plus the new `m17k_test` at 26/26. Total across all 32 `.tscn` files:
+1632 prior + 26 = **1658**, 0 failures.
+
+- 2026-07-03.
+
+### Next tier
+
+Section 11's next proposed tier, **M17l — Doubles-redirect-adjacent + doubles-aura
+abilities not already scheduled**: Lightning Rod, Storm Drain, Telepathy, Friend Guard,
+Propeller Tail, Stalwart (6 abilities, all touching the existing M14a doubles targeting
+system) — re-checked against Section 13's full exclusion sweep before naming it here
+(the same discipline every prior tier's Step 0 has applied) — none of the six appears
+anywhere in Section 13.1-13.4, so no correction is needed to Section 11's original
+six-ability grouping.
