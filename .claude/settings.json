@@ -22,7 +22,13 @@
       "Bash(timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17f_test.tscn)",
       "Bash(pkill -9 -f \"Godot.*--headless\")",
       "Bash(timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path /home/rob/GodotAsImagined/as-imagined --import)",
-      "Bash(timeout 20 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path /home/rob/GodotAsImagined/as-imagined scenes/battle/m17h_test.tscn)"
+      "Bash(timeout 20 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path /home/rob/GodotAsImagined/as-imagined scenes/battle/m17h_test.tscn)",
+      "Bash(timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . --import)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(timeout 20 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/switch_test.tscn)",
+      "Bash(timeout 20 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17h_test.tscn)",
+      "Bash(echo \"import exit: $?\")",
+      "Bash(timeout 20 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17i_test.tscn)"
     ]
   }
 }

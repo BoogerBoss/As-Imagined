@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 144
 ability_name = "Regenerator"
-description = ""
-ai_rating = 0
+description = "Restores a little HP when withdrawn from battle."
+ai_rating = 8

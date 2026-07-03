@@ -1042,6 +1042,9 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 		var saved: Dictionary = _baton_pass_save(attacker)
+		# M17i: Regenerator/Natural Cure fire here too — source's BattleScript_EffectBatonPass
+		# reaches the same `switchoutabilities BS_ATTACKER` call as an ordinary switch.
+		_apply_switch_out_abilities(attacker)
 		_switch_out_clear(attacker)
 		# Determine which slot to bring in.
 		var bp_slot: int = _get_baton_pass_slot(attacker_idx)
@@ -2201,6 +2204,21 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 #   B_TOXIC_COUNTER_RESET config flag in pokeemerald-expansion.
 # Stat stages reset to 0 — SOURCE: SwitchInClearSetData L3124-3126 (except Baton Pass).
 # protect_consecutive resets — the consecutive-use streak is per-battle-entry.
+# M17i: Regenerator/Natural Cure — called at every site that reaches source's
+# Cmd_switchoutabilities (voluntary switch, Roar/Whirlwind, Baton Pass), BEFORE
+# _switch_out_clear, though ordering vs. that function doesn't actually matter here
+# since _switch_out_clear never touches current_hp/status/toxic_counter. Deliberately
+# NOT called from _do_switch_in (faint replacement) — a fainted mon never reaches
+# source's returntoball/switchoutabilities at all.
+func _apply_switch_out_abilities(mon: BattlePokemon) -> void:
+	var so_result: Dictionary = AbilityManager.try_switch_out(mon, _is_neutralizing_gas_active())
+	if so_result["healed_amount"] > 0:
+		ability_healed.emit(mon, so_result["healed_amount"])
+		ability_triggered.emit(mon, "regenerator")
+	if so_result["cured_status"]:
+		ability_triggered.emit(mon, "natural_cure")
+
+
 func _switch_out_clear(mon: BattlePokemon) -> void:
 	_clear_volatiles(mon)
 	for _si in range(mon.stat_stages.size()):
@@ -2258,6 +2276,7 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 	var side: int = combatant_idx / _active_per_side
 	var field_slot: int = combatant_idx % _active_per_side
 	var old_mon: BattlePokemon = _combatants[combatant_idx]
+	_apply_switch_out_abilities(old_mon)
 	_switch_out_clear(old_mon)
 	_parties[side].active_indices[field_slot] = slot
 	_combatants[combatant_idx] = _parties[side].get_active_at(field_slot)
@@ -2280,6 +2299,9 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 #   switch to gBattlerTarget — the specific targeted combatant, not always position 0.
 func _do_forced_switch_in(side: int, slot: int, field_slot: int = 0) -> void:
 	var combatant_idx: int = side * _active_per_side + field_slot
+	# M17i: Regenerator/Natural Cure fire here too — source's BattleScript_RoarSuccessRet
+	# calls `switchoutabilities BS_TARGET`, confirming forced switch-outs are not exempt.
+	_apply_switch_out_abilities(_combatants[combatant_idx])
 	_switch_out_clear(_combatants[combatant_idx])
 	_parties[side].active_indices[field_slot] = slot
 	_combatants[combatant_idx] = _parties[side].get_active_at(field_slot)

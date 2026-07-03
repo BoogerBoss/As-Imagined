@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 30
 ability_name = "Natural Cure"
-description = ""
-ai_rating = 0
+description = "All status conditions heal when the Pokémon switches out."
+ai_rating = 7

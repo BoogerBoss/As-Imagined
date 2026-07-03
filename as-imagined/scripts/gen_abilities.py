@@ -764,6 +764,30 @@ ABILITIES = [
     {"id": 268, "name": "Lingering Aroma",
      "description": "Spreads with contact.",
      "ai_rating": 5},
+
+    # ── M17i: Switch-out trigger hook (new infrastructure) ──────────────────────────
+    # Source: docs/m17_recon.md Section 11's M17i proposal (infra flag #1) — final
+    # list locked in docs/decisions.md [M17i]: just Regenerator and Natural Cure.
+    # Neither has a cant_be_* flag in source (src/data/abilities.h L234-239/L1083-1088)
+    # — both ARE suppressible by Neutralizing Gas (dispatched through GetBattlerAbility,
+    # the suppression-aware read, per battle_script_commands.c :: Cmd_switchoutabilities
+    # L9339), so cant_be_suppressed correctly stays False for both.
+
+    # Source: battle_script_commands.c :: Cmd_switchoutabilities, ABILITY_NATURAL_CURE
+    #   case (L9341-9351): clears the holder's non-volatile status1 the moment it leaves
+    #   the field (voluntary switch, forced switch/Roar, Baton Pass, or self-switch
+    #   effects — anything that reaches Cmd_switchoutabilities). Does not touch
+    #   volatile conditions (confusion, etc.) — status1 only.
+    {"id": 30, "name": "Natural Cure",
+     "description": "All status conditions heal when the Pokémon switches out.",
+     "ai_rating": 7},
+
+    # Source: battle_script_commands.c :: Cmd_switchoutabilities, ABILITY_REGENERATOR
+    #   case (L9352-9364): heals floor(maxHP/3) + current HP, capped at maxHP, at the
+    #   moment the holder leaves the field. Same trigger point as Natural Cure above.
+    {"id": 144, "name": "Regenerator",
+     "description": "Restores a little HP when withdrawn from battle.",
+     "ai_rating": 8},
 ]
 
 HEADER = """\

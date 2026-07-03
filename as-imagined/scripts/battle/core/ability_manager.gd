@@ -236,6 +236,11 @@ const ABILITY_POWER_OF_ALCHEMY:  int = 223
 const ABILITY_WANDERING_SPIRIT:  int = 254
 const ABILITY_LINGERING_AROMA:   int = 268
 
+# M17i: Switch-out trigger hook (new infrastructure). Step 0 list re-verified against
+# Section 13's full exclusion sweep: neither ID appears anywhere in it.
+const ABILITY_NATURAL_CURE:  int = 30
+const ABILITY_REGENERATOR:   int = 144
+
 # M17h: source models FOUR distinct "can this ability be read from / changed away from"
 # flags in `src/data/abilities.h` — `cantBeTraced`, `cantBeCopied`, `cantBeSwapped`,
 # `cantBeOverwritten` — genuinely different from each other and from M17g's
@@ -433,6 +438,40 @@ static func try_mummy_overwrite(
 			return -1
 	attacker.ability = defender.ability
 	return holder_id
+
+
+# M17i: Regenerator / Natural Cure — switch-out trigger hook (new infrastructure).
+# Source: battle_script_commands.c :: Cmd_switchoutabilities (L9339-9367), dispatched
+# via GetBattlerAbility(battler) — the suppression-aware read, matching this project's
+# effective_ability_id (confirmed neither ability sets .cantBeSuppressed in
+# src/data/abilities.h, so Neutralizing Gas correctly CAN suppress both). BattleManager
+# calls this once per mon at every site that reaches source's Cmd_switchoutabilities:
+# voluntary switch, Roar/Whirlwind forced switch, and Baton Pass — NOT faint-based
+# replacement, since a fainted mon never calls source's `returntoball`/
+# `switchoutabilities` at all (a separate faint-animation script path entirely). This is
+# a correction worth flagging explicitly: the gate is "did this mon leave the field
+# alive," not "was the switch voluntary" — source's own script confirms Roar-forced
+# switch-outs (BattleScript_RoarSuccessRet, `switchoutabilities BS_TARGET`) DO trigger
+# Regenerator/Natural Cure, same as a self-chosen switch.
+# Natural Cure resets toxic_counter alongside status, matching the existing precedent
+# set by M17c's Hydration/Shed Skin/Healer (curing a status that may have already been
+# ticking, as opposed to the Lum-Berry-style "cure a just-inflicted status" sites
+# elsewhere in this file, where toxic_counter is still guaranteed to be 0).
+# Returns a Dictionary so BattleManager can emit the correct existing signals
+# (ability_healed / ability_triggered) rather than mutating fields itself blind.
+static func try_switch_out(mon: BattlePokemon, ng_active: bool = false) -> Dictionary:
+	var result: Dictionary = {"healed_amount": 0, "cured_status": false}
+	var id: int = effective_ability_id(mon, ng_active)
+	if id == ABILITY_REGENERATOR:
+		var healed_hp: int = min(mon.max_hp, mon.current_hp + int(mon.max_hp / 3))
+		result["healed_amount"] = healed_hp - mon.current_hp
+		mon.current_hp = healed_hp
+	elif id == ABILITY_NATURAL_CURE:
+		if mon.status != BattlePokemon.STATUS_NONE:
+			mon.status = BattlePokemon.STATUS_NONE
+			mon.toxic_counter = 0
+			result["cured_status"] = true
+	return result
 
 
 # M17g: the single suppression-aware chokepoint every ability-consuming function in

@@ -4788,3 +4788,206 @@ produce identical behavior (this entry's own `m17g_test.gd` suite re-run clean, 
 with no test changes needed — a pure refactor). See `docs/decisions.md`'s `[M17h]`
 entry for the full reasoning and the three new exemption fields this same migration
 covers.
+
+## [M17i] Switch-out trigger hook (new infrastructure) — Regenerator / Natural Cure
+
+Scoping source: `docs/m17_recon.md` Section 11's M17i proposal ("Switch-out trigger hook
+(new infra) + Regenerator/Natural Cure. Unchanged from the original recon (flag #1)."),
+cross-referenced against Section 6's infra flag #1 ("Switch-out ability trigger
+hook — doesn't exist. Needed by Regenerator (144) and Natural Cure (30). Only switch-IN
+hooks exist today... Design once, use for both abilities."). Fourth genuinely
+new-infrastructure tier in M17, after `[M17f]`'s trapping check, `[M17g]`'s suppression
+plumbing, and `[M17h]`'s copy/overwrite plumbing.
+
+### Step 0 — finalized ability list
+
+**Regenerator (144), Natural Cure (30)** — both canonical IDs re-verified directly
+against `include/constants/abilities.h` (`ABILITY_NATURAL_CURE = 30`,
+`ABILITY_REGENERATOR = 144`); neither appears anywhere in Section 13.1-13.4, so — like
+`[M17h]` and unlike the `[M17f]`→`[M17g]` handoff — no correction was needed to Section
+11's original two-ability list.
+
+Section 11 floated a hedge worth resolving explicitly rather than carrying forward
+unexamined: whether Regenerator/Natural Cure and Wimp Out/Emergency Exit's HP-threshold
+forced-self-switch (infra flag #13) should be split into two tiers, since "one reacts to
+a switch already occurring, the other actively initiates one." Tracing both mechanisms
+from source confirms the split is correct and the hedge resolves cleanly: Regenerator
+and Natural Cure are BOTH purely reactive (they fire only once a switch-out is already
+underway — `Cmd_switchoutabilities` runs after `returntoball`, when the outgoing mon has
+already been confirmed leaving), while Wimp Out/Emergency Exit would need a genuinely
+different mechanism (an HP-threshold check that itself INITIATES a forced switch,
+something no move/ability in this project currently does). No third bucket or partial
+overlap was found — Wimp Out/Emergency Exit stay out of this tier entirely, deferred to
+a separate M17i-2 (or later), matching Section 11's own conditional framing ("only if
+Rob wants to batch... otherwise split").
+
+### Source citations — both abilities share one dispatch function
+
+Both fire from the exact same battle-script command, confirming the recon's "design
+once, use for both" framing was correct down to the implementation level, not just the
+proposal level:
+
+- **`battle_script_commands.c :: Cmd_switchoutabilities`** (L9322-9372) — dispatched via
+  `GetBattlerAbility(battler)` (L9339, the suppression-aware read), with a `switch`
+  covering both abilities:
+  - **Natural Cure** (L9341-9351): clears `gBattleMons[battler].status1` entirely
+    (all non-volatile status conditions — burn/poison/toxic/paralysis/sleep/freeze —
+    cured in one assignment, `status1 = 0`; also fires a since-unimplemented
+    `TryDeactivateSleepClause` call this project has no equivalent for, since no sleep-
+    clause mechanic exists anywhere in this codebase, confirmed via grep). Does NOT
+    touch any volatile condition (confusion, etc.) — `status1` only, the same
+    non-volatile/volatile boundary `[M9]`'s Baton Pass passable-fields distinction and
+    every subsequent status-cure site in this project already respects.
+  - **Regenerator** (L9352-9364): `regenerate = GetNonDynamaxMaxHP(battler) / 3;
+    regenerate += gBattleMons[battler].hp; if (regenerate > maxHP) regenerate = maxHP;`
+    — integer-division floor(maxHP/3) added to current HP, clamped at maxHP.
+- **Seven call sites in `data/battle_scripts_1.s`** all reach `Cmd_switchoutabilities`,
+  confirming the trigger point is "any mon leaving the field alive," not "voluntary
+  switch" specifically:
+  `BattleScript_MoveSwitchOpenPartyScreenReturnWithNoAnim` (mid-turn move-menu switch),
+  `BattleScript_EffectBatonPass` (Baton Pass), `BattleScript_DoSwitchOut` (ordinary
+  turn-action switch), `BattleScript_RoarSuccessRet` (**Roar/Whirlwind forced
+  switch** — `switchoutabilities BS_TARGET`), `BattleScript_SwitchOutEffects` (Emergency
+  Exit / Wimp Out self-switch, and Eject Button), `BattleScript_EjectPackActivates`
+  (Eject Pack item). The one mon that never reaches any of these seven sites is a
+  **fainted** mon — fainting runs its own separate faint-animation script path that
+  never calls `returntoball`/`switchoutabilities` at all.
+
+### The new switch-out trigger hook
+
+`AbilityManager.try_switch_out(mon, ng_active=false) -> Dictionary` is the shared
+primitive (mirroring `Cmd_switchoutabilities`'s single-dispatch-function shape exactly,
+per the recon's "design once" instruction), returning `{"healed_amount", "cured_status"}`
+so `BattleManager` can emit the correct pre-existing signals rather than mutating fields
+itself blind. It reads through `effective_ability_id(mon, ng_active)` — the
+suppression-aware chokepoint `[M17g]` established — matching source's
+`GetBattlerAbility` dispatch exactly.
+
+`BattleManager._apply_switch_out_abilities(mon)` wraps the primitive and is called from
+**three** sites, one per source call-site category that actually applies to mechanics
+this project implements:
+
+1. **`_do_voluntary_switch`** — an ordinary turn-action switch (source:
+   `BattleScript_DoSwitchOut`/`BattleScript_MoveSwitchOpenPartyScreenReturnWithNoAnim`).
+2. **`_do_forced_switch_in`** — Roar/Whirlwind (source: `BattleScript_RoarSuccessRet`).
+   **This is a source-verified correction worth stating explicitly**: the natural
+   assumption (and this tier's own initial task framing) is that switch-out abilities
+   fire "only on voluntary switches." Source's own battle script disproves this directly
+   — `BattleScript_RoarSuccessRet` reaches `switchoutabilities BS_TARGET` the same as any
+   other switch-out, meaning a Roar-forced-out Regenerator holder heals and a
+   Roar-forced-out Natural Cure holder cures its status, exactly as if it had switched
+   out voluntarily. The real gate confirmed from source is **"did this mon leave the
+   field alive,"** not **"was the switch voluntary."** Verified directly via a
+   full-battle test (Section 6 below: `bm._force_roar_rng = 0` for a deterministic
+   target, confirming `ability_healed`/status-cure fire on the Roar-forced-out mon).
+3. **The inline Baton Pass switch-out block** in `_phase_move_execution` (source:
+   `BattleScript_EffectBatonPass`).
+
+Deliberately **NOT** called from `_do_switch_in` (faint replacement) — a fainted mon
+never reaches source's `returntoball`/`switchoutabilities` at all (a structurally
+separate faint-animation script path), so this is a correct-by-construction omission,
+not an oversight papered over by a guard clause. Verified explicitly (Section 5) rather
+than assumed safe by coincidence: a Regenerator holder driven to 0 HP and replaced via
+the ordinary faint-replacement flow never emits `ability_healed`.
+
+Wimp Out/Emergency Exit's self-switch (`BattleScript_SwitchOutEffects`) and Eject
+Button/Eject Pack (item-triggered forced switch) also reach `Cmd_switchoutabilities` in
+source, but none of those four mechanics exist in this project yet (Wimp Out/Emergency
+Exit per Step 0 above; Eject Button/Eject Pack are held items, out of this ability-tier's
+scope) — `_apply_switch_out_abilities` will apply correctly the moment any of those call
+sites gets built, with zero changes needed to the primitive itself.
+
+**Ordering vs. `_switch_out_clear`**: called immediately BEFORE `_switch_out_clear` at
+all three sites, matching source's ordering (`switchoutabilities` runs before the
+outgoing mon's data is fully torn down). Confirmed this ordering doesn't actually matter
+in THIS codebase, unlike source's more entangled C struct lifecycle: `_switch_out_clear`
+only clears volatiles, `stat_stages`, `last_physical_damage`/`last_special_damage`,
+`protect_consecutive`, `last_move_used`, and `choice_locked_move` — it never touches
+`current_hp`, `status`, or `toxic_counter`, the three fields Regenerator/Natural Cure
+actually read and mutate. Kept the before-clear ordering anyway for direct source
+fidelity and future-proofing (if a later milestone ever makes `_switch_out_clear` touch
+HP/status, the call order is already correct rather than needing to be re-derived).
+
+### `is_trapped()` interaction
+
+`[M17f]`'s `is_trapped()` gates only the SELECTION of a voluntary switch, at
+`_phase_move_selection` — if a switch is blocked there, `_chosen_switch_slots` is reset
+to `-1` and `_do_voluntary_switch` is never called at all this turn. Since
+`_apply_switch_out_abilities` only exists inside `_do_voluntary_switch`/
+`_do_forced_switch_in`/the Baton Pass block, a trapped mon's blocked switch
+architecturally never reaches the new hook — not a special-cased exemption, the same
+"disjoint by construction" shape `[M17f]` already established for forced
+switches/faint-replacement/Baton Pass bypassing trapping itself. Verified directly
+(Section 8): a Shadow-Tag-trapped Regenerator holder that attempts a queued voluntary
+switch never emits `pokemon_switched_out` and never emits `ability_healed` — confirming
+the switch never happened at all, rather than happening-but-being-silently-a-no-op.
+
+### Suppression-mechanism interaction
+
+Checked directly against `src/data/abilities.h` before writing any code, per the
+`[M17h]`-established "verify from source, don't assume the flag" discipline: neither
+Natural Cure (L234-239) nor Regenerator (L1083-1088) carries a `.cantBeSuppressed` flag
+of its own. Both are dispatched via `GetBattlerAbility` in source (the suppression-aware
+read, confirmed above), so both correctly route through `effective_ability_id` — meaning
+Neutralizing Gas CAN suppress either ability at the switch-out moment, same as it
+suppresses them everywhere else. Verified with a full-battle test (Section 9): a
+Regenerator holder switching out while an opposing Neutralizing Gas holder is active on
+the field does not heal at all.
+
+### AbilityData field usage — dormant-field check, per the `[M17h]`-established discipline
+
+Per the standing rule `[M17h]` established ("check `AbilityData` for an existing dormant
+field FIRST before adding any new hardcoded array or new field"), checked whether either
+ability needed a new or existing exemption flag populated before writing any code.
+Neither does: both `cant_be_suppressed` fields correctly default to `false` (matching
+source, confirmed above) via `gen_abilities.py`'s existing `DEFAULTS` dict — no new
+`FIELD_ORDER`/`DEFAULTS` entries, no hardcoded array, and no retrofit were needed this
+tier. The only `gen_abilities.py` change was adding the two new `ABILITIES` list entries
+themselves (Natural Cure/Regenerator previously existed only as empty placeholder
+`.tres` files with no description/ai_rating).
+
+Natural Cure's implementation resets `toxic_counter` alongside `status`, reusing the
+exact precedent `[M17c]`'s Hydration/Shed Skin/Healer already established (curing a
+status that may have already been ticking for several turns), rather than the
+Lum-Berry-style cure sites elsewhere in this file (curing a status the instant it's
+inflicted, where `toxic_counter` is still guaranteed to be 0 regardless) — the correct
+precedent to follow given Natural Cure can fire on a mon that's been badly poisoned for
+an arbitrary number of turns before switching out.
+
+### Testing / Regression
+
+New `m17i_test.gd`/`.tscn`: 35/35 assertions across 9 sections — ability data
+spot-checks (both abilities' full `cant_be_*`/`breakable` flag sets confirmed all-false,
+matching source); `try_switch_out` direct unit tests for Regenerator (ordinary
+floor(maxHP/3) heal, overheal-clamping at maxHP, non-holder no-op, Neutralizing-Gas
+suppression no-op) and Natural Cure (status cure, toxic_counter reset, confusion/volatile
+untouched, no-status clean no-op, non-holder no-op, Neutralizing-Gas suppression no-op);
+full-battle integration for an ordinary voluntary switch (both abilities); faint
+replacement confirmed NOT to trigger either ability; **Roar-forced switch confirmed TO
+trigger both abilities** (the source-verified correction, tested for both Regenerator
+and Natural Cure independently via `_force_roar_rng = 0`); Baton Pass confirmed to
+trigger Regenerator; the `is_trapped()` interaction (blocked switch never reaches the
+hook); and the Neutralizing Gas suppression interaction (full-battle, not just the
+direct unit call). Test suite authored and run independently by Rob in his own
+terminal, confirmed 35/35 passing.
+
+Full regression (direct foreground bash sweep, standard `pkill`/`timeout` discipline):
+all 29 prior suite files unchanged and still passing, plus the new `m17i_test` at
+35/35. Total across all 30 `.tscn` files (`battle_test.tscn` remains narrative-only, no
+pass/fail assertions, so 29 suites contribute to the assertion count): 1549 prior + 35 =
+**1584**, 0 failures.
+
+- 2026-07-03.
+
+### Next tier
+
+Section 11's next proposed tier, **M17j — Item-transfer primitive (new infra) +
+Pickpocket/Sticky Hold/Magician/Symbiosis**, was re-checked against Section 13's full
+exclusion sweep before naming it here (the same discipline every prior tier's Step 0 has
+applied to its own list) — none of the four (Pickpocket 124, Sticky Hold 60, Magician
+170, Symbiosis 180) appears anywhere in Section 13.1-13.4, so no correction is needed to
+Section 11's original four-ability grouping. Symbiosis is doubles-only (passes the
+holder's own item to an ally after the ally's item is consumed) and Sticky Hold is a
+pure blocker (prevents item removal/theft) — both depend on the same shared
+item-transfer/removal primitive flag #10 first identifies, not separate mechanisms, per
+Section 11's own "design once, ship four abilities" framing.
