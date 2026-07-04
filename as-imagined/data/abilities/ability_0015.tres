@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 15
 ability_name = "Insomnia"
-description = ""
-ai_rating = 0
+description = "Prevents the Pokémon from falling asleep, and cures it on switch-in."
+ai_rating = 5
+breakable = true

@@ -139,29 +139,33 @@ func _test_section_2_lightning_rod_storm_drain_unit() -> void:
 	var mold_breaker := _load_ability(104)
 	var intimidate := _load_ability(22)
 
-	# (i) absorbs_move_type: matching type → STAGE_SPATK; non-matching/non-holder → -1.
+	# (i) absorbs_move_type: matching type → {"kind":"stat","stat":STAGE_SPATK,"amount":1};
+	# non-matching/non-holder → {} (M17m widened this from a bare int/-1 return to a
+	# Dictionary — see docs/decisions.md [M17m] for why).
 	var lr_holder := _make_mon("LRHolder", [TypeChart.TYPE_NORMAL])
 	lr_holder.ability = lightning_rod
 	_chk("S2.01 Lightning Rod absorbs Electric",
-			AbilityManager.absorbs_move_type(lr_holder, TypeChart.TYPE_ELECTRIC) == BattlePokemon.STAGE_SPATK)
+			AbilityManager.absorbs_move_type(lr_holder, TypeChart.TYPE_ELECTRIC) \
+					== {"kind": "stat", "stat": BattlePokemon.STAGE_SPATK, "amount": 1})
 	_chk("S2.02 Lightning Rod does NOT absorb Water",
-			AbilityManager.absorbs_move_type(lr_holder, TypeChart.TYPE_WATER) == -1)
+			AbilityManager.absorbs_move_type(lr_holder, TypeChart.TYPE_WATER).is_empty())
 
 	var sd_holder := _make_mon("SDHolder", [TypeChart.TYPE_NORMAL])
 	sd_holder.ability = storm_drain
 	_chk("S2.03 Storm Drain absorbs Water",
-			AbilityManager.absorbs_move_type(sd_holder, TypeChart.TYPE_WATER) == BattlePokemon.STAGE_SPATK)
+			AbilityManager.absorbs_move_type(sd_holder, TypeChart.TYPE_WATER) \
+					== {"kind": "stat", "stat": BattlePokemon.STAGE_SPATK, "amount": 1})
 
 	var non_holder := _make_mon("NonLRHolder", [TypeChart.TYPE_NORMAL])
 	non_holder.ability = intimidate
 	_chk("S2.04 non-holder does not absorb Electric",
-			AbilityManager.absorbs_move_type(non_holder, TypeChart.TYPE_ELECTRIC) == -1)
+			AbilityManager.absorbs_move_type(non_holder, TypeChart.TYPE_ELECTRIC).is_empty())
 
 	# (ii) Mold Breaker bypasses the absorb.
 	var mb_attacker := _make_mon("MBAttacker", [TypeChart.TYPE_NORMAL])
 	mb_attacker.ability = mold_breaker
 	_chk("S2.05 Mold Breaker bypasses Lightning Rod's absorb",
-			AbilityManager.absorbs_move_type(lr_holder, TypeChart.TYPE_ELECTRIC, false, mb_attacker) == -1)
+			AbilityManager.absorbs_move_type(lr_holder, TypeChart.TYPE_ELECTRIC, false, mb_attacker).is_empty())
 
 	# (iii) resolve_redirect_target: ally holds it, original target doesn't → redirects.
 	var target_plain := _make_mon("TargetPlain", [TypeChart.TYPE_NORMAL])
@@ -194,7 +198,7 @@ func _test_section_2_lightning_rod_storm_drain_unit() -> void:
 
 	# (viii) Neutralizing Gas suppresses both the absorb and the redirect.
 	_chk("S2.11 Neutralizing Gas suppresses Lightning Rod's absorb",
-			AbilityManager.absorbs_move_type(lr_holder, TypeChart.TYPE_ELECTRIC, true) == -1)
+			AbilityManager.absorbs_move_type(lr_holder, TypeChart.TYPE_ELECTRIC, true).is_empty())
 	_chk("S2.12 Neutralizing Gas suppresses the redirect",
 			AbilityManager.resolve_redirect_target(target_plain, lr_holder, attacker, TypeChart.TYPE_ELECTRIC, true) == null)
 

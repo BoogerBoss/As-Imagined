@@ -42,13 +42,54 @@ extends RefCounted
 #   ABILITY_PASTEL_VEIL (battle_util.c L5254-5259): immune to POISON/TOXIC specifically,
 #     self OR ally (IsAbilityOnSide). (Pastel Veil's OTHER half — curing the holder's
 #     own pre-existing poison on switch-in — is in AbilityManager.try_switch_in.)
+#
+# M17n-1 additions, same function (CanSetNonVolatileStatus, L5235-5394), same
+# ability-immunity block:
+#   ABILITY_INSOMNIA / ABILITY_VITAL_SPIRIT (L5330-5334, MOVE_EFFECT_SLEEP case) —
+#     immune to SLEEP specifically; confirmed via source these are genuinely the same
+#     case branch, not just similarly-shaped.
+#   ABILITY_IMMUNITY (L5261-5265, MOVE_EFFECT_POISON/TOXIC case) — immune to
+#     POISON/TOXIC specifically (any type, not just the Poison/Steel type-immunity
+#     already checked above at L5250-5253).
+#   ABILITY_LIMBER (L5280-5284, MOVE_EFFECT_PARALYSIS case) — immune to PARALYSIS
+#     specifically.
+#   ABILITY_WATER_VEIL (L5295-5299, MOVE_EFFECT_BURN case — source also lists
+#     ABILITY_WATER_BUBBLE in the same branch; Water Bubble isn't implemented in this
+#     project yet, so only Water Veil is wired here) — immune to BURN specifically.
+#   ABILITY_MAGMA_ARMOR (L5346-5350, MOVE_EFFECT_FREEZE case) — immune to FREEZE
+#     specifically.
+#   ABILITY_LEAF_GUARD (`IsLeafGuardProtected`, battle_script_commands.c L6846-6852,
+#     called from L5370 — OUTSIDE the per-effect switch, applying to ALL
+#     non-volatile statuses uniformly) — immune while harsh sun is active RIGHT NOW
+#     (checked fresh every call via the new `weather` param, not cached — this
+#     function is a stateless static already called fresh each time). Source gates
+#     sun-detection through `IsBattlerWeatherAffected` (Utility-Umbrella-aware), but
+#     this project's existing weather-conditional ABILITY checks (Flower Gift/Solar
+#     Power/Slush Rush/Dry Skin) never consult `ItemManager.blocks_weather_modifier`
+#     either — that helper is only ever consulted inside the damage-multiplier
+#     pipeline — so Leaf Guard follows the same established precedent rather than
+#     introducing a new nuance none of its siblings have. Leaf Guard's OTHER two
+#     effects (Leech Seed/Yawn immunity) are N/A — neither move exists in this
+#     project yet, confirmed via a roster grep.
+# All six confirmed `breakable = TRUE` in src/data/abilities.h, same Mold-Breaker
+# reachability as Purifying Salt/Sweet Veil/Pastel Veil above.
+#
+# weather: int — WEATHER_* constant (DamageCalculator), default WEATHER_NONE — needed
+#   only for Leaf Guard's sun gate. Threaded through from try_secondary_effect (the
+#   single choke point for all move-based status infliction, primary or secondary);
+#   NOT threaded through the contact-ability-triggered call sites (Static/Poison
+#   Point/Effect Spore/Synchronize in ability_manager.gd) or the switch-in-hazard call
+#   site — a narrow, documented scope-limitation (Leaf Guard won't block those specific
+#   ability-triggered infliction paths while in sun), matching the same category of
+#   simplification `[M17c]`'s Slush Rush left for the two TrainerAI call sites.
 static func try_apply_status(
 		mon: BattlePokemon,
 		status: int,
 		force_sleep_turns: Variant = null,
 		ally: BattlePokemon = null,
 		ng_active: bool = false,
-		attacker: BattlePokemon = null) -> bool:
+		attacker: BattlePokemon = null,
+		weather: int = DamageCalculator.WEATHER_NONE) -> bool:
 
 	# One major status at a time.
 	# Source: CanSetNonVolatileStatus L5391 — "already has STATUS1_ANY → fails"
@@ -63,6 +104,8 @@ static func try_apply_status(
 	var mon_id: int = AbilityManager.effective_ability_id(mon, ng_active, attacker)
 	if mon_id == AbilityManager.ABILITY_PURIFYING_SALT:
 		return false
+	if mon_id == AbilityManager.ABILITY_LEAF_GUARD and weather == DamageCalculator.WEATHER_SUN:
+		return false
 
 	var ally_ability_id: int = AbilityManager.effective_ability_id(ally, ng_active, attacker) \
 			if (ally != null and not ally.fainted) else -1
@@ -70,10 +113,20 @@ static func try_apply_status(
 		if mon_id == AbilityManager.ABILITY_SWEET_VEIL \
 				or ally_ability_id == AbilityManager.ABILITY_SWEET_VEIL:
 			return false
+		if mon_id == AbilityManager.ABILITY_INSOMNIA or mon_id == AbilityManager.ABILITY_VITAL_SPIRIT:
+			return false
 	if status == BattlePokemon.STATUS_POISON or status == BattlePokemon.STATUS_TOXIC:
 		if mon_id == AbilityManager.ABILITY_PASTEL_VEIL \
 				or ally_ability_id == AbilityManager.ABILITY_PASTEL_VEIL:
 			return false
+		if mon_id == AbilityManager.ABILITY_IMMUNITY:
+			return false
+	if status == BattlePokemon.STATUS_PARALYSIS and mon_id == AbilityManager.ABILITY_LIMBER:
+		return false
+	if status == BattlePokemon.STATUS_BURN and mon_id == AbilityManager.ABILITY_WATER_VEIL:
+		return false
+	if status == BattlePokemon.STATUS_FREEZE and mon_id == AbilityManager.ABILITY_MAGMA_ARMOR:
+		return false
 
 	# Type immunities — source: CanSetNonVolatileStatus L5244–5354
 	match status:
@@ -118,17 +171,30 @@ static func try_apply_status(
 # try_apply_confusion: attempt to inflict confusion (a volatile status).
 # Confusion is separate from the major status slot — a Pokémon can be
 # paralyzed AND confused simultaneously.
-# Returns true if confusion was applied, false if already confused.
+# Returns true if confusion was applied, false if already confused or blocked.
 #
 # force_confusion_turns: Variant — null = random 2–5; int = pin duration
 #   Source: battle_script_commands.c L2363
 #   RandomUniform(2, B_CONFUSION_TURNS=5) — comment: "2–5 turns"
+#
+# M17n-1: ABILITY_OWN_TEMPO (battle_util.c :: CanBeConfused, L5447-5458) blocks new
+# confusion infliction outright — `breakable = TRUE` (src/data/abilities.h), so a
+# Mold-Breaker-holding attacker bypasses it, same reachability shape as every other
+# breakable defensive check in this project (attacker and mon are always different
+# battlers for any move-inflicted confusion). Own Tempo does NOT cure pre-existing
+# confusion on gaining the ability (this project has no Skill Swap/Entrainment-style
+# ability-transfer move, so that half is N/A, not a dropped check).
 static func try_apply_confusion(
 		mon: BattlePokemon,
-		force_confusion_turns: Variant = null) -> bool:
+		force_confusion_turns: Variant = null,
+		ng_active: bool = false,
+		attacker: BattlePokemon = null) -> bool:
 
 	if mon.confusion_turns > 0:
 		return false  # already confused
+
+	if AbilityManager.effective_ability_id(mon, ng_active, attacker) == AbilityManager.ABILITY_OWN_TEMPO:
+		return false
 
 	mon.confusion_turns = force_confusion_turns if force_confusion_turns != null \
 			else randi_range(2, 5)
@@ -230,13 +296,20 @@ static func pre_move_check(
 
 	# ── Sleep ──────────────────────────────────────────────────────────────
 	# Source: battle_move_resolution.c L120–169
-	# Counter always decrements by 1 each attempt (toSub=1 without Early Bird).
+	# Counter decrements by 1 each attempt (toSub=1), or by 2 with Early Bird
+	# (toSub=2 — M17n-1, battle_move_resolution.c L133-137:
+	#   `if (IsAbilityAndRecord(..., ABILITY_EARLY_BIRD)) toSub = 2; else toSub = 1;`
+	#   then clamped so the counter never goes negative, matching this project's
+	#   existing `max(0, ...)` clamp exactly). Early Bird is NOT breakable in source
+	#   (no `.breakable` flag on it) — this is the holder's own passive self-check, not
+	#   a defensive ability an attacker's Mold Breaker would have any bearing on.
 	# If still > 0 → can't move. If hits 0 → wake and can move that turn.
 	# force_sleep_wake overrides the wake/sleep outcome but does NOT suppress the
 	# tick: force=false means "stay asleep regardless of counter"; force=true means
 	# "wake regardless of counter". Counter still decrements in both cases.
 	if mon.status == BattlePokemon.STATUS_SLEEP:
-		mon.sleep_turns = max(0, mon.sleep_turns - 1)
+		var sleep_to_sub: int = 2 if AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_EARLY_BIRD else 1
+		mon.sleep_turns = max(0, mon.sleep_turns - sleep_to_sub)
 
 		var wakes: bool
 		if force_sleep_wake == null:
@@ -418,14 +491,17 @@ const ACCURACY_STAGE_RATIOS: Array = [
 #   When force_hit is non-null it overrides EVERYTHING including semi-invulnerable,
 #   making it a pure test override (the source equivalent is No Guard ability).
 # Stat stages for accuracy (STAGE_ACCURACY) and evasion (STAGE_EVASION) are applied.
-# M17a: No Guard (either battler) and Compound Eyes/Hustle (attacker) are now modeled;
-#   other abilities/held items/weather remain future scope.
+# M17a: No Guard (either battler) and Compound Eyes/Hustle (attacker) are now modeled.
+# M17n-2: Sand Veil/Snow Cloak (defender, weather-gated) added — `weather` should be
+#   the EFFECTIVE weather (see `BattleManager._effective_weather()`), so Air
+#   Lock/Cloud Nine negation is automatic here too.
 static func check_accuracy(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
 		move: MoveData,
 		force_hit: Variant = null,
-		ng_active: bool = false) -> bool:
+		ng_active: bool = false,
+		weather: int = DamageCalculator.WEATHER_NONE) -> bool:
 	# Test override — highest priority; bypasses all checks including semi-inv.
 	if force_hit != null:
 		return bool(force_hit)
@@ -461,7 +537,8 @@ static func check_accuracy(
 
 	# M17a: Compound Eyes (×1.30) / Hustle (physical ×0.80) — same "calc" integer-percentage
 	# math source uses. Source: battle_util.c :: GetTotalAccuracy (L10283-10295).
-	var ability_pct: int = AbilityManager.accuracy_modifier_percent(attacker, move, ng_active)
+	var ability_pct: int = AbilityManager.accuracy_modifier_percent(
+			attacker, move, ng_active, defender, weather)
 	if ability_pct != 100:
 		calc = calc * ability_pct / 100
 
@@ -563,18 +640,33 @@ static func apply_stat_change(
 #   RandomPercentage(RNG_SECONDARY_EFFECT, percentChance): fires if roll < chance.
 #   Passes through SetMoveEffect → try_apply_status / try_apply_confusion for
 #   status effects; for flinch sets volatiles.flinched = TRUE.
+#
+# M17n-1: ABILITY_SHIELD_DUST (battle_util.c :: IsMoveEffectBlockedByTarget, L9811-9824,
+#   called only when `!primary` — i.e. a TRUE secondary effect, chance-based, never a
+#   guaranteed/primary one) blocks the ENTIRE secondary effect from applying at all —
+#   status, confusion, AND flinch alike, confirmed via source's single shared gate
+#   rather than a per-effect-type check. Gated on `move.secondary_chance > 0` here to
+#   mirror that `!primary` condition exactly (a guaranteed SE_* with chance 0, e.g. a
+#   pure status move, is NOT blocked by Shield Dust). `breakable = TRUE`.
+#   ABILITY_INNER_FOCUS (battle_util.c L8830, CancelerFlinch-adjacent) blocks flinch
+#   SPECIFICALLY, not other secondary effects — a narrower, separate check inside the
+#   SE_FLINCH case only, not the broad Shield-Dust-style gate above.
+# weather: int — WEATHER_* constant, default WEATHER_NONE — threaded through to
+#   try_apply_status for Leaf Guard's sun gate (see that function's doc comment).
 static func try_secondary_effect(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
 		move: MoveData,
 		force_secondary: Variant = null,
-		ng_active: bool = false) -> bool:
+		ng_active: bool = false,
+		weather: int = DamageCalculator.WEATHER_NONE) -> bool:
 
 	if move.secondary_effect == MoveData.SE_NONE:
 		return false
 
 	# Roll for secondary (skip if guaranteed: chance == 0)
-	if move.secondary_chance > 0:
+	var is_true_secondary: bool = move.secondary_chance > 0
+	if is_true_secondary:
 		var fires: bool
 		if force_secondary == null:
 			# RandomPercentage(RNG_SECONDARY_EFFECT, chance) → true with prob chance/100
@@ -584,20 +676,29 @@ static func try_secondary_effect(
 		if not fires:
 			return false
 
+	if is_true_secondary \
+			and AbilityManager.effective_ability_id(defender, ng_active, attacker) == AbilityManager.ABILITY_SHIELD_DUST:
+		return false
+
 	match move.secondary_effect:
 		MoveData.SE_BURN:
-			return try_apply_status(defender, BattlePokemon.STATUS_BURN, null, null, ng_active, attacker)
+			return try_apply_status(defender, BattlePokemon.STATUS_BURN, null, null, ng_active, attacker, weather)
 		MoveData.SE_FREEZE:
-			return try_apply_status(defender, BattlePokemon.STATUS_FREEZE, null, null, ng_active, attacker)
+			return try_apply_status(defender, BattlePokemon.STATUS_FREEZE, null, null, ng_active, attacker, weather)
 		MoveData.SE_PARALYSIS:
-			return try_apply_status(defender, BattlePokemon.STATUS_PARALYSIS, null, null, ng_active, attacker)
+			return try_apply_status(defender, BattlePokemon.STATUS_PARALYSIS, null, null, ng_active, attacker, weather)
 		MoveData.SE_SLEEP:
-			return try_apply_status(defender, BattlePokemon.STATUS_SLEEP, null, null, ng_active, attacker)
+			return try_apply_status(defender, BattlePokemon.STATUS_SLEEP, null, null, ng_active, attacker, weather)
 		MoveData.SE_TOXIC:
-			return try_apply_status(defender, BattlePokemon.STATUS_TOXIC, null, null, ng_active, attacker)
+			return try_apply_status(defender, BattlePokemon.STATUS_TOXIC, null, null, ng_active, attacker, weather)
 		MoveData.SE_CONFUSION:
-			return try_apply_confusion(defender)
+			return try_apply_confusion(defender, null, ng_active, attacker)
 		MoveData.SE_FLINCH:
+			# M17n-1: ABILITY_INNER_FOCUS blocks flinch specifically (not Shield Dust's
+			# broad gate above) — battle_util.c L8830, same CancelerFlinch-adjacent
+			# switch Steadfast's OWN reactive trigger already lives next to.
+			if AbilityManager.effective_ability_id(defender, ng_active, attacker) == AbilityManager.ABILITY_INNER_FOCUS:
+				return false
 			# Flinch: caller must check turn order and set defender.flinched.
 			# We return true to signal the roll succeeded.
 			return true
@@ -613,11 +714,28 @@ static func try_secondary_effect(
 #   B_PARALYSIS_SPEED >= GEN_7 → speed /= 2   (was /= 4 before Gen 7)
 #
 # M17c: Slush Rush doubles Speed while Hail/Snow is active — same weather-conditional
-# speed-multiplier shape as the (still unimplemented) Swift Swim/Chlorophyll/Sand Rush
-# family; this is the first of that family this project implements.
+# speed-multiplier shape as the Swift Swim/Chlorophyll/Sand Rush family added in
+# M17n-2, the first of which this project implemented.
 # Source: battle_util.c :: GetSpeedModifier-equivalent ability switch (Slush Rush ×2.0
 #   gated on IsBattlerWeatherAffected(..., B_WEATHER_HAIL)).
-# weather: WEATHER_* constant, default WEATHER_NONE (existing callers unaffected).
+#
+# M17n-2 additions, same shape, same source function (`GetBattlerTotalSpeedStat`,
+# battle_main.c L4657-4674): ABILITY_SWIFT_SWIM (rain ×2), ABILITY_CHLOROPHYLL (sun
+# ×2), ABILITY_SAND_RUSH (sandstorm ×2). Source-verified nuance NOT shared with Slush
+# Rush/Sand Rush: Swift Swim/Chlorophyll additionally check
+# `holdEffect != HOLD_EFFECT_UTILITY_UMBRELLA` on the HOLDER (rain/sun specifically can
+# be nullified by the holder's own Utility Umbrella; sandstorm/hail — Sand Rush/Slush
+# Rush's conditions — are never touched by Umbrella at all, matching
+# `ItemManager.blocks_weather_modifier`'s own existing damage-pipeline-only scope, so
+# reusing it here for Swift Swim/Chlorophyll specifically is a deliberate, narrow,
+# source-confirmed exception to this project's established "ability weather-checks
+# don't consult Umbrella" simplification from `[M17n-1]`'s Leaf Guard entry — NOT a
+# silent reversal of that call, since here source itself draws the distinction).
+#
+# weather: WEATHER_* constant, default WEATHER_NONE — callers pass the EFFECTIVE
+#   weather (already WEATHER_NONE if Air Lock/Cloud Nine is active anywhere — see
+#   `BattleManager._effective_weather()`), so no separate weather-negation check is
+#   needed inside this function at all.
 static func effective_speed(
 		mon: BattlePokemon, weather: int = DamageCalculator.WEATHER_NONE,
 		ng_active: bool = false) -> int:
@@ -625,8 +743,16 @@ static func effective_speed(
 			mon.speed, mon.stat_stages[BattlePokemon.STAGE_SPEED])
 	if mon.status == BattlePokemon.STATUS_PARALYSIS:
 		spd /= 2
-	if AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_SLUSH_RUSH \
-			and weather == DamageCalculator.WEATHER_HAIL:
+	var id: int = AbilityManager.effective_ability_id(mon, ng_active)
+	if id == AbilityManager.ABILITY_SLUSH_RUSH and weather == DamageCalculator.WEATHER_HAIL:
+		spd *= 2
+	if id == AbilityManager.ABILITY_SAND_RUSH and weather == DamageCalculator.WEATHER_SANDSTORM:
+		spd *= 2
+	if id == AbilityManager.ABILITY_SWIFT_SWIM and weather == DamageCalculator.WEATHER_RAIN \
+			and not ItemManager.blocks_weather_modifier(mon):
+		spd *= 2
+	if id == AbilityManager.ABILITY_CHLOROPHYLL and weather == DamageCalculator.WEATHER_SUN \
+			and not ItemManager.blocks_weather_modifier(mon):
 		spd *= 2
 	# M12: Choice Scarf — (speed * 150) / 100 integer arithmetic.
 	# Source: battle_main.c GetChoiceScarf case (L4703–4704).

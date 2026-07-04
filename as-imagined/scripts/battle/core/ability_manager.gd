@@ -277,6 +277,73 @@ const ABILITY_TELEPATHY:      int = 140
 const ABILITY_PROPELLER_TAIL: int = 239
 const ABILITY_STALWART:       int = 242
 
+# M17m: Absorb-family abilities (docs/m17m_absorb_recon.md; Step 0 re-verified all seven
+# IDs fresh against `include/constants/abilities.h` and confirmed none appear in Section
+# 13's exclusion sweep). All seven route through the SAME source dispatch,
+# `CanAbilityAbsorbMove` (battle_util.c L2235-2313), that `[M17l]`'s Lightning
+# Rod/Storm Drain already partially extended via `absorbs_move_type` — but the
+# on-absorb EFFECT is three genuinely different shapes, not one: heal maxHP/4 (Volt
+# Absorb, Water Absorb, Earth Eater, and Dry Skin's water half — ABILITY_DRY_SKIN
+# already declared above, M17c), stat-stage boost of VARYING magnitude (Sap Sipper
+# Atk+1, Motor Drive Speed+1 — NOT Sp.Atk, unlike Lightning Rod — Well-Baked Body
+# Def+2, NOT +1 — the single highest-risk detail in this tier), and a persistent
+# no-immediate-effect flag whose payoff is a LATER Fire-move power boost for the
+# holder itself (Flash Fire — see `attack_modifier_uq412`, the same function
+# Overgrow/Blaze/Torrent/Swarm already occupy for their own HP-threshold boosts).
+const ABILITY_VOLT_ABSORB:     int = 10
+const ABILITY_WATER_ABSORB:    int = 11
+const ABILITY_FLASH_FIRE:      int = 18
+const ABILITY_MOTOR_DRIVE:     int = 78
+const ABILITY_SAP_SIPPER:      int = 157
+const ABILITY_WELL_BAKED_BODY: int = 273
+const ABILITY_EARTH_EATER:     int = 297
+
+# M17n-1: Status-immunity family + simple no-ops (docs/m17n_recon.md Group 1). Step 0
+# re-verified all IDs fresh against `include/constants/abilities.h` and confirmed none
+# appear in Section 13's exclusion sweep. Four categories, not one uniform shape:
+# genuine status-immunity abilities (Category A), move-flag immunity needing pre-
+# existing-but-unused MoveData flags (Category B), documented cosmetic no-ops
+# (Category C: Illuminate/Honey Gather, matching the Anticipation/Forewarn/Frisk
+# precedent), and abilities confirmed genuinely out of battle-engine scope (Category D:
+# Run Away/Pickup/Ball Fetch — deliberately given NO constant/`.tres` entry at all,
+# distinct from Category C's "exists but does nothing" no-ops).
+const ABILITY_DAMP:          int = 6
+const ABILITY_LIMBER:        int = 7
+const ABILITY_OBLIVIOUS:     int = 12
+const ABILITY_SHIELD_DUST:   int = 19
+const ABILITY_OWN_TEMPO:     int = 20
+const ABILITY_INNER_FOCUS:   int = 39
+const ABILITY_MAGMA_ARMOR:   int = 40
+const ABILITY_WATER_VEIL:    int = 41
+const ABILITY_SOUNDPROOF:    int = 43
+const ABILITY_EARLY_BIRD:    int = 48
+const ABILITY_CUTE_CHARM:    int = 56
+const ABILITY_INSOMNIA:      int = 15
+const ABILITY_ILLUMINATE:    int = 35
+const ABILITY_IMMUNITY:      int = 17
+const ABILITY_LEAF_GUARD:    int = 102
+const ABILITY_VITAL_SPIRIT:  int = 72
+const ABILITY_AROMA_VEIL:    int = 165
+const ABILITY_BULLETPROOF:   int = 171
+const ABILITY_HONEY_GATHER:  int = 118
+
+# M17n-2: Weather/evasion + speed family, plus Air Lock (docs/m17n_recon.md Group 2).
+# Step 0 re-verified all 8 IDs fresh against `include/constants/abilities.h`; none
+# appear in the exclusion list (Air Lock is the ESTABLISHED KEPT precedent from Section
+# 13.1, not itself excluded — confirmed by re-reading that section directly, not
+# assumed from its legendary (Rayquaza) association). Cloud Nine/Air Lock confirmed
+# genuinely identical from source (`HasWeatherEffect`, battle_util.c L9873-9889) — the
+# exact same case branch, no asymmetry of any kind (both non-breakable, both
+# suppressible by Neutralizing Gas, both purely cosmetic on switch-in).
+const ABILITY_SAND_VEIL:    int = 8
+const ABILITY_CLOUD_NINE:   int = 13
+const ABILITY_SWIFT_SWIM:   int = 33
+const ABILITY_CHLOROPHYLL:  int = 34
+const ABILITY_AIR_LOCK:     int = 76
+const ABILITY_SNOW_CLOAK:   int = 81
+const ABILITY_SAND_RUSH:    int = 146
+const ABILITY_SAND_SPIT:    int = 245
+
 # M17h: source models FOUR distinct "can this ability be read from / changed away from"
 # flags in `src/data/abilities.h` — `cantBeTraced`, `cantBeCopied`, `cantBeSwapped`,
 # `cantBeOverwritten` — genuinely different from each other and from M17g's
@@ -716,6 +783,40 @@ static func is_neutralizing_gas_active(combatants: Array) -> bool:
 	return false
 
 
+# M17n-2: whether Air Lock/Cloud Nine is currently active anywhere on the field.
+# Source: HasWeatherEffect (battle_util.c L9873-9889) — any live battler holding either
+# ability negates ALL weather effects for as long as it's present. Unlike
+# `is_neutralizing_gas_active` (which reads `mon.ability.ability_id` raw, since NG's
+# own presence-check can't be gated by itself recursively), THIS check uses
+# `effective_ability_id` per battler — Air Lock/Cloud Nine have no `cantBeSuppressed`
+# flag in source, so Neutralizing Gas correctly suppresses them if both are present.
+# Neither is `breakable` in source either — a field-wide passive with no "attacker"
+# concept, so no Mold-Breaker consideration applies (confirmed, not assumed).
+#
+# Source's `GetWeather()` (battle_util.c L9274-9279) is the ONE accessor every
+# weather-conditional check in source reads through, and it already returns
+# `WEATHER_NONE` whenever `HasWeatherEffect()` is false — meaning Air Lock/Cloud Nine's
+# negation is naturally comprehensive in source (damage modifiers, end-of-turn chip,
+# Sand Veil/Snow Cloak, Swift Swim/Chlorophyll/Sand Rush, even Flower Gift/Solar
+# Power/Leaf Guard from prior tiers) via ONE substitution point, not many. This project
+# has no single global weather accessor (every function receives `weather` as a plain
+# parameter instead), so `BattleManager._effective_weather()` reproduces the same
+# substitution at each of its ABILITY-facing call sites — see that method's own doc
+# comment for exactly which pre-existing abilities this retroactively covers "for
+# free," and which pure MOVE-mechanic weather interactions (Solar Beam's sun
+# charge-skip, Growth's sun power-doubling, Aurora Veil's hail requirement) are
+# deliberately left out of this tier's scope, matching the recon's own "damage
+# modifiers and end-of-turn chip/heal" framing for these two abilities specifically.
+static func is_weather_negated(combatants: Array, ng_active: bool = false) -> bool:
+	for mon: BattlePokemon in combatants:
+		if mon.fainted:
+			continue
+		var id: int = effective_ability_id(mon, ng_active)
+		if id == ABILITY_AIR_LOCK or id == ABILITY_CLOUD_NINE:
+			return true
+	return false
+
+
 # ── Tier 1: Passive stat modifiers ──────────────────────────────────────────
 
 # Attack multiplier from the attacker's ability.
@@ -779,6 +880,17 @@ static func attack_modifier_uq412(
 	#   Flower Gift's physical-only gate right above).
 	if id == ABILITY_SOLAR_POWER and weather == DamageCalculator.WEATHER_SUN and move.category == 1:
 		return 6144
+
+	# M17m: Flash Fire's delayed payoff — a Fire-type move from the SAME holder that
+	# previously absorbed a Fire-type hit (see absorbs_move_type's "flag" case) gets a
+	# ×1.5 power boost. Source: battle_util.c L6817-6819, same attacker-side base-power
+	# switch as Overgrow/Blaze/Torrent/Swarm above — a raw persistent-flag read, no
+	# re-check of the stat/HP kind this ability's absorb dispatch otherwise has, matching
+	# source exactly (the switch is already keyed on the effective/suppression-aware
+	# ability id via `id`, so a suppressed Flash Fire holder's flag is inert this turn
+	# even though the flag itself isn't cleared by suppression).
+	if id == ABILITY_FLASH_FIRE and move.type == TypeChart.TYPE_FIRE and attacker.flash_fire_active:
+		return 6144  # UQ_4_12(1.5)
 
 	return 4096
 
@@ -989,18 +1101,36 @@ static func bypasses_accuracy_check(
 #   ABILITY_HUSTLE: IsBattleMovePhysical → ×0.80 ("hustle loss")
 # (ABILITY_VICTORY_STAR, the third case in this source switch, is excluded from this
 # project's scope per docs/m17_recon.md Section 13 — Victini is mythical-exclusive.)
+#
+# M17n-2 additions: the SAME function's target's-ability switch (L10299-10316):
+#   ABILITY_SAND_VEIL: attacker's effective weather == sandstorm → ×0.80 ("sand veil
+#     loss" — the accuracy REDUCTION shape rather than an evasion-stage increase, same
+#     numeric outcome, matching this project's existing "calc" integer-percentage math
+#     rather than modeling a phantom evasion stage).
+#   ABILITY_SNOW_CLOAK: hail/snow → ×0.80, same shape.
+# `defender`/`weather` are new trailing params — `weather` should be the EFFECTIVE
+# weather (see `BattleManager._effective_weather()`), so no separate Air-Lock/Cloud-Nine
+# check is needed here either.
 # Returns a plain percentage (100 = no change), matching StatusManager.check_accuracy's
 # existing integer-percentage math style rather than the DamageCalculator's UQ4.12 style.
 static func accuracy_modifier_percent(
-		attacker: BattlePokemon, move: MoveData, ng_active: bool = false) -> int:
+		attacker: BattlePokemon, move: MoveData, ng_active: bool = false,
+		defender: BattlePokemon = null, weather: int = DamageCalculator.WEATHER_NONE) -> int:
+	var pct: int = 100
 	var id: int = effective_ability_id(attacker, ng_active)
-	if id == ABILITY_NONE:
-		return 100
 	if id == ABILITY_COMPOUND_EYES:
-		return 130
-	if id == ABILITY_HUSTLE and move.category == 0:
-		return 80
-	return 100
+		pct = (pct * 130) / 100
+	elif id == ABILITY_HUSTLE and move.category == 0:
+		pct = (pct * 80) / 100
+
+	if defender != null:
+		var def_id: int = effective_ability_id(defender, ng_active, attacker)
+		if def_id == ABILITY_SAND_VEIL and weather == DamageCalculator.WEATHER_SANDSTORM:
+			pct = (pct * 80) / 100
+		elif def_id == ABILITY_SNOW_CLOAK and weather == DamageCalculator.WEATHER_HAIL:
+			pct = (pct * 80) / 100
+
+	return pct
 
 
 # M17a: whether the attacker's ability blocks standard move-recoil damage.
@@ -1026,25 +1156,103 @@ static func blocks_move_type(
 	return false
 
 
-# M17l: Lightning Rod (Electric) / Storm Drain (Water) — full immunity (0 damage) plus
-# a Sp. Atk +1 boost, whenever a matching-type move hits the holder (whether by direct
-# targeting or by the redirect below). Source: `CanAbilityAbsorbMove`
-# (battle_util.c L2258-2265) dispatched via `AbsorbedByStatIncreaseAbility`
-# (L2328-2340) — ALWAYS absorbs the hit (0 damage) regardless of whether the stat boost
-# itself lands; the boost is separately gated on the stat not already being at +6 (that
-# gate is the caller's job via the normal `StatusManager.apply_stat_change` clamp, not
-# re-implemented here). Applied BEFORE the general type-effectiveness table, same as
-# Levitate's Ground immunity above (source: same `CanAbilityAbsorbMove` dispatch group).
-# Returns `BattlePokemon.STAGE_SPATK` if this hit should be absorbed, or -1 otherwise.
+# M17n-1: Soundproof / Bulletproof — full immunity to a move carrying a specific FLAG
+# (not a type). Source: `CanAbilityAbsorbMove` (battle_util.c L2282-2289) — the SAME
+# dispatch group Levitate/the absorb-family use, checked via `IsSoundMove(ctx->move)`/
+# `IsBallisticMove(ctx->move)` rather than `ctx->moveType`. Unlike the absorb family,
+# this is a flat, unconditional block (`BattleScript_AbilityProtectedTarget`, no
+# heal/stat/flag side-effect of any kind) — applies to EVERY move carrying the flag,
+# damaging or status alike (Growl/Roar/Whirlwind are all `sound_move` status moves in
+# this project's roster; a future sound/ballistic damaging move is covered the same
+# way). Wired into `_phase_move_execution` BEFORE the accuracy check, the same
+# relative position `blocks_priority_move` already established, since this is
+# logically "does the move even connect at all" — a single choke point covering both
+# damaging and status moves, rather than splitting the check across
+# `DamageCalculator` (damage-only) and the status-move branch (status-only).
+# `sound_move`/`ballistic_move` are pre-existing `MoveData` fields (from the original
+# move-data schema) — no new MoveData flag was needed, confirmed via a direct field
+# check before writing this function, per the `[M17h]`-established dormant-field-check
+# discipline applied to move data as well as ability data.
+static func blocks_move_flag(
+		defender: BattlePokemon, move: MoveData, ng_active: bool = false,
+		attacker: BattlePokemon = null) -> bool:
+	var id: int = effective_ability_id(defender, ng_active, attacker)
+	if id == ABILITY_SOUNDPROOF and move.sound_move:
+		return true
+	if id == ABILITY_BULLETPROOF and move.ballistic_move:
+		return true
+	return false
+
+
+# M17l/M17m: full immunity (0 damage) to a matching-type move, whenever the holder is
+# hit (whether by direct targeting or, for Lightning Rod/Storm Drain, by the redirect
+# below). Source: `CanAbilityAbsorbMove` (battle_util.c L2235-2313) — ONE dispatch
+# function in source, but THREE genuinely different on-absorb effect shapes, per
+# `docs/m17m_absorb_recon.md`'s finding that M17l's original bare-int/STAGE_* return
+# contract (kept for Lightning Rod/Storm Drain only) couldn't express the other two:
+#
+# CROSS-CUTTING DESIGN DECISION (see docs/decisions.md [M17m]): widened this function's
+# return type from a bare `int` (STAGE_* or -1) to a `Dictionary`, rather than adding
+# sibling functions, because Well-Baked Body's magnitude (+2, not +1 like every other
+# stat-boost entry) can't be expressed by a STAGE_*-only return without a second special
+# case at every call site — a Dictionary carries "kind" + payload uniformly for all
+# three shapes and keeps `DamageCalculator`/`BattleManager` to one dispatch point each,
+# matching the shape of the single source function they all come from.
+#
+# Returns `{}` if not absorbed. Otherwise one of:
+#   {"kind": "stat", "stat": <BattlePokemon.STAGE_*>, "amount": <int>} — Lightning Rod/
+#     Storm Drain (Sp.Atk +1, `AbsorbedByStatIncreaseAbility`, L2328-2340, via
+#     `CanAbilityAbsorbMove` L2258-2265), Sap Sipper (Atk +1, Grass, L2266-2268), Motor
+#     Drive (Speed +1, NOT Sp.Atk — L2254-2257), Well-Baked Body (Def **+2**, NOT +1 —
+#     L2270-2272). The stat-cap-already-at-+6 no-op is the caller's job via the normal
+#     `StatusManager.apply_stat_change` clamp, not re-implemented here — the move is
+#     still absorbed (0 damage) even when the boost itself doesn't land, matching
+#     source's `AbsorbedByStatIncreaseAbility` returning an "absorbed, no boost" script
+#     variant rather than "not absorbed at all" in that case.
+#   {"kind": "heal", "fraction": <int>} — Volt Absorb (Electric, L2241-2243), Water
+#     Absorb (Water, L2245-2248), Earth Eater (Ground, L2250-2253), and Dry Skin's water
+#     half (Water — L2246-2248 is the literal SAME case label as Water Absorb, the
+#     previously-deferred third of `[M17c]`'s Dry Skin work). All four share
+#     `AbsorbedByDrainHpAbility` (L2315-2326): heal maxHP/4, but ONLY if not already at
+#     max HP — the move is absorbed (0 damage) either way; heal-fraction is always 4 in
+#     this project (this project has no Heal Block mechanic anywhere to gate on, unlike
+#     source's `B_HEAL_BLOCKING`-gated branch — confirmed absent via a grep sweep, not
+#     silently dropped).
+#   {"kind": "flag"} — Flash Fire (Fire, L2278-2280, gated on `B_FLASH_FIRE_FROZEN >=
+#     GEN_5` which this project's reference config has at GEN_LATEST, so no freeze gate
+#     applies). Sets a persistent volatile (`BattlePokemon.flash_fire_active`) with NO
+#     immediate stat/HP change of its own — the actual payoff is a LATER Fire-type move
+#     from the same holder getting a ×1.5 power boost, handled entirely separately in
+#     `attack_modifier_uq412` (battle_util.c L6817-6819, the same attacker-side
+#     base-power switch Overgrow/Blaze/Torrent/Swarm already occupy), since that's an
+#     attacker-side check on a LATER turn, not part of this defender-side absorb dispatch
+#     at all.
+#
+# Applied BEFORE the general type-effectiveness table, same as Levitate's Ground
+# immunity above (source: same `CanAbilityAbsorbMove` dispatch group).
 static func absorbs_move_type(
 		defender: BattlePokemon, move_type: int, ng_active: bool = false,
-		attacker: BattlePokemon = null) -> int:
+		attacker: BattlePokemon = null) -> Dictionary:
 	var id: int = effective_ability_id(defender, ng_active, attacker)
 	if id == ABILITY_LIGHTNING_ROD and move_type == TypeChart.TYPE_ELECTRIC:
-		return BattlePokemon.STAGE_SPATK
+		return {"kind": "stat", "stat": BattlePokemon.STAGE_SPATK, "amount": 1}
 	if id == ABILITY_STORM_DRAIN and move_type == TypeChart.TYPE_WATER:
-		return BattlePokemon.STAGE_SPATK
-	return -1
+		return {"kind": "stat", "stat": BattlePokemon.STAGE_SPATK, "amount": 1}
+	if id == ABILITY_SAP_SIPPER and move_type == TypeChart.TYPE_GRASS:
+		return {"kind": "stat", "stat": BattlePokemon.STAGE_ATK, "amount": 1}
+	if id == ABILITY_MOTOR_DRIVE and move_type == TypeChart.TYPE_ELECTRIC:
+		return {"kind": "stat", "stat": BattlePokemon.STAGE_SPEED, "amount": 1}
+	if id == ABILITY_WELL_BAKED_BODY and move_type == TypeChart.TYPE_FIRE:
+		return {"kind": "stat", "stat": BattlePokemon.STAGE_DEF, "amount": 2}
+	if id == ABILITY_VOLT_ABSORB and move_type == TypeChart.TYPE_ELECTRIC:
+		return {"kind": "heal", "fraction": 4}
+	if (id == ABILITY_WATER_ABSORB or id == ABILITY_DRY_SKIN) and move_type == TypeChart.TYPE_WATER:
+		return {"kind": "heal", "fraction": 4}
+	if id == ABILITY_EARTH_EATER and move_type == TypeChart.TYPE_GROUND:
+		return {"kind": "heal", "fraction": 4}
+	if id == ABILITY_FLASH_FIRE and move_type == TypeChart.TYPE_FIRE:
+		return {"kind": "flag"}
+	return {}
 
 
 # M17l: Telepathy — full immunity (0 damage) to a damaging move whose target is the
@@ -1401,18 +1609,36 @@ static func ignores_attacker_accuracy_stage(
 #   "atk_change"            : int  — Attack stage change applied to opponent (Intimidate)
 #   "opponent_speed_change" : int  — Speed stage change applied to opponent (Rattled)
 #   "cured_own_poison"      : bool — true if Pastel Veil cured pokemon's own poison/toxic
+#   "cured_status"          : bool — true if Immunity/Limber/Insomnia/Vital Spirit/Water
+#                                    Veil/Magma Armor cured pokemon's own matching
+#                                    pre-existing major status on switch-in (M17n-1)
+#   "cured_confusion"       : bool — true if Own Tempo cured pokemon's own pre-existing
+#                                    confusion on switch-in (M17n-1)
 static func try_switch_in(
 		pokemon: BattlePokemon, opponent: BattlePokemon,
 		opponent_ally: BattlePokemon = null, ng_active: bool = false) -> Dictionary:
 	var result := {
 		"atk_change": 0, "opponent_speed_change": 0, "cured_own_poison": false,
 		"opponent_defiant_stat": -1, "opponent_defiant_change": 0,
+		"cured_status": false, "cured_confusion": false,
 	}
 	var id: int = effective_ability_id(pokemon, ng_active)
 	if id == ABILITY_NONE:
 		return result
 	if id == ABILITY_INTIMIDATE:
-		if not opponent.fainted:
+		# M17n-1: Inner Focus/Own Tempo/Oblivious fully block Intimidate's Attack drop
+		# under B_UPDATED_INTIMIDATE >= GEN_8 (this project's GEN_LATEST config) — source:
+		# battle_stat_change.c :: IsIntimidateBlocked (L660-675). Source's same case list
+		# also includes Scrappy (113), not yet implemented (deferred to the M17m-style
+		# type-effectiveness leftovers tier) — add it here too once it exists. Guard Dog
+		# is a separate, ALREADY-DIFFERENT-SHAPED case in the same source function (turns
+		# the drop into a +1 raise instead of blocking it outright) and is unrelated to
+		# this check.
+		var opp_blocks_intimidate: bool = not opponent.fainted and (
+				effective_ability_id(opponent, ng_active) == ABILITY_INNER_FOCUS
+				or effective_ability_id(opponent, ng_active) == ABILITY_OWN_TEMPO
+				or effective_ability_id(opponent, ng_active) == ABILITY_OBLIVIOUS)
+		if not opponent.fainted and not opp_blocks_intimidate:
 			var atk_change: int = StatusManager.apply_stat_change(
 					opponent, BattlePokemon.STAGE_ATK, -1, opponent_ally, ng_active)
 			result["atk_change"] = atk_change
@@ -1431,6 +1657,47 @@ static func try_switch_in(
 			pokemon.status = BattlePokemon.STATUS_NONE
 			pokemon.toxic_counter = 0
 			result["cured_own_poison"] = true
+
+	# M17n-1: switch-in status/confusion self-cure. Source: battle_util.c ::
+	# TryImmunityAbilityHealStatus (L8817-8889), dispatched via ABILITYEFFECT_IMMUNITY
+	# from battle_switch_in.c L283 — a genuinely separate trigger POINT from the
+	# infliction-blocking checks in StatusManager (those stop a NEW status; this cures
+	# an ALREADY-PRESENT one the instant the holder switches in, e.g. after inheriting
+	# a status via some pre-existing effect). Mirrors Pastel Veil's own cure-on-switch-in
+	# shape immediately above, extended to the rest of the matching-status family:
+	#   ABILITY_IMMUNITY: poison/toxic (same source case as Pastel Veil, L8822-8828).
+	#   ABILITY_OWN_TEMPO: confusion (L8830-8836) — NOT a major status, clears
+	#     `confusion_turns` instead of `.status`.
+	#   ABILITY_LIMBER: paralysis (L8837-8843).
+	#   ABILITY_INSOMNIA / ABILITY_VITAL_SPIRIT: sleep (L8844-8853).
+	#   ABILITY_WATER_VEIL: burn (L8854-8862; source's ABILITY_WATER_BUBBLE/
+	#     ABILITY_THERMAL_EXCHANGE share this case but neither is wired to this cure
+	#     yet — Water Bubble isn't implemented, Thermal Exchange's own [M17b] work
+	#     didn't include this cure and isn't being revisited here).
+	#   ABILITY_MAGMA_ARMOR: freeze (L8863-8868).
+	# Oblivious's own case in this same source function (L8875-8886) cures
+	# infatuation/taunt — both N/A, neither exists in this project.
+	if id == ABILITY_IMMUNITY and (pokemon.status == BattlePokemon.STATUS_POISON or pokemon.status == BattlePokemon.STATUS_TOXIC):
+		pokemon.status = BattlePokemon.STATUS_NONE
+		pokemon.toxic_counter = 0
+		result["cured_status"] = true
+	elif id == ABILITY_LIMBER and pokemon.status == BattlePokemon.STATUS_PARALYSIS:
+		pokemon.status = BattlePokemon.STATUS_NONE
+		result["cured_status"] = true
+	elif (id == ABILITY_INSOMNIA or id == ABILITY_VITAL_SPIRIT) and pokemon.status == BattlePokemon.STATUS_SLEEP:
+		pokemon.status = BattlePokemon.STATUS_NONE
+		pokemon.sleep_turns = 0
+		result["cured_status"] = true
+	elif id == ABILITY_WATER_VEIL and pokemon.status == BattlePokemon.STATUS_BURN:
+		pokemon.status = BattlePokemon.STATUS_NONE
+		result["cured_status"] = true
+	elif id == ABILITY_MAGMA_ARMOR and pokemon.status == BattlePokemon.STATUS_FREEZE:
+		pokemon.status = BattlePokemon.STATUS_NONE
+		result["cured_status"] = true
+	if id == ABILITY_OWN_TEMPO and pokemon.confusion_turns > 0:
+		pokemon.confusion_turns = 0
+		result["cured_confusion"] = true
+
 	# Drizzle/Drought weather-set is handled by BattleManager calling get_switch_in_weather()
 	# immediately after try_switch_in() — the weather call is separated so BattleManager
 	# owns the weather state (it's a field effect, not per-Pokémon).
@@ -1934,6 +2201,16 @@ static func try_contact_effects(
 #     ATTACKER's side not already at 2 layers → sets one layer. Reuses M16d's EXISTING
 #     `_side_conditions[side]["toxic_spikes_layers"]` directly — reports a bool flag since
 #     side-condition state lives in BattleManager, not AbilityManager.
+#   ABILITY_SAND_SPIT (M17n-2, L4181-4196): ANY damaging hit landing (not contact-gated,
+#     `IsBattlerTurnDamaged` — already exactly this function's own `damage > 0` gate) →
+#     attempts to set Sandstorm. Reports a bool flag only; BattleManager calls the
+#     EXISTING `try_set_weather(WEATHER_SANDSTORM, defender)` (the same function
+#     Drizzle/Drought/Sand Stream already use), which already no-ops if Sandstorm is
+#     already active — so the "already sandstorm" gate doesn't need to be re-implemented
+#     here. Source's "blocked by Primal weather" branch is confirmed N/A: this project
+#     has no distinct Primal-weather value at all (`[M17d]`'s Primordial Sea/Desolate
+#     Land/Delta Stream reuse the ordinary WEATHER_RAIN/WEATHER_SUN/WEATHER_STRONG_WINDS
+#     constants directly), so there's nothing for a Primal-weather check to distinguish.
 #
 # hp_before_hit: defender's current_hp BEFORE this hit's damage was applied — needed
 #   only for Berserk/Anger Shell's ">50% before, <=50% after" crossing check.
@@ -1948,6 +2225,7 @@ static func try_contact_effects(
 #   "cotton_down_fired" : bool
 #   "cursed_body_fired" : bool
 #   "toxic_debris_fired" : bool
+#   "sand_spit_fired" : bool
 static func try_hit_reactive_effects(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
@@ -1963,7 +2241,7 @@ static func try_hit_reactive_effects(
 		"stamina_change": 0, "weak_armor_def_change": 0, "weak_armor_speed_change": 0,
 		"anger_point_change": 0, "berserk_change": 0, "steam_engine_change": 0,
 		"thermal_exchange_change": 0, "anger_shell_changes": {}, "cotton_down_fired": false,
-		"cursed_body_fired": false, "toxic_debris_fired": false,
+		"cursed_body_fired": false, "toxic_debris_fired": false, "sand_spit_fired": false,
 	}
 	if damage <= 0:
 		return result
@@ -2064,6 +2342,10 @@ static func try_hit_reactive_effects(
 
 	if id == ABILITY_TOXIC_DEBRIS and move.category == 0:
 		result["toxic_debris_fired"] = true
+		return result
+
+	if id == ABILITY_SAND_SPIT:
+		result["sand_spit_fired"] = true
 		return result
 
 	return result

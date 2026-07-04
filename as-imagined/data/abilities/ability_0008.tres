@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 8
 ability_name = "Sand Veil"
-description = ""
-ai_rating = 0
+description = "Boosts evasion in a sandstorm."
+ai_rating = 4
+breakable = true

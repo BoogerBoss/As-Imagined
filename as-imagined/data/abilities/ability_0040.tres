@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 40
 ability_name = "Magma Armor"
-description = ""
-ai_rating = 0
+description = "Prevents the Pokémon from becoming frozen, and cures it on switch-in."
+ai_rating = 4
+breakable = true

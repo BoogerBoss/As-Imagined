@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 39
 ability_name = "Inner Focus"
-description = ""
-ai_rating = 0
+description = "Prevents the Pokémon from flinching, and blocks Intimidate."
+ai_rating = 5
+breakable = true

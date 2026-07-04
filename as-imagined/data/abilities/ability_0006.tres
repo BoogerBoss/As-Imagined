@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 6
 ability_name = "Damp"
-description = ""
-ai_rating = 0
+description = "Prevents explosive moves and abilities (none exist yet)."
+breakable = true

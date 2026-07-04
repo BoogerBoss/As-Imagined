@@ -186,13 +186,20 @@ func _test_section_3_end_of_turn_heal_cure() -> void:
 	var fire_baseline := DamageCalculator.calculate(atk, plain_def, fire_move, 100, false)
 	_chk("S3.09 Dry Skin: takes MORE damage from Fire-type moves",
 			fire_result["damage"] > fire_baseline["damage"])
-	# Deliberate simplification: the Water-move absorb+heal half is deferred (needs
-	# Bucket-E immunity+heal infra this project doesn't have) — Water moves still deal
-	# ordinary damage, confirming the deferral rather than a silent partial behavior.
+	# M17m update: the Water-move absorb+heal half, deferred at M17c's own writing
+	# (needed Volt-Absorb/Water-Absorb-style immunity+heal infra this project didn't
+	# have yet), is now implemented — see docs/decisions.md [M17m]. This assertion is
+	# updated in place (not duplicated) because the OLD assertion here directly encoded
+	# the now-superseded "not implemented" premise as a passing test; leaving it would
+	# be a permanent, known-false regression, not a preserved historical test. The
+	# dedicated heal-amount/full-battle coverage for this new piece lives in
+	# scenes/battle/m17m_test.gd's Section 11 (Water-move absorb heals maxHP/4, a
+	# DIFFERENT divisor than this ability's own end-of-turn maxHP/8 tick above) — not
+	# duplicated here, this is just the pre-existing damage-pipeline discriminator
+	# updated to match reality.
 	var water_result := DamageCalculator.calculate(atk, dry_def, water_move, 100, false)
-	var water_baseline := DamageCalculator.calculate(atk, plain_def, water_move, 100, false)
-	_chk("S3.10 Dry Skin: Water-move absorb NOT implemented (deferred) — normal damage taken",
-			water_result["damage"] == water_baseline["damage"])
+	_chk("S3.10 Dry Skin: Water-move hits are now absorbed (0 damage, M17m)",
+			water_result["damage"] == 0)
 
 	# Hydration: cures own status in rain.
 	var hydration := _make_mon("HydrationMon", 50, [TypeChart.TYPE_WATER])

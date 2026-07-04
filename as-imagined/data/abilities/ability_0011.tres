@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 11
 ability_name = "Water Absorb"
-description = ""
-ai_rating = 0
+description = "Restores HP if hit by a Water-type move."
+ai_rating = 7
+breakable = true

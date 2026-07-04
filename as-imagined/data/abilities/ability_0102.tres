@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 102
 ability_name = "Leaf Guard"
-description = ""
-ai_rating = 0
+description = "Prevents status conditions in harsh sunlight."
+ai_rating = 4
+breakable = true

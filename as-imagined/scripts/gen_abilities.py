@@ -504,11 +504,11 @@ ABILITIES = [
      "ai_rating": 5},
 
     # Source: battle_util.c :: ABILITY_DRY_SKIN case (L3553-3556, rain heal maxHP/8;
-    #   L2246/L6616, Water-move absorb — deferred, see decisions.md; L6616-6619,
-    #   Fire-type damage taken x1.25; L3660-3667 shared SOLAR_POWER_HP_DROP label, sun
-    #   self-damage maxHP/8).
+    #   L2246/L6616, Water-move absorb+heal maxHP/4 — WIRED in M17m, shares Water
+    #   Absorb's literal case label; L6616-6619, Fire-type damage taken x1.25;
+    #   L3660-3667 shared SOLAR_POWER_HP_DROP label, sun self-damage maxHP/8).
     {"id": 87, "name": "Dry Skin",
-     "description": "Restores HP in rain but takes damage in harsh sunlight; takes more damage from Fire-type moves.",
+     "description": "Restores HP in rain or when hit by Water-type moves, but takes damage in harsh sunlight and more damage from Fire-type moves.",
      "ai_rating": 6, "breakable": True},
 
     # Source: battle_util.c :: ABILITY_HYDRATION case (L3568-3574): end-of-turn, rain
@@ -907,6 +907,281 @@ ABILITIES = [
     {"id": 242, "name": "Stalwart",
      "description": "Ignores foe's redirection.",
      "ai_rating": 2},
+
+    # ── M17m: Absorb-family abilities ────────────────────────────────────────────────
+    # Source: docs/m17m_absorb_recon.md (pre-recon) + docs/decisions.md [M17m] (final
+    # list). All seven route through CanAbilityAbsorbMove (battle_util.c L2235-2313),
+    # the same dispatch [M17l]'s Lightning Rod/Storm Drain already partially extended —
+    # but split into three genuinely different on-absorb effect shapes: heal maxHP/4
+    # (Volt Absorb, Water Absorb, Earth Eater — Dry Skin's water half above is the
+    # fourth), stat-stage boost of varying magnitude (Sap Sipper Atk+1, Motor Drive
+    # Speed+1, Well-Baked Body Def+2), and a persistent flag whose payoff is a later
+    # own-move power boost (Flash Fire). All seven breakable=True (src/data/abilities.h,
+    # cited per-ability below) and genuinely reachable Mold-Breaker-bypass cases
+    # (attacker and holder are always different battlers, same as Lightning Rod/Storm
+    # Drain in [M17l]).
+
+    # Source: L2241-2243 (Electric → heal maxHP/4, AbsorbedByDrainHpAbility L2315-2326).
+    #   breakable=True (src/data/abilities.h L80-85).
+    {"id": 10, "name": "Volt Absorb",
+     "description": "Restores HP if hit by an Electric-type move.",
+     "ai_rating": 7, "breakable": True},
+
+    # Source: L2245-2248 (Water → heal maxHP/4 — same case label as Dry Skin above).
+    #   breakable=True (src/data/abilities.h L88-93).
+    {"id": 11, "name": "Water Absorb",
+     "description": "Restores HP if hit by a Water-type move.",
+     "ai_rating": 7, "breakable": True},
+
+    # Source: L2278-2280 (Fire → sets a persistent flag, AbsorbedByFlashFire
+    #   L2342-2355; no immediate stat/HP effect). Payoff: L6817-6819 — the holder's OWN
+    #   later Fire-type moves get x1.5 power while the flag is active. breakable=True
+    #   (src/data/abilities.h L141-146).
+    {"id": 18, "name": "Flash Fire",
+     "description": "Powers up Fire-type moves if the Pokémon is hit by one.",
+     "ai_rating": 6, "breakable": True},
+
+    # Source: L2254-2257 (Electric → Speed +1, NOT Sp. Atk despite the shared Electric
+    #   type-match with Lightning Rod — AbsorbedByStatIncreaseAbility L2328-2340).
+    #   breakable=True (src/data/abilities.h L591-596).
+    {"id": 78, "name": "Motor Drive",
+     "description": "Boosts Speed if hit by an Electric-type move.",
+     "ai_rating": 6, "breakable": True},
+
+    # Source: L2266-2268 (Grass → Atk +1). breakable=True (src/data/abilities.h
+    #   L1182-1187).
+    {"id": 157, "name": "Sap Sipper",
+     "description": "Boosts Attack if hit by a Grass-type move.",
+     "ai_rating": 7, "breakable": True},
+
+    # Source: L2270-2272 (Fire → Defense **+2**, not +1 — the only two-stage entry in
+    #   this whole dispatch). breakable=True (src/data/abilities.h L2102-2107).
+    {"id": 273, "name": "Well-Baked Body",
+     "description": "Boosts Defense sharply if hit by a Fire-type move.",
+     "ai_rating": 7, "breakable": True},
+
+    # Source: L2250-2253 (Ground → heal maxHP/4, same AbsorbedByDrainHpAbility as Volt
+    #   Absorb/Water Absorb). breakable=True (src/data/abilities.h L2304-2309).
+    {"id": 297, "name": "Earth Eater",
+     "description": "Restores HP if hit by a Ground-type move.",
+     "ai_rating": 7, "breakable": True},
+
+    # ── M17n-1: Status-immunity family + simple no-ops ───────────────────────────────
+    # Source: docs/m17n_recon.md Group 1 (final list locked in docs/decisions.md
+    # [M17n-1]). Four categories: genuine status-immunity abilities (Category A),
+    # move-flag immunity reusing pre-existing-but-dormant MoveData flags (Category B),
+    # documented cosmetic no-ops (Category C), and abilities confirmed genuinely
+    # out-of-battle-engine scope (Category D — Run Away/Pickup/Ball Fetch — deliberately
+    # NOT given an entry here at all, unlike Category C's "exists but does nothing").
+
+    # Source: battle_util.c :: CanSetNonVolatileStatus, MOVE_EFFECT_SLEEP case
+    #   (L5330-5334) + TryImmunityAbilityHealStatus (L8844-8853, switch-in self-cure).
+    #   breakable=True (src/data/abilities.h L118-123).
+    {"id": 15, "name": "Insomnia",
+     "description": "Prevents the Pokémon from falling asleep, and cures it on switch-in.",
+     "ai_rating": 5, "breakable": True},
+
+    # Source: same shape as Insomnia (L5330-5334 same case; L8844-8853 same switch-in
+    #   cure case). breakable=True (src/data/abilities.h L545-550).
+    {"id": 72, "name": "Vital Spirit",
+     "description": "Prevents the Pokémon from falling asleep, and cures it on switch-in.",
+     "ai_rating": 5, "breakable": True},
+
+    # Source: battle_util.c :: CanSetNonVolatileStatus, MOVE_EFFECT_POISON/TOXIC case
+    #   (L5261-5265) + TryImmunityAbilityHealStatus (L8822-8828, same case Pastel Veil's
+    #   cure-half shares). breakable=True (src/data/abilities.h L133-138).
+    {"id": 17, "name": "Immunity",
+     "description": "Prevents the Pokémon from becoming poisoned, and cures it on switch-in.",
+     "ai_rating": 5, "breakable": True},
+
+    # Source: battle_util.c :: CanSetNonVolatileStatus, MOVE_EFFECT_PARALYSIS case
+    #   (L5280-5284) + TryImmunityAbilityHealStatus (L8837-8843). breakable=True
+    #   (src/data/abilities.h L57-62).
+    {"id": 7, "name": "Limber",
+     "description": "Prevents the Pokémon from becoming paralyzed, and cures it on switch-in.",
+     "ai_rating": 5, "breakable": True},
+
+    # Source: battle_util.c :: CanSetNonVolatileStatus, MOVE_EFFECT_BURN case
+    #   (L5295-5299 — shared with Water Bubble/Thermal Exchange, neither wired to this
+    #   cure) + TryImmunityAbilityHealStatus (L8854-8862). breakable=True
+    #   (src/data/abilities.h L317-322).
+    {"id": 41, "name": "Water Veil",
+     "description": "Prevents the Pokémon from getting a burn, and cures it on switch-in.",
+     "ai_rating": 5, "breakable": True},
+
+    # Source: battle_util.c :: CanSetNonVolatileStatus, MOVE_EFFECT_FREEZE case
+    #   (L5346-5350) + TryImmunityAbilityHealStatus (L8863-8868). breakable=True
+    #   (src/data/abilities.h L309-314).
+    {"id": 40, "name": "Magma Armor",
+     "description": "Prevents the Pokémon from becoming frozen, and cures it on switch-in.",
+     "ai_rating": 4, "breakable": True},
+
+    # Source: battle_util.c L8830 — CancelerFlinch-adjacent switch, blocks flinch
+    #   specifically (StatusManager.try_secondary_effect's SE_FLINCH case). Separately,
+    #   IsIntimidateBlocked (battle_stat_change.c L660-675, B_UPDATED_INTIMIDATE>=GEN_8)
+    #   fully blocks Intimidate's Attack drop. breakable=True (src/data/abilities.h
+    #   L301-306).
+    {"id": 39, "name": "Inner Focus",
+     "description": "Prevents the Pokémon from flinching, and blocks Intimidate.",
+     "ai_rating": 5, "breakable": True},
+
+    # Source: battle_util.c :: CanBeConfused (L5447-5458) — blocks new confusion
+    #   infliction; TryImmunityAbilityHealStatus (L8830-8836) cures pre-existing
+    #   confusion on switch-in. Also IsIntimidateBlocked (see Inner Focus above).
+    #   breakable=True (src/data/abilities.h L157-162).
+    {"id": 20, "name": "Own Tempo",
+     "description": "Prevents the Pokémon from becoming confused, and blocks Intimidate.",
+     "ai_rating": 5, "breakable": True},
+
+    # Source: battle_util.c :: IsMoveEffectBlockedByTarget (L9811-9824), called only for
+    #   TRUE secondary effects (chance-based, not guaranteed/primary) — blocks status,
+    #   confusion, AND flinch alike from a secondary effect. breakable=True
+    #   (src/data/abilities.h L149-154).
+    {"id": 19, "name": "Shield Dust",
+     "description": "Prevents the Pokémon from being affected by secondary effects.",
+     "ai_rating": 5, "breakable": True},
+
+    # Source: battle_script_commands.c :: IsLeafGuardProtected (L6846-6852), called
+    #   from CanSetNonVolatileStatus (L5370) — immune to ALL non-volatile statuses
+    #   while harsh sun is active. Leech Seed/Yawn immunity is N/A (neither move exists
+    #   in this project). breakable=True (src/data/abilities.h L764-769).
+    {"id": 102, "name": "Leaf Guard",
+     "description": "Prevents status conditions in harsh sunlight.",
+     "ai_rating": 4, "breakable": True},
+
+    # Source: battle_move_resolution.c L133-137 — sleep counter decrements by 2 instead
+    #   of 1 each turn. No breakable flag in source (a self-check, not a defensive
+    #   ability an attacker's Mold Breaker has any bearing on).
+    {"id": 48, "name": "Early Bird",
+     "description": "The Pokémon awakens from sleep twice as fast.",
+     "ai_rating": 4},
+
+    # Source: battle_ai_util.c :: IsAromaVeilProtectedEffect (L1961-1974, AI-only list) —
+    #   blocks Disable/Encore (implemented today) via the new MoveData.blocked_by_
+    #   aroma_veil flag; see that field's doc comment for a source-verified
+    #   AI-vs-execution-engine discrepancy this implementation is built against.
+    #   Self OR ally (IsAbilityOnSide-shaped). breakable=True (src/data/abilities.h
+    #   L1245-1250).
+    {"id": 165, "name": "Aroma Veil",
+     "description": "Protects the Pokémon and its allies from Disable and Encore.",
+     "ai_rating": 4, "breakable": True},
+
+    # Source: battle_util.c :: CanAbilityAbsorbMove (L2282-2285) — full immunity to
+    #   sound-flagged moves, damaging or status alike. breakable=True
+    #   (src/data/abilities.h L332-337).
+    {"id": 43, "name": "Soundproof",
+     "description": "Full immunity to all sound-based moves.",
+     "ai_rating": 5, "breakable": True},
+
+    # Source: battle_util.c :: CanAbilityAbsorbMove (L2286-2289) — full immunity to
+    #   ballistic-flagged moves. Retroactively fixed Ice Ball's own `ballistic_move`
+    #   flag (see gen_moves.py) while adding this. breakable=True (src/data/abilities.h
+    #   L1290-1294).
+    {"id": 171, "name": "Bulletproof",
+     "description": "Full immunity to bomb and ball moves.",
+     "ai_rating": 5, "breakable": True},
+
+    # Source: src/data/abilities.h — no mechanical battle-calc effect at GEN_LATEST
+    #   (only affects overworld wild-encounter rate). Documented no-op, matching the
+    #   Anticipation/Forewarn/Frisk precedent ([M17c]). breakable=True even though
+    #   there's nothing to break — source carries the flag regardless.
+    {"id": 35, "name": "Illuminate",
+     "description": "Has no effect in battle.",
+     "ai_rating": 0, "breakable": True},
+
+    # Source: src/data/abilities.h — overworld-only (Honey Gather chance after battle),
+    #   zero mechanical battle-engine effect. Documented no-op, matching Illuminate.
+    {"id": 118, "name": "Honey Gather",
+     "description": "Has no effect in battle.",
+     "ai_rating": 0},
+
+    # Source: battle_stat_change.c :: IsIntimidateBlocked (L660-675, see Inner Focus/Own
+    #   Tempo above) — blocks Intimidate's Attack drop. Oblivious's OWN primary effect
+    #   (Attract/Taunt immunity) is a documented no-op dependency — neither move exists
+    #   in this project yet. breakable=True (src/data/abilities.h L96-101).
+    {"id": 12, "name": "Oblivious",
+     "description": "Blocks Intimidate. Prevents infatuation and Taunt (neither move exists yet).",
+     "ai_rating": 3, "breakable": True},
+
+    # Source: src/data/abilities.h — inflicts infatuation on contact; Attract/infatuation
+    #   doesn't exist as a status in this project yet. Documented no-op dependency, NOT
+    #   breakable in source (no `.breakable` flag on it).
+    {"id": 56, "name": "Cute Charm",
+     "description": "May cause infatuation on contact (Attract not yet implemented).",
+     "ai_rating": 0},
+
+    # Source: src/data/abilities.h — blocks Explosion/Self-Destruct/Mind Blown-style
+    #   moves and abilities from going off; no explosive-move mechanic exists in this
+    #   project yet. Documented no-op dependency. breakable=True (src/data/abilities.h
+    #   L49-54).
+    {"id": 6, "name": "Damp",
+     "description": "Prevents explosive moves and abilities (none exist yet).",
+     "ai_rating": 0, "breakable": True},
+
+    # ── M17n-2: Weather/evasion + speed family, plus Air Lock ────────────────────────
+    # Source: docs/m17n_recon.md Group 2 (final list locked in docs/decisions.md
+    # [M17n-2]). Two shapes plus a field-wide negation pair plus a reactive setter —
+    # not forced into one pattern.
+
+    # Source: battle_util.c :: GetTotalAccuracy, target's-ability switch (L10302-10305)
+    #   — attacker's accuracy x0.80 while the effective weather is sandstorm.
+    #   breakable=True (src/data/abilities.h L65-70).
+    {"id": 8, "name": "Sand Veil",
+     "description": "Boosts evasion in a sandstorm.",
+     "ai_rating": 4, "breakable": True},
+
+    # Source: same function, L10306-10309 — x0.80 while hail/snow. breakable=True
+    #   (src/data/abilities.h L613-618).
+    {"id": 81, "name": "Snow Cloak",
+     "description": "Boosts evasion in hail or snow.",
+     "ai_rating": 4, "breakable": True},
+
+    # Source: battle_main.c :: GetBattlerTotalSpeedStat (L4667) — Speed x2 in rain,
+    #   nullified by the HOLDER's own Utility Umbrella (source-confirmed nuance NOT
+    #   shared with Sand Rush/Slush Rush). No breakable flag in source (self-check).
+    {"id": 33, "name": "Swift Swim",
+     "description": "Boosts Speed in rain.",
+     "ai_rating": 6},
+
+    # Source: same function, L4669 — Speed x2 in harsh sunlight, same Utility-Umbrella
+    #   nuance as Swift Swim. No breakable flag in source.
+    {"id": 34, "name": "Chlorophyll",
+     "description": "Boosts Speed in harsh sunlight.",
+     "ai_rating": 6},
+
+    # Source: same function, L4671 — Speed x2 in a sandstorm; Utility Umbrella never
+    #   applies (it only strips rain/sun). No breakable flag in source.
+    {"id": 146, "name": "Sand Rush",
+     "description": "Boosts Speed in a sandstorm.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c :: HasWeatherEffect (L9873-9889) — negates ALL weather
+    #   effects field-wide while active anywhere (damage modifiers, end-of-turn
+    #   chip/heal, and every weather-conditional ability read through this project's
+    #   new `BattleManager._effective_weather()`). Purely cosmetic switch-in
+    #   announcement in source (BattleScript_AnnounceAirLockCloudNine, no mechanical
+    #   effect of its own) — no dedicated function, matching the Illuminate/Honey
+    #   Gather precedent ([M17n-1]). No breakable flag in source (field-wide passive,
+    #   no attacker-scoped concept applies). The KEPT precedent example from Section
+    #   13.1 (Rayquaza-associated but explicitly not excluded).
+    {"id": 76, "name": "Air Lock",
+     "description": "Negates all weather effects.",
+     "ai_rating": 5},
+
+    # Source: confirmed genuinely identical to Air Lock — the EXACT SAME case branch
+    #   in HasWeatherEffect (L9880-9882), no asymmetry of any kind. No breakable flag.
+    {"id": 13, "name": "Cloud Nine",
+     "description": "Negates all weather effects.",
+     "ai_rating": 5},
+
+    # Source: battle_util.c :: ABILITY_SAND_SPIT case (L4181-4196) — any damaging hit
+    #   landing (not contact-gated) sets Sandstorm if not already active; reuses this
+    #   project's EXISTING try_set_weather (Drizzle/Drought/Sand Stream's own
+    #   function). Source's "blocked by Primal weather" branch is N/A — this project
+    #   has no distinct Primal-weather value ([M17d]). No breakable flag in source.
+    {"id": 245, "name": "Sand Spit",
+     "description": "Summons a sandstorm when hit by an attack.",
+     "ai_rating": 4},
 ]
 
 HEADER = """\

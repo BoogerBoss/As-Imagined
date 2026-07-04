@@ -613,8 +613,9 @@ func _phase_priority_resolution() -> void:
 		if pa != pb:
 			return pa > pb
 		var ng_active: bool = _is_neutralizing_gas_active()
-		var sa: int = StatusManager.effective_speed(a, weather, ng_active)
-		var sb: int = StatusManager.effective_speed(b, weather, ng_active)
+		var eff_w: int = _effective_weather()
+		var sa: int = StatusManager.effective_speed(a, eff_w, ng_active)
+		var sb: int = StatusManager.effective_speed(b, eff_w, ng_active)
 		if sa != sb:
 			return sa < sb if trick_room_turns > 0 else sa > sb
 		return tiebreak[a] > tiebreak[b]
@@ -1019,10 +1020,24 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
+	# ── Move-flag immunity (Soundproof / Bulletproof) ────────────────────────────
+	# Source: battle_util.c :: CanAbilityAbsorbMove (L2282-2289) — same dispatch group
+	# as Levitate/the absorb family, checked here (not inside DamageCalculator) since
+	# it must apply uniformly to BOTH damaging AND status moves (Growl/Roar/Whirlwind
+	# are all sound_move status moves) — one choke point, not two.
+	if AbilityManager.blocks_move_flag(defender, move, ng_active, attacker):
+		move_effect_failed.emit(defender, "move_flag_blocked")
+		ability_triggered.emit(defender, "soundproof_bulletproof")
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
 	# ── Accuracy check ────────────────────────────────────────────────────────
 	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
 	# Includes semi-invulnerable miss check (source: CancelerAccuracyCheck L1993).
-	if not StatusManager.check_accuracy(attacker, defender, move, _force_hit, ng_active):
+	if not StatusManager.check_accuracy(attacker, defender, move, _force_hit, ng_active, _effective_weather()):
 		# Source: SetSameMoveTurnValues, case EFFECT_ROLLOUT (L4899): increment requires
 		#   IsAnyTargetAffected() — a miss resets the consecutive-hit counter to 0.
 		if move.is_rollout:
@@ -1110,6 +1125,10 @@ func _phase_move_execution() -> void:
 			ability_triggered.emit(defender, "defiant_competitive")
 		if bp_si_result["cured_own_poison"]:
 			ability_triggered.emit(incoming, "pastel_veil")
+		if bp_si_result["cured_status"]:
+			ability_triggered.emit(incoming, "immunity_family_cure")
+		if bp_si_result["cured_confusion"]:
+			ability_triggered.emit(incoming, "own_tempo_cure")
 		var bp_sss_actual: int = AbilityManager.try_switch_in_evasion(incoming, defender, bp_ng_active)
 		if bp_sss_actual != 0:
 			stat_stage_changed.emit(defender, BattlePokemon.STAGE_EVASION, bp_sss_actual)
@@ -1310,12 +1329,24 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# M17n-1: Aroma Veil (self OR ally, IsAbilityOnSide-shaped) blocks Disable and
+		# Encore outright — see MoveData.blocked_by_aroma_veil's doc comment for the
+		# source-verified AI-vs-execution-engine discrepancy this is built against.
+		var defender_ally_av: BattlePokemon = _get_ally(defender)
+		var aroma_veil_blocks: bool = move.blocked_by_aroma_veil and (
+				AbilityManager.effective_ability_id(defender, ng_active, attacker) == AbilityManager.ABILITY_AROMA_VEIL
+				or (defender_ally_av != null and not defender_ally_av.fainted
+						and AbilityManager.effective_ability_id(defender_ally_av, ng_active, attacker) == AbilityManager.ABILITY_AROMA_VEIL))
+
 		# ── Disable ───────────────────────────────────────────────────────────
 		# Source: battle_script_commands.c :: Cmd_disablelastusedattack (L7898)
 		#   disabledMove = lastMoves[target]; disableTimer = 4 (Gen 5+)
 		# Disable ignores substitute — source: moves_info.h MOVE_DISABLE.ignoresSubstitute=TRUE
 		if move.is_disable:
-			if defender.last_move_used == null or defender.disabled_move != null:
+			if aroma_veil_blocks:
+				move_effect_failed.emit(defender, "aroma_veil_blocked")
+				ability_triggered.emit(defender, "aroma_veil")
+			elif defender.last_move_used == null or defender.disabled_move != null:
 				move_effect_failed.emit(defender, "disable_failed")
 			else:
 				defender.disabled_move = defender.last_move_used
@@ -1332,6 +1363,13 @@ func _phase_move_execution() -> void:
 		# Fails if: no last move, already encored, last move is encore-banned.
 		# Blocked by substitute (Encore is NOT in ignoresSubstitute list).
 		if move.is_encore:
+			if aroma_veil_blocks:
+				move_effect_failed.emit(defender, "aroma_veil_blocked")
+				ability_triggered.emit(defender, "aroma_veil")
+				move_executed.emit(attacker, defender, move, 0)
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				return
 			if defender.substitute_hp > 0 and not move.ignores_substitute:
 				move_missed.emit(attacker, "substitute")
 			elif (defender.last_move_used == null
@@ -1684,7 +1722,7 @@ func _phase_move_execution() -> void:
 							stat_stage_changed.emit(stat_target, defiant_stat, defiant_actual)
 							ability_triggered.emit(stat_target, "defiant_competitive")
 		elif move.secondary_effect != MoveData.SE_NONE:
-			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move, null, ng_active)
+			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move, null, ng_active, _effective_weather())
 			if applied:
 				secondary_applied.emit(defender, move.secondary_effect)
 				# Synchronize: defender received a primary status — check back-reflect.
@@ -1791,17 +1829,25 @@ func _phase_end_of_turn() -> void:
 	# Fires BEFORE poison/burn (ENDTURN_POISON=12, ENDTURN_BURN=13 in handler table).
 	# SANDSTORM: immune if any type is Rock(6)/Ground(5)/Steel(9), or semi-invulnerable.
 	#   Source: IS_BATTLER_ANY_TYPE(battler, TYPE_ROCK, TYPE_GROUND, TYPE_STEEL) (L148).
-	#   Ability-based immunities (Sand Veil, Sand Force, Sand Rush, Overcoat, Magic Guard)
-	#   deferred to M12 — not in scope while those abilities are absent.
+	#   M17n-2 correction to a stale comment: Sand Veil/Sand Rush do NOT grant sandstorm-
+	#   chip immunity in source (confirmed — they only affect accuracy/Speed
+	#   respectively, checked directly against L144-169 while implementing this tier).
+	#   The only real ability-based immunities here are Overcoat/Magic Guard, both still
+	#   unimplemented (deferred, not in scope while those abilities are absent).
 	# HAIL: immune if any type is Ice(16), or semi-invulnerable.
-	#   Source: IS_BATTLER_OF_TYPE(battler, TYPE_ICE) (L171).
-	#   Ability-based immunities (Snow Cloak, Ice Body, Overcoat) deferred to M12.
+	#   Source: IS_BATTLER_OF_TYPE(battler, TYPE_ICE) (L171). Same correction: Snow Cloak
+	#   grants no hail-chip immunity either; Ice Body/Overcoat remain the real
+	#   (still-unimplemented) candidates.
 	# Damage = maxHP / 16 (integer division). Source: GetNonDynamaxMaxHP(battler) / 16 (L154, L177).
-	if weather == WEATHER_SANDSTORM or weather == WEATHER_HAIL:
+	# M17n-2: `weather` here is intentionally the RAW field, not `_effective_weather()`
+	# — Air Lock/Cloud Nine negation is applied via the `eff_weather` local below,
+	# computed once and reused for both the outer gate and the per-mon immunity check.
+	var eff_weather: int = _effective_weather()
+	if eff_weather == WEATHER_SANDSTORM or eff_weather == WEATHER_HAIL:
 		for mon: BattlePokemon in _turn_order:
 			if mon.fainted:
 				continue
-			if _is_weather_damage_immune(mon, weather):
+			if _is_weather_damage_immune(mon, eff_weather):
 				continue
 			var chip: int = mon.max_hp / 16
 			if chip > 0:
@@ -1886,11 +1932,12 @@ func _phase_end_of_turn() -> void:
 
 	# End-of-turn ability effects (Speed Boost, M17b: Moody)
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ENDTURN, ...) (battle_util.c L3605)
+	var eot_eff_weather: int = _effective_weather()
 	for mon: BattlePokemon in _combatants:
 		if mon.fainted:
 			continue
 		var eot_result: Dictionary = AbilityManager.try_end_of_turn(
-				mon, _force_moody_raise, _force_moody_lower, weather, _get_ally(mon),
+				mon, _force_moody_raise, _force_moody_lower, eot_eff_weather, _get_ally(mon),
 				_force_shed_skin_roll, _force_healer_roll, ng_active)
 		var spd_actual: int = eot_result["speed_boost_change"]
 		if spd_actual != 0:
@@ -2029,6 +2076,30 @@ func _is_neutralizing_gas_active() -> bool:
 	return AbilityManager.is_neutralizing_gas_active(_combatants)
 
 
+# M17n-2: whether Air Lock/Cloud Nine is active anywhere on the field right now — same
+# field-wide shape as _is_neutralizing_gas_active above.
+func _is_weather_negated() -> bool:
+	return AbilityManager.is_weather_negated(_combatants, _is_neutralizing_gas_active())
+
+
+# M17n-2: the weather value every ability-facing weather check should read, mirroring
+# source's GetWeather() (battle_util.c L9274-9279): WEATHER_NONE whenever Air
+# Lock/Cloud Nine is active anywhere, otherwise the real field `weather`. Substituted
+# at every call site that threads `weather` into an ability-facing function
+# (DamageCalculator.calculate, AbilityManager.try_end_of_turn, StatusManager.
+# try_secondary_effect/check_accuracy, StatusManager.effective_speed, and the
+# end-of-turn sandstorm/hail chip-damage check) — this ONE substitution point is what
+# makes Air Lock/Cloud Nine's negation comprehensive across every existing
+# weather-conditional ability (Flower Gift, Solar Power, Dry Skin, Slush Rush, Leaf
+# Guard) as well as this tier's own three new abilities, without touching any of
+# THEIR individual implementations. Deliberately NOT substituted at the two
+# TrainerAI call sites (`[M17c]`'s existing documented simplification) or at the three
+# pure MOVE-mechanic weather checks (Solar Beam's charge-skip, Growth's power-doubling,
+# Aurora Veil's hail requirement) — see AbilityManager.is_weather_negated's doc comment.
+func _effective_weather() -> int:
+	return WEATHER_NONE if _is_weather_negated() else weather
+
+
 # Fire switch-in ability effects for new_mon against all live opposing combatants.
 # Source: AbilityBattleEffects ABILITYEFFECT_ON_SWITCHIN (battle_util.c L3310–3323):
 #   for i in 0..gBattlersCount: if IsBattlerAlly(battler,i) || !IsBattlerAlive(i): continue
@@ -2159,6 +2230,10 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 			ability_triggered.emit(opp, "defiant_competitive")
 		if si_result["cured_own_poison"]:
 			ability_triggered.emit(new_mon, "pastel_veil")
+		if si_result["cured_status"]:
+			ability_triggered.emit(new_mon, "immunity_family_cure")
+		if si_result["cured_confusion"]:
+			ability_triggered.emit(new_mon, "own_tempo_cure")
 		# M17b: Supersweet Syrup — same per-opponent loop shape as Intimidate, one-time only.
 		var sss_actual: int = AbilityManager.try_switch_in_evasion(new_mon, opp, ng_active)
 		if sss_actual != 0:
@@ -2225,6 +2300,7 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.rollout_turns = 0
 	mon.rollout_base_power = 0
 	mon.truant_loafing = false
+	mon.flash_fire_active = false
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
@@ -2650,23 +2726,41 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		screen_active = true
 
 	var roll: int = _force_roll if _force_roll != null else -1
+	# M17n-2: pass the EFFECTIVE weather — Air Lock/Cloud Nine anywhere on the field
+	# negates the raw multiplier AND every weather-conditional ability read through
+	# this same value (Flower Gift, Solar Power, Dry Skin, Delta Stream), for free.
 	var result: Dictionary = DamageCalculator.calculate(
-			attacker, target, move, roll, _force_crit, weather, is_spread, helping_hand,
+			attacker, target, move, roll, _force_crit, _effective_weather(), is_spread, helping_hand,
 			power_override, screen_active, _active_per_side > 1, _get_ally(attacker),
 			_get_ally(target), ng_active)
 	var damage: int = result["damage"]
 
-	# M17l: Lightning Rod / Storm Drain — the absorb (0 damage) already happened inside
-	# DamageCalculator; apply the Sp. Atk +1 side effect here, before the Substitute
-	# check below, since source's ability-absorption takes effect independent of
-	# Substitute (the move never actually "hits" a Substitute when absorbed this way).
-	var absorbed_stat_boost: int = result.get("absorbed_stat_boost", -1)
-	if absorbed_stat_boost != -1:
-		var lr_actual: int = StatusManager.apply_stat_change(
-				target, absorbed_stat_boost, 1, null, ng_active)
-		if lr_actual != 0:
-			stat_stage_changed.emit(target, absorbed_stat_boost, lr_actual)
-		ability_triggered.emit(target, "lightning_rod_storm_drain")
+	# M17l/M17m: absorb-family (Lightning Rod/Storm Drain/Sap Sipper/Motor Drive/
+	# Well-Baked Body/Volt Absorb/Water Absorb/Dry Skin/Earth Eater/Flash Fire) — the
+	# absorb (0 damage) already happened inside DamageCalculator; apply this ability's
+	# specific side effect here, before the Substitute check below, since source's
+	# ability-absorption takes effect independent of Substitute (the move never
+	# actually "hits" a Substitute when absorbed this way).
+	var absorb_result: Dictionary = result.get("absorb_result", {})
+	if not absorb_result.is_empty():
+		match absorb_result["kind"]:
+			"stat":
+				var stat: int = absorb_result["stat"]
+				var amount: int = absorb_result["amount"]
+				var actual: int = StatusManager.apply_stat_change(
+						target, stat, amount, null, ng_active)
+				if actual != 0:
+					stat_stage_changed.emit(target, stat, actual)
+				ability_triggered.emit(target, "absorb_stat_boost")
+			"heal":
+				if target.current_hp < target.max_hp:
+					var heal_amt: int = max(1, target.max_hp / absorb_result["fraction"])
+					target.current_hp = min(target.max_hp, target.current_hp + heal_amt)
+					ability_healed.emit(target, heal_amt)
+				ability_triggered.emit(target, "absorb_heal")
+			"flag":
+				target.flash_fire_active = true
+				ability_triggered.emit(target, "flash_fire_boosted")
 		move_executed.emit(attacker, target, move, 0)
 		return
 
@@ -2736,7 +2830,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			drain_heal.emit(attacker, heal)
 
 	if damage > 0 and move.secondary_effect != MoveData.SE_NONE:
-		var effect_hit: bool = StatusManager.try_secondary_effect(attacker, target, move, null, ng_active)
+		var effect_hit: bool = StatusManager.try_secondary_effect(attacker, target, move, null, ng_active, _effective_weather())
 		if effect_hit:
 			if move.secondary_effect == MoveData.SE_FLINCH:
 				var target_turn_pos: int = _turn_order.find(target)
@@ -2858,6 +2952,13 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			td_sc["toxic_spikes_layers"] += 1
 			hazard_set.emit(td_side, "toxic_spikes", td_sc["toxic_spikes_layers"])
 			ability_triggered.emit(target, "toxic_debris")
+
+	# M17n-2: Sand Spit — reuses the EXISTING try_set_weather (Drizzle/Drought/Sand
+	# Stream's own function), which already no-ops if Sandstorm is already active, so
+	# the signals only fire on an actual change.
+	if hit_result["sand_spit_fired"] and try_set_weather(WEATHER_SANDSTORM, target):
+		weather_set.emit(target, WEATHER_SANDSTORM)
+		ability_triggered.emit(target, "sand_spit")
 
 	if result.get("defender_item_consumed", false):
 		_consume_item(target)

@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 81
 ability_name = "Snow Cloak"
-description = ""
-ai_rating = 0
+description = "Boosts evasion in hail or snow."
+ai_rating = 4
+breakable = true

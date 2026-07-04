@@ -11,3 +11,4 @@ category = 2
 pp = 20
 ignores_substitute = true
 is_disable = true
+blocked_by_aroma_veil = true

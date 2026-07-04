@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 76
 ability_name = "Air Lock"
-description = ""
-ai_rating = 0
+description = "Negates all weather effects."
+ai_rating = 5

@@ -5546,3 +5546,545 @@ early-immunity-gate function this tier's Telepathy check now occupies in
 OWN logic (block every non-super-effective hit) is a substantially different and
 higher-risk shape than anything implemented so far in M17, matching the recon's own
 warning.
+
+## [M17m] Absorb-family abilities — Volt Absorb / Water Absorb / Sap Sipper / Flash Fire / Motor Drive / Well-Baked Body / Earth Eater / Dry Skin's water half
+
+Scoping sources: `docs/m17m_absorb_recon.md` (a dedicated report-only pre-recon pass run
+before this tier's implementation prompt was written) and `[M17l]`'s own "Next tier" note
+(which first spotted that these abilities share `CanAbilityAbsorbMove`). **Scope note
+worth flagging explicitly**: the recon's original M17m proposal (`docs/m17_recon.md`
+Section 11, ~15 abilities: Wonder Guard, Scrappy, Volt Absorb, Water Absorb, Sap Sipper,
+Flash Fire, Overcoat, Normalize + the "-ate" family, Motor Drive, Well-Baked Body, Earth
+Eater, Mind's Eye) was BROADER than this session's actual implementation scope. This
+session's task explicitly narrowed M17m to the absorb-family subset only (the seven
+abilities above, plus Dry Skin's water half as an eighth free-rider) and pointed
+CLAUDE.md's next-tier note at M17n rather than the recon's own next-in-sequence items —
+**Wonder Guard, Scrappy, Overcoat, Normalize/the "-ate" family, and Mind's Eye remain
+completely unimplemented and are NOT covered by M17n's "unique/grab-bag" framing either**
+(M17n is described as ~50+ genuinely unrelated abilities, not this specific
+type-effectiveness-pipeline cluster). This gap is recorded here rather than silently
+absorbed into either tier — whoever schedules the next M17 sub-tier after M17n should
+re-confirm whether these five still need their own tier (matching the recon's original
+grouping) or have been intentionally dropped.
+
+### Step 0 — finalized ability list
+
+All seven new IDs re-verified fresh against `include/constants/abilities.h` (not
+trusted from `docs/m17m_absorb_recon.md`, per standing discipline) and cross-checked
+against `docs/m17_recon.md` Section 13's full exclusion sweep — none of the eight
+(including Dry Skin, already declared since `[M17c]`) appear anywhere in it, so no
+correction was needed. Baseline reconfirmed exactly at 33 files/1703 assertions before
+starting (no drift from `[M17l]`).
+
+**Volt Absorb (10), Water Absorb (11), Flash Fire (18), Motor Drive (78), Dry Skin (87,
+already declared), Sap Sipper (157), Well-Baked Body (273), Earth Eater (297)** — all
+route through `CanAbilityAbsorbMove` (battle_util.c L2235-2313), the SAME dispatch
+`[M17l]`'s Lightning Rod/Storm Drain already partially extended via
+`AbilityManager.absorbs_move_type`. Confirmed by direct source read (not by trusting the
+recon's grouping) that the on-absorb EFFECT is three genuinely different shapes, not one:
+
+**Group 1 — heal maxHP/4** (`AbsorbedByDrainHpAbility`, L2315-2326):
+- **Volt Absorb** (Electric, L2241-2243).
+- **Water Absorb** (Water, L2245-2248).
+- **Earth Eater** (Ground, L2250-2253).
+- **Dry Skin's water half** (Water, L2246-2248 — the literal SAME `case` label as Water
+  Absorb, confirmed by direct source read). This is the previously-deferred third of
+  `[M17c]`'s Dry Skin work — that entry's own text named the exact blocker ("needs the
+  Bucket-E immunity+heal infra this project doesn't have yet, since Volt Absorb/Water
+  Absorb themselves are still unimplemented") and explicitly said to reuse whatever
+  shape they establish once built. Does NOT touch or duplicate `[M17c]`'s already-shipped
+  Fire-vulnerability (×1.25, `defense_damage_modifier_uq412`) or end-of-turn rain-heal/
+  sun-damage (maxHP/8, `try_end_of_turn`) — those keep their own existing tests
+  untouched; this piece uses a DIFFERENT divisor (maxHP/4, not /8) since it's a
+  genuinely different mechanism (absorb-heal vs. weather-tick heal), confirmed
+  distinctly asserted in the new test (see Testing below).
+- The heal only actually restores HP if the holder isn't already at max — but the move
+  is absorbed (0 damage) either way, matching source's `AbsorbedByDrainHpAbility`
+  returning an "absorbed, no heal" script variant rather than "not absorbed" when
+  already full. This project has no Heal Block mechanic anywhere (confirmed via a grep
+  sweep) to gate on, unlike source's `B_HEAL_BLOCKING`-conditional branch — not modeled,
+  confirmed absent rather than silently dropped.
+
+**Group 2 — stat-stage boost, VARYING magnitude** (`AbsorbedByStatIncreaseAbility`,
+L2328-2340):
+- **Sap Sipper** (Grass → Atk +1, L2266-2268).
+- **Motor Drive** (Electric → Speed +1, L2254-2257) — **explicitly confirmed NOT Sp.Atk**
+  despite sharing Lightning Rod's exact Electric type-match; a dedicated discriminator
+  assertion checks the stat is Speed and NOT Sp.Atk (see Testing below).
+- **Well-Baked Body** (Fire → Def **+2**, L2270-2272) — the single two-stage entry in
+  this entire dispatch, confirmed precisely from source rather than assumed to match
+  every other entry's +1. Flagged in advance by the recon as the highest-risk detail in
+  this tier; a dedicated discriminator assertion checks the delta is exactly 2 and
+  explicitly NOT 1.
+- The stat-cap-already-at-+6 no-op is the caller's job via the existing
+  `StatusManager.apply_stat_change` clamp (unchanged) — the move is still absorbed (0
+  damage) even when the boost itself doesn't land.
+
+**Group 3 — persistent flag, no immediate effect** (`AbsorbedByFlashFire`, L2342-2355):
+- **Flash Fire** (Fire, L2278-2280) — absorbing a Fire-type hit sets a NEW persistent
+  volatile, `BattlePokemon.flash_fire_active`, with no immediate stat/HP change of its
+  own. The actual payoff is a LATER Fire-type move from the SAME holder getting a ×1.5
+  power boost — confirmed from source this is a SEPARATE function entirely
+  (`GetAttackStatModifier`'s attacker-side switch, L6817-6819), not part of the absorb
+  dispatch at all, so it's wired into the EXISTING `AbilityManager.attack_modifier_uq412`
+  (the same function Overgrow/Blaze/Torrent/Swarm already occupy for their own
+  HP-threshold boosts from `[M17a]`), not a new pipeline stage. Confirmed `flash_fire_active`
+  is cleared by `_clear_volatiles` (switch-out/faint) — source's entire `volatiles` struct
+  housing this flag gets wholesale memset to 0 at switch (`battle_main.c` L3145/3272/3421),
+  the SAME shape as `minimized`/`defense_curled`/`focus_energy`, NOT a whole-battle-persistent
+  flag like Supersweet Syrup. Confirmed NOT Baton-Pass-passable (absent from source's
+  Baton-Pass volatile-copy list), matching `minimized`/`defense_curled`'s precedent.
+  `B_FLASH_FIRE_FROZEN` is `GEN_LATEST` in this project's reference config, so no freeze
+  gate applies (a frozen holder still benefits from Flash Fire, matching current-gen
+  behavior).
+
+### Cross-cutting design decision: `absorbs_move_type`'s return contract
+
+Per this tier's explicit instruction to decide and document this BEFORE implementing any
+group: **widened `AbilityManager.absorbs_move_type`'s return type from a bare `int`
+(`BattlePokemon.STAGE_*` or `-1`) to a `Dictionary`** (`{}` = not absorbed;
+`{"kind": "stat"/"heal"/"flag", ...payload}` otherwise), rather than adding sibling
+functions for Group 1/Group 3. Reasoning: all three groups are dispatched through the
+exact SAME source switch statement (`CanAbilityAbsorbMove`), so one function expressing
+all three outcomes via a tagged payload matches source's actual structure more closely
+than three parallel functions would; concretely, Well-Baked Body's +2 magnitude (versus
+every other Group 2 entry's +1) could not be expressed by a bare `STAGE_*`-only return
+without a second special-case check at the call site — a Dictionary carries "kind" +
+whatever payload each shape needs uniformly. `DamageCalculator.calculate`'s single early
+early-return call site and `BattleManager._do_damaging_hit`'s single consumer both stayed
+to ONE dispatch point each (a `match` on `"kind"`), matching the goal of keeping call
+sites simple regardless of which option was chosen.
+
+**This is a breaking change** to `[M17l]`'s existing `absorbs_move_type` contract (Sp.Atk
++1 int return → `{"kind": "stat", "stat": STAGE_SPATK, "amount": 1}`) — the ONE existing
+caller (`DamageCalculator.calculate`'s early-return) and the SIX existing direct unit
+test assertions in `m17l_test.gd`'s Section 2 (checking `== BattlePokemon.STAGE_SPATK`/
+`== -1`) were both updated in place to the new Dictionary shape. `m17l_test` reran at
+45/45 unchanged post-update — a pure contract migration, no behavior change for
+Lightning Rod/Storm Drain themselves.
+
+### A second, unavoidable existing-test update: `m17c_test.gd`'s Dry Skin water-move assertion
+
+`m17c_test.gd`'s S3.10 directly asserted the OLD deferred premise as a passing test:
+"Dry Skin: Water-move absorb NOT implemented (deferred) — normal damage taken"
+(`water_result["damage"] == water_baseline["damage"]`). Once Group 1 shipped, this
+assertion became permanently, deterministically false — not a flaky test, a test whose
+encoded premise the tier's own work directly falsified. Per this tier's own testing
+instruction ("do not modify or duplicate the M17c tests, add new ones scoped to this new
+piece only"), the NEW dedicated heal-amount/full-battle coverage lives entirely in
+`m17m_test.gd`'s Section 11, not in `m17c_test.gd`. But S3.10 itself could not be left
+as-is (a permanent, known-false-premise failure is a worse outcome than updating one
+assertion) — it was updated in place to assert the new reality (`water_result["damage"]
+== 0`) with a comment explaining why, rather than duplicated or silently deleted.
+`m17c_test` reran at 79/79 after the fix.
+
+### `AbilityData` field check, and Mold-Breaker reachability
+
+Checked `AbilityData` before writing any code, per the `[M17h]`-established discipline —
+no dormant field applies; all eight reuse the existing `breakable` field directly.
+Source-verified `breakable = TRUE` on all seven new abilities (`src/data/abilities.h`,
+cited per-ability in `scripts/gen_abilities.py`'s new entries) — Dry Skin's `breakable`
+flag was already set from `[M17c]`. All eight are genuinely, immediately reachable
+Mold-Breaker-bypass cases (attacker and holder are always different battlers, the same
+reasoning already established for Lightning Rod/Storm Drain in `[M17l]`) — verified with
+a dedicated unit test per group (Section 5 of `m17m_test.gd`).
+
+### Testing / Regression
+
+New `m17m_test.gd`/`.tscn`: 63/63 assertions across 17 sections — ability data
+spot-checks (all 8, including a re-check that Dry Skin's existing `breakable` flag is
+unchanged); direct `absorbs_move_type` unit tests per group (Group 1 heal-dict shape for
+all four heal abilities including Dry Skin's Fire-hit non-absorption discriminator;
+Group 2 stat-dict shape including Motor Drive's explicit NOT-Sp.Atk check and Well-Baked
+Body's explicit NOT-+1 check; Group 3 flag-dict shape plus direct
+`attack_modifier_uq412` checks for flag-active+Fire→×1.5, flag-active+non-Fire→×1.0, and
+no-flag+Fire→×1.0); Mold Breaker bypass and Neutralizing Gas suppression, one
+representative per group; full-battle integration for Volt Absorb (exact maxHP/4 heal
+delta via `ability_healed` signal snapshot, 0 damage), a dedicated full-HP scenario
+proving the absorb still zeroes damage even though no heal signal fires; full-battle for
+Water Absorb and Earth Eater (same heal-delta assertion pattern); a DEDICATED Dry Skin
+water-absorb-heal full-battle test, explicitly separate from `m17c_test.gd`'s
+already-existing Fire-vulnerability/end-of-turn coverage, with a discriminator
+confirming the heal amount is the /4 absorb-heal, NOT the /8 end-of-turn-tick divisor;
+full-battle for Sap Sipper (Atk+1), Motor Drive (Speed+1 with an explicit
+not-Sp.Atk discriminator), and Well-Baked Body (Def+2 with an explicit not-+1
+discriminator); full-battle Flash Fire absorb (signal-snapshot confirmation of the flag
+trigger, not post-battle state); a direct `DamageCalculator.calculate()` comparison
+proving Flash Fire's LATER own-move boost is real and exactly ×1.5, plus confirmation
+the flag does not boost a non-Fire move; and a negative case (an ordinary Pokémon
+absorbs nothing across all three matched types, takes real damage, and gains no heal/
+stat signal). Stable across 4 consecutive reruns.
+
+Full regression (direct foreground bash sweep, standard `pkill`/`timeout` discipline):
+baseline reconfirmed exactly at 33 files/1703 assertions before starting (no drift).
+Implementing Group 1's Dry Skin piece required updating one pre-existing `m17c_test.gd`
+assertion (S3.10, see above) whose premise the new work directly falsified — after that
+fix, all 33 prior suite files pass unchanged. One additional anomaly was investigated
+and ruled out: `doubles_test.tscn` failed once (53/54) on an early sweep pass, with no
+reference anywhere in `doubles_test.gd` to any of this tier's abilities (confirmed via a
+direct grep) — reran clean at 54/54 six consecutive times afterward, matching the same
+class of pre-existing, unrelated RNG flakiness already documented for
+`switch_test.tscn`'s Roar section (`[M17j]`'s addendum) — checked and ruled out, not
+re-investigated further, per that same precedent. Total assertions across all 34
+`.tscn` files: 1703 prior + 63 = **1766**, 0 failures.
+
+- 2026-07-04.
+
+### Next tier
+
+Per the scope note at the top of this entry: **Wonder Guard, Scrappy, Overcoat,
+Normalize (+ the Refrigerate/Pixilate/Aerilate/Galvanize "-ate" family), and Mind's Eye
+remain unimplemented** — the recon's original ~15-ability M17m proposal was narrowed to
+just the absorb family for this session, and CLAUDE.md's next-tier pointer goes to M17n
+(unique/grab-bag, ~50+ abilities) rather than back to these five. Whoever picks up work
+after M17n should explicitly re-decide whether these five get their own tier (as
+originally grouped) or are folded elsewhere — this entry exists so that decision isn't
+made by default/oversight. M17n itself will need its own scoping/sub-tier-splitting pass
+before implementation, given its size — not attempted here.
+
+## [M17n-1] Status-immunity family + simple no-ops
+
+Scoping source: `docs/m17n_recon.md` Group 1 (22 abilities). **Deliberate sequencing
+note**: this tier ran FIRST among M17n's sub-tiers, in ability-ID-group order (1 through
+8), rather than the recon's own risk-based recommendation (which favored Group 5/Wonder
+Guard first, as the direct continuation of `[M17m]`). This was an explicit choice by the
+task that requested this tier, not an oversight — recorded here so a future reader
+doesn't mistake it for the recon's recommendation being silently ignored.
+
+### Step 0 — finalized ability list
+
+Re-read `docs/m17n_recon.md`'s Group 1 in full and re-verified all 22 canonical IDs
+fresh against `include/constants/abilities.h` — none needed correction, and none appear
+in the full exclusion list (Imposter, Bad Dreams, Tera trio, hack-custom IDs, Commander,
+Mega-form group, Embody Aspect ×4, the 10 terrain abilities, Protosynthesis, Orichalcum
+Pulse, Ruin quartet, the 23-item Section 13.1 sweep, Beast Boost, Spicy Spray, the 4
+Mega-exclusive-only abilities).
+
+Four categories, confirmed via direct source read rather than the recon's own
+(admittedly shallow-pass) classification:
+
+**Category A — genuine status-immunity abilities (12):** Insomnia (15), Vital Spirit
+(72), Immunity (17), Limber (7), Water Veil (41), Magma Armor (40), Inner Focus (39),
+Own Tempo (20), Shield Dust (19), Leaf Guard (102), Early Bird (48), Aroma Veil (165).
+
+**Category B — move-flag immunity (2):** Soundproof (43), Bulletproof (171). **A real
+Step-0 finding that changed this tier's cost estimate**: the recon assumed these would
+need NEW `MoveData` flags. Checking `move_data.gd` directly (the `[M17h]`-established
+dormant-field-check discipline, extended to move data) found `sound_move`,
+`ballistic_move`, `biting_move`, `punching_move`, `powder_move`, `dance_move`,
+`slicing_move`, and `healing_move` **already exist as unused fields** — genuinely
+dormant since the original move-data schema, with only `sound_move` (Growl/Roar/
+Whirlwind) and `punching_move`/`powder_move` actually populated on any move to date.
+Zero new `MoveData` fields were needed for this tier.
+
+**Category C — documented cosmetic no-ops (2):** Illuminate (35), Honey Gather (118) —
+confirmed via `src/data/abilities.h` to have no mechanical battle-calc effect at
+GEN_LATEST (overworld-only), matching the Anticipation/Forewarn/Frisk precedent
+(`[M17c]`): a real `AbilityData` entry with a genuine description, no dedicated
+function.
+
+**Category D — confirmed out-of-battle-engine scope (3):** Run Away (50), Pickup (53),
+Ball Fetch (237) — fleeing/post-battle-item mechanics, per the Project Scope note.
+**Deliberately given NO constant and NO `.tres` entry at all** — distinct from Category
+C's "exists but does nothing." This is a scope boundary, not an oversight.
+
+**Oblivious (12) rides along in Category A's implementation** despite its own primary
+effect (Attract/Taunt immunity) being a Category-C-shaped no-op (neither move exists) —
+because a SEPARATE, real mechanic (see below) makes it non-trivial this tier. Cute Charm
+(56) and Damp (6) remain pure no-ops (Attract and explosive-move mechanics don't exist).
+
+### Two real findings beyond the recon's own scope, both confirmed via direct source read
+
+**1. All seven status/confusion-immunity abilities ALSO cure a matching PRE-EXISTING
+condition on switch-in** — a genuinely separate trigger point from the
+infliction-blocking checks, found while verifying Own Tempo's mechanic (the recon only
+mentioned infliction-blocking). Source: `TryImmunityAbilityHealStatus`
+(battle_util.c L8817-8889), dispatched via `ABILITYEFFECT_IMMUNITY` from
+`battle_switch_in.c` L283 (confirmed this fires on switch-in, not just on
+gaining-the-ability-via-Skill-Swap as initially assumed). Extended
+`AbilityManager.try_switch_in` (the SAME function Pastel Veil's existing cure-on-
+switch-in already lives in) with two new result keys, `cured_status` and
+`cured_confusion`, covering Immunity/Limber/Insomnia/Vital Spirit/Water Veil/Magma
+Armor (major status) and Own Tempo (confusion) respectively. Oblivious's own case in
+this same source function (L8875-8886) cures infatuation/taunt — both N/A, neither
+exists in this project.
+
+**2. Inner Focus / Own Tempo / Oblivious (and Scrappy, not yet implemented) fully block
+Intimidate's Attack drop** under `B_UPDATED_INTIMIDATE >= GEN_8` (this project's
+GEN_LATEST config) — source: `IsIntimidateBlocked` (battle_stat_change.c L660-675).
+Found while checking Oblivious's actual scope (assumed pure no-op from the recon, but
+this is a real, currently-buildable mechanic). Wired into the EXISTING
+`AbilityManager.try_switch_in`'s Intimidate branch as a gate on the opponent's ability
+before `StatusManager.apply_stat_change` is even called — Rattled/Defiant-Competitive
+correctly don't fire either, since `atk_change` never gets a chance to go negative.
+Guard Dog (a separate, already-different-shaped case in the same source function that
+turns the drop into a +1 raise) is unrelated and untouched.
+
+**3. A source-verified discrepancy in Aroma Veil, flagged rather than silently
+resolved**: `IsAromaVeilProtectedEffect` (battle_ai_util.c L1961-1974) lists Disable and
+Encore among the six protected effects, but that function is ONLY ever consulted by the
+AI's own move-scoring logic (battle_ai_main.c) — the actual execution commands for
+Disable (`Cmd_disablelastusedattack`) and Encore (`Cmd_trysetencore`) never check Aroma
+Veil at all in this reference source, unlike Attract/Torment which each have their own
+explicit `IsAbilityOnSide(..., ABILITY_AROMA_VEIL)` check in their own command
+functions. Implemented matching the AI's own list (real intended/expected behavior,
+consistent with actual game mechanics) rather than the execution engine's apparent
+oversight. New `MoveData.blocked_by_aroma_veil` flag, set on Disable (50) and Encore
+(227) — designed to automatically extend to Taunt/Torment/Heal Block whenever those are
+implemented, without further code changes, per this tier's own explicit instruction.
+
+### Source citations and hook points
+
+- **Insomnia/Vital Spirit/Immunity/Limber/Water Veil/Magma Armor**: extended
+  `StatusManager.try_apply_status` (source: `CanSetNonVolatileStatus`, battle_util.c
+  L5235-5394) — one new ability check per status branch, same shape as `[M17b]`'s
+  Purifying Salt/Sweet Veil/Pastel Veil precedent.
+- **Leaf Guard**: `IsLeafGuardProtected` (battle_script_commands.c L6846-6852) — applies
+  to ALL non-volatile statuses, gated on harsh sun. New `weather` param threaded through
+  `try_apply_status` and its one caller, `try_secondary_effect` (the single choke point
+  for all move-based status infliction, primary or secondary) — NOT threaded through
+  the contact-ability-triggered call sites (Static/Poison Point/Effect Spore/
+  Synchronize) or the switch-in-hazard site, a narrow documented scope-limitation
+  matching `[M17c]`'s Slush Rush precedent. Source gates sun-detection through
+  Utility-Umbrella-aware `IsBattlerWeatherAffected`, but this project's OTHER
+  weather-conditional ability checks (Flower Gift/Solar Power/Slush Rush/Dry Skin) never
+  consult `ItemManager.blocks_weather_modifier` either (that helper is damage-pipeline-
+  only) — Leaf Guard follows the same established precedent rather than introducing a
+  new nuance none of its siblings have.
+- **Own Tempo**: `CanBeConfused` (battle_util.c L5447-5458) — new `ng_active`/`attacker`
+  params on `StatusManager.try_apply_confusion` (previously had neither).
+- **Inner Focus**: flinch-block inside `try_secondary_effect`'s `SE_FLINCH` case
+  specifically (battle_util.c L8830) — NOT the broad Shield-Dust-style gate.
+- **Shield Dust**: `IsMoveEffectBlockedByTarget` (battle_util.c L9811-9824) — gated on
+  `move.secondary_chance > 0` inside `try_secondary_effect` to mirror source's
+  `!primary` condition exactly (a guaranteed/primary status move, chance 0, is NOT
+  blocked). Blocks status, confusion, AND flinch alike — confirmed via source's single
+  shared gate rather than assumed to only cover one effect type.
+- **Early Bird**: `StatusManager.pre_move_check`'s sleep-decrement — `toSub = 2` instead
+  of 1 (battle_move_resolution.c L133-137), same `max(0, ...)` clamp already in place.
+  No `breakable` flag in source (a self-check, not a defensive ability Mold Breaker
+  bypasses).
+- **Soundproof/Bulletproof**: new `AbilityManager.blocks_move_flag` — wired into
+  `_phase_move_execution` immediately before the accuracy check (same relative position
+  `[M17k]`'s `blocks_priority_move` established), applying to BOTH damaging and status
+  moves uniformly in ONE choke point (Growl/Roar/Whirlwind are all `sound_move` status
+  moves in this project's roster) rather than splitting the check across
+  `DamageCalculator` and the status-move branch. Retroactively fixed a real pre-existing
+  gap while adding this: Ice Ball's (301) own `gen_moves.py` comment has cited
+  `.ballisticMove=TRUE` since `[M16b]`, but the field was never actually set on the
+  dict — harmless until Bulletproof existed to consume it, now fixed.
+- **Aroma Veil**: see the discrepancy write-up above; wired as an early-return check in
+  `_phase_move_execution`'s existing Disable/Encore blocks, self-OR-ally
+  (`IsAbilityOnSide`-shaped, matching Sweet Veil/Pastel Veil's existing ally-check
+  pattern).
+
+### `AbilityData`/`MoveData` field checks
+
+Checked `AbilityData` before writing any code (`[M17h]`-established discipline) — no
+dormant field applies to any Category A/B ability; all reuse the existing `breakable`
+field directly. Checked `MoveData` similarly (extending the same discipline to move
+data, per this tier's own instruction) — found the dormant `sound_move`/
+`ballistic_move` fields described above, a genuine cost reduction versus the recon's
+assumption. One genuinely new `MoveData` field was added: `blocked_by_aroma_veil` (no
+existing field represented "which effects Aroma Veil protects").
+
+### Testing / Regression
+
+New `m17n1_test.gd`/`.tscn`: 75/75 assertions across 20 sections — ability data
+spot-checks (all 19 abilities with a real `.tres` entry, including the breakable-flag
+distinction between Category A/B's `breakable=true` abilities and Early Bird's
+no-flag/Category D's complete absence); direct `StatusManager.try_apply_status`/
+`try_apply_confusion` unit tests for every Category A ability with a positive case AND
+a discriminating negative case (e.g. Limber blocks paralysis but not burn); Leaf Guard's
+sun-gate discriminator (blocks in sun, does NOT block in rain or no-weather); Early
+Bird's decrement-rate comparison (direct `pre_move_check` calls, 4→2 vs. an ordinary
+Pokémon's 4→3) plus a zero-clamp check; the switch-in cure section (direct
+`try_switch_in` calls proving Immunity/Own Tempo actually clear pre-existing
+toxic/confusion, plus a mismatched-status negative case for Limber); full-battle
+Intimidate-block tests (Inner Focus blocks it entirely; an ordinary target's Attack
+still drops normally as a negative control); full-battle Aroma Veil blocking Disable
+(signal-snapshot confirmation the move never actually applied); full-battle Soundproof
+blocking Growl and Bulletproof blocking Ice Ball (both signal-snapshot, plus a direct
+`blocks_move_flag` discriminator against Tackle for each); a Category C placeholder
+test matching the Anticipation/Forewarn/Frisk precedent; Mold Breaker bypass and
+Neutralizing Gas suppression, one representative per category; a negative control.
+Naming note: `m17n1_test` (a numeral suffix, not `m17n-1`) since Godot resource names
+can't contain hyphens and M17n itself is sub-tiered — not a collision risk with any
+existing suite name.
+
+A real test-authoring bug was caught and fixed on the first run (not latent — 73/75
+failed immediately): the new `move_effect_failed.emit(...)` call for Soundproof/
+Bulletproof's block initially emitted with `attacker` as the signal's target (copied
+from `[M17k]`'s `blocks_priority_move` precedent, which also uses `attacker`), but the
+test asserted `defender` — checking this codebase's actual `move_effect_failed` usage
+found a MIXED convention (most call sites use `attacker` for attacker-side failures
+like `stat_limit`/`protect_failed`, but defender-side blocks like `aroma_veil_blocked`/
+`immune` already correctly use `defender`). Since Soundproof/Bulletproof's block is
+conceptually "the defender's ability blocked this," matching the `aroma_veil_blocked`/
+`immune` shape rather than `priority_blocked`'s, the IMPLEMENTATION was corrected to
+emit `defender` (not the test) — 75/75 clean afterward, stable across 5 reruns.
+
+Full regression (direct foreground bash sweep; `pkill` was unexpectedly denied by the
+sandbox mid-session — worked around by confirming via a plain `ps aux | grep godot`
+that no process was running, then proceeding directly, since `pkill`'s only purpose is
+clearing a stray process): baseline reconfirmed exactly at 34 files/1766 assertions
+before starting (no drift from `[M17m]`). All 34 prior suite files pass unchanged.
+Total assertions across all 35 `.tscn` files: 1766 prior + 75 = **1841**, 0 failures.
+
+- 2026-07-04.
+
+### Next tier
+
+**M17n-2 — Group 2: weather/evasion + speed family, plus Air Lock (8 abilities)** per
+`docs/m17n_recon.md`: Sand Veil (8), Snow Cloak (81), Swift Swim (33), Chlorophyll (34),
+Sand Rush (146), Air Lock (76), Cloud Nine (13), Sand Spit (245). Re-verification
+against the exclusion list is that tier's own Step 0 job, not done here.
+
+## [M17n-2] Weather/evasion + speed family, plus Air Lock
+
+Scoping source: `docs/m17n_recon.md` Group 2 (8 abilities). Continues the
+ability-ID-group sequencing order `[M17n-1]` established.
+
+### Step 0 — finalized ability list
+
+All 8 IDs re-verified fresh against `include/constants/abilities.h`: Sand Veil (8),
+Cloud Nine (13), Swift Swim (33), Chlorophyll (34), Air Lock (76), Snow Cloak (81),
+Sand Rush (146), Sand Spit (245). None appear in the exclusion list. **Air Lock
+confirmed as the established KEPT precedent from Section 13.1** — re-read that section
+directly rather than assuming exclusion from its Rayquaza association; it is the
+precedent EXAMPLE the section's legendary/mythical sweep is measured against, not one
+of the sweep's own findings. **Cloud Nine and Air Lock confirmed genuinely identical**
+from source (`HasWeatherEffect`, battle_util.c L9873-9889) — the literal same `case`
+branch, no asymmetry of any kind (both non-`breakable`, both suppressible by
+Neutralizing Gas, both purely cosmetic on switch-in with zero mechanical difference).
+
+### Two shapes, plus a field-wide negation pair, plus a reactive setter
+
+**Speed doublers** (`StatusManager.effective_speed`, extending `[M17c]`'s Slush Rush
+precedent directly): Swift Swim (33, rain), Chlorophyll (34, sun), Sand Rush (146,
+sandstorm) — all ×2, source: `GetBattlerTotalSpeedStat` (battle_main.c L4657-4674).
+**A source-verified nuance NOT shared uniformly across the three**: Swift
+Swim/Chlorophyll additionally check `holdEffect != HOLD_EFFECT_UTILITY_UMBRELLA` on
+the HOLDER (rain/sun specifically can be nullified by the holder's own Umbrella);
+Sand Rush (sandstorm) and the pre-existing Slush Rush (hail) do NOT, since Utility
+Umbrella only ever strips rain/sun. Implemented via
+`ItemManager.blocks_weather_modifier(mon)` — the SAME existing helper this project's
+damage pipeline already uses — applied ONLY to Swift Swim/Chlorophyll's branches, a
+deliberate, narrow, source-confirmed exception to `[M17n-1]`'s "ability weather-checks
+don't consult Umbrella" simplification (source itself draws this exact distinction, so
+this isn't a silent reversal of that call).
+
+**Evasion (accuracy-reduction shape)** (`AbilityManager.accuracy_modifier_percent`,
+extending `[M17a]`'s Compound Eyes/Hustle precedent — now also defender-aware via new
+`defender`/`weather` trailing params): Sand Veil (8, sandstorm), Snow Cloak (81, hail)
+— both ×0.80 on the ATTACKER's accuracy (source's own shape — a damage-side accuracy
+reduction, not a phantom evasion-stage increase). Source: `GetTotalAccuracy`,
+target's-ability switch (battle_util.c L10299-10316). Both `breakable = TRUE`.
+
+**Field-wide weather negation**: Air Lock (76), Cloud Nine (13). New
+`AbilityManager.is_weather_negated(combatants, ng_active)` (field-wide presence check,
+mirroring `is_neutralizing_gas_active`'s shape but using `effective_ability_id` per
+battler rather than a raw read, since — unlike Neutralizing Gas — Air Lock/Cloud Nine
+have no `cantBeSuppressed` flag and so ARE themselves suppressible by Neutralizing
+Gas). New `BattleManager._effective_weather()`: returns `WEATHER_NONE` whenever
+`_is_weather_negated()` is true, otherwise the real field `weather` — mirroring
+source's `GetWeather()` (battle_util.c L9274-9279), the ONE accessor every
+weather-conditional check in source reads through.
+
+**This ONE substitution point is the key design decision of this tier**: rather than
+retrofitting Air Lock/Cloud Nine awareness into every individual weather-conditional
+ability function (Flower Gift, Solar Power, Dry Skin, Leaf Guard, Slush Rush, plus this
+tier's own three speed doublers and two evasion abilities), `_effective_weather()` is
+substituted at the SMALL number of `BattleManager` call sites that thread `weather`
+into a downstream ability-facing function:
+`DamageCalculator.calculate` (covers the raw rain/sun damage multiplier, Flower Gift,
+Solar Power's damage half, Dry Skin, Delta Stream — all for free, zero changes to any
+of those functions), `AbilityManager.try_end_of_turn` (covers Rain Dish/Ice
+Body/Dry Skin heal, Solar Power self-damage, for free), the end-of-turn
+sandstorm/hail chip-damage check (a stale pre-existing comment here — claiming Sand
+Veil/Sand Rush grant chip immunity — was also corrected while touching this block;
+neither actually does in source, only Overcoat/Magic Guard would, both still
+unimplemented), `StatusManager.try_secondary_effect` at both its call sites (covers
+Leaf Guard, for free), and `StatusManager.effective_speed`/`check_accuracy` (this
+tier's own new abilities, plus Slush Rush for free). **Deliberately NOT substituted**:
+the two pre-existing TrainerAI call sites (`[M17c]`'s own documented simplification,
+unrelated to this tier) and three pure MOVE-mechanic weather checks (Solar Beam's sun
+charge-skip, Growth's sun power-doubling, Aurora Veil's hail requirement) — these are
+move mechanics, not abilities, and fall outside the recon's own "damage modifiers and
+end-of-turn chip/heal" framing for Air Lock/Cloud Nine specifically.
+
+Weather-SETTING itself (Sand Spit, Drizzle, etc.) is confirmed from source to be
+UNAFFECTED by Air Lock/Cloud Nine — `TryChangeBattleWeather` doesn't check either
+ability; only weather's EFFECTS are negated, via the read-side `GetWeather()` filter.
+`try_set_weather` was correctly left untouched.
+
+**Reactive weather-setter**: Sand Spit (245) — any damaging hit landing (not
+contact-gated, matching `try_hit_reactive_effects`'s own existing `damage > 0` gate
+exactly) → attempts to set Sandstorm. New `"sand_spit_fired"` result key; BattleManager
+calls the EXISTING `try_set_weather(WEATHER_SANDSTORM, defender)` (the same function
+Drizzle/Drought/Sand Stream already use), which already no-ops if Sandstorm is already
+active, so no separate "already sandstorm" check was needed in `AbilityManager` at
+all. Source's "blocked by Primal weather" branch confirmed N/A — this project has no
+distinct Primal-weather value (`[M17d]`'s Primordial Sea/Desolate Land/Delta Stream
+reuse the ordinary weather constants directly).
+
+### `AbilityData` field checks and Mold-Breaker reachability
+
+Checked `AbilityData` before writing any code (`[M17h]`-established discipline) — no
+dormant field applies. Sand Veil/Snow Cloak correctly carry `breakable = TRUE`
+(genuinely reachable Mold-Breaker-bypass cases, attacker and holder always different
+battlers) — verified with a dedicated unit test. Swift Swim/Chlorophyll/Sand
+Rush/Air Lock/Cloud Nine/Sand Spit correctly carry NO `breakable` flag in source — all
+six are self-checks or field-wide passives with no "attacker" concept Mold Breaker
+could have any bearing on, confirmed rather than assumed.
+
+### Testing / Regression
+
+New `m17n2_test.gd`/`.tscn`: 41/41 assertions across 14 sections — ability data
+spot-checks (breakable-flag distinction between Sand Veil/Snow Cloak and the other
+six); direct unit tests for all three speed doublers with discriminating negative
+cases; the Utility Umbrella nuance (blocks Swift Swim, does NOT block Sand Rush);
+direct unit tests for Sand Veil/Snow Cloak's accuracy reduction with discriminators;
+direct `is_weather_negated` unit tests including a fainted-holder negative case;
+full-battle Swift Swim changing turn order (a normally-slower holder acts first in
+rain); **the key cross-ability interaction test this tier's task explicitly
+requested** — Air Lock present negates Swift Swim's speed boost, restoring the
+naturally-faster Pokémon's turn-order advantage despite rain being active; full-battle
+confirmation that Air Lock negates the weather damage multiplier (a Water move in
+rain deals exactly the un-boosted-baseline damage, not the rain-boosted amount);
+full-battle confirmation that Air Lock negates end-of-turn sandstorm chip damage
+entirely (compared directly against a without-Air-Lock control that DOES take chip
+damage); a Sand Veil full-battle integration-sanity check; full-battle Sand Spit
+setting Sandstorm on being hit, plus a negative case confirming no duplicate signal
+when Sandstorm is already active; Mold Breaker bypass and Neutralizing Gas
+suppression (including Air Lock's own suppressibility); a negative control.
+
+**A real, source-verified flaky-test bug was caught and fixed during this tier's own
+reruns** (not on the first run — surfaced on the 6th of an early batch of reruns,
+73/75... — 39/41 that run): the full-battle Air-Lock-negates-damage-modifier test
+(Section 8) forced the damage ROLL to 100 to match its deterministic baseline
+calculation, but did NOT also force `_force_crit = false` — an un-forced crit
+occasionally landed in the full battle (the baseline/boosted comparison calls both
+explicitly passed `force_crit=false`), inflating the full-battle damage above the
+forced-roll baseline it was being compared against. Fixed by also setting
+`bm._force_crit = false`. Stable across 8 consecutive reruns after the fix.
+
+Full regression (direct foreground bash sweep): baseline reconfirmed exactly at 35
+files/1841 assertions before starting (no drift from `[M17n-1]`; manual recount used
+since an ad-hoc extraction script undercounted `integration_test.tscn`'s
+differently-formatted output line — not a real discrepancy, just a script quirk).
+`pkill` was again unexpectedly denied by the sandbox mid-session (same as
+`[M17n-1]`) — worked around identically via a plain `ps aux | grep godot` check. All
+35 prior suite files pass unchanged. Total assertions across all 36 `.tscn` files:
+1841 prior + 41 = **1882**, 0 failures.
+
+- 2026-07-04.
+
+### Next tier
+
+**M17n-3 — Group 3: turn-order/priority modifiers (6 abilities)** per
+`docs/m17n_recon.md`: Prankster (158), Gale Wings (177), Triage (205), Quick Draw
+(259), Stall (100), Mycelium Might (298, partial — its ability-ignore half is now
+cheap since `[M17g]`'s Mold-Breaker plumbing exists, but its turn-order-last half
+needs Stall's own mechanism built first). Re-verification against the exclusion list
+is that tier's own Step 0 job, not done here.

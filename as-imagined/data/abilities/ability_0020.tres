@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 20
 ability_name = "Own Tempo"
-description = ""
-ai_rating = 0
+description = "Prevents the Pokémon from becoming confused, and blocks Intimidate."
+ai_rating = 5
+breakable = true

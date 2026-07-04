@@ -191,6 +191,15 @@ var supersweet_syrup_used: bool = false
 # volatile, unlike Supersweet Syrup above.
 var truant_loafing: bool = false
 
+# M17m: Flash Fire's persistent absorb flag (source: volatiles.flashFireBoosted,
+# battle_util.c L2344-2348/L10564). Cleared by _clear_volatiles on switch-out/faint —
+# confirmed from source that the entire `volatiles` struct housing this flag gets
+# wholesale memset to 0 at switch (battle_main.c L3145/3272/3421), the SAME shape as
+# minimized/defense_curled/focus_energy above, not a whole-battle-persistent flag like
+# supersweet_syrup_used. NOT Baton-Pass-passable (confirmed absent from source's
+# Baton-Pass volatile-copy list), matching minimized/defense_curled's precedent.
+var flash_fire_active: bool = false
+
 var fainted: bool = false
 
 

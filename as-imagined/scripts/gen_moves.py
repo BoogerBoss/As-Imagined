@@ -426,7 +426,8 @@ MOVES = [
     #   Not metronomeBanned in source; can be called by Metronome.
     {"id":  50, "name": "Disable",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 20,
-     "ignores_substitute": True, "is_disable": True},
+     "ignores_substitute": True, "is_disable": True,
+     "blocked_by_aroma_veil": True},
 
     # Counter(68)      L1736  Fighting/Phys/1/100/20, priority=-5
     #   Source: moves_info.h MOVE_COUNTER: .effect=EFFECT_COUNTER, .power=1,
@@ -491,7 +492,8 @@ MOVES = [
     #   .encoreBanned=TRUE (can't Encore an Encored move).
     {"id": 227, "name": "Encore",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 5,
-     "ban_flags": BAN_METRONOME | BAN_ENCORE, "is_encore": True},
+     "ban_flags": BAN_METRONOME | BAN_ENCORE, "is_encore": True,
+     "blocked_by_aroma_veil": True},
 
     # Mirror Coat(243) L6450  Psychic/Spec/1/100/20, priority=-5
     #   Source: moves_info.h MOVE_MIRROR_COAT: .effect=EFFECT_MIRROR_COAT,
@@ -639,9 +641,12 @@ MOVES = [
     # Ice Ball(301)  L8228  Ice/Phys/30/90/20, contact, ballistic, 5-turn power-doubling
     #   Source: moves_info.h MOVE_ICE_BALL: .effect=EFFECT_ROLLOUT (same handler as Rollout),
     #   .power=30, .accuracy=90, .pp=20, .makesContact=TRUE, .ballisticMove=TRUE.
+    #   M17n-1: `ballistic_move` was cited in this comment since M16b but never actually
+    #   set on the dict below — a real pre-existing gap, harmless until Bulletproof
+    #   existed to consume it. Fixed now, retroactively, while adding Bulletproof.
     {"id": 301, "name": "Ice Ball",
      "type": TYPE_ICE, "category": PHYS, "power": 30, "accuracy": 90, "pp": 20,
-     "makes_contact": True, "is_rollout": True},
+     "makes_contact": True, "is_rollout": True, "ballistic_move": True},
 
     # Magnitude(222)  L6063  Ground/Phys/1/100/30, spread, damages_underground, variable power
     #   Source: moves_info.h MOVE_MAGNITUDE: .effect=EFFECT_MAGNITUDE, .power=1 (placeholder;
@@ -846,6 +851,9 @@ DEFAULTS = {
     "is_conversion":             False,
     "is_conversion2":            False,
     "is_psych_up":               False,
+    # M17n-1 fields
+    "ballistic_move":            False,
+    "blocked_by_aroma_veil":     False,
 }
 
 HEADER = """\
@@ -889,6 +897,8 @@ FIELD_ORDER = [
     "is_spikes", "is_toxic_spikes", "is_stealth_rock", "is_rapid_spin", "is_trick_room",
     # M16e fields
     "is_pursuit", "is_pain_split", "is_conversion", "is_conversion2", "is_psych_up",
+    # M17n-1 fields
+    "ballistic_move", "blocked_by_aroma_veil",
 ]
 
 

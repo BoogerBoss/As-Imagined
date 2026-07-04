@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 165
 ability_name = "Aroma Veil"
-description = ""
-ai_rating = 0
+description = "Protects the Pokémon and its allies from Disable and Encore."
+ai_rating = 4
+breakable = true

@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 43
 ability_name = "Soundproof"
-description = ""
-ai_rating = 0
+description = "Full immunity to all sound-based moves."
+ai_rating = 5
+breakable = true

@@ -51,6 +51,28 @@ const BAN_DAMP: int          = 1 << 13
 @export var critical_hit_stage: int = 0   # 0–3; added to base crit stage
 @export var always_critical_hit: bool = false
 
+# M17n-1: Aroma Veil's protected-effect list. Source: battle_ai_util.c ::
+# IsAromaVeilProtectedEffect (L1961-1974) lists the full protected set (Attract,
+# Taunt, Torment, Encore, Disable, Heal Block) — but that function is ONLY ever
+# consulted by the AI's own move-scoring logic (battle_ai_main.c L1368/1431), never
+# by the real execution engine. Individually verified each protected effect's actual
+# in-battle command: Attract (`BS_TrySetInfatuation`, L12233-12251) and Torment
+# (`BS_TrySetTorment`, L12270-12286) DO check `IsAbilityOnSide(..., ABILITY_AROMA_VEIL)`
+# directly; Disable (`Cmd_disablelastusedattack`, L7898-7927) and Encore
+# (`Cmd_trysetencore`, L7929+) do NOT — a genuine, source-verified gap in this hack's
+# own execution engine (the AI "expects" Aroma Veil to block them, matching real-game
+# behavior, but the effect commands themselves never check it). Implemented here
+# matching the AI's own list (real intended behavior) rather than the execution
+# engine's apparent oversight — flagged explicitly in docs/decisions.md, not silently
+# assumed correct either way.
+#
+# This project has no generic move-effect-ID dispatch (each protected effect is its
+# own per-move boolean here, e.g. `is_disable`/`is_encore`), so this is a per-move flag
+# instead, set on whichever of the six are actually implemented today (Disable/Encore)
+# and intended to be set on Taunt/Torment/Heal Block too whenever those are eventually
+# added, so Aroma Veil automatically covers them without further code changes.
+@export var blocked_by_aroma_veil: bool = false
+
 # Packed ban flags. Test with: move.ban_flags & MoveData.BAN_X
 @export var ban_flags: int = 0
 

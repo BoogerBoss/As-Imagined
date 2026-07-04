@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 157
 ability_name = "Sap Sipper"
-description = ""
-ai_rating = 0
+description = "Boosts Attack if hit by a Grass-type move."
+ai_rating = 7
+breakable = true

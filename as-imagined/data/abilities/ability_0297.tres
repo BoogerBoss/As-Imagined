@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 297
 ability_name = "Earth Eater"
-description = ""
-ai_rating = 0
+description = "Restores HP if hit by a Ground-type move."
+ai_rating = 7
+breakable = true

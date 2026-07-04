@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 171
 ability_name = "Bulletproof"
-description = ""
-ai_rating = 0
+description = "Full immunity to bomb and ball moves."
+ai_rating = 5
+breakable = true

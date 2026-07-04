@@ -12,3 +12,4 @@ accuracy = 90
 pp = 20
 makes_contact = true
 is_rollout = true
+ballistic_move = true

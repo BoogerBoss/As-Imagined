@@ -136,12 +136,16 @@ static func calculate(
 		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
 				"defender_item_consumed": false}
 
-	# M17l: Lightning Rod / Storm Drain — full immunity + Sp. Atk +1 signal, same early
-	# gate group as Levitate above (source: same CanAbilityAbsorbMove dispatch).
-	var absorb_stat: int = AbilityManager.absorbs_move_type(defender, move.type, ng_active, attacker)
-	if absorb_stat != -1:
+	# M17l/M17m: absorb-family full immunity, same early gate group as Levitate above
+	# (source: same CanAbilityAbsorbMove dispatch). Three effect shapes packed into one
+	# Dictionary (see absorbs_move_type's doc comment and docs/decisions.md [M17m] for
+	# the cross-cutting design decision behind this contract) — resolved by
+	# BattleManager, not here, since applying a stat/heal/flag change needs signal
+	# emission this stateless calculator doesn't do.
+	var absorb: Dictionary = AbilityManager.absorbs_move_type(defender, move.type, ng_active, attacker)
+	if not absorb.is_empty():
 		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
-				"defender_item_consumed": false, "absorbed_stat_boost": absorb_stat}
+				"defender_item_consumed": false, "absorb_result": absorb}
 
 	# M17l: Telepathy — full immunity to a damaging move whose target is the attacker's
 	# own ally (doubles only). `ally` is the attacker's doubles partner, already threaded

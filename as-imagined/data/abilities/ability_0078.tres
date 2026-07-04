@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 78
 ability_name = "Motor Drive"
-description = ""
-ai_rating = 0
+description = "Boosts Speed if hit by an Electric-type move."
+ai_rating = 6
+breakable = true

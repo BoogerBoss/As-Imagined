@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 17
 ability_name = "Immunity"
-description = ""
-ai_rating = 0
+description = "Prevents the Pokémon from becoming poisoned, and cures it on switch-in."
+ai_rating = 5
+breakable = true

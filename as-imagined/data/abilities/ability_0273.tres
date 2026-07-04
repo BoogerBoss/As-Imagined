@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 ability_id = 273
-ability_name = "Well Baked Body"
-description = ""
-ai_rating = 0
+ability_name = "Well-Baked Body"
+description = "Boosts Defense sharply if hit by a Fire-type move."
+ai_rating = 7
+breakable = true
