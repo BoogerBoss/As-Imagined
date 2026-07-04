@@ -5547,6 +5547,22 @@ OWN logic (block every non-super-effective hit) is a substantially different and
 higher-risk shape than anything implemented so far in M17, matching the recon's own
 warning.
 
+### Follow-up (2026-07-04): S10.02 flaky-test fix (Friend Guard)
+
+A real flaky-test bug was found and fixed in `m17l_test.gd`'s Section 10 — the same
+bug class already documented in `[M17n-2]`'s entry. S10.02 compares damage across two
+different attacker/defender pairs (identical Attack stat, move, and target bulk,
+differing only by Friend Guard's 0.75x reduction) but never forced `_force_roll` or
+`_force_crit` on `bm` at all — an occasional high roll or crit on one side, or a low
+roll/no-crit on the other, could close or invert the expected ~25% gap. Observed
+failing 2/12 runs (~17%) in recent full-sweep runs. Fixed by setting
+`bm._force_roll = 100` and `bm._force_crit = false` before `start_battle_doubles`,
+matching `[M17n-2]`'s exact fix pattern. Stable across 15 consecutive reruns after the
+fix (45/45 every time). No assertion count change (still 45) and no production code
+changed — test-only fix.
+
+- 2026-07-04 (follow-up).
+
 ## [M17m] Absorb-family abilities — Volt Absorb / Water Absorb / Sap Sipper / Flash Fire / Motor Drive / Well-Baked Body / Earth Eater / Dry Skin's water half
 
 Scoping sources: `docs/m17m_absorb_recon.md` (a dedicated report-only pre-recon pass run
@@ -6080,6 +6096,58 @@ differently-formatted output line — not a real discrepancy, just a script quir
 
 - 2026-07-04.
 
+### Follow-up (2026-07-04): Air Lock / Sand Spit interaction formalized as a permanent test
+
+The Air Lock/Sand Spit interaction discussed after this tier shipped was verified
+empirically via a manual scratch scene at the time (not committed, since it was
+throwaway), but never actually added to `m17n2_test.gd` — a real gap flagged and
+closed in this follow-up, per this project's standing "nothing ships without a
+regression test" discipline.
+
+Re-verified directly from source before writing the test (not re-derived from the
+scratch session's own summary): `TryChangeBattleWeather` (battle_util.c L1969-2016)
+never references Air Lock/Cloud Nine at all — confirmed weather-SETTING is genuinely
+unaffected by them, only `GetWeather()` (L9274-9279), the read side, is filtered. A
+finer point the scratch session hadn't surfaced: Sand Spit's own dispatch
+(battle_util.c L4181-4196) guards its outer "already sandstorm" check via the
+FILTERED `GetWeather()` — meaning that check alone would misleadingly read "not
+sandstorm" for the entire time Air Lock is active — but the actual idempotency comes
+from `TryChangeBattleWeather`'s own internal check against the RAW `gBattleWeather`
+field, so no observable re-trigger happens either way. This project's
+`try_set_weather` mirrors that raw-field check directly, confirming
+`AbilityManager.try_hit_reactive_effects`'s Sand Spit branch correctly needs no
+separate "already sandstorm" gate of its own — a confirmed-intentional simplification,
+not a latent gap the follow-up needed to fix.
+
+New `m17n2_test.gd` Section 15 (5 new assertions, 46 total in the file): a 2-member
+bench party lets the Air Lock holder (mon1) leave the field via a natural faint
+without ending the battle; its max HP is tuned via a direct `DamageCalculator` probe
+(not hand-derived) to survive EXACTLY 3 hits and faint on the 4th, with damage/crit
+forced deterministic. Correctness is checked via signal-ORDERING against an
+accumulated, tagged event log (`weather_set`/`chip`/`fainted`), not turn-counting or
+post-battle state — matching this project's established ordering-based assertion
+precedent. Confirms: Sandstorm is successfully set (via `weather_set`, plus a direct
+`bm.weather` read taken at the exact moment the signal fires) despite Air Lock being
+present; zero chip-damage events occur across all turns while Air Lock remains (at
+least 3 full end-of-turn ticks, by construction); chip damage resumes as soon as Air
+Lock leaves the field. Weather duration is pinned to a large value inside the
+`weather_set` callback itself, eliminating the earlier scratch session's incidental
+double-`weather_set` ambiguity (natural `weather_duration` expiry) by construction
+rather than by chance. The negative control (Sand Spit triggering Sandstorm normally
+with no Air Lock present) already existed as Section 11's S11.01 — cross-referenced
+in the new section's comment, not duplicated.
+
+No production code changed — this is a pure test addition; Step 0's re-verification
+did not surface any behavior mismatch in the original `[M17n-2]` implementation.
+
+Full regression: baseline reconfirmed exactly at 36 files/1882 assertions before
+starting (no drift). `m17n2_test.tscn` reran 8 consecutive times (5 during the initial
+green run plus 7 more per this follow-up's own instruction, since `[M17n-2]` already
+had one real flaky-test bug from an under-forced RNG source) — stable at 46/46 every
+time, no repeat of that class of issue. All 35 other suite files pass unchanged. Total
+assertions across all 36 `.tscn` files: 1882 prior − 41 (old `m17n2_test` count) + 46
+(new count) = **1887**, 0 failures.
+
 ### Next tier
 
 **M17n-3 — Group 3: turn-order/priority modifiers (6 abilities)** per
@@ -6088,3 +6156,266 @@ differently-formatted output line — not a real discrepancy, just a script quir
 cheap since `[M17g]`'s Mold-Breaker plumbing exists, but its turn-order-last half
 needs Stall's own mechanism built first). Re-verification against the exclusion list
 is that tier's own Step 0 job, not done here.
+
+## [M17n-3] Turn-order/priority modifiers — Prankster / Gale Wings / Triage / Quick Draw / Stall / Mycelium Might
+
+Scoping source: `docs/m17n_recon.md` Group 3 (6 abilities). Continues the
+ability-ID-group sequencing order `[M17n-1]`/`[M17n-2]` established.
+
+### Step 0 — finalized ability list
+
+All 6 IDs re-verified fresh against `include/constants/abilities.h`: Stall (100),
+Prankster (158), Gale Wings (177), Triage (205), Quick Draw (259), Mycelium Might
+(298). None appear in the exclusion list. Confirmed via a direct grep of
+`src/data/abilities.h` that NONE of the six carries a `breakable`/`cantBe*` flag —
+every one of them is judged against the HOLDER's own chosen move, never a "defender's
+ability" an opposing Mold-Breaker attacker could bypass, so no dormant `AbilityData`
+field applies to any of them (same reasoning class as Swift Swim/Sand Rush/Air Lock in
+`[M17n-2]`). Mycelium Might is the sole partial exception — see below.
+
+### Whether an "effective X" substitution pattern applies here (it doesn't, and why)
+
+The task explicitly asked to confirm whether `[M17n-2]`'s `_effective_weather()`
+substitution pattern (one field-wide value substituted at a handful of downstream
+call sites) is warranted here. It is not, and the reason is structural: Air
+Lock/Cloud Nine are FIELD-WIDE passives that negate something read by MANY unrelated
+functions, which is why a single substitution point paid for itself. Every ability in
+this tier is instead a HOLDER-SCOPED modifier of exactly one thing — the priority
+value of the holder's own chosen move, consumed at exactly one place already (the
+turn-order sort comparator, `_phase_priority_resolution`). There is no fan-out to
+retrofit for free; the natural chokepoint already existed (`pa`/`pb` in the
+comparator), so this tier extends it directly rather than inventing a substitution
+layer that would have nothing else to cover.
+
+### Source, re-verified directly
+
+`GetBattleMovePriority` (battle_main.c L4735-4775) computes a move's priority via an
+if/else-if chain: quash (not modeled) → Gale Wings (+1, Flying-type move, gated on
+full HP at `B_GALE_WINGS = GEN_LATEST`, i.e. `>= GEN_7`, confirmed via
+`include/config/battle.h` L164) → Prankster (+1, status-category move) → Grassy Glide
+(not modeled — a move-effect flag, not an ability) → Triage (+3, the move's own
+`healingMove` DATA FLAG, confirmed via `IsHealingMove`/`include/move.h` L410-413 to be
+a genuinely separate flag from this project's `is_restore_hp`, NOT derived from any
+move-effect ID). The if/else-if structure is not a stacking concern here since a
+Pokémon can only ever hold one ability — Gale Wings/Prankster/Triage can never
+co-occur on the same holder.
+
+`GetWhichBattlerFasterArgs` (battle_main.c L4777-4829) — within a TIED priority
+bracket, checks (in this exact order) a "quick effect" (Quick Draw/Quick Claw/Custap
+Berry — this tier only implements Quick Draw) then a "slow effect" (Stall/Mycelium
+Might/Lagging Tail — this tier only implements Stall/Mycelium Might) BEFORE ever
+consulting speed or Trick Room's tiebreak inversion. Quick Draw's own gate
+(battle_main.c L5187) is `!IsBattleMoveStatus(...) && quickDrawRandom[battler]`, the
+roll itself `RandomPercentage(RNG_QUICK_DRAW, 30)` (L4987) — 30%, damaging moves only.
+
+Stall/Mycelium Might's shared "slow effect" check (L4788-4789) reads
+`abilities[battler] == ABILITY_STALL || gProtectStructs[battler].myceliumMight` — a
+source-verified nuance NOT shared uniformly: Stall applies UNCONDITIONALLY every
+turn, but the `myceliumMight` ProtectStruct flag is set (battle_main.c L4407-4408)
+only when `IsBattleMoveStatus(gChosenMoveByBattler[battler]) && ability ==
+ABILITY_MYCELIUM_MIGHT` — i.e. Mycelium Might's turn-order-last half is gated on ITS
+OWN chosen move being status-category, genuinely narrower than Stall's shape.
+
+Mycelium Might's SECOND half — the "ignores the target's ability" half the recon
+flagged as "now cheap since `[M17g]`'s Mold-Breaker plumbing exists" — is confirmed
+via `IsMoldBreakerTypeAbility` (battle_util.c L4805-4818): Mycelium Might is treated
+as a Mold-Breaker-type ability ONLY while `IsBattleMoveStatus(gCurrentMove)` is true
+for the move currently being processed — narrower than Mold Breaker's unconditional
+bypass, and gated on the CURRENT move (the move actually being resolved against a
+target), not merely the chosen-action flag the turn-order check reads.
+
+### Implementation
+
+**Priority-bonus abilities** (Gale Wings/Prankster/Triage): new
+`AbilityManager.move_priority_bonus(mon, move, ng_active) -> int`, called with NO
+`attacker` context (the holder judging its own chosen move — never a defender's
+ability an opposing Mold-Breaker attacker could bypass, same reasoning
+`effective_speed`'s Slush-Rush-family calls already established). Wired into
+`_phase_priority_resolution`'s comparator: `pa`/`pb` now = `move.priority +
+move_priority_bonus(...)`, not just the move's raw data priority. Triage required
+wiring the previously-dormant `MoveData.healing_move` field (present in the schema
+since an earlier tier, never populated by `gen_moves.py`) — set on Recover/Slack
+Off/Heal Order, the only three of source's 24 `healingMove`-flagged moves that exist
+in this project's roster (confirmed via a direct `moves_info.h` sweep; drain moves
+like Giga Drain do NOT carry the flag in source, a real distinction from
+`is_restore_hp`).
+
+**Quick Draw / Stall / Mycelium Might's slow-effect**: new
+`AbilityManager.quick_draw_activates(mon, move, ng_active, forced_roll)` and
+`has_slow_turn_order_effect(mon, move, ng_active)`. Both must be evaluated EXACTLY
+ONCE per battler per turn (re-rolling/re-deriving per pairwise comparison inside
+`sort_custom` could make the sort non-transitive) — precomputed into per-mon
+Dictionaries in `_phase_priority_resolution` before the sort begins, the same
+pattern the pre-existing `tiebreak` dict already established; `ng_active` is
+likewise hoisted above the closure and read (never mutated) inside it — a safe
+scalar capture per CLAUDE.md's lambda-capture convention, which only bites on
+in-closure mutation. The comparator checks quick-effect then slow-effect strictly
+BEFORE the speed/Trick-Room comparison, mirroring source's exact ordering. New
+`BattleManager._force_quick_draw_roll` test seam, same null-sentinel convention as
+the project's other `_force_*_roll` variables.
+
+**Mycelium Might's ability-ignore half**: `AbilityManager.effective_ability_id`
+gained a new optional trailing `attacker_move: MoveData = null` param (default
+preserves every pre-existing call site unchanged). Its Mold-Breaker-bypass branch now
+also fires for `attacker_id == ABILITY_MYCELIUM_MIGHT` when `attacker_move != null and
+attacker_move.category == 2` (status). Threaded through
+`StatusManager.try_apply_status`/`try_apply_confusion` (new optional `attacker_move`
+param) and `try_secondary_effect` (already had `move` in scope — passed straight
+through to the Shield Dust/Inner Focus checks and every status/confusion call,
+matching source's `moldBreakerActive` being a single flag consulted uniformly by
+every ability check made while processing one move, not re-derived per-check).
+Verified end-to-end via Thunder Wave bypassing Limber's paralysis immunity.
+
+### A real cross-tier gap found and fixed: `[M17k]`'s `blocks_priority_move`
+
+Re-checked `CancelerPriorityBlock` (battle_move_resolution.c L1511-1548) directly
+while confirming composition with `[M17k]`, per the task's explicit instruction —
+found it computes its `priority` via `GetChosenMovePriority` (L1512), the EXACT SAME
+ability-boosted function that feeds turn-order sorting, not the move's raw data
+priority. This project's `AbilityManager.blocks_priority_move` checked
+`move.priority <= 0` directly — correct at `[M17k]`'s own implementation time (no
+ability could alter priority yet) but a real, now-reachable gap once
+Prankster/Gale-Wings/Triage exist: a Prankster-boosted status move (raw priority 0,
+effective priority 1) must be blockable by Dazzling/Queenly Majesty/Armor Tail, and
+without this fix it silently wasn't. Fixed by computing `move.priority +
+move_priority_bonus(attacker, move, ng_active)` at the top of `blocks_priority_move`
+instead. Confirmed Stall/Quick Draw/Mycelium Might correctly do NOT interact with
+this check at all (they don't alter `GetBattleMovePriority`'s return value, only the
+same-priority-bracket tiebreak) — verified with a dedicated negative test (S14.03).
+A null-attacker/null-mon crash was also caught and fixed during this same pass
+(`move_priority_bonus`/`quick_draw_activates`/`has_slow_turn_order_effect` all gained
+defensive null guards) — surfaced by `[M17k]`'s own pre-existing "null-attacker
+sanity check" unit test, which called `blocks_priority_move` with `attacker = null`
+and crashed once `move_priority_bonus` started being called unconditionally from
+inside it.
+
+### Composition with `[M16d]` Trick Room and `[M16e]` Pursuit
+
+Trick Room: confirmed the priority-bracket comparison (now including this tier's
+ability bonuses) still runs strictly BEFORE Trick Room's speed-tiebreak inversion —
+verified with a dedicated test (a Prankster-boosted status move still wins its
+priority bracket under Trick Room) plus a second test proving Stall's slow-effect
+overrides even the tiebreak preference Trick Room would otherwise grant a slower
+Pokémon (Stall's holder, naturally slower, would normally act FIRST under Trick Room
+alone — Stall still forces it last). Pursuit: confirmed structurally disjoint (its
+interception logic operates entirely on switch-vs-move branching, resolved before the
+tied-priority-bracket branch this tier touches is ever reached) — no dedicated test
+needed, the same reasoning the M16 Review already established for Trick-Room×Pursuit.
+
+### `AbilityData` field check
+
+Checked before writing any code (`[M17h]`-established discipline): no dormant field
+applies to any of the six — confirmed via a direct grep of `src/data/abilities.h`
+that none carries `breakable`/`cantBe*`.
+
+### Testing / Regression
+
+New `m17n3_test.gd`/`.tscn`: 54/54 assertions across 16 sections — ability data
+spot-checks (all six non-breakable; the `healing_move` flag on Recover/Slack
+Off/Heal Order, confirmed absent on Giga Drain); direct unit tests for
+`move_priority_bonus` (all three abilities with discriminating negative cases, plus
+null-mon/null-move guards), `quick_draw_activates` (forced-true/forced-false/status-
+gate/non-holder), and `has_slow_turn_order_effect` (Stall unconditional vs. Mycelium
+Might's status-gated nuance); full-battle turn-order confirmation for each of the six
+abilities with a discriminator proving the specific gate condition actually matters
+(Gale Wings' full-HP gate, Triage's narrower-than-Prankster healing_move gate, Quick
+Draw's forced-roll and status-move gate, Mycelium Might's own-move-category gate);
+Mycelium Might's ability-ignore half bypassing Limber via Thunder Wave, with a
+plain-attacker negative control; the Trick Room composition tests described above;
+the `[M17k]` composition tests (the real gap, its fix, and Stall's non-interaction);
+Neutralizing Gas suppression for all six; a negative control. Stable across 8
+consecutive reruns, no flaky-test issues found this tier.
+
+Full regression (direct foreground bash sweep): baseline reconfirmed exactly at 36
+files/1887 assertions before starting (no drift from `[M17n-2]`'s follow-up). All 36
+prior suite files pass unchanged, including `m17k_test` (26/26, confirming the
+`blocks_priority_move` fix didn't change behavior for any ability without a priority
+bonus) and every other turn-order-adjacent suite (`m16d_test`, `m16e_test`,
+`m16_review_test`). Total assertions across all 37 `.tscn` files: 1887 prior + 54 =
+**1941**, 0 failures.
+
+- 2026-07-04.
+
+### Follow-up (2026-07-04, same day): two open items closed before M17n-4
+
+**1. Dark-type immunity to Prankster-boosted status moves — a genuine gap, now
+fixed.** Not addressed anywhere in the original `[M17n-3]` entry above (confirmed by
+direct grep — this was a real omission, not just left out of a chat summary).
+Re-checked source directly: `BlocksPrankster` (battle_util.c L9234-9252), dispatched
+from `CanTargetBlockPranksterMove` → `CanMoveBeBlockedByTarget`, an execution-time
+canceler (battle_move_resolution.c L2022, called with the SAME ability-boosted
+`movePriority` this tier's `move_priority_bonus` already computes) — a status move
+whose priority was elevated specifically by Prankster fails outright against a
+Dark-type target, Gen 7+ only (`B_PRANKSTER_DARK_TYPES = GEN_LATEST`,
+`include/config/battle.h` L46). The gating condition
+(`gProtectStructs[attacker].pranksterElevated`) turned out to need no new stored
+flag at all: that flag is set (battle_main.c L4758-4762) in EXACTLY the same
+circumstance as `move_priority_bonus`'s own Prankster branch (status-category move +
+Prankster ability), so the check is derived fresh from the same two facts rather than
+cached. Confirmed NOT Mold-Breaker-bypassable — `BlocksPrankster` gates on the
+DEFENDER's TYPE, not an ability, and no `IsMoldBreakerTypeAbility` call appears
+anywhere in it. New `AbilityManager.blocks_prankster_move(attacker, defender, move,
+ng_active)`, wired into `_phase_move_execution` immediately alongside the existing
+foe-targeting type-immunity check (the natural, already-established position for
+"does this move even connect" gates ahead of stat-change/secondary-effect
+application). New `m17n3_test.gd` Section 17 (8 new assertions, 62 total in the
+file): direct unit tests (blocked by a Dark-type target, NOT blocked by a
+non-Dark target, NOT blocked when the move is damaging, NOT blocked when the
+attacker lacks Prankster, null-move guard) plus a full-battle pair (Growl fails
+outright against a Dark-type target with the `prankster_dark_immune` reason,
+DOES lower a non-Dark target's Attack normally). Stable across 6 reruns. Full
+regression: baseline reconfirmed exactly at 37 files/1941 assertions before starting
+(no drift); all 36 other suites pass unchanged, confirming this addition doesn't
+interact with anything outside this tier's own new abilities (no prior suite used
+Prankster). Total assertions across all 37 `.tscn` files: 1941 prior − 54 (old
+`m17n3_test` count) + 62 (new count) = **1949**, 0 failures.
+
+**2. Explicit sequencing rationale: Group 7 next, not Group 4.** Re-read
+`docs/m17n_recon.md`'s Group 4 and Group 7 sections side by side and re-verified
+Group 7's core claim against the current codebase rather than trusting the recon's
+age: `BattleManager._set_mon_type`/`_reset_mon_type` and
+`BattlePokemon.original_types` (Color Change/Protean/Libero's target infrastructure)
+and `ItemManager.is_choice_item` (Gorilla Tactics' target infrastructure) all still
+exist, unchanged by any of `[M17n-1]`/`[M17n-2]`/`[M17n-3]` — confirmed via direct
+grep, not assumed. Group 7 (6 abilities: Color Change 16, Protean 168, Libero 236,
+Multitype 121, RKS System 225, Gorilla Tactics 255) therefore needs ZERO new
+`AbilityData`/`MoveData` fields and ZERO new `BattleManager` mechanisms — every one
+of its six abilities is a new ability-ID branch routed through 100%-precedented,
+already-built code. Group 4 (27 abilities), while individually cheap and matching
+`[M17a]`'s already-proven shape for most entries, is a substantially larger unit of
+work that also contains genuinely new pieces: the Ruin quartet needs a brand-new
+"persistent field aura" mechanism (not a variant of anything built so far); Mega
+Launcher needs an actual NEW `MoveData.pulse_move` flag (unlike Iron
+Fist/Strong Jaw/Sharpness, whose `punching_move`/`biting_move`/`slicing_move` fields
+turned out to already be dormant in the schema, the same "already there, just
+unwired" pattern this tier's own `healing_move` fix just closed — worth flagging so
+whoever picks up Group 4 checks the schema before assuming any of these three need
+new fields); Slow Start needs a new turn-counter volatile. (One partial
+cost-reduction found in passing: Stakeout's "did the target switch in this turn"
+need is already tracked via the existing `BattlePokemon.switched_in_this_turn`
+field, reset every turn in `_phase_priority_resolution` — so that piece, at least,
+is cheaper than the recon assumed.) Given this project's established M17n cadence of
+small, tightly-scoped sub-tiers (22, 8, 6 abilities so far) and that Group 4's one
+genuinely novel piece (the Ruin quartet) deserves its own focused design pass rather
+than being buried in a 27-ability batch — the same reasoning the recon itself already
+applied to keep Wonder Guard from being "an afterthought at the tail of a large
+grab-bag tier" — **Group 7 is the more natural next step**, not Group 4. Group 4
+remains queued immediately after Group 7, and per the recon's own framing may be
+worth splitting further (an ordinary-abilities pass plus a separate Ruin-quartet
+pass), matching the treatment already planned for Group 8's grab-bag.
+
+- 2026-07-04 (follow-up).
+
+### Next tier
+
+**M17n-4 — Group 7: type-mutation/choice-lock cheap reuses (6 abilities)**: Color
+Change (16), Protean (168), Libero (236), Multitype (121), RKS System (225), Gorilla
+Tactics (255) — see the sequencing rationale immediately above. Not re-verified
+against the exclusion list here — that tier's own Step 0 job. Group 4 (Damage-pipeline
+leftovers, 27 abilities, detailed below) follows immediately after: Sturdy (5), Iron
+Fist (89), Technician (101), Reckless (120), Sheer Force (125), Analytic (148), Skill
+Link (92), Super Luck (105), Tangled Feet (77), Strong Jaw (173), Mega Launcher (178),
+Stakeout (198), Water Bubble (199), Long Reach (203), Fluffy (218), Punk Rock (244),
+Sharpness (292), Supreme Overlord (293), Slow Start (112), Plus (57), Minus (58),
+Serene Grace (32), and the Ruin quartet (Vessel/Sword/Tablets/Beads of Ruin, 284-287,
+a genuinely new "field aura" shape).

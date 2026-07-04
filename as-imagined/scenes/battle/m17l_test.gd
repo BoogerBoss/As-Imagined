@@ -452,6 +452,13 @@ func _test_section_10_friend_guard_full_battle_doubles() -> void:
 	var move_executed_events := []
 	var bm := BattleManager.new()
 	add_child(bm)
+	# S10.02 compares damage across two DIFFERENT attacker/defender pairs (same Attack
+	# stat, same move, same target bulk, differing only by Friend Guard's 0.75x
+	# reduction) — an unforced damage roll and/or crit on either side can close or
+	# invert the expected 25% gap. Force both deterministic, same fix pattern as
+	# [M17n-2]'s decisions.md-documented flaky-test fix.
+	bm._force_roll = 100
+	bm._force_crit = false
 	bm.move_executed.connect(func(a, d, m, dmg): move_executed_events.push_back([a, d, m, dmg]))
 
 	# combatant indices: 0,1 = attackers; 2,3 = fg_defender, fg_ally.

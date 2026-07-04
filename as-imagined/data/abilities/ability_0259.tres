@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 259
 ability_name = "Quick Draw"
-description = ""
-ai_rating = 0
+description = "Enables the Pokémon to move first sometimes."
+ai_rating = 6

@@ -572,7 +572,7 @@ MOVES = [
     #   .accuracy=0, .ignoresProtect=TRUE, .healingMove=TRUE.
     {"id": 105, "name": "Recover",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
-     "ignores_protect": True, "is_restore_hp": True},
+     "ignores_protect": True, "is_restore_hp": True, "healing_move": True},
 
     # Focus Energy(116) L3008  Normal/Status/0/0/30
     #   Source: moves_info.h MOVE_FOCUS_ENERGY: .effect=EFFECT_FOCUS_ENERGY, .pp=30,
@@ -586,7 +586,7 @@ MOVES = [
     #   .accuracy=0, .ignoresProtect=TRUE, .healingMove=TRUE.
     {"id": 303, "name": "Slack Off",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
-     "ignores_protect": True, "is_restore_hp": True},
+     "ignores_protect": True, "is_restore_hp": True, "healing_move": True},
 
     # Sheer Cold(329) L8977  Ice/Spec/1/30/5, OHKO
     #   Source: moves_info.h MOVE_SHEER_COLD: .effect=EFFECT_OHKO, .power=1, .type=TYPE_ICE,
@@ -601,7 +601,7 @@ MOVES = [
     #   .type=TYPE_BUG, .accuracy=0, .ignoresProtect=TRUE, .healingMove=TRUE.
     {"id": 456, "name": "Heal Order",
      "type": TYPE_BUG, "category": STAT, "accuracy": 0, "pp": 10,
-     "ignores_protect": True, "is_restore_hp": True},
+     "ignores_protect": True, "is_restore_hp": True, "healing_move": True},
 
     # ── M16b: Tier B move effects ─────────────────────────────────────────────
 
@@ -854,6 +854,8 @@ DEFAULTS = {
     # M17n-1 fields
     "ballistic_move":            False,
     "blocked_by_aroma_veil":     False,
+    # M17n-3 fields
+    "healing_move":              False,
 }
 
 HEADER = """\
@@ -899,6 +901,8 @@ FIELD_ORDER = [
     "is_pursuit", "is_pain_split", "is_conversion", "is_conversion2", "is_psych_up",
     # M17n-1 fields
     "ballistic_move", "blocked_by_aroma_veil",
+    # M17n-3 fields
+    "healing_move",
 ]
 
 

@@ -207,6 +207,10 @@ var _force_healer_roll: Variant = null
 var _force_effect_spore_roll: Variant = null
 var _force_cursed_body_roll: Variant = null
 
+# M17n-3: force Quick Draw's 30% per-battler-per-turn roll (evaluated once before the
+# turn-order sort, same null-sentinel convention as the other _force_* roll seams).
+var _force_quick_draw_roll: Variant = null
+
 # M9: pre-queued Baton Pass target slots per combatant index (-1 = auto-select first valid).
 # M14a: indexed by combatant index; singles uses [0] and [1].
 var _baton_pass_queues: Array = [[], [], [], []]
@@ -569,6 +573,27 @@ func _phase_priority_resolution() -> void:
 	for mon in _combatants:
 		tiebreak[mon] = randi()
 
+	# M17n-3: Quick Draw's roll and Mycelium Might's status-move-gated slow-effect
+	# must each be evaluated EXACTLY ONCE per battler per turn — not re-derived per
+	# pairwise comparison, which could otherwise make the sort non-transitive — so
+	# both are precomputed here into per-mon Dictionaries, the same pattern the
+	# pre-rolled `tiebreak` dict right above already establishes. `ng_active` is
+	# likewise hoisted so the comparator closure below can just read it (a safe,
+	# read-only scalar capture — the documented lambda-scalar-capture pitfall only
+	# bites on IN-closure mutation, never on reading a value fixed before the
+	# closure is defined).
+	var ng_active: bool = _is_neutralizing_gas_active()
+	var quick_effect: Dictionary = {}
+	var slow_effect: Dictionary = {}
+	for mon in _combatants:
+		var midx: int = _actor_indices.get(mon, _combatants.find(mon))
+		var chosen_move: MoveData = \
+				_chosen_moves[midx] if _chosen_switch_slots[midx] < 0 else null
+		quick_effect[mon] = AbilityManager.quick_draw_activates(
+				mon, chosen_move, ng_active, _force_quick_draw_roll)
+		slow_effect[mon] = AbilityManager.has_slow_turn_order_effect(
+				mon, chosen_move, ng_active)
+
 	_turn_order.sort_custom(func(a: BattlePokemon, b: BattlePokemon) -> bool:
 		# M14a: use _actor_indices (combatant index 0..N-1) to look up chosen actions,
 		# not _actor_sides (which is now 0 or 1, not the combatant position).
@@ -606,13 +631,29 @@ func _phase_priority_resolution() -> void:
 		#   == priority2) { ... speed comparison, inverted under STATUS_FIELD_TRICK_ROOM
 		#   ... } else if (priority1 < priority2) strikesFirst = -1; else strikesFirst = 1;`
 		#   — the priority branch runs first and never consults Trick Room at all.
+		# M17n-3: effective priority now includes Gale Wings/Prankster/Triage's
+		# per-move bonus (mirrors GetBattleMovePriority, battle_main.c L4735-4775),
+		# not just the move's own raw data priority.
 		var move_a: MoveData = _chosen_moves[ia]
 		var move_b: MoveData = _chosen_moves[ib]
-		var pa: int = move_a.priority if move_a else 0
-		var pb: int = move_b.priority if move_b else 0
+		var pa: int = (move_a.priority + AbilityManager.move_priority_bonus(a, move_a, ng_active)) \
+				if move_a else 0
+		var pb: int = (move_b.priority + AbilityManager.move_priority_bonus(b, move_b, ng_active)) \
+				if move_b else 0
 		if pa != pb:
 			return pa > pb
-		var ng_active: bool = _is_neutralizing_gas_active()
+		# M17n-3: Quick Draw (always first) / Stall & Mycelium Might (always last)
+		# within a tied priority bracket — checked strictly BEFORE the speed
+		# comparison, mirroring source's own ordering exactly (battle_main.c
+		# L4786-4800: quick-effect check, then slow-effect check, then speed).
+		if quick_effect[a] and not quick_effect[b]:
+			return true
+		if quick_effect[b] and not quick_effect[a]:
+			return false
+		if slow_effect[a] and not slow_effect[b]:
+			return false
+		if slow_effect[b] and not slow_effect[a]:
+			return true
 		var eff_w: int = _effective_weather()
 		var sa: int = StatusManager.effective_speed(a, eff_w, ng_active)
 		var sb: int = StatusManager.effective_speed(b, eff_w, ng_active)
@@ -1694,6 +1735,16 @@ func _phase_move_execution() -> void:
 				_current_actor_index += 1
 				_set_phase(BattlePhase.FAINT_CHECK)
 				return
+
+		# M17n-3 follow-up: a Prankster-boosted status move fails against a Dark-type
+		# target (Gen 7+). Source: BlocksPrankster (battle_util.c L9234-9252), an
+		# execution-time canceler positioned alongside the type-immunity check above.
+		if foe_targeting and AbilityManager.blocks_prankster_move(attacker, defender, move, ng_active):
+			move_effect_failed.emit(defender, "prankster_dark_immune")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
 
 		if move.stat_change_stat >= 0:
 			var stat_target: BattlePokemon = attacker if move.stat_change_self else defender

@@ -47,6 +47,7 @@ func _ready() -> void:
 	_test_section_12_mold_breaker_bypass()
 	_test_section_13_neutralizing_gas_suppression()
 	_test_section_14_negative_case()
+	_test_section_15_air_lock_sand_spit_interaction_full_battle()
 
 	var total := _pass + _fail
 	print("m17n2_test: %d/%d passed" % [_pass, total])
@@ -515,3 +516,122 @@ func _test_section_14_negative_case() -> void:
 
 	_chk("S14.03 ordinary Pokémon: does not negate weather",
 			AbilityManager.is_weather_negated([plain]) == false)
+
+
+# ── Section 15: Air Lock / Sand Spit interaction — formalizes a post-hoc scratch ────
+# check into a permanent regression test ([M17n-2] follow-up).
+#
+# Confirmed from source before writing this: `TryChangeBattleWeather`
+# (battle_util.c L1969-2016) never references Air Lock/Cloud Nine — weather-SETTING is
+# unaffected by them; only `GetWeather()` (L9274-9279), the READ side, is filtered.
+# Sand Spit's own dispatch (battle_util.c L4181-4196) guards its outer "already
+# sandstorm" check via the FILTERED `GetWeather()` (meaning, oddly, that check alone
+# would look "not sandstorm" the whole time Air Lock is present) — but the real
+# idempotency comes from `TryChangeBattleWeather`'s OWN internal check against the RAW
+# `gBattleWeather` field, so no observable re-trigger happens either way. This
+# project's `try_set_weather` (battle_manager.gd) mirrors that exact raw-field check
+# directly (`if weather == weather_type: return false`), so `AbilityManager.
+# try_hit_reactive_effects`'s Sand Spit branch doesn't need its own "already
+# sandstorm" gate at all — confirmed intentional, not a gap.
+#
+# Scenario: an Air Lock holder (mon1, on a 2-member bench so the battle continues past
+# its own faint) attacks a Sand Spit holder (defender) for exactly 3 turns before
+# fainting from defender's counter-attacks on the 4th (HP tuned via a direct
+# DamageCalculator probe so the faint turn is exact, not guessed) — Sand Spit triggers
+# on mon1's FIRST hit (turn 1), setting Sandstorm despite Air Lock being present the
+# whole time. Correctness is checked via signal ORDERING (not turn-counting or
+# post-battle state): every accumulated event is tagged and timestamped by insertion
+# order, then checked against the index of mon1's `pokemon_fainted` event — matching
+# this project's established ordering-based assertion pattern (e.g. the M16 Review's
+# Pursuit-vs-switch ordering tests) rather than manually pumping the state machine
+# turn-by-turn.
+func _test_section_15_air_lock_sand_spit_interaction_full_battle() -> void:
+	var tackle := _load_move(33)
+	var air_lock := _load_ability(76)
+	var sand_spit := _load_ability(245)
+
+	# Probe the exact per-hit damage against mon1's real Defense stat first, so its
+	# max_hp can be tuned to survive EXACTLY 3 hits and faint on the 4th — avoids
+	# hand-deriving the damage formula, matching this project's established
+	# compute-HP-from-a-known-per-hit-damage testing convention. Weather is WEATHER_NONE
+	# here deliberately: Air Lock is present for all 4 real hits (mon1 hasn't fainted
+	# yet when each hit's damage is calculated, including the lethal 4th), so the
+	# EFFECTIVE weather during every one of mon1's real hits is also NONE — this probe
+	# matches the real in-battle damage exactly, not just approximately.
+	var probe_defender := _make_mon("Probe", [TypeChart.TYPE_NORMAL], 100, 100, 60, 60, 60, 100)
+	var probe_target := _make_mon("ProbeTarget", [TypeChart.TYPE_NORMAL], 999, 60, 60, 60, 60, 60)
+	var probe_result: Dictionary = DamageCalculator.calculate(probe_defender, probe_target, tackle, 100, false)
+	var per_hit_damage: int = probe_result["damage"]
+
+	var mon1 := _make_mon("AirLockLeavesViaFaint", [TypeChart.TYPE_NORMAL],
+			per_hit_damage * 3 + 1, 60, 60, 60, 60, 200)
+	mon1.ability = air_lock
+	mon1.add_move(tackle)
+	var mon2 := _make_mon("BenchNoAirLock", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 60)
+	mon2.add_move(tackle)
+	var defender := _make_mon("SandSpitDefenderN2", [TypeChart.TYPE_NORMAL], 500, 100, 60, 60, 60, 100)
+	defender.ability = sand_spit
+	defender.add_move(tackle)
+
+	var events := []  # ordered log: {"type": "weather_set"/"chip"/"fainted", ...}
+	var weather_set_confirmations := []
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm._force_roll = 100
+	bm._force_crit = false
+	bm.weather_set.connect(func(p, w):
+		events.append({"type": "weather_set", "mon": p, "w": w})
+		weather_set_confirmations.append(bm.weather == DamageCalculator.WEATHER_SANDSTORM)
+		# Pin the duration so it can't expire naturally mid-test (this tier's own task
+		# explicitly flagged the earlier scratch test's ambiguous double-weather_set,
+		# caused by natural expiry, as something to avoid here).
+		bm.weather_duration = 20)
+	bm.weather_damage.connect(func(m, amt): events.append({"type": "chip", "mon": m, "amt": amt}))
+	bm.pokemon_fainted.connect(func(p): events.append({"type": "fainted", "mon": p}))
+
+	var player_party := BattleParty.new()
+	player_party.members = [mon1, mon2]
+	player_party.active_index = 0
+
+	bm.start_battle_with_parties(player_party, BattleParty.single(defender))
+
+	# 1. Sandstorm was successfully SET despite Air Lock (mon1) being present.
+	_chk("S15.01 Sand Spit set Sandstorm despite Air Lock being present",
+			events.any(func(e): return e["type"] == "weather_set" and e["w"] == DamageCalculator.WEATHER_SANDSTORM))
+	_chk("S15.02 bm.weather read WEATHER_SANDSTORM at the exact moment the signal fired",
+			not weather_set_confirmations.is_empty() and weather_set_confirmations[0] == true)
+
+	# Locate mon1's faint in the ordered event log.
+	var fainted_idx := -1
+	for i in range(events.size()):
+		if events[i]["type"] == "fainted" and events[i]["mon"] == mon1:
+			fainted_idx = i
+			break
+	_chk("S15.03 mon1 (Air Lock holder) did eventually faint (sanity check the scenario ran as designed)",
+			fainted_idx != -1)
+
+	var chip_before_faint := false
+	var chip_after_faint := false
+	for i in range(events.size()):
+		if events[i]["type"] == "chip":
+			if fainted_idx == -1 or i < fainted_idx:
+				chip_before_faint = true
+			else:
+				chip_after_faint = true
+
+	# 2. While Air Lock (mon1) remains on the field, ZERO chip-damage events occur —
+	# spans at least 3 end-of-turn ticks by construction (mon1 survives exactly 3 hits
+	# before fainting on the 4th).
+	_chk("S15.04 NO sandstorm chip damage occurred at any point while Air Lock was present",
+			not chip_before_faint)
+
+	# 3. Once Air Lock leaves the field (faints; mon2, which has no Air Lock, replaces
+	# it), chip damage resumes — proving Sandstorm was genuinely set and unmodified
+	# the whole time, only its EFFECTS were filtered at the read side. (The negative
+	# control — Sand Spit triggering Sandstorm chip damage normally with NO Air Lock
+	# anywhere — already exists as S11.01/the implicit baseline behavior Section 11
+	# tests; not duplicated here.)
+	_chk("S15.05 sandstorm chip damage resumed once Air Lock left the field",
+			chip_after_faint)
+
+	bm.queue_free()

@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 100
 ability_name = "Stall"
-description = ""
-ai_rating = 0
+description = "The Pokémon moves after all other Pokémon, regardless of priority."
+ai_rating = -2

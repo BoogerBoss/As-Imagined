@@ -7,5 +7,4 @@ script = ExtResource("1")
 
 ability_id = 298
 ability_name = "Mycelium Might"
-description = ""
-ai_rating = 0
+description = "The Pokémon moves after all other Pokémon that used a status move, and always uses status moves without being affected by the target's Ability."

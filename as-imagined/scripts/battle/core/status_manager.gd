@@ -89,7 +89,8 @@ static func try_apply_status(
 		ally: BattlePokemon = null,
 		ng_active: bool = false,
 		attacker: BattlePokemon = null,
-		weather: int = DamageCalculator.WEATHER_NONE) -> bool:
+		weather: int = DamageCalculator.WEATHER_NONE,
+		attacker_move: MoveData = null) -> bool:
 
 	# One major status at a time.
 	# Source: CanSetNonVolatileStatus L5391 — "already has STATUS1_ANY → fails"
@@ -101,13 +102,17 @@ static func try_apply_status(
 	# same way it bypasses any other breakable defensive ability — `attacker` is
 	# threaded through for exactly that (null at every non-move call site, e.g. hazard
 	# poisoning on switch-in, correctly leaving Mold Breaker inapplicable there).
-	var mon_id: int = AbilityManager.effective_ability_id(mon, ng_active, attacker)
+	# M17n-3: `attacker_move` additionally threads through Mycelium Might's
+	# status-move-gated Mold-Breaker-type bypass (see `effective_ability_id`'s doc
+	# comment) — null at every pre-existing call site, unaffected.
+	var mon_id: int = AbilityManager.effective_ability_id(mon, ng_active, attacker, attacker_move)
 	if mon_id == AbilityManager.ABILITY_PURIFYING_SALT:
 		return false
 	if mon_id == AbilityManager.ABILITY_LEAF_GUARD and weather == DamageCalculator.WEATHER_SUN:
 		return false
 
-	var ally_ability_id: int = AbilityManager.effective_ability_id(ally, ng_active, attacker) \
+	var ally_ability_id: int = \
+			AbilityManager.effective_ability_id(ally, ng_active, attacker, attacker_move) \
 			if (ally != null and not ally.fainted) else -1
 	if status == BattlePokemon.STATUS_SLEEP:
 		if mon_id == AbilityManager.ABILITY_SWEET_VEIL \
@@ -188,12 +193,17 @@ static func try_apply_confusion(
 		mon: BattlePokemon,
 		force_confusion_turns: Variant = null,
 		ng_active: bool = false,
-		attacker: BattlePokemon = null) -> bool:
+		attacker: BattlePokemon = null,
+		attacker_move: MoveData = null) -> bool:
 
 	if mon.confusion_turns > 0:
 		return false  # already confused
 
-	if AbilityManager.effective_ability_id(mon, ng_active, attacker) == AbilityManager.ABILITY_OWN_TEMPO:
+	# M17n-3: `attacker_move` threads through Mycelium Might's status-move-gated
+	# Mold-Breaker-type bypass of Own Tempo, null (no bypass) at every pre-existing
+	# call site.
+	if AbilityManager.effective_ability_id(mon, ng_active, attacker, attacker_move) \
+			== AbilityManager.ABILITY_OWN_TEMPO:
 		return false
 
 	mon.confusion_turns = force_confusion_turns if force_confusion_turns != null \
@@ -676,28 +686,36 @@ static func try_secondary_effect(
 		if not fires:
 			return false
 
+	# M17n-3: `move` is passed through as `attacker_move` below — Mycelium Might's
+	# status-move-gated Mold-Breaker-type bypass applies uniformly to every ability
+	# check made while processing one move (source's `moldBreakerActive` is a single
+	# flag consulted by every check during that move's resolution, not re-derived
+	# per-check), so Shield Dust/Inner Focus are threaded through identically to the
+	# status/confusion calls below.
 	if is_true_secondary \
-			and AbilityManager.effective_ability_id(defender, ng_active, attacker) == AbilityManager.ABILITY_SHIELD_DUST:
+			and AbilityManager.effective_ability_id(defender, ng_active, attacker, move) \
+					== AbilityManager.ABILITY_SHIELD_DUST:
 		return false
 
 	match move.secondary_effect:
 		MoveData.SE_BURN:
-			return try_apply_status(defender, BattlePokemon.STATUS_BURN, null, null, ng_active, attacker, weather)
+			return try_apply_status(defender, BattlePokemon.STATUS_BURN, null, null, ng_active, attacker, weather, move)
 		MoveData.SE_FREEZE:
-			return try_apply_status(defender, BattlePokemon.STATUS_FREEZE, null, null, ng_active, attacker, weather)
+			return try_apply_status(defender, BattlePokemon.STATUS_FREEZE, null, null, ng_active, attacker, weather, move)
 		MoveData.SE_PARALYSIS:
-			return try_apply_status(defender, BattlePokemon.STATUS_PARALYSIS, null, null, ng_active, attacker, weather)
+			return try_apply_status(defender, BattlePokemon.STATUS_PARALYSIS, null, null, ng_active, attacker, weather, move)
 		MoveData.SE_SLEEP:
-			return try_apply_status(defender, BattlePokemon.STATUS_SLEEP, null, null, ng_active, attacker, weather)
+			return try_apply_status(defender, BattlePokemon.STATUS_SLEEP, null, null, ng_active, attacker, weather, move)
 		MoveData.SE_TOXIC:
-			return try_apply_status(defender, BattlePokemon.STATUS_TOXIC, null, null, ng_active, attacker, weather)
+			return try_apply_status(defender, BattlePokemon.STATUS_TOXIC, null, null, ng_active, attacker, weather, move)
 		MoveData.SE_CONFUSION:
-			return try_apply_confusion(defender, null, ng_active, attacker)
+			return try_apply_confusion(defender, null, ng_active, attacker, move)
 		MoveData.SE_FLINCH:
 			# M17n-1: ABILITY_INNER_FOCUS blocks flinch specifically (not Shield Dust's
 			# broad gate above) — battle_util.c L8830, same CancelerFlinch-adjacent
 			# switch Steadfast's OWN reactive trigger already lives next to.
-			if AbilityManager.effective_ability_id(defender, ng_active, attacker) == AbilityManager.ABILITY_INNER_FOCUS:
+			if AbilityManager.effective_ability_id(defender, ng_active, attacker, move) \
+					== AbilityManager.ABILITY_INNER_FOCUS:
 				return false
 			# Flinch: caller must check turn order and set defender.flinched.
 			# We return true to signal the roll succeeded.

@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 177
 ability_name = "Gale Wings"
-description = ""
-ai_rating = 0
+description = "Gives priority to Flying-type moves when the Pokémon is at full HP."
+ai_rating = 6

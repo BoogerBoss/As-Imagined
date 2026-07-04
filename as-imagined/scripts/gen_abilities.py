@@ -1182,6 +1182,68 @@ ABILITIES = [
     {"id": 245, "name": "Sand Spit",
      "description": "Summons a sandstorm when hit by an attack.",
      "ai_rating": 4},
+
+    # ── M17n-3: Turn-order/priority modifiers ────────────────────────────────────────
+    # Source: docs/m17n_recon.md Group 3 (final list locked in docs/decisions.md
+    # [M17n-3]). None of these six carry any breakable/cantBe* flag in source
+    # (confirmed via a direct grep of src/data/abilities.h) — they're all judged
+    # against the HOLDER's own chosen move, never a "defender's ability" an opposing
+    # Mold-Breaker attacker could bypass, so no dormant AbilityData field applies to
+    # any of them (same reasoning class as Swift Swim/Sand Rush/Air Lock in [M17n-2]).
+
+    # Source: battle_main.c :: GetWhichBattlerFasterArgs (L4788-4789) — always acts
+    # last within a tied priority bracket, unconditionally every turn. No breakable
+    # flag (src/data/abilities.h L750-755).
+    {"id": 100, "name": "Stall",
+     "description": "The Pokémon moves after all other Pokémon, regardless of priority.",
+     "ai_rating": -2},
+
+    # Source: battle_main.c :: GetBattleMovePriority (L4758-4762) — status-category
+    # moves get +1 priority. No breakable flag (src/data/abilities.h L1190-1195).
+    {"id": 158, "name": "Prankster",
+     "description": "Gives priority to status moves.",
+     "ai_rating": 7},
+
+    # Source: same function, L4752-4757 — Flying-type moves get +1 priority, gated on
+    # full HP at GEN_LATEST config (B_GALE_WINGS = GEN_LATEST, include/config/battle.h
+    # L164). No breakable flag (src/data/abilities.h L1340-1345).
+    {"id": 177, "name": "Gale Wings",
+     "description": "Gives priority to Flying-type moves when the Pokémon is at full HP.",
+     "ai_rating": 6},
+
+    # Source: same function, L4769-4772 — the holder's own healing moves (the
+    # per-move `healingMove` data flag, NOT the same thing as this project's
+    # is_restore_hp — Bitter Blade/Matcha Gotcha also carry it in source but aren't
+    # implemented here) get +3 priority. No breakable flag (src/data/abilities.h
+    # L1547-1552).
+    {"id": 205, "name": "Triage",
+     "description": "Gives extra priority to the Pokémon's healing moves.",
+     "ai_rating": 6},
+
+    # Source: battle_main.c L5187 (ability check) + L4987 (the roll itself,
+    # RandomPercentage(RNG_QUICK_DRAW, 30)) — 30% chance to act first within a tied
+    # priority bracket, gated on the chosen move NOT being status-category
+    # (!IsBattleMoveStatus). No breakable flag (src/data/abilities.h L1992-1997).
+    {"id": 259, "name": "Quick Draw",
+     "description": "Enables the Pokémon to move first sometimes.",
+     "ai_rating": 6},
+
+    # Source: two independent halves, both gated on the HOLDER's own CHOSEN move
+    # being status-category (source-verified nuance — NOT unconditional like Stall):
+    # (1) battle_main.c :: GetWhichBattlerFasterArgs (L4788-4789) reads the
+    # `myceliumMight` ProtectStruct flag, itself set at L4407-4408 only when
+    # `IsBattleMoveStatus(gChosenMoveByBattler[battler])` — same Stall-shape
+    # turn-order-last effect, but conditional; (2) battle_util.c ::
+    # IsMoldBreakerTypeAbility (L4805-4818) treats Mycelium Might as a
+    # Mold-Breaker-type ability (bypasses the target's breakable ability checks)
+    # ONLY while `IsBattleMoveStatus(gCurrentMove)` — narrower than Mold Breaker's
+    # unconditional bypass. No breakable flag itself (src/data/abilities.h
+    # L2312-2317).
+    {"id": 298, "name": "Mycelium Might",
+     "description": "The Pokémon moves after all other Pokémon that used a status "
+                     "move, and always uses status moves without being affected by "
+                     "the target's Ability.",
+     "ai_rating": 0},
 ]
 
 HEADER = """\

@@ -344,6 +344,24 @@ const ABILITY_SNOW_CLOAK:   int = 81
 const ABILITY_SAND_RUSH:    int = 146
 const ABILITY_SAND_SPIT:    int = 245
 
+# M17n-3: Turn-order/priority modifiers (docs/m17n_recon.md Group 3). Step 0
+# re-verified all 6 IDs fresh against `include/constants/abilities.h`; none appear in
+# the exclusion list. Confirmed via a direct grep of `src/data/abilities.h` that NONE
+# of the six carries a `breakable`/`cantBe*` flag — every one of them is judged
+# against the HOLDER's own chosen move, never a "defender's ability" an opposing
+# Mold-Breaker attacker could bypass, so `effective_ability_id` is called with no
+# `attacker` context for five of the six (see `move_priority_bonus`/
+# `quick_draw_activates`/`has_slow_turn_order_effect` below). Mycelium Might (298) is
+# the sole exception: it ALSO acts as a Mold-Breaker-type ability toward an opposing
+# battler while the holder's own current move is status-category — see
+# `effective_ability_id`'s new `attacker_move` param below.
+const ABILITY_STALL:           int = 100
+const ABILITY_PRANKSTER:       int = 158
+const ABILITY_GALE_WINGS:      int = 177
+const ABILITY_TRIAGE:          int = 205
+const ABILITY_QUICK_DRAW:      int = 259
+const ABILITY_MYCELIUM_MIGHT:  int = 298
+
 # M17h: source models FOUR distinct "can this ability be read from / changed away from"
 # flags in `src/data/abilities.h` — `cantBeTraced`, `cantBeCopied`, `cantBeSwapped`,
 # `cantBeOverwritten` — genuinely different from each other and from M17g's
@@ -692,6 +710,18 @@ static func _is_dazzling_family(id: int) -> bool:
 # no-switch-target fail) rather than a `move_skipped` pre-move cancellation.
 # Gated on `move.priority > 0` only (source: `priority <= 0 ... return
 # CANCELER_RESULT_SUCCESS`) — a priority-zero or negative move is never blocked.
+# M17n-3 correction: source computes this `priority` via `GetChosenMovePriority`
+# (battle_move_resolution.c L1512) — the SAME ability-boosted priority function that
+# feeds turn-order sorting (`GetBattleMovePriority`, battle_main.c L4735-4775), NOT the
+# move's raw data priority. This was unreachable at [M17k]'s own implementation time
+# (no ability could alter priority yet) but is a real, now-reachable gap once
+# Prankster/Gale Wings/Triage exist: a Prankster-boosted status move (raw priority 0,
+# effective priority 1) must be blockable by Dazzling/Queenly Majesty/Armor Tail, and
+# a Stall-holder's move must NOT gain a phantom block from its (nonexistent) priority
+# change — Stall/Mycelium Might/Quick Draw don't alter `GetBattleMovePriority`'s
+# return value at all, only the separate same-priority-bracket tiebreak, so they
+# correctly don't interact with this check either. Fixed by computing the effective
+# priority the same way the turn-order comparator does, via `move_priority_bonus`.
 # SIDE-WIDE, not holder-only: source's loop checks every battler on the OPPOSING side of
 # the attacker (skipping the attacker's own allies), so if EITHER the move's actual
 # target OR that target's doubles partner holds one of these three abilities, the move
@@ -716,7 +746,10 @@ static func _is_dazzling_family(id: int) -> bool:
 # `attacker` parameter so a Mold-Breaker-holding attacker correctly bypasses the block.
 static func blocks_priority_move(defender: BattlePokemon, defender_ally: BattlePokemon,
 		attacker: BattlePokemon, move: MoveData, ng_active: bool = false) -> bool:
-	if move.priority <= 0:
+	# M17n-3: effective priority (raw + ability bonus), not just move.priority — see
+	# the doc comment above for why this must match GetChosenMovePriority exactly.
+	var effective_priority: int = move.priority + move_priority_bonus(attacker, move, ng_active)
+	if effective_priority <= 0:
 		return false
 	if _is_dazzling_family(effective_ability_id(defender, ng_active, attacker)):
 		return true
@@ -751,8 +784,16 @@ static func blocks_priority_move(defender: BattlePokemon, defender_ally: BattleP
 #   like Intimidate/Moxie/Anger Point — none of these are "a move," so Mold Breaker
 #   correctly never applies there, matching source's moldBreakerActive being scoped
 #   strictly to the window of processing one specific move).
+# M17n-3: new trailing `attacker_move` param — Mycelium Might acts as a
+# Mold-Breaker-type ability (source: `IsMoldBreakerTypeAbility`, battle_util.c
+# L4805-4818) toward an opposing battler ONLY while the Mycelium Might holder's
+# CURRENT move being processed is status-category — narrower than Mold Breaker's
+# unconditional bypass, so it needs the move in scope rather than just the attacker.
+# Default null preserves every pre-existing call site's behavior unchanged (Mycelium
+# Might simply never bypasses anything when no move context is threaded through).
 static func effective_ability_id(
-		mon: BattlePokemon, ng_active: bool = false, attacker: BattlePokemon = null) -> int:
+		mon: BattlePokemon, ng_active: bool = false, attacker: BattlePokemon = null,
+		attacker_move: MoveData = null) -> int:
 	if mon.ability == null:
 		return ABILITY_NONE
 	var id: int = mon.ability.ability_id
@@ -761,6 +802,9 @@ static func effective_ability_id(
 	if attacker != null and attacker != mon and mon.ability.breakable:
 		var attacker_id: int = effective_ability_id(attacker, ng_active)
 		if attacker_id == ABILITY_MOLD_BREAKER:
+			return ABILITY_NONE
+		if attacker_id == ABILITY_MYCELIUM_MIGHT and attacker_move != null \
+				and attacker_move.category == 2:
 			return ABILITY_NONE
 	return id
 
@@ -814,6 +858,115 @@ static func is_weather_negated(combatants: Array, ng_active: bool = false) -> bo
 		var id: int = effective_ability_id(mon, ng_active)
 		if id == ABILITY_AIR_LOCK or id == ABILITY_CLOUD_NINE:
 			return true
+	return false
+
+
+# M17n-3: additional priority for the holder's own chosen move, mirroring
+# `GetBattleMovePriority`'s ability branch (battle_main.c L4735-4775). Source's
+# if/else-if chain (quash → Gale Wings → Prankster → Grassy Glide → Triage) is
+# structurally an else-if only because a Pokémon can only ever have ONE ability at a
+# time — Gale Wings/Prankster/Triage can never co-occur on the same holder, so the
+# chain order doesn't change behavior here; Grassy Glide (a move-effect flag, not an
+# ability) and quash (a volatile this project doesn't model) are both outside this
+# tier's scope, confirmed non-applicable rather than silently dropped.
+# Called with NO `attacker` context: this is the holder judging its OWN chosen move,
+# never a "defender's ability" an opposing Mold-Breaker attacker could bypass (same
+# reasoning `effective_speed`'s Slush-Rush-family calls already established).
+static func move_priority_bonus(
+		mon: BattlePokemon, move: MoveData, ng_active: bool = false) -> int:
+	if mon == null or move == null:
+		return 0
+	var id: int = effective_ability_id(mon, ng_active)
+	# Gale Wings: +1 for Flying-type moves. B_GALE_WINGS = GEN_LATEST (>= GEN_7) means
+	# the full-HP gate always applies at this project's config — source: battle_main.c
+	# L4752-4757, `GetConfig(B_GALE_WINGS) < GEN_7 || IsBattlerAtMaxHp(battler)`.
+	if id == ABILITY_GALE_WINGS and move.type == TypeChart.TYPE_FLYING \
+			and mon.current_hp == mon.max_hp:
+		return 1
+	# Prankster: +1 for status-category moves (category == 2, per this project's
+	# 0=Physical/1=Special/2=Status convention). Source: L4758-4762.
+	if id == ABILITY_PRANKSTER and move.category == 2:
+		return 1
+	# Triage: +3 for moves carrying the `healing_move` data flag — a genuinely
+	# separate per-move flag from `is_restore_hp`, confirmed via source
+	# (`gMovesInfo[...].healingMove`) rather than assumed identical; only
+	# Recover/Slack Off/Heal Order carry it in this project's current roster. Source:
+	# L4769-4772.
+	if id == ABILITY_TRIAGE and move.healing_move:
+		return 3
+	return 0
+
+
+# M17n-3 follow-up: a status move whose priority was elevated specifically by
+# Prankster fails against a Dark-type target (Gen 7+ only). Source: `BlocksPrankster`
+# (battle_util.c L9234-9252), dispatched from `CanTargetBlockPranksterMove` →
+# `CanMoveBeBlockedByTarget`, an execution-time canceler (battle_move_resolution.c
+# L2022) gated on `gProtectStructs[attacker].pranksterElevated` — a flag set
+# (battle_main.c L4758-4762) EXACTLY when the move is status-category AND the
+# attacker's ability is Prankster, i.e. precisely `move_priority_bonus`'s own
+# Prankster branch condition. No separate stored flag is needed here — the same
+# (ability, move.category) check IS the condition, derived fresh rather than cached,
+# consistent with every other ability query in this file. `B_PRANKSTER_DARK_TYPES =
+# GEN_LATEST` (include/config/battle.h L46) means the gate always applies at this
+# project's config, so it isn't threaded through as a separate parameter.
+# NOT Mold-Breaker-bypassable: `BlocksPrankster` gates on the DEFENDER's TYPE, not an
+# ability — confirmed via source that no `IsMoldBreakerTypeAbility` call appears
+# anywhere in `BlocksPrankster`, so an attacking Mold-Breaker-holding Prankster user
+# (a contradiction in terms — a Pokémon can only have one ability — but relevant if
+# Mold Breaker breaks through as the ATTACKER via some future move-based bypass) has
+# no bearing on typing at all. Called with no `attacker`-bypass context on
+# `effective_ability_id`, same reasoning as `move_priority_bonus` above (this is the
+# attacker's own ability being read, not a defender's ability being bypassed).
+static func blocks_prankster_move(
+		attacker: BattlePokemon, defender: BattlePokemon, move: MoveData,
+		ng_active: bool = false) -> bool:
+	if move == null or move.category != 2:
+		return false
+	if effective_ability_id(attacker, ng_active) != ABILITY_PRANKSTER:
+		return false
+	return TypeChart.TYPE_DARK in defender.species.types
+
+
+# M17n-3: Quick Draw — 30% chance to act first within a tied priority bracket, gated
+# on the chosen move being NON-status (source: battle_main.c L5187,
+# `!IsBattleMoveStatus(gChosenMoveByBattler[battler1]) && quickDrawRandom[battler1]`;
+# the roll itself is L4987, `RandomPercentage(RNG_QUICK_DRAW, 30)`). Must be evaluated
+# EXACTLY ONCE per battler per turn — not re-rolled per pairwise comparison — so
+# `BattleManager._phase_priority_resolution` precomputes this into a Dictionary before
+# the sort, the same way the existing per-turn `tiebreak` dict is built.
+# No `attacker` context, same reasoning as `move_priority_bonus` above.
+static func quick_draw_activates(
+		mon: BattlePokemon, move: MoveData, ng_active: bool = false,
+		forced_roll: Variant = null) -> bool:
+	if mon == null or move == null or move.category == 2:
+		return false
+	if effective_ability_id(mon, ng_active) != ABILITY_QUICK_DRAW:
+		return false
+	if forced_roll != null:
+		return bool(forced_roll)
+	return randi() % 100 < 30
+
+
+# M17n-3: Stall / Mycelium Might — always act LAST within a tied priority bracket.
+# Source: battle_main.c :: GetWhichBattlerFasterArgs (L4788-4789):
+#   `battler1HasStallingAbility = abilities[battlerAtk] == ABILITY_STALL ||
+#    gProtectStructs[battlerAtk].myceliumMight`.
+# Stall applies UNCONDITIONALLY every turn. Mycelium Might's slow-effect is narrower —
+# source sets the `myceliumMight` ProtectStruct flag only when
+# `IsBattleMoveStatus(gChosenMoveByBattler[battler]) && ability == ABILITY_MYCELIUM_MIGHT`
+# (battle_main.c L4407-4408) — confirmed via source rather than assumed identical to
+# Stall's unconditional shape. Same per-turn-precompute requirement as Quick Draw
+# above (the move used here is the battler's own chosen move for the turn, stable
+# across the whole sort).
+static func has_slow_turn_order_effect(
+		mon: BattlePokemon, move: MoveData, ng_active: bool = false) -> bool:
+	if mon == null:
+		return false
+	var id: int = effective_ability_id(mon, ng_active)
+	if id == ABILITY_STALL:
+		return true
+	if id == ABILITY_MYCELIUM_MIGHT and move != null and move.category == 2:
+		return true
 	return false
 
 
