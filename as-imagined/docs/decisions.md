@@ -5356,3 +5356,193 @@ system) — re-checked against Section 13's full exclusion sweep before naming i
 (the same discipline every prior tier's Step 0 has applied) — none of the six appears
 anywhere in Section 13.1-13.4, so no correction is needed to Section 11's original
 six-ability grouping.
+
+## [M17l] Doubles-redirect/aura abilities — Lightning Rod / Storm Drain / Friend Guard / Telepathy / Propeller Tail / Stalwart
+
+Scoping source: `docs/m17_recon.md` Section 11's M17l proposal ("Doubles-redirect-adjacent
++ doubles-aura abilities not already scheduled. Lightning Rod/Storm Drain (original,
+type-effectiveness + redirect), Telepathy, Friend Guard, Propeller Tail/Stalwart
+(redirect-ignore pair). Moderate, all touch the existing M14a doubles targeting
+system."). Unlike `[M17f]` through `[M17k]`, this tier's task explicitly asked to
+VERIFY rather than assume "no new infrastructure needed" going in, given five
+consecutive new-infra tiers preceded it — verified directly: no new infrastructure was
+needed. Every mechanic reuses an existing pipeline hook (see "New infrastructure"
+below).
+
+### Step 0 — finalized ability list
+
+**Lightning Rod (31), Storm Drain (114), Friend Guard (132), Telepathy (140), Propeller
+Tail (239), Stalwart (242)** — all six canonical IDs verified directly (literal, not
+symbolic) against `include/constants/abilities.h`; none appear anywhere in Section
+13.1-13.4, so no correction was needed to Section 11's original six-ability grouping —
+the first M17 sub-tier since `[M17d]` where Step 0 found nothing to correct at all.
+
+### Two genuinely different mechanic shapes, plus a separate exemption/reduction pair
+
+Per this tier's own task framing (don't force these into one pattern):
+
+- **Lightning Rod (31) / Storm Drain (114) — redirect-TRIGGER, defender-side.** An
+  Electric-type (Lightning Rod) or Water-type (Storm Drain) move gets: (1) redirected
+  from its original target onto the ability holder, if the holder is that target's
+  doubles partner and the original target doesn't already hold the matching ability
+  itself; (2) fully absorbed (0 damage) plus a Sp. Atk +1 boost, whenever the holder IS
+  hit (whether by direct targeting or by the redirect). Source: `CanAbilityAbsorbMove`
+  (battle_util.c L2258-2265) dispatched via `AbsorbedByStatIncreaseAbility`
+  (L2328-2340) for the absorb+boost half; `HandleMoveTargetRedirection`
+  (battle_move_resolution.c L822-888) for the redirect half — confirmed these are two
+  separate source functions, not one, even though they're the same ability. The
+  absorb+boost half applies identically in singles (verified with a dedicated test) —
+  redirect itself is simply moot there (only one possible target), not disabled by any
+  special-case code.
+- **Propeller Tail (239) / Stalwart (242) — redirect-BYPASS, attacker-side — the
+  OPPOSITE direction.** The ATTACKER's own moves ignore ALL redirection (both Follow
+  Me/Rage Powder AND Lightning Rod/Storm Drain-style ability redirect) when the
+  attacker holds either. Source: `IsAffectedByFollowMe`'s own gate
+  (battle_move_resolution.c L809-810) and `HandleMoveTargetRedirection`'s redirect-loop
+  condition (L872-873) both exclude a Propeller-Tail/Stalwart-holding attacker
+  identically. Confirmed from source — not assumed — that these two are genuinely
+  mechanically identical (the task explicitly flagged this as worth verifying): both
+  gates cite the exact same two ability checks side by side with no per-ability
+  branching anywhere.
+- **Telepathy (140) — a separate damage-EXEMPTION, unrelated to redirection.** Full
+  immunity (0 damage) to a damaging move whose target is the holder's own ATTACKING
+  ALLY (doubles only). Source: `battle_util.c` L8201-8206, checked via `battlerDef ==
+  BATTLE_PARTNER(battlerAtk)` — **a source-verified correction worth flagging**: this
+  is NOT gated on the move being a spread move specifically, despite the ability's own
+  "prevents ally spread-move damage" flavor text and this tier's own task framing. In
+  practice it's only ever reachable via a spread move (normal move selection never
+  deliberately aims a damaging move at one's own ally), but the underlying check itself
+  is broader than that — implemented and tested exactly as source has it (a
+  single-target Tackle deliberately aimed at the holder's own ally, via
+  `queue_move_targeted`, is blocked identically to how a spread move would be).
+- **Friend Guard (132) — a separate damage-REDUCTION, unrelated to redirection.** ×0.75
+  damage reduction for the DEFENDER when the DEFENDER'S ALLY holds Friend Guard (not
+  the holder's own incoming damage — verified with a dedicated test showing the
+  Friend-Guard-holder's own incoming damage is unreduced while its ally's is). Source:
+  `GetDefenderPartnerAbilitiesModifier` (battle_util.c L7460-7478).
+
+### Redirect precedence (this project already has Follow Me/Rage Powder — M14b)
+
+Checked directly per this tier's task instruction rather than assuming: this project
+already implements Follow Me/Rage Powder (`[M14b]`, `_follow_me_targets`). Source
+confirms Follow Me/Rage Powder take precedence — `HandleMoveTargetRedirection` only
+evaluates the Lightning Rod/Storm Drain ability-redirect branch when
+`gSideTimers[side].followmeTimer == 0` (i.e. Follow Me didn't already redirect this
+hit). This project's implementation follows the identical precedence:
+`_phase_move_execution`'s existing Follow Me block now also gates on `not
+AbilityManager.bypasses_redirection(attacker, ng_active)` (so Propeller Tail/Stalwart
+bypass Follow Me too, matching source), and the new Lightning Rod/Storm Drain redirect
+check is nested inside that same block, only evaluated `if not followed_this_hit`.
+
+**Not modeled** (a known, narrower gap, explicitly flagged rather than silently
+dropped): source's `B_REDIRECT_ABILITY_ALLIES >= GEN_4` quirk, which also lets
+Lightning Rod/Storm Drain redirect a move used by the ATTACKER's OWN ally onto that
+ally (not just redirect-onto-the-original-target's-ally, the case this project
+implements). This project's established defender/defender_ally-pair convention (used
+throughout M17a/c/l) models only the standard, overwhelmingly common scenario — an
+opposing attacker's move aimed at one of two Pokémon on the DEFENDING side gets pulled
+onto the other Pokémon on that same side — not a full N-battler search across both
+sides. Would need a broader architecture change to model the attacker's-own-ally case,
+out of this tier's scope.
+
+### `AbilityData` field check, and the Mold-Breaker interaction found along the way
+
+Checked `AbilityData` before writing any code, per the `[M17h]`-established discipline
+— no dormant field applies (this tier's mechanics reuse the existing `breakable` field
+directly, not a new one). Source-verified `breakable = TRUE` on Lightning Rod, Storm
+Drain, Friend Guard, and Telepathy (`src/data/abilities.h`), and confirmed all four are
+genuinely, immediately reachable Mold-Breaker-bypass cases (attacker and holder are
+always different battlers) — wired through `effective_ability_id`'s existing `attacker`
+parameter throughout, verified with dedicated unit tests for Lightning Rod's absorb
+AND its redirect (a Mold-Breaker-holding attacker's move is neither absorbed nor
+redirected — correctly reading `cv->abilities[]` as suppressed throughout the entire
+redirect-resolution function, matching source's single shared `GetBattlerAbility`
+chokepoint). Propeller Tail/Stalwart correctly carry NO `breakable` flag — they're the
+ATTACKER's own ability being consulted, not a defensive check Mold Breaker has any
+bearing on.
+
+### New infrastructure
+
+**None was needed** (verified, not assumed, per this tier's explicit task instruction).
+Every mechanic hooks into an existing pipeline stage:
+- `AbilityManager.absorbs_move_type`/`blocks_ally_damage` are new functions, but slot
+  into `DamageCalculator.calculate`'s EXISTING early ability-immunity gate group
+  (alongside `[M17g]`'s Levitate check) with zero new parameters.
+- `AbilityManager.friend_guard_modifier_uq412` reuses the EXISTING `defender_ally`
+  parameter `[M17c]`'s Flower Gift already established.
+- Telepathy's `is_attacker_ally` check reuses the EXISTING `ally` parameter `[M17a]`'s
+  Battery/Power Spot/Steely Spirit already established (`defender == ally` is exactly
+  source's own check) — no new parameter threaded through at all.
+- `AbilityManager.resolve_redirect_target`/`bypasses_redirection` slot into the
+  EXISTING Follow Me/Rage Powder redirect block in `_phase_move_execution` (`[M14b]`),
+  extending it rather than adding a parallel targeting-resolution path.
+- The Sp. Atk +1 boost signal (`"absorbed_stat_boost"` result key) follows the
+  established `result.get(key, default)` convention (`[M12]`'s
+  `defender_item_consumed`) rather than requiring every `calculate()` return branch to
+  carry the new key.
+
+### Testing / Regression
+
+New `m17l_test.gd`/`.tscn`: 45/45 assertions across 12 sections — ability data
+spot-checks (breakable flags correct for all six); Lightning Rod/Storm Drain direct
+unit tests (`absorbs_move_type` type-matching, `resolve_redirect_target`'s
+already-absorbing-original-target/no-ally/fainted-ally/Mold-Breaker-bypass/
+Neutralizing-Gas-suppression cases); Telepathy direct unit tests (blocks only when
+`is_attacker_ally`, non-holder no-op, power-0 move never blocked); Friend Guard direct
+unit tests (0.75x reduction, no-ally/wrong-ability/fainted-ally no-ops, the
+attacker==defender confusion-shape guard); Propeller Tail/Stalwart direct unit tests;
+full-battle doubles integration for Lightning Rod and Storm Drain (redirect + Sp. Atk
++1, verified via turn-1-specific event snapshots after catching a real signal-snapshot
+test bug — see below); Lightning Rod's direct-hit absorb+boost confirmed working
+identically in singles; Telepathy blocking an ally's attack but not an opponent's, in
+the same full battle; Friend Guard reducing the ally's damage below what the holder
+itself takes from an identical attacker, deterministically (0.75× max always undercuts
+the 0.85× minimum random-roll floor for equal base stats); Propeller Tail bypassing
+Lightning Rod's redirect in a full battle (the tier's key cross-ability interaction
+test); and a negative control (an ordinary Pokémon redirects/exempts/reduces/bypasses
+nothing). Stable across 8 consecutive reruns after the fix below.
+
+**A real test-authoring bug was caught and fixed during this tier**, the same class of
+issue `[M17j]`'s addendum documented for `switch_test.tscn`'s Roar section: two
+negative assertions (`move_executed_events.any(...)` checking a defender was "never"
+hit by a specific attacker) read `move_executed_events` accumulated across the ENTIRE
+battle, not just the queued turn-1 action under test. Since each relevant attacker in
+this tier's full-battle tests has only ONE move, once the ORIGINAL redirect target
+eventually fainted in later turns, that same attacker's later auto-selected actions
+legitimately (and correctly) targeted whichever opponent remained — including the
+ability holder itself — producing a real, later, unrelated `move_executed` event that
+made the "never" assertion fail intermittently. Caught on the very first test run (not
+latent — `S11.02` failed immediately). Fixed by filtering to each attacker's FIRST
+recorded event (`.filter(...)[0]`), which deterministically corresponds to the queued
+turn-1 action, matching this project's signal-snapshot testing convention precisely.
+
+Full regression (direct foreground bash sweep, standard `pkill`/`timeout` discipline):
+baseline reconfirmed exactly at 32 files/1658 assertions before starting (no drift).
+All 32 prior suite files unchanged and still passing, plus the new `m17l_test` at
+45/45. Total assertions across all 33 `.tscn` files: 1658 prior + 45 = **1703**, 0
+failures.
+
+- 2026-07-03.
+
+### Next tier
+
+Section 11's next proposed tier, **M17m — Type-effectiveness-pipeline batch**, is
+explicitly flagged by the recon itself as the highest-risk remaining tier in M17: Wonder
+Guard (unchanged despite type effectiveness — recon's own "highest risk" flag), Scrappy,
+Volt Absorb, Water Absorb, Sap Sipper, Flash Fire, Overcoat, Normalize (+ the
+Refrigerate/Pixilate/Aerilate/Galvanize "-ate" family sharing its exact move-mutation
+mechanism), Motor Drive, Well-Baked Body, Earth Eater, Mind's Eye — roughly 15
+abilities, not yet re-verified against Section 13 (that re-verification is M17m's own
+Step 0 job, not done here). Worth flagging now, discovered directly while implementing
+this tier: **Volt Absorb, Water Absorb, Sap Sipper, Flash Fire, Motor Drive, and
+Well-Baked Body all share the EXACT SAME source dispatch function**
+(`CanAbilityAbsorbMove`, battle_util.c L2235-2340) that this tier's Lightning Rod/Storm
+Drain already partially extended via `AbilityManager.absorbs_move_type` — M17m should
+extend that existing function (or its underlying pattern) rather than build a parallel
+one. Also worth flagging: Wonder Guard's own check (battle_util.c L8201, right next to
+Telepathy's check this tier already implemented) lives in the exact same
+early-immunity-gate function this tier's Telepathy check now occupies in
+`DamageCalculator.calculate` — the hook point is already proven out, but Wonder Guard's
+OWN logic (block every non-super-effective hit) is a substantially different and
+higher-risk shape than anything implemented so far in M17, matching the recon's own
+warning.

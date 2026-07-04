@@ -747,13 +747,29 @@ func _phase_move_execution() -> void:
 	# Source: GetBattleMoveTarget (battle_util.c L5529): check fires at target resolution.
 	# Only applies to moves with power > 0 (damaging). Status moves targeting the opponent
 	# can also be redirected in source, but limit to damaging moves for M14b scope.
-	if not move.is_spread and move.power > 0:
+	# M17l: Propeller Tail / Stalwart bypass BOTH this AND the Lightning Rod/Storm Drain
+	# redirect below entirely (source: IsAffectedByFollowMe's own gate, L809-810, and
+	# HandleMoveTargetRedirection's redirect-loop condition, L872-873, both exclude a
+	# Propeller-Tail/Stalwart-holding attacker identically).
+	var followed_this_hit: bool = false
+	if not move.is_spread and move.power > 0 and not AbilityManager.bypasses_redirection(attacker, ng_active):
 		var def_side: int = 1 - attacker_side
 		var fm_idx: int = _follow_me_targets[def_side]
 		if fm_idx >= 0 and fm_idx < _combatants.size():
 			var fm_user: BattlePokemon = _combatants[fm_idx]
 			if not fm_user.fainted and fm_user != attacker:
 				defender = fm_user
+				followed_this_hit = true
+
+		# M17l: Lightning Rod / Storm Drain redirect (doubles only) — only checked when
+		# Follow Me/Rage Powder didn't already redirect this hit, matching source's
+		# `gSideTimers[side].followmeTimer == 0` gate on entering this branch at all.
+		if not followed_this_hit and _active_per_side > 1:
+			var redirect_ally: BattlePokemon = _get_ally(defender)
+			var redirect_target: BattlePokemon = AbilityManager.resolve_redirect_target(
+					defender, redirect_ally, attacker, move.type, ng_active)
+			if redirect_target != null:
+				defender = redirect_target
 
 	# M12: Set choice lock immediately when a choice-item holder commits to a move.
 	# Source: ProcessChoiceItem in battle_script_commands.c — fires before accuracy check.
@@ -2639,6 +2655,20 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			power_override, screen_active, _active_per_side > 1, _get_ally(attacker),
 			_get_ally(target), ng_active)
 	var damage: int = result["damage"]
+
+	# M17l: Lightning Rod / Storm Drain — the absorb (0 damage) already happened inside
+	# DamageCalculator; apply the Sp. Atk +1 side effect here, before the Substitute
+	# check below, since source's ability-absorption takes effect independent of
+	# Substitute (the move never actually "hits" a Substitute when absorbed this way).
+	var absorbed_stat_boost: int = result.get("absorbed_stat_boost", -1)
+	if absorbed_stat_boost != -1:
+		var lr_actual: int = StatusManager.apply_stat_change(
+				target, absorbed_stat_boost, 1, null, ng_active)
+		if lr_actual != 0:
+			stat_stage_changed.emit(target, absorbed_stat_boost, lr_actual)
+		ability_triggered.emit(target, "lightning_rod_storm_drain")
+		move_executed.emit(attacker, target, move, 0)
+		return
 
 	# M16d: Rapid Spin — clears ONE hazard type from the ATTACKER's own side after dealing
 	# damage. Fires even if the hit was absorbed by a Substitute (INCLUDING_SUBSTITUTES in

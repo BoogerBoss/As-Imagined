@@ -136,6 +136,21 @@ static func calculate(
 		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
 				"defender_item_consumed": false}
 
+	# M17l: Lightning Rod / Storm Drain — full immunity + Sp. Atk +1 signal, same early
+	# gate group as Levitate above (source: same CanAbilityAbsorbMove dispatch).
+	var absorb_stat: int = AbilityManager.absorbs_move_type(defender, move.type, ng_active, attacker)
+	if absorb_stat != -1:
+		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
+				"defender_item_consumed": false, "absorbed_stat_boost": absorb_stat}
+
+	# M17l: Telepathy — full immunity to a damaging move whose target is the attacker's
+	# own ally (doubles only). `ally` is the attacker's doubles partner, already threaded
+	# through for [M17a]'s Battery/Power Spot/Steely Spirit — `defender == ally` is
+	# exactly source's own `battlerDef == BATTLE_PARTNER(battlerAtk)` check.
+	if AbilityManager.blocks_ally_damage(defender, defender == ally, move, ng_active, attacker):
+		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
+				"defender_item_consumed": false}
+
 	# --- Type immunity check (before any calculation) ---
 	# Source: src/battle_util.c :: DoMoveDamageCalc (L7718–7727)
 	# M17d: Delta Stream's Strong Winds weakens super-effective hits against Flying-type
@@ -342,6 +357,15 @@ static func calculate(
 			defender, move, effectiveness, weather, defender_ally, ng_active, attacker)
 	if def_ability_mod != 4096:
 		dmg = _uq412_half_down(dmg, def_ability_mod)
+
+	# M17l: Friend Guard — ×0.75 whenever the DEFENDER'S ALLY holds it. Source:
+	# GetDefenderPartnerAbilitiesModifier (battle_util.c L7460-7478), same modifier
+	# group as the defender-ability modifier above (source's GetOtherModifiers calls
+	# GetDefenderAbilitiesModifier then GetDefenderPartnerAbilitiesModifier back to back).
+	var friend_guard_mod: int = AbilityManager.friend_guard_modifier_uq412(
+			defender_ally, attacker, defender, ng_active)
+	if friend_guard_mod != 4096:
+		dmg = _uq412_half_down(dmg, friend_guard_mod)
 
 	# M17a: Sniper / Tinted Lens — post-type-effectiveness attacker-side modifier.
 	# Source: battle_util.c :: GetAttackerAbilitiesModifier (L7378-7397).

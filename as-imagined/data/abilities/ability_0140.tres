@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 140
 ability_name = "Telepathy"
-description = ""
-ai_rating = 0
+description = "Can't be damaged by an ally."
+breakable = true

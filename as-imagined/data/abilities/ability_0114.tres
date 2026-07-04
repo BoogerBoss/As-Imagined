@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 114
 ability_name = "Storm Drain"
-description = ""
-ai_rating = 0
+description = "Draws in Water moves."
+ai_rating = 7
+breakable = true

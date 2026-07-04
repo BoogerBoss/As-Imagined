@@ -28,7 +28,11 @@
       "Bash(timeout 20 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/switch_test.tscn)",
       "Bash(timeout 20 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17h_test.tscn)",
       "Bash(echo \"import exit: $?\")",
-      "Bash(timeout 20 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17i_test.tscn)"
+      "Bash(timeout 20 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17i_test.tscn)",
+      "Bash(awk '/^## 13\\\\. Signature-ability sweep/,0' docs/m17_recon.md)",
+      "Bash(timeout 25 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path /home/rob/GodotAsImagined/as-imagined scenes/battle/m17l_test.tscn)",
+      "Bash(echo \"TEST_EXIT=$?\")",
+      "Bash(echo \"IMPORT_EXIT=$?\")"
     ]
   }
 }

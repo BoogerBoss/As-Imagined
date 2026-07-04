@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 132
 ability_name = "Friend Guard"
-description = ""
-ai_rating = 0
+description = "Lowers damage to partner."
+breakable = true

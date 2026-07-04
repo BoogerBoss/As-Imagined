@@ -853,6 +853,60 @@ ABILITIES = [
     {"id": 296, "name": "Armor Tail",
      "description": "Protects from priority.",
      "ai_rating": 5, "breakable": True},
+
+    # ── M17l: Doubles-redirect/aura abilities ────────────────────────────────────────
+    # Source: docs/m17_recon.md Section 11's M17l proposal — final list locked in
+    # docs/decisions.md [M17l]: Lightning Rod, Storm Drain, Friend Guard, Telepathy,
+    # Propeller Tail, Stalwart. Two genuinely different mechanic shapes: Lightning
+    # Rod/Storm Drain are redirect-TRIGGER abilities (defender-side, breakable),
+    # Propeller Tail/Stalwart are redirect-BYPASS abilities (attacker-side, NOT
+    # breakable — bypassing your own redirect isn't a defensive check Mold Breaker has
+    # any bearing on). Telepathy/Friend Guard are a separate damage-exemption/reduction
+    # pair, unrelated to redirection.
+
+    # Source: battle_util.c :: CanAbilityAbsorbMove (L2258-2261) +
+    #   HandleMoveTargetRedirection (L822-888): full immunity + Sp. Atk +1 when hit by
+    #   an Electric-type move (whether by direct targeting or doubles redirect).
+    #   breakable=True (src/data/abilities.h L241-246).
+    {"id": 31, "name": "Lightning Rod",
+     "description": "Draws electrical moves.",
+     "ai_rating": 7, "breakable": True},
+
+    # Source: same dispatch as Lightning Rod, Water-type (L2262-2265).
+    #   breakable=True (src/data/abilities.h L851-856).
+    {"id": 114, "name": "Storm Drain",
+     "description": "Draws in Water moves.",
+     "ai_rating": 7, "breakable": True},
+
+    # Source: battle_util.c :: GetDefenderPartnerAbilitiesModifier (L7460-7478): ×0.75
+    #   damage reduction for the DEFENDER when the DEFENDER'S ALLY holds this.
+    #   breakable=True (src/data/abilities.h L993-998).
+    {"id": 132, "name": "Friend Guard",
+     "description": "Lowers damage to partner.",
+     "ai_rating": 0, "breakable": True},
+
+    # Source: battle_util.c L8201-8206: full immunity to a damaging move whose target
+    #   is the holder's own attacking ally (doubles only) — not gated on spread
+    #   specifically, just on defender == attacker's ally. breakable=True
+    #   (src/data/abilities.h L1053-1058).
+    {"id": 140, "name": "Telepathy",
+     "description": "Can't be damaged by an ally.",
+     "ai_rating": 0, "breakable": True},
+
+    # Source: battle_move_resolution.c L809-810/L872-873: the ATTACKER's own moves
+    #   ignore all redirection (Follow Me/Rage Powder AND Lightning Rod/Storm Drain).
+    #   No cant_be_*/breakable flags of its own (src/data/abilities.h L1827-1832) — this
+    #   is the attacker's own ability, not a defensive check Mold Breaker bypasses.
+    {"id": 239, "name": "Propeller Tail",
+     "description": "Ignores foe's redirection.",
+     "ai_rating": 2},
+
+    # Source: confirmed mechanically identical to Propeller Tail (same gates cited
+    #   above). No cant_be_*/breakable flags of its own (src/data/abilities.h
+    #   L1855-1860).
+    {"id": 242, "name": "Stalwart",
+     "description": "Ignores foe's redirection.",
+     "ai_rating": 2},
 ]
 
 HEADER = """\

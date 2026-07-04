@@ -264,6 +264,19 @@ const ABILITY_QUEENLY_MAJESTY: int = 214
 const ABILITY_DAZZLING:        int = 219
 const ABILITY_ARMOR_TAIL:      int = 296
 
+# M17l: Doubles-redirect/aura abilities. Step 0 list re-verified against Section 13's
+# full exclusion sweep: none of the six appear anywhere in it. Two genuinely different
+# mechanic shapes: Lightning Rod/Storm Drain are redirect-TRIGGER abilities (defender
+# side), Propeller Tail/Stalwart are redirect-BYPASS abilities (attacker side) — the
+# opposite direction, not a variant of the same mechanic. Telepathy/Friend Guard are a
+# separate damage-exemption/reduction pair, unrelated to redirection at all.
+const ABILITY_LIGHTNING_ROD:  int = 31
+const ABILITY_STORM_DRAIN:    int = 114
+const ABILITY_FRIEND_GUARD:   int = 132
+const ABILITY_TELEPATHY:      int = 140
+const ABILITY_PROPELLER_TAIL: int = 239
+const ABILITY_STALWART:       int = 242
+
 # M17h: source models FOUR distinct "can this ability be read from / changed away from"
 # flags in `src/data/abilities.h` — `cantBeTraced`, `cantBeCopied`, `cantBeSwapped`,
 # `cantBeOverwritten` — genuinely different from each other and from M17g's
@@ -1011,6 +1024,117 @@ static func blocks_move_type(
 	if effective_ability_id(defender, ng_active, attacker) == ABILITY_LEVITATE:
 		return move_type == TypeChart.TYPE_GROUND
 	return false
+
+
+# M17l: Lightning Rod (Electric) / Storm Drain (Water) — full immunity (0 damage) plus
+# a Sp. Atk +1 boost, whenever a matching-type move hits the holder (whether by direct
+# targeting or by the redirect below). Source: `CanAbilityAbsorbMove`
+# (battle_util.c L2258-2265) dispatched via `AbsorbedByStatIncreaseAbility`
+# (L2328-2340) — ALWAYS absorbs the hit (0 damage) regardless of whether the stat boost
+# itself lands; the boost is separately gated on the stat not already being at +6 (that
+# gate is the caller's job via the normal `StatusManager.apply_stat_change` clamp, not
+# re-implemented here). Applied BEFORE the general type-effectiveness table, same as
+# Levitate's Ground immunity above (source: same `CanAbilityAbsorbMove` dispatch group).
+# Returns `BattlePokemon.STAGE_SPATK` if this hit should be absorbed, or -1 otherwise.
+static func absorbs_move_type(
+		defender: BattlePokemon, move_type: int, ng_active: bool = false,
+		attacker: BattlePokemon = null) -> int:
+	var id: int = effective_ability_id(defender, ng_active, attacker)
+	if id == ABILITY_LIGHTNING_ROD and move_type == TypeChart.TYPE_ELECTRIC:
+		return BattlePokemon.STAGE_SPATK
+	if id == ABILITY_STORM_DRAIN and move_type == TypeChart.TYPE_WATER:
+		return BattlePokemon.STAGE_SPATK
+	return -1
+
+
+# M17l: Telepathy — full immunity (0 damage) to a damaging move whose target is the
+# HOLDER'S OWN ATTACKING ALLY (doubles only). Source: battle_util.c L8201-8206 — checked
+# via `ctx->battlerDef == BATTLE_PARTNER(ctx->battlerAtk)`, NOT gated on the move being a
+# spread move specifically (confirmed directly from source rather than assumed from the
+# ability's "prevents ally spread-move damage" flavor text) — in practice this is only
+# ever reachable via a spread move since normal move selection never deliberately aims a
+# damaging move at one's own ally, but the underlying check itself is broader than that.
+# `is_attacker_ally` is resolved by the caller (DamageCalculator already has both
+# `defender` and the attacker's `ally` in scope — reusing that existing parameter rather
+# than threading a new one through, since `defender == ally` is exactly the condition
+# source checks).
+static func blocks_ally_damage(
+		defender: BattlePokemon, is_attacker_ally: bool, move: MoveData,
+		ng_active: bool = false, attacker: BattlePokemon = null) -> bool:
+	if not is_attacker_ally or move.power <= 0:
+		return false
+	return effective_ability_id(defender, ng_active, attacker) == ABILITY_TELEPATHY
+
+
+# M17l: Friend Guard — reduces damage the DEFENDER takes by 25% whenever the DEFENDER'S
+# ALLY holds Friend Guard. Source: `GetDefenderPartnerAbilitiesModifier`
+# (battle_util.c L7460-7478) — ×0.75 (UQ_4_12(0.75) = 3072), gated on
+# `battlerAtk != battlerDef` (excludes confusion self-hit damage — structurally always
+# true in this project anyway, since confusion self-hit uses the separate
+# `calculate_confusion_damage` function, never this one, but kept for source fidelity).
+# Reuses the EXISTING `defender_ally` parameter `[M17c]`'s Flower Gift already
+# established — no new plumbing needed.
+static func friend_guard_modifier_uq412(
+		defender_ally: BattlePokemon, attacker: BattlePokemon, defender: BattlePokemon,
+		ng_active: bool = false) -> int:
+	if defender_ally == null or defender_ally.fainted:
+		return 4096
+	if attacker == defender:
+		return 4096
+	if effective_ability_id(defender_ally, ng_active, attacker) == ABILITY_FRIEND_GUARD:
+		return 3072  # UQ_4_12(0.75)
+	return 4096
+
+
+# M17l: Propeller Tail / Stalwart — the ATTACKER's own moves ignore ALL redirection
+# (both Follow Me/Rage Powder AND Lightning Rod/Storm Drain-style ability redirect) when
+# the attacker holds either. Source: `IsAffectedByFollowMe`'s own gate
+# (battle_move_resolution.c L809-810) and `HandleMoveTargetRedirection`'s redirect-loop
+# condition (L872-873) both exclude a Propeller-Tail/Stalwart-holding attacker
+# identically — confirmed these two abilities are genuinely mechanically identical (not
+# just similarly-shaped), matching the recon's own framing. Neither carries a
+# `breakable` flag in source (src/data/abilities.h L1827-1832/L1855-1860) — this is the
+# ATTACKER's own ability being consulted, not a defensive ability being bypassed, so
+# Mold Breaker has no bearing on it (the same "different concept, no interaction"
+# reasoning already established for other attacker-side checks in this project).
+static func bypasses_redirection(attacker: BattlePokemon, ng_active: bool = false) -> bool:
+	var id: int = effective_ability_id(attacker, ng_active)
+	return id == ABILITY_PROPELLER_TAIL or id == ABILITY_STALWART
+
+
+# M17l: Lightning Rod / Storm Drain — redirect target resolution (doubles only). Source:
+# `HandleMoveTargetRedirection` (battle_move_resolution.c L822-888): if the move's
+# ORIGINAL target doesn't already hold the matching ability itself (in which case it
+# already absorbs the hit directly — no redirect needed, checked via
+# `currTargetCantAbsorb`, L847-850), and the original target's doubles partner DOES hold
+# it, the move redirects onto that partner instead.
+# NOT modeled (a known, narrower gap, consistent with this project's established
+# defender/defender_ally-pair convention rather than a full N-battler search): source's
+# `B_REDIRECT_ABILITY_ALLIES >= GEN_4` quirk, which also lets these abilities redirect a
+# move used by the ATTACKER's OWN ally onto that ally — this project only models
+# redirect onto the ORIGINAL TARGET's ally, the overwhelmingly common real scenario (an
+# opposing attacker's move aimed at one of two Pokémon on the defending side gets pulled
+# onto the other one instead).
+# Correctly Mold-Breaker-aware "for free": since both the original-target check and the
+# ally check route through `effective_ability_id(..., attacker)`, a Mold-Breaker-holding
+# attacker's move is never redirected at all — matching source, where the SAME
+# suppression-aware `GetBattlerAbility` read backs `cv->abilities[]` throughout this
+# entire function.
+# Returns the redirect target (the ally), or null if no redirect applies.
+static func resolve_redirect_target(
+		original_target: BattlePokemon, target_ally: BattlePokemon,
+		attacker: BattlePokemon, move_type: int, ng_active: bool = false) -> BattlePokemon:
+	if target_ally == null or target_ally.fainted:
+		return null
+	var orig_id: int = effective_ability_id(original_target, ng_active, attacker)
+	if (orig_id == ABILITY_LIGHTNING_ROD and move_type == TypeChart.TYPE_ELECTRIC) \
+			or (orig_id == ABILITY_STORM_DRAIN and move_type == TypeChart.TYPE_WATER):
+		return null
+	var ally_id: int = effective_ability_id(target_ally, ng_active, attacker)
+	if (ally_id == ABILITY_LIGHTNING_ROD and move_type == TypeChart.TYPE_ELECTRIC) \
+			or (ally_id == ABILITY_STORM_DRAIN and move_type == TypeChart.TYPE_WATER):
+		return target_ally
+	return null
 
 
 # M16d: "grounded" check for entry hazards (Spikes, Toxic Spikes) — Stealth Rock does NOT
