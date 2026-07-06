@@ -106,7 +106,21 @@ static func try_apply_status(
 	# status-move-gated Mold-Breaker-type bypass (see `effective_ability_id`'s doc
 	# comment) — null at every pre-existing call site, unaffected.
 	var mon_id: int = AbilityManager.effective_ability_id(mon, ng_active, attacker, attacker_move)
-	if mon_id == AbilityManager.ABILITY_PURIFYING_SALT:
+	# M17n-11: Comatose — full immunity to ALL non-volatile statuses, the SAME shape
+	# and the SAME source case branch as Purifying Salt (battle_util.c L5359-5361:
+	# `abilityDef == ABILITY_COMATOSE || abilityDef == ABILITY_PURIFYING_SALT`) —
+	# confirmed genuinely identical, not just similarly-shaped, unlike Comatose is NOT
+	# `breakable` in source (Purifying Salt is), so the SAME `effective_ability_id`
+	# call above already yields the correct per-ability Mold-Breaker behavior for each
+	# without any extra branching. This is the ONLY piece of Comatose's real source
+	# mechanic this project can implement — every other Comatose call site in source
+	# (Sleep Talk/Snore's "is the user asleep" gate, Rest's "already asleep" failure,
+	# Nightmare's continued damage, Wake-Up-Slap-style double-damage-vs-asleep) has
+	# NOTHING to hook into, since none of Sleep Talk/Snore/Rest/Nightmare/Wake-Up Slap
+	# exist in this project's 91-move roster (confirmed via grep) — flagged here as a
+	# confirmed, deliberate scope limitation, not a silently dropped feature. See this
+	# session's `[M17n-11]` decisions.md entry for the full citation list.
+	if mon_id == AbilityManager.ABILITY_PURIFYING_SALT or mon_id == AbilityManager.ABILITY_COMATOSE:
 		return false
 	if mon_id == AbilityManager.ABILITY_LEAF_GUARD and weather == DamageCalculator.WEATHER_SUN:
 		return false
@@ -156,9 +170,21 @@ static func try_apply_status(
 				return false
 
 		BattlePokemon.STATUS_FREEZE:
-			# Ice-types cannot be frozen — source: L5342
-			# (Sun weather also prevents freeze but weather is not in M3 scope)
-			if TypeChart.TYPE_ICE in mon.species.types:
+			# Ice-types cannot be frozen, OR harsh sunlight prevents freezing
+			# entirely (any type) — source: battle_util.c L5342-5343:
+			# `IS_BATTLER_OF_TYPE(battlerDef, TYPE_ICE) ||
+			# IsBattlerWeatherAffected(..., B_WEATHER_SUN)`. [M17.5 Batch Fix]:
+			# the Sun half was deferred at M3 with a "weather not in scope"
+			# comment that's now stale — weather (and this exact `weather` param)
+			# has existed since M11/M17c. Deliberately does NOT consult
+			# `ItemManager.blocks_weather_modifier` (Utility Umbrella) even though
+			# source's `IsBattlerWeatherAffected` does — matching this project's
+			# own established precedent that its weather-conditional ABILITY
+			# checks (Leaf Guard, Flower Gift, Solar Power, Slush Rush, Dry Skin)
+			# never consult that helper, which is reserved for the damage-
+			# multiplier pipeline only (see this function's own header comment).
+			if TypeChart.TYPE_ICE in mon.species.types \
+					or weather == DamageCalculator.WEATHER_SUN:
 				return false
 		# STATUS_SLEEP: no type immunity; only ability-based (not in M3 scope)
 
@@ -558,7 +584,16 @@ static func check_accuracy(
 		eva_stage = 0
 	var combined: int = clampi(acc_stage - eva_stage, -6, 6)
 	var idx: int = combined + 6
-	var calc: int = move.accuracy * ACCURACY_STAGE_RATIOS[idx][0] / ACCURACY_STAGE_RATIOS[idx][1]
+	# M17n-11: Wonder Skin — floors a STATUS move's own accuracy stat to 50 (never
+	# raises an already-≤50 one) before the stage-ratio multiplication below, exactly
+	# where source reassigns `moveAcc` itself (battle_util.c L10275-10276) rather than
+	# adjusting the final computed chance — so an attacker's OTHER accuracy-boosting
+	# abilities/stages still apply on top of the floored value afterward, unaffected.
+	var effective_move_acc: int = move.accuracy
+	if move.category == 2 and effective_move_acc > 50 \
+			and AbilityManager.effective_ability_id(defender, ng_active, attacker) == AbilityManager.ABILITY_WONDER_SKIN:
+		effective_move_acc = 50
+	var calc: int = effective_move_acc * ACCURACY_STAGE_RATIOS[idx][0] / ACCURACY_STAGE_RATIOS[idx][1]
 
 	# M17a: Compound Eyes (×1.30) / Hustle (physical ×0.80) — same "calc" integer-percentage
 	# math source uses. Source: battle_util.c :: GetTotalAccuracy (L10283-10295).

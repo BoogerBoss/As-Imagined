@@ -344,6 +344,27 @@ func _test_section_5_contact_status() -> void:
 			grass_attacker, effect_spore, contact_move, 10, null, 0)
 	_chk("S5.08 Effect Spore: Grass-type attacker is immune", r7["status_applied"] == 0)
 
+	# [M17.5 Batch Fix] S5.08b: an Overcoat-holding ATTACKER is likewise immune to
+	# Effect Spore's proc — the OTHER half of `IsAffectedByPowderMove`, confirmed via
+	# source read to be evaluated against gBattlerAttacker (the mon making contact,
+	# who is the one at risk of being afflicted), not the Effect Spore holder itself.
+	# Previously only the Grass-type half (S5.08 above) was wired; this closes the gap
+	# the M17.5 recon found (the function's own header comment already mentioned
+	# "Grass-type/Overcoat exemption" but only Grass-type was actually implemented).
+	var overcoat_attacker := _make_mon("OvercoatAtk", 50, [TypeChart.TYPE_NORMAL])
+	overcoat_attacker.ability = _load_ability(142)
+	var r7b: Dictionary = AbilityManager.try_contact_effects(
+			overcoat_attacker, effect_spore, contact_move, 10, null, 0)
+	_chk("S5.08b Effect Spore: Overcoat-holding attacker is immune", r7b["status_applied"] == 0)
+
+	# Discriminator: a plain (non-Grass, non-Overcoat) attacker is NOT immune —
+	# confirms S5.08/S5.08b are genuine exemptions, not the roll always failing.
+	var plain_attacker := _make_mon("PlainAtkS5", 50, [TypeChart.TYPE_NORMAL])
+	var r7c: Dictionary = AbilityManager.try_contact_effects(
+			plain_attacker, effect_spore, contact_move, 10, null, 0)
+	_chk("S5.08c Effect Spore: ordinary attacker (no exemption) is NOT immune",
+			r7c["status_applied"] == BattlePokemon.STATUS_POISON)
+
 	# Negative: no contact → none of these fire.
 	var non_contact_move := _make_move(TypeChart.TYPE_NORMAL, 0, 40, 100, false)
 	var atk_no_contact := _make_mon("AtkNoContact", 50, [TypeChart.TYPE_NORMAL])

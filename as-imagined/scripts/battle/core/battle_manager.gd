@@ -1251,6 +1251,10 @@ func _phase_move_execution() -> void:
 			stat_stage_changed.emit(defender, BattlePokemon.STAGE_ATK, bp_si_result["opponent_guard_dog_change"])
 			ability_triggered.emit(defender, "guard_dog")
 			ability_triggered.emit(incoming, "intimidate")
+		if bp_si_result["mirror_armor_reflect_change"] != 0:
+			stat_stage_changed.emit(incoming, BattlePokemon.STAGE_ATK, bp_si_result["mirror_armor_reflect_change"])
+			ability_triggered.emit(bp_si_result["mirror_armor_holder"], "mirror_armor")
+			ability_triggered.emit(incoming, "intimidate")
 		if bp_si_result["opponent_speed_change"] != 0:
 			stat_stage_changed.emit(defender, BattlePokemon.STAGE_SPEED, bp_si_result["opponent_speed_change"])
 			ability_triggered.emit(defender, "rattled")
@@ -1278,6 +1282,10 @@ func _phase_move_execution() -> void:
 		# list (also not wired here) — Guard Dog, by contrast, needed no separate
 		# wiring since it lives inside the shared `try_switch_in` call just above and
 		# is handled by the `opponent_guard_dog_change` branch immediately above this.
+		# M17n-11: Costar joins Screen Cleaner's known-gap list (not wired into this
+		# Baton Pass block either); Mirror Armor, like Guard Dog, needed no separate
+		# wiring for the SAME reason (lives inside the shared `try_switch_in` call,
+		# handled by the `mirror_armor_reflect_change` branch immediately above).
 		move_executed.emit(attacker, defender, move, 0)
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
@@ -1888,6 +1896,24 @@ func _phase_move_execution() -> void:
 
 		if move.stat_change_stat >= 0:
 			var stat_target: BattlePokemon = attacker if move.stat_change_self else defender
+			# M17n-11: Mirror Armor — a non-self-inflicted stat DECREASE targeting a
+			# Mirror Armor holder redirects onto the attacker instead, applied as a
+			# direct write (matching source's SetStatChange2 raw-write shape, which
+			# does not re-enter the reactive Defiant/Competitive/Opportunist checks
+			# below) rather than falling through to the normal apply_stat_change path.
+			if not move.stat_change_self and move.stat_change_amount < 0 \
+					and AbilityManager.mirror_armor_reflects(stat_target, attacker, ng_active, attacker):
+				var reflected: int = StatusManager.apply_stat_change(
+						attacker, move.stat_change_stat, move.stat_change_amount, null, ng_active)
+				if reflected == 0:
+					move_effect_failed.emit(attacker, "stat_limit")
+				else:
+					stat_stage_changed.emit(attacker, move.stat_change_stat, reflected)
+				ability_triggered.emit(stat_target, "mirror_armor")
+				move_executed.emit(attacker, defender, move, 0)
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				return
 			# M17g: `attacker` threaded through here (not just `ng_active`) — this is
 			# THE genuine "a move's stat effect landing on a target" call site, where
 			# Mold Breaker's attacker-scoped bypass of Simple/Contrary/Clear Body/White
@@ -2539,6 +2565,10 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 			stat_stage_changed.emit(opp, BattlePokemon.STAGE_ATK, si_result["opponent_guard_dog_change"])
 			ability_triggered.emit(opp, "guard_dog")
 			any_intimidated = true
+		if si_result["mirror_armor_reflect_change"] != 0:
+			stat_stage_changed.emit(new_mon, BattlePokemon.STAGE_ATK, si_result["mirror_armor_reflect_change"])
+			ability_triggered.emit(si_result["mirror_armor_holder"], "mirror_armor")
+			any_intimidated = true
 		if si_result["opponent_speed_change"] != 0:
 			stat_stage_changed.emit(opp, BattlePokemon.STAGE_SPEED, si_result["opponent_speed_change"])
 			ability_triggered.emit(opp, "rattled")
@@ -2586,6 +2616,13 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 		new_mon_ally.current_hp = min(new_mon_ally.max_hp, new_mon_ally.current_hp + hosp_heal)
 		ability_healed.emit(new_mon_ally, hosp_heal)
 		ability_triggered.emit(new_mon, "hospitality")
+	# M17n-11: Costar -- doubles-only, copies the ally's current stat stages +
+	# focus_energy onto the holder. Reuses the existing stat_changes_copied
+	# signal M16e's Psych Up already established for the identical
+	# "stat-stage-array copy" shape.
+	if AbilityManager.try_costar_copy(new_mon, new_mon_ally, ng_active):
+		stat_changes_copied.emit(new_mon, new_mon_ally)
+		ability_triggered.emit(new_mon, "costar")
 	# M17n-4: Multitype — type set from the holder's held Plate item, evaluated ONLY
 	# at switch-in. Source's FORM_CHANGE_ITEM_HOLD dispatch is confirmed (via a full
 	# enumeration of every TryBattleFormChange call site in battle_util.c) to be an

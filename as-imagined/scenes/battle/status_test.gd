@@ -307,6 +307,21 @@ func _ready() -> void:
 			int(StatusManager.try_apply_status(_clone(squirtle), BattlePokemon.STATUS_BURN)), 1)
 	_check_exact("S8i Water-type CAN be frozen",
 			int(StatusManager.try_apply_status(_clone(squirtle), BattlePokemon.STATUS_FREEZE)), 1)
+
+	# S8i-2: [M17.5 Batch Fix] harsh sunlight prevents freezing entirely (ANY type, not
+	# just non-Ice) — source: battle_util.c L5342-5343,
+	# `IS_BATTLER_OF_TYPE(battlerDef, TYPE_ICE) || IsBattlerWeatherAffected(...,
+	# B_WEATHER_SUN)`. Deferred at this project's original M3 tier with a "weather not
+	# in scope" comment that went stale once weather shipped in M11 — closed here.
+	_check_exact("S8i-2 Water-type immune to freeze while Sun is active",
+			int(StatusManager.try_apply_status(_clone(squirtle), BattlePokemon.STATUS_FREEZE,
+					null, null, false, null, DamageCalculator.WEATHER_SUN)), 0)
+	_check_exact("S8i-3 Normal-type also immune to freeze in Sun (not an Ice-only carve-out)",
+			int(StatusManager.try_apply_status(_clone(normal_mon), BattlePokemon.STATUS_FREEZE,
+					null, null, false, null, DamageCalculator.WEATHER_SUN)), 0)
+	_check_exact("S8i-4 sun-gate discriminator: Water-type CAN still be frozen in Rain (not sun)",
+			int(StatusManager.try_apply_status(_clone(squirtle), BattlePokemon.STATUS_FREEZE,
+					null, null, false, null, DamageCalculator.WEATHER_RAIN)), 1)
 	_check_exact("S8j Normal-type CAN be paralyzed",
 			int(StatusManager.try_apply_status(_clone(normal_mon), BattlePokemon.STATUS_PARALYSIS)), 1)
 	_check_exact("S8k Normal-type CAN be poisoned",

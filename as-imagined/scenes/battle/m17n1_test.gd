@@ -59,6 +59,8 @@ func _ready() -> void:
 	_test_section_18_mold_breaker_bypass()
 	_test_section_19_neutralizing_gas_suppression()
 	_test_section_20_negative_case()
+	_test_section_21_scrappy_blocks_intimidate_full_battle()
+	_test_section_22_grass_powder_immunity_full_battle()
 
 	var total := _pass + _fail
 	print("m17n1_test: %d/%d passed" % [_pass, total])
@@ -473,6 +475,100 @@ func _test_section_13_intimidate_block_full_battle() -> void:
 			stat_events2.any(func(e): return e[0] == plain_target and e[1] == BattlePokemon.STAGE_ATK and e[2] == -1))
 
 	bm2.queue_free()
+
+
+# ── Section 21: [M17.5 Batch Fix] Scrappy also blocks Intimidate's Attack drop ──
+#
+# Source confirms Scrappy (113) sits in the exact SAME case block as Inner Focus/Own
+# Tempo/Oblivious in IsIntimidateBlocked (battle_stat_change.c L667-675) — a plain
+# block, not Guard Dog's separate +1-reversal case (L676-691). This tier's own
+# original comment flagged Scrappy as "not yet implemented... add it here once it
+# exists" — Scrappy WAS implemented five tiers later in [M17n-6], but this specific
+# wire-in was never followed up until the M17.5 recon caught it as a live gap.
+# No Mold-Breaker/Neutralizing-Gas coverage needed here: like every other Intimidate-
+# block check in this section, `opp_blocks_intimidate` is evaluated at switch-in time,
+# outside any move-processing window, so Mold Breaker structurally cannot apply —
+# matching the SAME established precedent already covering Inner Focus/Own Tempo/
+# Oblivious above (never Mold-Breaker-tested either, for the identical reason) and
+# Guard Dog/Mirror Armor's own switch-in-only checks elsewhere in this project.
+func _test_section_21_scrappy_blocks_intimidate_full_battle() -> void:
+	var tackle := _load_move(33)
+	var intimidate := _load_ability(22)
+	var scrappy := _load_ability(113)
+
+	var holder := _make_mon("IntimidateHolderS21", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 30)
+	holder.ability = intimidate
+	holder.add_move(tackle)
+	var blocked_target := _make_mon("ScrappyBlocker", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 60)
+	blocked_target.ability = scrappy
+	blocked_target.add_move(tackle)
+
+	var stat_events := []
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.stat_stage_changed.connect(func(t, si, ac): stat_events.push_back([t, si, ac]))
+
+	bm.start_battle_with_parties(BattleParty.single(holder), BattleParty.single(blocked_target))
+
+	_chk("S21.01 Scrappy fully blocks Intimidate's Attack drop",
+			not stat_events.any(func(e): return e[0] == blocked_target and e[1] == BattlePokemon.STAGE_ATK))
+
+	bm.queue_free()
+
+
+# ── Section 22: [M17.5 Batch Fix] Grass-type general powder-move immunity ────
+#
+# Source: `IsAffectedByPowderMove` (battle_util.c L10545-10552) — Overcoat ability,
+# Grass-type, and Safety Goggles (item, not implemented in this project) are three
+# INDEPENDENT exemptions. Only Overcoat's half was ever wired into
+# `AbilityManager.blocks_move_flag` before this fix; Sleep Powder (move 79,
+# powder_move=true, Grass-type, status category) is this project's one roster move
+# that actually carries the flag, so it's the vehicle for all these assertions.
+func _test_section_22_grass_powder_immunity_full_battle() -> void:
+	var sleep_powder := _load_move(79)
+
+	var attacker := _make_mon("PowderAttacker", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 60)
+	attacker.add_move(sleep_powder)
+	var grass_target := _make_mon("GrassPowderTarget", [TypeChart.TYPE_GRASS], 100, 60, 60, 60, 60, 30)
+	grass_target.add_move(sleep_powder)
+
+	var move_effect_failed_events := []
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm._force_hit = true
+	bm.move_effect_failed.connect(func(t, r): move_effect_failed_events.push_back([t, r]))
+
+	bm.start_battle_with_parties(BattleParty.single(attacker), BattleParty.single(grass_target))
+
+	_chk("S22.01 Grass-type target: Sleep Powder blocked entirely (move_flag_blocked)",
+			move_effect_failed_events.any(func(e): return e[0] == grass_target and e[1] == "move_flag_blocked"))
+	_chk("S22.02 Grass-type target: never put to sleep",
+			grass_target.status != BattlePokemon.STATUS_SLEEP)
+
+	bm.queue_free()
+
+	# Direct unit-level discriminators.
+	var tackle := _load_move(33)
+	var grass_direct := _make_mon("GrassPowderDirect", [TypeChart.TYPE_GRASS])
+	_chk("S22.03 Grass-type: DOES block a powder move (direct check)",
+			AbilityManager.blocks_move_flag(grass_direct, sleep_powder) == true)
+	_chk("S22.04 Grass-type: does NOT block a non-powder move (Tackle)",
+			AbilityManager.blocks_move_flag(grass_direct, tackle) == false)
+
+	var normal_direct := _make_mon("NonGrassPowderDirect", [TypeChart.TYPE_NORMAL])
+	_chk("S22.05 negative control: a non-Grass, non-Overcoat target is NOT immune to Sleep Powder",
+			AbilityManager.blocks_move_flag(normal_direct, sleep_powder) == false)
+
+	# Composition: Overcoat's pre-existing ability-based exemption and this fix's new
+	# type-based exemption must both independently grant immunity, with no conflict —
+	# a dual-typed Grass/Overcoat-irrelevant case isn't meaningful here (Overcoat is an
+	# ability, not a type), so this checks a NON-Grass Overcoat holder still blocks
+	# independently of the new Grass check added right next to it.
+	var overcoat := _load_ability(142)
+	var overcoat_direct := _make_mon("OvercoatPowderDirect", [TypeChart.TYPE_NORMAL])
+	overcoat_direct.ability = overcoat
+	_chk("S22.06 Overcoat (non-Grass holder) still independently blocks Sleep Powder",
+			AbilityManager.blocks_move_flag(overcoat_direct, sleep_powder) == true)
 
 
 # ── Section 14: Aroma Veil — blocks Disable and Encore ───────────────────────

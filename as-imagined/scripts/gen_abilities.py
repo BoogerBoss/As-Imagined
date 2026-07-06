@@ -1722,6 +1722,29 @@ ABILITIES = [
      "description": "The Pokémon transforms with the weather to change its "
                      "type to Water, Fire, or Ice.",
      "ai_rating": 6, "cant_be_copied": True, "cant_be_traced": True},
+
+    # M17n-11 (Group 8, "unique/standalone" part 2 — the FINAL M17n sub-tier). IDs
+    # re-verified fresh against include/constants/abilities.h: Comatose=213,
+    # Costar=294, Wonder Skin=147, Mirror Armor=240. Comatose carries all five
+    # M17h-style exemption flags but NOT breakable; Wonder Skin and Mirror Armor are
+    # both breakable; Costar has neither flag.
+    {"id": 213, "name": "Comatose",
+     "description": "This Pokémon is always drowsing and will never wake up. It "
+                     "can attack without succumbing to its status conditions.",
+     "ai_rating": 6, "cant_be_copied": True, "cant_be_swapped": True,
+     "cant_be_traced": True, "cant_be_suppressed": True, "cant_be_overwritten": True},
+
+    {"id": 294, "name": "Costar",
+     "description": "When it enters a battle, it copies an ally's stat changes.",
+     "ai_rating": 5},
+
+    {"id": 147, "name": "Wonder Skin",
+     "description": "Makes status moves more likely to miss.",
+     "ai_rating": 4, "breakable": True},
+
+    {"id": 240, "name": "Mirror Armor",
+     "description": "Bounces back only the stat-lowering effects it receives.",
+     "ai_rating": 6, "breakable": True},
 ]
 
 HEADER = """\

@@ -8056,3 +8056,491 @@ via `count_assertions.sh` and reproducible across two independent clean sweeps
 
 **M17n-11 (Comatose, Costar, Wonder Skin, Mirror Armor — 4 abilities)** is next.
 
+## [M17n-11] Group 8, "unique/standalone" part 2 — Comatose, Costar, Wonder Skin,
+## Mirror Armor
+
+**COMPLETE** — 2026-07-06 — for these 4 abilities specifically. **Important
+correction to this tier's own task framing, established during Step 0/mandatory
+context-gathering, before any implementation began**: the task prompt this session
+was based on stated that M17n-11 is "the FOURTH and FINAL planned Group 8
+sub-tier" and that completing it would close out M17 entirely. **This is false.**
+See the "M17 status — NOT yet fully closed" section below for the full
+reconciliation. The task prompt also asserted a baseline of "44 files / 2419
+assertions" (actual, freshly re-measured at the start of this session: 44/2426) and
+a "recorded in memory" decision including Comatose (no such memory entry exists,
+though Comatose is genuinely in-scope regardless, confirmed independently via
+`docs/m17n_recon.md`'s own Section 9 classification, which never flagged it for
+exclusion). Both are flagged here rather than silently accepted, matching this
+project's established practice of treating a task prompt's factual claims as
+claims to verify, not premises to trust.
+
+### Step 0 — IDs (re-verified fresh)
+
+Comatose=213, Costar=294, Wonder Skin=147, Mirror Armor=240 — all four confirmed
+directly against `include/constants/abilities.h`, matching the task prompt exactly.
+None overlap any recorded exclusion.
+
+### Implementation
+
+**Comatose** — a major, load-bearing scoping finding, established via source
+tracing BEFORE writing any code (not assumed from the recon's "touches ~7 separate
+call sites" framing): every one of Comatose's real source call sites
+(Sleep Talk/Snore's "user must be asleep" gate, Rest's "already asleep" failure,
+Nightmare's continued damage, Wake-Up-Slap-style double-damage-vs-asleep) depends on
+a move this project doesn't have — a full roster grep confirms NONE of Sleep
+Talk/Snore/Rest/Nightmare/Wake-Up Slap/Smelling Salts exist anywhere in this
+project's 91-move roster. The ONLY genuinely implementable piece of Comatose in
+this codebase is full non-volatile-status immunity — confirmed via source
+(`battle_util.c` L5359-5361) to be the EXACT SAME case branch as Purifying Salt
+(`abilityDef == ABILITY_COMATOSE || abilityDef == ABILITY_PURIFYING_SALT`), not
+just similarly shaped — a one-line addition to `StatusManager.try_apply_status`'s
+existing check. Confirmed confusion (a VOLATILE status, handled by an entirely
+separate source function with no Comatose mention) is NOT blocked — Comatose is
+narrower than Own Tempo/Oblivious in this respect. Comatose carries all five
+`[M17h]`-style exemption flags but is NOT `breakable` (unlike Purifying Salt, which
+is) — the single existing `effective_ability_id` call already yields correct
+per-ability Mold-Breaker behavior from each ability's own `.tres` flag, no extra
+branching needed. `cant_be_suppressed=true`, confirmed via a dedicated NG test — the
+only ability across this pair of tiers with that specific exemption reachable.
+This is a documented, deliberate scope limitation (matching this project's
+established practice for Ripen/Sticky Hold/Perish-Body-style gaps), not a silently
+dropped feature.
+
+**Costar** — switch-in, doubles-only, copies the ally's CURRENT stat stages (all 7)
+plus focus_energy onto the holder. Source: `ABILITY_COSTAR` case
+(`battle_util.c`, `ABILITYEFFECT_ON_SWITCHIN`), gated on `BattlerHasCopyableChanges`
+(`battle_util.c` L5964-5979 — true if the ally has ANY non-default stat stage OR
+focusEnergy/dragonCheer/bonusCritStages; the latter two don't exist in this project,
+no G-Max moves, no Dragon Cheer) — a confirmed no-op (no copy, no message) if the
+ally has nothing worth copying, not a reset-to-zero of the holder's own pre-existing
+stages (tested explicitly). New `AbilityManager.try_costar_copy`, reusing `[M16e]`'s
+Psych Up stat-stage-array-copy shape directly (`for _pi in range(...): stages[_pi] =
+...`) rather than reimplementing it. Wired into `_apply_switch_in_abilities`,
+reusing the existing `stat_changes_copied` signal Psych Up already established.
+Not wired into the separate Baton Pass switch-in block — joins Screen Cleaner's
+existing known-gap list there (`[M17n-10]`), not a new gap.
+
+**Wonder Skin** — floors a STATUS move's own accuracy stat to 50 (source:
+`battle_util.c` L10275-10276: `if (defAbility == ABILITY_WONDER_SKIN &&
+IsBattleMoveStatus(move) && moveAcc > 50) moveAcc = 50;`) applied to the move's OWN
+accuracy value BEFORE the stage-ratio multiplication in
+`StatusManager.check_accuracy` — confirmed this is a floor on the input feeding the
+normal pipeline, NOT a flat final-chance override, so an attacker's other
+accuracy-boosting abilities/stages (Compound Eyes, positive accuracy stages) still
+apply multiplicatively on top of the floored value. Confirmed via a dedicated test
+this never affects damaging moves, and never RAISES an already-≤50%-accuracy status
+move (tested via a synthetic `MoveData`, since no move in this project's roster has
+that shape — the same synthetic-move-for-an-unreachable-case precedent `[M17n-5]`
+established for Strong Jaw/Sharpness/Mega Launcher). `.breakable=TRUE`, confirmed
+via a statistical Mold-Breaker-bypass test.
+
+**Mirror Armor** — a non-self-inflicted stat DECREASE targeting the holder
+redirects onto whoever caused it, same stage/amount, NOT reversed in sign (a
+genuinely different shape from `[M17n-10]`'s Guard Dog, which reverses Intimidate's
+-1 into a +1 for ITSELF). Source: `IsMirrorArmorReflected`
+(`battle_stat_change.c` L742-790) confirms a SELF-inflicted drop
+(`battlerAtk == battlerDef`) is explicitly NEVER redirected — it applies to the
+holder itself like normal (tested via a synthetic self-lowering `MoveData`, since
+this project's roster has no Overheat/Draco-Meteor/Close-Combat equivalent).
+Implemented at TWO independent call sites, each requiring its own explicit check
+(mirroring how Guard Dog needed its own branch specifically for Intimidate rather
+than one shared chokepoint): (1) the general move-based stat-decrease dispatch in
+`_phase_move_execution` (new early-return branch, applies the reflected change as a
+direct write and explicitly skips the Defiant/Competitive/Opportunist reactive
+checks below it, matching source's `SetStatChange2` raw-write semantics rather than
+re-entering the reactive pipeline a second time); (2) `try_switch_in`'s Intimidate
+branch (new `mirror_armor_reflect_change`/`mirror_armor_holder` result keys).
+**Confirmed the Guard-Dog-vs-Mirror-Armor interaction the task explicitly flagged as
+a risk**: the two are architecturally independent, not competing — a single mon can
+only hold one ability, so in a doubles scenario with one opponent holding each, a
+single Intimidate switch-in triggers BOTH independently (Guard Dog raises its own
+holder's Attack; Mirror Armor redirects onto the Intimidate switcher's Attack),
+tested explicitly with a dedicated 4-combatant scenario confirming no double-firing
+and no cross-talk. Mirror Armor's Intimidate-specific redirect is, like Guard Dog's
+own equivalent, NOT Mold-Breaker-aware — traced the identical `moldBreakerActive`
+source set-site (`battle_util.c` L9799, confirmed in `[M17n-10]`) showing it's never
+active outside a move-processing window, which a switch-in trigger structurally
+isn't; the MOVE-based redirect, by contrast, correctly IS Mold-Breaker-aware since
+it fires during real move resolution. `.breakable=TRUE` confirmed for that half via
+a direct unit test.
+
+### Data pipeline
+
+All 4 abilities added to `gen_abilities.py` with real, source-cited descriptions and
+correct flags. Regenerated via `python3 scripts/gen_abilities.py` — 226 total
+implemented-ability `.tres` entries (this script's own list; the `data/abilities/`
+directory holds 319 files total — 226 implemented + 92 blank placeholders for the
+remaining canonical IDs 1-318, plus one ID-0 sentinel file — see the M17 status
+section below for how this cross-check was used to establish the closing ability
+count).
+
+### Testing
+
+New `m17n11_test.gd`/`.tscn`: 51/51 assertions across 11 sections (ability data;
+Comatose's full non-volatile-status-immunity coverage with a confusion-NOT-blocked
+discriminator; Costar's copy/no-op/singles-no-op unit tests plus a full-battle
+doubles switch-in; Wonder Skin's accuracy-floor statistical tests — 2000-trial
+samples per CLAUDE.md's established wide-margin statistical-test convention, since
+no deterministic accuracy-roll seam exists in this codebase — covering the floor
+itself, the damaging-move exemption, the already-≤50%-not-raised case via a
+synthetic move, and the Mold Breaker bypass; Mirror Armor's unit tests plus
+full-battle move-based reflection, the self-inflicted-drop exemption via a
+synthetic move, the Intimidate-specific redirect, and the dedicated
+Guard-Dog-vs-Mirror-Armor doubles independence test; a Neutralizing-Gas-suppression
+matrix covering all 4 including Comatose's `cant_be_suppressed` exemption; a
+negative control). Two GDScript parse errors were caught and fixed before the first
+real run: a multi-line lambda body (`func(e): return ... \n and ...`) breaks across
+the newline in GDScript, since the lambda's body ends at the line break unless the
+whole expression is kept on one line or explicitly parenthesized — three instances
+were found and fixed by collapsing each onto a single line. All 51 assertions passed
+on the first real run thereafter; stable across 8 reruns.
+
+### Regression
+
+Full suite sweep (direct foreground bash): all 44 prior files pass unchanged, 0
+real failures. `count_assertions.sh` run twice from independently clean process
+states, both producing the identical total. `m17n1_test.tscn` (status immunity) and
+`m17n10_test.tscn` (Guard Dog/Intimidate) each rerun 5 consecutive times given this
+tier directly touches both mechanisms; `m17n11_test.tscn` itself rerun 8 times. All
+stable, 0 flakes.
+
+**Total assertions across all 45 `.tscn` files: 2426 prior + 51 = 2477**, confirmed
+via `count_assertions.sh` and reproducible across two independent clean sweeps
+(2026-07-06).
+
+
+### M17 status — see `[M17 Final Reconciliation]` below
+
+**Superseded.** This entry originally included a speculative "M17 status" section
+here, estimating an unreconciled ~12-ability exclusion-tally gap and naming 20
+specific abilities as "still open." A dedicated follow-up reconciliation session
+(same day, 2026-07-06) resolved that gap completely and precisely — the real gap
+was 91 exclusions (not ~60), and only 1 ability (Stench, 1) turned out to be
+genuinely open. That speculative section has been replaced by the definitive
+`[M17 Final Reconciliation]` entry immediately below, plus the new
+`docs/m17_final_ledger.md` — do not treat this entry's original guess as accurate;
+treat the entry below as authoritative.
+
+## [M17 Final Reconciliation] Closing the exclusion-tally gap — a definitive,
+## closed-book ability ledger
+
+**COMPLETE** — 2026-07-06, same day as `[M17n-11]`. Documentation/reconciliation
+only, no ability implementation, no new test assertions, per this session's own
+explicit scope.
+
+### Why this session existed
+
+`[M17n-11]`'s own closing summary correctly refused to declare M17 done, but its
+reconciliation was incomplete: it only checked ability IDs against
+`docs/m17n_recon.md`'s ORIGINAL 61-ID exclusion set (the pre-M17n baseline), and
+concluded ~60 excluded + ~20 named-open + an unreconciled ~12-ability residual gap.
+This missed a large amount of exclusion history that was already sitting in
+`docs/decisions.md` itself, recorded across `[M17n-4]` through `[M17n-9]`'s own
+Step-0 sections, which `[M17n-11]` never cross-referenced. Rob also confirmed,
+directly in this session, several additional exclusion decisions
+(Skill Link, Good As Gold, Illusion, Perish Body, Suction Cups) that `[M17n-11]`
+had incorrectly bucketed as merely "unassigned."
+
+### Method (STEP 1 of this session's task)
+
+1. Re-read `docs/m17_recon.md`'s full exclusion sections (8.1 Terastallization-bound,
+   8.3 hack-custom/non-canonical, 8.4 Mega/battle-form-bound, 8.6 Commander, 13.1
+   legendary/mythical/UB sweep, 13.3 Mega-exclusive-only-holder) in full.
+2. Re-read `docs/m17n_recon.md`'s own itemized "61 IDs, itemized and re-confirmed"
+   table (its own methodology section) as the authoritative pre-M17n baseline.
+3. Grepped `docs/decisions.md` for every ability name potentially excluded, deferred,
+   or reversed across `[M17a]` through `[M17n-11]` — found the critical missing
+   piece at `[M17n-6]`'s own Step 0: **"Cross-referenced against the full
+   accumulated exclusion set (Mega/form-bound group, Ruin quartet, Water
+   Bubble/Supreme Overlord/Plus/Minus, RKS System, Rivalry, Heavy/Light Metal, Wind
+   Rider/Wind Power/Electromorphosis, Protosynthesis/Quark Drive, Embody Aspect x4,
+   Dancer, Wimp Out/Emergency Exit, Curious Medicine)"** — this single sentence,
+   sitting in decisions.md since 2026-07-05, already recorded 24 exclusions beyond
+   the original 61 that `[M17n-11]` never checked against.
+4. Found `[M17n-5]`'s own decisions.md entry explicitly confirms the Ruin
+   quartet/Water Bubble/Supreme Overlord/Plus/Minus exclusion (8 IDs) "per Rob's
+   explicit exclusions ... stated directly and authoritatively in this tier's own
+   task prompt" — a real, decisions.md-recorded Rob decision, not this session's
+   invention.
+5. Found `[M17n-8]`'s own entry distinguishes Perish Body ("explicitly EXCLUDED...
+   blocked on the unimplemented Perish Song move") from Suction Cups ("deferred to a
+   later Group 8 sub-tier") — the latter's deferral was never actually picked up by
+   any of `[M17n-9]`/`[M17n-10]`/`[M17n-11]`, confirmed via direct grep showing no
+   `ABILITY_SUCTION_CUPS` constant anywhere.
+6. Found `[M17n-9]`'s own entry: "Good As Gold (283) is explicitly EXCLUDED from
+   this sub-tier per Rob's instruction... the recon predates the exclusion
+   decision" — again, a real decisions.md-recorded exclusion `[M17n-11]` missed.
+7. Found `[M17n-1]`'s own entry: Run Away (50), Pickup (53), Ball Fetch (237) were
+   "explicitly given NO constant or `.tres` entry at all" as a confirmed, deliberate
+   scope decision (out-of-battle-engine scope) — these were always excluded in
+   spirit but had never been added to any running exclusion TALLY before this
+   session, which is why they never showed up in any prior gap analysis.
+8. Checked memory for a recorded exclusion decision on Illusion (149) specifically,
+   per this session's own task instructions — **found none**. Illusion's exclusion
+   rests solely on Rob's direct statement in this session's conversation
+   (2026-07-06); flagged here rather than silently treated as independently
+   corroborated, consistent with this project's standing practice of distinguishing
+   "verified from a document" from "asserted directly by Rob just now" (both are
+   authoritative, but the distinction matters for anyone auditing this ledger later).
+9. Skill Link (92) similarly: `[M17n-5]`'s own entry already establishes it as
+   *deferred* (no multi-hit infrastructure exists), and Rob's direct statement this
+   session upgrades that to a permanent exclusion.
+
+### STEP 2 — independent re-verification of the implemented count
+
+Did NOT trust `[M17n-11]`'s "226" figure at face value. Re-derived it directly:
+`grep -oP "const ABILITY_\w+:\s*int\s*=\s*\d+" scripts/battle/core/ability_manager.gd`
+yields 227 unique constants; minus `ABILITY_NONE` (0, a sentinel, not a real
+ability) = **226**. Cross-checked every one of those 226 IDs against
+`data/abilities/ability_NNNN.tres` — all 226 have a file, and none are blank
+placeholders (checked for `description = ""` / `ai_rating = 0` as the placeholder
+signature) — zero discrepancies, confirming `[M17n-11]`'s figure was actually
+correct, just not independently reproduced there.
+
+### STEP 3 — the reconciliation, verified programmatically
+
+Built the excluded set as a literal ID→reason dictionary (91 entries: the 61
+original minus Aerilate(184)/Dragonize(312), both confirmed reversed into
+IMPLEMENTED by `[M17n-6]`, plus the 24 from decisions.md's `[M17n-6]` Step 0, plus
+Run Away/Pickup/Ball Fetch(3) from `[M17n-1]`, plus Skill Link/Good As
+Gold/Illusion/Perish Body/Suction Cups(5) confirmed this session — 59 + 24 + 3 + 5
+= 91), then checked programmatically (not by hand) against the 226-ID implemented
+set and the full `{1..318}` range:
+
+```
+Implemented count: 226
+Excluded count: 91
+IDs in BOTH implemented and excluded (error if nonempty): set()   ← zero, confirmed
+Total accounted: 317
+UNACCOUNTED IDs: [1]
+```
+
+**226 + 91 + 1 = 318.** Confirmed against `include/constants/abilities.h`'s own
+`ABILITIES_COUNT = ABILITIES_COUNT_GEN9` = 319 (0 + 1-318), so 318 is still the
+correct true maximum — no correction needed there.
+
+### STEP 4 — the one remaining ability: Stench (1)
+
+Not excluded by any recorded decision, not implemented. Root-caused: present in
+`docs/m17_recon.md`'s ORIGINAL Bucket F classification table ("Stench | 1 | 10%
+flinch chance on any hit ... simple secondary-effect-style addition"), but **dropped
+entirely from `docs/m17n_recon.md`'s Group 1-8 prose** when that document
+reorganized the "121 remaining" pool into sub-tier groups. The tell: Group 4's own
+section header claims "27 abilities" while its body text names only 26 — `[M17n-5]`'s
+own decisions.md entry already noticed this exact discrepancy ("the recon's Group 4
+list... itself over-counts by one in its own '27 abilities' heading — actually 26
+named items") but attributed it to a miscounted header rather than tracing the
+missing 27th item all the way back to Stench specifically. This session closed
+that loop: Stench is the dropped item. No technical blocker exists — it's a
+simple on-hit flinch-chance secondary effect, the same general shape as this
+project's existing contact/hit-triggered abilities (Static, Flame Body). It was
+never assigned to any M17n sub-tier and never excluded by any Rob decision; it
+simply fell out of the planning documents' own internal bookkeeping.
+
+**Confirmed per this session's explicit STEP 4 instructions**: Suction Cups (21),
+Good As Gold (283), and Illusion (149) are all EXCLUDED (not merely
+"unimplemented-but-in-scope" or "never assigned") and have been removed from that
+category entirely — see `docs/m17_final_ledger.md`'s own rows for each.
+
+### The final, single number
+
+**Exactly ONE ability requires a decision or implementation before M17 can be
+declared complete: Stench (1).** Every other one of the 318 canonical ability IDs
+is either fully implemented (226) or permanently, deliberately excluded (91), with
+a citation for every single exclusion.
+
+### Docs
+
+New `docs/m17_final_ledger.md` — the complete, closed-book 318-row table (ID, name,
+status, citation), plus a "Maintenance" section explaining how to keep it current
+without ever needing a from-scratch recount again. This is now the single source of
+truth for "what's the state of every ability in this project," superseding the
+scattered per-tier accounting that made `[M17n-11]`'s own reconciliation
+incomplete. `CLAUDE.md`'s status section updated to point at this ledger and state
+the exact "1 ability remaining" figure rather than either "M17 complete" or a vague
+"not yet done."
+
+## [M17.5 Batch Fix] Five confirmed immunity/interaction bugs from the M17.5 recon
+
+**COMPLETE** — 2026-07-06, same day as the M17.5 pre-recon (`docs/m17-5_recon.md`).
+A batch of five independent, small, well-scoped fixes found during that recon's
+Section D — not a new tier, not new ability implementations, and none individually
+rising to its own milestone entry. Each fix is self-contained (no shared code paths),
+implemented and tested individually even though shipped in one session. Every
+citation below was re-verified directly against current code and
+`reference/pokeemerald_expansion` source before making the change, per this session's
+own instructions (the recon's own citations were treated as a starting point, not
+ground truth).
+
+### Fix 1 — Scrappy missing from the Intimidate-block gate
+
+**Confirmed real, now fixed.** Source (`battle_stat_change.c :: IsIntimidateBlocked`,
+L660-675) re-verified: Scrappy sits in the EXACT SAME `case` block as Inner Focus/Own
+Tempo/Oblivious (a plain block, not Guard Dog's separate +1-reversal case at L676-691)
+— confirmed fresh rather than trusting the stale comment's claim. `[M17n-1]`'s own
+comment (`ability_manager.gd`, the `opp_blocks_intimidate` block inside
+`try_switch_in`) had flagged this exact gap in 2026-07-04 ("also includes Scrappy
+(113), not yet implemented... add it here too once it exists"), but Scrappy was
+implemented five tiers later in `[M17n-6]` (2026-07-05) and this specific wire-in was
+never followed up until the M17.5 recon caught it as a live, currently-reachable bug.
+
+**Change:** added `or effective_ability_id(opponent, ng_active) == ABILITY_SCRAPPY` to
+the `opp_blocks_intimidate` boolean expression; updated the now-stale comment above it
+to note Scrappy is wired in, citing this fix. No Mold-Breaker/Neutralizing-Gas
+reasoning changes — this check has never been Mold-Breaker-aware for ANY of its four
+abilities (switch-in triggers are outside any move-processing window, the same
+established reachability shape as Guard Dog/Mirror Armor's own switch-in checks), and
+remains so.
+
+**Tests:** `scenes/battle/m17n1_test.gd`, new Section 21 (`m17n1_test.tscn`, +1
+assertion) — full-battle scenario confirming a Scrappy holder's Attack is never
+lowered by an opposing Intimidate switch-in, following the exact same signal-snapshot
+pattern as Section 13's pre-existing Inner Focus/Own Tempo/Oblivious tests (whose own
+S13.02 already serves as this fix's negative control — an ordinary Pokémon still gets
+Intimidated normally).
+
+### Fix 2 — Grass-type has no general powder-move immunity
+
+**Confirmed real, now fixed.** Source (`IsAffectedByPowderMove`, battle_util.c
+L10545-10552) re-verified: three independent exemptions — Overcoat (ability),
+Grass-type (any Pokémon of that type), and Safety Goggles (item) — all gated on
+`B_POWDER_OVERCOAT`/`B_POWDER_GRASS >= GEN_6`, both satisfied at this project's
+GEN_LATEST config, applying unconditionally to every `powder_move`-flagged move
+(Sleep Powder is this project's one roster move with the flag currently set). Only
+Overcoat's half was ever wired into `AbilityManager.blocks_move_flag` (`[M17n-6]`);
+the Grass-type half was never implemented as a general check — only a narrow,
+unrelated attacker-side check inside Effect Spore's own dispatch (see Fix 4) existed,
+which protects a Grass-type ATTACKER from Effect Spore's proc and has nothing to do
+with a Grass-type DEFENDER being hit by an actual powder move.
+
+**Change:** added a third branch to `AbilityManager.blocks_move_flag` — `if defender
+!= null and TypeChart.TYPE_GRASS in defender.species.types and move.powder_move:
+return true` — sitting alongside Overcoat's existing check in the same function
+(the same chokepoint already consulted before the accuracy check, for both damaging
+and status moves alike). This is a pure type check, not an ability, so it is
+unconditional: never Mold-Breaker-bypassable (Mold Breaker only ever bypasses
+abilities, never innate typing) and unaffected by Neutralizing Gas — confirmed this
+composes independently and correctly alongside Overcoat's pre-existing ability-based
+exemption (both can independently grant immunity, no double-negation). Effect Spore's
+own separate attacker-side Grass-type check (a different mechanic entirely) was left
+untouched. Safety Goggles (source's third exemption) remains out of scope — this
+project has no item-manager handling for it at all (confirmed via grep), which is
+item-scope (M12/M13's territory), not an ability/type-immunity bug.
+
+**Tests:** `scenes/battle/m17n1_test.gd`, new Section 22 (`m17n1_test.tscn`, +6
+assertions) — full-battle scenario confirming Sleep Powder is blocked entirely
+against a Grass-type defender (`move_flag_blocked`, never put to sleep) with
+`_force_hit` to eliminate accuracy-roll noise, plus direct unit-level discriminators
+(Grass-type blocks a powder move but not Tackle; a non-Grass/non-Overcoat mon is NOT
+immune; a non-Grass Overcoat holder still independently blocks it, confirming no
+conflict between the two exemptions).
+
+### Fix 3 — Sun weather does not block Freeze
+
+**Confirmed real, now fixed — a genuinely NEW finding, not previously flagged
+anywhere prior to the M17.5 recon.** Source (`battle_util.c` L5342-5343) re-verified:
+`IS_BATTLER_OF_TYPE(battlerDef, TYPE_ICE) || IsBattlerWeatherAffected(...,
+B_WEATHER_SUN)` — harsh sunlight prevents freezing for ANY type, not just Ice-types,
+independent of the Ice-type immunity already correctly implemented. This project's
+own M3-era comment (`status_manager.gd`, `STATUS_FREEZE` case) explicitly deferred
+this with "Sun weather also prevents freeze but weather is not in M3 scope" — a
+comment that went stale the moment weather shipped in M11/`[M17c]`, since
+`try_apply_status` already threads a `weather` parameter through (used two lines away
+for Leaf Guard's own sun-gate since `[M17n-1]`) and nothing ever revisited the Freeze
+case specifically.
+
+**Change:** extended the `STATUS_FREEZE` case's condition to `TypeChart.TYPE_ICE in
+mon.species.types or weather == DamageCalculator.WEATHER_SUN`. Deliberately does NOT
+consult `ItemManager.blocks_weather_modifier` (Utility Umbrella) even though source's
+`IsBattlerWeatherAffected` does — matching this project's own established, documented
+precedent (see the `STATUS_FREEZE` case's neighboring comment on Leaf Guard) that its
+weather-conditional ABILITY checks never consult that helper, which is reserved
+exclusively for the damage-multiplier pipeline. Confirmed this touches ONLY the
+Freeze case — Burn/Poison/Toxic/Paralysis/Sleep are untouched, verified by the full
+`status_test.tscn` sweep (78/78 unchanged aside from the 3 new assertions).
+
+**Tests:** `scenes/battle/status_test.gd`, new S8i-2/S8i-3/S8i-4 (adjacent to the
+pre-existing S8f/S8g/S8i Ice-type-immunity tests this fix's mechanic sits beside) —
+a Water-type frozen normally becomes immune in Sun, a Normal-type is likewise immune
+in Sun (confirming this is NOT an Ice-only carve-out), and a sun-gate discriminator
+confirming freezing still works normally in Rain (not just "any weather blocks it").
+
+### Fix 4 — Overcoat doesn't block Effect Spore's proc against itself
+
+**Confirmed real (with an important correction to the recon's framing), now fixed.**
+Source (`battle_util.c` L4024-4032) re-verified: Effect Spore's own effect check
+calls `IsAffectedByPowderMove(gBattlerAttacker, abilityAtk, holdEffectAtk)` —
+confirmed via direct read this is evaluated against the ATTACKER (the mon making
+contact with the Effect Spore holder, who is the one at risk of being afflicted), NOT
+the Effect Spore holder's own ability. The recon's framing ("Overcoat holder is immune
+to Effect Spore's proc against them") was directionally correct in effect but
+imprecise in mechanism — it isn't the Effect-Spore-holder's Overcoat that matters (a
+Pokémon's own ability doesn't protect against its own ability's proc; that's
+incoherent), it's the ATTACKER's Overcoat, exactly mirroring the pre-existing
+Grass-type check the codebase already had (`TypeChart.TYPE_GRASS not in
+attacker.species.types`) which is also evaluated against the attacker, for the exact
+same reason. This project's own header comment for this function had already noted
+"Grass-type/Overcoat exemption" as a pair, but only Grass-type was ever actually
+wired into the `if` condition — the code and its own comment had silently diverged.
+
+**Change:** added `and effective_ability_id(attacker, ng_active) != ABILITY_OVERCOAT`
+to the Effect Spore trigger condition in `try_contact_effects`, alongside the
+pre-existing Grass-type check. Uses `effective_ability_id` with no Mold-Breaker
+`attacker` param — like Scrappy's Ghost-bypass and Magic Guard's self-protection, this
+is the attacker's OWN ability protecting itself, never "broken through" by the Effect
+Spore holder's side (Mold Breaker only ever bypasses a DEFENDER's ability from an
+attacking move's perspective, which isn't this shape) — but correctly remains subject
+to Neutralizing Gas suppression like any other ability. Updated the function's header
+comment to state the corrected mechanism precisely rather than repeat the imprecise
+"Overcoat holder is immune" framing.
+
+**Tests:** `scenes/battle/m17c_test.gd`, new S5.08b/S5.08c in the existing Effect
+Spore section (`m17c_test.tscn`, +2 assertions) — an Overcoat-holding attacker is
+immune to Effect Spore's proc (mirroring S5.08's pre-existing Grass-type-attacker
+assertion), plus a discriminator confirming an ordinary attacker (no exemption) is
+NOT immune, ruling out "the roll always fails" as an alternate explanation.
+
+### Fix 5 — Tough Claws bypassed the shared contact-flag wrapper (style only)
+
+**Confirmed, low-priority, purely stylistic — no functional bug.** Every other
+contact-flag consumer in `ability_manager.gd` (Rough Skin, Static, Flame Body, etc.)
+already goes through the shared `move_makes_contact()` wrapper (Long-Reach-aware,
+`[M17n-5]`); Tough Claws alone read `move.makes_contact` directly. Currently inert —
+a single battler can't simultaneously hold Tough Claws and Long Reach — but
+normalized for consistency and to close the one remaining raw-flag read the recon
+flagged, in case a future ability/item ever needs to override contact status for the
+attacker's own moves (mirroring source's Punching Glove shape, not implemented in
+this project).
+
+**Change:** `move_power_modifier_uq412`'s Tough Claws branch now reads
+`move_makes_contact(attacker, move, ng_active)` instead of the raw `move.makes_contact`
+field.
+
+**Tests:** none added — this is a behavior-preserving refactor. Verified via the
+full regression sweep (below): `m17a_test.tscn`'s pre-existing S10.09/S10.10
+(contact-move-boosts / non-contact-move-not-boosted) passed unchanged both before and
+after the refactor (83/83 both times), which is the exact before/after comparison
+this fix's own scope called for — no new assertion was needed to prove a no-op change.
+
+### Regression
+
+Baseline re-verified BEFORE writing any new test (post-fix, pre-new-tests):
+`scripts/count_assertions.sh` — **45 files, 2477 assertions, 0 failures**, matching
+`[M17n-11]`'s last confirmed total exactly, confirming none of the five code changes
+broke anything by itself.
+
+After adding all new tests: **45 files, 2489 assertions** (2477 + 12: Fix 1's +1,
+Fix 2's +6, Fix 3's +3, Fix 4's +2), **0 failures** — confirmed via
+`scripts/count_assertions.sh`, run twice from independently clean process states
+(`pkill -9 -f "Godot.*--headless"` first each time) with identical totals both times.
+Given Fix 1 touches Intimidate interactions and Fix 3 touches weather/status
+interactions broadly, `m17n1_test.tscn` and `status_test.tscn` were each individually
+rerun 5 consecutive times (82/82 and 78/78 every time); `weather_test.tscn` was also
+rerun 5 consecutive times as an additional weather-side check (64/64 every time).
+
+### Docs
+
+`docs/m17-5_recon.md`'s Section D updated in place: findings D.1-D.4 marked
+**RESOLVED**, D.5 marked **RESOLVED (style-only, no behavior change)**, each pointing
+to this entry. `CLAUDE.md`'s status section updated with the new confirmed total
+(2489 across 45 files) via this session's `count_assertions.sh` run.

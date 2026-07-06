@@ -493,6 +493,20 @@ const ABILITY_QUICK_FEET:     int = 95
 const ABILITY_GUARD_DOG:      int = 275
 const ABILITY_FORECAST:       int = 59
 
+# M17n-11 (Group 8, "unique/standalone" part 2 — the FINAL M17n sub-tier). IDs
+# re-verified fresh against include/constants/abilities.h. Wonder Skin and Mirror
+# Armor both carry `breakable=TRUE` in source's data table; Costar has neither flag;
+# Comatose carries `cant_be_copied`/`cant_be_swapped`/`cant_be_traced`/
+# `cant_be_suppressed`/`cant_be_overwritten` (ALL FIVE M17h-style exemption flags) but
+# NOT `breakable` — so, unlike every other ability this project has wired a
+# Mold-Breaker-bypass for, Comatose's own mechanic (see StatusManager.try_apply_status)
+# is never bypassable by an attacker's Mold Breaker, and Neutralizing Gas never
+# suppresses it either.
+const ABILITY_COMATOSE:       int = 213
+const ABILITY_COSTAR:         int = 294
+const ABILITY_WONDER_SKIN:    int = 147
+const ABILITY_MIRROR_ARMOR:   int = 240
+
 # M17h: source models FOUR distinct "can this ability be read from / changed away from"
 # flags in `src/data/abilities.h` — `cantBeTraced`, `cantBeCopied`, `cantBeSwapped`,
 # `cantBeOverwritten` — genuinely different from each other and from M17g's
@@ -1644,7 +1658,13 @@ static func move_power_modifier_uq412(
 				and (move.type == TypeChart.TYPE_STEEL or move.type == TypeChart.TYPE_ROCK
 					or move.type == TypeChart.TYPE_GROUND):
 			modifier = DamageCalculator._uq412_multiply(modifier, 5325)  # UQ_4_12(1.3)
-		if id == ABILITY_TOUGH_CLAWS and move.makes_contact:
+		# [M17.5 Batch Fix]: switched from a raw `move.makes_contact` read to the shared
+		# `move_makes_contact()` wrapper for consistency with every other contact-flag
+		# consumer in this file (Rough Skin/Static/Flame Body/etc. all already go
+		# through it). Purely a style fix — currently behaviorally identical, since a
+		# battler can't simultaneously hold Tough Claws and Long Reach, but this closes
+		# the one remaining raw-flag read the M17.5 recon flagged.
+		if id == ABILITY_TOUGH_CLAWS and move_makes_contact(attacker, move, ng_active):
 			modifier = DamageCalculator._uq412_multiply(modifier, 5325)
 		if id == ABILITY_STEELWORKER and move.type == TypeChart.TYPE_STEEL:
 			modifier = DamageCalculator._uq412_multiply(modifier, 6144)
@@ -2110,6 +2130,23 @@ static func blocks_move_flag(
 	# discipline.
 	if id == ABILITY_OVERCOAT and move.powder_move:
 		return true
+	# [M17.5 Batch Fix]: Grass-type's general powder-move immunity — the OTHER half of
+	# `IsAffectedByPowderMove` (battle_util.c L10545-10552), gated on
+	# `B_POWDER_GRASS >= GEN_6` (also satisfied at this project's GEN_LATEST config),
+	# independent of Overcoat's ability-based exemption directly above. This is a pure
+	# type check (not an ability), so it is unconditional — never Mold-Breaker-
+	# bypassable (Mold Breaker only bypasses ABILITIES, never innate typing) and
+	# unaffected by Neutralizing Gas. Found as a live gap during the M17.5 recon: only
+	# Overcoat's half was ever wired here; the Grass-type half was previously only
+	# checked, incidentally and for an unrelated purpose, inside Effect Spore's own
+	# attacker-side exemption (see `try_contact_effects` below) — that check protects a
+	# Grass-type ATTACKER from Effect Spore's proc and is architecturally unrelated to
+	# a Grass-type DEFENDER being hit by an actual powder move; left untouched by this
+	# fix. Safety Goggles (source's third exemption) is item-scope, not implemented in
+	# this project (confirmed absent from `item_manager.gd`) — correctly out of scope
+	# for this ability/type-focused fix.
+	if defender != null and TypeChart.TYPE_GRASS in defender.species.types and move.powder_move:
+		return true
 	return false
 
 
@@ -2554,6 +2591,14 @@ static func ignores_attacker_accuracy_stage(
 #   "opponent_guard_dog_change" : int — Attack stage change applied to the opponent
 #                                    when Guard Dog reverses Intimidate into a raise
 #                                    (M17n-10); mutually exclusive with "atk_change"
+#   "mirror_armor_reflect_change" : int — Attack stage change applied to POKEMON
+#                                    (not opponent) when the opponent's Mirror Armor
+#                                    reflects Intimidate's drop back (M17n-11);
+#                                    mutually exclusive with "atk_change" and
+#                                    "opponent_guard_dog_change"
+#   "mirror_armor_holder"   : BattlePokemon or null — the Mirror Armor holder, for
+#                                    the caller's own "mirror_armor" ability_triggered
+#                                    tag (M17n-11)
 static func try_switch_in(
 		pokemon: BattlePokemon, opponent: BattlePokemon,
 		opponent_ally: BattlePokemon = null, ng_active: bool = false) -> Dictionary:
@@ -2561,6 +2606,7 @@ static func try_switch_in(
 		"atk_change": 0, "opponent_speed_change": 0, "cured_own_poison": false,
 		"opponent_defiant_stat": -1, "opponent_defiant_change": 0,
 		"opponent_guard_dog_change": 0,
+		"mirror_armor_reflect_change": 0, "mirror_armor_holder": null,
 		"cured_status": false, "cured_confusion": false,
 	}
 	var id: int = effective_ability_id(pokemon, ng_active)
@@ -2570,15 +2616,16 @@ static func try_switch_in(
 		# M17n-1: Inner Focus/Own Tempo/Oblivious fully block Intimidate's Attack drop
 		# under B_UPDATED_INTIMIDATE >= GEN_8 (this project's GEN_LATEST config) — source:
 		# battle_stat_change.c :: IsIntimidateBlocked (L660-675). Source's same case list
-		# also includes Scrappy (113), not yet implemented (deferred to the M17m-style
-		# type-effectiveness leftovers tier) — add it here too once it exists. Guard Dog
+		# also includes Scrappy (113) — implemented in [M17n-6], wired in here in the
+		# [M17.5 Batch Fix] session, closing the gap this comment used to flag. Guard Dog
 		# is a separate, ALREADY-DIFFERENT-SHAPED case in the same source function (turns
 		# the drop into a +1 raise instead of blocking it outright) and is unrelated to
 		# this check.
 		var opp_blocks_intimidate: bool = not opponent.fainted and (
 				effective_ability_id(opponent, ng_active) == ABILITY_INNER_FOCUS
 				or effective_ability_id(opponent, ng_active) == ABILITY_OWN_TEMPO
-				or effective_ability_id(opponent, ng_active) == ABILITY_OBLIVIOUS)
+				or effective_ability_id(opponent, ng_active) == ABILITY_OBLIVIOUS
+				or effective_ability_id(opponent, ng_active) == ABILITY_SCRAPPY)
 		# M17n-10: Guard Dog — reverses (not just blocks) Intimidate's -1 Attack drop
 		# into a +1 Attack raise for the intimidated Pokémon itself. Source: the SAME
 		# `IsIntimidateBlocked` switch (L676-690) — reuses `BattleScript_DefiantActivates`,
@@ -2609,9 +2656,24 @@ static func try_switch_in(
 		var opp_guard_dog: bool = not opponent.fainted \
 				and effective_ability_id(opponent, ng_active) == ABILITY_GUARD_DOG \
 				and opponent.stat_stages[BattlePokemon.STAGE_ATK] > -6
+		# M17n-11: Mirror Armor — the OTHER opposing-ability shape Intimidate's -1
+		# Attack drop can meet, structurally independent from Guard Dog above (a
+		# single mon can only hold one ability, so this and `opp_guard_dog` never
+		# both apply to the same `opponent` — confirmed no interaction risk, just two
+		# different per-holder mechanisms Intimidate can meet across a doubles
+		# field). Reflects the drop onto `pokemon` (the switching-in Intimidate
+		# source) instead of applying it to `opponent` at all. Same "not
+		# Mold-Breaker-aware here" reasoning as Guard Dog directly above — no
+		# `attacker` param passed to `mirror_armor_reflects`.
+		var opp_mirror_armor: bool = not opponent.fainted \
+				and mirror_armor_reflects(opponent, pokemon, ng_active)
 		if opp_guard_dog:
 			result["opponent_guard_dog_change"] = StatusManager.apply_stat_change(
 					opponent, BattlePokemon.STAGE_ATK, 1, opponent_ally, ng_active)
+		elif opp_mirror_armor:
+			result["mirror_armor_reflect_change"] = StatusManager.apply_stat_change(
+					pokemon, BattlePokemon.STAGE_ATK, -1, null, ng_active)
+			result["mirror_armor_holder"] = opponent
 		elif not opponent.fainted and not opp_blocks_intimidate:
 			var atk_change: int = StatusManager.apply_stat_change(
 					opponent, BattlePokemon.STAGE_ATK, -1, opponent_ally, ng_active)
@@ -2756,6 +2818,68 @@ static func try_switch_in_ally_heal(
 	if ally.current_hp >= ally.max_hp:
 		return 0
 	return max(1, ally.max_hp / 4)
+
+
+# M17n-11: Costar — switch-in, doubles-only, copies the ally's CURRENT stat stages
+# (all 7) plus its focus_energy crit-boost volatile onto the holder. Source:
+# ABILITY_COSTAR case (battle_util.c ABILITYEFFECT_ON_SWITCHIN dispatch): requires
+# IsDoubleBattle(), the ally alive, AND BattlerHasCopyableChanges(partner)
+# (battle_util.c L5964-5979 — true if the ally has ANY non-default stat stage OR
+# focusEnergy/dragonCheer/bonusCritStages set) — a confirmed no-op (no message, no
+# copy at all) if the ally has nothing worth copying, not a copy-of-zeroes. Source
+# also copies dragonCheer/bonusCritStages; neither exists in this project (no G-Max
+# moves, no Dragon Cheer), so only stat_stages + focus_energy are copied — the exact
+# same stat-stage-array-copy shape `[M16e]`'s Psych Up already established
+# (`for _pi in range(...): stages[_pi] = ...`), reused directly rather than
+# reimplemented. `_get_ally` already returns null in singles with zero extra
+# plumbing (the same "doubles-only for free" precedent `[M17c]`'s Hospitality and
+# `[M17h]`'s Receiver/Power of Alchemy both established), so a singles battle is a
+# guaranteed no-op here too. Returns true if the copy actually happened (false = not
+# this ability, no ally, ally fainted, or ally has nothing copyable).
+static func try_costar_copy(pokemon: BattlePokemon, ally: BattlePokemon, ng_active: bool = false) -> bool:
+	if effective_ability_id(pokemon, ng_active) != ABILITY_COSTAR:
+		return false
+	if ally == null or ally.fainted:
+		return false
+	var has_copyable: bool = ally.focus_energy
+	if not has_copyable:
+		for stage: int in ally.stat_stages:
+			if stage != 0:
+				has_copyable = true
+				break
+	if not has_copyable:
+		return false
+	for _pi in range(pokemon.stat_stages.size()):
+		pokemon.stat_stages[_pi] = ally.stat_stages[_pi]
+	pokemon.focus_energy = ally.focus_energy
+	return true
+
+
+# M17n-11: Mirror Armor — whenever a stat-lowering effect targets the holder, the
+# drop is instead reflected onto whoever caused it (same stage/amount, redirected —
+# NOT reversed in sign the way Guard Dog reverses Intimidate into a raise for
+# itself). Source: `IsMirrorArmorReflected` (battle_stat_change.c L742-744):
+# `cv->abilities[cv->battlerDef] != ABILITY_MIRROR_ARMOR || st->certain` bail-out,
+# THEN — critically — `if (cv->battlerAtk == cv->battlerDef) gBattleScripting.battler
+# = cv->battlerDef; else gBattleScripting.battler = cv->battlerAtk;` — a
+# SELF-inflicted drop (Overheat/Draco Meteor/Close Combat lowering the user's OWN
+# stat) is confirmed to NOT redirect anywhere; it simply applies to the holder
+# itself like normal. This function only answers "should this redirect happen" —
+# callers are responsible for passing null/skipping when the drop is self-inflicted
+# (this project's `move.stat_change_self` flag makes that check trivial at the one
+# move-based call site; the Intimidate call site in `try_switch_in` is inherently
+# never self-inflicted, since Intimidate's source and target are always different
+# battlers by construction). `.breakable = TRUE` in source, BUT — same architectural
+# finding as `[M17n-10]`'s Guard Dog correction — `moldBreakerActive` is only ever
+# set while an actual move is resolving (`gCurrentMove != MOVE_NONE`,
+# battle_util.c L9799), so Mold Breaker only actually matters for the MOVE-based
+# call site, never for the Intimidate/switch-in call site (which must call this
+# with `attacker` left null, exactly like Guard Dog's own analogous check).
+static func mirror_armor_reflects(target: BattlePokemon, source: BattlePokemon,
+		ng_active: bool = false, attacker: BattlePokemon = null) -> bool:
+	if target == null or source == null or target == source:
+		return false
+	return effective_ability_id(target, ng_active, attacker) == ABILITY_MIRROR_ARMOR
 
 
 # Return the WEATHER_* value (DamageCalculator constants) that should be set when this
@@ -3066,10 +3190,20 @@ static func _apply_moody(
 #     (B_ABILITY_TRIGGER_CHANCE >= GEN_4 but NOT == GEN_4, matching the same generation
 #     branch Shed Skin uses) gives 9% poison / 10% paralysis / 11% sleep (not an even
 #     10/10/10 split — a genuine GEN_5+ quirk in source's cutoffs) out of a roll in
-#     0-99, else no effect. Also requires `IsAffectedByPowderMove(attacker)` (L4032) —
-#     this project has no general "powder move" immunity system, but the ATTACKER-side
-#     Grass-type/Overcoat exemption that check encodes is a plain type check we already
-#     have infrastructure for (TypeChart), so it's applied directly rather than skipped.
+#     0-99, else no effect. Also requires `IsAffectedByPowderMove(gBattlerAttacker,
+#     abilityAtk, holdEffectAtk)` (L4032) — confirmed via direct source read this is
+#     evaluated against the ATTACKER (the mon making contact, who is the one at risk
+#     of being afflicted), not the Effect Spore holder itself. [M17.5 Batch Fix]: this
+#     project's general powder-move system (`AbilityManager.blocks_move_flag`) now
+#     covers Overcoat + Grass-type; both of the ATTACKER-side exemptions
+#     `IsAffectedByPowderMove` encodes are applied directly below (Safety Goggles,
+#     source's third exemption, is item-scope and not implemented in this project).
+#     Overcoat is checked via `effective_ability_id` with no Mold-Breaker `attacker`
+#     param — like Scrappy's Ghost-bypass and Magic Guard's self-protection, this is
+#     the attacker's OWN ability protecting itself, never "broken through" by the
+#     Effect Spore holder's side (Mold Breaker only ever bypasses a DEFENDER's ability
+#     from an attacking move's perspective, which isn't this shape) — but IS still
+#     subject to Neutralizing Gas suppression like any other ability.
 #
 # Returns a Dictionary:
 #   "rough_skin_damage" : int    — HP deducted from attacker (0 if none)
@@ -3172,9 +3306,12 @@ static func try_contact_effects(
 		return result
 
 	# M17c: Effect Spore — weighted 3-way roll (9% poison / 10% paralysis / 11% sleep),
-	# skipped entirely if the attacker is immune to powder (Grass-type, the only part of
-	# IsAffectedByPowderMove reachable with this project's current ability roster).
-	if id == ABILITY_EFFECT_SPORE and TypeChart.TYPE_GRASS not in attacker.species.types:
+	# skipped entirely if the attacker is immune to powder. [M17.5 Batch Fix]: added the
+	# attacker's own Overcoat exemption alongside the pre-existing Grass-type one — both
+	# are the ATTACKER-side halves of `IsAffectedByPowderMove` (see this function's own
+	# header comment above for the full citation and Mold-Breaker/NG reasoning).
+	if id == ABILITY_EFFECT_SPORE and TypeChart.TYPE_GRASS not in attacker.species.types \
+			and effective_ability_id(attacker, ng_active) != ABILITY_OVERCOAT:
 		var roll: int = int(force_effect_spore_roll) if force_effect_spore_roll != null \
 				else randi() % 100
 		if roll < 9:

@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 147
 ability_name = "Wonder Skin"
-description = ""
-ai_rating = 0
+description = "Makes status moves more likely to miss."
+ai_rating = 4
+breakable = true
