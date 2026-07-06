@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 89
 ability_name = "Iron Fist"
-description = ""
-ai_rating = 0
+description = "Powers up punching moves."
+ai_rating = 5

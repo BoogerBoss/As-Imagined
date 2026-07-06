@@ -11,3 +11,4 @@ category = 2
 accuracy = 85
 pp = 15
 secondary_effect = 1
+bounceable = true

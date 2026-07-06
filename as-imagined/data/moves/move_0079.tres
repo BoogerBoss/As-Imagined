@@ -12,3 +12,4 @@ accuracy = 75
 pp = 15
 powder_move = true
 secondary_effect = 4
+bounceable = true

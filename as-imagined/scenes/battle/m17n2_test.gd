@@ -48,6 +48,7 @@ func _ready() -> void:
 	_test_section_13_neutralizing_gas_suppression()
 	_test_section_14_negative_case()
 	_test_section_15_air_lock_sand_spit_interaction_full_battle()
+	_test_section_16_weather_chip_immunity_follow_up_fix()
 
 	var total := _pass + _fail
 	print("m17n2_test: %d/%d passed" % [_pass, total])
@@ -635,3 +636,107 @@ func _test_section_15_air_lock_sand_spit_interaction_full_battle() -> void:
 			chip_after_faint)
 
 	bm.queue_free()
+
+
+# ── Section 16: Sand Veil/Sand Force/Sand Rush/Snow Cloak — weather-chip immunity
+# (follow-up fix, post-[M17n-6]) ─────────────────────────────────────────────
+#
+# This tier's ORIGINAL entry concluded these four abilities grant NO sandstorm/hail
+# chip-damage immunity, and shipped a supporting code comment saying so. That
+# conclusion was confirmed WRONG during [M17n-6]'s Overcoat work — current source
+# (battle_end_turn.c :: HandleEndTurnWeatherDamage, L143-169) explicitly exempts
+# Sand Veil/Sand Force/Sand Rush from sandstorm chip and Snow Cloak from hail chip,
+# the same shape as Overcoat's own (already-shipped) exemption. Fixed here rather
+# than left as a flagged-but-unfixed gap — see docs/decisions.md's [M17n-2] follow-up
+# subsection.
+
+func _test_section_16_weather_chip_immunity_follow_up_fix() -> void:
+	var sand_veil := _load_ability(8)
+	var sand_force := _load_ability(159)
+	var sand_rush := _load_ability(146)
+	var snow_cloak := _load_ability(81)
+	var tackle := _load_move(33)
+
+	# Direct unit tests: each ability blocks chip ONLY during its own matching
+	# weather, never the other.
+	var sv := _make_mon("ChipSandVeil", [TypeChart.TYPE_NORMAL])
+	sv.ability = sand_veil
+	_chk("S16.01 Sand Veil blocks sandstorm chip",
+			AbilityManager.blocks_weather_chip_damage(sv, false, DamageCalculator.WEATHER_SANDSTORM))
+	_chk("S16.02 Sand Veil does NOT block hail chip (discriminator)",
+			not AbilityManager.blocks_weather_chip_damage(sv, false, DamageCalculator.WEATHER_HAIL))
+
+	var sf := _make_mon("ChipSandForce", [TypeChart.TYPE_NORMAL])
+	sf.ability = sand_force
+	_chk("S16.03 Sand Force blocks sandstorm chip",
+			AbilityManager.blocks_weather_chip_damage(sf, false, DamageCalculator.WEATHER_SANDSTORM))
+	_chk("S16.04 Sand Force does NOT block hail chip (discriminator)",
+			not AbilityManager.blocks_weather_chip_damage(sf, false, DamageCalculator.WEATHER_HAIL))
+
+	var sr := _make_mon("ChipSandRush", [TypeChart.TYPE_NORMAL])
+	sr.ability = sand_rush
+	_chk("S16.05 Sand Rush blocks sandstorm chip",
+			AbilityManager.blocks_weather_chip_damage(sr, false, DamageCalculator.WEATHER_SANDSTORM))
+	_chk("S16.06 Sand Rush does NOT block hail chip (discriminator)",
+			not AbilityManager.blocks_weather_chip_damage(sr, false, DamageCalculator.WEATHER_HAIL))
+
+	var sc := _make_mon("ChipSnowCloak", [TypeChart.TYPE_NORMAL])
+	sc.ability = snow_cloak
+	_chk("S16.07 Snow Cloak blocks hail chip",
+			AbilityManager.blocks_weather_chip_damage(sc, false, DamageCalculator.WEATHER_HAIL))
+	_chk("S16.08 Snow Cloak does NOT block sandstorm chip (discriminator)",
+			not AbilityManager.blocks_weather_chip_damage(sc, false, DamageCalculator.WEATHER_SANDSTORM))
+
+	# Neutralizing Gas suppression — one representative ability.
+	_chk("S16.09 Neutralizing Gas suppresses Sand Veil's weather-chip immunity",
+			not AbilityManager.blocks_weather_chip_damage(sv, true, DamageCalculator.WEATHER_SANDSTORM))
+
+	# Full-battle confirmation: Sand Rush holder takes no sandstorm chip; a plain
+	# control (same stats) does.
+	var control := _make_mon("ChipControlN2", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 40)
+	control.add_move(tackle)
+	var control_atk := _make_mon("ChipControlAtkN2", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 200)
+	control_atk.add_move(tackle)
+	var chip_events_control := []
+	var bm1 := BattleManager.new()
+	add_child(bm1)
+	bm1.weather = DamageCalculator.WEATHER_SANDSTORM
+	bm1.weather_duration = 10
+	bm1.weather_damage.connect(func(m, amt): chip_events_control.push_back([m, amt]))
+	bm1.start_battle_with_parties(BattleParty.single(control_atk), BattleParty.single(control))
+	_chk("S16.10 sanity: without Sand Rush, sandstorm chip damage occurs",
+			chip_events_control.any(func(e): return e[0] == control))
+	bm1.queue_free()
+
+	var sand_rush_holder := _make_mon("ChipSandRushBattle", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 40)
+	sand_rush_holder.ability = sand_rush
+	sand_rush_holder.add_move(tackle)
+	var sr_atk := _make_mon("ChipSandRushAtkN2", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 200)
+	sr_atk.add_move(tackle)
+	var chip_events_sr := []
+	var bm2 := BattleManager.new()
+	add_child(bm2)
+	bm2.weather = DamageCalculator.WEATHER_SANDSTORM
+	bm2.weather_duration = 10
+	bm2.weather_damage.connect(func(m, amt): chip_events_sr.push_back([m, amt]))
+	bm2.start_battle_with_parties(BattleParty.single(sr_atk), BattleParty.single(sand_rush_holder))
+	_chk("S16.11 Sand Rush holder never takes sandstorm chip damage",
+			not chip_events_sr.any(func(e): return e[0] == sand_rush_holder))
+	bm2.queue_free()
+
+	# Full-battle confirmation: Snow Cloak holder takes no hail chip.
+	var snow_cloak_holder := _make_mon("ChipSnowCloakBattle", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 40)
+	snow_cloak_holder.ability = snow_cloak
+	snow_cloak_holder.add_move(tackle)
+	var sc_atk := _make_mon("ChipSnowCloakAtkN2", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 200)
+	sc_atk.add_move(tackle)
+	var chip_events_sc := []
+	var bm3 := BattleManager.new()
+	add_child(bm3)
+	bm3.weather = DamageCalculator.WEATHER_HAIL
+	bm3.weather_duration = 10
+	bm3.weather_damage.connect(func(m, amt): chip_events_sc.push_back([m, amt]))
+	bm3.start_battle_with_parties(BattleParty.single(sc_atk), BattleParty.single(snow_cloak_holder))
+	_chk("S16.12 Snow Cloak holder never takes hail chip damage",
+			not chip_events_sc.any(func(e): return e[0] == snow_cloak_holder))
+	bm3.queue_free()

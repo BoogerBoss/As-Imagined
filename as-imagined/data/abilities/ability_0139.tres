@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 139
 ability_name = "Harvest"
-description = ""
-ai_rating = 0
+description = "May create another Berry after one is used."
+ai_rating = 5

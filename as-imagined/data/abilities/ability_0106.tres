@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 106
 ability_name = "Aftermath"
-description = ""
-ai_rating = 0
+description = "Damages the attacker if this Pokémon is knocked out with a move that makes direct contact."
+ai_rating = 5

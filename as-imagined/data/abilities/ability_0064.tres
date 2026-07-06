@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 64
 ability_name = "Liquid Ooze"
-description = ""
-ai_rating = 0
+description = "The Pokémon's draining move sucks health from the opponent — but if this Pokémon is hit by a draining move, the tables are turned, and its HP is reduced instead."
+ai_rating = 3

@@ -83,6 +83,7 @@ signal ability_healed(pokemon: BattlePokemon, amount: int)                 # Rai
 signal item_consumed(pokemon: BattlePokemon, item: ItemData)               # one-use item activated
 signal item_healed(pokemon: BattlePokemon, amount: int)                    # Leftovers / Sitrus Berry
 signal item_damage(pokemon: BattlePokemon, amount: int)                    # Life Orb recoil
+signal item_regenerated(pokemon: BattlePokemon, item: ItemData)            # M17n-7: Harvest
 # M14b signals
 signal helping_hand_used(user: BattlePokemon, ally: BattlePokemon)         # Helping Hand boosted ally
 signal follow_me_used(user: BattlePokemon)                                 # Follow Me/Rage Powder active
@@ -107,6 +108,8 @@ signal stat_changes_copied(user: BattlePokemon, from_mon: BattlePokemon)   # Psy
 signal ability_changed(pokemon: BattlePokemon, new_ability_id: int)       # M17h: Trace/Mummy/Receiver/Wandering Spirit
 
 signal item_transferred(from_mon: BattlePokemon, to_mon: BattlePokemon, item: ItemData)  # M17j: Pickpocket/Magician/Symbiosis
+
+signal move_bounced(holder: BattlePokemon, new_target: BattlePokemon)      # M17n-9: Magic Bounce reflected a status move
 
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
@@ -206,6 +209,8 @@ var _force_healer_roll: Variant = null
 # M17c: force Effect Spore's 3-way contact roll (int 0-99) and Cursed Body's 30% roll.
 var _force_effect_spore_roll: Variant = null
 var _force_cursed_body_roll: Variant = null
+# M17n-7: force Harvest's 50%-normally/100%-in-sun end-of-turn regeneration roll.
+var _force_harvest_roll: Variant = null
 
 # M17n-3: force Quick Draw's 30% per-battler-per-turn roll (evaluated once before the
 # turn-order sort, same null-sentinel convention as the other _force_* roll seams).
@@ -227,6 +232,16 @@ var _trainer_ais: Array = [null, null]
 # Source: FAINT_BLOCK_TRY_DESTINY_BOND (battle_move_resolution.c L2953) uses gBattlerAttacker
 #   global at time of lethal hit — equivalent to tracking last attacker per target.
 var _last_attacker: Dictionary = {}
+
+# M17n-8: companions to `_last_attacker` above, set at the exact same call sites, for
+# Aftermath/Innards Out's on-faint retaliation. `_last_attacker_move` — the MoveData
+# used for that last hit (Aftermath needs to know if it made contact). `_last_attacker_hp_before`
+# — the defender's own HP immediately before that hit was applied (Innards Out's
+# damage amount; NOT the move's raw calculated damage, which can exceed remaining HP
+# on an overkill hit — see AbilityManager.faint_retaliation_damage's doc comment).
+# Cleared alongside `_last_attacker` at the start of each turn.
+var _last_attacker_move: Dictionary = {}
+var _last_attacker_hp_before: Dictionary = {}
 
 # M14b: per-side Follow Me/Rage Powder state. -1 = no Follow Me active this turn.
 # Value = combatant index of the Pokémon that used Follow Me/Rage Powder.
@@ -386,9 +401,36 @@ func try_set_weather(weather_type: int, by_pokemon: BattlePokemon = null) -> boo
 	if weather == weather_type:
 		return false
 	weather = weather_type
-	weather_duration = ItemManager.weather_duration(by_pokemon, weather_type) \
+	weather_duration = ItemManager.weather_duration(
+			by_pokemon, weather_type, _is_neutralizing_gas_active()) \
 		if weather_type != WEATHER_NONE else 0
 	return true
+
+
+# M17n-10: Forecast — "weather just changed, notify all battlers" broadcast. Source:
+# every actual weather-change call site in source invokes AbilityBattleEffects
+# (ABILITYEFFECT_ON_WEATHER, ...) for the relevant battler(s)
+# (battle_script_commands.c L11917, L12889); this project has 4 places `weather`
+# actually changes (ability switch-in setter, Baton Pass inheritance, Sand Spit,
+# natural end-of-turn expiration) and none of them previously gave any Pokémon a
+# chance to react — this is that missing hook, called once from each of the 4 sites
+# right after the change is confirmed real. Loops ALL live combatants (not just the
+# mon that caused the change) since Forecast's holder may be on either side and may
+# not be the one who changed the weather. Only Forecast reacts to this hook today;
+# Protosynthesis (the other ability this hook was originally scoped to serve
+# alongside, per `docs/m17n_recon.md`) is excluded from this project's scope, so this
+# is self-contained with no cross-ability coordination needed.
+func _notify_weather_changed() -> void:
+	var ng_active: bool = _is_neutralizing_gas_active()
+	var eff_weather: int = _effective_weather()
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		var new_type: int = AbilityManager.forecast_type(mon, ng_active, eff_weather)
+		if new_type != TypeChart.TYPE_NONE and new_type not in mon.species.types:
+			_set_mon_type(mon, new_type)
+			type_changed.emit(mon, new_type)
+			ability_triggered.emit(mon, "forecast")
 
 
 # Pump the state machine until it reaches a terminal phase or a phase handler
@@ -551,6 +593,8 @@ func _phase_priority_resolution() -> void:
 	# Source: TurnValuesCleanUp (battle_main.c L5022): memset gProtectStructs (helpingHand),
 	#   gSideTimers[].followmeTimer = 0 (L5060–5061).
 	_last_attacker.clear()
+	_last_attacker_move.clear()
+	_last_attacker_hp_before.clear()
 	_follow_me_targets[0] = -1
 	_follow_me_targets[1] = -1
 	for _hi in range(_helping_hand.size()):
@@ -816,9 +860,26 @@ func _phase_move_execution() -> void:
 	# M12: Set choice lock immediately when a choice-item holder commits to a move.
 	# Source: ProcessChoiceItem in battle_script_commands.c — fires before accuracy check.
 	# Not set during a charge lock (charging_move handles that separately).
-	if move != null and ItemManager.is_choice_item(attacker) \
+	if move != null and (ItemManager.is_choice_item(attacker, ng_active) \
+				or AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_GORILLA_TACTICS) \
 			and attacker.choice_locked_move == null and attacker.charging_move == null:
 		attacker.choice_locked_move = move
+
+	# M17n-4: Protean/Libero — user's own type changes to match the move it's about to
+	# use. Source: CANCELER_PROTEAN sits early in source's canceler chain (after
+	# CANCELER_BIDE, before CANCELER_CHARGING — well before CANCELER_ACCURACY_CHECK/
+	# CANCELER_NOT_FULLY_PROTECTED), so this fires unconditionally once the move is
+	# chosen, regardless of whether the move will later miss or get Protected — placed
+	# here, immediately after choice-lock, as the earliest point in this function that
+	# runs for every non-disabled move attempt.
+	if move != null:
+		var protean_type: int = AbilityManager.protean_new_type(attacker, move, ng_active)
+		if protean_type != TypeChart.TYPE_NONE:
+			_set_mon_type(attacker, protean_type)
+			attacker.used_protean_libero = true
+			type_changed.emit(attacker, protean_type)
+			var pl_id: int = AbilityManager.effective_ability_id(attacker, ng_active)
+			ability_triggered.emit(attacker, "protean" if pl_id == AbilityManager.ABILITY_PROTEAN else "libero")
 
 	# M7: Clear destiny_bond when the user acts — the bond only covers until their next
 	# move. Source: destinyBond decremented at end of user's move execution; == 0 → expired.
@@ -842,10 +903,14 @@ func _phase_move_execution() -> void:
 	# M15 Task 3: Decrement PP (charge turn only for two-turn moves; never for Struggle).
 	# Source: battle_script_commands.c :: Cmd_decrementmovepointvalue (L5960);
 	#   CancelerPPDeduction skips if cv->move == MOVE_STRUGGLE (L979).
+	# M17n-10: Pressure widens this to more than 1 PP — see
+	# AbilityManager.pressure_pp_cost's own doc comment for the full source citation.
 	if not move.is_struggle and attacker.charging_move == null:
 		var move_idx: int = attacker.moves.find(move)
 		if move_idx >= 0:
-			attacker.use_pp(move_idx)
+			var pp_cost: int = AbilityManager.pressure_pp_cost(
+					move, attacker, defender, attacker_side, _combatants, _active_per_side, ng_active)
+			attacker.use_pp(move_idx, pp_cost)
 
 	# ── Two-turn charge/release ───────────────────────────────────────────────
 	# Source: battle_move_resolution.c :: CancelerCharging (L1737)
@@ -990,6 +1055,16 @@ func _phase_move_execution() -> void:
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
+		# M17n-5: Sturdy blocks OHKO moves outright — unconditional, any HP (distinct
+		# from its OTHER half, surviving an ordinary lethal hit at full HP, in
+		# _do_damaging_hit below). Source: battle_util.c L10399-10403, checked
+		# immediately after the level check, before the custom accuracy roll.
+		if AbilityManager.effective_ability_id(defender, ng_active, attacker) == AbilityManager.ABILITY_STURDY:
+			move_missed.emit(attacker, "sturdy_blocks_ohko")
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
 		# Custom accuracy roll: odds = move.accuracy + (atk.level − def.level), vs randi() % 100.
 		# Source: DoesOHKOMoveMissTarget L10390: odds = GetMoveAccuracy + (atk.level − def.level).
 		var ohko_acc: int = move.accuracy + (attacker.level - defender.level)
@@ -1006,6 +1081,8 @@ func _phase_move_execution() -> void:
 			return
 		# Hit! Deal defender.current_hp as damage (instant KO).
 		_last_attacker[defender] = attacker
+		_last_attacker_move[defender] = move
+		_last_attacker_hp_before[defender] = defender.current_hp
 		_apply_fixed_dmg_to_target(attacker, defender, move, defender.current_hp)
 		attacker.last_move_used = move
 		_current_actor_index += 1
@@ -1094,6 +1171,18 @@ func _phase_move_execution() -> void:
 	# Fails if defender has no valid non-fainted switch-in (no party members left).
 	# priority = -6 means Roar/Whirlwind always go last; they bypass Protect/Substitute.
 	if move.is_roar:
+		# M17n-10: Guard Dog blocks the forced switch entirely — see
+		# AbilityManager.blocks_forced_switch's own doc comment for the source
+		# citation. Checked before the party-slot lookup below since a blocked Roar
+		# never needs one.
+		if AbilityManager.blocks_forced_switch(defender, attacker, ng_active):
+			move_effect_failed.emit(attacker, "guard_dog_blocks_switch")
+			ability_triggered.emit(defender, "guard_dog")
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
 		var def_side: int = 1 - attacker_side
 		var def_party: BattleParty = _parties[def_side]
 		var rand_slot: int = def_party.get_random_non_fainted_not_active(_force_roar_rng)
@@ -1158,6 +1247,10 @@ func _phase_move_execution() -> void:
 		if bp_si_result["atk_change"] != 0:
 			stat_stage_changed.emit(defender, BattlePokemon.STAGE_ATK, bp_si_result["atk_change"])
 			ability_triggered.emit(incoming, "intimidate")
+		if bp_si_result["opponent_guard_dog_change"] != 0:
+			stat_stage_changed.emit(defender, BattlePokemon.STAGE_ATK, bp_si_result["opponent_guard_dog_change"])
+			ability_triggered.emit(defender, "guard_dog")
+			ability_triggered.emit(incoming, "intimidate")
 		if bp_si_result["opponent_speed_change"] != 0:
 			stat_stage_changed.emit(defender, BattlePokemon.STAGE_SPEED, bp_si_result["opponent_speed_change"])
 			ability_triggered.emit(defender, "rattled")
@@ -1177,10 +1270,14 @@ func _phase_move_execution() -> void:
 		var bp_set_w: int = AbilityManager.get_switch_in_weather(incoming, bp_ng_active)
 		if bp_set_w != WEATHER_NONE and try_set_weather(bp_set_w, incoming):
 			weather_set.emit(incoming, bp_set_w)
+			_notify_weather_changed()
 		# M17h: Trace is NOT wired into this separate Baton Pass switch-in block, the
 		# SAME known, already-documented simplification `[M17b]` accepted for Download
 		# and `[M17c]` accepted for Hospitality in this exact code path — not a new gap
-		# introduced by this tier.
+		# introduced by this tier. M17n-10: Screen Cleaner joins this same known-gap
+		# list (also not wired here) — Guard Dog, by contrast, needed no separate
+		# wiring since it lives inside the shared `try_switch_in` call just above and
+		# is handled by the `opponent_guard_dog_change` branch immediately above this.
 		move_executed.emit(attacker, defender, move, 0)
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
@@ -1411,7 +1508,10 @@ func _phase_move_execution() -> void:
 				_current_actor_index += 1
 				_set_phase(BattlePhase.FAINT_CHECK)
 				return
-			if defender.substitute_hp > 0 and not move.ignores_substitute:
+			# M17n-9: Infiltrator bypasses Substitute for every move (source's shared
+			# IsSubstituteProtected chokepoint), Encore included.
+			if defender.substitute_hp > 0 and not move.ignores_substitute \
+					and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
 				move_missed.emit(attacker, "substitute")
 			elif (defender.last_move_used == null
 					or defender.encored_move != null
@@ -1635,7 +1735,9 @@ func _phase_move_execution() -> void:
 		#   damage — never reaches 0 since floor((a+b)/2) >= 1 whenever a,b >= 1).
 		# Blocked by the target's Substitute — Pain Split has no ignoresSubstitute flag.
 		if move.is_pain_split:
-			if defender.substitute_hp > 0 and not move.ignores_substitute:
+			# M17n-9: Infiltrator bypasses Substitute here too (shared chokepoint).
+			if defender.substitute_hp > 0 and not move.ignores_substitute \
+					and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
 				move_missed.emit(attacker, "substitute")
 			else:
 				var hp_diff: int = (attacker.current_hp + defender.current_hp) / 2
@@ -1717,18 +1819,56 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		var foe_targeting: bool = not move.stat_change_self
+
+		# M17n-9: Magic Bounce — reflects the move back at its own user BEFORE the
+		# Substitute/type-immunity/Prankster gates below even run (a bounced move
+		# never resolves against the original defender at all). Scoped to this
+		# project's `move.bounceable` subset (see AbilityManager.bounces_status_move's
+		# doc comment for the full source-derived move list and exclusions). A single
+		# non-recursive attacker/defender swap correctly yields "only one bounce ever"
+		# even in a Magic-Bounce-vs-Magic-Bounce matchup, and — since this check runs
+		# before `blocks_prankster_move` further below — a Dark-type Magic Bounce
+		# holder correctly bounces a Prankster-boosted status move rather than the
+		# Prankster-Dark-immunity gate eating it as a no-op first (source:
+		# CanTargetBlockPranksterMove, battle_util.c L2203-2210).
+		if foe_targeting and move.bounceable \
+				and AbilityManager.bounces_status_move(defender, ng_active, attacker, move):
+			move_bounced.emit(defender, attacker)
+			ability_triggered.emit(defender, "magic_bounce")
+			var bounce_holder: BattlePokemon = defender
+			defender = attacker
+			attacker = bounce_holder
+
 		# Substitute blocks most foe-targeting status moves (not self-targeting, not
 		# ignoresSubstitute moves like Disable which is handled above).
 		# Source: IsSubstituteProtected → returns TRUE unless MoveIgnoresSubstitute.
-		var foe_targeting: bool = not move.stat_change_self
-		if foe_targeting and defender.substitute_hp > 0 and not move.ignores_substitute:
+		# M17n-9: Infiltrator bypasses this too (shared IsSubstituteProtected chokepoint).
+		if foe_targeting and defender.substitute_hp > 0 and not move.ignores_substitute \
+				and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
 			move_missed.emit(attacker, "substitute")
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
 		# Type immunity check for foe-targeting moves.
-		if foe_targeting and move.type != TypeChart.TYPE_NONE:
+		# M17n-8: Corrosion bypasses this specifically for a Poison-type status move
+		# (Toxic) that would otherwise be blocked by Steel's (or, in principle,
+		# Poison's own) type-chart immunity to Poison-type moves — source-confirmed:
+		# `CanSetNonVolatileStatus`'s ABILITY_CORROSION check (battle_util.c L5250) is
+		# the ONLY reference to Corrosion anywhere in source, and its own failure
+		# branch uses `BattleScript_NotAffected` — the identical "doesn't affect"
+		# script a flat type immunity uses — confirming status-inflicting moves in
+		# real source are gated by THIS status-specific check, not a separate general
+		# type-effectiveness block gets applied downstream of it. This project's own
+		# blanket type-immunity gate here (correct for e.g. Thunder Wave vs a
+		# Ground-type target, which has no analogous ability bypass) would otherwise
+		# incorrectly block Toxic before it ever reaches `try_apply_status`'s own
+		# Corrosion-aware check below. Scoped narrowly to Poison-type moves only —
+		# Corrosion does not grant any other type a wider immunity bypass.
+		var corrosion_bypasses_type_gate: bool = move.type == TypeChart.TYPE_POISON \
+				and AbilityManager.bypasses_poison_steel_immunity(attacker, ng_active)
+		if foe_targeting and move.type != TypeChart.TYPE_NONE and not corrosion_bypasses_type_gate:
 			var eff: float = TypeChart.get_effectiveness(move.type, defender.species.types)
 			if eff == 0.0:
 				move_missed.emit(attacker, "immune")
@@ -1772,6 +1912,33 @@ func _phase_move_execution() -> void:
 						if defiant_actual != 0:
 							stat_stage_changed.emit(stat_target, defiant_stat, defiant_actual)
 							ability_triggered.emit(stat_target, "defiant_competitive")
+				# M17n-8: Opportunist — copies the SAME stage increase onto any live
+				# opponent (relative to `stat_target`, the mon whose stat just rose) that
+				# holds it, immediately. Source: battle_stat_change.c L420-441 — checked
+				# ONLY in the stat-INCREASE path (never decreases), loops every battler on
+				# the OPPOSING side of `stat_target` (`IsBattlerAlly` skip — the holder can
+				# never react to its own side's raise, including its own, by construction).
+				# Unlike Defiant/Competitive above, NOT gated on `move.stat_change_self` —
+				# source's real check fires for a self-targeted raise (Swords Dance) just
+				# as much as an opponent-targeted one; what matters is which SIDE the
+				# raised mon is on, not whether the move that raised it was self-targeted.
+				# No infinite-loop risk: the copied change below calls
+				# StatusManager.apply_stat_change directly, never re-entering this same
+				# dispatch block, so Opportunist's own copy can't re-trigger itself.
+				# Known simplification (documented, not silently dropped): wired into
+				# this primary move-driven stat-increase call site only, mirroring
+				# Defiant/Competitive's own established precedent of not retrofitting
+				# into every apply_stat_change call site — ability-driven stat increases
+				# (Moxie, Weak Armor's Speed+2, Download, etc.) and Baton-Pass/Psych-Up
+				# stage copies are NOT currently covered.
+				if actual > 0:
+					for opp: BattlePokemon in _get_live_opponents(stat_target):
+						if AbilityManager.effective_ability_id(opp, ng_active) == AbilityManager.ABILITY_OPPORTUNIST:
+							var opp_actual: int = StatusManager.apply_stat_change(
+									opp, move.stat_change_stat, actual, null, ng_active)
+							if opp_actual != 0:
+								stat_stage_changed.emit(opp, move.stat_change_stat, opp_actual)
+								ability_triggered.emit(opp, "opportunist")
 		elif move.secondary_effect != MoveData.SE_NONE:
 			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move, null, ng_active, _effective_weather())
 			if applied:
@@ -1779,7 +1946,9 @@ func _phase_move_execution() -> void:
 				# Synchronize: defender received a primary status — check back-reflect.
 				_try_synchronize(defender, attacker, _se_to_status(move.secondary_effect))
 				# M12: Lum Berry cures status inflicted by status move primary effect.
-				if ItemManager.lum_berry_cures(defender):
+				# M17n-7: Unnerve — blocks this berry while any of defender's opponents has it.
+				if ItemManager.lum_berry_cures(defender, ng_active,
+						AbilityManager.is_unnerve_active(_get_live_opponents(defender), ng_active)):
 					defender.status = BattlePokemon.STATUS_NONE
 					_consume_item(defender)
 			else:
@@ -1846,6 +2015,28 @@ func _phase_faint_check() -> void:
 					destiny_bond_triggered.emit(combatant, killer)
 					pokemon_fainted.emit(killer)
 
+			# M17n-8: Aftermath / Innards Out — retaliate against whoever's hit caused
+			# this faint. Independent lookup from Destiny Bond's own `killer` above
+			# (that one is scoped to `if had_destiny_bond:` and may fall back to
+			# `_get_first_opponent`, which Aftermath/Innards Out must NOT do — source
+			# requires the actual attacker of the fatal hit, never a same-side fallback).
+			var retal_killer: BattlePokemon = _last_attacker.get(combatant, null)
+			var retal_move: MoveData = _last_attacker_move.get(combatant, null)
+			var retal_hp_before: int = _last_attacker_hp_before.get(combatant, 0)
+			var retal_ng_active: bool = _is_neutralizing_gas_active()
+			var retaliation: Dictionary = AbilityManager.faint_retaliation_damage(
+					combatant, retal_killer, retal_move, retal_hp_before, retal_ng_active,
+					AbilityManager.is_damp_active(_combatants, retal_ng_active))
+			if not retaliation.is_empty():
+				var retal_dmg: int = retaliation["damage"]
+				retal_killer.current_hp = max(0, retal_killer.current_hp - retal_dmg)
+				recoil_damage.emit(retal_killer, retal_dmg)
+				ability_triggered.emit(combatant, retaliation["ability_name"])
+				if retal_killer.current_hp <= 0 and not retal_killer.fainted:
+					retal_killer.fainted = true
+					_clear_volatiles(retal_killer)
+					pokemon_fainted.emit(retal_killer)
+
 	# If any new faint occurred this tick, go to SWITCH_PROMPT.
 	# M9: SWITCH_PROMPT handles replacements and checks full-party faint.
 	if any_new_faint:
@@ -1874,21 +2065,26 @@ func _phase_end_of_turn() -> void:
 			var expired_w: int = weather
 			weather = WEATHER_NONE
 			weather_expired.emit(expired_w)
+			_notify_weather_changed()
 
 	# ── M11: Weather chip damage (ENDTURN_WEATHER_DAMAGE, position 3) ────────────────────
 	# Source: HandleEndTurnWeatherDamage (battle_end_turn.c L100–186).
 	# Fires BEFORE poison/burn (ENDTURN_POISON=12, ENDTURN_BURN=13 in handler table).
-	# SANDSTORM: immune if any type is Rock(6)/Ground(5)/Steel(9), or semi-invulnerable.
-	#   Source: IS_BATTLER_ANY_TYPE(battler, TYPE_ROCK, TYPE_GROUND, TYPE_STEEL) (L148).
-	#   M17n-2 correction to a stale comment: Sand Veil/Sand Rush do NOT grant sandstorm-
-	#   chip immunity in source (confirmed — they only affect accuracy/Speed
-	#   respectively, checked directly against L144-169 while implementing this tier).
-	#   The only real ability-based immunities here are Overcoat/Magic Guard, both still
-	#   unimplemented (deferred, not in scope while those abilities are absent).
-	# HAIL: immune if any type is Ice(16), or semi-invulnerable.
-	#   Source: IS_BATTLER_OF_TYPE(battler, TYPE_ICE) (L171). Same correction: Snow Cloak
-	#   grants no hail-chip immunity either; Ice Body/Overcoat remain the real
-	#   (still-unimplemented) candidates.
+	# SANDSTORM: immune if any type is Rock(6)/Ground(5)/Steel(9), or semi-invulnerable,
+	#   or ability is Sand Veil/Sand Force/Sand Rush/Overcoat.
+	#   Source: IS_BATTLER_ANY_TYPE(battler, TYPE_ROCK, TYPE_GROUND, TYPE_STEEL) (L148);
+	#   ability exemptions at L144-147.
+	#   [M17n-2] FOLLOW-UP FIX (post-[M17n-6]): this comment previously (and wrongly)
+	#   stated "Sand Veil/Sand Rush do NOT grant sandstorm-chip immunity" — that was
+	#   [M17n-2]'s own original conclusion, confirmed WRONG during [M17n-6]'s Overcoat
+	#   work and fixed here (see docs/decisions.md's [M17n-2] follow-up subsection).
+	#   Sand Veil/Sand Force/Sand Rush DO grant sandstorm-chip immunity, matching
+	#   Overcoat's existing shape — see AbilityManager.blocks_weather_chip_damage.
+	# HAIL: immune if any type is Ice(16), or semi-invulnerable, or ability is Snow
+	#   Cloak/Overcoat. Source: IS_BATTLER_OF_TYPE(battler, TYPE_ICE) (L171); ability
+	#   exemption at L166. Magic Guard also appears in source's exemption chain
+	#   (L150, L167) — implemented as of [M17n-9], gated inside
+	#   _is_weather_damage_immune via AbilityManager.blocks_indirect_damage.
 	# Damage = maxHP / 16 (integer division). Source: GetNonDynamaxMaxHP(battler) / 16 (L154, L177).
 	# M17n-2: `weather` here is intentionally the RAW field, not `_effective_weather()`
 	# — Air Lock/Cloud Nine negation is applied via the `eff_weather` local below,
@@ -1898,7 +2094,7 @@ func _phase_end_of_turn() -> void:
 		for mon: BattlePokemon in _turn_order:
 			if mon.fainted:
 				continue
-			if _is_weather_damage_immune(mon, eff_weather):
+			if _is_weather_damage_immune(mon, eff_weather, ng_active):
 				continue
 			var chip: int = mon.max_hp / 16
 			if chip > 0:
@@ -1934,7 +2130,7 @@ func _phase_end_of_turn() -> void:
 	for mon: BattlePokemon in _combatants:
 		if mon.fainted:
 			continue
-		var lft_heal: int = ItemManager.leftovers_heal(mon)
+		var lft_heal: int = ItemManager.leftovers_heal(mon, ng_active)
 		if lft_heal > 0:
 			mon.current_hp = min(mon.max_hp, mon.current_hp + lft_heal)
 			item_healed.emit(mon, lft_heal)
@@ -2023,6 +2219,44 @@ func _phase_end_of_turn() -> void:
 			healer_ally.status = BattlePokemon.STATUS_NONE
 			healer_ally.toxic_counter = 0
 			ability_triggered.emit(mon, "healer")
+		# M17n-5: Slow Start's 5-turn timer just hit 0 — fires once, the turn its
+		# Atk/Speed penalty ends.
+		if eot_result["slow_start_ended"]:
+			ability_triggered.emit(mon, "slow_start_ended")
+
+		# M17n-7: Harvest — regenerate the last consumed berry back onto held_item.
+		# Does NOT clear last_consumed_berry (see BattlePokemon's own doc comment —
+		# source doesn't either; self-consistent since `held_item != null` afterward
+		# blocks Harvest from re-firing until the item is removed again, at which
+		# point _consume_item overwrites last_consumed_berry with whatever was just
+		# eaten anyway).
+		if AbilityManager.harvest_activates(mon, eot_eff_weather, ng_active, _force_harvest_roll):
+			mon.held_item = mon.last_consumed_berry
+			item_regenerated.emit(mon, mon.held_item)
+			ability_triggered.emit(mon, "harvest")
+
+		# M17n-7: Cud Chew — arm/fire one-turn cycle. Firing re-runs the tracked
+		# berry's effect via the SAME ItemManager functions normal consumption uses
+		# (only one of the two will actually match the berry's real hold_effect;
+		# Resist Berry deliberately has no re-trigger path here at all — it has no
+		# context-independent re-check to perform, confirmed absent from source).
+		match AbilityManager.cud_chew_check(mon, ng_active):
+			"arm":
+				mon.cud_chew_armed = true
+			"fire":
+				mon.cud_chew_armed = false
+				var cc_berry: ItemData = mon.last_consumed_berry
+				mon.last_consumed_berry = null
+				var cc_unnerve: bool = AbilityManager.is_unnerve_active(
+						_get_live_opponents(mon), ng_active)
+				var cc_heal: int = ItemManager.sitrus_berry_heal(mon, ng_active, cc_unnerve, cc_berry)
+				if cc_heal > 0:
+					mon.current_hp = min(mon.max_hp, mon.current_hp + cc_heal)
+					item_healed.emit(mon, cc_heal)
+					ability_triggered.emit(mon, "cud_chew")
+				elif ItemManager.lum_berry_cures(mon, ng_active, cc_unnerve, cc_berry):
+					mon.status = BattlePokemon.STATUS_NONE
+					ability_triggered.emit(mon, "cud_chew")
 
 	# Route through SWITCH_PROMPT even after EOT so any EOT faint gets a replacement.
 	_set_phase(BattlePhase.SWITCH_PROMPT)
@@ -2183,11 +2417,20 @@ func _apply_switch_in_hazards(new_mon: BattlePokemon, mon_side: int) -> void:
 	# Follow-up fixes session, 2026-07-02: Heavy Duty Boots — full immunity to all three
 	# hazard types, applied as one shared gate (see ItemManager.is_hazard_immune for the
 	# source citation and the Toxic-Spikes-absorb-still-applies nuance).
-	var hazard_immune: bool = ItemManager.is_hazard_immune(new_mon)
+	var hazard_immune: bool = ItemManager.is_hazard_immune(new_mon, ng_active)
+
+	# M17n-9: Magic Guard — blocks Spikes and Stealth Rock damage below (source:
+	# TryHazardsOnSwitchIn, HAZARDS_SPIKES L317-318 and HAZARDS_STEALTH_ROCK L369),
+	# but deliberately NOT Toxic Spikes' poison infliction — Toxic Spikes has no
+	# such check in source (HAZARDS_TOXIC_SPIKES, L336-359), matching real Magic
+	# Guard's own scope: it blocks indirect DAMAGE, not status infliction itself
+	# (the resulting residual damage each end-of-turn is already blocked via
+	# StatusManager.end_of_turn_damage's own Magic Guard gate).
+	var magic_guard_active: bool = AbilityManager.blocks_indirect_damage(new_mon, ng_active)
 
 	# Spikes — grounded-only. Source: TryHazardsOnSwitchIn, case HAZARDS_SPIKES (L306-315):
 	#   spikesDmg = maxHP / ((5 - spikesAmount) * 2).
-	if sc["spikes_layers"] > 0 and grounded and not hazard_immune:
+	if sc["spikes_layers"] > 0 and grounded and not hazard_immune and not magic_guard_active:
 		var spikes_dmg: int = new_mon.max_hp / ((5 - sc["spikes_layers"]) * 2)
 		if spikes_dmg > 0:
 			new_mon.current_hp = max(0, new_mon.current_hp - spikes_dmg)
@@ -2221,7 +2464,7 @@ func _apply_switch_in_hazards(new_mon: BattlePokemon, mon_side: int) -> void:
 	# gate is checked before Stealth Rock even computes its damage in source).
 	# Source: TryHazardsOnSwitchIn, case HAZARDS_STEALTH_ROCK (L369-378);
 	#   GetStealthHazardDamageByTypesAndHP (L8317-8353).
-	if not new_mon.fainted and sc["stealth_rock"] and not hazard_immune:
+	if not new_mon.fainted and sc["stealth_rock"] and not hazard_immune and not magic_guard_active:
 		var srock_eff: float = TypeChart.get_effectiveness(TypeChart.TYPE_ROCK, new_mon.species.types)
 		var srock_dmg: int = _stealth_rock_damage(srock_eff, new_mon.max_hp)
 		if srock_dmg > 0:
@@ -2261,6 +2504,25 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 	# source's dispatch order (Neutralizing Gas's own activation is processed before
 	# ABILITYEFFECT_ON_SWITCHIN — battle_switch_in.c L56/L277).
 	var ng_active: bool = _is_neutralizing_gas_active()
+	# M17n-10: Screen Cleaner — removes Reflect/Light Screen/Aurora Veil from BOTH
+	# sides unconditionally on switch-in, not just the opponent's. Source:
+	# TryRemoveScreens (battle_util.c L9001-9022) clears `SIDE_STATUS_SCREEN_ANY`
+	# (Reflect|Light Screen|Aurora Veil — confirmed via include/constants/battle.h;
+	# Safeguard/Mist are NOT included) from the holder's own side AND the opposing
+	# side, reusing the exact same clear-and-signal shape Brick Break's
+	# `move.breaks_screens` branch already established, just applied to both sides
+	# instead of one.
+	if AbilityManager.effective_ability_id(new_mon, ng_active) == AbilityManager.ABILITY_SCREEN_CLEANER:
+		var opp_side: int = 1 - mon_side
+		for side in [mon_side, opp_side]:
+			var side_sc: Dictionary = _side_conditions[side]
+			if side_sc["reflect_turns"] > 0 or side_sc["light_screen_turns"] > 0 \
+					or side_sc["aurora_veil_turns"] > 0:
+				side_sc["reflect_turns"] = 0
+				side_sc["light_screen_turns"] = 0
+				side_sc["aurora_veil_turns"] = 0
+				screens_broken.emit(side)
+		ability_triggered.emit(new_mon, "screen_cleaner")
 	for j in range(_combatants.size()):
 		if j / _active_per_side == mon_side:  # IsBattlerAlly: same side → skip
 			continue
@@ -2272,6 +2534,10 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 		var si_result: Dictionary = AbilityManager.try_switch_in(new_mon, opp, opp_ally, ng_active)
 		if si_result["atk_change"] != 0:
 			stat_stage_changed.emit(opp, BattlePokemon.STAGE_ATK, si_result["atk_change"])
+			any_intimidated = true
+		if si_result["opponent_guard_dog_change"] != 0:
+			stat_stage_changed.emit(opp, BattlePokemon.STAGE_ATK, si_result["opponent_guard_dog_change"])
+			ability_triggered.emit(opp, "guard_dog")
 			any_intimidated = true
 		if si_result["opponent_speed_change"] != 0:
 			stat_stage_changed.emit(opp, BattlePokemon.STAGE_SPEED, si_result["opponent_speed_change"])
@@ -2312,6 +2578,7 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 	var set_w: int = AbilityManager.get_switch_in_weather(new_mon, ng_active)
 	if set_w != WEATHER_NONE and try_set_weather(set_w, new_mon):
 		weather_set.emit(new_mon, set_w)
+		_notify_weather_changed()
 	# M17c: Hospitality — doubles-only, heals the switching-in Pokémon's own ally.
 	var new_mon_ally: BattlePokemon = _get_ally(new_mon)
 	var hosp_heal: int = AbilityManager.try_switch_in_ally_heal(new_mon, new_mon_ally, ng_active)
@@ -2319,6 +2586,52 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 		new_mon_ally.current_hp = min(new_mon_ally.max_hp, new_mon_ally.current_hp + hosp_heal)
 		ability_healed.emit(new_mon_ally, hosp_heal)
 		ability_triggered.emit(new_mon, "hospitality")
+	# M17n-4: Multitype — type set from the holder's held Plate item, evaluated ONLY
+	# at switch-in. Source's FORM_CHANGE_ITEM_HOLD dispatch is confirmed (via a full
+	# enumeration of every TryBattleFormChange call site in battle_util.c) to be an
+	# OVERWORLD-only trigger (party menu / PC box / script give-item) — never invoked
+	# from any in-battle FORM_CHANGE_BATTLE_* dispatch — so a mid-battle held-item
+	# change (Trick, Knock Off, this project's own Pickpocket/Magician/Symbiosis) does
+	# NOT retype a Multitype holder. This corrects the tier's own recon assumption
+	# ("checked whenever the held item changes"); confirmed by checking, not assumed.
+	# Not gated on ng_active explicitly: AbilityData's cant_be_suppressed=true for
+	# Multitype already makes effective_ability_id bypass Neutralizing Gas correctly.
+	var mt_type: int = ItemManager.multitype_plate_type(new_mon, ng_active)
+	if mt_type != TypeChart.TYPE_NONE \
+			and AbilityManager.effective_ability_id(new_mon, ng_active) == AbilityManager.ABILITY_MULTITYPE:
+		_set_mon_type(new_mon, mt_type)
+		type_changed.emit(new_mon, mt_type)
+	# M17n-10: Screen Cleaner — removes Reflect/Light Screen/Aurora Veil from BOTH
+	# sides of the field on switch-in. Source: battle_util.c ABILITY_SCREEN_CLEANER
+	# case (L3205-3210), calling the shared TryRemoveScreens (L9001-9017) — confirmed
+	# from source to clear BOTH `battlerSide` and the opposing side, not just the
+	# opponent's (a common point of confusion with this ability). `ability_triggered`
+	# only fires if something was actually removed, matching source's own
+	# `shouldAbilityTrigger && TryRemoveScreens(battler)` gate (no message on a no-op).
+	if AbilityManager.effective_ability_id(new_mon, ng_active) == AbilityManager.ABILITY_SCREEN_CLEANER:
+		var any_screen_removed := false
+		for sc_side in range(2):
+			var sc_screen: Dictionary = _side_conditions[sc_side]
+			if sc_screen["reflect_turns"] > 0 or sc_screen["light_screen_turns"] > 0 \
+					or sc_screen["aurora_veil_turns"] > 0:
+				sc_screen["reflect_turns"] = 0
+				sc_screen["light_screen_turns"] = 0
+				sc_screen["aurora_veil_turns"] = 0
+				screens_broken.emit(sc_side)
+				any_screen_removed = true
+		if any_screen_removed:
+			ability_triggered.emit(new_mon, "screen_cleaner")
+	# M17n-10: Forecast — also checked at switch-in specifically (source:
+	# battle_switch_in.c L412 calls ABILITYEFFECT_ON_WEATHER for the newly-arrived
+	# battler, in addition to the field-wide broadcast on an actual weather CHANGE —
+	# see _notify_weather_changed) — a Castform switching into already-active weather
+	# picks up the correct form immediately rather than waiting for the next change.
+	var switch_in_forecast_type: int = AbilityManager.forecast_type(new_mon, ng_active, _effective_weather())
+	if switch_in_forecast_type != TypeChart.TYPE_NONE \
+			and switch_in_forecast_type not in new_mon.species.types:
+		_set_mon_type(new_mon, switch_in_forecast_type)
+		type_changed.emit(new_mon, switch_in_forecast_type)
+		ability_triggered.emit(new_mon, "forecast")
 
 
 # M14a: default target combatant index for a given attacker.
@@ -2352,6 +2665,13 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.rollout_base_power = 0
 	mon.truant_loafing = false
 	mon.flash_fire_active = false
+	mon.slow_start_timer = 0
+	mon.used_protean_libero = false
+	# M17n-7: unburden_active/cud_chew_armed live in source's `volatiles` struct
+	# (cleared on switch), unlike last_consumed_berry below, which is deliberately
+	# party-state-scoped and NOT touched here — see BattlePokemon's own doc comments.
+	mon.unburden_active = false
+	mon.cud_chew_armed = false
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
@@ -2536,6 +2856,30 @@ func _pursuit_targets_switcher(pursuer_idx: int, switcher_idx: int) -> bool:
 	return (pursuer_idx / _active_per_side) != (switcher_idx / _active_per_side)
 
 
+# M17n-5: Analytic's "is `mon` the last battler with a pending MOVE action this turn"
+# check. Source: battle_util.c :: IsLastMonToMove (L1098-1115) — checked against the
+# FINAL resolved turn order (`_turn_order`, already fully sorted by
+# _phase_priority_resolution, including Trick Room/Pursuit/[M17n-3]'s priority
+# abilities — NOT a raw speed comparison, confirmed via source rather than assumed).
+# `_turn_order` holds BattlePokemon references directly (not combatant indices), so
+# `mon`'s own position is found via `.find()`; later positions are checked against
+# `_chosen_switch_slots` (via `_actor_indices`) to distinguish a still-pending MOVE
+# action from a switch action or an already-fainted battler — mirrors source's own
+# `gActionsByTurnOrder[i] == B_ACTION_USE_MOVE` check exactly.
+func _is_last_to_move(mon: BattlePokemon) -> bool:
+	var pos: int = _turn_order.find(mon)
+	if pos == -1 or pos >= _turn_order.size() - 1:
+		return true
+	for i in range(pos + 1, _turn_order.size()):
+		var other: BattlePokemon = _turn_order[i]
+		if other.fainted:
+			continue
+		var oidx: int = _actor_indices.get(other, _combatants.find(other))
+		if _chosen_switch_slots[oidx] < 0:
+			return false  # a later battler still has a pending MOVE action
+	return true
+
+
 # M16e: Conversion 2's resist-type selection. Builds the candidate pool — types that
 # resist type_to_resist at 0x or 0.5x, EXCLUDING types the user already has — then picks
 # uniformly at random. Returns -1 if the pool is empty (matches source's fail case when
@@ -2687,9 +3031,24 @@ func _pick_metronome_move() -> MoveData:
 # Source: HandleEndTurnWeatherDamage (battle_end_turn.c L143–182).
 # Sandstorm: immune if any type is Rock(6), Ground(5), or Steel(9), OR semi-invulnerable.
 # Hail:      immune if any type is Ice(16), OR semi-invulnerable.
-# Ability-based immunities (Sand Veil, Overcoat, Magic Guard, Ice Body, etc.) deferred to M12.
-func _is_weather_damage_immune(mon: BattlePokemon, current_weather: int) -> bool:
+# M17n-6: Overcoat — full weather-chip immunity (sandstorm and hail alike).
+# [M17n-2] follow-up fix: Sand Veil/Sand Force/Sand Rush (sandstorm) and Snow Cloak
+# (hail) ALSO grant chip immunity — corrects [M17n-2]'s original, since-confirmed-
+# wrong conclusion that these abilities grant no such immunity. See
+# AbilityManager.blocks_weather_chip_damage's doc comment for the full source
+# citation and per-weather gating; `current_weather` (the already-effective-weather
+# value this function's caller resolves) is threaded through so Sand Veil/Sand
+# Force/Sand Rush don't incorrectly exempt hail, and Snow Cloak doesn't incorrectly
+# exempt sandstorm. No Mold-Breaker/`attacker` param — see that function's own doc
+# comment for why (end-of-turn ticks are outside any move-processing window).
+func _is_weather_damage_immune(
+		mon: BattlePokemon, current_weather: int, ng_active: bool = false) -> bool:
 	if mon.semi_invulnerable != MoveData.SEMI_INV_NONE:
+		return true
+	if AbilityManager.blocks_weather_chip_damage(mon, ng_active, current_weather):
+		return true
+	# M17n-9: Magic Guard — full indirect-damage immunity, weather chip included.
+	if AbilityManager.blocks_indirect_damage(mon, ng_active):
 		return true
 	var types: Array = mon.species.types
 	match current_weather:
@@ -2719,7 +3078,9 @@ func _is_forced_struggle(mon: BattlePokemon) -> bool:
 # Used by Counter, Mirror Coat, and Bide release (all skip the DamageCalculator formula).
 func _apply_fixed_dmg_to_target(attacker: BattlePokemon, defender: BattlePokemon,
 		move: MoveData, damage: int) -> void:
-	if defender.substitute_hp > 0 and not move.ignores_substitute:
+	# M17n-9: Infiltrator bypasses Substitute here too (Counter/Mirror Coat/Bide).
+	if defender.substitute_hp > 0 and not move.ignores_substitute \
+			and not AbilityManager.bypasses_infiltrator_barriers(attacker, _is_neutralizing_gas_active()):
 		var sub_dmg: int = min(damage, defender.substitute_hp)
 		defender.substitute_hp -= damage
 		if defender.substitute_hp <= 0:
@@ -2775,6 +3136,11 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		screen_active = true
 	elif move.category == 1 and sc["light_screen_turns"] > 0:
 		screen_active = true
+	# M17n-9: Infiltrator — the ATTACKER's moves ignore screens entirely (source:
+	# GetScreensModifier, battle_util.c L7358-7362, unconditional ×1.0 override
+	# checked before the reflect/light-screen/aurora-veil OR above).
+	if AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
+		screen_active = false
 
 	var roll: int = _force_roll if _force_roll != null else -1
 	# M17n-2: pass the EFFECTIVE weather — Air Lock/Cloud Nine anywhere on the field
@@ -2783,8 +3149,17 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	var result: Dictionary = DamageCalculator.calculate(
 			attacker, target, move, roll, _force_crit, _effective_weather(), is_spread, helping_hand,
 			power_override, screen_active, _active_per_side > 1, _get_ally(attacker),
-			_get_ally(target), ng_active)
+			_get_ally(target), ng_active, _is_last_to_move(attacker))
 	var damage: int = result["damage"]
+
+	# M17n-6: Wonder Guard — the block already happened inside DamageCalculator
+	# (0 damage); this just gives tests/UI a signal-observable discriminator distinct
+	# from ordinary type immunity (both return damage=0, but only this one sets
+	# `wonder_guard_blocked`), matching the absorb-family's own precedent below.
+	if result.get("wonder_guard_blocked", false):
+		ability_triggered.emit(target, "wonder_guard")
+		move_executed.emit(attacker, target, move, 0)
+		return
 
 	# M17l/M17m: absorb-family (Lightning Rod/Storm Drain/Sap Sipper/Motor Drive/
 	# Well-Baked Body/Volt Absorb/Water Absorb/Dry Skin/Earth Eater/Flash Fire) — the
@@ -2837,7 +3212,10 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			asc["stealth_rock"] = false
 			hazards_cleared.emit(atk_side, "stealth_rock")
 
-	var went_to_sub: bool = (target.substitute_hp > 0 and not move.ignores_substitute)
+	# M17n-9: Infiltrator bypasses Substitute for damaging hits too (same shared
+	# IsSubstituteProtected chokepoint source routes every substitute check through).
+	var went_to_sub: bool = (target.substitute_hp > 0 and not move.ignores_substitute \
+			and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active))
 	if went_to_sub:
 		var sub_dmg: int = min(damage, target.substitute_hp)
 		target.substitute_hp -= damage
@@ -2847,6 +3225,21 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		move_executed.emit(attacker, target, move, sub_dmg)
 		return
 
+	# M17n-5: Sturdy — survives an otherwise-lethal hit at exactly 1 HP, but ONLY from
+	# full HP. Source: battle_util.c L7962-7984 (the shared endure-check function every
+	# lethal hit routes through) — `if (defender.hp > damage) return damage` (non-lethal,
+	# skip); else Endure volatile → False Swipe → Sturdy (IsBattlerAtMaxHp gate,
+	# B_STURDY >= GEN_5, satisfied at this project's GEN_LATEST) → Focus Band → Focus
+	# Sash → affection, in that priority order, first match wins, `damage = hp - 1`.
+	# This project has no Endure move, no False Swipe move, and no Focus Band/Focus
+	# Sash items — Sturdy is the only reachable case in that whole chain, and this is
+	# the FIRST "survive a lethal hit" mechanism this project builds (no prior
+	# precedent to compose with, confirmed via grep before writing this).
+	if damage >= target.current_hp and target.current_hp == target.max_hp \
+			and AbilityManager.effective_ability_id(target, ng_active, attacker) == AbilityManager.ABILITY_STURDY:
+		damage = target.current_hp - 1
+		ability_triggered.emit(target, "sturdy")
+
 	var hp_before_hit: int = target.current_hp
 	target.current_hp = max(0, target.current_hp - damage)
 	move_executed.emit(attacker, target, move, damage)
@@ -2854,6 +3247,9 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	if damage > 0:
 		# M14b: track for Destiny Bond killer lookup.
 		_last_attacker[target] = attacker
+		# M17n-8: companions for Aftermath/Innards Out (see their own doc comment).
+		_last_attacker_move[target] = move
+		_last_attacker_hp_before[target] = hp_before_hit
 		if move.category == 0:
 			target.last_physical_damage = damage
 		else:
@@ -2877,8 +3273,21 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	if move.drain_percent > 0 and damage > 0:
 		var heal: int = damage * move.drain_percent / 100
 		if heal > 0:
-			attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
-			drain_heal.emit(attacker, heal)
+			# M17n-10: Liquid Ooze — the DRAINED Pokémon's own ability inverts the
+			# attacker's heal into damage of the identical amount. Source: SetHealScript
+			# (battle_move_resolution.c L2587-2599) — the SINGLE application point every
+			# drain-percent move in this project's roster (Absorb/Mega Drain/Giga
+			# Drain/Drain Punch) already funnels through; confirmed this is the one
+			# central chokepoint before inverting here rather than duplicating drain
+			# logic. Source's Dream Eater/Liquid-Ooze-pre-Gen5 carve-out is moot — Dream
+			# Eater isn't implemented in this project (confirmed via grep).
+			if AbilityManager.inverts_drain(target, ng_active):
+				attacker.current_hp = max(0, attacker.current_hp - heal)
+				recoil_damage.emit(attacker, heal)
+				ability_triggered.emit(target, "liquid_ooze")
+			else:
+				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
+				drain_heal.emit(attacker, heal)
 
 	if damage > 0 and move.secondary_effect != MoveData.SE_NONE:
 		var effect_hit: bool = StatusManager.try_secondary_effect(attacker, target, move, null, ng_active, _effective_weather())
@@ -2891,7 +3300,8 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			else:
 				secondary_applied.emit(target, move.secondary_effect)
 				_try_synchronize(target, attacker, _se_to_status(move.secondary_effect))
-				if ItemManager.lum_berry_cures(target):
+				if ItemManager.lum_berry_cures(target, ng_active,
+						AbilityManager.is_unnerve_active(_get_live_opponents(target), ng_active)):
 					target.status = BattlePokemon.STATUS_NONE
 					_consume_item(target)
 
@@ -2908,7 +3318,8 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		secondary_applied.emit(attacker, _status_to_se(contact_status))
 		ability_triggered.emit(target, contact_result["ability_name"])
 		_try_synchronize(attacker, target, contact_status)
-		if ItemManager.lum_berry_cures(attacker):
+		if ItemManager.lum_berry_cures(attacker, ng_active,
+				AbilityManager.is_unnerve_active(_get_live_opponents(attacker), ng_active)):
 			attacker.status = BattlePokemon.STATUS_NONE
 			_consume_item(attacker)
 	if contact_result["speed_change"] != 0:
@@ -3009,19 +3420,31 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	# the signals only fire on an actual change.
 	if hit_result["sand_spit_fired"] and try_set_weather(WEATHER_SANDSTORM, target):
 		weather_set.emit(target, WEATHER_SANDSTORM)
+		_notify_weather_changed()
 		ability_triggered.emit(target, "sand_spit")
+
+	# M17n-4: Color Change — target's own type changes to match the move that just hit
+	# it. Reuses the existing _set_mon_type mutation + type_changed signal (same as
+	# Conversion/Conversion 2 above), just triggered reactively instead of from the
+	# move's own effect.
+	if hit_result["color_change_new_type"] != TypeChart.TYPE_NONE:
+		_set_mon_type(target, hit_result["color_change_new_type"])
+		type_changed.emit(target, hit_result["color_change_new_type"])
+		ability_triggered.emit(target, "color_change")
 
 	if result.get("defender_item_consumed", false):
 		_consume_item(target)
 
 	if damage > 0 and not attacker.fainted:
-		var lo_recoil: int = ItemManager.life_orb_recoil(attacker)
+		var lo_recoil: int = ItemManager.life_orb_recoil(attacker, ng_active)
 		if lo_recoil > 0:
 			attacker.current_hp = max(0, attacker.current_hp - lo_recoil)
 			item_damage.emit(attacker, lo_recoil)
 
 	if not target.fainted:
-		var sitrus_heal: int = ItemManager.sitrus_berry_heal(target)
+		# M17n-7: Unnerve — blocks Sitrus Berry while any of target's opponents has it.
+		var sitrus_heal: int = ItemManager.sitrus_berry_heal(target, ng_active,
+				AbilityManager.is_unnerve_active(_get_live_opponents(target), ng_active))
 		if sitrus_heal > 0:
 			target.current_hp = min(target.max_hp, target.current_hp + sitrus_heal)
 			item_healed.emit(target, sitrus_heal)
@@ -3035,9 +3458,20 @@ func _consume_item(mon: BattlePokemon) -> void:
 	var item: ItemData = mon.held_item
 	mon.held_item = null
 	item_consumed.emit(mon, item)
+	var ng_active: bool = _is_neutralizing_gas_active()
+	# M17n-7: Unburden — activates the moment the holder's OWN item is consumed.
+	# Source: CheckSetUnburden, called from every item-removal site including the
+	# berry-eating path this function represents.
+	if AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_UNBURDEN:
+		mon.unburden_active = true
+	# M17n-7: the "last consumed berry" tracker Harvest/Cud Chew both read. Every
+	# item reaching this function today is already a berry (see Cheek Pouch's own
+	# established precedent immediately below) — no separate "is this a berry" gate
+	# was needed, matching that same precedent.
+	mon.last_consumed_berry = item
 	# M17c: Cheek Pouch — every item consumed via this function today is a berry
 	# (Lum/Sitrus/resist berries), matching source's POCKET_BERRIES gate in practice.
-	var cp_heal: int = AbilityManager.cheek_pouch_heal(mon, _is_neutralizing_gas_active())
+	var cp_heal: int = AbilityManager.cheek_pouch_heal(mon, ng_active)
 	if cp_heal > 0:
 		mon.current_hp = min(mon.max_hp, mon.current_hp + cp_heal)
 		ability_healed.emit(mon, cp_heal)

@@ -362,6 +362,137 @@ const ABILITY_TRIAGE:          int = 205
 const ABILITY_QUICK_DRAW:      int = 259
 const ABILITY_MYCELIUM_MIGHT:  int = 298
 
+# M17n-5: Damage-pipeline leftovers (docs/m17n_recon.md Group 4, trimmed by Rob's
+# explicit exclusions — Ruin quartet/Water Bubble/Supreme Overlord/Plus/Minus — see
+# docs/decisions.md [M17n-5] for the full count-discrepancy note: this project's own
+# re-derivation lands on 18 named abilities, not 19; of those 18, Skill Link (92) is
+# further DEFERRED this tier — confirmed via direct grep that no multi_hit mechanic
+# exists anywhere in this codebase's battle logic (multi_hit/strike_count are dormant
+# MoveData schema fields only), so it has nothing to modify. No constant added for it.
+# Breakable-flag reachability checked individually per ability, not assumed uniform:
+# genuinely wired for Mold-Breaker bypass (all true defender-role checks) — Sturdy,
+# Fluffy, Punk Rock's defense half, Tangled Feet. Set faithfully in .tres data but NOT
+# functionally reachable in this project (matching [M17j]'s Sticky Hold precedent —
+# structurally attacker-self-checks in source too, never read in a defender role) —
+# Technician, Sheer Force, Mega Launcher, Stakeout.
+const ABILITY_STURDY:          int = 5
+const ABILITY_IRON_FIST:       int = 89
+const ABILITY_TECHNICIAN:      int = 101
+const ABILITY_RECKLESS:        int = 120
+const ABILITY_SHEER_FORCE:     int = 125
+const ABILITY_ANALYTIC:        int = 148
+const ABILITY_SUPER_LUCK:      int = 105
+const ABILITY_TANGLED_FEET:    int = 77
+const ABILITY_STRONG_JAW:      int = 173
+const ABILITY_MEGA_LAUNCHER:   int = 178
+const ABILITY_STAKEOUT:        int = 198
+const ABILITY_LONG_REACH:      int = 203
+const ABILITY_FLUFFY:          int = 218
+const ABILITY_PUNK_ROCK:       int = 244
+const ABILITY_SHARPNESS:       int = 292
+const ABILITY_SLOW_START:      int = 112
+const ABILITY_SERENE_GRACE:    int = 32
+
+# M17n-4 (Group 7): type-mutation/choice-lock cheap reuses. RKS System (225) excluded
+# per Rob's explicit decision (recorded in memory, not implemented here) — do not add
+# a constant for it. Color Change/Protean/Libero all reuse the existing
+# BattleManager._set_mon_type/_reset_mon_type/BattlePokemon.original_types
+# infrastructure (M16e/follow-up-fixes); Gorilla Tactics reuses the existing
+# BattlePokemon.choice_locked_move field M12 already built. None of these five carry
+# any breakable/cant_be_* flag in source EXCEPT Multitype (cantBeCopied/cantBeSwapped/
+# cantBeTraced/cantBeSuppressed/cantBeOverwritten all TRUE — src/data/abilities.h
+# L906-916) — confirmed by reading each ability's actual data-table entry directly
+# after an earlier grep pass with too-wide context bled flags from adjacent unrelated
+# abilities (Immunity/Fur Coat/Neutralizing Gas) into these five; re-verified narrowly.
+const ABILITY_COLOR_CHANGE:    int = 16
+const ABILITY_PROTEAN:         int = 168
+const ABILITY_LIBERO:          int = 236
+const ABILITY_MULTITYPE:       int = 121
+const ABILITY_GORILLA_TACTICS: int = 255
+
+# M17n-6 (Group 5): type-effectiveness-pipeline leftovers, including Wonder Guard —
+# the highest-risk remaining item in all of M17 per docs/m17_recon.md's own flag.
+# IDs re-verified fresh against include/constants/abilities.h (not carried over from
+# any recon doc) — Wonder Guard=25, Normalize=96, Scrappy=113, Overcoat=142,
+# Refrigerate=174, Pixilate=182, Liquid Voice=204, Galvanize=206, Mind's Eye=300.
+const ABILITY_WONDER_GUARD: int = 25
+const ABILITY_NORMALIZE:    int = 96
+const ABILITY_SCRAPPY:      int = 113
+const ABILITY_OVERCOAT:     int = 142
+const ABILITY_REFRIGERATE:  int = 174
+const ABILITY_PIXILATE:     int = 182
+const ABILITY_LIQUID_VOICE: int = 204
+const ABILITY_GALVANIZE:    int = 206
+const ABILITY_MINDS_EYE:    int = 300
+
+# M17n-6 follow-up: two "-ate" family members originally excluded, both explicit
+# exclusion reversals confirmed by Rob (recorded in memory), not re-derived here.
+# Aerilate (184) — was excluded as Mega-exclusive-only (Section 13.3); reversed,
+# now in scope. Dragonize (312) — was one of Section 8.3's 6 hack-custom/
+# non-canonical IDs in THIS reference tree (no aiRating field, sandwiched between
+# two literal blank "-------"/"No special ability" placeholder slots and two
+# abilities whose own description is literally "Unimplemented.") — flagged
+# explicitly back to Rob before implementing per this follow-up's own instruction,
+# who confirmed it's a deliberate override: Dragonize has since become a real
+# ability in a newer generation than this reference tree models, and should be
+# implemented despite the reference repo's own hack-cluster positioning.
+const ABILITY_AERILATE:  int = 184
+const ABILITY_DRAGONIZE: int = 312
+
+# M17n-7 (Group 6): item/berry interaction. IDs re-verified fresh against
+# include/constants/abilities.h. None of these six carry a `breakable` flag in
+# source's data table (confirmed individually, not assumed uniform) — every
+# Mold-Breaker-bypass test this tier would otherwise need is correctly absent.
+const ABILITY_GLUTTONY:  int = 82
+const ABILITY_UNBURDEN:  int = 84
+const ABILITY_KLUTZ:     int = 103
+const ABILITY_UNNERVE:   int = 127
+const ABILITY_HARVEST:   int = 139
+const ABILITY_CUD_CHEW:  int = 291
+
+# M17n-8 (Group 8, sub-tier 1: contact/faint-timing + reactive/one-off). IDs
+# re-verified fresh against include/constants/abilities.h. None of these five carry a
+# `breakable` or `cant_be_suppressed` flag in source's data table (confirmed
+# individually) — no Mold-Breaker-bypass test needed for any of them; Neutralizing
+# Gas suppression applies to all five via the standard effective_ability_id chokepoint.
+const ABILITY_MERCILESS:    int = 196
+const ABILITY_CORROSION:    int = 212
+const ABILITY_INNARDS_OUT:  int = 215
+const ABILITY_OPPORTUNIST:  int = 290
+const ABILITY_AFTERMATH:    int = 106
+
+# M17n-9 (Group 8, "wide-but-shallow systems"). IDs re-verified fresh against
+# include/constants/abilities.h. Magic Guard and Infiltrator carry NEITHER
+# `breakable` NOR `cant_be_suppressed` in source's data table (confirmed
+# individually) — no Mold-Breaker-bypass test needed for either (both are
+# attacker-or-holder-only self-checks, structurally outside Mold Breaker's
+# "bypass the DEFENDER's ability" scope). Magic Bounce is the one exception:
+# source's abilities.h data table gives it `.breakable = TRUE` explicitly — a
+# Mold-Breaker-wielding attacker's status move bypasses a Magic Bounce holder's
+# reflection entirely, confirmed from source rather than assumed either way.
+const ABILITY_MAGIC_GUARD:  int = 98
+const ABILITY_INFILTRATOR:  int = 151
+const ABILITY_MAGIC_BOUNCE: int = 156
+
+# M17n-10 (Group 8, "unique/standalone" part 1). IDs re-verified fresh against
+# include/constants/abilities.h. Guard Dog is the only one of these six carrying a
+# `breakable` flag in source's data table (confirmed individually); the other five
+# have neither `breakable` nor `cant_be_suppressed`. Guard Dog's `.breakable` only
+# actually matters for ONE of its two mechanics though — its forced-switch block
+# (`blocks_forced_switch`), checked during real move resolution. Its OTHER mechanic
+# (the Intimidate-reversal half, in `try_switch_in` below) is NOT Mold-Breaker-aware
+# despite the shared flag — traced `moldBreakerActive`'s own source set-site and
+# confirmed it's never active outside a move-processing window, which a switch-in
+# ability trigger structurally isn't (see that function's own doc comment for the
+# full citation). Forecast additionally carries `cant_be_copied`/`cant_be_traced`
+# (both pre-existing AbilityData fields from `[M17h]`, not new).
+const ABILITY_SCREEN_CLEANER: int = 251
+const ABILITY_LIQUID_OOZE:    int = 64
+const ABILITY_PRESSURE:       int = 46
+const ABILITY_QUICK_FEET:     int = 95
+const ABILITY_GUARD_DOG:      int = 275
+const ABILITY_FORECAST:       int = 59
+
 # M17h: source models FOUR distinct "can this ability be read from / changed away from"
 # flags in `src/data/abilities.h` — `cantBeTraced`, `cantBeCopied`, `cantBeSwapped`,
 # `cantBeOverwritten` — genuinely different from each other and from M17g's
@@ -510,7 +641,7 @@ static func try_wandering_spirit_swap(
 		move: MoveData, damage: int, ng_active: bool = false) -> bool:
 	if effective_ability_id(defender, ng_active) != ABILITY_WANDERING_SPIRIT:
 		return false
-	if not move.makes_contact or damage <= 0 or attacker.fainted:
+	if not move_makes_contact(attacker, move, ng_active) or damage <= 0 or attacker.fainted:
 		return false
 	if attacker.ability == null:
 		return false
@@ -549,7 +680,7 @@ static func try_mummy_overwrite(
 	var holder_id: int = effective_ability_id(defender, ng_active)
 	if holder_id != ABILITY_MUMMY and holder_id != ABILITY_LINGERING_AROMA:
 		return -1
-	if not move.makes_contact or damage <= 0 or attacker.fainted:
+	if not move_makes_contact(attacker, move, ng_active) or damage <= 0 or attacker.fainted:
 		return -1
 	if attacker.ability != null:
 		var atk_id: int = attacker.ability.ability_id
@@ -609,6 +740,10 @@ static func try_switch_out(mon: BattlePokemon, ng_active: bool = false) -> Dicti
 # TARGET being stolen from), both via the suppression-aware ability read (`cv->abilities`
 # is source's pre-resolved-per-turn ability cache; `GetBattlerAbility` respectively) —
 # matching this project's `effective_ability_id`.
+# M17n-7: Unburden — source's `StealTargetItem` (battle_script_commands.c L2072/2078)
+# clears the STEALER's unburdenActive (they just GAINED an item) and calls
+# CheckSetUnburden on the VICTIM (they just LOST theirs, activating it if they hold
+# Unburden) — the opposite-direction pair this function's own item move mirrors.
 static func _try_steal_item(stealer: BattlePokemon, victim: BattlePokemon,
 		ng_active: bool = false) -> bool:
 	if stealer.held_item != null:
@@ -619,6 +754,9 @@ static func _try_steal_item(stealer: BattlePokemon, victim: BattlePokemon,
 		return false
 	stealer.held_item = victim.held_item
 	victim.held_item = null
+	stealer.unburden_active = false
+	if effective_ability_id(victim, ng_active) == ABILITY_UNBURDEN:
+		victim.unburden_active = true
 	return true
 
 
@@ -691,6 +829,15 @@ static func try_symbiosis(mon: BattlePokemon, ally: BattlePokemon,
 		return false
 	mon.held_item = ally.held_item
 	ally.held_item = null
+	# M17n-7: Unburden — source's `BestowItem` (battle_util.c L9998-10011) clears the
+	# RECEIVER's unburdenActive (`mon`, gaining an item here) and calls
+	# CheckSetUnburden on the GIVER (`ally`) — structurally unreachable in practice
+	# (the giver here is confirmed to hold Symbiosis, and a Pokémon has exactly one
+	# ability, so `ally` can never also hold Unburden), matching source's own
+	# unconditional call regardless of reachability.
+	mon.unburden_active = false
+	if effective_ability_id(ally, ng_active) == ABILITY_UNBURDEN:
+		ally.unburden_active = true
 	return true
 
 
@@ -759,6 +906,22 @@ static func blocks_priority_move(defender: BattlePokemon, defender_ally: BattleP
 	return false
 
 
+# M17n-10: Guard Dog's SECOND, independent half — blocks a forced-switch-out effect
+# entirely (Roar/Whirlwind in this project's roster). Source: EFFECT_HIT_SWITCH_TARGET
+# handling (battle_move_resolution.c L3517-3524) — `if (cv->abilities[cv->battlerDef]
+# == ABILITY_GUARD_DOG) break;` unconditionally cancels the forced switch before it's
+# ever applied, no stat-stage interaction at all (a genuinely separate mechanic from
+# the Intimidate-reversal half in `try_switch_in`). Source's neighboring Suction Cups
+# case is a different, unimplemented ability, out of this tier's scope. Source's other
+# reference (battle_move_resolution.c L3748, Red Card's own forced-switch) has no
+# equivalent here — this project has no Red Card item, confirmed via grep — so only
+# the move-effect half is modeled. `.breakable = TRUE`, so a Mold-Breaker attacker's
+# Roar/Whirlwind still forces the switch.
+static func blocks_forced_switch(defender: BattlePokemon, attacker: BattlePokemon,
+		ng_active: bool = false) -> bool:
+	return effective_ability_id(defender, ng_active, attacker) == ABILITY_GUARD_DOG
+
+
 # M17g: the single suppression-aware chokepoint every ability-consuming function in
 # this file (and StatusManager/DamageCalculator) should read an ability THROUGH,
 # rather than reading `mon.ability.ability_id` raw. Mirrors source's
@@ -825,6 +988,54 @@ static func is_neutralizing_gas_active(combatants: Array) -> bool:
 		if mon.ability != null and mon.ability.ability_id == ABILITY_NEUTRALIZING_GAS:
 			return true
 	return false
+
+
+# M17n-7: whether Unnerve (or Unnerve-shaped As One, not in this project's scope) is
+# active on any of `opponents` — field-wide for as long as the holder is present, not
+# per-hit/per-turn. Source: `IsUnnerveBlocked` (battle_util.c L333-343) →
+# `IsUnnerveAbilityOnOpposingSide` (L346-363), which loops every OTHER live battler
+# (not just the direct attacker) checking for Unnerve. `opponents` is resolved by the
+# caller: `BattleManager._get_live_opponents(mon)` in full-battle contexts, or a plain
+# `[attacker, ally]` array in `DamageCalculator.calculate` (which has no access to the
+# full combatant list, but already receives exactly the attacker's side as params —
+# the same side `IsUnnerveAbilityOnOpposingSide` would iterate for a resist-berry
+# check). Entries may be null (singles has no ally) or fainted; both are skipped.
+static func is_unnerve_active(opponents: Array, ng_active: bool = false) -> bool:
+	for opp: BattlePokemon in opponents:
+		if opp == null or opp.fainted:
+			continue
+		if effective_ability_id(opp, ng_active) == ABILITY_UNNERVE:
+			return true
+	return false
+
+
+# M17n-7: Gluttony — for a berry whose NORMAL eat-early HP fraction is 4 or
+# stricter (i.e. 25% HP or lower — stat-raise berries like Liechi/Salac, confuse-
+# heal berries like Figy/Wiki, Micle Berry), the holder eats it at 50% HP instead.
+# Source: `HasEnoughHpToEatBerry` (battle_util.c L5460-5474): the primary check is
+# `hp <= maxHP/hpFraction`; Gluttony's own OR-branch only fires when that primary
+# check has ALREADY failed, is gated on `hpFraction <= 4`, and re-checks
+# `hp <= maxHP/2` — i.e. it WIDENS a stricter-than-50% threshold up to 50%, it never
+# narrows one that's already 50% or looser.
+# Sitrus Berry's own fraction is hardcoded to 2 (50%) in source regardless of this
+# ability (`ItemHealHp` always calls `HasEnoughHpToEatBerry(battler, ability, 2,
+# itemId)` — the literal `2`, not a per-item or per-ability value) — already at
+# the exact fraction Gluttony would move a stricter berry to, so passing Sitrus's
+# fraction through this function is a confirmed no-op (2 in, 2 out). Resist Berry
+# has no HP-threshold check anywhere in source (`GetDefenderItemsModifier` gates
+# purely on move-type-match and effectiveness) — moot, never calls this function at
+# all. No stat-raise/confuse-heal/Micle-style berry exists anywhere in this
+# project's implemented item roster (confirmed via grep of `ItemManager`'s
+# `HOLD_EFFECT_*` constants) — Gluttony genuinely has no observable effect on any
+# currently-implemented item. Wired in generically here (not left unimplemented)
+# so it composes correctly the moment such a berry is added, matching the
+# "recorded but currently unreachable" precedent already established for Sticky
+# Hold ([M17j]).
+static func gluttony_adjusted_hp_fraction(
+		mon: BattlePokemon, base_fraction: int, ng_active: bool = false) -> int:
+	if base_fraction <= 4 and effective_ability_id(mon, ng_active) == ABILITY_GLUTTONY:
+		return 2
+	return base_fraction
 
 
 # M17n-2: whether Air Lock/Cloud Nine is currently active anywhere on the field.
@@ -994,9 +1205,15 @@ static func has_slow_turn_order_effect(
 # weather: int — WEATHER_* constant (DamageCalculator), default WEATHER_NONE, needed only
 #   for Flower Gift's sun check; every existing caller passes it explicitly now.
 # Returns a UQ4.12 integer: 4096 = 1.0×, 8192 = 2.0×.
+# M17n-5 addition: new `defender` param, needed only for Stakeout's "did the TARGET
+# switch in this turn" check (source: battle_util.c L6864-6866, GetAttackStatModifier)
+# — a genuinely different battler than `attacker`, unlike every other case in this
+# function, which all read only the attacker's own state. Default null preserves every
+# pre-existing call site (Stakeout simply never fires without it).
 static func attack_modifier_uq412(
 		attacker: BattlePokemon, move: MoveData,
-		weather: int = DamageCalculator.WEATHER_NONE, ng_active: bool = false) -> int:
+		weather: int = DamageCalculator.WEATHER_NONE, ng_active: bool = false,
+		defender: BattlePokemon = null) -> int:
 	var id: int = effective_ability_id(attacker, ng_active)
 	if id == ABILITY_NONE:
 		return 4096  # UQ_4_12(1.0)
@@ -1044,6 +1261,24 @@ static func attack_modifier_uq412(
 	# even though the flag itself isn't cleared by suppression).
 	if id == ABILITY_FLASH_FIRE and move.type == TypeChart.TYPE_FIRE and attacker.flash_fire_active:
 		return 6144  # UQ_4_12(1.5)
+
+	# M17n-5: Stakeout — ×2.0 vs. a target that switched in THIS turn. Source:
+	# battle_util.c L6864-6866, `BattlerJustSwitchedIn(battlerDef)` (isFirstTurn == 2,
+	# specifically mid-battle switch-ins — NOT the initial simultaneous battle-start
+	# send-out, which is a different isFirstTurn value). This project's
+	# `switched_in_this_turn` is confirmed to match that exact scope: it's set ONLY at
+	# the three mid-battle switch-in call sites (_do_voluntary_switch/_do_forced_switch_in/
+	# _do_switch_in), never during _phase_battle_start, and reset to false at the start
+	# of every _phase_priority_resolution — verified via direct grep, not assumed. No
+	# category gate in source (applies to both physical and special moves).
+	if id == ABILITY_STAKEOUT and defender != null and defender.switched_in_this_turn:
+		return 8192  # UQ_4_12(2.0)
+
+	# M17n-5: Slow Start — Atk ×0.5 for physical moves only, while the 5-turn timer is
+	# still running. Source: battle_util.c L6805-6807 (IsBattleMovePhysical gate; Speed's
+	# own unconditional half lives in StatusManager.effective_speed instead).
+	if id == ABILITY_SLOW_START and attacker.slow_start_timer > 0 and move.category == 0:
+		return 2048  # UQ_4_12(0.5)
 
 	return 4096
 
@@ -1136,7 +1371,161 @@ static func defense_damage_modifier_uq412(
 	if id == ABILITY_PURIFYING_SALT and move.type == TypeChart.TYPE_GHOST:
 		return 2048
 
+	# M17n-5: Fluffy — TWO MUTUALLY EXCLUSIVE branches (confirmed from source, not two
+	# independently-stacking multipliers): a non-contact Fire-type move → ×2.0; a
+	# contact NON-Fire-type move → ×0.5. Source: battle_util.c L7424-7434
+	# (GetDefenderAbilitiesModifier): `if (moveType==FIRE && !isContact) modifier=2.0;
+	# if (moveType!=FIRE && isContact) modifier=0.5;` — neither branch's condition can
+	# ever be true simultaneously with the other, so a CONTACT FIRE move (e.g. Flare
+	# Blitz) triggers NEITHER branch and nets ×1.0 (unaffected) — NOT both 0.5 and 2.0
+	# stacking to cancel out. `move_makes_contact` (not raw `move.makes_contact`)
+	# is used so an attacking Long-Reach holder's move correctly reads as non-contact
+	# here too. `breakable = TRUE` in source — genuinely reachable (attacker and
+	# Fluffy holder are always different battlers).
+	if id == ABILITY_FLUFFY:
+		var contact: bool = move_makes_contact(attacker, move, ng_active)
+		if move.type == TypeChart.TYPE_FIRE and not contact:
+			return 8192  # UQ_4_12(2.0)
+		if move.type != TypeChart.TYPE_FIRE and contact:
+			return 2048  # UQ_4_12(0.5)
+
+	# M17n-5: Punk Rock — damage TAKEN from a sound move ×0.5 (the OTHER half — the
+	# holder's OWN sound-move power ×1.3 — lives in move_power_modifier_uq412, a
+	# genuinely different function/direction). Source: battle_util.c L7436-7441
+	# (same GetDefenderAbilitiesModifier as Fluffy above). No double-counting risk if
+	# a Punk Rock holder's sound move hits another Punk Rock holder: this defender-side
+	# check reads only `id` (the DEFENDER's ability), completely independent of
+	# move_power_modifier_uq412's separate read of the ATTACKER's ability — confirmed
+	# from source rather than assumed non-issue (each side's own switch-case only ever
+	# consults that side's own ability field).
+	if id == ABILITY_PUNK_ROCK and move.sound_move:
+		return 2048
+
 	return 4096
+
+
+# M17n-5: Long Reach — the holder's own moves NEVER count as contact, unconditionally
+# overriding `move.makes_contact`. Source: IsMoveMakingContact (battle_util.c
+# L5728-5746) — the SINGLE canonical function every "does this hit count as contact"
+# check in source routes through (Fluffy's own check above calls this exact function
+# too, confirmed from source) — mirrored here as one shared helper rather than
+# touching each individual contact-triggered ability's own dispatch (try_contact_effects'
+# top gate, try_wandering_spirit_swap, try_mummy_overwrite all reuse this). `attacker
+# == null` falls back to the raw flag (no Long-Reach context available), matching
+# every other ability query in this file's null-safety convention.
+static func move_makes_contact(
+		attacker: BattlePokemon, move: MoveData, ng_active: bool = false) -> bool:
+	if not move.makes_contact:
+		return false
+	if attacker == null:
+		return true
+	return effective_ability_id(attacker, ng_active) != ABILITY_LONG_REACH
+
+
+# M17n-4: Protean/Libero — the user's own type changes to match the move it's ABOUT to
+# use, once per switch-in stint. Source: CancelerProtean/ProteanTryChangeType
+# (battle_move_resolution.c L1647-1662, battle_util.c L919-932): fires for either
+# ability identically (confirmed genuinely the same function/condition, not just
+# flavor-text twins — Libero has no source logic of its own at all); gated on
+# `!volatiles.usedProteanLibero` (see BattlePokemon.used_protean_libero's doc comment
+# for the once-per-battle-comment-vs-once-per-stint-behavior distinction), not already
+# exactly that type (checked against BOTH of this project's two type slots, mirroring
+# source's `types[0] != moveType || types[1] != moveType` — skips only when a mono-typed
+# mon already matches), not Struggle, not a bounced move (this project has no Magic
+# Bounce/Dancer redirect chain — moot), not Tera-active (this project has no
+# Terastallization — moot). Returns the new type, or TYPE_NONE if it shouldn't fire;
+# BattleManager performs the actual `_set_mon_type` mutation, sets
+# `used_protean_libero`, and emits signals — same division of responsibility as every
+# other type-mutation call site.
+static func protean_new_type(
+		mon: BattlePokemon, move: MoveData, ng_active: bool = false) -> int:
+	if mon == null or move == null:
+		return TypeChart.TYPE_NONE
+	var id: int = effective_ability_id(mon, ng_active)
+	if id != ABILITY_PROTEAN and id != ABILITY_LIBERO:
+		return TypeChart.TYPE_NONE
+	if mon.used_protean_libero:
+		return TypeChart.TYPE_NONE
+	if move.is_struggle:
+		return TypeChart.TYPE_NONE
+	# Same "already this type" idiom as Conversion (BattleManager._phase_move_execution's
+	# is_conversion branch): membership check against species.types, not a literal
+	# both-slots-equal comparison — consistent with this project's established
+	# single-type-mutation convention rather than a stricter re-derivation from source's
+	# own dual-slot representation.
+	if move.type in mon.species.types:
+		return TypeChart.TYPE_NONE
+	return move.type
+
+
+# M17n-10: Forecast — Castform's type reflects the active weather. Source: Castform's
+# own `formChangeTable` (form_change_tables.h): sun→Fire, rain→Water, hail/snow→Ice,
+# anything else (incl. no weather)→Normal, dispatched via the shared
+# ABILITYEFFECT_ON_WEATHER case (battle_util.c L4696-4712) alongside Flower Gift/Ice
+# Face (neither reacted to here — Flower Gift is a stat-boost-only implementation in
+# this project with no form data, and Ice Face is excluded per Section 8.4). Utility
+# Umbrella exempts sun/rain specifically (`IsBattlerWeatherAffected`, battle_util.c
+# L9295) — NOT hail, the same asymmetry `[M17n-2]` already established for Swift
+# Swim/Chlorophyll (respect it) vs. Sand Rush/Slush Rush (don't). `weather` is the
+# caller's already-resolved EFFECTIVE weather (Air Lock/Cloud Nine-aware, matching
+# every other weather-conditional ability in this project) — a Castform sharing a
+# field with an Air Lock holder correctly reverts to Normal-type. Returns
+# `TypeChart.TYPE_NONE` (a safe sentinel — never Forecast's own real output) when the
+# ability doesn't apply, so callers can skip the mutation/signal entirely rather than
+# re-applying an already-correct type every single call.
+static func forecast_type(mon: BattlePokemon, ng_active: bool, weather: int) -> int:
+	if effective_ability_id(mon, ng_active) != ABILITY_FORECAST:
+		return TypeChart.TYPE_NONE
+	var umbrella: bool = ItemManager.blocks_weather_modifier(mon, ng_active)
+	if weather == DamageCalculator.WEATHER_SUN and not umbrella:
+		return TypeChart.TYPE_FIRE
+	if weather == DamageCalculator.WEATHER_RAIN and not umbrella:
+		return TypeChart.TYPE_WATER
+	if weather == DamageCalculator.WEATHER_HAIL:
+		return TypeChart.TYPE_ICE
+	return TypeChart.TYPE_NORMAL
+
+
+# M17n-10: Liquid Ooze — the DRAINED Pokémon's own ability (not the attacker's)
+# inverts a successful drain-percent heal into damage of the same amount. Source:
+# SetHealScript (battle_move_resolution.c L2587-2599). No `breakable` flag in source
+# (confirmed via `data/abilities.h`) — this is the drained mon protecting itself, not
+# something an attacker's Mold Breaker could bypass.
+static func inverts_drain(drained_mon: BattlePokemon, ng_active: bool = false) -> bool:
+	return effective_ability_id(drained_mon, ng_active) == ABILITY_LIQUID_OOZE
+
+
+# M17n-10: Pressure — extra PP deducted per Pressure-holding opponent targeted.
+# Source: CancelerPPDeduction (battle_move_resolution.c L982-1002). For a spread
+# move (TARGET_BOTH/TARGET_FOES_AND_ALLY, this project's `MoveData.is_spread`),
+# TARGET_ALL_BATTLERS, or TARGET_FIELD, +1 PP is deducted per LIVE, non-ally battler
+# holding Pressure — the doubles-spread edge case: a spread move against two
+# Pressure holders costs 3 PP, not 2 (source's own loop excludes only allies, so
+# both opposing slots are counted independently). `MoveForcesPressure` in source
+# flags a handful of moves (Perish Song etc.) that force this same field-wide count
+# even though their own `.target` isn't one of the three listed — none of those
+# flagged moves exist in this project's roster, confirmed via grep, so it's omitted.
+# For any other single-target move, +1 PP only if the resolved defender itself has
+# Pressure AND isn't the attacker — matching source's `battlerAtk != battlerDef`
+# guard, which also correctly zeroes this out for TARGET_USER/TARGET_ALLY/etc.
+# self-or-ally-only moves without needing a separate check. TARGET_OPPONENTS_FIELD
+# hazards (Spikes/Stealth Rock/Toxic Spikes) are explicitly excluded from that final
+# branch in source and don't match the spread/ALL_BATTLERS/FIELD list either — a
+# hazard move never draws extra PP from an opposing Pressure holder.
+static func pressure_pp_cost(move: MoveData, attacker: BattlePokemon, defender: BattlePokemon,
+		attacker_side: int, combatants: Array, active_per_side: int, ng_active: bool = false) -> int:
+	var extra := 0
+	if move.is_spread or move.target == MoveData.TARGET_ALL_BATTLERS \
+			or move.target == MoveData.TARGET_FIELD:
+		var opp_start: int = (1 - attacker_side) * active_per_side
+		for i in range(active_per_side):
+			var mon: BattlePokemon = combatants[opp_start + i]
+			if not mon.fainted and effective_ability_id(mon, ng_active) == ABILITY_PRESSURE:
+				extra += 1
+	elif move.target != MoveData.TARGET_OPPONENTS_FIELD:
+		if defender != attacker and effective_ability_id(defender, ng_active) == ABILITY_PRESSURE:
+			extra += 1
+	return 1 + extra
 
 
 # M17a: post-type-effectiveness attacker-side modifier.
@@ -1191,9 +1580,53 @@ static func blocks_critical_hit(
 # weather: DamageCalculator.WEATHER_* constant, for Sand Force's sandstorm gate.
 # ally: the attacker's doubles partner, or null in singles / if the ally has fainted —
 #   resolved by BattleManager (this static function has no battle-state access).
+# is_last_to_move: M17n-5 addition, for Analytic — whether `attacker` is the last
+#   battler with a pending MOVE action this turn (source: IsLastMonToMove,
+#   battle_util.c L1098-1115, checked against the FINAL resolved turn order — i.e.
+#   AFTER Trick Room/Pursuit/[M17n-3]'s priority abilities have already been applied,
+#   not a raw speed comparison). Resolved by BattleManager (this static function has
+#   no turn-order access); default false preserves every pre-existing call site.
+#
+# M17n-5 additions, same function (CalcMoveBasePowerAfterModifiers, L6375-6656),
+# same attacker-abilities switch:
+#   ABILITY_IRON_FIST     (L6473-6475): IsPunchingMove(move) → ×1.2
+#   ABILITY_TECHNICIAN    (L6461-6464): move's BASE power (not any in-progress
+#     modified value — `basePower` is captured once at function entry, before any
+#     modifier in this switch runs) <= 60 → ×1.5
+#   ABILITY_RECKLESS      (L6471-6473): moveEffect in {EFFECT_RECOIL,
+#     EFFECT_RECOIL_IF_MISS} → ×1.2. This project has no EFFECT_RECOIL_IF_MISS-shaped
+#     move (no Jump-Kick-style crash-on-miss mechanic exists anywhere in this
+#     codebase) — confirmed equivalent to `move.recoil_percent > 0` given this
+#     project's CURRENT roster (all 3 existing recoil moves are EFFECT_RECOIL-shaped,
+#     verified individually via their own data-pipeline source comments, not
+#     assumed) — re-check this equivalence if a crash-on-miss move is ever added.
+#   ABILITY_SHEER_FORCE   (L6481-6483): MoveIsAffectedBySheerForce → ×1.3. Source's
+#     helper (`MoveIsAffectedBySheerForce`, battle_util.c L9536-9547) checks for a
+#     probabilistic secondary effect — equivalent to this project's own
+#     `move.secondary_chance > 0` ("a true secondary effect," the exact phrasing
+#     StatusManager.try_secondary_effect already uses for the same concept). A move
+#     with NO secondary effect (chance == 0) does NOT get this boost — confirmed from
+#     source, not assumed; the suppression half lives in
+#     StatusManager.try_secondary_effect, gated on the SAME condition.
+#   ABILITY_STRONG_JAW    (L6514-6516): IsBitingMove(move) → ×1.5
+#   ABILITY_MEGA_LAUNCHER (L6518-6520): IsPulseMove(move) → ×1.5. No move in this
+#     project's current roster carries pulse_move=true (confirmed via grep) — the
+#     mechanism is real and tested via a synthetic MoveData, matching this project's
+#     established `_make_move`-style precedent for flag-dependent power modifiers.
+#   ABILITY_PUNK_ROCK     (L6554-6556): IsSoundMove(move) → ×1.3 (own-move boost half;
+#     the OTHER half — damage TAKEN from an opponent's sound move ×0.5 — lives in
+#     defense_damage_modifier_uq412 below, a genuinely different function/direction,
+#     confirmed from source rather than assumed non-issue for the "hits another Punk
+#     Rock holder" edge case: each side's own switch-case only ever reads that side's
+#     OWN ability, so no double-counting is possible by construction).
+#   ABILITY_SHARPNESS     (L6562-6564): IsSlicingMove(move) → ×1.5
+#   ABILITY_ANALYTIC      (L6496-6508): moving last (see is_last_to_move doc above) →
+#     ×1.3. Source explicitly excludes EFFECT_FUTURE_SIGHT (not implemented in this
+#     project — N/A, not a dropped check).
 static func move_power_modifier_uq412(
 		attacker: BattlePokemon, move: MoveData, weather: int,
-		ally: BattlePokemon = null, ng_active: bool = false) -> int:
+		ally: BattlePokemon = null, ng_active: bool = false,
+		is_last_to_move: bool = false, move_type_changed: bool = false) -> int:
 	var modifier: int = 4096
 
 	var atk_ability_id: int = effective_ability_id(attacker, ng_active)
@@ -1217,6 +1650,60 @@ static func move_power_modifier_uq412(
 			modifier = DamageCalculator._uq412_multiply(modifier, 6144)
 		if id == ABILITY_STEELY_SPIRIT and move.type == TypeChart.TYPE_STEEL:
 			modifier = DamageCalculator._uq412_multiply(modifier, 6144)
+		if id == ABILITY_IRON_FIST and move.punching_move:
+			modifier = DamageCalculator._uq412_multiply(modifier, 4915)  # UQ_4_12(1.2)
+		if id == ABILITY_TECHNICIAN and move.power <= 60:
+			modifier = DamageCalculator._uq412_multiply(modifier, 6144)
+		if id == ABILITY_RECKLESS and move.recoil_percent > 0:
+			modifier = DamageCalculator._uq412_multiply(modifier, 4915)
+		if id == ABILITY_SHEER_FORCE and move.secondary_chance > 0:
+			modifier = DamageCalculator._uq412_multiply(modifier, 5325)
+		if id == ABILITY_STRONG_JAW and move.biting_move:
+			modifier = DamageCalculator._uq412_multiply(modifier, 6144)
+		if id == ABILITY_MEGA_LAUNCHER and move.pulse_move:
+			modifier = DamageCalculator._uq412_multiply(modifier, 6144)
+		if id == ABILITY_PUNK_ROCK and move.sound_move:
+			modifier = DamageCalculator._uq412_multiply(modifier, 5325)
+		if id == ABILITY_SHARPNESS and move.slicing_move:
+			modifier = DamageCalculator._uq412_multiply(modifier, 6144)
+		if id == ABILITY_ANALYTIC and is_last_to_move:
+			modifier = DamageCalculator._uq412_multiply(modifier, 5325)
+		# M17n-4: Gorilla Tactics — physical-move base power ×1.5. Source:
+		# CalcMoveBasePowerAfterModifiers, case ABILITY_GORILLA_TACTICS
+		# (battle_util.c L6884-6889); source also excludes Dynamax, which this project
+		# doesn't model, so that half of the condition is moot here. This is a DIFFERENT
+		# pipeline stage from Choice Band/Specs' attack-STAT modifier
+		# (ItemManager.attack_modifier_uq412) — confirmed from source's own test
+		# ("Gorilla Tactics stacks with Choice Band to reach 2.25x Attack",
+		# test/battle/ability/gorilla_tactics.c) that the two compose multiplicatively
+		# (1.5 x 1.5 = 2.25), which this project's pipeline already produces automatically
+		# once this branch exists, since the two modifiers already apply at genuinely
+		# separate stages (attack stat vs. base power) — no special-case stacking code
+		# needed.
+		if id == ABILITY_GORILLA_TACTICS and move.category == 0:
+			modifier = DamageCalculator._uq412_multiply(modifier, 6144)
+		# M17n-6: Normalize / Refrigerate / Pixilate / Galvanize — ×1.2 power boost,
+		# GEN_LATEST config (source: `GetConfig(B_ATE_MULTIPLIER) >= GEN_7 ? 1.2 :
+		# 1.3` — this project's reference config is always GEN_LATEST, so 1.2/4915
+		# unconditionally, matching every other GEN_LATEST-only branch in this file).
+		# Gated on `move_type_changed` (this call's own `effective_move_type` result,
+		# resolved by DamageCalculator BEFORE this function is called and threaded
+		# through as this trailing bool) rather than re-deriving move.type here —
+		# by this point `move` may already be a type-mutated duplicate (see
+		# DamageCalculator.calculate's doc comment), so `move.type` alone can't
+		# distinguish "this ability caused it" from "the move was already that type".
+		# Confirmed from source (battle_util.c L6538-6552) all FOUR abilities share
+		# this exact ×1.2 value — including Normalize itself, which (unlike the
+		# "-ate" family) sets its equivalent of `move_type_changed` UNCONDITIONALLY
+		# for every move it uses, even an already-Normal one (see effective_move_type's
+		# doc comment) — so a Normalize holder's every attack gets this boost, not
+		# just moves that visibly changed type.
+		# M17n-6 follow-up: Aerilate/Dragonize confirmed from source
+		# (battle_util.c L6542-6549) to share the exact same 1.2/4915 gate.
+		if (id == ABILITY_NORMALIZE or id == ABILITY_REFRIGERATE or id == ABILITY_PIXILATE
+				or id == ABILITY_GALVANIZE or id == ABILITY_AERILATE or id == ABILITY_DRAGONIZE) \
+				and move_type_changed:
+			modifier = DamageCalculator._uq412_multiply(modifier, 4915)  # UQ_4_12(1.2)
 
 	var ally_ability_id: int = effective_ability_id(ally, ng_active) if ally != null and not ally.fainted else ABILITY_NONE
 	if ally_ability_id != ABILITY_NONE:
@@ -1282,18 +1769,28 @@ static func accuracy_modifier_percent(
 			pct = (pct * 80) / 100
 		elif def_id == ABILITY_SNOW_CLOAK and weather == DamageCalculator.WEATHER_HAIL:
 			pct = (pct * 80) / 100
+		# M17n-5: Tangled Feet — same function/switch as Sand Veil/Snow Cloak
+		# (GetTotalAccuracy's target's-ability switch, battle_util.c L10310-10313), but
+		# ×0.50 (not ×0.80) while the DEFENDER is confused. `breakable = TRUE` in
+		# source, same reachability as Sand Veil/Snow Cloak.
+		elif def_id == ABILITY_TANGLED_FEET and defender.confusion_turns > 0:
+			pct = (pct * 50) / 100
 
 	return pct
 
 
 # M17a: whether the attacker's ability blocks standard move-recoil damage.
 # Source: battle_move_resolution.c :: EFFECT_RECOIL/EFFECT_CHLOROBLAST handling
-#   (L3373-3396): ABILITY_ROCK_HEAD (or Magic Guard, out of scope) → skip recoil entirely.
-# Does NOT apply to Struggle recoil (a separate, unconditional code path in both source
-# and this project — BattleManager's struggle handling is untouched) or to Life Orb
-# recoil (an item effect, unaffected by Rock Head in source).
+#   (L3382-3384): `IsAbilityAndRecord(...ROCK_HEAD) || IsAbilityAndRecord(...MAGIC_GUARD)`
+#   — Rock Head and Magic Guard both skip recoil entirely via the same OR'd condition,
+#   implemented as of [M17n-9] (previously "Magic Guard, out of scope" before it existed).
+# Does NOT apply to Struggle recoil (confirmed a separate, unconditional code path in
+# source too — `MOVE_EFFECT_RECOIL_HP_25`, battle_script_commands.c L2534-2542, has no
+# Magic-Guard/Rock-Head check anywhere in that case) or to Life Orb recoil (a
+# separate item-effect gate, see ItemManager.life_orb_recoil).
 static func blocks_recoil(attacker: BattlePokemon, ng_active: bool = false) -> bool:
-	return effective_ability_id(attacker, ng_active) == ABILITY_ROCK_HEAD
+	var id: int = effective_ability_id(attacker, ng_active)
+	return id == ABILITY_ROCK_HEAD or id == ABILITY_MAGIC_GUARD
 
 
 # Type immunity from an ability (Levitate → Ground immunity).
@@ -1307,6 +1804,272 @@ static func blocks_move_type(
 	if effective_ability_id(defender, ng_active, attacker) == ABILITY_LEVITATE:
 		return move_type == TypeChart.TYPE_GROUND
 	return false
+
+
+# M17n-6: Wonder Guard — blocks a damaging hit entirely UNLESS the full combined
+# type-effectiveness multiplier (both defender types, weather-flying-weakening, and
+# the Scrappy/Mind's Eye Ghost-bypass above, all already folded into `effectiveness`
+# by the time DamageCalculator calls this) is STRICTLY greater than 1.0x.
+# Source: battle_util.c :: CalcTypeEffectivenessMultiplierInternal (L8259-8270) —
+# `(abilities[battlerDef] == ABILITY_WONDER_GUARD && modifier <= UQ_4_12(1.0) &&
+# !isPresentHealing) && GetMovePower(move) != 0`. This project has no Present move
+# (isPresentHealing is moot, confirmed absent via grep). `GetMovePower() != 0` is
+# reproduced here as `move.power > 0` — status moves default to power=0 (naturally
+# exempt, confirmed by this tier's own testing) while fixed/level-damage moves
+# (Seismic Toss, Night Shade, Dragon Rage, Sonic Boom) carry the same power=1
+# PLACEHOLDER source itself uses purely to mark "this is a damaging move" (see
+# scripts/gen_moves.py's own comments citing this), so Wonder Guard correctly still
+# blocks those too, unless super effective — matching real-game behavior.
+# `move.type != TYPE_MYSTERY` reproduces source's separate `ctx->move != MOVE_STRUGGLE`
+# exclusion (Struggle/confusion self-hit never reach this project's own
+# type-effectiveness computation at all when moveType is TYPE_MYSTERY — see the
+# existing guards at lines 325/341 of DamageCalculator.calculate this mirrors) —
+# Struggle has power=50 (nonzero) so it would otherwise be wrongly blocked without
+# this guard.
+# Confirmed this project's `calculate_confusion_damage` (the OTHER, wholly separate
+# self-hit damage function) never calls this check at all by construction — no
+# additional exclusion needed there.
+# `effective_ability_id` gives Mold-Breaker-bypass (breakable=TRUE in source) and
+# Neutralizing-Gas-suppression for free, the same chokepoint every other tier uses.
+static func blocks_non_super_effective_hit(
+		defender: BattlePokemon, effectiveness: float, move: MoveData,
+		ng_active: bool = false, attacker: BattlePokemon = null) -> bool:
+	if move.power <= 0 or move.type == TypeChart.TYPE_MYSTERY:
+		return false
+	if effective_ability_id(defender, ng_active, attacker) != ABILITY_WONDER_GUARD:
+		return false
+	return effectiveness <= 1.0
+
+
+# M17n-8: Corrosion — the ATTACKER's own ability bypasses a Poison- or Steel-type
+# target's normal status-type immunity to Poison/Toxic infliction. Source:
+# `CanSetNonVolatileStatus` (battle_util.c L5250): `abilityAtk != ABILITY_CORROSION &&
+# IS_BATTLER_ANY_TYPE(battlerDef, TYPE_POISON, TYPE_STEEL)` — a single condition that
+# bypasses BOTH Poison-type and Steel-type immunity together (confirmed from source,
+# not assumed uniform — there is no separate Steel-only or Poison-only carve-out).
+# Attacker's own ability only, mirrors `bypasses_ghost_immunity`'s exact precedent
+# below (an ability is never "broken through" on its own holder, so no
+# Mold-Breaker/`attacker` param here either — moot anyway since Corrosion has no
+# `breakable` flag in source).
+static func bypasses_poison_steel_immunity(attacker: BattlePokemon, ng_active: bool = false) -> bool:
+	return effective_ability_id(attacker, ng_active) == ABILITY_CORROSION
+
+
+# M17n-9: Magic Guard — the HOLDER takes damage ONLY from direct attacks; every
+# indirect damage source this project implements is exempted (confirmed per-site
+# against source rather than assumed uniform): weather chip (sandstorm/hail),
+# status residual (poison/toxic/burn), standard recoil moves (EFFECT_RECOIL,
+# alongside Rock Head), Rough Skin/Iron Barbs' damage to the ATTACKER, Life Orb
+# recoil, and entry-hazard damage on switch-in (Spikes/Stealth Rock). Two real
+# indirect-damage sources this project also implements are confirmed from source
+# to be the OPPOSITE of exempted, so deliberately NOT gated here: Struggle's fixed
+# recoil (`MOVE_EFFECT_RECOIL_HP_25`, battle_script_commands.c L2534-2542, has no
+# `IsAbilityAndRecord(...MAGIC_GUARD)` guard anywhere in that case) and
+# Aftermath/Innards Out's retaliation against the KILLER (`battle_util.c`
+# ABILITY_AFTERMATH/ABILITY_INNARDS_OUT cases, L3985-4021 — gated only by Damp,
+# never by the killer's own Magic Guard). Substitute's own HP cost
+# (`Cmd_setsubstitute`, battle_script_commands.c L7813) also has no Magic Guard
+# check in source — it's a voluntary self-cost, not "indirect damage" in the
+# sense this ability blocks. No single existing chokepoint unifies all six
+# exempted sources (each is its own already-built, independently-tested system:
+# `blocks_weather_chip_damage`, `StatusManager.end_of_turn_damage`,
+# `blocks_recoil`, `try_contact_effects`, `ItemManager.life_orb_recoil`, the
+# switch-in hazard block) — refactoring all six into one shared "apply indirect
+# damage" pipeline purely to gate Magic Guard would touch a much larger blast
+# radius than this ability needs; this single reusable predicate, consulted at
+# each of the six existing call sites individually, is the same shape already
+# established for Overcoat/`blocks_weather_chip_damage` (one predicate, multiple
+# call sites) rather than a new pipeline. No `breakable` flag in source (confirmed
+# via `data/abilities.h`) — Mold Breaker structurally doesn't apply anyway, since
+# every one of these checks is the HOLDER protecting itself, never an attacker's
+# move being resisted by the opponent's ability.
+static func blocks_indirect_damage(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	return effective_ability_id(mon, ng_active) == ABILITY_MAGIC_GUARD
+
+
+# M17n-9: Infiltrator — the ATTACKER's moves bypass Reflect/Light Screen/Aurora
+# Veil (`GetScreensModifier`, battle_util.c L7358-7362) AND Substitute
+# (`IsSubstituteProtected`, battle_script_commands.c L9534, gated on
+# `GetConfig(B_INFILTRATOR_SUBSTITUTE) < GEN_6` — this project targets
+# GEN_LATEST/expanded, so the Gen6+ bypass branch applies) for BOTH damaging and
+# status moves — `IsSubstituteProtected` is a single shared function every
+# substitute-vs-move check in source routes through, not two separate mechanisms.
+# Deliberately scoped to ONLY these two systems: source's Infiltrator also bypasses
+# Mist and Safeguard, but neither exists in this project (no-op, nothing to gate).
+# Attacker's own ability only (no Mold-Breaker/`attacker` param) — mirrors
+# `bypasses_ghost_immunity`'s precedent; moot regardless since Infiltrator has no
+# `breakable` flag in source (confirmed via `data/abilities.h`).
+static func bypasses_infiltrator_barriers(attacker: BattlePokemon, ng_active: bool = false) -> bool:
+	return effective_ability_id(attacker, ng_active) == ABILITY_INFILTRATOR
+
+
+# M17n-9: Magic Bounce — reflects the FIRST foe-targeting status move used against
+# the holder back at its own user, as if the user had targeted themselves; the
+# original holder is never affected. Source: `TryMagicBounce` (battle_move_resolution.c
+# L5158-5171), gated on `MoveCanBeBouncedBack` (`gMovesInfo[move].magicCoatAffected`,
+# include/move.h L350-352) — NOT a blanket "all status moves" rule. Re-derived this
+# project's exact bounceable subset directly from source's per-move
+# `magicCoatAffected` flags rather than assuming every status move qualifies: of
+# this project's 91 implemented moves, exactly 9 carry the flag AND are
+# foe-targeting in this project's own dispatch — Sand Attack, Tail Whip, Leer,
+# Growl, Sleep Powder, Thunder Wave, Toxic, Confuse Ray, Will-O-Wisp (see
+# `MoveData.bounceable`, set per-move in `gen_moves.py`). Self-targeting stat moves
+# (Swords Dance, Growth), copy/utility moves (Psych Up, Conversion, Conversion 2,
+# Pain Split), Encore, and Disable are all confirmed absent from source's
+# magicCoatAffected=TRUE table — correctly excluded. Known, documented scope
+# limit: Stealth Rock IS magicCoatAffected=TRUE in source (Gen5+) but hazard-setting
+# in this project runs through an entirely separate side-wide dispatch
+# (`move.is_stealth_rock`, its own early-return branch) that this tier does not
+# touch — extending Magic Bounce to hazards would need that dispatch reworked to
+# check for an opposing Magic Bounce holder, a larger effort than this "wide but
+# shallow" ability's own budget; flagged for a future tier if hazard-bounce is
+# ever wanted, not silently dropped.
+#
+# Magic-Bounce-vs-Magic-Bounce: source's `gBattleStruct->bouncedMoveIsUsed` flag
+# means a move can only ever be bounced ONCE — confirmed from
+# `TryMagicBounce`/`TryMagicCoat`, both of which unconditionally return FALSE if
+# already set. This project's implementation (a single non-recursive attacker/
+# defender swap in `_phase_move_execution`, checked exactly once per move) gets
+# this "only one bounce ever" behavior for free from the linear control flow, with
+# no separate guard flag needed — even if the original attacker also holds Magic
+# Bounce, the swapped roles are never re-checked.
+#
+# Prankster + Dark-type interaction: source's `CanTargetBlockPranksterMove`
+# (battle_util.c L2203-2210) explicitly skips the Dark-type Prankster-immunity
+# block when the TARGET currently has Magic Bounce (or Magic Coat) active — Magic
+# Bounce takes priority over simply shrugging the move off as Dark-type-immune, so
+# a Prankster-boosted status move against a Dark-type Magic Bounce holder still
+# gets reflected rather than just failing outright. This project's own
+# `blocks_prankster_move` check sits in `_phase_move_execution` AFTER this
+# function's Magic Bounce check (bounce is checked immediately once `foe_targeting`
+# is known, before the Substitute/type-immunity/Prankster gates further down) —
+# matching source's ordering, so a Dark-type Magic Bounce holder correctly bounces
+# a Prankster'd status move rather than the Prankster-Dark-immunity gate
+# incorrectly firing first and eating the move as a no-op.
+#
+# `.breakable = TRUE` in source's data table (confirmed via `data/abilities.h`,
+# unlike Magic Guard/Infiltrator above) — a Mold-Breaker-wielding attacker's status
+# move is NOT reflected at all, hitting the target normally. Threaded through the
+# full 4-arg `effective_ability_id(defender, ng_active, attacker, attacker_move)`
+# form for exactly this reason, unlike every other predicate in this file that only
+# checks its own holder.
+static func bounces_status_move(defender: BattlePokemon, ng_active: bool,
+		attacker: BattlePokemon, attacker_move: MoveData) -> bool:
+	return effective_ability_id(defender, ng_active, attacker, attacker_move) == ABILITY_MAGIC_BOUNCE
+
+
+# M17n-6: Scrappy / Mind's Eye — the ATTACKER's Normal/Fighting-type moves bypass a
+# Ghost-type defender's flat type immunity. Source: battle_util.c ::
+# MulByTypeEffectiveness (L8046-8052) — checked per defending-type component
+# alongside Foresight/Miracle Eye's identical-shaped bypasses (neither of which this
+# project models — no Foresight/Miracle Eye anywhere, confirmed via grep). Scrappy has
+# no exclusive OTHER-type-immunity bypass (does NOT let a Ground move hit Flying, for
+# example) — this is Ghost/Normal/Fighting-specific by construction, threaded into
+# TypeChart.get_effectiveness/get_uq412's own `bypass_ghost_immunity` param rather
+# than being a separate early gate like Levitate, since (unlike Levitate) it needs the
+# PER-COMPONENT type computation, not a flat move-type check. Attacker's own ability
+# only (no Mold-Breaker/`attacker` param) — mirrors `ignores_defender_evasion_stage`'s
+# existing precedent for exactly this reason (an ability is never "broken through" on
+# its own holder).
+static func bypasses_ghost_immunity(attacker: BattlePokemon, ng_active: bool = false) -> bool:
+	var id: int = effective_ability_id(attacker, ng_active)
+	return id == ABILITY_SCRAPPY or id == ABILITY_MINDS_EYE
+
+
+# M17n-6: Overcoat — full immunity to weather-based end-of-turn chip damage
+# (sandstorm/hail). Source: battle_end_turn.c :: HandleEndTurnWeatherDamage
+# (L143-169) — Overcoat is one of several per-Pokemon exemptions checked directly
+# alongside the Rock/Ground/Steel type exemption and semi-invulnerable state.
+#
+# [M17n-2] follow-up fix (post-[M17n-6]): source's sandstorm branch (L144-147) ALSO
+# exempts Sand Veil, Sand Force, and Sand Rush; its hail branch (L166) ALSO exempts
+# Snow Cloak — confirmed directly from a fresh read of the current source, not
+# carried over from any prior citation. `[M17n-2]`'s original decisions.md entry
+# concluded the opposite ("Sand Veil/Sand Rush do NOT grant chip immunity") and
+# shipped a supporting code comment here saying so — Rob has confirmed that
+# conclusion was simply wrong (not a reference-tree version discrepancy), so this is
+# corrected here rather than left as a flagged-but-unfixed gap. `weather` is the
+# CURRENT weather (matching `[M17n-2]`'s own `_effective_weather()` convention —
+# Air Lock/Cloud Nine negation already happens before this function's caller ever
+# reaches a non-WEATHER_NONE value) — Sand Veil/Sand Force/Sand Rush only exempt
+# during sandstorm, Snow Cloak only during hail, matching source's per-weather-branch
+# structure (these abilities do NOT cross-exempt the other weather's chip damage).
+# Magic Guard also appears in source's exemption chain (L150, L167) but is not
+# implemented anywhere in this project (no `ABILITY_MAGIC_GUARD` constant exists,
+# confirmed via grep) — correctly absent, not a silently-dropped case.
+# Called with no `attacker`/Mold-Breaker param — end-of-turn ticks are outside any
+# move-processing window, so Mold Breaker structurally never applies here, matching
+# `[M17g]`'s established "Mold Breaker is move-scoped" precedent (same reasoning
+# already used for `is_trapped`'s selection-time gate). Neutralizing Gas suppression
+# still applies via the standard `effective_ability_id` chokepoint, for every
+# ability checked here including the four added by this fix.
+static func blocks_weather_chip_damage(
+		mon: BattlePokemon, ng_active: bool = false,
+		weather: int = DamageCalculator.WEATHER_NONE) -> bool:
+	var id: int = effective_ability_id(mon, ng_active)
+	if id == ABILITY_OVERCOAT:
+		return true
+	if weather == DamageCalculator.WEATHER_SANDSTORM:
+		return id == ABILITY_SAND_VEIL or id == ABILITY_SAND_FORCE or id == ABILITY_SAND_RUSH
+	if weather == DamageCalculator.WEATHER_HAIL:
+		return id == ABILITY_SNOW_CLOAK
+	return false
+
+
+# M17n-6: Normalize / Refrigerate / Pixilate / Galvanize / Liquid Voice — mutates the
+# ATTACKER's move's effective type for THIS hit. Returns -1 if unaffected (use
+# move.type as-is), else the new TypeChart.TYPE_* to substitute.
+# Source: battle_main.c :: GetBattleMoveType's ability-override branch (L5993-6024):
+#   1. IsSoundMove(move) && ability==LIQUID_VOICE → TYPE_WATER (checked FIRST,
+#      unconditionally on original type — reuses the existing `sound_move` MoveData
+#      flag from [M17n-1]/[M17n-5], no new flag needed).
+#   2. moveType==TYPE_NORMAL && ability!=NORMALIZE → TrySetAteType's per-ability
+#      switch (L5751-5765): Refrigerate→Ice, Pixilate→Fairy, Galvanize→Electric
+#      (Aerilate→Flying excluded from this project's scope; "Dragonize" is a
+#      rom-hack-only custom entry, not a real ability, not carried into this
+#      project's ability list at all).
+#   3. else if ability==NORMALIZE → TYPE_NORMAL, UNCONDITIONALLY on the original
+#      type (not gated on moveType==TYPE_NORMAL like branch 2 — source's own
+#      ability!=NORMALIZE guard on branch 2 is what routes an already-Normal move
+#      away from branch 2 and into this unconditional branch instead). This means
+#      a Normalize holder's ALREADY-Normal-type move is a genuine type no-op but
+#      STILL sets source's `ateBoost` flag true (see move_power_modifier_uq412's
+#      matching case) — confirmed deliberately, not a bug, since Normalize gives
+#      +20% to literally every move it uses, not just ones that visibly changed type.
+# Source excludes several variable-type move effects (Hidden Power, Weather Ball,
+# Natural Gift, Judgment-style Change-Type-on-Item, Revelation Dance, Terrain Pulse,
+# Tera Blast/Starstorm, Aura Wheel) from both branches 2 and 3 — none of these move
+# effects exist anywhere in this project's roster (confirmed via grep), so they are
+# not modeled here at all rather than added as inert exclusions.
+# Scoped to the DAMAGE pipeline only (DamageCalculator.calculate substitutes a
+# shallow-duplicated MoveData with just `.type` overridden, never mutating the
+# shared move Resource) — status-move type mutation project-wide is NOT modeled,
+# since no established hook exists there and this tier's own scope is the
+# type-effectiveness/damage pipeline specifically.
+static func effective_move_type(
+		attacker: BattlePokemon, move: MoveData, ng_active: bool = false) -> int:
+	var id: int = effective_ability_id(attacker, ng_active)
+	if move.sound_move and id == ABILITY_LIQUID_VOICE:
+		return TypeChart.TYPE_WATER
+	if move.type == TypeChart.TYPE_NORMAL and id != ABILITY_NORMALIZE:
+		if id == ABILITY_REFRIGERATE:
+			return TypeChart.TYPE_ICE
+		if id == ABILITY_PIXILATE:
+			return TypeChart.TYPE_FAIRY
+		if id == ABILITY_GALVANIZE:
+			return TypeChart.TYPE_ELECTRIC
+		# M17n-6 follow-up: Aerilate (Normal->Flying) and Dragonize (Normal->Dragon)
+		# — confirmed from source (TrySetAteType, battle_main.c L5757/L5763-5765)
+		# to be the SAME switch/branch as Refrigerate/Pixilate/Galvanize, not a
+		# separate mechanism.
+		if id == ABILITY_AERILATE:
+			return TypeChart.TYPE_FLYING
+		if id == ABILITY_DRAGONIZE:
+			return TypeChart.TYPE_DRAGON
+		return -1
+	if id == ABILITY_NORMALIZE:
+		return TypeChart.TYPE_NORMAL
+	return -1
 
 
 # M17n-1: Soundproof / Bulletproof — full immunity to a move carrying a specific FLAG
@@ -1333,6 +2096,19 @@ static func blocks_move_flag(
 	if id == ABILITY_SOUNDPROOF and move.sound_move:
 		return true
 	if id == ABILITY_BULLETPROOF and move.ballistic_move:
+		return true
+	# M17n-6: Overcoat's powder-move half — same shape/dispatch group as Soundproof/
+	# Bulletproof above. Source: `IsPowderMoveBlocked` (battle_util.c L2216-2229),
+	# which itself calls `IsAffectedByPowderMove` (L10545-10552, gated on
+	# `B_POWDER_OVERCOAT >= GEN_6`, satisfied at this project's GEN_LATEST config) —
+	# a flat, unconditional full-move block (`BattleScript_PowderMoveNoEffect`),
+	# applying to Sleep Powder/Stun Spore/Spore-style status moves exactly like
+	# Soundproof blocks sound-flagged status moves. `powder_move` is a pre-existing
+	# dormant `MoveData` field (Sleep Powder already has it set from the original
+	# schema) — confirmed via grep it was never read anywhere before this, so no new
+	# flag was needed, matching the `[M17h]`-established dormant-field-check
+	# discipline.
+	if id == ABILITY_OVERCOAT and move.powder_move:
 		return true
 	return false
 
@@ -1718,12 +2494,20 @@ static func ignores_attacker_atk_stage(
 
 # Attacker's Unaware (or Keen Eye) ignores the DEFENDER's evasion stage in the
 # accuracy formula. Source explicitly groups Unaware/Keen Eye/Minds Eye/Illuminate
-# here — only the first two are in this project's ability scope.
+# here — only the first two were in this project's ability scope until now.
 # M17g: attacker's OWN ability — only ng_active matters (see ignores_defender_def_stage).
+# M17n-6: Mind's Eye's second, unrelated half (the first is its Ghost-immunity
+# bypass, see `bypasses_ghost_immunity` above — confirmed from source, battle_util.c
+# L10251, to be the LITERAL SAME `atkAbility == ABILITY_UNAWARE || atkAbility ==
+# ABILITY_KEEN_EYE || atkAbility == ABILITY_MINDS_EYE` condition this function
+# already existed to express, per this function's own pre-existing doc comment
+# anticipating exactly this addition — genuinely independent of the Ghost-bypass half
+# (an attacker can trigger this evasion-ignore even against a non-Ghost target that
+# has no relevance to the other half at all, and vice versa).
 static func ignores_defender_evasion_stage(
 		attacker: BattlePokemon, ng_active: bool = false) -> bool:
 	var id: int = effective_ability_id(attacker, ng_active)
-	return id == ABILITY_UNAWARE or id == ABILITY_KEEN_EYE
+	return id == ABILITY_UNAWARE or id == ABILITY_KEEN_EYE or id == ABILITY_MINDS_EYE
 
 
 # Defender's Unaware ignores the ATTACKER's own accuracy stage in the accuracy formula.
@@ -1767,12 +2551,16 @@ static func ignores_attacker_accuracy_stage(
 #                                    pre-existing major status on switch-in (M17n-1)
 #   "cured_confusion"       : bool — true if Own Tempo cured pokemon's own pre-existing
 #                                    confusion on switch-in (M17n-1)
+#   "opponent_guard_dog_change" : int — Attack stage change applied to the opponent
+#                                    when Guard Dog reverses Intimidate into a raise
+#                                    (M17n-10); mutually exclusive with "atk_change"
 static func try_switch_in(
 		pokemon: BattlePokemon, opponent: BattlePokemon,
 		opponent_ally: BattlePokemon = null, ng_active: bool = false) -> Dictionary:
 	var result := {
 		"atk_change": 0, "opponent_speed_change": 0, "cured_own_poison": false,
 		"opponent_defiant_stat": -1, "opponent_defiant_change": 0,
+		"opponent_guard_dog_change": 0,
 		"cured_status": false, "cured_confusion": false,
 	}
 	var id: int = effective_ability_id(pokemon, ng_active)
@@ -1791,7 +2579,40 @@ static func try_switch_in(
 				effective_ability_id(opponent, ng_active) == ABILITY_INNER_FOCUS
 				or effective_ability_id(opponent, ng_active) == ABILITY_OWN_TEMPO
 				or effective_ability_id(opponent, ng_active) == ABILITY_OBLIVIOUS)
-		if not opponent.fainted and not opp_blocks_intimidate:
+		# M17n-10: Guard Dog — reverses (not just blocks) Intimidate's -1 Attack drop
+		# into a +1 Attack raise for the intimidated Pokémon itself. Source: the SAME
+		# `IsIntimidateBlocked` switch (L676-690) — reuses `BattleScript_DefiantActivates`,
+		# confirming this is mechanically Defiant's own shape (a reactive raise), not a
+		# generic block, but Intimidate-specific rather than "any Attack decrease"
+		# (unlike Defiant/Competitive, which react to ANY opponent-caused decrease).
+		# Gated on the target's Attack stage not already being at the -6 floor
+		# (`CompareStat(..., MIN_STAT_STAGE, CMP_GREATER_THAN, ...)`,  L699) — the same
+		# "the incoming drop would be a real no-op otherwise" gate already established
+		# for Defiant/Competitive in `[M17b]` — if already at -6, Guard Dog does not
+		# intercept and the (no-op) Intimidate drop proceeds normally instead.
+		# NOT Mold-Breaker-aware here, despite `.breakable = TRUE` in source's data
+		# table — traced `gBattleStruct->moldBreakerActive`'s own set-site
+		# (battle_util.c L9799: `if (gCurrentMove != MOVE_NONE) moldBreakerActive =
+		# ...; else moldBreakerActive = FALSE;`) and confirmed it is FALSE whenever no
+		# move is currently resolving, which is exactly the case for a switch-in
+		# ability trigger — the same "architecturally outside any move-processing
+		# window" reasoning `[M17f]`/`[M17g]` already established for trapping (their
+		# own `is_trapped()` deliberately has no `attacker` param for the identical
+		# reason). Guard Dog's `.breakable` flag is real and DOES apply — just to its
+		# OTHER half (`blocks_forced_switch`, checked during an actual Roar/Whirlwind
+		# resolution, genuinely inside a move-processing window). Source's additional
+		# Flower-Veil-ally speed-order tie-break (`StatChange_IsFlowerVeilProtected`,
+		# L678-681 — avoids double-applying the block when a Grass-type
+		# Guard-Dog-holder's OWN Flower-Veil-holding ally would already block the drop
+		# first) is a narrow doubles-only edge case not modeled here — flagged, not
+		# implemented.
+		var opp_guard_dog: bool = not opponent.fainted \
+				and effective_ability_id(opponent, ng_active) == ABILITY_GUARD_DOG \
+				and opponent.stat_stages[BattlePokemon.STAGE_ATK] > -6
+		if opp_guard_dog:
+			result["opponent_guard_dog_change"] = StatusManager.apply_stat_change(
+					opponent, BattlePokemon.STAGE_ATK, 1, opponent_ally, ng_active)
+		elif not opponent.fainted and not opp_blocks_intimidate:
 			var atk_change: int = StatusManager.apply_stat_change(
 					opponent, BattlePokemon.STAGE_ATK, -1, opponent_ally, ng_active)
 			result["atk_change"] = atk_change
@@ -1850,6 +2671,12 @@ static func try_switch_in(
 	if id == ABILITY_OWN_TEMPO and pokemon.confusion_turns > 0:
 		pokemon.confusion_turns = 0
 		result["cured_confusion"] = true
+
+	# M17n-5: Slow Start — starts a 5-turn Atk/Speed-halving timer on switch-in.
+	# Source: battle_util.c L3052-3055 (ABILITYEFFECT_ON_SWITCHIN case), B_SLOW_START_TIMER
+	# = 5 (include/config/battle.h L206).
+	if id == ABILITY_SLOW_START:
+		pokemon.slow_start_timer = 5
 
 	# Drizzle/Drought weather-set is handled by BattleManager calling get_switch_in_weather()
 	# immediately after try_switch_in() — the weather call is separated so BattleManager
@@ -2057,6 +2884,7 @@ static func try_end_of_turn(
 		"moody_lowered_stat": -1, "moody_lowered_amount": 0,
 		"heal_amount": 0, "damage_amount": 0,
 		"cured_status": false, "healed_ally_status": false,
+		"slow_start_ended": false,
 	}
 	if pokemon.fainted:
 		return result
@@ -2070,6 +2898,12 @@ static func try_end_of_turn(
 		_apply_moody(pokemon, result, force_moody_raise, force_moody_lower, ng_active)
 	if id == ABILITY_TRUANT:
 		pokemon.truant_loafing = not pokemon.truant_loafing
+	# M17n-5: Slow Start — post-decrement check, matching source's
+	# `if (timer > 0 && --timer == 0)` shape exactly (battle_util.c L3649-3654).
+	if id == ABILITY_SLOW_START and pokemon.slow_start_timer > 0:
+		pokemon.slow_start_timer -= 1
+		if pokemon.slow_start_timer == 0:
+			result["slow_start_ended"] = true
 
 	var not_at_max: bool = pokemon.current_hp < pokemon.max_hp
 	if id == ABILITY_RAIN_DISH and weather == DamageCalculator.WEATHER_RAIN and not_at_max:
@@ -2104,6 +2938,72 @@ static func try_end_of_turn(
 			result["healed_ally_status"] = true
 
 	return result
+
+
+# M17n-7: Harvest — end-of-turn (THIRD_EVENT_BLOCK_ABILITIES, the same handler
+# block Truant/Slow Start/Moody/Speed Boost fire from), a probabilistic chance to
+# regenerate the LAST consumed berry back onto the holder's item slot. Source:
+# `AbilityBattleEffects`'s `ABILITY_HARVEST` case (battle_util.c L3531-3539):
+#   (IsBattlerWeatherAffected(holdEffect, weather, B_WEATHER_SUN) ||
+#    RandomPercentage(RNG_HARVEST, 50))
+#   && item == ITEM_NONE
+#   && GetItemPocket(usedHeldItem) == POCKET_BERRIES
+# Confirmed from source, not assumed: the proc rate is a FLAT 50% normally, but
+# GUARANTEED (100%) under sun — `IsBattlerWeatherAffected` (battle_util.c L9293-9302)
+# respects the holder's own Utility Umbrella (strips the sun bonus) and, since
+# `weather` here is the caller-supplied EFFECTIVE weather (this project's
+# `_effective_weather()` convention — Air Lock/Cloud Nine already negate it to
+# WEATHER_NONE before this function ever sees it), Air Lock/Cloud Nine correctly
+# also strip the sun bonus for free, with zero extra plumbing.
+# `mon.held_item == null` and `mon.last_consumed_berry != null` are this project's
+# equivalents of `item == ITEM_NONE` / `GetItemPocket(usedHeldItem) == POCKET_BERRIES`
+# — the latter needs no separate "is this a berry" check since `last_consumed_berry`
+# is only ever set from `_consume_item`, which (per Cheek Pouch's established
+# precedent) only ever holds berries in this project's current scope.
+# `forced_roll` mirrors `quick_draw_activates`'s established seam shape exactly.
+static func harvest_activates(
+		mon: BattlePokemon, weather: int = DamageCalculator.WEATHER_NONE,
+		ng_active: bool = false, forced_roll: Variant = null) -> bool:
+	if effective_ability_id(mon, ng_active) != ABILITY_HARVEST:
+		return false
+	if mon.held_item != null:
+		return false
+	if mon.last_consumed_berry == null:
+		return false
+	if forced_roll != null:
+		return bool(forced_roll)
+	var sun_active: bool = weather == DamageCalculator.WEATHER_SUN \
+			and not ItemManager.blocks_weather_modifier(mon, ng_active)
+	if sun_active:
+		return true
+	return randi() % 100 < 50
+
+
+# M17n-7: Cud Chew — a one-turn arm/fire cycle, genuinely distinct from Harvest's
+# shape: it never regenerates the physical item, only re-runs the SAME berry's
+# effect script exactly once, one full turn after the original consumption. Source:
+# `AbilityBattleEffects`'s `ABILITY_CUD_CHEW` case (battle_util.c L3695-3707):
+#   if (volatiles.cudChew == TRUE) { cudChew = FALSE; <re-run usedHeldItem's effect
+#     script>; usedHeldItem = ITEM_NONE; }
+#   else if (!cudChew && GetItemPocket(usedHeldItem) == POCKET_BERRIES) { cudChew = TRUE; }
+# The if/else-if structure means arming and firing can never happen in the SAME
+# end-of-turn pass — a berry eaten on turn N arms at the end of turn N and fires at
+# the end of turn N+1, never turn N itself and never turn N+2 (once `cud_chew_armed`
+# is true, the arm branch is unreachable until fire clears it back to false, and
+# firing also clears `last_consumed_berry` so a new arm needs a genuinely NEW
+# consumption, not a repeat of the same one).
+# Returns "" (no-op), "arm", or "fire" for the caller (BattleManager) to act on —
+# the actual re-trigger (which berry-effect function to call, healing/curing,
+# signal emission) needs access to ItemManager/signals this stateless function
+# doesn't have.
+static func cud_chew_check(mon: BattlePokemon, ng_active: bool = false) -> String:
+	if effective_ability_id(mon, ng_active) != ABILITY_CUD_CHEW:
+		return ""
+	if mon.cud_chew_armed:
+		return "fire"
+	if mon.last_consumed_berry != null:
+		return "arm"
+	return ""
 
 
 static func _apply_moody(
@@ -2194,7 +3094,15 @@ static func try_contact_effects(
 		"mummy_overwritten_ability": -1, "wandering_spirit_swapped": false,
 		"pickpocket_stole": false,
 	}
-	if not move.makes_contact:
+	# M17n-5: routed through move_makes_contact (not the raw flag) so an attacking
+	# Long Reach holder correctly disables every contact-triggered ability in this
+	# dispatch (Static/Flame Body/Rough Skin/Poison Point/Poison Touch/Effect
+	# Spore/Cursed Body/Toxic Debris/Iron Barbs/Rocky Payload/Pickpocket/Mummy/
+	# Wandering Spirit/Gooey/Tangling Hair/Stamina/Water Compaction/Cotton
+	# Down/Steam Engine) via this ONE shared chokepoint — matching source's own
+	# single-`IsMoveMakingContact`-consumer design rather than touching each ability's
+	# individual dispatch.
+	if not move_makes_contact(attacker, move, ng_active):
 		return result
 	if damage <= 0:
 		return result
@@ -2224,8 +3132,13 @@ static func try_contact_effects(
 
 	# Rough Skin / Iron Barbs: attacker takes maxHP/8 on contact (B_ROUGH_SKIN_DMG >= GEN_4 = /8).
 	# Source: L3965-3975 (shared case block) GetNonDynamaxMaxHP(gBattlerAttacker) / 8
-	# No Magic Guard check in M8/M17a scope.
+	# M17n-9: Magic Guard now gates this — it's the ATTACKER's own ability (the one
+	# taking the damage), not the Rough Skin/Iron Barbs holder's, confirmed from
+	# source's own `IsAbilityAndRecord(gBattlerAttacker, ...MAGIC_GUARD)` check
+	# (battle_util.c L3972) sitting inside this exact case block.
 	if id == ABILITY_ROUGH_SKIN or id == ABILITY_IRON_BARBS:
+		if blocks_indirect_damage(attacker, ng_active):
+			return result
 		var rs_dmg: int = attacker.max_hp / 8
 		if rs_dmg > 0:
 			result["rough_skin_damage"] = rs_dmg
@@ -2379,6 +3292,7 @@ static func try_contact_effects(
 #   "cursed_body_fired" : bool
 #   "toxic_debris_fired" : bool
 #   "sand_spit_fired" : bool
+#   "color_change_new_type" : int (TypeChart.TYPE_NONE = did not fire)
 static func try_hit_reactive_effects(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
@@ -2395,6 +3309,7 @@ static func try_hit_reactive_effects(
 		"anger_point_change": 0, "berserk_change": 0, "steam_engine_change": 0,
 		"thermal_exchange_change": 0, "anger_shell_changes": {}, "cotton_down_fired": false,
 		"cursed_body_fired": false, "toxic_debris_fired": false, "sand_spit_fired": false,
+		"color_change_new_type": TypeChart.TYPE_NONE,
 	}
 	if damage <= 0:
 		return result
@@ -2501,6 +3416,33 @@ static func try_hit_reactive_effects(
 		result["sand_spit_fired"] = true
 		return result
 
+	# M17n-4: Color Change — the holder's own type changes to match the type of the
+	# damaging move that just hit it. Source: MoveEndColorChange/AbilityBattleEffects
+	# case ABILITY_COLOR_CHANGE (battle_util.c L3715-3729): IsBattlerTurnDamaged (this
+	# function's own `damage <= 0` early return, plus the went-to-Substitute early
+	# return at this function's ONE call site in `_do_damaging_hit`, already cover
+	# EXCLUDING_SUBSTITUTES for free — a Substitute-absorbed hit never reaches this
+	# function at all), not already that type, not Struggle, not Stellar/Mystery
+	# (TYPE_STELLAR is a defined constant in this project's TypeChart but no move or
+	# Pokemon actually uses it — no Tera scope — so this exclusion is currently
+	# unreachable in practice but checked for source fidelity anyway, same as the
+	# Mystery/Struggle check which IS reachable since this project's Struggle is
+	# modeled as TYPE_MYSTERY). Confirmed via source NOT to route through the
+	# Mold-Breaker-aware `GetBattlerAbilityInternal` chokepoint — its ability value
+	# comes from the plain per-battler `cv->abilities[]` array (GetBattlerAbility, no
+	# attacker context) — so Mold Breaker never bypasses Color Change despite source's
+	# `.breakable` flag... except source's actual data table has NO `.breakable` flag
+	# on ABILITY_COLOR_CHANGE at all (re-verified narrowly after an earlier over-wide
+	# grep bled in the NEXT table entry's flag) — doubly confirmed unreachable, by data
+	# AND by dispatch path. Returns the new type (or TYPE_NONE if it doesn't fire);
+	# BattleManager performs the actual `_set_mon_type` mutation and signal emit, same
+	# division of responsibility as every other reactive trigger in this function.
+	if id == ABILITY_COLOR_CHANGE and not move.is_struggle \
+			and move.type != TypeChart.TYPE_MYSTERY and move.type != TypeChart.TYPE_STELLAR \
+			and not (move.type in defender.species.types):
+		result["color_change_new_type"] = move.type
+		return result
+
 	return result
 
 
@@ -2543,6 +3485,60 @@ static func moxie_boost(killer: BattlePokemon, ng_active: bool = false) -> int:
 	if effective_ability_id(killer, ng_active) != ABILITY_MOXIE:
 		return 0
 	return StatusManager.apply_stat_change(killer, BattlePokemon.STAGE_ATK, 1, null, ng_active)
+
+
+# M17n-8: Damp — blocks Aftermath (and, if ever implemented, Explosion/Self-Destruct/
+# Mind Blown style moves) from firing for ANYONE on the field, not just the Damp
+# holder's own side. Source: `IsAbilityOnField` (battle_util.c L4895-4904), which reads
+# through `GetBattlerAbility` (the suppression-aware accessor) — mirrors
+# `is_neutralizing_gas_active`'s exact field-wide shape, but NG-aware unlike that one
+# (Damp checking itself has no self-reference problem NG's own check has to avoid).
+static func is_damp_active(combatants: Array, ng_active: bool = false) -> bool:
+	for mon: BattlePokemon in combatants:
+		if mon.fainted:
+			continue
+		if effective_ability_id(mon, ng_active) == ABILITY_DAMP:
+			return true
+	return false
+
+
+# M17n-8: Aftermath / Innards Out — shared "on-faint-from-a-hit, retaliate against the
+# attacker" shape, per this tier's own instruction to build one mechanism rather than
+# duplicate the fainting-detection logic. Both require the fainted mon (`mon`) to have
+# actually fainted FROM a hit (`killer` non-null, the same `_last_attacker` convention
+# already used by Destiny Bond/Moxie above) and the killer to still be alive. They
+# differ in two ways, confirmed from source rather than assumed identical:
+#   - Contact requirement: Aftermath REQUIRES contact (source gates it behind the same
+#     `CanBattlerAvoidContactEffects` check Rough Skin/Iron Barbs use); Innards Out has
+#     NO such gate — it fires from ANY damaging hit, contact or not.
+#   - Damage amount: Aftermath deals the KILLER's own max_hp/4 (source:
+#     `GetNonDynamaxMaxHP(gBattlerAttacker) / 4`); Innards Out deals the FAINTED MON's
+#     own HP immediately before the fatal hit (`hp_before_hit`) — NOT the move's raw
+#     calculated damage, which can exceed the mon's actual remaining HP on an overkill
+#     hit (source: `battle_script_commands.c` L1650-1653's `hpLost = hpBefore -
+#     gBattleMons[battler].hp` capping, accumulated into `innardsOutHpLost` and
+#     preferred over the raw `moveDamage` value whenever nonzero).
+#   - Aftermath additionally requires no Damp holder anywhere on the field
+#     (`IsAbilityOnField(ABILITY_DAMP)`, battle_util.c L3993-3997); Innards Out has no
+#     such gate.
+# Source: battle_util.c :: ABILITY_AFTERMATH case (L3986-4003), ABILITY_INNARDS_OUT
+# case (L4007-4021).
+# Returns {} if neither ability applies; otherwise {"ability_name": String, "damage": int}.
+static func faint_retaliation_damage(
+		mon: BattlePokemon, killer: BattlePokemon, move: MoveData, hp_before_hit: int,
+		ng_active: bool = false, damp_active: bool = false) -> Dictionary:
+	if killer == null or killer.fainted:
+		return {}
+	var id: int = effective_ability_id(mon, ng_active)
+	if id == ABILITY_AFTERMATH:
+		if damp_active:
+			return {}
+		if not move_makes_contact(killer, move, ng_active):
+			return {}
+		return {"ability_name": "aftermath", "damage": killer.max_hp / 4}
+	if id == ABILITY_INNARDS_OUT:
+		return {"ability_name": "innards_out", "damage": hp_before_hit}
+	return {}
 
 
 # M17c: Anticipation (L3083-3119) / Forewarn (L3142-3150) / Frisk (L3121-3141) — all

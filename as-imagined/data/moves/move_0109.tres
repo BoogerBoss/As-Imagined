@@ -10,3 +10,4 @@ type = 8
 category = 2
 pp = 10
 secondary_effect = 6
+bounceable = true

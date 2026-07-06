@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 292
 ability_name = "Sharpness"
-description = ""
-ai_rating = 0
+description = "Powers up slicing moves."
+ai_rating = 6

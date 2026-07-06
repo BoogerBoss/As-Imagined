@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 184
 ability_name = "Aerilate"
-description = ""
-ai_rating = 0
+description = "Normal-type moves become Flying-type moves. The power of those moves is boosted a little."
+ai_rating = 8

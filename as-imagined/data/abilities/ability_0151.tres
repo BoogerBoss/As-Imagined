@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 151
 ability_name = "Infiltrator"
-description = ""
-ai_rating = 0
+description = "Moves bypass the target's barriers, substitutes, and screens."
+ai_rating = 6

@@ -141,10 +141,13 @@ static func try_apply_status(
 				return false
 
 		BattlePokemon.STATUS_POISON, BattlePokemon.STATUS_TOXIC:
-			# Poison-types and Steel-types cannot be poisoned — source: L5250–5252
-			# (Corrosion ability bypasses this but is not in M3 scope)
-			if TypeChart.TYPE_POISON in mon.species.types or \
-					TypeChart.TYPE_STEEL in mon.species.types:
+			# Poison-types and Steel-types cannot be poisoned — source: L5250–5252.
+			# M17n-8: Corrosion (the ATTACKER's own ability, not `mon`'s) bypasses this
+			# immunity entirely — closes the gap M3's own comment flagged and deferred.
+			if (TypeChart.TYPE_POISON in mon.species.types or \
+					TypeChart.TYPE_STEEL in mon.species.types) \
+					and not (attacker != null \
+							and AbilityManager.bypasses_poison_steel_immunity(attacker, ng_active)):
 				return false
 
 		BattlePokemon.STATUS_PARALYSIS:
@@ -236,12 +239,22 @@ static func try_apply_confusion(
 static func end_of_turn_damage(mon: BattlePokemon, ng_active: bool = false) -> int:
 	var has_poison_heal: bool = \
 			AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_POISON_HEAL
+	# M17n-9: Magic Guard — zero damage from burn/poison/toxic, but the toxic
+	# counter still ticks (source: HandleEndTurnPoison L526-530 increments the
+	# counter INSIDE the Magic Guard branch, identical to how Poison Heal's own
+	# branch below also keeps ticking it) — checked first, matching source's
+	# if/Magic-Guard else-if/Poison-Heal else-if chain (battle_end_turn.c L526-556).
+	var has_magic_guard: bool = AbilityManager.blocks_indirect_damage(mon, ng_active)
 
 	match mon.status:
 		BattlePokemon.STATUS_BURN:
+			if has_magic_guard:
+				return 0
 			return max(1, mon.max_hp / 16)
 
 		BattlePokemon.STATUS_POISON:
+			if has_magic_guard:
+				return 0
 			if has_poison_heal:
 				return -_poison_heal_amount(mon)
 			return max(1, mon.max_hp / 8)
@@ -250,6 +263,8 @@ static func end_of_turn_damage(mon: BattlePokemon, ng_active: bool = false) -> i
 			# Increment then multiply — source: L548–550
 			# "(status & STATUS1_TOXIC_COUNTER) != STATUS1_TOXIC_TURN(15)" = cap at 15
 			mon.toxic_counter = mini(mon.toxic_counter + 1, 15)
+			if has_magic_guard:
+				return 0
 			if has_poison_heal:
 				return -_poison_heal_amount(mon)
 			return max(1, mon.max_hp / 16 * mon.toxic_counter)
@@ -677,10 +692,22 @@ static func try_secondary_effect(
 	# Roll for secondary (skip if guaranteed: chance == 0)
 	var is_true_secondary: bool = move.secondary_chance > 0
 	if is_true_secondary:
+		# M17n-5: Serene Grace doubles the ATTACKER's secondary-effect chance. Source:
+		# CalcSecondaryEffectChance (battle_util.c L9436-9450): `secondaryEffectChance
+		# * 2` (a Rainbow-status interaction also doubles it further, not modeled — no
+		# Rainbow side status exists in this project). Explicitly capped at 100 here —
+		# not strictly required given this project's `randi() % 100 < chance` roll
+		# shape (any chance > 99 is already always-true by construction), but source's
+		# own `MoveEffectIsGuaranteed` helper (L9453-9456) treats `>= 100` as
+		# guaranteed explicitly, so the cap is added for clarity/parity rather than
+		# relying on an incidental property of this project's roll implementation.
+		var effective_chance: int = move.secondary_chance
+		if AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_SERENE_GRACE:
+			effective_chance = mini(effective_chance * 2, 100)
 		var fires: bool
 		if force_secondary == null:
 			# RandomPercentage(RNG_SECONDARY_EFFECT, chance) → true with prob chance/100
-			fires = randi() % 100 < move.secondary_chance
+			fires = randi() % 100 < effective_chance
 		else:
 			fires = bool(force_secondary)
 		if not fires:
@@ -695,6 +722,17 @@ static func try_secondary_effect(
 	if is_true_secondary \
 			and AbilityManager.effective_ability_id(defender, ng_active, attacker, move) \
 					== AbilityManager.ABILITY_SHIELD_DUST:
+		return false
+
+	# M17n-5: Sheer Force suppresses the move's OWN secondary effect entirely whenever
+	# it qualifies for the power boost — confirmed from source to be the EXACT SAME
+	# gate as the boost half (`IsSheerForceAffected`/`MoveIsAffectedBySheerForce`,
+	# both keyed on "has a probabilistic secondary effect" — this project's
+	# `is_true_secondary`), dispatched at the same general effect-resolution level as
+	# Shield Dust's block just above (battle_script_commands.c L2315-2320) but keyed
+	# on the ATTACKER's own ability, not the defender's.
+	if is_true_secondary \
+			and AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_SHEER_FORCE:
 		return false
 
 	match move.secondary_effect:
@@ -759,19 +797,38 @@ static func effective_speed(
 		ng_active: bool = false) -> int:
 	var spd: int = DamageCalculator._apply_stage(
 			mon.speed, mon.stat_stages[BattlePokemon.STAGE_SPEED])
-	if mon.status == BattlePokemon.STATUS_PARALYSIS:
-		spd /= 2
 	var id: int = AbilityManager.effective_ability_id(mon, ng_active)
+	# M17n-10: Quick Feet — source's paralysis-drop check is itself gated
+	# `ability != ABILITY_QUICK_FEET` (battle_main.c L4712-4713), so a Quick Feet
+	# holder's paralysis speed drop is skipped entirely, REPLACED by (not stacked
+	# with) its own ×1.5 boost below, which fires unconditionally for any major
+	# status1 condition, not just paralysis (battle_main.c L4676-4677).
+	if mon.status == BattlePokemon.STATUS_PARALYSIS and id != AbilityManager.ABILITY_QUICK_FEET:
+		spd /= 2
+	if id == AbilityManager.ABILITY_QUICK_FEET and mon.status != BattlePokemon.STATUS_NONE:
+		spd = spd * 150 / 100
 	if id == AbilityManager.ABILITY_SLUSH_RUSH and weather == DamageCalculator.WEATHER_HAIL:
 		spd *= 2
 	if id == AbilityManager.ABILITY_SAND_RUSH and weather == DamageCalculator.WEATHER_SANDSTORM:
 		spd *= 2
 	if id == AbilityManager.ABILITY_SWIFT_SWIM and weather == DamageCalculator.WEATHER_RAIN \
-			and not ItemManager.blocks_weather_modifier(mon):
+			and not ItemManager.blocks_weather_modifier(mon, ng_active):
 		spd *= 2
 	if id == AbilityManager.ABILITY_CHLOROPHYLL and weather == DamageCalculator.WEATHER_SUN \
-			and not ItemManager.blocks_weather_modifier(mon):
+			and not ItemManager.blocks_weather_modifier(mon, ng_active):
+		spd *= 2
+	# M17n-5: Slow Start — unconditional Speed ×0.5 while the 5-turn timer is running
+	# (no move-category gate, unlike its Atk half in AbilityManager.attack_modifier_uq412
+	# — Speed isn't move-specific). Source: battle_main.c L4681-4682.
+	if id == AbilityManager.ABILITY_SLOW_START and mon.slow_start_timer > 0:
+		spd /= 2
+	# M17n-7: Unburden — unconditional Speed ×2 while active (source: battle_main.c
+	# L4686-4687, the same unconditional-on-weather shape as Slow Start's own check
+	# directly above it in source). `unburden_active` is a persistent-until-switch-out
+	# volatile set the moment the holder's OWN item is removed by any means (see
+	# BattleManager._consume_item / AbilityManager._try_steal_item's doc comments).
+	if id == AbilityManager.ABILITY_UNBURDEN and mon.unburden_active:
 		spd *= 2
 	# M12: Choice Scarf — (speed * 150) / 100 integer arithmetic.
 	# Source: battle_main.c GetChoiceScarf case (L4703–4704).
-	return ItemManager.apply_speed_modifier(mon, spd)
+	return ItemManager.apply_speed_modifier(mon, spd, ng_active)

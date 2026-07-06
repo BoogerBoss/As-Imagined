@@ -125,7 +125,37 @@ static func calculate(
 		is_doubles: bool = false,
 		ally: BattlePokemon = null,
 		defender_ally: BattlePokemon = null,
-		ng_active: bool = false) -> Dictionary:
+		ng_active: bool = false,
+		is_last_to_move: bool = false) -> Dictionary:
+
+	# M17n-6: Normalize / Refrigerate / Pixilate / Galvanize / Liquid Voice — move-type
+	# mutation must happen before EVERYTHING else below reads move.type (ability-
+	# immunity gates, type effectiveness, STAB, the weather modifier, and any
+	# type-boosting ability/item modifier further down) — source computes this once,
+	# before move processing begins (`SetTypeBeforeUsingMove`), and every later check
+	# reads the already-mutated type (battle_util.c L5993-6024). Mirrored here via a
+	# shallow-duplicated MoveData with just `.type` overridden, substituted for `move`
+	# for the REST of this call — far less invasive than threading a parallel
+	# "type override" parameter through every existing type-aware ability/item check
+	# this project already has (Overgrow/Blaze/Torrent/Swarm, Steelworker, Dry Skin,
+	# Heatproof, Purifying Salt, Steely Spirit, ItemManager's type-boosting items,
+	# etc.) — none of those need to change at all, since they just receive an
+	# already-mutated MoveData indistinguishable from a real one. The original `move`
+	# Resource passed in by the caller is never mutated (duplicate() returns a new
+	# instance) — only this local parameter is reassigned.
+	var _mutated_move_type: int = AbilityManager.effective_move_type(attacker, move, ng_active)
+	var move_type_changed: bool = _mutated_move_type >= 0
+	if move_type_changed:
+		var mutated_move: MoveData = move.duplicate()
+		mutated_move.type = _mutated_move_type
+		move = mutated_move
+
+	# M17n-6: Scrappy / Mind's Eye — the attacker's own ability bypasses a Ghost-type
+	# defender's flat Normal/Fighting immunity. Computed once, threaded into BOTH of
+	# this project's independent type-effectiveness computations below (the early
+	# `effectiveness` float and the later per-type UQ4.12 damage-multiplier block),
+	# same duplication pattern already established for `weaken_flying_se` (M17d).
+	var scrappy_bypass: bool = AbilityManager.bypasses_ghost_immunity(attacker, ng_active)
 
 	# --- Ability type immunity (Levitate vs Ground, etc.) ---
 	# Source: battle_util.c :: CalcTypeEffectivenessMultiplierInternal (L8257):
@@ -161,10 +191,22 @@ static func calculate(
 	# defenders — see TypeChart.get_effectiveness's doc comment for why this is a plain
 	# bool, not a WEATHER_* constant passed into the data layer.
 	var effectiveness: float = TypeChart.get_effectiveness(
-			move.type, defender.species.types, weather == WEATHER_STRONG_WINDS)
+			move.type, defender.species.types, weather == WEATHER_STRONG_WINDS, scrappy_bypass)
 	if effectiveness == 0.0:
 		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
 				"defender_item_consumed": false}
+
+	# M17n-6: Wonder Guard — blocks the hit entirely unless `effectiveness` (the FULL
+	# combined multiplier just computed above, already reflecting both defender
+	# types, Strong Winds' Flying-weakening, and Scrappy/Mind's Eye's Ghost-bypass) is
+	# STRICTLY greater than 1.0x. Positioned here — AFTER type effectiveness is
+	# computed, unlike Levitate/the absorb family/Telepathy above, which are all flat
+	# 0x-or-nothing checks that don't need the combined value — and BEFORE the
+	# fixed/level-damage bypass below, since Wonder Guard still applies to those
+	# (see AbilityManager.blocks_non_super_effective_hit's doc comment).
+	if AbilityManager.blocks_non_super_effective_hit(defender, effectiveness, move, ng_active, attacker):
+		return {"damage": 0, "is_crit": false, "effectiveness": effectiveness,
+				"defender_item_consumed": false, "wonder_guard_blocked": true}
 
 	# --- Fixed-damage and level-damage bypass the formula but not type immunity ---
 	# Source: battle_util.c :: DoMoveDamageCalc (L7725–7727)
@@ -181,7 +223,26 @@ static func calculate(
 	# --- Critical hit determination ---
 	# Source: src/battle_util.c :: IsCriticalHit → CalcCritChanceStage (L7820)
 	# Focus Energy adds +2 to the crit stage (CalcCritChanceStage L7836: focusEnergy ? 2 : 0).
-	var is_crit: bool = _roll_crit(move.critical_hit_stage, attacker.focus_energy) if force_crit == null else bool(force_crit)
+	# M17n-5: Super Luck adds +1 (L7841: `abilities[battlerAtk] == ABILITY_SUPER_LUCK ?
+	# 1 : 0`) — additive with the move's own critical_hit_stage and Focus Energy,
+	# confirmed from source (a single summed stage, not an independent check).
+	var super_luck_bonus: int = 1 \
+			if AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_SUPER_LUCK \
+			else 0
+	# M17n-8: Merciless — a GUARANTEED crit against a poisoned/toxic'd defender, not a
+	# stage bonus like Super Luck above. Source: CalcCritChanceStage (battle_util.c
+	# L7828-7830): `(abilities[battlerAtk] == ABILITY_MERCILESS && status1 &
+	# STATUS1_PSN_ANY) → CRITICAL_HIT_ALWAYS` — the same unconditional-override branch
+	# MoveAlwaysCrits/Laser Focus use, checked BEFORE the normal stage-sum path, not
+	# folded into it. Confirmed from source it covers both regular poison and toxic
+	# (STATUS1_PSN_ANY), matching BattlePokemon.STATUS_POISON/STATUS_TOXIC here.
+	var merciless_guaranteed: bool = \
+			AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_MERCILESS \
+			and (defender.status == BattlePokemon.STATUS_POISON \
+					or defender.status == BattlePokemon.STATUS_TOXIC)
+	var is_crit: bool = true if merciless_guaranteed else \
+			(_roll_crit(move.critical_hit_stage, attacker.focus_energy, super_luck_bonus) \
+					if force_crit == null else bool(force_crit))
 
 	# M17a: Battle Armor / Shell Armor block crits outright, overriding even a forced
 	# crit (force_crit=true) — source applies this as the final step of crit determination
@@ -231,13 +292,13 @@ static func calculate(
 	# Source: battle_util.c :: GetAttackStatModifier (L6800–6808): attacker abilities switch.
 	#   ABILITY_HUGE_POWER / ABILITY_PURE_POWER: IsBattleMovePhysical → modifier ×2.0
 	# Applied to the staged attack stat before the base damage formula.
-	var atk_ability_mod: int = AbilityManager.attack_modifier_uq412(attacker, move, weather, ng_active)
+	var atk_ability_mod: int = AbilityManager.attack_modifier_uq412(attacker, move, weather, ng_active, defender)
 	if atk_ability_mod != 4096:
 		atk = _uq412_half_down(atk, atk_ability_mod)
 
 	# M12: Choice Band/Specs attack modifier — applied to stat BEFORE base formula.
 	# Source: GetAttackStatModifier (battle_util.c L6989–6996): BAND→physical ×1.5, SPECS→special ×1.5.
-	var atk_item_mod: int = ItemManager.attack_modifier_uq412(attacker, move)
+	var atk_item_mod: int = ItemManager.attack_modifier_uq412(attacker, move, ng_active)
 	if atk_item_mod != 4096:
 		atk = _uq412_half_down(atk, atk_item_mod)
 
@@ -258,7 +319,7 @@ static func calculate(
 	# Tough Claws, Steelworker, Steely Spirit, Battery, Power Spot) — same pipeline stage
 	# as Helping Hand above (CalcMoveBasePowerAfterModifiers, battle_util.c L6375-6656).
 	var ability_power_mod: int = AbilityManager.move_power_modifier_uq412(
-			attacker, move, weather, ally, ng_active)
+			attacker, move, weather, ally, ng_active, is_last_to_move, move_type_changed)
 	if ability_power_mod != 4096:
 		effective_power = _uq412_half_down(effective_power, ability_power_mod)
 
@@ -285,8 +346,8 @@ static func calculate(
 	#   Attacker: GetAttackerWeather (L9281–9290) returns WEATHER_NONE for rain/sun.
 	#   Defender: GetWeatherDamageModifier (L7258) returns UQ_4_12(1.0) immediately.
 	var weather_mod: int
-	if ItemManager.blocks_weather_modifier(attacker) or \
-			ItemManager.blocks_weather_modifier(defender):
+	if ItemManager.blocks_weather_modifier(attacker, ng_active) or \
+			ItemManager.blocks_weather_modifier(defender, ng_active):
 		weather_mod = 4096
 	else:
 		weather_mod = _get_weather_modifier(move.type, weather)
@@ -334,7 +395,7 @@ static func calculate(
 		var def_types: Array = defender.species.types
 		var strong_winds: bool = weather == WEATHER_STRONG_WINDS
 		var first_type: int = def_types[0] if def_types.size() > 0 else TypeChart.TYPE_NONE
-		var type_mod: int = TypeChart.get_uq412(move.type, first_type)
+		var type_mod: int = TypeChart.get_uq412(move.type, first_type, scrappy_bypass)
 		# M17d: Delta Stream — a super-effective (>=2.0x) component against a Flying-type
 		# defender is weakened to neutral, checked PER type component to match source's
 		# exact granularity (battle_util.c :: MulByTypeEffectiveness L8069-8074).
@@ -343,7 +404,7 @@ static func calculate(
 		if def_types.size() > 1:
 			var second_type: int = def_types[1]
 			if second_type != first_type and second_type != TypeChart.TYPE_NONE:
-				var second_mod: int = TypeChart.get_uq412(move.type, second_type)
+				var second_mod: int = TypeChart.get_uq412(move.type, second_type, scrappy_bypass)
 				if strong_winds and second_type == TypeChart.TYPE_FLYING and second_mod >= 8192:
 					second_mod = 4096
 				type_mod = _uq412_multiply(type_mod, second_mod)
@@ -409,7 +470,7 @@ static func calculate(
 	# M12: Life Orb damage modifier — AFTER roll, STAB, type eff, burn (and ability mods).
 	# Source: GetAttackerItemsModifier (battle_util.c L7497–7499), called from GetOtherModifiers
 	#   which is called inside ApplyModifiersAfterDmgRoll after all other per-modifier steps.
-	var life_orb_mod: int = ItemManager.post_roll_modifier_uq412(attacker)
+	var life_orb_mod: int = ItemManager.post_roll_modifier_uq412(attacker, ng_active)
 	if life_orb_mod != 4096:
 		dmg = _uq412_half_down(dmg, life_orb_mod)
 
@@ -417,8 +478,14 @@ static func calculate(
 	# Source: GetDefenderItemsModifier (battle_util.c L7510–7524).
 	# Triggers only on super-effective (≥2.0×) moves matching the berry's type param.
 	# BattleManager must consume the item when defender_item_consumed is true.
+	# M17n-7: Unnerve — blocks the defender's berry from triggering at all while any
+	# opposing battler has Unnerve. `[attacker, ally]` is exactly the defender's
+	# opposing side visible to this function (this stateless calculator has no
+	# access to the full combatant list) — the same set
+	# `IsUnnerveAbilityOnOpposingSide` would iterate in source.
+	var unnerve_active: bool = AbilityManager.is_unnerve_active([attacker, ally], ng_active)
 	var defender_item_consumed: bool = ItemManager.defender_berry_consumed(
-			defender, move, effectiveness)
+			defender, move, effectiveness, ng_active, unnerve_active)
 	if defender_item_consumed:
 		dmg = _uq412_half_down(dmg, ItemManager.UQ412_RESIST_BERRY)
 
@@ -481,8 +548,12 @@ static func calculate_confusion_damage(mon: BattlePokemon) -> int:
 # Config: B_CRIT_CHANCE = GEN_LATEST → sGen7CriticalHitOdds = {24, 8, 2, 1}
 # focus_energy adds +2 to the effective crit stage (source L7836: critChance = (focusEnergy ? 2 : 0) + ...).
 # stage = move.critical_hit_stage (0 for normal, 1 for high-crit moves like Slash)
-static func _roll_crit(move_crit_stage: int, focus_energy: bool = false) -> bool:
-	var stage: int = clampi(move_crit_stage + (2 if focus_energy else 0), 0, 3)
+# ability_bonus: M17n-5 addition — Super Luck's +1, summed into the same stage total
+# as focus_energy's +2 before the 0-3 clamp (source sums all crit-stage
+# contributions into ONE value before clamping, confirmed rather than assumed).
+static func _roll_crit(
+		move_crit_stage: int, focus_energy: bool = false, ability_bonus: int = 0) -> bool:
+	var stage: int = clampi(move_crit_stage + (2 if focus_energy else 0) + ability_bonus, 0, 3)
 	var odds: int = CRIT_ODDS_GEN7[stage]
 	return randi() % odds == 0
 

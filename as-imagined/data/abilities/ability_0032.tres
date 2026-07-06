@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 32
 ability_name = "Serene Grace"
-description = ""
-ai_rating = 0
+description = "Boosts the likelihood of additional effects occurring when attacking."
+ai_rating = 7

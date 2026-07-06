@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 290
 ability_name = "Opportunist"
-description = ""
-ai_rating = 0
+description = "If an opposing Pokémon's stat is raised, the Pokémon seizes the opportunity to change its own stats the same way."
+ai_rating = 5

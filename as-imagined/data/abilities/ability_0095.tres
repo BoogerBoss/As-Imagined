@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 95
 ability_name = "Quick Feet"
-description = ""
-ai_rating = 0
+description = "This Pokémon's Speed stat is boosted if it has a status condition."
+ai_rating = 5

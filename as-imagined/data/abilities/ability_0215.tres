@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 215
 ability_name = "Innards Out"
-description = ""
-ai_rating = 0
+description = "Deals damage to the attacker using any remaining HP if the Pokémon is knocked out with a move."
+ai_rating = 5

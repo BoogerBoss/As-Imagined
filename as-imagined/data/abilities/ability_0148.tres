@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 148
 ability_name = "Analytic"
-description = ""
-ai_rating = 0
+description = "Boosts move power when the Pokémon moves last."
+ai_rating = 5

@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 96
 ability_name = "Normalize"
-description = ""
-ai_rating = 0
+description = "Every move the Pokémon uses becomes Normal type. The power of those moves is boosted a little."
+ai_rating = -1

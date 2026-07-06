@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 251
 ability_name = "Screen Cleaner"
-description = ""
-ai_rating = 0
+description = "Removes the effects of Reflect, Light Screen, and Aurora Veil from both sides of the field upon entering battle."
+ai_rating = 3

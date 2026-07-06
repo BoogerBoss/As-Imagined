@@ -200,6 +200,59 @@ var truant_loafing: bool = false
 # Baton-Pass volatile-copy list), matching minimized/defense_curled's precedent.
 var flash_fire_active: bool = false
 
+# M17n-5: Slow Start's 5-turn Atk/Speed-halving timer (source: volatiles.slowStartTimer,
+# battle_util.c L3052-3055/3649-3654; B_SLOW_START_TIMER = 5). Set to 5 on switch-in via
+# try_switch_in, decremented post-check at end-of-turn via try_end_of_turn (source's own
+# `if (timer > 0 && --timer == 0)` shape), cleared by _clear_volatiles on switch-out —
+# same whole-`volatiles`-struct-memset shape as flash_fire_active above.
+var slow_start_timer: int = 0
+
+# M17n-4: Protean/Libero's once-per-switch-in-stint gate (source:
+# volatiles.usedProteanLibero, battle_move_resolution.c L1652-1653/battle_script_commands.c
+# L922). Source's own comment reads "once per Battle," but the flag lives in the same
+# `Volatiles` struct that gets wholesale memset to 0 at every switch-in (battle_main.c
+# L3145/3272/3421 — the identical 3 call sites flash_fire_active/slow_start_timer above
+# cite) — so operationally this is once-per-switch-in-stint, not once-per-whole-battle;
+# the comment's wording is loose, not a mechanic description to trust literally. Cleared
+# by _clear_volatiles like the other two.
+var used_protean_libero: bool = false
+
+# M17n-7: Unburden — Speed x2 while active. Source: volatiles.unburdenActive
+# (battle_util.c :: CheckSetUnburden, L10604-10611), set TRUE whenever the holder's
+# OWN item is removed by any means (berry consumption, theft, a voluntary
+# Symbiosis-give) — see BattleManager._consume_item / AbilityManager._try_steal_item /
+# AbilityManager.try_symbiosis's doc comments for the exact set/clear call sites —
+# and explicitly cleared FALSE the moment the holder GAINS an item by any means
+# (source: StealTargetItem L2072, BestowItem L2078 both clear the RECEIVER's flag
+# even though neither of those functions is the one that SET it). Cleared by
+# _clear_volatiles on switch-out — same whole-`volatiles`-struct-memset shape as
+# flash_fire_active/slow_start_timer/used_protean_libero above.
+var unburden_active: bool = false
+
+# M17n-7: Cud Chew's one-turn arm/fire cycle. Source: volatiles.cudChew
+# (battle_util.c L3695-3707) — arms (sets TRUE) at end-of-turn when a berry was just
+# consumed and the flag isn't already armed; fires (re-triggers the same berry's
+# effect, then clears both this flag AND `last_consumed_berry`) at the NEXT
+# end-of-turn tick. Cleared by _clear_volatiles on switch-out, same shape as the
+# other switch-cleared volatiles above — matching source's `volatiles` struct
+# membership (distinct from `last_consumed_berry` below, which is NOT cleared here).
+var cud_chew_armed: bool = false
+
+# M17n-7: the "last consumed berry" tracker both Harvest and Cud Chew need. Source:
+# `GetBattlerPartyState(battler)->usedHeldItem` — deliberately PARTY-STATE-scoped in
+# source (survives switch-out/switch-in), NOT part of the `volatiles` struct the two
+# fields above live in — confirmed by checking the actual storage location before
+# wiring this in, per the `[M17h]`-established dormant-field-check discipline
+# extended to a genuinely new field. Set unconditionally in
+# `BattleManager._consume_item` (which, per Cheek Pouch's own established precedent
+# from `[M17c]`, only ever runs for berries in this project's current scope — no
+# separate "is this a berry" gate was needed). Read by Harvest (regenerates
+# `held_item` from this, does NOT clear it) and Cud Chew (re-triggers the berry's
+# effect from this, THEN clears it — source's `usedHeldItem = ITEM_NONE`). NOT
+# cleared on switch-out — a Pokémon that ate a berry, switched out, and switched
+# back in can still have that berry Harvested/Cud-Chewed later, matching source.
+var last_consumed_berry: ItemData = null
+
 var fainted: bool = false
 
 
@@ -262,9 +315,9 @@ func has_pp(move_index: int) -> bool:
 	return current_pp[move_index] > 0
 
 
-func use_pp(move_index: int) -> void:
+func use_pp(move_index: int, amount: int = 1) -> void:
 	if move_index >= 0 and move_index < current_pp.size() and current_pp[move_index] > 0:
-		current_pp[move_index] -= 1
+		current_pp[move_index] = max(0, current_pp[move_index] - amount)
 
 
 # Recalculates all stats from species base stats + level + IVs + EVs.

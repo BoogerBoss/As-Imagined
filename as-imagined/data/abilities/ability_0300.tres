@@ -6,6 +6,7 @@
 script = ExtResource("1")
 
 ability_id = 300
-ability_name = "Minds Eye"
-description = ""
-ai_rating = 0
+ability_name = "Mind's Eye"
+description = "The Pokémon's attacks ignore changes to the target's evasiveness, and the Pokémon can hit Ghost types with Normal- and Fighting-type moves."
+ai_rating = 8
+breakable = true

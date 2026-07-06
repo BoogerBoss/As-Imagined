@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 125
 ability_name = "Sheer Force"
-description = ""
-ai_rating = 0
+description = "Removes additional effects to increase the power of moves when attacking."
+ai_rating = 6
+breakable = true

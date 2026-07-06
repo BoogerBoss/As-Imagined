@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 236
 ability_name = "Libero"
-description = ""
-ai_rating = 0
+description = "Changes the Pokémon's type to the type of the move it's about to use, once per switch-in."
+ai_rating = 8

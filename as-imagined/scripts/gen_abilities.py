@@ -1244,6 +1244,484 @@ ABILITIES = [
                      "move, and always uses status moves without being affected by "
                      "the target's Ability.",
      "ai_rating": 0},
+
+    # ── M17n-5: Damage-pipeline leftovers ────────────────────────────────────────────
+    # Source: docs/m17n_recon.md Group 4, trimmed by Rob's explicit exclusions (Ruin
+    # quartet/Water Bubble/Supreme Overlord/Plus/Minus — final list locked in
+    # docs/decisions.md [M17n-5]). Skill Link (92) intentionally has NO entry here —
+    # deferred (no multi-hit mechanic exists anywhere in this codebase to modify).
+    # Breakable flags set to match src/data/abilities.h exactly; only Sturdy/Fluffy/
+    # Punk Rock/Tangled Feet are genuinely wired for Mold-Breaker bypass in this
+    # project (all true defender-role checks) — Technician/Sheer Force/Mega
+    # Launcher/Stakeout are structurally attacker-self-checks in source too, never
+    # read in a defender role (same reachability class as [M17j]'s Sticky Hold).
+
+    # Source: battle_util.c L7962-7984 (the shared endure-check every lethal hit
+    # routes through) + L10399-10403 (blocks OHKO moves outright). breakable=True
+    # (src/data/abilities.h L41-46).
+    {"id": 5, "name": "Sturdy",
+     "description": "The Pokémon cannot be knocked out with one hit. One-hit KO moves "
+                     "cannot knock out the Pokémon, either.",
+     "ai_rating": 6, "breakable": True},
+
+    # Source: battle_util.c L6473-6475 — punching-move power x1.2. NOT breakable in
+    # source (structurally an attacker-self-check, never read in a defender role).
+    {"id": 89, "name": "Iron Fist",
+     "description": "Powers up punching moves.",
+     "ai_rating": 5},
+
+    # Source: battle_util.c L6461-6464 — moves with a BASE power of 60 or less get
+    # x1.5. breakable=True in source (src/data/abilities.h L757-769) but not a
+    # reachable defender-role check in this project (attacker-self-check).
+    {"id": 101, "name": "Technician",
+     "description": "Powers up the Pokémon's weaker moves.",
+     "ai_rating": 6, "breakable": True},
+
+    # Source: battle_util.c L6471-6473 — a recoil-effect move gets x1.2. NOT
+    # breakable in source.
+    {"id": 120, "name": "Reckless",
+     "description": "Powers up moves that have recoil damage.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c L6481-6483 (power x1.3) + L2315-2320 (suppresses the
+    # move's own secondary effect entirely) — both gated on the SAME condition
+    # (MoveIsAffectedBySheerForce: a probabilistic secondary effect). breakable=True
+    # in source (src/data/abilities.h L943-955) but not a reachable defender-role
+    # check here (attacker-self-check, same as Technician).
+    {"id": 125, "name": "Sheer Force",
+     "description": "Removes additional effects to increase the power of moves when "
+                     "attacking.",
+     "ai_rating": 6, "breakable": True},
+
+    # Source: battle_util.c L6496-6508 — x1.3 if the holder moves last this turn
+    # (checked against the FINAL resolved turn order, not raw speed). NOT breakable
+    # in source.
+    {"id": 148, "name": "Analytic",
+     "description": "Boosts move power when the Pokémon moves last.",
+     "ai_rating": 5},
+
+    # Source: battle_util.c L7841 — +1 crit stage, additive with the move's own
+    # critical_hit_stage and Focus Energy's +2. NOT breakable in source (a self-only
+    # crit-stage bonus).
+    {"id": 105, "name": "Super Luck",
+     "description": "Heightens the critical-hit ratios of moves.",
+     "ai_rating": 5},
+
+    # Source: battle_util.c L10310-10313 — same GetTotalAccuracy switch as Sand
+    # Veil/Snow Cloak, x0.50 (not x0.80) on the attacker's accuracy while the HOLDER
+    # is confused. breakable=True (src/data/abilities.h L583-588), genuinely reachable
+    # (same shape as Sand Veil/Snow Cloak).
+    {"id": 77, "name": "Tangled Feet",
+     "description": "Raises evasiveness if the Pokémon is confused.",
+     "ai_rating": 3, "breakable": True},
+
+    # Source: battle_util.c L6514-6516 — biting-move power x1.5. NOT breakable in
+    # source. No move in this project's current roster carries biting_move=true —
+    # tested via a synthetic MoveData.
+    {"id": 173, "name": "Strong Jaw",
+     "description": "Powers up biting moves.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c L6518-6520 — pulse-move power x1.5. NOT breakable in
+    # source. Required a genuinely NEW MoveData.pulse_move flag (confirmed absent,
+    # unlike punching_move/biting_move/slicing_move) — no move in this project's
+    # current roster carries it either; tested via a synthetic MoveData.
+    {"id": 178, "name": "Mega Launcher",
+     "description": "Powers up aura and pulse moves.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c L6864-6866 — x2.0 Attack/Sp. Atk vs. a target that
+    # switched in THIS turn (no category gate). breakable=True in source
+    # (src/data/abilities.h L1497-1509) but not a reachable defender-role check here
+    # (Stakeout is the ATTACKER's own ability, reacting to the DEFENDER's state —
+    # structurally still an attacker-self-check, same reachability class as
+    # Technician/Sheer Force/Mega Launcher).
+    {"id": 198, "name": "Stakeout",
+     "description": "Doubles damage dealt to a target that switches into battle.",
+     "ai_rating": 6, "breakable": True},
+
+    # Source: battle_util.c L5728-5746 (IsMoveMakingContact, the single canonical
+    # contact-check function) — the holder's own moves never count as contact. NOT
+    # breakable in source (attacker-self-check).
+    {"id": 203, "name": "Long Reach",
+     "description": "The Pokémon can attack the target without making contact.",
+     "ai_rating": 4},
+
+    # Source: battle_util.c L7424-7434 — two MUTUALLY EXCLUSIVE branches (non-contact
+    # Fire move x2.0; non-Fire contact move x0.5 — a contact FIRE move triggers
+    # NEITHER, netting x1.0). breakable=True (src/data/abilities.h L1669-1674),
+    # genuinely reachable (a true defender-role damage-taken check).
+    {"id": 218, "name": "Fluffy",
+     "description": "Halves damage from moves that make contact, but doubles damage "
+                     "taken from Fire-type moves.",
+     "ai_rating": 5, "breakable": True},
+
+    # Source: battle_util.c L6554-6556 (own sound-move power x1.3) + L7436-7441
+    # (damage taken from an opponent's sound move x0.5) — two genuinely different
+    # functions/directions. breakable=True (src/data/abilities.h L1869-1874) —
+    # reachable for the DEFENSE half (a true defender-role check); the ATTACK half
+    # is an attacker-self-check like Technician.
+    {"id": 244, "name": "Punk Rock",
+     "description": "Powers up sound-based moves. Also halves the damage taken from "
+                     "sound-based moves.",
+     "ai_rating": 6, "breakable": True},
+
+    # Source: battle_util.c L6562-6564 — slicing-move power x1.5. NOT breakable in
+    # source. No move in this project's current roster carries slicing_move=true —
+    # tested via a synthetic MoveData.
+    {"id": 292, "name": "Sharpness",
+     "description": "Powers up slicing moves.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c L6805-6807 (Atk x0.5, physical moves only) +
+    # L4681-4682 (Speed x0.5, unconditional) for 5 turns after switch-in
+    # (B_SLOW_START_TIMER = 5). Timer set on switch-in (try_switch_in), decremented
+    # end-of-turn (try_end_of_turn, source's own post-decrement-check-for-zero
+    # shape), cleared by _clear_volatiles on switch-out. NOT breakable in source
+    # (a self-only stat penalty).
+    {"id": 112, "name": "Slow Start",
+     "description": "For five turns after entering battle, the Pokémon's Attack and "
+                     "Speed stats are halved.",
+     "ai_rating": -3},
+
+    # Source: battle_util.c L9436-9450 — doubles the ATTACKER's secondary-effect
+    # trigger chance (capped at 100%, matching source's own MoveEffectIsGuaranteed
+    # >= 100 treatment). NOT breakable in source (a self-only chance modifier).
+    {"id": 32, "name": "Serene Grace",
+     "description": "Boosts the likelihood of additional effects occurring when "
+                     "attacking.",
+     "ai_rating": 7},
+
+    # ── M17n-4 (Group 7): type-mutation / choice-lock cheap reuses ───────────
+    # RKS System (225) excluded per Rob's explicit decision (recorded in memory) —
+    # no entry added for it. Source: src/data/abilities.h — none of these five carry
+    # any breakable/cant_be_* flag EXCEPT Multitype (re-verified narrowly per-ability
+    # after an earlier over-wide grep bled adjacent unrelated abilities' flags in).
+
+    # Source: battle_util.c L3715-3729 (MoveEndColorChange/AbilityBattleEffects case
+    # ABILITY_COLOR_CHANGE) — no breakable flag in source's own data table.
+    {"id": 16, "name": "Color Change",
+     "description": "Changes the Pokémon's type to the type of the move used on it.",
+     "ai_rating": 2},
+
+    # Source: battle_move_resolution.c L1647-1662 (CancelerProtean) +
+    # battle_util.c L919-932 (ProteanTryChangeType) — no breakable flag in source's
+    # own data table.
+    {"id": 168, "name": "Protean",
+     "description": "Changes the Pokémon's type to the type of the move it's about "
+                     "to use, once per switch-in.",
+     "ai_rating": 8},
+
+    # Source: same ProteanTryChangeType function as Protean — confirmed genuinely
+    # identical mechanism (`ability == ABILITY_PROTEAN || ability == ABILITY_LIBERO`),
+    # not just flavor-text twins. No breakable flag in source's own data table.
+    {"id": 236, "name": "Libero",
+     "description": "Changes the Pokémon's type to the type of the move it's about "
+                     "to use, once per switch-in.",
+     "ai_rating": 8},
+
+    # Source: src/data/pokemon/form_change_tables.h (FORM_CHANGE_ITEM_HOLD table) +
+    # src/data/abilities.h L906-916. cant_be_copied/cant_be_swapped/cant_be_traced/
+    # cant_be_suppressed/cant_be_overwritten all TRUE. Confirmed via a full
+    # TryBattleFormChange call-site enumeration that FORM_CHANGE_ITEM_HOLD is only
+    # ever dispatched from overworld contexts (party menu / PC box / script give-item)
+    # — never from any in-battle FORM_CHANGE_BATTLE_* trigger — so this project
+    # applies it once at switch-in only, not on later mid-battle held-item changes.
+    {"id": 121, "name": "Multitype",
+     "description": "Changes the Pokémon's type to match its held Plate.",
+     "ai_rating": 8, "cant_be_copied": True, "cant_be_swapped": True,
+     "cant_be_traced": True, "cant_be_suppressed": True, "cant_be_overwritten": True},
+
+    # Source: battle_move_resolution.c L500-508 (CancelerChoiceLock — the SAME
+    # gBattleStruct->choicedMove storage slot as an actual Choice item, gated by
+    # `IsHoldEffectChoice(holdEffect) || ability == ABILITY_GORILLA_TACTICS`) +
+    # battle_util.c L6884-6889 (CalcMoveBasePowerAfterModifiers — physical-move base
+    # power x1.5, a different pipeline stage from the item's attack-stat modifier;
+    # confirmed via source's own test that the two stack multiplicatively to 2.25x).
+    # No breakable flag in source's own data table.
+    {"id": 255, "name": "Gorilla Tactics",
+     "description": "Boosts the Pokémon's Attack but only allows the use of one move.",
+     "ai_rating": 4},
+
+    # ── M17n-6 (Group 5): type-effectiveness-pipeline leftovers ──────────────
+    # IDs re-verified fresh against include/constants/abilities.h. Aerilate (184)
+    # deliberately excluded — Mega-exclusive-only, per Section 13.3.
+
+    # Source: battle_util.c L8259-8270 (CalcTypeEffectivenessMultiplierInternal) —
+    # blocks a damaging hit entirely unless the combined type-effectiveness
+    # multiplier is strictly >1.0x. cantBeCopied/cantBeSwapped both TRUE (source:
+    # src/data/abilities.h L194-201). breakable=True — genuinely reachable
+    # (Mold-Breaker-holding attacker bypasses it).
+    {"id": 25, "name": "Wonder Guard",
+     "description": "Only supereffective moves will hit the Pokémon.",
+     "ai_rating": 10, "cant_be_copied": True, "cant_be_swapped": True,
+     "breakable": True},
+
+    # Source: battle_main.c L6018-6023 (unconditional Normal-type mutation, every
+    # move, every original type) + battle_util.c L6550-6552 (own x1.2 power boost,
+    # GEN_LATEST). No breakable flag in source's own data table (attacker-self-check).
+    {"id": 96, "name": "Normalize",
+     "description": "Every move the Pokémon uses becomes Normal type. The power of "
+                     "those moves is boosted a little.",
+     "ai_rating": -1},
+
+    # Source: battle_util.c L8046-8052 (MulByTypeEffectiveness) — the ATTACKER's own
+    # Normal/Fighting-type moves bypass a Ghost-type defender's flat immunity. No
+    # breakable flag in source's own data table (attacker-self-check — Mold Breaker
+    # never suppresses its own wielder's ability regardless).
+    {"id": 113, "name": "Scrappy",
+     "description": "The Pokémon can hit Ghost-type Pokémon with Normal- and "
+                     "Fighting-type moves.",
+     "ai_rating": 6},
+
+    # Source: battle_util.c L10545-10552 (IsAffectedByPowderMove, B_POWDER_OVERCOAT
+    # >= GEN_6) — full powder-move immunity, same shape/dispatch group as Soundproof/
+    # Bulletproof — plus battle_end_turn.c L143-169 (HandleEndTurnWeatherDamage) —
+    # full sandstorm/hail chip-damage immunity. breakable=True — genuinely reachable
+    # (Mold-Breaker-holding attacker bypasses the powder-move half; the weather-chip
+    # half is outside any move-processing window, so Mold Breaker never applies
+    # there regardless of the flag).
+    {"id": 142, "name": "Overcoat",
+     "description": "Protects the Pokémon from weather damage and powder-based moves.",
+     "ai_rating": 5, "breakable": True},
+
+    # Source: battle_util.c L6538-6541 — Normal-type moves become Ice-type + x1.2
+    # power (same conversion mechanism as Pixilate/Galvanize, all sharing Normalize's
+    # branch). No breakable flag in source's own data table (attacker-self-check).
+    {"id": 174, "name": "Refrigerate",
+     "description": "Normal-type moves become Ice-type moves. The power of those "
+                     "moves is boosted a little.",
+     "ai_rating": 8},
+
+    # Source: battle_util.c L6530-6533 — Normal-type moves become Fairy-type + x1.2
+    # power. No breakable flag in source's own data table (attacker-self-check).
+    {"id": 182, "name": "Pixilate",
+     "description": "Normal-type moves become Fairy-type moves. The power of those "
+                     "moves is boosted a little.",
+     "ai_rating": 8},
+
+    # Source: battle_main.c L5993-5996 (IsSoundMove + ability==LIQUID_VOICE →
+    # TYPE_WATER) — genuinely different trigger condition from the Normal-type-gated
+    # "-ate" family (sound-move-flagged, not type-gated), no power boost of its own
+    # (confirmed absent from CalcMoveBasePowerAfterModifiers's ability switch). No
+    # breakable flag in source's own data table (attacker-self-check).
+    {"id": 204, "name": "Liquid Voice",
+     "description": "Sound-based moves become Water-type moves.",
+     "ai_rating": 5},
+
+    # Source: battle_util.c L6534-6537 — Normal-type moves become Electric-type +
+    # x1.2 power. No breakable flag in source's own data table (attacker-self-check).
+    {"id": 206, "name": "Galvanize",
+     "description": "Normal-type moves become Electric-type moves. The power of "
+                     "those moves is boosted a little.",
+     "ai_rating": 8},
+
+    # Source: battle_util.c L8051 (Scrappy-shape Ghost-immunity bypass, literally the
+    # same OR condition as Scrappy) + L10251 (ignores the target's evasion stat-stage
+    # boosts, the same OR condition Unaware/Keen Eye already occupy in this project's
+    # `ignores_defender_evasion_stage`) — two genuinely independent halves sharing one
+    # ability. breakable=True in source, though structurally unreachable by either of
+    # its own two mechanics (both are attacker-self-checks) — same "untested-but-
+    # implemented, not silently dropped" precedent as Sticky Hold ([M17j]) and Mind's
+    # Eye's own listing in Multitype's neighbor block.
+    {"id": 300, "name": "Mind's Eye",
+     "description": "The Pokémon's attacks ignore changes to the target's evasiveness, "
+                     "and the Pokémon can hit Ghost types with Normal- and "
+                     "Fighting-type moves.",
+     "ai_rating": 8, "breakable": True},
+
+    # ── M17n-6 follow-up: two more "-ate" family members ─────────────────────
+    # Both exclusion reversals confirmed explicitly by Rob (recorded in memory),
+    # not re-derived here.
+
+    # Source: battle_main.c L5757-5758 (TrySetAteType) + battle_util.c L6542-6544
+    # (own x1.2 power boost, GEN_LATEST) — same mechanism/switch as Refrigerate/
+    # Pixilate/Galvanize. No breakable flag in source's own data table
+    # (attacker-self-check). Previously excluded as Mega-exclusive-only
+    # (m17_recon.md Section 13.3) — reversed, now in scope.
+    {"id": 184, "name": "Aerilate",
+     "description": "Normal-type moves become Flying-type moves. The power of "
+                     "those moves is boosted a little.",
+     "ai_rating": 8},
+
+    # Source: battle_main.c L5763-5765 (TrySetAteType) + battle_util.c L6546-6548
+    # (own x1.2 power boost, GEN_LATEST) — same mechanism/switch as Refrigerate/
+    # Pixilate/Galvanize/Aerilate. No breakable flag and no aiRating field at all
+    # in source's own data table (src/data/abilities.h L2442-2445) — ai_rating
+    # defaulted to 0 here, matching this project's established convention for
+    # abilities source doesn't rate. NOTE: this ID sits in a cluster of
+    # hack-project-only custom entries in the reference tree (flanked by two
+    # literal blank "-------"/"No special ability" placeholder slots and two
+    # abilities whose source description is literally "Unimplemented.") — flagged
+    # explicitly to Rob before implementing; confirmed as a deliberate scope
+    # override (Dragonize has since become a real ability in a newer generation
+    # than this reference tree models), not an oversight.
+    {"id": 312, "name": "Dragonize",
+     "description": "Normal-type moves become Dragon-type moves. The power of "
+                     "those moves is boosted a little.",
+     "ai_rating": 0},
+
+    # ── M17n-7 (Group 6): item/berry interaction ──────────────────────────────
+    # None of these six carry a breakable flag in source's data table (confirmed
+    # individually, not assumed uniform).
+
+    # Source: GetBattlerHoldEffectInternal (battle_util.c L5674-5692) — the single
+    # chokepoint every held-item read in source funnels through returns
+    # HOLD_EFFECT_NONE when ability==Klutz. No canonical exceptions apply to this
+    # project's implemented item roster (confirmed via grep — no Macho Brace/Power
+    # items/Iron Ball exist here, the only real-game exceptions).
+    {"id": 103, "name": "Klutz",
+     "description": "The Pokémon can't use any held items.",
+     "ai_rating": -1},
+
+    # Source: IsUnnerveBlocked (battle_util.c L333-343) + IsUnnerveAbilityOnOpposingSide
+    # (L346-363) — field-wide (any live opposing battler, not per-hit), berries only
+    # (GetItemPocket(itemId) == POCKET_BERRIES gate).
+    {"id": 127, "name": "Unnerve",
+     "description": "Makes opposing Pokémon nervous, preventing them from eating Berries.",
+     "ai_rating": 3},
+
+    # Source: HasEnoughHpToEatBerry (battle_util.c L5460-5474). Widens a
+    # hpFraction<=4 (25%-or-stricter) berry's eat-early threshold to 50% — no
+    # currently-implemented berry is actually affected (Sitrus is hardcoded to
+    # hpFraction=2/50% regardless; Resist Berry has no HP threshold at all) — see
+    # AbilityManager.gluttony_adjusted_hp_fraction's own doc comment.
+    {"id": 82, "name": "Gluttony",
+     "description": "Makes the Pokémon eat a held Berry when its HP drops to half, "
+                     "rather than the usual quarter.",
+     "ai_rating": 3},
+
+    # Source: CheckSetUnburden (battle_util.c L10604-10611) sets volatiles.unburdenActive
+    # when the holder's OWN item is removed by any means; battle_main.c L4686-4687
+    # doubles Speed unconditionally while active. No breakable flag in source's own
+    # data table (attacker-self-check-shaped, reacts to the HOLDER's own item only).
+    {"id": 84, "name": "Unburden",
+     "description": "Boosts Speed if the Pokémon's held item is used or lost.",
+     "ai_rating": 7},
+
+    # Source: AbilityBattleEffects's ABILITY_HARVEST case (battle_util.c L3531-3539) —
+    # end-of-turn, 50% chance normally / 100% guaranteed in sun (IsBattlerWeatherAffected,
+    # respects Utility Umbrella), regenerates the last consumed berry onto held_item.
+    {"id": 139, "name": "Harvest",
+     "description": "May create another Berry after one is used.",
+     "ai_rating": 5},
+
+    # Source: AbilityBattleEffects's ABILITY_CUD_CHEW case (battle_util.c L3695-3707) —
+    # a one-turn arm/fire cycle: arms at end-of-turn when a berry was just eaten,
+    # fires (re-runs that SAME berry's effect script, without regenerating the
+    # physical item) at the NEXT end-of-turn tick.
+    {"id": 291, "name": "Cud Chew",
+     "description": "Consumes a held Berry a second time, one turn after the first.",
+     "ai_rating": 4},
+
+    # M17n-8 (Group 8, sub-tier 1). None of these five carry breakable/cant_be_suppressed
+    # in source's data table (confirmed individually).
+    # Source: battle_util.c ABILITY_AFTERMATH case (L3986-4003) — contact-gated
+    # (CanBattlerAvoidContactEffects), attacker takes killer.max_hp/4, blocked if any
+    # live battler holds Damp (IsAbilityOnField).
+    {"id": 106, "name": "Aftermath",
+     "description": "Damages the attacker if this Pokémon is knocked out with a "
+                     "move that makes direct contact.",
+     "ai_rating": 5},
+
+    # Source: CalcCritChanceStage (battle_util.c L7828-7830) — CRITICAL_HIT_ALWAYS
+    # (a guaranteed override, not a stage bonus) when the attacker has Merciless and
+    # the defender's status1 has STATUS1_PSN_ANY (regular poison or toxic, both).
+    {"id": 196, "name": "Merciless",
+     "description": "The Pokémon's attacks become critical hits if the target is "
+                     "poisoned.",
+     "ai_rating": 4},
+
+    # Source: CanSetNonVolatileStatus (battle_util.c L5250) —
+    # `abilityAtk != ABILITY_CORROSION && IS_BATTLER_ANY_TYPE(battlerDef, TYPE_POISON,
+    # TYPE_STEEL)` — the attacker's own ability bypasses BOTH Poison- and Steel-type
+    # poison/toxic immunity via one shared condition.
+    {"id": 212, "name": "Corrosion",
+     "description": "The Pokémon can poison the target even if it's a Poison or "
+                     "Steel type.",
+     "ai_rating": 5},
+
+    # Source: battle_util.c ABILITY_INNARDS_OUT case (L4007-4021) — NOT contact-gated
+    # (no CanBattlerAvoidContactEffects check, unlike Aftermath above), attacker takes
+    # damage equal to the holder's OWN HP immediately before the fatal hit
+    # (innardsOutHpLost, capped at actual remaining HP — not the move's raw
+    # calculated damage, which can exceed it on an overkill hit).
+    {"id": 215, "name": "Innards Out",
+     "description": "Deals damage to the attacker using any remaining HP if the "
+                     "Pokémon is knocked out with a move.",
+     "ai_rating": 5},
+
+    # Source: battle_stat_change.c L420-441 — checked only in the stat-INCREASE path
+    # (never decreases), loops every battler on the OPPOSING side of the mon whose
+    # stat just rose, queuing the identical stage increase onto any Opportunist
+    # holder found there (self-side/self-triggering excluded by construction, since
+    # the loop skips allies of the raised mon).
+    {"id": 290, "name": "Opportunist",
+     "description": "If an opposing Pokémon's stat is raised, the Pokémon "
+                     "seizes the opportunity to change its own stats the same way.",
+     "ai_rating": 5},
+
+    # M17n-9 (Group 8, "wide-but-shallow systems"). IDs re-verified fresh against
+    # include/constants/abilities.h: Magic Guard=98, Infiltrator=151, Magic Bounce=156.
+    # No `breakable`/`cant_be_suppressed` flags in source's data table for Magic Guard
+    # or Infiltrator (confirmed individually) — Mold Breaker structurally doesn't apply
+    # to either (both are holder-or-attacker-only self-checks, not "bypass the
+    # defender's ability" in Mold Breaker's sense). Magic Bounce is the one exception:
+    # `.breakable = TRUE` in source (data/abilities.h L1179) — a Mold-Breaker-wielding
+    # attacker's status move is NOT reflected, confirmed rather than assumed.
+    {"id": 98, "name": "Magic Guard",
+     "description": "The Pokémon only takes damage from direct attacks.",
+     "ai_rating": 9},
+
+    {"id": 151, "name": "Infiltrator",
+     "description": "Moves bypass the target's barriers, substitutes, and "
+                     "screens.",
+     "ai_rating": 6},
+
+    {"id": 156, "name": "Magic Bounce",
+     "description": "Reflects status moves instead of being hit by them.",
+     "ai_rating": 9, "breakable": True},
+
+    # M17n-10 (Group 8, "unique/standalone" part 1). IDs re-verified fresh against
+    # include/constants/abilities.h: Screen Cleaner=251, Liquid Ooze=64, Pressure=46,
+    # Quick Feet=95, Guard Dog=275, Forecast=59. Guard Dog is the only one of these
+    # six carrying a `breakable` flag in source's data table (confirmed individually)
+    # — a Mold-Breaker attacker's Intimidate is NOT reversed by a Guard Dog holder;
+    # the other five have neither `breakable` nor `cant_be_suppressed`. Forecast
+    # additionally carries `cant_be_copied`/`cant_be_traced` (data/abilities.h
+    # L449-456; `cantBeTraced` is conditional on `B_UPDATED_ABILITY_DATA >= GEN_4`,
+    # true at this project's GEN_LATEST config).
+    {"id": 251, "name": "Screen Cleaner",
+     "description": "Removes the effects of Reflect, Light Screen, and Aurora "
+                     "Veil from both sides of the field upon entering battle.",
+     "ai_rating": 3},
+
+    {"id": 64, "name": "Liquid Ooze",
+     "description": "The Pokémon's draining move sucks health from the "
+                     "opponent — but if this Pokémon is hit by a draining "
+                     "move, the tables are turned, and its HP is reduced "
+                     "instead.",
+     "ai_rating": 3},
+
+    {"id": 46, "name": "Pressure",
+     "description": "The Pokémon raises the PP usage of moves used on it.",
+     "ai_rating": 5},
+
+    {"id": 95, "name": "Quick Feet",
+     "description": "This Pokémon's Speed stat is boosted if it has a "
+                     "status condition.",
+     "ai_rating": 5},
+
+    {"id": 275, "name": "Guard Dog",
+     "description": "Boosts the Attack stat if intimidated. Moves and "
+                     "effects that would force the Pokémon to switch out fail "
+                     "to do so.",
+     "ai_rating": 5, "breakable": True},
+
+    {"id": 59, "name": "Forecast",
+     "description": "The Pokémon transforms with the weather to change its "
+                     "type to Water, Fire, or Ice.",
+     "ai_rating": 6, "cant_be_copied": True, "cant_be_traced": True},
 ]
 
 HEADER = """\

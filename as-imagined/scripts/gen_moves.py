@@ -231,53 +231,62 @@ MOVES = [
      "stat_change_stat": STAGE_ATK, "stat_change_amount": 2, "stat_change_self": True},
 
     # Sand Attack: -1 Acc foe (source: STAT_CHANGE_EFFECT_MINUS(STAT_ACC, 1))
+    # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id":  28, "name": "Sand Attack",
      "type": TYPE_GROUND, "category": STAT, "accuracy": 100, "pp": 15,
-     "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1},
+     "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1, "bounceable": True},
 
     # Tail Whip: -1 Def foe
+    # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id":  39, "name": "Tail Whip",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 30,
-     "stat_change_stat": STAGE_DEF, "stat_change_amount": -1},
+     "stat_change_stat": STAGE_DEF, "stat_change_amount": -1, "bounceable": True},
 
     # Leer: -1 Def foe
+    # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id":  43, "name": "Leer",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 30,
-     "stat_change_stat": STAGE_DEF, "stat_change_amount": -1},
+     "stat_change_stat": STAGE_DEF, "stat_change_amount": -1, "bounceable": True},
 
     # Growl: -1 Atk foe, sound_move=true (source: struct MoveInfo.soundMove)
+    # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id":  45, "name": "Growl",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 40,
-     "sound_move": True,
+     "sound_move": True, "bounceable": True,
      "stat_change_stat": STAGE_ATK, "stat_change_amount": -1},
 
     # ── Tier 2: status-inflicting moves ──────────────────────────────────────
 
     # Sleep Powder: primary sleep (guaranteed), powder_move=true
+    # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id":  79, "name": "Sleep Powder",
      "type": TYPE_GRASS, "category": STAT, "accuracy": 75, "pp": 15,
-     "powder_move": True,
+     "powder_move": True, "bounceable": True,
      "secondary_effect": SE_SLEEP, "secondary_chance": 0},
 
     # Thunder Wave: primary paralysis (guaranteed), Electric type (blocks vs Ground)
+    # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id":  86, "name": "Thunder Wave",
      "type": TYPE_ELECTRIC, "category": STAT, "accuracy": 90, "pp": 20,
-     "secondary_effect": SE_PARALYSIS, "secondary_chance": 0},
+     "secondary_effect": SE_PARALYSIS, "secondary_chance": 0, "bounceable": True},
 
     # Toxic: primary bad poison (guaranteed)
+    # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id":  92, "name": "Toxic",
      "type": TYPE_POISON, "category": STAT, "accuracy": 90, "pp": 10,
-     "secondary_effect": SE_TOXIC, "secondary_chance": 0},
+     "secondary_effect": SE_TOXIC, "secondary_chance": 0, "bounceable": True},
 
     # Confuse Ray: primary confusion (guaranteed), Ghost type (blocks vs Normal)
+    # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id": 109, "name": "Confuse Ray",
      "type": TYPE_GHOST, "category": STAT, "accuracy": 100, "pp": 10,
-     "secondary_effect": SE_CONFUSION, "secondary_chance": 0},
+     "secondary_effect": SE_CONFUSION, "secondary_chance": 0, "bounceable": True},
 
     # Will-O-Wisp: primary burn (guaranteed), Fire type
+    # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id": 261, "name": "Will-O-Wisp",
      "type": TYPE_FIRE, "category": STAT, "accuracy": 85, "pp": 15,
-     "secondary_effect": SE_BURN, "secondary_chance": 0},
+     "secondary_effect": SE_BURN, "secondary_chance": 0, "bounceable": True},
 
     # ── Tier 2 + closes M4 gap: Flame Wheel ──────────────────────────────────
     # Flame Wheel: Fire/Phys/60/100/25, contact, thaws_user, 10% burn secondary.
@@ -856,6 +865,15 @@ DEFAULTS = {
     "blocked_by_aroma_veil":     False,
     # M17n-3 fields
     "healing_move":              False,
+    # M17n-5 fields — biting_move/slicing_move were already dormant MoveData schema
+    # fields (never wired into this generator until now, same "already there, just
+    # unwired" gap [M17n-3] closed for healing_move); pulse_move is a genuinely new
+    # schema field added this tier (confirmed absent, unlike the other two).
+    "biting_move":                False,
+    "slicing_move":               False,
+    "pulse_move":                 False,
+    # M17n-9 field: bounceable (Magic Bounce's magicCoatAffected-derived subset).
+    "bounceable":                 False,
 }
 
 HEADER = """\
@@ -903,6 +921,10 @@ FIELD_ORDER = [
     "ballistic_move", "blocked_by_aroma_veil",
     # M17n-3 fields
     "healing_move",
+    # M17n-5 fields
+    "biting_move", "slicing_move", "pulse_move",
+    # M17n-9 fields
+    "bounceable",
 ]
 
 

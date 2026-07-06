@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 291
 ability_name = "Cud Chew"
-description = ""
-ai_rating = 0
+description = "Consumes a held Berry a second time, one turn after the first."
+ai_rating = 4

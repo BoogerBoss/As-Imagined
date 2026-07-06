@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 198
 ability_name = "Stakeout"
-description = ""
-ai_rating = 0
+description = "Doubles damage dealt to a target that switches into battle."
+ai_rating = 6
+breakable = true

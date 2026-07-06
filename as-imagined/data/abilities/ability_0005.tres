@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 5
 ability_name = "Sturdy"
-description = ""
-ai_rating = 0
+description = "The Pokémon cannot be knocked out with one hit. One-hit KO moves cannot knock out the Pokémon, either."
+ai_rating = 6
+breakable = true

@@ -262,6 +262,12 @@ Format per entry:
 - Known gap (S19): source gates the paralysis speed halving on `ability != ABILITY_QUICK_FEET`
   (battle_main.c L4712). This check is absent. Currently safe — Quick Feet (ability_id 7) is
   unimplemented. Revisit when Quick Feet is added.
+- **Resolved in `[M17n-10]`** (2026-07-06): this note itself carried a wrong ability_id —
+  Quick Feet is 95, not 7 (7 is a different, unrelated ability; re-verified directly against
+  `include/constants/abilities.h` rather than trusted from this stale note). The gap itself is
+  now closed: `StatusManager.effective_speed` gates the paralysis halving on
+  `id != AbilityManager.ABILITY_QUICK_FEET`, matching source exactly. See `[M17n-10]`'s own
+  entry for the full citation and the "replace, not stack" behavior this required.
 
 ## [M3] Sleep: 2–4 turn duration; wakes and moves same turn
 
@@ -6157,6 +6163,71 @@ cheap since `[M17g]`'s Mold-Breaker plumbing exists, but its turn-order-last hal
 needs Stall's own mechanism built first). Re-verification against the exclusion list
 is that tier's own Step 0 job, not done here.
 
+### Follow-up (2026-07-05): Sand Veil/Sand Force/Sand Rush/Snow Cloak weather-chip immunity — original conclusion corrected
+
+This tier's ORIGINAL entry (above) concluded, and shipped a supporting code comment
+in `BattleManager._phase_end_of_turn` stating, that Sand Veil/Sand Rush grant NO
+sandstorm-chip-damage immunity ("they only affect accuracy/Speed respectively").
+That conclusion was **confirmed WRONG** while implementing `[M17n-6]`'s Overcoat work
+— a fresh read of the exact same source function this tier already cited
+(`battle_end_turn.c :: HandleEndTurnWeatherDamage`, L143-169) shows:
+
+```c
+case BATTLE_WEATHER_SANDSTORM:
+    if (ability != ABILITY_SAND_VEIL
+     && ability != ABILITY_SAND_FORCE
+     && ability != ABILITY_SAND_RUSH
+     && ability != ABILITY_OVERCOAT
+     && !IS_BATTLER_ANY_TYPE(battler, TYPE_ROCK, TYPE_GROUND, TYPE_STEEL)
+     ...
+```
+
+— Sand Veil, Sand Force, and Sand Rush are ALL exempted from sandstorm chip damage,
+the same shape as Overcoat's own (already-shipped) exemption. The hail branch
+(L166) exempts Snow Cloak identically. `[M17n-6]`'s own decisions.md entry flagged
+this contradiction but deliberately did NOT fix it (out of scope for a tier that
+owned Overcoat only). Rob has now confirmed directly that this tier's original
+conclusion was simply an error at the time (not a reference-tree version
+discrepancy, and not a case where the source has changed since) — fixed here.
+
+**Fix**: `AbilityManager.blocks_weather_chip_damage` (added during `[M17n-6]` for
+Overcoat) gained a new `weather: int` parameter and now also returns true for Sand
+Veil/Sand Force/Sand Rush when the current weather is sandstorm, and Snow Cloak when
+it's hail — gated per-weather so, e.g., Sand Veil does NOT exempt hail chip.
+`BattleManager._is_weather_damage_immune`'s call site was updated to thread
+`current_weather` through (it already had this value in scope). The stale, now-wrong
+code comment in `_phase_end_of_turn` was corrected in place, with the current source
+line citation. Confirmed Magic Guard (also in source's exemption chain, L150/L167)
+is not implemented anywhere in this project (no `ABILITY_MAGIC_GUARD` constant
+exists) — correctly absent, not a silently-dropped case; this fix does not add it.
+
+Mold Breaker/Neutralizing Gas handling is unchanged from `[M17n-6]`'s existing
+`blocks_weather_chip_damage` precedent: no `attacker`/Mold-Breaker param (end-of-turn
+ticks are outside any move-processing window, so Mold Breaker structurally never
+applies), Neutralizing Gas suppression via the standard `effective_ability_id`
+chokepoint — confirmed with a direct test for Sand Veil.
+
+No existing test assertion in `m17n2_test.gd` asserted the opposite (the wrong
+conclusion only ever lived in this entry's own prose and in the now-corrected code
+comment, never as an actual test assertion) — nothing contradictory needed removing,
+only new coverage added. New `m17n2_test.gd` Section 16 (12 new assertions, 58 total
+in the file): direct `blocks_weather_chip_damage` unit tests for all four abilities,
+each with a discriminator confirming it does NOT exempt the OTHER weather (Sand Veil/
+Sand Force/Sand Rush don't exempt hail; Snow Cloak doesn't exempt sandstorm);
+Neutralizing Gas suppression (Sand Veil, representative); full-battle confirmation
+for Sand Rush (sandstorm) and Snow Cloak (hail), each paired with a same-stats
+plain-Pokémon control proving the weather itself is genuinely active. Stable across
+5 consecutive reruns.
+
+Full regression (direct foreground bash sweep): `m17n2_test.tscn` and `m17n6_test.tscn`
+(which touches the same `blocks_weather_chip_damage` function via Overcoat) both
+reran 5 consecutive times each, stable, including `[M17n-6]`'s own Overcoat/Air-Lock
+composition test (S16.01 in `m17n6_test.gd`) — confirmed no regression there, since
+Overcoat's own branch in `blocks_weather_chip_damage` is checked first and is
+unaffected by this fix's new weather-gated branches. Full sweep of all 40 `.tscn`
+files: all pass, 0 real failures. Total assertions across all 40 files: 2172 prior +
+12 = **2184**, all green.
+
 ## [M17n-3] Turn-order/priority modifiers — Prankster / Gale Wings / Triage / Quick Draw / Stall / Mycelium Might
 
 Scoping source: `docs/m17n_recon.md` Group 3 (6 abilities). Continues the
@@ -6419,3 +6490,1569 @@ Stakeout (198), Water Bubble (199), Long Reach (203), Fluffy (218), Punk Rock (2
 Sharpness (292), Supreme Overlord (293), Slow Start (112), Plus (57), Minus (58),
 Serene Grace (32), and the Ruin quartet (Vessel/Sword/Tablets/Beads of Ruin, 284-287,
 a genuinely new "field aura" shape).
+
+## [M17n-4] Group 7: type-mutation/choice-lock cheap reuses — Color Change / Protean / Libero / Multitype / Gorilla Tactics
+
+Closes the sequencing gap `[M17n-3]`'s follow-up queued and `[M17n-5]` found still open
+and flagged rather than silently pretending continuity: this tier was supposed to run
+between those two but didn't, until now. Treated as a fresh implementation tier per its
+own task brief — no partial work existed to build on (confirmed via grep before
+starting: no ability constants for this group, no `m17n4_test` files, no `[M17n-4]`
+entry anywhere in this file).
+
+**Step 0 — list finalized at 5, not 6.** RKS System (225) is excluded per Rob's
+explicit decision, recorded in memory rather than in any prior document (the task
+prompt itself flagged that `docs/m17n_recon.md`'s own Group 7 text still lists it as
+in-scope and that this exclusion postdates that document — confirmed by re-reading the
+recon's Group 7 section directly). Final list, IDs re-verified individually against
+`include/constants/abilities.h` rather than carried over from the recon: Color Change
+(16), Protean (168), Libero (236), Multitype (121), Gorilla Tactics (255). Confirmed
+none of the five overlap any other exclusion category (Mega-form-bound/Ruin
+quartet/Water Bubble etc./RKS-adjacent/terrain/Section 13.1 legendary sweep).
+
+**Protean/Libero genuinely identical, re-verified rather than assumed** (matching this
+project's established discipline for "obviously identical" pairs, e.g. `[M17k]`'s
+Dazzling-family check): both dispatch through the exact same source function,
+`ProteanTryChangeType` (battle_util.c L919-932), gated on
+`ability == ABILITY_PROTEAN || ability == ABILITY_LIBERO` — Libero has no source logic
+of its own at all, confirmed by reading its actual data-table entry (no separate
+function, no separate flags).
+
+**Zero new `BattleManager` mechanisms** — every one of the five abilities routes
+through infrastructure that already existed unchanged since `[M16e]`/the follow-up
+fixes session (`_set_mon_type`/`_reset_mon_type`/`BattlePokemon.original_types`) or
+`[M12]` (`BattlePokemon.choice_locked_move`), confirmed via direct grep before
+implementation began, matching the `[M17n-3]` follow-up's own sequencing rationale for
+why this tier was picked as cheaper than Group 4.
+
+**Color Change** (extends `AbilityManager.try_hit_reactive_effects`, the same
+non-contact-gated hit-reactive dispatch `[M17b]`'s Justified/Rattled/etc. and
+`[M17c]`'s Cursed Body/Toxic Debris already occupy): the holder's own type changes to
+match the type of a damaging move that just hit it. Source:
+`MoveEndColorChange`/`AbilityBattleEffects` case `ABILITY_COLOR_CHANGE` (battle_util.c
+L3715-3729): gated on `IsBattlerTurnDamaged(battler, EXCLUDING_SUBSTITUTES)` — this
+project's function-level `damage <= 0` early return, plus the pre-existing
+went-to-Substitute early return at this function's one call site in
+`_do_damaging_hit` (which returns before `try_hit_reactive_effects` is ever reached),
+already cover both halves of that condition for free, no new code needed. Also gated
+on not already that type (`move.type in defender.species.types`, the same
+membership-check idiom Conversion already established, not a literal
+both-type-slots-equal comparison), not Struggle, not Stellar/Mystery. **A real,
+easily-missed source-fidelity nuance**: an earlier grep pass to check Color Change's
+`breakable` flag used too wide a context window and picked up the *next* table entry's
+flag instead (Immunity's `.breakable = TRUE` bleeding into what looked like Color
+Change's own block); re-verified narrowly and confirmed Color Change carries no
+breakable flag in source at all. **A second, deeper finding**: even if it did, tracing
+the actual dispatch path shows the ability value Color Change's own case receives
+(`cv->abilities[battler]`, populated via the plain `GetBattlerAbility`) never routes
+through the Mold-Breaker-aware `GetBattlerAbilityInternal` chokepoint
+`CanBreakThroughAbility` hooks into — so Color Change would be structurally
+unreachable via Mold Breaker even with a breakable flag set, the same class of finding
+as `[M17j]`'s Sticky Hold. Returns the new type (or `TypeChart.TYPE_NONE`);
+`BattleManager` performs the actual `_set_mon_type` mutation and signal emission, same
+division of responsibility as every other reactive trigger in that function.
+
+**Protean/Libero** (new `AbilityManager.protean_new_type`, called from
+`_phase_move_execution` immediately after the choice-lock block — the earliest point
+in that function that runs for every non-disabled move attempt, matching
+`CANCELER_PROTEAN`'s early position in source's canceler chain, well before
+`CANCELER_ACCURACY_CHECK`/`CANCELER_NOT_FULLY_PROTECTED`, meaning the type change fires
+even if the move will later miss or get blocked by Protect): the user's own type
+changes to match the move it's about to use. **The once-per-switch-in gate, checked
+rather than assumed**: source's own code comment on `B_PROTEAN_LIBERO` reads "In Gen9+,
+Protean and Libero change the user's type only once per Battle" — taken literally this
+would mean once-per-whole-battle, not once-per-switch-in as the task's framing assumed.
+Traced the actual flag (`volatiles.usedProteanLibero`) and confirmed it lives inside the
+same `Volatiles` struct that gets wholesale memset to 0 at every switch-in
+(battle_main.c L3145/3272/3421 — the identical three call sites `[M17m]`'s
+`flash_fire_active` and `[M17n-5]`'s `slow_start_timer` already cite), so operationally
+it IS once-per-switch-in-stint; the comment's wording is loose, not a mechanic
+description to trust literally. New `BattlePokemon.used_protean_libero`, cleared by
+`_clear_volatiles` like the other two volatiles above. No breakable flag on either
+ability in source's own data table.
+
+**Multitype** (wired into `_apply_switch_in_abilities`, the same switch-in dispatch
+`[M17c]`'s Drizzle/Hospitality/`[M17h]`'s Trace already occupy — a self-contained
+effect needing no opponent context, unlike the per-opponent Intimidate-style loop
+earlier in that function): type is set from the holder's held Plate item. **The
+live-update question, resolved by checking source rather than assuming**: the task's
+own framing (inherited from the recon) assumed this should be "checked whenever the
+held item changes" — traced every call site of `TryBattleFormChange` in
+battle_util.c and enumerated all `FORM_CHANGE_BATTLE_*` dispatch triggers
+(switch-out/in, HP-percent, weather, Primal Reversion, Mega Evolution, Ultra Burst,
+turn-end, hit-by-move-category, Terastallization, before/after-move) — `FORM_CHANGE_ITEM_HOLD`
+(the Plate-driven form-change method) is NOT among them; it's dispatched only from
+three overworld contexts (`party_menu.c`'s give-item flow, `pokemon_storage_system.c`'s
+PC box, `script_pokemon_util.c`'s scripted give-item) per a direct grep of every
+`FORM_CHANGE_ITEM_HOLD`/`TryBattleFormChange`/`TryFormChange` call site. **This means a
+mid-battle held-item change (Trick, Knock Off, or this project's own `[M17j]`
+Pickpocket/Magician/Symbiosis) does NOT retype a Multitype holder** — a real correction
+to the tier's own inherited assumption, confirmed by checking rather than silently
+implementing the "obvious" live-updating version. Implemented as a switch-in-only read
+via new `ItemManager.multitype_plate_type(mon)`. **A field-layout deviation from
+source, flagged rather than silently copied**: source's Plate items store the
+associated type in a `.secondaryId` field, with `.holdEffectParam = 20` reserved for
+Judgment/Natural Gift's power-boost percentage — a genuinely different field from the
+type. This project's `ItemData` schema has no `secondary_id` field, and neither
+Judgment nor Natural Gift exists here (confirmed via grep), so `hold_effect_param`'s
+source purpose is moot in this codebase; reusing `hold_effect_param` for the type value
+instead is the same pragmatic deviation already established for Resist Berry
+(`ItemManager.defender_item_modifier_uq412`), not a new pattern invented for this
+tier. New `ItemManager.HOLD_EFFECT_PLATE = 89` (re-derived via a full enum-position
+count of `include/constants/hold_effects.h`, cross-checked against this project's
+existing `HOLD_EFFECT_CHOICE_BAND = 29`/`HOLD_EFFECT_LEFTOVERS = 41` constants landing
+at the same positions independently, confirming the count method). Multitype carries
+`cant_be_copied`/`cant_be_swapped`/`cant_be_traced`/`cant_be_suppressed`/
+`cant_be_overwritten` all `TRUE` in source (src/data/abilities.h L906-916) — populated
+on its `.tres` data faithfully per the `[M17h]`-established discipline of setting these
+fields regardless of whether this tier's own code exercises them; `cant_be_suppressed`
+in particular means Neutralizing Gas does NOT suppress Multitype, which
+`effective_ability_id`'s existing `cant_be_suppressed` check already handles correctly
+with no new code.
+
+**Gorilla Tactics** (extends the EXISTING choice-lock gate in `_phase_move_execution`,
+plus a new branch in `move_power_modifier_uq412`): locks the holder into its
+first-used move exactly like a Choice item, plus a physical-move base power ×1.5.
+**Confirmed via source to be the literal same storage mechanism as an item-based
+choice lock, not a parallel one**: `CancelerChoiceLock` (battle_move_resolution.c
+L500-508) sets `gBattleStruct->choicedMove[battlerAtk] = gChosenMove` when EITHER
+`IsHoldEffectChoice(holdEffect)` OR `ability == ABILITY_GORILLA_TACTICS` — the same
+slot, an OR condition, not two separate locks. This project's existing
+`attacker.choice_locked_move` gate (`_phase_move_execution`, previously
+`ItemManager.is_choice_item(attacker)`-only) was extended with the identical OR,
+reusing the field directly rather than adding a second lock mechanism. The Atk-boost
+half is a DIFFERENT pipeline stage from the item's own attack-stat modifier: source's
+`CalcMoveBasePowerAfterModifiers` case `ABILITY_GORILLA_TACTICS` (battle_util.c
+L6884-6889) is a base-power multiplier, physical-move-only, gated also on
+not-Dynamaxed (this project models no Dynamax, so that half of the source condition is
+moot here) — implemented in `move_power_modifier_uq412` (attacker move-power stage),
+genuinely separate from `ItemManager.attack_modifier_uq412` (attack-STAT stage) Choice
+Band/Specs already occupies. **The composition question, confirmed from source's own
+test rather than assumed**: `test/battle/ability/gorilla_tactics.c`'s
+"stacks with Choice Band to reach 2.25x Attack" test proves the two boosts compose
+MULTIPLICATIVELY (1.5 × 1.5 = 2.25), not that the ability's lock/boost is redundant
+with an item lock. Since this project's own pipeline already applies the item's
+attack-stat modifier and the ability's base-power modifier as two independent stages,
+the 2.25× composition falls out automatically once the Gorilla Tactics branch exists —
+no special-case stacking code was written or needed, confirmed by a dedicated
+integration test comparing Gorilla-Tactics-alone vs. Gorilla-Tactics-plus-Choice-Band
+damage. No breakable flag on this ability in source's own data table.
+
+**Testing**: new `m17n4_test.gd`/`.tscn`, 44/44 assertions across 9 sections — ability
+data spot-checks (incl. Multitype's full 5-flag exemption set); Color Change (type
+change on a real hit, a Ghost-vs-Normal deliberately-immune 0-damage hit that must NOT
+fire it — the one place in this file where type immunity is the point of the test
+rather than a pitfall — a second hit of a different type re-triggering it without
+stacking, a direct Struggle-exclusion check, a negative control); Protean (direct
+`protean_new_type` unit tests covering the already-used gate/Struggle/already-matching
+type/null guards/non-holder, a full-battle first-use-changes-type-but-not-a-second-use
+pair, and a switch-out/switch-in reset proving the stint genuinely resets); Libero
+(confirming the identical mechanism plus the correct `"libero"` vs `"protean"`
+`ability_triggered` tag); Multitype (Plate-driven type at switch-in, no-Plate natural
+type, a negative control for a Plate holder without the ability, and the key
+does-NOT-live-update integration test — a real Magician-driven item theft mid-battle
+that leaves the holder's type unchanged); Gorilla Tactics (first-move lock, physical-only
+base-power boost with a special-move discriminator, and the Choice-Band composition
+test); Mold Breaker non-bypass for a representative pair (Color Change, Multitype —
+neither carries a breakable flag, confirmed still firing normally against a Mold
+Breaker attacker/opponent); Neutralizing Gas (suppresses Color Change/Protean/Libero/
+Gorilla Tactics normally, does NOT suppress Multitype — the asymmetry is the section's
+own point, not incidental coverage); a negative control. One real test-authoring bug
+caught on the first run and fixed: the Color Change "second hit changes it again" test
+queued only 2 actions but asserted the resulting `type_changed` event array had
+EXACTLY 2 entries — once the queue drained, the battle continued (neither combatant
+had fainted yet) and the attacker auto-selected its first move again, firing a 3rd
+type-change event and making the `size() == 2` assertion fail; this is the exact
+"repeatable-effect auto-select" pitfall CLAUDE.md's snapshot-via-signals section
+already documents, just a fresh instance of it, fixed by checking only the first two
+recorded events (`size() >= 2` plus indexed value checks) rather than the exact count.
+Stable across 6 reruns.
+
+**Regression**: baseline reconfirmed exactly at 38 files/2027 assertions before
+starting (no drift — cross-checked against `[M17n-5]`'s own recorded baseline; the
+previously-documented `doubles_test.tscn` flake (53/54, B2.03) recurred once during
+this baseline sweep and reran clean at 54/54 immediately after, the same
+already-documented non-blocking flake class, not a regression). All 38 prior suites
+pass unchanged post-implementation. Total assertions across all 39 `.tscn` files: 2027
+prior + 44 = **2071**, 0 failures.
+
+- 2026-07-04.
+
+## [M17n-5] Damage-pipeline leftovers — Sturdy / Iron Fist / Technician / Reckless / Sheer Force / Analytic / Tangled Feet / Strong Jaw / Mega Launcher / Stakeout / Long Reach / Fluffy / Punk Rock / Sharpness / Slow Start / Serene Grace / Super Luck
+
+Scoping source: `docs/m17n_recon.md` Group 4, trimmed by Rob's explicit exclusions
+(Ruin quartet, Water Bubble, Supreme Overlord, Plus, Minus — 8 abilities removed from
+the recon's original ~26-item Group 4 list). **A genuine sequencing gap, flagged and
+left open rather than silently resolved**: this tier's task framed itself as running
+"AFTER Group 7 (M17n-4)," but no `[M17n-4]` entry exists anywhere in this file, no
+Group 7 ability constants exist in `ability_manager.gd`, and `CLAUDE.md`'s own status
+line still read "M17n-4 is next" at the start of this session — confirmed via direct
+grep, not assumed. Group 7 (Color Change/Protean/Libero/Multitype/RKS System/Gorilla
+Tactics) has genuinely NOT been implemented. This tier proceeds anyway per Rob's
+explicit instruction (the exclusion list for Group 4 was stated directly and
+authoritatively in this tier's own task prompt), but the numbering gap is real and
+should be resolved before `[M17n-6]` — Group 7 still needs its own implementation
+pass, whether numbered retroactively or folded into a future tier.
+
+### Step 0 — finalized ability list (two real discrepancies found and resolved)
+
+**Count discrepancy**: the task's own title claimed 19 abilities, but its Step 0.1
+enumeration named only 18. Independent re-derivation (the recon's Group 4 list, which
+itself over-counts by one in its own "27 abilities" heading — actually 26 named items
+— minus the 8 stated exclusions) also lands on **18**, not 19. Proceeded with the 18
+actually named, rather than inventing a 19th to match a miscounted total (same
+"stale count, not a regression" handling `[M17f]` already established for a similar
+discrepancy).
+
+**Skill Link deferred**: of the 18, Skill Link (92) could not be meaningfully
+implemented — confirmed via a direct grep across every file in
+`scripts/battle/core/` that `multi_hit`/`strike_count` (`MoveData`'s existing dormant
+schema fields) are referenced NOWHERE in this codebase's actual battle logic. No
+multi-hit mechanic exists at all; Skill Link ("multi-hit moves always hit their
+maximum count") has nothing to modify. Building the full multi-hit system (variable
+hit count, per-hit damage/secondary application, mid-sequence Substitute-breaking)
+would be genuinely new infrastructure, well outside this tier's "individually cheap"
+framing — deferred, matching the established Harvest/Wimp-Out-Emergency-Exit
+precedent, not forgotten. **Net: 17 abilities implemented this tier.**
+
+All 18 named IDs re-verified directly against `include/constants/abilities.h`
+(Tangled Feet=77 resolves via the symbolic `ABILITIES_COUNT_GEN3` enum value,
+independently confirmed by counting forward from `ABILITY_AIR_LOCK=76`, not just
+trusted). None overlap the standard exclusion set or any of Rob's other recorded
+exclusions (Mega/form-bound group, terrain group, RKS System/Rivalry/Heavy
+Metal/Light Metal/Wind trio/Protosynthesis/Embody Aspect ×4/Dancer/Wimp
+Out/Emergency Exit/Curious Medicine) — all 18 are ordinary, widely-held abilities.
+
+### Dormant-flag re-verification (per the task's explicit "don't trust the prior
+### session's claim" instruction)
+
+Re-ran the grep rather than trusting `[M17n-3]`'s follow-up citation: `punching_move`
+is genuinely fully wired (schema + `gen_moves.py` DEFAULTS/FIELD_ORDER + already set
+on Drain Punch). **`biting_move` and `slicing_move` were NOT actually wired into
+`gen_moves.py`** despite existing in the `MoveData` schema — the exact same
+"dormant schema field, never wired into the generator" gap `[M17n-3]` closed for
+`healing_move`, now closed for these two as well. `pulse_move` was confirmed
+genuinely absent from the schema entirely (a real new field, unlike the other two) —
+added to both `move_data.gd` and `gen_moves.py`. **No move in this project's current
+roster carries any of the three flags** — confirmed via grep before assuming
+otherwise; Strong Jaw/Sharpness/Mega Launcher are tested via synthetic `MoveData`,
+matching the established `[M17a]`-style `_make_move` precedent for flag-dependent
+power modifiers that have no real move to exercise them against yet.
+
+### Mechanism shapes (18 named abilities, source-verified individually — not one
+### uniform pattern despite the shared "Bucket A" framing)
+
+**Attacker move-power modifiers** (extends `AbilityManager.move_power_modifier_uq412`):
+Iron Fist(89, `punching_move`→×1.2), Technician(101, move's BASE power ≤60→×1.5 —
+confirmed `basePower` is captured once at function entry in source, before any
+modifier runs, so this checks the raw data field, not an in-progress modified
+value), Reckless(120, `recoil_percent > 0`→×1.2 — source gates on
+`EFFECT_RECOIL`/`EFFECT_RECOIL_IF_MISS`; this project has no
+`EFFECT_RECOIL_IF_MISS`-shaped move (no Jump-Kick-style crash-on-miss mechanic
+exists anywhere), confirmed equivalent to `recoil_percent > 0` given the CURRENT
+roster by checking each of the 3 existing recoil moves individually, not assumed —
+re-check if a crash-on-miss move is ever added), Sheer Force(125, `secondary_chance
+> 0`→×1.3 — source's `MoveIsAffectedBySheerForce` checks for a probabilistic
+secondary effect, confirmed equivalent to this project's own "true secondary effect"
+concept `try_secondary_effect` already uses; a move with NO secondary effect gets
+NEITHER the boost NOR the suppression, confirmed from source rather than assumed),
+Strong Jaw(173, `biting_move`→×1.5), Mega Launcher(178, new `pulse_move`→×1.5),
+Punk Rock(244, `sound_move`→×1.3, own-boost half), Sharpness(292,
+`slicing_move`→×1.5), Analytic(148, moving last→×1.3, see below).
+
+**Attacker stat modifier** (extends `AbilityManager.attack_modifier_uq412`, new
+`defender: BattlePokemon = null` param): Stakeout(198, `defender.switched_in_this_turn`
+AND physical→×2.0 — confirmed this project's `switched_in_this_turn` matches source's
+`isFirstTurn == 2` scope exactly: set ONLY at the 3 mid-battle switch-in call sites,
+never during `_phase_battle_start`'s initial send-out, reset every turn — verified via
+grep, not assumed), Slow Start(112, Atk half, physical-only gate — the Speed half is
+unconditional and lives in `StatusManager.effective_speed` instead, confirmed from
+source these are two genuinely different gates).
+
+**Defender damage modifiers** (extends `AbilityManager.defense_damage_modifier_uq412`):
+Fluffy(218, non-contact Fire move→×2.0; contact non-Fire move→×0.5). Source:
+`battle_util.c :: GetDefenderAbilitiesModifier`, `case ABILITY_FLUFFY` (L7424-7435).
+Precise correction to this entry's earlier prose (added on citing it properly): the
+two conditions are NOT implemented as an if/else-if branch, and NOT as two
+independent multipliers that cancel out — they're two SEPARATE, unconditional `if`
+statements that each ASSIGN (not multiply) `modifier`. The conditions themselves
+(`moveType == FIRE && !isContact` / `moveType != FIRE && isContact`) are logically
+disjoint by construction, so at most one `if` body ever executes for a given hit —
+for a CONTACT FIRE move, neither condition holds (the first fails on `!isContact`,
+the second fails on `moveType != FIRE`), so `modifier` is simply never touched and
+stays at its function-entry default of `UQ_4_12(1.0)`. Net effect (nets ×1.0 on a
+contact Fire move) matches what this entry already said; the mechanism producing it
+is "neither `if` fires, default untouched," not branch-exclusivity or multiplicative
+cancellation — modeled correctly in `defense_damage_modifier_uq412` either way, since
+that function also just returns its own untouched default when neither of Fluffy's
+two `if`s matches. Verified with a dedicated discriminator test (contact Fire move
+damage == baseline damage). Punk Rock(244, `sound_move` taken→×0.5, defense half,
+same function, `case ABILITY_PUNK_ROCK` L7436-7441) — confirmed no double-counting
+risk if a Punk Rock holder's sound move hits another Punk Rock holder, since each
+side's own switch-case reads only that side's own ability field.
+
+**Crit stage** (extends `DamageCalculator._roll_crit`, new `ability_bonus: int = 0`
+param): Super Luck(105, +1, additive with the move's own `critical_hit_stage` and
+Focus Energy's +2 into ONE summed stage before the 0-3 clamp, confirmed from source
+rather than assumed independent).
+
+**Accuracy** (extends `AbilityManager.accuracy_modifier_percent`): Tangled Feet(77,
+same `GetTotalAccuracy` switch as Sand Veil/Snow Cloak, ×0.50 — not ×0.80 — while the
+DEFENDER is confused).
+
+**Contact-flag override** (new `AbilityManager.move_makes_contact(attacker, move,
+ng_active)`): Long Reach(203) — the holder's own moves NEVER count as contact,
+unconditionally overriding `move.makes_contact`. Source's `IsMoveMakingContact` is
+the SINGLE canonical function every "does this hit count as contact" check routes
+through (confirmed — Fluffy's own defender-side check calls this exact function
+too) — mirrored as ONE shared helper rather than touching each individual
+contact-triggered ability's dispatch. Only 3 real call sites needed updating
+(`try_contact_effects`'s top gate — the single chokepoint for Static/Flame
+Body/Rough Skin/Poison Point/Poison Touch/Effect Spore/Cursed Body/Toxic
+Debris/Iron Barbs/Rocky Payload/Pickpocket/Mummy/Wandering Spirit/Gooey/Tangling
+Hair/Stamina/Water Compaction/Cotton Down/Steam Engine — `try_wandering_spirit_swap`,
+`try_mummy_overwrite`). Tough Claws' own attacker-self contact check was
+deliberately left reading the raw flag — Long Reach and Tough Claws can never be the
+same ability on the same mon, so there's no reachable interaction to model there.
+
+**New mechanism** (first "survive a lethal hit" mechanism this project builds — no
+Focus Sash/Focus Band/Endure precedent exists to compose with, confirmed via grep):
+Sturdy(5) — two genuinely separate halves. (1) Survives an otherwise-lethal hit at
+EXACTLY 1 HP, but ONLY when at full HP (source: `battle_util.c` L7962-7984, the
+shared endure-check every lethal hit routes through — Endure volatile → False Swipe
+→ Sturdy → Focus Band → Focus Sash → affection, in that priority order; this project
+has none of the other five, so Sturdy is the only reachable case), wired directly
+into `BattleManager._do_damaging_hit` immediately before HP is applied. (2) Blocks
+OHKO moves outright, unconditional on HP (source: `battle_util.c` L10399-10403,
+checked immediately after the existing level-check in `[M16a]`'s OHKO
+implementation, before the custom accuracy roll) — confirmed this is a genuinely
+SEPARATE source check from half (1), not the same mechanism reused.
+
+**New volatile** (`BattlePokemon.slow_start_timer`, cleared by `_clear_volatiles` on
+switch-out): Slow Start(112) — set to 5 on switch-in (`try_switch_in`), decremented
+post-check at end-of-turn (`try_end_of_turn`, mirroring source's own `if (timer > 0
+&& --timer == 0)` shape exactly, firing a `slow_start_ended` `ability_triggered` tag
+the turn it hits 0) — active for turns 1-5 post-switch-in, normal again from turn 6.
+
+**Secondary-chance doubler** (extends `StatusManager.try_secondary_effect`): Serene
+Grace(32) — doubles the ATTACKER's `secondary_chance`, explicitly capped at 100 (not
+strictly required given this project's `randi() % 100 < chance` roll shape — any
+chance > 99 is already always-true by construction — but added for clarity/parity
+with source's own `MoveEffectIsGuaranteed >= 100` treatment rather than relying on an
+incidental property of the roll implementation).
+
+### Analytic's turn-order-position insertion point
+
+Source: `IsLastMonToMove` (`battle_util.c` L1098-1115) — checked against the FINAL
+resolved turn order, not a raw speed comparison (confirmed rather than assumed,
+per the task's explicit warning that Trick Room/Pursuit/`[M17n-3]`'s priority
+abilities could all have already reordered things by the time this check runs). New
+`BattleManager._is_last_to_move(mon)` mirrors this exactly: finds `mon`'s position in
+the already-fully-sorted `_turn_order` array, then checks whether any LATER position
+holds a non-fainted battler with a still-pending MOVE action (not a switch) —
+threaded as a new `is_last_to_move: bool = false` parameter through
+`DamageCalculator.calculate` down to `move_power_modifier_uq412`. Verified with a
+direct calc-level sanity check (S11.01) before the full-battle test, confirming the
+flag itself genuinely changes the computed damage.
+
+### Breakable-flag reachability (checked individually, not assumed uniform)
+
+Genuinely wired for Mold-Breaker bypass (all true defender-role checks, confirmed
+reachable): Sturdy, Fluffy, Punk Rock's defense half, Tangled Feet. Set faithfully
+in `.tres` data to match `src/data/abilities.h` exactly, but NOT functionally
+reachable in this project (matching `[M17j]`'s Sticky Hold precedent — structurally
+attacker-self-checks in source too, never read in a defender role): Technician,
+Sheer Force, Mega Launcher, Stakeout.
+
+### `AbilityData` field check
+
+Checked before writing any code (`[M17h]`-established discipline): no dormant field
+applies to any of the 18 beyond the `breakable` flag already discussed above.
+
+### Testing / Regression
+
+New `m17n5_test.gd`/`.tscn`: 78/78 assertions across 20 sections — ability data
+spot-checks (all 17 implemented abilities plus Skill Link's confirmed-absent
+mechanism); Sturdy (survive-at-1HP via signal-snapshot — NOT post-battle state, since
+Sturdy only protects the FIRST lethal hit and a full battle continuing past that
+point lands a second, genuinely lethal hit that faints the holder normally, a real
+first-draft bug this tier's own test caught and fixed; the below-full-HP
+discriminator; the OHKO block); each power/damage modifier with a positive case and
+a discriminating negative case; Analytic's full-battle moving-last confirmation with
+a calc-level sanity check and a moving-first discriminator; Fluffy's contact-Fire
+"neither branch fires" discriminator plus a Long-Reach-interaction test; Slow
+Start's direct Atk/Speed unit tests plus a full-battle confirmation the
+`slow_start_ended` signal fires exactly once; Super Luck and Serene Grace both
+verified via a statistical-sample test (a genuinely new testing pattern for this
+codebase — no prior suite tests a probabilistic RATE directly, since `force_crit`/
+`force_secondary` both bypass the underlying roll entirely rather than pinning it to
+a specific value) with wide safety margins (many standard deviations between the
+expected rates) to avoid flakiness, plus Serene Grace's 100%-cap case; Mold Breaker
+bypass for the 4 genuinely-reachable abilities and Neutralizing Gas suppression for
+a representative sample; a negative control. A real test-design bug was caught and
+fixed on the FIRST run (76/78): the Sturdy full-battle scenario's attacker used
+Tackle (power 40) against a target with `base_hp=100`, wrongly assuming
+`base_hp=100` meant `max_hp=100` — the real level-50 HP formula adds `+level+10`, so
+actual `max_hp` was 160 and the hit wasn't lethal at all; fixed by switching the
+attacker to Double-Edge (power 120), confirmed lethal via a throwaway debug scene
+(deleted before this summary, confirmed via `git status`). Stable across 10
+consecutive reruns after the fix, including the statistical sections.
+
+Full regression (direct foreground bash sweep): baseline reconfirmed exactly at 37
+files/1949 assertions before starting (no drift from `[M17n-3]`'s follow-up /
+`[M17l]`'s flaky-test fix). All 37 prior suite files pass unchanged. Total assertions
+across all 38 `.tscn` files: 1949 prior + 78 = **2027**, 0 failures.
+
+- 2026-07-04.
+
+### Next tier
+
+Per the task's own instruction, **`[M17n-6]` — Group 5: type-effectiveness leftovers
+(9 abilities)**, including Wonder Guard as the highest-risk remaining item in all of
+M17 — Wonder Guard (25), Scrappy (113), Overcoat (142), Normalize (96) + the "-ate"
+family (Refrigerate 174, Pixilate 182, Galvanize 206 — Aerilate excluded,
+Mega-exclusive), Liquid Voice (204), Mind's Eye (300). **However, the Group 7 gap
+flagged at the top of this entry should be resolved first or explicitly re-deferred
+again** — Color Change (16), Protean (168), Libero (236), Multitype (121), RKS
+System (225), Gorilla Tactics (255) remain entirely unimplemented and unscheduled as
+of this entry, despite `CLAUDE.md` having said "M17n-4 is next" since `[M17n-3]`
+shipped.
+
+**Resolved**: see the `[M17n-4]` entry above (inserted in its correct chronological
+position, immediately before this entry, closing the gap) — 5 of the 6 abilities
+listed here were implemented (RKS System (225) ended up excluded per Rob's explicit
+decision, not implemented). `[M17n-6]` remains the actual next tier.
+
+## [M17n-6] Group 5: type-effectiveness-pipeline leftovers — Wonder Guard / Scrappy / Overcoat / Normalize / Refrigerate / Pixilate / Galvanize / Aerilate / Dragonize / Liquid Voice / Mind's Eye
+
+Scoping sources: `docs/m17n_recon.md`'s Group 5 section (the direct fold-in of the
+five abilities `[M17m]`'s decisions.md entry named as unscheduled — Wonder Guard,
+Scrappy, Overcoat, Normalize + the "-ate" family, Mind's Eye), `docs/m17_recon.md`
+Section 9's original Bucket E risk framing, and `docs/m17m_absorb_recon.md`'s own
+finding (recorded while implementing `[M17m]`) that Wonder Guard's check lives in the
+exact same early-immunity-gate function this project's Telepathy check already
+occupies. Flagged in advance, by both `[M17l]`'s and `[M17m]`'s own "Next tier" notes,
+as the highest-risk remaining tier in all of M17.
+
+### Step 0 — finalized ability list
+
+9 abilities, all IDs re-verified fresh against `include/constants/abilities.h`
+(not carried over from any recon doc): **Wonder Guard (25), Normalize (96),
+Scrappy (113), Overcoat (142), Refrigerate (174), Pixilate (182), Liquid Voice (204),
+Galvanize (206), Mind's Eye (300)**. Aerilate (184) re-confirmed excluded
+(Mega-exclusive-only, Section 13.3) and NOT reintroduced alongside its surviving
+"-ate" siblings. Cross-referenced against the full accumulated exclusion set (Mega/
+form-bound group, Ruin quartet, Water Bubble/Supreme Overlord/Plus/Minus, RKS System,
+Rivalry, Heavy/Light Metal, Wind Rider/Wind Power/Electromorphosis,
+Protosynthesis/Quark Drive, Embody Aspect x4, Dancer, Wimp Out/Emergency Exit,
+Curious Medicine) — none of the 9 appear in it. Baseline reconfirmed exactly at
+39 files/2071 assertions before starting (no drift from `[M17n-4]`).
+
+### Sub-group A — Wonder Guard: the genuine pipeline restructure
+
+Source: `battle_util.c :: CalcTypeEffectivenessMultiplierInternal` (L8259-8270) —
+`((abilities[battlerDef] == ABILITY_WONDER_GUARD && modifier <= UQ_4_12(1.0) &&
+!isPresentHealing) || Telepathy's own check) && GetMovePower(move) != 0`. Confirmed
+directly from source (not assumed) that in THIS project's architecture, this needed
+genuine restructuring: the existing ability-immunity gates (`blocks_move_type`/
+Levitate, `absorbs_move_type`/the absorb family, `blocks_ally_damage`/Telepathy) all
+run in `DamageCalculator.calculate` BEFORE `TypeChart.get_effectiveness` is ever
+called, because they're flat 0x-or-nothing checks that don't need the combined
+multiplier. Wonder Guard genuinely needs that combined value, so its check
+(`AbilityManager.blocks_non_super_effective_hit`) was inserted AFTER
+`TypeChart.get_effectiveness` computes `effectiveness` and the ordinary 0.0x-immune
+early-return, but BEFORE the fixed/level-damage bypass — confirmed necessary because
+Seismic Toss/Night Shade/Dragon Rage/Sonic Boom all carry `power=1` in this project's
+own data (the same placeholder value source itself uses, per `scripts/gen_moves.py`'s
+own comments), matching `GetMovePower() != 0`, so Wonder Guard correctly still blocks
+these unless super effective — confirmed with a dedicated direct-`calculate()` test
+(Night Shade vs a Dark-type Wonder Guard holder: blocked, 0 damage, despite normally
+bypassing the standard formula entirely; vs a Ghost-type holder: NOT blocked, damage
+equals `attacker.level`).
+
+Status moves are naturally exempt (default `power=0` in this project's schema) with
+no separate check needed — confirmed with a full-battle test (Growl still lowers the
+Wonder Guard holder's Attack). Struggle is excluded via the pre-existing
+`move.type != TypeChart.TYPE_MYSTERY` guard already used twice elsewhere in
+`calculate()` (STAB, the per-type UQ4.12 block) — the same guard, not a new
+`is_struggle`-specific check, since Struggle's `power=50` would otherwise be wrongly
+blocked. Confusion self-hit damage (`calculate_confusion_damage`) never calls this
+check at all by construction (a wholly separate function with no ability awareness)
+— confirmed, not modeled further. `effective_ability_id` gives Mold-Breaker-bypass
+(source: `breakable = TRUE`, `src/data/abilities.h` L201, genuinely reachable since
+attacker and holder are always different battlers) and Neutralizing-Gas-suppression
+for free, the same chokepoint every prior tier uses.
+
+Also carries `cantBeCopied`/`cantBeSwapped` (both TRUE in source) — recorded on the
+`.tres` entry for completeness, though this project has no Skill-Swap/Entrainment-
+style move to exercise them (same "recorded, not reachable" precedent as several
+prior tiers' unused flags).
+
+### Sub-group B — Scrappy and Mind's Eye
+
+Source-verified (not assumed) that Scrappy/Mind's Eye's Ghost-immunity bypass lives
+INSIDE `MulByTypeEffectiveness` (`battle_util.c` L8046-8052), the same per-defending-
+type-component function computing the type chart lookup itself — checked alongside
+Foresight/Miracle Eye's identically-shaped bypasses (neither of which this project
+models, confirmed absent via grep). This is a genuinely different architecture from
+Levitate's flat 0x-or-nothing gate: it must be threaded into the PER-COMPONENT type
+computation, not a separate early check, mirroring the Delta Stream `weaken_flying_se`
+precedent (`[M17d]`) exactly. New `bypass_ghost_immunity` bool param added to BOTH of
+this project's independent type-effectiveness computations —
+`TypeChart.get_effectiveness` (the early immunity short-circuit / Wonder Guard's own
+read) and `TypeChart.get_uq412` (the actual per-type damage-multiplier block) — since
+neither is unified into one function the same way source's is (the same duplication
+already established for `weaken_flying_se`). New `AbilityManager.bypasses_ghost_immunity`
+computes the bool once per `DamageCalculator.calculate` call from the ATTACKER's own
+ability only (no Mold-Breaker/`attacker` param — mirrors `ignores_defender_evasion_stage`'s
+existing precedent, since an ability is never "broken through" on its own holder).
+Confirmed Scrappy does NOT bypass an unrelated type immunity (Ground vs Flying) —
+the bypass is Ghost/Normal/Fighting-specific by construction, not a general immunity
+override. Neither ability carries a `breakable` flag in source for this half (both
+are attacker-self-checks) — no Mold-Breaker test needed, confirmed and documented
+rather than silently skipped; Neutralizing Gas DOES suppress both (via the same
+`effective_ability_id` chokepoint reading the ATTACKER'S OWN ability), confirmed with
+a direct test.
+
+Mind's Eye is genuinely two independent halves sharing one ability, confirmed via
+source citing the LITERAL SAME two OR-conditions this project already had
+infrastructure for: the Ghost-bypass half (`battle_util.c` L8051, the same condition
+as Scrappy — reuses `bypasses_ghost_immunity` directly) and the evasion-ignore half
+(`battle_util.c` L10251, `atkAbility == ABILITY_UNAWARE || atkAbility ==
+ABILITY_KEEN_EYE || atkAbility == ABILITY_MINDS_EYE` — the literal same condition
+this project's PRE-EXISTING `ignores_defender_evasion_stage` function already had a
+doc comment anticipating, from `[M17g]`). Independence confirmed with a dedicated
+discriminator: the Ghost-bypass fires against a Ghost-type target with zero evasion
+boost (evasion-ignore is moot there), and the evasion-ignore fires (statistically,
+same 20-trial pattern `[M17b]` established for Unaware/Keen Eye) against a non-Ghost
+target with +6 evasion (Ghost-bypass is moot there) — the two halves are triggerable
+independently of each other. Carries `breakable=TRUE` in source, though — like Sticky
+Hold in `[M17j]` — structurally unreachable by either of its own two mechanics (both
+attacker-self-checks); recorded, not silently dropped.
+
+### Sub-group C — Overcoat
+
+Two independent halves, confirmed genuinely separate from source. Powder-move
+immunity (`IsPowderMoveBlocked`, `battle_util.c` L2216-2229, gated on
+`IsAffectedByPowderMove`, L10545-10552, `B_POWDER_OVERCOAT >= GEN_6`) is the SAME
+shape/dispatch group as Soundproof/Bulletproof — extended the existing
+`AbilityManager.blocks_move_flag` directly, reusing the pre-existing dormant
+`MoveData.powder_move` flag (Sleep Powder already had it set since the original
+schema; confirmed via grep it was never read anywhere before this session). Genuinely
+reachable Mold-Breaker-bypass case (`breakable=TRUE`) and Neutralizing-Gas-suppression,
+both confirmed with direct tests.
+
+Weather-chip immunity (`HandleEndTurnWeatherDamage`, `battle_end_turn.c` L143-169) is
+a new per-mon exemption alongside the existing Air Lock/Cloud Nine field-wide
+negation — new `AbilityManager.blocks_weather_chip_damage`, checked inside
+`BattleManager._is_weather_damage_immune` (which gained a new `ng_active` param).
+Confirmed via a dedicated composition test that Overcoat's per-mon exemption and Air
+Lock's field-wide negation don't conflict or double-negate: when both are present in
+the same battle, Air Lock's existing field-wide `eff_weather` substitution means
+`_is_weather_damage_immune` (including Overcoat's own new branch inside it) is never
+even reached — no chip damage anywhere, no crash. No Mold-Breaker param on
+`blocks_weather_chip_damage` — end-of-turn ticks are outside any move-processing
+window, so Mold Breaker structurally never applies there, the same `[M17g]`-established
+reasoning already used for `is_trapped`'s selection-time gate.
+
+**A source discrepancy was found and flagged, NOT fixed (out of scope for this
+tier)**: the current reference source at `battle_end_turn.c` L144-146 lists
+`ability != ABILITY_SAND_VEIL && ability != ABILITY_SAND_FORCE && ability !=
+ABILITY_SAND_RUSH` (and, for hail, `ability != ABILITY_SNOW_CLOAK`) as sandstorm/
+hail-chip EXEMPTIONS — directly contradicting `[M17n-2]`'s decisions.md entry, which
+concluded (and shipped, with a supporting code comment in
+`BattleManager._phase_end_of_turn`) "Sand Veil/Sand Rush do NOT grant chip immunity"
+after reading what it cited as these same source lines. Not re-litigated or corrected
+here — this tier owns Overcoat only, and re-deriving Sand Veil/Sand Force/Sand Rush's
+already-shipped behavior is out of scope. Possible causes (not investigated further):
+the reference repo was updated between the `[M17n-2]` session and this one (this
+project's `pokeemerald_expansion` clone is a working-tree snapshot, not a pinned
+commit), or a mis-read of the boolean chain at the time. Flagged here for whoever next
+touches weather-chip logic to investigate and decide whether `[M17n-2]`'s shipped
+behavior needs a follow-up fix.
+
+A second, narrower interaction was found and flagged, also NOT fixed (genuinely out
+of this tier's stated scope — powder-move immunity and weather-chip immunity only):
+source's `IsAffectedByPowderMove` is ALSO reused (a different call site,
+`battle_util.c` L4032) to gate whether Effect Spore (`[M17c]`) can poison/paralyze/
+sleep an attacker that made contact with the Overcoat holder — meaning Overcoat
+should, in principle, also block Effect Spore's proc against itself. This project's
+existing Effect Spore implementation does not check Overcoat (it didn't exist yet at
+`[M17c]`'s implementation time). Recorded here as a found-but-unaddressed gap, matching
+the established precedent (Ripen in `[M17g]`, Conversion's type-reset in the
+`[M16 Review]`) of flagging a real interaction rather than silently expanding this
+tier's scope to fix it.
+
+### Sub-group D — Normalize / Refrigerate / Pixilate / Galvanize / Liquid Voice
+
+The genuinely different shape in this tier: these mutate the MOVE's effective type
+itself, not how the attacker/defender responds to it. Source:
+`battle_main.c :: GetBattleMoveType`'s ability-override branch (L5993-6024) —
+confirmed via direct read (not assumed) that this is a single if/elif chain checked
+BEFORE move processing begins, with the resulting type (and an internal `ateBoost`
+flag) read by every downstream check for the rest of that move's resolution,
+including type effectiveness, STAB, and any type-based power modifier.
+
+**Implementation**: rather than threading a parallel "type override" parameter
+through every one of this project's ~15 existing type-aware ability/item checks
+(Overgrow/Blaze/Torrent/Swarm, Steelworker, Dry Skin, Heatproof, Purifying Salt,
+Steely Spirit, ItemManager's type-boosting items, etc.), `DamageCalculator.calculate`
+computes the mutated type ONCE via new `AbilityManager.effective_move_type`, then —
+only if a mutation applies — substitutes a shallow-duplicated `MoveData` (via
+`Resource.duplicate()`, with only `.type` overridden) for its own local `move`
+parameter for the rest of that call. Every existing type-aware check downstream
+receives an already-mutated `MoveData` indistinguishable from a real one, with zero
+changes to any of them. The original `move` Resource the caller passed in (a cached,
+shared `load()`ed resource) is never mutated — confirmed this matters directly, by a
+real test-authoring bug caught while writing this tier's own comparisons (see
+Testing below).
+
+Confirmed from source, per-ability:
+- **Liquid Voice** (204): `IsSoundMove(move) && ability==LIQUID_VOICE` → TYPE_WATER,
+  checked FIRST, unconditionally on the original type — reuses the existing
+  `sound_move` `MoveData` flag (`[M17n-1]`/`[M17n-5]`). Confirmed absent from
+  `CalcMoveBasePowerAfterModifiers`'s ability switch — Liquid Voice grants NO power
+  boost of its own, unlike the "-ate" family.
+- **Refrigerate/Pixilate/Galvanize** (174/182/206): `moveType==TYPE_NORMAL &&
+  ability!=NORMALIZE` → their respective type (Ice/Fairy/Electric) via
+  `TrySetAteType`'s per-ability switch (`battle_main.c` L5751-5765). Aerilate
+  (→Flying) stays excluded; "Dragonize" is a rom-hack-only custom entry in the
+  reference tree, not a real ability, not carried into this project at all.
+- **Normalize** (96): confirmed a genuinely asymmetric branch from the "-ate" family
+  — NOT gated on `moveType==TYPE_NORMAL` at all (source's own `ability!=NORMALIZE`
+  guard on the "-ate" branch is what routes an already-Normal move away from that
+  branch and into Normalize's own unconditional one instead). This means a Normalize
+  holder's ALREADY-Normal move is a genuine type no-op but STILL sets the equivalent
+  of `ateBoost` true — confirmed deliberately via a dedicated test (`S18`): the type
+  stays Normal either way (1.0x effectiveness both with and without Normalize), but
+  the Normalize'd version still deals strictly more damage than the same move from a
+  plain attacker, because Normalize boosts literally every move it uses, not just
+  ones that visibly changed type.
+- **Power bonus** (`battle_util.c` L6530-6552): confirmed all FOUR abilities
+  (including Normalize itself, contrary to a plausible assumption of asymmetry) share
+  the EXACT SAME `×1.2` value at this project's GEN_LATEST config (`B_ATE_MULTIPLIER
+  >= GEN_7 ? 1.2 : 1.3`) — UQ4.12 = 4915, computed and confirmed bit-for-bit
+  (`1.2 * 4096 + 0.5` truncated = 4915, not 4916). Wired into the EXISTING
+  `AbilityManager.move_power_modifier_uq412` (the same pipeline stage
+  Overgrow/Blaze/Torrent/Swarm/Gorilla Tactics already occupy), gated on a new
+  trailing `move_type_changed: bool` param — DELIBERATELY reading this precomputed
+  flag rather than re-deriving `move.type == target_type` inside the function, since
+  by the time this function runs, `move` may already BE the type-mutated duplicate
+  (so `move.type` alone can no longer distinguish "this ability caused the type" from
+  "the move started out that type").
+
+None of these five carry a `breakable` flag in source (all attacker-self-checks,
+confirmed via the same `src/data/abilities.h` read as every other ability this tier)
+— no Mold-Breaker test attempted for any of them (nothing to bypass). Neutralizing
+Gas DOES suppress all five (via the standard `effective_ability_id` chokepoint
+reading the ATTACKER's own ability) — confirmed with a direct representative test
+(Normalize).
+
+### A real test-authoring bug caught and fixed during this tier
+
+Sections 19/20's first draft asserted "Pixilate/Liquid Voice deals more/equal damage"
+using a SINGLE-Normal-typed attacker for both the mutated and unmutated comparison.
+This failed on the very first run: a Pixilate'd Tackle (mutated Normal→Fairy) actually
+dealt LESS damage than an unmutated Tackle from a plain attacker, because mutating
+the move AWAY from the attacker's own type (Normal) loses STAB (1.5x→1.0x) — a real,
+correctly-modeled mechanic, not a production bug — which more than offset the tier's
+own +20% power boost. Root-caused via a scratch debug scene (not committed) directly
+comparing `DamageCalculator.calculate()` outputs. Fixed by making the comparison
+attacker dual Normal/Fairy-typed (Pixilate) or dual Normal/Water-typed (Liquid Voice)
+so STAB applies identically before and after the mutation, isolating the intended
+variable (the power boost, or its absence for Liquid Voice) from this STAB
+side-effect — the same "one-variable-at-a-time" discipline this project's testing
+conventions already establish, just newly triggered by a mechanic shape (move-type
+mutation) that hadn't existed in any prior tier.
+
+### Testing / Regression
+
+New `m17n6_test.gd`/`.tscn`: 95/95 assertions across 22 sections — ability data
+(all 9, including the `cant_be_copied`/`cant_be_swapped`/`breakable` flags where
+applicable); Wonder Guard direct unit tests (NVE/neutral/SE-not-blocked/Struggle-
+exempt/status-exempt) plus Mold-Breaker-bypass/Neutralizing-Gas-suppression plus
+full-battle blocked/not-blocked/status-move-unaffected scenarios plus the dedicated
+fixed/level-damage-move (Night Shade) direct-`calculate()` pair; Scrappy direct
+`TypeChart` bypass tests plus the Ground-vs-Flying discriminator plus full-battle
+connect-vs-immune pair plus Neutralizing-Gas suppression; Mind's Eye's two halves
+tested independently plus the independence discriminator; Overcoat's powder-block
+(direct + Mold-Breaker + NG + full-battle) and weather-chip-immunity (direct + NG +
+sandstorm + hail full-battle pairs) plus the Air-Lock composition test; Normalize's
+non-Normal-move and already-Normal-move cases (each confirming the effectiveness is
+computed against the NEW type, and the exact `4915` UQ4.12 power-modifier value);
+Refrigerate/Pixilate/Galvanize's type conversion plus non-Normal-move discriminator
+plus one representative full-battle power-boost comparison (STAB-controlled per the
+fix above); Liquid Voice's sound-flag conversion plus non-sound discriminator plus the
+zero-power-boost full-battle confirmation; a representative Neutralizing-Gas-
+suppression test for the type-mutation family; and a negative control exercising
+every one of this tier's seven new `AbilityManager`/`TypeChart` functions against an
+ordinary Pokémon. Stable across 8 consecutive reruns (95/95 every time).
+
+Full regression (direct foreground bash sweep, standard `pkill`/`timeout`
+discipline): baseline reconfirmed exactly at 39 files/2071 assertions before starting
+(no drift). Targeted re-runs of `ability_test.tscn`, `m17a_test.tscn`,
+`m17m_test.tscn`, and `m17n2_test.tscn` (all touching type-effectiveness, ability-
+immunity, or weather-chip logic this tier's restructuring could plausibly disturb)
+all passed unchanged. Full sweep of all 40 `.tscn` files: all pass, 0 real failures
+(one grep false-positive during the sweep — `stat_test.tscn` prints test labels
+containing the literal word "fail" as part of describing expected-failure behavior,
+e.g. "fail at +6 max", not an actual failure; confirmed by reading its full output).
+Total assertions across all 40 `.tscn` files: 2071 prior + 95 = **2166**, 0 failures.
+
+- 2026-07-05.
+
+### Next tier
+
+**M17n-7 (Group 6: item/berry interaction, 6 abilities — Klutz, Unnerve, Gluttony,
+Unburden, Harvest, Cud Chew)** is next per `docs/m17n_recon.md`'s own sequencing —
+finally builds the "last consumed berry" tracking `[M17d]` deferred twice. Two
+findings from this tier are left open for whoever picks that up (or a later session):
+the Sand Veil/Sand Force/Sand Rush/Snow Cloak weather-chip-immunity discrepancy
+against current reference source (Sub-group C above), and Overcoat's un-modeled
+Effect Spore interaction (also Sub-group C) — neither blocks M17n-7, both are
+independent, narrowly-scoped follow-ups.
+
+### Follow-up (2026-07-05, same day): Aerilate and Dragonize added
+
+Two more "-ate" family members, both explicit exclusion reversals from Rob (recorded
+in memory), not re-derived from this tier's own original scoping. Reuses the exact
+shared infrastructure this tier already built (`effective_move_type`,
+`move_power_modifier_uq412`'s `move_type_changed` gate) — no new mechanism.
+
+**Aerilate (184)** — re-verified against `include/constants/abilities.h`, unchanged
+from what `m17_recon.md` Section 13.3 originally cited. Was previously excluded as
+Mega-exclusive-only; Rob reversed that exclusion, now in scope. Confirmed mechanically
+identical to Refrigerate/Pixilate/Galvanize from source: `TrySetAteType`
+(`battle_main.c` L5757-5758, `ateType = TYPE_FLYING`) and the same power-modifier
+switch (`battle_util.c` L6542-6544, the identical `1.2/1.3` `B_ATE_MULTIPLIER`-gated
+value). No `breakable` flag in source's own data table (`src/data/abilities.h`
+L1390-1395), same as its siblings — attacker-self-check, nothing unusual.
+
+**Dragonize (312)** — a genuinely different situation, flagged explicitly back to Rob
+before implementing, per this follow-up's own instruction to check for anything
+inconsistent with a normal canonical ability before proceeding. Direct inspection of
+`src/data/abilities.h` L2436-2483 shows ID 312 sitting in a cluster this project's
+OWN prior recon (`m17_recon.md` Section 8.3) had already identified and excluded as
+6 hack-project-only custom entries: Piercing Drill (311), **Dragonize (312)**, Eelevate
+(313, description literally `"Unimplemented."`), ABILITY_314 (314, name literally
+`"-------"`, description `"No special ability."` — a blank placeholder slot, not an
+ability), Mega Sol (315), Fire Mane (316, also `"Unimplemented."`), ABILITY_317 (317,
+same blank-placeholder pattern as 314) — Spicy Spray (318) is the one genuine Gen 9
+DLC ability immediately adjacent to this cluster, correctly NOT grouped with it. None
+of Dragonize's cluster-mates (except Spicy Spray) carry an `aiRating` field at all,
+unlike every real ability in the data table. This independent re-verification matched
+Section 8.3's original finding exactly, not this follow-up task's premise that
+Dragonize was "now confirmed CANON, not a hack ID." Surfaced directly to Rob before
+writing any code — Rob confirmed this as a deliberate, explicit override: Dragonize
+has since become a real ability in a newer Pokémon generation than this project's
+`pokeemerald_expansion` reference tree models, and should be implemented despite the
+reference repo's own hack-cluster positioning. Implemented on that explicit basis, not
+silently assumed. Mechanically confirmed identical to its now-siblings from the SAME
+source functions Aerilate uses: `TrySetAteType` (`battle_main.c` L5763-5765, `ateType
+= TYPE_DRAGON`) and the same power-modifier switch (`battle_util.c` L6546-6548,
+identical `1.2/1.3` gate). No `breakable` flag and no `aiRating` at all in source —
+`ai_rating: 0` used in `gen_abilities.py`, matching this project's established
+convention for abilities source doesn't rate (several pre-existing entries already
+use this fallback).
+
+Both wired into the exact same insertion points `[M17n-6]` built: a new branch each in
+`AbilityManager.effective_move_type`'s `TYPE_NORMAL`-gated switch (alongside
+Refrigerate/Pixilate/Galvanize, not a parallel mechanism), and added to
+`move_power_modifier_uq412`'s existing `move_type_changed`-gated boost condition
+(now six abilities, since Normalize's own unconditional branch is a seventh, separate
+case already handled). No Mold-Breaker test written for either (neither carries a
+`breakable` flag, matching every other member of this family) — Neutralizing Gas
+suppression is already covered by this tier's one representative test (Normalize),
+not duplicated per-ability, matching the established pattern.
+
+New assertions added to the existing `m17n6_test.gd`: ability-data spot-checks for
+both (no `breakable` flag); direct `effective_move_type` conversion tests (Normal
+move → Flying/Dragon respectively) plus a non-Normal-move (Vine Whip) discriminator
+for each; both folded into the existing `move_power_modifier_uq412`-confirms-4915
+assertion (now five-way, then six with Normalize's own separate test in Section 18).
+95 → 101 assertions in the file (6 new), stable across 5 consecutive reruns.
+
+Full regression (direct foreground bash sweep): all 40 `.tscn` files pass unchanged,
+0 real failures. Total assertions across all 40 files: 2166 prior + 6 = **2172**,
+all green.
+
+## [M17n-7] Group 6: item/berry interaction — Klutz, Unnerve, Gluttony, Unburden,
+## Harvest, Cud Chew
+
+**Recovery-session context**: this tier's implementation (all six abilities, across
+`ability_manager.gd`, `item_manager.gd`, `battle_manager.gd`, `battle_pokemon.gd`,
+`gen_abilities.py`, and the six `.tres` files) was already present in the working tree
+at the start of this session, left uncommitted by a prior session that crashed before
+writing its own test file or this decisions.md entry. Per this session's own
+instructions, the crashed session's premise ("implementation complete, just needs
+tests+docs") was NOT trusted at face value — every piece was re-verified from scratch
+against `include/constants/abilities.h` and the relevant `pokeemerald_expansion`
+source functions before any test was written. The premise held for five of the six
+abilities' core mechanics; one real bug was found and fixed (see below).
+
+Step 0 re-verified all six IDs directly against `include/constants/abilities.h`: no
+corrections needed (Gluttony=82, Unburden=84, Klutz=103, Unnerve=127, Harvest=139,
+Cud Chew=291). None of the six carry `breakable`/`cant_be_suppressed` in their `.tres`
+files, confirmed correct against source's own `src/data/abilities.h` (no Mold-Breaker
+test needed for any of them; Neutralizing-Gas-suppression tested for all six).
+
+**Klutz** — the holder's own held item has no effect anywhere. Source:
+`GetBattlerHoldEffectInternal` (`battle_util.c` L5674-5692), the single chokepoint
+every held-item read in source funnels through. Already correctly implemented as
+`ItemManager.effective_held_item`, with every other `ItemManager` function (attack-stat
+modifiers, choice-lock detection, weather-modifier blocking, hazard immunity, Multitype's
+Plate read) already routed through it — confirmed via a targeted grep that no raw
+`mon.held_item` read bypasses the chokepoint anywhere in the file. This project has
+none of the three items (Macho Brace, Power items, Iron Ball) that carry a canonical
+real-game Klutz exemption, and no Gastro Acid implementation either — both moot, not
+silently dropped, per the code's own doc comment.
+
+**Unnerve** — prevents an opposing side from eating berries. A real scope check during
+verification: source's `IsUnnerveBlocked` (`battle_util.c` L333-345) is gated at the
+very top of `ItemBattleEffects` (`battle_hold_effects.c` L1035-1048) — the single
+dispatcher for EVERY hold-effect-triggered berry mechanic (Sitrus, Lum, resist berries,
+Micle, stat-raise berries), not merely the one `GetDefenderItemsModifier` resist-berry
+call site (`battle_util.c` L7511-7512) this project's pre-existing resist-berry function
+already used. Confirmed both `ItemManager.sitrus_berry_heal` and `lum_berry_cures`
+already had this `unnerve_active` gate correctly wired (matching the single-dispatcher
+scope, not just the resist-berry-only scope) — this was already right in the inherited
+code, not something this session needed to fix.
+
+**Gluttony** — widens a berry's eat-early HP fraction from a stricter-than-50% value up
+to 50%. Source: `HasEnoughHpToEatBerry` (`battle_util.c` L5461-5476) — a secondary
+OR-branch only reachable once the primary `hp <= maxHp/hpFraction` check has ALREADY
+failed, itself gated on `hpFraction <= 4`. `AbilityManager.gluttony_adjusted_hp_fraction`
+reframes this as a fraction-widening function rather than reproducing the two-stage
+OR-logic directly — confirmed equivalent for every value an actual caller can supply
+(this project's one caller, `sitrus_berry_heal`, always passes the hardcoded fraction 2,
+which the function correctly no-ops on). No currently-implemented berry has a stricter
+fraction, so Gluttony has zero observable effect on this project's actual item roster —
+confirmed via grep of every `HOLD_EFFECT_*` constant, matching the code's own honest
+"wired in generically, currently unreachable" framing (the same precedent already
+established for Sticky Hold in `[M17j]`).
+
+**Unburden** — Speed ×2, unconditional, once active. Source: `battle_main.c`
+L4686-4687 (the same unconditional-on-weather shape as Slow Start's own check
+immediately above it in the same if/else-if chain) — confirmed character-for-character
+against `StatusManager.effective_speed`'s existing `unburden_active` branch. Activation
+(`CheckSetUnburden`, `battle_util.c` L10604-10611) is correctly wired into
+`BattleManager._consume_item` (every berry-eating path) and the item-transfer
+primitives (`_try_steal_item`'s stealer-clears/victim-sets pair, `Bestow`-mirroring
+give function) — confirmed via `include/battle.h`'s own `struct PartyState` /
+`Volatiles` split that `unburden_active` is correctly a switch-cleared volatile (not
+persistent like `last_consumed_berry` below).
+
+**Harvest** — end-of-turn chance to regenerate the last-eaten berry: flat 50%, GUARANTEED
+in sun. Source: `AbilityBattleEffects`'s `ABILITY_HARVEST` case (`battle_util.c`
+L3531-3539). Finally builds the "last consumed berry" tracker this project's `[M17d]`
+entry deferred twice — confirmed from `include/battle.h` L530-544 that source's own
+`usedHeldItem` field lives in the per-party-slot `struct PartyState`, NOT the per-battler
+`volatiles` struct Unburden/Cud Chew's own flags live in — meaning it correctly survives
+switch-out/switch-in, unlike every other flag this tier touches. `BattlePokemon
+.last_consumed_berry` and its "not cleared by `_clear_volatiles`" comment were verified
+against this exact struct split, not assumed.
+
+**Cud Chew** — a one-turn arm/fire cycle: arms at the end of the turn a berry is eaten,
+fires (re-runs that SAME berry's effect, never restoring the physical item) at the NEXT
+end of turn. Source: `AbilityBattleEffects`'s `ABILITY_CUD_CHEW` case (`battle_util.c`
+L3695-3707); confirmed character-for-character against `AbilityManager.cud_chew_check`'s
+`""`/`"arm"`/`"fire"` three-way return and `BattleManager`'s dispatch of it.
+
+**A real bug was found and fixed during this session's independent re-verification**
+(not present as a documented finding in the inherited code — this is new): Cud Chew's
+fire re-trigger sets `gBattleScripting.overrideBerryRequirements` around its
+`consumeberry` call (`BattleScript_CudChewActivates`, `data/battle_scripts_1.s`
+L4020-4026), and BOTH `HasEnoughHpToEatBerry` (`battle_util.c` L5465: returns `TRUE`
+unconditionally under the flag) AND `IsUnnerveBlocked` (`battle_util.c` L338-339:
+returns `FALSE` unconditionally under the same flag) key off it — meaning Cud Chew's
+re-trigger bypasses BOTH the normal HP-threshold gate AND an opposing Unnerve holder,
+not merely reuse the same two gated checks a second time as the inherited
+`sitrus_berry_heal`/`lum_berry_cures` calls (with `override_item` set but the ordinary
+`unnerve_active`/threshold gates still applied unconditionally) implemented it. Fixed
+by gating both checks on `override_item == null`, reproducing only the one exception
+`ItemHealHp` itself still enforces even under override (`battle_hold_effects.c` L831:
+no heal at exactly full HP) as an explicit `override_item != null` branch. This matters
+in a real, reachable scenario — not just a theoretical one: a berry eaten while HP is
+low (arming Cud Chew), followed by ANY heal back above 50% before the next end-of-turn
+(Leftovers, a healing move, a switch-heal ability) no longer blocks the re-trigger, and
+an opposing Unnerve holder switching in between arm and fire no longer blocks it either
+— both now correctly bypassed, matching source. Section 10 of the new test file below
+is a discriminating direct test for exactly this (both the bypass itself and a
+same-scenario-without-override negative control proving the bypass is real, not
+vacuous).
+
+New `m17n7_test.gd`/`.tscn`: 62/62 assertions across 13 sections (ability data spot-checks
+incl. the no-`breakable`/no-`cant_be_suppressed` confirmation for all six; Klutz direct
+unit tests — `effective_held_item`/`is_choice_item`/`attack_modifier_uq412` all
+suppressed, with a non-Klutz discriminator — plus a full-battle Sitrus-Berry-never-fires
+integration; Unnerve direct `is_unnerve_active` unit tests incl. fainted-holder and
+null-slot guards plus a full-battle Sitrus-Berry-blocked integration; Gluttony's four
+fraction-widening cases direct against the function's own documented domain; Unburden's
+direct Speed-doubling unit test plus a full-battle turn-order-flip integration (the
+naturally-slower holder overtakes the naturally-faster attacker the turn after its item
+is removed); Harvest's direct unit tests (ability/held-item/last-consumed-berry gates,
+the sun-guarantee, the `forced_roll` seam) plus a forced-roll full-battle regenerate
+integration; Cud Chew's direct arm/fire-transition unit tests; the override-bypass bug
+fix's own discriminating tests (Section 10, described above); a full-battle Cud-Chew
+fires-exactly-once integration; Neutralizing Gas suppression for all six; a negative
+control). Two test-authoring mistakes were caught and fixed during the first run
+(59/62): `gluttony_adjusted_hp_fraction`'s own domain doesn't include `hpFraction=1`
+(the primary HP check already returns true unconditionally at that value in source, so
+"widening" it is an out-of-domain question the function was never meant to answer —
+fixed by testing `hpFraction=5` instead, a real "looser than 4, should not be touched"
+case); and the Unburden Speed assertions hardcoded an assumed level-50 stat value
+instead of reading `mon.speed`/`effective_speed` directly (fixed to compute the
+baseline dynamically and assert the doubling relative to it). Stable across 5
+consecutive reruns after both fixes.
+
+A baseline discrepancy was found and resolved the same way `[M17f]`/`[M17g]`/`[M17k]`
+already established precedent for: a direct recount of the prior 40 `.tscn` files (via
+the same two print-format sums this project's suites use — `"N/M passed"` and
+`"Results: N passed"`) totals **2160**, not the **2184** carried forward in `CLAUDE.md`'s
+last status line. Root cause not investigated (out of scope, matching the prior three
+occurrences' own resolution) — proceeding on the freshly-measured 2160 baseline, not
+the stale documented figure. Full regression (direct foreground bash sweep, standard
+`pkill`/`timeout` discipline, run both before and after the Cud Chew fix): all 40 prior
+`.tscn` files pass unchanged, 0 real failures — `item_test.tscn` in particular (whose
+`sitrus_berry_heal`/`lum_berry_cures` call sites this session's fix directly touched)
+reran clean at 77/77. Total assertions across all 41 `.tscn` files: 2160 prior + 62 =
+**2222**, all green.
+
+- 2026-07-06.
+
+### Follow-up (2026-07-06, same day): the 2160/2184/2222 figures above were all wrong
+### — root-caused, fixed, and independently re-verified twice
+
+A dedicated diagnostic session, triggered after this exact discrepancy recurred for a
+fourth time, root-caused it rather than adopting yet another fresh number. Full
+mechanism and standing rule now live in `CLAUDE.md`'s testing-conventions section
+("manual assertion-total recounts must account for `integration_test.tscn`'s
+different print format" and the verification-standard note immediately after it) —
+summarized here for the historical record.
+
+**Root cause**: `scenes/battle/integration_test.tscn` (24 real, always-passing
+assertions, added by the pre-M1-numbering "Prompt 9" commit) prints its result as
+`"Integration tests: N passed, M failed"` — a third format, distinct from both
+`"<name>: N/M passed"` and `"Results: N passed, M failed"`. Every ad-hoc recount
+performed in this project so far (including this same session's own earlier "2160"
+figure) silently dropped this file's 24 assertions by only recognizing the two known
+formats. The file is also absent from `CLAUDE.md`'s own "Current status"/"Verification
+scenes" lists, so nothing pointed toward checking for it specifically. Confirmed the
+same 24-assertion signature explains `[M17f]`'s and `[M17g]`'s own historical
+discrepancies too (in `[M17f]`'s case the direction was flipped — that session's
+method happened to catch the file, correcting an even older undercount).
+
+**New canonical script**: `scripts/count_assertions.sh`, recognizing all three
+formats explicitly (each backed by a real matching example line, not a hypothetical).
+
+**Independent cross-check (not just trusting the script)**: for every one of the 41
+`.tscn` files, an independently-derived source-code assertion count was produced by
+running a throwaway instrumented scratch copy of each `.gd` file (never the committed
+file — deleted immediately after each check) with its assertion helper(s) patched to
+print on PASS as well as FAIL, then counting total PASS+FAIL lines directly. This
+caught a real methodological trap: a plain static count of assertion-helper call
+sites in source does NOT always equal the true runtime count. 8 of the 41 files
+diverged from a naive static grep, each individually root-caused rather than
+dismissed:
+
+- **`ability_test.gd`** (66 static / 64 actual): an `if`/`else` pair (S4F.01/S4F.02)
+  where the `else` branch is unreachable given `force=true` determinism.
+- **`item_test.gd`** (78 / 77): an `if`/`else` pair sharing the label "I1.06", only
+  one branch runs.
+- **`m16d_test.gd`** (69 / 71, static UNDER actual): a single `_chk(...)` call sits
+  inside `for layers in [1, 2, 3]:`, executing 3× from 1 static line.
+- **`m17f_test.gd`** (32 / 30): two dead defensive guards (`if roar == null:` /
+  `if baton_pass == null:`, each wrapping a `_chk(...skip..., false)` that never
+  fires since both moves load successfully).
+- **`m17i_test.gd`** (36 / 35): one dead guard containing `for _i in range(2):
+  _chk(...)` — contributes 1 to the static count but 0 at runtime.
+- **`m17l_test.gd`** (46 / 45): an `if`/`else` pair sharing the label "S3.04",
+  gated on Growl (move 45) genuinely being a 0-power move.
+- **`switch_test.gd`** (71 / 64): seven dead lines across four separate defensive
+  guards (Roar/Baton-Pass "not loaded" skip branches, including two that wrap a
+  `for _i in range(N):` loop each still contributing only 1 to the static count).
+- **`weather_test.gd`** (59 / 64, static UNDER actual — the only file with BOTH
+  effects at once): 2 dead "Drizzle not loaded" guards (-2) more than offset by two
+  multiplier effects — `_check_weather_chip`'s 2 internal `_chk` lines fire 3× each
+  (its 3 call sites, W10.01-03) for +4, and a `for entry in chip_amounts:` loop's
+  single `_chk` line fires 4× for +3 — net +5.
+
+Every one of the 41 files' true counts (33 needing no correction, 8 reconciled above)
+was confirmed via direct instrumented execution, not assumed. Summed independently of
+`count_assertions.sh`'s own summation logic, the total matches the script's output
+exactly. The full sweep plus `count_assertions.sh` was then re-run a second time from
+a clean process state (`pkill -9 -f "Godot.*--headless"` first) and produced
+byte-for-byte identical per-file output both times.
+
+**VERIFIED: 2246 total assertions across 41 `.tscn` files, confirmed via two
+independent methods and reproducible across two runs (2026-07-06).**
+
+- 2026-07-06.
+
+## [M17n-8] Group 8, sub-tier 1: contact/faint-timing + reactive/one-off — Aftermath,
+## Innards Out, Corrosion, Merciless, Opportunist
+
+Scoping source: `docs/m17n_recon.md`'s Group 8 ("Contact/faint-timing" and
+"Reactive/one-off" sub-clusters). Step 0 re-verified all five IDs directly against
+`include/constants/abilities.h`: Aftermath=106, Merciless=196, Corrosion=212,
+Innards Out=215, Opportunist=290 — no corrections needed. Two abilities Group 8's
+original recon text also lists alongside these five are explicitly EXCLUDED from
+this sub-tier per Rob's own instruction, not silently dropped: Perish Body (253,
+blocked on the unimplemented Perish Song move — a real move-dependency, not an infra
+gap) and Suction Cups (21, deferred to a later Group 8 sub-tier). None of the five
+implemented here carry `breakable`/`cant_be_suppressed` in source's own data table
+(confirmed individually) — no Mold-Breaker test needed for any of them; Neutralizing
+Gas suppression applies to all five via the standard `effective_ability_id` chokepoint.
+
+**Aftermath (106) and Innards Out (215) share ONE mechanism**
+(`AbilityManager.faint_retaliation_damage`), per this tier's own instruction not to
+duplicate the fainting-detection logic twice — both require the fainted mon to have
+actually fainted FROM a hit (reusing `_last_attacker`, the existing M14b killer-lookup
+dictionary Destiny Bond/Moxie already read) and the killer to still be alive. They
+differ in exactly two ways, confirmed from source rather than assumed identical:
+
+- **Contact requirement**: Aftermath REQUIRES contact (`CanBattlerAvoidContactEffects`,
+  the same gate Rough Skin/Iron Barbs use — reused here via the existing
+  `move_makes_contact` helper); Innards Out has NO such gate (fires on ANY damaging
+  hit, contact or not) — confirmed directly from source (`battle_util.c` L3986-4021),
+  not assumed from the two abilities' surface-level similarity.
+- **Damage amount**: Aftermath deals the KILLER's own `max_hp / 4`
+  (`GetNonDynamaxMaxHP(gBattlerAttacker) / 4`). Innards Out deals the FAINTED MON's
+  own HP immediately before the fatal hit — NOT the move's raw calculated damage,
+  which can exceed the mon's actual remaining HP on an overkill hit. Source:
+  `battle_script_commands.c` L1650-1653's `hpLost = hpBefore -
+  gBattleMons[battler].hp` (correctly capped at actual remaining HP), accumulated
+  into `innardsOutHpLost` and preferred over the raw `moveDamage` value whenever
+  nonzero. New `BattleManager._last_attacker_hp_before` (a companion dictionary to
+  `_last_attacker`, set at the exact same two call sites — the main `_do_damaging_hit`
+  hit-application point and the OHKO-move instant-KO path) supplies this value
+  directly; `_last_attacker_move` (also new) supplies the move itself, needed for
+  Aftermath's contact check.
+- Aftermath additionally requires no Damp holder anywhere on the field
+  (`IsAbilityOnField(ABILITY_DAMP)`, source L3993-3997) — new
+  `AbilityManager.is_damp_active(combatants, ng_active)`, mirroring
+  `is_neutralizing_gas_active`'s exact field-wide shape but correctly NG-aware
+  (`IsAbilityOnField` itself reads through `GetBattlerAbility`, the suppression-aware
+  accessor, confirmed from source — unlike Neutralizing Gas's own self-check, Damp's
+  field-check has no self-reference problem to avoid). Damp itself remains otherwise
+  a no-op in this project (no Explosion/Self-Destruct/Mind Blown implemented) — this
+  is its first-ever reachable effect.
+
+Both wired into `BattleManager._phase_faint_check` (the single existing chokepoint
+for on-faint reactive effects — Destiny Bond/Moxie/Receiver all already live there),
+directly alongside (not replacing) Destiny Bond's own killer-lookup — confirmed this
+needed an INDEPENDENT `_last_attacker.get()` re-fetch rather than reusing Destiny
+Bond's own local `killer` variable, since that one may fall back to
+`_get_first_opponent` for an edge case Aftermath/Innards Out must NOT accept (source
+requires the actual attacker of the fatal hit, never a same-side substitute). Signal
+convention mirrors Rough Skin/Iron Barbs exactly: `recoil_damage` for the damage
+dealt to the killer, `ability_triggered` naming the FAINTED HOLDER (not the killer) —
+confirmed from the established precedent at the Rough Skin call site rather than
+guessed. If the retaliation itself faints the killer, it's finished manually
+(`fainted = true`, `_clear_volatiles`, `pokemon_fainted.emit`) mirroring Destiny
+Bond's own resolution shape for exactly the same reason (the for-loop over
+`_combatants` may have already passed or not yet reached the killer this same pass).
+
+**Corrosion (212)**: the ATTACKER's own ability bypasses a Poison- or Steel-type
+target's normal immunity to poison/toxic infliction. Source: `CanSetNonVolatileStatus`
+(`battle_util.c` L5250): `abilityAtk != ABILITY_CORROSION &&
+IS_BATTLER_ANY_TYPE(battlerDef, TYPE_POISON, TYPE_STEEL)` — a SINGLE condition
+bypassing BOTH Poison-type and Steel-type immunity together, confirmed from source
+rather than assumed uniform (there is no separate Steel-only or Poison-only
+carve-out). New `AbilityManager.bypasses_poison_steel_immunity(attacker, ng_active)`
+mirrors `bypasses_ghost_immunity`'s exact precedent (attacker's own ability only, no
+Mold-Breaker/`attacker`-param — an ability can never be "broken through" on its own
+holder), wired into `StatusManager.try_apply_status`'s existing Poison/Steel
+type-immunity branch — closing a gap M3's own decisions.md-adjacent code comment had
+flagged and deferred since this project's earliest milestone
+(`# Poison-types and Steel-types cannot be poisoned ... Corrosion ability bypasses
+this but is not in M3 scope`).
+
+**A second, genuinely separate bug was found and fixed** during this tier's own
+full-battle test-writing, not predicted by Step 0's source read: `try_apply_status`
+was NOT the only gate standing between Corrosion and a successful Toxic-vs-Steel-type
+full battle. `BattleManager._phase_move_execution` has its own pre-existing, more
+general "type immunity check for foe-targeting moves"
+(`TypeChart.get_effectiveness(move.type, defender.species.types) == 0.0 →
+move_missed`), which ALSO fires for Toxic (a Poison-type move) against a Steel-type
+target (Poison→Steel is a flat 0.0× in this project's own type chart, matching the
+real games' Steel-type immunity to Poison-type moves) — entirely independent of, and
+positioned BEFORE, the status-specific check Corrosion was wired into. This general
+gate is correct and necessary for other cases (e.g. Thunder Wave vs. a Ground-type
+target, which has no analogous ability bypass), so it could not simply be removed.
+Confirmed from source that this is the right place to add a narrow bypass, not a
+sign the general gate itself is wrong: `ABILITY_CORROSION` appears EXACTLY ONCE in
+the entirety of `pokeemerald_expansion`'s source (only inside
+`CanSetNonVolatileStatus`), and that function's own failure branch for this case
+(`battleScript = BattleScript_NotAffected`) is the identical "doesn't affect" script
+a flat type immunity uses — confirming real source resolves a status-inflicting
+move's applicability entirely through this one status-specific check, with no
+separate general type-effectiveness gate downstream of it for THIS purpose. Fixed by
+threading the exact same `bypasses_poison_steel_immunity` check into
+`_phase_move_execution`'s general immunity gate, scoped narrowly to
+`move.type == TypeChart.TYPE_POISON` (Corrosion does not grant any other type a wider
+bypass — a Poison-type DAMAGING move used by a Corrosion holder against a Steel-type
+still deals 0 damage in real games; this fix only affects the STATUS-move dispatch
+path, never `_do_damaging_hit`). This is exactly the class of "a task's Step 0 source
+read predicts one call site, but a second independent gate turns out to also need the
+same bypass" finding CLAUDE.md's own conventions warn every tier to watch for — caught
+here by actually running the full-battle test rather than trusting the unit-level
+`try_apply_status` tests alone.
+
+**Merciless (196)**: a GUARANTEED (100%) crit against a poisoned/toxic'd target — an
+override, not a stage bonus like Super Luck's own +1 (`[M17n-5]`). Source:
+`CalcCritChanceStage` (`battle_util.c` L7828-7830): `(abilities[battlerAtk] ==
+ABILITY_MERCILESS && status1 & STATUS1_PSN_ANY) → CRITICAL_HIT_ALWAYS` — the same
+unconditional-override branch `MoveAlwaysCrits`/Laser Focus use, checked BEFORE the
+normal stage-sum path, not folded into it. `STATUS1_PSN_ANY` confirmed to cover both
+regular poison and toxic — `DamageCalculator.calculate` checks both
+`BattlePokemon.STATUS_POISON` and `STATUS_TOXIC`. Battle Armor/Shell Armor's existing
+"blocks crits outright, overriding even a forced crit" check (`[M17a]`) still applies
+AFTER Merciless's guarantee, matching source's structure where `CalcCritChanceStage`'s
+returned value and the separate Battle-Armor-style override are independent steps.
+Tested via a statistical sample (30 trials, force_crit left null so the real
+non-forced path runs) — mirrors `[M17n-5]`'s own new-for-this-codebase rate-testing
+pattern, the correct tool for discriminating "always" from "usually likely."
+
+**Opportunist (290)**: copies an opponent's POSITIVE stat-stage change onto the
+holder immediately. Source: `battle_stat_change.c` L420-441 — checked ONLY in the
+stat-INCREASE code path (a separate function/branch from stat decreases; confirmed
+never fires for a decrease), loops every battler on the OPPOSING side of the mon
+whose stat just rose (`IsBattlerAlly` skip — the raised mon's own side, including the
+Opportunist holder's own self-raises, is excluded by construction, not by a
+self-reference guard). Wired into `BattleManager`'s existing primary move-driven
+stat-change call site (the same one `[M17b]`'s Defiant/Competitive reactive triggers
+already occupy) as a new `if actual > 0:` branch — deliberately NOT gated on
+`move.stat_change_self` the way Defiant/Competitive are, since source's real
+condition cares which SIDE the raised mon is on, not whether the raising move was
+self- or foe-targeted (a self-targeted Swords Dance on an opponent is just as much
+"an opponent's stat rose" from the Opportunist holder's perspective as a
+foe-targeted move would be). No infinite-loop risk by construction: the copied
+change is applied via a direct `StatusManager.apply_stat_change` call, never
+re-entering this same dispatch block, so Opportunist's own copy cannot re-trigger
+itself — confirmed explicitly with a dedicated test (Section 9(ii)) rather than
+assumed safe. **Known simplification, documented not silently dropped**: wired into
+this primary call site only, mirroring Defiant/Competitive's own established
+precedent of not retrofitting into every one of the 12 `apply_stat_change` call sites
+in `battle_manager.gd` — ability-driven stat increases (Moxie, Weak Armor's Speed+2,
+Download, etc.) and Baton-Pass/Psych-Up-style stage copies are NOT currently covered
+by Opportunist. Revisit if a real scenario needs it.
+
+A real test-authoring bug was caught and fixed during this tier's own first test run
+(55/58): the Opportunist self-trigger discriminator originally gave both battling
+mons a single-move (Swords Dance-only) moveset, which cannot end a battle (Swords
+Dance deals no damage) — an infinite-battle deadlock this project's own PP/Struggle
+fallback would eventually resolve, but only after enough turns to make the test's
+`count(...) == 1` assertion (checking Swords Dance fired exactly once) fail against
+the real turn-1-only expectation. Fixed by giving both mons Tackle at move index 0
+(the auto-select fallback CLAUDE.md's own "snapshot via signals" convention already
+documents) and explicitly queuing Swords Dance only for turn 1, letting the battle
+resolve normally afterward via real damage.
+
+New `m17n8_test.gd`/`.tscn`: 58/58 assertions across 11 sections (ability data
+spot-checks incl. the no-`breakable`/no-`cant_be_suppressed` confirmation for all
+five; Aftermath direct unit tests — contact required, Damp blocks, null/fainted-killer
+no-ops — plus full-battle integration incl. a residual-damage discriminator proving
+Aftermath does NOT fire when the holder faints from weather chip rather than a direct
+hit; Innards Out direct unit tests incl. the non-contact-fires case (the key
+discriminator vs. Aftermath) plus a full-battle overkill scenario proving the
+retaliation damage is the holder's actual remaining HP, not the move's much larger
+raw damage and not Aftermath's fixed max_hp/4; Corrosion direct `try_apply_status`
+tests against both Steel- and Poison-type targets plus full-battle integration (the
+fix described above); Merciless's statistical sample plus discriminators for a
+non-poisoned target and a non-Merciless attacker; Opportunist's full-battle stat-copy
+integration, the self-trigger-safety discriminator, and direct-level decrease/
+already-maxed no-op checks; Neutralizing Gas suppression for all five; a negative
+control). Stable across 8 consecutive reruns.
+
+Full regression (direct foreground bash sweep, `pkill -9 -f "Godot.*--headless"`
+first per the standing process discipline, `scripts/count_assertions.sh` against the
+fresh sweep output per the standing four-step verification convention — not a manual
+recount): all 41 prior `.tscn` files pass unchanged, 0 real failures. Re-ran the full
+sweep a second time from a clean process state; both runs produced 0 failures and an
+identical total. Total assertions across all 42 `.tscn` files: 2246 prior + 58 =
+**2304**, confirmed via `count_assertions.sh` and reproducible across both runs.
+
+- 2026-07-06.
+
+### Next tier
+
+**M17n-9 (Wide-but-shallow systems: Magic Guard, Magic Bounce, Infiltrator — 3
+abilities)** is next per `docs/m17n_recon.md`'s own Group 8 "Wide-but-shallow
+systems" sub-cluster. Magic Guard touches ~5 already-built systems shallowly
+(recoil, weather chip, hazard damage, status damage, Life Orb recoil); Magic Bounce
+is a genuinely new move-reflection mechanic; Infiltrator bypasses both Substitute and
+`[M16c]`'s screen-reduction check. Good As Gold and Wonder Skin remain in Group 8's
+"Wide-but-shallow"/"Unique/standalone" clusters respectively, unscheduled.
+
+## [M17n-9] Group 8, "wide-but-shallow systems" — Magic Guard, Infiltrator, Magic
+Bounce
+
+Scoping source: `docs/m17n_recon.md`'s Group 8 "Wide-but-shallow systems" sub-cluster.
+Step 0 re-verified all three IDs directly against `include/constants/abilities.h`:
+Magic Guard=98, Infiltrator=151, Magic Bounce=156 — no corrections needed. Good As
+Gold (283) is explicitly EXCLUDED from this sub-tier per Rob's instruction, even
+though that recon's original text lists it alongside these three; the recon predates
+the exclusion decision and is stale on this point. Despite the recon's "wide but
+shallow" framing, this tier turned out to need genuinely new infrastructure (Magic
+Bounce's reflection mechanism) and touch more call sites than either Magic Guard or
+Infiltrator's own descriptions initially suggested — verified each ability's actual
+cost independently rather than treating the tier as cheap by default, per this
+tier's own task instruction.
+
+Baseline confirmed before touching anything: direct foreground sweep,
+`scripts/count_assertions.sh` against fresh output — **42 `.tscn` files, 2304 total
+assertions, 0 failures**, matching `[M17n-8]`'s figure exactly, no drift.
+
+**Magic Guard (98)**: blocks ALL indirect damage this project implements. Full
+exemption list, verified per-site against source rather than assumed uniform:
+weather chip (sandstorm/hail, `_is_weather_damage_immune`), status residual
+(burn/poison/toxic, `StatusManager.end_of_turn_damage`), standard recoil moves
+(`AbilityManager.blocks_recoil`, alongside Rock Head — source: `EFFECT_RECOIL`/
+`EFFECT_CHLOROBLAST` handling, battle_move_resolution.c L3382-3384, an OR'd
+condition with Rock Head), Rough Skin/Iron Barbs' damage to the ATTACKER
+(`try_contact_effects` — the ATTACKER's own Magic Guard, not the ability holder's,
+confirmed from source's `IsAbilityAndRecord(gBattlerAttacker, ...MAGIC_GUARD)` check
+sitting inside that exact case block, battle_util.c L3972), Life Orb recoil
+(`ItemManager.life_orb_recoil` — battle_hold_effects.c `TryLifeOrb` L547-559), and
+Spikes/Stealth Rock switch-in damage (`_apply_switch_in_hazards` —
+`TryHazardsOnSwitchIn`, battle_switch_in.c L317-318 and L369). Two indirect-damage
+sources this project also implements are confirmed from source to be the OPPOSITE of
+exempted, so deliberately NOT gated: Struggle's fixed recoil
+(`MOVE_EFFECT_RECOIL_HP_25`, battle_script_commands.c L2534-2542, has no Magic-Guard
+check anywhere in that case) and `[M17n-8]`'s own Aftermath/Innards Out retaliation
+against the killer (gated only by Damp in source, never by the killer's own Magic
+Guard — battle_util.c L3985-4021). Toxic Spikes' poison INFLICTION is also NOT
+blocked (source's `HAZARDS_TOXIC_SPIKES` case has no Magic Guard check, L336-359) —
+only the resulting end-of-turn residual damage is, via the same
+`end_of_turn_damage` gate every other status source uses; confirmed the toxic
+counter still increments under Magic Guard even though damage is zeroed (source
+ticks it INSIDE the Magic Guard branch itself, `HandleEndTurnPoison` L526-530).
+Substitute's own HP cost (`Cmd_setsubstitute`) also has no Magic Guard check in
+source — a voluntary self-cost, not indirect damage in the sense this ability blocks.
+
+Architectural choice, explicitly justified rather than assumed: no single existing
+chokepoint unifies all six exempted call sites (each is its own already-built,
+independently-tested system — weather chip, status residual, recoil, contact
+abilities, item effects, switch-in hazards). Refactoring all six into one shared
+"apply indirect damage" pipeline purely to gate Magic Guard would touch a
+disproportionately larger blast radius than this ability needs. Instead, one
+reusable predicate (`AbilityManager.blocks_indirect_damage`) is consulted at each of
+the six existing call sites individually — the same shape already established for
+Overcoat/`blocks_weather_chip_damage` (one predicate, multiple call sites), not a
+new pipeline. No `breakable` flag in source (confirmed via `data/abilities.h`) — Mold
+Breaker structurally doesn't apply, since every one of these checks is the HOLDER
+protecting itself, never an attacker's move being resisted by the opponent's ability.
+
+**Infiltrator (151)**: the ATTACKER's moves bypass Reflect/Light Screen/Aurora Veil
+(`GetScreensModifier`, battle_util.c L7358-7362 — an unconditional ×1.0 override
+checked before the reflect/light-screen/aurora-veil OR) AND Substitute
+(`IsSubstituteProtected`, battle_script_commands.c L9522-9536, gated on
+`GetConfig(B_INFILTRATOR_SUBSTITUTE) < GEN_6` — this project targets
+GEN_LATEST/expanded, so the Gen6+ bypass branch applies) for BOTH damaging and status
+moves — confirmed `IsSubstituteProtected` is a SINGLE shared function every
+substitute-vs-move check in source routes through, not two separate mechanisms.
+Threaded a single `AbilityManager.bypasses_infiltrator_barriers` predicate through
+all 5 existing substitute-check call sites in `battle_manager.gd` (Encore, Pain
+Split, the general foe-targeting status-move gate, `_apply_fixed_dmg_to_target` for
+Counter/Mirror Coat/Bide, and `_do_damaging_hit`'s main damage-routing check) plus
+the one screens-modifier computation site. Deliberately scoped to ONLY these two
+systems — source's Infiltrator also bypasses Mist and Safeguard, but neither exists
+in this project (no-op, nothing to gate); confirmed narrowly scoped, not a general
+"ignore all defensive effects" ability (does not bypass type immunities or other
+abilities). No `breakable`/`cant_be_suppressed` flag in source (confirmed via
+`data/abilities.h`) — moot regardless, since Infiltrator is the ATTACKER's own
+ability, not something an opponent's Mold Breaker could "break through."
+
+**Magic Bounce (156)**: reflects the FIRST foe-targeting status move used against
+the holder back at its own user, as if the user had targeted themselves — the
+original holder is never affected. Source: `TryMagicBounce`
+(battle_move_resolution.c L5158-5171), gated on `MoveCanBeBouncedBack`
+(`gMovesInfo[move].magicCoatAffected`, include/move.h L350-352) — NOT a blanket "all
+status moves" rule. Re-derived this project's exact bounceable subset directly from
+source's per-move `magicCoatAffected` flags rather than assuming every status move
+qualifies: of this project's 91 implemented moves, exactly 9 both carry the flag AND
+are foe-targeting in this project's own dispatch — Sand Attack, Tail Whip, Leer,
+Growl, Sleep Powder, Thunder Wave, Toxic, Confuse Ray, Will-O-Wisp (new
+`MoveData.bounceable` field, set per-move in `gen_moves.py`). **Magic Bounce's scope
+is flag-based (`_phase_move_execution` reads `move.bounceable` directly at runtime —
+not a hardcoded ID/name list anywhere in `ability_manager.gd` or `battle_manager.gd`);
+9 is simply the current count of flagged moves in the 91-move roster, not a
+hardcoded limit — this will automatically expand with zero additional code changes
+whenever a future milestone (M19, Remaining Moves) gives more status moves real
+`.tres` mechanics and sets `bounceable = true` on the ones that carry
+`magicCoatAffected` in source.** Confirmed absent from
+source's magicCoatAffected=TRUE table (and so correctly NOT bounceable): Encore,
+Disable, Psych Up, Conversion, Conversion 2, Pain Split, Trick Room, and every
+self-targeting stat move (Swords Dance, Growth). **Known, documented scope limit**:
+Stealth Rock IS `magicCoatAffected=TRUE` in source (Gen5+), but hazard-setting in
+this project runs through an entirely separate side-wide dispatch
+(`move.is_stealth_rock`) that this tier does not touch — extending Magic Bounce to
+hazards would need that dispatch reworked to check for an opposing Magic Bounce
+holder, a larger effort than this ability's own budget; flagged for a future tier if
+hazard-bounce is ever wanted, not silently dropped.
+
+Implementation: a single non-recursive attacker/defender local-variable swap in
+`_phase_move_execution`, checked once immediately after `foe_targeting` is computed
+(before the Substitute/type-immunity/Prankster gates further down, matching source's
+own early-canceler ordering) — `AbilityManager.bounces_status_move` gates the swap.
+Because the swap is linear (never re-entered), this project gets "a move can only
+ever be bounced ONCE" for free, matching source's own `bouncedMoveIsUsed` guard
+(`TryMagicBounce`/`TryMagicCoat` both unconditionally return FALSE once set) —
+confirmed via an explicit Magic-Bounce-vs-Magic-Bounce test (a Magic Bounce attacker's
+Growl bounces off a Magic Bounce holder and lands on the ORIGINAL ATTACKER; the
+holder's own Magic Bounce never gets a second chance to reflect it back again).
+**Prankster + Dark-type interaction, confirmed from source rather than assumed**:
+`CanTargetBlockPranksterMove` (battle_util.c L2203-2210) explicitly skips the
+Dark-type Prankster-immunity block when the TARGET currently has Magic Bounce active
+— Magic Bounce takes priority over simply shrugging the move off as Dark-type-immune.
+This project's Magic Bounce check sits BEFORE `blocks_prankster_move` in
+`_phase_move_execution` for exactly this reason — a Dark-type Magic Bounce holder hit
+by a Prankster-boosted status move correctly bounces it rather than the
+Prankster-Dark-immunity gate eating it as a no-op first (tested explicitly, with a
+discriminator confirming the SAME setup without Magic Bounce DOES fail as
+`prankster_dark_immune`). `.breakable = TRUE` in source's data table (confirmed via
+`data/abilities.h` L1179) — the one exception among this tier's three abilities — a
+Mold-Breaker-wielding attacker's status move is NOT reflected at all (tested
+explicitly: the Magic Bounce holder's own stat drops normally against a Mold Breaker
+attacker).
+
+New `m17n9_test.gd`/`.tscn`: 63/63 assertions across 13 sections (ability data
+spot-checks incl. Magic Bounce's `breakable=true` confirmation; Magic Guard direct
+unit tests for all six exempted sources plus the toxic-counter-still-ticks nuance,
+plus full-battle integration for weather chip/status/recoil/hazards with plain-mon
+discriminators throughout; Infiltrator unit tests plus full-battle screens-bypass and
+Substitute-bypass tests, each with a plain-attacker discriminator proving the
+baseline mechanic actually fires without Infiltrator; Magic Bounce unit tests
+(Mold-Breaker and Neutralizing-Gas suppression) plus full-battle reflection (with a
+damaging-move-not-bounced discriminator and an Encore-not-bounced discriminator),
+the Mold Breaker bypass scenario, the Magic-Bounce-vs-Magic-Bounce scenario, and the
+Prankster+Dark-type scenario with its own discriminator; Neutralizing Gas suppression
+for all three abilities; a negative control). One real test-design bug was caught
+and fixed during this tier's own first test run: the Magic-Bounce-vs-Magic-Bounce
+scenario initially gave both mons Growl, which meant EACH mon's own independent
+Growl also got reflected by the other's Magic Bounce — two legitimate but unrelated
+bounce events, not "the same move bouncing twice" — masking the actual property
+under test; fixed by giving the holder a harmless Tackle instead, isolating the
+scenario to exactly one bounceable move per turn, and additionally discovered that
+`_make_mon`'s `hp` parameter sets `base_hp` (a stat feeding the level-50 HP formula),
+not literal current/max HP — a low `base_hp` still yields a real HP value well above
+the literal number passed, so ending a battle after exactly one turn requires setting
+`current_hp` directly post-construction (matching `[M17n-8]`'s own established
+precedent for the same reason), not passing a low number to `_make_mon`. Stable
+across 8 consecutive reruns.
+
+Full regression (direct foreground bash sweep, `pkill -9 -f "Godot.*--headless"`
+first per the standing process discipline, `scripts/count_assertions.sh` against the
+fresh sweep output per the standing four-step verification convention): all 42 prior
+`.tscn` files pass unchanged, 0 real failures. `m16c_test.tscn` (the existing screens
+test file) and `tier4_test.tscn` (the existing primary Substitute test file) were
+each additionally rerun 5 times on their own, given this tier touches both systems
+extensively — stable at 60/60 and 86/86 every time, no regression in pre-existing
+coverage. Re-ran the full sweep a second time from a clean process state; both runs
+produced 0 failures and an identical total. Total assertions across all 43 `.tscn`
+files: 2304 prior + 63 = **2367**, confirmed via `count_assertions.sh` and
+reproducible across both runs.
+
+- 2026-07-06.
+
+### Next tier
+
+**M17n-10 (Unique/standalone part 1: Screen Cleaner, Liquid Ooze, Pressure, Quick
+Feet, Guard Dog, Forecast — 6 abilities)** is next per `docs/m17n_recon.md`'s own
+Group 8 "Unique/standalone" sub-cluster, continuing the split of that group into
+smaller sub-tiers. Quick Feet requires patching a pre-existing `StatusManager` gap
+(M3's decisions.md S19 known gap, gating paralysis speed-halving on
+`ability != ABILITY_QUICK_FEET`); Forecast needs a new "weather just changed, notify
+all battlers" broadcast hook M11's weather system doesn't have today (shared
+dependency with the still-unscheduled Protosynthesis). Good As Gold and Wonder Skin
+remain unscheduled in Group 8's own clusters.
+
+## [M17n-10] Group 8, "unique/standalone" part 1 — Screen Cleaner, Liquid Ooze,
+## Pressure, Quick Feet, Guard Dog, Forecast — RECOVERY SESSION
+
+**COMPLETE** — 2026-07-06. A prior session crashed mid-implementation; this entry
+documents both the recovery findings and the completed tier honestly, rather than
+presenting it as if the crashed session's work simply continued smoothly.
+
+### Recovery findings (Step 0 — re-verified from scratch, not trusted from the
+### crashed session's own transcript)
+
+The crashed session's own visible transcript claimed Screen Cleaner and Forecast
+were "being wired in" and Liquid Ooze's drain-inversion predicate was "just being
+started" when it cut off, with Pressure/Quick Feet/Guard Dog apparently not yet
+touched. Direct inspection of the actual repo state told a different, more mixed
+story:
+
+- **Liquid Ooze**: fully implemented and correctly wired (`inverts_drain`, called at
+  the single drain-application site in `_do_damaging_hit`). Re-verified independently
+  against `SetHealScript` (battle_move_resolution.c L2586-2600) — correct as found.
+- **Forecast**: fully implemented and correctly wired (`forecast_type`, plus the new
+  `BattleManager._notify_weather_changed()` hook called from all 4 weather-change
+  sites: switch-in setter, Baton Pass, Sand Spit, natural expiration). Re-verified
+  independently against `ABILITYEFFECT_ON_WEATHER` (battle_util.c L4696-4712) and
+  Castform's form-change table — correct as found.
+- **Screen Cleaner, Pressure, Quick Feet, Guard Dog**: only their ability-ID
+  constants existed (plus a design-intent comment block) — zero implementation logic
+  for any of the four.
+- **A real gap in BOTH "already done" abilities**: none of the 6 abilities' AbilityData
+  `.tres` files had been regenerated — all 6 still had empty placeholder
+  `description`/`ai_rating=0` even though Liquid Ooze/Forecast's GDScript logic was
+  complete. Confirms the crash left a gap even in the parts that "worked."
+- Full sweep at the start of this session: 43 files, 2367 assertions, 0 failures,
+  reconfirmed exactly matching the documented baseline — no partial-edit breakage
+  from the crash, no stray/debug files in `scenes/battle/`.
+
+### Implementation
+
+**Screen Cleaner** (switch-in): `TryRemoveScreens` (battle_util.c L9001-9022) clears
+`SIDE_STATUS_SCREEN_ANY` (Reflect | Light Screen | Aurora Veil — confirmed via
+`include/constants/battle.h`; Safeguard/Mist are NOT included) from BOTH the
+holder's own side AND the opposing side unconditionally, reusing Brick Break's exact
+clear-and-`screens_broken`-signal shape from `[M16c]` applied to both sides instead
+of one. Wired into `_apply_switch_in_abilities`; NOT wired into the separate Baton
+Pass switch-in block (a new addition to that block's already-established known-gap
+list — Trace/Download/Hospitality were already excluded there per `[M17h]`/`[M17b]`/
+`[M17c]`).
+
+**Liquid Ooze**: no new work this session (already complete, see Recovery Findings).
+
+**Pressure**: `CancelerPPDeduction` (battle_move_resolution.c L982-1002). New
+`AbilityManager.pressure_pp_cost(move, attacker, defender, attacker_side, combatants,
+active_per_side, ng_active)`: for a spread move (`MoveData.is_spread`),
+`TARGET_ALL_BATTLERS`, or `TARGET_FIELD`, +1 PP per LIVE, non-ally Pressure holder —
+the doubles-spread edge case confirmed from source: a spread move against two
+Pressure holders costs 3 PP, not 2, since source's loop counts both opposing slots
+independently. For any other single-target move, +1 PP only if the resolved
+defender itself has Pressure and isn't the attacker (self/ally-targeting moves
+naturally net zero via this same check, matching source's `battlerAtk != battlerDef`
+guard — no separate check needed). `TARGET_OPPONENTS_FIELD` hazards are explicitly
+excluded in source and never draw extra PP. `BattlePokemon.use_pp` gained an
+`amount` param (default 1, clamped to 0 like source's own `pp[...] -= ppToDeduct`/
+`else pp[...] = 0` clamp) to carry the computed cost through to the single existing
+PP-deduction call site in `_phase_move_execution`.
+
+**Quick Feet**: `battle_main.c` L4676-4677 (unconditional ×1.5 boost, `(speed * 150)
+/ 100`, for ANY major status1 condition — not paralysis-specific) plus L4712-4713
+(the paralysis speed-halving check is itself gated `ability != ABILITY_QUICK_FEET`).
+This is a REPLACE, not a stack: a paralyzed Quick Feet holder's speed is ×1.5, never
+×1.5×0.5, since source skips the halving branch entirely rather than applying both.
+Closes the M3-era decisions.md S19 known gap — which itself cited the wrong
+ability_id (7, not 95; corrected in place at its own entry above rather than
+silently fixed).
+
+**Guard Dog** — genuinely TWO independent mechanics, not the single
+Intimidate-reversal shape the recon originally described (re-derived fresh from
+source rather than trusted from that framing, per this session's own standing
+discipline):
+1. **Intimidate reversal**: `IsIntimidateBlocked`'s Guard Dog case
+   (battle_stat_change.c L676-690) — reverses (not merely blocks) Intimidate's -1
+   Attack drop into a +1 raise for the intimidated Pokémon itself, reusing
+   `BattleScript_DefiantActivates` (confirming this is mechanically Defiant's own
+   reactive-raise shape, but Intimidate-specific, not "any Attack decrease" the way
+   Defiant/Competitive are). Gated on Attack not already at the -6 floor
+   (`CompareStat(..., MIN_STAT_STAGE, CMP_GREATER_THAN, ...)`, L699) — the same
+   "the incoming drop would be a real no-op otherwise" gate `[M17b]` already
+   established for Defiant/Competitive. New `try_switch_in` result key
+   `opponent_guard_dog_change`, wired at both call sites that already handle
+   `atk_change`/`opponent_defiant_change` (the main switch-in loop and the separate
+   Baton Pass switch-in block — this one DOES need wiring there, unlike Screen
+   Cleaner, since it lives inside the shared `try_switch_in` call already present in
+   both places).
+2. **Forced-switch block**: `EFFECT_HIT_SWITCH_TARGET` handling
+   (battle_move_resolution.c L3517-3524) — a completely separate mechanic,
+   unconditionally cancels Roar/Whirlwind's forced switch before it applies, no stat
+   interaction at all. New `AbilityManager.blocks_forced_switch(defender, attacker,
+   ng_active)`, checked in the Roar/Whirlwind block in `_phase_move_execution`
+   before the party-slot lookup.
+
+**A genuine mid-implementation correction, caught by this session's own source
+tracing rather than assumed**: Guard Dog's `.breakable = TRUE` flag does NOT apply
+uniformly to both halves. `moldBreakerActive`'s own source set-site
+(`battle_util.c` L9799: `if (gCurrentMove != MOVE_NONE) moldBreakerActive = ...;
+else moldBreakerActive = FALSE;`) confirms it is FALSE whenever no move is currently
+resolving — and a switch-in ability trigger (Intimidate/Guard-Dog-reversal)
+structurally never has a "current move." The forced-switch block, by contrast, fires
+during an actual Roar/Whirlwind resolution — genuinely inside a move-processing
+window. So `.breakable` only matters for `blocks_forced_switch`; the
+Intimidate-reversal half correctly calls `effective_ability_id(opponent, ng_active)`
+with NO `attacker` param, the same "architecturally outside any move-processing
+window" reasoning `[M17f]`/`[M17g]` already established for trapping's own
+deliberately-attacker-less `is_trapped()`. This was initially implemented WRONG
+(with an `attacker` param on the Intimidate-reversal check) and caught only because
+writing the test for it exposed that no scenario can even construct the claimed
+interaction (a single mon can't simultaneously hold Intimidate AND Mold Breaker) —
+fixed before this tier was called complete, not left in.
+
+Source's Red-Card forced-switch reference (`battle_move_resolution.c` L3748) has no
+equivalent here — this project has no Red Card item, confirmed via grep — and its
+neighboring Suction Cups reference is a different, unimplemented ability; both out
+of scope. Its Flower-Veil-ally speed-order tie-break (`StatChange_IsFlowerVeilProtected`,
+L678-681 — a doubles-only guard against double-applying the block when a Grass-type
+Guard-Dog-holder's own Flower-Veil-holding ally would already block the drop first)
+is also out of scope, flagged not implemented.
+
+**Forecast**: no new work this session (already complete, see Recovery Findings) —
+`.tres` regeneration was the only outstanding piece.
+
+### Data pipeline
+
+All 6 abilities added to `gen_abilities.py` with real, source-cited descriptions
+(previously empty placeholders) and correct flags (Guard Dog `breakable=true`;
+Forecast `cant_be_copied`/`cant_be_traced`). Regenerated via `python3
+scripts/gen_abilities.py` — 222 total `.tres` files, all 6 confirmed correct by direct
+read after generation.
+
+### Testing
+
+New `m17n10_test.gd`/`.tscn`: 59/59 assertions across 11 sections (ability data;
+Liquid Ooze/Forecast re-verification unit + full-battle tests; Screen Cleaner
+both-sides-clear full-battle test with a plain-Pokémon discriminator; Pressure direct
+unit tests covering all branches — single-target, the doubles-spread edge case,
+hazard-exclusion — plus full-battle integration including a real doubles Magnitude
+scenario; Quick Feet direct speed tests plus a full-battle turn-order flip; Guard Dog
+both halves — Intimidate reversal with the floor-gate and the NOT-Mold-Breaker-aware
+finding documented as a source-citation rather than a dynamically-tested scenario
+(untestable by construction), and the forced-switch block with its own Mold Breaker
+bypass and a plain-defender discriminator; a Neutralizing-Gas-suppression matrix
+covering all 6; a negative control).
+
+Three test-authoring bugs were caught and fixed during this tier, all before first
+green run counted as final:
+1. **The `_make_mon(..., hp: int, ...)` parameter is a BASE stat, not actual/current
+   HP** — passing a low value (e.g. `1`) to fake a near-death attacker does nothing
+   useful, since the real HP formula still produces a much larger actual max HP at
+   level 50. Three Pressure PP tests originally did this, causing the intended
+   "attacker faints after its one move" setup to silently not happen, leaving the
+   battle to run many uncontrolled extra turns and consume far more PP than
+   expected. Fixed by explicitly setting `.current_hp = 1` after construction, the
+   same pattern already used elsewhere in this codebase (e.g. `[M17n-9]`'s
+   Magic-Bounce-vs-Magic-Bounce section).
+2. **Paralysis's independent 25% full-para chance has no test-level override
+   anywhere in this codebase.** The original Quick Feet full-battle turn-order test
+   used an actual paralyzed mon, making the assertion intermittently (and
+   misleadingly) fail whenever full-para RNG happened to skip the Quick Feet
+   holder's turn — unrelated to whether Quick Feet itself worked correctly. Fixed by
+   testing turn order with POISON instead, which triggers the identical ×1.5 boost
+   (already confirmed status-agnostic in this same session, matching source) with no
+   such RNG risk.
+3. **The Mold-Breaker-scope bug described above** (Guard Dog's Intimidate-reversal
+   half wrongly given an `attacker` param) was caught specifically because writing a
+   test for it exposed the underlying scenario was physically impossible to
+   construct — a good example of test-writing surfacing a real implementation bug
+   rather than just confirming one.
+
+### Regression
+
+Full suite sweep (direct foreground bash, `pkill -9` first): all 43 prior files pass
+unchanged, 0 real failures. `count_assertions.sh` run twice from independently clean
+process states, both producing the identical total. `m16c_test.tscn` (screens) and
+`pp_test.tscn` (PP) each rerun 5 consecutive times given this tier touches both
+directly; `m17n10_test.tscn` itself rerun 8 times. All stable, 0 flakes.
+
+**Total assertions across all 44 `.tscn` files: 2367 prior + 59 = 2426**, confirmed
+via `count_assertions.sh` and reproducible across two independent clean sweeps
+(2026-07-06).
+
+**M17n-11 (Comatose, Costar, Wonder Skin, Mirror Armor — 4 abilities)** is next.
+

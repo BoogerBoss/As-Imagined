@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 244
 ability_name = "Punk Rock"
-description = ""
-ai_rating = 0
+description = "Powers up sound-based moves. Also halves the damage taken from sound-based moves."
+ai_rating = 6
+breakable = true

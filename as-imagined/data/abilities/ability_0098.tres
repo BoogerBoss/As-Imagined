@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 98
 ability_name = "Magic Guard"
-description = ""
-ai_rating = 0
+description = "The Pokémon only takes damage from direct attacks."
+ai_rating = 9

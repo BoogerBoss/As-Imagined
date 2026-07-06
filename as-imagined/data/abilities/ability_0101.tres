@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 101
 ability_name = "Technician"
-description = ""
-ai_rating = 0
+description = "Powers up the Pokémon's weaker moves."
+ai_rating = 6
+breakable = true

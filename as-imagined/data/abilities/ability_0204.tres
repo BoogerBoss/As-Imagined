@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 204
 ability_name = "Liquid Voice"
-description = ""
-ai_rating = 0
+description = "Sound-based moves become Water-type moves."
+ai_rating = 5

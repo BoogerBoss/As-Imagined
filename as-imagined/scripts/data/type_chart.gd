@@ -94,8 +94,19 @@ const UQ412_SE: int      = 8192  # 2.0x — super-effective
 # Returns the UQ4.12 integer modifier for one attacker-type vs one defender-type.
 # Used for per-type application in DamageCalculator.
 # Source: src/data/types_info.h :: gTypeEffectivenessTable; TABLE entry converted to UQ4.12.
-static func get_uq412(atk_type: int, def_type: int) -> int:
+#
+# M17n-6: bypass_ghost_immunity — true only for a Scrappy/Mind's Eye-holding attacker.
+# Source (battle_util.c :: MulByTypeEffectiveness, L8046-8052): checked PER
+# defending-type component, restricted to Normal/Fighting-type moves vs a Ghost-type
+# component specifically — mirrors weaken_flying_se's per-component pattern below,
+# NOT the combined product (a dual-type defender's OTHER type's own modifier is
+# untouched). Plain bool param (not an ability enum) for the same data-layer/
+# DamageCalculator separation reason weaken_flying_se already established.
+static func get_uq412(atk_type: int, def_type: int, bypass_ghost_immunity: bool = false) -> int:
 	var eff: float = TABLE[atk_type][def_type]
+	if bypass_ghost_immunity and def_type == TYPE_GHOST and eff == 0.0 \
+			and (atk_type == TYPE_NORMAL or atk_type == TYPE_FIGHTING):
+		eff = 1.0
 	if eff == 0.0: return UQ412_IMMUNE
 	if eff == 0.5: return UQ412_NVE
 	if eff == 2.0: return UQ412_SE
@@ -115,8 +126,13 @@ static func get_uq412(atk_type: int, def_type: int) -> int:
 #   (DamageCalculator.calculate) computes the bool itself. Every other caller (AI
 #   heuristics, hazard/OHKO type checks) defaults to false — same simplification
 #   precedent as weather-aware AI scoring being explicitly deferred since M11.
+# M17n-6: bypass_ghost_immunity — see get_uq412's doc comment above; same per-component
+# semantics (checked per defending type, not on the combined product), threaded through
+# here too since this function is the OTHER independent type-effectiveness computation
+# in this project (used for the early immunity short-circuit / Wonder Guard's own read),
+# mirroring the same duplication already established for weaken_flying_se (M17d).
 static func get_effectiveness(atk_type: int, def_types: Array,
-		weaken_flying_se: bool = false) -> float:
+		weaken_flying_se: bool = false, bypass_ghost_immunity: bool = false) -> float:
 	if atk_type == TYPE_MYSTERY:
 		return 1.0
 	var modifier := 1.0
@@ -124,12 +140,18 @@ static func get_effectiveness(atk_type: int, def_types: Array,
 	var first_mod: float = TABLE[atk_type][first_type]
 	if weaken_flying_se and first_type == TYPE_FLYING and first_mod >= 2.0:
 		first_mod = 1.0
+	if bypass_ghost_immunity and first_type == TYPE_GHOST and first_mod == 0.0 \
+			and (atk_type == TYPE_NORMAL or atk_type == TYPE_FIGHTING):
+		first_mod = 1.0
 	modifier *= first_mod
 	if modifier == 0.0:
 		return 0.0
 	if def_types.size() > 1 and def_types[1] != first_type and def_types[1] != TYPE_NONE:
 		var second_mod: float = TABLE[atk_type][def_types[1]]
 		if weaken_flying_se and def_types[1] == TYPE_FLYING and second_mod >= 2.0:
+			second_mod = 1.0
+		if bypass_ghost_immunity and def_types[1] == TYPE_GHOST and second_mod == 0.0 \
+				and (atk_type == TYPE_NORMAL or atk_type == TYPE_FIGHTING):
 			second_mod = 1.0
 		modifier *= second_mod
 	return modifier

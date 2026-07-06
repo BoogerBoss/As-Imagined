@@ -44,6 +44,7 @@ const BAN_DAMP: int          = 1 << 13
 @export var powder_move: bool = false
 @export var dance_move: bool = false
 @export var slicing_move: bool = false
+@export var pulse_move: bool = false
 @export var healing_move: bool = false
 @export var ignores_protect: bool = false
 @export var ignores_substitute: bool = false
@@ -598,3 +599,12 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   volatiles.focusEnergy (+ dragonCheer/bonusCritStages, unimplemented here).
 # Source: include/config/battle.h L97 — B_PSYCH_UP_CRIT_RATIO = GEN_LATEST.
 @export var is_psych_up: bool = false
+
+# M17n-9: Magic Bounce — true for the exact subset of this project's foe-targeting
+# status moves that carry `magicCoatAffected = TRUE` in source
+# (`gMovesInfo[move].magicCoatAffected`, include/move.h L350-352). Re-derived
+# per-move from source rather than assumed for "every status move" — see
+# AbilityManager.bounces_status_move's doc comment for the full reasoning and the
+# confirmed-excluded moves (Encore, Disable, Psych Up, Conversion/Conversion 2,
+# Pain Split, Trick Room, self-targeting stat moves).
+@export var bounceable: bool = false

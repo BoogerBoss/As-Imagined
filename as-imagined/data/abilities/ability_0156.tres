@@ -7,5 +7,6 @@ script = ExtResource("1")
 
 ability_id = 156
 ability_name = "Magic Bounce"
-description = ""
-ai_rating = 0
+description = "Reflects status moves instead of being hit by them."
+ai_rating = 9
+breakable = true

@@ -34,7 +34,17 @@
       "Bash(echo \"TEST_EXIT=$?\")",
       "Bash(echo \"IMPORT_EXIT=$?\")",
       "Bash(python3 -)",
-      "Bash(cat /tmp/import2.log)"
+      "Bash(cat /tmp/import2.log)",
+      "Bash(timeout 25 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17n6_test.tscn)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(pkill -f Godot)",
+      "Bash(rm -f /tmp/claude-1000/-home-rob-GodotAsImagined/ead4c318-33eb-4eb4-afc9-a2b31e1bc643/scratchpad/sweep.log)",
+      "Bash(nohup bash -c ' *)",
+      "Bash(disown)",
+      "Bash(echo \"launched pid $!\")",
+      "Bash(timeout 25 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17n7_test.tscn)",
+      "Bash(bash /tmp/claude-1000/-home-rob-GodotAsImagined/ead4c318-33eb-4eb4-afc9-a2b31e1bc643/scratchpad/instrument_and_run.sh switch_test)",
+      "Bash(bash /home/rob/GodotAsImagined/as-imagined/scripts/count_assertions.sh /tmp/m17n8_full_sweep.txt)"
     ]
   }
 }
