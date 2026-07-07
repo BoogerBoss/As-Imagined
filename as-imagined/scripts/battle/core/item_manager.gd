@@ -8,6 +8,13 @@ extends RefCounted
 # ── Hold-effect constants ─────────────────────────────────────────────────────
 # Source: include/constants/hold_effects.h
 const HOLD_EFFECT_NONE:          int = 0
+const HOLD_EFFECT_RESTORE_HP:    int = 1    # M18b: Oran Berry — flat heal
+const HOLD_EFFECT_CURE_PAR:      int = 2    # M18b: Cheri Berry
+const HOLD_EFFECT_CURE_SLP:      int = 3    # M18b: Chesto Berry
+const HOLD_EFFECT_CURE_PSN:      int = 4    # M18b: Pecha Berry — cures Poison AND Toxic
+const HOLD_EFFECT_CURE_BRN:      int = 5    # M18b: Rawst Berry
+const HOLD_EFFECT_CURE_FRZ:      int = 6    # M18b: Aspear Berry
+const HOLD_EFFECT_CURE_CONFUSION: int = 8   # M18b: Persim Berry — clears confusion_turns, not status
 const HOLD_EFFECT_CURE_STATUS:   int = 9    # Lum Berry — onStatusChange flag set
 const HOLD_EFFECT_CHOICE_BAND:   int = 29
 const HOLD_EFFECT_LEFTOVERS:     int = 41
@@ -199,11 +206,18 @@ static func leftovers_heal(mon: BattlePokemon, ng_active: bool = false) -> int:
 	return max(1, mon.max_hp / 16)
 
 
-# ── Sitrus Berry ──────────────────────────────────────────────────────────────
+# ── HP-threshold berries (Sitrus / Oran) ───────────────────────────────────────
 #
 # Source: HasEnoughHpToEatBerry (battle_util.c L5461–5476): threshold = max_hp / hpFraction.
-#   Sitrus Berry has hpFraction=2 (hardcoded via battlerAbilityParam for onHpThreshold items).
-#   Heal amount = max_hp * param / 100 where param=25 (from items.h Sitrus Berry definition).
+#   Sitrus Berry AND Oran Berry (M18b) both hardcode hpFraction=2 — confirmed both
+#   are the SAME single caller, ItemHealHp (battle_hold_effects.c L826-849), which
+#   always calls HasEnoughHpToEatBerry(..., 2, ...) regardless of which of the two
+#   hold_effect cases dispatched into it. Only the AMOUNT differs:
+#     HOLD_EFFECT_RESTORE_PCT_HP (Sitrus): heal = max_hp * param / 100, param=25.
+#     HOLD_EFFECT_RESTORE_HP (Oran, M18b): heal = param directly (flat), param=10.
+#   Renamed from sitrus_berry_heal (M18b) — this function now covers both, since
+#   both share every gate below (Klutz/Unnerve/Gluttony/Cud-Chew-override/Ripen)
+#   identically; only the final amount computation branches.
 # Fires at MoveEnd after damage (MoveEndHpThresholdItemsTarget, battle_move_resolution.c).
 # Returns heal amount if triggered, 0 otherwise. Berry is consumed on trigger.
 
@@ -223,10 +237,11 @@ static func leftovers_heal(mon: BattlePokemon, ng_active: bool = false) -> int:
 # hp == maxHP)`) is a plain already-at-full-HP no-op, reproduced below directly.
 # Klutz is moot in the override branch regardless (Klutz and Cud Chew can never
 # coexist on the same holder, since a Pokémon has exactly one ability).
-static func sitrus_berry_heal(mon: BattlePokemon, ng_active: bool = false,
+static func hp_threshold_berry_heal(mon: BattlePokemon, ng_active: bool = false,
 		unnerve_active: bool = false, override_item: ItemData = null) -> int:
 	var item: ItemData = override_item if override_item != null else effective_held_item(mon, ng_active)
-	if item == null or item.hold_effect != HOLD_EFFECT_RESTORE_PCT_HP:
+	if item == null or (item.hold_effect != HOLD_EFFECT_RESTORE_PCT_HP
+			and item.hold_effect != HOLD_EFFECT_RESTORE_HP):
 		return 0
 	if override_item != null:
 		if mon.current_hp >= mon.max_hp:
@@ -246,30 +261,94 @@ static func sitrus_berry_heal(mon: BattlePokemon, ng_active: bool = false,
 		var fraction: int = AbilityManager.gluttony_adjusted_hp_fraction(mon, 2, ng_active)
 		if mon.current_hp > mon.max_hp / fraction:
 			return 0
-	var pct: int = item.hold_effect_param  # 25 for Sitrus Berry
-	return max(1, mon.max_hp * pct / 100)
+	var heal_amount: int
+	if item.hold_effect == HOLD_EFFECT_RESTORE_PCT_HP:
+		heal_amount = mon.max_hp * item.hold_effect_param / 100  # 25 for Sitrus Berry
+	else:
+		heal_amount = item.hold_effect_param  # 10 for Oran Berry, flat (M18b)
+	# M18b: Ripen doubles the heal amount for BOTH modes — source: ItemHealHp
+	# (battle_hold_effects.c L841-842): `ability == ABILITY_RIPEN && GetItemPocket
+	# == POCKET_BERRIES → healAmount *= 2`, applied AFTER the amount is computed,
+	# identically regardless of percent-vs-flat mode. NOTE: this is a genuinely new
+	# addition — the pre-M18b Sitrus path never implemented Ripen-doubles-heal
+	# (only Ripen-doubles-resist-berry existed, in defender_item_modifier_uq412
+	# above, [M17c]); confirmed via source this was a real pre-existing gap in
+	# Sitrus's own implementation, not something M18b broke — fixed here since
+	# writing this function's amount-computation correctly from scratch either
+	# includes it or knowingly omits it, and omitting a confirmed source behavior
+	# without a reason wouldn't be defensible. Flagged in docs/decisions.md.
+	if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_RIPEN:
+		heal_amount *= 2
+	return max(1, heal_amount)
 
 
-# ── Lum Berry ─────────────────────────────────────────────────────────────────
+# ── Status-cure berries (Lum / Cheri / Chesto / Pecha / Rawst / Aspear) ────────
 #
 # Source: gHoldEffectsInfo (hold_effects.h) — CURE_STATUS has onStatusChange=TRUE.
 #   Fires in ItemBattleEffects when any non-volatile status is inflicted (ITEMEFFECT_CURE_STATUS).
-#   Source function: TryCureAnyStatus (battle_hold_effects.c L764+).
+#   Source function: TryCureAnyStatus (battle_hold_effects.c L764+) for Lum Berry.
+# M18b: Cheri/Chesto/Pecha/Rawst/Aspear each have their OWN distinct hold_effect
+#   constant in source (HOLD_EFFECT_CURE_PAR/SLP/PSN/BRN/FRZ) — confirmed via
+#   src/data/items.h direct read that NONE of them use HOLD_EFFECT_CURE_STATUS
+#   (that one is Lum Berry-exclusive). Source functions: TryCureParalysis/
+#   TryCurePoison/TryCureBurn/TryCureFreezeOrFrostbite/TryCureSleep
+#   (battle_hold_effects.c L665-748), each a direct single-status check against
+#   status1. Renamed from lum_berry_cures (M18b) to reflect the broadened scope;
+#   every existing call site already threads through this one function, so no
+#   BattleManager call site needed to change shape, only this function's own body.
+# TryCurePoison (source L680-692) checks STATUS1_PSN_ANY, not just plain poison —
+#   Pecha Berry cures BOTH regular Poison and Toxic. Reproduced below via an `or`.
 # Returns true when the berry should cure and be consumed.
 # M17n-7: `ng_active`/`unnerve_active`/`override_item` — same shape as
-# sitrus_berry_heal above (Cud Chew's re-trigger reuses this for a Lum Berry too).
-# `TryCureAnyStatus` has no HP-threshold gate to begin with, so `override_item`'s
-# only effect here is bypassing `unnerve_active` (matching `IsUnnerveBlocked`'s
-# `overrideBerryRequirements` check, battle_util.c L338) — see sitrus_berry_heal's
-# doc comment for the full source citation shared by both functions.
-static func lum_berry_cures(mon: BattlePokemon, ng_active: bool = false,
+# hp_threshold_berry_heal above (Cud Chew's re-trigger reuses this for any of these
+# six berries too, automatically, once wired — no Cud Chew call-site change needed
+# beyond what M17n-7 already built).
+# `TryCureAnyStatus`/its five per-status siblings have no HP-threshold gate to
+# begin with, so `override_item`'s only effect here is bypassing `unnerve_active`
+# (matching `IsUnnerveBlocked`'s `overrideBerryRequirements` check, battle_util.c
+# L338) — see hp_threshold_berry_heal's doc comment for the full source citation.
+static func status_cure_berry_cures(mon: BattlePokemon, ng_active: bool = false,
 		unnerve_active: bool = false, override_item: ItemData = null) -> bool:
 	var item: ItemData = override_item if override_item != null else effective_held_item(mon, ng_active)
-	if item == null or item.hold_effect != HOLD_EFFECT_CURE_STATUS:
+	if item == null:
 		return false
 	if override_item == null and unnerve_active:
 		return false
-	return mon.status != BattlePokemon.STATUS_NONE
+	match item.hold_effect:
+		HOLD_EFFECT_CURE_STATUS:
+			return mon.status != BattlePokemon.STATUS_NONE
+		HOLD_EFFECT_CURE_PAR:
+			return mon.status == BattlePokemon.STATUS_PARALYSIS
+		HOLD_EFFECT_CURE_SLP:
+			return mon.status == BattlePokemon.STATUS_SLEEP
+		HOLD_EFFECT_CURE_PSN:
+			return mon.status == BattlePokemon.STATUS_POISON or mon.status == BattlePokemon.STATUS_TOXIC
+		HOLD_EFFECT_CURE_BRN:
+			return mon.status == BattlePokemon.STATUS_BURN
+		HOLD_EFFECT_CURE_FRZ:
+			return mon.status == BattlePokemon.STATUS_FREEZE
+		_:
+			return false
+
+
+# ── Persim Berry (confusion cure) ──────────────────────────────────────────────
+#
+# Source: TryCureConfusion (battle_hold_effects.c L750-761): checks
+#   volatiles.confusionTurns > 0, clears it. Architecturally separate from
+#   status_cure_berry_cures above — confusion is a VOLATILE (this project's
+#   BattlePokemon.confusion_turns), not part of .status at all, so it cannot
+#   share that function's dispatch (which only ever reads/clears .status).
+# M17n-7: `ng_active`/`unnerve_active`/`override_item` — same shape as the two
+# functions above (Cud Chew's re-trigger reuses this for Persim Berry too, via a
+# new third branch in BattleManager's Cud Chew match statement).
+static func confusion_cure_berry_cures(mon: BattlePokemon, ng_active: bool = false,
+		unnerve_active: bool = false, override_item: ItemData = null) -> bool:
+	var item: ItemData = override_item if override_item != null else effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_CURE_CONFUSION:
+		return false
+	if override_item == null and unnerve_active:
+		return false
+	return mon.confusion_turns > 0
 
 
 # ── Weather duration ──────────────────────────────────────────────────────────

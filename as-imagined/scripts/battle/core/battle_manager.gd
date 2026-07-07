@@ -1971,11 +1971,21 @@ func _phase_move_execution() -> void:
 				secondary_applied.emit(defender, move.secondary_effect)
 				# Synchronize: defender received a primary status — check back-reflect.
 				_try_synchronize(defender, attacker, _se_to_status(move.secondary_effect))
-				# M12: Lum Berry cures status inflicted by status move primary effect.
+				# M12: Lum Berry (+ M18b: Cheri/Chesto/Pecha/Rawst/Aspear) cures status
+				# inflicted by status move primary effect.
 				# M17n-7: Unnerve — blocks this berry while any of defender's opponents has it.
-				if ItemManager.lum_berry_cures(defender, ng_active,
+				if ItemManager.status_cure_berry_cures(defender, ng_active,
 						AbilityManager.is_unnerve_active(_get_live_opponents(defender), ng_active)):
 					defender.status = BattlePokemon.STATUS_NONE
+					_consume_item(defender)
+				# M18b: Persim Berry cures confusion inflicted the same way — a SEPARATE
+				# check since confusion is a volatile (confusion_turns), not `.status`;
+				# both checks are self-guarding (each returns false unless its own
+				# specific hold_effect+condition match), so running both unconditionally
+				# is correct and never double-fires.
+				elif ItemManager.confusion_cure_berry_cures(defender, ng_active,
+						AbilityManager.is_unnerve_active(_get_live_opponents(defender), ng_active)):
+					defender.confusion_turns = 0
 					_consume_item(defender)
 			else:
 				move_effect_failed.emit(defender, "immune")
@@ -2263,9 +2273,14 @@ func _phase_end_of_turn() -> void:
 
 		# M17n-7: Cud Chew — arm/fire one-turn cycle. Firing re-runs the tracked
 		# berry's effect via the SAME ItemManager functions normal consumption uses
-		# (only one of the two will actually match the berry's real hold_effect;
+		# (only one of the three will actually match the berry's real hold_effect;
 		# Resist Berry deliberately has no re-trigger path here at all — it has no
 		# context-independent re-check to perform, confirmed absent from source).
+		# M18b: added the third (confusion_cure_berry_cures) branch for Persim Berry —
+		# status_cure_berry_cures/hp_threshold_berry_heal already cover the other 22
+		# new M18b items automatically, since both were extended in place rather than
+		# replaced; only Persim's confusion-based cure needed a genuinely new function
+		# this chain didn't already call.
 		match AbilityManager.cud_chew_check(mon, ng_active):
 			"arm":
 				mon.cud_chew_armed = true
@@ -2275,13 +2290,16 @@ func _phase_end_of_turn() -> void:
 				mon.last_consumed_berry = null
 				var cc_unnerve: bool = AbilityManager.is_unnerve_active(
 						_get_live_opponents(mon), ng_active)
-				var cc_heal: int = ItemManager.sitrus_berry_heal(mon, ng_active, cc_unnerve, cc_berry)
+				var cc_heal: int = ItemManager.hp_threshold_berry_heal(mon, ng_active, cc_unnerve, cc_berry)
 				if cc_heal > 0:
 					mon.current_hp = min(mon.max_hp, mon.current_hp + cc_heal)
 					item_healed.emit(mon, cc_heal)
 					ability_triggered.emit(mon, "cud_chew")
-				elif ItemManager.lum_berry_cures(mon, ng_active, cc_unnerve, cc_berry):
+				elif ItemManager.status_cure_berry_cures(mon, ng_active, cc_unnerve, cc_berry):
 					mon.status = BattlePokemon.STATUS_NONE
+					ability_triggered.emit(mon, "cud_chew")
+				elif ItemManager.confusion_cure_berry_cures(mon, ng_active, cc_unnerve, cc_berry):
+					mon.confusion_turns = 0
 					ability_triggered.emit(mon, "cud_chew")
 
 	# Route through SWITCH_PROMPT even after EOT so any EOT faint gets a replacement.
@@ -3337,9 +3355,16 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			else:
 				secondary_applied.emit(target, move.secondary_effect)
 				_try_synchronize(target, attacker, _se_to_status(move.secondary_effect))
-				if ItemManager.lum_berry_cures(target, ng_active,
+				# M18b: Cheri/Chesto/Pecha/Rawst/Aspear (status_cure_berry_cures) and
+				# Persim (confusion_cure_berry_cures) — same self-guarding-elif shape
+				# as the status-move-primary path above.
+				if ItemManager.status_cure_berry_cures(target, ng_active,
 						AbilityManager.is_unnerve_active(_get_live_opponents(target), ng_active)):
 					target.status = BattlePokemon.STATUS_NONE
+					_consume_item(target)
+				elif ItemManager.confusion_cure_berry_cures(target, ng_active,
+						AbilityManager.is_unnerve_active(_get_live_opponents(target), ng_active)):
+					target.confusion_turns = 0
 					_consume_item(target)
 
 	var contact_result: Dictionary = AbilityManager.try_contact_effects(
@@ -3355,7 +3380,11 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		secondary_applied.emit(attacker, _status_to_se(contact_status))
 		ability_triggered.emit(target, contact_result["ability_name"])
 		_try_synchronize(attacker, target, contact_status)
-		if ItemManager.lum_berry_cures(attacker, ng_active,
+		# M18b: contact abilities (Static/Flame Body/etc.) only ever inflict
+		# non-volatile status, never confusion — no confusion_cure_berry_cures check
+		# needed at this call site, unlike the two try_secondary_effect-adjacent
+		# sites above.
+		if ItemManager.status_cure_berry_cures(attacker, ng_active,
 				AbilityManager.is_unnerve_active(_get_live_opponents(attacker), ng_active)):
 			attacker.status = BattlePokemon.STATUS_NONE
 			_consume_item(attacker)
@@ -3479,8 +3508,10 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			item_damage.emit(attacker, lo_recoil)
 
 	if not target.fainted:
-		# M17n-7: Unnerve — blocks Sitrus Berry while any of target's opponents has it.
-		var sitrus_heal: int = ItemManager.sitrus_berry_heal(target, ng_active,
+		# M17n-7: Unnerve — blocks Sitrus/Oran Berry while any of target's opponents has it.
+		# M18b: renamed sitrus_heal var kept as-is for readability; the function itself
+		# now also covers Oran Berry's flat heal (hp_threshold_berry_heal).
+		var sitrus_heal: int = ItemManager.hp_threshold_berry_heal(target, ng_active,
 				AbilityManager.is_unnerve_active(_get_live_opponents(target), ng_active))
 		if sitrus_heal > 0:
 			target.current_hp = min(target.max_hp, target.current_hp + sitrus_heal)

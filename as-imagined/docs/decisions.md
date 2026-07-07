@@ -8871,3 +8871,174 @@ directly below `[M18a]`'s own line, closing the gap that entry flagged. `[M18a]`
 own status line was left factually as-is (it accurately describes what that
 session found and did) rather than rewritten to imply the gap was already closed
 at the time.
+
+## [M18b] Berry/misc items on existing dispatches — resist berries, status/confusion-cure berries, Oran Berry (23 items)
+
+Second M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18b section —
+the first tier to target the new item-data pipeline (`gen_items.py` → `.tres` →
+`ItemRegistry`) from the start. Re-verified every item against source directly
+before implementing, per standing project discipline, and found the plan's
+"zero new mechanism" cheapness claim held for only 16 of the 23 items.
+
+### Finalized 23-item list (all IDs/hold_effects/params re-derived from source)
+
+**Resist berries (16) — `HOLD_EFFECT_RESIST_BERRY`(80), confirmed zero new
+mechanism, plan's claim fully accurate:** Passho(551,Water), Wacan(552,Electric),
+Rindo(553,Grass), Yache(554,Ice), Chople(555,Fighting), Kebia(556,Poison),
+Shuca(557,Ground), Coba(558,Flying), Payapa(559,Psychic), Tanga(560,Bug),
+Charti(561,Rock), Kasib(562,Ghost), Haban(563,Dragon), Colbur(564,Dark),
+Babiri(565,Steel), Roseli(566,Fairy). `defender_item_modifier_uq412` was already
+fully generic (Occa/Chilan prove it) — no code changes, only `gen_items.py` data.
+
+**Status-cure berries (6) — correction found, NOT a zero-mechanism plug-in:**
+Cheri(514,Paralysis), Chesto(515,Sleep), Pecha(516,Poison+Toxic), Rawst(517,Burn),
+Aspear(518,Freeze), Persim(521,Confusion). Each has its OWN distinct
+`HOLD_EFFECT_CURE_*` constant in source (`CURE_PAR=2, CURE_SLP=3, CURE_PSN=4,
+CURE_BRN=5, CURE_FRZ=6, CURE_CONFUSION=8`) — confirmed via direct
+`src/data/items.h` read that none of them use `HOLD_EFFECT_CURE_STATUS`(9), which
+is Lum Berry's alone. The plan assumed these could dispatch through the existing
+Lum-Berry check unmodified; that check only tests "is `.status` non-`NONE`," with
+no per-status matching at all, so it could not have dispatched any of the 5
+status-based ones as-is even before considering Persim's separate mechanism.
+
+### Corrections found during Step 0 source verification
+
+1. **Pecha Berry cures both Poison and Toxic**, not just plain Poison — source's
+   `TryCurePoison` (`battle_hold_effects.c` L680-692) checks `STATUS1_PSN_ANY`,
+   confirmed and tested explicitly (`B21.02`/`B21.03`).
+2. **Persim Berry is architecturally separate from the other 5 cure berries** —
+   it clears `confusion_turns` (a volatile), never `.status`, so it cannot share
+   `status_cure_berry_cures`'s dispatch at all. Given its own new
+   `confusion_cure_berry_cures` function.
+3. **Oran Berry(520) uses `HOLD_EFFECT_RESTORE_HP`(1)**, a distinct constant
+   from Sitrus's `HOLD_EFFECT_RESTORE_PCT_HP`(82) — confirmed `hold_effect_param
+   =10` (flat HP, matching the plan's "10 HP flat" claim exactly). Both share the
+   identical `HasEnoughHpToEatBerry(..., 2, ...)` ≤50%-max-HP threshold (both
+   route through the SAME single source caller, `ItemHealHp`,
+   `battle_hold_effects.c` L826-849) — the plan's "same trigger, flat amount"
+   claim held on the trigger SHAPE, but needed its own hold_effect constant and a
+   flat-vs-percent amount branch, not literal reuse of the untouched function.
+4. **Ripen doubles the heal amount for both Sitrus and Oran** — source's
+   `ItemHealHp` (L841-842): `ability == ABILITY_RIPEN && GetItemPocket(itemId) ==
+   POCKET_BERRIES → healAmount *= 2`, applied identically regardless of
+   percent-vs-flat mode. **This project's pre-M18b Sitrus implementation never
+   had this** (only Ripen-doubles-resist-berry existed, `[M17c]`, a completely
+   separate code path) — a real pre-existing gap, confirmed via source, not
+   something M18b broke. Fixed as part of writing the heal function correctly
+   from scratch rather than knowingly omitting a confirmed source behavior;
+   confirmed via grep that no existing test (`item_test.gd`, `m17n7_test.gd`,
+   `m17c_test.gd`) exercises Ripen+Sitrus together, so this addition changed zero
+   existing assertion outcomes (both suites' pass counts are identical
+   before/after — see Regression below).
+
+### Implementation
+
+`item_manager.gd`: 7 new `HOLD_EFFECT_*` constants
+(`RESTORE_HP=1, CURE_PAR=2, CURE_SLP=3, CURE_PSN=4, CURE_BRN=5, CURE_FRZ=6,
+CURE_CONFUSION=8`, all re-derived from `include/constants/hold_effects.h`'s
+enum, same parsing method `[Item Data Infrastructure]` validated). Two existing
+functions renamed and extended in place (not replaced/duplicated), so every
+pre-existing `BattleManager` call site automatically gained M18b coverage by
+just updating its call name:
+- `sitrus_berry_heal` → **`hp_threshold_berry_heal`**: now branches on
+  `HOLD_EFFECT_RESTORE_PCT_HP` (percent, Sitrus) vs `HOLD_EFFECT_RESTORE_HP`
+  (flat, Oran) for the amount, with Ripen-doubling applied to both (correction 4
+  above) — same Klutz/Unnerve/Gluttony/Cud-Chew-override gates for both.
+- `lum_berry_cures` → **`status_cure_berry_cures`**: `match` over `hold_effect`,
+  `HOLD_EFFECT_CURE_STATUS` keeps Lum's "any status" behavior, the 5 new
+  constants each check their own specific `BattlePokemon.STATUS_*` value
+  (`CURE_PSN` checks `STATUS_POISON or STATUS_TOXIC`, correction 1 above).
+- New **`confusion_cure_berry_cures`** (Persim) — same `ng_active`/
+  `unnerve_active`/`override_item` shape as the two functions above, checks/clears
+  `confusion_turns` instead of `.status`.
+
+`battle_manager.gd`: all 5 pre-existing call sites (two `try_secondary_effect`-
+adjacent sites, one contact-ability-status site, the main HP-threshold-heal site,
+and Cud Chew's re-trigger chain) updated to the new function names. The two
+`try_secondary_effect`-adjacent sites (status-move-primary and damaging-move
+paths) each gained a new `elif ItemManager.confusion_cure_berry_cures(...)`
+branch alongside the existing status check — self-guarding (each function
+returns false unless its own specific `hold_effect`+condition match), so running
+both is correct and never double-fires. The contact-ability-status site
+deliberately did NOT gain a confusion check — contact abilities (Static/Flame
+Body/etc.) only ever inflict non-volatile status in this project, never
+confusion. Cud Chew's match statement gained a third branch calling
+`confusion_cure_berry_cures`, so Persim Berry re-triggers correctly too — the
+other 22 M18b items already got Cud Chew coverage for free from the two renamed/
+extended functions, since Cud Chew already called them by name.
+
+**Real regression caught and fixed before it could ship:** renaming
+`sitrus_berry_heal`/`lum_berry_cures` broke two PRE-EXISTING test files that
+called them directly by the old names — `scenes/battle/item_test.gd` (M12) and
+`scenes/battle/m17n7_test.gd` (`[M17n-7]`, Cud Chew). Both updated (function
+calls AND their string-literal test labels, for readability) to the new names —
+a pure mechanical rename, zero behavior change, confirmed by both suites passing
+with IDENTICAL counts before and after (`item_test`: 77/77, `m17n7_test`: 62/62).
+
+`gen_items.py`: 63 total items now (40 M18a + 23 M18b). Added a `NOTE` in the
+file's own header docstring flagging that the 15 M12-era items (Leftovers, Lum
+Berry, Choice Band, Sitrus Berry, Choice Specs, Choice Scarf, the 4 Weather
+Rocks, Life Orb, Chilan Berry, Occa Berry, Heavy-Duty Boots, Utility Umbrella)
+still predate this pipeline entirely — no `.tres`, inline-only in
+`item_test.gd` — meaning the resist-berry and status-cure-berry dispatches now
+each have BOTH pipeline-backed items (M18b's 22) and inline-only items
+(Occa/Chilan/Lum) feeding the exact same mechanism. Recommended (not done) as a
+future cleanup pass; migrating those 15 now was judged out of scope and an
+unnecessary regression risk against M12's own already-shipped, already-tested
+implementation.
+
+### Tests
+
+New `scenes/battle/m18b_test.gd`/`.tscn` — **104/104 assertions**, one test per
+item (23 tests, no loop consolidation):
+- **16 resist berries** (5 assertions each, 81 with B01's extra negative case):
+  data spot-check, no-item super-effective baseline, with-item halved damage,
+  `defender_item_consumed` flag, and an off-type (Normal) discriminator proving
+  the SAME item makes no difference to a non-matching-type hit. Canonical setup
+  (identical math for all 16, cross-checked against `item_test.gd`'s I8 Occa
+  Berry worked example): `TYPE_MYSTERY` attacker (no STAB), a defender type
+  confirmed genuinely 2.0× weak to the berry's resisted type (verified per-item
+  directly against `type_chart.gd`'s `TABLE`, not assumed from memory), power=40
+  special move, `force_roll=100`/`force_crit=false`. Baseline (no berry, SE) =
+  **42**; with berry (halved post-type-eff) = **21** — identical for all 16.
+- **5 status-cure berries + Pecha's extra Toxic check** (3-4 assertions each):
+  direct `ItemManager.status_cure_berry_cures` unit calls (matching
+  `item_test.gd`'s own I6/I7 precedent for Sitrus/Lum — pure state-in/bool-out
+  functions, no damage math, full-battle integration not needed), a positive
+  case (specific status inflicted → cures) and a discriminator (different status
+  → does not cure).
+- **Persim Berry** (4 assertions): direct `confusion_cure_berry_cures` unit
+  calls — cures when `confusion_turns > 0`, does NOT cure a non-volatile status,
+  does NOT fire when not confused at all.
+- **Oran Berry** (3 assertions): direct `hp_threshold_berry_heal` unit calls —
+  heals flat 10 at exactly the 50%-max-HP threshold (`max_hp=160` for
+  `base_hp=100` at level 50, threshold=80), does NOT trigger at 81 (just above).
+
+Deliberate deviation from "negative case per item," matching `[M18a]`'s own
+precedent for this uniform item-family shape: only B01 (Passho Berry) carries
+an extra "an ordinary Pokémon holding nothing behaves normally" check.
+
+### Regression
+
+Per this tier's explicit routine-tier scope, only this tier's own suite plus the
+two directly-touched pre-existing suites were rerun (not the full 45+-file
+sweep, which remains Rob's manual step):
+- `m18b_test.tscn`: **104/104** (new).
+- `m18a_test.tscn`: **160/160**, unchanged — M18b's additions to `gen_items.py`/
+  `ItemManager` did not disturb M18a's 40 items.
+- `item_registry_test.tscn`: **204/204**, unchanged — the registry's
+  data-integrity guarantees hold across the expanded 63-item catalog.
+- `item_test.tscn`: **77/77**, unchanged (post-rename-fix).
+- `m17n7_test.tscn`: **62/62**, unchanged (post-rename-fix) — confirms Cud
+  Chew's existing Sitrus/Lum re-trigger behavior is bit-for-bit preserved
+  despite both functions being renamed and Sitrus's amount computation gaining
+  the new Ripen branch.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18b's completion. Per the plan's own
+dependency notes, **M18c (berry HP-threshold misc-effect, 10 items) is
+BLOCKED** — Lansat Berry depends on M18e's crit-stage-bonus mechanism and
+Custap Berry depends on M18l's turn-order mechanism, neither of which exists
+yet. Flagged explicitly in `CLAUDE.md` with a recommendation to run M18e or
+M18h next instead, per `docs/m18_subtier_plan.md`'s own dependency table.

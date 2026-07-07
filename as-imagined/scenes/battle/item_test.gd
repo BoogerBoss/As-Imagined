@@ -505,12 +505,12 @@ func _test_i6_sitrus_berry() -> void:
 			100, 80, 80, 80, 80, 80)  # base_hp=100 → max_hp=160
 	mon.held_item = sitrus
 	mon.current_hp = 60  # ≤ 80 (=max_hp/2)
-	_chk("I6.02 sitrus_berry_heal=40 when HP=60 (≤80=max_hp/2)",
-			ItemManager.sitrus_berry_heal(mon) == 40)
+	_chk("I6.02 hp_threshold_berry_heal=40 when HP=60 (≤80=max_hp/2)",
+			ItemManager.hp_threshold_berry_heal(mon) == 40)
 
 	mon.current_hp = 100  # > 80
-	_chk("I6.03 sitrus_berry_heal=0 when HP=100 (>80=max_hp/2)",
-			ItemManager.sitrus_berry_heal(mon) == 0)
+	_chk("I6.03 hp_threshold_berry_heal=0 when HP=100 (>80=max_hp/2)",
+			ItemManager.hp_threshold_berry_heal(mon) == 0)
 
 	# I6.04–I6.05: Integration — berry fires once, consumed, no re-trigger.
 	# Setup: lightly-damaging attacker, defender starts near full HP so
@@ -541,7 +541,7 @@ func _test_i6_sitrus_berry() -> void:
 	bm.queue_free()
 
 	# I6.06–I6.08: Integration — berry fires on first hit when HP already starts below
-	# threshold. Confirms level-triggered implementation: sitrus_berry_heal checks
+	# threshold. Confirms level-triggered implementation: hp_threshold_berry_heal checks
 	# current_hp ≤ max_hp/2 at move-end regardless of HP before the move.
 	# sit_def2.current_hp=60 < 80 (=max_hp/2=160/2) before any action.
 	# Heal = max_hp*25/100 = 160*25/100 = 40 (deterministic; independent of roll).
@@ -590,12 +590,12 @@ func _test_i7_lum_berry() -> void:
 	var mon := _make_mon("LumMon", TypeChart.TYPE_NORMAL)
 	mon.held_item = lum
 	mon.status = BattlePokemon.STATUS_PARALYSIS
-	_chk("I7.02 lum_berry_cures=true when paralyzed",
-			ItemManager.lum_berry_cures(mon))
+	_chk("I7.02 status_cure_berry_cures=true when paralyzed",
+			ItemManager.status_cure_berry_cures(mon))
 
 	mon.status = BattlePokemon.STATUS_NONE
-	_chk("I7.03 lum_berry_cures=false when STATUS_NONE",
-			not ItemManager.lum_berry_cures(mon))
+	_chk("I7.03 status_cure_berry_cures=false when STATUS_NONE",
+			not ItemManager.status_cure_berry_cures(mon))
 
 	# I7.04: Integration — Thunder Wave inflicts paralysis, Lum Berry cures it, is consumed.
 	# Setup: attacker uses Thunder Wave (status move, SE_PARALYSIS).

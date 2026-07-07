@@ -9,17 +9,30 @@ One file per item, path: data/items/item_NNNN.tres where NNNN is the item's
 canonical ID (zero-padded to 4 digits), matching include/constants/items.h in
 pokeemerald_expansion — same convention as gen_moves.py/gen_abilities.py.
 
-Scope (as of this session): only the 40 items M18a actually implemented and
-tested (scenes/battle/m18a_test.gd, 160/160 assertions) — the Charcoal family,
-Silk Scarf, Fairy Feather, 5 Incenses, and 17 Plates, all sharing ItemManager's
-single HOLD_EFFECT_TYPE_POWER/HOLD_EFFECT_PLATE dispatch
-(move_power_modifier_uq412). Every entry below was re-derived directly from
-M18a's actual GDScript implementation and its own Step 0 source verification
-(docs/decisions.md's [M18a] entry) — NOT copied from docs/m18_subtier_plan.md,
-which predates M18a's own corrections. Every future M18 sub-tier (M18b onward)
-must add its items here and regenerate, rather than wiring item data inline
-into ItemManager or a test file — see docs/decisions.md's item-data-
-infrastructure entry for the full rationale.
+Scope: M18a's 40 type-boost items (Charcoal family, Silk Scarf, Fairy Feather,
+5 Incenses, 17 Plates — ItemManager.move_power_modifier_uq412) plus M18b's 23
+berry/misc items (16 type-resist berries + 6 status-cure berries + Oran Berry —
+ItemManager.defender_item_modifier_uq412 / status_cure_berry_cures /
+confusion_cure_berry_cures / hp_threshold_berry_heal). Every entry was
+re-derived directly from source (include/constants/items.h, src/data/items.h)
+during each tier's own Step 0 — NOT copied from docs/m18_subtier_plan.md, which
+predates every tier's own corrections. Every future M18 sub-tier must add its
+items here and regenerate, rather than wiring item data inline into
+ItemManager or a test file — see docs/decisions.md's item-data-infrastructure
+entry for the full rationale.
+
+NOTE (found during M18b, not fixed — out of scope): the 15 items M12 already
+implemented (Leftovers, Lum Berry, Choice Band, Sitrus Berry, Choice Specs,
+Choice Scarf, the 4 Weather Rocks, Life Orb, Chilan Berry, Occa Berry,
+Heavy-Duty Boots, Utility Umbrella) predate this whole pipeline and are still
+purely inline-constructed in scenes/battle/item_test.gd, with no entry here and
+no .tres file — this is a real, flagged inconsistency (the resist-berry and
+status-cure-berry dispatches now have BOTH pipeline-backed items (M18b's 22)
+and inline-only items (Occa/Chilan/Lum) feeding the exact same mechanism).
+Recommend a future cleanup pass migrate those 15 into this file too, but doing
+so now was judged out of scope for M18b — those items already ship via M12's
+own tested, working implementation and touching them risks an unrelated
+regression.
 
 Why no uid= in [ext_resource]: same reasoning as gen_moves.py — Godot resolves
 ext_resource references by UID via uid_cache.bin, populated by the editor at
@@ -36,6 +49,14 @@ Sources for item data:
 import pathlib
 
 # ── HOLD_EFFECT_* constants (must match scripts/battle/core/item_manager.gd) ──
+HOLD_EFFECT_RESTORE_HP      = 1   # Oran Berry — flat heal (M18b)
+HOLD_EFFECT_CURE_PAR        = 2   # Cheri Berry (M18b)
+HOLD_EFFECT_CURE_SLP        = 3   # Chesto Berry (M18b)
+HOLD_EFFECT_CURE_PSN        = 4   # Pecha Berry — cures Poison AND Toxic (M18b)
+HOLD_EFFECT_CURE_BRN        = 5   # Rawst Berry (M18b)
+HOLD_EFFECT_CURE_FRZ        = 6   # Aspear Berry (M18b)
+HOLD_EFFECT_CURE_CONFUSION  = 8   # Persim Berry — clears confusion_turns, not .status (M18b)
+HOLD_EFFECT_RESIST_BERRY    = 80  # type-resist berry, generic (M18b; Occa/Chilan precedent)
 HOLD_EFFECT_TYPE_POWER = 43
 HOLD_EFFECT_PLATE      = 89
 
@@ -121,6 +142,45 @@ ITEMS = [
     {"id": 264, "name": "Dread Plate",    "hold_effect": HOLD_EFFECT_PLATE, "hold_effect_param": TYPE_DARK},
     {"id": 265, "name": "Iron Plate",     "hold_effect": HOLD_EFFECT_PLATE, "hold_effect_param": TYPE_STEEL},
     {"id": 266, "name": "Pixie Plate",    "hold_effect": HOLD_EFFECT_PLATE, "hold_effect_param": TYPE_FAIRY},
+
+    # ── M18b: status-cure berries (6) — each its OWN HOLD_EFFECT_CURE_* constant,
+    #    NOT HOLD_EFFECT_CURE_STATUS (that one is Lum Berry-exclusive). No
+    #    hold_effect_param needed — the hold_effect itself fully specifies which
+    #    status is cured (confirmed via src/data/items.h: none of these 6 set
+    #    .holdEffectParam at all, unlike the type-keyed resist berries below).
+    {"id": 514, "name": "Cheri Berry",    "hold_effect": HOLD_EFFECT_CURE_PAR},
+    {"id": 515, "name": "Chesto Berry",   "hold_effect": HOLD_EFFECT_CURE_SLP},
+    {"id": 516, "name": "Pecha Berry",    "hold_effect": HOLD_EFFECT_CURE_PSN},
+    {"id": 517, "name": "Rawst Berry",    "hold_effect": HOLD_EFFECT_CURE_BRN},
+    {"id": 518, "name": "Aspear Berry",   "hold_effect": HOLD_EFFECT_CURE_FRZ},
+    {"id": 521, "name": "Persim Berry",   "hold_effect": HOLD_EFFECT_CURE_CONFUSION},
+
+    # ── M18b: Oran Berry — flat 10 HP heal, same <=50%-max-HP threshold as Sitrus
+    #    Berry (HasEnoughHpToEatBerry(..., 2, ...) in source, shared by both), but
+    #    a DISTINCT hold_effect from Sitrus's HOLD_EFFECT_RESTORE_PCT_HP(82) — this
+    #    one is HOLD_EFFECT_RESTORE_HP(1), param=10 is a flat HP amount not a percent.
+    {"id": 520, "name": "Oran Berry",     "hold_effect": HOLD_EFFECT_RESTORE_HP, "hold_effect_param": 10},
+
+    # ── M18b: type-resist berries (16) — HOLD_EFFECT_RESIST_BERRY, the exact same
+    #    generic dispatch Occa Berry(Fire)/Chilan Berry(Normal) already use (those
+    #    two remain inline-only in item_test.gd, per the NOTE above — not migrated
+    #    here this session, out of scope).
+    {"id": 551, "name": "Passho Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_WATER},
+    {"id": 552, "name": "Wacan Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_ELECTRIC},
+    {"id": 553, "name": "Rindo Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_GRASS},
+    {"id": 554, "name": "Yache Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_ICE},
+    {"id": 555, "name": "Chople Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_FIGHTING},
+    {"id": 556, "name": "Kebia Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_POISON},
+    {"id": 557, "name": "Shuca Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_GROUND},
+    {"id": 558, "name": "Coba Berry",     "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_FLYING},
+    {"id": 559, "name": "Payapa Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_PSYCHIC},
+    {"id": 560, "name": "Tanga Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_BUG},
+    {"id": 561, "name": "Charti Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_ROCK},
+    {"id": 562, "name": "Kasib Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_GHOST},
+    {"id": 563, "name": "Haban Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_DRAGON},
+    {"id": 564, "name": "Colbur Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_DARK},
+    {"id": 565, "name": "Babiri Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_STEEL},
+    {"id": 566, "name": "Roseli Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_FAIRY},
 ]
 
 HEADER = """\

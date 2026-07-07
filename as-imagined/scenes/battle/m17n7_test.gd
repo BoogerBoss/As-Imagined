@@ -45,8 +45,8 @@ extends Node
 # override flag) and `IsUnnerveBlocked` (battle_util.c L338-339: returns FALSE
 # unconditionally under the same flag) key off it — meaning Cud Chew's re-trigger
 # bypasses BOTH the normal HP-threshold gate AND an opposing Unnerve holder, not just
-# reuse the same gated check a second time. `ItemManager.sitrus_berry_heal`/
-# `lum_berry_cures` were fixed to skip both gates when `override_item` is provided,
+# reuse the same gated check a second time. `ItemManager.hp_threshold_berry_heal`/
+# `status_cure_berry_cures` were fixed to skip both gates when `override_item` is provided,
 # reproducing only the one exception `ItemHealHp` itself still enforces even under
 # override (battle_hold_effects.c L831: no heal at exactly full HP). See Section 10
 # below for the discriminating tests that would have caught this.
@@ -488,38 +488,38 @@ func _test_section_10_cud_chew_override_bypass_fix() -> void:
 	# normally return 0), but override_item is set — heal must still fire.
 	var mon_i := _make_mon("CCFixMon1", [TypeChart.TYPE_NORMAL], 100)  # max_hp=160
 	mon_i.current_hp = 159  # not full, but nowhere near ≤80 (=max_hp/2)
-	_chk("S10.01 sitrus_berry_heal bypasses the HP threshold when override_item is set",
-			ItemManager.sitrus_berry_heal(mon_i, false, false, berry) == 40)
+	_chk("S10.01 hp_threshold_berry_heal bypasses the HP threshold when override_item is set",
+			ItemManager.hp_threshold_berry_heal(mon_i, false, false, berry) == 40)
 	# Discriminator: the exact same HP, WITHOUT override_item, correctly returns 0 —
 	# proves S10.01 wasn't vacuously true.
 	mon_i.held_item = berry
 	_chk("S10.02 discriminator: the same HP without override_item correctly returns 0",
-			ItemManager.sitrus_berry_heal(mon_i) == 0)
+			ItemManager.hp_threshold_berry_heal(mon_i) == 0)
 
 	# (ii) Full-HP exemption still holds even under override (source's one carve-out).
 	var mon_ii := _make_mon("CCFixMon2", [TypeChart.TYPE_NORMAL], 100)
 	mon_ii.current_hp = mon_ii.max_hp
-	_chk("S10.03 sitrus_berry_heal still returns 0 at exactly full HP, even with override_item",
-			ItemManager.sitrus_berry_heal(mon_ii, false, false, berry) == 0)
+	_chk("S10.03 hp_threshold_berry_heal still returns 0 at exactly full HP, even with override_item",
+			ItemManager.hp_threshold_berry_heal(mon_ii, false, false, berry) == 0)
 
 	# (iii) Unnerve bypass: unnerve_active=true would normally block the heal entirely,
 	# but override_item makes it fire anyway.
 	var mon_iii := _make_mon("CCFixMon3", [TypeChart.TYPE_NORMAL], 100)
 	mon_iii.current_hp = 60  # below threshold on its own merits, isolating the unnerve check
-	_chk("S10.04 sitrus_berry_heal bypasses unnerve_active when override_item is set",
-			ItemManager.sitrus_berry_heal(mon_iii, false, true, berry) == 40)
+	_chk("S10.04 hp_threshold_berry_heal bypasses unnerve_active when override_item is set",
+			ItemManager.hp_threshold_berry_heal(mon_iii, false, true, berry) == 40)
 	# Discriminator: the same mon/HP, WITHOUT override_item, correctly blocked by Unnerve.
 	_chk("S10.05 discriminator: the same scenario without override_item is correctly blocked",
-			ItemManager.sitrus_berry_heal(mon_iii, false, true) == 0)
+			ItemManager.hp_threshold_berry_heal(mon_iii, false, true) == 0)
 
 	# (iv) Same Unnerve-bypass check for Lum Berry's status cure (no HP threshold to
 	# begin with, so override_item's only effect here is the unnerve bypass).
 	var mon_iv := _make_mon("CCFixMon4", [TypeChart.TYPE_NORMAL])
 	mon_iv.status = BattlePokemon.STATUS_PARALYSIS
-	_chk("S10.06 lum_berry_cures bypasses unnerve_active when override_item is set",
-			ItemManager.lum_berry_cures(mon_iv, false, true, lum))
+	_chk("S10.06 status_cure_berry_cures bypasses unnerve_active when override_item is set",
+			ItemManager.status_cure_berry_cures(mon_iv, false, true, lum))
 	_chk("S10.07 discriminator: the same scenario without override_item is correctly blocked",
-			not ItemManager.lum_berry_cures(mon_iv, false, true))
+			not ItemManager.status_cure_berry_cures(mon_iv, false, true))
 
 
 # ── Section 11: Cud Chew — full-battle arm/fire integration ─────────────────
@@ -610,4 +610,4 @@ func _test_section_13_negative_control() -> void:
 			AbilityManager.cud_chew_check(mon) == "")
 	_chk("S13.06 negative control: ordinary Sitrus Berry still fires normally " +
 			"(HP≤50%, no interfering ability)",
-			ItemManager.sitrus_berry_heal(mon) == 40)
+			ItemManager.hp_threshold_berry_heal(mon) == 40)
