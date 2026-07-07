@@ -107,33 +107,37 @@ No other count or category discrepancies were found — everything else in
 
 ## Summary counts (current, under the finalized Gen I-IV + 23-item rule)
 
+**Total item count corrected from 375 to 378** — see the changelog entry at the top of
+the Maintenance section for the 3 items (Quick Powder/Macho Brace/Focus Band) found
+missing and added.
+
 | Bucket | Count |
 |---|---|
-| **Total held items in this ledger** | **375** (unchanged — verified by direct row count) |
-| **Total INCLUDED** | **162** (verified by direct row count under the new rule) |
-| — Gen I–IV (blanket include) | 138 (35 Gen II + 26 Gen III + 77 Gen IV) |
+| **Total held items in this ledger** | **378** (corrected from 375 — see changelog) |
+| **Total INCLUDED** | **165** (verified by direct row count under the new rule) |
+| — Gen I–IV (blanket include) | 141 (36 Gen II + 27 Gen III + 78 Gen IV) |
 | — Explicit Gen V+ override (23 named items + Berserk Gene's Gen-II reclassification) | 24 |
-| **Total EXCLUDED** | **213** (verified: 375−162) |
-| — Structurally EXCLUDED — Mega Stone | 92 (47 original + 26 Legends Z-A + 19 Legends Z-A DLC; unaffected by this update) |
-| — Structurally EXCLUDED — Z-Crystal | 35 (unaffected by this update) |
-| — Structurally EXCLUDED — Terastallization | 20 (unaffected by this update) |
-| — Gen V+, not on Rob's explicit list (newly excluded by this update) | 66 |
-| Already implemented (subset of the 162 INCLUDED) | **15** — Leftovers, Lum Berry, Choice Band, Sitrus Berry, Choice Specs, Choice Scarf, Damp/Heat/Icy/Smooth Rock, Life Orb, Chilan Berry, Occa Berry, Heavy-Duty Boots, Utility Umbrella (unaffected — all 15 are either Gen ≤ IV or on the 23-item list) |
-| Included, needs a new mechanism before it can function (subset of the 162) | ~14 (recomputed against the new included set — the 16 Gen IV Plates, Red Orb/Blue Orb's Primal Reversion trigger, Pixie Plate's same Plate-mechanism gap, Loaded Dice's multi-hit gap; several previously-flagged "needs new mechanism" Gen V+ items — all 4 Drives, all 17 Memories, all 4 Terrain Seeds + Terrain Extender, Booster Energy, the Adamant/Lustrous/Griseous Orb family, the Ogerpon Masks, Rusted Sword/Shield — are now EXCLUDED under the new rule and no longer count here) |
+| **Total EXCLUDED** | **213** (unaffected by this fix — all 3 added items are Gen ≤ IV, hence INCLUDED) |
+| — Structurally EXCLUDED — Mega Stone | 92 (47 original + 26 Legends Z-A + 19 Legends Z-A DLC; unaffected) |
+| — Structurally EXCLUDED — Z-Crystal | 35 (unaffected) |
+| — Structurally EXCLUDED — Terastallization | 20 (unaffected) |
+| — Gen V+, not on Rob's explicit list | 66 (unaffected) |
+| Already implemented (subset of the 165 INCLUDED) | **15** — Leftovers, Lum Berry, Choice Band, Sitrus Berry, Choice Specs, Choice Scarf, Damp/Heat/Icy/Smooth Rock, Life Orb, Chilan Berry, Occa Berry, Heavy-Duty Boots, Utility Umbrella (unaffected — none of the 3 newly-added items are implemented yet) |
+| Included, needs a new mechanism before it can function (subset of the 165) | ~14 (unaffected — Quick Powder/Macho Brace/Focus Band are all plain data-entry items, no new mechanism needed) |
 
 **Per-generation breakdown** (also shown in each section's own `##` heading below):
 
 | Generation | Total | Included | Excluded |
 |---|---|---|---|
-| II | 35 | 35 | 0 |
-| III | 26 | 26 | 0 |
-| IV | 77 | 77 | 0 |
+| II | 36 | 36 | 0 |
+| III | 27 | 27 | 0 |
+| IV | 78 | 78 | 0 |
 | V | 34 | 6 | 28 |
 | VI | 56 | 6 | 50 (47 Mega Stone + 3 not listed) |
 | VII | 59 | 1 | 58 (35 Z-Crystal + 23 not listed) |
 | VIII | 8 | 5 | 3 |
 | IX | 80 | 6 | 74 (65 structural + 9 not listed) |
-| **Total** | **375** | **162** | **213** |
+| **Total** | **378** | **165** | **213** |
 
 Every row below has a blank **"Rob's override"** column — leave blank to accept the
 default status shown, or write an override (e.g. `EXCLUDE` or a reason) to record a
@@ -142,7 +146,7 @@ Rob's promised follow-up exclusion list.
 
 ---
 
-## Generation II (35 items — first held items ever introduced)
+## Generation II (36 items — first held items ever introduced)
 
 | ID | Name | Category | Status | Notes | Rob's override |
 |---|---|---|---|---|---|
@@ -171,6 +175,7 @@ Rob's promised follow-up exclusion list.
 | 462 | Quick Claw | Misc. held | INCLUDED | ~20% chance to move first in-bracket | |
 | 465 | King's Rock | Misc. held | INCLUDED | 10% chance to add flinch | |
 | 471 | Scope Lens | Misc. held | INCLUDED | +1 crit-ratio stage | |
+| 469 | Focus Band | Misc. held | INCLUDED | 10% chance to survive a lethal hit at 1 HP (`holdEffectParam=10`, nearly identical to Focus Sash ID 481, already in this ledger); found missing from this ledger via `docs/m25_bag_items_recon.md`'s cross-check, added here | |
 | 472 | Leftovers | Misc. held | **ALREADY IMPLEMENTED** | Heal 1/16 max HP/turn | |
 | 514 | Cheri Berry | Berries | INCLUDED | Cures paralysis | |
 | 515 | Chesto Berry | Berries | INCLUDED | Cures sleep | |
@@ -182,7 +187,7 @@ Rob's promised follow-up exclusion list.
 | 521 | Persim Berry | Berries | INCLUDED | Cures confusion | |
 | 522 | Lum Berry | Berries | **ALREADY IMPLEMENTED** | Cures any non-volatile status | |
 
-## Generation III (26 items)
+## Generation III (27 items)
 
 | ID | Name | Category | Status | Notes | Rob's override |
 |---|---|---|---|---|---|
@@ -199,6 +204,7 @@ Rob's promised follow-up exclusion list.
 | 410 | Rose Incense | Incenses | INCLUDED | +Grass move power | |
 | 460 | White Herb | Misc. held | INCLUDED | Once: restores all lowered stats | |
 | 464 | Mental Herb | Misc. held | INCLUDED | Once: cures infatuation (Gen 5+: also Taunt/Encore/Torment/Disable/Heal Block, none of which exist in this project yet — scope to infatuation-cure only unless those moves are added) | |
+| 418 | Macho Brace | EV Gain Modifiers | INCLUDED | Doubles all EV gain, halves Speed (`HOLD_EFFECT_MACHO_BRACE`); the base item behind the 6 "Power X" items (419-424, already in this ledger's Gen IV table) — found missing from this ledger via `docs/m25_bag_items_recon.md`'s cross-check, added here | |
 | 523 | Sitrus Berry | Berries | **ALREADY IMPLEMENTED** | Heal 25% max HP at ≤50% HP | |
 | 524 | Figy Berry | Berries | INCLUDED | Heal 1/3 max HP; confuses if nature dislikes spicy | |
 | 525 | Wiki Berry | Berries | INCLUDED | Heal 1/3 max HP; confuses if nature dislikes dry | |
@@ -213,7 +219,7 @@ Rob's promised follow-up exclusion list.
 | 572 | Lansat Berry | Berries | INCLUDED | +1 crit-ratio stage at ≤25% HP | |
 | 573 | Starf Berry | Berries | INCLUDED | Sharply raises a random stat at ≤25% HP | |
 
-## Generation IV (77 items)
+## Generation IV (78 items)
 
 | ID | Name | Category | Status | Notes | Rob's override |
 |---|---|---|---|---|---|
@@ -246,6 +252,7 @@ Rob's promised follow-up exclusion list.
 | 576 | Custap Berry | Berries | INCLUDED | Priority boost that turn at low HP | |
 | 577 | Jaboca Berry | Berries | INCLUDED | Damages attacker 1/8 max HP on a physical contact hit | |
 | 578 | Rowap Berry | Berries | INCLUDED | Same, special hit | |
+| 397 | Quick Powder | Species-specific | INCLUDED | Doubles Ditto's Speed (while untransformed) — same shape as Metal Powder (ID 396, Gen II, already in this ledger's Defense-doubling row); found missing from this ledger via `docs/m25_bag_items_recon.md`'s cross-check, added here | |
 | 401 | Adamant Orb | Species-specific | INCLUDED | needs new mechanism: pending Dialga in species roster; +20% Dragon/Steel move power | |
 | 402 | Lustrous Orb | Species-specific | INCLUDED | needs new mechanism: pending Palkia in species roster; +20% Dragon/Water move power | |
 | 403 | Griseous Orb | Species-specific | INCLUDED | needs new mechanism: pending Giratina in species roster; +20% Dragon/Ghost move power | |
@@ -564,6 +571,18 @@ Rob's promised follow-up exclusion list.
 This ledger is the single source of truth for M18's held-item scope going forward —
 **update it in place, don't re-derive a count from scratch**, mirroring the discipline
 established for `docs/m17_final_ledger.md`.
+
+### Changelog
+
+- **3 items added, total corrected 375 → 378:** Quick Powder (397, Gen II),
+  Macho Brace (418, Gen III), Focus Band (469, Gen II) — all three genuine
+  battle-relevant held items that were missing from this ledger's original pass,
+  found via `docs/m25_bag_items_recon.md`'s programmatic cross-check (a full diff of
+  every real item ID in `include/constants/items.h` against this ledger's own ID
+  list). All three predate Gen V, so all three are INCLUDED under the finalized
+  Gen I-IV blanket-include rule. This is exactly the kind of gap the "verify by direct
+  row count, not by hand" discipline elsewhere in this ledger exists to catch — worth
+  a similar full-ID diff again if this ledger is ever suspected of drifting.
 
 - **New scope rule shape, as of this update:** status is no longer "included by
   default except three structural categories" — it's now "Gen I-IV blanket include,
