@@ -31,6 +31,21 @@ const HOLD_EFFECT_UTILITY_UMBRELLA: int = 115
 const HOLD_EFFECT_HEAVY_DUTY_BOOTS: int = 119  # full immunity to entry hazards on switch-in
 const HOLD_EFFECT_PLATE:         int = 89  # Multitype's held-item type source (M17n-4)
 const HOLD_EFFECT_TYPE_POWER:    int = 43  # M18a: Charcoal family / Incenses / Silk Scarf / Fairy Feather
+const HOLD_EFFECT_SCOPE_LENS:    int = 40  # M18e: Scope Lens AND Razor Claw — literally the same
+                                            # holdEffect value in source (src/data/items.h), not two
+                                            # separate constants; both grant the identical +1 crit stage
+                                            # with no move-category condition (GetHoldEffectCritChanceIncrease,
+                                            # battle_util.c L7795-7810)
+const HOLD_EFFECT_QUICK_CLAW:    int = 26  # M18l: probabilistic act-first, param=20 (20%, read
+                                            # dynamically from hold_effect_param — NOT gated on move
+                                            # category, unlike Quick Draw's ability equivalent
+                                            # (battle_main.c L5191 has no IsBattleMoveStatus check here)
+const HOLD_EFFECT_LAGGING_TAIL:  int = 66  # M18l: Full Incense AND Lagging Tail — literally the same
+                                            # holdEffect value in source (src/data/items.h L8543/L10270),
+                                            # not two separate constants; both grant unconditional
+                                            # always-act-last, matching Stall's shape exactly (battle_main.c
+                                            # L4409-4410, no move-category gate — unlike Mycelium Might's
+                                            # narrower ability equivalent)
 
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
@@ -500,3 +515,57 @@ static func multitype_plate_type(mon: BattlePokemon, ng_active: bool = false) ->
 	if item == null or item.hold_effect != HOLD_EFFECT_PLATE:
 		return TypeChart.TYPE_NONE
 	return item.hold_effect_param
+
+
+# M18e: Scope Lens / Razor Claw — +1 crit stage, summed into the same total
+# DamageCalculator._roll_crit already combines Focus Energy's +2 and Super Luck's
+# ability_bonus into (source: GetHoldEffectCritChanceIncrease, battle_util.c
+# L7795-7810 — HOLD_EFFECT_SCOPE_LENS case, unconditional, no move-category check).
+# Returns 0 if not holding a crit-boosting item, matching ability_bonus's own
+# zero-default shape.
+static func crit_stage_bonus(mon: BattlePokemon, ng_active: bool = false) -> int:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_SCOPE_LENS:
+		return 0
+	return 1
+
+
+# M18l: Quick Claw — probabilistic act-first within a tied priority bracket, item
+# equivalent of AbilityManager.quick_draw_activates. Source: battle_main.c L4987
+# (`quickClawRandom[battler] = RandomPercentage(RNG_QUICK_CLAW,
+# GetBattlerHoldEffectParam(battler))`) and L5191 (`holdEffectBattler1 ==
+# HOLD_EFFECT_QUICK_CLAW && quickClawRandom[battler1]`). Deliberately NOT gated on
+# move category — unlike Quick Draw's ability equivalent, source has no
+# IsBattleMoveStatus check on this branch, confirmed by direct comparison. The 20%
+# chance is read from item.hold_effect_param (not hardcoded), matching source's own
+# `GetBattlerHoldEffectParam` read and this project's existing Oran-Berry-style
+# param convention. Must be evaluated EXACTLY ONCE per battler per turn, same
+# per-turn-precompute requirement as quick_draw_activates ([M17n-3]) — the caller is
+# responsible for precomputing this into a per-mon Dictionary before the sort, not
+# re-rolling per pairwise comparison.
+static func quick_claw_activates(
+		mon: BattlePokemon, ng_active: bool = false, forced_roll: Variant = null) -> bool:
+	if mon == null:
+		return false
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_QUICK_CLAW:
+		return false
+	if forced_roll != null:
+		return bool(forced_roll)
+	return randi() % 100 < item.hold_effect_param
+
+
+# M18l: Full Incense / Lagging Tail — always act LAST within a tied priority
+# bracket, item equivalent of AbilityManager.has_slow_turn_order_effect. Source:
+# battle_main.c L4409-4410 (`if (GetBattlerHoldEffect(battler) ==
+# HOLD_EFFECT_LAGGING_TAIL) gProtectStructs[battler].laggingTail = TRUE`) — set
+# UNCONDITIONALLY whenever the holder's hold effect matches, with no move-category
+# gate at all (confirmed by direct source read: no IsBattleMoveStatus check anywhere
+# near this line), matching Stall's unconditional shape exactly rather than Mycelium
+# Might's narrower per-move-category one. Same per-turn-precompute requirement as
+# has_slow_turn_order_effect.
+static func has_slow_turn_order_item(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	if mon == null:
+		return false
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_LAGGING_TAIL

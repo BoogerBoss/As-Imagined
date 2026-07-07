@@ -9042,3 +9042,243 @@ BLOCKED** — Lansat Berry depends on M18e's crit-stage-bonus mechanism and
 Custap Berry depends on M18l's turn-order mechanism, neither of which exists
 yet. Flagged explicitly in `CLAUDE.md` with a recommendation to run M18e or
 M18h next instead, per `docs/m18_subtier_plan.md`'s own dependency table.
+
+
+## [M18e] Crit-stage item bonus — Scope Lens, Razor Claw (2 items)
+
+Third M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18e section.
+Unblocks half of M18c (Lansat Berry; Custap Berry still needs M18l's turn-order
+mechanism).
+
+### Step 0 — finalized list, with a real correction
+
+| Item | ID | `hold_effect` | Crit-stage bonus | Condition |
+|---|---|---|---|---|
+| Scope Lens | 471 | `HOLD_EFFECT_SCOPE_LENS` | +1 | None |
+| Razor Claw | 492 | `HOLD_EFFECT_SCOPE_LENS` | +1 | None |
+
+**Correction found during Step 0, before implementing**: the plan's framing (and
+this project's own pre-existing folk assumption from older-gen games, that Razor
+Claw is a physical-move-only crit item) does not hold in this expanded engine.
+Source (`src/data/items.h` L9921 and L10436) assigns BOTH items the literal same
+`HOLD_EFFECT_SCOPE_LENS` enum value — not two separate hold-effect constants —
+and `GetHoldEffectCritChanceIncrease` (`src/battle_util.c` L7795-7810) has no
+move-category branch for this case at all. The two items are mechanically
+identical here: same dispatch, same +1, unconditional. `HOLD_EFFECT_SCOPE_LENS`'s
+numeric value (40) was independently derived by counting `enum HoldEffect`
+directly in `include/constants/hold_effects.h`, cross-checked against two
+pre-existing constants already in `item_manager.gd` at their known values
+(`HOLD_EFFECT_CHOICE_BAND=29`, `HOLD_EFFECT_LEFTOVERS=41`) — both landed correctly
+under the same count, confirming no off-by-one.
+
+### Implementation
+
+- New `ItemManager.crit_stage_bonus(mon, ng_active) -> int`: returns 1 if holding
+  an item with `hold_effect == HOLD_EFFECT_SCOPE_LENS`, else 0. Klutz-gated via
+  the existing `effective_held_item` chokepoint, matching every other item
+  dispatch in this file.
+- `DamageCalculator._roll_crit` gained a new `item_bonus: int = 0` parameter,
+  parallel to `[M17n-5]`'s existing `ability_bonus` parameter, summed into the
+  exact same pre-clamp stage total — matching source's `CalcCritChanceStage`
+  (`battle_util.c` L7839-7842), which sums `focusEnergy`, `dragonCheer`,
+  `GetMoveCriticalHitStage`, `GetHoldEffectCritChanceIncrease` (this tier), and
+  `ABILITY_SUPER_LUCK`'s +1 into ONE value before the 0-3 clamp — confirmed a
+  single shared total, not independent checks.
+- `DamageCalculator.calculate` now reads `ItemManager.crit_stage_bonus(attacker,
+  ng_active)` and threads it into `_roll_crit` alongside `super_luck_bonus`.
+- Two new entries added to `gen_items.py`'s `ITEMS` dict (new
+  `HOLD_EFFECT_SCOPE_LENS = 40` module constant); `.tres` regenerated, 65 items
+  total (63 prior + 2).
+
+### Testing-approach correction (found while writing tests, not assumed at Step 0)
+
+The task's own testing guidance suggested using `force_crit` to isolate the
+stage-count math from the probabilistic roll. This does not work: when
+`force_crit != null`, `_roll_crit` (the function containing the stage math) is
+never even called — `is_crit` is set directly from the forced bool, bypassing
+`move.critical_hit_stage`, `focus_energy`, `ability_bonus`, and the new
+`item_bonus` entirely. `[M17n-5]`'s own Section 12 already hit this exact wall
+for Super Luck and used a statistical crit-rate sample instead, since no
+deterministic seam into the roll exists via `calculate()`'s public interface.
+This tier used a stronger option unavailable to `[M17n-5]`: `ItemManager.
+crit_stage_bonus()` is a pure function with zero RNG, so the two per-item tests
+(E01/E02) call it directly — data check, `crit_stage_bonus == 1` with the item,
+`== 0` bare — for a fully deterministic, single-clean-pass proof of the stage
+VALUE, with no statistical margin needed at all. The one genuine
+pipeline-integration claim (item_bonus and Super Luck's ability_bonus SUM rather
+than one overriding the other) can only be proven by actually exercising
+`DamageCalculator.calculate`'s real RNG path, so E03 mirrors `[M17n-5]` Section
+12's statistical-sample pattern exactly: n=5000 trials at three configurations
+(neither → expect ~1/24, item alone → expect ~1/8, item+Super Luck → expect
+~1/2 per `CRIT_ODDS_GEN7={24,8,2,1}`), wide margins to avoid flakiness. The
+1/2 result for the combined case is the only assertion that could have
+falsified additive composition (a non-additive bug would have shown ~1/8, stuck
+at whichever bonus was checked first).
+
+### Test results
+
+New `m18e_test.gd`/`.tscn`: **9/9** assertions, 3 sections (E01 Scope Lens, E02
+Razor Claw, E03 composition), passing on the first run.
+
+### Regression
+
+Per this tier's routine-tier scope, only this tier's own suite plus the suites
+most likely to be disturbed by touching `_roll_crit`'s signature were rerun (not
+the full 45+-file sweep, which remains Rob's manual step):
+- `m18e_test.tscn`: **9/9** (new).
+- `m18a_test.tscn`: **160/160**, unchanged.
+- `m18b_test.tscn`: **104/104**, unchanged.
+- `item_registry_test.tscn`: **204/204**, unchanged — the registry's
+  data-integrity guarantees hold across the expanded 65-item catalog.
+- `m17n5_test.tscn`: **78/78**, unchanged — confirms Super Luck's pre-existing
+  `ability_bonus` path through `_roll_crit` is bit-for-bit unaffected by the new
+  `item_bonus` parameter's addition.
+
+No stray Godot processes before or after; reference clone untouched; `git
+status --short` matched exactly the expected file set (2 modified core files,
+`gen_items.py`, 2 new `.tres` files, 2 new test files) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18e's completion. **M18c is now
+HALF-unblocked**: Lansat Berry can proceed (its crit-stage-bonus dependency is
+now implemented), but Custap Berry still depends on M18l's turn-order mechanism,
+which has not landed yet — M18c as a whole remains blocked until M18l closes
+that gap. Recommend **M18l (to fully unblock M18c) or M18h (EV/Power-item
+Speed-halving family, 7 items, cheapest remaining tier with no cross-tier
+dependencies)** as the next tier.
+
+
+## [M18l] Turn-order items — Quick Claw, Full Incense, Lagging Tail (3 items)
+
+Fourth M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18l section.
+Fully unblocks M18c — Custap Berry's turn-order dependency is now satisfied
+(Lansat Berry's crit-stage dependency was already satisfied by `[M18e]`).
+
+### Step 0 — finalized list, with two real corrections
+
+| Item | ID | `hold_effect` | Mechanism | Value |
+|---|---|---|---|---|
+| Quick Claw | 462 | `HOLD_EFFECT_QUICK_CLAW` (=26) | Probabilistic act-first | 20% exactly |
+| Full Incense | 408 | `HOLD_EFFECT_LAGGING_TAIL` (=66) | Unconditional act-last | n/a |
+| Lagging Tail | 485 | `HOLD_EFFECT_LAGGING_TAIL` (=66) | Unconditional act-last | n/a |
+
+Both `HOLD_EFFECT_QUICK_CLAW=26` and `HOLD_EFFECT_LAGGING_TAIL=66` were
+independently derived by counting `enum HoldEffect` in
+`include/constants/hold_effects.h` directly, cross-checked against numerous
+pre-existing constants in `item_manager.gd` that land correctly at their known
+values under the same count (`HOLD_EFFECT_CHOICE_BAND=29`,
+`HOLD_EFFECT_TYPE_POWER=43`, `HOLD_EFFECT_CHOICE_SCARF=49`,
+`HOLD_EFFECT_CHOICE_SPECS=50`, `HOLD_EFFECT_DAMP_ROCK=51`,
+`HOLD_EFFECT_HEAT_ROCK=53`, `HOLD_EFFECT_ICY_ROCK=54`,
+`HOLD_EFFECT_SMOOTH_ROCK=56`, `HOLD_EFFECT_LIFE_ORB=60`) — eight independent
+cross-checks, zero off-by-ones.
+
+**Correction 1**: Quick Claw's activation percentage is exactly **20%**
+(`src/data/items.h` L9716, `.holdEffectParam = 20`), not the plan's rounded
+"~20%" — confirmed precisely, and confirmed it is READ from the item's own
+`holdEffectParam` in source (`GetBattlerHoldEffectParam(battler)`,
+`battle_main.c` L4987), not a hardcoded constant the way Quick Draw's ability
+equivalent hardcodes 30. Implemented the same way: `item.hold_effect_param`
+carries 20, read dynamically, matching this project's existing
+`hold_effect_param`-as-numeric-parameter convention (Oran Berry's flat heal).
+
+**Correction 2, the more significant one**: Quick Claw is **NOT gated on move
+category**, unlike Quick Draw. Source (`battle_main.c` L5191) checks only
+`holdEffectBattler1 == HOLD_EFFECT_QUICK_CLAW && quickClawRandom[battler1]` —
+no `IsBattleMoveStatus` check anywhere near it, while Quick Draw's own
+condition on the immediately preceding line explicitly requires
+`!IsBattleMoveStatus(gChosenMoveByBattler[battler1])`. A Quick Claw holder can
+act first even when using a status move; a Quick Draw holder cannot. The plan's
+"mirrors Quick Draw" framing didn't surface this asymmetry — confirmed by
+direct line-by-line comparison of the two adjacent source conditions, not
+assumed from the items' similar flavor text. Tested explicitly (L01.07).
+
+**Confirmed, not a correction**: Full Incense and Lagging Tail are genuinely,
+exactly identical — same pattern `[M18e]` already established for Scope
+Lens/Razor Claw. Source (`src/data/items.h` L8543/L10270) assigns both the
+literal same `HOLD_EFFECT_LAGGING_TAIL` value, and the flag it sets
+(`gProtectStructs[battler].laggingTail`, `battle_main.c` L4409-4410) is set
+**unconditionally** whenever the holder's hold effect matches — no
+move-category gate at all, matching Stall's unconditional shape exactly rather
+than Mycelium Might's narrower category-gated nuance (`[M17n-3]`'s own
+documented distinction between those two).
+
+### Composition/precedence — resolved from source, not left unspecified
+
+`GetWhichBattlerFasterArgs` (`battle_main.c` L4786-4800) computes
+`battler1HasQuickEffect = quickDraw || usedCustapBerry` and
+`battler1HasSlowEffect = battler1HasStallingAbility || laggingTail` — ability
+and item flags are already OR'd together at the exact same two boolean
+checkpoints this project's existing `quick_effect[mon]`/`slow_effect[mon]`
+precompute dicts occupy (`[M17n-3]`), and **quick is checked strictly before
+slow, for the whole comparison** — a single Pokémon with both a slow source and
+a quick source (from any combination of ability/item) always resolves as
+quick; its own slow flag is never even consulted. This means the existing
+two-stage comparator (already checking `quick_effect[a]` before
+`slow_effect[a]`) reproduces source's precedence rule for free, as long as the
+new item checks are OR'd into the two existing dicts — no new precedence logic
+needed. Both explicit scenarios the task posed are now answered and tested
+(L04): a Pokémon holding Quick Claw AND having Stall acts FIRST (item quick
+beats its own ability slow); a Pokémon holding Full Incense AND having Quick
+Draw also acts FIRST (ability quick beats its own item slow) — precedence is
+symmetric regardless of which side (ability or item) supplies the quick flag.
+
+Trick Room composition is automatic for the same structural reason `[M17n-3]`
+established: `quick_effect`/`slow_effect` are consulted strictly before the
+speed/Trick-Room-tiebreak branch, unchanged by this tier — no dedicated new
+Trick Room test needed (`m17n3_test.tscn`'s own Trick Room composition
+sections rerun unchanged confirms the shared branch wasn't disturbed).
+
+### Implementation
+
+- New `ItemManager.quick_claw_activates(mon, ng_active, forced_roll) -> bool`
+  and `ItemManager.has_slow_turn_order_item(mon, ng_active) -> bool`, parallel
+  to `AbilityManager.quick_draw_activates`/`has_slow_turn_order_effect`
+  (`[M17n-3]`). Both Klutz-gated via the existing `effective_held_item`
+  chokepoint.
+- `BattleManager._phase_priority_resolution`'s existing per-turn precompute
+  (`quick_effect[mon]`, `slow_effect[mon]`) now OR's the new item-keyed checks
+  in alongside the existing ability-keyed ones — the exact same dicts, same
+  single evaluation point, same comparator consuming them; no parallel roll
+  mechanism, avoiding the non-transitive-sort risk `[M17n-3]` was specifically
+  designed to prevent.
+- New `BattleManager._force_quick_claw_roll` test seam, same null-sentinel
+  shape as `_force_quick_draw_roll`, rolled completely independently (matching
+  source's own independent `quickClawRandom`/`quickDrawRandom` arrays).
+- Three new entries added to `gen_items.py`'s `ITEMS` dict (two new module
+  constants: `HOLD_EFFECT_QUICK_CLAW=26`, `HOLD_EFFECT_LAGGING_TAIL=66`);
+  `.tres` regenerated, 68 items total (65 prior + 3).
+
+### Test results
+
+New `m18l_test.gd`/`.tscn`: **17/17** assertions, 4 sections (L01 Quick Claw —
+data, direct unit checks, full-battle forced-true/forced-false, and the
+status-move-still-activates correction check; L02 Full Incense; L03 Lagging
+Tail, explicitly noting its outcome is identical to L02's; L04 composition,
+both precedence scenarios), passing on the first run.
+
+### Regression
+
+Per this tier's routine-tier scope, only this tier's own suite plus the suites
+most likely to be disturbed by extending the turn-order precompute were rerun
+(not the full 45+-file sweep, which remains Rob's manual step):
+- `m18l_test.tscn`: **17/17** (new).
+- `m18a_test.tscn`: **160/160**, unchanged.
+- `m18b_test.tscn`: **104/104**, unchanged.
+- `m18e_test.tscn`: **9/9**, unchanged.
+- `item_registry_test.tscn`: **204/204**, unchanged.
+- `m17n3_test.tscn`: **62/62**, unchanged — confirms Quick Draw/Stall/Mycelium
+  Might's pre-existing ability-keyed path through `quick_effect`/`slow_effect`
+  is bit-for-bit unaffected by the new item-keyed OR.
+
+No stray Godot processes before or after; reference clone untouched; `git
+status --short` matched exactly the expected file set (4 modified core files,
+`gen_items.py`, 3 new `.tres` files, 2 new test files) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18l's completion. **M18c (berry
+HP-threshold effects, 10 items) is now FULLY unblocked** — both Lansat
+(`[M18e]`) and Custap (this tier) dependencies are satisfied. Recommend
+**M18c** as the next tier.

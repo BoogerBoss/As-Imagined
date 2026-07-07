@@ -229,6 +229,8 @@ static func calculate(
 	var super_luck_bonus: int = 1 \
 			if AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_SUPER_LUCK \
 			else 0
+	# M18e: Scope Lens / Razor Claw — +1 crit stage, summed alongside super_luck_bonus.
+	var item_crit_bonus: int = ItemManager.crit_stage_bonus(attacker, ng_active)
 	# M17n-8: Merciless — a GUARANTEED crit against a poisoned/toxic'd defender, not a
 	# stage bonus like Super Luck above. Source: CalcCritChanceStage (battle_util.c
 	# L7828-7830): `(abilities[battlerAtk] == ABILITY_MERCILESS && status1 &
@@ -241,7 +243,8 @@ static func calculate(
 			and (defender.status == BattlePokemon.STATUS_POISON \
 					or defender.status == BattlePokemon.STATUS_TOXIC)
 	var is_crit: bool = true if merciless_guaranteed else \
-			(_roll_crit(move.critical_hit_stage, attacker.focus_energy, super_luck_bonus) \
+			(_roll_crit(move.critical_hit_stage, attacker.focus_energy, super_luck_bonus, \
+					item_crit_bonus) \
 					if force_crit == null else bool(force_crit))
 
 	# M17a: Battle Armor / Shell Armor block crits outright, overriding even a forced
@@ -559,9 +562,14 @@ static func calculate_confusion_damage(mon: BattlePokemon) -> int:
 # ability_bonus: M17n-5 addition — Super Luck's +1, summed into the same stage total
 # as focus_energy's +2 before the 0-3 clamp (source sums all crit-stage
 # contributions into ONE value before clamping, confirmed rather than assumed).
+# item_bonus: M18e addition — Scope Lens/Razor Claw's +1 (GetHoldEffectCritChanceIncrease,
+# battle_util.c L7795-7810), summed into the exact same total alongside ability_bonus,
+# matching source's single combined critChance sum (CalcCritChanceStage L7839-7842).
 static func _roll_crit(
-		move_crit_stage: int, focus_energy: bool = false, ability_bonus: int = 0) -> bool:
-	var stage: int = clampi(move_crit_stage + (2 if focus_energy else 0) + ability_bonus, 0, 3)
+		move_crit_stage: int, focus_energy: bool = false, ability_bonus: int = 0,
+		item_bonus: int = 0) -> bool:
+	var stage: int = clampi(
+			move_crit_stage + (2 if focus_energy else 0) + ability_bonus + item_bonus, 0, 3)
 	var odds: int = CRIT_ODDS_GEN7[stage]
 	return randi() % odds == 0
 

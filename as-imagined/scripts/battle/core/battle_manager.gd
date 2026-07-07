@@ -216,6 +216,10 @@ var _force_harvest_roll: Variant = null
 # turn-order sort, same null-sentinel convention as the other _force_* roll seams).
 var _force_quick_draw_roll: Variant = null
 
+# M18l: force Quick Claw's 20% per-battler-per-turn roll, same shape/seam pattern as
+# _force_quick_draw_roll immediately above — independent roll, independent seam.
+var _force_quick_claw_roll: Variant = null
+
 # M9: pre-queued Baton Pass target slots per combatant index (-1 = auto-select first valid).
 # M14a: indexed by combatant index; singles uses [0] and [1].
 var _baton_pass_queues: Array = [[], [], [], []]
@@ -633,10 +637,18 @@ func _phase_priority_resolution() -> void:
 		var midx: int = _actor_indices.get(mon, _combatants.find(mon))
 		var chosen_move: MoveData = \
 				_chosen_moves[midx] if _chosen_switch_slots[midx] < 0 else null
+		# M18l: Quick Claw (item) / Full Incense & Lagging Tail (item) OR'd in
+		# alongside their ability equivalents — mirrors source's own
+		# battler1HasQuickEffect = quickDraw || usedCustapBerry and
+		# battler1HasSlowEffect = battler1HasStallingAbility || laggingTail
+		# (battle_main.c L4786-4791): ability and item flags are combined into the
+		# exact same boolean BEFORE the comparator ever runs, not checked separately.
 		quick_effect[mon] = AbilityManager.quick_draw_activates(
-				mon, chosen_move, ng_active, _force_quick_draw_roll)
+				mon, chosen_move, ng_active, _force_quick_draw_roll) \
+				or ItemManager.quick_claw_activates(mon, ng_active, _force_quick_claw_roll)
 		slow_effect[mon] = AbilityManager.has_slow_turn_order_effect(
-				mon, chosen_move, ng_active)
+				mon, chosen_move, ng_active) \
+				or ItemManager.has_slow_turn_order_item(mon, ng_active)
 
 	_turn_order.sort_custom(func(a: BattlePokemon, b: BattlePokemon) -> bool:
 		# M14a: use _actor_indices (combatant index 0..N-1) to look up chosen actions,
@@ -686,8 +698,10 @@ func _phase_priority_resolution() -> void:
 				if move_b else 0
 		if pa != pb:
 			return pa > pb
-		# M17n-3: Quick Draw (always first) / Stall & Mycelium Might (always last)
-		# within a tied priority bracket — checked strictly BEFORE the speed
+		# M17n-3: Quick Draw (always first) / Stall & Mycelium Might (always last),
+		# extended by M18l with Quick Claw / Full Incense / Lagging Tail (items,
+		# OR'd into the same quick_effect/slow_effect dicts above) — all within a
+		# tied priority bracket, checked strictly BEFORE the speed
 		# comparison, mirroring source's own ordering exactly (battle_main.c
 		# L4786-4800: quick-effect check, then slow-effect check, then speed).
 		if quick_effect[a] and not quick_effect[b]:

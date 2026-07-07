@@ -59,6 +59,9 @@ HOLD_EFFECT_CURE_CONFUSION  = 8   # Persim Berry — clears confusion_turns, not
 HOLD_EFFECT_RESIST_BERRY    = 80  # type-resist berry, generic (M18b; Occa/Chilan precedent)
 HOLD_EFFECT_TYPE_POWER = 43
 HOLD_EFFECT_PLATE      = 89
+HOLD_EFFECT_SCOPE_LENS = 40  # Scope Lens AND Razor Claw — same holdEffect in source (M18e)
+HOLD_EFFECT_QUICK_CLAW = 26  # M18l: 20% act-first, param=20 read dynamically
+HOLD_EFFECT_LAGGING_TAIL = 66  # M18l: Full Incense AND Lagging Tail — same holdEffect in source
 
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
@@ -181,6 +184,21 @@ ITEMS = [
     {"id": 564, "name": "Colbur Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_DARK},
     {"id": 565, "name": "Babiri Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_STEEL},
     {"id": 566, "name": "Roseli Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_FAIRY},
+
+    # ── M18e: crit-stage item bonus (2) — Scope Lens and Razor Claw share the
+    #    exact same HOLD_EFFECT_SCOPE_LENS value in source (src/data/items.h); not
+    #    two separate constants, not conditioned on move category. Both +1 crit
+    #    stage, unconditional. No hold_effect_param needed.
+    {"id": 471, "name": "Scope Lens",     "hold_effect": HOLD_EFFECT_SCOPE_LENS},
+    {"id": 492, "name": "Razor Claw",     "hold_effect": HOLD_EFFECT_SCOPE_LENS},
+
+    # ── M18l: turn-order items (3) — Quick Claw (item equivalent of Quick Draw,
+    #    NOT move-category-gated unlike the ability); Full Incense and Lagging Tail
+    #    share the exact same HOLD_EFFECT_LAGGING_TAIL value in source, unconditional
+    #    always-last (matches Stall's shape, not Mycelium Might's narrower one).
+    {"id": 462, "name": "Quick Claw",     "hold_effect": HOLD_EFFECT_QUICK_CLAW, "hold_effect_param": 20},
+    {"id": 408, "name": "Full Incense",   "hold_effect": HOLD_EFFECT_LAGGING_TAIL},
+    {"id": 485, "name": "Lagging Tail",   "hold_effect": HOLD_EFFECT_LAGGING_TAIL},
 ]
 
 HEADER = """\
