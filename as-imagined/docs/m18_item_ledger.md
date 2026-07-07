@@ -5,14 +5,45 @@ or `docs/m18_recon.md` was touched to produce this. This is the single, definiti
 per-item held-item ledger for M18 — the same "build once, maintain in place, never
 re-derive from scratch" pattern established by `docs/m17_final_ledger.md`.
 
-**Scope, per Rob's two decisions this session:**
+## SCOPE UPDATE (supersedes the original "228 included by default" rule below)
+
+Rob has finalized M18's actual scope, narrower than the original pass's default. The
+current, authoritative rule:
+
+1. **All held items through Generation IV are INCLUDED.**
+2. **Plus this explicit list of 23 later-generation items, INCLUDED regardless of
+   generation:** Roseli Berry, Eviolite, Rocky Helmet, Air Balloon, Eject Button,
+   Weakness Policy, Pixie Plate, Red Card, Assault Vest, Safety Goggles, Red Orb, Blue
+   Orb, Protective Pads, Eject Pack, Heavy-Duty Boots, Blunder Policy, Room Service,
+   Utility Umbrella, Punching Glove, Covert Cloak, Loaded Dice, Mirror Herb, Fairy
+   Feather. All 23 were re-verified against this ledger's existing rows and against
+   `include/constants/items.h` directly — every one resolved to exactly one
+   unambiguous item ID, no name collisions or decoys found.
+3. **Every other Generation V+ held item NOT on that list is EXCLUDED**, with the
+   reason noted per-row as "Gen V+, not on Rob's explicit inclusion list."
+4. **The prior structural exclusions (Mega Stone / Z-Crystal / Terastallization)
+   still apply, unaffected by this update** — none of those three categories has any
+   member at Gen IV or earlier anyway, so this new rule doesn't change their status;
+   confirmed explicitly rather than assumed, row by row, during this update.
+
+This changes the previously-stated "228 included by default, pending Rob's further
+exclusions" framing (item 1 in the original two-decision scope note directly below,
+kept for history) to a **162 included / 213 excluded** split — see the Summary counts
+table for the full breakdown.
+
+**Out of scope entirely, unaffected by this update, deferred to a later UI-adjacent
+pass (M25):** all non-held (bag/consumable) items — Poké Balls, Medicine, Vitamins,
+Mints, TM/HM, Key Items, etc. **None of these appear in this ledger at all** — see
+`docs/m18_recon.md`'s Section B.3 if that bucket ever needs review; it is not repeated
+here.
+
+**Original scope note (superseded by the update above, kept for history):**
 1. In scope: **all held items** except Mega Stones, Z-Crystals, and Terastallization
    items (structurally excluded — no mechanic exists or will exist for any of these,
    consistent with every Mega/Z-Move/Dynamax exclusion already applied throughout M17).
 2. Out of scope entirely, deferred to a later UI-adjacent pass (M25): all non-held
    (bag/consumable) items — Poké Balls, Medicine, Vitamins, Mints, TM/HM, Key Items,
-   etc. **None of these appear in this ledger at all** — see `docs/m18_recon.md`'s
-   Section B.3 if that bucket ever needs review; it is not repeated here.
+   etc.
 
 ---
 
@@ -57,30 +88,57 @@ verbatim, I re-read `include/constants/items.h` directly rather than copying
    (a held item that changes the holder's form/type), flagged `needs new mechanism`
    like every other form-change item.
 
+4. **A generation-classification correction found during this update's Step 1
+   spot-check:** Berserk Gene (ID 798) sits in the Gen IX ID block by table
+   placement, but its own row already noted it's *"mechanically a revived Gen II
+   item, just assigned a high ID in this ROM hack's table."* Under the new Gen I-IV
+   blanket-include rule, generation-introduced (not ID/table placement) is what
+   matters — Berserk Gene's TRUE generation is II, so it is reclassified INCLUDED
+   under that rule (not evaluated against the 23-item Gen V+ list at all), despite
+   remaining physically listed in this document's Generation IX table for ID-ordering
+   consistency. No other row in the ledger had a similar table-placement-vs-true-
+   generation mismatch — checked as part of this update's required spot-check.
+
 No other count or category discrepancies were found — everything else in
 `docs/m18_recon.md`'s Section B.1 checked out against a fresh read of
 `include/constants/items.h` and `src/data/items.h`.
 
 ---
 
-## Summary counts
+## Summary counts (current, under the finalized Gen I-IV + 23-item rule)
 
 | Bucket | Count |
 |---|---|
-| **Total held items in this ledger** | **375** (verified by direct row count, not estimated) |
-| Already implemented | **15** (verified: `grep -c "ALREADY IMPLEMENTED"`; corrects an approximate "16" figure carried over from the recon's Section A prose — the exact set is Leftovers, Lum Berry, Choice Band, Sitrus Berry, Choice Specs, Choice Scarf, Damp/Heat/Icy/Smooth Rock, Life Orb, Chilan Berry, Occa Berry, Heavy-Duty Boots, Utility Umbrella) |
-| Included, not yet implemented, plain data-entry (existing pattern or trivial new hold-effect) | ~150 (approximate — not every row's phrasing was machine-countable; see individual Notes) |
-| Included, not yet implemented, needs a new mechanism/infrastructure first | ~63 (approximate, same caveat — includes all 16 Plates, 4 Drives, 17 Memories, Terrain Seeds/Extender, Loaded Dice, Booster Energy, the Orb/Mask/Sword-Shield form-change items) |
-| **Structurally EXCLUDED — Mega Stone** | **92** (47 original + 26 Legends Z-A + 19 Legends Z-A DLC — verified by direct row count) |
-| **Structurally EXCLUDED — Z-Crystal** | **35** (verified by direct row count) |
-| **Structurally EXCLUDED — Terastallization** | **20** (Tera Orb + 18 elemental Tera Shards + Stellar Tera Shard — verified by direct row count) |
-| **Total structurally excluded** | **147** (verified: 92+35+20) |
-| **Total INCLUDED (default set, pending Rob's further exclusions)** | **228** (verified: 375−147) |
+| **Total held items in this ledger** | **375** (unchanged — verified by direct row count) |
+| **Total INCLUDED** | **162** (verified by direct row count under the new rule) |
+| — Gen I–IV (blanket include) | 138 (35 Gen II + 26 Gen III + 77 Gen IV) |
+| — Explicit Gen V+ override (23 named items + Berserk Gene's Gen-II reclassification) | 24 |
+| **Total EXCLUDED** | **213** (verified: 375−162) |
+| — Structurally EXCLUDED — Mega Stone | 92 (47 original + 26 Legends Z-A + 19 Legends Z-A DLC; unaffected by this update) |
+| — Structurally EXCLUDED — Z-Crystal | 35 (unaffected by this update) |
+| — Structurally EXCLUDED — Terastallization | 20 (unaffected by this update) |
+| — Gen V+, not on Rob's explicit list (newly excluded by this update) | 66 |
+| Already implemented (subset of the 162 INCLUDED) | **15** — Leftovers, Lum Berry, Choice Band, Sitrus Berry, Choice Specs, Choice Scarf, Damp/Heat/Icy/Smooth Rock, Life Orb, Chilan Berry, Occa Berry, Heavy-Duty Boots, Utility Umbrella (unaffected — all 15 are either Gen ≤ IV or on the 23-item list) |
+| Included, needs a new mechanism before it can function (subset of the 162) | ~14 (recomputed against the new included set — the 16 Gen IV Plates, Red Orb/Blue Orb's Primal Reversion trigger, Pixie Plate's same Plate-mechanism gap, Loaded Dice's multi-hit gap; several previously-flagged "needs new mechanism" Gen V+ items — all 4 Drives, all 17 Memories, all 4 Terrain Seeds + Terrain Extender, Booster Energy, the Adamant/Lustrous/Griseous Orb family, the Ogerpon Masks, Rusted Sword/Shield — are now EXCLUDED under the new rule and no longer count here) |
+
+**Per-generation breakdown** (also shown in each section's own `##` heading below):
+
+| Generation | Total | Included | Excluded |
+|---|---|---|---|
+| II | 35 | 35 | 0 |
+| III | 26 | 26 | 0 |
+| IV | 77 | 77 | 0 |
+| V | 34 | 6 | 28 |
+| VI | 56 | 6 | 50 (47 Mega Stone + 3 not listed) |
+| VII | 59 | 1 | 58 (35 Z-Crystal + 23 not listed) |
+| VIII | 8 | 5 | 3 |
+| IX | 80 | 6 | 74 (65 structural + 9 not listed) |
+| **Total** | **375** | **162** | **213** |
 
 Every row below has a blank **"Rob's override"** column — leave blank to accept the
 default status shown, or write an override (e.g. `EXCLUDE` or a reason) to record a
-further individual decision on top of the two structural rules. This is the mechanism
-for Rob's promised follow-up exclusion list.
+further individual decision on top of the rules above. This is the mechanism for
+Rob's promised follow-up exclusion list.
 
 ---
 
@@ -237,58 +295,58 @@ for Rob's promised follow-up exclusion list.
 | 423 | Power Band | EV Gain Modifiers | INCLUDED | Same | |
 | 424 | Power Anklet | EV Gain Modifiers | INCLUDED | Same | |
 
-## Generation V (34 items)
+## Generation V (34 items — 6 included, 28 excluded)
 
 | ID | Name | Category | Status | Notes | Rob's override |
 |---|---|---|---|---|---|
-| 267 | Douse Drive | Drives | INCLUDED | needs new mechanism: reusable Plate-style pattern, Genesect-only, pending species-roster confirmation; changes Techno Blast to Water | |
-| 268 | Shock Drive | Drives | INCLUDED | Same, Electric | |
-| 269 | Burn Drive | Drives | INCLUDED | Same, Fire | |
-| 270 | Chill Drive | Drives | INCLUDED | Same, Ice | |
-| 339 | Normal Gem | Gems | INCLUDED | One-time consumed +30%/+50% power boost (gen-config nuance) on a matching-type move | |
-| 340 | Fire Gem | Gems | INCLUDED | Same, Fire | |
-| 341 | Water Gem | Gems | INCLUDED | Same, Water | |
-| 342 | Electric Gem | Gems | INCLUDED | Same, Electric | |
-| 343 | Grass Gem | Gems | INCLUDED | Same, Grass | |
-| 344 | Ice Gem | Gems | INCLUDED | Same, Ice | |
-| 345 | Fighting Gem | Gems | INCLUDED | Same, Fighting | |
-| 346 | Poison Gem | Gems | INCLUDED | Same, Poison | |
-| 347 | Ground Gem | Gems | INCLUDED | Same, Ground | |
-| 348 | Flying Gem | Gems | INCLUDED | Same, Flying | |
-| 349 | Psychic Gem | Gems | INCLUDED | Same, Psychic | |
-| 350 | Bug Gem | Gems | INCLUDED | Same, Bug | |
-| 351 | Rock Gem | Gems | INCLUDED | Same, Rock | |
-| 352 | Ghost Gem | Gems | INCLUDED | Same, Ghost | |
-| 353 | Dragon Gem | Gems | INCLUDED | Same, Dragon | |
-| 354 | Dark Gem | Gems | INCLUDED | Same, Dark | |
-| 355 | Steel Gem | Gems | INCLUDED | Same, Steel | |
-| 356 | Fairy Gem | Gems | INCLUDED | Same, Fairy | |
-| 455 | Absorb Bulb | Type-activated | INCLUDED | Consumed on a Water hit, +1 Sp.Atk | |
-| 456 | Cell Battery | Type-activated | INCLUDED | Consumed on an Electric hit, +1 Atk | |
-| 458 | Snowball | Type-activated | INCLUDED | Consumed on an Ice hit, +1 Atk | |
-| 494 | Eviolite | Misc. held | INCLUDED | +50% Def/Sp.Def for not-fully-evolved Pokémon | |
-| 495 | Float Stone | Misc. held | INCLUDED | Halves holder's weight | |
-| 496 | Rocky Helmet | Misc. held | INCLUDED | Damages attacker 1/6 max HP on contact | |
-| 497 | Air Balloon | Misc. held | INCLUDED | Grants Ground-move immunity; popped on any hit | |
-| 498 | Red Card | Misc. held | INCLUDED | Forces attacker to switch out (consumed) | |
-| 499 | Ring Target | Misc. held | INCLUDED | Removes one type immunity vs. the attacking type | |
-| 500 | Binding Band | Misc. held | INCLUDED | Raises binding-move damage 1/8 → 1/6 max HP | |
-| 501 | Eject Button | Misc. held | INCLUDED | Forces holder to switch out after being hit | |
-| 502 | Weakness Policy | Misc. held | INCLUDED | Consumed on a super-effective hit; +2 Atk/Sp.Atk | |
+| 267 | Douse Drive | Drives | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. needs new mechanism: reusable Plate-style pattern, Genesect-only, pending species-roster confirmation; changes Techno Blast to Water |  |
+| 268 | Shock Drive | Drives | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Electric |  |
+| 269 | Burn Drive | Drives | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Fire |  |
+| 270 | Chill Drive | Drives | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Ice |  |
+| 339 | Normal Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. One-time consumed +30%/+50% power boost (gen-config nuance) on a matching-type move |  |
+| 340 | Fire Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Fire |  |
+| 341 | Water Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Water |  |
+| 342 | Electric Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Electric |  |
+| 343 | Grass Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Grass |  |
+| 344 | Ice Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Ice |  |
+| 345 | Fighting Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Fighting |  |
+| 346 | Poison Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Poison |  |
+| 347 | Ground Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Ground |  |
+| 348 | Flying Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Flying |  |
+| 349 | Psychic Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Psychic |  |
+| 350 | Bug Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Bug |  |
+| 351 | Rock Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Rock |  |
+| 352 | Ghost Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Ghost |  |
+| 353 | Dragon Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Dragon |  |
+| 354 | Dark Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Dark |  |
+| 355 | Steel Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Steel |  |
+| 356 | Fairy Gem | Gems | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Fairy |  |
+| 455 | Absorb Bulb | Type-activated | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Consumed on a Water hit, +1 Sp.Atk |  |
+| 456 | Cell Battery | Type-activated | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Consumed on an Electric hit, +1 Atk |  |
+| 458 | Snowball | Type-activated | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Consumed on an Ice hit, +1 Atk |  |
+| 494 | Eviolite | Misc. held | INCLUDED | +50% Def/Sp.Def for not-fully-evolved Pokémon — explicitly included (Gen V+ override) |  |
+| 495 | Float Stone | Misc. held | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Halves holder's weight |  |
+| 496 | Rocky Helmet | Misc. held | INCLUDED | Damages attacker 1/6 max HP on contact — explicitly included (Gen V+ override) |  |
+| 497 | Air Balloon | Misc. held | INCLUDED | Grants Ground-move immunity; popped on any hit — explicitly included (Gen V+ override) |  |
+| 498 | Red Card | Misc. held | INCLUDED | Forces attacker to switch out (consumed) — explicitly included (Gen V+ override) |  |
+| 499 | Ring Target | Misc. held | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Removes one type immunity vs. the attacking type |  |
+| 500 | Binding Band | Misc. held | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Raises binding-move damage 1/8 → 1/6 max HP |  |
+| 501 | Eject Button | Misc. held | INCLUDED | Forces holder to switch out after being hit — explicitly included (Gen V+ override) |  |
+| 502 | Weakness Policy | Misc. held | INCLUDED | Consumed on a super-effective hit; +2 Atk/Sp.Atk — explicitly included (Gen V+ override) |  |
 
-## Generation VI (56 items — 9 included, 47 structurally excluded)
+## Generation VI (56 items — 6 included, 50 excluded: 47 Mega Stone + 3 Gen V+ not listed)
 
 | ID | Name | Category | Status | Notes | Rob's override |
 |---|---|---|---|---|---|
-| 266 | Pixie Plate | Plates | INCLUDED | Same Plate-mechanism gap as the 16 Gen IV Plates; Fairy | |
-| 457 | Luminous Moss | Type-activated | INCLUDED | Consumed on a Water hit, +1 Sp.Def | |
-| 566 | Roseli Berry | Berries | INCLUDED | Halves super-effective Fairy damage; mechanism exists generically, needs this data entry | |
-| 579 | Kee Berry | Berries | INCLUDED | +1 Defense when hit by a physical move | |
-| 580 | Maranga Berry | Berries | INCLUDED | +1 Sp.Def when hit by a special move | |
-| 503 | Assault Vest | Misc. held | INCLUDED | +50% Sp.Def; holder cannot use status moves | |
-| 504 | Safety Goggles | Misc. held | INCLUDED | Blocks weather chip damage AND powder/spore moves — closes the loop `docs/m17-5_recon.md` flagged (Safety Goggles was the one unimplemented exemption for Grass-type powder immunity) | |
-| 290 | Red Orb | Colored Orbs | INCLUDED | needs new mechanism: automatic switch-in Primal Reversion trigger for Groudon — the ability it grants (Desolate Land) already exists (`[M17d]`), only the Orb-triggered form-change is missing | |
-| 291 | Blue Orb | Colored Orbs | INCLUDED | Same, Kyogre / Primordial Sea | |
+| 266 | Pixie Plate | Plates | INCLUDED | Same Plate-mechanism gap as the 16 Gen IV Plates; Fairy — explicitly included (Gen V+ override) |  |
+| 457 | Luminous Moss | Type-activated | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Consumed on a Water hit, +1 Sp.Def |  |
+| 566 | Roseli Berry | Berries | INCLUDED | Halves super-effective Fairy damage; mechanism exists generically, needs this data entry — explicitly included (Gen V+ override) |  |
+| 579 | Kee Berry | Berries | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. +1 Defense when hit by a physical move |  |
+| 580 | Maranga Berry | Berries | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. +1 Sp.Def when hit by a special move |  |
+| 503 | Assault Vest | Misc. held | INCLUDED | +50% Sp.Def; holder cannot use status moves — explicitly included (Gen V+ override) |  |
+| 504 | Safety Goggles | Misc. held | INCLUDED | Blocks weather chip damage AND powder/spore moves — closes the loop `docs/m17-5_recon.md` flagged (Safety Goggles was the one unimplemented exemption for Grass-type powder immunity) — explicitly included (Gen V+ override) |  |
+| 290 | Red Orb | Colored Orbs | INCLUDED | needs new mechanism: automatic switch-in Primal Reversion trigger for Groudon — the ability it grants (Desolate Land) already exists (`[M17d]`), only the Orb-triggered form-change is missing — explicitly included (Gen V+ override) |  |
+| 291 | Blue Orb | Colored Orbs | INCLUDED | Same, Kyogre / Primordial Sea — explicitly included (Gen V+ override) |  |
 | 292 | Venusaurite | Mega Stones | **EXCLUDED — Mega Stone** | | |
 | 293 | Charizardite X | Mega Stones | **EXCLUDED — Mega Stone** | | |
 | 294 | Charizardite Y | Mega Stones | **EXCLUDED — Mega Stone** | | |
@@ -337,34 +395,34 @@ for Rob's promised follow-up exclusion list.
 | 337 | Audinite | Mega Stones | **EXCLUDED — Mega Stone** | | |
 | 338 | Diancite | Mega Stones | **EXCLUDED — Mega Stone** | | |
 
-## Generation VII (59 items — 24 included, 35 structurally excluded)
+## Generation VII (59 items — 1 included, 58 excluded: 35 Z-Crystal + 23 Gen V+ not listed)
 
 | ID | Name | Category | Status | Notes | Rob's override |
 |---|---|---|---|---|---|
-| 271 | Fire Memory | Memories | INCLUDED | needs new mechanism: reusable Plate/Drive-style pattern, Silvally-only (Silvally's own RKS System ability is separately already excluded per `[M17n-4]`, pending species-roster confirmation); changes Multi-Attack + Silvally's own type | |
-| 272 | Water Memory | Memories | INCLUDED | Same, Water | |
-| 273 | Electric Memory | Memories | INCLUDED | Same, Electric | |
-| 274 | Grass Memory | Memories | INCLUDED | Same, Grass | |
-| 275 | Ice Memory | Memories | INCLUDED | Same, Ice | |
-| 276 | Fighting Memory | Memories | INCLUDED | Same, Fighting | |
-| 277 | Poison Memory | Memories | INCLUDED | Same, Poison | |
-| 278 | Ground Memory | Memories | INCLUDED | Same, Ground | |
-| 279 | Flying Memory | Memories | INCLUDED | Same, Flying | |
-| 280 | Psychic Memory | Memories | INCLUDED | Same, Psychic | |
-| 281 | Bug Memory | Memories | INCLUDED | Same, Bug | |
-| 282 | Rock Memory | Memories | INCLUDED | Same, Rock | |
-| 283 | Ghost Memory | Memories | INCLUDED | Same, Ghost | |
-| 284 | Dragon Memory | Memories | INCLUDED | Same, Dragon | |
-| 285 | Dark Memory | Memories | INCLUDED | Same, Dark | |
-| 286 | Steel Memory | Memories | INCLUDED | Same, Steel | |
-| 287 | Fairy Memory | Memories | INCLUDED | Same, Fairy | |
-| 451 | Electric Seed | Terrain Seeds | INCLUDED | needs new mechanism: this project's Terrain system is void (`[M17e]`, Rob's locked decision) — moot unless Terrain is reconsidered; consumed on switch-in during Electric Terrain, +1 Def | |
-| 452 | Psychic Seed | Terrain Seeds | INCLUDED | Same dependency, Psychic Terrain, +1 Sp.Def | |
-| 453 | Misty Seed | Terrain Seeds | INCLUDED | Same dependency, Misty Terrain, +1 Sp.Def | |
-| 454 | Grassy Seed | Terrain Seeds | INCLUDED | Same dependency, Grassy Terrain, +1 Def | |
-| 505 | Adrenaline Orb | Misc. held | INCLUDED | Consumed when targeted by Intimidate, +1 Speed | |
-| 506 | Terrain Extender | Misc. held | INCLUDED | needs new mechanism: same Terrain-system dependency as the 4 Seeds above | |
-| 507 | Protective Pads | Misc. held | INCLUDED | Blocks contact-triggered side effects taken by the holder | |
+| 271 | Fire Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. needs new mechanism: reusable Plate/Drive-style pattern, Silvally-only (Silvally's own RKS System ability is separately already excluded per `[M17n-4]`, pending species-roster confirmation); changes Multi-Attack + Silvally's own type |  |
+| 272 | Water Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Water |  |
+| 273 | Electric Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Electric |  |
+| 274 | Grass Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Grass |  |
+| 275 | Ice Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Ice |  |
+| 276 | Fighting Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Fighting |  |
+| 277 | Poison Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Poison |  |
+| 278 | Ground Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Ground |  |
+| 279 | Flying Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Flying |  |
+| 280 | Psychic Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Psychic |  |
+| 281 | Bug Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Bug |  |
+| 282 | Rock Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Rock |  |
+| 283 | Ghost Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Ghost |  |
+| 284 | Dragon Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Dragon |  |
+| 285 | Dark Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Dark |  |
+| 286 | Steel Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Steel |  |
+| 287 | Fairy Memory | Memories | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Fairy |  |
+| 451 | Electric Seed | Terrain Seeds | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. needs new mechanism: this project's Terrain system is void (`[M17e]`, Rob's locked decision) — moot unless Terrain is reconsidered; consumed on switch-in during Electric Terrain, +1 Def |  |
+| 452 | Psychic Seed | Terrain Seeds | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same dependency, Psychic Terrain, +1 Sp.Def |  |
+| 453 | Misty Seed | Terrain Seeds | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same dependency, Misty Terrain, +1 Sp.Def |  |
+| 454 | Grassy Seed | Terrain Seeds | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same dependency, Grassy Terrain, +1 Def |  |
+| 505 | Adrenaline Orb | Misc. held | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Consumed when targeted by Intimidate, +1 Speed |  |
+| 506 | Terrain Extender | Misc. held | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. needs new mechanism: same Terrain-system dependency as the 4 Seeds above |  |
+| 507 | Protective Pads | Misc. held | INCLUDED | Blocks contact-triggered side effects taken by the holder — explicitly included (Gen V+ override) |  |
 | 357 | Normalium Z | Z-Crystals | **EXCLUDED — Z-Crystal** | | |
 | 358 | Firium Z | Z-Crystals | **EXCLUDED — Z-Crystal** | | |
 | 359 | Waterium Z | Z-Crystals | **EXCLUDED — Z-Crystal** | | |
@@ -401,38 +459,38 @@ for Rob's promised follow-up exclusion list.
 | 390 | Pikashunium Z | Z-Crystals | **EXCLUDED — Z-Crystal** | (signature, partner Pikachu) |
 | 391 | Ultranecrozium Z | Z-Crystals | **EXCLUDED — Z-Crystal** | (signature, Ultra Necrozma) |
 
-## Generation VIII (8 items)
+## Generation VIII (8 items — 5 included, 3 excluded)
 
 | ID | Name | Category | Status | Notes | Rob's override |
 |---|---|---|---|---|---|
-| 288 | Rusted Sword | Form-changing (held) | INCLUDED | needs new mechanism: permanent Hero↔Crowned form change on holding, Zacian-only, pending species-roster confirmation; expressible via existing type-mutation infra (`_set_mon_type`, `[M16e]`/`[M17n-4]`) | |
-| 289 | Rusted Shield | Form-changing (held) | INCLUDED | Same, Zamazenta | |
-| 508 | Throat Spray | Misc. held | INCLUDED | +1 Sp.Atk whenever holder uses a sound move; this project already has a `sound_move` flag wired (`[M17n-1]`/`[M17n-6]`) — should be cheap | |
-| 509 | Eject Pack | Misc. held | INCLUDED | Forces holder to switch out whenever any of its stats are lowered | |
-| 510 | Heavy-Duty Boots | Misc. held | **ALREADY IMPLEMENTED** | Full hazard immunity on switch-in | |
-| 511 | Blunder Policy | Misc. held | INCLUDED | Consumed when holder's move misses; +2 Speed | |
-| 512 | Room Service | Misc. held | INCLUDED | Consumed on switch-in during Trick Room; −1 Speed; this project already has Trick Room (`[M16d]`) — should be cheap | |
-| 513 | Utility Umbrella | Misc. held | **ALREADY IMPLEMENTED** | Negates rain/sun for the holder | |
+| 288 | Rusted Sword | Form-changing (held) | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. needs new mechanism: permanent Hero↔Crowned form change on holding, Zacian-only, pending species-roster confirmation; expressible via existing type-mutation infra (`_set_mon_type`, `[M16e]`/`[M17n-4]`) |  |
+| 289 | Rusted Shield | Form-changing (held) | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Zamazenta |  |
+| 508 | Throat Spray | Misc. held | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. +1 Sp.Atk whenever holder uses a sound move; this project already has a `sound_move` flag wired (`[M17n-1]`/`[M17n-6]`) — should be cheap |  |
+| 509 | Eject Pack | Misc. held | INCLUDED | Forces holder to switch out whenever any of its stats are lowered — explicitly included (Gen V+ override) |  |
+| 510 | Heavy-Duty Boots | Misc. held | **ALREADY IMPLEMENTED** | Full hazard immunity on switch-in — explicitly included (Gen V+ override) |  |
+| 511 | Blunder Policy | Misc. held | INCLUDED | Consumed when holder's move misses; +2 Speed — explicitly included (Gen V+ override) |  |
+| 512 | Room Service | Misc. held | INCLUDED | Consumed on switch-in during Trick Room; −1 Speed; this project already has Trick Room (`[M16d]`) — should be cheap — explicitly included (Gen V+ override) |  |
+| 513 | Utility Umbrella | Misc. held | **ALREADY IMPLEMENTED** | Negates rain/sun for the holder — explicitly included (Gen V+ override) |  |
 
-## Generation IX (80 items — 15 included, 65 structurally excluded)
+## Generation IX (80 items — 6 included, 74 excluded: 65 structural (20 Tera + 45 Mega Stone) + 9 Gen V+ not listed)
 
 | ID | Name | Category | Status | Notes | Rob's override |
 |---|---|---|---|---|---|
-| 758 | Ability Shield | Gen IX battle items | INCLUDED | Blocks holder's own ability from being changed/suppressed/negated | |
-| 759 | Clear Amulet | Gen IX battle items | INCLUDED | Blocks external stat-lowering | |
-| 760 | Punching Glove | Gen IX battle items | INCLUDED | +10% punching-move power, strips contact flag; this project already has a `punching_move` flag + `move_makes_contact()` wrapper (`[M17n-5]`) — should be cheap | |
-| 761 | Covert Cloak | Gen IX battle items | INCLUDED | Blocks secondary/additional effects of moves used against the holder | |
-| 762 | Loaded Dice | Gen IX battle items | INCLUDED | needs new mechanism: this project has no multi-hit-move mechanism at all (same gap that deferred Skill Link, `[M17n-5]`) | |
-| 764 | Booster Energy | Gen IX battle items | INCLUDED | needs new mechanism: activates Protosynthesis/Quark Drive, both already-excluded abilities — moot unless those are reconsidered | |
-| 769 | Mirror Herb | Gen IX battle items | INCLUDED | Once: copies an opponent's stat increase; this project already has an analogous "copy opponent's stat increase" shape via Opportunist (`[M17n-8]`) — likely a cheap adjacent add | |
-| 792 | Adamant Crystal | Species-specific | INCLUDED | needs new mechanism: Origin-forme Dialga equivalent of Adamant Orb, pending species/form-roster confirmation | |
-| 793 | Griseous Core | Species-specific | INCLUDED | Same, Origin-forme Giratina | |
-| 794 | Lustrous Globe | Species-specific | INCLUDED | Same, Origin-forme Palkia | |
-| 798 | Berserk Gene | Misc. held | INCLUDED | *(mechanically a revived Gen II item; just assigned a high ID in this ROM hack's table)* Sharply raises Attack but confuses the holder, then consumed | |
-| 799 | Fairy Feather | Type-boosting | INCLUDED | +20% Fairy move power; closes the Gen VI Fairy-type gap in the Charcoal-family set | |
-| 803 | Cornerstone Mask | Species-specific | INCLUDED | needs new mechanism: Ogerpon-only form/type change while held, pending species-roster confirmation — corrected from the recon's bundling with Terastallization (see corrections above); the base mask-holding effect is independent of Terastallizing | |
-| 804 | Wellspring Mask | Species-specific | INCLUDED | Same, Water-type form | |
-| 805 | Hearthflame Mask | Species-specific | INCLUDED | Same, Fire-type form | |
+| 758 | Ability Shield | Gen IX battle items | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Blocks holder's own ability from being changed/suppressed/negated |  |
+| 759 | Clear Amulet | Gen IX battle items | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Blocks external stat-lowering |  |
+| 760 | Punching Glove | Gen IX battle items | INCLUDED | +10% punching-move power, strips contact flag; this project already has a `punching_move` flag + `move_makes_contact()` wrapper (`[M17n-5]`) — should be cheap — explicitly included (Gen V+ override) |  |
+| 761 | Covert Cloak | Gen IX battle items | INCLUDED | Blocks secondary/additional effects of moves used against the holder — explicitly included (Gen V+ override) |  |
+| 762 | Loaded Dice | Gen IX battle items | INCLUDED | needs new mechanism: this project has no multi-hit-move mechanism at all (same gap that deferred Skill Link, `[M17n-5]`) — explicitly included (Gen V+ override) |  |
+| 764 | Booster Energy | Gen IX battle items | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. needs new mechanism: activates Protosynthesis/Quark Drive, both already-excluded abilities — moot unless those are reconsidered |  |
+| 769 | Mirror Herb | Gen IX battle items | INCLUDED | Once: copies an opponent's stat increase; this project already has an analogous "copy opponent's stat increase" shape via Opportunist (`[M17n-8]`) — likely a cheap adjacent add — explicitly included (Gen V+ override) |  |
+| 792 | Adamant Crystal | Species-specific | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. needs new mechanism: Origin-forme Dialga equivalent of Adamant Orb, pending species/form-roster confirmation |  |
+| 793 | Griseous Core | Species-specific | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Origin-forme Giratina |  |
+| 794 | Lustrous Globe | Species-specific | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Origin-forme Palkia |  |
+| 798 | Berserk Gene | Misc. held | INCLUDED | *(true generation-introduced is Gen II — a revived Gen II item just assigned a high ID in this ROM hack's table; reclassified under the Gen I-IV blanket-include rule despite its Gen IX table placement)* Sharply raises Attack but confuses the holder, then consumed |  |
+| 799 | Fairy Feather | Type-boosting | INCLUDED | +20% Fairy move power; closes the Gen VI Fairy-type gap in the Charcoal-family set — explicitly included (Gen V+ override) |  |
+| 803 | Cornerstone Mask | Species-specific | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. needs new mechanism: Ogerpon-only form/type change while held, pending species-roster confirmation — corrected from the recon's bundling with Terastallization (see corrections above); the base mask-holding effect is independent of Terastallizing |  |
+| 804 | Wellspring Mask | Species-specific | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Water-type form |  |
+| 805 | Hearthflame Mask | Species-specific | **EXCLUDED — Gen V+, not listed** | Excluded — Gen V+, not on Rob's explicit inclusion list. Same, Fire-type form |  |
 | 772 | Tera Orb | Tera items | **EXCLUDED — Terastallization** | | |
 | 774 | Bug Tera Shard | Tera items | **EXCLUDED — Terastallization** | | |
 | 775 | Dark Tera Shard | Tera items | **EXCLUDED — Terastallization** | | |
@@ -507,9 +565,18 @@ This ledger is the single source of truth for M18's held-item scope going forwar
 **update it in place, don't re-derive a count from scratch**, mirroring the discipline
 established for `docs/m17_final_ledger.md`.
 
-- **When Rob adds further individual exclusions** (the promised follow-up list): fill
-  in the "Rob's override" column for each affected row (e.g. `EXCLUDE — reason`) rather
-  than deleting the row — keeps the full catalog intact and the decision auditable.
+- **New scope rule shape, as of this update:** status is no longer "included by
+  default except three structural categories" — it's now "Gen I-IV blanket include,
+  plus a named 23-item Gen V+ override list, everything else Gen V+ excluded." If Rob
+  ever adds a NEW item to the Gen V+ override list, update that row's Status to
+  `INCLUDED` and its Notes to say "explicitly included (Gen V+ override)," matching
+  the existing 23 rows' exact phrasing — don't just flip the word without adding the
+  reason, since a future reader needs to know WHY a lone Gen VI+ item is included
+  when its neighbors aren't.
+- **When Rob adds further individual exclusions on top of either rule** (the
+  promised follow-up list): fill in the "Rob's override" column for each affected row
+  (e.g. `EXCLUDE — reason`) rather than deleting the row — keeps the full catalog
+  intact and the decision auditable.
 - **When an item gets implemented**: update its Status cell to `**ALREADY
   IMPLEMENTED**` and move its Notes to describe the actual `HOLD_EFFECT_*` constant and
   named `.tres`/data entry used, the same way this ledger's own "already implemented"
