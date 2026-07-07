@@ -8714,3 +8714,160 @@ prior test exercises.
 (berry/misc items on an existing exact dispatch — resist berries, status-cure
 berries, Oran Berry — 23 items) as next, per `docs/m18_subtier_plan.md`'s
 recommended sequencing.
+
+## [Item Data Infrastructure] gen_items.py + ItemData/.tres/ItemRegistry pipeline
+
+Cross-cutting infrastructure session, not tied to a specific M18 sub-tier — closes
+the gap M18a's own entry (above) flagged: moves and abilities both follow a
+two-track pattern (hand-authored Python dict → regenerated `.tres` Resource files
+the engine loads at runtime), but items never had this treatment. M18a's 40 items
+were wired directly into `ItemManager`'s GDScript with no generation script and no
+`.tres` layer. Rob explicitly requested this be built now, before M18b, so every
+subsequent M18 tier follows the correct pattern from the start.
+
+### Key finding, before any implementation: there was no inline data to migrate
+
+The task's own framing assumed M18a's 40 items' data "lives inline... in the
+`HOLD_EFFECT_TYPE_POWER`/`HOLD_EFFECT_PLATE` dispatch and whatever dictionary/
+constants back it." Direct re-read of `item_manager.gd` found this to be
+imprecise: `move_power_modifier_uq412` is pure generic logic — it reads whatever
+`ItemData` is already attached to `mon.held_item` (via `effective_held_item`) and
+checks `hold_effect`/`hold_effect_param` against the move being used. It contains
+no per-item table anywhere (no "Charcoal → Fire" mapping lives in `ItemManager` at
+all). **The 40 items' actual field values existed only inside
+`scenes/battle/m18a_test.gd`'s 40 inline `_make_item(hold_effect, param)` calls.**
+
+This meant "migrate ItemManager to read from .tres-backed data" and "remove the
+now-dead inline data" couldn't be taken literally — there was nothing in
+`ItemManager` to migrate away from or remove. What was actually missing was the
+"given an item ID, get its `ItemData`" capability itself, which didn't exist for
+items in any form (inline or otherwise) outside test files. Flagged to Rob before
+proceeding; implemented as described below rather than blocking on it, since the
+underlying goal (a working item data pipeline, verified faithful to M18a) was
+unambiguous regardless of this wording gap.
+
+### ItemData schema
+
+Added one field to the existing (M12-era) `scripts/data/item_data.gd`:
+`item_id: int = 0`. Mirrors `AbilityData.ability_id`'s convention (`MoveData` has
+no equivalent `move_id` field — the two pre-existing patterns already diverge on
+this exact point; picked the more explicit convention rather than silently
+following whichever one was read first). Useful for round-trip integrity checks
+when a caller loads by ID via `ItemRegistry` (confirming the loaded resource's own
+`item_id` matches the ID requested), which the new `item_registry_test.tscn`
+exercises directly (Section 1, below).
+
+The rest of `ItemData`'s existing fields (`description`, `pocket`, `importance`,
+`not_consumed`, `battle_usage`, `fling_power`, `price`) were left untouched.
+Confirmed via grep across `scripts/battle/` that none of them are read anywhere in
+this codebase — dormant fields carried from the original M12 schema design, the
+same "carried from the schema, never wired" pattern already flagged elsewhere in
+this project (e.g. `PokemonSpecies.catch_rate`). Not removed (out of scope, and
+removing a field a future tier might need is a worse mistake than leaving an
+unused one) and not populated for the 40 M18a items either, per this session's
+explicit "keep it lean" scope — `gen_items.py` only emits `hold_effect`/
+`hold_effect_param` for now, letting everything else fall to its class default.
+
+Source's canonical `struct ItemInfo` (`include/item.h:69-90`) has a `secondaryId`
+field this project's `ItemData` has no equivalent for — confirmed again this
+session, not a new finding (`[M17n-4]`'s Multitype read and M18a's own
+`move_power_modifier_uq412` already established reusing `hold_effect_param` to
+carry the type instead). Left as-is; adding a real `secondary_id` field would mean
+also migrating both of those existing call sites, a bigger and riskier change than
+this session's stated scope.
+
+### gen_items.py
+
+New `scripts/gen_items.py` at the project root's `scripts/` directory (matching
+`gen_moves.py`/`gen_abilities.py`'s actual location — both live in `scripts/`, not
+literally the project root, despite how casual references to them sometimes read).
+Structure mirrors both existing generators exactly: an `ITEMS` list of dicts →
+`DEFAULTS` dict (skip a field in the emitted `.tres` when it equals its class
+default) → `HEADER` (the `gd_resource` template, no `uid=`, matching
+`gen_moves.py`'s own documented "why no uid=" rationale — Godot resolves
+`ext_resource` by UID via `uid_cache.bin`, populated at import time; a handwritten
+UID the cache hasn't seen yet warns, path-only references don't) → `FIELD_ORDER`
+(explicit emit order) → `render()` → `main()`, writing `data/items/item_NNNN.tres`
+per entry, ID zero-padded to 4 digits. Invocation: `python3 scripts/gen_items.py`
+from the project root.
+
+`ITEMS` is scoped to exactly the 40 items M18a implemented and tested — every
+entry's `id`/`hold_effect`/`hold_effect_param` was re-derived independently (not
+copied from `docs/m18_subtier_plan.md`, which predates M18a's own Step 0
+corrections) and cross-checked programmatically against the exact data
+`m18a_test.gd` was generated from: **zero mismatches, zero missing/extra IDs**
+across all 40. Ran the script; all 40 `.tres` files generated, spot-checked
+against the `move_NNNN.tres`/`ability_NNNN.tres` format (identical structure,
+confirmed byte-for-byte shape match on `item_0426.tres`).
+
+### ItemRegistry
+
+New `scripts/battle/core/item_registry.gd`. `ItemRegistry.get_item(id)` mirrors
+`MoveRegistry.get_move(id)` exactly (path-convention loader,
+`res://data/items/item_%04d.tres`, `ResourceLoader.exists()` check +
+`push_warning` on a missing ID, no preload table) — chosen over `AbilityData`'s
+pattern (no dedicated registry; `load(...)` called ad hoc per test file) because
+`AbilityManager`'s actual mechanic dispatch never reads `.tres` fields at battle
+runtime at all (100% hardcoded ability-ID constants; the `.tres` layer there is a
+metadata catalog for name/description/ai_rating/interaction flags only), whereas
+items are architecturally closer to moves: `ItemManager`'s dispatch is likewise
+hardcoded `HOLD_EFFECT_*` constants, but a proper by-ID registry is the right
+foundation for future non-battle production code (team-building, UI) that will
+need to construct a `BattlePokemon`'s `held_item` from a bag/save-file ID rather
+than a test file's inline construction.
+
+### Tests
+
+New `scenes/battle/item_registry_test.gd`/`.tscn` — **204/204 assertions**, not a
+new-mechanic test (no game behavior changed this session) but a sanity check for
+the new pipeline's own correctness, since `m18a_test.gd` is explicitly unmodified
+and never touches `ItemRegistry`, so it can't by itself prove the new layer works
+or is behaviorally interchangeable with inline construction:
+
+- **Section 1 (200 assertions):** full-coverage data-integrity loop over all 40
+  items — `ItemRegistry.get_item(id)` loads successfully, `item_id`/`item_name`/
+  `hold_effect`/`hold_effect_param` all match an independently-transcribed
+  expected table (not read from `gen_items.py` itself, so a generator regression
+  would be caught, not just echoed). A `for` loop is used here deliberately,
+  unlike this project's usual per-item "no loop consolidation" test convention —
+  that convention exists to prevent losing per-item behavioral nuance, and there
+  is none to lose here: this validates one mechanical property (does the
+  generator's output round-trip correctly) across a homogeneous data table, not
+  40 distinct behaviors.
+- **Section 2 (4 assertions):** behavioral parity — a registry-loaded Charcoal
+  `ItemData` and an inline-constructed one with identical fields produce the
+  IDENTICAL `ItemManager.move_power_modifier_uq412` output (4915, matching
+  M18a's own established value), a registry-loaded Flame Plate does too, and a
+  registry-loaded Charcoal correctly does NOT boost a non-matching-type move
+  (4096, neutral) — this is the actual correctness claim the "migration" framing
+  rested on, made explicit and directly tested rather than assumed from Section
+  1's data-integrity checks alone.
+
+`scenes/battle/m18a_test.gd` itself was re-run **completely unmodified** and
+still passes **160/160**, identical to its pre-session result — confirming this
+was a pure additive infrastructure change with zero behavior impact, exactly as
+the task required.
+
+### Regression
+
+Full 45-file baseline was already confirmed clean at the top of `[M18a]`'s own
+entry earlier the same day; per this session's explicit routine-infrastructure
+scope, only `m18a_test.tscn` (unmodified, 160/160) and the new
+`item_registry_test.tscn` (204/204) were run — not the full sweep, which remains
+Rob's manual step. Both touched files this session (`item_data.gd`, a new field
+only; `item_manager.gd`, untouched — no changes were needed there at all, per the
+Key Finding above) carry zero risk of affecting any other suite: no existing code
+reads `ItemData.item_id`, and no existing `.tres` file for any other data kind
+was touched.
+
+### Docs
+
+`CLAUDE.md`: new "Data pipeline scripts" subsection (Development workflow)
+documenting all three generators' shared structure and invocation, the
+`ItemRegistry`-vs-`AbilityData`-ad-hoc-loading distinction and why, and an
+explicit scope note that `gen_items.py`'s `ITEMS` dict must be extended (not
+bypassed) by every future M18 sub-tier. New status line added for this session,
+directly below `[M18a]`'s own line, closing the gap that entry flagged. `[M18a]`'s
+own status line was left factually as-is (it accurately describes what that
+session found and did) rather than rewritten to imply the gap was already closed
+at the time.
