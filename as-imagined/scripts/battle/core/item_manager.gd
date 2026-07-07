@@ -101,6 +101,56 @@ const HOLD_EFFECT_ROWAP_BERRY:   int = 86  # Same as Jaboca but SPECIAL-category
                                             # battle_hold_effects.c L355-376, checks only
                                             # IsBattleMoveSpecial, no contact check).
 
+# M18g: species-gated stat/crit items + Soul Dew (9 items). CORRECTION: [M17n-4]
+# (cited by the plan as the species-gate precedent) establishes NO species-gate
+# mechanism at all — Multitype's own held-item read is a Plate-TYPE check, not a
+# species check. No prior precedent exists in this codebase; built fresh here.
+const HOLD_EFFECT_SOUL_DEW:      int = 33  # Latios/Latias — TYPE-BOOST ONLY under this
+                                            # project's B_SOUL_DEW_BOOST=GEN_LATEST config
+                                            # (>=GEN_7 resolution); NOT a SpDef stat boost
+                                            # (that's the pre-Gen7 behavior, a different
+                                            # mechanism this project does not implement).
+const HOLD_EFFECT_DEEP_SEA_TOOTH: int = 34 # Clamperl — ×2.0 Sp.Attack, special-only.
+const HOLD_EFFECT_DEEP_SEA_SCALE: int = 35 # Clamperl — ×2.0 Sp.Defense, special-only.
+                                            # CORRECTION: lives in CalcDefenseStat (the
+                                            # raw-stat-before-formula stage, same as
+                                            # Choice Band/Specs), NOT
+                                            # GetDefenseStatModifier's post-effectiveness
+                                            # stage where Thick Fat/Marvel Scale/etc.
+                                            # already live via AbilityManager.
+                                            # defense_damage_modifier_uq412 — a
+                                            # similarly-named but different function.
+const HOLD_EFFECT_LIGHT_BALL:    int = 42  # Pikachu — ×2.0 BOTH Attack and Sp.Attack,
+                                            # unconditional on move category (config-gated
+                                            # true under GEN_LATEST).
+const HOLD_EFFECT_LUCKY_PUNCH:   int = 45  # Chansey ONLY (NOT Blissey) — +2 crit stage.
+const HOLD_EFFECT_METAL_POWDER:  int = 46  # Ditto — ×2.0 DEFENSE (not SpDef), physical-only.
+                                            # CORRECTION: a real distinction from Quick
+                                            # Powder — the two are NOT the same stat.
+                                            # "Untransformed" condition is untestable in
+                                            # this project: no Transform/Imposter mechanic
+                                            # exists (confirmed via grep), so this gate is
+                                            # vacuously always satisfied — flagged, not
+                                            # silently omitted.
+const HOLD_EFFECT_THICK_CLUB:    int = 47  # Cubone OR Marowak — ×2.0 Attack, physical-only.
+const HOLD_EFFECT_LEEK:          int = 48  # Farfetch'd [+ Sirfetch'd(865), absent from
+                                            # this project's 386-species/Gen-3-capped
+                                            # roster, confirmed via direct dex lookup] —
+                                            # +2 crit stage.
+const HOLD_EFFECT_QUICK_POWDER:  int = 75  # Ditto — ×2.0 SPEED (not Defense). Same
+                                            # untransformed-untestable note as Metal Powder.
+
+# M18g: national_dex_num values (must match data/pokemon.json / PokemonSpecies).
+const SPECIES_PIKACHU:    int = 25
+const SPECIES_FARFETCHD:  int = 83
+const SPECIES_CUBONE:     int = 104
+const SPECIES_MAROWAK:    int = 105
+const SPECIES_CHANSEY:    int = 113
+const SPECIES_DITTO:      int = 132
+const SPECIES_CLAMPERL:   int = 366
+const SPECIES_LATIAS:     int = 380
+const SPECIES_LATIOS:     int = 381
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -114,6 +164,7 @@ const UQ412_LIFE_ORB: int        = 5324   # 1.3 × (floored) — Life Orb damage
 const UQ412_RESIST_BERRY: int    = 2048   # 0.5 × — Resist Berry halving
 const UQ412_RIPEN_RESIST_BERRY: int = 1024  # 0.25 × — Resist Berry halving, doubled by Ripen
 const UQ412_TYPE_BOOST: int      = 4915   # 1.2 × — matching-type held item (M18a)
+const UQ412_DOUBLE: int          = 8192   # 2.0 × — M18g species-gated stat items
 
 
 # ── Attack-stat item modifier (applied to stat, BEFORE base formula) ──────────
@@ -146,6 +197,19 @@ static func effective_held_item(mon: BattlePokemon, ng_active: bool = false) -> 
 	return mon.held_item
 
 
+# M18g: species gate for Light Ball/Thick Club/Lucky Punch/Metal Powder/Quick
+# Powder/Deep Sea Scale/Deep Sea Tooth/Soul Dew/Leek. `item.required_species == 0`
+# means unrestricted (every other item in this file). No prior precedent for this
+# check existed anywhere in the codebase before this tier — see the
+# HOLD_EFFECT_SOUL_DEW constant's own doc comment for the [M17n-4] correction.
+static func _species_matches(mon: BattlePokemon, item: ItemData) -> bool:
+	if item.required_species == 0:
+		return true
+	var dex: int = mon.species.national_dex_num
+	return dex == item.required_species or \
+			(item.required_species2 != 0 and dex == item.required_species2)
+
+
 static func attack_modifier_uq412(mon: BattlePokemon, move: MoveData, ng_active: bool = false) -> int:
 	var item: ItemData = effective_held_item(mon, ng_active)
 	if item == null:
@@ -155,6 +219,38 @@ static func attack_modifier_uq412(mon: BattlePokemon, move: MoveData, ng_active:
 		return UQ412_CHOICE_MULT
 	if he == HOLD_EFFECT_CHOICE_SPECS and move.category == 1:
 		return UQ412_CHOICE_MULT
+	# M18g: Thick Club (Cubone/Marowak, physical-only), Deep Sea Tooth (Clamperl,
+	# special-only), Light Ball (Pikachu, ANY category — B_LIGHT_BALL_ATTACK_BOOST
+	# resolves >=GEN_4 under this project's GEN_LATEST config, so the category OR
+	# is unconditionally satisfied). Same pipeline stage as Choice Band/Specs
+	# above (CalcAttackStat, battle_util.c L6977-6989), confirmed via source.
+	if he == HOLD_EFFECT_THICK_CLUB and move.category == 0 and _species_matches(mon, item):
+		return UQ412_DOUBLE
+	if he == HOLD_EFFECT_DEEP_SEA_TOOTH and move.category == 1 and _species_matches(mon, item):
+		return UQ412_DOUBLE
+	if he == HOLD_EFFECT_LIGHT_BALL and _species_matches(mon, item):
+		return UQ412_DOUBLE
+	return 4096
+
+
+# M18g: item-driven DEFENSE stat modifier (Deep Sea Scale, Metal Powder) — a
+# genuinely NEW pipeline stage, since no item-side defense-stat modifier existed
+# in this project before this tier (Eviolite/Assault Vest aren't implemented).
+# Source: CalcDefenseStat's own switch (battle_util.c L7160-7189) — the raw-stat-
+# before-formula stage, confirmed DISTINCT from GetDefenseStatModifier's post-
+# effectiveness stage (AbilityManager.defense_damage_modifier_uq412, a similarly
+# named but different function where Thick Fat/Marvel Scale/etc. already live).
+# Deep Sea Scale: Clamperl, special-only (`!usesDefStat`). Metal Powder: Ditto,
+# physical-only (`usesDefStat`) — the "untransformed" condition is vacuously
+# always true in this project (no Transform/Imposter mechanic exists).
+static func defense_stat_modifier_uq412(mon: BattlePokemon, move: MoveData, ng_active: bool = false) -> int:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null:
+		return 4096
+	if item.hold_effect == HOLD_EFFECT_DEEP_SEA_SCALE and move.category == 1 and _species_matches(mon, item):
+		return UQ412_DOUBLE
+	if item.hold_effect == HOLD_EFFECT_METAL_POWDER and move.category == 0 and _species_matches(mon, item):
+		return UQ412_DOUBLE
 	return 4096
 
 
@@ -236,8 +332,16 @@ static func defender_berry_consumed(defender: BattlePokemon,
 
 static func apply_speed_modifier(mon: BattlePokemon, speed: int, ng_active: bool = false) -> int:
 	var item: ItemData = effective_held_item(mon, ng_active)
-	if item != null and item.hold_effect == HOLD_EFFECT_CHOICE_SCARF:
+	if item == null:
+		return speed
+	if item.hold_effect == HOLD_EFFECT_CHOICE_SCARF:
 		return (speed * 150) / 100
+	# M18g: Quick Powder — Ditto, ×2.0 SPEED (a DIFFERENT stat than Metal Powder's
+	# Defense — confirmed via source, a real correction, not a matched-pair
+	# assumption). Source: battle_main.c L4705, the same speed-pipeline chokepoint
+	# Choice Scarf occupies above.
+	if item.hold_effect == HOLD_EFFECT_QUICK_POWDER and _species_matches(mon, item):
+		return speed * 2
 	return speed
 
 
@@ -541,6 +645,20 @@ static func move_power_modifier_uq412(mon: BattlePokemon, move: MoveData, ng_act
 	var item: ItemData = effective_held_item(mon, ng_active)
 	if item == null:
 		return 4096
+	# M18g: Soul Dew — Latios/Latias, Psychic/Dragon-type moves only, same
+	# UQ412_TYPE_BOOST magnitude (holdEffectParam=20 for BOTH under this project's
+	# B_SOUL_DEW_BOOST=GEN_LATEST/>=GEN_7 config — confirmed via src/data/items.h's
+	# own `B_SOUL_DEW_BOOST >= GEN_7 ? 20 : 50` ternary). A SEPARATE hold_effect
+	# case from HOLD_EFFECT_TYPE_POWER/PLATE (source: battle_util.c L6653-6658,
+	# same switch, same CalcMoveBasePowerAfterModifiers function) rather than a
+	# type-match against hold_effect_param, since Soul Dew's type pair (Psychic
+	# AND Dragon) doesn't fit the one-type-per-item shape every Plate/Charcoal-
+	# family item uses.
+	if item.hold_effect == HOLD_EFFECT_SOUL_DEW:
+		if _species_matches(mon, item) \
+				and (move.type == TypeChart.TYPE_PSYCHIC or move.type == TypeChart.TYPE_DRAGON):
+			return UQ412_TYPE_BOOST
+		return 4096
 	if item.hold_effect != HOLD_EFFECT_TYPE_POWER and item.hold_effect != HOLD_EFFECT_PLATE:
 		return 4096
 	if move.type != item.hold_effect_param:
@@ -579,9 +697,20 @@ static func multitype_plate_type(mon: BattlePokemon, ng_active: bool = false) ->
 # zero-default shape.
 static func crit_stage_bonus(mon: BattlePokemon, ng_active: bool = false) -> int:
 	var item: ItemData = effective_held_item(mon, ng_active)
-	if item == null or item.hold_effect != HOLD_EFFECT_SCOPE_LENS:
+	if item == null:
 		return 0
-	return 1
+	if item.hold_effect == HOLD_EFFECT_SCOPE_LENS:
+		return 1
+	# M18g: Lucky Punch (Chansey ONLY, not Blissey) / Leek (Farfetch'd [+
+	# Sirfetch'd, absent from this roster]) — +2, NOT +1 like Scope Lens/Razor
+	# Claw, despite living in the exact same source function
+	# (GetHoldEffectCritChanceIncrease, battle_util.c L7804-7810) — a real,
+	# confirmed asymmetry, not assumed to match M18e's magnitude.
+	if item.hold_effect == HOLD_EFFECT_LUCKY_PUNCH and _species_matches(mon, item):
+		return 2
+	if item.hold_effect == HOLD_EFFECT_LEEK and _species_matches(mon, item):
+		return 2
+	return 0
 
 
 # M18l: Quick Claw — probabilistic act-first within a tied priority bracket, item

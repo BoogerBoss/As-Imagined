@@ -9572,3 +9572,160 @@ this tier itself required. Recommend **M18g (species-gated stat/crit items +
 Soul Dew, 9 items — needs `[M18a]`'s type-boost dispatch, already satisfied)
 or M18h (EV/Power-item Speed-halving, cheapest remaining, no dependencies)**
 as the next tier.
+
+
+## [M18g] Species-gated stat/crit items + Soul Dew (9 items)
+
+Seventh M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18g
+section. `[M18a]`'s type-boost dispatch (Soul Dew's dependency) was already
+satisfied. This tier's own Step 0 found the task's cited precedent for the
+species-gate mechanism doesn't exist, and surfaced five further real
+corrections — the highest correction density of any M18 tier so far.
+
+### Step 0 — finalized list, with a major correction and five further ones
+
+| Item | ID | `hold_effect` | Species gate | Effect |
+|---|---|---|---|---|
+| Light Ball | 392 | `HOLD_EFFECT_LIGHT_BALL` (42) | Pikachu (25) | ×2.0 BOTH Attack and Sp.Attack, no category gate |
+| Leek/Stick | 393 | `HOLD_EFFECT_LEEK` (48) | Farfetch'd (83) [+ Sirfetch'd(865), absent from roster] | +2 crit stage |
+| Thick Club | 394 | `HOLD_EFFECT_THICK_CLUB` (47) | Cubone (104) OR Marowak (105) | ×2.0 Attack, physical-only |
+| Lucky Punch | 395 | `HOLD_EFFECT_LUCKY_PUNCH` (45) | Chansey (113) ONLY | +2 crit stage |
+| Metal Powder | 396 | `HOLD_EFFECT_METAL_POWDER` (46) | Ditto (132) | ×2.0 Defense, physical-only |
+| Quick Powder | 397 | `HOLD_EFFECT_QUICK_POWDER` (75) | Ditto (132) | ×2.0 Speed |
+| Deep Sea Scale | 398 | `HOLD_EFFECT_DEEP_SEA_SCALE` (35) | Clamperl (366) | ×2.0 Sp.Defense, special-only |
+| Deep Sea Tooth | 399 | `HOLD_EFFECT_DEEP_SEA_TOOTH` (34) | Clamperl (366) | ×2.0 Sp.Attack, special-only |
+| Soul Dew | 400 | `HOLD_EFFECT_SOUL_DEW` (33) | Latios (381) OR Latias (380) | Type-boost ONLY (Psychic/Dragon) |
+
+All 9 `HOLD_EFFECT_*` values and all 9 `SPECIES_*`/`national_dex_num` values
+confirmed via the established programmatic full-enum recount and a direct
+`data/pokemon.json` lookup respectively — the latter also confirmed all 7
+base species + Blissey + Latios/Latias are present (386-species/Gen-3-capped
+roster) and Sirfetch'd (865) is absent, re-verified directly rather than
+trusting the plan's own "already confirmed" claim.
+
+**Major correction — the task's cited precedent doesn't exist**: `[M17n-4]`
+(cited as the species-gate "shape precedent") establishes NO species-gate
+mechanism at all. Re-reading that entry in full: Multitype's own held-item
+read (`ItemManager.multitype_plate_type`) is a Plate-**TYPE** check (works
+for any species holding a Plate), not a species-restriction check of any
+kind. No prior precedent for "does this item require a specific holder
+species" existed anywhere in the codebase before this tier — built fresh via
+two new `ItemData` fields (`required_species`/`required_species2`, plain
+scalar ints rather than an `Array[int]`, avoiding Godot typed-array `.tres`
+serialization risk for what's at most a 2-element set) and a new
+`ItemManager._species_matches(mon, item)` helper.
+
+**Five further corrections, each verified against source independently**:
+
+1. **Metal Powder and Quick Powder are NOT the same stat.** Metal Powder
+   boosts **Defense** (physical-only, `CalcDefenseStat`'s `usesDefStat`
+   branch); Quick Powder boosts **Speed** (a completely separate function,
+   `battle_main.c`'s speed pipeline, L4705). The "Ditto powder pair" framing
+   suggested symmetry; source confirms none exists. Tested with an explicit
+   cross-discriminator each way (G05.04/G06.03).
+2. **Deep Sea Scale/Tooth and Metal Powder live in a different pipeline
+   stage than expected**: `CalcAttackStat`/`CalcDefenseStat`'s raw-stat-
+   before-formula stage — the SAME stage Choice Band/Specs already occupy —
+   confirmed DISTINCT from `GetDefenseStatModifier`'s post-effectiveness
+   stage, where `AbilityManager.defense_damage_modifier_uq412` (Thick
+   Fat/Marvel Scale/etc.) already lives. A similarly-named but genuinely
+   different source function. This project had **no item-side defense-stat
+   modifier at all** before this tier (Eviolite/Assault Vest aren't
+   implemented) — a new `DamageCalculator` pipeline stage was added, mirrored
+   directly after `atk`/`def`'s existing stage resolution.
+3. **Lucky Punch and Leek/Stick are +2 crit stage, not +1** like Scope
+   Lens/Razor Claw (`[M18e]`) — despite living in the exact same source
+   function (`GetHoldEffectCritChanceIncrease`). Extended
+   `ItemManager.crit_stage_bonus()` in place rather than building a parallel
+   function, since it's the same source dispatch, just different case
+   branches with different magnitudes.
+4. **Lucky Punch does NOT extend to Blissey** (Chansey's own evolution) —
+   confirmed via source (`gBattleMons[battler].species == SPECIES_CHANSEY`,
+   no `GET_BASE_SPECIES_ID`/evolution-aware check at all) and tested
+   explicitly (G04.03). Genuinely asymmetric from Leek, whose gate DOES
+   extend to Sirfetch'd (Farfetch'd's own evolution) — though moot here since
+   Sirfetch'd isn't in this project's roster.
+5. **Soul Dew's mechanism depends on `B_SOUL_DEW_BOOST`**, which resolves to
+   Gen7+ under this reference clone's `GEN_LATEST` config (confirmed via
+   `include/config/battle.h` L226) — **type-boost ONLY** (Psychic/Dragon,
+   `holdEffectParam=20`, the same `UQ412_TYPE_BOOST` magnitude every other
+   type-boost item uses), with **NO Sp.Defense stat component**. Pre-Gen7
+   would have been a ×1.5 SpDef boost instead — a completely different
+   mechanism this project does not implement. Confirmed by checking
+   `defense_stat_modifier_uq412` has no `HOLD_EFFECT_SOUL_DEW` case at all
+   (G09.07).
+
+**Confirmed, not corrected**: Metal Powder/Quick Powder's "untransformed"
+condition is untestable in this project — no Transform/Imposter mechanic
+exists at all (confirmed via grep of `battle_pokemon.gd`/`battle_manager.gd`
+for "transform"), so the gate is vacuously always satisfied. Flagged
+explicitly per the task's own instruction, not silently omitted from either
+the implementation or the test file's own doc comment.
+
+### Implementation
+
+- Two new `ItemData` fields: `required_species`/`required_species2` (0 =
+  unrestricted / no second species).
+- New `ItemManager._species_matches(mon, item) -> bool`.
+- `attack_modifier_uq412` extended: Thick Club (physical-only), Deep Sea
+  Tooth (special-only), Light Ball (unconditional on category).
+- New `ItemManager.defense_stat_modifier_uq412(mon, move, ng_active) -> int`:
+  Deep Sea Scale (special-only), Metal Powder (physical-only). Wired into
+  `DamageCalculator.calculate` immediately after `def`'s existing stage
+  resolution, mirroring `atk_item_mod`'s exact insertion shape.
+- `apply_speed_modifier` extended: Quick Powder.
+- `move_power_modifier_uq412` extended: Soul Dew (its own `hold_effect` case,
+  not a type-match against `hold_effect_param` like every Plate/Charcoal-
+  family item, since Soul Dew's type PAIR doesn't fit that one-type-per-item
+  shape).
+- `crit_stage_bonus` extended: Lucky Punch, Leek.
+- 9 new entries added to `gen_items.py`'s `ITEMS` dict — **a real bug was
+  caught and fixed before regenerating `.tres` files**: the first draft
+  mistakenly wrote the matched-pair second species (Marowak, Latios) into
+  `hold_effect_param` instead of the newly-added `required_species2` field;
+  caught by inspection before any test ran, fixed, regenerated cleanly. 90
+  items total (81 prior + 9).
+
+### Test results
+
+New `m18g_test.gd`/`.tscn`: **40/40** assertions, 9 sections (one per item),
+each with a data check, a correct-species/correct-category confirmation, and
+at least one discriminator — several using a "thematically related but wrong
+species" negative case (Raichu for Light Ball, Doduo for Leek, a random
+Ground-type for Thick Club, a random Water-type for Deep Sea Scale/Tooth)
+rather than an unrelated control, per the task's own instruction. Passing on
+the first run (after the `hold_effect_param`/`required_species2` bug above
+was caught during implementation, before any test executed).
+
+### Regression
+
+Per this tier's routine-tier scope, only this tier's own suite plus the
+suites covering every function extended were rerun (not the full 45+-file
+sweep, which remains Rob's manual step). Note: the task's instruction to
+rerun "whichever test file covers `[M17n-4]`'s species-gate precedent" was
+itself based on the corrected-away premise that such a precedent exists;
+`m17n4_test.tscn` (Multitype's own suite) was run anyway as the nearest
+actually-relevant file, since Multitype's `multitype_plate_type` sits in the
+same file this tier touched extensively:
+- `m18g_test.tscn`: **40/40** (new).
+- `m18a_test.tscn`: **160/160**, unchanged — confirms Soul Dew's extension to
+  `move_power_modifier_uq412` didn't disturb the 40 Charcoal-family/Plate items.
+- `m18e_test.tscn`: **9/9**, unchanged — confirms Lucky Punch/Leek's extension
+  to `crit_stage_bonus()` didn't disturb Scope Lens/Razor Claw.
+- `item_test.tscn`: **77/77**, unchanged — confirms Thick Club/Deep Sea
+  Tooth/Light Ball's extension to `attack_modifier_uq412` and Quick Powder's
+  extension to `apply_speed_modifier` didn't disturb Choice Band/Specs/Scarf.
+- `m17n4_test.tscn`: **44/44**, unchanged — confirms Multitype's own
+  Plate-type read is unaffected.
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity holds
+  across the expanded 90-item catalog.
+
+No stray Godot processes before or after; reference clone untouched; `git
+status --short` matched exactly the expected file set (4 modified core
+files, 9 new `.tres` files, 2 new test files) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18g's completion. Recommend
+**M18h (EV/Power-item Speed-halving family, 7 items, cheapest remaining, no
+dependencies)** as the next tier.

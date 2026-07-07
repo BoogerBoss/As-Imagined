@@ -76,6 +76,26 @@ HOLD_EFFECT_RESTORE_PP = 7       # M18d: Leppa Berry — 10 PP to first zero-PP 
 HOLD_EFFECT_JABOCA_BERRY = 85    # M18d: 1/8 max HP retaliation on ANY physical hit,
                                   #       not contact-gated (a real correction)
 HOLD_EFFECT_ROWAP_BERRY = 86     # M18d: same as Jaboca but special-category
+HOLD_EFFECT_SOUL_DEW = 33        # M18g: Latios/Latias — type-boost ONLY (GEN_LATEST)
+HOLD_EFFECT_DEEP_SEA_TOOTH = 34  # M18g: Clamperl — x2.0 SpAtk, special-only
+HOLD_EFFECT_DEEP_SEA_SCALE = 35  # M18g: Clamperl — x2.0 SpDef, special-only
+HOLD_EFFECT_LIGHT_BALL = 42      # M18g: Pikachu — x2.0 Atk AND SpAtk
+HOLD_EFFECT_LUCKY_PUNCH = 45     # M18g: Chansey ONLY — +2 crit stage
+HOLD_EFFECT_METAL_POWDER = 46    # M18g: Ditto — x2.0 DEFENSE (not SpDef), physical-only
+HOLD_EFFECT_THICK_CLUB = 47      # M18g: Cubone OR Marowak — x2.0 Atk, physical-only
+HOLD_EFFECT_LEEK = 48            # M18g: Farfetch'd — +2 crit stage
+HOLD_EFFECT_QUICK_POWDER = 75    # M18g: Ditto — x2.0 SPEED (not Defense)
+
+# ── SPECIES_* national_dex_num values (must match data/pokemon.json) ─────────
+SPECIES_PIKACHU = 25
+SPECIES_FARFETCHD = 83
+SPECIES_CUBONE = 104
+SPECIES_MAROWAK = 105
+SPECIES_CHANSEY = 113
+SPECIES_DITTO = 132
+SPECIES_CLAMPERL = 366
+SPECIES_LATIAS = 380
+SPECIES_LATIOS = 381
 
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
@@ -237,6 +257,30 @@ ITEMS = [
     {"id": 519, "name": "Leppa Berry",    "hold_effect": HOLD_EFFECT_RESTORE_PP, "hold_effect_param": 10},
     {"id": 577, "name": "Jaboca Berry",   "hold_effect": HOLD_EFFECT_JABOCA_BERRY},
     {"id": 578, "name": "Rowap Berry",    "hold_effect": HOLD_EFFECT_ROWAP_BERRY},
+
+    # ── M18g: species-gated stat/crit items + Soul Dew (9) — no prior species-
+    #    gate precedent existed in this codebase (confirmed at Step 0: [M17n-4]'s
+    #    Multitype is a Plate-TYPE check, not a species check). Metal Powder
+    #    (Defense) and Quick Powder (Speed) are NOT the same stat, confirmed via
+    #    source, despite the superficial "Ditto powder pair" resemblance.
+    {"id": 392, "name": "Light Ball",     "hold_effect": HOLD_EFFECT_LIGHT_BALL,
+        "required_species": SPECIES_PIKACHU},
+    {"id": 393, "name": "Leek",           "hold_effect": HOLD_EFFECT_LEEK,
+        "required_species": SPECIES_FARFETCHD},
+    {"id": 394, "name": "Thick Club",     "hold_effect": HOLD_EFFECT_THICK_CLUB,
+        "required_species": SPECIES_CUBONE, "required_species2": SPECIES_MAROWAK},
+    {"id": 395, "name": "Lucky Punch",    "hold_effect": HOLD_EFFECT_LUCKY_PUNCH,
+        "required_species": SPECIES_CHANSEY},
+    {"id": 396, "name": "Metal Powder",   "hold_effect": HOLD_EFFECT_METAL_POWDER,
+        "required_species": SPECIES_DITTO},
+    {"id": 397, "name": "Quick Powder",   "hold_effect": HOLD_EFFECT_QUICK_POWDER,
+        "required_species": SPECIES_DITTO},
+    {"id": 398, "name": "Deep Sea Scale", "hold_effect": HOLD_EFFECT_DEEP_SEA_SCALE,
+        "required_species": SPECIES_CLAMPERL},
+    {"id": 399, "name": "Deep Sea Tooth", "hold_effect": HOLD_EFFECT_DEEP_SEA_TOOTH,
+        "required_species": SPECIES_CLAMPERL},
+    {"id": 400, "name": "Soul Dew",       "hold_effect": HOLD_EFFECT_SOUL_DEW,
+        "required_species": SPECIES_LATIAS, "required_species2": SPECIES_LATIOS},
 ]
 
 HEADER = """\
@@ -260,6 +304,8 @@ DEFAULTS = {
     "battle_usage":       0,
     "fling_power":        0,
     "price":              0,
+    "required_species":   0,  # M18g: species-gated items — 0 = unrestricted
+    "required_species2":  0,  # M18g: matched-pair second species — 0 = none
 }
 
 # Fields to emit in .tres, in canonical order. item_id/item_name are always
@@ -274,7 +320,7 @@ DEFAULTS = {
 FIELD_ORDER = [
     "hold_effect", "hold_effect_param",
     "description", "pocket", "importance", "not_consumed", "battle_usage",
-    "fling_power", "price",
+    "fling_power", "price", "required_species", "required_species2",
 ]
 
 

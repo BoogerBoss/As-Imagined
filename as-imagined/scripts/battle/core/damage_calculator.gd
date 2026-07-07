@@ -291,6 +291,18 @@ static func calculate(
 	var atk: int = _apply_stage(atk_base, atk_stage)
 	var def: int = _apply_stage(def_base, def_stage)
 
+	# M18g: item-driven DEFENSE stat modifier (Deep Sea Scale, Metal Powder) — same
+	# pipeline stage as CalcDefenseStat's own switch in source (battle_util.c
+	# L7160-7189), the raw-stat-before-formula stage. CONFIRMED DISTINCT from
+	# def_ability_mod further below (Thick Fat/Marvel Scale/etc.), which lives in
+	# GetDefenseStatModifier — a similarly named but different, POST-effectiveness
+	# pipeline stage. This is the first item-side defense-stat modifier this
+	# project has built (no prior precedent — Eviolite/Assault Vest aren't
+	# implemented).
+	var def_item_mod: int = ItemManager.defense_stat_modifier_uq412(defender, move, ng_active)
+	if def_item_mod != 4096:
+		def = _uq412_half_down(def, def_item_mod)
+
 	# --- Ability attack modifier (Huge Power / Pure Power) ---
 	# Source: battle_util.c :: GetAttackStatModifier (L6800–6808): attacker abilities switch.
 	#   ABILITY_HUGE_POWER / ABILITY_PURE_POWER: IsBattleMovePhysical → modifier ×2.0
