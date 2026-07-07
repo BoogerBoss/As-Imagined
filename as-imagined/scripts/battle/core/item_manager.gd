@@ -217,6 +217,55 @@ const HOLD_EFFECT_EVASION_UP: int = 22    # Bright Powder AND Lax Incense — li
                                            # I_LAX_INCENSE_BOOST>=GEN_4 config —
                                            # confirmed genuinely identical, not
                                            # assumed. Defender-side accuracy x0.90
+const HOLD_EFFECT_RED_CARD: int = 97      # M18n: forces the ATTACKER to switch —
+                                           # closes the exact gap
+                                           # AbilityManager.blocks_forced_switch's own
+                                           # doc comment already anticipated ("this
+                                           # project has no Red Card item").
+const HOLD_EFFECT_EJECT_BUTTON: int = 100 # M18n: forces the HOLDER itself to switch —
+                                           # NOT Guard-Dog-blocked, unlike Red Card
+                                           # (confirmed absent from source: Guard Dog
+                                           # only blocks being forced out BY AN
+                                           # OPPONENT's effect).
+const HOLD_EFFECT_FOCUS_BAND: int = 38    # M18o: probabilistic (param=10, 10%) survive-
+                                           # lethal, NO HP gate — genuinely different
+                                           # shape from Focus Sash despite the similar
+                                           # name, confirmed via source: same `else if`
+                                           # chain as Sturdy, checked BEFORE Focus Sash,
+                                           # NOT consumed (repeatable every hit).
+const HOLD_EFFECT_SHELL_BELL: int = 44    # M18q: heals 1/8 (param=8) of the FINAL
+                                           # damage just dealt, gated on not-already-
+                                           # at-max-HP.
+const HOLD_EFFECT_BIG_ROOT: int = 58      # M18q: +30% (param=30) to move-drain healing
+                                           # — source's own formula is (hp*1300)/1000,
+                                           # deliberately NOT UQ4.12 despite nearly every
+                                           # other item modifier in this file being so.
+const HOLD_EFFECT_FOCUS_SASH: int = 67    # M18o: full-HP-gated (IsBattlerAtMaxHp, same
+                                           # gate Sturdy uses), NO param/roll at all —
+                                           # unconditional given full HP. SINGLE-USE,
+                                           # unlike Focus Band (confirmed via
+                                           # docs/changelogs/1.8.x/1.8.4.md's own "Focus
+                                           # Sash but not consuming the item" bugfix
+                                           # entry — no differentiating consumption call
+                                           # exists in GetAdjustedDamage itself, both
+                                           # items' own hold_effects.h timing entries are
+                                           # empty).
+const HOLD_EFFECT_FLINCH: int = 30        # M18k: King's Rock AND Razor Fang — literal
+                                           # same constant, both holdEffectParam=10
+                                           # (src/data/items.h), confirmed genuinely
+                                           # identical. Adds a flinch roll to a move
+                                           # that has NO native flinch effect of its
+                                           # own (MUTUALLY EXCLUSIVE with an existing
+                                           # SE_FLINCH move, not additive/stacking —
+                                           # source's TryKingsRock guard is
+                                           # !MoveHasAdditionalEffect(move,
+                                           # MOVE_EFFECT_FLINCH)). Architecturally
+                                           # separate from try_secondary_effect
+                                           # entirely — dispatched from source's
+                                           # onAttackerAfterHit item pipeline, not the
+                                           # move-effect pipeline Sheer Force/Shield
+                                           # Dust hook into, so neither interacts with
+                                           # this item's roll.
                                            # against the holder.
 
 # Weather duration with the matching rock item vs. without.
@@ -1184,3 +1233,183 @@ static func accuracy_modifier_percent(attacker: BattlePokemon, defender: BattleP
 			pct = (pct * (100 - def_item.hold_effect_param)) / 100
 
 	return pct
+
+
+# M18k: King's Rock / Razor Fang — probabilistic flinch roll added to an
+# attacking move that has NO native flinch effect of its own. Source:
+# TryKingsRock (battle_hold_effects.c L188-210):
+#   !IsBattlerTurnDamaged(battlerDef) → no roll (caller already gates on
+#     damage > 0, matching every other on-hit item in this file).
+#   MoveIgnoresKingsRock(gCurrentMove) → not modeled: every one of source's
+#     own conditions for this flag is gated behind pre-Gen-5
+#     B_UPDATED_MOVE_FLAGS comparisons, none of which are unconditional, and
+#     this reference clone's B_UPDATED_MOVE_FLAGS=GEN_LATEST makes all of them
+#     evaluate false — confirmed via direct grep of moves_info.h, not assumed.
+#   MoveHasAdditionalEffect(gCurrentMove, MOVE_EFFECT_FLINCH) → mutually
+#     exclusive with a move that already carries its own flinch effect
+#     (Air Slash, Rock Slide) — this is NOT an independent second roll
+#     stacked on top of an existing flinch chance; it is gated on the MOVE'S
+#     DEFINITION having no flinch effect at all, matching this project's
+#     `move.secondary_effect != MoveData.SE_FLINCH` check at the caller.
+#   ability == ABILITY_STENCH excludes the roll — Stench is not implemented
+#     anywhere in this project (confirmed via grep), a standing absence, not
+#     a new gap opened by this tier.
+#   Serene Grace DOUBLES holdEffectParam here — a SEPARATE application of the
+#     same ability check try_secondary_effect already makes for a move's own
+#     secondary chance, confirmed explicitly by source's own config comment:
+#     "In Gen5+, Serene Grace boosts the added flinch chance of King's Rock
+#     and Razor Fang." (B_SERENE_GRACE_BOOST, include/config/battle.h).
+#     Rainbow's further doubling is not modeled — no Rainbow side status
+#     exists anywhere in this project (matches status_manager.gd's own
+#     existing note on this same absence for the move-native case).
+# forced_roll: same seam convention as quick_claw_activates — null = RNG,
+#   true/false = forced outcome. Caller is responsible for the
+#   move.secondary_effect != MoveData.SE_FLINCH gate and for damage > 0.
+static func kings_rock_flinch_activates(mon: BattlePokemon, ng_active: bool = false,
+		forced_roll: Variant = null) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_FLINCH:
+		return false
+	var chance: int = item.hold_effect_param
+	if AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_SERENE_GRACE:
+		chance *= 2
+	if forced_roll != null:
+		return bool(forced_roll)
+	return randi() % 100 < chance
+
+
+# ── M18n: Forced-switch items (Red Card, Eject Button) ─────────────────────────
+#
+# Source: src/battle_move_resolution.c :: TryRedCard (L3730-3752) / TryEjectButton
+# (L3757-3773), both dispatched from MoveEndCardButton — an item-reactive check
+# entirely separate from the general ItemBattleEffects switch (both hold effects'
+# entries in data/hold_effects.h are EMPTY — no onTargetAfterHit/onAttackerAfterHit
+# flag at all, confirmed by direct inspection).
+#
+# Both items are pure data checks here — "is this the holder's held effect,"
+# nothing more. The forced-switch orchestration (valid-target lookup, Guard Dog's
+# switch-vs-no-switch branch for Red Card specifically, consumption timing, and
+# calling BattleManager._do_forced_switch_in) lives entirely in BattleManager,
+# matching this project's established division of labor for every other reactive
+# item (Jaboca/Rowap, Quick Claw, King's Rock/Razor Fang above).
+#
+# Trigger condition (both items, confirmed identical): the holder takes DIRECT
+# damage this hit (source's IsBattlerTurnDamaged(..., EXCLUDING_SUBSTITUTES) — a
+# Substitute-absorbed hit never reaches either check, and never a status move,
+# since IsBattlerTurnDamaged is damage-gated). NEITHER is contact-gated or
+# category-gated — confirmed absent from both TryRedCard and TryEjectButton, an
+# "any damaging hit" shape matching Enigma Berry ([M18c]), not Jaboca/Rowap's
+# category-gated shape ([M18d]).
+#
+# Magic Guard: confirmed NO interaction with either item — neither function
+# references ABILITY_MAGIC_GUARD at all, consistent with forced switching dealing
+# no damage for Magic Guard to have anything to block.
+static func holds_red_card(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_RED_CARD
+
+
+static func holds_eject_button(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_EJECT_BUTTON
+
+
+# ── M18o: Survive-lethal-hit items (Focus Sash, Focus Band) ────────────────────
+#
+# Source: src/battle_util.c :: GetAdjustedDamage (L7954-8003) — the SAME shared
+# endure-check function this project's existing Sturdy already lives in
+# (battle_manager.gd's Sturdy block, [M17n-5]). Confirmed a strict `else if`
+# CHAIN, first match wins: Endure -> False Swipe -> Sturdy -> Focus Band ->
+# Focus Sash -> affection (only Sturdy/Focus Band/Focus Sash reachable here; the
+# other three aren't implemented in this project). This means a Pokemon with
+# BOTH Sturdy and a held Focus Sash never even reaches the Focus Sash branch —
+# it is not consumed, not "wasted," simply untouched by that hit. The caller
+# (BattleManager) is responsible for implementing this as an actual elif chain,
+# not three independent checks, to preserve this precedence exactly.
+#
+# Focus Band: holdEffectParam=10 (10%), PROBABILISTIC, NO HP gate at all — can
+# trigger from any starting HP. NOT consumed — repeatable every hit for the
+# rest of the battle (no differentiating consumption call exists for either
+# item in GetAdjustedDamage itself; corroborated by
+# docs/changelogs/1.8.x/1.8.4.md's own "Focus Sash but not consuming the item"
+# bugfix entry, which has no Focus Band equivalent since it's simply never
+# consumed).
+static func focus_band_activates(mon: BattlePokemon, ng_active: bool = false,
+		forced_roll: Variant = null) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_FOCUS_BAND:
+		return false
+	if forced_roll != null:
+		return bool(forced_roll)
+	return randi() % 100 < item.hold_effect_param
+
+
+# Focus Sash: NO holdEffectParam/roll at all in source — purely full-HP-gated
+# (IsBattlerAtMaxHp, the SAME gate Sturdy uses), unconditional given full HP.
+# SINGLE-USE — the caller consumes it via _consume_item on trigger.
+static func holds_focus_sash(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_FOCUS_SASH
+
+
+# ── M18q: Big Root / Shell Bell ─────────────────────────────────────────────────
+#
+# Source: src/battle_util.c :: GetDrainedBigRootHp (L1735-1743) — shared by TWO
+# source families: move-based drain (SetHealScript, the SAME chokepoint this
+# project's move.drain_percent/Liquid-Ooze mechanism already occupies) AND
+# Ingrain/Leech Seed/Strength Sap/Aqua Ring (a separate volatile-status family,
+# confirmed absent from this project entirely via grep). Big Root's real scope
+# here is move-drain only — not a deliberate scope reduction, just the only
+# reachable half of source's own two.
+#
+# Source's own formula is DELIBERATELY NOT UQ4.12, unlike nearly every other
+# item modifier in this file: `hp = (hp * 1300) / 1000` — plain integer math at
+# a base-1000 scale. Replicated exactly rather than assumed to generalize from
+# this project's own UQ4.12 convention. Held by the ATTACKER (the one draining),
+# not the target being drained — confirmed via GetDrainedBigRootHp(battlerAtk,
+# ...)'s own parameter.
+#
+# Applied BEFORE the caller's Liquid Ooze branch in source (GetDrainedBigRootHp
+# is called unconditionally, first, inside SetHealScript) — meaning if the
+# drained target has Liquid Ooze, the damage reflected back at the attacker is
+# ALSO boosted by Big Root, since the multiply happens before the invert/heal
+# split. The caller preserves this by applying this function's result to `heal`
+# before checking AbilityManager.inverts_drain, the exact ordering already in
+# place at that call site.
+static func big_root_drain_heal(mon: BattlePokemon, heal: int, ng_active: bool = false) -> int:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_BIG_ROOT:
+		return heal
+	return heal * 1300 / 1000
+
+
+# Source: src/battle_hold_effects.c :: TryShellBell (L524-541) — reads
+# gBattleScripting.savedDmg, set in MoveEndSetValues (battle_move_resolution.c
+# L2486), the VERY FIRST moveend state, running immediately after damage is
+# applied — confirming this is unambiguously the FINAL damage (post-crit,
+# post-type-effectiveness, post-item/ability boosts). In this project, that's
+# simply the caller's own `damage` local in _do_damaging_hit, already final by
+# construction — no new plumbing needed, no separate "saved" tracking variable.
+# Gated on NOT already at max HP (no waste-heal — genuinely new for this
+# project, no existing precedent checks this before healing). Fires on ANY
+# nonzero damage regardless of mechanism (fixed/level damage included — no
+# move-category gate in source). Future Sight and Heal Block exclusions are
+# both non-applicable here (neither exists in this project).
+#
+# NOT modeled, flagged not built (both genuine doubles-only edge cases, out of
+# this tier's singles-focused test scope, matching M18n's own flagged Red Card
+# doubles gap):
+#   1. Source excludes healing if the attacker was JUST forced to switch out by
+#      Red Card earlier in this same hit resolution (`redCardSwitched`) — this
+#      project's `attacker` reference stays valid post-switch, so without an
+#      explicit guard this WOULD still heal in that case, a real discrepancy.
+#   2. Source's savedDmg accumulates across ALL targets of a spread move before
+#      healing once; this project's per-target dispatch would heal once per
+#      target hit in a hypothetical doubles spread-move scenario.
+static func shell_bell_heal(mon: BattlePokemon, final_damage: int, ng_active: bool = false) -> int:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_SHELL_BELL:
+		return 0
+	if final_damage <= 0 or mon.current_hp >= mon.max_hp:
+		return 0
+	return final_damage / item.hold_effect_param

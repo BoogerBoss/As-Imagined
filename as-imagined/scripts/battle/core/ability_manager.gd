@@ -927,10 +927,14 @@ static func blocks_priority_move(defender: BattlePokemon, defender_ally: BattleP
 # ever applied, no stat-stage interaction at all (a genuinely separate mechanic from
 # the Intimidate-reversal half in `try_switch_in`). Source's neighboring Suction Cups
 # case is a different, unimplemented ability, out of this tier's scope. Source's other
-# reference (battle_move_resolution.c L3748, Red Card's own forced-switch) has no
-# equivalent here — this project has no Red Card item, confirmed via grep — so only
-# the move-effect half is modeled. `.breakable = TRUE`, so a Mold-Breaker attacker's
-# Roar/Whirlwind still forces the switch.
+# reference (battle_move_resolution.c L3748, Red Card's own forced-switch) — GAP
+# CLOSED in [M18n]: Red Card reuses this exact function, called with the ATTACKER
+# (the one being forced to switch) in the `defender` slot and the item HOLDER (who
+# caused the force) in the `attacker` slot — the same generic shape, roles swapped
+# from Roar's own call. Eject Button does NOT call this function at all — confirmed
+# absent from its own source function; Guard Dog only blocks being forced out BY AN
+# OPPONENT's effect, not a self-triggered switch. `.breakable = TRUE`, so a
+# Mold-Breaker attacker's Roar/Whirlwind (or Red Card victim) still forces the switch.
 static func blocks_forced_switch(defender: BattlePokemon, attacker: BattlePokemon,
 		ng_active: bool = false) -> bool:
 	return effective_ability_id(defender, ng_active, attacker) == ABILITY_GUARD_DOG

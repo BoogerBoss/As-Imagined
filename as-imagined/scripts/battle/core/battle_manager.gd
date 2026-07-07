@@ -70,7 +70,7 @@ signal move_called(attacker: BattlePokemon, called_move: MoveData)        # Metr
 # M9 signals
 signal pokemon_switched_out(pokemon: BattlePokemon, side: int)            # left the field
 signal pokemon_switched_in(pokemon: BattlePokemon, side: int, slot: int)  # entered the field
-signal forced_switch(old_mon: BattlePokemon, new_mon: BattlePokemon)      # Roar/Whirlwind result
+signal forced_switch(old_mon: BattlePokemon, new_mon: BattlePokemon)      # Roar/Whirlwind result; M18n: also Red Card/Eject Button
 signal baton_passed(from_mon: BattlePokemon, to_mon: BattlePokemon)       # Baton Pass completed
 signal replacement_needed(side: int)                                       # fainted, party not empty
 # M11 signals
@@ -84,6 +84,12 @@ signal item_consumed(pokemon: BattlePokemon, item: ItemData)               # one
 signal item_healed(pokemon: BattlePokemon, amount: int)                    # Leftovers / Sitrus Berry
 signal item_damage(pokemon: BattlePokemon, amount: int)                    # Life Orb recoil
 signal item_regenerated(pokemon: BattlePokemon, item: ItemData)            # M17n-7: Harvest
+signal item_effect_triggered(pokemon: BattlePokemon, effect_key: String)   # M18o: generic item-effect-fired
+                                                                             # signal (Focus Band's survive —
+                                                                             # not consumed, so item_consumed
+                                                                             # doesn't fit; mirrors
+                                                                             # ability_triggered's shape for
+                                                                             # items with no dedicated signal)
 signal pp_restored(pokemon: BattlePokemon, move_index: int, new_pp: int)   # M18d: Leppa Berry
 # M14b signals
 signal helping_hand_used(user: BattlePokemon, ally: BattlePokemon)         # Helping Hand boosted ally
@@ -224,6 +230,15 @@ var _force_quick_draw_roll: Variant = null
 # M18l: force Quick Claw's 20% per-battler-per-turn roll, same shape/seam pattern as
 # _force_quick_draw_roll immediately above — independent roll, independent seam.
 var _force_quick_claw_roll: Variant = null
+
+# M18k: force King's Rock/Razor Fang's flinch roll, same null-sentinel seam
+# convention as the other _force_* roll seams. Independent of _force_quick_claw_roll —
+# rolled per-hit in _do_damaging_hit, not per-turn before the sort.
+var _force_kings_rock_roll: Variant = null
+
+# M18o: force Focus Band's survive-lethal-hit roll, same null-sentinel seam
+# convention as the other _force_* roll seams.
+var _force_focus_band_roll: Variant = null
 
 # M9: pre-queued Baton Pass target slots per combatant index (-1 = auto-select first valid).
 # M14a: indexed by combatant index; singles uses [0] and [1].
@@ -3363,20 +3378,36 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		move_executed.emit(attacker, target, move, sub_dmg)
 		return
 
-	# M17n-5: Sturdy — survives an otherwise-lethal hit at exactly 1 HP, but ONLY from
-	# full HP. Source: battle_util.c L7962-7984 (the shared endure-check function every
+	# M17n-5/M18o: survive-a-lethal-hit chain — Sturdy, Focus Band, Focus Sash.
+	# Source: battle_util.c L7962-7984 (the shared endure-check function every
 	# lethal hit routes through) — `if (defender.hp > damage) return damage` (non-lethal,
 	# skip); else Endure volatile → False Swipe → Sturdy (IsBattlerAtMaxHp gate,
 	# B_STURDY >= GEN_5, satisfied at this project's GEN_LATEST) → Focus Band → Focus
 	# Sash → affection, in that priority order, first match wins, `damage = hp - 1`.
-	# This project has no Endure move, no False Swipe move, and no Focus Band/Focus
-	# Sash items — Sturdy is the only reachable case in that whole chain, and this is
-	# the FIRST "survive a lethal hit" mechanism this project builds (no prior
-	# precedent to compose with, confirmed via grep before writing this).
+	# This project has no Endure move, no False Swipe move, and no affection
+	# mechanic — Sturdy/Focus Band/Focus Sash are the three reachable cases, and
+	# this is a strict elif chain (first match wins), NOT three independent
+	# checks — confirmed from source: a Pokemon with BOTH Sturdy and a held Focus
+	# Sash never reaches the Focus Sash branch at all when Sturdy already fires,
+	# so the item is not consumed, not "wasted," simply untouched by that hit.
+	# Both `damage >= target.current_hp` checks below read target.current_hp
+	# BEFORE it's reduced by this hit (the reduction happens several lines below)
+	# — a pre-application lethality prediction on the target's own still-current
+	# HP, not a post-hit aliveness check on a different Pokemon, so this has no
+	# analogous timing bug to the current_hp-vs-.fainted convention.
 	if damage >= target.current_hp and target.current_hp == target.max_hp \
 			and AbilityManager.effective_ability_id(target, ng_active, attacker) == AbilityManager.ABILITY_STURDY:
 		damage = target.current_hp - 1
 		ability_triggered.emit(target, "sturdy")
+	elif damage >= target.current_hp \
+			and ItemManager.focus_band_activates(target, ng_active, _force_focus_band_roll):
+		damage = target.current_hp - 1
+		item_effect_triggered.emit(target, "focus_band")
+	elif damage >= target.current_hp and target.current_hp == target.max_hp \
+			and ItemManager.holds_focus_sash(target, ng_active):
+		damage = target.current_hp - 1
+		item_effect_triggered.emit(target, "focus_sash")
+		_consume_item(target)
 
 	var hp_before_hit: int = target.current_hp
 	target.current_hp = max(0, target.current_hp - damage)
@@ -3410,6 +3441,13 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 
 	if move.drain_percent > 0 and damage > 0:
 		var heal: int = damage * move.drain_percent / 100
+		# M18q: Big Root — applied UNCONDITIONALLY, before the Liquid Ooze branch
+		# below, matching source's exact ordering (GetDrainedBigRootHp is called
+		# first inside SetHealScript, before the invert-vs-heal decision) — so a
+		# Liquid-Ooze-inverted hit against a Big Root holder's own drain move is
+		# ALSO boosted, since the multiply happens before the split. Held by the
+		# ATTACKER (the one draining), not the drained target.
+		heal = ItemManager.big_root_drain_heal(attacker, heal, ng_active)
 		if heal > 0:
 			# M17n-10: Liquid Ooze — the DRAINED Pokémon's own ability inverts the
 			# attacker's heal into damage of the identical amount. Source: SetHealScript
@@ -3426,6 +3464,18 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			else:
 				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
 				drain_heal.emit(attacker, heal)
+
+	# M18q: Shell Bell — heals the ATTACKER by a fraction of the FINAL damage just
+	# dealt (this `damage` local is already post-crit/post-type-effectiveness/
+	# post-item-and-ability-boosts by construction, matching source's own
+	# gBattleScripting.savedDmg, set in the very first moveend state immediately
+	# after damage is applied). Unconditioned on target.fainted — the classic use
+	# case is healing off the killing blow itself. ItemManager.shell_bell_heal
+	# already gates on not-already-at-max-HP and final_damage > 0 internally.
+	var shell_bell_amount: int = ItemManager.shell_bell_heal(attacker, damage, ng_active)
+	if shell_bell_amount > 0:
+		attacker.current_hp = min(attacker.max_hp, attacker.current_hp + shell_bell_amount)
+		item_healed.emit(attacker, shell_bell_amount)
 
 	if damage > 0 and move.secondary_effect != MoveData.SE_NONE:
 		var effect_hit: bool = StatusManager.try_secondary_effect(attacker, target, move, null, ng_active, _effective_weather())
@@ -3449,6 +3499,20 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 						AbilityManager.is_unnerve_active(_get_live_opponents(target), ng_active)):
 					target.confusion_turns = 0
 					_consume_item(target)
+
+	# M18k: King's Rock / Razor Fang — mutually exclusive with a move that already
+	# carries its own native flinch effect (source: TryKingsRock's own
+	# !MoveHasAdditionalEffect(move, MOVE_EFFECT_FLINCH) guard), so this is gated on
+	# the move's secondary_effect NOT already being SE_FLINCH, not on whether that
+	# native chance rolled true this turn. Same turn-order gate as the native case
+	# above (a flinch that lands on a target who has already acted this turn does
+	# nothing — they don't act again).
+	if damage > 0 and move.secondary_effect != MoveData.SE_FLINCH \
+			and ItemManager.kings_rock_flinch_activates(attacker, ng_active, _force_kings_rock_roll):
+		var kr_turn_pos: int = _turn_order.find(target)
+		if kr_turn_pos > _current_actor_index:
+			target.flinched = true
+			secondary_applied.emit(target, MoveData.SE_FLINCH)
 
 	var contact_result: Dictionary = AbilityManager.try_contact_effects(
 			attacker, target, move, damage, _force_contact_roll, _force_effect_spore_roll,
@@ -3665,6 +3729,56 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			target.current_hp = min(target.max_hp, target.current_hp + enigma_heal)
 			item_healed.emit(target, enigma_heal)
 			_consume_item(target)
+
+		# M18n: Red Card / Eject Button — forced-switch reactive items. Both gated on
+		# `not target.fainted` (this same enclosing block) matching source's
+		# IsBattlerAlive(holder) requirement; the Substitute-absorbed-hit exclusion is
+		# already structurally guaranteed by the `went_to_sub` early return above this
+		# function, with no extra check needed here. Reuses `_do_forced_switch_in`
+		# ([M9]/[M14b], Roar/Whirlwind) directly, and `_force_roar_rng` for the
+		# random-replacement pick — a deliberate reuse, not a new seam, since the
+		# underlying party-random-pick mechanism (BattleParty.
+		# get_random_non_fainted_not_active) is identical and already parametrized for
+		# exactly this purpose.
+		var attacker_idx: int = _combatants.find(attacker)
+		var attacker_side: int = attacker_idx / _active_per_side
+		var attacker_field_slot: int = attacker_idx % _active_per_side
+		var target_field_slot: int = target_idx % _active_per_side
+
+		# Eject Button: forces the HOLDER (target) itself to switch. NOT blocked by
+		# Guard Dog — confirmed absent from source's TryEjectButton.
+		if ItemManager.holds_eject_button(target, ng_active):
+			var eb_slot: int = _parties[target_side].get_random_non_fainted_not_active(_force_roar_rng)
+			if eb_slot >= 0:
+				var old_holder: BattlePokemon = target
+				_consume_item(target)
+				_do_forced_switch_in(target_side, eb_slot, target_field_slot)
+				forced_switch.emit(old_holder, _parties[target_side].get_active_at(target_field_slot))
+
+		# Red Card: forces the ATTACKER to switch; the HOLDER (target) is the one
+		# whose item is consumed. Requires the attacker to still be alive (source:
+		# TryRedCard's own IsBattlerAlive(battlerAtk) gate — an attacker that fainted
+		# from recoil/retaliation earlier in this same hit resolution does not get
+		# forced to switch). Checked via current_hp > 0, NOT the `fainted` flag — the
+		# same distinction [M18d]'s Jaboca/Rowap already established: `fainted` is only
+		# set later in the separate FAINT_CHECK phase, so a same-resolution recoil/
+		# retaliation death (like the attacker-faints-from-its-own-recoil case this
+		# tier's own test exercises) would read as still-alive if checked via the flag.
+		# Guard Dog on the ATTACKER blocks the SWITCH specifically — but the item still
+		# consumes either way (source's no-switch branch,
+		# BattleScript_RedCardActivationNoSwitch, is still an "activation"), matching
+		# the confirmed distinction from the no-valid-target case below (which does
+		# NOT consume at all).
+		if ItemManager.holds_red_card(target, ng_active) and attacker.current_hp > 0:
+			var rc_slot: int = _parties[attacker_side].get_random_non_fainted_not_active(_force_roar_rng)
+			if rc_slot >= 0:
+				_consume_item(target)
+				if AbilityManager.blocks_forced_switch(attacker, target, ng_active):
+					ability_triggered.emit(attacker, "guard_dog")
+				else:
+					var old_attacker: BattlePokemon = attacker
+					_do_forced_switch_in(attacker_side, rc_slot, attacker_field_slot)
+					forced_switch.emit(old_attacker, _parties[attacker_side].get_active_at(attacker_field_slot))
 
 
 # M12: Consume a held item (berries, Life Orb consumed indirectly by PP drain in source,

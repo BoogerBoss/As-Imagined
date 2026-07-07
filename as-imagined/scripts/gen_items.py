@@ -108,6 +108,15 @@ HOLD_EFFECT_EXPERT_BELT = 59   # M18j: flat x1.2 when effectiveness>=2.0 (differ
 HOLD_EFFECT_WIDE_LENS = 63     # M18j: attacker accuracy x1.10, unconditional
 HOLD_EFFECT_ZOOM_LENS = 65     # M18j: attacker accuracy x1.20, target-already-acted only
 HOLD_EFFECT_EVASION_UP = 22    # M18j: Bright Powder AND Lax Incense, x0.90 defender-side
+HOLD_EFFECT_FLINCH = 30        # M18k: King's Rock AND Razor Fang, both param=10,
+                                #       genuinely identical (adds flinch to a move
+                                #       with no native flinch effect of its own)
+HOLD_EFFECT_RED_CARD = 97      # M18n: forces the ATTACKER to switch
+HOLD_EFFECT_EJECT_BUTTON = 100 # M18n: forces the HOLDER itself to switch
+HOLD_EFFECT_FOCUS_BAND = 38    # M18o: probabilistic (10%) survive-lethal, no HP gate
+HOLD_EFFECT_SHELL_BELL = 44    # M18q: heals 1/8 of final damage dealt
+HOLD_EFFECT_BIG_ROOT = 58      # M18q: +30% move-drain healing
+HOLD_EFFECT_FOCUS_SASH = 67    # M18o: full-HP-gated survive-lethal, single-use
 
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
@@ -325,6 +334,30 @@ ITEMS = [
     {"id": 482, "name": "Zoom Lens",      "hold_effect": HOLD_EFFECT_ZOOM_LENS, "hold_effect_param": 20},
     {"id": 459, "name": "Bright Powder",  "hold_effect": HOLD_EFFECT_EVASION_UP, "hold_effect_param": 10},
     {"id": 405, "name": "Lax Incense",    "hold_effect": HOLD_EFFECT_EVASION_UP, "hold_effect_param": 10},
+
+    # ── M18k: Flinch-on-hit items (2) — genuinely identical, verified independently
+    #    despite the project's now-standing "never assume symmetry" discipline.
+    {"id": 465, "name": "King's Rock",    "hold_effect": HOLD_EFFECT_FLINCH, "hold_effect_param": 10},
+    {"id": 493, "name": "Razor Fang",     "hold_effect": HOLD_EFFECT_FLINCH, "hold_effect_param": 10},
+
+    # ── M18n: Forced-switch items (2) — genuinely different mechanics (Red Card
+    #    forces the ATTACKER out, Eject Button forces the HOLDER out), despite
+    #    being grouped together as "forced-switch items."
+    {"id": 498, "name": "Red Card",       "hold_effect": HOLD_EFFECT_RED_CARD, "hold_effect_param": 0},
+    {"id": 501, "name": "Eject Button",   "hold_effect": HOLD_EFFECT_EJECT_BUTTON, "hold_effect_param": 0},
+
+    # ── M18o: Survive-lethal-hit items (2) — Focus Band (probabilistic, no HP
+    #    gate, NOT consumed) and Focus Sash (full-HP-gated, unconditional given
+    #    that, SINGLE-USE) are genuinely different trigger shapes despite the
+    #    similar name.
+    {"id": 469, "name": "Focus Band",     "hold_effect": HOLD_EFFECT_FOCUS_BAND, "hold_effect_param": 10},
+    {"id": 481, "name": "Focus Sash",     "hold_effect": HOLD_EFFECT_FOCUS_SASH, "hold_effect_param": 0},
+
+    # ── M18q: Big Root (+30% move-drain healing) / Shell Bell (heals 1/8 of
+    #    final damage dealt) — unrelated mechanics sharing this tier only for
+    #    scheduling efficiency.
+    {"id": 491, "name": "Big Root",       "hold_effect": HOLD_EFFECT_BIG_ROOT, "hold_effect_param": 30},
+    {"id": 473, "name": "Shell Bell",     "hold_effect": HOLD_EFFECT_SHELL_BELL, "hold_effect_param": 8},
 ]
 
 HEADER = """\

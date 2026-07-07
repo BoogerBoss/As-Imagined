@@ -10050,3 +10050,612 @@ files, 7 new `.tres` files, 2 new test files) before this docs commit.
 
 `CLAUDE.md`'s status section updated with M18j's completion. Recommend
 **M18k (Flinch-on-hit items, 2 items, no dependencies)** as the next tier.
+
+
+## [M18k] Flinch-on-hit items (2 items)
+
+Eleventh M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18k
+section. No cross-tier dependencies. Unlike M18g/M18h/M18j's apparent
+pairs, King's Rock and Razor Fang really are mechanically identical — but
+the tier surfaced a real, previously-undocumented cross-mechanism finding
+about Serene Grace instead.
+
+### Step 0 — finalized list
+
+| Item | ID | `hold_effect` | Mechanism |
+|---|---|---|---|
+| King's Rock | 465 | `HOLD_EFFECT_FLINCH` (30) | Adds a 10% flinch roll to an attacking move with no native flinch effect |
+| Razor Fang | 493 | `HOLD_EFFECT_FLINCH` (30) | Identical to King's Rock — same `holdEffect`, same `holdEffectParam=10`, confirmed via direct `src/data/items.h` read |
+
+`HOLD_EFFECT_FLINCH=30` re-derived via the established programmatic
+full-enum recount, cross-checked against 5 pre-existing project constants
+at their exact enum positions (`RESTORE_PP=7`, `QUICK_CLAW=26`,
+`MACHO_BRACE=24`, `EVASION_UP=22`, `SOUL_DEW=33`) — all consistent.
+
+**Trigger condition — mutually exclusive with a move's own native flinch,
+not additive.** Source's `TryKingsRock` (`battle_hold_effects.c` L188-210)
+guards on `!MoveHasAdditionalEffect(gCurrentMove, MOVE_EFFECT_FLINCH)`: if
+the move's own definition already carries a flinch effect (Rock Slide, Sky
+Attack, Stomp), the item does **not** add a second independent roll at
+all — it's excluded entirely, gated on the move's static definition, not
+on whether that native chance actually fired this particular turn.
+Implemented as `move.secondary_effect != MoveData.SE_FLINCH` at the
+`_do_damaging_hit` call site, mirroring the source gate exactly.
+
+**`MoveIgnoresKingsRock` — confirmed not reachable at this project's
+config, not modeled.** Every one of source's conditions for this per-move
+flag is gated behind pre-Gen-5 `B_UPDATED_MOVE_FLAGS` comparisons (`==
+GEN_3`, `< GEN_3`, `== GEN_4`, etc.); this reference clone's
+`B_UPDATED_MOVE_FLAGS=GEN_LATEST` makes every one of them evaluate false
+— confirmed via direct grep of `moves_info.h` finding zero unconditional
+entries, not assumed from the generation default alone.
+
+**Multi-hit**: correctly unreachable currently — no multi-hit
+infrastructure exists in this project yet (per the M19 recon's own
+finding). Source re-rolls the check once per hit through the same
+dispatch, so nothing extra will be needed once multi-hit moves exist —
+noted for later, not deferred as a gap.
+
+**Sheer Force: confirmed no interaction, architecturally disjoint.**
+Sheer Force's suppression lives inside `try_secondary_effect`'s
+`is_true_secondary` gate, keyed on the *move's own* `secondary_chance >
+0`. King's Rock/Razor Fang dispatch through a wholly separate function
+(`TryKingsRock`, source's `onAttackerAfterHit` item pipeline) that never
+calls `try_secondary_effect` at all — confirmed both by source reading and
+by a direct test (`K02.05`): a Sheer Force holder's item-granted flinch
+roll still activates normally.
+
+**New finding beyond the plan's own framing — Serene Grace doubles King's
+Rock/Razor Fang too, via a SEPARATE application of the ability from its
+`try_secondary_effect` doubling.** Source's own config comment states this
+explicitly: `B_SERENE_GRACE_BOOST // In Gen5+, Serene Grace boosts the
+added flinch chance of King's Rock and Razor Fang.` `TryKingsRock`
+re-checks `ability == ABILITY_SERENE_GRACE` and doubles `holdEffectParam`
+independently — a second, separate consultation of the same ability
+constant, not a shared code path with the move-native doubling. Rainbow's
+further doubling and the Stench exclusion gate are both already-standing
+absences in this project (no Rainbow side status, no Stench ability
+anywhere — both confirmed via grep, matching `status_manager.gd`'s own
+existing note on the Rainbow omission for the move-native case) — noted,
+not built.
+
+### Implementation
+
+- New `ItemManager.HOLD_EFFECT_FLINCH = 30` constant.
+- New `ItemManager.kings_rock_flinch_activates(mon, ng_active,
+  forced_roll) -> bool`: reads `hold_effect_param` (10) directly from the
+  item rather than hardcoding it; doubles it if the holder's ability is
+  Serene Grace; same `forced_roll` null-sentinel seam convention as
+  `quick_claw_activates` (`[M18l]`). Deliberately does **not** take `move`
+  as a parameter — architecturally cannot see or influence a move's own
+  power/effect, matching source's `TryKingsRock` signature, which also
+  never touches base power.
+- New `BattleManager._force_kings_rock_roll: Variant = null` seam,
+  alongside `_force_quick_claw_roll`.
+- New branch in `_do_damaging_hit`, immediately after the existing native
+  `SE_FLINCH` block: gated on `damage > 0 and move.secondary_effect !=
+  MoveData.SE_FLINCH`, reusing the exact same turn-order check
+  (`_turn_order.find(target) > _current_actor_index`) the native case
+  already uses.
+- 2 new entries added to `gen_items.py`'s `ITEMS` dict; `.tres`
+  regenerated, 108 items total (106 prior + 2).
+
+### Test results
+
+New `m18k_test.gd`/`.tscn`: **16/16** assertions, 3 sections (K01 King's
+Rock — data, direct forced-roll unit checks, statistical confirmation of
+the raw 10% rate and the Serene-Grace-doubled 20% rate (n=3000 each, per
+`[M17n-5]`'s established tolerance-band pattern), full-battle confirmation
+that a move with zero native secondary effect (Tackle) gets a flinch
+added, and a forced-false discriminator; K02 Razor Fang — data, direct
+checks, full-battle confirmation, and the Sheer Force non-interaction
+test; K03 mutual exclusion), passing after two self-caught test-design
+fixes:
+1. The full-battle checks initially assumed `start_battle_with_parties`
+   stops after one turn; it runs the complete multi-turn battle to
+   completion, so exact-array-equality checks against `move_executed`
+   events had to become "first element" / "contains" checks instead.
+2. K03's statistical mutual-exclusion check initially measured "did a
+   flinch happen anywhere across the whole multi-turn battle," which
+   compounds Rock Slide's independent per-turn 30% roll across several
+   turns and badly overstates the true rate (observed 69.3% against an
+   expected ~30% band on the first run). Fixed by recording a combined
+   `move_executed`/`move_skipped` timeline per trial and measuring only
+   the target's very first action attempt (a single clean per-turn
+   sample), which then landed correctly inside the expected band.
+
+K03 specifically forces King's Rock's own roll to `true` on a Rock-Slide
+user (n=300) — if mutual exclusion were not honored, this alone would
+push the observed flinch rate toward ~100%; the confirmed result instead
+tracks Rock Slide's own unforced ~30% native chance, proving the item
+contributes nothing extra when the move already carries flinch.
+
+### Regression
+
+Per this tier's routine-tier scope (only this suite plus the suites
+covering every function touched, not the full sweep):
+- `m18k_test.tscn`: **16/16** (new).
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity holds
+  across the expanded 108-item catalog.
+- `m17n5_test.tscn`: **78/78**, unchanged — confirms both Serene Grace and
+  Sheer Force (this tier's two cross-mechanism-interaction checks) are
+  unaffected at their own original call sites.
+
+No stray Godot processes before or after; reference clone untouched; `git
+status --short` matched exactly the expected file set (3 modified core
+files, 2 new `.tres` files, 2 new test files) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18k's completion. Recommend
+**M18n (Forced-switch items, 2 items, no dependencies — needed to unblock
+M18m)** as the next tier.
+
+
+## [M18n] Forced-switch items (2 items)
+
+Twelfth M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18n
+section. No cross-tier dependencies for this tier itself; completing it
+unblocks M18m's Eject Pack. Preceded by a mandatory first step
+generalizing an existing testing pitfall in `CLAUDE.md` (see below) before
+any context-gathering began.
+
+### Mandatory first step — generalized testing convention
+
+`CLAUDE.md` gained a new dedicated "Testing convention: aggregating across
+an uncontrolled number of battle turns breaks both absence checks and
+rate measurements" section (previously this pitfall only existed as
+narrative inside the `[M17l]`/`[M18k]` status bullets, with no standalone
+convention entry to extend). States the general principle: `[M17l]`
+found this on the absence-checking side (a "never happens" assertion
+scoped too broadly across a whole multi-turn battle can MASK a real
+violation); `[M18k]` found the same underlying failure mode independently
+on the rate-measurement side (aggregating "did X happen anywhere in the
+battle" compounds a per-turn probability across an uncontrolled number of
+turns). Both cited by name in the new entry, which sits between the
+`force_crit` convention and the assertion-total-recount convention.
+
+### Step 0 — finalized list
+
+| Item | ID | `hold_effect` | Forces switch of |
+|---|---|---|---|
+| Red Card | 498 | `HOLD_EFFECT_RED_CARD` (97) | The **ATTACKER** |
+| Eject Button | 501 | `HOLD_EFFECT_EJECT_BUTTON` (100) | The **HOLDER** itself |
+
+`HOLD_EFFECT_*` values re-derived via the established programmatic
+full-enum recount, cross-validated against `MACHO_BRACE=24`/
+`QUICK_CLAW=26` landing correctly at the same count.
+
+**Both items dispatch through a genuinely separate mechanism from every
+other item in this project** — `TryRedCard`/`TryEjectButton`
+(`battle_move_resolution.c` L3730-3773), reached via `MoveEndCardButton`,
+entirely apart from the general `ItemBattleEffects` switch every other
+M18 item routes through. Confirmed directly: both hold effects' entries
+in `src/data/hold_effects.h` are EMPTY — no `onTargetAfterHit`/
+`onAttackerAfterHit` flag at all.
+
+**Trigger condition, confirmed identical for both**: the holder takes
+DIRECT damage this hit (`IsBattlerTurnDamaged(..., EXCLUDING_SUBSTITUTES)`
+— a Substitute-absorbed hit never reaches either check, and a status move
+never qualifies since it deals no damage). NEITHER is contact-gated or
+category-gated — confirmed absent from both functions, an "any damaging
+hit" shape matching Enigma Berry (`[M18c]`), not Jaboca/Rowap's
+category-gated shape (`[M18d]`).
+
+**Genuinely different beyond just "who switches," despite the shared
+grouping**:
+
+- **Requires**: Red Card needs the HOLDER alive, the ATTACKER alive
+  (`!IsBattlerAlive(battlerAtk)` — see the real bug this surfaced,
+  below), and a valid replacement in the ATTACKER's own party
+  (`CanBattlerSwitch(battlerAtk)`). Eject Button needs the HOLDER alive
+  and a valid replacement in the HOLDER's OWN party
+  (`CanBattlerSwitch(ejectButtonBattler)`). `CanBattlerSwitch` — read in
+  full — is a pure party-composition check (any non-fainted, non-active
+  member), NOT a trapping check; confirmed no Arena Trap/Shadow Tag/
+  Magnet Pull interaction with either item.
+- **Guard Dog**: blocks Red Card's switch specifically
+  (`GetBattlerAbility(battlerAtk) == ABILITY_GUARD_DOG`) but the item
+  still consumes — `BattleScript_RedCardActivationNoSwitch` is still an
+  "activation." Eject Button has **no Guard Dog interaction at all** —
+  confirmed absent from its own source function (Guard Dog only blocks
+  being forced out BY AN OPPONENT's effect, not a self-triggered switch).
+  Tested explicitly as a discriminator (`N02.07`): a Guard Dog holder
+  still gets ejected normally, despite the same ability blocking Red
+  Card (`N01.07`).
+- **No-valid-target, confirmed a THIRD distinct "no switch" outcome**:
+  `CanBattlerSwitch` is checked BEFORE any activation code runs in either
+  function — no valid replacement means **no consumption and no effect
+  at all**, distinct from Guard Dog's block (still consumes) and from
+  the attacker-fainted case below (also does not consume, but for a
+  different reason).
+
+**Magic Guard: confirmed no interaction**, for either item. Neither
+`TryRedCard` nor `TryEjectButton` references `ABILITY_MAGIC_GUARD` at
+all — forced switching deals no damage, so there is nothing for Magic
+Guard to block. Tested explicitly (`N02.08`).
+
+**A real gap this project's own code had already anticipated, now
+closed**: `AbilityManager.blocks_forced_switch`'s doc comment explicitly
+flagged *"Source's other reference (battle_move_resolution.c L3748, Red
+Card's own forced-switch) has no equivalent here — this project has no
+Red Card item"* when it was written for `[M17n-10]`. Red Card reuses
+this exact function unmodified, with roles swapped from Roar's own call:
+the ATTACKER being forced out goes in the `defender` slot (checked for
+Guard Dog), the item HOLDER goes in the `attacker` slot. The comment has
+been updated in place to reflect the closed gap.
+
+**Known simplification, flagged not built**: source's
+`gBattleStruct->redCardActivated` flag prevents a doubles spread move
+from triggering two forced switches on the same attacker if it hits two
+Red Card holders in one move. This project's per-target dispatch in
+`_do_damaging_hit` has no equivalent guard — a genuine doubles-only edge
+case, out of this tier's test scope, not modeled.
+
+### Implementation
+
+- New `ItemManager.HOLD_EFFECT_RED_CARD = 97` /
+  `HOLD_EFFECT_EJECT_BUTTON = 100` constants.
+- New `ItemManager.holds_red_card()` / `holds_eject_button()` — pure data
+  checks only. All orchestration (valid-target lookup, Guard Dog branch,
+  consumption timing, calling `_do_forced_switch_in`) lives in
+  `BattleManager`, matching this project's established division of labor
+  for every other reactive item.
+- New block at the tail of `_do_damaging_hit`, right after the M18c
+  berry block, inside the same `if not target.fainted:` guard those
+  berries already use (the Substitute-absorbed-hit exclusion is already
+  structurally guaranteed for free by the `went_to_sub` early return
+  earlier in the same function — no extra check needed). Reuses
+  `_do_forced_switch_in` (`[M9]`/`[M14b]`, Roar/Whirlwind) and
+  `_force_roar_rng` directly — a deliberate seam reuse, not a new one,
+  since the underlying `BattleParty.get_random_non_fainted_not_active`
+  mechanism is identical and already parametrized for exactly this
+  purpose.
+- `forced_switch` signal's doc comment updated to note the broader reuse
+  (previously read "Roar/Whirlwind result" only).
+
+### A real implementation bug, caught by the test suite on the first run
+
+The attacker-faints-from-its-own-recoil test (Double-Edge, 33% recoil,
+attacker set to 5 HP before the hit) failed twice on the first run
+(`N01.13`/`N01.14`): the forced switch fired and the item consumed even
+though the attacker had fainted from its own recoil moments earlier in
+the same hit resolution. Root cause: the initial implementation gated
+Red Card on `not attacker.fainted`, but `BattlePokemon.fainted` is a
+plain stored flag only set later, in the separate `FAINT_CHECK` phase —
+not synchronously when `current_hp` hits 0 from recoil earlier in this
+same function call. `[M18d]`'s Jaboca/Rowap retaliation already
+established the correct pattern for exactly this same-resolution
+aliveness question (`attacker.current_hp > 0`, not the `fainted` flag),
+which this tier's first draft failed to reapply. Fixed by switching the
+gate to `attacker.current_hp > 0`; both assertions passed immediately
+after.
+
+### Test results
+
+New `m18n_test.gd`/`.tscn`: **22/22** assertions, 2 sections (N01 Red
+Card — data, direct checks, full-battle attacker-forced-to-switch
+confirmation with item consumption, a no-item discriminator, the
+Guard-Dog-blocks-the-switch-but-still-consumes case, the no-valid-target
+case (no consumption at all), and the attacker-faints-from-its-own-recoil
+case (also no consumption, for a third distinct reason); N02 Eject
+Button — data, direct checks, full-battle holder-forced-to-switch
+confirmation with item consumption, a no-item discriminator, the
+Guard-Dog-does-NOT-block discriminator, and the Magic Guard
+non-interaction check), passing after the real bug above was fixed on
+the first run (20/22 → 22/22).
+
+### Regression
+
+Per this tier's routine-tier scope (only this suite plus the suites
+covering every function touched, not the full sweep):
+- `m18n_test.tscn`: **22/22** (new).
+- `switch_test.tscn`: **64/64**, unchanged — confirms Roar/Whirlwind's
+  own forced-switch mechanism (`_do_forced_switch_in`, directly reused
+  by this tier) is unaffected.
+- `m17n8_test.tscn`: **58/58**, unchanged — confirms Aftermath/Innards
+  Out (this project's other existing forced-switch-adjacent mechanism)
+  are unaffected.
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity
+  holds across the expanded 110-item catalog.
+
+No stray Godot processes before or after; reference clone untouched;
+`git status --short` matched exactly the expected file set (4 modified
+core files, 4 new `.tres` files, 2 new test files — M18k's own
+still-uncommitted files from the prior session accounted for separately)
+before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18n's completion, explicitly
+confirming M18m (stat-change-reactive consumed items, 4 items — Eject
+Pack specifically) is now fully unblocked. Recommend **M18m** or **M18o**
+(survive-lethal-hit items, cheapest remaining, no dependencies) as the
+next tier, per Rob's preference.
+
+
+## [M18o] Survive-lethal-hit items (2 items)
+
+Thirteenth M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18o
+section — implemented in the same session as `[M18q]` (below) purely for
+scheduling efficiency; the two tiers are unrelated mechanics and are
+documented, tested, and reported as fully separate entries throughout.
+
+### Step 0 — finalized list
+
+| Item | ID | `hold_effect` | Condition |
+|---|---|---|---|
+| Focus Band | 469 | `HOLD_EFFECT_FOCUS_BAND` (38) | Probabilistic (param=10, 10%), NO HP gate at all — repeatable, not consumed |
+| Focus Sash | 481 | `HOLD_EFFECT_FOCUS_SASH` (67) | Full-HP-gated (`IsBattlerAtMaxHp`), unconditional given that — NO param/roll. Single-use, consumed on trigger |
+
+`HOLD_EFFECT_*` values re-derived via the established programmatic
+full-enum recount, cross-validated against `MACHO_BRACE=24`/
+`QUICK_CLAW=26` landing correctly at the same count.
+
+Both dispatch through the exact SAME shared function this project's
+existing Sturdy already lives in (`battle_util.c :: GetAdjustedDamage`,
+the `[M17n-5]` block in `battle_manager.gd`). Confirmed a strict `else
+if` CHAIN, first match wins: Endure → False Swipe → Sturdy → Focus Band
+→ Focus Sash → affection — only Sturdy/Focus Band/Focus Sash are
+reachable in this project (the other three aren't implemented).
+
+**Sturdy/Focus Sash interaction, confirmed precisely**: because this is
+an `else if` chain, a Pokémon with BOTH Sturdy and a held Focus Sash
+never reaches the Focus Sash branch at all when Sturdy already fires —
+the item is not consumed, not "wasted," simply untouched by that hit.
+Implemented as a literal `elif` chain in `_do_damaging_hit`, extending
+Sturdy's existing block rather than three independent checks, and
+verified with a dedicated test (`O01.08`-`O01.10`): Sturdy fires, Focus
+Sash does not trigger, and the item remains held afterward.
+
+**Consumption asymmetry, confirmed via an indirect but solid source
+citation**: no C-level function differentiates Focus Band/Focus Sash
+consumption directly (both items' `hold_effects.h` timing entries are
+empty, and `GetAdjustedDamage` itself has no `removeitem`-style call for
+either). Corroborated instead by `docs/changelogs/1.8.x/1.8.4.md`'s own
+changelog entry — *"Fixed Future Sight/Doom Desire triggering Focus Sash
+but not consuming the item"* — confirming consumption is the expected,
+correct behavior for Focus Sash being restored in that fix; no
+equivalent entry exists for Focus Band anywhere, since it's simply never
+consumed. This matches the extremely well-established real-game
+mechanic (Focus Sash single-use, Focus Band repeatable).
+
+**Timing-bug check (per CLAUDE.md's current_hp-vs-.fainted convention),
+confirmed no analogous bug**: both `damage >= target.current_hp` checks
+in the chain read `target.current_hp` BEFORE it's reduced by this hit —
+a pre-application lethality prediction on the target's own still-current
+HP, not a post-hit aliveness check on a different Pokémon. Extending the
+existing Sturdy block preserves this safety property by construction.
+
+### Implementation
+
+- New `ItemManager.HOLD_EFFECT_FOCUS_BAND = 38` /
+  `HOLD_EFFECT_FOCUS_SASH = 67` constants.
+- New `ItemManager.focus_band_activates(mon, ng_active, forced_roll)` —
+  same `forced_roll` null-sentinel seam convention as
+  `kings_rock_flinch_activates`. New `ItemManager.holds_focus_sash()` —
+  pure data check, mirroring `holds_red_card`.
+- New `BattleManager._force_focus_band_roll` seam.
+- New generic `BattleManager.item_effect_triggered(pokemon, effect_key)`
+  signal — Focus Band's survive isn't consumption (so `item_consumed`
+  doesn't fit) and isn't an ability (so `ability_triggered` would be
+  misleading); mirrors `ability_triggered`'s shape for items with no
+  existing dedicated signal, reusable by future tiers.
+- Sturdy's existing block in `_do_damaging_hit` extended into a 3-way
+  `elif` chain (Sturdy → Focus Band → Focus Sash), preserving source's
+  exact precedence order.
+- 2 new entries added to `gen_items.py`'s `ITEMS` dict; `.tres`
+  regenerated, 112 items total (110 prior + 2, counting only this
+  tier — see `[M18q]` for the other 2).
+
+### A pre-existing gap surfaced (not new, not fixed) while wiring Focus Sash's consumption
+
+`_consume_item`'s own doc comment claims *"every item reaching this
+function today is already a berry"* to justify calling
+`AbilityManager.cheek_pouch_heal` unconditionally on every consumption.
+This was already false before this tier — `[M18k]`'s King's Rock/Razor
+Fang and `[M18n]`'s Red Card both call `_consume_item` and aren't
+berries — and Focus Sash's own consumption call extends the same
+pre-existing gap rather than introducing a new one. `cheek_pouch_heal`
+itself has no item-type check at all, so a Cheek Pouch holder would
+incorrectly get healed by consuming a non-berry item under real source
+semantics. Flagged here since Focus Sash's own consumption made the
+comment's staleness directly relevant to this tier; not fixed, as it
+predates this session and touches three prior tiers' items.
+
+### A real test-authoring bug, caught and fixed on the first run (17/19 → 19/19)
+
+`O01.04`/`O02.05` initially read `target.current_hp`/`target.fainted`
+directly off the `item_effect_triggered` signal's own `Pokemon` argument
+inside its handler, assuming the HP write had already happened by the
+time that signal fired. It hadn't: the `elif` chain only caps the LOCAL
+`damage` variable (`damage = target.current_hp - 1`) before emitting the
+signal — the actual `target.current_hp = max(0, target.current_hp -
+damage)` write happens several lines later, right before
+`move_executed` fires. Debug tracing confirmed the elif chain itself was
+already firing the correct branch on the first attempt; the bug was
+purely in the test's assumption about signal-to-mutation ordering. Fixed
+by snapshotting HP from `move_executed` instead (which fires after the
+real write), not `item_effect_triggered`. A second-order finding, not
+CLAUDE.md-worthy as a new named convention (too narrow — one custom
+signal's specific ordering, not a general pattern), but worth noting
+since it's a new variant of "don't trust a signal to reflect state it
+was fired to announce."
+
+### Test results
+
+New `m18o_test.gd`/`.tscn`: **19/19** assertions, 2 sections (O01 Focus
+Sash — data, direct checks, full-battle survive-at-1-HP with
+consumption, a not-at-full-HP discriminator, and the Sturdy-precedence
+proof; O02 Focus Band — data, direct forced-roll checks, full-battle
+survive-at-1-HP from non-full HP with NO consumption, a forced-false
+discriminator, and a statistical rate sample (n=3000, observed near the
+confirmed 10%, matching `[M17n-5]`/`[M18e]`/`[M18k]`'s established
+tolerance-band pattern)), passing after the signal-timing fix above.
+Stable across 5 total runs (multi-rerun required per this tier's own
+probabilistic content, Focus Band specifically).
+
+### Regression
+
+Per this tier's routine-tier scope:
+- `m18o_test.tscn`: **19/19** (new), stable across 5 reruns.
+- `m17n5_test.tscn`: **78/78**, unchanged — confirms Sturdy (the
+  ability this tier's items extend the exact same check block for) is
+  unaffected.
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity
+  holds across the expanded 114-item catalog (counting both `[M18o]`
+  and `[M18q]`'s items together, since both were regenerated in the
+  same `gen_items.py` run).
+
+No stray Godot processes before or after; reference clone untouched.
+
+### Docs
+
+See `[M18q]` immediately below for that tier's own entry. `CLAUDE.md`'s
+status section updated with both tiers' completion together.
+
+
+## [M18q] Self-heal-on-action items (2 items)
+
+Fourteenth M18 implementation tier, per `docs/m18_subtier_plan.md`'s
+M18q section — implemented in the same session as `[M18o]` (above)
+purely for scheduling efficiency; genuinely unrelated mechanics,
+documented and tested fully separately.
+
+### Step 0 — finalized list
+
+| Item | ID | `hold_effect` | Effect |
+|---|---|---|---|
+| Big Root | 491 | `HOLD_EFFECT_BIG_ROOT` (58) | +30% (param=30) to move-drain healing |
+| Shell Bell | 473 | `HOLD_EFFECT_SHELL_BELL` (44) | Heals 1/8 (param=8) of the FINAL damage dealt |
+
+`HOLD_EFFECT_*` values re-derived via the established programmatic
+full-enum recount, cross-validated the same way as `[M18o]`'s.
+
+**Big Root's scope, confirmed narrower than "all drain sources"**:
+`GetDrainedBigRootHp` (`battle_util.c`) is shared by TWO source
+families — move-based drain (`SetHealScript`, the exact chokepoint this
+project's `move.drain_percent`/Liquid-Ooze mechanism, `[M17n-10]`,
+already occupies) AND Ingrain/Leech Seed/Strength Sap/Aqua Ring (a
+separate volatile-status family). Confirmed via grep: none of the
+latter four exist anywhere in this project — Big Root's real scope here
+is move-drain only, not a deliberate scope reduction, just the only
+reachable half of source's own two.
+
+**Big Root's formula, confirmed deliberately NOT UQ4.12**: source uses
+plain integer math at a base-1000 scale — `hp = (hp * 1300) / 1000` —
+unlike nearly every other item modifier in this project. Replicated
+exactly rather than assumed to generalize from this project's own
+UQ4.12 convention (tested directly: `Q01.02`).
+
+**Big Root's ordering relative to Liquid Ooze, confirmed and tested**:
+source calls `GetDrainedBigRootHp` UNCONDITIONALLY, first, inside
+`SetHealScript`, before the invert-vs-heal branch decision — so a
+Liquid-Ooze-inverted hit against a Big Root holder's own drain move is
+ALSO boosted, since the multiply happens before the split. Verified with
+a dedicated test (`Q01.07`): the damage reflected back at a Big-Root-
+holding attacker via the drained target's Liquid Ooze exactly matches
+the boosted (not base) formula.
+
+**Shell Bell reads FINAL damage, confirmed and tested**: source's
+`gBattleScripting.savedDmg` is set in `MoveEndSetValues`, the VERY FIRST
+moveend state, running immediately after damage is applied — confirming
+it's unambiguously post-crit/post-type-effectiveness/post-item-and-
+ability-boosts. In this project that's simply the existing `damage`
+local in `_do_damaging_hit`, already final by construction — no new
+plumbing needed. Tested explicitly (`Q02.05`-`Q02.06`) with a scenario
+stacking TWO independent damage modifiers (a forced crit AND a 2x-weak
+type matchup) and comparing the observed heal against the OBSERVED
+final damage (captured live via `move_executed`, not hand-derived),
+proving the heal tracks whatever the pipeline actually produced rather
+than base power.
+
+Additional confirmed gates: does NOT fire if the attacker is already at
+max HP (no waste-heal — genuinely new for this project, no prior
+precedent checks this before healing; tested at `Q02.04`/`Q02.09`)
+fires on ANY nonzero damage regardless of mechanism (no move-category
+gate). Future Sight and Heal Block exclusions are both non-applicable
+(neither exists in this project).
+
+**Two real cross-tier interactions found, flagged not built** (same
+class of gap as `[M18n]`'s own flagged Red Card doubles edge case):
+1. Source excludes Shell Bell healing if the attacker was JUST forced
+   to switch out by Red Card (`[M18n]`) earlier in the same hit
+   resolution (`redCardSwitched`). This project's `attacker` reference
+   stays valid post-switch, so without an explicit guard this WOULD
+   still heal in that case — a real discrepancy, not modeled.
+2. Source's `savedDmg` accumulates across ALL targets of a spread move
+   before healing once; this project's per-target `_do_damaging_hit`
+   dispatch would heal once per target hit in a hypothetical doubles
+   spread-move scenario — not modeled.
+
+### Implementation
+
+- New `ItemManager.HOLD_EFFECT_BIG_ROOT = 58` /
+  `HOLD_EFFECT_SHELL_BELL = 44` constants.
+- New `ItemManager.big_root_drain_heal(mon, heal, ng_active) -> int` —
+  applies source's exact `heal*1300/1000` formula, held by the ATTACKER
+  (the one draining). Wired into the existing `move.drain_percent` block
+  in `_do_damaging_hit`, applied to `heal` BEFORE the existing Liquid
+  Ooze branch check, preserving source's exact ordering.
+- New `ItemManager.shell_bell_heal(mon, final_damage, ng_active) -> int`
+  — gates on not-already-at-max-HP and `final_damage > 0` internally.
+  Wired into a new block right after the drain block (both are
+  attacker-keyed, unconditioned on `target.fainted` — the classic Shell
+  Bell use case is healing off the killing blow itself).
+- 2 new entries added to `gen_items.py`'s `ITEMS` dict; `.tres`
+  regenerated, 114 items total (112 prior, counting `[M18o]`'s 2 + this
+  tier's 2).
+
+### A real test-authoring bug, caught and fixed (14/15 → 16/16, one assertion added)
+
+`Q02.08`'s original discriminator (holder at max HP → no heal) ran a
+multi-turn battle where the target survived the first hit and countered
+on a later turn, denting the attacker's HP — at which point Shell Bell
+LEGITIMATELY fired, since the attacker was no longer at max HP by then.
+Checking "no heal anywhere in the whole battle" was exactly the
+whole-battle-aggregation pitfall CLAUDE.md documents (`[M17l]`/`[M18k]`):
+the assertion needs to be scoped to a single well-defined hit, not an
+uncontrolled number of turns. Fixed by making the target fragile enough
+to guarantee a one-hit kill (ending the battle immediately after the
+one hit under test), with a new fixture-check assertion (`Q02.08`)
+confirming that guarantee directly rather than trusting it silently.
+The first fix attempt (lowering only `base_hp`) still wasn't enough —
+this project's HP formula has a `+level+10` floor that keeps `max_hp`
+from ever going below roughly 60 at level 50 regardless of how low
+`base_hp` is set (the same floor `[M18o]`'s Focus Sash tests had to
+account for with a heavily boosted attacker) — fixed by also lowering
+`base_def`, not just `base_hp`.
+
+### Test results
+
+New `m18q_test.gd`/`.tscn`: **16/16** assertions, 2 sections (Q01 Big
+Root — data, direct multiplier check, a discriminator against a
+non-holder, and the Liquid Ooze boosted-inversion finding; Q02 Shell
+Bell — data, direct checks incl. the no-waste-heal gate, a full-battle
+crit+type-effectiveness scenario proving it reads final damage, a
+missed-attempt discriminator, and the max-HP discriminator with its own
+fixture check), passing after the aggregation-scoping fix above.
+
+### Regression
+
+Per this tier's routine-tier scope:
+- `m18q_test.tscn`: **16/16** (new).
+- `item_registry_test.tscn`: **204/204**, unchanged — see `[M18o]`'s
+  own regression note (both tiers' items are counted together in the
+  114-item catalog since they were regenerated in the same
+  `gen_items.py` run).
+
+No stray Godot processes before or after; reference clone untouched;
+`git status --short` matched exactly the expected file set (6 modified
+core files, 8 new `.tres` files across both tiers, 4 new test files
+across both tiers — `[M18k]`'s own still-uncommitted files from a prior
+session accounted for separately) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with both `[M18o]` and `[M18q]`'s
+completion together. M18m (stat-change-reactive consumed items, 4 items
+— Eject Pack specifically) remains fully unblocked since `[M18n]`.
+Recommend **M18m**, or any of M18r/M18s/M18t/M18u/M18v/M18w/M18x, per
+Rob's preference.
