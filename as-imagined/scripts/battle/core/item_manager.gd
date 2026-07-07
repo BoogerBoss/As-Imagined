@@ -182,6 +182,43 @@ const HOLD_EFFECT_FLAME_ORB: int = 68  # self-inflicts STATUS_BURN
 const HOLD_EFFECT_TOXIC_ORB: int = 69  # self-inflicts STATUS_TOXIC (badly poisoned,
                                         # NOT regular STATUS_POISON)
 
+# M18j: Power/accuracy flat-modifier misc (7 items).
+# CORRECTION found at Step 0: Expert Belt is NOT in the same pipeline stage as
+# Muscle Band/Wise Glasses despite the plan's "power items" grouping — source
+# places it in GetAttackerItemsModifier (battle_util.c L7493, the SAME function
+# this project's post_roll_modifier_uq412/Life Orb already implements), applied
+# AFTER the roll/type-effectiveness — NOT CalcMoveBasePowerAfterModifiers where
+# Muscle Band/Wise Glasses (and move_power_modifier_uq412) live.
+const HOLD_EFFECT_MUSCLE_BAND: int = 62   # physical power x1.1, FLOORED rounding
+const HOLD_EFFECT_WISE_GLASSES: int = 64  # special power x1.1, FLOORED rounding —
+                                           # CORRECTION: source calls
+                                           # PercentToUQ4_12_Floored ((4096*pct)/100,
+                                           # no rounding) for these two, a DIFFERENT
+                                           # formula than M18a's Charcoal-family items
+                                           # (PercentToUQ4_12, (4096*pct+50)/100,
+                                           # rounds) — a genuine 1-unit difference at
+                                           # 10% (4505 floored vs. 4506 rounded).
+const HOLD_EFFECT_EXPERT_BELT: int = 59   # flat x1.2 when effectiveness>=2.0 (2x OR
+                                           # 4x, uniform — no extra stacking at 4x).
+                                           # holdEffectParam=20 in source data but
+                                           # NOT actually read — the dispatch function
+                                           # hardcodes UQ_4_12(1.2)=4915 directly.
+const HOLD_EFFECT_WIDE_LENS: int = 63     # attacker accuracy x1.10, unconditional
+const HOLD_EFFECT_ZOOM_LENS: int = 65     # attacker accuracy x1.20, ONLY if the
+                                           # target has already acted this turn —
+                                           # confirmed checkable via this project's
+                                           # existing _turn_order/_current_actor_index
+                                           # position tracking (same infrastructure
+                                           # _is_last_to_move already established for
+                                           # Analytic, [M17n-5]), NOT a blocker.
+const HOLD_EFFECT_EVASION_UP: int = 22    # Bright Powder AND Lax Incense — literal
+                                           # same constant, both holdEffectParam=10
+                                           # under this reference clone's
+                                           # I_LAX_INCENSE_BOOST>=GEN_4 config —
+                                           # confirmed genuinely identical, not
+                                           # assumed. Defender-side accuracy x0.90
+                                           # against the holder.
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -196,6 +233,14 @@ const UQ412_RESIST_BERRY: int    = 2048   # 0.5 × — Resist Berry halving
 const UQ412_RIPEN_RESIST_BERRY: int = 1024  # 0.25 × — Resist Berry halving, doubled by Ripen
 const UQ412_TYPE_BOOST: int      = 4915   # 1.2 × — matching-type held item (M18a)
 const UQ412_DOUBLE: int          = 8192   # 2.0 × — M18g species-gated stat items
+const UQ412_EXPERT_BELT: int     = 4915   # 1.2 × (hardcoded UQ_4_12(1.2) in source,
+                                           # NOT read from hold_effect_param despite
+                                           # items.h storing 20 there) — numerically
+                                           # identical to UQ412_TYPE_BOOST but a
+                                           # separate constant: different function,
+                                           # different pipeline stage, different
+                                           # source formula (plain macro rounding,
+                                           # not PercentToUQ4_12)
 
 
 # ── Attack-stat item modifier (applied to stat, BEFORE base formula) ──────────
@@ -290,10 +335,21 @@ static func defense_stat_modifier_uq412(mon: BattlePokemon, move: MoveData, ng_a
 # Source: GetAttackerItemsModifier (battle_util.c L7497–7499) called from
 #   GetOtherModifiers → ApplyModifiersAfterDmgRoll (AFTER roll, STAB, type eff, burn).
 
-static func post_roll_modifier_uq412(mon: BattlePokemon, ng_active: bool = false) -> int:
+static func post_roll_modifier_uq412(mon: BattlePokemon, ng_active: bool = false,
+		effectiveness: float = 1.0) -> int:
 	var item: ItemData = effective_held_item(mon, ng_active)
-	if item != null and item.hold_effect == HOLD_EFFECT_LIFE_ORB:
+	if item == null:
+		return 4096
+	if item.hold_effect == HOLD_EFFECT_LIFE_ORB:
 		return UQ412_LIFE_ORB
+	# M18j: Expert Belt — flat x1.2 when effectiveness >= 2.0 (2x OR 4x, uniform,
+	# confirmed no extra stacking at 4x — source's condition is `>=`, not `==`).
+	# Source: GetAttackerItemsModifier (battle_util.c L7493-7495), the SAME
+	# function/pipeline stage Life Orb above already occupies — a real
+	# correction to the plan's "power items" grouping with Muscle Band/Wise
+	# Glasses, which live in a completely different function.
+	if item.hold_effect == HOLD_EFFECT_EXPERT_BELT and effectiveness >= 2.0:
+		return UQ412_EXPERT_BELT
 	return 4096
 
 
@@ -696,6 +752,17 @@ static func move_power_modifier_uq412(mon: BattlePokemon, move: MoveData, ng_act
 				and (move.type == TypeChart.TYPE_PSYCHIC or move.type == TypeChart.TYPE_DRAGON):
 			return UQ412_TYPE_BOOST
 		return 4096
+	# M18j: Muscle Band (physical-only) / Wise Glasses (special-only) — x1.1,
+	# read dynamically from hold_effect_param (=10), using the FLOORED formula
+	# source uses for these two specifically: 4096 + (param*4096)/100, NOT the
+	# rounded PercentToUQ4_12 formula UQ412_TYPE_BOOST above uses. A real,
+	# confirmed 1-unit difference at 10% (4505 floored vs. 4506 rounded) —
+	# verified by reading both source functions directly, not assumed to share
+	# the type-boost family's rounding.
+	if item.hold_effect == HOLD_EFFECT_MUSCLE_BAND and move.category == 0:
+		return 4096 + (item.hold_effect_param * 4096) / 100
+	if item.hold_effect == HOLD_EFFECT_WISE_GLASSES and move.category == 1:
+		return 4096 + (item.hold_effect_param * 4096) / 100
 	if item.hold_effect != HOLD_EFFECT_TYPE_POWER and item.hold_effect != HOLD_EFFECT_PLATE:
 		return 4096
 	if move.type != item.hold_effect_param:
@@ -1077,3 +1144,43 @@ static func status_orb_status(mon: BattlePokemon, ng_active: bool = false) -> in
 	if item.hold_effect == HOLD_EFFECT_TOXIC_ORB:
 		return BattlePokemon.STATUS_TOXIC
 	return BattlePokemon.STATUS_NONE
+
+
+# M18j: item-side accuracy modifier — Wide Lens/Zoom Lens (attacker-side) and
+# Bright Powder/Lax Incense (defender-side), mirroring
+# AbilityManager.accuracy_modifier_percent's own combined attacker+defender
+# shape and multiplied into the same `calc` percentage in
+# StatusManager.check_accuracy.
+# Source: GetTotalAccuracy's item switches (battle_util.c L10334-10354):
+#   attacker's hold effect — Wide Lens: `calc = (calc*(100+atkParam))/100`
+#     unconditional; Zoom Lens: same formula, gated on
+#     `HasBattlerActedThisTurn(battlerDef)` (has the TARGET already acted this
+#     turn — checked via this project's existing _turn_order/_current_actor_index
+#     position tracking, the same infrastructure `_is_last_to_move` already
+#     established for Analytic, [M17n-5]; source's secondary
+#     `isFirstTurn != 2` edge-case flag is NOT modeled here — a documented,
+#     acknowledged simplification, not a silent omission).
+#   target's hold effect — HOLD_EFFECT_EVASION_UP (Bright Powder AND Lax
+#     Incense, literal same constant, both holdEffectParam=10 under this
+#     reference clone's config, confirmed genuinely identical not assumed):
+#     `calc = (calc*(100-defParam))/100`.
+# target_already_acted: computed by the caller (BattleManager), null-unsafe
+#   default false — matches this project's existing convention of the caller
+#   resolving turn-order-position questions and passing the result in (see
+#   `is_last_to_move` threaded into DamageCalculator.calculate the same way).
+static func accuracy_modifier_percent(attacker: BattlePokemon, defender: BattlePokemon = null,
+		ng_active: bool = false, target_already_acted: bool = false) -> int:
+	var pct: int = 100
+	var atk_item: ItemData = effective_held_item(attacker, ng_active)
+	if atk_item != null:
+		if atk_item.hold_effect == HOLD_EFFECT_WIDE_LENS:
+			pct = (pct * (100 + atk_item.hold_effect_param)) / 100
+		elif atk_item.hold_effect == HOLD_EFFECT_ZOOM_LENS and target_already_acted:
+			pct = (pct * (100 + atk_item.hold_effect_param)) / 100
+
+	if defender != null:
+		var def_item: ItemData = effective_held_item(defender, ng_active)
+		if def_item != null and def_item.hold_effect == HOLD_EFFECT_EVASION_UP:
+			pct = (pct * (100 - def_item.hold_effect_param)) / 100
+
+	return pct

@@ -552,7 +552,8 @@ static func check_accuracy(
 		move: MoveData,
 		force_hit: Variant = null,
 		ng_active: bool = false,
-		weather: int = DamageCalculator.WEATHER_NONE) -> bool:
+		weather: int = DamageCalculator.WEATHER_NONE,
+		target_already_acted: bool = false) -> bool:
 	# Test override — highest priority; bypasses all checks including semi-inv.
 	if force_hit != null:
 		return bool(force_hit)
@@ -610,6 +611,15 @@ static func check_accuracy(
 	var item_pct: int = ItemManager.micle_accuracy_modifier_percent(attacker)
 	if item_pct != 100:
 		calc = calc * item_pct / 100
+
+	# M18j: Wide Lens/Zoom Lens (attacker-side) and Bright Powder/Lax Incense
+	# (defender-side), same "calc" integer-percentage slot as the ability/Micle
+	# modifiers above. Source: GetTotalAccuracy's item switches (battle_util.c
+	# L10334-10354).
+	var lens_pct: int = ItemManager.accuracy_modifier_percent(
+			attacker, defender, ng_active, target_already_acted)
+	if lens_pct != 100:
+		calc = calc * lens_pct / 100
 
 	return randi() % 100 < calc
 

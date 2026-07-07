@@ -9915,3 +9915,138 @@ files, 2 new `.tres` files, 2 new test files) before this docs commit.
 `CLAUDE.md`'s status section updated with M18i's completion. Recommend
 **M18j (Power/accuracy flat-modifier misc, 7 items, no dependencies)** as
 the next tier.
+
+
+## [M18j] Power/accuracy flat-modifier misc (7 items)
+
+Tenth M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18j
+section. No cross-tier dependencies. The plan's own two-sub-family framing
+("power items" and "accuracy/evasion items") turned out to hide a real
+pipeline-stage split within the "power" sub-family itself.
+
+### Step 0 — finalized list, with two major corrections
+
+| Item | ID | `hold_effect` | Mechanism |
+|---|---|---|---|
+| Muscle Band | 475 | `HOLD_EFFECT_MUSCLE_BAND` (62) | ×1.1 physical power, floored rounding |
+| Wise Glasses | 476 | `HOLD_EFFECT_WISE_GLASSES` (64) | ×1.1 special power, floored rounding |
+| Expert Belt | 477 | `HOLD_EFFECT_EXPERT_BELT` (59) | Flat ×1.2 when `effectiveness >= 2.0` (2x or 4x, uniform) |
+| Wide Lens | 474 | `HOLD_EFFECT_WIDE_LENS` (63) | ×1.10 accuracy, unconditional |
+| Zoom Lens | 482 | `HOLD_EFFECT_ZOOM_LENS` (65) | ×1.20 accuracy, only if the target already acted this turn |
+| Bright Powder | 459 | `HOLD_EFFECT_EVASION_UP` (22) | ×0.90 accuracy against the holder |
+| Lax Incense | 405 | `HOLD_EFFECT_EVASION_UP` (22) | ×0.90 accuracy against the holder — genuinely identical to Bright Powder |
+
+All `HOLD_EFFECT_*` values confirmed via the established programmatic
+full-enum recount, cross-checked against pre-existing project constants
+(`EVASION_UP=22` matches `[M18c]`'s own count; `CHOICE_BAND=29`,
+`QUICK_POWDER=75` both landed correctly under the same count).
+
+**Correction 1 (major)**: Expert Belt is **not** in the same pipeline stage
+as Muscle Band/Wise Glasses, despite the plan's "power items" grouping.
+Source places it in `GetAttackerItemsModifier` (`battle_util.c`
+L7493-7495) — the exact function this project's
+`ItemManager.post_roll_modifier_uq412` (Life Orb) already implements,
+applied **after** the roll/type-effectiveness — not
+`CalcMoveBasePowerAfterModifiers` where Muscle Band/Wise Glasses (and
+`move_power_modifier_uq412`) live. Extending the wrong function would have
+produced a functionally different, wrong pipeline position. Tested
+separately (J03 confirms Expert Belt does NOT respond to
+`move_power_modifier_uq412` at all).
+
+**Correction 2**: Muscle Band/Wise Glasses use a genuinely different
+rounding formula than every prior type-boost item in this project. Source
+calls `PercentToUQ4_12_Floored` (`(4096*percent)/100`, no rounding) for
+these two specifically, vs. the plain `PercentToUQ4_12`
+(`(4096*percent+50)/100`, rounds) that `[M18a]`'s Charcoal-family/Soul Dew
+items use. A real 1-unit difference at 10%: floored = **4505**, rounded
+would have been 4506 — confirmed by reading both formula bodies directly in
+`src/battle_util.c` rather than assuming the existing `UQ412_TYPE_BOOST`
+pattern generalizes. Read dynamically from `hold_effect_param` (=10),
+matching this project's established dynamic-param-read convention.
+
+**Confirmed, not corrected**: Bright Powder and Lax Incense really are
+identical — literal same `HOLD_EFFECT_EVASION_UP` constant, both
+`holdEffectParam=10` under this reference clone's `I_LAX_INCENSE_BOOST>=GEN_4`
+config (confirmed via the `#if` block directly in `src/data/items.h`).
+Tested independently anyway per standing discipline; both land on the
+identical outcome. Wide Lens (10%) and Zoom Lens (20%) confirmed as
+genuinely different magnitudes.
+
+**Zoom Lens's turn-order condition confirmed checkable, not deferred**:
+source's exact gate is `HasBattlerActedThisTurn(battlerDef)` — this project
+already has an established, structurally identical pattern
+(`BattleManager._is_last_to_move`, built for Analytic in `[M17n-5]`) proving
+turn-order position is knowable at execution time via
+`_turn_order`/`_current_actor_index`. Implemented via a new, directly
+analogous `_has_target_already_acted` helper — not blocked, not
+approximated. Source's secondary edge-case flag (`isFirstTurn != 2`) is a
+narrower nuance not modeled here — a documented simplification (flagged in
+both the implementation's own doc comment and the test file), not a silent
+omission.
+
+### Implementation
+
+- `move_power_modifier_uq412` (`[M18a]`) extended: Muscle Band
+  (physical-only), Wise Glasses (special-only), both using the floored
+  formula above.
+- `post_roll_modifier_uq412` (Life Orb's function) extended with a new
+  `effectiveness: float = 1.0` parameter and an Expert Belt branch (flat
+  `UQ412_EXPERT_BELT=4915`, a separate constant from `UQ412_TYPE_BOOST`
+  despite the identical numeric value — different function, different
+  pipeline stage, different source formula). `DamageCalculator.calculate`'s
+  existing `effectiveness` local now threaded into this call, which already
+  sat in scope at the right point.
+- New `ItemManager.accuracy_modifier_percent(attacker, defender,
+  ng_active, target_already_acted) -> int`, mirroring
+  `AbilityManager.accuracy_modifier_percent`'s own combined attacker+defender
+  shape: Wide Lens/Zoom Lens (attacker-side), Bright Powder/Lax Incense
+  (defender-side, both `HOLD_EFFECT_EVASION_UP`).
+- `StatusManager.check_accuracy` gained a new `target_already_acted: bool =
+  false` parameter, multiplying the new item function's result into the
+  same `calc` percentage slot the ability modifier and Micle Berry (`[M18c]`)
+  already occupy.
+- New `BattleManager._has_target_already_acted(target) -> bool`, sitting
+  directly beside `_is_last_to_move`, reading the same
+  `_turn_order`/`_current_actor_index` state. Threaded into the existing
+  `check_accuracy` call site in `_phase_move_execution`.
+- 7 new entries added to `gen_items.py`'s `ITEMS` dict; `.tres` regenerated,
+  106 items total (99 prior + 7).
+
+### Test results
+
+New `m18j_test.gd`/`.tscn`: **26/26** assertions, 7 sections (J01 Muscle
+Band, J02 Wise Glasses, J03 Expert Belt — including the cross-function
+discriminator proving it does NOT respond to `move_power_modifier_uq412`,
+plus a 2x-vs-4x uniformity check and neutral/resisted discriminators; J04
+Wide Lens; J05 Zoom Lens — condition-met/condition-unmet direct checks plus
+a deterministic confirmation of `_has_target_already_acted` reaching directly
+into `BattleManager`'s own `_turn_order`/`_current_actor_index` state,
+mirroring this codebase's established `_force_hit`-style direct-field-access
+test pattern rather than a slow, multi-battle statistical sample; J06 Bright
+Powder; J07 Lax Incense), passing on the first run.
+
+### Regression
+
+Per this tier's routine-tier scope, only this tier's own suite plus the
+suites covering every function touched were rerun (not the full 45+-file
+sweep, which remains Rob's manual step):
+- `m18j_test.tscn`: **26/26** (new).
+- `m18a_test.tscn`: **160/160**, unchanged — confirms the shared
+  `move_power_modifier_uq412`/Charcoal-family pipeline is unaffected by
+  Muscle Band/Wise Glasses' new branches.
+- `m17n2_test.tscn`: **58/58**, unchanged — confirms Sand Veil/Snow Cloak
+  (the existing ability-side accuracy modifiers) are unaffected by the new
+  item-side branches sharing the same `calc` slot.
+- `m17n5_test.tscn`: **78/78**, unchanged — confirms Tangled Feet and
+  Analytic (`_is_last_to_move`'s own original ability) are both unaffected.
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity holds
+  across the expanded 106-item catalog.
+
+No stray Godot processes before or after; reference clone untouched; `git
+status --short` matched exactly the expected file set (5 modified core
+files, 7 new `.tres` files, 2 new test files) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18j's completion. Recommend
+**M18k (Flinch-on-hit items, 2 items, no dependencies)** as the next tier.

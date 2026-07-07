@@ -493,7 +493,10 @@ static func calculate(
 	# M12: Life Orb damage modifier — AFTER roll, STAB, type eff, burn (and ability mods).
 	# Source: GetAttackerItemsModifier (battle_util.c L7497–7499), called from GetOtherModifiers
 	#   which is called inside ApplyModifiersAfterDmgRoll after all other per-modifier steps.
-	var life_orb_mod: int = ItemManager.post_roll_modifier_uq412(attacker, ng_active)
+	# M18j: `effectiveness` threaded through for Expert Belt's own case in the
+	# same function (>= 2.0 gate) — same shape as post_roll_modifier_uq412's
+	# existing Life Orb branch, now sharing this one call site.
+	var life_orb_mod: int = ItemManager.post_roll_modifier_uq412(attacker, ng_active, effectiveness)
 	if life_orb_mod != 4096:
 		dmg = _uq412_half_down(dmg, life_orb_mod)
 

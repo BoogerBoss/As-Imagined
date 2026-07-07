@@ -1201,8 +1201,12 @@ func _phase_move_execution() -> void:
 	# Includes semi-invulnerable miss check (source: CancelerAccuracyCheck L1993).
 	# M18c: Micle Berry's boost applies to exactly this one check, hit or miss —
 	# clear it unconditionally right after, consuming it here regardless of outcome.
+	# M18j: Zoom Lens needs to know whether the TARGET has already acted this
+	# turn — resolved via the same _turn_order/_current_actor_index position
+	# tracking _is_last_to_move already established for Analytic ([M17n-5]).
 	var m18c_accuracy_hit: bool = StatusManager.check_accuracy(
-			attacker, defender, move, _force_hit, ng_active, _effective_weather())
+			attacker, defender, move, _force_hit, ng_active, _effective_weather(),
+			_has_target_already_acted(defender))
 	attacker.micle_boost_active = false
 	if not m18c_accuracy_hit:
 		# Source: SetSameMoveTurnValues, case EFFECT_ROLLOUT (L4899): increment requires
@@ -2998,6 +3002,20 @@ func _is_last_to_move(mon: BattlePokemon) -> bool:
 		if _chosen_switch_slots[oidx] < 0:
 			return false  # a later battler still has a pending MOVE action
 	return true
+
+
+# M18j: Zoom Lens — has the TARGET already acted (had its own action resolved)
+# this turn, at the moment the attacker's accuracy check runs? Source:
+# HasBattlerActedThisTurn(battlerDef) (battle_util.c L10339-10340), checked via
+# this project's own _turn_order/_current_actor_index position tracking, the
+# same infrastructure `_is_last_to_move` above already established for
+# Analytic ([M17n-5]). Source's secondary `isFirstTurn != 2` edge-case flag is
+# deliberately NOT modeled — a documented simplification, not a silent omission.
+func _has_target_already_acted(target: BattlePokemon) -> bool:
+	var pos: int = _turn_order.find(target)
+	if pos == -1:
+		return false
+	return pos < _current_actor_index
 
 
 # M16e: Conversion 2's resist-type selection. Builds the candidate pool — types that

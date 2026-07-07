@@ -101,6 +101,13 @@ HOLD_EFFECT_MACHO_BRACE = 24  # M18h: own constant, same halve-Speed effect as b
 HOLD_EFFECT_POWER_ITEM = 81   # M18h: Power Weight/Bracer/Belt/Lens/Band/Anklet (6 items)
 HOLD_EFFECT_FLAME_ORB = 68    # M18i: self-inflicts STATUS_BURN, checked every end of turn
 HOLD_EFFECT_TOXIC_ORB = 69    # M18i: self-inflicts STATUS_TOXIC (badly poisoned)
+HOLD_EFFECT_MUSCLE_BAND = 62   # M18j: physical power x1.1, FLOORED rounding
+HOLD_EFFECT_WISE_GLASSES = 64  # M18j: special power x1.1, FLOORED rounding
+HOLD_EFFECT_EXPERT_BELT = 59   # M18j: flat x1.2 when effectiveness>=2.0 (different
+                                #       pipeline stage than Muscle Band/Wise Glasses)
+HOLD_EFFECT_WIDE_LENS = 63     # M18j: attacker accuracy x1.10, unconditional
+HOLD_EFFECT_ZOOM_LENS = 65     # M18j: attacker accuracy x1.20, target-already-acted only
+HOLD_EFFECT_EVASION_UP = 22    # M18j: Bright Powder AND Lax Incense, x0.90 defender-side
 
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
@@ -305,6 +312,19 @@ ITEMS = [
     #    POCKET_BERRIES — confirmed via IsUnnerveBlocked's own pocket check).
     {"id": 445, "name": "Flame Orb",      "hold_effect": HOLD_EFFECT_FLAME_ORB},
     {"id": 446, "name": "Toxic Orb",      "hold_effect": HOLD_EFFECT_TOXIC_ORB},
+
+    # ── M18j: Power/accuracy flat-modifier misc (7) — Expert Belt is NOT the
+    #    same pipeline stage as Muscle Band/Wise Glasses despite the plan's
+    #    "power items" grouping (see item_manager.gd's own doc comments).
+    #    Expert Belt's hold_effect_param=20 is stored for data fidelity with
+    #    source but NOT actually read (the dispatch hardcodes x1.2).
+    {"id": 475, "name": "Muscle Band",    "hold_effect": HOLD_EFFECT_MUSCLE_BAND, "hold_effect_param": 10},
+    {"id": 476, "name": "Wise Glasses",   "hold_effect": HOLD_EFFECT_WISE_GLASSES, "hold_effect_param": 10},
+    {"id": 477, "name": "Expert Belt",    "hold_effect": HOLD_EFFECT_EXPERT_BELT, "hold_effect_param": 20},
+    {"id": 474, "name": "Wide Lens",      "hold_effect": HOLD_EFFECT_WIDE_LENS, "hold_effect_param": 10},
+    {"id": 482, "name": "Zoom Lens",      "hold_effect": HOLD_EFFECT_ZOOM_LENS, "hold_effect_param": 20},
+    {"id": 459, "name": "Bright Powder",  "hold_effect": HOLD_EFFECT_EVASION_UP, "hold_effect_param": 10},
+    {"id": 405, "name": "Lax Incense",    "hold_effect": HOLD_EFFECT_EVASION_UP, "hold_effect_param": 10},
 ]
 
 HEADER = """\
