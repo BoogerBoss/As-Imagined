@@ -169,6 +169,19 @@ const SPECIES_LATIOS:     int = 381
 const HOLD_EFFECT_MACHO_BRACE: int = 24  # Macho Brace — own constant, same effect as below
 const HOLD_EFFECT_POWER_ITEM:  int = 81  # Power Weight/Bracer/Belt/Lens/Band/Anklet (6 items)
 
+# M18i: Status Orbs (2 items). CORRECTION found at Step 0: NOT a "first turn held"
+# timer mechanic — source (TryFlameOrb/TryToxicOrb, battle_hold_effects.c L600-630)
+# fires at IsOrbsActivation timing inside the STANDARD per-turn end-of-turn item
+# dispatch (battle_end_turn.c L1349-1358), checked EVERY end of turn, gated only by
+# CanBeBurned/CanBePoisoned (the same immunity check a move would use). It only
+# ever visibly fires once because the holder then HAS the status and
+# StatusManager.try_apply_status's existing "already has a status" gate blocks
+# re-application — no turn counter of any kind exists in source, and none is
+# built here.
+const HOLD_EFFECT_FLAME_ORB: int = 68  # self-inflicts STATUS_BURN
+const HOLD_EFFECT_TOXIC_ORB: int = 69  # self-inflicts STATUS_TOXIC (badly poisoned,
+                                        # NOT regular STATUS_POISON)
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -1042,3 +1055,25 @@ static func jaboca_rowap_retaliation_damage(holder: BattlePokemon, attacker: Bat
 	if holder.ability != null and holder.ability.ability_id == AbilityManager.ABILITY_RIPEN:
 		dmg *= 2
 	return max(1, dmg)
+
+
+# M18i: Status Orbs — Flame Orb (self-inflicts burn), Toxic Orb (self-inflicts
+# badly-poisoned/STATUS_TOXIC, not regular poison). Returns the STATUS_* the
+# holder should attempt to self-inflict this end of turn, or STATUS_NONE. The
+# caller applies it via StatusManager.try_apply_status (the SAME function moves
+# use), passing the holder as its own `attacker` — mirrors source's
+# self-referential CanBeBurned(battler, battler, ability)/CanBePoisoned(battler,
+# battler, ability, ability) call shape exactly, so existing type immunities
+# (Fire-type/burn, Poison-or-Steel-type/toxic) and the Corrosion bypass compose
+# for free with zero new immunity logic in this function. NOT Unnerve-gated —
+# confirmed via source (IsUnnerveBlocked returns FALSE immediately for any
+# non-berry item; Flame Orb/Toxic Orb are POCKET_ITEMS, not POCKET_BERRIES).
+static func status_orb_status(mon: BattlePokemon, ng_active: bool = false) -> int:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null:
+		return BattlePokemon.STATUS_NONE
+	if item.hold_effect == HOLD_EFFECT_FLAME_ORB:
+		return BattlePokemon.STATUS_BURN
+	if item.hold_effect == HOLD_EFFECT_TOXIC_ORB:
+		return BattlePokemon.STATUS_TOXIC
+	return BattlePokemon.STATUS_NONE

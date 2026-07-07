@@ -2220,6 +2220,21 @@ func _phase_end_of_turn() -> void:
 			mon.current_hp = min(mon.max_hp, mon.current_hp + lft_heal)
 			item_healed.emit(mon, lft_heal)
 
+	# M18i: Status Orbs (Flame Orb/Toxic Orb) — checked EVERY end of turn (no
+	# turn-counter mechanic exists in source; see ItemManager.status_orb_status's
+	# own doc comment), same THIRD_EVENT_BLOCK_ITEMS neighborhood Leftovers
+	# occupies. Applies through StatusManager.try_apply_status — the SAME
+	# function moves use — passing the holder as its own `attacker`, mirroring
+	# source's self-referential CanBeBurned/CanBePoisoned call shape so existing
+	# type immunities compose for free.
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		var orb_status: int = ItemManager.status_orb_status(mon, ng_active)
+		if orb_status != BattlePokemon.STATUS_NONE:
+			if StatusManager.try_apply_status(mon, orb_status, null, null, ng_active, mon):
+				secondary_applied.emit(mon, _status_to_se(orb_status))
+
 	# M7: Decrement Disable and Encore turn counters.
 	# Source: battle_end_turn.c :: HandleTurnStartFunctionOrder (Disable/Encore decrements)
 	for mon: BattlePokemon in _combatants:

@@ -9820,3 +9820,98 @@ files, 7 new `.tres` files, 2 new test files) before this docs commit.
 
 `CLAUDE.md`'s status section updated with M18h's completion. Recommend
 **M18i (Status Orbs, 2 items, no dependencies)** as the next tier.
+
+
+## [M18i] Status Orbs (2 items)
+
+Ninth M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18i
+section. No cross-tier dependencies. The task's own context-gathering raised
+an open question about trigger timing that turned out to have a materially
+simpler answer than either candidate it posed.
+
+### Step 0 — finalized list, with a correction to the task's own framing
+
+| Item | ID | `hold_effect` | Status |
+|---|---|---|---|
+| Flame Orb | 445 | `HOLD_EFFECT_FLAME_ORB` (68) | Burn |
+| Toxic Orb | 446 | `HOLD_EFFECT_TOXIC_ORB` (69) | Badly poisoned (`STATUS_TOXIC`, NOT regular `STATUS_POISON`) |
+
+Both `HOLD_EFFECT_*` values confirmed via the established programmatic
+full-enum recount, cross-checked against 3 pre-existing project constants
+(`CHOICE_BAND=29`, `SCOPE_LENS=40`, `LAGGING_TAIL=66` all landed correctly).
+
+**Correction**: the task's context-gathering asked whether the trigger is
+"end of the FIRST turn held" (fires once, never again) or "end of EVERY turn
+until applied" (relevant if already-immune somehow). **Neither framing is
+quite right — there is no turn-counting mechanic of any kind.** Source's
+`TryFlameOrb`/`TryToxicOrb` (`battle_hold_effects.c` L600-630) fire at
+`IsOrbsActivation` timing inside the **standard per-turn end-of-turn item
+dispatch** (`battle_end_turn.c` L1349-1358, the same neighborhood Leftovers
+already occupies) — checked literally every end of turn, gated only by
+`CanBeBurned`/`CanBePoisoned` (the identical immunity check a move would
+use). It only ever visibly fires once in practice because the holder then
+HAS the status, and `StatusManager.try_apply_status`'s pre-existing "already
+has a status" gate blocks re-application from then on — not because of any
+timer. This means the "turns held/since switch-in" counter the task asked
+me to look for reusing (Slow Start's timer, `switched_in_this_turn`) is
+**not needed at all** — genuinely simpler than either of the two candidate
+mechanics the task posed.
+
+**Confirmed, not corrected**: self-infliction reuses
+`StatusManager.try_apply_status` — the SAME function moves use — passing the
+holder as its own `attacker`, mirroring source's self-referential
+`CanBeBurned(battler, battler, ability)`/`CanBePoisoned(battler, battler,
+ability, ability)` call shape exactly. This means existing type immunities
+(Fire-type immune to Flame Orb's burn; Poison-OR-Steel-type immune to Toxic
+Orb's toxic) compose for free, with zero new immunity logic written for
+this tier — tested explicitly with three discriminators (Fire/Poison/Steel).
+**Confirmed NOT Unnerve-gated**: Flame Orb/Toxic Orb are `POCKET_ITEMS`, not
+`POCKET_BERRIES` — `IsUnnerveBlocked` (`battle_util.c` L333-343) returns
+`FALSE` immediately for any non-berry item, confirmed via direct source
+read rather than assumed from the berry-family precedent every M18c/M18d
+item needed.
+
+### Implementation
+
+New `ItemManager.status_orb_status(mon, ng_active) -> int`: returns the
+`STATUS_*` the holder should attempt to self-inflict this end of turn, or
+`STATUS_NONE`. Deliberately has no turn-count parameter at all — its
+signature structurally cannot be turn-gated, matching the Step 0 finding.
+Wired into `BattleManager._phase_end_of_turn` immediately after the
+existing Leftovers loop, calling `StatusManager.try_apply_status` directly
+(not a parallel status-setting path) with the holder passed as its own
+`attacker`. New `secondary_applied` signal emission on success, reusing the
+existing `_status_to_se` helper already established for contact-ability
+status infliction (Static/Poison Point). 99 total `.tres` items now (97
+prior + 2).
+
+### Test results
+
+New `m18i_test.gd`/`.tscn`: **13/13** assertions, 2 sections (I01 Flame
+Orb — data/direct-status-query/discriminator/direct-self-application/
+Fire-type-immunity-discriminator/full-battle; I02 Toxic Orb — same shape
+plus a `STATUS_TOXIC`-not-`STATUS_POISON` confirmation, `toxic_counter`
+initialization check, and BOTH Poison-type and Steel-type immunity
+discriminators), passing on the first run.
+
+### Regression
+
+Per this tier's routine-tier scope, only this tier's own suite plus the
+suites covering the reused mechanism were rerun (not the full 45+-file
+sweep, which remains Rob's manual step):
+- `m18i_test.tscn`: **13/13** (new).
+- `status_test.tscn`: **78/78**, unchanged — confirms
+  `StatusManager.try_apply_status`'s burn/toxic infliction and type-immunity
+  logic (the exact mechanism this tier reuses) is unaffected.
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity holds
+  across the expanded 99-item catalog.
+
+No stray Godot processes before or after; reference clone untouched; `git
+status --short` matched exactly the expected file set (3 modified core
+files, 2 new `.tres` files, 2 new test files) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18i's completion. Recommend
+**M18j (Power/accuracy flat-modifier misc, 7 items, no dependencies)** as
+the next tier.

@@ -99,6 +99,8 @@ SPECIES_LATIOS = 381
 
 HOLD_EFFECT_MACHO_BRACE = 24  # M18h: own constant, same halve-Speed effect as below
 HOLD_EFFECT_POWER_ITEM = 81   # M18h: Power Weight/Bracer/Belt/Lens/Band/Anklet (6 items)
+HOLD_EFFECT_FLAME_ORB = 68    # M18i: self-inflicts STATUS_BURN, checked every end of turn
+HOLD_EFFECT_TOXIC_ORB = 69    # M18i: self-inflicts STATUS_TOXIC (badly poisoned)
 
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
@@ -297,6 +299,12 @@ ITEMS = [
     {"id": 422, "name": "Power Lens",     "hold_effect": HOLD_EFFECT_POWER_ITEM},
     {"id": 423, "name": "Power Band",     "hold_effect": HOLD_EFFECT_POWER_ITEM},
     {"id": 424, "name": "Power Anklet",   "hold_effect": HOLD_EFFECT_POWER_ITEM},
+
+    # ── M18i: Status Orbs (2) — checked every end of turn (no turn-counter
+    #    mechanic exists in source), NOT Unnerve-gated (POCKET_ITEMS, not
+    #    POCKET_BERRIES — confirmed via IsUnnerveBlocked's own pocket check).
+    {"id": 445, "name": "Flame Orb",      "hold_effect": HOLD_EFFECT_FLAME_ORB},
+    {"id": 446, "name": "Toxic Orb",      "hold_effect": HOLD_EFFECT_TOXIC_ORB},
 ]
 
 HEADER = """\
