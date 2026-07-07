@@ -602,6 +602,15 @@ static func check_accuracy(
 	if ability_pct != 100:
 		calc = calc * ability_pct / 100
 
+	# M18c: Micle Berry — one-shot ×1.2 (Ripen: ×1.4) for exactly this accuracy
+	# check. A flag read, not a held-item read (the berry is already consumed by
+	# the time this fires) — no Klutz gate, matching source (battle_util.c
+	# L10357-10362). The caller clears `attacker.micle_boost_active` right after
+	# this function returns, consuming it for exactly one check (hit or miss).
+	var item_pct: int = ItemManager.micle_accuracy_modifier_percent(attacker)
+	if item_pct != 100:
+		calc = calc * item_pct / 100
+
 	return randi() % 100 < calc
 
 

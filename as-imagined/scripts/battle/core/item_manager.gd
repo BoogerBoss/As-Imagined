@@ -47,6 +47,43 @@ const HOLD_EFFECT_LAGGING_TAIL:  int = 66  # M18l: Full Incense AND Lagging Tail
                                             # L4409-4410, no move-category gate — unlike Mycelium Might's
                                             # narrower ability equivalent)
 
+# M18c: Berry HP-threshold effects (10 items). All 8 of the 25%-threshold berries
+# below (5 flat-stat + Lansat + Starf + Custap) share holdEffectParam=4, confirmed
+# uniform via direct per-item src/data/items.h read (not assumed).
+const HOLD_EFFECT_ATTACK_UP:     int = 15  # Liechi Berry — +1 Atk (Ripen: +2)
+const HOLD_EFFECT_DEFENSE_UP:    int = 16  # Ganlon Berry — +1 Def (Ripen: +2)
+const HOLD_EFFECT_SPEED_UP:      int = 17  # Salac Berry — +1 Speed (Ripen: +2)
+const HOLD_EFFECT_SP_ATTACK_UP:  int = 18  # Petaya Berry — +1 SpAtk (Ripen: +2)
+const HOLD_EFFECT_SP_DEFENSE_UP: int = 19  # Apicot Berry — +1 SpDef (Ripen: +2)
+const HOLD_EFFECT_CRITICAL_UP:   int = 20  # Lansat Berry — sets focus_energy (NOT
+                                            # crit_stage_bonus()/M18e's mechanism — a
+                                            # real correction, confirmed via source:
+                                            # CriticalHitRatioUp sets
+                                            # volatiles.focusEnergy=TRUE directly, the
+                                            # SAME flag Focus Energy the move sets.
+                                            # Ripen does NOT affect this one (confirmed
+                                            # absent from source, unlike the 6 stat berries).
+const HOLD_EFFECT_RANDOM_STAT_UP: int = 21 # Starf Berry — +2 to one random non-maxed
+                                            # stat from {Atk,Def,SpAtk,SpDef,Speed}
+                                            # (Ripen: +4) — EXCLUDES Accuracy/Evasion,
+                                            # unlike Moody's own broader pool.
+const HOLD_EFFECT_ENIGMA_BERRY:  int = 79  # heals 25% max HP (Ripen: 50%) when hit
+                                            # DIRECTLY (not absorbed by Substitute) by a
+                                            # move that resolves super-effective — NOT an
+                                            # HP threshold, NOT the resist-berry TYPE-match
+                                            # check; reads the actual computed
+                                            # effectiveness after damage, architecturally
+                                            # separate from every other item in this file.
+const HOLD_EFFECT_MICLE_BERRY:   int = 83  # one-shot ×1.2 accuracy (Ripen: ×1.4) on the
+                                            # holder's NEXT accuracy check only.
+const HOLD_EFFECT_CUSTAP_BERRY:  int = 84  # deterministic (no roll) act-first at the HP
+                                            # threshold — reuses M18l's quick_effect dict.
+                                            # CORRECTION: source's turn-order check has NO
+                                            # IsUnnerveBlocked call at all (a separate code
+                                            # path from the general berry dispatcher) —
+                                            # Custap bypasses Unnerve while Klutz/Gluttony
+                                            # still apply normally.
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -569,3 +606,199 @@ static func has_slow_turn_order_item(mon: BattlePokemon, ng_active: bool = false
 		return false
 	var item: ItemData = effective_held_item(mon, ng_active)
 	return item != null and item.hold_effect == HOLD_EFFECT_LAGGING_TAIL
+
+
+# ── M18c: berry HP-threshold effects (10 items) ────────────────────────────────
+#
+# Source: src/battle_hold_effects.c :: ItemBattleEffects's switch (L1201-1224) for
+# the 8 general-dispatch cases (5 stat berries, Lansat, Starf, Micle); Custap is
+# handled entirely separately in battle_main.c's turn-order code (see
+# custap_berry_activates below). Every general-dispatch case shares
+# HasEnoughHpToEatBerry(battler, ability, GetItemHoldEffectParam(item), item) — all
+# 8 confirmed holdEffectParam=4 (25%) individually via src/data/items.h, not assumed
+# uniform. Each function below inlines that same gate (Klutz via effective_held_item,
+# Unnerve, Gluttony-adjusted fraction) rather than sharing a private helper, matching
+# hp_threshold_berry_heal/status_cure_berry_cures's own established precedent of
+# inlining their gate rather than factoring one out.
+
+# M18c: Liechi(Atk)/Ganlon(Def)/Salac(Speed)/Petaya(SpAtk)/Apicot(SpDef) — each
+# raises its OWN stat by +1 (Ripen: +2) at the 25% HP threshold. Source:
+# StatRaiseBerry (battle_hold_effects.c L943-964): `CompareStat(...,
+# MAX_STAT_STAGE, CMP_LESS_THAN, ability)` is checked BEFORE
+# HasEnoughHpToEatBerry — an already-maxed stat means the berry never triggers or
+# consumes at all, reproduced below via the same ordering (stat-maxed check first).
+# Returns {} if not triggered, else {"item": ItemData, "stat": STAGE_*, "amount": 1|2}.
+static func stat_raise_berry_trigger(mon: BattlePokemon, ng_active: bool = false,
+		unnerve_active: bool = false, override_item: ItemData = null) -> Dictionary:
+	var item: ItemData = override_item if override_item != null else effective_held_item(mon, ng_active)
+	if item == null:
+		return {}
+	var stat_idx: int = -1
+	match item.hold_effect:
+		HOLD_EFFECT_ATTACK_UP: stat_idx = BattlePokemon.STAGE_ATK
+		HOLD_EFFECT_DEFENSE_UP: stat_idx = BattlePokemon.STAGE_DEF
+		HOLD_EFFECT_SPEED_UP: stat_idx = BattlePokemon.STAGE_SPEED
+		HOLD_EFFECT_SP_ATTACK_UP: stat_idx = BattlePokemon.STAGE_SPATK
+		HOLD_EFFECT_SP_DEFENSE_UP: stat_idx = BattlePokemon.STAGE_SPDEF
+		_: return {}
+	if mon.stat_stages[stat_idx] >= 6:
+		return {}
+	if override_item == null:
+		if unnerve_active:
+			return {}
+		var fraction: int = AbilityManager.gluttony_adjusted_hp_fraction(mon, item.hold_effect_param, ng_active)
+		if mon.current_hp > mon.max_hp / fraction:
+			return {}
+	var amount: int = 2 if (mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_RIPEN) else 1
+	return {"item": item, "stat": stat_idx, "amount": amount}
+
+
+# M18c: Starf Berry — raises ONE random non-maxed stat from {Atk, Def, SpAtk,
+# SpDef, Speed} by +2 (Ripen: +4) at the 25% HP threshold. Source:
+# RandomStatRaiseBerry (battle_hold_effects.c L984-1021): the eligible-stat
+# check (any of STAT_ATK..NUM_STATS-1 not maxed) runs BEFORE
+# HasEnoughHpToEatBerry, same ordering as stat_raise_berry_trigger above.
+# STAT_ATK..NUM_STATS-1 EXCLUDES Accuracy/Evasion — a narrower pool than Moody's
+# own (which includes them per B_MOODY_ACC_EVASION>=GEN_8, ability_manager.gd's
+# `_apply_moody`) — confirmed via direct enum read, not assumed identical.
+# forced_stat: STAGE_* index to pin instead of rolling — null = real RNG, same
+# force_moody_raise/force_moody_lower convention `_apply_moody` already established.
+# Returns {} if not triggered, else {"item": ItemData, "stat": STAGE_*, "amount": 2|4}.
+static func random_stat_raise_berry_trigger(mon: BattlePokemon, ng_active: bool = false,
+		unnerve_active: bool = false, override_item: ItemData = null,
+		forced_stat: Variant = null) -> Dictionary:
+	var item: ItemData = override_item if override_item != null else effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_RANDOM_STAT_UP:
+		return {}
+	var valid: Array = []
+	for i in range(5):  # STAGE_ATK(0)..STAGE_SPEED(4)
+		if mon.stat_stages[i] < 6:
+			valid.append(i)
+	if valid.is_empty():
+		return {}
+	if override_item == null:
+		if unnerve_active:
+			return {}
+		var fraction: int = AbilityManager.gluttony_adjusted_hp_fraction(mon, item.hold_effect_param, ng_active)
+		if mon.current_hp > mon.max_hp / fraction:
+			return {}
+	var stat_idx: int = int(forced_stat) if (forced_stat != null and int(forced_stat) in valid) \
+			else valid[randi() % valid.size()]
+	var amount: int = 4 if (mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_RIPEN) else 2
+	return {"item": item, "stat": stat_idx, "amount": amount}
+
+
+# M18c: Lansat Berry — sets the SAME focus_energy volatile the Focus Energy MOVE
+# sets (+2 crit stage via DamageCalculator._roll_crit's existing focus_energy
+# param), NOT M18e's crit_stage_bonus()/+1 item mechanism. A real correction found
+# at Step 0: source's CriticalHitRatioUp (battle_hold_effects.c L968-981) sets
+# `volatiles.focusEnergy = TRUE` directly — the exact same flag, not a parallel
+# +1 that sums with it. Also gated on focus_energy not already being active (no
+# double-application; source also checks dragonCheer, not implemented here, moot).
+# Ripen does NOT affect this one — confirmed absent from source, unlike the 6
+# stat-raising berries above. Returns the ItemData to consume, or null.
+static func lansat_berry_trigger(mon: BattlePokemon, ng_active: bool = false,
+		unnerve_active: bool = false, override_item: ItemData = null) -> ItemData:
+	if mon == null or mon.focus_energy:
+		return null
+	var item: ItemData = override_item if override_item != null else effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_CRITICAL_UP:
+		return null
+	if override_item == null:
+		if unnerve_active:
+			return null
+		var fraction: int = AbilityManager.gluttony_adjusted_hp_fraction(mon, item.hold_effect_param, ng_active)
+		if mon.current_hp > mon.max_hp / fraction:
+			return null
+	return item
+
+
+# M18c: Custap Berry — deterministic (no roll) act-first within a tied priority
+# bracket at the 25% HP threshold, item equivalent shape of quick_claw_activates
+# but HP-gated instead of probabilistic. OR'd into the SAME quick_effect dict
+# M18l built ([M17n-3]'s original chokepoint), reproducing source's own
+# battler1HasQuickEffect = quickDraw || usedCustapBerry structure exactly.
+# CORRECTION found at Step 0: source's turn-order check (TryChangingTurnOrderEffects,
+# battle_main.c L5191) has NO IsUnnerveBlocked call anywhere near it — a completely
+# separate code path from ItemBattleEffects (the general berry dispatcher every
+# OTHER function in this file's M18c section routes through, and where Unnerve's
+# gate actually lives in source). Custap therefore bypasses Unnerve entirely, while
+# Klutz (via effective_held_item below) and Gluttony (via the fraction check) still
+# apply normally. Returns the ItemData to consume, or null.
+static func custap_berry_activates(mon: BattlePokemon, ng_active: bool = false) -> ItemData:
+	if mon == null:
+		return null
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_CUSTAP_BERRY:
+		return null
+	var fraction: int = AbilityManager.gluttony_adjusted_hp_fraction(mon, item.hold_effect_param, ng_active)
+	if mon.current_hp > mon.max_hp / fraction:
+		return null
+	return item
+
+
+# M18c: Micle Berry — one-shot ×1.2 accuracy (Ripen: ×1.4) for exactly the
+# holder's NEXT accuracy check, at the 25% HP threshold. Sets
+# BattlePokemon.micle_boost_active; the caller consumes the item AND sets the flag.
+# Returns the ItemData to consume, or null.
+static func micle_berry_trigger(mon: BattlePokemon, ng_active: bool = false,
+		unnerve_active: bool = false, override_item: ItemData = null) -> ItemData:
+	var item: ItemData = override_item if override_item != null else effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_MICLE_BERRY:
+		return null
+	if override_item == null:
+		if unnerve_active:
+			return null
+		var fraction: int = AbilityManager.gluttony_adjusted_hp_fraction(mon, item.hold_effect_param, ng_active)
+		if mon.current_hp > mon.max_hp / fraction:
+			return null
+	return item
+
+
+# M18c: Micle Berry's accuracy read — a flag check, not a held-item check (the
+# berry is already consumed and gone by the time a move's accuracy is rolled), so
+# no Klutz gate applies here — matches source reading
+# `gBattleStruct->battlerState[battlerAtk].usedMicleBerry` directly with no
+# re-gating (battle_util.c L10357-10362). Ripen checked at USE time (the mon's
+# CURRENT ability), matching source's fresh `atkAbility` read in GetTotalAccuracy,
+# not the ability at the moment the berry was originally consumed.
+static func micle_accuracy_modifier_percent(mon: BattlePokemon) -> int:
+	if mon == null or not mon.micle_boost_active:
+		return 100
+	if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_RIPEN:
+		return 140
+	return 120
+
+
+# M18c: Enigma Berry — heals 25% max HP (Ripen: 50%) when the holder is hit
+# DIRECTLY (not absorbed by Substitute) by a move that resolves super-effective.
+# Architecturally separate from every other item in this file, confirmed at Step
+# 0: NOT an HP threshold (heals regardless of current HP level) and NOT the
+# resist-berry TYPE-match check (defender_item_modifier_uq412 compares
+# hold_effect_param to move.type BEFORE damage; this reads the ACTUAL COMPUTED
+# effectiveness AFTER damage, via the caller's own DamageCalculator.calculate
+# result). Source: TrySetEnigmaBerry (battle_hold_effects.c L378-396) —
+# `IsBattlerTurnDamaged(EXCLUDING_SUBSTITUTES) && MOVE_RESULT_SUPER_EFFECTIVE`;
+# this project's substitute-absorption branch already returns before reaching the
+# caller's insertion point, so EXCLUDING_SUBSTITUTES is satisfied automatically.
+# was_super_effective: the caller's own DamageCalculator.calculate result's
+# "effectiveness" > 1.0 — this function cannot derive it independently, unlike
+# every HP-fraction check above.
+static func enigma_berry_heal(mon: BattlePokemon, was_super_effective: bool,
+		ng_active: bool = false, unnerve_active: bool = false,
+		override_item: ItemData = null) -> int:
+	var item: ItemData = override_item if override_item != null else effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_ENIGMA_BERRY:
+		return 0
+	if override_item != null:
+		if mon.current_hp >= mon.max_hp:
+			return 0
+	else:
+		if unnerve_active:
+			return 0
+		if not was_super_effective:
+			return 0
+	var heal_amount: int = mon.max_hp * 25 / 100
+	if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_RIPEN:
+		heal_amount *= 2
+	return max(1, heal_amount)

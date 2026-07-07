@@ -203,6 +203,10 @@ var _force_conversion2_pick: Variant = null
 var _force_moody_raise: Variant = null
 var _force_moody_lower: Variant = null
 
+# M18c: force which STAGE_* Starf Berry raises (+2, or +4 under Ripen). Same
+# null-sentinel seam shape as _force_moody_raise above.
+var _force_starf_stat: Variant = null
+
 # M17c: force Shed Skin's 1/3 end-of-turn status-cure roll and Healer's 30% roll.
 var _force_shed_skin_roll: Variant = null
 var _force_healer_roll: Variant = null
@@ -643,9 +647,19 @@ func _phase_priority_resolution() -> void:
 		# battler1HasSlowEffect = battler1HasStallingAbility || laggingTail
 		# (battle_main.c L4786-4791): ability and item flags are combined into the
 		# exact same boolean BEFORE the comparator ever runs, not checked separately.
+		# M18c: Custap Berry — deterministic, HP-gated act-first, OR'd into the same
+		# quick_effect boolean. Unlike Quick Claw (never consumed — not a berry),
+		# Custap IS a berry and is consumed the moment it contributes to
+		# quick_effect being true — evaluated/consumed exactly once here, matching
+		# this precompute's own "exactly once per battler per turn" requirement
+		# (the same reasoning [M17n-3] documented for why this loop exists at all).
+		var custap_item: ItemData = ItemManager.custap_berry_activates(mon, ng_active)
 		quick_effect[mon] = AbilityManager.quick_draw_activates(
 				mon, chosen_move, ng_active, _force_quick_draw_roll) \
-				or ItemManager.quick_claw_activates(mon, ng_active, _force_quick_claw_roll)
+				or ItemManager.quick_claw_activates(mon, ng_active, _force_quick_claw_roll) \
+				or custap_item != null
+		if custap_item != null:
+			_consume_item(mon)
 		slow_effect[mon] = AbilityManager.has_slow_turn_order_effect(
 				mon, chosen_move, ng_active) \
 				or ItemManager.has_slow_turn_order_item(mon, ng_active)
@@ -1169,7 +1183,12 @@ func _phase_move_execution() -> void:
 	# ── Accuracy check ────────────────────────────────────────────────────────
 	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
 	# Includes semi-invulnerable miss check (source: CancelerAccuracyCheck L1993).
-	if not StatusManager.check_accuracy(attacker, defender, move, _force_hit, ng_active, _effective_weather()):
+	# M18c: Micle Berry's boost applies to exactly this one check, hit or miss —
+	# clear it unconditionally right after, consuming it here regardless of outcome.
+	var m18c_accuracy_hit: bool = StatusManager.check_accuracy(
+			attacker, defender, move, _force_hit, ng_active, _effective_weather())
+	attacker.micle_boost_active = false
+	if not m18c_accuracy_hit:
 		# Source: SetSameMoveTurnValues, case EFFECT_ROLLOUT (L4899): increment requires
 		#   IsAnyTargetAffected() — a miss resets the consecutive-hit counter to 0.
 		if move.is_rollout:
@@ -2728,6 +2747,7 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.bide_turns = 0
 	mon.bide_damage = 0
 	mon.focus_energy = false
+	mon.micle_boost_active = false
 	mon.minimized = false
 	mon.defense_curled = false
 	mon.rollout_turns = 0
@@ -3530,6 +3550,50 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		if sitrus_heal > 0:
 			target.current_hp = min(target.max_hp, target.current_hp + sitrus_heal)
 			item_healed.emit(target, sitrus_heal)
+			_consume_item(target)
+
+		# M18c: berry HP-threshold effects — same post-hit trigger point and same
+		# Unnerve gate as Sitrus/Oran above (all 9 of these route through
+		# ItemBattleEffects in source, the same general dispatcher Sitrus/Oran use;
+		# Custap is the sole exception, handled separately in the turn-order
+		# precompute below since it bypasses this gate entirely — see
+		# ItemManager.custap_berry_activates's own doc comment).
+		var m18c_unnerve: bool = AbilityManager.is_unnerve_active(_get_live_opponents(target), ng_active)
+
+		var stat_trigger: Dictionary = ItemManager.stat_raise_berry_trigger(target, ng_active, m18c_unnerve)
+		if not stat_trigger.is_empty():
+			var stat_actual: int = StatusManager.apply_stat_change(
+					target, stat_trigger["stat"], stat_trigger["amount"], null, ng_active)
+			if stat_actual != 0:
+				stat_stage_changed.emit(target, stat_trigger["stat"], stat_actual)
+				_consume_item(target)
+
+		var random_stat_trigger: Dictionary = ItemManager.random_stat_raise_berry_trigger(
+				target, ng_active, m18c_unnerve, null, _force_starf_stat)
+		if not random_stat_trigger.is_empty():
+			var rs_actual: int = StatusManager.apply_stat_change(
+					target, random_stat_trigger["stat"], random_stat_trigger["amount"], null, ng_active)
+			if rs_actual != 0:
+				stat_stage_changed.emit(target, random_stat_trigger["stat"], rs_actual)
+				_consume_item(target)
+
+		var lansat_item: ItemData = ItemManager.lansat_berry_trigger(target, ng_active, m18c_unnerve)
+		if lansat_item != null:
+			target.focus_energy = true
+			ability_triggered.emit(target, "lansat_berry")
+			_consume_item(target)
+
+		var micle_item: ItemData = ItemManager.micle_berry_trigger(target, ng_active, m18c_unnerve)
+		if micle_item != null:
+			target.micle_boost_active = true
+			ability_triggered.emit(target, "micle_berry")
+			_consume_item(target)
+
+		var enigma_heal: int = ItemManager.enigma_berry_heal(
+				target, result.get("effectiveness", 0.0) > 1.0, ng_active, m18c_unnerve)
+		if enigma_heal > 0:
+			target.current_hp = min(target.max_hp, target.current_hp + enigma_heal)
+			item_healed.emit(target, enigma_heal)
 			_consume_item(target)
 
 

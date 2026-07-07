@@ -134,6 +134,16 @@ var bide_damage: int = 0
 # Source: battle_script_commands.c :: Cmd_setfocusenergy (L7718) — sets volatiles.focusEnergy.
 var focus_energy: bool = false
 
+# M18c: Micle Berry — one-shot ×1.2 (×1.4 Ripen) accuracy boost for exactly this
+# mon's NEXT accuracy check (hit or miss), then cleared unconditionally. Cleared on
+# faint/switch-out (_clear_volatiles) same as every other one-battle-stint volatile.
+# Source: gBattleStruct->battlerState[battler].usedMicleBerry, cleared at the START
+# of each move-processing cycle (SetSameMoveTurnValues, battle_move_resolution.c
+# L4268) — this project clears it right after StatusManager.check_accuracy is
+# called instead, the single call site that consumes it (see StatusManager's own
+# doc comment on the accuracy pipeline for why that's the correct one-shot point).
+var micle_boost_active: bool = false
+
 # M16b: Minimize — volatile that raises Evasion +2 and doubles incoming damage from
 # moves with double_power_on_minimized=true (Stomp etc.).
 # Cleared on faint (_clear_volatiles) and switch-out (_switch_out_clear → _clear_volatiles).
@@ -290,6 +300,7 @@ static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokem
 	bp.bide_turns = 0
 	bp.bide_damage = 0
 	bp.focus_energy = false
+	bp.micle_boost_active = false
 	bp.minimized = false
 	bp.defense_curled = false
 	bp.rollout_turns = 0

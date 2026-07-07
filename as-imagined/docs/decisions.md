@@ -9282,3 +9282,170 @@ status --short` matched exactly the expected file set (4 modified core files,
 HP-threshold effects, 10 items) is now FULLY unblocked** — both Lansat
 (`[M18e]`) and Custap (this tier) dependencies are satisfied. Recommend
 **M18c** as the next tier.
+
+
+## [M18c] Berry HP-threshold effects — 5 flat-stat berries, Starf, Lansat, Custap, Micle, Enigma (10 items)
+
+Fifth M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18c section.
+Both cross-tier dependencies were satisfied going in (`[M18e]`'s crit-stage
+mechanism, `[M18l]`'s item-keyed turn-order dict) — but Step 0 found neither
+Lansat nor Custap actually reuses those mechanisms the way the plan (and this
+tier's own task framing) assumed. Details below.
+
+### Step 0 — finalized list, organized by sub-shape, with real corrections
+
+**A. Flat +1 stat-raise berries (5)**, all confirmed `holdEffectParam=4` (25%)
+individually via `src/data/items.h`, not assumed uniform:
+
+| Item | ID | `hold_effect` | Stat |
+|---|---|---|---|
+| Liechi | 567 | `HOLD_EFFECT_ATTACK_UP` (15) | Attack |
+| Ganlon | 568 | `HOLD_EFFECT_DEFENSE_UP` (16) | Defense |
+| Salac | 569 | `HOLD_EFFECT_SPEED_UP` (17) | Speed |
+| Petaya | 570 | `HOLD_EFFECT_SP_ATTACK_UP` (18) | Sp. Attack |
+| Apicot | 571 | `HOLD_EFFECT_SP_DEFENSE_UP` (19) | Sp. Defense |
+
+**Correction**: source's `StatRaiseBerry` (`battle_hold_effects.c` L943-964)
+checks `CompareStat(..., MAX_STAT_STAGE, CMP_LESS_THAN, ability)` **before**
+`HasEnoughHpToEatBerry` — an already-maxed stat means the berry never
+triggers or consumes at all, not "triggers with no effect." **Correction**:
+Ripen doubles these to **+2** (confirmed in source, same doubling convention
+`[M18b]` already established for heal/resist berries).
+
+**B. Starf (573)** — `HOLD_EFFECT_RANDOM_STAT_UP` (21), same 25% threshold.
+Raises **one random non-maxed stat from {Atk, Def, SpAtk, SpDef, Speed} by
++2** (Ripen: +4). Confirmed the pool is `STAT_ATK..NUM_STATS-1`, **excluding
+Accuracy/Evasion** — a real, source-confirmed distinction from `[M17b]`'s
+Moody (`_apply_moody`), whose own pool (`range(7)`) does include them per
+`B_MOODY_ACC_EVASION>=GEN_8`. Reused Moody's exact forced-index seam pattern
+(`_force_starf_stat`) rather than inventing a new one, per the task's own
+instruction.
+
+**C. Lansat (572)** — `HOLD_EFFECT_CRITICAL_UP` (20), 25% threshold. **Major
+correction to this tier's own task framing**: source's `CriticalHitRatioUp`
+(`battle_hold_effects.c` L968-981) sets `volatiles.focusEnergy = TRUE`
+directly — it reuses this project's **existing Focus Energy mechanism**
+(`BattlePokemon.focus_energy`, +2 crit stage via
+`DamageCalculator._roll_crit`'s existing `focus_energy` param), **not**
+`[M18e]`'s `crit_stage_bonus()`/+1 item mechanism at all, despite the task
+explicitly assuming reuse of that mechanism. Also gated on Focus Energy not
+already being active (source also checks `dragonCheer`, not implemented
+here, moot). Confirmed Ripen does **NOT** affect Lansat — absent from source,
+unlike the 6 stat-raising berries above.
+
+**D. Custap (576)** — `HOLD_EFFECT_CUSTAP_BERRY` (84), 25% threshold
+(hardcoded in source, numerically identical to reading `hold_effect_param`).
+Reuses `[M18l]`'s `quick_effect` dict, but **deterministic (no roll) and
+HP-gated**, unlike Quick Claw's unconditional 20% roll. **Correction found**:
+source's turn-order check (`TryChangingTurnOrderEffects`, `battle_main.c`
+L5191) has **no `IsUnnerveBlocked` call anywhere near it** — a completely
+separate code path from `ItemBattleEffects` (the general berry dispatcher
+every OTHER item in this tier routes through, and where Unnerve's gate
+actually lives in source). Custap therefore bypasses Unnerve entirely, while
+Klutz (via `effective_held_item`) and Gluttony (via the fraction check) still
+apply normally — reflected directly in `custap_berry_activates`'s signature,
+which has no `unnerve_active` parameter at all, unlike every sibling function
+in this tier.
+
+**E. Micle (575)** — `HOLD_EFFECT_MICLE_BERRY` (83), 25% threshold
+(hardcoded, same numeric value). Sets a one-shot flag
+(`BattlePokemon.micle_boost_active`) consumed by exactly the holder's next
+accuracy check: **×1.2 accuracy** (Ripen: ×1.4), applied multiplicatively in
+`StatusManager.check_accuracy` in the same slot as Compound Eyes/Hustle.
+Cleared unconditionally by the caller right after that one accuracy check
+(hit or miss) — not a held-item read at consumption time (the berry is
+already gone by then), matching source's own flag-based read with no
+re-gating.
+
+**F. Enigma (574)** — `HOLD_EFFECT_ENIGMA_BERRY` (79). **Architecturally
+separate, confirmed**: triggers when the holder is hit **directly** (not
+absorbed by Substitute — this project's existing `went_to_sub` early-return
+already guarantees this for free) by a move that resolves **super-effective**
+(`effectiveness > 1.0`, read from `DamageCalculator.calculate`'s existing
+`result["effectiveness"]`) — **not** an HP threshold at all (heals
+regardless of current HP level, tested explicitly at near-full HP), and
+**not** the resist-berry TYPE-match check either (`defender_item_modifier_uq412`
+compares `hold_effect_param` to `move.type` BEFORE damage; Enigma reads the
+ACTUAL COMPUTED effectiveness AFTER damage) — a real distinction from this
+tier's own task framing. Heals flat 25% max HP (Ripen: 50%).
+
+All 10 `HOLD_EFFECT_*` values (and the `RESIST_BERRY=80`/`RESTORE_PCT_HP=82`
+cross-checks) confirmed via a programmatic full-enum recount, matching every
+one of this project's 9 pre-existing constants exactly.
+
+### Implementation
+
+- `ItemManager` gained 8 new hold-effect constants and 9 new functions:
+  `stat_raise_berry_trigger` (5 flat-stat berries, one shared function keyed
+  off `item.hold_effect`), `random_stat_raise_berry_trigger` (Starf),
+  `lansat_berry_trigger`, `custap_berry_activates`, `micle_berry_trigger`,
+  `micle_accuracy_modifier_percent`, `enigma_berry_heal`. Each inlines its
+  own Klutz/Unnerve/Gluttony gate (matching `hp_threshold_berry_heal`/
+  `status_cure_berry_cures`'s own established precedent of inlining rather
+  than factoring out a shared private helper) rather than sharing one, except
+  Custap (no Unnerve gate at all, per its own correction above) and Enigma
+  (no HP-fraction gate at all).
+- `BattlePokemon` gained `micle_boost_active: bool`, reset in `from_species`
+  and `_clear_volatiles` alongside `focus_energy`.
+- `BattleManager._do_damaging_hit`: the 6 general-dispatch, target-side
+  triggers (5 stat berries, Starf, Lansat, Micle, Enigma) all wired in at the
+  exact same post-hit point Sitrus/Oran already occupy (`if not
+  target.fainted:`), same Unnerve gate variable reused across all of them.
+- `BattleManager._phase_priority_resolution`: Custap OR'd into the existing
+  `quick_effect` dict alongside Quick Draw/Quick Claw, consumed via
+  `_consume_item` inside the same precompute loop the moment it contributes
+  — matching the "evaluated/consumed exactly once per battler per turn"
+  requirement `[M17n-3]`/`[M18l]` already established.
+- `StatusManager.check_accuracy`: new `ItemManager.micle_accuracy_modifier_percent`
+  multiplication, same slot as the existing `ability_pct` one.
+  `BattleManager._phase_move_execution`'s single `check_accuracy` call site
+  now clears `attacker.micle_boost_active` unconditionally right after,
+  regardless of hit/miss.
+- New `_force_starf_stat` seam (`BattleManager`), reusing `[M17b]`'s
+  `_force_moody_raise`/`_apply_moody` forced-index pattern exactly.
+- 10 new entries added to `gen_items.py`'s `ITEMS` dict; `.tres` regenerated,
+  78 items total (68 prior + 10).
+
+### Test results
+
+New `m18c_test.gd`/`.tscn`: **47/47** assertions, 10 sections (C01-C05 flat-stat
+berries — C01/C05 include Ripen confirmations, C02-C04 lighter; C06 Starf,
+including the Accuracy/Evasion-exclusion discriminator; C07 Lansat, including
+a full-battle confirmation engineered so the holder survives being hit once
+and then guarantee-OHKOs the opponent, avoiding any ambiguity from a longer
+multi-turn battle; C08 Custap, including a full-battle turn-order
+confirmation and a structural note that its function signature has no
+`unnerve_active` parameter at all; C09 Micle, including a full-battle
+one-shot-consumption confirmation; C10 Enigma, including full-battle
+super-effective/non-super-effective full-battle discriminators), passing on
+the first run.
+
+### Regression
+
+Per this tier's routine-tier scope, only this tier's own suite plus the four
+directly-relevant prior suites were rerun (not the full 45+-file sweep, which
+remains Rob's manual step):
+- `m18c_test.tscn`: **47/47** (new).
+- `m18a_test.tscn`: **160/160**, unchanged.
+- `m18b_test.tscn`: **104/104**, unchanged.
+- `m18e_test.tscn`: **9/9**, unchanged — confirms this tier's correction (NOT
+  reusing `crit_stage_bonus()` for Lansat) didn't require touching M18e's own
+  mechanism at all.
+- `m18l_test.tscn`: **17/17**, unchanged — confirms Custap's addition to the
+  `quick_effect` dict didn't disturb Quick Draw/Quick Claw/Full
+  Incense/Lagging Tail.
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity holds
+  across the expanded 78-item catalog.
+
+No stray Godot processes before or after; reference clone untouched; `git
+status --short` matched exactly the expected file set (4 modified core
+files, `gen_items.py`, 10 new `.tres` files, 2 new test files) before this
+docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18c's completion — this closes
+out ALL of this tier's cross-tier dependencies (`[M18e]` and `[M18l]` both
+fully consumed, though not in the shape either was originally assumed to be
+reused). Recommend **M18d (Leppa Berry + contact-retaliation berries, 3
+items — no dependencies)** as the next tier.

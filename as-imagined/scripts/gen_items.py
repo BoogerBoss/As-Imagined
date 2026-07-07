@@ -62,6 +62,16 @@ HOLD_EFFECT_PLATE      = 89
 HOLD_EFFECT_SCOPE_LENS = 40  # Scope Lens AND Razor Claw — same holdEffect in source (M18e)
 HOLD_EFFECT_QUICK_CLAW = 26  # M18l: 20% act-first, param=20 read dynamically
 HOLD_EFFECT_LAGGING_TAIL = 66  # M18l: Full Incense AND Lagging Tail — same holdEffect in source
+HOLD_EFFECT_ATTACK_UP = 15       # M18c: Liechi Berry
+HOLD_EFFECT_DEFENSE_UP = 16      # M18c: Ganlon Berry
+HOLD_EFFECT_SPEED_UP = 17        # M18c: Salac Berry
+HOLD_EFFECT_SP_ATTACK_UP = 18    # M18c: Petaya Berry
+HOLD_EFFECT_SP_DEFENSE_UP = 19   # M18c: Apicot Berry
+HOLD_EFFECT_CRITICAL_UP = 20     # M18c: Lansat Berry — sets focus_energy, not crit_stage_bonus()
+HOLD_EFFECT_RANDOM_STAT_UP = 21  # M18c: Starf Berry
+HOLD_EFFECT_ENIGMA_BERRY = 79    # M18c: super-effective-hit heal, not an HP threshold
+HOLD_EFFECT_MICLE_BERRY = 83     # M18c: one-shot next-move accuracy boost
+HOLD_EFFECT_CUSTAP_BERRY = 84    # M18c: HP-gated act-first, bypasses Unnerve
 
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
@@ -199,6 +209,22 @@ ITEMS = [
     {"id": 462, "name": "Quick Claw",     "hold_effect": HOLD_EFFECT_QUICK_CLAW, "hold_effect_param": 20},
     {"id": 408, "name": "Full Incense",   "hold_effect": HOLD_EFFECT_LAGGING_TAIL},
     {"id": 485, "name": "Lagging Tail",   "hold_effect": HOLD_EFFECT_LAGGING_TAIL},
+
+    # ── M18c: berry HP-threshold effects (10) — all 8 of the 25%-threshold items
+    #    below (5 flat-stat + Lansat + Starf + Custap) confirmed holdEffectParam=4
+    #    individually via src/data/items.h, not assumed uniform. Micle/Enigma need
+    #    no hold_effect_param (their thresholds are hardcoded in source; Enigma has
+    #    no HP threshold at all).
+    {"id": 567, "name": "Liechi Berry",   "hold_effect": HOLD_EFFECT_ATTACK_UP, "hold_effect_param": 4},
+    {"id": 568, "name": "Ganlon Berry",   "hold_effect": HOLD_EFFECT_DEFENSE_UP, "hold_effect_param": 4},
+    {"id": 569, "name": "Salac Berry",    "hold_effect": HOLD_EFFECT_SPEED_UP, "hold_effect_param": 4},
+    {"id": 570, "name": "Petaya Berry",   "hold_effect": HOLD_EFFECT_SP_ATTACK_UP, "hold_effect_param": 4},
+    {"id": 571, "name": "Apicot Berry",   "hold_effect": HOLD_EFFECT_SP_DEFENSE_UP, "hold_effect_param": 4},
+    {"id": 572, "name": "Lansat Berry",   "hold_effect": HOLD_EFFECT_CRITICAL_UP, "hold_effect_param": 4},
+    {"id": 573, "name": "Starf Berry",    "hold_effect": HOLD_EFFECT_RANDOM_STAT_UP, "hold_effect_param": 4},
+    {"id": 574, "name": "Enigma Berry",   "hold_effect": HOLD_EFFECT_ENIGMA_BERRY},
+    {"id": 575, "name": "Micle Berry",    "hold_effect": HOLD_EFFECT_MICLE_BERRY, "hold_effect_param": 4},
+    {"id": 576, "name": "Custap Berry",   "hold_effect": HOLD_EFFECT_CUSTAP_BERRY, "hold_effect_param": 4},
 ]
 
 HEADER = """\
