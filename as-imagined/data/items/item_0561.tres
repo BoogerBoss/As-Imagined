@@ -9,3 +9,4 @@ item_id = 561
 item_name = "Charti Berry"
 hold_effect = 80
 hold_effect_param = 6
+pocket = 3

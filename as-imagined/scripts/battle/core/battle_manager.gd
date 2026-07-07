@@ -3791,26 +3791,36 @@ func _consume_item(mon: BattlePokemon) -> void:
 	var ng_active: bool = _is_neutralizing_gas_active()
 	# M17n-7: Unburden — activates the moment the holder's OWN item is consumed.
 	# Source: CheckSetUnburden, called from every item-removal site including the
-	# berry-eating path this function represents.
+	# berry-eating path this function represents. Fires for ANY item, berry or not
+	# — confirmed from source, Unburden has no pocket gate.
 	if AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_UNBURDEN:
 		mon.unburden_active = true
-	# M17n-7: the "last consumed berry" tracker Harvest/Cud Chew both read. Every
-	# item reaching this function today is already a berry (see Cheek Pouch's own
-	# established precedent immediately below) — no separate "is this a berry" gate
-	# was needed, matching that same precedent.
-	mon.last_consumed_berry = item
-	# M17c: Cheek Pouch — every item consumed via this function today is a berry
-	# (Lum/Sitrus/resist berries), matching source's POCKET_BERRIES gate in practice.
-	var cp_heal: int = AbilityManager.cheek_pouch_heal(mon, ng_active)
-	if cp_heal > 0:
-		mon.current_hp = min(mon.max_hp, mon.current_hp + cp_heal)
-		ability_healed.emit(mon, cp_heal)
-		ability_triggered.emit(mon, "cheek_pouch")
+	# M18-patch-1: this function is NOT berry-only — [M18n]'s Red Card/Eject Button
+	# and [M18o]'s Focus Sash all reach it too. The "every item here is a berry"
+	# assumption baked into this function's original [M17c]/[M17n-7] comments was
+	# correct AT THE TIME (only Lum/Sitrus/resist berries existed) but went stale
+	# once those three non-berry items were added; both Cheek Pouch (below) and the
+	# `last_consumed_berry` tracker Harvest/Cud Chew read (ability_manager.gd) had
+	# the identical bug, sharing this one assignment site as their fix point.
+	# Source: TryCheekPouch (battle_script_commands.c:6175) gates directly on
+	# `GetItemPocket(itemId) == POCKET_BERRIES` — mirrored here via `item.pocket`.
+	var is_berry: bool = item.pocket == ItemManager.POCKET_BERRIES
+	if is_berry:
+		mon.last_consumed_berry = item
+	# M17c: Cheek Pouch — heals maxHP/3 whenever the holder eats a REAL berry, not
+	# any consumed item.
+	if is_berry:
+		var cp_heal: int = AbilityManager.cheek_pouch_heal(mon, ng_active)
+		if cp_heal > 0:
+			mon.current_hp = min(mon.max_hp, mon.current_hp + cp_heal)
+			ability_healed.emit(mon, cp_heal)
+			ability_triggered.emit(mon, "cheek_pouch")
 	# M17j: Symbiosis — this function is the single existing choke point every item
-	# consumption in this project already routes through (berries via Lum/Sitrus/resist-
-	# berry sites all call _consume_item), so wiring Symbiosis's check here covers every
-	# existing consumption path with one change, matching source's own broad "ally just
-	# lost its item, by any means" trigger shape.
+	# consumption in this project already routes through (berries AND non-berries
+	# alike), so wiring Symbiosis's check here covers every existing consumption
+	# path with one change, matching source's own broad "ally just lost its item,
+	# by any means" trigger shape. Symbiosis itself is NOT berry-gated in source —
+	# confirmed via its own [M17j] entry, no change needed here.
 	_try_symbiosis(mon)
 
 

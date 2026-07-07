@@ -9,3 +9,4 @@ item_id = 576
 item_name = "Custap Berry"
 hold_effect = 84
 hold_effect_param = 4
+pocket = 3

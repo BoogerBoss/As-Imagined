@@ -48,6 +48,14 @@ Sources for item data:
 
 import pathlib
 
+# M18-patch-1: Pocket enum id (must match scripts/battle/core/item_manager.gd's
+# ItemManager.POCKET_BERRIES). Source: include/constants/item.h. Only
+# POCKET_BERRIES is modeled; set on every real berry entry below so
+# Cheek Pouch/Harvest/Cud Chew can gate on it correctly (battle_manager.gd's
+# _consume_item) — previously this field existed in the schema but was never
+# populated for any item.
+POCKET_BERRIES = 3
+
 # ── HOLD_EFFECT_* constants (must match scripts/battle/core/item_manager.gd) ──
 HOLD_EFFECT_RESTORE_HP      = 1   # Oran Berry — flat heal (M18b)
 HOLD_EFFECT_CURE_PAR        = 2   # Cheri Berry (M18b)
@@ -206,39 +214,39 @@ ITEMS = [
     #    hold_effect_param needed — the hold_effect itself fully specifies which
     #    status is cured (confirmed via src/data/items.h: none of these 6 set
     #    .holdEffectParam at all, unlike the type-keyed resist berries below).
-    {"id": 514, "name": "Cheri Berry",    "hold_effect": HOLD_EFFECT_CURE_PAR},
-    {"id": 515, "name": "Chesto Berry",   "hold_effect": HOLD_EFFECT_CURE_SLP},
-    {"id": 516, "name": "Pecha Berry",    "hold_effect": HOLD_EFFECT_CURE_PSN},
-    {"id": 517, "name": "Rawst Berry",    "hold_effect": HOLD_EFFECT_CURE_BRN},
-    {"id": 518, "name": "Aspear Berry",   "hold_effect": HOLD_EFFECT_CURE_FRZ},
-    {"id": 521, "name": "Persim Berry",   "hold_effect": HOLD_EFFECT_CURE_CONFUSION},
+    {"id": 514, "name": "Cheri Berry",    "hold_effect": HOLD_EFFECT_CURE_PAR, "pocket": POCKET_BERRIES},
+    {"id": 515, "name": "Chesto Berry",   "hold_effect": HOLD_EFFECT_CURE_SLP, "pocket": POCKET_BERRIES},
+    {"id": 516, "name": "Pecha Berry",    "hold_effect": HOLD_EFFECT_CURE_PSN, "pocket": POCKET_BERRIES},
+    {"id": 517, "name": "Rawst Berry",    "hold_effect": HOLD_EFFECT_CURE_BRN, "pocket": POCKET_BERRIES},
+    {"id": 518, "name": "Aspear Berry",   "hold_effect": HOLD_EFFECT_CURE_FRZ, "pocket": POCKET_BERRIES},
+    {"id": 521, "name": "Persim Berry",   "hold_effect": HOLD_EFFECT_CURE_CONFUSION, "pocket": POCKET_BERRIES},
 
     # ── M18b: Oran Berry — flat 10 HP heal, same <=50%-max-HP threshold as Sitrus
     #    Berry (HasEnoughHpToEatBerry(..., 2, ...) in source, shared by both), but
     #    a DISTINCT hold_effect from Sitrus's HOLD_EFFECT_RESTORE_PCT_HP(82) — this
     #    one is HOLD_EFFECT_RESTORE_HP(1), param=10 is a flat HP amount not a percent.
-    {"id": 520, "name": "Oran Berry",     "hold_effect": HOLD_EFFECT_RESTORE_HP, "hold_effect_param": 10},
+    {"id": 520, "name": "Oran Berry",     "hold_effect": HOLD_EFFECT_RESTORE_HP, "hold_effect_param": 10, "pocket": POCKET_BERRIES},
 
     # ── M18b: type-resist berries (16) — HOLD_EFFECT_RESIST_BERRY, the exact same
     #    generic dispatch Occa Berry(Fire)/Chilan Berry(Normal) already use (those
     #    two remain inline-only in item_test.gd, per the NOTE above — not migrated
     #    here this session, out of scope).
-    {"id": 551, "name": "Passho Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_WATER},
-    {"id": 552, "name": "Wacan Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_ELECTRIC},
-    {"id": 553, "name": "Rindo Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_GRASS},
-    {"id": 554, "name": "Yache Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_ICE},
-    {"id": 555, "name": "Chople Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_FIGHTING},
-    {"id": 556, "name": "Kebia Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_POISON},
-    {"id": 557, "name": "Shuca Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_GROUND},
-    {"id": 558, "name": "Coba Berry",     "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_FLYING},
-    {"id": 559, "name": "Payapa Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_PSYCHIC},
-    {"id": 560, "name": "Tanga Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_BUG},
-    {"id": 561, "name": "Charti Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_ROCK},
-    {"id": 562, "name": "Kasib Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_GHOST},
-    {"id": 563, "name": "Haban Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_DRAGON},
-    {"id": 564, "name": "Colbur Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_DARK},
-    {"id": 565, "name": "Babiri Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_STEEL},
-    {"id": 566, "name": "Roseli Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_FAIRY},
+    {"id": 551, "name": "Passho Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_WATER, "pocket": POCKET_BERRIES},
+    {"id": 552, "name": "Wacan Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_ELECTRIC, "pocket": POCKET_BERRIES},
+    {"id": 553, "name": "Rindo Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_GRASS, "pocket": POCKET_BERRIES},
+    {"id": 554, "name": "Yache Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_ICE, "pocket": POCKET_BERRIES},
+    {"id": 555, "name": "Chople Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_FIGHTING, "pocket": POCKET_BERRIES},
+    {"id": 556, "name": "Kebia Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_POISON, "pocket": POCKET_BERRIES},
+    {"id": 557, "name": "Shuca Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_GROUND, "pocket": POCKET_BERRIES},
+    {"id": 558, "name": "Coba Berry",     "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_FLYING, "pocket": POCKET_BERRIES},
+    {"id": 559, "name": "Payapa Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_PSYCHIC, "pocket": POCKET_BERRIES},
+    {"id": 560, "name": "Tanga Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_BUG, "pocket": POCKET_BERRIES},
+    {"id": 561, "name": "Charti Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_ROCK, "pocket": POCKET_BERRIES},
+    {"id": 562, "name": "Kasib Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_GHOST, "pocket": POCKET_BERRIES},
+    {"id": 563, "name": "Haban Berry",    "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_DRAGON, "pocket": POCKET_BERRIES},
+    {"id": 564, "name": "Colbur Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_DARK, "pocket": POCKET_BERRIES},
+    {"id": 565, "name": "Babiri Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_STEEL, "pocket": POCKET_BERRIES},
+    {"id": 566, "name": "Roseli Berry",   "hold_effect": HOLD_EFFECT_RESIST_BERRY, "hold_effect_param": TYPE_FAIRY, "pocket": POCKET_BERRIES},
 
     # ── M18e: crit-stage item bonus (2) — Scope Lens and Razor Claw share the
     #    exact same HOLD_EFFECT_SCOPE_LENS value in source (src/data/items.h); not
@@ -260,24 +268,24 @@ ITEMS = [
     #    individually via src/data/items.h, not assumed uniform. Micle/Enigma need
     #    no hold_effect_param (their thresholds are hardcoded in source; Enigma has
     #    no HP threshold at all).
-    {"id": 567, "name": "Liechi Berry",   "hold_effect": HOLD_EFFECT_ATTACK_UP, "hold_effect_param": 4},
-    {"id": 568, "name": "Ganlon Berry",   "hold_effect": HOLD_EFFECT_DEFENSE_UP, "hold_effect_param": 4},
-    {"id": 569, "name": "Salac Berry",    "hold_effect": HOLD_EFFECT_SPEED_UP, "hold_effect_param": 4},
-    {"id": 570, "name": "Petaya Berry",   "hold_effect": HOLD_EFFECT_SP_ATTACK_UP, "hold_effect_param": 4},
-    {"id": 571, "name": "Apicot Berry",   "hold_effect": HOLD_EFFECT_SP_DEFENSE_UP, "hold_effect_param": 4},
-    {"id": 572, "name": "Lansat Berry",   "hold_effect": HOLD_EFFECT_CRITICAL_UP, "hold_effect_param": 4},
-    {"id": 573, "name": "Starf Berry",    "hold_effect": HOLD_EFFECT_RANDOM_STAT_UP, "hold_effect_param": 4},
-    {"id": 574, "name": "Enigma Berry",   "hold_effect": HOLD_EFFECT_ENIGMA_BERRY},
-    {"id": 575, "name": "Micle Berry",    "hold_effect": HOLD_EFFECT_MICLE_BERRY, "hold_effect_param": 4},
-    {"id": 576, "name": "Custap Berry",   "hold_effect": HOLD_EFFECT_CUSTAP_BERRY, "hold_effect_param": 4},
+    {"id": 567, "name": "Liechi Berry",   "hold_effect": HOLD_EFFECT_ATTACK_UP, "hold_effect_param": 4, "pocket": POCKET_BERRIES},
+    {"id": 568, "name": "Ganlon Berry",   "hold_effect": HOLD_EFFECT_DEFENSE_UP, "hold_effect_param": 4, "pocket": POCKET_BERRIES},
+    {"id": 569, "name": "Salac Berry",    "hold_effect": HOLD_EFFECT_SPEED_UP, "hold_effect_param": 4, "pocket": POCKET_BERRIES},
+    {"id": 570, "name": "Petaya Berry",   "hold_effect": HOLD_EFFECT_SP_ATTACK_UP, "hold_effect_param": 4, "pocket": POCKET_BERRIES},
+    {"id": 571, "name": "Apicot Berry",   "hold_effect": HOLD_EFFECT_SP_DEFENSE_UP, "hold_effect_param": 4, "pocket": POCKET_BERRIES},
+    {"id": 572, "name": "Lansat Berry",   "hold_effect": HOLD_EFFECT_CRITICAL_UP, "hold_effect_param": 4, "pocket": POCKET_BERRIES},
+    {"id": 573, "name": "Starf Berry",    "hold_effect": HOLD_EFFECT_RANDOM_STAT_UP, "hold_effect_param": 4, "pocket": POCKET_BERRIES},
+    {"id": 574, "name": "Enigma Berry",   "hold_effect": HOLD_EFFECT_ENIGMA_BERRY, "pocket": POCKET_BERRIES},
+    {"id": 575, "name": "Micle Berry",    "hold_effect": HOLD_EFFECT_MICLE_BERRY, "hold_effect_param": 4, "pocket": POCKET_BERRIES},
+    {"id": 576, "name": "Custap Berry",   "hold_effect": HOLD_EFFECT_CUSTAP_BERRY, "hold_effect_param": 4, "pocket": POCKET_BERRIES},
 
     # ── M18d: Leppa Berry + contact-retaliation-family berries (3) — Jaboca/Rowap
     #    are NOT contact-gated despite the family resemblance to Rough Skin/Iron
     #    Barbs (a real correction found at Step 0, see item_manager.gd's own doc
     #    comment) — they trigger on ANY hit of the matching move category.
-    {"id": 519, "name": "Leppa Berry",    "hold_effect": HOLD_EFFECT_RESTORE_PP, "hold_effect_param": 10},
-    {"id": 577, "name": "Jaboca Berry",   "hold_effect": HOLD_EFFECT_JABOCA_BERRY},
-    {"id": 578, "name": "Rowap Berry",    "hold_effect": HOLD_EFFECT_ROWAP_BERRY},
+    {"id": 519, "name": "Leppa Berry",    "hold_effect": HOLD_EFFECT_RESTORE_PP, "hold_effect_param": 10, "pocket": POCKET_BERRIES},
+    {"id": 577, "name": "Jaboca Berry",   "hold_effect": HOLD_EFFECT_JABOCA_BERRY, "pocket": POCKET_BERRIES},
+    {"id": 578, "name": "Rowap Berry",    "hold_effect": HOLD_EFFECT_ROWAP_BERRY, "pocket": POCKET_BERRIES},
 
     # ── M18g: species-gated stat/crit items + Soul Dew (9) — no prior species-
     #    gate precedent existed in this codebase (confirmed at Step 0: [M17n-4]'s
@@ -388,12 +396,12 @@ DEFAULTS = {
 # Fields to emit in .tres, in canonical order. item_id/item_name are always
 # emitted (see render()); everything else is skipped when it equals its
 # class default. Only hold_effect/hold_effect_param are populated for M18a —
-# description/pocket/importance/not_consumed/battle_usage/fling_power/price
-# are dormant fields (confirmed unread anywhere in scripts/battle/ during this
-# session's context-gathering) carried from ItemData's original M12 schema;
-# left unpopulated here rather than backfilled, per this session's explicit
-# "keep it lean" scope — a future tier can populate them if one actually needs
-# to read one.
+# description/importance/not_consumed/battle_usage/fling_power/price remain
+# dormant fields (confirmed unread anywhere in scripts/battle/) carried from
+# ItemData's original M12 schema, left unpopulated per M18a's original "keep it
+# lean" scope. `pocket` was the same story until [M18-patch-1] populated it on
+# every real berry entry — the first of these dormant fields to actually be
+# needed by a real mechanic (Cheek Pouch/Harvest/Cud Chew's berry gate).
 FIELD_ORDER = [
     "hold_effect", "hold_effect_param",
     "description", "pocket", "importance", "not_consumed", "battle_usage",

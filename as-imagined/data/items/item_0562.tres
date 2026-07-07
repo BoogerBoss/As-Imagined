@@ -9,3 +9,4 @@ item_id = 562
 item_name = "Kasib Berry"
 hold_effect = 80
 hold_effect_param = 8
+pocket = 3

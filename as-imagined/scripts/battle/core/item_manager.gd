@@ -5,6 +5,15 @@ extends RefCounted
 # All constants sourced from include/constants/hold_effects.h (the HOLD_EFFECT enum).
 # All UQ4.12 values sourced from include/fpmath.h.
 
+# M18-patch-1: Pocket enum id, source: include/constants/item.h — POCKET_ITEMS=0,
+# POCKET_POKE_BALLS=1, POCKET_TM_HM=2, POCKET_BERRIES=3, POCKET_KEY_ITEMS=4. Only
+# POCKET_BERRIES is modeled — this project has no need to distinguish the other
+# four pockets for any battle mechanic. Source's own TryCheekPouch
+# (battle_script_commands.c:6175) gates directly on
+# `GetItemPocket(itemId) == POCKET_BERRIES` at the item-removal site — this
+# constant/field mirrors that exact mechanism, not a bespoke "is_berry" flag.
+const POCKET_BERRIES: int = 3
+
 # ── Hold-effect constants ─────────────────────────────────────────────────────
 # Source: include/constants/hold_effects.h
 const HOLD_EFFECT_NONE:          int = 0

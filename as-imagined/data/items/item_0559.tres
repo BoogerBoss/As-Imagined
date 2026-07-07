@@ -9,3 +9,4 @@ item_id = 559
 item_name = "Payapa Berry"
 hold_effect = 80
 hold_effect_param = 15
+pocket = 3

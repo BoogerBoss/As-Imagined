@@ -9,3 +9,4 @@ item_id = 557
 item_name = "Shuca Berry"
 hold_effect = 80
 hold_effect_param = 5
+pocket = 3

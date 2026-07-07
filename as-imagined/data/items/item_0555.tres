@@ -9,3 +9,4 @@ item_id = 555
 item_name = "Chople Berry"
 hold_effect = 80
 hold_effect_param = 2
+pocket = 3

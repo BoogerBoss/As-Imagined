@@ -9,3 +9,4 @@ item_id = 568
 item_name = "Ganlon Berry"
 hold_effect = 16
 hold_effect_param = 4
+pocket = 3

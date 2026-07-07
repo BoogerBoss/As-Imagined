@@ -9,3 +9,4 @@ item_id = 569
 item_name = "Salac Berry"
 hold_effect = 17
 hold_effect_param = 4
+pocket = 3

@@ -9,3 +9,4 @@ item_id = 571
 item_name = "Apicot Berry"
 hold_effect = 19
 hold_effect_param = 4
+pocket = 3

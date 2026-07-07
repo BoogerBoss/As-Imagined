@@ -9,3 +9,4 @@ item_id = 556
 item_name = "Kebia Berry"
 hold_effect = 80
 hold_effect_param = 4
+pocket = 3

@@ -9,3 +9,4 @@ item_id = 573
 item_name = "Starf Berry"
 hold_effect = 21
 hold_effect_param = 4
+pocket = 3

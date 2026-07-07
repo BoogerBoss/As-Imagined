@@ -10659,3 +10659,151 @@ completion together. M18m (stat-change-reactive consumed items, 4 items
 — Eject Pack specifically) remains fully unblocked since `[M18n]`.
 Recommend **M18m**, or any of M18r/M18s/M18t/M18u/M18v/M18w/M18x, per
 Rob's preference.
+
+
+## [M18-patch-1] Cheek Pouch berry-gate fix
+
+Standalone bugfix, not a new-item tier — no items added, `.tres` count
+unchanged (114 before and after). Flagged during the `[M18o]` session
+while wiring Focus Sash's item consumption.
+
+### The bug
+
+`_consume_item` (`battle_manager.gd`) called
+`AbilityManager.cheek_pouch_heal` and set `mon.last_consumed_berry`
+unconditionally for ANY item reaching that function, gated on a
+comment asserting *"every item reaching this function today is already
+a berry."* True when Cheek Pouch was first implemented (`[M17c]`, which
+made this exact reasoning explicit in its own decisions.md entry — a
+correct judgment call at the time, not a lost gate), false the moment
+`[M18n]`/`[M18o]` added non-berry consumables reaching the same choke
+point.
+
+### Step 0 — definitive scope, confirmed directly from source, not narrative
+
+All 18 `_consume_item` call sites were read directly. 15 are berries;
+**3 are confirmed non-berries**: **Focus Sash** (`[M18o]`), **Red
+Card**, and **Eject Button** (both `[M18n]`) — a correction to the
+task's own two-item list, which named Red Card and Focus Sash only;
+Eject Button was found by reading its call site directly.
+
+**King's Rock confirmed NOT a counterexample**, as the task anticipated
+— it's a passive, never-consumed proc with no `_consume_item` call
+anywhere near its block, matching real King's Rock/Razor Fang mechanics.
+An earlier informal flag treating it as a third counterexample was
+incorrect and is corrected here.
+
+**Schema finding — a third case, not the two the task framed**:
+`ItemData.pocket: int` already existed in the schema (added alongside
+M18's item-data infrastructure) and was already wired into
+`gen_items.py`'s generation template, but was never set to a non-default
+value for ANY item — confirmed via grep (`"pocket":` appeared exactly
+once, as the template's `0` fallback). Functionally equivalent to
+"doesn't exist for this purpose" despite the field slot being present.
+`gen_items.py`'s own comment from M18a's original session explicitly
+anticipated this: *"description/pocket/importance/... are dormant
+fields... left unpopulated here... a future tier can populate them if
+one actually needs to read one."* This patch is that future tier.
+
+**Source's actual mechanism, confirmed**: `TryCheekPouch`
+(`battle_script_commands.c:6175`) checks `GetItemPocket(itemId) ==
+POCKET_BERRIES` directly at the item-removal command site — not a
+generic "was anything consumed" hook. `enum Pocket`
+(`include/constants/item.h`): `POCKET_ITEMS=0, POCKET_POKE_BALLS=1,
+POCKET_TM_HM=2, POCKET_BERRIES=3, POCKET_KEY_ITEMS=4`.
+
+**Fix shape chosen**: populate the EXISTING `pocket` field with
+`POCKET_BERRIES=3` on all 36 real berry `.tres` entries (found via a
+programmatic cross-check of every berry-representing `hold_effect`
+constant against `gen_items.py`'s `ITEMS` dict), rather than adding a
+new bespoke `is_berry` field — more faithful to source (which has a
+real Pocket enum, not a berry-specific flag) and reuses an
+already-present schema slot rather than growing the schema, matching
+this project's "extend existing chokepoints" discipline.
+
+**`last_consumed_berry` (Harvest/Cud Chew) confirmed as a second
+instance of the identical bug**, not already-correctly-gated.
+`harvest_activates`'s own doc comment explicitly cited *"per Cheek
+Pouch's established precedent"* as its justification for skipping a
+berry check; `cud_chew_check` did a bare `!= null` check with zero berry
+gating. Both only ever READ `last_consumed_berry` — confirmed via grep,
+the only assignment site besides Cud Chew's own null-clear-on-fire is
+`_consume_item` itself — so gating that single assignment point fixes
+both consumers at once, rather than patching each reader independently.
+
+**Pre-existing, unrelated gap noted, not fixed**: Lum Berry and Sitrus
+Berry — both real, implemented berry mechanisms — have no actual
+`.tres` registry entries at all (confirmed via grep of `data/items/`),
+predating this patch by several tiers. Out of scope here; this patch's
+positive-berry-case test reuses Oran Berry instead, which does have a
+real entry.
+
+**`[M17c]`'s own Cheek Pouch test needs no changes**: it only
+unit-tests `AbilityManager.cheek_pouch_heal()` directly, never through
+`_consume_item`, so it neither covers nor is affected by this gate
+either way — confirmed by reading the test file, not assumed.
+
+### Implementation
+
+- `ItemData.pocket`'s doc comment updated to note it's no longer
+  dormant.
+- New `ItemManager.POCKET_BERRIES = 3` constant, and the matching
+  Python-side `POCKET_BERRIES = 3` in `gen_items.py`.
+- `gen_items.py`: `"pocket": POCKET_BERRIES` added to all 36 real berry
+  `ITEMS` entries (programmatic transform, verified against the exact
+  same 36-item list Step 0 derived); `.tres` regenerated — 114 total,
+  unchanged (36 modified, not new).
+- `_consume_item` (`battle_manager.gd`): both `mon.last_consumed_berry =
+  item` and the `cheek_pouch_heal` call are now gated on `item.pocket ==
+  ItemManager.POCKET_BERRIES`, computed once as a local `is_berry` bool.
+  Stale comments citing the now-corrected "every item is a berry"
+  assumption updated in place, both here and at `harvest_activates`'s
+  and `cud_chew_check`'s own doc comments in `ability_manager.gd`.
+- `_try_symbiosis` deliberately left ungated — confirmed from its own
+  `[M17j]` entry that Symbiosis is not berry-specific in source (a
+  broad "ally just lost its item, by any means" trigger), so no change
+  was needed there.
+
+### Test results
+
+New `m18_patch1_test.gd`/`.tscn`: **21/21** assertions, 4 sections (P01
+positive case — Cheek Pouch + a real berry loaded via `ItemRegistry`
+(not hand-constructed), confirming unchanged behavior; P02 discriminator
+— Cheek Pouch + all 3 confirmed non-berry items, each individually
+confirmed to NOT heal; P03 negative case — no Cheek Pouch, a berry
+consumed, unaffected by this fix, `last_consumed_berry` still correctly
+set regardless of the holder's own ability; P04 Harvest/Cud Chew
+discriminator — both confirmed to not arm/activate off a non-berry
+consumption, with a positive discriminator proving they still work
+correctly for a real berry), passing on the first run. Items loaded via
+`ItemRegistry.get_item()` rather than hand-rolled `ItemData` objects, so
+this suite exercises the actual generated `.tres` data this patch
+touched, not just the in-memory mechanism. `_consume_item` called
+directly on a bare `BattleManager` instance (not a full battle) — a
+self-contained function needing no battle context beyond a `mon` with
+`held_item` set, matching the testing-scope convention's preference for
+direct function calls over full-battle tests when the pure function
+fully covers the logic; also sidesteps the whole-battle-aggregation
+convention entirely by construction, since no multi-turn battle runs at
+all.
+
+### Regression
+
+Per this patch's routine scope (not the full sweep):
+- `m18_patch1_test.tscn`: **21/21** (new).
+- `m17c_test.tscn`: **81/81**, unchanged — Cheek Pouch's own origin
+  suite, confirming the berry-case heal amount calculation itself
+  (`cheek_pouch_heal`, untouched by this fix) is unaffected.
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity
+  holds across the 36 modified (not new) berry entries.
+
+No stray Godot processes before or after; reference clone untouched;
+`git status --short` matched exactly the expected file set (5 modified
+core/schema files, 36 modified `.tres` berry entries, 2 new test files)
+before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section gets a short note that this patch landed,
+placed alongside the M18a–x tier table rather than inside it — no tier
+renumbering, no tier disturbed.

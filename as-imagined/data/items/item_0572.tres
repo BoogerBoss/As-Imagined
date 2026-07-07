@@ -9,3 +9,4 @@ item_id = 572
 item_name = "Lansat Berry"
 hold_effect = 20
 hold_effect_param = 4
+pocket = 3

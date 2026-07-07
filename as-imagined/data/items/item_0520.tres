@@ -9,3 +9,4 @@ item_id = 520
 item_name = "Oran Berry"
 hold_effect = 1
 hold_effect_param = 10
+pocket = 3

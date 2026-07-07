@@ -9,3 +9,4 @@ item_id = 519
 item_name = "Leppa Berry"
 hold_effect = 7
 hold_effect_param = 10
+pocket = 3

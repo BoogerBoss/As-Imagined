@@ -9,3 +9,4 @@ item_id = 560
 item_name = "Tanga Berry"
 hold_effect = 80
 hold_effect_param = 7
+pocket = 3

@@ -9,3 +9,4 @@ item_id = 567
 item_name = "Liechi Berry"
 hold_effect = 15
 hold_effect_param = 4
+pocket = 3

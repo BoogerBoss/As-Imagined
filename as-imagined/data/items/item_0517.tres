@@ -8,3 +8,4 @@ script = ExtResource("1")
 item_id = 517
 item_name = "Rawst Berry"
 hold_effect = 5
+pocket = 3

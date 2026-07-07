@@ -3085,9 +3085,14 @@ static func try_end_of_turn(
 # also strip the sun bonus for free, with zero extra plumbing.
 # `mon.held_item == null` and `mon.last_consumed_berry != null` are this project's
 # equivalents of `item == ITEM_NONE` / `GetItemPocket(usedHeldItem) == POCKET_BERRIES`
-# — the latter needs no separate "is this a berry" check since `last_consumed_berry`
-# is only ever set from `_consume_item`, which (per Cheek Pouch's established
-# precedent) only ever holds berries in this project's current scope.
+# — the latter needs no separate "is this a berry" check HERE since [M18-patch-1]
+# moved that gate to `last_consumed_berry`'s own single assignment site in
+# `_consume_item` (battle_manager.gd): it's only ever set when the consumed item's
+# `pocket == ItemManager.POCKET_BERRIES`, so by the time this function reads it,
+# it's already guaranteed to be a real berry or null. (Previously this comment
+# claimed no gate was needed because every consumed item WAS a berry at the time —
+# that assumption went stale once [M18n]/[M18o] added non-berry consumables; fixed
+# at the shared assignment point rather than re-checking in every reader.)
 # `forced_roll` mirrors `quick_draw_activates`'s established seam shape exactly.
 static func harvest_activates(
 		mon: BattlePokemon, weather: int = DamageCalculator.WEATHER_NONE,
@@ -3123,7 +3128,10 @@ static func harvest_activates(
 # Returns "" (no-op), "arm", or "fire" for the caller (BattleManager) to act on —
 # the actual re-trigger (which berry-effect function to call, healing/curing,
 # signal emission) needs access to ItemManager/signals this stateless function
-# doesn't have.
+# doesn't have. The `last_consumed_berry != null` check below needs no separate
+# berry gate of its own — [M18-patch-1] made that guarantee at the field's single
+# assignment site in `_consume_item`, matching source's own `GetItemPocket(...) ==
+# POCKET_BERRIES` check cited above.
 static func cud_chew_check(mon: BattlePokemon, ng_active: bool = false) -> String:
 	if effective_ability_id(mon, ng_active) != ABILITY_CUD_CHEW:
 		return ""

@@ -9,3 +9,4 @@ item_id = 575
 item_name = "Micle Berry"
 hold_effect = 83
 hold_effect_param = 4
+pocket = 3
