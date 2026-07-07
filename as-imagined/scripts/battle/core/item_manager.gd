@@ -23,6 +23,7 @@ const HOLD_EFFECT_RESTORE_PCT_HP: int = 82  # Sitrus Berry — param=25 (25 %)
 const HOLD_EFFECT_UTILITY_UMBRELLA: int = 115
 const HOLD_EFFECT_HEAVY_DUTY_BOOTS: int = 119  # full immunity to entry hazards on switch-in
 const HOLD_EFFECT_PLATE:         int = 89  # Multitype's held-item type source (M17n-4)
+const HOLD_EFFECT_TYPE_POWER:    int = 43  # M18a: Charcoal family / Incenses / Silk Scarf / Fairy Feather
 
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
@@ -36,6 +37,7 @@ const UQ412_CHOICE_MULT: int     = 6144   # 1.5 × — Band, Specs
 const UQ412_LIFE_ORB: int        = 5324   # 1.3 × (floored) — Life Orb damage boost
 const UQ412_RESIST_BERRY: int    = 2048   # 0.5 × — Resist Berry halving
 const UQ412_RIPEN_RESIST_BERRY: int = 1024  # 0.25 × — Resist Berry halving, doubled by Ripen
+const UQ412_TYPE_BOOST: int      = 4915   # 1.2 × — matching-type held item (M18a)
 
 
 # ── Attack-stat item modifier (applied to stat, BEFORE base formula) ──────────
@@ -353,6 +355,49 @@ static func is_choice_item(mon: BattlePokemon, ng_active: bool = false) -> bool:
 static func is_hazard_immune(mon: BattlePokemon, ng_active: bool = false) -> bool:
 	var item: ItemData = effective_held_item(mon, ng_active)
 	return item != null and item.hold_effect == HOLD_EFFECT_HEAVY_DUTY_BOOTS
+
+
+# ── M18a: Type-boost held items (base-power modifier) ─────────────────────────
+#
+# Source: CalcMoveBasePowerAfterModifiers (battle_util.c L6659–6661) — both
+#   HOLD_EFFECT_TYPE_POWER (Charcoal family / Incenses / Silk Scarf / Fairy Feather)
+#   and HOLD_EFFECT_PLATE share ONE case branch:
+#     `if (moveType == GetItemSecondaryId(item)) modifier = uq4_12_multiply(modifier, holdEffectModifier)`
+#   where `holdEffectModifier = 1.0 + holdEffectParamAtk/100` and
+#   `holdEffectParamAtk = GetBattlerHoldEffectParam(...)`, clamped ≤100.
+# Every one of this project's 40 M18a items resolves that param to 20 — confirmed by
+#   reading all 40 struct entries in src/data/items.h directly: the Charcoal family/
+#   Silk Scarf/Fairy Feather use `.holdEffectParam = TYPE_BOOST_PARAM` and Sea/Wave
+#   Incense use an explicit `I_TYPE_BOOST_POWER >= GEN_4 ? 20 : 5` ternary, both of
+#   which resolve to 20 under this reference clone's `I_TYPE_BOOST_POWER = GEN_LATEST`
+#   config (include/config/item.h:15); every Plate and the remaining 3 Incenses use a
+#   literal `.holdEffectParam = 20`. No item in this family varies — the boost is a
+#   flat ×1.2 (`UQ412_TYPE_BOOST` = `UQ_4_12(1.2)` = 4915), not itemized per-item.
+# This is a BASE-POWER modifier (`CalcMoveBasePowerAfterModifiers`), architecturally
+#   the item-side sibling of `AbilityManager.move_power_modifier_uq412` (M17a's
+#   Technician/Iron Fist/etc. live in this exact same source function) — NOT of this
+#   file's `attack_modifier_uq412` above, which is `GetAttackStatModifier` (Choice
+#   Band/Specs, a different function entirely, applied to the attack STAT before the
+#   base formula rather than to the move's power). Caller wires this into
+#   `DamageCalculator.calculate` alongside `ability_power_mod`, not `atk_item_mod`.
+# The real struct field carrying the type is source's `.secondaryId`, which this
+#   project's `ItemData` schema has no equivalent for. Reuses `hold_effect_param` to
+#   store the type instead — the SAME pragmatic deviation `[M17n-4]` already
+#   established for `HOLD_EFFECT_PLATE`'s Multitype read below, now extended
+#   uniformly to `HOLD_EFFECT_TYPE_POWER` too, since both share this one case branch
+#   in source and neither uses `hold_effect_param` for its literal source purpose
+#   here (the 20% is a fixed constant, never itemized per-item in this project).
+# Returns 4096 (neutral) if not holding a matching-type item — including when the
+#   held item's type doesn't match the move being used, or Klutz suppresses it.
+static func move_power_modifier_uq412(mon: BattlePokemon, move: MoveData, ng_active: bool = false) -> int:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null:
+		return 4096
+	if item.hold_effect != HOLD_EFFECT_TYPE_POWER and item.hold_effect != HOLD_EFFECT_PLATE:
+		return 4096
+	if move.type != item.hold_effect_param:
+		return 4096
+	return UQ412_TYPE_BOOST
 
 
 # M17n-4: Multitype's held Plate item → type. Source: src/data/items.h's Plate entries

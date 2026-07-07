@@ -8544,3 +8544,173 @@ rerun 5 consecutive times as an additional weather-side check (64/64 every time)
 **RESOLVED**, D.5 marked **RESOLVED (style-only, no behavior change)**, each pointing
 to this entry. `CLAUDE.md`'s status section updated with the new confirmed total
 (2489 across 45 files) via this session's `count_assertions.sh` run.
+
+## [M18a] Type-boost held items — Charcoal family / Incenses / Silk Scarf / Fairy Feather / Plates (40 items)
+
+First M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18a section — the
+single highest-leverage new mechanism in M18's remaining backlog (one dispatch
+unlocks 40 of the 150 not-yet-implemented INCLUDED items). Scope, Step 0 list, and
+risk rating were pre-established by that planning doc; this session re-verified every
+claim against source directly before implementing, per standing project discipline,
+and found one correction to the plan's own mechanism assumption (below).
+
+### Step 0 re-verification findings
+
+All 40 item IDs and their associated types were re-derived directly from
+`include/constants/items.h` and `src/data/items.h` (not carried over from the plan
+doc). Every ID matched the plan exactly. Two things the plan didn't (and couldn't)
+know until source was read directly:
+
+1. **The multiplier is uniformly ×1.2 for all 40 items, not itemized.** Source's
+   `TYPE_BOOST_PARAM` macro (`src/data/items.h:10`) is gen-gated —
+   `(I_TYPE_BOOST_POWER >= GEN_4) ? 20 : 10` — and Sea/Wave Incense each carry their
+   own separate ternary (`I_TYPE_BOOST_POWER >= GEN_4 ? 20 : 5`). This reference
+   clone's config (`include/config/item.h:15`) sets `I_TYPE_BOOST_POWER = GEN_LATEST`,
+   so every one of the 40 struct entries resolves to 20% — confirmed by reading all
+   40 blocks in `src/data/items.h` directly, not assumed from the macro name. No
+   per-item variance exists to encode.
+2. **Wave Incense is a genuine, confirmed duplicate of Sea Incense** — both
+   `HOLD_EFFECT_TYPE_POWER` with `.secondaryId = TYPE_WATER`, identical struct shape.
+   Metal Coat's struct has no other battle-relevant field beyond the same boost —
+   confirms its evolution-trigger half (Onix→Steelix, Scyther→Scizor) is genuinely
+   out of scope here, exactly as the plan assumed.
+
+### Correction to the plan's mechanism assumption
+
+`docs/m18_subtier_plan.md`'s M18a section described this as an "attack-modifier
+function, same shape as `attack_modifier_uq412`'s existing Choice Band/Specs
+branches." Direct source verification found this to be architecturally wrong in a
+way worth recording: `HOLD_EFFECT_TYPE_POWER`/`HOLD_EFFECT_PLATE` live inside
+`CalcMoveBasePowerAfterModifiers` (`battle_util.c` L6659-6661) — the same source
+function as Muscle Band/Wise Glasses and every M17a base-power-boosting ability
+(Technician, Iron Fist, Reckless, Sheer Force, etc.) — NOT inside
+`GetAttackStatModifier` (`battle_util.c` L6989-6996, Choice Band/Specs' function,
+which modifies the attack STAT before the base formula runs). These are two
+genuinely different pipeline stages in source. This project already has the correct
+matching insertion point built and precedented: `AbilityManager.move_power_modifier_uq412`
+(`[M17a]`), wired into `DamageCalculator.calculate` at the `effective_power` stage
+(`damage_calculator.gd:314-324`, same stage as Helping Hand). Implemented
+`ItemManager.move_power_modifier_uq412` mirroring that shape instead of extending
+`attack_modifier_uq412` as the plan assumed — the plan's assumption was a reasonable
+guess made without source access at planning time, exactly the kind of thing this
+project's "look at source first" discipline exists to catch before implementation.
+
+Source (`battle_util.c` L6659-6661):
+```c
+case HOLD_EFFECT_TYPE_POWER:
+case HOLD_EFFECT_PLATE:
+    if (moveType == GetItemSecondaryId(gBattleMons[battlerAtk].item))
+        modifier = uq4_12_multiply(modifier, holdEffectModifier);
+    break;
+```
+where `holdEffectModifier = uq4_12_add(UQ_4_12(1.0), PercentToUQ4_12(holdEffectParamAtk))`
+— i.e. `1.0 + holdEffectParamAtk/100`, confirmed 20 for every one of the 40 items
+above, giving a flat `UQ_4_12(1.2) = 4915`.
+
+### Implementation
+
+`scripts/battle/core/item_manager.gd`:
+- New constant `HOLD_EFFECT_TYPE_POWER: int = 43` — value independently re-derived by
+  parsing `include/constants/hold_effects.h`'s enum in full (accounting for the
+  non-enum `// Gen4 hold effects.` comment line that a naive line-count would
+  miscount past), then cross-validated against every one of this file's own
+  pre-existing `HOLD_EFFECT_*` constants (all matched exactly), and again against
+  `data/items.json`'s own pipeline-captured `hold_effect` field for Charcoal/Silk
+  Scarf/Fairy Feather/Sea Incense (all read 43). `HOLD_EFFECT_PLATE = 89` was already
+  present from `[M17n-4]`, unchanged.
+- New constant `UQ412_TYPE_BOOST: int = 4915` (`UQ_4_12(1.2)`).
+- New `move_power_modifier_uq412(mon, move, ng_active)`: returns 4096 (neutral)
+  unless the held item's `hold_effect` is `HOLD_EFFECT_TYPE_POWER` or
+  `HOLD_EFFECT_PLATE` AND `move.type == item.hold_effect_param`, in which case
+  returns `UQ412_TYPE_BOOST`. Gated through the existing `effective_held_item`
+  Klutz chokepoint, same as every other function in this file.
+- Reuses `hold_effect_param` to store the item's associated type (source's real
+  field is `.secondaryId`, which this project's `ItemData` schema has no
+  equivalent for) — the exact same pragmatic deviation `[M17n-4]` already
+  established for `HOLD_EFFECT_PLATE`'s Multitype read, now extended uniformly to
+  `HOLD_EFFECT_TYPE_POWER` too. Neither family uses `hold_effect_param` for its
+  literal source purpose in this codebase (the 20% is a fixed constant, confirmed
+  above, never itemized), so this is not a field-reuse conflict — matches the
+  M17n-4 precedent's own reasoning.
+
+`scripts/battle/core/damage_calculator.gd`: one new `item_power_mod` variable, read
+via `ItemManager.move_power_modifier_uq412(attacker, move, ng_active)` and applied to
+`effective_power` via `_uq412_half_down`, immediately after `ability_power_mod` —
+the item-side sibling of that existing call, same pipeline stage, additive-only
+change (no existing branch was touched).
+
+### Data-pipeline gap, confirmed not a blocker
+
+Per this project's established convention, moves and abilities have persisted
+`.tres` resource files (`data/moves/*.tres`, `data/abilities/*.tres`) regenerated
+from their JSON source. **Items have no equivalent — `data/items/` is empty and has
+been since M12**, confirmed again this session (re-confirms the Follow-up-fixes
+session's 2026-07-02 finding: "no persisted item `.tres` files exist in this
+project"). Every `ItemData` in every item-related test file across this project,
+M12 through this session, is constructed inline (`ItemData.new()` with fields set
+directly) — `PokemonRegistry.get_item()` returns the raw `items.json` Dictionary
+and nothing in production code currently converts it to an `ItemData` instance.
+This is a pre-existing gap in the data pipeline (not introduced or worsened by this
+session), out of scope for M18a specifically — flagged here for visibility, not
+fixed, following the same "record but don't silently build unplanned
+infrastructure" discipline used throughout M17n.
+
+### Tests
+
+New `scenes/battle/m18a_test.gd` / `.tscn` — one test per item (40 tests, no
+parameterized-loop consolidation, per standing per-item-test convention), each
+checking: (1) the item's `hold_effect`/`hold_effect_param` are correct, (2) the item
+boosts a matching-type move's damage by exactly the expected amount, (3) the exact
+same setup with no item held gives the unboosted baseline, (4) a discriminator
+confirming the SAME item does NOT boost a non-matching-type move. **160/160
+assertions pass.**
+
+Canonical damage-math setup, identical across all 40 tests (hand-derived, then
+cross-checked against `item_test.gd`'s pre-existing Occa Berry worked example to
+confirm the pipeline's exact modifier-composition order):
+- Attacker and defender both `TYPE_MYSTERY` — defender-side chosen specifically
+  because `type_chart.gd`'s `TABLE` column 10 (`TYPE_MYSTERY` as defender) is 1.0 for
+  every attacking type, confirmed by direct read of the full table, guaranteeing
+  neutral effectiveness regardless of which of the 18 real move types is under test
+  in a given item's pair of assertions; attacker-side chosen so STAB never applies
+  for any of the 18 types either (`move.type in attacker.species.types` is never
+  true). This eliminates all per-item effectiveness/STAB bookkeeping — every one of
+  the 40 items' expected damage numbers is identical, rather than needing 40
+  individually-derived values.
+- `base_sp_attack=80` (default) → `sp_attack=85`; `base_sp_defense=70` → `sp_defense=75`
+  (both via this project's `stat = base + 5` at level 50/iv=0/ev=0, confirmed against
+  `item_test.gd`'s own documented Choice Band worked example before use).
+- Move power=40, category=1 (special; category is irrelevant to this mechanism —
+  the dispatch checks `move.type` only). `force_roll=100`, `force_crit=false`.
+- **Baseline (no item): damage=21.** **Boosted (item held): damage=25**
+  (`effective_power = uq412_half_down(40, 4915) = 48`; `48*85*22/75/50+2 = 25`).
+
+Deliberate, explicitly-flagged deviation from this project's "negative case per
+ability" convention: rather than a separate "holds nothing" check repeated
+identically 40 times, that case is covered once by A01 (Charcoal)'s own
+no-item-baseline step — every one of the 40 tests still gets its own independent
+matching-type-boost assertion AND its own non-matching-type discriminator, so no
+item's mechanism goes unverified; only the redundant 40th repetition of an
+unrelated-item negative case was collapsed to one representative instance, per this
+session's explicit task scope.
+
+### Regression
+
+Full 45-file baseline sweep run once BEFORE any change, as a direct foreground call
+(not `count_assertions.sh` — reserved for milestone-closing sessions per this
+file's own convention, not this routine tier): **all 45 files passed, 0 failures**,
+consistent with `[M17.5 Batch Fix]`'s last confirmed 2489-assertion total. Per this
+tier's explicit scope, only the new `m18a_test.tscn` suite was run after
+implementation (160/160, above) — the full sweep is Rob's manual step, not repeated
+here. The two touched files (`item_manager.gd`, `damage_calculator.gd`) were only
+extended additively (a new constant, a new function, one new conditional branch in
+`calculate`); every pre-existing held item's `hold_effect` value is neither 43 nor
+89, so `move_power_modifier_uq412` returns 4096 (no-op) for every scenario any
+prior test exercises.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18a's completion and pointer to M18b
+(berry/misc items on an existing exact dispatch — resist berries, status-cure
+berries, Oran Berry — 23 items) as next, per `docs/m18_subtier_plan.md`'s
+recommended sequencing.

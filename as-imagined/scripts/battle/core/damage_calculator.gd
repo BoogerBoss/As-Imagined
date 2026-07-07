@@ -323,6 +323,14 @@ static func calculate(
 	if ability_power_mod != 4096:
 		effective_power = _uq412_half_down(effective_power, ability_power_mod)
 
+	# M18a: item-driven base-power modifiers (Charcoal family / Incenses / Silk Scarf /
+	# Fairy Feather / Plates) — same pipeline stage as the ability modifiers above.
+	# Source: CalcMoveBasePowerAfterModifiers (battle_util.c L6659-6661), the exact
+	# case branch immediately following the ability switch this project already reads.
+	var item_power_mod: int = ItemManager.move_power_modifier_uq412(attacker, move, ng_active)
+	if item_power_mod != 4096:
+		effective_power = _uq412_half_down(effective_power, item_power_mod)
+
 	var dmg: int = effective_power * atk * (2 * attacker.level / 5 + 2) / def / 50 + 2
 
 	# M14b: Spread damage reduction — first modifier after base formula.
