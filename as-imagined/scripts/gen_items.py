@@ -126,6 +126,23 @@ HOLD_EFFECT_SHELL_BELL = 44    # M18q: heals 1/8 of final damage dealt
 HOLD_EFFECT_BIG_ROOT = 58      # M18q: +30% move-drain healing
 HOLD_EFFECT_FOCUS_SASH = 67    # M18o: full-HP-gated survive-lethal, single-use
 
+# M18r: Standalone reuses (7 items, 7 different existing mechanisms). Values
+# re-derived programmatically from include/constants/hold_effects.h's enum
+# position, cross-validated against 8 pre-existing constants above with zero
+# mismatches (see item_manager.gd's own doc comment for the full list).
+HOLD_EFFECT_LIGHT_CLAY = 55       # M18r: Reflect/Light Screen/Aurora Veil -> 8 turns
+HOLD_EFFECT_POWER_HERB = 57       # M18r: skips a two-turn move's charge turn once
+HOLD_EFFECT_BLACK_SLUDGE = 72     # M18r: Poison heal 1/16 / non-Poison damage 1/8
+                                   #       (NOT 1/16 -- a correction, see decisions.md)
+HOLD_EFFECT_SHED_SHELL = 74       # M18r: bypasses ability-based trapping (voluntary
+                                   #       switch only)
+HOLD_EFFECT_SAFETY_GOGGLES = 104  # M18r: weather-chip immunity + powder-move immunity
+HOLD_EFFECT_ROOM_SERVICE = 117    # M18r: -1 Speed on Trick Room set OR switch-in
+                                   #       while active (TWO triggers -- a correction,
+                                   #       see decisions.md)
+HOLD_EFFECT_BLUNDER_POLICY = 118  # M18r: +2 Speed when the holder's own move misses
+                                   #       (non-OHKO), consumed only if Speed rose
+
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
 TYPE_FIGHTING = 2
@@ -366,6 +383,18 @@ ITEMS = [
     #    scheduling efficiency.
     {"id": 491, "name": "Big Root",       "hold_effect": HOLD_EFFECT_BIG_ROOT, "hold_effect_param": 30},
     {"id": 473, "name": "Shell Bell",     "hold_effect": HOLD_EFFECT_SHELL_BELL, "hold_effect_param": 8},
+
+    # ── M18r: Standalone reuses (7) — 7 different existing mechanisms, grouped only
+    #    for scheduling convenience. None of the 7 set a holdEffectParam in source
+    #    (confirmed individually, not assumed) -- every effect magnitude is a fixed
+    #    constant (8 turns, 1/16 vs 1/8, +2/-1 stage), not itemized per-item.
+    {"id": 480, "name": "Power Herb",     "hold_effect": HOLD_EFFECT_POWER_HERB},
+    {"id": 478, "name": "Light Clay",     "hold_effect": HOLD_EFFECT_LIGHT_CLAY},
+    {"id": 487, "name": "Black Sludge",   "hold_effect": HOLD_EFFECT_BLACK_SLUDGE},
+    {"id": 511, "name": "Blunder Policy", "hold_effect": HOLD_EFFECT_BLUNDER_POLICY},
+    {"id": 512, "name": "Room Service",   "hold_effect": HOLD_EFFECT_ROOM_SERVICE},
+    {"id": 490, "name": "Shed Shell",     "hold_effect": HOLD_EFFECT_SHED_SHELL},
+    {"id": 504, "name": "Safety Goggles", "hold_effect": HOLD_EFFECT_SAFETY_GOGGLES},
 ]
 
 HEADER = """\

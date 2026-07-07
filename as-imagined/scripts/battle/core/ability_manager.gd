@@ -2146,10 +2146,16 @@ static func blocks_move_flag(
 	# attacker-side exemption (see `try_contact_effects` below) — that check protects a
 	# Grass-type ATTACKER from Effect Spore's proc and is architecturally unrelated to
 	# a Grass-type DEFENDER being hit by an actual powder move; left untouched by this
-	# fix. Safety Goggles (source's third exemption) is item-scope, not implemented in
-	# this project (confirmed absent from `item_manager.gd`) — correctly out of scope
-	# for this ability/type-focused fix.
+	# fix.
 	if defender != null and TypeChart.TYPE_GRASS in defender.species.types and move.powder_move:
+		return true
+	# [M18r]: Safety Goggles — source's third `IsAffectedByPowderMove` exemption
+	# (battle_util.c L10545-10552), item-scope so it's checked directly against
+	# ItemManager rather than through `effective_ability_id` above (matching the
+	# existing Utility Umbrella precedent elsewhere in this file). Unconditional
+	# like the Grass-type check just above — item possession, not an ability, so
+	# never Mold-Breaker-bypassable and unaffected by Neutralizing Gas.
+	if defender != null and move.powder_move and ItemManager.holds_safety_goggles(defender, ng_active):
 		return true
 	return false
 

@@ -277,6 +277,93 @@ const HOLD_EFFECT_FLINCH: int = 30        # M18k: King's Rock AND Razor Fang —
                                            # this item's roll.
                                            # against the holder.
 
+# M18r: Standalone reuses (7 items, 7 different existing mechanisms — grouped only
+# for scheduling convenience, per docs/m18_subtier_plan.md's own framing). Values
+# re-derived programmatically from include/constants/hold_effects.h's enum position
+# (not hand-counted), cross-validated against 8 pre-existing project constants
+# (MACHO_BRACE=24, QUICK_CLAW=26, FOCUS_BAND=38, SHELL_BELL=44, BIG_ROOT=58,
+# FOCUS_SASH=67, RED_CARD=97, EJECT_BUTTON=100) with zero mismatches.
+const HOLD_EFFECT_LIGHT_CLAY: int = 55      # Reflect/Light Screen/Aurora Veil timer:
+                                             # 8 turns instead of 5, checked on the
+                                             # SETTER at set time (TrySetReflect/
+                                             # TrySetLightScreen/BS_SetAuroraVeil,
+                                             # battle_script_commands.c). Passive,
+                                             # never consumed.
+const HOLD_EFFECT_POWER_HERB: int = 57      # Skips the charge turn of a two-turn move
+                                             # once (CancelerCharging, battle_move_
+                                             # resolution.c L1778), consumed on use.
+                                             # Semi-invulnerable moves (Fly/Dig/Dive/
+                                             # Bounce) CAN fire early via this too —
+                                             # source's check has no semi-inv carve-out,
+                                             # unlike Solar Beam's separate sun-only
+                                             # skip.
+const HOLD_EFFECT_BLACK_SLUDGE: int = 72    # Poison-type holder: heals maxHP/16 (reuses
+                                             # TryLeftovers exactly — Leftovers-shape).
+                                             # Non-Poison holder: DAMAGES maxHP/8 (NOT
+                                             # 1/16 — a correction to this tier's own
+                                             # plan doc, confirmed via TryBlackSludge
+                                             # Damage, battle_hold_effects.c L650),
+                                             # gated by Magic Guard (the damage side
+                                             # only — the heal side has no Magic Guard
+                                             # interaction since it's not damage).
+const HOLD_EFFECT_SHED_SHELL: int = 74      # Bypasses ability-based trapping (Shadow
+                                             # Tag/Arena Trap/Magnet Pull) for VOLUNTARY
+                                             # switch selection only — CanBattlerEscape,
+                                             # battle_main.c L4234/4238. Passive, never
+                                             # consumed. Baton Pass/faint-replacement/
+                                             # forced switches (Roar etc.) already
+                                             # bypass is_trapped() architecturally, per
+                                             # its own doc comment, so no change needed
+                                             # at those call sites.
+const HOLD_EFFECT_SAFETY_GOGGLES: int = 104 # TWO independent exemptions, checked at
+                                             # the SAME source sites Overcoat/Grass-type
+                                             # already occupy: (1) full sandstorm/hail
+                                             # chip immunity (battle_end_turn.c L151,
+                                             # L174 — the exact Overcoat check site),
+                                             # (2) full powder-move immunity
+                                             # (IsAffectedByPowderMove, battle_util.c
+                                             # L10545-10552 — the exact Overcoat/Grass-
+                                             # type check site). Passive, never consumed.
+const HOLD_EFFECT_ROOM_SERVICE: int = 117   # -1 Speed (if not already at -6) while
+                                             # Trick Room is active. TWO independent
+                                             # triggers confirmed from hold_effects.h's
+                                             # own table (.onSwitchIn=TRUE AND
+                                             # .onEffect=TRUE) — a correction to this
+                                             # tier's own plan doc, which named only the
+                                             # switch-in half: also fires the instant
+                                             # Trick Room is SET, looping over every
+                                             # battler already on the field (Battle
+                                             # Script_EffectTrickRoom's unconditional
+                                             # BattleScript_TryRoomServiceLoop call,
+                                             # right after setroom). Single-use,
+                                             # consumed on either trigger (removeitem in
+                                             # BattleScript_ConsumableItemStatRaise).
+const HOLD_EFFECT_BLUNDER_POLICY: int = 118 # +2 Speed (if not already at +6) when the
+                                             # HOLDER's own move misses via a genuine
+                                             # accuracy check. Explicitly excludes OHKO
+                                             # moves (cv->moveEffect != EFFECT_OHKO,
+                                             # battle_move_resolution.c L2212) — this
+                                             # project's OHKO-miss path emits the exact
+                                             # same move_missed reason=="accuracy"
+                                             # string as a normal miss, so the OHKO
+                                             # exclusion needs an explicit move.is_ohko
+                                             # check, not just a reason-string filter.
+                                             # Source's multi-hit exclusion
+                                             # (!isMultiHitOn) is structurally moot here
+                                             # — no multi-hit move mechanic exists
+                                             # anywhere in this project (confirmed
+                                             # dormant per [M17n-5]). Source's
+                                             # !redCardSwitched guard (this same
+                                             # resolution's attacker was NOT just forced
+                                             # out by Red Card) is a real cross-tier
+                                             # interaction NOT modeled here — flagged,
+                                             # not built, same class as [M18n]/[M18q]'s
+                                             # own flagged doubles/spread-move gaps.
+                                             # Consumed only if Speed actually rose
+                                             # (source's CompareStat(...,MAX_STAT_STAGE,
+                                             # CMP_LESS_THAN,...) guards the whole
+                                             # trigger, not just the stat-change call).
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -1422,3 +1509,85 @@ static func shell_bell_heal(mon: BattlePokemon, final_damage: int, ng_active: bo
 	if final_damage <= 0 or mon.current_hp >= mon.max_hp:
 		return 0
 	return final_damage / item.hold_effect_param
+
+
+# ── M18r: Standalone reuses (7 items) ───────────────────────────────────────────
+#
+# Pure data checks, matching the established holds_red_card/holds_eject_button/
+# holds_focus_sash shape — all orchestration (the actual mechanic each item
+# modifies) lives in BattleManager, at the existing chokepoint each one reuses.
+
+static func holds_power_herb(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_POWER_HERB
+
+
+# Returns the screen-set duration (8 if Light Clay held, else the source-passed
+# default) — a direct modifier on the caller's own turn-count assignment, same
+# shape as WEATHER_DURATION_ROCK/WEATHER_DURATION_DEFAULT above.
+static func screen_turns(mon: BattlePokemon, default_turns: int, ng_active: bool = false) -> int:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item != null and item.hold_effect == HOLD_EFFECT_LIGHT_CLAY:
+		return 8
+	return default_turns
+
+
+# Black Sludge — Poison-type holder heal (reuses leftovers_heal's exact
+# maxHP/16 formula and full-HP gate, source: TryLeftovers via the Black Sludge
+# dispatch case, battle_hold_effects.c L1150-1155). Returns 0 for a non-Poison
+# holder (that half is black_sludge_damage below, NOT this function) and for
+# a holder not holding Black Sludge at all.
+static func black_sludge_heal(mon: BattlePokemon, ng_active: bool = false) -> int:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_BLACK_SLUDGE:
+		return 0
+	if not (TypeChart.TYPE_POISON in mon.species.types):
+		return 0
+	if mon.current_hp >= mon.max_hp:
+		return 0
+	return max(1, mon.max_hp / 16)
+
+
+# Black Sludge — non-Poison holder damage. maxHP/8, NOT maxHP/16 (a correction
+# to this tier's own plan doc — see the HOLD_EFFECT_BLACK_SLUDGE constant's own
+# doc comment for the source citation). Magic Guard gating is left to the
+# caller via AbilityManager.blocks_indirect_damage, matching every other
+# indirect-damage source's established call-site pattern (Jaboca/Rowap,
+# sandstorm/hail chip, etc.) rather than duplicating that check here.
+static func black_sludge_damage(mon: BattlePokemon, ng_active: bool = false) -> int:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_BLACK_SLUDGE:
+		return 0
+	if TypeChart.TYPE_POISON in mon.species.types:
+		return 0
+	return max(1, mon.max_hp / 8)
+
+
+static func holds_shed_shell(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_SHED_SHELL
+
+
+static func holds_safety_goggles(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_SAFETY_GOGGLES
+
+
+# Room Service — -1 Speed while Trick Room is active, if the holder's Speed
+# isn't already at its minimum stage. Returns whether the trigger condition
+# (Trick Room active) held at all; the caller applies the actual stat change
+# via StatusManager.apply_stat_change (matching every other reactive stat item
+# in this project) and only consumes the item if that call reports a nonzero
+# actual change, per HOLD_EFFECT_ROOM_SERVICE's own doc comment.
+static func holds_room_service(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_ROOM_SERVICE
+
+
+# Blunder Policy — the OHKO-move exclusion lives at the caller (BattleManager
+# already distinguishes "accuracy" misses from the OHKO-only "ohko_failed"/
+# "sturdy_blocks_ohko" reasons via move.is_ohko, so this function only needs
+# the pure item-data check).
+static func holds_blunder_policy(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_BLUNDER_POLICY

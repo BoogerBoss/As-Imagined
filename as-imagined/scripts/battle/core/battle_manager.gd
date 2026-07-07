@@ -583,7 +583,15 @@ func _phase_move_selection() -> void:
 		# never touches _chosen_switch_slots) are untouched -- none of them route through
 		# this block. A blocked switch falls back to the mon's first move, same fallback
 		# already used above when nothing else picked an action.
-		if _chosen_switch_slots[i] >= 0 and AbilityManager.is_trapped(
+		# M18r: Shed Shell — bypasses ability-based trapping for THIS voluntary-
+		# switch gate specifically. Source: CanBattlerEscape's HOLD_EFFECT_SHED_SHELL
+		# carve-out (battle_main.c L4234/4238). Forced switches (Roar/Whirlwind),
+		# faint replacement, and Baton Pass never call is_trapped() at all (per its
+		# own doc comment), so they're already correctly unaffected without a
+		# Shed Shell check at those sites.
+		if _chosen_switch_slots[i] >= 0 \
+				and not ItemManager.holds_shed_shell(mon, _is_neutralizing_gas_active()) \
+				and AbilityManager.is_trapped(
 				mon, _get_live_opponents(mon), _is_neutralizing_gas_active()):
 			_chosen_switch_slots[i] = -1
 			_chosen_moves[i] = mon.moves[0] if mon.moves.size() > 0 else null
@@ -982,7 +990,24 @@ func _phase_move_execution() -> void:
 		and attacker.charging_move == null
 		and weather == WEATHER_SUN
 	)
-	if move.two_turn and not move.is_bide and not _solar_skip:
+	# M18r: Power Herb — skips the charge turn of ANY two-turn move once, not
+	# just Solar Beam in sun. Source: CancelerCharging's Power Herb branch
+	# (battle_move_resolution.c L1778) is an `else if` checked only when
+	# CanTwoTurnMoveFireThisTurn (the Solar-Beam-in-sun case) already failed —
+	# `not _solar_skip` reproduces that ordering. No charge-turn stat boost
+	# (Skull Bash) applies on a Power-Herb-skipped turn — source's Power Herb
+	# branch is a structurally separate arm from the charge-setup branch that
+	# grants it, and this project's `not _power_herb_skip` gate below excludes
+	# the whole two-turn block the same way `not _solar_skip` already does.
+	var _power_herb_skip: bool = (
+		not _solar_skip
+		and attacker.charging_move == null
+		and ItemManager.holds_power_herb(attacker, ng_active)
+	)
+	if _power_herb_skip:
+		_consume_item(attacker)
+		item_effect_triggered.emit(attacker, "power_herb")
+	if move.two_turn and not move.is_bide and not _solar_skip and not _power_herb_skip:
 		if attacker.charging_move == null:
 			# Charge-turn stat boost (Skull Bash: +1 Defense on charge turn only).
 			# Source: moves_info.h MOVE_SKULL_BASH additionalEffects
@@ -1229,6 +1254,18 @@ func _phase_move_execution() -> void:
 		if move.is_rollout:
 			attacker.rollout_turns = 0
 		move_missed.emit(attacker, "accuracy")
+		# M18r: Blunder Policy — +2 Speed on the holder when its own move misses
+		# via THIS accuracy check specifically. OHKO moves never reach this point
+		# at all (move.is_ohko returns early at the OHKO block above, L1098), so
+		# no separate exclusion check is needed here — it's structural, matching
+		# source's `moveEffect != EFFECT_OHKO` guard by construction rather than
+		# by an explicit runtime check.
+		if ItemManager.holds_blunder_policy(attacker, ng_active):
+			var bp_actual: int = StatusManager.apply_stat_change(
+					attacker, BattlePokemon.STAGE_SPEED, 2, null, ng_active)
+			if bp_actual != 0:
+				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPEED, bp_actual)
+				_consume_item(attacker)
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
@@ -1699,7 +1736,10 @@ func _phase_move_execution() -> void:
 			if _side_conditions[attacker_side]["reflect_turns"] > 0:
 				move_effect_failed.emit(attacker, "already_reflect")
 			else:
-				_side_conditions[attacker_side]["reflect_turns"] = 5
+				# M18r: Light Clay — 8 turns instead of 5. Source: TrySetReflect
+				# (battle_script_commands.c L2088-2106), checked on the SETTER.
+				_side_conditions[attacker_side]["reflect_turns"] = \
+						ItemManager.screen_turns(attacker, 5, ng_active)
 				screen_set.emit(attacker_side, "reflect")
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
@@ -1713,7 +1753,10 @@ func _phase_move_execution() -> void:
 			if _side_conditions[attacker_side]["light_screen_turns"] > 0:
 				move_effect_failed.emit(attacker, "already_light_screen")
 			else:
-				_side_conditions[attacker_side]["light_screen_turns"] = 5
+				# M18r: Light Clay — 8 turns instead of 5. Source: TrySetLightScreen
+				# (battle_script_commands.c L2109-2127), checked on the SETTER.
+				_side_conditions[attacker_side]["light_screen_turns"] = \
+						ItemManager.screen_turns(attacker, 5, ng_active)
 				screen_set.emit(attacker_side, "light_screen")
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
@@ -1733,7 +1776,10 @@ func _phase_move_execution() -> void:
 			elif _side_conditions[attacker_side]["aurora_veil_turns"] > 0:
 				move_effect_failed.emit(attacker, "already_aurora_veil")
 			else:
-				_side_conditions[attacker_side]["aurora_veil_turns"] = 5
+				# M18r: Light Clay — 8 turns instead of 5. Source: BS_SetAuroraVeil
+				# (battle_script_commands.c L13439-13462), checked on the SETTER.
+				_side_conditions[attacker_side]["aurora_veil_turns"] = \
+						ItemManager.screen_turns(attacker, 5, ng_active)
 				screen_set.emit(attacker_side, "aurora_veil")
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
@@ -1798,6 +1844,24 @@ func _phase_move_execution() -> void:
 			else:
 				trick_room_turns = 5
 				trick_room_set.emit()
+				# M18r: Room Service — fires for EVERY battler already on the field
+				# (including the Trick Room user itself) the instant Trick Room is
+				# SET, not just on a later switch-in. Source:
+				# BattleScript_EffectTrickRoom unconditionally calls
+				# BattleScript_TryRoomServiceLoop right after setroom
+				# (data/battle_scripts_1.s L1296-1304) — a correction to this
+				# tier's own plan doc, which named only the switch-in half. The
+				# OTHER half (switch-in while Trick Room is already active) is
+				# wired separately at the switch-in ability block.
+				for rs_mon: BattlePokemon in _combatants:
+					if rs_mon.fainted:
+						continue
+					if ItemManager.holds_room_service(rs_mon, ng_active):
+						var rs_actual: int = StatusManager.apply_stat_change(
+								rs_mon, BattlePokemon.STAGE_SPEED, -1, null, ng_active)
+						if rs_actual != 0:
+							stat_stage_changed.emit(rs_mon, BattlePokemon.STAGE_SPEED, rs_actual)
+							_consume_item(rs_mon)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -2238,6 +2302,29 @@ func _phase_end_of_turn() -> void:
 		if lft_heal > 0:
 			mon.current_hp = min(mon.max_hp, mon.current_hp + lft_heal)
 			item_healed.emit(mon, lft_heal)
+
+	# M18r: Black Sludge — same EOT neighborhood Leftovers occupies. Poison-type
+	# holder: heals maxHP/16 (reuses TryLeftovers exactly, no Magic Guard
+	# interaction since it's a heal). Non-Poison holder: DAMAGES maxHP/8 (NOT
+	# 1/16 — see HOLD_EFFECT_BLACK_SLUDGE's own doc comment for the source
+	# citation correcting this tier's own plan doc), gated by Magic Guard on the
+	# damage side only, matching every other indirect-damage source's call-site
+	# pattern (Jaboca/Rowap, sandstorm/hail chip).
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		var bs_heal: int = ItemManager.black_sludge_heal(mon, ng_active)
+		if bs_heal > 0:
+			mon.current_hp = min(mon.max_hp, mon.current_hp + bs_heal)
+			item_healed.emit(mon, bs_heal)
+			continue
+		var bs_dmg: int = ItemManager.black_sludge_damage(mon, ng_active)
+		if bs_dmg > 0 and not AbilityManager.blocks_indirect_damage(mon, ng_active):
+			mon.current_hp = max(0, mon.current_hp - bs_dmg)
+			item_damage.emit(mon, bs_dmg)
+			if mon.current_hp == 0:
+				mon.fainted = true
+				pokemon_fainted.emit(mon)
 
 	# M18i: Status Orbs (Flame Orb/Toxic Orb) — checked EVERY end of turn (no
 	# turn-counter mechanic exists in source; see ItemManager.status_orb_status's
@@ -2759,6 +2846,17 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 				any_screen_removed = true
 		if any_screen_removed:
 			ability_triggered.emit(new_mon, "screen_cleaner")
+	# M18r: Room Service — the switch-in half (the OTHER trigger, "Trick Room just
+	# SET," is wired at the Trick Room move-effect block itself, not here). Source:
+	# hold_effects.h's HOLD_EFFECT_ROOM_SERVICE entry has .onSwitchIn=TRUE alongside
+	# .onEffect=TRUE — a correction to this tier's own plan doc, which named only
+	# this half.
+	if trick_room_turns > 0 and ItemManager.holds_room_service(new_mon, ng_active):
+		var rs_si_actual: int = StatusManager.apply_stat_change(
+				new_mon, BattlePokemon.STAGE_SPEED, -1, null, ng_active)
+		if rs_si_actual != 0:
+			stat_stage_changed.emit(new_mon, BattlePokemon.STAGE_SPEED, rs_si_actual)
+			_consume_item(new_mon)
 	# M17n-10: Forecast — also checked at switch-in specifically (source:
 	# battle_switch_in.c L412 calls ABILITYEFFECT_ON_WEATHER for the newly-arrived
 	# battler, in addition to the field-wide broadcast on an actual weather CHANGE —
@@ -3202,6 +3300,10 @@ func _is_weather_damage_immune(
 		return true
 	# M17n-9: Magic Guard — full indirect-damage immunity, weather chip included.
 	if AbilityManager.blocks_indirect_damage(mon, ng_active):
+		return true
+	# M18r: Safety Goggles — checked at the SAME source site Overcoat's own
+	# weather-chip exemption occupies (battle_end_turn.c L151/L174).
+	if ItemManager.holds_safety_goggles(mon, ng_active):
 		return true
 	var types: Array = mon.species.types
 	match current_weather:

@@ -10807,3 +10807,216 @@ before this docs commit.
 `CLAUDE.md`'s status section gets a short note that this patch landed,
 placed alongside the M18a–x tier table rather than inside it — no tier
 renumbering, no tier disturbed.
+
+## [M18r] Standalone reuses (7 items)
+
+Seven items grouped only for scheduling convenience (per
+`docs/m18_subtier_plan.md`'s own "grab-bag by convenience" framing) —
+each reuses a DIFFERENT existing mechanism, not a shared shape. Per
+this project's recurring-findings history (M18g/M18h/M18j all found
+the plan's "cheap/self-contained" framing wrong or incomplete), every
+"reuse" claim was verified per-item at Step 0 against source and this
+project's actual code, not implemented from the plan directly.
+
+### Step 0 — finalized list, with two corrections found
+
+| Item | ID | `HOLD_EFFECT_*` | Reuse target |
+|---|---|---|---|
+| Power Herb | 480 | 57 | M6 charge/release block (`move.two_turn`) |
+| Light Clay | 478 | 55 | `_side_conditions[...]_turns` set sites (M16c) |
+| Black Sludge | 487 | 72 | `leftovers_heal` (heal half) + new damage fn |
+| Blunder Policy | 511 | 118 | `move_missed` signal (general accuracy path) |
+| Room Service | 512 | 117 | `trick_room_set` signal + switch-in ability block |
+| Shed Shell | 490 | 74 | `is_trapped()` call site (M17f) |
+| Safety Goggles | 504 | 104 | `_is_weather_damage_immune` + `blocks_move_flag` |
+
+All 7 canonical IDs confirmed directly against
+`include/constants/items.h`. All 7 `HOLD_EFFECT_*` values re-derived
+programmatically from `include/constants/hold_effects.h`'s enum
+position (not hand-counted), cross-validated against 8 pre-existing
+project constants (`MACHO_BRACE=24`, `QUICK_CLAW=26`, `FOCUS_BAND=38`,
+`SHELL_BELL=44`, `BIG_ROOT=58`, `FOCUS_SASH=67`, `RED_CARD=97`,
+`EJECT_BUTTON=100`) with zero mismatches. None of the 7 set a
+`holdEffectParam` in `src/data/items.h` (checked individually, not
+assumed) — every effect magnitude is a fixed constant, not itemized
+per-item.
+
+**Two real corrections found, both against the plan doc's own framing:**
+
+1. **Black Sludge's non-Poison damage is maxHP/8, not maxHP/16.** The
+   plan said "damages all others 1/16," matching the Poison-type heal
+   side's own fraction — but `TryBlackSludgeDamage`
+   (`battle_hold_effects.c` L650) uses `maxHP/8`. Only the heal side
+   (`TryLeftovers` reuse, for a Poison-type holder) is 1/16; the
+   damage side is double that fraction. Magic Guard blocks the damage
+   side only (checked inline in `TryBlackSludgeDamage`) — no
+   interaction with the heal side at all, confirmed by direct source
+   read rather than assumed symmetry.
+
+2. **Room Service fires on TWO independent triggers, not switch-in
+   only.** Its `hold_effects.h` table entry sets both
+   `.onSwitchIn = TRUE` and `.onEffect = TRUE`. The `.onEffect` half
+   fires the instant Trick Room is SET —
+   `BattleScript_EffectTrickRoom` unconditionally calls
+   `BattleScript_TryRoomServiceLoop` right after `setroom`
+   (`data/battle_scripts_1.s` L1296-1304), looping over EVERY battler
+   already on the field (not just the Trick Room user). The plan
+   named only the switch-in half.
+
+**Confirmed as claimed, no correction needed:** Power Herb (skips the
+charge turn once, consumed, an `else if` in `CancelerCharging` checked
+only after the Solar-Beam-in-sun shortcut already failed — `L1778`),
+Light Clay (Reflect/Light Screen/Aurora Veil timer 5→8, checked on the
+setter at set time — three separate source sites, all three verified
+individually per the "never assume symmetry" discipline), Shed Shell
+(bypasses `CanBattlerEscape`'s ability-trapping check for voluntary
+switches only — `battle_main.c` L4234/4238), Safety Goggles's
+dual-mechanism framing (weather-chip immunity at the exact Overcoat
+site, `battle_end_turn.c` L151/L174; powder-move immunity at the exact
+Overcoat/Grass-type site, `IsAffectedByPowderMove`,
+`battle_util.c` L10545-10552).
+
+**One detail the plan didn't call out:** Blunder Policy's OHKO
+exclusion (`moveEffect != EFFECT_OHKO`, `battle_move_resolution.c`
+L2212-2214) is structural in this project, not a runtime check. This
+project's own OHKO-move-miss path emits the exact same
+`move_missed(attacker, "accuracy")` signal string as a genuine
+non-OHKO miss, but from a wholly separate, earlier code block
+(`battle_manager.gd`'s `if move.is_ohko:` block) that always returns
+before reaching the general accuracy-miss site Blunder Policy is
+wired to — so no `move.is_ohko` check was needed at the wiring site
+itself, confirmed by reading the surrounding control flow rather than
+assumed. Source's multi-hit exclusion (`!isMultiHitOn`) is likewise
+moot here — no multi-hit move mechanic exists anywhere in this
+project (confirmed dormant per `[M17n-5]`).
+
+### Implementation
+
+Each item wired into its confirmed real reuse target — no new
+infrastructure built for any of the 7:
+
+- **Power Herb**: new `_power_herb_skip` bool alongside the existing
+  `_solar_skip` in the two-turn charge block, `not _solar_skip`-gated
+  to match source's `else if` ordering. Consumes via `_consume_item`
+  and emits the existing `item_effect_triggered` signal (`[M18o]`'s
+  seam) with key `"power_herb"`.
+- **Light Clay**: new `ItemManager.screen_turns(mon, default, ng_active)`
+  helper, called at all three screen-set sites (Reflect/Light
+  Screen/Aurora Veil), returning 8 instead of the passed-in default
+  when the setter holds Light Clay.
+- **Black Sludge**: new `ItemManager.black_sludge_heal`/
+  `black_sludge_damage`, wired into the SAME end-of-turn loop
+  neighborhood Leftovers already occupies, right after it. The damage
+  side is gated by `AbilityManager.blocks_indirect_damage` at the call
+  site, matching every other indirect-damage source's established
+  pattern (Jaboca/Rowap, sandstorm/hail chip) rather than duplicating
+  the check inside the function.
+- **Blunder Policy**: wired directly at the general accuracy-miss
+  `move_missed` emission site. `StatusManager.apply_stat_change`'s
+  existing return-value contract (0 when already at the stage cap)
+  is reused as the consumption gate, matching source's
+  `CompareStat(...,MAX_STAT_STAGE,CMP_LESS_THAN,...)` guarding the
+  whole trigger, not just the stat-change call.
+- **Room Service**: two separate call sites, matching the two source
+  triggers — a loop over `_combatants` right after `trick_room_set.emit()`
+  (the "just set" trigger) and a single check in
+  `_apply_switch_in_abilities` gated on `trick_room_turns > 0` (the
+  switch-in trigger), right after the existing Screen Cleaner block.
+  Both apply -1 Speed via `apply_stat_change` and consume only on a
+  nonzero actual change.
+- **Shed Shell**: one `not ItemManager.holds_shed_shell(...)` clause
+  added to the existing `is_trapped()` call site in the voluntary-switch
+  selection gate. Forced switches/faint replacement/Baton Pass need no
+  change — confirmed (not assumed) they already bypass `is_trapped()`
+  entirely, per that function's own doc comment.
+- **Safety Goggles**: one `ItemManager.holds_safety_goggles(...)` check
+  added to `_is_weather_damage_immune` (weather-chip half) and one more
+  added to `AbilityManager.blocks_move_flag` (powder-move half,
+  replacing that function's stale "item-scope, out of scope" comment
+  from `[M17.5 Batch Fix]`).
+
+`gen_items.py`: 7 new `ITEMS` entries added, `.tres` files regenerated
+— 121 total (114 prior + 7), confirmed by direct file count.
+
+### Testing
+
+New `m18r_test.gd`/`.tscn`, sections R01–R07 (one per item): 49/49
+assertions, stable across 5 consecutive reruns. Every mechanism tested
+at the most direct level it allows, per the testing-scope convention —
+Black Sludge (pure `ItemManager`/`AbilityManager` function calls, no
+battle) and Safety Goggles (pure `_is_weather_damage_immune`/
+`blocks_move_flag` calls) needed no battle at all; Power Herb, Light
+Clay, Blunder Policy, Room Service, and Shed Shell all genuinely
+require the move-execution/switch-selection phase machinery and used
+`start_battle`/`start_battle_with_parties` with signal-snapshot state
+capture.
+
+**Two real test-authoring bugs caught and fixed, both fresh instances
+of the whole-battle-aggregation pitfall (`[M17l]`/`[M18k]`/`[M18q]`)
+recurring yet again in the same tier that had to reason carefully
+about it:**
+
+1. R01's first draft asserted `charge_started` NEVER fires across the
+   whole battle. Since only one turn was queued, the AI/default
+   fallback re-selected Fly on turn 2 — by then Power Herb was already
+   consumed (single-use), so Fly correctly charged normally, and the
+   test misread this LATER, unrelated, correct charge as contradicting
+   turn 1's skip. Fixed by scoping the assertion to events attributed
+   to the attacker specifically and ending the battle within turn 1
+   (a fragile, fast attacker one-shotting a fragile defender).
+2. R04's OHKO discriminator first draft asserted Blunder Policy NEVER
+   triggers across the whole battle for a Guillotine user. Guillotine's
+   PP is only 5; once it depletes, Struggle takes over, and Struggle's
+   own miss is NOT OHKO-excluded — a legitimate, unrelated, LATER
+   trigger the test misread as a violation of the turn-1 OHKO
+   exclusion. Fixed by building an ordered combined event log and
+   bounding the inspection window to the attacker's own first action
+   only (its second action marks the start of the next turn), rather
+   than reading absence across the whole battle.
+
+### Regression
+
+- `m18r_test.tscn`: **49/49** (new), stable across 5 reruns.
+- `item_registry_test.tscn`: **204/204**, unchanged.
+- `m16c_test.tscn`: **60/60** (Reflect/Light Screen/Aurora Veil's own
+  origin suite), unchanged.
+- `m17f_test.tscn`: **30/30** (trapping's own origin suite), unchanged.
+- `m17n9_test.tscn`: **63/63** (Magic Guard's own origin suite),
+  unchanged.
+- `two_turn_test.tscn`: **32/32** (M6's own origin suite), unchanged.
+- `m17n5_test.tscn`: **78/78** (Sturdy/Focus chain neighborhood),
+  unchanged.
+- `m17n6_test.tscn`: **101/101** (Overcoat, `blocks_move_flag`'s other
+  caller), unchanged.
+- `m17n2_test.tscn`: **58/58** (weather-chip immunity family),
+  unchanged.
+- `m17c_test.tscn`: **81/81** (Cheek Pouch), unchanged.
+- `m18l_test.tscn`, `m18n_test.tscn`, `m18o_test.tscn`,
+  `m18_patch1_test.tscn`: unchanged, all green.
+
+**One pre-existing, unrelated flaky test found and diagnosed, not
+fixed (out of this tier's scope):** `m18q_test.tscn`'s `Q02.09`
+(Shell Bell's already-at-max-HP discriminator) failed on this
+session's first regression run. Confirmed via `git stash` that this
+failure reproduces identically on the pristine pre-M18r baseline with
+every M18r change fully reverted — not a regression this tier caused.
+Root cause: that fixture forces the damage ROLL (`_force_roll = 100`)
+but not the CRIT (`_force_crit` left unset, unlike `[M18r]`'s own
+fixtures and unlike this same file's Q02.05 block), the exact
+"forced roll without forced crit" flaky-test shape `[M17n-2]` already
+documented once — its defender's effective `max_hp` (61, from the
+`+level+10` HP-floor term given `base_hp=1`) can exceed a non-crit
+hit's damage (56, observed), so the "guaranteed one-hit kill" fixture
+isn't actually guaranteed without also forcing the crit. Flagged here
+for a future fix; `m18q_test.gd` was not touched by this tier.
+
+No stray Godot processes before or after; reference clone untouched;
+`git status --short` matched exactly the expected file set (4 modified
+core files, 7 new `.tres` items, 2 new test files) before this docs
+commit.
+
+### Docs
+
+`CLAUDE.md`'s status section gets an `[M18r]` bullet in the M18a–x
+tier table, pointing at M18s/M18u/M18w (all still dependency-free) or
+M18m, or the higher-risk M18p/M18t/M18v/M18x, per Rob's preference.
