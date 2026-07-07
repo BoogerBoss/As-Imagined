@@ -97,6 +97,9 @@ SPECIES_CLAMPERL = 366
 SPECIES_LATIAS = 380
 SPECIES_LATIOS = 381
 
+HOLD_EFFECT_MACHO_BRACE = 24  # M18h: own constant, same halve-Speed effect as below
+HOLD_EFFECT_POWER_ITEM = 81   # M18h: Power Weight/Bracer/Belt/Lens/Band/Anklet (6 items)
+
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
 TYPE_FIGHTING = 2
@@ -281,6 +284,19 @@ ITEMS = [
         "required_species": SPECIES_CLAMPERL},
     {"id": 400, "name": "Soul Dew",       "hold_effect": HOLD_EFFECT_SOUL_DEW,
         "required_species": SPECIES_LATIAS, "required_species2": SPECIES_LATIOS},
+
+    # ── M18h: EV/Power-item Speed-halving family (7) — Macho Brace has its OWN
+    #    hold_effect constant (not HOLD_EFFECT_POWER_ITEM), but the actual effect
+    #    is identical to the 6 Power items — source dispatches both through one
+    #    shared OR'd condition. EV-doubling half confirmed permanently moot for
+    #    all 7 (no EV-gain mechanism exists anywhere in this project's battle logic).
+    {"id": 418, "name": "Macho Brace",    "hold_effect": HOLD_EFFECT_MACHO_BRACE},
+    {"id": 419, "name": "Power Weight",   "hold_effect": HOLD_EFFECT_POWER_ITEM},
+    {"id": 420, "name": "Power Bracer",   "hold_effect": HOLD_EFFECT_POWER_ITEM},
+    {"id": 421, "name": "Power Belt",     "hold_effect": HOLD_EFFECT_POWER_ITEM},
+    {"id": 422, "name": "Power Lens",     "hold_effect": HOLD_EFFECT_POWER_ITEM},
+    {"id": 423, "name": "Power Band",     "hold_effect": HOLD_EFFECT_POWER_ITEM},
+    {"id": 424, "name": "Power Anklet",   "hold_effect": HOLD_EFFECT_POWER_ITEM},
 ]
 
 HEADER = """\

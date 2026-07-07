@@ -151,6 +151,24 @@ const SPECIES_CLAMPERL:   int = 366
 const SPECIES_LATIAS:     int = 380
 const SPECIES_LATIOS:     int = 381
 
+# M18h: EV/Power-item Speed-halving family (7 items). CORRECTION found at Step 0:
+# Macho Brace does NOT share the 6 "Power X" items' hold_effect constant — it has
+# its own distinct HOLD_EFFECT_MACHO_BRACE — but the actual EFFECT is identical:
+# source dispatches both through one shared condition, `if (holdEffect ==
+# HOLD_EFFECT_MACHO_BRACE || holdEffect == HOLD_EFFECT_POWER_ITEM) speed /= 2;`
+# (battle_main.c L4699), the same chokepoint Choice Scarf/Quick Powder already
+# occupy in apply_speed_modifier below. The inverse of [M18e]'s Scope Lens/Razor
+# Claw finding: two DIFFERENT constants, IDENTICAL behavior (not one constant
+# assumed-different, or one constant genuinely-different). The EV-doubling half
+# (holdEffectParam=POWER_ITEM_BOOST, resolves to 8 under this project's
+# GEN_LATEST config) is confirmed permanently moot for all 7 — re-verified
+# directly via a fresh grep of every `evs[` mutation in scripts/battle/core/*.gd
+# (Step 0), not trusted from a prior citation: the only writes anywhere are
+# static initialization/test setup, no EV-gain mechanism exists in battle logic
+# to double.
+const HOLD_EFFECT_MACHO_BRACE: int = 24  # Macho Brace — own constant, same effect as below
+const HOLD_EFFECT_POWER_ITEM:  int = 81  # Power Weight/Bracer/Belt/Lens/Band/Anklet (6 items)
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -342,6 +360,12 @@ static func apply_speed_modifier(mon: BattlePokemon, speed: int, ng_active: bool
 	# Choice Scarf occupies above.
 	if item.hold_effect == HOLD_EFFECT_QUICK_POWDER and _species_matches(mon, item):
 		return speed * 2
+	# M18h: Macho Brace / Power Weight/Bracer/Belt/Lens/Band/Anklet — halve Speed,
+	# unconditional, no species/category gate. Two distinct hold_effect constants
+	# (see their own doc comments above), one shared OR'd branch, matching
+	# source's identical dispatch shape exactly.
+	if item.hold_effect == HOLD_EFFECT_MACHO_BRACE or item.hold_effect == HOLD_EFFECT_POWER_ITEM:
+		return speed / 2
 	return speed
 
 

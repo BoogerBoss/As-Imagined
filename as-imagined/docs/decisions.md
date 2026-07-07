@@ -9729,3 +9729,94 @@ files, 9 new `.tres` files, 2 new test files) before this docs commit.
 `CLAUDE.md`'s status section updated with M18g's completion. Recommend
 **M18h (EV/Power-item Speed-halving family, 7 items, cheapest remaining, no
 dependencies)** as the next tier.
+
+
+## [M18h] EV/Power-item Speed-halving family (7 items)
+
+Eighth M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18h
+section. No cross-tier dependencies. The cheapest tier since `[M18e]` — one
+real (low-impact) correction found, one prior citation re-verified rather
+than trusted forward.
+
+### Step 0 — finalized list, with a real correction
+
+| Item | ID | `hold_effect` | Mechanism |
+|---|---|---|---|
+| Macho Brace | 418 | `HOLD_EFFECT_MACHO_BRACE` (24) | Halves Speed, unconditional |
+| Power Weight | 419 | `HOLD_EFFECT_POWER_ITEM` (81) | Halves Speed, unconditional |
+| Power Bracer | 420 | `HOLD_EFFECT_POWER_ITEM` (81) | Halves Speed, unconditional |
+| Power Belt | 421 | `HOLD_EFFECT_POWER_ITEM` (81) | Halves Speed, unconditional |
+| Power Lens | 422 | `HOLD_EFFECT_POWER_ITEM` (81) | Halves Speed, unconditional |
+| Power Band | 423 | `HOLD_EFFECT_POWER_ITEM` (81) | Halves Speed, unconditional |
+| Power Anklet | 424 | `HOLD_EFFECT_POWER_ITEM` (81) | Halves Speed, unconditional |
+
+Both constants confirmed via the established programmatic full-enum recount,
+cross-checked against 6 pre-existing project constants (`QUICK_CLAW=26`,
+`CHOICE_BAND=29`, `CHOICE_SCARF=49`, `QUICK_POWDER=75`, `RESIST_BERRY=80`,
+`RESTORE_PCT_HP=82` all landed correctly under the same count).
+
+**Correction found**: Macho Brace does **not** share the 6 "Power X" items'
+`HOLD_EFFECT_POWER_ITEM` constant — it has its own distinct
+`HOLD_EFFECT_MACHO_BRACE`. But the actual *effect* is genuinely identical:
+source dispatches both through a single shared condition —
+`if (holdEffect == HOLD_EFFECT_MACHO_BRACE || holdEffect ==
+HOLD_EFFECT_POWER_ITEM) speed /= 2;` (`battle_main.c` L4699), the exact same
+speed-pipeline chokepoint Choice Scarf/Quick Powder (`[M18g]`) already occupy
+in `ItemManager.apply_speed_modifier`. This is the inverse of `[M18e]`'s
+Scope Lens/Razor Claw finding: there, one shared constant produced identical
+behavior; here, two DIFFERENT constants produce identical behavior. Both
+represented as distinct constants in code, OR'd together in one branch,
+matching source's own dispatch shape exactly rather than collapsing them
+into one constant for convenience.
+
+**EV-doubling half re-verified directly, not trusted from the prior
+citation**: grepped every `evs[` mutation across
+`scripts/battle/core/*.gd` at Step 0 — the only writes anywhere are static
+initialization (`bp.evs = [0,0,0,0,0,0]`) and test setup; no EV-gain/award
+mechanism exists in battle logic to double. `POWER_ITEM_BOOST` (source's
+EV-amount parameter, resolves to 8 under this project's `GEN_LATEST`
+config) has nothing to read it. Confirmed permanently moot for all 7 items
+uniformly — genuinely uniform here, unlike the constant question above.
+
+### Implementation
+
+`ItemManager.apply_speed_modifier` extended with one new branch (both
+constants OR'd together), immediately after Choice Scarf's and Quick
+Powder's existing branches in the same function — confirmed via `[M18g]`'s
+own entry that this project's item-side Speed pipeline already exists and
+cleanly generalizes here (unlike `[M18g]`'s own Defense-stat case, which
+needed an entirely new `DamageCalculator` pipeline stage — Speed genuinely
+did NOT need the same treatment, verified rather than assumed). 7 new
+entries added to `gen_items.py`'s `ITEMS` dict; `.tres` regenerated, 97
+items total (90 prior + 7).
+
+### Test results
+
+New `m18h_test.gd`/`.tscn`: **16/16** assertions, 7 sections (H01 Macho
+Brace — full: data/halve/integer-truncation-confirmation/discriminator; H02–
+H07 the 6 Power items — data + halve each, individually confirming the
+shared `HOLD_EFFECT_POWER_ITEM` constant and identical outcome), passing on
+the first run.
+
+### Regression
+
+Per this tier's routine-tier scope, only this tier's own suite plus the
+suites covering the extended function were rerun (not the full 45+-file
+sweep, which remains Rob's manual step):
+- `m18h_test.tscn`: **16/16** (new).
+- `item_test.tscn`: **77/77**, unchanged — confirms Choice Band/Specs/Scarf
+  unaffected by the new branch in the same `apply_speed_modifier` function.
+- `m18g_test.tscn`: **40/40**, unchanged — confirms Quick Powder's own
+  extension to the same function is unaffected by this tier's addition
+  immediately after it.
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity holds
+  across the expanded 97-item catalog.
+
+No stray Godot processes before or after; reference clone untouched; `git
+status --short` matched exactly the expected file set (2 modified core
+files, 7 new `.tres` files, 2 new test files) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18h's completion. Recommend
+**M18i (Status Orbs, 2 items, no dependencies)** as the next tier.
