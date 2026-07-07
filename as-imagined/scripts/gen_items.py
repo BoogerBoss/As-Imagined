@@ -72,6 +72,10 @@ HOLD_EFFECT_RANDOM_STAT_UP = 21  # M18c: Starf Berry
 HOLD_EFFECT_ENIGMA_BERRY = 79    # M18c: super-effective-hit heal, not an HP threshold
 HOLD_EFFECT_MICLE_BERRY = 83     # M18c: one-shot next-move accuracy boost
 HOLD_EFFECT_CUSTAP_BERRY = 84    # M18c: HP-gated act-first, bypasses Unnerve
+HOLD_EFFECT_RESTORE_PP = 7       # M18d: Leppa Berry — 10 PP to first zero-PP move
+HOLD_EFFECT_JABOCA_BERRY = 85    # M18d: 1/8 max HP retaliation on ANY physical hit,
+                                  #       not contact-gated (a real correction)
+HOLD_EFFECT_ROWAP_BERRY = 86     # M18d: same as Jaboca but special-category
 
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
@@ -225,6 +229,14 @@ ITEMS = [
     {"id": 574, "name": "Enigma Berry",   "hold_effect": HOLD_EFFECT_ENIGMA_BERRY},
     {"id": 575, "name": "Micle Berry",    "hold_effect": HOLD_EFFECT_MICLE_BERRY, "hold_effect_param": 4},
     {"id": 576, "name": "Custap Berry",   "hold_effect": HOLD_EFFECT_CUSTAP_BERRY, "hold_effect_param": 4},
+
+    # ── M18d: Leppa Berry + contact-retaliation-family berries (3) — Jaboca/Rowap
+    #    are NOT contact-gated despite the family resemblance to Rough Skin/Iron
+    #    Barbs (a real correction found at Step 0, see item_manager.gd's own doc
+    #    comment) — they trigger on ANY hit of the matching move category.
+    {"id": 519, "name": "Leppa Berry",    "hold_effect": HOLD_EFFECT_RESTORE_PP, "hold_effect_param": 10},
+    {"id": 577, "name": "Jaboca Berry",   "hold_effect": HOLD_EFFECT_JABOCA_BERRY},
+    {"id": 578, "name": "Rowap Berry",    "hold_effect": HOLD_EFFECT_ROWAP_BERRY},
 ]
 
 HEADER = """\

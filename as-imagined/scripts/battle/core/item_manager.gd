@@ -84,6 +84,23 @@ const HOLD_EFFECT_CUSTAP_BERRY:  int = 84  # deterministic (no roll) act-first a
                                             # Custap bypasses Unnerve while Klutz/Gluttony
                                             # still apply normally.
 
+# M18d: Leppa Berry / Jaboca Berry / Rowap Berry (3 items).
+const HOLD_EFFECT_RESTORE_PP:    int = 7   # Leppa Berry — restores 10 PP (Ripen: 20)
+                                            # to the FIRST zero-PP move in slot order,
+                                            # checked at MoveEnd for the ATTACKER (the
+                                            # mon that just acted), not tied to whether
+                                            # THIS move was the one that hit 0.
+const HOLD_EFFECT_JABOCA_BERRY:  int = 85  # 1/8 attacker's max HP (Ripen: 1/4) on any
+                                            # PHYSICAL-category hit. CORRECTION: source
+                                            # (TryJabocaBerry, battle_hold_effects.c
+                                            # L332-353) checks ONLY IsBattleMovePhysical —
+                                            # no IsMoveMakingContact call anywhere. Fires
+                                            # even on a non-contact physical move.
+const HOLD_EFFECT_ROWAP_BERRY:   int = 86  # Same as Jaboca but SPECIAL-category — same
+                                            # correction applies (TryRowapBerry,
+                                            # battle_hold_effects.c L355-376, checks only
+                                            # IsBattleMoveSpecial, no contact check).
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -802,3 +819,73 @@ static func enigma_berry_heal(mon: BattlePokemon, was_super_effective: bool,
 	if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_RIPEN:
 		heal_amount *= 2
 	return max(1, heal_amount)
+
+
+# ── M18d: Leppa Berry / Jaboca / Rowap (3 items) ────────────────────────────────
+
+# M18d: Leppa Berry — checked once per own move use, same MoveEnd cadence as
+# source's MoveEndSprayLeppaBlunder step (battle_move_resolution.c L4204-4211).
+# Source: ItemRestorePp (battle_hold_effects.c L855-916) scans ALL of the mon's
+# moves in slot order and restores to the FIRST one at exactly 0 PP (`break`s on
+# first match) — NOT necessarily the move just used, NOT random, NOT "restore
+# every depleted move." This project's PP model has no PP-bonus field
+# (CalculatePPWithBonus is moot — confirmed no such field exists on MoveData/
+# BattlePokemon), so the cap is simply the move's own base `pp`.
+# Returns {} if not triggered, else {"item": ItemData, "move_index": int, "amount": int}
+# ("amount" is the RAW restore amount before capping — the caller clamps against
+# the move's own max PP, matching every other heal-amount function in this file's
+# established division of responsibility).
+static func leppa_berry_restore(mon: BattlePokemon, ng_active: bool = false,
+		unnerve_active: bool = false) -> Dictionary:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_RESTORE_PP or unnerve_active:
+		return {}
+	var move_idx: int = -1
+	for i in range(mon.current_pp.size()):
+		if mon.current_pp[i] == 0:
+			move_idx = i
+			break
+	if move_idx == -1:
+		return {}
+	var amount: int = item.hold_effect_param
+	if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_RIPEN:
+		amount *= 2
+	return {"item": item, "move_index": move_idx, "amount": amount}
+
+
+# M18d: Jaboca Berry (physical) / Rowap Berry (special) — retaliation damage to
+# the ATTACKER equal to 1/8 of the ATTACKER's OWN max HP (Ripen, on the HOLDER's
+# side: 1/4), on ANY hit of the matching move category. CORRECTION found at Step
+# 0: source (TryJabocaBerry/TryRowapBerry, battle_hold_effects.c L332-376) checks
+# ONLY IsBattleMovePhysical/IsBattleMoveSpecial — there is NO IsMoveMakingContact
+# call in either function. This is NOT a contact-gated mechanism despite the
+# superficial family resemblance to Rough Skin/Iron Barbs (which genuinely ARE
+# contact-gated, via AbilityManager.move_makes_contact) — a non-contact physical
+# move (e.g. a ranged Rock-type move) still triggers Jaboca.
+# `holder` = the berry holder (the one who was hit); `attacker` = the one dealing
+# the hit (who takes the retaliation damage and whose max_hp the fraction is based
+# on — confirmed from source's own GetNonDynamaxMaxHP(battlerAtk), the ATTACKER's
+# max HP, not the holder's).
+# Gating deliberately split between this function and the caller, matching
+# [M17n-9]'s own established division: this function returns the raw damage
+# amount (item + category + Ripen only); the caller applies the attacker-alive
+# check and AbilityManager.blocks_indirect_damage (Magic Guard) — the same
+# call-site-consulted pattern blocks_indirect_damage already uses at its other
+# five sites, rather than importing an ability check into this file.
+# unnerve_active gates this the same as every other general-dispatch berry in
+# this tier (both route through ItemBattleEffects's shared top-level gate).
+static func jaboca_rowap_retaliation_damage(holder: BattlePokemon, attacker: BattlePokemon,
+		move: MoveData, ng_active: bool = false, unnerve_active: bool = false) -> int:
+	var item: ItemData = effective_held_item(holder, ng_active)
+	if item == null or unnerve_active:
+		return 0
+	if item.hold_effect == HOLD_EFFECT_JABOCA_BERRY and move.category != 0:
+		return 0
+	if item.hold_effect == HOLD_EFFECT_ROWAP_BERRY and move.category != 1:
+		return 0
+	if item.hold_effect != HOLD_EFFECT_JABOCA_BERRY and item.hold_effect != HOLD_EFFECT_ROWAP_BERRY:
+		return 0
+	var dmg: int = attacker.max_hp / 8
+	if holder.ability != null and holder.ability.ability_id == AbilityManager.ABILITY_RIPEN:
+		dmg *= 2
+	return max(1, dmg)

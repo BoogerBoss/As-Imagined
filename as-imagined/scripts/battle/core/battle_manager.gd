@@ -84,6 +84,7 @@ signal item_consumed(pokemon: BattlePokemon, item: ItemData)               # one
 signal item_healed(pokemon: BattlePokemon, amount: int)                    # Leftovers / Sitrus Berry
 signal item_damage(pokemon: BattlePokemon, amount: int)                    # Life Orb recoil
 signal item_regenerated(pokemon: BattlePokemon, item: ItemData)            # M17n-7: Harvest
+signal pp_restored(pokemon: BattlePokemon, move_index: int, new_pp: int)   # M18d: Leppa Berry
 # M14b signals
 signal helping_hand_used(user: BattlePokemon, ally: BattlePokemon)         # Helping Hand boosted ally
 signal follow_me_used(user: BattlePokemon)                                 # Follow Me/Rage Powder active
@@ -939,6 +940,21 @@ func _phase_move_execution() -> void:
 			var pp_cost: int = AbilityManager.pressure_pp_cost(
 					move, attacker, defender, attacker_side, _combatants, _active_per_side, ng_active)
 			attacker.use_pp(move_idx, pp_cost)
+
+	# M18d: Leppa Berry — checked once per own move use, same MoveEnd cadence as
+	# source's MoveEndSprayLeppaBlunder step. Scans ALL of the attacker's moves for
+	# the FIRST zero-PP slot in move order (not necessarily the move just used,
+	# matching ItemRestorePp's own scan-and-break loop exactly) — independent of
+	# whether this specific use just deducted PP, matching source.
+	var leppa_trigger: Dictionary = ItemManager.leppa_berry_restore(attacker, ng_active,
+			AbilityManager.is_unnerve_active(_get_live_opponents(attacker), ng_active))
+	if not leppa_trigger.is_empty():
+		var lp_idx: int = leppa_trigger["move_index"]
+		var lp_new_pp: int = min(attacker.moves[lp_idx].pp,
+				attacker.current_pp[lp_idx] + leppa_trigger["amount"])
+		attacker.current_pp[lp_idx] = lp_new_pp
+		pp_restored.emit(attacker, lp_idx, lp_new_pp)
+		_consume_item(attacker)
 
 	# ── Two-turn charge/release ───────────────────────────────────────────────
 	# Source: battle_move_resolution.c :: CancelerCharging (L1737)
@@ -3441,6 +3457,27 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		item_transferred.emit(attacker, target, target.held_item)
 		ability_triggered.emit(target, contact_result["ability_name"])
 		_try_symbiosis(attacker)
+
+	# M18d: Jaboca Berry (physical) / Rowap Berry (special) — retaliation damage to
+	# the ATTACKER on any hit of the matching move CATEGORY, regardless of contact
+	# (a real correction — see ItemManager.jaboca_rowap_retaliation_damage's own
+	# doc comment; this is NOT a contact-gated mechanism like Rough Skin/Iron Barbs
+	# above, despite the superficial family resemblance). Gated on the ATTACKER
+	# still being alive (current_hp > 0, not the holder/target — the holder can
+	# faint from this very hit and Jaboca/Rowap still fires, matching source's
+	# IsBattlerAlive(battlerAtk)-only check) and the attacker's own Magic Guard —
+	# reusing [M17n-9]'s blocks_indirect_damage at this call site, matching how
+	# every one of its other five call sites already consult it directly rather
+	# than embedding the check inside the item function itself.
+	if damage > 0 and attacker.current_hp > 0 \
+			and not AbilityManager.blocks_indirect_damage(attacker, ng_active):
+		var retaliation_dmg: int = ItemManager.jaboca_rowap_retaliation_damage(
+				target, attacker, move, ng_active,
+				AbilityManager.is_unnerve_active(_get_live_opponents(target), ng_active))
+		if retaliation_dmg > 0:
+			attacker.current_hp = max(0, attacker.current_hp - retaliation_dmg)
+			item_damage.emit(attacker, retaliation_dmg)
+			_consume_item(target)
 
 	# M17j: Magician — attacker's own ability firing after ANY damaging hit lands
 	# (contact not required, unlike Pickpocket above) — genuinely attacker-keyed, so

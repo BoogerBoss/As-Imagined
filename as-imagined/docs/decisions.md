@@ -9449,3 +9449,126 @@ out ALL of this tier's cross-tier dependencies (`[M18e]` and `[M18l]` both
 fully consumed, though not in the shape either was originally assumed to be
 reused). Recommend **M18d (Leppa Berry + contact-retaliation berries, 3
 items — no dependencies)** as the next tier.
+
+
+## [M18d] Leppa Berry + contact-retaliation-family berries (3 items)
+
+Sixth M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18d section.
+No cross-tier dependencies. This tier's own task framing turned out to be
+wrong about Jaboca/Rowap's core mechanism — caught at Step 0 exactly the way
+`[M18c]`'s "similar-sounding items aren't automatically the same mechanism"
+finding warned a future tier to watch for.
+
+### Step 0 — finalized list, with a major correction
+
+| Item | ID | `hold_effect` | Trigger | Value |
+|---|---|---|---|---|
+| Leppa Berry | 519 | `HOLD_EFFECT_RESTORE_PP` (7) | Attacker's own move reaches 0 PP | 10 PP (Ripen: 20) |
+| Jaboca Berry | 577 | `HOLD_EFFECT_JABOCA_BERRY` (85) | Any PHYSICAL-category hit | 1/8 attacker's max HP (Ripen: 1/4) |
+| Rowap Berry | 578 | `HOLD_EFFECT_ROWAP_BERRY` (86) | Any SPECIAL-category hit | 1/8 attacker's max HP (Ripen: 1/4) |
+
+All three `HOLD_EFFECT_*` values confirmed via the same programmatic full-enum
+recount established in `[M18c]`/`[M18l]`, cross-checked against 5 pre-existing
+project constants (`ENIGMA_BERRY=79`, `RESIST_BERRY=80`, `RESTORE_PCT_HP=82`,
+`MICLE_BERRY=83`, `CUSTAP_BERRY=84`), all landing correctly.
+
+**Major correction — this tier's own task framing was wrong about the core
+mechanism, not just a detail**: source's `TryJabocaBerry`/`TryRowapBerry`
+(`battle_hold_effects.c` L332-376) check only `IsBattleMovePhysical`/
+`IsBattleMoveSpecial` — **there is no `IsMoveMakingContact` call anywhere in
+either function.** Jaboca and Rowap retaliate on ANY hit of the matching
+category, contact or not (confirmed and tested explicitly with a genuinely
+non-contact physical move). `AbilityManager.move_makes_contact` — the
+mechanism the task instructed be extended — is not involved in this tier at
+all. Also corrected: `move_makes_contact` lives in `ability_manager.gd`, not
+`item_manager.gd` as the task's own context-gathering section assumed.
+
+**Confirmed, not corrected**: Leppa's exact trigger — checked at MoveEnd for
+the mon that just acted (`cv->battlerAtk`), scanning ALL of its own moves in
+slot order for the FIRST one at exactly 0 PP (`ItemRestorePp`,
+`battle_hold_effects.c` L855-916, `break`s on first match) — NOT necessarily
+the move just used if a different move was already at 0 first, tested
+explicitly via a two-move slot-order case. Restores exactly 10 PP
+(`holdEffectParam=10`, confirmed via `src/data/items.h` L11015, not assumed
+round), Ripen doubles to 20. This project's PP model has no PP-bonus field to
+account for (confirmed absent from `MoveData`/`BattlePokemon`), so the cap is
+simply the move's own base `pp` — a scope-appropriate simplification, not a
+new gap.
+
+**Confirmed**: both Jaboca and Rowap gate on the ATTACKER (not the holder)
+still being alive, and the attacker's own Magic Guard — tested explicitly
+that the holder fainting from the SAME hit that triggers the retaliation does
+NOT block it (a genuinely surprising, source-confirmed behavior). Both are
+Unnerve-gated (route through the same general `ItemBattleEffects` dispatcher
+every other berry uses) and Ripen-boosted on the holder's own side (doubles
+the retaliation fraction, not the attacker's).
+
+### Implementation
+
+- New `ItemManager.leppa_berry_restore(mon, ng_active, unnerve_active) ->
+  Dictionary` — scans `mon.current_pp` for the first zero, returns the RAW
+  restore amount (caller clamps against the move's base PP, matching every
+  other heal/restore function's established division of responsibility in
+  this file).
+- New `ItemManager.jaboca_rowap_retaliation_damage(holder, attacker, move,
+  ng_active, unnerve_active) -> int` — item + category + Ripen only. The
+  Magic Guard gate is deliberately left to the caller, reusing `[M17n-9]`'s
+  `AbilityManager.blocks_indirect_damage` at the `BattleManager` call site —
+  the exact same "consulted at each call site" pattern that predicate's other
+  five sites already use, rather than importing an ability check into
+  `ItemManager`.
+- `BattleManager._phase_move_execution`: Leppa's check wired in immediately
+  after the existing PP-deduction block (`attacker.use_pp(...)`), matching
+  source's MoveEnd cadence for the acting mon. New `pp_restored` signal.
+- `BattleManager._do_damaging_hit`: Jaboca/Rowap wired in immediately after
+  the existing `contact_result` block (Rough Skin/Iron Barbs) — the natural
+  neighboring insertion point, reusing `item_damage` (Life Orb's own
+  signal shape: mon + amount) rather than `recoil_damage` (ability-flavored)
+  for the retaliation-damage signal, since this is item- not ability-driven.
+  Gated on `damage > 0`, `attacker.current_hp > 0` (not `target.fainted` —
+  deliberately, matching source's attacker-alive-only check), and `not
+  AbilityManager.blocks_indirect_damage(attacker, ng_active)`.
+- 3 new entries added to `gen_items.py`'s `ITEMS` dict; `.tres` regenerated,
+  81 items total (78 prior + 3).
+
+### Test results
+
+New `m18d_test.gd`/`.tscn`: **19/19** assertions, 3 sections (D01 Leppa,
+including the slot-order confirmation and a full-battle one-PP-remaining
+trigger; D02 Jaboca, including the correction-confirming non-contact
+full-battle test and the holder-faints-but-retaliation-still-fires edge
+case; D03 Rowap, including a Magic Guard full-battle discriminator),
+passing on the first run.
+
+### Regression
+
+Per this tier's routine-tier scope, only this tier's own suite plus the
+suites covering the two reused patterns were rerun (not the full 45+-file
+sweep, which remains Rob's manual step):
+- `m18d_test.tscn`: **19/19** (new).
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity holds
+  across the expanded 81-item catalog.
+- `ability_test.tscn`: **64/64**, unchanged — confirms the new insertion
+  point immediately after the `contact_result` block didn't disturb Rough
+  Skin/Iron Barbs.
+- `m17n9_test.tscn`: **63/63**, unchanged — confirms reusing
+  `blocks_indirect_damage` at a new call site didn't disturb Magic Guard's
+  other five.
+
+No stray Godot processes before or after; reference clone untouched; `git
+status --short` matched exactly the expected file set (3 modified core
+files, `gen_items.py`, 3 new `.tres` files, 2 new test files) before this
+docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18d's completion. Noted that
+M18p (contact-reactive damage family — Rocky Helmet, Sticky Barb, Protective
+Pads, Punching Glove), when eventually implemented, shares thematic
+territory with Jaboca/Rowap and should read this entry first — in
+particular, don't assume Rocky Helmet is contact-gated just because Rough
+Skin/Iron Barbs are; verify from source independently, the same discipline
+this tier itself required. Recommend **M18g (species-gated stat/crit items +
+Soul Dew, 9 items — needs `[M18a]`'s type-boost dispatch, already satisfied)
+or M18h (EV/Power-item Speed-halving, cheapest remaining, no dependencies)**
+as the next tier.
