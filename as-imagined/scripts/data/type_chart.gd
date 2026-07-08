@@ -132,7 +132,8 @@ static func get_uq412(atk_type: int, def_type: int, bypass_ghost_immunity: bool 
 # in this project (used for the early immunity short-circuit / Wonder Guard's own read),
 # mirroring the same duplication already established for weaken_flying_se (M17d).
 static func get_effectiveness(atk_type: int, def_types: Array,
-		weaken_flying_se: bool = false, bypass_ghost_immunity: bool = false) -> float:
+		weaken_flying_se: bool = false, bypass_ghost_immunity: bool = false,
+		grounded_override: bool = false) -> float:
 	if atk_type == TYPE_MYSTERY:
 		return 1.0
 	var modifier := 1.0
@@ -143,6 +144,18 @@ static func get_effectiveness(atk_type: int, def_types: Array,
 	if bypass_ghost_immunity and first_type == TYPE_GHOST and first_mod == 0.0 \
 			and (atk_type == TYPE_NORMAL or atk_type == TYPE_FIGHTING):
 		first_mod = 1.0
+	# M18t: Iron Ball grounds a Flying-type holder, removing the raw table's own
+	# Ground-vs-Flying 0x entry — same shape as bypass_ghost_immunity above (a
+	# held-item/ability condition overriding a specific 0x table entry), mirroring
+	# source's own MulByTypeEffectiveness (battle_util.c L8064): `moveType ==
+	# TYPE_GROUND && defType == TYPE_FLYING && IsBattlerGrounded(...) && mod ==
+	# 0.0 -> mod = 1.0`. Caller passes ItemManager.holds_iron_ball's result as
+	# this param; does NOT affect Levitate's OWN Ground-immunity, which is a
+	# separate, ability-based pre-check (AbilityManager.blocks_move_type),
+	# already gated on Iron Ball there too.
+	if grounded_override and first_type == TYPE_FLYING and first_mod == 0.0 \
+			and atk_type == TYPE_GROUND:
+		first_mod = 1.0
 	modifier *= first_mod
 	if modifier == 0.0:
 		return 0.0
@@ -152,6 +165,9 @@ static func get_effectiveness(atk_type: int, def_types: Array,
 			second_mod = 1.0
 		if bypass_ghost_immunity and def_types[1] == TYPE_GHOST and second_mod == 0.0 \
 				and (atk_type == TYPE_NORMAL or atk_type == TYPE_FIGHTING):
+			second_mod = 1.0
+		if grounded_override and def_types[1] == TYPE_FLYING and second_mod == 0.0 \
+				and atk_type == TYPE_GROUND:
 			second_mod = 1.0
 		modifier *= second_mod
 	return modifier

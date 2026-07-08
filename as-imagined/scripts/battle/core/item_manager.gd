@@ -640,6 +640,60 @@ const HOLD_EFFECT_PUNCHING_GLOVE: int = 124   # TWO parts, source-confirmed
                                                # included), unlike Protective Pads'
                                                # narrower retaliation-only scope.
 
+# M18t: Iron Ball / Air Balloon. Values re-derived programmatically,
+# cross-validated against 6 pre-existing constants, zero mismatches.
+const HOLD_EFFECT_IRON_BALL: int = 71    # TWO independent effects, confirmed
+                                          # from source not to share any code
+                                          # path: (a) unconditionally grounds
+                                          # the holder — highest-priority
+                                          # override in source's own
+                                          # IsBattlerGroundedInverseCheck chain
+                                          # (battle_util.c L5879-5894), beating
+                                          # even Levitate/Air Balloon/Flying-
+                                          # type; wired into BOTH
+                                          # AbilityManager.is_grounded (hazards/
+                                          # Arena Trap) and
+                                          # .blocks_move_type/TypeChart's new
+                                          # grounded_override param (damage-calc
+                                          # Ground-move immunity, both the
+                                          # Levitate ability-check AND the raw
+                                          # Flying-type table entry); (b) halves
+                                          # Speed, unconditional, SAME magnitude
+                                          # as Macho Brace/Power Item
+                                          # (battle_main.c L4701-4702) — a
+                                          # wholly separate pipeline stage, no
+                                          # shared code with the grounding half.
+const HOLD_EFFECT_AIR_BALLOON: int = 96  # Grants Ground-move immunity (added
+                                          # to the "ungrounded" set alongside
+                                          # Levitate — TryAirBalloon,
+                                          # battle_hold_effects.c L213-234).
+                                          # CORRECTION to a plausible wrong
+                                          # assumption: consumption is NOT
+                                          # "this Pokemon just blocked a Ground
+                                          # move" — it's `IsBattlerTurnDamaged
+                                          # (battler, INCLUDING_SUBSTITUTES)`,
+                                          # i.e. pops from ANY damaging hit
+                                          # landing (Ground-type or not), even
+                                          # one absorbed entirely by
+                                          # Substitute. A blocked Ground hit
+                                          # deals 0 damage so it correctly
+                                          # never pops from the hit it just
+                                          # deflected. The INCLUDING_SUBSTITUTES
+                                          # semantic means this project's
+                                          # consumption check must sit BEFORE
+                                          # the existing `went_to_sub` early-
+                                          # return in `_do_damaging_hit` — same
+                                          # placement Rapid Spin already
+                                          # established for the identical
+                                          # reason. Source's switch-in flavor-
+                                          # text half (TryAirBalloon's `else if
+                                          # switchIn` branch) is a pure message,
+                                          # no mechanical effect — confirmed
+                                          # out of scope, matching this
+                                          # project's established cosmetic-
+                                          # no-op precedent ([M17c]'s
+                                          # Anticipation/Forewarn/Frisk).
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -898,6 +952,16 @@ static func apply_speed_modifier(mon: BattlePokemon, speed: int, ng_active: bool
 	# (see their own doc comments above), one shared OR'd branch, matching
 	# source's identical dispatch shape exactly.
 	if item.hold_effect == HOLD_EFFECT_MACHO_BRACE or item.hold_effect == HOLD_EFFECT_POWER_ITEM:
+		return speed / 2
+	# M18t: Iron Ball — halves Speed too, unconditional, SAME magnitude as Macho
+	# Brace/Power Item above. Source (battle_main.c L4701-4702) keeps this as its
+	# own separate `else if` branch rather than folding it into the Macho
+	# Brace/Power Item OR — functionally identical here regardless (a Pokémon
+	# holds exactly one item), kept as a distinct branch to mirror source and for
+	# doc-comment clarity. Independent of Iron Ball's OTHER effect (grounding,
+	# AbilityManager.is_grounded/.blocks_move_type) — this is a completely
+	# separate pipeline stage, confirmed no shared code path.
+	if item.hold_effect == HOLD_EFFECT_IRON_BALL:
 		return speed / 2
 	return speed
 
@@ -2050,3 +2114,22 @@ static func holds_protective_pads(mon: BattlePokemon, ng_active: bool = false) -
 static func holds_punching_glove(mon: BattlePokemon, ng_active: bool = false) -> bool:
 	var item: ItemData = effective_held_item(mon, ng_active)
 	return item != null and item.hold_effect == HOLD_EFFECT_PUNCHING_GLOVE
+
+
+# ── M18t: Iron Ball / Air Balloon ────────────────────────────────────────────────
+#
+# Pure data checks only — both items' actual mechanisms are orchestrated by the
+# caller: is_grounded/blocks_move_type/TypeChart's grounded_override
+# (AbilityManager, DamageCalculator, BattleManager's OHKO branch) for the
+# grounding halves, apply_speed_modifier above for Iron Ball's Speed half, and
+# a new BattleManager consumption block (before went_to_sub) for Air Balloon's
+# pop.
+
+static func holds_iron_ball(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_IRON_BALL
+
+
+static func holds_air_balloon(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_AIR_BALLOON

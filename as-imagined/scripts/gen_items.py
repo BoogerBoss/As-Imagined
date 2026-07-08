@@ -179,6 +179,16 @@ HOLD_EFFECT_PUNCHING_GLOVE = 124   # x1.1 punching-move power + universal
                                     # Long Reach) for the holder's own
                                     # punching moves.
 
+# M18t: Iron Ball / Air Balloon. Values re-derived programmatically,
+# cross-validated against 6 pre-existing constants, zero mismatches.
+HOLD_EFFECT_IRON_BALL = 71     # Grounds the holder (highest-priority
+                                # override) + halves Speed, two independent
+                                # effects sharing no code path.
+HOLD_EFFECT_AIR_BALLOON = 96   # Ground-move immunity; pops on ANY damaging
+                                # hit landing (not specifically a blocked
+                                # Ground hit) -- see item_manager.gd's own
+                                # doc comment.
+
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
 TYPE_FIGHTING = 2
@@ -470,6 +480,13 @@ ITEMS = [
     {"id": 489, "name": "Sticky Barb",      "hold_effect": HOLD_EFFECT_STICKY_BARB},
     {"id": 507, "name": "Protective Pads",  "hold_effect": HOLD_EFFECT_PROTECTIVE_PADS},
     {"id": 760, "name": "Punching Glove",   "hold_effect": HOLD_EFFECT_PUNCHING_GLOVE},
+
+    # ── M18t: Iron Ball + Air Balloon (2) — grouped only by thematic pairing
+    #    ("Iron Ball grounds, Air Balloon ungrounds"), NOT mechanical opposites
+    #    on one shared toggle -- verified individually, no hold_effect_param
+    #    needed for either.
+    {"id": 484, "name": "Iron Ball",   "hold_effect": HOLD_EFFECT_IRON_BALL},
+    {"id": 497, "name": "Air Balloon", "hold_effect": HOLD_EFFECT_AIR_BALLOON},
 ]
 
 HEADER = """\

@@ -11702,3 +11702,185 @@ commit.
 `CLAUDE.md`'s status section updated with M18p's completion. Recommend
 **M18t, M18v, or M18x** (all remaining, none blocked), or the end-of-M18
 legacy-item cleanup pass, per Rob's preference.
+
+## [M18t] Iron Ball + Air Balloon (2 items)
+
+Seventeenth M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18t
+section. No cross-tier dependencies. Flagged in the tier table as needing
+extra care on Air Balloon (touches the type-immunity pipeline) — confirmed
+warranted, though the actual delicate part turned out to be Iron Ball's
+architecture, not Air Balloon's.
+
+### Step 0 — finalized list
+
+| Item | ID | `hold_effect` (enum position) | Mechanism |
+|---|---|---|---|
+| Iron Ball | 484 | `IRON_BALL` (71) | Grounds the holder unconditionally + halves Speed — two independent effects |
+| Air Balloon | 497 | `AIR_BALLOON` (96) | Grants Ground-move immunity; pops on ANY damaging hit, not specifically a blocked Ground hit |
+
+Both IDs confirmed against `include/constants/items.h`. Both enum positions
+re-derived via the established programmatic full-enum recount, cross-validated
+against 6 pre-existing constants (`MACHO_BRACE=24`, `QUICK_CLAW=26`,
+`FOCUS_BAND=38`, `SHELL_BELL=44`, `BIG_ROOT=58`, `FOCUS_SASH=67`), zero
+mismatches.
+
+**Confirmed NOT mechanical opposites on one shared toggle** (the task's own
+"never assume symmetry within an apparent pair" flag) — Iron Ball's grounding
+and Air Balloon's ungrounding are each wired into the SAME shared functions
+(`is_grounded`/`blocks_move_type`/`TypeChart.get_effectiveness`) as
+independent, separately-gated branches, not a single boolean flip. Iron Ball
+additionally carries a wholly unrelated second effect (Speed) that Air Balloon
+has no counterpart for at all.
+
+**The real architecture, confirmed by reading `IsBattlerGroundedInverseCheck`
+(`battle_util.c` L5879-5894) directly**: source uses ONE unified,
+priority-ordered "is this battler grounded" check: Iron Ball (forced-grounded,
+checked FIRST, unconditional — beats even Levitate/Air Balloon/Flying-type) >
+Gravity/Ingrain/Smack Down (confirmed absent from this project — no code
+references either anywhere) > Telekinesis/Magnet Rise (confirmed absent) /
+Air Balloon/Levitate (ungrounded) > Flying-type (ungrounded) > grounded by
+default. This project's pre-existing `AbilityManager.is_grounded` (`[M16d]`)
+is a deliberate partial port of exactly this function — its own doc comment
+already flagged Air Balloon and Iron Ball as a *known, anticipated gap*,
+written well before this tier existed. Used only for hazard immunity
+(Spikes/Toxic Spikes) and Arena Trap.
+
+**Scope decision — extend, don't restructure**: the damage-calc pipeline uses
+a SEPARATE, narrower pair of mechanisms from `is_grounded()` —
+`AbilityManager.blocks_move_type` (a Levitate-ability-only pre-check,
+Mold-Breaker-aware via its `attacker` param) and `TypeChart.get_effectiveness`'s
+own raw 18×18 table (Flying-type's 0× baked in directly — confirmed this has
+NEVER been Flying-type-aware inside `blocks_move_type` at all, a plain
+type-chart fact handled entirely downstream). Restructuring `is_grounded()`
+into the damage pipeline would require adding Mold-Breaker/attacker-awareness
+to a function whose own doc comment documents it as never needing that (real
+risk to its two existing, already-tested callers). Instead: `is_grounded()`
+is extended with Iron Ball/Air Balloon (safe, zero signature change — this
+also correctly fixes hazard immunity and Arena Trap for these two items as a
+bonus, confirmed via regression); `blocks_move_type` and
+`TypeChart.get_effectiveness` are extended IN PARALLEL for the damage-calc/OHKO
+paths specifically, mirroring the `bypass_ghost_immunity` (Scrappy, `[M17n-6]`)
+precedent already established there for exactly this shape of problem — a new
+`grounded_override` param on `get_effectiveness`.
+
+**Correction to a plausible wrong assumption, confirmed from `TryAirBalloon`
+(`battle_hold_effects.c` L213-234)**: Air Balloon's consumption trigger is NOT
+"this Pokémon just blocked a Ground move" — it's `IsBattlerTurnDamaged(battler,
+INCLUDING_SUBSTITUTES)`, i.e. it pops from ANY damaging hit landing, Ground-type
+or not, even one fully absorbed by Substitute. A blocked Ground hit deals 0
+damage, so it correctly never pops from the hit it just deflected — confirmed
+by reading the actual condition rather than assuming "blocks Ground → consumes"
+symmetry. The `INCLUDING_SUBSTITUTES` semantic means the consumption check
+must sit BEFORE this project's existing `went_to_sub` early-return in
+`_do_damaging_hit` — the exact same placement `[M9]`'s/`[M17n-9]`'s Rapid Spin
+already established for the identical reason. Source's switch-in flavor-text
+half (`TryAirBalloon`'s `else if switchIn` branch) is a pure message, no
+mechanical effect — confirmed out of scope, matching this project's
+established cosmetic-no-op precedent (`[M17c]`'s Anticipation/Forewarn/Frisk).
+
+**Iron Ball's Speed effect** (`battle_main.c` L4701-4702): unconditional
+`speed /= 2`, the SAME magnitude/shape as Macho Brace/Power Item (`[M18h]`) —
+source keeps it as its own separate `else if` branch rather than folding it
+into that OR, functionally identical here regardless since a Pokémon holds
+exactly one item. Confirmed a wholly separate pipeline stage with no shared
+code path with the grounding half.
+
+**Confirmed out of scope, not touched**: a third `TypeChart.get_effectiveness`
+call site exists (`battle_manager.gd`'s status-move `foe_targeting` type-immunity
+check, e.g. Thunder Wave vs. Ground-type) — this is a general status-move
+type-immunity gate unrelated to the Ground-move-vs-ungrounded-target
+interaction Iron Ball/Air Balloon actually affect; no Ground-type status move
+exists in this project's roster that would exercise it, so `grounded_override`
+was NOT threaded through this call site, keeping the change scoped to what
+this tier actually needs. Ground-type's own innate Electric-immunity
+(`TABLE[ELECTRIC][GROUND]=0.0`, a pure type-chart fact wholly unrelated to
+groundedness) is untouched and confirmed unaffected (`damage_test.tscn`'s
+`T7f` still passes unchanged).
+
+### Implementation
+
+- New `ItemManager` constants: `HOLD_EFFECT_IRON_BALL=71`,
+  `HOLD_EFFECT_AIR_BALLOON=96`; new pure checks `holds_iron_ball`,
+  `holds_air_balloon`.
+- `ItemManager.apply_speed_modifier` extended with Iron Ball's `speed / 2`
+  branch, alongside Macho Brace/Power Item.
+- `AbilityManager.is_grounded`: Iron Ball checked FIRST (unconditional
+  short-circuit true); Air Balloon added alongside Levitate in the ungrounded
+  checks. Signature unchanged (no new params) — both existing callers
+  (hazard immunity, Arena Trap) automatically gain correct behavior.
+- `AbilityManager.blocks_move_type`: restructured to check Iron Ball first
+  (unconditional override → false, never blocks), then Levitate (existing),
+  then Air Balloon (new → true for Ground-type moves only).
+- `TypeChart.get_effectiveness`: new `grounded_override: bool = false`
+  trailing param, mirroring `bypass_ghost_immunity`'s exact shape — when true,
+  overrides a 0× Ground-vs-Flying raw-table entry to 1.0, for both the
+  defender's first and second type slots independently.
+- `DamageCalculator.calculate`: computes `ItemManager.holds_iron_ball(defender,
+  ng_active)` once, threads it into the `TypeChart.get_effectiveness` call as
+  `grounded_override`.
+- `BattleManager`'s OHKO branch (Fissure/Sheer Cold): the same
+  `holds_iron_ball` computation and `grounded_override` threading applied to
+  its own separate `TypeChart.get_effectiveness` call, so an Iron-Ball-holding
+  Flying-type is correctly vulnerable to OHKO Ground moves too.
+- `BattleManager._do_damaging_hit`: new Air Balloon consumption block inserted
+  immediately after the existing Rapid Spin block (same "fires even through
+  Substitute, so before `went_to_sub`" placement), gated on `damage > 0`,
+  consuming via `_consume_item` and a new `item_effect_triggered(target,
+  "air_balloon_pop")` emission.
+- 2 new entries added to `gen_items.py`'s `ITEMS` dict; `.tres` regenerated,
+  137 items total (135 prior + 2).
+
+### Test results
+
+New `m18t_test.gd`/`.tscn`: **22/22** assertions, 2 sections (T01 Iron Ball —
+direct `is_grounded`/`blocks_move_type`/`TypeChart.get_effectiveness` checks
+for both the Flying-type and Levitate-ability cases, a Mold-Breaker regression
+discriminator, an already-grounded-holder no-double-apply discriminator, the
+Speed halving, and a full-battle real-damage confirmation; T02 Air Balloon —
+direct checks, a full-battle 0-damage immunity confirmation via `move_executed`
+with `damage=0` (NOT `move_missed("immune")` — a real, test-authoring
+correction found and fixed on the first run, since that signal turned out to
+be scoped to the OHKO/status-move paths only, not ordinary damaging-move type
+immunity), a full-battle pop confirmation from a NON-Ground hit proving the
+real consumption trigger, and a Levitate-holder-unaffected discriminator).
+Two assertions failed on the first run and were fixed (both test-authoring
+bugs, confirmed via tracing to not reflect implementation bugs): T01's
+Flying-type-with-no-item baseline wrongly assumed `blocks_move_type` was
+Flying-type-aware (it never has been — Flying's immunity has always lived
+purely in `TypeChart`'s raw table); T02's full-battle immunity check wrongly
+assumed a `move_missed("immune")` signal fires for ordinary type-immune
+damaging moves (it doesn't — that signal is only used by the OHKO branch and
+the status-move `foe_targeting` check). Stable across 2 reruns after both
+fixes.
+
+### Regression
+
+Given how central `is_grounded`/`blocks_move_type`/`TypeChart.get_effectiveness`
+are (used by hazards, Arena Trap, Wonder Guard, Scrappy's own bypass pattern,
+and the core damage formula itself), regression went beyond this tier's
+routine scope:
+- `m18t_test.tscn`: **22/22** (new).
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity holds
+  across the expanded 137-item catalog.
+- `damage_test.tscn`: **24/24**, unchanged — confirms the core type-chart
+  fundamentals (including `T7f` Electric→Ground, the unrelated immunity fact)
+  are unaffected.
+- `m17n1_test.tscn`: **82/82**, unchanged — the M17.5 batch-fix suite,
+  confirming Scrappy/Grass-powder immunity untouched.
+- `m17n6_test.tscn`: **101/101**, unchanged — confirms `bypass_ghost_immunity`
+  (Scrappy) and the rest of the Wonder Guard/type-mutation restructuring are
+  unaffected by the new `grounded_override` param living alongside it.
+- `m17f_test.tscn`: **30/30**, unchanged — Arena Trap, `is_grounded`'s other
+  caller.
+- `m16d_test.tscn`: **71/71**, unchanged — Spikes/Toxic Spikes hazard
+  immunity, `is_grounded`'s origin suite.
+
+No stray Godot processes before or after; reference clone untouched;
+`git status --short` matched exactly the expected file set (6 modified
+core files, 2 new `.tres` items, 2 new test files) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18t's completion. Recommend
+**M18v or M18x** (both remaining, none blocked), or the end-of-M18
+legacy-item cleanup pass, per Rob's preference.

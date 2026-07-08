@@ -1862,16 +1862,36 @@ static func blocks_recoil(attacker: BattlePokemon, ng_active: bool = false) -> b
 	return id == ABILITY_ROCK_HEAD or id == ABILITY_MAGIC_GUARD
 
 
-# Type immunity from an ability (Levitate → Ground immunity).
+# Type immunity from ability/item (Levitate/Air Balloon → Ground immunity; Iron
+# Ball → the inverse, an unconditional override that REMOVES that immunity).
 # Applied before type effectiveness in DamageCalculator; returns true = move deals 0.
-# Source: battle_util.c :: CalcTypeEffectivenessMultiplierInternal (L8257):
-#   moveType == TYPE_GROUND && abilityDef == ABILITY_LEVITATE && !gravity → modifier 0.0
-# Gravity field flag not yet in scope; treated as always false here.
+# Source: battle_util.c :: CalcTypeEffectivenessMultiplierInternal (L8159-8176) via
+#   IsBattlerGroundedInverseCheck (L5879-5894) — real source uses ONE unified,
+#   priority-ordered "is this battler grounded" check (Iron Ball forced-grounded,
+#   checked FIRST and unconditional, beats everything else; then
+#   Levitate/Air Balloon/Telekinesis/Magnet Rise → ungrounded; then Flying-type →
+#   ungrounded; else grounded). Gravity/Ingrain/Smack Down/Telekinesis/Magnet Rise
+#   are all confirmed absent from this project (`[M18t]`) — this function only
+#   needs the Iron Ball/Levitate/Air Balloon slice of that chain, since Flying-
+#   type's own raw immunity is a SEPARATE mechanism (TypeChart's own table,
+#   see get_effectiveness's new `grounded_override` param).
+# M18t: Iron Ball checked FIRST and unconditionally — a Levitate holder or
+#   Air-Balloon holder wearing Iron Ball (impossible simultaneously, since a mon
+#   holds exactly one item, but Iron Ball vs. Levitate specifically is the real
+#   case this matters for) is grounded regardless, matching source's own
+#   `holdEffect == HOLD_EFFECT_IRON_BALL: return TRUE` short-circuit ahead of
+#   every ungrounding check.
 static func blocks_move_type(
 		defender: BattlePokemon, move_type: int, ng_active: bool = false,
 		attacker: BattlePokemon = null) -> bool:
+	if move_type != TypeChart.TYPE_GROUND:
+		return false
+	if ItemManager.holds_iron_ball(defender, ng_active):
+		return false
 	if effective_ability_id(defender, ng_active, attacker) == ABILITY_LEVITATE:
-		return move_type == TypeChart.TYPE_GROUND
+		return true
+	if ItemManager.holds_air_balloon(defender, ng_active):
+		return true
 	return false
 
 
@@ -2371,11 +2391,17 @@ static func resolve_redirect_target(
 # Source: battle_util.c :: IsBattlerGrounded (L5896) → IsBattlerGroundedInverseCheck (L5879)
 #   → IsBattlerUngroundedByAbilityItemOrEffect (L5866): Levitate ability or Flying-type
 #   makes a battler ungrounded (returns false here).
-# Source (NOT modeled — noted as a known gap, not silently skipped): Air Balloon held item,
-#   Magnet Rise / Telekinesis volatiles, and the grounding overrides (Iron Ball item,
-#   Gravity field status, Ingrain/Smack Down volatiles) are all outside this project's
-#   currently-implemented scope (no held-item-driven grounding, no Gravity field, no
-#   Ingrain/Smack Down volatiles anywhere else in the codebase either).
+# M18t: Air Balloon and Iron Ball closed — see their own doc comments in
+#   item_manager.gd. Confirmed still absent, and out of scope (no code anywhere
+#   in this project references them): Magnet Rise / Telekinesis volatiles,
+#   Gravity field status, Ingrain/Smack Down volatiles. Iron Ball is checked
+#   FIRST, unconditionally, matching source's own priority order
+#   (IsBattlerGroundedInverseCheck, battle_util.c L5879-5894) — it overrides
+#   even Levitate/Air Balloon/Flying-type. This extension also correctly
+#   affects this function's OTHER two callers (hazard immunity, Arena Trap
+#   below) for free: an Air Balloon holder now correctly avoids Spikes/Toxic
+#   Spikes and can't be trapped by Arena Trap; an Iron Ball holder loses both
+#   exemptions if it would otherwise have had them via Levitate/Flying-type.
 # M17g: ng_active added — Neutralizing Gas suppresses Levitate's grounding exemption
 # field-wide, same as every other ability check (source's IsBattlerGrounded reads the
 # ability via GetBattlerAbility, the same suppression-aware chokepoint). No `attacker`
@@ -2384,7 +2410,11 @@ static func resolve_redirect_target(
 # time) — Mold Breaker's per-move scope structurally cannot apply here (see is_trapped's
 # updated comment below for the source citation proving this).
 static func is_grounded(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	if ItemManager.holds_iron_ball(mon, ng_active):
+		return true
 	if effective_ability_id(mon, ng_active) == ABILITY_LEVITATE:
+		return false
+	if ItemManager.holds_air_balloon(mon, ng_active):
 		return false
 	if TypeChart.TYPE_FLYING in mon.species.types:
 		return false

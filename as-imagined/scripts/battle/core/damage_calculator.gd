@@ -190,8 +190,12 @@ static func calculate(
 	# M17d: Delta Stream's Strong Winds weakens super-effective hits against Flying-type
 	# defenders — see TypeChart.get_effectiveness's doc comment for why this is a plain
 	# bool, not a WEATHER_* constant passed into the data layer.
+	# M18t: Iron Ball grounds a Flying-type defender, overriding the raw table's own
+	# Ground-vs-Flying 0x entry — see TypeChart.get_effectiveness's own doc comment.
+	var iron_ball_grounded: bool = ItemManager.holds_iron_ball(defender, ng_active)
 	var effectiveness: float = TypeChart.get_effectiveness(
-			move.type, defender.species.types, weather == WEATHER_STRONG_WINDS, scrappy_bypass)
+			move.type, defender.species.types, weather == WEATHER_STRONG_WINDS, scrappy_bypass,
+			iron_ball_grounded)
 	if effectiveness == 0.0:
 		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
 				"defender_item_consumed": false}

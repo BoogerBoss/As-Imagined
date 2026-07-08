@@ -1143,7 +1143,13 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 		if move.type != TypeChart.TYPE_NONE:
-			var ohko_eff: float = TypeChart.get_effectiveness(move.type, defender.species.types)
+			# M18t: same Iron Ball override DamageCalculator applies for ordinary
+			# damaging moves — an OHKO Ground move (Fissure) against an
+			# Iron-Ball-holding Flying-type must also bypass the raw Ground-vs-
+			# Flying 0x table entry.
+			var ohko_iron_ball_grounded: bool = ItemManager.holds_iron_ball(defender, ng_active)
+			var ohko_eff: float = TypeChart.get_effectiveness(
+					move.type, defender.species.types, false, false, ohko_iron_ball_grounded)
 			if ohko_eff == 0.0:
 				move_missed.emit(attacker, "immune")
 				_current_actor_index += 1
@@ -3618,6 +3624,17 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		elif asc["stealth_rock"]:
 			asc["stealth_rock"] = false
 			hazards_cleared.emit(atk_side, "stealth_rock")
+
+	# M18t: Air Balloon pops on ANY damaging hit landing on the holder — NOT
+	# specifically a Ground move it just blocked (a blocked Ground hit deals 0
+	# damage here, so it correctly never pops from the hit it just deflected).
+	# Source's own `IsBattlerTurnDamaged(battler, INCLUDING_SUBSTITUTES)` means
+	# this fires even through a Substitute, so — same reasoning and same
+	# placement as Rapid Spin just above — this must be checked BEFORE the
+	# went_to_sub early return below, gated only on damage > 0.
+	if damage > 0 and ItemManager.holds_air_balloon(target, ng_active):
+		_consume_item(target)
+		item_effect_triggered.emit(target, "air_balloon_pop")
 
 	# M17n-9: Infiltrator bypasses Substitute for damaging hits too (same shared
 	# IsSubstituteProtected chokepoint source routes every substitute check through).
