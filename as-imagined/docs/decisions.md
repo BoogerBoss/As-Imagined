@@ -13868,3 +13868,183 @@ milestone starts. Recommends `[M18.5h-2]` (IV) as the immediate next tier —
 it will need the identical `forced_iv`-style override pattern established
 here. Likes/dislikes and EV gain remain explicitly excluded/deferred per
 Rob's own scope decisions on `docs/m18_5h_recon.md`.
+
+## [M18.5h-2] IV system (real independent 0-31 per stat, forced_ivs override with partial forcing)
+
+Second of two sequential M18.5h sub-tiers — closes out M18.5h entirely.
+Scope per `docs/m18_5h_recon.md` Section C, refined by Rob's own explicit
+correction: IVs are NOT a design question to weigh (the recon's own C2 had
+flagged "real roll vs. simpler placeholder" as open) — real random 0-31 per
+stat, rolled once per instance, is simply the correct standard mechanic,
+matching gender/nature's own precedent exactly. EV gain remains out of scope
+for all of M18.5h, deferred to land with M20, unchanged.
+
+### Step 0 — a correction to this task's own framing, and formula re-verification
+
+**Correction**: the task's own context cited "the UQ_4_12 truncation-rounding
+lesson" from `[M18.5h-1]`'s entry as direct precedent. Checked that entry
+directly — **no such lesson exists there**. Nature's multiplier used plain
+integer truncation (`floori(stat * 110.0/100.0)`, matching source's literal
+`stat*110/100`), not UQ_4_12 fixed-point math at all; UQ_4_12 is this
+project's unrelated convention for `×1.5`/`×2.0`-style modifiers elsewhere
+(STAB, crits, item power). Proceeded without relying on that nonexistent
+lesson.
+
+**Combined formula re-verified directly against `pokemon.c` L1406-1425,
+not assumed from `[M18.5h-1]`'s own citation** — and found to be **already
+100% correct** in this project's `_stat_formula`/`_hp_formula` since
+Milestone 1: `floori((2*base + iv + floori(ev/4.0)) * level / 100.0) + 5`
+(non-HP) / `+level+10` (HP), a byte-for-byte match to source's own single
+combined expression (`(((2*base+iv+ev/4)*level)/100)+5`, Nature applied
+afterward as a separate wrap — unchanged, confirmed still correct). **Zero
+formula changes were needed anywhere this tier** — the entire implementation
+surface is `from_species` + one new `_roll_ivs()` function, confirming the
+recon's own "smallest surface of the three sub-systems" finding. HP shares
+the exact same combined-expression shape as the 5 other stats (same `iv`
+term, same position) but its own different additive constant (`+level+10`
+vs `+5`) and complete absence of a Nature term — IV affects HP identically
+to how it affects every other stat; no IV-specific special-casing needed for
+HP (unlike Nature, which genuinely exempts it).
+
+**IV range re-verified**: `MAX_PER_STAT_IVS = 31` (`include/constants/
+pokemon.h` L227) — 0-31, confirmed.
+
+**Representation**: `ivs: Array[int]`, already existed, already correctly
+indexed by the pre-existing `STAT_HP`/`STAT_ATK`/etc. constants — no
+representation change needed.
+
+**Roll mechanism**: 6 INDEPENDENT `randi() % 32` calls. Source's real IVs
+come from a separate random "IV word" (three 5-bit fields per 16-bit half),
+NOT personality-derived like gender/nature — this project doesn't model an
+"IV word" any more than it models raw personality, so 6 independent calls
+reproduce the resulting per-stat 0-31 uniform distribution directly, the
+same reproduce-the-distribution-not-the-bit-packing precedent already
+established for gender/nature.
+
+### The partial-forcing design question, resolved
+
+`forced_ivs: Variant = null` accepts an `Array` of exactly 6 elements
+(STAT_* index order), each independently either an `int` (forces that one
+stat, 0-31) or `null` (rolls that one stat normally) — NOT just
+all-or-nothing. Resolves M24's real future need directly: a
+competitively-built trainer Pokémon commonly has SOME stats deliberately
+maxed (e.g. Speed=31) and the rest left at whatever, not uniformly
+all-6-forced or all-6-random. A fully-concrete `Array[int]` (e.g. an
+existing mon's own `.ivs`, used for cloning) satisfies the same shape
+unchanged, since every element is already non-null.
+
+### Implementation
+
+- `battle_pokemon.gd`: new `_roll_ivs(forced_ivs: Variant = null) ->
+  Array[int]`, placed right after `_roll_nature`, looping over the 6 stat
+  indices and independently resolving each to `forced_ivs[i]` (if non-null)
+  or `randi() % 32`. `from_species` gained a new optional 4th parameter
+  `forced_ivs: Variant = null`, threaded straight to `_roll_ivs` in place of
+  the old hardcoded `bp.ivs = [0,0,0,0,0,0]`. `ivs` field doc comment
+  updated to describe the new roll behavior (EVs' own doc comment left
+  describing the still-correct, still-zeroed, EV-gain-deferred-to-M20
+  state).
+- No changes to `_stat_formula`/`_hp_formula`/`_apply_nature` — confirmed
+  unnecessary at Step 0, verified still true after implementation.
+
+### Testing
+
+New `m18_5h2_test.gd`/`.tscn`: **27/27**, stable across 6 reruns. Section A:
+IV range validity (n=3000, every rolled value in [0,31], plus a
+reachability discriminator confirming both 0 and 31 actually occur — guards
+against an off-by-one like `randi() % 31`). Section B: independence across
+the 6 stats — B1 confirms each of the 6 stat SLOTS individually shows a
+roughly uniform 0-31 distribution; **B2 is the key discriminator this
+tier's own Step 0 explicitly required**: `P(ivs[0] == ivs[1])` measured at
+n=3000, asserted well below 12% — the true independent-roll rate is ~1/32
+(3.1%), while a "one shared roll applied to all 6 stats" bug would produce
+~100%, so this cleanly separates the two. Section C: non-HP stat-formula
+application at IV=0 (105) vs IV=31 (120) with base=100/level=50/Nature=
+Hardy, delta exactly +15 matching the formula precisely. Section D: HP's
+own distinct formula at IV=0 (160) vs IV=31 (175), same +15 delta (a
+coincidence of this particular fixture's constants, not a claim the two
+formulas are secretly the same — HP's `+level+10` vs the others' `+5` are
+genuinely different constants). Section E: `forced_ivs` full-array
+determinism (n=50, a 6-element concrete array, zero variance) plus a
+discriminator confirming an unforced call sees ≥2 distinct values. Section
+F: `forced_ivs` PARTIAL per-stat forcing (n=50, HP forced to 31 and Speed
+forced to 0, Attack/Defense/Sp.Atk/Sp.Def left `null`) — confirms the two
+forced slots stay exactly fixed every single call while the four unforced
+slots each independently show ≥2 distinct values across the same n,
+directly proving the partial-forcing design actually works as designed, not
+just accepted without effect.
+
+### Regression — 2-iteration convergence, versus `[M18.5h-1]`'s own 5
+
+**Proactive-fix-first strategy, informed directly by `[M18.5h-1]`'s own
+lesson**: before running any sweep, `forced_ivs=[0,0,0,0,0,0]` was added to
+every one of the 26 files `[M18.5h-1]` had already identified as
+exact-value-sensitive (confirmed via `grep -rln "NATURE_HARDY"
+scenes/battle/*.gd`) — 22 single-helper "fresh mon" files via the same
+sed-based batch approach, `ability_test.gd`'s ~34 scattered inline call
+sites via the same capture-group regex substitution, and the 4 clone-style
+helpers (`stat_test.gd`/`_clone`, `weather_test.gd`/`_mon_copy`,
+`move_test.gd`/`_clone`, `status_test.gd`/`_clone`) updated to copy the
+SOURCE mon's own `.ivs` forward (not re-roll), matching how they already
+handled `.nature`. `m18_5h1_test.gd`'s own 7 exact-value call sites
+(Sections C/D specifically — its E-section identity/statistical checks
+don't care about stat values and were left alone) also needed the same pin,
+since its hardcoded expected numbers (105/115/94/120/160) also implicitly
+assumed IV=0.
+
+**Sweep 1** (broad `passed|fail` grep from the START this time — the
+methodology lesson `[M18.5h-1]` closed with, applied immediately rather
+than retrofitted partway through): found **7 more** files the proactive
+fix missed or that IV's larger blast radius reached beyond Nature's own —
+`damage_test.gd` (genuinely missed from the proactive batch — a copy/paste
+gap in the fix command's file list, not a detection failure), plus **6
+suites `[M18.5h-1]`'s own regression NEVER touched at all** —
+`integration_test.gd`, `m17n7_test.gd`, `m18_5f_test.gd`, `m18c_test.gd`,
+`m18d_test.gd`, `m18p_test.gd`. `integration_test.gd` is the notable one:
+`[M18.5h-1]`'s own entry explicitly states it "was clean throughout and
+never needed a fix" — but IV broke it anyway. This is exactly the
+blast-radius asymmetry Step 0 anticipated: Nature has a 5/25 (20%) neutral
+no-op chance per roll, so some fixtures got lucky across Nature's own
+regression; **IV has NO neutral case at all** — every roll changes the stat
+total unconditionally, so nothing is ever "lucky" under IV. All 7 fixed with
+the same pin shape (the 6 new suites needed BOTH `NATURE_HARDY` and the IV
+pin added together, since they'd never been touched at all before this
+tier).
+
+**Sweep 2**: **0 failures**, full 76-suite convergence (75 pre-existing +
+the new `m18_5h2_test.tscn` itself) — confirmed via the same
+`python re.split` parse plus a full manual line-by-line read of the sweep
+output, not just a keyword grep.
+
+**Converged in 2 iterations versus Nature's own 5**, credited to two
+specific, deliberate changes made in direct response to `[M18.5h-1]`'s own
+lessons: (1) proactively fixing every already-known-sensitive file BEFORE
+running any sweep at all, rather than discovering them reactively one sweep
+at a time; (2) using the broad case-insensitive `passed|fail` detection
+from sweep 1 onward, rather than the narrow `"FAILED"`-only grep that
+silently missed 3 suites across 4 of Nature's own sweep iterations.
+
+Final file list touched this session (31 test `.gd` files + 1 production
+file + 2 new test files, confirmed via `git status --short`): `ability_test.gd`,
+`ai_test.gd`, `damage_test.gd`, `doubles_test.gd`, `integration_test.gd`,
+`item_test.gd`, `m16_review_test.gd`, `m16b_test.gd`, `m16c_test.gd`,
+`m17a_test.gd`, `m17b_test.gd`, `m17c_test.gd`, `m17d_test.gd`,
+`m17m_test.gd`, `m17n10_test.gd`, `m17n2_test.gd`, `m17n4_test.gd`,
+`m17n5_test.gd`, `m17n6_test.gd`, `m17n7_test.gd`, `m18_5f_test.gd`,
+`m18_5h1_test.gd`, `m18a_test.gd`, `m18b_test.gd`, `m18c_test.gd`,
+`m18d_test.gd`, `m18p_test.gd`, `move_test.gd`, `stat_test.gd`,
+`status_test.gd`, `two_turn_test.gd`, `weather_test.gd`, plus
+`battle_pokemon.gd` (production) and new `m18_5h2_test.gd`/`.tscn`.
+
+Final confirmation: `m18_5h2_test` 27/27 and `m18_5h1_test` 46/46 both
+reconfirmed clean after the full sweep, no stray Godot processes, reference
+clone untouched.
+
+### Docs
+
+`CLAUDE.md`'s status section updated noting M18.5h-2 complete and that
+**M18.5h is now fully complete** (both Nature and IV sub-tiers done) —
+`forced_nature` and `forced_ivs` (including partial per-stat forcing) are
+both ready for M24 to consume whenever that milestone starts. EV gain
+remains deferred to land with M20; likes/dislikes remain excluded per Rob's
+own scope decisions on `docs/m18_5h_recon.md`.

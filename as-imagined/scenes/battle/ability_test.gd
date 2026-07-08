@@ -22,12 +22,13 @@ extends Node
 #
 # Ground truth: pokeemerald_expansion src/battle_util.c, src/battle_script_commands.c
 #
-# [M18.5h-1] Every from_species(...) call in this file was updated to pass
-# BattlePokemon.NATURE_HARDY explicitly — this file's exact-value damage
-# assertions (Huge Power, Thick Fat, etc.) predate the Nature system, and
-# from_species now rolls a real (non-neutral 20/25 of the time) nature by
-# default, which would otherwise silently perturb Attack/Defense/Sp.Atk/
-# Sp.Def/Speed on every fixture here.
+# [M18.5h-1/2] Every from_species(...) call in this file was updated to pass
+# BattlePokemon.NATURE_HARDY and [0,0,0,0,0,0] (forced_ivs) explicitly — this
+# file's exact-value damage assertions (Huge Power, Thick Fat, etc.) predate
+# the Nature/IV systems, and from_species now rolls a real (non-neutral 20/25
+# of the time) nature AND real independent 0-31 IVs by default, either of
+# which would otherwise silently perturb Attack/Defense/Sp.Atk/Sp.Def/Speed/HP
+# on every fixture here.
 
 var _pass := 0
 var _fail := 0
@@ -84,7 +85,7 @@ func _make_mon(species_name: String, level: int, types: Array[int],
 	sp.base_sp_attack = base_spatk
 	sp.base_sp_defense = base_spdef
 	sp.base_speed = base_speed
-	return BattlePokemon.from_species(sp, level, BattlePokemon.NATURE_HARDY)
+	return BattlePokemon.from_species(sp, level, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 
 
 # ── Section 1: Ability data spot-checks ──────────────────────────────────────
@@ -131,8 +132,8 @@ func _test_section_2a_huge_power() -> void:
 	sp_normal.base_hp = 80; sp_normal.base_attack = 80; sp_normal.base_defense = 80
 	sp_normal.base_sp_attack = 80; sp_normal.base_sp_defense = 80; sp_normal.base_speed = 80
 
-	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
-	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 
 	var huge_power := _load_ability(37)
 	attacker.ability = huge_power
@@ -178,8 +179,8 @@ func _test_section_2b_thick_fat() -> void:
 	sp_normal.base_hp = 80; sp_normal.base_attack = 80; sp_normal.base_defense = 80
 	sp_normal.base_sp_attack = 80; sp_normal.base_sp_defense = 80; sp_normal.base_speed = 80
 
-	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
-	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	var thick_fat := _load_ability(47)
 	defender.ability = thick_fat
 
@@ -220,8 +221,8 @@ func _test_section_2c_levitate() -> void:
 	sp_normal.base_hp = 80; sp_normal.base_attack = 80; sp_normal.base_defense = 80
 	sp_normal.base_sp_attack = 80; sp_normal.base_sp_defense = 80; sp_normal.base_speed = 80
 
-	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
-	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	var levitate := _load_ability(26)
 	defender.ability = levitate
 
@@ -239,7 +240,7 @@ func _test_section_2c_levitate() -> void:
 	sp_ground.types = [TypeChart.TYPE_GROUND]
 	sp_ground.base_hp = 80; sp_ground.base_attack = 80; sp_ground.base_defense = 80
 	sp_ground.base_sp_attack = 80; sp_ground.base_sp_defense = 80; sp_ground.base_speed = 80
-	var ground_mon := BattlePokemon.from_species(sp_ground, 50, BattlePokemon.NATURE_HARDY)
+	var ground_mon := BattlePokemon.from_species(sp_ground, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	var dmg_eq_nolevitate := DamageCalculator.calculate(attacker, ground_mon, earthquake, 100, false)
 	_chk("S2C.04 Ground-type still takes Ground damage (no Levitate)", dmg_eq_nolevitate["damage"] > 0)
 
@@ -258,8 +259,8 @@ func _test_section_3a_intimidate() -> void:
 	sp_normal.base_hp = 80; sp_normal.base_attack = 80; sp_normal.base_defense = 80
 	sp_normal.base_sp_attack = 80; sp_normal.base_sp_defense = 80; sp_normal.base_speed = 80
 
-	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)  # has Intimidate
-	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)  # no ability
+	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])  # has Intimidate
+	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])  # no ability
 
 	var intimidate := _load_ability(22)
 	attacker.ability = intimidate
@@ -307,8 +308,8 @@ func _test_section_3b_speed_boost() -> void:
 	sp_normal.base_hp = 200; sp_normal.base_attack = 5; sp_normal.base_defense = 200
 	sp_normal.base_sp_attack = 5; sp_normal.base_sp_defense = 200; sp_normal.base_speed = 80
 
-	var sb_mon := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)   # Speed Boost holder
-	var opp := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)      # no ability; very low ATK won't KO
+	var sb_mon := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])   # Speed Boost holder
+	var opp := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])      # no ability; very low ATK won't KO
 
 	var speed_boost := _load_ability(3)
 	sb_mon.ability = speed_boost
@@ -426,8 +427,8 @@ func _test_section_4a_static() -> void:
 	sp_normal.base_hp = 80; sp_normal.base_attack = 80; sp_normal.base_defense = 80
 	sp_normal.base_sp_attack = 80; sp_normal.base_sp_defense = 80; sp_normal.base_speed = 80
 
-	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
-	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	defender.ability = static_ab
 
 	# Forced trigger (30% chance normally, pin to true)
@@ -438,13 +439,13 @@ func _test_section_4a_static() -> void:
 
 	# Non-contact move (Swift = Spec, no contact): Static must NOT fire
 	var swift := _load_move(129)   # Normal/Spec/60, makes_contact=false
-	var attacker2 := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var attacker2 := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	var result2 := AbilityManager.try_contact_effects(attacker2, defender, swift, 50, true)
 	_chk("S4A.04 Static no trigger for non-contact", result2["ability_name"] == "")
 	_chk("S4A.05 attacker2 status unchanged (none)",  attacker2.status == BattlePokemon.STATUS_NONE)
 
 	# Forced suppress (roll=false): Static roll fails
-	var attacker3 := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var attacker3 := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	var result3 := AbilityManager.try_contact_effects(attacker3, defender, tackle, 50, false)
 	_chk("S4A.06 Static suppressed (forced false)",  result3["ability_name"] == "")
 	_chk("S4A.07 attacker3 no status (suppressed)",   attacker3.status == BattlePokemon.STATUS_NONE)
@@ -465,7 +466,7 @@ func _test_section_4b_static_electric_immune() -> void:
 	sp_normal.types = [TypeChart.TYPE_NORMAL]
 	sp_normal.base_hp = 80; sp_normal.base_attack = 80; sp_normal.base_defense = 80
 	sp_normal.base_sp_attack = 80; sp_normal.base_sp_defense = 80; sp_normal.base_speed = 80
-	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	defender.ability = static_ab
 
 	var sp_elec := PokemonSpecies.new()
@@ -473,7 +474,7 @@ func _test_section_4b_static_electric_immune() -> void:
 	sp_elec.types = [TypeChart.TYPE_ELECTRIC]
 	sp_elec.base_hp = 80; sp_elec.base_attack = 80; sp_elec.base_defense = 80
 	sp_elec.base_sp_attack = 80; sp_elec.base_sp_defense = 80; sp_elec.base_speed = 80
-	var elec_attacker := BattlePokemon.from_species(sp_elec, 50, BattlePokemon.NATURE_HARDY)
+	var elec_attacker := BattlePokemon.from_species(sp_elec, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 
 	# Forced roll = true: contact, Static fires, but Electric-type can't be paralyzed
 	var result := AbilityManager.try_contact_effects(elec_attacker, defender, tackle, 50, true)
@@ -497,8 +498,8 @@ func _test_section_4c_flame_body() -> void:
 	sp_normal.base_hp = 80; sp_normal.base_attack = 80; sp_normal.base_defense = 80
 	sp_normal.base_sp_attack = 80; sp_normal.base_sp_defense = 80; sp_normal.base_speed = 80
 
-	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
-	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	defender.ability = flame_body
 
 	# Forced trigger
@@ -508,7 +509,7 @@ func _test_section_4c_flame_body() -> void:
 	_chk("S4C.03 attacker is burned",            attacker.status == BattlePokemon.STATUS_BURN)
 
 	# Already burned: Flame Body can't apply burn again
-	var attacker2 := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var attacker2 := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	attacker2.status = BattlePokemon.STATUS_BURN
 	var result2 := AbilityManager.try_contact_effects(attacker2, defender, tackle, 50, true)
 	_chk("S4C.04 Flame Body blocked if already burned", result2["status_applied"] == 0)
@@ -532,8 +533,8 @@ func _test_section_4d_rough_skin() -> void:
 	sp_normal.base_hp = 80; sp_normal.base_attack = 80; sp_normal.base_defense = 80
 	sp_normal.base_sp_attack = 80; sp_normal.base_sp_defense = 80; sp_normal.base_speed = 80
 
-	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
-	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	defender.ability = rough_skin
 
 	# Contact hit: attacker takes maxHP/8 (no roll forced needed — always fires)
@@ -575,8 +576,8 @@ func _test_section_4e_synchronize_status_move() -> void:
 	sp_normal.base_sp_attack = 5; sp_normal.base_sp_defense = 200; sp_normal.base_speed = 80
 
 	# S4E.01–03: Direct API — paralysis applied to Synchronize holder, reflected back.
-	var para_source  := BattlePokemon.from_species(sp_fast, 50, BattlePokemon.NATURE_HARDY)
-	var synch_holder := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var para_source  := BattlePokemon.from_species(sp_fast, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var synch_holder := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	synch_holder.ability = synchronize_ab
 
 	var para_applied := StatusManager.try_apply_status(synch_holder, BattlePokemon.STATUS_PARALYSIS)
@@ -588,8 +589,8 @@ func _test_section_4e_synchronize_status_move() -> void:
 
 	# S4E.04–05: Sleep is NOT reflected by Synchronize.
 	# Source: TrySynchronizeActivation — MOVE_EFFECT_SLEEP not in the trigger list.
-	var sleep_source  := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
-	var synch_holder2 := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var sleep_source  := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var synch_holder2 := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	synch_holder2.ability = synchronize_ab
 
 	var slept := StatusManager.try_apply_status(synch_holder2, BattlePokemon.STATUS_SLEEP)
@@ -623,8 +624,8 @@ func _test_section_4e_synchronize_status_move() -> void:
 	var ability_events := []
 	bm.ability_triggered.connect(func(p, ek): ability_events.push_back([p, ek]))
 
-	var twave_attacker := BattlePokemon.from_species(sp_fast, 50, BattlePokemon.NATURE_HARDY)
-	var synch_holder3  := BattlePokemon.from_species(sp_weak, 50, BattlePokemon.NATURE_HARDY)
+	var twave_attacker := BattlePokemon.from_species(sp_fast, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var synch_holder3  := BattlePokemon.from_species(sp_weak, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	synch_holder3.ability = synchronize_ab
 	twave_attacker.add_move(tackle)         # index 0 — auto-selected from turn 2 on
 	twave_attacker.add_move(thunder_wave)   # index 1 — queued for turn 1 only
@@ -657,8 +658,8 @@ func _test_section_4f_synchronize_contact_ability() -> void:
 	sp_normal.base_sp_attack = 80; sp_normal.base_sp_defense = 80; sp_normal.base_speed = 80
 
 	# Attacker has Synchronize; defender has Static.
-	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
-	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	attacker.ability = synchronize_ab
 	defender.ability = static_ab
 
@@ -690,8 +691,8 @@ func _test_section_4g_non_trigger() -> void:
 	sp_normal.base_hp = 80; sp_normal.base_attack = 80; sp_normal.base_defense = 80
 	sp_normal.base_sp_attack = 80; sp_normal.base_sp_defense = 80; sp_normal.base_speed = 80
 
-	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
-	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY)
+	var attacker := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var defender := BattlePokemon.from_species(sp_normal, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	defender.ability = flame_body
 
 	# Ember (non-contact) → Flame Body must NOT fire even if roll would succeed

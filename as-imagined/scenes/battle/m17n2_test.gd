@@ -84,7 +84,7 @@ func _make_mon(mon_name: String, types: Array[int], hp: int = 100, atk: int = 80
 	sp.base_sp_attack = spatk
 	sp.base_sp_defense = spdef
 	sp.base_speed = spd
-	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY)  # [M18.5h-1] pinned neutral -- exact-value assertions predate Nature
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])  # [M18.5h-1/2] pinned neutral nature + zero IVs -- exact-value assertions predate both
 
 
 func _give_item(mon: BattlePokemon, hold_effect: int) -> void:

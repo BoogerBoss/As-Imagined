@@ -404,7 +404,7 @@ func _make_mon(name: String, types: Array[int], base_hp: int, base_atk: int,
 	# stat assertions were written assuming no nature adjustment; from_species now
 	# rolls a real (non-neutral 20/25 of the time) nature by default, which would
 	# otherwise silently perturb Attack/Defense/Sp.Atk/Sp.Def/Speed here.
-	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])  # [M18.5h-1/2] pinned neutral nature + zero IVs -- exact-value assertions predate both
 
 
 func _clone(mon: BattlePokemon) -> BattlePokemon:
@@ -412,7 +412,7 @@ func _clone(mon: BattlePokemon) -> BattlePokemon:
 	# a faithful clone must reproduce the original's stats exactly, matching this
 	# function's own existing (if incomplete — IVs/EVs aren't copied either, a
 	# pre-existing gap out of this tier's scope) "copy relevant state" contract.
-	var bp := BattlePokemon.from_species(mon.species, mon.level, mon.nature)
+	var bp := BattlePokemon.from_species(mon.species, mon.level, mon.nature, mon.ivs)  # [M18.5h-1/2] preserves the SOURCE mon's nature AND IVs, matching the copy contract
 	bp.status          = mon.status
 	bp.sleep_turns     = mon.sleep_turns
 	bp.toxic_counter   = mon.toxic_counter

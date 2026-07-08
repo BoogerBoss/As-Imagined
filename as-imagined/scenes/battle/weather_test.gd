@@ -85,7 +85,7 @@ func _make_mon(mon_name: String, type1: int, type2: int = TypeChart.TYPE_NONE,
 	sp.base_sp_attack  = spatk
 	sp.base_sp_defense = spdef
 	sp.base_speed      = spd
-	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY)  # [M18.5h-1] pinned neutral -- exact-value assertions predate Nature
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])  # [M18.5h-1/2] pinned neutral nature + zero IVs -- exact-value assertions predate both
 
 
 func _make_move(move_name: String, move_type: int, category: int, power: int) -> MoveData:
@@ -584,7 +584,7 @@ func _mon_copy(orig: BattlePokemon) -> BattlePokemon:
 	sp.base_sp_attack  = orig.species.base_sp_attack
 	sp.base_sp_defense = orig.species.base_sp_defense
 	sp.base_speed      = orig.species.base_speed
-	var m := BattlePokemon.from_species(sp, orig.level, orig.nature)  # [M18.5h-1] preserves the SOURCE mon's nature, matching the copy contract
+	var m := BattlePokemon.from_species(sp, orig.level, orig.nature, orig.ivs)  # [M18.5h-1/2] preserves the SOURCE mon's nature AND IVs, matching the copy contract
 	return m
 
 

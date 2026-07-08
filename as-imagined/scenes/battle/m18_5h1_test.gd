@@ -154,7 +154,7 @@ func _test_section_b_roll_distribution() -> void:
 func _test_section_c_stat_formula_application() -> void:
 	# C1: Adamant (+Atk -SpAtk). Pre-nature formula = 105 for every non-HP stat.
 	var sp1 := _make_species()
-	var c1 := BattlePokemon.from_species(sp1, 50, BattlePokemon.NATURE_ADAMANT)
+	var c1 := BattlePokemon.from_species(sp1, 50, BattlePokemon.NATURE_ADAMANT, [0, 0, 0, 0, 0, 0])
 	_chk("C1.01 Adamant: Attack boosted 105 -> 115 (floor(105*1.10))", c1.attack == 115)
 	_chk("C1.02 Adamant: Sp.Atk reduced 105 -> 94 (floor(105*0.90))", c1.sp_attack == 94)
 	_chk("C1.03 Adamant: Defense untouched (105)", c1.defense == 105)
@@ -163,7 +163,7 @@ func _test_section_c_stat_formula_application() -> void:
 
 	# C2: Timid (+Speed -Atk) — a second boost/reduce pair, different stats.
 	var sp2 := _make_species()
-	var c2 := BattlePokemon.from_species(sp2, 50, BattlePokemon.NATURE_TIMID)
+	var c2 := BattlePokemon.from_species(sp2, 50, BattlePokemon.NATURE_TIMID, [0, 0, 0, 0, 0, 0])
 	_chk("C2.01 Timid: Speed boosted 105 -> 115", c2.speed == 115)
 	_chk("C2.02 Timid: Attack reduced 105 -> 94", c2.attack == 94)
 	_chk("C2.03 Timid: Defense untouched (105)", c2.defense == 105)
@@ -173,7 +173,7 @@ func _test_section_c_stat_formula_application() -> void:
 	# C3: Hardy (neutral) — every non-HP stat must be IDENTICAL to the raw
 	# pre-Nature formula output (105), not just close.
 	var sp3 := _make_species()
-	var c3 := BattlePokemon.from_species(sp3, 50, BattlePokemon.NATURE_HARDY)
+	var c3 := BattlePokemon.from_species(sp3, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	_chk("C3.01 Hardy (neutral): Attack bit-identical to pre-Nature formula (105)",
 			c3.attack == 105)
 	_chk("C3.02 Hardy (neutral): Defense bit-identical to pre-Nature formula (105)",
@@ -192,19 +192,19 @@ func _test_section_d_hp_unaffected() -> void:
 	var expected_hp := 160  # floori((2*100+0+0)*50/100.0) + 50 + 10
 
 	var sp_adamant := _make_species()
-	var d1 := BattlePokemon.from_species(sp_adamant, 50, BattlePokemon.NATURE_ADAMANT)
+	var d1 := BattlePokemon.from_species(sp_adamant, 50, BattlePokemon.NATURE_ADAMANT, [0, 0, 0, 0, 0, 0])
 	_chk("D01 Adamant (+Atk -SpAtk): HP unaffected (160)", d1.max_hp == expected_hp)
 
 	var sp_timid := _make_species()
-	var d2 := BattlePokemon.from_species(sp_timid, 50, BattlePokemon.NATURE_TIMID)
+	var d2 := BattlePokemon.from_species(sp_timid, 50, BattlePokemon.NATURE_TIMID, [0, 0, 0, 0, 0, 0])
 	_chk("D02 Timid (+Speed -Atk): HP unaffected (160)", d2.max_hp == expected_hp)
 
 	var sp_calm := _make_species()
-	var d3 := BattlePokemon.from_species(sp_calm, 50, BattlePokemon.NATURE_CALM)
+	var d3 := BattlePokemon.from_species(sp_calm, 50, BattlePokemon.NATURE_CALM, [0, 0, 0, 0, 0, 0])
 	_chk("D03 Calm (+SpDef -Atk): HP unaffected (160)", d3.max_hp == expected_hp)
 
 	var sp_hardy := _make_species()
-	var d4 := BattlePokemon.from_species(sp_hardy, 50, BattlePokemon.NATURE_HARDY)
+	var d4 := BattlePokemon.from_species(sp_hardy, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	_chk("D04 Hardy (neutral): HP unaffected (160)", d4.max_hp == expected_hp)
 
 	# Discriminator: all 4 HP values are pairwise identical, not just each

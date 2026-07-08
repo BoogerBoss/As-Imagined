@@ -94,9 +94,13 @@ var sp_attack: int = 0
 var sp_defense: int = 0
 var speed: int = 0
 
-# IVs and EVs are present now so the stat formula reads from them.
-# Both zeroed in from_species() for Milestone 1; real values added later.
-# Index order matches STAT_* constants above.
+# [M18.5h-2] IVs: rolled once in from_species() (see _roll_ivs), independent
+# real 0-31 per stat unless a forced_ivs override is threaded through
+# from_species. Index order matches STAT_* constants above. Freely
+# reassignable afterward like every other field here.
+# EVs: still zeroed in from_species() — EV gain is out of scope for all of
+# M18.5h (deferred to land with M20); the formula's own floor(ev/4) term is
+# already correctly wired (confirmed [M18.5h-1]/[M18.5h-2]), just fed zero.
 var ivs: Array[int] = []
 var evs: Array[int] = []
 
@@ -384,7 +388,7 @@ var fainted: bool = false
 
 
 static func from_species(p_species: PokemonSpecies, p_level: int,
-		forced_nature: Variant = null) -> BattlePokemon:
+		forced_nature: Variant = null, forced_ivs: Variant = null) -> BattlePokemon:
 	var bp := BattlePokemon.new()
 	bp.species = p_species
 	bp.original_types = p_species.types.duplicate()
@@ -392,7 +396,7 @@ static func from_species(p_species: PokemonSpecies, p_level: int,
 	bp.level = p_level
 	bp.gender = _roll_gender(p_species.gender_ratio)
 	bp.nature = _roll_nature(forced_nature)
-	bp.ivs = [0, 0, 0, 0, 0, 0]
+	bp.ivs = _roll_ivs(forced_ivs)
 	bp.evs = [0, 0, 0, 0, 0, 0]
 	bp.moves = []
 	bp.current_pp = []
@@ -482,6 +486,40 @@ static func _roll_nature(forced_nature: Variant = null) -> int:
 	if forced_nature != null:
 		return forced_nature
 	return randi() % NUM_NATURES
+
+
+# [M18.5h-2] Rolls 6 INDEPENDENT uniform-random IVs (0-31 each), matching the
+# same Variant=null forcing convention `_roll_nature`/`_roll_gender` already
+# established. Source's real IVs come from a separate random "IV word" (three
+# 5-bit fields packed into each of two 16-bit halves), NOT derived from
+# personality the way gender/nature are (`pokemon.c` — GetBoxMonData's
+# IV-unpacking, distinct from GetNature/GetGenderFromSpeciesAndPersonality) —
+# this project doesn't model an "IV word" concept any more than it models a
+# raw personality value, so 6 independent `randi() % 32` calls reproduce the
+# resulting per-stat 0-31 uniform DISTRIBUTION directly, the same
+# reproduce-the-distribution-not-the-bit-packing precedent already used for
+# gender/nature.
+#
+# forced_ivs, if provided, must be an Array of exactly 6 elements (STAT_*
+# index order), each independently either an int (forces that one stat,
+# 0-31) or null (rolls that one stat normally) — NOT just all-or-nothing.
+# This supports M24's real future need directly: a competitively-built
+# trainer Pokémon commonly has SOME stats deliberately maxed (e.g. Speed=31)
+# and the rest left at whatever, not uniformly all-6-forced or all-6-random.
+# A fully-concrete Array[int] (e.g. cloning an existing mon's own .ivs) also
+# satisfies this shape unchanged, since every element is already a non-null
+# int.
+static func _roll_ivs(forced_ivs: Variant = null) -> Array[int]:
+	var result: Array[int] = []
+	for i in range(6):
+		var forced_stat: Variant = null
+		if forced_ivs != null:
+			forced_stat = forced_ivs[i]
+		if forced_stat != null:
+			result.append(forced_stat)
+		else:
+			result.append(randi() % 32)
+	return result
 
 
 # [M18.5h-1] Returns [raise_stat, lower_stat] (BattlePokemon.STAT_* indices, THIS
