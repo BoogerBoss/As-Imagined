@@ -1759,7 +1759,7 @@
     "is_spread": false,
     "stat_change_self": false,
     "secondary_effect": 2,
-    "secondary_chance": 0,
+    "secondary_chance": 30,
     "stat_change_stat": -1,
     "stat_change_amount": 0
   },
@@ -1931,7 +1931,7 @@
     "is_spread": false,
     "stat_change_self": false,
     "secondary_effect": 7,
-    "secondary_chance": 0,
+    "secondary_chance": 30,
     "stat_change_stat": -1,
     "stat_change_amount": 0
   },
@@ -2234,9 +2234,9 @@
     "is_spread": true,
     "stat_change_self": false,
     "secondary_effect": 0,
-    "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "secondary_chance": 10,
+    "stat_change_stat": 3,
+    "stat_change_amount": -1
   },
   {
     "id": 52,
@@ -2664,9 +2664,9 @@
     "is_spread": false,
     "stat_change_self": false,
     "secondary_effect": 0,
-    "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "secondary_chance": 10,
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 62,
@@ -2707,9 +2707,9 @@
     "is_spread": false,
     "stat_change_self": false,
     "secondary_effect": 0,
-    "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "secondary_chance": 10,
+    "stat_change_stat": 0,
+    "stat_change_amount": -1
   },
   {
     "id": 63,
@@ -3783,7 +3783,7 @@
     "is_spread": false,
     "stat_change_self": false,
     "secondary_effect": 3,
-    "secondary_chance": 0,
+    "secondary_chance": 30,
     "stat_change_stat": -1,
     "stat_change_amount": 0
   },
@@ -4084,9 +4084,9 @@
     "is_spread": false,
     "stat_change_self": false,
     "secondary_effect": 0,
-    "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "secondary_chance": 10,
+    "stat_change_stat": 3,
+    "stat_change_amount": -1
   },
   {
     "id": 95,
@@ -5376,7 +5376,7 @@
     "is_spread": false,
     "stat_change_self": false,
     "secondary_effect": 2,
-    "secondary_chance": 0,
+    "secondary_chance": 30,
     "stat_change_stat": -1,
     "stat_change_amount": 0
   },
@@ -5462,7 +5462,7 @@
     "is_spread": false,
     "stat_change_self": false,
     "secondary_effect": 1,
-    "secondary_chance": 0,
+    "secondary_chance": 10,
     "stat_change_stat": -1,
     "stat_change_amount": 0
   },
@@ -5632,11 +5632,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": 1
   },
   {
     "id": 131,
@@ -5720,9 +5720,9 @@
     "is_spread": false,
     "stat_change_self": false,
     "secondary_effect": 0,
-    "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "secondary_chance": 10,
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 133,
@@ -6279,9 +6279,9 @@
     "is_spread": true,
     "stat_change_self": false,
     "secondary_effect": 0,
-    "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "secondary_chance": 10,
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 146,
@@ -8174,8 +8174,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 5,
+    "stat_change_amount": -1
   },
   {
     "id": 190,
@@ -8217,8 +8217,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 50,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 5,
+    "stat_change_amount": -1
   },
   {
     "id": 191,
@@ -8476,8 +8476,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 197,
@@ -9119,11 +9119,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 10,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": 1
   },
   {
     "id": 212,
@@ -9895,11 +9895,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": 1
   },
   {
     "id": 230,
@@ -9984,8 +9984,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 30,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": -1
   },
   {
     "id": 232,
@@ -10024,11 +10024,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 10,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 0,
+    "stat_change_amount": 1
   },
   {
     "id": 233,
@@ -10457,8 +10457,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 20,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": -1
   },
   {
     "id": 243,
@@ -10673,8 +10673,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 20,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 3,
+    "stat_change_amount": -1
   },
   {
     "id": 248,
@@ -10759,8 +10759,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 50,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": -1
   },
   {
     "id": 250,
@@ -12739,8 +12739,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 50,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 3,
+    "stat_change_amount": -1
   },
   {
     "id": 296,
@@ -12782,8 +12782,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 50,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": -1
   },
   {
     "id": 297,
@@ -13168,7 +13168,7 @@
     "is_spread": false,
     "stat_change_self": false,
     "secondary_effect": 5,
-    "secondary_chance": 0,
+    "secondary_chance": 50,
     "stat_change_stat": -1,
     "stat_change_amount": 0
   },
@@ -13212,8 +13212,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 50,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": -1
   },
   {
     "id": 307,
@@ -13338,11 +13338,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 20,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 0,
+    "stat_change_amount": 1
   },
   {
     "id": 310,
@@ -13596,11 +13596,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": -2
   },
   {
     "id": 316,
@@ -13685,8 +13685,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 318,
@@ -14244,8 +14244,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 30,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 5,
+    "stat_change_amount": -1
   },
   {
     "id": 331,
@@ -14717,8 +14717,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 342,
@@ -15273,11 +15273,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": -2
   },
   {
     "id": 355,
@@ -15488,11 +15488,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 360,
@@ -17470,8 +17470,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 10,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 3,
+    "stat_change_amount": -1
   },
   {
     "id": 406,
@@ -17728,8 +17728,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 10,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 3,
+    "stat_change_amount": -1
   },
   {
     "id": 412,
@@ -17771,8 +17771,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 10,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 3,
+    "stat_change_amount": -1
   },
   {
     "id": 413,
@@ -17857,8 +17857,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 10,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 3,
+    "stat_change_amount": -1
   },
   {
     "id": 415,
@@ -18373,8 +18373,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 30,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 5,
+    "stat_change_amount": -1
   },
   {
     "id": 427,
@@ -18502,8 +18502,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 30,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 5,
+    "stat_change_amount": -1
   },
   {
     "id": 430,
@@ -18545,8 +18545,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 10,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 3,
+    "stat_change_amount": -1
   },
   {
     "id": 431,
@@ -18714,11 +18714,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": -2
   },
   {
     "id": 435,
@@ -18843,11 +18843,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": -2
   },
   {
     "id": 438,
@@ -19445,11 +19445,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 70,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": 1
   },
   {
     "id": 452,
@@ -20050,8 +20050,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 40,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 3,
+    "stat_change_amount": -2
   },
   {
     "id": 466,
@@ -21038,11 +21038,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": 1
   },
   {
     "id": 489,
@@ -21127,8 +21127,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 491,
@@ -21170,8 +21170,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 3,
+    "stat_change_amount": -2
   },
   {
     "id": 492,
@@ -22504,8 +22504,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": -1
   },
   {
     "id": 523,
@@ -22547,8 +22547,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 524,
@@ -22719,8 +22719,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 528,
@@ -23020,8 +23020,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 50,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": -1
   },
   {
     "id": 535,
@@ -23106,8 +23106,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 50,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 5,
+    "stat_change_amount": -1
   },
   {
     "id": 537,
@@ -23235,8 +23235,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 40,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 5,
+    "stat_change_amount": -1
   },
   {
     "id": 540,
@@ -23665,8 +23665,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 550,
@@ -23791,11 +23791,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 50,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": 1
   },
   {
     "id": 553,
@@ -23923,8 +23923,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": -1
   },
   {
     "id": 556,
@@ -25128,8 +25128,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 10,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 0,
+    "stat_change_amount": -1
   },
   {
     "id": 584,
@@ -25214,8 +25214,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 30,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": -1
   },
   {
     "id": 586,
@@ -25470,11 +25470,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": true,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 50,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": 2
   },
   {
     "id": 592,
@@ -25645,8 +25645,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": -1
   },
   {
     "id": 596,
@@ -26374,11 +26374,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 0,
+    "stat_change_amount": 1
   },
   {
     "id": 613,
@@ -27063,11 +27063,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 629,
@@ -27669,8 +27669,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 0,
+    "stat_change_amount": -1
   },
   {
     "id": 643,
@@ -27712,8 +27712,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": -1
   },
   {
     "id": 644,
@@ -28056,8 +28056,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 0,
+    "stat_change_amount": -1
   },
   {
     "id": 652,
@@ -28182,11 +28182,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": true,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": -1
   },
   {
     "id": 655,
@@ -28397,11 +28397,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": -2
   },
   {
     "id": 660,
@@ -28529,8 +28529,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 20,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": -1
   },
   {
     "id": 663,
@@ -28615,8 +28615,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 20,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": -1
   },
   {
     "id": 665,
@@ -29128,11 +29128,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 6,
+    "stat_change_amount": 1
   },
   {
     "id": 677,
@@ -30421,8 +30421,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 707,
@@ -30633,11 +30633,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": 1
   },
   {
     "id": 712,
@@ -30679,8 +30679,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 0,
+    "stat_change_amount": -1
   },
   {
     "id": 713,
@@ -30808,8 +30808,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 3,
+    "stat_change_amount": -1
   },
   {
     "id": 716,
@@ -30851,8 +30851,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": -1
   },
   {
     "id": 717,
@@ -30894,8 +30894,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": -1
   },
   {
     "id": 718,
@@ -31365,11 +31365,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": 1
   },
   {
     "id": 729,
@@ -31626,8 +31626,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": -1
   },
   {
     "id": 735,
@@ -32357,8 +32357,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": -1
   },
   {
     "id": 752,
@@ -32569,11 +32569,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": 1
   },
   {
     "id": 757,
@@ -32701,8 +32701,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 30,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 0,
+    "stat_change_amount": -1
   },
   {
     "id": 760,
@@ -32741,11 +32741,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": 1
   },
   {
     "id": 761,
@@ -33085,11 +33085,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": 1
   },
   {
     "id": 769,
@@ -33131,8 +33131,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 0,
+    "stat_change_amount": -1
   },
   {
     "id": 770,
@@ -33217,8 +33217,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 50,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 1,
+    "stat_change_amount": -1
   },
   {
     "id": 772,
@@ -33346,8 +33346,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 30,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 775,
@@ -33734,8 +33734,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 3,
+    "stat_change_amount": -2
   },
   {
     "id": 784,
@@ -33903,11 +33903,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -2
   },
   {
     "id": 788,
@@ -34419,11 +34419,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": 1
   },
   {
     "id": 800,
@@ -34462,11 +34462,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": 1
   },
   {
     "id": 801,
@@ -34895,8 +34895,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": -1
   },
   {
     "id": 811,
@@ -34935,11 +34935,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 4,
+    "stat_change_amount": 1
   },
   {
     "id": 812,
@@ -34981,8 +34981,8 @@
     "stat_change_self": false,
     "secondary_effect": 0,
     "secondary_chance": 100,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 0,
+    "stat_change_amount": -1
   },
   {
     "id": 813,
@@ -35882,11 +35882,11 @@
     "fixed_damage": 0,
     "level_damage": false,
     "is_spread": false,
-    "stat_change_self": false,
+    "stat_change_self": true,
     "secondary_effect": 0,
     "secondary_chance": 0,
-    "stat_change_stat": -1,
-    "stat_change_amount": 0
+    "stat_change_stat": 2,
+    "stat_change_amount": 1
   },
   {
     "id": 834,

@@ -224,6 +224,48 @@ func _smoke_test() -> void:
 	assert(raw_evolutions["1"]["species_name"] == "Bulbasaur", "evolutions.json species_name for dex 1 should be Bulbasaur")
 	assert(raw_evolutions["384"]["species_name"] == "Rayquaza", "evolutions.json species_name for dex 384 should be Rayquaza")
 
+	# [M19-pipeline-fix] moves.json stat-change/chance extraction spot-checks.
+	# Bug 1 (stat_change_stat/amount/self dropped for secondary-effect stat
+	# changes on non-EFFECT_STAT_CHANGE moves): Mud-Slap/Icy Wind/Rock Tomb
+	# (the 3 originally-cited moves) + Overheat (guaranteed self-drop) +
+	# Meteor Mash (probabilistic self-raise) — a representative cross-section
+	# of the 88-move fix, not exhaustive (see m19_pipeline_fix_test.tscn for
+	# the full list).
+	var mud_slap := get_move(189)
+	assert(mud_slap.get("stat_change_stat", -1) == 5, "Mud-Slap stat_change_stat should be 5 (ACCURACY)")
+	assert(mud_slap.get("stat_change_amount", 0) == -1, "Mud-Slap stat_change_amount should be -1")
+	var icy_wind := get_move(196)
+	assert(icy_wind.get("stat_change_stat", -1) == 4, "Icy Wind stat_change_stat should be 4 (SPEED)")
+	var rock_tomb := get_move(317)
+	assert(rock_tomb.get("stat_change_stat", -1) == 4, "Rock Tomb stat_change_stat should be 4 (SPEED)")
+	var overheat := get_move(315)
+	assert(overheat.get("stat_change_stat", -1) == 2, "Overheat stat_change_stat should be 2 (SPATK)")
+	assert(overheat.get("stat_change_amount", 0) == -2, "Overheat stat_change_amount should be -2")
+	assert(overheat.get("stat_change_self", false) == true, "Overheat stat_change_self should be true")
+	var meteor_mash := get_move(309)
+	assert(meteor_mash.get("stat_change_stat", -1) == 0, "Meteor Mash stat_change_stat should be 0 (ATK)")
+	assert(meteor_mash.get("stat_change_self", false) == true, "Meteor Mash stat_change_self should be true")
+
+	# Bug 2 (secondary_chance not resolved for ternary-valued .chance fields):
+	# Poison Sting/Fire Blast, neither of which is a stat-change move at all
+	# (secondary_effect status-infliction only) — confirms this is a genuinely
+	# separate fix from Bug 1 above.
+	var poison_sting := get_move(40)
+	assert(poison_sting.get("secondary_chance", 0) == 30, "Poison Sting secondary_chance should be 30")
+	var fire_blast := get_move(126)
+	assert(fire_blast.get("secondary_chance", 0) == 10, "Fire Blast secondary_chance should be 10")
+
+	# Regression control: unaffected moves stay bit-identical. Tackle has no
+	# additionalEffects at all; Growl's PRIMARY effect IS EFFECT_STAT_CHANGE,
+	# the one shape the pre-fix pipeline already extracted correctly.
+	var tackle := get_move(33)
+	assert(tackle.get("stat_change_stat", -1) == -1, "Tackle stat_change_stat should remain -1 (no stat change)")
+	assert(tackle.get("secondary_chance", -1) == 0, "Tackle secondary_chance should remain 0")
+	var growl := get_move(45)
+	assert(growl.get("stat_change_stat", -1) == 0, "Growl stat_change_stat should remain 0 (ATK)")
+	assert(growl.get("stat_change_amount", 0) == -1, "Growl stat_change_amount should remain -1")
+	assert(growl.get("stat_change_self", true) == false, "Growl stat_change_self should remain false (lowers the OPPONENT's Attack)")
+
 	print("PokemonRegistry: smoke test passed — %d species, %d moves, %d learnsets, %d learnable-move lists, %d items, %d evo-lists, %d TM/HMs, %d exp curves loaded" % [
 		_species_by_dex.size(), _moves_by_id.size(), _learnsets_by_dex.size(), _learnable_moves_by_dex.size(),
 		_items_by_id.size(), _evolutions_by_dex.size(), _tmhm_map.size(), _exp_curves.size()

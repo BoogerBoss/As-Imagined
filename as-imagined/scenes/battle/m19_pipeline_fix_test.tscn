@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m19pipelinefixtest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m19_pipeline_fix_test.gd" id="1_m19pipelinefixtest"]
+
+[node name="M19PipelineFixTest" type="Node"]
+script = ExtResource("1_m19pipelinefixtest")

@@ -14375,3 +14375,230 @@ h-1/h-2/j/i) is closed, Group C's three items are genuinely, durably
 blocked on other milestones (M20 EV gain, M28 breeding) or excluded by
 Rob's own design decision (confusion berries), not left open pending
 further M18.5 work. No further M18.5 sub-tier is anticipated.
+
+---
+
+## [M19-pipeline-fix] Fix M15's dropped secondary-effect stat-change extraction
+
+### Confirmed root causes (Step 0) — two distinct bugs, not one
+
+No rerunnable extractor exists for `data/moves.json` in this repo
+(`tools/convert_pokedata.py`, credited by `[M15]`'s own entry, is absent —
+the same gap `[M18.5d Phase 1]`/`[M18.5j]` already found for
+`pokemon.json`/`learnsets.json`/`evolutions.json`). Wrote a new one-off
+analysis pass parsing `reference/pokeemerald_expansion/src/data/moves_info.h`
+directly, per move, rather than trying to recreate a missing extractor.
+
+**Bug 1 — wrong-conditional-branch (88 moves): `stat_change_stat`/
+`stat_change_amount`/`stat_change_self` only populated when a move's
+PRIMARY `.effect` is itself `EFFECT_STAT_CHANGE`.** Source's real struct
+(`include/move.h`'s `AdditionalEffect`) uses FOUR distinct `moveEffect`
+values for "change a stat": `STAT_CHANGE_EFFECT_PLUS`/`_MINUS` (used when
+the stat change IS the move's entire primary effect — Growl, Swords Dance)
+and `MOVE_EFFECT_STAT_PLUS`/`_MINUS` (used when the stat change is a
+SECONDARY effect attached to a different primary effect — almost always
+`EFFECT_HIT` — Mud-Slap, Icy Wind, Rock Tomb, Overheat, Draco Meteor, ...).
+The (missing) extractor only ever checked the first pair, confirmed by
+direct comparison: Mud-Slap's `secondary_chance` was ALREADY correctly
+extracted (100), proving the extractor reached its `additionalEffects`
+entry at all — but `stat_change_stat`/`amount` stayed at -1/0 regardless,
+meaning the WHICH-stat/HOW-MUCH extraction specifically was gated on the
+wrong condition, not simply missing entirely.
+
+**Bug 2 — ternary-value-not-resolved (12 moves, distinct root cause): a
+SEPARATE gap affecting `secondary_chance`.** `secondary_chance` was only
+ever populated from a PLAIN NUMERIC `.chance` literal — moves whose
+`.chance` is a ternary (e.g. Acid's
+`B_UPDATED_MOVE_DATA >= GEN_2 ? 10 : 33`) were silently defaulted to 0,
+indistinguishable from a genuinely-guaranteed effect. 6 of these 12 overlap
+with Bug 1's list (Acid/Bubble Beam/Aurora Beam/Psychic/Constrict/Bubble);
+6 are entirely independent, non-stat-change moves whose `secondary_effect`
+field was ALREADY correct (Poison Sting/Bite/Thunder/Sludge/Fire Blast/
+Poison Fang — all real status-infliction secondary effects, chance-only
+wrong). Found while cross-checking Bug 1's own examples against source
+directly — not originally part of this task's cited scope, but the same
+general "extraction fails on a non-literal expression" defect class,
+directly serving the recon-accuracy goal this task exists for. Fixed
+alongside Bug 1 rather than left for a future session to rediscover.
+
+**A parser hazard found and corrected during Step 0 itself, before either
+bug list was finalized**: Low Kick's `additionalEffects` (a 30%-flinch
+entry) lives ONLY inside the `#else` (pre-Gen-3) branch of a
+`#if B_UPDATED_MOVE_DATA >= GEN_3` block wrapping its ENTIRE
+`additionalEffects` assignment — under this project's GEN_LATEST default,
+Low Kick's real `EFFECT_LOW_KICK` has NO additionalEffects at all. A first-
+pass regex scan (ignorant of `#if`/`#else` gating) wrongly attributed the
+inactive branch's flinch chance to it. Checked all 12 moves in this file
+whose `additionalEffects` sits inside an open `#if` region individually
+against source — Low Kick was the only genuine false positive; the other
+11 (Skull Bash/Rapid Spin/Zippy Zap/etc.) all resolve correctly since their
+own `#if` conditions are unconditionally TRUE under GEN_LATEST. Confirmed
+Low Kick's existing 0/-1 defaults are already correct — excluded from both
+fix lists explicitly, not silently left broken.
+
+**Excluded, not fixable within the current schema (41 moves)**: moves whose
+`additionalEffects` sets MORE THAN ONE stat field at once (Ancient Power
+raises all 5 non-HP stats by 1; Growth raises Attack AND SpAtk; Curse/
+Calm Mind/Shell Smash/Geomancy/etc. — every real multi-stat move in the
+catalog). `MoveData.stat_change_stat` is a single int; representing a
+multi-stat entry would need a schema change (an array of stat/amount
+pairs), genuinely out of this pipeline-fix's scope. Their pre-existing
+values (a mix of `-1`/partial single-stat data from whatever the ORIGINAL,
+now-absent extractor happened to produce) are left completely untouched —
+confirmed via direct diff, not assumed.
+
+### Definitive affected-move list (re-derived directly from source, not
+### assumed from the 3 originally-cited examples)
+
+**88 moves, Bug 1** (`stat_change_stat`/`amount`/`self`): Acid(51), Bubble
+Beam(61), Aurora Beam(62), Psychic(94), Skull Bash(130), Constrict(132),
+Bubble(145), Mud-Slap(189), Octazooka(190), Icy Wind(196), Steel Wing(211),
+Rapid Spin(229), Iron Tail(231), Metal Claw(232), Crunch(242), Shadow
+Ball(247), Rock Smash(249), Luster Purge(295), Mist Ball(296), Crush
+Claw(306), Meteor Mash(309), Overheat(315), Rock Tomb(317), Muddy
+Water(330), Mud Shot(341), Psycho Boost(354), Hammer Arm(359), Bug
+Buzz(405), Focus Blast(411), Energy Ball(412), Earth Power(414), Mud
+Bomb(426), Mirror Shot(429), Flash Cannon(430), Draco Meteor(434), Leaf
+Storm(437), Charge Beam(451), Seed Flare(465), Flame Charge(488), Low
+Sweep(490), Acid Spray(491), Struggle Bug(522), Bulldoze(523),
+Electroweb(527), Razor Shell(534), Leaf Tornado(536), Night Daze(539),
+Glaciate(549), Fiery Dance(552), Snarl(555), Play Rough(583),
+Moonblast(585), Diamond Storm(591), Mystical Fire(595), Power-Up
+Punch(612), Ice Hammer(628), Lunge(642), Fire Lash(643), Trop Kick(651),
+Clanging Scales(654), Fleur Cannon(659), Shadow Bone(662), Liquidation(664),
+Zippy Zap(676), Drum Beating(706), Aura Wheel(711), Breaking Swipe(712),
+Apple Acid(715), Grav Apple(716), Spirit Break(717), Meteor Beam(728),
+Skitter Smack(734), Thunderous Kick(751), Psyshield Bash(756), Springtide
+Storm(759), Mystical Power(760), Esper Wing(768), Bitter Malice(769),
+Triple Arrows(771), Bleakwind Storm(774), Lumina Crash(783), Spin
+Out(787), Torch Song(799), Aqua Step(800), Pounce(810), Trailblaze(811),
+Chilling Water(812), Electro Shot(833).
+
+**12 moves, Bug 2** (`secondary_chance`): Poison Sting(40), Bite(44),
+Acid(51), Bubble Beam(61), Aurora Beam(62), Thunder(87), Psychic(94),
+Sludge(124), Fire Blast(126), Constrict(132), Bubble(145), Poison
+Fang(305).
+
+**Union: 94 unique moves** (6 overlap: Acid/Bubble Beam/Aurora Beam/
+Psychic/Constrict/Bubble).
+
+### Implementation
+
+New one-off `scripts/gen_fix_stat_change_extraction.py` — matching
+`[M18.5j]`'s own precedent (a small idempotent generator rather than
+recreating a missing pipeline), operates directly on `data/moves.json`,
+embeds the full 88+12 move fix tables with per-move source citations in
+its own doc comment. Idempotent (reruns produce zero changes, confirmed).
+Regenerated `data/moves.json` in place.
+
+**Confirmed via direct programmatic diff (old vs. new JSON, every field, every
+move) that the fix disturbed NOTHING else**: exactly 94 moves changed
+(matching the union above precisely), zero moves gained or lost any field
+outside `{stat_change_stat, stat_change_amount, stat_change_self,
+secondary_chance}`, and the move-ID set itself is completely unchanged (no
+entries added/removed/reordered).
+
+**Confirmed via direct code search that this fix changes ZERO runtime
+behavior**: `data/moves.json` is loaded by `PokemonRegistry._load_moves()`
+and exposed via `get_move()`, but `get_move()` has ZERO real call sites
+anywhere in production battle logic (only a comment reference) — real move
+mechanics are exclusively sourced from `gen_moves.py`'s curated `.tres`
+files via the separate `MoveRegistry`, confirming the recon's own Section A
+finding ("`data/moves.json` → full reference dump, no mechanics"). Two of
+the 88 fixed moves (Skull Bash/130, Rapid Spin/229) DO already have real
+`.tres`-backed implementations, but both use entirely separate bespoke
+fields (`charge_turn_defense_boost`, `is_rapid_spin`) rather than the
+generic `stat_change_stat` pipeline at all — confirmed by direct inspection
+of their `gen_moves.py` entries, zero overlap with this fix's field surface.
+(Flagged, not fixed, as an unrelated side-finding: Rapid Spin's real
+`B_SPEED_BUFFING_RAPID_SPIN >= GEN_8` Speed+1 self-boost, confirmed active
+under this project's GEN_LATEST default via the same Step-0 source read,
+is not present in its current hand-curated implementation — a genuine
+production gap, but a battle-mechanics one, out of this pure-data-pipeline
+tier's scope.)
+
+### Testing
+
+`scripts/data/pokemon_registry.gd`'s `_smoke_test()` extended with a
+representative spot-check (Mud-Slap/Icy Wind/Rock Tomb/Overheat/Meteor
+Mash for Bug 1, Poison Sting/Fire Blast for Bug 2, Tackle/Growl for an
+unaffected-control check), matching `[M18.5j]`'s own precedent for this
+class of data-integrity work. New `scenes/battle/m19_pipeline_fix_test.gd`/
+`.tscn`: 415/415 assertions across 4 sections, stable across 4 reruns —
+Section A (the full 88-move Bug-1 list, exact stat/amount/self match),
+Section B (the full 12-move Bug-2 list, exact chance match), Section C (all
+41 multi-stat-excluded moves confirmed bit-identical to their real
+pre-existing values — NOT simply `-1`, corrected mid-session after the
+first test run revealed several of these already carried partial,
+pre-existing non-default data from before this session started), Section D
+(a 4-move unaffected-control sample, including a self-authored test bug
+caught and fixed: Growl LOWERS the opponent's Attack, `self=false` — not a
+self-buff, despite reading like one).
+
+### Regression
+
+`item_registry_test.tscn`: **309/309**, unchanged. `stat_test.tscn`
+(the real production consumer of the generic `stat_change_stat`/`amount`
+dispatch in `battle_manager.gd` — fed exclusively by `.tres`-sourced
+`MoveData`, never `data/moves.json`): **78/78**, unchanged — confirms zero
+behavior change for any already-implemented stat-changing move. Full sweep
+not run, per this task's own explicit narrow-scope instruction. No stray
+Godot processes before or after; reference clone untouched; no scratch
+files left in the project tree (all analysis scripts stayed in the
+session's own scratchpad directory).
+
+### Recon re-run
+
+`docs/m19_recon.md` corrected and re-classified in place (not a fresh
+document — a pipeline-fix notice added at the top, every changed section
+marked inline):
+
+- **81 of the 88 Bug-1 moves reclassified Tier 1 → Tier 2** (the other 7
+  were already correctly Tier 2/4 — Skull Bash/Rapid Spin already
+  `**[IMPLEMENTED]**`, Bulldoze/Aura Wheel/Grav Apple correctly stay in
+  Tier 4 since their PRIMARY effect, not the stat-change payload, is what
+  drives their complexity class, Meteor Beam already correctly Tier 2). All
+  12 Bug-2 moves were already correctly Tier 2 (chance-only fix, no tier
+  move needed).
+- **41 moves newly tagged `**[IMPLEMENTED]**`** — entirely M18.5's
+  completed infrastructure, NOT the pipeline fix: `[M18.5f]`'s 10 binding
+  moves, `[M18.5g]`'s 30 multi-hit moves, `[M18.5d-2]`'s Attract.
+  `scripts/gen_moves.py`'s own implemented-move count re-derived directly:
+  **132, not the original recon's 91** (confirmed via the same regex-count
+  method the original recon used, zero moves lost).
+- **Section C1 (multi-hit)/C2 (binding) marked BUILT**, with C2 additionally
+  corrected to note Jaw Lock does NOT actually share the binding mechanism
+  (`[M18.5f]`'s own Step 0 finding — `MOVE_EFFECT_TRAP_BOTH`, not
+  `MOVE_EFFECT_WRAP` — 10 moves genuinely share it, not 11 as originally
+  counted). Skill Link/Loaded Dice/Grip Claw all now built too (`[M18.5i]`).
+- **Section D fully re-resolved**: Attract done (`[M18.5d-2]`), unblocking
+  Cute Charm/Oblivious (also both built) and reopening Destiny Knot —
+  which `[M18.5i]`'s own Step 0 found is REALLY blocked on M28/breeding
+  (`InheritIVs`, `daycare.c`), not Attract at all, correcting this recon's
+  own original "unlocks Destiny Knot" framing. Hidden Power moved from
+  BLOCKED to UNBLOCKED-not-yet-implemented — `[M18.5h-2]`'s real per-mon IVs
+  satisfy its data dependency (not implemented in this session, per this
+  task's own explicit "recon re-run only" scope). Return/Frustration
+  reconfirmed still blocked — no per-individual friendship system exists
+  anywhere in M18.5's additions.
+- **Section E's summary tables fully recomputed** from the corrected
+  Section B headers directly (not hand-adjusted): per-generation
+  implemented counts, the 847-real-moves/802-unimplemented reconciliation
+  (the gap is now 45, not the original's 4 — re-derived and re-explained,
+  not just the old footnote's numbers swapped in).
+- Every generation header's "(N already implemented)" count
+  programmatically cross-checked against the actual count of
+  `**[IMPLEMENTED]**`-tagged lines within it (all 9 generations match
+  exactly), and the total move-line count across all tiers confirmed still
+  exactly 934 (no move lost, duplicated, or double-counted) before this
+  entry was written.
+
+No new M19 sub-tier prompts written or scoped — per this task's own explicit
+instruction, the recon re-run's output is a corrected reference document
+only.
+
+### Docs
+
+CLAUDE.md's status section updated noting this pipeline fix complete and
+that M19 is now ready to be properly sub-tier-scoped in a future session
+against `docs/m19_recon.md`'s corrected data.
