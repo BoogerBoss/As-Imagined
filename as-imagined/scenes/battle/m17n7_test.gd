@@ -112,12 +112,14 @@ func _load_move(id: int) -> MoveData:
 	return load("res://data/moves/move_%04d.tres" % id) as MoveData
 
 
-func _make_item(hold_effect: int, param: int = 0, name: String = "") -> ItemData:
+func _make_item(hold_effect: int, param: int = 0, name: String = "",
+		pocket: int = 0) -> ItemData:
 	var item := ItemData.new()
 	item.hold_effect = hold_effect
 	item.hold_effect_param = param
 	if name != "":
 		item.item_name = name
+	item.pocket = pocket
 	return item
 
 
@@ -222,7 +224,7 @@ func _test_section_3_klutz_full_battle() -> void:
 	attacker.add_move(tackle)
 	var holder := _make_mon("KlutzBattleHolder", [TypeChart.TYPE_NORMAL], 100, 60, 100, 60, 100, 20)
 	holder.ability = klutz
-	holder.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry")
+	holder.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry", ItemManager.POCKET_BERRIES)
 	holder.current_hp = 82  # just above max_hp/2=80 — one hit crosses the threshold
 	holder.add_move(tackle)
 
@@ -288,7 +290,7 @@ func _test_section_5_unnerve_full_battle() -> void:
 	attacker.ability = unnerve
 	attacker.add_move(tackle)
 	var defender := _make_mon("UnnerveBattleDef", [TypeChart.TYPE_NORMAL], 100, 60, 100, 60, 100, 20)
-	defender.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry")
+	defender.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry", ItemManager.POCKET_BERRIES)
 	defender.current_hp = 82
 	defender.add_move(tackle)
 
@@ -354,7 +356,7 @@ func _test_section_7_unburden_unit_and_full_battle() -> void:
 	fast_atk.add_move(tackle)
 	var ub_holder := _make_mon("UBBattleHolder", [TypeChart.TYPE_NORMAL], 100, 60, 80, 60, 80, 60)
 	ub_holder.ability = unburden
-	ub_holder.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry")
+	ub_holder.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry", ItemManager.POCKET_BERRIES)
 	ub_holder.current_hp = 82
 	ub_holder.add_move(tackle)
 
@@ -377,7 +379,7 @@ func _test_section_7_unburden_unit_and_full_battle() -> void:
 
 func _test_section_8_harvest_unit_and_full_battle() -> void:
 	var harvest := _load_ability(139)
-	var berry := _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry")
+	var berry := _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry", ItemManager.POCKET_BERRIES)
 
 	# (i) No-ops: wrong ability, item still held, no berry ever consumed.
 	var mon_i := _make_mon("HarvMon1", [TypeChart.TYPE_NORMAL])
@@ -419,7 +421,7 @@ func _test_section_8_harvest_unit_and_full_battle() -> void:
 	attacker.add_move(tackle)
 	var holder := _make_mon("HarvBattleHolder", [TypeChart.TYPE_NORMAL], 100, 60, 100, 60, 100, 20)
 	holder.ability = harvest
-	holder.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry")
+	holder.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry", ItemManager.POCKET_BERRIES)
 	holder.current_hp = 82
 	holder.add_move(tackle)
 
@@ -439,7 +441,7 @@ func _test_section_8_harvest_unit_and_full_battle() -> void:
 
 func _test_section_9_cud_chew_arm_fire_unit() -> void:
 	var cud_chew := _load_ability(291)
-	var berry := _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry")
+	var berry := _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry", ItemManager.POCKET_BERRIES)
 
 	# (i) No-op without the ability.
 	var mon_i := _make_mon("CCMon1", [TypeChart.TYPE_NORMAL])
@@ -481,8 +483,8 @@ func _test_section_9_cud_chew_arm_fire_unit() -> void:
 # or "HP recovered above threshold between arm and fire" deterministically.
 
 func _test_section_10_cud_chew_override_bypass_fix() -> void:
-	var berry := _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry")
-	var lum := _make_item(ItemManager.HOLD_EFFECT_CURE_STATUS, 0, "Lum Berry")
+	var berry := _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry", ItemManager.POCKET_BERRIES)
+	var lum := _make_item(ItemManager.HOLD_EFFECT_CURE_STATUS, 0, "Lum Berry", ItemManager.POCKET_BERRIES)
 
 	# (i) HP-threshold bypass: mon is well ABOVE the normal 50% threshold (would
 	# normally return 0), but override_item is set — heal must still fire.
@@ -532,7 +534,7 @@ func _test_section_11_cud_chew_full_battle() -> void:
 	attacker.add_move(tackle)
 	var holder := _make_mon("CCBattleHolder", [TypeChart.TYPE_NORMAL], 100, 60, 100, 60, 100, 20)
 	holder.ability = cud_chew
-	holder.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry")
+	holder.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry", ItemManager.POCKET_BERRIES)
 	holder.current_hp = 82
 	holder.add_move(tackle)
 
@@ -554,7 +556,7 @@ func _test_section_12_neutralizing_gas_suppression() -> void:
 	var harvest := _load_ability(139)
 	var cud_chew := _load_ability(291)
 	var gluttony := _load_ability(82)
-	var berry := _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry")
+	var berry := _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry", ItemManager.POCKET_BERRIES)
 
 	# (i) Unnerve suppressed — the opponent's berry is no longer blocked.
 	var opp_i := _make_mon("NGUnnerveOpp", [TypeChart.TYPE_NORMAL])
@@ -595,7 +597,7 @@ func _test_section_12_neutralizing_gas_suppression() -> void:
 
 func _test_section_13_negative_control() -> void:
 	var mon := _make_mon("PlainMon", [TypeChart.TYPE_NORMAL])
-	mon.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry")
+	mon.held_item = _make_item(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25, "Sitrus Berry", ItemManager.POCKET_BERRIES)
 	mon.current_hp = 60
 
 	_chk("S13.01 negative control: an ordinary Pokémon's held item is unaffected",

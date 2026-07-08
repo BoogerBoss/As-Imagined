@@ -3273,12 +3273,24 @@ static func _apply_moody(
 #     calls apply_stat_change directly and reports whatever actually happened (0 if the
 #     attacker's own ability, e.g. Clear Body, blocked it — correctly composes with the
 #     M17b change-blocking abilities without any Gooey-specific bypass logic).
-#   ABILITY_POISON_POINT (M17c, L4068-4090) / ABILITY_POISON_TOUCH (M17c, L4284-...):
-#     same 30% roll shape as Static — poison the attacker on contact if CanBePoisoned
-#     (this project's existing Poison/Steel type-immunity check in try_apply_status
-#     already covers that). Poison Touch's source case is a separate switch entry with
-#     an identical roll+effect, not a shared case block with Poison Point — kept as two
-#     `id ==` checks rather than one combined condition to mirror source's structure.
+#   ABILITY_POISON_POINT (M17c, L4068-4090): same 30% roll shape as Static — poison the
+#     ATTACKER on contact if CanBePoisoned (this project's existing Poison/Steel
+#     type-immunity check in try_apply_status already covers that). Defender-keyed
+#     (dispatched via `id`, same as every other ability in this function), matching
+#     source's own `ABILITYEFFECT_MOVE_END` pass (the defender's ability reacting to
+#     being hit).
+#   ABILITY_POISON_TOUCH ([M18.5a], L4281-4299): a GENUINELY DIFFERENT dispatch shape,
+#     corrected from a [M17c]-era bug that merged it into the Poison Point branch above.
+#     Source dispatches Poison Touch via the SEPARATE `ABILITYEFFECT_MOVE_END_ATTACKER`
+#     pass — keyed on the ATTACKER's ability, not the defender's — and poisons the
+#     DEFENDER (`gEffectBattler = gBattlerTarget`), not the attacker (confirmed via
+#     `CanBePoisoned`'s battlerAtk/battlerDef argument order). Checked independently,
+#     before `id` is even computed, since it must not be blocked by a defender with no
+#     ability of its own. Also gated by `IsMoveEffectBlockedByTarget` (L9811-9825,
+#     Shield Dust/Covert Cloak) against the DEFENDER — a real gap found and left
+#     unfixed at [M18x], closed here alongside the direction fix since both share the
+#     identical root cause and the correct gate insertion point only became clear once
+#     the direction was corrected (see [M18.5a] decisions.md entry).
 #   ABILITY_EFFECT_SPORE (M17c, L4024-4066): weighted 3-way roll — GEN_LATEST config
 #     (B_ABILITY_TRIGGER_CHANCE >= GEN_4 but NOT == GEN_4, matching the same generation
 #     branch Shed Skin uses) gives 9% poison / 10% paralysis / 11% sleep (not an even
@@ -3341,6 +3353,35 @@ static func try_contact_effects(
 	if attacker.fainted:
 		return result
 
+	# [M18.5a] Poison Touch: ATTACKER-keyed (unlike every other check below, all
+	# defender-keyed), so it must be checked independently of `id` and BEFORE the
+	# `id == ABILITY_NONE` early return just below — a defender with no ability of
+	# its own must not block an attacking Poison Touch holder from being checked.
+	# Poisons the DEFENDER (see this function's header comment for the full source
+	# citation and the [M17c]->[M18x]->[M18.5a] bug history). Gated by Shield
+	# Dust/Covert Cloak, checked against the DEFENDER (the one about to receive the
+	# poison), mirroring `StatusManager.try_secondary_effect`'s existing gate exactly.
+	# `defender.current_hp > 0` (not `.fainted`, per this project's established
+	# synchronous-aliveness convention) since the defender can faint from this exact
+	# hit before this dispatch runs.
+	# Known limitation, flagged not fixed (out of scope for this bugfix-only tier):
+	# if the ATTACKER holds Poison Touch AND the DEFENDER independently holds Poison
+	# Point, only Poison Touch is checked/applied — this function's single-effect-
+	# per-call return shape (shared by every branch below) has no way to report two
+	# independently-triggered abilities from one contact hit. A rare double-
+	# ability-holder edge case, not a masking of either ability's own correctness.
+	if effective_ability_id(attacker, ng_active) == ABILITY_POISON_TOUCH \
+			and defender.current_hp > 0:
+		var pt_blocked: bool = \
+				effective_ability_id(defender, ng_active, attacker, move) == ABILITY_SHIELD_DUST \
+				or ItemManager.holds_covert_cloak(defender, ng_active)
+		if not pt_blocked:
+			var pt_fires: bool = _roll_contact(force_contact_roll, 30)
+			if pt_fires and StatusManager.try_apply_status(defender, BattlePokemon.STATUS_POISON):
+				result["status_applied"] = BattlePokemon.STATUS_POISON
+				result["ability_name"] = "poison_touch"
+				return result
+
 	var id: int = effective_ability_id(defender, ng_active)
 	if id == ABILITY_NONE:
 		return result
@@ -3395,12 +3436,13 @@ static func try_contact_effects(
 			result["ability_name"] = "flame_body"
 		return result
 
-	# M17c: Poison Point / Poison Touch — 30% chance to poison the attacker on contact.
-	if id == ABILITY_POISON_POINT or id == ABILITY_POISON_TOUCH:
+	# M17c: Poison Point — 30% chance to poison the attacker on contact. (Poison
+	# Touch's ATTACKER-keyed check now lives independently above — see [M18.5a].)
+	if id == ABILITY_POISON_POINT:
 		var fires: bool = _roll_contact(force_contact_roll, 30)
 		if fires and StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_POISON):
 			result["status_applied"] = BattlePokemon.STATUS_POISON
-			result["ability_name"] = "poison_touch" if id == ABILITY_POISON_TOUCH else "poison_point"
+			result["ability_name"] = "poison_point"
 		return result
 
 	# M17c: Effect Spore — weighted 3-way roll (9% poison / 10% paralysis / 11% sleep),

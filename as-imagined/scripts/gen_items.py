@@ -65,6 +65,23 @@ HOLD_EFFECT_CURE_BRN        = 5   # Rawst Berry (M18b)
 HOLD_EFFECT_CURE_FRZ        = 6   # Aspear Berry (M18b)
 HOLD_EFFECT_CURE_CONFUSION  = 8   # Persim Berry — clears confusion_turns, not .status (M18b)
 HOLD_EFFECT_RESIST_BERRY    = 80  # type-resist berry, generic (M18b; Occa/Chilan precedent)
+
+# [M18-cleanup]: the 15 M12-era legacy items' own hold_effect constants,
+# copied unchanged from item_manager.gd (pure migration, not re-derived).
+HOLD_EFFECT_CURE_STATUS       = 9    # Lum Berry -- onStatusChange flag set
+HOLD_EFFECT_CHOICE_BAND       = 29
+HOLD_EFFECT_RESTORE_PCT_HP    = 82   # Sitrus Berry -- param=25 (25%)
+HOLD_EFFECT_LEFTOVERS         = 41
+HOLD_EFFECT_CHOICE_SCARF      = 49
+HOLD_EFFECT_CHOICE_SPECS      = 50
+HOLD_EFFECT_DAMP_ROCK         = 51   # Rain -> 8 turns
+HOLD_EFFECT_HEAT_ROCK         = 53   # Sun -> 8 turns
+HOLD_EFFECT_ICY_ROCK          = 54   # Hail -> 8 turns
+HOLD_EFFECT_SMOOTH_ROCK       = 56   # Sandstorm -> 8 turns
+HOLD_EFFECT_LIFE_ORB          = 60
+HOLD_EFFECT_UTILITY_UMBRELLA  = 115
+HOLD_EFFECT_HEAVY_DUTY_BOOTS  = 119  # full immunity to entry hazards on switch-in
+
 HOLD_EFFECT_TYPE_POWER = 43
 HOLD_EFFECT_PLATE      = 89
 HOLD_EFFECT_SCOPE_LENS = 40  # Scope Lens AND Razor Claw — same holdEffect in source (M18e)
@@ -516,6 +533,39 @@ ITEMS = [
     #    (a pre-existing Poison Touch gap is flagged, not silently fixed here).
     #    No hold_effect_param needed.
     {"id": 761, "name": "Covert Cloak", "hold_effect": HOLD_EFFECT_COVERT_CLOAK},
+
+    # ── [M18-cleanup]: Legacy item pipeline migration (15) -- these items were
+    #    already implemented ad hoc (M12-era and earlier), before gen_items.py/
+    #    .tres/ItemRegistry existed. PURE DATA MIGRATION -- every hold_effect/
+    #    hold_effect_param value below is copied unchanged from ItemManager's
+    #    own existing dispatch code (item_manager.gd), not re-derived from
+    #    source, per this task's own explicit "reproduce identical values"
+    #    scope. No dispatch logic touched; confirmed via grep no hardcoded
+    #    pre-pipeline name/ID check exists anywhere for any of these 15.
+    #    Lum Berry/Sitrus Berry: confirmed via direct file check that neither
+    #    had a .tres entry before this migration ([M18-patch-1]'s finding was
+    #    accurate and still true) -- both are fully functional today via
+    #    HOLD_EFFECT_CURE_STATUS/HOLD_EFFECT_RESTORE_PCT_HP, just never given
+    #    a .tres entry until now.
+    {"id": 472, "name": "Leftovers",          "hold_effect": HOLD_EFFECT_LEFTOVERS},
+    {"id": 522, "name": "Lum Berry",          "hold_effect": HOLD_EFFECT_CURE_STATUS,
+        "pocket": POCKET_BERRIES},
+    {"id": 442, "name": "Choice Band",        "hold_effect": HOLD_EFFECT_CHOICE_BAND},
+    {"id": 523, "name": "Sitrus Berry",       "hold_effect": HOLD_EFFECT_RESTORE_PCT_HP,
+        "hold_effect_param": 25, "pocket": POCKET_BERRIES},
+    {"id": 443, "name": "Choice Specs",       "hold_effect": HOLD_EFFECT_CHOICE_SPECS},
+    {"id": 444, "name": "Choice Scarf",       "hold_effect": HOLD_EFFECT_CHOICE_SCARF},
+    {"id": 447, "name": "Damp Rock",          "hold_effect": HOLD_EFFECT_DAMP_ROCK},
+    {"id": 448, "name": "Heat Rock",          "hold_effect": HOLD_EFFECT_HEAT_ROCK},
+    {"id": 450, "name": "Icy Rock",           "hold_effect": HOLD_EFFECT_ICY_ROCK},
+    {"id": 449, "name": "Smooth Rock",        "hold_effect": HOLD_EFFECT_SMOOTH_ROCK},
+    {"id": 479, "name": "Life Orb",           "hold_effect": HOLD_EFFECT_LIFE_ORB},
+    {"id": 549, "name": "Chilan Berry",       "hold_effect": HOLD_EFFECT_RESIST_BERRY,
+        "hold_effect_param": TYPE_NORMAL, "pocket": POCKET_BERRIES},
+    {"id": 550, "name": "Occa Berry",         "hold_effect": HOLD_EFFECT_RESIST_BERRY,
+        "hold_effect_param": TYPE_FIRE, "pocket": POCKET_BERRIES},
+    {"id": 510, "name": "Heavy-Duty Boots",   "hold_effect": HOLD_EFFECT_HEAVY_DUTY_BOOTS},
+    {"id": 513, "name": "Utility Umbrella",   "hold_effect": HOLD_EFFECT_UTILITY_UMBRELLA},
 ]
 
 HEADER = """\

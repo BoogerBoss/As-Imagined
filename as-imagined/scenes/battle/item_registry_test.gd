@@ -68,6 +68,27 @@ const EXPECTED := [
 	[266, "Pixie Plate", 89, 19],
 ]
 
+# [M18-cleanup]: the 15 M12-era legacy items migrated into the pipeline this
+# session. (id, name, hold_effect, hold_effect_param, pocket) -- independently
+# transcribed (not read from gen_items.py), same discipline as EXPECTED above.
+const EXPECTED_LEGACY := [
+	[472, "Leftovers",        41,  0,  0],
+	[522, "Lum Berry",         9,  0,  3],
+	[442, "Choice Band",      29,  0,  0],
+	[523, "Sitrus Berry",     82, 25,  3],
+	[443, "Choice Specs",     50,  0,  0],
+	[444, "Choice Scarf",     49,  0,  0],
+	[447, "Damp Rock",        51,  0,  0],
+	[448, "Heat Rock",        53,  0,  0],
+	[450, "Icy Rock",         54,  0,  0],
+	[449, "Smooth Rock",      56,  0,  0],
+	[479, "Life Orb",         60,  0,  0],
+	[549, "Chilan Berry",     80,  1,  3],
+	[550, "Occa Berry",       80, 11,  3],
+	[510, "Heavy-Duty Boots", 119, 0,  0],
+	[513, "Utility Umbrella", 115, 0,  0],
+]
+
 var _pass := 0
 var _fail := 0
 
@@ -75,6 +96,8 @@ var _fail := 0
 func _ready() -> void:
 	_test_section1_registry_data_integrity()
 	_test_section2_registry_vs_inline_behavioral_parity()
+	_test_section3_legacy_data_integrity()
+	_test_section4_legacy_behavioral_parity()
 
 	var total := _pass + _fail
 	print("item_registry_test: %d/%d passed" % [_pass, total])
@@ -144,6 +167,132 @@ func _test_section2_registry_vs_inline_behavioral_parity() -> void:
 	var mismatch_mod: int = ItemManager.move_power_modifier_uq412(attacker, water_move)
 	_chk("S2.charcoal registry-loaded does NOT boost a Water move (modifier=4096, neutral)",
 			mismatch_mod == 4096)
+
+
+# [M18-cleanup]: Section 3 mirrors Section 1's exact shape (a for-loop is
+# appropriate for the identical reason -- one mechanical property checked
+# across a homogeneous table, not per-item behavioral nuance), scoped to
+# ONLY the 15 newly-migrated legacy items -- does NOT retroactively cover
+# the ~99 items other M18 tiers' own dedicated test files already verify.
+func _test_section3_legacy_data_integrity() -> void:
+	for row: Array in EXPECTED_LEGACY:
+		var iid: int = row[0]
+		var iname: String = row[1]
+		var he: int = row[2]
+		var param: int = row[3]
+		var pocket: int = row[4]
+		var item: ItemData = ItemRegistry.get_item(iid)
+		_chk("S3.%d %s loaded" % [iid, iname], item != null)
+		if item == null:
+			continue
+		_chk("S3.%d %s item_id matches filename" % [iid, iname], item.item_id == iid)
+		_chk("S3.%d %s item_name matches" % [iid, iname], item.item_name == iname)
+		_chk("S3.%d %s hold_effect=%d" % [iid, iname, he], item.hold_effect == he)
+		_chk("S3.%d %s hold_effect_param=%d" % [iid, iname, param], item.hold_effect_param == param)
+		_chk("S3.%d %s pocket=%d" % [iid, iname, pocket], item.pocket == pocket)
+
+
+# [M18-cleanup]: Section 4 is this migration's actual correctness claim, made
+# explicit and directly tested rather than assumed from Section 3's data-
+# integrity checks alone (same purpose as Section 2, one representative
+# assertion per item family, using each item's own already-established
+# ItemManager dispatch function directly -- pure function calls, no battle
+# needed, avoiding any whole-battle-aggregation risk by construction).
+func _test_section4_legacy_behavioral_parity() -> void:
+	var weather_setter := _make_mon("LegacyWeatherSetter", TypeChart.TYPE_NORMAL)
+
+	var leftovers := ItemRegistry.get_item(472)
+	var leftovers_mon := _make_mon("LegacyLeftovers", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE, 100)
+	leftovers_mon.held_item = leftovers
+	leftovers_mon.current_hp = leftovers_mon.max_hp - 50
+	_chk("S4.472 Leftovers heals max_hp/16",
+			ItemManager.leftovers_heal(leftovers_mon) == max(1, leftovers_mon.max_hp / 16))
+
+	var lum := ItemRegistry.get_item(522)
+	var lum_mon := _make_mon("LegacyLum", TypeChart.TYPE_NORMAL)
+	lum_mon.held_item = lum
+	lum_mon.status = BattlePokemon.STATUS_BURN
+	_chk("S4.522 Lum Berry cures any status",
+			ItemManager.status_cure_berry_cures(lum_mon))
+
+	var band := ItemRegistry.get_item(442)
+	var band_mon := _make_mon("LegacyBand", TypeChart.TYPE_NORMAL)
+	band_mon.held_item = band
+	var physical_move := _make_move("LegacyPhysical", TypeChart.TYPE_NORMAL, 0, 40)
+	_chk("S4.442 Choice Band boosts physical attack (UQ_4_12(1.5)=6144)",
+			ItemManager.attack_modifier_uq412(band_mon, physical_move) == 6144)
+
+	var sitrus := ItemRegistry.get_item(523)
+	var sitrus_mon := _make_mon("LegacySitrus", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE, 100)
+	sitrus_mon.held_item = sitrus
+	sitrus_mon.current_hp = 1
+	_chk("S4.523 Sitrus Berry heals max_hp*25/100",
+			ItemManager.hp_threshold_berry_heal(sitrus_mon) == sitrus_mon.max_hp * 25 / 100)
+
+	var specs := ItemRegistry.get_item(443)
+	var specs_mon := _make_mon("LegacySpecs", TypeChart.TYPE_NORMAL)
+	specs_mon.held_item = specs
+	var special_move := _make_move("LegacySpecial", TypeChart.TYPE_NORMAL, 1, 40)
+	_chk("S4.443 Choice Specs boosts special attack (UQ_4_12(1.5)=6144)",
+			ItemManager.attack_modifier_uq412(specs_mon, special_move) == 6144)
+
+	var scarf := ItemRegistry.get_item(444)
+	var scarf_mon := _make_mon("LegacyScarf", TypeChart.TYPE_NORMAL)
+	scarf_mon.held_item = scarf
+	_chk("S4.444 Choice Scarf boosts Speed to 150%",
+			ItemManager.apply_speed_modifier(scarf_mon, 100) == 150)
+
+	var damp := ItemRegistry.get_item(447)
+	weather_setter.held_item = damp
+	_chk("S4.447 Damp Rock extends Rain to 8 turns",
+			ItemManager.weather_duration(weather_setter, DamageCalculator.WEATHER_RAIN) == 8)
+
+	var heat := ItemRegistry.get_item(448)
+	weather_setter.held_item = heat
+	_chk("S4.448 Heat Rock extends Sun to 8 turns",
+			ItemManager.weather_duration(weather_setter, DamageCalculator.WEATHER_SUN) == 8)
+
+	var icy := ItemRegistry.get_item(450)
+	weather_setter.held_item = icy
+	_chk("S4.450 Icy Rock extends Hail to 8 turns",
+			ItemManager.weather_duration(weather_setter, DamageCalculator.WEATHER_HAIL) == 8)
+
+	var smooth := ItemRegistry.get_item(449)
+	weather_setter.held_item = smooth
+	_chk("S4.449 Smooth Rock extends Sandstorm to 8 turns",
+			ItemManager.weather_duration(weather_setter, DamageCalculator.WEATHER_SANDSTORM) == 8)
+
+	var life_orb := ItemRegistry.get_item(479)
+	var life_orb_mon := _make_mon("LegacyLifeOrb", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE, 100)
+	life_orb_mon.held_item = life_orb
+	_chk("S4.479 Life Orb recoil is max_hp/10",
+			ItemManager.life_orb_recoil(life_orb_mon) == life_orb_mon.max_hp / 10)
+
+	var chilan := ItemRegistry.get_item(549)
+	var chilan_mon := _make_mon("LegacyChilan", TypeChart.TYPE_NORMAL)
+	chilan_mon.held_item = chilan
+	var normal_move := _make_move("LegacyNormalMove", TypeChart.TYPE_NORMAL, 0, 40)
+	_chk("S4.549 Chilan Berry resists a Normal-type hit (UQ_4_12(0.5)=2048)",
+			ItemManager.defender_item_modifier_uq412(chilan_mon, normal_move, 1.0) == 2048)
+
+	var occa := ItemRegistry.get_item(550)
+	var occa_mon := _make_mon("LegacyOcca", TypeChart.TYPE_NORMAL)
+	occa_mon.held_item = occa
+	var fire_move := _make_move("LegacyFireMove", TypeChart.TYPE_FIRE, 0, 40)
+	_chk("S4.550 Occa Berry resists a super-effective Fire hit (UQ_4_12(0.5)=2048)",
+			ItemManager.defender_item_modifier_uq412(occa_mon, fire_move, 2.0) == 2048)
+
+	var boots := ItemRegistry.get_item(510)
+	var boots_mon := _make_mon("LegacyBoots", TypeChart.TYPE_NORMAL)
+	boots_mon.held_item = boots
+	_chk("S4.510 Heavy-Duty Boots grants hazard immunity",
+			ItemManager.is_hazard_immune(boots_mon))
+
+	var umbrella := ItemRegistry.get_item(513)
+	var umbrella_mon := _make_mon("LegacyUmbrella", TypeChart.TYPE_NORMAL)
+	umbrella_mon.held_item = umbrella
+	_chk("S4.513 Utility Umbrella blocks the weather damage modifier",
+			ItemManager.blocks_weather_modifier(umbrella_mon))
 
 
 # ── Helpers (mirrors item_test.gd / m18a_test.gd's established pattern) ───────

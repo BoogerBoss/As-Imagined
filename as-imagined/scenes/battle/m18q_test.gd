@@ -282,6 +282,15 @@ func _test_q02_shell_bell() -> void:
 	add_child(bm3)
 	bm3._force_roll = 100
 	bm3._force_hit = true
+	# [M18.5a] def3's max HP (61, from the HP formula's +level+10 floor — base_hp=1
+	# alone can't push it lower) is NOT reliably one-shot by a non-crit hit at forced
+	# max roll (56 damage observed) -- def3 was surviving to counter-attack, denting
+	# atk3 below max HP, so atk3's FOLLOW-UP kill legitimately (and correctly) healed
+	# via Shell Bell. Forcing crit too (1.5x -> 84 damage, exceeding def3's 61 max HP)
+	# guarantees the genuine one-hit kill this discriminator's own comment already
+	# claimed, mirroring Q02.05/06's identical forced-roll+forced-crit pattern above
+	# and this project's established pairwise-RNG-forcing convention (CLAUDE.md).
+	bm3._force_crit = true
 	bm3.item_healed.connect(func(m, amt): healed3.push_back(amt))
 	bm3.start_battle_with_parties(BattleParty.single(atk3), BattleParty.single(def3))
 	_chk("Q02.08 fixture check: def3 fainted from the very first hit (one-turn " +

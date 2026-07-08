@@ -87,6 +87,15 @@ func _make_move(move_type: int, category: int, power: int = 40, accuracy: int = 
 	return m
 
 
+# [M18.5a] minimal item constructor — only Covert Cloak's gate needs an item in
+# this suite, matching [M18x]'s own `_make_item(hold_effect, param)` shape.
+func _make_item(hold_effect: int, param: int = 0) -> ItemData:
+	var item := ItemData.new()
+	item.hold_effect = hold_effect
+	item.hold_effect_param = param
+	return item
+
+
 func _make_bm() -> BattleManager:
 	var bm := BattleManager.new()
 	add_child(bm)
@@ -309,14 +318,55 @@ func _test_section_5_contact_status() -> void:
 			attacker2, poison_point, contact_move, 10, false)
 	_chk("S5.02 Poison Point: forced-failed roll does NOT poison", r1b["status_applied"] == 0)
 
-	# Poison Touch: same shape, separate ability.
-	var poison_touch := _make_mon("PoisonTouchMon", 50, [TypeChart.TYPE_NORMAL])
-	poison_touch.ability = _load_ability(143)
-	var attacker3 := _make_mon("Attacker3", 50, [TypeChart.TYPE_NORMAL])
+	# [M18.5a] Poison Touch: a GENUINELY DIFFERENT dispatch shape from Poison Point
+	# above, corrected from a [M17c]-era bug (found at [M18x], fixed here) that
+	# merged it into the same defender-keyed branch as Poison Point and poisoned
+	# the wrong battler. Real source dispatches Poison Touch via the ATTACKER's own
+	# ability and poisons the DEFENDER — the fixture below is now ability-holder-
+	# on-attacker, poison-observed-on-defender, the mirror image of S5.01/S5.02.
+	var pt_attacker := _make_mon("PTAttacker", 50, [TypeChart.TYPE_NORMAL])
+	pt_attacker.ability = _load_ability(143)
+	var pt_defender := _make_mon("PTDefender", 50, [TypeChart.TYPE_NORMAL])
 	var r2: Dictionary = AbilityManager.try_contact_effects(
-			attacker3, poison_touch, contact_move, 10, true)
-	_chk("S5.03 Poison Touch: forced roll poisons the attacker",
+			pt_attacker, pt_defender, contact_move, 10, true)
+	_chk("S5.03 Poison Touch: forced roll poisons the DEFENDER (corrected direction)",
 			r2["status_applied"] == BattlePokemon.STATUS_POISON)
+	_chk("S5.03b discriminator: the Poison Touch HOLDER (attacker) itself is never " +
+			"poisoned by its own ability", pt_attacker.status != BattlePokemon.STATUS_POISON)
+
+	# Discriminator: Poison Touch held by the DEFENDER (the old, buggy direction)
+	# does NOT fire — proves S5.03 isn't accidentally passing via the old defender-
+	# keyed branch still matching by coincidence.
+	var pt_defender_holds_it := _make_mon("PTDefenderHoldsIt", 50, [TypeChart.TYPE_NORMAL])
+	pt_defender_holds_it.ability = _load_ability(143)
+	var pt_plain_attacker := _make_mon("PTPlainAttacker", 50, [TypeChart.TYPE_NORMAL])
+	var r2b: Dictionary = AbilityManager.try_contact_effects(
+			pt_plain_attacker, pt_defender_holds_it, contact_move, 10, true)
+	_chk("S5.03c discriminator: Poison Touch held by the DEFENDER (not the " +
+			"attacker) does not fire at all", r2b["status_applied"] == 0)
+
+	# Shield Dust gate ([M18x]'s own flagged gap, closed here): the DEFENDER's
+	# Shield Dust blocks an attacking Poison Touch holder from poisoning it.
+	var pt_atk_vs_shield_dust := _make_mon("PTAtkVsShieldDust", 50, [TypeChart.TYPE_NORMAL])
+	pt_atk_vs_shield_dust.ability = _load_ability(143)
+	var shield_dust_defender := _make_mon("ShieldDustDefender", 50, [TypeChart.TYPE_NORMAL])
+	shield_dust_defender.ability = _load_ability(19)
+	var r2c: Dictionary = AbilityManager.try_contact_effects(
+			pt_atk_vs_shield_dust, shield_dust_defender, contact_move, 10, true)
+	_chk("S5.03d Shield Dust blocks an attacking Poison Touch holder",
+			r2c["status_applied"] == 0)
+
+	# Covert Cloak gate (the item-side twin of Shield Dust's gate above, same
+	# `IsMoveEffectBlockedByTarget` source function): the DEFENDER's held Covert
+	# Cloak likewise blocks it.
+	var pt_atk_vs_covert_cloak := _make_mon("PTAtkVsCovertCloak", 50, [TypeChart.TYPE_NORMAL])
+	pt_atk_vs_covert_cloak.ability = _load_ability(143)
+	var covert_cloak_defender := _make_mon("CovertCloakDefender", 50, [TypeChart.TYPE_NORMAL])
+	covert_cloak_defender.held_item = _make_item(ItemManager.HOLD_EFFECT_COVERT_CLOAK)
+	var r2d: Dictionary = AbilityManager.try_contact_effects(
+			pt_atk_vs_covert_cloak, covert_cloak_defender, contact_move, 10, true)
+	_chk("S5.03e Covert Cloak blocks an attacking Poison Touch holder",
+			r2d["status_applied"] == 0)
 
 	# Effect Spore: weighted 3-way roll (9% poison / 10% paralysis / 11% sleep).
 	var effect_spore := _make_mon("EffectSporeMon", 50, [TypeChart.TYPE_NORMAL])

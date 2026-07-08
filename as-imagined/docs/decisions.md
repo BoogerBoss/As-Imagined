@@ -12119,3 +12119,367 @@ Rock, Life Orb, Chilan Berry, Occa Berry, Heavy-Duty Boots, Utility
 Umbrella), of which **two have no `.tres` registry entry at all** (Lum
 Berry, Sitrus Berry — found during `[M18-patch-1]`, confirmed still true,
 not yet fixed by any subsequent tier).
+
+## [M18-cleanup] Legacy item pipeline migration (15 items)
+
+Final queued step of M18, per `docs/m18_subtier_plan.md` and `[M18x]`'s own
+closing note. Pure data migration — zero new mechanics, zero existing
+dispatch logic touched. Confirmed via grep across `scripts/battle/core/`
+that no hardcoded pre-pipeline name/ID check exists for any of these 15
+items anywhere in production code — every one was already dispatched
+purely through `hold_effect` constants via `effective_held_item`, so this
+session only needed to give each a `gen_items.py` entry and regenerate.
+
+### Step 0 — Lum/Sitrus discrepancy resolved
+
+Checked directly: `data/items/item_0522.tres` (Lum Berry) and
+`item_0523.tres` (Sitrus Berry) did not exist before this session.
+`[M18-patch-1]`'s finding was accurate and still true as of this session —
+not stale, not fixed by any later tier. Both items were, and remain, fully
+functional today (dispatched via `HOLD_EFFECT_CURE_STATUS`/
+`HOLD_EFFECT_RESTORE_PCT_HP`), simply never given a `.tres` entry — exactly
+the scope this task's own framing anticipated as most likely, confirmed
+rather than assumed.
+
+### Finalized list — all 15, values copied unchanged from `item_manager.gd`
+
+| Item | ID | `hold_effect` | param | pocket |
+|---|---|---|---|---|
+| Leftovers | 472 | `LEFTOVERS`=41 | — | — |
+| Lum Berry | 522 | `CURE_STATUS`=9 | — | `POCKET_BERRIES` |
+| Choice Band | 442 | `CHOICE_BAND`=29 | — | — |
+| Sitrus Berry | 523 | `RESTORE_PCT_HP`=82 | 25 | `POCKET_BERRIES` |
+| Choice Specs | 443 | `CHOICE_SPECS`=50 | — | — |
+| Choice Scarf | 444 | `CHOICE_SCARF`=49 | — | — |
+| Damp Rock | 447 | `DAMP_ROCK`=51 | — | — |
+| Heat Rock | 448 | `HEAT_ROCK`=53 | — | — |
+| Icy Rock | 450 | `ICY_ROCK`=54 | — | — |
+| Smooth Rock | 449 | `SMOOTH_ROCK`=56 | — | — |
+| Life Orb | 479 | `LIFE_ORB`=60 | — | — |
+| Chilan Berry | 549 | `RESIST_BERRY`=80 | `TYPE_NORMAL`=1 | `POCKET_BERRIES` |
+| Occa Berry | 550 | `RESIST_BERRY`=80 | `TYPE_FIRE`=11 | `POCKET_BERRIES` |
+| Heavy-Duty Boots | 510 | `HEAVY_DUTY_BOOTS`=119 | — | — |
+| Utility Umbrella | 513 | `UTILITY_UMBRELLA`=115 | — | — |
+
+All 15 IDs confirmed against `include/constants/items.h` directly. All
+`hold_effect`/`hold_effect_param` values copied from `item_manager.gd`'s
+own existing constants and dispatch code, NOT re-derived from source — a
+migration, not a re-implementation, per this task's own explicit
+instruction. Chilan/Occa Berry's exact `hold_effect_param` (`TYPE_NORMAL`/
+`TYPE_FIRE`) cross-checked against `item_test.gd`'s existing inline
+`_make_item` calls rather than re-derived independently. Chilan/Occa/
+Lum/Sitrus are the 4 genuine berries among these 15 — confirmed via
+`item.pocket = POCKET_BERRIES` set on all 4, matching `[M18-patch-1]`'s
+established pattern for Cheek Pouch/Harvest/Cud Chew (these 4 were not
+among the 36 berries that patch fixed, since none were in `gen_items.py`
+yet at that time).
+
+### Implementation
+
+- `gen_items.py`: 14 new `HOLD_EFFECT_*` constants added (all copied from
+  `item_manager.gd`; `HOLD_EFFECT_RESIST_BERRY` already existed from
+  `[M18b]`), plus 15 new `ITEMS` entries appended at the end of the list.
+- `.tres` regenerated: 154 items total (139 prior + 15).
+- **Zero changes to any existing dispatch logic** in `item_manager.gd`/
+  `battle_manager.gd`/`damage_calculator.gd` — confirmed not needed at
+  Step 0, confirmed still true after implementation (no file beyond
+  `gen_items.py` and the new `.tres` files was touched for the migration
+  itself).
+
+### Testing — extended `item_registry_test.gd`, no new test file
+
+Per this task's own reduced testing bar (regression-preservation, not
+new-mechanic verification): added **Section 3** (data-integrity loop over
+the 15 new items, mirroring Section 1's exact shape — id/name/hold_effect/
+param, PLUS a `pocket` check Section 1 doesn't need) and **Section 4**
+(behavioral parity — one direct-function-call assertion per item, each
+using the item's own pre-existing `ItemManager` dispatch function against a
+registry-loaded `ItemData`, e.g. `leftovers_heal`/`attack_modifier_uq412`/
+`hp_threshold_berry_heal`/`weather_duration`/`life_orb_recoil`/
+`defender_item_modifier_uq412`/`is_hazard_immune`/`blocks_weather_modifier`/
+`status_cure_berry_cures`). **309/309** assertions (204 prior + 90 Section 3
++ 15 Section 4), passing on the first run, stable across 2 reruns. No
+whole-battle-aggregation risk — every Section 4 assertion is a pure
+function call, no battle needed.
+
+### Regression
+
+Ran the full 16-suite set of every test file that references any of these
+15 items by name (`item_registry_test`, `item_test`, `integration_test`,
+`ai_test`, `m17j_test`, `m17n10_test`, `m17n2_test`, `m17n4_test`,
+`m17n7_test`, `m17n9_test`, `m18a_test`, `m18b_test`, `m18h_test`,
+`m18j_test`, `m18q_test`, `m18r_test`) — beyond this task's own routine
+scope, matching its explicit "treat regression as the primary deliverable"
+instruction.
+
+**14 of 16 suites: clean, zero behavior change** — `item_registry_test`
+309/309, `item_test` 77/77, `integration_test` 24/24, `ai_test` 40/40,
+`m17j_test` 48/48, `m17n10_test` 59/59, `m17n2_test` 58/58, `m17n4_test`
+44/44, `m17n9_test` 63/63, `m18a_test` 160/160, `m18b_test` 104/104,
+`m18h_test` 16/16, `m18j_test` 26/26, `m18r_test` 49/49.
+
+**2 of 16 suites: pre-existing failures found, confirmed unrelated to this
+migration, flagged not fixed, per this task's own explicit discipline**:
+- `m17n7_test.tscn`: 60/62 (`S8.07` Harvest's `item_regenerated` doesn't
+  fire; `S11.01` Cud Chew doesn't fire exactly once), reproducible
+  identically across 2 reruns (not RNG flakiness).
+- `m18q_test.tscn`: 15/16 (`Q02.09`, a Shell Bell discriminator: "holder
+  already at max HP → no heal" fails despite the test's own deliberately
+  single-turn, fully-forced-roll design meant to rule out
+  whole-battle-aggregation as the cause).
+
+**Confirmed unrelated to this migration, not merely assumed**: grepped both
+failing files directly — neither `m17n7_test.gd` nor `m18q_test.gd`
+references `ItemRegistry` anywhere; both construct every `ItemData` via
+inline `ItemData.new()`/`_make_item()`, entirely independent of the
+`.tres`/registry layer this migration touches. Root cause not
+investigated further (out of scope for a migration tier, per this task's
+own "flag, don't fix" instruction, same discipline `[M18x]` just applied to
+the Poison Touch findings). Both suites' full failing-assertion text is
+recorded above for whoever picks up the Post-M18 Review disposition.
+
+**Full 70-file sweep**: not run. Recommended as an optional follow-up at
+Rob's discretion, per this task's own "flag as a recommendation rather than
+assuming either way" instruction — the 16-suite targeted set already
+directly covers every test file that references these 15 items by name,
+and this migration's own diff (additive-only, zero existing dispatch logic
+touched) carries unusually low regression risk; a full sweep's main added
+value at this point would be surfacing OTHER pre-existing, unrelated
+failures (like the two just found) rather than anything attributable to
+this specific migration.
+
+No stray Godot processes before or after; reference clone untouched;
+`git status --short` matched exactly the expected file set (2 modified
+files — `gen_items.py`, `item_registry_test.gd` — plus 15 new `.tres`
+files, zero test files added) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated: **M18 (Full Item Set) is now fully
+complete in every sense** — implementation, testing, and pipeline
+migration. New "Post-M18 Review" section added, listing every
+flagged-but-unfixed item found across the whole M18 effort for disposition
+before M18.5 begins, including the two new findings from this session's
+own regression sweep.
+
+## [M18.5a] Post-M18 technical debt (Poison Touch fixes + 2 test-authoring bugs)
+
+Four items from CLAUDE.md's Post-M18 Review, sharing one session purely for
+scheduling efficiency — genuinely separate, documented here as four
+distinguished sections. Items 1+2 share one investigation (both Poison
+Touch, same code region); items 5+6 turned out to share nothing except
+both being confirmed-reproducible test failures found during
+`[M18-cleanup]`'s regression sweep — one was a fixture-damage-math bug, the
+other a stale test-helper bug, unrelated mechanisms.
+
+**A real numbering discrepancy found and resolved at Step 0**: this
+tier's own prompt labeled its "Item 5" as the `m18q_test` Shell Bell
+fixture and its "Item 6" as the `m17n7_test` Harvest/Cud Chew failures —
+the reverse of CLAUDE.md's own Post-M18 Review list, which numbers item 5
+as `m17n7_test` and item 6 as `m18q_test`. Resolved by following
+CLAUDE.md's list as authoritative (it's the actual numbered source being
+marked COMPLETE); the two sections below are labeled 5/6 to match
+CLAUDE.md, not the prompt's own internal numbering.
+
+### Item 1 — Poison Touch poisoned the wrong battler
+
+**Confirmed the bug, then confirmed the fix, directly from source.** Real
+source (`battle_util.c` L4281-4299) dispatches Poison Touch through
+`ABILITYEFFECT_MOVE_END_ATTACKER` — a SEPARATE pass, keyed on the
+ATTACKER's ability, explicitly commented `// Same as above, but for
+attacker`. Every other ability in this project's `try_contact_effects`
+(Poison Point included) is dispatched from the single `id =
+effective_ability_id(defender, ...)` value at the top of the function — a
+defender-keyed reaction to being hit. Poison Point's own case
+(`battle_util.c` L4068-4090) confirms this defender-keyed shape is
+correct for it: `CanBePoisoned(gBattlerTarget, gBattlerAttacker, ...)`
+poisons `gBattlerAttacker`, matching this project's existing (correct)
+behavior. Poison Touch's case, by contrast, poisons `gEffectBattler =
+gBattlerTarget` — confirmed via `CanBePoisoned(gBattlerAttacker,
+gBattlerTarget, ..., GetBattlerAbility(gBattlerTarget))`'s argument order
+(battlerAtk=inflictor, battlerDef=recipient checked for type immunity) —
+i.e. the DEFENDER is poisoned, triggered by the ATTACKER's own ability.
+This project's pre-existing code merged both abilities into one
+defender-keyed `if id == ABILITY_POISON_POINT or id == ABILITY_POISON_TOUCH`
+branch and poisoned the attacker in both cases — correct for Poison Point,
+backwards for Poison Touch, exactly as `[M18x]` flagged.
+
+**Fix**: Poison Touch is now checked independently, BEFORE `id` is even
+computed (it doesn't depend on the defender's ability at all, so it must
+not be blocked by the `id == ABILITY_NONE` early return that a
+defender-with-no-ability would otherwise trigger). Poisons `defender`, not
+`attacker`. Gated on `defender.current_hp > 0` (not `.fainted`, per this
+project's established synchronous-aliveness convention — CLAUDE.md) since
+the defender can faint from this exact hit before this dispatch runs. The
+old combined branch is now Poison-Point-only.
+
+**Known limitation, flagged not fixed** (genuinely out of scope for a
+bugfix-only tier): if the ATTACKER holds Poison Touch AND the DEFENDER
+independently holds Poison Point, only Poison Touch is checked — this
+function's single-effect-per-call return `Dictionary` (shared by every
+branch in it) has no way to report two independently-triggered abilities
+from one contact hit. A rare double-ability-holder edge case; source runs
+these as two genuinely independent dispatch passes and has no such
+limitation, but reproducing that here would mean restructuring this
+function's return shape, out of scope for a 2-bug fix tier.
+
+### Item 2 — Poison Touch had no Shield Dust/Covert Cloak gate
+
+**Confirmed the gate's insertion point only became clear once item 1 was
+fixed, per the task's own instruction to check this explicitly rather than
+assume the two are independent.** Real source gates Poison Touch through
+`IsMoveEffectBlockedByTarget(GetBattlerAbility(gBattlerTarget))`
+(`battle_util.c` L9811-9825 — the same function `[M18x]` already confirmed
+is the literal shared Shield Dust/Covert Cloak check) — called against
+`gBattlerTarget`, i.e. the DEFENDER, the one about to RECEIVE the poison.
+Since item 1's fix makes `defender` the poison recipient, the gate
+naturally checks `defender`'s Shield Dust ability / Covert Cloak item —
+the exact same shape and the exact same battler role
+`StatusManager.try_secondary_effect`'s existing Shield Dust/Covert Cloak
+gate already uses. No further restructuring needed beyond item 1's own
+fix; the two gate checks (`effective_ability_id(defender, ...) ==
+ABILITY_SHIELD_DUST`, `ItemManager.holds_covert_cloak(defender, ...)`) are
+inlined directly into the new Poison-Touch branch rather than factored into
+a shared helper, matching this project's existing precedent of two
+separate, adjacent checks rather than one combined predicate function.
+
+### Implementation (items 1+2)
+
+- `scripts/battle/core/ability_manager.gd`: new independent Poison Touch
+  check inserted before `var id: int = effective_ability_id(defender,
+  ng_active)`, gated by the Shield Dust/Covert Cloak checks above; the
+  pre-existing combined branch narrowed to `if id == ABILITY_POISON_POINT`
+  only. Header doc comment above the function corrected to describe the
+  two abilities' now-distinct dispatch shapes instead of the stale
+  "kept as two `id ==` checks... mirror source's structure" framing (which
+  was itself the tell that both were being dispatched from the same `id`
+  value, the actual bug).
+- No changes needed to `status_manager.gd`, `item_manager.gd`, or
+  `battle_manager.gd` — `try_contact_effects`'s existing call site and
+  return-`Dictionary` shape already handle a `"poison_touch"`-tagged
+  `status_applied` result identically regardless of which battler was
+  poisoned.
+
+### Item 5 — `m17n7_test.gd` S8.07/S11.01 (Harvest/Cud Chew never fire in a full battle)
+
+**Root cause confirmed via direct debug tracing**: both failures share one
+cause, unrelated to Harvest or Cud Chew's own logic. `m17n7_test.gd`'s
+locally-defined `_make_item(hold_effect, param, name)` helper predates the
+`pocket` field's introduction (`[M18-patch-1]`) and was never updated to
+set it — every berry constructed through it (Sitrus Berry, Lum Berry) has
+`item.pocket == 0`, not `ItemManager.POCKET_BERRIES`. `_consume_item`
+(`battle_manager.gd`) gates `mon.last_consumed_berry = item` on `item.pocket
+== ItemManager.POCKET_BERRIES` (the exact fix `[M18-patch-1]` applied for
+Cheek Pouch and this same tracker together) — so when a Sitrus Berry
+constructed by this file's `_make_item` auto-consumes via the normal
+in-battle HP-threshold trigger, the heal fires correctly (confirmed via
+debug trace: HP jumped 58→98 exactly as expected) but
+`last_consumed_berry` silently never gets set, leaving Harvest with
+nothing to regenerate and Cud Chew with nothing to arm/fire. Every OTHER
+assertion in this 62-assertion file either constructs items without
+`_make_item` at all or manually sets `mon.last_consumed_berry` directly
+(bypassing `_consume_item` entirely) — S8.07 and S11.01 are the ONLY two
+assertions that exercise the real in-battle auto-consumption path, which
+is exactly why only these two failed and nothing else in the file did.
+
+**Confirmed a TEST bug, not an implementation bug** — `_consume_item`'s
+`pocket`-gated assignment (the exact mechanism `[M18-patch-1]` already
+fixed once, correctly, for the production `.tres` pipeline) was re-read
+and confirmed correct; the bug is entirely in this one test file's
+locally-constructed fixtures never having been migrated to set the field
+`[M18-patch-1]` introduced.
+
+**Fix**: added a `pocket: int = 0` parameter to `_make_item`, defaulting to
+non-berry (preserving the one genuine non-berry usage in this file, a
+Choice Band at S3), and passed `ItemManager.POCKET_BERRIES` explicitly at
+all 11 genuine-berry construction sites (10 Sitrus Berry, 1 Lum Berry) —
+matching `gen_items.py`'s own explicit-not-inferred convention for setting
+`pocket` per item.
+
+### Item 6 — `m18q_test.gd` Q02.09 (Shell Bell "already at max HP" discriminator)
+
+**Root cause confirmed via direct debug tracing, not assumed from the
+M17n-2-shaped hypothesis the task suggested** — that hypothesis turned out
+to be adjacent but not quite right. Traced with temporary debug prints
+(removed before finishing): `def3` (base_hp=1, base_def=1) does NOT have a
+near-zero max HP — the HP formula's `+level+10` floor puts it at 61 (per
+`[M18r]`'s own already-documented finding). `atk3`'s forced-max-roll,
+non-crit hit dealt only 56 damage — insufficient to one-shot 61 HP. `def3`
+survived the first hit at 5 HP, counter-attacked for 9 damage (denting
+`atk3` from 160 to 151, no longer at max HP), and only THEN did `atk3`'s
+follow-up hit finish `def3` off — at which point Shell Bell's heal fired
+completely correctly (`atk3` genuinely wasn't at max HP anymore). Q02.08's
+own assertion (`def3.fainted`) still passed throughout, because it only
+checks the end state, not which turn the faint happened on — masking that
+this was actually a 2-turn battle, not the intended 1-turn one-shot its
+own comment claimed.
+
+**This is the exact whole-battle-aggregation pitfall already documented in
+CLAUDE.md** (`[M17l]`/`[M18k]`/`[M18q]`), recurring in this same file's own
+test again — a "no heal despite being at max HP" check that's actually
+reading state after an unplanned second turn legitimately changed that
+precondition.
+
+**Fix**: added `bm3._force_crit = true` (previously only `_force_roll =
+100` and `_force_hit = true` were forced), mirroring Q02.05/06's already-
+established forced-roll-plus-forced-crit pattern earlier in the same test
+function and this project's general pairwise-RNG-forcing convention. A
+forced crit (1.5×) pushes 56 damage to 84, safely exceeding `def3`'s 61 max
+HP, guaranteeing the genuine one-hit kill the fixture's own comment always
+intended. **Confirmed a TEST bug, not an implementation bug** — `shell_bell_heal`'s
+own max-HP gate (`item_manager.gd`) was re-read and confirmed correct
+throughout this investigation; zero production code touched for this item.
+
+### Testing
+
+**Items 1+2** (`m17c_test.gd`, Poison Point/Touch's own origin suite —
+confirmed the right home, no new suite needed): corrected S5.03's fixture
+to the right direction (Poison Touch on the attacker, poison observed on
+the defender) and added S5.03b (holder itself is never poisoned),
+S5.03c (Poison Touch held by the DEFENDER — the old buggy direction — does
+NOT fire, ruling out the new branch accidentally passing via leftover
+old-branch behavior), S5.03d (Shield Dust gate), S5.03e (Covert Cloak
+gate). S5.01/S5.02 (Poison Point) left untouched and reconfirmed passing —
+unchanged behavior. New `_make_item` helper added to this file (previously
+absent) for the Covert Cloak fixture, matching `[M18x]`'s own minimal
+shape. **85/85** (was 79 before this session — 6 new assertions), passing
+on the first run, stable across 3 reruns.
+
+**Item 5**: `m17n7_test.tscn` **62/62** (was 60/62), stable across 4 reruns.
+
+**Item 6**: `m18q_test.tscn` **16/16** (was 15/16), stable across 4 reruns.
+
+### Regression
+
+- `m17c_test.tscn`: **85/85** (items 1+2's own origin suite, above).
+- `m18x_test.tscn`: **15/15**, unchanged — confirms the new Poison Touch
+  gate composes correctly with Covert Cloak's own existing gate on the
+  status-move secondary-effect pipeline, and that neither disturbed the
+  other.
+- `m17n1_test.tscn`: **82/82**, unchanged — Shield Dust's own origin suite,
+  confirms the new Poison Touch gate didn't disturb Shield Dust's existing
+  behavior.
+- `item_registry_test.tscn`: **309/309**, unchanged.
+- `m17n7_test.tscn`: **62/62** (item 5, above).
+- `m18q_test.tscn`: **16/16** (item 6, above).
+
+Full sweep not run, per this task's own explicit instruction —
+`[M18.5-baseline]` already confirmed everything else green immediately
+before this session; only these four fixes and their direct neighbors
+needed reconfirmation.
+
+No stray Godot processes before or after; reference clone untouched; no
+scratch scenes or leftover debug prints (both were added temporarily to
+`m18q_test.gd` and `m17n7_test.gd` during root-cause tracing for items 5
+and 6, and removed before the final passing runs recorded above).
+`git status --short` matched the expected file set (2 modified core files
+— `ability_manager.gd`, plus the M18-cleanup-era uncommitted files already
+sitting in the tree — and 3 modified test files: `m17c_test.gd`,
+`m18q_test.gd`, `m17n7_test.gd`) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s Post-M18 Review section updated: items 1, 2, 5, and 6 marked
+**COMPLETE**, each pointing at this entry. Item 4 (Shell Bell's doubles
+gaps) remains the only open item, still correctly deferred to M22 (Doubles
+Battle Support). Status section updated noting M18.5a complete.
