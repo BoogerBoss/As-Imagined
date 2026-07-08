@@ -1096,19 +1096,34 @@ ABILITIES = [
      "ai_rating": 0},
 
     # Source: battle_stat_change.c :: IsIntimidateBlocked (L660-675, see Inner Focus/Own
-    #   Tempo above) — blocks Intimidate's Attack drop. Oblivious's OWN primary effect
-    #   (Attract/Taunt immunity) is a documented no-op dependency — neither move exists
-    #   in this project yet. breakable=True (src/data/abilities.h L96-101).
+    #   Tempo above) — blocks Intimidate's Attack drop. [M18.5d-2]: Oblivious's OWN
+    #   primary effect (infatuation immunity) is now real — blocks Attract/Cute Charm
+    #   infliction on the holder (AbilityManager.attract_block_reason) and cures
+    #   pre-existing infatuation on switch-in (try_switch_in). Taunt immunity stays a
+    #   documented no-op dependency (Taunt still isn't implemented, re-confirmed via
+    #   grep). breakable=True (src/data/abilities.h L96-101).
     {"id": 12, "name": "Oblivious",
-     "description": "Blocks Intimidate. Prevents infatuation and Taunt (neither move exists yet).",
+     "description": "Blocks Intimidate. Prevents infatuation. (Taunt immunity: move not yet implemented.)",
      "ai_rating": 3, "breakable": True},
 
-    # Source: src/data/abilities.h — inflicts infatuation on contact; Attract/infatuation
-    #   doesn't exist as a status in this project yet. Documented no-op dependency, NOT
-    #   breakable in source (no `.breakable` flag on it).
+    # Source: battle_util.c L4130-4146 (ABILITY_CUTE_CHARM case) — [M18.5d-2]: real
+    # infliction now implemented (30% infatuation chance on contact, opposite-gender-
+    # gated, reuses StatusManager.try_apply_attract). NOT breakable in source (no
+    # `.breakable` flag on it).
     {"id": 56, "name": "Cute Charm",
-     "description": "May cause infatuation on contact (Attract not yet implemented).",
-     "ai_rating": 0},
+     "description": "30% chance to infatuate an opposite-gender Pokémon on contact.",
+     "ai_rating": 2},
+
+    # [M18.5d-2] Source: battle_util.c :: CalcMoveBasePowerAfterModifiers, case
+    # ABILITY_RIVALRY (L6490-6494) — no prior AbilityData entry existed (never
+    # implemented before this tier; only a name-only [M15] placeholder .tres). Boosts
+    # damage 25% against a same-gender target, reduces it 25% against an
+    # opposite-gender target; genderless attacker or defender is neutral. NOT
+    # breakable in source (no `.breakable` flag — a pure attacker/defender data
+    # comparison, not a defensive check an attacking Mold Breaker holder would bypass).
+    {"id": 79, "name": "Rivalry",
+     "description": "Powers up against same-gender foes, weaker against opposite-gender foes.",
+     "ai_rating": 1},
 
     # Source: src/data/abilities.h — blocks Explosion/Self-Destruct/Mind Blown-style
     #   moves and abilities from going off; no explosive-move mechanic exists in this

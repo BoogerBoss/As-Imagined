@@ -318,6 +318,7 @@ const ABILITY_WATER_VEIL:    int = 41
 const ABILITY_SOUNDPROOF:    int = 43
 const ABILITY_EARLY_BIRD:    int = 48
 const ABILITY_CUTE_CHARM:    int = 56
+const ABILITY_RIVALRY:       int = 79  # [M18.5d-2]: no prior constant existed — never implemented
 const ABILITY_INSOMNIA:      int = 15
 const ABILITY_ILLUMINATE:    int = 35
 const ABILITY_IMMUNITY:      int = 17
@@ -924,6 +925,44 @@ static func _is_dazzling_family(id: int) -> bool:
 # non-applicable case in [M17j]), since the attacker and the Dazzling-family holder are
 # always DIFFERENT battlers. Threaded through via `effective_ability_id`'s existing
 # `attacker` parameter so a Mold-Breaker-holding attacker correctly bypasses the block.
+# [M18.5d-2] Shared gate for BOTH Attract's own move-based infliction
+# (`BattleScript_EffectAttract`, battle_scripts_1.s L2220+ — a script-level
+# `jumpifability BS_TARGET_SIDE, ABILITY_AROMA_VEIL` check, then `tryinfatuating` /
+# `Cmd_tryinfatuating`, battle_script_commands.c L7613-7650, which ALSO re-checks
+# Aroma Veil plus Oblivious) and Cute Charm's identical combination (battle_util.c
+# L4130-4146: `!IsAbilityAndRecord(gBattlerAttacker, ..., ABILITY_OBLIVIOUS) &&
+# !IsAbilityOnSide(gBattlerAttacker, ABILITY_AROMA_VEIL)`). Both real-source call
+# sites protect "whoever's about to become infatuated" with the identical
+# Oblivious-OR-Aroma-Veil-on-their-side combination — confirmed genuinely unified,
+# not just similarly-shaped, so this project builds ONE shared helper rather than
+# duplicating the check at each of the two call sites.
+# `victim` = the Pokémon about to become infatuated (Attract's target, or Cute
+#   Charm's contact attacker — the roles are reversed between the two callers,
+#   but "whoever's about to be infatuated" is always this parameter).
+# `victim_ally` = victim's doubles partner (null in singles) — Aroma Veil is
+#   side-wide, matching `blocks_priority_move`'s own `defender_ally` shape below.
+# `attacker`/`attacker_move` = Mold-Breaker/Mycelium-Might bypass context, per
+#   `effective_ability_id`'s own established shape — both Oblivious and Aroma Veil
+#   are `.breakable = TRUE` in source. Left null for Cute Charm's call (not a move,
+#   so no Mold-Breaker bypass applies — matches this file's existing precedent of
+#   Cute Charm's own dispatch having no `attacker` param either, since Cute Charm
+#   itself has no `.breakable` flag to bypass in the first place).
+# Returns "" if not blocked, else "oblivious" or "aroma_veil" (a distinguishable
+# tag, mirroring `cud_chew_check`'s own "" / "arm" / "fire" shape) so callers can
+# emit a precise `ability_triggered` tag rather than a generic one.
+static func attract_block_reason(
+		victim: BattlePokemon, victim_ally: BattlePokemon, ng_active: bool = false,
+		attacker: BattlePokemon = null, attacker_move: MoveData = null) -> String:
+	if effective_ability_id(victim, ng_active, attacker, attacker_move) == ABILITY_OBLIVIOUS:
+		return "oblivious"
+	if effective_ability_id(victim, ng_active, attacker, attacker_move) == ABILITY_AROMA_VEIL:
+		return "aroma_veil"
+	if victim_ally != null and not victim_ally.fainted \
+			and effective_ability_id(victim_ally, ng_active, attacker, attacker_move) == ABILITY_AROMA_VEIL:
+		return "aroma_veil"
+	return ""
+
+
 static func blocks_priority_move(defender: BattlePokemon, defender_ally: BattlePokemon,
 		attacker: BattlePokemon, move: MoveData, ng_active: bool = false) -> bool:
 	# M17n-3: effective priority (raw + ability bonus), not just move.priority — see
@@ -1689,12 +1728,27 @@ static func blocks_critical_hit(
 static func move_power_modifier_uq412(
 		attacker: BattlePokemon, move: MoveData, weather: int,
 		ally: BattlePokemon = null, ng_active: bool = false,
-		is_last_to_move: bool = false, move_type_changed: bool = false) -> int:
+		is_last_to_move: bool = false, move_type_changed: bool = false,
+		defender: BattlePokemon = null) -> int:
 	var modifier: int = 4096
 
 	var atk_ability_id: int = effective_ability_id(attacker, ng_active)
 	if atk_ability_id != ABILITY_NONE:
 		var id: int = atk_ability_id
+		# [M18.5d-2] Rivalry — same pipeline stage as every other modifier in this
+		# function (CalcMoveBasePowerAfterModifiers, battle_util.c L6490-6494, the
+		# exact case immediately preceding Analytic below). `defender` is a NEW param
+		# on this function solely for Rivalry — every other modifier here only ever
+		# needed the attacker's own data. Exact values: UQ_4_12(1.25)=5120 (same
+		# gender), UQ_4_12(0.75)=3072 (opposite gender); genderless on either side
+		# means neither `are_same_gender` nor `are_opposite_gender` fires, so the
+		# modifier stays 4096 (neutral) — matches source's own fall-through (no
+		# `default` branch needed, the `if`/`else if` pair simply doesn't match).
+		if id == ABILITY_RIVALRY and defender != null:
+			if BattlePokemon.are_same_gender(attacker, defender):
+				modifier = DamageCalculator._uq412_multiply(modifier, 5120)
+			elif BattlePokemon.are_opposite_gender(attacker, defender):
+				modifier = DamageCalculator._uq412_multiply(modifier, 3072)
 		if id == ABILITY_TOXIC_BOOST \
 				and (attacker.status == BattlePokemon.STATUS_POISON
 					or attacker.status == BattlePokemon.STATUS_TOXIC) \
@@ -2673,6 +2727,8 @@ static func ignores_attacker_accuracy_stage(
 #                                    pre-existing major status on switch-in (M17n-1)
 #   "cured_confusion"       : bool — true if Own Tempo cured pokemon's own pre-existing
 #                                    confusion on switch-in (M17n-1)
+#   "cured_infatuation"     : bool — true if Oblivious cured pokemon's own pre-existing
+#                                    infatuation on switch-in (M18.5d-2)
 #   "opponent_guard_dog_change" : int — Attack stage change applied to the opponent
 #                                    when Guard Dog reverses Intimidate into a raise
 #                                    (M17n-10); mutually exclusive with "atk_change"
@@ -2692,7 +2748,7 @@ static func try_switch_in(
 		"opponent_defiant_stat": -1, "opponent_defiant_change": 0,
 		"opponent_guard_dog_change": 0,
 		"mirror_armor_reflect_change": 0, "mirror_armor_holder": null,
-		"cured_status": false, "cured_confusion": false,
+		"cured_status": false, "cured_confusion": false, "cured_infatuation": false,
 	}
 	var id: int = effective_ability_id(pokemon, ng_active)
 	if id == ABILITY_NONE:
@@ -2818,6 +2874,17 @@ static func try_switch_in(
 	if id == ABILITY_OWN_TEMPO and pokemon.confusion_turns > 0:
 		pokemon.confusion_turns = 0
 		result["cured_confusion"] = true
+
+	# [M18.5d-2] Oblivious — cures the holder's own PRE-EXISTING infatuation on
+	# switch-in, the SAME source function/trigger point as Immunity/Limber/Own Tempo
+	# above (TryImmunityAbilityHealStatus, battle_util.c L8875-8886) — genuinely N/A
+	# before this tier (no infatuation existed for it to cure), closed now that
+	# Attract/Cute Charm exist. Source's OTHER half of this same case
+	# (`B_OBLIVIOUS_TAUNT >= GEN_6` curing Taunt) stays N/A — Taunt is still not
+	# implemented in this project (confirmed via grep, not assumed).
+	if id == ABILITY_OBLIVIOUS and pokemon.infatuated:
+		pokemon.infatuated = false
+		result["cured_infatuation"] = true
 
 	# M17n-5: Slow Start — starts a 5-turn Atk/Speed-halving timer on switch-in.
 	# Source: battle_util.c L3052-3055 (ABILITYEFFECT_ON_SWITCHIN case), B_SLOW_START_TIMER
@@ -3315,10 +3382,13 @@ static func _apply_moody(
 #   "status_applied"    : int    — BattlePokemon.STATUS_* inflicted on attacker (0 = none)
 #   "speed_change"       : int   — Speed stage change applied to attacker (0 = none)
 #   "ability_name"      : String — key identifying which ability fired ("" if none)
+#   "attract_inflicted" : bool   — [M18.5d-2] Cute Charm infatuated the attacker
 #
 # force_contact_roll: null = RNG; true = force trigger; false = suppress (Static/Flame
 #   Body/Poison Point/Poison Touch's shared 30% roll).
 # force_effect_spore_roll: null = RNG; int 0-99 = pin the underlying roll value.
+# attacker_ally: [M18.5d-2] the ATTACKER's doubles partner (null in singles) — needed
+#   only for Cute Charm's Aroma-Veil-on-the-victim's-side check (attract_block_reason).
 static func try_contact_effects(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
@@ -3326,12 +3396,13 @@ static func try_contact_effects(
 		damage: int,
 		force_contact_roll: Variant = null,
 		force_effect_spore_roll: Variant = null,
-		ng_active: bool = false) -> Dictionary:
+		ng_active: bool = false,
+		attacker_ally: BattlePokemon = null) -> Dictionary:
 
 	var result := {
 		"rough_skin_damage": 0, "status_applied": 0, "speed_change": 0, "ability_name": "",
 		"mummy_overwritten_ability": -1, "wandering_spirit_swapped": false,
-		"pickpocket_stole": false,
+		"pickpocket_stole": false, "attract_inflicted": false,
 	}
 	# M17n-5: routed through move_makes_contact (not the raw flag) so an attacking
 	# Long Reach holder correctly disables every contact-triggered ability in this
@@ -3443,6 +3514,31 @@ static func try_contact_effects(
 		if fires and StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_POISON):
 			result["status_applied"] = BattlePokemon.STATUS_POISON
 			result["ability_name"] = "poison_point"
+		return result
+
+	# [M18.5d-2] Cute Charm — 30% chance to infatuate the ATTACKER on contact (same
+	# 30% roll shape as Static/Flame Body/Poison Point, defender-keyed exactly like
+	# them). Source: battle_util.c L4130-4146 (ABILITY_CUTE_CHARM case, the same
+	# switch). Reuses StatusManager.try_apply_attract (Attract's own infliction
+	# function) rather than duplicating its already-required infatuation/gender/
+	# block checks — `inflictor` is `defender` (the Cute Charm holder), `victim` is
+	# `attacker` (who made contact and is about to be infatuated). No
+	# `attacker`/`attacker_move` Mold-Breaker params passed to try_apply_attract:
+	# not a move, and Cute Charm itself has no `.breakable` flag either (matching
+	# this whole dispatch's `id` computation, which likewise passes no `attacker`
+	# param — Mold Breaker never bypasses this trigger). Source's blocked/failed
+	# outcomes (Oblivious, Aroma Veil, same-gender/genderless) all silently no-op
+	# with no message — unlike Attract's own move script, Cute Charm has no
+	# distinguishable "protected" popup, so this project doesn't distinguish WHY
+	# it failed either, matching that silent shape exactly.
+	if id == ABILITY_CUTE_CHARM:
+		var fires: bool = _roll_contact(force_contact_roll, 30)
+		if fires:
+			var cc_result: String = StatusManager.try_apply_attract(
+					attacker, defender, attacker_ally, ng_active)
+			if cc_result == "":
+				result["attract_inflicted"] = true
+				result["ability_name"] = "cute_charm"
 		return result
 
 	# M17c: Effect Spore — weighted 3-way roll (9% poison / 10% paralysis / 11% sleep),

@@ -337,8 +337,12 @@ static func calculate(
 	# M17a: ability-driven base-power modifiers (Toxic Boost, Flare Boost, Sand Force,
 	# Tough Claws, Steelworker, Steely Spirit, Battery, Power Spot) — same pipeline stage
 	# as Helping Hand above (CalcMoveBasePowerAfterModifiers, battle_util.c L6375-6656).
+	# [M18.5d-2]: `defender` threaded through for Rivalry, the only modifier in this
+	# chain that needs the DEFENDER's own data (every other one is a pure attacker
+	# self-check).
 	var ability_power_mod: int = AbilityManager.move_power_modifier_uq412(
-			attacker, move, weather, ally, ng_active, is_last_to_move, move_type_changed)
+			attacker, move, weather, ally, ng_active, is_last_to_move, move_type_changed,
+			defender)
 	if ability_power_mod != 4096:
 		effective_power = _uq412_half_down(effective_power, ability_power_mod)
 

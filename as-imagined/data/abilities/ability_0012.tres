@@ -7,6 +7,6 @@ script = ExtResource("1")
 
 ability_id = 12
 ability_name = "Oblivious"
-description = "Blocks Intimidate. Prevents infatuation and Taunt (neither move exists yet)."
+description = "Blocks Intimidate. Prevents infatuation. (Taunt immunity: move not yet implemented.)"
 ai_rating = 3
 breakable = true

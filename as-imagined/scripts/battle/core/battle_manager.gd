@@ -63,6 +63,7 @@ signal destiny_bond_set(attacker: BattlePokemon)                          # Dest
 signal destiny_bond_triggered(fainted_mon: BattlePokemon, killer: BattlePokemon)  # DB KO
 signal disabled(target: BattlePokemon, move: MoveData)                    # Disable applied
 signal encored(target: BattlePokemon, move: MoveData)                     # Encore applied
+signal infatuated(mon: BattlePokemon)                                     # M18.5d-2: Attract/Cute Charm applied
 signal bide_started(attacker: BattlePokemon)                              # Bide setup turn
 signal bide_storing(attacker: BattlePokemon)                              # Bide wait turn
 signal bide_released(attacker: BattlePokemon, damage: int)                # Bide release
@@ -799,7 +800,8 @@ func _phase_pre_move_checks() -> void:
 		return
 
 	# Status pre-move checks — source: battle_move_resolution.c canceler chain
-	# Order: sleep → freeze → confusion → paralysis (matching source canceler order)
+	# Order: sleep → freeze → confusion → paralysis → infatuation (matching source
+	# canceler order — [M18.5d-2] added infatuation as the final check)
 	# Pass chosen_move so pre_move_check gates the freeze block on !MoveThawsUser
 	# (source L172); a thaws_user move skips the 20% roll and leaves the Pokémon
 	# frozen-but-acting; check_user_thaw in MOVE_EXECUTION then thaws it.
@@ -833,6 +835,8 @@ func _phase_pre_move_checks() -> void:
 			reason = "asleep"
 		elif actor.status == BattlePokemon.STATUS_FREEZE:
 			reason = "frozen"
+		elif check["infatuated_stuck"]:
+			reason = "infatuated"
 		else:
 			reason = "confused"
 		move_skipped.emit(actor, reason)
@@ -1410,6 +1414,8 @@ func _phase_move_execution() -> void:
 			ability_triggered.emit(incoming, "immunity_family_cure")
 		if bp_si_result["cured_confusion"]:
 			ability_triggered.emit(incoming, "own_tempo_cure")
+		if bp_si_result["cured_infatuation"]:
+			ability_triggered.emit(incoming, "oblivious_cure")
 		var bp_sss_actual: int = AbilityManager.try_switch_in_evasion(incoming, defender, bp_ng_active)
 		if bp_sss_actual != 0:
 			stat_stage_changed.emit(defender, BattlePokemon.STAGE_EVASION, bp_sss_actual)
@@ -1672,6 +1678,33 @@ func _phase_move_execution() -> void:
 				defender.encored_move = defender.last_move_used
 				defender.encore_turns = 3
 				encored.emit(defender, defender.encored_move)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Attract ───────────────────────────────────────────────────────────
+		# Source: battle_scripts_1.s :: BattleScript_EffectAttract (L2220+) ->
+		#   Cmd_tryinfatuating (battle_script_commands.c L7613-7650). NOT the same
+		# command as Disable/Encore's own `aroma_veil_blocks` var above -- Attract
+		# needs Oblivious in the same gate as Aroma Veil, a combination that single
+		# flag's shape doesn't cover, so this uses the dedicated
+		# StatusManager.try_apply_attract / AbilityManager.attract_block_reason pair
+		# instead (see move_data.gd's blocked_by_aroma_veil doc comment for the full
+		# citation and the [M17n-1] mis-citation this tier corrected).
+		# ignores_substitute=true in source (moves.json), matching Disable's own
+		# shape above -- no substitute check needed here, unlike Encore's.
+		if move.is_attract:
+			var attract_result: String = StatusManager.try_apply_attract(
+					defender, attacker, _get_ally(defender), ng_active, attacker, move)
+			match attract_result:
+				"oblivious", "aroma_veil":
+					move_effect_failed.emit(defender, "attract_blocked")
+					ability_triggered.emit(defender, attract_result)
+				"already_infatuated", "not_opposite_gender":
+					move_effect_failed.emit(defender, "attract_failed")
+				_:
+					infatuated.emit(defender)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -2949,6 +2982,8 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 			ability_triggered.emit(new_mon, "immunity_family_cure")
 		if si_result["cured_confusion"]:
 			ability_triggered.emit(new_mon, "own_tempo_cure")
+		if si_result["cured_infatuation"]:
+			ability_triggered.emit(new_mon, "oblivious_cure")
 		# M17b: Supersweet Syrup — same per-opponent loop shape as Intimidate, one-time only.
 		var sss_actual: int = AbilityManager.try_switch_in_evasion(new_mon, opp, ng_active)
 		if sss_actual != 0:
@@ -3089,6 +3124,9 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	# party-state-scoped and NOT touched here — see BattlePokemon's own doc comments.
 	mon.unburden_active = false
 	mon.cud_chew_armed = false
+	# [M18.5d-2] Attract's infatuation volatile — cured by switch-out/faint like
+	# every other one-battle-stint volatile here (Step 0's confirmed cure condition).
+	mon.infatuated = false
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
@@ -3809,7 +3847,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 
 	var contact_result: Dictionary = AbilityManager.try_contact_effects(
 			attacker, target, move, damage, _force_contact_roll, _force_effect_spore_roll,
-			ng_active)
+			ng_active, _get_ally(attacker))
 	if contact_result["rough_skin_damage"] > 0:
 		var rs_dmg: int = contact_result["rough_skin_damage"]
 		attacker.current_hp = max(0, attacker.current_hp - rs_dmg)
@@ -3847,6 +3885,13 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		item_transferred.emit(attacker, target, target.held_item)
 		ability_triggered.emit(target, contact_result["ability_name"])
 		_try_symbiosis(attacker)
+	if contact_result["attract_inflicted"]:
+		# [M18.5d-2] Cute Charm infatuated the ATTACKER (the one who made contact),
+		# already mutated directly by StatusManager.try_apply_attract inside
+		# try_contact_effects, matching this whole block's established
+		# already-mutated-read-back-and-emit pattern.
+		infatuated.emit(attacker)
+		ability_triggered.emit(target, contact_result["ability_name"])
 
 	# M18d: Jaboca Berry (physical) / Rowap Berry (special) — retaliation damage to
 	# the ATTACKER on any hit of the matching move CATEGORY, regardless of contact

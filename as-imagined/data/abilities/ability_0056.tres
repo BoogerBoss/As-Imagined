@@ -7,4 +7,5 @@ script = ExtResource("1")
 
 ability_id = 56
 ability_name = "Cute Charm"
-description = "May cause infatuation on contact (Attract not yet implemented)."
+description = "30% chance to infatuate an opposite-gender Pokémon on contact."
+ai_rating = 2

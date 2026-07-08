@@ -254,6 +254,58 @@ static func try_apply_confusion(
 	return true
 
 
+# [M18.5d-2] try_apply_attract: attempt to inflict infatuation (a volatile status,
+# structurally the closest existing precedent is try_apply_confusion just above —
+# confirmed at Step 0 to be the right structural match: both are chance-free-on-
+# infliction volatiles with their own separate per-turn move-cancel check). The ONE
+# real structural difference from confusion: infatuation is gender-pair-gated and
+# has no turn counter (a single persistent bool, cured only by switch-out, not by
+# a countdown) — genuinely different from confusion's 2-5 turn countdown, so this
+# is NOT a copy-paste of try_apply_confusion's shape despite the shared precedent.
+#
+# Shared by BOTH real inflictors — Attract the move (battle_manager.gd's own
+# `is_attract` dispatch) and Cute Charm the ability (AbilityManager.
+# try_contact_effects) — confirmed genuinely unified in source (see
+# AbilityManager.attract_block_reason's own doc comment for the two source
+# citations), so this project builds ONE shared function rather than duplicating
+# the already-required/gender/block checks at both call sites.
+#
+# `victim` = who is about to become infatuated. `inflictor` = who caused it (used
+# ONLY for the gender-pair check — this project does not track WHICH specific
+# battler caused an infatuation beyond that, see BattlePokemon.infatuated's own
+# doc comment for the flagged, deliberately-not-built scope narrowing this implies).
+# `victim_ally`/`attacker`/`attacker_move` thread straight through to
+# AbilityManager.attract_block_reason — see that function's own doc comment for
+# their exact meaning (attacker/attacker_move are Mold-Breaker/Mycelium-Might
+# bypass context, null for Cute Charm's non-move call).
+#
+# Returns "" on success, else a fail-reason tag: "oblivious" / "aroma_veil"
+# (blocked by an ability — source plays a distinct message for these under
+# Attract; Cute Charm's own source has no such message, silently no-ops either
+# way) or "already_infatuated" / "not_opposite_gender" (ordinary failure, not a
+# block — source's own generic failInstr fallback, no distinction between the two
+# either, matching AreBattlersOfOppositeGender's own unified false-for-both shape).
+static func try_apply_attract(
+		victim: BattlePokemon,
+		inflictor: BattlePokemon,
+		victim_ally: BattlePokemon = null,
+		ng_active: bool = false,
+		attacker: BattlePokemon = null,
+		attacker_move: MoveData = null) -> String:
+
+	var block_reason: String = AbilityManager.attract_block_reason(
+			victim, victim_ally, ng_active, attacker, attacker_move)
+	if block_reason != "":
+		return block_reason
+	if victim.infatuated:
+		return "already_infatuated"
+	if not BattlePokemon.are_opposite_gender(inflictor, victim):
+		return "not_opposite_gender"
+
+	victim.infatuated = true
+	return ""
+
+
 # ── End-of-turn status damage ─────────────────────────────────────────────
 #
 # Returns the HP to subtract this end-of-turn (positive), or the HP to RESTORE
@@ -340,6 +392,7 @@ static func _poison_heal_amount(mon: BattlePokemon) -> int:
 #   force_freeze_thaw    : true = thaw this turn, false = stay frozen
 #   force_confusion_hit  : true = self-hit, false = snap out / no self-hit
 #   force_full_para      : true = fully paralyzed, false = can move
+#   force_infatuation_hit: [M18.5d-2] true = stuck (can't move), false = can move
 static func pre_move_check(
 		mon: BattlePokemon,
 		force_sleep_wake: Variant = null,
@@ -347,7 +400,8 @@ static func pre_move_check(
 		force_confusion_hit: Variant = null,
 		force_full_para: Variant = null,
 		move: MoveData = null,
-		ng_active: bool = false) -> Dictionary:
+		ng_active: bool = false,
+		force_infatuation_hit: Variant = null) -> Dictionary:
 
 	var result := {
 		"can_move":        true,
@@ -357,6 +411,7 @@ static func pre_move_check(
 		"snapped_out":     false,
 		"flinched":        false,
 		"loafing":         false,
+		"infatuated_stuck": false,
 	}
 
 	# ── Sleep ──────────────────────────────────────────────────────────────
@@ -476,6 +531,26 @@ static func pre_move_check(
 			full_para = bool(force_full_para)
 
 		if full_para:
+			result["can_move"] = false
+			return result
+
+	# ── Infatuation ───────────────────────────────────────────────────────
+	# Source: battle_move_resolution.c :: CancelerInfatuation L460-479 — the LAST
+	# canceler in source's own order (Asleep/Frozen -> Truant -> Flinch -> Confused
+	# -> Paralyzed -> Infatuation), matching this function's own check order exactly.
+	# !RandomPercentage(RNG_INFATUATION, 50) -> 50% chance stuck in love, can't move.
+	# Source's `gBattleScripting.battler = infatuation - 1` (which battler caused it)
+	# is flavor-text-only — irrelevant here, this project has no text system and
+	# BattlePokemon.infatuated is a plain bool (see its own doc comment).
+	if mon.infatuated:
+		var stuck: bool
+		if force_infatuation_hit == null:
+			stuck = randi() % 100 < 50
+		else:
+			stuck = bool(force_infatuation_hit)
+
+		if stuck:
+			result["infatuated_stuck"] = true
 			result["can_move"] = false
 			return result
 

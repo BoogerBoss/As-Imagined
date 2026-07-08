@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 79
 ability_name = "Rivalry"
-description = ""
-ai_rating = 0
+description = "Powers up against same-gender foes, weaker against opposite-gender foes."
+ai_rating = 1

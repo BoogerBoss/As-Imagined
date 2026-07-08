@@ -27,9 +27,24 @@ const STAGE_SPEED: int    = 4
 const STAGE_ACCURACY: int = 5
 const STAGE_EVASION: int  = 6
 
+# [M18.5d] Resolved per-instance gender. A clean small enum for this project's
+# own code (matching STATUS_*/STAGE_* above), distinct from
+# PokemonSpecies.gender_ratio's raw source-matching byte encoding (0-255,
+# thresholded against a roll — see _roll_gender below).
+const GENDER_MALE: int       = 0
+const GENDER_FEMALE: int     = 1
+const GENDER_GENDERLESS: int = 2
+
 var species: PokemonSpecies = null
 var nickname: String = ""
 var level: int = 1
+# [M18.5d] Rolled once in from_species() (see _roll_gender), matching the
+# species' gender_ratio. Freely reassignable afterward like every other field
+# here — future gender-aware mechanics (Attract, M18.5e) should just set this
+# directly on a test fixture, the same way every other field in this class is
+# already hand-set by this project's ~70 existing `_make_mon`-style test
+# helpers, rather than needing a new forcing seam.
+var gender: int = GENDER_MALE
 
 # Current battle HP and computed stats (not base stats — those live on species)
 var current_hp: int = 0
@@ -64,6 +79,19 @@ var confusion_turns: int = 0  # volatile; 0 = not confused; set to 2-5 on applic
 # clears a stale true from an earlier Berserk Gene use. Meaningless while
 # confusion_turns == 0.
 var infinite_confusion: bool = false
+# [M18.5d-2] Attract's infatuation volatile. Source: gBattleMons[].volatiles.
+# infatuation (battle_script_commands.c :: Cmd_tryinfatuating L7613-7650) — real
+# source stores WHICH battler caused it (INFATUATED_WITH(battler)), used only for
+# (a) flavor text and (b) clearing infatuation if THAT SPECIFIC battler later
+# leaves the field via its own switch/faint (battle_main.c L3167/L3281). This
+# project simplifies to a plain bool: no flavor-text system exists to need (a),
+# and this project is singles-primary where "the opponent" is definitionally the
+# one attractor at any given time, so (b)'s cross-battler clearing is a genuine,
+# deliberately NOT-built scope narrowing (flagged in the [M18.5d-2] decisions.md
+# entry, not silently dropped). Cleared by BattleManager._clear_volatiles (the
+# INFATUATED mon's own switch-out/faint — the well-established, unambiguous half
+# of Attract's cure condition, confirmed from Step 0).
+var infatuated: bool = false
 # M18u: Metronome item's consecutive-same-move-use counter. Compared against
 # last_move_used (BEFORE it's overwritten for the current move) at the same
 # PP-deduction site source colocates its own reset check
@@ -294,6 +322,7 @@ static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokem
 	bp.original_types = p_species.types.duplicate()
 	bp.nickname = p_species.species_name
 	bp.level = p_level
+	bp.gender = _roll_gender(p_species.gender_ratio)
 	bp.ivs = [0, 0, 0, 0, 0, 0]
 	bp.evs = [0, 0, 0, 0, 0, 0]
 	bp.moves = []
@@ -335,6 +364,48 @@ static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokem
 	bp._calculate_stats()
 	bp.current_hp = bp.max_hp
 	return bp
+
+
+# [M18.5d] Resolves a species' raw gender_ratio byte to a per-instance GENDER_*
+# value, exactly mirroring source's GetGenderFromSpeciesAndPersonality
+# (pokemon.c L1847-1861): the three gender-locked sentinel values (MON_MALE=0,
+# MON_FEMALE=254, MON_GENDERLESS=255) return themselves directly with no roll;
+# any other value is a female-probability threshold checked against a uniform
+# 0-255 roll (`genderRatio > roll` -> female), matching source's
+# `genderRatio > (personality & 0xFF)` exactly (a personality value's low byte
+# is itself already uniform 0-255, so a direct `randi() % 256` reproduces the
+# identical distribution without needing a personality-value concept this
+# project doesn't otherwise have). No forcing seam — no other per-instance
+# field in this class has one (ivs/evs are deliberately zeroed, not rolled;
+# see their own doc comment above), and every field here is already freely
+# reassignable by test code after construction, which is how a future
+# Attract-family test should pin a specific gender rather than a new
+# force_gender parameter.
+static func _roll_gender(gender_ratio: int) -> int:
+	if gender_ratio == 0:
+		return GENDER_MALE
+	if gender_ratio == 254:
+		return GENDER_FEMALE
+	if gender_ratio == 255:
+		return GENDER_GENDERLESS
+	if gender_ratio > randi() % 256:
+		return GENDER_FEMALE
+	return GENDER_MALE
+
+
+# [M18.5d-2] Ports AreBattlersOfOppositeGender/AreBattlersOfSameGender
+# (battle_util.c L9420-9434) exactly — genderless on EITHER side makes both
+# functions false (genderless is neutral, neither "opposite" nor "same" of
+# anything). Used by Attract's own gender-gate and Cute Charm's identical gate
+# (are_opposite_gender), and by Rivalry's damage modifier (both).
+static func are_opposite_gender(mon1: BattlePokemon, mon2: BattlePokemon) -> bool:
+	return mon1.gender != GENDER_GENDERLESS and mon2.gender != GENDER_GENDERLESS \
+			and mon1.gender != mon2.gender
+
+
+static func are_same_gender(mon1: BattlePokemon, mon2: BattlePokemon) -> bool:
+	return mon1.gender != GENDER_GENDERLESS and mon2.gender != GENDER_GENDERLESS \
+			and mon1.gender == mon2.gender
 
 
 func add_move(move: MoveData) -> void:

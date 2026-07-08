@@ -57,15 +57,28 @@ const BAN_DAMP: int          = 1 << 13
 # Taunt, Torment, Encore, Disable, Heal Block) — but that function is ONLY ever
 # consulted by the AI's own move-scoring logic (battle_ai_main.c L1368/1431), never
 # by the real execution engine. Individually verified each protected effect's actual
-# in-battle command: Attract (`BS_TrySetInfatuation`, L12233-12251) and Torment
-# (`BS_TrySetTorment`, L12270-12286) DO check `IsAbilityOnSide(..., ABILITY_AROMA_VEIL)`
-# directly; Disable (`Cmd_disablelastusedattack`, L7898-7927) and Encore
-# (`Cmd_trysetencore`, L7929+) do NOT — a genuine, source-verified gap in this hack's
-# own execution engine (the AI "expects" Aroma Veil to block them, matching real-game
-# behavior, but the effect commands themselves never check it). Implemented here
-# matching the AI's own list (real intended behavior) rather than the execution
-# engine's apparent oversight — flagged explicitly in docs/decisions.md, not silently
-# assumed correct either way.
+# in-battle command: Torment (`BS_TrySetTorment`, L12270-12286) DOES check
+# `IsAbilityOnSide(..., ABILITY_AROMA_VEIL)` directly; Disable
+# (`Cmd_disablelastusedattack`, L7898-7927) and Encore (`Cmd_trysetencore`, L7929+) do
+# NOT — a genuine, source-verified gap in this hack's own execution engine (the AI
+# "expects" Aroma Veil to block them, matching real-game behavior, but the effect
+# commands themselves never check it). Implemented here matching the AI's own list
+# (real intended behavior) rather than the execution engine's apparent oversight —
+# flagged explicitly in docs/decisions.md, not silently assumed correct either way.
+#
+# [M18.5d-2] CORRECTION: this comment originally (mis)cited `BS_TrySetInfatuation`
+# (L12233-12251) as Attract's real command — that function is actually
+# `BattleScript_EffectInfatuateSide`'s (a side-wide effect this project doesn't
+# implement, no Z-moves), NOT the base single-target Attract move. Attract's real
+# script (`BattleScript_EffectAttract`, battle_scripts_1.s L2220+) calls a SEPARATE
+# `jumpifability BS_TARGET_SIDE, ABILITY_AROMA_VEIL` check BEFORE `tryinfatuating`
+# (`Cmd_tryinfatuating`, L7613-7650, which ALSO re-checks Aroma Veil plus Oblivious
+# plus gender/already-infatuated). Since Attract needs Oblivious in the same gate as
+# Aroma Veil — a combination `blocked_by_aroma_veil`'s own single-flag shape doesn't
+# cover — Attract deliberately does NOT use this flag; it has its own dedicated
+# `AbilityManager.blocks_attract()` gate instead (also reused by Cute Charm's
+# identical Oblivious+Aroma-Veil combination). `is_attract` (below) is therefore NOT
+# added to this flag's "eventually add Taunt/Torment/Heal Block too" list.
 #
 # This project has no generic move-effect-ID dispatch (each protected effect is its
 # own per-move boolean here, e.g. `is_disable`/`is_encore`), so this is a per-move flag
@@ -201,6 +214,16 @@ const SEMI_INV_UNDERWATER: int  = 3  # Dive — underwater on turn 1
 #   encoreTimer = B_ENCORE_TIMER (=4); but if target hasn't acted this turn: 4-1=3
 #   We always use 3 (simpler, matches typical case where target already moved).
 @export var is_encore: bool = false
+
+# [M18.5d-2] is_attract: inflicts infatuation (StatusManager.try_apply_attract) on
+# the target — opposite-gender only, blocked by the target's own Oblivious or
+# Aroma Veil on the target's side, fails if already infatuated. Each turn while
+# infatuated, a 50% chance the holder can't move at all (StatusManager.
+# pre_move_check, after Paralysis in the canceler order). Cured by the
+# INFATUATED mon's own switch-out (BattleManager._clear_volatiles).
+# Source: battle_script_commands.c :: Cmd_tryinfatuating (L7613-7650);
+#   battle_move_resolution.c :: CancelerInfatuation (L460-479, 50% roll).
+@export var is_attract: bool = false
 
 # is_bide: stores damage taken over 2 waiting turns then releases 2× total.
 # Priority +1 (Gen 4+). Locks into Bide via charging_move.

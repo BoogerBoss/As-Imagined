@@ -12483,3 +12483,442 @@ sitting in the tree — and 3 modified test files: `m17c_test.gd`,
 **COMPLETE**, each pointing at this entry. Item 4 (Shell Bell's doubles
 gaps) remains the only open item, still correctly deferred to M22 (Doubles
 Battle Support). Status section updated noting M18.5a complete.
+
+## [M18.5d] Gender infrastructure
+
+The one genuine hard dependency in M18.5's Phase 1 — Attract (M18.5e)
+cannot start until this lands. A data-model tier, not a battle-mechanic
+one: no new battle function, a new per-species field plus a per-instance
+resolution of it.
+
+### Step 0 — two real findings that reshaped this tier's actual scope
+
+**Finding 1 — most of the "extraction pipeline" work was already done.**
+`data/pokemon.json` already contains a `gender_ratio` field for all 386
+species (confirmed via direct inspection — Bulbasaur's entry already reads
+`"gender_ratio": 31`), and `PokemonSpecies.gender_ratio: int = 127` already
+exists in the schema (`pokemon_species.gd` L28, with an already-correct
+comment: "255 = genderless; 0 = always male; 254 = always female"). Both
+predate this tier — presumably added during `[M15]`'s original extraction
+pass but never wired into any consumer, the same "dormant schema field"
+shape `ItemData.pocket`/`description`/`fling_power` etc. have had since
+`[M18a]`. Spot-checked the JSON directly against source for 5 categories
+(not just internal self-consistency) — Bulbasaur (31, skewed starter),
+Rattata (127, 50/50), Chansey (254, always-female), Ditto (255,
+genderless), Tyrogue (0, always-male) — all confirmed exact against
+`reference/pokeemerald_expansion/src/data/pokemon/species_info/gen_1_families.h`'s
+own `.genderRatio` field for each. Full-roster distribution also pulled
+directly (`python3 -c "import json; ..."`): 386 species split as 10
+always-male (0), 46 at ratio 31 (12.5% female — all the classic starters),
+14 at 63 (25%), 253 at 127 (50/50 — the overwhelming majority), 15 at 191
+(75%), 11 always-female (254), 37 genderless (255) — sums to exactly 386,
+confirming no gaps or duplicates in the extracted data.
+
+**The Python extraction script itself does not exist in this repo.**
+`[M15]`'s own decisions.md entry names it `tools/convert_pokedata.py`; no
+`tools/` directory and no file by that name exists anywhere in this repo
+(confirmed via `find`) — unlike `gen_items.py`/`gen_moves.py`/
+`gen_abilities.py`, which WERE kept as committed, rerunnable generators,
+the original species-data extractor was apparently run once and not
+preserved. Since the JSON output it produced is already complete and
+verified-accurate for `gender_ratio`, there is nothing to "extend" in a
+Python-pipeline sense for this tier — IMPLEMENTATION step 1 is
+already-satisfied, not something this session could meaningfully redo
+(the source script to extend doesn't exist to extend). Also confirmed:
+`data/pokemon/` (the directory `gen_items.py`'s sibling `.tres`-per-entity
+pattern would populate for species) exists but is completely empty — this
+project has NO per-species `.tres` pipeline and no JSON-dict-to-
+`PokemonSpecies`-Resource converter anywhere in production code at all.
+Every one of this project's ~70 `_make_mon`-style test helpers
+hand-constructs a `PokemonSpecies` directly instead; `PokemonSpecies.
+gender_ratio` itself is therefore never actually populated from real data
+by any production code path today. Flagged, not built — a
+pre-existing architectural gap (species data only exists as bulk JSON +
+`PokemonRegistry`'s dictionary API, never as loadable Resources), not
+something this tier's scope requires fixing.
+
+**Finding 2 — the task's own IV precedent doesn't exist.** The prompt's
+own framing ("mirroring how IVs are already handled... rolled once at
+instance-creation time") assumed IVs are randomly rolled per instance in
+`from_species`. Checked directly: `battle_pokemon.gd`'s `from_species`
+hardcodes `bp.ivs = [0, 0, 0, 0, 0, 0]` unconditionally, and the field's
+own doc comment confirms this is deliberate ("Both zeroed in from_species()
+for Milestone 1; real values added later") — a real value was never added.
+`battle_pokemon.gd` contains zero `randi()` calls anywhere. There is
+therefore no existing "roll a random-but-then-fixed field once at
+creation" pattern in this project to mirror; gender's own roll mechanism
+is genuinely new infrastructure, designed fresh (see below) rather than
+copied from a precedent that turned out not to exist.
+
+**Confirmed clean**: grepped the whole `scripts/`/`scenes/` tree for
+`gender`/`gender_ratio` before touching anything — zero hits outside the
+schema field declaration itself. No existing ability/item logic reads
+gender anywhere, so nothing needed immediate gender-awareness just to stay
+correct; this really is a pure greenfield addition.
+
+### Finalized data-model shape
+
+- `PokemonSpecies.gender_ratio: int` — unchanged, already correct (raw
+  source byte, 0-255, thresholded — not touched this tier beyond
+  confirming it).
+- `BattlePokemon.gender: int` (new) — a clean small enum matching this
+  project's own `STATUS_*`/`STAGE_*` style (`GENDER_MALE=0`,
+  `GENDER_FEMALE=1`, `GENDER_GENDERLESS=2`), deliberately NOT reusing
+  source's raw 0/254/255 sentinel bytes for the resolved per-instance
+  value (those stay meaningful only as the species-level threshold).
+- Roll timing: once, inside `from_species`, via a new private
+  `_roll_gender(gender_ratio: int) -> int` static helper — ports
+  `GetGenderFromSpeciesAndPersonality` (`pokemon.c` L1847-1861) exactly:
+  the three sentinels (0/254/255) return themselves with no roll; any
+  other value is a female-probability threshold checked via
+  `gender_ratio > randi() % 256`, reproducing source's
+  `genderRatio > (personality & 0xFF)` (a personality value's low byte is
+  itself uniform 0-255, so a direct `randi() % 256` reproduces the
+  identical distribution without this project needing a "personality
+  value" concept at all).
+- No forcing seam added. Every other field on `BattlePokemon` (including
+  `ivs`/`evs`/`ability`/`held_item`/`current_hp`) is already freely
+  reassignable by test code after construction — `gender` follows that
+  same existing pattern rather than getting new `force_gender`
+  infrastructure. A future Attract test (`[M18.5e]`) should just set
+  `mon.gender = BattlePokemon.GENDER_MALE` directly on its fixture, the
+  same way every other deterministic test field in this codebase already
+  works.
+
+### Implementation
+
+- `scripts/battle/core/battle_pokemon.gd`: added `GENDER_MALE`/
+  `GENDER_FEMALE`/`GENDER_GENDERLESS` constants (placed alongside
+  `STATUS_*`/`STAGE_*`); added `var gender: int = GENDER_MALE`; added
+  `_roll_gender()`; wired into `from_species` right after `bp.level =
+  p_level`.
+- No changes to `pokemon_species.gd`, `pokemon_registry.gd`,
+  `data/pokemon.json`, or any Python script — all already correct, per
+  Step 0's findings above.
+
+### Testing
+
+New `scenes/battle/m18_5d_test.gd`/`.tscn` (a dedicated new file — neither
+`pokemon_registry.gd`'s own minimal inline smoke test nor
+`item_registry_test.gd`'s items-specific suite was the right extension
+target for a genuinely new, two-layer data+instance-generation concern).
+
+**Section A (data-integrity, 5 assertions)**: reads directly from
+`PokemonRegistry.get_species(dex)["gender_ratio"]` — the actual live data
+path this project uses today, not the dormant `PokemonSpecies` Resource
+field (nothing populates that from real data, per Step 0) — for
+Bulbasaur/Rattata/Chansey/Ditto/Tyrogue, the same 5 categories
+cross-checked against source at Step 0.
+
+**Section B (instance-generation, 6 assertions)**: zero-variance checks
+(n=500) for the three gender-locked categories (genderless/always-male/
+always-female — no roll happens at all for these, so n=500 exists purely
+to prove the sentinel branch is airtight, not to sample a distribution);
+statistical-rate checks (n=2000, wide margins matching `[M17n-5]`/`[M18e]`'s
+established tolerance-band convention) for a skewed species (ratio=31,
+expected ~12.5% female, asserted within [7.5%, 17.5%]) and a 50/50 species
+(ratio=127, expected ~50%, asserted within [42.5%, 57.5%] — also serves as
+a discriminator that the `>` threshold orientation isn't backwards); one
+sanity discriminator confirming `gender` is always one of the three valid
+constants. **11/11**, passing on the first run, stable across 5 reruns
+(the two statistical sections make rerun-stability the meaningful
+confirmation, not just a single pass).
+
+### Regression
+
+Per this task's own narrow-change-surface framing (data pipeline + one new
+field, no battle-phase code touched): reran the smoke test (embedded in
+every run's own header, confirmed unchanged at 386 species throughout) and
+five suites that construct `BattlePokemon` via `from_species` with a fixed
+IV/EV seed — `battle_test.tscn` (Dummy-B wins, unchanged), `damage_test.tscn`
+24/24, `status_test.tscn` 78/78, `move_test.tscn` 49/49, `stat_test.tscn`
+78/78 — all unchanged, confirming the new `randi()` call inside
+`from_species` doesn't disturb any other field's existing deterministic
+behavior. Confirmed no test in this codebase seeds the global RNG stream
+(`grep -rl "seed("` returns nothing) — this project's established
+`_force_*`-parameter convention for RNG determinism doesn't depend on
+stream-position ordering, so inserting a new `randi()` call mid-construction
+is safe by construction, not just by empirical luck. Full 70-file sweep not
+run, per this task's own explicit instruction.
+
+One process-discipline note for the record: this session's first `--import`
+attempts hung repeatedly (up to a 240s timeout) — root cause was the shell's
+working directory having drifted to the outer `/home/rob/GodotAsImagined`
+(from an earlier `cd` while reading `reference/pokeemerald_expansion` source
+files) instead of the actual project root
+`/home/rob/GodotAsImagined/as-imagined`, so `--path .` pointed at a
+non-project directory. Fixed by explicitly `cd`-ing back before retrying;
+all runs recorded above are from the correct directory. No stray Godot
+processes were left behind by the hung attempts (`timeout` still killed
+them correctly) — flagged here only as a process note, not a code finding.
+
+No stray Godot processes before or after; reference clone untouched; no
+scratch/debug files left over. `git status --short` matched the expected
+file set (1 modified file — `battle_pokemon.gd` — plus 2 new test files)
+before this docs commit; the M18.5a-era changes were already committed by
+Rob between sessions, confirmed via `git log`.
+
+### Docs
+
+`CLAUDE.md`'s status section updated noting M18.5d complete and that
+M18.5e (Attract) is now unblocked.
+
+## [M18.5d-2] Gender-dependent mechanics: Attract, Rivalry, Cute Charm, Oblivious
+
+Four genuinely separate mechanics sharing this session purely for scheduling
+efficiency, with one real internal ordering constraint honored: Attract's
+own infliction logic was built and verified correct FIRST, since Cute Charm
+and Oblivious both react to it directly (not just to the gender field).
+
+### Attract — exact mechanic and source citation
+
+**Real dispatch confirmed, correcting a pre-existing mis-citation.** This
+project's own `blocked_by_aroma_veil` doc comment (written during `[M17n-1]`,
+before Attract existed) cited `BS_TrySetInfatuation` (battle_script_commands.c
+L12233-12251) as Attract's real command — traced its actual callers and
+found that function is `BattleScript_EffectInfatuateSide`'s (a side-wide
+effect this project has no reason to implement — Z-moves aren't in scope),
+NOT the base single-target move. Attract's real script is
+`BattleScript_EffectAttract` (battle_scripts_1.s L2220+): a script-level
+`jumpifability BS_TARGET_SIDE, ABILITY_AROMA_VEIL` check, THEN `tryinfatuating`
+→ `Cmd_tryinfatuating` (battle_script_commands.c L7613-7650), which
+ALSO re-checks Aroma Veil plus Oblivious plus already-infatuated/gender.
+Corrected the stale comment in `move_data.gd` in place, explaining why
+Attract deliberately does NOT use the `blocked_by_aroma_veil` flag (it
+needs Oblivious in the same gate, a combination that single-flag shape
+doesn't cover).
+
+**Gender-pair condition**: `AreBattlersOfOppositeGender` (battle_util.c
+L9420-9425) — `gender1 != GENDERLESS && gender2 != GENDERLESS && gender1 !=
+gender2`. Genderless on EITHER side means neither "opposite" nor "same" of
+anything — confirmed precisely, not assumed; ported directly as
+`BattlePokemon.are_opposite_gender`/`are_same_gender` (the latter for
+Rivalry, confirmed genuinely symmetric via the analogous
+`AreBattlersOfSameGender`, L9428-9433).
+
+**Move shape**: Normal/Status/0 power/100 accuracy/15 PP/single target,
+`ignoresSubstitute=TRUE`. Already present, accurate, in `data/moves.json`
+since `[M15]`'s original bulk pass — only the curated `.tres`/`is_attract`
+dispatch flag were missing.
+
+**Per-turn immobilization**: `CancelerInfatuation` (battle_move_resolution.c
+L460-479) — the LAST canceler in source's own order (Asleep/Frozen → Truant
+→ Flinch → Confused → Paralyzed → Infatuation), exactly 50%
+(`RandomPercentage(RNG_INFATUATION, 50)`), matching this project's own
+`pre_move_check` check-order exactly once extended.
+
+**Cure condition, confirmed precisely**: infatuation is `gBattleMons[].
+volatiles.infatuation` — a genuine volatile, cleared the same way every
+other one-battle-stint volatile in this project is (confusion, Focus
+Energy, etc.) via `BattleManager._clear_volatiles`, called on BOTH
+switch-out and faint. Confirmed this is the right, unconditional mechanism
+— no more specific gate exists for the INFATUATED mon's own switch-out.
+
+**Known limitation, flagged not fixed**: real source additionally clears
+infatuation if the SPECIFIC battler who caused it (tracked via
+`INFATUATED_WITH(battler)`, not a plain bool) later leaves the field via
+ITS OWN switch/faint (battle_main.c L3167/L3281) — e.g. if the opponent
+switches out their attracting Pokémon for a different one, the infatuated
+Pokémon's crush clears too, even though the infatuated Pokémon itself never
+switched. This project's `BattlePokemon.infatuated` is a plain bool (no
+"who" tracking) — a deliberate scope narrowing, not a silently-dropped
+feature: no flavor-text system exists to need the "who" for messages, and
+tracking a specific battler reference across an opponent's switch would be
+new cross-battler-reference infrastructure this project doesn't otherwise
+have. Documented on `BattlePokemon.infatuated`'s own doc comment and here.
+
+### Rivalry — exact modifier values and source citation
+
+**No prior implementation existed at all** — confirmed via grep of
+`gen_abilities.py` (zero hits) before starting; only a name-only `[M15]`
+placeholder `.tres` (`ability_id=79, description=""`) was present. Source:
+`CalcMoveBasePowerAfterModifiers`, case `ABILITY_RIVALRY` (battle_util.c
+L6490-6494) — the literal same pipeline function `AbilityManager.
+move_power_modifier_uq412` already implements for Technician/Reckless/Sheer
+Force/etc. (`[M17a]`/`[M17n-5]`), confirmed via direct grep of the enclosing
+function name. Exact values, confirmed via source's own `UQ_4_12` macro
+(`(n*4096+0.5)` truncated): same gender → `UQ_4_12(1.25) = 5120`; opposite
+gender → `UQ_4_12(0.75) = 3072`; genderless attacker or defender → neutral
+(4096, neither branch matches — no `default` case needed in source, matched
+here by simply not modifying `modifier`). NOT `.breakable` in source (a
+pure attacker/defender data comparison, not a defensive check).
+
+**Implementation**: new `defender: BattlePokemon = null` param added to
+`move_power_modifier_uq412` — the ONLY modifier in that whole function that
+ever needed the DEFENDER's own data, every other one being a pure
+attacker self-check. Threaded through from `DamageCalculator.calculate`,
+which already had `defender` in scope.
+
+### Cute Charm — exact trigger and source citation
+
+**No prior mechanical implementation** — the existing `[M17n-1]`-era
+`.tres` entry was a documented no-op (real infliction correctly deferred
+pending gender). Source: battle_util.c L4130-4146 (`ABILITY_CUTE_CHARM`
+case) — the LITERAL SAME switch/dispatch as Static/Flame Body/Poison Point
+(confirmed, not assumed): defender-keyed (the Cute Charm holder reacting to
+being hit), 30% roll (`B_ABILITY_TRIGGER_CHANCE >= GEN_4` shape, identical
+to those three), contact required (`CanBattlerAvoidContactEffects`,
+already this project's own `move_triggers_contact_retaliation` top-level
+gate). NOT `.breakable` in source (no `.breakable` flag) — confirmed via
+direct `abilities.h` read, matching this whole dispatch's existing
+no-Mold-Breaker-param `id` computation (Static/Flame Body/Poison Point
+already had no such param either).
+
+**Gate confirmed identical to Attract's own** (a real finding, not
+assumed): source's Cute Charm case checks `!IsAbilityAndRecord(gBattlerAttacker,
+..., ABILITY_OBLIVIOUS) && !IsAbilityOnSide(gBattlerAttacker, ABILITY_AROMA_VEIL)
+&& AreBattlersOfOppositeGender(...)` — the SAME Oblivious-OR-Aroma-Veil-
+on-the-victim's-side combination `Cmd_tryinfatuating` uses for Attract, just
+with the attacker/defender roles reversed (Cute Charm's HOLDER inflicts on
+the ATTACKER who made contact, the mirror image of Attract's own
+attacker-inflicts-on-defender shape). Confirmed genuinely unified, not
+just similarly-shaped — built ONE shared `AbilityManager.
+attract_block_reason()` helper and ONE shared `StatusManager.
+try_apply_attract()` function, called from both real inflictors, rather
+than duplicating the already-required checks twice.
+
+### Oblivious — exact extended scope
+
+**Already covered by `[M17n-1]`, confirmed unchanged**: blocks Intimidate's
+Attack drop (`IsIntimidateBlocked`, battle_stat_change.c L660-675) — this
+tier touched zero code in that branch, reconfirmed via a light smoke test
+(O3) plus the full `m17n1_test.tscn` regression rerun (82/82, unchanged).
+
+**New this tier — infliction blocking**: the holder is immune to becoming
+infatuated, from EITHER real source (Attract the move, via
+`Cmd_tryinfatuating`'s own `GetBattlerAbility(gBattlerTarget) ==
+ABILITY_OBLIVIOUS` check; Cute Charm the ability, via its own
+`!IsAbilityAndRecord(gBattlerAttacker, ..., ABILITY_OBLIVIOUS)` check) —
+implemented once via the shared `attract_block_reason()` helper described
+above, reused by both.
+
+**New this tier — switch-in cure**: source's `TryImmunityAbilityHealStatus`
+(battle_util.c L8875-8886) — Oblivious's own case in the SAME function
+`[M17n-1]` already extended for Immunity/Limber/Insomnia/Vital
+Spirit/Water Veil/Magma Armor/Own Tempo — cures a PRE-EXISTING infatuation
+on switch-in. Confirmed genuinely N/A before this tier (no infatuation
+existed for it to cure, exactly as `[M17n-1]`'s own entry already noted)
+and genuinely real now. Wired into the existing `try_switch_in()`'s
+already-established `cured_status`/`cured_confusion` pattern, adding a new
+`cured_infatuation` key — zero new infrastructure needed.
+
+**Confirmed still moot, not built**: source's OTHER half of this same case
+(`B_OBLIVIOUS_TAUNT >= GEN_6` curing Taunt) stays N/A — re-confirmed via
+grep that Taunt is still not implemented anywhere in this project (only
+referenced in comments as absent), not assumed stale from `[M17n-1]`'s own
+citation. Updated `gen_abilities.py`'s Oblivious description to reflect the
+now-real infatuation immunity while keeping the Taunt caveat accurate.
+
+### Implementation summary (all four)
+
+- `scripts/battle/core/battle_pokemon.gd`: new `infatuated: bool` volatile
+  (plain bool, not a battler reference — see Attract's own "known
+  limitation" above); new `are_opposite_gender`/`are_same_gender` static
+  helpers.
+- `scripts/battle/core/battle_manager.gd`: `infatuated = false` added to
+  `_clear_volatiles`; new `infatuated(mon)` signal; new `move.is_attract`
+  dispatch block (mirroring Disable/Encore's established shape, inserted
+  right after Encore's); `try_contact_effects`'s call site now threads
+  `_get_ally(attacker)` through as the new `attacker_ally` param; both
+  `try_switch_in` call sites (the main switch-in loop and Baton Pass's own)
+  now handle the new `cured_infatuation` result key.
+- `scripts/battle/core/status_manager.gd`: new `try_apply_attract()`
+  (structural precedent: `try_apply_confusion`, confirmed accurate at Step
+  0 — both are chance-free-on-infliction volatiles with their own separate
+  per-turn cancel check — but NOT a copy-paste, since infatuation has no
+  turn counter and IS gender-pair-gated, genuinely different from
+  confusion's shape); `pre_move_check` extended with the infatuation
+  canceler (new `force_infatuation_hit` param, new `infatuated_stuck`
+  result key, checked last, matching source's own canceler order) and
+  `_phase_pre_move_checks`'s reason-chain extended with `"infatuated"`.
+- `scripts/battle/core/ability_manager.gd`: new `ABILITY_RIVALRY=79`
+  constant (never existed); new `attract_block_reason()` shared helper;
+  `move_power_modifier_uq412` extended with Rivalry (new `defender` param);
+  `try_contact_effects` extended with Cute Charm (new `attacker_ally`
+  param, new `attract_inflicted` result key); `try_switch_in` extended
+  with Oblivious's switch-in cure (new `cured_infatuation` result key).
+- `scripts/battle/core/damage_calculator.gd`: threads `defender` through
+  to `move_power_modifier_uq412` for Rivalry.
+- `scripts/data/move_data.gd`: new `is_attract: bool` field; corrected the
+  stale `blocked_by_aroma_veil` doc-comment citation described above.
+- `scripts/gen_moves.py` / `scripts/gen_abilities.py`: Attract's curated
+  entry added (213); Rivalry's curated entry added (79, first-ever
+  implementation); Cute Charm's (56) and Oblivious's (12) descriptions
+  updated to reflect their now-real mechanics. `.tres` regenerated:
+  `move_0213.tres` new; `ability_0012.tres`/`ability_0056.tres`/
+  `ability_0079.tres` updated in place.
+
+### Testing
+
+New `scenes/battle/m18_5d2_test.gd`/`.tscn`, four clearly distinguished
+sections (not blended): Section 1 Attract (16 assertions — `try_apply_attract`
+direct unit tests covering success/same-gender/genderless-either-side/
+already-infatuated/Oblivious-block/Aroma-Veil-self-and-ally-block/Mold-
+Breaker-bypass/NG-suppression, `pre_move_check`'s n=2000 statistical stuck-
+rate sample plus a deterministic discriminator plus the new forcing seam,
+`_clear_volatiles` cure, and two full-battle integration tests via
+signal-snapshot-on-first-occurrence — success and Oblivious-blocked, each
+avoiding whole-battle-aggregation by construction); Section 2 Rivalry (7
+assertions — same-gender/opposite-gender/genderless-either-side/NG-
+suppression/no-Rivalry-discriminator, plus a real `DamageCalculator.
+calculate` pairwise integration test with BOTH roll and crit forced on
+every scenario compared, per this project's established convention);
+Section 3 Cute Charm (12 assertions — success/same-gender/genderless-
+either-side/non-contact-discriminator/Oblivious-block/Aroma-Veil-self-and-
+ally-block/Mold-Breaker-non-bypass-discriminator/NG-suppression/forced-
+roll-failure); Section 4 Oblivious (7 assertions — blocks both real
+inflictors, a light Intimidate-block smoke check with the full regression
+rerun as the real confirmation, the new switch-in cure plus a
+discriminator proving it isn't vacuous, NG suppression of the new cure).
+**46/46**, passing on the first run after fixing two GDScript string-
+format operator-precedence bugs (`"a" + "b %d" % [x]` binds `%` to only
+the second literal, not the whole concatenation — caught via a runtime
+"not all arguments converted" error on the very first run, fixed by
+parenthesizing both affected multi-line labels), stable across 6 reruns.
+
+### Regression
+
+- `m18_5d2_test.tscn`: **46/46** (new).
+- `item_registry_test.tscn`: **309/309**, unchanged.
+- `m18_5d_test.tscn`: **11/11**, unchanged — confirms this tier's new
+  consumers didn't disturb Phase 1's own gender data/roll suite.
+- `m17n1_test.tscn`: **82/82**, unchanged — Oblivious's own origin suite,
+  confirms the Intimidate-block half is untouched.
+- `status_test.tscn`: **78/78**, unchanged — the general volatile-status
+  suite, confirms `pre_move_check`'s new trailing param/canceler didn't
+  disturb sleep/freeze/confusion/paralysis.
+- Beyond the task's own listed suites, also reran every other direct
+  consumer of the two shared functions whose signatures changed
+  (`try_contact_effects`, `move_power_modifier_uq412`), given both are
+  heavily-reused chokepoints: `m17c_test.tscn` **85/85** (Poison Point/
+  Touch, immediately adjacent to Cute Charm's new branch), `m17n5_test.tscn`
+  **78/78** (the heaviest existing consumer of `move_power_modifier_uq412`),
+  `m18p_test.tscn` **33/33** and `m18x_test.tscn` **15/15** (both other
+  `try_contact_effects` consumers) — all unchanged.
+
+Full 70-file sweep not run, per this task's own explicit instruction —
+`[M18.5a]`'s baseline already confirmed everything else green.
+
+One process-discipline note, distinct from Phase 1's own: confirmed working
+directory with `pwd` before every Godot invocation this session, per the
+lesson `[M18.5d]`'s own entry already flagged — no repeat of that hang.
+
+No stray Godot processes before or after; reference clone untouched; no
+scratch/debug files left over. `git status --short` matched the expected
+file set (11 modified core/data files, 3 modified `.tres` files, 1 new
+`.tres` file, 2 new test files) before this docs commit — Phase 1's own
+changes (`CLAUDE.md`, `battle_pokemon.gd`'s gender field,
+`m18_5d_test.gd`/`.tscn`) were still uncommitted going into this session
+(confirmed via `git log`, only `[M18.5a]` had been committed by Rob
+between sessions), so they appear alongside this session's own diff — not
+a discrepancy, just Phase 1's own docs-commit step never having happened
+yet.
+
+### Docs
+
+`CLAUDE.md`'s status section updated noting M18.5d Phase 2 complete — this
+closes out the gender-dependent mechanics track entirely (Destiny Knot
+remains separately deferred to M18.5i, pending M28/breeding readiness, not
+folded in here). Points at M18.5f (Binding-move), M18.5g (Multi-hit), or
+M18.5h (Nature/IV/EV) as the next recommended tier — all three remain
+independent and dependency-free.

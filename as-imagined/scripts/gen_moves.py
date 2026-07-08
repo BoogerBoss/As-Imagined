@@ -777,6 +777,16 @@ MOVES = [
     {"id": 244, "name": "Psych Up",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
      "ignores_protect": True, "ignores_substitute": True, "is_psych_up": True},
+
+    # Attract(213)  L?  Normal/Status/0/100/15, selected target, ignoresSubstitute
+    #   Source: moves_info.h MOVE_ATTRACT: .effect=EFFECT_ATTRACT, .power=0,
+    #   .accuracy=100, .pp=15, .target=TARGET_SELECTED, .ignoresSubstitute=TRUE.
+    #   Data cross-checked against data/moves.json's own already-extracted entry
+    #   ([M15]'s bulk pass already had this move; only the curated .tres/is_attract
+    #   dispatch flag were missing before [M18.5d-2]).
+    {"id": 213, "name": "Attract",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 15,
+     "ignores_substitute": True, "is_attract": True},
 ]
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──
@@ -874,6 +884,10 @@ DEFAULTS = {
     "pulse_move":                 False,
     # M17n-9 field: bounceable (Magic Bounce's magicCoatAffected-derived subset).
     "bounceable":                 False,
+    # M18.5d-2 field: is_attract (Attract's own dedicated dispatch — deliberately
+    # NOT added to blocked_by_aroma_veil's list, see that field's own doc comment
+    # in move_data.gd for why).
+    "is_attract":                 False,
 }
 
 HEADER = """\
@@ -925,6 +939,8 @@ FIELD_ORDER = [
     "biting_move", "slicing_move", "pulse_move",
     # M17n-9 fields
     "bounceable",
+    # M18.5d-2 fields
+    "is_attract",
 ]
 
 
