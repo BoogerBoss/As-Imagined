@@ -85,6 +85,17 @@ var gender: int = GENDER_MALE
 # reassignable afterward like every other field here.
 var nature: int = NATURE_HARDY
 
+# [M19-pre1] Set once in from_species() (see _default_friendship) from the
+# species' own base_friendship — NOT randomly rolled (friendship isn't a
+# personality-derived stat like gender/nature/IVs), but still needs the same
+# forcing-parameter shape (forced_friendship) since M24 trainer data will need
+# to assign SPECIFIC friendship values (e.g. a maxed-friendship starter), the
+# same real requirement Nature/IVs already established this convention for.
+# Freely reassignable afterward like every other field here. Used by
+# Return/Frustration/Pika Papow/Veevee Volley's power calculation
+# (move.is_return_power / move.is_frustration_power).
+var friendship: int = 50
+
 # Current battle HP and computed stats (not base stats — those live on species)
 var current_hp: int = 0
 var max_hp: int = 0
@@ -388,7 +399,8 @@ var fainted: bool = false
 
 
 static func from_species(p_species: PokemonSpecies, p_level: int,
-		forced_nature: Variant = null, forced_ivs: Variant = null) -> BattlePokemon:
+		forced_nature: Variant = null, forced_ivs: Variant = null,
+		forced_friendship: Variant = null) -> BattlePokemon:
 	var bp := BattlePokemon.new()
 	bp.species = p_species
 	bp.original_types = p_species.types.duplicate()
@@ -397,6 +409,7 @@ static func from_species(p_species: PokemonSpecies, p_level: int,
 	bp.gender = _roll_gender(p_species.gender_ratio)
 	bp.nature = _roll_nature(forced_nature)
 	bp.ivs = _roll_ivs(forced_ivs)
+	bp.friendship = _default_friendship(p_species.base_friendship, forced_friendship)
 	bp.evs = [0, 0, 0, 0, 0, 0]
 	bp.moves = []
 	bp.current_pp = []
@@ -520,6 +533,21 @@ static func _roll_ivs(forced_ivs: Variant = null) -> Array[int]:
 		else:
 			result.append(randi() % 32)
 	return result
+
+
+# [M19-pre1] Resolves the instance's starting friendship: the species' own
+# base_friendship UNLESS forced_friendship overrides it. NOT a random roll
+# (source's real friendship starts at a fixed per-species value, not a
+# personality-derived one like gender/nature/IVs) — but the SAME
+# Variant=null forcing shape is still used, matching this project's
+# established convention, since M24 trainer data needs the identical
+# "assign a SPECIFIC value" capability Nature/IVs already built. Source:
+# SpeciesInfo.friendship (include/pokemon.h L415), read at Pokémon-creation
+# time (CreateMon family, pokemon.c) with no roll involved.
+static func _default_friendship(base_friendship: int, forced_friendship: Variant = null) -> int:
+	if forced_friendship != null:
+		return forced_friendship
+	return base_friendship
 
 
 # [M18.5h-1] Returns [raise_stat, lower_stat] (BattlePokemon.STAT_* indices, THIS

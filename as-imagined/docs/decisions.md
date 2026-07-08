@@ -14602,3 +14602,199 @@ only.
 CLAUDE.md's status section updated noting this pipeline fix complete and
 that M19 is now ready to be properly sub-tier-scoped in a future session
 against `docs/m19_recon.md`'s corrected data.
+
+---
+
+## [M19-pre1] Weight and friendship data fields (pre-M19 infrastructure)
+
+Two gaps found during `[M19-scoping]`'s subtier-plan session, neither caught
+by the original recon — bundled into one session for efficiency, implemented/
+tested/documented as two clearly distinguished sections throughout. Explicitly
+pre-M19 prep, run before M19a/M19b's bulk data-entry tiers, per Rob's own
+sequencing decision.
+
+### Weight — Step 0 findings
+
+**Field**: species-level, FIXED, confirmed NO per-instance override needed.
+Source's `weight` field (`include/pokemon.h` L426, `u16`, hectograms) lives
+ONLY in `SpeciesInfo` — never in the per-instance `Pokemon`/`BoxPokemon`
+struct, unlike friendship below. `GetBattlerWeight`'s own modifier chain
+(Autotomize/Heavy Metal/Light Metal/Float Stone, `battle_util.c` L5913-5940)
+confirmed entirely absent from this project via direct grep (zero hits for
+all four) — raw species weight is used directly, no adjustment chain
+needed, matching this project's established "confirmed absent, moot"
+precedent (`[M18h]`'s own EV-doubling finding).
+
+**Two genuinely different formulas, confirmed individually, not assumed
+symmetric**:
+- **Low Kick(67) / Grass Knot(447)** (`EFFECT_LOW_KICK`): power derived from
+  the TARGET's weight ONLY, via a fixed threshold table (`sWeightToDamageTable`,
+  `battle_util.c` L6022-6029, hectograms): <100→20, <250→40, <500→60,
+  <1000→80, <2000→100, else→120. Boundary values land in the HIGHER bracket
+  (source's own `sWeightToDamageTable[i] > weight` break condition — checked
+  by direct hand-trace at weight=100 exactly, confirmed it resolves to 40,
+  not 20).
+- **Heavy Slam(484) / Heat Crash(535)** (`EFFECT_HEAT_CRASH`): power derived
+  from the INTEGER RATIO of attacker's weight to target's weight (integer
+  division), indexed directly into `sHeatCrashPowerTable` (`battle_util.c`
+  L6027-6033): `{40, 40, 60, 80, 100, 120}`, capped at the last entry for
+  ratio ≥ 5.
+
+**Data**: `data/pokemon.json` had NO weight field at all (unlike
+`base_friendship`/`gender_ratio`, which were already-dormant-but-present —
+see Friendship below). New `scripts/gen_weight_data.py` — no rerunnable
+extractor exists in this repo for any species field (`tools/
+convert_pokedata.py`, `[M15]`'s own citation, confirmed absent — the same
+gap `[M18.5d Phase 1]`/`[M18.5j]` already found) — parses
+`reference/pokeemerald_expansion/src/data/pokemon/species_info/gen_{1,2,3}_
+families.h` directly, resolving each species block's `.natDexNum =
+NATIONAL_DEX_X` against `include/constants/pokedex.h`'s own sequential
+`NationalDexOrder` enum to get the numeric dex, then reading that block's
+own `.weight = N`. First occurrence per dex wins (base form only, matching
+`[M15]`'s own dedup rule for every other field). Unown(#201) hardcoded
+(weight=50) — its block uses the `UNOWN_MISC_INFO` macro instead of a plain
+struct literal, the exact same extractor blind spot `[M15]`'s own
+decisions.md entry already documented for every other field. All 386
+species resolved cleanly on the first run (zero missing), spot-checked
+against known real values (Bulbasaur=69hg/6.9kg, Charizard=905hg/90.5kg,
+Mewtwo=1220hg/122.0kg, Rayquaza=2065hg/206.5kg — all correct). Idempotent,
+confirmed via immediate rerun (0 entries changed).
+
+### Friendship — Step 0 findings
+
+**Field**: needs a forcing parameter, confirmed per M24's real future need
+(trainer data will need to assign SPECIFIC friendship values — e.g. a
+maxed-friendship starter — not a random roll), matching Nature/IV's exact
+`Variant = null` precedent (`[M18.5h-1]`'s own "build the override now,
+don't retrofit" lesson, explicitly re-applied here). Unlike Nature/IV,
+friendship is NOT randomly rolled — source's real starting friendship is a
+FIXED per-species value (`SpeciesInfo.friendship`, `include/pokemon.h`
+L415), read once at creation time with no roll involved — but the override
+shape is identical regardless (a value that needs to be settable to a
+SPECIFIC number for M24, whether or not the default path involves
+randomness).
+
+**A real finding, matching `[M18.5d]`'s own gender_ratio precedent exactly**:
+`data/pokemon.json`'s `base_friendship` field ALREADY EXISTS and is ALREADY
+CORRECT — confirmed via direct inspection (Bulbasaur=50) and a full-roster
+spot-check finding genuine per-species variance, not a uniform default:
+Mewtwo/Lugia/Ho-Oh/Kyogre/Groudon/Rayquaza/Deoxys=0, the Clefairy/Chansey
+family=140, Mew/Celebi/Jirachi=100, the Gen2-3 "special" species (legendary
+beasts, pseudo-legendaries, Eeveelutions' Umbreon, etc.)=35, everything
+else=50 (`STANDARD_FRIENDSHIP`, this project's GEN_LATEST config). Dormant —
+zero hits for `base_friendship`/`friendship` anywhere in `scripts/` before
+this session, the exact same "extracted but never wired" shape
+`gender_ratio` had before `[M18.5d]`. No data-pipeline work needed for this
+half at all — only the `PokemonSpecies`/`BattlePokemon` schema wiring.
+
+**Two genuinely different formulas, confirmed individually — Frustration is
+NOT assumed to mirror Return's shape**:
+- **Return(216) / Pika Papow(679) / Veevee Volley(688)** (`EFFECT_RETURN`):
+  `power = 10 * friendship / 25` (integer division). Confirmed Pika Papow
+  and Veevee Volley share this EXACT formula — both literally
+  `.effect = EFFECT_RETURN` in source (`moves_info.h`), not a separate or
+  similar effect — not assumed from their similar in-game flavor text.
+- **Frustration(218)** (`EFFECT_FRUSTRATION`): the INVERSE —
+  `power = 10 * (MAX_FRIENDSHIP - friendship) / 25`. `MAX_FRIENDSHIP = 255`
+  (`include/constants/pokemon.h` L223).
+- **A universal power==0→1 floor applies to BOTH** (`battle_util.c`
+  L6371-6372, after the entire basePower `switch` statement) — friendship=0
+  would otherwise compute Return's power as 0; friendship=255 would
+  otherwise compute Frustration's power as 0. Hand-verified crossover point
+  between Return/Frustration under integer division: f=127 → Return=50 <
+  Frustration=51; f=128 → Return=51 > Frustration=50 (crosses strictly
+  between 127 and 128, confirmed by direct computation, not assumed at the
+  nominal midpoint 127.5).
+
+### Implementation
+
+- `scripts/data/pokemon_species.gd`: new `weight: int = 1` (hectograms,
+  fixed, no override) and `base_friendship: int = 50` fields, placed and
+  doc-commented the same way as `gender_ratio`.
+- `scripts/battle/core/battle_pokemon.gd`: new `friendship: int = 50` field
+  (doc-commented explaining the "not rolled, but still forced" distinction
+  from gender/nature/IVs); new `_default_friendship(base_friendship,
+  forced_friendship: Variant = null) -> int` static helper, structurally
+  mirroring `_roll_nature`/`_roll_ivs`'s own shape; `from_species` extended
+  with a new 5th parameter `forced_friendship: Variant = null` (confirmed
+  via grep: fully backward compatible, every pre-existing call site stays
+  valid).
+- `scripts/data/move_data.gd`: 4 new flags — `is_low_kick_power`,
+  `is_heat_crash_power`, `is_return_power`, `is_frustration_power` — placed
+  alongside `is_pursuit` (the other existing "dynamic power computed at
+  move-execution time" field), each with a full source citation.
+- `scripts/battle/core/battle_manager.gd`: 4 new dispatch blocks inserted
+  directly after the existing Pursuit power-override block (same
+  `_dmg_power_override` mechanism Rollout/Magnitude/Pursuit already
+  established — no new plumbing needed, this tier is a pure consumer of
+  that existing seam) and 4 new static helper functions
+  (`_low_kick_power`/`_heat_crash_power`/`_return_power`/
+  `_frustration_power`) placed alongside `_roll_magnitude_power`.
+- New `scripts/gen_weight_data.py` (see Weight section above).
+- `scripts/gen_moves.py`: 8 new move entries (Low Kick/Grass Knot/Heavy
+  Slam/Heat Crash/Return/Frustration/Pika Papow/Veevee Volley), each with
+  `power=1` (source's own placeholder — fully overridden at runtime by the
+  new dynamic-power dispatch) and its corresponding `is_*_power` flag; new
+  `DEFAULTS`/`FIELD_ORDER` entries for all 4 new flags (confirmed this
+  time, unlike `[M18.5g]`'s own retroactively-discovered gap for
+  `strike_count`/`multi_hit`/`always_critical_hit` — these were wired into
+  both from the start). 8 new `.tres` files regenerated.
+
+### Testing
+
+New `scenes/battle/m19_pre1_test.gd`/`.tscn`: **48/48**, stable across 4
+reruns, two clearly separated sections. **Section A (Weight, 19
+assertions)**: direct unit tests of `_low_kick_power` at every threshold
+boundary (99/100, 249/250, 499/500, 999/1000, 1999/2000) plus edge cases
+(weight=1, weight=9999); direct unit tests of `_heat_crash_power` across
+ratios 0-5+ including the very-heavy-vs-very-light edge case (ratio=100,
+confirmed capped at 120); a full-battle integration pair per formula
+(comparative — a heavier Low Kick target takes more damage; a higher-
+weight-ratio Heat Crash attacker deals more damage — not a hand-derived
+exact number, to avoid fragile UQ4.12 rounding assumptions) confirming the
+`is_low_kick_power`/`is_heat_crash_power` flags actually drive real damage
+end-to-end through the real dispatch path, not just the isolated formula.
+**Section B (Friendship, 29 assertions)**: direct unit tests of
+`_return_power`/`_frustration_power` across the full range including both
+extremes (0 and 255, confirming the power==0→1 floor fires for each at its
+respective extreme); an explicit discriminator confirming Return and
+Frustration produce OPPOSITE power trends for the same friendship value
+across 5 sample points (using the hand-verified 127/128 crossover, not the
+naive 127.5 midpoint); data-integrity confirmation that Pika Papow/Veevee
+Volley carry `is_return_power` (not a separate flag) and Frustration
+carries `is_frustration_power` exclusively (not both); `forced_friendship`
+determinism (n=50 each for two distinct forced values, zero variance,
+matching `[M18.5h-1]`'s own established pattern) plus confirmation the
+unforced default correctly reads back the species' own `base_friendship`
+for two genuinely different values (140, 0 — not just the standard 50);
+a full-battle integration pair for both Return and Frustration confirming
+the real dispatch path (higher friendship → more Return damage, less
+Frustration damage).
+
+### Regression
+
+`item_registry_test.tscn`: **309/309**, unchanged. `stat_test.tscn`:
+**78/78**, unchanged. Beyond the task's own explicit regression scope, also
+reran `move_test.tscn` (**49/49**) and `damage_test.tscn` (**24/24**) given
+this tier's own dispatch blocks sit directly in the shared move-execution
+path every damaging move flows through (immediately after the existing
+Rollout/Magnitude/Pursuit blocks) — both unchanged, confirming the new
+blocks are correctly gated on their own move flags and don't fire for any
+other move. Full sweep not run, per this task's own explicit instruction.
+No stray Godot processes before or after; reference clone untouched; no
+scratch/debug files left in the project tree.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated: the 4 weight-blocked moves (Low
+Kick/Grass Knot/Heavy Slam/Heat Crash) and 4 friendship-blocked moves
+(Return/Frustration/Pika Papow/Veevee Volley) moved from Section C
+(deferred/blocked) into Section B, folded into M19b (Tier 2 data-entry) and
+M19a (Tier 1-shaped data-entry, since their power is now a pure lookup/
+formula with zero remaining infrastructure gap) respectively — both are now
+unblocked, real, tested mechanics, not just unblocked-in-principle.
+CLAUDE.md's status section updated noting `[M19-pre1]` complete and that
+Z-Moves/Max-Moves (87 moves) are now **permanently excluded**, per Rob's
+own explicit decision (resolving `[M19-scoping]`'s own Open Question #1),
+matching the Mega Evolution exclusion precedent already established for
+abilities/items in M17/M18.

@@ -960,6 +960,70 @@ MOVES = [
     {"id": 839, "name": "Tachyon Cutter",
      "type": TYPE_STEEL, "category": SPEC, "power": 50, "accuracy": 0, "pp": 10,
      "slicing_move": True, "strike_count": 2},
+
+    # ── M19-pre1: weight-based and friendship-based dynamic power ───────────
+    # power=1 in every entry below is source's own placeholder value
+    # (.power = 1 in moves_info.h for all 8) — completely overridden at
+    # runtime by BattleManager's is_low_kick_power/is_heat_crash_power/
+    # is_return_power/is_frustration_power dispatch, per that field's own
+    # doc comment in move_data.gd.
+
+    # Low Kick(67) L1804  Fighting/Phys/1/100/20, contact
+    #   Source: moves_info.h MOVE_LOW_KICK (GEN_3+ branch): .effect=EFFECT_LOW_KICK,
+    #   .power=1, .accuracy=100 (B_UPDATED_MOVE_DATA>=GEN_3), .makesContact=TRUE.
+    {"id": 67, "name": "Low Kick",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 1, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "is_low_kick_power": True},
+
+    # Grass Knot(447) L11995  Grass/Spec/1/100/20, contact
+    #   Source: moves_info.h MOVE_GRASS_KNOT: .effect=EFFECT_LOW_KICK, .power=1,
+    #   .accuracy=100, .category=DAMAGE_CATEGORY_SPECIAL, .makesContact=TRUE.
+    {"id": 447, "name": "Grass Knot",
+     "type": TYPE_GRASS, "category": SPEC, "power": 1, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "is_low_kick_power": True},
+
+    # Heavy Slam(484) L12936  Steel/Phys/1/100/10, contact
+    #   Source: moves_info.h MOVE_HEAVY_SLAM: .effect=EFFECT_HEAT_CRASH, .power=1,
+    #   .accuracy=100, .makesContact=TRUE.
+    {"id": 484, "name": "Heavy Slam",
+     "type": TYPE_STEEL, "category": PHYS, "power": 1, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "is_heat_crash_power": True},
+
+    # Heat Crash(535) L14224  Fire/Phys/1/100/10, contact
+    #   Source: moves_info.h MOVE_HEAT_CRASH: .effect=EFFECT_HEAT_CRASH, .power=1,
+    #   .accuracy=100, .makesContact=TRUE.
+    {"id": 535, "name": "Heat Crash",
+     "type": TYPE_FIRE, "category": PHYS, "power": 1, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "is_heat_crash_power": True},
+
+    # Return(216) L5918  Normal/Phys/1/100/20, contact
+    #   Source: moves_info.h MOVE_RETURN: .effect=EFFECT_RETURN, .power=1,
+    #   .accuracy=100, .makesContact=TRUE.
+    {"id": 216, "name": "Return",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 1, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "is_return_power": True},
+
+    # Frustration(218) L5964  Normal/Phys/1/100/20, contact
+    #   Source: moves_info.h MOVE_FRUSTRATION: .effect=EFFECT_FRUSTRATION, .power=1,
+    #   .accuracy=100, .makesContact=TRUE.
+    {"id": 218, "name": "Frustration",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 1, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "is_frustration_power": True},
+
+    # Pika Papow(679) L17958  Electric/Spec/1/0(always hits)/20, no contact
+    #   Source: moves_info.h MOVE_PIKA_PAPOW: .effect=EFFECT_RETURN (the exact
+    #   SAME formula as Return, confirmed — not a separate/similar effect),
+    #   .power=1, .accuracy=0, .category=DAMAGE_CATEGORY_SPECIAL, no makesContact.
+    {"id": 679, "name": "Pika Papow",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 1, "accuracy": 0, "pp": 20,
+     "is_return_power": True},
+
+    # Veevee Volley(688) L18162  Normal/Phys/1/0(always hits)/20, contact
+    #   Source: moves_info.h MOVE_VEEVEE_VOLLEY: .effect=EFFECT_RETURN (same
+    #   formula as Return/Pika Papow), .power=1, .accuracy=0, .makesContact=TRUE.
+    {"id": 688, "name": "Veevee Volley",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 1, "accuracy": 0, "pp": 20,
+     "makes_contact": True, "is_return_power": True},
 ]
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──
@@ -1081,6 +1145,12 @@ DEFAULTS = {
     "multi_hit":                  False,
     "is_triple_kick":             False,
     "is_scale_shot":              False,
+
+    # [M19-pre1] weight-based and friendship-based dynamic power.
+    "is_low_kick_power":          False,
+    "is_heat_crash_power":        False,
+    "is_return_power":            False,
+    "is_frustration_power":       False,
 }
 
 HEADER = """\
@@ -1137,6 +1207,8 @@ FIELD_ORDER = [
     "is_attract",
     # M18.5g fields
     "strike_count", "multi_hit", "is_triple_kick", "is_scale_shot",
+    # M19-pre1 fields
+    "is_low_kick_power", "is_heat_crash_power", "is_return_power", "is_frustration_power",
 ]
 
 

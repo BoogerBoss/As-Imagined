@@ -633,6 +633,55 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   as a deliberate gap for the rare multi-pursuer doubles case.
 @export var is_pursuit: bool = false
 
+# ── M19-pre1: weight-based and friendship-based dynamic power ───────────────
+
+# is_low_kick_power: Low Kick / Grass Knot — power derived from the TARGET's own
+#   weight (PokemonSpecies.weight, hectograms), via a fixed threshold table. Not the
+#   attacker's weight, and not a ratio — confirmed a genuinely different formula from
+#   is_heat_crash_power below despite both being "weight-based."
+# Source: src/battle_util.c :: CalcMoveBasePowerAfterModifiers, case EFFECT_LOW_KICK
+#   (L6216-6225): `weight = GetBattlerWeight(battlerDef); for (...) if
+#   (sWeightToDamageTable[i] > weight) break; basePower = sWeightToDamageTable[i+1];`
+#   sWeightToDamageTable (L6022-6029, threshold/power pairs, hectograms):
+#   <100→20, <250→40, <500→60, <1000→80, <2000→100, else→120.
+#   GetBattlerWeight's own modifier chain (Autotomize/Heavy Metal/Light Metal/Float
+#   Stone, L5913-5940) is confirmed entirely absent from this project (grep, zero
+#   hits for all four) — raw species weight is used directly, no adjustment needed.
+@export var is_low_kick_power: bool = false
+
+# is_heat_crash_power: Heavy Slam / Heat Crash — power derived from the INTEGER
+#   RATIO of the attacker's weight to the target's weight (both PokemonSpecies.weight,
+#   hectograms), via a fixed lookup table indexed by the ratio directly (capped).
+# Source: src/battle_util.c, case EFFECT_HEAT_CRASH (L6227-6233): `weight =
+#   GetBattlerWeight(battlerAtk) / GetBattlerWeight(battlerDef);` (integer division);
+#   `if (weight >= ARRAY_COUNT(sHeatCrashPowerTable)) basePower =
+#   sHeatCrashPowerTable[last]; else basePower = sHeatCrashPowerTable[weight];`
+#   sHeatCrashPowerTable (L6033): {40, 40, 60, 80, 100, 120} — ratio 0-1→40, 2→60,
+#   3→80, 4→100, 5+→120. Same GetBattlerWeight modifier-chain-is-moot finding as
+#   is_low_kick_power above.
+@export var is_heat_crash_power: bool = false
+
+# is_return_power: Return / Pika Papow / Veevee Volley — power derived from the
+#   ATTACKER's own friendship (BattlePokemon.friendship, 0-255). Confirmed Pika Papow
+#   and Veevee Volley share this EXACT formula (both literally .effect = EFFECT_RETURN
+#   in source, not a separate/similar effect) — not assumed from their similar
+#   in-game descriptions.
+# Source: src/battle_util.c, case EFFECT_RETURN (L6148-6150): `basePower = 10 *
+#   (gBattleMons[battlerAtk].friendship) / 25;` (integer division). A universal
+#   `if (basePower == 0) basePower = 1;` floor applies after the whole switch
+#   (L6371-6372) — friendship=0 would otherwise compute power=0.
+@export var is_return_power: bool = false
+
+# is_frustration_power: Frustration — the INVERSE of is_return_power: power derived
+#   from (MAX_FRIENDSHIP - friendship), NOT friendship directly. Confirmed the exact
+#   inverse relationship from source rather than assumed to mirror Return's own
+#   formula directly (higher friendship = LOWER Frustration power).
+# Source: src/battle_util.c, case EFFECT_FRUSTRATION (L6151-6153): `basePower = 10 *
+#   (MAX_FRIENDSHIP - gBattleMons[battlerAtk].friendship) / 25;` MAX_FRIENDSHIP=255
+#   (include/constants/pokemon.h L223). Same universal power==0→1 floor applies
+#   (friendship=255 would otherwise compute power=0).
+@export var is_frustration_power: bool = false
+
 # is_pain_split: Pain Split — averages the user's and target's CURRENT HP (not max HP) and
 #   sets both to that average: `hpDiff = (attackerHP + targetHP) / 2` (integer division,
 #   floor). Can heal the user and damage the target, or the reverse, depending on which

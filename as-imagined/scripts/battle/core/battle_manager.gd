@@ -1262,6 +1262,27 @@ func _phase_move_execution() -> void:
 		if _pursuit_def_idx >= 0 and _chosen_switch_slots[_pursuit_def_idx] >= 0:
 			_dmg_power_override = move.power * 2
 
+	# ── Low Kick / Grass Knot: power from the TARGET's own weight only ───────
+	# Source: battle_util.c, case EFFECT_LOW_KICK (L6216-6225).
+	if move.is_low_kick_power:
+		_dmg_power_override = _low_kick_power(defender.species.weight)
+
+	# ── Heavy Slam / Heat Crash: power from the attacker/target weight ratio ─
+	# Source: battle_util.c, case EFFECT_HEAT_CRASH (L6227-6233).
+	if move.is_heat_crash_power:
+		_dmg_power_override = _heat_crash_power(attacker.species.weight, defender.species.weight)
+
+	# ── Return / Pika Papow / Veevee Volley: power from the attacker's own
+	# friendship ──────────────────────────────────────────────────────────────
+	# Source: battle_util.c, case EFFECT_RETURN (L6148-6150).
+	if move.is_return_power:
+		_dmg_power_override = _return_power(attacker.friendship)
+
+	# ── Frustration: power from the INVERSE of the attacker's own friendship ─
+	# Source: battle_util.c, case EFFECT_FRUSTRATION (L6151-6153).
+	if move.is_frustration_power:
+		_dmg_power_override = _frustration_power(attacker.friendship)
+
 	# ── Priority-move-block (Dazzling / Queenly Majesty / Armor Tail) ────────────
 	# Source: battle_move_resolution.c :: CancelerPriorityBlock (L1511-1548), dispatched
 	# BEFORE CancelerAccuracyCheck in source's canceler chain — inserted at the same
@@ -3533,6 +3554,53 @@ func _roll_magnitude_power() -> int:
 		return 110
 	else:
 		return 150
+
+
+# [M19-pre1] Low Kick / Grass Knot power lookup — the TARGET's own weight
+# only (hectograms), NOT a ratio. Confirmed a genuinely different formula
+# from _heat_crash_power below despite both being "weight-based."
+# Source: sWeightToDamageTable, battle_util.c L6022-6029.
+static func _low_kick_power(target_weight: int) -> int:
+	if target_weight < 100:
+		return 20
+	elif target_weight < 250:
+		return 40
+	elif target_weight < 500:
+		return 60
+	elif target_weight < 1000:
+		return 80
+	elif target_weight < 2000:
+		return 100
+	else:
+		return 120
+
+
+# [M19-pre1] Heavy Slam / Heat Crash power lookup — the INTEGER RATIO of the
+# attacker's weight to the target's weight (hectograms), indexed directly
+# into a fixed table (capped at the table's last entry for ratio >= 5).
+# Source: sHeatCrashPowerTable, battle_util.c L6027-6033.
+static func _heat_crash_power(attacker_weight: int, target_weight: int) -> int:
+	const TABLE: Array = [40, 40, 60, 80, 100, 120]
+	var ratio: int = attacker_weight / target_weight
+	return TABLE[clampi(ratio, 0, TABLE.size() - 1)]
+
+
+# [M19-pre1] Return / Pika Papow / Veevee Volley power from the attacker's
+# own friendship (0-255). A universal power==0→1 floor applies (source:
+# battle_util.c L6371-6372, after the whole basePower switch) — friendship=0
+# would otherwise compute power=0.
+# Source: battle_util.c, case EFFECT_RETURN (L6148-6150).
+static func _return_power(friendship: int) -> int:
+	return maxi(1, 10 * friendship / 25)
+
+
+# [M19-pre1] Frustration power — the INVERSE of _return_power: derived from
+# (MAX_FRIENDSHIP - friendship), not friendship directly. Same power==0→1
+# floor applies (friendship=255 would otherwise compute power=0).
+# Source: battle_util.c, case EFFECT_FRUSTRATION (L6151-6153). MAX_FRIENDSHIP=255
+# (include/constants/pokemon.h L223).
+static func _frustration_power(friendship: int) -> int:
+	return maxi(1, 10 * (255 - friendship) / 25)
 
 
 # Synchronize back-reflect helper: if holder has Synchronize and received an eligible
