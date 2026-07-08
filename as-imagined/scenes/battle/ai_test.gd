@@ -96,7 +96,7 @@ func _make_mon(mon_name: String, type1: int, type2: int = TypeChart.TYPE_NONE,
 	sp.base_sp_attack = spatk
 	sp.base_sp_defense = spdef
 	sp.base_speed = spd
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY)  # [M18.5h-1] pinned neutral -- exact-value assertions predate Nature
 
 
 func _make_move(move_name: String, move_type: int, category: int, power: int,

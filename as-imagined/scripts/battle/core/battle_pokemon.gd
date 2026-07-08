@@ -35,6 +35,37 @@ const GENDER_MALE: int       = 0
 const GENDER_FEMALE: int     = 1
 const GENDER_GENDERLESS: int = 2
 
+# [M18.5h-1] Nature constants, matching source's NATURE_* ordinal order exactly
+# (include/constants/pokemon.h L52-76) so a future forced_nature caller (M24
+# trainer data) can use the same ordinal source itself documents. 5 neutral
+# natures (no stat effect): HARDY, DOCILE, SERIOUS, BASHFUL, QUIRKY.
+const NUM_NATURES: int = 25
+const NATURE_HARDY: int   = 0   # Neutral
+const NATURE_LONELY: int  = 1   # +Atk -Def
+const NATURE_BRAVE: int   = 2   # +Atk -Speed
+const NATURE_ADAMANT: int = 3   # +Atk -SpAtk
+const NATURE_NAUGHTY: int = 4   # +Atk -SpDef
+const NATURE_BOLD: int    = 5   # +Def -Atk
+const NATURE_DOCILE: int  = 6   # Neutral
+const NATURE_RELAXED: int = 7   # +Def -Speed
+const NATURE_IMPISH: int  = 8   # +Def -SpAtk
+const NATURE_LAX: int     = 9   # +Def -SpDef
+const NATURE_TIMID: int   = 10  # +Speed -Atk
+const NATURE_HASTY: int   = 11  # +Speed -Def
+const NATURE_SERIOUS: int = 12  # Neutral
+const NATURE_JOLLY: int   = 13  # +Speed -SpAtk
+const NATURE_NAIVE: int   = 14  # +Speed -SpDef
+const NATURE_MODEST: int  = 15  # +SpAtk -Atk
+const NATURE_MILD: int    = 16  # +SpAtk -Def
+const NATURE_QUIET: int   = 17  # +SpAtk -Speed
+const NATURE_BASHFUL: int = 18  # Neutral
+const NATURE_RASH: int    = 19  # +SpAtk -SpDef
+const NATURE_CALM: int    = 20  # +SpDef -Atk
+const NATURE_GENTLE: int  = 21  # +SpDef -Def
+const NATURE_SASSY: int   = 22  # +SpDef -Speed
+const NATURE_CAREFUL: int = 23  # +SpDef -SpAtk
+const NATURE_QUIRKY: int  = 24  # Neutral
+
 var species: PokemonSpecies = null
 var nickname: String = ""
 var level: int = 1
@@ -45,6 +76,14 @@ var level: int = 1
 # already hand-set by this project's ~70 existing `_make_mon`-style test
 # helpers, rather than needing a new forcing seam.
 var gender: int = GENDER_MALE
+
+# [M18.5h-1] Rolled once in from_species() (see _roll_nature), uniform 1/25 unless
+# a forced_nature override is threaded through from_species — see _roll_nature's
+# own doc comment for why this field, unlike gender, needed an explicit forcing
+# parameter rather than relying on post-construction reassignment alone (M24
+# trainer data will need to assign SPECIFIC natures, not a random roll). Freely
+# reassignable afterward like every other field here.
+var nature: int = NATURE_HARDY
 
 # Current battle HP and computed stats (not base stats — those live on species)
 var current_hp: int = 0
@@ -344,13 +383,15 @@ var last_consumed_berry: ItemData = null
 var fainted: bool = false
 
 
-static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokemon:
+static func from_species(p_species: PokemonSpecies, p_level: int,
+		forced_nature: Variant = null) -> BattlePokemon:
 	var bp := BattlePokemon.new()
 	bp.species = p_species
 	bp.original_types = p_species.types.duplicate()
 	bp.nickname = p_species.species_name
 	bp.level = p_level
 	bp.gender = _roll_gender(p_species.gender_ratio)
+	bp.nature = _roll_nature(forced_nature)
 	bp.ivs = [0, 0, 0, 0, 0, 0]
 	bp.evs = [0, 0, 0, 0, 0, 0]
 	bp.moves = []
@@ -421,6 +462,64 @@ static func _roll_gender(gender_ratio: int) -> int:
 	return GENDER_MALE
 
 
+# [M18.5h-1] Rolls a uniform-random Nature (1/25 each) unless forced_nature is
+# provided (non-null), in which case it's returned directly with zero variance —
+# the SAME Variant=null forcing-parameter convention already established
+# throughout this project (StatusManager/DamageCalculator's force_hit/force_crit/
+# force_roll, force_confusion_hit at status_manager.gd:429), reused here rather
+# than inventing a new pattern. Added an explicit forcing parameter (unlike
+# gender, which has none — see _roll_gender's own doc comment) because M24
+# (Trainer Data, not yet started) will need to assign SPECIFIC deterministic
+# natures to trainer-owned Pokémon (e.g. a gym leader's ace with a fixed
+# competitive nature), not a random roll — building the override now, alongside
+# the roll mechanism, avoids retrofitting a parameter onto an already-shipped
+# function later.
+# Source: GetNature/GetNatureFromPersonality (pokemon.c L4185-4193), a flat
+# `personality % NUM_NATURES` — structurally identical to _roll_gender's own
+# personality-modulo-derived shape, so a direct `randi() % NUM_NATURES`
+# reproduces the same uniform distribution without a personality-value concept.
+static func _roll_nature(forced_nature: Variant = null) -> int:
+	if forced_nature != null:
+		return forced_nature
+	return randi() % NUM_NATURES
+
+
+# [M18.5h-1] Returns [raise_stat, lower_stat] (BattlePokemon.STAT_* indices, THIS
+# project's own ordering — NOT source's raw `enum Stat` order, which places Speed
+# BEFORE SpAtk/SpDef and would silently resolve to the wrong stat if copied by raw
+# index; see docs/m18_5h_recon.md Section B3's own flagged ordering trap) for a
+# given nature, translated by STAT NAME from source's gNaturesInfo[] table
+# (pokemon.c L154-453). Returns [-1, -1] for the 5 neutral natures (Hardy/Docile/
+# Serious/Bashful/Quirky) — checked explicitly by _apply_nature below, rather than
+# mirrored via source's own raise==lower placeholder-stat encoding (source assigns
+# each neutral nature some arbitrary "same stat" purely so its own equality check
+# works; reproducing which specific placeholder stat each neutral nature uses would
+# add no behavior and only invite confusion for a future reader).
+static func _nature_stat_pair(nature_id: int) -> Array[int]:
+	match nature_id:
+		NATURE_LONELY:  return [STAT_ATK, STAT_DEF]
+		NATURE_BRAVE:   return [STAT_ATK, STAT_SPEED]
+		NATURE_ADAMANT: return [STAT_ATK, STAT_SPATK]
+		NATURE_NAUGHTY: return [STAT_ATK, STAT_SPDEF]
+		NATURE_BOLD:    return [STAT_DEF, STAT_ATK]
+		NATURE_RELAXED: return [STAT_DEF, STAT_SPEED]
+		NATURE_IMPISH:  return [STAT_DEF, STAT_SPATK]
+		NATURE_LAX:     return [STAT_DEF, STAT_SPDEF]
+		NATURE_TIMID:   return [STAT_SPEED, STAT_ATK]
+		NATURE_HASTY:   return [STAT_SPEED, STAT_DEF]
+		NATURE_JOLLY:   return [STAT_SPEED, STAT_SPATK]
+		NATURE_NAIVE:   return [STAT_SPEED, STAT_SPDEF]
+		NATURE_MODEST:  return [STAT_SPATK, STAT_ATK]
+		NATURE_MILD:    return [STAT_SPATK, STAT_DEF]
+		NATURE_QUIET:   return [STAT_SPATK, STAT_SPEED]
+		NATURE_RASH:    return [STAT_SPATK, STAT_SPDEF]
+		NATURE_CALM:    return [STAT_SPDEF, STAT_ATK]
+		NATURE_GENTLE:  return [STAT_SPDEF, STAT_DEF]
+		NATURE_SASSY:   return [STAT_SPDEF, STAT_SPEED]
+		NATURE_CAREFUL: return [STAT_SPDEF, STAT_SPATK]
+		_: return [-1, -1]  # Hardy/Docile/Serious/Bashful/Quirky — neutral
+
+
 # [M18.5d-2] Ports AreBattlersOfOppositeGender/AreBattlersOfSameGender
 # (battle_util.c L9420-9434) exactly — genderless on EITHER side makes both
 # functions false (genderless is neutral, neither "opposite" nor "same" of
@@ -453,24 +552,51 @@ func use_pp(move_index: int, amount: int = 1) -> void:
 		current_pp[move_index] = max(0, current_pp[move_index] - amount)
 
 
-# Recalculates all stats from species base stats + level + IVs + EVs.
+# Recalculates all stats from species base stats + level + IVs + EVs + Nature.
 # Call after level-up or EV gain. Does not update current_hp.
 func _calculate_stats() -> void:
 	max_hp    = _hp_formula(species.base_hp,        ivs[STAT_HP],    evs[STAT_HP])
-	attack    = _stat_formula(species.base_attack,  ivs[STAT_ATK],   evs[STAT_ATK])
-	defense   = _stat_formula(species.base_defense, ivs[STAT_DEF],   evs[STAT_DEF])
-	sp_attack = _stat_formula(species.base_sp_attack, ivs[STAT_SPATK], evs[STAT_SPATK])
-	sp_defense = _stat_formula(species.base_sp_defense, ivs[STAT_SPDEF], evs[STAT_SPDEF])
-	speed     = _stat_formula(species.base_speed,   ivs[STAT_SPEED], evs[STAT_SPEED])
+	attack    = _apply_nature(
+			_stat_formula(species.base_attack,  ivs[STAT_ATK],   evs[STAT_ATK]), STAT_ATK)
+	defense   = _apply_nature(
+			_stat_formula(species.base_defense, ivs[STAT_DEF],   evs[STAT_DEF]), STAT_DEF)
+	sp_attack = _apply_nature(
+			_stat_formula(species.base_sp_attack, ivs[STAT_SPATK], evs[STAT_SPATK]), STAT_SPATK)
+	sp_defense = _apply_nature(
+			_stat_formula(species.base_sp_defense, ivs[STAT_SPDEF], evs[STAT_SPDEF]), STAT_SPDEF)
+	speed     = _apply_nature(
+			_stat_formula(species.base_speed,   ivs[STAT_SPEED], evs[STAT_SPEED]), STAT_SPEED)
 
 
 # Standard Pokémon HP formula (Gen III+):
 #   floor((2*base + iv + floor(ev/4)) * level / 100) + level + 10
+# [M18.5h-1] HP is NEVER nature-affected (confirmed from source — ModifyStatByNature's
+# own `statIndex <= STAT_HP` guard, plus CalculateMonStats computes HP entirely
+# outside the loop that even calls it) — this formula has no nature term by design,
+# not an oversight.
 func _hp_formula(base: int, iv: int, ev: int) -> int:
 	return floori((2 * base + iv + floori(ev / 4.0)) * level / 100.0) + level + 10
 
 
-# Standard non-HP stat formula (Gen III+):
+# Standard non-HP stat formula (Gen III+), BEFORE nature — see _apply_nature, which
+# wraps this function's return value at each of its 5 call sites in _calculate_stats.
 #   floor((2*base + iv + floor(ev/4)) * level / 100) + 5
 func _stat_formula(base: int, iv: int, ev: int) -> int:
 	return floori((2 * base + iv + floori(ev / 4.0)) * level / 100.0) + 5
+
+
+# [M18.5h-1] Applies this Pokémon's Nature to an already-fully-computed non-HP stat
+# value (i.e. wraps _stat_formula's return value, matching source's own insertion
+# point exactly — ModifyStatByNature is called AFTER CalculateMonStats' base formula
+# already includes its `+5` term, pokemon.c L1408). +10%/-10%, floor (C's `stat*110/
+# 100`/`stat*90/100` integer division is equivalent to floori() for non-negative
+# operands, which stat values always are). Neutral natures ([-1,-1] from
+# _nature_stat_pair) fall through both checks and return stat_value completely
+# unchanged — bit-identical to the pre-Nature formula, not just "close".
+func _apply_nature(stat_value: int, stat_index: int) -> int:
+	var pair: Array[int] = _nature_stat_pair(nature)
+	if stat_index == pair[0]:
+		return floori(stat_value * 110.0 / 100.0)
+	if stat_index == pair[1]:
+		return floori(stat_value * 90.0 / 100.0)
+	return stat_value

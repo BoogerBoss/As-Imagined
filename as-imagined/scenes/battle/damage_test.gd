@@ -189,7 +189,7 @@ func _make_mon(name: String, types: Array[int], base_hp: int, base_atk: int, bas
 	sp.base_speed      = base_spd
 	sp.abilities       = []
 	sp.learnset        = []
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY)  # [M18.5h-1] pinned neutral -- exact-value assertions predate Nature
 
 
 func _make_move(name: String, type_id: int, category: int, power: int) -> MoveData:

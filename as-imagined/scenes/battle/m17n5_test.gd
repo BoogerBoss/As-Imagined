@@ -101,7 +101,7 @@ func _make_mon(mon_name: String, types: Array[int], hp: int = 100, atk: int = 80
 	sp.base_sp_attack = spatk
 	sp.base_sp_defense = spdef
 	sp.base_speed = spd
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY)  # [M18.5h-1] pinned neutral -- exact-value assertions predate Nature
 
 
 func _synth_move(power: int = 40, category: int = 0, move_type: int = TypeChart.TYPE_NORMAL) -> MoveData:

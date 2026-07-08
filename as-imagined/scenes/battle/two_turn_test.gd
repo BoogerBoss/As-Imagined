@@ -63,7 +63,7 @@ func _make_mon(mon_name: String, type1: int, speed: int = 80,
 	sp.base_sp_attack  = 80
 	sp.base_sp_defense = 80
 	sp.base_speed      = speed
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY)  # [M18.5h-1] pinned neutral -- exact-value assertions predate Nature
 
 
 func _make_tackle(power: int = 40) -> MoveData:

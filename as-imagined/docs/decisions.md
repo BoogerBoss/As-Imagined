@@ -13689,3 +13689,182 @@ No stray Godot processes before or after; reference clone untouched; no
 scratch scenes or leftover debug prints. `git status --short` matches the
 expected file set: `ability_manager.gd`, `battle_manager.gd`, `m17c_test.gd`,
 plus this docs commit.
+
+## [M18.5h-1] Nature system (25 natures, likes/dislikes excluded, forced_nature override)
+
+First of two sequential M18.5h sub-tiers (`[M18.5h-2]`, IV, runs next). Scope
+per `docs/m18_5h_recon.md` Section B, with Rob's own explicit scope
+decisions: likes/dislikes flavor-preference data EXCLUDED (zero roadmap
+consumer through M31, confirmed at the recon), EV gain OUT of scope for all
+of M18.5h (deferred to land with M20). An additional real requirement beyond
+the recon: M24 (Trainer Data) will need to assign SPECIFIC deterministic
+natures to trainer Pokémon, not a random roll — built the override capability
+now, alongside the roll mechanism, rather than retrofitting it later.
+
+### Step 0 — re-verified directly from source, not trusted from the recon alone
+
+All of the recon's own citations re-checked directly this session, per this
+project's standing "re-verify before building on a prior document" discipline
+(`[M18.5f]`'s Jaw Lock correction, `[M18.5g]`'s roll-distribution correction
+are the precedent this task explicitly named) — **no corrections needed this
+time**, every citation held up exactly as the recon stated:
+
+- **25-nature table**: `include/constants/pokemon.h` L52-76, re-verified in
+  full (not just the recon's own 2-sample spot-check). 5 neutral: Hardy(0),
+  Docile(6), Serious(12), Bashful(18), Quirky(24).
+- **Insertion point/rounding**: `ModifyStatByNature` (`pokemon.c` L4942-4952),
+  called from `CalculateMonStats` (L1408) immediately AFTER the base
+  non-HP formula's own `+5` term — wraps the entire existing `_stat_formula`
+  return value, not a term inserted mid-formula. `stat*110/100`/`stat*90/100`,
+  C integer division on non-negative operands == `floori()`.
+- **HP exemption**: double-insulated — `ModifyStatByNature`'s own
+  `statIndex <= STAT_HP` guard, AND `CalculateMonStats`'s HP branch computes
+  HP entirely outside the loop that even calls it. `_hp_formula` needed zero
+  changes.
+- **Representation**: `NATURE_*` constants + `nature: int` field on
+  `BattlePokemon` only — confirmed `GetNature` is pure `personality %
+  NUM_NATURES`, zero species-level bias in source, so (unlike gender_ratio)
+  no `PokemonSpecies` field was needed at all.
+- **Roll mechanism**: `GetNature`/`GetNatureFromPersonality` (`pokemon.c`
+  L4185-4193), a flat `personality % 25` — structurally identical to
+  `_roll_gender`'s own personality-modulo shape, so `randi() % 25` reproduces
+  the same distribution.
+
+### A real correctness trap flagged and avoided (not present in the task's own framing)
+
+Source's `enum Stat` orders `HP=0, ATK=1, DEF=2, SPEED=3, SPATK=4, SPDEF=5`
+— Speed BEFORE Sp.Atk/Sp.Def. This project's own `BattlePokemon.STAT_*`
+orders `SPATK=3, SPDEF=4, SPEED=5` — Speed AFTER. Copying the Nature table's
+`statUp`/`statDown` values by raw source index would have silently pointed
+every Speed/SpAtk/SpDef entry at the wrong stat. `_nature_stat_pair` is built
+entirely by STAT NAME (`STAT_ATK`, `STAT_SPEED`, etc.), never a bare source
+index — verified by construction, not just by testing.
+
+### Implementation
+
+- `battle_pokemon.gd`: `NUM_NATURES`/`NATURE_HARDY`..`NATURE_QUIRKY` constants
+  (matching source's own ordinal order, so a future `forced_nature` caller —
+  M24 — can use the same ordinals source itself documents). New
+  `nature: int = NATURE_HARDY` field, placed and doc-commented the same way
+  as `[M18.5d]`'s `gender` field. New `_roll_nature(forced_nature: Variant =
+  null) -> int`, structurally mirroring `_roll_gender` — reuses this
+  project's EXISTING `Variant = null` forcing-parameter convention
+  (`force_hit`/`force_crit`/`force_confusion_hit` at
+  `status_manager.gd:429`) rather than inventing a new one; `forced_nature`
+  threaded through as `from_species`'s new optional 3rd parameter (confirmed
+  via grep: all 117 pre-existing call sites are 2-arg, fully backward
+  compatible). New `_nature_stat_pair(nature_id) -> Array[int]`, a `match`
+  returning `[raise_stat, lower_stat]` (or `[-1, -1]` for the 5 neutrals) —
+  `match`-based rather than indexed const arrays, matching this project's own
+  established dispatch style (`_status_to_se`/`_se_to_status`) more closely
+  than a raw lookup table would. New `_apply_nature(stat_value, stat_index)
+  -> int` wraps `_stat_formula`'s return value at each of its 5 call sites
+  inside `_calculate_stats()` — `_stat_formula`/`_hp_formula` themselves are
+  UNCHANGED, matching the confirmed insertion point exactly.
+
+### Testing
+
+New `m18_5h1_test.gd`/`.tscn`: **46/46**, stable across 6 reruns. Section A:
+table data-integrity via direct `_nature_stat_pair` calls (9 boost/reduce
+pairs covering every stat as both a raise and lower target at least once,
+plus all 5 neutral natures individually). Section B: roll statistical
+distribution (n=5000, no override, uniform ~1/25 per nature with a wide
+tolerance band). Section C: stat-formula application — Adamant (+Atk
+-SpAtk) and Timid (+Speed -Atk) each checked for boosted/reduced/untouched
+stats with hand-verified exact numbers (base=100 species, level 50,
+IV=EV=0 → pre-nature formula = 105 for every non-HP stat), and Hardy
+(neutral) confirmed **bit-identical** to the raw pre-Nature formula output
+(105, not "close to 105") across all 5 non-HP stats. Section D: HP
+unaffected by nature, checked across 4 different natures (Adamant/Timid/
+Calm/Hardy) with a pairwise-identical discriminator. Section E: `forced_nature`
+determinism — n=50 repeated calls each for Adamant, Timid, and (critically)
+**Hardy specifically** (`NATURE_HARDY == 0`, a genuine edge case: a falsy
+check like `if forced_nature:` instead of the correct `if forced_nature !=
+null:` would have silently treated a forced-neutral request as "no override
+given" — pinned as its own discriminator, not assumed safe), all zero
+variance; plus a discriminator confirming an UNFORCED call sees ≥2 distinct
+natures across the same n, proving the forced tests aren't just hitting a
+coincidentally-narrow default.
+
+### Regression — the headline finding of this session
+
+**Turning on a real default random-nature roll broke roughly two dozen
+suites' worth of pre-existing EXACT-VALUE stat/damage assertions that all
+implicitly assumed no Nature system existed** — every one of them
+constructs `BattlePokemon` via `from_species` with NO `forced_nature`
+argument, which (correctly, per this tier's own design) now rolls a real,
+usually non-neutral (20/25 odds) nature, silently perturbing Attack/Defense/
+Sp.Atk/Sp.Def/Speed by ±10% versus what those tests' hardcoded expected
+numbers assume. This was found ONLY through the full 75-suite sweep this
+task explicitly required (treated the same way `[M18t]`'s wide-touching
+change was handled, NOT a routine 2-3-suite check) — a routine check would
+have missed nearly all of it.
+
+**Took 5 full-sweep iterations to fully converge**, because the failures were
+BOTH probabilistic (a suite could pass or fail on any given run depending on
+that run's random rolls, so a single clean rerun didn't prove a suite was
+safe) AND, for 3 suites, invisible to the sweep's own detection method: sweep
+iterations 1-4 grepped for the literal string `"FAILED"` (this project's
+dominant `_chk`-style suites' own convention), but `damage_test.gd`,
+`move_test.gd`, and `status_test.gd` print `"=== Results: X passed, Y failed
+==="` instead — a format that never contains the bare word `"FAILED"` at
+all, so these three suites silently failed across four consecutive sweeps
+with zero visibility until a broader case-insensitive `passed|fail` grep
+(added for sweep 5) finally caught them. **Methodology lesson for any future
+wide regression sweep in this codebase**: grep for `passed.*fail` (or
+similar) broadly, not a single fixed keyword — confirmed via
+`grep -rl "passed, .*failed" scenes/battle/*.gd` that exactly 5 suites use
+this alternate format (`integration_test`, `stat_test`, `move_test`,
+`status_test`, `damage_test`); `integration_test` was clean throughout and
+never needed a fix.
+
+**Sweep-by-sweep breakdown**:
+- Sweep 1 (grep "FAILED"): 18 suites — `ability_test`, `doubles_test`,
+  `item_test`, `m16_review_test`, `m16b_test`, `m16c_test`, `m17a_test`,
+  `m17b_test`, `m17c_test`, `m17m_test`, `m17n10_test`, `m17n2_test`,
+  `m17n4_test`, `m17n5_test`, `m17n6_test`, `m18a_test`, `m18b_test`,
+  `two_turn_test`.
+- Sweep 2 (same grep, post-fix rerun): 2 more escaped detection in sweep 1
+  purely by random-roll luck — `m17d_test`, `weather_test`.
+- Sweep 3 (same grep): 1 more, same reason — `ai_test`.
+- Sweep 4 (same grep): came back 0 new via this grep, but a manual
+  broader check revealed 3 suites invisible to the "FAILED" grep the whole
+  time — `damage_test`, `move_test`, `status_test`.
+- Sweep 5 (broadened `passed|fail` grep, case-insensitive): **0 failures,
+  full 75-suite convergence**, confirmed by additionally cross-checking every
+  suite's own pass/fail numbers agree (`X/X passed` or `X passed, 0 failed`)
+  via a manual full-file read, not just the grep.
+
+**Every fix was the same shape**: pin `BattlePokemon.NATURE_HARDY` as the
+3rd arg on the suite's own shared fixture-construction helper (usually a
+single `_make_mon`-style function per file), or — for the 4 files with a
+"copy an existing mon" helper (`stat_test.gd`'s `_clone`, `weather_test.gd`'s
+`_mon_copy`, `move_test.gd`'s `_clone`, `status_test.gd`'s `_clone`) — pass
+the SOURCE mon's own `.nature` forward instead of a fresh neutral pin, since
+a faithful clone should reproduce the original's stats exactly, not
+silently reset them to neutral. `ability_test.gd` needed ~30 individual
+call-site edits (no single shared helper; many inline `PokemonSpecies.new()`
++ `from_species()` blocks per test section) rather than one function-level
+fix — handled via a capture-group regex substitution preserving each line's
+own trailing comment, with one explanatory note added near the file's own
+header instead of 30 repeated inline comments. **Zero production-code
+change** — the fix is entirely in test fixtures explicitly declaring their
+pre-existing neutral-nature assumption now that Nature is real; the
+production default (`from_species` with no `forced_nature` rolls a genuine
+random nature) is correct and unchanged, matching this tier's own explicit
+design.
+
+Final confirmation: all 75 suites green on one clean sweep, `m18_5h1_test`
+46/46 stable across 2 additional reruns, no stray Godot processes, reference
+clone untouched. `git status --short` matches the expected file set:
+`battle_pokemon.gd` (production) + 25 test `.gd` files (fixture pins) + 2 new
+`m18_5h1_test` files.
+
+### Docs
+
+`CLAUDE.md`'s status section updated noting M18.5h-1 complete and
+`forced_nature` ready for M24 (Trainer Data) to consume whenever that
+milestone starts. Recommends `[M18.5h-2]` (IV) as the immediate next tier —
+it will need the identical `forced_iv`-style override pattern established
+here. Likes/dislikes and EV gain remain explicitly excluded/deferred per
+Rob's own scope decisions on `docs/m18_5h_recon.md`.

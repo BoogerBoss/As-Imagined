@@ -264,11 +264,11 @@ func _make_mon(name: String, types: Array[int], base_hp: int, base_atk: int,
 	sp.base_speed      = base_spd
 	sp.abilities       = []
 	sp.learnset        = []
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY)  # [M18.5h-1] pinned neutral -- exact-value assertions predate Nature
 
 
 func _clone(mon: BattlePokemon) -> BattlePokemon:
-	var bp := BattlePokemon.from_species(mon.species, mon.level)
+	var bp := BattlePokemon.from_species(mon.species, mon.level, mon.nature)  # [M18.5h-1] preserves the SOURCE mon's nature, matching the copy contract
 	bp.status          = mon.status
 	bp.sleep_turns     = mon.sleep_turns
 	bp.toxic_counter   = mon.toxic_counter
