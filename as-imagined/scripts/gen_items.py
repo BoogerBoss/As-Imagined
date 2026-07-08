@@ -196,6 +196,15 @@ HOLD_EFFECT_MENTAL_HERB = 28   # Cures Disable + Encore (this project's
                                 # condition list) -- see item_manager.gd's
                                 # own doc comment.
 
+# M18x: Covert Cloak. Value re-derived programmatically, cross-validated
+# against 7 pre-existing constants, zero mismatches.
+HOLD_EFFECT_COVERT_CLOAK = 125  # The exact same gate as Shield Dust
+                                 # (ABILITY_SHIELD_DUST), item-based instead
+                                 # of ability-based -- see item_manager.gd's
+                                 # own doc comment for the full scope
+                                 # citation (including the confirmed-but-
+                                 # unfixed Poison Touch gap).
+
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
 TYPE_FIGHTING = 2
@@ -500,6 +509,13 @@ ITEMS = [
     #    Disable/Heal Block/Encore/Taunt), since this project implements only
     #    those two. No hold_effect_param needed.
     {"id": 464, "name": "Mental Herb", "hold_effect": HOLD_EFFECT_MENTAL_HERB},
+
+    # ── M18x: Covert Cloak (1) -- the last M18 implementation tier. Same gate
+    #    as Shield Dust (the literal same source function, ability vs. item),
+    #    scoped to match this project's CURRENT Shield Dust behavior exactly
+    #    (a pre-existing Poison Touch gap is flagged, not silently fixed here).
+    #    No hold_effect_param needed.
+    {"id": 761, "name": "Covert Cloak", "hold_effect": HOLD_EFFECT_COVERT_CLOAK},
 ]
 
 HEADER = """\

@@ -11981,3 +11981,141 @@ core files, 1 new `.tres` item, 2 new test files) before this docs commit.
 `CLAUDE.md`'s status section updated with M18v's completion. Recommend
 **M18x** (the only tier remaining, flagged moderate-high risk), or the
 end-of-M18 legacy-item cleanup pass, per Rob's preference.
+
+## [M18x] Covert Cloak (1 item)
+
+Nineteenth and LAST M18 implementation tier, per `docs/m18_subtier_plan.md`'s
+M18x section. Flagged moderate-high risk as "wide-but-shallow" — a different
+risk shape from prior tiers (breadth of insertion points, not depth of any
+one mechanism). Turned out to be low-risk in practice: real source confirms
+this is genuinely ONE insertion point, not several.
+
+### Step 0 — finalized scope, confirmed and corrected
+
+Canonical ID confirmed: **761** (`include/constants/items.h`).
+`HOLD_EFFECT_COVERT_CLOAK = 125`, re-derived via the established programmatic
+full-enum recount, cross-validated against 7 pre-existing constants, zero
+mismatches.
+
+**Shield Dust precedent confirmed to exist, and Covert Cloak's scope
+confirmed IDENTICAL to it — not assumed, verified from source**: real
+source's `IsMoveEffectBlockedByTarget` (`battle_util.c` L9811-9825) is the
+LITERAL SAME function for both — an if/else-if chain checking the target's
+ability first (Shield Dust), then its held item (Covert Cloak), both
+returning the identical block. This project's Shield Dust already lives in
+exactly one place: `StatusManager.try_secondary_effect`
+(`status_manager.gd` L793-796), gated on `is_true_secondary`
+(`move.secondary_chance > 0`).
+
+**Confirmed this project's existing `is_true_secondary` gate correctly
+reproduces source's `!primary` exemption** (real source's own gate,
+`SetMoveEffect`, `battle_script_commands.c` L2315, is
+`!primary && !affectsUser && IsMoveEffectBlockedByTarget(...)` — a move's
+own guaranteed/primary effect, like Thunder Wave's paralysis, is never
+blocked): checked every `secondary_chance == 0` move in this project's
+roster (5 total, confirmed by direct grep, not estimated) and confirmed all
+five are genuine status moves (Sleep Powder, Thunder Wave, Toxic, Confuse
+Ray, Will-O-Wisp) — none are damaging moves with a guaranteed bonus effect. Additionally
+confirmed `MoveData.stat_change_stat` (Growl/Swords Dance) has NO
+probability field in this project's schema at all, so no damaging move can
+carry a probabilistic stat-lowering secondary effect here either — this
+whole category is architecturally unreachable, not merely untested.
+
+**A genuine pre-existing gap found, flagged and NOT fixed (out of scope for
+a 1-item tier)**: real source also gates Poison Touch and Toxic Chain
+(both ability-triggered) through this exact same check (`battle_util.c`
+L4286/L4304). Toxic Chain is confirmed excluded from this project entirely
+(`[M17c]`'s own exclusion decision, unaffected). Poison Touch IS
+implemented here, but its branch inside `try_contact_effects` (merged with
+Poison Point) has no Shield Dust gate at all — a real gap predating this
+tier, from `[M17c]`. Implementing Covert Cloak to match Shield Dust's
+CURRENT actual scope (not source's full scope) avoids introducing a NEW
+asymmetry between the two; the gap is flagged here for a future
+ability-side fix, not silently propagated or silently fixed as a side
+effect of an item-only tier.
+
+**A second, unrelated pre-existing bug discovered as a side effect of
+tracing this code carefully, also flagged and NOT fixed**: this project's
+`try_contact_effects` merges Poison Point and Poison Touch into one branch
+keyed on the DEFENDER's ability (`if id == ABILITY_POISON_POINT or
+ABILITY_POISON_TOUCH: ... try_apply_status(attacker, POISON)`), applying
+the poison to the ATTACKER in both cases. This is correct for Poison Point
+(a genuine defender-side reactive ability) but backwards for Poison Touch,
+which real source (`battle_util.c`, `ABILITYEFFECT_MOVE_END_ATTACKER`
+dispatch, keyed on the ATTACKER's ability) applies to the DEFENDER instead.
+Genuinely orthogonal to Covert Cloak/Shield Dust — a pure ability-direction
+bug from `[M17c]`, unrelated to items — flagged here rather than silently
+carried forward unremarked, but out of scope to fix in this tier.
+
+**Sheer Force confirmed unrelated, no conflict**: a separate, sequential
+`if is_true_secondary and attacker's ability == SHEER_FORCE: return false`
+immediately after the Shield Dust/Covert Cloak checks in the same function
+— keyed on the ATTACKER's ability, not the defender's item. Either firing
+independently blocks the effect exactly once; tested explicitly (`W07`)
+that both present simultaneously produces no double-trigger error.
+
+**Consumption confirmed permanent, never consumed**: `IsMoveEffectBlockedByTarget`
+is a pure predicate with no item-removal call anywhere in its own body or
+callers, matching Shield Dust's own passive-ability shape. Tested explicitly
+(`W08`): the item survives blocking three separate secondary effects in a
+row.
+
+### Implementation
+
+- New `ItemManager.HOLD_EFFECT_COVERT_CLOAK = 125` constant; new
+  `holds_covert_cloak(mon, ng_active) -> bool` pure check.
+- `StatusManager.try_secondary_effect`: ONE new check inserted immediately
+  after the existing Shield Dust check, before Sheer Force's — `if
+  is_true_secondary and ItemManager.holds_covert_cloak(defender, ng_active):
+  return false`. This is the ONLY call site touched — confirmed sufficient
+  by Step 0's own tracing, not assumed.
+- 1 new entry added to `gen_items.py`'s `ITEMS` dict; `.tres` regenerated,
+  139 items total (138 prior + 1).
+
+### Test results
+
+New `m18x_test.gd`/`.tscn`: **15/15** assertions, 8 sections (W01 status
+infliction — probabilistic, blocked; W02 confusion — blocked; W03 flinch —
+blocked; W04 a direct test of Step 0's own scope-confirmation work — a
+guaranteed/chance=0 status-move effect is NOT blocked; W05 a full-battle
+sanity check that a stat-change move still applies normally to a Covert
+Cloak holder, since that pipeline never reaches `try_secondary_effect` at
+all; W06 another direct scope-boundary test — Static, an ability-triggered
+contact effect dispatched through the wholly separate `try_contact_effects`
+function, still fires normally against a Covert-Cloak-holding defender's
+own ability; W07 Sheer Force interaction, no conflict; W08 permanence),
+passing on the first run, stable across 2 reruns. Every status/confusion/
+flinch assertion made via a direct `try_secondary_effect`/`try_contact_effects`
+call with a forced roll, avoiding the whole-battle-aggregation pitfall by
+construction — held the line clean across `[M18m]`/`[M18p]`/`[M18t]`/
+`[M18v]`/`[M18x]`, five tiers running.
+
+### Regression
+
+Confirmed only ONE call site was touched (per Step 0's own tracing), so
+routine single-chokepoint scope applied:
+- `m18x_test.tscn`: **15/15** (new).
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity holds
+  across the expanded 139-item catalog.
+- `m17n1_test.tscn`: **82/82**, unchanged — Shield Dust's own origin suite,
+  confirming the new adjacent Covert Cloak check didn't disturb it.
+- `m17n5_test.tscn`: **78/78**, unchanged — Sheer Force's own origin suite,
+  confirming the two remain correctly independent.
+- `stat_test.tscn`: **78/78**, unchanged — broader status/secondary-effect
+  coverage for `try_secondary_effect` itself.
+
+No stray Godot processes before or after; reference clone untouched;
+`git status --short` matched exactly the expected file set (3 modified
+core files, 1 new `.tres` item, 2 new test files) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18x's completion. **M18 is now
+functionally complete** pending only the end-of-M18 legacy-item cleanup
+pass. That pass's own prompt should NOT need to rediscover: the ~15
+M12-era items already implemented before M18 began (Leftovers, Lum Berry,
+Choice Band, Sitrus Berry, Choice Specs, Choice Scarf, Damp/Heat/Icy/Smooth
+Rock, Life Orb, Chilan Berry, Occa Berry, Heavy-Duty Boots, Utility
+Umbrella), of which **two have no `.tres` registry entry at all** (Lum
+Berry, Sitrus Berry — found during `[M18-patch-1]`, confirmed still true,
+not yet fixed by any subsequent tier).

@@ -733,6 +733,66 @@ const HOLD_EFFECT_MENTAL_HERB: int = 28  # Source: TryMentalHerb
                                           # regardless of how many of the
                                           # (up to 6) conditions matched).
 
+# M18x: Covert Cloak. Value re-derived programmatically, cross-validated
+# against 7 pre-existing constants, zero mismatches.
+const HOLD_EFFECT_COVERT_CLOAK: int = 125  # Source: IsMoveEffectBlockedByTarget
+                                            # (battle_util.c L9811-9825) — the
+                                            # LITERAL SAME function as Shield
+                                            # Dust (ABILITY_SHIELD_DUST=19,
+                                            # ability_manager.gd), an
+                                            # if/else-if chain checking
+                                            # ability first, then item, both
+                                            # returning the identical block.
+                                            # Blocks a move's own PROBABILISTIC
+                                            # secondary effect (status
+                                            # infliction/confusion/flinch)
+                                            # landing on the holder as the
+                                            # DEFENDER — same
+                                            # `is_true_secondary`-gated scope
+                                            # as this project's existing
+                                            # Shield Dust check
+                                            # (status_manager.gd's
+                                            # try_secondary_effect), which
+                                            # already correctly exempts
+                                            # guaranteed/primary status-move
+                                            # effects (Thunder Wave/Toxic/
+                                            # Confuse Ray/Will-O-Wisp, all
+                                            # secondary_chance=0) and pure
+                                            # stat-change moves (Growl/Swords
+                                            # Dance — this project's
+                                            # `stat_change_stat` schema has NO
+                                            # probability field at all, so no
+                                            # damaging move can carry a
+                                            # probabilistic stat-lowering
+                                            # secondary effect here). NOT
+                                            # wired into try_contact_effects's
+                                            # Poison Touch branch: real source
+                                            # ALSO gates Poison Touch through
+                                            # this same check (battle_util.c
+                                            # L4286), but this project's
+                                            # EXISTING Shield Dust
+                                            # implementation has no such gate
+                                            # there (a pre-existing gap from
+                                            # [M17c], predating this tier) —
+                                            # Covert Cloak deliberately
+                                            # matches Shield Dust's CURRENT
+                                            # actual scope, not source's full
+                                            # scope, to avoid introducing a
+                                            # NEW asymmetry between the two.
+                                            # Toxic Chain (source's other
+                                            # gated ability) is excluded from
+                                            # this project entirely ([M17c]).
+                                            # Sheer Force: confirmed unrelated
+                                            # — a separate, sequential check
+                                            # keyed on the ATTACKER's own
+                                            # ability, no interaction either
+                                            # way. Permanent modifier, NEVER
+                                            # consumed — `IsMoveEffectBlockedByTarget`
+                                            # is a pure predicate with no
+                                            # item-removal call anywhere near
+                                            # it, matching Shield Dust's own
+                                            # passive-ability shape.
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -2184,3 +2244,14 @@ static func holds_air_balloon(mon: BattlePokemon, ng_active: bool = false) -> bo
 static func holds_mental_herb(mon: BattlePokemon, ng_active: bool = false) -> bool:
 	var item: ItemData = effective_held_item(mon, ng_active)
 	return item != null and item.hold_effect == HOLD_EFFECT_MENTAL_HERB
+
+
+# ── M18x: Covert Cloak ───────────────────────────────────────────────────────────
+#
+# Pure data check only — the actual gate lives at StatusManager
+# .try_secondary_effect's own insertion point, alongside Shield Dust's
+# existing check (same scope, item-based instead of ability-based). Never
+# consumed — a permanent passive modifier, same as Shield Dust.
+static func holds_covert_cloak(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_COVERT_CLOAK

@@ -795,6 +795,24 @@ static func try_secondary_effect(
 					== AbilityManager.ABILITY_SHIELD_DUST:
 		return false
 
+	# M18x: Covert Cloak — the EXACT SAME gate as Shield Dust above, item-based
+	# instead of ability-based. Source: `IsMoveEffectBlockedByTarget`
+	# (battle_util.c L9811-9825) is the literal same if/else-if chain for both —
+	# ability checked first, then item, both returning the identical block —
+	# confirmed via direct read this project's Shield Dust gate (just above) is
+	# the correct, single insertion point to mirror exactly, not a new
+	# mechanism. Deliberately does NOT extend to try_contact_effects's Poison
+	# Touch branch: real source ALSO gates Poison Touch through this same
+	# check (battle_util.c L4286), but this project's EXISTING Shield Dust
+	# implementation has no such gate there (a pre-existing gap from [M17c],
+	# predating this tier) — Covert Cloak is scoped to match Shield Dust's
+	# CURRENT actual behavior exactly, not to silently introduce a new
+	# asymmetry between the two by fixing only this item's side. Flagged, not
+	# fixed, per this project's own "flag but don't silently fix out-of-scope
+	# gaps" discipline — an ability-side fix is out of scope for a 1-item tier.
+	if is_true_secondary and ItemManager.holds_covert_cloak(defender, ng_active):
+		return false
+
 	# M17n-5: Sheer Force suppresses the move's OWN secondary effect entirely whenever
 	# it qualifies for the power boost — confirmed from source to be the EXACT SAME
 	# gate as the boost half (`IsSheerForceAffected`/`MoveIsAffectedBySheerForce`,
