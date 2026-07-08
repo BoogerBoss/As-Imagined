@@ -422,6 +422,203 @@ func _test_section_5_contact_status() -> void:
 			atk_no_contact, poison_point, non_contact_move, 10, true)
 	_chk("S5.09 Poison Point: does NOT fire without contact", r8["status_applied"] == 0)
 
+	# [M18.5g-followup / M18.5g-followup-2] S5.10/S5.11: full-battle integration
+	# through BattleManager, checking the secondary_applied signal's SE_* payload AND
+	# (as of [M18.5g-followup-2]) WHICH battler it's emitted on, plus Synchronize
+	# direction and cure-berry target. S5.01-S5.09 above all call
+	# AbilityManager.try_contact_effects directly — one layer BELOW where
+	# BattleManager derives status_target/status_source and converts via
+	# _status_to_se — so none of them exercise any of this.
+	var pp_atk_move := _make_move(TypeChart.TYPE_NORMAL, 0, 40, 100, true)
+	pp_atk_move.pp = 20
+	var pp_int_attacker := _make_mon("PPIntAttacker", 50, [TypeChart.TYPE_NORMAL], 200)
+	pp_int_attacker.add_move(pp_atk_move)
+	var pp_int_holder := _make_mon("PPIntHolder", 50, [TypeChart.TYPE_NORMAL], 200)
+	pp_int_holder.ability = _load_ability(38)
+	var pp_int_filler := _make_move(TypeChart.TYPE_NORMAL, 0, 20)
+	pp_int_filler.pp = 20
+	pp_int_holder.add_move(pp_int_filler)
+	var pp_bm := _make_bm()
+	pp_bm._force_hit = true
+	pp_bm._force_crit = false
+	pp_bm._force_roll = 100
+	pp_bm._force_contact_roll = true
+	var pp_signal_se := [-1]
+	var pp_signal_target: Array = [null]
+	pp_bm.secondary_applied.connect(func(t: BattlePokemon, eff: int) -> void:
+		if pp_signal_se[0] == -1 and (t == pp_int_attacker or t == pp_int_holder):
+			pp_signal_se[0] = eff
+			pp_signal_target[0] = t)
+	pp_bm.start_battle(pp_int_attacker, pp_int_holder)
+	_chk("S5.10a Poison Point integration: secondary_applied signal carries SE_POISON, " +
+			"not SE_TOXIC", pp_signal_se[0] == MoveData.SE_POISON)
+	_chk("S5.10b Poison Point integration: secondary_applied signal names the ATTACKER " +
+			"(unchanged by [M18.5g-followup-2] — Poison Point is defender-keyed, poisons " +
+			"whoever touched it)", pp_signal_target[0] == pp_int_attacker)
+
+	# S5.10c: Synchronize discriminator, Poison Point direction. The AFFLICTED mon
+	# (attacker) holds Synchronize, so it should reflect the poison back onto the
+	# Poison Point HOLDER (defender) — confirms _try_synchronize's holder/source
+	# pair is (status_target, status_source), unchanged for this already-correct
+	# direction. Source: [M18.5a]/AbilityManager.try_synchronize's own holder=
+	# afflicted-mon, source=inflictor contract.
+	var pps_atk_move := _make_move(TypeChart.TYPE_NORMAL, 0, 40, 100, true)
+	pps_atk_move.pp = 20
+	var pps_attacker := _make_mon("PPSyncAttacker", 50, [TypeChart.TYPE_NORMAL], 200)
+	pps_attacker.ability = _load_ability(28)  # Synchronize
+	pps_attacker.add_move(pps_atk_move)
+	var pps_holder := _make_mon("PPSyncHolder", 50, [TypeChart.TYPE_NORMAL], 200)
+	pps_holder.ability = _load_ability(38)  # Poison Point
+	var pps_filler := _make_move(TypeChart.TYPE_NORMAL, 0, 20)
+	pps_filler.pp = 20
+	pps_holder.add_move(pps_filler)
+	var pps_bm := _make_bm()
+	pps_bm._force_hit = true
+	pps_bm._force_crit = false
+	pps_bm._force_roll = 100
+	pps_bm._force_contact_roll = true
+	var pps_sync_fired_on: Array = [null]
+	var pps_reflected_onto: Array = [null]
+	pps_bm.ability_triggered.connect(func(mon: BattlePokemon, ability_name: String) -> void:
+		if ability_name == "synchronize" and pps_sync_fired_on[0] == null:
+			pps_sync_fired_on[0] = mon)
+	var pps_se_count := [0]
+	pps_bm.secondary_applied.connect(func(t: BattlePokemon, eff: int) -> void:
+		pps_se_count[0] += 1
+		if pps_se_count[0] == 2:  # 1st = original poison, 2nd = Synchronize's reflection
+			pps_reflected_onto[0] = t)
+	pps_bm.start_battle(pps_attacker, pps_holder)
+	_chk("S5.10c Poison Point + Synchronize: fires on the AFFLICTED mon (attacker), " +
+			"not the Poison Point holder", pps_sync_fired_on[0] == pps_attacker)
+	_chk("S5.10d Poison Point + Synchronize: reflects the poison onto the INFLICTOR " +
+			"(the Poison Point holder)", pps_reflected_onto[0] == pps_holder)
+
+	# S5.10e: cure-berry discriminator, Poison Point direction. The AFFLICTED mon
+	# (attacker) holds Pecha Berry — should auto-cure and consume its OWN item.
+	var ppc_atk_move := _make_move(TypeChart.TYPE_NORMAL, 0, 40, 100, true)
+	ppc_atk_move.pp = 20
+	var ppc_attacker := _make_mon("PPCureAttacker", 50, [TypeChart.TYPE_NORMAL], 200)
+	ppc_attacker.held_item = _make_item(ItemManager.HOLD_EFFECT_CURE_PSN)
+	ppc_attacker.add_move(ppc_atk_move)
+	var ppc_holder := _make_mon("PPCureHolder", 50, [TypeChart.TYPE_NORMAL], 200)
+	ppc_holder.ability = _load_ability(38)  # Poison Point
+	var ppc_filler := _make_move(TypeChart.TYPE_NORMAL, 0, 20)
+	ppc_filler.pp = 20
+	ppc_holder.add_move(ppc_filler)
+	var ppc_bm := _make_bm()
+	ppc_bm._force_hit = true
+	ppc_bm._force_crit = false
+	ppc_bm._force_roll = 100
+	ppc_bm._force_contact_roll = true
+	var ppc_consumed_from: Array = [null]
+	ppc_bm.item_consumed.connect(func(mon: BattlePokemon, _item: ItemData) -> void:
+		if ppc_consumed_from[0] == null:
+			ppc_consumed_from[0] = mon)
+	ppc_bm.start_battle(ppc_attacker, ppc_holder)
+	_chk("S5.10e Poison Point + Pecha Berry: cure-berry consumed from the AFFLICTED " +
+			"mon (attacker), unchanged by [M18.5g-followup-2]",
+			ppc_consumed_from[0] == ppc_attacker)
+
+	# S5.11: Poison Touch's own direction (attacker holds the ability, DEFENDER gets
+	# poisoned) — [M18.5g-followup] found that BattleManager's contact-status
+	# follow-up (_do_damaging_hit, right after try_contact_effects) hardcoded
+	# `attacker` as the poisoned battler for the signal/Synchronize/cure-berry
+	# follow-up, correct for Poison Point/Static/Flame Body/Effect Spore (all
+	# defender-keyed) but wrong for Poison Touch (attacker-keyed, DEFENDER-poisoning
+	# per [M18.5a]). [M18.5g-followup-2] fixed this via try_contact_effects's new
+	# "status_target" key; S5.11b/c/d below assert the corrected identity directly
+	# (S5.11 in [M18.5g-followup] deliberately avoided this — see that entry).
+	var pt_int_atk_move := _make_move(TypeChart.TYPE_NORMAL, 0, 40, 100, true)
+	pt_int_atk_move.pp = 20
+	var pt_int_attacker := _make_mon("PTIntAttacker", 50, [TypeChart.TYPE_NORMAL], 200)
+	pt_int_attacker.ability = _load_ability(143)
+	pt_int_attacker.add_move(pt_int_atk_move)
+	var pt_int_defender := _make_mon("PTIntDefender", 50, [TypeChart.TYPE_NORMAL], 200)
+	var pt_int_filler := _make_move(TypeChart.TYPE_NORMAL, 0, 20)
+	pt_int_filler.pp = 20
+	pt_int_defender.add_move(pt_int_filler)
+	var pt_bm := _make_bm()
+	pt_bm._force_hit = true
+	pt_bm._force_crit = false
+	pt_bm._force_roll = 100
+	pt_bm._force_contact_roll = true
+	var pt_signal_se := [-1]
+	var pt_signal_target: Array = [null]
+	pt_bm.secondary_applied.connect(func(t: BattlePokemon, eff: int) -> void:
+		if pt_signal_se[0] == -1 and (t == pt_int_attacker or t == pt_int_defender):
+			pt_signal_se[0] = eff
+			pt_signal_target[0] = t)
+	pt_bm.start_battle(pt_int_attacker, pt_int_defender)
+	_chk("S5.11a Poison Touch integration: secondary_applied signal carries SE_POISON, " +
+			"not SE_TOXIC", pt_signal_se[0] == MoveData.SE_POISON)
+	_chk("S5.11b Poison Touch integration: secondary_applied signal names the DEFENDER " +
+			"(the real victim) — the [M18.5g-followup-2] fix", pt_signal_target[0] == pt_int_defender)
+
+	# S5.11c/d: Synchronize discriminator, Poison Touch direction. The AFFLICTED mon
+	# is the DEFENDER — if IT holds Synchronize, it should reflect the poison onto
+	# the Poison Touch HOLDER (attacker). Pre-fix, this could never fire: the old
+	# code checked `attacker`'s (the Poison Touch holder's) own ability for
+	# Synchronize, not the defender's.
+	var pts_atk_move := _make_move(TypeChart.TYPE_NORMAL, 0, 40, 100, true)
+	pts_atk_move.pp = 20
+	var pts_attacker := _make_mon("PTSyncAttacker", 50, [TypeChart.TYPE_NORMAL], 200)
+	pts_attacker.ability = _load_ability(143)  # Poison Touch
+	pts_attacker.add_move(pts_atk_move)
+	var pts_defender := _make_mon("PTSyncDefender", 50, [TypeChart.TYPE_NORMAL], 200)
+	pts_defender.ability = _load_ability(28)  # Synchronize
+	var pts_filler := _make_move(TypeChart.TYPE_NORMAL, 0, 20)
+	pts_filler.pp = 20
+	pts_defender.add_move(pts_filler)
+	var pts_bm := _make_bm()
+	pts_bm._force_hit = true
+	pts_bm._force_crit = false
+	pts_bm._force_roll = 100
+	pts_bm._force_contact_roll = true
+	var pts_sync_fired_on: Array = [null]
+	var pts_reflected_onto: Array = [null]
+	pts_bm.ability_triggered.connect(func(mon: BattlePokemon, ability_name: String) -> void:
+		if ability_name == "synchronize" and pts_sync_fired_on[0] == null:
+			pts_sync_fired_on[0] = mon)
+	var pts_se_count := [0]
+	pts_bm.secondary_applied.connect(func(t: BattlePokemon, eff: int) -> void:
+		pts_se_count[0] += 1
+		if pts_se_count[0] == 2:  # 1st = original poison, 2nd = Synchronize's reflection
+			pts_reflected_onto[0] = t)
+	pts_bm.start_battle(pts_attacker, pts_defender)
+	_chk("S5.11c Poison Touch + Synchronize: fires on the AFFLICTED mon (defender), " +
+			"not the Poison Touch holder — was unreachable before [M18.5g-followup-2]",
+			pts_sync_fired_on[0] == pts_defender)
+	_chk("S5.11d Poison Touch + Synchronize: reflects the poison onto the INFLICTOR " +
+			"(the Poison Touch holder)", pts_reflected_onto[0] == pts_attacker)
+
+	# S5.11e: cure-berry discriminator, Poison Touch direction. The AFFLICTED mon is
+	# the DEFENDER — if IT holds Pecha Berry, it should auto-cure ITS OWN poison and
+	# consume ITS OWN item, not the attacker's. Pre-fix, the caller checked
+	# `attacker`'s held item instead, so this defender-held berry would never fire.
+	var ptc_atk_move := _make_move(TypeChart.TYPE_NORMAL, 0, 40, 100, true)
+	ptc_atk_move.pp = 20
+	var ptc_attacker := _make_mon("PTCureAttacker", 50, [TypeChart.TYPE_NORMAL], 200)
+	ptc_attacker.ability = _load_ability(143)  # Poison Touch
+	ptc_attacker.add_move(ptc_atk_move)
+	var ptc_defender := _make_mon("PTCureDefender", 50, [TypeChart.TYPE_NORMAL], 200)
+	ptc_defender.held_item = _make_item(ItemManager.HOLD_EFFECT_CURE_PSN)
+	var ptc_filler := _make_move(TypeChart.TYPE_NORMAL, 0, 20)
+	ptc_filler.pp = 20
+	ptc_defender.add_move(ptc_filler)
+	var ptc_bm := _make_bm()
+	ptc_bm._force_hit = true
+	ptc_bm._force_crit = false
+	ptc_bm._force_roll = 100
+	ptc_bm._force_contact_roll = true
+	var ptc_consumed_from: Array = [null]
+	ptc_bm.item_consumed.connect(func(mon: BattlePokemon, _item: ItemData) -> void:
+		if ptc_consumed_from[0] == null:
+			ptc_consumed_from[0] = mon)
+	ptc_bm.start_battle(ptc_attacker, ptc_defender)
+	_chk("S5.11e Poison Touch + Pecha Berry: cure-berry consumed from the AFFLICTED " +
+			"mon (defender), not the attacker — was unreachable before " +
+			"[M18.5g-followup-2]", ptc_consumed_from[0] == ptc_defender)
+
 
 # ── Section 6: Cursed Body ─────────────────────────────────────────────────────
 

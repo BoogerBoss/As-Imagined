@@ -13519,3 +13519,173 @@ Grip Claw/Binding Band's own precedent from `[M18.5f]`). Recommends M18.5h
 (Nature/IV/EV) as the next tier — the last of the three independent M18.5
 Phase 1 infrastructure tracks, now that binding (`[M18.5f]`) and multi-hit
 (this entry) are both complete.
+
+## [M18.5g-followup] Poison Point/Poison Touch signal verification + prose check
+
+**Check 1 — the `SE_POISON` signal fix was already correct, just untested.**
+Direct read of `battle_manager.gd`'s current `_status_to_se` (post-`[M18.5g]`)
+confirms `STATUS_POISON` already maps to `SE_POISON`, not `SE_TOXIC`. The real
+gap was coverage, not correctness: `m17c_test.gd`'s Section 5 (S5.01-S5.09)
+calls `AbilityManager.try_contact_effects` directly for every Poison Point/
+Poison Touch assertion — one layer BELOW where `BattleManager._do_damaging_hit`
+converts the result via `_status_to_se` and emits `secondary_applied`. None of
+those assertions inspect the signal's SE_* payload at all; they only check
+`status_applied == BattlePokemon.STATUS_POISON`, which is identical whether the
+underlying signal-conversion bug is present or not. So `[M18.5g]`'s own fix was
+real and had already landed, but nothing would have caught a regression of it.
+
+Added two new full-battle `BattleManager` integration assertions to Section 5:
+**S5.10** (Poison Point) and **S5.11** (Poison Touch), both connecting to
+`secondary_applied` and asserting the emitted value is `MoveData.SE_POISON`,
+not `SE_TOXIC`. Proved the assertions actually test the thing per this task's
+own discipline: temporarily reverted `_status_to_se`'s `STATUS_POISON` case
+back to `SE_TOXIC`, reran `m17c_test.tscn`, confirmed S5.10 and S5.11 both
+failed (85/87) with the exact pre-fix behavior, then reapplied the correct
+mapping and confirmed a clean 87/87 rerun.
+
+**A second, real bug found while writing S5.11 — flagged, not fixed (outside
+Check 1's explicit SE_POISON-vs-SE_TOXIC scope).** `_do_damaging_hit`'s
+contact-status follow-up block (the `if contact_result["status_applied"] != 0:`
+block right after `AbilityManager.try_contact_effects`, `battle_manager.gd`
+~L4123-4135) unconditionally treats `attacker` as the poisoned battler for
+THREE things: the `secondary_applied` signal's target, `_try_synchronize`'s
+`holder` argument, and the `status_cure_berry_cures`/consume-item check. This
+is correct for Poison Point/Static/Flame Body (all defender-keyed — the
+ability HOLDER is `target`, and it poisons `attacker`), but wrong for Poison
+Touch, which is attacker-keyed and poisons the DEFENDER (`target`) — the
+direction `[M18.5a]` deliberately corrected inside `try_contact_effects`
+itself. The actual status mutation is unaffected (`try_apply_status(defender,
+...)` already runs correctly inside `try_contact_effects`), but three
+follow-on behaviors are keyed on the wrong battler for a Poison-Touch-
+triggered poison specifically: (1) the `secondary_applied` signal names
+`attacker` instead of the real victim `target`; (2) `_try_synchronize(attacker,
+target, ...)` checks whether `attacker` (the Poison Touch holder) has
+Synchronize, when it should check `target` (the mon that actually got
+poisoned) — Synchronize reflects off the AFFLICTED mon, not the inflicter;
+(3) `status_cure_berry_cures`/item consumption is checked and applied against
+`attacker`'s held item, when the poisoned mon (and the one whose berry should
+cure it) is `target`. S5.11 was written to avoid asserting on this — it checks
+the signal's SE_* value on whichever battler it fires for, not the identity —
+specifically so this test doesn't lock in the wrong behavior. Needs its own
+dedicated follow-up.
+
+**Check 2 — `[M18.5g]`'s decisions.md entry: clean pass, no artifacts found.**
+Read the full entry end to end plus a targeted grep for the same class of
+mid-thought fragment already caught once during the entry's original authoring
+("`wrap`-adjacent... no —" style). Nothing found this time — no incomplete
+sentences, no duplicated/contradictory statements, no leftover drafting
+fragments. Stating this explicitly per the task's own instruction that a clean
+pass is a real confirmation, not a non-event.
+
+### Testing / Regression
+
+`m17c_test.tscn`: 87/87 (85 pre-existing + S5.10/S5.11), confirmed to fail
+(85/87) against the deliberately-reverted pre-fix mapping and pass clean
+(87/87) after reapplying it. `item_registry_test.tscn`: 309/309, unaffected.
+Narrow regression scope per the task's own instruction (single-function
+verification, not a change to shared infrastructure) — no wider sweep run.
+
+## [M18.5g-followup-2] Poison Touch Synchronize/cure-berry battler-identity fix
+
+**The bug** (found while writing `[M18.5g-followup]`'s S5.11, fixed here):
+`_do_damaging_hit`'s contact-status follow-up block (`battle_manager.gd`, right
+after `AbilityManager.try_contact_effects` returns) hardcoded `attacker` as the
+afflicted battler for the `secondary_applied` signal, `_try_synchronize`, and
+cure-berry consumption. Correct for every defender-keyed ability this dispatch
+covers (Static/Flame Body/Poison Point/Effect Spore — all poison/paralyze/burn
+`attacker`), wrong for Poison Touch, the sole attacker-keyed ability, which
+poisons `defender` (per `[M18.5a]`'s own correction to `try_contact_effects`
+itself — the status MUTATION already landed on the right mon; this bug was
+entirely in the caller's follow-up).
+
+**Step 0 confirmed the fix shape directly from source** (`ability_manager.gd`):
+of the 6 status-setting branches in `try_contact_effects`, only Poison Touch
+targets `defender` — Static/Flame Body/Poison Point/Effect Spore's 3 outcomes
+all target `attacker`, confirmed individually rather than assumed. Added one
+new key, `"status_target": null` (a `BattlePokemon` ref, null if no status),
+set explicitly at all 6 branches. The caller derives `status_source` as
+"whichever of attacker/target isn't status_target" — sound because exactly two
+battlers are ever in play in a contact interaction.
+
+**A fourth consumer found and fixed, not just the three named in this task's
+own scope** — `ability_triggered.emit(target, ...)` inside the same block
+also hardcoded the defender-keyed assumption (crediting the ability trigger to
+`target`, correct for every branch except Poison Touch, whose real holder is
+`attacker`). Matches this project's own "do not partially fix" discipline:
+since it reads the same `status_applied` branch and has the exact same
+correctness shape as the three named consumers, fixing it and not the other
+three (or vice versa) would have been an inconsistent, still-broken state.
+Fixed via the same `status_source` variable (the ability holder for this
+branch is always the INFLICTOR, i.e. `status_source`, never `status_target`).
+
+**Confirmed no other `try_contact_effects` consumers need the same fix**:
+grepped every call site in `scripts/`/`scenes/` — the only production caller
+is `battle_manager.gd`'s single `_do_damaging_hit` call site (now fixed); test
+files call `try_contact_effects` directly and read `"status_applied"`/other
+keys without the attacker/target ambiguity this fix addresses. The other 5
+keys in the result dict (`rough_skin_damage`, `speed_change`,
+`mummy_overwritten_ability`, `wandering_spirit_swapped`, `pickpocket_stole`,
+`attract_inflicted`) were individually re-checked against their own branches
+and confirmed uniformly defender-keyed (ability holder = `target`, effect
+lands on `attacker`) with no non-uniform case among them — Poison Touch is the
+one and only attacker-keyed branch in this entire function.
+
+### Implementation
+
+- `ability_manager.gd`: `try_contact_effects`'s result dict gains
+  `"status_target": null`; set to `attacker` at Static/Flame Body/Poison
+  Point/Effect Spore's 3 branches, `defender` at Poison Touch's branch. New
+  doc-comment line explaining the split (the old doc line claiming status is
+  "inflicted on attacker" was only ever true for 5 of 6 branches).
+- `battle_manager.gd`: `_do_damaging_hit`'s `status_applied` follow-up block
+  now derives `status_target`/`status_source` from the new key instead of
+  hardcoding `attacker`/`target`, and uses them for all four consumers:
+  `secondary_applied.emit`, `ability_triggered.emit`, `_try_synchronize`
+  (holder=status_target, source=status_source — matching
+  `AbilityManager.try_synchronize`'s own holder=afflicted/attacker-param=
+  inflictor contract), and `status_cure_berry_cures`/`_consume_item`/the
+  Unnerve check feeding it.
+
+### Testing
+
+Extended `m17c_test.gd`'s Section 5 (S5.10/S5.11, from `[M18.5g-followup]`)
+with 8 new assertions:
+- **S5.10a-e (Poison Point, confirming UNCHANGED behavior)**: SE_POISON value
+  (a), signal names the attacker (b), a Synchronize-holding attacker reflects
+  the poison onto the Poison Point holder (c/d), a Pecha-Berry-holding
+  attacker auto-cures its own poison (e).
+- **S5.11a-e (Poison Touch, confirming the FIX)**: SE_POISON value (a), signal
+  now names the DEFENDER — the real victim — instead of the attacker (b,
+  the core fix), a Synchronize-holding DEFENDER now correctly reflects the
+  poison onto the Poison Touch holder — previously unreachable, since the old
+  code checked the attacker's own ability instead (c/d), a Pecha-Berry-holding
+  DEFENDER now auto-cures its own poison instead of the check silently
+  targeting the attacker's item — also previously unreachable (e).
+
+**Proved the assertions catch the bug**: temporarily reverted
+`status_target`'s derivation back to the hardcoded `attacker` (same
+TEMP-REVERT-and-confirm discipline as `[M18.5g-followup]`), reran
+`m17c_test.tscn` — the 4 Poison Touch identity assertions (S5.11b/c/d/e)
+failed exactly as expected (91/95) while all 5 Poison Point assertions
+(unaffected by the revert, since Poison Point's target was already
+`attacker`) stayed green — then reapplied the fix and confirmed a clean
+95/95 rerun.
+
+### Regression
+
+`m17c_test.tscn` **95/95** (87 + 8 new). `ability_test.tscn` **64/64**
+(Synchronize's own origin suite, `[M8]` — confirms this fix didn't disturb
+Synchronize's existing direct-API and status-move-integration tests).
+`m18b_test.tscn` **104/104** (cure-berry's own origin suite, `[M18b]` —
+confirms the `status_cure_berry_cures` call site's other 3 consumers
+elsewhere in `battle_manager.gd`, untouched by this fix, are unaffected, and
+that this fix's own call site still composes correctly with every other
+cure-berry). `item_registry_test.tscn` **309/309**, unchanged. Full sweep not
+run, per this task's own explicit instruction — narrow, single-call-site fix
+with its direct neighbors (Synchronize's and cure-berry's origin suites)
+reconfirmed instead.
+
+No stray Godot processes before or after; reference clone untouched; no
+scratch scenes or leftover debug prints. `git status --short` matches the
+expected file set: `ability_manager.gd`, `battle_manager.gd`, `m17c_test.gd`,
+plus this docs commit.

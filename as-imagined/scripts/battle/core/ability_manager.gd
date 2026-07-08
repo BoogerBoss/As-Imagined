@@ -3389,7 +3389,14 @@ static func _apply_moody(
 #
 # Returns a Dictionary:
 #   "rough_skin_damage" : int    — HP deducted from attacker (0 if none)
-#   "status_applied"    : int    — BattlePokemon.STATUS_* inflicted on attacker (0 = none)
+#   "status_applied"    : int    — BattlePokemon.STATUS_* inflicted (0 = none)
+#   "status_target"     : BattlePokemon — [M18.5g-followup-2] WHICH battler actually
+#     received "status_applied" (null if none). Almost always `attacker` (Static/Flame
+#     Body/Poison Point/Effect Spore are all defender-keyed, poisoning/paralyzing/
+#     burning the attacker that touched the holder) — Poison Touch is the sole
+#     exception (attacker-keyed, poisons `defender`, see [M18.5a]). Added because the
+#     stale doc line above ("inflicted on attacker") was only ever true for 5 of the
+#     6 status-setting branches; callers must NOT assume `attacker` uniformly.
 #   "speed_change"       : int   — Speed stage change applied to attacker (0 = none)
 #   "ability_name"      : String — key identifying which ability fired ("" if none)
 #   "attract_inflicted" : bool   — [M18.5d-2] Cute Charm infatuated the attacker
@@ -3410,8 +3417,8 @@ static func try_contact_effects(
 		attacker_ally: BattlePokemon = null) -> Dictionary:
 
 	var result := {
-		"rough_skin_damage": 0, "status_applied": 0, "speed_change": 0, "ability_name": "",
-		"mummy_overwritten_ability": -1, "wandering_spirit_swapped": false,
+		"rough_skin_damage": 0, "status_applied": 0, "status_target": null, "speed_change": 0,
+		"ability_name": "", "mummy_overwritten_ability": -1, "wandering_spirit_swapped": false,
 		"pickpocket_stole": false, "attract_inflicted": false,
 	}
 	# M17n-5: routed through move_makes_contact (not the raw flag) so an attacking
@@ -3460,6 +3467,7 @@ static func try_contact_effects(
 			var pt_fires: bool = _roll_contact(force_contact_roll, 30)
 			if pt_fires and StatusManager.try_apply_status(defender, BattlePokemon.STATUS_POISON):
 				result["status_applied"] = BattlePokemon.STATUS_POISON
+				result["status_target"] = defender
 				result["ability_name"] = "poison_touch"
 				return result
 
@@ -3505,6 +3513,7 @@ static func try_contact_effects(
 		var fires: bool = _roll_contact(force_contact_roll, 30)
 		if fires and StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_PARALYSIS):
 			result["status_applied"] = BattlePokemon.STATUS_PARALYSIS
+			result["status_target"] = attacker
 			result["ability_name"] = "static"
 		return result
 
@@ -3514,6 +3523,7 @@ static func try_contact_effects(
 		var fires: bool = _roll_contact(force_contact_roll, 30)
 		if fires and StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_BURN):
 			result["status_applied"] = BattlePokemon.STATUS_BURN
+			result["status_target"] = attacker
 			result["ability_name"] = "flame_body"
 		return result
 
@@ -3523,6 +3533,7 @@ static func try_contact_effects(
 		var fires: bool = _roll_contact(force_contact_roll, 30)
 		if fires and StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_POISON):
 			result["status_applied"] = BattlePokemon.STATUS_POISON
+			result["status_target"] = attacker
 			result["ability_name"] = "poison_point"
 		return result
 
@@ -3563,14 +3574,17 @@ static func try_contact_effects(
 		if roll < 9:
 			if StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_POISON):
 				result["status_applied"] = BattlePokemon.STATUS_POISON
+				result["status_target"] = attacker
 				result["ability_name"] = "effect_spore"
 		elif roll < 19:
 			if StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_PARALYSIS):
 				result["status_applied"] = BattlePokemon.STATUS_PARALYSIS
+				result["status_target"] = attacker
 				result["ability_name"] = "effect_spore"
 		elif roll < 30:
 			if StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_SLEEP):
 				result["status_applied"] = BattlePokemon.STATUS_SLEEP
+				result["status_target"] = attacker
 				result["ability_name"] = "effect_spore"
 		return result
 

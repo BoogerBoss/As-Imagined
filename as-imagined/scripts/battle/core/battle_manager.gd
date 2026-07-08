@@ -4122,17 +4122,27 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		ability_triggered.emit(target, contact_result["ability_name"])
 	if contact_result["status_applied"] != 0:
 		var contact_status: int = contact_result["status_applied"]
-		secondary_applied.emit(attacker, _status_to_se(contact_status))
-		ability_triggered.emit(target, contact_result["ability_name"])
-		_try_synchronize(attacker, target, contact_status)
+		# [M18.5g-followup-2] The afflicted battler is NOT always `attacker` — Poison
+		# Touch (attacker-keyed) poisons `target`/defender, unlike every other ability
+		# this dispatch covers (all defender-keyed, afflicting `attacker`). Derived from
+		# the new "status_target" key rather than re-deriving it from ability_name here,
+		# since try_contact_effects already knows definitively which battler it mutated.
+		# status_source is simply the OTHER of the two battlers in this contact
+		# interaction — the one whose ability actually fired / would receive a
+		# Synchronize reflection back.
+		var status_target: BattlePokemon = contact_result["status_target"]
+		var status_source: BattlePokemon = target if status_target == attacker else attacker
+		secondary_applied.emit(status_target, _status_to_se(contact_status))
+		ability_triggered.emit(status_source, contact_result["ability_name"])
+		_try_synchronize(status_target, status_source, contact_status)
 		# M18b: contact abilities (Static/Flame Body/etc.) only ever inflict
 		# non-volatile status, never confusion — no confusion_cure_berry_cures check
 		# needed at this call site, unlike the two try_secondary_effect-adjacent
 		# sites above.
-		if ItemManager.status_cure_berry_cures(attacker, ng_active,
-				AbilityManager.is_unnerve_active(_get_live_opponents(attacker), ng_active)):
-			attacker.status = BattlePokemon.STATUS_NONE
-			_consume_item(attacker)
+		if ItemManager.status_cure_berry_cures(status_target, ng_active,
+				AbilityManager.is_unnerve_active(_get_live_opponents(status_target), ng_active)):
+			status_target.status = BattlePokemon.STATUS_NONE
+			_consume_item(status_target)
 	if contact_result["speed_change"] != 0:
 		stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPEED, contact_result["speed_change"])
 		ability_triggered.emit(target, contact_result["ability_name"])
