@@ -1024,6 +1024,97 @@ MOVES = [
     {"id": 688, "name": "Veevee Volley",
      "type": TYPE_NORMAL, "category": PHYS, "power": 1, "accuracy": 0, "pp": 20,
      "makes_contact": True, "is_return_power": True},
+
+    # ── M19a-gen1: Tier 1 pure-damage data-entry, Generation I ────────────────
+    # 7 of Gen I's 22 not-yet-implemented Tier-1 moves were found to need a
+    # mechanism this project doesn't have (Thrash/Petal Dance rampage lock-in,
+    # Rage's hit-triggered Attack boost, Hyper Beam's recharge, Self-Destruct/
+    # Explosion's unconditional self-faint + Damp block, Tri Attack's random
+    # burn/paralysis/freeze choice) — excluded from this tier, flagged for a
+    # future session rather than built here. The 15 below are confirmed pure
+    # EFFECT_HIT with only already-wired generic flags (no additionalEffects
+    # in source beyond Pay Day's cosmetic-only MOVE_EFFECT_PAYDAY, which has
+    # zero battle-mechanical effect and is not modeled).
+
+    # Mega Punch(5) L189  Normal/Phys/80/85/20, contact
+    {"id": 5, "name": "Mega Punch",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 80, "accuracy": 85, "pp": 20,
+     "makes_contact": True},
+
+    # Pay Day(6) L165  Normal/Phys/40/100/20 — MOVE_EFFECT_PAYDAY is a cosmetic
+    #   money-scatter with zero battle-mechanical effect, not modeled.
+    {"id": 6, "name": "Pay Day",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 40, "accuracy": 100, "pp": 20},
+
+    # Vise Grip(11) L299  Normal/Phys/55/100/30, contact
+    {"id": 11, "name": "Vise Grip",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 55, "accuracy": 100, "pp": 30,
+     "makes_contact": True},
+
+    # Cut(15) L413  Normal/Phys/50/95/30, contact, slicing
+    {"id": 15, "name": "Cut",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 50, "accuracy": 95, "pp": 30,
+     "makes_contact": True, "slicing_move": True},
+
+    # Gust(16) L436  Flying/Spec/40/100/35 — type is TYPE_FLYING at GEN_LATEST
+    #   (B_UPDATED_MOVE_TYPES >= GEN_2); damagesAirborneDoubleDamage -> damages_airborne.
+    {"id": 16, "name": "Gust",
+     "type": TYPE_FLYING, "category": SPEC, "power": 40, "accuracy": 100, "pp": 35,
+     "damages_airborne": True},
+
+    # Slam(21) L578  Normal/Phys/80/75/20, contact
+    {"id": 21, "name": "Slam",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 80, "accuracy": 75, "pp": 20,
+     "makes_contact": True},
+
+    # Mega Kick(25) L683  Normal/Phys/120/75/5, contact
+    {"id": 25, "name": "Mega Kick",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 120, "accuracy": 75, "pp": 5,
+     "makes_contact": True},
+
+    # Horn Attack(30) L819  Normal/Phys/65/100/25, contact
+    {"id": 30, "name": "Horn Attack",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 65, "accuracy": 100, "pp": 25,
+     "makes_contact": True},
+
+    # Hydro Pump(56) L1511  Water/Spec/110/80/5 — power=110 at GEN_LATEST
+    #   (B_UPDATED_MOVE_DATA >= GEN_6), not the pre-Gen-6 120.
+    {"id": 56, "name": "Hydro Pump",
+     "type": TYPE_WATER, "category": SPEC, "power": 110, "accuracy": 80, "pp": 5},
+
+    # Peck(64) L1735  Flying/Phys/35/100/35, contact
+    {"id": 64, "name": "Peck",
+     "type": TYPE_FLYING, "category": PHYS, "power": 35, "accuracy": 100, "pp": 35,
+     "makes_contact": True},
+
+    # Drill Peck(65) L1757  Flying/Phys/80/100/20, contact
+    {"id": 65, "name": "Drill Peck",
+     "type": TYPE_FLYING, "category": PHYS, "power": 80, "accuracy": 100, "pp": 20,
+     "makes_contact": True},
+
+    # Razor Leaf(75) L2028  Grass/Phys/55/95/25, slicing, +1 crit stage
+    #   (criticalHitStage: B_UPDATED_MOVE_DATA >= GEN_3 ? 1 : 2 -> 1 at
+    #   GEN_LATEST), TARGET_BOTH -> is_spread (Earthquake/Surf precedent).
+    {"id": 75, "name": "Razor Leaf",
+     "type": TYPE_GRASS, "category": PHYS, "power": 55, "accuracy": 95, "pp": 25,
+     "slicing_move": True, "critical_hit_stage": 1, "is_spread": True},
+
+    # Egg Bomb(121) L3297  Normal/Phys/100/75/10, ballistic
+    {"id": 121, "name": "Egg Bomb",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 100, "accuracy": 75, "pp": 10,
+     "ballistic_move": True},
+
+    # Crabhammer(152) L4144  Water/Phys/100/90/10, contact, +1 crit stage
+    #   (power/accuracy both GEN_LATEST branches: 100 not 90, 90 not 85;
+    #   criticalHitStage: B_UPDATED_MOVE_DATA >= GEN_3 ? 1 : 2 -> 1).
+    {"id": 152, "name": "Crabhammer",
+     "type": TYPE_WATER, "category": PHYS, "power": 100, "accuracy": 90, "pp": 10,
+     "makes_contact": True, "critical_hit_stage": 1},
+
+    # Slash(163) L4451  Normal/Phys/70/100/20, contact, slicing, +1 crit stage
+    {"id": 163, "name": "Slash",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 70, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "slicing_move": True, "critical_hit_stage": 1},
 ]
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──

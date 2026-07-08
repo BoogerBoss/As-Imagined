@@ -14798,3 +14798,121 @@ Z-Moves/Max-Moves (87 moves) are now **permanently excluded**, per Rob's
 own explicit decision (resolving `[M19-scoping]`'s own Open Question #1),
 matching the Mega Evolution exclusion precedent already established for
 abilities/items in M17/M18.
+
+## [M19a-gen1] M19a Tier-1 pure-damage data-entry — Generation I slice
+
+### Step 0 findings
+
+First execution slice of M19a (per `docs/m19_subtier_plan.md`), split by
+generation per Rob's sequencing decision. Of Generation I's 34 Tier-1
+moves (per `docs/m19_recon.md`), 12 were already implemented and 22
+remained. **The recon's "pure data-entry" characterization was re-verified
+individually against `moves_info.h` for every one of the 22** (per this
+task's own explicit instruction not to trust the framing blindly) — 7
+turned out to need a mechanism this project doesn't have and were excluded
+from this tier rather than built inside what's supposed to be a pure
+data-entry pass:
+
+| Move | ID | Real mechanism found | Why out of scope |
+|---|---|---|---|
+| Thrash | 37 | `MOVE_EFFECT_THRASH` | 2-3 turn lock-in + self-confuse after — no rampage mechanism exists anywhere in this project |
+| Petal Dance | 80 | `MOVE_EFFECT_THRASH` | Same rampage mechanism as Thrash |
+| Rage | 99 | `MOVE_EFFECT_RAGE` | Attack rises each time the user is hit while Rage is active — no such hit-triggered tracking exists |
+| Hyper Beam | 63 | `MOVE_EFFECT_RECHARGE` | User must skip its next turn — no recharge/`must_recharge` mechanism exists |
+| Self-Destruct | 120 | `.explosion = TRUE` | Unconditional self-faint after use, plus Damp blocks the move outright at selection (`battle_util.c` L3993, `IsAbilityOnField(ABILITY_DAMP)`) — a genuinely different gate from Aftermath's existing post-faint `is_damp_active` check (`[M17n-8]`) |
+| Explosion | 153 | `.explosion = TRUE` | Same as Self-Destruct |
+| Tri Attack | 161 | `MOVE_EFFECT_TRI_ATTACK`, chance=20 | Randomly inflicts ONE of burn/paralysis/freeze — no existing `SE_*` constant supports a random multi-status choice (every current `SE_*` is a fixed single outcome) |
+
+The remaining **15 moves confirmed genuinely pure data-entry** (verified
+individually — no hidden `additionalEffects` beyond Pay Day's cosmetic-only
+`MOVE_EFFECT_PAYDAY`, which scatters money with zero battle-mechanical
+effect and isn't modeled), each using only already-wired generic fields:
+
+| Move | ID | Power | Type | Acc | PP | Cat | Flags reused |
+|---|---|---|---|---|---|---|---|
+| Mega Punch | 5 | 80 | Normal | 85 | 20 | Phys | makes_contact |
+| Pay Day | 6 | 40 | Normal | 100 | 20 | Phys | — |
+| Vise Grip | 11 | 55 | Normal | 100 | 30 | Phys | makes_contact |
+| Cut | 15 | 50 | Normal | 95 | 30 | Phys | makes_contact, slicing_move |
+| Gust | 16 | 40 | Flying | 100 | 35 | Spec | damages_airborne |
+| Slam | 21 | 80 | Normal | 75 | 20 | Phys | makes_contact |
+| Mega Kick | 25 | 120 | Normal | 75 | 5 | Phys | makes_contact |
+| Horn Attack | 30 | 65 | Normal | 100 | 25 | Phys | makes_contact |
+| Hydro Pump | 56 | 110 | Water | 80 | 5 | Spec | — |
+| Peck | 64 | 35 | Flying | 100 | 35 | Phys | makes_contact |
+| Drill Peck | 65 | 80 | Flying | 100 | 20 | Phys | makes_contact |
+| Razor Leaf | 75 | 55 | Grass | 95 | 25 | Phys | slicing_move, critical_hit_stage=1, is_spread |
+| Egg Bomb | 121 | 100 | Normal | 75 | 10 | Phys | ballistic_move |
+| Crabhammer | 152 | 100 | Water | 90 | 10 | Phys | makes_contact, critical_hit_stage=1 |
+| Slash | 163 | 70 | Normal | 100 | 20 | Phys | makes_contact, slicing_move, critical_hit_stage=1 |
+
+All power/accuracy values reflect this project's GEN_LATEST config with
+every source ternary resolved explicitly (not assumed): Hydro Pump 110 not
+the pre-Gen-6 120; Crabhammer 100/90 not the pre-Gen-6/pre-Gen-5 90/85;
+Razor Leaf/Crabhammer/Slash `criticalHitStage` resolves to 1 (not the
+pre-Gen-3 2); Gust's type resolves to Flying (`B_UPDATED_MOVE_TYPES >=
+GEN_2`), not the Gen-1 Normal. Razor Leaf's `TARGET_BOTH` maps to
+`is_spread`, the exact Earthquake/Surf precedent from `[M14b]`. Every flag
+used (`makes_contact`, `slicing_move`, `ballistic_move`,
+`damages_airborne`, `critical_hit_stage`, `is_spread`) was already
+registered in `move_data.gd` and `gen_moves.py`'s `DEFAULTS`/`FIELD_ORDER`
+— confirmed zero new plumbing was needed for any of the 15.
+
+### Implementation
+
+- `scripts/gen_moves.py`: 15 new entries appended to `MOVES`, each with its
+  own source-line citation. No changes to `DEFAULTS`/`FIELD_ORDER` (every
+  field already registered). No `battle_manager.gd`/`status_manager.gd`
+  changes — per this tier's own scope, no new dispatch logic for any
+  confirmed-pure-reuse move.
+- 15 new `.tres` files regenerated (`data/moves/move_0005.tres`,
+  `move_0006.tres`, `move_0011.tres`, `move_0015.tres`, `move_0016.tres`,
+  `move_0021.tres`, `move_0025.tres`, `move_0030.tres`, `move_0056.tres`,
+  `move_0064.tres`, `move_0065.tres`, `move_0075.tres`, `move_0121.tres`,
+  `move_0152.tres`, `move_0163.tres`) — 155 total move `.tres` files, up
+  from 140.
+
+### Testing
+
+New `scenes/battle/m19a_gen1_test.gd`/`.tscn`: 51/51 assertions, passed
+clean on the first run. Section A: move-data spot-checks for all 15 moves
+(core fields — name/type/category/power/accuracy/pp/makes_contact — as one
+combined assertion per move, plus a separate assertion per special flag
+token; moves carrying no special flags get an explicit negative check
+confirming none of the flag fields are accidentally set). Section B:
+functional confirmation, scoped per this tier's own testing-scope
+convention — NOT a re-derivation of any underlying mechanism's own
+correctness (already covered by the tier that built it), only that these
+15 specific moves correctly trigger whichever existing mechanism their
+flags select. B1: Mega Punch fires and deals real nonzero damage through
+the actual `.tres` → dispatch → `DamageCalculator` pipeline (a plumbing
+check, not a formula re-derivation — every other move in this tier shares
+the identical `EFFECT_HIT` dispatch, already proven in general by
+`move_test.gd`/`damage_test.gd`). B2: Slash (`makes_contact=true`)
+triggers Rough Skin recoil on the attacker (`_force_contact_roll`,
+matching `[M18.5g]`'s established pattern). B3: Hydro Pump
+(`makes_contact=false`) does NOT trigger Rough Skin — a discriminator
+confirming B2 wasn't vacuous (Rough Skin firing regardless of the contact
+flag). `critical_hit_stage` and `damages_airborne` are deliberately NOT
+re-proven functionally: per CLAUDE.md's own testing convention,
+`force_crit` bypasses crit-STAGE math entirely (unobservable via a
+full-battle check), and the semi-invulnerable bypass mechanism is already
+fully covered by `two_turn_test.gd` — Section A's data-integrity check is
+the correctly-scoped confirmation for both flags on these specific moves.
+
+### Regression
+
+Per this task's own narrow scope (no full sweep): `item_registry_test.tscn`
+309/309, `status_test.tscn` 78/78, `stat_test.tscn` 78/78 — all unchanged,
+confirmed via direct foreground runs with a clean Godot process state
+before and after.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated to mark the Gen I slice of M19a
+complete (15 of 129 done, 114 remaining across Gen II–IX) and note the
+7-move Gen I exclusion list as a new standing item for a future
+"non-data-entry Tier-1 stragglers" tier. CLAUDE.md's status section
+updated noting `[M19a-gen1]` complete and the total running
+move-implementation count (132→147). Next natural slice: Generation II
+(per `docs/m19_recon.md`, IDs 166-251).
