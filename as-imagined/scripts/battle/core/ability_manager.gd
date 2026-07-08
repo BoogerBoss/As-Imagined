@@ -2531,6 +2531,16 @@ static func is_trapped(
 	# own condition.
 	if TypeChart.TYPE_GHOST in mon.species.types:
 		return false
+	# [M18.5f] Bind/Wrap-family trapping — the move-based volatile this comment block
+	# above already anticipated. Placed right after the Ghost gate (not inside the
+	# ability loop below, since it isn't ability-driven) so a Ghost-type still
+	# correctly bypasses it via the shared early return above, matching
+	# CanBattlerEscape's real check order (battle_util.c L4943-4960: Ghost checked
+	# before wrapped). A Ghost-type hit by a binding move still takes the recurring
+	# end-of-turn damage (BattlePokemon.wrapped_by stays set) — only the free-switch
+	# exemption comes from here.
+	if mon.wrapped_by != null:
+		return true
 	for opp: BattlePokemon in live_opponents:
 		var opp_id: int = effective_ability_id(opp, ng_active)
 		if opp_id == ABILITY_NONE:
@@ -2882,8 +2892,8 @@ static func try_switch_in(
 	# Attract/Cute Charm exist. Source's OTHER half of this same case
 	# (`B_OBLIVIOUS_TAUNT >= GEN_6` curing Taunt) stays N/A — Taunt is still not
 	# implemented in this project (confirmed via grep, not assumed).
-	if id == ABILITY_OBLIVIOUS and pokemon.infatuated:
-		pokemon.infatuated = false
+	if id == ABILITY_OBLIVIOUS and pokemon.infatuated_by != null:
+		pokemon.infatuated_by = null
 		result["cured_infatuation"] = true
 
 	# M17n-5: Slow Start — starts a 5-turn Atk/Speed-halving timer on switch-in.

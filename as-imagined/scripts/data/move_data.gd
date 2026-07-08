@@ -102,6 +102,19 @@ const SE_SLEEP: int     = 4
 const SE_TOXIC: int     = 5
 const SE_CONFUSION: int = 6
 const SE_FLINCH: int    = 7
+# [M18.5f] SE_WRAP: Bind/Wrap/Fire Spin/Clamp/Whirlpool/Sand Tomb/Magma Storm/
+#   Infestation/Snap Trap/Thunder Cage — all 10 share the identical real-source
+#   MOVE_EFFECT_WRAP additional effect (battle_script_commands.c L2465-2477),
+#   unconditional on a successful hit (no .chance field in moves_info.h → not a
+#   "true secondary", so Shield Dust/Sheer Force/Covert Cloak do NOT gate it,
+#   matching this project's existing is_true_secondary = secondary_chance > 0
+#   gate above for free). Jaw Lock is a DIFFERENT mechanic (MOVE_EFFECT_TRAP_BOTH,
+#   a zero-damage bidirectional permanent trap sharing the Mean Look/Block
+#   family's escapePrevention volatile, not this one) and is deliberately
+#   excluded — confirmed via direct source read, not assumed from name/flavor
+#   similarity. See BattlePokemon.wrapped_by for the applied-state field and
+#   AbilityManager.is_trapped() for the switch-blocking half.
+const SE_WRAP: int      = 8
 
 @export var secondary_effect: int = 0   # SE_* constant above
 @export var secondary_chance: int = 0   # 0 = guaranteed; 1–100 = % roll

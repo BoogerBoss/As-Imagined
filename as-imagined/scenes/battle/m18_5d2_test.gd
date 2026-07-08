@@ -90,15 +90,16 @@ func _test_section_1_attract() -> void:
 	var atk1 := _make_mon("A_Atk1", TypeChart.TYPE_NORMAL, BattlePokemon.GENDER_MALE)
 	var def1 := _make_mon("A_Def1", TypeChart.TYPE_NORMAL, BattlePokemon.GENDER_FEMALE)
 	var r1: String = StatusManager.try_apply_attract(def1, atk1)
-	_chk("A01 opposite-gender infliction succeeds (empty reason, victim.infatuated=true)",
-			r1 == "" and def1.infatuated)
+	_chk("A01 opposite-gender infliction succeeds (empty reason, victim.infatuated_by " +
+			"correctly records the inflictor)",
+			r1 == "" and def1.infatuated_by == atk1)
 
 	# A02: same gender — fails, not blocked.
 	var atk2 := _make_mon("A_Atk2", TypeChart.TYPE_NORMAL, BattlePokemon.GENDER_MALE)
 	var def2 := _make_mon("A_Def2", TypeChart.TYPE_NORMAL, BattlePokemon.GENDER_MALE)
 	var r2: String = StatusManager.try_apply_attract(def2, atk2)
 	_chk("A02 same-gender fails (not_opposite_gender), victim NOT infatuated",
-			r2 == "not_opposite_gender" and not def2.infatuated)
+			r2 == "not_opposite_gender" and def2.infatuated_by == null)
 
 	# A03/A04: genderless on either side — fails, not blocked.
 	var atk3 := _make_mon("A_Atk3", TypeChart.TYPE_NORMAL, BattlePokemon.GENDER_GENDERLESS)
@@ -113,7 +114,8 @@ func _test_section_1_attract() -> void:
 	# A05: already infatuated — fails, not blocked.
 	var atk5 := _make_mon("A_Atk5", TypeChart.TYPE_NORMAL, BattlePokemon.GENDER_MALE)
 	var def5 := _make_mon("A_Def5", TypeChart.TYPE_NORMAL, BattlePokemon.GENDER_FEMALE)
-	def5.infatuated = true
+	var def5_prior_inflictor := _make_mon("A_Def5PriorInflictor", TypeChart.TYPE_NORMAL)
+	def5.infatuated_by = def5_prior_inflictor
 	_chk("A05 already-infatuated victim fails (already_infatuated)",
 			StatusManager.try_apply_attract(def5, atk5) == "already_infatuated")
 
@@ -146,7 +148,7 @@ func _test_section_1_attract() -> void:
 	def9.ability = _load_ability(12)  # Oblivious
 	var r9: String = StatusManager.try_apply_attract(def9, atk9, null, false, atk9, attract)
 	_chk("A09 Mold Breaker bypasses victim's Oblivious (succeeds despite it)",
-			r9 == "" and def9.infatuated)
+			r9 == "" and def9.infatuated_by == atk9)
 
 	# A10: Neutralizing Gas suppresses Oblivious's block.
 	var atk10 := _make_mon("A_Atk10", TypeChart.TYPE_NORMAL, BattlePokemon.GENDER_MALE)
@@ -154,12 +156,13 @@ func _test_section_1_attract() -> void:
 	def10.ability = _load_ability(12)  # Oblivious
 	var r10: String = StatusManager.try_apply_attract(def10, atk10, null, true)
 	_chk("A10 Neutralizing Gas suppresses Oblivious's block (succeeds despite it)",
-			r10 == "" and def10.infatuated)
+			r10 == "" and def10.infatuated_by == atk10)
 
 	# A11: pre_move_check statistical rate — ~50% stuck while infatuated.
 	# n=2000, wide margin (matching [M17n-5]/[M18.5d] Phase 1's own tolerance bands).
 	var a11_mon := _make_mon("A11Mon", TypeChart.TYPE_NORMAL)
-	a11_mon.infatuated = true
+	var a11_inflictor := _make_mon("A11Inflictor", TypeChart.TYPE_NORMAL)
+	a11_mon.infatuated_by = a11_inflictor
 	var n := 2000
 	var stuck_count := 0
 	for _i in range(n):
@@ -179,21 +182,74 @@ func _test_section_1_attract() -> void:
 
 	# A13: force_infatuation_hit seam — deterministic true/false.
 	var a13_mon := _make_mon("A13Mon", TypeChart.TYPE_NORMAL)
-	a13_mon.infatuated = true
+	var a13_inflictor := _make_mon("A13Inflictor", TypeChart.TYPE_NORMAL)
+	a13_mon.infatuated_by = a13_inflictor
 	_chk("A13 force_infatuation_hit=true forces stuck",
 			StatusManager.pre_move_check(a13_mon, null, null, null, null, null, false, true)["infatuated_stuck"])
 	_chk("A13b force_infatuation_hit=false forces NOT stuck",
 			not StatusManager.pre_move_check(a13_mon, null, null, null, null, null, false, false)["infatuated_stuck"])
 
-	# A14: cured by switch-out (_clear_volatiles, the established mechanism every
-	# other one-battle-stint volatile — confusion/focus_energy/etc. — already uses).
+	# A14: cured by the HOLDER's own switch-out (_clear_volatiles, the established
+	# mechanism every other one-battle-stint volatile — confusion/focus_energy/etc.
+	# — already uses). Regression on [M18.5d-2]'s own already-correct half, per
+	# this tier's own explicit instruction to reconfirm it rather than assume.
 	var a14_bm := _make_bm()
+	var a14_inflictor := _make_mon("A14Inflictor", TypeChart.TYPE_NORMAL)
 	var a14_mon := _make_mon("A14Mon", TypeChart.TYPE_NORMAL)
-	a14_mon.infatuated = true
+	a14_mon.infatuated_by = a14_inflictor
+	a14_bm._combatants = [a14_mon, a14_inflictor]
 	a14_bm._clear_volatiles(a14_mon)
-	_chk("A14 switch-out (_clear_volatiles) cures infatuation",
-			not a14_mon.infatuated)
+	_chk("A14 the HOLDER's own switch-out (_clear_volatiles) still cures its own " +
+			"infatuation (regression on [M18.5d-2]'s already-correct half)",
+			a14_mon.infatuated_by == null)
 	a14_bm.queue_free()
+
+	# A17: [M18.5d-3] NEW — cured when the SOURCE battler (who caused it) leaves
+	# the field, even though the infatuated mon itself never switched. This is the
+	# gap [M18.5d-2] explicitly flagged and this tier closes. Source:
+	# SwitchInClearSetData/FaintClearSetData (battle_main.c L3167/L3281).
+	var a17_bm := _make_bm()
+	var a17_source := _make_mon("A17Source", TypeChart.TYPE_NORMAL)
+	var a17_victim := _make_mon("A17Victim", TypeChart.TYPE_NORMAL)
+	a17_victim.infatuated_by = a17_source
+	a17_bm._combatants = [a17_victim, a17_source]
+	a17_bm._clear_volatiles(a17_source)  # the SOURCE leaves, not the victim
+	_chk("A17 the SOURCE battler leaving the field cures the VICTIM's " +
+			"infatuation (the [M18.5d-2]-flagged gap, closed)",
+			a17_victim.infatuated_by == null)
+	a17_bm.queue_free()
+
+	# A18: discriminator — an unrelated THIRD battler leaving does NOT cure it,
+	# proving A17 isn't just clearing every victim's infatuation unconditionally.
+	var a18_bm := _make_bm()
+	var a18_source := _make_mon("A18Source", TypeChart.TYPE_NORMAL)
+	var a18_victim := _make_mon("A18Victim", TypeChart.TYPE_NORMAL)
+	var a18_bystander := _make_mon("A18Bystander", TypeChart.TYPE_NORMAL)
+	a18_victim.infatuated_by = a18_source
+	a18_bm._combatants = [a18_victim, a18_source, a18_bystander]
+	a18_bm._clear_volatiles(a18_bystander)  # unrelated third mon leaves
+	_chk("A18 discriminator: an unrelated third battler leaving does NOT cure " +
+			"the victim's infatuation",
+			a18_victim.infatuated_by == a18_source)
+	a18_bm.queue_free()
+
+	# A19: fainting the SOURCE battler also cures the victim — confirmed from
+	# source, FaintClearSetData (L3281) runs the identical clear
+	# SwitchInClearSetData (L3167) does. This project's own faint-detection loop
+	# already calls _clear_volatiles on the very mon that just fainted (no
+	# separate code path needed) — this test confirms _clear_volatiles's effect
+	# is identical regardless of WHY it was called (faint vs. switch-out).
+	var a19_bm := _make_bm()
+	var a19_source := _make_mon("A19Source", TypeChart.TYPE_NORMAL)
+	var a19_victim := _make_mon("A19Victim", TypeChart.TYPE_NORMAL)
+	a19_victim.infatuated_by = a19_source
+	a19_bm._combatants = [a19_victim, a19_source]
+	a19_source.current_hp = 0
+	a19_source.fainted = true
+	a19_bm._clear_volatiles(a19_source)
+	_chk("A19 fainting the SOURCE battler also cures the victim's infatuation",
+			a19_victim.infatuated_by == null)
+	a19_bm.queue_free()
 
 	# A15: full move-execution integration — Attract inflicted via a real battle turn.
 	var a15_atk := _make_mon("A15Atk", TypeChart.TYPE_NORMAL, BattlePokemon.GENDER_MALE,
@@ -230,7 +286,7 @@ func _test_section_1_attract() -> void:
 	_chk("A16 full-battle: Oblivious blocks Attract (attract_blocked + oblivious tag, " +
 			"first occurrence)",
 			a16_failed.size() > 0 and a16_failed[0] == "attract_blocked"
-			and a16_triggered.has("oblivious") and not a16_def.infatuated)
+			and a16_triggered.has("oblivious") and a16_def.infatuated_by == null)
 	a16_bm.queue_free()
 
 
@@ -328,8 +384,10 @@ func _test_section_3_cute_charm() -> void:
 	c_def1.ability = cute_charm
 	var res1: Dictionary = AbilityManager.try_contact_effects(
 			c_atk1, c_def1, contact_move, 10, true)
-	_chk("C1 Cute Charm infatuates an opposite-gender contact attacker",
-			res1["attract_inflicted"] and c_atk1.infatuated and res1["ability_name"] == "cute_charm")
+	_chk("C1 Cute Charm infatuates an opposite-gender contact attacker " +
+			"(infatuated_by correctly records the Cute Charm holder)",
+			res1["attract_inflicted"] and c_atk1.infatuated_by == c_def1
+			and res1["ability_name"] == "cute_charm")
 
 	# C2: discriminator — same-gender attacker, no infliction.
 	var c_atk2 := _make_mon("C_Atk2", TypeChart.TYPE_NORMAL, BattlePokemon.GENDER_FEMALE)
@@ -338,7 +396,7 @@ func _test_section_3_cute_charm() -> void:
 	var res2: Dictionary = AbilityManager.try_contact_effects(
 			c_atk2, c_def2, contact_move, 10, true)
 	_chk("C2 discriminator: same-gender attacker is NOT infatuated",
-			not res2["attract_inflicted"] and not c_atk2.infatuated)
+			not res2["attract_inflicted"] and c_atk2.infatuated_by == null)
 
 	# C3: discriminator — genderless attacker, no infliction.
 	var c_atk3 := _make_mon("C_Atk3", TypeChart.TYPE_NORMAL, BattlePokemon.GENDER_GENDERLESS)
@@ -375,7 +433,7 @@ func _test_section_3_cute_charm() -> void:
 	var res6: Dictionary = AbilityManager.try_contact_effects(
 			c_atk6, c_def6, contact_move, 10, true)
 	_chk("C6 attacker's own Oblivious blocks Cute Charm's infliction",
-			not res6["attract_inflicted"] and not c_atk6.infatuated)
+			not res6["attract_inflicted"] and c_atk6.infatuated_by == null)
 
 	# C7: blocked by Aroma Veil on the attacker's own side.
 	var c_atk7 := _make_mon("C_Atk7", TypeChart.TYPE_NORMAL, BattlePokemon.GENDER_MALE)
@@ -472,26 +530,30 @@ func _test_section_4_oblivious() -> void:
 	# O4: NEW — switch-in cures the holder's own PRE-EXISTING infatuation.
 	var o_mon4 := _make_mon("O_Mon4", TypeChart.TYPE_NORMAL)
 	o_mon4.ability = oblivious
-	o_mon4.infatuated = true
+	var o_mon4_inflictor := _make_mon("O_Mon4Inflictor", TypeChart.TYPE_NORMAL)
+	o_mon4.infatuated_by = o_mon4_inflictor
 	var o_opp4 := _make_mon("O_Opp4", TypeChart.TYPE_NORMAL)
 	var si_result4: Dictionary = AbilityManager.try_switch_in(o_mon4, o_opp4)
 	_chk("O4 Oblivious cures pre-existing infatuation on switch-in " +
-			"(cured_infatuation=true, mon.infatuated becomes false)",
-			si_result4["cured_infatuation"] and not o_mon4.infatuated)
+			"(cured_infatuation=true, mon.infatuated_by becomes null)",
+			si_result4["cured_infatuation"] and o_mon4.infatuated_by == null)
 
 	# O5: discriminator — a non-Oblivious holder does NOT get this cure.
 	var o_mon5 := _make_mon("O_Mon5", TypeChart.TYPE_NORMAL)
-	o_mon5.infatuated = true
+	var o_mon5_inflictor := _make_mon("O_Mon5Inflictor", TypeChart.TYPE_NORMAL)
+	o_mon5.infatuated_by = o_mon5_inflictor
 	var o_opp5 := _make_mon("O_Opp5", TypeChart.TYPE_NORMAL)
 	var si_result5: Dictionary = AbilityManager.try_switch_in(o_mon5, o_opp5)
 	_chk("O5 discriminator: a non-Oblivious holder's switch-in does NOT cure " +
-			"infatuation", not si_result5["cured_infatuation"] and o_mon5.infatuated)
+			"infatuation", not si_result5["cured_infatuation"]
+			and o_mon5.infatuated_by == o_mon5_inflictor)
 
 	# O6: Neutralizing Gas suppresses Oblivious's NEW switch-in cure too.
 	var o_mon6 := _make_mon("O_Mon6", TypeChart.TYPE_NORMAL)
 	o_mon6.ability = oblivious
-	o_mon6.infatuated = true
+	var o_mon6_inflictor := _make_mon("O_Mon6Inflictor", TypeChart.TYPE_NORMAL)
+	o_mon6.infatuated_by = o_mon6_inflictor
 	var o_opp6 := _make_mon("O_Opp6", TypeChart.TYPE_NORMAL)
 	var si_result6: Dictionary = AbilityManager.try_switch_in(o_mon6, o_opp6, null, true)
 	_chk("O6 Neutralizing Gas suppresses Oblivious's switch-in cure too",
-			not si_result6["cured_infatuation"] and o_mon6.infatuated)
+			not si_result6["cured_infatuation"] and o_mon6.infatuated_by == o_mon6_inflictor)

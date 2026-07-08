@@ -531,6 +531,71 @@ at a time, verify against source, regression-sweep before moving on.
   or removing a suite) must repeat this full process, not extrapolate from the prior
   confirmed number plus an assumed delta.
 
+### Testing convention: GDScript string-concatenation-then-format binds `%`
+### only to the trailing literal, not the full concatenated string
+
+  Discovered during `[M18.5d Phase 2]`: `"a" + "b %d" % [x]` does NOT format
+  across the whole string — GDScript's `%` operator has higher precedence than
+  `+`, so it binds only to the immediately adjacent string literal on its
+  right, silently ignoring everything concatenated before it. This produced a
+  runtime error ("not all arguments converted during string formatting") on
+  the FIRST test run of a new file, not a silent wrong-value bug — but a
+  differently-shaped version of this same mistake (e.g. one fewer format arg
+  than expected) could produce a silently wrong assertion label instead of a
+  hard error.
+
+  Correct forms:
+  ```gdscript
+  "a" + ("b %d" % [x])          # parenthesize the formatted portion explicitly
+  ("a" + "b %d") % [x]          # or format the fully-concatenated string once
+  ```
+
+  This is a language-level operator-precedence gotcha, not a repeat of the
+  whole-battle-aggregation or wrong-signal-name pitfalls — a genuinely new
+  class for this codebase. Treat any test-file diff containing BOTH `+`
+  string concatenation AND `%` formatting on the same statement as worth a
+  second look before running, not just after a failure.
+
+## Standing process rule: never `cd` into the reference checkout
+
+**Root cause of the recurring directory-hang bug** (occurred 3x across recent
+sessions — `[M18.5d Phase 2]`, `[M18.5d-3]`, and one earlier unlogged
+instance): bash_tool sessions share ONE persistent shell across all tool
+calls — there is NO automatic reset to the project root between calls. When a
+command `cd`s into `reference/pokeemerald_expansion/` to read source (e.g.
+`cd /home/rob/GodotAsImagined && grep -rn "..." reference/.../src/*.c`), that
+`cd` persists into every subsequent bash call for the rest of the session, not
+just the one command it was meant for.
+
+This silently breaks Godot invocations specifically: `--headless --path .`
+resolves `.` relative to wherever the shell currently sits. If the shell is
+still inside the outer `/home/rob/GodotAsImagined/` folder (or worse, inside
+`reference/pokeemerald_expansion/` itself) when `--import` or a test-run
+fires, Godot has no `project.godot` to find there and hangs — not a clean
+error, a silent hang — until the `timeout` wrapper kills it, often 1-4+
+minutes later. A `pwd` check placed before a Godot call catches this AFTER
+it's already happened; it does not prevent the drift, since the triggering
+`cd` may have occurred several tool calls earlier in the session, not the one
+immediately prior.
+
+**The rule, going forward — this replaces "check pwd before every Godot call"
+as insufficient on its own:**
+
+1. **Never `cd` into `reference/pokeemerald_expansion/` for a one-off read.**
+   Reference the full absolute path directly instead:
+   `grep -rn "..." /home/rob/GodotAsImagined/reference/pokeemerald_expansion/src/*.c`
+   — this works identically regardless of the shell's current directory and
+   leaves no persistent state to drift.
+2. **If a `cd` into the reference tree is genuinely needed** (e.g. a
+   multi-step sequence of relative-path commands), chain the return in the
+   SAME command:
+   `cd reference/pokeemerald_expansion && <commands> ; cd /home/rob/GodotAsImagined/as-imagined`
+   — never leave a reference-tree `cd` unpaired.
+3. **`pwd` before every Godot invocation remains required** as a second line
+   of defense, not a replacement for rule 1 — if it ever shows anything other
+   than `/home/rob/GodotAsImagined/as-imagined`, `cd` back explicitly before
+   proceeding, do not assume the next command will self-correct.
+
 ## Setup
 
 ```bash
@@ -627,6 +692,9 @@ it exists purely to look up exact source logic.
 - M18.5d Phase 1 (Gender infrastructure): **COMPLETE** — 2026-07-08. The one genuine hard dependency in M18.5's Phase 1 — Attract (M18.5e) was blocked on this. Two real Step-0 findings reshaped scope: (1) most of the "extraction pipeline" work was already done — `data/pokemon.json` already carries an accurate `gender_ratio` field for all 386 species (spot-checked against source for 5 categories: Bulbasaur 31/skewed-starter, Rattata 127/50-50, Chansey 254/always-female, Ditto 255/genderless, Tyrogue 0/always-male — all exact), and `PokemonSpecies.gender_ratio` already exists in the schema with a correct doc comment — both dormant since `[M15]`, the same "unpopulated schema field" shape `ItemData.pocket` had before `[M18-patch-1]`. The Python extractor itself (`tools/convert_pokedata.py`, per `[M15]`'s own decisions.md entry) doesn't exist anywhere in this repo — unlike `gen_items.py`/`gen_moves.py`/`gen_abilities.py`, it was never kept as a rerunnable generator — so there was nothing to "extend"; also confirmed `data/pokemon/` (the would-be per-species `.tres` directory) is empty and no JSON-to-`PokemonSpecies`-Resource converter exists anywhere in production code — species data lives only as bulk JSON + `PokemonRegistry`'s dictionary API, a pre-existing architectural gap flagged, not built. (2) the task's own "mirrors how IVs are already handled" assumption was WRONG — `from_species` hardcodes `ivs = [0,0,0,0,0,0]` unconditionally (a deliberate M1-era placeholder per the field's own doc comment) and contains zero `randi()` calls anywhere, so there was no existing "roll once at creation" pattern to mirror; designed fresh instead. New `BattlePokemon.gender: int` (clean `GENDER_MALE/FEMALE/GENDERLESS` enum, matching this project's own `STATUS_*`/`STAGE_*` style rather than reusing source's raw 0/254/255 sentinel bytes), rolled once in `from_species` via new `_roll_gender()`, porting `GetGenderFromSpeciesAndPersonality` (pokemon.c L1847-1861) exactly — the three sentinels short-circuit with no roll, everything else is `gender_ratio > randi() % 256`. No forcing seam added — `gender` is freely reassignable post-construction like every other field, matching this project's ~70 existing `_make_mon`-style fixture helpers; a future Attract test should just set it directly. Confirmed zero existing ability/item logic reads gender anywhere (grep, zero hits outside the schema declaration) — a genuine greenfield addition, nothing needed immediate gender-awareness. New `m18_5d_test.tscn`: 11/11 (5 data-integrity + 6 instance-generation, including n=2000 statistical-rate checks for a skewed and a 50/50 species matching `[M17n-5]`/`[M18e]`'s tolerance-band convention), stable across 5 reruns. Regression: smoke test unchanged (386 species), `battle_test`/`damage_test` 24/24/`status_test` 78/78/`move_test` 49/49/`stat_test` 78/78 (all `from_species` consumers with fixed IV/EV) — all unchanged, confirming the new `randi()` call doesn't disturb existing determinism. **M18.5e (Attract) is now unblocked.** Recommend **M18.5e (Attract, now unblocked)**, or **M18.5f (Binding-move)/M18.5g (Multi-hit)/M18.5h (Nature/IV/EV)** (still independent, no dependency change), per Rob's preference.
 
 - M18.5d Phase 2 (Gender-dependent mechanics — Attract, Rivalry, Cute Charm, Oblivious, 4 items): **COMPLETE** — 2026-07-08. Closes out the gender-dependent mechanics track entirely (Destiny Knot stays separately deferred to M18.5i, pending M28/breeding readiness). Built in dependency order within the combined session: Attract's own infliction logic first, since Cute Charm and Oblivious both react to it directly. **Attract**: corrected a pre-existing `[M17n-1]`-era mis-citation in `move_data.gd` (it cited `BS_TrySetInfatuation`, actually a side-wide Z-move-only effect this project has no reason to implement, not Attract's real command) — Attract's real script (`BattleScript_EffectAttract`) calls a side-wide Aroma Veil check then `Cmd_tryinfatuating` (which ALSO re-checks Aroma Veil plus Oblivious plus gender/already-infatuated). 50% chance to be unable to move each turn while infatuated (`CancelerInfatuation`, the LAST canceler in source's own order, wired into `pre_move_check` accordingly), cured by the infatuated mon's own switch-out via the existing `_clear_volatiles` mechanism every other volatile already uses. Flagged, not built: source additionally clears infatuation if the SPECIFIC attractor later leaves the field via ITS OWN switch/faint — this project's `infatuated` field is a plain bool (no "who caused it" tracking), a deliberate scope narrowing since nothing else in this project needs cross-battler-reference infrastructure. **Rivalry**: had NO prior implementation at all (confirmed via grep — only a name-only `[M15]` placeholder existed). Same pipeline as `[M17a]`/`[M17n-5]`'s existing `move_power_modifier_uq412` (confirmed via direct source function-name grep) — exact values `UQ_4_12(1.25)=5120` (same gender) / `UQ_4_12(0.75)=3072` (opposite gender) / neutral if either side is genderless. **Cute Charm**: also had zero prior mechanical implementation (documented no-op only) — same dispatch shape as Static/Flame Body/Poison Point (`try_contact_effects`, defender-keyed, 30% roll, contact required), confirmed via source that its Oblivious+Aroma-Veil gate is the SAME combination Attract uses (mirrored, attacker/defender roles reversed) — built ONE shared `AbilityManager.attract_block_reason()` helper and ONE shared `StatusManager.try_apply_attract()` function reused by both real inflictors rather than duplicating the checks. **Oblivious**: Intimidate-block half (`[M17n-1]`) confirmed completely unchanged (light smoke test + full `m17n1_test.tscn` rerun); infliction-blocking (both Attract and Cute Charm) wired via the shared helper above; a genuinely NEW switch-in cure of pre-existing infatuation added to the EXISTING `try_switch_in` `cured_status`/`cured_confusion` pattern (source's own `TryImmunityAbilityHealStatus` Oblivious case, N/A before this tier since infatuation didn't exist, real now) — zero new infrastructure needed. Taunt immunity re-confirmed still moot (Taunt remains unimplemented). New `m18_5d2_test.tscn`: 46/46 across 4 clearly-distinguished sections, passing after fixing two GDScript string-format operator-precedence bugs caught on the first run (`"a" + "b %d" % [x]` binds `%` to only the second literal — a genuinely new pitfall for this codebase, not a recurrence of a documented one), stable across 6 reruns. Regression: `m18_5d_test.tscn` 11/11 (Phase 1 unaffected), `m17n1_test.tscn` 82/82, `status_test.tscn` 78/78, `item_registry_test.tscn` 309/309 — plus, beyond the task's own listed suites, every other direct consumer of the two shared functions whose signatures changed (`m17c_test.tscn` 85/85, `m17n5_test.tscn` 78/78, `m18p_test.tscn` 33/33, `m18x_test.tscn` 15/15) — all unchanged. Recommend **M18.5f (Binding-move), M18.5g (Multi-hit), or M18.5h (Nature/IV/EV)** — all three remain independent and dependency-free, per Rob's preference.
+
+- M18.5d-3 (Infatuation source tracking): **COMPLETE** — 2026-07-08. Closes the one gap `[M18.5d Phase 2]` deliberately flagged: infatuation previously only cured on the INFATUATED mon's own switch-out, missing real source's reciprocal condition — the infatuated mon is ALSO cured the instant the Pokémon who attracted it leaves the field (switch-out or faint), even if the infatuated mon itself never switched. Confirmed via source (`INFATUATED_WITH(battler) = battler + 1`, a raw slot-index encoding driven by C's bitfield constraints) that this project didn't need to reproduce that raw-index shape — `BattlePokemon.infatuated: bool` replaced with `infatuated_by: BattlePokemon = null` (a direct object reference), matching this project's own existing `_last_attacker` dictionary precedent for "who did this to me" tracking rather than inventing a new pattern. Confirmed source's two separate trigger functions (`SwitchInClearSetData`/`FaintClearSetData`, both battle_main.c) collapse cleanly into this project's ONE existing `_clear_volatiles(mon)` chokepoint (already called at all 4 real "a battler left the field" moments — regular faint, Destiny-Bond-triggered faint, Aftermath/Innards-Out-triggered faint, and switch-out) — added a single reciprocal scan there (loop `_combatants`, clear anyone else's `infatuated_by` if it points at the mon that just left), rather than two separate insertion points. Doubles confirmed a non-factor requiring no new infrastructure (the scan works generically) but also not specifically tested, consistent with the project's "don't build unreachable doubles coverage prematurely" precedent (Shell Bell). Extended `m18_5d2_test.gd`'s existing Attract section (no new file) — 3 new assertions: source-battler-leaves cures the victim (the fix itself), an unrelated third battler leaving does NOT cure it (discriminator), and fainting the source also cures it (confirms both real trigger conditions). The holder's own switch-out cure was explicitly reconfirmed as a regression check, not assumed. **49/49** (was 46/46), stable across 5 reruns. Regression: `item_registry_test.tscn` 309/309, `status_test.tscn` 78/78 — both unchanged. Recommend **M18.5f (Binding-move), M18.5g (Multi-hit), or M18.5h (Nature/IV/EV)** — all three remain independent and dependency-free, unaffected by this fix.
+- M18.5f (Binding-move mechanic): **COMPLETE** — 2026-07-08. 10 moves, not the 11 `docs/m19_recon.md` claimed — Bind/Wrap/Fire Spin/Clamp/Whirlpool/Sand Tomb/Magma Storm/Infestation/Snap Trap/Thunder Cage all share the identical real-source `MOVE_EFFECT_WRAP` mechanic; **Jaw Lock is excluded**, a direct source read shows it dispatches `MOVE_EFFECT_TRAP_BOTH` instead — a completely different, zero-damage, permanent, bidirectional trap (the Mean Look/Block family's `escapePrevention`), conflated by the recon on flavor-text similarity alone. Confirmed binding does NOT restrict move selection (absent from every pre-move canceler in source) — only blocks voluntary switching and deals maxHP/8 recurring end-of-turn damage for a random 4-5 turns. Reused the EXISTING generic `secondary_effect`/`secondary_chance` fields (`SE_WRAP`) rather than a bespoke move flag — cheaper than Attract's own dedicated dispatch, since binding is a damage move with an attached generic effect, not a status move. New `BattlePokemon.wrapped_by`/`wrapped_turns`; `AbilityManager.is_trapped()` extended with a `wrapped_by` check right after its existing Ghost-type gate (a Ghost-type still takes the recurring damage, only the switch-block exemption applies); `BattleManager._clear_volatiles` extended with the exact same `[M18.5d-3]`-pattern reciprocal cross-battler scan — the source battler leaving the field also cures the victim's trap, confirmed via the identical two source functions `[M18.5d-3]` already unified. Confirmed a genuine off-by-one in the duration counter (checked BEFORE decrementing in source, so an N-turn trap deals N damage ticks then one silent free "ends" tick) and reproduced it exactly rather than assuming the simpler decrement-then-clear shape `disable_turns`/`encore_turns` already use. Found and avoided a real correctness pitfall: SE_WRAP was given its own dispatch branch (same shape as SE_FLINCH's existing carve-out) rather than falling into the shared status/confusion-cure-berry branch, which would have spuriously evaluated an unrelated pre-existing status against a held cure berry. New `m18_5f_test.gd`/`.tscn`: 137/137, stable across 6 reruns (one intermittent accuracy-roll flake caught and fixed via `bm._force_hit = true`, not preemptively guessed). Regression: `item_registry_test.tscn` 309/309, `status_test.tscn` 78/78, `m17n9_test.tscn` (Magic Guard's own origin suite) 63/63, plus `m17f_test.tscn` 30/30 and `m18_5d2_test.tscn` 49/49 (both directly-extended functions' own origin suites, beyond the named regression scope). **Grip Claw is now unblocked** (7-turn duration extension) but still deferred to M18.5i's reconsideration pass, same for Binding Band (maxHP/6 variant) — neither item is built here. Recommend **M18.5g (Multi-hit) or M18.5h (Nature/IV/EV)** — both remain independent and dependency-free.
 
 ## Post-M18 Review — flagged-but-unfixed items queued for disposition
 

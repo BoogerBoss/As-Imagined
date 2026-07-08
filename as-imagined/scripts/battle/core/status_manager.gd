@@ -270,10 +270,10 @@ static func try_apply_confusion(
 # citations), so this project builds ONE shared function rather than duplicating
 # the already-required/gender/block checks at both call sites.
 #
-# `victim` = who is about to become infatuated. `inflictor` = who caused it (used
-# ONLY for the gender-pair check — this project does not track WHICH specific
-# battler caused an infatuation beyond that, see BattlePokemon.infatuated's own
-# doc comment for the flagged, deliberately-not-built scope narrowing this implies).
+# `victim` = who is about to become infatuated. `inflictor` = who caused it — used
+# for the gender-pair check AND [M18.5d-3] recorded directly onto
+# `victim.infatuated_by`, so a later departure of `inflictor` from the field
+# correctly cures `victim` (see BattlePokemon.infatuated_by's own doc comment).
 # `victim_ally`/`attacker`/`attacker_move` thread straight through to
 # AbilityManager.attract_block_reason — see that function's own doc comment for
 # their exact meaning (attacker/attacker_move are Mold-Breaker/Mycelium-Might
@@ -297,13 +297,42 @@ static func try_apply_attract(
 			victim, victim_ally, ng_active, attacker, attacker_move)
 	if block_reason != "":
 		return block_reason
-	if victim.infatuated:
+	if victim.infatuated_by != null:
 		return "already_infatuated"
 	if not BattlePokemon.are_opposite_gender(inflictor, victim):
 		return "not_opposite_gender"
 
-	victim.infatuated = true
+	victim.infatuated_by = inflictor
 	return ""
+
+
+# [M18.5f] Bind/Wrap-family trap application — the MOVE_EFFECT_WRAP additional
+# effect shared identically by Bind/Wrap/Fire Spin/Clamp/Whirlpool/Sand
+# Tomb/Magma Storm/Infestation/Snap Trap/Thunder Cage. Source:
+# battle_script_commands.c L2465-2477 — if already wrapped, silently continues
+# (no re-trap, no stacking, no fail message); otherwise sets wrappedBy and rolls
+# a fresh duration via SetWrapTurns (battle_util.c L10726-10738). No Ghost-type
+# gate here — Ghost-types ARE tracked as wrapped (still take the recurring
+# damage) and only get their free-switch exemption from
+# AbilityManager.is_trapped()'s existing Ghost check, not from being immune to
+# the trap volatile itself (confirmed via CanBattlerEscape, battle_util.c
+# L4943-4960, whose Ghost branch is checked BEFORE its wrapped branch).
+# force_wrap_turns: Variant — null = random 4-5 (RandomUniform, B_BINDING_TURNS
+#   >= GEN_5 branch, this project's default config); int value = pin duration
+#   for deterministic testing, matching force_sleep_turns's own established seam
+#   shape. Grip Claw's 7-turn fixed extension is out of scope (deferred M18.5i).
+static func try_apply_wrap(
+		victim: BattlePokemon,
+		inflictor: BattlePokemon,
+		force_wrap_turns: Variant = null) -> bool:
+
+	if victim.wrapped_by != null:
+		return false
+
+	victim.wrapped_by = inflictor
+	victim.wrapped_turns = force_wrap_turns if force_wrap_turns != null \
+			else randi_range(4, 5)
+	return true
 
 
 # ── End-of-turn status damage ─────────────────────────────────────────────
@@ -540,9 +569,10 @@ static func pre_move_check(
 	# -> Paralyzed -> Infatuation), matching this function's own check order exactly.
 	# !RandomPercentage(RNG_INFATUATION, 50) -> 50% chance stuck in love, can't move.
 	# Source's `gBattleScripting.battler = infatuation - 1` (which battler caused it)
-	# is flavor-text-only — irrelevant here, this project has no text system and
-	# BattlePokemon.infatuated is a plain bool (see its own doc comment).
-	if mon.infatuated:
+	# is flavor-text-only — irrelevant here, this project has no text system, even
+	# though [M18.5d-3] now tracks the same "who" via `infatuated_by` for the
+	# cross-battler cure check (BattleManager._clear_volatiles), not for messages.
+	if mon.infatuated_by != null:
 		var stuck: bool
 		if force_infatuation_hit == null:
 			stuck = randi() % 100 < 50
@@ -922,6 +952,12 @@ static func try_secondary_effect(
 			# Flinch: caller must check turn order and set defender.flinched.
 			# We return true to signal the roll succeeded.
 			return true
+		MoveData.SE_WRAP:
+			# [M18.5f] No Shield Dust/Covert Cloak/Sheer Force gate reaches here —
+			# guaranteed (secondary_chance == 0), so is_true_secondary is false and
+			# all three checks above already short-circuit past this branch, matching
+			# source's own "not a true secondary" MOVE_EFFECT_WRAP finding.
+			return try_apply_wrap(defender, attacker)
 	return false
 
 

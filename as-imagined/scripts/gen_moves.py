@@ -59,6 +59,7 @@ SE_SLEEP     = 4
 SE_TOXIC     = 5
 SE_CONFUSION = 6
 SE_FLINCH    = 7
+SE_WRAP      = 8  # [M18.5f] Bind/Wrap-family trap — see move_data.gd's own doc comment
 
 # ── Semi-invulnerable state constants (MoveData.SEMI_INV_* values) ───────────
 SEMI_INV_NONE        = 0
@@ -787,6 +788,46 @@ MOVES = [
     {"id": 213, "name": "Attract",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 15,
      "ignores_substitute": True, "is_attract": True},
+
+    # [M18.5f] Bind/Wrap-family (10 moves) — all share the identical real-source
+    # MOVE_EFFECT_WRAP additional effect (battle_script_commands.c L2465-2477),
+    # unconditional on a hit landing (secondary_chance=0 — not a "true secondary",
+    # confirmed absent from moves_info.h's .chance field for all 10). Per-move
+    # power/accuracy/pp/category/type/makesContact all confirmed individually
+    # from moves_info.h (this project targets B_UPDATED_MOVE_DATA >= GEN_5 values
+    # throughout, matching every other move in this file). Jaw Lock (748) is
+    # deliberately excluded — MOVE_EFFECT_TRAP_BOTH, a different mechanic (see
+    # move_data.gd's SE_WRAP doc comment).
+    {"id": 20, "name": "Bind",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 15, "accuracy": 85, "pp": 20,
+     "makes_contact": True, "secondary_effect": SE_WRAP},
+    {"id": 35, "name": "Wrap",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 15, "accuracy": 90, "pp": 20,
+     "makes_contact": True, "secondary_effect": SE_WRAP},
+    {"id": 83, "name": "Fire Spin",
+     "type": TYPE_FIRE, "category": SPEC, "power": 35, "accuracy": 85, "pp": 15,
+     "secondary_effect": SE_WRAP},
+    {"id": 128, "name": "Clamp",
+     "type": TYPE_WATER, "category": PHYS, "power": 35, "accuracy": 85, "pp": 15,
+     "makes_contact": True, "secondary_effect": SE_WRAP},
+    {"id": 250, "name": "Whirlpool",
+     "type": TYPE_WATER, "category": SPEC, "power": 35, "accuracy": 85, "pp": 15,
+     "secondary_effect": SE_WRAP},
+    {"id": 328, "name": "Sand Tomb",
+     "type": TYPE_GROUND, "category": PHYS, "power": 35, "accuracy": 85, "pp": 15,
+     "secondary_effect": SE_WRAP},
+    {"id": 463, "name": "Magma Storm",
+     "type": TYPE_FIRE, "category": SPEC, "power": 100, "accuracy": 75, "pp": 5,
+     "secondary_effect": SE_WRAP},
+    {"id": 611, "name": "Infestation",
+     "type": TYPE_BUG, "category": SPEC, "power": 20, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "secondary_effect": SE_WRAP},
+    {"id": 707, "name": "Snap Trap",
+     "type": TYPE_GRASS, "category": PHYS, "power": 35, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "secondary_effect": SE_WRAP},
+    {"id": 747, "name": "Thunder Cage",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 80, "accuracy": 90, "pp": 15,
+     "secondary_effect": SE_WRAP},
 ]
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──

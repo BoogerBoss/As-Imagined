@@ -12714,18 +12714,21 @@ Energy, etc.) via `BattleManager._clear_volatiles`, called on BOTH
 switch-out and faint. Confirmed this is the right, unconditional mechanism
 — no more specific gate exists for the INFATUATED mon's own switch-out.
 
-**Known limitation, flagged not fixed**: real source additionally clears
-infatuation if the SPECIFIC battler who caused it (tracked via
-`INFATUATED_WITH(battler)`, not a plain bool) later leaves the field via
-ITS OWN switch/faint (battle_main.c L3167/L3281) — e.g. if the opponent
-switches out their attracting Pokémon for a different one, the infatuated
-Pokémon's crush clears too, even though the infatuated Pokémon itself never
-switched. This project's `BattlePokemon.infatuated` is a plain bool (no
-"who" tracking) — a deliberate scope narrowing, not a silently-dropped
-feature: no flavor-text system exists to need the "who" for messages, and
-tracking a specific battler reference across an opponent's switch would be
-new cross-battler-reference infrastructure this project doesn't otherwise
-have. Documented on `BattlePokemon.infatuated`'s own doc comment and here.
+**Known limitation, flagged not fixed** *(RESOLVED — see `[M18.5d-3]`)*:
+real source additionally clears infatuation if the SPECIFIC battler who
+caused it (tracked via `INFATUATED_WITH(battler)`, not a plain bool) later
+leaves the field via ITS OWN switch/faint (battle_main.c L3167/L3281) —
+e.g. if the opponent switches out their attracting Pokémon for a different
+one, the infatuated Pokémon's crush clears too, even though the infatuated
+Pokémon itself never switched. This project's `BattlePokemon.infatuated`
+was a plain bool (no "who" tracking) — a deliberate scope narrowing, not a
+silently-dropped feature: no flavor-text system exists to need the "who"
+for messages, and tracking a specific battler reference across an
+opponent's switch would be new cross-battler-reference infrastructure this
+project doesn't otherwise have. Documented on `BattlePokemon.infatuated`'s
+own doc comment and here at the time. Closed by `[M18.5d-3]`, which
+replaced the plain bool with `infatuated_by: BattlePokemon` and added the
+reciprocal cure check.
 
 ### Rivalry — exact modifier values and source citation
 
@@ -12922,3 +12925,367 @@ remains separately deferred to M18.5i, pending M28/breeding readiness, not
 folded in here). Points at M18.5f (Binding-move), M18.5g (Multi-hit), or
 M18.5h (Nature/IV/EV) as the next recommended tier — all three remain
 independent and dependency-free.
+
+## [M18.5d-3] Infatuation source tracking (closes a [M18.5d-2]-flagged gap)
+
+A small, standalone, no-dependency fix for the one deliberately-scoped gap
+`[M18.5d-2]` flagged: this project's infatuation only cured on the
+INFATUATED mon's own switch-out, missing the reciprocal real-source
+condition — the infatuated mon is also cured the instant the Pokémon who
+attracted it leaves the field, even if the infatuated mon itself never
+switched.
+
+### Step 0 — confirmed fix shape
+
+**`INFATUATED_WITH`'s exact encoding, confirmed**: `include/constants/
+battle.h` L347 — `#define INFATUATED_WITH(battler) (battler + 1)`, a plain
+battler-slot-index-plus-one (the +1 makes 0 an unambiguous "not infatuated"
+sentinel, distinguishing it from a valid battler index 0). Source stores
+this as a raw integer because its `volatiles` struct is a C bitfield with
+no room for object references. This project has no such constraint.
+
+**Real source cure trigger, confirmed precisely — TWO functions, not one,
+both unconditional (not gated on voluntary-vs-forced)**:
+- `SwitchInClearSetData` (battle_main.c L3117, L3167) — runs on EVERY
+  switch-in, whether voluntary, forced (Roar/Whirlwind/Red Card/Eject
+  Button), or faint-replacement. Clears any OTHER battler's infatuation
+  that points at the slot now being filled.
+- `FaintClearSetData` (battle_main.c L3266, L3281) — runs the INSTANT a
+  battler faints, before any replacement enters. Same clear, same shape.
+
+Confirmed via direct read that BOTH exist because source models fainting
+and the subsequent switch-in as two temporally separate events (a fainted
+slot can sit empty for a moment before a replacement is chosen) — but nailed
+down that in THIS project's own architecture, both moments are already
+covered by exactly one existing chokepoint: `BattleManager.
+_clear_volatiles(mon)`, already called on `mon` at both real "left the
+field" moments (regular faint, Destiny-Bond-triggered faint,
+Aftermath/Innards-Out-triggered faint — all three inside the same
+faint-detection loop — AND voluntary/forced switch-out via
+`_switch_out_clear`). Verified each of these 4 call sites still has every
+OTHER currently-active battler correctly represented in `_combatants` at
+the exact moment `_clear_volatiles` fires (the switch-out case calls it
+BEFORE `_combatants`' own slot gets reassigned to the replacement — read
+`_do_voluntary_switch`/`_do_forced_switch_in` directly to confirm the
+ordering, not assumed). One unified scan inside `_clear_volatiles` itself
+therefore reproduces source's two-function behavior exactly, without
+needing two separate insertion points.
+
+**Doubles confirmed a non-factor for THIS fix specifically**: the new scan
+loops `_combatants` generically (works identically in singles or doubles
+without any doubles-specific branching), but per this project's own
+"don't build unreachable doubles infrastructure prematurely" precedent
+(Shell Bell's flagged-not-built doubles gaps), no doubles-specific test
+was added — the fix is doubles-safe by construction (a plain loop over
+however many combatants exist), not doubles-tested, since `[M18.5d
+Phase 2]`'s own test file is singles-only and this session didn't expand
+that scope.
+
+**Representation chosen**: `BattlePokemon.infatuated_by: BattlePokemon =
+null` — a direct object reference, not a battler-slot index. Confirmed
+this fits established project convention better than reproducing source's
+raw-index encoding: `BattleManager._last_attacker` already tracks "who did
+this to me" via a `Dictionary[BattlePokemon, BattlePokemon]` of direct
+references (Destiny Bond/Aftermath/Innards Out's own killer lookups) —
+this project is object-reference-based throughout, not index-based, and
+`BattlePokemon` references remain stable for a mon's entire lifetime here
+(a fainted or switched-out mon isn't destroyed, just flagged/deactivated).
+`null` = not infatuated; non-null = infatuated, holding the inflictor.
+
+### Implementation
+
+- `scripts/battle/core/battle_pokemon.gd`: `infatuated: bool` replaced with
+  `infatuated_by: BattlePokemon = null`; doc comment rewritten to describe
+  the new mechanism and cross-reference this entry.
+- `scripts/battle/core/status_manager.gd`: `try_apply_attract` now stores
+  `victim.infatuated_by = inflictor` on success (previously just
+  `victim.infatuated = true`) and checks `victim.infatuated_by != null` for
+  the already-infatuated gate; `pre_move_check`'s infatuation canceler
+  updated to `mon.infatuated_by != null`.
+- `scripts/battle/core/ability_manager.gd`: Oblivious's switch-in cure
+  updated to `pokemon.infatuated_by != null` / `pokemon.infatuated_by =
+  null`.
+- `scripts/battle/core/battle_manager.gd`: `_clear_volatiles` — `mon`'s own
+  half updated to `mon.infatuated_by = null`; NEW reciprocal scan added
+  right after it, looping `_combatants` and clearing `other.infatuated_by =
+  null` for any `other != mon` whose `infatuated_by == mon`. Zero other
+  call sites needed changes — Attract's and Cute Charm's own infliction
+  sites (both built in `[M18.5d-2]`) already pass the correct inflictor
+  through `try_apply_attract`'s existing `inflictor` parameter; that
+  parameter's role didn't change, only what `try_apply_attract` does with
+  it internally.
+
+### Testing
+
+Extended `scenes/battle/m18_5d2_test.gd`'s existing Section 1 (Attract) — no
+new file, per this task's own explicit instruction, since this is a scoped
+correction to `[M18.5d-2]`'s own work, not a new mechanic. All prior
+`.infatuated` bool reads/writes across the file (Sections 1, 3, and 4)
+updated to `.infatuated_by`/object-reference shape; three new assertions:
+- **A17**: the SOURCE battler leaving the field (via a direct
+  `_clear_volatiles(source)` call) cures the VICTIM's infatuation — the
+  `[M18.5d-2]`-flagged gap itself, confirmed closed.
+- **A18**: discriminator — an unrelated THIRD battler leaving does NOT cure
+  it, proving A17 isn't just clearing every victim's infatuation
+  unconditionally.
+- **A19**: fainting the SOURCE battler (not just voluntary switch-out) also
+  cures the victim, confirming both real source trigger conditions
+  (`SwitchInClearSetData`/`FaintClearSetData`) are covered by the one
+  unified `_clear_volatiles` insertion point.
+- A14 (pre-existing, renamed) reconfirmed as a regression check: the
+  HOLDER's own switch-out still cures its own infatuation, per this task's
+  own explicit instruction to reconfirm rather than assume the
+  already-correct half stayed correct.
+
+Watched for the GDScript `%`-after-`+` formatting pitfall (documented in
+CLAUDE.md, found during `[M18.5d Phase 2]`) while writing the new labels —
+none of the new assertions needed string formatting, so it didn't recur
+here.
+
+**49/49** (was 46/46 — 3 new assertions), passing on the first run, stable
+across 5 reruns.
+
+### Regression
+
+- `m18_5d2_test.tscn`: **49/49** (above).
+- `item_registry_test.tscn`: **309/309**, unchanged.
+- `status_test.tscn`: **78/78**, unchanged.
+
+Full sweep not run, per this task's own explicit instruction — a narrow,
+contained fix to one already-tested tier's own known gap.
+
+One process-discipline note: working directory drifted to the outer
+`/home/rob/GodotAsImagined` again at the very start of this session (before
+any Godot invocation was attempted) — caught immediately via `pwd` per
+this task's own explicit reminder, fixed before doing anything else. It
+drifted a SECOND time mid-session after an explicit `cd` to the outer
+directory to read `reference/pokeemerald_expansion` source files (the same
+root cause `[M18.5d]`'s own entry already flagged) — also caught via `pwd`
+before the next Godot-adjacent command ran. No hangs, no wasted time either
+time.
+
+No stray Godot processes before or after; reference clone untouched; no
+scratch/debug files left over. `git status --short` matched the expected
+file set (1 modified test file, 4 modified core scripts) before this docs
+commit — Rob had committed all of `[M18.5d Phase 1]`+`[M18.5d Phase 2]`'s
+prior work between sessions (confirmed via `git log`), so this session's
+diff is cleanly isolated to just this fix.
+
+### Docs
+
+`[M18.5d-2]`'s own flagged-gap note updated in place to point at this entry
+as its resolution. `CLAUDE.md`'s status section updated noting this fix
+landed. Recommends the same next tiers as before — M18.5f (Binding-move),
+M18.5g (Multi-hit), or M18.5h (Nature/IV/EV) — all three remain independent
+and dependency-free; this fix didn't change that dependency graph.
+
+## [M18.5f] Bind/Wrap-family binding-move mechanic
+
+### Step 0 findings
+
+**Move list — 10, not 11**: a direct correction to `docs/m19_recon.md`'s own
+Section C2 count. Confirmed via `grep`ing `moves_info.h` for every move whose
+`.additionalEffects` includes `MOVE_EFFECT_WRAP`: Bind(20), Wrap(35), Fire
+Spin(83), Clamp(128), Whirlpool(250), Sand Tomb(328), Magma Storm(463),
+Infestation(611), Snap Trap(707), Thunder Cage(747). **Jaw Lock (748) is
+excluded** — direct source read (`moves_info.h`'s `MOVE_JAW_LOCK` entry) shows
+it dispatches `MOVE_EFFECT_TRAP_BOTH`, not `MOVE_EFFECT_WRAP`. Tracing
+`Cmd_seteffectivetoall`'s `MOVE_EFFECT_TRAP_BOTH` case
+(`battle_script_commands.c` L2661-2674) shows this is a completely different
+mechanic: sets `escapePrevention` on BOTH the user and target (the Mean
+Look/Block/Spider Web family), unconditional, permanent (no turn counter,
+no `SetWrapTurns` call), and deals ZERO recurring damage. The recon
+conflated it with the DoT-binding family purely on flavor-text similarity
+("Prevents ... from escaping") — confirmed wrong via the actual dispatch
+code, not assumed correct or incorrect from the name alone. Flagged as a
+separate future mechanic (a bidirectional variant of the still-unbuilt Mean
+Look/Block family), not folded into this tier.
+
+**Mechanic — confirmed NOT a move-selection restriction.** Searched every
+pre-move canceler in `battle_move_resolution.c`/`battle_util.c` (the same
+functions `[M18.5d-2]`'s Attract canceler was added alongside) — no
+`wrapped`-gated canceler exists anywhere. A wrapped Pokémon chooses and
+executes moves completely normally; the ONLY two effects are (a) blocked
+voluntary switching and (b) end-of-turn recurring damage. This directly
+contradicts a plausible-sounding assumption the task's own framing invited
+("trapped and taking recurring damage" could easily be misread as also
+restricting the trapped side's own actions) — confirmed false by reading
+`CancelerXxx` function list directly rather than inferring from the name.
+
+**Application**: `battle_script_commands.c` L2465-2477 (`MOVE_EFFECT_WRAP`
+case) — if the target is already wrapped, the case is a silent no-op (no
+re-trap, no stacking, no distinct fail message); otherwise it calls
+`SetWrapTurns` and sets `wrapped`/`wrappedMove`/`wrappedBy`. Not a "true
+secondary" — no `.chance` field on any of the 10 moves' `additionalEffects`
+entries, confirmed by direct inspection, meaning Shield Dust/Covert
+Cloak/Sheer Force do NOT gate it (all three of this project's existing
+gates are keyed on `secondary_chance > 0`, so `SE_WRAP`'s `secondary_chance
+== 0` already skips them for free — no new gate logic needed).
+
+**Duration**: `SetWrapTurns` (`battle_util.c` L10726-10738) —
+`RandomUniform(4, normalWrapTurns=5)` under `B_BINDING_TURNS >= GEN_5`
+(this project's default `GEN_LATEST` config satisfies this), i.e. a random
+4 or 5 turns. Grip Claw's branch (`B_WRAP_TURNS = 7`,
+`include/config/battle.h` L213) is a fixed 7 turns instead of the random
+roll — out of scope here, deferred to M18.5i (Grip Claw is now unblocked by
+this tier but not implemented in it, per the task's own scope line).
+
+**Damage**: `HandleEndTurnWrap` (`battle_end_turn.c` L649-687) —
+`maxHP / (B_BINDING_DAMAGE >= GEN_6 ? 8 : 16)`, this project's default
+config satisfies the `>= GEN_6` branch, so `maxHP/8`. Binding Band's
+`wrappedBindingBand` flag would change this to `maxHP/6` — confirmed the
+flag exists in source but the item itself (`HOLD_EFFECT_BINDING_BAND`) is
+unbuilt in this project, so the field/branch is simply never set true here.
+Flagged alongside Grip Claw as the same class of "item deferred to M18.5i,
+mechanism ready to receive it" gap — not silently dropped, not built ahead
+of the item existing.
+
+**Duration-counter off-by-one, confirmed by direct trace, not assumed
+symmetric with `disable_turns`/`encore_turns`'s simpler shape**:
+`HandleEndTurnWrap` checks `wrapTurns != 0` BEFORE decrementing, so a fresh
+N-turn trap deals damage on N separate end-of-turns (the check reads the
+PRE-decrement value every time), and only breaks free — no damage, just the
+"ends" branch — on the (N+1)th end-of-turn once the counter is already 0.
+This project's `wrapped_turns` decrement in `_phase_end_of_turn` reproduces
+this exact ordering (check-before-decrement) rather than the simpler
+decrement-then-clear-at-zero shape `disable_turns`/`encore_turns` already
+use elsewhere in this file, since source itself draws this distinction for
+Wrap specifically. The counter decrements UNCONDITIONALLY even under Magic
+Guard — confirmed via the same function: `wrapTurns--` happens BEFORE the
+Magic Guard early-return, so only the damage is suppressed, matching this
+project's own pre-existing `toxic_counter`-still-ticks-under-Magic-Guard
+precedent (`[M17n-9]`) rather than treating this as a new pattern.
+
+**Escape conditions — the genuine parallel to `[M18.5d-3]`'s infatuation fix,
+confirmed rather than assumed symmetric:**
+- Holder's own switch-out/faint clears its own trap (`wrapped = FALSE` inside
+  `SwitchInClearSetData`/`FaintClearSetData`'s general volatile-memset, same
+  as every other switch-cleared volatile).
+- **The SOURCE battler (who applied the trap) leaving the field ALSO clears
+  the victim's trap** — confirmed via `battle_main.c` L3169-3170 (inside
+  `SwitchInClearSetData`) and L3283-3284 (inside `FaintClearSetData`):
+  `if (gBattleMons[i].volatiles.wrapped && gBattleMons[i].volatiles.wrappedBy
+  == battler) gBattleMons[i].volatiles.wrapped = FALSE;` — literally the next
+  two lines after the infatuation-clear check `[M18.5d-3]` already ported,
+  in BOTH of the same two source functions. Reused `[M18.5d-3]`'s
+  `infatuated_by`-style reciprocal-scan pattern in
+  `BattleManager._clear_volatiles` verbatim rather than inventing a second
+  shape for a structurally identical situation.
+- Ghost-type: `CanBattlerEscape` (`battle_util.c` L4943-4960) checks the
+  Ghost-type bypass BEFORE the `wrapped` check, so a Ghost-type Pokémon can
+  always switch away freely — but it is STILL tracked as `wrapped` and
+  STILL takes the recurring end-of-turn damage; only the switch-block
+  exemption is Ghost-specific, not immunity to the trap volatile itself.
+  Reused `AbilityManager.is_trapped()`'s existing Ghost gate (already
+  anticipating exactly this move-based volatile per its own `[M17f]`-era
+  doc comment) by adding the `wrapped_by` check immediately after it, in
+  the same position source's own check-ordering implies.
+- Substitute: confirmed this project's EXISTING `went_to_sub` early-return
+  in the damage-application function (before any `secondary_effect`
+  dispatch is ever reached) already blocks trap application for free when
+  the hit is absorbed by Substitute — no new code needed, and no direct
+  source citation was necessary since this project's own established
+  generic secondary-effect-vs-Substitute behavior already applies uniformly
+  here (binding moves are ordinary `EFFECT_HIT` damage moves with an
+  attached generic secondary effect, not a special case).
+- Re-hitting an already-trapped target: silent no-op (see Application above).
+
+### A real correctness pitfall found and avoided during implementation
+
+The existing generic damage-move secondary-effect dispatch (the `if damage >
+0 and move.secondary_effect != MoveData.SE_NONE:` block in
+`battle_manager.gd`) has a shared "else" branch that assumes the secondary
+effect just SET `target.status`/`target.confusion_turns` (true for every
+`SE_BURN`..`SE_CONFUSION` case, since `try_apply_status`/`try_apply_confusion`
+is what actually fired), then immediately checks the target's CURRENT
+status/confusion against a held cure-berry (Cheri/Chesto/.../Persim). `SE_WRAP`
+never touches `status`/`confusion_turns` at all — routing it through that
+shared branch would have spuriously evaluated (and potentially cured-and-
+consumed) whatever UNRELATED pre-existing status the target happened to
+already have, entirely independent of the Wrap hit that triggered the check.
+Given its own dedicated branch instead (same shape as `SE_FLINCH`'s existing
+carve-out, for the identical underlying reason — not every secondary effect
+is a status/confusion application).
+
+### Implementation
+
+- `move_data.gd`: new `SE_WRAP = 8` constant, reusing the EXISTING generic
+  `secondary_effect`/`secondary_chance` fields — no new `MoveData` field
+  needed at all (cheaper than `[M18.5d-2]`'s Attract, which needed a
+  dedicated `is_attract` dispatch flag since Attract is a status move, not
+  a damage move with an attached generic effect).
+- `battle_pokemon.gd`: new `wrapped_by: BattlePokemon = null` (direct object
+  reference, same shape as `infatuated_by`) and `wrapped_turns: int = 0`.
+- `status_manager.gd`: new `try_apply_wrap(victim, inflictor,
+  force_wrap_turns=null) -> bool`, wired into `try_secondary_effect`'s match
+  statement as a new `SE_WRAP` case.
+- `ability_manager.gd`: `is_trapped()` extended with a `wrapped_by != null`
+  check placed immediately after the existing Ghost-type gate.
+- `battle_manager.gd`: new `wrap_damage`/`wrap_ended` signals; new
+  end-of-turn tick block in `_phase_end_of_turn` (positioned right after the
+  burn/poison/toxic status-damage loop, before Leftovers — matching source's
+  `ENDTURN_WRAP` slot, immediately after `ENDTURN_BURN`); `_clear_volatiles`
+  extended with `wrapped_by`/`wrapped_turns` clearing plus the reciprocal
+  cross-battler scan; the damage-move `secondary_effect` dispatch given a
+  dedicated `SE_WRAP` branch (see pitfall above).
+- `gen_moves.py`: `SE_WRAP = 8` constant; 10 new move entries, each citing
+  its own `moves_info.h` power/accuracy/pp/category/type/makesContact values
+  individually (not assumed uniform across the family beyond the shared
+  `secondary_effect`).
+
+### Testing
+
+New `m18_5f_test.gd`/`.tscn`, 137/137 assertions, stable across 6 consecutive
+reruns. Section A: move-data spot-checks (all 10 moves). Section B:
+`try_apply_wrap` direct unit tests (fresh application, `force_wrap_turns`
+seam pinning both ends of the 4-5 range, already-wrapped no-op preserving
+the original inflictor, no Ghost-type gate on infliction — confirmed
+distinct from the switch-block exemption). Section C: `is_trapped()`
+extension (wrapped mon trapped with zero ability-based trappers present,
+wrapped Ghost-type NOT trapped, negative control). Section D: the
+`[M18.5d-3]`-pattern reciprocal-scan parity (source-leaves-field cures the
+victim, unrelated-third-battler discriminator, victim's-own-departure
+regression, fainting-the-source also cures). Section E: end-of-turn damage
+tick and duration expiry via direct `bm._phase_end_of_turn()` calls (same
+precedent as `[M18.5d-3]`'s direct `_clear_volatiles()` calls) — exact
+damage amount, the N-ticks-then-one-free-tick off-by-one, Magic Guard's
+counter-still-ticks/damage-suppressed behavior, lethal-tick fainting.
+Section F: full-battle integration through the real move-execution dispatch
+(`bm._force_hit = true` used to eliminate Wrap's 90% accuracy as a source of
+test flakiness — caught via an actual intermittent failure on a repeat run
+before being fixed, not preemptively guessed) plus the wired-up voluntary-
+switch block, mirroring `[M17f]`'s own Shadow-Tag-blocks-switch integration
+shape.
+
+Two test-authoring bugs were found and fixed while getting this file green,
+neither an implementation defect: (1) an incorrect assumption that
+`base_hp` passed to the test's own mon-builder equals `max_hp` directly —
+confirmed via `BattlePokemon._hp_formula` that at level 50/IV0/EV0,
+`max_hp = base_hp + 60`, not `base_hp` itself; (2) a lambda-captured-scalar
+counter (`e2_dmg_ticks`) that silently never updated the outer scope — the
+exact GDScript gotcha already documented in `CLAUDE.md`'s own "lambda-
+captured scalars are snapshots, not references" convention, caught by its
+own established fix (wrap the counter in a single-element `Array`).
+
+### Regression
+
+`m18_5f_test.tscn` 137/137 (new). `item_registry_test.tscn` 309/309,
+`status_test.tscn` 78/78, `m17n9_test.tscn` 63/63 (Magic Guard's own origin
+suite) — all per the task's explicit regression scope. Additionally reran
+`m17f_test.tscn` 30/30 (`is_trapped()`'s own origin suite, directly extended
+this tier) and `m18_5d2_test.tscn` 49/49 (`_clear_volatiles()`'s most recent
+modifier, whose reciprocal-scan pattern this tier reused) since both
+functions were edited outside this tier's own new test file — a reasonable
+extension of the named regression scope given the direct edits, not a full
+sweep.
+
+### Docs
+
+New CLAUDE.md standing section: "never `cd` into the reference checkout"
+(added at the start of this session, documenting the directory-drift bug's
+3rd occurrence as a permanent rule rather than a per-prompt reminder).
+CLAUDE.md's status section updated noting M18.5f complete and Grip Claw now
+unblocked (still deferred to M18.5i's reconsideration pass, not implemented
+here — same for Binding Band). Recommends M18.5g (Multi-hit) or M18.5h
+(Nature/IV/EV) as the next tier — both remain independent and
+dependency-free.

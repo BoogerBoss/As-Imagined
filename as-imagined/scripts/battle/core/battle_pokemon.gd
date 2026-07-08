@@ -79,19 +79,47 @@ var confusion_turns: int = 0  # volatile; 0 = not confused; set to 2-5 on applic
 # clears a stale true from an earlier Berserk Gene use. Meaningless while
 # confusion_turns == 0.
 var infinite_confusion: bool = false
-# [M18.5d-2] Attract's infatuation volatile. Source: gBattleMons[].volatiles.
-# infatuation (battle_script_commands.c :: Cmd_tryinfatuating L7613-7650) — real
-# source stores WHICH battler caused it (INFATUATED_WITH(battler)), used only for
-# (a) flavor text and (b) clearing infatuation if THAT SPECIFIC battler later
-# leaves the field via its own switch/faint (battle_main.c L3167/L3281). This
-# project simplifies to a plain bool: no flavor-text system exists to need (a),
-# and this project is singles-primary where "the opponent" is definitionally the
-# one attractor at any given time, so (b)'s cross-battler clearing is a genuine,
-# deliberately NOT-built scope narrowing (flagged in the [M18.5d-2] decisions.md
-# entry, not silently dropped). Cleared by BattleManager._clear_volatiles (the
-# INFATUATED mon's own switch-out/faint — the well-established, unambiguous half
-# of Attract's cure condition, confirmed from Step 0).
-var infatuated: bool = false
+# [M18.5d-2, extended M18.5d-3] Attract's infatuation volatile. Source:
+# gBattleMons[].volatiles.infatuation (battle_script_commands.c ::
+# Cmd_tryinfatuating L7613-7650) — real source stores WHICH battler caused it
+# (INFATUATED_WITH(battler) = battler_index + 1, include/constants/battle.h
+# L347), used for (a) flavor text and (b) clearing infatuation if THAT SPECIFIC
+# battler later leaves the field via its own switch/faint (battle_main.c
+# L3167/L3281, SwitchInClearSetData/FaintClearSetData — TWO source functions,
+# unified here into one, see BattleManager._clear_volatiles). [M18.5d-2]
+# originally simplified this to a plain bool (no "who" tracking) and flagged
+# (b) as a deliberately-not-built gap; [M18.5d-3] closed that gap by storing a
+# direct BattlePokemon reference instead — this project already tracks
+# "who did this to me" via direct object references elsewhere (BattleManager's
+# `_last_attacker` dictionary), so a reference fits established convention
+# better than reproducing source's raw battler-slot-index encoding. null = not
+# infatuated; non-null = infatuated, holding a reference to the inflicting mon
+# (used for the cross-battler cure check, NOT for flavor text — this project
+# still has no text system, so (a) stays genuinely moot). Cleared by
+# BattleManager._clear_volatiles both on THIS mon's own switch-out/faint (sets
+# its own field to null) AND, via the new cross-battler scan, on every OTHER
+# active battler whose `infatuated_by` pointed at a mon that just left the
+# field — see the [M18.5d-3] decisions.md entry for the full citation.
+var infatuated_by: BattlePokemon = null
+# [M18.5f] Bind/Wrap-family trapping volatile — direct object reference to the
+# battler who applied it, same shape and same reason as infatuated_by just
+# above (source: wrappedBy, include/constants/battle.h L220 — an enum BattlerId
+# field literally alongside INFATUATED_WITH's own encoding in the same struct).
+# null = not trapped; non-null = trapped, holding a reference to the battler
+# who applied it (used for the source-leaves-the-field cure check, reusing
+# [M18.5d-3]'s reciprocal-scan pattern in BattleManager._clear_volatiles
+# verbatim). Does NOT restrict move selection — confirmed absent from source's
+# pre-move cancelers; only blocks voluntary switching (AbilityManager.is_trapped)
+# and drives the end-of-turn recurring-damage tick.
+var wrapped_by: BattlePokemon = null
+# [M18.5f] Turns remaining on the current trap, counting down every end of turn
+# UNCONDITIONALLY — even under Magic Guard, which only suppresses the damage
+# itself (source: HandleEndTurnWrap, battle_end_turn.c L659-687, decrements
+# wrapTurns BEFORE the Magic Guard check; same "counter still ticks" shape this
+# project's own toxic_counter already established for Magic Guard). Random 4-5
+# turns on application (RandomUniform, B_BINDING_TURNS >= GEN_5 branch); Grip
+# Claw's 7-turn extension is out of scope — deferred to M18.5i.
+var wrapped_turns: int = 0
 # M18u: Metronome item's consecutive-same-move-use counter. Compared against
 # last_move_used (BEFORE it's overwritten for the current move) at the same
 # PP-deduction site source colocates its own reset check

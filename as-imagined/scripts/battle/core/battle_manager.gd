@@ -78,6 +78,9 @@ signal replacement_needed(side: int)                                       # fai
 signal weather_set(by_pokemon: BattlePokemon, weather_type: int)          # weather changed
 signal weather_expired(weather_type: int)                                  # weather duration ran out
 signal weather_damage(pokemon: BattlePokemon, amount: int)                 # sandstorm/hail chip
+# M18.5f signals
+signal wrap_damage(pokemon: BattlePokemon, amount: int)                    # Bind/Wrap-family end-of-turn tick
+signal wrap_ended(pokemon: BattlePokemon)                                  # trap duration ran out (broke free)
 # M17c signal
 signal ability_healed(pokemon: BattlePokemon, amount: int)                 # Rain Dish/Ice Body/Dry Skin/Hospitality/Cheek Pouch
 # M12 signals
@@ -2456,6 +2459,39 @@ func _phase_end_of_turn() -> void:
 			ability_healed.emit(mon, -dmg)
 			ability_triggered.emit(mon, "poison_heal")
 
+	# ── [M18.5f] Bind/Wrap-family recurring damage (ENDTURN_WRAP, source's handler
+	# table slot right after Burn/Frostbite/Nightmare/Curse, before Salt Cure) ──────
+	# Source: HandleEndTurnWrap (battle_end_turn.c L649-687). Deliberate off-by-one
+	# vs. a naive decrement-then-check-zero shape: source checks wrapTurns != 0
+	# BEFORE decrementing, so a fresh N-turn trap deals damage on N separate end-of-
+	# turns (turns 1..N all decrement-and-damage, since the check reads the PRE-
+	# decrement value each time), and only breaks free — no damage, just the "ends"
+	# message — on the (N+1)th end-of-turn once wrapTurns is already 0. Reproduced
+	# here by checking wrapped_turns BEFORE decrementing, matching source's exact
+	# ordering, rather than the simpler "decrement then clear at 0" shape this
+	# project's own disable_turns/encore_turns use (those don't have this same
+	# extra-silent-tick nuance in source). wrapped_turns decrements UNCONDITIONALLY
+	# even under Magic Guard (only the damage itself is suppressed — same
+	# "counter still ticks" shape as toxic_counter above). maxHP/8, B_BINDING_DAMAGE
+	# >= GEN_6 branch (this project's default config) — Binding Band's maxHP/6
+	# variant is out of scope (item unbuilt, flagged alongside Grip Claw for M18.5i).
+	for mon: BattlePokemon in _turn_order:
+		if mon.fainted or mon.wrapped_by == null:
+			continue
+		if mon.wrapped_turns <= 0:
+			mon.wrapped_by = null
+			wrap_ended.emit(mon)
+			continue
+		mon.wrapped_turns -= 1
+		if AbilityManager.blocks_indirect_damage(mon, ng_active):
+			continue
+		var wrap_dmg: int = max(1, mon.max_hp / 8)
+		mon.current_hp = max(0, mon.current_hp - wrap_dmg)
+		wrap_damage.emit(mon, wrap_dmg)
+		if mon.current_hp == 0:
+			mon.fainted = true
+			pokemon_fainted.emit(mon)
+
 	# M12: Leftovers EOT heal (FIRST_EVENT_BLOCK_HEAL_ITEMS, after status damage).
 	# Source: TryLeftovers (battle_hold_effects.c L634–648); fires via FIRST_EVENT_BLOCK_HEAL_ITEMS
 	#   which is position 19 in battle_end_turn.c handler table (after ENDTURN_BURN=13).
@@ -3125,8 +3161,44 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.unburden_active = false
 	mon.cud_chew_armed = false
 	# [M18.5d-2] Attract's infatuation volatile — cured by switch-out/faint like
-	# every other one-battle-stint volatile here (Step 0's confirmed cure condition).
-	mon.infatuated = false
+	# every other one-battle-stint volatile here (Step 0's confirmed cure condition,
+	# `mon`'s OWN half). `mon.infatuated_by` is who INFATUATED `mon`, not who `mon`
+	# infatuated — that's the OTHER direction, handled by the scan just below.
+	mon.infatuated_by = null
+	# [M18.5d-3] The reciprocal cure condition, closing the gap [M18.5d-2] flagged:
+	# real source clears infatuation on every OTHER battler whose `infatuation`
+	# points at THIS mon's slot the instant this mon leaves the field — TWO source
+	# functions unified here (SwitchInClearSetData, battle_main.c L3167, called on
+	# every switch-in whether voluntary or faint-replacement; FaintClearSetData,
+	# L3281, called the instant a battler faints). Confirmed via this project's own
+	# 4 real `_clear_volatiles` call sites (regular faint / Destiny-Bond-triggered
+	# faint / Aftermath-Innards-Out-triggered faint, all inside the same
+	# faint-detection loop; voluntary AND forced switch-out via `_switch_out_clear`)
+	# that ONE unified scan here, rather than reproducing source's two separate
+	# functions, correctly covers every real "this battler just left the field"
+	# moment in this project's simpler single-threaded turn architecture — verified
+	# each call site fires with `_combatants` still holding every OTHER currently-
+	# active battler correctly (the switch-out case calls this BEFORE `_combatants`'
+	# own slot gets reassigned to the replacement, confirmed by reading
+	# `_do_voluntary_switch`/`_do_forced_switch_in` directly).
+	for other: BattlePokemon in _combatants:
+		if other != mon and other.infatuated_by == mon:
+			other.infatuated_by = null
+
+	# [M18.5f] Bind/Wrap-family trap — the direct parallel Step 0 confirmed exists:
+	# real source clears wrapped on THIS mon's own departure (mon's own half, right
+	# below) AND, via the SAME two source functions already unified into this one
+	# chokepoint, on every OTHER battler this mon had trapped, the instant this mon
+	# leaves the field (battle_main.c L3169-3170/L3283-3284 — literally the next two
+	# lines after the infatuation clear above in both real source functions).
+	# Reuses [M18.5d-3]'s reciprocal-scan pattern verbatim rather than inventing a
+	# second shape for what is structurally the identical situation.
+	mon.wrapped_by = null
+	mon.wrapped_turns = 0
+	for other: BattlePokemon in _combatants:
+		if other != mon and other.wrapped_by == mon:
+			other.wrapped_by = null
+			other.wrapped_turns = 0
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
@@ -3816,6 +3888,20 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 				if target_turn_pos > _current_actor_index:
 					target.flinched = true
 					secondary_applied.emit(target, MoveData.SE_FLINCH)
+			elif move.secondary_effect == MoveData.SE_WRAP:
+				# [M18.5f] Deliberately its own branch, same reason SE_FLINCH gets one:
+				# the "else" path below assumes the secondary effect just SET
+				# target.status/confusion_turns (true for every SE_BURN..SE_CONFUSION
+				# case, since try_apply_status/try_apply_confusion is what try_secondary_
+				# effect called), then immediately checks target's CURRENT status/
+				# confusion against a held cure-berry. SE_WRAP's own application
+				# (try_apply_wrap) never touches status/confusion at all — routing it
+				# through that shared branch would spuriously check (and potentially
+				# cure-and-consume) whatever UNRELATED status the target already had
+				# before this hit, which is wrong. secondary_applied is still emitted so
+				# tests can snapshot the trap-applied moment the same way every other
+				# secondary effect already supports.
+				secondary_applied.emit(target, MoveData.SE_WRAP)
 			else:
 				secondary_applied.emit(target, move.secondary_effect)
 				_try_synchronize(target, attacker, _se_to_status(move.secondary_effect))
