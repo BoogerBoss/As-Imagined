@@ -14048,3 +14048,105 @@ clone untouched.
 both ready for M24 to consume whenever that milestone starts. EV gain
 remains deferred to land with M20; likes/dislikes remain excluded per Rob's
 own scope decisions on `docs/m18_5h_recon.md`.
+
+---
+
+## [M18.5j] Data-pipeline readability: species_name alongside dex-number keys
+
+### Scope confirmation (Step 0)
+
+Checked all 5 dex-number-shaped candidate files individually rather than
+assuming a uniform shape. Two files qualified — both a bare
+`{dex_string: [array], ...}` shape with no species-identifying field
+anywhere in the entry:
+
+- `data/learnsets.json` — value was `[{level, move_id, move_name}, ...]`
+- `data/evolutions.json` — value was `[{method, condition, target_dex}, ...]`
+
+Three files explicitly excluded after individual inspection:
+- `data/wild_encounters.json` — a single fixed key
+  (`wild_encounter_groups`), not dex-keyed at all
+- `data/special_movesets.json` — keyed by 3 fixed category names
+  (`universalMoves`/`signatureTeachables`/etc.), not dex-keyed
+- `data/all_learnables.json` — already keyed by species NAME in
+  SCREAMING_SNAKE_CASE (e.g. `"PINCURCHIN"`), not dex number — already
+  human-readable, adding species_name here would be redundant
+
+### Generation
+
+Confirmed `tools/convert_pokedata.py` (the script `[M15]`'s own decisions.md
+entry credits with originally producing both files) does not exist
+anywhere in this repo — the same "extractor was never kept as a rerunnable
+generator" gap `[M18.5d Phase 1]` already found for `pokemon.json` itself.
+New `scripts/gen_species_names.py` written to match this project's
+`gen_*.py` naming convention: reads `data/pokemon.json` for the dex→name
+mapping and rewrites both JSON files in place, wrapping the existing array
+under a new named key (`"moves"` for learnsets, `"evolutions"` for
+evolutions) alongside a new `"species_name"` field. Idempotent — an entry
+already carrying `"species_name"` is left untouched, so reruns are safe.
+Confirmed on Ditto (#132, zero evolutions): wraps correctly to
+`{"species_name": "Ditto", "evolutions": []}`, not skipped or malformed by
+the empty-array edge case.
+
+### Shape (before → after)
+
+- `learnsets.json["1"]`: `[{level,move_id,move_name}, ...]` →
+  `{"species_name": "Bulbasaur", "moves": [{level,move_id,move_name}, ...]}`
+- `evolutions.json["1"]`: `[{method,condition,target_dex}, ...]` →
+  `{"species_name": "Bulbasaur", "evolutions": [{method,condition,target_dex}, ...]}`
+
+Both regenerated: 386/386 entries wrapped in each file, dex-number string
+keys unchanged as the canonical lookup identifier.
+
+### Consumer/loader changes
+
+Only one file consumes either JSON: `scripts/data/pokemon_registry.gd`.
+- `_load_learnsets()`: `_learnsets_by_dex[int(key)] = data[key]` →
+  `data[key]["moves"]`
+- `_load_evolutions()`: `_evolutions_by_dex[int(key)] = data[key]` →
+  `data[key]["evolutions"]`
+
+`get_learnset()`/`get_evolutions()` themselves needed zero changes — both
+already just return from the (now-correctly-populated) dex-keyed dicts, so
+every existing caller's return shape is byte-for-byte unchanged.
+`get_learnset` has zero callers outside the registry itself (confirmed via
+grep — dormant, same as before this tier). `get_evolutions` callers
+(`item_manager.gd`'s Eviolite "not fully evolved" check, `m18s_test.gd`)
+are unaffected — species_name is debug-only and never read by production
+logic, matching `move_name`'s own existing precedent exactly.
+
+### Testing
+
+Extended `PokemonRegistry._smoke_test()` (matching `[M15 Task 2]`'s own
+data-integrity testing bar, not a battle-mechanic tier's testing shape):
+6 new assertions reading the raw wrapped JSON directly (species_name sits
+at the wrapper level, not inside `get_learnset`/`get_evolutions`'s returned
+arrays, so a raw `_load_json` read is the correct way to spot-check it) —
+Bulbasaur/Charizard/Mewtwo for `learnsets.json`, Bulbasaur/Rayquaza for
+`evolutions.json`. The pre-existing `[M15 Task 4a]` evolution-shape
+assertions (Bulbasaur → Ivysaur at level 16) were left untouched and
+re-verified still passing unchanged — direct proof `get_evolutions(1)`'s
+return shape is identical to before this tier.
+
+### Regression
+
+Narrow scope per the task's own instruction (JSON shape + loader parsing
+only, no battle logic touched) — no full sweep run. `m18s_test.tscn`
+(direct `get_evolutions` consumer): 22/22, unchanged. `item_test.tscn`
+(exercises Eviolite's `get_evolutions`-backed "not fully evolved" check):
+77/77, unchanged. Smoke test itself: `PokemonRegistry: smoke test
+passed — 386 species, 935 moves, 386 learnsets, ... 386 evo-lists, ...`,
+identical counts to before, all new species_name assertions passing.
+`git status --short` after finishing: exactly the expected 3 modified
+files (`data/evolutions.json`, `data/learnsets.json`,
+`scripts/data/pokemon_registry.gd`) plus one new untracked file
+(`scripts/gen_species_names.py`) — no stray scratch files, no stray Godot
+processes.
+
+### Sequencing note
+
+This was the last tier before `[M18.5i]`'s reconsideration pass, per this
+task's own deliberate positioning. Confirmed `[M18.5f]`, `[M18.5g]`, and
+both `[M18.5h-1]`/`[M18.5h-2]` are all `**COMPLETE**` in CLAUDE.md's status
+section at the time of this entry — Phase 1 is fully done, so `[M18.5i]` is
+clear to proceed whenever Rob chooses it.

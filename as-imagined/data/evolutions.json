@@ -1,1628 +1,2786 @@
 {
-  "1": [
-    {
-      "method": "level_up",
-      "condition": 16,
-      "target_dex": 2
-    }
-  ],
-  "2": [
-    {
-      "method": "level_up",
-      "condition": 32,
-      "target_dex": 3
-    }
-  ],
-  "3": [],
-  "4": [
-    {
-      "method": "level_up",
-      "condition": 16,
-      "target_dex": 5
-    }
-  ],
-  "5": [
-    {
-      "method": "level_up",
-      "condition": 36,
-      "target_dex": 6
-    }
-  ],
-  "6": [],
-  "7": [
-    {
-      "method": "level_up",
-      "condition": 16,
-      "target_dex": 8
-    }
-  ],
-  "8": [
-    {
-      "method": "level_up",
-      "condition": 36,
-      "target_dex": 9
-    }
-  ],
-  "9": [],
-  "10": [
-    {
-      "method": "level_up",
-      "condition": 7,
-      "target_dex": 11
-    }
-  ],
-  "11": [
-    {
-      "method": "level_up",
-      "condition": 10,
-      "target_dex": 12
-    }
-  ],
-  "12": [],
-  "13": [
-    {
-      "method": "level_up",
-      "condition": 7,
-      "target_dex": 14
-    }
-  ],
-  "14": [
-    {
-      "method": "level_up",
-      "condition": 10,
-      "target_dex": 15
-    }
-  ],
-  "15": [],
-  "16": [
-    {
-      "method": "level_up",
-      "condition": 18,
-      "target_dex": 17
-    }
-  ],
-  "17": [
-    {
-      "method": "level_up",
-      "condition": 36,
-      "target_dex": 18
-    }
-  ],
-  "18": [],
-  "19": [
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 20
-    }
-  ],
-  "20": [],
-  "21": [
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 22
-    }
-  ],
-  "22": [],
-  "23": [
-    {
-      "method": "level_up",
-      "condition": 22,
-      "target_dex": 24
-    }
-  ],
-  "24": [],
-  "25": [
-    {
-      "method": "item",
-      "condition": "ITEM_THUNDER_STONE",
-      "target_dex": 26,
-      "conditions": [
-        "IF_NOT_REGION"
-      ]
-    }
-  ],
-  "26": [],
-  "27": [
-    {
-      "method": "level_up",
-      "condition": 22,
-      "target_dex": 28
-    }
-  ],
-  "28": [],
-  "29": [
-    {
-      "method": "level_up",
-      "condition": 16,
-      "target_dex": 30
-    }
-  ],
-  "30": [
-    {
-      "method": "item",
-      "condition": "ITEM_MOON_STONE",
-      "target_dex": 31
-    }
-  ],
-  "31": [],
-  "32": [
-    {
-      "method": "level_up",
-      "condition": 16,
-      "target_dex": 33
-    }
-  ],
-  "33": [
-    {
-      "method": "item",
-      "condition": "ITEM_MOON_STONE",
-      "target_dex": 34
-    }
-  ],
-  "34": [],
-  "35": [
-    {
-      "method": "item",
-      "condition": "ITEM_MOON_STONE",
-      "target_dex": 36
-    }
-  ],
-  "36": [],
-  "37": [
-    {
-      "method": "item",
-      "condition": "ITEM_FIRE_STONE",
-      "target_dex": 38
-    }
-  ],
-  "38": [],
-  "39": [
-    {
-      "method": "item",
-      "condition": "ITEM_MOON_STONE",
-      "target_dex": 40
-    }
-  ],
-  "40": [],
-  "41": [
-    {
-      "method": "level_up",
-      "condition": 22,
-      "target_dex": 42
-    }
-  ],
-  "42": [
-    {
-      "method": "level_up",
-      "condition": 0,
-      "target_dex": 169,
-      "conditions": [
-        "IF_MIN_FRIENDSHIP"
-      ]
-    }
-  ],
-  "43": [
-    {
-      "method": "level_up",
-      "condition": 21,
-      "target_dex": 44
-    }
-  ],
-  "44": [
-    {
-      "method": "item",
-      "condition": "ITEM_LEAF_STONE",
-      "target_dex": 45
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_SUN_STONE",
-      "target_dex": 182
-    }
-  ],
-  "45": [],
-  "46": [
-    {
-      "method": "level_up",
-      "condition": 24,
-      "target_dex": 47
-    }
-  ],
-  "47": [],
-  "48": [
-    {
-      "method": "level_up",
-      "condition": 31,
-      "target_dex": 49
-    }
-  ],
-  "49": [],
-  "50": [
-    {
-      "method": "level_up",
-      "condition": 26,
-      "target_dex": 51
-    }
-  ],
-  "51": [],
-  "52": [
-    {
-      "method": "level_up",
-      "condition": 28,
-      "target_dex": 53
-    }
-  ],
-  "53": [],
-  "54": [
-    {
-      "method": "level_up",
-      "condition": 33,
-      "target_dex": 55
-    }
-  ],
-  "55": [],
-  "56": [
-    {
-      "method": "level_up",
-      "condition": 28,
-      "target_dex": 57
-    }
-  ],
-  "57": [],
-  "58": [
-    {
-      "method": "item",
-      "condition": "ITEM_FIRE_STONE",
-      "target_dex": 59
-    }
-  ],
-  "59": [],
-  "60": [
-    {
-      "method": "level_up",
-      "condition": 25,
-      "target_dex": 61
-    }
-  ],
-  "61": [
-    {
-      "method": "item",
-      "condition": "ITEM_WATER_STONE",
-      "target_dex": 62
-    },
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 186,
-      "conditions": [
-        "IF_HOLD_ITEM"
-      ]
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_KINGS_ROCK",
-      "target_dex": 186
-    }
-  ],
-  "62": [],
-  "63": [
-    {
-      "method": "level_up",
-      "condition": 16,
-      "target_dex": 64
-    }
-  ],
-  "64": [
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 65
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_LINKING_CORD",
-      "target_dex": 65
-    }
-  ],
-  "65": [],
-  "66": [
-    {
-      "method": "level_up",
-      "condition": 28,
-      "target_dex": 67
-    }
-  ],
-  "67": [
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 68
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_LINKING_CORD",
-      "target_dex": 68
-    }
-  ],
-  "68": [],
-  "69": [
-    {
-      "method": "level_up",
-      "condition": 21,
-      "target_dex": 70
-    }
-  ],
-  "70": [
-    {
-      "method": "item",
-      "condition": "ITEM_LEAF_STONE",
-      "target_dex": 71
-    }
-  ],
-  "71": [],
-  "72": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 73
-    }
-  ],
-  "73": [],
-  "74": [
-    {
-      "method": "level_up",
-      "condition": 25,
-      "target_dex": 75
-    }
-  ],
-  "75": [
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 76
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_LINKING_CORD",
-      "target_dex": 76
-    }
-  ],
-  "76": [],
-  "77": [
-    {
-      "method": "level_up",
-      "condition": 40,
-      "target_dex": 78
-    }
-  ],
-  "78": [],
-  "79": [
-    {
-      "method": "level_up",
-      "condition": 37,
-      "target_dex": 80
-    },
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 199,
-      "conditions": [
-        "IF_HOLD_ITEM"
-      ]
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_KINGS_ROCK",
-      "target_dex": 199
-    }
-  ],
-  "80": [],
-  "81": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 82
-    }
-  ],
-  "82": [],
-  "83": [],
-  "84": [
-    {
-      "method": "level_up",
-      "condition": 31,
-      "target_dex": 85
-    }
-  ],
-  "85": [],
-  "86": [
-    {
-      "method": "level_up",
-      "condition": 34,
-      "target_dex": 87
-    }
-  ],
-  "87": [],
-  "88": [
-    {
-      "method": "level_up",
-      "condition": 38,
-      "target_dex": 89
-    }
-  ],
-  "89": [],
-  "90": [
-    {
-      "method": "item",
-      "condition": "ITEM_WATER_STONE",
-      "target_dex": 91
-    }
-  ],
-  "91": [],
-  "92": [
-    {
-      "method": "level_up",
-      "condition": 25,
-      "target_dex": 93
-    }
-  ],
-  "93": [
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 94
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_LINKING_CORD",
-      "target_dex": 94
-    }
-  ],
-  "94": [],
-  "95": [
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 208,
-      "conditions": [
-        "IF_HOLD_ITEM"
-      ]
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_METAL_COAT",
-      "target_dex": 208
-    }
-  ],
-  "96": [
-    {
-      "method": "level_up",
-      "condition": 26,
-      "target_dex": 97
-    }
-  ],
-  "97": [],
-  "98": [
-    {
-      "method": "level_up",
-      "condition": 28,
-      "target_dex": 99
-    }
-  ],
-  "99": [],
-  "100": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 101
-    }
-  ],
-  "101": [],
-  "102": [
-    {
-      "method": "item",
-      "condition": "ITEM_LEAF_STONE",
-      "target_dex": 103,
-      "conditions": [
-        "IF_NOT_REGION"
-      ]
-    }
-  ],
-  "103": [],
-  "104": [
-    {
-      "method": "level_up",
-      "condition": 28,
-      "target_dex": 105,
-      "conditions": [
-        "IF_NOT_REGION"
-      ]
-    }
-  ],
-  "105": [],
-  "106": [],
-  "107": [],
-  "108": [],
-  "109": [
-    {
-      "method": "level_up",
-      "condition": 35,
-      "target_dex": 110,
-      "conditions": [
-        "IF_NOT_REGION"
-      ]
-    }
-  ],
-  "110": [],
-  "111": [
-    {
-      "method": "level_up",
-      "condition": 42,
-      "target_dex": 112
-    }
-  ],
-  "112": [],
-  "113": [
-    {
-      "method": "level_up",
-      "condition": 0,
-      "target_dex": 242,
-      "conditions": [
-        "IF_MIN_FRIENDSHIP"
-      ]
-    }
-  ],
-  "114": [],
-  "115": [],
-  "116": [
-    {
-      "method": "level_up",
-      "condition": 32,
-      "target_dex": 117
-    }
-  ],
-  "117": [
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 230,
-      "conditions": [
-        "IF_HOLD_ITEM"
-      ]
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_DRAGON_SCALE",
-      "target_dex": 230
-    }
-  ],
-  "118": [
-    {
-      "method": "level_up",
-      "condition": 33,
-      "target_dex": 119
-    }
-  ],
-  "119": [],
-  "120": [
-    {
-      "method": "item",
-      "condition": "ITEM_WATER_STONE",
-      "target_dex": 121
-    }
-  ],
-  "121": [],
-  "122": [],
-  "123": [
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 212,
-      "conditions": [
-        "IF_HOLD_ITEM"
-      ]
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_METAL_COAT",
-      "target_dex": 212
-    }
-  ],
-  "124": [],
-  "125": [],
-  "126": [],
-  "127": [],
-  "128": [],
-  "129": [
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 130
-    }
-  ],
-  "130": [],
-  "131": [],
-  "132": [],
-  "133": [
-    {
-      "method": "item",
-      "condition": "ITEM_THUNDER_STONE",
-      "target_dex": 135
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_WATER_STONE",
-      "target_dex": 134
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_FIRE_STONE",
-      "target_dex": 136
-    },
-    {
-      "method": "level_up",
-      "condition": 0,
-      "target_dex": 196,
-      "conditions": [
-        "IF_MIN_FRIENDSHIP",
-        "IF_NOT_TIME"
-      ]
-    },
-    {
-      "method": "level_up",
-      "condition": 0,
-      "target_dex": 197,
-      "conditions": [
-        "IF_MIN_FRIENDSHIP",
-        "IF_TIME"
-      ]
-    }
-  ],
-  "134": [],
-  "135": [],
-  "136": [],
-  "137": [
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 233,
-      "conditions": [
-        "IF_HOLD_ITEM"
-      ]
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_UPGRADE",
-      "target_dex": 233
-    }
-  ],
-  "138": [
-    {
-      "method": "level_up",
-      "condition": 40,
-      "target_dex": 139
-    }
-  ],
-  "139": [],
-  "140": [
-    {
-      "method": "level_up",
-      "condition": 40,
-      "target_dex": 141
-    }
-  ],
-  "141": [],
-  "142": [],
-  "143": [],
-  "144": [],
-  "145": [],
-  "146": [],
-  "147": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 148
-    }
-  ],
-  "148": [
-    {
-      "method": "level_up",
-      "condition": 55,
-      "target_dex": 149
-    }
-  ],
-  "149": [],
-  "150": [],
-  "151": [],
-  "152": [
-    {
-      "method": "level_up",
-      "condition": 16,
-      "target_dex": 153
-    }
-  ],
-  "153": [
-    {
-      "method": "level_up",
-      "condition": 32,
-      "target_dex": 154
-    }
-  ],
-  "154": [],
-  "155": [
-    {
-      "method": "level_up",
-      "condition": 14,
-      "target_dex": 156
-    }
-  ],
-  "156": [
-    {
-      "method": "level_up",
-      "condition": 36,
-      "target_dex": 157,
-      "conditions": [
-        "IF_NOT_REGION"
-      ]
-    }
-  ],
-  "157": [],
-  "158": [
-    {
-      "method": "level_up",
-      "condition": 18,
-      "target_dex": 159
-    }
-  ],
-  "159": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 160
-    }
-  ],
-  "160": [],
-  "161": [
-    {
-      "method": "level_up",
-      "condition": 15,
-      "target_dex": 162
-    }
-  ],
-  "162": [],
-  "163": [
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 164
-    }
-  ],
-  "164": [],
-  "165": [
-    {
-      "method": "level_up",
-      "condition": 18,
-      "target_dex": 166
-    }
-  ],
-  "166": [],
-  "167": [
-    {
-      "method": "level_up",
-      "condition": 22,
-      "target_dex": 168
-    }
-  ],
-  "168": [],
-  "169": [],
-  "170": [
-    {
-      "method": "level_up",
-      "condition": 27,
-      "target_dex": 171
-    }
-  ],
-  "171": [],
-  "172": [
-    {
-      "method": "level_up",
-      "condition": 0,
-      "target_dex": 25,
-      "conditions": [
-        "IF_MIN_FRIENDSHIP"
-      ]
-    }
-  ],
-  "173": [
-    {
-      "method": "level_up",
-      "condition": 0,
-      "target_dex": 35,
-      "conditions": [
-        "IF_MIN_FRIENDSHIP"
-      ]
-    }
-  ],
-  "174": [
-    {
-      "method": "level_up",
-      "condition": 0,
-      "target_dex": 39,
-      "conditions": [
-        "IF_MIN_FRIENDSHIP"
-      ]
-    }
-  ],
-  "175": [
-    {
-      "method": "level_up",
-      "condition": 0,
-      "target_dex": 176,
-      "conditions": [
-        "IF_MIN_FRIENDSHIP"
-      ]
-    }
-  ],
-  "176": [],
-  "177": [
-    {
-      "method": "level_up",
-      "condition": 25,
-      "target_dex": 178
-    }
-  ],
-  "178": [],
-  "179": [
-    {
-      "method": "level_up",
-      "condition": 15,
-      "target_dex": 180
-    }
-  ],
-  "180": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 181
-    }
-  ],
-  "181": [],
-  "182": [],
-  "183": [
-    {
-      "method": "level_up",
-      "condition": 18,
-      "target_dex": 184
-    }
-  ],
-  "184": [],
-  "185": [],
-  "186": [],
-  "187": [
-    {
-      "method": "level_up",
-      "condition": 18,
-      "target_dex": 188
-    }
-  ],
-  "188": [
-    {
-      "method": "level_up",
-      "condition": 27,
-      "target_dex": 189
-    }
-  ],
-  "189": [],
-  "190": [],
-  "191": [
-    {
-      "method": "item",
-      "condition": "ITEM_SUN_STONE",
-      "target_dex": 192
-    }
-  ],
-  "192": [],
-  "193": [],
-  "194": [
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 195
-    }
-  ],
-  "195": [],
-  "196": [],
-  "197": [],
-  "198": [],
-  "199": [],
-  "200": [],
-  "201": [],
-  "202": [],
-  "203": [],
-  "204": [
-    {
-      "method": "level_up",
-      "condition": 31,
-      "target_dex": 205
-    }
-  ],
-  "205": [],
-  "206": [],
-  "207": [],
-  "208": [],
-  "209": [
-    {
-      "method": "level_up",
-      "condition": 23,
-      "target_dex": 210
-    }
-  ],
-  "210": [],
-  "211": [],
-  "212": [],
-  "213": [],
-  "214": [],
-  "215": [],
-  "216": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 217
-    }
-  ],
-  "217": [],
-  "218": [
-    {
-      "method": "level_up",
-      "condition": 38,
-      "target_dex": 219
-    }
-  ],
-  "219": [],
-  "220": [
-    {
-      "method": "level_up",
-      "condition": 33,
-      "target_dex": 221
-    }
-  ],
-  "221": [],
-  "222": [],
-  "223": [
-    {
-      "method": "level_up",
-      "condition": 25,
-      "target_dex": 224
-    }
-  ],
-  "224": [],
-  "225": [],
-  "226": [],
-  "227": [],
-  "228": [
-    {
-      "method": "level_up",
-      "condition": 24,
-      "target_dex": 229
-    }
-  ],
-  "229": [],
-  "230": [],
-  "231": [
-    {
-      "method": "level_up",
-      "condition": 25,
-      "target_dex": 232
-    }
-  ],
-  "232": [],
-  "233": [],
-  "234": [],
-  "235": [],
-  "236": [
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 107,
-      "conditions": [
-        "IF_ATK_LT_DEF"
-      ]
-    },
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 106,
-      "conditions": [
-        "IF_ATK_GT_DEF"
-      ]
-    },
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 237,
-      "conditions": [
-        "IF_ATK_EQ_DEF"
-      ]
-    }
-  ],
-  "237": [],
-  "238": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 124
-    }
-  ],
-  "239": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 125
-    }
-  ],
-  "240": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 126
-    }
-  ],
-  "241": [],
-  "242": [],
-  "243": [],
-  "244": [],
-  "245": [],
-  "246": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 247
-    }
-  ],
-  "247": [
-    {
-      "method": "level_up",
-      "condition": 55,
-      "target_dex": 248
-    }
-  ],
-  "248": [],
-  "249": [],
-  "250": [],
-  "251": [],
-  "252": [
-    {
-      "method": "level_up",
-      "condition": 16,
-      "target_dex": 253
-    }
-  ],
-  "253": [
-    {
-      "method": "level_up",
-      "condition": 36,
-      "target_dex": 254
-    }
-  ],
-  "254": [],
-  "255": [
-    {
-      "method": "level_up",
-      "condition": 16,
-      "target_dex": 256
-    }
-  ],
-  "256": [
-    {
-      "method": "level_up",
-      "condition": 36,
-      "target_dex": 257
-    }
-  ],
-  "257": [],
-  "258": [
-    {
-      "method": "level_up",
-      "condition": 16,
-      "target_dex": 259
-    }
-  ],
-  "259": [
-    {
-      "method": "level_up",
-      "condition": 36,
-      "target_dex": 260
-    }
-  ],
-  "260": [],
-  "261": [
-    {
-      "method": "level_up",
-      "condition": 18,
-      "target_dex": 262
-    }
-  ],
-  "262": [],
-  "263": [
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 264
-    }
-  ],
-  "264": [],
-  "265": [
-    {
-      "method": "level_up",
-      "condition": 7,
-      "target_dex": 266
-    },
-    {
-      "method": "level_up",
-      "condition": 7,
-      "target_dex": 268
-    }
-  ],
-  "266": [
-    {
-      "method": "level_up",
-      "condition": 10,
-      "target_dex": 267
-    }
-  ],
-  "267": [],
-  "268": [
-    {
-      "method": "level_up",
-      "condition": 10,
-      "target_dex": 269
-    }
-  ],
-  "269": [],
-  "270": [
-    {
-      "method": "level_up",
-      "condition": 14,
-      "target_dex": 271
-    }
-  ],
-  "271": [
-    {
-      "method": "item",
-      "condition": "ITEM_WATER_STONE",
-      "target_dex": 272
-    }
-  ],
-  "272": [],
-  "273": [
-    {
-      "method": "level_up",
-      "condition": 14,
-      "target_dex": 274
-    }
-  ],
-  "274": [
-    {
-      "method": "item",
-      "condition": "ITEM_LEAF_STONE",
-      "target_dex": 275
-    }
-  ],
-  "275": [],
-  "276": [
-    {
-      "method": "level_up",
-      "condition": 22,
-      "target_dex": 277
-    }
-  ],
-  "277": [],
-  "278": [
-    {
-      "method": "level_up",
-      "condition": 25,
-      "target_dex": 279
-    }
-  ],
-  "279": [],
-  "280": [
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 281
-    }
-  ],
-  "281": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 282
-    }
-  ],
-  "282": [],
-  "283": [
-    {
-      "method": "level_up",
-      "condition": 22,
-      "target_dex": 284
-    }
-  ],
-  "284": [],
-  "285": [
-    {
-      "method": "level_up",
-      "condition": 23,
-      "target_dex": 286
-    }
-  ],
-  "286": [],
-  "287": [
-    {
-      "method": "level_up",
-      "condition": 18,
-      "target_dex": 288
-    }
-  ],
-  "288": [
-    {
-      "method": "level_up",
-      "condition": 36,
-      "target_dex": 289
-    }
-  ],
-  "289": [],
-  "290": [
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 291
-    }
-  ],
-  "291": [],
-  "292": [],
-  "293": [
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 294
-    }
-  ],
-  "294": [
-    {
-      "method": "level_up",
-      "condition": 40,
-      "target_dex": 295
-    }
-  ],
-  "295": [],
-  "296": [
-    {
-      "method": "level_up",
-      "condition": 24,
-      "target_dex": 297
-    }
-  ],
-  "297": [],
-  "298": [
-    {
-      "method": "level_up",
-      "condition": 0,
-      "target_dex": 183,
-      "conditions": [
-        "IF_MIN_FRIENDSHIP"
-      ]
-    }
-  ],
-  "299": [],
-  "300": [
-    {
-      "method": "item",
-      "condition": "ITEM_MOON_STONE",
-      "target_dex": 301
-    }
-  ],
-  "301": [],
-  "302": [],
-  "303": [],
-  "304": [
-    {
-      "method": "level_up",
-      "condition": 32,
-      "target_dex": 305
-    }
-  ],
-  "305": [
-    {
-      "method": "level_up",
-      "condition": 42,
-      "target_dex": 306
-    }
-  ],
-  "306": [],
-  "307": [
-    {
-      "method": "level_up",
-      "condition": 37,
-      "target_dex": 308
-    }
-  ],
-  "308": [],
-  "309": [
-    {
-      "method": "level_up",
-      "condition": 26,
-      "target_dex": 310
-    }
-  ],
-  "310": [],
-  "311": [],
-  "312": [],
-  "313": [],
-  "314": [],
-  "315": [],
-  "316": [
-    {
-      "method": "level_up",
-      "condition": 26,
-      "target_dex": 317
-    }
-  ],
-  "317": [],
-  "318": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 319
-    }
-  ],
-  "319": [],
-  "320": [
-    {
-      "method": "level_up",
-      "condition": 40,
-      "target_dex": 321
-    }
-  ],
-  "321": [],
-  "322": [
-    {
-      "method": "level_up",
-      "condition": 33,
-      "target_dex": 323
-    }
-  ],
-  "323": [],
-  "324": [],
-  "325": [
-    {
-      "method": "level_up",
-      "condition": 32,
-      "target_dex": 326
-    }
-  ],
-  "326": [],
-  "327": [],
-  "328": [
-    {
-      "method": "level_up",
-      "condition": 35,
-      "target_dex": 329
-    }
-  ],
-  "329": [
-    {
-      "method": "level_up",
-      "condition": 45,
-      "target_dex": 330
-    }
-  ],
-  "330": [],
-  "331": [
-    {
-      "method": "level_up",
-      "condition": 32,
-      "target_dex": 332
-    }
-  ],
-  "332": [],
-  "333": [
-    {
-      "method": "level_up",
-      "condition": 35,
-      "target_dex": 334
-    }
-  ],
-  "334": [],
-  "335": [],
-  "336": [],
-  "337": [],
-  "338": [],
-  "339": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 340
-    }
-  ],
-  "340": [],
-  "341": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 342
-    }
-  ],
-  "342": [],
-  "343": [
-    {
-      "method": "level_up",
-      "condition": 36,
-      "target_dex": 344
-    }
-  ],
-  "344": [],
-  "345": [
-    {
-      "method": "level_up",
-      "condition": 40,
-      "target_dex": 346
-    }
-  ],
-  "346": [],
-  "347": [
-    {
-      "method": "level_up",
-      "condition": 40,
-      "target_dex": 348
-    }
-  ],
-  "348": [],
-  "349": [
-    {
-      "method": "level_up",
-      "condition": 0,
-      "target_dex": 350,
-      "conditions": [
-        "IF_MIN_BEAUTY"
-      ]
-    },
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 350,
-      "conditions": [
-        "IF_HOLD_ITEM"
-      ]
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_PRISM_SCALE",
-      "target_dex": 350
-    }
-  ],
-  "350": [],
-  "351": [],
-  "352": [],
-  "353": [
-    {
-      "method": "level_up",
-      "condition": 37,
-      "target_dex": 354
-    }
-  ],
-  "354": [],
-  "355": [
-    {
-      "method": "level_up",
-      "condition": 37,
-      "target_dex": 356
-    }
-  ],
-  "356": [],
-  "357": [],
-  "358": [],
-  "359": [],
-  "360": [
-    {
-      "method": "level_up",
-      "condition": 15,
-      "target_dex": 202
-    }
-  ],
-  "361": [
-    {
-      "method": "level_up",
-      "condition": 42,
-      "target_dex": 362
-    }
-  ],
-  "362": [],
-  "363": [
-    {
-      "method": "level_up",
-      "condition": 32,
-      "target_dex": 364
-    }
-  ],
-  "364": [
-    {
-      "method": "level_up",
-      "condition": 44,
-      "target_dex": 365
-    }
-  ],
-  "365": [],
-  "366": [
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 367,
-      "conditions": [
-        "IF_HOLD_ITEM"
-      ]
-    },
-    {
-      "method": "trade",
-      "condition": "0",
-      "target_dex": 368,
-      "conditions": [
-        "IF_HOLD_ITEM"
-      ]
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_DEEP_SEA_TOOTH",
-      "target_dex": 367
-    },
-    {
-      "method": "item",
-      "condition": "ITEM_DEEP_SEA_SCALE",
-      "target_dex": 368
-    }
-  ],
-  "367": [],
-  "368": [],
-  "369": [],
-  "370": [],
-  "371": [
-    {
-      "method": "level_up",
-      "condition": 30,
-      "target_dex": 372
-    }
-  ],
-  "372": [
-    {
-      "method": "level_up",
-      "condition": 50,
-      "target_dex": 373
-    }
-  ],
-  "373": [],
-  "374": [
-    {
-      "method": "level_up",
-      "condition": 20,
-      "target_dex": 375
-    }
-  ],
-  "375": [
-    {
-      "method": "level_up",
-      "condition": 45,
-      "target_dex": 376
-    }
-  ],
-  "376": [],
-  "377": [],
-  "378": [],
-  "379": [],
-  "380": [],
-  "381": [],
-  "382": [],
-  "383": [],
-  "384": [],
-  "385": [],
-  "386": []
+  "1": {
+    "species_name": "Bulbasaur",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 16,
+        "target_dex": 2
+      }
+    ]
+  },
+  "2": {
+    "species_name": "Ivysaur",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 32,
+        "target_dex": 3
+      }
+    ]
+  },
+  "3": {
+    "species_name": "Venusaur",
+    "evolutions": []
+  },
+  "4": {
+    "species_name": "Charmander",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 16,
+        "target_dex": 5
+      }
+    ]
+  },
+  "5": {
+    "species_name": "Charmeleon",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 36,
+        "target_dex": 6
+      }
+    ]
+  },
+  "6": {
+    "species_name": "Charizard",
+    "evolutions": []
+  },
+  "7": {
+    "species_name": "Squirtle",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 16,
+        "target_dex": 8
+      }
+    ]
+  },
+  "8": {
+    "species_name": "Wartortle",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 36,
+        "target_dex": 9
+      }
+    ]
+  },
+  "9": {
+    "species_name": "Blastoise",
+    "evolutions": []
+  },
+  "10": {
+    "species_name": "Caterpie",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 7,
+        "target_dex": 11
+      }
+    ]
+  },
+  "11": {
+    "species_name": "Metapod",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 10,
+        "target_dex": 12
+      }
+    ]
+  },
+  "12": {
+    "species_name": "Butterfree",
+    "evolutions": []
+  },
+  "13": {
+    "species_name": "Weedle",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 7,
+        "target_dex": 14
+      }
+    ]
+  },
+  "14": {
+    "species_name": "Kakuna",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 10,
+        "target_dex": 15
+      }
+    ]
+  },
+  "15": {
+    "species_name": "Beedrill",
+    "evolutions": []
+  },
+  "16": {
+    "species_name": "Pidgey",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 18,
+        "target_dex": 17
+      }
+    ]
+  },
+  "17": {
+    "species_name": "Pidgeotto",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 36,
+        "target_dex": 18
+      }
+    ]
+  },
+  "18": {
+    "species_name": "Pidgeot",
+    "evolutions": []
+  },
+  "19": {
+    "species_name": "Rattata",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 20
+      }
+    ]
+  },
+  "20": {
+    "species_name": "Raticate",
+    "evolutions": []
+  },
+  "21": {
+    "species_name": "Spearow",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 22
+      }
+    ]
+  },
+  "22": {
+    "species_name": "Fearow",
+    "evolutions": []
+  },
+  "23": {
+    "species_name": "Ekans",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 22,
+        "target_dex": 24
+      }
+    ]
+  },
+  "24": {
+    "species_name": "Arbok",
+    "evolutions": []
+  },
+  "25": {
+    "species_name": "Pikachu",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_THUNDER_STONE",
+        "target_dex": 26,
+        "conditions": [
+          "IF_NOT_REGION"
+        ]
+      }
+    ]
+  },
+  "26": {
+    "species_name": "Raichu",
+    "evolutions": []
+  },
+  "27": {
+    "species_name": "Sandshrew",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 22,
+        "target_dex": 28
+      }
+    ]
+  },
+  "28": {
+    "species_name": "Sandslash",
+    "evolutions": []
+  },
+  "29": {
+    "species_name": "Nidoran\u2640",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 16,
+        "target_dex": 30
+      }
+    ]
+  },
+  "30": {
+    "species_name": "Nidorina",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_MOON_STONE",
+        "target_dex": 31
+      }
+    ]
+  },
+  "31": {
+    "species_name": "Nidoqueen",
+    "evolutions": []
+  },
+  "32": {
+    "species_name": "Nidoran\u2642",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 16,
+        "target_dex": 33
+      }
+    ]
+  },
+  "33": {
+    "species_name": "Nidorino",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_MOON_STONE",
+        "target_dex": 34
+      }
+    ]
+  },
+  "34": {
+    "species_name": "Nidoking",
+    "evolutions": []
+  },
+  "35": {
+    "species_name": "Clefairy",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_MOON_STONE",
+        "target_dex": 36
+      }
+    ]
+  },
+  "36": {
+    "species_name": "Clefable",
+    "evolutions": []
+  },
+  "37": {
+    "species_name": "Vulpix",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_FIRE_STONE",
+        "target_dex": 38
+      }
+    ]
+  },
+  "38": {
+    "species_name": "Ninetales",
+    "evolutions": []
+  },
+  "39": {
+    "species_name": "Jigglypuff",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_MOON_STONE",
+        "target_dex": 40
+      }
+    ]
+  },
+  "40": {
+    "species_name": "Wigglytuff",
+    "evolutions": []
+  },
+  "41": {
+    "species_name": "Zubat",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 22,
+        "target_dex": 42
+      }
+    ]
+  },
+  "42": {
+    "species_name": "Golbat",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 0,
+        "target_dex": 169,
+        "conditions": [
+          "IF_MIN_FRIENDSHIP"
+        ]
+      }
+    ]
+  },
+  "43": {
+    "species_name": "Oddish",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 21,
+        "target_dex": 44
+      }
+    ]
+  },
+  "44": {
+    "species_name": "Gloom",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_LEAF_STONE",
+        "target_dex": 45
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_SUN_STONE",
+        "target_dex": 182
+      }
+    ]
+  },
+  "45": {
+    "species_name": "Vileplume",
+    "evolutions": []
+  },
+  "46": {
+    "species_name": "Paras",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 24,
+        "target_dex": 47
+      }
+    ]
+  },
+  "47": {
+    "species_name": "Parasect",
+    "evolutions": []
+  },
+  "48": {
+    "species_name": "Venonat",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 31,
+        "target_dex": 49
+      }
+    ]
+  },
+  "49": {
+    "species_name": "Venomoth",
+    "evolutions": []
+  },
+  "50": {
+    "species_name": "Diglett",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 26,
+        "target_dex": 51
+      }
+    ]
+  },
+  "51": {
+    "species_name": "Dugtrio",
+    "evolutions": []
+  },
+  "52": {
+    "species_name": "Meowth",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 28,
+        "target_dex": 53
+      }
+    ]
+  },
+  "53": {
+    "species_name": "Persian",
+    "evolutions": []
+  },
+  "54": {
+    "species_name": "Psyduck",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 33,
+        "target_dex": 55
+      }
+    ]
+  },
+  "55": {
+    "species_name": "Golduck",
+    "evolutions": []
+  },
+  "56": {
+    "species_name": "Mankey",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 28,
+        "target_dex": 57
+      }
+    ]
+  },
+  "57": {
+    "species_name": "Primeape",
+    "evolutions": []
+  },
+  "58": {
+    "species_name": "Growlithe",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_FIRE_STONE",
+        "target_dex": 59
+      }
+    ]
+  },
+  "59": {
+    "species_name": "Arcanine",
+    "evolutions": []
+  },
+  "60": {
+    "species_name": "Poliwag",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 25,
+        "target_dex": 61
+      }
+    ]
+  },
+  "61": {
+    "species_name": "Poliwhirl",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_WATER_STONE",
+        "target_dex": 62
+      },
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 186,
+        "conditions": [
+          "IF_HOLD_ITEM"
+        ]
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_KINGS_ROCK",
+        "target_dex": 186
+      }
+    ]
+  },
+  "62": {
+    "species_name": "Poliwrath",
+    "evolutions": []
+  },
+  "63": {
+    "species_name": "Abra",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 16,
+        "target_dex": 64
+      }
+    ]
+  },
+  "64": {
+    "species_name": "Kadabra",
+    "evolutions": [
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 65
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_LINKING_CORD",
+        "target_dex": 65
+      }
+    ]
+  },
+  "65": {
+    "species_name": "Alakazam",
+    "evolutions": []
+  },
+  "66": {
+    "species_name": "Machop",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 28,
+        "target_dex": 67
+      }
+    ]
+  },
+  "67": {
+    "species_name": "Machoke",
+    "evolutions": [
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 68
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_LINKING_CORD",
+        "target_dex": 68
+      }
+    ]
+  },
+  "68": {
+    "species_name": "Machamp",
+    "evolutions": []
+  },
+  "69": {
+    "species_name": "Bellsprout",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 21,
+        "target_dex": 70
+      }
+    ]
+  },
+  "70": {
+    "species_name": "Weepinbell",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_LEAF_STONE",
+        "target_dex": 71
+      }
+    ]
+  },
+  "71": {
+    "species_name": "Victreebel",
+    "evolutions": []
+  },
+  "72": {
+    "species_name": "Tentacool",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 73
+      }
+    ]
+  },
+  "73": {
+    "species_name": "Tentacruel",
+    "evolutions": []
+  },
+  "74": {
+    "species_name": "Geodude",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 25,
+        "target_dex": 75
+      }
+    ]
+  },
+  "75": {
+    "species_name": "Graveler",
+    "evolutions": [
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 76
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_LINKING_CORD",
+        "target_dex": 76
+      }
+    ]
+  },
+  "76": {
+    "species_name": "Golem",
+    "evolutions": []
+  },
+  "77": {
+    "species_name": "Ponyta",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 40,
+        "target_dex": 78
+      }
+    ]
+  },
+  "78": {
+    "species_name": "Rapidash",
+    "evolutions": []
+  },
+  "79": {
+    "species_name": "Slowpoke",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 37,
+        "target_dex": 80
+      },
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 199,
+        "conditions": [
+          "IF_HOLD_ITEM"
+        ]
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_KINGS_ROCK",
+        "target_dex": 199
+      }
+    ]
+  },
+  "80": {
+    "species_name": "Slowbro",
+    "evolutions": []
+  },
+  "81": {
+    "species_name": "Magnemite",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 82
+      }
+    ]
+  },
+  "82": {
+    "species_name": "Magneton",
+    "evolutions": []
+  },
+  "83": {
+    "species_name": "Farfetch'd",
+    "evolutions": []
+  },
+  "84": {
+    "species_name": "Doduo",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 31,
+        "target_dex": 85
+      }
+    ]
+  },
+  "85": {
+    "species_name": "Dodrio",
+    "evolutions": []
+  },
+  "86": {
+    "species_name": "Seel",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 34,
+        "target_dex": 87
+      }
+    ]
+  },
+  "87": {
+    "species_name": "Dewgong",
+    "evolutions": []
+  },
+  "88": {
+    "species_name": "Grimer",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 38,
+        "target_dex": 89
+      }
+    ]
+  },
+  "89": {
+    "species_name": "Muk",
+    "evolutions": []
+  },
+  "90": {
+    "species_name": "Shellder",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_WATER_STONE",
+        "target_dex": 91
+      }
+    ]
+  },
+  "91": {
+    "species_name": "Cloyster",
+    "evolutions": []
+  },
+  "92": {
+    "species_name": "Gastly",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 25,
+        "target_dex": 93
+      }
+    ]
+  },
+  "93": {
+    "species_name": "Haunter",
+    "evolutions": [
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 94
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_LINKING_CORD",
+        "target_dex": 94
+      }
+    ]
+  },
+  "94": {
+    "species_name": "Gengar",
+    "evolutions": []
+  },
+  "95": {
+    "species_name": "Onix",
+    "evolutions": [
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 208,
+        "conditions": [
+          "IF_HOLD_ITEM"
+        ]
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_METAL_COAT",
+        "target_dex": 208
+      }
+    ]
+  },
+  "96": {
+    "species_name": "Drowzee",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 26,
+        "target_dex": 97
+      }
+    ]
+  },
+  "97": {
+    "species_name": "Hypno",
+    "evolutions": []
+  },
+  "98": {
+    "species_name": "Krabby",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 28,
+        "target_dex": 99
+      }
+    ]
+  },
+  "99": {
+    "species_name": "Kingler",
+    "evolutions": []
+  },
+  "100": {
+    "species_name": "Voltorb",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 101
+      }
+    ]
+  },
+  "101": {
+    "species_name": "Electrode",
+    "evolutions": []
+  },
+  "102": {
+    "species_name": "Exeggcute",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_LEAF_STONE",
+        "target_dex": 103,
+        "conditions": [
+          "IF_NOT_REGION"
+        ]
+      }
+    ]
+  },
+  "103": {
+    "species_name": "Exeggutor",
+    "evolutions": []
+  },
+  "104": {
+    "species_name": "Cubone",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 28,
+        "target_dex": 105,
+        "conditions": [
+          "IF_NOT_REGION"
+        ]
+      }
+    ]
+  },
+  "105": {
+    "species_name": "Marowak",
+    "evolutions": []
+  },
+  "106": {
+    "species_name": "Hitmonlee",
+    "evolutions": []
+  },
+  "107": {
+    "species_name": "Hitmonchan",
+    "evolutions": []
+  },
+  "108": {
+    "species_name": "Lickitung",
+    "evolutions": []
+  },
+  "109": {
+    "species_name": "Koffing",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 35,
+        "target_dex": 110,
+        "conditions": [
+          "IF_NOT_REGION"
+        ]
+      }
+    ]
+  },
+  "110": {
+    "species_name": "Weezing",
+    "evolutions": []
+  },
+  "111": {
+    "species_name": "Rhyhorn",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 42,
+        "target_dex": 112
+      }
+    ]
+  },
+  "112": {
+    "species_name": "Rhydon",
+    "evolutions": []
+  },
+  "113": {
+    "species_name": "Chansey",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 0,
+        "target_dex": 242,
+        "conditions": [
+          "IF_MIN_FRIENDSHIP"
+        ]
+      }
+    ]
+  },
+  "114": {
+    "species_name": "Tangela",
+    "evolutions": []
+  },
+  "115": {
+    "species_name": "Kangaskhan",
+    "evolutions": []
+  },
+  "116": {
+    "species_name": "Horsea",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 32,
+        "target_dex": 117
+      }
+    ]
+  },
+  "117": {
+    "species_name": "Seadra",
+    "evolutions": [
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 230,
+        "conditions": [
+          "IF_HOLD_ITEM"
+        ]
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_DRAGON_SCALE",
+        "target_dex": 230
+      }
+    ]
+  },
+  "118": {
+    "species_name": "Goldeen",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 33,
+        "target_dex": 119
+      }
+    ]
+  },
+  "119": {
+    "species_name": "Seaking",
+    "evolutions": []
+  },
+  "120": {
+    "species_name": "Staryu",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_WATER_STONE",
+        "target_dex": 121
+      }
+    ]
+  },
+  "121": {
+    "species_name": "Starmie",
+    "evolutions": []
+  },
+  "122": {
+    "species_name": "Mr. Mime",
+    "evolutions": []
+  },
+  "123": {
+    "species_name": "Scyther",
+    "evolutions": [
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 212,
+        "conditions": [
+          "IF_HOLD_ITEM"
+        ]
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_METAL_COAT",
+        "target_dex": 212
+      }
+    ]
+  },
+  "124": {
+    "species_name": "Jynx",
+    "evolutions": []
+  },
+  "125": {
+    "species_name": "Electabuzz",
+    "evolutions": []
+  },
+  "126": {
+    "species_name": "Magmar",
+    "evolutions": []
+  },
+  "127": {
+    "species_name": "Pinsir",
+    "evolutions": []
+  },
+  "128": {
+    "species_name": "Tauros",
+    "evolutions": []
+  },
+  "129": {
+    "species_name": "Magikarp",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 130
+      }
+    ]
+  },
+  "130": {
+    "species_name": "Gyarados",
+    "evolutions": []
+  },
+  "131": {
+    "species_name": "Lapras",
+    "evolutions": []
+  },
+  "132": {
+    "species_name": "Ditto",
+    "evolutions": []
+  },
+  "133": {
+    "species_name": "Eevee",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_THUNDER_STONE",
+        "target_dex": 135
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_WATER_STONE",
+        "target_dex": 134
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_FIRE_STONE",
+        "target_dex": 136
+      },
+      {
+        "method": "level_up",
+        "condition": 0,
+        "target_dex": 196,
+        "conditions": [
+          "IF_MIN_FRIENDSHIP",
+          "IF_NOT_TIME"
+        ]
+      },
+      {
+        "method": "level_up",
+        "condition": 0,
+        "target_dex": 197,
+        "conditions": [
+          "IF_MIN_FRIENDSHIP",
+          "IF_TIME"
+        ]
+      }
+    ]
+  },
+  "134": {
+    "species_name": "Vaporeon",
+    "evolutions": []
+  },
+  "135": {
+    "species_name": "Jolteon",
+    "evolutions": []
+  },
+  "136": {
+    "species_name": "Flareon",
+    "evolutions": []
+  },
+  "137": {
+    "species_name": "Porygon",
+    "evolutions": [
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 233,
+        "conditions": [
+          "IF_HOLD_ITEM"
+        ]
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_UPGRADE",
+        "target_dex": 233
+      }
+    ]
+  },
+  "138": {
+    "species_name": "Omanyte",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 40,
+        "target_dex": 139
+      }
+    ]
+  },
+  "139": {
+    "species_name": "Omastar",
+    "evolutions": []
+  },
+  "140": {
+    "species_name": "Kabuto",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 40,
+        "target_dex": 141
+      }
+    ]
+  },
+  "141": {
+    "species_name": "Kabutops",
+    "evolutions": []
+  },
+  "142": {
+    "species_name": "Aerodactyl",
+    "evolutions": []
+  },
+  "143": {
+    "species_name": "Snorlax",
+    "evolutions": []
+  },
+  "144": {
+    "species_name": "Articuno",
+    "evolutions": []
+  },
+  "145": {
+    "species_name": "Zapdos",
+    "evolutions": []
+  },
+  "146": {
+    "species_name": "Moltres",
+    "evolutions": []
+  },
+  "147": {
+    "species_name": "Dratini",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 148
+      }
+    ]
+  },
+  "148": {
+    "species_name": "Dragonair",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 55,
+        "target_dex": 149
+      }
+    ]
+  },
+  "149": {
+    "species_name": "Dragonite",
+    "evolutions": []
+  },
+  "150": {
+    "species_name": "Mewtwo",
+    "evolutions": []
+  },
+  "151": {
+    "species_name": "Mew",
+    "evolutions": []
+  },
+  "152": {
+    "species_name": "Chikorita",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 16,
+        "target_dex": 153
+      }
+    ]
+  },
+  "153": {
+    "species_name": "Bayleef",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 32,
+        "target_dex": 154
+      }
+    ]
+  },
+  "154": {
+    "species_name": "Meganium",
+    "evolutions": []
+  },
+  "155": {
+    "species_name": "Cyndaquil",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 14,
+        "target_dex": 156
+      }
+    ]
+  },
+  "156": {
+    "species_name": "Quilava",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 36,
+        "target_dex": 157,
+        "conditions": [
+          "IF_NOT_REGION"
+        ]
+      }
+    ]
+  },
+  "157": {
+    "species_name": "Typhlosion",
+    "evolutions": []
+  },
+  "158": {
+    "species_name": "Totodile",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 18,
+        "target_dex": 159
+      }
+    ]
+  },
+  "159": {
+    "species_name": "Croconaw",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 160
+      }
+    ]
+  },
+  "160": {
+    "species_name": "Feraligatr",
+    "evolutions": []
+  },
+  "161": {
+    "species_name": "Sentret",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 15,
+        "target_dex": 162
+      }
+    ]
+  },
+  "162": {
+    "species_name": "Furret",
+    "evolutions": []
+  },
+  "163": {
+    "species_name": "Hoothoot",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 164
+      }
+    ]
+  },
+  "164": {
+    "species_name": "Noctowl",
+    "evolutions": []
+  },
+  "165": {
+    "species_name": "Ledyba",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 18,
+        "target_dex": 166
+      }
+    ]
+  },
+  "166": {
+    "species_name": "Ledian",
+    "evolutions": []
+  },
+  "167": {
+    "species_name": "Spinarak",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 22,
+        "target_dex": 168
+      }
+    ]
+  },
+  "168": {
+    "species_name": "Ariados",
+    "evolutions": []
+  },
+  "169": {
+    "species_name": "Crobat",
+    "evolutions": []
+  },
+  "170": {
+    "species_name": "Chinchou",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 27,
+        "target_dex": 171
+      }
+    ]
+  },
+  "171": {
+    "species_name": "Lanturn",
+    "evolutions": []
+  },
+  "172": {
+    "species_name": "Pichu",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 0,
+        "target_dex": 25,
+        "conditions": [
+          "IF_MIN_FRIENDSHIP"
+        ]
+      }
+    ]
+  },
+  "173": {
+    "species_name": "Cleffa",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 0,
+        "target_dex": 35,
+        "conditions": [
+          "IF_MIN_FRIENDSHIP"
+        ]
+      }
+    ]
+  },
+  "174": {
+    "species_name": "Igglybuff",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 0,
+        "target_dex": 39,
+        "conditions": [
+          "IF_MIN_FRIENDSHIP"
+        ]
+      }
+    ]
+  },
+  "175": {
+    "species_name": "Togepi",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 0,
+        "target_dex": 176,
+        "conditions": [
+          "IF_MIN_FRIENDSHIP"
+        ]
+      }
+    ]
+  },
+  "176": {
+    "species_name": "Togetic",
+    "evolutions": []
+  },
+  "177": {
+    "species_name": "Natu",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 25,
+        "target_dex": 178
+      }
+    ]
+  },
+  "178": {
+    "species_name": "Xatu",
+    "evolutions": []
+  },
+  "179": {
+    "species_name": "Mareep",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 15,
+        "target_dex": 180
+      }
+    ]
+  },
+  "180": {
+    "species_name": "Flaaffy",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 181
+      }
+    ]
+  },
+  "181": {
+    "species_name": "Ampharos",
+    "evolutions": []
+  },
+  "182": {
+    "species_name": "Bellossom",
+    "evolutions": []
+  },
+  "183": {
+    "species_name": "Marill",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 18,
+        "target_dex": 184
+      }
+    ]
+  },
+  "184": {
+    "species_name": "Azumarill",
+    "evolutions": []
+  },
+  "185": {
+    "species_name": "Sudowoodo",
+    "evolutions": []
+  },
+  "186": {
+    "species_name": "Politoed",
+    "evolutions": []
+  },
+  "187": {
+    "species_name": "Hoppip",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 18,
+        "target_dex": 188
+      }
+    ]
+  },
+  "188": {
+    "species_name": "Skiploom",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 27,
+        "target_dex": 189
+      }
+    ]
+  },
+  "189": {
+    "species_name": "Jumpluff",
+    "evolutions": []
+  },
+  "190": {
+    "species_name": "Aipom",
+    "evolutions": []
+  },
+  "191": {
+    "species_name": "Sunkern",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_SUN_STONE",
+        "target_dex": 192
+      }
+    ]
+  },
+  "192": {
+    "species_name": "Sunflora",
+    "evolutions": []
+  },
+  "193": {
+    "species_name": "Yanma",
+    "evolutions": []
+  },
+  "194": {
+    "species_name": "Wooper",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 195
+      }
+    ]
+  },
+  "195": {
+    "species_name": "Quagsire",
+    "evolutions": []
+  },
+  "196": {
+    "species_name": "Espeon",
+    "evolutions": []
+  },
+  "197": {
+    "species_name": "Umbreon",
+    "evolutions": []
+  },
+  "198": {
+    "species_name": "Murkrow",
+    "evolutions": []
+  },
+  "199": {
+    "species_name": "Slowking",
+    "evolutions": []
+  },
+  "200": {
+    "species_name": "Misdreavus",
+    "evolutions": []
+  },
+  "201": {
+    "species_name": "Unown",
+    "evolutions": []
+  },
+  "202": {
+    "species_name": "Wobbuffet",
+    "evolutions": []
+  },
+  "203": {
+    "species_name": "Girafarig",
+    "evolutions": []
+  },
+  "204": {
+    "species_name": "Pineco",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 31,
+        "target_dex": 205
+      }
+    ]
+  },
+  "205": {
+    "species_name": "Forretress",
+    "evolutions": []
+  },
+  "206": {
+    "species_name": "Dunsparce",
+    "evolutions": []
+  },
+  "207": {
+    "species_name": "Gligar",
+    "evolutions": []
+  },
+  "208": {
+    "species_name": "Steelix",
+    "evolutions": []
+  },
+  "209": {
+    "species_name": "Snubbull",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 23,
+        "target_dex": 210
+      }
+    ]
+  },
+  "210": {
+    "species_name": "Granbull",
+    "evolutions": []
+  },
+  "211": {
+    "species_name": "Qwilfish",
+    "evolutions": []
+  },
+  "212": {
+    "species_name": "Scizor",
+    "evolutions": []
+  },
+  "213": {
+    "species_name": "Shuckle",
+    "evolutions": []
+  },
+  "214": {
+    "species_name": "Heracross",
+    "evolutions": []
+  },
+  "215": {
+    "species_name": "Sneasel",
+    "evolutions": []
+  },
+  "216": {
+    "species_name": "Teddiursa",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 217
+      }
+    ]
+  },
+  "217": {
+    "species_name": "Ursaring",
+    "evolutions": []
+  },
+  "218": {
+    "species_name": "Slugma",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 38,
+        "target_dex": 219
+      }
+    ]
+  },
+  "219": {
+    "species_name": "Magcargo",
+    "evolutions": []
+  },
+  "220": {
+    "species_name": "Swinub",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 33,
+        "target_dex": 221
+      }
+    ]
+  },
+  "221": {
+    "species_name": "Piloswine",
+    "evolutions": []
+  },
+  "222": {
+    "species_name": "Corsola",
+    "evolutions": []
+  },
+  "223": {
+    "species_name": "Remoraid",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 25,
+        "target_dex": 224
+      }
+    ]
+  },
+  "224": {
+    "species_name": "Octillery",
+    "evolutions": []
+  },
+  "225": {
+    "species_name": "Delibird",
+    "evolutions": []
+  },
+  "226": {
+    "species_name": "Mantine",
+    "evolutions": []
+  },
+  "227": {
+    "species_name": "Skarmory",
+    "evolutions": []
+  },
+  "228": {
+    "species_name": "Houndour",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 24,
+        "target_dex": 229
+      }
+    ]
+  },
+  "229": {
+    "species_name": "Houndoom",
+    "evolutions": []
+  },
+  "230": {
+    "species_name": "Kingdra",
+    "evolutions": []
+  },
+  "231": {
+    "species_name": "Phanpy",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 25,
+        "target_dex": 232
+      }
+    ]
+  },
+  "232": {
+    "species_name": "Donphan",
+    "evolutions": []
+  },
+  "233": {
+    "species_name": "Porygon2",
+    "evolutions": []
+  },
+  "234": {
+    "species_name": "Stantler",
+    "evolutions": []
+  },
+  "235": {
+    "species_name": "Smeargle",
+    "evolutions": []
+  },
+  "236": {
+    "species_name": "Tyrogue",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 107,
+        "conditions": [
+          "IF_ATK_LT_DEF"
+        ]
+      },
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 106,
+        "conditions": [
+          "IF_ATK_GT_DEF"
+        ]
+      },
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 237,
+        "conditions": [
+          "IF_ATK_EQ_DEF"
+        ]
+      }
+    ]
+  },
+  "237": {
+    "species_name": "Hitmontop",
+    "evolutions": []
+  },
+  "238": {
+    "species_name": "Smoochum",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 124
+      }
+    ]
+  },
+  "239": {
+    "species_name": "Elekid",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 125
+      }
+    ]
+  },
+  "240": {
+    "species_name": "Magby",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 126
+      }
+    ]
+  },
+  "241": {
+    "species_name": "Miltank",
+    "evolutions": []
+  },
+  "242": {
+    "species_name": "Blissey",
+    "evolutions": []
+  },
+  "243": {
+    "species_name": "Raikou",
+    "evolutions": []
+  },
+  "244": {
+    "species_name": "Entei",
+    "evolutions": []
+  },
+  "245": {
+    "species_name": "Suicune",
+    "evolutions": []
+  },
+  "246": {
+    "species_name": "Larvitar",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 247
+      }
+    ]
+  },
+  "247": {
+    "species_name": "Pupitar",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 55,
+        "target_dex": 248
+      }
+    ]
+  },
+  "248": {
+    "species_name": "Tyranitar",
+    "evolutions": []
+  },
+  "249": {
+    "species_name": "Lugia",
+    "evolutions": []
+  },
+  "250": {
+    "species_name": "Ho-Oh",
+    "evolutions": []
+  },
+  "251": {
+    "species_name": "Celebi",
+    "evolutions": []
+  },
+  "252": {
+    "species_name": "Treecko",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 16,
+        "target_dex": 253
+      }
+    ]
+  },
+  "253": {
+    "species_name": "Grovyle",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 36,
+        "target_dex": 254
+      }
+    ]
+  },
+  "254": {
+    "species_name": "Sceptile",
+    "evolutions": []
+  },
+  "255": {
+    "species_name": "Torchic",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 16,
+        "target_dex": 256
+      }
+    ]
+  },
+  "256": {
+    "species_name": "Combusken",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 36,
+        "target_dex": 257
+      }
+    ]
+  },
+  "257": {
+    "species_name": "Blaziken",
+    "evolutions": []
+  },
+  "258": {
+    "species_name": "Mudkip",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 16,
+        "target_dex": 259
+      }
+    ]
+  },
+  "259": {
+    "species_name": "Marshtomp",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 36,
+        "target_dex": 260
+      }
+    ]
+  },
+  "260": {
+    "species_name": "Swampert",
+    "evolutions": []
+  },
+  "261": {
+    "species_name": "Poochyena",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 18,
+        "target_dex": 262
+      }
+    ]
+  },
+  "262": {
+    "species_name": "Mightyena",
+    "evolutions": []
+  },
+  "263": {
+    "species_name": "Zigzagoon",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 264
+      }
+    ]
+  },
+  "264": {
+    "species_name": "Linoone",
+    "evolutions": []
+  },
+  "265": {
+    "species_name": "Wurmple",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 7,
+        "target_dex": 266
+      },
+      {
+        "method": "level_up",
+        "condition": 7,
+        "target_dex": 268
+      }
+    ]
+  },
+  "266": {
+    "species_name": "Silcoon",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 10,
+        "target_dex": 267
+      }
+    ]
+  },
+  "267": {
+    "species_name": "Beautifly",
+    "evolutions": []
+  },
+  "268": {
+    "species_name": "Cascoon",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 10,
+        "target_dex": 269
+      }
+    ]
+  },
+  "269": {
+    "species_name": "Dustox",
+    "evolutions": []
+  },
+  "270": {
+    "species_name": "Lotad",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 14,
+        "target_dex": 271
+      }
+    ]
+  },
+  "271": {
+    "species_name": "Lombre",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_WATER_STONE",
+        "target_dex": 272
+      }
+    ]
+  },
+  "272": {
+    "species_name": "Ludicolo",
+    "evolutions": []
+  },
+  "273": {
+    "species_name": "Seedot",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 14,
+        "target_dex": 274
+      }
+    ]
+  },
+  "274": {
+    "species_name": "Nuzleaf",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_LEAF_STONE",
+        "target_dex": 275
+      }
+    ]
+  },
+  "275": {
+    "species_name": "Shiftry",
+    "evolutions": []
+  },
+  "276": {
+    "species_name": "Taillow",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 22,
+        "target_dex": 277
+      }
+    ]
+  },
+  "277": {
+    "species_name": "Swellow",
+    "evolutions": []
+  },
+  "278": {
+    "species_name": "Wingull",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 25,
+        "target_dex": 279
+      }
+    ]
+  },
+  "279": {
+    "species_name": "Pelipper",
+    "evolutions": []
+  },
+  "280": {
+    "species_name": "Ralts",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 281
+      }
+    ]
+  },
+  "281": {
+    "species_name": "Kirlia",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 282
+      }
+    ]
+  },
+  "282": {
+    "species_name": "Gardevoir",
+    "evolutions": []
+  },
+  "283": {
+    "species_name": "Surskit",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 22,
+        "target_dex": 284
+      }
+    ]
+  },
+  "284": {
+    "species_name": "Masquerain",
+    "evolutions": []
+  },
+  "285": {
+    "species_name": "Shroomish",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 23,
+        "target_dex": 286
+      }
+    ]
+  },
+  "286": {
+    "species_name": "Breloom",
+    "evolutions": []
+  },
+  "287": {
+    "species_name": "Slakoth",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 18,
+        "target_dex": 288
+      }
+    ]
+  },
+  "288": {
+    "species_name": "Vigoroth",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 36,
+        "target_dex": 289
+      }
+    ]
+  },
+  "289": {
+    "species_name": "Slaking",
+    "evolutions": []
+  },
+  "290": {
+    "species_name": "Nincada",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 291
+      }
+    ]
+  },
+  "291": {
+    "species_name": "Ninjask",
+    "evolutions": []
+  },
+  "292": {
+    "species_name": "Shedinja",
+    "evolutions": []
+  },
+  "293": {
+    "species_name": "Whismur",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 294
+      }
+    ]
+  },
+  "294": {
+    "species_name": "Loudred",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 40,
+        "target_dex": 295
+      }
+    ]
+  },
+  "295": {
+    "species_name": "Exploud",
+    "evolutions": []
+  },
+  "296": {
+    "species_name": "Makuhita",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 24,
+        "target_dex": 297
+      }
+    ]
+  },
+  "297": {
+    "species_name": "Hariyama",
+    "evolutions": []
+  },
+  "298": {
+    "species_name": "Azurill",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 0,
+        "target_dex": 183,
+        "conditions": [
+          "IF_MIN_FRIENDSHIP"
+        ]
+      }
+    ]
+  },
+  "299": {
+    "species_name": "Nosepass",
+    "evolutions": []
+  },
+  "300": {
+    "species_name": "Skitty",
+    "evolutions": [
+      {
+        "method": "item",
+        "condition": "ITEM_MOON_STONE",
+        "target_dex": 301
+      }
+    ]
+  },
+  "301": {
+    "species_name": "Delcatty",
+    "evolutions": []
+  },
+  "302": {
+    "species_name": "Sableye",
+    "evolutions": []
+  },
+  "303": {
+    "species_name": "Mawile",
+    "evolutions": []
+  },
+  "304": {
+    "species_name": "Aron",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 32,
+        "target_dex": 305
+      }
+    ]
+  },
+  "305": {
+    "species_name": "Lairon",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 42,
+        "target_dex": 306
+      }
+    ]
+  },
+  "306": {
+    "species_name": "Aggron",
+    "evolutions": []
+  },
+  "307": {
+    "species_name": "Meditite",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 37,
+        "target_dex": 308
+      }
+    ]
+  },
+  "308": {
+    "species_name": "Medicham",
+    "evolutions": []
+  },
+  "309": {
+    "species_name": "Electrike",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 26,
+        "target_dex": 310
+      }
+    ]
+  },
+  "310": {
+    "species_name": "Manectric",
+    "evolutions": []
+  },
+  "311": {
+    "species_name": "Plusle",
+    "evolutions": []
+  },
+  "312": {
+    "species_name": "Minun",
+    "evolutions": []
+  },
+  "313": {
+    "species_name": "Volbeat",
+    "evolutions": []
+  },
+  "314": {
+    "species_name": "Illumise",
+    "evolutions": []
+  },
+  "315": {
+    "species_name": "Roselia",
+    "evolutions": []
+  },
+  "316": {
+    "species_name": "Gulpin",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 26,
+        "target_dex": 317
+      }
+    ]
+  },
+  "317": {
+    "species_name": "Swalot",
+    "evolutions": []
+  },
+  "318": {
+    "species_name": "Carvanha",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 319
+      }
+    ]
+  },
+  "319": {
+    "species_name": "Sharpedo",
+    "evolutions": []
+  },
+  "320": {
+    "species_name": "Wailmer",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 40,
+        "target_dex": 321
+      }
+    ]
+  },
+  "321": {
+    "species_name": "Wailord",
+    "evolutions": []
+  },
+  "322": {
+    "species_name": "Numel",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 33,
+        "target_dex": 323
+      }
+    ]
+  },
+  "323": {
+    "species_name": "Camerupt",
+    "evolutions": []
+  },
+  "324": {
+    "species_name": "Torkoal",
+    "evolutions": []
+  },
+  "325": {
+    "species_name": "Spoink",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 32,
+        "target_dex": 326
+      }
+    ]
+  },
+  "326": {
+    "species_name": "Grumpig",
+    "evolutions": []
+  },
+  "327": {
+    "species_name": "Spinda",
+    "evolutions": []
+  },
+  "328": {
+    "species_name": "Trapinch",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 35,
+        "target_dex": 329
+      }
+    ]
+  },
+  "329": {
+    "species_name": "Vibrava",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 45,
+        "target_dex": 330
+      }
+    ]
+  },
+  "330": {
+    "species_name": "Flygon",
+    "evolutions": []
+  },
+  "331": {
+    "species_name": "Cacnea",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 32,
+        "target_dex": 332
+      }
+    ]
+  },
+  "332": {
+    "species_name": "Cacturne",
+    "evolutions": []
+  },
+  "333": {
+    "species_name": "Swablu",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 35,
+        "target_dex": 334
+      }
+    ]
+  },
+  "334": {
+    "species_name": "Altaria",
+    "evolutions": []
+  },
+  "335": {
+    "species_name": "Zangoose",
+    "evolutions": []
+  },
+  "336": {
+    "species_name": "Seviper",
+    "evolutions": []
+  },
+  "337": {
+    "species_name": "Lunatone",
+    "evolutions": []
+  },
+  "338": {
+    "species_name": "Solrock",
+    "evolutions": []
+  },
+  "339": {
+    "species_name": "Barboach",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 340
+      }
+    ]
+  },
+  "340": {
+    "species_name": "Whiscash",
+    "evolutions": []
+  },
+  "341": {
+    "species_name": "Corphish",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 342
+      }
+    ]
+  },
+  "342": {
+    "species_name": "Crawdaunt",
+    "evolutions": []
+  },
+  "343": {
+    "species_name": "Baltoy",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 36,
+        "target_dex": 344
+      }
+    ]
+  },
+  "344": {
+    "species_name": "Claydol",
+    "evolutions": []
+  },
+  "345": {
+    "species_name": "Lileep",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 40,
+        "target_dex": 346
+      }
+    ]
+  },
+  "346": {
+    "species_name": "Cradily",
+    "evolutions": []
+  },
+  "347": {
+    "species_name": "Anorith",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 40,
+        "target_dex": 348
+      }
+    ]
+  },
+  "348": {
+    "species_name": "Armaldo",
+    "evolutions": []
+  },
+  "349": {
+    "species_name": "Feebas",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 0,
+        "target_dex": 350,
+        "conditions": [
+          "IF_MIN_BEAUTY"
+        ]
+      },
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 350,
+        "conditions": [
+          "IF_HOLD_ITEM"
+        ]
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_PRISM_SCALE",
+        "target_dex": 350
+      }
+    ]
+  },
+  "350": {
+    "species_name": "Milotic",
+    "evolutions": []
+  },
+  "351": {
+    "species_name": "Castform",
+    "evolutions": []
+  },
+  "352": {
+    "species_name": "Kecleon",
+    "evolutions": []
+  },
+  "353": {
+    "species_name": "Shuppet",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 37,
+        "target_dex": 354
+      }
+    ]
+  },
+  "354": {
+    "species_name": "Banette",
+    "evolutions": []
+  },
+  "355": {
+    "species_name": "Duskull",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 37,
+        "target_dex": 356
+      }
+    ]
+  },
+  "356": {
+    "species_name": "Dusclops",
+    "evolutions": []
+  },
+  "357": {
+    "species_name": "Tropius",
+    "evolutions": []
+  },
+  "358": {
+    "species_name": "Chimecho",
+    "evolutions": []
+  },
+  "359": {
+    "species_name": "Absol",
+    "evolutions": []
+  },
+  "360": {
+    "species_name": "Wynaut",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 15,
+        "target_dex": 202
+      }
+    ]
+  },
+  "361": {
+    "species_name": "Snorunt",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 42,
+        "target_dex": 362
+      }
+    ]
+  },
+  "362": {
+    "species_name": "Glalie",
+    "evolutions": []
+  },
+  "363": {
+    "species_name": "Spheal",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 32,
+        "target_dex": 364
+      }
+    ]
+  },
+  "364": {
+    "species_name": "Sealeo",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 44,
+        "target_dex": 365
+      }
+    ]
+  },
+  "365": {
+    "species_name": "Walrein",
+    "evolutions": []
+  },
+  "366": {
+    "species_name": "Clamperl",
+    "evolutions": [
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 367,
+        "conditions": [
+          "IF_HOLD_ITEM"
+        ]
+      },
+      {
+        "method": "trade",
+        "condition": "0",
+        "target_dex": 368,
+        "conditions": [
+          "IF_HOLD_ITEM"
+        ]
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_DEEP_SEA_TOOTH",
+        "target_dex": 367
+      },
+      {
+        "method": "item",
+        "condition": "ITEM_DEEP_SEA_SCALE",
+        "target_dex": 368
+      }
+    ]
+  },
+  "367": {
+    "species_name": "Huntail",
+    "evolutions": []
+  },
+  "368": {
+    "species_name": "Gorebyss",
+    "evolutions": []
+  },
+  "369": {
+    "species_name": "Relicanth",
+    "evolutions": []
+  },
+  "370": {
+    "species_name": "Luvdisc",
+    "evolutions": []
+  },
+  "371": {
+    "species_name": "Bagon",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 30,
+        "target_dex": 372
+      }
+    ]
+  },
+  "372": {
+    "species_name": "Shelgon",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 50,
+        "target_dex": 373
+      }
+    ]
+  },
+  "373": {
+    "species_name": "Salamence",
+    "evolutions": []
+  },
+  "374": {
+    "species_name": "Beldum",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 20,
+        "target_dex": 375
+      }
+    ]
+  },
+  "375": {
+    "species_name": "Metang",
+    "evolutions": [
+      {
+        "method": "level_up",
+        "condition": 45,
+        "target_dex": 376
+      }
+    ]
+  },
+  "376": {
+    "species_name": "Metagross",
+    "evolutions": []
+  },
+  "377": {
+    "species_name": "Regirock",
+    "evolutions": []
+  },
+  "378": {
+    "species_name": "Regice",
+    "evolutions": []
+  },
+  "379": {
+    "species_name": "Registeel",
+    "evolutions": []
+  },
+  "380": {
+    "species_name": "Latias",
+    "evolutions": []
+  },
+  "381": {
+    "species_name": "Latios",
+    "evolutions": []
+  },
+  "382": {
+    "species_name": "Kyogre",
+    "evolutions": []
+  },
+  "383": {
+    "species_name": "Groudon",
+    "evolutions": []
+  },
+  "384": {
+    "species_name": "Rayquaza",
+    "evolutions": []
+  },
+  "385": {
+    "species_name": "Jirachi",
+    "evolutions": []
+  },
+  "386": {
+    "species_name": "Deoxys",
+    "evolutions": []
+  }
 }

@@ -43,7 +43,7 @@ func _load_moves() -> void:
 func _load_learnsets() -> void:
 	var data = _load_json("res://data/learnsets.json")
 	for key in data:
-		_learnsets_by_dex[int(key)] = data[key]
+		_learnsets_by_dex[int(key)] = data[key]["moves"]
 
 
 func _load_learnable_moves() -> void:
@@ -68,7 +68,7 @@ func _load_evolutions() -> void:
 	var data = _load_json("res://data/evolutions.json")
 	if typeof(data) == TYPE_DICTIONARY:
 		for key in data:
-			_evolutions_by_dex[int(key)] = data[key]
+			_evolutions_by_dex[int(key)] = data[key]["evolutions"]
 
 
 func _load_tmhm() -> void:
@@ -212,6 +212,17 @@ func _smoke_test() -> void:
 	var potion := get_item(28)
 	assert(potion.get("name", "") == "Potion", "Item 28 should be Potion, got %s" % potion.get("name", ""))
 	assert(potion.get("pocket", "") == "items", "Potion pocket should be 'items'")
+
+	# [M18.5j] species_name spot-check — debug-only field, sourced from
+	# pokemon.json's own "name" field; not read by get_learnset/get_evolutions,
+	# so checked against the raw wrapped JSON directly.
+	var raw_learnsets = _load_json("res://data/learnsets.json")
+	assert(raw_learnsets["1"]["species_name"] == "Bulbasaur", "learnsets.json species_name for dex 1 should be Bulbasaur")
+	assert(raw_learnsets["6"]["species_name"] == "Charizard", "learnsets.json species_name for dex 6 should be Charizard")
+	assert(raw_learnsets["150"]["species_name"] == "Mewtwo", "learnsets.json species_name for dex 150 should be Mewtwo")
+	var raw_evolutions = _load_json("res://data/evolutions.json")
+	assert(raw_evolutions["1"]["species_name"] == "Bulbasaur", "evolutions.json species_name for dex 1 should be Bulbasaur")
+	assert(raw_evolutions["384"]["species_name"] == "Rayquaza", "evolutions.json species_name for dex 384 should be Rayquaza")
 
 	print("PokemonRegistry: smoke test passed — %d species, %d moves, %d learnsets, %d learnable-move lists, %d items, %d evo-lists, %d TM/HMs, %d exp curves loaded" % [
 		_species_by_dex.size(), _moves_by_id.size(), _learnsets_by_dex.size(), _learnable_moves_by_dex.size(),
