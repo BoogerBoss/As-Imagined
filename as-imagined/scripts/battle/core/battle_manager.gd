@@ -81,6 +81,8 @@ signal weather_damage(pokemon: BattlePokemon, amount: int)                 # san
 # M18.5f signals
 signal wrap_damage(pokemon: BattlePokemon, amount: int)                    # Bind/Wrap-family end-of-turn tick
 signal wrap_ended(pokemon: BattlePokemon)                                  # trap duration ran out (broke free)
+# M18.5g signal
+signal multi_hit_sequence_finished(attacker: BattlePokemon, target: BattlePokemon, hits_landed: int, total_damage: int)  # whole multi-hit move resolved
 # M17c signal
 signal ability_healed(pokemon: BattlePokemon, amount: int)                 # Rain Dish/Ice Body/Dry Skin/Hospitality/Cheek Pouch
 # M12 signals
@@ -243,6 +245,13 @@ var _force_kings_rock_roll: Variant = null
 # M18o: force Focus Band's survive-lethal-hit roll, same null-sentinel seam
 # convention as the other _force_* roll seams.
 var _force_focus_band_roll: Variant = null
+
+# [M18.5g] Pins the variable-hit roll (2/3/4/5) for a `multi_hit=true` move,
+# same null-sentinel seam convention as every other _force_* roll above. Does
+# NOT affect strike_count moves (Double Kick etc. — those have no roll to force)
+# or Triple Kick/Axel's own per-hit accuracy rolls (use _force_hit for those,
+# same seam every other accuracy check in this file already uses).
+var _force_multi_hit_count: Variant = null
 
 # M9: pre-queued Baton Pass target slots per combatant index (-1 = auto-select first valid).
 # M14a: indexed by combatant index; singles uses [0] and [1].
@@ -1527,6 +1536,16 @@ func _phase_move_execution() -> void:
 					continue
 				_do_damaging_hit(attacker, tgt, move, spread_dmg_reduction, hh_boost,
 						_dmg_power_override)
+		elif move.multi_hit or move.strike_count > 1:
+			# [M18.5g] Multi-hit moves (Bullet Seed/Double Kick/Triple Kick/etc. family)
+			# — see _do_multi_hit_sequence's own doc comment for the full mechanism.
+			# None of the 31 in-scope moves are also spread moves (TARGET_SELECTED
+			# throughout; Dragon Darts' TARGET_SMART doubles-redirect is a separate,
+			# flagged-not-built doubles-only nuance — see gen_moves.py's own comment),
+			# so this branch and the spread branch above are mutually exclusive in
+			# practice, not just by construction.
+			var hh_boost: bool = _helping_hand[attacker_idx]
+			_do_multi_hit_sequence(attacker, defender, move, hh_boost, _dmg_power_override)
 		else:
 			# Single-target damaging move.
 			var hh_boost: bool = _helping_hand[attacker_idx]
@@ -3535,6 +3554,7 @@ func _se_to_status(se: int) -> int:
 		MoveData.SE_PARALYSIS: return BattlePokemon.STATUS_PARALYSIS
 		MoveData.SE_SLEEP:     return BattlePokemon.STATUS_SLEEP
 		MoveData.SE_TOXIC:     return BattlePokemon.STATUS_TOXIC
+		MoveData.SE_POISON:    return BattlePokemon.STATUS_POISON
 	return 0
 
 
@@ -3542,7 +3562,13 @@ func _status_to_se(status: int) -> int:
 	match status:
 		BattlePokemon.STATUS_BURN:      return MoveData.SE_BURN
 		BattlePokemon.STATUS_PARALYSIS: return MoveData.SE_PARALYSIS
-		BattlePokemon.STATUS_POISON:    return MoveData.SE_TOXIC  # no distinct SE for regular poison
+		# [M18.5g] Corrected: this used to collapse to SE_TOXIC ("no distinct SE for
+		# regular poison") — now that SE_POISON exists (added for Twineedle), this
+		# mapping is accurate for its OTHER two call sites too: contact status
+		# (Poison Point/Poison Touch inflict regular STATUS_POISON, not Toxic — this
+		# was silently mislabeling that signal before) and Synchronize reflection.
+		# Verified no existing test asserts the old (wrong) SE_TOXIC value for either.
+		BattlePokemon.STATUS_POISON:    return MoveData.SE_POISON
 		BattlePokemon.STATUS_TOXIC:     return MoveData.SE_TOXIC
 	return MoveData.SE_NONE
 
@@ -3637,6 +3663,151 @@ func _apply_fixed_dmg_to_target(attacker: BattlePokemon, defender: BattlePokemon
 		move_executed.emit(attacker, defender, move, damage)
 
 
+# [M18.5g] Resolves the hit count for a multi-hit move at the moment it's used.
+# strike_count moves (fixed) return that value directly — the ONE exception is
+# Triple Kick/Triple Axel, which also set strike_count=3 but can independently
+# miss and stop early per hit (handled in the loop below, not here — this
+# function only determines the MAXIMUM reachable hit count).
+# multi_hit moves (variable) roll once: 35% 2 hits / 35% 3 hits / 15% 4 hits /
+# 15% 5 hits (Gen5+ weighting — see MoveData.multi_hit's own doc comment for the
+# full source citation and the older-branch note). Skill Link/Loaded Dice would
+# hook in exactly here (forcing 5, or re-rolling within [4,5]) — deliberately not
+# wired, this tier's scope is the mechanism only (see decisions.md [M18.5g]).
+func _resolve_multi_hit_count(move: MoveData) -> int:
+	if move.strike_count > 1:
+		return move.strike_count
+	if move.multi_hit:
+		if _force_multi_hit_count != null:
+			return int(_force_multi_hit_count)
+		# RandomWeighted(RNG_HITS, 0, 0, 7, 7, 3, 3) → hits 2/3/4/5 at weights 7/7/3/3
+		# (sum 20): battle_move_resolution.c L2311.
+		var roll: int = randi() % 20
+		if roll < 7:
+			return 2
+		elif roll < 14:
+			return 3
+		elif roll < 17:
+			return 4
+		else:
+			return 5
+	return 1
+
+
+# [M18.5g] Resolves an entire multi-hit move (the 30 in-scope moves of the
+# strike_count/multi_hit family — see MoveData's own doc comments for the full
+# roster and Population Bomb's exclusion). Replaces a single _do_damaging_hit
+# call with a loop, per Step 0's confirmed per-mechanism determination:
+#
+# - Accuracy: ONE check gates the whole sequence (already done by the caller,
+#   before this function is ever reached) for every move EXCEPT Triple Kick/
+#   Triple Axel (is_triple_kick), which roll independently on hits 2+ — source:
+#   ShouldSkipAccuracyCalcPastFirstHit (battle_move_resolution.c L2137-2151).
+# - Per-hit power: flat (move.power) for every move except Triple Kick/Axel,
+#   which escalate ×hit_number (battle_util.c L6165-6167).
+# - PP, turn-order bookkeeping (Rollout counter, _current_actor_index, phase
+#   transition): untouched here — this function is a drop-in replacement for
+#   ONE _do_damaging_hit call, so everything the caller does once-per-move
+#   around that call site still only happens once.
+# - Contact effects, King's Rock, recoil, drain+Liquid Ooze, the survive-
+#   lethal-hit chain, hit-reactive abilities, Jaboca/Rowap, Rocky Helmet,
+#   Sticky Barb, Magician, Air Balloon, Rapid Spin, secondary_effect (Twineedle's
+#   poison chance): all fire PER HIT, for free, simply by calling
+#   _do_damaging_hit once per iteration — source's own MoveEnd dispatch table
+#   re-runs on every hit of a multi-hit sequence (confirmed via the `+=`
+#   accumulation in MoveEndSetValues, battle_move_resolution.c L2490, which
+#   would be meaningless if MoveEnd only ran once).
+# - Shell Bell: the ONE confirmed exception to "just call it per hit" — source
+#   accumulates `gBattleScripting.savedDmg` across every hit and only actually
+#   triggers the heal once the sequence's own MoveEnd loop terminates. Passing
+#   suppress_shell_bell=true to every per-hit call and manually applying ONE
+#   heal from the accumulated total after the loop reproduces this exactly (a
+#   per-hit heal would under-heal vs. the real total due to floor-division
+#   truncation — five 7-damage hits under Shell Bell: 5×floor(7/8)=0 per-hit vs.
+#   floor(35/8)=4 on the total).
+# - Scale Shot (is_scale_shot): a one-time self stat change applied once after
+#   the loop, gated on ≥1 hit landing — battle_move_resolution.c L3620-3628.
+#
+# Mid-sequence termination (source: MoveEndMultihitMove, battle_move_resolution.c
+# L3224-3286), each verified independently rather than assumed uniform:
+# - Target's current_hp reaches 0 (per this project's own "check current_hp, not
+#   .fainted, for synchronous aliveness" convention): stop immediately, no
+#   further hits, matching source's `!IsBattlerAlive(battlerDef) → counter = 0`.
+# - Target's Substitute breaks on a given hit: that hit still lands (drains
+#   substitute_hp, counts as landed) but the sequence stops there — the real
+#   Pokémon behind a JUST-broken Substitute is never hit by the remaining
+#   swings. Distinct from a Substitute merely ABSORBING a hit without breaking:
+#   that case correctly CONTINUES the loop (a fresh Substitute can absorb
+#   several hits of a multi-hit move before it finally breaks), so this checks
+#   substitute_hp transitioning from >0 to <=0 specifically, not "was this hit
+#   substitute-absorbed."
+# - A wholly-blocked hit with NO Substitute involved (type immunity, Wonder
+#   Guard, an absorb-family ability) returns 0 real damage and stops the
+#   sequence after just the one attempt — source's top-level
+#   `!IsBattlerUnaffectedByMove(battlerDef)` gate on the whole continuation
+#   block. Distinguished from the Substitute-standing case above by checking
+#   whether a Substitute was actually in play for this hit at all.
+func _do_multi_hit_sequence(attacker: BattlePokemon, target: BattlePokemon,
+		move: MoveData, helping_hand: bool, power_override: int) -> void:
+	var ng_active: bool = _is_neutralizing_gas_active()
+	var hit_count: int = _resolve_multi_hit_count(move)
+	var total_damage: int = 0
+	var hits_landed: int = 0
+
+	for hit_num in range(1, hit_count + 1):
+		if target.current_hp <= 0:
+			break
+
+		var this_power_override: int = power_override
+		if move.is_triple_kick:
+			if hit_num > 1:
+				var hit_ok: bool = StatusManager.check_accuracy(
+						attacker, target, move, _force_hit, ng_active, _effective_weather(),
+						_has_target_already_acted(target))
+				if not hit_ok:
+					move_missed.emit(attacker, "accuracy")
+					break
+			# Escalating power: hit 1 = ×1, hit 2 = ×2, hit 3 = ×3.
+			this_power_override = move.power * hit_num
+
+		var had_standing_sub: bool = target.substitute_hp > 0 and not move.ignores_substitute
+		var dmg: int = _do_damaging_hit(
+				attacker, target, move, false, helping_hand, this_power_override, true)
+		total_damage += dmg
+		hits_landed += 1
+
+		if had_standing_sub:
+			if target.substitute_hp <= 0:
+				break  # the Substitute broke on this hit — sequence ends here
+			# else: Substitute still standing — continue, dmg==0 here is expected,
+			# not a sign of immunity.
+		elif dmg == 0:
+			break  # wholly blocked (type immunity / Wonder Guard / absorb family)
+
+		if target.current_hp <= 0:
+			break
+
+	# Scale Shot: once, after the sequence, gated on at least one hit landing.
+	if move.is_scale_shot and hits_landed > 0:
+		var atk_def_actual: int = StatusManager.apply_stat_change(
+				attacker, BattlePokemon.STAGE_DEF, -1, null, ng_active)
+		if atk_def_actual != 0:
+			stat_stage_changed.emit(attacker, BattlePokemon.STAGE_DEF, atk_def_actual)
+		var atk_spd_actual: int = StatusManager.apply_stat_change(
+				attacker, BattlePokemon.STAGE_SPEED, 1, null, ng_active)
+		if atk_spd_actual != 0:
+			stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPEED, atk_spd_actual)
+
+	# Shell Bell: one heal from the accumulated total (see this function's own
+	# doc comment for why per-hit healing would be wrong).
+	if total_damage > 0:
+		var shell_bell_amount: int = ItemManager.shell_bell_heal(attacker, total_damage, ng_active)
+		if shell_bell_amount > 0:
+			attacker.current_hp = min(attacker.max_hp, attacker.current_hp + shell_bell_amount)
+			item_healed.emit(attacker, shell_bell_amount)
+
+	multi_hit_sequence_finished.emit(attacker, target, hits_landed, total_damage)
+
+
 # M14b: Execute one damaging hit from attacker onto target.
 # Handles DamageCalculator call, substitute routing, Counter tracking, Bide accumulation,
 # target-thaw, recoil, drain, secondary effects, contact abilities, item triggers, and
@@ -3648,7 +3819,7 @@ func _apply_fixed_dmg_to_target(attacker: BattlePokemon, defender: BattlePokemon
 # Source: battle_script_commands.c :: MoveDamageDataHpUpdate + downstream effect handlers.
 func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		move: MoveData, is_spread: bool = false, helping_hand: bool = false,
-		power_override: int = -1) -> void:
+		power_override: int = -1, suppress_shell_bell: bool = false) -> int:
 	var target_idx: int = _combatants.find(target)
 	var target_side: int = target_idx / _active_per_side
 	var sc: Dictionary = _side_conditions[target_side]
@@ -3704,7 +3875,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	if result.get("wonder_guard_blocked", false):
 		ability_triggered.emit(target, "wonder_guard")
 		move_executed.emit(attacker, target, move, 0)
-		return
+		return 0
 
 	# M17l/M17m: absorb-family (Lightning Rod/Storm Drain/Sap Sipper/Motor Drive/
 	# Well-Baked Body/Volt Absorb/Water Absorb/Dry Skin/Earth Eater/Flash Fire) — the
@@ -3733,7 +3904,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 				target.flash_fire_active = true
 				ability_triggered.emit(target, "flash_fire_boosted")
 		move_executed.emit(attacker, target, move, 0)
-		return
+		return 0
 
 	# M16d: Rapid Spin — clears ONE hazard type from the ATTACKER's own side after dealing
 	# damage. Fires even if the hit was absorbed by a Substitute (INCLUDING_SUBSTITUTES in
@@ -3779,7 +3950,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			target.substitute_hp = 0
 			substitute_broke.emit(target)
 		move_executed.emit(attacker, target, move, sub_dmg)
-		return
+		return 0
 
 	# M17n-5/M18o: survive-a-lethal-hit chain — Sturdy, Focus Band, Focus Sash.
 	# Source: battle_util.c L7962-7984 (the shared endure-check function every
@@ -3875,10 +4046,20 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	# after damage is applied). Unconditioned on target.fainted — the classic use
 	# case is healing off the killing blow itself. ItemManager.shell_bell_heal
 	# already gates on not-already-at-max-HP and final_damage > 0 internally.
-	var shell_bell_amount: int = ItemManager.shell_bell_heal(attacker, damage, ng_active)
-	if shell_bell_amount > 0:
-		attacker.current_hp = min(attacker.max_hp, attacker.current_hp + shell_bell_amount)
-		item_healed.emit(attacker, shell_bell_amount)
+	# [M18.5g] suppress_shell_bell: multi-hit callers pass true here and instead
+	# accumulate `damage` across every hit themselves, applying ONE Shell Bell heal
+	# after the whole sequence completes. Source: `gBattleScripting.savedDmg +=
+	# gBattleStruct->moveDamage[...]` (battle_move_resolution.c L2490, MoveEndSetValues
+	# — re-runs every hit, ACCUMULATING) feeding a Shell Bell trigger that itself only
+	# actually fires once the multi-hit sequence's own MoveEnd loop terminates — NOT
+	# a per-hit heal of `floor(hit_damage/8)` each, which (confirmed via a concrete
+	# counter-example: five 7-damage hits) would under-heal relative to
+	# `floor(sum(hit_damage)/8)` due to per-hit floor-division truncation.
+	if not suppress_shell_bell:
+		var shell_bell_amount: int = ItemManager.shell_bell_heal(attacker, damage, ng_active)
+		if shell_bell_amount > 0:
+			attacker.current_hp = min(attacker.max_hp, attacker.current_hp + shell_bell_amount)
+			item_healed.emit(attacker, shell_bell_amount)
 
 	if damage > 0 and move.secondary_effect != MoveData.SE_NONE:
 		var effect_hit: bool = StatusManager.try_secondary_effect(attacker, target, move, null, ng_active, _effective_weather())
@@ -4250,6 +4431,13 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 					var old_attacker: BattlePokemon = attacker
 					_do_forced_switch_in(attacker_side, rc_slot, attacker_field_slot)
 					forced_switch.emit(old_attacker, _parties[attacker_side].get_active_at(attacker_field_slot))
+
+	# [M18.5g] Real HP damage dealt to the target by this hit — used by the multi-hit
+	# loop to accumulate a running total for Shell Bell (see suppress_shell_bell
+	# above) and to detect mid-sequence Substitute-break/faint termination. 0 in
+	# every early-return path above (Wonder Guard/absorb/Substitute-absorbed — none
+	# of those represent real HP loss on the actual target).
+	return damage
 
 
 # M12: Consume a held item (berries, Life Orb consumed indirectly by PP drain in source,

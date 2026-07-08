@@ -13289,3 +13289,233 @@ unblocked (still deferred to M18.5i's reconsideration pass, not implemented
 here — same for Binding Band). Recommends M18.5g (Multi-hit) or M18.5h
 (Nature/IV/EV) as the next tier — both remain independent and
 dependency-free.
+
+## [M18.5g] Multi-hit move mechanism
+
+### Step 0 findings
+
+**Move list — 30, confirmed via direct source grep, matching `docs/m19_recon.md`'s
+count of 31 exactly** (`.multiHit = TRUE` → 15 moves; `.strikeCount = N` → 16
+moves; 15+16=31). **Population Bomb is excluded** — the ONE `.strikeCount`
+move where each hit independently re-rolls accuracy (confirmed via
+`ShouldSkipAccuracyCalcPastFirstHit`, `battle_move_resolution.c` L2137-2151,
+which explicitly excepts `EFFECT_POPULATION_BOMB` from the "only hit 1 checks
+accuracy" rule every other `strikeCount` move follows) AND has a uniquely-
+shaped Loaded Dice interaction (`RandomUniform(4,10)` instead of the standard
+`RandomUniform(4,5)` every other multi-hit move's Loaded Dice uses) — a
+genuinely higher complexity class than the other 30, flagged for a future
+tier rather than built here, matching the task's own explicit invitation to
+scope it out if warranted.
+
+**Roll distribution — confirmed exact**: `SetRandomMultiHitCounter`
+(`battle_move_resolution.c` L2304-2312), Gen5+ branch (this project's default
+`GEN_LATEST` config): `RandomWeighted(RNG_HITS, 0, 0, 7, 7, 3, 3)` → 35% 2
+hits / 35% 3 hits / 15% 4 hits / 15% 5 hits. The commonly-cited 37.5/37.5/
+12.5/12.5 figure (weights 3,3,1,1) is the OLDER, pre-Gen5 branch of the same
+function — not modeled here, matching this project's established "config
+defaults to `GEN_LATEST`, older branches not reproduced" precedent
+(`B_BINDING_TURNS` in `[M18.5f]`).
+
+**Skill Link/Loaded Dice — mechanism-only scope, matching Grip Claw's
+precedent from `[M18.5f]`.** Both are now unblocked (their real hook point,
+`_resolve_multi_hit_count`, exists and is documented) but NOT implemented
+this tier — Skill Link has no ability constant in `ability_manager.gd` at all
+yet (confirmed absent, matching `[M17n-5]`'s own original deferral note);
+Loaded Dice has no `ItemManager` entry. Flagged, not built.
+
+**Two genuine per-move exceptions requiring their own dedicated flags, beyond
+generic `strike_count`/`multi_hit`:**
+- **Triple Kick/Triple Axel** (`is_triple_kick`): each hit (not just the
+  first) rolls an independent accuracy check — confirmed via the same
+  `ShouldSkipAccuracyCalcPastFirstHit` exception list that excludes Population
+  Bomb. Per-hit power escalates ×1/×2/×3 (`basePower *= 1 + GetMoveStrikeCount
+  (move) - gMultiHitCounter`, `battle_util.c` L6165-6167, which reduces to a
+  flat ×hit-number multiplier for a fixed-strikeCount move).
+- **Scale Shot** (`is_scale_shot`): a one-time self stat change (-1 Defense,
+  +1 Speed) applied ONCE after the whole sequence, gated on ≥1 hit landing —
+  confirmed via source's MoveEnd-table dispatch (`case EFFECT_SCALE_SHOT`,
+  `battle_move_resolution.c` L3620-3628), the same once-at-sequence-end shape
+  as Shell Bell's own accumulate-then-apply-once pattern below.
+
+**Mid-sequence termination** (`MoveEndMultihitMove`, `battle_move_resolution.c`
+L3224-3286), each verified independently rather than assumed uniform:
+- Target's HP reaching 0 stops the sequence immediately —
+  `!IsBattlerAlive(battlerDef) → counter = 0`.
+- **A Substitute genuinely absorbs MULTIPLE hits before breaking** — this is
+  NOT the same as fainting. A fresh Substitute continues absorbing hit after
+  hit (ticking `substitute_hp` down) for as many hits as it takes to deplete
+  it; only the hit that actually breaks it (`substitute_hp` transitions from
+  >0 to ≤0) stops the sequence — the real Pokémon behind a just-broken
+  Substitute is never touched by any remaining swings.
+- A wholly-blocked hit with NO Substitute involved (type immunity, Wonder
+  Guard, an absorb-family ability) stops the sequence after just the one
+  attempt — source's top-level `!IsBattlerUnaffectedByMove(battlerDef)` gate
+  on the whole continuation block.
+
+### Per-mechanism per-hit-vs-once-per-move determination (context-gathering
+### step 5's full list, each verified individually)
+
+| Mechanism | Per-hit or once? | Basis |
+|---|---|---|
+| PP cost | Once | Deducted BEFORE the `move.power > 0` block even begins (`battle_manager.gd` ~L1008-1013) — structurally outside `_do_multi_hit_sequence` entirely, unaffected by construction. |
+| Contact effects (Static/Rough Skin/Poison Point/etc.) | Per hit | Source's MoveEnd dispatch table re-runs on every hit (confirmed via the `+=` accumulation in `MoveEndSetValues` below, which would be meaningless if MoveEnd only ran once) — reproduced for free by calling `_do_damaging_hit` once per loop iteration. |
+| King's Rock / Razor Fang | Per hit | Same MoveEnd-repeats-per-hit basis as contact effects — each hit independently rolls. |
+| Recoil / drain + Liquid Ooze | Per hit (moot for this roster) | Same basis; confirmed via direct grep that none of the 30 in-scope moves set `recoil_percent`/`drain_percent`, so this is architecturally correct but untriggerable by the actual move roster. |
+| Survive-lethal-hit chain (Sturdy/Focus Band/Focus Sash) | Per hit, self-limiting | Sturdy's own `IsBattlerAtMaxHp` gate and Focus Sash's own one-time consumption already correctly restrict each to firing at most once per sequence WITHOUT needing extra gating — real behavior (a Sturdy holder dies on hit 2 of a multi-hit move, not saved twice) falls out for free. |
+| Hit-reactive abilities (Justified/Rattled/Weak Armor/etc.), Jaboca/Rowap, Rocky Helmet, Sticky Barb, Magician, Air Balloon, Rapid Spin | Per hit | Same MoveEnd-repeats-per-hit basis. |
+| secondary_effect (Twineedle's poison, Double Iron Bash's flinch) | Per hit | Same basis — confirmed via Twineedle's own real 20%-per-hit poison chance (not a single 20% roll for the whole move). |
+| **Shell Bell** | **Once, on the ACCUMULATED total** | The one confirmed exception — `gBattleScripting.savedDmg +=` (`MoveEndSetValues`, `battle_move_resolution.c` L2490) accumulates across every hit; the heal itself only actually fires once the sequence's own MoveEnd loop terminates. A per-hit heal would under-heal vs. the real total due to floor-division truncation (concrete counter-example, also used as this tier's own D4 test fixture: five hits each below the /8 threshold individually still sum to a real, positive heal on the total). |
+| Scale Shot's self stat change | Once | See "two genuine per-move exceptions" above. |
+
+**Parental Bond**: confirmed moot — grep across `scripts/` finds only the
+pre-existing `MoveData.BAN_PARENTAL_BOND` flag bit (unused elsewhere); no
+`ABILITY_PARENTAL_BOND` constant exists anywhere in `ability_manager.gd`. No
+exclusion logic needed.
+
+### Two small, genuinely in-scope side-fixes found and fixed (not silently
+### worked around)
+
+1. **`SE_POISON` didn't exist.** `MoveData`'s `secondary_effect` schema had
+   `SE_TOXIC` (→ badly poisoned) but no way to represent REGULAR poison at
+   all — confirmed via direct inspection of `try_secondary_effect`'s match
+   statement and `_se_to_status`'s mapping. Twineedle — one of this tier's own
+   30 target moves — inflicts regular Poison at 20% per hit
+   (`MOVE_EFFECT_POISON`, not Toxic). Added `SE_POISON = 9`, wired into
+   `try_secondary_effect` and both `_se_to_status`/`_status_to_se` mappings.
+   `_status_to_se`'s own `STATUS_POISON` case previously collapsed to
+   `SE_TOXIC` with a comment reading "no distinct SE for regular poison" —
+   corrected; verified (via grep across every test file) that no existing
+   test asserted the old, wrong mapping for either of its other two call
+   sites (Synchronize reflection, contact-ability status infliction — the
+   latter meaning Poison Point/Poison Touch's `secondary_applied` signal was
+   silently mislabeling regular poison as Toxic before this fix, an
+   independently real, if minor, pre-existing bug this tier's own
+   verification work happened to surface).
+2. **`strike_count`/`multi_hit`/`always_critical_hit` were never wired into
+   `gen_moves.py`'s `DEFAULTS`/`FIELD_ORDER` at all** — confirmed via direct
+   grep. The `MoveData` schema fields existed (dormant, per `[M17n-5]`'s own
+   deferral note), but the GENERATOR itself had no path to ever emit them to
+   a `.tres` file, meaning even a hand-authored `MOVES` dict entry setting
+   `strike_count=3` would have been silently dropped by `render()`'s
+   `value == default` skip (comparing against Python's own implicit
+   `None`-default) before this fix. `always_critical_hit` was discovered the
+   same way while authoring Surging Strikes' own entry (this tier's first
+   move ever needing it) — not a separate investigation, the same class of
+   gap surfacing a second time in the same file.
+
+### A real correctness pitfall found and avoided (matching `[M18.5f]`'s own
+### precedent of finding this class of bug before it shipped)
+
+The generic damage-move `secondary_effect` dispatch's shared "else" branch
+assumes the secondary effect just SET `target.status`/`confusion_turns`
+(true for `SE_BURN`..`SE_CONFUSION`), then immediately checks the target's
+CURRENT status against a held cure-berry. This branch is reused unchanged by
+the multi-hit loop (since it lives inside `_do_damaging_hit`, called once per
+hit) — no NEW pitfall here, since `SE_WRAP`'s own dedicated branch
+(`[M18.5f]`) and the existing `SE_FLINCH` branch already correctly bypass it;
+Twineedle's `SE_POISON` correctly routes through the SAME "else" branch as
+every other status-inflicting secondary effect, since `try_apply_status` DOES
+set `target.status` — confirmed this doesn't need its own carve-out the way
+`SE_WRAP`/`SE_FLINCH` did, verified by tracing the exact same reasoning
+`[M18.5f]`'s decisions.md entry applied rather than assuming symmetry.
+
+### Implementation
+
+- `battle_manager.gd`: `_do_damaging_hit` refactored from `void` to `int`
+  (returns real HP damage dealt to the target; 0 in every early-return path —
+  Wonder Guard, absorb-family, Substitute-absorbed), plus a new
+  `suppress_shell_bell: bool = false` trailing param. New
+  `_resolve_multi_hit_count(move) -> int` and
+  `_do_multi_hit_sequence(attacker, target, move, helping_hand,
+  power_override) -> void` (the main loop, replacing a single
+  `_do_damaging_hit` call in the move-execution dispatch when
+  `move.multi_hit or move.strike_count > 1`). New `_force_multi_hit_count`
+  seam (same null-sentinel convention as every other `_force_*` roll). New
+  `multi_hit_sequence_finished` signal. `_se_to_status`/`_status_to_se`
+  extended/corrected for `SE_POISON`.
+- `move_data.gd`: `SE_POISON = 9`; `is_triple_kick`/`is_scale_shot` fields;
+  `strike_count`/`multi_hit`'s own doc comments substantially expanded with
+  the full Step 0 citation set.
+- `status_manager.gd`: `try_secondary_effect` extended with an `SE_POISON`
+  case (`try_apply_status(defender, BattlePokemon.STATUS_POISON, ...)`).
+- `gen_moves.py`: `SE_POISON = 9`; `strike_count`/`multi_hit`/
+  `always_critical_hit` added to `DEFAULTS`/`FIELD_ORDER` (the two
+  pre-existing generator gaps above); 30 new move entries, each citing its
+  own `moves_info.h` values individually (not assumed uniform across the
+  family beyond the shared `multi_hit`/`strike_count` mechanism).
+
+### Testing
+
+New `m18_5g_test.gd`/`.tscn`, 315/315 assertions, stable across 6 consecutive
+reruns. Sectioned by MECHANISM CONCERN per the task's own instruction, not by
+individual move (only Triple Kick/Triple Axel get a dedicated section, for
+their genuinely-differing per-hit-accuracy/escalating-power shape). Section
+A: move-data spot-checks (all 30 moves). Section B: `_resolve_multi_hit_count`
+direct unit tests (fixed-count moves, `_force_multi_hit_count` seam pinning
+each of 2/3/4/5, statistical distribution n=4000 confirming 35/35/15/15).
+Section C: mid-sequence termination (faint, Substitute-absorbs-then-continues
+vs. Substitute-breaks-then-stops discriminator, wholly-immune-stops-after-1).
+Section D: per-hit-vs-once-per-move, one sub-test per confirmed mechanism
+(PP via signal-snapshot on the first `move_executed` — NOT a post-battle
+read, since `start_battle` runs to completion and would reflect however many
+additional turns happened to occur; Rough Skin recoil per-hit via forced
+rolls; King's Rock flinch per-hit via forced rolls; Shell Bell's accumulated-
+total heal via a deterministic forced-roll counter-example where every
+individual hit floors to a 0 heal but the summed total doesn't; Twineedle's
+per-hit poison via a two-independent-rolls statistical check; Scale Shot's
+once-only stat change). Section E: Triple Kick's escalating power (a
+tolerance-banded pairwise comparison, NOT an exact-multiple assertion — the
+damage formula chains several independent `floor()` divisions, so doubling/
+tripling the power input does not produce an exactly-doubled/tripled output;
+asserting exact multiples was an early test-authoring mistake, caught and
+fixed, not an implementation defect) and independent per-hit accuracy
+(a forced miss on hit 2+ stops the sequence). Section F: full-battle
+integration through the real move-execution dispatch.
+
+Four test-authoring bugs were found and fixed while getting this file green,
+none an implementation defect: (1) forgetting `[M18.5f]`'s own already-
+documented `max_hp = base_hp + 60` (level-50/IV0/EV0) lesson a second time,
+hardcoding `200` instead of reading `.max_hp` dynamically, across four C-
+section assertions; (2) C1's chosen stats happened to make the target die on
+EXACTLY the forced hit count, making "stopped early" indistinguishable from
+"used all forced hits" — fixed by directly setting a small `current_hp`
+instead of relying on computed damage to coincidentally undershoot; (3) D2's
+Rough Skin fixture used Bullet Seed, a ballistic (non-contact) move, so Rough
+Skin could never fire regardless of any implementation — switched to Comet
+Punch; (4) a manually-constructed `BattleManager` with `_combatants`/
+`_turn_order` set but `_chosen_switch_slots` left at its empty default
+crashed `_is_last_to_move` with an out-of-bounds `Array[int]` read — fixed by
+sizing `_chosen_switch_slots` to match, the same class of "manually-
+constructed BattleManager needs its state populated consistently" lesson
+`[M18.5d-3]`/`[M18.5f]` already established, just a different specific field.
+
+### Regression
+
+`m18_5g_test.tscn` 315/315 (new, stable across 6 reruns). Per the task's own
+explicit instruction to treat this the way `[M18t]`'s wide-touching
+regression was scoped (NOT a routine 2-3-suite check, given how many existing
+mechanisms `_do_damaging_hit`'s refactor and the new per-hit loop touch): 18
+suites run, all clean — `item_registry_test` 309/309, `damage_test` 24/24,
+`move_test` 49/49, `stat_test` 78/78, `tier3_test` 62/62 (recoil/drain
+moves), `tier4_test` 86/86 (Substitute, Counter/Mirror Coat), `m17c_test`
+85/85 (contact status — Poison Point's own origin suite, directly relevant to
+the `SE_POISON` fix), `m17j_test` 48/48 (Pickpocket/Magician/Symbiosis),
+`m17n5_test` 78/78 (Sturdy, Serene Grace), `m17n8_test` 58/58 (Aftermath/
+Innards Out/Corrosion), `m17n9_test` 63/63 (Magic Guard/Infiltrator/Magic
+Bounce), `m18k_test` 16/16 (King's Rock — directly relevant), `m18q_test`
+16/16 (Shell Bell/Big Root — directly relevant, the most load-bearing suite
+given the `_do_damaging_hit` return-type refactor), `m18d_test` 19/19
+(Jaboca/Rowap), `m18p_test` 33/33 (Rocky Helmet/Sticky Barb), `m18o_test`
+19/19 (Focus Sash/Focus Band survive-lethal chain), `m18_5f_test` 137/137
+(Wrap-family — shares the generic `secondary_effect` dispatch and the
+`_status_to_se`/`_se_to_status` mappings this tier corrected), `m18_5d2_test`
+49/49 (Attract/Cute Charm — `secondary_applied` signal patterns).
+
+### Docs
+
+CLAUDE.md's status section updated noting M18.5g complete and Skill Link/
+Loaded Dice now unblocked (still deferred, not implemented here — matching
+Grip Claw/Binding Band's own precedent from `[M18.5f]`). Recommends M18.5h
+(Nature/IV/EV) as the next tier — the last of the three independent M18.5
+Phase 1 infrastructure tracks, now that binding (`[M18.5f]`) and multi-hit
+(this entry) are both complete.

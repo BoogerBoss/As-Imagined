@@ -31,7 +31,38 @@ const BAN_DAMP: int          = 1 << 13
 @export var accuracy: int = 100     # 0 = always hits
 @export var pp: int = 5
 @export var priority: int = 0
+# [M18.5g] strike_count: fixed hit count for the 16 strikeCount-family multi-hit
+#   moves (Bonemerang/Double Hit/Double Iron Bash/Double Kick/Dragon Darts/Dual
+#   Chop/Dual Wingbeat/Gear Grind/Surging Strikes/Tachyon Cutter/Triple Axel/
+#   Triple Dive/Triple Kick/Twineedle/Twin Beam — Population Bomb's strikeCount=10
+#   is confirmed but deliberately excluded from this project's scope, see below).
+#   A single accuracy check gates the WHOLE sequence (only hit 1 rolls; hits 2+
+#   auto-land) for every one of these EXCEPT Triple Kick/Triple Axel, which each
+#   roll independently — see is_triple_kick. Source: GetMoveStrikeCount reads this
+#   field directly; ShouldSkipAccuracyCalcPastFirstHit (battle_move_resolution.c
+#   L2137-2151) confirms the single-accuracy-check default and its two exceptions.
+#   Population Bomb EXCLUDED: unlike every other strikeCount move, it also rolls
+#   accuracy independently per hit (grouped with Triple Kick/Axel in that same
+#   exception list) AND has a uniquely-shaped Loaded Dice interaction
+#   (RandomUniform(4,10) instead of the max-4-5 pattern every other multi-hit
+#   move's Loaded Dice uses) — a genuinely higher complexity class than the other
+#   30 moves this tier resolves, flagged for a future tier rather than built here.
 @export var strike_count: int = 1   # number of hits; defaults to 1
+# [M18.5g] multi_hit: the 15 variable-hit moves (Arm Thrust/Barrage/Bone Rush/
+#   Bullet Seed/Comet Punch/Double Slap/Fury Attack/Fury Swipes/Icicle Spear/Pin
+#   Missile/Rock Blast/Scale Shot/Spike Cannon/Tail Slap/Water Shuriken). Hit
+#   count rolled ONCE when the move is used: 35% 2 hits / 35% 3 hits / 15% 4 hits /
+#   15% 5 hits — this project's default GEN_LATEST config maps to the Gen5+
+#   branch of SetRandomMultiHitCounter (battle_move_resolution.c L2304-2312); the
+#   OLDER 37.5/37.5/12.5/12.5 weighting (the figure commonly cited without a
+#   generation qualifier) is a DIFFERENT, pre-Gen5 branch of that same function
+#   and is not modeled here, matching this project's established "config defaults
+#   to GEN_LATEST, older branches not reproduced" precedent (e.g. B_BINDING_TURNS
+#   in [M18.5f]). Skill Link (ability, unblocked but not implemented this tier —
+#   would force exactly 5) and Loaded Dice (item, likewise — would roll uniformly
+#   4-5 instead of the weighted distribution) both hook in at this SAME roll site;
+#   deferred per this tier's own mechanism-only scope, matching Grip Claw's
+#   precedent from [M18.5f].
 @export var multi_hit: bool = false # random multi-hit (overrides strike_count)
 @export var target: int = 0         # MoveTarget enum id
 
@@ -115,6 +146,16 @@ const SE_FLINCH: int    = 7
 #   similarity. See BattlePokemon.wrapped_by for the applied-state field and
 #   AbilityManager.is_trapped() for the switch-blocking half.
 const SE_WRAP: int      = 8
+# [M18.5g] SE_POISON: a small, genuinely in-scope side-fix, not a tangent — this
+#   schema had SE_TOXIC (→ BattlePokemon.STATUS_TOXIC, badly poisoned) but NO way
+#   to represent regular (non-toxic) poison as a move's secondary effect at all,
+#   confirmed via direct inspection of try_secondary_effect's match statement and
+#   _se_to_status's mapping (neither had a STATUS_POISON case). Twineedle — one of
+#   this tier's own 31 target moves — inflicts regular Poison at a 20% chance per
+#   hit (MOVE_EFFECT_POISON, moves_info.h MOVE_TWINEEDLE, .chance = 20), which
+#   would have been mis-cast as Toxic without this addition. Needed to correctly
+#   implement an in-scope move, not a speculative unrelated fix.
+const SE_POISON: int    = 9
 
 @export var secondary_effect: int = 0   # SE_* constant above
 @export var secondary_chance: int = 0   # 0 = guaranteed; 1–100 = % roll
@@ -237,6 +278,30 @@ const SEMI_INV_UNDERWATER: int  = 3  # Dive — underwater on turn 1
 # Source: battle_script_commands.c :: Cmd_tryinfatuating (L7613-7650);
 #   battle_move_resolution.c :: CancelerInfatuation (L460-479, 50% roll).
 @export var is_attract: bool = false
+
+# [M18.5g] is_triple_kick: Triple Kick / Triple Axel — the two EFFECT_TRIPLE_KICK
+# moves, the only members of the 31-move multi-hit family where EACH hit (not just
+# the first) rolls its own independent accuracy check, and where per-hit power
+# escalates ×1/×2/×3 (base power × the 1-indexed hit number) rather than staying
+# flat. Confirmed via ShouldSkipAccuracyCalcPastFirstHit (battle_move_resolution.c
+# L2137-2151), which explicitly excepts EFFECT_TRIPLE_KICK (and EFFECT_POPULATION_
+# BOMB, excluded from this project's scope — see strike_count's own doc comment)
+# from the "only hit 1 checks accuracy" rule every other strike_count/multi_hit
+# move follows; escalation formula confirmed via battle_util.c L6165-6167
+# (`basePower *= 1 + GetMoveStrikeCount(move) - gMultiHitCounter`, which reduces
+# to a flat ×hit_number multiplier for a fixed-strikeCount move). Both moves also
+# set strike_count=3 (the fixed-hit path is still used to determine the MAXIMUM
+# hit count reachable — 3 — even though each hit can independently miss and stop
+# the sequence early, unlike every other strike_count move).
+@export var is_triple_kick: bool = false
+
+# [M18.5g] is_scale_shot: a ONE-TIME self stat change (-1 Defense, +1 Speed)
+# applied ONCE after the whole multi-hit sequence completes, gated on at least one
+# hit having landed — NOT per hit. Confirmed via source's MoveEnd-table dispatch
+# (battle_move_resolution.c L3620-3628, case EFFECT_SCALE_SHOT), the same
+# once-at-sequence-end shape as Shell Bell's own accumulate-then-apply-once
+# pattern (see BattleManager._do_multi_hit_sequence's own doc comment).
+@export var is_scale_shot: bool = false
 
 # is_bide: stores damage taken over 2 waiting turns then releases 2× total.
 # Priority +1 (Gen 4+). Locks into Bide via charging_move.

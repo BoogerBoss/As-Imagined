@@ -60,6 +60,7 @@ SE_TOXIC     = 5
 SE_CONFUSION = 6
 SE_FLINCH    = 7
 SE_WRAP      = 8  # [M18.5f] Bind/Wrap-family trap — see move_data.gd's own doc comment
+SE_POISON    = 9  # [M18.5g] regular (non-toxic) poison — see move_data.gd's own doc comment
 
 # ── Semi-invulnerable state constants (MoveData.SEMI_INV_* values) ───────────
 SEMI_INV_NONE        = 0
@@ -828,6 +829,137 @@ MOVES = [
     {"id": 747, "name": "Thunder Cage",
      "type": TYPE_ELECTRIC, "category": SPEC, "power": 80, "accuracy": 90, "pp": 15,
      "secondary_effect": SE_WRAP},
+
+    # [M18.5g] Multi-hit family (30 of the 31 real-source strikeCount/multiHit
+    # moves — Population Bomb(880) EXCLUDED, see move_data.gd's strike_count doc
+    # comment for why). Per-move power/accuracy/pp/category/type/makesContact all
+    # confirmed individually from moves_info.h (this project targets
+    # B_UPDATED_MOVE_DATA >= GEN_7 values throughout, matching every other move
+    # in this file). The 15 multi_hit=True moves roll a shared 2/3/4/5-hit
+    # distribution at use time (see MoveData.multi_hit's own doc comment); the
+    # 16 strike_count moves (Population Bomb aside) hit a fixed number of times.
+    {"id": 3, "name": "Double Slap",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 15, "accuracy": 85, "pp": 10,
+     "makes_contact": True, "multi_hit": True},
+    {"id": 4, "name": "Comet Punch",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 18, "accuracy": 85, "pp": 15,
+     "makes_contact": True, "punching_move": True, "multi_hit": True},
+    {"id": 24, "name": "Double Kick",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 30, "accuracy": 100, "pp": 30,
+     "makes_contact": True, "strike_count": 2},
+    {"id": 31, "name": "Fury Attack",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 15, "accuracy": 85, "pp": 20,
+     "makes_contact": True, "multi_hit": True},
+    # Twineedle: NOT makesContact in this reference clone's own data (confirmed
+    # by direct inspection, not assumed from the flavor text or real-game
+    # expectations). 20% chance per hit to inflict regular Poison — reuses the
+    # newly-added SE_POISON, rolling independently on each hit via the same
+    # generic per-hit secondary_effect dispatch every other move already uses.
+    {"id": 41, "name": "Twineedle",
+     "type": TYPE_BUG, "category": PHYS, "power": 25, "accuracy": 100, "pp": 20,
+     "strike_count": 2, "secondary_effect": SE_POISON, "secondary_chance": 20},
+    {"id": 42, "name": "Pin Missile",
+     "type": TYPE_BUG, "category": PHYS, "power": 25, "accuracy": 95, "pp": 20,
+     "multi_hit": True},
+    {"id": 131, "name": "Spike Cannon",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 20, "accuracy": 100, "pp": 15,
+     "multi_hit": True},
+    {"id": 140, "name": "Barrage",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 15, "accuracy": 85, "pp": 20,
+     "ballistic_move": True, "multi_hit": True},
+    {"id": 154, "name": "Fury Swipes",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 18, "accuracy": 80, "pp": 15,
+     "makes_contact": True, "multi_hit": True},
+    {"id": 155, "name": "Bonemerang",
+     "type": TYPE_GROUND, "category": PHYS, "power": 50, "accuracy": 90, "pp": 10,
+     "strike_count": 2},
+    # Triple Kick: fixed 3-hit MAXIMUM, but each hit independently rolls
+    # accuracy (90%) and hits with escalating power (×1/×2/×3) — is_triple_kick
+    # dispatches both halves in BattleManager._do_multi_hit_sequence.
+    {"id": 167, "name": "Triple Kick",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 10, "accuracy": 90, "pp": 10,
+     "makes_contact": True, "strike_count": 3, "is_triple_kick": True},
+    {"id": 198, "name": "Bone Rush",
+     "type": TYPE_GROUND, "category": PHYS, "power": 25, "accuracy": 90, "pp": 10,
+     "multi_hit": True},
+    {"id": 292, "name": "Arm Thrust",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 15, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "multi_hit": True},
+    {"id": 331, "name": "Bullet Seed",
+     "type": TYPE_GRASS, "category": PHYS, "power": 25, "accuracy": 100, "pp": 30,
+     "ballistic_move": True, "multi_hit": True},
+    {"id": 333, "name": "Icicle Spear",
+     "type": TYPE_ICE, "category": PHYS, "power": 25, "accuracy": 100, "pp": 30,
+     "multi_hit": True},
+    {"id": 350, "name": "Rock Blast",
+     "type": TYPE_ROCK, "category": PHYS, "power": 25, "accuracy": 90, "pp": 10,
+     "ballistic_move": True, "multi_hit": True},
+    {"id": 458, "name": "Double Hit",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 35, "accuracy": 90, "pp": 10,
+     "makes_contact": True, "strike_count": 2},
+    {"id": 530, "name": "Dual Chop",
+     "type": TYPE_DRAGON, "category": PHYS, "power": 40, "accuracy": 90, "pp": 15,
+     "makes_contact": True, "strike_count": 2},
+    {"id": 541, "name": "Tail Slap",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 25, "accuracy": 85, "pp": 10,
+     "makes_contact": True, "multi_hit": True},
+    {"id": 544, "name": "Gear Grind",
+     "type": TYPE_STEEL, "category": PHYS, "power": 50, "accuracy": 85, "pp": 15,
+     "makes_contact": True, "strike_count": 2},
+    # Water Shuriken: real source's Greninja-Ash/Battle-Bond species+numOfHits
+    # override (EFFECT_SPECIES_POWER_OVERRIDE) is a form-change mechanic this
+    # project has no infrastructure for (no Battle Bond, no Ash-Greninja form) —
+    # flagged, not built, matching this project's established "flag doubles/
+    # form-only gaps" precedent. The GENERAL case (any other species) is a plain
+    # multi_hit move: power=15, priority=+1, Special category under this
+    # project's default B_UPDATED_MOVE_DATA >= GEN_7 config.
+    {"id": 594, "name": "Water Shuriken",
+     "type": TYPE_WATER, "category": SPEC, "power": 15, "accuracy": 100, "pp": 20,
+     "priority": 1, "multi_hit": True},
+    # Double Iron Bash: 30% per-hit flinch chance — reuses the existing SE_FLINCH
+    # dispatch, rolling independently on each hit for free via the same generic
+    # per-hit secondary_effect mechanism Twineedle's poison chance uses above.
+    {"id": 689, "name": "Double Iron Bash",
+     "type": TYPE_STEEL, "category": PHYS, "power": 60, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "punching_move": True, "strike_count": 2,
+     "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+    # Dragon Darts: real source's TARGET_SMART doubles-redirect (its second hit
+    # can retarget to the ally if the first target is unaffected) is a doubles-
+    # only nuance, flagged not built, matching Shell Bell's own established
+    # precedent — in singles (this project's current test scope) both hits
+    # simply land on the one opponent, which TARGET_SELECTED already produces.
+    {"id": 697, "name": "Dragon Darts",
+     "type": TYPE_DRAGON, "category": PHYS, "power": 50, "accuracy": 100, "pp": 10,
+     "strike_count": 2},
+    # Scale Shot: -1 Defense / +1 Speed to the user ONCE after the sequence,
+    # gated on at least one hit landing — is_scale_shot dispatches this in
+    # BattleManager._do_multi_hit_sequence, matching Shell Bell's own
+    # once-at-the-end pattern.
+    {"id": 727, "name": "Scale Shot",
+     "type": TYPE_DRAGON, "category": PHYS, "power": 25, "accuracy": 90, "pp": 20,
+     "multi_hit": True, "is_scale_shot": True},
+    {"id": 741, "name": "Triple Axel",
+     "type": TYPE_ICE, "category": PHYS, "power": 20, "accuracy": 90, "pp": 10,
+     "makes_contact": True, "strike_count": 3, "is_triple_kick": True},
+    {"id": 742, "name": "Dual Wingbeat",
+     "type": TYPE_FLYING, "category": PHYS, "power": 40, "accuracy": 90, "pp": 10,
+     "makes_contact": True, "strike_count": 2},
+    {"id": 746, "name": "Surging Strikes",
+     "type": TYPE_WATER, "category": PHYS, "power": 25, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "punching_move": True, "strike_count": 3,
+     "always_critical_hit": True},
+    {"id": 793, "name": "Triple Dive",
+     "type": TYPE_WATER, "category": PHYS, "power": 30, "accuracy": 95, "pp": 10,
+     "makes_contact": True, "strike_count": 3},
+    {"id": 814, "name": "Twin Beam",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 40, "accuracy": 100, "pp": 10,
+     "strike_count": 2},
+    # Tachyon Cutter: source's .accuracy = 0 means ALWAYS HITS (this project's
+    # own convention, matching every other always-hits move in this file), not
+    # "0% accuracy" — confirmed against move_data.gd's accuracy field comment.
+    {"id": 839, "name": "Tachyon Cutter",
+     "type": TYPE_STEEL, "category": SPEC, "power": 50, "accuracy": 0, "pp": 10,
+     "slicing_move": True, "strike_count": 2},
 ]
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──
@@ -841,6 +973,13 @@ DEFAULTS = {
     "punching_move":       False,
     "priority":            0,
     "critical_hit_stage":  0,
+    # [M18.5g] always_critical_hit: a genuine second pre-existing gap in the same
+    # shape as strike_count/multi_hit — the MoveData schema field already existed
+    # (M16a-era), but was never added to this generator's own DEFAULTS/FIELD_ORDER
+    # at all, confirmed via direct grep. Surging Strikes (this tier's own move,
+    # always_critical_hit=True) is the first move in this project's roster to
+    # actually need it, surfacing the gap.
+    "always_critical_hit": False,
     "thaws_user":          False,
     "powder_move":         False,
     "sound_move":          False,
@@ -929,6 +1068,19 @@ DEFAULTS = {
     # NOT added to blocked_by_aroma_veil's list, see that field's own doc comment
     # in move_data.gd for why).
     "is_attract":                 False,
+    # M18.5g fields. strike_count/multi_hit are a genuine second gap beyond the
+    # dormant MoveData schema fields themselves: confirmed via direct grep that
+    # NEITHER was ever present in this generator's own DEFAULTS/FIELD_ORDER at
+    # all — meaning even a hand-authored MOVES entry setting strike_count=3 would
+    # have been silently dropped by render()'s `value == default` skip (comparing
+    # against Python's own implicit None-default) before this fix. is_triple_kick
+    # (Triple Kick/Triple Axel's per-hit accuracy + escalating power) and
+    # is_scale_shot (Scale Shot's once-after-the-sequence self stat change) are
+    # newly-added fields with no such pre-existing gap.
+    "strike_count":               1,
+    "multi_hit":                  False,
+    "is_triple_kick":             False,
+    "is_scale_shot":              False,
 }
 
 HEADER = """\
@@ -944,6 +1096,7 @@ script = ExtResource("1")
 FIELD_ORDER = [
     "type", "category", "power", "accuracy", "pp",
     "makes_contact", "punching_move", "priority", "critical_hit_stage",
+    "always_critical_hit",
     "thaws_user", "powder_move", "sound_move",
     "secondary_effect", "secondary_chance",
     "stat_change_stat", "stat_change_amount", "stat_change_self",
@@ -982,6 +1135,8 @@ FIELD_ORDER = [
     "bounceable",
     # M18.5d-2 fields
     "is_attract",
+    # M18.5g fields
+    "strike_count", "multi_hit", "is_triple_kick", "is_scale_shot",
 ]
 
 

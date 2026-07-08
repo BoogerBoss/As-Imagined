@@ -940,6 +940,9 @@ static func try_secondary_effect(
 			return try_apply_status(defender, BattlePokemon.STATUS_SLEEP, null, null, ng_active, attacker, weather, move)
 		MoveData.SE_TOXIC:
 			return try_apply_status(defender, BattlePokemon.STATUS_TOXIC, null, null, ng_active, attacker, weather, move)
+		MoveData.SE_POISON:
+			# [M18.5g] Regular (non-toxic) poison — Twineedle's own secondary effect.
+			return try_apply_status(defender, BattlePokemon.STATUS_POISON, null, null, ng_active, attacker, weather, move)
 		MoveData.SE_CONFUSION:
 			return try_apply_confusion(defender, null, ng_active, attacker, move)
 		MoveData.SE_FLINCH:
