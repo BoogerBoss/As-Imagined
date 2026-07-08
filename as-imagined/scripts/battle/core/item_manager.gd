@@ -546,6 +546,100 @@ const HOLD_EFFECT_MIRROR_HERB: int = 123     # Copies an opponent's move-driven
                                               # occur before the single-use item
                                               # is already spent.
 
+# M18p: Contact-reactive damage family (4 items). Values re-derived
+# programmatically, cross-validated against 6 pre-existing constants
+# (MACHO_BRACE=24, QUICK_CLAW=26, FOCUS_BAND=38, SHELL_BELL=44, BIG_ROOT=58,
+# FOCUS_SASH=67) plus RED_CARD=97/EJECT_BUTTON=100 landing at their
+# already-established values, zero mismatches. Despite the "contact-reactive
+# family" grouping, Protective Pads and Punching Glove sit at TWO DIFFERENT
+# LEVELS of the same source function pair (IsMoveMakingContact vs. its
+# CanBattlerAvoidContactEffects wrapper) — see AbilityManager.move_makes_contact
+# and .move_triggers_contact_retaliation's own doc comments for the full
+# citation; this is the real "don't assume family symmetry" finding for this
+# tier, not a contact-vs-category confusion like [M18d]'s.
+const HOLD_EFFECT_STICKY_BARB: int = 70       # TWO independent triggers, source-
+                                               # confirmed genuinely unrelated to
+                                               # each other beyond sharing an
+                                               # item: (a) TryStickyBarbOnTargetHit
+                                               # (battle_hold_effects.c L564-583) —
+                                               # contact-gated, transfers the item
+                                               # from holder to attacker, explicitly
+                                               # "No sticky hold checks" in source
+                                               # (confirmed: CanStealItem/
+                                               # CanBattlerGetOrLoseItem, read in
+                                               # full, have ZERO Sticky Hold
+                                               # reference anywhere — a genuine
+                                               # exception to this project's own
+                                               # _try_steal_item's baked-in Sticky
+                                               # Hold gate, which Pickpocket/
+                                               # Magician both rely on unmodified);
+                                               # (b) TryStickyBarbOnEndTurn
+                                               # (L585-599) — unconditional maxHP/8
+                                               # self-damage every end of turn,
+                                               # gated by the HOLDER's own Magic
+                                               # Guard, dispatched via IsOrbsActivation
+                                               # alongside Flame/Toxic Orb — NOT
+                                               # contact-related at all.
+const HOLD_EFFECT_ROCKY_HELMET: int = 95      # Contact-gated ONLY (no category
+                                               # check) — TryRockyHelmet
+                                               # (battle_hold_effects.c L236-254):
+                                               # holder takes direct damage from a
+                                               # contact move → maxHP/6 retaliation
+                                               # to the ATTACKER, gated on attacker
+                                               # alive and the ATTACKER's own Magic
+                                               # Guard (not the holder's — same
+                                               # shape [M18d]'s Jaboca/Rowap already
+                                               # established for "who takes the
+                                               # damage owns the Magic Guard check").
+                                               # Not consumed (holdEffectParam=0,
+                                               # passive item).
+const HOLD_EFFECT_PROTECTIVE_PADS: int = 109  # Has NO ItemBattleEffects case of
+                                               # its own — confirmed via grep, it's
+                                               # purely a gate inside
+                                               # CanBattlerAvoidContactEffects
+                                               # (battle_util.c L5717-5726), ONE
+                                               # LEVEL ABOVE IsMoveMakingContact,
+                                               # applied at every genuine
+                                               # contact-RETALIATION site (Rough
+                                               # Skin/Iron Barbs/Static/Flame Body/
+                                               # Poison Point/Effect Spore/Mummy/
+                                               # Wandering Spirit/Gooey/Tangling
+                                               # Hair/Pickpocket/Rocky Helmet/Sticky
+                                               # Barb-transfer/Aftermath — confirmed
+                                               # by reading every
+                                               # CanBattlerAvoidContactEffects call
+                                               # site directly). Deliberately does
+                                               # NOT apply to Tough Claws' power
+                                               # boost, Poison Touch's own contact
+                                               # check, or Fluffy's defense
+                                               # modifier — those three call the
+                                               # narrower IsMoveMakingContact
+                                               # directly in source, bypassing the
+                                               # Protective Pads gate entirely
+                                               # (confirmed via direct grep of every
+                                               # raw IsMoveMakingContact call site).
+const HOLD_EFFECT_PUNCHING_GLOVE: int = 124   # TWO parts, source-confirmed
+                                               # genuinely different in scope from
+                                               # Protective Pads above despite the
+                                               # family resemblance: (a) ×1.1 power
+                                               # on punching moves
+                                               # (GetAttackerItemsModifier,
+                                               # battle_util.c L6664-6666), same
+                                               # modifier chain as Iron Fist
+                                               # ([M17n-5]'s move_power_modifier_uq412,
+                                               # reusing the already-wired
+                                               # `punching_move` MoveData flag); (b)
+                                               # strips the contact flag from the
+                                               # HOLDER's own punching moves —
+                                               # lives INSIDE IsMoveMakingContact
+                                               # itself (battle_util.c L5735-5738),
+                                               # the SAME level as Long Reach's
+                                               # exemption, so it universally
+                                               # affects EVERY consumer of
+                                               # move_makes_contact (Tough Claws
+                                               # included), unlike Protective Pads'
+                                               # narrower retaliation-only scope.
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -568,6 +662,13 @@ const UQ412_EXPERT_BELT: int     = 4915   # 1.2 × (hardcoded UQ_4_12(1.2) in so
                                            # different pipeline stage, different
                                            # source formula (plain macro rounding,
                                            # not PercentToUQ4_12)
+const UQ412_PUNCHING_GLOVE: int  = 4506   # 1.1 × (M18p) — round(1.1*4096)=4506, a
+                                           # hardcoded UQ_4_12(1.1) literal in source
+                                           # (battle_util.c L6664-6666), NOT the
+                                           # FLOORED param-driven formula Muscle
+                                           # Band/Wise Glasses use — verified
+                                           # directly, not assumed to share their
+                                           # rounding.
 
 
 # ── Attack-stat item modifier (applied to stat, BEFORE base formula) ──────────
@@ -1126,6 +1227,13 @@ static func move_power_modifier_uq412(mon: BattlePokemon, move: MoveData, ng_act
 		return 4096 + (item.hold_effect_param * 4096) / 100
 	if item.hold_effect == HOLD_EFFECT_WISE_GLASSES and move.category == 1:
 		return 4096 + (item.hold_effect_param * 4096) / 100
+	# M18p: Punching Glove — x1.1 on the HOLDER's own punching moves. Source:
+	# GetAttackerItemsModifier's HOLD_EFFECT_PUNCHING_GLOVE case (battle_util.c
+	# L6664-6666), same switch EXPERT_BELT/PLATE occupy, same pipeline stage as
+	# the type-boost family — a plain data check here, reusing the already-wired
+	# `punching_move` MoveData flag (Iron Fist's own field).
+	if item.hold_effect == HOLD_EFFECT_PUNCHING_GLOVE and move.punching_move:
+		return UQ412_PUNCHING_GLOVE
 	if item.hold_effect != HOLD_EFFECT_TYPE_POWER and item.hold_effect != HOLD_EFFECT_PLATE:
 		return 4096
 	if move.type != item.hold_effect_param:
@@ -1894,3 +2002,51 @@ static func holds_eject_pack(mon: BattlePokemon, ng_active: bool = false) -> boo
 static func holds_mirror_herb(mon: BattlePokemon, ng_active: bool = false) -> bool:
 	var item: ItemData = effective_held_item(mon, ng_active)
 	return item != null and item.hold_effect == HOLD_EFFECT_MIRROR_HERB
+
+
+# ── M18p: Contact-reactive damage family (4 items) ──────────────────────────────
+#
+# Pure data checks / pure magnitude functions only — contact-gating (via
+# AbilityManager.move_makes_contact / .move_triggers_contact_retaliation),
+# Magic Guard, and consumption timing are all orchestrated by the caller,
+# matching this project's established division of labor for every other
+# reactive item (Jaboca/Rowap, Black Sludge, Red Card/Eject Button).
+
+static func holds_rocky_helmet(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_ROCKY_HELMET
+
+
+# Returns maxHP/6 of the ATTACKER (not the holder) if the HOLDER holds Rocky
+# Helmet, else 0. The caller applies this to attacker.current_hp, matching
+# jaboca_rowap_retaliation_damage's exact division of responsibility.
+static func rocky_helmet_retaliation_damage(
+		holder: BattlePokemon, attacker: BattlePokemon, ng_active: bool = false) -> int:
+	if not holds_rocky_helmet(holder, ng_active):
+		return 0
+	return max(1, attacker.max_hp / 6)
+
+
+static func holds_sticky_barb(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_STICKY_BARB
+
+
+# End-of-turn self-damage half only (TryStickyBarbOnEndTurn) — NOT
+# contact-related, same maxHP/8 shape as black_sludge_damage. Magic Guard
+# gating (on the HOLDER, unlike Rocky Helmet's attacker-side gate) is left to
+# the caller, matching black_sludge_damage's own established pattern.
+static func sticky_barb_damage(mon: BattlePokemon, ng_active: bool = false) -> int:
+	if not holds_sticky_barb(mon, ng_active):
+		return 0
+	return max(1, mon.max_hp / 8)
+
+
+static func holds_protective_pads(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_PROTECTIVE_PADS
+
+
+static func holds_punching_glove(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_PUNCHING_GLOVE

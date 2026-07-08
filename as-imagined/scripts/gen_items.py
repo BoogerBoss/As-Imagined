@@ -161,6 +161,24 @@ HOLD_EFFECT_WHITE_HERB = 23        # resets ALL negative stat stages to 0
 HOLD_EFFECT_EJECT_PACK = 116       # forces the holder to switch on any stat drop
 HOLD_EFFECT_MIRROR_HERB = 123      # copies an opponent's move-driven stat raise
 
+# M18p: Contact-reactive damage family (4 items). Values re-derived
+# programmatically, cross-validated against 6 pre-existing constants plus
+# RED_CARD=97/EJECT_BUTTON=100 landing at their already-established values.
+HOLD_EFFECT_STICKY_BARB = 70       # TWO independent triggers (contact-gated
+                                    # item-transfer to attacker, bypassing
+                                    # Sticky Hold + unconditional maxHP/8 EOT
+                                    # self-damage) — see item_manager.gd's
+                                    # own doc comment for the full citation.
+HOLD_EFFECT_ROCKY_HELMET = 95      # Contact-gated ONLY — maxHP/6 retaliation
+                                    # to the attacker, not consumed.
+HOLD_EFFECT_PROTECTIVE_PADS = 109  # Narrow gate above move_makes_contact,
+                                    # retaliation-effects only — see
+                                    # item_manager.gd's doc comment.
+HOLD_EFFECT_PUNCHING_GLOVE = 124   # x1.1 punching-move power + universal
+                                    # contact-flag strip (same level as
+                                    # Long Reach) for the holder's own
+                                    # punching moves.
+
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
 TYPE_FIGHTING = 2
@@ -442,6 +460,16 @@ ITEMS = [
     {"id": 460, "name": "White Herb",      "hold_effect": HOLD_EFFECT_WHITE_HERB},
     {"id": 509, "name": "Eject Pack",      "hold_effect": HOLD_EFFECT_EJECT_PACK},
     {"id": 769, "name": "Mirror Herb",     "hold_effect": HOLD_EFFECT_MIRROR_HERB},
+
+    # ── M18p: Contact-reactive damage family (4) — Protective Pads and Punching
+    #    Glove sit at two different levels of the same source function pair
+    #    despite the "contact-reactive family" grouping (see item_manager.gd's
+    #    own doc comment for the full citation). No hold_effect_param needed
+    #    for any of the 4.
+    {"id": 496, "name": "Rocky Helmet",     "hold_effect": HOLD_EFFECT_ROCKY_HELMET},
+    {"id": 489, "name": "Sticky Barb",      "hold_effect": HOLD_EFFECT_STICKY_BARB},
+    {"id": 507, "name": "Protective Pads",  "hold_effect": HOLD_EFFECT_PROTECTIVE_PADS},
+    {"id": 760, "name": "Punching Glove",   "hold_effect": HOLD_EFFECT_PUNCHING_GLOVE},
 ]
 
 HEADER = """\

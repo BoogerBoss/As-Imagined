@@ -11520,3 +11520,185 @@ commit.
 recommended next tier(s): **M18p, M18t, M18v, M18x** (all remaining,
 none blocked), or the end-of-M18 legacy-item cleanup pass, per Rob's
 preference.
+
+## [M18p] Contact-reactive damage family (4 items)
+
+Sixteenth M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18p
+section. No cross-tier dependencies. The plan itself flagged reading
+`[M18d]`'s contact-vs-category lesson first — but the real "don't assume
+family symmetry" finding here turned out to be a DIFFERENT shape: not a
+contact-vs-category confusion, but a two-LEVEL split within source's own
+contact-detection function pair.
+
+### Step 0 — finalized list
+
+| Item | ID | `hold_effect` (enum position) | Trigger shape |
+|---|---|---|---|
+| Rocky Helmet | 496 | `ROCKY_HELMET` (95) | Contact-gated ONLY |
+| Sticky Barb | 489 | `STICKY_BARB` (70) | Two independent triggers, one contact-gated, one not |
+| Protective Pads | 507 | `PROTECTIVE_PADS` (109) | A narrow gate, not its own effect |
+| Punching Glove | 760 | `PUNCHING_GLOVE` (124) | Two parts, one universal, one category-gated |
+
+All 4 canonical IDs confirmed against `include/constants/items.h`. All 4
+`HOLD_EFFECT_*` positions re-derived via the established programmatic
+full-enum recount, cross-validated against 6 pre-existing constants
+(`MACHO_BRACE=24`, `QUICK_CLAW=26`, `FOCUS_BAND=38`, `SHELL_BELL=44`,
+`BIG_ROOT=58`, `FOCUS_SASH=67`) plus `RED_CARD=97`/`EJECT_BUTTON=100`
+landing at their already-established `[M18n]` values, zero mismatches.
+
+**The major finding**: source's contact-detection is TWO functions, not
+one. `IsMoveMakingContact` (battle_util.c L5728-5741) is the narrow,
+universal primitive — checked directly by Tough Claws' power boost,
+Poison Touch's own inline check, and (if ever built) Fluffy's defense
+modifier. `CanBattlerAvoidContactEffects` (L5717-5726) wraps it ONE LEVEL
+UP, adding a Protective Pads check, and is the ONLY thing genuine
+contact-RETALIATION consumers call (Rough Skin/Iron Barbs/Static/Flame
+Body/Poison Point/Effect Spore/Mummy/Wandering Spirit/Gooey/Tangling
+Hair/Pickpocket, confirmed by reading every one of its ~11 call sites in
+`battle_util.c` directly, plus Aftermath and now Rocky Helmet/Sticky
+Barb-transfer). **Punching Glove's contact-strip lives INSIDE
+`IsMoveMakingContact` itself** (same level as Long Reach) — universal.
+**Protective Pads' gate lives ONLY in the wrapper** — narrow,
+retaliation-only. Despite both items sharing the "contact-reactive
+family" grouping, they needed to be wired at genuinely different levels
+of this project's own `AbilityManager.move_makes_contact` /
+`.move_triggers_contact_retaliation` (new) function pair to stay
+source-faithful — folding Protective Pads into `move_makes_contact`
+itself would have incorrectly stripped Tough Claws' boost whenever the
+attacker held it.
+
+**Rocky Helmet** (`TryRockyHelmet`, `battle_hold_effects.c` L236-254):
+holder takes direct damage from a contact move → maxHP/6 retaliation to
+the ATTACKER (not consumed, `holdEffectParam=0`), gated on the
+ATTACKER's own Magic Guard — the same "who takes the damage owns the
+Magic Guard check" shape `[M18d]`'s Jaboca/Rowap already established.
+Confirmed via a full-battle discriminator that a non-contact move of
+matching power does NOT trigger it — the mirror-image of `[M18d]`'s own
+finding (Jaboca/Rowap DO fire on non-contact, Rocky Helmet does NOT).
+
+**Sticky Barb** (`battle_hold_effects.c` L564-599) is genuinely TWO
+unrelated mechanisms sharing one item, confirmed by reading both
+functions independently: (a) `TryStickyBarbOnTargetHit` — contact-gated
+transfer of the item onto the attacker (only if the attacker currently
+holds nothing), and (b) `TryStickyBarbOnEndTurn` — unconditional maxHP/8
+self-damage every end of turn, gated by the HOLDER's own Magic Guard,
+dispatched via `IsOrbsActivation` alongside Flame/Toxic Orb, wholly
+unrelated to contact. **A genuine, source-confirmed exception found for
+(a)**: the transfer explicitly bypasses Sticky Hold — source's own
+comment ("`// No sticky hold checks.`") is literally accurate, confirmed
+by reading `CanStealItem` and its `CanBattlerGetOrLoseItem` helper in
+full: neither references Sticky Hold anywhere (Pickpocket's and
+Magician's own Sticky Hold gates are each a SEPARATE explicit check
+bolted on at THEIR OWN call sites, external to `CanStealItem`, not
+something it provides itself). This project's shared
+`AbilityManager._try_steal_item` primitive (Pickpocket/Magician, `[M17j]`)
+had Sticky Hold baked in as an unconditional gate — extended with a new
+`bypass_sticky_hold: bool = false` trailing parameter (defaulting false,
+so Pickpocket/Magician's existing calls are unaffected) rather than
+duplicating the transfer logic, with a new `try_sticky_barb_transfer`
+wrapper passing `true`. Tested explicitly (`P02.10`): a Sticky-Hold-
+holding Sticky Barb holder still has the barb forced onto the attacker.
+
+**Protective Pads**: confirmed to have NO `ItemBattleEffects` case of its
+own — it is purely the gate described above. New
+`AbilityManager.move_triggers_contact_retaliation(attacker, move,
+ng_active)` wraps `move_makes_contact` with the Protective Pads check,
+and REPLACES the existing raw `move_makes_contact` gate at
+`try_contact_effects`'s own top (covering all ~15 abilities it
+dispatches, one shared chokepoint) and at `faint_retaliation_damage`'s
+Aftermath branch — both confirmed, not assumed, to be genuine
+`CanBattlerAvoidContactEffects` consumers in source. `move_makes_contact`
+itself is left untouched for Protective Pads (Tough Claws/Poison Touch
+still call it directly, confirmed unaffected).
+
+**Punching Glove**: two parts, confirmed independently. (a) ×1.1 power
+on punching moves (`GetAttackerItemsModifier`, `battle_util.c`
+L6664-6666, same switch Expert Belt/Plate occupy) — wired into
+`ItemManager.move_power_modifier_uq412` (the ITEM-side power pipeline,
+a different function from `AbilityManager`'s own ability-side
+`move_power_modifier_uq412` that Iron Fist/Tough Claws use), reusing the
+already-wired `punching_move` `MoveData` flag. New `UQ412_PUNCHING_GLOVE
+= 4506` (hardcoded `UQ_4_12(1.1)` literal in source, NOT the FLOORED
+param-driven formula Muscle Band/Wise Glasses use — verified directly).
+(b) strips the contact flag from the HOLDER's own punching moves — added
+directly inside `AbilityManager.move_makes_contact` itself, at the same
+level as the existing Long Reach exemption. Tested explicitly
+(`P04.06`) that a Tough-Claws-ability holder ALSO holding Punching Glove
+loses the Tough Claws boost on its own punching move — the direct proof
+this is a different scope than Protective Pads (`P03.03` proved
+Protective Pads does NOT touch Tough Claws at all).
+
+### Implementation
+
+- New `ItemManager` constants: `HOLD_EFFECT_STICKY_BARB=70`,
+  `HOLD_EFFECT_ROCKY_HELMET=95`, `HOLD_EFFECT_PROTECTIVE_PADS=109`,
+  `HOLD_EFFECT_PUNCHING_GLOVE=124`; new `UQ412_PUNCHING_GLOVE=4506`.
+- New pure functions: `holds_rocky_helmet`, `rocky_helmet_retaliation_damage`
+  (holder, attacker → attacker's maxHP/6), `holds_sticky_barb`,
+  `sticky_barb_damage` (mon → mon's own maxHP/8, same shape as
+  `black_sludge_damage`), `holds_protective_pads`, `holds_punching_glove`.
+  `move_power_modifier_uq412` extended with the Punching Glove branch.
+- `AbilityManager.move_makes_contact` extended with the Punching Glove
+  branch (universal). New `AbilityManager.move_triggers_contact_retaliation`
+  (Protective Pads' narrow gate), swapped in at `try_contact_effects`'s
+  top gate and `faint_retaliation_damage`'s Aftermath branch. `_try_steal_item`
+  extended with `bypass_sticky_hold`; new `try_sticky_barb_transfer` wrapper.
+- `BattleManager._do_damaging_hit`: Rocky Helmet and Sticky Barb-transfer
+  blocks wired in immediately after the existing Jaboca/Rowap block (same
+  attacker-alive-gated neighborhood), before the Magician block. Rocky
+  Helmet reuses `item_damage` (Jaboca/Rowap's own signal shape); Sticky
+  Barb-transfer reuses `item_transferred` (Pickpocket/Magician's shape).
+- `BattleManager._phase_end_of_turn`: Sticky Barb's end-of-turn damage
+  wired in immediately after the existing Black Sludge damage block (same
+  `item_damage`/Magic-Guard-gated/fainted-check shape), not in the
+  Status-Orb neighborhood source's own dispatch groups it with — chosen
+  for mechanical-shape proximity over dispatch-table proximity, matching
+  this project's established convention (`[M18r]`'s own Black Sludge
+  entry).
+- 4 new entries added to `gen_items.py`'s `ITEMS` dict; `.tres`
+  regenerated, 135 items total (131 prior + 4).
+
+### Test results
+
+New `m18p_test.gd`/`.tscn`: **33/33** assertions, 4 sections (P01 Rocky
+Helmet, including the contact-vs-non-contact discriminator and the
+attacker-side Magic Guard check; P02 Sticky Barb, including both
+triggers tested independently, the holder-side Magic Guard discriminator,
+the item-transfer no-contact/occupied-attacker discriminators, and the
+Sticky Hold bypass; P03 Protective Pads, including the
+`move_triggers_contact_retaliation`-vs-`move_makes_contact` level-split
+proof, composition with the EXISTING Rough Skin ability, and the direct
+Aftermath-level proof; P04 Punching Glove, including the contact-strip
+discriminator and the Tough-Claws-boost-suppressed universal-scope
+proof), passing on the first run.
+
+### Regression
+
+Per this tier's routine scope plus extra coverage given how many existing
+consumers `try_contact_effects`/`faint_retaliation_damage`/
+`_try_steal_item` have:
+- `m18p_test.tscn`: **33/33** (new).
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity
+  holds across the expanded 135-item catalog.
+- `m18d_test.tscn`: **19/19** (Jaboca/Rowap's own origin suite, per the
+  plan's own instruction), unchanged.
+- `ability_test.tscn`: **64/64** (the general contact-mechanism consumer
+  suite, per `[M18d]`'s own precedent), unchanged.
+- `m17j_test.tscn`: **48/48** (Pickpocket/Magician, `_try_steal_item`'s
+  other two consumers, extra coverage for the new
+  `bypass_sticky_hold` param), unchanged.
+- `m17h_test.tscn`: **64/64** (Mummy/Wandering Spirit, extra coverage for
+  `try_contact_effects`'s gate swap), unchanged.
+- `m17n8_test.tscn`: **58/58** (Aftermath/Innards Out's own origin suite,
+  extra coverage for `faint_retaliation_damage`'s gate swap), unchanged.
+
+No stray Godot processes before or after; reference clone untouched;
+`git status --short` matched exactly the expected file set (4 modified
+core files, 4 new `.tres` items, 2 new test files) before this docs
+commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18p's completion. Recommend
+**M18t, M18v, or M18x** (all remaining, none blocked), or the end-of-M18
+legacy-item cleanup pass, per Rob's preference.

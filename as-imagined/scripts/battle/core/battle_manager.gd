@@ -2429,6 +2429,23 @@ func _phase_end_of_turn() -> void:
 				mon.fainted = true
 				pokemon_fainted.emit(mon)
 
+	# M18p: Sticky Barb's end-of-turn self-damage half (TryStickyBarbOnEndTurn) — NOT
+	# contact-related at all, unconditional every end of turn, gated by the HOLDER's
+	# own Magic Guard (unlike Rocky Helmet's attacker-side gate above). Source
+	# dispatches this via IsOrbsActivation alongside Flame/Toxic Orb, but it's
+	# mechanically identical in shape to Black Sludge's damage half just above, so
+	# it's placed in that neighborhood instead.
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		var sb_dmg: int = ItemManager.sticky_barb_damage(mon, ng_active)
+		if sb_dmg > 0 and not AbilityManager.blocks_indirect_damage(mon, ng_active):
+			mon.current_hp = max(0, mon.current_hp - sb_dmg)
+			item_damage.emit(mon, sb_dmg)
+			if mon.current_hp == 0:
+				mon.fainted = true
+				pokemon_fainted.emit(mon)
+
 	# M18i: Status Orbs (Flame Orb/Toxic Orb) — checked EVERY end of turn (no
 	# turn-counter mechanic exists in source; see ItemManager.status_orb_status's
 	# own doc comment), same THIRD_EVENT_BLOCK_ITEMS neighborhood Leftovers
@@ -3812,6 +3829,30 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			attacker.current_hp = max(0, attacker.current_hp - retaliation_dmg)
 			item_damage.emit(attacker, retaliation_dmg)
 			_consume_item(target)
+
+	# M18p: Rocky Helmet — CONTACT-gated (unlike Jaboca/Rowap just above, which are
+	# category-gated only) retaliation to the ATTACKER, maxHP/6, not consumed. Gated
+	# on the attacker's own Magic Guard (same "who takes the damage owns the Magic
+	# Guard check" shape [M18d] established) via move_triggers_contact_retaliation,
+	# which also correctly exempts an attacker holding Protective Pads or Punching
+	# Glove (on a punching move) or Long Reach.
+	if damage > 0 and attacker.current_hp > 0 \
+			and AbilityManager.move_triggers_contact_retaliation(attacker, move, ng_active) \
+			and not AbilityManager.blocks_indirect_damage(attacker, ng_active):
+		var rh_dmg: int = ItemManager.rocky_helmet_retaliation_damage(target, attacker, ng_active)
+		if rh_dmg > 0:
+			attacker.current_hp = max(0, attacker.current_hp - rh_dmg)
+			item_damage.emit(attacker, rh_dmg)
+
+	# M18p: Sticky Barb — CONTACT-gated transfer of the item from the holder onto the
+	# attacker (bypasses Sticky Hold, see AbilityManager.try_sticky_barb_transfer's
+	# own doc comment), only if the attacker currently holds nothing. No Magic Guard
+	# interaction (this isn't damage) and no consumption call — the item just moves.
+	if damage > 0 and attacker.current_hp > 0 \
+			and AbilityManager.move_triggers_contact_retaliation(attacker, move, ng_active) \
+			and ItemManager.holds_sticky_barb(target, ng_active):
+		if AbilityManager.try_sticky_barb_transfer(attacker, target, ng_active):
+			item_transferred.emit(target, attacker, attacker.held_item)
 
 	# M17j: Magician — attacker's own ability firing after ANY damaging hit lands
 	# (contact not required, unlike Pickpocket above) — genuinely attacker-keyed, so

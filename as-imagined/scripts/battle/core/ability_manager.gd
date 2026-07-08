@@ -758,13 +758,21 @@ static func try_switch_out(mon: BattlePokemon, ng_active: bool = false) -> Dicti
 # clears the STEALER's unburdenActive (they just GAINED an item) and calls
 # CheckSetUnburden on the VICTIM (they just LOST theirs, activating it if they hold
 # Unburden) — the opposite-direction pair this function's own item move mirrors.
+# M18p: bypass_sticky_hold (new, default false) — Sticky Barb's own transfer
+# (TryStickyBarbOnTargetHit, battle_hold_effects.c L564-583) explicitly bypasses
+# Sticky Hold ("// No sticky hold checks." in source, confirmed genuine: CanStealItem
+# and its CanBattlerGetOrLoseItem helper, both read in full, have ZERO Sticky Hold
+# reference anywhere — Pickpocket/Magician's own Sticky Hold gates are each a
+# SEPARATE explicit check bolted on at THEIR OWN call sites, external to CanStealItem,
+# not something CanStealItem itself provides). Defaults false so Pickpocket/Magician's
+# existing calls are unaffected; only Sticky Barb's new call site passes true.
 static func _try_steal_item(stealer: BattlePokemon, victim: BattlePokemon,
-		ng_active: bool = false) -> bool:
+		ng_active: bool = false, bypass_sticky_hold: bool = false) -> bool:
 	if stealer.held_item != null:
 		return false
 	if victim.held_item == null:
 		return false
-	if effective_ability_id(victim, ng_active) == ABILITY_STICKY_HOLD:
+	if not bypass_sticky_hold and effective_ability_id(victim, ng_active) == ABILITY_STICKY_HOLD:
 		return false
 	stealer.held_item = victim.held_item
 	victim.held_item = null
@@ -772,6 +780,17 @@ static func _try_steal_item(stealer: BattlePokemon, victim: BattlePokemon,
 	if effective_ability_id(victim, ng_active) == ABILITY_UNBURDEN:
 		victim.unburden_active = true
 	return true
+
+
+# M18p: Sticky Barb — on a contact hit landing, the item moves from the holder onto
+# the attacker (if the attacker currently holds nothing), bypassing Sticky Hold
+# (see _try_steal_item's own doc comment for the source citation). Contact-gating
+# (via AbilityManager.move_triggers_contact_retaliation) and the item's own
+# HOLD_EFFECT_STICKY_BARB check are both left to the caller — this function only
+# performs the transfer itself, matching _try_steal_item's own division of labor.
+static func try_sticky_barb_transfer(
+		attacker: BattlePokemon, holder: BattlePokemon, ng_active: bool = false) -> bool:
+	return _try_steal_item(attacker, holder, ng_active, true)
 
 
 # M17j: Pickpocket — on being hit by a contact move, steals the ATTACKER's item, if the
@@ -1437,7 +1456,33 @@ static func move_makes_contact(
 		return false
 	if attacker == null:
 		return true
+	# M18p: Punching Glove strips the contact flag from the HOLDER's OWN punching
+	# moves. Source: IsMoveMakingContact (battle_util.c L5735-5738) checks this
+	# INSIDE the same function as Long Reach's exemption just below — the SAME
+	# level, not the narrower CanBattlerAvoidContactEffects wrapper Protective
+	# Pads occupies (see move_triggers_contact_retaliation below) — so this
+	# universally affects every consumer of this function, Tough Claws' power
+	# boost included, exactly like Long Reach does.
+	if move.punching_move and ItemManager.holds_punching_glove(attacker, ng_active):
+		return false
 	return effective_ability_id(attacker, ng_active) != ABILITY_LONG_REACH
+
+
+# M18p: Protective Pads' actual gate. Source: CanBattlerAvoidContactEffects
+# (battle_util.c L5717-5726) wraps IsMoveMakingContact ONE LEVEL UP — checked
+# only by genuine contact-RETALIATION consumers (Rough Skin/Iron Barbs/Static/
+# Flame Body/Poison Point/Effect Spore/Mummy/Wandering Spirit/Gooey/Tangling
+# Hair/Pickpocket via try_contact_effects below; Aftermath via
+# faint_retaliation_damage; Rocky Helmet/Sticky Barb-transfer in ItemManager),
+# never by move_makes_contact's other consumers (Tough Claws' power boost,
+# Poison Touch's own inline check, Fluffy if ever built) — those call
+# IsMoveMakingContact directly in source, confirmed via grep of every raw call
+# site, so Protective Pads must NOT be folded into move_makes_contact itself.
+static func move_triggers_contact_retaliation(
+		attacker: BattlePokemon, move: MoveData, ng_active: bool = false) -> bool:
+	if not move_makes_contact(attacker, move, ng_active):
+		return false
+	return not ItemManager.holds_protective_pads(attacker, ng_active)
 
 
 # M17n-4: Protean/Libero — the user's own type changes to match the move it's ABOUT to
@@ -3254,7 +3299,12 @@ static func try_contact_effects(
 	# Down/Steam Engine) via this ONE shared chokepoint — matching source's own
 	# single-`IsMoveMakingContact`-consumer design rather than touching each ability's
 	# individual dispatch.
-	if not move_makes_contact(attacker, move, ng_active):
+	# M18p: upgraded to move_triggers_contact_retaliation, which additionally gates
+	# on the attacker's own Protective Pads — every ability this function dispatches
+	# is a genuine contact-RETALIATION effect in source's CanBattlerAvoidContactEffects
+	# sense (confirmed by reading every one of its call sites directly), so this one
+	# gate correctly covers all of them at once.
+	if not move_triggers_contact_retaliation(attacker, move, ng_active):
 		return result
 	if damage <= 0:
 		return result
@@ -3688,7 +3738,12 @@ static func faint_retaliation_damage(
 	if id == ABILITY_AFTERMATH:
 		if damp_active:
 			return {}
-		if not move_makes_contact(killer, move, ng_active):
+		# M18p: upgraded to move_triggers_contact_retaliation — Aftermath's own
+		# contact gate is confirmed (this function's own doc comment above, citing
+		# L3986-4003) to be the SAME CanBattlerAvoidContactEffects check Rough
+		# Skin/Iron Barbs use, so a Protective-Pads-holding killer correctly
+		# avoids Aftermath too.
+		if not move_triggers_contact_retaliation(killer, move, ng_active):
 			return {}
 		return {"ability_name": "aftermath", "damage": killer.max_hp / 4}
 	if id == ABILITY_INNARDS_OUT:
