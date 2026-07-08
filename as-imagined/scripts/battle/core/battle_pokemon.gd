@@ -57,6 +57,18 @@ var status: int = STATUS_NONE
 var sleep_turns: int = 0    # turns of sleep remaining (set on application)
 var toxic_counter: int = 0  # bad-poison escalation counter; 0 before first EOT tick
 var confusion_turns: int = 0  # volatile; 0 = not confused; set to 2-5 on application
+# M18u: Berserk Gene's confusion never wears off naturally (source: infiniteConfusion
+# volatile, battle_move_resolution.c L389-393). Set true by StatusManager.
+# try_apply_confusion's `infinite` param on application; every fresh application
+# (infinite or not) explicitly sets this, so a later normal confusion correctly
+# clears a stale true from an earlier Berserk Gene use. Meaningless while
+# confusion_turns == 0.
+var infinite_confusion: bool = false
+# M18u: Metronome item's consecutive-same-move-use counter. Compared against
+# last_move_used (BEFORE it's overwritten for the current move) at the same
+# PP-deduction site source colocates its own reset check
+# (battle_move_resolution.c L1006-1008).
+var metronome_item_counter: int = 0
 
 # Volatile: flinched. Set when a move with MOVE_EFFECT_FLINCH hits this Pokémon
 # before it has acted this turn. Cleared at the start of each turn (PRIORITY_RESOLUTION).
@@ -179,6 +191,16 @@ var switched_in_this_turn: bool = false
 # In-battle stat modifiers. Ranges: −6 to +6 per stage.
 # Index order matches STAGE_* constants above.
 var stat_stages: Array[int] = []
+
+# M18m: Eject Pack — snapshot of `stat_stages` taken at the end of the PREVIOUS
+# MoveEnd-equivalent checkpoint (BattleManager._phase_faint_check). Compared
+# against the CURRENT stat_stages there to detect "a decrease was just applied
+# this resolution" — reproducing source's `tryEjectPack` volatile flag (set
+# only at the exact moment of application, battle_stat_change.c L365-368)
+# without needing a new signal-listener pattern, since this project's own
+# MoveEnd-equivalent phase already runs once per resolved move regardless of
+# outcome. Always re-synced to the current stat_stages after each check.
+var eject_pack_snapshot: Array[int] = []
 
 # Follow-up fixes session, 2026-07-02: cache of this Pokémon's NATURAL species types,
 # captured once at construction, before Conversion/Conversion 2 (M16e) can ever mutate
@@ -308,6 +330,7 @@ static func from_species(p_species: PokemonSpecies, p_level: int) -> BattlePokem
 	bp.choice_locked_move = null
 	bp.switched_in_this_turn = false
 	bp.stat_stages = [0, 0, 0, 0, 0, 0, 0]
+	bp.eject_pack_snapshot = [0, 0, 0, 0, 0, 0, 0]
 	bp.fainted = false
 	bp._calculate_stats()
 	bp.current_hp = bp.max_hp

@@ -11020,3 +11020,503 @@ commit.
 `CLAUDE.md`'s status section gets an `[M18r]` bullet in the M18a–x
 tier table, pointing at M18s/M18u/M18w (all still dependency-free) or
 M18m, or the higher-risk M18p/M18t/M18v/M18x, per Rob's preference.
+
+## [M18s] Eviolite + Assault Vest (2 items)
+
+Combined session with `[M18u]`/`[M18w]` per Rob's decision to reduce
+context-gathering overhead across small, independent, no-dependency
+tiers — three genuinely separate mechanic families, documented as
+three separate entries.
+
+### Step 0
+
+Eviolite(494) and Assault Vest(503) canonical IDs confirmed directly
+against `include/constants/items.h`. `HOLD_EFFECT_EVIOLITE`=91,
+`HOLD_EFFECT_ASSAULT_VEST`=92 — re-derived programmatically from
+`include/constants/hold_effects.h`'s enum position, cross-validated
+against 7 pre-existing project constants with zero mismatches.
+
+**Real correction to the plan's own framing**: Eviolite/Assault Vest
+are damage-pipeline modifiers, not a "stat" pipeline. Source's
+`CalcDefenseStat` switch (`battle_util.c` L7160-7189) is the EXACT
+SAME function `[M18g]`'s Deep Sea Scale/Metal Powder already occupy
+(`ItemManager.defense_stat_modifier_uq412`) — the plan's "existing
+defensive-stat-modifier pipeline stage" language pointed at the right
+mechanism once traced to the actual function, but this needed
+confirming rather than assuming, since the two functions this
+project's own code base has with similar names
+(`defense_stat_modifier_uq412` vs. `AbilityManager.
+defense_damage_modifier_uq412`) are genuinely different pipeline
+stages.
+
+**Eviolite**: +50% Def AND SpDef — unconditional on `move.category`
+(unlike Deep Sea Scale/Metal Powder, which are category-gated), gated
+on `CanEvolve(species)` (`battle_util.c` L7006-7020). Confirmed
+`CanEvolve` is exactly `PokemonRegistry.get_evolutions(dex).size() > 0`
+— both a species with a real further evolution (non-empty list) AND
+the boundary case Step 0 explicitly asked to distinguish (a species
+with ZERO possible evolutions, e.g. Ditto, vs. a species that's simply
+fully evolved) resolve correctly: both the zero-evolution case and the
+fully-evolved case produce an empty list, the SAME non-boost code path
+— confirmed by reading `CanEvolve` directly, not assumed to need
+special-casing. Transform-species substitution
+(`volatiles.transformed`) is N/A — no Transform mechanic exists in
+this project.
+
+**Assault Vest**: +50% SpDef only (special hits), unconditional (no
+species/evolution gate on the damage-reduction half) — same function,
+same 1.5x constant (`UQ412_CHOICE_MULT`, reused from Choice Band/
+Specs, not a new constant). The move-restriction half (status moves
+unusable) is architecturally separate: source's real mechanism
+(`CheckMoveLimitations`'s `unusableMoves` bitmask, `battle_util.c`
+L1622-1624) is a true menu-legality filter with NO equivalent
+anywhere in this project (confirmed via grep — no "legal moves" query
+exists for a UI/AI to consult). This project's established pattern
+for a structurally identical restriction (Disable, `[M7]`) is
+fail-at-EXECUTION via `move_skipped`, not menu-filtering — Assault
+Vest matches that existing internal precedent instead of inventing
+new selection-time infrastructure. `moveEffect != EFFECT_ME_FIRST` is
+N/A — no Me First move exists anywhere in this project (`BAN_ME_FIRST`
+is a per-move "can be copied by Metronome/Mirror Move" data flag, not
+an implemented-move indicator).
+
+### Implementation
+
+`ItemManager.defense_stat_modifier_uq412` extended with two new
+branches (Eviolite: both categories, gated on new `_can_evolve(mon)`
+helper; Assault Vest: special-only, unconditional). New
+`ItemManager.holds_assault_vest()` (pure data check). New check in
+`battle_manager.gd`'s move-execution phase, right after the existing
+Disable check: `if move.category == 2 and ItemManager.
+holds_assault_vest(...): move_skipped.emit(attacker, "assault_vest")`.
+6 new `.tres` items across this combined session (121 prior + 6 = 127
+total, confirmed by direct file count).
+
+### Testing
+
+New `m18s_test.gd`/`.tscn`: 22/22 assertions across 3 sections (S01
+Eviolite, S02 Assault Vest damage, S03 Assault Vest restriction). The
+damage-modifier halves (S01/S02) are tested via direct
+`ItemManager.defense_stat_modifier_uq412` calls — no battle needed,
+per the testing-scope convention's preference for function-level
+tests. S03 (the restriction) genuinely requires the move-execution
+phase machinery, so it uses a minimal single-turn battle with
+`move_skipped`/`move_executed` signal checks. Passed on the first run,
+no test-authoring bugs.
+
+### Regression
+
+- `m18s_test.tscn`: **22/22** (new), stable across 4 reruns.
+- `item_registry_test.tscn`: **204/204**, unchanged.
+- `m18g_test.tscn`: **40/40** (Deep Sea Scale/Metal Powder's own origin
+  suite, `defense_stat_modifier_uq412`'s prior occupants), unchanged.
+
+No stray Godot processes; reference clone untouched.
+
+### Docs
+
+See the combined `[M18s]`/`[M18u]`/`[M18w]` session's shared CLAUDE.md
+status update at the end of `[M18w]`'s entry below.
+
+## [M18u] Berserk Gene + Metronome item (2 items)
+
+Combined session with `[M18s]`/`[M18w]` — two genuinely unrelated
+mechanic families sharing this tier only for scheduling efficiency.
+
+### Step 0
+
+Berserk Gene(798) and Metronome(483) canonical IDs confirmed directly.
+`HOLD_EFFECT_BERSERK_GENE`=129, `HOLD_EFFECT_METRONOME`=61 —
+programmatically re-derived, cross-validated with zero mismatches.
+
+**Berserk Gene — two real corrections beyond the plan's framing**:
+
+1. **Switch-in only, not move-triggered or held-passive.**
+   `hold_effects.h`'s own table entry has `.onSwitchIn = TRUE` and NO
+   `.onEffect` — confirmed by reading the timing table directly rather
+   than assumed from the plan's generic "then is consumed" phrasing.
+2. **The confusion is genuinely INFINITE, not the standard M3
+   mechanic the plan said to reuse as-is.** `TryBerserkGene`
+   (`battle_hold_effects.c` L135-146) sets a separate
+   `infiniteConfusion` volatile via `CanBeInfinitelyConfused`
+   (L125-133) that permanently blocks the normal turn-countdown
+   decrement (`battle_move_resolution.c` L389-393). Of source's three
+   exemptions (Own Tempo / Misty Terrain / Safeguard), only Own Tempo
+   is reachable in this project — Misty Terrain is void per `[M17e]`,
+   Safeguard doesn't exist — and Own Tempo already blocks confusion
+   APPLICATION entirely via `try_apply_confusion`'s existing gate, so
+   no separate exemption check was needed for the infinite half
+   specifically.
+
+Also confirmed: exactly **+2 Attack** (not assumed from "sharply
+raises"), and a real **+6-cap gate** — `CompareStat(...,MAX_STAT_STAGE,
+CMP_EQUAL,...)` wraps the WHOLE function (`battle_hold_effects.c`
+L137-138), so an already-maxed holder gets NO stat change, NO
+confusion attempt, and is NOT consumed at all. Confirmed (via direct
+battle-script read) that the item IS consumed even when Own Tempo
+blocks the confusion half — `removeitem` sits at
+`BattleScript_BerserkGeneRet_End`, the shared label all three branches
+(confusion applied / Safeguard-blocked / Own-Tempo-blocked) reach.
+
+**Metronome item**: `holdEffectParam=20` confirmed individually via
+`src/data/items.h` (not assumed uniform with other percent-based
+items). Lives in `GetAttackerItemsModifier` (`battle_util.c`
+L7486-7491) — the SAME function/pipeline stage Life Orb/Expert Belt
+already occupy (`ItemManager.post_roll_modifier_uq412`), not a new
+stage. **Precise clarification of the plan's "+20%/use, up to +100%
+at 5 uses" shorthand**: the counter is 0 on the FIRST use of a move
+(no boost yet), so the ramp is +0/+20/+40/+60/+80% on uses 1–5, and
+the max +100% is only reached on the 6th consecutive use (counter=5,
+capped) — confirmed by reading `GetAttackerItemsModifier`'s exact
+`min(counter, 5)` formula directly, matching Bulbapedia's own
+"5 times in a row" phrasing once the off-by-one in "counter" vs.
+"use number" is accounted for. The counter itself is never capped,
+only its READ for the modifier formula is (`min`, not a clamp on the
+stored value) — confirmed via source, matched in this project's
+implementation. Reset condition: source resets on `gLastResultingMoves
+!= cv->move OR unableToUseMove` (`battle_move_resolution.c`
+L1006-1008); **this project only replicates the differing-move half**
+— the broader "OR unableToUseMove" (Disable/Taunt/no-PP/etc. all also
+reset it in source) is NOT replicated, and this project's early-return
+architecture means a turn blocked earlier than the counter-update site
+(Disabled, Assault-Vest-blocked) doesn't even reach the check at all,
+so the counter freezes rather than resets in those cases — flagged,
+not built around, given how many distinct block reasons a fully
+faithful reset would need to intercept.
+
+### Implementation
+
+New `BattlePokemon.infinite_confusion: bool` and
+`metronome_item_counter: int` fields. `StatusManager.
+try_apply_confusion` gained an `infinite: bool = false` param, set on
+EVERY successful application (not just Berserk Gene's) — this means a
+later ordinary confusion correctly overwrites a stale `true` left by
+an earlier Berserk Gene use, without needing to touch any of this
+project's several `confusion_turns = 0` reset sites. The confusion
+decrement site gated with `and not mon.infinite_confusion`, matching
+source's exact `confusionTurns > 0 && !infiniteConfusion` shape.
+Berserk Gene wired into `_apply_switch_in_abilities` (reusing
+`StatusManager.apply_stat_change`'s existing 0-return-on-cap contract
+as the whole-function gate, and `secondary_applied.emit(mon,
+MoveData.SE_CONFUSION)` — the SAME signal `[M18i]`'s Status Orbs
+already established for item-triggered self-inflicted status).
+Metronome's counter updated at the exact site source colocates its
+own reset check — immediately before PP deduction, comparing `move`
+against `attacker.last_move_used` BEFORE any of this function's own
+`last_move_used = move` assignment sites (all confirmed to run later)
+overwrite it. `ItemManager.post_roll_modifier_uq412` extended with the
+ramp formula, reusing the exact `(4096*percent+50)/100` rounding
+source itself uses (not the Floored variant `[M18j]`'s Muscle
+Band/Wise Glasses use) — a genuine off-by-one at the cap (8191, not a
+clean 8192) reproduced faithfully rather than "cleaned up," per
+source's own comment that it "will never really matter."
+
+### Testing
+
+New `m18u_test.gd`/`.tscn`: 21/21 across 3 sections. U01 (Berserk
+Gene) uses `start_battle` (switch-in genuinely requires the phase
+machinery) with signal-snapshot capture; U02 (Metronome ramp value)
+uses direct `ItemManager.post_roll_modifier_uq412` calls with
+`metronome_item_counter` preset — no battle needed; U03 (the counter
+update mechanism itself) uses a deterministically-queued short battle
+(multiple `queue_move` calls, one per turn, so every turn's move
+choice is explicit) with per-turn `move_executed` snapshots.
+
+**One real test-authoring bug caught and fixed, a fresh instance of
+the whole-battle-aggregation pitfall** (this tier's own prompt flagged
+extra suspicion given `[M18r]`'s two recent violations, and it still
+recurred): U01's first draft checked `p1.infinite_confusion`/
+`p1.confusion_turns` AFTER `start_battle` returned — but
+`start_battle` runs the WHOLE multi-turn battle to completion, and p1
+(fragile, permanently confused) very likely faints partway through,
+so the post-battle read reflected whatever a much later, unrelated
+turn left behind, not the switch-in moment itself. Fixed by
+snapshotting both fields live, inside the `secondary_applied` signal
+handler, at the exact moment of application. The "infinite confusion
+never decrements" discriminator was also redesigned to use a fresh,
+isolated `BattlePokemon` (confusion set directly) rather than reusing
+the same battle-worn `p1`, for the same reason.
+
+### Regression
+
+- `m18u_test.tscn`: **21/21** (new), stable across 4 reruns.
+- `item_registry_test.tscn`: **204/204**, unchanged.
+- `status_test.tscn`: **78/78** (confusion's own origin suite,
+  confirming `try_apply_confusion`'s new `infinite` param — default
+  `false` — didn't disturb any existing caller), unchanged.
+- `m18j_test.tscn`: **26/26** (Expert Belt, `post_roll_modifier_uq412`'s
+  other occupant), unchanged.
+- `item_test.tscn`: **77/77** (Life Orb, the same function's original
+  occupant), unchanged.
+
+No stray Godot processes; reference clone untouched.
+
+### Docs
+
+See the combined session's shared CLAUDE.md status update at the end
+of `[M18w]`'s entry below.
+
+## [M18w] Red Orb / Blue Orb (2 items)
+
+Combined session with `[M18s]`/`[M18u]`.
+
+### Step 0
+
+Red Orb(290)/Blue Orb(291) canonical IDs confirmed directly.
+`HOLD_EFFECT_PRIMAL_ORB`=108 (shared by BOTH items — confirmed via
+`src/data/items.h`, not a per-item holdEffect split) re-derived
+programmatically, cross-validated with zero mismatches. Groudon(383)/
+Kyogre(382) re-confirmed present in `data/pokemon.json` directly (not
+trusted from the plan's own "already confirmed during sub-tier
+planning" claim). Species pairing (Groudon+Red Orb, Kyogre+Blue Orb —
+NOT interchangeable) confirmed via the actual form-change table
+(`sGroudonFormChangeTable`/`sKyogreFormChangeTable`, `src/data/pokemon/
+form_change_tables.h` L735-753), not assumed from item names alone.
+
+**Major correction, going beyond what the plan's own framing
+anticipated**: real Primal Reversion is a FULL SPECIES/STAT/TYPE SWAP.
+The form-change table's target isn't a stat modifier — it's a
+literally different species entry (`SPECIES_GROUDON_PRIMAL`/
+`SPECIES_KYOGRE_PRIMAL`, confirmed via direct source read), with its
+own base stats, types, and ability, replacing the holder's species for
+the rest of the battle. This is the EXACT SAME SHAPE as Mega
+Evolution, which this project has already structurally excluded (Mega
+Stones — confirmed via the M18 item ledger's own exclusion rule) — no
+form-change-mid-battle infrastructure (swapping base stats/types
+on-the-fly) exists anywhere in this project. The plan's own narrower
+framing ("the only missing piece is a new orb+species→auto
+form-change+set-ability mechanism... given the destination abilities
+already work") anticipated roughly the right SCOPE but not explicitly
+the reason why the full mechanic doesn't fit this project's
+architecture. **In-scope, achievable deliverable: ability-set ONLY**
+(Desolate Land/Primordial Sea on switch-in, both already implemented
+per `[M17d]`) — no species/stat/type change modeled.
+
+This is also confirmed as the **first production-code case of loading
+an `AbilityData` resource by a fixed ID**, rather than copying from
+another already-set `BattlePokemon.ability` field — Trace (`[M17h]`)
+and Mummy (`[M17h]`) both copy from another mon's already-loaded
+ability; no prior precedent for a fresh `load()`-by-ID existed
+anywhere under `scripts/battle/core/`.
+
+### Implementation
+
+New `ItemManager.primal_orb_target_ability_id(mon, ng_active) -> int`,
+reusing `_species_matches`/`required_species` — the SAME per-item
+species gate `[M18g]`'s Light Ball/Thick Club/etc. already use (Red
+Orb's `required_species` = Groudon(383), Blue Orb's = Kyogre(382)) —
+rather than a per-item `hold_effect` branch, even though both items
+share the identical `HOLD_EFFECT_PRIMAL_ORB` value. Wired into
+`_apply_switch_in_abilities`, deliberately FIRST in that function —
+before Screen Cleaner, Drizzle/Drought, or any other switch-in ability
+check — matching source's own dispatch order
+(`FIRST_EVENT_BLOCK_GENERAL_ABILITIES`'s `TryPrimalReversion` call
+happens strictly before the general `ABILITYEFFECT_ON_SWITCHIN` block
+every other check here belongs to, `battle_switch_in.c` L275-278), so
+every later check in the function correctly sees the newly-set
+ability already in place. Reuses `ability_changed`, the SAME signal
+Trace/Mummy/Receiver/Wandering Spirit (`[M17h]`) already emit.
+
+### Testing
+
+New `m18w_test.gd`/`.tscn`: 15/15 across 3 sections (W01 Red Orb, W02
+Blue Orb, W03 discriminators). Switch-in is single-fire (battle
+start), so a full `start_battle` checking for the trigger's presence
+is safe — no re-trigger risk to conflate with a later event. W01/W02
+each include a composition check confirming the newly-set Desolate
+Land/Primordial Sea ALSO sets its own weather on switch-in (harsh sun/
+rain respectively) — direct proof the dispatch-order claim above is
+correct, not just asserted. Passed on the first run, no test-authoring
+bugs.
+
+### Regression
+
+- `m18w_test.tscn`: **15/15** (new), stable across 4 reruns.
+- `item_registry_test.tscn`: **204/204**, unchanged.
+- `m17d_test.tscn`: **30/30** (Desolate Land/Primordial Sea's own
+  origin suite), unchanged.
+
+No stray Godot processes before or after; reference clone untouched;
+`git status --short` matched exactly the expected file set across the
+whole combined session (5 modified core files, 6 new `.tres` items, 6
+new test files) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section gets ONE combined bullet covering all
+three tiers (`[M18s]`+`[M18u]`+`[M18w]`), matching this session's own
+combined-but-separately-documented shape, pointing at the recommended
+next tier: **M18m** (unblocked since `[M18n]`), or the remaining
+higher-risk tiers **M18p/M18t/M18v/M18x**, per Rob's preference.
+
+## [M18m] Stat-change-reactive consumed items (4 items)
+
+### Step 0
+
+Weakness Policy(502)/White Herb(460)/Eject Pack(509)/Mirror Herb(769)
+canonical IDs confirmed directly against `include/constants/items.h`.
+`HOLD_EFFECT_WEAKNESS_POLICY`=107, `HOLD_EFFECT_WHITE_HERB`=23,
+`HOLD_EFFECT_EJECT_PACK`=116, `HOLD_EFFECT_MIRROR_HERB`=123 —
+programmatically re-derived, cross-validated against 7 pre-existing
+constants with zero mismatches. None carry a `holdEffectParam`.
+
+**Despite the tier's own "stat-change-reactive" grouping, the 4 items
+are genuinely NOT one shared trigger shape — verified individually,
+with real corrections surfacing on 3 of the 4:**
+
+1. **White Herb and Eject Pack are NOT the same "any stat lowered"
+   condition**, despite the plan grouping them together. `RestoreWhiteHerbStats`
+   (`battle_hold_effects.c` L148-164) UNCONDITIONALLY scans all 7 stat
+   stages at every MoveEnd for any currently-negative value — it does
+   NOT check whether a decrease "just happened" this specific move.
+   `TryEjectPack` (`battle_move_resolution.c` L4069-4088), by contrast,
+   checks a `tryEjectPack` volatile flag set ONLY at the exact moment a
+   decrease is applied (`battle_stat_change.c` L365-368) and cleared
+   frequently — a genuine "just happened this resolution" trigger.
+2. **Eject Pack's decrease can come from ANY source** — the holder's
+   own move, an opponent's move, hazards, etc. — confirmed by reading
+   `SetStatChange`'s decrease branch directly (it sets `tryEjectPack`
+   unconditionally on any real decrease, regardless of which battler
+   caused it); NOT opponent-only, tested explicitly with a self-
+   inflicted-drop discriminator.
+3. **Mirror Herb is confirmed a genuine structural twin of Opportunist
+   (`[M17n-8]`) AT THE SOURCE LEVEL**, not just "similar enough to
+   reuse" as the plan's wording implied — both are checked in the
+   LITERAL SAME loop in `battle_stat_change.c` (L430-449): same site,
+   same "opposing side, stat just increased via a move" condition.
+   Opportunist's own documented scope limit here ("primary move-driven
+   stat increases only, not Moxie/Download-style ability-driven ones")
+   is therefore a shared SOURCE-level limitation, correctly inherited
+   by Mirror Herb rather than being a new simplification specific to
+   this tier. Source additionally queues-and-batches Mirror Herb's
+   copy until MoveEnd (`gQueuedStatBoosts`) since it's single-use,
+   unlike permanent Opportunist — simplified here to an immediate
+   copy-and-consume (matching Opportunist's own immediate-apply
+   shape), since this project's one-stat-per-move architecture means a
+   second qualifying trigger could never occur before the item is
+   already spent.
+4. **Weakness Policy is consumed UNCONDITIONALLY once its trigger
+   fires**, regardless of whether either stat change actually did
+   anything (e.g. both already at +6) — confirmed via
+   `TryWeaknessPolicy`'s own unconditional `effect = ITEM_STATS_CHANGE`
+   assignment. A real, tested difference from `[M18r]`'s Blunder
+   Policy, which only consumes if the stat genuinely rose — not
+   assumed to share that shape just because both are "+2 stage on
+   trigger" items.
+
+Several of source's Eject Pack exclusions confirmed N/A for this
+project (flagged, not built): `IsPursuitTargetSet()`/
+`HasAnyBattlerQueuedSwitch()` (no queued-switch concept exists here —
+this project's forced switches are immediate, not queued), Sky
+Drop/Commander states, and Parting Shot (none of these three
+mechanics exist anywhere in this project).
+
+### Implementation
+
+**Weakness Policy**: wired directly alongside Enigma Berry (`[M18c]`)
+in `_do_damaging_hit` — the exact same on-hit dispatch site, reusing
+the identical `result.get("effectiveness", 0.0) > 1.0` read. +2
+Atk/+2 SpAtk applied independently via `StatusManager.
+apply_stat_change`; `_consume_item` called unconditionally once the
+trigger condition is met (not gated on either stat actually
+changing), matching source's own unconditional consumption.
+
+**Mirror Herb**: wired directly alongside Opportunist in the primary
+move-driven stat-increase block, inside the SAME
+`_get_live_opponents(stat_target)` loop — an independent check
+(a mon could hold Mirror Herb without Opportunist or vice versa),
+applying the identical stage amount via `apply_stat_change` and
+consuming unconditionally once triggered (matching source's own
+unconditional `effect` assignment in `TryConsumeMirrorHerb`, the same
+shape as Weakness Policy above).
+
+**White Herb + Eject Pack**: both needed a genuinely new choke point,
+since neither fits any existing per-move-effect call site (`stat_
+stage_changed` has 48 separate emission sites across `battle_manager.gd`
+— touching all of them individually was judged clearly disproportionate
+for this tier). Solved by recognizing that `_phase_faint_check()` is
+BattleManager's own MoveEnd-equivalent checkpoint: `_set_phase(FAINT_CHECK)`
+is the universal next-phase call from every move-execution exit path,
+so this function already runs exactly once per resolved move regardless
+of outcome — the closest match to source's own `MoveEndItemOnStatChange`
+granularity, which both items are genuinely dispatched from in source
+too. White Herb: a plain, unconditional scan of `stat_stages` for any
+negative value, reset to 0, one `stat_stage_changed` emission per stat
+actually reset. Eject Pack: a new `BattlePokemon.eject_pack_snapshot`
+field, compared against current `stat_stages` at this same checkpoint
+to detect "a decrease was just applied since the last check" (reproducing
+the `tryEjectPack` volatile-flag shape without needing a new signal-
+listener pattern), then re-synced to current state unconditionally
+every checkpoint. Reuses `_do_forced_switch_in` and the random-
+replacement-pick shape (`_parties[side].get_random_non_fainted_not_active(
+_force_roar_rng)`) `[M18n]`'s Red Card/Eject Button already established
+— not Guard-Dog-blockable (self-switch, not a forced-out-by-opponent
+case, same reasoning `[M18n]`'s Eject Button already confirmed). Both
+new checks run AFTER the existing fainting loop within the same
+function call, so `.fainted` is already correctly updated for this
+exact resolution — avoiding the current_hp-vs-.fainted pitfall by
+construction, not by a `current_hp` check.
+
+4 new `.tres` items (131 total, 127 prior + 4).
+
+### Testing
+
+New `m18m_test.gd`/`.tscn`: 27/27 assertions across 4 sections, EVERY
+assertion scoped to a single, well-defined event from the start — this
+exact whole-battle-aggregation pitfall has now recurred in four
+consecutive prior tiers (`[M18q]`/`[M18r]`/`[M18s]`/`[M18u]`), and this
+tier's own prompt explicitly called for writing it correctly the first
+time rather than needing a fix-and-rerun cycle, which held. White Herb
+is tested via a DIRECT `_phase_faint_check()` call on a minimally-
+configured bare `BattleManager` (no battle needed at all — its trigger
+is a pure scan of current state, not dependent on any move having just
+executed), the first time this project has called a phase-dispatch
+function directly rather than through `advance()`'s normal driver loop
+— confirmed safe since `_set_phase` is a plain setter with no
+cascading dispatch of its own. Eject Pack and Mirror Herb use short,
+explicitly-queued battles (deterministic per-turn moves) with signal
+snapshots. Weakness Policy uses a short battle with a genuinely-typed
+super-effective matchup.
+
+**Two real test-authoring bugs caught and fixed, both first-draft
+mistakes rather than aggregation violations**: (1) T01's initial
+"WaterMove" fixture never actually set `move.type = TypeChart.
+TYPE_WATER` — the shared `_make_tackle` helper hardcoded `TYPE_NORMAL`
+regardless of the display name passed, so the "super-effective" hit
+was actually neutral damage, and Weakness Policy correctly never
+fired; fixed by adding a `move_type` parameter to the helper and
+threading the real type through. (2) T03's Eject Pack assertions
+listened for `pokemon_switched_out`, but `_do_forced_switch_in`
+(confirmed via direct read) never emits that signal itself — only the
+CALLER-emitted `forced_switch` signal reflects a forced switch,
+exactly matching `[M18n]`'s own established pattern; fixed by
+switching the listener. Neither bug reflects an implementation defect
+— debug prints confirmed the underlying detection/switch logic fired
+correctly on the first attempt in both cases.
+
+### Regression
+
+- `m18m_test.tscn`: **27/27** (new), stable across 4 reruns.
+- `item_registry_test.tscn`: **204/204**, unchanged.
+- `m17n8_test.tscn`: **58/58** (Opportunist's own origin suite,
+  confirming Mirror Herb's insertion into the same block didn't
+  disturb it), unchanged.
+- `m18n_test.tscn`: **22/22** (Red Card/Eject Button's own origin
+  suite) and `switch_test.tscn`: **64/64** (Roar/Whirlwind,
+  `_do_forced_switch_in`'s original mechanism) — both confirming
+  Eject Pack's reuse didn't disturb either, unchanged.
+- `m18c_test.tscn`: **47/47** (Enigma Berry's own origin suite,
+  confirming Weakness Policy's insertion right after it didn't
+  disturb it), unchanged.
+
+No stray Godot processes before or after; reference clone untouched;
+`git status --short` matched exactly the expected file set (7 modified
+core files, 4 new `.tres` items, 2 new test files) before this docs
+commit.
+
+### Docs
+
+`CLAUDE.md`'s status section gets an `[M18m]` bullet, pointing at the
+recommended next tier(s): **M18p, M18t, M18v, M18x** (all remaining,
+none blocked), or the end-of-M18 legacy-item cleanup pass, per Rob's
+preference.

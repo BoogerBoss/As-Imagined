@@ -218,12 +218,25 @@ static func try_apply_status(
 # battlers for any move-inflicted confusion). Own Tempo does NOT cure pre-existing
 # confusion on gaining the ability (this project has no Skill Swap/Entrainment-style
 # ability-transfer move, so that half is N/A, not a dropped check).
+#
+# M18u: `infinite` — Berserk Gene's confusion never wears off naturally (source:
+# `CanBeInfinitelyConfused`/`infiniteConfusion` volatile, battle_hold_effects.c
+# L125-141, battle_move_resolution.c L389-393). Of source's three exemptions
+# (Own Tempo / Misty Terrain / Safeguard), only Own Tempo is reachable in this
+# project (Misty Terrain is void per M17e, Safeguard doesn't exist) — and Own
+# Tempo already blocks confusion APPLICATION entirely via the check below, so no
+# separate gate is needed for the infinite half specifically. Set on EVERY
+# successful application (defaulting false), not just Berserk Gene's — this
+# means a later ordinary confusion (Confuse Ray etc.) correctly overwrites a
+# stale `true` left by an earlier Berserk Gene use, without needing to touch any
+# of this project's several confusion_turns=0 reset sites.
 static func try_apply_confusion(
 		mon: BattlePokemon,
 		force_confusion_turns: Variant = null,
 		ng_active: bool = false,
 		attacker: BattlePokemon = null,
-		attacker_move: MoveData = null) -> bool:
+		attacker_move: MoveData = null,
+		infinite: bool = false) -> bool:
 
 	if mon.confusion_turns > 0:
 		return false  # already confused
@@ -237,6 +250,7 @@ static func try_apply_confusion(
 
 	mon.confusion_turns = force_confusion_turns if force_confusion_turns != null \
 			else randi_range(2, 5)
+	mon.infinite_confusion = infinite
 	return true
 
 
@@ -426,8 +440,11 @@ static func pre_move_check(
 	# Source: battle_move_resolution.c :: CancelerConfused L389–430
 	# Decrement turns first. If still > 0: 33% self-hit chance.
 	# If hits 0: snap out (move executes normally that turn).
+	# M18u: `infinite_confusion` (Berserk Gene) skips the decrement entirely —
+	# source's exact `confusionTurns > 0 && !infiniteConfusion` gate (L389-393).
 	if mon.confusion_turns > 0:
-		mon.confusion_turns -= 1
+		if not mon.infinite_confusion:
+			mon.confusion_turns -= 1
 		if mon.confusion_turns > 0:
 			# Still confused — roll for self-hit
 			# B_CONFUSION_SELF_DMG_CHANCE = GEN_LATEST = GEN_7+ → 33%

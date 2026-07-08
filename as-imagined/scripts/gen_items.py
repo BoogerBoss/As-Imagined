@@ -104,6 +104,8 @@ SPECIES_DITTO = 132
 SPECIES_CLAMPERL = 366
 SPECIES_LATIAS = 380
 SPECIES_LATIOS = 381
+SPECIES_KYOGRE = 382   # M18w: Blue Orb
+SPECIES_GROUDON = 383  # M18w: Red Orb
 
 HOLD_EFFECT_MACHO_BRACE = 24  # M18h: own constant, same halve-Speed effect as below
 HOLD_EFFECT_POWER_ITEM = 81   # M18h: Power Weight/Bracer/Belt/Lens/Band/Anklet (6 items)
@@ -142,6 +144,22 @@ HOLD_EFFECT_ROOM_SERVICE = 117    # M18r: -1 Speed on Trick Room set OR switch-i
                                    #       see decisions.md)
 HOLD_EFFECT_BLUNDER_POLICY = 118  # M18r: +2 Speed when the holder's own move misses
                                    #       (non-OHKO), consumed only if Speed rose
+
+# M18s/M18u/M18w combined session (6 items). Values re-derived programmatically,
+# cross-validated against 7 pre-existing constants above with zero mismatches.
+HOLD_EFFECT_EVIOLITE = 91        # M18s: +50% Def AND SpDef if CanEvolve(species)
+HOLD_EFFECT_ASSAULT_VEST = 92    # M18s: +50% SpDef only + status-move restriction
+HOLD_EFFECT_BERSERK_GENE = 129   # M18u: +2 Atk + infinite self-confusion, switch-in only
+HOLD_EFFECT_METRONOME = 61       # M18u: +20%/consecutive same-move use, capped at 5 uses
+HOLD_EFFECT_PRIMAL_ORB = 108     # M18w: Red Orb AND Blue Orb share this exact value --
+                                  #       species-differentiated via required_species
+
+# M18m: Stat-change-reactive consumed items (4 items). Values re-derived
+# programmatically, cross-validated against 7 pre-existing constants above.
+HOLD_EFFECT_WEAKNESS_POLICY = 107  # +2 Atk AND +2 SpAtk on a super-effective hit
+HOLD_EFFECT_WHITE_HERB = 23        # resets ALL negative stat stages to 0
+HOLD_EFFECT_EJECT_PACK = 116       # forces the holder to switch on any stat drop
+HOLD_EFFECT_MIRROR_HERB = 123      # copies an opponent's move-driven stat raise
 
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
@@ -395,6 +413,35 @@ ITEMS = [
     {"id": 512, "name": "Room Service",   "hold_effect": HOLD_EFFECT_ROOM_SERVICE},
     {"id": 490, "name": "Shed Shell",     "hold_effect": HOLD_EFFECT_SHED_SHELL},
     {"id": 504, "name": "Safety Goggles", "hold_effect": HOLD_EFFECT_SAFETY_GOGGLES},
+
+    # ── M18s: Eviolite + Assault Vest (2) — both live in CalcDefenseStat, the SAME
+    #    function Deep Sea Scale/Metal Powder (M18g) already occupy. No
+    #    hold_effect_param needed -- both are fixed 1.5x, no per-item magnitude.
+    {"id": 494, "name": "Eviolite",       "hold_effect": HOLD_EFFECT_EVIOLITE},
+    {"id": 503, "name": "Assault Vest",   "hold_effect": HOLD_EFFECT_ASSAULT_VEST},
+
+    # ── M18u: Berserk Gene + Metronome item (2) — unrelated mechanics sharing this
+    #    tier only for scheduling efficiency. Metronome's hold_effect_param=20
+    #    confirmed individually via src/data/items.h (not assumed from the plan).
+    {"id": 798, "name": "Berserk Gene",   "hold_effect": HOLD_EFFECT_BERSERK_GENE},
+    {"id": 483, "name": "Metronome",      "hold_effect": HOLD_EFFECT_METRONOME, "hold_effect_param": 20},
+
+    # ── M18w: Red Orb / Blue Orb (2) — share the exact same HOLD_EFFECT_PRIMAL_ORB
+    #    value in source; species-differentiated via required_species (the SAME
+    #    per-item species gate M18g's Light Ball/Thick Club/etc. already use), NOT
+    #    a per-item holdEffect split.
+    {"id": 290, "name": "Red Orb",        "hold_effect": HOLD_EFFECT_PRIMAL_ORB,
+        "required_species": SPECIES_GROUDON},
+    {"id": 291, "name": "Blue Orb",       "hold_effect": HOLD_EFFECT_PRIMAL_ORB,
+        "required_species": SPECIES_KYOGRE},
+
+    # ── M18m: Stat-change-reactive consumed items (4) — despite the tier's own
+    #    grouping, these are NOT all the same trigger shape (verified individually).
+    #    No hold_effect_param needed for any of the 4.
+    {"id": 502, "name": "Weakness Policy", "hold_effect": HOLD_EFFECT_WEAKNESS_POLICY},
+    {"id": 460, "name": "White Herb",      "hold_effect": HOLD_EFFECT_WHITE_HERB},
+    {"id": 509, "name": "Eject Pack",      "hold_effect": HOLD_EFFECT_EJECT_PACK},
+    {"id": 769, "name": "Mirror Herb",     "hold_effect": HOLD_EFFECT_MIRROR_HERB},
 ]
 
 HEADER = """\

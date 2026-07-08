@@ -947,10 +947,42 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
+	# M18s: Assault Vest — status-category moves are unusable. Source:
+	# CheckMoveLimitations's unusableMoves bitmask makes this a true menu-legality
+	# restriction (battle_util.c L1622-1624); this project has no such menu-filter
+	# architecture, so it's implemented at execution time instead, matching the
+	# exact fail-at-execution shape Disable (directly above) already established —
+	# see ItemManager.holds_assault_vest's own doc comment for the full rationale.
+	if move.category == 2 and ItemManager.holds_assault_vest(attacker, ng_active):
+		move_skipped.emit(attacker, "assault_vest")
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
 	# User-thaw: frozen Pokémon using a thawsUser move thaws before dealing damage.
 	# Source: battle_move_resolution.c :: CancelerThaw (L586–622)
 	if StatusManager.check_user_thaw(attacker, move):
 		pokemon_thawed.emit(attacker)
+
+	# M18u: Metronome item — consecutive-same-move-use counter, compared against
+	# `attacker.last_move_used` BEFORE it gets overwritten for this move (every
+	# `last_move_used = move` assignment site in this function runs LATER than
+	# this point). Source colocates its own reset check at this exact spot,
+	# immediately before PP deduction (battle_move_resolution.c L1006-1008) — see
+	# HOLD_EFFECT_METRONOME's own doc comment for the simplified-reset-condition
+	# caveat (this project only resets on a differing move, not source's broader
+	# "OR unableToUseMove"). A FURTHER simplification from this project's early-
+	# return architecture, not just the condition itself: a turn blocked EARLIER
+	# than this point (Disabled, Assault-Vest-blocked) never reaches this check at
+	# all, so the counter freezes at its prior value that turn rather than
+	# resetting — source's single linear canceler pipeline always reaches an
+	# equivalent point regardless of block reason; this project's early-return
+	# shape does not. Flagged, not built around, given how many distinct block
+	# reasons a fully faithful reset would need to intercept.
+	if move == attacker.last_move_used:
+		attacker.metronome_item_counter += 1
+	else:
+		attacker.metronome_item_counter = 0
 
 	# M15 Task 3: Decrement PP (charge turn only for two-turn moves; never for Struggle).
 	# Source: battle_script_commands.c :: Cmd_decrementmovepointvalue (L5960);
@@ -2097,6 +2129,24 @@ func _phase_move_execution() -> void:
 							if opp_actual != 0:
 								stat_stage_changed.emit(opp, move.stat_change_stat, opp_actual)
 								ability_triggered.emit(opp, "opportunist")
+						# M18m: Mirror Herb — confirmed a genuine structural twin of
+						# Opportunist AT THE SOURCE LEVEL (battle_stat_change.c
+						# L430-449 checks both in the literal same loop), so it
+						# correctly inherits the identical "primary move-driven
+						# stat increases only" scope limit documented above — not
+						# a new simplification. Source queues-and-batches the copy
+						# until MoveEnd (single-use, unlike permanent Opportunist);
+						# simplified here to an immediate copy-and-consume, since
+						# this project's one-stat-per-move architecture means a
+						# second qualifying trigger could never occur before the
+						# item is already spent — see HOLD_EFFECT_MIRROR_HERB's
+						# own doc comment for the full rationale.
+						if ItemManager.holds_mirror_herb(opp, ng_active):
+							var mh_actual: int = StatusManager.apply_stat_change(
+									opp, move.stat_change_stat, actual, null, ng_active)
+							if mh_actual != 0:
+								stat_stage_changed.emit(opp, move.stat_change_stat, mh_actual)
+							_consume_item(opp)
 		elif move.secondary_effect != MoveData.SE_NONE:
 			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move, null, ng_active, _effective_weather())
 			if applied:
@@ -2204,6 +2254,59 @@ func _phase_faint_check() -> void:
 					retal_killer.fainted = true
 					_clear_volatiles(retal_killer)
 					pokemon_fainted.emit(retal_killer)
+
+	# M18m: White Herb / Eject Pack — this function is BattleManager's own
+	# MoveEnd-equivalent checkpoint (runs once per resolved move regardless of
+	# outcome, since _set_phase(FAINT_CHECK) is the universal next-phase call
+	# from every move-execution exit path) — the closest match to source's own
+	# MoveEndItemOnStatChange granularity (battle_move_resolution.c L4091-4110),
+	# which both items are dispatched from. Runs AFTER the fainting loop above
+	# so `.fainted` is already correctly updated for this same resolution
+	# (avoiding the current_hp-vs-.fainted pitfall by construction, not by a
+	# current_hp check here).
+	var m18m_ng_active: bool = _is_neutralizing_gas_active()
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted:
+			continue
+		# White Herb: UNCONDITIONAL scan of every stat stage, every checkpoint —
+		# genuinely NOT gated on "a decrease just happened this move," unlike
+		# Eject Pack below. Source: RestoreWhiteHerbStats (battle_hold_effects.c
+		# L148-164).
+		if ItemManager.holds_white_herb(mon, m18m_ng_active):
+			var any_reset := false
+			for i in range(mon.stat_stages.size()):
+				if mon.stat_stages[i] < 0:
+					var wh_before: int = mon.stat_stages[i]
+					mon.stat_stages[i] = 0
+					stat_stage_changed.emit(mon, i, 0 - wh_before)
+					any_reset = true
+			if any_reset:
+				_consume_item(mon)
+		# Eject Pack: only if a decrease was JUST applied since the last
+		# checkpoint (snapshot-diff against `eject_pack_snapshot`) — reproduces
+		# source's `tryEjectPack` volatile flag shape. Any source (the holder's
+		# own move, an opponent's move, hazards, etc.) — confirmed NOT
+		# opponent-only. Reuses `_do_forced_switch_in` and the random-
+		# replacement-pick shape [M18n]'s Red Card/Eject Button already
+		# established — NOT Guard-Dog-blockable (self-switch, not a forced-out-
+		# by-opponent case).
+		if ItemManager.holds_eject_pack(mon, m18m_ng_active):
+			var ep_decreased := false
+			for i in range(mon.stat_stages.size()):
+				if mon.stat_stages[i] < mon.eject_pack_snapshot[i]:
+					ep_decreased = true
+					break
+			if ep_decreased:
+				var ep_idx: int = _combatants.find(mon)
+				var ep_side: int = ep_idx / _active_per_side
+				var ep_field_slot: int = ep_idx % _active_per_side
+				var ep_slot: int = _parties[ep_side].get_random_non_fainted_not_active(_force_roar_rng)
+				if ep_slot >= 0:
+					var ep_old_holder: BattlePokemon = mon
+					_consume_item(mon)
+					_do_forced_switch_in(ep_side, ep_slot, ep_field_slot)
+					forced_switch.emit(ep_old_holder, _parties[ep_side].get_active_at(ep_field_slot))
+		mon.eject_pack_snapshot = mon.stat_stages.duplicate()
 
 	# If any new faint occurred this tick, go to SWITCH_PROMPT.
 	# M9: SWITCH_PROMPT handles replacements and checks full-party faint.
@@ -2718,6 +2821,38 @@ func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
 	# source's dispatch order (Neutralizing Gas's own activation is processed before
 	# ABILITYEFFECT_ON_SWITCHIN — battle_switch_in.c L56/L277).
 	var ng_active: bool = _is_neutralizing_gas_active()
+	# M18w: Red Orb / Blue Orb — ability-set on switch-in, gated per-species (see
+	# ItemManager.primal_orb_target_ability_id's own doc comment for the full
+	# scope correction: this is ability-set ONLY, not a species/stat/type swap).
+	# Deliberately FIRST in this function, before Screen Cleaner/Drizzle/etc. —
+	# source dispatches TryPrimalReversion at FIRST_EVENT_BLOCK_GENERAL_ABILITIES,
+	# strictly before the general ABILITYEFFECT_ON_SWITCHIN block every other
+	# switch-in ability check here belongs to (battle_switch_in.c L275-278), so
+	# every later check in this function correctly sees the NEW ability already
+	# in place. First production-code load of an AbilityData resource by a fixed
+	# ID rather than copied from another BattlePokemon's already-set field (Trace/
+	# Mummy both copy; no prior precedent for a fresh load existed here).
+	var orb_ability_id: int = ItemManager.primal_orb_target_ability_id(new_mon, ng_active)
+	if orb_ability_id != -1:
+		var orb_ability: AbilityData = load("res://data/abilities/ability_%04d.tres" % orb_ability_id) as AbilityData
+		new_mon.ability = orb_ability
+		ability_changed.emit(new_mon, orb_ability_id)
+	# M18u: Berserk Gene — switch-in only (no re-trigger later; confirmed absent
+	# from ItemBattleEffects' onEffect dispatch). Entirely NO-OP (no consumption,
+	# no confusion attempt) if Attack is already at +6 — source's CompareStat
+	# guard wraps the WHOLE function, not just the stat-change call (see
+	# HOLD_EFFECT_BERSERK_GENE's own doc comment). Consumed regardless of whether
+	# confusion actually lands (Own Tempo may block it) — `removeitem` sits at
+	# the battle script's shared end label all three branches reach.
+	if ItemManager.holds_berserk_gene(new_mon, ng_active) \
+			and new_mon.stat_stages[BattlePokemon.STAGE_ATK] < 6:
+		var bg_actual: int = StatusManager.apply_stat_change(
+				new_mon, BattlePokemon.STAGE_ATK, 2, null, ng_active)
+		if bg_actual != 0:
+			stat_stage_changed.emit(new_mon, BattlePokemon.STAGE_ATK, bg_actual)
+		if StatusManager.try_apply_confusion(new_mon, null, ng_active, null, null, true):
+			secondary_applied.emit(new_mon, MoveData.SE_CONFUSION)
+		_consume_item(new_mon)
 	# M17n-10: Screen Cleaner — removes Reflect/Light Screen/Aurora Veil from BOTH
 	# sides unconditionally on switch-in, not just the opponent's. Source:
 	# TryRemoveScreens (battle_util.c L9001-9022) clears `SIDE_STATUS_SCREEN_ANY`
@@ -3830,6 +3965,29 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		if enigma_heal > 0:
 			target.current_hp = min(target.max_hp, target.current_hp + enigma_heal)
 			item_healed.emit(target, enigma_heal)
+			_consume_item(target)
+
+		# M18m: Weakness Policy — +2 Atk AND +2 SpAtk (both, unconditional) on
+		# taking a super-effective hit. Source: TryWeaknessPolicy
+		# (battle_hold_effects.c L256-269) — the SAME on-hit dispatch site
+		# Enigma Berry directly above already occupies (IsBattlerTurnDamaged +
+		# a super-effective check), reusing the exact same `result.get(
+		# "effectiveness", 0.0) > 1.0` read. Consumed UNCONDITIONALLY once the
+		# trigger condition is met — source sets `effect = ITEM_STATS_CHANGE`
+		# regardless of whether either SetStatChange call actually changed
+		# anything (e.g. both stats already at +6), a real difference from
+		# [M18r]'s Blunder Policy, which only consumes if the stat genuinely
+		# rose. Confirmed by reading TryWeaknessPolicy's own unconditional
+		# `effect` assignment, not assumed to match Blunder Policy's shape.
+		if result.get("effectiveness", 0.0) > 1.0 and ItemManager.holds_weakness_policy(target, ng_active):
+			var wp_atk: int = StatusManager.apply_stat_change(
+					target, BattlePokemon.STAGE_ATK, 2, null, ng_active)
+			if wp_atk != 0:
+				stat_stage_changed.emit(target, BattlePokemon.STAGE_ATK, wp_atk)
+			var wp_spatk: int = StatusManager.apply_stat_change(
+					target, BattlePokemon.STAGE_SPATK, 2, null, ng_active)
+			if wp_spatk != 0:
+				stat_stage_changed.emit(target, BattlePokemon.STAGE_SPATK, wp_spatk)
 			_consume_item(target)
 
 		# M18n: Red Card / Eject Button — forced-switch reactive items. Both gated on

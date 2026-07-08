@@ -159,6 +159,8 @@ const SPECIES_DITTO:      int = 132
 const SPECIES_CLAMPERL:   int = 366
 const SPECIES_LATIAS:     int = 380
 const SPECIES_LATIOS:     int = 381
+const SPECIES_KYOGRE:     int = 382  # M18w: Blue Orb
+const SPECIES_GROUDON:    int = 383  # M18w: Red Orb
 
 # M18h: EV/Power-item Speed-halving family (7 items). CORRECTION found at Step 0:
 # Macho Brace does NOT share the 6 "Power X" items' hold_effect constant — it has
@@ -364,6 +366,186 @@ const HOLD_EFFECT_BLUNDER_POLICY: int = 118 # +2 Speed (if not already at +6) wh
                                              # CMP_LESS_THAN,...) guards the whole
                                              # trigger, not just the stat-change call).
 
+# M18s/M18u/M18w combined session (6 items). Values re-derived programmatically
+# from include/constants/hold_effects.h's enum position, cross-validated against
+# 7 pre-existing project constants with zero mismatches.
+const HOLD_EFFECT_EVIOLITE: int = 91        # M18s: +50% Def AND SpDef (both categories,
+                                             # unconditional) if CanEvolve(species) —
+                                             # CalcDefenseStat (battle_util.c L7173-7180),
+                                             # the SAME function Deep Sea Scale/Metal
+                                             # Powder already occupy. "Not fully evolved"
+                                             # = PokemonRegistry.get_evolutions(dex).size()
+                                             # > 0, confirmed to exactly match source's
+                                             # CanEvolve (a species with a real further
+                                             # evolution; a species with ZERO possible
+                                             # evolutions, e.g. Ditto, correctly gets NO
+                                             # boost — same code path as fully-evolved).
+                                             # Transform-species substitution
+                                             # (gBattleMons[...].volatiles.transformed)
+                                             # is N/A — no Transform mechanic exists here.
+const HOLD_EFFECT_ASSAULT_VEST: int = 92    # M18s: +50% SpDef only (`!usesDefStat`,
+                                             # special hits) — SAME function as Eviolite,
+                                             # unconditional (no species/category gate on
+                                             # the damage-reduction half). The move-
+                                             # restriction half (status moves unusable)
+                                             # is a SEPARATE mechanism — see
+                                             # holds_assault_vest's own doc comment.
+const HOLD_EFFECT_BERSERK_GENE: int = 129   # M18u: switch-in only (.onSwitchIn=TRUE,
+                                             # no .onEffect — hold_effects.h). +2 Atk,
+                                             # NO-OP entirely (no consumption, no
+                                             # confusion) if Atk is already at +6
+                                             # (CompareStat(...,MAX_STAT_STAGE,
+                                             # CMP_EQUAL,...) guards the WHOLE function,
+                                             # battle_hold_effects.c L137-138). Confusion
+                                             # is INFINITE (see StatusManager.
+                                             # try_apply_confusion's `infinite` param) —
+                                             # a real correction to this tier's own "reuse
+                                             # the existing generic confusion mechanic"
+                                             # framing, found by reading TryBerserkGene
+                                             # directly rather than assumed standard.
+                                             # Consumed regardless of whether confusion
+                                             # actually lands (Own Tempo block, etc.) —
+                                             # `removeitem` sits at the battle script's
+                                             # shared end label all three branches reach.
+const HOLD_EFFECT_METRONOME: int = 61       # M18u: +20%/consecutive same-move use,
+                                             # capped at 5 uses (+100% max). Source:
+                                             # GetAttackerItemsModifier (battle_util.c
+                                             # L7486-7491) — the SAME function/pipeline
+                                             # stage Life Orb/Expert Belt already occupy
+                                             # (post_roll_modifier_uq412 here), NOT a new
+                                             # stage. Counter incremented/reset at the
+                                             # exact site source colocates its own reset
+                                             # check (battle_move_resolution.c L1006-1008,
+                                             # right before PP deduction) — this project's
+                                             # simplified reset condition is "the move
+                                             # differs from last_move_used" only; source's
+                                             # broader "OR unableToUseMove" half (Disable/
+                                             # Taunt/no-PP/etc. all also reset it) is NOT
+                                             # replicated — flagged, not built, given how
+                                             # many distinct block-reasons that would mean
+                                             # threading through. A miss does NOT reset
+                                             # the counter (matches source: the reset
+                                             # check runs before accuracy is ever rolled).
+const HOLD_EFFECT_PRIMAL_ORB: int = 108     # M18w: Red Orb AND Blue Orb share this
+                                             # EXACT holdEffect value in source (src/data/
+                                             # items.h) — species-differentiated via each
+                                             # item's own required_species (Groudon/
+                                             # Kyogre), the SAME ItemData field/mechanism
+                                             # M18g's species-gated items already use, NOT
+                                             # a per-item holdEffect split. CORRECTION:
+                                             # real Primal Reversion is a full species/
+                                             # stat/type swap (SPECIES_GROUDON_PRIMAL/
+                                             # SPECIES_KYOGRE_PRIMAL are literally
+                                             # different species entries in source) — the
+                                             # same shape as Mega Evolution, which this
+                                             # project has already structurally excluded
+                                             # (no form/species-swap-mid-battle
+                                             # infrastructure exists). In-scope deliverable
+                                             # is ability-set ONLY (Desolate Land/
+                                             # Primordial Sea on switch-in), matching this
+                                             # tier's own narrower "form-change + set-
+                                             # ability" framing and its own note that only
+                                             # the ability half was missing.
+
+# M18m: Stat-change-reactive consumed items (4 items). Values re-derived
+# programmatically, cross-validated against 7 pre-existing constants with zero
+# mismatches. Despite the tier's own "stat-change-reactive" grouping, these are
+# NOT all the same trigger shape — verified individually per the "never assume
+# symmetry" discipline.
+const HOLD_EFFECT_WEAKNESS_POLICY: int = 107 # +2 Atk AND +2 SpAtk (both,
+                                              # unconditional) on taking a
+                                              # super-effective hit. Source:
+                                              # TryWeaknessPolicy
+                                              # (battle_hold_effects.c L256-269) —
+                                              # the SAME on-hit dispatch site
+                                              # Enigma Berry ([M18c]) already
+                                              # occupies (IsBattlerTurnDamaged +
+                                              # a MOVE_RESULT_SUPER_EFFECTIVE-
+                                              # equivalent effectiveness>1.0
+                                              # check), not a new choke point.
+const HOLD_EFFECT_WHITE_HERB: int = 23       # Resets ALL currently-negative stat
+                                              # stages to 0. Source:
+                                              # RestoreWhiteHerbStats
+                                              # (battle_hold_effects.c L148-164)
+                                              # UNCONDITIONALLY scans every stat
+                                              # at every MoveEnd — genuinely NOT
+                                              # gated on "a decrease just
+                                              # happened THIS move," unlike Eject
+                                              # Pack below despite both being
+                                              # grouped as "any stat lowered" by
+                                              # this tier's own plan doc. Needs no
+                                              # snapshot/diff — a plain scan of
+                                              # current `stat_stages` at this
+                                              # project's own MoveEnd-equivalent
+                                              # checkpoint (`_phase_faint_check`,
+                                              # which already runs once per
+                                              # resolved move regardless of
+                                              # outcome) reproduces this exactly.
+const HOLD_EFFECT_EJECT_PACK: int = 116      # Forces the HOLDER to switch when a
+                                              # stat decrease is JUST applied to
+                                              # it, from ANY source (the holder's
+                                              # own move, an opponent's move,
+                                              # hazards, etc. — confirmed NOT
+                                              # opponent-only). Source: TryEjectPack
+                                              # (battle_move_resolution.c
+                                              # L4069-4088) checks a
+                                              # `tryEjectPack` volatile flag SET
+                                              # only at the exact moment of
+                                              # application (battle_stat_change.c
+                                              # L365-368) and cleared frequently —
+                                              # a genuine "just happened this
+                                              # resolution" trigger, reproduced
+                                              # here via a stat_stages snapshot-
+                                              # diff taken at the same MoveEnd-
+                                              # equivalent checkpoint White Herb
+                                              # uses. Reuses `_do_forced_switch_in`
+                                              # and the random-replacement-pick
+                                              # shape [M18n]'s Red Card/Eject
+                                              # Button already established — NOT
+                                              # Guard-Dog-blockable (the holder
+                                              # switches itself; Guard Dog only
+                                              # blocks being forced out BY an
+                                              # opponent, same reasoning [M18n]'s
+                                              # Eject Button already confirmed).
+                                              # Source's IsPursuitTargetSet()/
+                                              # HasAnyBattlerQueuedSwitch()/Sky-
+                                              # Drop/Commander/Parting-Shot
+                                              # exclusions are all N/A — none of
+                                              # those mechanics (queued switches,
+                                              # Sky Drop, Commander, Parting Shot)
+                                              # exist in this project.
+const HOLD_EFFECT_MIRROR_HERB: int = 123     # Copies an opponent's move-driven
+                                              # stat INCREASE onto the holder,
+                                              # once, consumed. Source confirms
+                                              # this is a genuine structural twin
+                                              # of Opportunist ([M17n-8]) at the
+                                              # SOURCE level, not just "similar
+                                              # enough to reuse" — both are
+                                              # checked in the LITERAL SAME loop
+                                              # (battle_stat_change.c L430-449),
+                                              # so Opportunist's own documented
+                                              # scope limit ("primary move-driven
+                                              # stat increases only, not
+                                              # Moxie/Download-style ability-
+                                              # driven ones") is a shared source-
+                                              # level limitation, correctly
+                                              # inherited here too, not a new
+                                              # simplification. Source additionally
+                                              # QUEUES and batches the copy until
+                                              # MoveEnd (gQueuedStatBoosts,
+                                              # src/battle_main.c) since Mirror
+                                              # Herb is single-use unlike
+                                              # Opportunist's permanent-ability
+                                              # repeatability — simplified here to
+                                              # an immediate copy-and-consume
+                                              # (matching Opportunist's own
+                                              # immediate-apply shape), since this
+                                              # project's one-stat-per-move
+                                              # architecture means a second
+                                              # qualifying trigger could never
+                                              # occur before the single-use item
+                                              # is already spent.
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -454,9 +636,26 @@ static func attack_modifier_uq412(mon: BattlePokemon, move: MoveData, ng_active:
 	return 4096
 
 
-# M18g: item-driven DEFENSE stat modifier (Deep Sea Scale, Metal Powder) — a
-# genuinely NEW pipeline stage, since no item-side defense-stat modifier existed
-# in this project before this tier (Eviolite/Assault Vest aren't implemented).
+# M18s: "not fully evolved" check for Eviolite. Source: CanEvolve (battle_util.c
+# L7006-7020) — TRUE iff the species has at least one evolution entry with a
+# valid target species, checked against GetSpeciesEvolutions' raw table (no
+# level/method/region filtering). This project's data/evolutions.json (loaded via
+# PokemonRegistry.get_evolutions) is generated from that exact same source table,
+# so a plain size()>0 check reproduces CanEvolve exactly — confirmed by reading
+# CanEvolve directly, not assumed. A species with ZERO possible evolutions (e.g.
+# Ditto) and a species that's simply fully-evolved both correctly return an empty
+# list here — same false result, same non-boost outcome as source. First read of
+# PokemonRegistry from anywhere under scripts/battle/core/ — a new but small
+# cross-cutting dependency, flagged per this project's own discipline for such
+# firsts (mirrors [M18g]'s own "no prior species-gate precedent" note).
+static func _can_evolve(mon: BattlePokemon) -> bool:
+	return not PokemonRegistry.get_evolutions(mon.species.national_dex_num).is_empty()
+
+
+# M18g: item-driven DEFENSE stat modifier (Deep Sea Scale, Metal Powder). M18s
+# extends this SAME pipeline stage with Eviolite/Assault Vest — a genuinely NEW
+# pipeline stage as of M18g, since no item-side defense-stat modifier existed in
+# this project before that tier.
 # Source: CalcDefenseStat's own switch (battle_util.c L7160-7189) — the raw-stat-
 # before-formula stage, confirmed DISTINCT from GetDefenseStatModifier's post-
 # effectiveness stage (AbilityManager.defense_damage_modifier_uq412, a similarly
@@ -464,6 +663,9 @@ static func attack_modifier_uq412(mon: BattlePokemon, move: MoveData, ng_active:
 # Deep Sea Scale: Clamperl, special-only (`!usesDefStat`). Metal Powder: Ditto,
 # physical-only (`usesDefStat`) — the "untransformed" condition is vacuously
 # always true in this project (no Transform/Imposter mechanic exists).
+# Eviolite: BOTH categories (unconditional on move.category, unlike the two
+# species-gated items above), gated on `_can_evolve` instead of species.
+# Assault Vest: special-only, unconditional (no species/evolution gate at all).
 static func defense_stat_modifier_uq412(mon: BattlePokemon, move: MoveData, ng_active: bool = false) -> int:
 	var item: ItemData = effective_held_item(mon, ng_active)
 	if item == null:
@@ -472,6 +674,10 @@ static func defense_stat_modifier_uq412(mon: BattlePokemon, move: MoveData, ng_a
 		return UQ412_DOUBLE
 	if item.hold_effect == HOLD_EFFECT_METAL_POWDER and move.category == 0 and _species_matches(mon, item):
 		return UQ412_DOUBLE
+	if item.hold_effect == HOLD_EFFECT_EVIOLITE and _can_evolve(mon):
+		return UQ412_CHOICE_MULT
+	if item.hold_effect == HOLD_EFFECT_ASSAULT_VEST and move.category == 1:
+		return UQ412_CHOICE_MULT
 	return 4096
 
 
@@ -495,6 +701,18 @@ static func post_roll_modifier_uq412(mon: BattlePokemon, ng_active: bool = false
 	# Glasses, which live in a completely different function.
 	if item.hold_effect == HOLD_EFFECT_EXPERT_BELT and effectiveness >= 2.0:
 		return UQ412_EXPERT_BELT
+	# M18u: Metronome item — +20%/consecutive same-move use, capped at 5 uses
+	# (+100% max). Source: GetAttackerItemsModifier's own HOLD_EFFECT_METRONOME
+	# case (battle_util.c L7486-7491) — the SAME function Life Orb/Expert Belt
+	# above already occupy. `PercentToUQ4_12(percent) = (4096*percent+50)/100`
+	# (source's own rounding formula, battle_util.c L965-967) — at param=20,
+	# counter=5: 4096+819*5=8191, not a clean 8192; source's own comment notes
+	# this off-by-one "will never really matter" given the domain of real damage
+	# numbers, so it's reproduced faithfully rather than "cleaned up."
+	if item.hold_effect == HOLD_EFFECT_METRONOME:
+		var boost_per_use: int = (4096 * item.hold_effect_param + 50) / 100
+		var capped_uses: int = min(mon.metronome_item_counter, 5)
+		return 4096 + boost_per_use * capped_uses
 	return 4096
 
 
@@ -1591,3 +1809,88 @@ static func holds_room_service(mon: BattlePokemon, ng_active: bool = false) -> b
 static func holds_blunder_policy(mon: BattlePokemon, ng_active: bool = false) -> bool:
 	var item: ItemData = effective_held_item(mon, ng_active)
 	return item != null and item.hold_effect == HOLD_EFFECT_BLUNDER_POLICY
+
+
+# ── M18s: Assault Vest's move-restriction half ──────────────────────────────────
+#
+# Source: CheckMoveLimitations's unusableMoves bitmask (battle_util.c L1622-1624),
+# which makes a status move literally UNSELECTABLE in the move menu — this project
+# has no equivalent menu-legality-filter architecture anywhere (confirmed via
+# grep). The established pattern for a structurally identical restriction already
+# in this project (Disable, [M7]) is fail-at-EXECUTION via `move_skipped`, not
+# menu-filtering — Assault Vest matches that existing internal precedent rather
+# than inventing new selection-time infrastructure. `moveEffect != EFFECT_ME_FIRST`
+# is N/A — no Me First move exists anywhere in this project (confirmed: BAN_ME_FIRST
+# is a per-move "can this move be copied by Metronome/Mirror Move/etc." data flag,
+# not an indicator the move itself is implemented).
+static func holds_assault_vest(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_ASSAULT_VEST
+
+
+# ── M18u: Berserk Gene ───────────────────────────────────────────────────────────
+#
+# Pure data check — the +6-Atk-cap gate and confusion-infinite behavior are
+# orchestrated by the caller (BattleManager's switch-in block), matching
+# HOLD_EFFECT_BERSERK_GENE's own doc comment.
+static func holds_berserk_gene(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_BERSERK_GENE
+
+
+# ── M18w: Red Orb / Blue Orb ─────────────────────────────────────────────────────
+#
+# Returns the target ability ID (AbilityManager.ABILITY_DESOLATE_LAND or
+# ABILITY_PRIMORDIAL_SEA) to set on switch-in, or -1 if the holder doesn't
+# qualify (wrong item, wrong species, or no item at all). Source:
+# TryPrimalReversion → TryBattleFormChange(FORM_CHANGE_BATTLE_PRIMAL_REVERSION)
+# (battle_util.c L4783-4791), gated per-species by the form-change table
+# (sGroudonFormChangeTable/sKyogreFormChangeTable, src/data/pokemon/
+# form_change_tables.h L735-753): Groudon+Red Orb only, Kyogre+Blue Orb only —
+# NOT interchangeable (a Groudon holding Blue Orb, or vice versa, gets nothing).
+# Reuses `_species_matches`/`required_species`, the SAME per-item species gate
+# M18g's Light Ball/Thick Club/etc. already use — Red Orb's `required_species`
+# is set to Groudon(383), Blue Orb's to Kyogre(382), even though BOTH items
+# share the identical HOLD_EFFECT_PRIMAL_ORB(108) value, so the item-vs-species
+# pairing is fully data-driven (no per-item branching needed here).
+# CORRECTION (see HOLD_EFFECT_PRIMAL_ORB's own doc comment): this is
+# ABILITY-SET ONLY — no species/stat/type swap, since this project has no
+# form-change-mid-battle infrastructure (the same reason Mega Stones are
+# excluded from this project's scope entirely).
+static func primal_orb_target_ability_id(mon: BattlePokemon, ng_active: bool = false) -> int:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	if item == null or item.hold_effect != HOLD_EFFECT_PRIMAL_ORB:
+		return -1
+	if not _species_matches(mon, item):
+		return -1
+	if item.required_species == SPECIES_GROUDON:
+		return AbilityManager.ABILITY_DESOLATE_LAND
+	if item.required_species == SPECIES_KYOGRE:
+		return AbilityManager.ABILITY_PRIMORDIAL_SEA
+	return -1
+
+
+# ── M18m: Stat-change-reactive consumed items (4 items) ────────────────────────
+#
+# Pure data checks, matching the established holds_red_card/holds_eject_button
+# shape — all orchestration (the actual mechanic each item triggers) lives in
+# BattleManager, at the confirmed insertion point each one needs.
+
+static func holds_weakness_policy(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_WEAKNESS_POLICY
+
+
+static func holds_white_herb(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_WHITE_HERB
+
+
+static func holds_eject_pack(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_EJECT_PACK
+
+
+static func holds_mirror_herb(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_MIRROR_HERB
