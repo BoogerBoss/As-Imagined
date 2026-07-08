@@ -222,6 +222,17 @@ HOLD_EFFECT_COVERT_CLOAK = 125  # The exact same gate as Shield Dust
                                  # citation (including the confirmed-but-
                                  # unfixed Poison Touch gap).
 
+# [M18.5i]: Grip Claw -- unblocked by [M18.5f]'s binding-move mechanic.
+HOLD_EFFECT_GRIP_CLAW = 52    # Fixes binding-move duration to 7 turns instead
+                              # of the random 4-5 roll -- see item_manager.gd's
+                              # own doc comment for the full source citation.
+
+# [M18.5i]: Loaded Dice -- unblocked by [M18.5g]'s multi-hit mechanism.
+HOLD_EFFECT_LOADED_DICE = 126  # Re-rolls multi-hit count within [4,5] instead
+                                # of the standard weighted [2,5] distribution --
+                                # see item_manager.gd's own doc comment for the
+                                # full source citation.
+
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
 TYPE_FIGHTING = 2
@@ -566,6 +577,13 @@ ITEMS = [
         "hold_effect_param": TYPE_FIRE, "pocket": POCKET_BERRIES},
     {"id": 510, "name": "Heavy-Duty Boots",   "hold_effect": HOLD_EFFECT_HEAVY_DUTY_BOOTS},
     {"id": 513, "name": "Utility Umbrella",   "hold_effect": HOLD_EFFECT_UTILITY_UMBRELLA},
+
+    # ── [M18.5i]: Reconsideration pass, Group B (2) -- both unblocked by
+    #    [M18.5f]'s binding-move mechanic and [M18.5g]'s multi-hit mechanism
+    #    respectively, deferred from those tiers per their own scope lines.
+    #    No hold_effect_param needed for either.
+    {"id": 488, "name": "Grip Claw",   "hold_effect": HOLD_EFFECT_GRIP_CLAW},
+    {"id": 762, "name": "Loaded Dice", "hold_effect": HOLD_EFFECT_LOADED_DICE},
 ]
 
 HEADER = """\

@@ -7,5 +7,5 @@ script = ExtResource("1")
 
 ability_id = 92
 ability_name = "Skill Link"
-description = ""
-ai_rating = 0
+description = "Increases the frequency of moves that hit multiple times."
+ai_rating = 7

@@ -163,21 +163,22 @@ func _test_section_a_move_data() -> void:
 
 func _test_section_b_hit_count_resolution() -> void:
 	var bm := _make_bm()
+	var atk := _make_mon("BAtk", TypeChart.TYPE_NORMAL)
 
 	# B1-B4: fixed strike_count moves return exactly that value, deterministically.
 	var double_kick := _load_move(24)
 	_chk("B1 Double Kick (strike_count=2) resolves to exactly 2",
-			bm._resolve_multi_hit_count(double_kick) == 2)
+			bm._resolve_multi_hit_count(double_kick, atk) == 2)
 	var triple_dive := _load_move(793)
 	_chk("B2 Triple Dive (strike_count=3) resolves to exactly 3",
-			bm._resolve_multi_hit_count(triple_dive) == 3)
+			bm._resolve_multi_hit_count(triple_dive, atk) == 3)
 
 	# B3-B6: force_multi_hit_count seam pins each of 2/3/4/5 for a multi_hit move.
 	var bullet_seed := _load_move(331)
 	for forced in [2, 3, 4, 5]:
 		bm._force_multi_hit_count = forced
 		_chk("B%d force_multi_hit_count=%d pins exactly %d" % [3 + forced - 2, forced, forced],
-				bm._resolve_multi_hit_count(bullet_seed) == forced)
+				bm._resolve_multi_hit_count(bullet_seed, atk) == forced)
 	bm._force_multi_hit_count = null
 
 	# B7: statistical distribution — 35% 2 hits / 35% 3 hits / 15% 4 hits /
@@ -186,7 +187,7 @@ func _test_section_b_hit_count_resolution() -> void:
 	var n := 4000
 	var counts := {2: 0, 3: 0, 4: 0, 5: 0}
 	for _i in range(n):
-		var c: int = bm._resolve_multi_hit_count(bullet_seed)
+		var c: int = bm._resolve_multi_hit_count(bullet_seed, atk)
 		counts[c] += 1
 	var r2: float = float(counts[2]) / n
 	var r3: float = float(counts[3]) / n

@@ -14150,3 +14150,228 @@ task's own deliberate positioning. Confirmed `[M18.5f]`, `[M18.5g]`, and
 both `[M18.5h-1]`/`[M18.5h-2]` are all `**COMPLETE**` in CLAUDE.md's status
 section at the time of this entry — Phase 1 is fully done, so `[M18.5i]` is
 clear to proceed whenever Rob chooses it.
+
+---
+
+## [M18.5i] Reconsideration pass: previously-excluded items/abilities now
+## unblocked by M18.5's infrastructure builds
+
+### First action: prerequisite confirmation (resolves the gap [M18.5j] left open)
+
+Cross-checked both CLAUDE.md's status section and this file directly (not
+just one of the two): `[M18.5f]` (Binding-move), `[M18.5g]` (Multi-hit),
+`[M18.5h-1]` (Nature), `[M18.5h-2]` (IV), and `[M18.5j]` (species_name
+readability) are all marked `**COMPLETE**` in CLAUDE.md's status section,
+and all five have full corresponding entries in this file (confirmed via
+`grep -n "^## \["` for each tag). One naming inconsistency noted, not a
+correctness issue: CLAUDE.md's own status bullets label the gender tiers
+"M18.5d Phase 1"/"M18.5d Phase 2", but this file's actual section tags are
+`[M18.5d]`/`[M18.5d-2]`/`[M18.5d-3]` — a labeling drift between the two
+documents, not a missing or incomplete tier. All five prerequisites
+confirmed genuinely complete; proceeding was clear.
+
+### Group A — administrative closure only, confirmed via direct entry re-read
+
+Read `[M18.5d-2]`'s entry in full (CLAUDE.md's own "M18.5d Phase 2" bullet).
+Confirmed all four items were built to completion in that session, not
+partially: Attract (real dispatch `BattleScript_EffectAttract` →
+`Cmd_tryinfatuating`, 50% per-turn immobilization, switch-out cure), Rivalry
+(`move_power_modifier_uq412`'s same-gender/opposite-gender modifier, exact
+UQ_4_12 values), Cute Charm (defender-keyed 30%-on-contact, same dispatch
+shape as Static/Flame Body/Poison Point), Oblivious (Intimidate-block
+retained + new infliction-blocking + new switch-in cure) — all with a
+passing `m18_5d2_test.tscn` (46/46) at the time. **No implementation work
+needed here.** CLAUDE.md's own status section already accurately reflects
+this (the M18.5d Phase 2 bullet already states all four items complete,
+correctly) — no update needed, verified rather than assumed.
+
+### Group C — Step 0 findings (resolved BEFORE any Group B implementation,
+### per this task's own required ordering)
+
+**1. Confusion berries (Figy/Wiki/Mago/Aguav/Iapapa) — confirmed STILL
+BLOCKED, needs the excluded likes/dislikes data specifically, not just the
+Nature type.** Traced the real trigger from `HOLD_EFFECT_CONFUSE_SPICY`
+through `battle_hold_effects.c`'s dispatch (`case HOLD_EFFECT_CONFUSE_SPICY:
+... HealConfuseBerry(itemBattler, item, FLAVOR_SPICY)`, and the four sibling
+cases for Wiki/Mago/Aguav/Iapapa) to `HealConfuseBerry` (`battle_hold_effects.c`
+L920-940): the confusion trigger is
+`GetFlavorRelationByPersonality(gBattleMons[battler].personality, flavorId) < 0`.
+`GetFlavorRelationByPersonality` (`pokemon.c` L5473-5477) derives the Nature
+from personality (`GetNatureFromPersonality`) then indexes
+`gPokeblockFlavorCompatibilityTable[nature * FLAVOR_COUNT + flavor]`
+(`pokeblock.c` L141-163) — the EXACT SAME 25-nature × 5-flavor compatibility
+grid `[M18.5h-1]`'s own decisions.md entry explicitly excluded as
+"likes/dislikes" (zero roadmap consumer at the time it was built). The
+Nature TYPE alone (which now exists as `BattlePokemon.nature`) is NOT
+sufficient — these berries need the full nature→flavor-preference mapping,
+a strictly larger, still-excluded dataset. Definitively blocked, not
+ambiguous. **Not implemented.** (Also independently excluded by Rob's own
+design decision per `docs/m18_subtier_plan.md`'s Section C item 5 — "too
+functionally similar to Sitrus Berry" — so even if the likes/dislikes table
+existed, Rob had already ruled out building this family; both reasons now
+apply simultaneously.)
+
+**2. Power-item family (Weight/Bracer/Belt/Lens/Band/Anklet) — confirmed
+still blocked on M20.** Re-grepped every `evs[` mutation across
+`scripts/battle/core/*.gd`: all six occurrences are `_stat_formula`/
+`_hp_formula` reads inside `_calculate_stats()` (`battle_pokemon.gd`
+L596-606) — zero writes anywhere in battle logic. No EV-gain mechanism
+exists. Matches `[M18.5h-2]`'s and `[M18h]`'s own prior confirmations
+exactly — a quick reconfirmation, not a re-litigation of M20's scope.
+
+**3. Destiny Knot — confirmed still blocked on M28/breeding, but the
+ORIGINAL blocker citation was factually wrong.** Traced Destiny Knot's only
+real mechanical hook anywhere in source: `InheritIVs` (`daycare.c`
+L609-620) — `if (motherItem == ITEM_DESTINY_KNOT || fatherItem ==
+ITEM_DESTINY_KNOT) howManyIVs = 5;` (raises the egg's inherited-IV count
+from 3 to 5). Confirmed `HOLD_EFFECT_DESTINY_KNOT` is never read by
+`battle_hold_effects.c`, `battle_util.c`, or `battle_script_commands.c` —
+zero in-battle usage anywhere, only a debug name-string reference
+(`battle_debug.c` L2236). **Found and flagged a real error in
+`docs/m18_subtier_plan.md`'s own original citation**: it claims Destiny
+Knot "mirrors infatuation back onto its inflicter" (Section C item 2) —
+that description matches Destiny Knot's Generation IV (Diamond/Pearl/
+Platinum) effect, which was removed from the games starting Generation VI;
+the current `pokeemerald_expansion` reference has no such mechanic
+anywhere. `[M18.5d-2]`'s own entry had already quietly corrected course
+("Destiny Knot remains separately deferred to M18.5i, pending M28/breeding
+readiness") without citing why the original "blocked on Attract" framing
+was wrong — this entry makes that correction explicit and source-backed.
+M28 (breeding) has not started (absent from CLAUDE.md's status section
+entirely, referenced only as a future dependency). Confirmed still blocked,
+correctly, for a different and now-accurate reason. **Not implemented.**
+
+### Group B — implementation
+
+**Grip Claw** (item, id 488, `HOLD_EFFECT_GRIP_CLAW=52` — value confirmed by
+direct enum-position count in `include/constants/hold_effects.h`, matching
+the already-established `HOLD_EFFECT_CHOICE_SCARF=49`/`CHOICE_SPECS=50`/
+`DAMP_ROCK=51`/`HEAT_ROCK=53`/`ICY_ROCK=54` sequence exactly). Source:
+`SetWrapTurns` (`battle_util.c` L10726-10738), `B_WRAP_TURNS=7`
+(`include/config/battle.h` L213) — a FIXED 7 turns, not an extended random
+range, confirmed precisely rather than assumed. `StatusManager.
+try_apply_wrap` extended with a new `ng_active: bool = false` trailing
+param; when `force_wrap_turns` is null, checks
+`ItemManager.effective_held_item(inflictor, ng_active)` for
+`HOLD_EFFECT_GRIP_CLAW` before falling back to the standard
+`randi_range(4, 5)` roll — an explicit `force_wrap_turns` override still
+wins over Grip Claw unconditionally, matching `force_sleep_turns`'s own
+established seam precedence. `status_manager.gd`'s own `SE_WRAP` dispatch
+branch threads `ng_active` through to the new param.
+
+**Skill Link** (ability, id 92 — a name-only placeholder `.tres` already
+existed from `[M15]`'s bulk pass, now given a real description/`ai_rating`).
+Source: `CancelerMultihitMoves` (`battle_move_resolution.c` L2331-2332) —
+forces the multi-hit counter to exactly 5. Confirmed this ONLY applies
+inside the `IsMultiHitMove()` branch (true variable `multi_hit` moves),
+never the `GetMoveStrikeCount() > 1` branch (fixed-hit moves like Twineedle/
+Double Kick/Bonemerang) — those return their fixed count unconditionally
+regardless of Skill Link, confirmed by reading the actual if/else-if
+structure rather than assuming uniform application across "all multi-hit
+moves." NOT breakable (no `.breakable` flag, `src/data/abilities.h`
+L694-699) — a pure attacker-self passive, no Mold Breaker interaction
+needed.
+
+**Loaded Dice** (item, id 762, `HOLD_EFFECT_LOADED_DICE=126` — value
+confirmed by direct enum-position count, cross-validated against the
+already-established `HOLD_EFFECT_MIRROR_HERB=123`/`PUNCHING_GLOVE=124`/
+`COVERT_CLOAK=125` sequence). Source: `SetRandomMultiHitCounter`
+(`battle_move_resolution.c` L2306-2307) — `RandomUniform(4, 5)` instead of
+the standard weighted `[2,5]` distribution, for the SAME `IsMultiHitMove()`-
+only scope as Skill Link (its OTHER, Population-Bomb-specific
+`RandomUniform(4,10)` branch is moot here — Population Bomb is excluded
+from this project's roster entirely per `[M18.5g]`). Confirmed a genuinely
+different mechanic from Skill Link, per the task's own instruction not to
+assume identical implementations: Loaded Dice is PROBABILISTIC (varies
+between 4 and 5, ~50/50), Skill Link is a single DETERMINISTIC forced value
+(always exactly 5) — verified both behaviors directly, not inferred from
+their similar in-game descriptions.
+
+**Shared implementation surface for Skill Link/Loaded Dice**:
+`_resolve_multi_hit_count(move: MoveData)` extended to
+`_resolve_multi_hit_count(move: MoveData, attacker: BattlePokemon, ng_active:
+bool = false)` — the Skill Link ability check
+(`AbilityManager.effective_ability_id`) and the Loaded Dice item check
+(`ItemManager.effective_held_item`) both live INSIDE the `move.multi_hit`
+branch, checked in that order (matching source's own if/else-if
+precedence, though a mon can never hold both simultaneously — one ability
+slot), both gated correctly OUT of the `move.strike_count > 1` early-return
+path above them. The one production call site
+(`_do_multi_hit_sequence`) updated to thread `attacker`/`ng_active`
+through — both were already in local scope, no new plumbing needed. The 4
+pre-existing test call sites in `m18_5g_test.gd`'s Section B (`_resolve_
+multi_hit_count(move)`) updated to pass a new plain `atk` fixture as the
+new required second argument — confirmed this doesn't change any of that
+section's own existing assertions' meaning (no ability/item was ever set on
+that fixture, so behavior is identical to before this tier).
+
+New `AbilityManager.ABILITY_SKILL_LINK=92` constant (didn't exist —
+`[M17n-5]`'s own entry confirmed it was deliberately left out, since no
+multi-hit mechanic existed at the time to check it against).
+`ItemManager.HOLD_EFFECT_GRIP_CLAW=52`/`HOLD_EFFECT_LOADED_DICE=126` added
+alongside the existing constant block. `gen_items.py`: `HOLD_EFFECT_GRIP_CLAW`/
+`HOLD_EFFECT_LOADED_DICE` constants plus 2 new `ITEMS` entries (Grip Claw
+id 488, Loaded Dice id 762, neither needs `hold_effect_param`).
+`gen_abilities.py`: 1 new `ABILITIES` entry (Skill Link id 92); the stale
+`[M17n-5]`-era comment above it ("Skill Link (92) intentionally has NO entry
+here — deferred") corrected in place to point at this tier instead of
+silently leaving a now-inaccurate deferral note in the file. `.tres`
+regenerated: `item_0488.tres`/`item_0762.tres` new, `ability_0092.tres`
+updated in place (from its old name-only placeholder to a real entry).
+
+### Testing
+
+New `scenes/battle/m18_5i_test.gd`/`.tscn`, three clearly-separated
+sections, 20/20 assertions, stable across 6 consecutive reruns. Section A
+(Grip Claw, 6 assertions): fixed-7-turn application with zero variance
+(n=30) — deterministic per Step 0's finding, not a statistical-sample test;
+a discriminator confirming the SAME inflictor without Grip Claw rolls the
+standard {4,5} range and never 7; an explicit `force_wrap_turns` override
+still winning over Grip Claw; Klutz suppression falling back to the
+standard roll. Section B (Skill Link, 4 assertions): forced-maximum
+determinism (n=30, zero variance) matching the established determinism-test
+pattern; a discriminator confirming the SAME move without Skill Link
+produces multiple distinct hit counts; confirmation that fixed
+strike_count moves (Double Kick) are unaffected; confirmation no held item
+interferes with the ability check. Section C (Loaded Dice, 10 assertions):
+a statistical-sample test (n=2000, NOT a determinism test, per Step 0's
+confirmed probabilistic-but-biased finding) confirming zero 2- or 3-hit
+rolls and a ~50% 4-hit rate (generous [35%,65%] tolerance band matching
+this project's established statistical convention); an explicit
+discriminator distinguishing Loaded Dice's probabilistic behavior from
+Skill Link's single fixed value; a discriminator confirming the standard
+distribution (including 2s/3s) returns with no item present; confirmation
+fixed strike_count moves are unaffected; confirmation Klutz suppresses it
+too. Watched for the GDScript `%`-after-`+` formatting pitfall in every
+multi-line label combining both operators — none triggered, all
+pre-parenthesized correctly on first write.
+
+### Regression
+
+`item_registry_test.tscn`: **309/309**, unchanged (the 2 new items don't
+change its spot-check assertions' count — it doesn't enumerate every item).
+`m18_5f_test.tscn` (binding's own origin suite): **137/137**, unchanged —
+confirms Grip Claw's new branch inside `try_apply_wrap` doesn't disturb the
+existing random-roll/force-seam/reciprocal-scan behavior for non-Grip-Claw
+holders. `m18_5g_test.tscn` (multi-hit's own origin suite, including the 4
+call sites updated for the new required `attacker` param): **315/315**,
+unchanged — confirms the signature change is purely additive for every
+pre-existing caller. Full sweep not run, per this task's own explicit
+scope instruction. No stray Godot processes before or after; reference
+clone untouched; no scratch/debug files left over. `git status --short`
+matched the expected file set exactly: 8 modified files (`ability_manager.gd`,
+`battle_manager.gd`, `item_manager.gd`, `status_manager.gd`, `gen_abilities.py`,
+`gen_items.py`, `ability_0092.tres`, `m18_5g_test.gd`) plus 4 new untracked
+files (`item_0488.tres`, `item_0762.tres`, `m18_5i_test.gd`, `m18_5i_test.tscn`).
+
+### Docs
+
+CLAUDE.md's status section updated: new M18.5i bullet covering the
+prerequisite confirmation, Group A's administrative-only closure, Group B's
+three implementations, and Group C's three findings (two reconfirmed
+blocked, one reconfirmed blocked with a corrected reason). **M18.5 as a
+whole is now considered complete** — every sub-tier (a/d/d-2/d-3/f/g/
+h-1/h-2/j/i) is closed, Group C's three items are genuinely, durably
+blocked on other milestones (M20 EV gain, M28 breeding) or excluded by
+Rob's own design decision (confusion berries), not left open pending
+further M18.5 work. No further M18.5 sub-tier is anticipated.

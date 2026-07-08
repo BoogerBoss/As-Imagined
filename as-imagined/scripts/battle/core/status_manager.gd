@@ -318,20 +318,30 @@ static func try_apply_attract(
 # the trap volatile itself (confirmed via CanBattlerEscape, battle_util.c
 # L4943-4960, whose Ghost branch is checked BEFORE its wrapped branch).
 # force_wrap_turns: Variant — null = random 4-5 (RandomUniform, B_BINDING_TURNS
-#   >= GEN_5 branch, this project's default config); int value = pin duration
-#   for deterministic testing, matching force_sleep_turns's own established seam
-#   shape. Grip Claw's 7-turn fixed extension is out of scope (deferred M18.5i).
+#   >= GEN_5 branch, this project's default config) UNLESS the inflictor holds
+#   Grip Claw, in which case it's a fixed 7 turns instead ([M18.5i] — source:
+#   SetWrapTurns, battle_util.c L10726-10738, B_WRAP_TURNS=7,
+#   include/config/battle.h L213); int value = pin duration for deterministic
+#   testing regardless of held item, matching force_sleep_turns's own
+#   established seam shape (an explicit force always wins over Grip Claw).
 static func try_apply_wrap(
 		victim: BattlePokemon,
 		inflictor: BattlePokemon,
-		force_wrap_turns: Variant = null) -> bool:
+		force_wrap_turns: Variant = null,
+		ng_active: bool = false) -> bool:
 
 	if victim.wrapped_by != null:
 		return false
 
 	victim.wrapped_by = inflictor
-	victim.wrapped_turns = force_wrap_turns if force_wrap_turns != null \
-			else randi_range(4, 5)
+	if force_wrap_turns != null:
+		victim.wrapped_turns = force_wrap_turns
+	else:
+		var inflictor_item: ItemData = ItemManager.effective_held_item(inflictor, ng_active)
+		if inflictor_item != null and inflictor_item.hold_effect == ItemManager.HOLD_EFFECT_GRIP_CLAW:
+			victim.wrapped_turns = 7
+		else:
+			victim.wrapped_turns = randi_range(4, 5)
 	return true
 
 
@@ -960,7 +970,8 @@ static func try_secondary_effect(
 			# guaranteed (secondary_chance == 0), so is_true_secondary is false and
 			# all three checks above already short-circuit past this branch, matching
 			# source's own "not a true secondary" MOVE_EFFECT_WRAP finding.
-			return try_apply_wrap(defender, attacker)
+			# [M18.5i] ng_active threaded through for Grip Claw's own Klutz/NG gate.
+			return try_apply_wrap(defender, attacker, null, ng_active)
 	return false
 
 

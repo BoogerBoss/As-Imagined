@@ -47,6 +47,14 @@ const ABILITY_SWARM:          int = 68
 const ABILITY_ROCK_HEAD:      int = 69
 const ABILITY_SHELL_ARMOR:    int = 75
 const ABILITY_ADAPTABILITY:   int = 91
+const ABILITY_SKILL_LINK:     int = 92  # [M18.5i] forces multi-hit moves to their
+                                          # maximum hit count (5) — NOT breakable
+                                          # (no .breakable flag, src/data/abilities.h),
+                                          # only affects true variable multi_hit moves,
+                                          # not fixed strike_count ones (those are
+                                          # already deterministic, per CancelerMultihitMoves'
+                                          # own if/else-if branch ordering,
+                                          # battle_move_resolution.c L2306-2346)
 const ABILITY_SNIPER:         int = 97
 const ABILITY_NO_GUARD:       int = 99
 const ABILITY_TINTED_LENS:    int = 110

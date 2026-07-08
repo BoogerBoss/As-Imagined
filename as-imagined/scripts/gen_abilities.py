@@ -1263,8 +1263,10 @@ ABILITIES = [
     # ── M17n-5: Damage-pipeline leftovers ────────────────────────────────────────────
     # Source: docs/m17n_recon.md Group 4, trimmed by Rob's explicit exclusions (Ruin
     # quartet/Water Bubble/Supreme Overlord/Plus/Minus — final list locked in
-    # docs/decisions.md [M17n-5]). Skill Link (92) intentionally has NO entry here —
-    # deferred (no multi-hit mechanic exists anywhere in this codebase to modify).
+    # docs/decisions.md [M17n-5]). Skill Link (92) intentionally had NO entry here at
+    # the time — deferred (no multi-hit mechanic existed anywhere in this codebase to
+    # modify). Unblocked by [M18.5g]'s multi-hit mechanism, implemented by [M18.5i] —
+    # see that entry below, in its own reconsideration-pass section.
     # Breakable flags set to match src/data/abilities.h exactly; only Sturdy/Fluffy/
     # Punk Rock/Tangled Feet are genuinely wired for Mold-Breaker bypass in this
     # project (all true defender-role checks) — Technician/Sheer Force/Mega
@@ -1760,6 +1762,17 @@ ABILITIES = [
     {"id": 240, "name": "Mirror Armor",
      "description": "Bounces back only the stat-lowering effects it receives.",
      "ai_rating": 6, "breakable": True},
+
+    # ── [M18.5i]: Reconsideration pass, Group B ──────────────────────────────────────
+    # Source: CancelerMultihitMoves, battle_move_resolution.c L2331-2332 — forces
+    # multi_hit (variable) moves to their maximum hit count (5). Does NOT affect
+    # fixed strike_count moves (Twineedle, Double Hit, etc. — those are already
+    # deterministic per source's own if/else-if branch ordering). NOT breakable
+    # (no .breakable flag, src/data/abilities.h L694-699). Unblocked by [M18.5g]'s
+    # multi-hit mechanism; deferred from that tier per its own scope line.
+    {"id": 92, "name": "Skill Link",
+     "description": "Increases the frequency of moves that hit multiple times.",
+     "ai_rating": 7},
 ]
 
 HEADER = """\

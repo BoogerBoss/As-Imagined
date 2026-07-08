@@ -30,6 +30,11 @@ const HOLD_EFFECT_LEFTOVERS:     int = 41
 const HOLD_EFFECT_CHOICE_SCARF:  int = 49
 const HOLD_EFFECT_CHOICE_SPECS:  int = 50
 const HOLD_EFFECT_DAMP_ROCK:     int = 51   # Rain → 8 turns
+const HOLD_EFFECT_GRIP_CLAW:     int = 52   # [M18.5i] Fixes binding-move duration to 7 turns
+                                            # instead of the random 4-5 roll — SetWrapTurns,
+                                            # battle_util.c L10726-10738, B_WRAP_TURNS constant
+                                            # (include/config/battle.h L213). Deferred from
+                                            # [M18.5f], which built the binding mechanic itself.
 const HOLD_EFFECT_HEAT_ROCK:     int = 53   # Sun → 8 turns
 const HOLD_EFFECT_ICY_ROCK:      int = 54   # Hail → 8 turns
 const HOLD_EFFECT_SMOOTH_ROCK:   int = 56   # Sandstorm → 8 turns
@@ -792,6 +797,28 @@ const HOLD_EFFECT_COVERT_CLOAK: int = 125  # Source: IsMoveEffectBlockedByTarget
                                             # item-removal call anywhere near
                                             # it, matching Shield Dust's own
                                             # passive-ability shape.
+
+# [M18.5i] Loaded Dice. Value re-derived programmatically (COVERT_CLOAK=125
+# is the immediately preceding enum entry in include/constants/hold_effects.h,
+# so LOADED_DICE=126), cross-validated against MIRROR_HERB=123/
+# PUNCHING_GLOVE=124's own already-confirmed sequential values.
+const HOLD_EFFECT_LOADED_DICE:  int = 126  # Source: SetRandomMultiHitCounter
+                                            # (battle_move_resolution.c
+                                            # L2306-2307) — for TRUE variable-
+                                            # multi-hit moves only (move.multi_hit,
+                                            # NOT move.strike_count fixed-hit
+                                            # moves — Population Bomb is the one
+                                            # exception, excluded from this
+                                            # project's scope per [M18.5g]),
+                                            # replaces the standard weighted
+                                            # 2/3/4/5 roll with a flat
+                                            # RandomUniform(4,5) — biases toward
+                                            # the top of the range (50/50 between
+                                            # 4 and 5 hits) rather than forcing a
+                                            # single fixed value, genuinely
+                                            # distinct from Skill Link's own
+                                            # deterministic-5 effect
+                                            # (ability_manager.gd).
 
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.

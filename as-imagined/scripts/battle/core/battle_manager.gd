@@ -3670,15 +3670,33 @@ func _apply_fixed_dmg_to_target(attacker: BattlePokemon, defender: BattlePokemon
 # function only determines the MAXIMUM reachable hit count).
 # multi_hit moves (variable) roll once: 35% 2 hits / 35% 3 hits / 15% 4 hits /
 # 15% 5 hits (Gen5+ weighting — see MoveData.multi_hit's own doc comment for the
-# full source citation and the older-branch note). Skill Link/Loaded Dice would
-# hook in exactly here (forcing 5, or re-rolling within [4,5]) — deliberately not
-# wired, this tier's scope is the mechanism only (see decisions.md [M18.5g]).
-func _resolve_multi_hit_count(move: MoveData) -> int:
+# full source citation and the older-branch note).
+# [M18.5i] Skill Link/Loaded Dice wired in here, both scoped to TRUE variable
+# multi_hit moves only — fixed strike_count moves return above, unconditionally,
+# matching CancelerMultihitMoves' own if/else-if branch ordering
+# (battle_move_resolution.c L2306-2346), where the ability/item checks live
+# entirely inside the IsMultiHitMove() branch, never the GetMoveStrikeCount()
+# one (Population Bomb is the sole strike_count exception, excluded from this
+# project's roster entirely per [M18.5g]).
+func _resolve_multi_hit_count(move: MoveData, attacker: BattlePokemon, ng_active: bool = false) -> int:
 	if move.strike_count > 1:
 		return move.strike_count
 	if move.multi_hit:
 		if _force_multi_hit_count != null:
 			return int(_force_multi_hit_count)
+		# Skill Link: forces the maximum — CancelerMultihitMoves' own
+		# ABILITY_SKILL_LINK branch (battle_move_resolution.c L2331-2332),
+		# checked BEFORE the item-based Loaded Dice roll, matching source's
+		# own if/else-if precedence (though a mon can never hold both anyway —
+		# one ability slot).
+		if AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_SKILL_LINK:
+			return 5
+		# Loaded Dice: re-rolls within [4,5] instead of the standard weighted
+		# [2,5] distribution — SetRandomMultiHitCounter, battle_move_resolution.c
+		# L2306-2307.
+		var atk_item: ItemData = ItemManager.effective_held_item(attacker, ng_active)
+		if atk_item != null and atk_item.hold_effect == ItemManager.HOLD_EFFECT_LOADED_DICE:
+			return randi_range(4, 5)
 		# RandomWeighted(RNG_HITS, 0, 0, 7, 7, 3, 3) → hits 2/3/4/5 at weights 7/7/3/3
 		# (sum 20): battle_move_resolution.c L2311.
 		var roll: int = randi() % 20
@@ -3749,7 +3767,7 @@ func _resolve_multi_hit_count(move: MoveData) -> int:
 func _do_multi_hit_sequence(attacker: BattlePokemon, target: BattlePokemon,
 		move: MoveData, helping_hand: bool, power_override: int) -> void:
 	var ng_active: bool = _is_neutralizing_gas_active()
-	var hit_count: int = _resolve_multi_hit_count(move)
+	var hit_count: int = _resolve_multi_hit_count(move, attacker, ng_active)
 	var total_damage: int = 0
 	var hits_landed: int = 0
 
