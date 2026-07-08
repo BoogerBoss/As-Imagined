@@ -11884,3 +11884,100 @@ core files, 2 new `.tres` items, 2 new test files) before this docs commit.
 `CLAUDE.md`'s status section updated with M18t's completion. Recommend
 **M18v or M18x** (both remaining, none blocked), or the end-of-M18
 legacy-item cleanup pass, per Rob's preference.
+
+## [M18v] Mental Herb (1 item)
+
+Eighteenth M18 implementation tier, per `docs/m18_subtier_plan.md`'s M18v
+section. No cross-tier dependencies. The tier table pre-narrowed Mental
+Herb's scope to Disable/Encore, since Attract doesn't exist in this
+project — this session re-verified that narrowing against source directly
+rather than trusting it at face value, per the task's own instruction.
+
+### Step 0 — finalized scope, confirmed and corrected
+
+Canonical ID confirmed: **464** (`include/constants/items.h`).
+`HOLD_EFFECT_MENTAL_HERB = 28`, re-derived via the established programmatic
+full-enum recount, cross-validated against 6 pre-existing constants
+(`MACHO_BRACE=24`, `QUICK_CLAW=26`, `FOCUS_BAND=38`, `SHELL_BELL=44`,
+`BIG_ROOT=58`, `FOCUS_SASH=67`), zero mismatches.
+
+**Correction to the plan doc's own summary, confirmed by reading
+`TryMentalHerb` in full** (`battle_hold_effects.c` L416-476): current-gen
+source cures **six** volatiles in one unconditional scan — Infatuation,
+Torment, Disable, Heal Block, Encore, Taunt — not the five the plan's prose
+loosely listed (it omitted Infatuation, even though Infatuation is checked
+unconditionally at the top of the same function regardless of the
+`B_MENTAL_HERB >= GEN_5` gate the other five sit behind). Cross-checked
+against this project's actual implemented mechanics: **Disable**
+(`disabled_move`/`disable_turns`) and **Encore** (`encored_move`/
+`encore_turns`) are the only two of the six actually implemented —
+Infatuation/Torment/Heal Block/Taunt are all confirmed absent (zero code
+references anywhere as real mechanics; `move_data.gd`'s own comment
+explicitly lists Torment/Heal Block as "intended... whenever those are
+eventually [implemented]"). **The tier table's "Disable/Encore only"
+narrowing does hold up** — just via a fuller, independently-verified source
+citation than its own summary provided, not a rubber-stamp.
+
+**Trigger timing — confirmed the SAME shape as White Herb (`[M18m]`), not a
+new shape**: `HOLD_EFFECT_MENTAL_HERB`'s dispatch table entry
+(`hold_effects.h` L162-167) sets `.onTargetAfterHit`/`.onAttackerAfterHit`/
+`.onFling`, and `TryMentalHerb`'s own body never branches on which timing
+triggered it — it's an unconditional scan of current volatile state every
+time it's called, identical in shape to `RestoreWhiteHerbStats`. Reused
+`[M18m]`'s exact same `_phase_faint_check()` insertion point rather than
+building new infrastructure.
+
+**Consumption**: single-use, consumed exactly ONCE if EITHER condition was
+cured — source sets one `effect` flag regardless of how many of its (up to
+six, two in this project's scope) conditions matched in a given call.
+Tested explicitly (`V03`): a mon with BOTH Disable and Encore active
+simultaneously gets both cured in one call but only one `item_consumed`
+event fires.
+
+### Implementation
+
+- New `ItemManager.HOLD_EFFECT_MENTAL_HERB = 28` constant; new
+  `holds_mental_herb(mon, ng_active) -> bool` pure check.
+- `BattleManager._phase_faint_check()`: new block inserted immediately after
+  the existing White Herb block (same per-combatant loop, same
+  `m18m_ng_active` already computed there) — checks `disable_turns > 0` and
+  `encore_turns > 0` independently, clearing whichever fired
+  (`disabled_move`/`disable_turns` and/or `encored_move`/`encore_turns`),
+  emitting a new `item_effect_triggered(mon, "mental_herb_disable")` and/or
+  `"mental_herb_encore")` per condition actually cured, then calling
+  `_consume_item(mon)` exactly once if either fired.
+- 1 new entry added to `gen_items.py`'s `ITEMS` dict; `.tres` regenerated,
+  138 items total (137 prior + 1).
+
+### Test results
+
+New `m18v_test.gd`/`.tscn`: **18/18** assertions, 4 sections (V01 Disable —
+direct `_phase_faint_check()` call, no battle machinery at all, matching
+White Herb's own established no-battle testing shape, plus a
+without-the-item discriminator; V02 Encore — same shape; V03 both
+conditions active simultaneously, confirming single consumption despite
+curing two conditions in one call; V04 a direct test of Step 0's own scope
+confirmation — a holder with confusion active (a volatile this project HAS
+implemented, but confirmed NOT in Mental Herb's real source scope) holding
+Mental Herb, confirming confusion is left completely untouched and the item
+is NOT consumed), passing on the first run, stable across 2 reruns.
+
+### Regression
+
+Per this tier's routine scope:
+- `m18v_test.tscn`: **18/18** (new).
+- `item_registry_test.tscn`: **204/204**, unchanged — data-integrity holds
+  across the expanded 138-item catalog.
+- `tier4_test.tscn`: **86/86**, unchanged — Disable/Encore's own origin
+  suite, confirming the new cure hook didn't disturb either mechanism for a
+  Pokémon not holding Mental Herb.
+
+No stray Godot processes before or after; reference clone untouched;
+`git status --short` matched exactly the expected file set (3 modified
+core files, 1 new `.tres` item, 2 new test files) before this docs commit.
+
+### Docs
+
+`CLAUDE.md`'s status section updated with M18v's completion. Recommend
+**M18x** (the only tier remaining, flagged moderate-high risk), or the
+end-of-M18 legacy-item cleanup pass, per Rob's preference.

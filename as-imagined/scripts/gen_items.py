@@ -189,6 +189,13 @@ HOLD_EFFECT_AIR_BALLOON = 96   # Ground-move immunity; pops on ANY damaging
                                 # Ground hit) -- see item_manager.gd's own
                                 # doc comment.
 
+# M18v: Mental Herb. Value re-derived programmatically, cross-validated
+# against 6 pre-existing constants, zero mismatches.
+HOLD_EFFECT_MENTAL_HERB = 28   # Cures Disable + Encore (this project's
+                                # confirmed scope out of source's real 6-
+                                # condition list) -- see item_manager.gd's
+                                # own doc comment.
+
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
 TYPE_FIGHTING = 2
@@ -487,6 +494,12 @@ ITEMS = [
     #    needed for either.
     {"id": 484, "name": "Iron Ball",   "hold_effect": HOLD_EFFECT_IRON_BALL},
     {"id": 497, "name": "Air Balloon", "hold_effect": HOLD_EFFECT_AIR_BALLOON},
+
+    # ── M18v: Mental Herb (1) -- narrowed scope confirmed: cures Disable +
+    #    Encore only, of source's real 6-condition list (Infatuation/Torment/
+    #    Disable/Heal Block/Encore/Taunt), since this project implements only
+    #    those two. No hold_effect_param needed.
+    {"id": 464, "name": "Mental Herb", "hold_effect": HOLD_EFFECT_MENTAL_HERB},
 ]
 
 HEADER = """\

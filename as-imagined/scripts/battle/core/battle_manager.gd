@@ -2288,6 +2288,28 @@ func _phase_faint_check() -> void:
 					any_reset = true
 			if any_reset:
 				_consume_item(mon)
+		# M18v: Mental Herb — same UNCONDITIONAL per-checkpoint scan shape as
+		# White Herb above (source's TryMentalHerb, battle_hold_effects.c
+		# L416-476, never gates on "just happened this move" either). Cures
+		# BOTH Disable and Encore in this one check if either is currently
+		# active — matching source's own single `effect` flag covering
+		# however many of its (up to 6, of which this project implements 2)
+		# conditions matched — consumed ONCE regardless of whether one or
+		# both fired.
+		if ItemManager.holds_mental_herb(mon, m18m_ng_active):
+			var mh_cured := false
+			if mon.disable_turns > 0:
+				mon.disabled_move = null
+				mon.disable_turns = 0
+				item_effect_triggered.emit(mon, "mental_herb_disable")
+				mh_cured = true
+			if mon.encore_turns > 0:
+				mon.encored_move = null
+				mon.encore_turns = 0
+				item_effect_triggered.emit(mon, "mental_herb_encore")
+				mh_cured = true
+			if mh_cured:
+				_consume_item(mon)
 		# Eject Pack: only if a decrease was JUST applied since the last
 		# checkpoint (snapshot-diff against `eject_pack_snapshot`) — reproduces
 		# source's `tryEjectPack` volatile flag shape. Any source (the holder's

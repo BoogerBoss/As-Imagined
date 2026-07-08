@@ -694,6 +694,45 @@ const HOLD_EFFECT_AIR_BALLOON: int = 96  # Grants Ground-move immunity (added
                                           # no-op precedent ([M17c]'s
                                           # Anticipation/Forewarn/Frisk).
 
+# M18v: Mental Herb. Value re-derived programmatically, cross-validated
+# against 6 pre-existing constants, zero mismatches.
+const HOLD_EFFECT_MENTAL_HERB: int = 28  # Source: TryMentalHerb
+                                          # (battle_hold_effects.c L416-476)
+                                          # cures SIX volatiles in current-gen
+                                          # source, unconditionally, in ONE
+                                          # scan: Infatuation, Torment,
+                                          # Disable, Heal Block, Encore, Taunt
+                                          # — NOT just "Disable/Encore" as the
+                                          # plan doc's own prose loosely
+                                          # summarized (it omitted Infatuation
+                                          # from that specific list). Of those
+                                          # six, this project implements only
+                                          # Disable (`disabled_move`/
+                                          # `disable_turns`) and Encore
+                                          # (`encored_move`/`encore_turns`) —
+                                          # Infatuation/Torment/Heal
+                                          # Block/Taunt all confirmed absent
+                                          # (no code anywhere references any
+                                          # of them as a real mechanic), so
+                                          # the tier table's narrowing DOES
+                                          # hold up, just via a fuller source
+                                          # citation than its own summary gave.
+                                          # `.onTargetAfterHit`/
+                                          # `.onAttackerAfterHit` dispatch
+                                          # (hold_effects.h L162-167), and
+                                          # TryMentalHerb's own body never
+                                          # branches on which — an
+                                          # UNCONDITIONAL per-checkpoint scan,
+                                          # the SAME shape as White Herb
+                                          # ([M18m]), not a "just happened"
+                                          # gated trigger — reuses the exact
+                                          # same `_phase_faint_check()`
+                                          # insertion point. Consumed ONCE if
+                                          # EITHER condition was cured (source
+                                          # sets a single `effect` flag
+                                          # regardless of how many of the
+                                          # (up to 6) conditions matched).
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -2133,3 +2172,15 @@ static func holds_iron_ball(mon: BattlePokemon, ng_active: bool = false) -> bool
 static func holds_air_balloon(mon: BattlePokemon, ng_active: bool = false) -> bool:
 	var item: ItemData = effective_held_item(mon, ng_active)
 	return item != null and item.hold_effect == HOLD_EFFECT_AIR_BALLOON
+
+
+# ── M18v: Mental Herb ────────────────────────────────────────────────────────────
+#
+# Pure data check only — the actual cure (Disable/Encore in this project's
+# confirmed scope) and consumption are orchestrated by the caller at
+# BattleManager's `_phase_faint_check()` checkpoint, the same MoveEnd-
+# equivalent White Herb ([M18m]) already established, since Mental Herb is
+# confirmed to be the SAME unconditional-scan shape.
+static func holds_mental_herb(mon: BattlePokemon, ng_active: bool = false) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_MENTAL_HERB
