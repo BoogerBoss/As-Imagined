@@ -174,6 +174,20 @@ var wrapped_by: BattlePokemon = null
 # turns on application (RandomUniform, B_BINDING_TURNS >= GEN_5 branch); Grip
 # Claw's 7-turn extension is out of scope — deferred to M18.5i.
 var wrapped_turns: int = 0
+# [M19f] Mean Look/Block/Spider Web/Spirit Shackle's escape-prevention
+# volatile — direct object reference to the battler who applied it, the
+# EXACT SAME shape as infatuated_by/wrapped_by above, and — per source —
+# genuinely the same underlying state those two comments' own citations
+# already anticipated (`AbilityManager.is_trapped()`'s own doc comment
+# named "escapePrevention from Mean Look/Block/Spider Web" specifically as
+# a future move-based trap to gate through it, written back at [M17f]).
+# null = not trapped; non-null = trapped, holding a reference to the
+# battler who applied it (used for the source-leaves-the-field cure check,
+# reusing [M18.5d-3]'s reciprocal-scan pattern in
+# BattleManager._clear_volatiles verbatim). No recurring damage tick (unlike
+# wrapped_by) — source's MOVE_EFFECT_PREVENT_ESCAPE is a pure switch-block,
+# no HP component at all.
+var escape_prevented_by: BattlePokemon = null
 # M18u: Metronome item's consecutive-same-move-use counter. Compared against
 # last_move_used (BEFORE it's overwritten for the current move) at the same
 # PP-deduction site source colocates its own reset check
@@ -184,6 +198,15 @@ var metronome_item_counter: int = 0
 # before it has acted this turn. Cleared at the start of each turn (PRIORITY_RESOLUTION).
 # Source: battle_move_resolution.c :: CancelerFlinch (L298)
 var flinched: bool = false
+
+# [M19-stat-raised-trigger] Volatile: did ANY of this Pokémon's stats rise
+# this turn (from a move, ability, or item — a broad, general concept, not
+# move-specific). Set by StatusManager.apply_stat_change whenever a positive
+# stage delta actually applies. Cleared at the start of each turn
+# (PRIORITY_RESOLUTION), same cadence as flinched/protect_active above.
+# Source: include/battle.h L74 (`statRaised:1`); battle_main.c L3304
+# (`gProtectStructs[battler].statRaised = FALSE;`, the per-turn reset).
+var stat_raised_this_turn: bool = false
 
 # Volatile: two-turn charge state.
 # Non-null on the turn AFTER a charge: the Pokémon is locked to this move and
@@ -245,6 +268,15 @@ var substitute_hp: int = 0
 # Source: gProtectStructs[].physicalDmg / .specialDmg (cleared by memset each turn)
 var last_physical_damage: int = 0
 var last_special_damage: int = 0
+# [M19c/M19d] Metal Burst: which category the MOST RECENT hit this turn was —
+# a genuinely separate axis from the two amount fields above (both can be
+# simultaneously nonzero in doubles if hit by both categories in one turn;
+# Metal Burst reflects whichever was taken LAST, not the larger of the two).
+# Source: gProtectStructs[].lastHitBySpecialMove (battle_util.c
+# GetReflectDamageMoveDamageCategory L306-320) — Counter/Mirror Coat never
+# consult this field at all since their own damageCategories bitmask is
+# single-valued, only Metal Burst's dual-category bitmask needs it.
+var last_hit_was_special: bool = false
 
 # Protect: blocks all incoming moves for one turn.
 # protect_consecutive = consecutive Protect uses (0 = first use this streak).
@@ -252,6 +284,21 @@ var last_special_damage: int = 0
 # Source: gBattleMons[].volatiles.consecutiveMoveUses; gProtectStructs[].protected
 var protect_active: bool = false
 var protect_consecutive: int = 0
+# [M19c] Which Protect-family variant is active — mirrors source's own
+# `enum ProtectMethod` (battle.h) exactly. PROTECT_METHOD_NONE(0) covers both
+# "not protected" AND plain Protect/Detect (left at their default 0 —
+# `_is_protected_from`'s own `_` match branch treats an unrecognized/default
+# method as an unconditional block, matching Protect/Detect's real behavior
+# with zero data changes needed for those two pre-existing moves).
+const PROTECT_METHOD_NONE: int = 0
+const PROTECT_METHOD_SPIKY_SHIELD: int = 1
+const PROTECT_METHOD_BANEFUL_BUNKER: int = 2
+const PROTECT_METHOD_BURNING_BULWARK: int = 3
+const PROTECT_METHOD_OBSTRUCT: int = 4
+const PROTECT_METHOD_SILK_TRAP: int = 5
+const PROTECT_METHOD_WIDE_GUARD: int = 6
+const PROTECT_METHOD_QUICK_GUARD: int = 7
+var protect_method: int = PROTECT_METHOD_NONE
 
 # Destiny Bond: if this Pokémon faints before their next action, the KO attacker
 # also faints. Cleared when this Pokémon acts next (before their move executes).

@@ -123,6 +123,7 @@ signal stat_changes_copied(user: BattlePokemon, from_mon: BattlePokemon)   # Psy
 signal ability_changed(pokemon: BattlePokemon, new_ability_id: int)       # M17h: Trace/Mummy/Receiver/Wandering Spirit
 
 signal item_transferred(from_mon: BattlePokemon, to_mon: BattlePokemon, item: ItemData)  # M17j: Pickpocket/Magician/Symbiosis
+signal berry_stolen_and_eaten(victim: BattlePokemon, beneficiary: BattlePokemon, item: ItemData)  # [M19-berry-steal] Pluck/Bug Bite — consumed in place, NOT a possession transfer like item_transferred above
 
 signal move_bounced(holder: BattlePokemon, new_target: BattlePokemon)      # M17n-9: Magic Bounce reflected a status move
 
@@ -130,6 +131,8 @@ signal status_cured(pokemon: BattlePokemon)  # [Bucket 4 cheapest singles] Spark
 
 signal rampage_lock_started(attacker: BattlePokemon, move: MoveData)  # [M19-rampage] lock just initiated (Thrash family or Uproar)
 signal rampage_lock_ended(attacker: BattlePokemon, move: MoveData, confused: bool)  # [M19-rampage] lock just cleared (counter hit 0, or immune-cancel)
+
+signal escape_prevented(target: BattlePokemon, source: BattlePokemon)  # [M19f] Mean Look/Block/Spider Web/Spirit Shackle set the target's escape_prevented_by
 
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
@@ -644,9 +647,13 @@ func _phase_priority_resolution() -> void:
 	for mon: BattlePokemon in _combatants:
 		mon.flinched = false
 		mon.protect_active = false
+		mon.protect_method = BattlePokemon.PROTECT_METHOD_NONE
 		mon.last_physical_damage = 0
 		mon.last_special_damage = 0
+		mon.last_hit_was_special = false
 		mon.switched_in_this_turn = false
+		# [M19-stat-raised-trigger] same memset'd-per-turn gProtectStructs field.
+		mon.stat_raised_this_turn = false
 	# M14b: clear per-turn Follow Me, Helping Hand, and last-attacker state.
 	# Source: TurnValuesCleanUp (battle_main.c L5022): memset gProtectStructs (helpingHand),
 	#   gSideTimers[].followmeTimer = 0 (L5060–5061).
@@ -892,6 +899,32 @@ func _phase_move_execution() -> void:
 	var defender: BattlePokemon = _combatants[_chosen_targets[attacker_idx]]
 	var move: MoveData = _chosen_moves[attacker_idx]
 
+	# [M19-self-faint] Self-Destruct/Explosion — Damp blocks the move
+	# entirely, a simplified EXECUTION-time translation of source's
+	# SELECTION-time `.dampBanned` legality flag (this project has no
+	# move-selection legality filter to grey the move out at menu time).
+	# Reuses the pre-existing AbilityManager.is_damp_active (built for
+	# `[M17n-8]`'s Aftermath) directly — no new ability logic needed.
+	if move.is_self_faint and AbilityManager.is_damp_active(_combatants, ng_active):
+		move_effect_failed.emit(attacker, "damp_blocks_explosion")
+		ability_triggered.emit(attacker, "damp")
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+	# [M19-self-faint] Unconditional self-faint — happens regardless of
+	# whether the hit ultimately lands. Source: CancelerExplosion
+	# (battle_move_resolution.c L1841-1848) is a PRE-MOVE canceler that
+	# zeroes the user's HP BEFORE accuracy/damage resolution even runs, not
+	# a post-hit consequence. The move still computes and deals its own
+	# damage normally afterward, using the attacker's pre-faint stats — this
+	# project's existing FAINT_CHECK phase (which runs generically after
+	# every resolved action) picks up the HP=0 state and processes the
+	# actual faint/removal correctly with no special code needed.
+	if move.is_self_faint:
+		attacker.current_hp = 0
+
 	# M14a: if chosen target fainted earlier in this turn (doubles only — in singles
 	# the only opponent slot has a replacement or the battle has already ended),
 	# redirect to the first non-fainted opposing slot.
@@ -1080,24 +1113,38 @@ func _phase_move_execution() -> void:
 		and attacker.charging_move == null
 		and weather == WEATHER_SUN
 	)
+	# [M19-charge-turn-spatk-boost] Electro Shot — same shortcut SHAPE as
+	# Solar Beam's own sun-skip above, but gated on RAIN instead. Source's
+	# CanTwoTurnMoveFireThisTurn reads move.twoTurnAttackWeather generically
+	# (B_WEATHER_SUN for Solar Beam, B_WEATHER_RAIN for Electro Shot) — a
+	# PARALLEL field/check, deliberately not generalizing is_solar_beam
+	# itself, to avoid any risk to Solar Beam's own already-working behavior
+	# (per the task's own explicit preference for a parallel field here).
+	var _rain_skip: bool = (
+		move.skips_charge_in_rain
+		and attacker.charging_move == null
+		and weather == WEATHER_RAIN
+	)
+	var _weather_skip: bool = _solar_skip or _rain_skip
 	# M18r: Power Herb — skips the charge turn of ANY two-turn move once, not
 	# just Solar Beam in sun. Source: CancelerCharging's Power Herb branch
 	# (battle_move_resolution.c L1778) is an `else if` checked only when
-	# CanTwoTurnMoveFireThisTurn (the Solar-Beam-in-sun case) already failed —
-	# `not _solar_skip` reproduces that ordering. No charge-turn stat boost
-	# (Skull Bash) applies on a Power-Herb-skipped turn — source's Power Herb
-	# branch is a structurally separate arm from the charge-setup branch that
-	# grants it, and this project's `not _power_herb_skip` gate below excludes
-	# the whole two-turn block the same way `not _solar_skip` already does.
+	# CanTwoTurnMoveFireThisTurn (the Solar-Beam-in-sun/Electro-Shot-in-rain
+	# case) already failed — `not _weather_skip` reproduces that ordering.
+	# No charge-turn stat boost (Skull Bash/Meteor Beam/Electro Shot)
+	# applies on a Power-Herb-skipped turn — source's Power Herb branch is a
+	# structurally separate arm from the charge-setup branch that grants it,
+	# and this project's `not _power_herb_skip` gate below excludes the
+	# whole two-turn block the same way `not _weather_skip` already does.
 	var _power_herb_skip: bool = (
-		not _solar_skip
+		not _weather_skip
 		and attacker.charging_move == null
 		and ItemManager.holds_power_herb(attacker, ng_active)
 	)
 	if _power_herb_skip:
 		_consume_item(attacker)
 		item_effect_triggered.emit(attacker, "power_herb")
-	if move.two_turn and not move.is_bide and not _solar_skip and not _power_herb_skip:
+	if move.two_turn and not move.is_bide and not _weather_skip and not _power_herb_skip:
 		if attacker.charging_move == null:
 			# Charge-turn stat boost (Skull Bash: +1 Defense on charge turn only).
 			# Source: moves_info.h MOVE_SKULL_BASH additionalEffects
@@ -1107,6 +1154,19 @@ func _phase_move_execution() -> void:
 					attacker, BattlePokemon.STAGE_DEF, move.charge_turn_defense_boost, null, ng_active)
 				if actual_boost != 0:
 					stat_stage_changed.emit(attacker, BattlePokemon.STAGE_DEF, actual_boost)
+			# [M19-charge-turn-spatk-boost] Meteor Beam/Electro Shot: +1
+			# Sp.Atk on the charge turn only — a PARALLEL field to
+			# charge_turn_defense_boost above (not a generalized "which
+			# stat" param), matching the task's own explicit preference to
+			# avoid any risk to Skull Bash's already-working behavior.
+			# Source: moves_info.h MOVE_METEOR_BEAM/MOVE_ELECTRO_SHOT
+			#   additionalEffects {MOVE_EFFECT_STAT_PLUS, .spAtk=1, .self=TRUE,
+			#   .onChargeTurnOnly=TRUE}.
+			if move.charge_turn_spatk_boost > 0:
+				var actual_spatk_boost: int = StatusManager.apply_stat_change(
+					attacker, BattlePokemon.STAGE_SPATK, move.charge_turn_spatk_boost, null, ng_active)
+				if actual_spatk_boost != 0:
+					stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPATK, actual_spatk_boost)
 			attacker.charging_move = move
 			attacker.semi_invulnerable = move.semi_inv_state
 			charge_started.emit(attacker, move)
@@ -1166,6 +1226,9 @@ func _phase_move_execution() -> void:
 	if move.is_protect:
 		if _roll_protect_success(attacker.protect_consecutive):
 			attacker.protect_active = true
+			# [M19c] Which variant — see BattlePokemon.protect_method's own doc
+			# comment. Left at PROTECT_METHOD_NONE for plain Protect/Detect.
+			attacker.protect_method = move.protect_method
 			attacker.protect_consecutive += 1
 			protected.emit(attacker)
 		else:
@@ -1181,15 +1244,69 @@ func _phase_move_execution() -> void:
 	# Source: battle_move_resolution.c :: CancelerTargetFailure :: IsBattlerProtected (L2009)
 	# Fires between semi-inv check and accuracy check.
 	# Moves with ignores_protect bypass this (e.g. Feint — M8+ scope; Roar/Whirlwind).
-	if defender.protect_active and not move.ignores_protect:
+	# [M19c] Now routes through _is_protected_from, which also covers the 7
+	# new Protect-family variants (Obstruct/Silk Trap's non-status-only gate,
+	# Wide Guard/Quick Guard's side-wide conditional gate) — see that
+	# function's own doc comment for the full source citations.
+	if _is_protected_from(attacker, defender, move, ng_active):
 		move_missed.emit(attacker, "protected")
 		# [M19-recoil-on-miss] Protect block is one of the 4 "unaffected"
 		# reasons that trigger crash damage (see crashes_on_miss's doc comment).
 		if move.crashes_on_miss:
 			_apply_crash_damage(attacker, ng_active)
+		# [M19c] Spiky Shield/Baneful Bunker/Burning Bulwark/Obstruct/Silk
+		# Trap's own contact-punish retaliation — fires only when the BLOCKED
+		# move actually made contact (see the helper's own doc comment).
+		_apply_protect_contact_punish(attacker, defender, move, ng_active)
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
+
+	# [M19-steal-stats] Spectral Thief — steals the target's CURRENTLY
+	# positive stat stages onto the attacker (removing them from the
+	# target), for ALL 7 stages (Atk/Def/SpAtk/SpDef/Speed/Accuracy/Evasion
+	# — confirmed via source's `NUM_BATTLE_STATS = NUM_STATS + 2`, which
+	# INCLUDES Accuracy/Evasion, unlike Starf Berry's narrower 5-stat pool
+	# that deliberately stops at plain `NUM_STATS`). Dispatched via
+	# `.preAttackEffect = TRUE` in source — fires BEFORE this move's own
+	# accuracy roll, UNCONDITIONAL on whether the subsequent hit connects
+	# (confirmed: `IsBattlerUnaffectedByMove` at pre-attack-effect dispatch
+	# time can only reflect ALREADY-resolved state — Protect, handled by
+	# this block's own position right after the Protect-blocking check
+	# above — and type immunity, checked below — never an accuracy roll
+	# that hasn't happened yet). This is a genuinely DIFFERENT shape from
+	# `AbilityManager`'s Opportunist (reacts to a fresh stat-RISE EVENT
+	# elsewhere, copies the SAME delta without touching the original mon's
+	# own stage) — Spectral Thief instead snapshots-and-TRANSFERS whatever
+	# positive stages already exist at the moment of use, per stat,
+	# zeroing the target's own stage in the process. `StatusManager.
+	# apply_stat_change` is still the correct reusable PRIMITIVE for the
+	# actual mutation on the attacker's side; the orchestration itself is
+	# new. Per-stat gated on the ATTACKER's own stage for that stat not
+	# already being at +6 (source: `gBattleMons[battlerAtk].statStages[stat]
+	# != MAX_STAT_STAGE`) — confirmed a per-stat gate, not a whole-move
+	# skip if any single stat happens to be maxed.
+	# Type immunity blocks the steal specifically (not the whole move —
+	# unlike Protect above, immunity doesn't fully abort the turn; the move
+	# still proceeds to its own accuracy/damage resolution normally
+	# afterward, matching this project's established general damaging-move
+	# architecture for ordinary — non-OHKO — type immunity).
+	# Source: battle_script_commands.c :: case MOVE_EFFECT_STEAL_STATS
+	# (L3347-3366).
+	if move.steals_positive_stat_stages:
+		var steal_blocked: bool = TypeChart.get_effectiveness(
+				move.type, defender.species.types, false, false,
+				ItemManager.holds_iron_ball(defender, ng_active)) == 0.0
+		if not steal_blocked:
+			for stat_idx in range(defender.stat_stages.size()):
+				var stolen_stage: int = defender.stat_stages[stat_idx]
+				if stolen_stage > 0 and attacker.stat_stages[stat_idx] < 6:
+					defender.stat_stages[stat_idx] = 0
+					stat_stage_changed.emit(defender, stat_idx, -stolen_stage)
+					var gained: int = StatusManager.apply_stat_change(
+							attacker, stat_idx, stolen_stage, null, ng_active)
+					if gained != 0:
+						stat_stage_changed.emit(attacker, stat_idx, gained)
 
 	# ── OHKO (Guillotine / Horn Drill / Fissure / Sheer Cold) ─────────────────
 	# Source: battle_util.c :: DoesOHKOMoveMissTarget (L10378)
@@ -1328,6 +1445,12 @@ func _phase_move_execution() -> void:
 	# Source: battle_util.c, case EFFECT_FRUSTRATION (L6151-6153).
 	if move.is_frustration_power:
 		_dmg_power_override = _frustration_power(attacker.friendship)
+
+	# [M19-hp-based-power] Flail / Reversal: power from the USER'S OWN
+	# missing-HP fraction (stepped/banded, not continuous).
+	# Source: battle_util.c, case EFFECT_FLAIL (L6138-6145).
+	if move.is_flail_power:
+		_dmg_power_override = _flail_power(attacker.current_hp, attacker.max_hp)
 
 	# ── Priority-move-block (Dazzling / Queenly Majesty / Armor Tail) ────────────
 	# Source: battle_move_resolution.c :: CancelerPriorityBlock (L1511-1548), dispatched
@@ -1573,6 +1696,32 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
+	# ── Mirror Move: repeat the move that most recently hit the user this turn ─
+	# Source: battle_move_resolution.c :: GetMirrorMoveMove (L4966-4993) reads
+	#   gBattleStruct->lastTakenMove[gBattlerAttacker] — the move that hit the
+	#   MIRROR MOVE USER, NOT the target's own last-used move (a genuinely
+	#   different tracking axis — confirmed via direct source read, not
+	#   assumed). Reuses this project's existing `_last_attacker_move`/
+	#   `_last_attacker` dictionaries directly (already built for Destiny
+	#   Bond/Aftermath/Innards Out, cleared every turn — see
+	#   BattleManager._phase_priority_resolution) — zero new tracking state
+	#   needed. `defender` is reassigned to whoever actually hit the user
+	#   (not necessarily the same as the originally-resolved target, relevant
+	#   in doubles), same "reassign and fall through" shape Metronome below
+	#   uses — confirmed from source both dispatch through the identical
+	#   `CancelerCallSubmove` mechanism (L523-553).
+	if move.is_mirror_move:
+		var mirrored_move: MoveData = _last_attacker_move.get(attacker, null)
+		if mirrored_move == null:
+			move_effect_failed.emit(attacker, "mirror_move_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		move_called.emit(attacker, mirrored_move)
+		move = mirrored_move
+		defender = _last_attacker.get(attacker, defender)
+
 	# ── Metronome: select random move and execute it ──────────────────────────
 	# Source: battle_move_resolution.c :: GetMetronomeMove (L4998)
 	#   Picks a random move not banned by metronomeBanned flag (BAN_METRONOME in our system).
@@ -1629,6 +1778,25 @@ func _phase_move_execution() -> void:
 			move_executed.emit(attacker, defender, move, 0)
 		else:
 			_apply_fixed_dmg_to_target(attacker, defender, move, attacker.last_special_damage * 2)
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# [M19d] Metal Burst — same EFFECT_REFLECT_DAMAGE shape as Counter/Mirror
+	# Coat, but reflects EITHER category at 1.5x (not 2x), whichever was hit
+	# LAST this turn (BattlePokemon.last_hit_was_special) if both landed
+	# (doubles). Source: GetReflectDamageMoveDamageCategory (battle_util.c
+	# L306-320) — Counter/Mirror Coat's own single-category bitmask never
+	# reaches this branch at all, only Metal Burst's dual-category one does.
+	if move.metal_burst:
+		if attacker.last_physical_damage == 0 and attacker.last_special_damage == 0:
+			move_effect_failed.emit(attacker, "no_damage_to_counter")
+			move_executed.emit(attacker, defender, move, 0)
+		else:
+			var base_dmg: int = (attacker.last_special_damage
+					if attacker.last_hit_was_special and attacker.last_special_damage > 0
+					else attacker.last_physical_damage)
+			_apply_fixed_dmg_to_target(attacker, defender, move, base_dmg * 150 / 100)
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
@@ -1826,6 +1994,45 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Mean Look family (Spider Web / Mean Look / Block) ──────────────────
+		# Source: EFFECT_MEAN_LOOK -> BattleScript_EffectMeanLook
+		#   (data/battle_scripts_1.s L2100-2112): seteffectprimary ...
+		#   MOVE_EFFECT_PREVENT_ESCAPE -- the same underlying mechanism
+		#   Spirit Shackle sets as a damaging move's secondary (see this
+		#   project's own SE_PREVENT_ESCAPE dispatch in _do_damaging_hit).
+		# Self-contained early return (matching Disable/Encore's own shape)
+		# rather than falling through to the shared foe_targeting/Magic-Bounce/
+		# Substitute/type-immunity block further below, since these 3 moves
+		# need their own Ghost-type immunity check that block doesn't provide.
+		if move.is_mean_look:
+			# magicCoatAffected=TRUE in source -- replicate the shared Magic
+			# Bounce swap here since this block doesn't fall through to the
+			# later shared check.
+			if AbilityManager.bounces_status_move(defender, ng_active, attacker, move):
+				move_bounced.emit(defender, attacker)
+				ability_triggered.emit(defender, "magic_bounce")
+				var mean_look_bounce_holder: BattlePokemon = defender
+				defender = attacker
+				attacker = mean_look_bounce_holder
+			if defender.substitute_hp > 0 and not move.ignores_substitute \
+					and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
+				move_missed.emit(attacker, "substitute")
+			elif TypeChart.TYPE_GHOST in defender.species.types:
+				# Move-script-level Ghost immunity at this project's GEN_LATEST
+				# config (B_GHOSTS_ESCAPE/B_UPDATED_MOVE_FLAGS >= GEN_6) --
+				# NOT the general type-effectiveness gate (Spider Web is
+				# Bug-type, only 0.5x vs Ghost on the chart, not a 0x
+				# immunity -- see move_data.gd's is_mean_look doc comment).
+				move_effect_failed.emit(defender, "ghost_immune")
+			elif not StatusManager.try_apply_escape_prevention(defender, attacker):
+				move_effect_failed.emit(defender, "already_trapped")
+			else:
+				escape_prevented.emit(defender, attacker)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# ── Attract ───────────────────────────────────────────────────────────
 		# Source: battle_scripts_1.s :: BattleScript_EffectAttract (L2220+) ->
 		#   Cmd_tryinfatuating (battle_script_commands.c L7613-7650). NOT the same
@@ -1863,6 +2070,22 @@ func _phase_move_execution() -> void:
 				var restore_heal: int = max(1, attacker.max_hp / 2)
 				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + restore_heal)
 				drain_heal.emit(attacker, restore_heal)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Weather-conditional heal (Morning Sun / Synthesis / Moonlight / Shore Up) ─
+		# Source: battle_script_commands.c :: Cmd_recoverbasedonsunlight
+		#   (L8622-8689) -- ONE shared function backing all 4 moves. Fails if
+		#   already at full HP, same shape as is_restore_hp above.
+		if move.heals_based_on_weather:
+			if attacker.current_hp >= attacker.max_hp:
+				move_effect_failed.emit(attacker, "already_full_hp")
+			else:
+				var weather_heal: int = _weather_heal_amount(attacker, move, ng_active)
+				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + weather_heal)
+				drain_heal.emit(attacker, weather_heal)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -2173,6 +2396,35 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# [M19-ally-targeting-stat-change] Aromatic Mist(597)/Coaching(739) —
+		# TARGET_ALLY ONLY, never self, never opponent. Fails entirely if not
+		# in doubles or the ally has fainted — matching Helping Hand's own
+		# established "not doubles" shape, the only other TARGET_ALLY move
+		# this project has (`_get_ally` already returns null for both cases,
+		# no separate fainted check needed here). Deliberately dispatched
+		# BEFORE the foe_targeting/Magic-Bounce/Substitute/type-immunity
+		# block below — none of that applies to an ally-targeting move, the
+		# same reasoning Helping Hand's own early-return already established.
+		# Reuses `_apply_stat_change_effect` directly, passing the ally in
+		# place of `defender` — `stat_change_self` is FALSE for these moves
+		# in their own data (matching source's TARGET_ALLY, not TARGET_USER),
+		# so the shared per-pair dispatch correctly lands the change on
+		# whichever BattlePokemon is passed as the second argument. Coaching's
+		# own 2-stat payload (Atk+1, Def+1) reuses the pre-existing
+		# `extra_stat_change_stats` multi-stat mechanism (`[Bucket 3
+		# multi-stat]`) with zero further changes needed.
+		# Source: moves_info.h MOVE_AROMATIC_MIST/MOVE_COACHING: .target = TARGET_ALLY.
+		if move.stat_change_target_ally:
+			var ally_target: BattlePokemon = _get_ally(attacker)
+			if ally_target == null:
+				move_effect_failed.emit(attacker, "not_doubles")
+			else:
+				_apply_stat_change_effect(attacker, ally_target, move, ng_active)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		var foe_targeting: bool = not move.stat_change_self
 
 		# M17n-9: Magic Bounce — reflects the move back at its own user BEFORE the
@@ -2248,6 +2500,23 @@ func _phase_move_execution() -> void:
 			# it. Behavior of this call site is unchanged — see that function's own
 			# doc comment for the original per-mechanism source citations.
 			_apply_stat_change_effect(attacker, defender, move, ng_active)
+			# [M19-ally-targeting-stat-change] Howl(336) — TARGET_USER_AND_ALLY
+			# at this project's GEN_LATEST config: the self half above is an
+			# ordinary self-buff (stat_change_self=True, already correctly
+			# handled by the general dispatch); this bolts on the SAME stat
+			# change to the user's own ally too, a genuine no-op in singles
+			# (_get_ally returns null there) and the only difference from a
+			# plain self-buff move in doubles.
+			# Source: moves_info.h MOVE_HOWL: .target = B_UPDATED_MOVE_DATA
+			#   >= GEN_8 ? TARGET_USER_AND_ALLY : TARGET_USER.
+			if move.also_boosts_ally:
+				var howl_ally: BattlePokemon = _get_ally(attacker)
+				if howl_ally != null:
+					var ally_actual: int = StatusManager.apply_stat_change(
+							howl_ally, move.stat_change_stat, move.stat_change_amount,
+							null, ng_active, attacker)
+					if ally_actual != 0:
+						stat_stage_changed.emit(howl_ally, move.stat_change_stat, ally_actual)
 		elif move.secondary_effect != MoveData.SE_NONE:
 			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move, null, ng_active, _effective_weather(), _is_uproar_active())
 			if applied:
@@ -2890,6 +3159,35 @@ func _effective_weather() -> int:
 	return WEATHER_NONE if _is_weather_negated() else weather
 
 
+# [M19e] Morning Sun/Synthesis/Moonlight/Shore Up's shared weather-conditional
+# heal amount. Source: Cmd_recoverbasedonsunlight (battle_script_commands.c
+# L8622-8689), the B_TIME_OF_DAY_HEALING_MOVES != GEN_2 branch (this project's
+# GEN_LATEST config always takes this branch, never the Gen-2 time-of-day one).
+func _weather_heal_amount(mon: BattlePokemon, move: MoveData, ng_active: bool) -> int:
+	var eff_weather: int = _effective_weather()
+	if move.weather_heal_has_quarter_branch \
+			and ItemManager.blocks_weather_modifier(mon, ng_active) \
+			and eff_weather in [WEATHER_SUN, WEATHER_RAIN]:
+		# Source: GetAttackerWeather's own Utility Umbrella branch strips SUN
+		# and RAIN specifically (`weather & ~(SUN|RAIN)`), never Sandstorm/
+		# Hail — only relevant to the 3 sun-based moves; Shore Up's own
+		# branch never references Umbrella at all.
+		eff_weather = WEATHER_NONE
+	if eff_weather == move.weather_heal_boost_type:
+		return max(1, mon.max_hp * 2 / 3)
+	if not move.weather_heal_has_quarter_branch:
+		# Shore Up: no 1/4 branch exists at all — anything other than its own
+		# boost weather (Sandstorm) falls straight to the plain 1/2 heal.
+		return max(1, mon.max_hp / 2)
+	if eff_weather == WEATHER_NONE or eff_weather == DamageCalculator.WEATHER_STRONG_WINDS:
+		# Source: healingWeather = attackerWeather & ~B_WEATHER_STRONG_WINDS,
+		# stripped BEFORE the "!(healingWeather & ANY)" check — Strong Winds
+		# (Delta Stream) is treated as "no weather" for this formula
+		# specifically, distinct from Rain/Sandstorm/Hail below.
+		return max(1, mon.max_hp / 2)
+	return max(1, mon.max_hp / 4)
+
+
 # Fire switch-in ability effects for new_mon against all live opposing combatants.
 # Source: AbilityBattleEffects ABILITYEFFECT_ON_SWITCHIN (battle_util.c L3310–3323):
 #   for i in 0..gBattlersCount: if IsBattlerAlly(battler,i) || !IsBattlerAlive(i): continue
@@ -3218,6 +3516,7 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.semi_invulnerable = MoveData.SEMI_INV_NONE
 	mon.substitute_hp = 0
 	mon.protect_active = false
+	mon.protect_method = BattlePokemon.PROTECT_METHOD_NONE
 	mon.destiny_bond = false
 	mon.disabled_move = null
 	mon.disable_turns = 0
@@ -3288,6 +3587,18 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 			other.wrapped_by = null
 			other.wrapped_turns = 0
 
+	# [M19f] Mean Look/Block/Spider Web/Spirit Shackle's escape-prevention trap —
+	# the THIRD move-based trapping source using this exact reciprocal-clear
+	# shape (source: battle_main.c L3128-3129/L3139-3140/L3279-3280 — the same
+	# two switch-out/faint functions [M18.5d-3]/[M18.5f] already unified into
+	# this one chokepoint, literally the next lines after wrapped's own clear
+	# in real source). No turn counter to reset (escape_prevented_by has none —
+	# unlike wrapped_by, this trap is permanent until cleared, not time-limited).
+	mon.escape_prevented_by = null
+	for other: BattlePokemon in _combatants:
+		if other != mon and other.escape_prevented_by == mon:
+			other.escape_prevented_by = null
+
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
 # stat stages and Counter/Mirror Coat per-turn trackers).
@@ -3319,6 +3630,7 @@ func _switch_out_clear(mon: BattlePokemon) -> void:
 		mon.stat_stages[_si] = 0
 	mon.last_physical_damage = 0
 	mon.last_special_damage = 0
+	mon.last_hit_was_special = false
 	mon.protect_consecutive = 0
 	mon.last_move_used = null
 	# M12: Choice lock clears on switch-out (not on faint — fainted mon has no future turns).
@@ -3579,6 +3891,122 @@ func _roll_protect_success(consecutive: int) -> bool:
 	return denom == 1 or (randi() % denom == 0)
 
 
+# [M19c] Whether `move` is blocked by `defender`'s currently-active Protect
+# state, covering all 8 Protect-family moves (Protect/Detect plus the 7 new
+# variants). Source: battle_util.c's protect dispatch (L5783-5824) — one
+# combined `isProtected` computation this project splits into single-target
+# (checked only against `defender` itself) and side-wide (also checked
+# against `defender`'s ally, source: `IsSideProtected`, L5748-5752 — reads
+# the SAME per-battler `protected` field for either battler on the side, not
+# a separate side-level flag) halves:
+#   - PROTECT_METHOD_OBSTRUCT/SILK_TRAP: blocks only non-status moves
+#     (`!IsBattleMoveStatus`) — confirmed a real narrowing from plain
+#     Protect's "blocks everything," not assumed uniform with the other
+#     single-target variants.
+#   - PROTECT_METHOD_WIDE_GUARD: blocks only spread moves (`IsSpreadMove` —
+#     this project's own `move.is_spread`, the same established
+#     TARGET_BOTH/TARGET_FOES_AND_ALLY proxy already used elsewhere, e.g.
+#     Self-Destruct/Explosion).
+#   - PROTECT_METHOD_QUICK_GUARD: blocks only priority>0 moves, using the
+#     SAME ability-boosted effective-priority computation
+#     (`AbilityManager.move_priority_bonus`) `[M17k]`'s `blocks_priority_move`
+#     already established for the identical `GetChosenMovePriority` source
+#     function — not raw `move.priority` alone.
+#   - Every other method (plain Protect/Detect, Spiky Shield, Baneful
+#     Bunker, Burning Bulwark): blocks unconditionally, the `_` match branch.
+func _is_protected_from(attacker: BattlePokemon, defender: BattlePokemon,
+		move: MoveData, ng_active: bool) -> bool:
+	if move.ignores_protect:
+		return false
+	if defender.protect_active:
+		match defender.protect_method:
+			BattlePokemon.PROTECT_METHOD_OBSTRUCT, BattlePokemon.PROTECT_METHOD_SILK_TRAP:
+				if move.category != 2:  # 2 = Status
+					return true
+			BattlePokemon.PROTECT_METHOD_WIDE_GUARD:
+				if move.is_spread:
+					return true
+			BattlePokemon.PROTECT_METHOD_QUICK_GUARD:
+				if move.priority + AbilityManager.move_priority_bonus(attacker, move, ng_active) > 0:
+					return true
+			_:
+				return true
+	var ally: BattlePokemon = _get_ally(defender)
+	if ally != null and not ally.fainted and ally.protect_active:
+		if ally.protect_method == BattlePokemon.PROTECT_METHOD_WIDE_GUARD and move.is_spread:
+			return true
+		if ally.protect_method == BattlePokemon.PROTECT_METHOD_QUICK_GUARD \
+				and move.priority + AbilityManager.move_priority_bonus(attacker, move, ng_active) > 0:
+			return true
+	return false
+
+
+# [M19c] Spiky Shield/Baneful Bunker/Burning Bulwark/Obstruct/Silk Trap's own
+# contact-punish retaliation against the attacker, fired only when the
+# blocked move actually made contact. Source: MoveEndProtectLikeEffect
+# (battle_move_resolution.c L2497-2568) — gated on
+# `CanBattlerAvoidContactEffects` (this project's own
+# `AbilityManager.move_triggers_contact_retaliation`, the SAME
+# Protective-Pads-aware wrapper Rough Skin/Iron Barbs/Rocky Helmet already
+# use — confirmed from source this is the wrapper-level check, not the
+# narrower `move_makes_contact`).
+#   - Spiky Shield: maxHP/8 recoil to the attacker, gated on the
+#     ATTACKER's own Magic Guard.
+#   - Baneful Bunker/Burning Bulwark: poisons/burns the attacker via the
+#     existing `try_apply_status` (which already handles Poison/Steel and
+#     Fire-type immunity, and the already-has-a-status guard) — reflects
+#     back via Synchronize on the attacker's own side, matching this
+#     project's established convention for contact-triggered status
+#     infliction.
+#   - Obstruct: -2 Def on the attacker. Silk Trap: -1 Speed on the attacker.
+#     Both via the raw `StatusManager.apply_stat_change` primitive (handles
+#     Clear Body/White Smoke/Contrary/etc. immunities) plus an inline
+#     Defiant/Competitive reactive-trigger check, matching
+#     `_apply_one_stat_change_pair`'s own established shape for "an
+#     opponent just lowered my stat."
+func _apply_protect_contact_punish(attacker: BattlePokemon, defender: BattlePokemon,
+		move: MoveData, ng_active: bool) -> void:
+	if not AbilityManager.move_triggers_contact_retaliation(attacker, move, ng_active):
+		return
+	match defender.protect_method:
+		BattlePokemon.PROTECT_METHOD_SPIKY_SHIELD:
+			if not AbilityManager.blocks_indirect_damage(attacker, ng_active):
+				var dmg: int = max(1, attacker.max_hp / 8)
+				attacker.current_hp = max(0, attacker.current_hp - dmg)
+				recoil_damage.emit(attacker, dmg)
+		BattlePokemon.PROTECT_METHOD_BANEFUL_BUNKER:
+			if StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_POISON, null, null, ng_active):
+				secondary_applied.emit(attacker, MoveData.SE_POISON)
+				_try_synchronize(attacker, defender, BattlePokemon.STATUS_POISON)
+		BattlePokemon.PROTECT_METHOD_BURNING_BULWARK:
+			if StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_BURN, null, null, ng_active):
+				secondary_applied.emit(attacker, MoveData.SE_BURN)
+				_try_synchronize(attacker, defender, BattlePokemon.STATUS_BURN)
+		BattlePokemon.PROTECT_METHOD_OBSTRUCT:
+			_apply_protect_stat_punish(attacker, defender, BattlePokemon.STAGE_DEF, -2, ng_active)
+		BattlePokemon.PROTECT_METHOD_SILK_TRAP:
+			_apply_protect_stat_punish(attacker, defender, BattlePokemon.STAGE_SPEED, -1, ng_active)
+
+
+# Shared by Obstruct/Silk Trap above — a direct stat-drop on the attacker
+# plus the same Defiant/Competitive reactive-trigger check
+# `_apply_one_stat_change_pair` already applies for "an opponent lowered my
+# stat," reused inline here since this reactive effect isn't dispatched
+# through that function's own `move.stat_change_stat`-keyed shape.
+func _apply_protect_stat_punish(attacker: BattlePokemon, defender: BattlePokemon,
+		stat: int, amount: int, ng_active: bool) -> void:
+	var actual: int = StatusManager.apply_stat_change(attacker, stat, amount, null, ng_active, defender)
+	if actual == 0:
+		return
+	stat_stage_changed.emit(attacker, stat, actual)
+	var defiant_stat: int = AbilityManager.defiant_competitive_stat(attacker, ng_active)
+	if defiant_stat != -1:
+		var defiant_actual: int = StatusManager.apply_stat_change(attacker, defiant_stat, 2, null, ng_active)
+		if defiant_actual != 0:
+			stat_stage_changed.emit(attacker, defiant_stat, defiant_actual)
+			ability_triggered.emit(attacker, "defiant_competitive")
+
+
 # [M19-recoil-on-miss] Jump Kick/High Jump Kick/Axe Kick/Supercell Slam —
 # flat 50% of the ATTACKER'S OWN max HP, gated only on Magic Guard (NOT Rock
 # Head — a confirmed asymmetry with ordinary recoil; see MoveData.
@@ -3666,6 +4094,26 @@ static func _return_power(friendship: int) -> int:
 # (include/constants/pokemon.h L223).
 static func _frustration_power(friendship: int) -> int:
 	return maxi(1, 10 * (255 - friendship) / 25)
+
+
+# [M19-hp-based-power] Flail/Reversal power — a STEPPED/BANDED formula from
+# the user's OWN missing-HP fraction, NOT continuous (confirmed from source,
+# not assumed). hp_fraction = floor(current_hp * 48 / max_hp), floored up to
+# 1 if current_hp > 0 but the division would otherwise round to 0; then the
+# FIRST table threshold (ascending) the fraction is <= wins.
+# Source: battle_util.c :: GetScaledHPFraction (battle_interface.c L2312-2320)
+#   + sFlailHpScaleToPowerTable (battle_util.c L6011-6019):
+#   {1:200, 4:150, 9:100, 16:80, 32:40, 48:20}.
+static func _flail_power(current_hp: int, max_hp: int) -> int:
+	const THRESHOLDS: Array = [1, 4, 9, 16, 32, 48]
+	const POWERS: Array = [200, 150, 100, 80, 40, 20]
+	var hp_fraction: int = current_hp * 48 / max_hp
+	if hp_fraction == 0 and current_hp > 0:
+		hp_fraction = 1
+	for i in range(THRESHOLDS.size()):
+		if hp_fraction <= THRESHOLDS[i]:
+			return POWERS[i]
+	return POWERS[POWERS.size() - 1]
 
 
 # Synchronize back-reflect helper: if holder has Synchronize and received an eligible
@@ -4224,8 +4672,10 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		_last_attacker_hp_before[target] = hp_before_hit
 		if move.category == 0:
 			target.last_physical_damage = damage
+			target.last_hit_was_special = false
 		else:
 			target.last_special_damage = damage
+			target.last_hit_was_special = true
 
 	if target.bide_turns > 0 and damage > 0:
 		target.bide_damage += damage
@@ -4352,6 +4802,47 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			target.unburden_active = true
 		item_effect_triggered.emit(target, "incinerate_destroyed")
 
+	# [M19-berry-steal] Pluck/Bug Bite: steal the TARGET's berry and
+	# immediately consume its effect on the ATTACKER — NOT a possession
+	# transfer (the item is eaten in place, matching source's `consumeberry
+	# BS_ATTACKER, FALSE`), and genuinely different from Incinerate just
+	# above (which destroys with no beneficiary effect at all). A held
+	# Jaboca/Rowap Berry specifically is EXEMPT from the steal — source's
+	# own MOVE_EFFECT_BUG_BITE case checks this FIRST and lets Jaboca/Rowap's
+	# own retaliation fire instead (already dispatched independently
+	# elsewhere in this function, category-gated, not contact-gated).
+	if damage > 0 and move.steals_and_eats_berry and target.held_item != null \
+			and target.held_item.pocket == ItemManager.POCKET_BERRIES \
+			and target.held_item.hold_effect != ItemManager.HOLD_EFFECT_JABOCA_BERRY \
+			and target.held_item.hold_effect != ItemManager.HOLD_EFFECT_ROWAP_BERRY \
+			and AbilityManager.effective_ability_id(target, ng_active) != AbilityManager.ABILITY_STICKY_HOLD:
+		var stolen_item: ItemData = target.held_item
+		target.held_item = null
+		if AbilityManager.effective_ability_id(target, ng_active) == AbilityManager.ABILITY_UNBURDEN:
+			target.unburden_active = true
+		berry_stolen_and_eaten.emit(target, attacker, stolen_item)
+		var eat_result: Dictionary = ItemManager.steal_and_eat_berry_effect(attacker, stolen_item, ng_active)
+		if not eat_result.is_empty():
+			match eat_result["kind"]:
+				"heal":
+					attacker.current_hp = min(attacker.max_hp, attacker.current_hp + eat_result["amount"])
+					item_healed.emit(attacker, eat_result["amount"])
+				"cure_status":
+					attacker.status = BattlePokemon.STATUS_NONE
+					status_cured.emit(attacker)
+				"cure_confusion":
+					attacker.confusion_turns = 0
+					status_cured.emit(attacker)
+				"stat":
+					var stolen_actual: int = StatusManager.apply_stat_change(
+							attacker, eat_result["stat"], eat_result["amount"], null, ng_active)
+					if stolen_actual != 0:
+						stat_stage_changed.emit(attacker, eat_result["stat"], stolen_actual)
+		# [M17j] Symbiosis fires for the TARGET's own ally, since the
+		# TARGET's item just vanished — same trigger source's
+		# `trysymbiosis BS_TARGET` reaches right after the steal.
+		_try_symbiosis(target)
+
 	# [Bucket 4 cheapest singles] Sparkling Aria: cures BURN specifically on the
 	# TARGET (whoever this hit — the inverse of every existing self-cure
 	# precedent), only if the target currently has it.
@@ -4443,6 +4934,22 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 				# tests can snapshot the trap-applied moment the same way every other
 				# secondary effect already supports.
 				secondary_applied.emit(target, MoveData.SE_WRAP)
+			elif move.secondary_effect == MoveData.SE_PREVENT_ESCAPE:
+				# [M19f] Spirit Shackle — same shape as SE_WRAP just above:
+				# try_apply_escape_prevention (called inside try_secondary_effect's
+				# own match above) already fully mutated target.escape_prevented_by
+				# and reported its own "already trapped" no-op via its return value
+				# (effect_hit == false skips this whole elif chain in that case);
+				# this branch only emits the signal.
+				secondary_applied.emit(target, MoveData.SE_PREVENT_ESCAPE)
+				escape_prevented.emit(target, attacker)
+			elif move.secondary_effect == MoveData.SE_TRAP_BOTH:
+				# [M19f] Jaw Lock — both battlers already mutated inside
+				# try_secondary_effect's own SE_TRAP_BOTH case above; this
+				# branch only emits the two signals.
+				secondary_applied.emit(target, MoveData.SE_TRAP_BOTH)
+				escape_prevented.emit(target, attacker)
+				escape_prevented.emit(attacker, target)
 			elif move.secondary_effect == MoveData.SE_THROAT_CHOP:
 				# [Bucket 4 cheapest singles] Deliberately its own branch, same reason
 				# SE_FLINCH/SE_WRAP get one — the "else" path below assumes a status/

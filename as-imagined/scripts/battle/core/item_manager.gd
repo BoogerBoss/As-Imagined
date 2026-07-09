@@ -1564,6 +1564,40 @@ static func stat_raise_berry_trigger(mon: BattlePokemon, ng_active: bool = false
 	return {"item": item, "stat": stat_idx, "amount": amount}
 
 
+# [M19-berry-steal] Pluck/Bug Bite — dispatches a STOLEN item's effect onto
+# `beneficiary` (the ATTACKER), reusing the existing per-berry-family
+# functions above via their own `override_item` parameter (the same
+# forced-trigger pattern `[M17n-7]`'s Cud Chew fix already established —
+# `override_item != null` bypasses each function's own HP-threshold/Unnerve
+# gate, matching source's `sBERRY_OVERRIDE=1`). `beneficiary`'s OWN state
+# (current HP, status, confusion, stat stages) decides whether each family
+# actually applies — e.g. stealing a Sitrus Berry while already at max HP
+# correctly yields no heal, matching source's real behavior.
+# SCOPE NOTE: covers the 4 families above (HP-threshold heal, status-cure,
+# confusion-cure, stat-raise) — the common/reachable cases via this
+# project's existing reusable functions. Starf Berry's random-stat pick,
+# Micle's accuracy flag, Enigma's post-effectiveness gate, White Herb's
+# full-scan, Weakness Policy, Lansat's focus_energy, and Custap's turn-order
+# flag are NOT wired into this steal path — a genuine, flagged scope
+# limitation (not a silently-dropped case), matching this project's
+# established "flag, don't silently fix out-of-scope gaps" discipline.
+# Source: data/battle_scripts_1.s :: BattleScript_MoveEffectBugBite —
+#   `consumeberry BS_ATTACKER, FALSE` with `sBERRY_OVERRIDE=1`.
+static func steal_and_eat_berry_effect(
+		beneficiary: BattlePokemon, stolen_item: ItemData, ng_active: bool = false) -> Dictionary:
+	var heal: int = hp_threshold_berry_heal(beneficiary, ng_active, false, stolen_item)
+	if heal > 0:
+		return {"kind": "heal", "amount": heal}
+	if status_cure_berry_cures(beneficiary, ng_active, false, stolen_item):
+		return {"kind": "cure_status"}
+	if confusion_cure_berry_cures(beneficiary, ng_active, false, stolen_item):
+		return {"kind": "cure_confusion"}
+	var stat_result: Dictionary = stat_raise_berry_trigger(beneficiary, ng_active, false, stolen_item)
+	if not stat_result.is_empty():
+		return {"kind": "stat", "stat": stat_result["stat"], "amount": stat_result["amount"]}
+	return {}
+
+
 # M18c: Starf Berry — raises ONE random non-maxed stat from {Atk, Def, SpAtk,
 # SpDef, Speed} by +2 (Ripen: +4) at the 25% HP threshold. Source:
 # RandomStatRaiseBerry (battle_hold_effects.c L984-1021): the eligible-stat

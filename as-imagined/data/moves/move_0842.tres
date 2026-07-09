@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+move_name = "Alluring Voice"
+type = 19
+category = 1
+power = 80
+pp = 10
+sound_move = true
+secondary_effect = 6
+secondary_chance = 100
+ignores_substitute = true
+requires_target_stat_raised = true

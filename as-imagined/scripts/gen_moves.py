@@ -63,6 +63,27 @@ SE_WRAP      = 8  # [M18.5f] Bind/Wrap-family trap — see move_data.gd's own do
 SE_POISON    = 9  # [M18.5g] regular (non-toxic) poison — see move_data.gd's own doc comment
 SE_THROAT_CHOP = 10  # [Bucket 4 cheapest singles] — see move_data.gd's own doc comment
 SE_EERIE_SPELL = 11  # [Bucket 4 cheapest singles] — see move_data.gd's own doc comment
+SE_RANDOM_STATUS = 12  # [M19-random-status-choice] — see move_data.gd's own doc comment
+SE_PREVENT_ESCAPE = 13  # [M19f] Spirit Shackle — see move_data.gd's own doc comment
+SE_TRAP_BOTH = 14  # [M19f] Jaw Lock — see move_data.gd's own doc comment
+
+# ── Protect-method constants (BattlePokemon.PROTECT_METHOD_* values) — for
+#    protect_method ([M19c]) ─────────────────────────────────────────────────
+PROTECT_METHOD_SPIKY_SHIELD   = 1
+PROTECT_METHOD_BANEFUL_BUNKER = 2
+PROTECT_METHOD_BURNING_BULWARK = 3
+PROTECT_METHOD_OBSTRUCT       = 4
+PROTECT_METHOD_SILK_TRAP      = 5
+PROTECT_METHOD_WIDE_GUARD     = 6
+PROTECT_METHOD_QUICK_GUARD    = 7
+
+# ── Status constants (BattlePokemon.STATUS_* values) — for random_status_pool ─
+STATUS_BURN      = 1
+STATUS_FREEZE    = 2
+STATUS_PARALYSIS = 3
+STATUS_POISON    = 4
+STATUS_TOXIC     = 5
+STATUS_SLEEP     = 6
 
 # ── Semi-invulnerable state constants (MoveData.SEMI_INV_* values) ───────────
 SEMI_INV_NONE        = 0
@@ -79,6 +100,11 @@ STAGE_SPDEF    = 3
 STAGE_SPEED    = 4
 STAGE_ACCURACY = 5
 STAGE_EVASION  = 6
+
+# ── Weather constants (DamageCalculator.WEATHER_* values) — for
+#    weather_heal_boost_type ([M19e]) ─────────────────────────────────────────
+WEATHER_SUN       = 2
+WEATHER_SANDSTORM = 3
 
 # ── Ban flag bitmask constants (MoveData.BAN_*) ───────────────────────────────
 BAN_GRAVITY       = 1 << 0
@@ -2588,6 +2614,257 @@ MOVES = [
      "type": TYPE_GROUND, "category": SPEC, "power": 100, "accuracy": 80, "pp": 10,
      "is_spread": True, "secondary_effect": SE_BURN, "secondary_chance": 20,
      "always_hits_in_rain": True},
+
+    # ── [Bucket 4 2-move sub-groups] — 9 independent sub-groups bundled into
+    # one session, matching [Bucket 4 cheapest singles]'s established
+    # precedent. Each sub-group's own mechanism verified individually from
+    # source — none share a mechanism just because they're bundled together.
+
+    # M19-percent-current-hp-damage: EFFECT_FIXED_PERCENT_DAMAGE, both share
+    # the literal same 50% figure.
+    {"id":  162, "name": "Super Fang",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 1, "accuracy": 90, "pp": 10,
+     "makes_contact": True, "percent_current_hp_damage": 50},
+    {"id":  803, "name": "Ruination",
+     "type": TYPE_DARK, "category": SPEC, "power": 1, "accuracy": 90, "pp": 10,
+     "ban_flags": BAN_METRONOME, "percent_current_hp_damage": 50},
+
+    # M19-ignores-stat-stages: ignoresTargetDefenseEvasionStages, reuses the
+    # SAME insertion points Unaware already established (no new mechanism).
+    {"id":  498, "name": "Chip Away",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 70, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "ignores_defense_evasion_stages": True},
+    {"id":  533, "name": "Sacred Sword",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 90, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "slicing_move": True, "ignores_defense_evasion_stages": True},
+    {"id":  626, "name": "Darkest Lariat",
+     "type": TYPE_DARK, "category": PHYS, "power": 85, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "ignores_defense_evasion_stages": True},
+
+    # M19-charge-turn-spatk-boost: MOVE_EFFECT_STAT_PLUS spAtk=1 onChargeTurnOnly
+    # — a parallel field to Skull Bash's charge_turn_defense_boost. Electro
+    # Shot ADDITIONALLY skips its charge turn in rain (Meteor Beam does not
+    # — confirmed individually, not assumed symmetric).
+    {"id":  728, "name": "Meteor Beam",
+     "type": TYPE_ROCK, "category": SPEC, "power": 120, "accuracy": 90, "pp": 10,
+     "two_turn": True, "charge_turn_spatk_boost": 1},
+    {"id":  833, "name": "Electro Shot",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 130, "accuracy": 100, "pp": 10,
+     "two_turn": True, "charge_turn_spatk_boost": 1, "skips_charge_in_rain": True},
+
+    # M19-hp-based-power: EFFECT_FLAIL, both share the literal same banded
+    # power-from-own-missing-HP formula.
+    {"id":  175, "name": "Flail",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 1, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "is_flail_power": True},
+    {"id":  179, "name": "Reversal",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 1, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "is_flail_power": True},
+
+    # M19-stat-raised-trigger: onlyIfTargetRaisedStats, chance=100 (guaranteed
+    # IF the condition is met — a true secondary, still subject to Shield
+    # Dust/Covert Cloak/Sheer Force/Serene Grace like any other chance>0 SE).
+    {"id":  735, "name": "Burning Jealousy",
+     "type": TYPE_FIRE, "category": SPEC, "power": 70, "accuracy": 100, "pp": 5,
+     "is_spread": True, "secondary_effect": SE_BURN, "secondary_chance": 100,
+     "requires_target_stat_raised": True},
+    {"id":  842, "name": "Alluring Voice",
+     "type": TYPE_FAIRY, "category": SPEC, "power": 80, "accuracy": 100, "pp": 10,
+     "sound_move": True, "ignores_substitute": True, "secondary_effect": SE_CONFUSION,
+     "secondary_chance": 100, "requires_target_stat_raised": True},
+
+    # M19-random-status-choice: two genuinely DIFFERENT pools (confirmed
+    # individually from source, not shared) — Tri Attack's real 3rd option
+    # (freeze-or-frostbite) resolves to plain STATUS_FREEZE, no
+    # STATUS_FROSTBITE exists anywhere in this project.
+    {"id":  161, "name": "Tri Attack",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 80, "accuracy": 100, "pp": 10,
+     "secondary_effect": SE_RANDOM_STATUS, "secondary_chance": 20,
+     "random_status_pool": [STATUS_BURN, STATUS_FREEZE, STATUS_PARALYSIS]},
+    {"id":  755, "name": "Dire Claw",
+     "type": TYPE_POISON, "category": PHYS, "power": 80, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "secondary_effect": SE_RANDOM_STATUS, "secondary_chance": 50,
+     "random_status_pool": [STATUS_POISON, STATUS_PARALYSIS, STATUS_SLEEP]},
+
+    # M19-self-faint: .explosion=TRUE, unconditional self-KO regardless of
+    # hit/miss, Damp-blocked. TARGET_FOES_AND_ALLY modeled as is_spread
+    # (opponents only) — the ally-hit half in doubles is a flagged,
+    # not-built gap (see move_data.gd's own doc comment).
+    {"id":  120, "name": "Self-Destruct",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 200, "accuracy": 100, "pp": 5,
+     "is_spread": True, "is_self_faint": True},
+    {"id":  153, "name": "Explosion",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 250, "accuracy": 100, "pp": 5,
+     "is_spread": True, "is_self_faint": True},
+
+    # M19-berry-steal: MOVE_EFFECT_BUG_BITE, both share the literal same
+    # steal-and-immediately-eat mechanism (Pluck's own name is a historical
+    # artifact, not a distinct mechanism).
+    {"id":  365, "name": "Pluck",
+     "type": TYPE_FLYING, "category": PHYS, "power": 60, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "steals_and_eats_berry": True},
+    {"id":  450, "name": "Bug Bite",
+     "type": TYPE_BUG, "category": PHYS, "power": 60, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "steals_and_eats_berry": True},
+
+    # M19-ignores-target-ability: ignoresTargetAbility — the LITERAL SAME
+    # moldBreakerActive flag Mold Breaker itself sets, confirmed from source.
+    {"id":  667, "name": "Sunsteel Strike",
+     "type": TYPE_STEEL, "category": PHYS, "power": 100, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "ignores_target_ability": True},
+    {"id":  668, "name": "Moongeist Beam",
+     "type": TYPE_GHOST, "category": SPEC, "power": 100, "accuracy": 100, "pp": 5,
+     "ignores_target_ability": True},
+
+    # ── [M19-steal-stats] / [M19-ally-targeting-stat-change] ──
+    # Spectral Thief(666): preAttackEffect steal of the target's positive
+    # stat stages (all 7, incl. Accuracy/Evasion) onto the attacker. See
+    # move_data.gd's steals_positive_stat_stages field doc comment and
+    # BattleManager's own call-site comment for full source citations.
+    {"id":  666, "name": "Spectral Thief",
+     "type": TYPE_GHOST, "category": PHYS, "power": 90, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "ignores_substitute": True,
+     "ban_flags": BAN_METRONOME, "steals_positive_stat_stages": True},
+
+    # Howl(336): TARGET_USER_AND_ALLY at GEN_LATEST — self +1 Atk (ordinary
+    # stat_change_self) plus the same +1 bolted onto the user's ally
+    # (also_boosts_ally, a no-op in singles).
+    {"id":  336, "name": "Howl",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 40,
+     "ignores_protect": True, "sound_move": True, "ban_flags": BAN_MIRROR_MOVE,
+     "stat_change_stat": STAGE_ATK, "stat_change_amount": 1, "stat_change_self": True,
+     "also_boosts_ally": True},
+
+    # Aromatic Mist(597): TARGET_ALLY only, +1 SpDef on the ally, fails if
+    # not doubles (see BattleManager's _get_ally-based dispatch).
+    {"id":  597, "name": "Aromatic Mist",
+     "type": TYPE_FAIRY, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "ignores_substitute": True, "ban_flags": BAN_MIRROR_MOVE,
+     "stat_change_stat": STAGE_SPDEF, "stat_change_amount": 1,
+     "stat_change_target_ally": True},
+
+    # Coaching(739): TARGET_ALLY only, +1 Atk / +1 Def on the ally (2-stat
+    # payload via the existing extra_stat_change_stats/amounts mechanism).
+    {"id":  739, "name": "Coaching",
+     "type": TYPE_FIGHTING, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "ignores_substitute": True, "ban_flags": BAN_MIRROR_MOVE,
+     "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_DEF], "extra_stat_change_amounts": [1],
+     "stat_change_target_ally": True},
+
+    # ── [M19e] Weather-conditional heal family ──
+    # Morning Sun(234)/Synthesis(235)/Moonlight(236): share the sun-boosted
+    # (2/3), no-weather (1/2), other-weather (1/4) formula.
+    {"id":  234, "name": "Morning Sun",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True,
+     "heals_based_on_weather": True, "weather_heal_boost_type": WEATHER_SUN,
+     "weather_heal_has_quarter_branch": True},
+    {"id":  235, "name": "Synthesis",
+     "type": TYPE_GRASS, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True,
+     "heals_based_on_weather": True, "weather_heal_boost_type": WEATHER_SUN,
+     "weather_heal_has_quarter_branch": True},
+    {"id":  236, "name": "Moonlight",
+     "type": TYPE_FAIRY, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True,
+     "heals_based_on_weather": True, "weather_heal_boost_type": WEATHER_SUN,
+     "weather_heal_has_quarter_branch": True},
+    # Shore Up(622): sandstorm-boosted (2/3) / else (1/2) — no 1/4 branch at
+    # all, a genuine non-uniformity within this sub-group (confirmed from
+    # source, not assumed symmetric with the 3 sun-based moves above).
+    {"id":  622, "name": "Shore Up",
+     "type": TYPE_GROUND, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True,
+     "heals_based_on_weather": True, "weather_heal_boost_type": WEATHER_SANDSTORM,
+     "weather_heal_has_quarter_branch": False},
+
+    # ── [M19f] Escape-prevention family ──
+    # Spider Web(169): ignoresProtect=FALSE at GEN_LATEST (a real asymmetry
+    # with Mean Look/Block below, confirmed individually from source).
+    {"id":  169, "name": "Spider Web",
+     "type": TYPE_BUG, "category": STAT, "accuracy": 0, "pp": 10,
+     "bounceable": True, "is_mean_look": True},
+    # Mean Look(212)/Block(335): ignoresProtect=TRUE at GEN_LATEST
+    # (B_UPDATED_MOVE_FLAGS >= GEN_6).
+    {"id":  212, "name": "Mean Look",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True, "bounceable": True, "is_mean_look": True},
+    {"id":  335, "name": "Block",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True, "bounceable": True, "is_mean_look": True},
+    # Spirit Shackle(625): damaging move, SE_PREVENT_ESCAPE secondary at
+    # explicit chance=100 (a true secondary — Shield Dust/Covert Cloak/Sheer
+    # Force all correctly apply, unlike Mean Look/Block/Spider Web's own
+    # guaranteed-by-construction pure-status dispatch). No makesContact in
+    # source, no Ghost-type immunity (see move_data.gd's SE_PREVENT_ESCAPE
+    # doc comment for the source-confirmed asymmetry with is_mean_look).
+    {"id":  625, "name": "Spirit Shackle",
+     "type": TYPE_GHOST, "category": PHYS, "power": 80, "accuracy": 100, "pp": 10,
+     "secondary_effect": SE_PREVENT_ESCAPE, "secondary_chance": 100},
+    # Jaw Lock(692): the bidirectional variant (traps user AND target).
+    # Guaranteed (no .chance field in source -> secondary_chance=0).
+    {"id":  692, "name": "Jaw Lock",
+     "type": TYPE_DARK, "category": PHYS, "power": 80, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "biting_move": True,
+     "secondary_effect": SE_TRAP_BOTH, "secondary_chance": 0},
+
+    # ── [M19c] Protect-family variants — all share is_protect's existing
+    # dispatch (.effect = EFFECT_PROTECT in source, same as Protect/Detect),
+    # distinguished only by protect_method. ──
+    # Wide Guard(469): side-wide, blocks only SPREAD moves (is_spread).
+    {"id":  469, "name": "Wide Guard",
+     "type": TYPE_ROCK, "category": STAT, "accuracy": 0, "pp": 10, "priority": 3,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
+     "is_protect": True, "protect_method": PROTECT_METHOD_WIDE_GUARD},
+    # Quick Guard(501): side-wide, blocks only PRIORITY>0 moves (ability-boosted).
+    {"id":  501, "name": "Quick Guard",
+     "type": TYPE_FIGHTING, "category": STAT, "accuracy": 0, "pp": 15, "priority": 3,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
+     "is_protect": True, "protect_method": PROTECT_METHOD_QUICK_GUARD},
+    # Spiky Shield(596): blocks everything; contact -> maxHP/8 recoil to attacker.
+    {"id":  596, "name": "Spiky Shield",
+     "type": TYPE_GRASS, "category": STAT, "accuracy": 0, "pp": 10, "priority": 4,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
+     "is_protect": True, "protect_method": PROTECT_METHOD_SPIKY_SHIELD},
+    # Baneful Bunker(624): blocks everything; contact -> poisons attacker.
+    {"id":  624, "name": "Baneful Bunker",
+     "type": TYPE_POISON, "category": STAT, "accuracy": 0, "pp": 10, "priority": 4,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
+     "is_protect": True, "protect_method": PROTECT_METHOD_BANEFUL_BUNKER},
+    # Obstruct(720): blocks only NON-STATUS moves; contact -> -2 Def on attacker.
+    # accuracy=100 in source (functionally moot -- is_protect dispatch fires
+    # before any accuracy check), recorded for data fidelity only.
+    {"id":  720, "name": "Obstruct",
+     "type": TYPE_DARK, "category": STAT, "accuracy": 100, "pp": 10, "priority": 4,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
+     "is_protect": True, "protect_method": PROTECT_METHOD_OBSTRUCT},
+    # Silk Trap(780): blocks only NON-STATUS moves; contact -> -1 Speed on attacker.
+    {"id":  780, "name": "Silk Trap",
+     "type": TYPE_BUG, "category": STAT, "accuracy": 0, "pp": 10, "priority": 4,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
+     "is_protect": True, "protect_method": PROTECT_METHOD_SILK_TRAP},
+    # Burning Bulwark(836): blocks everything; contact -> burns attacker.
+    {"id":  836, "name": "Burning Bulwark",
+     "type": TYPE_FIRE, "category": STAT, "accuracy": 0, "pp": 10, "priority": 4,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
+     "is_protect": True, "protect_method": PROTECT_METHOD_BURNING_BULWARK},
+
+    # ── [M19d] Counter/Mirror-Move remnants ──
+    # Metal Burst(368): EFFECT_REFLECT_DAMAGE like Counter/Mirror Coat, but
+    # 1.5x (not 2x) and BOTH categories (not one) -- priority=0, NOT -5, a
+    # real asymmetry with Counter/Mirror Coat despite the shared handler.
+    # NOT metronome-banned in source (unlike Counter/Mirror Coat, which are).
+    {"id":  368, "name": "Metal Burst",
+     "type": TYPE_STEEL, "category": PHYS, "power": 1, "accuracy": 100, "pp": 10,
+     "metal_burst": True},
+    # Mirror Move(119): repeats the move that hit the user this turn (NOT the
+    # target's own last-used move -- a different tracking axis, see
+    # move_data.gd's own doc comment). Metronome/Mirror-Move-banned in source.
+    {"id":  119, "name": "Mirror Move",
+     "type": TYPE_FLYING, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
+     "is_mirror_move": True},
 ]
 
 
@@ -2750,6 +3027,34 @@ DEFAULTS = {
     # [M19-weather-conditional-accuracy]
     "always_hits_in_rain":        False,
     "accuracy_halved_in_sun":     False,
+
+    # [Bucket 4 2-move sub-groups]
+    "percent_current_hp_damage":  0,
+    "ignores_defense_evasion_stages": False,
+    "charge_turn_spatk_boost":    0,
+    "skips_charge_in_rain":       False,
+    "is_flail_power":             False,
+    "requires_target_stat_raised": False,
+    "random_status_pool":         [],
+    "is_self_faint":              False,
+    "steals_and_eats_berry":      False,
+    "ignores_target_ability":     False,
+
+    # [M19-steal-stats] / [M19-ally-targeting-stat-change]
+    "steals_positive_stat_stages": False,
+    "stat_change_target_ally":    False,
+    "also_boosts_ally":           False,
+
+    # [M19e] / [M19f]
+    "heals_based_on_weather":       False,
+    "weather_heal_boost_type":      0,
+    "weather_heal_has_quarter_branch": False,
+    "is_mean_look":                 False,
+
+    # [M19c] / [M19d]
+    "protect_method":  0,
+    "metal_burst":     False,
+    "is_mirror_move":  False,
 }
 
 HEADER = """\
@@ -2823,6 +3128,18 @@ FIELD_ORDER = [
     "crashes_on_miss",
     # [M19-weather-conditional-accuracy] fields
     "always_hits_in_rain", "accuracy_halved_in_sun",
+    # [Bucket 4 2-move sub-groups] fields
+    "percent_current_hp_damage", "ignores_defense_evasion_stages",
+    "charge_turn_spatk_boost", "skips_charge_in_rain", "is_flail_power",
+    "requires_target_stat_raised", "random_status_pool", "is_self_faint",
+    "steals_and_eats_berry", "ignores_target_ability",
+    # [M19-steal-stats] / [M19-ally-targeting-stat-change] fields
+    "steals_positive_stat_stages", "stat_change_target_ally", "also_boosts_ally",
+    # [M19e] / [M19f] fields
+    "heals_based_on_weather", "weather_heal_boost_type",
+    "weather_heal_has_quarter_branch", "is_mean_look",
+    # [M19c] / [M19d] fields
+    "protect_method", "metal_burst", "is_mirror_move",
 ]
 
 

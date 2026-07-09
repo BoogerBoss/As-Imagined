@@ -169,6 +169,34 @@ const SE_THROAT_CHOP: int = 10
 #   comprehensively wired since [M16e]'s Conversion 2) — no new tracking state
 #   needed.
 const SE_EERIE_SPELL: int = 11
+# [M19-random-status-choice] SE_RANDOM_STATUS: Tri Attack(161)/Dire
+#   Claw(755) — picks UNIFORMLY at random from `random_status_pool` (below)
+#   and applies it via the SAME `StatusManager.try_apply_status` every
+#   other status-inflicting move already uses (already-statused target
+#   blocks it, same as every other status move — confirmed source checks
+#   this too, not a new gate). Two genuinely DIFFERENT pools, confirmed
+#   individually from source, not shared: Tri Attack picks from {burn,
+#   freeze, paralysis}; Dire Claw picks from {poison, paralysis, sleep}.
+const SE_RANDOM_STATUS: int = 12
+# [M19f] SE_PREVENT_ESCAPE: Spirit Shackle(625) — the SAME underlying
+#   escapePrevention volatile Mean Look/Block/Spider Web set (see
+#   `is_mean_look`'s own doc comment below), but dispatched as a damaging
+#   move's secondary effect (explicit chance=100, a true secondary) rather
+#   than a status move's sole effect. NO Ghost-type immunity here — that
+#   check lives only inside `BattleScript_EffectMeanLook`'s own dedicated
+#   script (data/battle_scripts_1.s L2100-2112), never in the generic
+#   `MOVE_EFFECT_PREVENT_ESCAPE` additionalEffects dispatch Spirit Shackle
+#   uses (battle_script_commands.c L2518-2525) — confirmed via direct source
+#   read, not assumed symmetric with the status-move family.
+const SE_PREVENT_ESCAPE: int = 13
+# [M19f] SE_TRAP_BOTH: Jaw Lock(692) — the BIDIRECTIONAL variant of the same
+#   escapePrevention mechanism: traps BOTH the attacker AND the defender,
+#   gated on NEITHER already being trapped (a stricter guard than Spirit
+#   Shackle's own single-sided check). No `.chance` field in source
+#   (guaranteed, secondary_chance=0 — same "no true-secondary gates apply"
+#   shape as SE_WRAP). Source: battle_script_commands.c ::
+#   MOVE_EFFECT_TRAP_BOTH (L2661-2676).
+const SE_TRAP_BOTH: int = 14
 
 @export var secondary_effect: int = 0   # SE_* constant above
 @export var secondary_chance: int = 0   # 0 = guaranteed; 1–100 = % roll
@@ -212,6 +240,63 @@ const SE_EERIE_SPELL: int = 11
 # inspection of every multi-stat move in this project's roster).
 @export var extra_stat_change_stats: Array[int] = []
 @export var extra_stat_change_amounts: Array[int] = []
+
+# [M19-random-status-choice] random_status_pool: the fixed set of
+#   BattlePokemon.STATUS_* values SE_RANDOM_STATUS (above) picks uniformly
+#   from. Empty for every other move. Tri Attack's real 3rd option
+#   (freeze-or-frostbite) resolves to plain STATUS_FREEZE at this project's
+#   config — no STATUS_FROSTBITE exists anywhere in this codebase
+#   (confirmed via grep, B_USE_FROSTBITE is not modeled).
+@export var random_status_pool: Array[int] = []
+
+# [M19-self-faint] is_self_faint: Self-Destruct(120)/Explosion(153) —
+#   unconditional self-KO, regardless of whether the move's own hit lands.
+#   Blocked entirely by Damp anywhere on the field (a simplified execution-
+#   time translation of source's selection-time `.dampBanned` flag — this
+#   project has no move-selection legality filter). TARGET_FOES_AND_ALLY in
+#   source (hits every OTHER battler, opponents AND the user's own ally) —
+#   modeled here as `is_spread` (opponents only); the ally-hit half in
+#   doubles is a known, FLAGGED-not-built gap (same class as Shell Bell's
+#   own doubles spread-accumulation gap, deferred to M22).
+# Source: moves_info.h .explosion=TRUE, .dampBanned=TRUE; battle_move_resolution.c
+#   :: CancelerExplosion (L1841-1848) — see the BattleManager call site's own
+#   doc comment for the full pre-move-canceler-timing citation.
+@export var is_self_faint: bool = false
+
+# [M19-berry-steal] steals_and_eats_berry: Pluck(365)/Bug Bite(450) — both
+#   share the LITERAL SAME `MOVE_EFFECT_BUG_BITE` additionalEffect in
+#   source (Pluck's own name is a historical artifact, not a distinct
+#   mechanism). Steals the target's berry and immediately consumes its
+#   effect ON THE ATTACKER — genuinely different from Incinerate (destroys,
+#   no beneficiary effect) and from Pickpocket/Magician/Sticky Barb
+#   (possession TRANSFER, held not eaten). Blocked entirely by the target's
+#   own Sticky Hold. A held Jaboca/Rowap Berry specifically is exempt —
+#   triggers its OWN retaliation instead of being stolen.
+# Source: moves_info.h MOVE_PLUCK/MOVE_BUG_BITE additionalEffects
+#   {MOVE_EFFECT_BUG_BITE}; battle_script_commands.c ::
+#   case MOVE_EFFECT_BUG_BITE (L2641-2656) — see BattleManager's own call
+#   site doc comment and ItemManager.steal_and_eat_berry_effect's doc
+#   comment for the full citation and the explicit scope-limitation note
+#   (4 common berry families covered; Starf/Micle/Enigma/White
+#   Herb/Weakness Policy/Lansat/Custap are NOT wired into this path).
+@export var steals_and_eats_berry: bool = false
+
+# [M19-ignores-target-ability] ignores_target_ability: Sunsteel
+#   Strike(667)/Moongeist Beam(668) — a MOVE-level trigger for the LITERAL
+#   SAME `moldBreakerActive` flag Mold Breaker/Mycelium Might already set,
+#   confirmed directly from source (not a separate, parallel mechanism):
+#     moldBreakerActive = IsMoldBreakerTypeAbility(atk, GetBattlerAbility(atk))
+#                          || MoveIgnoresTargetAbility(gCurrentMove);
+#   Reuses AbilityManager.effective_ability_id's existing `attacker_move`
+#   param (threaded through every damage-pipeline ability check that already
+#   reaches Mold Breaker — Levitate/absorb-family/Wonder Guard/Multiscale/
+#   Filter/Solid Rock/Fur Coat/Ice Scales/etc.) rather than a new bypass
+#   path — this move-level trigger inherits Mold Breaker's EXACT scope for
+#   free (same `breakable` gate inside effective_ability_id), since it's
+#   the identical underlying flag.
+# Source: include/move.h L34 (`ignoresTargetAbility:1`); battle_util.c L9800
+#   (`SpecialStatusesClear`, the moldBreakerActive assignment cited above).
+@export var ignores_target_ability: bool = false
 
 # powder_move (already declared above in move flags) is set for Sleep Powder et al.
 # Blocked by Overcoat and Grass-type immunity (Gen 6+, M8+ scope).
@@ -277,6 +362,30 @@ const SEMI_INV_VANISH: int      = 4  # Shadow Force, Phantom Force
 # Used by: Seismic Toss (Fighting), Night Shade (Ghost).
 @export var level_damage: bool = false
 
+# [M19-percent-current-hp-damage] percent_current_hp_damage > 0: damage is
+#   this percent of the TARGET's CURRENT HP (not max HP) — genuinely
+#   distinct from fixed_damage/level_damage above. Type immunity (0.0×)
+#   still blocks the move entirely; skips STAB/crit/roll/stage math exactly
+#   like fixed_damage/level_damage do.
+# Source: battle_util.c :: DoMoveDamageCalc, case EFFECT_FIXED_PERCENT_DAMAGE
+#   (L7660-7661): dmg = GetNonDynamaxHP(battlerDef) * GetMoveDamagePercentage(move) / 100.
+# Used by: Super Fang(162, 50%), Ruination(803, 50%).
+@export var percent_current_hp_damage: int = 0
+
+# [M19-ignores-stat-stages] ignores_defense_evasion_stages: Chip Away(498)/
+#   Sacred Sword(533)/Darkest Lariat(626) — a MOVE-level equivalent of
+#   Unaware's own defense/evasion-ignore, reusing the EXACT SAME insertion
+#   points (DamageCalculator's def_stage reset, StatusManager.
+#   check_accuracy's eva_stage reset) rather than a new mechanism. Resets
+#   the DEFENDER's Defense stage to neutral for damage calc AND their
+#   Evasion stage to neutral for the accuracy roll — confirmed TWO separate
+#   effects from ONE flag (source's own function name, "DefenseEvasion",
+#   already names both).
+# Source: include/move.h L135 (`ignoresTargetDefenseEvasionStages:1`);
+#   battle_util.c :: CalcDefenseStat (L7075) and GetTotalAccuracy (L10254),
+#   both via the shared `MoveIgnoresDefenseEvasionStages(move)` inline getter.
+@export var ignores_defense_evasion_stages: bool = false
+
 # ── M7: One-off / unique mechanics ────────────────────────────────────────────
 
 # creates_substitute: user pays HP = max_hp / 4 and creates a decoy with that much HP.
@@ -294,6 +403,20 @@ const SEMI_INV_VANISH: int      = 4  # Shadow Force, Phantom Force
 #   sGen5ProtectFailChances = {1, 3, 9, 27} (uses-0, 1, 2, 3+)
 @export var is_protect: bool = false
 
+# [M19c] protect_method: which Protect-family variant this move sets, using
+# BattlePokemon's own PROTECT_METHOD_* constants. ALL 7 new moves (and
+# Protect/Detect) share `is_protect = TRUE`'s existing dispatch — Step 0
+# confirmed every one of them uses the LITERAL SAME `.effect = EFFECT_PROTECT`
+# as Protect itself in source, distinguished only by a per-move
+# `.argument.protectMethod` value, and the SAME shared consecutive-use
+# fail-chance counter (`usesProtectCounter` is a per-EFFECT setting, not
+# per-move) — zero changes needed to the existing is_protect dispatch or
+# `_roll_protect_success`. Left at the class default (0 = PROTECT_METHOD_NONE)
+# for Protect/Detect themselves, which is indistinguishable in practice from
+# "blocks everything unconditionally" (`_is_protected_from`'s own `_` match
+# branch), so their existing `.tres` data needs no change either.
+@export var protect_method: int = 0
+
 # counter: returns 2× physical damage taken this turn to the attacker.
 # Priority −5. Fails if user wasn't hit by a physical move this turn.
 # Source: battle_move_resolution.c :: EFFECT_REFLECT_DAMAGE (L1199)
@@ -305,6 +428,40 @@ const SEMI_INV_VANISH: int      = 4  # Shadow Force, Phantom Force
 # Priority −5. Fails if user wasn't hit by a special move this turn.
 # Source: same EFFECT_REFLECT_DAMAGE handler, category=SPECIAL branch
 @export var mirror_coat: bool = false
+
+# [M19d] metal_burst: returns 1.5× damage taken this turn to the attacker —
+# a GENUINELY DIFFERENT multiplier from Counter/Mirror Coat's 2x (confirmed
+# individually from source, not assumed uniform), and reflects EITHER
+# category (Counter is Physical-only, Mirror Coat Special-only). Priority=0
+# (NOT Counter/Mirror Coat's own -5 — a real, easy-to-miss asymmetry despite
+# all 3 sharing the identical `EFFECT_REFLECT_DAMAGE` handler). When damage
+# was taken from BOTH categories in the same turn (doubles), reflects
+# whichever was taken LAST (`BattlePokemon.last_hit_was_special`), not the
+# larger of the two. Deliberately kept as its OWN separate flag rather than
+# generalizing `counter`/`mirror_coat` into one data-driven mechanism —
+# reuses the existing per-mon `last_physical_damage`/`last_special_damage`
+# tracking directly, avoiding any risk to Counter/Mirror Coat's own
+# already-tested dispatch.
+# Source: moves_info.h MOVE_METAL_BURST: .argument.reflectDamage =
+#   { .damagePercent = 150, .damageCategories = PHYSICAL | SPECIAL }.
+@export var metal_burst: bool = false
+
+# [M19d] is_mirror_move: calls the SAME move that most recently hit the user
+# THIS TURN, targeting whoever used it — a genuinely different tracking axis
+# from "the target's own last-used move" (Copycat-style). Reuses the
+# pre-existing per-turn `BattleManager._last_attacker_move`/`_last_attacker`
+# dictionaries (already built for Destiny Bond/Aftermath/Innards Out, cleared
+# every turn) directly — no new tracking state needed. Fails if the user
+# hasn't been hit by any move yet this turn. Falls through to the SAME
+# "reassign `move` and let normal dispatch continue" pattern this project's
+# existing Metronome redirect already established — confirmed from source
+# that both dispatch through the identical `CancelerCallSubmove` mechanism
+# (battle_move_resolution.c L523-553, EFFECT_MIRROR_MOVE and EFFECT_METRONOME
+# are two cases of the same switch).
+# Source: GetMirrorMoveMove (battle_move_resolution.c L4966-4993) reads
+#   gBattleStruct->lastTakenMove[gBattlerAttacker] — the move that hit the
+#   MIRROR MOVE USER, not any move the target itself used.
+@export var is_mirror_move: bool = false
 
 # destiny_bond: if this Pokémon faints before acting next turn, the KO attacker also faints.
 # Fails (consecutive-use rule, Gen 7+): if already set when used again.
@@ -457,6 +614,26 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   .defense = 1, .self = TRUE, .onChargeTurnOnly = TRUE}.
 # Only Skull Bash uses this; value is 1.
 @export var charge_turn_defense_boost: int = 0
+
+# [M19-charge-turn-spatk-boost] charge_turn_spatk_boost: Sp.Atk stages added
+#   to the user on the charge turn only — a deliberate PARALLEL field to
+#   charge_turn_defense_boost above, not a generalization of it (generalizing
+#   risks Skull Bash's own already-working behavior; a parallel field is
+#   safer despite minor duplication, per this project's own scope decision).
+# Source: moves_info.h MOVE_METEOR_BEAM/MOVE_ELECTRO_SHOT :: additionalEffects
+#   {MOVE_EFFECT_STAT_PLUS, .spAtk = 1, .self = TRUE, .onChargeTurnOnly = TRUE}.
+# Used by: Meteor Beam(728), Electro Shot(833); value is 1 for both.
+@export var charge_turn_spatk_boost: int = 0
+
+# [M19-charge-turn-spatk-boost] skips_charge_in_rain: Electro Shot ONLY —
+#   the same early-release shortcut SHAPE as is_solar_beam's sun-skip, but
+#   gated on RAIN. A genuinely separate flag from charge_turn_spatk_boost —
+#   Meteor Beam has the stat boost but NOT this skip (confirmed
+#   individually from source, not assumed symmetric between the two moves).
+# Source: moves_info.h MOVE_ELECTRO_SHOT :: .argument.twoTurnAttack =
+#   { .weather = B_WEATHER_RAIN }; battle_util.c :: CanTwoTurnMoveFireThisTurn
+#   reads this generically (Solar Beam's own entry uses B_WEATHER_SUN).
+@export var skips_charge_in_rain: bool = false
 
 # ── M15 Task 3: PP System ─────────────────────────────────────────────────────
 
@@ -757,6 +934,31 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   (include/constants/pokemon.h L223). Same universal power==0→1 floor applies
 #   (friendship=255 would otherwise compute power=0).
 @export var is_frustration_power: bool = false
+
+# [M19-hp-based-power] is_flail_power: Flail(175)/Reversal(179) — power from
+#   the USER'S OWN missing-HP fraction, a STEPPED/BANDED formula, confirmed
+#   NOT continuous (a real risk this task's own Step 0 flagged and verified
+#   from source directly rather than assuming a smooth curve). Both moves
+#   share the LITERAL SAME `.effect = EFFECT_FLAIL` in source.
+# Source: battle_util.c, case EFFECT_FLAIL (L6138-6145) — see
+#   BattleManager._flail_power's own doc comment for the full table citation.
+@export var is_flail_power: bool = false
+
+# [M19-stat-raised-trigger] requires_target_stat_raised: Burning
+#   Jealousy(735)/Alluring Voice(842) — the secondary (burn/confusion) only
+#   applies if the TARGET's stats rose THIS TURN, from ANY source (a move,
+#   ability, or item — a broad, general concept in source, not move-driven
+#   specifically). Neither move raises stats itself, so self-triggering
+#   isn't a real risk for these 2 — confirmed from source, not assumed.
+#   Both moves already gate on the SAME pre-existing "already has a status"/
+#   "already confused" check every other status/confusion move uses
+#   (`!gBattleMons[effectBattler].status1`-equivalent), so no separate gate
+#   was needed for that half.
+# Source: include/move.h L35 (`onlyIfTargetRaisedStats:1`); dispatch via
+#   AdditionalEffectsMoveConditionMet (battle_script_commands.c L3481-3483)
+#   — see StatusManager.try_secondary_effect's own doc comment for the
+#   exact citation and insertion point (before the chance roll).
+@export var requires_target_stat_raised: bool = false
 
 # [Bucket 4 cheapest singles] is_rage: Rage(99) — a guaranteed, self-targeted
 #   EFFECT_HIT additional effect (`.self = TRUE`, no `.chance` field) that sets
@@ -1168,3 +1370,108 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   practice — Wonder Skin only ever gates STATUS moves, Thunder/Hurricane
 #   are both damaging — but the relative order is preserved for fidelity).
 @export var accuracy_halved_in_sun: bool = false
+
+# [M19-steal-stats] steals_positive_stat_stages: Spectral Thief(666) —
+#   steals the target's CURRENTLY positive stat stages onto the attacker,
+#   removing them from the target, for ALL 7 stages (confirmed via
+#   `NUM_BATTLE_STATS = NUM_STATS + 2`, includes Accuracy/Evasion, unlike
+#   Starf Berry's narrower 5-stat pool). A genuinely DIFFERENT shape from
+#   `AbilityManager`'s Opportunist (reacts to a fresh stat-RISE EVENT
+#   elsewhere; Spectral Thief instead snapshots-and-transfers whatever
+#   already exists at the moment of use) — see BattleManager's own call
+#   site doc comment for the full citation, including the `.preAttackEffect
+#   = TRUE` timing (fires regardless of this move's own subsequent
+#   accuracy result — blocked only by Protect and type immunity, both
+#   already-resolved by the time a pre-attack effect dispatches).
+# Source: src/data/moves_info.h MOVE_SPECTRAL_THIEF: additionalEffects
+#   {MOVE_EFFECT_STEAL_STATS, .preAttackEffect = TRUE}, .ignoresSubstitute
+#   = TRUE (moot here — the steal is dispatched before any substitute-
+#   redirect check could apply, matching Brick Break's own preAttackEffect
+#   precedent, `move_data.gd`'s `breaks_screens` field, above).
+@export var steals_positive_stat_stages: bool = false
+
+# [M19-ally-targeting-stat-change] stat_change_target_ally: Aromatic
+#   Mist(597)/Coaching(739) — TARGET_ALLY ONLY (never self, never
+#   opponent). A real, source-confirmed OVERTURN of this sub-group's own
+#   original framing ("no ally-targeting stat-change mechanism exists in
+#   any form") — this project already had exactly such a mechanism, via
+#   Helping Hand's own established `TARGET_ALLY`/"fails if not doubles"
+#   dispatch shape (`[M14b]`), just not yet reused for a second move. See
+#   BattleManager's own call site doc comment for the full citation.
+# Source: moves_info.h MOVE_AROMATIC_MIST/MOVE_COACHING: .target = TARGET_ALLY.
+@export var stat_change_target_ally: bool = false
+
+# [M19-ally-targeting-stat-change] also_boosts_ally: Howl(336) ONLY —
+#   TARGET_USER_AND_ALLY at this project's GEN_LATEST config
+#   (`B_UPDATED_MOVE_DATA >= GEN_8`). The self half is an ordinary
+#   self-buff (already fully supported by the pre-existing
+#   `stat_change_self` field); this flag bolts the SAME stat change onto
+#   the user's own ally too — a no-op in singles, the only difference
+#   from a plain self-buff move in doubles.
+@export var also_boosts_ally: bool = false
+
+# [M19e] heals_based_on_weather: Morning Sun(234)/Synthesis(235)/
+#   Moonlight(236)/Shore Up(622) — heal a fraction of max HP that varies
+#   with the attacker's own effective weather. Shares one dispatch shape
+#   with `is_restore_hp` (fails if already at full HP) but a DIFFERENT
+#   fraction depending on `weather_heal_boost_type`/
+#   `weather_heal_has_quarter_branch` below. Source: all 4 moves route
+#   through the SAME shared function, `Cmd_recoverbasedonsunlight`
+#   (battle_script_commands.c L8622-8689) — confirmed via direct read, not
+#   assumed from the 4 separate `EFFECT_MORNING_SUN`/`EFFECT_SYNTHESIS`/
+#   `EFFECT_MOONLIGHT`/`EFFECT_SHORE_UP` move-data effect IDs, which are
+#   distinct per-move but converge to one real implementation.
+@export var heals_based_on_weather: bool = false
+
+# [M19e] weather_heal_boost_type: the DamageCalculator.WEATHER_* value that
+#   triggers this move's 2/3-max-HP boosted heal — WEATHER_SUN for Morning
+#   Sun/Synthesis/Moonlight, WEATHER_SANDSTORM for Shore Up (its own
+#   sandstorm-specific bonus, a real difference from the other 3's shared
+#   sun-based formula, confirmed individually from source rather than
+#   assumed uniform).
+@export var weather_heal_boost_type: int = 0
+
+# [M19e] weather_heal_has_quarter_branch: TRUE for Morning Sun/Synthesis/
+#   Moonlight (a THIRD fraction — max HP/4 — applies in any weather OTHER
+#   than the boost weather); FALSE for Shore Up, which has only two states
+#   (Sandstorm: 2/3; anything else including no weather: 1/2 — confirmed
+#   via source that Shore Up's own branch never references the 1/4 case at
+#   all, a genuine non-uniformity within this 4-move sub-group). When TRUE,
+#   Strong Winds (Delta Stream) is treated as "no weather" (the 1/2 case),
+#   NOT the 1/4 "other weather" case — source: `healingWeather =
+#   attackerWeather & ~B_WEATHER_STRONG_WINDS`, stripped before the
+#   "!(healingWeather & ANY)" check. Utility Umbrella (checked via
+#   `ItemManager.blocks_weather_modifier`) strips SUN/RAIN specifically for
+#   these 3 moves (treating either as "no weather"), but does NOT strip
+#   Sandstorm/Hail — those still correctly fall into the 1/4 branch even
+#   for an Umbrella holder. Shore Up's own branch never references Umbrella
+#   at all (source only checks the raw Sandstorm bit directly), so Umbrella
+#   has zero effect on Shore Up's formula.
+@export var weather_heal_has_quarter_branch: bool = false
+
+# [M19f] is_mean_look: Spider Web(169)/Mean Look(212)/Block(335) — sets
+#   `BattlePokemon.escape_prevented_by` on the target, preventing its
+#   voluntary switching (via `AbilityManager.is_trapped()`, which already
+#   anticipated this exact move-based volatile in its own doc comment,
+#   written back at `[M17f]`/`[M18.5f]`). Source: EFFECT_MEAN_LOOK's shared
+#   script (`BattleScript_EffectMeanLook`, data/battle_scripts_1.s
+#   L2100-2112) — `seteffectprimary ... MOVE_EFFECT_PREVENT_ESCAPE`, the
+#   SAME underlying effect Spirit Shackle(625) sets as a damaging move's
+#   secondary (see `SE_PREVENT_ESCAPE` above). Fails outright (not a silent
+#   no-op) if the target is already escape-prevented, blocked by
+#   Substitute, or — at this project's GEN_LATEST config
+#   (`B_UPDATED_MOVE_FLAGS`/`B_GHOSTS_ESCAPE >= GEN_6`) — Ghost-type. This
+#   Ghost-type check is a MOVE-SCRIPT-level immunity, NOT the general
+#   type-effectiveness gate: Mean Look/Block are Normal-type (already 0x
+#   vs Ghost on the type chart, so the general gate would catch them for
+#   free), but Spider Web is Bug-type, which is only NOT-VERY-EFFECTIVE
+#   (0.5x, not a 0x immunity) against Ghost — meaning Spider Web genuinely
+#   needs this EXPLICIT check to match source, a real asymmetry the
+#   type chart alone would miss. `bounceable = TRUE` on all 3 (source's
+#   `magicCoatAffected = TRUE`) — reflected by Magic Bounce like any other
+#   bounceable status move. A real, source-confirmed asymmetry WITHIN this
+#   3-move family: Spider Web's own `ignoresProtect` is FALSE at
+#   GEN_LATEST (only true pre-Gen-3), while Mean Look's and Block's are
+#   both TRUE at GEN_LATEST (`>= GEN_6`) — confirmed individually per move,
+#   not assumed uniform just because they share one effect ID.
+@export var is_mean_look: bool = false

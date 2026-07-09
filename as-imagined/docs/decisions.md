@@ -17170,3 +17170,1010 @@ together (494+45+1+213+181=934, reconfirmed). CLAUDE.md's status section
 gained a new `[M19-weather-conditional-accuracy]` bullet noting the running
 total (489→494) and the full findings, including the 2-flag split, the
 bypass-vs-override distinction, and the Bleakwind Storm correction.
+
+## [Bucket 4 2-move sub-groups] — 9 sub-groups, 19 moves (2026-07-09)
+
+Nine independent Bucket-4 sub-groups bundled into one session, matching
+`[Bucket 4 cheapest singles]`'s established precedent for grouping several
+small sub-groups together. Each verified independently from source — none
+assumed to share a mechanism just because they were bundled together.
+
+### Step 0 — findings per sub-group, reported before implementing
+
+**M19-percent-current-hp-damage (Super Fang(162), Ruination(803))**: both
+share `.effect = EFFECT_FIXED_PERCENT_DAMAGE`, `.argument.damagePercentage
+= 50`, power=1 (placeholder). Source (`battle_util.c :: DoMoveDamageCalc`,
+`case EFFECT_FIXED_PERCENT_DAMAGE`, L7660-7661): `dmg =
+GetNonDynamaxHP(battlerDef) * GetMoveDamagePercentage(move) / 100` —
+target's CURRENT HP, confirmed genuinely distinct from `fixed_damage`
+(flat int) and `level_damage` (attacker's level). Same bypass shape:
+type immunity and Wonder Guard still apply; STAB/crit/roll/stage math
+skipped.
+
+**M19-ignores-stat-stages (Chip Away(498), Sacred Sword(533), Darkest
+Lariat(626))**: all 3 share `.ignoresTargetDefenseEvasionStages = TRUE`.
+**A real correction to this sub-group's own original framing** ("no bypass
+path exists in DamageCalculator's stat-stage application," from
+`[M19-bucket1]`'s Step 0): this project's existing Unaware implementation
+already established the EXACT insertion points needed. Source:
+`CalcDefenseStat` (`battle_util.c` L7075): `if
+(MoveIgnoresDefenseEvasionStages(move)) defStage = DEFAULT_STAT_STAGE;`
+(same variable, same position as Unaware's own `ignores_defender_def_stage`
+check) and `GetTotalAccuracy` (L10254): `if
+(MoveIgnoresDefenseEvasionStages(move)) evasionStage =
+DEFAULT_STAT_STAGE;` (same variable, same position as Unaware/Keen
+Eye/Mind's Eye's own `ignores_defender_evasion_stage` check). One new
+`ignores_defense_evasion_stages` flag, checked at both existing sites —
+zero new mechanism.
+
+**M19-charge-turn-spatk-boost (Meteor Beam(728), Electro Shot(833))**: both
+share `EFFECT_TWO_TURNS_ATTACK` + `additionalEffects = {MOVE_EFFECT_STAT_PLUS,
+.spAtk=1, .self=TRUE, .onChargeTurnOnly=TRUE}` — the same shape Skull
+Bash's own `charge_turn_defense_boost` already models, just a different
+stat. Electro Shot ADDITIONALLY carries `.argument.twoTurnAttack = {
+.weather = B_WEATHER_RAIN }` — confirmed Meteor Beam does NOT (individually
+verified, not assumed symmetric). Source: `CanTwoTurnMoveFireThisTurn`
+reads `move.twoTurnAttackWeather` generically (Solar Beam's own entry uses
+`B_WEATHER_SUN`).
+
+**M19-hp-based-power (Flail(175), Reversal(179))**: both share the literal
+same `.effect = EFFECT_FLAIL`. Source confirmed a STEPPED/BANDED formula
+from the user's own missing-HP fraction, NOT continuous (the task's own
+flagged risk): `battle_util.c`, `case EFFECT_FLAIL` (L6138-6145):
+`hpFraction = GetScaledHPFraction(hp, maxHP, 48)` (`hp*48/maxHP`, floored
+up to 1 if hp>0), then the FIRST ascending table threshold {1:200, 4:150,
+9:100, 16:80, 32:40, 48:20} the fraction is `<=` wins
+(`sFlailHpScaleToPowerTable`, L6011-6019).
+
+**M19-stat-raised-trigger (Burning Jealousy(735), Alluring Voice(842))**:
+both carry `onlyIfTargetRaisedStats = TRUE`, chance=100 (guaranteed IF the
+condition is met — a TRUE secondary, still subject to Shield Dust/Covert
+Cloak/Sheer Force/Serene Grace). Source: `gProtectStructs[battler].
+statRaised` (`include/battle.h` L74) — a per-turn flag, memset'd at turn
+start (`battle_main.c` L3304), set unconditionally in `SetStatChange`
+(`battle_stat_change.c` L452-457) whenever ANY positive stage delta
+actually applies — a broad concept (move/ability/item alike), not
+move-driven specifically. Checked as an eligibility pre-check in
+`AdditionalEffectsMoveConditionMet` (`battle_script_commands.c`
+L3481-3483), BEFORE the chance roll. Neither move raises stats itself, so
+self-triggering isn't a real risk for these 2.
+
+**M19-random-status-choice (Tri Attack(161), Dire Claw(755))**: confirmed
+genuinely DIFFERENT pools, not shared. Tri Attack (`MOVE_EFFECT_TRI_ATTACK`,
+`battle_script_commands.c` L2449-2462): uniform pick from
+`{MOVE_EFFECT_BURN, MOVE_EFFECT_FREEZE_OR_FROSTBITE, MOVE_EFFECT_PARALYSIS}`
+— resolves to plain `STATUS_FREEZE` at this project's config (no
+`STATUS_FROSTBITE` exists anywhere here, confirmed via grep). Dire Claw
+(`MOVE_EFFECT_DIRE_CLAW`, L2701-2705): uniform pick from `{MOVE_EFFECT_POISON,
+MOVE_EFFECT_PARALYSIS, MOVE_EFFECT_SLEEP}`. Both gate on
+`!gBattleMons[effectBattler].status1` FIRST — the same "already has a
+status" check every other status move already implements via
+`StatusManager.try_apply_status`, directly reusable.
+
+**M19-self-faint (Self-Destruct(120), Explosion(153))**: both carry
+`.explosion = TRUE`, `.dampBanned = TRUE`, `TARGET_FOES_AND_ALLY`. Source
+(`battle_move_resolution.c :: CancelerExplosion`, L1841-1848) is a genuine
+PRE-MOVE canceler — zeroes the user's HP BEFORE accuracy/damage resolution
+even runs, unconditional on whether the hit lands. A SEPARATE
+`MoveEndAbsorb` check (L2612-2620) performs the actual faint-processing at
+move-end, after the move's own damage has already been dealt using the
+attacker's pre-faint stats. `.dampBanned` is a SELECTION-time legality
+flag in source; this project has no move-selection menu filter, so it's
+translated to an EXECUTION-time block instead, reusing the pre-existing
+`AbilityManager.is_damp_active` (built for `[M17n-8]`'s Aftermath).
+`TARGET_FOES_AND_ALLY` (hits opponents AND the user's own ally in doubles)
+modeled as `is_spread` (opponents only) — the ally-hit half is a flagged,
+not-built doubles-only gap.
+
+**M19-berry-steal (Pluck(365), Bug Bite(450))**: both share the literal
+same `additionalEffects = {MOVE_EFFECT_BUG_BITE}` (confirming Pluck's own
+name is a historical artifact, not a distinct mechanism). Source
+(`battle_script_commands.c :: case MOVE_EFFECT_BUG_BITE`, L2641-2656):
+checks a Jaboca-Berry-specific EXEMPTION first (`if
+(GetBattlerHoldEffect(effectBattler) == HOLD_EFFECT_JABOCA_BERRY) {
+// jaboca berry triggers instead of being stolen }`), then steals the
+target's berry (blocked by Sticky Hold) and calls `consumeberry
+BS_ATTACKER, FALSE` with `sBERRY_OVERRIDE=1` (`BattleScript_MoveEffectBugBite`,
+`data/battle_scripts_1.s` L790-799) — the ATTACKER gets the effect, with
+the HP-threshold/Unnerve gate bypassed (matching Cud Chew's own
+`sBERRY_OVERRIDE` precedent from `[M17n-7]`'s follow-up fix). Then
+`trysymbiosis BS_TARGET` — Symbiosis fires for the TARGET's own ally,
+since the target's item just vanished. Confirmed this project's existing
+`hp_threshold_berry_heal`/`status_cure_berry_cures`/
+`confusion_cure_berry_cures`/`stat_raise_berry_trigger` functions already
+accept a `mon` (beneficiary) and a SEPARATE `override_item` (which item's
+effect to check) — decoupled parameters, meaning `mon=attacker,
+override_item=<the target's stolen item>` composes correctly with ZERO
+changes to those 4 functions. Deliberately NOT reusing `AbilityManager.
+_try_steal_item` (Pickpocket/Magician's own function) — that performs a
+POSSESSION TRANSFER (requires the stealer to have an empty item slot,
+gives them the item to HOLD), a genuinely different shape from "eaten in
+place, gone forever."
+
+**M19-ignores-target-ability (Sunsteel Strike(667), Moongeist Beam(668))**:
+both carry `.ignoresTargetAbility = TRUE`. Source (`battle_util.c` L9800,
+inside the per-move `SpecialStatusesClear` reset): `gBattleStruct->
+moldBreakerActive = IsMoldBreakerTypeAbility(atk, GetBattlerAbility(atk))
+|| MoveIgnoresTargetAbility(gCurrentMove);` — confirmed this move-level
+flag sets the LITERAL SAME `moldBreakerActive` flag Mold Breaker/Mycelium
+Might already set, NOT a separate, parallel mechanism as this sub-group's
+own original framing assumed ("a genuinely different, move-level gate").
+This project's `AbilityManager.effective_ability_id`'s existing
+`attacker_move` param (already built for Mycelium Might, `[M17n-3]`)
+extends cleanly with a third OR condition.
+
+### Design
+
+No `AskUserQuestion` fork was needed for any of the 9 — each Step 0
+investigation determined a single, clean design directly from source. Two
+sub-groups needed real design calls, both resolved without ambiguity:
+`M19-charge-turn-spatk-boost` deliberately uses a PARALLEL field
+(`charge_turn_spatk_boost`) rather than generalizing
+`charge_turn_defense_boost`, avoiding any risk to Skull Bash's own
+already-working behavior; `M19-berry-steal` is explicitly SCOPED to the 4
+existing berry-family functions (HP-threshold heal, status-cure,
+confusion-cure, stat-raise) rather than attempting full coverage of every
+berry type in the game (Starf/Micle/Enigma/White Herb/Weakness
+Policy/Lansat/Custap are NOT wired into this path) — a deliberate,
+disclosed scope limitation given the sheer number of berry types,
+consistent with this project's "flag, don't silently fix out-of-scope
+gaps" discipline.
+
+### Implementation
+
+- `scripts/data/move_data.gd`: 10 new fields —
+  `percent_current_hp_damage: int`, `ignores_defense_evasion_stages: bool`,
+  `charge_turn_spatk_boost: int`, `skips_charge_in_rain: bool`,
+  `is_flail_power: bool`, `requires_target_stat_raised: bool`,
+  `random_status_pool: Array[int]`, `is_self_faint: bool`,
+  `steals_and_eats_berry: bool`, `ignores_target_ability: bool`. New
+  `SE_RANDOM_STATUS` constant.
+- `scripts/battle/core/battle_pokemon.gd`: new `stat_raised_this_turn: bool`
+  field.
+- `scripts/battle/core/damage_calculator.gd`: `percent_current_hp_damage`
+  bypass inserted right after `level_damage`; `def_stage = 0` extended
+  alongside Unaware's own check; `move` threaded as `attacker_move` into
+  `blocks_move_type`/`absorbs_move_type` call sites.
+- `scripts/battle/core/status_manager.gd`: `eva_stage = 0` extended
+  alongside Unaware/Keen Eye/Mind's Eye's own check; new `SE_RANDOM_STATUS`
+  match case in `try_secondary_effect` (uniform pick via a new
+  `force_random_status_index` test seam, applies via the existing
+  `try_apply_status`); new `requires_target_stat_raised` eligibility
+  pre-check (before the chance roll); `apply_stat_change` sets
+  `stat_raised_this_turn = true` whenever `actual > 0`.
+- `scripts/battle/core/battle_manager.gd`: new `_flail_power(current_hp,
+  max_hp)` helper (same banded-table pattern as Magnitude/Heat
+  Crash/Low Kick), dispatched via the existing `_dmg_power_override` slot;
+  `_solar_skip` generalized to `_weather_skip = _solar_skip or
+  _rain_skip` (a new parallel `_rain_skip` check), with
+  `charge_turn_spatk_boost` dispatched alongside the existing
+  `charge_turn_defense_boost` block; new Damp-block + unconditional
+  `attacker.current_hp = 0` for `is_self_faint`, inserted right after
+  `move`/`defender` resolution (before Protect-block); new berry-steal
+  orchestration in `_do_damaging_hit`, right after the existing Incinerate
+  block, gated on Sticky Hold + Jaboca/Rowap exemption; new
+  `berry_stolen_and_eaten` signal (deliberately NOT reusing
+  `item_transferred`, since the item is consumed in place, not held).
+- `scripts/battle/core/ability_manager.gd`: `effective_ability_id` gained a
+  third bypass condition (`attacker_move.ignores_target_ability`);
+  `blocks_move_type`/`absorbs_move_type` gained a new optional
+  `attacker_move: MoveData = null` trailing param, threaded into their own
+  internal `effective_ability_id` calls; `blocks_non_super_effective_hit`/
+  `defense_damage_modifier_uq412` (both already receive `move` as a param)
+  thread it into their own internal calls too — inherits Mold Breaker's
+  exact scope (Multiscale/Filter/Solid Rock/Fur Coat/Ice Scales/Marvel
+  Scale/Heatproof/Purifying Salt/Fluffy/Punk Rock/Levitate/Wonder
+  Guard/the absorb family) for free, since it's the identical underlying
+  flag.
+- `scripts/battle/core/item_manager.gd`: new
+  `steal_and_eat_berry_effect(beneficiary, stolen_item, ng_active)`,
+  dispatching to the 4 existing berry-family functions via their own
+  `override_item` param.
+- `scripts/gen_moves.py`: new `STATUS_*`/`SE_RANDOM_STATUS` Python
+  constants; 19 new move dict entries across all 9 sub-groups.
+- `data/moves/*.tres`: 19 new files. Total: 513 (up from 494).
+
+### Test plan
+
+`scenes/battle/m19_bucket4_pairs_test.gd`/`.tscn` (new file). Section A:
+data-integrity for all 19 moves. One functional section per sub-group,
+scoped to genuinely new behavior only: Super Fang's damage read off
+CURRENT (not max) HP via a pre-damaged defender; Chip Away's damage
+bypassing a +6 Defense boost with a plain-Tackle discriminator, plus a
+direct statistical accuracy-side check for the evasion half; Meteor
+Beam's charge-turn Sp.Atk+1 and Electro Shot's rain-skip with a
+no-weather discriminator; `_flail_power` tested directly at 4 HP
+fractions spanning the table; Burning Jealousy's burn firing only after
+the defender's own prior-turn stat rise, with a no-rise discriminator;
+Tri Attack/Dire Claw's forced-index picks proving both pools plus an
+already-statused block; Self-Destruct fainting the user even on a forced
+miss, plus Damp fully blocking it (HP snapshotted live inside the block
+signal); Pluck stealing a Sitrus Berry and healing the ATTACKER (not the
+target), plus Sticky Hold and Jaboca Berry discriminators; Sunsteel
+Strike bypassing Multiscale's full-HP damage halving, both via a full
+battle and a direct `defense_damage_modifier_uq412` call.
+
+**52/52 assertions pass, stable across 5 reruns**, after fixing two
+test-authoring bugs on the first run (50/52) — both fresh instances of the
+documented whole-battle-aggregation pitfall, not implementation bugs: the
+Sticky Hold discriminator originally read `held_item` post-battle, but
+the target's own Sitrus Berry could legitimately self-trigger later in
+the same multi-turn battle from Pluck's own ordinary damage (unrelated to
+the steal mechanism) — fixed by snapshotting live at the attacker's first
+`move_executed`. The Jaboca Berry discriminator originally asserted
+`held_item != null` post-battle, but Jaboca's own separate
+retaliation-and-self-consume logic may legitimately remove the item
+afterward too (a different, correct mechanism) — fixed by asserting only
+that `berry_stolen_and_eaten` never fired, the assertion that actually
+isolates the new code.
+
+### Regression
+
+27 suites: the 4 required (`damage_test`/`move_test`/`stat_test`/
+`status_test`) plus `weather_test`/`two_turn_test`/`item_registry_test`
+(charge-turn/berry-item shapes), `m17a_test` (defense_damage_modifier_uq412
+origin), `m17b_test` (Unaware's own def_stage/eva_stage origin, extended
+alongside), `m17g_test` (Mold Breaker/`effective_ability_id` origin —
+critical, this exact function was modified), `m17l_test`/`m17m_test`
+(absorbs_move_type origin), `m17n6_test` (Wonder Guard/
+blocks_non_super_effective_hit origin), `ability_test` (Levitate/
+blocks_move_type origin), `m17j_test` (Pickpocket/Magician/Sticky
+Hold/Symbiosis — directly relevant to berry-steal's reused pieces),
+`m18b_test`/`m18c_test` (status/confusion-cure and stat-raise berry
+function origins, reused by `steal_and_eat_berry_effect`), `m18d_test`
+(Jaboca/Rowap origin), `m17n8_test` (Damp/`is_damp_active` origin),
+`m17n3_test` (turn-order, touched via the shared per-turn reset loop),
+`switch_test`/`tier4_test`/`battle_test`/`ai_test`, and all 9 prior M19
+sessions' own suites (`m19_secondary_stat_test`/
+`m19_bucket3_multistat_test`/`m19_bucket3_cluster12_test`/
+`m19_bucket4_cheap_singles_test`/`m19_rampage_test`/`m19_recharge_test`/
+`m19_break_protect_test`/`m19_recoil_on_miss_test`/
+`m19_weather_accuracy_test`) — all unchanged, 0 failures across all 27
+suites.
+
+### Data
+
+`MoveData` gained 10 new fields plus 1 new constant (`SE_RANDOM_STATUS`).
+`BattlePokemon` gained 1 new field (`stat_raised_this_turn`).
+`BattleManager` gained 1 new signal (`berry_stolen_and_eaten`) and 1 new
+helper (`_flail_power`). `AbilityManager`'s `blocks_move_type`/
+`absorbs_move_type` gained a new optional trailing param. `ItemManager`
+gained 1 new function (`steal_and_eat_berry_effect`). 19 new move dict
+entries added to `scripts/gen_moves.py`; 19 new `.tres` files regenerated
+— 513 total move `.tres` files, up from 494.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: all 9 sub-groups marked
+COMPLETE (each rewritten from its original one-line summary), Bucket 4's
+own total shrunk 28→9 moves/15→6 sub-groups, Section A's Tier 4 row
+updated (61→80 implemented, 251→232 remaining — all 19 moves attributed
+to Tier 4 as an explicitly-disclosed SIMPLIFICATION, not a claim of
+original Tier-4 classification, since splitting them precisely across
+Tier 1/2/4 risked double-drawing Tier 2's already-exhausted "5 folded
+into Bucket 4" allocation from `[M19-recoil-on-miss]`), Section E and top
+summary reconciled together (513+26+1+213+181=934, reconfirmed).
+CLAUDE.md's status section gained a new `[Bucket 4 2-move sub-groups]`
+bullet noting the running total (494→513) and the full findings for all 9
+sub-groups. Note: the task's own prompt described "9 sub-groups, 20
+moves," but its own itemized list sums to 19, not 20 — a minor arithmetic
+error in the task prompt itself, flagged here rather than silently
+corrected.
+
+## [M19-steal-stats] / [M19-ally-targeting-stat-change] — Spectral Thief, Howl, Aromatic Mist, Coaching, 4 moves (2026-07-09)
+
+Closes out Bucket 4's two remaining "cleanly buildable" sub-groups
+(per the task's own Step 2 classification), leaving only gated/deferred
+sub-groups behind. Also fixed a pre-existing doc-drift in
+`docs/m19_subtier_plan.md` that predates this session.
+
+### Step 0 — doc-drift discovery
+
+Read the FULL Bucket 4 section of `docs/m19_subtier_plan.md` end to end
+(not relying on any prior session's summary) and grep-counted every
+`"- **M19-"` bullet header within it, checking each for a `CLOSED`/
+`COMPLETE` marker. Found exactly 5 non-closed bullets — `M19-secret-power`,
+`M19-trap-secondary`, `M19-steal-stats`, `M19-blocked-on-other-tier4`,
+`M19-ally-targeting-stat-change` — summing to 1+1+1+3+3 = 9 moves,
+matching the header's own "9 moves" figure. But the header, Section E's
+summary table, and the "recommended execution order" list all
+independently claimed **"6 named sub-groups"**, not 5. Root-caused by
+reconstruction: adding the immediately-prior session's own 9 newly-closed
+sub-group names back onto this fresh count of 5 yields 14, not the
+claimed pre-session baseline of 15 — proving the drift pre-dates
+`[Bucket 4 2-move sub-groups]`'s own session (that session's internal
+"15→6" arithmetic was self-consistent given its OWN stated starting point
+of 15; that starting point was already wrong before the session began).
+Not further root-caused beyond this point, per the same "flag, don't
+over-investigate a pre-existing drift" discipline established for
+`[M17f]`'s and `[M17g]`'s own stale-baseline findings. Fixed in the docs
+update below.
+
+### Step 2 — classification, and two corrections to the plan's own notes
+
+Both sub-groups landed in "cleanly buildable now," but re-deriving each
+from source (not trusting the plan doc's one-line mechanism summary)
+found the plan's own notes on BOTH were wrong:
+
+**M19-steal-stats (Spectral Thief, 666)**: the plan's note said this
+"should reuse Opportunist's existing ability-side 'copy a positive raise'
+logic." Direct comparison of the two mechanisms found them genuinely
+different in shape. Opportunist (`AbilityManager`, `[M17n-8]`) is
+event-reactive: it watches for a fresh stat-RISE event elsewhere and
+copies the SAME delta onto its own holder, without touching the original
+mon's own stage at all. Spectral Thief is snapshot-and-transfer: at the
+moment of use, it reads whatever positive stages ALREADY exist on the
+target across ALL 7 stat stages (confirmed via `include/constants/
+pokemon.h`'s `NUM_BATTLE_STATS = NUM_STATS + 2`, which includes
+Accuracy/Evasion — a materially wider pool than Starf Berry's own
+`NUM_STATS`-bounded 5-stat pick), ZEROES the target's own stage for each
+one stolen, and transfers the exact stolen amount onto the attacker.
+Confirmed via `battle_script_commands.c`'s `MOVE_EFFECT_STEAL_STATS` case
+(L3347-3366) that this dispatches via `.preAttackEffect = TRUE` — fires
+BEFORE the move's own accuracy roll, unconditional on whether the
+subsequent hit connects (verified with a forced-miss test: the steal
+still fires). Confirmed the per-stat gate (`gBattleMons[battlerAtk].
+statStages[stat] != MAX_STAT_STAGE`, L3355) covers BOTH halves of the
+transfer TOGETHER — when the attacker is already capped on a given stat,
+the DEFENDER's matching stage is left untouched too, not zeroed anyway.
+This was caught as a genuine test-authoring bug during this session's own
+test-writing (an initial assertion assumed the defender's stage always
+zeros regardless of the attacker's cap) and fixed by re-reading source
+directly rather than trusting the assumption. Type immunity (checked via
+`TypeChart.get_effectiveness`, honoring Iron Ball) blocks the steal
+specifically — the move still proceeds to its own (here, zero-damage)
+resolution afterward, matching this project's established non-OHKO
+type-immunity architecture, rather than aborting the whole turn the way
+Protect does.
+
+Built as a genuinely new orchestration block in `BattleManager` (not a
+reuse of Opportunist's dispatch), placed immediately after the existing
+Protect-blocking early-return and before the OHKO block — the earliest
+point in `_phase_move_execution` consistent with `.preAttackEffect`
+semantics (Protect, already resolved by that point, is the only prior
+gate that can legitimately block a preAttackEffect in source). Reuses
+`StatusManager.apply_stat_change` as the actual per-stat mutation
+primitive on the attacker's side; the target-side zeroing and the
+steal/zero decision loop itself are new.
+
+**M19-ally-targeting-stat-change (Howl 336, Aromatic Mist 597, Coaching
+739)**: the plan's note said "no ally-targeting stat-change mechanism
+exists in any form." This was wrong — Helping Hand (`[M14b]`) already
+IS exactly such a mechanism: a `TARGET_ALLY` move that fails entirely
+if not in doubles or the ally has fainted, dispatched via the
+pre-existing general-purpose `BattleManager._get_ally(mon)` helper
+(which already returns `null` for both the singles case and the
+fainted-ally case, needing no additional guard). Confirmed via source
+(`moves_info.h`) that Aromatic Mist and Coaching are both genuinely
+`TARGET_ALLY` (never self, never opponent) while Howl is
+`TARGET_USER_AND_ALLY` at this project's `GEN_LATEST` config
+(`B_UPDATED_MOVE_DATA >= GEN_8`) — a real three-way targeting-shape split
+this sub-group's own move set required distinguishing, not a single
+shared mechanism applied three times identically.
+
+Key architectural finding, resolving a potential "does this need new
+move-targeting infrastructure" concern before implementing: Helping
+Hand's own existing implementation never relies on the pre-resolved
+`defender` variable for its true target at all — it computes the ally
+directly and inline via `_get_ally`, bypassing whatever `defender`
+happened to default to from the normal target-resolution flow. Aromatic
+Mist/Coaching reuse this exact pattern. This meant zero changes were
+needed to move-selection or targeting AI anywhere in the codebase.
+
+Howl's ally half is a straightforward bolt-on: the self half is an
+ordinary self-buff (`stat_change_self = true`, already fully handled by
+the pre-existing general dispatch), and a new `also_boosts_ally` flag
+applies the identical stat change to the user's ally too — a genuine
+no-op in singles (`_get_ally` returns `null` there) and the only
+difference from a plain self-buff move in doubles.
+
+Aromatic Mist/Coaching are dispatched via a new `stat_change_target_ally`
+branch, placed deliberately BEFORE the `foe_targeting`/Magic-Bounce/
+Substitute/type-immunity block in the pure-status-move dispatch — none of
+that logic applies to an ally-targeting move, the same reasoning Helping
+Hand's own early-return already established. Both reuse
+`_apply_stat_change_effect` directly, passing the resolved ally in place
+of `defender`; since `stat_change_self` is `false` for both moves'
+own data (matching source's `TARGET_ALLY`, not `TARGET_USER`), the
+shared per-pair dispatch (`_apply_one_stat_change_pair`) correctly lands
+the change on whichever `BattlePokemon` is passed as the second argument.
+Coaching's 2-stat payload (Atk+1, Def+1) reuses the pre-existing
+`extra_stat_change_stats`/`extra_stat_change_amounts` multi-stat
+mechanism (`[Bucket 3 multi-stat]`) with zero further changes needed.
+
+### Implementation
+
+`scripts/battle/core/battle_manager.gd`: 3 new blocks in
+`_phase_move_execution` — Spectral Thief's steal loop (after the Protect
+block, before OHKO); the Aromatic Mist/Coaching ally-only dispatch
+(before `foe_targeting` is computed, inside the pure-status-move branch);
+Howl's ally bolt-on (inside the existing `if move.stat_change_stat >= 0:`
+branch, immediately after the pre-existing `_apply_stat_change_effect`
+call). No new signals — reuses `stat_stage_changed`, `move_effect_failed`
+(new reason string `"not_doubles"`), and `move_executed`.
+
+`scripts/data/move_data.gd`: 3 new fields —
+`steals_positive_stat_stages: bool`, `stat_change_target_ally: bool`,
+`also_boosts_ally: bool` — all appended at the true file end, each with a
+doc comment citing the full source location and the correction it
+represents.
+
+`scripts/gen_moves.py`: `DEFAULTS`/`FIELD_ORDER` extended with the 3 new
+fields; 4 new move dict entries (Spectral Thief 666, Howl 336, Aromatic
+Mist 597, Coaching 739) appended to `MOVES`, each derived fresh from
+`moves_info.h` rather than assumed from the plan doc's summary (power/
+type/accuracy/pp/category/flags/ban_flags all independently verified).
+
+### Test plan
+
+New `scenes/battle/m19_bucket4_final_pairs_test.gd`/`.tscn`: 27/27
+assertions across 5 sections — data integrity for all 4 moves; Spectral
+Thief's full steal (all 7 stats including the Accuracy/Evasion
+discriminator vs. Starf Berry's narrower pool, a negative-stage
+never-touched discriminator, an already-0 stat never-emits discriminator);
+Spectral Thief discriminators (fires on a forced miss — the
+`.preAttackEffect` proof; the per-stat +6 cap on the RECEIVING side
+covering both halves of the transfer together, with a same-move
+different-stat control proving it's per-stat not whole-move; type
+immunity blocking the steal specifically while the move still resolves
+at 0 damage); Aromatic Mist/Coaching ally-only targeting (fails in
+singles with the `"not_doubles"` reason and a self-never-boosted
+discriminator; doubles ally-only landing incl. Coaching's 2-stat
+payload, both confirmed to never land on the user); Howl's self-always/
+ally-in-doubles-only split (singles: self only; doubles: both the user
+and its ally, same stat/amount).
+
+Two real test-authoring bugs were caught and fixed during this session's
+own first run, both instances of CLAUDE.md's documented
+"type-immunity-precedes-ability-logic" pitfall recurring even after
+having been explicitly flagged as a known risk: the initial fixtures used
+a Normal-type defender against the Ghost-type Spectral Thief attacker in
+every non-immunity test, which is itself a flat 0× immunity — silently
+blocking the steal in every "positive" scenario. Fixed by switching those
+fixtures to a Water-type defender (neutral to Ghost) and keeping the
+Normal-type defender only for the dedicated immunity-discriminator test,
+whose own assertion was also corrected (this project's general damaging-
+move path has no distinct "immune" signal for an ordinary 0× hit — it
+just flows through as `move_executed` with `amount=0`, confirmed via a
+neighboring code comment in `battle_manager.gd`, not a `move_missed`
+signal as originally assumed).
+
+### Regression
+
+10 suites: `damage_test` 24/24, `move_test` 49/49, `stat_test` 78/78,
+`status_test` 78/78 (the 4 required), `doubles_test` 54/54 (`_get_ally`/
+doubles dispatch touched), `m17n8_test` 58/58 (Opportunist's own origin
+suite, confirming the corrected understanding didn't disturb it),
+`m17l_test` 45/45 (Helping Hand's own doubles-redirect neighborhood),
+`m19_secondary_stat_test` 1754/1754 and `m19_bucket3_multistat_test`
+366/366 (both reuse `_apply_stat_change_effect`, touched by the new ally
+dispatch's insertion point) — all unchanged, 0 failures.
+
+### Data
+
+`MoveData` gained 3 new fields. 4 new move dict entries added to
+`scripts/gen_moves.py`; 4 new `.tres` files regenerated — 517 total move
+`.tres` files, up from 513.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: the 6→5 doc-drift fixed
+(with the root-cause trace above), both sub-groups marked CLOSED/COMPLETE
+with full findings, Bucket 4's own total shrunk 9→5 moves/6→3 sub-groups
+(post-drift-fix baseline), Section A's Tier 4 row updated (80→84
+implemented, 232→228 remaining — attributed to Tier 4 as a disclosed
+simplification, matching `[Bucket 4 2-move sub-groups]`'s own precedent),
+Section E and top summary reconciled together (517+22+1+213+181=934,
+reconfirmed). CLAUDE.md's status section gained a new
+`[M19-steal-stats]`/`[M19-ally-targeting-stat-change]` bullet noting the
+running total (513→517) and the doc-drift fix.
+
+**Final Bucket 4 report** (per the task's own explicit request): after
+this session, Bucket 4 stands at **5 moves across 3 named sub-groups**,
+all gated or deferred (everything cleanly buildable is now gone):
+
+- `M19-secret-power` (1 move — Secret Power(290)) — investigated and
+  explicitly DEFERRED by Rob (not closed); depends on an overworld
+  map/tile-derived field (`gBattleEnvironment`) this project has no
+  analog for at all.
+- `M19-trap-secondary` (1 move — Spirit Shackle(625)) — gated on M19f
+  (the escape-prevention family); should be folded into M19f once that
+  tier is built, not treated as its own new family.
+- `M19-blocked-on-other-tier4` (3 moves — Sappy Seed(685)/Freezy
+  Frost(686)/Sparkly Swirl(687)) — each gated on its own still-unbuilt
+  Tier-4-residual parent mechanism (Leech Seed(73)/Haze(114)/
+  Aromatherapy-or-Heal-Bell's own party-wide-cure mechanism,
+  respectively). Re-confirmed all 3 dependencies are still genuinely
+  unbuilt at this session's Step 2 (none of the parent mechanisms landed
+  incidentally across any intervening session).
+
+## [M19e] / [M19f] — Morning Sun/Synthesis/Moonlight/Shore Up + Spider Web/Mean Look/Block/Spirit Shackle/Jaw Lock, 9 moves (2026-07-09)
+
+Builds M19e and M19f in one session, resolving Bucket 4's
+`M19-trap-secondary` gate in the process (Spirit Shackle merged directly
+into M19f, per that sub-group's own "should be folded into M19f once built"
+note — confirmed accurate, not re-litigated). Also completes Tier 3b (the
+binding-move family) via Jaw Lock, a move not originally scoped by the
+task but found during Step 0 to share the exact primitive being built.
+
+### Step 1 — read fresh
+
+Read the current M19e/M19f sections of `docs/m19_subtier_plan.md` in full
+rather than trusting the stale in-context fragments ("M19e: 4 moves,
+weather + RESTORE_HP"; "M19f: 4 moves, escape-prevention/trapping, or 5
+once Spirit Shackle merges in"). Both fragments turned out directionally
+correct but underspecified — Step 0 below re-derived the real mechanisms
+from source rather than assuming the fragments were complete.
+
+### Step 0 — M19e
+
+Confirmed all 4 moves (Morning Sun(234)/Synthesis(235)/Moonlight(236)/Shore
+Up(622)) route through ONE shared dispatch function in source,
+`Cmd_recoverbasedonsunlight` (battle_script_commands.c L8622-8689), despite
+4 separate `EFFECT_MORNING_SUN`/`EFFECT_SYNTHESIS`/`EFFECT_MOONLIGHT`/
+`EFFECT_SHORE_UP` move-data IDs — confirmed via direct read, not assumed
+from the distinct IDs. This project's config
+(`B_TIME_OF_DAY_HEALING_MOVES=GEN_LATEST`, which is `!= GEN_2`) always
+takes the modern, non-time-of-day branch. Found the fractions are NOT
+uniform across all 4, contrary to a plausible "simple RESTORE_HP variant"
+assumption: Morning Sun/Synthesis/Moonlight share a 3-way formula
+(sun=2/3, no-weather=1/2, ANY other weather incl. rain/sand/hail=1/4);
+Shore Up has only TWO states (sandstorm=2/3, everything else=1/2 — no 1/4
+branch exists in its own source branch at all). Two further nuances found
+via direct source read, both easy to miss: (1) Strong Winds (Delta Stream)
+is treated as "no weather" (the 1/2 case) for the 3 sun-based moves
+specifically, not the 1/4 "other weather" case — source strips the Strong
+Winds bit (`healingWeather = attackerWeather & ~B_WEATHER_STRONG_WINDS`)
+BEFORE the weather-presence check; (2) Utility Umbrella
+(`GetAttackerWeather`'s own branch) strips SUN and RAIN specifically for
+those same 3 moves (both fold into the "no weather" 1/2 case) but does
+NOT strip Sandstorm/Hail (which still correctly trigger the 1/4 branch
+even for an Umbrella holder), and has ZERO effect on Shore Up at all
+(Shore Up's own branch never references Umbrella — it only ever checks the
+raw Sandstorm bit directly).
+
+### Step 0 — M19f
+
+Confirmed Spider Web(169)/Mean Look(212)/Block(335) all share
+`EFFECT_MEAN_LOOK`, whose script (`BattleScript_EffectMeanLook`,
+data/battle_scripts_1.s L2100-2112) calls `seteffectprimary ...
+MOVE_EFFECT_PREVENT_ESCAPE` — setting `volatiles.escapePrevention =
+TRUE`/`volatiles.battlerPreventingEscape = battlerAtk` on the target
+(battle_script_commands.c L2518-2525). Confirmed Spirit Shackle(625)'s own
+secondary effect (`MOVE_EFFECT_PREVENT_ESCAPE`, explicit chance=100)
+dispatches through the SAME generic effect-application code — genuinely
+the identical underlying mechanism, not merely a thematically similar one,
+confirming `M19-trap-secondary`'s own note was accurate. Confirmed
+`AbilityManager.is_trapped()`'s own pre-existing doc comment (written back
+at `[M17f]`) had ALREADY anticipated this exact move-based trap by name
+("escapePrevention from Mean Look/Block/Spider Web") as a future extension
+point — extending it needed only a 1-line addition (`if
+mon.escape_prevented_by != null: return true`), mirroring `wrapped_by`'s
+own already-established shape exactly, not a parallel mechanism. Confirmed
+Shed Shell's exemption needed ZERO new code: `ItemManager.holds_shed_shell`
+is already checked at the `_phase_move_selection` call site BEFORE
+`is_trapped()` is even consulted (source: `CanBattlerEscape`'s
+`HOLD_EFFECT_SHED_SHELL` carve-out, confirmed via direct read to apply
+uniformly to every trapping SOURCE, not per-ability) — this was wired in
+during `[M18r]`, well before this session, and required no changes here.
+
+A real, source-confirmed asymmetry found WITHIN the 3 status moves,
+worth flagging since it directly affects correctness: `ignoresProtect` is
+NOT uniform across Spider Web/Mean Look/Block despite all 3 sharing one
+effect ID — Spider Web's own expression (`B_UPDATED_MOVE_FLAGS < GEN_3`)
+evaluates FALSE at this project's GEN_LATEST config, while Mean Look's
+(`>= GEN_6 || < GEN_3`) and Block's (`>= GEN_6`) both evaluate TRUE.
+Confirmed individually per move rather than assumed uniform.
+
+A second, more consequential asymmetry: the Ghost-type immunity Mean
+Look/Block/Spider Web all have at GEN_LATEST config
+(`jumpifgenconfiglowerthan CONFIG_B_GHOSTS_ESCAPE, GEN_6, ... /
+jumpiftype BS_TARGET, TYPE_GHOST, BattleScript_ButItFailed`) is a
+MOVE-SCRIPT-level check baked into `BattleScript_EffectMeanLook` itself —
+it does NOT exist in the generic `MOVE_EFFECT_PREVENT_ESCAPE`
+additionalEffects dispatch Spirit Shackle uses (confirmed via direct read
+of that code path, no Ghost-type check anywhere in it). This means Spirit
+Shackle can trap a Ghost-type target while Spider Web/Mean Look/Block
+cannot — a real, tested discriminator, not an oversight. A further,
+easy-to-miss detail: since this is a MOVE-SCRIPT-level immunity (not the
+general type-effectiveness gate), it does NOT reduce to "these 3 moves'
+own types happen to be chart-immune to Ghost" — Mean Look/Block are
+Normal-type (genuinely 0x vs Ghost on the chart, so the general
+type-immunity gate WOULD catch them for free even without this check), but
+Spider Web is Bug-type, which is only NOT-VERY-EFFECTIVE (0.5x, not a 0x
+immunity) against Ghost — meaning Spider Web genuinely needs this explicit
+check to match source; the general type gate alone would have let it
+through against a Ghost-type target. Tested explicitly as the key
+discriminator (F.04 in the new test suite).
+
+Confirmed Jaw Lock(692)'s real dispatch, found during Step 0 while reading
+`MOVE_EFFECT_PREVENT_ESCAPE`'s neighboring switch cases in
+battle_script_commands.c: `MOVE_EFFECT_TRAP_BOTH` (L2661-2676) sets the
+LITERAL SAME `escapePrevention`/`battlerPreventingEscape` fields, but on
+BOTH battlers simultaneously, gated on an all-or-nothing guard — if
+EITHER battler is already trapped, NEITHER side's trap is set (not a
+partial one-sided fallback). This is a genuine THIRD variant of the exact
+mechanism being built this session (not a fourth, separate one), and — per
+Section A's own Tier 3b row ("Jaw Lock — does NOT share [the binding-move]
+mechanism, see Section D") — was already flagged as needing its own
+future disposition. Since the primitive (`escape_prevented_by`/
+`try_apply_escape_prevention`) was being built in this same session
+regardless, Jaw Lock was folded in too rather than left for a future
+session to rediscover the same mechanism, closing Tier 3b (the
+binding-move family) entirely as a side effect.
+
+### Implementation
+
+`scripts/data/move_data.gd`: 6 new fields
+(`heals_based_on_weather`/`weather_heal_boost_type`/
+`weather_heal_has_quarter_branch`/`is_mean_look`) plus 2 new `SE_*`
+constants (`SE_PREVENT_ESCAPE=13`, `SE_TRAP_BOTH=14`).
+
+`scripts/battle/core/battle_pokemon.gd`: 1 new field
+(`escape_prevented_by: BattlePokemon = null`), mirroring `wrapped_by`'s
+exact shape (direct object reference, no turn counter — this trap is
+permanent until cleared, unlike Wrap's own time-limited one).
+
+`scripts/battle/core/status_manager.gd`: new
+`try_apply_escape_prevention(victim, inflictor)` (mirrors `try_apply_wrap`'s
+own shape exactly); 2 new `match` cases in `try_secondary_effect`
+(`SE_PREVENT_ESCAPE` for Spirit Shackle, `SE_TRAP_BOTH` for Jaw Lock's
+bidirectional variant).
+
+`scripts/battle/core/battle_manager.gd`: new self-contained `is_mean_look`
+early-return block (placed right after Encore, before Attract) replicating
+the shared Magic-Bounce swap inline since this block doesn't fall through
+to the later shared foe_targeting block; new `heals_based_on_weather`
+dispatch block (right after `is_restore_hp`, same "fails at full HP"
+shape); new `_weather_heal_amount()` helper (placed alongside
+`_effective_weather()`); 2 new `elif` branches in `_do_damaging_hit`'s
+secondary-effect dispatch (`SE_PREVENT_ESCAPE`/`SE_TRAP_BOTH`, both
+"caller emits the signal, state already mutated inside
+try_secondary_effect" shape matching `SE_WRAP`'s own precedent); new
+`escape_prevented` signal; `AbilityManager.is_trapped()` extended with a
+1-line `escape_prevented_by` check alongside the existing `wrapped_by`
+check; `_clear_volatiles` extended with the SAME reciprocal-scan shape
+`[M18.5d-3]`/`[M18.5f]` already established (the source battler leaving
+the field cures every OTHER battler it had trapped).
+
+`scripts/gen_moves.py`: `DEFAULTS`/`FIELD_ORDER` extended with the 4 new
+`MoveData` fields; new `WEATHER_SUN`/`WEATHER_SANDSTORM`/`SE_PREVENT_ESCAPE`/
+`SE_TRAP_BOTH` local constants; 9 new move dict entries.
+
+### Test plan
+
+New `scenes/battle/m19ef_test.gd`/`.tscn`: 48/48 assertions across 9
+sections — data integrity for all 9 moves; `_weather_heal_amount` direct
+unit tests (sun/no-weather/other-weather for the 3 sun moves, Shore Up's
+own 2-way split, Strong Winds treated as no-weather, Utility Umbrella's
+sun/rain-only strip with a Sandstorm discriminator proving it does NOT
+strip sand/hail) plus a full-battle confirmation of the real dispatch
+path; `try_apply_escape_prevention` direct unit tests (already-trapped
+no-op, non-overwrite); `is_trapped()`/Shed Shell tests (field-set → true,
+no-field → false, Ghost-type exemption even with the field explicitly
+set, and a full-battle Shed-Shell-bypasses-a-real-Mean-Look discriminator);
+full-battle Mean Look (ordinary application, Ghost-type immunity failure,
+Spider Web-vs-Ghost as the KEY Bug-type-not-chart-immune discriminator,
+already-trapped failure with a non-overwrite check); full-battle Spirit
+Shackle (ordinary application via real damage, the Ghost-type-CAN-be-trapped
+discriminator vs. the status-move family); full-battle Jaw Lock
+(bidirectional application, the all-or-nothing-guard discriminator); a
+real full 2-turn queued scenario confirming a Mean Look'd Pokémon's
+voluntary switch is actually blocked and falls back to a move; the
+source-leaves-cures-the-trap reciprocal-clear tests (direct
+`_clear_volatiles` calls, mirroring `[M18.5d-3]`'s own established
+pattern exactly, including the unrelated-third-battler discriminator).
+
+Two real test-authoring bugs caught and fixed on the first run, both
+instances of already-documented CLAUDE.md pitfalls: (1) Section B's first
+draft hardcoded expected heal amounts against `base_hp` directly (e.g.
+"300*2/3=200"), forgetting the HP stat formula adds `+level+10` on top of
+base_hp — fixed by computing expected values from each mon's own real
+`max_hp` instead of a hardcoded number. (2) The Jaw Lock full-battle test's
+first draft read `escape_prevented_by` state AFTER `start_battle()`
+returned — a fresh instance of the whole-battle-aggregation pitfall, since
+a low-Defense `def`/`def2` mon can faint from repeated hits over the
+battle's remaining turns, triggering `_clear_volatiles`'s own base case
+(a battler's own departure clears its own `escape_prevented_by`) and
+silently zeroing the exact field under test — fixed by snapshotting live
+inside the `escape_prevented`/`move_executed` signal handlers instead.
+
+### Regression
+
+14 suites: `damage_test` 24/24, `move_test` 49/49, `stat_test` 78/78,
+`status_test` 78/78 (the 4 required), `switch_test` 64/64 (the actual
+switch-blocking mechanism this tier extends), `ability_test` 64/64,
+`m17f_test` 30/30 (`is_trapped()`'s own origin suite, directly extended
+this session), `m17g_test` 31/31 (Neutralizing-Gas/Mold-Breaker
+interaction with trapping), `m17n2_test` 58/58 (Utility Umbrella's other
+established consumer, Swift Swim/Chlorophyll), `m19_pre1_test` 48/48
+(weather/friendship data infrastructure this tier's own weather-heal
+reuses), `doubles_test` 54/54, `m18r_test` 49/49 (Shed Shell's own origin
+suite), `m19_bucket4_final_pairs_test` 27/27 (`_get_ally`/doubles-adjacent
+dispatch touched by the immediately-prior session), `m18_5f_test` 137/137
+(the other move-based trapping volatile, `wrapped_by`, whose exact
+reciprocal-clear shape this session's `escape_prevented_by` mirrors) —
+all unchanged, 0 failures.
+
+### Data
+
+`MoveData` gained 4 new fields plus 2 new `SE_*` constants.
+`BattlePokemon` gained 1 new field (`escape_prevented_by`). `BattleManager`
+gained 1 new signal (`escape_prevented`) and 1 new helper
+(`_weather_heal_amount`). `StatusManager` gained 1 new function
+(`try_apply_escape_prevention`). 9 new move dict entries added to
+`scripts/gen_moves.py`; 9 new `.tres` files regenerated — 526 total move
+`.tres` files, up from 517.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: M19e and M19f both marked
+COMPLETE with full findings, `M19-trap-secondary` marked CLOSED (folded
+into M19f), Bucket 4's own total shrunk 5→4 moves/3→2 sub-groups, Section
+A's Tier 3b row updated (10→11 implemented, 1→0 remaining — COMPLETE),
+Tier 3e row updated (0→4 implemented, 4→0 remaining — COMPLETE), Tier 4
+row updated (84→88 implemented, 228→224 remaining — Spider Web/Mean
+Look/Block/Spirit Shackle attributed to Tier 4 as a disclosed
+simplification, matching `[Bucket 4 2-move sub-groups]`'s own precedent),
+Section E and top summary reconciled together (526+13+1+213+181=934,
+reconfirmed), the "recommended implementation order" numbered list
+renumbered to accommodate the new M19e/M19f completion items.
+CLAUDE.md's status section gained a new `[M19e]`/`[M19f]` bullet noting
+the running total (517→526) and the full findings. **Explicit final
+report, per this task's own request**: Bucket 4 now stands at **4 moves
+across 2 named sub-groups**, both gated/deferred —
+`M19-secret-power` (1 move, deferred by Rob) and
+`M19-blocked-on-other-tier4` (3 moves, still gated on Leech
+Seed(73)/Haze(114)/Aromatherapy — re-confirmed genuinely unbuilt).
+M19c-f's own remaining scope is now just **M19c (7 moves) and M19d (2
+moves) — 9 moves total**, both still open, neither touched this session.
+
+## [M19c] / [M19d] — Wide Guard/Quick Guard/Spiky Shield/Baneful Bunker/Obstruct/Silk Trap/Burning Bulwark + Metal Burst/Mirror Move, 9 moves (2026-07-09)
+
+Closes M19c and M19d — **the last two proposed M19 sub-tiers**, completing
+M19c-i entirely. Both flagged "CHEAP"/"CHEAP-MODERATE" in the plan doc;
+per this arc's now-repeated lesson (some "should reuse X" notes have been
+wrong twice, some right once), confirmed rather than trusted both labels.
+
+### Step 1 — read fresh
+
+Re-read the current M19c/M19d sections in full. Cross-checked against
+Section A's own Tier 2b/3d rows and Section E's summary table — all three
+already agreed on 7/2 with no drift, unlike several prior sessions in this
+arc that found stale figures. Nothing to fix before starting.
+
+### Step 0 — M19c (7 moves)
+
+Read all 7 fresh from `moves_info.h`: Wide Guard(469), Quick Guard(501),
+Spiky Shield(596), Baneful Bunker(624), Obstruct(720), Silk Trap(780),
+Burning Bulwark(836). Confirmed ALL 7 carry the literal same `.effect =
+EFFECT_PROTECT` Protect/Detect themselves use, distinguished only by a
+per-move `.argument.protectMethod` value — genuinely the same base
+mechanism, not 7 independent ones. Confirmed via `GetProtectType`
+(battle_util.c L5829-5852) that `usesProtectCounter` is a per-EFFECT
+setting (not per-move), meaning the existing `_roll_protect_success`
+consecutive-fail-chance ramp already applies uniformly to all 7 — zero
+changes needed there.
+
+Confirmed genuinely NOT uniform beyond that shared base, exactly matching
+this sub-tier's own "don't assume symmetry" flag:
+- **Non-status-only gate**: Obstruct/Silk Trap block only `!IsBattleMoveStatus`
+  moves (confirmed from the combined protect-check function, battle_util.c
+  L5783-5824) — a real narrowing from plain Protect's "blocks everything"
+  that Spiky Shield/Baneful Bunker/Burning Bulwark do NOT share (those 3
+  block unconditionally, same as plain Protect).
+- **Side-wide gate**: Wide Guard/Quick Guard are `PROTECT_TYPE_SIDE`
+  (`GetProtectType`), checked via `IsSideProtected` (battle_util.c
+  L5748-5752) — which reads the SAME per-battler `protected` field for
+  EITHER battler on the side (`gProtectStructs[battler].protected == method
+  || gProtectStructs[BATTLE_PARTNER(battler)].protected == method`), not a
+  separate side-level flag. This is a genuine Step-0 finding worth
+  flagging explicitly: it means this project's existing per-mon
+  `protect_active`/new `protect_method` fields needed NO new
+  `_side_conditions`-style side-wide infrastructure at all — the new
+  `_is_protected_from()` helper just also checks `_get_ally(defender)`'s
+  own `protect_active`/`protect_method` for these 2 specific methods.
+- **Wide Guard's own condition**: blocks only `IsSpreadMove` targets
+  (`TARGET_BOTH`/`TARGET_FOES_AND_ALLY`, only true in doubles) — reused
+  this project's existing `move.is_spread` proxy directly (already
+  established, with its own documented ally-hit-half simplification from
+  `[Bucket 4 2-move sub-groups]`'s Self-Destruct/Explosion entry).
+- **Quick Guard's own condition**: blocks only `GetChosenMovePriority(...)
+  > 0` — the SAME ability-boosted effective-priority computation
+  `[M17k]`'s `blocks_priority_move` already built (`AbilityManager.
+  move_priority_bonus`), reused directly rather than re-derived from raw
+  `move.priority` alone.
+- **Contact-punish gate**: all 5 non-side-wide variants' retaliation
+  effects are gated on `CanBattlerAvoidContactEffects`
+  (`MoveEndProtectLikeEffect`, battle_move_resolution.c L2497-2568) — the
+  SAME Protective-Pads-aware wrapper `[M18p]`'s `AbilityManager.
+  move_triggers_contact_retaliation` already implements for Rough
+  Skin/Iron Barbs/Rocky Helmet, confirmed the correct (wrapper-level, not
+  the narrower `move_makes_contact`) gate for this family too.
+- **Per-move contact-punish effects**, each confirmed individually:
+  Spiky Shield deals `maxHP/8` recoil to the attacker, gated on the
+  ATTACKER's own Magic Guard (`AbilityManager.blocks_indirect_damage`);
+  Baneful Bunker poisons the attacker (`CanBePoisoned`-equivalent via the
+  existing `StatusManager.try_apply_status`); Burning Bulwark burns the
+  attacker (same shape, `STATUS_BURN`); Obstruct drops the attacker's Def
+  by -2; Silk Trap drops the attacker's Speed by -1 (both via the raw
+  `StatusManager.apply_stat_change` primitive). A real correctness gap was
+  closed proactively rather than flagged-and-skipped: Obstruct/Silk Trap's
+  stat-drops are wired through the SAME Defiant/Competitive
+  reactive-trigger check `_apply_one_stat_change_pair` already applies for
+  "an opponent just lowered my stat" (inlined into a new
+  `_apply_protect_stat_punish` helper, since this reactive effect isn't
+  dispatched through that function's own `move.stat_change_stat`-keyed
+  shape) — confirmed and tested via a dedicated Defiant discriminator.
+
+### Step 0 — M19d (2 moves)
+
+**Metal Burst(368)**: confirmed the same `EFFECT_REFLECT_DAMAGE` shape as
+Counter/Mirror Coat (`GetReflectDamageMoveDamageCategory`, battle_util.c
+L306-320), but with THREE real, source-confirmed asymmetries — two
+originally flagged by the task, one found fresh at Step 0:
+1. **1.5x, not 2x** (`.argument.reflectDamage.damagePercent = 150` vs.
+   Counter/Mirror Coat's own `200`).
+2. **Reflects EITHER category**, not one — `.damageCategories = 1u <<
+   PHYSICAL | 1u << SPECIAL`, vs. each of Counter/Mirror Coat's own
+   single-category bitmask. When BOTH categories were taken in the same
+   turn (a real doubles possibility), source reflects whichever was hit
+   LAST (`gProtectStructs[battler].lastHitBySpecialMove`), not the larger
+   of the two — confirmed via direct read of
+   `GetReflectDamageMoveDamageCategory`'s own dual-category branch. New
+   `BattlePokemon.last_hit_was_special: bool`, set at the SAME single
+   damage-tracking site `last_physical_damage`/`last_special_damage`
+   already use.
+3. **Priority = 0, NOT Counter/Mirror Coat's own -5** — a real asymmetry
+   found fresh at Step 0, not originally flagged in the task's own
+   framing, despite all 3 moves sharing the identical
+   `EFFECT_REFLECT_DAMAGE` handler.
+
+Design decision, confirmed clean rather than assumed: kept Metal Burst as
+its own separate `metal_burst: bool` flag with its own small dispatch
+block, rather than generalizing `counter`/`mirror_coat` into one
+data-driven `reflect_damage_percent`/`reflect_damage_categories`
+mechanism matching source's own actual data shape. The generalization
+would have been more "correct" in the abstract, but would have required
+touching Counter/Mirror Coat's own already-tested dispatch code for a
+one-move gain — reusing the existing `last_physical_damage`/
+`last_special_damage`/`last_hit_was_special` fields directly from a third,
+independent flag was the lower-risk choice and was taken deliberately, not
+by default.
+
+**Mirror Move(119)** — the one point the task asked for real Step 0
+attention, not assumed cheap just because the sub-tier label said so.
+Confirmed via direct source read (`GetMirrorMoveMove`,
+battle_move_resolution.c L4966-4993) that it reads
+`gBattleStruct->lastTakenMove[gBattlerAttacker]` — **the move that hit the
+MIRROR MOVE USER itself**, NOT the target's own last-used move (a
+Copycat-style "used by anyone" lookup this project doesn't have and never
+needed to build). This directly resolves the task's own framed question:
+this project's EXISTING per-turn `_last_attacker`/`_last_attacker_move`
+dictionaries (already built for Destiny Bond/Aftermath/Innards Out,
+cleared every turn in `_phase_priority_resolution` — confirmed matching
+source's own per-turn `TurnValuesCleanUp` memset semantics exactly)
+already capture precisely what Mirror Move needs. Zero new tracking state
+was required — the sub-tier's own flagged uncertainty resolved in the
+cheaper of the two directions, not the more expensive one.
+
+A second finding, from tracing `CancelerCallSubmove`
+(battle_move_resolution.c L523-553): Mirror Move (`EFFECT_MIRROR_MOVE`)
+and Metronome (`EFFECT_METRONOME`) dispatch through the LITERAL SAME
+switch statement — genuinely the same "call a different move" mechanism,
+not two independent ones. This project's existing Metronome
+implementation already establishes the exact reusable pattern (reassign
+the local `move` variable to the called move and fall through to normal
+dispatch, no `return`) — Mirror Move's own dispatch reuses this verbatim,
+with one addition: `defender` is ALSO reassigned to `_last_attacker.get(
+attacker, defender)`, since Mirror Move should retaliate against whoever
+ACTUALLY hit the user, not whatever the default target resolution
+happened to pick (relevant in doubles; a no-op in singles where they're
+always the same mon). Confirmed no move-category exclusion exists in
+source for what Mirror Move can call — it mirrors literally whatever move
+hit it, status moves included.
+
+### Implementation
+
+`scripts/battle/core/battle_pokemon.gd`: new `protect_method: int` field
+plus 8 `PROTECT_METHOD_*` constants (mirroring source's own `enum
+ProtectMethod` exactly); new `last_hit_was_special: bool` field.
+
+`scripts/data/move_data.gd`: new `protect_method: int` field (Protect/Detect
+left at the class default 0, needing no data change); new `metal_burst:
+bool` and `is_mirror_move: bool` fields.
+
+`scripts/battle/core/battle_manager.gd`: the existing Protect-blocking
+check (`if defender.protect_active and not move.ignores_protect:`) now
+routes through a new `_is_protected_from()` helper covering all 8
+variants; new `_apply_protect_contact_punish()` and
+`_apply_protect_stat_punish()` helpers fire on a blocked hit; the existing
+`is_protect` dispatch block now also writes `attacker.protect_method =
+move.protect_method`; new Mirror Move dispatch block (reassign-and-fall-
+through, placed immediately before the existing Metronome block); new
+Metal Burst dispatch block (placed immediately after the existing Mirror
+Coat block); `last_hit_was_special` set alongside the existing
+`last_physical_damage`/`last_special_damage` writes at their single shared
+site; both new fields reset at the same 3 sites (`protect_active`) and 2
+sites (`last_physical_damage`/`last_special_damage`) their counterparts
+already reset at.
+
+`scripts/gen_moves.py`: `DEFAULTS`/`FIELD_ORDER` extended with the 3 new
+`MoveData` fields; new `PROTECT_METHOD_*` local constants; 9 new move dict
+entries.
+
+### Test plan
+
+New `scenes/battle/m19cd_test.gd`/`.tscn`: 38/38 assertions across 10
+sections — data integrity for all 9 moves; Spiky Shield's recoil with a
+non-contact discriminator (Surf) and a Magic-Guard-blocks-it discriminator;
+Baneful Bunker/Burning Bulwark's poison/burn-on-contact; Obstruct's -2 Def
+with a status-move-not-blocked discriminator (Growl connects normally) AND
+a Defiant-reacts-to-it discriminator; Silk Trap's -1 Speed-on-contact;
+Wide Guard blocking a spread move (Hyper Voice) with a single-target
+discriminator (Tackle) AND a doubles side-wide test (the ALLY's own Wide
+Guard blocks a hit aimed at a direct target holding no Protect state
+itself); the identical 3-part shape for Quick Guard (Quick Attack/Tackle/
+doubles side-wide); the shared consecutive-use counter (Spiky Shield's own
+first use increments the SAME field Protect uses); Metal Burst's physical
+and special reflection (a discriminator pair proving both categories
+work, unlike Counter's physical-only) plus a no-damage-taken failure case;
+Mirror Move copying the move that hit the user rather than the target's
+own different move (Growl) as the KEY discriminator, a fails-if-not-hit-yet
+case, and a doubles retargeting test confirming it strikes the actual
+hitter rather than a default target.
+
+Three real test-authoring bugs caught and fixed on the first run (35/38):
+(1) the shared-consecutive-counter test assumed BOTH of two sequential
+uses would deterministically succeed, but `_roll_protect_success` only
+guarantees the FIRST use (consecutive=0, denom=1) — a second consecutive
+use has only a 1/3 chance and no RNG-forcing seam exists for it — fixed by
+testing Spiky Shield's own single guaranteed first use instead of a
+2-move probabilistic sequence, still proving the field is genuinely
+shared by construction. (2)+(3) both Mirror Move full-battle tests
+accidentally gave the MIRRORING Pokémon a HIGHER speed than its attacker,
+so it acted (and failed, having not been hit yet) BEFORE the attacker's
+own hit could land within the same turn — fixed by swapping the relative
+speeds in both the singles and doubles scenarios so the hit genuinely
+lands first.
+
+### Regression
+
+12 suites: `damage_test` 24/24, `move_test` 49/49, `stat_test` 78/78,
+`status_test` 78/78 (the 4 required), `tier4_test` 86/86 (Protect/
+Counter/Mirror Coat's own origin suite, directly extended this session),
+`switch_test` 64/64, `doubles_test` 54/54, `m17k_test` 26/26 (Dazzling
+family, a structurally-independent priority-block gate confirmed
+non-conflicting), `m17n3_test` 62/62 (`move_priority_bonus`'s own origin
+suite, reused for Quick Guard), `m19ef_test` 48/48, `m19_bucket4_final_pairs_test`
+27/27, `m18p_test` 33/33 (`move_triggers_contact_retaliation`'s own origin
+suite, reused for the 5 contact-punish variants) — all unchanged, 0
+failures.
+
+### Data
+
+`BattlePokemon` gained 2 new fields (`protect_method`, `last_hit_was_special`)
+plus 8 `PROTECT_METHOD_*` constants. `MoveData` gained 3 new fields
+(`protect_method`, `metal_burst`, `is_mirror_move`). `BattleManager` gained
+3 new helper functions (`_is_protected_from`, `_apply_protect_contact_punish`,
+`_apply_protect_stat_punish`). 9 new move dict entries added to
+`scripts/gen_moves.py`; 9 new `.tres` files regenerated — 535 total move
+`.tres` files, up from 526.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: M19c and M19d both marked
+COMPLETE with full findings, Section A's Tier 2b row (1→8 implemented,
+2 remaining — both permanently excluded, matching Crafty Shield/King's
+Shield) and Tier 3d row (2→4 implemented, 1 remaining — the already-excluded
+Comeuppance) both closed out, Section E and top summary reconciled together
+(535+4+1+213+181=934, reconfirmed), the "recommended implementation order"
+numbered list updated with a new item 10 covering the full findings.
+`docs/decisions.md` new `[M19c] / [M19d]` entry added with full Step 0
+citations. **M19c-i is now FULLY CLOSED** — every sub-tier proposed in
+Section B (M19c through M19i) has shipped. The complete remaining M19
+scope, in full: Bucket 4's 4 gated/deferred moves (`M19-secret-power`,
+deferred by Rob; `M19-blocked-on-other-tier4`'s 3 moves, gated on Leech
+Seed/Haze/Aromatherapy) and Section D's 181-move Tier 4 residual, which
+still needs its own dedicated sub-clustering pass before any further M19
+implementation work can be scoped.

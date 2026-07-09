@@ -356,6 +356,21 @@ static func try_apply_wrap(
 	return true
 
 
+# [M19f] Mean Look/Block/Spider Web/Spirit Shackle's shared underlying
+# mechanism. Source: MOVE_EFFECT_PREVENT_ESCAPE (battle_script_commands.c
+# L2518-2525) — `if (!volatiles.escapePrevention) { set escapePrevention=TRUE,
+# battlerPreventingEscape=battlerAtk }`, unconditionally proceeding to the
+# battle script either way (a silent no-op re-application if already trapped,
+# NOT a failure — Mean Look's own dedicated script separately checks
+# already-trapped BEFORE ever reaching this point and fails outright there;
+# see BattleManager's own is_mean_look dispatch for that distinction).
+static func try_apply_escape_prevention(victim: BattlePokemon, inflictor: BattlePokemon) -> bool:
+	if victim.escape_prevented_by != null:
+		return false
+	victim.escape_prevented_by = inflictor
+	return true
+
+
 # ── End-of-turn status damage ─────────────────────────────────────────────
 #
 # Returns the HP to subtract this end-of-turn (positive), or the HP to RESTORE
@@ -757,6 +772,13 @@ static func check_accuracy(
 		acc_stage = 0
 	if AbilityManager.ignores_defender_evasion_stage(attacker, ng_active):
 		eva_stage = 0
+	# [M19-ignores-stat-stages] Chip Away/Sacred Sword/Darkest Lariat — a
+	# MOVE-level equivalent of Unaware/Keen Eye/Mind's Eye's own
+	# evasion-ignore above, same variable, same insertion point.
+	# Source: battle_util.c :: GetTotalAccuracy (L10254): `if
+	# (MoveIgnoresDefenseEvasionStages(move)) evasionStage = DEFAULT_STAT_STAGE;`
+	if move.ignores_defense_evasion_stages:
+		eva_stage = 0
 	var combined: int = clampi(acc_stage - eva_stage, -6, 6)
 	var idx: int = combined + 6
 	# M17n-11: Wonder Skin — floors a STATUS move's own accuracy stat to 50 (never
@@ -890,6 +912,16 @@ static func apply_stat_change(
 	var new_stage: int = clampi(old_stage + adjusted, -6, 6)
 	var actual: int = new_stage - old_stage
 	target.stat_stages[stat_idx] = new_stage
+	# [M19-stat-raised-trigger] Burning Jealousy/Alluring Voice — "did this
+	# battler's stats rise this turn" is a broad, general concept in source
+	# (ANY positive stat change sets it, from a move/ability/item alike),
+	# so this is set at the SAME single chokepoint every stat-raising path
+	# in this project already routes through, not re-derived per caller.
+	# Source: battle_stat_change.c :: SetStatChange (L452-457):
+	#   `gProtectStructs[cv->battlerDef].statRaised = TRUE;` unconditional
+	#   whenever a positive stageIncrease actually applies.
+	if actual > 0:
+		target.stat_raised_this_turn = true
 	return actual
 
 
@@ -933,7 +965,18 @@ static func try_secondary_effect(
 		force_secondary: Variant = null,
 		ng_active: bool = false,
 		weather: int = DamageCalculator.WEATHER_NONE,
-		uproar_active: bool = false) -> bool:
+		uproar_active: bool = false,
+		force_random_status_index: Variant = null) -> bool:
+
+	# [M19-stat-raised-trigger] Burning Jealousy/Alluring Voice — an
+	# ELIGIBILITY pre-check, before the chance roll (matching source's own
+	# ordering: AdditionalEffectsMoveConditionMet checks onlyIfTargetRaisedStats
+	# as a pure condition gate, separate from and before the chance roll).
+	# Source: battle_script_commands.c :: AdditionalEffectsMoveConditionMet
+	# (L3481-3483): `if (additionalEffect->onlyIfTargetRaisedStats &&
+	# !gProtectStructs[gBattlerTarget].statRaised) return FALSE;`
+	if move.requires_target_stat_raised and not defender.stat_raised_this_turn:
+		return false
 
 	# [M19-secondary-stat-on-hit]: a damaging move's secondary stat-change payload
 	# (e.g. Iron Tail's 30% Defense drop, Overheat's guaranteed self Sp.Atk -2)
@@ -1064,6 +1107,34 @@ static func try_secondary_effect(
 			# applies it" shape as SE_FLINCH — the actual state change (throat_chop_turns
 			# / PP deduction) lives in BattleManager, which has the target's move-list/
 			# PP-array access this static function doesn't.
+			return true
+		MoveData.SE_RANDOM_STATUS:
+			# [M19-random-status-choice] Uniform pick among move.random_status_pool
+			# (Tri Attack: burn/freeze/paralysis; Dire Claw: poison/paralysis/sleep —
+			# two genuinely different pools). Reuses try_apply_status directly, which
+			# already gates on "already has a status" the same way source's own
+			# `!gBattleMons[effectBattler].status1` check does.
+			var idx: int = (int(force_random_status_index) if force_random_status_index != null
+					else randi() % move.random_status_pool.size())
+			return try_apply_status(defender, move.random_status_pool[idx], null, null,
+					ng_active, attacker, weather, move)
+		MoveData.SE_PREVENT_ESCAPE:
+			# [M19f] Spirit Shackle. No Ghost-type immunity here (see move_data.gd's
+			# own SE_PREVENT_ESCAPE doc comment) and no per-effect ability immunity
+			# beyond the generic Shield Dust/Covert Cloak/Sheer Force gates already
+			# applied above — the actual state mutation (and its own "already
+			# trapped" no-op) lives entirely in try_apply_escape_prevention.
+			return try_apply_escape_prevention(defender, attacker)
+		MoveData.SE_TRAP_BOTH:
+			# [M19f] Jaw Lock — bidirectional: BOTH battlers get trapped together,
+			# gated on NEITHER already being trapped (source: the guard checks
+			# BOTH volatiles.escapePrevention flags before setting either — a
+			# stricter all-or-nothing condition than Spirit Shackle's own
+			# single-sided per-battler check).
+			if defender.escape_prevented_by != null or attacker.escape_prevented_by != null:
+				return false
+			try_apply_escape_prevention(defender, attacker)
+			try_apply_escape_prevention(attacker, defender)
 			return true
 	return false
 

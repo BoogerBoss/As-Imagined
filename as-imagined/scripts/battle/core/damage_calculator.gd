@@ -162,7 +162,9 @@ static func calculate(
 	#   moveType == TYPE_GROUND && abilityDef == ABILITY_LEVITATE && !gravity → 0.0
 	# Checked before TypeChart to produce the same 0-damage early return.
 	# M17g: Levitate is breakable — a Mold-Breaker-holder's Ground move bypasses it.
-	if AbilityManager.blocks_move_type(defender, move.type, ng_active, attacker):
+	# [M19-ignores-target-ability] `move` threaded as attacker_move — Sunsteel
+	# Strike/Moongeist Beam bypass a Levitate holder's Ground immunity too.
+	if AbilityManager.blocks_move_type(defender, move.type, ng_active, attacker, move):
 		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
 				"defender_item_consumed": false}
 
@@ -172,7 +174,9 @@ static func calculate(
 	# the cross-cutting design decision behind this contract) — resolved by
 	# BattleManager, not here, since applying a stat/heal/flag change needs signal
 	# emission this stateless calculator doesn't do.
-	var absorb: Dictionary = AbilityManager.absorbs_move_type(defender, move.type, ng_active, attacker)
+	# [M19-ignores-target-ability] `move` threaded as attacker_move — same
+	# Mold-Breaker-equivalent bypass for the absorb-family.
+	var absorb: Dictionary = AbilityManager.absorbs_move_type(defender, move.type, ng_active, attacker, move)
 	if not absorb.is_empty():
 		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
 				"defender_item_consumed": false, "absorb_result": absorb}
@@ -222,6 +226,17 @@ static func calculate(
 				"defender_item_consumed": false}
 	if move.level_damage:
 		return {"damage": attacker.level, "is_crit": false, "effectiveness": effectiveness,
+				"defender_item_consumed": false}
+	# [M19-percent-current-hp-damage] Super Fang/Ruination — a % of the
+	# TARGET's CURRENT (not max) HP, genuinely distinct from fixed_damage/
+	# level_damage above. Source: battle_util.c :: DoMoveDamageCalc,
+	# case EFFECT_FIXED_PERCENT_DAMAGE (L7660-7661):
+	#   dmg = GetNonDynamaxHP(battlerDef) * GetMoveDamagePercentage(move) / 100
+	# Same bypass shape as fixed_damage/level_damage (type immunity and
+	# Wonder Guard already applied above; skips STAB/crit/roll/stage math).
+	if move.percent_current_hp_damage > 0:
+		var pct_dmg: int = defender.current_hp * move.percent_current_hp_damage / 100
+		return {"damage": pct_dmg, "is_crit": false, "effectiveness": effectiveness,
 				"defender_item_consumed": false}
 
 	# --- Critical hit determination ---
@@ -290,6 +305,12 @@ static func calculate(
 	if AbilityManager.ignores_attacker_atk_stage(defender, ng_active, attacker):
 		atk_stage = 0
 	if AbilityManager.ignores_defender_def_stage(attacker, ng_active):
+		def_stage = 0
+	# [M19-ignores-stat-stages] Chip Away/Sacred Sword/Darkest Lariat — a
+	# MOVE-level equivalent of Unaware's own defense-ignore above, same
+	# variable, same insertion point. Source: battle_util.c :: CalcDefenseStat
+	# (L7075): `if (MoveIgnoresDefenseEvasionStages(move)) defStage = DEFAULT_STAT_STAGE;`
+	if move.ignores_defense_evasion_stages:
 		def_stage = 0
 
 	var atk: int = _apply_stage(atk_base, atk_stage)

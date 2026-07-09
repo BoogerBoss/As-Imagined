@@ -1053,6 +1053,12 @@ static func effective_ability_id(
 		if attacker_id == ABILITY_MYCELIUM_MIGHT and attacker_move != null \
 				and attacker_move.category == 2:
 			return ABILITY_NONE
+		# [M19-ignores-target-ability] Sunsteel Strike/Moongeist Beam — a
+		# MOVE-level trigger for this SAME suppression, confirmed from source
+		# to be the literal same `moldBreakerActive` flag as Mold Breaker
+		# itself (see MoveData.ignores_target_ability's own doc comment).
+		if attacker_move != null and attacker_move.ignores_target_ability:
+			return ABILITY_NONE
 	return id
 
 
@@ -1415,14 +1421,20 @@ static func defense_damage_modifier_uq412(
 		defender: BattlePokemon, move: MoveData, effectiveness: float = 1.0,
 		weather: int = DamageCalculator.WEATHER_NONE, ally: BattlePokemon = null,
 		ng_active: bool = false, attacker: BattlePokemon = null) -> int:
+	# [M19-ignores-target-ability] `move` threaded as `attacker_move` into every
+	# effective_ability_id(defender, ...) call below — the same chokepoint
+	# Mold Breaker/Mycelium Might already occupy — so Sunsteel Strike/
+	# Moongeist Beam correctly bypass every `breakable` ability this
+	# function checks (Multiscale/Filter/Solid Rock/Fur Coat/Ice
+	# Scales/Marvel Scale/Heatproof/Purifying Salt/Fluffy/Punk Rock).
 	var flower_gift_holder: bool = \
-			effective_ability_id(defender, ng_active, attacker) == ABILITY_FLOWER_GIFT
+			effective_ability_id(defender, ng_active, attacker, move) == ABILITY_FLOWER_GIFT
 	var ally_flower_gift: bool = ally != null and not ally.fainted \
-			and effective_ability_id(ally, ng_active, attacker) == ABILITY_FLOWER_GIFT
+			and effective_ability_id(ally, ng_active, attacker, move) == ABILITY_FLOWER_GIFT
 	if (flower_gift_holder or ally_flower_gift) \
 			and weather == DamageCalculator.WEATHER_SUN and move.category == 1:
 		return 2731  # UQ_4_12(1/1.5) ≈ 0.667 — reciprocal of the ×1.5 Sp. Def boost
-	var id: int = effective_ability_id(defender, ng_active, attacker)
+	var id: int = effective_ability_id(defender, ng_active, attacker, move)
 	if id == ABILITY_NONE:
 		return 4096
 	if id == ABILITY_DRY_SKIN and move.type == TypeChart.TYPE_FIRE:
@@ -1944,12 +1956,15 @@ static func blocks_recoil(attacker: BattlePokemon, ng_active: bool = false) -> b
 #   every ungrounding check.
 static func blocks_move_type(
 		defender: BattlePokemon, move_type: int, ng_active: bool = false,
-		attacker: BattlePokemon = null) -> bool:
+		attacker: BattlePokemon = null, attacker_move: MoveData = null) -> bool:
 	if move_type != TypeChart.TYPE_GROUND:
 		return false
 	if ItemManager.holds_iron_ball(defender, ng_active):
 		return false
-	if effective_ability_id(defender, ng_active, attacker) == ABILITY_LEVITATE:
+	# [M19-ignores-target-ability] attacker_move threaded into effective_ability_id
+	# — same Mold-Breaker-equivalent chokepoint, so Sunsteel Strike/Moongeist
+	# Beam correctly bypass a Levitate holder's Ground immunity too.
+	if effective_ability_id(defender, ng_active, attacker, attacker_move) == ABILITY_LEVITATE:
 		return true
 	if ItemManager.holds_air_balloon(defender, ng_active):
 		return true
@@ -1986,7 +2001,9 @@ static func blocks_non_super_effective_hit(
 		ng_active: bool = false, attacker: BattlePokemon = null) -> bool:
 	if move.power <= 0 or move.type == TypeChart.TYPE_MYSTERY:
 		return false
-	if effective_ability_id(defender, ng_active, attacker) != ABILITY_WONDER_GUARD:
+	# [M19-ignores-target-ability] `move` (already a param) threaded as
+	# attacker_move — Sunsteel Strike/Moongeist Beam bypass Wonder Guard too.
+	if effective_ability_id(defender, ng_active, attacker, move) != ABILITY_WONDER_GUARD:
 		return false
 	return effectiveness <= 1.0
 
@@ -2334,8 +2351,11 @@ static func blocks_move_flag(
 # immunity above (source: same `CanAbilityAbsorbMove` dispatch group).
 static func absorbs_move_type(
 		defender: BattlePokemon, move_type: int, ng_active: bool = false,
-		attacker: BattlePokemon = null) -> Dictionary:
-	var id: int = effective_ability_id(defender, ng_active, attacker)
+		attacker: BattlePokemon = null, attacker_move: MoveData = null) -> Dictionary:
+	# [M19-ignores-target-ability] attacker_move threaded into effective_ability_id
+	# — Sunsteel Strike/Moongeist Beam bypass the absorb-family too (Volt
+	# Absorb/Lightning Rod/etc.), same Mold-Breaker-equivalent chokepoint.
+	var id: int = effective_ability_id(defender, ng_active, attacker, attacker_move)
 	if id == ABILITY_LIGHTNING_ROD and move_type == TypeChart.TYPE_ELECTRIC:
 		return {"kind": "stat", "stat": BattlePokemon.STAGE_SPATK, "amount": 1}
 	if id == ABILITY_STORM_DRAIN and move_type == TypeChart.TYPE_WATER:
@@ -2547,6 +2567,20 @@ static func is_trapped(
 	# end-of-turn damage (BattlePokemon.wrapped_by stays set) — only the free-switch
 	# exemption comes from here.
 	if mon.wrapped_by != null:
+		return true
+	# [M19f] Mean Look/Block/Spider Web/Spirit Shackle's escape-prevention
+	# volatile — the SECOND move-based trapping source this function's own
+	# comment block above already anticipated by name. Placed alongside
+	# wrapped_by for the identical reason: not ability-driven, and a
+	# Ghost-type target never actually reaches this point with the field set
+	# in the first place for the 3 status moves (their own move-script-level
+	# Ghost immunity blocks the field from ever being set — see
+	# move_data.gd's is_mean_look doc comment), though Spirit Shackle's
+	# secondary-effect dispatch has no such check and CAN set it on a
+	# Ghost-type — this early return still correctly exempts them regardless
+	# of whether the field happens to be set, matching CanBattlerEscape's own
+	# Ghost-checked-first order.
+	if mon.escape_prevented_by != null:
 		return true
 	for opp: BattlePokemon in live_opponents:
 		var opp_id: int = effective_ability_id(opp, ng_active)
