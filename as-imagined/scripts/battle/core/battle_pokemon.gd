@@ -193,6 +193,38 @@ var flinched: bool = false
 # Source: battle_move_resolution.c :: CancelerCharging (L1737); gLockedMoves
 var charging_move: MoveData = null
 
+# [M19-rampage] Volatile: forced-move-repeat lock, distinct from charging_move
+# (charging_move is two-turn/Bide-specific and has its own dispatch gates
+# keyed on move.two_turn/move.is_bide — a genuinely different mechanic
+# despite the surface similarity, kept separate per this project's own
+# one-field-per-lock convention: disabled_move/encored_move/choice_locked_move
+# are all separate fields too). Shared by BOTH is_rampage moves (Thrash/Petal
+# Dance/Outrage/Raging Fury) and is_uproar (Uproar) — the two mechanisms use
+# the SAME lock field but distinct counters (rampage_turns vs uproar_turns)
+# to know which end-of-lock behavior applies (self-confuse vs. none).
+# Non-null while locked: BattleManager._phase_move_selection forces this
+# exact move every turn, the same override shape charging_move already gets.
+# Cleared on faint/switch-out via _clear_volatiles, same as charging_move.
+# Source: gLockedMoves[battler] (shared by Thrash/Uproar/Recharge/Sky Drop in
+# source too — this project only needs the rampage/Uproar slice of that).
+var locked_move: MoveData = null
+
+# [M19-rampage] Turns remaining on an is_rampage lock (Thrash/Petal Dance/
+# Outrage/Raging Fury). Random 2-3 on application. Reaching 0 clears the lock
+# and self-confuses the user (CanBeConfused-gated). A turn whose hit is fully
+# unaffected by type immunity cancels the lock WITHOUT confusing, checked
+# independently of this counter reaching 0.
+# Source: gBattleMons[].volatiles.rampageTurns; RandomUniform(2, B_RAMPAGE_TURNS).
+var rampage_turns: int = 0
+
+# [M19-rampage] Turns remaining on an is_uproar lock (Uproar). Flat 3 at this
+# project's Gen5+ config. Reaching 0 clears the lock — NO self-confuse, unlike
+# rampage_turns. While > 0 on ANY active battler (field-wide, both sides), new
+# sleep infliction is blocked project-wide (see MoveData.is_uproar's own doc
+# comment for the full field-wide-scope citation).
+# Source: gBattleMons[].volatiles.uproarTurns; B_UPROAR_TURNS>=GEN_5 → 3.
+var uproar_turns: int = 0
+
 # Volatile: semi-invulnerable state (underground, on-air, underwater).
 # Set on the charge turn of a semi-invulnerable two-turn move; cleared on release.
 # Incoming moves miss unless their bypass flag matches (damages_underground etc.).
@@ -342,6 +374,19 @@ var truant_loafing: bool = false
 # Baton-Pass volatile-copy list), matching minimized/defense_curled's precedent.
 var flash_fire_active: bool = false
 
+# [M19-recharge] Pending recharge: set true on a successful, non-immune hit
+# with an is_recharge move (Hyper Beam/Blast Burn/Hydro Cannon/Frenzy Plant/
+# Giga Impact/Rock Wrecker/Roar of Time/Prismatic Laser/Meteor Assault/
+# Eternabeam). The NEXT time this Pokémon would act, StatusManager.
+# pre_move_check blocks the action entirely (checked BEFORE Sleep, matching
+# source's CANCELER_RECHARGE running before CANCELER_ASLEEP_OR_FROZEN) and
+# clears this flag — a single boolean reproduces source's literal
+# rechargeTimer=2/decrement-twice shape, since the observable behavior is
+# just "block exactly the next turn, then clear." Cleared unconditionally by
+# _clear_volatiles on switch-out/faint, same as flash_fire_active above —
+# source's rechargeTimer lives in the same bulk-memset Volatiles struct.
+var must_recharge: bool = false
+
 # M17n-5: Slow Start's 5-turn Atk/Speed-halving timer (source: volatiles.slowStartTimer,
 # battle_util.c L3052-3055/3649-3654; B_SLOW_START_TIMER = 5). Set to 5 on switch-in via
 # try_switch_in, decremented post-check at end-of-turn via try_end_of_turn (source's own
@@ -394,6 +439,33 @@ var cud_chew_armed: bool = false
 # cleared on switch-out — a Pokémon that ate a berry, switched out, and switched
 # back in can still have that berry Harvested/Cud-Chewed later, matching source.
 var last_consumed_berry: ItemData = null
+
+# [Bucket 4 cheapest singles] Rage's persistent "Attack rises when hit" volatile.
+# Source: volatiles.rage (battle_script_commands.c :: case MOVE_EFFECT_RAGE,
+# L2514-2515 — set TRUE unconditionally on a successful hit, no `.chance` field,
+# self=TRUE). Cleared two ways in source, both reproduced here: (1) at the START
+# of every turn, for any battler whose CHOSEN move this turn is NOT Rage itself
+# (battle_main.c L5269-5270) — reproduced as a check at the top of
+# `_phase_move_execution`, the same place `destiny_bond` resets; (2) implicitly,
+# by this project's GEN_LATEST config matching source's B_RAGE_BUILDS >= GEN_4
+# behavior (`SetOrClearRageVolatile`, battle_util.c L10899-10904): the volatile
+# is only ever set on a genuine hit, never on a miss/Protect/fail — reproduced by
+# gating the SET (not a separate clear) on `damage > 0`. Cleared by
+# `_clear_volatiles` on switch-out, same whole-`volatiles`-struct-memset shape as
+# every other switch-cleared volatile above.
+var rage_active: bool = false
+
+# [Bucket 4 cheapest singles] Throat Chop's 2-turn "target's sound moves fail"
+# timer. Source: volatiles.throatChopTimer (battle_script_commands.c ::
+# case MOVE_EFFECT_THROAT_CHOP, L2619-2624 — set to B_THROAT_CHOP_TIMER=2, no
+# refresh if already active; battle_end_turn.c L61-63/L1280-1311 decrements at
+# end of turn). Checked at move-selection/execution time
+# (battle_move_resolution.c L351: `throatChopTimer > 0 && IsSoundMove(move)` —
+# blocks the move from executing), reproduced at the same "chosen, then fails at
+# execution" insertion point Disable/Assault Vest already use in
+# `_phase_move_execution`, gated on `move.sound_move` instead of a specific move
+# ID. Cleared by `_clear_volatiles` on switch-out, same shape as `disable_turns`.
+var throat_chop_turns: int = 0
 
 var fainted: bool = false
 

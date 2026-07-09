@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m19secstattest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m19_secondary_stat_test.gd" id="1_m19secstattest"]
+
+[node name="M19SecondaryStatTest" type="Node"]
+script = ExtResource("1_m19secstattest")

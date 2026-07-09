@@ -15049,3 +15049,2124 @@ summary block's running totals recomputed (155→216 implemented,
 `[M19-bucket1]` complete and the new running move-implementation count
 (155→216). Next recommended tier: Bucket 2 (246 moves), likely needing
 its own further internal chunking given its size.
+
+## [M19-bucket2] Bulk move implementation, Bucket 2 (single-mechanism reuse)
+
+### Step 0 findings
+
+Second execution slice of `[M19-rescope]`'s mechanism-based re-bucketing.
+Bucket 2's plan section declared 246 moves as reusing exactly one existing
+secondary mechanism, but never stored the literal move-ID list ("full
+move-by-move ID list omitted here for length" per the plan's own text) — it
+was re-derived fresh from source this session and cross-checked against the
+plan's own declared 10-way sub-cluster breakdown (166/39/9/9/8/4/4/3/2/2 =
+246), an exact match confirming the reconstruction. Individual Step 0
+verification then found **four separate classification gaps**, a
+substantially higher exception rate than `[M19-bucket1]`'s 9%:
+
+**1. 15 moves needing a mechanism this project doesn't have** — none of
+these were caught by the plan's own primary-effect clustering, which only
+checked whether a move's primary `.effect` token was in an already-safe
+list, not whether the SPECIFIC dispatch shape it implied actually exists:
+
+| Move(s) | Real mechanism found | Why out of scope |
+|---|---|---|
+| Jump Kick(26), High Jump Kick(136), Axe Kick(781), Supercell Slam(844) | `EFFECT_RECOIL_IF_MISS` — self-damage on a MISS, not a hit | `recoil_percent`'s dispatch (`battle_manager.gd:4096`) requires `damage > 0` — structurally cannot fire on a miss |
+| Super Fang(162), Ruination(803) | `EFFECT_FIXED_PERCENT_DAMAGE` — 50% of the target's CURRENT HP | No field computes a percentage of current HP; `fixed_damage` is a flat int, `level_damage` is level-based |
+| Meteor Beam(728), Electro Shot(833) | Charge-turn Sp.Atk boost (+ Electro Shot needs a rain-skip charge) | `charge_turn_defense_boost` is hardcoded to Defense only (dispatch hardcodes `STAGE_DEF`); `is_solar_beam` is hardcoded to sun only |
+| Thunder(87), Hurricane(542), Bleakwind/Wildbolt/Sandsear Storm(774/775/776) | Weather-conditional accuracy (`alwaysHitsInRain`/`accuracy50InSun`) | `StatusManager.check_accuracy()` has no move-level weather-accuracy hook at all |
+| Burning Jealousy(735), Alluring Voice(842) | `onlyIfTargetRaisedStats` — secondary only fires if the target's stats rose this turn | No "stat raised this turn" tracking exists anywhere |
+
+**2. 15 more moves are genuinely multi-stat-in-one-block**, found via a
+widened multi-stat scanner built specifically because the first pass
+(reusing `[M19-rescope]`'s own detector) produced a suspiciously exact match
+to the plan's stale numbers. Root cause: the detector only scanned
+`STAT_CHANGE_EFFECT_PLUS/MINUS` blocks (the pure-stat-move shape) for
+distinct stat sub-fields, never `MOVE_EFFECT_STAT_PLUS/MINUS` blocks (the
+damage-move-with-self-stat-drop shape — Superpower, Close Combat). This let
+Calm Mind, Ancient Power, Silver Wind, Ominous Wind, Cosmic Power, Quiver
+Dance, Work Up, Noble Roar, Tearful Look, Decorate, Dragon Ascent, Headlong
+Rush, and Armor Cannon slip through as "single-mechanism" despite each
+setting 2-5 stat sub-fields in one block — the same "multi-stat-in-one-block"
+shape `[M19-rescope]` itself already named as Bucket 3's own category.
+Moved into Bucket 3's own multi-stat-in-one-block category (see Docs
+below); the plan's own stale Bucket 3 count (15) inherited the identical
+scan gap and is corrected alongside this tier's own totals (15→30).
+
+**Correction (per `[M19-secondary-stat-audit]`, 2026-07-09):** the last
+sentence above is wrong about *why* the plan's Bucket 3 count was stale.
+These 15 moves were not missed due to a field-naming gap in any
+classifier — they were already correctly detected, with correct
+`spAtk`/`spDef` data, in a pre-`[M19-rescope]` scratchpad scan
+(`multi_stat_moves.json`, 41 candidates total). The actual gap was that
+`[M19-rescope]`'s manual reclassification pass only acted on 8 of those 41
+candidates, leaving 33 unreconciled, of which these 15 surfaced here. This
+is a detected-but-unreconciled-candidates failure, distinct from (and more
+consequential than) a field-naming bug. The original paragraph above is
+left intact for the historical record; this correction documents what the
+audit actually found, not a retroactive rewrite of what was believed at
+the time.
+
+**3. The single highest-leverage gap found in this entire M19 effort: ALL
+79 `EFFECT_HIT` + `STAT_PLUS`/`STAT_MINUS`-token moves** — Bug Buzz, Focus
+Blast, Energy Ball, Earth Power, Iron Tail, Metal Claw, Steel Wing, Shadow
+Ball, Meteor Mash, Crunch, Psychic, Play Rough, Moonblast, Bubble Beam,
+Aurora Beam, Acid, Constrict, Bubble, Mud-Slap, Icy Wind, Rock Tomb, and 58
+more (full list in the plan doc's new Bucket 4 sub-group). Confirmed via
+this project's OWN pre-existing comment (`item_manager.gd:768`): **"this
+project's `stat_change_stat` schema has NO probability field at all, so no
+damaging move can carry a probabilistic stat-lowering secondary effect
+here."** Independently re-verified by tracing every `stat_change_stat`
+reference in `battle_manager.gd`: all of them live inside the
+pure-status-move-only branch (`category == STATUS`, gated well before any
+damage-dealing code runs) — there is no dispatch path anywhere that both
+deals damage AND rolls+applies a stat change. The plan's own confident
+claim that "their real mechanics... are the exact same generic
+stat_change_stat/amount/self dispatch every other Tier 2 stat-change move
+already uses" (from `[M19-pipeline-fix]`'s own entry) was an unverified
+assumption, not a confirmed precedent — Mud-Slap/Icy Wind/Rock Tomb, cited
+there as examples, are not actually implemented. This single new mechanism
+(extend `EFFECT_HIT`'s dispatch to roll+apply `stat_change_stat`, mirroring
+`try_secondary_effect`'s existing chance-roll shape) would unlock all 79
+moves at once if built — flagged as its own high-priority Bucket 4 named
+sub-group, not built here per this tier's explicit no-new-dispatch scope.
+
+**4. Two more found via a `.target` field sweep across all candidates**:
+Howl(336) (`TARGET_USER_AND_ALLY` at GEN8+) and Aromatic Mist(597)
+(`TARGET_ALLY` — buffs the ally, not the user at all). Neither
+self-vs-opponent shape `stat_change_self` supports; this project has no
+ally-targeting stat-change mechanism in any form.
+
+**Confirmed final: 135 of Bucket 2's 246 moves are genuinely
+single-mechanism reuse**, organized into 8 mechanism groups (matching the
+plan's own sub-clustering minus the exclusions above): `EFFECT_HIT` +
+single secondary (72), pure `EFFECT_STAT_CHANGE` (30), `EFFECT_NON_VOLATILE_
+STATUS` (9), `EFFECT_RECOIL` (9), `EFFECT_ABSORB` (8), `EFFECT_CONFUSE` (3),
+`EFFECT_SEMI_INVULNERABLE` (2, Dive/Bounce), `EFFECT_TWO_TURNS_ATTACK` (2,
+Freeze Shock/Ice Burn — the other 2 of this primary effect's 4 members are
+in gap #1 above).
+
+**Side finding, applied not just flagged**: `EFFECT_ABSORB`'s `.healingMove`
+field (Triage priority-boost interaction) resolves TRUE for every one of
+this tier's 8 absorb moves (`B_HEAL_BLOCKING >= GEN_6`, confirmed TRUE at
+this project's GEN_LATEST config) — set on all 8, closing the same gap
+`[M19-bucket1]`'s own decisions.md entry flagged (but didn't fix) on the
+already-implemented Absorb/Giga Drain family from an earlier tier. That
+earlier gap remains unfixed (out of this tier's own move-list scope) but is
+re-flagged here for visibility.
+
+### Implementation
+
+- `scripts/gen_moves.py`: 135 new entries appended to `MOVES` after Bucket
+  1's block, grouped by mechanism (no per-move source comments at this
+  volume — matching the plan document's own "full list omitted for length"
+  precedent for large single-shape buckets; full field-mapping-per-move
+  citations live in this Step 0 section above and the mechanism-grouped
+  test file). No changes to `DEFAULTS`/`FIELD_ORDER` — every field used was
+  already registered. No `battle_manager.gd`/`status_manager.gd`/
+  `damage_calculator.gd`/`ability_manager.gd` changes — per this tier's own
+  scope, zero new dispatch logic for any confirmed-pure-reuse move.
+- 135 new `.tres` files regenerated — 351 total move `.tres` files, up
+  from 216.
+
+### Testing
+
+New `scenes/battle/m19_bucket2_test.gd`/`.tscn`: 8 separate parameterized
+loops, one per mechanism group (matching this tier's own explicit
+instruction to keep failures attributable to a specific mechanism rather
+than one undifferentiated 135-row table), 2760/2760 assertions, passed
+clean after two fix rounds (see Errors below).
+
+Each group's loop checks core data (name/type/category/power/accuracy/pp)
+plus every mechanism-specific field (`secondary_effect`/`secondary_chance`,
+`stat_change_stat`/`amount`/`self`, `recoil_percent`, `drain_percent`,
+`two_turn`/`semi_inv_state`, `breaks_screens`) and every widened flag from
+Step 0's checklist, WITH negative checks for every flag a move does NOT
+carry (confirms the tables aren't vacuously passing). Functional section
+(5 checks, deliberately lean): F1 a representative `EFFECT_HIT` move (Fire
+Punch) deals real damage through the actual dispatch pipeline; F2/F3
+`makes_contact` still triggers Rough Skin on this batch's own new moves
+with a non-contact discriminator; F4/F5 the newly-added `healing_move` flag
+on Bitter Blade actually grants Triage's +3 priority bonus, with a
+discriminator confirming a non-healing move gets none. Every OTHER
+mechanism (`EFFECT_STAT_CHANGE`, `EFFECT_NON_VOLATILE_STATUS`,
+`EFFECT_CONFUSE`, `EFFECT_RECOIL`, `EFFECT_ABSORB`'s own drain,
+`EFFECT_SEMI_INVULNERABLE`'s bypass) is deliberately NOT re-proven
+functionally — each is already established in general by an earlier tier
+(Swords Dance/Growl, Sleep Powder/Thunder Wave/Toxic/Will-O-Wisp, Confuse
+Ray, Take Down/Double-Edge, Absorb/Giga Drain, Fly/Dig respectively) —
+re-deriving them here would repeat an already-covered mechanism on new
+data, not test anything new, matching `[M19a-gen1]`/`[M19-bucket1]`'s own
+established testing-scope convention.
+
+### Regression
+
+Per this task's own explicitly non-negotiable regression set (given this
+tier's size/breadth): `item_registry_test.tscn` 309/309, `damage_test.tscn`
+24/24, `status_test.tscn` 78/78, `stat_test.tscn` 78/78 — all unchanged,
+confirmed via direct foreground runs with a clean Godot process state
+before and after.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated: Bucket 2 marked complete (135
+implemented; 111 reclassified — 15 multi-stat moves moved into Bucket 3
+[15→30], the other 96 [15 assorted new-mechanism + 79 secondary-stat-on-hit
++ 2 ally-targeting] folded into Bucket 4 under 7 new named sub-groups,
+including `M19-secondary-stat-on-hit`, the 79-move high-leverage group),
+Section A/E tables and the top summary block's running totals recomputed
+(216→351 implemented, 718→583 remaining). CLAUDE.md's status section
+updated noting `[M19-bucket2]` complete and the new running
+move-implementation count (216→351). Next recommended tier: Bucket 3 (now enlarged to 30 moves after
+absorbing the 15 multi-stat corrections above) — Bucket 4's sub-groups are
+each better suited to their own small dedicated mechanism-building sessions
+than another bulk pass, per this task's own closing guidance.
+
+
+## [M19-secondary-stat-on-hit] Unlocks the 79 EFFECT_HIT+stat-token moves
+
+### Step 0 findings
+
+`[M19-bucket2]`'s finding #3 (Bucket 4's single highest-leverage sub-group):
+79 `EFFECT_HIT` moves carry a `MOVE_EFFECT_STAT_PLUS`/`STAT_MINUS` secondary
+that `stat_change_stat`'s schema had no way to attach to a damaging move.
+Per this project's own standing discipline, none of that entry's numbers or
+claims were trusted blindly — everything was re-verified from scratch this
+session, using a genuinely different extraction method (Python regex against
+`moves_info.h`'s brace-matched blocks) than whatever produced the original
+79-list, then cross-checked byte-for-byte against a raw pre-compaction
+extraction from earlier in the same investigation.
+
+**1. Move list re-derived and reconciled**: found 92 `EFFECT_HIT` +
+`MOVE_EFFECT_STAT_PLUS`/`MINUS` entries total. A first draft of the
+extraction script had its own bug — worth recording since it's a new
+failure mode, not a repeat of the stat-subfield ground-truth already
+documented in CLAUDE.md: it resolved GEN-conditional ternaries by blindly
+taking the FIRST branch regardless of the comparison operator (`>=` vs `<`),
+which happened to be correct for "newer generation wins" ternaries but
+silently WRONG for moves whose two sub-fields are each individually gated by
+opposite-direction comparisons on the SAME condition (Crunch:
+`.defense = B_UPDATED_MOVE_DATA >= GEN_4 ? 1 : 0` alongside
+`.spDef = B_UPDATED_MOVE_DATA < GEN_4 ? 1 : 0` — under this project's
+GEN_LATEST config only `.defense` should resolve nonzero, but the buggy
+resolver took `1` for both, misclassifying Crunch and Acid as multi-stat).
+Fixed by resolving each ternary against its own actual operator (`>=`/`>` →
+first branch, `<`/`<=` → second branch) rather than a positional guess.
+After the fix: 82 single-stat, 10 genuinely multi-stat (Bucket 3 territory,
+correctly excluded — Ancient Power, Superpower, Silver Wind, Close Combat,
+Ominous Wind, V-create, Dragon Ascent, Headlong Rush, Armor Cannon, and
+Clangorous Soulblaze — the last a Z-move-exclusive whose enum value is
+auto-incremented rather than explicitly assigned, so it never resolves a
+numeric ID and is out of scope regardless of its stat shape). Minus Triple
+Arrows(771) and Make It Rain(802) (each already flagged in `[M19-bucket2]`
+as needing their own separate mechanism) = 79.
+
+**Count correction — the true, final number is 79, not 78.** Bleakwind
+Storm(774) genuinely IS double-blocked (see finding #2 below) and IS
+excluded from the 79 — but it was ALREADY excluded before this session
+started; it was never one of the 79 to begin with, so "79 minus Bleakwind
+Storm" double-subtracts something that was never counted. This was caught
+by cross-referencing this session's fresh 79-move ID list against a raw,
+unfiltered 91-entry extraction saved earlier in the same investigation
+(before the session was compacted): the raw list's 91 entries minus its own
+9 multi-stat moves minus Triple Arrows/Make It Rain/Bleakwind Storm (12
+total) = 79, an EXACT ID-for-ID match against this session's independently
+re-derived 79 (the raw list's 91 vs. this session's 92 differ by exactly one
+— Clangorous Soulblaze, missed by the earlier pass's ID-resolution, already
+out of scope either way). A restatement of this figure during scoping
+("78 (79 minus Bleakwind Storm)") was consequently wrong; both independent
+derivations agree the correct figure is 79, with Bleakwind Storm already
+outside that count. All 79 confirmed implemented this session; see
+Testing/Docs below.
+
+**2. Gap mechanism reproduced independently**, via a different method
+(branch-condition tracing) than whatever produced the original finding
+(reference-location scanning): `battle_manager.gd`'s entire
+`stat_change_stat` dispatch lives inside the `else` branch of
+`if move.power > 0:` — physically unreachable for any move with `power > 0`,
+i.e. every one of these 79 by construction. **New finding, not previously
+documented**: Bleakwind Storm(774) is double-blocked — it carries BOTH the
+weather-conditional-accuracy problem (`[M19-bucket2]`'s finding #1, still
+unbuilt) AND a `MOVE_EFFECT_STAT_MINUS` token (Speed -1, 30%). Its stat-on-hit
+half is now technically unblocked by this session's work, but it still needs
+`M19-weather-conditional-accuracy` before it can ship, so it remains
+excluded — not double-counted between the two sub-groups, not silently
+dropped from either.
+
+**3. Dispatch precedent confirmed extensible, with two guard clauses to
+update, not one**: `StatusManager.try_secondary_effect`'s gating (chance
+roll, Serene Grace, Shield Dust, Covert Cloak, Sheer Force) all key generically
+on `is_true_secondary = move.secondary_chance > 0`, positioned before the
+`match move.secondary_effect:` dispatch — confirmed genuinely reusable for a
+stat-change payload. But TWO gates needed updating, not one, since these 79
+moves have `secondary_effect == SE_NONE` by construction: the caller's own
+gate in `battle_manager.gd` (`if damage > 0 and move.secondary_effect !=
+MoveData.SE_NONE:`) filters BEFORE `try_secondary_effect` is even called, and
+`try_secondary_effect`'s own internal `if move.secondary_effect == SE_NONE:
+return false` would filter it a second time even if the caller's gate were
+fixed alone.
+
+**4. Self-targeted fraction much higher than assumed**: 24 of 79 (30%), not
+"almost certainly foe-only" as the task's own framing assumed. The existing
+`stat_change_self` field already generalizes correctly (no schema change
+needed) — the new dispatch just needed to read it, matching the pre-existing
+pure-status-move branch's own `attacker if move.stat_change_self else
+defender` pattern exactly.
+
+**5. Magnitude and chance-encoding spread wider than assumed**: not
+uniformly ±1 — 10 of the 79 are ±2 (7 self-targeted guaranteed: Overheat,
+Draco Meteor, Leaf Storm, Psycho Boost, Fleur Cannon spAtk-2, Diamond Storm
++2 Def, Spin Out -2 Speed; 3 foe-targeted probabilistic: Seed Flare, Acid
+Spray, Lumina Crash, all Sp.Def-2). Separately, of the 69 moves with a
+nonzero chance, 10 (Ice Hammer, Clanging Scales, Fleur Cannon, Zippy Zap,
+Spin Out, Overheat, Psycho Boost, Hammer Arm, Draco Meteor, Leaf Storm — all
+self-targeted post-hit drops) OMIT the `.chance` field in source entirely
+rather than setting it to an explicit 100 — encoded here as
+`secondary_chance = 0` (this project's established "guaranteed, skip roll,
+EXEMPT from Shield Dust/Sheer Force/Serene Grace" convention, not "100
+probabilistic that happens to always fire"), matching real game behavior:
+Overheat/Draco Meteor/Leaf Storm/Psycho Boost's self stat-drop is confirmed
+NOT affected by Sheer Force in the actual games. The other 69 have an
+EXPLICIT `.chance` value in source and are encoded with their real number,
+remaining subject to Shield Dust/Covert Cloak/Sheer Force/Serene Grace like
+any other true secondary effect.
+
+**6. Sheer Force confirmed already fully generic on both halves**: the
+power-boost multiplier (`AbilityManager.move_power_modifier_uq412`,
+`ability_manager.gd:1790`) and the effect-suppression gate (inside
+`try_secondary_effect`) both key purely on `move.secondary_chance > 0`, with
+zero cross-check against `secondary_effect`'s type. Setting
+`secondary_chance` correctly per finding #5 above (0 for the 10
+guaranteed-omitted moves, the real value for the other 69) makes both gates
+work correctly for free — confirmed via `m19_secondary_stat_test.gd`'s B5/B6
+functional pair (Iron Tail: Sheer Force suppresses AND boosts; Overheat:
+neither, discriminator).
+
+### Design
+
+`StatusManager.try_secondary_effect` (`status_manager.gd`) gained one new
+escape hatch, positioned right before its `match move.secondary_effect:`
+dispatch: `if move.secondary_effect == MoveData.SE_NONE and
+move.stat_change_stat >= 0: return true` — the exact same "return true, let
+the caller apply it" shape the pre-existing `SE_FLINCH` case already uses,
+since the actual stage math (Mirror Armor redirect, Defiant/Competitive,
+Opportunist, Mirror Herb) needs `BattleManager`-level context (signal
+emission, `_get_live_opponents`, `_consume_item`) a static `StatusManager`
+function doesn't have. Its own internal early-return guard was widened from
+`if move.secondary_effect == MoveData.SE_NONE: return false` to also check
+`and move.stat_change_stat < 0`, so a stat-change payload survives past it
+to reach the new escape hatch.
+
+`battle_manager.gd`'s caller-side gate (inside `_do_damaging_hit`) was
+widened identically: `if damage > 0 and (move.secondary_effect !=
+MoveData.SE_NONE or move.stat_change_stat >= 0):`.
+
+New `BattleManager._apply_stat_change_effect(attacker, defender, move,
+ng_active) -> void` — extracted VERBATIM from the pre-existing pure-status-
+move `EFFECT_STAT_CHANGE` dispatch (previously inline inside
+`_phase_move_execution`'s `if move.stat_change_stat >= 0:` branch), so both
+call sites share one implementation of the Mirror Armor redirect / Defiant-
+Competitive / Opportunist / Mirror Herb logic rather than the new call site
+re-deriving any of it. The pure-status-move branch now just calls this
+function; behavior there is unchanged (confirmed via the full `stat_test`/
+`m17b_test`/`m17n8_test`/`m17n11_test`/`m18m_test` regression, all green,
+0 changes).
+
+A new dedicated branch was added inside `_do_damaging_hit`'s `if effect_hit:`
+dispatch — `elif move.secondary_effect == MoveData.SE_NONE and
+move.stat_change_stat >= 0: _apply_stat_change_effect(attacker, target, move,
+ng_active)` — deliberately its own branch (the same reason `SE_WRAP` already
+has one): the general `else` branch's status/confusion-cure-berry checks
+assume the secondary effect just set `target.status`/`confusion_turns`,
+which a stat change never does.
+
+### Test plan
+
+New `scenes/battle/m19_secondary_stat_test.gd`/`.tscn`. Section A: one
+table-driven loop over all 79 confirmed moves (not one function per move) —
+core data (name/type/category/power/accuracy/pp) plus
+`stat_change_stat`/`amount`/`self`/`secondary_chance`, a check that
+`secondary_effect` stays `SE_NONE` for every one of them, and every relevant
+move flag (`makes_contact`/`punching_move`/`biting_move`/`sound_move`/
+`slicing_move`/`ballistic_move`/`always_critical_hit`/`is_spread`/
+`critical_hit_stage`/`priority`) with implicit negative checks via the
+`token in tokens` pattern.
+
+Section B, 8 functional checks: B1 Icy Wind (chance=100, foe, Speed-1,
+covering the ±1 magnitude case) fires deterministically in a full battle
+with primary damage still confirmed nonzero (the discriminator the task
+asked for: secondary firing must never suppress/alter the hit) and
+`stat_stage_changed` landing on the defender; B2 Flame Charge (self,
+chance=100) confirms self-targeting lands on the attacker, not the
+defender; B3 Acid Spray (chance=100, foe, Sp.Def-2) covers the ±2 magnitude
+case; B4 Iron Tail (chance=30) direct `StatusManager.try_secondary_effect`
+calls with `force_secondary=true`/`false` prove the gate respects forcing in
+both directions, reusing this project's own established convention for
+deterministic secondary-chance testing (`stat_test.gd`/`m17n1_test.gd`/
+`m17n5_test.gd`) rather than a nonexistent `_force_roll`-style full-battle
+seam — no such seam exists for the secondary-chance roll specifically (`
+_force_roll` only controls the separate 85-100% damage-variance roll); B5/B6
+the Sheer Force pair described in finding #6 above; B7 Fire Lash (chance=100,
+foe, Def-1) against a Mirror Armor holder confirms the redirect fires onto
+the attacker, reusing `[M17n-11]`'s own `m17n11_test.gd` Section 7 full-battle
+pattern; B8 Overheat (self) against a Mirror Armor holder confirms a
+self-targeted drop is never redirected (the holder was never the stat_target
+to begin with), proving the new call site correctly inherits the pre-existing
+gate rather than needing a bespoke exemption.
+
+**1754/1754 assertions pass on the first run.**
+
+### Regression
+
+Per this task's own non-negotiable set: `item_registry_test.tscn` 309/309,
+`status_test.tscn` 78/78, `stat_test.tscn` 78/78, `damage_test.tscn` 24/24 —
+all unchanged. Given how central `_apply_stat_change_effect`'s extraction is
+(shared by every move that has ever exercised the pure-status-move
+`EFFECT_STAT_CHANGE` path), a wider safety sweep was also run beyond the
+specified set: `m17b_test.tscn` 109/109 (Defiant/Competitive's origin suite),
+`m17n8_test.tscn` 58/58 (Opportunist's origin suite), `m17n11_test.tscn`
+51/51 (Mirror Armor's origin suite), `m18m_test.tscn` 27/27 (Mirror Herb's
+origin suite), `move_test.tscn` 49/49, `tier4_test.tscn` 86/86 — all
+unchanged, 0 failures.
+
+### Data
+
+79 new move dict entries added to `scripts/gen_moves.py` (organized as one
+new block, source-cited inline); 79 new `.tres` files regenerated — 430
+total move `.tres` files, up from 351.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated: `M19-secondary-stat-on-hit` marked
+COMPLETE in both the Bucket 4 section and the two "recommended execution
+order" lists; Bucket 4's own totals recomputed (141→62 moves, 28→27
+sub-groups); the `M19-weather-conditional-accuracy` sub-group's description
+corrected to flag Bleakwind Storm's double-block explicitly; the 78-vs-79
+count correction documented inline; the top summary table and its
+reconciliation formula recomputed (351→430 implemented, 188→109 remaining
+proposed sub-tiers, 430+109+1+213+181=934 reconfirmed by direct addition).
+CLAUDE.md's status section gained a new `[M19-secondary-stat-on-hit]` bullet
+noting the same running total.
+
+
+## [Bucket 3 multi-stat] Unlocks Bucket 3's multi-stat-in-one-block cluster
+
+### Part A: doc-sync fix (pure mechanical, no design decision)
+
+`docs/m19_subtier_plan.md`'s top summary block (lines ~108-154, including
+Section A's classification table) had never been updated after
+`[M19-secondary-stat-on-hit]` shipped — it still read the pre-that-session
+figures ("351 implemented... 583 remain... 188 fall into proposed
+sub-tiers... 188+1+213+181=583") while Section E's bottom summary already
+reflected the correct state (430 implemented). Fixed: top-of-doc
+351→430/583→504, Section A's Tier 2 row 178→257/130→51 (added "+79
+`[M19-secondary-stat-on-hit]`"), Total row and both reconciliation
+paragraphs recomputed to match. A full-document sweep for any other stale
+figure found none beyond a historical delta note (correctly describing a
+past transition) and two move-ID false positives (Shock Wave(351), Play
+Rough(583)). Confirmed top-of-doc and Section E state identical numbers
+before starting Part B, per this task's own explicit sequencing
+requirement.
+
+### Part B: Step 0 findings
+
+Bucket 3's multi-stat-in-one-block cluster (25 moves per the plan doc) was
+re-derived fresh from `moves_info.h` rather than trusted from the plan
+doc's own list, matching this project's standing discipline. **A real gap
+was found and fixed in the extraction methodology itself, before trusting
+any output**: the first-draft scanner only detected "many stats packed into
+ONE block" (Growth/Ancient Power shape — CLAUDE.md's existing stat-subfield
+convention) and missed **Spicy Extract(786)**, which uses a genuinely
+different shape — two SEPARATE single-stat blocks
+(`STAT_CHANGE_EFFECT_PLUS{.attack=2}` + a second, independent
+`STAT_CHANGE_EFFECT_MINUS{.defense=2}`) that together touch 2 stats.
+Broadened the detector to union stats across ALL of a move's stat-change
+blocks, not just within one. Separately, the ID resolver needed a proper
+sequential C-enum walker rather than a regex for `= <int>` literals —
+Hone Claws' ID is defined as `= MOVES_COUNT_GEN4`, an auto-incremented
+symbolic generation-boundary constant, the same class of gap
+`[M19-secondary-stat-on-hit]` hit for Clangorous Soulblaze. After both
+fixes, the re-derived 25-move ID list matched the plan doc's own list
+byte-for-byte — an independent cross-validation, not just a repeat of the
+same derivation.
+
+**Dispatch shape confirmed NOT uniform**: 8 of 25 are `EFFECT_HIT` (damage
+moves — Ancient Power, Superpower, Silver Wind, Close Combat, Ominous Wind,
+Dragon Ascent, Headlong Rush, Armor Cannon), routed through
+`[M19-secondary-stat-on-hit]`'s dispatch; 17 are `EFFECT_STAT_CHANGE` (pure
+status moves), routed through the pre-existing pure-status dispatch. Both
+paths needed extending, not just one.
+
+**Magnitude/sign confirmed NOT uniform ±1**: Shell Smash mixes +2
+(Atk/SpAtk/Speed) with -1 (Def/SpDef) in ONE move; Shift Gear mixes +1 Atk
+with +2 Speed; Spicy Extract mixes +2 Atk with -2 Def.
+
+**A third targeting mode found, not just self/foe**: of the 17
+`EFFECT_STAT_CHANGE` moves, 11 are `TARGET_USER` (self), 5 are
+`TARGET_SELECTED` (foe), and **Coaching(739) is `TARGET_ALLY`** — a mode
+`stat_change_self: bool` cannot represent at all, the same blocker already
+known for `M19-ally-targeting-stat-change` (Howl/Aromatic Mist). Carved
+Coaching out of this tier's buildable scope and merged it into that
+sub-group instead (now 3 moves), leaving **24 moves shipped here, not 25**.
+
+**Chance encoding**: the 8 `EFFECT_HIT` moves split into explicit chance=10
+(Ancient Power/Silver Wind/Ominous Wind) and omitted/guaranteed
+(Superpower/Close Combat/Dragon Ascent/Headlong Rush/Armor Cannon), encoded
+`secondary_chance=0` — the same guaranteed-vs-explicit distinction
+`[M19-secondary-stat-on-hit]` established. All 17 `EFFECT_STAT_CHANGE`
+moves are unconditional by construction (no chance field exists in that
+dispatch shape).
+
+**Sheer Force / Mirror Armor / Contrary — checked, confirmed to generalize
+correctly PROVIDED the implementation applies each (stat, amount) pair
+independently, not the whole move atomically**:
+- Sheer Force: gated on `secondary_chance > 0` before any stat is applied —
+  already fully generic, zero new code.
+- Contrary: applied inside `StatusManager.apply_stat_change` itself, called
+  once per pair — already fully generic.
+- Mirror Armor: needs per-pair evaluation — Spicy Extract is the concrete
+  case (its +2 Atk must NOT redirect, its simultaneous -2 Def MUST), a
+  whole-move check would get this wrong.
+- Defiant/Competitive: confirmed via source that real game behavior fires
+  once per qualifying decrease (a 2-stat-lowering move against a Defiant
+  holder correctly triggers it twice) — reproduced deliberately, not
+  avoided as a "double-fire bug."
+
+### Design (confirmed with Rob before implementation, per Step 0's own
+### explicit fork)
+
+Generalized array-based mechanism, not a per-move flag matching
+`is_growth`'s precedent — `is_growth`'s own dispatch is bespoke around
+sun-doubling, not a reusable "N stat pairs" shape, and per-move flags would
+mean ~24 near-copies of that shape with no shared logic. The generalized
+mechanism was cheap specifically because `[M19-secondary-stat-on-hit]` had
+already extracted `BattleManager._apply_stat_change_effect` into one shared
+function reused by both the pure-status and `EFFECT_HIT` call sites.
+
+New `MoveData` fields: `extra_stat_change_stats: Array[int] = []`,
+`extra_stat_change_amounts: Array[int] = []` (parallel arrays, empty/
+omitted-from-`.tres` for all ~204 pre-existing single-stat moves — zero
+migration needed; empirically confirmed a plain bracket literal in a
+hand-written `.tres` loads correctly into a typed `Array[int]` export,
+Godot auto-converts on assignment).
+
+`_apply_stat_change_effect` refactored into a new per-pair private helper
+(`_apply_one_stat_change_pair`), called once for the primary pair
+(`stat_change_stat`/`amount`, unchanged) and once per extra pair — running
+the FULL per-pair logic (Mirror Armor redirect, `apply_stat_change`,
+Defiant/Competitive, Opportunist/Mirror Herb) independently for each pair,
+per the Step 0 findings above. Zero changes to either dispatch gate (both
+key only on the primary `stat_change_stat >= 0`) and zero changes to Sheer
+Force — both confirmed already generic.
+
+### Test plan
+
+New `scenes/battle/m19_bucket3_multistat_test.gd`/`.tscn`. Section A: one
+table-driven loop over all 24 moves (core data, primary stat/amount/self,
+secondary_chance where applicable, `extra_stat_change_stats`/`amounts`
+arrays, flag tokens).
+
+Section B, 7 functional checks scoped to what's genuinely new (stage math
+itself already proven by prior tiers, deliberately not re-derived): B1 a
+pure-status multi-stat move (Bulk Up) applies both stats to the attacker in
+one battle; B2 an `EFFECT_HIT` guaranteed multi-stat move (Superpower)
+fires with primary damage still nonzero and both stat drops landing
+correctly; B3 Spicy Extract against a Mirror Armor holder — the key new-
+behavior test — confirms only the -2 Def component redirects while the +2
+Atk component does not; B4 Tickle against a Defiant holder confirms it
+fires exactly twice (once per stat lowered), with the exact 3-event
+Attack-stage sequence (-1, +2, +2) checked via signal snapshot; B5 Sheer
+Force still suppresses Ancient Power's entire multi-stat secondary at the
+gate; B6 Opportunist copies BOTH of Bulk Up's raised stats independently;
+B7 Shell Smash's mixed +2/+2/+2/-1/-1 all land correctly on a self-targeted
+attacker with zero Mirror Armor/Defiant/Opportunist triggers.
+
+**One real test-authoring bug caught and fixed on the first run (365/366
+→ 366/366)** — a fresh instance of the documented whole-battle-aggregation
+pitfall: B4's original assertion read `holder.stat_stages[STAGE_ATK]`
+AFTER `start_battle()` returned, expecting a flat `+4` (two independent +2
+activations from a zero baseline) — but Tickle is the attacker's only
+move, so it re-fires on later turns once the holder survives, and more
+fundamentally the two Defiant activations are sequential state mutations,
+not independent: Tickle's own -1 Atk lands first (0→-1), the first +2
+activation lands on top of that (-1→+1), and the second +2 activation
+lands on top of THAT (+1→+3) — net +3, not +4. Fixed by snapshotting the
+first 3 `STAGE_ATK` events via signal (`[-1, 2, 2]`) instead of reading
+post-battle state, matching CLAUDE.md's own snapshot-via-signals
+convention.
+
+**366/366 assertions pass, stable across 3 reruns.**
+
+### Regression
+
+Per this task's own instruction (the same 4 required suites plus any suite
+touching the modified shared function, matching last session's
+wider-sweep judgment): `item_registry_test.tscn` 309/309, `status_test.tscn`
+78/78, `stat_test.tscn` 78/78, `damage_test.tscn` 24/24 — all unchanged.
+Wider sweep given `_apply_stat_change_effect`'s centrality: `m17b_test.tscn`
+109/109 (Defiant/Competitive), `m17n8_test.tscn` 58/58 (Opportunist),
+`m17n11_test.tscn` 51/51 (Mirror Armor), `m18m_test.tscn` 27/27 (Mirror
+Herb), `move_test.tscn` 49/49, `tier4_test.tscn` 86/86,
+`m19_secondary_stat_test.tscn` 1754/1754, `m19_bucket2_test.tscn`
+2760/2760 — all unchanged, 0 failures.
+
+### Data
+
+24 new move dict entries added to `scripts/gen_moves.py`; 24 new `.tres`
+files regenerated — 454 total move `.tres` files, up from 430.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated: Bucket 3's multi-stat cluster marked
+COMPLETE (30→5 remaining), `M19-ally-targeting-stat-change` grew 2→3
+(Coaching added), Bucket 4's own total grew 62→63 (sub-group count
+unchanged), both "recommended execution order" lists updated, top summary
+and Section E reconciled together (454+85+1+213+181=934, reconfirmed).
+CLAUDE.md's status section gained a new `[Bucket 3 multi-stat]` bullet
+noting the same running total (430→454).
+
+---
+
+## [Bucket 3 clusters 1-2] — Combined secondary effects + screen-and-damage (2026-07-09)
+
+Closes out Bucket 3 entirely (30/30). Two independent clusters, each with
+its own Step 0 investigation and its own design decision, per the task's
+explicit "treat as two Step 0 investigations before any implementation"
+instruction.
+
+### Cluster 1 — Combined secondary effects (Thunder Fang 422, Ice Fang 423,
+### Fire Fang 424)
+
+**Step 0.** Re-derived all three fresh from `moves_info.h` (brace-matched):
+each is `EFFECT_HIT` with TWO SEPARATE `ADDITIONAL_EFFECTS` blocks — a 10%
+status roll (`MOVE_EFFECT_PARALYSIS`/`MOVE_EFFECT_FREEZE_OR_FROSTBITE`/
+`MOVE_EFFECT_BURN`) and a 10% `MOVE_EFFECT_FLINCH`, confirmed literal and
+identical in shape across all three (only the status differs). Traced the
+real dispatch mechanism (`battle_script_commands.c ::
+Cmd_setadditionaleffects`, L3507-3553) rather than assuming the historical
+"10% status, 10% flinch, independently rolled" framing from memory: the
+function loops `numAdditionalEffects` via `gBattleStruct->
+additionalEffectsCounter`, and EACH entry gets its own independent
+`RandomPercentage(RNG_SECONDARY_EFFECT + counter, percentChance)` roll — a
+different RNG seed per effect index, confirmed via direct read, not
+inferred. `CalcSecondaryEffectChance` (battle_util.c L9436-9450, Serene
+Grace doubling) and `MoveIsAffectedBySheerForce`/`MoveEffectIsGuaranteed`
+(both keyed on `additionalEffect->chance`) are called PER additionalEffect,
+not once per move — confirming Serene Grace doubles each roll's chance
+independently, and Sheer Force/Shield Dust/Covert Cloak each independently
+gate every true-secondary (chance > 0) effect on the move, composing
+correctly for two effects with zero extra code.
+
+**Schema decision.** The existing single-slot `secondary_effect`/
+`secondary_chance` pair cannot represent two simultaneous SE_* rolls.
+Checked whether `SE_FLINCH` had any existing precedent for coexisting with
+another secondary on the same move — it doesn't (grep confirmed no move in
+the roster combines two SE_* values today). Added a new, fully independent
+`secondary_effect_2`/`secondary_chance_2` pair on `MoveData` (status stays
+in the pre-existing slot 1; flinch goes in the new slot 2) — structurally
+analogous to `[Bucket 3 multi-stat]`'s `extra_stat_change_stats`/`amounts`
+precedent (an "N-th slot" extension rather than a bespoke per-move flag),
+but NOT literally the same array-based mechanism, since only ever ONE
+second slot is needed here (no move in this project's roster has three or
+more independent secondary rolls) — a parallel-array generalization would
+have been over-built for a fixed 2-slot shape. Dispatched via a SECOND
+`StatusManager.try_secondary_effect` call on a shallow-duplicated `MoveData`
+(slot-2 values substituted into `.secondary_effect`/`.secondary_chance`) —
+the exact "duplicate and substitute" pattern `[M17n-6]` established for
+move-type mutation (Normalize/the "-ate" family), reused here instead of
+adding a second parameter to `try_secondary_effect`'s own signature. This
+composes every existing gate (Serene Grace/Shield Dust/Covert Cloak/Sheer
+Force) correctly for free, since each duplicated-move call independently
+re-derives its own `effective_chance` and re-checks the same
+attacker/defender ability gates against whichever (effect, chance) pair it
+was given.
+
+**A real cross-tier gap found and fixed**: `[M18k]`'s King's Rock/Razor
+Fang mutual-exclusion gate (`Cmd_setadditionaleffects`'s own
+`!MoveHasAdditionalEffect(move, MOVE_EFFECT_FLINCH)`, reproduced in this
+project as `move.secondary_effect != MoveData.SE_FLINCH`) only ever checked
+slot 1 — before this tier, no move had a native flinch anywhere but slot 1,
+so the gap was latent. With Thunder/Ice/Fire Fang's native flinch now
+living in slot 2, the existing gate would have incorrectly let King's Rock
+grant an ADDITIONAL independent flinch chance on top of the move's own
+native one, inflating the true flinch rate. Fixed by extending the gate to
+`move.secondary_effect != SE_FLINCH and move.secondary_effect_2 !=
+SE_FLINCH`. Verified via a dedicated statistical test (n=300, King's Rock's
+own roll forced true via `_force_kings_rock_roll`) that the observed
+target-flinch rate on a Thunder-Fang user still tracks the native ~10%,
+not the ~100% a stacked independent roll would produce if the fix were
+absent — mirroring `[M18k]`'s own K03 mutual-exclusion test pattern exactly
+(a per-turn-sampled statistical rate check, since an uncontrolled number of
+battle turns would otherwise compound the rate — the same whole-battle-
+aggregation pitfall CLAUDE.md's testing conventions document).
+
+### Cluster 2 — Screen + simultaneous damage (Glitzy Glow 683, Baddy Bad 684)
+
+**Step 0.** Re-derived fresh from source: both are `EFFECT_HIT` (power 80,
+accuracy 95 at this project's GEN_LATEST `B_UPDATED_MOVE_DATA >= GEN_8`
+config), Special category, each with a single `ADDITIONAL_EFFECTS` entry —
+`{.moveEffect = MOVE_EFFECT_LIGHT_SCREEN/MOVE_EFFECT_REFLECT, .self =
+TRUE}`, NO `.chance` field (primary/guaranteed, not a true secondary — so
+Shield Dust/Sheer Force/Serene Grace never apply, confirmed via the same
+`chance == 0 → guaranteed` distinction established repeatedly across prior
+M19 tiers). Traced `SetMoveEffect`'s `MOVE_EFFECT_REFLECT`/
+`MOVE_EFFECT_LIGHT_SCREEN` cases (battle_script_commands.c L2876-2889):
+both call the SAME `TrySetReflect`/`TrySetLightScreen` functions the
+pure-status Reflect/Light Screen moves already use (already-up no-refresh
+check, Light Clay duration extension) — confirmed NOT a separate "screen
+while damaging" code path in source at all, just the ordinary
+`Cmd_setadditionaleffects` dispatch every other additional effect goes
+through. Ran the requested verification directly rather than assuming
+either way: this project's OWN `is_reflect`/`is_light_screen` dispatch
+branches (in the pure-status-move section of `_phase_move_execution`) are
+gated to `return` immediately after setting the screen, with zero damage
+ever dealt — meaning a damaging move could never reach them, confirming
+the two mechanisms do NOT currently coexist and genuinely needed a new
+insertion point (not a "verify it's already fine" outcome, unlike some of
+this project's past "screen dispatch" verifications). Confirmed the target
+of `.self = TRUE` is the ATTACKER (`additionalEffect->self ? gBattlerAttacker
+: gBattlerTarget`), so the screen must land on the SETTER's own side, never
+the side being damaged.
+
+**Design.** New `sets_reflect_on_hit`/`sets_light_screen_on_hit` boolean
+`MoveData` flags (per-move, matching Cluster 1's own "fixed small number of
+shapes, no generalized mechanism needed" reasoning — only 2 moves, each a
+single fixed effect). Dispatched inside `BattleManager._do_damaging_hit`,
+unconditional on `damage > 0` alone (no `try_secondary_effect` call at all,
+since this is a guaranteed/primary effect by construction) — computes the
+attacker's own side locally (`_combatants.find(attacker)` / `_active_per_side`),
+mirroring Rapid Spin's existing same-shape pattern for an attacker-side
+post-damage effect, then reuses the identical already-up no-refresh check
+and `ItemManager.screen_turns(attacker, 5, ng_active)` Light-Clay-aware
+duration call the pure-status branches already use.
+
+### Test plan
+
+New `scenes/battle/m19_bucket3_cluster12_test.gd`/`.tscn`: Section A is a
+data-integrity check for all 5 moves (type/category/power/accuracy/pp/
+flags/both secondary slots). Section B (Cluster 1, 7 functional checks):
+slot 1's status fires via a direct `force_secondary=true`
+`try_secondary_effect` call (this project's established deterministic
+secondary-chance-testing convention, since no full-battle forcing seam
+exists for the chance roll itself); slot 2's flinch fires via the same
+direct-call convention on a duplicated `MoveData` (reproducing the real
+dispatch's own substitution); the two slots are shown to roll genuinely
+independently (slot 1 forced to miss, slot 2 independently forced to hit,
+in the same pair of calls); Sheer Force suppresses BOTH slots
+independently; Shield Dust blocks BOTH slots independently; a full-battle
+integration test with a synthetic 100%/100% `MoveData` (matching
+`m17b_test.gd`'s established "`MoveData.new()` with `secondary_chance =
+100`" precedent for deterministic full-battle secondary-effect proof)
+confirms the REAL `_do_damaging_hit` dispatch — not just
+`try_secondary_effect` standalone — fires both a paralysis status AND a
+flinch-skip from the same single hit; the King's Rock mutual-exclusion fix
+gets its own dedicated n=300 statistical rate test (detailed above).
+Section C (Cluster 2, 4 functional checks): Glitzy Glow deals real nonzero
+damage AND sets Light Screen (not Reflect) on the attacker's own side;
+Baddy Bad deals real nonzero damage AND sets Reflect (not Light Screen);
+a dedicated side-index check confirms `screen_set` always fires with
+`side == 0` (the attacker's, via `start_battle`'s own established
+first-arg-is-side-0 convention), never the target's side; an already-up
+no-refresh test confirms `move_effect_failed("already_light_screen")`
+fires when Light Screen is already up on the setter's own side, reached
+from the damage-dispatch path for the first time. **47/47 assertions pass,
+stable across 3 reruns.**
+
+### Regression
+
+Per this task's own instruction (the same 4 required suites plus any suite
+touching the modified shared function): `item_registry_test.tscn` 309/309,
+`status_test.tscn` 78/78, `stat_test.tscn` 78/78, `damage_test.tscn`
+24/24 — all unchanged. Wider sweep given `_do_damaging_hit`/
+`try_secondary_effect`'s centrality: `m16c_test.tscn` 60/60 (screens'
+origin suite), `m18k_test.tscn` 16/16 (King's Rock/Razor Fang, the gate
+this tier extended), `m17n5_test.tscn` 78/78 (Sheer Force's origin suite),
+`move_test.tscn` 49/49, `m19_bucket3_multistat_test.tscn` 366/366,
+`m19_secondary_stat_test.tscn` 1754/1754, `m19_bucket2_test.tscn`
+2760/2760 — all unchanged, 0 failures.
+
+### Data
+
+`MoveData` gained 4 new fields (`secondary_effect_2`, `secondary_chance_2`,
+`sets_reflect_on_hit`, `sets_light_screen_on_hit`). 5 new move dict entries
+added to `scripts/gen_moves.py`; 5 new `.tres` files regenerated — 459
+total move `.tres` files, up from 454.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated: Bucket 3 marked fully COMPLETE (30/30,
+was 5 remaining), Section A's Tier 2 row updated (281→286 implemented,
+27→22 remaining), Section E's summary table and both "recommended
+implementation order" lists updated, top-of-doc summary and Section E
+reconciled together (459+80+1+213+181=934, reconfirmed). CLAUDE.md's
+status section gained a new `[Bucket 3 clusters 1-2]` bullet noting the
+same running total (454→459) and that Bucket 3 is now fully closed.
+
+---
+
+## [Bucket 4 cheapest singles] — 9 single-move sub-groups, 7 shipped, 2 deferred (2026-07-09)
+
+Bundled per `[M19-pre1]`'s established precedent of grouping several small
+tiers into one session. Nine moves in scope: Rage(99), Uproar(253), Secret
+Power(290), Clear Smog(499), Incinerate(510), Sparkling Aria(627), Throat
+Chop(638), Eerie Spell(754), Blood Moon(829). Each got its own independent
+Step 0 investigation, per the task's explicit instruction not to trust the
+plan doc's one-line mechanism summaries blindly.
+
+### Step 0 findings, per move
+
+**Rage(99)** — real source (`battle_script_commands.c` L2514-2515,
+`battle_util.c :: SetOrClearRageVolatile` L10899-10904, `battle_main.c`
+L5269-5270) is genuinely simple, NOT a rampage-lock: `MOVE_EFFECT_RAGE`
+just sets `volatiles.rage = TRUE` on a successful hit (no `gLockedMoves`
+assignment anywhere in Rage's own case, unlike Uproar's), cleared at the
+START of any turn where the chosen move isn't Rage itself, and — at this
+project's `B_RAGE_BUILDS = GEN_LATEST` (>= GEN_4) config — only ever set on
+a genuine hit (never on a miss/Protect/fail). The REACTIVE half
+(`MoveEndRage`, battle_move_resolution.c L2669-2689) raises the holder's
+own Attack +1 whenever THEY take any damaging hit while the volatile is
+active, excluding self-hits (`battlerAtk != battlerDef`) and ally-hits
+(`!IsBattlerAlly`), capped at +6.
+
+**Uproar(253)** — turned out to need a genuinely new mechanism the other 8
+moves don't: `MOVE_EFFECT_UPROAR`'s case (`battle_script_commands.c`
+L2399-2416, already read in an earlier session's own context) sets
+`gLockedMoves[user] = move` and `volatiles.multipleTurns = TRUE` — the SAME
+forced move-repeat primitive Thrash/Petal Dance/Outrage/Raging Fury need
+(Bucket 4's own still-unbuilt `M19-rampage` sub-group), fixed 3 turns at
+this project's `B_UPROAR_TURNS >= GEN_5` config
+(`B_UPROAR_TURN_COUNT(5) - 2 = 3`). PLUS a field-wide effect confirmed via
+`UproarWakeUpCheck` (`battle_script_commands.c` L7130-7156): the function
+loops over ALL battlers (`gBattlersCount`, both sides), returning TRUE if
+ANY has `uproarTurns` active — meaning Uproar blocks sleep infliction
+(Rest, sleep-inducing moves) against EVERY battler on the field, not just
+the user's own team, a real correction to a plausible-but-wrong
+"self-team-only" assumption. Also confirmed a one-time immediate
+wake-everyone-up trigger (`trywakebattlersuproar`, `battle_scripts_1.s`
+L4411-4418, gated on `B_UPROAR >= GEN_5`, this project's config) fires the
+FIRST time Uproar successfully lands, matching source's own config comment
+("Uproar awakens all battlers on the first turn if successful" at Gen5+).
+Presented to Rob via `AskUserQuestion`: build the shared lock now (benefits
+M19-rampage for free) vs. defer to bundle with that future tier. **Rob
+chose: defer.**
+
+**Secret Power(290)** — resolved Open Question #8 with a real finding, not
+an assumption: the secondary depends on `gBattleEnvironment`
+(`battle_script_commands.c` L2729-2732, `gBattleEnvironmentInfo
+[gBattleEnvironment].secretPowerEffect`), a field set from
+`BattleSetup_GetEnvironmentId()` — the actual OVERWORLD map/tile the
+battle started on (grass/cave/water/building/etc., confirmed via
+`battle_main.c` L568/`src/data/battle_environment.h`) — structurally
+unrelated to the already-excluded in-battle Terrain mechanic (Electric/
+Grassy/Misty/Psychic Terrain) and with zero analog in this project (no map
+system exists at all). Confirmed `BATTLE_ENVIRONMENT_PLAIN`'s own
+GEN_LATEST effect (`PLAIN_SECRET_POWER_EFFECT`,
+`src/data/battle_environment.h` L63) resolves to `MOVE_EFFECT_PARALYSIS` —
+a flat 30% Paralysis chance, fully representable by the existing
+`secondary_effect`/`secondary_chance` schema with zero new mechanism,
+offered to Rob as the cheap hardcode-to-Plain option. **Rob chose: defer
+entirely** rather than hardcode.
+
+**Clear Smog(499)** — `MOVE_EFFECT_CLEAR_SMOG` (`battle_script_commands.c`
+L2558-2571) resets ALL 7 stat stages to `DEFAULT_STAT_STAGE`(0) on the
+TARGET, gated on the hit having actually landed AND at least one stat being
+nonzero (a genuine no-op, no signal, if every stat is already 0) — an
+ABSOLUTE reset, confirmed NOT representable by the existing
+`stat_change_stat`/`amount` relative-delta schema at all. Confirmed this
+project has no Haze precedent to reuse (Haze itself remains unimplemented,
+per `M19-blocked-on-other-tier4`'s own Freezy Frost entry) — a genuinely
+new dispatch branch, just a very small one.
+
+**Incinerate(510)** — `MOVE_EFFECT_INCINERATE` (`battle_script_commands.c`
+L2626-2639) destroys the target's held item outright (`item = ITEM_NONE`,
+a raw field write with NO consumption-effect dispatch call at all) if it's
+a Berry (`pocket == POCKET_BERRIES`) OR — at `B_INCINERATE_GEMS >= GEN_6`
+— a Gem (`GetItemHoldEffect == HOLD_EFFECT_GEMS`, permanently moot: this
+project has no Gem items, confirmed via grep), blocked by the target's
+Sticky Hold. Confirmed source calls `CheckSetUnburden(effectBattler)`
+directly from this same case — Unburden DOES still fire — but confirmed
+this project's existing `_consume_item` must NOT be reused here, since it
+would incorrectly ALSO trigger Cheek Pouch and register
+`last_consumed_berry`, neither of which source's own Incinerate case ever
+reaches.
+
+**Sparkling Aria(627)** — `MOVE_EFFECT_REMOVE_STATUS` with
+`.argument.status = STATUS1_BURN` (`battle_script_commands.c` L3270-3289)
+cures the TARGET's burn specifically (not the user's — the inverse of
+every existing self-cure precedent in this project), only if the target
+currently has it. `.sheerForceOverride = TRUE` in source is
+redundant/defensive here: this project's own `is_true_secondary` gate
+(`secondary_chance > 0`) already exempts a chance=0/omitted guaranteed
+effect from Sheer Force, and no existing `SE_*` token represents "cure a
+status FROM the target" anyway, so this is a dedicated flag/branch, not
+routed through that schema at all.
+
+**Throat Chop(638)** — `MOVE_EFFECT_THROAT_CHOP` (`battle_script_commands.c`
+L2619-2624) sets a `volatiles.throatChopTimer = B_THROAT_CHOP_TIMER(2)` on
+the TARGET (no refresh if already active), checked at
+`battle_move_resolution.c` L351 (`throatChopTimer > 0 && IsSoundMove(move)`
+— blocks the move from executing). Explicit `chance = 100` in source (a
+TRUE secondary, not chance=0/omitted guaranteed), confirmed to correctly
+gate through Shield Dust/Sheer Force/Covert Cloak/Serene Grace like any
+other true secondary. Given its own new `SE_THROAT_CHOP` constant since no
+existing token fits.
+
+**Eerie Spell(754)** — `MOVE_EFFECT_EERIE_SPELL` (`battle_script_commands.c`
+L2898-2935, already read in an earlier session's own context) cuts 3 PP
+(capped at available PP) from the TARGET's own `gLastMoves[]`-tracked last
+move. Resolved the task's own explicit question ("does the engine track a
+per-Pokémon last-move-used field at all?") with a clean yes: this project's
+pre-existing `BattlePokemon.last_move_used` (comprehensively wired since
+`[M16e]`'s Conversion 2, confirmed via grep across ~14 assignment sites)
+IS exactly that tracking — zero new state needed. Reuses the existing
+`use_pp(idx, amount)` method directly. Explicit `chance = 100`, same
+true-secondary shape as Throat Chop, given its own new `SE_EERIE_SPELL`
+constant.
+
+**Blood Moon(829)** — `.cantUseTwice = TRUE` (`include/move.h` L144/472,
+checked via `MOVE_LIMITATION_CANT_USE_TWICE`, `battle_util.c` L1645) is a
+SELECTION-time menu-legality filter in source (`CheckMoveLimitations`
+comparing against `gLastResultingMoves[battler]`, a DIFFERENT tracking
+array than Eerie Spell's `gLastMoves`). Confirmed this project's own
+`last_move_used` field answers the SAME underlying question well enough
+for a reference-equality check (`attacker.last_move_used == move`) —
+resolving the task's own question of whether Eerie Spell and Blood Moon
+could share ONE mechanism: yes, both reuse the SAME pre-existing field,
+just for different purposes (finding a PP slot vs. a simple identity
+check), needing zero new shared state either way. This project has no
+menu-legality-filter architecture at all, so implemented at execution time
+instead, matching the precedent `[M18s]`'s Assault Vest already
+established for the identical "source gates at selection, this project
+gates at execution" shape.
+
+### Design
+
+Three buckets, exactly matching the task's own proposed split:
+
+- **Cheap/self-contained (7 shipped)**: Clear Smog, Sparkling Aria,
+  Incinerate, Rage, Throat Chop, Eerie Spell, Blood Moon.
+- **Needs new shared state — turned out to need NONE**: Eerie Spell and
+  Blood Moon both reuse the SAME pre-existing `last_move_used` field
+  instead of needing a new bespoke or shared mechanism — the task's own
+  suspicion ("check if these two can share one mechanism") resolved with
+  an even cheaper answer than proposed (reuse, not build).
+- **Needs Rob's explicit decision — 2 moves, both deferred**: Secret
+  Power(290) (hardcode-to-Plain vs. defer — Rob chose defer) and, a THIRD
+  finding beyond the task's own anticipated blocker, Uproar(253) (build
+  the shared rampage-lock now vs. defer to bundle with `M19-rampage` — Rob
+  chose defer). Both presented via `AskUserQuestion` before any
+  implementation began, per CLAUDE.md's standing "propose and confirm"
+  instruction for ambiguous mechanics.
+
+New `MoveData` fields: `is_rage`, `is_clear_smog`, `is_incinerate`,
+`is_sparkling_aria`, `cant_use_twice` (per-move flags, matching this
+tier's own "fixed small number of shapes, no generalized mechanism needed"
+reasoning — each of the 7 moves is genuinely one-off), plus two new
+independent `SE_THROAT_CHOP`/`SE_EERIE_SPELL` secondary-effect constants
+(neither fits any existing `SE_*` token). New `BattlePokemon.rage_active`/
+`throat_chop_turns` volatiles, both cleared by `_clear_volatiles` on
+switch-out like every other switch-scoped volatile. New `status_cured`
+signal (Sparkling Aria's cure has no existing signal to reuse — every
+other status-cure path in this project is ability- or item-driven, with
+its own differently-shaped signal).
+
+### Test plan
+
+New `scenes/battle/m19_bucket4_cheap_singles_test.gd`/`.tscn`: Section A is
+a data-integrity check for all 7 shipped moves. Per-move functional
+sections: Rage (rage_active set-on-hit, the reactive Attack+1 trigger, and
+a discriminator confirming a non-Rage move choice clears the flag before
+that turn's own hit resolves); Clear Smog (all three of a multi-stat
+starting configuration reset to exactly 0 with correct per-stat deltas,
+plus an already-all-zero no-op-no-signal discriminator); Incinerate (real
+damage + destruction + the dedicated signal + confirmation `_consume_item`
+is never reached, a Sticky-Hold-blocks discriminator, and a non-Berry-item
+discriminator); Sparkling Aria (real damage + burn cured + a
+paralysis-untouched discriminator); Throat Chop (a direct
+`try_secondary_effect` force-true check, a full-battle block-the-holder's-
+own-sound-move test, and a non-sound-move-unaffected discriminator); Eerie
+Spell (a direct force-true check, and a full-battle PP-deduction test with
+the attacker deliberately made FASTER than the target so the -3 deduction
+is isolated against a still-full PP pool, snapshotted via `secondary_applied`
+rather than `move_executed` — the latter fires much earlier in
+`_do_damaging_hit`, well before the secondary-effect dispatch that actually
+performs the deduction runs, a fresh instance of the documented "signal
+fires before the state actually changes" pitfall, caught on this test's own
+first run); Blood Moon (a full-battle fail-when-repeated test plus a
+fires-normally-when-not-repeated discriminator). **46/46 assertions pass,
+stable across 4 reruns.**
+
+### A real bug found and fixed during test-writing (not a testing-methodology issue)
+
+While diagnosing an unexpected `SCRIPT ERROR: Invalid assignment of
+property or key 'last_consumed_berry'` surfaced by this tier's own Sticky
+Hold discriminator test, root-caused it to a genuine self-inflicted
+regression: the `Edit` call that added `rage_active`/`throat_chop_turns`
+to `battle_pokemon.gd` earlier in this SAME session accidentally replaced
+(rather than preserved) the pre-existing `var last_consumed_berry: ItemData
+= null` declaration — the two new fields were inserted in its place instead
+of alongside it. This silently broke `_consume_item`'s existing `mon.
+last_consumed_berry = item` assignment (Harvest/Cud Chew's own tracker,
+`[M17n-7]`) for any berry consumption reached AFTER this session's own
+edit — confirmed reproducible with a plain Tackle-vs-Tackle battle and a
+manually-constructed Oran-Berry-shaped item, with ZERO involvement from
+Incinerate or Sticky Hold (both were red herrings from the specific test
+scenario that happened to surface it first). Fixed by restoring the
+missing declaration. Re-verified via a full regression sweep — including
+`m17n7_test.tscn` (Harvest/Cud Chew's own origin suite) — that the fix is
+complete and introduces no other regression.
+
+### Regression
+
+Per this task's own instruction (the 4 required suites plus any suite
+touching whatever shared function gets modified, given the
+`last_consumed_berry` fix's cross-cutting nature): `item_registry_test.tscn`
+309/309, `status_test.tscn` 78/78, `stat_test.tscn` 78/78, `damage_test.tscn`
+24/24, `switch_test.tscn` 64/64, `tier4_test.tscn` 86/86, `m17j_test.tscn`
+48/48, `m17c_test.tscn` 95/95, `m17n7_test.tscn` 62/62 (Harvest/Cud Chew,
+the `last_consumed_berry` fix's own direct consumers), `m18k_test.tscn`
+16/16, `m18m_test.tscn` 27/27, `m18c_test.tscn` 47/47,
+`m19_secondary_stat_test.tscn` 1754/1754, `m19_bucket3_multistat_test.tscn`
+366/366, `m19_bucket3_cluster12_test.tscn` 47/47 — all unchanged, 0
+failures.
+
+### Data
+
+`MoveData` gained 7 new fields (`is_rage`, `is_clear_smog`, `is_incinerate`,
+`is_sparkling_aria`, `cant_use_twice`, plus the `SE_THROAT_CHOP`/
+`SE_EERIE_SPELL` constants). `BattlePokemon` gained 2 new fields
+(`rage_active`, `throat_chop_turns`). 7 new move dict entries added to
+`scripts/gen_moves.py`; 7 new `.tres` files regenerated — 466 total move
+`.tres` files, up from 459.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: 7 of Bucket 4's single-move
+sub-groups marked COMPLETE (`M19-rage`/`M19-stat-reset`/`M19-item-destroy`/
+`M19-cure-opponent-status`/`M19-sound-block`/`M19-pp-reduce`/
+`M19-cant-use-twice`), `M19-secret-power`/`M19-uproar` marked
+investigated-but-DEFERRED with their corrected findings, Bucket 4's own
+total shrunk 63→56 moves / 27→20 sub-groups, Section A's Tier 2 row updated
+(286→293 implemented, 15→remaining), Section E's summary table and both
+"recommended implementation order" lists updated, top-of-doc summary and
+Section E reconciled together (466+73+1+213+181=934, reconfirmed).
+CLAUDE.md's status section gained a new `[Bucket 4 cheapest singles]`
+bullet noting the same running total (459→466), the self-inflicted-bug
+finding, and the two explicit Rob-confirmed deferrals.
+
+## [M19-rampage] — Thrash/Petal Dance/Outrage/Raging Fury + Uproar merged in (2026-07-09)
+
+Bucket 4's core rampage-lock sub-group, resolving `[Bucket 4 cheapest
+singles]`'s own Uproar deferral by merging it in here (per Rob's
+confirmation via `AskUserQuestion`) rather than tracking it as a separate
+closed sub-group — matching the Spirit Shackle/M19f precedent.
+
+### Step 0 — re-derived fresh from source
+
+All 5 moves re-derived from `moves_info.h` (brace-matched) and the engine's
+own runtime dispatch (`battle_script_commands.c`, `battle_move_resolution.c`,
+`battle_util.c`, `battle_end_turn.c`, `battle_main.c`), not trusted from the
+plan doc's one-line summaries:
+
+- **Thrash(37) / Petal Dance(80) / Outrage(200) / Raging Fury(761)** — all
+  four confirmed STRUCTURALLY IDENTICAL in source: the same
+  `MOVE_EFFECT_THRASH` additionalEffect (`self=TRUE`), same
+  `target=TARGET_RANDOM`, no per-move turn-count or behavior difference
+  (`moves_info.h` L996-1022, L2155-2184, L5476-5502, L20008-20031). Raging
+  Fury deliberately carries NO `.makesContact` field, unlike the other
+  three — confirmed, not assumed.
+- **Uproar(253)** — a genuinely different `MOVE_EFFECT_UPROAR` case
+  (`moves_info.h` L6924-6953, `battle_script_commands.c` L2399-2410), but
+  sharing the SAME underlying `gLockedMoves`/`volatiles.multipleTurns`
+  forced-repeat primitive. Own counter (`uproarTurns`, flat 3 at
+  `B_UPROAR_TURNS>=GEN_5`, this project's config, vs. 2-5 pre-Gen5) and a
+  genuinely different end-of-lock behavior: no self-confuse anywhere in its
+  dispatch.
+- **The lock is a genuine FORCED REPEAT**, not "user-selected-but-can't-
+  switch": `HandleAction_UseMove` (`battle_util.c` L390-392) overrides
+  `gCurrentMove = gLockedMoves[battler]` unconditionally whenever
+  `volatiles.multipleTurns` is set — the menu is bypassed entirely, matching
+  this project's existing `charging_move`-style `_phase_move_selection`
+  override shape.
+- **Accuracy is rolled independently every turn** — `MoveEndRampage`
+  (`battle_move_resolution.c` L4152-4181) decrements `rampageTurns`
+  unconditionally, with no accuracy-outcome check anywhere in its own
+  dispatch; a miss does NOT cancel a continuing lock.
+- **A type-IMMUNE hit against a continuing lock cancels it WITHOUT
+  self-confuse** — `MoveEndRampage`'s `IsBattlerUnaffectedByMove` branch, a
+  real and distinct rule from a miss. A FIRST-USE immune hit never sets the
+  lock at all (`additionalEffects` never runs for a 0x hit in source,
+  confirmed via `Cmd_setadditionaleffects`'s dispatch order).
+- **Target-faints-mid-rampage and attacker-faints/switches-mid-lock both
+  need zero special-case code** in this project: `target=TARGET_RANDOM`
+  simply re-resolves each turn against whoever's active, and this project's
+  `_default_target` already recomputes fresh every turn with no stored
+  target reference (`battle_manager.gd:3119-3121`) — confirmed free.
+  `CancelMultiTurnMoves` (`battle_util.c` L1076-1095) is source's own
+  faint/switch cleanup, already mirrored unconditionally by this project's
+  existing `_clear_volatiles`, called at every real faint/switch site.
+- **Uproar's sleep-block is FIELD-WIDE** — `UproarWakeUpCheck`
+  (`battle_script_commands.c` L7130-7149) scans `for (i = 0; i <
+  gBattlersCount; i++)`, both sides, not just the user's own team (a real
+  correction to a plausible "self-team-only" assumption flagged in the
+  prior session's deferred entry). At this project's Gen5+ config, it only
+  blocks NEW sleep infliction — the "wake already-sleeping mons every turn"
+  half (`battle_end_turn.c` L1279-1324) is explicitly gated `if
+  (GetConfig(B_UPROAR) >= GEN_5) break;`, dead code here.
+
+### Design (confirmed via `AskUserQuestion` before implementing)
+
+Two forks, both confirmed with Rob before writing any code:
+
+1. **Lock field shape**: a NEW dedicated `BattlePokemon.locked_move` field,
+   kept SEPARATE from the pre-existing `charging_move` field (rather than
+   reusing `charging_move` directly). Matches this project's own established
+   convention of one field per conceptually distinct lock
+   (`disabled_move`/`encored_move`/`choice_locked_move` are all separate
+   despite similar shape) and avoids any interference with `charging_move`'s
+   own two-turn/Bide-specific dispatch gates (`move.two_turn`/`move.is_bide`).
+2. **Uproar merge**: fold Uproar into this same `M19-rampage` sub-group's
+   writeup rather than tracking it as a separate closed entry, matching the
+   Spirit Shackle/M19f precedent.
+
+Both `is_rampage` (Thrash/Petal Dance/Outrage/Raging Fury) and `is_uproar`
+(Uproar) share `locked_move`, but use distinct counters
+(`rampage_turns`/`uproar_turns`) so the end-of-lock behavior (self-confuse
+vs. none) can be told apart.
+
+### Implementation
+
+- `MoveData`: new `is_rampage`/`is_uproar` flags, each with a full
+  source-citation doc comment.
+- `BattlePokemon`: new `locked_move: MoveData`, `rampage_turns: int`,
+  `uproar_turns: int` — all three cleared unconditionally in
+  `_clear_volatiles`, same as `charging_move`.
+- `BattleManager._phase_move_selection`: new `elif mon.locked_move != null:
+  _chosen_moves[i] = mon.locked_move` branch, checked right after the
+  existing `charging_move` override.
+- `BattleManager._do_damaging_hit`: the core lock lifecycle — lock
+  initiation (gated on `damage > 0`, mirroring the existing Rage/Clear Smog
+  insertion point), the type-immune cancel-without-confuse branch (gated on
+  `result.get("effectiveness", 1.0) == 0.0`, a key the `DamageCalculator`
+  result dict already exposes), and the normal decrement/confuse-at-lock-end
+  path (reusing `StatusManager.try_apply_confusion` directly, the same
+  `CanBeConfused`-gated function every other confusion source uses).
+- `BattleManager._phase_move_execution`'s accuracy-miss branch: a parallel
+  decrement-only path (no initiation — a first-use miss never sets a lock),
+  confirming a miss still counts toward the lock's schedule.
+- Two new signals: `rampage_lock_started(attacker, move)` and
+  `rampage_lock_ended(attacker, move, confused: bool)` — the latter added
+  specifically to make every ending scenario (normal end, miss-end,
+  immune-cancel) cleanly observable via a single signal rather than relying
+  on `secondary_applied(SE_CONFUSION)`'s presence/absence alone.
+- Uproar's field-wide sleep-block: new `BattleManager._is_uproar_active()`
+  (scans all live `_combatants` for `uproar_turns > 0`, same shape as the
+  pre-existing `_is_neutralizing_gas_active()`), threaded as a new
+  `uproar_active` trailing parameter into `StatusManager.try_apply_status`
+  (gated immediately after the "already has a status" early return) and
+  `StatusManager.try_secondary_effect`/`AbilityManager.try_contact_effects`
+  (both of which reach `try_apply_status`'s `SE_SLEEP`/`STATUS_SLEEP` calls —
+  the general move-secondary sleep dispatch and Effect Spore's own sleep
+  roll, the only two sleep-inflicting sources in this project's current
+  roster).
+
+### Test plan
+
+New `m19_rampage_test.gd`/`.tscn`: data integrity for all 5 moves; the
+forced-repeat mechanism (queuing a different move mid-lock does NOT override
+it); the `randi_range(2,3)` init range (30-trial statistical check, both
+endpoints confirmed observed); confuse-on-lock-end; a miss still decrements
+and still confuses on schedule; a type-immune hit against a continuing lock
+cancels without confuse; a first-use immune hit never locks at all; Uproar's
+own lock-with-no-confuse; Uproar's field-wide sleep-block (with a
+no-Uproar-anywhere discriminator); Uproar not waking an already-sleeping mon.
+
+Every multi-turn/lock-ending assertion is snapshotted via signal handlers
+guarded to the first occurrence (`rampage_lock_ended`, or `move_executed`
+filtered to a specific attacker's first action) rather than reading state
+after `start_battle()` returns — this project's battles run to full
+completion, and every fixture here has the attacker's only move be the
+rampage/Uproar move itself, meaning a NEW cycle can legitimately restart
+later in the same battle. A first draft of the Uproar field-wide-block test
+read `p1.status` post-battle and would have been genuinely wrong: Uproar's
+own lock has a one-turn gap every cycle (the turn its counter hits exactly
+0, before the next auto-reselected use re-initiates it) during which
+`_is_uproar_active()` legitimately returns false — over a long enough
+battle, Sleep Powder would eventually land during that gap, contradicting
+the intended assertion. Fixed by snapshotting at P2's FIRST Sleep Powder
+attempt only, matching CLAUDE.md's whole-battle-aggregation convention.
+
+**33/33 assertions pass, stable across 4 reruns.**
+
+### Regression
+
+The 4 required suites plus every suite touching two-turn/binding-move
+mechanics, turn-resolution, or either function whose signature was extended
+for Uproar's sleep-block: `item_registry_test.tscn` 309/309,
+`status_test.tscn` 78/78, `stat_test.tscn` 78/78, `damage_test.tscn` 24/24,
+`two_turn_test.tscn` 32/32, `m18_5f_test.tscn` 137/137 (binding moves —
+another multi-turn volatile-lock shape), `tier4_test.tscn` 86/86
+(Disable/Encore — other move-selection-forcing locks), `switch_test.tscn`
+64/64 (faint replacement/`_clear_volatiles`'s other call sites),
+`m17n1_test.tscn` 82/82 (status-immunity family — `try_apply_status`'s
+other callers), `m17c_test.tscn` 95/95 (Effect Spore — the
+`try_contact_effects` signature change's own direct consumer),
+`move_test.tscn` 49/49, `m19_bucket4_cheap_singles_test.tscn` 46/46 (Rage's
+own origin suite, same insertion neighborhood in `_do_damaging_hit`),
+`m19_secondary_stat_test.tscn` 1754/1754, `m19_bucket3_multistat_test.tscn`
+366/366, `m19_bucket2_test.tscn` 2760/2760, `m19_bucket3_cluster12_test.tscn`
+47/47, `m18m_test.tscn` 27/27 — all unchanged, 0 failures across all 17
+suites.
+
+### Data
+
+`MoveData` gained 2 new fields (`is_rampage`, `is_uproar`). `BattlePokemon`
+gained 3 new fields (`locked_move`, `rampage_turns`, `uproar_turns`). 5 new
+move dict entries added to `scripts/gen_moves.py`; 5 new `.tres` files
+regenerated — 471 total move `.tres` files, up from 466.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: `M19-rampage` marked
+COMPLETE with Uproar merged in, the prior session's separate `M19-uproar`
+deferred entry removed (superseded), Bucket 4's own total shrunk 56→51
+moves / 20→19 sub-groups, Section A's Tier 1 row updated (91→93 implemented,
+66→64 remaining, Thrash/Petal Dance) and Tier 4 row updated (39→42
+implemented, 273→270 remaining, Outrage/Raging Fury/Uproar — this specific
+Tier attribution for the 3 non-Gen-I moves was reverse-engineered from the
+reconciliation arithmetic closing exactly, since neither move was
+individually itemized in any earlier session's per-Tier breakdown), Section
+E's summary table and both "recommended implementation order" lists
+updated, top-of-doc summary and Section E reconciled together
+(471+68+1+213+181=934, reconfirmed). CLAUDE.md's status section gained a
+new `[M19-rampage]` bullet noting the running total (466→471) and the full
+findings.
+
+## [M19-recharge] — Hyper Beam family, 10 moves (2026-07-09)
+
+Bucket 4's largest remaining sub-group. Structurally a genuinely different
+mechanism shape from `[M19-rampage]` despite the surface "can't act"
+similarity, and Step 0 surfaced a real, source-confirmed correction to the
+task's own stated assumption — flagged and confirmed with Rob before
+implementing, per the task's own explicit instruction to stop if the
+miss-behavior or switch-clear behavior wasn't confirmed cleanly.
+
+### Step 0 — re-derived fresh from source
+
+All 10 moves re-derived individually from `moves_info.h` (brace-matched):
+
+- **Data is NOT uniform.** Most are 150 power / 90 accuracy / 5 PP, but
+  Prismatic Laser(665) is 160/100/10 and Meteor Assault(722) is 150/100/5
+  — both genuinely different. Category also varies: Hyper Beam(63)/Blast
+  Burn(307)/Hydro Cannon(308)/Frenzy Plant(338)/Roar of Time(459)/
+  Prismatic Laser(665)/Eternabeam(723) are Special; Giga Impact(416)/Rock
+  Wrecker(439)/Meteor Assault(722) are Physical. Of the 3 Physical moves,
+  only Giga Impact carries `.makesContact = TRUE` — Rock Wrecker
+  (`.ballisticMove = TRUE`) and Meteor Assault are both non-contact despite
+  being physical, confirmed individually rather than assumed uniform for
+  the category.
+- **The recharge condition — a genuine correction to commonly-assumed
+  folklore.** All 10 share the identical `MOVE_EFFECT_RECHARGE`
+  additionalEffect (`self = TRUE`), but NONE of them set
+  `.preAttackEffect = TRUE` (verified individually — an initial line-number
+  mismatch briefly misattributed Spectral Thief's own `.preAttackEffect`
+  flag to Prismatic Laser before a closer re-read caught it). Effects
+  without `preAttackEffect` dispatch exclusively through
+  `Cmd_setadditionaleffects` (`battle_script_commands.c` L3507-3553), which
+  is only ever reached via the successful-hit script path
+  (`BattleScript_Hit_RetFromAtkAnimation`, `data/battle_scripts_1.s`
+  L1443-1472) — a miss branches straight to `BattleScript_MoveMissed` →
+  `BattleScript_MoveEnd` (L1474-1482), never reaching it.
+  `Cmd_setadditionaleffects` also gates on `!IsBattlerUnaffectedByMove`, so
+  a fully type-immune hit skips it too. **Conclusion: in this reference
+  engine at this project's GEN_LATEST config, recharge does NOT trigger on
+  a miss** — the opposite of the commonly-cited "real games: recharges
+  regardless of hit/miss" folklore. Confirmed with Rob via
+  `AskUserQuestion` before implementing, per CLAUDE.md's own
+  reference-source-over-folklore ground-truth rule.
+- **Mechanism shape — a pre-move canceler, not a forced-repeat lock.**
+  `CancelerRecharge` (`battle_move_resolution.c` L87-96) intercepts BEFORE
+  any move executes and aborts the turn outright
+  (`BattleScript_MoveUsedMustRecharge`) — there is no move to force, unlike
+  `[M19-rampage]`'s `locked_move`. `sMoveSuccessOrderCancelers`
+  (L2397-2402) confirms `CANCELER_RECHARGE` runs BEFORE
+  `CANCELER_ASLEEP_OR_FROZEN`/`CANCELER_TRUANT` in the real canceler chain.
+  This project already has the matching chokepoint —
+  `StatusManager.pre_move_check`, where Truant already lives (`[M17c]`).
+  Confirmed with Rob via `AskUserQuestion`: a simple
+  `BattlePokemon.must_recharge: bool`, checked and cleared first in
+  `pre_move_check` (before Sleep), correctly reproduces source's literal
+  `rechargeTimer=2`/decrement-twice shape, since the only observable
+  behavior is "block exactly the next turn, then clear."
+- **Switch-out/faint — cleanly confirmed, matches expectation.** Both
+  `SwitchInClearSetData` (`battle_main.c` L3117-3145) and
+  `FaintClearSetData` (L3266-3272) bulk-`memset` the whole `Volatiles`
+  struct `rechargeTimer` lives in, so recharge clears on switch-out/faint
+  for free — mirrored by this project's existing `_clear_volatiles`.
+- **Truant interaction** — independent mechanism, no real design fork;
+  source just runs both cancelers in sequence and either can block the
+  turn on its own.
+
+### Design (confirmed via `AskUserQuestion` before implementing)
+
+Both forks confirmed with Rob:
+1. Proceed hit-gated (recharge does not trigger on a miss), matching
+   source exactly rather than the commonly-assumed folklore.
+2. A simple `BattlePokemon.must_recharge: bool`, checked/cleared in
+   `StatusManager.pre_move_check` (not a counter, since a boolean fully
+   reproduces the one-turn-block-then-clear behavior).
+
+### Implementation
+
+- `MoveData`: new `is_recharge` flag, with a full source-citation doc
+  comment covering both Step-0 corrections.
+- `BattlePokemon`: new `must_recharge: bool` — cleared unconditionally in
+  `_clear_volatiles`, same as every other switch/faint-cleared volatile.
+- `StatusManager.pre_move_check`: new FIRST check (before Sleep), matching
+  `CancelerRecharge`'s real position in the canceler chain — blocks the
+  action, sets `result["recharging"] = true`, clears `must_recharge`.
+- `BattleManager._phase_action_execution`-adjacent dispatch: new
+  `"recharging"` branch in the `move_skipped` reason chain, checked first
+  (mirroring `pre_move_check`'s own early-return ordering).
+- `BattleManager._do_damaging_hit`: `attacker.must_recharge = true` set
+  right after the existing Rage insertion point, gated on `damage > 0`
+  alone (matching the established guaranteed-self-effect pattern) — a miss
+  never reaches this line at all, structurally enforcing the hit-gated
+  rule.
+
+### Test plan
+
+New `m19_recharge_test.gd`/`.tscn`: data integrity for all 10 moves; a hit
+forces exactly one skipped turn (reason `"recharging"`) then resumes
+normally; a miss NEVER triggers recharge (3 consecutive forced misses, no
+`"recharging"` skip in between — the key discriminator); `must_recharge`
+clears on voluntary switch-out; a recharge-locked mon that faints leaves no
+dangling state; recharge is checked before Sleep (both simultaneously
+active — reason is `"recharging"`, not `"asleep"`).
+
+**Two real test-authoring bugs caught and fixed, both already-documented
+CLAUDE.md pitfalls recurring in the same session that reads them
+regularly:**
+1. A fresh instance of the `%`-after-`+`-concatenation precedence pitfall
+   (CLAUDE.md's own dedicated testing-convention section) — a `_chk` label
+   built from three `+`-joined string literals had its trailing `%
+   [events]` bind only to the LAST literal (which contains no `%s`
+   placeholder at all), producing a consistent "not all arguments
+   converted during string formatting" runtime error on every run
+   (non-fatal to the test result, but a real bug). Fixed by wrapping the
+   full concatenation in parentheses before applying `%`.
+2. A fresh instance of the whole-battle-aggregation pitfall — the
+   switch-out test read `atk.must_recharge` AFTER `start_battle_with_parties`
+   returned, but `atk`'s own move IS Hyper Beam (`is_recharge`): if the
+   bench mon later fainted (RNG-dependent, no forced roll/crit in this
+   scenario), faint-replacement would force `atk` back into the field,
+   where a later legitimate Hyper Beam use would re-set `must_recharge` on
+   its own, intermittently flipping the assertion. Reproduced the flake
+   directly (2 fails / 3 passes across 5 reruns of the unmodified test).
+   Fixed by snapshotting `must_recharge` inside a `pokemon_switched_out`
+   signal handler guarded to the first occurrence for `atk` specifically,
+   immediately after the switch-out itself, rather than reading state
+   after the whole battle completes.
+
+**39/39 assertions pass, stable across 4 reruns** after both fixes (and the
+pre-fix flaky test was independently reproduced failing 2 of 5 times,
+confirming the fix — not the original code — was the actual bug).
+
+### Regression
+
+The 4 required suites plus every suite touching turn-resolution,
+switch-handling, or the `[M19-rampage]` mechanism (per the task's own
+explicit regression scope): `item_registry_test.tscn` 309/309,
+`status_test.tscn` 78/78, `stat_test.tscn` 78/78, `damage_test.tscn` 24/24,
+`switch_test.tscn` 64/64 (switch-clear's own most direct consumer),
+`tier4_test.tscn` 86/86 (Disable/Encore, other pre-move-adjacent
+mechanics), `m17c_test.tscn` 95/95 (Truant's own origin suite — the exact
+chokepoint this tier extended), `battle_test.tscn` (M1 basic loop, still
+resolves to a clean win), `move_test.tscn` 49/49, `m19_rampage_test.tscn`
+33/33 (confirms zero interference between the two "can't act" mechanisms),
+`two_turn_test.tscn` 32/32, `m18_5f_test.tscn` 137/137, `ai_test.tscn`
+40/40 — all unchanged, 0 failures across all 13 suites.
+
+### Data
+
+`MoveData` gained 1 new field (`is_recharge`). `BattlePokemon` gained 1 new
+field (`must_recharge`). 10 new move dict entries added to
+`scripts/gen_moves.py`; 10 new `.tres` files regenerated — 481 total move
+`.tres` files, up from 471.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: `M19-recharge` marked
+COMPLETE, Bucket 4's own total shrunk 51→41 moves/19→18 sub-groups, Section
+A's Tier 4 row updated (42→52 implemented, 270→260 remaining — all 10
+recharge moves reverse-engineered as Tier 4 in origin, the same
+arithmetic-closure method `[M19-rampage]` used for its own Outrage/Raging
+Fury/Uproar attribution, since none of these 10 was individually itemized
+in any earlier session's per-Tier breakdown either), Section E and top
+summary reconciled together (481+58+1+213+181=934, reconfirmed).
+CLAUDE.md's status section gained a new `[M19-recharge]` bullet noting the
+running total (471→481) and the full findings, including the miss-behavior
+correction and both test-authoring bugs.
+
+## [M19-break-protect] — Feint, Shadow Force, Phantom Force, Hyperspace Hole, 4 moves (2026-07-09)
+
+### Step 0 — findings, reported before implementing
+
+Re-derived all 4 moves fresh from `src/data/moves_info.h` (brace-matched)
+rather than assuming uniformity:
+
+- **Feint** (364): `.effect = EFFECT_HIT`, power 30 (`B_UPDATED_MOVE_DATA
+  >= GEN_5` — confirmed TRUE at this project's GEN_LATEST config; the
+  pre-Gen5 value is 50), type Normal, accuracy 100, pp 10, priority **+2**,
+  category Physical, `.ignoresProtect = TRUE`, NO `.makesContact` (Feint is
+  non-contact — confirmed, not assumed, despite it being a physical move),
+  `.mirrorMoveBanned` false at GEN_LATEST, `.metronomeBanned =
+  .copycatBanned = .assistBanned = TRUE`. `additionalEffects = {.moveEffect
+  = MOVE_EFFECT_FEINT}`.
+- **Shadow Force** (467): `.effect = EFFECT_SEMI_INVULNERABLE`, power 120,
+  type Ghost, accuracy 100, pp 5, category Physical, `.makesContact =
+  TRUE`, `.ignoresProtect = TRUE`, `.argument.twoTurnAttack = {.status =
+  STATE_PHANTOM_FORCE}`, `additionalEffects = {.moveEffect =
+  MOVE_EFFECT_FEINT}` — same effect token as Feint.
+- **Phantom Force** (566): same shape as Shadow Force but power 90, pp 10
+  (both genuinely different from Shadow Force's 120/5, confirmed via
+  direct read, not assumed identical twins).
+- **Hyperspace Hole** (593): `.effect = EFFECT_HIT`, power 80, type
+  Psychic, accuracy **0** (never misses, "Can't be evaded" per its own
+  flavor text), pp 5, category Special, `.ignoresProtect = TRUE`,
+  `.ignoresSubstitute = TRUE`, `.metronomeBanned = TRUE`, NO
+  `.makesContact`. `additionalEffects = {.moveEffect = MOVE_EFFECT_FEINT}`
+  — same effect token as the other 3.
+
+**Key finding #1 — the mechanism is genuinely uniform across all 4,
+contradicting the task's own suspicion that Feint might be structurally
+distinct from the other 3.** All 4 moves carry the LITERAL SAME
+`additionalEffects = {.moveEffect = MOVE_EFFECT_FEINT}` token — there is
+no Feint-specific code path; Shadow Force/Phantom Force/Hyperspace Hole
+all dispatch through the identical handler. Power/accuracy/pp/type/
+category/priority are NOT uniform, but the protect-breaking mechanism
+itself is one single, shared thing.
+
+**Key finding #2 — `ignores_protect` vs `breaks_protect` are genuinely
+different mechanisms, confirmed from `battle_script_commands.c`'s
+`MOVE_EFFECT_FEINT` case (L2584-2606):**
+
+```c
+case MOVE_EFFECT_FEINT:
+    i = FALSE;
+    if (gProtectStructs[effectBattler].protected != PROTECT_NONE
+     && gProtectStructs[effectBattler].protected != PROTECT_MAX_GUARD)
+    {
+        gProtectStructs[effectBattler].protected = PROTECT_NONE;
+        gBattleMons[effectBattler].volatiles.consecutiveMoveUses = 0;
+        i = TRUE;
+    }
+    if (GetProtectType(gProtectStructs[BATTLE_PARTNER(effectBattler)].protected) == PROTECT_TYPE_SIDE)
+    {
+        gProtectStructs[BATTLE_PARTNER(effectBattler)].protected = PROTECT_NONE;
+        gBattleMons[BATTLE_PARTNER(effectBattler)].volatiles.consecutiveMoveUses = 0;
+        i = TRUE;
+    }
+    ...
+```
+
+`.ignoresProtect` (this project's pre-existing `ignores_protect` field)
+only lets THIS move's own hit bypass an already-up Protect check — the
+existing `battle_manager.gd:1182` gate (`if defender.protect_active and
+not move.ignores_protect: ...miss...`). It does NOT touch `protect_active`
+itself. `MOVE_EFFECT_FEINT` is a SEPARATE, POST-HIT mutation that actively
+clears the target's Protect state (`protected = PROTECT_NONE`) AND resets
+their consecutive-use counter (`consecutiveMoveUses = 0` — this project's
+`protect_consecutive`, the exact field `_roll_protect_success` already
+reads for the Gen5+ 1/(3^n) fail-chance ramp). This is a real, additional
+mechanism, confirming the task's own suspicion that "ignores" and "breaks"
+might be a genuine unbuilt distinction — not a simple bypass flag covering
+everything.
+
+**Key finding #3 — the side-effect scope is single-target only in this
+project, confirmed not a gap.** Source's second `if` block additionally
+clears a SIDE-WIDE Protect (Wide Guard/Quick Guard/Crafty Shield,
+`PROTECT_TYPE_SIDE`) on the target's PARTNER — a doubles-relevant
+un-blocking. This project has **zero side-wide protect moves implemented
+at all** (confirmed via `gen_moves.py` grep: only Protect(182)/Detect are
+`is_protect: True`), so that half of source's own logic has nothing to
+act on. Scoped to single-target clearing only, explicitly not built as
+unneeded plumbing.
+
+**Key finding #4 — Shadow Force/Phantom Force were NOT previously
+implemented at all** (confirmed via `data/moves/` — no `.tres` files
+existed for IDs 467/566 before this session), but this project's generic
+`two_turn`/`semi_inv_state` charge/release infrastructure (from M6/M15)
+is directly reusable. However, they needed a genuinely NEW semi-invulnerable
+state. Source's `CanBreakThroughSemiInvulnerablityInternal`
+(`battle_util.c` L10464-10493):
+
+```c
+switch (state)
+{
+case STATE_UNDERGROUND: return MoveDamagesUnderground(move);
+case STATE_UNDERWATER:  return MoveDamagesUnderWater(move);
+case STATE_ON_AIR:
+case STATE_SKY_DROP_ATTACKER:
+case STATE_SKY_DROP_TARGET:
+    return MoveDamagesAirborne(move) || MoveDamagesAirborneDoubleDamage(move);
+case STATE_PHANTOM_FORCE: return FALSE;
+case STATE_COMMANDER: return GetMoveEffect(move) == EFFECT_TRANSFORM;
+case STATE_NONE:
+case SEMI_INVULNERABLE_COUNT: return TRUE;
+}
+```
+
+`STATE_PHANTOM_FORCE` explicitly returns `FALSE` — nothing hits through
+it, no move-flag exception the way Fly/Dig/Dive have. This is a DIFFERENT
+branch from the function's own default (`STATE_NONE`/unmatched → `TRUE`).
+Critically, this project's own `StatusManager._can_hit_semi_invulnerable`
+helper had the exact same shape — 3 explicit cases, then `return true #
+STATE_NONE or unknown: no restriction` as the fallthrough default. Adding
+a new `SEMI_INV_VANISH` state WITHOUT an explicit case would have hit that
+default and returned `true` (any move can hit it) — the OPPOSITE of the
+correct behavior. This is exactly the kind of easy-to-get-backwards
+assumption the task's own instructions warned about generally (in the
+spirit of the immediately-prior `[M19-recharge]` session's miss-behavior
+warning) — caught by reading the helper's actual default before adding the
+new state, not discovered via a failing test. Fixed by adding an explicit
+`MoveData.SEMI_INV_VANISH: return false` case.
+
+**Key finding #5 — no move-specific Protect-family exemptions apply,
+confirmed moot.** King's Shield/Spiky Shield/Baneful Bunker/Obstruct/Silk
+Trap/Crafty Shield are NOT implemented anywhere in this project (confirmed
+via `gen_moves.py` grep — only Protect/Detect exist as `is_protect: True`
+moves). The "does this bypass every Protect-family move uniformly, or is
+there a Crafty-Shield-style exemption" question from the task's own Step 0
+is moot for now — the single `defender.protect_active` check already
+covers the only 2 implemented protect moves.
+
+### Design
+
+No `AskUserQuestion` fork was needed — Step 0 fully determined the design
+from source combined with this project's current scope (no side-wide
+protect infrastructure to interact with, no other Protect-family moves to
+special-case). Findings reported to the user before implementing, per the
+task's own instruction, then implemented directly.
+
+### Implementation
+
+- `scripts/data/move_data.gd`: new `@export var breaks_protect: bool =
+  false` (extensive doc comment covering the `ignores_protect` vs.
+  `breaks_protect` distinction, the single-target-only scope, and the
+  post-hit-only/miss-doesn't-break citation). New `const SEMI_INV_VANISH:
+  int = 4` alongside the existing `SEMI_INV_UNDERGROUND`/`SEMI_INV_ON_AIR`/
+  `SEMI_INV_UNDERWATER`, with a doc comment explicitly flagging the
+  default-fallthrough trap described in Key finding #4 above.
+- `scripts/battle/core/status_manager.gd`: `_can_hit_semi_invulnerable`
+  gained one new explicit `match` case: `MoveData.SEMI_INV_VANISH: return
+  false`, positioned before the function's own `return true` default.
+- `scripts/battle/core/battle_manager.gd`: new `signal protect_broken
+  (defender: BattlePokemon)` (mirrors the existing `protected` signal's
+  shape, for test observability). New block in `_do_damaging_hit`, placed
+  right after the `[M19-recharge]` block:
+  ```gdscript
+  if damage > 0 and move.breaks_protect and target.protect_active:
+      target.protect_active = false
+      target.protect_consecutive = 0
+      protect_broken.emit(target)
+  ```
+  (Parameter name in this function is `target`, not `defender` — caught a
+  parse error from this exact naming mismatch on the first import attempt,
+  fixed before any test ran.)
+- `scripts/gen_moves.py`: new `SEMI_INV_VANISH = 4` constant; new
+  `"breaks_protect": False` in `DEFAULTS`/`FIELD_ORDER`; 4 new move dict
+  entries (Feint/Shadow Force/Phantom Force/Hyperspace Hole) with full
+  per-move data as derived in Step 0.
+- `data/moves/*.tres`: 4 new files (move_0364.tres, move_0467.tres,
+  move_0566.tres, move_0593.tres). Total: 485 (up from 481).
+
+### Test plan
+
+`scenes/battle/m19_break_protect_test.gd`/`.tscn` (new file). Section A:
+data-integrity for all 4 moves. Functional sections: a direct unit test of
+`StatusManager._can_hit_semi_invulnerable` isolating the exact
+`SEMI_INV_VANISH` fix (positive control for `SEMI_INV_NONE`, negative for
+`SEMI_INV_VANISH` against both an ordinary move and an OHKO move); a
+Protect-breaking move (Feint) actually connecting for real damage against
+an active Protect, with a discriminator confirming a plain Tackle (no
+flags) is still blocked by the same Protect — proving the connect-through
+result isn't vacuous; a direct test that breaking clears BOTH
+`protect_active` and `protect_consecutive` (deterministically bumped via
+the `protected` signal handler mid-battle, since `protect_active` is
+unconditionally reset at the start of every turn and can't be pre-set
+before `start_battle()`); a miss-does-not-break discriminator (Feint
+forced to miss via `_force_hit = false`, confirming `protect_broken` never
+fires and Protect's own success is genuinely confirmed first, not just
+assumed); and a two-turn/semi-invulnerable regression check proving Shadow
+Force's charge turn still blocks an ordinary move (Tackle), confirming
+`breaks_protect`'s addition didn't disturb the pre-existing `two_turn`
+mechanism.
+
+**Doubles-relevant un-blocking (task's conditional instruction #3): not
+applicable, explicitly not tested** — Step 0's Key finding #3 confirmed
+this project has no side-wide protect moves for that half of source's
+logic to interact with; a test would be untestable by construction.
+
+**Two real test-authoring bugs caught and fixed on the first run:**
+
+1. **`defender` vs `target` parameter-name mismatch** — copied the
+   variable name `defender` from this doc's own Step-0 prose without
+   checking `_do_damaging_hit`'s actual signature, which names its second
+   parameter `target`. Produced a hard parse error on `--import`, caught
+   immediately (not a subtle runtime bug) and fixed before any test ran.
+2. **Pre-setting `protect_active`/`protect_consecutive` before
+   `start_battle()`** — `battle_manager.gd`'s `_phase_priority_resolution`
+   unconditionally clears `protect_active` to `false` at the start of
+   EVERY turn (source: `battle_main.c` L5036,
+   `memset(&gProtectStructs[i], 0, ...)`), so a pre-set value is wiped
+   before the attacking move ever fires. This broke 2 of the original 5
+   functional tests (`protect_broken` never fired; a miss-discriminator
+   read stale pre-battle state). Fixed by restructuring both tests to have
+   the defender genuinely USE Protect within the same battle (guaranteed
+   success at `protect_consecutive == 0`, and Protect's own higher
+   priority ensures it resolves before the Feint-family move within the
+   same turn) rather than pre-setting the post-turn-reset field directly.
+   A related, correctly-anticipated wrinkle: the semi-invulnerable
+   regression test initially expected a `"semi_invulnerable"` miss reason
+   (matching the OHKO branch's own distinct label at
+   `battle_manager.gd:1224`) but the GENERAL damaging-move path routes
+   through `StatusManager.check_accuracy` and labels any false return
+   `"accuracy"` regardless of cause — fixed the assertion to expect
+   `"accuracy"`, with a comment explaining why this is still a valid,
+   fully deterministic discriminator (Tackle's own accuracy is 100, so the
+   ONLY way it can report a miss at all is the semi-invulnerable gate).
+
+**26/26 assertions pass, stable across 4 reruns.**
+
+### Regression
+
+`tier4_test.tscn` 86/86 (Protect's own origin suite), `two_turn_test.tscn`
+32/32 (semi-invulnerable's own origin suite), `status_test.tscn` 78/78,
+`stat_test.tscn` 78/78, `move_test.tscn` 49/49, `item_registry_test.tscn`
+309/309, `m17f_test.tscn` 30/30, `m16d_test.tscn` 71/71, `switch_test.tscn`
+64/64, `m19_recharge_test.tscn` 39/39, `m19_rampage_test.tscn` 33/33,
+`m17c_test.tscn` 95/95 — all unchanged, 0 failures across all 12 suites.
+
+### Data
+
+`MoveData` gained 1 new field (`breaks_protect`) and 1 new constant
+(`SEMI_INV_VANISH = 4`). `BattleManager` gained 1 new signal
+(`protect_broken`). No new `BattlePokemon` fields — reused the pre-existing
+`protect_active`/`protect_consecutive` fields. 4 new move dict entries
+added to `scripts/gen_moves.py`; 4 new `.tres` files regenerated — 485
+total move `.tres` files, up from 481.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: `M19-break-protect` marked
+COMPLETE (its own bullet rewritten from the original one-line summary),
+Bucket 4's own total shrunk 41→37 moves/18→17 sub-groups, Section A's Tier
+4 row updated (52→56 implemented, 260→256 remaining — all 4 break-protect
+moves reverse-engineered as Tier 4 in origin, the same arithmetic-closure
+method `[M19-recharge]`/`[M19-rampage]` used, since none of these 4 was
+individually itemized in any earlier session's per-Tier breakdown either),
+Section E and top summary reconciled together (485+54+1+213+181=934,
+reconfirmed). CLAUDE.md's status section gained a new `[M19-break-protect]`
+bullet noting the running total (481→485) and the full findings, including
+the `ignores_protect`-vs-`breaks_protect` distinction and the
+`SEMI_INV_VANISH` default-fallthrough trap.
+
+## [M19-recoil-on-miss] — Jump Kick, High Jump Kick, Axe Kick, Supercell Slam, 4 moves (2026-07-09)
+
+### Step 0 — findings, reported before implementing
+
+Re-derived all 4 moves fresh from `src/data/moves_info.h` (brace-matched):
+
+- **Jump Kick** (26): `.effect = EFFECT_RECOIL_IF_MISS`, power 100
+  (`B_UPDATED_MOVE_DATA >= GEN_5` — confirmed TRUE at GEN_LATEST), type
+  Fighting, accuracy 95, pp 10 (`>= GEN_5 ? 10 : 25`), category Physical,
+  `.makesContact = TRUE`, `.gravityBanned = TRUE`.
+- **High Jump Kick** (136): same effect, power 130 (`>= GEN_5`), accuracy
+  90, pp 10 (`>= GEN_5 ? 10 : 20`), type Fighting, category Physical,
+  `.makesContact = TRUE`, `.gravityBanned = TRUE`. Genuinely different
+  power/accuracy from Jump Kick, confirmed via direct read.
+- **Axe Kick** (781): same effect, power 120, accuracy 90, pp 10, type
+  Fighting, category Physical, `.makesContact = TRUE`. Carries its OWN
+  unrelated secondary: `additionalEffects = {.moveEffect =
+  MOVE_EFFECT_CONFUSION, .chance = 30}` — a separate, guaranteed-30%
+  confusion roll, independent of the crash mechanism.
+- **Supercell Slam** (844): same effect, power 100, accuracy 95, pp 15,
+  type Electric (NOT Fighting — the only non-Fighting move of the 4), category
+  Physical, `.makesContact = TRUE`, `.minimizeDoubleDamage = TRUE` (already-
+  existing Stomp-family mechanism, `double_power_on_minimized`, reused
+  as-is with zero new code).
+
+**Key finding #1 — the mechanism is genuinely uniform across all 4,
+contradicting the task's own suspicion that Axe Kick/Supercell Slam
+(newer-gen additions) might use a different crash formula.** All 4 share
+the LITERAL SAME `.effect = EFFECT_RECOIL_IF_MISS`, dispatched through the
+identical handler (`battle_move_resolution.c :: MoveEndMoveBlockRecoil`,
+`case EFFECT_RECOIL_IF_MISS`, L3339-3372).
+
+**Key finding #2 — the crash formula is a FLAT 50% of the ATTACKER'S OWN
+max HP, NOT damage-scaled, confirmed from source directly:**
+
+```c
+case EFFECT_RECOIL_IF_MISS:
+    if (IsBattlerAlive(cv->battlerAtk)
+     && IsBattlerUnaffectedByMove(cv->battlerDef)
+     && !gBattleStruct->unableToUseMove)
+    {
+        s32 recoil = 0;
+        if (B_CRASH_IF_TARGET_IMMUNE == GEN_4 && gBattleStruct->moveResultFlags[cv->battlerDef] & MOVE_RESULT_DOESNT_AFFECT_FOE)
+        {
+            recoil = GetNonDynamaxMaxHP(cv->battlerDef) / 2;
+        }
+        if (B_RECOIL_IF_MISS_DMG >= GEN_5)
+        {
+            recoil = GetNonDynamaxMaxHP(cv->battlerAtk) / 2;
+        }
+        else if (B_RECOIL_IF_MISS_DMG >= GEN_3) { ... }
+        else if (B_RECOIL_IF_MISS_DMG == GEN_2) { ... }
+        else { recoil = 1; }
+        SetPassiveDamageAmount(cv->battlerAtk, recoil);
+        BattleScriptCall(BattleScript_RecoilIfMiss);
+```
+
+`include/config/battle.h`: `B_RECOIL_IF_MISS_DMG = GEN_LATEST` ("In Gen5+,
+Jump Kick and High Jump Kick will always do half of the user's max HP when
+missing") and `B_CRASH_IF_TARGET_IMMUNE = GEN_LATEST` ("In Gen4+, moves
+with crash damage will crash if the user attacks a target that is immune
+due to their typing"). At this project's GEN_LATEST config, the FIRST `if`
+(`B_CRASH_IF_TARGET_IMMUNE == GEN_4`, a literal equality check, defender's
+own HP) is always FALSE — dead code here. The SECOND `if`
+(`B_RECOIL_IF_MISS_DMG >= GEN_5`) is a SEPARATE, unconditional `if` (not
+`else if`), so it always wins and OVERWRITES `recoil` with
+`attacker's own maxHP/2` regardless of which branch(es) evaluated above it.
+This directly resolves the task's own central Step-0 question: NOT
+damage-scaled, uniform flat-percent across all 4 moves.
+
+**Key finding #3 — the miss-scope is genuinely broader than "accuracy roll
+failed" alone, but explicitly excludes pre-move-cancel failures.** The
+entry gate combines two conditions:
+
+- `IsBattlerUnaffectedByMove(battlerDef)` checks `MOVE_RESULT_NO_EFFECT =
+  MOVE_RESULT_MISSED | MOVE_RESULT_FAILED | MOVE_RESULT_PROTECTED |
+  MOVE_RESULT_DOESNT_AFFECT_FOE` (`include/constants/battle.h` L471) — an
+  accuracy-roll miss, a Protect block, and ordinary type immunity ALL
+  qualify, not just the first of these.
+- `!gBattleStruct->unableToUseMove` EXCLUDES every pre-move-cancel case
+  (sleep/freeze/paralysis/confusion-self-hit/flinch/recharge/Truant/
+  Disable/0-PP/obedience-loafing) — `unableToUseMove` is set whenever ANY
+  canceler in `sMoveSuccessOrderCancelers` fails
+  (`battle_move_resolution.c` L2474-2477), meaning the attacker never
+  actually attempted the move at all. This project's existing
+  `StatusManager.pre_move_check` already gates all of those cases before
+  move resolution ever reaches any of this project's own crash-dispatch
+  points, so nothing extra needed excluding.
+
+This project's general (non-OHKO) damaging-move path has NO distinct
+"immune" signal for ordinary 0x-effectiveness hits — they just flow
+through `DamageCalculator.calculate` as `damage=0` with no special
+early-return. A new, explicit type-immunity pre-check was added
+(mirroring the OHKO block's own existing pre-check shape) SPECIFICALLY for
+`crashes_on_miss` moves, rather than restructuring the general damaging-
+move path for every other move in the roster.
+
+**Key finding #4 — a real, confirmed ASYMMETRY with ordinary recoil:
+Magic Guard blocks crash damage, Rock Head does NOT.** Confirmed directly
+from the actual battle script (`data/battle_scripts_1.s`):
+
+```
+BattleScript_RecoilIfMiss::
+	printstring STRINGID_PKMNCRASHED
+	waitmessage B_WAIT_TIME_LONG
+	jumpifability BS_ATTACKER, ABILITY_MAGIC_GUARD, BattleScript_RecoilEnd
+	healthbarupdate BS_ATTACKER, PASSIVE_HP_UPDATE
+	datahpupdate BS_ATTACKER, PASSIVE_HP_UPDATE
+	tryfaintmon BS_ATTACKER
+BattleScript_RecoilEnd:
+	return
+```
+
+Rock Head is never checked anywhere in this script, nor in
+`MoveEndMoveBlockRecoil`'s `EFFECT_RECOIL_IF_MISS` case. Contrast with
+ordinary `EFFECT_RECOIL`/`EFFECT_CHLOROBLAST`'s own case block a few lines
+below (L3373-3399), which explicitly checks
+`IsAbilityAndRecord(...ROCK_HEAD) || IsAbilityAndRecord(...MAGIC_GUARD)`.
+This project's existing `AbilityManager.blocks_indirect_damage`
+(Magic-Guard-only) is the correct function to reuse here — deliberately
+NOT `blocks_recoil` (Rock-Head-OR-Magic-Guard), which would incorrectly
+exempt Rock Head from crash damage too.
+
+**Key finding #5 — a directly-adjacent, unrequested-but-necessary gap:
+Reckless's own power-boost check needed extending.** Source
+(`battle_util.c :: CalcMoveBasePowerAfterModifiers`, L6471-6473):
+`case ABILITY_RECKLESS: if (moveEffect == EFFECT_RECOIL || moveEffect ==
+EFFECT_RECOIL_IF_MISS) modifier = UQ_4_12(1.2);`. This project's prior
+implementation (`AbilityManager.move_power_modifier_uq412`) only checked
+`move.recoil_percent > 0` — its OWN doc comment had already flagged this
+exact gap in advance ("This project has no EFFECT_RECOIL_IF_MISS-shaped
+move... re-check this equivalence if a crash-on-miss move is ever added"),
+written back when Reckless was first implemented. Fixed by widening the
+condition to `move.recoil_percent > 0 or move.crashes_on_miss`.
+
+**Key finding #6 — Gravity, confirmed absent, nothing to build.**
+`.gravityBanned = TRUE` on all 4 moves in source, but Gravity/Ingrain/
+Smack Down/Telekinesis/Magnet Rise are all confirmed absent from this
+project entirely (`[M18t]`'s own doc comment) — re-confirmed via the same
+grep, not re-derived from scratch.
+
+### Design
+
+No `AskUserQuestion` fork was needed — Step 0 fully determined the crash
+formula (flat percent, not damage-scaled) and the miss-scope (broader than
+accuracy-only, but pre-move-cancel-excluded) directly from source. Findings
+reported to the user before implementing, then implemented directly.
+
+### Implementation
+
+- `scripts/data/move_data.gd`: new `@export var crashes_on_miss: bool =
+  false` (extensive doc comment covering the flat-percent formula, the
+  4-reason miss-scope, the Magic-Guard-only/Rock-Head-exempt asymmetry, and
+  the Reckless gap).
+- `scripts/battle/core/battle_manager.gd`: new `signal crash_damage
+  (attacker: BattlePokemon, amount: int)`. New helper:
+  ```gdscript
+  func _apply_crash_damage(attacker: BattlePokemon, ng_active: bool) -> void:
+      if AbilityManager.blocks_indirect_damage(attacker, ng_active):
+          return
+      var crash: int = attacker.max_hp / 2
+      if crash > 0:
+          attacker.current_hp = max(0, attacker.current_hp - crash)
+          crash_damage.emit(attacker, crash)
+  ```
+  Wired into 3 dispatch points, each gated on `move.crashes_on_miss`:
+  (1) the existing Protect-block early return; (2) a NEW type-immunity
+  pre-check (mirrors the OHKO block's own shape: `AbilityManager.
+  blocks_move_type` for ability-based Ground immunity plus
+  `TypeChart.get_effectiveness == 0.0` for raw type-chart immunity),
+  inserted right before the accuracy-check section; (3) the existing
+  accuracy-miss early return (which also covers a semi-invulnerable dodge,
+  per the same finding `[M19-break-protect]` established — both report
+  reason `"accuracy"` from this one site).
+- `scripts/battle/core/ability_manager.gd`: Reckless's power-boost
+  condition widened to `move.recoil_percent > 0 or move.crashes_on_miss`;
+  its own doc comment updated to note the gap is now closed.
+- `scripts/gen_moves.py`: new `"crashes_on_miss": False` in
+  `DEFAULTS`/`FIELD_ORDER`; 4 new move dict entries (Jump Kick/High Jump
+  Kick/Axe Kick/Supercell Slam) with full per-move data as derived in
+  Step 0 (Axe Kick's own confusion secondary; Supercell Slam's
+  `double_power_on_minimized`).
+- `data/moves/*.tres`: 4 new files (move_0026.tres, move_0136.tres,
+  move_0781.tres, move_0844.tres). Total: 489 (up from 485).
+
+### Test plan
+
+`scenes/battle/m19_recoil_on_miss_test.gd`/`.tscn` (new file). Section A:
+data-integrity for all 4 moves. Functional sections: a direct unit test of
+`_apply_crash_damage` proving the flat-50%-of-attacker's-own-max-HP
+formula with zero RNG/battle machinery; Magic Guard fully blocking crash
+damage; Rock Head NOT blocking it (the key confirmed asymmetry, tested as
+its own explicit discriminator); a forced miss triggering crash damage on
+the user, with a discriminator confirming a forced HIT does NOT trigger it
+(genuinely miss-gated, not "sometimes fires") and that ordinary hit-damage
+dealt to the opponent is real and unaffected by the addition; a Protect
+block ALSO triggering crash damage (proving the miss-scope is broader than
+accuracy-only, per Key finding #3); a type-immunity case (Jump Kick vs. a
+pure Ghost-type defender, forced to hit so only the immunity itself could
+block it) also triggering crash damage; and a direct
+`move_power_modifier_uq412` comparison proving Reckless's ×1.2 now applies
+to a `crashes_on_miss` move.
+
+**26/26 assertions pass, stable across 4 reruns — no test-authoring bugs
+this session** (one GDScript typed-Array parameter mismatch was caught and
+fixed before the first real run: `_make_mon`'s `types` parameter needed to
+be declared `Array[int]`, not a bare `Array`, to accept literal type-array
+arguments without a runtime assignment error).
+
+### Regression
+
+`damage_test.tscn` 24/24, `ability_test.tscn` 64/64, `m17n9_test.tscn`
+63/63 (Magic Guard's own origin suite), `m17a_test.tscn` 83/83 (Reckless's
+own origin suite), `tier4_test.tscn` 86/86, `status_test.tscn` 78/78,
+`stat_test.tscn` 78/78, `move_test.tscn` 49/49, `item_registry_test.tscn`
+309/309, `m19_break_protect_test.tscn` 26/26, `m19_recharge_test.tscn`
+39/39, `m19_rampage_test.tscn` 33/33, `m17f_test.tscn` 30/30 — all
+unchanged, 0 failures across all 13 suites.
+
+### Data
+
+`MoveData` gained 1 new field (`crashes_on_miss`). `BattleManager` gained
+1 new signal (`crash_damage`) and 1 new helper function
+(`_apply_crash_damage`). No new `BattlePokemon` fields — crash damage
+reuses the pre-existing `current_hp`/`max_hp` fields directly. 4 new move
+dict entries added to `scripts/gen_moves.py`; 4 new `.tres` files
+regenerated — 489 total move `.tres` files, up from 485.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: `M19-recoil-on-miss` marked
+COMPLETE (its own bullet rewritten from the original one-line summary),
+Bucket 4's own total shrunk 37→33 moves/17→16 sub-groups, Section A's Tier
+2 row updated (293→297 implemented, 15→11 remaining — all 4 moves
+reverse-engineered as Tier 2 in origin, using a more direct method than
+`[M19-recharge]`/`[M19-break-protect]`'s pure arithmetic-closure: this
+doc's own pre-existing "remaining 5 folded into Bucket 4" note on Tier 2's
+row was written when `M19-recoil-on-miss` was first carved out during
+`[M19-bucket2]`'s own Step 0, giving a direct textual attribution rather
+than one inferred purely from the totals closing), Section E and top
+summary reconciled together (489+50+1+213+181=934, reconfirmed).
+CLAUDE.md's status section gained a new `[M19-recoil-on-miss]` bullet
+noting the running total (485→489) and the full findings, including the
+flat-percent-not-damage-scaled correction, the Magic-Guard/Rock-Head
+asymmetry, and the Reckless fix.
+
+## [M19-weather-conditional-accuracy] — Thunder, Hurricane, Bleakwind Storm, Wildbolt Storm, Sandsear Storm, 5 moves (2026-07-09)
+
+### Step 0 — findings, reported before implementing
+
+Re-derived all 5 moves fresh from `src/data/moves_info.h` (brace-matched):
+
+- **Thunder** (87): `.effect = EFFECT_HIT`, power 110 (`B_UPDATED_MOVE_DATA
+  >= GEN_6`), type Electric, accuracy 70, pp 10, category Special,
+  `.damagesAirborne = TRUE` (`>= GEN_2`), `.alwaysHitsInRain = TRUE`,
+  `.accuracy50InSun = TRUE`, `additionalEffects = {MOVE_EFFECT_PARALYSIS,
+  .chance = 30}`.
+- **Hurricane** (542): same shape, power 110, type Flying, accuracy 70, pp
+  10, `.windMove = TRUE`, `.damagesAirborne = TRUE` (unconditional),
+  `.alwaysHitsInRain = TRUE`, `.accuracy50InSun = TRUE`,
+  `additionalEffects = {MOVE_EFFECT_CONFUSION, .chance = 30}`.
+- **Bleakwind Storm** (774): `.effect = EFFECT_HIT`, power 100
+  (`B_UPDATED_MOVE_DATA >= GEN_9`), type Flying, accuracy 80, pp 10
+  (`>= GEN_9`), `.target = TARGET_BOTH` (a SPREAD move), `.windMove = TRUE`,
+  `.alwaysHitsInRain = TRUE` — **NO `.accuracy50InSun`** —
+  `additionalEffects = {MOVE_EFFECT_STAT_MINUS, .speed = 1, .chance = 30}`.
+- **Wildbolt Storm** (775): same shape, type Electric, `.alwaysHitsInRain =
+  TRUE` only, `additionalEffects = {MOVE_EFFECT_PARALYSIS, .chance = 20}`.
+- **Sandsear Storm** (776): same shape, type Ground, `.alwaysHitsInRain =
+  TRUE` only, `additionalEffects = {MOVE_EFFECT_BURN, .chance = 20}`.
+
+**Key finding #1 — confirmed exactly the task's own hypothesis: 2 genuinely
+separate flags, not 1.** All 5 carry `alwaysHitsInRain`; ONLY Thunder/
+Hurricane additionally carry `accuracy50InSun`. The Storm trio has no sun
+penalty at all, confirmed individually from source rather than assumed.
+
+**Key finding #2 — `alwaysHitsInRain` is a FULL BYPASS of the entire
+accuracy-modifier chain, dispatched in the SAME early-exit function as No
+Guard/accuracy==0.** Source (`battle_util.c :: CanMoveSkipAccuracyCalc`,
+L10168-10199):
+
+```c
+bool32 CanMoveSkipAccuracyCalc(...)
+{
+    ...
+    if (gBattleMons[battlerAtk].volatiles.battlerWithSureHit == battlerDef + 1
+     || CanMoveSkipAccuracyCheck(battlerAtk, move)   // move.accuracy == 0
+     || gBattleMons[battlerDef].volatiles.glaiveRush)
+    { effect = TRUE; }
+    else if (abilityAtk == ABILITY_NO_GUARD ...) { effect = TRUE; ... }
+    else if (abilityDef == ABILITY_NO_GUARD ...) { effect = TRUE; ... }
+    ... (Telekinesis, pursuit target, Z-move, Minimize) ...
+
+    if (!effect)
+    {
+        u32 attackerWeather = GetAttackerWeather(GetBattlerHoldEffect(battlerAtk), abilityAtk, GetWeather());
+        if ((attackerWeather & B_WEATHER_RAIN) && MoveAlwaysHitsInRain(move))
+            effect = TRUE;
+        ...
+    }
+    return effect;
+}
+```
+
+This function is called BEFORE `GetTotalAccuracy` (the stage-ratio/
+ability-modifier chain) is ever invoked — confirming this project's own
+`move.accuracy == 0`-style early-return is the correct existing pattern to
+extend, not a new one to build.
+
+**Key finding #3 — `accuracy50InSun` is a DIFFERENT mechanism: a literal
+override to a flat 50, applied INSIDE `GetTotalAccuracy`, composing with
+(not bypassing) the rest of the chain — the same insertion point
+`[M17n-11]`'s Wonder Skin already established.** Source (`battle_util.c ::
+GetTotalAccuracy`, L10271-10276):
+
+```c
+moveAcc = GetMoveAccuracy(move);
+attackerWeather = GetAttackerWeather(atkHoldEffect, atkAbility, GetWeather());
+
+// Check Thunder and Hurricane on sunny weather.
+if ((attackerWeather & B_WEATHER_SUN) && MoveHas50AccuracyInSun(move))
+    moveAcc = 50;
+// Check Wonder Skin.
+if (defAbility == ABILITY_WONDER_SKIN && IsBattleMoveStatus(move) && moveAcc > 50)
+    moveAcc = 50;
+
+calc = gAccuracyStageRatios[buff].dividend * moveAcc;
+calc /= gAccuracyStageRatios[buff].divisor;
+// ... ability/item modifiers (Compound Eyes, Micle, lens items, etc.)
+// still apply to `calc` AFTER this point, unaffected.
+```
+
+`moveAcc = 50` is a literal reassignment (NOT `moveAcc *= 0.5` — Thunder's
+own base accuracy is 70, so this isn't "half"), happening BEFORE the
+stage-ratio multiplication. The sun-check is positioned immediately before
+Wonder Skin's own floor-to-50 check — mutually exclusive in practice
+(Wonder Skin only ever gates STATUS moves; Thunder/Hurricane are both
+damaging), but the relative order was preserved for fidelity.
+
+**Key finding #4 — both checks are gated on the ATTACKER's own effective
+weather specifically, including a per-attacker Utility Umbrella check this
+project already had a reusable function for.** `GetAttackerWeather`
+(`battle_util.c` L9281-9290) strips Sun/Rain from the weather value if the
+ATTACKER holds Utility Umbrella (not the defender's). This project's
+pre-existing `ItemManager.blocks_weather_modifier(mon, ng_active)`
+(`[M17n-2]`'s own established function, "if either battler holds Utility
+Umbrella, weather has no effect on this hit") is directly reusable here,
+called with just the attacker — no new item-check function needed. The
+`weather` param `check_accuracy` already receives is the caller's
+Air-Lock/Cloud-Nine-filtered EFFECTIVE weather (per `[M17n-2]`'s own
+`_effective_weather()` convention), so both filters compose for free.
+
+**Key finding #5 — a real correction beyond the task's own stated premise:
+Bleakwind Storm was NEVER actually implemented before this session.**
+Re-verified directly: no `.tres` file and no `gen_moves.py` entry existed
+for ANY of these 5 move IDs before this session (confirmed via grep against
+both). Cross-checked against `docs/decisions.md`'s own
+`[M19-secondary-stat-on-hit]` entry: "Bleakwind Storm(774) is confirmed
+double-blocked... but was ALREADY excluded from the 79 before this session
+started" — i.e. it was correctly excluded from that batch specifically
+because of this double-block, meaning its stat-on-hit half was never
+shipped either. This session builds BOTH halves together in one entry
+(the stat-on-hit secondary — `stat_change_stat = STAGE_SPEED`,
+`stat_change_amount = -1`, `secondary_chance = 30`, `is_spread = true` —
+and the weather-accuracy flag), not "adding weather flags to an
+already-shipped move" as the task's own Step 0 point 5 assumed.
+
+**Key finding #6 (not requested, checked anyway): `.windMove` is a real
+source flag on Hurricane and all 3 Storm-trio moves, but has zero
+consumers anywhere in this project** (no Wind Rider/Wind Power-style
+ability implemented, confirmed via grep) — deliberately not modeled, a
+genuine "nothing to wire it to" case rather than a silently dropped check.
+
+**Key finding #7 (Step 0 point 6, confirmed): Wildbolt Storm/Sandsear
+Storm's own secondary effects (paralysis 20%/burn 20%) were genuinely
+untouched before this session** — same re-verification as Key finding #5
+(no prior `.tres`/`gen_moves.py` entry for either ID).
+
+### Design
+
+No `AskUserQuestion` fork was needed — Step 0 fully determined the 2-flag
+split and the bypass-vs-override dispatch placement directly from source.
+Findings (including the Bleakwind Storm correction) reported to the user
+before implementing, then implemented directly.
+
+### Implementation
+
+- `scripts/data/move_data.gd`: new `@export var always_hits_in_rain: bool
+  = false` and `@export var accuracy_halved_in_sun: bool = false`
+  (extensive doc comments covering the bypass-vs-override distinction, the
+  5-vs-2 move split, and the Utility-Umbrella/Air-Lock scope).
+- `scripts/battle/core/status_manager.gd` (`check_accuracy`): a new
+  full-bypass check right after the existing `move.accuracy == 0` early
+  return:
+  ```gdscript
+  if move.always_hits_in_rain and weather == DamageCalculator.WEATHER_RAIN \
+          and not ItemManager.blocks_weather_modifier(attacker, ng_active):
+      return true
+  ```
+  and a new override right before Wonder Skin's own floor-to-50 check:
+  ```gdscript
+  if move.accuracy_halved_in_sun and weather == DamageCalculator.WEATHER_SUN \
+          and not ItemManager.blocks_weather_modifier(attacker, ng_active):
+      effective_move_acc = 50
+  ```
+- `scripts/gen_moves.py`: new `"always_hits_in_rain"`/
+  `"accuracy_halved_in_sun"` in `DEFAULTS`/`FIELD_ORDER`; 5 new move dict
+  entries (Thunder/Hurricane/Bleakwind Storm/Wildbolt Storm/Sandsear Storm)
+  with full per-move data as derived in Step 0 — Bleakwind Storm's entry
+  carries BOTH its stat-on-hit secondary and its weather flag together.
+- `data/moves/*.tres`: 5 new files (move_0087.tres, move_0542.tres,
+  move_0774.tres, move_0775.tres, move_0776.tres). Total: 494 (up from 489).
+
+### Test plan
+
+`scenes/battle/m19_weather_accuracy_test.gd`/`.tscn` (new file). Section A:
+data-integrity for all 5 moves, explicitly confirming Bleakwind Storm now
+carries BOTH `always_hits_in_rain` AND its stat-on-hit fields, and that
+`accuracy_halved_in_sun` is present on Thunder/Hurricane but absent from
+all 3 Storm-trio moves (the key asymmetry). Functional sections: since no
+dedicated accuracy-roll-forcing seam exists in this codebase (only the
+blunt `force_hit` override, which would bypass the mechanism under test
+entirely by returning before the new code ever runs), the rain-bypass and
+sun-override discriminators both use real RNG over enough trials that the
+outcomes are effectively certain rather than merely probable — 30 trials
+with zero misses while raining (mathematically guaranteed by the bypass,
+not a probability), versus 100 trials with at least one miss with no
+weather active (Thunder's own 70% accuracy makes zero-miss-in-100
+astronomically unlikely); a 1000-trial statistical sample showing Thunder's
+sun-overridden hit rate sits near 50% while Wildbolt Storm's stays near its
+own 80% base in the SAME sun weather (the key discriminator proving the
+asymmetry); a composition check showing +2 defender evasion measurably
+lowers Thunder's sun-overridden hit rate below the neutral ~50% baseline
+(proving the override composes with the modifier chain rather than
+bypassing it, unlike the rain case); and a full-battle integration test for
+Bleakwind Storm confirming its weather-accuracy half connects through the
+real dispatch while raining, paired with a direct `try_secondary_effect` +
+`BattleManager._apply_stat_change_effect` call proving its stat-drop half
+also fires — the latter via direct calls (not the full battle) since no
+BattleManager-level forcing seam exists for the secondary-chance roll
+either (every call site hardcodes `null`), and a full-battle attempt at
+this specific 30%-chance secondary would reintroduce exactly the
+whole-battle-aggregation flakiness risk this project's own testing
+conventions warn against.
+
+**27/27 assertions pass, stable across 5 reruns**, after fixing one bug
+caught on the first run: a fresh recurrence of the documented GDScript
+`%`-after-`+`-concatenation precedence bug (a `_chk` label's trailing
+`% [no_weather_misses]` bound only to the last of 3 concatenated string
+literals, which had no `%s`/`%d` placeholder at all, producing a runtime
+"not all arguments converted" error) — fixed by parenthesizing the full
+concatenation. A second issue was caught and fixed in the SAME test run,
+not a separate bug: the initial Bleakwind Storm secondary check called
+`StatusManager.try_secondary_effect` directly and expected it to mutate
+`stat_stages` — but per `[M19-secondary-stat-on-hit]`'s own established
+design, that function only returns `true` ("caller applies it") for this
+stat-change path; the actual mutation lives in
+`BattleManager._apply_stat_change_effect`, which needs a real
+`BattleManager` instance. Fixed by calling both in sequence.
+
+### Regression
+
+`weather_test.tscn` 64/64, `m17n11_test.tscn` 51/51 (Wonder Skin's own
+origin suite), `m17a_test.tscn` 83/83 (Compound Eyes/Hustle's own origin
+suite), `m17n2_test.tscn` 58/58 (Sand Veil/Snow Cloak, the other
+weather-conditional-accuracy precedent), `tier4_test.tscn` 86/86,
+`status_test.tscn` 78/78, `stat_test.tscn` 78/78, `move_test.tscn` 49/49,
+`item_registry_test.tscn` 309/309, `m19_recoil_on_miss_test.tscn` 26/26,
+`m19_break_protect_test.tscn` 26/26, `m19_recharge_test.tscn` 39/39,
+`m19_rampage_test.tscn` 33/33, `m19_secondary_stat_test.tscn` 1754/1754,
+`m19_bucket3_multistat_test.tscn` 366/366 — all unchanged, 0 failures
+across all 15 suites.
+
+### Data
+
+`MoveData` gained 2 new fields (`always_hits_in_rain`,
+`accuracy_halved_in_sun`). No new `BattlePokemon`/`BattleManager` fields —
+both checks reuse the pre-existing `check_accuracy` pipeline and
+`ItemManager.blocks_weather_modifier` directly. 5 new move dict entries
+added to `scripts/gen_moves.py`; 5 new `.tres` files regenerated — 494
+total move `.tres` files, up from 489.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: `M19-weather-conditional-
+accuracy` marked COMPLETE (its own bullet rewritten from the original
+one-line summary, explicitly noting Bleakwind Storm's double-block
+resolution and the "never actually implemented" correction), Bucket 4's
+own total shrunk 33→28 moves/16→15 sub-groups, Section A's Tier 4 row
+updated (56→61 implemented, 256→251 remaining — all 5 weather-conditional-
+accuracy moves reverse-engineered as Tier 4 in origin via the same
+arithmetic-closure method `[M19-recharge]`/`[M19-break-protect]` used,
+since — unlike `[M19-recoil-on-miss]`'s own direct textual hint — no such
+hint existed for this sub-group), Section E and top summary reconciled
+together (494+45+1+213+181=934, reconfirmed). CLAUDE.md's status section
+gained a new `[M19-weather-conditional-accuracy]` bullet noting the running
+total (489→494) and the full findings, including the 2-flag split, the
+bypass-vs-override distinction, and the Bleakwind Storm correction.

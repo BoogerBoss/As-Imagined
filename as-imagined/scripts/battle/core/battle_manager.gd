@@ -52,6 +52,7 @@ signal secondary_applied(target: BattlePokemon, effect: int)  # MoveData.SE_* va
 # M6 signals
 signal charge_started(attacker: BattlePokemon, move: MoveData)  # turn 1 of a two-turn move
 signal recoil_damage(attacker: BattlePokemon, amount: int)       # attacker took recoil
+signal crash_damage(attacker: BattlePokemon, amount: int)  # [M19-recoil-on-miss] Jump Kick-family crashed
 signal drain_heal(attacker: BattlePokemon, amount: int)          # attacker healed via drain
 # M8 signals
 signal ability_triggered(pokemon: BattlePokemon, effect_key: String)      # any ability fires
@@ -59,6 +60,7 @@ signal ability_triggered(pokemon: BattlePokemon, effect_key: String)      # any 
 signal substitute_created(attacker: BattlePokemon, sub_hp: int)          # Substitute put up
 signal substitute_broke(defender: BattlePokemon)                          # Substitute HP → 0
 signal protected(defender: BattlePokemon)                                 # Protect succeeded
+signal protect_broken(defender: BattlePokemon)  # [M19-break-protect] Feint-family broke an active Protect
 signal destiny_bond_set(attacker: BattlePokemon)                          # Destiny Bond activated
 signal destiny_bond_triggered(fainted_mon: BattlePokemon, killer: BattlePokemon)  # DB KO
 signal disabled(target: BattlePokemon, move: MoveData)                    # Disable applied
@@ -123,6 +125,11 @@ signal ability_changed(pokemon: BattlePokemon, new_ability_id: int)       # M17h
 signal item_transferred(from_mon: BattlePokemon, to_mon: BattlePokemon, item: ItemData)  # M17j: Pickpocket/Magician/Symbiosis
 
 signal move_bounced(holder: BattlePokemon, new_target: BattlePokemon)      # M17n-9: Magic Bounce reflected a status move
+
+signal status_cured(pokemon: BattlePokemon)  # [Bucket 4 cheapest singles] Sparkling Aria cured the TARGET's own status
+
+signal rampage_lock_started(attacker: BattlePokemon, move: MoveData)  # [M19-rampage] lock just initiated (Thrash family or Uproar)
+signal rampage_lock_ended(attacker: BattlePokemon, move: MoveData, confused: bool)  # [M19-rampage] lock just cleared (counter hit 0, or immune-cancel)
 
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
@@ -542,6 +549,12 @@ func _phase_move_selection() -> void:
 		var side: int = i / _active_per_side
 		if mon.charging_move != null:
 			_chosen_moves[i] = mon.charging_move
+		elif mon.locked_move != null:
+			# [M19-rampage] Forced-move-repeat lock (Thrash/Petal Dance/Outrage/
+			# Raging Fury/Uproar) — same override shape as charging_move, checked
+			# right after it. Source: battle_util.c L390-392, HandleAction_UseMove
+			# forces gCurrentMove=gLockedMoves whenever multipleTurns is set.
+			_chosen_moves[i] = mon.locked_move
 		elif mon.encored_move != null:
 			_chosen_moves[i] = mon.encored_move
 		elif not _action_queues[i].is_empty():
@@ -829,7 +842,9 @@ func _phase_pre_move_checks() -> void:
 
 	if not check["can_move"]:
 		var reason: String
-		if check["loafing"]:
+		if check["recharging"]:
+			reason = "recharging"
+		elif check["loafing"]:
 			reason = "loafing"
 		elif check["flinched"]:
 			reason = "flinched"
@@ -952,6 +967,33 @@ func _phase_move_execution() -> void:
 	# M7: Clear destiny_bond when the user acts — the bond only covers until their next
 	# move. Source: destinyBond decremented at end of user's move execution; == 0 → expired.
 	attacker.destiny_bond = false
+
+	# [Bucket 4 cheapest singles] Rage: clear rage_active at the START of any turn
+	# where the chosen move ISN'T Rage itself (source: battle_main.c L5269-5270,
+	# checked once per battler before any move resolves that turn). Left untouched
+	# when Rage IS the chosen move — the set-on-hit branch further down (inside
+	# _do_damaging_hit) re-establishes it fresh after a successful hit regardless.
+	if not move.is_rage:
+		attacker.rage_active = false
+
+	# [Bucket 4 cheapest singles] Throat Chop: blocks the HOLDER's own sound moves
+	# for as long as throat_chop_turns > 0 — reproduced at this "chosen, then
+	# fails at execution" insertion point, same shape as Disable/Assault Vest
+	# immediately below. Source: battle_move_resolution.c L351.
+	if move.sound_move and attacker.throat_chop_turns > 0:
+		move_skipped.emit(attacker, "throat_chop")
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# [Bucket 4 cheapest singles] Blood Moon: fails if this exact move was the
+	# user's own last move used — see MoveData.cant_use_twice's own doc comment
+	# for the selection-vs-execution-time implementation-shape rationale.
+	if move.cant_use_twice and attacker.last_move_used == move:
+		move_skipped.emit(attacker, "cant_use_twice")
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
 
 	# M7: Disabled move check — fires before thaw, before accuracy, before everything.
 	# Source: battle_move_resolution.c :: CancelerDisabled (L318)
@@ -1141,6 +1183,10 @@ func _phase_move_execution() -> void:
 	# Moves with ignores_protect bypass this (e.g. Feint — M8+ scope; Roar/Whirlwind).
 	if defender.protect_active and not move.ignores_protect:
 		move_missed.emit(attacker, "protected")
+		# [M19-recoil-on-miss] Protect block is one of the 4 "unaffected"
+		# reasons that trigger crash damage (see crashes_on_miss's doc comment).
+		if move.crashes_on_miss:
+			_apply_crash_damage(attacker, ng_active)
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
@@ -1311,6 +1357,34 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
+	# ── Type immunity pre-check (crashes_on_miss moves only) ─────────────────
+	# Source: MOVE_RESULT_DOESNT_AFFECT_FOE is one of the 4 "unaffected" reasons
+	# gating crash damage (see MoveData.crashes_on_miss's own doc comment). This
+	# project's GENERAL damaging-move path has no separate pre-accuracy immunity
+	# check — an ordinary 0x-effectiveness hit just flows through
+	# DamageCalculator.calculate as damage=0, with no distinct signal — so this
+	# explicit pre-check exists ONLY for crashes_on_miss moves, mirroring the
+	# OHKO block's own immune pre-check above rather than changing the general
+	# damaging-move path for every other move in the roster.
+	if move.crashes_on_miss and AbilityManager.blocks_move_type(defender, move.type, ng_active, attacker):
+		move_missed.emit(attacker, "immune")
+		_apply_crash_damage(attacker, ng_active)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+	if move.crashes_on_miss and move.type != TypeChart.TYPE_NONE:
+		var crash_eff: float = TypeChart.get_effectiveness(
+				move.type, defender.species.types, false, false,
+				ItemManager.holds_iron_ball(defender, ng_active))
+		if crash_eff == 0.0:
+			move_missed.emit(attacker, "immune")
+			_apply_crash_damage(attacker, ng_active)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 	# ── Accuracy check ────────────────────────────────────────────────────────
 	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
 	# Includes semi-invulnerable miss check (source: CancelerAccuracyCheck L1993).
@@ -1328,7 +1402,33 @@ func _phase_move_execution() -> void:
 		#   IsAnyTargetAffected() — a miss resets the consecutive-hit counter to 0.
 		if move.is_rollout:
 			attacker.rollout_turns = 0
+		# [M19-rampage] A miss does NOT cancel a CONTINUING rampage/Uproar lock —
+		# the counter still decrements and (rampage only) still self-confuses on
+		# schedule regardless of whether this turn's hit connected. A first-use
+		# miss never sets the lock at all (only reached here if already locked
+		# from an earlier turn's successful hit). Source: MoveEndRampage/the
+		# Uproar end-of-turn decrement both run independent of accuracy outcome.
+		if (move.is_rampage or move.is_uproar) and attacker.locked_move == move:
+			if move.is_rampage:
+				attacker.rampage_turns -= 1
+				if attacker.rampage_turns <= 0:
+					attacker.locked_move = null
+					var confused_on_miss: bool = StatusManager.try_apply_confusion(
+							attacker, null, ng_active)
+					if confused_on_miss:
+						secondary_applied.emit(attacker, MoveData.SE_CONFUSION)
+					rampage_lock_ended.emit(attacker, move, confused_on_miss)
+			else:
+				attacker.uproar_turns -= 1
+				if attacker.uproar_turns <= 0:
+					attacker.locked_move = null
+					rampage_lock_ended.emit(attacker, move, false)
 		move_missed.emit(attacker, "accuracy")
+		# [M19-recoil-on-miss] An accuracy-roll miss (or a semi-invulnerable
+		# dodge — both report "accuracy" from this same site) is one of the 4
+		# "unaffected" reasons that trigger crash damage.
+		if move.crashes_on_miss:
+			_apply_crash_damage(attacker, ng_active)
 		# M18r: Blunder Policy — +2 Speed on the holder when its own move misses
 		# via THIS accuracy check specifically. OHKO moves never reach this point
 		# at all (move.is_ohko returns early at the OHKO block above, L1098), so
@@ -2141,96 +2241,15 @@ func _phase_move_execution() -> void:
 			return
 
 		if move.stat_change_stat >= 0:
-			var stat_target: BattlePokemon = attacker if move.stat_change_self else defender
-			# M17n-11: Mirror Armor — a non-self-inflicted stat DECREASE targeting a
-			# Mirror Armor holder redirects onto the attacker instead, applied as a
-			# direct write (matching source's SetStatChange2 raw-write shape, which
-			# does not re-enter the reactive Defiant/Competitive/Opportunist checks
-			# below) rather than falling through to the normal apply_stat_change path.
-			if not move.stat_change_self and move.stat_change_amount < 0 \
-					and AbilityManager.mirror_armor_reflects(stat_target, attacker, ng_active, attacker):
-				var reflected: int = StatusManager.apply_stat_change(
-						attacker, move.stat_change_stat, move.stat_change_amount, null, ng_active)
-				if reflected == 0:
-					move_effect_failed.emit(attacker, "stat_limit")
-				else:
-					stat_stage_changed.emit(attacker, move.stat_change_stat, reflected)
-				ability_triggered.emit(stat_target, "mirror_armor")
-				move_executed.emit(attacker, defender, move, 0)
-				_current_actor_index += 1
-				_set_phase(BattlePhase.FAINT_CHECK)
-				return
-			# M17g: `attacker` threaded through here (not just `ng_active`) — this is
-			# THE genuine "a move's stat effect landing on a target" call site, where
-			# Mold Breaker's attacker-scoped bypass of Simple/Contrary/Clear Body/White
-			# Smoke/Hyper Cutter/Big Pecks/Keen Eye/Flower Veil actually matters. Safe to
-			# pass even for stat_change_self (Swords Dance etc.): effective_ability_id's
-			# own `attacker != mon` guard already skips Mold Breaker when stat_target is
-			# the attacker itself, matching source's CanBreakThroughAbility exactly.
-			var actual: int = StatusManager.apply_stat_change(
-					stat_target, move.stat_change_stat, move.stat_change_amount,
-					null, ng_active, attacker)
-			if actual == 0:
-				move_effect_failed.emit(stat_target, "stat_limit")
-			else:
-				stat_stage_changed.emit(stat_target, move.stat_change_stat, actual)
-				# M17b: Defiant/Competitive — only for a decrease caused by an
-				# OPPONENT's move (not stat_change_self, e.g. Swords Dance).
-				# Source: battle_util.c :: ShouldDefiantCompetitiveActivate (L1149-1168).
-				if actual < 0 and not move.stat_change_self:
-					var defiant_stat: int = AbilityManager.defiant_competitive_stat(stat_target, ng_active)
-					if defiant_stat != -1:
-						var defiant_actual: int = StatusManager.apply_stat_change(stat_target, defiant_stat, 2, null, ng_active)
-						if defiant_actual != 0:
-							stat_stage_changed.emit(stat_target, defiant_stat, defiant_actual)
-							ability_triggered.emit(stat_target, "defiant_competitive")
-				# M17n-8: Opportunist — copies the SAME stage increase onto any live
-				# opponent (relative to `stat_target`, the mon whose stat just rose) that
-				# holds it, immediately. Source: battle_stat_change.c L420-441 — checked
-				# ONLY in the stat-INCREASE path (never decreases), loops every battler on
-				# the OPPOSING side of `stat_target` (`IsBattlerAlly` skip — the holder can
-				# never react to its own side's raise, including its own, by construction).
-				# Unlike Defiant/Competitive above, NOT gated on `move.stat_change_self` —
-				# source's real check fires for a self-targeted raise (Swords Dance) just
-				# as much as an opponent-targeted one; what matters is which SIDE the
-				# raised mon is on, not whether the move that raised it was self-targeted.
-				# No infinite-loop risk: the copied change below calls
-				# StatusManager.apply_stat_change directly, never re-entering this same
-				# dispatch block, so Opportunist's own copy can't re-trigger itself.
-				# Known simplification (documented, not silently dropped): wired into
-				# this primary move-driven stat-increase call site only, mirroring
-				# Defiant/Competitive's own established precedent of not retrofitting
-				# into every apply_stat_change call site — ability-driven stat increases
-				# (Moxie, Weak Armor's Speed+2, Download, etc.) and Baton-Pass/Psych-Up
-				# stage copies are NOT currently covered.
-				if actual > 0:
-					for opp: BattlePokemon in _get_live_opponents(stat_target):
-						if AbilityManager.effective_ability_id(opp, ng_active) == AbilityManager.ABILITY_OPPORTUNIST:
-							var opp_actual: int = StatusManager.apply_stat_change(
-									opp, move.stat_change_stat, actual, null, ng_active)
-							if opp_actual != 0:
-								stat_stage_changed.emit(opp, move.stat_change_stat, opp_actual)
-								ability_triggered.emit(opp, "opportunist")
-						# M18m: Mirror Herb — confirmed a genuine structural twin of
-						# Opportunist AT THE SOURCE LEVEL (battle_stat_change.c
-						# L430-449 checks both in the literal same loop), so it
-						# correctly inherits the identical "primary move-driven
-						# stat increases only" scope limit documented above — not
-						# a new simplification. Source queues-and-batches the copy
-						# until MoveEnd (single-use, unlike permanent Opportunist);
-						# simplified here to an immediate copy-and-consume, since
-						# this project's one-stat-per-move architecture means a
-						# second qualifying trigger could never occur before the
-						# item is already spent — see HOLD_EFFECT_MIRROR_HERB's
-						# own doc comment for the full rationale.
-						if ItemManager.holds_mirror_herb(opp, ng_active):
-							var mh_actual: int = StatusManager.apply_stat_change(
-									opp, move.stat_change_stat, actual, null, ng_active)
-							if mh_actual != 0:
-								stat_stage_changed.emit(opp, move.stat_change_stat, mh_actual)
-							_consume_item(opp)
+			# [M19-secondary-stat-on-hit]: extracted into _apply_stat_change_effect
+			# (below) so the new damage-move secondary-stat-change dispatch in
+			# _do_damaging_hit can reuse the exact same Mirror Armor / Defiant-
+			# Competitive / Opportunist / Mirror Herb logic rather than re-deriving
+			# it. Behavior of this call site is unchanged — see that function's own
+			# doc comment for the original per-mechanism source citations.
+			_apply_stat_change_effect(attacker, defender, move, ng_active)
 		elif move.secondary_effect != MoveData.SE_NONE:
-			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move, null, ng_active, _effective_weather())
+			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move, null, ng_active, _effective_weather(), _is_uproar_active())
 			if applied:
 				secondary_applied.emit(defender, move.secondary_effect)
 				# Synchronize: defender received a primary status — check back-reflect.
@@ -2611,6 +2630,10 @@ func _phase_end_of_turn() -> void:
 			mon.encore_turns -= 1
 			if mon.encore_turns == 0:
 				mon.encored_move = null
+		# [Bucket 4 cheapest singles] Throat Chop: same decrement shape as
+		# Disable/Encore above. Source: battle_end_turn.c L61-63/L1280-1311.
+		if mon.throat_chop_turns > 0:
+			mon.throat_chop_turns -= 1
 
 	# M16c: Decrement Reflect/Light Screen/Aurora Veil timers, both sides.
 	# Source: battle_end_turn.c :: HandleEndTurnSecondEventBlock, cases
@@ -2830,6 +2853,17 @@ func _get_live_opponents(mon: BattlePokemon) -> Array:
 # since Neutralizing Gas suppresses field-wide including the holder's own side.
 func _is_neutralizing_gas_active() -> bool:
 	return AbilityManager.is_neutralizing_gas_active(_combatants)
+
+
+# [M19-rampage] whether Uproar's lock is active on ANY live combatant right now —
+# field-wide (both sides), same shape as _is_neutralizing_gas_active above.
+# Source: UproarWakeUpCheck (battle_script_commands.c L7130-7149) scans
+# `i < gBattlersCount`, not just one side.
+func _is_uproar_active() -> bool:
+	for mon in _combatants:
+		if not mon.fainted and mon.uproar_turns > 0:
+			return true
+	return false
 
 
 # M17n-2: whether Air Lock/Cloud Nine is active anywhere on the field right now — same
@@ -3175,6 +3209,12 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.confusion_turns = 0
 	mon.flinched = false
 	mon.charging_move = null
+	# [M19-rampage] Cleared unconditionally on faint/switch-out, same as
+	# charging_move — source's CancelMultiTurnMoves is called at every faint/
+	# switch site, mirrored here by _clear_volatiles' own existing call sites.
+	mon.locked_move = null
+	mon.rampage_turns = 0
+	mon.uproar_turns = 0
 	mon.semi_invulnerable = MoveData.SEMI_INV_NONE
 	mon.substitute_hp = 0
 	mon.protect_active = false
@@ -3194,12 +3234,20 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.truant_loafing = false
 	mon.flash_fire_active = false
 	mon.slow_start_timer = 0
+	# [M19-recharge] Cleared unconditionally on faint/switch-out — source's
+	# rechargeTimer lives in the same bulk-memset Volatiles struct as every
+	# other field cleared in this function.
+	mon.must_recharge = false
 	mon.used_protean_libero = false
 	# M17n-7: unburden_active/cud_chew_armed live in source's `volatiles` struct
 	# (cleared on switch), unlike last_consumed_berry below, which is deliberately
 	# party-state-scoped and NOT touched here — see BattlePokemon's own doc comments.
 	mon.unburden_active = false
 	mon.cud_chew_armed = false
+	# [Bucket 4 cheapest singles] Rage/Throat Chop — both live in source's
+	# `volatiles` struct, cleared here like every other switch-scoped volatile.
+	mon.rage_active = false
+	mon.throat_chop_turns = 0
 	# [M18.5d-2] Attract's infatuation volatile — cured by switch-out/faint like
 	# every other one-battle-stint volatile here (Step 0's confirmed cure condition,
 	# `mon`'s OWN half). `mon.infatuated_by` is who INFATUATED `mon`, not who `mon`
@@ -3529,6 +3577,23 @@ func _roll_protect_success(consecutive: int) -> bool:
 	var idx: int = clampi(consecutive, 0, DENOMS.size() - 1)
 	var denom: int = DENOMS[idx]
 	return denom == 1 or (randi() % denom == 0)
+
+
+# [M19-recoil-on-miss] Jump Kick/High Jump Kick/Axe Kick/Supercell Slam —
+# flat 50% of the ATTACKER'S OWN max HP, gated only on Magic Guard (NOT Rock
+# Head — a confirmed asymmetry with ordinary recoil; see MoveData.
+# crashes_on_miss's own doc comment for the full source citation). Called
+# from each of this project's "the attacker genuinely attempted the move but
+# it didn't affect the target" dispatch points (Protect block, type
+# immunity, accuracy miss) — never from a pre-move-cancel path, since those
+# never reach move resolution at all.
+func _apply_crash_damage(attacker: BattlePokemon, ng_active: bool) -> void:
+	if AbilityManager.blocks_indirect_damage(attacker, ng_active):
+		return
+	var crash: int = attacker.max_hp / 2
+	if crash > 0:
+		attacker.current_hp = max(0, attacker.current_hp - crash)
+		crash_damage.emit(attacker, crash)
 
 
 # Magnitude's weighted base-power roll.
@@ -3894,6 +3959,84 @@ func _do_multi_hit_sequence(attacker: BattlePokemon, target: BattlePokemon,
 	multi_hit_sequence_finished.emit(attacker, target, hits_landed, total_damage)
 
 
+# [M19-secondary-stat-on-hit] Shared EFFECT_STAT_CHANGE application — extracted
+# from _phase_move_execution's pure-status-move dispatch (Growl, Swords Dance)
+# so _do_damaging_hit's new damage-move secondary-stat-change dispatch (Iron
+# Tail, Overheat) can reuse it exactly rather than re-deriving the Mirror Armor
+# redirect / Defiant-Competitive / Opportunist / Mirror Herb logic. Handles
+# self/foe targeting via move.stat_change_self, stage math via
+# StatusManager.apply_stat_change, and all associated signal emission. Callers
+# are responsible for their own move_executed/phase-transition bookkeeping —
+# this function only applies the stat effect and emits stat/ability signals.
+#
+# [Bucket 3 multi-stat] Applies the PRIMARY pair (stat_change_stat/amount)
+# then loops move.extra_stat_change_stats/amounts (Ancient Power's 5 stats,
+# Shell Smash's mixed +2/-1, Spicy Extract's mixed +2/-2), running the exact
+# same per-pair logic — including Mirror Armor/Defiant/Opportunist/Mirror
+# Herb — independently for EACH pair, not once for the whole move. This is
+# deliberate, not just convenient: Mirror Armor must redirect only the
+# DECREASING component of a mixed-sign move (Spicy Extract's -2 Def
+# redirects, its simultaneous +2 Atk does not), and real Defiant/Competitive
+# behavior fires once per qualifying decrease, so a move lowering 2 stats at
+# once against a Defiant holder correctly triggers it twice — confirmed
+# against source, not assumed. stat_change_self is read once per move (self/
+# foe never varies within one move's own stat sub-fields, confirmed via
+# direct inspection of every multi-stat move in this project's roster) and
+# threaded into every pair's application.
+# See the original inline block (pre-[M19-secondary-stat-on-hit]) for the
+# per-mechanism source citations this was ported from verbatim:
+# M17n-11 (Mirror Armor), M17g (Mold Breaker threading), M17b (Defiant/
+# Competitive), M17n-8 (Opportunist), M18m (Mirror Herb).
+func _apply_stat_change_effect(attacker: BattlePokemon, defender: BattlePokemon, move: MoveData, ng_active: bool) -> void:
+	_apply_one_stat_change_pair(attacker, defender, move, move.stat_change_stat, move.stat_change_amount, ng_active)
+	for i in range(move.extra_stat_change_stats.size()):
+		_apply_one_stat_change_pair(attacker, defender, move,
+				move.extra_stat_change_stats[i], move.extra_stat_change_amounts[i], ng_active)
+
+
+func _apply_one_stat_change_pair(attacker: BattlePokemon, defender: BattlePokemon, move: MoveData,
+		stat: int, amount: int, ng_active: bool) -> void:
+	var stat_target: BattlePokemon = attacker if move.stat_change_self else defender
+	if not move.stat_change_self and amount < 0 \
+			and AbilityManager.mirror_armor_reflects(stat_target, attacker, ng_active, attacker):
+		var reflected: int = StatusManager.apply_stat_change(
+				attacker, stat, amount, null, ng_active)
+		if reflected == 0:
+			move_effect_failed.emit(attacker, "stat_limit")
+		else:
+			stat_stage_changed.emit(attacker, stat, reflected)
+		ability_triggered.emit(stat_target, "mirror_armor")
+		return
+	var actual: int = StatusManager.apply_stat_change(
+			stat_target, stat, amount,
+			null, ng_active, attacker)
+	if actual == 0:
+		move_effect_failed.emit(stat_target, "stat_limit")
+	else:
+		stat_stage_changed.emit(stat_target, stat, actual)
+		if actual < 0 and not move.stat_change_self:
+			var defiant_stat: int = AbilityManager.defiant_competitive_stat(stat_target, ng_active)
+			if defiant_stat != -1:
+				var defiant_actual: int = StatusManager.apply_stat_change(stat_target, defiant_stat, 2, null, ng_active)
+				if defiant_actual != 0:
+					stat_stage_changed.emit(stat_target, defiant_stat, defiant_actual)
+					ability_triggered.emit(stat_target, "defiant_competitive")
+		if actual > 0:
+			for opp: BattlePokemon in _get_live_opponents(stat_target):
+				if AbilityManager.effective_ability_id(opp, ng_active) == AbilityManager.ABILITY_OPPORTUNIST:
+					var opp_actual: int = StatusManager.apply_stat_change(
+							opp, stat, actual, null, ng_active)
+					if opp_actual != 0:
+						stat_stage_changed.emit(opp, stat, opp_actual)
+						ability_triggered.emit(opp, "opportunist")
+				if ItemManager.holds_mirror_herb(opp, ng_active):
+					var mh_actual: int = StatusManager.apply_stat_change(
+							opp, stat, actual, null, ng_active)
+					if mh_actual != 0:
+						stat_stage_changed.emit(opp, stat, mh_actual)
+					_consume_item(opp)
+
+
 # M14b: Execute one damaging hit from attacker onto target.
 # Handles DamageCalculator call, substitute routing, Counter tracking, Bide accumulation,
 # target-thaw, recoil, drain, secondary effects, contact abilities, item triggers, and
@@ -4147,14 +4290,145 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			attacker.current_hp = min(attacker.max_hp, attacker.current_hp + shell_bell_amount)
 			item_healed.emit(attacker, shell_bell_amount)
 
-	if damage > 0 and move.secondary_effect != MoveData.SE_NONE:
-		var effect_hit: bool = StatusManager.try_secondary_effect(attacker, target, move, null, ng_active, _effective_weather())
+	# [Bucket 4 cheapest singles] Rage: sets rage_active on the ATTACKER after a
+	# successful hit — guaranteed, no `.chance` field, so unconditional on
+	# damage > 0 alone (not routed through try_secondary_effect). The REACTIVE
+	# half (raising Attack when the holder itself is later hit) lives further
+	# down, near the other hit-reactive triggers, since it's keyed on the
+	# TARGET's own rage_active flag regardless of which move hits them.
+	if damage > 0 and move.is_rage:
+		attacker.rage_active = true
+
+	# [M19-recharge] Sets on a successful, non-immune hit only — confirmed
+	# from source a MISS does NOT set this (see MoveData.is_recharge's own
+	# doc comment for the full citation). Consumed the NEXT time this
+	# Pokémon would act, via StatusManager.pre_move_check.
+	if damage > 0 and move.is_recharge:
+		attacker.must_recharge = true
+
+	# [M19-break-protect] Feint/Shadow Force/Phantom Force/Hyperspace Hole —
+	# post-hit only (none of the 4 set preAttackEffect, so a miss never
+	# breaks Protect — see MoveData.breaks_protect's own doc comment for the
+	# full citation). Single-target scope: clears the DEFENDER's own
+	# protect_active plus resets protect_consecutive (the Gen5+ 1/3^n
+	# fail-chance ramp `_roll_protect_success` reads), matching source's
+	# `protected = PROTECT_NONE; volatiles.consecutiveMoveUses = 0`. No-op
+	# (and no signal) if the defender wasn't actually Protect-active —
+	# mirrors source's own `i = FALSE` no-op-if-nothing-to-break shape.
+	if damage > 0 and move.breaks_protect and target.protect_active:
+		target.protect_active = false
+		target.protect_consecutive = 0
+		protect_broken.emit(target)
+
+	# [Bucket 4 cheapest singles] Clear Smog: resets ALL of the target's stat
+	# stages to exactly 0 — an absolute reset, not a relative stat_change_amount
+	# delta, so this cannot reuse _apply_stat_change_effect at all. No-ops
+	# (including no signal) if every stat was already 0, matching source's own
+	# pre-check exactly.
+	if damage > 0 and move.is_clear_smog:
+		var any_nonzero: bool = false
+		for i in range(target.stat_stages.size()):
+			if target.stat_stages[i] != 0:
+				any_nonzero = true
+				break
+		if any_nonzero:
+			for i in range(target.stat_stages.size()):
+				if target.stat_stages[i] != 0:
+					var delta: int = -target.stat_stages[i]
+					target.stat_stages[i] = 0
+					stat_stage_changed.emit(target, i, delta)
+
+	# [Bucket 4 cheapest singles] Incinerate: destroys (not consumes) the
+	# target's held Berry — deliberately bypasses `_consume_item` (which would
+	# incorrectly also trigger Cheek Pouch / register last_consumed_berry, per
+	# MoveData.is_incinerate's own doc comment) and instead reproduces ONLY the
+	# Unburden trigger source's own case calls directly. This project has no Gem
+	# items, so the Gen6+ Gem half of source's condition is permanently moot.
+	if damage > 0 and move.is_incinerate and target.held_item != null \
+			and target.held_item.pocket == ItemManager.POCKET_BERRIES \
+			and AbilityManager.effective_ability_id(target, ng_active) != AbilityManager.ABILITY_STICKY_HOLD:
+		target.held_item = null
+		if AbilityManager.effective_ability_id(target, ng_active) == AbilityManager.ABILITY_UNBURDEN:
+			target.unburden_active = true
+		item_effect_triggered.emit(target, "incinerate_destroyed")
+
+	# [Bucket 4 cheapest singles] Sparkling Aria: cures BURN specifically on the
+	# TARGET (whoever this hit — the inverse of every existing self-cure
+	# precedent), only if the target currently has it.
+	if damage > 0 and move.is_sparkling_aria and target.status == BattlePokemon.STATUS_BURN:
+		target.status = BattlePokemon.STATUS_NONE
+		status_cured.emit(target)
+
+	# [M19-rampage] Thrash/Petal Dance/Outrage/Raging Fury (is_rampage) and
+	# Uproar (is_uproar) share ONE lock field (BattlePokemon.locked_move) but
+	# distinct counters/end-of-lock behavior — see both flags' own MoveData
+	# doc comments for the full source citations. Checked at this project's
+	# closest per-hit-resolution granularity (this function runs once per own
+	# move-use attempt that reaches damage calc), mirroring source's
+	# MoveEndRampage/Uproar-decrement running once per move use.
+	if move.is_rampage or move.is_uproar:
+		# Source: MoveEndRampage's IsBattlerUnaffectedByMove branch — a
+		# CONTINUING lock (turn 2+) cancels immediately WITHOUT self-confuse
+		# when the current hit is fully unaffected by type immunity (e.g. the
+		# opponent switched a Ghost-type in mid-Thrash). A first-use immune
+		# hit never sets the lock in the first place (additionalEffects never
+		# runs for a 0x hit in source), so this branch is a no-op unless
+		# already locked to this exact move.
+		if result.get("effectiveness", 1.0) == 0.0:
+			if attacker.locked_move == move:
+				attacker.locked_move = null
+				attacker.rampage_turns = 0
+				attacker.uproar_turns = 0
+				rampage_lock_ended.emit(attacker, move, false)
+		elif damage > 0:
+			if attacker.locked_move != move:
+				attacker.locked_move = move
+				if move.is_rampage:
+					attacker.rampage_turns = randi_range(2, 3)
+				else:
+					attacker.uproar_turns = 3
+				rampage_lock_started.emit(attacker, move)
+			if move.is_rampage:
+				attacker.rampage_turns -= 1
+				if attacker.rampage_turns <= 0:
+					attacker.locked_move = null
+					var confused_on_hit: bool = StatusManager.try_apply_confusion(
+							attacker, null, ng_active)
+					if confused_on_hit:
+						secondary_applied.emit(attacker, MoveData.SE_CONFUSION)
+					rampage_lock_ended.emit(attacker, move, confused_on_hit)
+			else:
+				attacker.uproar_turns -= 1
+				if attacker.uproar_turns <= 0:
+					attacker.locked_move = null
+					rampage_lock_ended.emit(attacker, move, false)
+
+	# [M19-secondary-stat-on-hit]: `move.stat_change_stat >= 0` is a second,
+	# independent trigger alongside `secondary_effect != SE_NONE` — a damaging
+	# move's secondary stat-change payload (Iron Tail, Overheat) has
+	# secondary_effect == SE_NONE by construction, so without this OR the outer
+	# gate would skip calling try_secondary_effect entirely for these moves,
+	# even after that function's own internal gate (status_manager.gd) was
+	# extended to accept them.
+	if damage > 0 and (move.secondary_effect != MoveData.SE_NONE or move.stat_change_stat >= 0):
+		var effect_hit: bool = StatusManager.try_secondary_effect(attacker, target, move, null, ng_active, _effective_weather(), _is_uproar_active())
 		if effect_hit:
 			if move.secondary_effect == MoveData.SE_FLINCH:
 				var target_turn_pos: int = _turn_order.find(target)
 				if target_turn_pos > _current_actor_index:
 					target.flinched = true
 					secondary_applied.emit(target, MoveData.SE_FLINCH)
+			elif move.secondary_effect == MoveData.SE_NONE and move.stat_change_stat >= 0:
+				# [M19-secondary-stat-on-hit]: deliberately its own branch, same
+				# reason SE_FLINCH/SE_WRAP get one — the "else" path below assumes
+				# the secondary effect just set target.status/confusion_turns, which
+				# a stat change never does; _apply_stat_change_effect (shared with
+				# the pure-status-move EFFECT_STAT_CHANGE dispatch — see that
+				# function's doc comment for the Mirror Armor/Defiant/Opportunist/
+				# Mirror Herb source citations) handles its own signal emission
+				# (stat_stage_changed/move_effect_failed/ability_triggered), so no
+				# secondary_applied/status-cure-berry check belongs here.
+				_apply_stat_change_effect(attacker, target, move, ng_active)
 			elif move.secondary_effect == MoveData.SE_WRAP:
 				# [M18.5f] Deliberately its own branch, same reason SE_FLINCH gets one:
 				# the "else" path below assumes the secondary effect just SET
@@ -4169,6 +4443,25 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 				# tests can snapshot the trap-applied moment the same way every other
 				# secondary effect already supports.
 				secondary_applied.emit(target, MoveData.SE_WRAP)
+			elif move.secondary_effect == MoveData.SE_THROAT_CHOP:
+				# [Bucket 4 cheapest singles] Deliberately its own branch, same reason
+				# SE_FLINCH/SE_WRAP get one — the "else" path below assumes a status/
+				# confusion field just got SET, which this never touches. No-refresh
+				# gate matches source's own `if (throatChopTimer == 0)` check exactly.
+				if target.throat_chop_turns == 0:
+					target.throat_chop_turns = 2
+					secondary_applied.emit(target, MoveData.SE_THROAT_CHOP)
+			elif move.secondary_effect == MoveData.SE_EERIE_SPELL:
+				# [Bucket 4 cheapest singles] Deliberately its own branch, same reason
+				# as SE_THROAT_CHOP above. Reuses the pre-existing last_move_used
+				# tracking — finds that move's own PP slot and deducts 3 (capped at
+				# whatever PP remains, matching source's own ppToDeduct clamp; a no-op
+				# if the target has no last_move_used or that move is already at 0 PP).
+				if target.last_move_used != null:
+					var eerie_idx: int = target.moves.find(target.last_move_used)
+					if eerie_idx >= 0 and target.current_pp[eerie_idx] > 0:
+						target.use_pp(eerie_idx, 3)
+						secondary_applied.emit(target, MoveData.SE_EERIE_SPELL)
 			else:
 				secondary_applied.emit(target, move.secondary_effect)
 				_try_synchronize(target, attacker, _se_to_status(move.secondary_effect))
@@ -4184,19 +4477,87 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 					target.confusion_turns = 0
 					_consume_item(target)
 
+	# [Bucket 3 combined-secondary]: a SECOND, fully independent secondary-effect
+	# roll (Thunder/Ice/Fire Fang's flinch, alongside their own status effect in
+	# slot 1 above). Reproduced via a second try_secondary_effect call on a
+	# shallow-duplicated MoveData (secondary_effect/secondary_chance overridden to
+	# the slot-2 values) — the same "duplicate and substitute" pattern M17n-6
+	# already established for move-type mutation, rather than changing
+	# try_secondary_effect's own signature. This composes Serene Grace/Shield
+	# Dust/Covert Cloak/Sheer Force correctly for free: each gate reads the
+	# duplicated move's own (now slot-2) secondary_chance/secondary_effect, so a
+	# Sheer-Force attacker independently suppresses BOTH rolls (matching source's
+	# MoveIsAffectedBySheerForce, which flags the whole move once ANY additional
+	# effect has chance > 0) and a Shield-Dust/Covert-Cloak defender independently
+	# blocks both (matching source's blanket per-effect gate).
+	if damage > 0 and move.secondary_effect_2 != MoveData.SE_NONE:
+		var slot2_move: MoveData = move.duplicate()
+		slot2_move.secondary_effect = move.secondary_effect_2
+		slot2_move.secondary_chance = move.secondary_chance_2
+		var effect2_hit: bool = StatusManager.try_secondary_effect(
+				attacker, target, slot2_move, null, ng_active, _effective_weather())
+		if effect2_hit:
+			if move.secondary_effect_2 == MoveData.SE_FLINCH:
+				var target_turn_pos2: int = _turn_order.find(target)
+				if target_turn_pos2 > _current_actor_index:
+					target.flinched = true
+					secondary_applied.emit(target, MoveData.SE_FLINCH)
+			else:
+				secondary_applied.emit(target, move.secondary_effect_2)
+				_try_synchronize(target, attacker, _se_to_status(move.secondary_effect_2))
+				if ItemManager.status_cure_berry_cures(target, ng_active,
+						AbilityManager.is_unnerve_active(_get_live_opponents(target), ng_active)):
+					target.status = BattlePokemon.STATUS_NONE
+					_consume_item(target)
+				elif ItemManager.confusion_cure_berry_cures(target, ng_active,
+						AbilityManager.is_unnerve_active(_get_live_opponents(target), ng_active)):
+					target.confusion_turns = 0
+					_consume_item(target)
+
 	# M18k: King's Rock / Razor Fang — mutually exclusive with a move that already
 	# carries its own native flinch effect (source: TryKingsRock's own
 	# !MoveHasAdditionalEffect(move, MOVE_EFFECT_FLINCH) guard), so this is gated on
 	# the move's secondary_effect NOT already being SE_FLINCH, not on whether that
-	# native chance rolled true this turn. Same turn-order gate as the native case
-	# above (a flinch that lands on a target who has already acted this turn does
-	# nothing — they don't act again).
+	# native chance rolled true this turn — checked against BOTH slots now that a
+	# move's native flinch can live in slot 2 (Thunder/Ice/Fire Fang) instead of
+	# slot 1. Same turn-order gate as the native case above (a flinch that lands
+	# on a target who has already acted this turn does nothing — they don't act
+	# again).
 	if damage > 0 and move.secondary_effect != MoveData.SE_FLINCH \
+			and move.secondary_effect_2 != MoveData.SE_FLINCH \
 			and ItemManager.kings_rock_flinch_activates(attacker, ng_active, _force_kings_rock_roll):
 		var kr_turn_pos: int = _turn_order.find(target)
 		if kr_turn_pos > _current_actor_index:
 			target.flinched = true
 			secondary_applied.emit(target, MoveData.SE_FLINCH)
+
+	# [Bucket 3 screen+damage]: Glitzy Glow / Baddy Bad — a guaranteed, self-
+	# targeted screen set on the ATTACKER's own side after dealing damage. No
+	# .chance field in source (primary, not a true secondary), so this is
+	# unconditional on damage > 0 alone, same as Rapid Spin/Air Balloon above —
+	# not routed through try_secondary_effect at all, since Shield Dust/Sheer
+	# Force/Serene Grace only ever gate TRUE (chance > 0) secondaries. Reuses the
+	# exact same already-up no-refresh check and Light Clay duration extension
+	# the pure-status-move is_reflect/is_light_screen branches use, just reached
+	# from the damage-dispatch path since is_reflect/is_light_screen's own early-
+	# return branch never deals damage at all (see MoveData's doc comment on
+	# sets_reflect_on_hit/sets_light_screen_on_hit for the full source citation).
+	if damage > 0 and (move.sets_reflect_on_hit or move.sets_light_screen_on_hit):
+		var atk_idx2: int = _combatants.find(attacker)
+		var atk_side2: int = atk_idx2 / _active_per_side
+		var asc2: Dictionary = _side_conditions[atk_side2]
+		if move.sets_reflect_on_hit:
+			if asc2["reflect_turns"] > 0:
+				move_effect_failed.emit(attacker, "already_reflect")
+			else:
+				asc2["reflect_turns"] = ItemManager.screen_turns(attacker, 5, ng_active)
+				screen_set.emit(atk_side2, "reflect")
+		if move.sets_light_screen_on_hit:
+			if asc2["light_screen_turns"] > 0:
+				move_effect_failed.emit(attacker, "already_light_screen")
+			else:
+				asc2["light_screen_turns"] = ItemManager.screen_turns(attacker, 5, ng_active)
+				screen_set.emit(atk_side2, "light_screen")
 
 	var contact_result: Dictionary = AbilityManager.try_contact_effects(
 			attacker, target, move, damage, _force_contact_roll, _force_effect_spore_roll,
@@ -4390,6 +4751,21 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		_set_mon_type(target, hit_result["color_change_new_type"])
 		type_changed.emit(target, hit_result["color_change_new_type"])
 		ability_triggered.emit(target, "color_change")
+
+	# [Bucket 4 cheapest singles] Rage's reactive half: raises the ATK of whoever
+	# currently holds rage_active by +1 whenever THEY take a damaging hit — not
+	# gated on which move caused it, so this lives here alongside the other
+	# hit-reactive triggers rather than inside move.is_rage's own set-on-hit
+	# block above. Excludes self-hits (e.g. confusion) and ally-hits (doubles),
+	# matching source's own `battlerAtk != battlerDef && !IsBattlerAlly` checks;
+	# `apply_stat_change` already no-ops correctly at the +6 cap, matching
+	# source's own CompareStat pre-check.
+	if target.rage_active and damage > 0 and target.current_hp > 0 \
+			and attacker != target and _get_ally(target) != attacker:
+		var rage_change: int = StatusManager.apply_stat_change(
+				target, BattlePokemon.STAGE_ATK, 1, null, ng_active)
+		if rage_change != 0:
+			stat_stage_changed.emit(target, BattlePokemon.STAGE_ATK, rage_change)
 
 	if result.get("defender_item_consumed", false):
 		_consume_item(target)

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+move_name = "Hurricane"
+type = 3
+category = 1
+power = 110
+accuracy = 70
+pp = 10
+secondary_effect = 6
+secondary_chance = 30
+damages_airborne = true
+always_hits_in_rain = true
+accuracy_halved_in_sun = true

@@ -61,12 +61,15 @@ SE_CONFUSION = 6
 SE_FLINCH    = 7
 SE_WRAP      = 8  # [M18.5f] Bind/Wrap-family trap — see move_data.gd's own doc comment
 SE_POISON    = 9  # [M18.5g] regular (non-toxic) poison — see move_data.gd's own doc comment
+SE_THROAT_CHOP = 10  # [Bucket 4 cheapest singles] — see move_data.gd's own doc comment
+SE_EERIE_SPELL = 11  # [Bucket 4 cheapest singles] — see move_data.gd's own doc comment
 
 # ── Semi-invulnerable state constants (MoveData.SEMI_INV_* values) ───────────
 SEMI_INV_NONE        = 0
 SEMI_INV_UNDERGROUND = 1  # Dig
 SEMI_INV_ON_AIR      = 2  # Fly, Bounce
 SEMI_INV_UNDERWATER  = 3  # Dive
+SEMI_INV_VANISH      = 4  # [M19-break-protect] Shadow Force, Phantom Force
 
 # ── Stat stage index constants (BattlePokemon.STAGE_* values) ────────────────
 STAGE_ATK      = 0
@@ -1425,7 +1428,1168 @@ MOVES = [
     {"id": 821, "name": "Aqua Cutter",
      "type": TYPE_WATER, "category": PHYS, "power": 70, "accuracy": 100, "pp": 20,
      "slicing_move": True, "critical_hit_stage": 1},
+
+    # ── Bucket 2: reuses a single existing secondary mechanism (M19-bucket2) ──
+
+    {"id": 7, "name": "Fire Punch",
+     "type": TYPE_FIRE, "category": PHYS, "power": 75, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "punching_move": True, "secondary_effect": SE_BURN, "secondary_chance": 10},
+
+    {"id": 8, "name": "Ice Punch",
+     "type": TYPE_ICE, "category": PHYS, "power": 75, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "punching_move": True, "secondary_effect": SE_FREEZE, "secondary_chance": 10},
+
+    {"id": 9, "name": "Thunder Punch",
+     "type": TYPE_ELECTRIC, "category": PHYS, "power": 75, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "punching_move": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 10},
+
+    {"id": 27, "name": "Rolling Kick",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 60, "accuracy": 85, "pp": 15,
+     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 29, "name": "Headbutt",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 70, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 40, "name": "Poison Sting",
+     "type": TYPE_POISON, "category": PHYS, "power": 15, "accuracy": 100, "pp": 35,
+     "secondary_effect": SE_POISON, "secondary_chance": 30},
+
+    {"id": 44, "name": "Bite",
+     "type": TYPE_DARK, "category": PHYS, "power": 60, "accuracy": 100, "pp": 25,
+     "makes_contact": True, "biting_move": True, "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 47, "name": "Sing",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 55, "pp": 15,
+     "sound_move": True, "bounceable": True, "secondary_effect": SE_SLEEP, "secondary_chance": 0},
+
+    {"id": 48, "name": "Supersonic",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 55, "pp": 20,
+     "sound_move": True, "bounceable": True, "secondary_effect": SE_CONFUSION, "secondary_chance": 0},
+
+    {"id": 59, "name": "Blizzard",
+     "type": TYPE_ICE, "category": SPEC, "power": 110, "accuracy": 70, "pp": 5,
+     "is_spread": True, "secondary_effect": SE_FREEZE, "secondary_chance": 10},
+
+    {"id": 66, "name": "Submission",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 80, "accuracy": 80, "pp": 20,
+     "makes_contact": True, "recoil_percent": 25},
+
+    {"id": 77, "name": "Poison Powder",
+     "type": TYPE_POISON, "category": STAT, "power": 0, "accuracy": 75, "pp": 35,
+     "powder_move": True, "bounceable": True, "secondary_effect": SE_POISON, "secondary_chance": 0},
+
+    {"id": 78, "name": "Stun Spore",
+     "type": TYPE_GRASS, "category": STAT, "power": 0, "accuracy": 75, "pp": 30,
+     "powder_move": True, "bounceable": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 0},
+
+    {"id": 81, "name": "String Shot",
+     "type": TYPE_BUG, "category": STAT, "power": 0, "accuracy": 95, "pp": 40,
+     "is_spread": True, "bounceable": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -2},
+
+    {"id": 85, "name": "Thunderbolt",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 90, "accuracy": 100, "pp": 15,
+     "secondary_effect": SE_PARALYSIS, "secondary_chance": 10},
+
+    {"id": 93, "name": "Confusion",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 50, "accuracy": 100, "pp": 25,
+     "secondary_effect": SE_CONFUSION, "secondary_chance": 10},
+
+    {"id": 95, "name": "Hypnosis",
+     "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 60, "pp": 20,
+     "bounceable": True, "secondary_effect": SE_SLEEP, "secondary_chance": 0},
+
+    {"id": 96, "name": "Meditate",
+     "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0, "pp": 40,
+     "ignores_protect": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1, "stat_change_self": True},
+
+    {"id": 97, "name": "Agility",
+     "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0, "pp": 30,
+     "ignores_protect": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": 2, "stat_change_self": True},
+
+    {"id": 103, "name": "Screech",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 85, "pp": 40,
+     "sound_move": True, "bounceable": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -2},
+
+    {"id": 104, "name": "Double Team",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 15,
+     "ignores_protect": True, "stat_change_stat": STAGE_EVASION, "stat_change_amount": 1, "stat_change_self": True},
+
+    {"id": 106, "name": "Harden",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 30,
+     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 1, "stat_change_self": True},
+
+    {"id": 108, "name": "Smokescreen",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 20,
+     "bounceable": True, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1},
+
+    {"id": 110, "name": "Withdraw",
+     "type": TYPE_WATER, "category": STAT, "power": 0, "accuracy": 0, "pp": 40,
+     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 1, "stat_change_self": True},
+
+    {"id": 112, "name": "Barrier",
+     "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 2, "stat_change_self": True},
+
+    {"id": 122, "name": "Lick",
+     "type": TYPE_GHOST, "category": PHYS, "power": 30, "accuracy": 100, "pp": 30,
+     "makes_contact": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 30},
+
+    {"id": 123, "name": "Smog",
+     "type": TYPE_POISON, "category": SPEC, "power": 30, "accuracy": 70, "pp": 20,
+     "secondary_effect": SE_POISON, "secondary_chance": 40},
+
+    {"id": 124, "name": "Sludge",
+     "type": TYPE_POISON, "category": SPEC, "power": 65, "accuracy": 100, "pp": 20,
+     "secondary_effect": SE_POISON, "secondary_chance": 30},
+
+    {"id": 125, "name": "Bone Club",
+     "type": TYPE_GROUND, "category": PHYS, "power": 65, "accuracy": 85, "pp": 20,
+     "secondary_effect": SE_FLINCH, "secondary_chance": 10},
+
+    {"id": 126, "name": "Fire Blast",
+     "type": TYPE_FIRE, "category": SPEC, "power": 110, "accuracy": 85, "pp": 5,
+     "secondary_effect": SE_BURN, "secondary_chance": 10},
+
+    {"id": 127, "name": "Waterfall",
+     "type": TYPE_WATER, "category": PHYS, "power": 80, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 20},
+
+    {"id": 133, "name": "Amnesia",
+     "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": 2, "stat_change_self": True},
+
+    {"id": 134, "name": "Kinesis",
+     "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 80, "pp": 15,
+     "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1},
+
+    {"id": 137, "name": "Glare",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 30,
+     "bounceable": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 0},
+
+    {"id": 139, "name": "Poison Gas",
+     "type": TYPE_POISON, "category": STAT, "power": 0, "accuracy": 90, "pp": 40,
+     "is_spread": True, "bounceable": True, "secondary_effect": SE_POISON, "secondary_chance": 0},
+
+    {"id": 141, "name": "Leech Life",
+     "type": TYPE_BUG, "category": PHYS, "power": 80, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "drain_percent": 50, "healing_move": True},
+
+    {"id": 142, "name": "Lovely Kiss",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 75, "pp": 10,
+     "bounceable": True, "secondary_effect": SE_SLEEP, "secondary_chance": 0},
+
+    {"id": 146, "name": "Dizzy Punch",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 70, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "punching_move": True, "secondary_effect": SE_CONFUSION, "secondary_chance": 20},
+
+    {"id": 147, "name": "Spore",
+     "type": TYPE_GRASS, "category": STAT, "power": 0, "accuracy": 100, "pp": 15,
+     "powder_move": True, "bounceable": True, "secondary_effect": SE_SLEEP, "secondary_chance": 0},
+
+    {"id": 148, "name": "Flash",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 20,
+     "bounceable": True, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1},
+
+    {"id": 151, "name": "Acid Armor",
+     "type": TYPE_POISON, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 2, "stat_change_self": True},
+
+    {"id": 158, "name": "Hyper Fang",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 80, "accuracy": 90, "pp": 15,
+     "makes_contact": True, "biting_move": True, "secondary_effect": SE_FLINCH, "secondary_chance": 10},
+
+    {"id": 159, "name": "Sharpen",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 30,
+     "ignores_protect": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1, "stat_change_self": True},
+
+    {"id": 178, "name": "Cotton Spore",
+     "type": TYPE_GRASS, "category": STAT, "power": 0, "accuracy": 100, "pp": 40,
+     "powder_move": True, "is_spread": True, "bounceable": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -2},
+
+    {"id": 181, "name": "Powder Snow",
+     "type": TYPE_ICE, "category": SPEC, "power": 40, "accuracy": 100, "pp": 25,
+     "is_spread": True, "secondary_effect": SE_FREEZE, "secondary_chance": 10},
+
+    {"id": 184, "name": "Scary Face",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 10,
+     "bounceable": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -2},
+
+    {"id": 186, "name": "Sweet Kiss",
+     "type": TYPE_FAIRY, "category": STAT, "power": 0, "accuracy": 75, "pp": 10,
+     "bounceable": True, "secondary_effect": SE_CONFUSION, "secondary_chance": 0},
+
+    {"id": 188, "name": "Sludge Bomb",
+     "type": TYPE_POISON, "category": SPEC, "power": 90, "accuracy": 100, "pp": 10,
+     "ballistic_move": True, "secondary_effect": SE_POISON, "secondary_chance": 30},
+
+    {"id": 192, "name": "Zap Cannon",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 120, "accuracy": 50, "pp": 5,
+     "ballistic_move": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 100},
+
+    {"id": 204, "name": "Charm",
+     "type": TYPE_FAIRY, "category": STAT, "power": 0, "accuracy": 100, "pp": 20,
+     "bounceable": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -2},
+
+    {"id": 209, "name": "Spark",
+     "type": TYPE_ELECTRIC, "category": PHYS, "power": 65, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 30},
+
+    {"id": 221, "name": "Sacred Fire",
+     "type": TYPE_FIRE, "category": PHYS, "power": 100, "accuracy": 95, "pp": 5,
+     "thaws_user": True, "secondary_effect": SE_BURN, "secondary_chance": 50},
+
+    {"id": 223, "name": "Dynamic Punch",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 100, "accuracy": 50, "pp": 5,
+     "makes_contact": True, "punching_move": True, "secondary_effect": SE_CONFUSION, "secondary_chance": 100},
+
+    {"id": 225, "name": "Dragon Breath",
+     "type": TYPE_DRAGON, "category": SPEC, "power": 60, "accuracy": 100, "pp": 20,
+     "secondary_effect": SE_PARALYSIS, "secondary_chance": 30},
+
+    {"id": 230, "name": "Sweet Scent",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 20,
+     "is_spread": True, "bounceable": True, "stat_change_stat": STAGE_EVASION, "stat_change_amount": -2},
+
+    {"id": 239, "name": "Twister",
+     "type": TYPE_DRAGON, "category": SPEC, "power": 40, "accuracy": 100, "pp": 20,
+     "is_spread": True, "secondary_effect": SE_FLINCH, "secondary_chance": 20, "damages_airborne": True},
+
+    {"id": 257, "name": "Heat Wave",
+     "type": TYPE_FIRE, "category": SPEC, "power": 95, "accuracy": 90, "pp": 10,
+     "is_spread": True, "secondary_effect": SE_BURN, "secondary_chance": 10},
+
+    {"id": 291, "name": "Dive",
+     "type": TYPE_WATER, "category": PHYS, "power": 80, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_UNDERWATER},
+
+    {"id": 294, "name": "Tail Glow",
+     "type": TYPE_BUG, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 3, "stat_change_self": True},
+
+    {"id": 297, "name": "Feather Dance",
+     "type": TYPE_FLYING, "category": STAT, "power": 0, "accuracy": 100, "pp": 15,
+     "bounceable": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -2},
+
+    {"id": 298, "name": "Teeter Dance",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 20,
+     "is_spread": True, "secondary_effect": SE_CONFUSION, "secondary_chance": 0},
+
+    {"id": 299, "name": "Blaze Kick",
+     "type": TYPE_FIRE, "category": PHYS, "power": 85, "accuracy": 90, "pp": 10,
+     "makes_contact": True, "critical_hit_stage": 1, "secondary_effect": SE_BURN, "secondary_chance": 10},
+
+    {"id": 302, "name": "Needle Arm",
+     "type": TYPE_GRASS, "category": PHYS, "power": 60, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 305, "name": "Poison Fang",
+     "type": TYPE_POISON, "category": PHYS, "power": 50, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "biting_move": True, "secondary_effect": SE_TOXIC, "secondary_chance": 50},
+
+    {"id": 310, "name": "Astonish",
+     "type": TYPE_GHOST, "category": PHYS, "power": 30, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 313, "name": "Fake Tears",
+     "type": TYPE_DARK, "category": STAT, "power": 0, "accuracy": 100, "pp": 20,
+     "bounceable": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -2},
+
+    {"id": 319, "name": "Metal Sound",
+     "type": TYPE_STEEL, "category": STAT, "power": 0, "accuracy": 85, "pp": 40,
+     "sound_move": True, "bounceable": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -2},
+
+    {"id": 320, "name": "Grass Whistle",
+     "type": TYPE_GRASS, "category": STAT, "power": 0, "accuracy": 55, "pp": 15,
+     "sound_move": True, "bounceable": True, "secondary_effect": SE_SLEEP, "secondary_chance": 0},
+
+    {"id": 324, "name": "Signal Beam",
+     "type": TYPE_BUG, "category": SPEC, "power": 75, "accuracy": 100, "pp": 15,
+     "secondary_effect": SE_CONFUSION, "secondary_chance": 10},
+
+    {"id": 326, "name": "Extrasensory",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 80, "accuracy": 100, "pp": 20,
+     "secondary_effect": SE_FLINCH, "secondary_chance": 10},
+
+    {"id": 334, "name": "Iron Defense",
+     "type": TYPE_STEEL, "category": STAT, "power": 0, "accuracy": 0, "pp": 15,
+     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 2, "stat_change_self": True},
+
+    {"id": 340, "name": "Bounce",
+     "type": TYPE_FLYING, "category": PHYS, "power": 85, "accuracy": 85, "pp": 5,
+     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_ON_AIR, "secondary_effect": SE_PARALYSIS, "secondary_chance": 30},
+
+    {"id": 342, "name": "Poison Tail",
+     "type": TYPE_POISON, "category": PHYS, "power": 50, "accuracy": 100, "pp": 25,
+     "makes_contact": True, "critical_hit_stage": 1, "secondary_effect": SE_POISON, "secondary_chance": 10},
+
+    {"id": 344, "name": "Volt Tackle",
+     "type": TYPE_ELECTRIC, "category": PHYS, "power": 120, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "recoil_percent": 33, "secondary_effect": SE_PARALYSIS, "secondary_chance": 10},
+
+    {"id": 352, "name": "Water Pulse",
+     "type": TYPE_WATER, "category": SPEC, "power": 60, "accuracy": 100, "pp": 20,
+     "pulse_move": True, "secondary_effect": SE_CONFUSION, "secondary_chance": 20},
+
+    {"id": 394, "name": "Flare Blitz",
+     "type": TYPE_FIRE, "category": PHYS, "power": 120, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "thaws_user": True, "recoil_percent": 33, "secondary_effect": SE_BURN, "secondary_chance": 10},
+
+    {"id": 395, "name": "Force Palm",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 60, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 30},
+
+    {"id": 397, "name": "Rock Polish",
+     "type": TYPE_ROCK, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": 2, "stat_change_self": True},
+
+    {"id": 398, "name": "Poison Jab",
+     "type": TYPE_POISON, "category": PHYS, "power": 80, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "secondary_effect": SE_POISON, "secondary_chance": 30},
+
+    {"id": 399, "name": "Dark Pulse",
+     "type": TYPE_DARK, "category": SPEC, "power": 80, "accuracy": 100, "pp": 15,
+     "pulse_move": True, "secondary_effect": SE_FLINCH, "secondary_chance": 20},
+
+    {"id": 403, "name": "Air Slash",
+     "type": TYPE_FLYING, "category": SPEC, "power": 75, "accuracy": 95, "pp": 15,
+     "slicing_move": True, "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 407, "name": "Dragon Rush",
+     "type": TYPE_DRAGON, "category": PHYS, "power": 100, "accuracy": 75, "pp": 10,
+     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 20},
+
+    {"id": 417, "name": "Nasty Plot",
+     "type": TYPE_DARK, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 2, "stat_change_self": True},
+
+    {"id": 428, "name": "Zen Headbutt",
+     "type": TYPE_PSYCHIC, "category": PHYS, "power": 80, "accuracy": 90, "pp": 15,
+     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 20},
+
+    {"id": 431, "name": "Rock Climb",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 90, "accuracy": 85, "pp": 20,
+     "makes_contact": True, "secondary_effect": SE_CONFUSION, "secondary_chance": 20},
+
+    {"id": 435, "name": "Discharge",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 80, "accuracy": 100, "pp": 15,
+     "is_spread": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 30},
+
+    {"id": 436, "name": "Lava Plume",
+     "type": TYPE_FIRE, "category": SPEC, "power": 80, "accuracy": 100, "pp": 15,
+     "is_spread": True, "secondary_effect": SE_BURN, "secondary_chance": 30},
+
+    {"id": 440, "name": "Cross Poison",
+     "type": TYPE_POISON, "category": PHYS, "power": 70, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "slicing_move": True, "critical_hit_stage": 1, "secondary_effect": SE_POISON, "secondary_chance": 10},
+
+    {"id": 441, "name": "Gunk Shot",
+     "type": TYPE_POISON, "category": PHYS, "power": 120, "accuracy": 80, "pp": 5,
+     "secondary_effect": SE_POISON, "secondary_chance": 30},
+
+    {"id": 442, "name": "Iron Head",
+     "type": TYPE_STEEL, "category": PHYS, "power": 80, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 452, "name": "Wood Hammer",
+     "type": TYPE_GRASS, "category": PHYS, "power": 120, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "recoil_percent": 33},
+
+    {"id": 457, "name": "Head Smash",
+     "type": TYPE_ROCK, "category": PHYS, "power": 150, "accuracy": 80, "pp": 5,
+     "makes_contact": True, "recoil_percent": 50},
+
+    {"id": 482, "name": "Sludge Wave",
+     "type": TYPE_POISON, "category": SPEC, "power": 95, "accuracy": 100, "pp": 10,
+     "is_spread": True, "secondary_effect": SE_POISON, "secondary_chance": 10},
+
+    {"id": 503, "name": "Scald",
+     "type": TYPE_WATER, "category": SPEC, "power": 80, "accuracy": 100, "pp": 15,
+     "thaws_user": True, "secondary_effect": SE_BURN, "secondary_chance": 30},
+
+    {"id": 517, "name": "Inferno",
+     "type": TYPE_FIRE, "category": SPEC, "power": 100, "accuracy": 50, "pp": 5,
+     "secondary_effect": SE_BURN, "secondary_chance": 100},
+
+    {"id": 528, "name": "Wild Charge",
+     "type": TYPE_ELECTRIC, "category": PHYS, "power": 90, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "recoil_percent": 25},
+
+    {"id": 531, "name": "Heart Stamp",
+     "type": TYPE_PSYCHIC, "category": PHYS, "power": 60, "accuracy": 100, "pp": 25,
+     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 532, "name": "Horn Leech",
+     "type": TYPE_GRASS, "category": PHYS, "power": 75, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "drain_percent": 50, "healing_move": True},
+
+    {"id": 537, "name": "Steamroller",
+     "type": TYPE_BUG, "category": PHYS, "power": 65, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "double_power_on_minimized": True, "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 538, "name": "Cotton Guard",
+     "type": TYPE_GRASS, "category": STAT, "power": 0, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 3, "stat_change_self": True},
+
+    {"id": 543, "name": "Head Charge",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 120, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "recoil_percent": 25},
+
+    {"id": 545, "name": "Searing Shot",
+     "type": TYPE_FIRE, "category": SPEC, "power": 100, "accuracy": 100, "pp": 5,
+     "ballistic_move": True, "is_spread": True, "secondary_effect": SE_BURN, "secondary_chance": 30},
+
+    {"id": 547, "name": "Relic Song",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 75, "accuracy": 100, "pp": 10,
+     "sound_move": True, "is_spread": True, "secondary_effect": SE_SLEEP, "secondary_chance": 10},
+
+    {"id": 550, "name": "Bolt Strike",
+     "type": TYPE_ELECTRIC, "category": PHYS, "power": 130, "accuracy": 85, "pp": 5,
+     "makes_contact": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 20},
+
+    {"id": 551, "name": "Blue Flare",
+     "type": TYPE_FIRE, "category": SPEC, "power": 130, "accuracy": 85, "pp": 5,
+     "secondary_effect": SE_BURN, "secondary_chance": 20},
+
+    {"id": 553, "name": "Freeze Shock",
+     "type": TYPE_ICE, "category": PHYS, "power": 140, "accuracy": 90, "pp": 5,
+     "two_turn": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 30},
+
+    {"id": 554, "name": "Ice Burn",
+     "type": TYPE_ICE, "category": SPEC, "power": 140, "accuracy": 90, "pp": 5,
+     "two_turn": True, "secondary_effect": SE_BURN, "secondary_chance": 30},
+
+    {"id": 556, "name": "Icicle Crash",
+     "type": TYPE_ICE, "category": PHYS, "power": 85, "accuracy": 90, "pp": 10,
+     "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 570, "name": "Parabolic Charge",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 65, "accuracy": 100, "pp": 20,
+     "is_spread": True, "drain_percent": 50, "healing_move": True},
+
+    {"id": 577, "name": "Draining Kiss",
+     "type": TYPE_FAIRY, "category": SPEC, "power": 50, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "drain_percent": 75, "healing_move": True},
+
+    {"id": 589, "name": "Play Nice",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "ignores_substitute": True, "bounceable": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1},
+
+    {"id": 590, "name": "Confide",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
+     "sound_move": True, "ignores_protect": True, "bounceable": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -1},
+
+    {"id": 592, "name": "Steam Eruption",
+     "type": TYPE_WATER, "category": SPEC, "power": 110, "accuracy": 95, "pp": 5,
+     "thaws_user": True, "secondary_effect": SE_BURN, "secondary_chance": 30},
+
+    {"id": 598, "name": "Eerie Impulse",
+     "type": TYPE_ELECTRIC, "category": STAT, "power": 0, "accuracy": 100, "pp": 15,
+     "bounceable": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -2},
+
+    {"id": 608, "name": "Baby-Doll Eyes",
+     "type": TYPE_FAIRY, "category": STAT, "power": 0, "accuracy": 100, "pp": 30,
+     "priority": 1, "bounceable": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1},
+
+    {"id": 609, "name": "Nuzzle",
+     "type": TYPE_ELECTRIC, "category": PHYS, "power": 20, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 100},
+
+    {"id": 613, "name": "Oblivion Wing",
+     "type": TYPE_FLYING, "category": SPEC, "power": 80, "accuracy": 100, "pp": 10,
+     "drain_percent": 75, "healing_move": True},
+
+    {"id": 617, "name": "Light Of Ruin",
+     "type": TYPE_FAIRY, "category": SPEC, "power": 140, "accuracy": 90, "pp": 5,
+     "recoil_percent": 50},
+
+    {"id": 660, "name": "Psychic Fangs",
+     "type": TYPE_PSYCHIC, "category": PHYS, "power": 85, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "biting_move": True, "breaks_screens": True},
+
+    {"id": 670, "name": "Zing Zap",
+     "type": TYPE_ELECTRIC, "category": PHYS, "power": 80, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 677, "name": "Splishy Splash",
+     "type": TYPE_WATER, "category": SPEC, "power": 90, "accuracy": 100, "pp": 15,
+     "is_spread": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 30},
+
+    {"id": 678, "name": "Floaty Fall",
+     "type": TYPE_FLYING, "category": PHYS, "power": 90, "accuracy": 95, "pp": 15,
+     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 680, "name": "Bouncy Bubble",
+     "type": TYPE_WATER, "category": SPEC, "power": 60, "accuracy": 100, "pp": 20,
+     "drain_percent": 100, "healing_move": True},
+
+    {"id": 681, "name": "Buzzy Buzz",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 60, "accuracy": 100, "pp": 20,
+     "secondary_effect": SE_PARALYSIS, "secondary_chance": 100},
+
+    {"id": 682, "name": "Sizzly Slide",
+     "type": TYPE_FIRE, "category": PHYS, "power": 60, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "thaws_user": True, "secondary_effect": SE_BURN, "secondary_chance": 100},
+
+    {"id": 708, "name": "Pyro Ball",
+     "type": TYPE_FIRE, "category": PHYS, "power": 120, "accuracy": 90, "pp": 5,
+     "ballistic_move": True, "thaws_user": True, "secondary_effect": SE_BURN, "secondary_chance": 10},
+
+    {"id": 718, "name": "Strange Steam",
+     "type": TYPE_FAIRY, "category": SPEC, "power": 90, "accuracy": 95, "pp": 10,
+     "secondary_effect": SE_CONFUSION, "secondary_chance": 20},
+
+    {"id": 743, "name": "Scorching Sands",
+     "type": TYPE_GROUND, "category": SPEC, "power": 70, "accuracy": 100, "pp": 10,
+     "thaws_user": True, "secondary_effect": SE_BURN, "secondary_chance": 30},
+
+    {"id": 749, "name": "Freezing Glare",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 90, "accuracy": 100, "pp": 10,
+     "secondary_effect": SE_FREEZE, "secondary_chance": 10},
+
+    {"id": 750, "name": "Fiery Wrath",
+     "type": TYPE_DARK, "category": SPEC, "power": 90, "accuracy": 100, "pp": 10,
+     "is_spread": True, "secondary_effect": SE_FLINCH, "secondary_chance": 20},
+
+    {"id": 762, "name": "Wave Crash",
+     "type": TYPE_WATER, "category": PHYS, "power": 120, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "recoil_percent": 33},
+
+    {"id": 764, "name": "Mountain Gale",
+     "type": TYPE_ICE, "category": PHYS, "power": 100, "accuracy": 85, "pp": 10,
+     "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+
+    {"id": 817, "name": "Bitter Blade",
+     "type": TYPE_FIRE, "category": PHYS, "power": 90, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "slicing_move": True, "drain_percent": 50, "healing_move": True},
+
+    {"id": 830, "name": "Matcha Gotcha",
+     "type": TYPE_GRASS, "category": SPEC, "power": 80, "accuracy": 90, "pp": 15,
+     "thaws_user": True, "is_spread": True, "drain_percent": 50, "healing_move": True, "secondary_effect": SE_BURN, "secondary_chance": 20},
+
+    {"id": 847, "name": "Malignant Chain",
+     "type": TYPE_POISON, "category": SPEC, "power": 100, "accuracy": 100, "pp": 5,
+     "secondary_effect": SE_TOXIC, "secondary_chance": 50},
+
+    # M19-secondary-stat-on-hit: EFFECT_HIT moves whose secondary
+    # stat-change payload previously had nowhere to attach (secondary_effect
+    # stays SE_NONE by construction; stat_change_stat/amount/self carry the
+    # payload instead, dispatched via the new stat_change_stat >= 0 branch in
+    # StatusManager.try_secondary_effect). secondary_chance: 0 = guaranteed/
+    # Sheer-Force-exempt (10 moves whose source OMITS .chance entirely — all
+    # self-targeted post-hit drops); explicit N = a true probabilistic secondary
+    # (69 moves), subject to Shield Dust/Covert Cloak/Sheer Force/Serene Grace
+    # exactly like every other true secondary effect.
+    {"id":   51, "name": "Acid",
+     "type": TYPE_POISON, "category": SPEC, "power": 40, "accuracy": 100,
+     "pp": 30, "is_spread": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1,
+     "secondary_chance": 10},
+    {"id":   61, "name": "Bubble Beam",
+     "type": TYPE_WATER, "category": SPEC, "power": 65, "accuracy": 100,
+     "pp": 20, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1, "secondary_chance": 10},
+    {"id":   62, "name": "Aurora Beam",
+     "type": TYPE_ICE, "category": SPEC, "power": 65, "accuracy": 100,
+     "pp": 20, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1, "secondary_chance": 10},
+    {"id":   94, "name": "Psychic",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 90, "accuracy": 100,
+     "pp": 10, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1, "secondary_chance": 10},
+    {"id":  132, "name": "Constrict",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 10, "accuracy": 100,
+     "pp": 35, "makes_contact": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1,
+     "secondary_chance": 10},
+    {"id":  145, "name": "Bubble",
+     "type": TYPE_WATER, "category": SPEC, "power": 40, "accuracy": 100,
+     "pp": 30, "is_spread": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1,
+     "secondary_chance": 10},
+    {"id":  189, "name": "Mud-Slap",
+     "type": TYPE_GROUND, "category": SPEC, "power": 20, "accuracy": 100,
+     "pp": 10, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1, "secondary_chance": 100},
+    {"id":  190, "name": "Octazooka",
+     "type": TYPE_WATER, "category": SPEC, "power": 65, "accuracy": 85,
+     "pp": 10, "ballistic_move": True, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1,
+     "secondary_chance": 50},
+    {"id":  196, "name": "Icy Wind",
+     "type": TYPE_ICE, "category": SPEC, "power": 55, "accuracy": 95,
+     "pp": 15, "is_spread": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1,
+     "secondary_chance": 100},
+    {"id":  211, "name": "Steel Wing",
+     "type": TYPE_STEEL, "category": PHYS, "power": 70, "accuracy": 90,
+     "pp": 25, "makes_contact": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 1,
+     "stat_change_self": True, "secondary_chance": 10},
+    {"id":  231, "name": "Iron Tail",
+     "type": TYPE_STEEL, "category": PHYS, "power": 100, "accuracy": 75,
+     "pp": 15, "makes_contact": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -1,
+     "secondary_chance": 30},
+    {"id":  232, "name": "Metal Claw",
+     "type": TYPE_STEEL, "category": PHYS, "power": 50, "accuracy": 95,
+     "pp": 35, "makes_contact": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "stat_change_self": True, "secondary_chance": 10},
+    {"id":  242, "name": "Crunch",
+     "type": TYPE_DARK, "category": PHYS, "power": 80, "accuracy": 100,
+     "pp": 15, "makes_contact": True, "biting_move": True, "stat_change_stat": STAGE_DEF,
+     "stat_change_amount": -1, "secondary_chance": 20},
+    {"id":  247, "name": "Shadow Ball",
+     "type": TYPE_GHOST, "category": SPEC, "power": 80, "accuracy": 100,
+     "pp": 15, "ballistic_move": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1,
+     "secondary_chance": 20},
+    {"id":  249, "name": "Rock Smash",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 40, "accuracy": 100,
+     "pp": 15, "makes_contact": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -1,
+     "secondary_chance": 50},
+    {"id":  295, "name": "Luster Purge",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 9, "accuracy": 100,
+     "pp": 5, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1, "secondary_chance": 50},
+    {"id":  296, "name": "Mist Ball",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 9, "accuracy": 100,
+     "pp": 5, "ballistic_move": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -1,
+     "secondary_chance": 50},
+    {"id":  306, "name": "Crush Claw",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 75, "accuracy": 95,
+     "pp": 10, "makes_contact": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -1,
+     "secondary_chance": 50},
+    {"id":  309, "name": "Meteor Mash",
+     "type": TYPE_STEEL, "category": PHYS, "power": 90, "accuracy": 90,
+     "pp": 10, "makes_contact": True, "punching_move": True, "stat_change_stat": STAGE_ATK,
+     "stat_change_amount": 1, "stat_change_self": True, "secondary_chance": 20},
+    {"id":  315, "name": "Overheat",
+     "type": TYPE_FIRE, "category": SPEC, "power": 130, "accuracy": 90,
+     "pp": 5, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -2, "stat_change_self": True,
+     "secondary_chance": 0},
+    {"id":  317, "name": "Rock Tomb",
+     "type": TYPE_ROCK, "category": PHYS, "power": 60, "accuracy": 95,
+     "pp": 15, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1, "secondary_chance": 100},
+    {"id":  330, "name": "Muddy Water",
+     "type": TYPE_WATER, "category": SPEC, "power": 90, "accuracy": 85,
+     "pp": 10, "is_spread": True, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1,
+     "secondary_chance": 30},
+    {"id":  341, "name": "Mud Shot",
+     "type": TYPE_GROUND, "category": SPEC, "power": 55, "accuracy": 95,
+     "pp": 15, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1, "secondary_chance": 100},
+    {"id":  354, "name": "Psycho Boost",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 140, "accuracy": 90,
+     "pp": 5, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -2, "stat_change_self": True,
+     "secondary_chance": 0},
+    {"id":  359, "name": "Hammer Arm",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 100, "accuracy": 90,
+     "pp": 10, "makes_contact": True, "punching_move": True, "stat_change_stat": STAGE_SPEED,
+     "stat_change_amount": -1, "stat_change_self": True, "secondary_chance": 0},
+    {"id":  405, "name": "Bug Buzz",
+     "type": TYPE_BUG, "category": SPEC, "power": 90, "accuracy": 100,
+     "pp": 10, "sound_move": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1,
+     "secondary_chance": 10},
+    {"id":  411, "name": "Focus Blast",
+     "type": TYPE_FIGHTING, "category": SPEC, "power": 120, "accuracy": 70,
+     "pp": 5, "ballistic_move": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1,
+     "secondary_chance": 10},
+    {"id":  412, "name": "Energy Ball",
+     "type": TYPE_GRASS, "category": SPEC, "power": 90, "accuracy": 100,
+     "pp": 10, "ballistic_move": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1,
+     "secondary_chance": 10},
+    {"id":  414, "name": "Earth Power",
+     "type": TYPE_GROUND, "category": SPEC, "power": 90, "accuracy": 100,
+     "pp": 10, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1, "secondary_chance": 10},
+    {"id":  426, "name": "Mud Bomb",
+     "type": TYPE_GROUND, "category": SPEC, "power": 65, "accuracy": 85,
+     "pp": 10, "ballistic_move": True, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1,
+     "secondary_chance": 30},
+    {"id":  429, "name": "Mirror Shot",
+     "type": TYPE_STEEL, "category": SPEC, "power": 65, "accuracy": 85,
+     "pp": 10, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1, "secondary_chance": 30},
+    {"id":  430, "name": "Flash Cannon",
+     "type": TYPE_STEEL, "category": SPEC, "power": 80, "accuracy": 100,
+     "pp": 10, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1, "secondary_chance": 10},
+    {"id":  434, "name": "Draco Meteor",
+     "type": TYPE_DRAGON, "category": SPEC, "power": 130, "accuracy": 90,
+     "pp": 5, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -2, "stat_change_self": True,
+     "secondary_chance": 0},
+    {"id":  437, "name": "Leaf Storm",
+     "type": TYPE_GRASS, "category": SPEC, "power": 130, "accuracy": 90,
+     "pp": 5, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -2, "stat_change_self": True,
+     "secondary_chance": 0},
+    {"id":  451, "name": "Charge Beam",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 50, "accuracy": 90,
+     "pp": 10, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 1, "stat_change_self": True,
+     "secondary_chance": 70},
+    {"id":  465, "name": "Seed Flare",
+     "type": TYPE_GRASS, "category": SPEC, "power": 120, "accuracy": 85,
+     "pp": 5, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -2, "secondary_chance": 40},
+    {"id":  488, "name": "Flame Charge",
+     "type": TYPE_FIRE, "category": PHYS, "power": 50, "accuracy": 100,
+     "pp": 20, "makes_contact": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": 1,
+     "stat_change_self": True, "secondary_chance": 100},
+    {"id":  490, "name": "Low Sweep",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 65, "accuracy": 100,
+     "pp": 20, "makes_contact": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1,
+     "secondary_chance": 100},
+    {"id":  491, "name": "Acid Spray",
+     "type": TYPE_POISON, "category": SPEC, "power": 40, "accuracy": 100,
+     "pp": 20, "ballistic_move": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -2,
+     "secondary_chance": 100},
+    {"id":  522, "name": "Struggle Bug",
+     "type": TYPE_BUG, "category": SPEC, "power": 50, "accuracy": 100,
+     "pp": 20, "is_spread": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -1,
+     "secondary_chance": 100},
+    {"id":  527, "name": "Electroweb",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 55, "accuracy": 95,
+     "pp": 15, "is_spread": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1,
+     "secondary_chance": 100},
+    {"id":  534, "name": "Razor Shell",
+     "type": TYPE_WATER, "category": PHYS, "power": 75, "accuracy": 95,
+     "pp": 10, "makes_contact": True, "slicing_move": True, "stat_change_stat": STAGE_DEF,
+     "stat_change_amount": -1, "secondary_chance": 50},
+    {"id":  536, "name": "Leaf Tornado",
+     "type": TYPE_GRASS, "category": SPEC, "power": 65, "accuracy": 90,
+     "pp": 10, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1, "secondary_chance": 50},
+    {"id":  539, "name": "Night Daze",
+     "type": TYPE_DARK, "category": SPEC, "power": 85, "accuracy": 95,
+     "pp": 10, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1, "secondary_chance": 40},
+    {"id":  549, "name": "Glaciate",
+     "type": TYPE_ICE, "category": SPEC, "power": 65, "accuracy": 95,
+     "pp": 10, "is_spread": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1,
+     "secondary_chance": 100},
+    {"id":  552, "name": "Fiery Dance",
+     "type": TYPE_FIRE, "category": SPEC, "power": 80, "accuracy": 100,
+     "pp": 10, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 1, "stat_change_self": True,
+     "secondary_chance": 50},
+    {"id":  555, "name": "Snarl",
+     "type": TYPE_DARK, "category": SPEC, "power": 55, "accuracy": 95,
+     "pp": 15, "sound_move": True, "is_spread": True, "stat_change_stat": STAGE_SPATK,
+     "stat_change_amount": -1, "secondary_chance": 100},
+    {"id":  583, "name": "Play Rough",
+     "type": TYPE_FAIRY, "category": PHYS, "power": 90, "accuracy": 90,
+     "pp": 10, "makes_contact": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
+     "secondary_chance": 10},
+    {"id":  585, "name": "Moonblast",
+     "type": TYPE_FAIRY, "category": SPEC, "power": 95, "accuracy": 100,
+     "pp": 15, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -1, "secondary_chance": 30},
+    {"id":  591, "name": "Diamond Storm",
+     "type": TYPE_ROCK, "category": PHYS, "power": 100, "accuracy": 95,
+     "pp": 5, "is_spread": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 2,
+     "stat_change_self": True, "secondary_chance": 50},
+    {"id":  595, "name": "Mystical Fire",
+     "type": TYPE_FIRE, "category": SPEC, "power": 75, "accuracy": 100,
+     "pp": 10, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -1, "secondary_chance": 100},
+    {"id":  612, "name": "Power-Up Punch",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 40, "accuracy": 100,
+     "pp": 20, "makes_contact": True, "punching_move": True, "stat_change_stat": STAGE_ATK,
+     "stat_change_amount": 1, "stat_change_self": True, "secondary_chance": 100},
+    {"id":  628, "name": "Ice Hammer",
+     "type": TYPE_ICE, "category": PHYS, "power": 100, "accuracy": 90,
+     "pp": 10, "makes_contact": True, "punching_move": True, "stat_change_stat": STAGE_SPEED,
+     "stat_change_amount": -1, "stat_change_self": True, "secondary_chance": 0},
+    {"id":  642, "name": "Lunge",
+     "type": TYPE_BUG, "category": PHYS, "power": 80, "accuracy": 100,
+     "pp": 15, "makes_contact": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
+     "secondary_chance": 100},
+    {"id":  643, "name": "Fire Lash",
+     "type": TYPE_FIRE, "category": PHYS, "power": 80, "accuracy": 100,
+     "pp": 15, "makes_contact": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -1,
+     "secondary_chance": 100},
+    {"id":  651, "name": "Trop Kick",
+     "type": TYPE_GRASS, "category": PHYS, "power": 70, "accuracy": 100,
+     "pp": 15, "makes_contact": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
+     "secondary_chance": 100},
+    {"id":  654, "name": "Clanging Scales",
+     "type": TYPE_DRAGON, "category": SPEC, "power": 110, "accuracy": 100,
+     "pp": 5, "sound_move": True, "is_spread": True, "stat_change_stat": STAGE_DEF,
+     "stat_change_amount": -1, "stat_change_self": True, "secondary_chance": 0},
+    {"id":  659, "name": "Fleur Cannon",
+     "type": TYPE_FAIRY, "category": SPEC, "power": 130, "accuracy": 90,
+     "pp": 5, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -2, "stat_change_self": True,
+     "secondary_chance": 0},
+    {"id":  662, "name": "Shadow Bone",
+     "type": TYPE_GHOST, "category": PHYS, "power": 85, "accuracy": 100,
+     "pp": 10, "stat_change_stat": STAGE_DEF, "stat_change_amount": -1, "secondary_chance": 20},
+    {"id":  664, "name": "Liquidation",
+     "type": TYPE_WATER, "category": PHYS, "power": 85, "accuracy": 100,
+     "pp": 10, "makes_contact": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -1,
+     "secondary_chance": 20},
+    {"id":  676, "name": "Zippy Zap",
+     "type": TYPE_ELECTRIC, "category": PHYS, "power": 80, "accuracy": 100,
+     "pp": 10, "makes_contact": True, "priority": 2, "always_critical_hit": True,
+     "stat_change_stat": STAGE_EVASION, "stat_change_amount": 1, "stat_change_self": True, "secondary_chance": 0},
+    {"id":  706, "name": "Drum Beating",
+     "type": TYPE_GRASS, "category": PHYS, "power": 80, "accuracy": 100,
+     "pp": 10, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1, "secondary_chance": 100},
+    {"id":  712, "name": "Breaking Swipe",
+     "type": TYPE_DRAGON, "category": PHYS, "power": 60, "accuracy": 100,
+     "pp": 15, "makes_contact": True, "is_spread": True, "stat_change_stat": STAGE_ATK,
+     "stat_change_amount": -1, "secondary_chance": 100},
+    {"id":  715, "name": "Apple Acid",
+     "type": TYPE_GRASS, "category": SPEC, "power": 80, "accuracy": 100,
+     "pp": 10, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1, "secondary_chance": 100},
+    {"id":  717, "name": "Spirit Break",
+     "type": TYPE_FAIRY, "category": PHYS, "power": 75, "accuracy": 100,
+     "pp": 15, "makes_contact": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -1,
+     "secondary_chance": 100},
+    {"id":  734, "name": "Skitter Smack",
+     "type": TYPE_BUG, "category": PHYS, "power": 70, "accuracy": 90,
+     "pp": 10, "makes_contact": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -1,
+     "secondary_chance": 100},
+    {"id":  751, "name": "Thunderous Kick",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 90, "accuracy": 100,
+     "pp": 10, "makes_contact": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -1,
+     "secondary_chance": 100},
+    {"id":  756, "name": "Psyshield Bash",
+     "type": TYPE_PSYCHIC, "category": PHYS, "power": 70, "accuracy": 90,
+     "pp": 10, "makes_contact": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 1,
+     "stat_change_self": True, "secondary_chance": 100},
+    {"id":  759, "name": "Springtide Storm",
+     "type": TYPE_FAIRY, "category": SPEC, "power": 100, "accuracy": 80,
+     "pp": 5, "is_spread": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
+     "secondary_chance": 30},
+    {"id":  760, "name": "Mystical Power",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 70, "accuracy": 90,
+     "pp": 10, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 1, "stat_change_self": True,
+     "secondary_chance": 100},
+    {"id":  768, "name": "Esper Wing",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 80, "accuracy": 100,
+     "pp": 10, "critical_hit_stage": 1, "stat_change_stat": STAGE_SPEED, "stat_change_amount": 1,
+     "stat_change_self": True, "secondary_chance": 100},
+    {"id":  769, "name": "Bitter Malice",
+     "type": TYPE_GHOST, "category": SPEC, "power": 75, "accuracy": 100,
+     "pp": 15, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1, "secondary_chance": 100},
+    {"id":  783, "name": "Lumina Crash",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 80, "accuracy": 100,
+     "pp": 10, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -2, "secondary_chance": 100},
+    {"id":  787, "name": "Spin Out",
+     "type": TYPE_STEEL, "category": PHYS, "power": 100, "accuracy": 100,
+     "pp": 5, "makes_contact": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -2,
+     "stat_change_self": True, "secondary_chance": 0},
+    {"id":  799, "name": "Torch Song",
+     "type": TYPE_FIRE, "category": SPEC, "power": 80, "accuracy": 100,
+     "pp": 10, "sound_move": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 1,
+     "stat_change_self": True, "secondary_chance": 100},
+    {"id":  800, "name": "Aqua Step",
+     "type": TYPE_WATER, "category": PHYS, "power": 80, "accuracy": 100,
+     "pp": 10, "makes_contact": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": 1,
+     "stat_change_self": True, "secondary_chance": 100},
+    {"id":  810, "name": "Pounce",
+     "type": TYPE_BUG, "category": PHYS, "power": 50, "accuracy": 100,
+     "pp": 20, "makes_contact": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1,
+     "secondary_chance": 100},
+    {"id":  811, "name": "Trailblaze",
+     "type": TYPE_GRASS, "category": PHYS, "power": 50, "accuracy": 100,
+     "pp": 20, "makes_contact": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": 1,
+     "stat_change_self": True, "secondary_chance": 100},
+    {"id":  812, "name": "Chilling Water",
+     "type": TYPE_WATER, "category": SPEC, "power": 50, "accuracy": 100,
+     "pp": 20, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1, "secondary_chance": 100},
+
+    # [Bucket 3 multi-stat] moves whose stat-change payload touches 2+
+    # distinct stats at once (Ancient Power +1 to all 5 non-HP stats, Shell
+    # Smash mixed +2/-1, Spicy Extract mixed +2/-2) -- primary pair in
+    # stat_change_stat/amount, everything additional in
+    # extra_stat_change_stats/amounts. Coaching(739) deliberately excluded --
+    # genuinely ally-targeting (TARGET_ALLY), which this project's self/foe-only
+    # stat_change_self schema cannot represent; deferred to merge with
+    # M19-ally-targeting-stat-change instead.
+    {"id":  246, "name": "Ancient Power",
+     "type": TYPE_ROCK, "category": SPEC, "power": 60, "accuracy": 100,
+     "pp": 5, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "secondary_chance": 10, "extra_stat_change_stats": [STAGE_DEF, STAGE_SPATK, STAGE_SPDEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1, 1, 1]},
+    {"id":  276, "name": "Superpower",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 120, "accuracy": 100,
+     "pp": 5, "makes_contact": True, "stat_change_self": True, "stat_change_stat": STAGE_ATK,
+     "stat_change_amount": -1, "secondary_chance": 0, "extra_stat_change_stats": [STAGE_DEF], "extra_stat_change_amounts": [-1]},
+    {"id":  318, "name": "Silver Wind",
+     "type": TYPE_BUG, "category": SPEC, "power": 60, "accuracy": 100,
+     "pp": 5, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "secondary_chance": 10, "extra_stat_change_stats": [STAGE_DEF, STAGE_SPATK, STAGE_SPDEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1, 1, 1]},
+    {"id":  321, "name": "Tickle",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100,
+     "pp": 20, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1, "extra_stat_change_stats": [STAGE_DEF],
+     "extra_stat_change_amounts": [-1]},
+    {"id":  322, "name": "Cosmic Power",
+     "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [1]},
+    {"id":  339, "name": "Bulk Up",
+     "type": TYPE_FIGHTING, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_DEF], "extra_stat_change_amounts": [1]},
+    {"id":  347, "name": "Calm Mind",
+     "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [1]},
+    {"id":  349, "name": "Dragon Dance",
+     "type": TYPE_DRAGON, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_SPEED], "extra_stat_change_amounts": [1]},
+    {"id":  370, "name": "Close Combat",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 120, "accuracy": 100,
+     "pp": 5, "makes_contact": True, "stat_change_self": True, "stat_change_stat": STAGE_DEF,
+     "stat_change_amount": -1, "secondary_chance": 0, "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [-1]},
+    {"id":  466, "name": "Ominous Wind",
+     "type": TYPE_GHOST, "category": SPEC, "power": 60, "accuracy": 100,
+     "pp": 5, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "secondary_chance": 10, "extra_stat_change_stats": [STAGE_DEF, STAGE_SPATK, STAGE_SPDEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1, 1, 1]},
+    {"id":  468, "name": "Hone Claws",
+     "type": TYPE_DARK, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 15, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_ACCURACY], "extra_stat_change_amounts": [1]},
+    {"id":  483, "name": "Quiver Dance",
+     "type": TYPE_BUG, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_SPDEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1]},
+    {"id":  489, "name": "Coil",
+     "type": TYPE_POISON, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_DEF, STAGE_ACCURACY], "extra_stat_change_amounts": [1, 1]},
+    {"id":  504, "name": "Shell Smash",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 15, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 2,
+     "extra_stat_change_stats": [STAGE_SPATK, STAGE_SPEED, STAGE_DEF, STAGE_SPDEF], "extra_stat_change_amounts": [2, 2, -1, -1]},
+    {"id":  508, "name": "Shift Gear",
+     "type": TYPE_STEEL, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 10, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_SPEED], "extra_stat_change_amounts": [2]},
+    {"id":  526, "name": "Work Up",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 30, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_SPATK], "extra_stat_change_amounts": [1]},
+    {"id":  568, "name": "Noble Roar",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100,
+     "pp": 30, "sound_move": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
+     "extra_stat_change_stats": [STAGE_SPATK], "extra_stat_change_amounts": [-1]},
+    {"id":  620, "name": "Dragon Ascent",
+     "type": TYPE_FLYING, "category": PHYS, "power": 120, "accuracy": 100,
+     "pp": 5, "makes_contact": True, "stat_change_self": True, "stat_change_stat": STAGE_DEF,
+     "stat_change_amount": -1, "secondary_chance": 0, "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [-1]},
+    {"id":  669, "name": "Tearful Look",
+     "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 20, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1, "extra_stat_change_stats": [STAGE_SPATK],
+     "extra_stat_change_amounts": [-1]},
+    {"id":  705, "name": "Decorate",
+     "type": TYPE_FAIRY, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 15, "stat_change_stat": STAGE_ATK, "stat_change_amount": 2, "extra_stat_change_stats": [STAGE_SPATK],
+     "extra_stat_change_amounts": [2]},
+    {"id":  765, "name": "Victory Dance",
+     "type": TYPE_FIGHTING, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_DEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1]},
+    {"id":  766, "name": "Headlong Rush",
+     "type": TYPE_GROUND, "category": PHYS, "power": 120, "accuracy": 100,
+     "pp": 5, "makes_contact": True, "stat_change_self": True, "stat_change_stat": STAGE_DEF,
+     "stat_change_amount": -1, "secondary_chance": 0, "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [-1]},
+    {"id":  786, "name": "Spicy Extract",
+     "type": TYPE_GRASS, "category": STAT, "power": 0, "accuracy": 0,
+     "pp": 15, "stat_change_stat": STAGE_ATK, "stat_change_amount": 2, "extra_stat_change_stats": [STAGE_DEF],
+     "extra_stat_change_amounts": [-2]},
+    {"id":  816, "name": "Armor Cannon",
+     "type": TYPE_FIRE, "category": SPEC, "power": 120, "accuracy": 100,
+     "pp": 5, "stat_change_self": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -1,
+     "secondary_chance": 0, "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [-1]},
+
+    # ── [Bucket 3 combined-secondary] Thunder Fang / Ice Fang / Fire Fang: status
+    # (slot 1) + independently-rolled 10% flinch (slot 2). GEN_LATEST config values
+    # confirmed directly from moves_info.h (no ternaries on these three).
+    {"id":  422, "name": "Thunder Fang",
+     "type": TYPE_ELECTRIC, "category": PHYS, "power": 65, "accuracy": 95, "pp": 15,
+     "makes_contact": True, "biting_move": True,
+     "secondary_effect": SE_PARALYSIS, "secondary_chance": 10,
+     "secondary_effect_2": SE_FLINCH, "secondary_chance_2": 10},
+    {"id":  423, "name": "Ice Fang",
+     "type": TYPE_ICE, "category": PHYS, "power": 65, "accuracy": 95, "pp": 15,
+     "makes_contact": True, "biting_move": True,
+     "secondary_effect": SE_FREEZE, "secondary_chance": 10,
+     "secondary_effect_2": SE_FLINCH, "secondary_chance_2": 10},
+    {"id":  424, "name": "Fire Fang",
+     "type": TYPE_FIRE, "category": PHYS, "power": 65, "accuracy": 95, "pp": 15,
+     "makes_contact": True, "biting_move": True,
+     "secondary_effect": SE_BURN, "secondary_chance": 10,
+     "secondary_effect_2": SE_FLINCH, "secondary_chance_2": 10},
+
+    # ── [Bucket 3 screen+damage] Glitzy Glow / Baddy Bad: EFFECT_HIT damage move
+    # that also sets a guaranteed self-side screen. GEN_LATEST (>= GEN_8) config:
+    # power 80, accuracy 95 (both moves' ternaries resolve the same way).
+    {"id":  683, "name": "Glitzy Glow",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 80, "accuracy": 95, "pp": 15,
+     "sets_light_screen_on_hit": True},
+    {"id":  684, "name": "Baddy Bad",
+     "type": TYPE_DARK, "category": SPEC, "power": 80, "accuracy": 95, "pp": 15,
+     "sets_reflect_on_hit": True},
+
+    # ── [Bucket 4 cheapest singles] Rage, Clear Smog, Incinerate, Sparkling
+    # Aria, Throat Chop, Eerie Spell, Blood Moon — 7 single-move sub-groups,
+    # each with its own independent Step 0 mechanism (see move_data.gd's
+    # per-flag doc comments for full source citations). Secret Power(290) and
+    # Uproar(253) — the other 2 moves in this Bucket 4 batch — were deferred
+    # (Secret Power needs an overworld-location concept this project doesn't
+    # have; Uproar needs the same multi-turn forced-move-repeat mechanism
+    # Bucket 4's still-unbuilt M19-rampage sub-group needs) — not added here.
+    {"id":  99, "name": "Rage",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 20, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "is_rage": True},
+    {"id":  499, "name": "Clear Smog",
+     "type": TYPE_POISON, "category": SPEC, "power": 50, "accuracy": 0, "pp": 15,
+     "is_clear_smog": True},
+    {"id":  510, "name": "Incinerate",
+     "type": TYPE_FIRE, "category": SPEC, "power": 60, "accuracy": 100, "pp": 15,
+     "is_spread": True, "is_incinerate": True},
+    {"id":  627, "name": "Sparkling Aria",
+     "type": TYPE_WATER, "category": SPEC, "power": 90, "accuracy": 100, "pp": 10,
+     "sound_move": True, "ignores_substitute": True, "is_spread": True,
+     "is_sparkling_aria": True},
+    {"id":  638, "name": "Throat Chop",
+     "type": TYPE_DARK, "category": PHYS, "power": 80, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "secondary_effect": SE_THROAT_CHOP, "secondary_chance": 100},
+    {"id":  754, "name": "Eerie Spell",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 80, "accuracy": 100, "pp": 5,
+     "sound_move": True, "ignores_substitute": True,
+     "secondary_effect": SE_EERIE_SPELL, "secondary_chance": 100},
+    {"id":  829, "name": "Blood Moon",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 140, "accuracy": 100, "pp": 5,
+     "cant_use_twice": True},
+
+    # ── [M19-rampage] Thrash / Petal Dance / Outrage / Raging Fury (is_rampage,
+    # confuse-on-lock-end) + Uproar (is_uproar, no confuse, field-wide new-sleep
+    # block) — GEN_LATEST config values (see move_data.gd's own is_rampage/
+    # is_uproar doc comments for the full source citations). Raging Fury
+    # deliberately has NO makes_contact — confirmed absent from source, unlike
+    # the other three rampage moves.
+    {"id":  37, "name": "Thrash",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 120, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "is_rampage": True},
+    {"id":  80, "name": "Petal Dance",
+     "type": TYPE_GRASS, "category": SPEC, "power": 120, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "is_rampage": True},
+    {"id":  200, "name": "Outrage",
+     "type": TYPE_DRAGON, "category": PHYS, "power": 120, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "is_rampage": True},
+    {"id":  761, "name": "Raging Fury",
+     "type": TYPE_FIRE, "category": PHYS, "power": 120, "accuracy": 100, "pp": 10,
+     "is_rampage": True},
+    {"id":  253, "name": "Uproar",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 90, "accuracy": 100, "pp": 10,
+     "sound_move": True, "ignores_substitute": True, "is_uproar": True},
+
+    # ── [M19-recharge] Hyper Beam / Blast Burn / Hydro Cannon / Frenzy Plant /
+    # Giga Impact / Rock Wrecker / Roar of Time / Prismatic Laser / Meteor
+    # Assault / Eternabeam — all share MOVE_EFFECT_RECHARGE (is_recharge),
+    # but power/accuracy/pp/type/category are individually verified, NOT
+    # uniform (see move_data.gd's own is_recharge doc comment for the full
+    # source citations). Giga Impact is the ONLY one of the 10 with
+    # makes_contact; Rock Wrecker is ballistic_move but non-contact; Meteor
+    # Assault is Physical but non-contact (confirmed, not assumed).
+    {"id":  63, "name": "Hyper Beam",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 150, "accuracy": 90, "pp": 5,
+     "is_recharge": True},
+    {"id":  307, "name": "Blast Burn",
+     "type": TYPE_FIRE, "category": SPEC, "power": 150, "accuracy": 90, "pp": 5,
+     "is_recharge": True},
+    {"id":  308, "name": "Hydro Cannon",
+     "type": TYPE_WATER, "category": SPEC, "power": 150, "accuracy": 90, "pp": 5,
+     "is_recharge": True},
+    {"id":  338, "name": "Frenzy Plant",
+     "type": TYPE_GRASS, "category": SPEC, "power": 150, "accuracy": 90, "pp": 5,
+     "is_recharge": True},
+    {"id":  416, "name": "Giga Impact",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 150, "accuracy": 90, "pp": 5,
+     "makes_contact": True, "is_recharge": True},
+    {"id":  439, "name": "Rock Wrecker",
+     "type": TYPE_ROCK, "category": PHYS, "power": 150, "accuracy": 90, "pp": 5,
+     "ballistic_move": True, "is_recharge": True},
+    {"id":  459, "name": "Roar of Time",
+     "type": TYPE_DRAGON, "category": SPEC, "power": 150, "accuracy": 90, "pp": 5,
+     "is_recharge": True},
+    {"id":  665, "name": "Prismatic Laser",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 160, "accuracy": 100, "pp": 10,
+     "is_recharge": True},
+    {"id":  722, "name": "Meteor Assault",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 150, "accuracy": 100, "pp": 5,
+     "is_recharge": True},
+    {"id":  723, "name": "Eternabeam",
+     "type": TYPE_DRAGON, "category": SPEC, "power": 160, "accuracy": 90, "pp": 5,
+     "is_recharge": True},
+
+    # ── [M19-break-protect] Feint / Shadow Force / Phantom Force / Hyperspace
+    # Hole — all 4 share the identical MOVE_EFFECT_FEINT additionalEffect
+    # (breaks_protect), but power/accuracy/pp/type/category/priority are NOT
+    # uniform (see move_data.gd's own breaks_protect doc comment for the full
+    # source citations). Feint alone is non-contact and +2 priority; Shadow
+    # Force/Phantom Force are two-turn semi-invulnerable (new
+    # SEMI_INV_VANISH) contact moves; Hyperspace Hole has accuracy=0
+    # (never misses) and ignores_substitute, non-contact.
+    {"id":  364, "name": "Feint",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 30, "accuracy": 100, "pp": 10,
+     "priority": 2, "ban_flags": BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST,
+     "ignores_protect": True, "breaks_protect": True},
+    {"id":  467, "name": "Shadow Force",
+     "type": TYPE_GHOST, "category": PHYS, "power": 120, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_VANISH,
+     "ban_flags": BAN_SLEEP_TALK | BAN_INSTRUCT | BAN_ASSIST,
+     "ignores_protect": True, "breaks_protect": True},
+    {"id":  566, "name": "Phantom Force",
+     "type": TYPE_GHOST, "category": PHYS, "power": 90, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_VANISH,
+     "ban_flags": BAN_SLEEP_TALK | BAN_INSTRUCT | BAN_ASSIST,
+     "ignores_protect": True, "breaks_protect": True},
+    {"id":  593, "name": "Hyperspace Hole",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 80, "accuracy": 0, "pp": 5,
+     "ban_flags": BAN_METRONOME,
+     "ignores_protect": True, "ignores_substitute": True, "breaks_protect": True},
+
+    # ── [M19-recoil-on-miss] Jump Kick / High Jump Kick / Axe Kick / Supercell
+    # Slam — all 4 share the identical EFFECT_RECOIL_IF_MISS mechanism
+    # (crashes_on_miss), a genuinely uniform crash formula (flat 50% of the
+    # ATTACKER's own max HP at this project's GEN_LATEST config) despite the
+    # 4 moves' own power/accuracy/pp NOT being uniform. Axe Kick additionally
+    # carries its own unrelated 30% confusion secondary; Supercell Slam
+    # carries double_power_on_minimized (already-existing Stomp-family
+    # mechanism, reused as-is).
+    {"id":  26, "name": "Jump Kick",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 100, "accuracy": 95, "pp": 10,
+     "makes_contact": True, "crashes_on_miss": True},
+    {"id":  136, "name": "High Jump Kick",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 130, "accuracy": 90, "pp": 10,
+     "makes_contact": True, "crashes_on_miss": True},
+    {"id":  781, "name": "Axe Kick",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 120, "accuracy": 90, "pp": 10,
+     "makes_contact": True, "crashes_on_miss": True,
+     "secondary_effect": SE_CONFUSION, "secondary_chance": 30},
+    {"id":  844, "name": "Supercell Slam",
+     "type": TYPE_ELECTRIC, "category": PHYS, "power": 100, "accuracy": 95, "pp": 15,
+     "makes_contact": True, "crashes_on_miss": True, "double_power_on_minimized": True},
+
+    # ── [M19-weather-conditional-accuracy] Thunder / Hurricane / Bleakwind
+    # Storm / Wildbolt Storm / Sandsear Storm — all 5 carry
+    # always_hits_in_rain; Thunder/Hurricane ADDITIONALLY carry
+    # accuracy_halved_in_sun (a genuinely separate, second flag — confirmed
+    # NOT shared by the "Storm" trio, which has no sun penalty at all).
+    # Bleakwind Storm(774) was flagged double-blocked during
+    # `[M19-secondary-stat-on-hit]` and correctly excluded from that
+    # session's 79-move batch — it was NEVER previously implemented at all
+    # (re-verified directly: no prior `.tres`/gen_moves.py entry existed for
+    # any of these 5 IDs before this session), so this entry builds BOTH its
+    # stat-on-hit secondary AND its weather-accuracy flag together, not just
+    # "adding weather flags to an existing entry" as originally assumed.
+    # `.windMove` (all of Hurricane/the Storm trio) is a real source flag
+    # but has zero consumers anywhere in this project (no Wind Rider/Wind
+    # Power-style ability implemented) — deliberately not modeled, not a
+    # silently dropped check.
+    {"id":  87, "name": "Thunder",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 110, "accuracy": 70, "pp": 10,
+     "damages_airborne": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 30,
+     "always_hits_in_rain": True, "accuracy_halved_in_sun": True},
+    {"id":  542, "name": "Hurricane",
+     "type": TYPE_FLYING, "category": SPEC, "power": 110, "accuracy": 70, "pp": 10,
+     "damages_airborne": True, "secondary_effect": SE_CONFUSION, "secondary_chance": 30,
+     "always_hits_in_rain": True, "accuracy_halved_in_sun": True},
+    {"id":  774, "name": "Bleakwind Storm",
+     "type": TYPE_FLYING, "category": SPEC, "power": 100, "accuracy": 80, "pp": 10,
+     "is_spread": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1,
+     "secondary_chance": 30, "always_hits_in_rain": True},
+    {"id":  775, "name": "Wildbolt Storm",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 100, "accuracy": 80, "pp": 10,
+     "is_spread": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 20,
+     "always_hits_in_rain": True},
+    {"id":  776, "name": "Sandsear Storm",
+     "type": TYPE_GROUND, "category": SPEC, "power": 100, "accuracy": 80, "pp": 10,
+     "is_spread": True, "secondary_effect": SE_BURN, "secondary_chance": 20,
+     "always_hits_in_rain": True},
 ]
+
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──
 DEFAULTS = {
@@ -1450,9 +2614,16 @@ DEFAULTS = {
     "sound_move":          False,
     "secondary_effect":    SE_NONE,
     "secondary_chance":    0,
+    # [Bucket 3 combined-secondary] a second, independent secondary-effect roll
+    # (Thunder/Ice/Fire Fang's status + flinch).
+    "secondary_effect_2":  SE_NONE,
+    "secondary_chance_2":  0,
     "stat_change_stat":    -1,
     "stat_change_amount":  0,
     "stat_change_self":    False,
+    # [Bucket 3 multi-stat] extra (stat, amount) pairs beyond the primary one
+    "extra_stat_change_stats":   [],
+    "extra_stat_change_amounts": [],
     # M6 fields
     "two_turn":            False,
     "semi_inv_state":      SEMI_INV_NONE,
@@ -1503,6 +2674,9 @@ DEFAULTS = {
     "is_light_screen":           False,
     "is_aurora_veil":            False,
     "breaks_screens":            False,
+    # [Bucket 3 screen+damage] Glitzy Glow / Baddy Bad — screen set on a damaging hit.
+    "sets_reflect_on_hit":       False,
+    "sets_light_screen_on_hit":  False,
     # M16d fields
     "is_spikes":                 False,
     "is_toxic_spikes":           False,
@@ -1552,6 +2726,30 @@ DEFAULTS = {
     "is_heat_crash_power":        False,
     "is_return_power":            False,
     "is_frustration_power":       False,
+
+    # [Bucket 4 cheapest singles]
+    "is_rage":                    False,
+    "is_clear_smog":              False,
+    "is_incinerate":              False,
+    "is_sparkling_aria":          False,
+    "cant_use_twice":             False,
+
+    # [M19-rampage]
+    "is_rampage":                 False,
+    "is_uproar":                  False,
+
+    # [M19-recharge]
+    "is_recharge":                False,
+
+    # [M19-break-protect]
+    "breaks_protect":             False,
+
+    # [M19-recoil-on-miss]
+    "crashes_on_miss":            False,
+
+    # [M19-weather-conditional-accuracy]
+    "always_hits_in_rain":        False,
+    "accuracy_halved_in_sun":     False,
 }
 
 HEADER = """\
@@ -1570,7 +2768,9 @@ FIELD_ORDER = [
     "always_critical_hit",
     "thaws_user", "powder_move", "sound_move",
     "secondary_effect", "secondary_chance",
+    "secondary_effect_2", "secondary_chance_2",
     "stat_change_stat", "stat_change_amount", "stat_change_self",
+    "extra_stat_change_stats", "extra_stat_change_amounts",
     # M6 fields
     "two_turn", "semi_inv_state",
     "damages_underground", "damages_airborne", "damages_underwater",
@@ -1592,6 +2792,7 @@ FIELD_ORDER = [
     "is_rollout", "is_magnitude",
     # M16c fields
     "is_reflect", "is_light_screen", "is_aurora_veil", "breaks_screens",
+    "sets_reflect_on_hit", "sets_light_screen_on_hit",
     # M16d fields
     "is_spikes", "is_toxic_spikes", "is_stealth_rock", "is_rapid_spin", "is_trick_room",
     # M16e fields
@@ -1610,6 +2811,18 @@ FIELD_ORDER = [
     "strike_count", "multi_hit", "is_triple_kick", "is_scale_shot",
     # M19-pre1 fields
     "is_low_kick_power", "is_heat_crash_power", "is_return_power", "is_frustration_power",
+    # [Bucket 4 cheapest singles] fields
+    "is_rage", "is_clear_smog", "is_incinerate", "is_sparkling_aria", "cant_use_twice",
+    # [M19-rampage] fields
+    "is_rampage", "is_uproar",
+    # [M19-recharge] fields
+    "is_recharge",
+    # [M19-break-protect] fields
+    "breaks_protect",
+    # [M19-recoil-on-miss] fields
+    "crashes_on_miss",
+    # [M19-weather-conditional-accuracy] fields
+    "always_hits_in_rain", "accuracy_halved_in_sun",
 ]
 
 

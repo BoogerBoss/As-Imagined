@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+move_name = "Meteor Mash"
+type = 9
+power = 90
+accuracy = 90
+pp = 10
+makes_contact = true
+punching_move = true
+secondary_chance = 20
+stat_change_stat = 0
+stat_change_amount = 1
+stat_change_self = true

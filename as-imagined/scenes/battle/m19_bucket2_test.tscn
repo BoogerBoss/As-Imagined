@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m19bucket2test"]
+
+[ext_resource type="Script" path="res://scenes/battle/m19_bucket2_test.gd" id="1_m19bucket2test"]
+
+[node name="M19Bucket2Test" type="Node"]
+script = ExtResource("1_m19bucket2test")

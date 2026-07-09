@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m19bucket3multistattest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m19_bucket3_multistat_test.gd" id="1_m19bucket3multistattest"]
+
+[node name="M19Bucket3MultistatTest" type="Node"]
+script = ExtResource("1_m19bucket3multistattest")

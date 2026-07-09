@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+move_name = "Scary Face"
+type = 1
+category = 2
+pp = 10
+stat_change_stat = 4
+stat_change_amount = -2
+bounceable = true

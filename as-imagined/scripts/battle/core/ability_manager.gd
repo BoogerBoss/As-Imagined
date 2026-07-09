@@ -1704,12 +1704,11 @@ static func blocks_critical_hit(
 #     modified value — `basePower` is captured once at function entry, before any
 #     modifier in this switch runs) <= 60 → ×1.5
 #   ABILITY_RECKLESS      (L6471-6473): moveEffect in {EFFECT_RECOIL,
-#     EFFECT_RECOIL_IF_MISS} → ×1.2. This project has no EFFECT_RECOIL_IF_MISS-shaped
-#     move (no Jump-Kick-style crash-on-miss mechanic exists anywhere in this
-#     codebase) — confirmed equivalent to `move.recoil_percent > 0` given this
-#     project's CURRENT roster (all 3 existing recoil moves are EFFECT_RECOIL-shaped,
-#     verified individually via their own data-pipeline source comments, not
-#     assumed) — re-check this equivalence if a crash-on-miss move is ever added.
+#     EFFECT_RECOIL_IF_MISS} → ×1.2. [M19-recoil-on-miss] added the first
+#     EFFECT_RECOIL_IF_MISS-shaped moves this project has (Jump Kick/High Jump
+#     Kick/Axe Kick/Supercell Slam, `move.crashes_on_miss`) — this doc comment's
+#     own prior note flagged exactly this re-check as needed once one existed;
+#     done below via `move.recoil_percent > 0 or move.crashes_on_miss`.
 #   ABILITY_SHEER_FORCE   (L6481-6483): MoveIsAffectedBySheerForce → ×1.3. Source's
 #     helper (`MoveIsAffectedBySheerForce`, battle_util.c L9536-9547) checks for a
 #     probabilistic secondary effect — equivalent to this project's own
@@ -1785,7 +1784,7 @@ static func move_power_modifier_uq412(
 			modifier = DamageCalculator._uq412_multiply(modifier, 4915)  # UQ_4_12(1.2)
 		if id == ABILITY_TECHNICIAN and move.power <= 60:
 			modifier = DamageCalculator._uq412_multiply(modifier, 6144)
-		if id == ABILITY_RECKLESS and move.recoil_percent > 0:
+		if id == ABILITY_RECKLESS and (move.recoil_percent > 0 or move.crashes_on_miss):
 			modifier = DamageCalculator._uq412_multiply(modifier, 4915)
 		if id == ABILITY_SHEER_FORCE and move.secondary_chance > 0:
 			modifier = DamageCalculator._uq412_multiply(modifier, 5325)
@@ -3422,7 +3421,8 @@ static func try_contact_effects(
 		force_contact_roll: Variant = null,
 		force_effect_spore_roll: Variant = null,
 		ng_active: bool = false,
-		attacker_ally: BattlePokemon = null) -> Dictionary:
+		attacker_ally: BattlePokemon = null,
+		uproar_active: bool = false) -> Dictionary:
 
 	var result := {
 		"rough_skin_damage": 0, "status_applied": 0, "status_target": null, "speed_change": 0,
@@ -3590,7 +3590,12 @@ static func try_contact_effects(
 				result["status_target"] = attacker
 				result["ability_name"] = "effect_spore"
 		elif roll < 30:
-			if StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_SLEEP):
+			# [M19-rampage] Uproar's field-wide new-sleep block (MoveData.is_uproar's
+			# own doc comment has the full source citation) applies here too — Effect
+			# Spore's sleep roll is a genuine sleep-infliction attempt like any other.
+			if StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_SLEEP,
+					null, null, ng_active, null, DamageCalculator.WEATHER_NONE, null,
+					uproar_active):
 				result["status_applied"] = BattlePokemon.STATUS_SLEEP
 				result["status_target"] = attacker
 				result["ability_name"] = "effect_spore"

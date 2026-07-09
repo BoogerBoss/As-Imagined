@@ -156,9 +156,40 @@ const SE_WRAP: int      = 8
 #   would have been mis-cast as Toxic without this addition. Needed to correctly
 #   implement an in-scope move, not a speculative unrelated fix.
 const SE_POISON: int    = 9
+# [Bucket 4 cheapest singles] SE_THROAT_CHOP: Throat Chop(638) — sets a 2-turn
+#   "target's sound moves fail" timer on the target. Explicit chance=100 in
+#   source (a TRUE secondary, unlike a chance=0/omitted guaranteed effect), so
+#   this correctly gates through Shield Dust/Covert Cloak/Sheer Force/Serene
+#   Grace via the normal try_secondary_effect roll — same "return true, caller
+#   applies it" shape as SE_FLINCH/SE_WRAP.
+const SE_THROAT_CHOP: int = 10
+# [Bucket 4 cheapest singles] SE_EERIE_SPELL: Eerie Spell(754) — cuts 3 PP from
+#   the target's own last-used move. Also explicit chance=100 (true secondary).
+#   Reuses the pre-existing BattlePokemon.last_move_used field (already
+#   comprehensively wired since [M16e]'s Conversion 2) — no new tracking state
+#   needed.
+const SE_EERIE_SPELL: int = 11
 
 @export var secondary_effect: int = 0   # SE_* constant above
 @export var secondary_chance: int = 0   # 0 = guaranteed; 1–100 = % roll
+
+# [Bucket 3 combined-secondary] A SECOND, fully independent secondary-effect
+# roll — Thunder/Ice/Fire Fang each carry a status effect (slot 1 above) AND
+# an independently-rolled 10% flinch (slot 2), confirmed from source
+# (moves_info.h ADDITIONAL_EFFECTS lists two separate {.moveEffect,.chance}
+# blocks) to be TWO SEPARATE rolls, not one shared roll — real source's
+# Cmd_setadditionaleffects loop rolls each additionalEffect independently
+# (own RNG index via RNG_SECONDARY_EFFECT + counter, own Serene-Grace
+# doubling, own Shield-Dust/Covert-Cloak/Sheer-Force gate — all confirmed via
+# CalcSecondaryEffectChance/MoveIsAffectedBySheerForce operating per-effect,
+# not per-move). Empty (SE_NONE/0) for every move except this one 3-move
+# family. Only ever populated with SE_FLINCH by this project's current
+# roster — kept schema-symmetric with slot 1 (any SE_* value is legal here)
+# rather than narrowed to a flinch-only field, since a future combined-status
+# move is plausible and the caller-side dispatch already supports the
+# generic case for free.
+@export var secondary_effect_2: int = 0
+@export var secondary_chance_2: int = 0
 
 # ── Stat change effect ──────────────────────────────────────────────────────
 # Source: src/data/moves_info.h :: additionalEffects → STAT_CHANGE_EFFECT_PLUS/MINUS
@@ -168,6 +199,19 @@ const SE_POISON: int    = 9
 @export var stat_change_stat: int = -1
 @export var stat_change_amount: int = 0
 @export var stat_change_self: bool = false
+
+# [Bucket 3 multi-stat] Additional (stat, amount) pairs beyond the primary
+# stat_change_stat/amount above, for moves that touch 2+ distinct stats in
+# one shot (Ancient Power's +1 to all 5 non-HP stats, Shell Smash's mixed
+# +2/-1, Spicy Extract's mixed +2 Atk/-2 Def) — parallel arrays, same index
+# = same pair. Empty for every single-stat move (the vast majority) — the
+# primary pair alone is sufficient for those, matching this project's
+# established default-omitted-from-.tres convention. stat_change_self
+# applies uniformly to every pair in a move (self/foe never varies within
+# one move's own multiple stat sub-fields — confirmed by direct source
+# inspection of every multi-stat move in this project's roster).
+@export var extra_stat_change_stats: Array[int] = []
+@export var extra_stat_change_amounts: Array[int] = []
 
 # powder_move (already declared above in move flags) is set for Sleep Powder et al.
 # Blocked by Overcoat and Grass-type immunity (Gen 6+, M8+ scope).
@@ -180,6 +224,19 @@ const SEMI_INV_NONE: int        = 0
 const SEMI_INV_UNDERGROUND: int = 1  # Dig — underground on turn 1
 const SEMI_INV_ON_AIR: int      = 2  # Fly, Bounce, Sky Attack — on-air on turn 1
 const SEMI_INV_UNDERWATER: int  = 3  # Dive — underwater on turn 1
+# [M19-break-protect] Shadow Force/Phantom Force's "vanish" state
+# (STATE_PHANTOM_FORCE in source). UNLIKE the 3 states above, nothing can
+# hit through it — no move carries a "damages_vanish"-style bypass flag,
+# by design, matching source's `CanBreakThroughSemiInvulnerablityInternal`
+# (battle_util.c L10464-10493): `case STATE_PHANTOM_FORCE: return FALSE;`,
+# a DIFFERENT, explicit-false branch from the function's own default
+# `case STATE_NONE: return TRUE;`. This distinction matters here because
+# this project's own `StatusManager._can_hit_semi_invulnerable` helper
+# defaults an UNRECOGNIZED state to `true` ("no restriction") — the
+# opposite of what SEMI_INV_VANISH needs — so it requires its own explicit
+# match case returning false, not reliance on that default. See
+# `_can_hit_semi_invulnerable`'s own doc comment.
+const SEMI_INV_VANISH: int      = 4  # Shadow Force, Phantom Force
 
 # two_turn: Move requires a charge turn before releasing damage.
 # Source: struct MoveInfo.effect == EFFECT_TWO_TURNS_ATTACK or EFFECT_SEMI_INVULNERABLE
@@ -504,6 +561,25 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   TrySetReflect but SIDE_STATUS_LIGHTSCREEN / lightscreenTimer.
 @export var is_light_screen: bool = false
 
+# [Bucket 3 screen+damage] sets_reflect_on_hit / sets_light_screen_on_hit:
+# Glitzy Glow / Baddy Bad — EFFECT_HIT damage moves (unlike is_reflect/
+# is_light_screen above, which are pure EFFECT_REFLECT/EFFECT_LIGHT_SCREEN
+# status moves with no damage at all) that ALSO set a screen on the user's
+# OWN side as a guaranteed (no .chance field — primary, not a true secondary,
+# so Shield Dust/Sheer Force/Serene Grace do not apply) self-targeted
+# additional effect after dealing damage. Source: moves_info.h MOVE_GLITZY_
+# GLOW/MOVE_BADDY_BAD: .effect = EFFECT_HIT, additionalEffects = {.moveEffect
+# = MOVE_EFFECT_LIGHT_SCREEN/MOVE_EFFECT_REFLECT, .self = TRUE}. Source:
+# battle_script_commands.c :: SetMoveEffect, case MOVE_EFFECT_REFLECT/
+# MOVE_EFFECT_LIGHT_SCREEN (L2876-2889) — the exact same TrySetReflect/
+# TrySetLightScreen calls is_reflect/is_light_screen already use (same
+# already-up no-refresh check, same Light Clay duration extension), just
+# reached via the damage-dispatch path instead of the pure-status-move path,
+# since a damaging move can never take the is_reflect/is_light_screen early-
+# return branch (that branch never deals damage at all).
+@export var sets_reflect_on_hit: bool = false
+@export var sets_light_screen_on_hit: bool = false
+
 # is_aurora_veil: Aurora Veil — combines Reflect + Light Screen in a single slot (reduces
 #   BOTH Physical and Special damage), 5 turns. Requires Hail active or fails outright
 #   (checked BEFORE the "already up" check). Independent bitmask from Reflect/Light Screen —
@@ -682,6 +758,209 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   (friendship=255 would otherwise compute power=0).
 @export var is_frustration_power: bool = false
 
+# [Bucket 4 cheapest singles] is_rage: Rage(99) — a guaranteed, self-targeted
+#   EFFECT_HIT additional effect (`.self = TRUE`, no `.chance` field) that sets
+#   `BattlePokemon.rage_active` on a successful hit — see that field's own doc
+#   comment for the full set/clear lifecycle.
+# Source: src/data/moves_info.h MOVE_RAGE: .effect = EFFECT_HIT, .power = 20,
+#   .type = TYPE_NORMAL, .accuracy = 100, .pp = 20, .makesContact = TRUE.
+# Source: src/battle_script_commands.c :: MoveEndRage (battle_move_resolution.c
+#   L2669-2689) — the REACTIVE half (raises Attack +1 whenever the rage_active
+#   holder takes ANY damaging hit, excluding self-hits and ally-hits, capped at
+#   +6) is dispatched separately in BattleManager._do_damaging_hit, keyed on
+#   the DEFENDER's own rage_active flag, not on this flag.
+@export var is_rage: bool = false
+
+# [Bucket 4 cheapest singles] is_clear_smog: Clear Smog(499) — resets ALL 7 of
+#   the target's stat stages to exactly 0 (an absolute reset, NOT a relative
+#   stat_change_amount delta — the existing stat_change_stat/amount schema
+#   cannot represent this at all). No-ops silently if the target's stats were
+#   already all at 0 (matching source's own pre-check), and only fires if the
+#   hit actually connected.
+# Source: src/data/moves_info.h MOVE_CLEAR_SMOG: .effect = EFFECT_HIT,
+#   .power = 50, .type = TYPE_POISON, .accuracy = 0 (never misses — accuracy
+#   check bypassed, not "always fails"), .pp = 15.
+# Source: src/battle_script_commands.c :: case MOVE_EFFECT_CLEAR_SMOG
+#   (L2558-2571): loops NUM_BATTLE_STATS, resets each to DEFAULT_STAT_STAGE(0),
+#   gated on `IsBattlerTurnDamaged(...) && <at least one stat != 0>`.
+@export var is_clear_smog: bool = false
+
+# [Bucket 4 cheapest singles] is_incinerate: Incinerate(510) — destroys the
+#   target's held item OUTRIGHT (no consumption effect triggers — no Cheek
+#   Pouch heal, no Harvest/Cud Chew last-consumed-berry registration) if it's
+#   a Berry (this project has no Gem items, so the Gen6+ Gem half of source's
+#   condition is permanently moot here). Blocked by the target's Sticky Hold.
+#   Correctly triggers Unburden on the target (source calls CheckSetUnburden
+#   directly from this same case) via a small dedicated destroy-path, NOT this
+#   project's existing `_consume_item` (which would incorrectly also trigger
+#   Cheek Pouch / set last_consumed_berry — confirmed from source that
+#   Incinerate's own case never calls the consumption-effect dispatch chain
+#   those two features hook into).
+# Source: src/data/moves_info.h MOVE_INCINERATE: .effect = EFFECT_HIT,
+#   .power = 60 (GEN_LATEST >= GEN_6), .type = TYPE_FIRE, .accuracy = 100,
+#   .pp = 15, .target = TARGET_BOTH (spread).
+# Source: src/battle_script_commands.c :: case MOVE_EFFECT_INCINERATE
+#   (L2626-2639).
+@export var is_incinerate: bool = false
+
+# [Bucket 4 cheapest singles] is_sparkling_aria: Sparkling Aria(627) — cures
+#   BURN specifically on whichever battler(s) it hits (the TARGET's own status,
+#   not the user's — the inverse of every existing self-cure precedent in this
+#   project). `.sheerForceOverride = TRUE` in source is redundant/defensive
+#   here: this project's own is_true_secondary gate (secondary_chance > 0)
+#   already exempts a chance=0/omitted guaranteed effect from Sheer Force, and
+#   this dispatches via a dedicated flag/branch rather than the SE_* schema at
+#   all (no existing SE_* token represents "cure a status FROM the target").
+# Source: src/data/moves_info.h MOVE_SPARKLING_ARIA: .effect = EFFECT_HIT,
+#   .power = 90, .type = TYPE_WATER, .accuracy = 100, .pp = 10,
+#   .target = TARGET_FOES_AND_ALLY (spread), .soundMove = TRUE,
+#   .argument.status = STATUS1_BURN.
+# Source: src/battle_script_commands.c :: case MOVE_EFFECT_REMOVE_STATUS
+#   (L3270-3289): only cures if the target currently HAS that exact status.
+@export var is_sparkling_aria: bool = false
+
+# [Bucket 4 cheapest singles] cant_use_twice: Blood Moon(829) — fails at
+#   execution if this exact move was the user's own last move used (compares
+#   against BattlePokemon.last_move_used by reference, the same equality-by-
+#   loaded-resource pattern this project's existing Disable check already
+#   uses). Real source gates this at SELECTION time (a menu-legality filter,
+#   MOVE_LIMITATION_CANT_USE_TWICE) — this project has no such menu-filter
+#   architecture, so it's implemented at execution time instead, matching the
+#   exact fail-at-execution shape Assault Vest/Disable already established
+#   (see move_data.gd's own `blocked_by_aroma_veil` doc comment for that
+#   precedent's fuller citation).
+# Source: src/data/moves_info.h MOVE_BLOOD_MOON: .effect = EFFECT_HIT,
+#   .power = 140, .type = TYPE_NORMAL, .accuracy = 100, .pp = 5,
+#   .cantUseTwice = TRUE — no additionalEffects at all.
+# Source: src/battle_util.c L1645 (MOVE_LIMITATION_CANT_USE_TWICE) +
+#   include/move.h L144/472 (`cantUseTwice` field/accessor).
+@export var cant_use_twice: bool = false
+
+# [M19-rampage] is_rampage: Thrash(37)/Petal Dance(80)/Outrage(200)/Raging
+#   Fury(761) — all four share the LITERAL SAME additionalEffects shape
+#   (MOVE_EFFECT_THRASH, self=TRUE), confirmed structurally identical from
+#   source, no per-move turn-count/behavior difference. On a successful,
+#   non-immune hit: locks BattlePokemon.locked_move to this move for a random
+#   2-3 turns (rampage_turns) — the mon's action is FORCED to this exact move
+#   every turn regardless of what's chosen (BattleManager._phase_move_selection
+#   overrides just like charging_move already does for two-turn moves), no
+#   menu-legality architecture needed since selection is bypassed entirely.
+#   Accuracy is rolled independently each turn — a miss does NOT cancel the
+#   lock. When rampage_turns reaches 0, the lock clears and the user is
+#   self-confused (CanBeConfused-gated, e.g. blocked by Own Tempo) in the SAME
+#   turn's resolution. If a turn's hit is fully unaffected by type immunity,
+#   the lock cancels WITHOUT the self-confuse (source: IsBattlerUnaffectedByMove
+#   branch) — a real, distinct rule from a miss. Target-faints-mid-rampage
+#   needs no special handling: this project's _default_target already
+#   re-resolves fresh every turn with no stored target reference, so a
+#   replacement is auto-targeted for free, matching source's TARGET_RANDOM
+#   shape. Attacker faints/switches mid-lock is already handled for free by
+#   the existing _clear_volatiles (clears locked_move/rampage_turns
+#   unconditionally, same as charging_move).
+# Source: src/data/moves_info.h MOVE_THRASH/MOVE_PETAL_DANCE/MOVE_OUTRAGE/
+#   MOVE_RAGING_FURY: .effect = EFFECT_HIT, .target = TARGET_RANDOM,
+#   .additionalEffects = ADDITIONAL_EFFECTS({.moveEffect = MOVE_EFFECT_THRASH,
+#   .self = TRUE}).
+# Source: src/battle_script_commands.c :: case MOVE_EFFECT_THRASH (L2545-2557)
+#   — sets volatiles.multipleTurns=TRUE, gLockedMoves[battler]=gCurrentMove,
+#   volatiles.rampageTurns=RandomUniform(2, B_RAMPAGE_TURNS).
+# Source: src/battle_util.c L390-392 (HandleAction_UseMove) — forces
+#   gCurrentMove=gLockedMoves[battler] whenever multipleTurns is set, bypassing
+#   any menu choice entirely.
+# Source: src/battle_move_resolution.c :: MoveEndRampage (L4152-4181) —
+#   decrements rampageTurns each MoveEnd; on reaching 0, CancelMultiTurnMoves
+#   then self-confuses via CanBeConfused; on IsBattlerUnaffectedByMove (type
+#   immunity), cancels WITHOUT confusing, without waiting for the counter.
+@export var is_rampage: bool = false
+
+# [M19-rampage] is_uproar: Uproar(253) — shares the SAME underlying
+#   forced-move-repeat lock primitive as is_rampage (locked_move,
+#   BattleManager._phase_move_selection's existing override), but a distinct
+#   counter (uproar_turns, not rampage_turns) and a genuinely different
+#   end-of-lock behavior: NO self-confuse when the lock ends. While
+#   uproar_turns > 0 on ANY active battler (either side, field-wide — not just
+#   the user's own team), no NEW sleep can be inflicted by any means (Rest
+#   included, since both route through the same non-volatile-status-setting
+#   gate) — confirmed field-wide via UproarWakeUpCheck's `i < gBattlersCount`
+#   scan across ALL battlers, not just the Uproar user's side. Does NOT wake
+#   already-sleeping mons at this project's Gen5+ config (B_UPROAR_TURNS/
+#   B_UPROAR default GEN_LATEST) — that "wake sleepers every turn" half is
+#   explicitly pre-Gen5-only in source and dead code at this config.
+# Source: src/data/moves_info.h MOVE_UPROAR: .effect = EFFECT_HIT,
+#   .target = TARGET_RANDOM, .soundMove = TRUE,
+#   .additionalEffects = ADDITIONAL_EFFECTS({.moveEffect = MOVE_EFFECT_UPROAR,
+#   .self = TRUE}).
+# Source: src/battle_script_commands.c :: case MOVE_EFFECT_UPROAR
+#   (L2399-2410) — sets volatiles.multipleTurns=TRUE,
+#   gLockedMoves[battler]=gCurrentMove, volatiles.uproarTurns = 3 at
+#   B_UPROAR_TURNS>=GEN_5 (this project's config), else RandomUniform(2,5).
+# Source: src/battle_end_turn.c L1279-1324 (THIRD_EVENT_BLOCK_UPROAR) —
+#   decrements uproarTurns each end of turn; the pre-Gen5-only sleeper-wake
+#   loop `break`s immediately at GEN_5+ config (L1284); no self-confuse
+#   anywhere in this dispatch, unlike rampage's MoveEndRampage.
+# Source: src/battle_util.c L5306-5314 (CanSetNonVolatileStatus,
+#   case MOVE_EFFECT_SLEEP) :: UproarWakeUpCheck (battle_script_commands.c
+#   L7130-7149) — scans `for (i = 0; i < gBattlersCount; i++)`, field-wide,
+#   blocking new-sleep infliction on ANY battler while ANY battler has
+#   uproarTurns active.
+@export var is_uproar: bool = false
+
+# [M19-recharge] is_recharge: Hyper Beam(63)/Blast Burn(307)/Hydro
+#   Cannon(308)/Frenzy Plant(338)/Giga Impact(416)/Rock Wrecker(439)/Roar of
+#   Time(459)/Prismatic Laser(665)/Meteor Assault(722)/Eternabeam(723) — all
+#   ten share the identical `MOVE_EFFECT_RECHARGE` additionalEffect
+#   (`self=TRUE`), but power/accuracy/pp/type/category are NOT uniform
+#   (confirmed individually, not assumed — see gen_moves.py's own per-move
+#   citations). A genuinely DIFFERENT mechanism shape from is_rampage/
+#   is_uproar despite the surface "can't act" similarity: this is a PRE-MOVE
+#   canceler (source: `CancelerRecharge`, checked BEFORE sleep/freeze/Truant
+#   in the canceler chain), not a forced-move-repeat lock — there is no move
+#   to force, the Pokémon does nothing at all on the recharge turn. On a
+#   successful, non-immune hit (damage > 0 — mirroring the existing Rage/
+#   Sparkling Aria "damage > 0"-gated guaranteed-self-effect insertion
+#   point): sets `BattlePokemon.must_recharge = true`. The NEXT time this
+#   Pokémon would act, `StatusManager.pre_move_check` blocks the action
+#   entirely (no move selection, no PP cost) and clears the flag — a single
+#   boolean reproduces source's literal `rechargeTimer=2`/decrement-twice
+#   shape exactly, since the observable behavior is just "block exactly the
+#   next turn, then clear."
+#   A MISS does NOT set the lock — confirmed from source, NOT assumed: none
+#   of these 10 moves set `.preAttackEffect = TRUE` on their additionalEffect
+#   (checked individually — Prismatic Laser's own block was double-checked
+#   against a false line-number match into the NEXT move, Spectral Thief,
+#   which DOES set it), so the effect dispatches ONLY via
+#   `Cmd_setadditionaleffects`, itself only reachable via the successful-hit
+#   script path (`BattleScript_Hit_RetFromAtkAnimation`) — a miss branches
+#   straight to `BattleScript_MoveMissed`/`BattleScript_MoveEnd`, never
+#   reaching it. This is the OPPOSITE of the commonly-assumed "recharges
+#   even on a miss" folklore — this project follows the reference source,
+#   not the folklore, per CLAUDE.md's own ground-truth rule. Confirmed via
+#   `AskUserQuestion` before implementing.
+#   Switch-out/faint clears the pending recharge for free: source's
+#   `SwitchInClearSetData`/`FaintClearSetData` both bulk-`memset` the whole
+#   `Volatiles` struct `rechargeTimer` lives in — mirrored here by
+#   `BattleManager._clear_volatiles` clearing `must_recharge` unconditionally,
+#   same as every other switch/faint-cleared volatile.
+# Source: src/data/moves_info.h (all 10 moves' own blocks, individually
+#   verified — see gen_moves.py for exact per-move power/accuracy/pp/type/
+#   category/flag citations).
+# Source: src/battle_script_commands.c :: case MOVE_EFFECT_RECHARGE
+#   (L2506-2513) — `volatiles.rechargeTimer = 2`, `gLockedMoves[battler] =
+#   gCurrentMove` (source detail: sets a locked move purely for message/
+#   context purposes since the canceler aborts before any real re-execution
+#   — this project's `must_recharge` boolean has no equivalent need since it
+#   never re-selects a move at all).
+# Source: src/battle_move_resolution.c :: CancelerRecharge (L87-96) — the
+#   pre-move canceler; `sMoveSuccessOrderCancelers` (L2397-2402) confirms
+#   `CANCELER_RECHARGE` runs BEFORE `CANCELER_ASLEEP_OR_FROZEN`/
+#   `CANCELER_TRUANT` in the real canceler chain — mirrored here by checking
+#   `must_recharge` first in `StatusManager.pre_move_check`, before Sleep.
+# Source: src/battle_main.c L5041-5042 (`TurnValuesCleanUp`) — the actual
+#   per-turn decrement of `rechargeTimer`; L3145/L3272
+#   (`SwitchInClearSetData`/`FaintClearSetData`) — the bulk-memset switch/
+#   faint clear cited above.
+@export var is_recharge: bool = false
+
 # is_pain_split: Pain Split — averages the user's and target's CURRENT HP (not max HP) and
 #   sets both to that average: `hpDiff = (attackerHP + targetHP) / 2` (integer division,
 #   floor). Can heal the user and damage the target, or the reverse, depending on which
@@ -750,6 +1029,49 @@ const TARGET_ALL_BATTLERS:   int = 14
 # Source: include/config/battle.h L97 — B_PSYCH_UP_CRIT_RATIO = GEN_LATEST.
 @export var is_psych_up: bool = false
 
+# [M19-break-protect] breaks_protect: Feint(364)/Shadow Force(467)/Phantom
+#   Force(566)/Hyperspace Hole(593) — all 4 share the identical
+#   MOVE_EFFECT_FEINT additionalEffect in source, confirmed NOT Feint-specific
+#   despite the move's own name (Shadow Force/Phantom Force/Hyperspace Hole
+#   all carry the literal same effect token). This is a GENUINELY DIFFERENT,
+#   ADDITIONAL mechanic from `ignores_protect` above — the two are easy to
+#   conflate but source keeps them structurally separate:
+#   - `ignoresProtect`/this project's `ignores_protect` only lets THIS move's
+#     own hit bypass an already-up Protect check (battle_manager.gd's
+#     `defender.protect_active and not move.ignores_protect` gate). It does
+#     NOT touch `protect_active` itself.
+#   - `breaks_protect` (MOVE_EFFECT_FEINT) is a separate POST-HIT mutation:
+#     it clears the target's Protect state outright, so a DIFFERENT
+#     attacker's move (in doubles) — or the same target's own next use —
+#     is no longer blocked either. All 4 moves set BOTH flags: ignores so
+#     their own hit connects, breaks so the Protect state doesn't survive.
+# Source: src/battle_script_commands.c :: case MOVE_EFFECT_FEINT (L2584-2606):
+#   `if (gProtectStructs[effectBattler].protected != PROTECT_NONE &&
+#   != PROTECT_MAX_GUARD) { protected = PROTECT_NONE;
+#   volatiles.consecutiveMoveUses = 0; }` — this project's analog is
+#   `defender.protect_active = false; defender.protect_consecutive = 0`
+#   (protect_consecutive is the exact existing field
+#   `_roll_protect_success` already reads for the Gen5+ 1/3^n fail-chance
+#   ramp, so resetting it here correctly un-ramps a broken Protect streak).
+#   Source ALSO clears a side-wide Protect (Wide Guard/Quick Guard/Crafty
+#   Shield, `PROTECT_TYPE_SIDE`) on the target's ally — this project has NO
+#   side-wide protect moves implemented at all, so that half of source's
+#   logic has nothing to act on and is not modeled; single-target scope only.
+#   No move-specific exemption exists for King's Shield/Spiky
+#   Shield/Baneful Bunker/Obstruct/Silk Trap/Crafty Shield either — none of
+#   those are implemented in this project (only Protect/Detect, both plain
+#   `is_protect`), so the "does this bypass ALL Protect-family moves
+#   uniformly" question is moot for now; the check above already covers any
+#   individual protect type except PROTECT_MAX_GUARD (unimplemented here).
+# POST-HIT ONLY, confirmed: none of the 4 moves set `.preAttackEffect`
+#   (unlike this project's own `[M19-recharge]` precedent for the same
+#   distinction — see is_recharge's own doc comment), so MOVE_EFFECT_FEINT
+#   dispatches via the post-hit-only `Cmd_setadditionaleffects` path — a
+#   MISS does not break Protect. Gated here on `damage > 0`, matching
+#   `[M19-recharge]`'s established `if damage > 0 and move.X:` convention in
+#   `_do_damaging_hit`.
+@export var breaks_protect: bool = false
+
 # M17n-9: Magic Bounce — true for the exact subset of this project's foe-targeting
 # status moves that carry `magicCoatAffected = TRUE` in source
 # (`gMovesInfo[move].magicCoatAffected`, include/move.h L350-352). Re-derived
@@ -758,3 +1080,91 @@ const TARGET_ALL_BATTLERS:   int = 14
 # confirmed-excluded moves (Encore, Disable, Psych Up, Conversion/Conversion 2,
 # Pain Split, Trick Room, self-targeting stat moves).
 @export var bounceable: bool = false
+
+# [M19-recoil-on-miss] crashes_on_miss: Jump Kick(26)/High Jump Kick(136)/Axe
+#   Kick(781)/Supercell Slam(844) — all 4 share the literal same
+#   `.effect = EFFECT_RECOIL_IF_MISS` in source, a genuinely uniform mechanism
+#   (contrary to the possibility that the two newer-gen moves, Axe Kick/
+#   Supercell Slam, might use a different formula — they don't).
+# Formula, confirmed at this project's GEN_LATEST config
+#   (`B_RECOIL_IF_MISS_DMG = GEN_LATEST`, `B_CRASH_IF_TARGET_IMMUNE =
+#   GEN_LATEST`): a FLAT 50% of the ATTACKER'S OWN max HP — NOT damage-scaled,
+#   NOT the target's HP. Source (battle_move_resolution.c ::
+#   MoveEndMoveBlockRecoil, case EFFECT_RECOIL_IF_MISS, L3339-3372):
+#     if (B_RECOIL_IF_MISS_DMG >= GEN_5) recoil = GetNonDynamaxMaxHP(battlerAtk) / 2;
+#   The OTHER, older branch (`B_CRASH_IF_TARGET_IMMUNE == GEN_4`, defender's own
+#   HP/2) is a literal `== GEN_4` equality check — never true at this project's
+#   GEN_LATEST config, so it's dead code here; the GEN5+ branch below it always
+#   wins and OVERWRITES `recoil` unconditionally regardless of which branch(es)
+#   evaluated, since it's a separate `if`, not an `else if`.
+# MISS-SCOPE, confirmed broader than "accuracy roll failed" alone: the entry
+#   gate is `IsBattlerAlive(battlerAtk) && IsBattlerUnaffectedByMove(battlerDef)
+#   && !unableToUseMove`. `IsBattlerUnaffectedByMove` checks
+#   `MOVE_RESULT_NO_EFFECT = MOVE_RESULT_MISSED | MOVE_RESULT_FAILED |
+#   MOVE_RESULT_PROTECTED | MOVE_RESULT_DOESNT_AFFECT_FOE` (include/constants/
+#   battle.h L471) — i.e. crash triggers uniformly for an accuracy-roll miss,
+#   a Protect block, OR ordinary type immunity, not just the first of these.
+#   `!unableToUseMove` is the critical EXCLUSION: `unableToUseMove` is set
+#   whenever ANY pre-move canceler fails (sleep/freeze/paralysis/confusion
+#   self-hit/flinch/recharge/Truant/Disable/0 PP/obedience-loafing) — i.e. the
+#   attacker never got to actually ATTEMPT the move at all. Crash damage never
+#   fires in those cases; this project's `StatusManager.pre_move_check` already
+#   gates all of those BEFORE move resolution ever reaches this project's own
+#   crash-dispatch points, so nothing extra needs excluding here.
+# ABILITY INTERACTION — a real, confirmed ASYMMETRY with ordinary recoil, not
+#   assumed symmetric: Magic Guard blocks crash damage
+#   (`data/battle_scripts_1.s` :: BattleScript_RecoilIfMiss — `jumpifability
+#   BS_ATTACKER, ABILITY_MAGIC_GUARD, BattleScript_RecoilEnd`), but ROCK HEAD
+#   DOES NOT — Rock Head is never checked anywhere in this script or in
+#   `MoveEndMoveBlockRecoil`'s `EFFECT_RECOIL_IF_MISS` case (unlike ordinary
+#   `EFFECT_RECOIL`/`EFFECT_CHLOROBLAST`, whose case block explicitly checks
+#   `ABILITY_ROCK_HEAD || ABILITY_MAGIC_GUARD` a few lines below). This project
+#   reuses `AbilityManager.blocks_indirect_damage` (Magic-Guard-only) for crash
+#   damage, deliberately NOT `blocks_recoil` (Rock-Head-OR-Magic-Guard), to
+#   preserve this exact asymmetry.
+# Can faint the user: confirmed from source (`tryfaintmon BS_ATTACKER`
+#   immediately follows the HP update in `BattleScript_RecoilIfMiss`) — this
+#   project's existing FAINT_CHECK phase (which runs generically after every
+#   resolved action) already handles this correctly with no special code.
+# Gravity: `.gravityBanned = TRUE` on all 4 moves in source, but Gravity/
+#   Ingrain/Smack Down/Telekinesis/Magnet Rise are all confirmed absent from
+#   this project (`[M18t]`'s own doc comment) — nothing to build, out of scope.
+# Also found (a related, unrequested but directly-adjacent finding): Reckless's
+#   own power-boost check already anticipated this exact addition — see
+#   AbilityManager.move_power_modifier_uq412's own doc comment, updated
+#   alongside this field.
+@export var crashes_on_miss: bool = false
+
+# [M19-weather-conditional-accuracy] always_hits_in_rain: Thunder(87)/
+#   Hurricane(542)/Bleakwind Storm(774)/Wildbolt Storm(775)/Sandsear
+#   Storm(776) — ALL 5 share this flag, a FULL BYPASS of the entire
+#   accuracy-modifier chain while it's raining (source's own
+#   `.alwaysHitsInRain = TRUE`), gated on the ATTACKER's own effective
+#   weather (Air Lock/Cloud Nine AND the attacker's own Utility Umbrella
+#   both negate it — see StatusManager.check_accuracy's own citation).
+# Source: src/include/move.h L145 (`alwaysHitsInRain:1`); dispatch via
+#   `CanMoveSkipAccuracyCalc` (battle_util.c L10168-10199) — the SAME
+#   early-exit "does this move skip the roll entirely" chain No Guard and
+#   accuracy==0 already live in, not a modifier on top of the normal roll.
+@export var always_hits_in_rain: bool = false
+
+# [M19-weather-conditional-accuracy] accuracy_halved_in_sun: Thunder(87) and
+#   Hurricane(542) ONLY — confirmed a genuinely SEPARATE, second flag from
+#   always_hits_in_rain above, NOT shared by the "Storm" trio (Bleakwind/
+#   Wildbolt/Sandsear all have `alwaysHitsInRain` but explicitly NO
+#   `accuracy50InSun` in source — verified individually, not assumed
+#   symmetric). A literal OVERRIDE of the move's own accuracy stat to a
+#   FLAT 50 (source: `moveAcc = 50;`, NOT `moveAcc *= 0.5` — Thunder's own
+#   base accuracy is 70, so this isn't literally "half"), applied BEFORE
+#   the stage-ratio multiplication — the exact same insertion point
+#   `[M17n-11]`'s Wonder Skin already established, so every other
+#   accuracy-boosting ability/stat stage still applies on top of the
+#   overridden value afterward, unaffected. Gated on the ATTACKER's own
+#   effective weather, same Air-Lock/Cloud-Nine/Utility-Umbrella scope as
+#   always_hits_in_rain above.
+# Source: src/include/move.h L146 (`accuracy50InSun:1`); dispatch via
+#   `GetTotalAccuracy` (battle_util.c L10271-10276), checked BEFORE Wonder
+#   Skin's own floor-to-50 a few lines below it (mutually exclusive in
+#   practice — Wonder Skin only ever gates STATUS moves, Thunder/Hurricane
+#   are both damaging — but the relative order is preserved for fidelity).
+@export var accuracy_halved_in_sun: bool = false

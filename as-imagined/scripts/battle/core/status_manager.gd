@@ -90,11 +90,22 @@ static func try_apply_status(
 		ng_active: bool = false,
 		attacker: BattlePokemon = null,
 		weather: int = DamageCalculator.WEATHER_NONE,
-		attacker_move: MoveData = null) -> bool:
+		attacker_move: MoveData = null,
+		uproar_active: bool = false) -> bool:
 
 	# One major status at a time.
 	# Source: CanSetNonVolatileStatus L5391 — "already has STATUS1_ANY → fails"
 	if mon.status != BattlePokemon.STATUS_NONE:
+		return false
+
+	# [M19-rampage] Uproar — while ANY active battler (field-wide, both sides)
+	# has uproar_turns > 0, no NEW sleep can be inflicted on anyone, by any
+	# means (Rest included, since it routes through this same function).
+	# Does NOT wake an already-sleeping mon (handled above by the "already has
+	# a status" early return) and does NOT cure/prevent any other status.
+	# Source: MoveData.is_uproar's own doc comment has the full citation
+	# (UproarWakeUpCheck, battle_script_commands.c L7130-7149).
+	if status == BattlePokemon.STATUS_SLEEP and uproar_active:
 		return false
 
 	# M17g: Purifying Salt/Sweet Veil/Pastel Veil are all flagged `.breakable = TRUE`
@@ -451,7 +462,22 @@ static func pre_move_check(
 		"flinched":        false,
 		"loafing":         false,
 		"infatuated_stuck": false,
+		"recharging":      false,
 	}
+
+	# ── Recharge ──────────────────────────────────────────────────────────────
+	# Source: battle_move_resolution.c :: CancelerRecharge (L87-96) —
+	# CANCELER_RECHARGE (position 4 in sMoveSuccessOrderCancelers, L2402) runs
+	# BEFORE CANCELER_ASLEEP_OR_FROZEN (L2404)/CANCELER_TRUANT (L2407), so this
+	# is checked first, ahead of Sleep. A single boolean (must_recharge) blocks
+	# exactly this one action then clears — see MoveData.is_recharge's own doc
+	# comment for the full citation on why a boolean correctly reproduces
+	# source's literal rechargeTimer=2/decrement-twice shape.
+	if mon.must_recharge:
+		mon.must_recharge = false
+		result["can_move"] = false
+		result["recharging"] = true
+		return result
 
 	# ── Sleep ──────────────────────────────────────────────────────────────
 	# Source: battle_move_resolution.c L120–169
@@ -705,6 +731,22 @@ static func check_accuracy(
 
 	if move.accuracy == 0:
 		return true  # always hits (Swift, Aerial Ace, Swords Dance, etc.)
+	# [M19-weather-conditional-accuracy] Thunder/Hurricane/Bleakwind Storm/
+	# Wildbolt Storm/Sandsear Storm — always_hits_in_rain is a FULL BYPASS of
+	# the entire modifier chain, the same "family" as No Guard/accuracy==0
+	# above (source: CanMoveSkipAccuracyCalc, battle_util.c L10168-10199,
+	# checks alwaysHitsInRain in the same early-exit chain, after the
+	# accuracy==0/No-Guard checks but before GetTotalAccuracy is ever
+	# called — ordering between these doesn't matter since each is an
+	# independent OR condition). `weather` is the caller's already-Air-Lock/
+	# Cloud-Nine-filtered EFFECTIVE weather; `blocks_weather_modifier`
+	# additionally checks the ATTACKER's own Utility Umbrella specifically
+	# (source: GetAttackerWeather, battle_util.c L9281-9290, only ever
+	# consults the attacker's own held item for this purpose, never the
+	# defender's).
+	if move.always_hits_in_rain and weather == DamageCalculator.WEATHER_RAIN \
+			and not ItemManager.blocks_weather_modifier(attacker, ng_active):
+		return true
 	var acc_stage: int = attacker.stat_stages[BattlePokemon.STAGE_ACCURACY]
 	var eva_stage: int = defender.stat_stages[BattlePokemon.STAGE_EVASION]
 	# M17b: Unaware (defender) ignores the ATTACKER's own accuracy stage; Unaware or
@@ -723,6 +765,19 @@ static func check_accuracy(
 	# adjusting the final computed chance — so an attacker's OTHER accuracy-boosting
 	# abilities/stages still apply on top of the floored value afterward, unaffected.
 	var effective_move_acc: int = move.accuracy
+	# [M19-weather-conditional-accuracy] Thunder/Hurricane — a literal
+	# OVERRIDE to a flat 50 in sun (NOT a ×0.5 multiply — Thunder/Hurricane's
+	# own base accuracy is 70, so this isn't "half"), checked BEFORE Wonder
+	# Skin's own floor-to-50 below, matching source's exact relative order
+	# (battle_util.c L10271-10276) — though the two conditions are mutually
+	# exclusive in practice (Wonder Skin only ever gates STATUS moves;
+	# Thunder/Hurricane are both damaging). Same insertion point Wonder Skin
+	# already established: BEFORE the stage-ratio multiplication, so every
+	# other accuracy-boosting ability/stat stage still applies on top of the
+	# overridden value afterward, unaffected.
+	if move.accuracy_halved_in_sun and weather == DamageCalculator.WEATHER_SUN \
+			and not ItemManager.blocks_weather_modifier(attacker, ng_active):
+		effective_move_acc = 50
 	if move.category == 2 and effective_move_acc > 50 \
 			and AbilityManager.effective_ability_id(defender, ng_active, attacker) == AbilityManager.ABILITY_WONDER_SKIN:
 		effective_move_acc = 50
@@ -758,15 +813,22 @@ static func check_accuracy(
 
 # Helper: can the attacking move hit a target in the given semi-invulnerable state?
 # Source: battle_util.c :: CanBreakThroughSemiInvulnerablityInternal (L10464)
-#   STATE_UNDERGROUND → MoveDamagesUnderground
-#   STATE_UNDERWATER  → MoveDamagesUnderWater
-#   STATE_ON_AIR      → MoveDamagesAirborne || MoveDamagesAirborneDoubleDamage
+#   STATE_UNDERGROUND    → MoveDamagesUnderground
+#   STATE_UNDERWATER     → MoveDamagesUnderWater
+#   STATE_ON_AIR         → MoveDamagesAirborne || MoveDamagesAirborneDoubleDamage
+#   STATE_PHANTOM_FORCE  → FALSE, unconditionally (no move flag reaches it) —
+#     [M19-break-protect]'s SEMI_INV_VANISH (Shadow Force/Phantom Force). This
+#     is a DIFFERENT branch from the function's own default (STATE_NONE →
+#     TRUE), so it needs its own explicit case here too — falling through to
+#     this function's own default would incorrectly return true (any move
+#     hits), the opposite of source's real behavior for this specific state.
 # In our model, damages_airborne covers both Airborne and AirborneDoubleDamage flags.
 static func _can_hit_semi_invulnerable(move: MoveData, state: int) -> bool:
 	match state:
 		MoveData.SEMI_INV_UNDERGROUND: return move.damages_underground
 		MoveData.SEMI_INV_ON_AIR:      return move.damages_airborne
 		MoveData.SEMI_INV_UNDERWATER:  return move.damages_underwater
+		MoveData.SEMI_INV_VANISH:      return false
 	return true  # STATE_NONE or unknown: no restriction
 
 
@@ -870,9 +932,20 @@ static func try_secondary_effect(
 		move: MoveData,
 		force_secondary: Variant = null,
 		ng_active: bool = false,
-		weather: int = DamageCalculator.WEATHER_NONE) -> bool:
+		weather: int = DamageCalculator.WEATHER_NONE,
+		uproar_active: bool = false) -> bool:
 
-	if move.secondary_effect == MoveData.SE_NONE:
+	# [M19-secondary-stat-on-hit]: a damaging move's secondary stat-change payload
+	# (e.g. Iron Tail's 30% Defense drop, Overheat's guaranteed self Sp.Atk -2)
+	# has secondary_effect == SE_NONE by construction — this project's SE_* enum
+	# has no token for "stat change" at all, since stat changes normally go
+	# through the SEPARATE stat_change_stat/amount/self schema (see
+	# item_manager.gd:768's note on why that schema has no probability field of
+	# its own). Route stat-change payloads through the SAME gating below (roll,
+	# Serene Grace, Shield Dust, Covert Cloak, Sheer Force) instead of bailing
+	# out here — see the dedicated stat_change_stat check just before the
+	# `match` below for how this dispatches.
+	if move.secondary_effect == MoveData.SE_NONE and move.stat_change_stat < 0:
 		return false
 
 	# Roll for secondary (skip if guaranteed: chance == 0)
@@ -939,6 +1012,16 @@ static func try_secondary_effect(
 			and AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_SHEER_FORCE:
 		return false
 
+	# [M19-secondary-stat-on-hit]: same "return true, caller applies it" shape as
+	# SE_FLINCH below — the actual stage math (apply_stat_change), Mirror Armor
+	# redirect, and Defiant/Competitive/Opportunist/Mirror Herb reactive triggers
+	# all need BattleManager-level context (signal emission, _get_live_opponents,
+	# _consume_item) this static function doesn't have.
+	# BattleManager._apply_stat_change_effect is the single shared implementation
+	# also used by the pure-status-move EFFECT_STAT_CHANGE dispatch.
+	if move.secondary_effect == MoveData.SE_NONE and move.stat_change_stat >= 0:
+		return true
+
 	match move.secondary_effect:
 		MoveData.SE_BURN:
 			return try_apply_status(defender, BattlePokemon.STATUS_BURN, null, null, ng_active, attacker, weather, move)
@@ -947,7 +1030,8 @@ static func try_secondary_effect(
 		MoveData.SE_PARALYSIS:
 			return try_apply_status(defender, BattlePokemon.STATUS_PARALYSIS, null, null, ng_active, attacker, weather, move)
 		MoveData.SE_SLEEP:
-			return try_apply_status(defender, BattlePokemon.STATUS_SLEEP, null, null, ng_active, attacker, weather, move)
+			return try_apply_status(defender, BattlePokemon.STATUS_SLEEP, null, null,
+					ng_active, attacker, weather, move, uproar_active)
 		MoveData.SE_TOXIC:
 			return try_apply_status(defender, BattlePokemon.STATUS_TOXIC, null, null, ng_active, attacker, weather, move)
 		MoveData.SE_POISON:
@@ -972,6 +1056,15 @@ static func try_secondary_effect(
 			# source's own "not a true secondary" MOVE_EFFECT_WRAP finding.
 			# [M18.5i] ng_active threaded through for Grip Claw's own Klutz/NG gate.
 			return try_apply_wrap(defender, attacker, null, ng_active)
+		MoveData.SE_THROAT_CHOP, MoveData.SE_EERIE_SPELL:
+			# [Bucket 4 cheapest singles] Both explicit chance=100 (true secondaries —
+			# already gated by Serene Grace/Shield Dust/Covert Cloak/Sheer Force above,
+			# same as every other true-secondary case). No per-effect ability immunity
+			# beyond those generic gates in source, so — same "return true, caller
+			# applies it" shape as SE_FLINCH — the actual state change (throat_chop_turns
+			# / PP deduction) lives in BattleManager, which has the target's move-list/
+			# PP-array access this static function doesn't.
+			return true
 	return false
 
 

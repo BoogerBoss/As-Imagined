@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m19recoilonmisstest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m19_recoil_on_miss_test.gd" id="1_m19recoilonmisstest"]
+
+[node name="M19RecoilOnMissTest" type="Node"]
+script = ExtResource("1_m19recoilonmisstest")
