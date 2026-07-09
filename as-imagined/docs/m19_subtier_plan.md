@@ -52,27 +52,73 @@ lock-in, Rage's hit-triggered boost, Hyper Beam's recharge, Self-Destruct/
 Explosion's unconditional self-faint + Damp block, Tri Attack's random
 status choice) and moved to a new Section C4, no longer counted as M19a
 data-entry scope. See `docs/decisions.md`'s `[M19a-gen1]` entry for the
-full citations. Every count below reflects this.
+full citations.
 
-Of the reference catalog's **934 real moves**, **147 are already implemented**
-(132 confirmed by `[M19-pipeline-fix]` + 15 new from `[M19a-gen1]`) and are
-excluded from every count below. **787 moves remain.** Of those 787:
+**[M19-rescope] update (2026-07-08):** `[M19a-gen1]` found generation
+number has zero correlation with implementation complexity (32% of Gen I's
+Tier-1 pool needed a new mechanism). Per Rob's explicit decision, this
+session did a FULL reset of M19a/M19b's entire remaining pool — both
+dissolved, replaced by 4 mechanism-based Buckets (Section B below); Section
+C4 folded back in and closed. **While reconciling this pool against the
+true current implemented-move count, a separate pre-existing error was
+found**: the "147 implemented" figure below (132 + 15 from
+`[M19a-gen1]`) never added `[M19-pre1]`'s own 8 moves — the correct figure,
+confirmed directly against `gen_moves.py`'s own `MOVES` dict, is **155**.
+Two related gaps were found but left unfixed pending Rob's own call, both
+since resolved by `[M19-rescope-followup]` below.
 
-- **386 fall into 9 proposed sub-tiers** (Section B, M19a–M19i; M19g is now
-  empty/dissolved — see `[M19-exclusions]` above; M19a's Gen I slice is
-  done — see `[M19a-gen1]` above).
-- **8 are deferred** (Population Bomb, Section C3; 7 Gen I Tier-1 stragglers
-  needing new mechanisms, Section C4).
-- **212 are permanently excluded** (87 Z-Move/Max-Move + 125 from Rob's
-  `[M19-exclusions]` list [124 original + Raging Bull], Section C1–C2).
+**[M19-rescope-followup] update (2026-07-08):** closed both gaps
+`[M19-rescope]` left open. (1) **M19h/M19i staleness** — confirmed directly
+against `gen_moves.py`: Heavy Slam(484)/Heat Crash(535) (M19h) and
+Return(216)/Pika Papow(679)/Veevee Volley(688)/Frustration(218) (M19i) are
+all real, implemented moves from `[M19-pre1]`. Both sub-tiers marked
+COMPLETE. (2) **Psychic Noise(845)** — Rob confirmed exclusion, matching
+Heal Block's own permanently-excluded status. Re-verified the dependency
+directly against source rather than trusting the prior session's flagged
+note at face value: `MOVE_EFFECT_PSYCHIC_NOISE`'s handler
+(`battle_script_commands.c` L2796-2805) sets the literal same
+`volatiles.healBlock` field Heal Block(377) itself sets — genuinely
+dependent, not thematically similar. Moved from Bucket 4 into Section C2
+alongside Heal Block. 155 re-confirmed still accurate at this session's
+own start (re-derived independently from `gen_moves.py`, not trusted
+blindly from `[M19-rescope]`'s own claim). Every count below now fully
+reconciles — zero outstanding arithmetic discrepancy.
+
+**[M19-bucket1] update (2026-07-08):** first execution slice of the
+mechanism-based Buckets. Bucket 1 (67 moves) is now COMPLETE: Step 0
+individually re-verified all 67 against source (not trusting the
+classifier's own bucketing blindly, matching `[M19a-gen1]`'s precedent) —
+61 confirmed genuinely pure and implemented, 6 found to need a new
+mechanism and moved into Bucket 4 as three new named sub-groups
+(`M19-ignores-stat-stages`, `M19-ignores-target-ability`,
+`M19-cant-use-twice`). Implemented-move count: **155 → 216**. Every count
+below reflects this update.
+
+Of the reference catalog's **934 real moves**, **216 are already implemented**
+and are excluded from every count below. **718 moves remain.** Of those 718:
+
+- **323 fall into proposed sub-tiers**: 306 in the mechanism-based Buckets
+  1-4 (Section B — Bucket 1 is now CLOSED/complete and no longer counted as
+  pending; Bucket 4 grew from 39 to 45 to absorb Bucket 1's 6 exceptions,
+  for a 306-move Bucket 2-4 total: 246 + 15 + 45)
+  + 17 in M19c-i (Section B — M19h/M19i's 6 moves are COMPLETE and no
+  longer counted as pending: M19c(7) + M19d(2) + M19e(4) + M19f(4) +
+  M19g(0)).
+- **1 is deferred** (Population Bomb, Section C3 — C4 is closed, folded
+  into the 306 above).
+- **213 are permanently excluded** (87 Z-Move/Max-Move + 126 from Rob's
+  `[M19-exclusions]` list [124 original + Raging Bull + Psychic Noise],
+  Section C1–C2 — unchanged by this update; Bucket 1's 6 exceptions moved
+  to Bucket 4, NOT to this excluded count, since they're still pending
+  future implementation).
 - **181 (a Tier 4 residual) still need their own dedicated sub-clustering
   pass** before individual implementation sub-tiers can be proposed for
-  them, per the recon's own explicit recommendation (Section D).
+  them, per the recon's own explicit recommendation (Section D) — not
+  re-audited by this session (Tier 4 residual is outside this task's own
+  scope).
 
-**386 + 8 + 212 + 181 = 787**, reconciled programmatically against every
-move ID in the recon's own corrected Section B listings — no duplicates,
-no omissions (verified: the union of every bucket below is exactly the
-787-move unimplemented set, with zero move counted twice).
+**323 + 1 + 213 + 181 = 718**, exactly matching `934 − 216`. Fully
+reconciled — no outstanding discrepancy.
 
 ---
 
@@ -80,18 +126,24 @@ no omissions (verified: the union of every bucket below is exactly the
 
 | Recon Tier | Total moves | Already implemented | **Remaining** | Where it lands in this plan |
 |---|---|---|---|---|
-| Tier 1 — no-effect / pure damage | 157 | 29 (14 + 15 `[M19a-gen1]`) | **128** | M19a (107, Gen II–IX remaining) + 14 permanently excluded (`[M19-exclusions]`, Section C2) + 7 deferred (`[M19a-gen1]`, Section C4, Gen I stragglers needing new mechanism) |
-| Tier 2 — simple secondary effect | 308 | 42 | **266** | M19b (256, incl. Low Kick/Grass Knot — unblocked by `[M19-pre1]`) + 10 permanently excluded (Section C2) |
+| Tier 1 — no-effect / pure damage | 157 | 90 (14 + 15 `[M19a-gen1]` + 61 `[M19-bucket1]`) | **67** | 15 permanently excluded (14 `[M19-exclusions]` + Psychic Noise, `[M19-rescope-followup]`, Section C2); remaining 52 folded into Buckets 2-4 below (Bucket 1 itself is now CLOSED/complete — 61 implemented, 6 moved to Bucket 4, `[M19-bucket1]`) |
+| Tier 2 — simple secondary effect | 308 | 44 (42 + Low Kick/Grass Knot, `[M19-pre1]`) | **264** | 10 permanently excluded (Section C2); remaining 254 folded into the mechanism-based Buckets 1-4 below (`[M19-rescope]`) |
 | Tier 2b — Protect-family variants | 10 | 1 | **9** | M19c (7) + 2 permanently excluded (Crafty Shield/King's Shield, Section C2) |
 | Tier 3a — Multi-hit family | 31 | 30 | **1** | C3 (Population Bomb, deferred to its own future tier — also on Rob's `[M19-exclusions]` list, consistent, no status change). Dragon Darts(697) is one of the 30 "already implemented" — was flagged as a conflict, RESOLVED: stays implemented (option a), see "Resolved conflicts" below. |
 | Tier 3b — Binding-move family | 11 | 10 | **1** | M19f (Jaw Lock — does NOT share this mechanism, see Section D) |
 | Tier 3c — Terrain family | 9 | 0 | **9** | Permanently excluded (`[M19-exclusions]`, Section C2) — resolves Open Question #2 |
 | Tier 3d — Counter/Mirror-Move family | 5 | 2 | **3** | M19d (2) + 1 permanently excluded (Comeuppance, Section C2) |
 | Tier 3e — Weather-conditional heal family | 4 | 0 | **4** | M19e (all 4) |
-| Tier 4 — high complexity / standalone | 312 | 33 | **279** | M19f (3) + M19g (0, dissolved — all 3 of its moves permanently excluded) + M19h (2, weight) + M19i (4, friendship) = 9 carved out; 89 permanently excluded (3 ex-M19g + 85 residual + Raging Bull, Section C2); **181 residual** (Section D). Heal Order(456) is one of the 33 "already implemented" — was flagged as a conflict, RESOLVED: stays implemented (option a), see "Resolved conflicts" below. |
+| Tier 4 — high complexity / standalone | 312 | 39 (33 + 6 `[M19-pre1]`/M19h+M19i, corrected `[M19-rescope-followup]`) | **273** | M19f (3 carved out; M19g dissolved/M19h/M19i now COMPLETE, no longer carved as pending); 89 permanently excluded (3 ex-M19g + 85 residual + Raging Bull, Section C2); **181 residual** (Section D). Heal Order(456) is one of the 39 "already implemented" — was flagged as a conflict, RESOLVED: stays implemented (option a), see "Resolved conflicts" below. |
 | Z-Move (permanently excluded) | 35 | 0 | **35** | C1 |
 | Max Move / Dynamax (permanently excluded) | 52 | 0 | **52** | C1 |
-| **Total** | **934** | **147** | **787** | |
+| **Total** | **934** | **216** (corrected, `[M19-bucket1]` — was 155) | **718** | |
+
+**Every "already implemented" figure in this table now sums to exactly
+216** (90+44+1+30+10+0+2+0+39+0+0), and every "remaining" figure sums to
+exactly 718 (67+264+9+1+1+9+3+4+273+35+52) — confirmed via direct
+addition, matching `934 − 216 = 718` exactly. Zero outstanding
+discrepancy as of `[M19-bucket1]`.
 
 **Confirming the pipeline fix's own scoping implication, per this task's
 explicit ask**: the 81 moves `[M19-pipeline-fix]` reclassified Tier 1 → Tier 2
@@ -101,8 +153,9 @@ moves' real mechanics (a secondary stat-change attached to a damage move, e.g.
 Mud-Slap/Icy Wind/Rock Tomb) are the exact same generic `stat_change_stat`/
 `amount`/`self` dispatch every other Tier 2 stat-change move already uses.
 They are NOT called out as a separate sub-tier below — they're folded into
-M19b alongside every other Tier 2 move, since nothing about them is
-mechanically distinct now that the reference data is correct. The 12 moves
+Bucket 2 alongside every other Tier 2 move needing only a single existing
+secondary mechanism, since nothing about them is mechanically distinct now
+that the reference data is correct. The 12 moves
 `[M19-pipeline-fix]`'s second bug fixed (`secondary_chance`) are similarly
 unremarkable — plain status-infliction Tier 2 moves whose extracted chance
 value is now simply correct.
@@ -111,82 +164,291 @@ value is now simply correct.
 
 ## Section B — Proposed sub-tier breakdown (cheapest/most-precedented first)
 
-### M19a — Tier 1 pure-damage data-entry (107 moves remaining) — **CHEAPEST**
+### M19a/M19b — DISSOLVED, replaced by mechanism-based buckets (`[M19-rescope]`, 2026-07-08)
 
-No new mechanism at all. Every one of these is `EFFECT_HIT` with zero
-secondary data (no `stat_change_*`, no `secondary_effect`, no `recoil_percent`,
-etc.) — a pure power/accuracy/pp/type/category/flags data row against
-`DamageCalculator`'s already-fully-generalized damage pipeline, the exact
-same shape `[M18b]`'s resist-berry data-entry occupied for items. This is the
-single largest sub-tier by move count in the entire plan, spanning every
-generation. **Recommend splitting execution across multiple sessions by
-generation** (matching `[M17n]`'s own Group 1-8 precedent for large batches)
-rather than one prompt — this plan does not pre-commit to an exact split,
-since that's an execution-sequencing choice, not a scoping one.
+**Why:** `[M19a-gen1]` found that generation number has zero correlation
+with implementation complexity — 7 of Generation I's 22 not-yet-implemented
+Tier-1 moves (32%) needed a real mechanism this project doesn't have,
+despite the recon's own "pure data-entry" framing for the whole Tier-1/
+Tier-2 bucket. Generation is an accident of release history, not a useful
+organizing principle for verification risk. Per Rob's explicit decision,
+this was a FULL reset of M19a/M19b's entire remaining pool (Gen I's 15
+already-implemented moves stay implemented and untouched; Gen I's 7
+Section-C4 stragglers are folded back into this unified re-bucketing,
+Section C4 is now closed) — every move re-classified fresh from
+`moves_info.h` source, not from the recon's own Tier 1/Tier 2 labels
+(which answer a different question — "was the data-extraction pipeline
+correct" — and don't reliably predict implementation complexity).
 
-**`[M19-exclusions]` update:** 14 moves permanently excluded and removed
-from this count (143→129): Attack Order(454), Flame Burst(481),
-V-create(557), Thousand Waves(615), Anchor Shot(640), Core Enforcer(650),
-Plasma Fists(674), Order Up(784), Glaive Rush(790), Salt Cure(792), Make It
-Rain(802), Gigaton Hammer(819), Syrup Bomb(831), Mighty Cleave(838). See
-Section C2.
+**Methodology:** for every move, determine its real primary `.effect`, every
+`additionalEffects` `.moveEffect` token (including how many DISTINCT stat
+sub-fields a single stat-change block sets — Growth's own "two stats in one
+block" shape recurs in 8 more moves this pass found, see Bucket 3), and any
+non-`.moveEffect` mechanism flags (`.explosion`, matching `[M19a-gen1]`'s
+own Self-Destruct/Explosion finding) — then classify against the full
+existing-mechanism map in `move_data.gd` (every `SE_*` constant, every
+`is_*`/`stat_change_*`/`recoil_percent`/`drain_percent`/`two_turn`/
+`semi_inv_state`/`damages_*` field). A programmatic first pass classified
+all 368 moves; every anomaly, false positive (token-naming mismatches like
+`MOVE_EFFECT_PARALYSIS` vs. this project's `SE_PARALYSIS`, and a real
+double-counting bug in the first draft of the classifier) and edge case was
+individually re-verified directly against source before being trusted —
+matching this project's standing "re-verify before trusting" discipline.
 
-**`[M19a-gen1]` update (2026-07-08):** Generation I's slice (22 moves) is
-DONE. Step 0 re-verified the recon's "pure data-entry" framing individually
-against source rather than trusting it uniformly — 15 confirmed pure and
-**IMPLEMENTED**: Mega Punch(5), Pay Day(6), Vise Grip(11), Cut(15),
-Gust(16), Slam(21), Mega Kick(25), Horn Attack(30), Hydro Pump(56),
-Peck(64), Drill Peck(65), Razor Leaf(75), Egg Bomb(121), Crabhammer(152),
-Slash(163) — see `docs/decisions.md`'s `[M19a-gen1]` entry for full source
-citations and the per-move data table. **7 more moved OUT of this tier
-entirely** (Thrash(37), Petal Dance(80), Rage(99), Hyper Beam(63),
-Self-Destruct(120), Explosion(153), Tri Attack(161)) — each needs a
-mechanism this project doesn't have (rampage lock-in, hit-triggered stat
-boost, recharge, unconditional self-faint + Damp block, random multi-status
-choice), so building them would mean adding new dispatch logic inside what
-this tier is supposed to be a pure data-entry pass — see the new Section
-C4. Net: 129 → 107 remaining in this tier's own scope (15 done, 7
-reclassified), spanning Generations II–IX. **Recommend Generation II next**
-(IDs 166-251 per `docs/m19_recon.md`), continuing the same per-generation
-execution split.
+**The pool: 368 moves** (107 from the old M19a + 256 from the old M19b + 7
+from Section C4, minus 2 — Low Kick(67)/Grass Knot(447) were still being
+counted as "remaining" in the old M19b's 256 despite being implemented by
+`[M19-pre1]`; this re-scope corrects that stale count as part of the full
+reset). Classified into 4 buckets by what implementing them actually
+requires:
 
-### M19b — Tier 2 secondary-effect data-entry (256 moves) — **CHEAP**
+### Bucket 1 — Pure damage, no additional effect — **COMPLETE** (`[M19-bucket1]`, 2026-07-08)
 
-Also no new mechanism — every generic field this tier needs
-(`secondary_effect`/`secondary_chance`, `stat_change_stat`/`amount`/`self`,
-`recoil_percent`, `drain_percent`, `two_turn`, `semi_inv_state`) already
-exists and is already read generically by `BattleManager`/`StatusManager`/
-`DamageCalculator`. This is the tier `[M19-pipeline-fix]` directly repaired
-data for — most of these 256 already had correct data before that session;
-94 unique moves were fixed (88 stat-change, 12 chance, 6 overlapping), 82 of
-which landed in Tier 2 via reclassification from Tier 1, the rest were
-already-Tier-2 chance-only fixes. **`[M19-exclusions]` update:** 10 moves
-permanently excluded and removed from this count (266→256): Chatter(448),
-Defend Order(455), Nature's Madness(671), Shelter(770), Triple Arrows(771),
-Blazing Torque(822), Wicked Torque(823), Noxious Torque(824), Combat
-Torque(825), Magical Torque(826). See Section C2. Sub-clusters by
-generic-field family, for reference (no further mechanism work needed for
-any of them):
-- `EFFECT_HIT` + guaranteed/probabilistic `secondary_effect` or
-  `stat_change_*`: the large majority of the 256.
-- Pure `EFFECT_STAT_CHANGE` (primary-effect stat moves): 51 moves.
-- `EFFECT_NON_VOLATILE_STATUS`: 9 moves (includes 6 of `[M19-pipeline-fix]`'s
-  chance-only fixes: Poison Sting/Bite/Thunder/Sludge/Fire Blast/Poison
-  Fang).
-- `EFFECT_RECOIL`: 9 moves. `EFFECT_ABSORB`: 8 moves. `EFFECT_CONFUSE`: 3
-  moves. `EFFECT_RECOIL_IF_MISS`: 4 moves. `EFFECT_SEMI_INVULNERABLE`: 4
-  moves (two-turn charge-then-hide, `[M16a]`-adjacent). `EFFECT_TWO_TURNS_
-  ATTACK`: 4 moves. `EFFECT_FIXED_PERCENT_DAMAGE`: 3 moves.
-- `EFFECT_LOW_KICK`: 2 moves (Low Kick(67)/Grass Knot(447)) — briefly
-  carved out into a deferred bucket earlier in this plan's own history over
-  a missing per-species weight dependency; **unblocked and implemented by
-  `[M19-pre1]`**, folded back into this tier's own count since nothing
-  about their real mechanism (a lookup-table power formula, no different in
-  spirit from a generic field read) sets them apart from the rest of this
-  tier anymore.
+Every one of these was `EFFECT_HIT` with zero `additionalEffects` at all —
+literally the same shape as `[M19a-gen1]`'s own 15-move Gen I slice, just
+spanning Generations II–IX instead. Lowest possible risk; matched Tackle's
+shape exactly.
 
-Same execution note as M19a: recommend splitting by generation or by
-sub-cluster at execution time, not a single 264-move prompt.
+Per Step 0's individual re-verification (matching `[M19a-gen1]`'s own
+precedent of not trusting a "pure data-entry" classification blindly), **61
+of the 67 were confirmed genuinely pure and are now implemented**: Aeroblast(177),
+Mach Punch(183), Feint Attack(185), Megahorn(224), Vital Throw(233), Cross
+Chop(238), Extreme Speed(245), Hyper Voice(304), Air Cutter(314), Shadow
+Punch(325), Sky Uppercut(327), Dragon Claw(337), Magical Leaf(345), Leaf
+Blade(348), Shock Wave(351), Aura Sphere(396), Night Slash(400), Aqua
+Tail(401), Seed Bomb(402), X-Scissor(404), Dragon Pulse(406), Power
+Gem(408), Vacuum Wave(410), Bullet Punch(418), Ice Shard(420), Shadow
+Claw(421), Shadow Sneak(425), Psycho Cut(427), Power Whip(438), Magnet
+Bomb(443), Stone Edge(444), Aqua Jet(453), Spacial Rend(460), Storm
+Throw(480), Frost Breath(524), Drill Run(529), Petal Blizzard(572),
+Disarming Voice(574), Fairy Wind(584), Boomburst(586), Dazzling
+Gleam(605), Land's Wrath(616), Origin Pulse(618), Precipice Blades(619),
+High Horsepower(630), Leafage(633), Smart Strike(647), Dragon Hammer(655),
+Brutal Swing(656), Accelerock(663), Branch Poke(713), Overdrive(714),
+False Surrender(721), Wicked Blow(745), Glacial Lance(752), Astral
+Barrage(753), Jet Punch(785), Kowtow Cleave(797), Flower Trick(798), Hyper
+Drill(813), Aqua Cutter(821).
+
+**6 were found to need a genuinely new mechanism** and were moved to
+Bucket 4 (see the new `M19-ignores-stat-stages`/`M19-ignores-target-ability`/
+`M19-cant-use-twice` sub-groups below): Chip Away(498), Sacred
+Sword(533), Darkest Lariat(626), Sunsteel Strike(667), Moongeist
+Beam(668), Blood Moon(829). Full Step 0 citations in `docs/decisions.md`'s
+`[M19-bucket1]` entry.
+
+### Bucket 2 — Reuses a single existing secondary mechanism (246 moves)
+
+No new mechanism — every one of these carries EXACTLY ONE known-safe
+secondary token (a single `SE_*`-mapped status/flinch, or a single-stat
+`stat_change_*` block, or a primary effect that's already one of this
+project's own generic dispatch mechanisms) against `BattleManager`/
+`StatusManager`/`DamageCalculator`'s already-generalized pipelines. This is
+the bucket `[M19-pipeline-fix]` directly repaired data for. Sub-clusters by
+primary effect, for reference (no further mechanism work needed for any of
+them):
+
+- `EFFECT_HIT` + a single guaranteed/probabilistic `secondary_effect` or
+  `stat_change_*`: 166 moves — the large majority of this bucket.
+- Pure `EFFECT_STAT_CHANGE` (single-stat primary-effect moves): 39 moves.
+- `EFFECT_NON_VOLATILE_STATUS`: 9 moves. `EFFECT_RECOIL`: 9 moves.
+  `EFFECT_ABSORB`: 8 moves. `EFFECT_RECOIL_IF_MISS`: 4 moves.
+  `EFFECT_TWO_TURNS_ATTACK`: 4 moves. `EFFECT_CONFUSE`: 3 moves.
+  `EFFECT_FIXED_PERCENT_DAMAGE`: 2 moves. `EFFECT_SEMI_INVULNERABLE`: 2
+  moves.
+
+(166+39+9+9+8+4+4+3+2+2 = 246, reconciled.) Full move-by-move ID list
+omitted here for length (matching this document's own precedent for
+large single-shape buckets) — re-derivable directly from
+`classify_results.json`-style source parsing if a future session needs the
+literal list; the sub-cluster counts above are what matters for scoping.
+
+### Bucket 3 — Reuses existing mechanisms, needs closer scrutiny (15 moves)
+
+Each of these combines something this project already has with a SECOND
+thing in a way the current single-slot schema can't cleanly represent, or
+reuses an existing mechanism in a combination not yet proven safe. Three
+distinct shapes:
+
+- **Multi-stat-in-one-block (10 moves)** — the exact same shape as the
+  already-implemented Growth (`is_growth`, `[M16a]`): a SINGLE
+  `additionalEffects` entry that sets MORE THAN ONE stat sub-field
+  (`.attack`/`.defense`/`.spAttack`/`.spDefense`/`.speed`/`.accuracy`/
+  `.evasion`) at once. Not detectable by counting `.moveEffect` tokens
+  alone (each of these has exactly one) — found by counting stat
+  sub-fields WITHIN each block, a check this re-scope added after Growth's
+  own precedent made it worth specifically looking for. Needs its own
+  dedicated flag per move (or a small generalized "multi-stat" field),
+  matching `is_growth`'s own precedent directly: Tickle(321, -1 Atk/-1
+  Def), Bulk Up(339, +1 Atk/+1 Def), Dragon Dance(349, +1 Atk/+1 Spe),
+  Hone Claws(468, +1 Atk/+1 Acc), Coil(489, +1 Atk/+1 Def/+1 Acc), Shift
+  Gear(508, +1 Spe/+1 Atk), Coaching(739, ally-targeting +1 Atk/+1 Def),
+  Victory Dance(765, +1 Atk/+1 Def/+1 Spe), Shell Smash(504, -1 Def/+2
+  Atk/+2 SpAtk/+2 Spe), Spicy Extract(786, +2 Atk/-2 Def).
+- **Combined secondary effects (3 moves)** — Thunder Fang(422, paralysis +
+  flinch chance), Ice Fang(423, freeze/frostbite + flinch chance), Fire
+  Fang(424, burn + flinch chance): each rolls TWO independent secondary
+  effects on one hit, which this project's single `secondary_effect`/
+  `secondary_chance` pair can't represent simultaneously. Needs either a
+  second optional secondary-effect slot or dedicated per-move handling.
+- **Existing mechanism + simultaneous damage (2 moves)** — Glitzy
+  Glow(683)/Baddy Bad(684) deal damage AND set up Light Screen/Reflect
+  (`is_light_screen`/`is_reflect` already exist, but only ever wired for
+  power=0 status moves so far) — needs verifying the existing screen
+  dispatch actually fires correctly when combined with a simultaneous
+  damage roll, not assumed safe by construction.
+
+### Bucket 4 — Needs a genuinely new mechanism (45 moves, 21 named sub-groups)
+
+Each sub-group below shares ONE real mechanism this project doesn't have
+yet — building it once should let a future tier apply it to every move in
+that sub-group at once, rather than rediscovering the same mechanism
+move-by-move (the exact trap `[M19a-gen1]` flagged as a risk and this
+re-scope exists to avoid repeating).
+
+- **M19-rampage (4)** — locks the user into the same move for 2-3 turns,
+  then inflicts self-confusion (`MOVE_EFFECT_THRASH`): Thrash(37), Petal
+  Dance(80), Outrage(200), Raging Fury(761).
+- **M19-recharge (10)** — user must skip its next turn after use
+  (`MOVE_EFFECT_RECHARGE`): Hyper Beam(63), Blast Burn(307), Hydro
+  Cannon(308), Frenzy Plant(338), Giga Impact(416), Rock Wrecker(439), Roar
+  of Time(459), Prismatic Laser(665), Meteor Assault(722), Eternabeam(723).
+- **M19-self-faint (2)** — unconditional self-faint after use, plus Damp
+  blocks the move outright at selection (`.explosion = TRUE`, matching
+  `[M19a-gen1]`'s own finding exactly): Self-Destruct(120), Explosion(153).
+- **M19-random-status-choice (2)** — randomly inflicts ONE of several
+  statuses (`MOVE_EFFECT_TRI_ATTACK`/`MOVE_EFFECT_DIRE_CLAW` shape — no
+  existing `SE_*` supports a random multi-status choice): Tri Attack(161),
+  Dire Claw(755, needs its own individual chance-table verification —
+  not assumed identical to Tri Attack's 3-way split).
+- **M19-hp-based-power (2)** — power scales with the user's own missing
+  HP% (`EFFECT_FLAIL`), the same "formula-driven power" SHAPE as
+  `is_return_power`/`is_low_kick_power` but a genuinely different formula:
+  Flail(175), Reversal(179).
+- **M19-rage (1)** — Attack rises each time the user is hit while this
+  move is active/last-used (`MOVE_EFFECT_RAGE`): Rage(99).
+- **M19-uproar (1)** — locks the user into Uproar for several turns and
+  prevents sleep infliction (self and foes) while active: Uproar(253).
+- **M19-secret-power (1)** — secondary effect depends on terrain/location
+  (this project has no Terrain/location system — likely resolves to one
+  fixed effect, needs individual scope confirmation from Rob rather than
+  assumed): Secret Power(290).
+- **M19-break-protect (4)** — ACTIVELY removes the target's already-active
+  Protect state and resets their consecutive-use counter (confirmed via
+  `battle_script_commands.c` L2584: `MOVE_EFFECT_FEINT` clears
+  `gProtectStructs[...].protected` and `consecutiveMoveUses`, and also
+  clears a side-wide Wide-Guard/Quick-Guard-family block on the user's
+  partner) — genuinely more than this project's existing `ignores_protect`
+  field, which only lets a move bypass an ALREADY-resolved Protect check,
+  not retroactively break one: Feint(364), Shadow Force(467), Phantom
+  Force(566), Hyperspace Hole(593).
+- **M19-berry-steal (2)** — eats/consumes the target's held berry after a
+  successful hit (`MOVE_EFFECT_BUG_BITE`): Pluck(365), Bug Bite(450).
+- **M19-stat-reset (1)** — resets the target's stat stages to exactly 0
+  (an absolute reset, not a relative `stat_change_amount` delta): Clear
+  Smog(499).
+- **M19-item-destroy (1)** — destroys the target's held berry/gem outright
+  (distinct from M19-berry-steal — the item is destroyed, not consumed by
+  the user): Incinerate(510).
+- **M19-trap-secondary (1)** — inflicts escape-prevention as a SECONDARY
+  effect on a damaging hit (`MOVE_EFFECT_PREVENT_ESCAPE`) — shares the
+  SAME mechanism M19f (Section B above) is already planned to build for
+  Spider Web/Mean Look/Block/Jaw Lock; **should be folded into M19f once
+  that tier is built, not treated as its own new family**: Spirit
+  Shackle(625).
+- **M19-cure-opponent-status (1)** — cures the TARGET's status condition
+  after landing a hit (the inverse of every existing self-cure precedent):
+  Sparkling Aria(627).
+- **M19-sound-block (1)** — blocks the target from using sound-category
+  moves for 2 turns (a new volatile, similar shape to Encore/Disable/Taunt
+  but keyed on the `sound_move` flag rather than a specific move):
+  Throat Chop(638).
+- **M19-steal-stats (1)** — copies the target's positive stat stages onto
+  the user (removing them from the target) before dealing damage — similar
+  in spirit to Opportunist's existing ability-side "copy a positive raise"
+  logic (`[M17n-8]`), worth reusing that pattern rather than building from
+  scratch: Spectral Thief(666).
+- **M19-blocked-on-other-tier4 (3)** — secondary effect depends entirely
+  on ANOTHER unimplemented Tier-4-residual move's own mechanism (not a new
+  mechanism family of their own — genuinely blocked, not genuinely new):
+  Sappy Seed(685, needs Leech Seed(73)'s own mechanism), Freezy Frost(686,
+  needs Haze(114)'s own mechanism), Sparkly Swirl(687, needs
+  Aromatherapy/Heal Bell's own party-wide-cure mechanism, itself flagged in
+  Section D as having an open architecture question).
+- **M19-pp-reduce (1)** — sharply reduces the target's last-used move's PP
+  (a stronger Spite-shaped effect, no existing "reduce opponent's PP"
+  mechanism): Eerie Spell(754).
+- **M19-ignores-stat-stages (3)** — found during `[M19-bucket1]`'s Step 0:
+  `.ignoresTargetDefenseEvasionStages = TRUE` bypasses the target's Def/Eva
+  stat stages entirely when calculating damage — `DamageCalculator`
+  currently always applies them (`_apply_stage`), no bypass path exists:
+  Chip Away(498), Sacred Sword(533), Darkest Lariat(626).
+- **M19-ignores-target-ability (2)** — found during `[M19-bucket1]`'s Step
+  0: `.ignoresTargetAbility = TRUE` unconditionally ignores the target's
+  ability regardless of the USER's own ability — `AbilityManager.
+  effective_ability_id()` only bypasses a target's ability when the
+  attacker itself has Mold Breaker/Mycelium Might
+  (`ability_manager.gd:1041-1056`); a genuinely different, move-level gate:
+  Sunsteel Strike(667), Moongeist Beam(668).
+- **M19-cant-use-twice (1)** — found during `[M19-bucket1]`'s Step 0:
+  `.cantUseTwice = TRUE` blocks selecting the same move on consecutive
+  turns — no move-repeat tracking exists anywhere in the engine: Blood
+  Moon(829).
+
+**M19-heal-block-secondary — CLOSED, excluded (`[M19-rescope-followup]`,
+2026-07-08).** Formerly a 1-move sub-group (Psychic Noise(845)) pending
+Rob's scope call on whether it should be excluded alongside its parent
+mechanism. Rob confirmed exclusion. Re-verified the dependency directly
+against source before applying it (not just trusting the prior session's
+flagged note): `MOVE_EFFECT_PSYCHIC_NOISE`'s handler
+(`battle_script_commands.c` L2796-2805) sets the literal SAME
+`volatiles.healBlock` field Heal Block(377) itself sets — a genuine
+mechanism dependency, not thematic similarity. Moved to Section C2
+alongside Heal Block; no longer part of this bucket's count.
+
+(4+10+2+2+2+1+1+1+4+2+1+1+1+1+1+1+3+1+3+2+1 = 45, reconciled.)
+
+**Recommended execution order for Buckets 1-4:**
+
+1. **Bucket 1 (67) — COMPLETE (`[M19-bucket1]`, 2026-07-08).** 61 implemented,
+   6 moved to Bucket 4 as new-mechanism exceptions (see above).
+2. **Bucket 2 (246)** — still zero new mechanism, the overwhelming bulk of
+   this pool. Recommend splitting by sub-cluster (the 10 groups listed
+   above) or by count across multiple sessions.
+3. **Bucket 3 (15)** — still reuse-based, but each move needs individual
+   care before implementation: the 10 multi-stat moves need a dedicated
+   flag decision (one per-move flag matching `is_growth`'s precedent, or a
+   small generalized multi-stat mechanism — worth deciding once, up front,
+   rather than per move); the 3 combined-secondary-effect moves need a
+   schema decision (second secondary-effect slot vs. dedicated handling);
+   the 2 screen+damage moves need the dispatch-order verification noted
+   above.
+4. **Bucket 4's 21 sub-groups, sequenced by real dependency, not move
+   count** — each is effectively its own small new-mechanism tier, closer
+   in shape to M19c-i than to bulk data-entry:
+   - **M19-trap-secondary (Spirit Shackle)** should be folded directly
+     into M19f (Section B above) rather than run separately — same
+     mechanism, already planned.
+   - **M19-steal-stats (Spectral Thief)** should reuse Opportunist's
+     existing ability-side "copy a positive stat raise" pattern
+     (`[M17n-8]`) rather than building fresh.
+   - **M19-blocked-on-other-tier4 (Sappy Seed/Freezy Frost/Sparkly
+     Swirl)** can't be scheduled independently — each waits on its own
+     parent mechanism (Leech Seed/Haze/Aromatherpy) landing first,
+     wherever those end up in the eventual Tier 4 residual sub-clustering
+     pass (Section D).
+   - **M19-heal-block-secondary (Psychic Noise)** — CLOSED, excluded per
+     Rob's explicit call (`[M19-rescope-followup]`), no longer part of
+     this bucket at all.
+   - The remaining 15 sub-groups (M19-rampage, M19-recharge, M19-self-faint,
+     M19-random-status-choice, M19-hp-based-power, M19-rage, M19-uproar,
+     M19-secret-power, M19-break-protect, M19-berry-steal, M19-stat-reset,
+     M19-item-destroy, M19-cure-opponent-status, M19-sound-block,
+     M19-pp-reduce) have no known dependency on each other or on
+     unimplemented moves — sequence by whichever mechanism Rob wants built
+     next, cheapest/smallest first is the natural default (M19-rage,
+     M19-uproar, M19-secret-power, M19-stat-reset, M19-item-destroy,
+     M19-cure-opponent-status, M19-sound-block, M19-pp-reduce are all
+     single-move sub-groups — cheapest to verify and land individually).
 
 ### M19c — Protect-family variants (7 moves) — **CHEAP**
 
@@ -268,7 +530,7 @@ silently deleted) since it reverses this plan's own prior reasoning rather
 than just confirming it — see the reconciliation summary at the top of
 this document.
 
-### M19h — Weight-ratio dynamic power (2 moves) — **CHEAPEST, unblocked by `[M19-pre1]`**
+### M19h — Weight-ratio dynamic power (2 moves) — **COMPLETE** (`[M19-rescope-followup]`, 2026-07-08)
 
 Heavy Slam(484), Heat Crash(535) — Tier 4 moves (`EFFECT_HEAT_CRASH`) whose
 power derives from the integer ratio of the attacker's weight to the
@@ -277,10 +539,11 @@ target's weight (`PokemonSpecies.weight`, hectograms), indexed into a fixed
 weight field this project's data pipeline had never populated —
 `[M19-pre1]` added `PokemonSpecies.weight` (species-level, fixed, no
 forcing parameter needed) and a new `scripts/gen_weight_data.py` extraction
-pipeline. No remaining infrastructure gap; now a pure lookup-table
-data-entry tier, the same complexity class as M19g.
+pipeline. **Both moves were actually implemented as part of `[M19-pre1]`
+itself** (confirmed directly in `gen_moves.py`'s own `MOVES` dict) — this
+sub-tier's "pending" status was stale bookkeeping, corrected this session.
 
-### M19i — Friendship-based dynamic power (4 moves) — **CHEAPEST, unblocked by `[M19-pre1]`**
+### M19i — Friendship-based dynamic power (4 moves) — **COMPLETE** (`[M19-rescope-followup]`, 2026-07-08)
 
 Return(216), Pika Papow(679), Veevee Volley(688) (`EFFECT_RETURN` — all
 three confirmed to share the IDENTICAL formula, not just a similar one) and
@@ -292,12 +555,21 @@ session found). `[M19-pre1]` added `BattlePokemon.friendship` (per-instance,
 defaulted from the species' own `base_friendship` — already-dormant-but-
 correct data, the exact same "extracted but never wired" shape
 `gender_ratio` had before `[M18.5d]`) with a `forced_friendship` override
-for M24's future trainer-data needs. No remaining infrastructure gap; now a
+for M24's future trainer-data needs. **All 4 moves were actually
+implemented as part of `[M19-pre1]` itself** (confirmed directly in
+`gen_moves.py`'s own `MOVES` dict) — this sub-tier's "pending" status was
+stale bookkeeping, corrected this session. Combined with M19h above,
+`[M19-pre1]`'s own 8 implemented moves split exactly 2 (M19h) + 4 (M19i) +
+2 (Low Kick(67)/Grass Knot(447), which landed in the old M19b — now
+Bucket 2 — and were already correctly excluded from Bucket 1-4's pool
+(368 at `[M19-rescope]`'s own classification time, 367 as of
+`[M19-rescope-followup]`'s Psychic Noise exclusion) as implemented, not
+part of this staleness). No remaining infrastructure gap; now a
 pure formula-lookup data-entry tier.
 
 ---
 
-## Section C — Moves better left out of M19 for now (220 moves: 212 permanently excluded + 8 deferred)
+## Section C — Moves better left out of M19 for now (214 moves: 213 permanently excluded + 1 deferred)
 
 ### C1 — Z-Move / Max Move families (87 moves) — **PERMANENTLY EXCLUDED, confirmed by Rob**
 
@@ -311,7 +583,7 @@ confirmed the exclusion (`[M19-pre1]`), matching the Mega Evolution
 precedent exactly.** This closes what had been this plan's own Open
 Question #1; no further action needed on this bucket.
 
-### C2 — Rob's `[M19-exclusions]` list (125 moves) — **PERMANENTLY EXCLUDED, confirmed by Rob (2026-07-08)**
+### C2 — Rob's `[M19-exclusions]` list (126 moves) — **PERMANENTLY EXCLUDED, confirmed by Rob (2026-07-08)**
 
 A manually-curated exclusion list Rob provided, reconciled move-by-move
 against this plan's existing buckets rather than applied blindly (see
@@ -380,8 +652,18 @@ their previously-proposed buckets:
   addendum (2026-07-08):** Raging Bull(801, `EFFECT_RAGING_BULL`), not
   implemented, was sitting in the singleton/small-pairs bucket. Removed
   from Section D's own totals (182→181 residual, 159→158 singleton).
+- **From Bucket 4's M19-heal-block-secondary sub-group, 1 more move —
+  `[M19-rescope-followup]` addendum (2026-07-08):** Psychic Noise(845),
+  not implemented, excluded alongside its parent mechanism. Re-verified
+  directly against source rather than trusting `[M19-rescope]`'s own
+  flagged note: `MOVE_EFFECT_PSYCHIC_NOISE`'s handler
+  (`battle_script_commands.c` L2796-2805) sets
+  `gBattleMons[effectBattler].volatiles.healBlock = TRUE` — the EXACT SAME
+  volatile field Heal Block(377)'s own move sets, not just a thematically
+  similar effect. A genuine mechanism dependency, confirmed. Removed from
+  Bucket 4's own totals (40→39) — see Section B's Bucket 4 for the update.
 
-**14 + 10 + 2 + 1 + 3 + 9 + 85 + 1 = 125.**
+**14 + 10 + 2 + 1 + 3 + 9 + 85 + 1 + 1 = 126.**
 
 ### C3 — Population Bomb (1 move) — its own future tier, not blocked
 
@@ -395,39 +677,20 @@ its own small future tier rather than bundled here. **Also appears on
 Rob's `[M19-exclusions]` list — consistency-confirmed, this was a check
 against the existing status, not a new decision; no status change.**
 
-### C4 — Gen I Tier-1 stragglers needing new mechanism (7 moves) — found by `[M19a-gen1]` (2026-07-08)
+### C4 — CLOSED, folded into Bucket 4 (`[M19-rescope]`, 2026-07-08)
 
-Thrash(37), Petal Dance(80), Rage(99), Hyper Beam(63), Self-Destruct(120),
-Explosion(153), Tri Attack(161). All 7 sat in the recon's Tier 1 ("no-effect
-/ pure damage") bucket, but Step 0 of `[M19a-gen1]` re-verified that framing
-against `moves_info.h` directly (rather than trusting it) and found each one
-carries a real mechanism this project doesn't have yet:
-
-- **Thrash/Petal Dance** (`MOVE_EFFECT_THRASH`): locks the user into the
-  same move for 2-3 turns, then inflicts self-confusion — no rampage/
-  lock-in mechanism exists anywhere in this project.
-- **Rage** (`MOVE_EFFECT_RAGE`): the user's Attack rises each time it's hit
-  while Rage is the active/last-used move — no such hit-triggered tracking
-  exists.
-- **Hyper Beam** (`MOVE_EFFECT_RECHARGE`): the user must skip its next turn
-  — no recharge/`must_recharge` mechanism exists.
-- **Self-Destruct/Explosion** (`.explosion = TRUE`): the user faints
-  unconditionally after use, and Damp blocks the move outright at selection
-  (`battle_util.c` L3993) — a genuinely different gate from Aftermath's
-  existing post-faint Damp check (`[M17n-8]`).
-- **Tri Attack** (`MOVE_EFFECT_TRI_ATTACK`, chance=20): randomly inflicts
-  ONE of burn/paralysis/freeze — no existing `SE_*` constant supports a
-  random multi-status choice (every current one is a fixed single outcome).
-
-Not blocked on a single shared piece of infrastructure the way weight/
-friendship were (Section C's own "Closed" note below) — each needs its OWN
-new mechanism, so this is a genuinely higher-complexity bucket than a
-straightforward data-entry tier, deferred to its own future session(s)
-rather than built inside M19a. Likely candidates for a small dedicated
-"Gen I Tier-1 mechanisms" tier whenever Rob wants it, possibly bundled with
-similarly-shaped stragglers found in later generations' own Tier-1 slices
-(not yet checked — Gen II onward hasn't had this same re-verification pass
-run yet).
+Formerly "Gen I Tier-1 stragglers needing new mechanism (7 moves)": Thrash,
+Petal Dance, Rage, Hyper Beam, Self-Destruct, Explosion, Tri Attack. Per
+`[M19-rescope]`'s explicit full-reset instruction, these 7 are no longer a
+separate quarantine bucket — they're folded into the unified mechanism-based
+re-bucketing of M19a/M19b's entire remaining pool (Section B above), landing
+in Bucket 4's M19-rampage/M19-recharge/M19-self-faint/M19-random-status-choice/
+M19-rage sub-groups alongside every other move needing the same mechanism
+family, found fresh from the rest of the pool rather than treated as a
+Gen-I-specific quarantine. This section is kept only for historical
+continuity — not counted in Section C's own totals below (it never was; C4
+was always a "deferred," not "permanently excluded," bucket, and deferred
+moves aren't part of Section C's 212-excluded/1-deferred count split).
 
 ### Resolved conflicts — 2 already-implemented moves, kept implemented (2026-07-08)
 
@@ -455,8 +718,12 @@ Return(216)/Frustration(218)/Pika Papow(679)/Veevee Volley(688)
 per-instance data gaps, neither flagged by the recon's own Section D.
 `[M19-pre1]` built both fields (`PokemonSpecies.weight`,
 `BattlePokemon.friendship`) and implemented all 8 moves with real,
-tested mechanics — see Section B's M19b/M19h/M19i above and
-`docs/decisions.md`'s `[M19-pre1]` entry for the full implementation.
+tested mechanics — Low Kick/Grass Knot are correctly excluded from Bucket
+1-4's 368-move pool (already implemented); Heavy Slam/Heat Crash/Return/
+Frustration/Pika Papow/Veevee Volley are tracked via M19h/M19i above
+(flagged elsewhere in this document as likely already done too — see
+Open Question #6) — see `docs/decisions.md`'s `[M19-pre1]` entry for the
+full implementation.
 Listed here only for this document's own historical continuity; not
 counted in this section's own totals above.
 
@@ -505,68 +772,79 @@ as a head start for that future pass, not a finished sub-tier list:
 
 | Bucket | Move count |
 |---|---|
-| Already implemented (excluded from this plan) — includes Heal Order/Dragon Darts (resolved conflicts) + 15 new from `[M19a-gen1]`, see Section C | 147 |
-| Proposed sub-tiers M19a–M19i (Section B; M19g now empty/dissolved, M19a's Gen I slice done) | 386 |
-| Deferred (Section C3 — Population Bomb; Section C4 — 7 Gen I Tier-1 stragglers needing new mechanism) | 8 |
-| Permanently excluded, confirmed by Rob (Section C1 Z-Move/Max-Move + Section C2 `[M19-exclusions]`, incl. Raging Bull addendum) | 212 |
+| Already implemented (excluded from this plan) — includes Heal Order/Dragon Darts (resolved conflicts); corrected this session, see `[M19-bucket1]` above | 216 |
+| Proposed sub-tiers (Section B: Buckets 2-4 — Bucket 1 now COMPLETE — plus M19c-i minus M19h/M19i now COMPLETE) | 323 (306 + 17) |
+| Deferred (Section C3 — Population Bomb only; C4 closed) | 1 |
+| Permanently excluded, confirmed by Rob (Section C1 Z-Move/Max-Move + Section C2 `[M19-exclusions]`, incl. Raging Bull + Psychic Noise addenda) | 213 |
 | Tier 4 residual, needs its own sub-clustering pass (Section D) | 181 |
 | **Total (matches the recon's 934-move catalog)** | **934** |
 
+216 + 323 + 1 + 213 + 181 = 934, confirmed by direct addition. Zero
+outstanding discrepancy.
+
 | Sub-tier | Moves | Risk | Depends on |
 |---|---|---|---|
-| M19a — Tier 1 pure-damage data-entry | 107 (Gen I's 22-move slice done — 15 implemented, 7 moved to C4) | Cheapest | — (recommend splitting execution by generation; Gen II next) |
-| M19b — Tier 2 secondary-effect data-entry | 256 | Cheap | — (recommend splitting execution by generation/sub-cluster) |
+| Bucket 1 — pure damage, no additional effect | **COMPLETE** (`[M19-bucket1]`, 61 implemented + 6 moved to Bucket 4) | — | — |
+| Bucket 2 — single existing secondary mechanism | 246 | Cheap | — (recommend splitting by sub-cluster, see Section B) |
+| Bucket 3 — existing mechanisms, needs scrutiny | 15 | Moderate | schema/dispatch decisions noted per shape in Section B |
+| Bucket 4 — genuinely new mechanism (21 sub-groups) | 45 | Varies per sub-group | see Section B's own per-sub-group notes |
 | M19c — Protect-family variants | 7 | Cheap | — |
 | M19d — Counter/Mirror-Move remnants | 2 | Cheap-moderate | — |
 | M19e — Weather-conditional heal family | 4 | Cheap-moderate | — |
-| M19f — Escape-prevention family (incl. Jaw Lock) | 4 | Moderate (new mechanism) | — |
+| M19f — Escape-prevention family (incl. Jaw Lock, + Bucket 4's Spirit Shackle) | 4 (+1 once merged) | Moderate (new mechanism) | — |
 | M19g — DISSOLVED, all 3 moves permanently excluded | 0 | — | — |
-| M19h — Weight-ratio dynamic power | 2 | Cheapest | — (unblocked by `[M19-pre1]`) |
-| M19i — Friendship-based dynamic power | 4 | Cheapest | — (unblocked by `[M19-pre1]`) |
-| Tier 4 sub-clustering pass | 181 | Unknown — needs its own recon | M19a-i not required first, but recommended for momentum |
+| M19h — Weight-ratio dynamic power | **COMPLETE** (`[M19-pre1]`, confirmed `[M19-rescope-followup]`) | — | — |
+| M19i — Friendship-based dynamic power | **COMPLETE** (`[M19-pre1]`, confirmed `[M19-rescope-followup]`) | — | — |
+| Tier 4 sub-clustering pass | 181 | Unknown — needs its own recon | not required first, but recommended for momentum |
 
 **Recommended implementation order:**
 
-1. **M19h, M19i (2 + 4 = 6) first** — trivially cheap, effectively Tier 1
-   data-entry, clears 6 moves with zero new mechanism (both only just
-   unblocked by `[M19-pre1]` — good candidates to confirm the new fields
-   work correctly in real implementation before the big bulk tiers). M19g
-   is no longer part of this step — dissolved by `[M19-exclusions]`.
-2. **M19a and M19b (107 + 256 = 363 remaining)** — the overwhelming majority
-   of M19's buildable scope, zero new mechanism cost, matching M18a/M18b's
-   own "front-load the cheapest bulk" precedent. Given the scale, strongly
-   recommend splitting execution across multiple sessions (by generation is
-   the most natural axis, since it's already how the recon itself is
-   organized) rather than attempting either in one prompt — `[M19a-gen1]`
-   is the first such slice (15 done), Gen II is the natural next one, and
-   each Gen I-style slice should re-verify the recon's tier framing
-   individually rather than trust it, per this session's own finding (7 of
-   22 Gen I "Tier 1" moves needed reclassifying).
+1. **Bucket 1 (67) — COMPLETE (`[M19-bucket1]`, 2026-07-08).** 61
+   implemented, 6 moved to Bucket 4. **Bucket 2 (246)** is next — the
+   overwhelming majority of M19's remaining buildable scope, zero new
+   mechanism cost, matching M18a/M18b's own "front-load the cheapest bulk"
+   precedent. Given the scale, strongly recommend splitting execution
+   across multiple sessions (by sub-cluster or by count, not by generation
+   — `[M19-rescope]` exists specifically because generation wasn't a
+   useful split) rather than attempting it in one prompt.
+2. **Bucket 3 (15)** — still reuse-based but needs the per-shape decisions
+   noted in Section B (multi-stat dedicated-flag approach, combined-
+   secondary-effect schema decision, screen+damage dispatch-order check)
+   made ONCE up front, then applied uniformly.
 3. **M19c (7)** — cheap, single shared mechanism, no dependencies.
 4. **M19d, M19e (2 + 4 = 6)** — each a small, self-contained extension of an
    already-built system (`_last_attacker` tracking, weather + `RESTORE_HP`).
-5. **M19f (4)** — the one genuinely new mechanism in this plan's buildable
-   scope; budget real care per `[M17f]`'s own trapping-infrastructure
-   precedent, confirm the Ghost-type/Shed Shell interaction against
-   `AbilityManager.is_trapped()` before writing new code.
-6. **Tier 4 sub-clustering recon (181 moves)** — recommend as its OWN
+5. **M19f (4, or 5 once Bucket 4's Spirit Shackle is merged in per Section
+   B's own recommendation)** — the one genuinely new mechanism in this
+   plan's non-Bucket-4 buildable scope; budget real care per `[M17f]`'s own
+   trapping-infrastructure precedent, confirm the Ghost-type/Shed Shell
+   interaction against `AbilityManager.is_trapped()` before writing new
+   code.
+6. **Bucket 4's 21 sub-groups (45 moves)** — sequenced per Section B's own
+   dependency-ordered recommendation (Spirit Shackle → merge into M19f;
+   Spectral Thief → reuse Opportunist's pattern; the 3
+   blocked-on-other-Tier4 moves → wait on their own parents; the other 18
+   sub-groups → sequence freely, cheapest/single-move groups first).
+   M19-heal-block-secondary (Psychic Noise) is closed/excluded, no longer
+   part of this count. The 3 newest sub-groups
+   (`M19-ignores-stat-stages`/`M19-ignores-target-ability`/
+   `M19-cant-use-twice`) were found during `[M19-bucket1]`'s own Step 0.
+7. **Tier 4 sub-clustering recon (181 moves)** — recommend as its OWN
    dedicated report-only session, mirroring how `docs/m19_recon.md` itself
    was produced before this plan, rather than guessing sub-tiers from
    effect-name clustering alone. Section D's own table is a head start, not
    a finished breakdown.
-7. **Section C's 220 moves stay out of M19 scope**: 212 permanently
-   excluded (87 Z-Move/Max-Move + 125 `[M19-exclusions]`, both confirmed by
-   Rob), 8 deferred (1 Population Bomb; 7 Gen I Tier-1 stragglers needing
-   new mechanism, Section C4, found by `[M19a-gen1]`) to their own small
-   future tier(s) once Rob wants them. Separately, Heal Order and Dragon
-   Darts stay implemented — Rob resolved that conflict (option a,
-   docs-only) — see Section C's "Resolved conflicts".
+8. **Section C's 214 moves stay out of M19 scope**: 213 permanently
+   excluded (87 Z-Move/Max-Move + 126 `[M19-exclusions]`, both confirmed by
+   Rob), 1 deferred (Population Bomb) to its own small future tier once Rob
+   wants it. Separately, Heal Order and Dragon Darts stay implemented —
+   Rob resolved that conflict (option a, docs-only) — see Section C's
+   "Resolved conflicts". M19h/M19i are COMPLETE, not part of this list.
 
-No sub-tier in Section B is flagged as needing further internal splitting
-before it's attempted, EXCEPT M19a/M19b's own explicitly-noted execution-
-scale recommendation (split by generation) — unlike M18's own plan, this
-isn't a shape concern (both are single-shape, low-variance batches), purely
-a session-length one given their combined 363-move remaining size.
+Buckets 1 and 2 are flagged as needing further internal splitting for
+execution-scale reasons only (session length), same as M19a/M19b's own
+prior note — not a shape concern, both are single-shape, low-variance
+batches.
 
 ---
 
@@ -582,20 +860,43 @@ a session-length one given their combined 363-move remaining size.
    See Section C2.
 
 3. ~~Weight/friendship data (8 moves)~~ — **RESOLVED.** `[M19-pre1]` built
-   both fields and implemented all 8 moves. See Section B's M19b/M19h/M19i.
+   both fields and implemented all 8 moves (2 now correctly excluded from
+   Bucket 1-4's pool as already-implemented; 6 tracked via M19h/M19i, see
+   Open Question #6 for that pair's own still-open staleness flag).
 
 4. **Tier 4's sub-clustering pass (181 moves, Section D)**: should this be
    scheduled as its own explicit report-only session (matching how
    `docs/m19_recon.md` itself, and this plan, were both produced) before
    any Tier 4 implementation work starts, or should Tier 4 wait entirely
-   until M19a/M19b/M19c-i's ~363 remaining moves are done? This plan recommends the
-   former (parallel-track the recon while the cheap bulk work proceeds) but
-   defers the actual scheduling call to Rob's own preference, matching this
-   project's established pattern of not pre-deciding sequencing questions
-   that are really about Rob's available time and priorities, not technical
-   dependency. **Still open.**
+   until the Bucket 1-4 / M19c-i buildable scope is done? This plan
+   recommends the former (parallel-track the recon while the cheap bulk
+   work proceeds) but defers the actual scheduling call to Rob's own
+   preference, matching this project's established pattern of not
+   pre-deciding sequencing questions that are really about Rob's available
+   time and priorities, not technical dependency. **Still open.**
 
 5. ~~Heal Order(456) / Dragon Darts(697) conflict~~ — **RESOLVED
    (2026-07-08).** Rob confirmed option (a) for both: docs-only exclusion,
    shipped code/tests untouched, no revert. See Section C's "Resolved
    conflicts".
+
+6. ~~M19h/M19i staleness (6 moves)~~ — **RESOLVED (`[M19-rescope-followup]`,
+   2026-07-08).** Confirmed directly against `gen_moves.py`: Heavy
+   Slam(484)/Heat Crash(535) (M19h) and Return(216)/Pika Papow(679)/Veevee
+   Volley(688)/Frustration(218) (M19i) are all real, implemented moves.
+   Both sub-tiers marked COMPLETE in Section B; Section E's table and this
+   document's running totals updated to match.
+
+7. ~~Psychic Noise(845, Bucket 4's M19-heal-block-secondary)~~ —
+   **RESOLVED (`[M19-rescope-followup]`, 2026-07-08).** Rob confirmed
+   exclusion, matching Heal Block's own status. Dependency re-verified
+   directly against source (not just trusted from the prior session's
+   note): `MOVE_EFFECT_PSYCHIC_NOISE` sets the literal same
+   `volatiles.healBlock` field Heal Block itself sets. Moved to Section C2
+   alongside Heal Block.
+
+8. **Secret Power(290, Bucket 4's M19-secret-power)**: its secondary effect
+   depends on terrain/location, which this project has no system for.
+   Likely resolves to one fixed effect by default, but needs Rob's
+   explicit scope confirmation before assuming that rather than excluding
+   it alongside the Terrain-family moves. **New, open.**

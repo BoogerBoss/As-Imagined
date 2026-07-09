@@ -14916,3 +14916,136 @@ complete (15 of 129 done, 114 remaining across Gen II–IX) and note the
 updated noting `[M19a-gen1]` complete and the total running
 move-implementation count (132→147). Next natural slice: Generation II
 (per `docs/m19_recon.md`, IDs 166-251).
+
+## [M19-bucket1] Bulk move implementation, Bucket 1 (pure damage, zero additional effect)
+
+### Step 0 findings
+
+First execution slice of `[M19-rescope]`'s mechanism-based re-bucketing.
+Bucket 1's plan section listed 67 moves as `EFFECT_HIT` with zero
+`additionalEffects` — the lowest-risk shape in the entire pool. Per this
+task's own explicit instruction not to trust that classification blindly
+(matching `[M19a-gen1]`'s precedent, where the plan's own "pure data-entry"
+framing hid 7 real exceptions), **every one of the 67 was individually
+re-verified against `moves_info.h`** with a broader flag scan than the
+original classifier used (the classifier only checked `.effect`,
+`.moveEffect` tokens, and `.explosion`; this pass additionally scanned
+`.alwaysCriticalHit`, `.damagesAirborne`, `.hitsBothFoes`,
+`.ignoresTargetAbility`, `.ignoresTargetDefenseEvasionStages`,
+`.pulseMove`, `.windMove`, `.cantUseTwice`, and 8 other boolean flags, plus
+`.priority`, which the original classifier never extracted at all).
+
+**6 of the 67 were found to need a mechanism this project doesn't have**
+and are excluded from this tier:
+
+| Move | ID | Real mechanism found | Why out of scope |
+|---|---|---|---|
+| Chip Away | 498 | `.ignoresTargetDefenseEvasionStages = TRUE` | `DamageCalculator` always applies the target's Def/Eva stat stages (`_apply_stage`) — no bypass path exists |
+| Sacred Sword | 533 | `.ignoresTargetDefenseEvasionStages = TRUE` | Same |
+| Darkest Lariat | 626 | `.ignoresTargetDefenseEvasionStages = TRUE` | Same |
+| Sunsteel Strike | 667 | `.ignoresTargetAbility = TRUE` | `AbilityManager.effective_ability_id()` only bypasses a target's ability when the ATTACKER has Mold Breaker/Mycelium Might — no per-move ignore-ability path exists (`ability_manager.gd:1041-1056`) |
+| Moongeist Beam | 668 | `.ignoresTargetAbility = TRUE` | Same |
+| Blood Moon | 829 | `.cantUseTwice = TRUE` | No move-repeat tracking exists anywhere in the engine |
+
+Two flags initially looked like they might be new mechanisms too, but were
+confirmed as safe reuses of already-wired fields:
+
+- **`.alwaysCriticalHit = TRUE`** (Storm Throw/480, Frost Breath/524, Wicked
+  Blow/745, Flower Trick/798) — `always_critical_hit` already exists on
+  `MoveData` (M18.5g/Surging Strikes precedent). Data-entry only.
+- **`.pulseMove = TRUE`** (Aura Sphere/396, Dragon Pulse/406, Origin
+  Pulse/618) — `pulse_move` already exists and is wired to Mega Launcher
+  (`ability_manager.gd:1794`). Notably, per that code's own comment, **no
+  move in this project's roster carried `pulse_move=true` before this
+  tier** — Mega Launcher's dispatch line had only ever been exercised
+  against a synthetic `MoveData` until now (see Testing, B4).
+- **`.damagesAirborne = TRUE`** (plain, not `DoubleDamage` — Sky
+  Uppercut/327) — confirmed via an existing code comment
+  (`status_manager.gd:764`) that this project's `damages_airborne` field
+  already unifies both source flags into one boolean.
+- **`.windMove = TRUE`** (Aeroblast/177, Air Cutter/314, Petal
+  Blizzard/572, Fairy Wind/584) — its only real consumers, Wind Rider and
+  Wind Power, are already permanently excluded from this project's ability
+  scope (`docs/m17_final_ledger.md`, IDs 274/277 — "needs a new wind_move
+  MoveData flag"). Since the would-be consumer is itself out of scope, the
+  flag has zero mechanical consequence here, matching Pay Day's
+  cosmetic-only precedent from `[M19a-gen1]`.
+
+Also caught: **10 of the 61 confirmed-pure moves carry nonzero
+`.priority`** (Mach Punch +1, Vital Throw −1, Extreme Speed +2 — resolved
+from `B_UPDATED_MOVE_DATA >= GEN_5 ? 2 : 1` at GEN_LATEST — Vacuum
+Wave/Bullet Punch/Ice Shard/Shadow Sneak/Aqua Jet/Accelerock/Jet Punch all
++1). `priority` is an existing `MoveData` field (used since the core turn-
+order resolver), but the original Bucket 1 classification never extracted
+it, so every one of these would have silently defaulted to 0 without this
+individual check.
+
+**Confirmed final: 61 of Bucket 1's 67 moves are genuinely pure
+data-entry**, each using only already-wired generic fields (`makes_contact`,
+`punching_move`, `biting_move`, `sound_move`, `ballistic_move`,
+`slicing_move`, `pulse_move`, `is_spread`, `damages_airborne`,
+`critical_hit_stage`, `always_critical_hit`, `priority`).
+
+### Implementation
+
+- `scripts/gen_moves.py`: 61 new entries appended to `MOVES` after Slash(163)'s
+  entry, each with its own source citation comment. No changes to
+  `DEFAULTS`/`FIELD_ORDER` — every field used was already registered.
+  No `battle_manager.gd`/`status_manager.gd`/`damage_calculator.gd`/
+  `ability_manager.gd` changes — per this tier's own scope, zero new
+  dispatch logic for any confirmed-pure-reuse move.
+- 61 new `.tres` files regenerated — 216 total move `.tres` files, up from
+  155.
+
+### Testing
+
+New `scenes/battle/m19_bucket1_test.gd`/`.tscn`: parameterized table-driven
+suite (single loop over all 61 moves, matching `[M19-pipeline-fix]`'s own
+table-driven convention rather than 61 individual test functions), 736/736
+assertions, passed clean on the first run.
+
+Section A: for each of the 61 moves, one combined assertion for core data
+(name/type/category/power/accuracy/pp/makes_contact) plus one assertion
+per special-flag token the move carries, AND a negative assertion for
+every special-flag field the move does NOT carry (confirms the table isn't
+silently passing on absent checks — e.g. a move without `is_spread` in its
+token list is explicitly asserted `not mv.is_spread`).
+
+Section B: functional confirmation, scoped per this tier's own testing
+convention (a plumbing check that flags actually trigger their target
+mechanism on REAL data, not a re-derivation of any mechanism's own
+correctness). B1: Dragon Claw fires and deals real nonzero damage through
+the actual dispatch pipeline. B2: Megahorn (`makes_contact=true`) triggers
+Rough Skin recoil (`_force_contact_roll`, `[M18.5g]` pattern). B3: Aura
+Sphere (`makes_contact=false`) does NOT trigger Rough Skin — discriminator
+confirming B2 wasn't vacuous. B4: Dragon Pulse (`pulse_move=true`) deals
+strictly more damage with an attacker holding Mega Launcher than without —
+the first real-data exercise of that dispatch line, closing the "only
+tested via synthetic MoveData" gap noted in Mega Launcher's own
+implementation comment.
+
+`critical_hit_stage`, `damages_airborne`, and `priority` are deliberately
+NOT re-proven functionally, matching `[M19a-gen1]`'s own established
+scoping: `force_crit` bypasses crit-STAGE math entirely (unobservable via
+a full-battle check), the semi-invulnerable bypass is already fully
+covered by `two_turn_test.gd`, and general priority-ordering is already
+fully covered by `battle_test.gd` — Section A's data-integrity check is
+the correctly-scoped confirmation for all three on these specific moves.
+
+### Regression
+
+Per this task's own narrow scope (no full sweep): `item_registry_test.tscn`
+309/309, `status_test.tscn` 78/78, `stat_test.tscn` 78/78, `damage_test.tscn`
+24/24 — all unchanged, confirmed via direct foreground runs with a clean
+Godot process state before and after.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated: Bucket 1 marked complete (67 moves: 61
+implemented + 6 reclassified as new-mechanism exceptions, folded into
+Bucket 4 under a new named sub-group), Section A/E tables and the top
+summary block's running totals recomputed (155→216 implemented,
+779→718 remaining). CLAUDE.md's status section updated noting
+`[M19-bucket1]` complete and the new running move-implementation count
+(155→216). Next recommended tier: Bucket 2 (246 moves), likely needing
+its own further internal chunking given its size.

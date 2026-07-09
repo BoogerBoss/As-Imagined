@@ -1115,6 +1115,316 @@ MOVES = [
     {"id": 163, "name": "Slash",
      "type": TYPE_NORMAL, "category": PHYS, "power": 70, "accuracy": 100, "pp": 20,
      "makes_contact": True, "slicing_move": True, "critical_hit_stage": 1},
+
+    # ── Bucket 1: pure damage, no additional effect (M19-bucket1) ─────────────
+
+    # Aeroblast(177)  Flying/Spec/100/95/5, critical_hit_stage
+    {"id": 177, "name": "Aeroblast",
+     "type": TYPE_FLYING, "category": SPEC, "power": 100, "accuracy": 95, "pp": 5,
+     "critical_hit_stage": 1},
+
+    # Mach Punch(183)  Fighting/Phys/40/100/30, makes_contact, punching_move, priority
+    {"id": 183, "name": "Mach Punch",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 40, "accuracy": 100, "pp": 30,
+     "makes_contact": True, "punching_move": True, "priority": 1},
+
+    # Feint Attack(185)  Dark/Phys/60/0/20, no flags
+    {"id": 185, "name": "Feint Attack",
+     "type": TYPE_DARK, "category": PHYS, "power": 60, "accuracy": 0, "pp": 20},
+
+    # Megahorn(224)  Bug/Phys/120/85/10, makes_contact
+    {"id": 224, "name": "Megahorn",
+     "type": TYPE_BUG, "category": PHYS, "power": 120, "accuracy": 85, "pp": 10,
+     "makes_contact": True},
+
+    # Vital Throw(233)  Fighting/Phys/70/0/10, makes_contact, priority
+    {"id": 233, "name": "Vital Throw",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 70, "accuracy": 0, "pp": 10,
+     "makes_contact": True, "priority": -1},
+
+    # Cross Chop(238)  Fighting/Phys/100/80/5, makes_contact, critical_hit_stage
+    {"id": 238, "name": "Cross Chop",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 100, "accuracy": 80, "pp": 5,
+     "makes_contact": True, "critical_hit_stage": 1},
+
+    # Extreme Speed(245)  Normal/Phys/80/100/5, makes_contact, priority
+    #   priority: B_UPDATED_MOVE_DATA >= GEN_5 ? 2 : 1 -> 2 at GEN_LATEST
+    {"id": 245, "name": "Extreme Speed",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 80, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "priority": 2},
+
+    # Hyper Voice(304)  Normal/Spec/90/100/10, sound_move, is_spread
+    {"id": 304, "name": "Hyper Voice",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 90, "accuracy": 100, "pp": 10,
+     "sound_move": True, "is_spread": True},
+
+    # Air Cutter(314)  Flying/Spec/60/95/25, slicing_move, is_spread, critical_hit_stage
+    {"id": 314, "name": "Air Cutter",
+     "type": TYPE_FLYING, "category": SPEC, "power": 60, "accuracy": 95, "pp": 25,
+     "slicing_move": True, "is_spread": True, "critical_hit_stage": 1},
+
+    # Shadow Punch(325)  Ghost/Phys/60/0/20, makes_contact, punching_move
+    {"id": 325, "name": "Shadow Punch",
+     "type": TYPE_GHOST, "category": PHYS, "power": 60, "accuracy": 0, "pp": 20,
+     "makes_contact": True, "punching_move": True},
+
+    # Sky Uppercut(327)  Fighting/Phys/85/90/15, makes_contact, punching_move, damages_airborne
+    #   damagesAirborne(plain, not DoubleDamage) -> damages_airborne per this project's unified-field convention (status_manager.gd:764)
+    {"id": 327, "name": "Sky Uppercut",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 85, "accuracy": 90, "pp": 15,
+     "makes_contact": True, "punching_move": True, "damages_airborne": True},
+
+    # Dragon Claw(337)  Dragon/Phys/80/100/15, makes_contact
+    {"id": 337, "name": "Dragon Claw",
+     "type": TYPE_DRAGON, "category": PHYS, "power": 80, "accuracy": 100, "pp": 15,
+     "makes_contact": True},
+
+    # Magical Leaf(345)  Grass/Spec/60/0/20, no flags
+    {"id": 345, "name": "Magical Leaf",
+     "type": TYPE_GRASS, "category": SPEC, "power": 60, "accuracy": 0, "pp": 20},
+
+    # Leaf Blade(348)  Grass/Phys/90/100/15, makes_contact, slicing_move, critical_hit_stage
+    {"id": 348, "name": "Leaf Blade",
+     "type": TYPE_GRASS, "category": PHYS, "power": 90, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "slicing_move": True, "critical_hit_stage": 1},
+
+    # Shock Wave(351)  Electric/Spec/60/0/20, no flags
+    {"id": 351, "name": "Shock Wave",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 60, "accuracy": 0, "pp": 20},
+
+    # Aura Sphere(396)  Fighting/Spec/80/0/20, ballistic_move, pulse_move
+    #   pulseMove=TRUE -> pulse_move (wired to Mega Launcher, ability_manager.gd:1794)
+    {"id": 396, "name": "Aura Sphere",
+     "type": TYPE_FIGHTING, "category": SPEC, "power": 80, "accuracy": 0, "pp": 20,
+     "ballistic_move": True, "pulse_move": True},
+
+    # Night Slash(400)  Dark/Phys/70/100/15, makes_contact, slicing_move, critical_hit_stage
+    {"id": 400, "name": "Night Slash",
+     "type": TYPE_DARK, "category": PHYS, "power": 70, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "slicing_move": True, "critical_hit_stage": 1},
+
+    # Aqua Tail(401)  Water/Phys/90/90/10, makes_contact
+    {"id": 401, "name": "Aqua Tail",
+     "type": TYPE_WATER, "category": PHYS, "power": 90, "accuracy": 90, "pp": 10,
+     "makes_contact": True},
+
+    # Seed Bomb(402)  Grass/Phys/80/100/15, ballistic_move
+    {"id": 402, "name": "Seed Bomb",
+     "type": TYPE_GRASS, "category": PHYS, "power": 80, "accuracy": 100, "pp": 15,
+     "ballistic_move": True},
+
+    # X-Scissor(404)  Bug/Phys/80/100/15, makes_contact, slicing_move
+    {"id": 404, "name": "X-Scissor",
+     "type": TYPE_BUG, "category": PHYS, "power": 80, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "slicing_move": True},
+
+    # Dragon Pulse(406)  Dragon/Spec/85/100/10, pulse_move
+    #   pulseMove=TRUE -> pulse_move
+    {"id": 406, "name": "Dragon Pulse",
+     "type": TYPE_DRAGON, "category": SPEC, "power": 85, "accuracy": 100, "pp": 10,
+     "pulse_move": True},
+
+    # Power Gem(408)  Rock/Spec/80/100/20, no flags
+    {"id": 408, "name": "Power Gem",
+     "type": TYPE_ROCK, "category": SPEC, "power": 80, "accuracy": 100, "pp": 20},
+
+    # Vacuum Wave(410)  Fighting/Spec/40/100/30, priority
+    {"id": 410, "name": "Vacuum Wave",
+     "type": TYPE_FIGHTING, "category": SPEC, "power": 40, "accuracy": 100, "pp": 30,
+     "priority": 1},
+
+    # Bullet Punch(418)  Steel/Phys/40/100/30, makes_contact, punching_move, priority
+    {"id": 418, "name": "Bullet Punch",
+     "type": TYPE_STEEL, "category": PHYS, "power": 40, "accuracy": 100, "pp": 30,
+     "makes_contact": True, "punching_move": True, "priority": 1},
+
+    # Ice Shard(420)  Ice/Phys/40/100/30, priority
+    {"id": 420, "name": "Ice Shard",
+     "type": TYPE_ICE, "category": PHYS, "power": 40, "accuracy": 100, "pp": 30,
+     "priority": 1},
+
+    # Shadow Claw(421)  Ghost/Phys/70/100/15, makes_contact, critical_hit_stage
+    {"id": 421, "name": "Shadow Claw",
+     "type": TYPE_GHOST, "category": PHYS, "power": 70, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "critical_hit_stage": 1},
+
+    # Shadow Sneak(425)  Ghost/Phys/40/100/30, makes_contact, priority
+    {"id": 425, "name": "Shadow Sneak",
+     "type": TYPE_GHOST, "category": PHYS, "power": 40, "accuracy": 100, "pp": 30,
+     "makes_contact": True, "priority": 1},
+
+    # Psycho Cut(427)  Psychic/Phys/70/100/20, slicing_move, critical_hit_stage
+    {"id": 427, "name": "Psycho Cut",
+     "type": TYPE_PSYCHIC, "category": PHYS, "power": 70, "accuracy": 100, "pp": 20,
+     "slicing_move": True, "critical_hit_stage": 1},
+
+    # Power Whip(438)  Grass/Phys/120/85/10, makes_contact
+    {"id": 438, "name": "Power Whip",
+     "type": TYPE_GRASS, "category": PHYS, "power": 120, "accuracy": 85, "pp": 10,
+     "makes_contact": True},
+
+    # Magnet Bomb(443)  Steel/Phys/60/0/20, ballistic_move
+    {"id": 443, "name": "Magnet Bomb",
+     "type": TYPE_STEEL, "category": PHYS, "power": 60, "accuracy": 0, "pp": 20,
+     "ballistic_move": True},
+
+    # Stone Edge(444)  Rock/Phys/100/80/5, critical_hit_stage
+    {"id": 444, "name": "Stone Edge",
+     "type": TYPE_ROCK, "category": PHYS, "power": 100, "accuracy": 80, "pp": 5,
+     "critical_hit_stage": 1},
+
+    # Aqua Jet(453)  Water/Phys/40/100/20, makes_contact, priority
+    {"id": 453, "name": "Aqua Jet",
+     "type": TYPE_WATER, "category": PHYS, "power": 40, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "priority": 1},
+
+    # Spacial Rend(460)  Dragon/Spec/100/95/5, critical_hit_stage
+    {"id": 460, "name": "Spacial Rend",
+     "type": TYPE_DRAGON, "category": SPEC, "power": 100, "accuracy": 95, "pp": 5,
+     "critical_hit_stage": 1},
+
+    # Storm Throw(480)  Fighting/Phys/60/100/10, makes_contact, always_critical_hit
+    #   alwaysCriticalHit=TRUE -> always_critical_hit (existing field, M18.5g precedent)
+    {"id": 480, "name": "Storm Throw",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 60, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "always_critical_hit": True},
+
+    # Frost Breath(524)  Ice/Spec/60/90/10, always_critical_hit
+    #   alwaysCriticalHit=TRUE -> always_critical_hit
+    {"id": 524, "name": "Frost Breath",
+     "type": TYPE_ICE, "category": SPEC, "power": 60, "accuracy": 90, "pp": 10,
+     "always_critical_hit": True},
+
+    # Drill Run(529)  Ground/Phys/80/95/10, makes_contact, critical_hit_stage
+    {"id": 529, "name": "Drill Run",
+     "type": TYPE_GROUND, "category": PHYS, "power": 80, "accuracy": 95, "pp": 10,
+     "makes_contact": True, "critical_hit_stage": 1},
+
+    # Petal Blizzard(572)  Grass/Phys/90/100/15, is_spread
+    {"id": 572, "name": "Petal Blizzard",
+     "type": TYPE_GRASS, "category": PHYS, "power": 90, "accuracy": 100, "pp": 15,
+     "is_spread": True},
+
+    # Disarming Voice(574)  Fairy/Spec/40/0/15, sound_move, is_spread
+    {"id": 574, "name": "Disarming Voice",
+     "type": TYPE_FAIRY, "category": SPEC, "power": 40, "accuracy": 0, "pp": 15,
+     "sound_move": True, "is_spread": True},
+
+    # Fairy Wind(584)  Fairy/Spec/40/100/30, no flags
+    {"id": 584, "name": "Fairy Wind",
+     "type": TYPE_FAIRY, "category": SPEC, "power": 40, "accuracy": 100, "pp": 30},
+
+    # Boomburst(586)  Normal/Spec/140/100/10, sound_move, is_spread
+    {"id": 586, "name": "Boomburst",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 140, "accuracy": 100, "pp": 10,
+     "sound_move": True, "is_spread": True},
+
+    # Dazzling Gleam(605)  Fairy/Spec/80/100/10, is_spread
+    {"id": 605, "name": "Dazzling Gleam",
+     "type": TYPE_FAIRY, "category": SPEC, "power": 80, "accuracy": 100, "pp": 10,
+     "is_spread": True},
+
+    # Land's Wrath(616)  Ground/Phys/90/100/10, is_spread
+    {"id": 616, "name": "Land's Wrath",
+     "type": TYPE_GROUND, "category": PHYS, "power": 90, "accuracy": 100, "pp": 10,
+     "is_spread": True},
+
+    # Origin Pulse(618)  Water/Spec/110/85/10, is_spread, pulse_move
+    #   pulseMove=TRUE -> pulse_move; TARGET_FOES_AND_ALLY -> is_spread
+    {"id": 618, "name": "Origin Pulse",
+     "type": TYPE_WATER, "category": SPEC, "power": 110, "accuracy": 85, "pp": 10,
+     "is_spread": True, "pulse_move": True},
+
+    # Precipice Blades(619)  Ground/Phys/120/85/10, is_spread
+    {"id": 619, "name": "Precipice Blades",
+     "type": TYPE_GROUND, "category": PHYS, "power": 120, "accuracy": 85, "pp": 10,
+     "is_spread": True},
+
+    # High Horsepower(630)  Ground/Phys/95/95/10, makes_contact
+    {"id": 630, "name": "High Horsepower",
+     "type": TYPE_GROUND, "category": PHYS, "power": 95, "accuracy": 95, "pp": 10,
+     "makes_contact": True},
+
+    # Leafage(633)  Grass/Phys/40/100/40, no flags
+    {"id": 633, "name": "Leafage",
+     "type": TYPE_GRASS, "category": PHYS, "power": 40, "accuracy": 100, "pp": 40},
+
+    # Smart Strike(647)  Steel/Phys/70/0/10, makes_contact
+    {"id": 647, "name": "Smart Strike",
+     "type": TYPE_STEEL, "category": PHYS, "power": 70, "accuracy": 0, "pp": 10,
+     "makes_contact": True},
+
+    # Dragon Hammer(655)  Dragon/Phys/90/100/15, makes_contact
+    {"id": 655, "name": "Dragon Hammer",
+     "type": TYPE_DRAGON, "category": PHYS, "power": 90, "accuracy": 100, "pp": 15,
+     "makes_contact": True},
+
+    # Brutal Swing(656)  Dark/Phys/60/100/20, makes_contact, is_spread
+    {"id": 656, "name": "Brutal Swing",
+     "type": TYPE_DARK, "category": PHYS, "power": 60, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "is_spread": True},
+
+    # Accelerock(663)  Rock/Phys/40/100/20, makes_contact, priority
+    {"id": 663, "name": "Accelerock",
+     "type": TYPE_ROCK, "category": PHYS, "power": 40, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "priority": 1},
+
+    # Branch Poke(713)  Grass/Phys/40/100/40, makes_contact
+    {"id": 713, "name": "Branch Poke",
+     "type": TYPE_GRASS, "category": PHYS, "power": 40, "accuracy": 100, "pp": 40,
+     "makes_contact": True},
+
+    # Overdrive(714)  Electric/Spec/80/100/10, sound_move, is_spread
+    {"id": 714, "name": "Overdrive",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 80, "accuracy": 100, "pp": 10,
+     "sound_move": True, "is_spread": True},
+
+    # False Surrender(721)  Dark/Phys/80/0/10, makes_contact
+    {"id": 721, "name": "False Surrender",
+     "type": TYPE_DARK, "category": PHYS, "power": 80, "accuracy": 0, "pp": 10,
+     "makes_contact": True},
+
+    # Wicked Blow(745)  Dark/Phys/75/100/5, makes_contact, punching_move, always_critical_hit
+    #   alwaysCriticalHit=TRUE -> always_critical_hit
+    {"id": 745, "name": "Wicked Blow",
+     "type": TYPE_DARK, "category": PHYS, "power": 75, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "punching_move": True, "always_critical_hit": True},
+
+    # Glacial Lance(752)  Ice/Phys/120/100/5, is_spread
+    {"id": 752, "name": "Glacial Lance",
+     "type": TYPE_ICE, "category": PHYS, "power": 120, "accuracy": 100, "pp": 5,
+     "is_spread": True},
+
+    # Astral Barrage(753)  Ghost/Spec/120/100/5, is_spread
+    {"id": 753, "name": "Astral Barrage",
+     "type": TYPE_GHOST, "category": SPEC, "power": 120, "accuracy": 100, "pp": 5,
+     "is_spread": True},
+
+    # Jet Punch(785)  Water/Phys/60/100/15, makes_contact, punching_move, priority
+    {"id": 785, "name": "Jet Punch",
+     "type": TYPE_WATER, "category": PHYS, "power": 60, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "punching_move": True, "priority": 1},
+
+    # Kowtow Cleave(797)  Dark/Phys/85/0/10, makes_contact, slicing_move
+    {"id": 797, "name": "Kowtow Cleave",
+     "type": TYPE_DARK, "category": PHYS, "power": 85, "accuracy": 0, "pp": 10,
+     "makes_contact": True, "slicing_move": True},
+
+    # Flower Trick(798)  Grass/Phys/70/0/10, always_critical_hit
+    #   alwaysCriticalHit=TRUE -> always_critical_hit
+    {"id": 798, "name": "Flower Trick",
+     "type": TYPE_GRASS, "category": PHYS, "power": 70, "accuracy": 0, "pp": 10,
+     "always_critical_hit": True},
+
+    # Hyper Drill(813)  Normal/Phys/100/100/5, makes_contact
+    {"id": 813, "name": "Hyper Drill",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 100, "accuracy": 100, "pp": 5,
+     "makes_contact": True},
+
+    # Aqua Cutter(821)  Water/Phys/70/100/20, slicing_move, critical_hit_stage
+    {"id": 821, "name": "Aqua Cutter",
+     "type": TYPE_WATER, "category": PHYS, "power": 70, "accuracy": 100, "pp": 20,
+     "slicing_move": True, "critical_hit_stage": 1},
 ]
 
 # ── MoveData field defaults (fields at default value are omitted from .tres) ──
