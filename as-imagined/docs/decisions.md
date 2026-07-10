@@ -18749,3 +18749,194 @@ updated (128→124); Section E's two summary tables and the top-of-document
 reconciliation recomputed (550 implemented + 1 proposed sub-tier + 1
 deferred + 213 excluded + 169 Tier-4 residual = 934, reconfirmed). Section
 D's residual: 173→169.
+
+## [D1 cheap clusters]
+
+8 of D1's 18 remaining effect-name clusters, confirmed via a fresh read
+to be tagged strictly **CHEAP** (not CHEAP-MODERATE) — `EFFECT_WEATHER`
+(5), `EFFECT_POWER_BASED_ON_USER_HP` (3), `EFFECT_POWER_BASED_ON_TARGET_HP`
+(3), `EFFECT_STEAL_ITEM` (2), `EFFECT_LOCK_ON` (2), `EFFECT_SWAGGER` (2),
+`EFFECT_SUCKER_PUNCH` (2), `EFFECT_STORED_POWER` (2) — 21 moves total.
+**Scope correction against D5's own "~15 moves" estimate**: the real
+strictly-CHEAP total is 21, not ~15 — D5's own prior recommendation had
+silently omitted the two HP-based-power clusters (6 moves); all 8 were
+bundled into this one session rather than an arbitrary 6-cluster subset.
+Also confirmed via fresh read that the task's own "likely candidates"
+list (Foresight, First Turn Only, Trick, Hit Escape, Hit Switch Target)
+are all tagged CHEAP-MODERATE, not CHEAP — correctly excluded from this
+session's scope per Step 1's own strict instruction.
+
+### Step 0 — re-verification (not trusted from the CHEAP tag alone)
+
+**`EFFECT_WEATHER`**: confirmed `Cmd_setfieldweather` → `TryChangeBattleWeather(
+battler, move.argument.weatherType, ABILITY_NONE)` — the SAME function
+ability-triggered weather-setting already calls, confirming
+`BattleManager.try_set_weather` reuse is exact. **Two real, pre-existing
+gaps flagged, not fixed**: (1) source's `BATTLE_WEATHER_HAIL` and
+`BATTLE_WEATHER_SNOW` are genuinely different states — traced
+`HandleEndTurnWeatherDamage` (battle_end_turn.c L60-83) and
+`CalcDefenseStat` (battle_util.c L7204-7207) directly: Hail chips
+non-Ice-types (maxHP/16) and grants no stat boost; Snow deals NO chip
+damage at all but grants Ice-types +50% Defense. This project's already-
+shipped Snow Warning ability (`[M17c]`) already collapses both into the
+single `WEATHER_HAIL` constant — Snowscape(809) inherits the identical
+simplification, not a new one. (2) `TryChangeBattleWeather` refuses to
+overwrite an active Primal weather (`B_WEATHER_PRIMAL_ANY`) unless the
+setter is that same ability — confirmed `BattleManager.try_set_weather`
+has NO such check at all, meaning this project's already-shipped
+Drizzle/Drought/Sand Stream/Snow Warning abilities share this exact gap;
+predates this tier, not expanded into.
+
+**`EFFECT_POWER_BASED_ON_USER_HP`/`_TARGET_HP`**: confirmed
+`basePower = move.power * hp/maxHP` (battle_util.c L6136-6137/L6192-6193)
+— plain continuous scaling, no floor-to-1 clamp in source (a very-low-HP
+Eruption/Water Spout can legitimately compute to 0 power, matching real
+behavior). Hard Press(840) confirmed a real non-uniformity within its
+own cluster (100/10/Physical vs. Wring Out/Crush Grip's 120/5).
+
+**`EFFECT_STEAL_ITEM`**: confirmed `CanStealItem`'s own real content
+(trainer-battle-type item-ownership rules, Mega-Stone/species-locked-item
+checks) is entirely moot for this project. Confirmed via direct read that
+Thief/Covet have NO Jaboca/Rowap exemption (unlike Pluck/Bug Bite's own
+dispatch, which checks this explicitly first) — item-general, not
+berry-specific, exactly as the test plan asked to confirm. New
+`AbilityManager.try_thief_steal` wrapper around the existing
+`_try_steal_item` primitive (matching `try_sticky_barb_transfer`'s own
+precedent rather than calling the underscore-prefixed helper directly
+from another class).
+
+**`EFFECT_LOCK_ON`**: confirmed a genuine mechanism, not a flag — a
+2-tick per-ATTACKER-target volatile (`battlerWithSureHit`/`lockOn`,
+`Cmd_setalwayshitflag`, battle_script_commands.c L8089-8102), fails if
+already active (no overwrite), decremented at end of turn
+(battle_end_turn.c L68-69), cleared reciprocally the instant EITHER
+battler leaves the field (battle_main.c L3131-3132/L3277-3278) — the
+FIFTH volatile now using this project's established reciprocal-clear
+shape, and the first held on the SOURCE side of the relationship rather
+than the victim side. Confirmed from `CanMoveSkipAccuracyCalc`
+(battle_util.c L10176) that this bypasses semi-invulnerability too, not
+just the accuracy roll — a real, documented mechanic (Lock-On lets a
+follow-up hit connect against a Dug-in/Flying target) — inserted in
+`StatusManager.check_accuracy` BEFORE the semi-invulnerable check, not
+merely alongside No Guard.
+
+**`EFFECT_SWAGGER`**: **the one real correction this tier found**.
+Traced `case EFFECT_SWAGGER` (battle_stat_change.c L147-156) directly:
+Own Tempo redirects the ENTIRE move to `BattleScript_OwnTempoPrevents`
+(a bare fail message + `goto BattleScript_MoveEnd`, no `trystatchanges`
+call at all) — Own Tempo blocks the stat raise too, not just the
+confusion. A naive independent composition of "raise stat" +
+"try_apply_confusion" (which already has its OWN Own-Tempo check) would
+have still let the stat raise through, since neither half alone
+replicates the "total block" semantic. Implemented as an explicit early
+gate checking Own Tempo before attempting either half. The stat raise
+itself reuses `_apply_one_stat_change_pair` (not a raw `apply_stat_change`
+call) specifically so Opportunist/Mirror Herb's own "opponent's stat
+rose" reactive triggers still fire correctly for Swagger's raise.
+Accuracy confirmed genuinely non-uniform (Swagger 85 at GEN_7+, Flatter
+100).
+
+**`EFFECT_SUCKER_PUNCH`**: confirmed `HasBattlerActedThisTurn(battlerDef)
+|| (IsBattleMoveStatus(defMove) && ...)` (battle_move_resolution.c
+L1387-1394) — directly reuses `[M18j]`'s existing
+`_has_target_already_acted` helper with zero new tracking. Me First's
+own exemption confirmed permanently moot (unimplemented). Thunderclap
+confirmed Special-category (Sucker Punch is Physical) — a real
+non-uniformity, not a copy-paste.
+
+**`EFFECT_STORED_POWER`**: confirmed via direct read of
+`CountBattlerStatIncreases` (battle_util.c L5948-5961) that the formula
+SUMS the magnitude of every positive stat stage (e.g. Atk+3 contributes
+3 to the total, not 1) — NOT a count of how many distinct stats are
+raised, an easy misread the test suite's own H.02/H.03 discriminators
+verify explicitly. Confirmed `countEvasionAcc=TRUE` for this effect
+specifically (all 7 stats including Accuracy/Evasion), distinct from
+Punishment's own `FALSE` (not in this tier's scope).
+
+### Design
+
+All 8 clusters confirmed clean at Step 0 — one real correction found and
+designed around (Swagger's Own-Tempo total-block), two pre-existing gaps
+flagged rather than expanded into (Hail/Snow split, Primal-weather
+block). New `MoveData` fields: `weather_type`, `power_scales_with_user_hp`,
+`power_scales_with_target_hp`, `steals_item_if_itemless`, `is_lock_on`,
+`is_swagger`, `is_sucker_punch`, `is_stored_power`. New
+`BattlePokemon.sure_hit_target`/`sure_hit_turns` fields (the fifth
+reciprocal-clear volatile). New `BattleManager._positive_stat_stage_sum`
+static helper (Stored Power/Power Trip's own formula input). New
+`AbilityManager.try_thief_steal` wrapper. New signals: `sure_hit_set`,
+`item_stolen`. `StatusManager.check_accuracy` gained the Lock-On bypass
+(before semi-invulnerable). `_phase_end_of_turn` gained the Lock-On
+2-tick countdown. `_clear_volatiles` gained the reciprocal-clear pair
+for `sure_hit_target`.
+
+### Test plan
+
+New `scenes/battle/m19_d1_cheap_clusters_test.gd`/`.tscn`: 47/47
+assertions across 8 sections — data integrity for all 21 moves;
+weather-set discriminator (snapshotted live via `weather_set`, not
+post-battle — see the whole-battle-aggregation fix below); HP-based-power
+damage comparisons (full-vs-half attacker HP for Eruption, full-vs-half
+target HP for Wring Out); Thief's itemless-gate/already-has-item/Sticky-
+Hold trio; Lock-On's direct unit tests (including the semi-invulnerable
+bypass and its own discriminator, plus the reciprocal-clear pair) and a
+full-battle confirmation; Swagger's ordinary raise+confuse pair and the
+KEY Own-Tempo-blocks-everything discriminator; Sucker Punch's success/
+status-move-fail/already-acted-fail trio; Stored Power's direct formula
+unit tests (magnitude-sum, Accuracy/Evasion inclusion discriminator) plus
+a full-battle damage comparison. **Four real bugs caught and fixed on
+the first run (44/47)**: (1) a genuinely new implementation bug — the new
+weather-setting dispatch never emitted `weather_set`/called
+`_notify_weather_changed()`, unlike every other real weather-change call
+site (Drizzle/Drought's own switch-in dispatch, Baton Pass inheritance,
+Sand Spit) — fixed by matching that established emission pattern
+exactly. (2)+(3) a fresh recurrence of the documented `"a" + "b %s" %
+[x]` string-concatenation-then-format precedence bug (3 separate
+`_chk` calls, each parenthesized to fix). (4) a genuine test-design trap:
+the original Sucker Punch "already acted" discriminator assumed speed
+alone determines turn order, forgetting Sucker Punch's own +1 priority
+would always beat a plain damaging move regardless of speed — fixed by
+giving the target a +2-priority move instead, the only way to genuinely
+act before a Sucker Punch user. The B.01/B.02 weather checks were ALSO
+rewritten to snapshot live via the (now-correctly-emitting) `weather_set`
+signal rather than reading `bm.weather` post-battle, since Sandstorm's
+own chip damage means the battle runs several turns and weather's 5-turn
+duration could expire before the battle ends — a fresh instance of the
+documented whole-battle-aggregation pitfall, caught proactively rather
+than via a flaky failure. Stable across 5 reruns after all fixes.
+
+### Regression
+
+16 suites: `damage_test` 24/24, `move_test` 49/49, `stat_test` 78/78,
+`status_test` 78/78 (the 4 required), `switch_test` 64/64,
+`m19_bucket4_pairs_test` 52/52 (Pluck/Bug Bite's own origin suite, the
+`M19-berry-steal` precedent for Thief/Covet), `m17j_test` 48/48
+(`_try_steal_item`'s own origin suite), `m18j_test` 26/26
+(`_has_target_already_acted`'s own origin suite), `m17b_test` 109/109
+(Own Tempo's own origin suite), `weather_test` 64/64, `m17c_test` 95/95
+(the weather-setting abilities `try_set_weather` is shared with),
+`doubles_test` 54/54, `m19_d0_test` 38/38, `tier4_test` 86/86,
+`ability_test` 64/64, `m17n3_test` 62/62 (turn-order/priority) — all
+unchanged, 0 failures.
+
+### Data
+
+`MoveData` gained 8 new fields. `BattlePokemon` gained 2 new fields
+(`sure_hit_target`, `sure_hit_turns`). `BattleManager` gained 1 new
+static helper (`_positive_stat_stage_sum`) and 2 new signals
+(`sure_hit_set`, `item_stolen`). `AbilityManager` gained 1 new wrapper
+(`try_thief_steal`). `StatusManager.check_accuracy` and
+`AbilityManager.bypasses_redirection`-adjacent dispatch sites extended.
+21 new move dict entries added to `scripts/gen_moves.py`; 21 new `.tres`
+files regenerated — 571 total move `.tres` files, up from 550.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: all 8 CHEAP cluster rows
+in D1's table marked CLOSED with their Step 0 findings; D1's own header
+and footer reconciliation updated (45→24 moves, 18→10 clusters
+remaining, all CHEAP-MODERATE or harder); D5's own recommendation item 2
+marked CLOSED with the "~15 vs 21" scope correction; Section E's two
+summary tables and the top-of-document reconciliation recomputed (571
+implemented + 1 proposed sub-tier + 1 deferred + 213 excluded + 148
+Tier-4 residual = 934, reconfirmed). **Section D's residual: 169→148.**

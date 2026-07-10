@@ -197,6 +197,20 @@ var escape_prevented_by: BattlePokemon = null
 # [M18.5d-3] pattern those 3 fields already established) or the seeded mon
 # itself switches out/faints (its own base-case clear).
 var leeched_by: BattlePokemon = null
+# [D1] Lock-On(199)/Mind Reader(170) — direct object reference (held on the
+# ATTACKER, unlike leeched_by/wrapped_by/etc. which are held on the VICTIM)
+# to whichever opponent this mon's NEXT move is guaranteed to hit,
+# bypassing both the accuracy roll AND semi-invulnerability. null = no
+# active lock; non-null = guaranteed-hit target, cleared after
+# `sure_hit_turns` reaches 0 (BattleManager._phase_end_of_turn) or the
+# instant EITHER battler leaves the field (reciprocal clear in
+# BattleManager._clear_volatiles, the same established shape
+# infatuated_by/wrapped_by/escape_prevented_by/leeched_by all use — this
+# is the FIFTH field using it, and the first held on the SOURCE side of
+# the relationship rather than the victim side, since here the "victim"
+# is just a target reference, not itself carrying any state).
+var sure_hit_target: BattlePokemon = null
+var sure_hit_turns: int = 0
 # M18u: Metronome item's consecutive-same-move-use counter. Compared against
 # last_move_used (BEFORE it's overwritten for the current move) at the same
 # PP-deduction site source colocates its own reset check

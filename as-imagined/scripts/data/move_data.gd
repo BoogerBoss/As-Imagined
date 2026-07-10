@@ -1622,3 +1622,116 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   `effective_move_type` now checks `move.is_hidden_power` first and
 #   returns -1 (no ability-driven override) unconditionally.
 @export var is_hidden_power: bool = false
+
+# [D1 cheap clusters] weather_type: Sandstorm(201)/Rain Dance(240)/Sunny
+#   Day(241)/Hail(258)/Snowscape(809) — the DamageCalculator.WEATHER_*
+#   value this move sets via the existing, fully generic
+#   `BattleManager.try_set_weather(weather_type, by_pokemon)` (built for
+#   Drizzle/Drought/Sand Stream/Snow Warning, `[M17c]`). Source:
+#   `Cmd_setfieldweather` -> `TryChangeBattleWeather(battler,
+#   move.argument.weatherType, ABILITY_NONE)` — the SAME function
+#   ability-triggered weather-setting already calls, confirming reuse is
+#   exact. Snowscape maps to the SAME `WEATHER_HAIL` constant Hail/Snow
+#   Warning already use — this project has only one Ice-weather state
+#   (FLAGGED, not fixed: real source's `BATTLE_WEATHER_SNOW` is a
+#   genuinely different state from `BATTLE_WEATHER_HAIL` — Snow gives
+#   Ice-types +50% Defense with NO end-of-turn chip damage, while Hail
+#   chips non-Ice-types and grants no Defense boost; this project's
+#   already-shipped Snow Warning ability has the same simplification).
+#   FLAGGED, not fixed: `try_set_weather` has no Primal-weather block —
+#   source's own `TryChangeBattleWeather` refuses to overwrite an active
+#   Primordial Sea/Desolate Land/Delta Stream unless the setter is that
+#   SAME ability; this project's already-shipped Drizzle/Drought/Sand
+#   Stream/Snow Warning abilities share this identical gap, predating
+#   this tier.
+@export var weather_type: int = 0
+
+# [D1 cheap clusters] power_scales_with_user_hp / power_scales_with_target_hp:
+#   Eruption(284)/Water Spout(323)/Dragon Energy(748) (user) and Wring
+#   Out(378)/Crush Grip(462)/Hard Press(840) (target) — a plain
+#   CONTINUOUS linear scale (`basePower = move.power * hp/maxHP`),
+#   genuinely simpler than (and distinct from) `is_flail_power`'s
+#   stepped/banded formula. No floor-to-1 clamp in source — a
+#   very-low-HP user/target can legitimately compute to 0 base power.
+#   Source: battle_util.c L6136-6137 (user)/L6192-6193 (target). Reuses
+#   the existing `power_override` dispatch mechanism (`[M16b]` Rollout/
+#   Magnitude precedent) via a new small static helper each.
+@export var power_scales_with_user_hp: bool = false
+@export var power_scales_with_target_hp: bool = false
+
+# [D1 cheap clusters] steals_item_if_itemless: Thief(168)/Covet(343) — on
+#   a successful hit, steals the target's held item, gated on the
+#   ATTACKER currently holding none. Directly reuses `AbilityManager.
+#   _try_steal_item` (the exact Pickpocket/Magician primitive, `[M17j]`)
+#   verbatim via a new thin wrapper — item-general, NOT berry-specific
+#   (a real, confirmed difference from `steals_and_eats_berry`'s Pluck/
+#   Bug Bite: no Jaboca/Rowap exemption exists for Thief/Covet in
+#   source). Source: battle_move_resolution.c L3487-3499
+#   (`CanStealItem`'s own content — trainer-battle-type item-ownership
+#   rules and Mega-Stone/species-locked-item checks — confirmed entirely
+#   moot for this project, which models neither).
+@export var steals_item_if_itemless: bool = false
+
+# [D1 cheap clusters] is_lock_on: Mind Reader(170)/Lock-On(199) — sets a
+#   2-tick per-attacker-target "next hit against this target always
+#   connects" volatile (`BattlePokemon.sure_hit_target`/`sure_hit_turns`),
+#   fails outright if the attacker already has one active (no overwrite).
+#   Source: `Cmd_setalwayshitflag` (battle_script_commands.c L8089-8102):
+#   `volatiles.lockOn = 2; volatiles.battlerWithSureHit = target+1` if
+#   not already set, else fails. Decremented at end of turn
+#   (battle_end_turn.c L68-69: `if (lockOn > 0 && --lockOn == 0)
+#   battlerWithSureHit = 0`) — cleared after exactly one full extra turn,
+#   matching "your NEXT move against this target is guaranteed." Also
+#   cleared reciprocally the instant EITHER battler leaves the field
+#   (battle_main.c L3131-3132/L3277-3278) — the FIFTH move/ability-based
+#   volatile now using this project's established reciprocal-clear
+#   shape. Confirmed from source (`CanMoveSkipAccuracyCalc`, battle_util.c
+#   L10176) that this bypasses semi-invulnerability TOO, not just the
+#   ordinary accuracy roll (a real, documented mechanic — Lock-On lets
+#   the following hit connect against a Dug-in/Flying target) — inserted
+#   in `StatusManager.check_accuracy` BEFORE the semi-invulnerable check,
+#   not merely alongside No Guard.
+@export var is_lock_on: bool = false
+
+# [D1 cheap clusters] is_swagger: Swagger(207)/Flatter(260) — raises the
+#   TARGET's stat (Swagger: Atk +2; Flatter: SpAtk +1) AND confuses the
+#   target, in one move. **NOT a pure composition of the existing raise-
+#   stat + try_apply_confusion dispatches**: source's own EFFECT_SWAGGER
+#   case (battle_stat_change.c L147-156) checks Own Tempo FIRST, and if
+#   present, redirects the ENTIRE move to `BattleScript_OwnTempoPrevents`
+#   (a bare fail-message + `goto BattleScript_MoveEnd`, no
+#   `trystatchanges` call at all) — Own Tempo blocks the STAT RAISE too,
+#   not just the confusion, a real asymmetry a naive independent
+#   composition would miss (try_apply_confusion's own Own-Tempo check
+#   alone would still let the stat raise through). Implemented as its own
+#   explicit early gate before either half. `stat_change_stat`/`amount`
+#   reused for the raise (target-directed, `stat_change_self=false`,
+#   positive amount — the same shape Decorate/Tearful Look's own foe-
+#   targeting raises already use). Accuracy genuinely non-uniform within
+#   this pair (Swagger 85 at GEN_7+, Flatter 100) — confirmed
+#   individually, not assumed symmetric.
+@export var is_swagger: bool = false
+
+# [D1 cheap clusters] is_sucker_punch: Sucker Punch(389)/Thunderclap(837)
+#   — fails if the target has already acted this turn, OR if the
+#   target's own CHOSEN move is status-category. Directly reuses
+#   `[M18j]`'s existing `_has_target_already_acted` turn-position helper
+#   (built for Zoom Lens) with zero new tracking — just adds the target's
+#   chosen-move-category check. Me First's own exemption
+#   (`GetMoveEffect(defMove) != EFFECT_ME_FIRST`) is permanently moot —
+#   Me First is unimplemented in this project (confirmed via grep).
+#   Source: battle_move_resolution.c L1387-1394.
+@export var is_sucker_punch: bool = false
+
+# [D1 cheap clusters] is_stored_power: Stored Power(500)/Power Trip(644)
+#   — `basePower = move.power + 20 * sum(positive stat stage MAGNITUDES
+#   across all 7 stats, including Accuracy/Evasion)`. A real, easy-to-
+#   misread detail confirmed directly from source rather than assumed:
+#   `CountBattlerStatIncreases` (battle_util.c L5948-5961) SUMS each
+#   positive stage's own magnitude (e.g. Atk+3 contributes 3, not 1), NOT
+#   a count of how many distinct stats are raised — and passes
+#   `countEvasionAcc=TRUE` for this effect specifically (Punishment's own
+#   analogous formula, NOT part of this tier's scope, passes FALSE).
+#   Source: battle_util.c L6240-6241. Reuses the existing `power_override`
+#   dispatch mechanism via a new small static helper.
+@export var is_stored_power: bool = false

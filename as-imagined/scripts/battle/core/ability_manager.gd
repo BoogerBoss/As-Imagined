@@ -802,6 +802,19 @@ static func try_sticky_barb_transfer(
 	return _try_steal_item(attacker, holder, ng_active, true)
 
 
+# [D1] Thief(168)/Covet(343) — on a successful hit, steals the TARGET's held
+# item outright (possession TRANSFER, not eaten in place — genuinely
+# different from Pluck/Bug Bite's own steal-and-eat shape), gated on the
+# ATTACKER currently holding nothing. Respects Sticky Hold (unlike Sticky
+# Barb's own bypass above). Source: battle_move_resolution.c L3487-3499 —
+# `CanStealItem`'s own content (trainer-battle-type item-ownership rules,
+# Mega-Stone/species-locked-item checks) confirmed entirely moot for this
+# project, which models neither.
+static func try_thief_steal(
+		attacker: BattlePokemon, target: BattlePokemon, ng_active: bool = false) -> bool:
+	return _try_steal_item(attacker, target, ng_active, false)
+
+
 # M17j: Pickpocket — on being hit by a contact move, steals the ATTACKER's item, if the
 # Pickpocket holder currently has none of its own. Source: `MoveEndPickpocket`
 # (battle_move_resolution.c L3944-3984): the Pickpocket HOLDER must be a battler other

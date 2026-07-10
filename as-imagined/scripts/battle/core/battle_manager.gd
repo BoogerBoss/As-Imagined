@@ -138,6 +138,9 @@ signal leech_seeded(target: BattlePokemon, source: BattlePokemon)  # [D0] Leech 
 signal leech_seed_drained(target: BattlePokemon, source: BattlePokemon, amount: int)  # [D0] end-of-turn Leech Seed tick fired (heal or, under Liquid Ooze, damage to source)
 signal party_status_cured(pokemon: BattlePokemon)  # [D0] Heal Bell/Aromatherapy/Sparkly Swirl cured one party member's status
 
+signal sure_hit_set(attacker: BattlePokemon, target: BattlePokemon)  # [D1] Lock-On/Mind Reader set the attacker's sure_hit_target
+signal item_stolen(stealer: BattlePokemon, victim: BattlePokemon)  # [D1] Thief/Covet stole the target's held item
+
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
 
@@ -1268,6 +1271,23 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
+	# [D1] Sucker Punch / Thunderclap — fails if the target has already
+	# acted this turn, OR if the target's own CHOSEN move is status-category.
+	# Source: battle_move_resolution.c L1387-1394. Reuses [M18j]'s existing
+	# _has_target_already_acted turn-position helper directly. Me First's
+	# own source exemption is permanently moot here (unimplemented).
+	if move.is_sucker_punch:
+		var sp_def_idx: int = _combatants.find(defender)
+		var sp_def_move: MoveData = _chosen_moves[sp_def_idx] if sp_def_idx >= 0 else null
+		if _has_target_already_acted(defender) \
+				or (sp_def_move != null and sp_def_move.category == 2):  # 2 = STAT/status category
+			move_effect_failed.emit(attacker, "sucker_punch_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 	# [M19-steal-stats] Spectral Thief — steals the target's CURRENTLY
 	# positive stat stages onto the attacker (removing them from the
 	# target), for ALL 7 stages (Atk/Def/SpAtk/SpDef/Speed/Accuracy/Evasion
@@ -1457,6 +1477,27 @@ func _phase_move_execution() -> void:
 	# Source: battle_util.c, case EFFECT_FLAIL (L6138-6145).
 	if move.is_flail_power:
 		_dmg_power_override = _flail_power(attacker.current_hp, attacker.max_hp)
+
+	# [D1 cheap clusters] Eruption / Water Spout / Dragon Energy: power from
+	# the USER'S OWN current-HP fraction — CONTINUOUS (no banded table, no
+	# floor-to-1 clamp), genuinely simpler than Flail/Reversal just above.
+	# Source: battle_util.c, case EFFECT_POWER_BASED_ON_USER_HP (L6136-6137).
+	if move.power_scales_with_user_hp:
+		_dmg_power_override = move.power * attacker.current_hp / attacker.max_hp
+
+	# [D1 cheap clusters] Wring Out / Crush Grip / Hard Press: power from the
+	# TARGET'S OWN current-HP fraction — the mirror of the above.
+	# Source: battle_util.c, case EFFECT_POWER_BASED_ON_TARGET_HP (L6192-6193).
+	if move.power_scales_with_target_hp:
+		_dmg_power_override = move.power * defender.current_hp / defender.max_hp
+
+	# [D1 cheap clusters] Stored Power / Power Trip: power increases with the
+	# USER'S OWN total positive stat-stage MAGNITUDE (summed across all 7
+	# stats including Accuracy/Evasion, not a count of raised stats).
+	# Source: battle_util.c, case EFFECT_STORED_POWER (L6240-6241), reusing
+	# CountBattlerStatIncreases(battler, TRUE) (L5948-5961).
+	if move.is_stored_power:
+		_dmg_power_override = move.power + 20 * _positive_stat_stage_sum(attacker, true)
 
 	# ── Priority-move-block (Dazzling / Queenly Majesty / Armor Tail) ────────────
 	# Source: battle_move_resolution.c :: CancelerPriorityBlock (L1511-1548), dispatched
@@ -2163,6 +2204,22 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Weather-setting (Sandstorm / Rain Dance / Sunny Day / Hail / Snowscape) ──
+		# Source: Cmd_setfieldweather -> TryChangeBattleWeather(battler,
+		# move.argument.weatherType, ABILITY_NONE) — the SAME function
+		# ability-triggered weather-setting already calls. Reuses
+		# try_set_weather directly, zero new logic. Never "fails" outright at
+		# this project's dispatch level (try_set_weather itself just no-ops
+		# if the same weather is already active).
+		if move.weather_type != WEATHER_NONE:
+			if try_set_weather(move.weather_type, attacker):
+				weather_set.emit(attacker, move.weather_type)
+				_notify_weather_changed()
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# ── Focus Energy ──────────────────────────────────────────────────────
 		# Source: battle_script_commands.c :: Cmd_setfocusenergy (L7718)
 		#   volatiles.focusEnergy = TRUE; fails if already set.
@@ -2564,6 +2621,50 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Lock-On / Mind Reader ────────────────────────────────────────────
+		# Source: Cmd_setalwayshitflag (battle_script_commands.c L8089-8102) —
+		# see MoveData.is_lock_on's own doc comment for the full citation.
+		# Falls through the shared Substitute/type-immunity gates above like
+		# any ordinary foe-targeting status move (no bespoke immunity of its
+		# own, unlike Leech Seed/Mean Look).
+		if move.is_lock_on:
+			if attacker.sure_hit_target != null:
+				move_effect_failed.emit(attacker, "lock_on_already_active")
+			else:
+				attacker.sure_hit_target = defender
+				attacker.sure_hit_turns = 2
+				sure_hit_set.emit(attacker, defender)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Swagger / Flatter ────────────────────────────────────────────────
+		# Source: battle_stat_change.c :: case EFFECT_SWAGGER (L147-156) — see
+		# MoveData.is_swagger's own doc comment for the full citation and the
+		# real correction found at Step 0 (Own Tempo blocks the ENTIRE move,
+		# not just the confusion — checked here BEFORE either half, rather
+		# than relying on try_apply_confusion's own independent Own-Tempo
+		# gate, which alone would still let the stat raise through).
+		if move.is_swagger:
+			if AbilityManager.effective_ability_id(defender, ng_active, attacker) \
+					== AbilityManager.ABILITY_OWN_TEMPO:
+				move_effect_failed.emit(defender, "own_tempo_prevents")
+				ability_triggered.emit(defender, "own_tempo")
+			else:
+				# Reuses _apply_one_stat_change_pair (not a raw apply_stat_change
+				# call) so Opportunist/Mirror Herb's own "opponent's stat rose"
+				# reactive triggers still fire correctly for Swagger's raise,
+				# exactly as they would for any other foe-targeting stat-raise.
+				_apply_one_stat_change_pair(attacker, defender, move,
+						move.stat_change_stat, move.stat_change_amount, ng_active)
+				if StatusManager.try_apply_confusion(defender, null, ng_active, attacker, move):
+					secondary_applied.emit(defender, MoveData.SE_CONFUSION)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		if move.stat_change_stat >= 0:
 			# [M19-secondary-stat-on-hit]: extracted into _apply_stat_change_effect
 			# (below) so the new damage-move secondary-stat-change dispatch in
@@ -2871,6 +2972,16 @@ func _phase_end_of_turn() -> void:
 		if mon.current_hp == 0:
 			mon.fainted = true
 			pokemon_fainted.emit(mon)
+
+	# ── [D1] Lock-On / Mind Reader — 2-tick countdown ─────────────────────────
+	# Source: battle_end_turn.c L68-69: `if (lockOn > 0 && --lockOn == 0)
+	# battlerWithSureHit = 0`. Cleared after exactly one full extra turn.
+	for mon: BattlePokemon in _turn_order:
+		if mon.sure_hit_target != null:
+			mon.sure_hit_turns -= 1
+			if mon.sure_hit_turns <= 0:
+				mon.sure_hit_target = null
+				mon.sure_hit_turns = 0
 
 	# ── Status damage (ENDTURN_POISON=12, ENDTURN_BURN=13 in source handler table) ────────
 	# Apply end-of-turn status damage in speed order (matching source ENDTURN_POISON
@@ -3768,6 +3879,21 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 		if other != mon and other.leeched_by == mon:
 			other.leeched_by = null
 
+	# [D1] Lock-On/Mind Reader — the FIFTH move/ability-based volatile using
+	# this reciprocal-clear shape, and the first held on the SOURCE side of
+	# the relationship (`sure_hit_target` lives on the ATTACKER, pointing at
+	# its guaranteed-hit victim) rather than the victim side. `mon`'s own
+	# departure clears its own outgoing lock (base case, mirrors
+	# charging_move/etc. just above); the scan below is the reciprocal half —
+	# any OTHER battler's lock ONTO `mon` is meaningless once `mon` itself
+	# leaves the field. Source: battle_main.c L3131-3132/L3277-3278.
+	mon.sure_hit_target = null
+	mon.sure_hit_turns = 0
+	for other: BattlePokemon in _combatants:
+		if other != mon and other.sure_hit_target == mon:
+			other.sure_hit_target = null
+			other.sure_hit_turns = 0
+
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
 # stat stages and Counter/Mirror Coat per-turn trackers).
@@ -4283,6 +4409,22 @@ static func _flail_power(current_hp: int, max_hp: int) -> int:
 		if hp_fraction <= THRESHOLDS[i]:
 			return POWERS[i]
 	return POWERS[POWERS.size() - 1]
+
+
+# [D1 cheap clusters] Stored Power / Power Trip's own power formula input —
+# sums the MAGNITUDE of every positive stat stage (e.g. Atk+3 contributes 3,
+# not 1), NOT a count of how many distinct stats are raised. `include_evasion_acc`
+# mirrors source's own CountBattlerStatIncreases(battler, countEvasionAcc)
+# parameter — TRUE for Stored Power/Power Trip, matching this project's
+# 7-element stat_stages array (indices 0-4 = Atk/Def/SpAtk/SpDef/Speed,
+# 5 = Accuracy, 6 = Evasion).
+static func _positive_stat_stage_sum(mon: BattlePokemon, include_evasion_acc: bool) -> int:
+	var total: int = 0
+	var count: int = mon.stat_stages.size() if include_evasion_acc else BattlePokemon.STAGE_ACCURACY
+	for i in range(count):
+		if mon.stat_stages[i] > 0:
+			total += mon.stat_stages[i]
+	return total
 
 
 # Synchronize back-reflect helper: if holder has Synchronize and received an eligible
@@ -5024,6 +5166,20 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		# TARGET's item just vanished — same trigger source's
 		# `trysymbiosis BS_TARGET` reaches right after the steal.
 		_try_symbiosis(target)
+
+	# [D1] Thief / Covet: steal the target's held item outright (possession
+	# TRANSFER, not eaten in place — genuinely different from Pluck/Bug
+	# Bite just above, and item-GENERAL with no Jaboca/Rowap exemption,
+	# confirmed at Step 0 from CanStealItem's own real content). Directly
+	# reuses AbilityManager.try_thief_steal (the Pickpocket/Magician
+	# primitive) verbatim, gated on the attacker itself holding nothing.
+	if damage > 0 and move.steals_item_if_itemless \
+			and attacker.held_item == null and target.held_item != null:
+		if AbilityManager.effective_ability_id(target, ng_active) == AbilityManager.ABILITY_STICKY_HOLD:
+			ability_triggered.emit(target, "sticky_hold")
+		elif AbilityManager.try_thief_steal(attacker, target, ng_active):
+			item_stolen.emit(attacker, target)
+			_try_symbiosis(target)
 
 	# [Bucket 4 cheapest singles] Sparkling Aria: cures BURN specifically on the
 	# TARGET (whoever this hit — the inverse of every existing self-cure

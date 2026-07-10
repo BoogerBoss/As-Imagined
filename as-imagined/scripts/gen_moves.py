@@ -102,9 +102,11 @@ STAGE_ACCURACY = 5
 STAGE_EVASION  = 6
 
 # ── Weather constants (DamageCalculator.WEATHER_* values) — for
-#    weather_heal_boost_type ([M19e]) ─────────────────────────────────────────
+#    weather_heal_boost_type ([M19e]) / weather_type ([D1]) ──────────────────
+WEATHER_RAIN      = 1
 WEATHER_SUN       = 2
 WEATHER_SANDSTORM = 3
+WEATHER_HAIL      = 4
 
 # ── Ban flag bitmask constants (MoveData.BAN_*) ───────────────────────────────
 BAN_GRAVITY       = 1 << 0
@@ -2975,6 +2977,103 @@ MOVES = [
      "ban_flags": BAN_METRONOME,
      "ignores_protect": True, "ignores_substitute": True, "breaks_protect": True,
      "stat_change_stat": STAGE_DEF, "stat_change_amount": -1, "stat_change_self": True},
+
+    # ── [D1] EFFECT_WEATHER: Sandstorm/Rain Dance/Sunny Day/Hail/Snowscape —
+    # reuses BattleManager.try_set_weather directly. Snowscape maps to the
+    # same WEATHER_HAIL constant Hail/Snow Warning already use (see
+    # weather_type's own doc comment for the FLAGGED Hail/Snow split gap). ──
+    {"id":  201, "name": "Sandstorm",
+     "type": TYPE_ROCK, "category": STAT, "accuracy": 0, "pp": 10,
+     "ban_flags": BAN_MIRROR_MOVE, "weather_type": WEATHER_SANDSTORM},
+    {"id":  240, "name": "Rain Dance",
+     "type": TYPE_WATER, "category": STAT, "accuracy": 0, "pp": 5,
+     "ban_flags": BAN_MIRROR_MOVE, "weather_type": WEATHER_RAIN},
+    {"id":  241, "name": "Sunny Day",
+     "type": TYPE_FIRE, "category": STAT, "accuracy": 0, "pp": 5,
+     "ban_flags": BAN_MIRROR_MOVE, "weather_type": WEATHER_SUN},
+    {"id":  258, "name": "Hail",
+     "type": TYPE_ICE, "category": STAT, "accuracy": 0, "pp": 10,
+     "ban_flags": BAN_MIRROR_MOVE, "weather_type": WEATHER_HAIL},
+    {"id":  809, "name": "Snowscape",
+     "type": TYPE_ICE, "category": STAT, "accuracy": 0, "pp": 10,
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME, "weather_type": WEATHER_HAIL},
+
+    # ── [D1] EFFECT_POWER_BASED_ON_USER_HP: Eruption/Water Spout/Dragon
+    # Energy — continuous power_scales_with_user_hp, all uniform data. ──
+    {"id":  284, "name": "Eruption",
+     "type": TYPE_FIRE, "category": SPEC, "power": 150, "accuracy": 100, "pp": 5,
+     "power_scales_with_user_hp": True},
+    {"id":  323, "name": "Water Spout",
+     "type": TYPE_WATER, "category": SPEC, "power": 150, "accuracy": 100, "pp": 5,
+     "power_scales_with_user_hp": True},
+    {"id":  748, "name": "Dragon Energy",
+     "type": TYPE_DRAGON, "category": SPEC, "power": 150, "accuracy": 100, "pp": 5,
+     "ban_flags": BAN_METRONOME, "power_scales_with_user_hp": True},
+
+    # ── [D1] EFFECT_POWER_BASED_ON_TARGET_HP: Wring Out/Crush Grip/Hard
+    # Press — continuous power_scales_with_target_hp. Hard Press is a real
+    # non-uniformity (100/10, not 120/5, and Physical not Special). ──
+    {"id":  378, "name": "Wring Out",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 120, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "power_scales_with_target_hp": True},
+    {"id":  462, "name": "Crush Grip",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 120, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "power_scales_with_target_hp": True},
+    {"id":  840, "name": "Hard Press",
+     "type": TYPE_STEEL, "category": PHYS, "power": 100, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "power_scales_with_target_hp": True},
+
+    # ── [D1] EFFECT_STEAL_ITEM: Thief/Covet — reuses
+    # AbilityManager.try_thief_steal (the Pickpocket/Magician primitive). ──
+    {"id":  168, "name": "Thief",
+     "type": TYPE_DARK, "category": PHYS, "power": 60, "accuracy": 100, "pp": 25,
+     "makes_contact": True, "ban_flags": BAN_ME_FIRST | BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST,
+     "steals_item_if_itemless": True},
+    {"id":  343, "name": "Covet",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 60, "accuracy": 100, "pp": 25,
+     "makes_contact": True, "ban_flags": BAN_ME_FIRST | BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST,
+     "steals_item_if_itemless": True},
+
+    # ── [D1] EFFECT_LOCK_ON: Mind Reader/Lock-On — sets sure_hit_target,
+    # bypassing accuracy AND semi-invulnerability on the user's next hit. ──
+    {"id":  170, "name": "Mind Reader",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
+     "is_lock_on": True},
+    {"id":  199, "name": "Lock-On",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
+     "is_lock_on": True},
+
+    # ── [D1] EFFECT_SWAGGER: Swagger/Flatter — raises the TARGET's stat AND
+    # confuses it; Own Tempo blocks the WHOLE move (see is_swagger's own
+    # doc comment for the real correction found at Step 0). Accuracy
+    # genuinely non-uniform (85 vs 100), confirmed individually. ──
+    {"id":  207, "name": "Swagger",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 85, "pp": 15,
+     "bounceable": True, "is_swagger": True,
+     "stat_change_stat": STAGE_ATK, "stat_change_amount": 2},
+    {"id":  260, "name": "Flatter",
+     "type": TYPE_DARK, "category": STAT, "accuracy": 100, "pp": 15,
+     "bounceable": True, "is_swagger": True,
+     "stat_change_stat": STAGE_SPATK, "stat_change_amount": 1},
+
+    # ── [D1] EFFECT_SUCKER_PUNCH: Sucker Punch/Thunderclap — fails if the
+    # target already acted or chose a status move. Thunderclap is Special
+    # (Sucker Punch Physical), a real category difference. ──
+    {"id":  389, "name": "Sucker Punch",
+     "type": TYPE_DARK, "category": PHYS, "power": 70, "accuracy": 100, "pp": 5,
+     "priority": 1, "makes_contact": True, "is_sucker_punch": True},
+    {"id":  837, "name": "Thunderclap",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 70, "accuracy": 100, "pp": 5,
+     "priority": 1, "is_sucker_punch": True},
+
+    # ── [D1] EFFECT_STORED_POWER: Stored Power/Power Trip — power scales
+    # with the sum of positive stat-stage MAGNITUDES (all 7 stats). ──
+    {"id":  500, "name": "Stored Power",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 20, "accuracy": 100, "pp": 10,
+     "is_stored_power": True},
+    {"id":  644, "name": "Power Trip",
+     "type": TYPE_DARK, "category": PHYS, "power": 20, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "is_stored_power": True},
 ]
 
 
@@ -3177,6 +3276,16 @@ DEFAULTS = {
     # [D1]
     "ignores_redirection": False,
     "is_hidden_power":     False,
+
+    # [D1 cheap clusters]
+    "weather_type":                  0,
+    "power_scales_with_user_hp":     False,
+    "power_scales_with_target_hp":   False,
+    "steals_item_if_itemless":       False,
+    "is_lock_on":                    False,
+    "is_swagger":                    False,
+    "is_sucker_punch":               False,
+    "is_stored_power":               False,
 }
 
 HEADER = """\
@@ -3267,6 +3376,10 @@ FIELD_ORDER = [
     "is_leech_seed_on_hit", "is_haze_on_hit", "is_heal_bell_on_hit",
     # [D1] fields
     "ignores_redirection", "is_hidden_power",
+    # [D1 cheap clusters] fields
+    "weather_type", "power_scales_with_user_hp", "power_scales_with_target_hp",
+    "steals_item_if_itemless", "is_lock_on", "is_swagger",
+    "is_sucker_punch", "is_stored_power",
 ]
 
 

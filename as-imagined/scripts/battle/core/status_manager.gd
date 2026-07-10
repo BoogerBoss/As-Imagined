@@ -755,6 +755,16 @@ static func check_accuracy(
 	if AbilityManager.bypasses_accuracy_check(attacker, defender, ng_active):
 		return true
 
+	# [D1] Lock-On / Mind Reader — a guaranteed hit against a SPECIFIC target,
+	# checked at the SAME priority as No Guard just above (source:
+	# CanMoveSkipAccuracyCalc, battle_util.c L10176, checks
+	# battlerWithSureHit alongside CanMoveSkipAccuracyCheck in one OR chain).
+	# Confirmed from source this bypasses semi-invulnerability TOO — inserted
+	# here, BEFORE the semi-invulnerable check below, not merely alongside
+	# No Guard's own accuracy-only bypass.
+	if attacker.sure_hit_target == defender:
+		return true
+
 	# Semi-invulnerable check: fires before accuracy roll and before always-hit.
 	# Source: battle_move_resolution.c :: CancelerAccuracyCheck (L1993)
 	if defender.semi_invulnerable != MoveData.SEMI_INV_NONE:
