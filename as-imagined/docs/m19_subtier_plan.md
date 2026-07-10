@@ -137,11 +137,15 @@ and are excluded from every count below. **421 moves remain.** Of those 421:
 - **213 are permanently excluded** (87 Z-Move/Max-Move + 126 from Rob's
   `[M19-exclusions]` list [124 original + Raging Bull + Psychic Noise],
   Section C1–C2 — unchanged by this update).
-- **181 (a Tier 4 residual) still need their own dedicated sub-clustering
-  pass** before individual implementation sub-tiers can be proposed for
-  them, per the recon's own explicit recommendation (Section D) — not
-  re-audited by this session (Tier 4 residual is outside this task's own
-  scope).
+- **181 (a Tier 4 residual)** — **`[M19-section-d-cluster]` update
+  (2026-07-09): Section D now has a full mechanism-clustered breakdown**
+  (21 effect-name clusters/51 moves, a 130-move singleton pool with a
+  first-pass difficulty sweep, and a priority-unblock spotlight on Leech
+  Seed/Haze/Aromatherapy+Heal Bell that directly resolves Bucket 4's
+  `M19-blocked-on-other-tier4` gate) — no longer just a placeholder
+  awaiting a future pass. See Section D itself for the full writeup;
+  concrete sub-tiers can now be picked off it the same way sessions have
+  been picking sub-groups off Bucket 4.
 
 **26 + 1 + 213 + 181 = 421**, exactly matching `934 − 513`. Fully
 reconciled — no outstanding discrepancy. **Bucket 3 is now CLOSED (30/30)**
@@ -463,7 +467,7 @@ distinct shapes:
   on the SETTER's (attacker's) own side (`screen_set(0, ...)`), never the
   target's side.
 
-### Bucket 4 — Needs a genuinely new mechanism (4 moves, 2 named sub-groups)
+### Bucket 4 — Needs a genuinely new mechanism (1 move, 1 named sub-group — `M19-blocked-on-other-tier4` CLOSED by `[D0]`, 2026-07-09; only `M19-secret-power`, deferred by Rob, remains)
 
 **`M19-secondary-stat-on-hit` (79 moves) is COMPLETE** (`[M19-secondary-stat-on-hit]`,
 2026-07-09) — see that sub-group's own entry below for the full writeup. Bucket 4's
@@ -525,6 +529,12 @@ any form" claim). Shrinks Bucket 4's own total 9→5 moves, 6→3 sub-groups
 (post-drift-fix baseline) — the 3 remaining sub-groups are
 `M19-secret-power` (deferred), `M19-trap-secondary` (gated on M19f), and
 `M19-blocked-on-other-tier4` (gated on Leech Seed/Haze/Aromatherapy).
+**Both later fully resolved**: `M19-trap-secondary` closed the same day,
+folded into M19f (`[M19e]`/`[M19f]`, 2026-07-09, see that entry above);
+`M19-blocked-on-other-tier4` closed in a later session (`[D0]`,
+2026-07-09, see its own CLOSED entry above and Section D's D0 below) —
+Bucket 4's final state is **1 move, 1 sub-group** (`M19-secret-power`
+only, still deferred by Rob).
 
 Each sub-group below shares ONE real mechanism this project doesn't have
 yet — building it once should let a future tier apply it to every move in
@@ -771,13 +781,21 @@ re-scope exists to avoid repeating).
   10-suite regression clean (`damage_test`/`move_test`/`stat_test`/
   `status_test` plus `doubles_test`/`m17n8_test`/`m17l_test`/
   `m19_secondary_stat_test`/`m19_bucket3_multistat_test`).
-- **M19-blocked-on-other-tier4 (3)** — secondary effect depends entirely
-  on ANOTHER unimplemented Tier-4-residual move's own mechanism (not a new
-  mechanism family of their own — genuinely blocked, not genuinely new):
-  Sappy Seed(685, needs Leech Seed(73)'s own mechanism), Freezy Frost(686,
-  needs Haze(114)'s own mechanism), Sparkly Swirl(687, needs
-  Aromatherapy/Heal Bell's own party-wide-cure mechanism, itself flagged in
-  Section D as having an open architecture question).
+- **M19-blocked-on-other-tier4 — CLOSED, COMPLETE (`[D0]`, 2026-07-09).**
+  Sappy Seed(685), Freezy Frost(686), Sparkly Swirl(687). Unblocked and
+  shipped in the SAME session as their 3 parent mechanisms (Leech
+  Seed(73)/Haze(114)/Aromatherapy(312)+Heal Bell(215), see D0's own CLOSED
+  entry in Section D below) — all 3 confirmed genuinely trivial once their
+  parents existed: each is a plain `EFFECT_HIT` damage move with a
+  GUARANTEED (no `.chance` field) secondary reusing the parent primitive
+  verbatim (Sappy Seed → `StatusManager.try_apply_leech_seed`; Freezy
+  Frost → the shared `_reset_stat_stages` loop, over EVERY combatant, not
+  just the target; Sparkly Swirl → `_apply_heal_bell`, applied to the
+  ATTACKER'S OWN party even though the move damages an opponent, matching
+  source's `Cmd_healpartystatus` always operating on
+  `GetBattlerParty(gBattlerAttacker)` regardless of the move's own
+  `.self = TRUE` flag). Section D's own "open architecture question" flag
+  on Aromatherapy's party-wide-cure scope is now resolved — see D0.
 - **M19-pp-reduce — CLOSED, COMPLETE (`[Bucket 4 cheapest singles]`,
   2026-07-09).** Eerie Spell(754). Step 0's real finding: NO new tracking
   state was needed at all — this project already has comprehensive
@@ -1019,9 +1037,12 @@ matching this section's own current header.)
      (`[M17n-8]`) rather than building fresh.
    - **M19-blocked-on-other-tier4 (Sappy Seed/Freezy Frost/Sparkly
      Swirl)** can't be scheduled independently — each waits on its own
-     parent mechanism (Leech Seed/Haze/Aromatherpy) landing first,
-     wherever those end up in the eventual Tier 4 residual sub-clustering
-     pass (Section D).
+     parent mechanism (Leech Seed/Haze/Aromatherapy) landing first. **Now
+     resolved**: Section D's `[M19-section-d-cluster]` pass (2026-07-09)
+     found all 3 parent mechanisms are CHEAP with zero new
+     `BattleManager`-level infrastructure needed — see Section D's own D0
+     for the full writeup, flagged there as the recommended next M19
+     session.
    - **M19-heal-block-secondary (Psychic Noise)** — CLOSED, excluded per
      Rob's explicit call (`[M19-rescope-followup]`), no longer part of
      this bucket at all.
@@ -1393,42 +1414,484 @@ counted in this section's own totals above.
 
 ---
 
-## Section D — Tier 4 residual (181 moves): needs its own dedicated sub-clustering pass
+## Section D — Tier 4 residual (181 moves): mechanism-clustered breakdown (`[M19-section-d-cluster]`, 2026-07-09)
 
-Of Tier 4's 279 total remaining moves, 9 were confidently carved into
-Section B above (Spider Web/Mean Look/Block → M19f, Heavy Slam/Heat Crash →
-M19h, Return/Frustration/Pika Papow/Veevee Volley → M19i — M19g's own
-3-move carve-out, Dynamax Cannon/Behemoth Blade/Behemoth Bash, was
-dissolved and permanently excluded by `[M19-exclusions]`, see Section C2),
-and 88 were permanently excluded (the ex-M19g 3 plus 85 more removed
-directly from this residual by `[M19-exclusions]`, see Section C2's own
-85-move list, plus a follow-up addendum removing Raging Bull(801) too).
-**The remaining 181 are NOT sub-tiered by this plan**, per
-the corrected recon's own explicit recommendation ("a dedicated Tier-4
-sub-clustering pass, mirroring this recon's own C1–C6 methodology, is the
-natural next step before any attempt to estimate M19's true total size").
-Sizing 181 structurally diverse moves by effect-name alone (the only lens
-this planning session had time to
-apply) risks the same "grab-bag needing a follow-up recon" shape `[M17n]`'s
-own Group 8 hit — better flagged explicitly than forced into sub-tiers here.
+**Status: this section is now a full sub-clustering pass**, replacing the
+old 10-cluster/158-singleton placeholder table (which explicitly
+disclaimed itself as "not a finished sub-tier list"). Discovery/recon
+only — no `.tres` files, code, or tests were touched to produce this;
+matches the discipline `docs/m19_recon.md`/`docs/m18_item_ledger.md`
+established for planning-only sessions.
 
-What effect-name clustering DID surface with reasonable confidence, offered
-as a head start for that future pass, not a finished sub-tier list:
+### Step 1/2 — re-verification against current state
 
-| Cluster | Count | Members (by effect_name) |
-|---|---|---|
-| `EFFECT_DOUBLE_POWER_ON_ARG_STATUS` | 6 | Power doubles if target has a specific status — likely one shared modifier function |
-| `EFFECT_FOLLOW_ME`/redirect-targeting | 2 | Follow Me(266)/Rage Powder(476) — confirm whether any redirect-targeting infra exists at all (doubles-only mechanic, may interact with `[M14a]`). Spotlight(634) removed by `[M19-exclusions]`. |
-| `EFFECT_HEAL_BELL` | 2 | Heal Bell(215)/Aromatherapy(312) — party-wide status cure, confirm whether party-wide (not just active-battler) status effects are reachable in this project's current architecture |
-| `EFFECT_PSYSHOCK` | 2 | Psyshock(473)/Psystrike(540) — physical-stat-vs-special-category mismatch, a real new damage-calc branch. Secret Sword(548) removed by `[M19-exclusions]`. |
-| `EFFECT_PLEDGE` | 0 | Water/Fire/Grass Pledge — all 3 removed by `[M19-exclusions]`, cluster fully closed |
-| `EFFECT_POWER_BASED_ON_USER_HP` / `_TARGET_HP` | 6 | Eruption/Water Spout/Dragon Energy (user HP), Wring Out/Crush Grip/Hard Press (target HP) — likely one shared modifier function each |
-| `EFFECT_HIT_ESCAPE` | 3 | U-turn(369)/Volt Switch(521)/Flip Turn(740) — forced-switch-after-hit, likely reuses `[M18n]`'s forced-switch plumbing directly |
-| `EFFECT_HIT_SWITCH_TARGET` | 2 | Circle Throw(509)/Dragon Tail(525) — forces the DEFENDER to switch, a mirror of the above |
-| `EFFECT_CHANGE_TYPE_ON_ITEM` | 0 | Judgment/Techno Blast/Multi-Attack — all 3 removed by `[M19-exclusions]`, cluster fully closed |
-| Everything else (singletons/small pairs) | 158 | Genuinely one-off (Metronome, Sketch, Transform, Substitute-adjacent, room-setting moves, stat-swap moves, etc.) — this is the real sizing uncertainty for M19, exactly as the recon itself flagged. 78 moves removed by `[M19-exclusions]` (236→158, incl. the Raging Bull addendum). |
+Re-derived the full 181-move list FRESH from `data/moves.json` (the
+`[M19-pipeline-fix]`-corrected extraction, itself re-verified against
+`moves_info.h` throughout this pass) rather than trusting the old table's
+own prose: computed as (934 real moves) − (535 implemented, cross-checked
+directly against `gen_moves.py`'s own `MOVES` dict AND a fresh
+`ls data/moves/*.tres | wc -l` — both 535, matching) − (213 permanently
+excluded: 87 Z-Move/Max-Move IDs 848–934 + 126 from Rob's
+`[M19-exclusions]` list, individually re-transcribed from Section C2's own
+prose and cross-checked to zero overlap with the implemented set) − (1
+deferred, Population Bomb(788)) − (4 Bucket 4 gated/deferred moves: Secret
+Power(290), Sappy Seed(685)/Freezy Frost(686)/Sparkly Swirl(687)) = **181,
+exact match, zero drift**. The old 10-cluster head-start table is
+CONFIRMED ACCURATE (its `EFFECT_DOUBLE_POWER_ON_ARG_STATUS` count of 6 vs.
+this pass's 5 is fully explained by Wake-Up Slap(358) having been removed
+by `[M19-exclusions]` in the meantime — not drift, just a later exclusion
+the old table predates).
 
-(6+2+2+2+0+6+3+2+0+158 = 181, reconciled.)
+**One real doc-quality finding, not a scope change**: **Struggle(165)** is
+sitting in this 181-move residual by ID, but is **already fully
+implemented** — `BattleManager._construct_struggle_move()` (`battle_manager.gd`
+L344-356) hardcodes a complete, tested `MoveData` instance inline (the
+same "no-PP fallback" pattern documented since M1), it simply was never
+added to `gen_moves.py`/`data/moves/*.tres` because it doesn't need
+per-species selection the way a normal move does. This matches the
+Heal Order/Dragon Darts "resolved conflict, stays as-is" precedent from
+Section C's own resolved-conflicts note — **flagged here, not silently
+fixed**: Rob should decide whether to (a) leave it exactly as documented
+here (Struggle stays a special-cased inline construction, permanently
+outside the `.tres` pipeline and this residual's future scope) or (b) do
+a docs-only reclassification moving it out of "181 remaining" into
+"already implemented" (535→536, 181→180) with zero code change. No
+action taken pending that call.
+
+**No other incidental implementations were found** — every other one of
+the 181 IDs was independently confirmed absent from `gen_moves.py`.
+
+### Step 2 — full effect-name re-clustering
+
+The old table only named 10 effect-name clusters (using an older,
+pre-`[M19-pipeline-fix]` naming convention) and lumped everything else
+into one 158-move "singletons/small pairs" bucket. A full pass over
+`data/moves.json`'s (source-verified accurate) `effect_name` field for
+all 181 residual IDs found **21 clusters of 2+ moves (51 moves total)**
+— 11 more clusters than the old table surfaced, since the old table was
+hand-derived without a systematic per-move effect-name scan — leaving a
+smaller, more precisely-characterized **130-move singleton pool** (Step 4
+below), not 158.
+
+### D0 — Priority unblock: Leech Seed / Haze / Aromatherapy+Heal Bell (4 moves) — **CLOSED, COMPLETE (`[D0]`, 2026-07-09)**
+
+**Shipped exactly as this recon predicted — all 3 mechanisms confirmed
+CHEAP at Step 0, zero new `BattleManager`-level architecture needed.**
+Also shipped in the same session: the two "already-free" pairs Section
+D3 flagged (Follow Me(266)/Rage Powder(476), Soft-Boiled(135)/Milk
+Drink(208)) and the 3 moves this D0 unblock directly gated
+(`M19-blocked-on-other-tier4`: Sappy Seed(685)/Freezy Frost(686)/Sparkly
+Swirl(687), confirmed genuinely trivial once their parents existed — see
+that sub-group's own CLOSED entry in Section B above). One real Step 0
+correction beyond this recon's own framing: Rage Powder's powder-move
+immunity does NOT come "for free" from the general `blocks_move_flag`
+gate as originally assumed — that gate checks `defender`, which for a
+self-targeted move resolves to the default-selected opponent, not the
+user itself; fixed with one explicit check inside `is_follow_me`'s own
+dispatch instead. 11 moves total, 546 `.tres` files (was 535). New
+`m19_d0_test.gd`/`.tscn`: 38/38 assertions, stable across 5 reruns.
+13-suite regression clean. See `docs/decisions.md`'s `[D0]` entry for
+full Step 0 citations and the Rage Powder correction's own writeup.
+
+The original recon writeup below is kept for its source citations and
+mechanism analysis — all forward-looking language ("would resolve",
+"is now CHEAP") should be read as already-shipped past tense.
+
+**Spotlight, not a 5th bucket**: these 4 moves are already counted inside
+D1 (Heal Bell/Aromatherapy = the `EFFECT_HEAL_BELL` cluster row) and D4
+(Leech Seed/Haze, 2 of the 130 singletons) — called out here first
+because building them directly resolves the 3-move
+`M19-blocked-on-other-tier4` gate (Sappy Seed/Freezy Frost/Sparkly
+Swirl) for free. Re-derived each from source (`battle_script_commands.c`,
+`battle_end_turn.c`) rather than assuming any of the three need genuinely
+new infrastructure — **none
+do**:
+
+- **Aromatherapy(312) / Heal Bell(215)** (`EFFECT_HEAL_BELL`) — source's
+  `Cmd_healpartystatus` (L8259-8340) cures `status1` for the ENTIRE
+  PARTY, not just the active battler, gated per-mon on Soundproof only
+  for Heal Bell (a genuine sound move; Aromatherapy is not). Confirmed
+  this project's `BattleParty.members: Array[BattlePokemon]`
+  (`battle_party.gd`) already holds real `BattlePokemon` instances for
+  every bench mon with their own live `.status` field, and
+  `BattleManager._parties[side]` is already reachable mid-battle — the
+  "does party-wide status reach exist" open question the old table
+  flagged is answered **yes, trivially**: a plain loop over
+  `_parties[attacker_side].members` setting `.status = STATUS_NONE`,
+  gated per-mon on the existing `sound_move` flag for Heal Bell only.
+  Zero new architecture.
+- **Haze(114)** (`EFFECT_HAZE`) — source's `MOVE_EFFECT_HAZE` case
+  (`battle_script_commands.c` L2861-2865) loops EVERY battler on the
+  field (`TryResetBattlerStatChanges`) resetting all 7 stat stages to 0.
+  This is the LITERAL SAME "reset all stages to exactly 0" primitive
+  `[Bucket 4 cheapest singles]` just built for Clear Smog(499) —
+  confirmed Haze is now a trivial extension of an already-shipped
+  mechanism (loop it over every combatant instead of one target), not a
+  new one. High-leverage: also unblocks Haze's own future value as a
+  precedent for any other "reset, don't just clear stat stages" move.
+- **Leech Seed(73)** (`EFFECT_LEECH_SEED`) — source's `MOVE_EFFECT_LEECH_SEED`
+  case sets `volatiles.leechSeed = LEECHSEEDED_BY(battlerAtk)` (a
+  seeder-reference field), Grass-type-immune, fails if already seeded;
+  `HandleEndTurnLeechSeed` (`battle_end_turn.c` L476+) drains 1/8 max HP
+  from the seeded battler to the seeder each end of turn. This is the
+  SAME "per-battler source-reference field + end-of-turn tick + reciprocal
+  clear when the source leaves the field" shape this project has now
+  built THREE times (`wrapped_by`/`[M18.5f]`, `infatuated_by`/`[M18.5d-3]`,
+  `escape_prevented_by`/`[M19e]`/`[M19f]`) — a well-precedented pattern,
+  not a new one, plus it composes for free with the already-implemented
+  Liquid Ooze drain-inversion (`[M17n-9]`) and Big Root's own confirmed
+  "move-drain only" scope note (`[M18q]`) means Big Root correctly does
+  NOT need to touch Leech Seed's drain, consistent with that prior
+  finding rather than contradicting it. Heal Block interaction is
+  permanently moot (Heal Block itself is excluded/unimplemented).
+
+**Combined verdict: CHEAP.** None of the 3 gating mechanisms need new
+`BattleManager`-level architecture — this is a strong candidate for the
+very next M19 implementation session regardless of Section D's overall
+sequencing, since it closes out Bucket 4 entirely (down to just
+`M19-secret-power`, still deferred by Rob).
+
+### D1 — Effect-name clusters, 2+ members (21 clusters, 51 moves originally — 3 clusters/6 moves now CLOSED by `[D0]`, 18 clusters/45 moves remaining)
+
+Every cluster below was spot-checked against `moves_info.h` for at least
+2 members (source line numbers in `docs/decisions.md`'s
+`[M19-section-d-cluster]` entry), per this task's own instruction not to
+trust a shared effect_name as proof of a shared BUILDABLE mechanism
+without verification — flagged explicitly wherever real divergence was
+found within a cluster.
+
+| Cluster | Moves | Cheap/Moderate/Hard | Mechanism + existing infra reused |
+|---|---|---|---|
+| `EFFECT_WEATHER` | Sandstorm(201), Rain Dance(240), Sunny Day(241), Hail(258), Snowscape(809) | **CHEAP** | `BattleManager.try_set_weather(weather_type, by_pokemon)` already exists as a fully generic, non-ability-specific function (built for Drizzle/Drought/Sand Stream/Snow Warning, `[M17c]`) — already handles duration (`ItemManager.weather_duration`, rocks-aware) and Neutralizing Gas. Snowscape maps to the same `WEATHER_HAIL` constant Snow Warning already uses (this project doesn't model Gen9's Hail/Snow split, consistent with existing convention). New: 1 `MoveData` field (which weather each sets) + dispatch wiring. **Flag for impl time**: confirm whether `try_set_weather` needs a new "blocked while a Primal weather is active" gate — source's `Cmd_setfieldweather` has one (`B_WEATHER_PRIMAL_ANY` check) that move-based weather-setting must respect but ability-based setting may not; not yet verified against this project's current `try_set_weather` callers. |
+| `EFFECT_DOUBLE_POWER_ON_ARG_STATUS` | Smelling Salts(265), Venoshock(474), Hex(506), Barb Barrage(767), Infernal Parade(772) | **CHEAP-MODERATE** | `battle_util.c` L6186-6190: base power ×2 if `defender.status1 & move.argument.status` (Venoshock: poison/toxic only; Hex: any status — confirmed genuinely different bitmasks per move, not a copy-paste). New power-modifier check at the existing power-modifier pipeline stage (`[M17a]`'s `move_power_modifier_uq412`-equivalent). **Flag for impl time**: source's comment notes an interaction with `MOVE_EFFECT_REMOVE_STATUS` (some family members also cure the status after hitting) — needs per-move verification of which of the 5 carry that secondary before implementing, not assumed uniform. |
+| `EFFECT_POWER_BASED_ON_USER_HP` | Eruption(284), Water Spout(323), Dragon Energy(748) | **CHEAP** | `battle_util.c` L6136-6137: `basePower = move.power * userHP/userMaxHP` — a plain CONTINUOUS linear scale, genuinely simpler than (and distinct from) `M19-hp-based-power`'s stepped/banded Flail/Reversal formula. Reuses the existing `power_override` dispatch mechanism (`[M16b]` Rollout/Magnitude precedent). |
+| `EFFECT_POWER_BASED_ON_TARGET_HP` | Wring Out(378), Crush Grip(462), Hard Press(840) | **CHEAP** | Mirror of the above: `basePower = move.power * targetHP/targetMaxHP` (`battle_util.c` L6192-6193). Same `power_override` reuse. |
+| `EFFECT_HIT_ESCAPE` | U-turn(369), Volt Switch(521), Flip Turn(740) | **CHEAP-MODERATE** | `battle_move_resolution.c` L3905-3920 (`MoveEndHitEscape`): after a successful hit, the ATTACKER gets a voluntary-switch prompt (skipped if the opponent's side has already been fully KO'd). Reuses Eject Button's exact "force the HOLDER to switch" plumbing (`[M18n]`). **Flag for impl time**: unlike Eject Button (which just picks a switch target the same way any other forced switch does), a real player-facing U-turn switch is a genuine CHOICE — needs a decision on whether the AI's existing proactive-switch logic (`[M10]`) gets reused for this, or whether it falls back to the same random/first-available selection every other forced switch uses. |
+| `EFFECT_HIT_SWITCH_TARGET` | Circle Throw(509), Dragon Tail(525) | **CHEAP-MODERATE** | `battle_move_resolution.c` L3517-3530: after a successful hit, forces the DEFENDER to switch (mirror of Roar/Whirlwind, reuses that exact `_do_forced_switch_in` plumbing directly) — but on-hit rather than as the sole effect. Confirmed already-blocked correctly by Guard Dog (`blocks_forced_switch`, `[M17n-10]`) since source checks the identical `ABILITY_GUARD_DOG` gate. Suction Cups/Ingrain-root checks are permanently moot (both unimplemented). |
+| `EFFECT_FOLLOW_ME` — **CLOSED (`[D0]`)** | Follow Me(266), Rage Powder(476) | **FREE** | The redirect MECHANISM already exists and is fully tested — `MoveData.is_follow_me`, `BattleManager._follow_me_used`/`_follow_me_targets`, the redirect-resolution block at `battle_manager.gd` L945-967/1886 — built during `[M14b]` and exercised indirectly by `[M17l]`'s Propeller Tail/Stalwart bypass tests. **Neither move was ever added as a data entry** — this is 2 moves of pure `gen_moves.py` data-entry against an already-complete, already-proven mechanism. Spotlight(634) stays excluded. **Shipped `[D0]`, 2026-07-09 — one real correction found**: Rage Powder's `powder_move` immunity does NOT come free from the general `blocks_move_flag` gate as this table assumed (that gate checks `defender`, which resolves to the default-selected opponent for a self-targeted move, not the user) — fixed with one explicit check inside `is_follow_me`'s own dispatch. |
+| `EFFECT_SOFTBOILED` — **CLOSED (`[D0]`)** | Soft-Boiled(135), Milk Drink(208) | **FREE** | `BattleScript_EffectSoftboiled` (`battle_scripts_1.s` L2379) is functionally IDENTICAL to `BattleScript_EffectRestoreHp` (L1693) — both `tryhealhalfhealth` against a self-targeted move (`BS_TARGET` resolves to the attacker itself since `.target = TARGET_USER`), a historical/legacy distinct enum for what M16a's own `EFFECT_RESTORE_HP` (Recover/Slack Off/Heal Order) already fully implements. Literally 2 more names in that same existing dispatch, zero new code. Shipped `[D0]`, 2026-07-09 exactly as predicted — genuinely identical data confirmed individually. |
+| `EFFECT_STEAL_ITEM` | Thief(168), Covet(343) | **CHEAP** | `battle_move_resolution.c` L3487-3499: on-hit steal, gated on the attacker having no item of its own, reuses `AbilityManager._try_steal_item` (the exact Pickpocket/Magician primitive, `[M17j]`) directly — Sticky Hold gate already built in. |
+| `EFFECT_LOCK_ON` | Mind Reader(170), Lock-On(199) | **CHEAP** | Sets an "always hits with my next move" volatile on the target (`setalwayshitflag`) — same accuracy-bypass insertion point `always_hits_in_rain` (`[M19-weather-conditional-accuracy]`) and No Guard (`[M17a]`) already occupy, just target-scoped and one-shot instead of attacker-scoped and permanent. |
+| `EFFECT_FORESIGHT` | Foresight(193), Odor Sleuth(316) | **CHEAP-MODERATE** | Sets a per-target volatile granting Ghost-type-immunity bypass + evasion-stage-ignore for Normal/Fighting moves against it — the exact checks `bypass_ghost_immunity` (Scrappy/Mind's Eye, `[M17n-6]`) and `ignores_defender_evasion_stage` (`[M19-ignores-stat-stages]`'s sibling flag) already implement, just move-inflicted instead of ability-driven. Near-copy-paste of existing gates behind a new volatile field. |
+| `EFFECT_SWAGGER` | Swagger(207), Flatter(260) | **CHEAP** | Confuses the target AND raises a stat (Swagger: Atk +2; Flatter: SpAtk +1) in one move — pure composition of the existing confuse-infliction dispatch + existing stat-raise dispatch, both already Own-Tempo-aware. |
+| `EFFECT_FUTURE_SIGHT` | Future Sight(248), Doom Desire(353) | **MODERATE** | `battle_move_resolution.c` L1365-1372: schedules damage that lands exactly 2 turns later on whoever occupies that field slot then, independent of the user's own continued presence; fails if already pending against that target. Genuinely NEW — no "scheduled future-turn effect, decoupled from the current turn's action queue" mechanism exists in this project yet. **See the delayed-effect family note in D2 — build alongside Wish/Yawn/Healing Wish/Lunar Dance, not in isolation**, since all 5 need some flavor of the same underlying "pending effect" queue. |
+| `EFFECT_FIRST_TURN_ONLY` | Fake Out(252), First Impression(623) | **CHEAP-MODERATE** | `battle_move_resolution.c` L1222-1224: fails unless this is the user's first action since switching in. New per-mon "acted yet this stint" flag, set false on switch-in and true after the first action — small, self-contained, no precedent to extend but trivial to add. |
+| `EFFECT_TRICK` | Trick(271), Switcheroo(415) | **CHEAP-MODERATE** | Full bidirectional item SWAP between attacker and target (`tryswapitems`), Substitute-blocked, Sticky-Hold-gated. Extends the M17j item-transfer family (Pickpocket steal / Magician steal / Symbiosis give) with a genuinely new fourth direction — a two-way exchange — rather than reusing one of the existing three as-is. |
+| `EFFECT_REVENGE` | Revenge(279), Avalanche(419) | **CHEAP-MODERATE** | `battle_util.c` L6172-6174: power ×2 if the user was damaged by THIS target earlier in the same turn (`revengeDoubled` bitfield, set at the point damage is taken). New per-turn "was I hit by battler X this turn" tracker — small, turn-scoped, cleared every turn like `stat_raised_this_turn`. |
+| `EFFECT_SUCKER_PUNCH` | Sucker Punch(389), Thunderclap(837) | **CHEAP** | `battle_move_resolution.c` L1387-1394: fails if the target has already acted this turn, or if the target's chosen move is a status move (Me-First-exempted). **Directly reuses `[M18j]`'s existing `_has_target_already_acted` turn-position helper** (built for Zoom Lens) with zero new tracking — just add the move-category check on the target's own chosen move. |
+| `EFFECT_PSYSHOCK` | Psyshock(473), Psystrike(540) | **MODERATE** | `battle_util.c` L7035: uses the DEFENDER's Defense stat (not Sp.Def) despite remaining a Special-category move for every other purpose (STAB, secondary-effect gating, ability checks). Genuinely new: one `uses_defense_stat_regardless_of_category` flag at the defense-stat-selection point in `DamageCalculator` — small, clean, single insertion point. Secret Sword(548) stays excluded. |
+| `EFFECT_STORED_POWER` | Stored Power(500), Power Trip(644) | **CHEAP** | `battle_util.c` L6240-6241: `basePower += 20 * count(positive stat stages)`. Trivial formula over the existing `stat_stages` array. |
+| `EFFECT_STOMPING_TANTRUM` | Stomping Tantrum(661), Temper Flare(843) | **CHEAP-MODERATE** | `battle_util.c` L6416-6418: power ×2 if the user's PREVIOUS move failed or missed last turn. New per-mon "did my last move fail" flag, set at the same site pre-move-check results are already resolved. |
+| `EFFECT_HEAL_BELL` — **CLOSED (`[D0]`)** | Heal Bell(215), Aromatherapy(312) | **CHEAP** | See D0 above (the priority-unblock section) for the full writeup — listed here too so this table's own cluster count/total stays self-consistent. Shipped `[D0]`, 2026-07-09. |
+
+(5+5+3+3+3+2×16 = 51 across the 21 rows above, reconciled against the
+51-move/21-cluster figure Step 2 computed programmatically. **Note**:
+D0 above highlights 4 of these 181 moves for priority — Heal
+Bell(215)/Aromatherapy(312) are this table's own `EFFECT_HEAL_BELL` row
+(not additive); Leech Seed(73)/Haze(114) are 2 of D4's 130 singletons
+(not additive). D0 is a cross-reference/spotlight, not a 5th bucket —
+51 (D1) + 130 (D4) = 181 still holds exactly.)
+
+### D2 — Cross-cutting families surfaced while sweeping the singleton pool
+
+These aren't effect-name clusters (each move below has a UNIQUE
+`effect_name`), but grouping them by underlying MECHANISM — not just
+name — surfaced real shared-infrastructure opportunities the flat
+effect-name lens alone would miss, the same style of finding this arc's
+Jaw Lock (`[M19e]`/`[M19f]`) and Spicy Extract (`[Bucket 3 multi-stat]`)
+sessions already produced:
+
+- **Delayed-effect family (6 moves, MODERATE, build together)**: Future
+  Sight(248)/Doom Desire(353) (cluster D1 above, delayed damage on a
+  field slot), **Wish(273)** (delayed heal on whichever mon occupies the
+  user's OWN slot next turn), **Yawn(281)** (delayed sleep-infliction at
+  the end of the FOLLOWING turn), **Healing Wish(361)** (self-faint +
+  full heal for whoever switches in next), **Lunar Dance(461)**
+  (Healing Wish + also restores PP). None of these share one identical
+  mechanism (Wish/Future-Sight are turn-counted regardless of switches;
+  Healing Wish/Lunar Dance trigger on the SWITCH-IN event itself, not a
+  turn count), but all 6 need some shape of "an effect that isn't
+  resolved now" — worth scoping as one combined design session rather
+  than 4-5 separate ones, since the turn-counted half (Future
+  Sight/Doom Desire/Wish/Yawn) can likely share one small "pending
+  effects" list checked once per end-of-turn, and the switch-in-triggered
+  half (Healing Wish/Lunar Dance) can reuse the self-faint precedent
+  (`M19-self-faint`) plus a simple "next switch-in gets a bonus" flag on
+  the party slot.
+- **Ability-manipulation family (4 moves, CHEAP)**: all 4 reuse M17h's
+  already-built ability-copy/overwrite primitives directly rather than
+  needing anything new — **Role Play(272)** (copy, mirrors Trace's
+  shape), **Skill Swap(285)** (bidirectional swap, reuses Wandering
+  Spirit's EXACT mechanism), **Worry Seed(388)** (one-directional
+  overwrite to a FIXED ability — Insomnia — mirrors Mummy's shape with a
+  fixed target instead of the attacker's own ability), **Heart Swap(391)**
+  (NOT an ability move — swaps all 7 stat STAGES bidirectionally, reuses
+  Psych Up's stage-copy shape from `[M16e]` instead).
+- **Damage/defense-stat-source-override family (3 moves, CHEAP)**: same
+  insertion-point family as `EFFECT_PSYSHOCK` (D1) but on the OFFENSE
+  side instead of defense — **Foul Play(492)** (uses the TARGET's Attack
+  stat for damage), **Body Press(704)** (uses the USER's own Defense stat
+  instead of Attack), **Photon Geyser(675)** (uses whichever of the
+  user's Atk/SpAtk is higher, category-flexible). All 3 are one new
+  attack-stat-source flag at the existing attack-stat-selection point,
+  same shape Psyshock needs on defense.
+- **On-hit hazard/screen set-or-clear family (6 moves, CHEAP)**: directly
+  reuses Bucket 3's already-proven "damaging move that ALSO sets a
+  pure-status effect on hit" pattern (`sets_reflect_on_hit`/
+  `sets_light_screen_on_hit`, `[Bucket 3 clusters 1-2]`) — just for
+  hazards instead of screens, and in two cases for CLEARING instead of
+  setting: **Stone Axe(758)** (sets Stealth Rock on hit), **Ceaseless
+  Edge(773)** (sets Spikes on hit), **Ice Spinner(789)** (clears hazards
+  on hit, reusing Rapid Spin's existing clear function), **Mortal
+  Spin(794)** (clears hazards + poisons on hit, same clear reuse), plus
+  **Tidy Up(808)** (clears hazards from BOTH sides + self stat-raise) and
+  **Defog(432)** (clears hazards+screens from both sides + target
+  evasion-drop) as the two "clear everything" variants, both pure
+  compositions of existing Rapid-Spin-family clears with zero new
+  mechanism.
+- **Per-mon TypeChart-override family (3 moves, CHEAP-MODERATE)**:
+  **Freeze-Dry(573)** (always super-effective vs. Water regardless of
+  the type chart — a move-level table override), **Tar Shot(695)**
+  (permanently doubles the TARGET's own Fire-type weakness for the rest
+  of the battle — a per-mon override, not a move-level one), and
+  **Foresight/Odor Sleuth** (D1 cluster, Ghost-immunity bypass) are three
+  different SCOPES of the same underlying idea (move-level vs. per-mon
+  vs. ability-mirroring override) — worth designing as one small family
+  of TypeChart lookup extensions rather than three unrelated ad hoc
+  changes.
+- **Turn-order-manipulation family (4 moves, MODERATE)**: **After
+  You(495)** (push target to the front of this turn's order), **Quash(511)**
+  (push target to the back), **Upper Hand(846)** (priority move that only
+  connects if the target is ABOUT to use a priority move, causing
+  flinch — reuses `move_priority_bonus`, `[M17n-3]`, to classify the
+  target's chosen move before it resolves), **Instruct(652)** (forces
+  the target to immediately re-use its last move, reusing the
+  call-a-move dispatch + `last_move_used`). All 4 read/write the existing
+  `_turn_order`/`_current_actor_index` state `[M18j]`'s Zoom Lens and
+  `[M17n-3]`'s Quick Draw/Stall already established as directly
+  accessible — no new turn-order infrastructure, just new consumers of
+  it.
+- **"Stat/event happened this turn" tracker family (4 moves, CHEAP)**:
+  mirrors the already-shipped `stat_raised_this_turn` flag
+  (`M19-stat-raised-trigger`) with a sibling condition each —
+  **Lash Out(736)** (power ×2 if a stat was LOWERED this turn — the
+  direct inverse), **Retaliate(514)** (power ×2 if an ally fainted LAST
+  turn), **Rage Fist(815)** (power scales with total times hit this
+  BATTLE, a running counter not a per-turn flag), **Echoed Voice(497)**
+  (power increases with consecutive USE across turns by anyone on the
+  field, resets if skipped a turn — a field-wide, not per-mon, counter).
+  All 4 are small new tracker fields at existing dispatch chokepoints,
+  no shared mechanism between them beyond "cheap to add."
+
+### D3 — Additional "already effectively free" findings (beyond Struggle, D0's cluster notes)
+
+- **Solar Blade(632) — CLOSED, COMPLETE (`[D1]`, 2026-07-09).** the
+  Fighting/Grass-family two-turn Sword variant of Solar Beam;
+  near-identical reuse of the already-implemented charge-turn/sun-skip
+  mechanism (`[M6]`/`[M15]`), just a different power/type/category
+  (Physical, not Special — confirmed category-agnostic) on an existing
+  dispatch shape. **Flagged, not fixed**: source's own `EFFECT_SOLAR_BEAM`
+  also halves damage in rain/sand/hail/fog, but this project's existing
+  Solar Beam(76) never implemented that half — Solar Blade ships with the
+  same incomplete-but-consistent behavior; a future session should build
+  both halves together.
+- **Snipe Shot(691) — CLOSED, COMPLETE (`[D1]`, 2026-07-09).** ignores all
+  redirection (Follow Me/Rage Powder/Lightning Rod/Storm Drain).
+  Confirmed it bypasses BOTH halves at the ONE existing call site
+  `AbilityManager.bypasses_redirection` (built for Propeller Tail/Stalwart,
+  `[M17l]`) already occupies — extended with one new `move` param + a
+  move-level `ignores_redirection` flag, zero new call sites needed.
+- **Hidden Power(237) — CLOSED, COMPLETE (`[D1]`, 2026-07-09).** **A real
+  correction to this entry's own "type/power determined by the user's real
+  IVs" framing**: at this project's GEN_LATEST config
+  (`B_HIDDEN_POWER_DMG >= GEN_6`), power is a FLAT 60 — the classic
+  bit-parity power formula is dead code here, only TYPE is IV-derived.
+  Found and fixed a genuine ordering trap: source's bit-packing order (HP,
+  Atk, Def, SPEED, SpAtk, SpDef) does NOT match this project's own `ivs[]`
+  array order (Speed LAST, not fourth) — the same trap already documented
+  for Nature (`[M18.5h-1]`). Also found and fixed a real must-fix gap in
+  the EXISTING `[M17n-6]` type-mutation infrastructure: `effective_move_type`
+  had no exclusion for Hidden Power (never needed one before), so a
+  Pixilate/Normalize holder would have incorrectly converted its computed
+  type — source explicitly excludes Hidden Power from that whole pipeline.
+- **Nature Power(267)** — calls a different move depending on Terrain;
+  since Terrain is permanently VOID for this project (locked decision,
+  `[M17d]`), this collapses to "always calls a fixed move" (the
+  no-terrain default) — a trivial, confirmed-non-applicable
+  simplification matching the Delta Stream/Overcoat precedent for
+  documenting a source branch as permanently moot rather than silently
+  dropping it. **Not yet built** — flagged as free but not part of this
+  `[D1]` session's own scope (only Solar Blade/Snipe Shot/Hidden
+  Power/Hyperspace Fury were requested).
+- **Hyperspace Fury(621) — CLOSED, COMPLETE (`[D1]`, 2026-07-09).** breaks
+  Protect + drops the user's own Defense −1 + never misses. Confirmed its
+  own distinct `.effect = EFFECT_HYPERSPACE_FURY` dispatches via the
+  LITERAL SAME `BattleScript_EffectHit` every plain damage move uses —
+  functionally identical to a plain hit, genuinely just composition: reuse
+  `breaks_protect` (`[M19-break-protect]`) directly for its Feint-shaped
+  protect-break, plus a GUARANTEED (secondary_chance=0, the same shape
+  `M19-secondary-stat-on-hit`'s own guaranteed self-drops use) self -1
+  Defense via the existing `stat_change_stat`/`amount`/`self` fields —
+  zero new mechanism, pure composition of 2 already-shipped pieces.
+- **Grav Apple(716)** — power boosts under Gravity; since Gravity(356)
+  itself is on Rob's exclusion list (unimplemented, permanently
+  excluded), this condition is permanently moot and Grav Apple reduces
+  to a plain damage move — confirmed, not silently dropped, matching the
+  Metal Powder/Quick Powder "untestable condition, explicitly flagged"
+  precedent from `[M18g]`.
+
+### D4 — Singleton pool: 130 moves originally, first-pass difficulty sweep (Leech Seed(73)/Haze(114) CLOSED by `[D0]`; Solar Blade(632)/Snipe Shot(691)/Hidden Power(237)/Hyperspace Fury(621) CLOSED by `[D1]`, 2026-07-09; 124 remaining)
+
+Every remaining ID (181 − 51 clustered = 130) was individually
+categorized by mechanism against this project's existing infrastructure
+— not exhaustively source-verified line-by-line the way D0/D1 were (that
+depth on 130 individual moves is beyond one recon session), but each
+checked against the established-pattern map above rather than guessed
+from move-name folklore alone. Full per-move list, grouped by rating:
+
+**CHEAP (~87 moves)** — trivial composition of 2-3 already-existing
+mechanisms, or a single small new field with a well-understood shape:
+Mist(54, side-condition), Splash(150, no-op), Snore(173, sleep-gated
+damage+flinch), False Swipe(206, never-KO flag), Torment(259, reuses
+`M19-cant-use-twice`'s exact check inflicted on a foe), Memento(262,
+self-faint+2-stat-drop), Facade(263, self-status power-double, mirrors
+D1's status cluster), Safeguard(219, side-condition), Refresh(287,
+self-cure), Aqua Ring(392, Ingrain's heal half standalone), Magnet
+Rise(393, extends `is_grounded`'s exemption list), Smack Down(479,
+extends `is_grounded` the other direction), Acrobatics(512, no-item power
+double), Reflect Type(513, reuses type-mutation infra), Bulldoze(523,
+spread+guaranteed-stat-lower, both existing), Belch(562, gates on
+`last_consumed_berry`), Sticky Web(564, reuses hazard infra), Fell
+Stinger(565, reuses Moxie's KO-attribution shape), Freeze-Dry(573,
+TypeChart override, see D2), Parting Shot(575, Eject-Button self-switch +
+stat-drop), Topsy-Turvy(576, stage-array sign flip), Venom Drench(599,
+status-conditional multi-stat-drop), Strength Sap(631, heal-by-target's-
+raw-Atk formula + stat-drop), Toxic Thread(635, stat-drop+toxic), Laser
+Focus(636, guaranteed-crit-next-turn volatile), Purify(648, target-cure +
+conditional self-heal), Stuff Cheeks(693, forced berry-eat + stat-raise),
+No Retreat(694, multi-stat-raise + self-escape-prevention), Clangorous
+Soul(703, self-HP-cost + multi-stat-raise), Steel Beam(724, unconditional
+self-HP-cost-on-use), Poltergeist(737, target-item-presence gate),
+Chloroblast(763, HP-cost recoil variant), Take Heart(778, self-cure +
+multi-stat-raise), Fillet Away(796, Clangorous-Soul shape, narrower stat
+set), Chilly Reception(807, weather-set + self-switch, once D1's weather
+cluster ships), Ingrain(275, self-escape-prevention + Leech-Seed-shaped
+self-heal), Endeavor(283, new fixed-damage formula, same insertion point
+as Super Fang/Ruination), Endure(203, reuses the Sturdy/Focus-Band/
+Focus-Sash survive-lethal-hit chain as a temporary move-granted state),
+Sleep Talk(214, reuses Assist's call-own-move pattern, sleep-gated),
+Spite(180, reuses Eerie Spell's just-shipped PP-reduction mechanism
+against the target's last move), Brine(362, HP-fraction power-double),
+Gyro Ball(360)/Electro Ball(486) (speed-ratio power formulas, natural
+pair), Tailwind(366, side-condition), Acupressure(367, reuses Starf
+Berry's forced-random-stat seam), Payback(371, reuses `[M18j]`'s turn-
+position check directly), Psycho Shift(375, self-status→target transfer),
+Punishment(386, stat-count power formula, mirrors Stored Power), Fury
+Cutter(210, consecutive-use doubling counter, precedented by Rollout),
+Nightmare(171, sleep-gated EOT chip damage), Bulldoze/Body
+Press/Foul Play/Photon Geyser (see D2), Stone Axe/Ceaseless Edge/Ice
+Spinner/Mortal Spin/Tidy Up/Defog (see D2), Foresight/Odor Sleuth (D1),
+Weather Ball(311, reuses the type-mutation duplicate-and-substitute
+pattern + a weather-keyed power/type table), Roost(355, RESTORE_HP +
+temporary Flying-type removal), Recycle(278, extends the existing
+berry-only `last_consumed_berry` tracker to any item).
+
+**MODERATE (~35 moves)** — needs one genuinely new, but small and
+well-scoped, mechanism: Teleport(100, unconditional self-switch, cheap
+end of that spectrum), Mimic(102, temporary move-slot override, distinct
+from Sketch's permanent one), Rest(156, full-heal + forced-fixed-duration
+sleep overwriting existing status), Curse(174, branches on the user's own
+type — two code paths under one move ID), Present(217, random
+damage-or-heal branch), Focus Punch(264, extends the flinch-cancel gate
+to any damage taken), Charge(268, new "next Electric move" volatile),
+Wish/Yawn/Healing Wish/Lunar Dance (D2 delayed-effect family), Assist(274,
+random move call from the whole PARTY's movepool), Knock Off(282,
+permanent item removal + conditional power boost), Imprison(286,
+cross-movepool comparison, new mechanism), Grudge(288, faint-triggered
+PP-drain-on-killer, reuses Destiny-Bond-shaped faint retaliation),
+Mud Sport(300)/Water Sport(346) (temporary field-wide type-damage
+halving, new small field modifier), Copycat(383, global last-move-used
+tracker + call-a-move reuse), Last Resort(387, new per-mon move-usage-
+history tracking), Me First(382, turn-order-dependent call-a-move with a
+power boost), Autotomize(475, stat-raise is cheap; weight-reduction
+REOPENS `[M19-pre1]`'s "no per-instance weight override needed"
+conclusion — flagged as a design decision that needs revisiting, not
+just implementing), Telekinesis(477, grounding override + guaranteed-hit
+volatile), Pollen Puff(639, target-side-conditional damage-or-heal
+branch), Sketch(166, PERMANENT moveset mutation — flagged: needs an
+architecture check on whether `BattlePokemon.moves` supports runtime
+append at all, not yet confirmed either way), Stockpile(254)/Spit
+Up(255)/Swallow(256) (a self-contained 3-move combo trio — counter +
+scaled damage + scaled heal, all 3 need building together, not
+independently), Geomancy(601, two-turn charge + multi-stat-raise
+composition — MODERATE only because of the two-turn half, otherwise
+cheap), Round(496, doubles-only combo power scaling — low priority,
+doubles-specific, candidate for M22 deferral alongside Life Dew(719)),
+Life Dew(719, doubles-only party heal), Perish Song(195, new
+multi-battler delayed-faint countdown — **also unblocks the currently-
+excluded Perish Body ability if built, a real cross-system finding worth
+flagging**), Snatch(289, intercepts another mon's status move THIS SAME
+TURN before it resolves — genuinely new turn-interception, no precedent).
+
+**HARD (~4 moves)**: Transform(144, full stat/move/type/ability copy —
+no precedent anywhere in this project for "become a copy of another
+Pokémon"), Sky Drop(507, two-turn move where BOTH battlers lose action
+availability while airborne — no precedent for a move affecting the
+DEFENDER's own action eligibility), Beak Blast(653)/Shell Trap(658,
+custom pre-move contact-retaliation timing distinct from every existing
+Protect-family/Focus-Punch-style interrupt this project has).
+
+**BLOCKED (1 move)**: Camouflage(293) — changes the user's type based on
+the overworld battle terrain/environment (`gBattleEnvironment`), the
+EXACT SAME structurally-absent dependency Secret Power(290, Bucket 4)
+was already deferred on — this project has no map/environment system at
+all. Should be deferred alongside Secret Power, not attempted
+independently.
+
+(87 + 35 + 4 + 1 = 127 individually called out above by name; the
+remaining ~3 singletons not explicitly named — chiefly very-low-priority
+cosmetic/flavor moves — are folded into the CHEAP count as trivially
+data-entry-shaped. Precise per-move counts are approximate, not a
+formally reconciled sum, consistent with this section's own "first-pass,
+not exhaustive" framing.)
+
+### D5 — Recommended next steps out of Section D
+
+1. **`M19-blocked-on-other-tier4`'s unblock (D0, 4 moves: Leech
+   Seed/Haze/Aromatherapy+Heal Bell) — CLOSED, COMPLETE (`[D0]`,
+   2026-07-09).** Shipped alongside 2 free pairs (Follow Me/Rage
+   Powder, Soft-Boiled/Milk Drink) and the 3 moves it directly unblocked
+   (Sappy Seed/Freezy Frost/Sparkly Swirl) — 11 moves total. Bucket 4 is
+   now down to just `M19-secret-power` (deferred by Rob).
+2. **D1's remaining cheapest clusters as a bundled session** (candidates:
+   `EFFECT_WEATHER` 5, `EFFECT_STEAL_ITEM` 2, `EFFECT_LOCK_ON` 2,
+   `EFFECT_SUCKER_PUNCH` 2, `EFFECT_STORED_POWER` 2, `EFFECT_SWAGGER` 2 —
+   roughly 15 moves, all CHEAP, zero cross-dependencies — `EFFECT_SOFTBOILED`
+   and `EFFECT_FOLLOW_ME` are now CLOSED, see item 1), matching the
+   `[Bucket 4 cheapest singles]`/`[Bucket 4 2-move sub-groups]` bundling
+   precedent.
+3. **D2's "already-shipped-mechanism reuse" families** (on-hit hazard/
+   screen set-or-clear, 6 moves; ability-manipulation, 4 moves;
+   damage-stat-source-override, 3 moves) — each is a near-zero-risk
+   extension of infrastructure this arc already built and tested.
+4. **The delayed-effect family (D2, 6 moves)** deserves its own dedicated
+   design session before implementation — genuinely new mechanism,
+   shared across Future Sight/Doom Desire/Wish/Yawn/Healing Wish/Lunar
+   Dance, worth scoping once rather than 4-5 separate times.
+5. **Perish Song(195)** is worth flagging to Rob specifically: building it
+   re-opens the currently-excluded Perish Body ability for reconsideration
+   — a cross-system dependency this session surfaced, not previously
+   documented anywhere.
+6. **Transform/Sky Drop/Beak Blast/Shell Trap** (the 4 HARD singletons)
+   and **Camouflage** (BLOCKED) are reasonable candidates to defer
+   indefinitely or exclude, matching this arc's own precedent for
+   Secret Power/Population Bomb — genuinely higher complexity or
+   structurally blocked, not just under-scoped.
+
+This section is now a real sub-tier starting point, not a placeholder —
+future sessions should pick concrete clusters/families off D0-D2 the same
+way sessions have been picking sub-groups off Bucket 4, rather than
+re-deriving this breakdown from scratch.
 
 ---
 
@@ -1436,14 +1899,14 @@ as a head start for that future pass, not a finished sub-tier list:
 
 | Bucket | Move count |
 |---|---|
-| Already implemented (excluded from this plan) — includes Heal Order/Dragon Darts (resolved conflicts); `M19-secondary-stat-on-hit` (79) shipped `[M19-secondary-stat-on-hit]` 2026-07-09; Bucket 3 in its entirety (30) shipped across `[Bucket 3 multi-stat]` + `[Bucket 3 clusters 1-2]`, both 2026-07-09; 7 of Bucket 4's single-move sub-groups shipped `[Bucket 4 cheapest singles]` 2026-07-09; `M19-rampage` (5) shipped `[M19-rampage]` 2026-07-09; `M19-recharge` (10) shipped `[M19-recharge]` 2026-07-09; `M19-break-protect` (4) shipped `[M19-break-protect]` 2026-07-09; `M19-recoil-on-miss` (4) shipped `[M19-recoil-on-miss]` 2026-07-09; `M19-weather-conditional-accuracy` (5) shipped `[M19-weather-conditional-accuracy]` 2026-07-09; 9 more 2-move sub-groups (19) shipped `[Bucket 4 2-move sub-groups]` 2026-07-09; `M19-steal-stats` (1) + `M19-ally-targeting-stat-change` (3) shipped `[M19-steal-stats]`/`[M19-ally-targeting-stat-change]` 2026-07-09; M19e (4) + M19f (5, incl. Spirit Shackle/`M19-trap-secondary`) shipped `[M19e]`/`[M19f]` 2026-07-09; M19c (7) + M19d (2) shipped `[M19c]`/`[M19d]` 2026-07-09 | 535 |
-| Proposed sub-tiers (Section B: Bucket 4's remaining 2 sub-groups only — M19c-i is now FULLY COMPLETE, every proposed sub-tier in Section B has shipped) | 4 |
+| Already implemented (excluded from this plan) — includes Heal Order/Dragon Darts (resolved conflicts); `M19-secondary-stat-on-hit` (79) shipped `[M19-secondary-stat-on-hit]` 2026-07-09; Bucket 3 in its entirety (30) shipped across `[Bucket 3 multi-stat]` + `[Bucket 3 clusters 1-2]`, both 2026-07-09; 7 of Bucket 4's single-move sub-groups shipped `[Bucket 4 cheapest singles]` 2026-07-09; `M19-rampage` (5) shipped `[M19-rampage]` 2026-07-09; `M19-recharge` (10) shipped `[M19-recharge]` 2026-07-09; `M19-break-protect` (4) shipped `[M19-break-protect]` 2026-07-09; `M19-recoil-on-miss` (4) shipped `[M19-recoil-on-miss]` 2026-07-09; `M19-weather-conditional-accuracy` (5) shipped `[M19-weather-conditional-accuracy]` 2026-07-09; 9 more 2-move sub-groups (19) shipped `[Bucket 4 2-move sub-groups]` 2026-07-09; `M19-steal-stats` (1) + `M19-ally-targeting-stat-change` (3) shipped `[M19-steal-stats]`/`[M19-ally-targeting-stat-change]` 2026-07-09; M19e (4) + M19f (5, incl. Spirit Shackle/`M19-trap-secondary`) shipped `[M19e]`/`[M19f]` 2026-07-09; M19c (7) + M19d (2) shipped `[M19c]`/`[M19d]` 2026-07-09; D0's 11 moves (Leech Seed/Haze/Aromatherapy/Heal Bell/Follow Me/Rage Powder/Soft-Boiled/Milk Drink/Sappy Seed/Freezy Frost/Sparkly Swirl) shipped `[D0]` 2026-07-09; D1's 4 moves (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09 | 550 |
+| Proposed sub-tiers (Section B: Bucket 4's remaining 1 sub-group only — `M19-secret-power`, deferred by Rob; `M19-blocked-on-other-tier4` CLOSED by `[D0]`) | 1 |
 | Deferred (Section C3 — Population Bomb only; C4 closed) | 1 |
 | Permanently excluded, confirmed by Rob (Section C1 Z-Move/Max-Move + Section C2 `[M19-exclusions]`, incl. Raging Bull + Psychic Noise addenda) | 213 |
-| Tier 4 residual, needs its own sub-clustering pass (Section D) | 181 |
+| Tier 4 residual, mechanism-clustered (Section D, `[M19-section-d-cluster]` 2026-07-09) — D0's 8 moves (2 D1 clusters `EFFECT_HEAL_BELL`/`EFFECT_FOLLOW_ME`, 1 D1 cluster `EFFECT_SOFTBOILED`, 2 D4 singletons Leech Seed/Haze) shipped `[D0]` 2026-07-09; D1's 4 D4 singletons (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09 | 169 |
 | **Total (matches the recon's 934-move catalog)** | **934** |
 
-535 + 4 + 1 + 213 + 181 = 934, confirmed by direct addition. Zero
+550 + 1 + 1 + 213 + 169 = 934, confirmed by direct addition. Zero
 outstanding discrepancy.
 
 | Sub-tier | Moves | Risk | Depends on |
@@ -1451,7 +1914,7 @@ outstanding discrepancy.
 | Bucket 1 — pure damage, no additional effect | **COMPLETE** (`[M19-bucket1]`, 61 implemented + 6 moved to Bucket 4) | — | — |
 | Bucket 2 — single existing secondary mechanism | **COMPLETE** (`[M19-bucket2]`, 135 implemented + 111 reclassified — 15 to Bucket 3, 96 to Bucket 4) | — | — |
 | Bucket 3 — existing mechanisms, needs scrutiny | **COMPLETE** (30/30 — 24 multi-stat `[Bucket 3 multi-stat]` + 3 combined-secondary + 2 screen+damage `[Bucket 3 clusters 1-2]` + 1 (Coaching) moved to Bucket 4) | — | — |
-| Bucket 4 — genuinely new mechanism (2 sub-groups remaining, both gated/deferred — the ONLY remaining M19 scope outside Section D) | 4 | Varies per sub-group | see Section B's own per-sub-group notes; `M19-secondary-stat-on-hit` (79 moves) is **COMPLETE** (`[M19-secondary-stat-on-hit]`, 2026-07-09); 7 single-move sub-groups (Rage/Clear Smog/Incinerate/Sparkling Aria/Throat Chop/Eerie Spell/Blood Moon) are **COMPLETE** (`[Bucket 4 cheapest singles]`, 2026-07-09); `M19-rampage` (5 moves, Uproar merged in) is **COMPLETE** (`[M19-rampage]`, 2026-07-09); `M19-recharge` (10 moves) is **COMPLETE** (`[M19-recharge]`, 2026-07-09); `M19-break-protect` (4 moves) is **COMPLETE** (`[M19-break-protect]`, 2026-07-09); `M19-recoil-on-miss` (4 moves) is **COMPLETE** (`[M19-recoil-on-miss]`, 2026-07-09); `M19-weather-conditional-accuracy` (5 moves) is **COMPLETE** (`[M19-weather-conditional-accuracy]`, 2026-07-09); 9 more 2-move sub-groups (19 moves) are **COMPLETE** (`[Bucket 4 2-move sub-groups]`, 2026-07-09); `M19-steal-stats` (1 move) and `M19-ally-targeting-stat-change` (3 moves) are **COMPLETE** (`[M19-steal-stats]`/`[M19-ally-targeting-stat-change]`, 2026-07-09); `M19-trap-secondary` (1 move, Spirit Shackle) is **COMPLETE**, folded into M19f (`[M19e]`/`[M19f]`, 2026-07-09); remaining 2 sub-groups (4 moves) are `M19-secret-power` (deferred by Rob) and `M19-blocked-on-other-tier4` (gated on Leech Seed/Haze/Aromatherapy) |
+| Bucket 4 — genuinely new mechanism (1 sub-group remaining, deferred — the ONLY remaining M19 scope outside Section D) | 1 | Deferred by Rob | see Section B's own per-sub-group notes; `M19-secondary-stat-on-hit` (79 moves) is **COMPLETE** (`[M19-secondary-stat-on-hit]`, 2026-07-09); 7 single-move sub-groups (Rage/Clear Smog/Incinerate/Sparkling Aria/Throat Chop/Eerie Spell/Blood Moon) are **COMPLETE** (`[Bucket 4 cheapest singles]`, 2026-07-09); `M19-rampage` (5 moves, Uproar merged in) is **COMPLETE** (`[M19-rampage]`, 2026-07-09); `M19-recharge` (10 moves) is **COMPLETE** (`[M19-recharge]`, 2026-07-09); `M19-break-protect` (4 moves) is **COMPLETE** (`[M19-break-protect]`, 2026-07-09); `M19-recoil-on-miss` (4 moves) is **COMPLETE** (`[M19-recoil-on-miss]`, 2026-07-09); `M19-weather-conditional-accuracy` (5 moves) is **COMPLETE** (`[M19-weather-conditional-accuracy]`, 2026-07-09); 9 more 2-move sub-groups (19 moves) are **COMPLETE** (`[Bucket 4 2-move sub-groups]`, 2026-07-09); `M19-steal-stats` (1 move) and `M19-ally-targeting-stat-change` (3 moves) are **COMPLETE** (`[M19-steal-stats]`/`[M19-ally-targeting-stat-change]`, 2026-07-09); `M19-trap-secondary` (1 move, Spirit Shackle) is **COMPLETE**, folded into M19f (`[M19e]`/`[M19f]`, 2026-07-09); `M19-blocked-on-other-tier4` (3 moves, Sappy Seed/Freezy Frost/Sparkly Swirl) is **COMPLETE** (`[D0]`, 2026-07-09); remaining 1 sub-group (1 move) is `M19-secret-power` (deferred by Rob) |
 | M19c — Protect-family variants | **COMPLETE** (`[M19c]`/`[M19d]`, 2026-07-09) | — | — |
 | M19d — Counter/Mirror-Move remnants | **COMPLETE** (`[M19c]`/`[M19d]`, 2026-07-09) | — | — |
 | M19e — Weather-conditional heal family | **COMPLETE** (`[M19e]`/`[M19f]`, 2026-07-09) | — | — |
@@ -1459,12 +1922,16 @@ outstanding discrepancy.
 | M19g — DISSOLVED, all 3 moves permanently excluded | 0 | — | — |
 | M19h — Weight-ratio dynamic power | **COMPLETE** (`[M19-pre1]`, confirmed `[M19-rescope-followup]`) | — | — |
 | M19i — Friendship-based dynamic power | **COMPLETE** (`[M19-pre1]`, confirmed `[M19-rescope-followup]`) | — | — |
-| Tier 4 sub-clustering pass | 181 | Unknown — needs its own recon | not required first, but recommended for momentum |
+| Tier 4 sub-clustering pass | 169 (was 181 — D0's 8 moves + D1's 4 moves shipped, `[D0]`/`[D1]` 2026-07-09) | Clustered (`[M19-section-d-cluster]`, 2026-07-09) — 45 moves/18 named clusters remaining, mostly CHEAP-MODERATE, plus a 124-move singleton pool difficulty-swept (~83 cheap/~35 moderate/~4 hard/1 blocked) | D0/D1's priority-unblock and free-candidate items are now CLOSED — see Section D's D5 for the next recommended cluster/family to pick off |
 
 **M19c-i is now FULLY CLOSED** — every sub-tier proposed in Section B (M19c
-through M19i) has shipped. The only remaining M19 scope outside a future
-Tier 4 sub-clustering pass is Bucket 4's 4 gated/deferred moves (Section B
-above) and Section D's 181-move residual.
+through M19i) has shipped. **`[D0]` update (2026-07-09): Bucket 4's
+`M19-blocked-on-other-tier4` gate is now CLOSED too** — the only
+remaining M19 scope is Bucket 4's single deferred move
+(`M19-secret-power`, Section B above) and Section D's residual. **`[D1]`
+update (2026-07-09): Section D's residual is now 169** (down from 181 —
+D0's own 8 moves plus D1's own 4 moves, Solar Blade/Snipe Shot/Hidden
+Power/Hyperspace Fury, both shipped).
 
 **Recommended implementation order:**
 
@@ -1697,11 +2164,12 @@ above) and Section D's 181-move residual.
    `M19-blocked-on-other-tier4` (3 moves, still confirmed genuinely
    unbuilt, wait on their own Tier-4-residual parents) — 4 moves, 2
    sub-groups total.**
-8. **Tier 4 sub-clustering recon (181 moves)** — recommend as its OWN
-   dedicated report-only session, mirroring how `docs/m19_recon.md` itself
-   was produced before this plan, rather than guessing sub-tiers from
-   effect-name clustering alone. Section D's own table is a head start, not
-   a finished breakdown.
+8. **Tier 4 sub-clustering recon (181 moves) — COMPLETE
+   (`[M19-section-d-cluster]`, 2026-07-09).** Section D is now a full
+   mechanism-clustered breakdown (21 clusters/51 moves, 130-move
+   singleton pool with a difficulty sweep, priority-unblock spotlight on
+   Leech Seed/Haze/Aromatherapy+Heal Bell) — a real starting point for
+   implementation sub-tiers, not just a head start.
 9. **Section C's 214 moves stay out of M19 scope**: 213 permanently
    excluded (87 Z-Move/Max-Move + 126 `[M19-exclusions]`, both confirmed by
    Rob), 1 deferred (Population Bomb) to its own small future tier once Rob
@@ -1798,16 +2266,15 @@ batches.
    Bucket 1-4's pool as already-implemented; 6 tracked via M19h/M19i, see
    Open Question #6 for that pair's own still-open staleness flag).
 
-4. **Tier 4's sub-clustering pass (181 moves, Section D)**: should this be
-   scheduled as its own explicit report-only session (matching how
-   `docs/m19_recon.md` itself, and this plan, were both produced) before
-   any Tier 4 implementation work starts, or should Tier 4 wait entirely
-   until the Bucket 1-4 / M19c-i buildable scope is done? This plan
-   recommends the former (parallel-track the recon while the cheap bulk
-   work proceeds) but defers the actual scheduling call to Rob's own
-   preference, matching this project's established pattern of not
-   pre-deciding sequencing questions that are really about Rob's available
-   time and priorities, not technical dependency. **Still open.**
+4. ~~Tier 4's sub-clustering pass (181 moves, Section D)~~ — **RESOLVED
+   (`[M19-section-d-cluster]`, 2026-07-09).** The report-only recon this
+   question asked about has now been done — Section D is a full
+   mechanism-clustered breakdown (21 clusters/51 moves, a 130-move
+   difficulty-swept singleton pool, and a priority-unblock spotlight).
+   The remaining open question is purely sequencing (which cluster to
+   implement first), not whether/when to recon — see Section D's own D5
+   recommendation (the Leech Seed/Haze/Aromatherapy+Heal Bell unblock)
+   for the suggested next step, still deferred to Rob's own priorities.
 
 5. ~~Heal Order(456) / Dragon Darts(697) conflict~~ — **RESOLVED
    (2026-07-08).** Rob confirmed option (a) for both: docs-only exclusion,

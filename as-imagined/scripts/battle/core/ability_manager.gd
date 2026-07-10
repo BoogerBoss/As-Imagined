@@ -2205,16 +2205,24 @@ static func blocks_weather_chip_damage(
 #      +20% to literally every move it uses, not just ones that visibly changed type.
 # Source excludes several variable-type move effects (Hidden Power, Weather Ball,
 # Natural Gift, Judgment-style Change-Type-on-Item, Revelation Dance, Terrain Pulse,
-# Tera Blast/Starstorm, Aura Wheel) from both branches 2 and 3 — none of these move
-# effects exist anywhere in this project's roster (confirmed via grep), so they are
-# not modeled here at all rather than added as inert exclusions.
-# Scoped to the DAMAGE pipeline only (DamageCalculator.calculate substitutes a
-# shallow-duplicated MoveData with just `.type` overridden, never mutating the
-# shared move Resource) — status-move type mutation project-wide is NOT modeled,
-# since no established hook exists there and this tier's own scope is the
-# type-effectiveness/damage pipeline specifically.
+# Tera Blast/Starstorm, Aura Wheel) from both branches 2 and 3 — of these, only
+# Hidden Power exists in this project's roster as of `[D1]` (the rest confirmed
+# still absent via grep, so remain unmodeled rather than added as inert
+# exclusions). Scoped to the DAMAGE pipeline only (DamageCalculator.calculate
+# substitutes a shallow-duplicated MoveData with just `.type` overridden, never
+# mutating the shared move Resource) — status-move type mutation project-wide is
+# NOT modeled, since no established hook exists there and this tier's own scope
+# is the type-effectiveness/damage pipeline specifically.
 static func effective_move_type(
 		attacker: BattlePokemon, move: MoveData, ng_active: bool = false) -> int:
+	# [D1] Hidden Power: source's own GetMoveAteType (battle_main.c L5738)
+	# returns early for EFFECT_HIDDEN_POWER before ANY ability check runs —
+	# Normalize/Pixilate/Refrigerate/Galvanize/Aerilate/Dragonize/Liquid Voice
+	# must NEVER touch Hidden Power's own IV-derived type (computed separately,
+	# earlier in DamageCalculator.calculate's own pipeline, before this
+	# function is even called).
+	if move.is_hidden_power:
+		return -1
 	var id: int = effective_ability_id(attacker, ng_active)
 	if move.sound_move and id == ABILITY_LIQUID_VOICE:
 		return TypeChart.TYPE_WATER
@@ -2427,7 +2435,18 @@ static func friend_guard_modifier_uq412(
 # ATTACKER's own ability being consulted, not a defensive ability being bypassed, so
 # Mold Breaker has no bearing on it (the same "different concept, no interaction"
 # reasoning already established for other attacker-side checks in this project).
-static func bypasses_redirection(attacker: BattlePokemon, ng_active: bool = false) -> bool:
+# [D1] Snipe Shot(691) — a MOVE-level bypass of the SAME both-halves redirection,
+# via a genuinely different source mechanism (`IsAffectedByFollowMe`'s own
+# `effect == EFFECT_SNIPE_SHOT` early-return, battle_move_resolution.c L806, AND
+# `HandleMoveTargetRedirection`'s separate `cv->moveEffect != EFFECT_SNIPE_SHOT`
+# exclusion, L855) — but this project's own single call site
+# (`_phase_move_execution`'s `not bypasses_redirection(...)` gate) already covers
+# both nested checks together, so one new optional `move` param + OR condition
+# here correctly extends to both without needing a second call site.
+static func bypasses_redirection(
+		attacker: BattlePokemon, ng_active: bool = false, move: MoveData = null) -> bool:
+	if move != null and move.ignores_redirection:
+		return true
 	var id: int = effective_ability_id(attacker, ng_active)
 	return id == ABILITY_PROPELLER_TAIL or id == ABILITY_STALWART
 

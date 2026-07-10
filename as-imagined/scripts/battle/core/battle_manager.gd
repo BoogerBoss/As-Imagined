@@ -134,6 +134,10 @@ signal rampage_lock_ended(attacker: BattlePokemon, move: MoveData, confused: boo
 
 signal escape_prevented(target: BattlePokemon, source: BattlePokemon)  # [M19f] Mean Look/Block/Spider Web/Spirit Shackle set the target's escape_prevented_by
 
+signal leech_seeded(target: BattlePokemon, source: BattlePokemon)  # [D0] Leech Seed/Sappy Seed set the target's leeched_by
+signal leech_seed_drained(target: BattlePokemon, source: BattlePokemon, amount: int)  # [D0] end-of-turn Leech Seed tick fired (heal or, under Liquid Ooze, damage to source)
+signal party_status_cured(pokemon: BattlePokemon)  # [D0] Heal Bell/Aromatherapy/Sparkly Swirl cured one party member's status
+
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
 
@@ -953,8 +957,10 @@ func _phase_move_execution() -> void:
 	# redirect below entirely (source: IsAffectedByFollowMe's own gate, L809-810, and
 	# HandleMoveTargetRedirection's redirect-loop condition, L872-873, both exclude a
 	# Propeller-Tail/Stalwart-holding attacker identically).
+	# [D1] Snipe Shot(691) bypasses both the same way, via its own MOVE-level
+	# ignores_redirection flag rather than an ability.
 	var followed_this_hit: bool = false
-	if not move.is_spread and move.power > 0 and not AbilityManager.bypasses_redirection(attacker, ng_active):
+	if not move.is_spread and move.power > 0 and not AbilityManager.bypasses_redirection(attacker, ng_active, move):
 		var def_side: int = 1 - attacker_side
 		var fm_idx: int = _follow_me_targets[def_side]
 		if fm_idx >= 0 and fm_idx < _combatants.size():
@@ -1888,7 +1894,22 @@ func _phase_move_execution() -> void:
 		# Source: Cmd_setforcedtarget (battle_script_commands.c L8748):
 		#   gSideTimers[user_side].followmeTimer = 1; followmeTarget = user.
 		# Source: target = TARGET_USER, priority = +2.
+		# [D0] Rage Powder's powder_move=TRUE (Follow Me lacks it) — a REAL
+		# correction to this sub-group's own Step 0 assumption: the general
+		# blocks_move_flag gate much earlier in this function checks `defender`,
+		# which for this self-targeted move resolves to whatever the default
+		# target-selection logic picked (the opponent), NOT the user itself —
+		# it does NOT grant Grass-type/Overcoat immunity here "for free" as
+		# originally assumed. Checked explicitly against the ATTACKER here
+		# instead, reusing the identical AbilityManager.blocks_move_flag
+		# function with the attacker passed in the defender-role parameter.
 		if move.is_follow_me:
+			if move.powder_move and AbilityManager.blocks_move_flag(attacker, move, ng_active, attacker):
+				move_effect_failed.emit(attacker, "move_flag_blocked")
+				move_executed.emit(attacker, attacker, move, 0)
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				return
 			_follow_me_targets[attacker_side] = attacker_idx
 			follow_me_used.emit(attacker)
 			move_executed.emit(attacker, attacker, move, 0)
@@ -2033,6 +2054,32 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Leech Seed ────────────────────────────────────────────────────────
+		# Source: Cmd_setseeded (battle_script_commands.c L7061-7080) — see
+		# MoveData.is_leech_seed's own doc comment for the full citation. Its own
+		# dedicated Grass-immune check (inside try_apply_leech_seed) is NOT the
+		# general type-effectiveness gate, matching the is_mean_look precedent
+		# just above — self-contained early return rather than falling through
+		# to the shared foe_targeting block further below.
+		if move.is_leech_seed:
+			if AbilityManager.bounces_status_move(defender, ng_active, attacker, move):
+				move_bounced.emit(defender, attacker)
+				ability_triggered.emit(defender, "magic_bounce")
+				var leech_seed_bounce_holder: BattlePokemon = defender
+				defender = attacker
+				attacker = leech_seed_bounce_holder
+			if defender.substitute_hp > 0 and not move.ignores_substitute \
+					and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
+				move_missed.emit(attacker, "substitute")
+			elif not StatusManager.try_apply_leech_seed(defender, attacker):
+				move_effect_failed.emit(defender, "leech_seed_failed")
+			else:
+				leech_seeded.emit(defender, attacker)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# ── Attract ───────────────────────────────────────────────────────────
 		# Source: battle_scripts_1.s :: BattleScript_EffectAttract (L2220+) ->
 		#   Cmd_tryinfatuating (battle_script_commands.c L7613-7650). NOT the same
@@ -2086,6 +2133,31 @@ func _phase_move_execution() -> void:
 				var weather_heal: int = _weather_heal_amount(attacker, move, ng_active)
 				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + weather_heal)
 				drain_heal.emit(attacker, weather_heal)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Heal Bell / Aromatherapy ────────────────────────────────────────────
+		# Source: Cmd_healpartystatus (battle_script_commands.c L8259-8340) — see
+		# MoveData.is_heal_bell's own doc comment for the full Soundproof-partner
+		# asymmetry citation. Never "fails" outright (source has no failure branch
+		# for this effect — always resolves, even if nothing was actually cured).
+		if move.is_heal_bell:
+			_apply_heal_bell(attacker, move.sound_move, ng_active)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Haze ──────────────────────────────────────────────────────────────
+		# Source: Cmd_normalisebuffs (battle_script_commands.c L7217-7224) —
+		# resets EVERY live battler on the field (both sides), not one target.
+		# See MoveData.is_haze's own doc comment for the full citation.
+		if move.is_haze:
+			for mon: BattlePokemon in _combatants:
+				if not mon.fainted:
+					_reset_stat_stages(mon)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -2767,6 +2839,39 @@ func _phase_end_of_turn() -> void:
 					mon.fainted = true
 					pokemon_fainted.emit(mon)
 
+	# ── [D0] Leech Seed drain (ENDTURN_LEECH_SEED=11, BEFORE Poison/Burn=12/13
+	# in source's own handler table) ──────────────────────────────────────────
+	# Source: HandleEndTurnLeechSeed (battle_end_turn.c L476-509). Drain amount
+	# is maxHP/8 of the SEEDED battler (`mon` here), Magic-Guard-blocked on the
+	# SEEDED battler (skips the whole tick, no damage AND no heal). Big Root
+	# (a real correction to [M18q]'s own "move-drain only" scope note — see
+	# MoveData.is_leech_seed's doc comment) boosts the SEEDER's heal; Liquid
+	# Ooze is checked on the SEEDED battler and inverts the SEEDER's heal into
+	# damage of the identical amount if present (the drained mon's own ability
+	# protecting itself, the same shape Giga Drain's own Liquid Ooze check
+	# already established). Both seeder and seeded must still be present —
+	# already guaranteed by _clear_volatiles' own reciprocal clear (a fainted/
+	# switched-out seeder's leftover victims are cleared the instant it leaves).
+	for mon: BattlePokemon in _turn_order:
+		if mon.fainted or mon.leeched_by == null:
+			continue
+		var seeder: BattlePokemon = mon.leeched_by
+		if seeder.fainted:
+			continue
+		if AbilityManager.blocks_indirect_damage(mon, ng_active):
+			continue
+		var seed_drain: int = max(1, mon.max_hp / 8)
+		mon.current_hp = max(0, mon.current_hp - seed_drain)
+		var seed_heal: int = ItemManager.big_root_drain_heal(seeder, seed_drain, ng_active)
+		if AbilityManager.inverts_drain(mon, ng_active):
+			seeder.current_hp = max(0, seeder.current_hp - seed_heal)
+		else:
+			seeder.current_hp = min(seeder.max_hp, seeder.current_hp + seed_heal)
+		leech_seed_drained.emit(mon, seeder, seed_heal)
+		if mon.current_hp == 0:
+			mon.fainted = true
+			pokemon_fainted.emit(mon)
+
 	# ── Status damage (ENDTURN_POISON=12, ENDTURN_BURN=13 in source handler table) ────────
 	# Apply end-of-turn status damage in speed order (matching source ENDTURN_POISON
 	# and ENDTURN_BURN handlers in battle_end_turn.c which iterate by battler order).
@@ -3188,6 +3293,57 @@ func _weather_heal_amount(mon: BattlePokemon, move: MoveData, ng_active: bool) -
 	return max(1, mon.max_hp / 4)
 
 
+# [Bucket 4 cheapest singles]/[D0] Resets ALL 7 of mon's stat stages to
+# exactly 0 — an absolute reset, not a relative stat_change_amount delta.
+# Extracted from Clear Smog's own original inline implementation so Haze
+# (D0) and Freezy Frost's on-hit secondary can reuse it verbatim, looped
+# over every combatant instead of one target. No-ops (including no signal)
+# if every stat was already 0, matching source's own pre-check exactly.
+func _reset_stat_stages(mon: BattlePokemon) -> void:
+	var any_nonzero: bool = false
+	for i in range(mon.stat_stages.size()):
+		if mon.stat_stages[i] != 0:
+			any_nonzero = true
+			break
+	if not any_nonzero:
+		return
+	for i in range(mon.stat_stages.size()):
+		if mon.stat_stages[i] != 0:
+			var delta: int = -mon.stat_stages[i]
+			mon.stat_stages[i] = 0
+			stat_stage_changed.emit(mon, i, delta)
+
+
+# [D0] Heal Bell(215)/Aromatherapy(312)/Sparkly Swirl(687)'s shared
+# party-wide status cure. Source: Cmd_healpartystatus (battle_script_commands.c
+# L8259-8340) — cures EVERY real party member's status1, not just the
+# active battler. A REAL, confirmed asymmetry at this project's GEN_LATEST
+# config (B_HEAL_BELL_SOUNDPROOF >= GEN_8, "in Gen9 it always affects the
+# user"): the healer ITSELF and every OTHER party member (bench mons) are
+# cured UNCONDITIONALLY, bypassing Soundproof entirely — but the healer's
+# DOUBLES PARTNER specifically stays gated by ITS OWN Soundproof, and only
+# for a sound move (Heal Bell; Aromatherapy/Sparkly Swirl are not sound
+# moves, so `is_sound_move=false` for both never blocks the partner
+# either). `healer` may be the user of a pure-status Heal Bell/Aromatherapy
+# (attacker == healer) or Sparkly Swirl's own attacker (damage dealt to an
+# opponent, but the cure applies to the ATTACKER's own party regardless).
+func _apply_heal_bell(healer: BattlePokemon, is_sound_move: bool, ng_active: bool) -> void:
+	var idx: int = _combatants.find(healer)
+	if idx < 0:
+		return
+	var side: int = idx / _active_per_side
+	var party: BattleParty = _parties[side]
+	var partner: BattlePokemon = _get_ally(healer)
+	for member: BattlePokemon in party.members:
+		if member == partner and member != healer:
+			if is_sound_move and AbilityManager.effective_ability_id(member, ng_active) \
+					== AbilityManager.ABILITY_SOUNDPROOF:
+				continue
+		if member.status != BattlePokemon.STATUS_NONE:
+			member.status = BattlePokemon.STATUS_NONE
+			party_status_cured.emit(member)
+
+
 # Fire switch-in ability effects for new_mon against all live opposing combatants.
 # Source: AbilityBattleEffects ABILITYEFFECT_ON_SWITCHIN (battle_util.c L3310–3323):
 #   for i in 0..gBattlersCount: if IsBattlerAlly(battler,i) || !IsBattlerAlive(i): continue
@@ -3598,6 +3754,19 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	for other: BattlePokemon in _combatants:
 		if other != mon and other.escape_prevented_by == mon:
 			other.escape_prevented_by = null
+
+	# [D0] Leech Seed — the FOURTH move-based volatile using this exact
+	# reciprocal-clear shape (source: battle_main.c's own leechSeed clear sits
+	# in the identical two switch-out/faint functions [M18.5d-3]/[M18.5f]/
+	# [M19f] already unified into this one chokepoint). `mon.leeched_by` is
+	# who seeded `mon` (mon's own half, cured on mon's own departure); the
+	# scan below is the reciprocal half — every OTHER battler `mon` had
+	# seeded stops draining to `mon` once `mon` itself leaves the field, since
+	# there's no one left to drain TO.
+	mon.leeched_by = null
+	for other: BattlePokemon in _combatants:
+		if other != mon and other.leeched_by == mon:
+			other.leeched_by = null
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
@@ -4772,21 +4941,34 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 
 	# [Bucket 4 cheapest singles] Clear Smog: resets ALL of the target's stat
 	# stages to exactly 0 — an absolute reset, not a relative stat_change_amount
-	# delta, so this cannot reuse _apply_stat_change_effect at all. No-ops
-	# (including no signal) if every stat was already 0, matching source's own
-	# pre-check exactly.
+	# delta, so this cannot reuse _apply_stat_change_effect at all.
 	if damage > 0 and move.is_clear_smog:
-		var any_nonzero: bool = false
-		for i in range(target.stat_stages.size()):
-			if target.stat_stages[i] != 0:
-				any_nonzero = true
-				break
-		if any_nonzero:
-			for i in range(target.stat_stages.size()):
-				if target.stat_stages[i] != 0:
-					var delta: int = -target.stat_stages[i]
-					target.stat_stages[i] = 0
-					stat_stage_changed.emit(target, i, delta)
+		_reset_stat_stages(target)
+
+	# [D0] Freezy Frost(686)'s on-hit secondary — the SAME `_reset_stat_stages`
+	# primitive Haze(114)/Clear Smog reuse, but looped over EVERY live combatant
+	# (both sides), matching Haze's own field-wide scope exactly. See
+	# MoveData.is_haze_on_hit's own doc comment for the full source citation.
+	if damage > 0 and move.is_haze_on_hit:
+		for mon: BattlePokemon in _combatants:
+			if not mon.fainted:
+				_reset_stat_stages(mon)
+
+	# [D0] Sappy Seed(685)'s on-hit secondary — Leech Seed applied to the
+	# TARGET as a guaranteed additional effect on a successful hit. Reuses
+	# StatusManager.try_apply_leech_seed verbatim (same Grass-immune/
+	# already-seeded gate the primary Leech Seed(73) move uses).
+	if damage > 0 and move.is_leech_seed_on_hit:
+		if StatusManager.try_apply_leech_seed(target, attacker):
+			leech_seeded.emit(target, attacker)
+
+	# [D0] Sparkly Swirl(687)'s on-hit secondary — Aromatherapy's party-wide
+	# cure applied to the ATTACKER'S OWN party (source's Cmd_healpartystatus
+	# always operates on GetBattlerParty(gBattlerAttacker) regardless of the
+	# move's own `.self = TRUE` flag — heals the attacker's side even though
+	# the move damages an opponent). Reuses _apply_heal_bell verbatim.
+	if damage > 0 and move.is_heal_bell_on_hit:
+		_apply_heal_bell(attacker, false, ng_active)
 
 	# [Bucket 4 cheapest singles] Incinerate: destroys (not consumes) the
 	# target's held Berry — deliberately bypasses `_consume_item` (which would

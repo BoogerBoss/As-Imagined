@@ -128,6 +128,19 @@ static func calculate(
 		ng_active: bool = false,
 		is_last_to_move: bool = false) -> Dictionary:
 
+	# [D1] Hidden Power(237) — its own IV-derived type, computed BEFORE the
+	# ability-based mutation step below (source's SetTypeBeforeUsingMove computes
+	# both in the same pre-processing pass, Hidden Power's dynamic type first).
+	# Same shallow-duplicate-and-substitute pattern as M17n-6 immediately below —
+	# by the time `effective_move_type` runs, `move.type` already holds the real
+	# computed type, but `move.is_hidden_power` survives the duplicate() so that
+	# function's own explicit exclusion (added this session) still correctly
+	# prevents Normalize/Pixilate/etc. from touching it afterward.
+	if move.is_hidden_power:
+		var hp_move: MoveData = move.duplicate()
+		hp_move.type = _hidden_power_type(attacker)
+		move = hp_move
+
 	# M17n-6: Normalize / Refrigerate / Pixilate / Galvanize / Liquid Voice — move-type
 	# mutation must happen before EVERYTHING else below reads move.type (ability-
 	# immunity gates, type effectiveness, STAB, the weather modifier, and any
@@ -632,4 +645,35 @@ static func _get_weather_modifier(move_type: int, weather: int) -> int:
 		WEATHER_RAIN:
 			if move_type == TypeChart.TYPE_FIRE:  return 2048   # 0.5×
 			if move_type == TypeChart.TYPE_WATER: return 6144   # 1.5×
-	return 4096  # 1.0× — no modifier
+	return 4096  # 1.0x - no modifier
+
+
+# [D1] Hidden Power(237)'s IV-derived type. Source: GetDynamicMoveType's
+# EFFECT_HIDDEN_POWER case (battle_main.c L5851-5869) - a 6-bit value from the
+# LOW bit of each IV in this EXACT order (HP, Atk, Def, SPEED, SpAtk, SpDef -
+# confirmed NOT this project's own ivs[] array order, which places Speed LAST;
+# indexed explicitly by BattlePokemon.STAT_* below to avoid that trap, the
+# same ordering pitfall already documented for Nature in [M18.5h-1]), then
+# `moveType = ((hpTypeCount - 1) * typeBits) / 63` indexes into the 16 types
+# with `isHiddenPowerType = TRUE` in types_info.h - every real type except
+# Normal and Fairy (confirmed via direct count, not assumed to be the older
+# 15-type pre-Fairy pool). Ordered here to match TypeChart's own constants,
+# which mirror source's enum Type ordering exactly (confirmed directly).
+static func _hidden_power_type(attacker: BattlePokemon) -> int:
+	const HP_TYPES: Array[int] = [
+		TypeChart.TYPE_FIGHTING, TypeChart.TYPE_FLYING, TypeChart.TYPE_POISON,
+		TypeChart.TYPE_GROUND, TypeChart.TYPE_ROCK, TypeChart.TYPE_BUG,
+		TypeChart.TYPE_GHOST, TypeChart.TYPE_STEEL, TypeChart.TYPE_FIRE,
+		TypeChart.TYPE_WATER, TypeChart.TYPE_GRASS, TypeChart.TYPE_ELECTRIC,
+		TypeChart.TYPE_PSYCHIC, TypeChart.TYPE_ICE, TypeChart.TYPE_DRAGON,
+		TypeChart.TYPE_DARK,
+	]
+	var ivs: Array[int] = attacker.ivs
+	var type_bits: int = (ivs[BattlePokemon.STAT_HP] & 1) \
+			| ((ivs[BattlePokemon.STAT_ATK] & 1) << 1) \
+			| ((ivs[BattlePokemon.STAT_DEF] & 1) << 2) \
+			| ((ivs[BattlePokemon.STAT_SPEED] & 1) << 3) \
+			| ((ivs[BattlePokemon.STAT_SPATK] & 1) << 4) \
+			| ((ivs[BattlePokemon.STAT_SPDEF] & 1) << 5)
+	var index: int = (HP_TYPES.size() - 1) * type_bits / 63
+	return HP_TYPES[index]

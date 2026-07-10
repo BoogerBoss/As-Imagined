@@ -1475,3 +1475,150 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   both TRUE at GEN_LATEST (`>= GEN_6`) — confirmed individually per move,
 #   not assumed uniform just because they share one effect ID.
 @export var is_mean_look: bool = false
+
+# [D0] is_leech_seed: Leech Seed(73) — plants a per-battler seeder-reference
+#   (`BattlePokemon.leeched_by`) on the target, draining maxHP/8 from the
+#   seeded battler to the seeder every end of turn. Grass-type immune,
+#   checked at APPLY time via a dedicated move-script-level check (NOT the
+#   general type-effectiveness gate — Grass-type moves are not generally
+#   immune to Grass-type targets on the type chart; this is Leech Seed's own
+#   bespoke rule), fails outright if already seeded. Source:
+#   `Cmd_setseeded` (battle_script_commands.c L7061-7080):
+#   `IS_BATTLER_OF_TYPE(target, TYPE_GRASS)` → fail; already
+#   `volatiles.leechSeed` → miss; else `volatiles.leechSeed =
+#   LEECHSEEDED_BY(attacker)`. Blocked by Substitute (`jumpifsubstituteblocks`
+#   in `BattleScript_EffectLeechSeed`), `bounceable = TRUE`
+#   (`magicCoatAffected = TRUE` in source). The end-of-turn drain itself
+#   (`HandleEndTurnLeechSeed`, battle_end_turn.c L476-509) reuses TWO
+#   already-implemented item/ability functions with zero changes:
+#   `ItemManager.big_root_drain_heal` (a real correction to `[M18q]`'s own
+#   "move-drain only" scope note — source's own `HandleEndTurnLeechSeed`
+#   calls the SAME `GetDrainedBigRootHp` Giga Drain uses, confirming Big
+#   Root's TRUE scope always included Leech Seed; `[M18q]` simply hadn't
+#   built Leech Seed yet) and `AbilityManager.inverts_drain` (Liquid Ooze,
+#   checked on the SEEDED battler — if it has Liquid Ooze, the SEEDER takes
+#   damage instead of healing, the same "drained mon's own ability inverts
+#   the drainer's heal" shape Giga Drain's own Liquid-Ooze check already
+#   established). Magic Guard on the SEEDED battler blocks the entire tick
+#   (checked on `battler`, i.e. the seeded mon, in source — reuses
+#   `AbilityManager.blocks_indirect_damage`). Heal Block's own exclusion
+#   branch is permanently moot (Heal Block is unimplemented/excluded).
+@export var is_leech_seed: bool = false
+
+# [D0] is_haze: Haze(114) — resets ALL 7 stat stages to exactly 0 for EVERY
+#   battler currently on the field (both sides, doubles-aware), not just one
+#   target — confirmed from source, NOT a single-target reset. Reuses Clear
+#   Smog's own `is_clear_smog` reset primitive verbatim, just looped over
+#   every live combatant instead of one. Source: `Cmd_normalisebuffs`
+#   (battle_script_commands.c L7217-7224): `for (i = 0; i < gBattlersCount;
+#   i++) TryResetBattlerStatChanges(i)` — the real primary dispatch for
+#   Haze(114)'s own `BattleScript_EffectHaze`. A separate `MOVE_EFFECT_HAZE`
+#   case exists in the additionalEffects switch (for a hypothetical move
+#   using Haze's effect as a SECONDARY — Freezy Frost(686), see
+#   `is_haze_on_hit` below) and calls the identical
+#   `TryResetBattlerStatChanges` loop, confirming both dispatch paths are
+#   the same underlying mechanism.
+@export var is_haze: bool = false
+
+# [D0] is_heal_bell: Heal Bell(215)/Aromatherapy(312) — cures every real
+#   status1 condition for the ATTACKER'S ENTIRE PARTY (bench included, not
+#   just the active battler), via `BattleParty.members`' own per-mon
+#   `.status` field — confirmed sufficient with ZERO extension needed
+#   (every bench `BattlePokemon` already holds a live `.status` field).
+#   Source: `Cmd_healpartystatus` (battle_script_commands.c L8259-8340).
+#   A REAL, confirmed asymmetry at this project's GEN_LATEST config
+#   (`B_HEAL_BELL_SOUNDPROOF >= GEN_8`, "in Gen9 it always affects the
+#   user"): the ATTACKER ITSELF and every OTHER party member (bench mons)
+#   are cured UNCONDITIONALLY, bypassing Soundproof entirely — but the
+#   ATTACKER'S DOUBLES PARTNER specifically remains gated by ITS OWN
+#   Soundproof (only relevant for Heal Bell, a `sound_move`; Aromatherapy
+#   is not a sound move, so this never blocks Aromatherapy). Confirmed via
+#   direct read of `Cmd_healpartystatus`'s own 3-branch conditional (attacker
+#   branch has an unconditional `>= GEN_8` OR; partner branch has no such
+#   OR; the full-party loop's `ability = ABILITY_NONE` branch fires for
+#   every non-attacker/non-partner slot at this config) — NOT assumed
+#   uniform just because both moves share one effect. `is_sound_move` (the
+#   pre-existing `sound_move` field) distinguishes the two.
+@export var is_heal_bell: bool = false
+
+# [D0] is_haze_on_hit / is_leech_seed_on_hit / is_heal_bell_on_hit: Freezy
+#   Frost(686)/Sappy Seed(685)/Sparkly Swirl(687) — the 3 moves Bucket 4's
+#   `M19-blocked-on-other-tier4` sub-group was gated on, now unblocked.
+#   All 3 are plain `EFFECT_HIT` damage moves with a GUARANTEED (no
+#   `.chance` field — a true primary-shaped secondary, Shield-Dust/Sheer-
+#   Force/Serene-Grace-EXEMPT) additional effect reusing the 3 primitives
+#   above VERBATIM — the identical "duplicate-and-substitute-free, dispatch
+#   unconditional on damage > 0" shape `[Bucket 3 clusters 1-2]` already
+#   established for Glitzy Glow/Baddy Bad's on-hit screens. Source:
+#   Sappy Seed's `MOVE_EFFECT_LEECH_SEED` case (battle_script_commands.c
+#   L2868-2874, same Grass-immune/already-seeded gate as the primary);
+#   Freezy Frost's `MOVE_EFFECT_HAZE` case (L2861-2865, identical
+#   `TryResetBattlerStatChanges` loop over every battler — confirmed the
+#   damage ALSO resets the ATTACKER'S OWN stats, not just the target's);
+#   Sparkly Swirl's `MOVE_EFFECT_AROMATHERAPY` case (L3259-3261, dispatches
+#   the SAME `Cmd_healpartystatus`, which always operates on
+#   `GetBattlerParty(gBattlerAttacker)` regardless of the `.self = TRUE`
+#   flag on Sparkly Swirl's own data — heals the ATTACKER'S OWN party, even
+#   though the move deals damage to an opponent).
+@export var is_leech_seed_on_hit: bool = false
+@export var is_haze_on_hit: bool = false
+@export var is_heal_bell_on_hit: bool = false
+
+# [D1] is_solar_beam is reused directly for Solar Blade(632) — see that
+#   field's own doc comment. No new MoveData field needed; `category:
+#   PHYS` on Solar Blade's own data entry (vs. Solar Beam's SPEC) is
+#   sufficient, since the charge-turn-skip dispatch never reads category.
+#   FLAGGED, not fixed this session: source's `EFFECT_SOLAR_BEAM` also
+#   halves damage in rain/sand/hail/fog (`battle_util.c` L6177-6181,
+#   `GetAttackerWeather`-gated) — this project's existing Solar Beam(76)
+#   never implemented that half (only the charge-skip), so Solar Blade
+#   ships with the SAME incomplete-but-consistent behavior rather than
+#   expanding this session's scope to fix Solar Beam's own pre-existing
+#   gap. A future session should build both halves together.
+
+# [D1] ignores_redirection: Snipe Shot(691) — bypasses BOTH the Follow Me/
+#   Rage Powder timer-based redirect AND the Lightning Rod/Storm Drain
+#   ability-based redirect, at the SAME single gate this project's
+#   existing `AbilityManager.bypasses_redirection` call site already
+#   checks (`battle_manager.gd`'s `_phase_move_execution`, the
+#   `not move.is_spread and move.power > 0 and not bypasses_redirection(...)`
+#   condition guards BOTH nested redirect checks together). Source:
+#   `IsAffectedByFollowMe` (battle_move_resolution.c L799-817) returns
+#   FALSE for `effect == EFFECT_SNIPE_SHOT` (bypasses Follow Me/Rage
+#   Powder) — the SAME early-exclusion list Propeller Tail/Stalwart's own
+#   ability check sits in; `HandleMoveTargetRedirection`'s SEPARATE
+#   Lightning-Rod/Storm-Drain block (L847-862) ALSO excludes
+#   `cv->moveEffect != EFFECT_SNIPE_SHOT` explicitly — a genuinely
+#   different source function from Propeller Tail/Stalwart's own bypass,
+#   but this project's existing `bypasses_redirection` call site already
+#   sits at the ONE chokepoint gating both nested checks, so extending
+#   that one function with a move-level OR (rather than needing a second
+#   call site) correctly covers both halves for free.
+@export var ignores_redirection: bool = false
+
+# [D1] is_hidden_power: Hidden Power(237) — type is IV-derived (6-bit
+#   value from the LOW bit of HP/Atk/Def/Speed/SpAtk/SpDef IVs, in THAT
+#   bit order — source: `GetDynamicMoveType`'s `EFFECT_HIDDEN_POWER` case,
+#   battle_main.c L5851-5869), mapped into the 16 types with
+#   `isHiddenPowerType=TRUE` in `types_info.h` (every real type except
+#   Normal/Fairy) via `moveType = ((16-1) * typeBits) / 63`. **Power is
+#   NOT IV-derived at this project's config**: `B_HIDDEN_POWER_DMG =
+#   GEN_LATEST` (>= GEN_6) means the classic bit-parity power formula
+#   (battle_util.c L6320-6331) is dead code here — power is a flat 60,
+#   recorded directly in Hidden Power's own `.tres` data like any other
+#   move, needing zero dispatch of its own. **A real ordering trap,
+#   confirmed by directly checking rather than assumed**: source's
+#   bit-packing order (HP, Atk, Def, SPEED, SpAtk, SpDef) does NOT match
+#   this project's own `BattlePokemon.ivs` array order (HP, Atk, Def,
+#   SpAtk, SpDef, SPEED, per `STAT_*` — Speed is LAST here, FOURTH in
+#   source) — the same trap already documented for Nature
+#   (`[M18.5h-1]`). The dispatch must index `ivs[STAT_SPEED]` explicitly
+#   for bit 3, not a raw positional index. **A second real correction**:
+#   `AbilityManager.effective_move_type` had no exclusion for Hidden
+#   Power (it never needed one before this move existed) — source's own
+#   `GetMoveAteType` returns early for `EFFECT_HIDDEN_POWER` before ANY
+#   ability check runs (battle_main.c L5738), meaning Normalize/Pixilate/
+#   Refrigerate/etc. must NEVER touch Hidden Power's own computed type;
+#   `effective_move_type` now checks `move.is_hidden_power` first and
+#   returns -1 (no ability-driven override) unconditionally.
+@export var is_hidden_power: bool = false

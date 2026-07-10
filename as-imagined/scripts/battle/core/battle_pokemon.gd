@@ -188,6 +188,15 @@ var wrapped_turns: int = 0
 # wrapped_by) — source's MOVE_EFFECT_PREVENT_ESCAPE is a pure switch-block,
 # no HP component at all.
 var escape_prevented_by: BattlePokemon = null
+# [D0] Leech Seed's own per-battler seeder-reference — direct object
+# reference to whoever planted the seed, the exact same shape as
+# infatuated_by/wrapped_by/escape_prevented_by above. null = not seeded;
+# non-null = seeded, drained 1/8 max HP to `leeched_by` every end of turn
+# (BattleManager._phase_end_of_turn) until the seeder itself leaves the
+# field (reciprocal clear via BattleManager._clear_volatiles, the exact
+# [M18.5d-3] pattern those 3 fields already established) or the seeded mon
+# itself switches out/faints (its own base-case clear).
+var leeched_by: BattlePokemon = null
 # M18u: Metronome item's consecutive-same-move-use counter. Compared against
 # last_move_used (BEFORE it's overwritten for the current move) at the same
 # PP-deduction site source colocates its own reset check

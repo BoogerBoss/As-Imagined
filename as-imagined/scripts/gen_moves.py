@@ -2865,6 +2865,116 @@ MOVES = [
      "type": TYPE_FLYING, "category": STAT, "accuracy": 0, "pp": 20,
      "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
      "is_mirror_move": True},
+
+    # ── [D0] Priority unblock: Leech Seed / Haze / Aromatherapy+Heal Bell ──
+    # Leech Seed(73): foe-targeting, own dedicated Grass-immune check (not
+    # the general type gate), blocked by Substitute (no ignoresSubstitute
+    # in source), bounceable (magicCoatAffected=TRUE).
+    {"id":   73, "name": "Leech Seed",
+     "type": TYPE_GRASS, "category": STAT, "accuracy": 90, "pp": 10,
+     "bounceable": True, "is_leech_seed": True},
+    # Haze(114): field-wide (TARGET_FIELD), ignoresProtect/ignoresSubstitute
+    # both TRUE in source (moot in practice — is_haze's own dispatch doesn't
+    # check either, matching this project's other field-wide-effect moves).
+    {"id":  114, "name": "Haze",
+     "type": TYPE_ICE, "category": STAT, "accuracy": 0, "pp": 30,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_haze": True},
+    # Heal Bell(215): soundMove=TRUE (the Soundproof-partner gate applies);
+    # Aromatherapy(312): NOT a sound move (the Soundproof-partner gate never
+    # blocks it) — see move_data.gd's is_heal_bell doc comment for the full
+    # asymmetry citation.
+    {"id":  215, "name": "Heal Bell",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE,
+     "sound_move": True, "is_heal_bell": True},
+    {"id":  312, "name": "Aromatherapy",
+     "type": TYPE_GRASS, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_heal_bell": True},
+
+    # ── [D0] Follow Me / Rage Powder — mechanism already fully built (M14b),
+    # near-pure data entry against an already-tested dispatch. Rage Powder
+    # carries powderMove=TRUE (Follow Me does not) — a REAL correction to
+    # this sub-group's own original Step 0 assumption: the general
+    # Soundproof/Bulletproof-shaped blocks_move_flag gate checks `defender`,
+    # which for this self-targeted move resolves to the DEFAULT-SELECTED
+    # opponent, NOT the attacker itself, so it does NOT grant Grass-type/
+    # Overcoat immunity "for free" as first assumed — the is_follow_me
+    # dispatch itself now checks blocks_move_flag against the ATTACKER
+    # explicitly (one small addition, still zero new AbilityManager code). ──
+    {"id":  266, "name": "Follow Me",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20, "priority": 2,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST,
+     "is_follow_me": True},
+    {"id":  476, "name": "Rage Powder",
+     "type": TYPE_BUG, "category": STAT, "accuracy": 0, "pp": 20, "priority": 2,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST,
+     "powder_move": True, "is_follow_me": True},
+
+    # ── [D0] Soft-Boiled / Milk Drink — EFFECT_SOFTBOILED, functionally
+    # identical to the already-implemented EFFECT_RESTORE_HP family
+    # (Recover/Slack Off/Heal Order) — confirmed individually from source
+    # rather than assumed duplicated, genuinely identical data. ──
+    {"id":  135, "name": "Soft-Boiled",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True, "is_restore_hp": True, "healing_move": True},
+    {"id":  208, "name": "Milk Drink",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True, "is_restore_hp": True, "healing_move": True},
+
+    # ── [D0] Sappy Seed / Freezy Frost / Sparkly Swirl — the 3 moves Bucket
+    # 4's M19-blocked-on-other-tier4 sub-group was gated on, now unblocked.
+    # All 3 are EFFECT_HIT damage moves with a GUARANTEED (no .chance field)
+    # additional effect reusing the 3 primitives directly above verbatim. ──
+    {"id":  685, "name": "Sappy Seed",
+     "type": TYPE_GRASS, "category": PHYS, "power": 100, "accuracy": 90, "pp": 10,
+     "is_leech_seed_on_hit": True},
+    {"id":  686, "name": "Freezy Frost",
+     "type": TYPE_ICE, "category": SPEC, "power": 100, "accuracy": 90, "pp": 10,
+     "is_haze_on_hit": True},
+    {"id":  687, "name": "Sparkly Swirl",
+     "type": TYPE_FAIRY, "category": SPEC, "power": 120, "accuracy": 85, "pp": 5,
+     "is_heal_bell_on_hit": True},
+
+    # ── [D1] Solar Blade / Snipe Shot / Hidden Power / Hyperspace Fury —
+    # 4 "already effectively free" moves flagged by the Section D recon,
+    # each reusing infrastructure this project already built and tested. ──
+    # Solar Blade(632): shares .effect=EFFECT_SOLAR_BEAM with Solar Beam(76)
+    # itself — same is_solar_beam charge-skip-in-sun dispatch, category-
+    # agnostic. Physical (Solar Beam is Special), makesContact, slicingMove.
+    # FLAGGED not fixed: Solar Beam's own rain/sand/hail/fog damage-halving
+    # was never implemented in this project (only the charge-skip half) —
+    # Solar Blade ships with the same incomplete-but-consistent behavior.
+    {"id":  632, "name": "Solar Blade",
+     "type": TYPE_GRASS, "category": PHYS, "power": 125, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "slicing_move": True,
+     "two_turn": True, "is_solar_beam": True},
+    # Snipe Shot(691): bypasses BOTH Follow-Me/Rage-Powder AND Lightning-Rod/
+    # Storm-Drain redirect at the SAME chokepoint Propeller Tail/Stalwart's
+    # ability check already occupies — new ignores_redirection move flag.
+    {"id":  691, "name": "Snipe Shot",
+     "type": TYPE_WATER, "category": SPEC, "power": 80, "accuracy": 100, "pp": 15,
+     "critical_hit_stage": 1, "ignores_redirection": True},
+    # Hidden Power(237): type is IV-derived (is_hidden_power, computed in
+    # DamageCalculator._hidden_power_type); power is a FLAT 60 at this
+    # project's GEN_LATEST config (B_HIDDEN_POWER_DMG >= GEN_6 fixes power,
+    # the classic bit-parity power formula is dead code here) — a real
+    # correction to the recon's own "power AND type from IVs" framing.
+    {"id":  237, "name": "Hidden Power",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 60, "accuracy": 100, "pp": 15,
+     "is_hidden_power": True},
+    # Hyperspace Fury(621): its own distinct .effect=EFFECT_HYPERSPACE_FURY,
+    # but battleScript=BattleScript_EffectHit — functionally identical to a
+    # plain EFFECT_HIT move. Reuses breaks_protect ([M19-break-protect])
+    # directly for its Feint-shaped protect-break, plus a GUARANTEED
+    # (secondary_chance=0, the same shape M19-secondary-stat-on-hit's own
+    # guaranteed self-drops use) self -1 Defense via the existing
+    # stat_change_stat/amount/self fields — zero new mechanism, pure
+    # composition of 2 already-shipped pieces.
+    {"id":  621, "name": "Hyperspace Fury",
+     "type": TYPE_DARK, "category": PHYS, "power": 100, "accuracy": 0, "pp": 5,
+     "ban_flags": BAN_METRONOME,
+     "ignores_protect": True, "ignores_substitute": True, "breaks_protect": True,
+     "stat_change_stat": STAGE_DEF, "stat_change_amount": -1, "stat_change_self": True},
 ]
 
 
@@ -3055,6 +3165,18 @@ DEFAULTS = {
     "protect_method":  0,
     "metal_burst":     False,
     "is_mirror_move":  False,
+
+    # [D0]
+    "is_leech_seed":        False,
+    "is_haze":              False,
+    "is_heal_bell":         False,
+    "is_leech_seed_on_hit": False,
+    "is_haze_on_hit":       False,
+    "is_heal_bell_on_hit":  False,
+
+    # [D1]
+    "ignores_redirection": False,
+    "is_hidden_power":     False,
 }
 
 HEADER = """\
@@ -3140,6 +3262,11 @@ FIELD_ORDER = [
     "weather_heal_has_quarter_branch", "is_mean_look",
     # [M19c] / [M19d] fields
     "protect_method", "metal_burst", "is_mirror_move",
+    # [D0] fields
+    "is_leech_seed", "is_haze", "is_heal_bell",
+    "is_leech_seed_on_hit", "is_haze_on_hit", "is_heal_bell_on_hit",
+    # [D1] fields
+    "ignores_redirection", "is_hidden_power",
 ]
 
 

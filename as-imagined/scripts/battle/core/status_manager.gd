@@ -371,6 +371,23 @@ static func try_apply_escape_prevention(victim: BattlePokemon, inflictor: Battle
 	return true
 
 
+# [D0] Leech Seed(73) — and Sappy Seed(685)'s identical on-hit secondary.
+# Source: Cmd_setseeded (battle_script_commands.c L7061-7080) — fails
+# (MISS, not a silent no-op) if already seeded OR the target is Grass-type;
+# else sets volatiles.leechSeed = LEECHSEEDED_BY(attacker). The Grass-type
+# check here is Leech Seed's OWN bespoke rule, not the general
+# type-effectiveness gate (Grass-type moves are not generally immune to
+# Grass-type targets) — callers must NOT rely on the shared foe_targeting
+# type-immunity block to catch this.
+static func try_apply_leech_seed(victim: BattlePokemon, inflictor: BattlePokemon) -> bool:
+	if victim.leeched_by != null:
+		return false
+	if TypeChart.TYPE_GRASS in victim.species.types:
+		return false
+	victim.leeched_by = inflictor
+	return true
+
+
 # ── End-of-turn status damage ─────────────────────────────────────────────
 #
 # Returns the HP to subtract this end-of-turn (positive), or the HP to RESTORE
