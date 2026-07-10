@@ -715,6 +715,79 @@ static func try_mummy_overwrite(
 	return holder_id
 
 
+# [D2 batch] Role Play(272) — the ATTACKER copies the TARGET's (defender's)
+# current ability, the move-driven mirror of Trace's own switch-in-driven copy
+# above. Source: Cmd_trycopyability (battle_script_commands.c L8997-9025).
+# Reads/writes the RAW `.ability` field throughout (matches Trace/Receiver/
+# Mummy/Wandering Spirit's own established precedent — suppression is never a
+# copy-time filter, so no `ng_active` param is needed here at all: the move's
+# own execution doesn't depend on any ability being "active"). Fails if: the
+# target has no ability; the attacker already holds this exact ability
+# (compared by `.ability_id`, NOT object identity — see the class-level note
+# on `AbilityRegistry` not existing, so two mons "holding the same ability"
+# are typically separate `AbilityData` Resource instances); the attacker's
+# OWN current ability is `cant_be_suppressed`; or the target's ability is
+# `cant_be_copied`. AbilityShield's own separate block isn't modeled (no such
+# item in this project). Returns true if the copy occurred.
+static func try_role_play(attacker: BattlePokemon, defender: BattlePokemon) -> bool:
+	if defender.ability == null:
+		return false
+	if attacker.ability != null:
+		if attacker.ability.ability_id == defender.ability.ability_id:
+			return false
+		if attacker.ability.cant_be_suppressed:
+			return false
+	if defender.ability.cant_be_copied:
+		return false
+	attacker.ability = defender.ability
+	return true
+
+
+# [D2 batch] Skill Swap(285) — a genuine BIDIRECTIONAL ability swap between
+# attacker and target, confirmed to reuse the EXACT SAME primitive Wandering
+# Spirit's own contact-triggered swap already established above rather than
+# merely a similar one. Source: Cmd_tryswapabilities (battle_script_commands.c
+# L9160-9195). Gated on `cant_be_swapped` on BOTH sides independently — an
+# ability-less (`null`) battler is treated the same as `cant_be_swapped`,
+# matching source's own `ABILITY_NONE` carrying that flag. Returns true if the
+# swap occurred.
+static func try_skill_swap(attacker: BattlePokemon, defender: BattlePokemon) -> bool:
+	if attacker.ability == null or attacker.ability.cant_be_swapped:
+		return false
+	if defender.ability == null or defender.ability.cant_be_swapped:
+		return false
+	var atk_ability: AbilityData = attacker.ability
+	attacker.ability = defender.ability
+	defender.ability = atk_ability
+	return true
+
+
+# [D2 batch] Worry Seed(388) — EFFECT_OVERWRITE_ABILITY, overwrites the
+# TARGET's ability with a fixed new one (Insomnia, for this specific move —
+# `new_ability_id` is threaded through from `MoveData.overwrite_target_
+# ability_id` so a future move sharing this same effect with a different
+# fixed target need not duplicate this function). Confirmed via source to be
+# the SAME underlying primitive Mummy/Lingering Aroma's own ability-triggered
+# overwrite conceptually shares (both gated on `AbilityData.
+# cant_be_overwritten`), but dispatched from a genuinely different, move-
+# driven call site. Source: Cmd_tryoverwriteability (battle_script_commands.c
+# L10627-10650). Fails if the target's current ability is `cant_be_
+# overwritten`, or the target already holds this exact ability (a no-op,
+# compared by `.ability_id`). FLAGGED, not fixed: source's own script also
+# calls `trytoclearprimalweather`/`tryendneutralizinggas` after a successful
+# overwrite (in case the ability just stripped away was sustaining Primal
+# weather or Neutralizing Gas) — a real, narrow, out-of-scope edge case not
+# modeled here. Returns true if the overwrite occurred.
+static func try_worry_seed_overwrite(defender: BattlePokemon, new_ability_id: int) -> bool:
+	if defender.ability != null:
+		if defender.ability.cant_be_overwritten:
+			return false
+		if defender.ability.ability_id == new_ability_id:
+			return false
+	defender.ability = load("res://data/abilities/ability_%04d.tres" % new_ability_id) as AbilityData
+	return true
+
+
 # M17i: Regenerator / Natural Cure — switch-out trigger hook (new infrastructure).
 # Source: battle_script_commands.c :: Cmd_switchoutabilities (L9339-9367), dispatched
 # via GetBattlerAbility(battler) — the suppression-aware read, matching this project's
@@ -767,6 +840,34 @@ static func try_switch_out(mon: BattlePokemon, ng_active: bool = false) -> Dicti
 # clears the STEALER's unburdenActive (they just GAINED an item) and calls
 # CheckSetUnburden on the VICTIM (they just LOST theirs, activating it if they hold
 # Unburden) — the opposite-direction pair this function's own item move mirrors.
+# [Multitype-Plate fix] Shared species-form-lock check, reused by Trick/Switcheroo
+# (battle_manager.gd), _try_steal_item below (Pickpocket/Magician/Thief/Covet/Sticky
+# Barb, all of which route through it), and try_symbiosis further below. Source:
+# `DoesSpeciesUseHoldItemToChangeForm` (battle_util.c L8378-8403), the one branch of
+# `CanBattlerGetOrLoseItem` (L8686-8706) this project models — every real item-transfer
+# mechanic in source (Trick's Cmd_tryswapitems, CanStealItem, TryTriggerSymbiosis) calls
+# CanBattlerGetOrLoseItem, not just Trick, confirmed by direct grep of every call site.
+# This project's only implemented held-item-driven form change is Multitype (`[M17n-4]`),
+# so "does battler's species use this item to change form" reduces to "is battler's
+# effective ability Multitype AND is item a Plate."
+#
+# Deliberately takes the ITEM as a separate parameter rather than reading
+# `battler.held_item` internally — source's own check is evaluated against whichever
+# item is about to move, not necessarily the one the battler already holds (e.g. Trick's
+# own 4 source calls check EACH side against BOTH items: can it lose its own, AND can it
+# gain the other's). A Multitype holder with no Plate currently held can still be BLOCKED
+# from an incoming Plate transfer under this check — this is a real, source-confirmed
+# behavior, not just a defensive parameterization; see decisions.md's fix writeup for the
+# full derivation of Trick's own previously-incomplete 2-check version.
+static func is_form_locked_by_item(battler: BattlePokemon, item: ItemData,
+		ng_active: bool = false) -> bool:
+	if item == null:
+		return false
+	if item.hold_effect != ItemManager.HOLD_EFFECT_PLATE:
+		return false
+	return effective_ability_id(battler, ng_active) == ABILITY_MULTITYPE
+
+
 # M18p: bypass_sticky_hold (new, default false) — Sticky Barb's own transfer
 # (TryStickyBarbOnTargetHit, battle_hold_effects.c L564-583) explicitly bypasses
 # Sticky Hold ("// No sticky hold checks." in source, confirmed genuine: CanStealItem
@@ -775,6 +876,11 @@ static func try_switch_out(mon: BattlePokemon, ng_active: bool = false) -> Dicti
 # SEPARATE explicit check bolted on at THEIR OWN call sites, external to CanStealItem,
 # not something CanStealItem itself provides). Defaults false so Pickpocket/Magician's
 # existing calls are unaffected; only Sticky Barb's new call site passes true.
+# [Multitype-Plate fix] The is_form_locked_by_item check below is UNCONDITIONAL
+# (not gated by bypass_sticky_hold) — confirmed from source that Sticky Barb's own
+# transfer calls the same `CanStealItem` (battle_hold_effects.c L572) Pickpocket/
+# Magician/Thief share, which itself always calls CanBattlerGetOrLoseItem in both
+# directions; only Sticky Hold is bypassed for Sticky Barb, never this check.
 static func _try_steal_item(stealer: BattlePokemon, victim: BattlePokemon,
 		ng_active: bool = false, bypass_sticky_hold: bool = false) -> bool:
 	if stealer.held_item != null:
@@ -782,6 +888,9 @@ static func _try_steal_item(stealer: BattlePokemon, victim: BattlePokemon,
 	if victim.held_item == null:
 		return false
 	if not bypass_sticky_hold and effective_ability_id(victim, ng_active) == ABILITY_STICKY_HOLD:
+		return false
+	if is_form_locked_by_item(victim, victim.held_item, ng_active) \
+			or is_form_locked_by_item(stealer, victim.held_item, ng_active):
 		return false
 	stealer.held_item = victim.held_item
 	victim.held_item = null
@@ -825,10 +934,13 @@ static func try_thief_steal(
 # contact/damage/fainted-attacker-gated by that function's shared guards), matching
 # Static/Flame Body/Poison Point's existing inline shape rather than a separate
 # top-level wrapper.
-# `CanStealItem`'s Mail/Z-Crystal/species-form-change/Booster-Energy/Ogerpon-mask
-# exemptions (battle_util.c L8686-8708) are NOT modeled — this project implements none of
-# Mail, Z-moves, Mega/form-change items, Paradox Booster Energy, or Ogerpon, so every one
-# of those categories is a known, out-of-scope gap rather than a silently-dropped check.
+# `CanStealItem`'s Mail/Z-Crystal/Booster-Energy/Ogerpon-mask exemptions
+# (battle_util.c L8686-8708) are NOT modeled — this project implements none of Mail,
+# Z-moves, Paradox Booster Energy, or Ogerpon, so those categories remain a known,
+# out-of-scope gap rather than a silently-dropped check. The species-form-change
+# exemption in that same function IS modeled — see `_try_steal_item`'s own
+# `is_form_locked_by_item` gate below, fixed after this comment's original "not
+# modeled" claim went stale once `[M17n-4]` shipped Multitype's Plate linkage.
 
 
 # M17j: Magician — on landing a damaging hit (contact NOT required — confirmed from
@@ -840,11 +952,15 @@ static func try_thief_steal(
 # existing entry in `try_contact_effects`/`try_hit_reactive_effects`, which are all
 # defender-keyed reactions to being hit. This is why Magician gets its own top-level
 # function called directly from `BattleManager._do_damaging_hit`, rather than folded into
-# either of those two dispatches. Source's `EFFECT_FLING`/`EFFECT_NATURAL_GIFT`/
-# `EFFECT_FUTURE_SIGHT` exclusions (moves that already consume/reference an item
-# mid-resolution) are NOT modeled — none of Fling, Natural Gift, or Future Sight exist in
-# this project's move roster (confirmed via grep), a known, out-of-scope gap rather than
-# a silently-dropped check.
+# either of those two dispatches. Source's `EFFECT_FLING`/`EFFECT_NATURAL_GIFT`
+# exclusions (moves that already consume/reference an item mid-resolution) are NOT
+# modeled — neither Fling nor Natural Gift exist in this project's move roster
+# (confirmed via grep), a known, out-of-scope gap rather than a silently-dropped
+# check. (Future Sight has since shipped, but doesn't reference an item at all, so
+# it was never actually part of this exclusion's real scope.) `CanStealItem`'s
+# species-form-change exemption IS modeled — see `_try_steal_item`'s own
+# `is_form_locked_by_item` gate, fixed after this comment's original "not modeled"
+# framing went stale once `[M17n-4]` shipped Multitype's Plate linkage.
 static func try_magician(attacker: BattlePokemon, target: BattlePokemon, damage: int,
 		ng_active: bool = false) -> bool:
 	if damage <= 0:
@@ -872,6 +988,10 @@ static func try_magician(attacker: BattlePokemon, target: BattlePokemon, damage:
 # `ally == null` (singles) is the exact value `BattleManager._get_ally` already returns
 # there, matching the established zero-extra-plumbing precedent (`[M17c]`'s Hospitality,
 # `[M17h]`'s Receiver).
+# [Multitype-Plate fix] `TryTriggerSymbiosis`'s own two `CanBattlerGetOrLoseItem` calls
+# (battle_util.c L9967-9968) ARE modeled below, via `is_form_locked_by_item` — this was
+# a real gap (not previously flagged as an intentional exclusion anywhere in this
+# comment), closed alongside the same fix to `_try_steal_item`/Trick.
 static func try_symbiosis(mon: BattlePokemon, ally: BattlePokemon,
 		ng_active: bool = false) -> bool:
 	if ally == null:
@@ -881,6 +1001,9 @@ static func try_symbiosis(mon: BattlePokemon, ally: BattlePokemon,
 	if ally.held_item == null:
 		return false
 	if effective_ability_id(ally, ng_active) != ABILITY_SYMBIOSIS:
+		return false
+	if is_form_locked_by_item(mon, ally.held_item, ng_active) \
+			or is_form_locked_by_item(ally, ally.held_item, ng_active):
 		return false
 	mon.held_item = ally.held_item
 	ally.held_item = null

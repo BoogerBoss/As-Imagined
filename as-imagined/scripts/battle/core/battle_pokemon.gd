@@ -211,6 +211,23 @@ var leeched_by: BattlePokemon = null
 # is just a target reference, not itself carrying any state).
 var sure_hit_target: BattlePokemon = null
 var sure_hit_turns: int = 0
+
+# [D2 batch 2] Tar Shot(695) — permanent per-mon flag, no turn counter.
+# Doubles the damage-multiplier effect of any Fire-type move against this
+# mon for the rest of the battle (see MoveData.is_tar_shot's own doc
+# comment for the full source citation). Cleared on switch-out via the
+# standard `_clear_volatiles` convention — no reciprocal-clear needed
+# since it isn't tied to a source battler leaving the field.
+var tar_shot_active: bool = false
+
+# [D2 batch 2] Foresight(193)/Odor Sleuth(316) — permanent per-mon flag,
+# no turn counter. Bypasses this mon's own Ghost-type Normal/Fighting-
+# immunity AND ignores this mon's own evasion stage for the rest of the
+# battle (see MoveData.is_foresight's own doc comment for the full source
+# citation). Cleared on switch-out via the standard `_clear_volatiles`
+# convention.
+var foresight_active: bool = false
+
 # M18u: Metronome item's consecutive-same-move-use counter. Compared against
 # last_move_used (BEFORE it's overwritten for the current move) at the same
 # PP-deduction site source colocates its own reset check
@@ -230,6 +247,27 @@ var flinched: bool = false
 # Source: include/battle.h L74 (`statRaised:1`); battle_main.c L3304
 # (`gProtectStructs[battler].statRaised = FALSE;`, the per-turn reset).
 var stat_raised_this_turn: bool = false
+
+# [D3 turn-order/event-tracker batch] Lash Out's own trigger — the exact
+# decrease-side mirror of stat_raised_this_turn above, set at the same
+# general stat-change chokepoint (StatusManager.apply_stat_change) whenever
+# THIS battler's own stat actually decreases, from any source. Cleared at
+# the start of each turn, same cadence/site as stat_raised_this_turn.
+# Source: battle_stat_change.c L368 (`gProtectStructs[cv->battlerDef].
+# lashOutAffected = TRUE`); battle_main.c L5056 (per-turn reset).
+var stat_lowered_this_turn: bool = false
+
+# [D3 turn-order/event-tracker batch] Rage Fist's own trigger — a
+# battle-LIFETIME count of direct hits taken, incremented once per hit that
+# deals damage > 0 (BattleManager._do_damaging_hit). Deliberately NOT
+# cleared by _clear_volatiles or anywhere else — source has no reset
+# mechanism at all, so this survives switch-out/switch-in for the whole
+# battle, the same switch-persistent-per-party-slot shape already
+# established for last_consumed_berry ([M17n-7] Harvest).
+# Source: battle_util.c, case EFFECT_RAGE_FIST (L6349-6351) —
+# GetBattlerPartyState(battler)->timesGotHit, incremented at
+# battle_script_commands.c L1685.
+var times_hit: int = 0
 
 # Volatile: two-turn charge state.
 # Non-null on the turn AFTER a charge: the Pokémon is locked to this move and
@@ -536,6 +574,38 @@ var rage_active: bool = false
 # `_phase_move_execution`, gated on `move.sound_move` instead of a specific move
 # ID. Cleared by `_clear_volatiles` on switch-out, same shape as `disable_turns`.
 var throat_chop_turns: int = 0
+
+# [Delayed-effect family] Yawn's own 2-turn drowsiness counter — the same
+# per-mon-volatile shape as throat_chop_turns/disable_turns/encore_turns
+# just above, decremented at end of turn; hitting 0 triggers a completely
+# FRESH sleep-infliction attempt via StatusManager.try_apply_status (all
+# immunity checks re-derived at that moment, not locked in at cast time).
+# Cleared by `_clear_volatiles` on switch-out, same shape as those siblings.
+# Source: gBattleMons[].volatiles.yawn (battle_script_commands.c ::
+# Cmd_setyawn L9091-9116; battle_end_turn.c L915-935).
+var yawn_turns: int = 0
+
+# [D1 easy bundle] Revenge/Avalanche's own "who hit me this turn" tracker —
+# a per-(victim,attacker)-PAIR record, not a plain "was I hit" bool, since
+# Revenge only doubles against the SPECIFIC target that hit its user this
+# turn (real in doubles: being hit by one opponent doesn't double a Revenge
+# used against a different one). Set at the same `_do_damaging_hit`
+# chokepoint `times_hit`/`_last_attacker` already use; cleared every turn
+# like its D2-tracker-family siblings (stat_lowered_this_turn, etc.).
+# Source: gProtectStructs[].revengeDoubled (battle_script_commands.c
+# L1656-1657, battle_util.c L6172-6174).
+var hit_by_this_turn: Array = []
+
+# [D1 easy bundle] Stomping Tantrum/Temper Flare's own "did my last move
+# fail" counter — set to 2 the same turn a move fails, decremented once per
+# turn boundary at the SAME site the (corrected) Retaliate side-timer uses,
+# checked against exactly 1 at power-computation time. Stored per-mon
+# (unlike source's per-slot struct) since this project's BattlePokemon
+# objects persist across switches; source itself clears this same state on
+# switch-out anyway (battle_main.c L3214, alongside lastResultingMove/
+# lastHitBy), so per-mon storage cleared in `_clear_volatiles` reproduces
+# the identical observable behavior.
+var stomping_tantrum_timer: int = 0
 
 var fainted: bool = false
 

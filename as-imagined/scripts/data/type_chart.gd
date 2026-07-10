@@ -102,11 +102,24 @@ const UQ412_SE: int      = 8192  # 2.0x — super-effective
 # NOT the combined product (a dual-type defender's OTHER type's own modifier is
 # untouched). Plain bool param (not an ability enum) for the same data-layer/
 # DamageCalculator separation reason weaken_flying_se already established.
-static func get_uq412(atk_type: int, def_type: int, bypass_ghost_immunity: bool = false) -> int:
+# [D2 batch 2] force_super_effective_type — Freeze-Dry(573)'s own move-level
+# override: forces THAT SPECIFIC defending-type component to a flat 2.0
+# (super-effective) UNCONDITIONALLY, regardless of the real table value —
+# a genuinely different semantic from bypass_ghost_immunity/weaken_flying_se
+# above/below (those only ever fix a 0.0 up to 1.0; this one forces UP to
+# 2.0 even from a neutral or resisted starting value, since Water is
+# normally just NEUTRAL to Ice, not immune). Still checked PER defending-
+# type component, same shape as the other overrides. Pass TYPE_NONE (the
+# default) to disable. Source: battle_util.c :: MulByTypeEffectiveness
+# (L8061-8062).
+static func get_uq412(atk_type: int, def_type: int, bypass_ghost_immunity: bool = false,
+		force_super_effective_type: int = TYPE_NONE) -> int:
 	var eff: float = TABLE[atk_type][def_type]
 	if bypass_ghost_immunity and def_type == TYPE_GHOST and eff == 0.0 \
 			and (atk_type == TYPE_NORMAL or atk_type == TYPE_FIGHTING):
 		eff = 1.0
+	if force_super_effective_type != TYPE_NONE and def_type == force_super_effective_type:
+		eff = 2.0
 	if eff == 0.0: return UQ412_IMMUNE
 	if eff == 0.5: return UQ412_NVE
 	if eff == 2.0: return UQ412_SE
@@ -131,9 +144,19 @@ static func get_uq412(atk_type: int, def_type: int, bypass_ghost_immunity: bool 
 # here too since this function is the OTHER independent type-effectiveness computation
 # in this project (used for the early immunity short-circuit / Wonder Guard's own read),
 # mirroring the same duplication already established for weaken_flying_se (M17d).
+# [D2 batch 2] force_super_effective_type — see get_uq412's own doc comment; same
+# per-component unconditional-force-to-2.0 semantics, mirrored here.
+# [D2 batch 2] tar_shot_active — Tar Shot(695), a GENUINELY DIFFERENT shape from
+# every override above: a flat POST-COMBINATION ×2.0 applied to the fully-combined
+# `modifier` (not per-component), gated on `atk_type == TYPE_FIRE`. Source:
+# battle_util.c L8145-8146, positioned after both per-type multiplications. See
+# MoveData.is_tar_shot's own doc comment for the full citation and the confirmed-
+# no-conflict finding against force_super_effective_type (mutually exclusive by
+# construction — Freeze-Dry is always Ice-type, never Fire-type).
 static func get_effectiveness(atk_type: int, def_types: Array,
 		weaken_flying_se: bool = false, bypass_ghost_immunity: bool = false,
-		grounded_override: bool = false) -> float:
+		grounded_override: bool = false, force_super_effective_type: int = TYPE_NONE,
+		tar_shot_active: bool = false) -> float:
 	if atk_type == TYPE_MYSTERY:
 		return 1.0
 	var modifier := 1.0
@@ -156,6 +179,8 @@ static func get_effectiveness(atk_type: int, def_types: Array,
 	if grounded_override and first_type == TYPE_FLYING and first_mod == 0.0 \
 			and atk_type == TYPE_GROUND:
 		first_mod = 1.0
+	if force_super_effective_type != TYPE_NONE and first_type == force_super_effective_type:
+		first_mod = 2.0
 	modifier *= first_mod
 	if modifier == 0.0:
 		return 0.0
@@ -169,7 +194,11 @@ static func get_effectiveness(atk_type: int, def_types: Array,
 		if grounded_override and def_types[1] == TYPE_FLYING and second_mod == 0.0 \
 				and atk_type == TYPE_GROUND:
 			second_mod = 1.0
+		if force_super_effective_type != TYPE_NONE and def_types[1] == force_super_effective_type:
+			second_mod = 2.0
 		modifier *= second_mod
+	if tar_shot_active and atk_type == TYPE_FIRE:
+		modifier *= 2.0
 	return modifier
 
 

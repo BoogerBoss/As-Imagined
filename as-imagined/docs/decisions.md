@@ -18940,3 +18940,1473 @@ marked CLOSED with the "~15 vs 21" scope correction; Section E's two
 summary tables and the top-of-document reconciliation recomputed (571
 implemented + 1 proposed sub-tier + 1 deferred + 213 excluded + 148
 Tier-4 residual = 934, reconfirmed). **Section D's residual: 169→148.**
+
+## [D2 batch]
+
+Two independent pieces bundled into one session per Rob's own explicit
+scoping instruction ("fold it into the next D-item session rather than
+spinning up its own round"), reported and documented as fully separate
+throughout: **Part A** — D2's two cross-cutting families (on-hit hazard/
+screen, 6 moves; ability-manipulation, 4 moves). **Part B** — the 3
+previously-flagged batch-fix items (Hail-only design decision, Primal
+weather block, Solar Beam/Blade weather-halving), 0 new moves.
+
+### Step 0 — Part A findings
+
+**On-hit hazard/screen family**: re-derived each of the 6 fresh from
+`moves_info.h`/`battle_move_resolution.c` rather than trusting the D2
+recon's own framing at face value — found 2 real corrections.
+
+- **Stone Axe(758)/Ceaseless Edge(773)**: confirmed `EFFECT_STONE_AXE`
+  (battle_move_resolution.c L3592-3600) and `EFFECT_CEASELESS_EDGE`
+  (L3602-3618) are dispatched via a MoveEnd-phase switch keyed on the
+  move's own top-level `.effect`, NOT the standard `MOVE_EFFECT_*`/
+  `.chance` secondary-effect mechanism — neither move's own
+  `additionalEffects` block carries a `.moveEffect` token at all, only a
+  bare `.sheerForceOverride = TRUE`. Gated on the hazard not already
+  maxed (Stealth Rock: not up; Spikes: <3 layers) AND the hit having
+  landed AND the attacker still alive (`side = GetBattlerSide(cv->
+  battlerDef)` — confirmed the TARGET's side, the opposite side from
+  Bucket 3's Glitzy Glow/Baddy Bad self-side screen-setters). **Flagged,
+  not fixed**: `sheerForceOverride = TRUE` means Sheer Force should boost
+  these two moves' power even though this project's Sheer Force gate
+  only checks true (chance>0) secondaries — a narrow, pre-existing-shape
+  gap, out of scope for this 6-move tier.
+- **Ice Spinner(789) — a real correction, not a confirmation**: the D2
+  recon's own "clears hazards, reusing Rapid Spin's existing clear
+  function" framing was WRONG. Direct source read
+  (battle_move_resolution.c L4030-4037) confirms `EFFECT_ICE_SPINNER`
+  removes TERRAIN, a completely different effect from `EFFECT_RAPID_SPIN`
+  — Mortal Spin, not Ice Spinner, is the one that actually shares Rapid
+  Spin's mechanism. Since Terrain is permanently void in this project
+  (`[M17d]`'s locked decision), Ice Spinner reduces to a plain damage
+  move with no working secondary at all — cheaper than the recon
+  predicted, no flag needed.
+- **Mortal Spin(794)**: confirmed to share the LITERAL SAME `.effect =
+  EFFECT_RAPID_SPIN` Rapid Spin(229) itself uses — `is_rapid_spin` set
+  directly on Mortal Spin's own `gen_moves.py` entry (no new field), plus
+  a guaranteed 100%-chance Poison secondary via the existing generic
+  `secondary_effect = SE_POISON`/`secondary_chance = 100` fields.
+- **Tidy Up(808) — broader than the recon's own "hazards + self stat-
+  raise" framing**: `TryTidyUpClear` (battle_script_commands.c L6801-
+  6825) ALSO clears every Substitute currently on the field (both sides,
+  any battler), a genuinely new finding this session surfaced. `ignores
+  Protect = TRUE` in source. Self Atk+1/Speed+1 always applies regardless
+  of what was cleared (source's own `WillAnyStatChange() ||
+  TryTidyUpClear(FALSE)` gate).
+- **Defog(432) — also broader than the recon's own "clear + evasion drop"
+  framing**: `TryDefogClear` (L6755-6793) clears the TARGET's side's
+  screens (Reflect/Light Screen/Aurora Veil — this project's implemented
+  subset; source's own Mist/Safeguard clears and Fog-weather clear are
+  permanently moot, neither modeled) via the SAME reciprocal shape
+  `breaks_screens`/Brick Break already established (`[M16c]`), reused
+  against the DEFENDER's side rather than Brick Break's own attacker-
+  relative target; AND clears hazards from BOTH sides
+  (`DefogClearHazards`, `B_DEFOG_EFFECT_CLEARING >= GEN_6` at this
+  project's config); AND drops the target's evasion -1 (a foe-targeting
+  drop via the existing generic `stat_change_stat`/`amount` fields) — three
+  composed pieces, not two. `magicCoatAffected = TRUE` at this project's
+  config → `bounceable = true`.
+
+New `BattleManager._clear_all_hazards(side)` helper (clears every hazard
+type on one side at once, unlike Rapid Spin/Mortal Spin's own one-type-
+at-a-time clear) shared by both Defog and Tidy Up. New `MoveData.
+sets_stealth_rock_on_hit`/`sets_spikes_on_hit`/`is_defog`/`is_tidy_up`
+fields.
+
+**Ability-manipulation family**: re-derived each of the 4 fresh from
+`battle_script_commands.c` — confirmed all 4 reuse `[M17h]`'s already-
+built ability-copy/overwrite primitives directly, exactly as the recon
+predicted, with the shapes matched precisely rather than assumed.
+
+- **Role Play(272)**: `Cmd_trycopyability` (L8997-9025) — the attacker
+  copies the target's ability. `ignoresProtect = TRUE` AND `ignores
+  Substitute = TRUE` in source — a real asymmetry within this family
+  (Skill Swap/Heart Swap do NOT ignore Protect). Fails if the attacker
+  already holds this exact ability (compared by `.ability_id`, not object
+  identity — this project has no `AbilityRegistry`, so two mons "holding
+  the same ability" are typically separate `AbilityData` Resource
+  instances), the target has no ability, the attacker's OWN current
+  ability is `cant_be_suppressed`, or the target's ability is `cant_be_
+  copied`. Reads/writes the RAW `.ability` field throughout, matching
+  Trace/Receiver/Mummy/Wandering Spirit's own established precedent.
+  AbilityShield's own separate block isn't modeled (no such item exists
+  in this project).
+- **Skill Swap(285)**: `Cmd_tryswapabilities` (L9160-9195) — confirmed a
+  genuine BIDIRECTIONAL swap reusing Wandering Spirit's EXACT primitive
+  shape, not merely a similar one. Gated on `cant_be_swapped` on BOTH
+  sides independently (an ability-less `null` battler treated the same as
+  `cant_be_swapped`, matching source's own `ABILITY_NONE`). `ignores
+  Substitute = TRUE`, NOT `ignoresProtect`.
+- **Worry Seed(388)**: `Cmd_tryoverwriteability` (L10627-10650),
+  `.effect = EFFECT_OVERWRITE_ABILITY` — confirmed the SAME underlying
+  primitive Mummy/Lingering Aroma's own ability-triggered overwrite
+  conceptually shares (both gated on `AbilityData.cant_be_overwritten` —
+  the exact field `[M17h]`'s own entry predicted would be "consumed by
+  Skill-Swap/Entrainment-style moves this project doesn't have," now
+  confirmed correct), but dispatched from a genuinely different, move-
+  driven, FIXED-target call site (`.argument.overwriteAbility =
+  ABILITY_INSOMNIA` for this move specifically — a new `MoveData.
+  overwrite_target_ability_id` field threads the target ability through
+  rather than hardcoding Insomnia inside the ability-side function, so a
+  future move sharing this effect with a different fixed target needs no
+  duplicate function). Real accuracy check (100), NOT ignoresSubstitute/
+  ignoresProtect — a fully normal foe-targeting status move otherwise.
+  `magicCoatAffected = TRUE` → `bounceable = true`, confirmed via a
+  dedicated full-battle Magic Bounce integration test that the existing
+  `move.bounceable` mechanism picks this move up with zero extra code.
+  **Flagged, not fixed**: source's own script also calls
+  `trytoclearprimalweather`/`tryendneutralizinggas` after a successful
+  overwrite (in case the ability just stripped away was sustaining Primal
+  weather or Neutralizing Gas) — a real, narrow, out-of-scope edge case.
+- **Heart Swap(391)**: confirmed genuinely NOT an ability move despite
+  the family label — `BattleScript_EffectHeartSwap` calls `swapstatstages`
+  once per stat, all 7 (Atk/Def/Speed/SpAtk/SpDef/Evasion/Accuracy),
+  reusing Psych Up's own stage-array shape (`[M16e]`) but as a genuine
+  bidirectional SWAP rather than a one-directional copy — implemented as
+  a direct `battle_pokemon.stat_stages` array swap in `battle_manager.gd`
+  itself, no `AbilityManager` function at all. `ignoresSubstitute = TRUE`,
+  NOT `ignoresProtect` (same asymmetry as Skill Swap, not Role Play).
+
+New `AbilityManager.try_role_play`/`try_skill_swap`/
+`try_worry_seed_overwrite` functions. New `MoveData.is_role_play`/
+`is_skill_swap`/`is_heart_swap`/`overwrite_target_ability_id` fields.
+
+### Step 0 — Part B findings
+
+**Item 1 (Hail-only)**: confirmed via a full grep sweep of `damage_
+calculator.gd`/`ability_manager.gd`/`status_manager.gd` that this
+project's single `WEATHER_HAIL` constant has no path to a separate Snow
+mechanic anywhere in the codebase — Snow Warning/Snowscape already both
+map to `WEATHER_HAIL`. Confirmed by Rob as a permanent design decision
+("we will be using only hail no snow for this project"), not merely
+re-flagged: the project's own doc comments (`move_data.gd`'s `weather_
+type` field) were updated from "FLAGGED, not fixed" language to
+"CONFIRMED DESIGN DECISION" language. Zero code changed for this item.
+
+**Item 2 (Primal weather block)**: re-derived `TryChangeBattleWeather`'s
+exact gate (`battle_util.c` L1969-2015) — refuses to overwrite an active
+Primal-flagged weather unless the new setter's ability is Desolate Land/
+Primordial Sea/Delta Stream; a move-driven weather-set (Sandstorm/Rain
+Dance/etc.) always passes `ABILITY_NONE`, so it can NEVER count as a
+Primal-capable setter, confirmed via both of source's own
+`TryChangeBattleWeather` call sites (`battle_script_commands.c` L3067,
+L7036). **A real design complication found before implementing**: since
+`[M17d]` deliberately reuses the plain `WEATHER_SUN`/`WEATHER_RAIN`/
+`WEATHER_STRONG_WINDS` values for Primal weather (no separate "Primal"
+flag exists in this project's weather model to test directly, unlike
+source's own `gBattleWeather & B_WEATHER_PRIMAL_ANY` bit check), a new
+`BattleManager._weather_is_primal: bool` proxy field was added, set only
+on ability-driven `try_set_weather` calls. New `by_ability: bool = true`
+parameter on `try_set_weather` (defaulting true since 4 of its 5 call
+sites are ability-driven; the one move-driven weather-setting dispatch
+passes `false` explicitly). **Flagged, not fixed**: this project's
+`weather_duration` is never "permanent" the way source's own Primal
+weather is (`weatherDuration = 0`, no countdown at all) — a separate,
+deeper pre-existing gap this fix doesn't address; Primal weather set here
+still decrements on the normal 5/8-turn timer.
+
+**Item 3 (Solar Beam/Blade halving)**: re-derived the exact condition
+from `CalcMoveBasePowerAfterModifiers`'s own `EFFECT_SOLAR_BEAM` case
+(`battle_util.c` L6408-6414): `GetAttackerWeather` (L9281-9290, Utility
+Umbrella strips Sun/Rain specifically, never Sandstorm/Hail — the SAME
+asymmetric strip `[M19e]`'s weather-heal formula already established)
+feeds a `B_WEATHER_LOW_LIGHT | RAIN | ICY_ANY | FOG` check that collapses
+at this project's `B_SANDSTORM_SOLAR_BEAM >= GEN_3` config to: halved in
+Rain/Sandstorm/Hail, full power in Sun/none/Strong Winds. Fog is
+permanently moot (unmodeled, same class of gap as Delta Stream's own
+Strong-Winds precedent). Confirmed via direct source read: NO category
+gate exists anywhere in this case — Solar Blade's Physical category is
+NOT exempt, matching the task's own explicit ask to verify this rather
+than assume it. Implemented directly in `DamageCalculator.calculate`,
+composed with the existing ability/item power-modifier chain via the same
+`_uq412_half_down` helper.
+
+### Test plan
+
+New `scenes/battle/d2_batch_test.gd`/`.tscn`: 82/82 assertions across 12
+sections (A: data integrity for all 10 moves; B: Stone Axe/Ceaseless Edge
+incl. the already-maxed discriminators; C: Ice Spinner's plain-damage
+confirmation; D: Mortal Spin's own-side hazard-clear + guaranteed poison;
+E: Defog's target-side-screens/both-sides-hazards/evasion-drop trio; F:
+Tidy Up's both-sides-hazards/field-wide-substitute/self-stat-raise trio;
+G-J: Role Play/Skill Swap/Worry Seed/Heart Swap, each with direct
+`AbilityManager` unit tests plus a full-battle integration test; K: the
+Primal weather block via direct `try_set_weather` calls; L: Solar Beam/
+Blade weather-halving via direct `DamageCalculator.calculate` calls).
+**Five real test-authoring bugs caught and fixed across two rounds of
+debugging** (none were implementation bugs — confirmed via isolated
+scratch diagnostics before assuming otherwise, per this project's own
+"prove it, don't guess" discipline):
+
+1. **B.02** (Stone Axe already-maxed discriminator): the defender also
+   held Stone Axe, so its own counter-attack legitimately set Stealth
+   Rock on the ATTACKER's unrelated (not-yet-hazarded) side, polluting a
+   `.is_empty()` assertion that only meant to check the TARGET's side —
+   fixed by giving the defender Tackle instead.
+2. **D.01** (Mortal Spin's own-side hazard clear): the attacker was
+   Poison-typed, and Toxic Spikes' own Poison-type absorb-on-switch-in
+   rule (`[M16d]`) silently cleared the pre-seeded hazard at send-out,
+   before Mortal Spin's own hit ever got a chance to — a genuine
+   hazard-type-vs-attacker-type confound, not present for Spikes/Stealth
+   Rock (no type-based auto-clear); fixed by pre-seeding Spikes instead.
+3. **H.06 / J.01-J.04** (Skill Swap/Heart Swap full-battle integration):
+   both moves deal zero damage, so an all-one-move roster keeps re-using
+   it every turn (re-swapping back and forth) — a fresh instance of the
+   documented whole-battle-aggregation pitfall. Fixed by recording only
+   the FIRST occurrence per mon/signal-fire rather than reading final
+   post-battle state or a raw event-array size.
+4. **J.01-J.04's own fix attempt itself hit a SECOND, independent bug**:
+   the first fix reassigned plain `Array`-typed local variables
+   (`snap_atk`/`snap_def`) directly inside the signal-handler lambda — a
+   fresh instance of CLAUDE.md's own documented lambda-capture pitfall
+   (reassigning a captured local rebinds a private closure copy, not the
+   outer scope's variable — the same failure shape regardless of whether
+   the captured value is a scalar or a whole Array, since it's the
+   REASSIGNMENT that's unsafe, not the value's type). Fixed by wrapping
+   both snapshots in one outer `Array` and mutating by index, matching
+   CLAUDE.md's own documented fix pattern exactly.
+5. **L.02-L.04, L.06** (Solar Beam/Blade halving assertions): the
+   underlying halving mechanism was actually CORRECT on the very first
+   run (confirmed via an isolated debug scene printing raw damage values:
+   `sun=106 none=106 rain=54 sand=54 hail=54 sw=106` — all halved values
+   consistent with each other) — the bug was in the TEST's own exactness
+   assertion (`rain_dmg == none_dmg / 2`), which naively divided the
+   ALREADY-computed final damage by 2 rather than accounting for the
+   halving happening on POWER before the formula's own `+2` and further
+   integer truncation (106/2=53 by plain division, but the true halved
+   result is 54). Fixed by switching to a strict-reduction check
+   (`rain_dmg < none_dmg`) plus a mutual-consistency check across the
+   three halved weathers, matching this project's own established
+   pairwise-damage-comparison convention rather than a naive exact-half
+   assertion.
+
+Stable across 3 reruns after all fixes.
+
+### Regression
+
+**One real, expected regression found and fixed** (a legitimate
+consequence of a genuine correctness fix, not a bug in this session's own
+code): `two_turn_test.gd`'s T5.01 (Solar Beam charging/releasing under
+rain) had hardcoded `p2.current_hp = 81` assuming Solar Beam dealt full,
+unhalved damage in rain — the exact pre-existing gap this session's own
+Item 3 closed. With the halving now correctly applied, the same forced-
+roll scenario deals 42 damage, not 81 — recomputed via a direct
+`DamageCalculator.calculate()` call against the test's own exact fixture
+and updated in place (confirmed via `[M18.5h-1]`-style reasoning: turning
+on a new, more-correct mechanic legitimately invalidates a prior test's
+own baked-in assumption of that mechanic's absence, the same shape as
+Nature's own regression sweep). 21 suites run: `damage_test`/`move_test`/
+`stat_test`/`status_test` (the 4 required) plus `weather_test`/
+`two_turn_test` (fixed)/`m16c_test`/`m16d_test`/`m16e_test`/`m17h_test`/
+`m17g_test`/`m17n9_test`/`m19ef_test`/`item_registry_test`/`tier3_test`/
+`m19_d1_free_test`/`ai_test`/`m18r_test`/`switch_test`/`doubles_test`/
+`m17f_test`/`tier4_test`/`ability_test`/`m17n2_test`/`m19_bucket4_pairs_test`
+— all clean, 0 unexpected failures.
+
+### Data
+
+New `MoveData` fields: `sets_stealth_rock_on_hit`, `sets_spikes_on_hit`,
+`is_defog`, `is_tidy_up`, `is_role_play`, `is_skill_swap`, `is_heart_swap`,
+`overwrite_target_ability_id`. New `BattleManager._weather_is_primal`
+field and `_clear_all_hazards(side)` helper. New `AbilityManager.
+try_role_play`/`try_skill_swap`/`try_worry_seed_overwrite` functions. 10
+new move dict entries added to `scripts/gen_moves.py`; 10 new `.tres`
+files regenerated — 581 total move `.tres` files, up from 571.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: D2's on-hit hazard/screen
+and ability-manipulation families both marked CLOSED with their full Step
+0 findings (including the Ice Spinner correction and the Tidy Up/Defog
+broader-scope findings); D5's own recommendation item 3 updated; Section
+E's two summary tables and the top-of-document reconciliation recomputed
+(581 implemented + 1 proposed sub-tier + 1 deferred + 213 excluded + 138
+Tier-4 residual = 934, reconfirmed). Part B's move count contribution is
+explicitly zero — noted rather than silently folded into the
+reconciliation. **Section D's residual: 148→138.**
+
+## [D2 batch 2]
+
+Two independent families closed in one session: **Part A** — offense-
+stat-source-override (Foul Play(492), Body Press(704), Photon
+Geyser(675)). **Part B** — per-mon TypeChart-override (Freeze-Dry(573),
+Tar Shot(695), Foresight(193), Odor Sleuth(316)). A real scope-count
+correction against the task's own framing: "6 moves" undercounted by
+one — Foresight and Odor Sleuth are two real move IDs sharing one
+mechanism, not one, bringing the true total to 7.
+
+### Step 0 findings
+
+**Psyshock/Psystrike are NOT already built** — a real correction to the
+task's own framing ("same insertion-point shape as EFFECT_PSYSHOCK
+(already built)"). Confirmed via direct `.tres`/`gen_moves.py` grep that
+neither move has ever been implemented; D1's own table still lists
+`EFFECT_PSYSHOCK` as an open MODERATE cluster, unaffected by this
+session. The offense-side mechanism was built fresh, matching the same
+conceptual insertion-point shape Psyshock's own defense-side override
+would need, without building Psyshock itself (out of this session's own
+scope).
+
+**Foul Play(492)**: `CalcAttackStat` (battle_util.c L6737-6748) —
+`EFFECT_FOUL_PLAY` reads the TARGET's own Attack (or Sp.Attack,
+category-gated the same as normal, though Foul Play's own fixed Physical
+category means only the Attack branch is ever reached) stat AND stage.
+Confirmed absent from `SetDynamicMoveCategory`'s switch — no category
+swap occurs, so type effectiveness/STAB/ability gates all stay keyed on
+the ATTACKER as normal; only the raw offense-stat SOURCE changes.
+Defense-side computation is completely untouched (still the defender's
+own Defense, normal physical-category selection).
+
+**Body Press(704)**: same function, `EFFECT_BODY_PRESS` branch — reads
+the USER's own Defense stat AND stage instead of Attack (fixed Physical
+category, confirmed the source's own Special-branch is dead code for
+this specific move since its category never varies). Source's own Wonder
+Room edge case (uses the Defense stat VALUE but the Sp.Def stat's STAGE
+while Wonder Room is active) is permanently moot — Wonder Room(472) is
+unimplemented, on Rob's own exclusion list.
+
+**Photon Geyser(675) — the one real hidden second effect this task's own
+prompt explicitly flagged as likely, confirmed true**: its own
+description ("User's highest attack stat determines its category") is
+literal, not flavor text. `SetDynamicMoveCategory`/`GetCategoryBasedOnStats`
+(battle_util.c L8975-9039) DYNAMICALLY SWAPS the move's WHOLE category
+(Special→Physical) based on the attacker's own STAGE-ADJUSTED Atk vs
+SpAtk (ties go to SPECIAL, `spAttack >= attack`) — not merely which raw
+stat feeds the damage formula. This cascades into every category-gated
+check downstream this project already has (Guts' burn-halving, Choice
+item validity, any category-keyed ability). Implemented via the same
+shallow-duplicate-and-substitute pattern already established for Hidden
+Power/M17n-6's type mutation (`DamageCalculator.calculate`'s own top),
+mutating `.category` instead of `.type` — every existing `move.category`
+check downstream sees the swapped value for free, zero changes needed to
+any of them. `.ignoresTargetAbility = TRUE` in source reuses the EXISTING
+`ignores_target_ability` mechanism (`[Bucket 4 2-move sub-groups]`'s
+Sunsteel Strike/Moongeist Beam) directly, zero new code for that half.
+
+**Freeze-Dry(573)**: `MulByTypeEffectiveness` (battle_util.c L8061-8062,
+`EFFECT_SUPER_EFFECTIVE_ON_ARG`) forces the Water-type COMPONENT to a
+flat 2.0 UNCONDITIONALLY — a genuinely different semantic from the
+existing `bypass_ghost_immunity`/`weaken_flying_se` overrides (those only
+ever fix a 0.0 up to 1.0; Freeze-Dry forces UP to 2.0 even from a neutral
+starting value, since Water is normally just neutral to Ice, not
+resistant). Checked per-defending-type-component, confirmed via a
+dedicated dual-type test that the OTHER type's own real chart value still
+composes independently. New `force_super_effective_type` param added to
+both `TypeChart.get_uq412`/`get_effectiveness`. Source's own
+`!ctx->isAnticipation` guard is permanently moot (Anticipation is a
+documented cosmetic no-op in this project, `[M17c]`). **A real secondary
+this move also carries, beyond the D2 recon's own "always super-effective
+vs Water" framing**: a 10%-chance Freeze secondary
+(`MOVE_EFFECT_FREEZE_OR_FROSTBITE`, resolving to plain STATUS_FREEZE at
+this project's config, matching Tri Attack's own established
+precedent) — reuses the existing generic `SE_FREEZE`/`secondary_chance =
+10` fields, zero new mechanism.
+
+**Tar Shot(695)**: confirmed a GENUINELY DIFFERENT shape from Freeze-Dry
+— `CheckSpecificMoveCondition`'s `EFFECT_TAR_SHOT` case
+(battle_stat_change.c L165-173) sets a permanent per-mon
+`volatiles.tarShot` flag (fails if already set); the actual doubling
+lives in a SEPARATE function (battle_util.c L8145-8146) as a flat POST-
+COMBINATION ×2.0 applied to the FULLY-combined effectiveness value,
+gated on the ATTACKING move being Fire-type — not per-defending-type-
+component like Freeze-Dry. Confirmed via direct source read this can
+NEVER stack with/conflict against Freeze-Dry's own override on the same
+hit (mutually exclusive by construction — Freeze-Dry is always Ice-type,
+never Fire-type). **A real coupling correctly modeled, not assumed**:
+traced `st->additionalEffectTriggers` (battle_stat_change.c/
+battle_move_resolution.c L4522-4549) to confirm the flag-set and the
+associated -1 Speed are bundled as ONE all-or-nothing gate in source
+(a single `additionalEffects` entry) — an already-tar-shot'd target
+blocks the Speed drop too, not merely the redundant flag re-set (a real
+test-authoring bug in this session's OWN first draft assumed the
+opposite — see Test plan below). New permanent `BattlePokemon.
+tar_shot_active`.
+
+**Foresight(193)/Odor Sleuth(316)**: confirmed via direct source read to
+share the LITERAL SAME `.effect = EFFECT_FORESIGHT` — genuinely
+identical, not merely similarly-shaped. `BattleScript_EffectForesight`
+(data/battle_scripts_1.s L2165-2174) sets a permanent per-TARGET
+`volatiles.foresight` (fails if already active at this project's
+GEN_LATEST config). Two independent effects, confirmed via two separate
+source checks: (1) Ghost-type Normal/Fighting-immunity bypass — the
+LITERAL SAME per-component `bypass_ghost_immunity` gate Scrappy/Mind's
+Eye already use (battle_util.c L8047-8052), OR'd in directly at the
+`DamageCalculator.calculate` call site rather than threading a new
+TypeChart parameter (the effect is identical regardless of whether it's
+attacker-ability-driven or defender-volatile-driven). (2) Evasion-stage-
+ignore — confirmed via `GetTotalAccuracy` (battle_util.c L10259-10261)
+that source computes this as `buff = accStage` (skipping the evasion
+term entirely), MATHEMATICALLY IDENTICAL to this project's own existing
+`eva_stage = 0` zeroing pattern — the same neutral-stage-reset shape, not
+a separate mechanism. Miracle Eye (the `|| volatiles.miracleEye` half of
+source's own condition) is not implemented and not in this session's
+scope — confirmed a wholly separate condition for the Ghost-bypass half
+(Psychic-vs-Dark, not Normal/Fighting-vs-Ghost), so no conflation risk.
+
+**A real bug found and fixed, not merely a test-authoring issue**: while
+writing this session's own full-battle test for Foresight, discovered
+that this project's general "type immunity check for foe-targeting
+moves" gate (`battle_manager.gd`, positioned before every `is_X`
+dispatch block) was blocking Foresight itself from ever landing on a
+Ghost-type target — precisely the move's own primary use case. Traced
+directly to source: `BattleScript_EffectForesight`'s own script NEVER
+calls `typecalc` anywhere in its sequence (confirmed by reading the full
+script), meaning in the real reference engine this move is NEVER subject
+to ANY type-immunity check at all. This project's own general gate was
+over-generalized to apply to every foe-targeting move with a real type,
+a correctness assumption that happened to hold for every previously-
+shipped status move (Thunder Wave/Toxic/Leech Seed all DO respect real
+type immunity in source) but breaks for Foresight specifically. Fixed
+with a narrow `not move.is_foresight` exemption, matching the existing
+`corrosion_bypasses_type_gate` precedent's own scoping shape rather than
+a blanket change. Flagged, not investigated further: whether any OTHER
+already-shipped status move's own script similarly never calls
+`typecalc` (and is therefore also incorrectly gated by this project's
+general check) is an open question beyond this session's own scope.
+
+### Test plan
+
+New `scenes/battle/d2_batch2_test.gd`/`.tscn`: 35/35 assertions across 7
+sections (A: data integrity for all 7 moves; B: Foul Play's target-
+Attack-scaling with an ordinary-move discriminator, defense-side
+unaffected; C: Body Press's user-Defense-scaling with an ordinary-move
+discriminator that flips the comparison; D: Photon Geyser's category
+swap confirmed via exact-damage-equality against synthetic Physical/
+Special baseline moves, plus the Atk==SpAtk tie-break; E: Freeze-Dry's
+Water super-effectiveness plus a dual-type composition test; F: Tar
+Shot's doubling, persistence across multiple turns, and the already-
+active all-or-nothing discriminator; G: Foresight's Ghost-bypass,
+evasion-ignore via a 200-trial statistical comparison, and the already-
+active discriminator). **Two real test-authoring bugs caught and fixed,
+both on the first run — the G.04 failure led directly to the real
+production bug documented above, not a test mistake**:
+
+1. **F.03** (Tar Shot's multi-turn persistence): the first draft gave the
+   WRONG mon the Tar Shot move — since Tar Shot is foe-targeting, giving
+   it to `target2` had `target2` cast Tar Shot ONTO `atk2` instead of
+   receiving it, confirmed via an isolated debug scene printing the
+   `tar_shot_set` signal's actual argument. Fixed by moving Tar Shot onto
+   `atk2`'s own moveset and queuing it as `atk2`'s first action, with
+   `target2` given a harmless filler attack. A related, second bug in the
+   same test (comparing consecutive Fire-move damage values without
+   forcing the roll, violating CLAUDE.md's own documented pairwise-
+   damage-comparison convention) was caught and fixed in the same pass by
+   adding `_force_roll = 100`.
+2. **G.04** (Foresight full-battle integration): failed on the first run
+   with the target's own `foresight_set` signal never firing at all —
+   traced (not guessed) to the real production bug described above via a
+   direct source read of `BattleScript_EffectForesight`, confirming the
+   TEST fixture itself was correct (a Ghost-type target IS the move's own
+   intended use case) and the IMPLEMENTATION needed the fix instead.
+
+Stable across 3 reruns after both fixes.
+
+### Regression
+
+17 suites run: `damage_test`/`move_test`/`stat_test`/`status_test` (the 4
+required) plus `m17n6_test` (Wonder Guard/Scrappy/Mind's Eye — the
+existing `bypass_ghost_immunity` origin suite this session's Foresight
+change extends), `m18t_test` (Iron Ball's own `grounded_override`
+parameter on the same `TypeChart` functions this session added a new
+parameter to), `m17d_test` (Delta Stream's `weaken_flying_se` parameter,
+same functions), `m17n11_test` (Mirror Armor/Wonder Skin, evasion-
+adjacent), `m17n8_test` (Corrosion — the existing `corrosion_bypasses_
+type_gate` precedent this session's own fix mirrors), `tier4_test`,
+`switch_test`, `ability_test`, `weather_test`, `doubles_test`,
+`item_registry_test`, `m17n2_test`, `m17b_test`, plus a rerun of `[D2
+batch]`'s own `d2_batch_test.tscn` (82/82, confirming no cross-session
+interference) — all clean, 0 failures.
+
+### Data
+
+New `MoveData` fields: `is_foul_play`, `is_body_press`,
+`is_photon_geyser`, `super_effective_vs_type`, `is_tar_shot`,
+`is_foresight`. New `BattlePokemon.tar_shot_active`/`foresight_active`
+fields (both cleared in `_clear_volatiles`, no reciprocal-clear needed).
+New `force_super_effective_type`/`tar_shot_active` params on
+`TypeChart.get_uq412`/`get_effectiveness`. New `foresight_set`/
+`tar_shot_set` signals. New narrow `not move.is_foresight` exemption on
+the general type-immunity gate (the real bug fix). 7 new move dict
+entries added to `scripts/gen_moves.py`; 7 new `.tres` files regenerated
+— 588 total move `.tres` files, up from 581.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: D1's own `EFFECT_FORESIGHT`
+row and both of D2's remaining families (offense-stat-source-override,
+per-mon TypeChart-override) all marked CLOSED with full Step 0 findings,
+including the Psyshock-not-already-built correction, the Photon-Geyser-
+category-swap confirmation, and the Foresight type-immunity-gate bug;
+D5's own recommendation item 3 updated; Section E's two summary tables
+and the top-of-document reconciliation recomputed (588 implemented + 1
+proposed sub-tier + 1 deferred + 213 excluded + 131 Tier-4 residual =
+934, reconfirmed). **Section D's residual: 138→131.**
+
+## [D3 turn-order/event-tracker batch]
+
+Two independent families closed in one session, both drawn from D2's
+own remaining cross-cutting-family list. **Part A** — turn-order-
+manipulation (4 moves): After You(495), Quash(511), Upper Hand(846),
+Instruct(652), tagged MODERATE. **Part B** — "event happened this
+turn/battle" tracker (4 moves): Lash Out(736), Retaliate(514), Rage
+Fist(815), Echoed Voice(497), tagged CHEAP, mirroring the already-
+shipped `stat_raised_this_turn` pattern. Both difficulty tags were
+re-verified rather than trusted at face value, per this arc's own
+standing discipline (roughly half of every prior D-family session has
+caught something) — this session's real findings landed almost
+entirely in Part A (Instruct's genuinely new fall-through shape,
+Upper Hand's ability-boosted-priority re-check), with Part B
+confirming CHEAP as tagged except for one real empirically-discovered
+timing nuance in Retaliate (below). Step 0 re-verified all 8 IDs
+against `gen_moves.py`/`.tres` first — none had been closed
+incidentally by adjacent sessions.
+
+### Step 0 findings — Part A
+
+**After You(495)**: source's `ChangeOrderTargetAfterAttacker`
+(battle_util.c L10743-10784) pushes the target to
+`attackerTurnOrderNum + 1`, unconditionally failing if the target has
+already acted (`attackerTurnOrderNum > targetTurnOrderNum`). At this
+project's GEN_LATEST config (`B_AFTER_YOU_TURN_ORDER >= GEN_8`), a
+target already immediately-next is a TRIVIAL SUCCESS (no reorder
+needed) — reproduced for free by this project's own "remove and
+re-insert at `_current_actor_index + 1`" implementation, since
+re-inserting at the position it's already at is a no-op. No
+`[M18j]`-style re-check-after-priority-modifiers question applies —
+`_turn_order` is a real, live position array read fresh at execution
+time, not a pre-resolved snapshot, so any earlier priority-altering
+event this same turn is already reflected.
+
+**Quash(511)**: source's `BS_TryQuash` (battle_script_commands.c
+L11762-11799) is genuinely more complex in doubles at GEN_8+ config —
+it iterates the target's position, comparing `GetWhichBattlerFaster`
+against each subsequent battler and swapping one step at a time (a
+speed-order-preserving push-back), stopping early if the target would
+still be faster than the next battler. This project implements the
+simpler "move to the absolute end" behavior instead — matching
+source's own GEN_7- branch exactly, and OBSERVABLY IDENTICAL to the
+GEN_8+ branch in singles (the only two remaining battlers are the user
+and the target, so "push back one step" and "push to the end" collapse
+to the same outcome). Flagged as a known simplification for 3+-
+remaining-battler doubles scenarios, not silently assumed correct.
+
+**Upper Hand(846)**: re-derived fresh rather than assumed identical to
+the recon's own framing. Source (`battle_move_resolution.c` L1403-1417,
+case `EFFECT_UPPER_HAND`) computes `GetChosenMovePriority(battlerDef,
+GetBattlerAbility(battlerDef))` — the IDENTICAL function real turn-order
+sorting uses (`battle_main.c` L4722-4731, `GetBattleMovePriority`,
+already wrapped by this project's own `AbilityManager.
+move_priority_bonus` from `[M17n-3]`) — confirming the connect
+condition is ability-boosted priority in `[1,3]`, not raw
+`move.priority`. Re-checked fresh at Upper Hand's own execution time
+(this project's dispatch reads the defender's currently-chosen move and
+recomputes priority via the live function, so a priority-suppressing
+ability active by that point is correctly reflected — no separate
+"lock in based on raw declared priority" branch exists in source to
+model). Confirmed via source: fails if priority is `<1` or `>3`, if the
+target already acted, if the target has no chosen move, OR if the
+target's chosen move is status-category — all four folded into one
+gate, matching the existing Sucker Punch dispatch's "ButItFailed" shape
+(whole move fails, zero damage, zero flinch) rather than a soft miss.
+
+**Instruct(652)**: source's `BS_TryInstruct` (battle_script_commands.c
+L13149-13195) forces the target to re-use `gLastPrintedMoves[target]`
+via `jumptocalledmove TRUE` — confirmed via that call's own semantics
+(shared with Mirror Move/Metronome's identical `jumptocalledmove`
+dispatch) that the re-used move costs NO PP, positioned in this
+project's own dispatch right after the existing PP-deduction block
+(the same spot Mirror Move/Metronome already occupy) so it's naturally
+skipped a second time. **The one genuinely new shape in this whole
+session**: unlike Mirror Move/Metronome (which only reassign
+`defender`/`move` and let the SAME attacker fall through), Instruct's
+own source does `copybyte gBattlerAttacker, gBattlerTarget` — the
+INSTRUCTED POKÉMON becomes the one actually executing, not the
+Instruct user. Reproduced by reassigning `attacker` itself and
+recomputing `attacker_idx`/`attacker_side` from it (both were
+previously computed once from the original attacker and never
+revisited by any other dispatch branch in this function) — confirmed
+safe since `ng_active` is a field-wide snapshot unaffected by which
+specific battler is "attacker." New defender = the ORIGINAL attacker
+(source tracks a real `backUpTarget`, exact in singles — the only
+valid opposing target anyway — a disclosed simplification in doubles).
+The Instruct USER's own `last_move_used` is set to Instruct itself
+(matching real, well-established in-game behavior) by writing it
+explicitly BEFORE the attacker/defender swap, since the general
+`attacker.last_move_used = move` line further down the function would
+otherwise apply to the wrong (post-swap) battler.
+
+Instruct's exclusion list was re-derived against this project's own 23
+currently-implemented `instructBanned`-flagged moves (cross-checked via
+a direct `grep` of `moves_info.h`'s `instructBanned = TRUE` occurrences
+against `gen_moves.py`'s existing roster) rather than blindly porting
+source's full ~50-move list or reusing the project's own
+`BAN_INSTRUCT` bitflag (found to be populated on only 2 of those 23
+moves — Shadow Force/Phantom Force, both redundantly covered by
+`two_turn` anyway). 21 of the 23 already fall out of pre-existing
+flags with zero new checks: `two_turn`/`is_recharge` (charge/recharge
+moves), `is_rollout` (Ice Ball/Rollout), `is_metronome`/`is_mirror_move`
+(call-another-move moves), `is_rampage`/`is_uproar` (Thrash/Petal
+Dance/Outrage/Uproar). Two required individual attention: **Obstruct**
+— confirmed via source that ONLY Obstruct + King's Shield among the
+entire Protect-family are `instructBanned` (Protect/Detect/Baneful
+Bunker/Silk Trap/Burning Bulwark/Wide Guard/Quick Guard are NOT), a
+real move-specific data quirk with no clean general rule — checked via
+`protect_method == PROTECT_METHOD_OBSTRUCT` specifically, not a blanket
+`protect_method != NONE`. **Bide** — the one real gap: Bide's own
+mechanic isn't flagged by `two_turn` in this project's schema (it uses
+a dedicated `is_bide` flag instead, per its own charge-via-
+`charging_move` implementation), so `is_bide` was added to the
+exclusion list explicitly.
+
+### Step 0 findings — Part B
+
+**Lash Out(736)**: source (`battle_util.c` L6308-6310, case
+`EFFECT_LASH_OUT`) doubles power if `gProtectStructs[battlerAtk].
+lashOutAffected`. Traced the flag's OWN set-site (`battle_stat_change.c`
+L368) to the single shared stat-DECREASE-application chokepoint — the
+exact decrease-side sibling of `SetStatChange`'s own increase-side
+`statRaised` flag this project's `stat_raised_this_turn`
+(`[M19-stat-raised-trigger]`) already mirrors — confirming SELF scope
+(checked against `battlerAtk`, the Lash Out user itself) and ANY-source
+scope (move/ability/item alike, not move-only). Reset for every battler
+at the start of each turn (`battle_main.c` L5056), the same per-turn
+memset cadence `stat_raised_this_turn` already uses. New
+`BattlePokemon.stat_lowered_this_turn`, mirrored at the exact same
+`StatusManager.apply_stat_change` chokepoint.
+
+**Retaliate(514)**: source (`battle_util.c` L6401-6406, case
+`EFFECT_RETALIATE`) doubles power if `gSideTimers[atkSide].
+retaliateTimer == 1`. Traced both the set-site (`battle_util.c`
+L11014/11021, inside the faint-handling function — set to 2 on ANY
+faint on that side, confirming SIDE-WIDE scope, never touching the
+opposing side) and the decrement site (`battle_main.c` L3939-3940,
+once per turn boundary for both sides unconditionally). New
+`BattleManager._retaliate_timer: Array[int]` (2-element, mirrors
+`_side_conditions`' per-side shape), set to 2 in `_phase_faint_check`,
+decremented in `_phase_end_of_turn` alongside the existing screen-
+duration ticks. **A real, empirically-discovered timing nuance, found
+while writing G.04-G.07's integration test rather than assumed from
+source alone**: this project's own `_phase_end_of_turn` is SKIPPED
+entirely for the turn a faint/replacement occurs in (pre-existing
+architecture, not something this session introduced) — so the
+replacement mon's timer stays at 2 (undoubled) through its ENTIRE
+first turn back, only reaching 1 (doubled) on its SECOND turn, and 0
+(undoubled again) on its third. Caught via direct debug tracing after
+the test's first draft (which assumed the more intuitive "doubled on
+the very next turn" timing) failed, then fixed by re-deriving the
+correct sequence from the actual observed signal ordering rather than
+guessing again.
+
+**Rage Fist(815)**: source (`battle_util.c` L6349-6351, case
+`EFFECT_RAGE_FIST`) adds `50 * GetBattlerPartyState(battlerAtk)->
+timesGotHit`, capped at 350 total. Traced `timesGotHit`'s own
+increment site (`battle_script_commands.c` L1685, inside the general
+"apply damage to a battler" data-update path, unconditional on move
+category/contact) and searched exhaustively for any reset — found
+NONE (the only other reference, `battle_script_commands.c` L7781-7782,
+is Transform copying the TARGET's count onto the attacker, itself
+unimplemented and irrelevant) — confirming a genuine BATTLE-LIFETIME
+counter, a different persistence scope from every other tracker in
+this family. New `BattlePokemon.times_hit`, incremented in
+`_do_damaging_hit`'s existing `if damage > 0:` block (after the
+Substitute-absorption early return, matching source's own real-HP-loss
+gating), deliberately EXCLUDED from `_clear_volatiles` — confirmed via
+a dedicated unit test calling `_clear_volatiles` directly and checking
+the field survives untouched, the same switch-persistent-per-party-
+slot shape already established for `last_consumed_berry`
+(`[M17n-7]` Harvest).
+
+**Echoed Voice(497)**: source (`battle_util.c` L6264-6270, case
+`EFFECT_ECHOED_VOICE`) computes `basePower * (1 + counter)`, capped at
+200 (redundant at counter=4 with base 40, reproduced literally anyway
+to match source). Traced the counter's home (`gBattleStruct->
+echoedVoiceCounter`) to `battle_end_turn.c` L79-88 — a FIELD-WIDE
+(single struct, not per-side/per-mon) counter, incremented (capped 4)
+once per turn boundary if `incrementEchoedVoice` was set, else reset to
+0 — and that flag's own set-site (`battle_move_resolution.c`
+L4914-4916): `if (!unableToUseMove) incrementEchoedVoice = TRUE`,
+confirming the gate is "was the move attempted" (not blocked by an
+earlier pre-move canceler), NOT "did the hit connect." New
+`BattleManager._echoed_voice_counter`/`_echoed_voice_used_this_turn`,
+updated in `_phase_end_of_turn` alongside Retaliate's own new timer
+logic.
+
+### Design
+
+All 4 Part-A moves confirmed to read/write only the pre-existing
+`_turn_order`/`_current_actor_index` state — no new turn-order
+infrastructure, matching `[M18j]`'s Zoom Lens and `[M17n-3]`'s Quick
+Draw/Stall precedent — EXCEPT Instruct's attacker-reassignment shape,
+which is genuinely new (see Step 0 above) though still built from
+existing pieces (the Mirror Move/Metronome fall-through pattern,
+extended). All 4 Part-B moves use the established
+`_dmg_power_override` pattern (`[M16b]` Rollout, `[D1 cheap clusters]`
+Stored Power) at the exact same insertion point in
+`_phase_move_execution`, requiring only small new tracker fields/state
+at existing dispatch chokepoints — confirmed CHEAP as tagged.
+
+### Test plan
+
+New `d3_batch_test.gd`/`.tscn`: 48/48 assertions across 9 sections
+(A: data integrity for all 8 moves; B: After You — a 4-combatant
+doubles reorder with a full execution-order discriminator, plus a
+singles already-acted failure case; C: Quash — the same shape, push-
+to-end; D: Upper Hand — connects against a genuine ability-boosted-
+priority target [Quick Attack], whiffs against a non-priority one
+[Tackle]; E: Instruct — re-uses the target's last move for free PP,
+snapshotted via precisely-bounded signal captures rather than post-
+battle reads, plus a no-last-move failure case and a Rollout-exclusion
+case; F: Lash Out — pairwise power-doubling comparison plus a 2-turn
+non-persistence check; G: Retaliate — pairwise direct-state comparison
+plus the full faint-triggers-timer/decrements-over-turns integration
+test; H: Rage Fist — pairwise comparison, a 350-power-cap check, a
+real-hit-increments-the-counter check, and the `_clear_volatiles`
+survival check; I: Echoed Voice — pairwise comparison, a 3-turn ramp-up
+integration check, and a skipped-turn-resets-to-0 check), stable across
+4 reruns.
+
+Four real test-authoring bugs were caught and fixed during this
+session, none of them implementation bugs:
+
+1. **Doubles party setup used the wrong field.** `BattleParty.
+   active_index` (singular, the SINGLES accessor) was used instead of
+   `active_indices` (plural, required for `start_battle_doubles`,
+   confirmed from that function's own doc comment) — caused an
+   out-of-bounds crash on `get_active_at(1)`. Fixed by setting
+   `active_indices = [0, 1]` on both doubles parties.
+2. **A confounded pairwise comparison (Lash Out).** The first draft
+   used Growl (which lowers the ATTACKER's own Attack) to trigger
+   `stat_lowered_this_turn` — but since Lash Out is itself a Physical
+   move, the resulting Attack-stage drop ALSO reduced the move's own
+   damage output, confounding the doubling measurement with an
+   unrelated stat-stage effect. Fixed by switching to Scary Face
+   (lowers Speed instead — irrelevant to Lash Out's own Physical
+   damage calc), isolating the one variable under test.
+3. **A fresh recurrence of the whole-battle-aggregation pitfall**,
+   found independently in FOUR separate pairwise comparisons (Lash
+   Out, Retaliate, Rage Fist, Echoed Voice): each connected
+   `move_executed` with a bare overwrite (`dealt[0] = amt`), capturing
+   whatever the LAST turn's value happened to be rather than the
+   specific turn under test — and since the underlying state
+   (stat stage, side timer, hit counter, use counter) legitimately
+   keeps changing turn over turn in a multi-turn battle, later turns'
+   values silently diverged from the intended single-turn comparison.
+   Fixed by guarding every capture to the FIRST occurrence only
+   (`if dealt[0] == 0: dealt[0] = amt`).
+4. **An over-precise equality assertion**, the same class CLAUDE.md's
+   own `[D2 batch]` entry already documents for Solar Beam's halving:
+   doubling/tripling the effective base power BEFORE the damage
+   formula's later floor operations and additive `+2` term doesn't
+   guarantee an EXACTLY 2x/3x final integer output. Fixed with a new
+   `_approx_scaled(actual, baseline, factor, tolerance)` helper used
+   throughout Sections F/G/I instead of exact `==` comparisons.
+
+A fifth issue was a genuine type-immunity confound (Rage Fist is
+Ghost-type; this test file's `_make_mon` helper defaults to Normal-type,
+and Normal is flatly immune to Ghost-type moves) — caught via the exact
+mechanism CLAUDE.md's own type-immunity-precedes-ability-logic
+convention warns about, fixed by adding an optional `mon_type` parameter
+to `_make_mon` and giving Rage Fist's opponents a neutral (Water) type.
+
+### Regression
+
+19 suites run directly (not the full ~80-file sweep, which repeatedly
+failed to complete within this session's tooling constraints — the
+targeted set below was chosen to cover every directly and indirectly
+touched function): `damage_test`/`move_test`/`stat_test`/`status_test`
+(the 4 required), `m17k_test`/`m17n3_test` (priority/turn-order,
+`move_priority_bonus`'s own origin and nearest neighbor),
+`m17b_test`/`m19_bucket3_multistat_test`/`m19_secondary_stat_test`
+(the `apply_stat_change` chokepoint), `switch_test`/`tier4_test`/
+`doubles_test` (general turn-order/phase-machinery breadth),
+`item_registry_test`, `m18j_test` (`_has_target_already_acted`'s own
+origin), `m19_bucket4_pairs_test` (`M19-stat-raised-trigger`'s own
+origin, Part B's sibling pattern), `m19_rampage_test`/
+`m19_recharge_test` (other `_phase_move_execution`/pre-move-canceler
+neighbors), `m17c_test`, `m19ef_test` (`_clear_volatiles`/reciprocal-
+clear neighbors) — all 19 clean, 0 failures.
+
+### Data
+
+7 new `MoveData` flags added to `scripts/gen_moves.py` for Part A
+(`is_after_you`/`is_quash`/`is_upper_hand`/`is_instruct`) and Part B
+(`is_lash_out`/`is_retaliate`/`is_rage_fist`/`is_echoed_voice`), plus
+`DEFAULTS`/`FIELD_ORDER` entries. New `BattlePokemon.
+stat_lowered_this_turn`/`times_hit` fields. New `BattleManager.
+_retaliate_timer`/`_echoed_voice_counter`/`_echoed_voice_used_this_turn`
+fields and `turn_order_changed` signal. 8 new move dict entries;
+8 new `.tres` files regenerated — 596 total move `.tres` files, up
+from 588.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: both D2 families
+(turn-order-manipulation, "stat/event happened this turn" tracker)
+marked CLOSED with full Step 0 findings; D5's own recommendation item 3
+updated, flagging the delayed-effect family as D2's last remaining
+cross-cutting family; Section E's two summary tables and the
+top-of-document reconciliation recomputed (596 implemented + 1 proposed
+sub-tier + 1 deferred + 213 excluded + 123 Tier-4 residual = 934,
+reconfirmed). **Section D's residual: 131→123.**
+
+## [Delayed-effect family + Psyshock/Psystrike]
+
+Two independent pieces closed in one session. **Part A** — delayed-effect
+family (6 moves): Future Sight(248), Doom Desire(353), Wish(273),
+Yawn(281), Healing Wish(361), Lunar Dance(461). **Part B** —
+Psyshock(473)/Psystrike(540), the `EFFECT_PSYSHOCK` cluster, unrelated
+mechanism, bundled purely for scheduling efficiency. This closes D2
+entirely — every cross-cutting family surfaced during
+`[M19-section-d-cluster]`'s singleton-pool sweep has now shipped.
+
+### Step 0 findings — Part A
+
+**Real correction to the task's own two-way framing**: the delayed-effect
+family is genuinely THREE mechanism shapes, not two.
+
+**1. Per-slot delayed scheduler — Future Sight/Doom Desire, Wish.** Both
+live in NEW `BattleManager` dictionaries keyed by combatant SLOT INDEX
+(not Pokémon identity), mirroring source's own `gBattleStruct->
+futureSight[battler]`/`wish[battler]` per-slot storage (source's own code
+comment even flags this as a known simplification: "Technically Future
+Sight, Doom Desire and Wish need a queue but I think we should accept
+this slight inconsistency"). **Future Sight/Doom Desire** (share the
+literal same `EFFECT_FUTURE_SIGHT`): cast fails if the TARGET's slot
+already has one pending (`battle_move_resolution.c` L1365-1372); counter
+starts at 3, decrements once per end-of-turn, resolves at 0 — 2 full
+turns after the cast turn. Resolution targets whoever OCCUPIES the target
+slot then, confirmed via a dedicated switch-survival test (B.05): the
+original target voluntarily switches out on turn 2, and the replacement
+— now occupying that slot — takes the hit at turn 3's resolution instead.
+NO accuracy roll at cast or resolve time (confirmed — neither
+`BattleScript_EffectFutureSight` nor `BattleScript_MonTookFutureAttack`
+ever calls `accuracycheck`); resolution does a fresh type-effectiveness
+check only. **Cast-time-vs-resolve-time snapshot** (the other explicitly-
+flagged open question): source ALWAYS recomputes at resolve time, never
+freezes at cast time — but the DATA SOURCE forks depending on whether the
+original caster is still the live occupant of its own slot. Still there →
+a fully normal fresh damage calc (live stats/ability/item/stat stages,
+fresh crit roll). Left (switched/fainted) → source temporarily
+reconstructs the caster from PARTY data with ability/item forced to NONE
+(`DoFutureSightAttackDamageCalc`, `battle_util.c` L7733-7763). This
+project reproduces the MAJORITY of that distinction for free: resolution
+is routed through the EXISTING `_do_damaging_hit` chokepoint (screens,
+Substitute, Sturdy/Focus Band/Focus Sash, `times_hit`, Air Balloon all
+apply automatically, matching source's own `DoMoveDamageCalc` path) using
+the caster's CURRENT live fields — and a caster that switched out already
+has `stat_stages` reset to 0 by the pre-existing `_switch_out_clear`
+(`[M9]`), so stale boosts never leak into the delayed hit. The one
+disclosed gap: this project does NOT additionally null a benched caster's
+ability/item — a narrow, rare edge case not worth the extra struct-swap
+machinery source's own layout needs. **Wish**: keyed by the CASTER's OWN
+slot (fails if already pending there, `Cmd_trywish` L9029-9046); counter
+starts at 2 (decrements once at the end of the CAST turn itself, so it's
+functionally "1 turn delayed"). Resolves against whoever occupies the
+CASTING slot then, healing `caster's own max HP / 2` — fixed at cast time
+via a stored party reference, confirmed via a dedicated discriminator
+(C.01-C.03: caster max HP 260, replacement max HP 460 — the heal is
+exactly 130, the caster's own half, not the replacement's 230) — NOT the
+eventual recipient's own max HP (`GetConfig(B_WISH_HP_SOURCE) >= GEN_5`,
+satisfied at this project's GEN_LATEST config).
+
+**2. Per-mon volatile counter — Yawn.** Confirmed via source this is
+genuinely NOT part of the per-slot scheduler family above, despite the
+shared "delayed effect" framing — it's a plain `gBattleMons[target].
+volatiles.yawn` counter (`Cmd_setyawn` L9091-9116), mechanically
+IDENTICAL in shape to the already-shipped `disable_turns`/
+`encore_turns`/`throat_chop_turns` pattern. Genuinely ZERO new switch/
+faint infrastructure needed — it's already correctly cleared by the
+existing `_clear_volatiles` switch-out plumbing. Fails at cast time if
+the target already has one pending OR already has ANY status. Resolution
+(1 turn later) fires a completely FRESH sleep-infliction attempt via the
+EXISTING `StatusManager.try_apply_status` pipeline, which already
+re-derives every immunity (Insomnia/Vital Spirit/Leaf Guard/already-
+statused/Uproar-awake) at that exact moment — not locked in at cast time.
+
+**3. Switch-in-triggered one-shot — Healing Wish/Lunar Dance.** Confirmed
+as the third, genuinely distinct shape: a single per-slot flag with NO
+counter at all, consumed by the slot's next switch-in event. UNLIKE
+Explosion/Self-Destruct (`[M19-self-faint]`, which always faints
+unconditionally), this move FAILS OUTRIGHT (no faint, nothing stored) if
+the user has no valid Pokémon to switch to — checked BEFORE fainting via
+`jumpifcantswitch` (`data/battle_scripts_1.s` L1100-1110), reusing the
+existing `BattleParty.has_valid_switch_target()` (`[M9]`). Confirmed the
+consumption chokepoint (`FirstEventBlockEvents`, `battle_switch_in.c`
+L189-232) is triggered by a generic "did a switch-in just happen" flag,
+independent of switch METHOD. **A real, load-bearing finding surfaced
+only while writing the test suite, not from source reading alone**: for
+THIS specific move family, "any switch method" is not independently
+testable as a scenario DIFFERENT from plain faint-replacement — the
+stored effect is created BY the caster's own faint, and faint-replacement
+for that exact slot follows immediately and unconditionally, so no other
+switch method (a later Roar, for instance) can ever reach the slot first.
+An initial test draft attempting to demonstrate "consumed via a forced
+switch" was scrapped once this was traced through — see the Test plan
+section below. **Healing Wish/Lunar Dance both heal to full AND cure
+status** (confirmed via the shared `BattleScript_EffectHealingWishRestore`
+block both jump into); **Lunar Dance additionally restores full PP on all
+4 moves** (`restoremovepp BS_SCRIPTING`, its own extra line).
+
+**The one genuine judgment call, confirmed with Rob before implementing**
+(not a factual finding — flagged per the task's own instruction rather
+than decided unilaterally): real source at this project's Gen8+ config
+(`CanBattlerBeHealed`) lets the stored effect PERSIST across multiple
+switch-ins on that slot until one actually benefits (skipped for an
+already-full-HP/no-status/full-PP recipient). Rob confirmed the
+simplified alternative: always consume on the very next switch-in
+regardless, healing/curing/restoring only if something is actually
+needed.
+
+### Step 0 findings — Part B
+
+Confirmed exactly as expected, and confirmed genuinely small. Psyshock
+(473, 80 power)/Psystrike(540, 100 power) share `EFFECT_PSYSHOCK`, both
+Psychic/Special/100 accuracy. Source's `CalcDefenseStat`
+(`battle_util.c` L7021-7035) has the identical shape to `CalcAttackStat`'s
+already-shipped Foul Play branch: `if (moveEffect == EFFECT_PSYSHOCK ||
+IsBattleMovePhysical(move))` — one added OR condition on the existing
+category-based defense-stat-selection branch. NO category swap (confirmed,
+unlike Photon Geyser) — STAB, ability triggers, and secondary-effect
+gating all stay keyed on Special. Genuinely simpler in SHAPE than Foul
+Play/Body Press: those swap WHICH BATTLER's stat is read (a cross-battler
+pattern); Psyshock/Psystrike stay on the SAME battler (the defender),
+just swapping WHICH COLUMN (Defense instead of Sp. Defense) — no
+cross-battler pattern needed at all, just a third override alongside the
+existing two in `DamageCalculator`, same insertion point. Wonder Room's
+interaction is permanently moot (unimplemented, same precedent as Body
+Press).
+
+### Design
+
+Part A confirmed as genuinely new, multi-shape infrastructure exactly as
+CLAUDE.md's standing instruction anticipated — stopped for confirmation
+via `AskUserQuestion` on the one real judgment call (Healing Wish/Lunar
+Dance's Gen8+ persistence nuance) before implementing anything. Part B
+confirmed small and clean as expected — no design questions raised.
+
+### Test plan
+
+New `delayed_effect_test.gd`/`.tscn`: 41/41 assertions across 6 sections
+(A: data integrity for all 8 moves; B: Future Sight/Doom Desire — cast/
+resolve timing via the dedicated `future_sight_scheduled`/
+`future_sight_resolved` signals, an already-pending failure case, the
+key switch-survival discriminator, and Doom Desire's own ordinary-case
+confirmation; C: Wish — cast/resolve timing, the caster-not-recipient
+heal-source discriminator, an already-pending failure case, and an
+already-full-HP zero-heal case tested via a DIRECT `_phase_end_of_turn()`
+call rather than a live battle, since a battle where nobody ever deals
+real damage never terminates; D: Yawn — cast/resolve timing, an
+already-statused failure case, and a direct `_clear_volatiles` survival
+check; E: Healing Wish/Lunar Dance — faints the user, heals+cures the
+replacement (checked via the activation event's own reported values, not
+post-battle mon state), the no-valid-switch-target failure case, and
+Lunar Dance's own PP-restoration on top, with the PP value captured LIVE
+inside the signal handler; F: Psyshock/Psystrike — a large-Def/low-SpDef
+target takes measurably less damage from Psyshock than from an ordinary
+Special move, plus a sanity check that `.category` itself was never
+mutated), stable across 5 reruns.
+
+**Three real test-authoring bugs were caught and fixed, none of them
+implementation bugs:**
+
+1. **A scrapped test design, caught during Step 0 verification of the
+   test plan itself, not a failing run.** The original plan (per this
+   task's own Test-plan section) called for confirming Healing Wish/
+   Lunar Dance's stored effect applies "regardless of switch method" by
+   testing it via a forced switch (Roar). Tracing the actual turn
+   sequence through before writing it showed this scenario is physically
+   impossible to construct for this move family: the caster faints AS
+   PART OF its own move (immediately, same turn), triggering instant
+   faint-replacement for that exact slot before any other switch
+   mechanism could ever reach it. Rewritten to test Lunar Dance's PP
+   restoration via the same ordinary faint-replacement path Healing Wish
+   already covers, with an explicit doc-comment note explaining why the
+   "any switch method" claim — true about the underlying consumption
+   check — isn't independently testable as a different scenario here.
+2. **A heal-amount assertion that didn't account for the missing-HP
+   cap.** C.03's first draft asserted Wish's heal equals exactly the
+   caster's `max_hp / 2`, but the recipient had only taken one incidental
+   Tackle hit by resolve time — not enough missing HP to absorb the full
+   nominal heal, so the actual (correctly capped) result undershot the
+   naive expectation. Fixed by pre-damaging the recipient well below max
+   HP first, isolating the "which mon's max HP feeds the formula"
+   question under test from the separate, already-correct missing-HP-cap
+   behavior.
+3. **A fresh recurrence of the whole-battle-aggregation pitfall (E.05).**
+   The original assertion tracked "did `pokemon_fainted` ever fire for
+   the caster" across the whole battle — but a Healing Wish cast that
+   fails (no valid switch target) still leaves the caster taking ordinary
+   Tackle damage every subsequent turn from its own opponent, and it
+   eventually faints for real, unrelated reasons if the battle runs long
+   enough. Fixed by capturing the caster's HP synchronously inside the
+   `move_effect_failed` handler instead — proving only that THIS specific
+   failed cast didn't self-faint the user, not that the user never faints
+   across the whole battle.
+
+### Regression
+
+17 suites run directly: `damage_test`/`move_test`/`stat_test`/
+`status_test` (the 4 required), `switch_test` (heavy interaction risk for
+Part A, confirmed clean), `two_turn_test`/`m19_recharge_test`/
+`m19_rampage_test` (existing turn-counter mechanics, for pattern
+consistency with the new per-mon/per-slot counters), `d2_batch2_test`
+(Foul Play/Body Press's own origin suite, for `DamageCalculator`
+insertion-point consistency), `m17c_test`/`tier4_test`/
+`item_registry_test`/`d3_batch_test`/`doubles_test`/`m17n8_test`/
+`m17f_test`/`m17n9_test` (broader switch-in/faint/ability-trigger
+breadth, given how many existing switch-in call sites this session
+touched) — all 17 clean, 0 failures. The full ~80-file automated sweep
+was not attempted this session, consistent with `[D3 turn-order/event-
+tracker batch]`'s own tooling-constraint note.
+
+### Data
+
+6 new `MoveData` flags for Part A (`is_future_sight` shared by Future
+Sight/Doom Desire, `is_wish`, `is_yawn`, `is_healing_wish`,
+`is_lunar_dance`) plus `is_psyshock` (shared by Psyshock/Psystrike) for
+Part B — 6 total new flags, `DEFAULTS`/`FIELD_ORDER` entries added. New
+`BattlePokemon.yawn_turns` field (cleared by `_clear_volatiles`, same
+shape as its siblings). New `BattleManager._future_sight_pending`/
+`_wish_pending`/`_stored_healing_effect` dictionaries, keyed by combatant
+index. New signals: `future_sight_scheduled`/`future_sight_resolved`,
+`wish_scheduled`/`wish_resolved`, `yawn_set`, `healing_wish_activated`.
+New `_apply_stored_healing_effect` helper wired into all THREE existing
+switch-in call sites (`_do_voluntary_switch`, `_do_forced_switch_in`,
+`_do_switch_in`) — confirmed via direct code read these are genuinely
+three separate call sites, not one shared function, matching the same
+multi-site-wiring pattern Guard Dog/Multitype already established. 8 new
+move dict entries added to `scripts/gen_moves.py`; 8 new `.tres` files
+regenerated — 604 total move `.tres` files, up from 596.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: D1's `EFFECT_FUTURE_SIGHT`
+and `EFFECT_PSYSHOCK` rows marked CLOSED (D1's own header corrected
+7 clusters/18 moves remaining, folding in the earlier-session
+`EFFECT_FORESIGHT` closure this document's header had never been updated
+for); D5's own delayed-effect-family item (4) marked CLOSED with the full
+3-way mechanism-shape correction; Section E's two summary tables and the
+top-of-document reconciliation recomputed (604 implemented + 1 proposed
+sub-tier + 1 deferred + 213 excluded + 115 Tier-4 residual = 934,
+reconfirmed). **Perish Song(195) remains unbuilt** — confirmed still
+carrying its own cross-system note forward (building it would reopen the
+currently-excluded Perish Body ability for reconsideration), unaffected
+by this session's work — a genuinely different mechanism (a multi-battler
+delayed-faint countdown, not a per-slot scheduler or a switch-in
+one-shot). **Section D's residual: 123→115. D2 is now fully closed** —
+every cross-cutting family surfaced during the original singleton-pool
+sweep has shipped.
+
+## [D1 easy bundle]
+
+Six small, mechanically-contained D1 clusters closed in one session (13
+moves): `EFFECT_HIT_ESCAPE` (U-turn(369), Volt Switch(521), Flip
+Turn(740)), `EFFECT_HIT_SWITCH_TARGET` (Circle Throw(509), Dragon
+Tail(525)), `EFFECT_FIRST_TURN_ONLY` (Fake Out(252), First
+Impression(623)), `EFFECT_TRICK` (Trick(271), Switcheroo(415)),
+`EFFECT_REVENGE` (Revenge(279), Avalanche(419)),
+`EFFECT_STOMPING_TANTRUM` (Stomping Tantrum(661), Temper Flare(843)).
+`EFFECT_DOUBLE_POWER_ON_ARG_STATUS` (5 moves) was deliberately left out,
+per the task's own instruction, as the largest remaining cluster
+deserving its own focused session. Move lists re-verified fresh against
+`docs/m19_subtier_plan.md`'s Section D before starting — matched exactly
+(13 moves/6 clusters), no drift found this time.
+
+This session also surfaced and fixed **two real bugs in already-shipped
+code**, both found while tracing Stomping Tantrum's exact decrement
+timing against source, neither anticipated at Step 0.
+
+### Step 0 findings
+
+**`EFFECT_HIT_ESCAPE`** (`battle_move_resolution.c :: MoveEndHitEscape`,
+L3905-3920): fires only if `IsAnyTargetTurnDamaged(battlerAtk,
+INCLUDING_SUBSTITUTES)` — a Substitute-absorbed hit still counts as
+"connected" — and the attacker is still alive afterward (recoil/contact-
+punish death correctly blocks it; no other switch already queued this
+action). **The real fork this row's own table entry had already flagged**:
+unlike Red Card (random replacement), the switch here is genuinely
+player-choice — the user's own trainer picks who comes in, matching real
+games. Reused `_get_replacement_slot`'s existing test-queue → AI-choice →
+deterministic-first-available chain (the SAME one `[M9]`'s faint-
+replacement already established) rather than inventing a parallel
+mechanism or reusing Red Card's random pick.
+
+**`EFFECT_HIT_SWITCH_TARGET`** (`battle_move_resolution.c` L3517-3545):
+forces the DEFENDER out, gated on `IsAnyTargetTurnDamaged(battlerAtk,
+EXCLUDING_SUBSTITUTES)` — the OPPOSITE Substitute scoping from Hit
+Escape, confirmed via direct source read, not assumed symmetric.
+Dispatches through `BattleScript_TryHitSwitchTarget`/`B_SWITCH_HIT`, the
+same general forced-switch script Roar's own dispatch shares — confirmed
+RANDOM replacement (not player choice), reusing `_do_forced_switch_in` +
+the existing `get_random_non_fainted_not_active` helper directly. Guard
+Dog blocks it (`blocks_forced_switch`, already built for `[M17n-10]`);
+Suction Cups/Ingrain-root checks permanently moot (both unimplemented).
+
+**`EFFECT_FIRST_TURN_ONLY`** (`battle_move_resolution.c` L1222-1224,
+`IsBattlersFirstTurn`): confirmed "first turn since switch-in," not first
+turn of the whole battle. Re-derived from source rather than assuming a
+new tracking field was needed (as this row's own table entry originally
+proposed) — the EXISTING `BattlePokemon.switched_in_this_turn` flag
+already carries exactly this semantic, confirmed via its two existing
+consumers (Stakeout, Speed Boost). **A real, easy-to-miss wrinkle**:
+source also fails if the move was reached via a CALLED dispatch rather
+than genuinely selected that turn (`gSpecialStatuses[...].backUpTarget`,
+set by Instruct's own redirect) — since `switched_in_this_turn` alone
+stays true for the mon's entire first turn back, Instruct could otherwise
+force a second same-turn Fake Out. Closed by adding `is_first_turn_only`
+to Instruct's own exclusion list (functionally equivalent outcome to
+source's flag, a different implementation shape reusing this project's
+own established Instruct-exclusion pattern).
+
+**`EFFECT_TRICK`** (`battle_script_commands.c :: Cmd_tryswapitems`,
+L8874-8930): full bidirectional swap, failing if both itemless or if
+`CanBattlerGetOrLoseItem` fails in any of 4 directions. Traced that
+function's own exclusion list (`battle_util.c` L8686-8708) item by item:
+Mail, Enigma Berry E-Reader, Z-Crystals, Booster Energy+Paradox species,
+and Ogerpon Masks are ALL permanently moot (items/species this project
+has never implemented) — the ONE relevant, buildable exclusion is
+Multitype's Plate (`HOLD_EFFECT_PLATE`, already modeled since
+`[M17n-4]`), translated into this project's own ability-driven Multitype
+model (block if either side's current item is a Plate AND that side's
+own effective ability is Multitype) since this project has no species-
+level "uses this item for forms" flag the way source does. Sticky Hold
+confirmed checked ONLY on the target (`GetBattlerAbility(gBattlerTarget)
+== ABILITY_STICKY_HOLD`), not the attacker.
+
+**`EFFECT_REVENGE`** (`battle_util.c` L6172-6174): confirmed the exact
+narrow scoping the task suspected — power doubles only if the user was
+hit BY THIS SPECIFIC TARGET this turn, tracked via a per-(victim,
+attacker)-PAIR bitmask in source (`revengeDoubled |= 1u <<
+attackerId`, set at `battle_script_commands.c` L1656-1657, the same
+chokepoint Assurance's own `assuranceDoubled` flag uses — confirming both
+fire on ANY damage taken, not move-category-restricted), NOT a plain
+"was I hit by anyone" bool. Genuinely distinct from Lash Out/Retaliate's
+shipped D2-tracker-family mechanism (both scalar per-mon flags) — needed
+its own new `BattlePokemon.hit_by_this_turn` array, set at the same
+`_do_damaging_hit` chokepoint `times_hit`/`_last_attacker` already use.
+
+**`EFFECT_STOMPING_TANTRUM`** (`battle_util.c` L6416-6418) — **the
+highest-yield Step 0 finding of this session**. Confirmed a genuine
+2-turn COUNTER (not a plain bool, matching the task's own framing that
+this needed "a new flag distinct from `last_move_used`") — but tracing
+its exact decrement site (`battle_main.c` L3933-3934, the per-battler
+action-reset function called unconditionally at the start of every turn)
+revealed it shares the LITERAL SAME site as `retaliateTimer`'s own
+decrement (`battle_main.c` L3939-3940, immediately adjacent in source).
+This directly contradicted this project's own already-shipped Retaliate
+implementation (`[D3 turn-order/event-tracker batch]`), which decremented
+in `_phase_end_of_turn` instead — a site that project's own empirical
+testing had already found gets SKIPPED for the turn a faint/replacement
+occurs in (an architectural quirk of this project's phase machine, not
+present in source, which never skips its own per-turn reset). This meant
+Retaliate was under-doubling by one full turn boundary after a faint: the
+replacement mon's FIRST turn back should already be doubled (source's
+real timing), but the shipped implementation only doubled on its SECOND
+turn back. **Fixed by moving both timers' decrement to
+`_phase_priority_resolution`** (which runs unconditionally every turn,
+matching source), with `d3_batch_test.gd`'s own Retaliate section (G.01-
+G.07) rewritten to match the corrected sequence — see the Test plan
+section below for the exact before/after behavior difference.
+
+### A second, independently-discovered bug: `switched_in_this_turn` never
+### set for a battle's own starting leads
+
+Found while writing Section D's own tests (D.02, Fake Out failing to
+connect on ANY turn, including a fresh battle's very first one) — traced
+to `switched_in_this_turn` only ever being set TRUE by the THREE mid-
+battle switch-in functions (`_do_switch_in`/`_do_voluntary_switch`/
+`_do_forced_switch_in`). The Pokémon set up directly by
+`start_battle_with_parties`/`start_battle_doubles` — every battle's own
+opening leads — never passed through any of those three functions, so the
+flag was permanently false for them. This is a real, previously-latent
+bug in code that predates this session: Stakeout (`[M17a]`) and Speed
+Boost (an earlier ability tier) are the two EXISTING consumers of this
+flag, meaning both had been silently reading a permanently-false value
+for every battle's own opening turn since they shipped — Stakeout could
+never boost a lead Pokémon that had just switched in (impossible, since
+leads don't "switch in" by this flag's own broken definition), and Speed
+Boost's `not switched_in_this_turn` gate would have incorrectly ALWAYS
+passed for a lead's own first turn (though this happened to be
+behaviorally invisible for Speed Boost specifically, since its own boost
+only fires at end-of-turn, by which point a real switch-in flag would
+already differ — not fully audited, flagged as a related but distinct
+risk).
+
+Fixed at the root, not with a Fake-Out-specific workaround: `_phase_
+battle_start` (which already treats the leads' own entry as a genuine
+switch-in for hazards/abilities) now sets a new `_pending_initial_switch_
+in` flag; `_phase_priority_resolution`'s own per-turn reset loop (which
+unconditionally clears `switched_in_this_turn` for every combatant, every
+turn — including turn 1, which runs AFTER `_phase_battle_start` but
+BEFORE any turn-1 action) consumes that flag, setting `switched_in_this_
+turn = true` for turn 1 specifically instead of false, then clears the
+pending flag so every subsequent turn resets normally. Verified this
+doesn't regress Stakeout/Speed Boost's own existing test suites
+(`m17a_test`/`ability_test`, both rerun clean, 83/83 and 64/64
+respectively) — apparently neither suite's own fixtures happened to
+depend on the previously-broken behavior.
+
+### Design
+
+All 6 clusters confirmed small and mechanically-contained as tagged, with
+the two bug-discovery detours above being the only real surprises (a
+~33% hit rate this session, roughly in line with this arc's own
+established ~50% "something surfaces" pattern for CHEAP-MODERATE-tagged
+items). `EFFECT_HIT_ESCAPE`'s own player-choice-vs-random fork (flagged
+in advance by D1's own table entry) was the one genuine design decision,
+resolved by reusing existing infrastructure (`_get_replacement_slot`)
+rather than building something new.
+
+### Test plan
+
+New `d1_easy_bundle_test.gd`/`.tscn`: 49/49 assertions across 8 sections
+(A: data integrity for all 13 moves; B: Hit Escape — a real switch fired
+after a connecting hit, the deterministic bench-mon selection, and a
+recoil-death discriminator via a Rocky Helmet holder; C: Hit Switch
+Target — a real forced switch via the deterministic `_force_roar_rng`
+seam, and a no-valid-replacement no-op with damage still landing; D:
+First Turn Only — connects on a genuine first turn, fails on a second
+turn (bounded to the specific event, not a post-battle read), and the
+Instruct-double-fire closure; E: Trick — bidirectional swap confirmed via
+both the signal and a live-captured item-identity check, an itemless
+failure case, and a Sticky-Hold-blocks-the-target case; F: Revenge —
+pairwise power-doubling, and a genuine 2v2 doubles scope discriminator
+proving a hit from a DIFFERENT opponent doesn't double a Revenge aimed at
+a third party; G: Stomping Tantrum — a real deterministic-failure-then-
+double integration test (a flat type immunity, needing no RNG forcing at
+all) plus direct-state pairwise comparisons for the exact timer
+boundary; H: a full re-verification of Retaliate's corrected timing).
+Stable across 4 reruns.
+
+**Four real test-authoring bugs were caught and fixed during this
+session, distinct from the two production bugs above:**
+
+1. **A fragile RNG-choreography design for Stomping Tantrum's own G.01,
+   scrapped before it ever ran.** The first draft tried to force a
+   Tackle miss then flip `_force_hit` back to true from inside a
+   `move_missed` handler — replaced with a fully deterministic type-
+   immunity failure (Tackle vs. a Ghost-type target) requiring no RNG
+   forcing at all, a cleaner test by construction.
+2. **A fresh recurrence of the pre-set-state-gets-consumed-before-check
+   pitfall**, discovered independently in TWO places this session
+   (Stomping Tantrum's G.02-G.04, Retaliate's G.01/G.03 in
+   `d3_batch_test.gd`): pre-setting a counter field directly before
+   `start_battle()` doesn't survive intact, because `_phase_priority_
+   resolution`'s own per-turn reset/decrement loop runs once BEFORE the
+   battle's very first action, consuming one tick of whatever was
+   pre-set. Fixed by pre-setting one tick higher than the intended
+   check-time value throughout (documented explicitly at each call site
+   this session touched, to prevent this from being rediscovered blind
+   in a future tier).
+3. **An unreachable pre-set-state scenario for Revenge's own scope
+   discriminator (F.03).** The first draft pre-set `hit_by_this_turn`
+   directly before `start_battle()` — silently wiped by the exact same
+   per-turn reset the bugs above already exposed (this field is reset
+   to `[]` unconditionally every turn, same site). Rewritten as a
+   genuine 2v2 doubles battle with explicit `queue_move_targeted` calls
+   on all three relevant actions, proving the real scoping mechanism
+   end-to-end instead of faking the internal state.
+4. **A whole-battle-aggregation risk in Hit Escape's own recoil-death
+   discriminator (B.03)**, caught during design rather than after a
+   failing run: checked via a live signal-scoped boolean (did
+   `hit_escape_switch` ever fire for this specific attacker) rather than
+   any post-battle state read, since Rocky Helmet's own retaliation
+   timing needed to be observed at the exact moment of the (attempted,
+   blocked) switch.
+
+### Regression
+
+23 suites run directly: `damage_test`/`move_test`/`stat_test`/
+`status_test` (the 4 required), `switch_test` (Hit Escape/Hit Switch
+Target's own heavy interaction risk), `m18j_test` (`_has_target_already_
+acted`, a neighbor of the turn-position helpers this tier's own dispatch
+sits alongside), `m19_bucket4_pairs_test`/`m19_rampage_test`/
+`m19_recharge_test` (turn-counter-mechanic pattern consistency),
+`m17c_test`/`tier4_test`/`item_registry_test` (general breadth),
+`m17f_test`/`m17n8_test`/`m17n9_test` (forced-switch/ability-trigger
+neighbors), `doubles_test` (Revenge's own doubles scope test), `m17a_test`
+(Stakeout, the `switched_in_this_turn` fix's own direct neighbor),
+`ability_test` (Speed Boost, the same fix's other neighbor),
+`delayed_effect_test` (this arc's immediately-preceding session, given
+how much of `_phase_priority_resolution`/`_phase_move_execution` this
+tier also touches), `m19ef_test`/`m17n10_test`/`m17n1_test` (further
+switch-in-adjacent breadth given the root-cause fix's reach), and
+`d3_batch_test` itself (48/48, corrected) — all 23 clean, plus
+`d1_easy_bundle_test` (49/49) — 0 failures anywhere.
+
+### Data
+
+6 new `MoveData` flags (`is_hit_escape`, `is_hit_switch_target`,
+`is_first_turn_only`, `is_trick`, `is_revenge`, `is_stomping_tantrum`),
+`DEFAULTS`/`FIELD_ORDER` entries added. New `BattlePokemon.
+hit_by_this_turn`/`stomping_tantrum_timer` fields (both cleared per-turn/
+on switch-out respectively — see their own doc comments for the exact
+shape). New `BattleManager._pending_initial_switch_in`/
+`_current_action_failed` fields (the latter a generic, best-effort
+failure detector self-connected to this class's own `move_missed`/
+`move_effect_failed` signals, consumed once per action at the top of
+`_phase_faint_check` — a deliberate design choice over touching this
+codebase's dozens of individual failure-emission call sites). New
+signals: `hit_escape_switch`, `hit_switch_target`, `items_swapped`. 13
+new move dict entries added to `scripts/gen_moves.py`; 13 new `.tres`
+files regenerated — 617 total move `.tres` files, up from 604.
+
+### Docs
+
+`docs/m19_subtier_plan.md` updated throughout: all 6 cluster rows marked
+CLOSED with full findings; D1's own header corrected to 1 cluster/5 moves
+remaining (`EFFECT_DOUBLE_POWER_ON_ARG_STATUS` only); Section E's two
+summary tables and the top-of-document reconciliation recomputed (617
+implemented + 1 proposed sub-tier + 1 deferred + 213 excluded + 102
+Tier-4 residual = 934, reconfirmed). **Section D's residual: 115→102.**
+
+## [Multitype-Plate fix] — bugfix to already-shipped M17j/M17n-4/D1-easy-bundle
+## code, NOT new M19 scope (no move/ability count change)
+
+A verification-only follow-up to the D1 easy bundle session's Trick/Switcheroo
+Multitype-Plate exclusion asked to confirm the fix's blast radius before moving
+on. That verification pass found a real, currently-reachable gap and (per the
+follow-up's own explicit sign-off) this session closed it. No new moves,
+abilities, or M19 scope — pure correctness fix within already-implemented
+mechanisms, so the move-implementation count (617) and Section D's residual
+(102) are both unchanged.
+
+### Step 0 — tracing the actual blast radius
+
+Confirmed via direct code read that the D1 easy bundle's Trick fix was scoped
+**narrowly** — two local `var`s (`trick_atk_unswappable`/`trick_def_unswappable`)
+computed inline inside Trick's own dispatch block in `battle_manager.gd`, not a
+shared gate function. Its own `MoveData.is_trick` doc comment already correctly
+attributed the source function it was standing in for
+(`DoesSpeciesUseHoldItemToChangeForm`, called from `CanBattlerGetOrLoseItem`,
+`battle_util.c` L8378-8403/L8686-8706).
+
+Grepping every real-source caller of `CanBattlerGetOrLoseItem` found it is
+**not Trick-exclusive** — it's called from:
+
+- `Cmd_tryswapitems` (Trick/Switcheroo) — `battle_script_commands.c` L8906-8909
+- `CanStealItem` (Pickpocket/Magician/Thief/Covet, and — confirmed via a
+  further check — Sticky Barb's own transfer, which explicitly calls
+  `CanStealItem` too, `battle_hold_effects.c` L572) — `battle_util.c`
+  L9188-9189
+- `TryTriggerSymbiosis` — `battle_util.c` L9967-9968
+- `EFFECT_KNOCK_OFF`'s both halves and `BS_TryBestow` — confirmed **not
+  implemented in this project at all** (no `is_knock_off`/`is_fling`/
+  `is_bestow`/`EFFECT_KNOCK_OFF`/`EFFECT_FLING`/`EFFECT_BESTOW` anywhere,
+  confirmed via grep), so these two call sites are non-issues, not silently
+  affected by anything.
+
+This project's own `AbilityManager._try_steal_item` (the shared primitive
+Pickpocket/Magician/Thief/Covet/Sticky Barb all route through — confirmed via
+call-site grep in `battle_manager.gd`, Thief/Covet is NOT a separate
+implementation) and `try_symbiosis` had **zero** equivalent check — only
+Sticky Hold was gated. Their own doc comments (`ability_manager.gd` L901-904,
+L916-920, L940-944) explicitly discussed and dismissed this exact exclusion,
+reasoning "this project implements none of Mail, Z-moves, Mega/form-change
+items, Paradox Booster Energy, or Ogerpon." That reasoning was accurate when
+M17j shipped (before Multitype's Plate-linkage existed) and went stale the
+moment `[M17n-4]` built it — nobody revisited these three comments when
+Trick's own fix landed later. Confirmed via grep: no test anywhere exercised a
+Multitype holder against Pickpocket/Magician/Thief/Symbiosis before this
+session — a real, disclosed, previously-untested gap, not merely theoretical.
+
+**A second, deeper finding, surfaced by re-deriving Trick's own condition
+against source rather than assuming it was already fully correct (per this
+task's own Step 0 instruction to "confirm it's genuinely species-general —
+not Trick-specific in a way that doesn't generalize")**: `Cmd_tryswapitems`
+calls `CanBattlerGetOrLoseItem` **four** times, not two —
+
+```
+CanBattlerGetOrLoseItem(Attacker, Target, Attacker's own item)   // attacker loses own
+CanBattlerGetOrLoseItem(Attacker, Target, Target's item)         // attacker GAINS target's
+CanBattlerGetOrLoseItem(Target, Attacker, Target's own item)     // target loses own
+CanBattlerGetOrLoseItem(Target, Attacker, Attacker's item)       // target GAINS attacker's
+```
+
+`CanBattlerGetOrLoseItem(fromBattler, battler, itemId)` evaluates
+`DoesSpeciesUseHoldItemToChangeForm(fromSpecies, itemId)` — i.e. "is
+`fromBattler`'s species form-locked by `itemId`," independent of whether
+`fromBattler` currently holds that item. The D1 easy bundle's original 2-check
+version only covered "loses own Plate" for each side — it never blocked a
+**Multitype holder with no Plate currently held** from **gaining** a foreign
+Plate via Trick, a real, source-confirmed failure the original implementation
+missed. This is not new scope creep: fixing the shared item-transfer functions
+correctly requires exactly this "check against an arbitrary item, not just the
+battler's own held one" shape anyway (Pickpocket/Symbiosis both need to check
+the INCOMING item against the RECEIVER's species), so consolidating Trick onto
+the same corrected helper fixes its own latent gap for free.
+
+### Design
+
+New `AbilityManager.is_form_locked_by_item(battler, item, ng_active) -> bool`
+— `item == null` or `item.hold_effect != HOLD_EFFECT_PLATE` → false;
+otherwise `effective_ability_id(battler, ng_active) == ABILITY_MULTITYPE`.
+Deliberately takes the item as an explicit parameter (not read internally off
+`battler.held_item`) to support checking a battler against an item it does
+NOT currently hold — required for both the Trick "gains foreign" checks and
+Pickpocket/Symbiosis's "receiver gains" checks.
+
+- **Trick** (`battle_manager.gd`): `trick_atk_unswappable`/
+  `trick_def_unswappable` replaced with 4 `is_form_locked_by_item` calls,
+  mirroring source's own 4 `CanBattlerGetOrLoseItem` calls exactly.
+- **`_try_steal_item`** (Pickpocket/Magician/Thief/Covet/Sticky Barb): gained
+  `is_form_locked_by_item(victim, victim.held_item) or
+  is_form_locked_by_item(stealer, victim.held_item)` — victim can't lose its
+  own form-locking item, stealer can't gain one. Applied **unconditionally**,
+  not gated by `bypass_sticky_hold` — confirmed from source that Sticky
+  Barb's own transfer calls the same `CanStealItem` this function backs,
+  which always calls `CanBattlerGetOrLoseItem`; only Sticky Hold itself is
+  bypassed for Sticky Barb, never this check.
+- **`try_symbiosis`**: gained `is_form_locked_by_item(mon, ally.held_item) or
+  is_form_locked_by_item(ally, ally.held_item)` — receiver can't gain,
+  giver can't lose its own. The second half (giver loses its own form-locking
+  item) is **structurally unreachable in practice** — the giver's ability
+  slot is always Symbiosis itself, never simultaneously Multitype — matching
+  the exact same "implemented for source-fidelity, untested because
+  unreachable" pattern this function's own doc comment already established
+  for the Unburden case. Implemented anyway (matches source's own
+  unconditional call), documented as such, not silently dropped.
+
+No fork — the shared-helper approach was clean; Trick's own dispatch needed
+no move-specific context the helper couldn't express, it just needed the
+"any item, not just currently-held" generalization already required for the
+other three call sites.
+
+### Test plan
+
+`m17j_test.gd` new Section 10 (12 assertions: S10.01-S10.12) — Pickpocket/
+Magician/Thief-Covet/Symbiosis each get a positive block-case (Multitype
+holder's Plate untouched) and a discriminator (an ordinary item still
+transfers normally, confirming the fix doesn't over-restrict). `m17n4_test.gd`
+S5.04 rewritten — its own setup step depended on Magician successfully
+stealing a Multitype holder's Plate, now correctly blocked; restructured into
+(1) a discriminator confirming the block itself, then (2) a direct
+`held_item` mutation isolating the section's real original claim ("no live
+retype on any mid-battle item change") from the now-separate transfer-block
+question. `d1_easy_bundle_test.gd` gained E.07-E.10: the original "loses own
+Plate" case, and the deeper "itemless Multitype holder blocked from gaining a
+foreign Plate" case the 2-check version missed. All three ran clean on first
+attempt (60/60, 44/44, 53/53) — no test-authoring bugs this session.
+
+### Regression
+
+14 suites: the 3 named in scope (`m17j_test`/`m17n4_test`/
+`d1_easy_bundle_test`) plus `item_registry_test`, `m17h_test` (adjacent
+ability-copy/overwrite plumbing), `m17n7_test`/`m17n8_test`/`m17n9_test`
+(neighboring Group 8 item/ability-interaction suites), `m18p_test` (Sticky
+Barb's own origin suite — the 4th, previously-undiscussed caller of
+`_try_steal_item`), `m18r_test` (Shed Shell/general item-gate breadth),
+`switch_test`, `ability_test`, `doubles_test` (Symbiosis's own doubles-only
+scope), `tier4_test` — all 14 clean, 0 failures.
+
+### Data / Docs
+
+No new `MoveData`/`AbilityData`/`ItemData` fields, no new `.tres` files —
+pure logic fix. Three stale doc comments corrected in `ability_manager.gd`
+(Pickpocket L901-904, Magician L916-920, Symbiosis's new note) to remove the
+now-inaccurate "species-form-change not modeled" framing and point at
+`is_form_locked_by_item`. `MoveData.is_trick`'s own doc comment
+(`move_data.gd`) updated to describe the corrected 4-check derivation.
+No `docs/m19_subtier_plan.md` changes — this fix touches zero move/ability
+counts and is explicitly out of M19's own reconciliation.

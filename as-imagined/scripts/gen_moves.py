@@ -3074,6 +3074,299 @@ MOVES = [
     {"id":  644, "name": "Power Trip",
      "type": TYPE_DARK, "category": PHYS, "power": 20, "accuracy": 100, "pp": 10,
      "makes_contact": True, "is_stored_power": True},
+
+    # ── [D2 batch] On-hit hazard/screen family ──────────────────────────────
+    # EFFECT_STONE_AXE/EFFECT_CEASELESS_EDGE: guaranteed on-hit hazard set on
+    # the TARGET's side (MoveEnd-dispatch, not the standard secondary-effect
+    # mechanism — source's own sheerForceOverride=TRUE is a flagged, not
+    # fixed, gap, see sets_stealth_rock_on_hit/sets_spikes_on_hit's own
+    # doc comment).
+    {"id":  758, "name": "Stone Axe",
+     "type": TYPE_ROCK, "category": PHYS, "power": 65, "accuracy": 90, "pp": 15,
+     "makes_contact": True, "slicing_move": True, "sets_stealth_rock_on_hit": True},
+    {"id":  773, "name": "Ceaseless Edge",
+     "type": TYPE_DARK, "category": PHYS, "power": 65, "accuracy": 90, "pp": 15,
+     "makes_contact": True, "slicing_move": True, "sets_spikes_on_hit": True},
+
+    # Ice Spinner(789): a real correction found at Step 0 — EFFECT_ICE_SPINNER
+    # removes TERRAIN, not hazards (a genuinely different effect from
+    # EFFECT_RAPID_SPIN despite the D2 recon's own "clears hazards" framing).
+    # Terrain is permanently void in this project (`[M17d]`), so this reduces
+    # to a plain damage move with no working secondary — no flag needed.
+    {"id":  789, "name": "Ice Spinner",
+     "type": TYPE_ICE, "category": PHYS, "power": 80, "accuracy": 100, "pp": 15,
+     "makes_contact": True},
+
+    # Mortal Spin(794): shares the LITERAL SAME EFFECT_RAPID_SPIN as Rapid
+    # Spin(229) itself — is_rapid_spin applies unmodified, clearing one
+    # hazard from the ATTACKER's own side. Plus a guaranteed 100% Poison
+    # secondary via the existing generic fields. TARGET_BOTH in source
+    # (hits every opposing battler in doubles) → is_spread.
+    {"id":  794, "name": "Mortal Spin",
+     "type": TYPE_POISON, "category": PHYS, "power": 30, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "is_spread": True, "is_rapid_spin": True,
+     "secondary_effect": SE_POISON, "secondary_chance": 100},
+
+    # Tidy Up(808): confirmed BROADER than the D2 recon's own framing — also
+    # clears every Substitute on the field, not just hazards (see is_tidy_up's
+    # own doc comment). ignoresProtect=TRUE in source.
+    {"id":  808, "name": "Tidy Up",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "is_tidy_up": True,
+     "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_SPEED], "extra_stat_change_amounts": [1]},
+
+    # Defog(432): confirmed BROADER than the D2 recon's own "clear + evasion
+    # drop" framing — clears the TARGET's screens (Reflect/Light Screen/
+    # Aurora Veil only, this project's implemented subset) AND hazards from
+    # BOTH sides (see is_defog's own doc comment). magicCoatAffected=TRUE at
+    # this project's GEN_LATEST config → bounceable.
+    {"id":  432, "name": "Defog",
+     "type": TYPE_FLYING, "category": STAT, "accuracy": 0, "pp": 15,
+     "bounceable": True, "is_defog": True,
+     "stat_change_stat": STAGE_EVASION, "stat_change_amount": -1},
+
+    # ── [D2 batch] Ability-manipulation family ──────────────────────────────
+    # Role Play(272): attacker copies target's ability. ignoresProtect=TRUE
+    # AND ignoresSubstitute=TRUE in source — a real asymmetry within this
+    # family (Skill Swap/Heart Swap below do NOT ignore Protect).
+    {"id":  272, "name": "Role Play",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "ignores_substitute": True, "is_role_play": True},
+
+    # Skill Swap(285): bidirectional ability swap, reuses Wandering Spirit's
+    # exact mechanism (`[M17h]`). ignoresSubstitute=TRUE, NOT ignoresProtect.
+    {"id":  285, "name": "Skill Swap",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_substitute": True, "is_skill_swap": True},
+
+    # Worry Seed(388): overwrites the target's ability with Insomnia
+    # (ability_id=15) specifically. Real accuracy check (100), NOT
+    # ignoresSubstitute/ignoresProtect — a fully normal foe-targeting status
+    # move otherwise. magicCoatAffected=TRUE → bounceable.
+    {"id":  388, "name": "Worry Seed",
+     "type": TYPE_GRASS, "category": STAT, "accuracy": 100, "pp": 10,
+     "bounceable": True, "overwrite_target_ability_id": 15},
+
+    # Heart Swap(391): confirmed NOT an ability move despite the family label
+    # — swaps all 7 stat STAGES bidirectionally (Psych Up's own shape,
+    # `[M16e]`, but a genuine swap not a one-directional copy).
+    # ignoresSubstitute=TRUE, NOT ignoresProtect (same asymmetry as Skill
+    # Swap, not Role Play).
+    {"id":  391, "name": "Heart Swap",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_substitute": True, "is_heart_swap": True},
+
+    # ── [D2 batch 2] Offense-stat-source-override family ────────────────────
+    # Foul Play(492): damage off the TARGET's own Attack stat/stage, not the
+    # attacker's. Category stays fixed Physical for every other purpose.
+    {"id":  492, "name": "Foul Play",
+     "type": TYPE_DARK, "category": PHYS, "power": 95, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "is_foul_play": True},
+
+    # Body Press(704): damage off the USER's own Defense stat/stage instead
+    # of Attack. Wonder Room's edge case is permanently moot (unimplemented).
+    {"id":  704, "name": "Body Press",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 80, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "is_body_press": True},
+
+    # Photon Geyser(675): a real hidden second effect found at Step 0 — the
+    # move's own CATEGORY dynamically swaps (Special->Physical) based on the
+    # attacker's stage-adjusted Atk vs SpAtk, not just a raw stat lookup (see
+    # is_photon_geyser's own doc comment). ignoresTargetAbility=TRUE reuses
+    # the EXISTING mechanism directly.
+    {"id":  675, "name": "Photon Geyser",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 100, "accuracy": 100, "pp": 5,
+     "is_photon_geyser": True, "ignores_target_ability": True},
+
+    # ── [D2 batch 2] Per-mon TypeChart-override family ──────────────────────
+    # Freeze-Dry(573): forces the Water-type component to a flat 2.0
+    # regardless of the real chart value (Water is normally neutral to Ice,
+    # not resistant). Also carries a genuine 10% Freeze secondary the D2
+    # recon never flagged, reusing the existing SE_FREEZE token verbatim.
+    {"id":  573, "name": "Freeze-Dry",
+     "type": TYPE_ICE, "category": SPEC, "power": 70, "accuracy": 100, "pp": 20,
+     "super_effective_vs_type": TYPE_WATER,
+     "secondary_effect": SE_FREEZE, "secondary_chance": 10},
+
+    # Tar Shot(695): permanent per-mon flag doubling Fire-move effectiveness
+    # (a flat post-combination multiplier, NOT per-defending-type-component
+    # like Freeze-Dry above — see is_tar_shot's own doc comment). Guaranteed
+    # -1 Speed, but confirmed an ALL-OR-NOTHING gate with the flag-set — an
+    # already-tar-shot'd target blocks the Speed drop too.
+    {"id":  695, "name": "Tar Shot",
+     "type": TYPE_ROCK, "category": STAT, "accuracy": 100, "pp": 15,
+     "bounceable": True, "is_tar_shot": True,
+     "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1},
+
+    # Foresight(193)/Odor Sleuth(316): confirmed genuinely identical
+    # (literal same EFFECT_FORESIGHT) — permanent per-target volatile,
+    # bypasses this project's own Ghost-type Normal/Fighting immunity AND
+    # ignores the target's own evasion stage. ignoresSubstitute=TRUE,
+    # magicCoatAffected=TRUE at this project's config -> bounceable.
+    {"id":  193, "name": "Foresight",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 40,
+     "ignores_substitute": True, "bounceable": True, "is_foresight": True},
+    {"id":  316, "name": "Odor Sleuth",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 40,
+     "ignores_substitute": True, "bounceable": True, "is_foresight": True},
+
+    # ── [D3 turn-order/event-tracker batch] Turn-order-manipulation family ──
+    # After You(495): pushes the target to act immediately next. Fails if the
+    # target already acted. ignoresProtect=TRUE, ignoresSubstitute=TRUE.
+    {"id":  495, "name": "After You",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 15,
+     "ignores_protect": True, "ignores_substitute": True, "is_after_you": True},
+
+    # Quash(511): pushes the target to act last among remaining battlers.
+    # Fails if the target already acted.
+    {"id":  511, "name": "Quash",
+     "type": TYPE_DARK, "category": STAT, "accuracy": 100, "pp": 15,
+     "is_quash": True},
+
+    # Upper Hand(846): priority +3 damaging move that only connects if the
+    # target's own chosen move is itself priority [1,3] and hasn't acted yet
+    # — re-checked via the SAME ability-boosted priority function real
+    # turn-order sorting uses. Guaranteed flinch via the existing generic
+    # SE_FLINCH secondary (chance 100) once connected.
+    {"id":  846, "name": "Upper Hand",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 65, "accuracy": 100, "pp": 15,
+     "priority": 3, "makes_contact": True, "is_upper_hand": True,
+     "secondary_effect": SE_FLINCH, "secondary_chance": 100},
+
+    # Instruct(652): forces the target to immediately re-use its own last
+    # move, free of PP cost (a called move). ignoresSubstitute=TRUE.
+    {"id":  652, "name": "Instruct",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 15,
+     "ignores_substitute": True, "is_instruct": True},
+
+    # ── [D3 turn-order/event-tracker batch] "Event happened this
+    # turn/battle" tracker family ────────────────────────────────────────
+    # Lash Out(736): power doubles if the user's own stat was lowered this
+    # turn, by any source.
+    {"id":  736, "name": "Lash Out",
+     "type": TYPE_DARK, "category": PHYS, "power": 75, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "is_lash_out": True},
+
+    # Retaliate(514): power doubles if a Pokémon on the user's own side
+    # fainted during the previous turn.
+    {"id":  514, "name": "Retaliate",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 70, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "is_retaliate": True},
+
+    # Rage Fist(815): power increases +50 per prior hit taken this battle
+    # (a battle-lifetime counter), capped at 350 total.
+    {"id":  815, "name": "Rage Fist",
+     "type": TYPE_GHOST, "category": PHYS, "power": 50, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "punching_move": True, "is_rage_fist": True},
+
+    # Echoed Voice(497): power scales with a field-wide consecutive-turn-use
+    # counter (capped at +4x), reset the instant a turn passes without use.
+    {"id":  497, "name": "Echoed Voice",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 40, "accuracy": 100, "pp": 15,
+     "sound_move": True, "is_echoed_voice": True},
+
+    # ── [Delayed-effect family] Per-slot delayed scheduler ──────────────────
+    # Future Sight(248)/Doom Desire(353): schedule a hit resolving 2 turns
+    # later against whoever occupies the target's slot then. No accuracy
+    # roll at cast or resolve time.
+    {"id":  248, "name": "Future Sight",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 120, "accuracy": 100, "pp": 10,
+     "ignores_protect": True, "is_future_sight": True},
+    {"id":  353, "name": "Doom Desire",
+     "type": TYPE_STEEL, "category": SPEC, "power": 140, "accuracy": 100, "pp": 5,
+     "ignores_protect": True, "is_future_sight": True},
+
+    # Wish(273): schedules a heal resolving 1 turn later (caster's own max
+    # HP / 2) against whoever occupies the CASTER's own slot then.
+    {"id":  273, "name": "Wish",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "healing_move": True, "is_wish": True},
+
+    # ── [Delayed-effect family] Per-mon volatile counter ────────────────────
+    # Yawn(281): 2-turn drowsiness counter, fresh sleep-infliction attempt
+    # (all immunities re-derived) when it hits 0.
+    {"id":  281, "name": "Yawn",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "bounceable": True, "is_yawn": True},
+
+    # ── [Delayed-effect family] Switch-in-triggered one-shot ────────────────
+    # Healing Wish(361)/Lunar Dance(461): user faints (fails outright if no
+    # valid switch target) to store a full heal+status-cure (+full PP for
+    # Lunar Dance) for whoever next switches into that slot.
+    {"id":  361, "name": "Healing Wish",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "healing_move": True, "is_healing_wish": True},
+    {"id":  461, "name": "Lunar Dance",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "healing_move": True, "is_lunar_dance": True},
+
+    # ── [Psyshock/Psystrike] Defense-stat-source override ───────────────────
+    # Psyshock(473)/Psystrike(540): Special-category moves that compute
+    # damage off the DEFENDER's Defense stat/stage instead of Sp. Defense.
+    {"id":  473, "name": "Psyshock",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 80, "accuracy": 100, "pp": 10,
+     "is_psyshock": True},
+    {"id":  540, "name": "Psystrike",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 100, "accuracy": 100, "pp": 10,
+     "is_psyshock": True},
+
+    # ── [D1 easy bundle] EFFECT_HIT_ESCAPE: attacker gets a voluntary-
+    # style switch prompt after a connecting hit ────────────────────────────
+    {"id":  369, "name": "U-turn",
+     "type": TYPE_BUG, "category": PHYS, "power": 70, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "is_hit_escape": True},
+    {"id":  521, "name": "Volt Switch",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 70, "accuracy": 100, "pp": 20,
+     "is_hit_escape": True},
+    {"id":  740, "name": "Flip Turn",
+     "type": TYPE_WATER, "category": PHYS, "power": 60, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "is_hit_escape": True},
+
+    # ── [D1 easy bundle] EFFECT_HIT_SWITCH_TARGET: forces the DEFENDER out
+    # after a hit that dealt real HP damage ──────────────────────────────────
+    {"id":  509, "name": "Circle Throw",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 60, "accuracy": 90, "pp": 10,
+     "priority": -6, "makes_contact": True, "is_hit_switch_target": True},
+    {"id":  525, "name": "Dragon Tail",
+     "type": TYPE_DRAGON, "category": PHYS, "power": 60, "accuracy": 90, "pp": 10,
+     "priority": -6, "makes_contact": True, "is_hit_switch_target": True},
+
+    # ── [D1 easy bundle] EFFECT_FIRST_TURN_ONLY: fails unless this is the
+    # user's first action since switching in ────────────────────────────────
+    {"id":  252, "name": "Fake Out",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 40, "accuracy": 100, "pp": 10,
+     "priority": 3, "makes_contact": True, "is_first_turn_only": True,
+     "secondary_effect": SE_FLINCH, "secondary_chance": 100},
+    {"id":  623, "name": "First Impression",
+     "type": TYPE_BUG, "category": PHYS, "power": 90, "accuracy": 100, "pp": 10,
+     "priority": 2, "makes_contact": True, "is_first_turn_only": True},
+
+    # ── [D1 easy bundle] EFFECT_TRICK: bidirectional held-item swap ─────────
+    {"id":  271, "name": "Trick",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 100, "pp": 10,
+     "is_trick": True},
+    {"id":  415, "name": "Switcheroo",
+     "type": TYPE_DARK, "category": STAT, "accuracy": 100, "pp": 10,
+     "is_trick": True},
+
+    # ── [D1 easy bundle] EFFECT_REVENGE: doubled if hit BY THIS TARGET
+    # earlier this turn ──────────────────────────────────────────────────────
+    {"id":  279, "name": "Revenge",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 60, "accuracy": 100, "pp": 10,
+     "priority": -4, "makes_contact": True, "is_revenge": True},
+    {"id":  419, "name": "Avalanche",
+     "type": TYPE_ICE, "category": PHYS, "power": 60, "accuracy": 100, "pp": 10,
+     "priority": -4, "makes_contact": True, "is_revenge": True},
+
+    # ── [D1 easy bundle] EFFECT_STOMPING_TANTRUM: doubled if the user's
+    # own previous move failed exactly one turn ago ─────────────────────────
+    {"id":  661, "name": "Stomping Tantrum",
+     "type": TYPE_GROUND, "category": PHYS, "power": 75, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "is_stomping_tantrum": True},
+    {"id":  843, "name": "Temper Flare",
+     "type": TYPE_FIRE, "category": PHYS, "power": 75, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "is_stomping_tantrum": True},
 ]
 
 
@@ -3286,6 +3579,50 @@ DEFAULTS = {
     "is_swagger":                    False,
     "is_sucker_punch":               False,
     "is_stored_power":               False,
+
+    # [D2 batch]
+    "sets_stealth_rock_on_hit":  False,
+    "sets_spikes_on_hit":        False,
+    "is_defog":                  False,
+    "is_tidy_up":                False,
+    "is_role_play":              False,
+    "is_skill_swap":              False,
+    "is_heart_swap":              False,
+    "overwrite_target_ability_id": -1,
+
+    # [D2 batch 2]
+    "is_foul_play":            False,
+    "is_body_press":           False,
+    "is_photon_geyser":        False,
+    "super_effective_vs_type": TYPE_NONE,
+    "is_tar_shot":             False,
+    "is_foresight":            False,
+
+    # [D3 turn-order/event-tracker batch]
+    "is_after_you":            False,
+    "is_quash":                False,
+    "is_upper_hand":           False,
+    "is_instruct":             False,
+    "is_lash_out":             False,
+    "is_retaliate":            False,
+    "is_rage_fist":            False,
+    "is_echoed_voice":         False,
+
+    # [Delayed-effect family] / [Psyshock/Psystrike]
+    "is_future_sight":         False,
+    "is_wish":                 False,
+    "is_yawn":                 False,
+    "is_healing_wish":         False,
+    "is_lunar_dance":          False,
+    "is_psyshock":             False,
+
+    # [D1 easy bundle]
+    "is_hit_escape":           False,
+    "is_hit_switch_target":    False,
+    "is_first_turn_only":      False,
+    "is_trick":                False,
+    "is_revenge":              False,
+    "is_stomping_tantrum":     False,
 }
 
 HEADER = """\
@@ -3380,6 +3717,23 @@ FIELD_ORDER = [
     "weather_type", "power_scales_with_user_hp", "power_scales_with_target_hp",
     "steals_item_if_itemless", "is_lock_on", "is_swagger",
     "is_sucker_punch", "is_stored_power",
+    # [D2 batch] fields
+    "sets_stealth_rock_on_hit", "sets_spikes_on_hit",
+    "is_defog", "is_tidy_up",
+    "is_role_play", "is_skill_swap", "is_heart_swap",
+    "overwrite_target_ability_id",
+    # [D2 batch 2] fields
+    "is_foul_play", "is_body_press", "is_photon_geyser",
+    "super_effective_vs_type", "is_tar_shot", "is_foresight",
+    # [D3 turn-order/event-tracker batch] fields
+    "is_after_you", "is_quash", "is_upper_hand", "is_instruct",
+    "is_lash_out", "is_retaliate", "is_rage_fist", "is_echoed_voice",
+    # [Delayed-effect family] / [Psyshock/Psystrike] fields
+    "is_future_sight", "is_wish", "is_yawn", "is_healing_wish",
+    "is_lunar_dance", "is_psyshock",
+    # [D1 easy bundle] fields
+    "is_hit_escape", "is_hit_switch_target", "is_first_turn_only",
+    "is_trick", "is_revenge", "is_stomping_tantrum",
 ]
 
 

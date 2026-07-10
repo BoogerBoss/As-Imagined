@@ -141,6 +141,22 @@ signal party_status_cured(pokemon: BattlePokemon)  # [D0] Heal Bell/Aromatherapy
 signal sure_hit_set(attacker: BattlePokemon, target: BattlePokemon)  # [D1] Lock-On/Mind Reader set the attacker's sure_hit_target
 signal item_stolen(stealer: BattlePokemon, victim: BattlePokemon)  # [D1] Thief/Covet stole the target's held item
 
+signal foresight_set(target: BattlePokemon)  # [D2 batch 2] Foresight/Odor Sleuth set the target's foresight_active
+signal tar_shot_set(target: BattlePokemon)  # [D2 batch 2] Tar Shot set the target's tar_shot_active
+
+signal turn_order_changed(mover: BattlePokemon, reason: String)  # [D3] After You ("after_you") / Quash ("quash") successfully reordered _turn_order
+
+signal future_sight_scheduled(caster: BattlePokemon, target: BattlePokemon, move: MoveData)  # [Delayed-effect family] cast-time schedule
+signal future_sight_resolved(caster: BattlePokemon, target: BattlePokemon, move: MoveData, damage: int)  # fires even at damage=0 (fizzle/faint/immune)
+signal wish_scheduled(caster: BattlePokemon)  # [Delayed-effect family] cast-time schedule
+signal wish_resolved(recipient: BattlePokemon, healed: int)  # fires even at healed=0 (already full HP / slot empty never reached)
+signal yawn_set(target: BattlePokemon)  # [Delayed-effect family] Yawn's cast-time 2-turn counter start
+signal healing_wish_activated(recipient: BattlePokemon, kind: String, healed: int, cured: bool, pp_restored: bool)  # [Delayed-effect family] "healing_wish"/"lunar_dance" consumed at switch-in
+
+signal hit_escape_switch(old_mon: BattlePokemon, new_mon: BattlePokemon)  # [D1 easy bundle] U-turn/Volt Switch/Flip Turn's own voluntary-style switch fired
+signal hit_switch_target(old_mon: BattlePokemon, new_mon: BattlePokemon)  # [D1 easy bundle] Circle Throw/Dragon Tail forced the defender out
+signal items_swapped(attacker: BattlePokemon, defender: BattlePokemon)  # [D1 easy bundle] Trick/Switcheroo successfully swapped held items
+
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
 
@@ -315,6 +331,19 @@ var _helping_hand: Array[bool] = [false, false, false, false]
 var weather: int = WEATHER_NONE
 var weather_duration: int = 0  # turns remaining; 0 when no weather is active
 
+# [Batch fix] Whether the CURRENTLY active `weather` was set by one of the 3
+# Primal-weather abilities (Desolate Land/Primordial Sea/Delta Stream). Since
+# `[M17d]` deliberately reuses the plain WEATHER_SUN/WEATHER_RAIN/
+# WEATHER_STRONG_WINDS values for Primal weather rather than adding a
+# separate "Primal" flag (no separate value exists to test directly, unlike
+# source's own `gBattleWeather & B_WEATHER_PRIMAL_ANY` bit check), this is
+# the proxy `try_set_weather`'s own refuse-to-overwrite gate reads. Set only
+# on ability-driven `try_set_weather` calls (see that function's own doc
+# comment) — a move-driven weather-set (Sandstorm/Rain Dance/etc.) always
+# clears it back to false, matching source's own ABILITY_NONE-passed calls
+# never counting as a Primal setter.
+var _weather_is_primal: bool = false
+
 # M16c: per-side screen conditions (Reflect / Light Screen / Aurora Veil).
 # Indexed by SIDE (0/1) — always length 2 regardless of singles/doubles, same convention as
 # _follow_me_targets above (doubles just means 2 field slots share one side's conditions).
@@ -341,6 +370,42 @@ var _side_conditions: Array = [
 			"spikes_layers": 0, "toxic_spikes_layers": 0, "stealth_rock": false},
 ]
 
+# [D3 turn-order/event-tracker batch] Retaliate's side-wide "an ally fainted
+# last turn" timer — mirrors _side_conditions' per-side shape. 2 = set this
+# turn (not yet doubled); 1 = one turn boundary has passed (doubles);
+# 0 = inactive. Set in _phase_faint_check, decremented once per turn in
+# _phase_end_of_turn. Source: gSideTimers[side].retaliateTimer.
+var _retaliate_timer: Array[int] = [0, 0]
+
+# [D3 turn-order/event-tracker batch] Echoed Voice's FIELD-WIDE (not
+# per-side, not per-mon) consecutive-use counter and its per-turn "was it
+# used at all this turn" flag. Updated once per turn in _phase_end_of_turn:
+# increments (capped 4) and resets the flag if the flag was set; otherwise
+# resets straight to 0. Source: gBattleStruct->echoedVoiceCounter /
+# ->incrementEchoedVoice.
+var _echoed_voice_counter: int = 0
+var _echoed_voice_used_this_turn: bool = false
+
+# [Delayed-effect family] Future Sight/Doom Desire — keyed by the TARGET's
+# combatant index (matching source's own per-slot gBattleStruct->futureSight
+# storage). Value: {"counter": int, "caster": BattlePokemon, "move": MoveData}.
+# Decremented once per turn in _phase_end_of_turn; resolves (via the normal
+# _do_damaging_hit chokepoint) against whoever occupies the target slot when
+# the counter reaches 0.
+var _future_sight_pending: Dictionary = {}
+
+# [Delayed-effect family] Wish — keyed by the CASTER's OWN combatant index
+# (the slot Wish heals, not a target). Value: {"counter": int, "caster":
+# BattlePokemon}. Heal amount is always the caster's own max HP / 2, fixed
+# at cast time via the stored reference — not the eventual recipient's.
+var _wish_pending: Dictionary = {}
+
+# [Delayed-effect family] Healing Wish/Lunar Dance — keyed by the FAINTED
+# user's own combatant index (the slot the effect is stored on). Value:
+# "healing_wish" or "lunar_dance". Consumed by the next switch-in on that
+# slot via any method (voluntary/forced/faint-replacement).
+var _stored_healing_effect: Dictionary = {}
+
 # M16d: Trick Room — genuinely per-BATTLE (not per-side, not per-Pokémon): reverses the
 # speed tiebreak used in turn-order resolution while active. 0 = inactive.
 # Source: gFieldStatuses & STATUS_FIELD_TRICK_ROOM (bitmask) + gFieldTimers.trickRoomTimer.
@@ -349,6 +414,26 @@ var trick_room_turns: int = 0
 # M15 Task 3: Struggle instantiated in _ready(); used when all PP are depleted.
 # Source: battle_main.c L4727–4728 — noValidMoves → MOVE_STRUGGLE substitution.
 var _struggle_move: MoveData = null
+
+# [D1 easy bundle] Stomping Tantrum/Temper Flare's own "did my move fail"
+# detector — a best-effort GENERIC tracker rather than touching every one
+# of this codebase's dozens of individual failure-emission call sites
+# (source's own `ShouldSetStompingTantrumTimer` is a single general-purpose
+# MoveEnd hook every move effect passes through; this project's dispatch
+# has no equivalent single chokepoint). Self-connects to this class's own
+# `move_missed`/`move_effect_failed` signals — reset at the start of each
+# action in `_phase_move_execution`, consulted once at the top of
+# `_phase_faint_check` (the one universal point every action's resolution
+# — success or failure, from any of the dozens of early-return paths —
+# always reaches next), then applied to whoever just acted.
+var _current_action_failed: bool = false
+
+# [D1 easy bundle] Set true by `_phase_battle_start` (once, at the very
+# start of a battle) — consumed by `_phase_priority_resolution`'s own
+# per-turn reset loop to mark the STARTING leads as having "just switched
+# in" for turn 1 specifically, closing the real gap described at both of
+# those sites' own doc comments.
+var _pending_initial_switch_in: bool = false
 
 
 func _ready() -> void:
@@ -361,6 +446,8 @@ func _ready() -> void:
 	_struggle_move.accuracy = 0
 	_struggle_move.is_struggle = true
 	_struggle_move.makes_contact = true
+	move_missed.connect(func(_a, _reason): _current_action_failed = true)
+	move_effect_failed.connect(func(_a, _reason): _current_action_failed = true)
 
 
 # ── Entry points ────────────────────────────────────────────────────────────────
@@ -450,11 +537,30 @@ func set_trainer_ai(side: int, ai) -> void:
 #   — Returns FALSE if gBattleWeather already has the requested weather flag active.
 #   — Duration = 8 if setter holds the matching rock item, else 5.
 #     (M12: rock extension via ItemManager.weather_duration; by_pokemon=null → default 5.)
-#   — Primal weather override logic: not in scope.
-func try_set_weather(weather_type: int, by_pokemon: BattlePokemon = null) -> bool:
+#   — [Batch fix] Primal weather override logic: refuses to overwrite an active
+#     Primal weather (Desolate Land/Primordial Sea/Delta Stream) unless the new
+#     setter is ALSO one of those three abilities — a gap flagged since `[M17d]`,
+#     now closed. `by_ability`: true for every ability-driven call site (switch-in
+#     setters, Baton Pass inheritance, Sand Spit) — matches source passing a real
+#     `enum Ability` for those and `ABILITY_NONE` for move-driven weather (Sandstorm/
+#     Rain Dance/etc., which therefore NEVER counts as a Primal-capable setter, same
+#     as source). FLAGGED, not fixed: this project's weather_duration is never
+#     "permanent" the way source's own Primal weather is (weatherDuration=0, no
+#     countdown at all) — a separate, deeper pre-existing gap this fix doesn't
+#     address; Primal weather set here still decrements on the normal 5/8-turn timer.
+func try_set_weather(weather_type: int, by_pokemon: BattlePokemon = null,
+		by_ability: bool = true) -> bool:
 	if weather == weather_type:
 		return false
+	var setter_id: int = by_pokemon.ability.ability_id \
+			if (by_ability and by_pokemon != null and by_pokemon.ability != null) else -1
+	var setter_is_primal: bool = setter_id == AbilityManager.ABILITY_DESOLATE_LAND \
+			or setter_id == AbilityManager.ABILITY_PRIMORDIAL_SEA \
+			or setter_id == AbilityManager.ABILITY_DELTA_STREAM
+	if _weather_is_primal and weather != WEATHER_NONE and not setter_is_primal:
+		return false
 	weather = weather_type
+	_weather_is_primal = setter_is_primal
 	weather_duration = ItemManager.weather_duration(
 			by_pokemon, weather_type, _is_neutralizing_gas_active()) \
 		if weather_type != WEATHER_NONE else 0
@@ -536,6 +642,18 @@ func _phase_battle_start() -> void:
 		_reset_mon_type(mon)
 		_apply_switch_in_hazards(mon, i / _active_per_side)
 		_apply_switch_in_abilities(mon, i / _active_per_side)
+	# [D1 easy bundle] A REAL, previously-latent gap found and fixed here:
+	# `switched_in_this_turn` was only ever set TRUE by the mid-battle
+	# switch-in functions — the starting leads never got it set at all,
+	# meaning Fake Out/First Impression could never connect on a lead's own
+	# first turn, and Stakeout/Speed Boost (the two existing consumers of
+	# this flag) were silently reading a permanently-false value for every
+	# battle's own opening turn. Setting it here alone isn't enough, since
+	# `_phase_priority_resolution`'s own per-turn reset (which unconditionally
+	# clears this flag for every combatant, every turn) runs AFTER this
+	# phase but BEFORE turn 1's own actions — see `_pending_initial_switch_in`
+	# there for the other half of this fix.
+	_pending_initial_switch_in = true
 	_set_phase(BattlePhase.MOVE_SELECTION)
 
 
@@ -658,9 +776,48 @@ func _phase_priority_resolution() -> void:
 		mon.last_physical_damage = 0
 		mon.last_special_damage = 0
 		mon.last_hit_was_special = false
-		mon.switched_in_this_turn = false
+		# [D1 easy bundle] The starting leads count as having "just switched
+		# in" for turn 1 specifically (`_pending_initial_switch_in`, set by
+		# `_phase_battle_start`) — every other turn resets normally to false.
+		mon.switched_in_this_turn = _pending_initial_switch_in
 		# [M19-stat-raised-trigger] same memset'd-per-turn gProtectStructs field.
 		mon.stat_raised_this_turn = false
+		# [D3 turn-order/event-tracker batch] Lash Out's own decrease-side mirror.
+		mon.stat_lowered_this_turn = false
+		# [D1 easy bundle] Revenge/Avalanche's own "who hit me this turn" list.
+		mon.hit_by_this_turn = []
+		# [D1 easy bundle] Stomping Tantrum's own counter, decremented here —
+		# a CORRECTION applied in this same session: this is the same site
+		# source's own `battle_main.c` per-battler action-reset uses for
+		# BOTH stompingTantrumTimer and retaliateTimer (confirmed via direct
+		# source read), which runs unconditionally every turn (never
+		# skipped, unlike this project's own `_phase_end_of_turn` — see
+		# `_retaliate_timer`'s own decrement just below, moved here from
+		# `_phase_end_of_turn` for the identical reason). See
+		# MoveData.is_stomping_tantrum's own doc comment for the full
+		# timing-bug writeup.
+		if mon.stomping_tantrum_timer > 0:
+			mon.stomping_tantrum_timer -= 1
+	# [D1 easy bundle] Consume the initial-switch-in flag — only turn 1
+	# marks the starting leads this way; every subsequent turn resets
+	# normally via the loop above.
+	_pending_initial_switch_in = false
+	# [D1 easy bundle] Retaliate's side-wide timer — MOVED here from
+	# `_phase_end_of_turn` (a real bug fix, not a new feature): source's own
+	# decrement for `retaliateTimer` lives in the SAME per-battler action-
+	# reset function `stompingTantrumTimer` uses (`battle_main.c`
+	# L3939-3940), which runs unconditionally at the start of every turn.
+	# `_phase_end_of_turn`, by contrast, is confirmed (via `[D3 turn-order/
+	# event-tracker batch]`'s own empirical test) to be SKIPPED for the turn
+	# a faint/replacement occurs in — a project-specific architectural quirk
+	# source doesn't share. Decrementing there meant Retaliate under-doubled
+	# by one full turn boundary after a faint; this fixes it to match
+	# source's real timing exactly. See docs/decisions.md's
+	# `[D1 easy bundle]` entry for the full writeup and the D3 test's own
+	# corrected assertions.
+	for _rt_side in range(2):
+		if _retaliate_timer[_rt_side] > 0:
+			_retaliate_timer[_rt_side] -= 1
 	# M14b: clear per-turn Follow Me, Helping Hand, and last-attacker state.
 	# Source: TurnValuesCleanUp (battle_main.c L5022): memset gProtectStructs (helpingHand),
 	#   gSideTimers[].followmeTimer = 0 (L5060–5061).
@@ -899,6 +1056,10 @@ func _phase_move_execution() -> void:
 		_current_actor_index += 1
 		_set_phase(BattlePhase.ACTION_EXECUTION)
 		return
+
+	# [D1 easy bundle] Reset Stomping Tantrum's own generic failure detector
+	# at the start of THIS action, before any dispatch below can set it.
+	_current_action_failed = false
 
 	# M14a: use combatant index for move/target lookup; derive side from that.
 	var attacker_idx: int = _actor_indices.get(attacker, _combatants.find(attacker))
@@ -1271,6 +1432,21 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
+	# [D1 easy bundle] Fake Out / First Impression — fails unless this is
+	# the user's first action since switching in. Reuses the existing
+	# `switched_in_this_turn` flag directly (zero new tracking state); the
+	# Instruct-double-fire loophole is closed separately via Instruct's own
+	# exclusion list (see is_first_turn_only below). See
+	# MoveData.is_first_turn_only's own doc comment for full source
+	# citations.
+	if move.is_first_turn_only and not attacker.switched_in_this_turn:
+		move_effect_failed.emit(attacker, "first_turn_only_failed")
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
 	# [D1] Sucker Punch / Thunderclap — fails if the target has already
 	# acted this turn, OR if the target's own CHOSEN move is status-category.
 	# Source: battle_move_resolution.c L1387-1394. Reuses [M18j]'s existing
@@ -1287,6 +1463,147 @@ func _phase_move_execution() -> void:
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
+
+	# [D3 turn-order/event-tracker batch] After You — push the target to act
+	# IMMEDIATELY NEXT. Fails if the target has already acted this turn.
+	# See MoveData.is_after_you's own doc comment for full source citations.
+	if move.is_after_you:
+		var ay_pos: int = _turn_order.find(defender)
+		if ay_pos == -1 or ay_pos <= _current_actor_index:
+			move_effect_failed.emit(attacker, "after_you_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		_turn_order.remove_at(ay_pos)
+		_turn_order.insert(_current_actor_index + 1, defender)
+		turn_order_changed.emit(defender, "after_you")
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# [D3 turn-order/event-tracker batch] Quash — push the target to act LAST
+	# among all remaining (not-yet-acted) battlers this turn. Fails if the
+	# target has already acted. See MoveData.is_quash's own doc comment for
+	# full source citations, including the doubles-simplification note.
+	if move.is_quash:
+		var qs_pos: int = _turn_order.find(defender)
+		if qs_pos == -1 or qs_pos <= _current_actor_index:
+			move_effect_failed.emit(attacker, "quash_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		_turn_order.remove_at(qs_pos)
+		_turn_order.append(defender)
+		turn_order_changed.emit(defender, "quash")
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# [D3 turn-order/event-tracker batch] Upper Hand — only connects if the
+	# target's own CHOSEN (not-yet-executed) move has an ability-boosted
+	# priority in [1, 3], the target hasn't already acted, and that move
+	# isn't status-category. Re-checked fresh via the same
+	# AbilityManager.move_priority_bonus function real turn-order sorting
+	# uses. On failure the whole move fails — same shape as Sucker Punch
+	# above. See MoveData.is_upper_hand's own doc comment for full source
+	# citations.
+	if move.is_upper_hand:
+		var uh_def_idx: int = _combatants.find(defender)
+		var uh_def_move: MoveData = _chosen_moves[uh_def_idx] if uh_def_idx >= 0 else null
+		var uh_prio: int = -99
+		if uh_def_move != null:
+			uh_prio = uh_def_move.priority \
+					+ AbilityManager.move_priority_bonus(defender, uh_def_move, ng_active)
+		if uh_def_move == null or uh_prio < 1 or uh_prio > 3 \
+				or _has_target_already_acted(defender) \
+				or uh_def_move.category == 2:  # 2 = STAT/status category
+			move_effect_failed.emit(attacker, "upper_hand_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+	# [Delayed-effect family] Future Sight / Doom Desire — schedule a hit
+	# that resolves 2 turns later against whoever occupies the target's
+	# slot then. No accuracy roll, no immediate damage this turn. See
+	# MoveData.is_future_sight's own doc comment for full source citations.
+	if move.is_future_sight:
+		var fs_target_idx: int = _combatants.find(defender)
+		if _future_sight_pending.has(fs_target_idx):
+			move_effect_failed.emit(attacker, "future_sight_already_pending")
+		else:
+			_future_sight_pending[fs_target_idx] = {
+				"counter": 3, "caster": attacker, "move": move}
+			future_sight_scheduled.emit(attacker, defender, move)
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# [Delayed-effect family] Wish — schedule a heal that resolves 1 turn
+	# later (counter=2, ticks once at the end of THIS turn too) against
+	# whoever occupies the CASTER's OWN slot then. See MoveData.is_wish's
+	# own doc comment for full source citations.
+	if move.is_wish:
+		if _wish_pending.has(attacker_idx):
+			move_effect_failed.emit(attacker, "wish_already_pending")
+		else:
+			_wish_pending[attacker_idx] = {"counter": 2, "caster": attacker}
+			wish_scheduled.emit(attacker)
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# [Delayed-effect family] Yawn — a per-mon 2-turn drowsiness counter,
+	# not part of the per-slot scheduler above. Fails if the target already
+	# has one pending or already has ANY status. See MoveData.is_yawn's own
+	# doc comment for full source citations.
+	if move.is_yawn:
+		if defender.yawn_turns > 0 or defender.status != BattlePokemon.STATUS_NONE:
+			move_effect_failed.emit(attacker, "yawn_failed")
+		else:
+			defender.yawn_turns = 2
+			yawn_set.emit(defender)
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# [Delayed-effect family] Healing Wish / Lunar Dance — the user faints
+	# to store a one-shot heal(+cure, +full PP for Lunar Dance) for
+	# whoever next switches into that slot. Fails outright (no faint) if
+	# there's no valid Pokémon to switch to. See MoveData.is_healing_wish/
+	# is_lunar_dance's own doc comments for full source citations,
+	# including the disclosed always-consume-next-switch-in simplification.
+	if move.is_healing_wish or move.is_lunar_dance:
+		if not _parties[attacker_side].has_valid_switch_target():
+			move_effect_failed.emit(attacker, "healing_wish_no_switch_target")
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		_stored_healing_effect[attacker_idx] = \
+				"lunar_dance" if move.is_lunar_dance else "healing_wish"
+		attacker.current_hp = 0
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
 
 	# [M19-steal-stats] Spectral Thief — steals the target's CURRENTLY
 	# positive stat stages onto the attacker (removing them from the
@@ -1498,6 +1815,52 @@ func _phase_move_execution() -> void:
 	# CountBattlerStatIncreases(battler, TRUE) (L5948-5961).
 	if move.is_stored_power:
 		_dmg_power_override = move.power + 20 * _positive_stat_stage_sum(attacker, true)
+
+	# [D3 turn-order/event-tracker batch] Lash Out: doubled if the user's OWN
+	# stat was lowered this turn, any source. See MoveData.is_lash_out's own
+	# doc comment for full source citations.
+	if move.is_lash_out and attacker.stat_lowered_this_turn:
+		_dmg_power_override = move.power * 2
+
+	# [D3 turn-order/event-tracker batch] Retaliate: doubled if a Pokémon on
+	# the user's OWN SIDE fainted during the PREVIOUS turn. See
+	# MoveData.is_retaliate's own doc comment for full source citations.
+	if move.is_retaliate:
+		var _rt_side: int = _combatants.find(attacker) / _active_per_side
+		if _retaliate_timer[_rt_side] == 1:
+			_dmg_power_override = move.power * 2
+
+	# [D3 turn-order/event-tracker batch] Rage Fist: +50 power per prior hit
+	# taken this battle (BattlePokemon.times_hit, a lifetime counter), capped
+	# at 350. See MoveData.is_rage_fist's own doc comment for full source
+	# citations.
+	if move.is_rage_fist:
+		_dmg_power_override = min(move.power + 50 * attacker.times_hit, 350)
+
+	# [D3 turn-order/event-tracker batch] Echoed Voice: power scales with the
+	# field-wide consecutive-use counter, and this same dispatch point marks
+	# the move as "attempted this turn" for that counter's own end-of-turn
+	# update (_phase_end_of_turn) — gated only on reaching this point (i.e.
+	# not blocked by an earlier pre-move canceler), NOT on hit success,
+	# matching source's `if (!unableToUseMove) incrementEchoedVoice = TRUE`.
+	# See MoveData.is_echoed_voice's own doc comment for full source citations.
+	if move.is_echoed_voice:
+		_dmg_power_override = min(move.power * (1 + _echoed_voice_counter), 200)
+		_echoed_voice_used_this_turn = true
+
+	# [D1 easy bundle] Revenge / Avalanche: doubled if the user was hit BY
+	# THIS SPECIFIC TARGET earlier this turn. See MoveData.is_revenge's own
+	# doc comment for full source citations.
+	if move.is_revenge and attacker.hit_by_this_turn.has(defender):
+		_dmg_power_override = move.power * 2
+
+	# [D1 easy bundle] Stomping Tantrum / Temper Flare: doubled if the
+	# user's own previous move failed exactly one turn ago (counter==1).
+	# See MoveData.is_stomping_tantrum's own doc comment for full source
+	# citations, including the Retaliate timing-bug correction this tier
+	# also applied.
+	if move.is_stomping_tantrum and attacker.stomping_tantrum_timer == 1:
+		_dmg_power_override = move.power * 2
 
 	# ── Priority-move-block (Dazzling / Queenly Majesty / Armor Tail) ────────────
 	# Source: battle_move_resolution.c :: CancelerPriorityBlock (L1511-1548), dispatched
@@ -1792,6 +2155,57 @@ func _phase_move_execution() -> void:
 		move_called.emit(attacker, called_move)
 		move = called_move  # redirect to the called move for the rest of execution
 
+	# ── Instruct: force the TARGET to immediately re-use its own last move ───
+	# Source: battle_script_commands.c :: BS_TryInstruct (L13149-13195). Unlike
+	# Mirror Move/Metronome above (which only reassign `defender`/`move`),
+	# Instruct reassigns `attacker` itself — the instructed Pokémon becomes the
+	# one actually executing the move, matching source's own
+	# `copybyte gBattlerAttacker, gBattlerTarget` — so `attacker_idx`/
+	# `attacker_side` are recomputed too, keeping every downstream per-side/
+	# per-battler lookup consistent. New defender = the ORIGINAL attacker (the
+	# Instruct user) — exact in singles (the only valid opposing target
+	# anyway); a known simplification in doubles, where source tracks a real
+	# backUpTarget that could be an ally instead. The instructed move costs NO
+	# PP (this dispatch point sits after the normal PP-deduction block above,
+	# the same "called move" shape Mirror Move/Metronome already establish).
+	# See MoveData.is_instruct's own doc comment for the full exclusion list.
+	if move.is_instruct:
+		var instr_last: MoveData = defender.last_move_used
+		var instr_idx: int = defender.moves.find(instr_last) if instr_last != null else -1
+		var instr_fail: bool = (instr_last == null
+				or instr_idx < 0
+				or defender.current_pp[instr_idx] <= 0
+				or instr_last.two_turn
+				or instr_last.is_recharge
+				or instr_last.is_rollout
+				or instr_last.is_metronome
+				or instr_last.is_mirror_move
+				or instr_last.is_bide
+				or instr_last.protect_method == BattlePokemon.PROTECT_METHOD_OBSTRUCT
+				or instr_last.is_rampage
+				or instr_last.is_uproar
+				or instr_last.is_first_turn_only
+				or defender.bide_turns != 0)
+		if instr_fail:
+			move_effect_failed.emit(attacker, "instruct_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		move_called.emit(attacker, instr_last)
+		# The Instruct user's OWN last move is Instruct itself — must be set
+		# BEFORE the attacker/defender swap below, since after the swap
+		# `attacker` no longer refers to the Instruct user.
+		attacker.last_move_used = move
+		var instr_new_attacker: BattlePokemon = defender
+		var instr_new_defender: BattlePokemon = attacker
+		attacker = instr_new_attacker
+		defender = instr_new_defender
+		attacker_idx = _actor_indices.get(attacker, _combatants.find(attacker))
+		attacker_side = attacker_idx / _active_per_side
+		move = instr_last
+
 	# ── Rollout / Ice Ball: interruption reset ────────────────────────────────
 	# Source: battle_move_resolution.c :: SetSameMoveTurnValues `default` case
 	#   (L4915-4917): using any move OTHER than Rollout unconditionally resets
@@ -1848,6 +2262,17 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
+	# [D1 easy bundle] Captured only by the ordinary single-target branch
+	# below — After You/Quash-adjacent single-target-only moves are the
+	# only members of EFFECT_HIT_ESCAPE/EFFECT_HIT_SWITCH_TARGET, so
+	# spread/multi-hit never need these. `he_sub_before` snapshots the
+	# defender's Substitute HP BEFORE the hit so a Substitute-absorbed hit
+	# (which _do_damaging_hit reports as 0 direct damage) can still be
+	# told apart from a truly-immune/fully-blocked hit — see
+	# MoveData.is_hit_escape's own doc comment for why this distinction
+	# matters (source's own INCLUDING_SUBSTITUTES check).
+	var he_single_dmg: int = -1
+	var he_sub_before: int = -1
 	if move.power > 0:
 		# ── Damaging move ──────────────────────────────────────────────────────
 		# M14b: spread moves hit all live opposing combatants independently.
@@ -1885,7 +2310,8 @@ func _phase_move_execution() -> void:
 		else:
 			# Single-target damaging move.
 			var hh_boost: bool = _helping_hand[attacker_idx]
-			_do_damaging_hit(attacker, defender, move, false, hh_boost, _dmg_power_override)
+			he_sub_before = defender.substitute_hp
+			he_single_dmg = _do_damaging_hit(attacker, defender, move, false, hh_boost, _dmg_power_override)
 
 		# ── Rollout / Ice Ball: advance the consecutive-hit counter ───────────────
 		# Source: SetSameMoveTurnValues, case EFFECT_ROLLOUT (L4899-4909): a successful
@@ -1901,6 +2327,48 @@ func _phase_move_execution() -> void:
 			var struggle_recoil: int = max(1, attacker.max_hp / 4)
 			attacker.current_hp = max(0, attacker.current_hp - struggle_recoil)
 			recoil_damage.emit(attacker, struggle_recoil)
+
+		# [D1 easy bundle] U-turn / Volt Switch / Flip Turn — the attacker
+		# gets a voluntary-style switch prompt after a hit that connected
+		# (real HP damage OR a Substitute absorption — INCLUDING_SUBSTITUTES
+		# in source), as long as the attacker is still alive (a recoil/
+		# contact-punish death correctly blocks it) and no other switch is
+		# already pending this action. Reuses `_get_replacement_slot`'s own
+		# test-queue → AI-choice → deterministic-first-available chain —
+		# the SAME player-choice selection faint-replacement already uses —
+		# NOT Red Card's random pick, since this is a voluntary-style
+		# switch the user's own trainer chooses, not a forced one. See
+		# MoveData.is_hit_escape's own doc comment for full source citations.
+		var he_connected: bool = he_single_dmg > 0 \
+				or (he_sub_before > 0 and defender.substitute_hp < he_sub_before)
+		if move.is_hit_escape and he_connected and attacker.current_hp > 0:
+			var he_slot: int = _get_replacement_slot(attacker_idx)
+			if he_slot >= 0:
+				var he_old_mon: BattlePokemon = attacker
+				_do_forced_switch_in(attacker_side, he_slot, attacker_idx % _active_per_side)
+				hit_escape_switch.emit(he_old_mon, _combatants[attacker_idx])
+
+		# [D1 easy bundle] Circle Throw / Dragon Tail — forces the DEFENDER
+		# out after a hit that dealt REAL HP damage — EXCLUDING a
+		# Substitute absorption (the opposite of Hit Escape's own
+		# inclusive check, confirmed from source). Reuses `_do_forced_
+		# switch_in` + the same random-replacement helper Roar/Whirlwind/
+		# Red Card already use (a genuinely forced switch, not a player
+		# choice). No-ops (damage still stands) if there's no valid
+		# replacement on the defender's side, or if Guard Dog blocks it.
+		# See MoveData.is_hit_switch_target's own doc comment for full
+		# source citations.
+		if move.is_hit_switch_target and he_single_dmg > 0 and not defender.fainted \
+				and attacker.current_hp > 0 \
+				and not AbilityManager.blocks_forced_switch(defender, attacker, ng_active):
+			var hst_def_idx: int = _combatants.find(defender)
+			var hst_side: int = 1 - attacker_side
+			var hst_field_slot: int = hst_def_idx % _active_per_side
+			var hst_slot: int = _parties[hst_side].get_random_non_fainted_not_active(_force_roar_rng)
+			if hst_slot >= 0:
+				var hst_old_def: BattlePokemon = defender
+				_do_forced_switch_in(hst_side, hst_slot, hst_field_slot)
+				hit_switch_target.emit(hst_old_def, _combatants[hst_def_idx])
 	else:
 		# ── Status / stat-change / unique-effect move ─────────────────────────
 
@@ -2204,15 +2672,63 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Defog ─────────────────────────────────────────────────────────────
+		# Source: TryDefogClear (battle_script_commands.c L6755-6793) — see
+		# MoveData.is_defog's own doc comment for the full citation. Clears the
+		# TARGET's own side's screens (Reflect/Light Screen/Aurora Veil — the
+		# same reciprocal logic `breaks_screens`/Brick Break already uses,
+		# `[M16c]`), clears hazards from BOTH sides, then applies the
+		# guaranteed foe-targeting evasion -1 via the ordinary generic dispatch.
+		if move.is_defog:
+			var defog_def_idx: int = _combatants.find(defender)
+			var defog_def_side: int = defog_def_idx / _active_per_side
+			var defog_dsc: Dictionary = _side_conditions[defog_def_side]
+			if defog_dsc["reflect_turns"] > 0 or defog_dsc["light_screen_turns"] > 0 \
+					or defog_dsc["aurora_veil_turns"] > 0:
+				defog_dsc["reflect_turns"] = 0
+				defog_dsc["light_screen_turns"] = 0
+				defog_dsc["aurora_veil_turns"] = 0
+				screens_broken.emit(defog_def_side)
+			for defog_side_i in range(_side_conditions.size()):
+				_clear_all_hazards(defog_side_i)
+			_apply_stat_change_effect(attacker, defender, move, ng_active)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Tidy Up ───────────────────────────────────────────────────────────
+		# Source: TryTidyUpClear (battle_script_commands.c L6801-6825) — see
+		# MoveData.is_tidy_up's own doc comment for the full citation. Clears
+		# hazards from BOTH sides AND every Substitute currently on the field
+		# (a real finding beyond the D2 recon's own "hazards + self stat-raise"
+		# framing), then always applies the self Atk+1/Speed+1 raise regardless
+		# of what (if anything) was cleared.
+		if move.is_tidy_up:
+			for tidy_side_i in range(_side_conditions.size()):
+				_clear_all_hazards(tidy_side_i)
+			for tidy_mon: BattlePokemon in _combatants:
+				if tidy_mon.substitute_hp > 0:
+					tidy_mon.substitute_hp = 0
+					substitute_broke.emit(tidy_mon)
+			_apply_stat_change_effect(attacker, defender, move, ng_active)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# ── Weather-setting (Sandstorm / Rain Dance / Sunny Day / Hail / Snowscape) ──
 		# Source: Cmd_setfieldweather -> TryChangeBattleWeather(battler,
 		# move.argument.weatherType, ABILITY_NONE) — the SAME function
 		# ability-triggered weather-setting already calls. Reuses
-		# try_set_weather directly, zero new logic. Never "fails" outright at
-		# this project's dispatch level (try_set_weather itself just no-ops
-		# if the same weather is already active).
+		# try_set_weather directly, passing by_ability=false (matches source's
+		# own ABILITY_NONE — a move can never count as a Primal-capable
+		# setter, `[Batch fix]`). Never "fails" outright at this project's
+		# dispatch level (try_set_weather itself just no-ops if the same
+		# weather is already active, or if an active Primal weather refuses
+		# the overwrite).
 		if move.weather_type != WEATHER_NONE:
-			if try_set_weather(move.weather_type, attacker):
+			if try_set_weather(move.weather_type, attacker, false):
 				weather_set.emit(attacker, move.weather_type)
 				_notify_weather_changed()
 			move_executed.emit(attacker, defender, move, 0)
@@ -2603,7 +3119,23 @@ func _phase_move_execution() -> void:
 		# Corrosion does not grant any other type a wider immunity bypass.
 		var corrosion_bypasses_type_gate: bool = move.type == TypeChart.TYPE_POISON \
 				and AbilityManager.bypasses_poison_steel_immunity(attacker, ng_active)
-		if foe_targeting and move.type != TypeChart.TYPE_NONE and not corrosion_bypasses_type_gate:
+		# [D2 batch 2] A real bug found while building Foresight(193)/Odor
+		# Sleuth(316): confirmed via a direct read of BattleScript_
+		# EffectForesight (data/battle_scripts_1.s L2165-2174) that its own
+		# script never calls `typecalc` anywhere — meaning in the real
+		# reference engine this move is NEVER subject to any type-immunity
+		# check at all, including against its own primary use case (a
+		# Ghost-type target that would otherwise be immune to a Normal-type
+		# move). This project's own general gate below was over-generalized
+		# to apply to every foe-targeting move with a real type; narrowly
+		# exempting `is_foresight` here, matching the existing
+		# `corrosion_bypasses_type_gate` precedent's own scoping shape,
+		# rather than a blanket change. Flagged, not investigated further:
+		# whether any OTHER already-shipped status move shares this same gap
+		# (a script that never calls `typecalc`) is an open question beyond
+		# this session's own scope.
+		if foe_targeting and move.type != TypeChart.TYPE_NONE \
+				and not corrosion_bypasses_type_gate and not move.is_foresight:
 			var eff: float = TypeChart.get_effectiveness(move.type, defender.species.types)
 			if eff == 0.0:
 				move_missed.emit(attacker, "immune")
@@ -2639,6 +3171,46 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Foresight / Odor Sleuth ────────────────────────────────────────────
+		# Source: BattleScript_EffectForesight (data/battle_scripts_1.s
+		# L2165-2174) — see MoveData.is_foresight's own doc comment for the
+		# full citation. Falls through the shared Substitute/type-immunity
+		# gates above like Lock-On (ignores_substitute=TRUE on this move's
+		# own data handles the Substitute bypass at that earlier checkpoint).
+		if move.is_foresight:
+			if defender.foresight_active:
+				move_effect_failed.emit(attacker, "foresight_already_active")
+			else:
+				defender.foresight_active = true
+				foresight_set.emit(defender)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Tar Shot ──────────────────────────────────────────────────────────
+		# Source: battle_stat_change.c :: case EFFECT_TAR_SHOT (L165-173) —
+		# see MoveData.is_tar_shot's own doc comment for the full citation.
+		# Confirmed an ALL-OR-NOTHING gate, not "skip the flag but still drop
+		# Speed": source bundles the flag-set and the -1 Speed as ONE single
+		# `additionalEffects` entry (`st->additionalEffectTriggers` gates the
+		# WHOLE move's success, traced to `StatChangeCanAnyChange`,
+		# battle_move_resolution.c L4522-4549 — `MOVE_RESULT_ATTEMPT_STAT_
+		# CHANGE` only if `additionalEffectTriggers` is true) — an already-
+		# tar-shot'd target blocks the Speed drop too, not just the
+		# already-set flag.
+		if move.is_tar_shot:
+			if defender.tar_shot_active:
+				move_effect_failed.emit(attacker, "tar_shot_already_active")
+			else:
+				defender.tar_shot_active = true
+				tar_shot_set.emit(defender)
+				_apply_stat_change_effect(attacker, defender, move, ng_active)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# ── Swagger / Flatter ────────────────────────────────────────────────
 		# Source: battle_stat_change.c :: case EFFECT_SWAGGER (L147-156) — see
 		# MoveData.is_swagger's own doc comment for the full citation and the
@@ -2660,6 +3232,95 @@ func _phase_move_execution() -> void:
 						move.stat_change_stat, move.stat_change_amount, ng_active)
 				if StatusManager.try_apply_confusion(defender, null, ng_active, attacker, move):
 					secondary_applied.emit(defender, MoveData.SE_CONFUSION)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Trick / Switcheroo ─────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: Cmd_tryswapitems (L8874-8930) —
+		# see MoveData.is_trick's own doc comment for the full citation,
+		# including the Multitype-Plate exclusion and the Sticky-Hold-on-
+		# target-only scoping. Falls through the shared foe-targeting/
+		# Substitute/type-immunity gates above like any ordinary status move
+		# (this move does NOT carry ignoresSubstitute, unlike Foresight/Tar
+		# Shot just above).
+		# [Multitype-Plate fix] Re-derived directly against source's own 4
+		# `CanBattlerGetOrLoseItem` calls (not just the 2 this project originally
+		# implemented) — each side must be checked against BOTH losing its own item
+		# AND gaining the other's, via the shared `AbilityManager.is_form_locked_by_item`.
+		# A Multitype holder with no Plate currently held can still block a Trick that
+		# would hand it a foreign Plate — a real, source-confirmed case the original
+		# 2-check version missed. See decisions.md for the full derivation.
+		if move.is_trick:
+			var trick_both_itemless: bool = \
+					attacker.held_item == null and defender.held_item == null
+			var trick_blocked: bool = \
+					AbilityManager.is_form_locked_by_item(attacker, attacker.held_item, ng_active) \
+					or AbilityManager.is_form_locked_by_item(attacker, defender.held_item, ng_active) \
+					or AbilityManager.is_form_locked_by_item(defender, defender.held_item, ng_active) \
+					or AbilityManager.is_form_locked_by_item(defender, attacker.held_item, ng_active)
+			if trick_both_itemless or trick_blocked:
+				move_effect_failed.emit(attacker, "trick_failed")
+			elif AbilityManager.effective_ability_id(defender, ng_active, attacker) \
+					== AbilityManager.ABILITY_STICKY_HOLD:
+				move_effect_failed.emit(attacker, "sticky_hold_prevents")
+				ability_triggered.emit(defender, "sticky_hold")
+			else:
+				var trick_old_atk_item: ItemData = attacker.held_item
+				attacker.held_item = defender.held_item
+				defender.held_item = trick_old_atk_item
+				items_swapped.emit(attacker, defender)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Role Play / Skill Swap / Worry Seed / Heart Swap ──────────────────
+		# Source: see MoveData.is_role_play/is_skill_swap/overwrite_target_
+		# ability_id/is_heart_swap's own doc comments for full citations. All
+		# 4 fall through the shared foe_targeting/Magic-Bounce/Substitute/
+		# type-immunity/Prankster gates above like any ordinary foe-targeting
+		# status move — `ignores_substitute`/`ignores_protect`/`bounceable`
+		# per-move data flags (set individually, confirmed non-uniform within
+		# this family at Step 0) already make each move's own real exemptions
+		# take effect at the correct earlier checkpoint.
+		if move.is_role_play:
+			if AbilityManager.try_role_play(attacker, defender):
+				ability_changed.emit(attacker, attacker.ability.ability_id)
+			else:
+				move_effect_failed.emit(attacker, "role_play_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		if move.is_skill_swap:
+			if AbilityManager.try_skill_swap(attacker, defender):
+				ability_changed.emit(attacker, attacker.ability.ability_id)
+				ability_changed.emit(defender, defender.ability.ability_id)
+			else:
+				move_effect_failed.emit(attacker, "skill_swap_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		if move.overwrite_target_ability_id >= 0:
+			if AbilityManager.try_worry_seed_overwrite(defender, move.overwrite_target_ability_id):
+				ability_changed.emit(defender, defender.ability.ability_id)
+			else:
+				move_effect_failed.emit(defender, "overwrite_ability_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		if move.is_heart_swap:
+			var hs_attacker_stages: Array = attacker.stat_stages.duplicate()
+			attacker.stat_stages = defender.stat_stages.duplicate()
+			defender.stat_stages = hs_attacker_stages
+			stat_changes_copied.emit(attacker, defender)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -2722,6 +3383,25 @@ func _phase_move_execution() -> void:
 
 
 func _phase_faint_check() -> void:
+	# [D1 easy bundle] Consume Stomping Tantrum's own generic failure flag —
+	# read-then-reset here, the one universal point every action's
+	# resolution (success or failure, from any of `_phase_move_execution`'s
+	# dozens of early-return paths) always reaches next. Gating on
+	# `_current_action_failed` itself guarantees this specific
+	# `_phase_faint_check` call is the one immediately following a move-
+	# execution call (the flag is reset to false at the start of every
+	# `_phase_move_execution`, and consumed exactly once here), so
+	# `_turn_order[_current_actor_index - 1]` safely identifies whoever
+	# just acted rather than risking a stale read from some other phase
+	# (e.g. end-of-turn status damage) that also transitions to FAINT_CHECK.
+	if _current_action_failed:
+		_current_action_failed = false
+		var st_actor_pos: int = _current_actor_index - 1
+		if st_actor_pos >= 0 and st_actor_pos < _turn_order.size():
+			var st_mover: BattlePokemon = _turn_order[st_actor_pos]
+			if not st_mover.fainted:
+				st_mover.stomping_tantrum_timer = 2
+
 	# Capture and process any new faints (hp == 0 and not yet marked fainted).
 	# Track whether ANY new faint occurred this tick — only these warrant SWITCH_PROMPT.
 	# Previously-fainted slots (fainted=true from an earlier turn) must NOT re-trigger
@@ -2740,6 +3420,11 @@ func _phase_faint_check() -> void:
 			# Source: FaintClearSetData in battle_main.c clears gBattleMons[].volatiles.
 			_clear_volatiles(combatant)
 			pokemon_fainted.emit(combatant)
+			# [D3 turn-order/event-tracker batch] Retaliate — set the FAINTED
+			# mon's own side's timer to 2 (side-wide, never the opposing side).
+			# See MoveData.is_retaliate's own doc comment for full source citations.
+			var _rt_faint_side: int = _combatants.find(combatant) / _active_per_side
+			_retaliate_timer[_rt_faint_side] = 2
 			# M17b: Moxie — Attack +1 for whoever's hit caused this faint.
 			# Source: battle_util.c L4467-4472; killer lookup reuses M14b's _last_attacker.
 			var moxie_killer: BattlePokemon = _last_attacker.get(combatant, null)
@@ -3119,6 +3804,60 @@ func _phase_end_of_turn() -> void:
 		# Disable/Encore above. Source: battle_end_turn.c L61-63/L1280-1311.
 		if mon.throat_chop_turns > 0:
 			mon.throat_chop_turns -= 1
+		# [Delayed-effect family] Yawn: same decrement shape as the above,
+		# but hitting 0 triggers a completely fresh sleep-infliction
+		# attempt (all immunity checks re-derived at THIS moment, not
+		# locked in at cast time) via the existing status pipeline. See
+		# MoveData.is_yawn's own doc comment for full source citations.
+		if mon.yawn_turns > 0:
+			mon.yawn_turns -= 1
+			if mon.yawn_turns == 0:
+				if StatusManager.try_apply_status(mon, BattlePokemon.STATUS_SLEEP,
+						null, _get_ally(mon), ng_active, null, _effective_weather(), null,
+						_is_uproar_active()):
+					secondary_applied.emit(mon, MoveData.SE_SLEEP)
+
+	# [Delayed-effect family] Future Sight / Doom Desire — decrement each
+	# pending slot's counter once per turn; resolve (via the normal
+	# _do_damaging_hit chokepoint) against whoever occupies that slot when
+	# it hits 0. See MoveData.is_future_sight's own doc comment for full
+	# source citations.
+	for fs_target_idx: int in _future_sight_pending.keys().duplicate():
+		var fs_entry: Dictionary = _future_sight_pending[fs_target_idx]
+		fs_entry["counter"] -= 1
+		if fs_entry["counter"] <= 0:
+			_future_sight_pending.erase(fs_target_idx)
+			if fs_target_idx < 0 or fs_target_idx >= _combatants.size():
+				continue
+			var fs_target: BattlePokemon = _combatants[fs_target_idx]
+			if fs_target.fainted:
+				continue
+			var fs_caster: BattlePokemon = fs_entry["caster"]
+			var fs_move: MoveData = fs_entry["move"]
+			var fs_damage: int = _do_damaging_hit(fs_caster, fs_target, fs_move)
+			future_sight_resolved.emit(fs_caster, fs_target, fs_move, fs_damage)
+
+	# [Delayed-effect family] Wish — decrement each pending slot's counter
+	# once per turn; resolve (a flat heal, caster's own max HP / 2) against
+	# whoever occupies the CASTER's OWN slot when it hits 0. See
+	# MoveData.is_wish's own doc comment for full source citations.
+	for wish_slot_idx: int in _wish_pending.keys().duplicate():
+		var wish_entry: Dictionary = _wish_pending[wish_slot_idx]
+		wish_entry["counter"] -= 1
+		if wish_entry["counter"] <= 0:
+			_wish_pending.erase(wish_slot_idx)
+			if wish_slot_idx < 0 or wish_slot_idx >= _combatants.size():
+				continue
+			var wish_recipient: BattlePokemon = _combatants[wish_slot_idx]
+			if wish_recipient.fainted:
+				continue
+			var wish_caster: BattlePokemon = wish_entry["caster"]
+			var wish_heal: int = wish_caster.max_hp / 2
+			var wish_actual: int = 0
+			if wish_recipient.current_hp < wish_recipient.max_hp:
+				wish_actual = min(wish_heal, wish_recipient.max_hp - wish_recipient.current_hp)
+				wish_recipient.current_hp += wish_actual
+			wish_resolved.emit(wish_recipient, wish_actual)
 
 	# M16c: Decrement Reflect/Light Screen/Aurora Veil timers, both sides.
 	# Source: battle_end_turn.c :: HandleEndTurnSecondEventBlock, cases
@@ -3138,6 +3877,19 @@ func _phase_end_of_turn() -> void:
 			sc["aurora_veil_turns"] -= 1
 			if sc["aurora_veil_turns"] == 0:
 				screen_expired.emit(side, "aurora_veil")
+
+	# [D1 easy bundle] Retaliate's own decrement was MOVED to
+	# `_phase_priority_resolution` (a bug fix — see that site's own doc
+	# comment for the full writeup); it no longer lives here.
+
+	# [D3 turn-order/event-tracker batch] Echoed Voice: increment (capped 4)
+	# if used this turn, else reset to 0. Source: battle_end_turn.c L79-88.
+	if _echoed_voice_used_this_turn:
+		if _echoed_voice_counter < 4:
+			_echoed_voice_counter += 1
+		_echoed_voice_used_this_turn = false
+	else:
+		_echoed_voice_counter = 0
 
 	# M16d: Decrement Trick Room's field-wide timer.
 	# Source: battle_end_turn.c L1146 — gFieldStatuses &= ~STATUS_FIELD_TRICK_ROOM at 0.
@@ -3425,6 +4177,25 @@ func _reset_stat_stages(mon: BattlePokemon) -> void:
 			stat_stage_changed.emit(mon, i, delta)
 
 
+# [D2 batch] Clears EVERY hazard type on one side at once (Spikes/Toxic
+# Spikes/Stealth Rock) — used by Defog/Tidy Up, both of which clear
+# everything clearable in a single move use, unlike Rapid Spin/Mortal Spin's
+# own one-hazard-at-a-time clear (`is_rapid_spin`, `[M16d]`). Emits
+# `hazards_cleared` once per hazard type actually present, matching Rapid
+# Spin's own per-type signal shape.
+func _clear_all_hazards(side: int) -> void:
+	var sc: Dictionary = _side_conditions[side]
+	if sc["spikes_layers"] > 0:
+		sc["spikes_layers"] = 0
+		hazards_cleared.emit(side, "spikes")
+	if sc["toxic_spikes_layers"] > 0:
+		sc["toxic_spikes_layers"] = 0
+		hazards_cleared.emit(side, "toxic_spikes")
+	if sc["stealth_rock"]:
+		sc["stealth_rock"] = false
+		hazards_cleared.emit(side, "stealth_rock")
+
+
 # [D0] Heal Bell(215)/Aromatherapy(312)/Sparkly Swirl(687)'s shared
 # party-wide status cure. Source: Cmd_healpartystatus (battle_script_commands.c
 # L8259-8340) — cures EVERY real party member's status1, not just the
@@ -3564,6 +4335,33 @@ func _stealth_rock_damage(effectiveness: float, max_hp: int) -> int:
 	if dmg == 0 and effectiveness != 0.0:
 		dmg = 1
 	return dmg
+
+
+# [Delayed-effect family] Healing Wish / Lunar Dance — consumes a stored
+# one-shot heal(+cure, +full-PP for Lunar Dance) on the combatant slot's
+# NEXT switch-in, by any method. A disclosed simplification confirmed
+# with Rob: always consumes on this very switch-in regardless of whether
+# the recipient needed it (real source at Gen8+ config lets it persist
+# until a later switch-in actually benefits). See MoveData.is_healing_wish's
+# own doc comment for full source citations.
+func _apply_stored_healing_effect(new_mon: BattlePokemon, combatant_idx: int) -> void:
+	if not _stored_healing_effect.has(combatant_idx):
+		return
+	var kind: String = _stored_healing_effect[combatant_idx]
+	_stored_healing_effect.erase(combatant_idx)
+	var healed: int = 0
+	if new_mon.current_hp < new_mon.max_hp:
+		healed = new_mon.max_hp - new_mon.current_hp
+		new_mon.current_hp = new_mon.max_hp
+	var cured: bool = new_mon.status != BattlePokemon.STATUS_NONE
+	new_mon.status = BattlePokemon.STATUS_NONE
+	var pp_restored: bool = false
+	if kind == "lunar_dance":
+		for i in range(new_mon.current_pp.size()):
+			if new_mon.current_pp[i] < new_mon.moves[i].pp:
+				pp_restored = true
+			new_mon.current_pp[i] = new_mon.moves[i].pp
+	healing_wish_activated.emit(new_mon, kind, healed, cured, pp_restored)
 
 
 func _apply_switch_in_abilities(new_mon: BattlePokemon, mon_side: int) -> void:
@@ -3814,6 +4612,18 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	# `volatiles` struct, cleared here like every other switch-scoped volatile.
 	mon.rage_active = false
 	mon.throat_chop_turns = 0
+	# [Delayed-effect family] Yawn's own 2-turn counter — same switch-cleared
+	# shape as throat_chop_turns/disable_turns above.
+	mon.yawn_turns = 0
+	# [D1 easy bundle] Stomping Tantrum's own counter — source itself clears
+	# this exact state on switch-out (battle_main.c L3214), same shape as
+	# throat_chop_turns/yawn_turns above.
+	mon.stomping_tantrum_timer = 0
+	# [D2 batch 2] Tar Shot/Foresight — both permanent per-mon volatiles
+	# (no turn counter), cleared on switch-out like every other
+	# `volatiles`-struct field here.
+	mon.tar_shot_active = false
+	mon.foresight_active = false
 	# [M18.5d-2] Attract's infatuation volatile — cured by switch-out/faint like
 	# every other one-battle-stint volatile here (Step 0's confirmed cure condition,
 	# `mon`'s OWN half). `mon.infatuated_by` is who INFATUATED `mon`, not who `mon`
@@ -3990,6 +4800,7 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...) (battle_util.c L2960)
 	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
+	_apply_stored_healing_effect(new_mon, combatant_idx)
 
 
 # M9/M14b: forced switch-in for Roar/Whirlwind — forces out the combatant at
@@ -4012,6 +4823,7 @@ func _do_forced_switch_in(side: int, slot: int, field_slot: int = 0) -> void:
 	# Switch-in hazards then abilities fire for the forced-in Pokémon.
 	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
+	_apply_stored_healing_effect(new_mon, combatant_idx)
 
 
 # M9/M14a: switch-in after faint (no switch-out clear; old mon already cleared on faint).
@@ -4027,6 +4839,7 @@ func _do_switch_in(combatant_idx: int, slot: int) -> void:
 	pokemon_switched_in.emit(new_mon, side, slot)
 	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
+	_apply_stored_healing_effect(new_mon, combatant_idx)
 
 
 # M9/M10/M14a: determine replacement slot — priority: test queue, then AI, then auto-select.
@@ -4981,6 +5794,15 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		# M17n-8: companions for Aftermath/Innards Out (see their own doc comment).
 		_last_attacker_move[target] = move
 		_last_attacker_hp_before[target] = hp_before_hit
+		# [D3 turn-order/event-tracker batch] Rage Fist's own lifetime counter —
+		# incremented once per hit that actually deals damage, unconditional on
+		# category/contact. See BattlePokemon.times_hit's own doc comment.
+		target.times_hit += 1
+		# [D1 easy bundle] Revenge/Avalanche's own per-(victim,attacker)-pair
+		# tracker — recorded on the SAME chokepoint, unconditional on
+		# category/contact. See BattlePokemon.hit_by_this_turn's own doc comment.
+		if not target.hit_by_this_turn.has(attacker):
+			target.hit_by_this_turn.append(attacker)
 		if move.category == 0:
 			target.last_physical_damage = damage
 			target.last_hit_was_special = false
@@ -5403,6 +6225,30 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			else:
 				asc2["light_screen_turns"] = ItemManager.screen_turns(attacker, 5, ng_active)
 				screen_set.emit(atk_side2, "light_screen")
+
+	# [D2 batch] Stone Axe(758) / Ceaseless Edge(773) — a guaranteed on-hit
+	# hazard set on the TARGET's own side (the opposite side from Glitzy Glow/
+	# Baddy Bad's own self-side screens just above), gated on the hazard not
+	# already being maxed — same layer-cap/emit shape the pure-status Spikes
+	# (113)/Stealth Rock(446) moves already use. See MoveData.sets_
+	# stealth_rock_on_hit/sets_spikes_on_hit's own doc comment for the full
+	# source citation, including the flagged Sheer Force gap.
+	if damage > 0 and (move.sets_stealth_rock_on_hit or move.sets_spikes_on_hit):
+		var hz_def_idx: int = _combatants.find(target)
+		var hz_def_side: int = hz_def_idx / _active_per_side
+		var hzsc: Dictionary = _side_conditions[hz_def_side]
+		if move.sets_stealth_rock_on_hit:
+			if hzsc["stealth_rock"]:
+				move_effect_failed.emit(attacker, "already_stealth_rock")
+			else:
+				hzsc["stealth_rock"] = true
+				hazard_set.emit(hz_def_side, "stealth_rock", 1)
+		if move.sets_spikes_on_hit:
+			if hzsc["spikes_layers"] >= 3:
+				move_effect_failed.emit(attacker, "already_spikes_max")
+			else:
+				hzsc["spikes_layers"] += 1
+				hazard_set.emit(hz_def_side, "spikes", hzsc["spikes_layers"])
 
 	var contact_result: Dictionary = AbilityManager.try_contact_effects(
 			attacker, target, move, damage, _force_contact_roll, _force_effect_spore_roll,

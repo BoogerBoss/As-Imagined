@@ -452,6 +452,13 @@ func _test_section_5_multitype() -> void:
 	# source that FORM_CHANGE_ITEM_HOLD is an overworld-only trigger, never dispatched
 	# from any in-battle FORM_CHANGE_BATTLE_* call — so a real in-battle item theft
 	# (this project's own Magician, M17j) should NOT retype the Multitype holder.
+	# [Multitype-Plate fix] Magician can no longer actually steal a Multitype holder's
+	# Plate at all — it's now correctly species-form-locked (AbilityManager.
+	# is_form_locked_by_item), a real gap this test's own original setup unknowingly
+	# depended on. This is confirmed as its own discriminator below, then the original
+	# "no live retype" claim is isolated via a direct held_item mutation (bypassing
+	# the in-battle transfer block, which is a different claim already covered by
+	# m17j_test.gd's own Multitype-vs-Pickpocket/Magician/Thief/Symbiosis coverage).
 	var mt_mon4 := _make_mon("MultitypeStolen", [TypeChart.TYPE_NORMAL], 300, 40, 40, 40, 40, 30)
 	mt_mon4.ability = multitype
 	mt_mon4.held_item = _make_item(ItemManager.HOLD_EFFECT_PLATE, TypeChart.TYPE_STEEL)
@@ -470,9 +477,14 @@ func _test_section_5_multitype() -> void:
 	bm4.start_battle_with_parties(BattleParty.single(thief), BattleParty.single(mt_mon4))
 	bm4.queue_free()
 
-	_chk("S5.04 setup check: Magician actually stole the Plate (held_item now null)",
-			item_events.size() == 1 and mt_mon4.held_item == null)
-	_chk("S5.04 Multitype's type is UNCHANGED after losing its Plate mid-battle " +
+	_chk("S5.04 Magician is correctly BLOCKED from stealing a Multitype holder's " +
+			"Plate ([Multitype-Plate fix])",
+			item_events.is_empty() and mt_mon4.held_item != null)
+
+	# Isolate the original "no live retype" claim from the block above via a direct
+	# mid-battle held_item mutation, simulating an item change by any means.
+	mt_mon4.held_item = _make_item(ItemManager.HOLD_EFFECT_PLATE, TypeChart.TYPE_WATER)
+	_chk("S5.04 Multitype's type is UNCHANGED after a mid-battle held-item change " +
 			"(no re-switch has happened)",
 			mt_mon4.species.types[0] == TypeChart.TYPE_STEEL)
 

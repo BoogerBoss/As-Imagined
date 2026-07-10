@@ -806,6 +806,14 @@ static func check_accuracy(
 	# (MoveIgnoresDefenseEvasionStages(move)) evasionStage = DEFAULT_STAT_STAGE;`
 	if move.ignores_defense_evasion_stages:
 		eva_stage = 0
+	# [D2 batch 2] Foresight(193)/Odor Sleuth(316) — a per-TARGET volatile,
+	# mathematically identical to the neutral-stage-reset shape above
+	# (confirmed via source's own GetTotalAccuracy, battle_util.c
+	# L10259-10261: `buff = accStage` when the volatile is active, the same
+	# result as zeroing eva_stage in this formula). See MoveData.
+	# is_foresight's own doc comment for the full citation.
+	if defender.foresight_active:
+		eva_stage = 0
 	var combined: int = clampi(acc_stage - eva_stage, -6, 6)
 	var idx: int = combined + 6
 	# M17n-11: Wonder Skin — floors a STATUS move's own accuracy stat to 50 (never
@@ -949,6 +957,12 @@ static func apply_stat_change(
 	#   whenever a positive stageIncrease actually applies.
 	if actual > 0:
 		target.stat_raised_this_turn = true
+	# [D3 turn-order/event-tracker batch] Lash Out — the decrease-side mirror
+	# of stat_raised_this_turn just above, same chokepoint, same "any source"
+	# scope. Source: battle_stat_change.c L368 (lashOutAffected = TRUE
+	# unconditional whenever a negative stageIncrease actually applies).
+	if actual < 0:
+		target.stat_lowered_this_turn = true
 	return actual
 
 

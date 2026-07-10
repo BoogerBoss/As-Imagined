@@ -141,6 +141,28 @@ static func calculate(
 		hp_move.type = _hidden_power_type(attacker)
 		move = hp_move
 
+	# [D2 batch 2] Photon Geyser(675) — EFFECT_PHOTON_GEYSER: category is
+	# DYNAMICALLY swapped based on the attacker's own stage-adjusted Atk vs
+	# SpAtk (source: GetCategoryBasedOnStats, battle_util.c L9025-9039 —
+	# ties go to SPECIAL, `spAttack >= attack`), computed in the SAME
+	# pre-processing pass as Hidden Power's own dynamic type above (source's
+	# SetDynamicMoveCategory runs alongside SetTypeBeforeUsingMove). Mutating
+	# `.category` here (not just reading a separate override elsewhere) means
+	# every existing `move.category` check further down this function AND in
+	# every other ability/item modifier this move passes through (Guts,
+	# Choice items, etc.) sees the swapped value for free — see MoveData.
+	# is_photon_geyser's own doc comment for the full citation, including
+	# the confirmed non-static-stat-lookup finding.
+	if move.is_photon_geyser:
+		var pg_atk: int = _apply_stage(
+				attacker.attack, attacker.stat_stages[BattlePokemon.STAGE_ATK])
+		var pg_spatk: int = _apply_stage(
+				attacker.sp_attack, attacker.stat_stages[BattlePokemon.STAGE_SPATK])
+		if pg_spatk < pg_atk:
+			var pg_move: MoveData = move.duplicate()
+			pg_move.category = 0  # Physical
+			move = pg_move
+
 	# M17n-6: Normalize / Refrigerate / Pixilate / Galvanize / Liquid Voice — move-type
 	# mutation must happen before EVERYTHING else below reads move.type (ability-
 	# immunity gates, type effectiveness, STAB, the weather modifier, and any
@@ -168,7 +190,14 @@ static func calculate(
 	# this project's independent type-effectiveness computations below (the early
 	# `effectiveness` float and the later per-type UQ4.12 damage-multiplier block),
 	# same duplication pattern already established for `weaken_flying_se` (M17d).
-	var scrappy_bypass: bool = AbilityManager.bypasses_ghost_immunity(attacker, ng_active)
+	# [D2 batch 2] Foresight(193)/Odor Sleuth(316) — OR'd in directly at this single
+	# computation point rather than threading a separate parameter through
+	# TypeChart's functions: source checks the LITERAL SAME condition (Normal/
+	# Fighting-type move vs a Ghost-type component) for both the attacker-ability-
+	# driven case (Scrappy/Mind's Eye) and this defender-volatile-driven case
+	# (Foresight), so one combined bool produces identical behavior either way.
+	var scrappy_bypass: bool = AbilityManager.bypasses_ghost_immunity(attacker, ng_active) \
+			or defender.foresight_active
 
 	# --- Ability type immunity (Levitate vs Ground, etc.) ---
 	# Source: battle_util.c :: CalcTypeEffectivenessMultiplierInternal (L8257):
@@ -210,9 +239,12 @@ static func calculate(
 	# M18t: Iron Ball grounds a Flying-type defender, overriding the raw table's own
 	# Ground-vs-Flying 0x entry — see TypeChart.get_effectiveness's own doc comment.
 	var iron_ball_grounded: bool = ItemManager.holds_iron_ball(defender, ng_active)
+	# [D2 batch 2] Freeze-Dry(573)'s forced-Water-super-effective override and
+	# Tar Shot(695)'s flat Fire-move doubler — see MoveData.super_effective_
+	# vs_type/is_tar_shot's own doc comments for the full source citations.
 	var effectiveness: float = TypeChart.get_effectiveness(
 			move.type, defender.species.types, weather == WEATHER_STRONG_WINDS, scrappy_bypass,
-			iron_ball_grounded)
+			iron_ball_grounded, move.super_effective_vs_type, defender.tar_shot_active)
 	if effectiveness == 0.0:
 		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
 				"defender_item_consumed": false}
@@ -303,6 +335,42 @@ static func calculate(
 		def_base  = defender.sp_defense
 		def_stage = defender.stat_stages[BattlePokemon.STAGE_SPDEF]
 
+	# [D2 batch 2] Foul Play(492) — EFFECT_FOUL_PLAY: the OFFENSE stat/stage
+	# source is the TARGET's own Attack (or Sp. Attack, category-gated same
+	# as normal — Foul Play's own category is fixed Physical so only this
+	# branch is ever reached), not the attacker's. def_base/def_stage above
+	# are already correctly computed off the defender as normal — only the
+	# offense-side SOURCE changes. Source: battle_util.c :: CalcAttackStat
+	# (L6737-6748). See MoveData.is_foul_play's own doc comment.
+	if move.is_foul_play:
+		if move.category == 0:
+			atk_base  = defender.attack
+			atk_stage = defender.stat_stages[BattlePokemon.STAGE_ATK]
+		else:
+			atk_base  = defender.sp_attack
+			atk_stage = defender.stat_stages[BattlePokemon.STAGE_SPATK]
+
+	# [D2 batch 2] Body Press(704) — EFFECT_BODY_PRESS: the OFFENSE stat/
+	# stage source is the USER's own Defense (fixed Physical category,
+	# confirmed the source's own Special-branch is dead code for this
+	# specific move). Wonder Room's edge case is permanently moot (Wonder
+	# Room unimplemented, on Rob's own exclusion list). See MoveData.
+	# is_body_press's own doc comment.
+	if move.is_body_press:
+		atk_base  = attacker.defense
+		atk_stage = attacker.stat_stages[BattlePokemon.STAGE_DEF]
+
+	# [Psyshock/Psystrike] EFFECT_PSYSHOCK: the DEFENSE stat/stage source is
+	# the defender's own Defense instead of Sp. Defense — the SAME battler,
+	# just a different column (unlike Foul Play/Body Press above, which
+	# swap which BATTLER's stat is read). Category stays Special for every
+	# other purpose (STAB, ability triggers, secondary-effect gating).
+	# Wonder Room's edge case is permanently moot (unimplemented, same
+	# precedent as Body Press). See MoveData.is_psyshock's own doc comment.
+	if move.is_psyshock:
+		def_base  = defender.defense
+		def_stage = defender.stat_stages[BattlePokemon.STAGE_DEF]
+
 	# --- Critical hit ignores attacker's stage drops and defender's stage boosts ---
 	# Source: src/battle_util.c :: CalcAttackStat (L6781–6783), CalcDefenseStat (L7068–7070)
 	if is_crit:
@@ -388,6 +456,30 @@ static func calculate(
 	if item_power_mod != 4096:
 		effective_power = _uq412_half_down(effective_power, item_power_mod)
 
+	# [Batch fix] Solar Beam(76)/Solar Blade(632) — power halved in any weather
+	# OTHER than Sun/none/Strong Winds. Source: CalcMoveBasePowerAfterModifiers
+	# :: EFFECT_SOLAR_BEAM case (battle_util.c L6408-6414):
+	#   weather = GetAttackerWeather(holdEffect, ability, weather);
+	#   if ((B_SANDSTORM_SOLAR_BEAM>=GEN_3 && weather & B_WEATHER_LOW_LIGHT)
+	#       || weather & (B_WEATHER_RAIN|B_WEATHER_ICY_ANY|B_WEATHER_FOG)) -> x0.5
+	# B_WEATHER_LOW_LIGHT = Fog|Hail|Snow|Rain|Sandstorm — at this project's
+	# GEN_LATEST config (B_SANDSTORM_SOLAR_BEAM always >= GEN_3) this collapses
+	# to: halved in Rain/Sandstorm/Hail (Fog unmodeled — permanently moot, same
+	# class of gap as Delta Stream's Strong-Winds precedent), full power in
+	# Sun/none/Strong Winds. No category gate in source at all — Solar Blade's
+	# Physical category is NOT exempt, confirmed via direct read. `weather`
+	# here is already Air-Lock/Cloud-Nine-filtered by the caller (passes
+	# `_effective_weather()`). GetAttackerWeather's own Utility Umbrella branch
+	# strips SUN/RAIN specifically (never Sandstorm/Hail) — the exact same
+	# asymmetric strip `[M19e]`'s weather-heal formula already established.
+	if move.is_solar_beam:
+		var solar_weather: int = weather
+		if solar_weather in [WEATHER_SUN, WEATHER_RAIN] \
+				and ItemManager.blocks_weather_modifier(attacker, ng_active):
+			solar_weather = WEATHER_NONE
+		if solar_weather in [WEATHER_RAIN, WEATHER_SANDSTORM, WEATHER_HAIL]:
+			effective_power = _uq412_half_down(effective_power, 2048)  # UQ_4_12(0.5)
+
 	var dmg: int = effective_power * atk * (2 * attacker.level / 5 + 2) / def / 50 + 2
 
 	# M14b: Spread damage reduction — first modifier after base formula.
@@ -460,7 +552,8 @@ static func calculate(
 		var def_types: Array = defender.species.types
 		var strong_winds: bool = weather == WEATHER_STRONG_WINDS
 		var first_type: int = def_types[0] if def_types.size() > 0 else TypeChart.TYPE_NONE
-		var type_mod: int = TypeChart.get_uq412(move.type, first_type, scrappy_bypass)
+		var type_mod: int = TypeChart.get_uq412(
+				move.type, first_type, scrappy_bypass, move.super_effective_vs_type)
 		# M17d: Delta Stream — a super-effective (>=2.0x) component against a Flying-type
 		# defender is weakened to neutral, checked PER type component to match source's
 		# exact granularity (battle_util.c :: MulByTypeEffectiveness L8069-8074).
@@ -469,12 +562,18 @@ static func calculate(
 		if def_types.size() > 1:
 			var second_type: int = def_types[1]
 			if second_type != first_type and second_type != TypeChart.TYPE_NONE:
-				var second_mod: int = TypeChart.get_uq412(move.type, second_type, scrappy_bypass)
+				var second_mod: int = TypeChart.get_uq412(
+						move.type, second_type, scrappy_bypass, move.super_effective_vs_type)
 				if strong_winds and second_type == TypeChart.TYPE_FLYING and second_mod >= 8192:
 					second_mod = 4096
 				type_mod = _uq412_multiply(type_mod, second_mod)
 		if type_mod == 0:
 			return {"damage": 0, "is_crit": is_crit, "effectiveness": 0.0}
+		# [D2 batch 2] Tar Shot(695) — flat post-combination ×2.0 doubler, gated on
+		# the attacking move being Fire-type. See MoveData.is_tar_shot's own doc
+		# comment for the full source citation.
+		if move.type == TypeChart.TYPE_FIRE and defender.tar_shot_active:
+			type_mod = _uq412_multiply(type_mod, 8192)  # UQ_4_12(2.0)
 		dmg = _uq412_half_down(dmg, type_mod)
 
 	# --- Ability defense modifier (Thick Fat, M17a: Marvel Scale/Fur Coat/Multiscale/

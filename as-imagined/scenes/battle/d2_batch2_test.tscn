@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://d2batch2test"]
+
+[ext_resource type="Script" path="res://scenes/battle/d2_batch2_test.gd" id="1_d2batch2test"]
+
+[node name="D2Batch2Test" type="Node"]
+script = ExtResource("1_d2batch2test")

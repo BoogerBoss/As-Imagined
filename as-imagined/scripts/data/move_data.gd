@@ -1632,18 +1632,23 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   move.argument.weatherType, ABILITY_NONE)` — the SAME function
 #   ability-triggered weather-setting already calls, confirming reuse is
 #   exact. Snowscape maps to the SAME `WEATHER_HAIL` constant Hail/Snow
-#   Warning already use — this project has only one Ice-weather state
-#   (FLAGGED, not fixed: real source's `BATTLE_WEATHER_SNOW` is a
-#   genuinely different state from `BATTLE_WEATHER_HAIL` — Snow gives
-#   Ice-types +50% Defense with NO end-of-turn chip damage, while Hail
-#   chips non-Ice-types and grants no Defense boost; this project's
-#   already-shipped Snow Warning ability has the same simplification).
-#   FLAGGED, not fixed: `try_set_weather` has no Primal-weather block —
-#   source's own `TryChangeBattleWeather` refuses to overwrite an active
-#   Primordial Sea/Desolate Land/Delta Stream unless the setter is that
-#   SAME ability; this project's already-shipped Drizzle/Drought/Sand
-#   Stream/Snow Warning abilities share this identical gap, predating
-#   this tier.
+#   Warning already use — this project has only one Ice-weather state.
+#   [Batch fix, 2026-07-09] CONFIRMED DESIGN DECISION (Rob): this project
+#   uses Hail only, no separate Snow mechanic, permanently — real source's
+#   genuinely different `BATTLE_WEATHER_SNOW` state (Ice-types +50%
+#   Defense, no chip damage, vs. Hail's chip-only/no-boost) will NOT be
+#   built. Formerly flagged as an open gap; now a closed scope decision,
+#   not a deferred fix. Snow Warning/Snowscape's shared `WEATHER_HAIL`
+#   mapping is therefore correct as-is, not a simplification awaiting
+#   correction.
+#   [Batch fix, 2026-07-09] `try_set_weather`'s Primal-weather block is now
+#   built — see that function's own doc comment for the full citation
+#   (refuses to overwrite an active Primordial Sea/Desolate Land/Delta
+#   Stream unless the new setter is that SAME ability). Formerly flagged
+#   as a gap shared by the already-shipped Drizzle/Drought/Sand Stream/
+#   Snow Warning abilities; now closed for all of them at once, since the
+#   fix lives in the one shared function every weather-setter already
+#   calls.
 @export var weather_type: int = 0
 
 # [D1 cheap clusters] power_scales_with_user_hp / power_scales_with_target_hp:
@@ -1735,3 +1740,670 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   Source: battle_util.c L6240-6241. Reuses the existing `power_override`
 #   dispatch mechanism via a new small static helper.
 @export var is_stored_power: bool = false
+
+# ── D2 batch — on-hit hazard/screen family (Stone Axe/Ceaseless Edge/Ice
+# Spinner/Mortal Spin/Tidy Up/Defog) + ability-manipulation family (Role
+# Play/Skill Swap/Worry Seed/Heart Swap) + the 3 flagged batch-fix items ──
+
+# sets_stealth_rock_on_hit / sets_spikes_on_hit: Stone Axe(758)/Ceaseless
+#   Edge(773) — EFFECT_STONE_AXE/EFFECT_CEASELESS_EDGE, a guaranteed on-hit
+#   hazard set on the TARGET's own side (not the attacker's — the opposite
+#   side from Bucket 3's Glitzy Glow/Baddy Bad screen-setters, matching
+#   ordinary Stealth Rock(446)/Spikes(113)'s own target-side convention).
+#   Source: battle_move_resolution.c, case EFFECT_STONE_AXE (L3592-3600)/
+#   EFFECT_CEASELESS_EDGE (L3602-3618) — a MoveEnd-dispatch case keyed on
+#   the move's own top-level `.effect`, NOT the standard `MOVE_EFFECT_*`/
+#   `.chance` secondary-effect mechanism (there is no `.moveEffect` token
+#   in either move's own `additionalEffects` block at all — only a bare
+#   `.sheerForceOverride = TRUE`). Gated on the hazard not already being
+#   maxed (Stealth Rock: not already up; Spikes: <3 layers) AND the hit
+#   having actually landed AND the attacker still being alive — reuses the
+#   exact layer-cap/set logic Spikes(113)/Stealth Rock(446)'s own pure-
+#   status dispatch already has. FLAGGED, not fixed: source's own
+#   `sheerForceOverride = TRUE` means Sheer Force should boost these two
+#   moves' power even though they carry no true (chance>0) secondary in
+#   this project's schema — this project's Sheer Force gate only checks
+#   `secondary_chance > 0`, so it will NOT boost Stone Axe/Ceaseless Edge
+#   as source does; a real, narrow, pre-existing-shape gap, out of scope
+#   for this small hazard tier to fix.
+@export var sets_stealth_rock_on_hit: bool = false
+@export var sets_spikes_on_hit: bool = false
+
+# Mortal Spin(794): NO new field needed. Confirmed from source to share the
+#   LITERAL SAME `.effect = EFFECT_RAPID_SPIN` Rapid Spin(229) itself uses
+#   (NOT a separate `EFFECT_MORTAL_SPIN`) — set directly via the existing
+#   `is_rapid_spin` flag (clears one hazard from the ATTACKER's own side,
+#   `[M16d]`) on Mortal Spin's own `gen_moves.py` entry, applied unmodified.
+#   Its own distinguishing feature is a guaranteed 100%-chance Poison
+#   secondary on top — reuses the existing generic `secondary_effect =
+#   SE_POISON`/`secondary_chance = 100` fields, zero new mechanism. Source:
+#   moves_info.h MOVE_MORTAL_SPIN.
+
+# is_defog: Defog(432) — EFFECT_DEFOG, a pure status move (`.category =
+#   DAMAGE_CATEGORY_STATUS`) confirmed BROADER than the D2 recon's own
+#   framing: clears the TARGET's side's screens (Reflect/Light Screen/
+#   Aurora Veil only in this project — source's own Mist/Safeguard clears
+#   are permanently moot, neither implemented) via the same shape
+#   `breaks_screens` (Brick Break, `[M16c]`) already establishes, reused
+#   here against the DEFENDER's side instead of Brick Break's own
+#   attacker-relative target; clears hazards from BOTH sides (source:
+#   `DefogClearHazards`, looped over `NUM_BATTLE_SIDES`, at this
+#   project's `B_DEFOG_EFFECT_CLEARING >= GEN_6` config); AND lowers the
+#   TARGET's own evasion by 1 stage (source's own `additionalEffects`:
+#   `STAT_CHANGE_EFFECT_MINUS, .evasion = 1`, no `.self` — a foe-targeting
+#   drop, reuses the existing generic `stat_change_stat`/`amount`/`self`
+#   fields directly). Source's own Fog-weather clear and GEN_8+ Terrain
+#   clear are both permanently moot (neither Fog nor Terrain modeled in
+#   this project). Source: battle_script_commands.c :: TryDefogClear
+#   (L6755-6793), DefogClearHazards (L6733-6752).
+@export var is_defog: bool = false
+
+# is_tidy_up: Tidy Up(808) — EFFECT_TIDY_UP, a self-targeted status move
+#   confirmed BROADER than the D2 recon's own "hazards + self stat-raise"
+#   framing: source's `TryTidyUpClear` (battle_script_commands.c L6801-
+#   6825) ALSO clears every Substitute currently on the FIELD (both
+#   sides, any battler — a genuinely new finding, not previously flagged
+#   anywhere), not just hazards. Clears hazards from BOTH sides (the same
+#   `DefogClearHazards` function Defog itself calls), THEN clears every
+#   battler's Substitute if no hazard was found to clear (source's own
+#   `if (clearFound) return TRUE;` short-circuit — this project composes
+#   both checks directly rather than mimicking the exact one-clear-per-
+#   script-call iteration, since the end result after one full move use
+#   is identical: everything clearable gets cleared). Self Atk+1/Speed+1
+#   always applies regardless of what was cleared (source's own
+#   `WillAnyStatChange() || TryTidyUpClear(FALSE)` gate — the move only
+#   fails outright if NEITHER the stat raise NOR any clear would do
+#   anything). Reuses the existing `stat_change_stat`/`amount` primary
+#   pair plus `extra_stat_change_stats`/`amounts` multi-stat mechanism
+#   (`[Bucket 3 multi-stat]`, the same shape Dragon Dance/Bulk Up already
+#   use) for the self Atk+1/Speed+1 pair.
+@export var is_tidy_up: bool = false
+
+# is_role_play: Role Play(272) — EFFECT_ROLE_PLAY, the ATTACKER copies the
+#   TARGET's current ability (the move-driven mirror of Trace's own
+#   switch-in-driven copy, `[M17h]`) — `ignoresProtect = TRUE` AND
+#   `ignoresSubstitute = TRUE` in source (a real asymmetry within this
+#   4-move family: Skill Swap/Heart Swap do NOT ignore Protect, only
+#   Substitute). Source: battle_script_commands.c :: Cmd_trycopyability
+#   (L8997-9025) — fails if the attacker already holds this exact ability
+#   (by ID; this project loads `AbilityData` ad hoc per call site so two
+#   mons "holding the same ability" are typically separate Resource
+#   instances, never compared by object identity), the target has no
+#   ability, the attacker's OWN current ability is `cant_be_suppressed`,
+#   or the target's ability is `cant_be_copied`. Reads/writes the RAW
+#   `.ability` field throughout (matches Trace/Receiver/Mummy/Wandering
+#   Spirit's own established precedent — suppression is never a copy-time
+#   filter). AbilityShield's own separate block isn't modeled (no such
+#   item in this project).
+@export var is_role_play: bool = false
+
+# is_skill_swap: Skill Swap(285) — EFFECT_SKILL_SWAP, a genuine
+#   BIDIRECTIONAL ability swap between attacker and target, confirmed to
+#   reuse the EXACT SAME primitive Wandering Spirit's own contact-
+#   triggered swap already established (`[M17h]`) rather than merely a
+#   similar one: gated on `cant_be_swapped` on BOTH sides independently
+#   (source: `Cmd_tryswapabilities`, L9160-9195 — an ability-less
+#   `.ability == null` battler is treated the same as `cant_be_swapped`,
+#   matching source's own `ABILITY_NONE` carrying that flag). `ignores
+#   Substitute = TRUE` in source but NOT `ignoresProtect` (blocked by
+#   Protect normally, a real asymmetry from Role Play above).
+@export var is_skill_swap: bool = false
+
+# is_heart_swap: Heart Swap(391) — EFFECT_HEART_SWAP. Confirmed genuinely
+#   NOT an ability move despite sharing this family's "ability-
+#   manipulation" label — swaps all 7 stat STAGES bidirectionally between
+#   attacker and target (source: `BattleScript_EffectHeartSwap`, one
+#   `swapstatstages` call per stat — Atk/Def/Speed/SpAtk/SpDef/Evasion/
+#   Accuracy, all 7), reusing Psych Up's own stage-array shape (`[M16e]`)
+#   but as a genuine bidirectional SWAP rather than a one-directional
+#   copy. `ignoresSubstitute = TRUE` in source but NOT `ignoresProtect`
+#   (same asymmetry as Skill Swap, not Role Play). Correctly untouched by
+#   any ability-exemption field (`cant_be_suppressed`/`cant_be_swapped`/
+#   etc.) since no ability is involved at all.
+@export var is_heart_swap: bool = false
+
+# overwrite_target_ability_id: Worry Seed(388) — EFFECT_OVERWRITE_ABILITY,
+#   confirmed via source to be the SAME underlying primitive Mummy/
+#   Lingering Aroma's own ability-triggered overwrite conceptually shares
+#   (both gated on `AbilityData.cant_be_overwritten`, the exact field
+#   `[M17h]`'s own entry predicted "consumed by Skill-Swap/Entrainment-
+#   style moves this project doesn't have" — Worry Seed is precisely that
+#   consumer, confirming that prediction), but dispatched from a
+#   genuinely different call site (`Cmd_tryoverwriteability`,
+#   battle_script_commands.c L10627-10650, a move-driven fixed-target
+#   overwrite — `.argument.overwriteAbility = ABILITY_INSOMNIA` for this
+#   move specifically) rather than Mummy's contact-reactive one. Fails if
+#   the target's ability is `cant_be_overwritten` OR the target already
+#   holds this exact ability (no-op). Real accuracy check applies
+#   (accuracy=100, NOT ignoresSubstitute/ignoresProtect — a fully normal
+#   foe-targeting status move otherwise) and `magicCoatAffected = TRUE`
+#   (reflectable by Magic Bounce — `bounceable = true` set on this move's
+#   own data, `[M17n-9]`'s existing `move.bounceable` mechanism picks it
+#   up with zero code changes). FLAGGED, not fixed: source's own script
+#   also calls `trytoclearprimalweather`/`tryendneutralizinggas` after a
+#   successful overwrite (in case the ability just stripped away was one
+#   sustaining Primal weather or Neutralizing Gas) — a real, narrow,
+#   out-of-scope edge case this project does not model.
+@export var overwrite_target_ability_id: int = -1
+
+# is_solar_beam_weather_halved: reused by DamageCalculator to halve
+#   Solar Beam(76)/Solar Blade(632)'s power (`move.is_solar_beam`) in any
+#   weather other than Sun/none/Strong Winds — see DamageCalculator.
+#   calculate's own doc comment at the insertion point for the full
+#   source citation. No new MoveData field needed (`is_solar_beam`
+#   already covers both moves identically) — this comment exists purely
+#   to document that the halving logic lives in DamageCalculator, not
+#   here, so a future reader searching move_data.gd for "solar" finds a
+#   pointer rather than nothing.
+
+# ── D2 batch 2 — offense-stat-source-override family (Foul Play/Body
+# Press/Photon Geyser) + per-mon TypeChart-override family (Freeze-Dry/
+# Tar Shot/Foresight/Odor Sleuth) ──
+
+# is_foul_play: Foul Play(492) — EFFECT_FOUL_PLAY, damage computed off the
+#   TARGET's own Attack (or Sp. Attack — `IsBattleMovePhysical(move)`
+#   gated, but Foul Play's own category is fixed Physical so only the
+#   Attack branch is ever reached) stat AND stage, not the attacker's own.
+#   Only the raw offense-stat SOURCE changes — type effectiveness, STAB,
+#   ability gates all stay keyed on the ATTACKER as normal (confirmed:
+#   `EFFECT_FOUL_PLAY` is absent from `SetDynamicMoveCategory`'s switch,
+#   so no category swap occurs, unlike Photon Geyser below). Crit/Unaware
+#   stage adjustments compose for free — they're applied to whichever
+#   `atk_stage` variable holds after this override, matching source's own
+#   `CalcAttackStat` (battle_util.c L6737-6748) ordering exactly (this
+#   override happens before crit/Unaware's own stage-zeroing).
+@export var is_foul_play: bool = false
+
+# is_body_press: Body Press(704) — EFFECT_BODY_PRESS, damage computed off
+#   the USER's own Defense stat AND stage instead of Attack (physical
+#   category, confirmed fixed — the special-category branch in source is
+#   dead code for this specific move since its own `.category` never
+#   varies). Source's own Wonder Room edge case (uses the Defense stat
+#   value but the Sp. Def stat's STAGE while Wonder Room is active) is
+#   permanently moot — Wonder Room(472) is on Rob's own exclusion list,
+#   unimplemented in this project entirely.
+@export var is_body_press: bool = false
+
+# is_photon_geyser: Photon Geyser(675) — EFFECT_PHOTON_GEYSER. **A real
+#   hidden second effect, not just a raw-stat-lookup override**: this
+#   move's own description ("User's highest attack stat determines its
+#   category") is literal — source's `SetDynamicMoveCategory`
+#   (battle_util.c L8975-8995) DYNAMICALLY SWAPS the move's WHOLE
+#   category (Special→Physical) via `GetCategoryBasedOnStats`
+#   (L9025-9039: compares the attacker's own STAGE-ADJUSTED Atk vs SpAtk;
+#   ties go to SPECIAL, `spAttack >= attack`), which cascades into every
+#   category-gated check downstream this project already has (Guts'
+#   burn-halving, Choice item validity, any category-keyed ability) — not
+#   merely which stat feeds the damage formula. Implemented in
+#   `DamageCalculator.calculate` via the same shallow-duplicate-and-
+#   substitute pattern already established for Hidden Power/M17n-6's
+#   type mutation, just mutating `.category` instead of `.type` — every
+#   existing `move.category` check downstream sees the swapped value for
+#   free, zero changes needed to any of them. `.ignoresTargetAbility =
+#   TRUE` in source — reuses the EXISTING `ignores_target_ability`
+#   mechanism (`[Bucket 4 2-move sub-groups]`'s Sunsteel Strike/Moongeist
+#   Beam) directly, zero new code for that half.
+@export var is_photon_geyser: bool = false
+
+# super_effective_vs_type: Freeze-Dry(573) — EFFECT_SUPER_EFFECTIVE_ON_ARG,
+#   `.argument.type = TYPE_WATER`. Forces THAT SPECIFIC defending-type
+#   component's multiplier to a flat 2.0 (super-effective) regardless of
+#   the real chart value — an unconditional override, not a "fix 0→1"
+#   pattern like `bypass_ghost_immunity`/`weaken_flying_se` (Water is
+#   normally NEUTRAL to Ice in the real type chart, not resistant, so
+#   this move's whole point is overriding that neutral matchup up to
+#   Super Effective). Checked PER defending-type component (a dual-type
+#   defender's OTHER type's own modifier is untouched), the same
+#   per-component semantics `TypeChart.get_uq412`/`get_effectiveness`'s
+#   existing override params already use — new `force_super_effective_
+#   type` param added to both, mirroring `bypass_ghost_immunity`'s own
+#   shape. Source: battle_util.c :: MulByTypeEffectiveness (L8061-8062).
+#   General field (not Freeze-Dry-specific by name) since source's own
+#   `.argument.type` is itself a general per-move config, in case a
+#   future move reuses this effect with a different forced type.
+#   Source's own `!ctx->isAnticipation` guard is permanently moot — this
+#   project's Anticipation is a documented cosmetic no-op (`[M17c]`), no
+#   real type-effectiveness-preview mode exists to exclude. **A real
+#   secondary this move also carries, beyond the D2 recon's own "always
+#   super-effective vs Water" framing**: a 10%-chance Freeze secondary
+#   (`MOVE_EFFECT_FREEZE_OR_FROSTBITE`, resolving to plain STATUS_FREEZE
+#   at this project's config, matching Tri Attack's own established
+#   precedent for the identical simplification) — reuses the existing
+#   generic `secondary_effect = SE_FREEZE`/`secondary_chance = 10`
+#   fields, zero new mechanism.
+@export var super_effective_vs_type: int = 0  # TypeChart.TYPE_NONE (0) = disabled
+
+# is_tar_shot: Tar Shot(695) — EFFECT_TAR_SHOT. Confirmed a PER-MON
+#   (not move-level) PERMANENT override, genuinely different in SHAPE
+#   from Freeze-Dry's own per-component override above: a flat POST-
+#   COMBINATION ×2.0 multiplier applied to the FULLY-COMBINED type
+#   effectiveness value (both defending types already multiplied
+#   together), gated on the ATTACKING move being Fire-type — source:
+#   battle_util.c L8145-8146 (`ctx->moveType == TYPE_FIRE &&
+#   volatiles.tarShot → modifier *= 2.0`), positioned AFTER both
+#   `MulByTypeEffectiveness` calls, not per-defending-type-component like
+#   Freeze-Dry. New `BattlePokemon.tar_shot_active: bool` volatile (no
+#   turn counter — permanent until the target switches out, cleared via
+#   the standard `_clear_volatiles` convention, no reciprocal-clear
+#   needed since it isn't tied to a source battler leaving the field).
+#   Confirmed via direct source read this can NEVER stack with/conflict
+#   against Freeze-Dry's own override on the same hit: Freeze-Dry is
+#   always Ice-type, and Tar Shot's own doubling is gated specifically on
+#   TYPE_FIRE, so the two conditions are mutually exclusive by
+#   construction (Freeze-Dry can never trigger Tar Shot's Fire-gate).
+#   Guaranteed self... foe-targeting -1 Speed via the existing generic
+#   `stat_change_stat`/`amount` fields (no `.chance` field in source's
+#   own `additionalEffects` block — primary, not a true secondary).
+@export var is_tar_shot: bool = false
+
+# is_foresight: Foresight(193)/Odor Sleuth(316) — confirmed via direct
+#   source read to share the LITERAL SAME `.effect = EFFECT_FORESIGHT`
+#   (Odor Sleuth is not merely similarly-shaped, it is mechanically
+#   identical — only the flavor name/contest data differ). Sets a
+#   PERMANENT per-TARGET volatile (`setvolatile BS_TARGET,
+#   VOLATILE_FORESIGHT`, `BattleScript_EffectForesight`,
+#   data/battle_scripts_1.s L2165-2174) — fails if the target already has
+#   it (checked at this project's GEN_LATEST config: `CONFIG_B_FORESIGHT_
+#   FAIL >= GEN_5`), no turn counter, cleared only via the target's own
+#   switch-out (standard `_clear_volatiles`). Two genuinely independent
+#   effects, confirmed via two SEPARATE source checks: (1) Ghost-type
+#   Normal/Fighting-immunity bypass — the LITERAL SAME per-defending-
+#   type-component `bypass_ghost_immunity` gate Scrappy/Mind's Eye
+#   already use (battle_util.c L8047-8052), OR'd in at the
+#   `DamageCalculator.calculate` call site rather than threading a new
+#   parameter through `TypeChart`'s functions (the effect is identical
+#   regardless of whether it's attacker-ability-driven or defender-
+#   volatile-driven). (2) Evasion-stage-ignore — confirmed via
+#   `GetTotalAccuracy` (battle_util.c L10259-10261) that source computes
+#   this as `buff = accStage` (skipping the evasion term entirely) when
+#   `volatiles.foresight || volatiles.miracleEye` is true, which is
+#   MATHEMATICALLY IDENTICAL to this project's own existing `eva_stage =
+#   0` zeroing pattern (`ignores_defense_evasion_stages`'s own insertion
+#   point) — same neutral-stage-reset shape, not a separate mechanism.
+#   Miracle Eye is NOT implemented in this project and is NOT part of
+#   this session's scope — confirmed it's a wholly separate condition in
+#   source (Psychic-vs-Dark, not Normal/Fighting-vs-Ghost) for the
+#   Ghost-bypass half, so no conflation risk; the evasion-ignore half's
+#   own `|| volatiles.miracleEye` collapses correctly to just this
+#   project's `foresight_active` since Miracle Eye simply doesn't exist
+#   here. `ignoresSubstitute = TRUE` in source; `magicCoatAffected =
+#   TRUE` at this project's GEN_LATEST config → `bounceable = true`.
+@export var is_foresight: bool = false
+
+# ── [D3 turn-order/event-tracker batch] Turn-order-manipulation family ──────
+#
+# is_after_you: After You(495) — pushes the target to act IMMEDIATELY NEXT
+#   (right after the current actor), regardless of speed. Fails if the target
+#   has already acted this turn. Source: battle_util.c ::
+#   ChangeOrderTargetAfterAttacker (L10743-10784) — at this project's
+#   GEN_LATEST config (B_AFTER_YOU_TURN_ORDER >= GEN_8), a target already
+#   immediately-next is a trivial success (no reorder needed); this project's
+#   own "move to _current_actor_index + 1" implementation reproduces that for
+#   free by being a no-op when already there. Ignores Protect/Substitute
+#   (`ignoresProtect`/`ignoresSubstitute` = TRUE).
+@export var is_after_you: bool = false
+
+# is_quash: Quash(511) — pushes the target to act LAST among all remaining
+#   (not-yet-acted) battlers this turn. Fails if the target has already
+#   acted. Source: battle_script_commands.c :: BS_TryQuash (L11762-11799) —
+#   real source's exact reordering is speed-order-preserving in a 3+-battler
+#   scenario at GEN_8+ config (`GetWhichBattlerFaster`-driven incremental
+#   swap), a doubles-only nuance; this project implements the simpler
+#   move-to-absolute-end behavior (matching source's own GEN_7- branch, and
+#   observably identical to the GEN_8+ branch in singles, the primary
+#   supported case) — flagged as a known simplification for 3+-remaining-
+#   battler doubles scenarios, not silently assumed identical.
+@export var is_quash: bool = false
+
+# is_upper_hand: Upper Hand(846) — a damaging move (priority +3, contact,
+#   guaranteed flinch via the existing SE_FLINCH secondary_effect) that only
+#   CONNECTS if the target's own CHOSEN move (not yet executed) has an
+#   ability-boosted priority in [1, 3], the target hasn't already acted this
+#   turn, and the target's chosen move is not status-category. Re-checked
+#   fresh at Upper Hand's own execution time using the SAME
+#   AbilityManager.move_priority_bonus function this project's turn-order
+#   sort already uses — NOT a raw-move.priority-only check — so an ability
+#   that suppresses/alters priority before this point (e.g. Prankster,
+#   Gale Wings) is correctly reflected. Source: battle_move_resolution.c,
+#   case EFFECT_UPPER_HAND (L1403-1417) — `GetChosenMovePriority(battlerDef,
+#   GetBattlerAbility(battlerDef))`, the identical function used for actual
+#   turn-order sorting (battle_main.c L4722-4731). On failure the whole move
+#   fails (no damage, no flinch) — the same "ButItFailed" shape this
+#   project's existing Sucker Punch dispatch already establishes.
+@export var is_upper_hand: bool = false
+
+# is_instruct: Instruct(652) — forces the TARGET to immediately re-use its
+#   own last_move_used against its own last-targeted opponent (approximated
+#   in this project as the original Instruct user — exact in singles, a
+#   known simplification in doubles where source tracks a real
+#   backUpTarget). Does NOT cost the instructed move's own PP (a genuine
+#   "called move", matching source's `jumptocalledmove TRUE` — the same
+#   free-call shape this project's Metronome/Mirror Move already establish).
+#   Fails if: no last_move_used yet; that move's own PP is at 0; that move is
+#   two-turn, sets recharge, is a multi-hit-escalating move (Rollout/Ice
+#   Ball), calls another move (Metronome/Mirror Move), is Bide (its own
+#   multi-turn accumulation lock, source-flagged instructBanned
+#   independently of the two_turn/is_recharge checks above), is Obstruct
+#   specifically (source flags ONLY Obstruct + King's Shield among the
+#   Protect family as instructBanned — Protect/Detect/Baneful Bunker/Silk
+#   Trap/Burning Bulwark/Wide Guard/Quick Guard are NOT banned, a real,
+#   move-specific data quirk, not a general Protect-family rule), or is a
+#   rampage/Uproar lock (Thrash/Petal Dance/Outrage/Uproar); or if the target
+#   is currently mid-Bide. Source: battle_script_commands.c :: BS_TryInstruct
+#   (L13149-13195); the exclusion list re-derived directly against this
+#   project's OWN currently-implemented `instructBanned`-flagged moves (all
+#   23 confirmed covered — 21 via the pre-existing `two_turn`/`is_recharge`/
+#   `is_rollout`/`is_bide` checks, Metronome/Mirror Move via their own
+#   `is_metronome`/`is_mirror_move` flags, Obstruct via `protect_method`,
+#   Thrash/Petal Dance/Outrage/Uproar via `is_rampage`/`is_uproar`) rather
+#   than the source's full list or the project's own sparsely-populated
+#   `BAN_INSTRUCT` bitflag (only 2 of these 23 moves currently carry it).
+#   `ignoresSubstitute = TRUE`; Sky-Drop-target semi-invulnerable exclusion
+#   is permanently moot (Sky Drop unimplemented).
+@export var is_instruct: bool = false
+
+# ── [D3 turn-order/event-tracker batch] "Event happened this turn/battle"
+# tracker family ─────────────────────────────────────────────────────────
+#
+# is_lash_out: Lash Out(736) — power doubles if the USER'S OWN stat was
+#   lowered this turn, by ANY source (move/ability/item alike) — the genuine
+#   mirror of the already-shipped `stat_raised_this_turn` trigger
+#   ([M19-stat-raised-trigger]), but for decreases and reusing the exact same
+#   general chokepoint (StatusManager.apply_stat_change). Source:
+#   battle_util.c, case EFFECT_LASH_OUT (L6308-6310) —
+#   `gProtectStructs[battlerAtk].lashOutAffected`, set at
+#   battle_stat_change.c L368 (the single shared stat-DECREASE-application
+#   chokepoint, the decrease-side twin of SetStatChange's own increase-side
+#   `statRaised` flag) and cleared for every battler at the start of each
+#   turn (battle_main.c L5056).
+@export var is_lash_out: bool = false
+
+# is_retaliate: Retaliate(514) — power doubles if a Pokémon on the USER'S
+#   OWN SIDE fainted during the PREVIOUS turn (not this turn) — a side-wide
+#   (not per-mon) condition, confirmed via source to never look at the
+#   opposing side. Source: battle_util.c, case EFFECT_RETALIATE (L6401-6406)
+#   — `gSideTimers[atkSide].retaliateTimer == 1`; the timer is set to 2 on
+#   ANY faint on that side (battle_util.c L11014/11021) and decremented once
+#   per turn boundary (battle_main.c L3939-3940) — so a faint during turn N
+#   reads as 2 (not yet doubled) if Retaliate is used later in that SAME
+#   turn N, and reads as 1 (doubled) once turn N+1 begins.
+@export var is_retaliate: bool = false
+
+# is_rage_fist: Rage Fist(815) — power increases +50 per prior hit the user
+#   has taken THIS BATTLE — a battle-LIFETIME counter (BattlePokemon.
+#   times_hit), NOT a per-turn tracker like every other move in this family,
+#   and confirmed via source to have no reset mechanism at all (survives
+#   switch-out/switch-in, unlike every other volatile this project clears in
+#   `_clear_volatiles`) — the same switch-persistent-per-party-slot shape
+#   already established for `last_consumed_berry` ([M17n-7] Harvest).
+#   Base 50, +50 per hit taken, capped at 350 total. Source: battle_util.c,
+#   case EFFECT_RAGE_FIST (L6349-6351) —
+#   `GetBattlerPartyState(battlerAtk)->timesGotHit`, incremented at the
+#   general "took direct hit damage" chokepoint (battle_script_commands.c
+#   L1685), unconditional on move category/contact.
+@export var is_rage_fist: bool = false
+
+# is_echoed_voice: Echoed Voice(497) — power scales with a FIELD-WIDE
+#   (not per-mon, not per-side) consecutive-turn-use counter: `power * (1 +
+#   counter)`, counter capped at 4 (so power ranges 40/80/120/160/200 —
+#   the 200 cap is redundant at counter=4 but reproduced literally to match
+#   source). The counter increments (capped at 4) once per turn boundary IF
+#   Echoed Voice was used by ANYONE on the field that turn (gated only on
+#   the move being attempted — not blocked by a pre-move canceler — NOT on
+#   whether the hit actually connected), and resets to 0 the instant a turn
+#   passes without any use. Source: battle_util.c, case EFFECT_ECHOED_VOICE
+#   (L6264-6270); the counter itself lives in `gBattleStruct->
+#   echoedVoiceCounter`, incremented/reset in HandleEndTurnVarious
+#   (battle_end_turn.c L79-88), set-to-increment in
+#   battle_move_resolution.c L4914-4916 (`if (!unableToUseMove)
+#   incrementEchoedVoice = TRUE`).
+@export var is_echoed_voice: bool = false
+
+# ── [Delayed-effect family] Per-slot delayed scheduler ──────────────────────
+#
+# is_future_sight: Future Sight(248)/Doom Desire(353) — share the literal
+#   same EFFECT_FUTURE_SIGHT. Cast schedules a hit that resolves 2 full
+#   turns later against WHOEVER OCCUPIES the target's combatant slot at
+#   that time (not necessarily the original target — a switch survives).
+#   Fails at cast time if that slot already has one pending. NO accuracy
+#   roll at cast or resolve time (confirmed from source — neither
+#   BattleScript_EffectFutureSight nor BattleScript_MonTookFutureAttack
+#   ever calls `accuracycheck`); resolution does a fresh type-
+#   effectiveness check only (0x fizzles silently). Resolution is routed
+#   through the existing `_do_damaging_hit` chokepoint (screens,
+#   Substitute, Sturdy/Focus Band/Focus Sash, times_hit, Air Balloon, etc.
+#   all apply for free, matching source's own DoMoveDamageCalc path).
+#   Source: battle_move_resolution.c L1365-1372 (cast-time already-
+#   pending fail check), L1620-1623 (schedule: counter=3, stores the
+#   caster's slot+move), battle_end_turn.c L232-276 (HandleEndTurnFutureSight
+#   — decrements once per end-of-turn, resolves at 0).
+#
+#   Cast-time-vs-resolve-time snapshot (a real Step-0 finding, not
+#   assumed): source recomputes EVERYTHING at RESOLVE time, never cast
+#   time — but the DATA SOURCE forks on whether the original caster is
+#   still the live occupant of its own original slot. Still there → a
+#   fully normal fresh damage calc (live stats/ability/item/stat stages,
+#   fresh crit roll). Left (switched/fainted) → source temporarily
+#   reconstructs the caster from PARTY data with ability/item forced to
+#   NONE (DoFutureSightAttackDamageCalc, battle_util.c L7733-7763). This
+#   project reproduces the majority of that distinction for FREE: a
+#   caster that switched out already has stat_stages reset to 0 by the
+#   existing `_switch_out_clear` (`[M9]`), so a benched caster's stale
+#   boosts never leak into the delayed hit. The one disclosed gap: this
+#   project does NOT additionally null the benched caster's ability/item
+#   the way source does — a narrow, rare edge case (an ability/item that
+#   passively boosts Sp.Atk while the mon sits on the bench) not worth
+#   the extra struct-swap machinery source needs for its own layout.
+@export var is_future_sight: bool = false
+
+# is_wish: Wish(273) — schedules a heal 1 turn later (counter starts at 2,
+#   decrementing once at the end of the CAST turn itself and once more at
+#   the end of the next turn) targeting WHOEVER OCCUPIES THE CASTER'S OWN
+#   slot when it resolves — a genuine switch survives (a different party
+#   member can receive the heal). The heal amount is fixed at cast time
+#   to `caster's own max HP / 2` (via `[GetConfig(B_WISH_HP_SOURCE) >=
+#   GEN_5]`, satisfied at this project's GEN_LATEST config) — NOT the
+#   eventual recipient's own max HP. Fails at cast time if already
+#   pending on that slot. Fresh full-HP/heal-block check at resolve time.
+#   This project has no Heal Block mechanic implemented at all (excluded,
+#   see `[M19-rescope-followup]`'s Psychic Noise note) so that specific
+#   resolve-time check is permanently moot here. Source: battle_script_
+#   commands.c :: Cmd_trywish (L9029-9046, cast-time fail+schedule),
+#   battle_end_turn.c :: HandleEndTurnWish (L282-310, resolve).
+@export var is_wish: bool = false
+
+# ── [Delayed-effect family] Per-mon volatile counter ─────────────────────────
+#
+# is_yawn: Yawn(281) — a per-mon volatile counter, MECHANICALLY IDENTICAL
+#   in shape to the already-shipped disable_turns/encore_turns/
+#   throat_chop_turns pattern — genuinely NOT part of the per-slot
+#   scheduler family above despite the shared "delayed effect" framing;
+#   confirmed via source this is a plain `gBattleMons[target].volatiles.
+#   yawn` counter (2->1->0), not `gBattleStruct`-level state, so it's
+#   already correctly cleared by the existing switch-out volatile-clear
+#   plumbing if the target switches away mid-countdown — zero new switch/
+#   faint handling needed. Cast-time: fails if the target already has a
+#   pending yawn OR already has ANY status (checked once, up front).
+#   Resolve-time (one turn later): fires a completely FRESH sleep-
+#   infliction attempt via the existing `StatusManager.try_apply_status`
+#   pipeline — which already re-derives every immunity (Insomnia/Vital
+#   Spirit/Leaf Guard/already-statused/Uproar-awake) at that exact
+#   moment, not locked in at cast time. Source: battle_script_commands.c
+#   :: Cmd_setyawn (L9091-9116, cast-time), battle_end_turn.c (L915-935,
+#   resolve-time decrement+inflict). Terrain-based blocks (Electric/Misty)
+#   are permanently moot (Terrain is void for this project, `[M17d]`).
+@export var is_yawn: bool = false
+
+# ── [Delayed-effect family] Switch-in-triggered one-shot ─────────────────────
+#
+# is_healing_wish: Healing Wish(361) — the user faints to fully heal AND
+#   cure the status of whoever NEXT switches into that slot, by ANY
+#   method (voluntary, forced via Roar/Whirlwind, or faint-replacement —
+#   all three confirmed to funnel through this project's shared switch-in
+#   sites). Genuinely the THIRD mechanism shape in this family, distinct
+#   from both the per-slot scheduler (Future Sight/Wish) and the per-mon
+#   volatile (Yawn): a single per-slot BOOLEAN/kind flag with no counter
+#   at all, consumed by the next switch-in event. UNLIKE Explosion/Self-
+#   Destruct (`[M19-self-faint]`, which always faints unconditionally),
+#   this move FAILS OUTRIGHT (no faint, no stored effect) if the user has
+#   no valid Pokémon to switch to — checked BEFORE fainting, reusing the
+#   existing `BattleParty.has_valid_switch_target()` (`[M9]`). A disclosed
+#   simplification, confirmed with Rob before implementing: real source
+#   at this project's Gen8+ config lets the stored effect PERSIST across
+#   multiple switch-ins on that slot until one actually benefits (skipped
+#   for an already-full-HP/no-status recipient) — this project always
+#   consumes on the very next switch-in regardless, healing/curing only
+#   if something is actually needed. Source: data/battle_scripts_1.s
+#   L1100-1110 (cast: jumpifcantswitch/instanthpdrop/tryfaintmon/
+#   storehealingwish), L1138-1151 (shared restore block with Lunar Dance
+#   below — heals to full AND cures status), src/battle_switch_in.c
+#   L189-232 (consumption at switch-in, incl. the Gen8+ CanBattlerBeHealed
+#   persistence nuance this project deliberately simplifies away).
+@export var is_healing_wish: bool = false
+
+# is_lunar_dance: Lunar Dance(461) — mechanically identical to Healing
+#   Wish above (same fail-if-no-switch-target gate, same faint-and-store-
+#   on-slot shape, same simplified always-consume-next-switch-in
+#   behavior) PLUS restores full PP to all 4 of the recipient's moves —
+#   confirmed via the shared `BattleScript_EffectHealingWishRestore`
+#   block both moves jump into, with Lunar Dance's own extra
+#   `restoremovepp BS_SCRIPTING` line. Source: same citations as
+#   is_healing_wish above, plus data/battle_scripts_1.s L1135-1137
+#   (BattleScript_LunarDanceActivates's own `restoremovepp`).
+@export var is_lunar_dance: bool = false
+
+# ── [Psyshock/Psystrike] Defense-stat-source override ────────────────────────
+#
+# is_psyshock: Psyshock(473)/Psystrike(540) — share the literal same
+#   EFFECT_PSYSHOCK. A Special-category move that computes damage using
+#   the DEFENDER's Defense stat AND stage instead of Sp. Defense — the
+#   defense-side mirror of the already-shipped Foul Play/Body Press
+#   offense-side overrides (`[D2 batch 2]`), but genuinely simpler in
+#   shape: unlike Foul Play/Body Press (which swap WHICH BATTLER's stat
+#   is read), this stays on the SAME battler (the defender) and just
+#   swaps WHICH COLUMN (Defense instead of Sp. Defense) — no cross-
+#   battler pattern needed, just an added OR condition at the existing
+#   category-based defense-stat-selection point. Confirmed NO category
+#   swap occurs (unlike Photon Geyser) — STAB, ability triggers, and
+#   secondary-effect gating all stay keyed on Special for every other
+#   purpose. Wonder Room's stat-swap interaction is permanently moot
+#   (unimplemented, same precedent as Body Press). Source: battle_util.c
+#   :: CalcDefenseStat (L7021-7035) — `if (moveEffect == EFFECT_PSYSHOCK
+#   || IsBattleMovePhysical(move))`.
+@export var is_psyshock: bool = false
+
+# ── [D1 easy bundle] Six small, mechanically-contained families ─────────────
+#
+# is_hit_escape: U-turn(369)/Volt Switch(521)/Flip Turn(740) — the
+#   attacker gets a voluntary-style switch prompt after a hit that
+#   CONNECTED (real HP damage OR a Substitute absorption —
+#   INCLUDING_SUBSTITUTES in source), gated on the attacker still being
+#   alive afterward (a recoil/contact-punish death correctly blocks it).
+#   Reuses `_get_replacement_slot`'s own player-choice selection chain
+#   (test queue → AI choice → deterministic first-available) — the SAME
+#   one faint-replacement already uses — NOT Red Card's random pick,
+#   since the user's own trainer chooses who comes in next, matching
+#   real games. No-ops (damage still stands) with no valid bench
+#   replacement. Source: battle_move_resolution.c :: MoveEndHitEscape
+#   (L3905-3920).
+@export var is_hit_escape: bool = false
+
+# is_hit_switch_target: Circle Throw(509)/Dragon Tail(525) — forces the
+#   DEFENDER out after a hit that dealt REAL HP damage, EXCLUDING a
+#   Substitute absorption — the opposite of is_hit_escape's own
+#   inclusive check, confirmed from source (`EXCLUDING_SUBSTITUTES` vs.
+#   `INCLUDING_SUBSTITUTES`). Dispatches through the same RANDOM-
+#   replacement machinery Roar/Whirlwind/Red Card already use (a
+#   genuinely forced switch, not a player choice — confirmed via
+#   source's `BattleScript_TryHitSwitchTarget`/`B_SWITCH_HIT`, the same
+#   general forced-switch script Roar's own dispatch shares). Blocked by
+#   Guard Dog (`blocks_forced_switch`, `[M17n-10]`); Suction Cups/
+#   Ingrain-root checks are permanently moot (both unimplemented).
+#   No-ops (damage still stands) with no valid replacement on the
+#   defender's side. Source: battle_move_resolution.c ::
+#   EFFECT_HIT_SWITCH_TARGET (L3517-3545).
+@export var is_hit_switch_target: bool = false
+
+# is_first_turn_only: Fake Out(252)/First Impression(623) — fails unless
+#   this is the user's first ACTION since switching in (not the first
+#   turn of the whole battle). Reuses the EXISTING `BattlePokemon.
+#   switched_in_this_turn` flag directly — already set true at all 3
+#   switch-in sites and reset to false at the start of every subsequent
+#   turn (the exact same semantic Stakeout/Speed Boost already consume
+#   it for) — zero new tracking state needed. A real, easy-to-miss
+#   wrinkle found at Step 0: source ALSO fails if the move was reached
+#   via a CALLED dispatch rather than genuinely selected that turn
+#   (`gSpecialStatuses[...].backUpTarget`, set by Instruct's own
+#   redirect) — since `switched_in_this_turn` alone stays true for the
+#   mon's ENTIRE first turn back, Instruct could otherwise force a
+#   second same-turn Fake Out. Reproduced by adding `is_first_turn_only`
+#   to Instruct's own exclusion list directly (functionally equivalent
+#   outcome to source's flag, different implementation shape). Source:
+#   battle_move_resolution.c :: EFFECT_FIRST_TURN_ONLY (L1222-1224),
+#   `IsBattlersFirstTurn`.
+@export var is_first_turn_only: bool = false
+
+# is_trick: Trick(271)/Switcheroo(415) — full BIDIRECTIONAL held-item
+#   swap between attacker and defender (a genuinely new 4th direction
+#   for the M17j item-transfer family, alongside Pickpocket/Magician's
+#   one-way steals and Symbiosis's one-way give). Fails if both
+#   Pokémon are itemless, or if EITHER side would either lose an item
+#   its own species is form-locked by OR gain one it would be
+#   form-locked by (checked via the shared
+#   `AbilityManager.is_form_locked_by_item`, this project's own
+#   Multitype-linkage model, `[M17n-4]`, standing in for source's
+#   species-level `DoesSpeciesUseHoldItemToChangeForm` check — the ONE
+#   relevant exclusion out of source's full `CanBattlerGetOrLoseItem`
+#   list; Mail/E-Reader-Berry/Z-Crystals/Booster-Energy-Paradox/
+#   Ogerpon-Masks are all permanently moot, corresponding to items/
+#   species this project has never implemented). Re-derived from
+#   source's own 4 `CanBattlerGetOrLoseItem` calls (both directions ×
+#   both sides) after an initial 2-check version — only checking each
+#   side's OWN currently-held item — was found to miss the "gains a
+#   foreign form-locking item" half; see decisions.md's Multitype-Plate
+#   fix entry. Blocked by Sticky Hold — checked ONLY on the TARGET
+#   (source: `GetBattlerAbility(gBattlerTarget) == ABILITY_STICKY_HOLD`),
+#   not the attacker. Substitute-blocked via the general Substitute
+#   gate this move's own lack of `ignoresSubstitute` already routes
+#   through. Source: battle_script_commands.c :: Cmd_tryswapitems
+#   (L8874-8930).
+@export var is_trick: bool = false
+
+# is_revenge: Revenge(279)/Avalanche(419) — power doubles ONLY if the
+#   user was hit BY THIS SPECIFIC TARGET earlier this same turn — a
+#   real, narrow scoping confirmed from source (a per-(victim,attacker)-
+#   pair bitmask, `revengeDoubled |= 1u << attackerId`, NOT a plain "was
+#   I hit by anyone" bool). Genuinely distinct from Lash Out/Retaliate's
+#   shipped D2-tracker-family mechanism — needs its own new per-mon "who
+#   hit me this turn" list (`BattlePokemon.hit_by_this_turn`), set at
+#   the same `_do_damaging_hit` chokepoint `times_hit`/`last_attacker`
+#   already use, cleared every turn like its D2 siblings. Priority -4
+#   (moves last), narratively consistent with checking "did my target
+#   already hit me earlier this turn" — the target has almost always
+#   already acted by the time a Revenge user's own turn comes. Source:
+#   battle_util.c, case EFFECT_REVENGE (L6172-6174); set-site
+#   battle_script_commands.c L1656-1657 (the same chokepoint Assurance's
+#   own `assuranceDoubled` flag is set at, confirming both fire on ANY
+#   damage taken, not move-category-restricted).
+@export var is_revenge: bool = false
+
+# is_stomping_tantrum: Stomping Tantrum(661)/Temper Flare(843) — power
+#   doubles if the user's own PREVIOUS move failed (missed, was
+#   blocked, had no effect) — a NEW flag distinct from `last_move_used`
+#   (which tracks WHAT the last move was, not whether it succeeded).
+#   Genuinely a 2-turn COUNTER, not a plain bool — set to 2 the same
+#   turn a move fails, decremented once per turn boundary at the SAME
+#   site `[D3 turn-order/event-tracker batch]`'s Retaliate timer uses
+#   (a real correction applied to that tier alongside this one — see
+#   this move's own decisions.md entry for the full timing-bug writeup).
+#   Checked against `== 1` at power-computation time (one turn after the
+#   failure — the SET turn's own tick doesn't count, matching
+#   Retaliate's identical counter-of-2 shape and for the identical
+#   underlying reason). Source: battle_util.c, case
+#   EFFECT_STOMPING_TANTRUM (L6416-6418); set-sites
+#   battle_move_resolution.c L1263-1265 (Protect-family-adjacent failure
+#   paths) and L4248-4249 (`ShouldSetStompingTantrumTimer`, the general
+#   failure/miss/no-effect gate); decrement battle_main.c L3933-3934
+#   (the same per-battler action-reset function `stompingTantrumTimer`
+#   and `retaliateTimer` both live in).
+@export var is_stomping_tantrum: bool = false

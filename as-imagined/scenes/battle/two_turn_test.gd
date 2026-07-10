@@ -268,9 +268,14 @@ func _test_t5_solar_beam_rain_two_turns() -> void:
 	# weather_duration left at 0 (infinite) — rain never expires mid-battle.
 	bm._force_roll = 100
 	bm._force_crit = false
-	# Solar Beam at roll=100, no crit, GRASS vs NORMAL, rain has no modifier on GRASS:
-	#   base=120×85×22/85/50+2=54; roll: 54; STAB: (54×6144+2047)/4096=81; eff 1.0 → 81
-	p2.current_hp = 81  # p2 faints on Solar Beam's release (turn 2) — ends battle at charge_count=1
+	# [Batch fix] Solar Beam's own rain/sand/hail damage-halving (a real,
+	# source-confirmed gap this project didn't model before that session —
+	# see DamageCalculator.calculate's own doc comment on `is_solar_beam`)
+	# now applies here too, since this scenario deliberately battles under
+	# rain. 81 was this test's own pre-fix expected damage (assuming no
+	# halving); 42 is the correct halved value, confirmed via a direct
+	# DamageCalculator.calculate() call against this exact fixture.
+	p2.current_hp = 42  # p2 faints on Solar Beam's release (turn 2) — ends battle at charge_count=1
 
 	var charge_count := [0]
 	var damage_events: Array = []

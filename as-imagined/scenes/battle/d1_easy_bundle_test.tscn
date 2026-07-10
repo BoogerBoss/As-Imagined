@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://d1easybundletest"]
+
+[ext_resource type="Script" path="res://scenes/battle/d1_easy_bundle_test.gd" id="1_d1easybundletest"]
+
+[node name="D1EasyBundleTest" type="Node"]
+script = ExtResource("1_d1easybundletest")

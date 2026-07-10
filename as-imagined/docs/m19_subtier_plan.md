@@ -1551,7 +1551,7 @@ very next M19 implementation session regardless of Section D's overall
 sequencing, since it closes out Bucket 4 entirely (down to just
 `M19-secret-power`, still deferred by Rob).
 
-### D1 — Effect-name clusters, 2+ members (21 clusters, 51 moves originally — 3 clusters/6 moves CLOSED by `[D0]`; 8 clusters/21 moves CLOSED by `[D1 cheap clusters]`, 2026-07-09; 10 clusters/24 moves remaining, all CHEAP-MODERATE or harder)
+### D1 — Effect-name clusters, 2+ members (21 clusters, 51 moves originally — 3 clusters/6 moves CLOSED by `[D0]`; 8 clusters/21 moves CLOSED by `[D1 cheap clusters]`, 2026-07-09; `EFFECT_FORESIGHT` CLOSED by `[D2 batch 2]`; `EFFECT_FUTURE_SIGHT`/`EFFECT_PSYSHOCK` CLOSED by the Delayed-effect-family session; 6 more clusters/13 moves CLOSED by the D1 easy bundle, all 2026-07-10; 1 cluster/5 moves remaining — `EFFECT_DOUBLE_POWER_ON_ARG_STATUS` only)
 
 Every cluster below was spot-checked against `moves_info.h` for at least
 2 members (source line numbers in `docs/decisions.md`'s
@@ -1566,22 +1566,22 @@ found within a cluster.
 | `EFFECT_DOUBLE_POWER_ON_ARG_STATUS` | Smelling Salts(265), Venoshock(474), Hex(506), Barb Barrage(767), Infernal Parade(772) | **CHEAP-MODERATE** | `battle_util.c` L6186-6190: base power ×2 if `defender.status1 & move.argument.status` (Venoshock: poison/toxic only; Hex: any status — confirmed genuinely different bitmasks per move, not a copy-paste). New power-modifier check at the existing power-modifier pipeline stage (`[M17a]`'s `move_power_modifier_uq412`-equivalent). **Flag for impl time**: source's comment notes an interaction with `MOVE_EFFECT_REMOVE_STATUS` (some family members also cure the status after hitting) — needs per-move verification of which of the 5 carry that secondary before implementing, not assumed uniform. |
 | `EFFECT_POWER_BASED_ON_USER_HP` — **CLOSED (`[D1 cheap clusters]`)** | Eruption(284), Water Spout(323), Dragon Energy(748) | **CHEAP** | `battle_util.c` L6136-6137: `basePower = move.power * userHP/userMaxHP` — a plain CONTINUOUS linear scale, genuinely simpler than (and distinct from) `M19-hp-based-power`'s stepped/banded Flail/Reversal formula. Reuses the existing `power_override` dispatch mechanism (`[M16b]` Rollout/Magnitude precedent). Shipped `[D1 cheap clusters]`, 2026-07-09 exactly as predicted — no floor-to-1 clamp confirmed, a very-low-HP hit can legitimately compute to 0 power. |
 | `EFFECT_POWER_BASED_ON_TARGET_HP` — **CLOSED (`[D1 cheap clusters]`)** | Wring Out(378), Crush Grip(462), Hard Press(840) | **CHEAP** | Mirror of the above: `basePower = move.power * targetHP/targetMaxHP` (`battle_util.c` L6192-6193). Same `power_override` reuse. Shipped `[D1 cheap clusters]`, 2026-07-09. |
-| `EFFECT_HIT_ESCAPE` | U-turn(369), Volt Switch(521), Flip Turn(740) | **CHEAP-MODERATE** | `battle_move_resolution.c` L3905-3920 (`MoveEndHitEscape`): after a successful hit, the ATTACKER gets a voluntary-switch prompt (skipped if the opponent's side has already been fully KO'd). Reuses Eject Button's exact "force the HOLDER to switch" plumbing (`[M18n]`). **Flag for impl time**: unlike Eject Button (which just picks a switch target the same way any other forced switch does), a real player-facing U-turn switch is a genuine CHOICE — needs a decision on whether the AI's existing proactive-switch logic (`[M10]`) gets reused for this, or whether it falls back to the same random/first-available selection every other forced switch uses. |
-| `EFFECT_HIT_SWITCH_TARGET` | Circle Throw(509), Dragon Tail(525) | **CHEAP-MODERATE** | `battle_move_resolution.c` L3517-3530: after a successful hit, forces the DEFENDER to switch (mirror of Roar/Whirlwind, reuses that exact `_do_forced_switch_in` plumbing directly) — but on-hit rather than as the sole effect. Confirmed already-blocked correctly by Guard Dog (`blocks_forced_switch`, `[M17n-10]`) since source checks the identical `ABILITY_GUARD_DOG` gate. Suction Cups/Ingrain-root checks are permanently moot (both unimplemented). |
+| `EFFECT_HIT_ESCAPE` — **CLOSED (D1 easy bundle, 2026-07-10)** | U-turn(369), Volt Switch(521), Flip Turn(740) | **CHEAP-MODERATE** | The player-choice question this row itself flagged is resolved: reuses `_get_replacement_slot`'s existing test-queue→AI-choice→deterministic-first-available chain (the SAME one faint-replacement already uses) rather than Red Card's random pick, since the user's own trainer genuinely chooses. Confirmed INCLUDING a Substitute-absorbed hit (source's own `INCLUDING_SUBSTITUTES`) still triggers the switch. |
+| `EFFECT_HIT_SWITCH_TARGET` — **CLOSED (D1 easy bundle, 2026-07-10)** | Circle Throw(509), Dragon Tail(525) | **CHEAP-MODERATE** | Confirmed exactly as described — reuses `_do_forced_switch_in` + the SAME random-replacement helper Roar/Whirlwind/Red Card already use (a genuinely forced switch, unlike Hit Escape's player-choice shape above). EXCLUDING a Substitute-absorbed hit (the opposite of Hit Escape's own inclusive check) — must be real HP damage. |
 | `EFFECT_FOLLOW_ME` — **CLOSED (`[D0]`)** | Follow Me(266), Rage Powder(476) | **FREE** | The redirect MECHANISM already exists and is fully tested — `MoveData.is_follow_me`, `BattleManager._follow_me_used`/`_follow_me_targets`, the redirect-resolution block at `battle_manager.gd` L945-967/1886 — built during `[M14b]` and exercised indirectly by `[M17l]`'s Propeller Tail/Stalwart bypass tests. **Neither move was ever added as a data entry** — this is 2 moves of pure `gen_moves.py` data-entry against an already-complete, already-proven mechanism. Spotlight(634) stays excluded. **Shipped `[D0]`, 2026-07-09 — one real correction found**: Rage Powder's `powder_move` immunity does NOT come free from the general `blocks_move_flag` gate as this table assumed (that gate checks `defender`, which resolves to the default-selected opponent for a self-targeted move, not the user) — fixed with one explicit check inside `is_follow_me`'s own dispatch. |
 | `EFFECT_SOFTBOILED` — **CLOSED (`[D0]`)** | Soft-Boiled(135), Milk Drink(208) | **FREE** | `BattleScript_EffectSoftboiled` (`battle_scripts_1.s` L2379) is functionally IDENTICAL to `BattleScript_EffectRestoreHp` (L1693) — both `tryhealhalfhealth` against a self-targeted move (`BS_TARGET` resolves to the attacker itself since `.target = TARGET_USER`), a historical/legacy distinct enum for what M16a's own `EFFECT_RESTORE_HP` (Recover/Slack Off/Heal Order) already fully implements. Literally 2 more names in that same existing dispatch, zero new code. Shipped `[D0]`, 2026-07-09 exactly as predicted — genuinely identical data confirmed individually. |
 | `EFFECT_STEAL_ITEM` — **CLOSED (`[D1 cheap clusters]`)** | Thief(168), Covet(343) | **CHEAP** | `battle_move_resolution.c` L3487-3499: on-hit steal, gated on the attacker having no item of its own, reuses `AbilityManager._try_steal_item` (the exact Pickpocket/Magician primitive, `[M17j]`, via a new `try_thief_steal` wrapper) directly — Sticky Hold gate already built in. Shipped `[D1 cheap clusters]`, 2026-07-09 — confirmed item-general (no Jaboca/Rowap exemption, unlike Pluck/Bug Bite). |
 | `EFFECT_LOCK_ON` — **CLOSED (`[D1 cheap clusters]`)** | Mind Reader(170), Lock-On(199) | **CHEAP** | Sets an "always hits with my next move" volatile on the target (`setalwayshitflag`) — same accuracy-bypass insertion point `always_hits_in_rain` (`[M19-weather-conditional-accuracy]`) and No Guard (`[M17a]`) already occupy, just target-scoped and one-shot instead of attacker-scoped and permanent. Shipped `[D1 cheap clusters]`, 2026-07-09 — a genuine 2-tick per-attacker-target volatile (not a pure flag), confirmed to bypass semi-invulnerability too (inserted before that check, not just alongside No Guard), and reuses the established reciprocal-clear-on-departure shape for the 5th time. |
-| `EFFECT_FORESIGHT` | Foresight(193), Odor Sleuth(316) | **CHEAP-MODERATE** | Sets a per-target volatile granting Ghost-type-immunity bypass + evasion-stage-ignore for Normal/Fighting moves against it — the exact checks `bypass_ghost_immunity` (Scrappy/Mind's Eye, `[M17n-6]`) and `ignores_defender_evasion_stage` (`[M19-ignores-stat-stages]`'s sibling flag) already implement, just move-inflicted instead of ability-driven. Near-copy-paste of existing gates behind a new volatile field. |
+| `EFFECT_FORESIGHT` — **CLOSED (`[D2 batch 2]`, 2026-07-10)** | Foresight(193), Odor Sleuth(316) | **CHEAP-MODERATE** | Confirmed genuinely identical (literal same effect ID). New permanent per-mon `BattlePokemon.foresight_active`; the Ghost-bypass half OR'd directly into `bypass_ghost_immunity` at the `DamageCalculator.calculate` call site (no new TypeChart param needed); the evasion-ignore half reuses the exact `eva_stage = 0` insertion point `ignores_defense_evasion_stages` already established, confirmed mathematically identical to source's own `buff = accStage` shape. **A real bug found and fixed**: this project's own general "type immunity for foe-targeting moves" gate was over-generalized — Foresight's own source script (`BattleScript_EffectForesight`) never calls `typecalc` at all, meaning it's never blocked by ANY type immunity in the real engine, including its own primary use case (a Ghost-type target). Fixed with a narrow `not move.is_foresight` exemption, matching the existing `corrosion_bypasses_type_gate` precedent's own scoping shape; whether any other already-shipped status move shares this gap is flagged, not investigated further. |
 | `EFFECT_SWAGGER` — **CLOSED (`[D1 cheap clusters]`)** | Swagger(207), Flatter(260) | **CHEAP** | Confuses the target AND raises a stat (Swagger: Atk +2; Flatter: SpAtk +1) in one move. Shipped `[D1 cheap clusters]`, 2026-07-09 — **NOT a pure composition, the one real correction found this tier**: Own Tempo blocks the ENTIRE move (including the stat raise), not just the confusion, confirmed from source's own `BattleScript_OwnTempoPrevents` redirect — a naive independent composition would have still let the stat raise through. |
-| `EFFECT_FUTURE_SIGHT` | Future Sight(248), Doom Desire(353) | **MODERATE** | `battle_move_resolution.c` L1365-1372: schedules damage that lands exactly 2 turns later on whoever occupies that field slot then, independent of the user's own continued presence; fails if already pending against that target. Genuinely NEW — no "scheduled future-turn effect, decoupled from the current turn's action queue" mechanism exists in this project yet. **See the delayed-effect family note in D2 — build alongside Wish/Yawn/Healing Wish/Lunar Dance, not in isolation**, since all 5 need some flavor of the same underlying "pending effect" queue. |
-| `EFFECT_FIRST_TURN_ONLY` | Fake Out(252), First Impression(623) | **CHEAP-MODERATE** | `battle_move_resolution.c` L1222-1224: fails unless this is the user's first action since switching in. New per-mon "acted yet this stint" flag, set false on switch-in and true after the first action — small, self-contained, no precedent to extend but trivial to add. |
-| `EFFECT_TRICK` | Trick(271), Switcheroo(415) | **CHEAP-MODERATE** | Full bidirectional item SWAP between attacker and target (`tryswapitems`), Substitute-blocked, Sticky-Hold-gated. Extends the M17j item-transfer family (Pickpocket steal / Magician steal / Symbiosis give) with a genuinely new fourth direction — a two-way exchange — rather than reusing one of the existing three as-is. |
-| `EFFECT_REVENGE` | Revenge(279), Avalanche(419) | **CHEAP-MODERATE** | `battle_util.c` L6172-6174: power ×2 if the user was damaged by THIS target earlier in the same turn (`revengeDoubled` bitfield, set at the point damage is taken). New per-turn "was I hit by battler X this turn" tracker — small, turn-scoped, cleared every turn like `stat_raised_this_turn`. |
+| `EFFECT_FUTURE_SIGHT` — **CLOSED (Delayed-effect family, 2026-07-10)** | Future Sight(248), Doom Desire(353) | **MODERATE** | Confirmed genuinely as described — see the Delayed-effect family write-up below for full findings, including the real 3-way mechanism-shape correction and the cast-time-vs-resolve-time snapshot resolution. |
+| `EFFECT_FIRST_TURN_ONLY` — **CLOSED (D1 easy bundle, 2026-07-10)** | Fake Out(252), First Impression(623) | **CHEAP-MODERATE** | Reuses the EXISTING `switched_in_this_turn` flag directly (zero new tracking state, a correction to this row's own "new per-mon flag" framing). **A real, previously-latent bug found and fixed along the way**: `switched_in_this_turn` was only ever set by mid-battle switch-in functions — a battle's own STARTING leads never got it set at all, so Fake Out could never connect on a lead's own first turn (and Stakeout/Speed Boost were silently reading a permanently-false value every battle's opening turn too). Fixed at the root (`_phase_battle_start` + a new `_pending_initial_switch_in` flag consumed by `_phase_priority_resolution`'s own per-turn reset). Also closed the Instruct-double-fire loophole (source's own `backUpTarget` check) by adding `is_first_turn_only` to Instruct's exclusion list. |
+| `EFFECT_TRICK` — **CLOSED (D1 easy bundle, 2026-07-10)** | Trick(271), Switcheroo(415) | **CHEAP-MODERATE** | Confirmed exactly as described — a genuinely new 4th direction for the M17j item-transfer family. Of source's full unswappable-item exclusion list, only Multitype's Plate is relevant (Mail/E-Reader-Berry/Z-Crystals/Booster-Energy-Paradox/Ogerpon-Masks are all permanently moot, items/species this project never implemented). Sticky Hold checked ONLY on the target, matching source. |
+| `EFFECT_REVENGE` — **CLOSED (D1 easy bundle, 2026-07-10)** | Revenge(279), Avalanche(419) | **CHEAP-MODERATE** | Confirmed the narrow per-(victim,attacker)-PAIR scoping exactly as flagged — genuinely distinct from Lash Out/Retaliate's shipped D2-tracker-family shape, needed its own new `BattlePokemon.hit_by_this_turn` list. Verified via a real 2v2 doubles test that being hit by one opponent does NOT double Revenge targeted at a different opponent. |
 | `EFFECT_SUCKER_PUNCH` — **CLOSED (`[D1 cheap clusters]`)** | Sucker Punch(389), Thunderclap(837) | **CHEAP** | `battle_move_resolution.c` L1387-1394: fails if the target has already acted this turn, or if the target's chosen move is a status move (Me-First-exempted). **Directly reuses `[M18j]`'s existing `_has_target_already_acted` turn-position helper** (built for Zoom Lens) with zero new tracking — just add the move-category check on the target's own chosen move. Shipped `[D1 cheap clusters]`, 2026-07-09. |
-| `EFFECT_PSYSHOCK` | Psyshock(473), Psystrike(540) | **MODERATE** | `battle_util.c` L7035: uses the DEFENDER's Defense stat (not Sp.Def) despite remaining a Special-category move for every other purpose (STAB, secondary-effect gating, ability checks). Genuinely new: one `uses_defense_stat_regardless_of_category` flag at the defense-stat-selection point in `DamageCalculator` — small, clean, single insertion point. Secret Sword(548) stays excluded. |
+| `EFFECT_PSYSHOCK` — **CLOSED (2026-07-10)** | Psyshock(473), Psystrike(540) | **MODERATE** | Confirmed exactly as described — `battle_util.c :: CalcDefenseStat` (L7021-7035) adds one OR condition to the existing category-based defense-stat-selection branch, reading `defender.defense`/`STAGE_DEF` instead of the Special defaults. No category swap (unlike Photon Geyser); implemented as a third override alongside the already-shipped Foul Play/Body Press overrides in `DamageCalculator`, same insertion point. Secret Sword(548) stays excluded. |
 | `EFFECT_STORED_POWER` — **CLOSED (`[D1 cheap clusters]`)** | Stored Power(500), Power Trip(644) | **CHEAP** | `battle_util.c` L6240-6241: `basePower += 20 * count(positive stat stages)`. Trivial formula over the existing `stat_stages` array. Shipped `[D1 cheap clusters]`, 2026-07-09 — confirmed the formula SUMS stage magnitude (Atk+3 contributes 3), not a count of raised stats, a real easy-to-misread detail implemented explicitly correctly. |
-| `EFFECT_STOMPING_TANTRUM` | Stomping Tantrum(661), Temper Flare(843) | **CHEAP-MODERATE** | `battle_util.c` L6416-6418: power ×2 if the user's PREVIOUS move failed or missed last turn. New per-mon "did my last move fail" flag, set at the same site pre-move-check results are already resolved. |
+| `EFFECT_STOMPING_TANTRUM` — **CLOSED (D1 easy bundle, 2026-07-10)** | Stomping Tantrum(661), Temper Flare(843) | **CHEAP-MODERATE** | Confirmed a genuine 2-turn COUNTER (not a plain bool), sharing the LITERAL SAME decrement site as Retaliate's own side-timer (`battle_main.c`'s per-battler action-reset). **This surfaced a real bug in already-shipped `[D3 turn-order/event-tracker batch]` code**: Retaliate's decrement had been placed in `_phase_end_of_turn`, which this project's own architecture skips on a faint/replacement turn — source's real site runs unconditionally every turn. Fixed by moving both timers' decrement to `_phase_priority_resolution`, with the D3 test's own assertions corrected to match. |
 | `EFFECT_HEAL_BELL` — **CLOSED (`[D0]`)** | Heal Bell(215), Aromatherapy(312) | **CHEAP** | See D0 above (the priority-unblock section) for the full writeup — listed here too so this table's own cluster count/total stays self-consistent. Shipped `[D0]`, 2026-07-09. |
 
 (5+5+3+3+3+2×16 = 51 across the 21 rows above, reconciled against the
@@ -1635,70 +1635,225 @@ sessions already produced:
   half (Healing Wish/Lunar Dance) can reuse the self-faint precedent
   (`M19-self-faint`) plus a simple "next switch-in gets a bonus" flag on
   the party slot.
-- **Ability-manipulation family (4 moves, CHEAP)**: all 4 reuse M17h's
-  already-built ability-copy/overwrite primitives directly rather than
-  needing anything new — **Role Play(272)** (copy, mirrors Trace's
-  shape), **Skill Swap(285)** (bidirectional swap, reuses Wandering
-  Spirit's EXACT mechanism), **Worry Seed(388)** (one-directional
-  overwrite to a FIXED ability — Insomnia — mirrors Mummy's shape with a
-  fixed target instead of the attacker's own ability), **Heart Swap(391)**
-  (NOT an ability move — swaps all 7 stat STAGES bidirectionally, reuses
-  Psych Up's stage-copy shape from `[M16e]` instead).
-- **Damage/defense-stat-source-override family (3 moves, CHEAP)**: same
-  insertion-point family as `EFFECT_PSYSHOCK` (D1) but on the OFFENSE
-  side instead of defense — **Foul Play(492)** (uses the TARGET's Attack
-  stat for damage), **Body Press(704)** (uses the USER's own Defense stat
-  instead of Attack), **Photon Geyser(675)** (uses whichever of the
-  user's Atk/SpAtk is higher, category-flexible). All 3 are one new
-  attack-stat-source flag at the existing attack-stat-selection point,
-  same shape Psyshock needs on defense.
-- **On-hit hazard/screen set-or-clear family (6 moves, CHEAP)**: directly
-  reuses Bucket 3's already-proven "damaging move that ALSO sets a
-  pure-status effect on hit" pattern (`sets_reflect_on_hit`/
-  `sets_light_screen_on_hit`, `[Bucket 3 clusters 1-2]`) — just for
-  hazards instead of screens, and in two cases for CLEARING instead of
-  setting: **Stone Axe(758)** (sets Stealth Rock on hit), **Ceaseless
-  Edge(773)** (sets Spikes on hit), **Ice Spinner(789)** (clears hazards
-  on hit, reusing Rapid Spin's existing clear function), **Mortal
-  Spin(794)** (clears hazards + poisons on hit, same clear reuse), plus
-  **Tidy Up(808)** (clears hazards from BOTH sides + self stat-raise) and
-  **Defog(432)** (clears hazards+screens from both sides + target
-  evasion-drop) as the two "clear everything" variants, both pure
-  compositions of existing Rapid-Spin-family clears with zero new
-  mechanism.
-- **Per-mon TypeChart-override family (3 moves, CHEAP-MODERATE)**:
-  **Freeze-Dry(573)** (always super-effective vs. Water regardless of
-  the type chart — a move-level table override), **Tar Shot(695)**
-  (permanently doubles the TARGET's own Fire-type weakness for the rest
-  of the battle — a per-mon override, not a move-level one), and
-  **Foresight/Odor Sleuth** (D1 cluster, Ghost-immunity bypass) are three
-  different SCOPES of the same underlying idea (move-level vs. per-mon
-  vs. ability-mirroring override) — worth designing as one small family
-  of TypeChart lookup extensions rather than three unrelated ad hoc
-  changes.
-- **Turn-order-manipulation family (4 moves, MODERATE)**: **After
-  You(495)** (push target to the front of this turn's order), **Quash(511)**
-  (push target to the back), **Upper Hand(846)** (priority move that only
-  connects if the target is ABOUT to use a priority move, causing
-  flinch — reuses `move_priority_bonus`, `[M17n-3]`, to classify the
-  target's chosen move before it resolves), **Instruct(652)** (forces
-  the target to immediately re-use its last move, reusing the
-  call-a-move dispatch + `last_move_used`). All 4 read/write the existing
+- **Ability-manipulation family (4 moves) — CLOSED, COMPLETE
+  (`[D2 batch]`, 2026-07-09).** Confirmed all 4 reuse M17h's already-built
+  ability-copy/overwrite primitives directly, exactly as predicted — new
+  `AbilityManager.try_role_play`/`try_skill_swap`/`try_worry_seed_overwrite`
+  mirror Trace/Wandering Spirit/Mummy's own established shapes
+  respectively (Heart Swap needed no ability-side function at all, see
+  below). **Role Play(272)**: attacker copies the target's ability
+  (`ignoresProtect=TRUE` AND `ignoresSubstitute=TRUE` in source — a real
+  asymmetry within this family, Skill Swap/Heart Swap do NOT ignore
+  Protect), gated on `cant_be_copied`/`cant_be_suppressed`, compared by
+  `.ability_id` not object identity (this project has no `AbilityRegistry`,
+  so "the same ability" on two mons is typically two separate `AbilityData`
+  Resource instances). **Skill Swap(285)**: a genuine bidirectional swap,
+  confirmed to reuse Wandering Spirit's EXACT primitive shape (gated on
+  `cant_be_swapped` on BOTH sides independently, an ability-less mon
+  treated the same as `cant_be_swapped`, matching source's own
+  `ABILITY_NONE`). **Worry Seed(388)**: shares the LITERAL SAME
+  `EFFECT_OVERWRITE_ABILITY` Mummy/Lingering Aroma's own mechanism
+  conceptually corresponds to, gated on `cant_be_overwritten` (the exact
+  field `[M17h]`'s own entry had predicted would be "consumed by Skill-
+  Swap/Entrainment-style moves this project doesn't have" — confirmed
+  correct), fixed target ability_id (Insomnia=15) rather than a bespoke
+  per-move flag. `magicCoatAffected=TRUE` in source → `bounceable=true`,
+  confirmed working via a dedicated Magic Bounce integration test with
+  zero extra code (the existing `move.bounceable` mechanism already
+  generalizes). **Heart Swap(391)**: confirmed genuinely NOT an ability
+  move despite the family label — a real bidirectional swap of all 7 stat
+  STAGES, implemented as a direct `battle_manager.gd` array swap (no
+  `AbilityManager` function at all), reusing Psych Up's own `[M16e]`
+  precedent shape but swapping instead of copying. **Flagged, not fixed**:
+  Worry Seed's own source script also calls
+  `trytoclearprimalweather`/`tryendneutralizinggas` after a successful
+  overwrite (in case the ability just stripped away was sustaining Primal
+  weather or Neutralizing Gas) — a real, narrow, out-of-scope edge case.
+  **Also flagged, not fixed**: this project's Sheer-Force-boosts-
+  guaranteed-non-probabilistic-secondaries gap (see the hazard/screen
+  family's own entry below) is unrelated to this family.
+- **Damage/defense-stat-source-override family (3 moves) — CLOSED,
+  COMPLETE (`[D2 batch 2]`, 2026-07-10).** **A real correction to this
+  bullet's own framing**: `EFFECT_PSYSHOCK` (D1) is NOT "already built" —
+  confirmed via direct `.tres`/`gen_moves.py` grep that Psyshock/
+  Psystrike remain fully unimplemented (D1's own table still lists this
+  cluster as an open MODERATE item, unaffected by this session). The
+  offense-side mechanism was built fresh, matching the same conceptual
+  insertion-point shape Psyshock's own defense-side override would need,
+  without building Psyshock itself. **Foul Play(492)** (uses the
+  TARGET's own Attack/Sp.Atk stat+stage, category-gated the same as
+  normal — confirmed via source that `EFFECT_FOUL_PLAY` never triggers a
+  category swap, so type effectiveness/STAB/ability gates all stay keyed
+  on the attacker as usual). **Body Press(704)** (uses the USER's own
+  Defense stat+stage instead of Attack; Wonder Room's own edge case
+  permanently moot — unimplemented, on Rob's exclusion list).
+  **Photon Geyser(675) — the one real hidden second effect this bullet's
+  own task explicitly flagged as likely, confirmed true**: NOT a raw
+  bigger-stat lookup — its own description ("User's highest attack stat
+  determines its category") is literal. Source's `SetDynamicMoveCategory`
+  DYNAMICALLY SWAPS the move's WHOLE category (Special→Physical) based on
+  a stage-adjusted Atk-vs-SpAtk comparison (ties go Special), cascading
+  into every category-gated check downstream (Guts, Choice items, any
+  category-keyed ability) — implemented via the same shallow-duplicate-
+  and-substitute pattern already established for Hidden Power/M17n-6's
+  type mutation, mutating `.category` instead of `.type`, so every
+  existing category check sees the swap for free. `.ignoresTargetAbility
+  = TRUE` in source reuses the EXISTING `ignores_target_ability`
+  mechanism (`[Bucket 4 2-move sub-groups]`) directly, zero new code.
+- **On-hit hazard/screen set-or-clear family (6 moves) — CLOSED, COMPLETE
+  (`[D2 batch]`, 2026-07-09).** Real Step 0 findings corrected two of this
+  bullet's own framings. **Stone Axe(758)/Ceaseless Edge(773)**: confirmed
+  a guaranteed on-hit hazard set on the TARGET's side via the same
+  `sets_reflect_on_hit`/`sets_light_screen_on_hit` pattern predicted, BUT
+  dispatched through a MoveEnd-keyed switch on the move's own top-level
+  `.effect` (not the standard secondary-effect mechanism at all — no
+  `.moveEffect` token exists in either move's own `additionalEffects`
+  block). **Flagged, not fixed**: source's own `.sheerForceOverride=TRUE`
+  means Sheer Force should boost these two moves' power even though this
+  project's Sheer Force gate only checks true (chance>0) secondaries — a
+  narrow, pre-existing-shape gap, out of scope for this small tier.
+  **Ice Spinner(789) — a real correction, not a confirmation**: this
+  bullet's own "clears hazards, reusing Rapid Spin" framing was WRONG.
+  Real source's `EFFECT_ICE_SPINNER` removes TERRAIN, a completely
+  different effect ID from `EFFECT_RAPID_SPIN` (which Mortal Spin, not
+  Ice Spinner, actually shares). Since Terrain is permanently void in this
+  project, Ice Spinner reduces to a plain damage move with no working
+  secondary at all — cheaper than predicted, not a hazard-clearer.
+  **Mortal Spin(794)**: confirmed to share the LITERAL SAME
+  `EFFECT_RAPID_SPIN` Rapid Spin(229) itself uses — `is_rapid_spin` set
+  directly on its own data entry, zero new field, plus a guaranteed 100%
+  Poison secondary via the existing generic fields. **Tidy Up(808) —
+  broader than predicted**: confirmed to ALSO clear every Substitute
+  currently on the field (both sides, any battler), not just hazards — a
+  real finding beyond this bullet's own "hazards + self stat-raise"
+  framing, found directly from source (`TryTidyUpClear`). **Defog(432) —
+  also broader than predicted**: clears the TARGET's side's screens
+  (Reflect/Light Screen/Aurora Veil — this project's implemented subset;
+  Mist/Safeguard permanently moot) via the SAME `breaks_screens`/Brick
+  Break shape (`[M16c]`) rather than a new mechanism, AND clears hazards
+  from BOTH sides (not just the target's), AND drops the target's
+  evasion — three composed pieces, not two. New `_clear_all_hazards(side)`
+  helper (clears every hazard type on one side at once, unlike Rapid
+  Spin/Mortal Spin's own one-type-at-a-time clear) shared by both
+  Defog and Tidy Up.
+- **Per-mon TypeChart-override family (4 moves) — CLOSED, COMPLETE
+  (`[D2 batch 2]`, 2026-07-10).** A real scope-count correction: this
+  bullet's own "3 moves" total undercounted by one — Foresight(193) and
+  Odor Sleuth(316) are TWO real move IDs sharing one mechanism, not one,
+  bringing this family's true total to 4 (closed together with D1's own
+  `EFFECT_FORESIGHT` cluster row above, not tracked twice). **Freeze-
+  Dry(573)**: forces the Water-type component to a flat 2.0 UNCONDITION-
+  ALLY (not a "fix 0→1" pattern like the existing Ghost-immunity-bypass
+  overrides — Water is normally just neutral to Ice, not resistant) — new
+  `force_super_effective_type` param added to both of this project's
+  independent type-effectiveness functions (`TypeChart.get_uq412`/
+  `get_effectiveness`), checked per-defending-type-component (a dual-type
+  target's OTHER type composes independently, confirmed via a dedicated
+  test). **A real secondary this move also carries, beyond this bullet's
+  own "always super-effective vs Water" framing**: a 10%-chance Freeze
+  secondary, reusing the existing `SE_FREEZE` token verbatim.
+  **Tar Shot(695)**: confirmed a GENUINELY DIFFERENT shape from Freeze-
+  Dry — a flat POST-COMBINATION ×2.0 doubler (not per-component) applied
+  to the fully-combined effectiveness, gated on the ATTACKING move being
+  Fire-type. New permanent `BattlePokemon.tar_shot_active`. Confirmed via
+  direct source read this can NEVER stack with/conflict against Freeze-
+  Dry's own override on the same hit (mutually exclusive by construction
+  — Freeze-Dry is always Ice-type, never Fire-type). **A real coupling
+  found and correctly modeled**: Tar Shot's flag-set and its associated
+  -1 Speed are bundled as ONE all-or-nothing gate in source, not
+  independent — an already-tar-shot'd target blocks the Speed drop too,
+  not merely the redundant flag re-set. **Foresight/Odor Sleuth**: see
+  D1's own `EFFECT_FORESIGHT` row above (marked CLOSED in the same
+  session) for the full findings, including the real type-immunity-gate
+  bug found and fixed along the way.
+- **Turn-order-manipulation family (4 moves) — CLOSED, COMPLETE
+  (`[D3 turn-order/event-tracker batch]`, 2026-07-10).** **After
+  You(495)**: pushes the target to act IMMEDIATELY NEXT (position
+  `_current_actor_index + 1`), fails if already acted — at this
+  project's GEN_LATEST config (`B_AFTER_YOU_TURN_ORDER >= GEN_8`) an
+  already-next target is a trivial success, reproduced for free since
+  the reorder is a no-op in that case. **Quash(511)**: pushes the
+  target to the absolute END of the remaining turn order — a
+  deliberate simplification of source's speed-order-preserving GEN_8+
+  doubles-only nuance (this project always pushes fully to the end,
+  observably identical to source in singles, the primary supported
+  case), flagged not silently assumed. **Upper Hand(846)**: re-derived
+  fresh from source rather than assumed — connects ONLY if the
+  target's own CHOSEN (not-yet-executed) move has an ABILITY-BOOSTED
+  priority in [1,3] (via the exact same `AbilityManager.
+  move_priority_bonus` function real turn-order sorting uses, not raw
+  `move.priority`), the target hasn't acted yet, and that move isn't
+  status-category; on failure the WHOLE move fails (no damage, no
+  flinch) — same "ButItFailed" shape as the existing Sucker Punch
+  dispatch. **Instruct(652)**: forces the target to immediately
+  re-use its own `last_move_used` for FREE (no PP cost, a genuine
+  "called move" matching Metronome/Mirror Move's existing fall-through
+  shape) — but, unlike Mirror Move/Metronome (which only reassign
+  `defender`/`move`), Instruct reassigns `attacker` ITSELF (the
+  instructed Pokémon becomes the one actually executing), a genuinely
+  new fall-through shape requiring `attacker_idx`/`attacker_side` to
+  be recomputed too. New defender = the ORIGINAL attacker (exact in
+  singles, a disclosed simplification in doubles where source tracks a
+  real `backUpTarget`). Its exclusion list was re-derived against this
+  project's own 23 currently-implemented `instructBanned` moves rather
+  than source's full list or the project's own sparsely-populated
+  `BAN_INSTRUCT` bitflag (only 2 of the 23 carry it) — 21 already fall
+  out of the pre-existing `two_turn`/`is_recharge`/`is_rollout` checks,
+  Metronome/Mirror Move via their own flags, Obstruct via
+  `protect_method` (source flags ONLY Obstruct + King's Shield among
+  the whole Protect family — Protect/Detect/Baneful Bunker/Silk
+  Trap/Burning Bulwark/Wide Guard/Quick Guard are NOT banned, a
+  genuine move-specific data quirk), Thrash/Petal Dance/Outrage/Uproar
+  via `is_rampage`/`is_uproar`, and Bide (the one real gap found) via
+  its own `is_bide` flag. All 4 read/write the existing
   `_turn_order`/`_current_actor_index` state `[M18j]`'s Zoom Lens and
   `[M17n-3]`'s Quick Draw/Stall already established as directly
   accessible — no new turn-order infrastructure, just new consumers of
-  it.
-- **"Stat/event happened this turn" tracker family (4 moves, CHEAP)**:
-  mirrors the already-shipped `stat_raised_this_turn` flag
-  (`M19-stat-raised-trigger`) with a sibling condition each —
-  **Lash Out(736)** (power ×2 if a stat was LOWERED this turn — the
-  direct inverse), **Retaliate(514)** (power ×2 if an ally fainted LAST
-  turn), **Rage Fist(815)** (power scales with total times hit this
-  BATTLE, a running counter not a per-turn flag), **Echoed Voice(497)**
-  (power increases with consecutive USE across turns by anyone on the
-  field, resets if skipped a turn — a field-wide, not per-mon, counter).
-  All 4 are small new tracker fields at existing dispatch chokepoints,
-  no shared mechanism between them beyond "cheap to add."
+  it, confirming the MODERATE tag was accurate for Upper Hand/Instruct
+  but conservative for After You/Quash. New `d3_batch_test.gd`/`.tscn`:
+  48/48 assertions across 9 sections, stable across 4 reruns.
+- **"Stat/event happened this turn" tracker family (4 moves) — CLOSED,
+  COMPLETE (`[D3 turn-order/event-tracker batch]`, 2026-07-10).**
+  Mirrors the already-shipped `stat_raised_this_turn` flag
+  (`M19-stat-raised-trigger`) with a sibling condition each, each
+  independently re-verified rather than assumed identical in shape —
+  **Lash Out(736)**: power ×2 if the USER'S OWN stat was lowered this
+  turn, by ANY source — confirmed the genuine decrease-side mirror
+  (new `BattlePokemon.stat_lowered_this_turn`, set at the exact same
+  `StatusManager.apply_stat_change` chokepoint, cleared the same
+  per-turn cadence). **Retaliate(514)**: power ×2 if a Pokémon on the
+  user's OWN SIDE fainted during the PREVIOUS turn — a genuine
+  side-wide 2-turn timer (`_retaliate_timer[side]`, set to 2 on any
+  faint on that side, decremented once per turn boundary, checked
+  `==1`), NOT a per-mon flag. **A real, empirically-confirmed timing
+  nuance found while testing (not assumed)**: this project's
+  END_OF_TURN phase is SKIPPED for the turn a faint/replacement
+  occurs in, so the timer stays at 2 (undoubled) through the
+  replacement mon's entire FIRST turn back — only its SECOND turn
+  sees the first decrement (timer=1, doubled). **Rage Fist(815)**:
+  power scales +50 per hit taken, capped 350 — confirmed a genuine
+  BATTLE-LIFETIME counter (new `BattlePokemon.times_hit`), with NO
+  reset mechanism in source at all (deliberately excluded from
+  `_clear_volatiles`, unlike every other per-turn/per-stint tracker
+  in this family — verified directly, not assumed, via a dedicated
+  unit test calling `_clear_volatiles` and confirming the field
+  survives). **Echoed Voice(497)**: power scales with a FIELD-WIDE
+  (not per-mon, not per-side) consecutive-turn-use counter
+  (`BattleManager._echoed_voice_counter`, capped 4), incremented once
+  per turn boundary if used by ANYONE that turn (gated only on the
+  move being attempted, not on hit success), reset to 0 the instant a
+  turn passes without use. All 4 are small new tracker fields at
+  existing dispatch chokepoints (the established `_dmg_power_override`
+  pattern `[M16b]`'s Rollout/`[D1 cheap clusters]`'s Stored Power
+  already use), no shared mechanism between them beyond "cheap to
+  add" — confirmed CHEAP as tagged. New `d3_batch_test.gd`/`.tscn`
+  (same file as the turn-order family above): 48/48 total, including
+  a real cross-tier discovery caught while writing the test suite —
+  a Ghost-type Rage Fist tested against a default Normal-type opponent
+  produced a flat, silent 0-damage type immunity (Normal is immune to
+  Ghost), the same class of pitfall CLAUDE.md's own
+  type-immunity-precedes-ability-logic convention documents, fixed by
+  giving the opponent a neutral (Water) type in those fixtures.
 
 ### D3 — Additional "already effectively free" findings (beyond Struggle, D0's cluster notes)
 
@@ -1894,18 +2049,69 @@ not exhaustive" framing.)
    `EFFECT_HIT_SWITCH_TARGET`/`EFFECT_TRICK` are flagged there as
    touching switch-handling/item-swap code more sensitively than this
    tier's own clusters did).
-3. **D2's "already-shipped-mechanism reuse" families** (on-hit hazard/
-   screen set-or-clear, 6 moves; ability-manipulation, 4 moves;
-   damage-stat-source-override, 3 moves) — each is a near-zero-risk
-   extension of infrastructure this arc already built and tested.
-4. **The delayed-effect family (D2, 6 moves)** deserves its own dedicated
-   design session before implementation — genuinely new mechanism,
-   shared across Future Sight/Doom Desire/Wish/Yawn/Healing Wish/Lunar
-   Dance, worth scoping once rather than 4-5 separate times.
+3. **D2's "already-shipped-mechanism reuse" families**: on-hit hazard/
+   screen set-or-clear (6 moves) and ability-manipulation (4 moves) are
+   BOTH CLOSED, COMPLETE (`[D2 batch]`, 2026-07-09) — see their own
+   entries above for the full findings, including two real corrections
+   (Ice Spinner does NOT clear hazards — it removes Terrain, permanently
+   moot here; Tidy Up/Defog are both broader than originally framed).
+   **Damage/defense-stat-source-override family (3 moves: Foul Play/Body
+   Press/Photon Geyser) and per-mon TypeChart-override family (4 moves:
+   Freeze-Dry/Tar Shot/Foresight/Odor Sleuth) are now ALSO CLOSED,
+   COMPLETE (`[D2 batch 2]`, 2026-07-10)** — see their own entries above
+   for the full findings, including a real correction (`EFFECT_PSYSHOCK`
+   was NOT already built, contrary to this bullet's own prior framing —
+   remains a genuinely open D1 cluster), a confirmed hidden second effect
+   (Photon Geyser's real category swap), and a real bug found and fixed
+   (Foresight's own type-immunity-gate exemption). D2's
+   turn-order-manipulation family (4 moves: After You/Quash/Upper
+   Hand/Instruct) and "stat/event happened this turn" tracker family
+   (4 moves: Lash Out/Retaliate/Rage Fist/Echoed Voice) are now ALSO
+   CLOSED, COMPLETE (`[D3 turn-order/event-tracker batch]`,
+   2026-07-10)** — see their own entries above for the full findings,
+   including Instruct's genuinely new attacker-reassignment fall-
+   through shape and Retaliate's empirically-confirmed END_OF_TURN-
+   skipped-on-faint timing nuance. D2's only remaining cross-cutting
+   family is now delayed-effect (6 moves) — see item 4 below.
+4. **The delayed-effect family (D2, 6 moves) — CLOSED, COMPLETE
+   (Delayed-effect family session, 2026-07-10).** Future Sight(248)/Doom
+   Desire(353)/Wish(273)/Yawn(281)/Healing Wish(361)/Lunar Dance(461) all
+   shipped in one session. **A real correction to this item's own "one
+   shared new mechanism" framing**: it's genuinely THREE mechanism
+   shapes, not one — (a) a per-slot delayed scheduler (Future Sight/Doom
+   Desire, Wish) living in new `BattleManager` dictionaries keyed by
+   combatant index, resolving against whoever occupies that SLOT when a
+   counter expires (not the original target's identity — a switch
+   survives); (b) a per-mon volatile counter (Yawn) that turned out to be
+   ZERO new infrastructure — mechanically identical to the already-shipped
+   `disable_turns`/`encore_turns`/`throat_chop_turns` pattern, already
+   correctly cleared by the existing switch-out plumbing; (c) a switch-in-
+   triggered one-shot flag (Healing Wish/Lunar Dance) consumed by the
+   slot's very next switch-in via any method, requiring a new
+   `has_valid_switch_target()`-gated fail condition Explosion/Self-
+   Destruct doesn't have. Future Sight/Doom Desire resolve through the
+   EXISTING `_do_damaging_hit` chokepoint (screens/Substitute/Sturdy-
+   chain/times_hit/Air Balloon all apply for free) rather than a bespoke
+   damage path; the cast-time-vs-resolve-time snapshot question resolved
+   to "always resolve-time, never cast-time" (confirmed from source), with
+   a disclosed simplification for a switched-out caster (this project
+   reuses the existing switch-out stat-stage reset for free but doesn't
+   additionally null a benched caster's ability/item the way source's own
+   struct-swap does). Healing Wish/Lunar Dance's Gen8+ "persist until
+   beneficial" nuance was confirmed with Rob and simplified to always-
+   consume-next-switch-in. New `delayed_effect_test.gd`/`.tscn`: 41/41
+   assertions across 6 sections, stable across 5 reruns after fixing 2
+   real test-authoring bugs (a heal-amount assertion that didn't account
+   for the missing-HP cap; a whole-battle-aggregation instance where an
+   unrelated later faint was misread as the move's own self-faint). This
+   closes out D2 entirely — no remaining cross-cutting families.
 5. **Perish Song(195)** is worth flagging to Rob specifically: building it
    re-opens the currently-excluded Perish Body ability for reconsideration
    — a cross-system dependency this session surfaced, not previously
-   documented anywhere.
+   documented anywhere. Perish Song itself remains unbuilt and still
+   carries this note forward, unaffected by this session's Delayed-effect-
+   family work — a different mechanism (multi-battler delayed-faint
+   countdown, not a per-slot scheduler or switch-in one-shot).
 6. **Transform/Sky Drop/Beak Blast/Shell Trap** (the 4 HARD singletons)
    and **Camouflage** (BLOCKED) are reasonable candidates to defer
    indefinitely or exclude, matching this arc's own precedent for
@@ -1923,15 +2129,18 @@ re-deriving this breakdown from scratch.
 
 | Bucket | Move count |
 |---|---|
-| Already implemented (excluded from this plan) — includes Heal Order/Dragon Darts (resolved conflicts); `M19-secondary-stat-on-hit` (79) shipped `[M19-secondary-stat-on-hit]` 2026-07-09; Bucket 3 in its entirety (30) shipped across `[Bucket 3 multi-stat]` + `[Bucket 3 clusters 1-2]`, both 2026-07-09; 7 of Bucket 4's single-move sub-groups shipped `[Bucket 4 cheapest singles]` 2026-07-09; `M19-rampage` (5) shipped `[M19-rampage]` 2026-07-09; `M19-recharge` (10) shipped `[M19-recharge]` 2026-07-09; `M19-break-protect` (4) shipped `[M19-break-protect]` 2026-07-09; `M19-recoil-on-miss` (4) shipped `[M19-recoil-on-miss]` 2026-07-09; `M19-weather-conditional-accuracy` (5) shipped `[M19-weather-conditional-accuracy]` 2026-07-09; 9 more 2-move sub-groups (19) shipped `[Bucket 4 2-move sub-groups]` 2026-07-09; `M19-steal-stats` (1) + `M19-ally-targeting-stat-change` (3) shipped `[M19-steal-stats]`/`[M19-ally-targeting-stat-change]` 2026-07-09; M19e (4) + M19f (5, incl. Spirit Shackle/`M19-trap-secondary`) shipped `[M19e]`/`[M19f]` 2026-07-09; M19c (7) + M19d (2) shipped `[M19c]`/`[M19d]` 2026-07-09; D0's 11 moves (Leech Seed/Haze/Aromatherapy/Heal Bell/Follow Me/Rage Powder/Soft-Boiled/Milk Drink/Sappy Seed/Freezy Frost/Sparkly Swirl) shipped `[D0]` 2026-07-09; D1's 4 moves (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09; D1 cheap clusters' 21 moves (Sandstorm/Rain Dance/Sunny Day/Hail/Snowscape, Eruption/Water Spout/Dragon Energy, Wring Out/Crush Grip/Hard Press, Thief/Covet, Mind Reader/Lock-On, Swagger/Flatter, Sucker Punch/Thunderclap, Stored Power/Power Trip) shipped `[D1 cheap clusters]` 2026-07-09 | 571 |
+| Already implemented (excluded from this plan) — includes Heal Order/Dragon Darts (resolved conflicts); `M19-secondary-stat-on-hit` (79) shipped `[M19-secondary-stat-on-hit]` 2026-07-09; Bucket 3 in its entirety (30) shipped across `[Bucket 3 multi-stat]` + `[Bucket 3 clusters 1-2]`, both 2026-07-09; 7 of Bucket 4's single-move sub-groups shipped `[Bucket 4 cheapest singles]` 2026-07-09; `M19-rampage` (5) shipped `[M19-rampage]` 2026-07-09; `M19-recharge` (10) shipped `[M19-recharge]` 2026-07-09; `M19-break-protect` (4) shipped `[M19-break-protect]` 2026-07-09; `M19-recoil-on-miss` (4) shipped `[M19-recoil-on-miss]` 2026-07-09; `M19-weather-conditional-accuracy` (5) shipped `[M19-weather-conditional-accuracy]` 2026-07-09; 9 more 2-move sub-groups (19) shipped `[Bucket 4 2-move sub-groups]` 2026-07-09; `M19-steal-stats` (1) + `M19-ally-targeting-stat-change` (3) shipped `[M19-steal-stats]`/`[M19-ally-targeting-stat-change]` 2026-07-09; M19e (4) + M19f (5, incl. Spirit Shackle/`M19-trap-secondary`) shipped `[M19e]`/`[M19f]` 2026-07-09; M19c (7) + M19d (2) shipped `[M19c]`/`[M19d]` 2026-07-09; D0's 11 moves (Leech Seed/Haze/Aromatherapy/Heal Bell/Follow Me/Rage Powder/Soft-Boiled/Milk Drink/Sappy Seed/Freezy Frost/Sparkly Swirl) shipped `[D0]` 2026-07-09; D1's 4 moves (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09; D1 cheap clusters' 21 moves (Sandstorm/Rain Dance/Sunny Day/Hail/Snowscape, Eruption/Water Spout/Dragon Energy, Wring Out/Crush Grip/Hard Press, Thief/Covet, Mind Reader/Lock-On, Swagger/Flatter, Sucker Punch/Thunderclap, Stored Power/Power Trip) shipped `[D1 cheap clusters]` 2026-07-09; D2's on-hit hazard/screen family (6: Stone Axe/Ceaseless Edge/Ice Spinner/Mortal Spin/Tidy Up/Defog) + ability-manipulation family (4: Role Play/Skill Swap/Worry Seed/Heart Swap) shipped `[D2 batch]` 2026-07-09; D1's `EFFECT_FORESIGHT` cluster (2: Foresight/Odor Sleuth) + D2's offense-stat-source-override family (3: Foul Play/Body Press/Photon Geyser) + per-mon TypeChart-override family (2: Freeze-Dry/Tar Shot) shipped `[D2 batch 2]` 2026-07-10; D2's turn-order-manipulation family (4: After You/Quash/Upper Hand/Instruct) + "stat/event happened this turn" tracker family (4: Lash Out/Retaliate/Rage Fist/Echoed Voice) shipped `[D3 turn-order/event-tracker batch]` 2026-07-10; D2's delayed-effect family (6: Future Sight/Doom Desire/Wish/Yawn/Healing Wish/Lunar Dance) + D1's `EFFECT_PSYSHOCK` cluster (2: Psyshock/Psystrike) shipped in the Delayed-effect-family session 2026-07-10; D1's remaining 6 easy clusters (13: U-turn/Volt Switch/Flip Turn, Circle Throw/Dragon Tail, Fake Out/First Impression, Trick/Switcheroo, Revenge/Avalanche, Stomping Tantrum/Temper Flare) shipped in the D1 easy bundle session 2026-07-10 | 617 |
 | Proposed sub-tiers (Section B: Bucket 4's remaining 1 sub-group only — `M19-secret-power`, deferred by Rob; `M19-blocked-on-other-tier4` CLOSED by `[D0]`) | 1 |
 | Deferred (Section C3 — Population Bomb only; C4 closed) | 1 |
 | Permanently excluded, confirmed by Rob (Section C1 Z-Move/Max-Move + Section C2 `[M19-exclusions]`, incl. Raging Bull + Psychic Noise addenda) | 213 |
-| Tier 4 residual, mechanism-clustered (Section D, `[M19-section-d-cluster]` 2026-07-09) — D0's 8 moves shipped `[D0]` 2026-07-09; D1's 4 D4 singletons (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09; D1's 8 remaining CHEAP clusters (21 moves) shipped `[D1 cheap clusters]` 2026-07-09 | 148 |
+| Tier 4 residual, mechanism-clustered (Section D, `[M19-section-d-cluster]` 2026-07-09) — D0's 8 moves shipped `[D0]` 2026-07-09; D1's 4 D4 singletons (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09; D1's 8 remaining CHEAP clusters (21 moves) shipped `[D1 cheap clusters]` 2026-07-09; D2's on-hit hazard/screen + ability-manipulation families (10 moves) shipped `[D2 batch]` 2026-07-09; D1's `EFFECT_FORESIGHT` cluster + D2's offense-stat-source-override and per-mon TypeChart-override families (7 moves) shipped `[D2 batch 2]` 2026-07-10; D2's turn-order-manipulation + "stat/event happened this turn" tracker families (8 moves) shipped `[D3 turn-order/event-tracker batch]` 2026-07-10; D2's delayed-effect family + D1's `EFFECT_PSYSHOCK` cluster (8 moves) shipped 2026-07-10; D1's remaining 6 easy clusters (13 moves) shipped 2026-07-10 | 102 |
 | **Total (matches the recon's 934-move catalog)** | **934** |
 
-571 + 1 + 1 + 213 + 148 = 934, confirmed by direct addition. Zero
-outstanding discrepancy.
+617 + 1 + 1 + 213 + 102 = 934, confirmed by direct addition. Zero
+outstanding discrepancy. **D2 is fully closed and D1 is down to its very
+last cluster** (`EFFECT_DOUBLE_POWER_ON_ARG_STATUS`, 5 moves) — every
+other cluster/family surfaced during the singleton-pool sweep
+(`[M19-section-d-cluster]`) has shipped.
 
 | Sub-tier | Moves | Risk | Depends on |
 |---|---|---|---|
@@ -1946,7 +2155,7 @@ outstanding discrepancy.
 | M19g — DISSOLVED, all 3 moves permanently excluded | 0 | — | — |
 | M19h — Weight-ratio dynamic power | **COMPLETE** (`[M19-pre1]`, confirmed `[M19-rescope-followup]`) | — | — |
 | M19i — Friendship-based dynamic power | **COMPLETE** (`[M19-pre1]`, confirmed `[M19-rescope-followup]`) | — | — |
-| Tier 4 sub-clustering pass | 148 (was 181 — D0's 8 moves + D1's 4 moves + D1 cheap clusters' 21 moves shipped, `[D0]`/`[D1]`/`[D1 cheap clusters]` 2026-07-09) | Clustered (`[M19-section-d-cluster]`, 2026-07-09) — 24 moves/10 named clusters remaining (all CHEAP-MODERATE or harder), plus a 124-move singleton pool difficulty-swept (~83 cheap/~35 moderate/~4 hard/1 blocked) | D0/D1/D1-cheap-clusters' items are now CLOSED — see Section D's D5 for the next recommended cluster/family to pick off |
+| Tier 4 sub-clustering pass | 131 (was 181 — D0's 8 moves + D1's 4 moves + D1 cheap clusters' 21 moves + D2's 10 moves + D2 batch 2's 7 moves shipped, `[D0]`/`[D1]`/`[D1 cheap clusters]`/`[D2 batch]`/`[D2 batch 2]` 2026-07-09/2026-07-10) | Clustered (`[M19-section-d-cluster]`, 2026-07-09) — 22 moves/9 named clusters remaining (all CHEAP-MODERATE or harder — `EFFECT_FORESIGHT` closed), plus a 109-move singleton pool difficulty-swept (~83 cheap minus D2 batch 1+2's 15/~35 moderate/~4 hard/1 blocked) | D0/D1/D1-cheap-clusters'/D2 batch 1+2's items are now CLOSED — see Section D's D5 for the next recommended cluster/family to pick off |
 
 **M19c-i is now FULLY CLOSED** — every sub-tier proposed in Section B (M19c
 through M19i) has shipped. **`[D0]` update (2026-07-09): Bucket 4's
@@ -1959,7 +2168,56 @@ Hyperspace Fury, both shipped). **`[D1 cheap clusters]` update
 (2026-07-09): Section D's residual is now 148** — all 8 strictly-CHEAP
 D1 clusters (21 moves) shipped in one bundled session; D1's own
 remaining pool (24 moves/10 clusters) is entirely CHEAP-MODERATE or
-harder.
+harder. **`[D2 batch]` update (2026-07-09): Section D's residual is now
+138** — D2's on-hit hazard/screen family (6 moves) and ability-
+manipulation family (4 moves) both shipped in the same session as three
+flagged batch-fix items (Hail-only design decision confirmed, Primal
+weather block built, Solar Beam/Blade rain/sand/hail damage-halving
+built) that touched zero additional move count. **`[D2 batch 2]` update
+(2026-07-10): Section D's residual is now 131** — D2's offense/defense-
+stat-source-override family (Foul Play/Body Press/Photon Geyser) and
+per-mon TypeChart-override family (Freeze-Dry/Tar Shot) both shipped,
+plus D1's own `EFFECT_FORESIGHT` cluster (Foresight/Odor Sleuth, 7 moves
+total this session — a real scope-count correction, since this bullet's
+own prior "3 moves"/"3 moves" per-family framing undercounted by one:
+Foresight+Odor Sleuth are 2 real move IDs, not 1). A real bug was found
+and fixed along the way (Foresight's own type-immunity-gate exemption —
+see that cluster's own CLOSED entry above). D2's own remaining cross-
+cutting families (delayed-effect, turn-order-manipulation, "stat/event
+happened this turn" tracker) are unaffected and still open — see D5.
+**`[D3 turn-order/event-tracker batch]` update (2026-07-10): Section D's
+residual is now 123** — D2's turn-order-manipulation family (After
+You/Quash/Upper Hand/Instruct) and "stat/event happened this turn"
+tracker family (Lash Out/Retaliate/Rage Fist/Echoed Voice) both shipped
+in one bundled session (8 moves total), per their own CLOSED entries
+above for the full findings. D2's only remaining cross-cutting family
+is now the delayed-effect family (6 moves — Future Sight/Doom Desire/
+Wish/Yawn/Healing Wish/Lunar Dance), still flagged as needing its own
+dedicated design session before implementation — see D5.
+**Delayed-effect-family session update (2026-07-10): Section D's residual
+is now 115** — the delayed-effect family (6 moves) shipped alongside D1's
+`EFFECT_PSYSHOCK` cluster (Psyshock/Psystrike, 2 moves, bundled for
+efficiency, unrelated mechanism) in one session, closing the LAST
+remaining D2 cross-cutting family — D2 is now fully closed, see the
+delayed-effect family's own CLOSED entry above (D5, item 4) for the full
+3-way mechanism-shape correction and findings.
+**D1 easy bundle update (2026-07-10): Section D's residual is now 102** —
+the 6 remaining "easy" D1 clusters (`EFFECT_HIT_ESCAPE`/
+`EFFECT_HIT_SWITCH_TARGET`/`EFFECT_FIRST_TURN_ONLY`/`EFFECT_TRICK`/
+`EFFECT_REVENGE`/`EFFECT_STOMPING_TANTRUM`, 13 moves) all shipped in one
+bundled session, per their own CLOSED entries above. Two real bugs were
+found and fixed along the way, both flagged in their own cluster rows:
+(1) `switched_in_this_turn` was never set for a battle's own starting
+leads (only mid-battle switch-ins), silently breaking Fake Out's
+first-turn condition AND Stakeout/Speed Boost's own turn-1 reads since
+those tiers shipped — fixed at the root; (2) Stomping Tantrum's own
+decrement-site research revealed Retaliate's timer (`[D3 turn-order/
+event-tracker batch]`) had been decrementing in the wrong phase,
+under-doubling by one turn boundary after a faint — fixed to match
+source's real timing. **D1 now has exactly ONE cluster left**
+(`EFFECT_DOUBLE_POWER_ON_ARG_STATUS`, 5 moves) — see that row's own table
+entry above for its own Step-0 flag (the `MOVE_EFFECT_REMOVE_STATUS`
+per-move verification it still needs before implementation).
 
 **Recommended implementation order:**
 

@@ -68,6 +68,7 @@ func _ready() -> void:
 	_test_section_7_magician_full_battle()
 	_test_section_8_symbiosis_full_battle_doubles()
 	_test_section_9_neutralizing_gas_suppression()
+	_test_section_10_multitype_plate_exclusion()
 
 	var total := _pass + _fail
 	print("m17j_test: %d/%d passed" % [_pass, total])
@@ -498,3 +499,122 @@ func _test_section_9_neutralizing_gas_suppression() -> void:
 	sym_ally.held_item = _make_item("Oran Berry")
 	_chk("S9.03 Symbiosis suppressed by Neutralizing Gas (ng_active=true)",
 			not AbilityManager.try_symbiosis(sym_mon, sym_ally, true))
+
+
+# ── Section 10: Multitype-Plate exclusion fix ────────────────────────────────
+# Closes a real gap found while verifying the (separately-fixed) Trick/Switcheroo
+# Multitype-Plate exclusion: source's CanBattlerGetOrLoseItem/
+# DoesSpeciesUseHoldItemToChangeForm is called by CanStealItem (Pickpocket/Magician/
+# Thief/Covet/Sticky Barb, all via the shared AbilityManager._try_steal_item) and by
+# TryTriggerSymbiosis — not just Trick's own Cmd_tryswapitems. None of those had this
+# check before this fix. Ground truth: battle_util.c L8686-8706 (CanBattlerGetOrLoseItem),
+# L8378-8403 (DoesSpeciesUseHoldItemToChangeForm), L9188-9189 (CanStealItem's two calls),
+# L9967-9968 (TryTriggerSymbiosis's two calls). See docs/decisions.md's Multitype-Plate
+# fix entry for the full call-site derivation.
+#
+# A "Plate" item here is any ItemData with hold_effect == ItemManager.HOLD_EFFECT_PLATE,
+# this project's own Multitype-linkage model (`[M17n-4]`) standing in for source's
+# species-level form-change table lookup.
+
+func _test_section_10_multitype_plate_exclusion() -> void:
+	var tackle := _load_move(33)
+	var pickpocket := _load_ability(124)
+	var magician := _load_ability(170)
+	var symbiosis := _load_ability(180)
+	var multitype := _load_ability(121)
+
+	# (i) Pickpocket: BLOCKED from stealing a Multitype holder's Plate.
+	var mt_holder_i := _make_mon("MTPickpocketHolder", [TypeChart.TYPE_NORMAL])
+	mt_holder_i.ability = pickpocket
+	var mt_attacker_i := _make_mon("MTPickpocketAtk", [TypeChart.TYPE_NORMAL])
+	mt_attacker_i.ability = multitype
+	var plate_i := ItemData.new()
+	plate_i.item_name = "Iron Plate"
+	plate_i.hold_effect = ItemManager.HOLD_EFFECT_PLATE
+	mt_attacker_i.held_item = plate_i
+	var result_i: Dictionary = AbilityManager.try_contact_effects(
+			mt_attacker_i, mt_holder_i, tackle, 10)
+	_chk("S10.01 Pickpocket is BLOCKED from stealing a Multitype holder's Plate",
+			not result_i["pickpocket_stole"])
+	_chk("S10.02 the Multitype holder's Plate is untouched",
+			mt_attacker_i.held_item != null and mt_attacker_i.held_item == plate_i)
+
+	# (i-discriminator) Pickpocket still works normally against an ordinary item.
+	var ord_holder_i := _make_mon("OrdPickpocketHolder", [TypeChart.TYPE_NORMAL])
+	ord_holder_i.ability = pickpocket
+	var ord_attacker_i := _make_mon("OrdPickpocketAtk", [TypeChart.TYPE_NORMAL])
+	ord_attacker_i.held_item = _make_item("Leftovers")
+	var result_i_ord: Dictionary = AbilityManager.try_contact_effects(
+			ord_attacker_i, ord_holder_i, tackle, 10)
+	_chk("S10.03 discriminator: Pickpocket still steals an ordinary (non-Plate/" +
+			"non-Multitype) item normally",
+			result_i_ord["pickpocket_stole"])
+
+	# (ii) Magician: BLOCKED from stealing a Multitype holder's Plate.
+	var mt_mag_attacker := _make_mon("MTMagAtk", [TypeChart.TYPE_NORMAL])
+	mt_mag_attacker.ability = magician
+	var mt_mag_target := _make_mon("MTMagTarget", [TypeChart.TYPE_NORMAL])
+	mt_mag_target.ability = multitype
+	var plate_ii := ItemData.new()
+	plate_ii.item_name = "Splash Plate"
+	plate_ii.hold_effect = ItemManager.HOLD_EFFECT_PLATE
+	mt_mag_target.held_item = plate_ii
+	_chk("S10.04 Magician is BLOCKED from stealing a Multitype holder's Plate",
+			not AbilityManager.try_magician(mt_mag_attacker, mt_mag_target, 10))
+	_chk("S10.05 the Multitype holder's Plate is untouched",
+			mt_mag_target.held_item != null and mt_mag_target.held_item == plate_ii)
+
+	# (ii-discriminator) Magician still works normally against an ordinary item.
+	var ord_mag_attacker := _make_mon("OrdMagAtk", [TypeChart.TYPE_NORMAL])
+	ord_mag_attacker.ability = magician
+	var ord_mag_target := _make_mon("OrdMagTarget", [TypeChart.TYPE_NORMAL])
+	ord_mag_target.held_item = _make_item("Sitrus Berry")
+	_chk("S10.06 discriminator: Magician still steals an ordinary item normally",
+			AbilityManager.try_magician(ord_mag_attacker, ord_mag_target, 10))
+
+	# (iii) Thief/Covet (try_thief_steal, shares _try_steal_item with Pickpocket/Magician):
+	# BLOCKED from stealing a Multitype holder's Plate.
+	var mt_thief_attacker := _make_mon("MTThiefAtk", [TypeChart.TYPE_NORMAL])
+	var mt_thief_target := _make_mon("MTThiefTarget", [TypeChart.TYPE_NORMAL])
+	mt_thief_target.ability = multitype
+	var plate_iii := ItemData.new()
+	plate_iii.item_name = "Toxic Plate"
+	plate_iii.hold_effect = ItemManager.HOLD_EFFECT_PLATE
+	mt_thief_target.held_item = plate_iii
+	_chk("S10.07 Thief/Covet is BLOCKED from stealing a Multitype holder's Plate",
+			not AbilityManager.try_thief_steal(mt_thief_attacker, mt_thief_target))
+	_chk("S10.08 the Multitype holder's Plate is untouched",
+			mt_thief_target.held_item != null and mt_thief_target.held_item == plate_iii)
+
+	# (iii-discriminator) Thief/Covet still works normally against an ordinary item.
+	var ord_thief_attacker := _make_mon("OrdThiefAtk", [TypeChart.TYPE_NORMAL])
+	var ord_thief_target := _make_mon("OrdThiefTarget", [TypeChart.TYPE_NORMAL])
+	ord_thief_target.held_item = _make_item("Oran Berry")
+	_chk("S10.09 discriminator: Thief/Covet still steals an ordinary item normally",
+			AbilityManager.try_thief_steal(ord_thief_attacker, ord_thief_target))
+
+	# (iv) Symbiosis: BLOCKED from GIVING a Plate to a Multitype receiver (the
+	# reachable half — receiver is Multitype, real; the giver-loses-its-own-Plate half
+	# is structurally unreachable in practice, since the giver's ability slot is
+	# always Symbiosis itself, never simultaneously Multitype — matches the
+	# already-documented Unburden precedent in try_symbiosis's own doc comment).
+	var mt_sym_mon := _make_mon("MTSymMon", [TypeChart.TYPE_NORMAL])
+	mt_sym_mon.ability = multitype
+	var mt_sym_ally := _make_mon("MTSymAlly", [TypeChart.TYPE_NORMAL])
+	mt_sym_ally.ability = symbiosis
+	var plate_iv := ItemData.new()
+	plate_iv.item_name = "Earth Plate"
+	plate_iv.hold_effect = ItemManager.HOLD_EFFECT_PLATE
+	mt_sym_ally.held_item = plate_iv
+	_chk("S10.10 Symbiosis is BLOCKED from giving a Plate to a Multitype receiver",
+			not AbilityManager.try_symbiosis(mt_sym_mon, mt_sym_ally))
+	_chk("S10.11 the Symbiosis holder's Plate is untouched",
+			mt_sym_ally.held_item != null and mt_sym_ally.held_item == plate_iv)
+
+	# (iv-discriminator) Symbiosis still works normally against an ordinary item.
+	var ord_sym_mon := _make_mon("OrdSymMon", [TypeChart.TYPE_NORMAL])
+	var ord_sym_ally := _make_mon("OrdSymAlly", [TypeChart.TYPE_NORMAL])
+	ord_sym_ally.ability = symbiosis
+	ord_sym_ally.held_item = _make_item("Oran Berry")
+	_chk("S10.12 discriminator: Symbiosis still gives an ordinary item normally",
+			AbilityManager.try_symbiosis(ord_sym_mon, ord_sym_ally))
