@@ -2560,3 +2560,174 @@ const STATUS_ARG_ANY: int = -3
 #   resolution.c :: TryMagicCoat (L5175-5191), MoveEndBouncedMove
 #   (L3142-3195).
 @export var is_magic_coat: bool = false
+
+# [D4 CHEAP bundle] requires_target_asleep: Dream Eater(138) — fails
+#   OUTRIGHT (zero damage, not merely "skip the drain") against a
+#   non-sleeping, non-Comatose target, confirmed via direct source read of
+#   the move's own battle script rather than assumed: `jumpifstatus
+#   BS_TARGET, STATUS1_SLEEP, BattleScript_HitFromAccCheck` /
+#   `jumpifability BS_TARGET, ABILITY_COMATOSE, BattleScript_HitFromAccCheck`
+#   / else `goto BattleScript_DoesntAffectTargetAtkString` — checked BEFORE
+#   the accuracy roll, so a failure here never rolls accuracy at all.
+#   Drain itself reuses the EXISTING generic `drain_percent` field (50%),
+#   confirmed via source to be the SAME `EFFECT_ABSORB`/`EFFECT_DREAM_EATER`
+#   shared drain-application chokepoint this project's Absorb/Mega Drain/
+#   Giga Drain family already occupies (battle_move_resolution.c L2636) —
+#   NOT the Volt Absorb/Water Absorb absorb-ability family the task's own
+#   framing suggested checking; a real, source-verified correction, not an
+#   assumption. Both `B_DREAM_EATER_LIQUID_OOZE` and `B_DREAM_EATER_
+#   SUBSTITUTE` resolve to their GEN_5+ branches at this project's
+#   GEN_LATEST config, meaning Liquid Ooze inversion and ordinary
+#   Substitute-absorption BOTH already apply for free via that same shared
+#   chokepoint and this project's general `went_to_sub` handling — no
+#   extra code needed for either.
+#   Source: data/battle_scripts_1.s :: BattleScript_EffectDreamEater
+#   (L1614-1624); include/config/battle.h L149-150.
+@export var requires_target_asleep: bool = false
+
+# [D4 CHEAP bundle] is_torment: Torment(259) — see BattlePokemon.tormented's
+#   own doc comment for the full mechanism (permanent target-side move-block,
+#   reusing Blood Moon's cant_use_twice SHAPE but target- not self-inflicted).
+#   This move's own infliction dispatch: fails if the target is already
+#   tormented (Cmd_settorment's own already-true fail case) or blocked by
+#   Aroma Veil (self OR ally) — reuses the existing `blocked_by_aroma_veil`
+#   gate Disable/Encore/Taunt already established. `magicCoatAffected = TRUE`
+#   at this project's GEN_LATEST config (bounceable via the existing Magic
+#   Bounce/Magic Coat swap). Blocked by Substitute (no `ignoresSubstitute`
+#   flag in source).
+#   Source: data/moves_info.h MOVE_TORMENT (.magicCoatAffected =
+#   B_UPDATED_MOVE_FLAGS >= GEN_5); data/battle_scripts_1.s ::
+#   BattleScript_EffectTorment (L2453-2462); battle_script_commands.c ::
+#   Cmd_settorment (L8795-8809).
+@export var is_torment: bool = false
+
+# [D4 CHEAP bundle] is_gyro_ball: Gyro Ball(360) — power from the speed
+#   RATIO of target-to-user, reading each side's CURRENT effective speed
+#   (post-stat-stage, post-Paralysis-halving/Quick-Feet-replacement,
+#   post-weather-ability, post-item — StatusManager.effective_speed, the
+#   same accessor turn-order sorting itself uses), NOT base speed — a
+#   real Step-0 confirmation, not an assumption. Formula (confirmed via
+#   direct source read, not folklore): `((25 * targetSpeed) / userSpeed) +
+#   1`, capped at 150; userSpeed == 0 short-circuits to a flat power of 1
+#   (division-by-zero guard, not part of the capped formula).
+#   Source: battle_util.c, case EFFECT_GYRO_BALL (L6249-6263).
+@export var is_gyro_ball: bool = false
+
+# [D4 CHEAP bundle] is_electro_ball: Electro Ball(486) — CONFIRMED a
+#   genuinely different, STEPPED/BANDED formula from Gyro Ball's continuous
+#   one, not "same family, mirrored direction" (the exact assumption this
+#   task's own prompt warned against) — re-derived directly from source
+#   rather than trusted. Ratio = floor(userSpeed / targetSpeed) (the
+#   INVERSE ratio direction from Gyro Ball — user-to-target, not
+#   target-to-user), indexed directly (capped at the table's last index)
+#   into a fixed table: ratio 0 → 40, 1 → 60, 2 → 80, 3 → 120, 4+ → 150.
+#   Both sides read the same CURRENT effective speed accessor Gyro Ball
+#   uses (StatusManager.effective_speed).
+#   Source: battle_util.c, case EFFECT_ELECTRO_BALL (L6243-6248);
+#   sSpeedDiffPowerTable (L6032): {40, 60, 80, 120, 150}.
+@export var is_electro_ball: bool = false
+
+# [D4 CHEAP bundle] is_snore: Snore(173) — a genuinely different shape from
+#   Dream Eater's requires_target_asleep above: Snore has NO fail-if-not-
+#   asleep gate of its own at all (confirmed via source — no dedicated
+#   BattleScript_EffectSnore exists; it dispatches through the plain
+#   generic EFFECT_HIT damaging-move script with a MOVE_EFFECT_FLINCH
+#   secondary, identical in SHAPE to any other damage+flinch move). Its
+#   ONLY special behavior is reusing the EXISTING `usable_while_asleep`
+#   mechanism (Sleep Talk's own precedent, `[D4 bundle]`'s first session)
+#   to bypass `StatusManager.pre_move_check`'s normal "stays asleep, can't
+#   move" block — if used while genuinely awake, Snore behaves exactly like
+#   an ordinary Normal-type special attack with a 30% flinch chance, no
+#   restriction and no failure. Power 50 at this project's GEN_LATEST
+#   config (`B_UPDATED_MOVE_DATA >= GEN_6`), `ignoresSubstitute = TRUE`
+#   also at GEN_LATEST — reuses the existing generic `ignores_substitute`
+#   field. `usable_while_asleep` itself already carries its own doc comment
+#   citing `IsUsableWhileAsleepEffect` (battle_util.c L10714-10723), which
+#   lists EFFECT_SNORE alongside EFFECT_SLEEP_TALK — confirmed the SAME
+#   gate covers both moves, no new mechanism needed.
+@export var is_snore: bool = false
+
+# [D4 CHEAP bundle] is_endure: Endure(203) — dispatches through the LITERAL
+#   SAME script AND `Cmd_setprotectlike` command as Protect/Detect
+#   (`BattleScript_EffectProtect` and `BattleScript_EffectEndure` are the
+#   same label), confirmed via direct source read — but `Cmd_setprotectlike`
+#   ITSELF branches internally: `if (GetMoveEffect(gCurrentMove) ==
+#   EFFECT_ENDURE)` sets ONLY `volatiles.endured = TRUE`, completely
+#   bypassing `gProtectStructs[].protected` (this project's `protect_active`/
+#   `protect_method`) — a real correction to this move's own first-draft
+#   plan (which assumed Endure would reuse `protect_active` with an
+#   `_is_protected_from` bypass case; that approach is NOT what source does
+#   and was abandoned before implementing). Set `is_protect = TRUE` and
+#   `protect_method = PROTECT_METHOD_ENDURE` — the is_protect dispatch
+#   itself branches on this exact tag to set the SEPARATE
+#   `BattlePokemon.endure_active` field instead of `protect_active`, so
+#   Endure correctly never blocks the incoming hit, while still sharing the
+#   SAME per-battler consecutive-use fail-chance ramp (`protect_consecutive`)
+#   every other Protect-family move uses (source's own
+#   `volatiles.consecutiveMoveUses++` is unconditional regardless of which
+#   branch fires). The survive-lethal-hit chain in `_do_damaging_hit` checks
+#   `endure_active` FIRST, before Sturdy, matching source's real priority
+#   order (Endure → False Swipe → Sturdy → Focus Band → Focus Sash — this
+#   bundle has no False Swipe(206), so only the Endure/Sturdy ordering is
+#   newly relevant).
+#   Source: data/battle_scripts_1.s L2146-2154; battle_script_commands.c ::
+#   Cmd_setprotectlike (L6934-6957); battle_util.c L7962-7984 (the shared
+#   survive-a-lethal-hit priority chain).
+# (No new @export needed beyond is_protect/protect_method, both pre-existing.)
+
+# [D4 CHEAP bundle] is_fell_stinger: Fell Stinger(390) — MoveEnd-phase
+#   check: if the attacker's own hit (unabsorbed by Substitute) just KO'd
+#   the defender this turn, raise the attacker's OWN Attack by 3 stages
+#   (`B_FELL_STINGER_STAT_RAISE >= GEN_7` at this project's GEN_LATEST
+#   config — NOT the Gen<7 value of 2, confirmed via source rather than
+#   assumed a flat +1/+2 shape). Mirrors `AbilityManager.moxie_boost`'s own
+#   shape (killer-lookup via `_last_attacker`/now also `_last_attacker_move`,
+#   both already tracked at the same `_do_damaging_hit` chokepoint), checked
+#   at the SAME `_phase_faint_check` insertion point Moxie already occupies
+#   — already-maxed Attack is a natural no-op via the existing
+#   `StatusManager.apply_stat_change` clamp, no explicit guard needed.
+#   Source: battle_move_resolution.c, case EFFECT_FELL_STINGER
+#   (L3579-3591); include/constants/config_changes.h L82.
+@export var is_fell_stinger: bool = false
+
+# [D4 CHEAP bundle] is_magnet_rise: Magnet Rise(506) — see BattlePokemon.
+#   magnet_rise_turns's own doc comment for the full mechanism. Fails if the
+#   user already has Magnet Rise, Ingrain, or Smack Down active.
+@export var is_magnet_rise: bool = false
+
+# [D4 CHEAP bundle] is_smack_down: Smack Down(479) — see BattlePokemon.
+#   smack_down_active's own doc comment for the full mechanism. A
+#   MoveEnd-phase secondary on a damaging hit (power 50, Rock-type,
+#   Physical), gated on the hit actually connecting (unabsorbed by
+#   Substitute) and the target still being alive. `damagesAirborne = TRUE`
+#   reuses the EXISTING generic field (Gust/Twister/Thunder's own
+#   precedent) to hit a Flying-semi-invulnerable target mid-Fly.
+#   Source: battle_move_resolution.c, case EFFECT_SMACK_DOWN (L3547-3570).
+@export var is_smack_down: bool = false
+
+# [D4 CHEAP bundle] is_ingrain: Ingrain(182) — see BattlePokemon.
+#   ingrain_active's own doc comment for the full 3-piece composite
+#   mechanism (self-heal / self-ground / switch-block, both voluntary and
+#   forced). Fails if the user is already rooted.
+@export var is_ingrain: bool = false
+
+# [D4 CHEAP bundle] is_aqua_ring: Aqua Ring(392) — see BattlePokemon.
+#   aqua_ring_active's own doc comment for the full mechanism (end-of-turn
+#   self-heal only, no grounding/switch-block component). Fails if the
+#   user already has Aqua Ring active.
+@export var is_aqua_ring: bool = false
+
+# [D4 CHEAP bundle] is_payback: Payback(371) — power doubles if the TARGET
+#   has already acted this turn (reuses the EXISTING `_has_target_already_
+#   acted` position-tracking helper, `[M18j]` Zoom Lens's own precedent)
+#   AND the target did NOT just switch in this turn (reuses the EXISTING
+#   `switched_in_this_turn` flag, `[D1 easy bundle]` Fake Out's own
+#   precedent) — confirmed via source this project's GEN_LATEST config
+#   resolves `B_PAYBACK_SWITCH_BOOST >= GEN_5`, meaning a target that just
+#   switched in does NOT count as "already acted" for Payback's own
+#   doubling purposes even though switching in DOES set the general
+#   turn-position tracking, a genuinely conditional (not flat "target
+#   already moved") formula — re-derived from source rather than assumed.
+#   Source: battle_util.c, case EFFECT_PAYBACK (L6273-6283);
+#   include/config/battle.h L32.
+@export var is_payback: bool = false

@@ -238,7 +238,15 @@ static func calculate(
 	# bool, not a WEATHER_* constant passed into the data layer.
 	# M18t: Iron Ball grounds a Flying-type defender, overriding the raw table's own
 	# Ground-vs-Flying 0x entry — see TypeChart.get_effectiveness's own doc comment.
-	var iron_ball_grounded: bool = ItemManager.holds_iron_ball(defender, ng_active)
+	# [D4 CHEAP bundle] Smack Down/Ingrain force-ground a target the SAME way —
+	# the "forced-grounded" priority tier this project's own is_grounded already
+	# established (Iron Ball > Smack Down/Ingrain > Levitate/Magnet-Rise/Air-
+	# Balloon > Flying-type). Magnet Rise itself is the OPPOSITE direction (grants
+	# a NEW immunity to an otherwise-grounded mon, not representable by this
+	# raw-type-table override) — handled separately via
+	# AbilityManager.blocks_move_type's own Levitate-shaped check below.
+	var iron_ball_grounded: bool = ItemManager.holds_iron_ball(defender, ng_active) \
+			or defender.smack_down_active or defender.ingrain_active
 	# [D2 batch 2] Freeze-Dry(573)'s forced-Water-super-effective override and
 	# Tar Shot(695)'s flat Fire-move doubler — see MoveData.super_effective_
 	# vs_type/is_tar_shot's own doc comments for the full source citations.
@@ -553,7 +561,8 @@ static func calculate(
 		var strong_winds: bool = weather == WEATHER_STRONG_WINDS
 		var first_type: int = def_types[0] if def_types.size() > 0 else TypeChart.TYPE_NONE
 		var type_mod: int = TypeChart.get_uq412(
-				move.type, first_type, scrappy_bypass, move.super_effective_vs_type)
+				move.type, first_type, scrappy_bypass, move.super_effective_vs_type,
+				iron_ball_grounded)
 		# M17d: Delta Stream — a super-effective (>=2.0x) component against a Flying-type
 		# defender is weakened to neutral, checked PER type component to match source's
 		# exact granularity (battle_util.c :: MulByTypeEffectiveness L8069-8074).
@@ -563,7 +572,8 @@ static func calculate(
 			var second_type: int = def_types[1]
 			if second_type != first_type and second_type != TypeChart.TYPE_NONE:
 				var second_mod: int = TypeChart.get_uq412(
-						move.type, second_type, scrappy_bypass, move.super_effective_vs_type)
+						move.type, second_type, scrappy_bypass, move.super_effective_vs_type,
+						iron_ball_grounded)
 				if strong_winds and second_type == TypeChart.TYPE_FLYING and second_mod >= 8192:
 					second_mod = 4096
 				type_mod = _uq412_multiply(type_mod, second_mod)

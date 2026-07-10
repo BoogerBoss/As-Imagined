@@ -112,11 +112,27 @@ const UQ412_SE: int      = 8192  # 2.0x — super-effective
 # type component, same shape as the other overrides. Pass TYPE_NONE (the
 # default) to disable. Source: battle_util.c :: MulByTypeEffectiveness
 # (L8061-8062).
+# [D4 CHEAP bundle] grounded_override — a real, pre-existing gap closed as a
+# byproduct of this bundle's own Smack Down/Ingrain work: get_effectiveness
+# (below) already had this exact param (built for Iron Ball, `[M18t]`), but
+# this function never did, and DamageCalculator.calculate's OWN second,
+# independent UQ4.12 computation (used for the real damage math, not just
+# the early immunity short-circuit) calls THIS function without it — meaning
+# an Iron-Ball-holding Flying-type target hit by a Ground move would pass
+# get_effectiveness's own immunity gate (nonzero) but then still compute
+# type_mod == 0 here and hit the SAME "return damage=0" case a real immunity
+# would, silently canceling Iron Ball's own grounding for any Ground-type
+# move's actual damage. Fixed by adding the identical param/check here,
+# mirroring get_effectiveness's own shape exactly, and threading it through
+# both of DamageCalculator's own get_uq412 call sites.
 static func get_uq412(atk_type: int, def_type: int, bypass_ghost_immunity: bool = false,
-		force_super_effective_type: int = TYPE_NONE) -> int:
+		force_super_effective_type: int = TYPE_NONE, grounded_override: bool = false) -> int:
 	var eff: float = TABLE[atk_type][def_type]
 	if bypass_ghost_immunity and def_type == TYPE_GHOST and eff == 0.0 \
 			and (atk_type == TYPE_NORMAL or atk_type == TYPE_FIGHTING):
+		eff = 1.0
+	if grounded_override and def_type == TYPE_FLYING and eff == 0.0 \
+			and atk_type == TYPE_GROUND:
 		eff = 1.0
 	if force_super_effective_type != TYPE_NONE and def_type == force_super_effective_type:
 		eff = 2.0

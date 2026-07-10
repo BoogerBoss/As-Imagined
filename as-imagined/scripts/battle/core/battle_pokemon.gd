@@ -228,6 +228,88 @@ var tar_shot_active: bool = false
 # convention.
 var foresight_active: bool = false
 
+# [D4 CHEAP bundle] Torment(259) — permanent (switch-cleared) per-mon flag
+# on the TARGET, blocking use of the exact same move used on the
+# immediately preceding turn. Confirmed from source (not the decoy timer-
+# based `tormentTimer`/`Cmd_TrySetTormentSide` used by an unrelated
+# side-wide variant this project doesn't implement) that the base move
+# dispatches via `Cmd_settorment`, which sets a PLAIN bool with NO turn
+# counter and NO natural expiry — checked at execution time against
+# `attacker.last_move_used == move`, the exact same shape MoveData.
+# cant_use_twice (Blood Moon) already established, just target-inflicted
+# instead of self-inflicted. This project has no menu-legality/Struggle-
+# fallback architecture (confirmed absent for Disable/Taunt/Assault Vest/
+# Blood Moon too) — a Torment-blocked mon with no other legal move simply
+# has its turn skipped via `move_skipped`, matching this project's existing
+# behavior for every other execution-time move restriction.
+# Source: battle_script_commands.c :: Cmd_settorment (L8795-8809);
+# battle_util.c L1606 (MOVE_LIMITATION_TORMENTED check against gLastMoves).
+var tormented: bool = false
+
+# [D4 CHEAP bundle] Magnet Rise(506) — 5-turn self-ungrounding volatile.
+# Decrements at end of turn; reaching 0 clears it. Fails to apply if the
+# user already has Magnet Rise, Ingrain (root), or Smack Down active
+# (source: BattleScript_EffectMagnetRise's own 2 pre-checks + Cmd_
+# trysetvolatile's own already-active fail case). See AbilityManager.
+# is_grounded's own doc comment for the exact priority-ordering insertion.
+# Source: battle_script_commands.c, case VOLATILE_MAGNET_RISE
+# (Cmd_trysetvolatile, L9277-9280); B_MAGNET_RISE_TIMER = 5
+# (include/config/battle.h L208).
+var magnet_rise_turns: int = 0
+
+# [D4 CHEAP bundle] Smack Down(479)/its own MOVE_EFFECT — permanent
+# (switch-cleared) per-mon flag forcing this mon to be treated as grounded
+# for the rest of the battle, regardless of Flying-type/Levitate/Air
+# Balloon/Magnet Rise. Also clears any active Magnet Rise timer and, if
+# the target was mid-Fly (semi_invulnerable == SEMI_INV_ON_AIR), knocks it
+# out of the air early. See AbilityManager.is_grounded's own doc comment
+# for the exact priority-ordering insertion (Iron Ball > Smack Down/Ingrain
+# forced-grounded > Magnet Rise/Levitate/Air Balloon ungrounded > Flying-
+# type ungrounded > grounded by default).
+# Source: battle_move_resolution.c, case EFFECT_SMACK_DOWN (L3547-3570);
+# battle_util.c L5885 (grounding check, B_ROOTED_GROUNDING >= GEN_4 shares
+# this same "forced grounded" priority tier with Ingrain's own root field).
+var smack_down_active: bool = false
+
+# [D4 CHEAP bundle] Ingrain(182) — a 3-piece composite self-targeted
+# permanent (switch-cleared) volatile: (1) end-of-turn self-heal of
+# maxHP/16, Big-Root-boosted, gated on not already at max HP — shares the
+# EXACT SAME formula/helper as Aqua Ring's own end-of-turn heal below;
+# (2) forces this mon to be treated as grounded (see smack_down_active's
+# own doc comment for the shared priority-ordering insertion — Ingrain and
+# Smack Down are the SAME "forced grounded" tier); (3) blocks voluntary
+# switching (wired into AbilityManager.is_trapped, the same choke point
+# wrapped_by/escape_prevented_by already established) AND blocks being
+# forced out by Roar/Whirlwind/Circle Throw/Dragon Tail/Red Card (wired
+# into the EXISTING AbilityManager.blocks_forced_switch Guard Dog already
+# occupies — confirmed from source, not a partial-scope simplification,
+# that Roar's own script explicitly checks VOLATILE_ROOT before its
+# accuracy check: `jumpifvolatile BS_TARGET, VOLATILE_ROOT,
+# BattleScript_PrintMonIsRooted`, data/battle_scripts_1.s L1656).
+# Confirmed via source that Baton Pass explicitly passes
+# SWITCH_IGNORE_ESCAPE_PREVENTION (data/battle_scripts_1.s L2247) — Ingrain
+# does NOT block Baton Pass, matching every other trapping source's
+# already-established Baton-Pass-bypasses-trapping architecture. Fails to
+# apply if the user is already rooted (Cmd_trysetvolatile's own
+# already-active fail case, mirrored for consistency with Magnet Rise
+# even though this project builds it as a bespoke dispatch, not
+# trysetvolatile-generic).
+# Source: data/battle_scripts_1.s L2555 (trysetvolatile ... VOLATILE_ROOT);
+# battle_end_turn.c :: HandleEndTurnIngrain (L457-474); battle_util.c
+# L4953 (CanBattlerEscape's own root check).
+var ingrain_active: bool = false
+
+# [D4 CHEAP bundle] Aqua Ring(392) — self-targeted permanent (switch-
+# cleared) volatile, end-of-turn self-heal of maxHP/16, Big-Root-boosted,
+# gated on not already at max HP — the EXACT SAME formula/helper as
+# Ingrain's own end-of-turn heal above (both route through
+# BattleManager._ingrain_aqua_ring_heal_amount). No grounding/switch-block
+# component, unlike Ingrain.
+# Source: battle_end_turn.c :: HandleEndTurnAquaRing (L438-455) — the
+# literal same GetDrainedBigRootHp(battler, GetNonDynamaxMaxHP(battler)/16)
+# call Ingrain's own heal uses.
+var aqua_ring_active: bool = false
+
 # M18u: Metronome item's consecutive-same-move-use counter. Compared against
 # last_move_used (BEFORE it's overwritten for the current move) at the same
 # PP-deduction site source colocates its own reset check
@@ -367,7 +449,32 @@ const PROTECT_METHOD_OBSTRUCT: int = 4
 const PROTECT_METHOD_SILK_TRAP: int = 5
 const PROTECT_METHOD_WIDE_GUARD: int = 6
 const PROTECT_METHOD_QUICK_GUARD: int = 7
+# [D4 CHEAP bundle] Endure — used ONLY as a MoveData.protect_method tag
+# read at dispatch time (`move.protect_method == PROTECT_METHOD_ENDURE`),
+# NEVER actually stored into BattlePokemon.protect_method itself. Confirmed
+# via direct source read of Cmd_setprotectlike (battle_script_commands.c
+# L6934-6957) that Endure takes a genuinely SEPARATE branch of that shared
+# command — `if (GetMoveEffect(gCurrentMove) == EFFECT_ENDURE)` sets ONLY
+# `volatiles.endured = TRUE`, completely bypassing `gProtectStructs[].
+# protected` (the field this project's own `protect_active`/`protect_method`
+# together represent) — so Endure does NOT block the incoming hit, unlike
+# every other PROTECT_METHOD_*, and needed its own dedicated `endure_active`
+# field below rather than reusing protect_active at all. The ONE piece
+# still genuinely shared: `volatiles.consecutiveMoveUses++` is unconditional
+# in that same command regardless of branch, so Endure still ticks and is
+# subject to the SAME per-battler consecutive-use fail-chance ramp
+# (protect_consecutive) every other Protect-family move uses — see the
+# is_protect dispatch's own branch for the exact insertion.
+const PROTECT_METHOD_ENDURE: int = 8
 var protect_method: int = PROTECT_METHOD_NONE
+
+# [D4 CHEAP bundle] Endure(203) — single-turn self-volatile, guarantees
+# survival at 1 HP against a lethal hit WITHOUT blocking the hit itself
+# (see PROTECT_METHOD_ENDURE's own doc comment for the source-verified
+# separation from protect_active). Cleared every turn in
+# `_phase_priority_resolution`'s existing reset loop, the same cadence
+# protect_active/flinched/stat_raised_this_turn already use.
+var endure_active: bool = false
 
 # Destiny Bond: if this Pokémon faints before their next action, the KO attacker
 # also faints. Cleared when this Pokémon acts next (before their move executes).

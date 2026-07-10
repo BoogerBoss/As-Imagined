@@ -67,6 +67,13 @@ signal disabled(target: BattlePokemon, move: MoveData)                    # Disa
 signal encored(target: BattlePokemon, move: MoveData)                     # Encore applied
 signal taunted(target: BattlePokemon, turns: int)                         # [D4 bundle] Taunt applied
 signal infatuated(mon: BattlePokemon)                                     # M18.5d-2: Attract/Cute Charm applied
+signal tormented(target: BattlePokemon)                                   # [D4 CHEAP bundle] Torment applied
+signal magnet_rise_set(mon: BattlePokemon)                                # [D4 CHEAP bundle] Magnet Rise applied
+signal smack_down_set(mon: BattlePokemon)                                 # [D4 CHEAP bundle] Smack Down applied
+signal ingrain_set(mon: BattlePokemon)                                    # [D4 CHEAP bundle] Ingrain applied
+signal aqua_ring_set(mon: BattlePokemon)                                  # [D4 CHEAP bundle] Aqua Ring applied
+signal ring_heal_tick(mon: BattlePokemon, amount: int)                    # [D4 CHEAP bundle] Aqua Ring/Ingrain end-of-turn heal fired
+signal endured(mon: BattlePokemon)                                        # [D4 CHEAP bundle] Endure guaranteed 1 HP survival
 signal bide_started(attacker: BattlePokemon)                              # Bide setup turn
 signal bide_storing(attacker: BattlePokemon)                              # Bide wait turn
 signal bide_released(attacker: BattlePokemon, damage: int)                # Bide release
@@ -774,6 +781,10 @@ func _phase_priority_resolution() -> void:
 		mon.flinched = false
 		mon.protect_active = false
 		mon.protect_method = BattlePokemon.PROTECT_METHOD_NONE
+		# [D4 CHEAP bundle] Endure: same single-turn-only expiry shape as
+		# protect_active just above, but a genuinely separate field (see
+		# BattlePokemon.endure_active's own doc comment).
+		mon.endure_active = false
 		# [D4 bundle] Magic Coat: same single-turn-only expiry shape as
 		# protect_active just above (also cleared immediately on a
 		# successful bounce, at the swap site itself, if it fires earlier).
@@ -1203,6 +1214,19 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
+	# [D4 CHEAP bundle] Torment: the TARGET-inflicted mirror of Blood Moon's
+	# cant_use_twice above — see BattlePokemon.tormented's own doc comment
+	# for the full source citation. This project has no menu-legality/
+	# Struggle-fallback architecture (confirmed absent for every other
+	# execution-time move restriction), so a tormented mon with no other
+	# legal move simply has its turn skipped, matching this project's
+	# existing behavior for Disable/Taunt/Assault Vest/Blood Moon.
+	if attacker.tormented and attacker.last_move_used == move:
+		move_skipped.emit(attacker, "tormented")
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
 	# M7: Disabled move check — fires before thaw, before accuracy, before everything.
 	# Source: battle_move_resolution.c :: CancelerDisabled (L318)
 	# A Pokémon locked into a charging move cannot be stopped by Disable: CancelerCharging
@@ -1412,12 +1436,30 @@ func _phase_move_execution() -> void:
 	# Fires BEFORE accuracy check; success sets protect_active which blocks incoming moves.
 	if move.is_protect:
 		if _roll_protect_success(attacker.protect_consecutive):
-			attacker.protect_active = true
-			# [M19c] Which variant — see BattlePokemon.protect_method's own doc
-			# comment. Left at PROTECT_METHOD_NONE for plain Protect/Detect.
-			attacker.protect_method = move.protect_method
-			attacker.protect_consecutive += 1
-			protected.emit(attacker)
+			# [D4 CHEAP bundle] Endure takes a genuinely SEPARATE branch here,
+			# matching source's own Cmd_setprotectlike exactly (see
+			# BattlePokemon.PROTECT_METHOD_ENDURE's own doc comment) — it sets
+			# ONLY endure_active, never protect_active/protect_method, so it
+			# never blocks the incoming hit. The consecutive-use counter below
+			# is still shared/unconditional either way.
+			if move.protect_method == BattlePokemon.PROTECT_METHOD_ENDURE:
+				attacker.endure_active = true
+				attacker.protect_consecutive += 1
+				# Reuses the same "protect-family move successfully set up"
+				# signal Protect/Detect/Spiky Shield/etc. use — `endured` (below)
+				# is reserved for the SEPARATE "actually saved a lethal hit"
+				# event, which may never fire even after a successful use.
+				# protect_consecutive incremented BEFORE this emit, matching
+				# the pre-existing ordering every listener (incl. tier4_test's
+				# own S4.04) already relies on.
+				protected.emit(attacker)
+			else:
+				attacker.protect_active = true
+				# [M19c] Which variant — see BattlePokemon.protect_method's own doc
+				# comment. Left at PROTECT_METHOD_NONE for plain Protect/Detect.
+				attacker.protect_method = move.protect_method
+				attacker.protect_consecutive += 1
+				protected.emit(attacker)
 		else:
 			attacker.protect_consecutive = 0
 			move_effect_failed.emit(attacker, "protect_failed")
@@ -1907,6 +1949,37 @@ func _phase_move_execution() -> void:
 		if not _dps_sub_blocks_smelling_salts:
 			_dmg_power_override = move.power * 2
 
+	# [D4 CHEAP bundle] Gyro Ball: power from the speed RATIO of
+	# target-to-user, both sides read via StatusManager.effective_speed
+	# (current, post-stage/status/weather/item speed — NOT base speed).
+	# Source: battle_util.c, case EFFECT_GYRO_BALL (L6249-6263).
+	if move.is_gyro_ball:
+		var gb_eff_w: int = _effective_weather()
+		_dmg_power_override = _gyro_ball_power(
+				StatusManager.effective_speed(attacker, gb_eff_w, ng_active),
+				StatusManager.effective_speed(defender, gb_eff_w, ng_active))
+
+	# [D4 CHEAP bundle] Electro Ball: a genuinely different, STEPPED/BANDED
+	# formula from Gyro Ball's continuous one — the INVERSE ratio direction
+	# (user-to-target, not target-to-user), indexed into a fixed table.
+	# Source: battle_util.c, case EFFECT_ELECTRO_BALL (L6243-6248);
+	# sSpeedDiffPowerTable (L6032): {40, 60, 80, 120, 150}.
+	if move.is_electro_ball:
+		var eb_eff_w: int = _effective_weather()
+		_dmg_power_override = _electro_ball_power(
+				StatusManager.effective_speed(attacker, eb_eff_w, ng_active),
+				StatusManager.effective_speed(defender, eb_eff_w, ng_active))
+
+	# [D4 CHEAP bundle] Payback: power doubles if the TARGET has already
+	# acted this turn AND did NOT just switch in this turn — a genuinely
+	# conditional formula at this project's GEN_LATEST config
+	# (B_PAYBACK_SWITCH_BOOST >= GEN_5), re-derived from source rather than
+	# assumed a flat "target already moved" shape.
+	# Source: battle_util.c, case EFFECT_PAYBACK (L6273-6283);
+	# include/config/battle.h L32.
+	if move.is_payback and _has_target_already_acted(defender) and not defender.switched_in_this_turn:
+		_dmg_power_override = move.power * 2
+
 	# ── Priority-move-block (Dazzling / Queenly Majesty / Armor Tail) ────────────
 	# Source: battle_move_resolution.c :: CancelerPriorityBlock (L1511-1548), dispatched
 	# BEFORE CancelerAccuracyCheck in source's canceler chain — inserted at the same
@@ -1958,6 +2031,24 @@ func _phase_move_execution() -> void:
 		if crash_eff == 0.0:
 			move_missed.emit(attacker, "immune")
 			_apply_crash_damage(attacker, ng_active)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+	# ── Dream Eater: fails outright against a non-sleeping target ────────────
+	# Source: data/battle_scripts_1.s :: BattleScript_EffectDreamEater
+	# (BattleScript_DreamEaterSleepCheck, L1614-1624) — `jumpifstatus BS_TARGET,
+	# STATUS1_SLEEP` / `jumpifability BS_TARGET, ABILITY_COMATOSE` else
+	# BattleScript_DoesntAffectTargetAtkString (zero damage, not merely "skip
+	# the drain" — confirmed from source, not assumed). Checked BEFORE the
+	# accuracy roll — this failure path never rolls accuracy at all.
+	if move.requires_target_asleep:
+		var dream_eater_ok: bool = defender.status == BattlePokemon.STATUS_SLEEP \
+				or AbilityManager.effective_ability_id(defender, ng_active, attacker) == AbilityManager.ABILITY_COMATOSE
+		if not dream_eater_ok:
+			move_missed.emit(attacker, "doesnt_affect")
+			move_executed.emit(attacker, defender, move, 0)
 			attacker.last_move_used = move
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -2032,10 +2123,15 @@ func _phase_move_execution() -> void:
 		# M17n-10: Guard Dog blocks the forced switch entirely — see
 		# AbilityManager.blocks_forced_switch's own doc comment for the source
 		# citation. Checked before the party-slot lookup below since a blocked Roar
-		# never needs one.
+		# never needs one. [D4 CHEAP bundle]: Ingrain blocks it too (a plain
+		# volatile check, not ability-driven — see that function's own doc
+		# comment), so the failure reason/signal distinguishes which one fired.
 		if AbilityManager.blocks_forced_switch(defender, attacker, ng_active):
-			move_effect_failed.emit(attacker, "guard_dog_blocks_switch")
-			ability_triggered.emit(defender, "guard_dog")
+			if defender.ingrain_active:
+				move_effect_failed.emit(attacker, "ingrain_blocks_switch")
+			else:
+				move_effect_failed.emit(attacker, "guard_dog_blocks_switch")
+				ability_triggered.emit(defender, "guard_dog")
 			move_executed.emit(attacker, defender, move, 0)
 			attacker.last_move_used = move
 			_current_actor_index += 1
@@ -2599,6 +2695,33 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Torment ───────────────────────────────────────────────────────────
+		# Source: data/battle_scripts_1.s :: BattleScript_EffectTorment
+		#   (L2453-2462); battle_script_commands.c :: Cmd_settorment (L8795-8809)
+		# Fails if the target is already tormented. Blocked by Substitute (no
+		# ignoresSubstitute flag). See BattlePokemon.tormented's own doc comment
+		# for the execution-time block this infliction feeds.
+		if move.is_torment:
+			if aroma_veil_blocks:
+				move_effect_failed.emit(defender, "aroma_veil_blocked")
+				ability_triggered.emit(defender, "aroma_veil")
+				move_executed.emit(attacker, defender, move, 0)
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				return
+			if defender.substitute_hp > 0 and not move.ignores_substitute \
+					and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
+				move_missed.emit(attacker, "substitute")
+			elif defender.tormented:
+				move_effect_failed.emit(defender, "torment_failed")
+			else:
+				defender.tormented = true
+				tormented.emit(defender)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# ── Mean Look family (Spider Web / Mean Look / Block) ──────────────────
 		# Source: EFFECT_MEAN_LOOK -> BattleScript_EffectMeanLook
 		#   (data/battle_scripts_1.s L2100-2112): seteffectprimary ...
@@ -2820,6 +2943,56 @@ func _phase_move_execution() -> void:
 				move_effect_failed.emit(attacker, "already_focus_energy")
 			else:
 				attacker.focus_energy = true
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Magnet Rise ──────────────────────────────────────────────────────
+		# Source: data/battle_scripts_1.s :: BattleScript_EffectMagnetRise
+		#   (L1285-1294); battle_script_commands.c, case VOLATILE_MAGNET_RISE
+		#   (Cmd_trysetvolatile, L9277-9280). Fails if already active, or if
+		#   the user has Ingrain or Smack Down active (can't levitate while
+		#   forcibly grounded). See BattlePokemon.magnet_rise_turns's own doc
+		#   comment for the AbilityManager.is_grounded priority-tier insertion.
+		if move.is_magnet_rise:
+			if attacker.magnet_rise_turns > 0 or attacker.ingrain_active or attacker.smack_down_active:
+				move_effect_failed.emit(attacker, "magnet_rise_failed")
+			else:
+				attacker.magnet_rise_turns = 5
+				magnet_rise_set.emit(attacker)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Ingrain ──────────────────────────────────────────────────────────
+		# Source: data/battle_scripts_1.s L2555 (trysetvolatile ...
+		#   VOLATILE_ROOT); battle_end_turn.c :: HandleEndTurnIngrain
+		#   (L457-474); battle_util.c L4953 (CanBattlerEscape's own root
+		#   check). See BattlePokemon.ingrain_active's own doc comment for
+		#   the full 3-piece composite mechanism. Fails if already rooted.
+		if move.is_ingrain:
+			if attacker.ingrain_active:
+				move_effect_failed.emit(attacker, "ingrain_failed")
+			else:
+				attacker.ingrain_active = true
+				ingrain_set.emit(attacker)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Aqua Ring ────────────────────────────────────────────────────────
+		# Source: battle_end_turn.c :: HandleEndTurnAquaRing (L438-455) — the
+		#   literal same GetDrainedBigRootHp(battler, GetNonDynamaxMaxHP(
+		#   battler)/16) call Ingrain's own heal uses. Fails if already active.
+		if move.is_aqua_ring:
+			if attacker.aqua_ring_active:
+				move_effect_failed.emit(attacker, "aqua_ring_failed")
+			else:
+				attacker.aqua_ring_active = true
+				aqua_ring_set.emit(attacker)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -3552,6 +3725,18 @@ func _phase_faint_check() -> void:
 			if moxie_actual != 0:
 				stat_stage_changed.emit(moxie_killer, BattlePokemon.STAGE_ATK, moxie_actual)
 				ability_triggered.emit(moxie_killer, "moxie")
+			# [D4 CHEAP bundle] Fell Stinger — Attack +3 for whoever's move JUST
+			# KO'd this mon, at the same killer-lookup chokepoint Moxie uses
+			# above, but keyed on the KILLING MOVE (_last_attacker_move) rather
+			# than the killer's ability. Already-maxed Attack is a natural
+			# no-op via apply_stat_change's own clamp. See MoveData.
+			# is_fell_stinger's own doc comment for the full source citation.
+			var fs_killer_move: MoveData = _last_attacker_move.get(combatant, null)
+			if fs_killer_move != null and fs_killer_move.is_fell_stinger and moxie_killer != null:
+				var fs_actual: int = StatusManager.apply_stat_change(
+						moxie_killer, BattlePokemon.STAGE_ATK, 3, null, _is_neutralizing_gas_active())
+				if fs_actual != 0:
+					stat_stage_changed.emit(moxie_killer, BattlePokemon.STAGE_ATK, fs_actual)
 			# M17h: Receiver / Power of Alchemy — doubles-only (via _get_ally, which is
 			# already null in singles — same gating shape as M17c's Hospitality), copies
 			# THIS fainted mon's ability onto its surviving ally if that ally holds
@@ -3745,6 +3930,25 @@ func _phase_end_of_turn() -> void:
 					mon.fainted = true
 					pokemon_fainted.emit(mon)
 
+	# ── [D4 CHEAP bundle] Aqua Ring / Ingrain end-of-turn self-heal
+	# (ENDTURN_AQUA_RING=1557, ENDTURN_INGRAIN=1558 in source's own handler
+	# table — both BEFORE ENDTURN_LEECH_SEED=1559, matching this insertion
+	# point) ───────────────────────────────────────────────────────────────
+	# Source: battle_end_turn.c :: HandleEndTurnAquaRing (L438-455) /
+	#   HandleEndTurnIngrain (L457-474) — the literal same maxHP/16 formula,
+	#   Big-Root-boosted, gated on not already at max HP. Magic Guard has no
+	#   interaction here (a heal, not indirect damage) — confirmed from
+	#   source (neither function checks it), matching Leftovers' own
+	#   precedent.
+	for mon: BattlePokemon in _combatants:
+		if mon.fainted or mon.current_hp >= mon.max_hp:
+			continue
+		if not (mon.aqua_ring_active or mon.ingrain_active):
+			continue
+		var ring_heal: int = ItemManager.big_root_drain_heal(mon, mon.max_hp / 16, ng_active)
+		mon.current_hp = min(mon.max_hp, mon.current_hp + ring_heal)
+		ring_heal_tick.emit(mon, ring_heal)
+
 	# ── [D0] Leech Seed drain (ENDTURN_LEECH_SEED=11, BEFORE Poison/Burn=12/13
 	# in source's own handler table) ──────────────────────────────────────────
 	# Source: HandleEndTurnLeechSeed (battle_end_turn.c L476-509). Drain amount
@@ -3787,6 +3991,13 @@ func _phase_end_of_turn() -> void:
 			if mon.sure_hit_turns <= 0:
 				mon.sure_hit_target = null
 				mon.sure_hit_turns = 0
+
+	# ── [D4 CHEAP bundle] Magnet Rise — 5-turn countdown ──────────────────────
+	# Source: battle_end_turn.c :: HandleEndTurnMagnetRise (L848-855):
+	#   `if (magnetRiseTimer > 0 && --magnetRiseTimer == 0) volatiles.magnetRise = FALSE`.
+	for mon: BattlePokemon in _turn_order:
+		if mon.magnet_rise_turns > 0:
+			mon.magnet_rise_turns -= 1
 
 	# ── Status damage (ENDTURN_POISON=12, ENDTURN_BURN=13 in source handler table) ────────
 	# Apply end-of-turn status damage in speed order (matching source ENDTURN_POISON
@@ -4709,6 +4920,7 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.substitute_hp = 0
 	mon.protect_active = false
 	mon.protect_method = BattlePokemon.PROTECT_METHOD_NONE
+	mon.endure_active = false
 	mon.destiny_bond = false
 	mon.disabled_move = null
 	mon.disable_turns = 0
@@ -4835,6 +5047,17 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 		if other != mon and other.sure_hit_target == mon:
 			other.sure_hit_target = null
 			other.sure_hit_turns = 0
+
+	# [D4 CHEAP bundle] Torment/Magnet Rise/Smack Down/Ingrain/Aqua Ring — all
+	# five live in source's same bulk-memset `volatiles` struct, cleared here
+	# like every other switch-scoped field above. None of the five need a
+	# reciprocal cross-battler scan (all self-contained per-mon state, unlike
+	# wrapped_by/escape_prevented_by/leeched_by/sure_hit_target just above).
+	mon.tormented = false
+	mon.magnet_rise_turns = 0
+	mon.smack_down_active = false
+	mon.ingrain_active = false
+	mon.aqua_ring_active = false
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
@@ -5354,6 +5577,28 @@ static func _flail_power(current_hp: int, max_hp: int) -> int:
 		if hp_fraction <= THRESHOLDS[i]:
 			return POWERS[i]
 	return POWERS[POWERS.size() - 1]
+
+
+# [D4 CHEAP bundle] Gyro Ball power — target-to-user speed ratio, continuous
+# (not banded), capped at 150. attacker_speed == 0 short-circuits to a flat
+# power of 1 (division-by-zero guard, not part of the capped formula).
+# Source: battle_util.c, case EFFECT_GYRO_BALL (L6249-6263).
+static func _gyro_ball_power(attacker_speed: int, defender_speed: int) -> int:
+	if attacker_speed == 0:
+		return 1
+	return mini(150, (25 * defender_speed) / attacker_speed + 1)
+
+
+# [D4 CHEAP bundle] Electro Ball power — user-to-target speed ratio (the
+# INVERSE direction from Gyro Ball), STEPPED/BANDED via a fixed lookup
+# table, confirmed genuinely different in shape from Gyro Ball's continuous
+# formula rather than assumed mirrored.
+# Source: battle_util.c, case EFFECT_ELECTRO_BALL (L6243-6248);
+# sSpeedDiffPowerTable (L6032): {40, 60, 80, 120, 150}.
+static func _electro_ball_power(attacker_speed: int, defender_speed: int) -> int:
+	const TABLE: Array = [40, 60, 80, 120, 150]
+	var ratio: int = attacker_speed / maxi(1, defender_speed)
+	return TABLE[clampi(ratio, 0, TABLE.size() - 1)]
 
 
 # [D1 cheap clusters] Stored Power / Power Trip's own power formula input —
@@ -5941,16 +6186,17 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		move_executed.emit(attacker, target, move, sub_dmg)
 		return 0
 
-	# M17n-5/M18o: survive-a-lethal-hit chain — Sturdy, Focus Band, Focus Sash.
+	# M17n-5/M18o/[D4 CHEAP bundle]: survive-a-lethal-hit chain — Endure,
+	# Sturdy, Focus Band, Focus Sash.
 	# Source: battle_util.c L7962-7984 (the shared endure-check function every
 	# lethal hit routes through) — `if (defender.hp > damage) return damage` (non-lethal,
 	# skip); else Endure volatile → False Swipe → Sturdy (IsBattlerAtMaxHp gate,
 	# B_STURDY >= GEN_5, satisfied at this project's GEN_LATEST) → Focus Band → Focus
 	# Sash → affection, in that priority order, first match wins, `damage = hp - 1`.
-	# This project has no Endure move, no False Swipe move, and no affection
-	# mechanic — Sturdy/Focus Band/Focus Sash are the three reachable cases, and
-	# this is a strict elif chain (first match wins), NOT three independent
-	# checks — confirmed from source: a Pokemon with BOTH Sturdy and a held Focus
+	# This project has no False Swipe move and no affection mechanic — Endure/
+	# Sturdy/Focus Band/Focus Sash are the four reachable cases, and this is a
+	# strict elif chain (first match wins), NOT four independent checks —
+	# confirmed from source: a Pokemon with BOTH Sturdy and a held Focus
 	# Sash never reaches the Focus Sash branch at all when Sturdy already fires,
 	# so the item is not consumed, not "wasted," simply untouched by that hit.
 	# Both `damage >= target.current_hp` checks below read target.current_hp
@@ -5958,7 +6204,10 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	# — a pre-application lethality prediction on the target's own still-current
 	# HP, not a post-hit aliveness check on a different Pokemon, so this has no
 	# analogous timing bug to the current_hp-vs-.fainted convention.
-	if damage >= target.current_hp and target.current_hp == target.max_hp \
+	if damage >= target.current_hp and target.endure_active:
+		damage = target.current_hp - 1
+		endured.emit(target)
+	elif damage >= target.current_hp and target.current_hp == target.max_hp \
 			and AbilityManager.effective_ability_id(target, ng_active, attacker) == AbilityManager.ABILITY_STURDY:
 		damage = target.current_hp - 1
 		ability_triggered.emit(target, "sturdy")
@@ -6113,6 +6362,20 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	if damage > 0 and move.is_leech_seed_on_hit:
 		if StatusManager.try_apply_leech_seed(target, attacker):
 			leech_seeded.emit(target, attacker)
+
+	# [D4 CHEAP bundle] Smack Down: forces the TARGET grounded for the rest
+	# of the battle, clears its Magnet Rise timer, and knocks it out of the
+	# air if it was mid-Fly. `damagesAirborne = TRUE` (existing generic
+	# field) already lets this hit connect against a Fly-ing target in the
+	# first place. See BattlePokemon.smack_down_active's own doc comment for
+	# the full source citation.
+	if damage > 0 and move.is_smack_down and target.current_hp > 0:
+		if not target.smack_down_active:
+			target.smack_down_active = true
+			target.magnet_rise_turns = 0
+			if target.semi_invulnerable == MoveData.SEMI_INV_ON_AIR:
+				target.semi_invulnerable = MoveData.SEMI_INV_NONE
+			smack_down_set.emit(target)
 
 	# [D0] Sparkly Swirl(687)'s on-hit secondary — Aromatherapy's party-wide
 	# cure applied to the ATTACKER'S OWN party (source's Cmd_healpartystatus
@@ -6790,7 +7053,10 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 			if rc_slot >= 0:
 				_consume_item(target)
 				if AbilityManager.blocks_forced_switch(attacker, target, ng_active):
-					ability_triggered.emit(attacker, "guard_dog")
+					# [D4 CHEAP bundle]: Ingrain blocks Red Card's forced switch too,
+					# same distinction as the Roar dispatch above.
+					if not attacker.ingrain_active:
+						ability_triggered.emit(attacker, "guard_dog")
 				else:
 					var old_attacker: BattlePokemon = attacker
 					_do_forced_switch_in(attacker_side, rc_slot, attacker_field_slot)

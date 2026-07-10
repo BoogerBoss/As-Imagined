@@ -20920,3 +20920,305 @@ flagged in place), D4's BLOCKED tier corrected 1→2 moves and CHEAP
 corrected 63→62, Section E's summary table and top reconciliation
 recomputed (628+0+0+215+91=934, reconfirmed). **Section D's residual:
 97→91.**
+
+## [D4 CHEAP bundle] — Dream Eater, Torment, Gyro Ball, Electro Ball,
+## Snore, Endure, Fell Stinger, Magnet Rise, Smack Down, Ingrain,
+## Aqua Ring, Payback (12 moves: the prompt's 4 confirmed standouts + 8
+## additional CHEAP picks selected and Step-0-verified before
+## implementing) (2026-07-10)
+
+Per Rob's own prompt, which named 4 standouts and asked for 6-8 more
+picks from the 58-move CHEAP pool, with full Step 0 findings reported
+before implementation. Every one of the 12 was individually re-verified
+against source rather than trusting the CHEAP tag or the prompt's own
+assumed mechanism — the prompt itself flagged several specific risks in
+advance (Dream Eater's drain family, Torment's exact duration,
+Electro Ball's shape relative to Gyro Ball), all of which turned out to
+need a real correction.
+
+### Step 0 findings
+
+- **Dream Eater(138).** Confirmed via `data/battle_scripts_1.s ::
+  BattleScript_EffectDreamEater` (L1614-1624) that the move fails
+  OUTRIGHT — zero damage, not merely "skip the drain" — against a
+  non-sleeping, non-Comatose target: `jumpifstatus BS_TARGET,
+  STATUS1_SLEEP, BattleScript_HitFromAccCheck` / `jumpifability
+  BS_TARGET, ABILITY_COMATOSE, ...` else `goto
+  BattleScript_DoesntAffectTargetAtkString`, checked BEFORE the accuracy
+  roll. The drain itself reuses the GENERIC `EFFECT_ABSORB`/
+  `EFFECT_DREAM_EATER` shared drain-application chokepoint
+  (`battle_move_resolution.c` L2636) this project's Absorb/Mega Drain/
+  Giga Drain family already occupies via the existing `drain_percent`
+  field (50%) — confirmed NOT the Volt Absorb/Water Absorb ABILITY
+  family the task's own prompt suggested checking, a real correction.
+  `B_DREAM_EATER_LIQUID_OOZE`/`B_DREAM_EATER_SUBSTITUTE` both resolve
+  their GEN_5+ branches at this project's GEN_LATEST config, meaning
+  Liquid Ooze inversion and ordinary Substitute-absorption both already
+  apply for free via that same shared chokepoint — zero extra code
+  needed for either.
+- **Torment(259).** Confirmed via `battle_script_commands.c ::
+  Cmd_settorment` (L8795-8809) that the BASE move sets a PLAIN bool
+  (`volatiles.torment = TRUE`) with NO turn counter and NO natural
+  expiry — a real correction to an initial false lead: `tormentTimer`/
+  `Cmd_TrySetTormentSide` (a 3-turn side-wide variant) looked plausible
+  at first but is dispatched by a DIFFERENT, unimplemented move entirely,
+  confirmed by tracing which script actually calls which opcode. Checked
+  via `battle_util.c` L1606: `MOVE_LIMITATION_TORMENTED && move ==
+  gLastMoves[battler] && volatiles.torment == TRUE` — blocks re-use of
+  the exact same move as the immediately preceding turn, reusing Blood
+  Moon's `cant_use_twice` SHAPE (`attacker.last_move_used == move`) but
+  target- rather than self-inflicted. This project has no menu-legality/
+  Struggle-fallback architecture for ANY execution-time move restriction
+  (confirmed absent for Disable/Taunt/Assault Vest/Blood Moon too,
+  `_is_forced_struggle` only ever checks PP==0) — Torment doesn't get
+  special-cased differently; a tormented mon with no other legal move
+  simply has its turn skipped via `move_skipped`, matching every other
+  execution-time restriction's existing behavior. `magicCoatAffected =
+  TRUE` at GEN_LATEST (bounceable), blocked by Substitute (no
+  `ignoresSubstitute` flag).
+- **Gyro Ball(360).** Confirmed formula (`battle_util.c`, case
+  `EFFECT_GYRO_BALL`, L6249-6263): `((25 * target_speed) / user_speed) +
+  1`, capped at 150; `user_speed == 0` short-circuits to a flat power of
+  1 (a division-by-zero guard, not part of the capped formula). Both
+  sides read `StatusManager.effective_speed` — CURRENT effective speed
+  (post-stat-stage, post-Paralysis-halving/Quick-Feet-replacement,
+  post-weather-ability, post-item), confirmed via the task's own Step 0
+  instruction, not base speed — and specifically `_effective_weather()`
+  (Air-Lock/Cloud-Nine-aware), matching the exact accessor turn-order
+  sorting itself already uses.
+- **Electro Ball(486).** CONFIRMED genuinely different in shape from
+  Gyro Ball, not "same family, mirrored direction" — re-derived from
+  source rather than assumed, exactly as the task's own prompt warned
+  against. Formula (`battle_util.c`, case `EFFECT_ELECTRO_BALL`,
+  L6243-6248; `sSpeedDiffPowerTable`, L6032): `ratio = floor(user_speed /
+  target_speed)`, indexed directly (capped at the table's last index)
+  into a FIXED 5-entry table `{40, 60, 80, 120, 150}` — a stepped/banded
+  formula, confirmed via a direct discriminator that two different
+  ratios within the same band produce IDENTICAL power (unlike Gyro
+  Ball's own continuous formula). The ratio direction is also the
+  INVERSE of Gyro Ball's (user-to-target here, target-to-user there).
+- **Snore(173).** Confirmed NO dedicated battle script exists for this
+  move at all — it dispatches through the plain generic `EFFECT_HIT`
+  damaging-move path with a `MOVE_EFFECT_FLINCH` secondary (30% chance),
+  identical in SHAPE to any other damage+flinch move. Its only special
+  behavior is reusing the EXISTING `usable_while_asleep` mechanism
+  (Sleep Talk's own precedent, `[D4 bundle]`) to bypass
+  `StatusManager.pre_move_check`'s normal sleep block — confirmed via
+  that mechanism's own doc comment, which already cites
+  `IsUsableWhileAsleepEffect` (`battle_util.c` L10714-10723) listing
+  `EFFECT_SNORE` alongside `EFFECT_SLEEP_TALK`. Unlike Dream Eater, Snore
+  has NO fail-if-not-asleep gate — used while genuinely awake it behaves
+  like an ordinary Normal-type special attack, no restriction. Power 50
+  at this project's `B_UPDATED_MOVE_DATA >= GEN_6` config,
+  `ignoresSubstitute = TRUE` also at GEN_LATEST.
+- **Endure(203).** Confirmed via direct source read of
+  `battle_script_commands.c :: Cmd_setprotectlike` (L6934-6957) that
+  Endure dispatches through the LITERAL SAME script/command as
+  Protect/Detect (`BattleScript_EffectProtect`/`BattleScript_EffectEndure`
+  are the same label) — but the command ITSELF branches internally:
+  `if (GetMoveEffect(gCurrentMove) == EFFECT_ENDURE)` sets ONLY
+  `volatiles.endured = TRUE`, completely bypassing
+  `gProtectStructs[].protected` (this project's `protect_active`/
+  `protect_method`). **A real correction to this move's own first-draft
+  plan**: the original design (reuse `protect_active` with a new
+  `PROTECT_METHOD_ENDURE` case and an `_is_protected_from` non-blocking
+  exception) was abandoned mid-session, before any code was written,
+  once this exact branching was found — instead, a genuinely separate
+  `BattlePokemon.endure_active` field was added, set by a new branch
+  inside the EXISTING `is_protect` dispatch (keyed on `move.protect_method
+  == PROTECT_METHOD_ENDURE`, a MoveData-level tag never actually stored
+  onto `BattlePokemon.protect_method`), so `_is_protected_from` needed
+  ZERO changes at all — Endure structurally can never reach its default
+  "unrecognized method" branch. The ONE piece genuinely shared
+  regardless of branch: `volatiles.consecutiveMoveUses++` is
+  unconditional in that command, so Endure still ticks and is subject to
+  the SAME per-battler consecutive-use fail-chance ramp
+  (`protect_consecutive`) every other Protect-family move uses. The
+  survive-lethal-hit chain (`battle_util.c` L7962-7984) checks Endure
+  FIRST, before Sturdy/Focus Band/Focus Sash, confirmed and reproduced
+  by inserting `endure_active`'s own check as the first branch of the
+  existing elif chain (converting Sturdy's own `if` to `elif`).
+- **Fell Stinger(565).** Confirmed +3 Attack (not the older +2) at this
+  project's `B_FELL_STINGER_STAT_RAISE >= GEN_7` config
+  (`battle_move_resolution.c`, case `EFFECT_FELL_STINGER`, L3579-3591).
+  A MoveEnd-phase check (attacker alive, defender just fainted from an
+  unabsorbed hit this turn) mirroring `AbilityManager.moxie_boost`'s own
+  shape exactly — reuses the SAME `_last_attacker`/`_phase_faint_check`
+  killer-lookup chokepoint Moxie already occupies, plus the pre-existing
+  `_last_attacker_move` companion dictionary (`[M17n-8]`) to identify the
+  killing MOVE rather than the killer's ability. Already-maxed Attack is
+  a natural no-op via `StatusManager.apply_stat_change`'s own clamp.
+- **Magnet Rise(393)/Smack Down(479)/Ingrain(275).** All three extend
+  `AbilityManager.is_grounded`'s EXISTING priority-tier ordering (Iron
+  Ball > Smack Down/Ingrain forced-grounded > Magnet Rise/Levitate/Air
+  Balloon ungrounded > Flying-type ungrounded > grounded-default) —
+  confirmed correct and already anticipated by that function's own doc
+  comment (written at `[M18t]`, which explicitly named Magnet
+  Rise/Ingrain/Smack Down as "confirmed still absent" pending a future
+  tier). Magnet Rise: 5-turn self-ungrounding volatile
+  (`Cmd_trysetvolatile`, `B_MAGNET_RISE_TIMER = 5`), fails if the user
+  already has Magnet Rise, Ingrain, or Smack Down active
+  (`BattleScript_EffectMagnetRise`, L1285-1294); ALSO needed a new
+  `AbilityManager.blocks_move_type` branch (the Mold-Breaker-aware
+  damage-pipeline immunity gate, separate from `is_grounded`) granting
+  full Ground-move immunity, matching Levitate's own shape exactly.
+  Smack Down: a MoveEnd secondary on a damaging hit (`battle_move_
+  resolution.c`, case `EFFECT_SMACK_DOWN`, L3547-3570) — permanent
+  grounding, clears the target's own Magnet Rise timer, knocks a
+  mid-Fly target out of the air early (`semi_invulnerable ==
+  SEMI_INV_ON_AIR` → cleared). Ingrain: see its own dedicated
+  correction below.
+- **Ingrain(275) — scope correction.** The task's own prompt proposed a
+  deliberately partial build (self-heal + self-grounding + voluntary-
+  switch-block only, explicitly flagging but NOT building the
+  Roar/Whirlwind-blocking piece as out of reach). Re-investigating during
+  implementation-planning found this was UNNECESSARILY conservative:
+  `AbilityManager.blocks_forced_switch` (built for Guard Dog, `[M17n-10]`)
+  already sits at the exact 3 call sites (Roar, Circle Throw/Dragon
+  Tail's `is_hit_switch_target`, Red Card) needed — extending it with one
+  more `if defender.ingrain_active: return true` branch closes the gap
+  for FREE, no new call sites needed. Confirmed via direct source read
+  that this is faithful, not scope creep: Roar's own script explicitly
+  checks `VOLATILE_ROOT` (`data/battle_scripts_1.s` L1656:
+  `jumpifvolatile BS_TARGET, VOLATILE_ROOT,
+  BattleScript_PrintMonIsRooted`) BEFORE its own accuracy check — a real
+  mechanic, not folklore. Deliberately NOT routed through the
+  Mold-Breaker-aware `effective_ability_id` chokepoint Guard Dog's own
+  check uses, since this is a plain volatile check in source, wholly
+  independent of the adjacent ability-jump — a Mold Breaker attacker
+  still cannot force an Ingrained target to switch. Confirmed via source
+  that Baton Pass explicitly bypasses this whole function
+  (`SWITCH_IGNORE_ESCAPE_PREVENTION`, `data/battle_scripts_1.s` L2247),
+  matching the same Baton-Pass-bypasses-trapping exemption every other
+  trapping source (Shadow Tag/Arena Trap/Magnet Pull/wrap/escape
+  prevention) already has, with zero special-casing needed since this
+  project's Baton Pass dispatch never calls `blocks_forced_switch` at
+  all. End-of-turn heal (maxHP/16, Big-Root-boosted, gated on not
+  already at max HP) shares the exact `HandleEndTurnIngrain`/
+  `HandleEndTurnAquaRing` formula (`battle_end_turn.c` L438-474) with
+  Aqua Ring below, implemented as one shared loop.
+- **Aqua Ring(392).** Same end-of-turn heal formula/loop as Ingrain
+  above; deliberately no grounding/switch-block component (confirmed via
+  source — `HandleEndTurnAquaRing` has no such interaction).
+- **Payback(371).** Confirmed a genuinely CONDITIONAL formula, not a flat
+  "target already moved" doubling (`battle_util.c`, case
+  `EFFECT_PAYBACK`, L6273-6283): doubles if `HasBattlerActedThisTurn
+  (defender)` AND (`B_PAYBACK_SWITCH_BOOST < GEN_5` OR the target did NOT
+  just switch in) — at this project's `GEN_LATEST` config the first OR
+  branch is always false, so the real condition is "already acted AND
+  did not just switch in this turn." Reuses two EXISTING trackers
+  directly: `_has_target_already_acted` (`[M18j]`'s own
+  `_turn_order`/`_current_actor_index` position-tracking helper) and
+  `switched_in_this_turn` (`[D1 easy bundle]`'s own flag, itself fixed
+  that same session to correctly cover a battle's own starting leads).
+
+### A real, pre-existing gap found and fixed as a byproduct
+
+While wiring Smack Down/Ingrain's `grounded_override` into
+`DamageCalculator.calculate`'s FIRST type-effectiveness call
+(`TypeChart.get_effectiveness`, which already had this exact parameter,
+built for Iron Ball in `[M18t]`), tracing the function's SECOND,
+independent UQ4.12 computation (`TypeChart.get_uq412`, used for the real
+damage math a few lines later) found it had **no `grounded_override`
+parameter at all** — a genuine, previously-undiscovered gap. This meant
+an Iron-Ball-holding Flying-type target hit by a Ground-type move would
+pass the FIRST immunity gate (nonzero effectiveness, correctly forced by
+`grounded_override`) but then the SECOND computation would independently
+compute `type_mod == 0` from the raw table (no override applied) and hit
+the exact same "return damage=0" case a real immunity would — silently
+canceling Iron Ball's own grounding for the actual damage result, not
+just this bundle's own new moves. Fixed by adding the identical
+parameter/check to `get_uq412` (mirroring `get_effectiveness`'s own
+shape) and threading it through both of `calculate`'s own call sites.
+Confirmed via `damage_test`/`m18t_test` both passing unchanged after the
+fix — the gap was purely additive (a missing capability, not a wrong
+existing one), so nothing regressed.
+
+### Testing
+
+New `d4_bundle2_test.gd`/`.tscn`: 66/66 assertions across 13 sections (A:
+data integrity for all 12 moves; B-M: one section per move, scoped to
+what's genuinely new — Dream Eater's fail-on-non-sleeping + exact-half
+drain; Torment's block + different-move discriminator; Gyro Ball's power
+formula at 4 direct values + a full-battle speed-reversal comparison;
+Electro Ball's power formula at every band boundary + the banded-not-
+continuous discriminator; Snore's asleep-fires + awake-fires pair;
+Endure's survive-at-1HP + does-not-block-the-hit + before-Sturdy
+ordering; Fell Stinger's +3-on-KO + no-boost-without-KO; Magnet Rise's
+`is_grounded`/`blocks_move_type` unit tests + a full-battle 0-damage
+confirmation; Smack Down's baseline-immunity + grounded-after-hit +
+full-battle Earthquake-connects confirmation; Ingrain's grounding +
+trapping + heal-amount + Roar-block; Aqua Ring's heal-amount + the
+does-NOT-ground/does-NOT-trap discriminators; Payback's turn-1-vs-later-
+turn doubling comparison), stable across 8 reruns.
+
+Four real test-authoring bugs fixed on the way to a clean run, none of
+them implementation bugs: (1) a fresh whole-battle-aggregation instance
+in the Torment discriminator — a defender auto-selecting its only other
+queued move (Ember) correctly executed without being skipped, but the
+original assertion also watched for ANY later "tormented" skip across
+the whole multi-turn battle, which legitimately fires several turns
+later once the queue drains and auto-select re-picks the SAME move as
+last time — fixed by recording an ordered timeline and checking only the
+events up to and including Ember's own execution; (2)/(3) two missing
+`queue_move` calls (Smack Down's own attacker and Payback's own
+attacker each have 2 real moves but no queued turn-by-turn plan, so
+auto-select silently kept re-picking move-slot-0 every turn, never
+exercising the intended second move) — root-caused via two throwaway
+debug scenes with full event-timeline printing rather than guessed at
+blind; (4) an exact-equality pairwise-damage assertion for Payback's own
+2x-doubling claim, which doesn't hold bit-for-bit due to integer-division
+rounding in the damage formula (37 baseline → 73 actual, not 74) — fixed
+with a small tolerance, matching this project's own established
+convention for this exact class of comparison.
+
+**A real regression was caught and fixed during this session's own
+regression sweep, not by the new test suite itself**: the `is_protect`
+dispatch's new Endure branch had moved `attacker.protect_consecutive +=
+1` to AFTER both branches' `protected.emit(attacker)` calls (in order to
+apply it uniformly to both the new Endure branch and the pre-existing
+Protect/Detect branch) — this silently changed the ORDER relative to the
+emit for the pre-existing ordinary-Protect path too, where the original
+code incremented BEFORE emitting. `tier4_test.gd`'s own pre-existing
+S4.04 (`protected.connect(func(d): if consec_first[0] < 0: consec_first[0]
+= d.protect_consecutive)`, reading the value at the moment the signal
+fires) caught this immediately and consistently (85/86, every rerun) —
+fixed by incrementing before the emit in both branches, restoring the
+exact original ordering; confirmed 86/86 stable across reruns after.
+
+One additional flaky test was found during the regression sweep,
+investigated, and confirmed PRE-EXISTING and unrelated to this session:
+`m19a_gen1_test.gd`'s own "Hydro Pump (makes_contact=false) does NOT
+trigger Rough Skin" discriminator connects to `recoil_damage` with no
+first-occurrence guard and no turn-scoping, across a battle that
+legitimately runs many turns beyond the one under test — a fresh
+instance of the same whole-battle-aggregation pitfall class, but in a
+much older file this session never touched. Confirmed via `git stash`
+(reverting to the exact pre-session commit) that the identical flake
+reproduces at the same rate on the pristine baseline — flagged, not
+fixed, out of this session's own scope.
+
+Regression: the 4 required suites (`damage_test`/`move_test`/`stat_test`/
+`status_test`) plus 17 suites covering every piece of reused
+infrastructure (`d4_bundle_test`/`tier4_test`/`m17n5_test`/`m18o_test`/
+`m16d_test`/`m17f_test`/`m18t_test`/`switch_test`/`m17n10_test`/
+`m18n_test`/`d1_easy_bundle_test`/`item_registry_test`/`ability_test`/
+`m18q_test`/`doubles_test`/`m17n9_test`/`weather_test`) — all clean, 0
+failures. Given this session's changes touch `DamageCalculator`/
+`TypeChart` directly (used by every damaging move in the entire roster,
+not just this bundle's own 12), a full 106-file sweep was also run twice
+from independent process states — 0 real failures either time (the
+`m19a_gen1_test` flake above reproduces identically with or without this
+session's changes).
+
+### Data / Docs
+
+12 new `.tres` files (640 total, 628 prior + 12). New
+`PROTECT_METHOD_ENDURE` constant (BattlePokemon and its `gen_moves.py`
+mirror). `docs/m19_subtier_plan.md` updated throughout: the new
+`[D4 CHEAP bundle]` subsection added under D4 (documenting Snore's own
+genuine prose-completeness gap — mathematically part of the pre-session
+91-move residual but never individually named anywhere in the document),
+D4's own remaining-pool note and Section E's summary table/reconciliation
+recomputed (640+0+0+215+79=934, reconfirmed). **Section D's residual:
+91→79.**

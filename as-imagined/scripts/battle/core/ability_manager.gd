@@ -1137,8 +1137,21 @@ static func blocks_priority_move(defender: BattlePokemon, defender_ally: BattleP
 # absent from its own source function; Guard Dog only blocks being forced out BY AN
 # OPPONENT's effect, not a self-triggered switch. `.breakable = TRUE`, so a
 # Mold-Breaker attacker's Roar/Whirlwind (or Red Card victim) still forces the switch.
+# [D4 CHEAP bundle] Ingrain(root) ALSO blocks being forced out — confirmed
+# from source that Roar's own script checks VOLATILE_ROOT directly
+# (data/battle_scripts_1.s L1656: `jumpifvolatile BS_TARGET, VOLATILE_ROOT,
+# BattleScript_PrintMonIsRooted`), a plain volatile check wholly independent
+# of the Guard Dog ability-jump immediately above it — so, unlike Guard Dog,
+# this is deliberately NOT routed through the Mold-Breaker-aware
+# `effective_ability_id` chokepoint: a Mold Breaker attacker still cannot
+# force an Ingrained target to switch. Confirmed via source that Baton Pass
+# explicitly bypasses this whole function (SWITCH_IGNORE_ESCAPE_PREVENTION,
+# data/battle_scripts_1.s L2247) — this project's own Baton Pass dispatch
+# never calls blocks_forced_switch, so that exemption holds for free.
 static func blocks_forced_switch(defender: BattlePokemon, attacker: BattlePokemon,
 		ng_active: bool = false) -> bool:
+	if defender.ingrain_active:
+		return true
 	return effective_ability_id(defender, ng_active, attacker) == ABILITY_GUARD_DOG
 
 
@@ -2104,6 +2117,17 @@ static func blocks_move_type(
 		return true
 	if ItemManager.holds_air_balloon(defender, ng_active):
 		return true
+	# [D4 CHEAP bundle] Magnet Rise — the same "grants full Ground-move
+	# immunity" shape as Levitate/Air Balloon just above (the OPPOSITE
+	# direction from Smack Down/Ingrain's forced-grounding, which lives in
+	# TypeChart's own grounded_override instead — see that param's doc
+	# comment). Iron Ball is still checked FIRST and unconditionally above,
+	# matching is_grounded's own priority order; Smack Down/Ingrain can never
+	# coexist with an active Magnet Rise by construction (each move's own
+	# dispatch refuses to (re)apply while the other is active, and Smack
+	# Down explicitly clears magnet_rise_turns on hit), so no conflict here.
+	if defender.magnet_rise_turns > 0:
+		return true
 	return false
 
 
@@ -2628,9 +2652,11 @@ static func resolve_redirect_target(
 #   → IsBattlerUngroundedByAbilityItemOrEffect (L5866): Levitate ability or Flying-type
 #   makes a battler ungrounded (returns false here).
 # M18t: Air Balloon and Iron Ball closed — see their own doc comments in
-#   item_manager.gd. Confirmed still absent, and out of scope (no code anywhere
-#   in this project references them): Magnet Rise / Telekinesis volatiles,
-#   Gravity field status, Ingrain/Smack Down volatiles. Iron Ball is checked
+#   item_manager.gd. [D4 CHEAP bundle] Magnet Rise/Ingrain/Smack Down closed too
+#   (see is_grounded's own inline comments below for the exact priority-tier
+#   insertion). Still absent, and out of scope (no code anywhere in this
+#   project references them): Telekinesis volatile, Gravity field status.
+#   Iron Ball is checked
 #   FIRST, unconditionally, matching source's own priority order
 #   (IsBattlerGroundedInverseCheck, battle_util.c L5879-5894) — it overrides
 #   even Levitate/Air Balloon/Flying-type. This extension also correctly
@@ -2648,6 +2674,19 @@ static func resolve_redirect_target(
 static func is_grounded(mon: BattlePokemon, ng_active: bool = false) -> bool:
 	if ItemManager.holds_iron_ball(mon, ng_active):
 		return true
+	# [D4 CHEAP bundle] Ingrain(root)/Smack Down — forced-grounded, checked
+	# immediately after Iron Ball and BEFORE the Levitate/Air-Balloon/Magnet-
+	# Rise ungrounded group below, matching source's own priority order
+	# exactly (IsBattlerGroundedInverseCheck, battle_util.c L5879-5894 — this
+	# project's own pre-existing comment above already anticipated this
+	# insertion point and priority tier by name).
+	if mon.ingrain_active or mon.smack_down_active:
+		return true
+	# [D4 CHEAP bundle] Magnet Rise — ungrounded while its 5-turn timer is
+	# running, same priority tier as Levitate/Air Balloon just below (all
+	# three checked together in source's IsBattlerUngroundedByAbilityItemOrEffect).
+	if mon.magnet_rise_turns > 0:
+		return false
 	if effective_ability_id(mon, ng_active) == ABILITY_LEVITATE:
 		return false
 	if ItemManager.holds_air_balloon(mon, ng_active):
@@ -2736,6 +2775,14 @@ static func is_trapped(
 	# of whether the field happens to be set, matching CanBattlerEscape's own
 	# Ghost-checked-first order.
 	if mon.escape_prevented_by != null:
+		return true
+	# [D4 CHEAP bundle] Ingrain(root) — the FOURTH move-based trapping source,
+	# but self-inflicted (no source battler to track) unlike the three above.
+	# Confirmed via source (CanBattlerEscape, battle_util.c L4953) that root
+	# sits at the identical check tier as wrapped/escapePrevention — a
+	# Ghost-type Ingrain user still correctly bypasses this via the shared
+	# early return above.
+	if mon.ingrain_active:
 		return true
 	for opp: BattlePokemon in live_opponents:
 		var opp_id: int = effective_ability_id(opp, ng_active)

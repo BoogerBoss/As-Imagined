@@ -76,6 +76,7 @@ PROTECT_METHOD_OBSTRUCT       = 4
 PROTECT_METHOD_SILK_TRAP      = 5
 PROTECT_METHOD_WIDE_GUARD     = 6
 PROTECT_METHOD_QUICK_GUARD    = 7
+PROTECT_METHOD_ENDURE         = 8  # [D4 CHEAP bundle]
 
 # ── Status constants (BattlePokemon.STATUS_* values) — for random_status_pool ─
 STATUS_BURN      = 1
@@ -3447,6 +3448,76 @@ MOVES = [
      "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 15,
      "priority": 4, "ignores_protect": True, "is_magic_coat": True,
      "ban_flags": BAN_MIRROR_MOVE},
+
+    # ── D4 CHEAP bundle: Dream Eater, Torment, Gyro Ball, Electro Ball, Snore,
+    # Endure, Fell Stinger, Magnet Rise, Smack Down, Ingrain, Aqua Ring,
+    # Payback — 12 moves from D4's singleton pool. Dream Eater (fails outright
+    # against a non-sleeping/non-Comatose target, reuses the generic
+    # drain_percent absorb-family chokepoint — NOT the Volt/Water Absorb
+    # ability family, a real Step-0 correction); Torment (permanent
+    # target-side move-block, reuses Blood Moon's cant_use_twice SHAPE but
+    # target-inflicted); Gyro Ball/Electro Ball (genuinely different speed-
+    # ratio formulas — continuous-capped vs. stepped/banded, confirmed
+    # independently rather than assumed mirrored); Snore (usable_while_asleep,
+    # Sleep Talk's own precedent — no fail-if-awake gate, unlike Dream Eater);
+    # Endure (shares Protect/Detect's setprotectlike dispatch but branches
+    # internally to a SEPARATE endure_active field, confirmed from source —
+    # never blocks the incoming hit); Fell Stinger (+3 Atk on KO, Moxie's own
+    # killer-lookup shape); Magnet Rise/Smack Down/Ingrain (all three share
+    # AbilityManager.is_grounded's priority-tier insertion); Ingrain (3-piece
+    # composite: end-of-turn self-heal shared with Aqua Ring, self-grounding,
+    # AND full escape-prevention — both voluntary-switch-block (is_trapped)
+    # and forced-switch-block (blocks_forced_switch, confirmed from source
+    # that Roar's own script checks VOLATILE_ROOT directly) — achieved via
+    # pure reuse of existing infrastructure, a fuller build than this move's
+    # own original partial-scope proposal); Aqua Ring (heal-only, no
+    # grounding/switch-block); Payback (doubles if the target already acted
+    # AND did not just switch in this turn, a genuinely conditional formula
+    # at this project's GEN_LATEST config). Step 0 individually re-verified
+    # each against moves_info.h/battle_util.c/battle_script_commands.c/
+    # battle_end_turn.c — see move_data.gd's own per-flag doc comments and
+    # battle_pokemon.gd's own per-field doc comments for full citations. ──
+    {"id":  138, "name": "Dream Eater",
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 100, "accuracy": 100, "pp": 15,
+     "drain_percent": 50, "requires_target_asleep": True, "healing_move": True},
+    {"id":  173, "name": "Snore",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 50, "accuracy": 100, "pp": 15,
+     "ignores_substitute": True, "sound_move": True, "usable_while_asleep": True,
+     "is_snore": True, "secondary_effect": SE_FLINCH, "secondary_chance": 30,
+     "ban_flags": BAN_METRONOME},
+    {"id":  203, "name": "Endure",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "priority": 4, "is_protect": True, "protect_method": PROTECT_METHOD_ENDURE},
+    {"id":  259, "name": "Torment",
+     "type": TYPE_DARK, "category": STAT, "accuracy": 100, "pp": 15,
+     "bounceable": True, "blocked_by_aroma_veil": True, "is_torment": True},
+    {"id":  275, "name": "Ingrain",
+     "type": TYPE_GRASS, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "is_ingrain": True,
+     "ban_flags": BAN_MIRROR_MOVE},
+    {"id":  360, "name": "Gyro Ball",
+     "type": TYPE_STEEL, "category": PHYS, "power": 1, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "ballistic_move": True, "is_gyro_ball": True},
+    {"id":  371, "name": "Payback",
+     "type": TYPE_DARK, "category": PHYS, "power": 50, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "is_payback": True},
+    {"id":  392, "name": "Aqua Ring",
+     "type": TYPE_WATER, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "is_aqua_ring": True,
+     "ban_flags": BAN_MIRROR_MOVE},
+    {"id":  393, "name": "Magnet Rise",
+     "type": TYPE_ELECTRIC, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "is_magnet_rise": True,
+     "ban_flags": BAN_MIRROR_MOVE},
+    {"id":  479, "name": "Smack Down",
+     "type": TYPE_ROCK, "category": PHYS, "power": 50, "accuracy": 100, "pp": 15,
+     "damages_airborne": True, "is_smack_down": True},
+    {"id":  486, "name": "Electro Ball",
+     "type": TYPE_ELECTRIC, "category": SPEC, "power": 1, "accuracy": 100, "pp": 10,
+     "ballistic_move": True, "is_electro_ball": True},
+    {"id":  565, "name": "Fell Stinger",
+     "type": TYPE_BUG, "category": PHYS, "power": 50, "accuracy": 100, "pp": 25,
+     "makes_contact": True, "is_fell_stinger": True},
 ]
 
 
@@ -3715,6 +3786,19 @@ DEFAULTS = {
     "is_taunt":              False,
     "is_assurance":          False,
     "is_magic_coat":         False,
+
+    # [D4 CHEAP bundle]
+    "requires_target_asleep": False,
+    "is_torment":             False,
+    "is_gyro_ball":           False,
+    "is_electro_ball":        False,
+    "is_snore":               False,
+    "is_fell_stinger":        False,
+    "is_magnet_rise":         False,
+    "is_smack_down":          False,
+    "is_ingrain":             False,
+    "is_aqua_ring":           False,
+    "is_payback":             False,
 }
 
 HEADER = """\
@@ -3831,6 +3915,10 @@ FIELD_ORDER = [
     # [D4 bundle] fields
     "is_sleep_talk", "usable_while_asleep", "is_taunt", "is_assurance",
     "is_magic_coat",
+    # [D4 CHEAP bundle] fields
+    "requires_target_asleep", "is_torment", "is_gyro_ball", "is_electro_ball",
+    "is_snore", "is_fell_stinger", "is_magnet_rise", "is_smack_down",
+    "is_ingrain", "is_aqua_ring", "is_payback",
 ]
 
 
