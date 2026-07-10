@@ -2243,6 +2243,86 @@ session's changes, confirmed via `git stash`).
 from the excluded set). Reconciliation: 640 implemented + 79 D4 residual
 + 215 excluded = 934, confirmed by direct addition.
 
+#### D4 bundle 3 — CLOSED, COMPLETE (`[D4 bundle 3]`, 2026-07-10)
+
+12 more moves shipped, all self-selected from the remaining residual
+pool rather than user-named: Splash(150), Refresh(287), Purify(648),
+Memento(262), Belly Drum(187), Fillet Away(796), Clangorous Soul(703),
+Nightmare(171), Spite(180), Recycle(278), Facade(263), Take Heart(778).
+
+Real Step-0 corrections found before implementing (full citations in
+`docs/decisions.md`'s own `[D4 bundle 3]` entry): Refresh cures Burn/
+Poison/Toxic/Paralysis ONLY — confirmed via source's own
+`STATUS1_CAN_MOVE` bitmask that Sleep and Freeze are explicitly
+excluded, matching the move's own literal flavor text rather than a
+folklore "cures anything" assumption; Take Heart raises Attack + Sp.Atk
+(source's own data table), NOT Sp.Atk/Sp.Def as general series knowledge
+would suggest; Belly Drum/Fillet Away/Clangorous Soul all hard-fail with
+ZERO HP cost unless the stat change would genuinely do something AND the
+HP payment can be made (`WillAnyStatChange() && Try*Hp(...)`, an AND
+gate — confirmed NOT "always pay HP, sometimes no boost"), with
+Clangorous Soul's own divisor (a third of max HP) genuinely different
+from the other two's (half); Recycle restores a NEW, genuinely BROADER
+`BattlePokemon.last_used_item` field (any item, not just berries),
+confirmed distinct from Harvest/Cud Chew's own berry-only
+`last_consumed_berry` tracker via direct source read of
+`Cmd_removeitem`/`usedHeldItem` — with an explicit Air-Balloon-pop
+exclusion mirroring source's own "cannot be restored by any means"
+carve-out; Facade's burn-halving bypass is confirmed a separate,
+independent mechanism from Guts', not conditioned on it
+(`B_BURN_FACADE_DMG >= GEN_6` at this project's config).
+
+**A real, previously-flagged-as-open bug was also resolved this
+session**: `[D2 batch 2]`'s own Foresight entry had explicitly flagged
+"whether any OTHER already-shipped move shares this same gap [a script
+that never calls `typecalc`] is an open question beyond this session's
+own scope." This session found the answer — Purify(648, Poison-type),
+Nightmare(171, Ghost-type), and Spite(180, Ghost-type) all share it,
+confirmed via direct source read of their own battle scripts. Most
+consequentially for Nightmare: its own primary use case (an asleep
+Normal-type target) is the EXACT Ghost-vs-Normal-immunity shape
+Foresight's own bug already demonstrated — this project's general
+foe-targeting type-immunity gate was silently blocking Nightmare against
+its own most common target before this fix. (Memento, Dark-type, shares
+the same gap in principle but is provably unreachable — no type in this
+project's own chart is immune to Dark — so it was deliberately left off
+the exemption list rather than added for no behavioral effect.)
+
+New `d4_bundle3_test.gd`/`.tscn`: 56/56 assertions, stable across 9
+reruns after fixing 6 real test-authoring bugs, ALL instances of the
+same whole-battle-aggregation pitfall (reading state after
+`start_battle()` returns instead of snapshotting live inside a signal
+handler) recurring across multiple independent tests in this one
+session — Splash's own discriminator collided with the opponent's
+unrelated Growl move eventually hitting its own "stat_limit" failure
+message over many turns (same battler identity, different move, same
+signal); the HP-cost stat-boost family's own tests read `current_hp`/
+`stat_stages` after the full multi-turn battle instead of at the moment
+of interest, both for the successful-boost case (later chip damage from
+the opponent's own Tackle) and the discriminator-fail case (same); and
+Fillet Away/Clangorous Soul's own `stat_stage_changed` listeners had no
+first-occurrence guard, so a defender's own unrelated stat-lowering move
+on a LATER turn would silently overwrite the captured delta. Also fixed
+one real test-DESIGN error (not aggregation): the Memento-vs-Substitute
+discriminator originally asserted the self-faint would ALSO be blocked
+by Substitute, contradicting this move's own implementation (and its
+well-established real-game behavior) — Substitute protects the TARGET
+from a move's effects, not the ATTACKER from its own move's
+self-consequence, so only the stat-drop is Substitute-gated; the test's
+own expectation was corrected to match, not the implementation.
+
+Regression: the 4 required suites plus a full 107-file sweep (this
+session's changes touch `_consume_item`/the shared type-immunity
+gate/`DamageCalculator`'s burn modifier, all central chokepoints), run
+twice from independent process states — 0 real failures either time
+(the same pre-existing, already-diagnosed `m19a_gen1_test` flake from
+the prior `[D4 CHEAP bundle]` session reproduces identically, confirmed
+unrelated).
+
+**Total move-implementation count: 640→652.** Section D's residual:
+79→67. Reconciliation: 652 implemented + 67 D4 residual + 215 excluded =
+934, confirmed by direct addition.
+
 ### D5 — Recommended next steps out of Section D
 
 1. **`M19-blocked-on-other-tier4`'s unblock (D0, 4 moves: Leech
@@ -2346,20 +2426,20 @@ re-deriving this breakdown from scratch.
 
 | Bucket | Move count |
 |---|---|
-| Already implemented (excluded from this plan) — includes Heal Order/Dragon Darts (resolved conflicts); `M19-secondary-stat-on-hit` (79) shipped `[M19-secondary-stat-on-hit]` 2026-07-09; Bucket 3 in its entirety (30) shipped across `[Bucket 3 multi-stat]` + `[Bucket 3 clusters 1-2]`, both 2026-07-09; 7 of Bucket 4's single-move sub-groups shipped `[Bucket 4 cheapest singles]` 2026-07-09; `M19-rampage` (5) shipped `[M19-rampage]` 2026-07-09; `M19-recharge` (10) shipped `[M19-recharge]` 2026-07-09; `M19-break-protect` (4) shipped `[M19-break-protect]` 2026-07-09; `M19-recoil-on-miss` (4) shipped `[M19-recoil-on-miss]` 2026-07-09; `M19-weather-conditional-accuracy` (5) shipped `[M19-weather-conditional-accuracy]` 2026-07-09; 9 more 2-move sub-groups (19) shipped `[Bucket 4 2-move sub-groups]` 2026-07-09; `M19-steal-stats` (1) + `M19-ally-targeting-stat-change` (3) shipped `[M19-steal-stats]`/`[M19-ally-targeting-stat-change]` 2026-07-09; M19e (4) + M19f (5, incl. Spirit Shackle/`M19-trap-secondary`) shipped `[M19e]`/`[M19f]` 2026-07-09; M19c (7) + M19d (2) shipped `[M19c]`/`[M19d]` 2026-07-09; D0's 11 moves (Leech Seed/Haze/Aromatherapy/Heal Bell/Follow Me/Rage Powder/Soft-Boiled/Milk Drink/Sappy Seed/Freezy Frost/Sparkly Swirl) shipped `[D0]` 2026-07-09; D1's 4 moves (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09; D1 cheap clusters' 21 moves (Sandstorm/Rain Dance/Sunny Day/Hail/Snowscape, Eruption/Water Spout/Dragon Energy, Wring Out/Crush Grip/Hard Press, Thief/Covet, Mind Reader/Lock-On, Swagger/Flatter, Sucker Punch/Thunderclap, Stored Power/Power Trip) shipped `[D1 cheap clusters]` 2026-07-09; D2's on-hit hazard/screen family (6: Stone Axe/Ceaseless Edge/Ice Spinner/Mortal Spin/Tidy Up/Defog) + ability-manipulation family (4: Role Play/Skill Swap/Worry Seed/Heart Swap) shipped `[D2 batch]` 2026-07-09; D1's `EFFECT_FORESIGHT` cluster (2: Foresight/Odor Sleuth) + D2's offense-stat-source-override family (3: Foul Play/Body Press/Photon Geyser) + per-mon TypeChart-override family (2: Freeze-Dry/Tar Shot) shipped `[D2 batch 2]` 2026-07-10; D2's turn-order-manipulation family (4: After You/Quash/Upper Hand/Instruct) + "stat/event happened this turn" tracker family (4: Lash Out/Retaliate/Rage Fist/Echoed Voice) shipped `[D3 turn-order/event-tracker batch]` 2026-07-10; D2's delayed-effect family (6: Future Sight/Doom Desire/Wish/Yawn/Healing Wish/Lunar Dance) + D1's `EFFECT_PSYSHOCK` cluster (2: Psyshock/Psystrike) shipped in the Delayed-effect-family session 2026-07-10; D1's remaining 6 easy clusters (13: U-turn/Volt Switch/Flip Turn, Circle Throw/Dragon Tail, Fake Out/First Impression, Trick/Switcheroo, Revenge/Avalanche, Stomping Tantrum/Temper Flare) shipped in the D1 easy bundle session 2026-07-10; D1's LAST cluster (5: Smelling Salts/Venoshock/Hex/Barb Barrage/Infernal Parade, `EFFECT_DOUBLE_POWER_ON_ARG_STATUS`) shipped 2026-07-10, closing D1 entirely; D4 bundle (6: Struggle/Helping Hand/Sleep Talk/Taunt/Assurance/Magic Coat) shipped `[D4 bundle]` 2026-07-10; D4 CHEAP bundle (12: Dream Eater/Torment/Gyro Ball/Electro Ball/Snore/Endure/Fell Stinger/Magnet Rise/Smack Down/Ingrain/Aqua Ring/Payback) shipped `[D4 CHEAP bundle]` 2026-07-10 | 640 |
+| Already implemented (excluded from this plan) — includes Heal Order/Dragon Darts (resolved conflicts); `M19-secondary-stat-on-hit` (79) shipped `[M19-secondary-stat-on-hit]` 2026-07-09; Bucket 3 in its entirety (30) shipped across `[Bucket 3 multi-stat]` + `[Bucket 3 clusters 1-2]`, both 2026-07-09; 7 of Bucket 4's single-move sub-groups shipped `[Bucket 4 cheapest singles]` 2026-07-09; `M19-rampage` (5) shipped `[M19-rampage]` 2026-07-09; `M19-recharge` (10) shipped `[M19-recharge]` 2026-07-09; `M19-break-protect` (4) shipped `[M19-break-protect]` 2026-07-09; `M19-recoil-on-miss` (4) shipped `[M19-recoil-on-miss]` 2026-07-09; `M19-weather-conditional-accuracy` (5) shipped `[M19-weather-conditional-accuracy]` 2026-07-09; 9 more 2-move sub-groups (19) shipped `[Bucket 4 2-move sub-groups]` 2026-07-09; `M19-steal-stats` (1) + `M19-ally-targeting-stat-change` (3) shipped `[M19-steal-stats]`/`[M19-ally-targeting-stat-change]` 2026-07-09; M19e (4) + M19f (5, incl. Spirit Shackle/`M19-trap-secondary`) shipped `[M19e]`/`[M19f]` 2026-07-09; M19c (7) + M19d (2) shipped `[M19c]`/`[M19d]` 2026-07-09; D0's 11 moves (Leech Seed/Haze/Aromatherapy/Heal Bell/Follow Me/Rage Powder/Soft-Boiled/Milk Drink/Sappy Seed/Freezy Frost/Sparkly Swirl) shipped `[D0]` 2026-07-09; D1's 4 moves (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09; D1 cheap clusters' 21 moves (Sandstorm/Rain Dance/Sunny Day/Hail/Snowscape, Eruption/Water Spout/Dragon Energy, Wring Out/Crush Grip/Hard Press, Thief/Covet, Mind Reader/Lock-On, Swagger/Flatter, Sucker Punch/Thunderclap, Stored Power/Power Trip) shipped `[D1 cheap clusters]` 2026-07-09; D2's on-hit hazard/screen family (6: Stone Axe/Ceaseless Edge/Ice Spinner/Mortal Spin/Tidy Up/Defog) + ability-manipulation family (4: Role Play/Skill Swap/Worry Seed/Heart Swap) shipped `[D2 batch]` 2026-07-09; D1's `EFFECT_FORESIGHT` cluster (2: Foresight/Odor Sleuth) + D2's offense-stat-source-override family (3: Foul Play/Body Press/Photon Geyser) + per-mon TypeChart-override family (2: Freeze-Dry/Tar Shot) shipped `[D2 batch 2]` 2026-07-10; D2's turn-order-manipulation family (4: After You/Quash/Upper Hand/Instruct) + "stat/event happened this turn" tracker family (4: Lash Out/Retaliate/Rage Fist/Echoed Voice) shipped `[D3 turn-order/event-tracker batch]` 2026-07-10; D2's delayed-effect family (6: Future Sight/Doom Desire/Wish/Yawn/Healing Wish/Lunar Dance) + D1's `EFFECT_PSYSHOCK` cluster (2: Psyshock/Psystrike) shipped in the Delayed-effect-family session 2026-07-10; D1's remaining 6 easy clusters (13: U-turn/Volt Switch/Flip Turn, Circle Throw/Dragon Tail, Fake Out/First Impression, Trick/Switcheroo, Revenge/Avalanche, Stomping Tantrum/Temper Flare) shipped in the D1 easy bundle session 2026-07-10; D1's LAST cluster (5: Smelling Salts/Venoshock/Hex/Barb Barrage/Infernal Parade, `EFFECT_DOUBLE_POWER_ON_ARG_STATUS`) shipped 2026-07-10, closing D1 entirely; D4 bundle (6: Struggle/Helping Hand/Sleep Talk/Taunt/Assurance/Magic Coat) shipped `[D4 bundle]` 2026-07-10; D4 CHEAP bundle (12: Dream Eater/Torment/Gyro Ball/Electro Ball/Snore/Endure/Fell Stinger/Magnet Rise/Smack Down/Ingrain/Aqua Ring/Payback) shipped `[D4 CHEAP bundle]` 2026-07-10; D4 bundle 3 (12: Splash/Refresh/Purify/Memento/Belly Drum/Fillet Away/Clangorous Soul/Nightmare/Spite/Recycle/Facade/Take Heart) shipped `[D4 bundle 3]` 2026-07-10 | 652 |
 | Proposed sub-tiers (Section B: Bucket 4 is now fully closed — `M19-secret-power` PERMANENTLY EXCLUDED by Rob 2026-07-10, moved below; `M19-blocked-on-other-tier4` CLOSED by `[D0]`) | 0 |
 | Deferred (Section C3 — Population Bomb PERMANENTLY EXCLUDED by Rob 2026-07-10, moved below; C4 closed) | 0 |
 | Permanently excluded, confirmed by Rob (Section C1 Z-Move/Max-Move + Section C2 `[M19-exclusions]`, incl. Raging Bull + Psychic Noise addenda; + Secret Power(290)/`M19-secret-power` + Population Bomb(788), both confirmed excluded 2026-07-10) | 215 |
-| Tier 4 residual, mechanism-clustered (Section D, `[M19-section-d-cluster]` 2026-07-09) — D0's 8 moves shipped `[D0]` 2026-07-09; D1's 4 D4 singletons (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09; D1's 8 remaining CHEAP clusters (21 moves) shipped `[D1 cheap clusters]` 2026-07-09; D2's on-hit hazard/screen + ability-manipulation families (10 moves) shipped `[D2 batch]` 2026-07-09; D1's `EFFECT_FORESIGHT` cluster + D2's offense-stat-source-override and per-mon TypeChart-override families (7 moves) shipped `[D2 batch 2]` 2026-07-10; D2's turn-order-manipulation + "stat/event happened this turn" tracker families (8 moves) shipped `[D3 turn-order/event-tracker batch]` 2026-07-10; D2's delayed-effect family + D1's `EFFECT_PSYSHOCK` cluster (8 moves) shipped 2026-07-10; D1's remaining 6 easy clusters (13 moves) shipped 2026-07-10; D1's LAST cluster (5 moves, `EFFECT_DOUBLE_POWER_ON_ARG_STATUS`) shipped 2026-07-10; D4's own recon re-derivation (`[D4 bundle]` — 2 FREE/62 CHEAP/27 MODERATE/4 HARD/2 BLOCKED after the Nature Power correction) shipped 6 of the pool's moves 2026-07-10; `[D4 CHEAP bundle]` shipped 12 more 2026-07-10 (Snore(173) surfaced as a genuine prose-completeness gap in this pool's own itemization — see that entry) | 79 |
+| Tier 4 residual, mechanism-clustered (Section D, `[M19-section-d-cluster]` 2026-07-09) — D0's 8 moves shipped `[D0]` 2026-07-09; D1's 4 D4 singletons (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09; D1's 8 remaining CHEAP clusters (21 moves) shipped `[D1 cheap clusters]` 2026-07-09; D2's on-hit hazard/screen + ability-manipulation families (10 moves) shipped `[D2 batch]` 2026-07-09; D1's `EFFECT_FORESIGHT` cluster + D2's offense-stat-source-override and per-mon TypeChart-override families (7 moves) shipped `[D2 batch 2]` 2026-07-10; D2's turn-order-manipulation + "stat/event happened this turn" tracker families (8 moves) shipped `[D3 turn-order/event-tracker batch]` 2026-07-10; D2's delayed-effect family + D1's `EFFECT_PSYSHOCK` cluster (8 moves) shipped 2026-07-10; D1's remaining 6 easy clusters (13 moves) shipped 2026-07-10; D1's LAST cluster (5 moves, `EFFECT_DOUBLE_POWER_ON_ARG_STATUS`) shipped 2026-07-10; D4's own recon re-derivation (`[D4 bundle]` — 2 FREE/62 CHEAP/27 MODERATE/4 HARD/2 BLOCKED after the Nature Power correction) shipped 6 of the pool's moves 2026-07-10; `[D4 CHEAP bundle]` shipped 12 more 2026-07-10 (Snore(173) surfaced as a genuine prose-completeness gap in this pool's own itemization — see that entry); `[D4 bundle 3]` shipped 12 more 2026-07-10 | 67 |
 | **Total (matches the recon's 934-move catalog)** | **934** |
 
-640 + 0 + 0 + 215 + 79 = 934, confirmed by direct addition. Zero
+652 + 0 + 0 + 215 + 67 = 934, confirmed by direct addition. Zero
 outstanding discrepancy. **D1 and D2 are now both fully closed, and Bucket
 4/Section C3 are now both fully closed too** (Secret Power and Population
 Bomb both moved from pending/deferred into permanently excluded, per Rob's
 explicit 2026-07-10 decision). Every cluster/family surfaced during the
 singleton-pool sweep (`[M19-section-d-cluster]`) has shipped or been
-excluded — **Section D's remaining singleton pool (D4, now 79 moves) is
+excluded — **Section D's remaining singleton pool (D4, now 67 moves) is
 the ONLY open scope left in all of M19.**
 
 | Sub-tier | Moves | Risk | Depends on |
@@ -2375,7 +2455,7 @@ the ONLY open scope left in all of M19.**
 | M19g — DISSOLVED, all 3 moves permanently excluded | 0 | — | — |
 | M19h — Weight-ratio dynamic power | **COMPLETE** (`[M19-pre1]`, confirmed `[M19-rescope-followup]`) | — | — |
 | M19i — Friendship-based dynamic power | **COMPLETE** (`[M19-pre1]`, confirmed `[M19-rescope-followup]`) | — | — |
-| Tier 4 sub-clustering pass | 79 (was 181 — D0/D1/D1-cheap-clusters/D2/D2-batch-2/D3/delayed-effect-family/D1-easy-bundle/D1's-last-cluster fully shipped, all sessions 2026-07-09/2026-07-10; D4's own recon re-derivation then shipped 18 of its 97 moves across `[D4 bundle]` (6) + `[D4 CHEAP bundle]` (12)) | D1 and D2 are now FULLY CLOSED. Remaining: D4's singleton pool, 79 moves (FREE/CHEAP tier mostly exhausted — see D4's own tier breakdown for the current MODERATE/HARD/BLOCKED split) | D0/D1/D1-cheap-clusters/D2-batch-1+2/D3/delayed-effect-family/D1-easy-bundle/D1's-last-cluster are all CLOSED — D4's own remaining pool (79 moves) is the only open Section D scope; see D4's own "Newly-discovered clusters"/"Reclassified CHEAP"/MODERATE/HARD sections for candidate next picks |
+| Tier 4 sub-clustering pass | 67 (was 181 — D0/D1/D1-cheap-clusters/D2/D2-batch-2/D3/delayed-effect-family/D1-easy-bundle/D1's-last-cluster fully shipped, all sessions 2026-07-09/2026-07-10; D4's own recon re-derivation then shipped 30 of its 97 moves across `[D4 bundle]` (6) + `[D4 CHEAP bundle]` (12) + `[D4 bundle 3]` (12)) | D1 and D2 are now FULLY CLOSED. Remaining: D4's singleton pool, 67 moves (FREE tier now fully exhausted — see D4's own tier breakdown for the current CHEAP/MODERATE/HARD/BLOCKED split) | D0/D1/D1-cheap-clusters/D2-batch-1+2/D3/delayed-effect-family/D1-easy-bundle/D1's-last-cluster are all CLOSED — D4's own remaining pool (67 moves) is the only open Section D scope; see D4's own "Newly-discovered clusters"/"Reclassified CHEAP"/MODERATE/HARD sections for candidate next picks |
 
 **M19c-i is now FULLY CLOSED** — every sub-tier proposed in Section B (M19c
 through M19i) has shipped. **`[D0]` update (2026-07-09): Bucket 4's

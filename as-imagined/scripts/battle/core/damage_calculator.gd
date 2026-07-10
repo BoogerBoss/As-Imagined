@@ -619,9 +619,16 @@ static func calculate(
 	# Burn halves the damage of Physical moves used by the burned attacker.
 	# Condition: attacker has burn AND move.category == 0 (Physical).
 	# M17a: Guts is exempt (L7285: ctx->abilities[battlerAtk] != ABILITY_GUTS).
+	# [D4 bundle 3] Facade is ALSO exempt, independent of Guts — confirmed
+	# from source (`GetBurnOrFrostBiteModifier`, L7278-7291) that
+	# `B_BURN_FACADE_DMG >= GEN_6` (true at this project's GEN_LATEST
+	# config) makes the whole burn-halving condition false whenever
+	# `moveEffect == EFFECT_FACADE`, regardless of the attacker's ability —
+	# a genuinely separate exemption from Guts', not conditioned on it.
 	var guts_exempt: bool = \
 			AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_GUTS
-	if attacker.status == BattlePokemon.STATUS_BURN and move.category == 0 and not guts_exempt:
+	if attacker.status == BattlePokemon.STATUS_BURN and move.category == 0 \
+			and not guts_exempt and not move.is_facade:
 		dmg = _uq412_half_down(dmg, 2048)  # UQ_4_12(0.5) = 2048
 
 	# M16b: Minimize modifier — Stomp etc. deal ×2.0 damage to a minimized target.

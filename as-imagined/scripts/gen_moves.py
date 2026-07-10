@@ -3518,6 +3518,73 @@ MOVES = [
     {"id":  565, "name": "Fell Stinger",
      "type": TYPE_BUG, "category": PHYS, "power": 50, "accuracy": 100, "pp": 25,
      "makes_contact": True, "is_fell_stinger": True},
+
+    # ── D4 bundle 3: Splash, Refresh, Purify, Memento, Belly Drum, Fillet
+    # Away, Clangorous Soul, Nightmare, Spite, Recycle, Facade, Take Heart.
+    # Real Step-0 corrections: Refresh cures Burn/Poison/Toxic/Paralysis
+    # ONLY (NOT Sleep/Freeze, STATUS1_CAN_MOVE); Take Heart raises Attack+
+    # Sp.Atk (NOT Sp.Atk/Sp.Def, per source's own data table); the HP-cost
+    # stat-boost trio hard-fails with zero HP cost unless the stat change
+    # would do something AND the HP payment can be made; Recycle restores
+    # a genuinely broader last_used_item field, not the berry-only
+    # last_consumed_berry; Purify/Nightmare/Spite were all found to share
+    # Foresight's own "never calls typecalc" type-immunity-gate bug, now
+    # fixed. See move_data.gd's own per-flag doc comments for full
+    # citations. ──
+    {"id":  150, "name": "Splash",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 40,
+     "ignores_protect": True, "is_do_nothing": True,
+     "ban_flags": BAN_MIRROR_MOVE},
+    {"id":  287, "name": "Refresh",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "is_refresh": True,
+     "ban_flags": BAN_MIRROR_MOVE},
+    {"id":  648, "name": "Purify",
+     "type": TYPE_POISON, "category": STAT, "accuracy": 0, "pp": 20,
+     "healing_move": True, "bounceable": True, "is_purify": True,
+     "ban_flags": BAN_MIRROR_MOVE},
+    {"id":  262, "name": "Memento",
+     "type": TYPE_DARK, "category": STAT, "accuracy": 100, "pp": 10,
+     "is_memento": True,
+     "stat_change_stat": STAGE_ATK, "stat_change_amount": -2,
+     "extra_stat_change_stats": [STAGE_SPATK], "extra_stat_change_amounts": [-2]},
+    {"id":  187, "name": "Belly Drum",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "hp_cost_stat_boost": True, "hp_cost_divisor": 2,
+     "stat_change_stat": STAGE_ATK, "stat_change_amount": 12, "stat_change_self": True,
+     "ban_flags": BAN_MIRROR_MOVE},
+    {"id":  796, "name": "Fillet Away",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "hp_cost_stat_boost": True, "hp_cost_divisor": 2,
+     "stat_change_stat": STAGE_ATK, "stat_change_amount": 2, "stat_change_self": True,
+     "extra_stat_change_stats": [STAGE_SPATK, STAGE_SPEED],
+     "extra_stat_change_amounts": [2, 2],
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME},
+    {"id":  703, "name": "Clangorous Soul",
+     "type": TYPE_DRAGON, "category": STAT, "accuracy": 100, "pp": 5,
+     "ignores_protect": True, "sound_move": True,
+     "hp_cost_stat_boost": True, "hp_cost_divisor": 3,
+     "stat_change_stat": STAGE_ATK, "stat_change_amount": 1, "stat_change_self": True,
+     "extra_stat_change_stats": [STAGE_DEF, STAGE_SPATK, STAGE_SPDEF, STAGE_SPEED],
+     "extra_stat_change_amounts": [1, 1, 1, 1],
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME},
+    {"id":  171, "name": "Nightmare",
+     "type": TYPE_GHOST, "category": STAT, "accuracy": 100, "pp": 15,
+     "is_nightmare": True},
+    {"id":  180, "name": "Spite",
+     "type": TYPE_GHOST, "category": STAT, "accuracy": 100, "pp": 10,
+     "ignores_substitute": True, "bounceable": True, "is_spite": True},
+    {"id":  278, "name": "Recycle",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "is_recycle": True,
+     "ban_flags": BAN_MIRROR_MOVE},
+    {"id":  263, "name": "Facade",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 70, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "is_facade": True},
+    {"id":  778, "name": "Take Heart",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "is_take_heart": True,
+     "ban_flags": BAN_MIRROR_MOVE},
 ]
 
 
@@ -3799,6 +3866,19 @@ DEFAULTS = {
     "is_ingrain":             False,
     "is_aqua_ring":           False,
     "is_payback":             False,
+
+    # [D4 bundle 3]
+    "is_do_nothing":          False,
+    "is_refresh":             False,
+    "is_purify":              False,
+    "is_memento":             False,
+    "hp_cost_stat_boost":     False,
+    "hp_cost_divisor":        0,
+    "is_nightmare":           False,
+    "is_spite":               False,
+    "is_recycle":             False,
+    "is_facade":              False,
+    "is_take_heart":          False,
 }
 
 HEADER = """\
@@ -3919,6 +3999,10 @@ FIELD_ORDER = [
     "requires_target_asleep", "is_torment", "is_gyro_ball", "is_electro_ball",
     "is_snore", "is_fell_stinger", "is_magnet_rise", "is_smack_down",
     "is_ingrain", "is_aqua_ring", "is_payback",
+    # [D4 bundle 3] fields
+    "is_do_nothing", "is_refresh", "is_purify", "is_memento",
+    "hp_cost_stat_boost", "hp_cost_divisor", "is_nightmare", "is_spite",
+    "is_recycle", "is_facade", "is_take_heart",
 ]
 
 

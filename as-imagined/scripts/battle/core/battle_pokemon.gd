@@ -310,6 +310,27 @@ var ingrain_active: bool = false
 # call Ingrain's own heal uses.
 var aqua_ring_active: bool = false
 
+# [D4 bundle 3] Nightmare(171) — target-side permanent (switch-cleared)
+# volatile, maxHP/4 recurring end-of-turn damage while the target remains
+# asleep/Comatose, Magic-Guard-blocked. Confirmed via source
+# (HandleEndTurnNightmare) that sleep status is RE-CHECKED every turn, not
+# just at application — if the target wakes up (or loses Comatose), this
+# is silently cleared with no damage that turn rather than re-attempted.
+var nightmare_active: bool = false
+
+# [D4 bundle 3] Recycle(278) — the item most recently removed via
+# BattleManager._consume_item, for ANY reason (berry or not) EXCEPT a
+# popped Air Balloon (excluded explicitly, matching source's own "cannot
+# be restored by any means" carve-out). Genuinely BROADER in scope than
+# last_consumed_berry (Harvest/Cud Chew's own berry-only tracker) — see
+# MoveData.is_recycle's own doc comment for the full source citation
+# confirming these are two distinct fields in source too (usedHeldItem vs.
+# the berry-specific tracker), not one field serving both purposes.
+# Deliberately NOT reset by _clear_volatiles/_switch_out_clear — like
+# last_consumed_berry, this persists across switches for the whole battle
+# (matches source's own PartyState-scoped, not Volatiles-scoped, storage).
+var last_used_item: ItemData = null
+
 # M18u: Metronome item's consecutive-same-move-use counter. Compared against
 # last_move_used (BEFORE it's overwritten for the current move) at the same
 # PP-deduction site source colocates its own reset check

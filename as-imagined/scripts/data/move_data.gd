@@ -2731,3 +2731,146 @@ const STATUS_ARG_ANY: int = -3
 #   Source: battle_util.c, case EFFECT_PAYBACK (L6273-6283);
 #   include/config/battle.h L32.
 @export var is_payback: bool = false
+
+# [D4 bundle 3] is_do_nothing: Splash(150) — EFFECT_DO_NOTHING, confirmed
+#   via source to genuinely do nothing beyond the animation/message (no
+#   hidden gotcha, unlike several other seemingly-trivial moves this arc
+#   has found real wrinkles on).
+#   Source: data/battle_scripts_1.s :: BattleScript_EffectDoNothing (L1945-1952).
+@export var is_do_nothing: bool = false
+
+# [D4 bundle 3] is_refresh: Refresh(287) — cures the USER's own status, but
+#   a REAL correction to a naive "cures any status" assumption: source's
+#   `Cmd_curestatuswithmove` gates on `STATUS1_CAN_MOVE = POISON | BURN |
+#   PARALYSIS | TOXIC_POISON | FROSTBITE` — explicitly EXCLUDES Sleep and
+#   Freeze (the move's own flavor text — "heals poisoning, paralysis, or a
+#   burn" — is literal, not incomplete). Fails if the user has none of
+#   those specific statuses (Sleep/Freeze/no-status all fail identically).
+#   Source: battle_script_commands.c :: Cmd_curestatuswithmove (L8758-8790);
+#   include/constants/battle.h L196 (STATUS1_CAN_MOVE).
+@export var is_refresh: bool = false
+
+# [D4 bundle 3] is_purify: Purify(648) — cures the TARGET's status (ANY
+#   status, unlike Refresh's narrower scope), fails OUTRIGHT with no cure
+#   attempt at all if the target has no status at all
+#   (`jumpifstatus BS_TARGET, STATUS1_ANY, ... else ButItFailed`). Only if
+#   the cure actually happens does it THEN attempt a separate half-HP
+#   self-heal on the ATTACKER — confirmed via source this heal is
+#   genuinely conditional on the cure having occurred, not an independent
+#   unconditional attempt (a real Step-0 confirmation, not an assumption).
+#   `healingMove = TRUE` (Triage-eligible), `magicCoatAffected = TRUE`
+#   (bounceable).
+#   Source: data/battle_scripts_1.s :: BattleScript_EffectPurify (L771-783).
+@export var is_purify: bool = false
+
+# [D4 bundle 3] is_memento: Memento(262) — self-faint + -2/-2 Atk/SpAtk to
+#   the target. Confirmed via source the STAT-DROP applies BEFORE the
+#   self-faint (`trymovestatchanges` then `tryfaintmon`, in that order).
+#   The stat-drop itself is gated by the SAME accuracy/Substitute/type-
+#   immunity checks every other targeted status move already gets in this
+#   project's shared foe_targeting block (a miss/Substitute/immunity
+#   blocks the stat-drop) — but the self-faint is UNCONDITIONAL, since
+#   Substitute protects the TARGET from a move's effects, not the
+#   ATTACKER from its own move's self-consequence. Matches this move's
+#   own well-established real-game behavior: the user always faints from
+#   Memento, even when the stat-drop is itself blocked or prevented.
+#   Source: data/battle_scripts_1.s :: BattleScript_EffectMemento (L117-121);
+#   moves_info.h MOVE_MEMENTO's own additionalEffects (STAT_CHANGE_EFFECT_MINUS,
+#   attack=2, spAtk=2).
+@export var is_memento: bool = false
+
+# [D4 bundle 3] hp_cost_stat_boost / hp_cost_divisor: the shared shape for
+#   Belly Drum(187)/Fillet Away(796)/Clangorous Soul(703) — "pay HP, get a
+#   stat boost." Confirmed genuinely NON-symmetric across the three despite
+#   the shared shape (per this project's own standing convention of never
+#   assuming symmetry within a family): all three gate on
+#   `WillAnyStatChange() && Try*Hp(...)` — an AND, so the move hard-fails
+#   with ZERO HP cost AND zero stat change unless BOTH the stat change
+#   would do something AND the HP payment can be made (current_hp STRICTLY
+#   greater than the fraction, not >=) — confirmed NOT "always pay HP,
+#   sometimes no boost." Belly Drum's own `TryBellyDrum` has an EXTRA
+#   Attack-specific `CompareStat(== MAX_STAGE)` pre-check (moot for the
+#   other two, which are multi-stat and use a generic ability-prevention
+#   flag instead — itself moot here since Clear-Body-style abilities only
+#   block DECREASES, never self-targeted increases). Belly Drum's own
+#   Attack delta is encoded as `STAT_CHANGE_FORCE_MAX` (=12 internally, NOT
+#   a literal "set to +6") — composes correctly with Contrary/Simple via
+#   this project's EXISTING generic stage-modifier pipeline for free, so
+#   it's represented here as a plain `stat_change_amount = 12`, no new
+#   mechanism needed. `hp_cost_divisor` is 2 for Belly Drum/Fillet Away
+#   (half HP) and 3 for Clangorous Soul (a third).
+#   Source: battle_move_resolution.c, cases EFFECT_BELLY_DRUM/
+#   EFFECT_STAT_CHANGE_HALF_HP/EFFECT_CLANGOROUS_SOUL (L4696-4731);
+#   TryBellyDrum/TryHalfHp/CutThirdOfHp (L5272-5327);
+#   include/move.h L13 (STAT_CHANGE_FORCE_MAX).
+@export var hp_cost_stat_boost: bool = false
+@export var hp_cost_divisor: int = 0
+
+# [D4 bundle 3] is_nightmare: Nightmare(171) — reuses Dream Eater's own
+#   sleep/Comatose gate for infliction (fails if the target isn't asleep,
+#   fails if already nightmared). Does NOT ignore Protect (a real
+#   correction — `.ignoresProtect = B_UPDATED_MOVE_FLAGS < GEN_3` resolves
+#   FALSE at this project's GEN_LATEST config, unlike most of this
+#   bundle's self-targeted moves), and IS blocked by Substitute (no
+#   ignoresSubstitute flag). See BattlePokemon.nightmare_active's own doc
+#   comment for the recurring end-of-turn tick, which re-checks sleep
+#   status EVERY turn rather than only at application.
+#   Source: data/battle_scripts_1.s :: BattleScript_EffectNightmare
+#   (L2114-2121); battle_end_turn.c :: HandleEndTurnNightmare (L610-633).
+@export var is_nightmare: bool = false
+
+# [D4 bundle 3] is_spite: Spite(180) — reduces the target's LAST-USED
+#   move's PP by a flat 4 (this project's GEN_LATEST config), floored at 0.
+#   Fails if the target has no last-used move (`last_move_used == null`),
+#   if that move can no longer be found in the target's own moveset, or if
+#   its PP is already 0. Confirmed no special "just switched in" edge case
+#   is needed beyond what already exists: `last_move_used` is already
+#   cleared on switch-out by `_switch_out_clear`, so a freshly-switched-in
+#   target naturally reads null and correctly fails for free — the same
+#   shape Payback's own switched-in exemption needed a DEDICATED flag for,
+#   but Spite gets it automatically here. Ignores Substitute (own flag),
+#   bounceable (`magicCoatAffected` at GEN5+).
+#   Source: battle_script_commands.c :: Cmd_tryspiteppreduce (L8190-8250).
+@export var is_spite: bool = false
+
+# [D4 bundle 3] is_recycle: Recycle(278) — a REAL correction to an
+#   initially-proposed reuse: restores `BattlePokemon.last_used_item`, a
+#   NEW field genuinely BROADER than `last_consumed_berry` (Harvest/Cud
+#   Chew's own berry-only tracker) — source's own `usedHeldItem` is set at
+#   the SAME general item-removal chokepoint this project's `_consume_item`
+#   already represents, for ANY item (berry or not), confirmed via direct
+#   source read of `Cmd_removeitem`. Fails if nothing was ever consumed, or
+#   if the user currently holds an item already. Source explicitly excludes
+#   a popped Air Balloon from ever being remembered ("cannot be restored by
+#   any means") — replicated since this project's own Air Balloon pop also
+#   routes through `_consume_item`.
+#   Source: battle_script_commands.c :: Cmd_tryrecycleitem (L9577-9603),
+#   Cmd_removeitem (L6192-6224).
+@export var is_recycle: bool = false
+
+# [D4 bundle 3] is_facade: Facade(263) — doubles power if the user has
+#   Burn/Poison/Toxic/Paralysis (confirmed NOT Sleep/Freeze, matching Guts'
+#   own list minus Frostbite, which this project doesn't have). Also
+#   bypasses burn's own Attack-halving — confirmed via source
+#   (`GetBurnOrFrostBiteModifier`) this is a GENUINELY SEPARATE, independent
+#   exemption from Guts', not conditioned on the doubling or on having
+#   Guts (`B_BURN_FACADE_DMG >= GEN_6`, true at this project's GEN_LATEST
+#   config, unconditionally skips the burn-halving check for this move).
+#   Status is read live at hit-resolution time, no turn-start snapshot —
+#   no same-turn-cure edge case exists.
+#   Source: battle_util.c, case EFFECT_FACADE (L6393-6396);
+#   GetBurnOrFrostBiteModifier (L7278-7292).
+@export var is_facade: bool = false
+
+# [D4 bundle 3] is_take_heart: Take Heart(778) — cures the USER's own
+#   status (ANY status, matching Purify's scope not Refresh's narrower
+#   one) AND raises Attack + Sp.Atk by 1 each — a REAL correction: this
+#   project's own first-draft proposal assumed Sp.Atk/Sp.Def from general
+#   series knowledge, but this reference's own data table
+#   (moves_info.h MOVE_TAKE_HEART) explicitly encodes `attack=1, spAtk=1`,
+#   confirmed via direct source read rather than trusted from memory. Gate
+#   is `WillAnyStatChange() OR status1 != 0` — an OR, so it still succeeds
+#   and cures status even when both stages are already at +6 (unlike the
+#   HP-cost family's own AND-gated fail condition just above).
+#   Source: battle_move_resolution.c, case EFFECT_TAKE_HEART (L4653-4680).
+@export var is_take_heart: bool = false

@@ -21222,3 +21222,197 @@ genuine prose-completeness gap — mathematically part of the pre-session
 D4's own remaining-pool note and Section E's summary table/reconciliation
 recomputed (640+0+0+215+79=934, reconfirmed). **Section D's residual:
 91→79.**
+
+## [D4 bundle 3] — Splash, Refresh, Purify, Memento, Belly Drum, Fillet
+## Away, Clangorous Soul, Nightmare, Spite, Recycle, Facade, Take Heart
+## (12 moves, self-selected from Section D's residual rather than
+## user-named) (2026-07-10)
+
+Per Rob's own prompt asking for a next-12 suggestion followed by Step 0 +
+implementation on the resulting picks. Every one of the 12 was
+individually re-verified against source rather than trusting the
+proposed groupings/reuse claims — several real corrections found, as
+anticipated by the prompt's own instruction to verify each independently.
+
+### Step 0 findings
+
+- **Splash(150).** Confirmed genuinely does nothing beyond the
+  animation/message (`EFFECT_DO_NOTHING`) — no hidden gotcha.
+- **Refresh(287) — real correction.** Source's `Cmd_curestatuswithmove`
+  (`battle_script_commands.c` L8758-8790) gates on `STATUS1_CAN_MOVE =
+  POISON | BURN | PARALYSIS | TOXIC_POISON | FROSTBITE` —
+  **explicitly excludes Sleep and Freeze.** The message-table code
+  referencing Sleep/Freeze inside that same block is dead code
+  (unreachable given the bitmask gate) — a copy-paste artifact, not a
+  real code path. Matches the move's own literal flavor text ("heals
+  poisoning, paralysis, or a burn") rather than a folklore "cures any
+  status" assumption.
+- **Purify(648).** Confirmed exactly as proposed via
+  `BattleScript_EffectPurify` (`data/battle_scripts_1.s` L771-783): fails
+  OUTRIGHT (no cure attempt at all) if the target has no status; only if
+  the cure actually happens does it THEN attempt a separate half-HP
+  self-heal (its own independent already-at-full-HP fail case, which
+  does not undo the cure). `healingMove=TRUE` (Triage-eligible),
+  `magicCoatAffected=TRUE` (bounceable).
+- **Take Heart(778) — real correction.** Source's own data table
+  (`moves_info.h` MOVE_TAKE_HEART) explicitly encodes `attack=1,
+  spAtk=1`, NOT Sp.Atk/Sp.Def as general series knowledge would suggest
+  — confirmed via direct source read, not trusted from memory. Gate is
+  `WillAnyStatChange() || status1 != 0` (`battle_move_resolution.c`
+  L4653-4680) — an OR, so it still succeeds and cures status even when
+  both stages are already at +6.
+- **Memento(262).** Confirmed via `BattleScript_EffectMemento`
+  (`data/battle_scripts_1.s` L117-121) that the stat-drop
+  (`trymovestatchanges`) runs BEFORE the self-faint (`tryfaintmon`), in
+  that exact order. The stat-drop is gated by the same Substitute check
+  every other targeted status move gets; the self-faint is
+  UNCONDITIONAL — Substitute protects the TARGET from a move's effects,
+  not the ATTACKER from its own move's self-consequence, matching this
+  move's own well-established real-game behavior (the user always
+  faints from Memento, even when the stat-drop itself is blocked).
+- **Belly Drum(187)/Fillet Away(796)/Clangorous Soul(703) — real,
+  non-symmetric corrections, exactly as flagged for verification.** All
+  three gate on `WillAnyStatChange() && Try*Hp(...)`
+  (`battle_move_resolution.c` L4696-4731) — an AND, so the move
+  hard-fails with ZERO HP cost AND zero stat change unless BOTH the stat
+  change would do something AND `current_hp` is STRICTLY greater than
+  the HP fraction (not "always pay, sometimes no boost"). Belly Drum's
+  own `TryBellyDrum` (L5272-5289) has an EXTRA Attack-specific
+  `CompareStat(== MAX_STAGE)` pre-check on top of the shared gate; Fillet
+  Away/Clangorous Soul's `TryHalfHp`/`CutThirdOfHp` (L5291-5327) instead
+  check a generic ability-prevention flag, moot here since Clear-Body-
+  style abilities only block DECREASES, never self-targeted increases.
+  Belly Drum's own delta is `STAT_CHANGE_FORCE_MAX` (=12 internally, NOT
+  a literal "set to +6") — composes correctly with Contrary/Simple via
+  this project's EXISTING generic stage-modifier pipeline
+  (`battle_stat_change.c` L803-814) with zero new mechanism needed.
+  Fillet Away raises Atk/SpAtk/Speed +2 each (half HP); Clangorous Soul
+  raises all 5 non-accuracy/evasion stats +1 each (a THIRD of HP,
+  genuinely different from the other two's half).
+- **Nightmare(171).** Reuses Dream Eater's own sleep/Comatose gate for
+  infliction, confirmed via `BattleScript_EffectNightmare`
+  (`data/battle_scripts_1.s` L2114-2121) — fails if already nightmared,
+  fails if the target isn't asleep/Comatose. Does NOT ignore Protect (a
+  real correction — `.ignoresProtect = B_UPDATED_MOVE_FLAGS < GEN_3`
+  resolves FALSE at this project's GEN_LATEST config, unlike most of
+  this bundle's self-targeted moves) and IS blocked by Substitute.
+  **The recurring end-of-turn tick re-checks sleep status EVERY turn**
+  (`HandleEndTurnNightmare`, `battle_end_turn.c` L610-633) — if the
+  target has woken up (or lost Comatose), the volatile silently clears
+  with NO damage that turn, rather than persisting or re-attempting.
+  Magic Guard blocks the damage.
+- **Spite(180).** Confirmed -4 PP (this project's GEN_LATEST config),
+  floored at 0 (`Cmd_tryspiteppreduce`, `battle_script_commands.c`
+  L8190-8250: `if (pp[i] < ppToDeduct) ppToDeduct = pp[i]`). Fails if the
+  target has no last-used move, that move's slot can't be found, or its
+  PP is already 0. Ignores Substitute (own flag), bounceable. **Confirmed
+  no dedicated "just switched in" exemption is needed**, unlike Payback's
+  own: this project's `last_move_used` is already cleared on switch-out
+  by `_switch_out_clear`, so a freshly-switched-in target naturally reads
+  null and correctly fails Spite for free.
+- **Recycle(278) — real correction, not just a reuse.** Source tracks a
+  genuinely BROADER field than proposed: `usedHeldItem`
+  (`GetBattlerPartyState(battler)->usedHeldItem`), set at
+  `Cmd_removeitem` (`battle_script_commands.c` L6192-6224) — the exact
+  same general item-removal chokepoint this project's `_consume_item`
+  already represents, for ANY item consumed there, berry or not — NOT
+  the narrower `last_consumed_berry` originally proposed (which is
+  deliberately berry-only, gated on `pocket == POCKET_BERRIES` for
+  Harvest/Cud Chew's own purposes and confirmed via direct source read
+  to be a genuinely separate field in source too). Source explicitly
+  excludes a popped Air Balloon from ever being remembered ("cannot be
+  restored by any means," `Cmd_removeitem` L6215-6219) — replicated
+  since this project's own Air Balloon pop also routes through
+  `_consume_item`.
+- **Facade(263).** Confirmed power-double status list
+  (`battle_util.c`, case `EFFECT_FACADE`, L6393-6396):
+  Burn/Poison/Toxic/Paralysis — confirmed NOT Sleep/Freeze, matching
+  Guts' own list minus Frostbite (which this project doesn't have). The
+  burn-halving bypass (`GetBurnOrFrostBiteModifier`, L7278-7292) is
+  confirmed a GENUINELY SEPARATE, independent exemption from Guts', not
+  conditioned on the power-double or on having Guts —
+  `B_BURN_FACADE_DMG >= GEN_6` (true at this project's GEN_LATEST
+  config) unconditionally skips the burn-halving check for this move
+  regardless of ability. Status is read live at hit-resolution time, no
+  turn-start snapshot — confirmed no same-turn-cure edge case exists,
+  though this also means "does Facade double for a genuinely sleeping
+  attacker" is provably UNTESTABLE in this project: a sleeping mon can
+  never execute Facade at all (it lacks `usable_while_asleep`), and on
+  the one turn it wakes and acts, `status` is already cleared to NONE
+  before Facade's own power check runs.
+
+### A real bug found and fixed — resolving a previously-flagged-open question
+
+`[D2 batch 2]`'s own entry (Foresight/Odor Sleuth) had explicitly flagged:
+"whether any OTHER already-shipped status move shares this same gap [a
+script that never calls `typecalc`] is an open question beyond this
+session's own scope." This session answered it: direct source read
+confirmed **Purify(648), Nightmare(171), and Spite(180)** all share the
+exact same gap — none of their own battle scripts ever call `typecalc`,
+meaning real source never subjects them to a type-immunity check at all,
+while this project's general foe-targeting type-immunity gate was
+incorrectly applying one. Most consequentially for **Nightmare**: its own
+primary use case (an asleep Normal-type target) is the EXACT
+Ghost-vs-Normal-immunity shape Foresight's own bug already demonstrated
+— this project's gate was silently blocking Nightmare against its single
+most common real target before this fix. Fixed by extending the existing
+`not move.is_foresight` exemption in `_phase_move_execution`'s shared
+type-immunity check to also cover `is_purify`/`is_nightmare`/`is_spite`.
+(Memento, Dark-type, shares the same gap in principle — its own script
+also never calls `typecalc` — but is provably UNREACHABLE in practice:
+no type in this project's own chart is immune to Dark-type moves, so it
+was deliberately left off the exemption list rather than added for zero
+behavioral effect.)
+
+### Testing
+
+New `d4_bundle3_test.gd`/`.tscn`: 56/56 assertions across 11 sections (A:
+data integrity for all 12 moves; B-K: one section per move/family, scoped
+to what's genuinely new). Stable across 9 reruns after fixing 6 real
+test-authoring bugs, every one of them the SAME whole-battle-aggregation
+pitfall recurring across independent tests written within this one
+session — a reminder that this class of bug is easy to reintroduce even
+with the convention explicitly in mind:
+1. Splash's own discriminator collided with the opponent's unrelated
+   Growl eventually hitting its own "stat_limit" failure message after
+   many turns of lowering the SAME battler's Attack stat — same battler
+   identity, different move, same `move_effect_failed` signal, no reason
+   filter.
+2. The HP-cost stat-boost family's own successful-case assertions read
+   `current_hp` after the FULL multi-turn battle instead of at the
+   moment of interest, missing later chip damage from the opponent's own
+   Tackle — fixed by snapshotting inside the `passive_hp_lost` handler.
+3. The same family's own discriminator-fail-case assertions had the
+   identical issue in reverse (reading `current_hp`/`stat_stages` after
+   further turns of Tackle chip damage) — fixed by snapshotting inside
+   `move_effect_failed`.
+4. Fillet Away's `stat_stage_changed` listener had no first-occurrence
+   guard, so an eventual unrelated stat change on a later turn could
+   silently overwrite the captured deltas — fixed with a bounded-size
+   guard.
+5. Same issue, Clangorous Soul.
+One real test-DESIGN bug (not aggregation) was also found and fixed: the
+Memento-vs-Substitute discriminator originally asserted the self-faint
+would ALSO be blocked by Substitute, contradicting the actual (correct)
+implementation — the test's own expectation was wrong, fixed to match
+the implementation rather than the reverse.
+
+Regression: the 4 required suites plus a full 107-file sweep, run twice
+from independent process states (this session's changes touch
+`_consume_item`, the shared foe-targeting type-immunity gate, and
+`DamageCalculator`'s burn modifier — all central, widely-shared
+chokepoints) — 0 real failures either time. The same pre-existing,
+already-diagnosed `m19a_gen1_test` flake from the prior `[D4 CHEAP
+bundle]` session's own regression sweep reproduces identically here too,
+reconfirming it is unrelated to either session's changes.
+
+### Data / Docs
+
+12 new `.tres` files (652 total, 640 prior + 12). New
+`BattlePokemon.nightmare_active`/`last_used_item` fields; new
+`MoveData.is_do_nothing`/`is_refresh`/`is_purify`/`is_memento`/
+`hp_cost_stat_boost`+`hp_cost_divisor`/`is_nightmare`/`is_spite`/
+`is_recycle`/`is_facade`/`is_take_heart` fields. `docs/m19_subtier_plan.md`
+updated throughout: new `[D4 bundle 3]` subsection added under D4,
+Section E's summary table/reconciliation recomputed
+(652+0+0+215+67=934, reconfirmed). **Section D's residual: 79→67.**

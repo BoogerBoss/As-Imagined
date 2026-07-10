@@ -136,6 +136,11 @@ signal berry_stolen_and_eaten(victim: BattlePokemon, beneficiary: BattlePokemon,
 signal move_bounced(holder: BattlePokemon, new_target: BattlePokemon)      # M17n-9: Magic Bounce reflected a status move
 
 signal status_cured(pokemon: BattlePokemon)  # [Bucket 4 cheapest singles] Sparkling Aria cured the TARGET's own status
+signal item_recycled(mon: BattlePokemon, item: ItemData)  # [D4 bundle 3] Recycle restored the user's last-used item
+signal passive_hp_lost(mon: BattlePokemon, amount: int)  # [D4 bundle 3] Belly Drum/Fillet Away/Clangorous Soul's own HP cost
+signal nightmare_set(target: BattlePokemon)  # [D4 bundle 3] Nightmare applied
+signal nightmare_damage(target: BattlePokemon, amount: int)  # [D4 bundle 3] Nightmare's end-of-turn tick fired
+signal pp_reduced(target: BattlePokemon, move: MoveData, amount: int)  # [D4 bundle 3] Spite reduced the target's last-used move's PP
 
 signal rampage_lock_started(attacker: BattlePokemon, move: MoveData)  # [M19-rampage] lock just initiated (Thrash family or Uproar)
 signal rampage_lock_ended(attacker: BattlePokemon, move: MoveData, confused: bool)  # [M19-rampage] lock just cleared (counter hit 0, or immune-cancel)
@@ -1980,6 +1985,17 @@ func _phase_move_execution() -> void:
 	if move.is_payback and _has_target_already_acted(defender) and not defender.switched_in_this_turn:
 		_dmg_power_override = move.power * 2
 
+	# [D4 bundle 3] Facade: doubles power if the user has Burn/Poison/
+	# Toxic/Paralysis — confirmed NOT Sleep/Freeze. The burn-halving bypass
+	# is a SEPARATE, independent mechanism (DamageCalculator.calculate's
+	# own burn-modifier check) — this is only the power-double half.
+	# Source: battle_util.c, case EFFECT_FACADE (L6393-6396).
+	if move.is_facade and (attacker.status == BattlePokemon.STATUS_BURN \
+			or attacker.status == BattlePokemon.STATUS_POISON \
+			or attacker.status == BattlePokemon.STATUS_TOXIC \
+			or attacker.status == BattlePokemon.STATUS_PARALYSIS):
+		_dmg_power_override = move.power * 2
+
 	# ── Priority-move-block (Dazzling / Queenly Majesty / Armor Tail) ────────────
 	# Source: battle_move_resolution.c :: CancelerPriorityBlock (L1511-1548), dispatched
 	# BEFORE CancelerAccuracyCheck in source's canceler chain — inserted at the same
@@ -2722,6 +2738,99 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Purify ───────────────────────────────────────────────────────────
+		# Source: data/battle_scripts_1.s :: BattleScript_EffectPurify
+		#   (L771-783). Fails outright (no cure attempt) if the target has no
+		#   status at all. Only cures, THEN attempts a separate half-HP
+		#   self-heal on the ATTACKER (its own independent already-at-full-HP
+		#   fail case, which does not undo the cure).
+		if move.is_purify:
+			if defender.substitute_hp > 0 and not move.ignores_substitute \
+					and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
+				move_missed.emit(attacker, "substitute")
+			elif defender.status == BattlePokemon.STATUS_NONE:
+				move_effect_failed.emit(defender, "purify_failed")
+			else:
+				defender.status = BattlePokemon.STATUS_NONE
+				defender.toxic_counter = 0
+				status_cured.emit(defender)
+				if attacker.current_hp < attacker.max_hp:
+					var purify_heal: int = max(1, attacker.max_hp / 2)
+					attacker.current_hp = min(attacker.max_hp, attacker.current_hp + purify_heal)
+					drain_heal.emit(attacker, purify_heal)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Memento ──────────────────────────────────────────────────────────
+		# Source: data/battle_scripts_1.s :: BattleScript_EffectMemento
+		#   (L117-121) — stat-drop THEN self-faint, in that order. The
+		#   stat-drop is gated by the Substitute check below; the self-faint
+		#   is UNCONDITIONAL (Substitute protects the target, not the
+		#   attacker from its own move's self-consequence) — matches the
+		#   move's own well-established behavior of the user always fainting.
+		if move.is_memento:
+			if defender.substitute_hp > 0 and not move.ignores_substitute \
+					and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
+				move_missed.emit(attacker, "substitute")
+			else:
+				_apply_stat_change_effect(attacker, defender, move, ng_active)
+			# [M19-self-faint]-established shape: set current_hp = 0 only —
+			# the generic FAINT_CHECK phase (which runs after every resolved
+			# action) picks this up and handles .fainted/pokemon_fainted
+			# itself, matching Self-Destruct/Explosion's own precedent
+			# exactly (no synchronous double-fire here).
+			attacker.current_hp = 0
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Nightmare ────────────────────────────────────────────────────────
+		# Source: data/battle_scripts_1.s :: BattleScript_EffectNightmare
+		#   (L2114-2121). Fails if already nightmared, fails if the target
+		#   isn't asleep/Comatose — reuses Dream Eater's own gate shape.
+		if move.is_nightmare:
+			if defender.substitute_hp > 0 and not move.ignores_substitute \
+					and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
+				move_missed.emit(attacker, "substitute")
+			elif defender.nightmare_active:
+				move_effect_failed.emit(defender, "nightmare_failed")
+			else:
+				var nm_asleep: bool = defender.status == BattlePokemon.STATUS_SLEEP \
+						or AbilityManager.effective_ability_id(defender, ng_active, attacker) == AbilityManager.ABILITY_COMATOSE
+				if nm_asleep:
+					defender.nightmare_active = true
+					nightmare_set.emit(defender)
+				else:
+					move_effect_failed.emit(defender, "nightmare_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Spite ────────────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: Cmd_tryspiteppreduce
+		#   (L8190-8250). -4 PP (this project's GEN_LATEST config), floored
+		#   at 0. Fails if the target has no last-used move, that move's
+		#   slot can't be found, or its PP is already 0. Ignores Substitute
+		#   (own flag — no Substitute check here, matching source).
+		if move.is_spite:
+			var spite_slot: int = -1
+			if defender.last_move_used != null:
+				spite_slot = defender.moves.find(defender.last_move_used)
+			if spite_slot == -1 or defender.current_pp[spite_slot] <= 0:
+				move_effect_failed.emit(defender, "spite_failed")
+			else:
+				var spite_amount: int = min(4, defender.current_pp[spite_slot])
+				defender.current_pp[spite_slot] -= spite_amount
+				pp_reduced.emit(defender, defender.last_move_used, spite_amount)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# ── Mean Look family (Spider Web / Mean Look / Block) ──────────────────
 		# Source: EFFECT_MEAN_LOOK -> BattleScript_EffectMeanLook
 		#   (data/battle_scripts_1.s L2100-2112): seteffectprimary ...
@@ -2993,6 +3102,113 @@ func _phase_move_execution() -> void:
 			else:
 				attacker.aqua_ring_active = true
 				aqua_ring_set.emit(attacker)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Splash ───────────────────────────────────────────────────────────
+		# Source: data/battle_scripts_1.s :: BattleScript_EffectDoNothing
+		#   (L1945-1952) — genuinely does nothing at all.
+		if move.is_do_nothing:
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Refresh ──────────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: Cmd_curestatuswithmove
+		#   (L8758-8790) — cures Burn/Poison/Toxic/Paralysis ONLY, confirmed
+		#   NOT Sleep/Freeze (STATUS1_CAN_MOVE). See MoveData.is_refresh's own
+		#   doc comment for the full citation.
+		if move.is_refresh:
+			var refresh_curable: bool = attacker.status == BattlePokemon.STATUS_BURN \
+					or attacker.status == BattlePokemon.STATUS_POISON \
+					or attacker.status == BattlePokemon.STATUS_TOXIC \
+					or attacker.status == BattlePokemon.STATUS_PARALYSIS
+			if refresh_curable:
+				attacker.status = BattlePokemon.STATUS_NONE
+				attacker.toxic_counter = 0
+				status_cured.emit(attacker)
+			else:
+				move_effect_failed.emit(attacker, "refresh_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Take Heart ───────────────────────────────────────────────────────
+		# Source: battle_move_resolution.c, case EFFECT_TAKE_HEART
+		#   (L4653-4680): `if (WillAnyStatChange() || status1 != 0)` — an OR,
+		#   so it still succeeds and cures status even when both stages are
+		#   already at +6. Cures ANY status (unlike Refresh's narrower
+		#   scope), then raises Attack + Sp.Atk by 1 each — confirmed via
+		#   source's own data table, NOT Sp.Atk/Sp.Def. See MoveData.
+		#   is_take_heart's own doc comment for the full citation.
+		if move.is_take_heart:
+			var th_had_status: bool = attacker.status != BattlePokemon.STATUS_NONE
+			var th_atk_room: bool = attacker.stat_stages[BattlePokemon.STAGE_ATK] < 6
+			var th_spatk_room: bool = attacker.stat_stages[BattlePokemon.STAGE_SPATK] < 6
+			if th_had_status or th_atk_room or th_spatk_room:
+				if th_had_status:
+					attacker.status = BattlePokemon.STATUS_NONE
+					attacker.toxic_counter = 0
+					status_cured.emit(attacker)
+				var th_atk: int = StatusManager.apply_stat_change(
+						attacker, BattlePokemon.STAGE_ATK, 1, null, ng_active)
+				if th_atk != 0:
+					stat_stage_changed.emit(attacker, BattlePokemon.STAGE_ATK, th_atk)
+				var th_spatk: int = StatusManager.apply_stat_change(
+						attacker, BattlePokemon.STAGE_SPATK, 1, null, ng_active)
+				if th_spatk != 0:
+					stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPATK, th_spatk)
+			else:
+				move_effect_failed.emit(attacker, "take_heart_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Recycle ──────────────────────────────────────────────────────────
+		# Source: battle_script_commands.c :: Cmd_tryrecycleitem
+		#   (L9577-9603). Restores BattlePokemon.last_used_item — see its own
+		#   doc comment for the real-correction citation (broader than
+		#   last_consumed_berry).
+		if move.is_recycle:
+			if attacker.last_used_item != null and attacker.held_item == null:
+				attacker.held_item = attacker.last_used_item
+				attacker.last_used_item = null
+				item_recycled.emit(attacker, attacker.held_item)
+			else:
+				move_effect_failed.emit(attacker, "recycle_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Belly Drum / Fillet Away / Clangorous Soul ─────────────────────────
+		# Source: battle_move_resolution.c, cases EFFECT_BELLY_DRUM/
+		#   EFFECT_STAT_CHANGE_HALF_HP/EFFECT_CLANGOROUS_SOUL (L4696-4731):
+		#   `WillAnyStatChange() && Try*Hp(...)` — an AND, so this hard-fails
+		#   with ZERO HP cost and ZERO stat change unless BOTH the stat
+		#   change would do something AND current_hp is STRICTLY greater
+		#   than the HP fraction. See MoveData.hp_cost_stat_boost's own doc
+		#   comment for the full per-move citation and the Contrary-safe
+		#   STAT_CHANGE_FORCE_MAX=12 encoding for Belly Drum.
+		if move.hp_cost_stat_boost:
+			var hcb_would_change: bool = attacker.stat_stages[move.stat_change_stat] < 6
+			for hcb_extra_stat: int in move.extra_stat_change_stats:
+				if attacker.stat_stages[hcb_extra_stat] < 6:
+					hcb_would_change = true
+			var hcb_cost: int = attacker.max_hp / move.hp_cost_divisor
+			if hcb_cost == 0:
+				hcb_cost = 1
+			if hcb_would_change and attacker.current_hp > hcb_cost:
+				attacker.current_hp -= hcb_cost
+				passive_hp_lost.emit(attacker, hcb_cost)
+				_apply_stat_change_effect(attacker, attacker, move, ng_active)
+			else:
+				move_effect_failed.emit(attacker, "stat_change_failed")
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -3392,12 +3608,21 @@ func _phase_move_execution() -> void:
 		# to apply to every foe-targeting move with a real type; narrowly
 		# exempting `is_foresight` here, matching the existing
 		# `corrosion_bypasses_type_gate` precedent's own scoping shape,
-		# rather than a blanket change. Flagged, not investigated further:
-		# whether any OTHER already-shipped status move shares this same gap
-		# (a script that never calls `typecalc`) is an open question beyond
-		# this session's own scope.
+		# rather than a blanket change. That entry's own comment flagged as
+		# an open question whether any OTHER already-shipped move shares
+		# this gap — [D4 bundle 3] resolved it: Purify(648, Poison-type),
+		# Nightmare(171, Ghost-type — its own primary use case is a
+		# Ghost-vs-Normal-immune target, the exact same shape as Foresight's
+		# own bug), and Spite(180, Ghost-type) all confirmed via direct
+		# source read to likewise never call `typecalc` in their own
+		# scripts. (Memento(262, Dark-type) shares the same gap in
+		# principle, but is provably unreachable in practice — no type in
+		# this project's own chart is immune to Dark-type moves — so it's
+		# deliberately left off this list rather than added for no
+		# behavioral effect.)
 		if foe_targeting and move.type != TypeChart.TYPE_NONE \
-				and not corrosion_bypasses_type_gate and not move.is_foresight:
+				and not corrosion_bypasses_type_gate and not move.is_foresight \
+				and not move.is_purify and not move.is_nightmare and not move.is_spite:
 			var eff: float = TypeChart.get_effectiveness(move.type, defender.species.types)
 			if eff == 0.0:
 				move_missed.emit(attacker, "immune")
@@ -4018,6 +4243,30 @@ func _phase_end_of_turn() -> void:
 			mon.current_hp = min(mon.max_hp, mon.current_hp - dmg)
 			ability_healed.emit(mon, -dmg)
 			ability_triggered.emit(mon, "poison_heal")
+
+	# ── [D4 bundle 3] Nightmare recurring damage (ENDTURN_NIGHTMARE, right
+	# before ENDTURN_WRAP in source's own handler table) ──────────────────────
+	# Source: HandleEndTurnNightmare (battle_end_turn.c L610-633). Sleep
+	# status is RE-CHECKED every turn (not just at application) — if the
+	# target has woken up or lost Comatose, this silently clears with no
+	# damage that turn rather than re-attempting. Magic Guard blocks the
+	# damage (indirect-damage class).
+	for mon: BattlePokemon in _turn_order:
+		if mon.fainted or not mon.nightmare_active:
+			continue
+		var nm_still_asleep: bool = mon.status == BattlePokemon.STATUS_SLEEP \
+				or AbilityManager.effective_ability_id(mon, ng_active) == AbilityManager.ABILITY_COMATOSE
+		if not nm_still_asleep:
+			mon.nightmare_active = false
+			continue
+		if AbilityManager.blocks_indirect_damage(mon, ng_active):
+			continue
+		var nm_dmg: int = max(1, mon.max_hp / 4)
+		mon.current_hp = max(0, mon.current_hp - nm_dmg)
+		nightmare_damage.emit(mon, nm_dmg)
+		if mon.current_hp == 0:
+			mon.fainted = true
+			pokemon_fainted.emit(mon)
 
 	# ── [M18.5f] Bind/Wrap-family recurring damage (ENDTURN_WRAP, source's handler
 	# table slot right after Burn/Frostbite/Nightmare/Curse, before Salt Cure) ──────
@@ -5058,6 +5307,11 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.smack_down_active = false
 	mon.ingrain_active = false
 	mon.aqua_ring_active = false
+	# [D4 bundle 3] Nightmare — same switch-scoped shape as the five above.
+	# last_used_item is deliberately NOT reset here — see its own doc
+	# comment (persists across switches, matching last_consumed_berry's
+	# established precedent).
+	mon.nightmare_active = false
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
@@ -7096,6 +7350,13 @@ func _consume_item(mon: BattlePokemon) -> void:
 	var is_berry: bool = item.pocket == ItemManager.POCKET_BERRIES
 	if is_berry:
 		mon.last_consumed_berry = item
+	# [D4 bundle 3] Recycle's own broader tracker — ANY item removed here,
+	# berry or not, EXCEPT a popped Air Balloon (source's own "cannot be
+	# restored by any means" carve-out — see MoveData.is_recycle's doc
+	# comment for the full citation). Corrosive Gas's own identical
+	# exclusion is moot — this project doesn't implement that move.
+	if item.hold_effect != ItemManager.HOLD_EFFECT_AIR_BALLOON:
+		mon.last_used_item = item
 	# M17c: Cheek Pouch — heals maxHP/3 whenever the holder eats a REAL berry, not
 	# any consumed item.
 	if is_berry:
