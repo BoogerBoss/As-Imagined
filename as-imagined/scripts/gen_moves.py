@@ -85,6 +85,14 @@ STATUS_POISON    = 4
 STATUS_TOXIC     = 5
 STATUS_SLEEP     = 6
 
+# ── Double-power-on-status argument sentinels (MoveData.STATUS_ARG_* values) ─
+# double_power_status_arg is either a real STATUS_* value above (specific
+# status, e.g. Smelling Salts/paralysis), or one of these two sentinels
+# (never a valid BattlePokemon.STATUS_* value, both negative and distinct
+# from -1's "N/A" default) — see move_data.gd's own doc comment.
+STATUS_ARG_POISON_ANY = -2  # Venoshock/Barb Barrage: POISON or TOXIC
+STATUS_ARG_ANY        = -3  # Hex/Infernal Parade: any non-volatile status
+
 # ── Semi-invulnerable state constants (MoveData.SEMI_INV_* values) ───────────
 SEMI_INV_NONE        = 0
 SEMI_INV_UNDERGROUND = 1  # Dig
@@ -119,6 +127,7 @@ BAN_ASSIST        = 1 << 6
 BAN_SLEEP_TALK    = 1 << 7
 BAN_INSTRUCT      = 1 << 8
 BAN_ENCORE        = 1 << 9   # = 512
+BAN_SKETCH        = 1 << 12  # matches MoveData.BAN_SKETCH (Struggle's own ban set)
 
 # ── Move table (dict-based) ───────────────────────────────────────────────────
 #
@@ -3367,6 +3376,77 @@ MOVES = [
     {"id":  843, "name": "Temper Flare",
      "type": TYPE_FIRE, "category": PHYS, "power": 75, "accuracy": 100, "pp": 10,
      "makes_contact": True, "is_stomping_tantrum": True},
+
+    # ── [D1 EFFECT_DOUBLE_POWER_ON_ARG_STATUS]: doubles power if the target
+    # has a qualifying status. All 5 individually re-verified at Step 0 — NOT
+    # uniform: Hex/Infernal Parade use STATUS_ARG_ANY (any non-volatile
+    # status, including a Comatose holder treated as asleep — see
+    # BattleManager's own dispatch doc comment); Venoshock/Barb Barrage use
+    # STATUS_ARG_POISON_ANY (poison or toxic); Smelling Salts uses a single
+    # specific STATUS_PARALYSIS value. Barb Barrage/Infernal Parade are
+    # genuine two-mechanism composites — their own 50%/30% poison/burn
+    # secondary chance is PURE REUSE of the existing generic secondary_effect
+    # dispatch (SE_POISON/SE_BURN), not new code. Smelling Salts is a THIRD
+    # composite shape: is_smelling_salts also cures the target's paralysis on
+    # hit, but ONLY if not blocked by a live, non-ignored Substitute (a real,
+    # Smelling-Salts-only exception to the power-double itself — see
+    # move_data.gd's own doc comment for the exact source citation). ──
+    {"id":  265, "name": "Smelling Salts",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 70, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "is_double_power_on_status": True,
+     "double_power_status_arg": STATUS_PARALYSIS, "is_smelling_salts": True},
+    {"id":  474, "name": "Venoshock",
+     "type": TYPE_POISON, "category": SPEC, "power": 65, "accuracy": 100, "pp": 10,
+     "is_double_power_on_status": True, "double_power_status_arg": STATUS_ARG_POISON_ANY},
+    {"id":  506, "name": "Hex",
+     "type": TYPE_GHOST, "category": SPEC, "power": 65, "accuracy": 100, "pp": 10,
+     "is_double_power_on_status": True, "double_power_status_arg": STATUS_ARG_ANY},
+    {"id":  767, "name": "Barb Barrage",
+     "type": TYPE_POISON, "category": PHYS, "power": 60, "accuracy": 100, "pp": 10,
+     "is_double_power_on_status": True, "double_power_status_arg": STATUS_ARG_POISON_ANY,
+     "secondary_effect": SE_POISON, "secondary_chance": 50},
+    {"id":  772, "name": "Infernal Parade",
+     "type": TYPE_GHOST, "category": SPEC, "power": 60, "accuracy": 100, "pp": 15,
+     "is_double_power_on_status": True, "double_power_status_arg": STATUS_ARG_ANY,
+     "secondary_effect": SE_BURN, "secondary_chance": 30},
+
+    # ── [D4 bundle]: Struggle/Helping Hand (FREE — mechanism already fully
+    # built and wired, this is a pure data-entry gap); Sleep Talk (reuses
+    # the Metronome/Mirror-Move reassignment pattern, scoped to the
+    # attacker's own moveset); Taunt (reuses the Disable/Encore/Throat-Chop
+    # turn-counter-volatile shape, execution-time block); Assurance (reuses
+    # Revenge's hit_by_this_turn tracker, but keyed to "hit by anyone," not
+    # the user specifically); Magic Coat (shares Magic Bounce's exact
+    # dispatch chain, source-confirmed). Step 0 individually re-verified
+    # each against moves_info.h — see move_data.gd's own per-flag doc
+    # comments for full citations. ──
+    {"id":  165, "name": "Struggle",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 50, "accuracy": 0, "pp": 1,
+     "makes_contact": True, "is_struggle": True,
+     "ban_flags": (BAN_METRONOME | BAN_SLEEP_TALK | BAN_COPYCAT | BAN_INSTRUCT
+                   | BAN_ASSIST | BAN_MIMIC | BAN_ME_FIRST | BAN_MIRROR_MOVE
+                   | BAN_SKETCH)},
+    {"id":  270, "name": "Helping Hand",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
+     "priority": 5, "ignores_protect": True, "ignores_substitute": True,
+     "is_helping_hand": True,
+     "ban_flags": BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST | BAN_MIRROR_MOVE},
+    {"id":  214, "name": "Sleep Talk",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "is_sleep_talk": True, "usable_while_asleep": True,
+     "ban_flags": (BAN_MIRROR_MOVE | BAN_METRONOME | BAN_COPYCAT | BAN_SLEEP_TALK
+                   | BAN_INSTRUCT | BAN_MIMIC | BAN_ENCORE | BAN_ASSIST)},
+    {"id":  269, "name": "Taunt",
+     "type": TYPE_DARK, "category": STAT, "accuracy": 100, "pp": 20,
+     "ignores_substitute": True, "bounceable": True, "blocked_by_aroma_veil": True,
+     "is_taunt": True},
+    {"id":  372, "name": "Assurance",
+     "type": TYPE_DARK, "category": PHYS, "power": 60, "accuracy": 100, "pp": 10,
+     "makes_contact": True, "is_assurance": True},
+    {"id":  277, "name": "Magic Coat",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 15,
+     "priority": 4, "ignores_protect": True, "is_magic_coat": True,
+     "ban_flags": BAN_MIRROR_MOVE},
 ]
 
 
@@ -3623,6 +3703,18 @@ DEFAULTS = {
     "is_trick":                False,
     "is_revenge":              False,
     "is_stomping_tantrum":     False,
+
+    # [D1 EFFECT_DOUBLE_POWER_ON_ARG_STATUS]
+    "is_double_power_on_status": False,
+    "double_power_status_arg":   -1,
+    "is_smelling_salts":         False,
+
+    # [D4 bundle]
+    "is_sleep_talk":         False,
+    "usable_while_asleep":   False,
+    "is_taunt":              False,
+    "is_assurance":          False,
+    "is_magic_coat":         False,
 }
 
 HEADER = """\
@@ -3734,6 +3826,11 @@ FIELD_ORDER = [
     # [D1 easy bundle] fields
     "is_hit_escape", "is_hit_switch_target", "is_first_turn_only",
     "is_trick", "is_revenge", "is_stomping_tantrum",
+    # [D1 EFFECT_DOUBLE_POWER_ON_ARG_STATUS] fields
+    "is_double_power_on_status", "double_power_status_arg", "is_smelling_salts",
+    # [D4 bundle] fields
+    "is_sleep_talk", "usable_while_asleep", "is_taunt", "is_assurance",
+    "is_magic_coat",
 ]
 
 

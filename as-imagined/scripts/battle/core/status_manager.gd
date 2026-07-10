@@ -539,6 +539,14 @@ static func pre_move_check(
 			mon.status = BattlePokemon.STATUS_NONE
 			result["woke_up"] = true
 			# Pokémon can use its move the turn it wakes — fall through to rest of checks
+		elif move != null and move.usable_while_asleep:
+			# [D4 bundle] Sleep Talk: checked against the ALREADY-CHOSEN move for
+			# this turn (Sleep Talk itself, before its own later reassignment to
+			# a called move) — matches source's IsUsableWhileAsleepEffect, which
+			# reads the mon's own chosen move's effect, not whatever it ends up
+			# calling. The sleep counter above has already ticked down
+			# regardless — this only bypasses the can_move block itself.
+			pass
 		else:
 			result["can_move"] = false
 			return result

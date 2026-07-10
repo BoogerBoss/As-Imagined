@@ -345,6 +345,14 @@ var last_hit_was_special: bool = false
 # Source: gBattleMons[].volatiles.consecutiveMoveUses; gProtectStructs[].protected
 var protect_active: bool = false
 var protect_consecutive: int = 0
+
+# [D4 bundle] Magic Coat's own single-turn volatile — same "self-flag,
+# expires at the start of the next turn" shape as protect_active just
+# above (cleared in `_phase_priority_resolution`'s existing reset loop),
+# but ALSO cleared immediately the instant it successfully bounces a move
+# back (so it can't reflect a SECOND status move later the same turn).
+# See MoveData.is_magic_coat's own doc comment for the full citation.
+var magic_coat_active: bool = false
 # [M19c] Which Protect-family variant is active — mirrors source's own
 # `enum ProtectMethod` (battle.h) exactly. PROTECT_METHOD_NONE(0) covers both
 # "not protected" AND plain Protect/Detect (left at their default 0 —
@@ -584,6 +592,17 @@ var throat_chop_turns: int = 0
 # Source: gBattleMons[].volatiles.yawn (battle_script_commands.c ::
 # Cmd_setyawn L9091-9116; battle_end_turn.c L915-935).
 var yawn_turns: int = 0
+
+# [D4 bundle] Taunt's own turn counter — same per-mon-volatile shape as
+# throat_chop_turns/disable_turns/encore_turns above, decremented at end of
+# turn (source: battle_end_turn.c L762, the SAME file/category
+# disable_turns/encore_turns/throat_chop_turns already decrement in — NOT
+# the separate `battle_main.c` per-battler-action-reset site
+# stomping_tantrum_timer/_retaliate_timer needed, confirmed individually
+# rather than assumed). Cleared by `_clear_volatiles` on switch-out, same
+# shape as those siblings. See MoveData.is_taunt's own doc comment for the
+# duration-formula and execution-time-block citations.
+var taunt_turns: int = 0
 
 # [D1 easy bundle] Revenge/Avalanche's own "who hit me this turn" tracker —
 # a per-(victim,attacker)-PAIR record, not a plain "was I hit" bool, since

@@ -65,6 +65,7 @@ signal destiny_bond_set(attacker: BattlePokemon)                          # Dest
 signal destiny_bond_triggered(fainted_mon: BattlePokemon, killer: BattlePokemon)  # DB KO
 signal disabled(target: BattlePokemon, move: MoveData)                    # Disable applied
 signal encored(target: BattlePokemon, move: MoveData)                     # Encore applied
+signal taunted(target: BattlePokemon, turns: int)                         # [D4 bundle] Taunt applied
 signal infatuated(mon: BattlePokemon)                                     # M18.5d-2: Attract/Cute Charm applied
 signal bide_started(attacker: BattlePokemon)                              # Bide setup turn
 signal bide_storing(attacker: BattlePokemon)                              # Bide wait turn
@@ -773,6 +774,10 @@ func _phase_priority_resolution() -> void:
 		mon.flinched = false
 		mon.protect_active = false
 		mon.protect_method = BattlePokemon.PROTECT_METHOD_NONE
+		# [D4 bundle] Magic Coat: same single-turn-only expiry shape as
+		# protect_active just above (also cleared immediately on a
+		# successful bounce, at the swap site itself, if it fires earlier).
+		mon.magic_coat_active = false
 		mon.last_physical_damage = 0
 		mon.last_special_damage = 0
 		mon.last_hit_was_special = false
@@ -1216,6 +1221,18 @@ func _phase_move_execution() -> void:
 	# see ItemManager.holds_assault_vest's own doc comment for the full rationale.
 	if move.category == 2 and ItemManager.holds_assault_vest(attacker, ng_active):
 		move_skipped.emit(attacker, "assault_vest")
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# [D4 bundle] Taunt — blocks any STATUS-category move the HOLDER attempts,
+	# checked at execution time (same insertion point as Assault Vest just
+	# above, confirmed from source to be an execution-time canceler check,
+	# not a selection-time filter — a status move already queued this turn
+	# is still blocked if Taunt landed before it resolves). See
+	# MoveData.is_taunt's own doc comment for the full citation.
+	if move.category == 2 and attacker.taunt_turns > 0:
+		move_skipped.emit(attacker, "taunt")
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
@@ -1854,6 +1871,14 @@ func _phase_move_execution() -> void:
 	if move.is_revenge and attacker.hit_by_this_turn.has(defender):
 		_dmg_power_override = move.power * 2
 
+	# [D4 bundle] Assurance: doubled if the TARGET was already hit THIS TURN
+	# by ANYONE — a genuinely different trigger scope from Revenge just
+	# above (which pairs specifically to the user's own attacker), despite
+	# sharing the same `hit_by_this_turn` tracker. See MoveData.is_assurance's
+	# own doc comment for the full source citation.
+	if move.is_assurance and not defender.hit_by_this_turn.is_empty():
+		_dmg_power_override = move.power * 2
+
 	# [D1 easy bundle] Stomping Tantrum / Temper Flare: doubled if the
 	# user's own previous move failed exactly one turn ago (counter==1).
 	# See MoveData.is_stomping_tantrum's own doc comment for full source
@@ -1861,6 +1886,26 @@ func _phase_move_execution() -> void:
 	# also applied.
 	if move.is_stomping_tantrum and attacker.stomping_tantrum_timer == 1:
 		_dmg_power_override = move.power * 2
+
+	# [D1 EFFECT_DOUBLE_POWER_ON_ARG_STATUS] Hex/Venoshock/Smelling Salts/Barb
+	# Barrage/Infernal Parade: doubled if the target's status matches
+	# move.double_power_status_arg — see MoveData's own doc comment for the
+	# per-move argument value and the Comatose-as-sleep proxy. Computed here,
+	# strictly before _do_damaging_hit runs, so this can never double off a
+	# status this same hit's own secondary effect (Barb Barrage's poison
+	# chance, Infernal Parade's burn chance) is about to inflict. Smelling
+	# Salts carries one further, move-specific exception: the double itself
+	# is suppressed if blocked by a live, non-ignored Substitute (source:
+	# battle_util.c L6188-6190) — checked here directly since only the power
+	# computation, not the separate post-hit cure dispatch below, needs it
+	# (that dispatch is naturally already gated on damage > 0, which
+	# _do_damaging_hit never reports when a Substitute absorbed the hit).
+	if move.is_double_power_on_status \
+			and _status_matches_double_power_arg(defender, move.double_power_status_arg, ng_active):
+		var _dps_sub_blocks_smelling_salts: bool = move.is_smelling_salts \
+				and defender.substitute_hp > 0 and not move.ignores_substitute
+		if not _dps_sub_blocks_smelling_salts:
+			_dmg_power_override = move.power * 2
 
 	# ── Priority-move-block (Dazzling / Queenly Majesty / Armor Tail) ────────────
 	# Source: battle_move_resolution.c :: CancelerPriorityBlock (L1511-1548), dispatched
@@ -2155,6 +2200,25 @@ func _phase_move_execution() -> void:
 		move_called.emit(attacker, called_move)
 		move = called_move  # redirect to the called move for the rest of execution
 
+	# [D4 bundle] Sleep Talk: same reassignment shape as Metronome just above,
+	# but the pool is the ATTACKER's own moveset, not the global move list.
+	# `usable_while_asleep` only bypasses `pre_move_check`'s sleep block — it
+	# does NOT mean the attacker really IS asleep (e.g. a test or an AI edge
+	# case could still reach this dispatch while awake). Source's own
+	# GetSleepTalkMove checks "is the user asleep or Comatose" as its OWN
+	# first gate, independent of that bypass — reproduced inside
+	# `_pick_sleep_talk_move` itself, not assumed for free.
+	if move.is_sleep_talk:
+		var st_called_move: MoveData = _pick_sleep_talk_move(attacker, ng_active)
+		if st_called_move == null:
+			move_effect_failed.emit(attacker, "sleep_talk_no_moves")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		move_called.emit(attacker, st_called_move)
+		move = st_called_move
+
 	# ── Instruct: force the TARGET to immediately re-use its own last move ───
 	# Source: battle_script_commands.c :: BS_TryInstruct (L13149-13195). Unlike
 	# Mirror Move/Metronome above (which only reassign `defender`/`move`),
@@ -2393,6 +2457,17 @@ func _phase_move_execution() -> void:
 				else:
 					_helping_hand[ally_idx] = true
 					helping_hand_used.emit(attacker, ally)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# [D4 bundle] Magic Coat — self-targeted, sets a single-turn volatile
+		# consumed by the Magic Bounce swap further below (extended with an
+		# OR condition rather than a second parallel swap). See
+		# MoveData.is_magic_coat's own doc comment for the full citation.
+		if move.is_magic_coat:
+			attacker.magic_coat_active = true
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -3083,10 +3158,24 @@ func _phase_move_execution() -> void:
 		# holder correctly bounces a Prankster-boosted status move rather than the
 		# Prankster-Dark-immunity gate eating it as a no-op first (source:
 		# CanTargetBlockPranksterMove, battle_util.c L2203-2210).
+		# [D4 bundle] Magic Coat extends this same swap with an OR condition
+		# (not a second parallel swap) — confirmed from source
+		# (MoveEndBouncedMove) that Magic Bounce and Magic Coat share the
+		# literal same bounce dispatch, so reusing this exact swap inherits
+		# its already-tested single-non-recursive-bounce guarantee for free,
+		# including the Magic-Coat-reflected-onto-a-Magic-Bounce-holder edge
+		# case. Cleared immediately on fire so it can't reflect a second
+		# status move later the same turn.
+		var mc_active: bool = defender.magic_coat_active
 		if foe_targeting and move.bounceable \
-				and AbilityManager.bounces_status_move(defender, ng_active, attacker, move):
+				and (AbilityManager.bounces_status_move(defender, ng_active, attacker, move) \
+						or mc_active):
 			move_bounced.emit(defender, attacker)
-			ability_triggered.emit(defender, "magic_bounce")
+			if mc_active:
+				defender.magic_coat_active = false
+				ability_triggered.emit(defender, "magic_coat")
+			else:
+				ability_triggered.emit(defender, "magic_bounce")
 			var bounce_holder: BattlePokemon = defender
 			defender = attacker
 			attacker = bounce_holder
@@ -3183,6 +3272,37 @@ func _phase_move_execution() -> void:
 			else:
 				defender.foresight_active = true
 				foresight_set.emit(defender)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# [D4 bundle] Taunt ──────────────────────────────────────────────────
+		# Falls through the shared Magic-Bounce/Magic-Coat/Substitute/type-
+		# immunity/Prankster gates above like Lock-On/Foresight (this move's
+		# own `ignores_substitute = true` handles the Substitute bypass at
+		# that earlier checkpoint; `bounceable = true` lets it reach Magic
+		# Bounce/Magic Coat above like any other reflectable status move).
+		# `aroma_veil_blocks` was already computed generically off
+		# `move.blocked_by_aroma_veil` near the top of this branch — reused
+		# here directly, not recomputed. See MoveData.is_taunt's own doc
+		# comment for the full citation, including the duration formula.
+		if move.is_taunt:
+			if aroma_veil_blocks:
+				move_effect_failed.emit(defender, "aroma_veil_blocked")
+				ability_triggered.emit(defender, "aroma_veil")
+			elif AbilityManager.effective_ability_id(defender, ng_active, attacker) \
+					== AbilityManager.ABILITY_OBLIVIOUS:
+				move_effect_failed.emit(defender, "oblivious_blocks")
+				ability_triggered.emit(defender, "oblivious")
+			elif defender.taunt_turns > 0:
+				move_effect_failed.emit(defender, "taunt_failed")
+			else:
+				var taunt_turn_pos: int = _turn_order.find(defender)
+				var taunt_has_acted: bool = taunt_turn_pos >= 0 \
+						and taunt_turn_pos <= _current_actor_index
+				defender.taunt_turns = 4 if taunt_has_acted else 3
+				taunted.emit(defender, defender.taunt_turns)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -3804,6 +3924,13 @@ func _phase_end_of_turn() -> void:
 		# Disable/Encore above. Source: battle_end_turn.c L61-63/L1280-1311.
 		if mon.throat_chop_turns > 0:
 			mon.throat_chop_turns -= 1
+		# [D4 bundle] Taunt: same decrement shape as Disable/Encore/Throat
+		# Chop above — confirmed individually that source's own decrement
+		# site (battle_end_turn.c L762) lives in this same file/category,
+		# not the separate per-battler-action-reset site
+		# stomping_tantrum_timer/_retaliate_timer needed.
+		if mon.taunt_turns > 0:
+			mon.taunt_turns -= 1
 		# [Delayed-effect family] Yawn: same decrement shape as the above,
 		# but hitting 0 triggers a completely fresh sleep-infliction
 		# attempt (all immunity checks re-derived at THIS moment, not
@@ -4612,6 +4739,11 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	# `volatiles` struct, cleared here like every other switch-scoped volatile.
 	mon.rage_active = false
 	mon.throat_chop_turns = 0
+	# [D4 bundle] Taunt/Magic Coat — same switch-cleared shape as
+	# throat_chop_turns/disable_turns above and protect_active earlier in
+	# this function, respectively.
+	mon.taunt_turns = 0
+	mon.magic_coat_active = false
 	# [Delayed-effect family] Yawn's own 2-turn counter — same switch-cleared
 	# shape as throat_chop_turns/disable_turns above.
 	mon.yawn_turns = 0
@@ -5240,6 +5372,37 @@ static func _positive_stat_stage_sum(mon: BattlePokemon, include_evasion_acc: bo
 	return total
 
 
+# [D1 EFFECT_DOUBLE_POWER_ON_ARG_STATUS] Checks whether `defender`'s status
+# matches `arg` (a BattlePokemon.STATUS_* value, or one of MoveData's two
+# sentinels, STATUS_ARG_POISON_ANY/STATUS_ARG_ANY). A Comatose holder
+# (`[M17n-11]`, full non-volatile-status immunity — `defender.status` is
+# always STATUS_NONE for one) is treated as having STATUS_SLEEP for this
+# check specifically, matching source's own
+# `(status1 | (STATUS1_SLEEP * isComatose)) & argStatus` bitwise-OR — a
+# real, source-confirmed interaction (currently reachable since Comatose
+# already ships, `[M17n-11]`), not an assumed symmetry. Only Hex/Infernal
+# Parade's STATUS_ARG_ANY can actually observe this proxy among this
+# cluster's 5 moves (Comatose can only ever "have" SLEEP, never PARALYSIS/
+# POISON specifically), but the check is implemented generally to stay
+# source-faithful for any future STATUS_ARG_SLEEP-specific move too.
+# Source: battle_util.c, case EFFECT_DOUBLE_POWER_ON_ARG_STATUS (L6187-6188).
+static func _status_matches_double_power_arg(defender: BattlePokemon, arg: int,
+		ng_active: bool) -> bool:
+	if arg == -1:
+		return false
+	var effective_status: int = defender.status
+	if effective_status == BattlePokemon.STATUS_NONE \
+			and AbilityManager.effective_ability_id(defender, ng_active) == AbilityManager.ABILITY_COMATOSE:
+		effective_status = BattlePokemon.STATUS_SLEEP
+	if arg == MoveData.STATUS_ARG_ANY:
+		return effective_status != BattlePokemon.STATUS_NONE
+	elif arg == MoveData.STATUS_ARG_POISON_ANY:
+		return effective_status == BattlePokemon.STATUS_POISON \
+				or effective_status == BattlePokemon.STATUS_TOXIC
+	else:
+		return effective_status == arg
+
+
 # Synchronize back-reflect helper: if holder has Synchronize and received an eligible
 # status from source, apply the same status back to source. Emits signals on fire.
 # Source: TrySynchronizeActivation (battle_script_commands.c L2130)
@@ -5294,6 +5457,31 @@ func _pick_metronome_move() -> MoveData:
 				pool.append(m)
 		fname = dir.get_next()
 	dir.list_dir_end()
+	if pool.is_empty():
+		return null
+	return pool[randi() % pool.size()]
+
+
+# [D4 bundle] Returns a random MoveData from the ATTACKER's OWN moveset not
+# banned from Sleep Talk (ban_flags & BAN_SLEEP_TALK) and not a two-turn
+# move (move.two_turn) — the two exclusions source actually checks
+# (IsMoveSleepTalkBanned || twoTurnEffect); PP=0/choice-lock are NOT
+# excluded, matching source's own bypass, satisfied for free since this
+# scan does no PP/choice filtering at all. Returns null if every move is
+# excluded, OR if the attacker isn't actually asleep/Comatose — source's
+# own GetSleepTalkMove checks this as its FIRST gate, independent of
+# `usable_while_asleep`'s pre_move_check bypass (which only lets the move
+# execute while asleep, it doesn't guarantee the attacker still IS asleep
+# by the time this runs).
+# Source: battle_move_resolution.c :: GetSleepTalkMove (L5098-5127).
+func _pick_sleep_talk_move(attacker: BattlePokemon, ng_active: bool) -> MoveData:
+	if attacker.status != BattlePokemon.STATUS_SLEEP \
+			and AbilityManager.effective_ability_id(attacker, ng_active) != AbilityManager.ABILITY_COMATOSE:
+		return null
+	var pool: Array = []
+	for m: MoveData in attacker.moves:
+		if m != null and (m.ban_flags & MoveData.BAN_SLEEP_TALK) == 0 and not m.two_turn:
+			pool.append(m)
 	if pool.is_empty():
 		return null
 	return pool[randi() % pool.size()]
@@ -6007,6 +6195,19 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	# TARGET (whoever this hit — the inverse of every existing self-cure
 	# precedent), only if the target currently has it.
 	if damage > 0 and move.is_sparkling_aria and target.status == BattlePokemon.STATUS_BURN:
+		target.status = BattlePokemon.STATUS_NONE
+		status_cured.emit(target)
+
+	# [D1 EFFECT_DOUBLE_POWER_ON_ARG_STATUS] Smelling Salts: cures PARALYSIS
+	# specifically on the TARGET, only if the target currently has it — same
+	# shape as Sparkling Aria just above, mirrored rather than generalized
+	# (no existing SE_* token represents "cure a status FROM the target").
+	# Naturally already excluded when a live Substitute blocked the hit,
+	# since damage > 0 only holds here when _do_damaging_hit reports a real
+	# hit on the actual Pokémon — the power-double's OWN separate Substitute
+	# exception lives in the pre-hit block above, see MoveData.
+	# is_smelling_salts's own doc comment for the full citation.
+	if damage > 0 and move.is_smelling_salts and target.status == BattlePokemon.STATUS_PARALYSIS:
 		target.status = BattlePokemon.STATUS_NONE
 		status_cured.emit(target)
 

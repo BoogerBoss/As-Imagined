@@ -20410,3 +20410,513 @@ now-inaccurate "species-form-change not modeled" framing and point at
 (`move_data.gd`) updated to describe the corrected 4-check derivation.
 No `docs/m19_subtier_plan.md` changes — this fix touches zero move/ability
 counts and is explicitly out of M19's own reconciliation.
+
+## [EFFECT_DOUBLE_POWER_ON_ARG_STATUS] — the last structured D1 cluster,
+## closes D1 entirely (2026-07-10)
+
+5 moves: Hex(506), Venoshock(474), Smelling Salts(265), Barb Barrage(767),
+Infernal Parade(772). Move IDs re-derived directly from
+`include/constants/moves.h` rather than trusted from memory — Barb Barrage
+and Infernal Parade are 767/772, not the 838/852 initially assumed.
+
+### Step 0 — individual re-verification against moves_info.h
+
+All 5 brace-matched and read individually, confirming the cluster's own
+D1-table entry was right to flag genuine non-uniformity rather than assume
+a copy-paste:
+
+- **Hex** (`.argument = { .status = STATUS1_ANY }`) and **Infernal Parade**
+  (same) double against ANY non-volatile status.
+- **Venoshock** and **Barb Barrage** (`.argument = { .status =
+  STATUS1_PSN_ANY }`) double only against poison/toxic.
+- **Smelling Salts** (`.argument = { .status = STATUS1_PARALYSIS }`)
+  doubles only against paralysis.
+
+**Three of the five turned out to be genuine two-mechanism composites, not
+just Smelling Salts as the table's own flag anticipated:**
+
+- **Smelling Salts** ALSO carries `.additionalEffects = { .moveEffect =
+  MOVE_EFFECT_REMOVE_STATUS }` (unconditional/guaranteed, no `.chance`) —
+  cures the target's paralysis on hit. A SECOND, move-specific nuance the
+  table's own flag hadn't anticipated: the actual dispatch site
+  (`battle_util.c` L6186-6190) reads:
+  ```c
+  case EFFECT_DOUBLE_POWER_ON_ARG_STATUS:
+      if ((status1 | (STATUS1_SLEEP * isComatose)) & argStatus
+       && !((firstAdditionalEffect->moveEffect == MOVE_EFFECT_REMOVE_STATUS)
+            && DoesSubstituteBlockMove(atk, def, move)))
+          basePower *= 2;
+  ```
+  i.e. the power-double ITSELF (not just the cure) is suppressed for
+  Smelling Salts specifically if the hit would be blocked by a live,
+  non-ignored Substitute — a real, source-confirmed asymmetry between
+  Smelling Salts and the other 4 moves in this cluster.
+- **Barb Barrage** ALSO carries `.additionalEffects = { .moveEffect =
+  MOVE_EFFECT_POISON, .chance = 50 }` — a 50% chance to poison the target.
+- **Infernal Parade** ALSO carries `.additionalEffects = { .moveEffect =
+  MOVE_EFFECT_BURN, .chance = 30 }` — a 30% chance to burn the target.
+
+Confirmed the Barb Barrage/Infernal Parade secondaries are **pure reuse**:
+`BattleManager`'s existing gate (`if damage > 0 and (move.secondary_effect
+!= MoveData.SE_NONE or move.stat_change_stat >= 0):`) is unconditional on
+any other move flag, so setting `secondary_effect = SE_POISON,
+secondary_chance = 50` / `SE_BURN, 30` in `gen_moves.py` was sufficient —
+zero new dispatch code for that half of either move, unlike Bleakwind
+Storm's own genuinely-new-mechanism precedent from `[M19-weather-
+conditional-accuracy]`.
+
+**Ordering** (does the power-double ever see a status THIS hit is about to
+inflict): confirmed by construction, not just assumed — `_dmg_power_override`
+is computed in `_phase_move_execution`, strictly before `_do_damaging_hit`
+(which dispatches the SE_POISON/SE_BURN secondary) is ever called for that
+same action. A move can never double off a status its own secondary effect
+just applied.
+
+**Comatose interaction**: source's own line above,
+`status1 | (STATUS1_SLEEP * isComatose)`, treats a Comatose holder as having
+STATUS1_SLEEP for this check specifically — real and currently reachable,
+since Comatose already ships (`[M17n-11]`, full non-volatile-status
+immunity, meaning a Comatose holder's real `.status` field is always
+STATUS_NONE). Only Hex/Infernal Parade's STATUS_ARG_ANY can actually observe
+this proxy among this cluster's 5 moves (Comatose can only ever "have"
+SLEEP), but implemented generally rather than special-cased to those two,
+for source fidelity with any future SLEEP-specific move.
+
+### Design
+
+New `MoveData` fields: `is_double_power_on_status`, `double_power_status_arg`
+(a real `BattlePokemon.STATUS_*` value, or one of two new sentinels —
+`STATUS_ARG_POISON_ANY`/`STATUS_ARG_ANY`, since this project's status
+representation is a single value, not source's bitmask, so the "any of
+several statuses" cases needed an explicit sentinel rather than a bitwise
+OR), `is_smelling_salts`. New `BattleManager._status_matches_double_power_arg`
+(static, mirrors the Comatose-proxy formula above) and a new
+`_dmg_power_override` block reusing the EXACT existing pipeline stage
+Rollout/Magnitude/Stomping Tantrum/Revenge/etc. all already occupy — no new
+mechanism, matching the D1 table's own prediction. Smelling Salts's cure
+dispatched post-hit alongside Sparkling Aria's identical-shape block (no
+generic "cure a status FROM the target" SE_* token exists, matching that
+precedent rather than building a second one); naturally exempt from firing
+against a live Substitute since `_do_damaging_hit` only reports `damage > 0`
+when the hit actually lands on the real Pokémon (the established
+`went_to_sub` semantic), so the Substitute exception only needed to be coded
+once, in the pre-hit power block.
+
+### Test plan / bugs found
+
+New `d1_double_power_status_test.gd`/`.tscn`: 60/60 assertions, stable
+across 5 reruns after fixing 3 real test-authoring bugs on the first run
+(50/57):
+
+1. **A fresh instance of CLAUDE.md's own "type immunity precedes ability
+   logic" pitfall**: Hex/Infernal Parade (Ghost-type) tested against this
+   file's own `_make_mon` default defender type (Normal) — a flat 0×
+   immunity, not a resistance, silently zeroing every damage figure on both
+   sides of every comparison (masking a SEPARATE, more fundamental bug —
+   see below — behind a false pass on the Infernal Parade section that
+   wasn't even in the original failure list). Fixed by using a neutral
+   (Water) defender type throughout every Hex/Infernal Parade scenario.
+2. **The actual root cause, more fundamental than the immunity confound**:
+   the power-doubling dispatch lives entirely in
+   `BattleManager._phase_move_execution` (`_dmg_power_override`) — a raw
+   `DamageCalculator.calculate()` call, used throughout the first draft to
+   "test doubling," has zero awareness of `move.is_double_power_on_status`
+   at all. Every "doubles vs status X" claim needed to be observed through
+   a REAL battle turn (`start_battle` + `move_executed` signal snapshot),
+   matching how every other `_dmg_power_override`-based move
+   (Rollout/Magnitude/Stomping Tantrum/Revenge/etc.) is tested elsewhere in
+   this project — not a direct calculator call. New `_observed_damage`
+   helper added to centralize this pattern across the file.
+3. **E.02's `_approx_scaled` call passed `factor=1` instead of `factor=2`**
+   (a plain copy-paste/argument-position mistake) — checked "not doubled"
+   instead of "doubled," silently inverting the assertion's own intent.
+4. **A fresh whole-battle-aggregation instance** (E.06): a `substitute_hp =
+   50` fixture legitimately broke after enough turns of a long multi-turn
+   battle (both mons only had one move each, so the battle kept running),
+   after which the paralysis WAS correctly cured on a later, unrelated hit —
+   correct engine behavior, but misread as the Substitute-exception failing.
+   Fixed by setting `substitute_hp = 999999`, matching the established
+   "effectively unbreakable for this test" precedent (`m18_5g_test.gd`).
+
+### Regression
+
+16 suites: the 4 required (`damage_test`/`move_test`/`stat_test`/
+`status_test`) plus `d1_easy_bundle_test`/`d2_batch_test`/`d2_batch2_test`/
+`d3_batch_test` (every other `_dmg_power_override`-adjacent D-series
+session), `m19_pre1_test` (Return/Frustration, the same power-formula
+pipeline), `m19_bucket3_multistat_test`/`m19_secondary_stat_test` (the
+`_apply_stat_change_effect`/secondary-effect dispatch neighborhood),
+`tier3_test`/`tier4_test` (general breadth), `m17n11_test` (Comatose's own
+origin suite), `m17c_test` (Poison Point/Poison Touch, extra coverage since
+this tier reads poison/paralysis status directly), `switch_test`,
+`item_registry_test` — all 16 clean, 0 failures.
+
+### Data / Docs
+
+5 new `.tres` files (622 total, 617 prior + 5). `docs/m19_subtier_plan.md`
+updated throughout: the cluster's own row marked CLOSED with full findings,
+D1's own header corrected to **FULLY CLOSED** (all 21 clusters/51 moves),
+Section E's two summary tables and the top-of-document reconciliation
+recomputed (622+1+1+213+97=934, reconfirmed). **Section D's residual:
+102→97.**
+
+**Flagged, not fixed**: Section A's own Tier-by-Tier breakdown table
+(`docs/m19_subtier_plan.md`, near the top of the document) has been stale
+since `[M19c]`/`[M19d]` — it still shows a "535 total implemented" bottom
+line and a "181 residual (Section D)" note, both far behind Section E's
+own up-to-date figures (622 implemented, 97 residual, as of this session).
+At least 8 sessions since `[M19c]`/`[M19d]` (`[D0]` through this one) kept
+Section E current but never propagated the same updates back into Section
+A's per-Tier table. Out of this session's own narrow scope (a single
+cluster's move count) — flagged for a future dedicated doc-sync pass,
+matching the precedent already set by the `[Doc-sync fix + Bucket 3
+multi-stat cluster]` session for exactly this class of drift.
+
+## [Secret Power / Population Bomb] — permanent exclusion decision, docs-only
+## (2026-07-10)
+
+Rob confirmed permanent exclusion for the two moves that had been sitting
+as open deferrals: **Secret Power(290)** (`M19-secret-power`, Bucket 4's
+last remaining sub-group) and **Population Bomb(788)** (Section C3, Tier
+3a's sole holdout). Both were previously investigated at Step 0
+(`[Bucket 4 cheapest singles]` for Secret Power, `[M18.5g]`/Section C3 for
+Population Bomb) and left as explicit deferrals rather than closed —
+neither was blocked on missing infrastructure in the usual sense; both
+were deliberately left open pending a scope call from Rob:
+
+- **Secret Power**: its secondary effect depends on `gBattleEnvironment`,
+  an overworld map/tile-derived field with zero analog in this project
+  (no map system at all). The cheap fallback (`BATTLE_ENVIRONMENT_PLAIN`'s
+  own GEN_LATEST effect, a flat 30% Paralysis chance) was confirmed
+  schema-representable but Rob chose not to hardcode it.
+- **Population Bomb**: the sole `.strikeCount` move `[M18.5g]` deliberately
+  excluded from the general multi-hit mechanism — per-hit accuracy checks
+  (unlike every other `strikeCount` move) and a uniquely-shaped Loaded Dice
+  interaction (`RandomUniform(4,10)` vs. the standard `(4,5)`), a genuinely
+  higher complexity class than the rest of Tier 3a.
+
+No further Step 0 work was needed — this was a pure scope confirmation,
+not a re-investigation. Both moves move from their respective "pending"
+buckets (Bucket 4's "Proposed sub-tiers," Section C3's "Deferred") into
+"Permanently excluded" in `docs/m19_subtier_plan.md`'s Section E
+reconciliation: 213→215 excluded, both pending buckets now read 0.
+**622 + 0 + 0 + 215 + 97 = 934**, reconfirmed.
+
+This closes out Bucket 4 and Section C3 entirely — **every open item in
+all of M19 is now either shipped, permanently excluded, or sitting in
+Section D's D4 singleton pool.** D4 is now the only remaining M19 scope of
+any kind.
+
+### Docs
+
+Docs-only, no code/test changes (neither move needed a Step 0
+re-investigation, so nothing to implement or verify). `docs/
+m19_subtier_plan.md` updated: both moves' own dedicated status entries
+(Section B's `M19-secret-power`, Section C3) marked PERMANENTLY EXCLUDED;
+the Bucket 4 header and its own sub-tier-table row marked CLOSED (0 moves
+remaining); Section E's summary table and reconciliation recomputed;
+several older narrative mentions of "deferred by Rob" corrected in place
+(each annotated as describing the state AT THE TIME, now superseded) rather
+than silently rewritten, to keep the document's own history legible. Total
+move-implementation count unaffected (622) — this was a pure exclusion,
+not an implementation change.
+
+## [D4 reconnaissance] — full re-derivation of the singleton pool, docs-only,
+## no implementation (2026-07-10)
+
+D1 and D2 are now fully closed; D4's singleton pool was the last piece of
+Section D never individually reconciled since the original
+`[M19-section-d-cluster]` sweep (2026-07-09, ~130 moves, first-pass
+tagged ~87 cheap/~35 moderate/4 hard/1 blocked, explicitly disclaimed as
+"approximate, not a formally reconciled sum"). This session rebuilt it
+from scratch rather than patching the prose.
+
+### Methodology
+
+Rejected manual prose-parsing as unreliable (the old write-up's own named
+moves summed to only ~103, far short of its own claimed ~130). Instead,
+computed the true remaining set programmatically:
+
+```
+true_remaining = all_934_move_ids − implemented_ids(gen_moves.py, 622)
+                − excluded_ids(215, reconstructed from Section C2's own
+                  itemized ID lists: Z-Move/Max-Move 848-934, plus every
+                  individual ID from Rob's [M19-exclusions] breakdown,
+                  plus Secret Power(290)/Population Bomb(788))
+```
+
+Result: **exactly 97 moves**, zero overlap between the excluded and
+implemented sets (a clean cross-validation), matching Section E's own
+"Tier 4 residual: 97" figure precisely — the same total, derived two
+independent ways.
+
+### Discrepancies found (Step 2)
+
+1. **16 moves the old D4 write-up still named as remaining (some under a
+   "(see D2)"/"(D1)" cross-reference) are already fully shipped**:
+   Foresight(193), Odor Sleuth(316), Defog(432), Foul Play(492),
+   Freeze-Dry(573), Photon Geyser(675), Body Press(704), Stone Axe(758),
+   Ceaseless Edge(773), Ice Spinner(789), Mortal Spin(794), Tidy Up(808),
+   Wish(273), Yawn(281), Healing Wish(361), Lunar Dance(461). Pure
+   bookkeeping drift — the prose had already acknowledged most of these
+   shipped elsewhere but never trimmed the CHEAP/MODERATE bucket counts.
+2. **10 moves are genuinely still unbuilt but were never individually
+   named in the old D4 OR D3 write-ups at all**: Dream Eater(138),
+   Struggle(165), Belly Drum(187), Taunt(269), Helping Hand(270), Magic
+   Coat(277), Assurance(372), Heal Pulse(505), Flying Press(560),
+   Octolock(699) — a real gap in the original recon's coverage, not just
+   staleness.
+
+### Highest-value finding: Helping Hand(270) is FREE
+
+Grepped the codebase directly rather than trusting any prior session's
+framing (several later sessions — `[M19-steal-stats]`/`[M19-ally-
+targeting-stat-change]` — cite Helping Hand's own mechanism as an
+existing precedent to reuse for Aromatic Mist/Coaching, without anyone
+noticing the move itself was never added). Confirmed `MoveData.
+is_helping_hand`, the full `_phase_move_execution` dispatch (fail-in-
+singles/fail-if-ally-moved/fail-if-ally-fainted), the `_helping_hand[]`
+per-slot state array, and the `helping_hand_used` signal are ALL already
+implemented and wired end-to-end since `[M14b]` — a pure `.tres` data-
+entry gap, zero mechanism work, matching the `[D0]` Follow-Me/Soft-Boiled
+precedent exactly. Struggle(165) is the second FREE case, already flagged
+in a prior session as a hardcoded fallback needing only a data-pipeline
+decision from Rob.
+
+### New clusters found (Step 4)
+
+- **"Call-a-different-move" family (5 moves)**: Sleep Talk(214)/Nature
+  Power(267) (both CHEAP) + Copycat(383)/Me First(382)/Assist(274) (all
+  MODERATE — each needs its own small new tracking state beyond the
+  shared reassignment mechanism). All reuse the exact "duplicate/
+  substitute `move` and fall through" pattern Mirror Move/Metronome
+  already established, extended by D3's Instruct to reassigning the
+  attacker too. Nature Power reduces to a fully deterministic single
+  fixed-move call since Terrain is permanently void (`[M17d]`).
+- **Magic Coat / Snatch interception family (2 moves)**: Magic Coat(277)
+  confirmed via direct source read (`battle_move_resolution.c` L5157:
+  `return TryMagicBounce(cv) || TryMagicCoat(cv);`) to share the EXACT
+  SAME dispatch chain as the already-implemented Magic Bounce ability
+  (`[M17n-9]`) — reclassified MODERATE→CHEAP. Snatch(289) shares the
+  interception TIMING but not the swap mechanism (steals the effect
+  rather than bouncing it) — stays MODERATE.
+
+### Reclassifications (Step 3 — CHEAP given infra built since the original sweep)
+
+- **Taunt(269)**: MODERATE→CHEAP. Source confirms a plain turn-counter
+  volatile (`tauntTimer`) blocking STATUS-category move selection — the
+  same shape Disable/Encore/Throat Chop already established three times
+  over. Aroma Veil's own blocking hook (`[M17n-1]`) had already
+  anticipated extending to Taunt.
+- **Assurance(372)**: newly-named, CHEAP. Source confirms
+  `assuranceDoubled` is set on whichever battler took ANY damage this
+  turn from anyone — `BattlePokemon.hit_by_this_turn` (built for Revenge,
+  `[D1 easy bundle]`) already tracks exactly this; a non-empty check
+  answers the whole condition with zero new state.
+- **Octolock(699)**: newly-named, CHEAP-MODERATE. Traps via the existing
+  escape-prevention mechanism (`[M19f]`) directly; needs one small new
+  recurring EOT stat-drop tick, similar in shape to Leech Seed's own
+  end-of-turn tick.
+- **Chilly Reception(807)**: reconfirmed CHEAP, no longer conditional —
+  the old write-up's own "once D1's weather cluster ships" condition is
+  now satisfied (`[D1 cheap clusters]`).
+
+### HARD / BLOCKED re-confirmation (Step 3)
+
+Transform(144) and Sky Drop(507) re-confirmed still HARD — no new
+precedent for either "become a full copy of another Pokémon" or "revoke
+the DEFENDER's own action availability." Beak Blast(653)/Shell Trap(658)
+kept at HARD but flagged with a concrete new lead: both key off reading
+the OPPONENT's already-chosen move for this turn before it resolves
+(`gChosenMoveByBattler`), which this project's own up-front action-
+selection architecture might already expose — not confirmed either way,
+a real question for whoever picks these up next, not an asserted
+downgrade. Camouflage(293) re-confirmed BLOCKED on the same
+`gBattleEnvironment` gap as Secret Power; explicitly checked and
+confirmed no other move in the 97-move pool shares that blocker (Nature
+Power's own Terrain-dependency is a different, already-excluded-scope
+gap, not a missing-engine-feature block).
+
+### Final tally
+
+**FREE: 2. CHEAP: 63. MODERATE: 27. HARD: 4. BLOCKED: 1. Total: 97** —
+confirmed via direct tabulation, matching Section E's residual figure
+exactly two independent ways.
+
+### Docs
+
+Docs-only session, no code/test/`.tres` changes, per this task's own
+explicit scope. `docs/m19_subtier_plan.md`'s entire D4 section rewritten
+(not patched) with the full move-by-move breakdown, both new clusters,
+all reclassifications, and a recommended next pick (a 7-move CHEAP/FREE
+bundle: Struggle, Helping Hand, Sleep Talk, Nature Power, Taunt,
+Assurance, Magic Coat). Section E's own sub-tier table row and D5's
+running history both updated with pointers to this recon. Total move-
+implementation count unaffected (622) — recon only, no shipping.
+
+## [D4 bundle] — Struggle, Helping Hand, Sleep Talk, Taunt, Assurance,
+## Magic Coat (6 of the D4 recon's 7-move top pick — Nature Power pulled,
+## deferred alongside Secret Power/Camouflage) (2026-07-10)
+
+Per the D4 recon's own recommended next pick. Step 0 independently
+re-verified all 7 against source rather than trusting the FREE/CHEAP tags
+at face value, per this task's own explicit instruction ("this arc's hit
+rate on 'should be simple' turning up a real wrinkle is close to 50%") —
+found real wrinkles on 3 of the 7.
+
+### Step 0 findings
+
+- **Struggle(165) — confirmed FREE.** `_construct_struggle_move()`-style
+  hardcoded `_ready()` construction re-verified fully correct and wired
+  (PP-skip at `CancelerPPDeduction`'s equivalent, 1/4-max-HP recoil,
+  Cursed Body/Color Change exclusions) — genuinely just a data-entry gap.
+  **A real finding beyond "just add a `.tres` file"**: source shows
+  Struggle carries nearly every ban flag that exists
+  (meFirstBanned/mimicBanned/metronomeBanned/sleepTalkBanned/
+  copycatBanned/instructBanned/encoreBanned/assistBanned/sketchBanned/
+  mirrorMoveBanned) — matters THIS session specifically, since
+  `_pick_metronome_move()` scans every `.tres` on disk directly; adding
+  Struggle's file without the full ban set would have silently made it
+  Metronome-callable for the first time. All 9 relevant flags set.
+- **Helping Hand(270) — confirmed FREE, but with a real gap caught before
+  the first test run.** The full dispatch (`is_helping_hand`, the
+  fail-in-singles/fail-if-ally-fainted/fail-if-ally-already-acted checks,
+  the `_helping_hand[]` state array, the `helping_hand_used` signal) was
+  already 100% built and wired since `[M14b]`. The FIRST data-entry draft
+  missed that source ALSO flags Helping Hand `metronomeBanned`/
+  `copycatBanned`/`assistBanned`/`mirrorMoveBanned` — caught via a
+  deliberate post-data-entry source re-check (not by a failing test),
+  fixed before regression ran.
+- **Sleep Talk(214)/Nature Power(267) — re-derived fresh, one pulled from
+  the bundle entirely.** Confirmed via source
+  (`battle_move_resolution.c` L529-552) that `EFFECT_METRONOME`/
+  `EFFECT_ASSIST`/`EFFECT_NATURE_POWER`/`EFFECT_SLEEP_TALK`/
+  `EFFECT_COPYCAT`/`EFFECT_ME_FIRST` all live in the literal SAME
+  `calledMove = Get*Move()` switch — confirming the "call-a-different-
+  move" cluster the D4 recon surfaced. Sleep Talk excludes moves via
+  `ban_flags & BAN_SLEEP_TALK` (a project constant that had existed,
+  unused, since long before this session) plus `move.two_turn`, genuinely
+  bypassing PP=0/choice-lock exclusions (satisfied for free — this
+  project's flat pool-scan does no PP/choice filtering to begin with).
+  **Nature Power: re-deriving `GetNaturePowerMove()` found the D4 recon's
+  own "reduces to a fixed call" framing was wrong** — Terrain is
+  correctly moot (permanently void, `[M17d]`), but the function falls
+  through to `gBattleEnvironmentInfo[gBattleEnvironment].naturePower` —
+  the SAME overworld-tile field Secret Power/Camouflage are blocked on.
+  Only environments with no configured default move use the TRI_ATTACK/
+  SWIFT fallback; every real environment has its own specific move, so a
+  fixed default would be wrong most of the time. Pulled from the bundle,
+  deferred alongside Secret Power/Camouflage; D4's own BLOCKED tier
+  corrected 1→2 moves.
+- **Taunt(269) — confirmed CHEAP with two real nuances.** Checked at
+  EXECUTION time in the canceler chain (`battle_util.c` L1360-1380,
+  `IsBattleMoveStatus(move) && tauntTimer != 0`), not a selection-time
+  filter — a status move already queued for this turn IS still blocked
+  if Taunt lands before it resolves. Duration is genuinely conditional,
+  not a flat constant: 4 turns if the target already acted this turn
+  when hit, 3 if not (`Cmd_settaunt`, L8815-8845) — reuses the exact
+  `_turn_order.find(...) <= _current_actor_index` "has this mon acted
+  yet" check Helping Hand's own ally-already-moved gate already
+  established.
+- **Assurance(372) — confirmed the trigger is genuinely "hit by anyone
+  this turn," not "hit by the user."** Source's `assuranceDoubled` is set
+  on whichever battler took ANY damage this turn
+  (`battle_script_commands.c` L1562/L1657), matching this project's own
+  `BattlePokemon.hit_by_this_turn` directly — `not defender.
+  hit_by_this_turn.is_empty()`, zero new state.
+- **Magic Coat(277) — confirmed shares Magic Bounce's exact dispatch
+  chain.** `battle_move_resolution.c` L5157: `return TryMagicBounce(cv)
+  || TryMagicCoat(cv);` — literally the same bounce mechanism, gated by a
+  temporary volatile instead of an ability. Traced `MoveEndBouncedMove`'s
+  own bounce loop (L3142-3195) to confirm the swap is non-recursive by
+  construction (never re-checks pending-bounce state after a swap
+  already fired) — this project's existing Magic Bounce swap
+  (`battle_manager.gd`, `[M17n-9]`) already has this property, so
+  extending its condition with an OR for Magic Coat inherits the
+  guarantee for free, including the Magic-Coat-onto-a-Magic-Bounce-holder
+  edge case. **A second real gap caught before the first test run**:
+  Magic Coat needed its own `BAN_MIRROR_MOVE` flag (source:
+  `mirrorMoveBanned = TRUE`), missed on the first data-entry pass for the
+  same reason as Helping Hand.
+
+### Design
+
+New `MoveData` fields: `is_sleep_talk`, `usable_while_asleep` (a
+genuinely NEW small mechanism — no prior move in this project could
+execute while still asleep; extends `StatusManager.pre_move_check`'s
+sleep block with a bypass, checked against the ALREADY-CHOSEN move for
+the turn, matching source's own `IsUsableWhileAsleepEffect` check
+against the mon's chosen move, not whatever it ends up calling),
+`is_taunt`, `is_assurance`, `is_magic_coat`. New `BattlePokemon.
+taunt_turns` (same per-turn-decrement/switch-clear shape as
+`disable_turns`/`encore_turns`/`throat_chop_turns` — confirmed
+individually that Taunt's own source decrement site, `battle_end_turn.c`
+L762, lives in the SAME file/category as those three, not the separate
+`battle_main.c` per-battler-action-reset site `stomping_tantrum_timer`/
+`_retaliate_timer` needed) and `magic_coat_active` (same single-turn
+expiry shape as `protect_active`, plus cleared immediately on a
+successful bounce so it can't reflect a second status move the same
+turn). New `BattleManager._pick_sleep_talk_move(attacker, ng_active)`
+mirrors `_pick_metronome_move()` but scans the attacker's own `moves`
+array instead of every `.tres` on disk, with an explicit "is the
+attacker asleep or Comatose" gate as its own first check (source's
+`GetSleepTalkMove` checks this itself — NOT implied for free by
+`usable_while_asleep`'s `pre_move_check` bypass, which only lets the
+move execute while asleep, it doesn't guarantee the attacker still IS
+asleep by the time this runs). Taunt's own block check reuses the exact
+Assault-Vest-adjacent "chosen, then fails at execution" insertion point;
+Taunt's own infliction dispatch reuses the Lock-On/Foresight "falls
+through the shared Magic-Bounce/Substitute/type-immunity/Prankster
+gates" pattern (NOT Disable/Encore's self-contained early-return shape,
+since Taunt must still reach the Magic-Bounce/Magic-Coat swap it's
+bounceable against). Helping Hand and Magic Coat's own dispatch blocks
+placed together (both simple self-targeted/ally-targeted single-flag
+moves). Assurance's power-double added to the existing `_dmg_power_
+override` chain alongside Revenge's own block.
+
+### Test plan / bugs found
+
+New `d4_bundle_test.gd`/`.tscn`: 39/39 assertions, stable across 5
+reruns after fixing 3 real test-authoring bugs on the first run (36/39):
+
+1. **C.04's "ally already acted" discriminator had the turn order
+   backwards** — Helping Hand's own +5 priority means it ALWAYS resolves
+   before an ordinary-priority ally move regardless of speed (confirmed
+   via a debug trace scene). The only realistic way an ally has already
+   acted is if the ally ALSO used Helping Hand (same +5 bracket) and
+   went first on speed — rewritten to that scenario.
+2. **F.02 had the identical turn-order mistake** for Assurance's own
+   doubles discriminator (both moves are ordinary priority 0 here, so
+   plain speed order applies, but the ally was given LOWER speed than
+   the Assurance user by mistake) — fixed by swapping the two speeds.
+3. **G.03 hit a fresh whole-battle-aggregation instance**: Growl/Magic
+   Coat never deal damage, so the test battle legitimately runs many
+   turns (each producing its own genuine bounce, since both mons'
+   only move keeps getting reselected) — the original assertion counted
+   ALL bounce events across the whole battle instead of isolating the
+   first action. Fixed by recording an ordered timeline and counting
+   only the bounces that occur before Growl's own effect first actually
+   resolves.
+
+### Regression
+
+15 suites: the 4 required (`damage_test`/`move_test`/`stat_test`/
+`status_test`) plus `tier4_test` (Metronome's own origin suite — critical,
+since 4 of these 6 new moves now enter its pool for the first time),
+`m17b_test` (Disable/Encore/Throat-Chop's own neighborhood, Taunt's
+pattern reuse), `d1_easy_bundle_test` (Revenge, Assurance's tracker
+reuse), `switch_test`/`item_registry_test`/`doubles_test`/`m17n11_test`/
+`m17n1_test`/`d1_double_power_status_test`/`m19_bucket3_multistat_test`
+(general breadth) — all 15 clean, 0 failures.
+
+### Data / Docs
+
+6 new `.tres` files (628 total, 622 prior + 6). New `BAN_SKETCH` Python
+constant added to `gen_moves.py` (existed in `move_data.gd` already,
+unused there until Struggle needed it). `docs/m19_subtier_plan.md`
+updated throughout: the "call-a-different-move" cluster's Nature Power
+entry corrected (CHEAP→BLOCKED, with the D4 recon's own wrong framing
+flagged in place), D4's BLOCKED tier corrected 1→2 moves and CHEAP
+corrected 63→62, Section E's summary table and top reconciliation
+recomputed (628+0+0+215+91=934, reconfirmed). **Section D's residual:
+97→91.**

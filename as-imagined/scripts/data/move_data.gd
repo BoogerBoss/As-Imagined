@@ -2407,3 +2407,156 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   (the same per-battler action-reset function `stompingTantrumTimer`
 #   and `retaliateTimer` both live in).
 @export var is_stomping_tantrum: bool = false
+
+# EFFECT_DOUBLE_POWER_ON_ARG_STATUS cluster (D1's last structured cluster) —
+#   Hex(506)/Infernal Parade(772)/Venoshock(474)/Barb Barrage(767)/Smelling
+#   Salts(265). Power doubles if the DEFENDER's status (checked at
+#   power-computation time, strictly BEFORE this same hit's own accuracy
+#   roll or any of its own secondary effects can apply a NEW status — by
+#   construction of this project's pipeline, `_dmg_power_override` is
+#   computed in `_phase_move_execution` before `_do_damaging_hit` runs at
+#   all, matching source's own base-power-then-additionalEffects ordering)
+#   matches `double_power_status_arg`. Comatose holders are treated as
+#   having STATUS1_SLEEP for this check specifically, even though this
+#   project's Comatose implementation (`[M17n-11]`) never actually sets a
+#   real status — a real, source-confirmed proxy (see
+#   `BattleManager._status_matches_double_power_arg`'s own doc comment).
+#   Source: battle_util.c, case EFFECT_DOUBLE_POWER_ON_ARG_STATUS
+#   (L6186-6191).
+#
+# is_double_power_on_status: gates the dispatch itself.
+@export var is_double_power_on_status: bool = false
+
+# double_power_status_arg: either a specific `BattlePokemon.STATUS_*` value
+#   (Smelling Salts: STATUS_PARALYSIS only), or one of the two sentinels
+#   below (Venoshock/Barb Barrage: STATUS_ARG_POISON_ANY; Hex/Infernal
+#   Parade: STATUS_ARG_ANY) — mirrors source's `argument.status` field,
+#   which is itself a bitmask (`STATUS1_PSN_ANY`/`STATUS1_ANY`) this
+#   project's own single-value (not bitmask) status representation can't
+#   directly copy, hence the sentinel approach. -1 = N/A (default, no
+#   dispatch).
+const STATUS_ARG_POISON_ANY: int = -2
+const STATUS_ARG_ANY: int = -3
+@export var double_power_status_arg: int = -1
+
+# is_smelling_salts: Smelling Salts(265) ALSO cures the target's paralysis
+#   on hit — a genuine two-mechanism composite, not pure reuse of Hex/
+#   Venoshock's single mechanism (confirmed at Step 0, matching Barb
+#   Barrage/Infernal Parade's own composite shape below, though via a
+#   different second mechanism). Dispatched post-hit (`damage > 0`),
+#   mirroring `is_sparkling_aria`'s exact shape/insertion point — "cure a
+#   status FROM the target" still has no generic SE_* token, so this is
+#   its own dedicated flag rather than a generalized mechanism, matching
+#   that established precedent rather than building a second one.
+#   A real, Smelling-Salts-only exception found at Step 0: source's OWN
+#   power-double check (not just the cure) is suppressed if the hit would
+#   be blocked by a live Substitute the move doesn't ignore — i.e. this is
+#   the one move in the cluster where the power-double and the secondary
+#   effect are coupled, not independent. Modeled in the same
+#   `_dmg_power_override` block as the double itself (checking
+#   `defender.substitute_hp > 0 and not move.ignores_substitute`), NOT as
+#   a separate gate on the post-hit cure — the cure's own post-hit
+#   dispatch is naturally already exempt from firing against a live,
+#   non-ignored Substitute, since `_do_damaging_hit` only reaches this
+#   project's post-hit dispatch block with `damage > 0` when the hit
+#   landed on the real Pokémon, not an absorbing Substitute.
+#   Source: src/battle_script_commands.c :: case MOVE_EFFECT_REMOVE_STATUS
+#   (L3270-3289, the same generic effect `is_sparkling_aria`'s own doc
+#   comment cites); the Substitute exception is battle_util.c L6188-6190,
+#   part of the same EFFECT_DOUBLE_POWER_ON_ARG_STATUS case cited above.
+@export var is_smelling_salts: bool = false
+
+# [D4 bundle] is_sleep_talk: Sleep Talk(214) — reassigns `move` to a random
+#   move from the ATTACKER's OWN moveset, reusing the exact "duplicate/
+#   substitute `move`, fall through" insertion point Mirror Move/Metronome
+#   already established (source confirms EFFECT_METRONOME/EFFECT_ASSIST/
+#   EFFECT_NATURE_POWER/EFFECT_SLEEP_TALK/EFFECT_COPYCAT/EFFECT_ME_FIRST all
+#   live in the SAME `calledMove = Get*Move()` switch,
+#   battle_move_resolution.c L529-552). Excludes moves via
+#   `ban_flags & BAN_SLEEP_TALK` AND `move.two_turn` (source:
+#   `IsMoveSleepTalkBanned(...) || gBattleMoveEffects[...].twoTurnEffect`,
+#   battle_move_resolution.c L5098-5111) — genuinely bypasses PP=0 and
+#   choice-lock exclusions (`CheckMoveLimitations(..., ~(MOVE_LIMITATION_PP
+#   | MOVE_LIMITATION_CHOICE_ITEM))`), which this project's flat
+#   pool-scan-over-`attacker.moves` satisfies for free (no PP/choice-lock
+#   filtering exists in that scan to begin with). The called move is PP-free
+#   (PP deduction already happened against Sleep Talk's OWN slot before this
+#   reassignment point is ever reached, same as Metronome's already-shipped
+#   precedent). Source: battle_move_resolution.c, case EFFECT_SLEEP_TALK
+#   (L546-548); GetSleepTalkMove (L5098-5127).
+@export var is_sleep_talk: bool = false
+
+# [D4 bundle] usable_while_asleep: a genuinely NEW small mechanism (not
+#   previously built anywhere in this project) — Sleep Talk is the ONE move
+#   in this session carrying it; Snore(173, not yet implemented) would be
+#   the only other real-game holder. Lets `StatusManager.pre_move_check`'s
+#   sleep block permit the move to execute WHILE STILL ASLEEP, instead of
+#   the normal "stays asleep → can't move" block. Checked against the
+#   ALREADY-CHOSEN move for this turn (Sleep Talk itself, before its own
+#   later move-reassignment happens) — matches source's
+#   `IsUsableWhileAsleepEffect(moveEffect)`, checked against the mon's own
+#   chosen move's effect, not whatever it ends up calling.
+#   Source: battle_util.c :: IsUsableWhileAsleepEffect (L10713-10723).
+@export var usable_while_asleep: bool = false
+
+# [D4 bundle] is_taunt: Taunt(269) — blocks the TARGET from selecting/
+#   executing any STATUS-category move (`move.category == 2`) for a
+#   duration, via a new `BattlePokemon.taunt_turns` counter reusing the
+#   EXACT Disable/Encore/Throat-Chop turn-counter-volatile shape (checked
+#   at EXECUTION time in `_phase_move_execution`'s early "chosen, then
+#   fails" block, right alongside Assault Vest's own identical
+#   status-category check — NOT a menu-selection-time filter, this project
+#   has no such architecture). This means a status move ALREADY QUEUED for
+#   this same turn IS still blocked if Taunt lands before it resolves,
+#   matching source's own canceler-chain (execution-time) check exactly —
+#   confirmed via source, not assumed. Duration is genuinely conditional,
+#   NOT a flat constant: 4 turns if the target has ALREADY acted this turn
+#   when hit, 3 turns if not (reuses the exact `_turn_order.find(...) <=
+#   _current_actor_index` "has this mon acted yet" check `is_helping_hand`'s
+#   own ally-already-moved gate already established). Blocked by Aroma Veil
+#   (reuses the existing `blocked_by_aroma_veil`-adjacent check already
+#   wired for Disable/Torment) and by Oblivious
+#   (`B_OBLIVIOUS_TAUNT >= GEN_6`, `[M17n-1]`'s own precedent). `bounceable
+#   = true` at this project's GEN_LATEST config (`magicCoatAffected =
+#   B_UPDATED_MOVE_FLAGS >= GEN_5`) — reflectable by both Magic Bounce and
+#   this same bundle's own Magic Coat.
+#   Source: battle_util.c L1360-1380 (the block check); battle_script_
+#   commands.c :: Cmd_settaunt (L8815-8845, infliction + duration formula).
+@export var is_taunt: bool = false
+
+# [D4 bundle] is_assurance: Assurance(372) — power doubles if the TARGET
+#   was already hit THIS TURN by ANYONE, not specifically by the user —
+#   confirmed a genuinely different trigger scope from Revenge's own
+#   per-(victim,attacker)-PAIR semantic despite sharing the same underlying
+#   tracker: source's `assuranceDoubled` is set on whichever battler took
+#   ANY damage this turn (battle_script_commands.c L1562/L1657,
+#   battle_util.c L8013), matching this project's own
+#   `BattlePokemon.hit_by_this_turn` (built for Revenge, `[D1 easy
+#   bundle]`) — `not defender.hit_by_this_turn.is_empty()` answers the
+#   whole condition directly, zero new state needed.
+#   Source: battle_util.c, case EFFECT_ASSURANCE (L6196-6198).
+@export var is_assurance: bool = false
+
+# [D4 bundle] is_magic_coat: Magic Coat(277) — a temporary, move-granted
+#   version of Magic Bounce's own ability (`[M17n-9]`), confirmed via direct
+#   source read to share the EXACT SAME dispatch chain
+#   (`return TryMagicBounce(cv) || TryMagicCoat(cv);`,
+#   battle_move_resolution.c L5157) — reflects the first foe-targeting
+#   `move.bounceable` status move used against the user back at its own
+#   user, for the rest of this same turn only. Sets a new
+#   `BattlePokemon.magic_coat_active` volatile (self-targeted, matching
+#   Protect's own single-turn-only shape — cleared every turn in
+#   `_phase_priority_resolution`'s existing reset loop) consumed by
+#   extending the EXISTING Magic Bounce swap condition
+#   (`battle_manager.gd` ~L3106) with an OR, rather than a second parallel
+#   swap — inherits that swap's already-tested "single non-recursive
+#   bounce, even Magic-Bounce-vs-Magic-Bounce" guarantee for free, verified
+#   by tracing source's own `MoveEndBouncedMove` bounce loop (never
+#   re-checks pending-bounce state after a swap already fired). Cleared
+#   immediately after firing so it can't reflect a SECOND status move later
+#   the same turn. Priority +4, `ignoresProtect = TRUE`,
+#   `mirrorMoveBanned = TRUE`.
+#   Source: src/data/moves_info.h MOVE_MAGIC_COAT; src/battle_move_
+#   resolution.c :: TryMagicCoat (L5175-5191), MoveEndBouncedMove
+#   (L3142-3195).
+@export var is_magic_coat: bool = false
