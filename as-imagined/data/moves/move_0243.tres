@@ -11,5 +11,5 @@ category = 1
 power = 1
 pp = 20
 priority = -5
-ban_flags = 16
+ban_flags = 84
 mirror_coat = true

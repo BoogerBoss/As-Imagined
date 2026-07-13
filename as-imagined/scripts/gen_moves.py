@@ -377,14 +377,19 @@ MOVES = [
     #   Power=90 (B_UPDATED>=GEN_4); gravityBanned.
     {"id":  19, "name": "Fly",
      "type": TYPE_FLYING, "category": PHYS, "power": 90, "accuracy": 95, "pp": 15,
-     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_ON_AIR},
+     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_ON_AIR,
+     # [D4 Bundle 4] assistBanned=TRUE (B_UPDATED_MOVE_FLAGS>=GEN_6) — every
+     # two-turn move in this same family carries the identical flag.
+     "ban_flags": BAN_ASSIST},
 
     # Dig(91)          L2441  Ground/Phys/80/100/10, contact, two-turn, STATE_UNDERGROUND
     #   Source: .effect=EFFECT_SEMI_INVULNERABLE; .argument.twoTurnAttack.status=STATE_UNDERGROUND
     #   Power=80 (B_UPDATED>=GEN_4).
     {"id":  91, "name": "Dig",
      "type": TYPE_GROUND, "category": PHYS, "power": 80, "accuracy": 100, "pp": 10,
-     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_UNDERGROUND},
+     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_UNDERGROUND,
+     # [D4 Bundle 4] assistBanned=TRUE (B_UPDATED_MOVE_FLAGS>=GEN_6).
+     "ban_flags": BAN_ASSIST},
 
     # ── Tier 3: recoil moves ──────────────────────────────────────────────────
     #
@@ -488,7 +493,10 @@ MOVES = [
     {"id":  68, "name": "Counter",
      "type": TYPE_FIGHTING, "category": PHYS, "power": 1, "accuracy": 100, "pp": 20,
      "priority": -5, "makes_contact": True,
-     "ban_flags": BAN_METRONOME, "counter": True},
+     # [D4 Bundle 4] copycatBanned/assistBanned/meFirstBanned all TRUE — the
+     # whole reflect-damage family (Counter/Mirror Coat/Metal Burst) is
+     # excluded from all three call-a-different-move sources.
+     "ban_flags": BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST | BAN_ME_FIRST, "counter": True},
 
     # Bide(117)        L2992  Normal/Phys/0/—/10, priority=1
     #   Source: moves_info.h MOVE_BIDE: .effect=EFFECT_BIDE, .power=0,
@@ -504,7 +512,8 @@ MOVES = [
     #   .category=STATUS, .accuracy=0 (always executes), .metronomeBanned=TRUE (self-ban)
     {"id": 118, "name": "Metronome",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
-     "ban_flags": BAN_METRONOME, "is_metronome": True},
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE.
+     "ban_flags": BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST, "is_metronome": True},
 
     # Substitute(164)  L4299  Normal/Status/0/—/10
     #   Source: moves_info.h MOVE_SUBSTITUTE: .effect=EFFECT_SUBSTITUTE, .pp=10,
@@ -520,14 +529,18 @@ MOVES = [
     {"id": 182, "name": "Protect",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
      "priority": 4,
-     "ban_flags": BAN_METRONOME, "is_protect": True},
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE — the whole Protect
+     # family (Protect/Detect/Endure/Spiky Shield/Baneful Bunker/Burning
+     # Bulwark) carries these two flags.
+     "ban_flags": BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST, "is_protect": True},
 
     # Destiny Bond(194) L5092  Ghost/Status/0/—/5
     #   Source: moves_info.h MOVE_DESTINY_BOND: .effect=EFFECT_DESTINY_BOND,
     #   .type=TYPE_GHOST, .pp=5, .category=STATUS, .metronomeBanned=TRUE
     {"id": 194, "name": "Destiny Bond",
      "type": TYPE_GHOST, "category": STAT, "accuracy": 0, "pp": 5,
-     "ban_flags": BAN_METRONOME, "destiny_bond": True},
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE.
+     "ban_flags": BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST, "destiny_bond": True},
 
     # Detect(197)      L5167  Fighting/Status/0/—/5, priority=4
     #   Source: moves_info.h MOVE_DETECT: .effect=EFFECT_PROTECT (same handler),
@@ -536,7 +549,8 @@ MOVES = [
     {"id": 197, "name": "Detect",
      "type": TYPE_FIGHTING, "category": STAT, "accuracy": 0, "pp": 5,
      "priority": 4,
-     "ban_flags": BAN_METRONOME, "is_protect": True},
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE.
+     "ban_flags": BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST, "is_protect": True},
 
     # Encore(227)      L5978  Normal/Status/100/5
     #   Source: moves_info.h MOVE_ENCORE: .effect=EFFECT_ENCORE, .accuracy=100,
@@ -554,7 +568,12 @@ MOVES = [
     {"id": 243, "name": "Mirror Coat",
      "type": TYPE_PSYCHIC, "category": SPEC, "power": 1, "accuracy": 100, "pp": 20,
      "priority": -5,
-     "ban_flags": BAN_METRONOME, "mirror_coat": True},
+     # [D4 Bundle 4] assistBanned/meFirstBanned=TRUE. NOT copycatBanned — its
+     # source condition is `B_UPDATED_MOVE_FLAGS <= GEN_8`, which is FALSE at
+     # this project's GEN_LATEST=GEN_9 config (confirmed via direct config
+     # read, not assumed from the literal-TRUE pattern every other flag here
+     # uses).
+     "ban_flags": BAN_METRONOME | BAN_ASSIST | BAN_ME_FIRST, "mirror_coat": True},
 
     # ── M9: Switching mechanics ───────────────────────────────────────────────
     #
@@ -567,6 +586,8 @@ MOVES = [
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
      "priority": -6,
      "ignores_protect": True, "ignores_substitute": True, "sound_move": True,
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE (B_UPDATED_MOVE_FLAGS>=GEN_6).
+     "ban_flags": BAN_COPYCAT | BAN_ASSIST,
      "is_roar": True},
 
     # Roar(46)       L1234 Normal/Status/0/priority=-6/pp=20
@@ -578,6 +599,8 @@ MOVES = [
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
      "priority": -6,
      "ignores_protect": True, "ignores_substitute": True, "sound_move": True,
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE (B_UPDATED_MOVE_FLAGS>=GEN_6).
+     "ban_flags": BAN_COPYCAT | BAN_ASSIST,
      "is_roar": True},
 
     # Baton Pass(226) L6164 Normal/Status/0/pp=40
@@ -1699,7 +1722,9 @@ MOVES = [
 
     {"id": 291, "name": "Dive",
      "type": TYPE_WATER, "category": PHYS, "power": 80, "accuracy": 100, "pp": 10,
-     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_UNDERWATER},
+     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_UNDERWATER,
+     # [D4 Bundle 4] assistBanned=TRUE (B_UPDATED_MOVE_FLAGS>=GEN_6).
+     "ban_flags": BAN_ASSIST},
 
     {"id": 294, "name": "Tail Glow",
      "type": TYPE_BUG, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
@@ -1755,7 +1780,9 @@ MOVES = [
 
     {"id": 340, "name": "Bounce",
      "type": TYPE_FLYING, "category": PHYS, "power": 85, "accuracy": 85, "pp": 5,
-     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_ON_AIR, "secondary_effect": SE_PARALYSIS, "secondary_chance": 30},
+     "makes_contact": True, "two_turn": True, "semi_inv_state": SEMI_INV_ON_AIR, "secondary_effect": SE_PARALYSIS, "secondary_chance": 30,
+     # [D4 Bundle 4] assistBanned=TRUE (B_UPDATED_MOVE_FLAGS>=GEN_6).
+     "ban_flags": BAN_ASSIST},
 
     {"id": 342, "name": "Poison Tail",
      "type": TYPE_POISON, "category": PHYS, "power": 50, "accuracy": 100, "pp": 25,
@@ -2837,12 +2864,16 @@ MOVES = [
     # Spiky Shield(596): blocks everything; contact -> maxHP/8 recoil to attacker.
     {"id":  596, "name": "Spiky Shield",
      "type": TYPE_GRASS, "category": STAT, "accuracy": 0, "pp": 10, "priority": 4,
-     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
+     "ignores_protect": True,
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE (whole Protect family).
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST,
      "is_protect": True, "protect_method": PROTECT_METHOD_SPIKY_SHIELD},
     # Baneful Bunker(624): blocks everything; contact -> poisons attacker.
     {"id":  624, "name": "Baneful Bunker",
      "type": TYPE_POISON, "category": STAT, "accuracy": 0, "pp": 10, "priority": 4,
-     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
+     "ignores_protect": True,
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE (whole Protect family).
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST,
      "is_protect": True, "protect_method": PROTECT_METHOD_BANEFUL_BUNKER},
     # Obstruct(720): blocks only NON-STATUS moves; contact -> -2 Def on attacker.
     # accuracy=100 in source (functionally moot -- is_protect dispatch fires
@@ -2859,7 +2890,9 @@ MOVES = [
     # Burning Bulwark(836): blocks everything; contact -> burns attacker.
     {"id":  836, "name": "Burning Bulwark",
      "type": TYPE_FIRE, "category": STAT, "accuracy": 0, "pp": 10, "priority": 4,
-     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
+     "ignores_protect": True,
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE (whole Protect family).
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST,
      "is_protect": True, "protect_method": PROTECT_METHOD_BURNING_BULWARK},
 
     # ── [M19d] Counter/Mirror-Move remnants ──
@@ -2869,13 +2902,19 @@ MOVES = [
     # NOT metronome-banned in source (unlike Counter/Mirror Coat, which are).
     {"id":  368, "name": "Metal Burst",
      "type": TYPE_STEEL, "category": PHYS, "power": 1, "accuracy": 100, "pp": 10,
+     # [D4 Bundle 4] meFirstBanned=TRUE (the reflect-damage family; NOT
+     # copycat/assistBanned — confirmed via direct source read those two
+     # flags are only set on Counter/Mirror Coat, not Metal Burst).
+     "ban_flags": BAN_ME_FIRST,
      "metal_burst": True},
     # Mirror Move(119): repeats the move that hit the user this turn (NOT the
     # target's own last-used move -- a different tracking axis, see
     # move_data.gd's own doc comment). Metronome/Mirror-Move-banned in source.
     {"id":  119, "name": "Mirror Move",
      "type": TYPE_FLYING, "category": STAT, "accuracy": 0, "pp": 20,
-     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
+     "ignores_protect": True,
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE.
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST,
      "is_mirror_move": True},
 
     # ── [D0] Priority unblock: Leech Seed / Haze / Aromatherapy+Heal Bell ──
@@ -3337,10 +3376,14 @@ MOVES = [
     # after a hit that dealt real HP damage ──────────────────────────────────
     {"id":  509, "name": "Circle Throw",
      "type": TYPE_FIGHTING, "category": PHYS, "power": 60, "accuracy": 90, "pp": 10,
-     "priority": -6, "makes_contact": True, "is_hit_switch_target": True},
+     "priority": -6, "makes_contact": True, "is_hit_switch_target": True,
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE.
+     "ban_flags": BAN_COPYCAT | BAN_ASSIST},
     {"id":  525, "name": "Dragon Tail",
      "type": TYPE_DRAGON, "category": PHYS, "power": 60, "accuracy": 90, "pp": 10,
-     "priority": -6, "makes_contact": True, "is_hit_switch_target": True},
+     "priority": -6, "makes_contact": True, "is_hit_switch_target": True,
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE.
+     "ban_flags": BAN_COPYCAT | BAN_ASSIST},
 
     # ── [D1 easy bundle] EFFECT_FIRST_TURN_ONLY: fails unless this is the
     # user's first action since switching in ────────────────────────────────
@@ -3355,9 +3398,13 @@ MOVES = [
     # ── [D1 easy bundle] EFFECT_TRICK: bidirectional held-item swap ─────────
     {"id":  271, "name": "Trick",
      "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 100, "pp": 10,
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE.
+     "ban_flags": BAN_COPYCAT | BAN_ASSIST,
      "is_trick": True},
     {"id":  415, "name": "Switcheroo",
      "type": TYPE_DARK, "category": STAT, "accuracy": 100, "pp": 10,
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE.
+     "ban_flags": BAN_COPYCAT | BAN_ASSIST,
      "is_trick": True},
 
     # ── [D1 easy bundle] EFFECT_REVENGE: doubled if hit BY THIS TARGET
@@ -3487,7 +3534,9 @@ MOVES = [
      "ban_flags": BAN_METRONOME},
     {"id":  203, "name": "Endure",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
-     "priority": 4, "is_protect": True, "protect_method": PROTECT_METHOD_ENDURE},
+     "priority": 4, "is_protect": True, "protect_method": PROTECT_METHOD_ENDURE,
+     # [D4 Bundle 4] copycatBanned/assistBanned=TRUE (whole Protect family).
+     "ban_flags": BAN_COPYCAT | BAN_ASSIST},
     {"id":  259, "name": "Torment",
      "type": TYPE_DARK, "category": STAT, "accuracy": 100, "pp": 15,
      "bounceable": True, "blocked_by_aroma_veil": True, "is_torment": True},
@@ -3585,6 +3634,64 @@ MOVES = [
      "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 10,
      "ignores_protect": True, "is_take_heart": True,
      "ban_flags": BAN_MIRROR_MOVE},
+
+    # ── [D4 Bundle 4] Cluster 1: side-condition timers ───────────────────────
+    {"id":  366, "name": "Tailwind",
+     "type": TYPE_FLYING, "category": STAT, "accuracy": 0, "pp": 15,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_tailwind": True},
+    {"id":  564, "name": "Sticky Web",
+     "type": TYPE_BUG, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "bounceable": True, "ban_flags": BAN_MIRROR_MOVE,
+     "is_sticky_web": True},
+    {"id":  219, "name": "Safeguard",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 25,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_safeguard": True},
+    {"id":   54, "name": "Mist",
+     "type": TYPE_ICE, "category": STAT, "accuracy": 0, "pp": 30,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_mist": True},
+
+    # ── [D4 Bundle 4] Cluster 2: call-a-different-move family ────────────────
+    {"id":  383, "name": "Copycat",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True,
+     "ban_flags": (BAN_MIRROR_MOVE | BAN_METRONOME | BAN_COPYCAT | BAN_SLEEP_TALK
+                   | BAN_INSTRUCT | BAN_ASSIST | BAN_MIMIC),
+     "is_copycat": True},
+    {"id":  382, "name": "Me First",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_substitute": True,
+     "ban_flags": (BAN_MIRROR_MOVE | BAN_METRONOME | BAN_ME_FIRST | BAN_COPYCAT
+                   | BAN_SLEEP_TALK | BAN_INSTRUCT | BAN_ENCORE | BAN_ASSIST | BAN_MIMIC),
+     "is_me_first": True},
+    {"id":  274, "name": "Assist",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True,
+     "ban_flags": (BAN_MIRROR_MOVE | BAN_METRONOME | BAN_COPYCAT | BAN_SLEEP_TALK
+                   | BAN_INSTRUCT | BAN_ENCORE | BAN_ASSIST | BAN_MIMIC),
+     "is_assist": True},
+
+    # ── [D4 Bundle 4] Cluster 3: target-directed heal variants ───────────────
+    {"id":  505, "name": "Heal Pulse",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 10,
+     "bounceable": True, "healing_move": True, "pulse_move": True,
+     "ban_flags": BAN_MIRROR_MOVE, "is_heal_pulse": True},
+    {"id":  719, "name": "Life Dew",
+     "type": TYPE_WATER, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "ignores_substitute": True, "healing_move": True,
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME, "is_life_dew": True},
+
+    # ── [D4 Bundle 4] Cluster 4: Stockpile family ─────────────────────────────
+    {"id":  254, "name": "Stockpile",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "stat_change_self": True,
+     "ban_flags": BAN_MIRROR_MOVE, "is_stockpile": True},
+    {"id":  255, "name": "Spit Up",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 1, "accuracy": 100, "pp": 10,
+     "ban_flags": BAN_MIRROR_MOVE, "is_spit_up": True},
+    {"id":  256, "name": "Swallow",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "healing_move": True,
+     "ban_flags": BAN_MIRROR_MOVE, "is_swallow": True},
 ]
 
 
@@ -3879,6 +3986,20 @@ DEFAULTS = {
     "is_recycle":             False,
     "is_facade":              False,
     "is_take_heart":          False,
+
+    # [D4 Bundle 4]
+    "is_tailwind":            False,
+    "is_sticky_web":          False,
+    "is_safeguard":           False,
+    "is_mist":                False,
+    "is_copycat":             False,
+    "is_me_first":            False,
+    "is_assist":              False,
+    "is_heal_pulse":          False,
+    "is_life_dew":            False,
+    "is_stockpile":           False,
+    "is_spit_up":             False,
+    "is_swallow":             False,
 }
 
 HEADER = """\
@@ -4003,6 +4124,11 @@ FIELD_ORDER = [
     "is_do_nothing", "is_refresh", "is_purify", "is_memento",
     "hp_cost_stat_boost", "hp_cost_divisor", "is_nightmare", "is_spite",
     "is_recycle", "is_facade", "is_take_heart",
+    # [D4 Bundle 4] fields
+    "is_tailwind", "is_sticky_web", "is_safeguard", "is_mist",
+    "is_copycat", "is_me_first", "is_assist",
+    "is_heal_pulse", "is_life_dew",
+    "is_stockpile", "is_spit_up", "is_swallow",
 ]
 
 

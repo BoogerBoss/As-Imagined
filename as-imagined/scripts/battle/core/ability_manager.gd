@@ -2221,8 +2221,12 @@ static func blocks_indirect_damage(mon: BattlePokemon, ng_active: bool = false) 
 # GEN_LATEST/expanded, so the Gen6+ bypass branch applies) for BOTH damaging and
 # status moves — `IsSubstituteProtected` is a single shared function every
 # substitute-vs-move check in source routes through, not two separate mechanisms.
-# Deliberately scoped to ONLY these two systems: source's Infiltrator also bypasses
-# Mist and Safeguard, but neither exists in this project (no-op, nothing to gate).
+# Deliberately scoped to ONLY these two systems here: source's Infiltrator also
+# bypasses Mist and Safeguard — [D4 Bundle 4] added both, but each wires this same
+# function in directly at ITS OWN call site (BattleManager._apply_one_stat_change_pair's
+# Mist gate; BattleManager._is_safeguard_active_for) rather than adding a case to this
+# function's own body, since both of those checks are side-keyed (BattleManager-owned
+# state), not ability-keyed data this static function has access to.
 # Attacker's own ability only (no Mold-Breaker/`attacker` param) — mirrors
 # `bypasses_ghost_immunity`'s precedent; moot regardless since Infiltrator has no
 # `breakable` flag in source (confirmed via `data/abilities.h`).

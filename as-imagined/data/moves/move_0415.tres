@@ -9,4 +9,5 @@ move_name = "Switcheroo"
 type = 18
 category = 2
 pp = 10
+ban_flags = 96
 is_trick = true

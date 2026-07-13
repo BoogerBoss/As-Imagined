@@ -10,6 +10,6 @@ type = 3
 category = 2
 accuracy = 0
 pp = 20
-ban_flags = 18
+ban_flags = 114
 ignores_protect = true
 is_mirror_move = true

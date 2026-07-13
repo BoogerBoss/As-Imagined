@@ -2874,3 +2874,95 @@ const STATUS_ARG_ANY: int = -3
 #   HP-cost family's own AND-gated fail condition just above).
 #   Source: battle_move_resolution.c, case EFFECT_TAKE_HEART (L4653-4680).
 @export var is_take_heart: bool = false
+
+# [D4 Bundle 4] Cluster 1 — side-condition timers. Each sets a per-side
+#   Dictionary key in BattleManager._side_conditions, fails if already up
+#   (Tailwind/Safeguard/Mist) or already set on the opponent's side
+#   (Sticky Web, which — unlike Spikes/Toxic Spikes/Stealth Rock — applies
+#   its own -1 Speed via the FULL stat-change pipeline at switch-in, not a
+#   raw hazard tick, so Defiant/Competitive/Mirror Armor react to it
+#   correctly; source: battle_stat_change.c L481-491 shows the switch-in
+#   drop dispatches through the ordinary SetStatChange/StatChanged path).
+#   Source: Cmd_settailwind (battle_script_commands.c L8172-8187, 4-turn at
+#   this project's Gen5+ config); Cmd_setstickyweb (L8691-8707) +
+#   battle_switch_in.c L328-333; Cmd_setsafeguard (L8480-8495, 5 turns);
+#   Cmd_setmist (L7700-7715, 5 turns).
+@export var is_tailwind: bool = false
+@export var is_sticky_web: bool = false
+@export var is_safeguard: bool = false
+@export var is_mist: bool = false
+
+# [D4 Bundle 4] Cluster 2 — "call a different move" family, sharing the
+#   EXACT SAME source dispatch (CancelerCallSubmove, battle_move_resolution.c
+#   L523-580) Mirror Move/Metronome/Sleep Talk already use in this project.
+#   Copycat: repeats BattleManager._last_landed_move_anyone (a NEW,
+#   battle-wide "last move that actually landed, by ANYONE" tracker —
+#   confirmed via source (GetCopycatMove, L5132-5140 + the gLastUsedMove
+#   assignment at L3034-3039) to be gated on the move actually AFFECTING its
+#   target, genuinely distinct from this project's per-mon `last_move_used`,
+#   which is set unconditionally on nearly every dispatch path regardless of
+#   hit/miss). Me First: steals the TARGET's own chosen move — confirmed via
+#   source (GetMeFirstMove, L5143-5151) this needs NO turn-order pre-emption
+#   at all, just a passive `HasBattlerActedThisTurn` check (this project's
+#   existing `_has_target_already_acted`, built for Zoom Lens/Upper Hand) —
+#   fails if the target already acted, chose a status move, or that move is
+#   `meFirstBanned`; boosts the borrowed move's power ×1.5 via the SAME
+#   base-power-modifier pipeline stage Helping Hand occupies (battle_util.c
+#   L6443-6444), NOT a new mechanism. Assist: a random move from the user's
+#   OWN bench movesets (battle_move_resolution.c L5029-5075), excluding
+#   active/fainted slots. All three reuse `ban_flags` (BAN_COPYCAT/
+#   BAN_ME_FIRST/BAN_ASSIST — already-declared bitmask constants at the top
+#   of this file, populated across the existing roster as part of this same
+#   bundle) for their own recursion-exclusion lists, the identical shape
+#   BAN_METRONOME/BAN_SLEEP_TALK already establish.
+@export var is_copycat: bool = false
+@export var is_me_first: bool = false
+@export var is_assist: bool = false
+
+# [D4 Bundle 4] Cluster 3 — target-directed heal variants (heal someone
+#   OTHER than the user, distinct from the existing self-heal family
+#   Recover/Slack Off/Heal Order/Roost). Heal Pulse: heals the SELECTED
+#   target 50% max HP, or 75% if the ATTACKER holds Mega Launcher and this
+#   move is `pulse_move` — confirmed via source (BS_TryHealPulse,
+#   battle_script_commands.c L11645-11663) this is a HARDCODED special case
+#   inside the heal-amount calc itself, NOT the generic pulse-move damage
+#   multiplier (moot anyway since Heal Pulse has power=0). Life Dew: heals
+#   the user AND its ally (if present and not full) 25% max HP each,
+#   independently — confirmed via source (BattleScript_EffectLifeDew,
+#   data/battle_scripts_1.s L704-727) the whole move only fails if NEITHER
+#   side has anything to heal; a no-op ally-heal in singles is not a
+#   partial failure.
+@export var is_heal_pulse: bool = false
+@export var is_life_dew: bool = false
+
+# [D4 Bundle 4] Cluster 4 — Stockpile family. Stockpile (self-targeted,
+#   `stat_change_self` set true in data) raises Def+SpDef +1 each per use
+#   (stacks to 3, tracked via the NEW BattlePokemon.stockpile_count),
+#   dispatched through the ordinary generic stat-change pipeline
+#   (BattleManager._apply_one_stat_change_pair) so Contrary/Simple/Mist/
+#   Defiant/Opportunist/Mirror Herb all apply exactly as they would to any
+#   other self-raise. Spit Up/Swallow release ALL stacks for damage
+#   (power = 100 * stockpile_count) or a banded heal (25%/50%/100% of max
+#   HP at 1/2/3 stacks) respectively, then ALWAYS reset the counter and
+#   remove exactly however much Def/SpDef was actually added (tracked
+#   SEPARATELY via `stockpile_def_added`/`stockpile_spdef_added`, since a
+#   capped stat or a Contrary inversion can make the real boost diverge
+#   from the scaling counter) — confirmed via source
+#   (battle_stat_change.c L481-491: stockpileDef/SpDef increment only when
+#   `st->stage > 0`, i.e. only on an ACTUAL rise, never on a capped or
+#   Contrary-inverted attempt) that removal is a RAW, ungated
+#   `SetStatChange` (no Mist/ability gate on the undo itself), unlike the
+#   original raise. Confirmed the release-and-reset fires even when the
+#   heal/damage itself "fails" (Swallow at full HP still consumes and
+#   resets everything — MoveEndMoveBlock, battle_move_resolution.c
+#   L3416-3439, is gated only on the move being ATTEMPTED, not on Spit
+#   Up/Swallow's own script succeeding). Fails outright at 0 stacks
+#   (Stockpile fails outright at 3).
+#   Source: battle_move_resolution.c, cases EFFECT_STOCKPILE (L1288-1291,
+#   4629-4631) / EFFECT_SPIT_UP/EFFECT_SWALLOW (L1296-1299, 3424-3439);
+#   battle_util.c :: CalcMoveBasePowerAfterModifiers, case EFFECT_SPIT_UP
+#   (L6169-6170); battle_script_commands.c :: Cmd_stockpiletohpheal
+#   (L7168-7193).
+@export var is_stockpile: bool = false
+@export var is_spit_up: bool = false
+@export var is_swallow: bool = false

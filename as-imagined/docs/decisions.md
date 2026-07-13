@@ -21416,3 +21416,326 @@ reconfirming it is unrelated to either session's changes.
 updated throughout: new `[D4 bundle 3]` subsection added under D4,
 Section E's summary table/reconciliation recomputed
 (652+0+0+215+67=934, reconfirmed). **Section D's residual: 79→67.**
+
+## [D4 Bundle 4] — Tailwind / Sticky Web / Safeguard / Mist / Copycat /
+## Me First / Assist / Heal Pulse / Life Dew / Stockpile / Spit Up /
+## Swallow (12 moves, 4 clusters) — 2026-07-13
+
+Proposed by the assistant as the next D4 bundle (user confirmed the
+12-move list before Step 0 began), grouped into 4 clusters by shared
+mechanism, each verified individually at Step 0 per this project's own
+standing "don't assume symmetry within a cluster" discipline.
+
+### Step 0 findings, per cluster
+
+**Cluster 1 (side-condition timers)** — Tailwind(366)/Sticky
+Web(564)/Safeguard(219)/Mist(54). All four set a per-side timer/flag in
+`_side_conditions`, but are NOT one shared mechanism:
+- Tailwind: `Cmd_settailwind` (`battle_script_commands.c` L8172-8187) —
+  fails if already up; else 4-turn timer at this project's Gen5+ config.
+  **The one piece this bundle's own proposal never wired**: the actual
+  ×2 Speed doubling. Added a new `tailwind_active` param to
+  `StatusManager.effective_speed`, resolved by the caller from
+  `_side_conditions[side]["tailwind_turns"] > 0`, threaded into all 3
+  existing call sites (`_phase_priority_resolution`'s turn-order sort,
+  Gyro Ball, Electro Ball) — confirmed via source this stacks
+  multiplicatively with Choice Scarf and every other speed modifier.
+- Sticky Web: `Cmd_setstickyweb` (`battle_script_commands.c` L8691-8707)
+  — targets the OPPONENT's side (like Spikes/Toxic Spikes/Stealth Rock),
+  single application. **The key finding, exactly as flagged in this
+  bundle's Step 0 report**: its own switch-in -1 Speed effect
+  (`battle_switch_in.c` L328-333) dispatches through the FULL generic
+  stat-change pipeline (confirmed via `battle_stat_change.c` L481-491
+  showing `SetStatChange`+the ordinary battle-script stat-buff chain,
+  not a raw hazard tick), so Defiant/Competitive/Mirror Armor/
+  Opportunist/Mirror Herb all react to it exactly as they would to a
+  move-inflicted drop. Implemented by extending
+  `_apply_one_stat_change_pair` to return `int` (previously void) and
+  calling it directly from `_apply_switch_in_hazards` via a throwaway
+  `MoveData` (`stat_change_self = false`). New
+  `_side_conditions[side]["sticky_web_setter"]` records the setter for
+  Mirror Armor/Defiant attribution, mirroring source's own
+  `stickyWebBattlerId`. Deliberately NOT gated by Magic Guard (a stat
+  drop, not indirect damage — outside that ability's scope).
+- Safeguard: `Cmd_setsafeguard` (`battle_script_commands.c` L8480-8495)
+  — 5-turn timer, blocks non-volatile status (`IsSafeguardProtected`,
+  `battle_util.c` L5224-5231, consulted from `CanSetNonVolatileStatus`)
+  AND confusion (`CanBeConfused`, L5443-5452) alike. New
+  `safeguard_active` param threaded through
+  `StatusManager.try_apply_status`/`try_apply_confusion`/
+  `try_secondary_effect` (the single chokepoint essentially every
+  move-based status/confusion infliction in this project already routes
+  through — Toxic/Thunder Wave/Sleep Powder/Confuse Ray/Will-O-Wisp
+  included, since they're all modeled as guaranteed
+  `secondary_chance=0` secondary effects, not a separate pure-status
+  dispatch). New `BattleManager._is_safeguard_active_for(attacker,
+  defender, ng_active)` resolves it: blocked unless the attacker is on a
+  DIFFERENT side and holds Infiltrator (an ally-inflicted — including
+  self-inflicted — status is still protected, since source's own
+  ally-check short-circuits to "protected" before the Infiltrator check
+  is ever reached). Disclosed scope limitation: only wired into the
+  `try_secondary_effect` chokepoint, not the hazard-driven
+  `try_apply_status` call (Toxic Spikes) or ability-driven status
+  infliction (Poison Point/Static/etc.) — a narrower scope than source's
+  blanket coverage, flagged not silently assumed complete.
+- Mist: `Cmd_setmist` (`battle_script_commands.c` L7700-7715) — 5-turn
+  timer, blocks a stat DECREASE (`IsMistProtected`, `battle_stat_change.c`
+  L580-590) on the protected side. Added directly inside
+  `_apply_one_stat_change_pair`, checked on the ADJUSTED (post-
+  Simple/Contrary) sign, BEFORE the existing Mirror-Armor-redirect
+  branch and the ability-block chain inside `apply_stat_change` —
+  matching source's own `CanDecreaseStat` ordering exactly
+  (`IsMistProtected` is the FIRST check in that chain, ahead of
+  `IsAbilityBlocked`/`IsMirrorArmorReflected`, `battle_stat_change.c`
+  L316-321). Bypassed by an opposing Infiltrator holder, reusing
+  `AbilityManager.bypasses_infiltrator_barriers` directly — that
+  function's own doc comment (written back in `[M17n-9]`) had explicitly
+  anticipated this exact addition ("source's Infiltrator also bypasses
+  Mist and Safeguard, but neither exists in this project"), now updated
+  to point at each's own actual call site instead of adding a case to
+  the shared function's body (both gates are side-keyed, BattleManager-
+  owned state the static `AbilityManager` function has no access to). A
+  genuinely self-inflicted decrease (e.g. Stockpile inverted by
+  Contrary) against one's OWN Mist is STILL blocked per this literal
+  reading of source (`IsBattlerAlly(battlerDef, battlerAtk)` is
+  trivially TRUE when the two are the same battler) — a real, source-
+  faithful edge case, not a special-cased exemption, confirmed directly
+  reachable and exercised by this bundle's own Contrary-Stockpile
+  discriminator test.
+
+**Cluster 2 (call-a-different-move family)** — Copycat(383)/Me
+First(382)/Assist(274). Confirmed all three dispatch through the exact
+same `CancelerCallSubmove` chokepoint (`battle_move_resolution.c`
+L523-580) Mirror Move/Metronome/Sleep Talk already use in this project —
+genuinely one shared mechanism, as assumed in the original proposal.
+- Me First — the bundle's own flagged HIGH-SCRUTINY item, RESOLVED in
+  the good direction: `GetMeFirstMove()` (L5143-5151) needs NO turn-order
+  pre-emption at all. It's a passive check —
+  `HasBattlerActedThisTurn(gBattlerTarget)` — whether Me First "works" is
+  purely a function of the EXISTING speed/priority-driven turn order.
+  Reused `_has_target_already_acted` directly (built for Zoom Lens in
+  `[M18j]`, reused for Upper Hand in `[D3 turn-order/event-tracker
+  batch]`). Power boost confirmed a flat ×1.5 at the same base-power-
+  modifier pipeline stage as Helping Hand (`battle_util.c` L6443-6444)
+  — new `me_first` param added to `DamageCalculator.calculate` and
+  `_do_damaging_hit`/`_do_multi_hit_sequence`, resolved from a new
+  per-action `_me_first_boost_active` flag (reset at the top of
+  `_phase_move_execution`, alongside `_current_action_failed`).
+- Copycat — real, disclosed simplification, not a silent gap: needs
+  genuinely NEW state, `BattleManager._last_landed_move_anyone`, distinct
+  from the existing per-mon `BattlePokemon.last_move_used` (set
+  unconditionally on nearly every dispatch path, hit or miss). Source's
+  `gLastUsedMove` (`battle_move_resolution.c` L3034-3039) is gated on the
+  move actually landing (`!unableToUseMove && !IsBattlerUnaffectedByMove
+  && IsBattlerAlive`). Updated inside `_do_damaging_hit` at the exact
+  same `damage > 0` (INCLUDING_SUBSTITUTES) gate Rapid Spin/Air Balloon
+  already use — the only chokepoint every ordinary damaging move passes
+  through. This project has no single chokepoint every STATUS-move
+  effect passes through (each resolves via its own ad-hoc dispatch
+  branch), so a landed status move (e.g. a successful Growl) is NOT
+  reflected in this tracker — flagged explicitly, not silently assumed
+  complete. Explicitly verified per this bundle's own additional
+  requirements: (a) battle-scoped correctly — a plain `BattleManager`
+  instance var, never reset mid-battle, but this project's own test
+  convention (confirmed via a repo-wide grep) creates a fresh
+  `BattleManager.new()` per battle, so it structurally cannot leak
+  across battles; (b) assigned at the same point in the turn sequence as
+  source — only after accuracy/immunity/Protect have already resolved in
+  the attacker's favor, matching source's own post-hit-confirmation
+  timing, not earlier and not from a separate dispatch path.
+- Assist — `GetAssistMove()` (L5029-5075) scans the user's own bench
+  (non-active, non-fainted party members), excludes `assistBanned`
+  moves, picks uniformly at random. New `BattleManager._pick_assist_move`.
+- All three reuse `ban_flags` (`BAN_COPYCAT`/`BAN_ME_FIRST`/
+  `BAN_ASSIST` — already-declared bitmask constants in `move_data.gd`,
+  dormant until this bundle) for their own recursion-exclusion lists.
+
+**Cluster 3 (target-directed heal variants)** — Heal Pulse(505)/Life
+Dew(719).
+- Heal Pulse: `BS_TryHealPulse` (`battle_script_commands.c` L11645-11663)
+  heals the SELECTED TARGET (not the user) 50% max HP, or 75% if the
+  ATTACKER holds Mega Launcher AND the move is `pulse_move` — confirmed
+  via source this is a HARDCODED special case inside the heal-amount
+  calc itself, NOT the generic pulse-move damage multiplier (moot
+  anyway, Heal Pulse has power=0). Doubles-targeting concern from the
+  original proposal resolved as lower-risk than flagged: Heal Pulse is a
+  plain `TARGET_SELECTED` move with no dual-mode branching of its own —
+  "heals an ally or an opponent" is just ordinary single-target
+  selection, already proven for every other `TARGET_SELECTED` move.
+- Life Dew: `BattleScript_EffectLifeDew` (`data/battle_scripts_1.s`
+  L704-727) heals the user 25% max HP if not full; INDEPENDENTLY, if a
+  live ally exists and isn't full, heals the ally 25% too (a no-op, not
+  a failure, in singles). The whole move only fails if NEITHER side has
+  anything to heal.
+
+**Cluster 4 (Stockpile family)** — Stockpile(254)/Spit Up(255)/
+Swallow(256). The interaction-bug-risk-class check the task specifically
+asked for paid off — two genuine forks found:
+1. **`stockpile_count` (the scaling counter Spit Up/Swallow's own power/
+   heal tables read) and `stockpile_def_added`/`stockpile_spdef_added`
+   (how much Def/SpDef ACTUALLY rose) are genuinely SEPARATE trackers,
+   not one shared value.** Confirmed via source
+   (`battle_stat_change.c` L481-491): `stockpileDef`/`stockpileSpDef`
+   only increment inside `StatChanged` when `st->stage > 0` — i.e. only
+   on an ACTUAL rise — while `stockpileCounter` increments
+   unconditionally (`battle_move_resolution.c` L4629-4631) whenever
+   Stockpile is used below 3 stacks, regardless of whether the raise
+   itself was capped at +6 or inverted by Contrary. Modeled as THREE
+   separate `BattlePokemon` fields; release removes exactly
+   `stockpile_def_added`/`stockpile_spdef_added` (never re-derived from
+   the current stat stage or "count × 1"), confirmed correct even when
+   an opponent's move independently lowered Def in between (tested
+   directly: stacks=2/def_added=2/current stage=1 after an intervening
+   -1 → release correctly nets to -1, not 0 or -2).
+2. **The stack-consume-and-boost-removal fires even when the release
+   itself "fails."** `MoveEndMoveBlock` (`battle_move_resolution.c`
+   L3416-3439) is gated only on the move being ATTEMPTED
+   (`!unableToUseMove`), not on Spit Up/Swallow's own script succeeding
+   — `Cmd_stockpiletohpheal`'s own fail branch (L7168-7182, full HP)
+   still zeroes `stockpileCounter`. A Swallow used at full HP still
+   resets everything even though no HP is healed.
+3. Confirmed the RAISE (Stockpile's own +1 Def/+1 SpDef) goes through
+   the full generic pipeline (`_apply_one_stat_change_pair`, self-
+   targeted), so Contrary/Simple/Mist/Defiant/Opportunist/Mirror Herb
+   all apply exactly as they would to any other self-raise — a genuine,
+   previously-uninstantiated correctness win from reusing the existing
+   function rather than writing a bespoke Stockpile-only stat-apply
+   block. Confirmed the REMOVAL is a RAW, ungated `StatusManager.
+   apply_stat_change` call with no `attacker` param (no Mist/ability
+   gate on the undo itself — source's own `SetStatChange` call for the
+   removal has none either).
+4. Scaling formulas confirmed independently, NOT symmetric: Spit Up's
+   power = `100 * stockpile_count` (a base-power override via
+   `_dmg_power_override`, same pattern as Magnitude/Flail/Heat Crash);
+   Swallow's heal = 25%/50%/100% of max HP at 1/2/3 stacks (a stepped
+   halving-of-the-remainder curve, `maxHP / (1 << (3 - count))`) — NOT a
+   linear analog of Spit Up's own ×100/200/300.
+5. Both fail outright at 0 stacks (Stockpile fails outright at 3).
+
+### A real dispatch-ORDER bug, caught by this bundle's own first test run
+
+Spit Up carries a `power=1` PLACEHOLDER in its own data (real power is
+`100 * stockpile_count`, computed at dispatch time) — the same
+convention Sonic Boom/Dragon Rage/Night Shade/OHKO already use, all of
+which are dispatched BEFORE the generic `move.power > 0` damaging-move
+branch for exactly this reason. Stockpile/Spit Up/Swallow's dispatch
+block was originally placed AFTER that generic branch (matching the
+file position of thematically-similar status-ish moves like Heal
+Bell/Haze), so the generic dispatch silently claimed Spit Up first,
+dealing a flat power=1 hit and never reaching the real 100×count logic
+at all — caught because Spit Up's own damage output didn't scale with
+stack count on this session's very first test run. Fixed by moving all
+three dispatch blocks earlier in `_phase_move_execution`, immediately
+before the generic `move.power > 0` branch, alongside OHKO/Counter/
+Mirror Coat/Metal Burst (the same class of "real, nonzero placeholder
+power" move this project already special-cases there).
+
+### The two required additional discriminators
+
+1. **Me First calling a target move that is itself a move-reassignment
+   effect (Metronome/Sleep Talk)** — resolved as genuinely IMPOSSIBLE,
+   not merely "handled cleanly": Metronome/Sleep Talk/Mirror Move/
+   Copycat/Assist are ALL `category == STAT` (status) in this project's
+   schema, and Me First's own `mf_target_move.category == 2` gate
+   excludes status moves entirely, BEFORE the reassignment logic is ever
+   reached. This closes the exact edge case flagged as unresolved in
+   this bundle's own Step 0 report (source's `meFirstBanned` flag on
+   Metronome/Mirror Move/Sleep Talk/Assist/Copycat is therefore
+   redundant with the category check in every one of this project's own
+   implemented cases, though still faithfully populated per source for
+   completeness/future-proofing).
+2. **A Contrary-holding Pokémon using Stockpile** — confirmed Def/SpDef
+   are LOWERED (not raised) and `stockpile_def_added`/
+   `stockpile_spdef_added` do NOT increment (stay 0, not negative), while
+   `stockpile_count` still does (the scaling counter is blind to the
+   raise's real direction, confirmed exactly matching the Step 0
+   prediction).
+
+### ban_flags population across the existing roster
+
+Cross-referenced source's `.copycatBanned`/`.assistBanned`/
+`.meFirstBanned` fields against all 934 canonical moves, then filtered to
+this project's ~652-move implemented set at the time: 24/31/6 matches
+respectively (52 unique moves after removing Mirror Coat's own
+`B_UPDATED_MOVE_FLAGS <= GEN_8` condition, which resolves FALSE at this
+project's `GEN_LATEST = GEN_9` config — confirmed via direct config read,
+not assumed from the literal-TRUE pattern every other flag uses). Of
+those, **9 already had the correct flags from earlier tiers** (Struggle,
+Sleep Talk, Helping Hand, Feint, Shadow Force, Phantom Force, Follow Me,
+Rage Powder, Thief, Covet — confirmed unchanged, not re-added), leaving
+**22 moves actually needing a `gen_moves.py` edit**: Fly(19)/Dig(91)/
+Dive(291)/Bounce(340) (assistBanned-only, two-turn family);
+Counter(68)/Metronome(118)/Protect(182)/Destiny Bond(194)/Detect(197)
+(extending an existing `BAN_METRONOME`); Mirror Coat(243) (assist+
+meFirst-only, confirmed NOT copycat); Whirlwind(18)/Roar(46) (fresh
+`ban_flags`); Spiky Shield(596)/Baneful Bunker(624)/Burning Bulwark(836)/
+Mirror Move(119) (extending `BAN_MIRROR_MOVE | BAN_METRONOME`); Circle
+Throw(509)/Dragon Tail(525)/Trick(271)/Switcheroo(415)/Endure(203)
+(fresh `ban_flags`); Metal Burst(368) (meFirst-only, fresh `ban_flags`).
+
+### Test-authoring bugs found and fixed (6 on the first run, 80/90)
+
+All fresh recurrences of already-documented pitfalls, none newly
+discovered classes:
+- **Whole-battle-aggregation** (4 instances) — Stockpile's own K.01
+  (raised stat stages read post-battle instead of at the first
+  `stockpile_gained` signal — atk's only move is Stockpile, so the
+  battle auto-repeats it well past +1); the Contrary-Stockpile
+  discriminator (K.09-K.11, same shape); Spit Up's release-reset check
+  (K.06, read post-battle after atk had already auto-repeated Stockpile
+  several more times); Life Dew's heal-amount check (J.01, read
+  post-battle HP after many more turns of Tackle-vs-Life-Dew had already
+  elapsed) — all fixed by snapshotting via the relevant signal
+  (`stockpile_gained`/`stockpile_released`/`drain_heal`) at the FIRST
+  occurrence instead.
+- **Unguarded "did X ever happen" checks** (F.07/F.09) — the
+  Me-First-chains-into-Metronome/Sleep-Talk tests originally checked
+  "did `move_called` ever fire for the attacker" with only a boolean
+  flag, no first-occurrence scoping; once Me First's own 20 PP exhausted
+  over the many auto-repeated turns, the mon fell back to Struggle,
+  which ALSO emits `move_called` in this project's dispatch — a fresh
+  instance of the aggregation pitfall from a different angle (an
+  unrelated LATER event polluting an assertion about the FIRST one).
+  Fixed by capturing the first `move_called`/`move_effect_failed` for
+  the attacker into one shared string sentinel and asserting on that.
+- **Speed-value tuning** (B.04) — the "Tailwind-boosted slow mon now
+  outpaces fast mon" comparison originally used base speeds too far
+  apart (30 vs. 100) for a flat ×2 multiplier to close the gap even
+  after doubling; fixed by choosing values where the doubled slow mon's
+  real computed stat provably exceeds the fast mon's (30→45).
+- **Shared-resource mutation** (D.03) — a Mist unit test loaded Growl
+  via `_load_move(45)` (a cached, SHARED Resource) and mutated
+  `.stat_change_self` directly rather than via `.duplicate()`; found and
+  fixed even though it happened not to affect this session's own
+  outcome, since it would have silently corrupted Growl's real data for
+  the rest of the test run.
+
+New `d4_bundle4_test.gd`/`.tscn`: 89/89 assertions, stable across 5
+reruns.
+
+### Regression
+
+Given how many central chokepoints this bundle touches
+(`_apply_one_stat_change_pair`, `StatusManager.try_apply_status`/
+`try_apply_confusion`/`try_secondary_effect`/`effective_speed`,
+`DamageCalculator.calculate`, `_do_damaging_hit`,
+`_do_multi_hit_sequence`, `_clear_volatiles`), ran the FULL
+`scripts/count_assertions.sh` sweep (108 `.tscn` files) twice from
+independent process states rather than a narrow required-suite subset —
+**11407 total assertions, 0 failures, identical GRAND TOTAL both runs.**
+
+### Data / Docs
+
+12 new `.tres` files (664 total, 652 prior + 12), plus `ban_flags`
+updates on 22 pre-existing `.tres` files (no new files, values changed
+in place). New `BattlePokemon.stockpile_count`/`stockpile_def_added`/
+`stockpile_spdef_added` fields (cleared in `_clear_volatiles`); new
+`BattleManager._last_landed_move_anyone`/`_me_first_boost_active`
+instance vars; new `MoveData.is_tailwind`/`is_sticky_web`/
+`is_safeguard`/`is_mist`/`is_copycat`/`is_me_first`/`is_assist`/
+`is_heal_pulse`/`is_life_dew`/`is_stockpile`/`is_spit_up`/`is_swallow`
+fields; new signals `side_condition_set`/`side_condition_expired`/
+`stockpile_gained`/`stockpile_released`. `docs/m19_subtier_plan.md`
+updated throughout: new `[D4 Bundle 4]` subsection added under D4,
+Section E's summary table/reconciliation recomputed
+(664+0+0+215+55=934, reconfirmed). **Section D's residual: 67→55.**

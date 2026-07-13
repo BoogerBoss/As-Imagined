@@ -754,6 +754,25 @@ var hit_by_this_turn: Array = []
 # the identical observable behavior.
 var stomping_tantrum_timer: int = 0
 
+# [D4 Bundle 4] Stockpile family. `stockpile_count` (0-3) is the scaling
+# counter Spit Up/Swallow read for their own power/heal tables — incremented
+# unconditionally on each use (source: battle_move_resolution.c L4629-4631).
+# `stockpile_def_added`/`stockpile_spdef_added` track EXACTLY how much Def/
+# SpDef actually rose from Stockpile (0 if the raise was capped at +6 or
+# inverted by Contrary) — a SEPARATE pair of counters from `stockpile_count`,
+# confirmed via source (battle_stat_change.c L481-491: these only increment
+# when `st->stage > 0`, i.e. an ACTUAL rise) to diverge from the scaling
+# counter whenever a stat is already maxed or Contrary is active. Release
+# (Spit Up/Swallow) removes exactly these tracked amounts via a raw, ungated
+# stat-change (no Mist/ability gate on the undo itself — source's own
+# `SetStatChange` call for the removal has none), never re-derived from the
+# current stat stage. All three live in source's per-battler `volatiles`
+# struct — cleared in `_clear_volatiles` like every other switch-scoped
+# field here.
+var stockpile_count: int = 0
+var stockpile_def_added: int = 0
+var stockpile_spdef_added: int = 0
+
 var fainted: bool = false
 
 

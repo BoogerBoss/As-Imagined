@@ -13,3 +13,4 @@ pp = 15
 makes_contact = true
 two_turn = true
 semi_inv_state = 2
+ban_flags = 64

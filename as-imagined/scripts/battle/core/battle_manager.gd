@@ -170,6 +170,11 @@ signal hit_escape_switch(old_mon: BattlePokemon, new_mon: BattlePokemon)  # [D1 
 signal hit_switch_target(old_mon: BattlePokemon, new_mon: BattlePokemon)  # [D1 easy bundle] Circle Throw/Dragon Tail forced the defender out
 signal items_swapped(attacker: BattlePokemon, defender: BattlePokemon)  # [D1 easy bundle] Trick/Switcheroo successfully swapped held items
 
+signal side_condition_set(side: int, condition_name: String)  # [D4 Bundle 4] Tailwind/Safeguard/Mist went up ("tailwind"/"safeguard"/"mist")
+signal side_condition_expired(side: int, condition_name: String)  # [D4 Bundle 4] duration ran out
+signal stockpile_gained(mon: BattlePokemon, count: int)  # [D4 Bundle 4] Stockpile stacked (new count)
+signal stockpile_released(mon: BattlePokemon, count: int)  # [D4 Bundle 4] Spit Up/Swallow consumed all stacks (count released)
+
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
 
@@ -326,6 +331,35 @@ var _last_attacker: Dictionary = {}
 var _last_attacker_move: Dictionary = {}
 var _last_attacker_hp_before: Dictionary = {}
 
+# [D4 Bundle 4] Copycat's own global "last move that actually landed, by
+# ANYONE this battle" tracker. Source: gLastUsedMove (battle_move_resolution.c
+# L3034-3039), gated on `!unableToUseMove && !IsBattlerUnaffectedByMove &&
+# IsBattlerAlive` — genuinely DISTINCT from this project's per-mon
+# `BattlePokemon.last_move_used` (set unconditionally on nearly every
+# dispatch path, hit or miss alike; see that field's own doc comment).
+# Battle-scoped by construction: a plain instance var on BattleManager, never
+# reset mid-battle, and every test in this codebase creates a fresh
+# `BattleManager.new()` per battle (confirmed via a repo-wide grep before
+# relying on this) — so it cannot leak state across separate battles without
+# also requiring a deliberate cross-instance reuse this project's own test
+# convention never does. Updated in `_do_damaging_hit` at the same `damage >
+# 0` gate Rapid Spin/Air Balloon already use (INCLUDING a Substitute-absorbed
+# hit, matching source's own scope) — a disclosed, NOT silently assumed,
+# simplification: this project has no single chokepoint every move type
+# passes through (each status-move effect resolves via its own ad-hoc
+# dispatch branch), so only ordinary DAMAGING hits update this tracker; a
+# landed status move (e.g. a successful Growl) is not reflected here.
+var _last_landed_move_anyone: MoveData = null
+
+# [D4 Bundle 4] Me First's own ×1.5 power boost — a per-ACTION flag (not
+# per-turn like Helping Hand, which is set by an ally's PRIOR action this
+# same turn), reset at the top of every `_phase_move_execution` call
+# alongside `_current_action_failed`. Threaded into `_do_damaging_hit`/
+# `DamageCalculator.calculate` the same way `_helping_hand[attacker_idx]`
+# already is — same base-power-modifier pipeline stage, source-confirmed
+# (battle_util.c L6443-6444).
+var _me_first_boost_active: bool = false
+
 # M14b: per-side Follow Me/Rage Powder state. -1 = no Follow Me active this turn.
 # Value = combatant index of the Pokémon that used Follow Me/Rage Powder.
 # Source: gSideTimers[side].followmeTimer / followmeTarget (battle_main.c L5060–5061).
@@ -376,11 +410,21 @@ var _weather_is_primal: bool = false
 # (single application, no layers).
 # Source: gSideTimers[side].{spikesAmount, toxicSpikesAmount} + gSideStatuses[side] &
 #   SIDE_STATUS_STEALTH_ROCK (include/constants/battle.h).
+# [D4 Bundle 4] Extended with Tailwind/Safeguard/Mist (turn counters, same
+# shape as the screens above) and Sticky Web (a genuine hazard — layers=1
+# max, like Stealth Rock — but its own switch-in effect applies via the FULL
+# stat-change pipeline rather than a raw hazard tick, so `sticky_web_setter`
+# records WHO set it, the same attribution source's own `stickyWebBattlerId`
+# provides, needed for Mirror Armor/Defiant to correctly attribute the drop).
 var _side_conditions: Array = [
 	{"reflect_turns": 0, "light_screen_turns": 0, "aurora_veil_turns": 0,
-			"spikes_layers": 0, "toxic_spikes_layers": 0, "stealth_rock": false},
+			"spikes_layers": 0, "toxic_spikes_layers": 0, "stealth_rock": false,
+			"tailwind_turns": 0, "safeguard_turns": 0, "mist_turns": 0,
+			"sticky_web": false, "sticky_web_setter": null},
 	{"reflect_turns": 0, "light_screen_turns": 0, "aurora_veil_turns": 0,
-			"spikes_layers": 0, "toxic_spikes_layers": 0, "stealth_rock": false},
+			"spikes_layers": 0, "toxic_spikes_layers": 0, "stealth_rock": false,
+			"tailwind_turns": 0, "safeguard_turns": 0, "mist_turns": 0,
+			"sticky_web": false, "sticky_web_setter": null},
 ]
 
 # [D3 turn-order/event-tracker batch] Retaliate's side-wide "an ally fainted
@@ -969,8 +1013,10 @@ func _phase_priority_resolution() -> void:
 		if slow_effect[b] and not slow_effect[a]:
 			return true
 		var eff_w: int = _effective_weather()
-		var sa: int = StatusManager.effective_speed(a, eff_w, ng_active)
-		var sb: int = StatusManager.effective_speed(b, eff_w, ng_active)
+		var sa: int = StatusManager.effective_speed(a, eff_w, ng_active,
+				_side_conditions[ia / _active_per_side]["tailwind_turns"] > 0)
+		var sb: int = StatusManager.effective_speed(b, eff_w, ng_active,
+				_side_conditions[ib / _active_per_side]["tailwind_turns"] > 0)
 		if sa != sb:
 			return sa < sb if trick_room_turns > 0 else sa > sb
 		return tiebreak[a] > tiebreak[b]
@@ -1081,6 +1127,11 @@ func _phase_move_execution() -> void:
 	# [D1 easy bundle] Reset Stomping Tantrum's own generic failure detector
 	# at the start of THIS action, before any dispatch below can set it.
 	_current_action_failed = false
+	# [D4 Bundle 4] Reset Me First's own per-action power-boost flag — mirrors
+	# the reset just above; set later in THIS SAME function call if the Me
+	# First branch triggers, read further down wherever the (possibly
+	# reassigned) move's damage is actually dealt.
+	_me_first_boost_active = false
 
 	# M14a: use combatant index for move/target lookup; derive side from that.
 	var attacker_idx: int = _actor_indices.get(attacker, _combatants.find(attacker))
@@ -1960,9 +2011,12 @@ func _phase_move_execution() -> void:
 	# Source: battle_util.c, case EFFECT_GYRO_BALL (L6249-6263).
 	if move.is_gyro_ball:
 		var gb_eff_w: int = _effective_weather()
+		var gb_def_idx: int = _combatants.find(defender)
 		_dmg_power_override = _gyro_ball_power(
-				StatusManager.effective_speed(attacker, gb_eff_w, ng_active),
-				StatusManager.effective_speed(defender, gb_eff_w, ng_active))
+				StatusManager.effective_speed(attacker, gb_eff_w, ng_active,
+						_side_conditions[attacker_side]["tailwind_turns"] > 0),
+				StatusManager.effective_speed(defender, gb_eff_w, ng_active,
+						_side_conditions[gb_def_idx / _active_per_side]["tailwind_turns"] > 0))
 
 	# [D4 CHEAP bundle] Electro Ball: a genuinely different, STEPPED/BANDED
 	# formula from Gyro Ball's continuous one — the INVERSE ratio direction
@@ -1971,9 +2025,12 @@ func _phase_move_execution() -> void:
 	# sSpeedDiffPowerTable (L6032): {40, 60, 80, 120, 150}.
 	if move.is_electro_ball:
 		var eb_eff_w: int = _effective_weather()
+		var eb_def_idx: int = _combatants.find(defender)
 		_dmg_power_override = _electro_ball_power(
-				StatusManager.effective_speed(attacker, eb_eff_w, ng_active),
-				StatusManager.effective_speed(defender, eb_eff_w, ng_active))
+				StatusManager.effective_speed(attacker, eb_eff_w, ng_active,
+						_side_conditions[attacker_side]["tailwind_turns"] > 0),
+				StatusManager.effective_speed(defender, eb_eff_w, ng_active,
+						_side_conditions[eb_def_idx / _active_per_side]["tailwind_turns"] > 0))
 
 	# [D4 CHEAP bundle] Payback: power doubles if the TARGET has already
 	# acted this turn AND did NOT just switch in this turn — a genuinely
@@ -2331,6 +2388,66 @@ func _phase_move_execution() -> void:
 		move_called.emit(attacker, st_called_move)
 		move = st_called_move
 
+	# ── Copycat: repeat the last move that actually landed, by ANYONE ────────
+	# Source: GetCopycatMove (battle_move_resolution.c L5132-5140): reads
+	#   `_last_landed_move_anyone` (this project's own battle-wide analog of
+	#   gLastUsedMove — see that field's own doc comment for the full
+	#   gating-condition citation and its disclosed status-move-coverage gap),
+	#   excluded if `copycatBanned` (BAN_COPYCAT).
+	if move.is_copycat:
+		var cc_called_move: MoveData = _pick_copycat_move()
+		if cc_called_move == null:
+			move_effect_failed.emit(attacker, "copycat_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		move_called.emit(attacker, cc_called_move)
+		move = cc_called_move
+
+	# ── Me First: steal the target's chosen move before it acts, at ×1.5 ─────
+	# Source: GetMeFirstMove (battle_move_resolution.c L5143-5151): fails if
+	#   the target's own chosen move is a status move, `meFirstBanned`
+	#   (BAN_ME_FIRST), or the target has already acted this turn
+	#   (`_has_target_already_acted` — NO turn-order pre-emption needed at
+	#   all, confirmed via Step 0 source read; whether Me First "works" is
+	#   purely a function of the EXISTING speed/priority-driven turn order).
+	#   The ×1.5 power boost is applied later, at the same base-power-
+	#   modifier pipeline stage Helping Hand occupies (see
+	#   `_me_first_boost_active`'s own doc comment).
+	if move.is_me_first:
+		var mf_defender_idx: int = _actor_indices.get(defender, _combatants.find(defender))
+		var mf_target_move: MoveData = _chosen_moves[mf_defender_idx]
+		var mf_fail: bool = (mf_target_move == null
+				or mf_target_move.category == 2
+				or (mf_target_move.ban_flags & MoveData.BAN_ME_FIRST) != 0
+				or _has_target_already_acted(defender))
+		if mf_fail:
+			move_effect_failed.emit(attacker, "me_first_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		move_called.emit(attacker, mf_target_move)
+		move = mf_target_move
+		_me_first_boost_active = true
+
+	# ── Assist: use a random move from the user's OWN bench ──────────────────
+	# Source: GetAssistMove (battle_move_resolution.c L5029-5075): scans every
+	#   non-active, non-fainted party member's moveset, excluding `assistBanned`
+	#   (BAN_ASSIST) moves, and picks uniformly at random.
+	if move.is_assist:
+		var as_called_move: MoveData = _pick_assist_move(attacker)
+		if as_called_move == null:
+			move_effect_failed.emit(attacker, "assist_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		move_called.emit(attacker, as_called_move)
+		move = as_called_move
+
 	# ── Instruct: force the TARGET to immediately re-use its own last move ───
 	# Source: battle_script_commands.c :: BS_TryInstruct (L13149-13195). Unlike
 	# Mirror Move/Metronome above (which only reassign `defender`/`move`),
@@ -2438,6 +2555,104 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
+	# ── Stockpile ─────────────────────────────────────────────────────────
+	# Source: battle_move_resolution.c, case EFFECT_STOCKPILE (L1288-1291,
+	#   4629-4631): fails at 3 stacks; else increments `stockpile_count`
+	#   UNCONDITIONALLY and raises Def+SpDef +1 each via the ordinary
+	#   generic stat-change pipeline (`_apply_one_stat_change_pair`, self-
+	#   targeted — `move.stat_change_self` is set in data), so
+	#   Contrary/Simple/Mist/Defiant/Opportunist/Mirror Herb all apply
+	#   exactly as they would to any other self-raise. `stockpile_def_added`/
+	#   `stockpile_spdef_added` only accumulate the ACTUAL returned delta
+	#   (0 if capped or Contrary-inverted) — see BattlePokemon.
+	#   stockpile_count's own doc comment for the full citation.
+	if move.is_stockpile:
+		if attacker.stockpile_count >= 3:
+			move_effect_failed.emit(attacker, "stockpile_maxed")
+		else:
+			attacker.stockpile_count += 1
+			var sp_def_actual: int = _apply_one_stat_change_pair(
+					attacker, defender, move, BattlePokemon.STAGE_DEF, 1, ng_active)
+			if sp_def_actual > 0:
+				attacker.stockpile_def_added += sp_def_actual
+			var sp_spdef_actual: int = _apply_one_stat_change_pair(
+					attacker, defender, move, BattlePokemon.STAGE_SPDEF, 1, ng_active)
+			if sp_spdef_actual > 0:
+				attacker.stockpile_spdef_added += sp_spdef_actual
+			stockpile_gained.emit(attacker, attacker.stockpile_count)
+		move_executed.emit(attacker, defender, move, 0)
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# ── Spit Up / Swallow ─────────────────────────────────────────────────
+	# Source: battle_move_resolution.c, case EFFECT_SPIT_UP/EFFECT_SWALLOW
+	#   (L1296-1299): both fail outright at 0 stacks. Release-and-reset
+	#   (MoveEndMoveBlock, L3416-3439) ALWAYS fires once the move is
+	#   attempted at 1+ stacks — even if Swallow's own heal "fails" at full
+	#   HP (Cmd_stockpiletohpheal, battle_script_commands.c L7168-7193,
+	#   still zeroes `stockpileCounter` on ITS OWN fail branch) — so the
+	#   stacks/stat-boost removal happens unconditionally below, outside
+	#   either branch's own success/failure. The removal itself is a RAW,
+	#   ungated stat decrease (no Mist/ability gate — source's own
+	#   `SetStatChange` call for the undo has none), unlike the original
+	#   raise above.
+	# NOTE this dispatch MUST sit here, before the generic `move.power > 0`
+	# damaging-move branch below — Spit Up carries a `power=1` PLACEHOLDER
+	# (real power is 100*stockpile_count, computed here), the same
+	# convention Sonic Boom/Dragon Rage/Night Shade/OHKO already use, all of
+	# which are ALSO dispatched before this same generic branch for the
+	# identical reason (a real bug caught during this bundle's own test
+	# suite: Spit Up was originally placed AFTER this branch, so the
+	# generic dispatch silently claimed it first, dealing a flat power=1
+	# hit and never reaching the real 100×count logic at all).
+	if move.is_spit_up or move.is_swallow:
+		if attacker.stockpile_count == 0:
+			move_effect_failed.emit(attacker, "stockpile_empty")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		# [D4 Bundle 4] Spit Up's own `_do_damaging_hit` call already emits
+		# `move_executed` internally (with the real damage dealt) — do NOT
+		# re-emit it below for that branch, unlike Swallow (a pure status-
+		# style effect with no damaging-hit call of its own).
+		var sp_already_emitted: bool = false
+		if move.is_spit_up:
+			var spit_power: int = 100 * attacker.stockpile_count
+			_do_damaging_hit(attacker, defender, move, false, false, spit_power)
+			sp_already_emitted = true
+		else:
+			if attacker.current_hp >= attacker.max_hp:
+				move_effect_failed.emit(attacker, "already_full_hp")
+			else:
+				# 1 stack → 1/4, 2 stacks → 1/2, 3 stacks → full (1/1).
+				var swallow_divisor: Array = [0, 4, 2, 1]
+				var swallow_heal: int = max(
+						1, attacker.max_hp / swallow_divisor[attacker.stockpile_count])
+				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + swallow_heal)
+				drain_heal.emit(attacker, swallow_heal)
+		var released_count: int = attacker.stockpile_count
+		attacker.stockpile_count = 0
+		if attacker.stockpile_def_added > 0:
+			var def_removed: int = StatusManager.apply_stat_change(
+					attacker, BattlePokemon.STAGE_DEF, -attacker.stockpile_def_added, null, ng_active)
+			if def_removed != 0:
+				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_DEF, def_removed)
+			attacker.stockpile_def_added = 0
+		if attacker.stockpile_spdef_added > 0:
+			var spdef_removed: int = StatusManager.apply_stat_change(
+					attacker, BattlePokemon.STAGE_SPDEF, -attacker.stockpile_spdef_added, null, ng_active)
+			if spdef_removed != 0:
+				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPDEF, spdef_removed)
+			attacker.stockpile_spdef_added = 0
+		stockpile_released.emit(attacker, released_count)
+		if not sp_already_emitted:
+			move_executed.emit(attacker, defender, move, 0)
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
 	# [D1 easy bundle] Captured only by the ordinary single-target branch
 	# below — After You/Quash-adjacent single-target-only moves are the
 	# only members of EFFECT_HIT_ESCAPE/EFFECT_HIT_SWITCH_TARGET, so
@@ -2472,7 +2687,7 @@ func _phase_move_execution() -> void:
 				if tgt.fainted or tgt.current_hp <= 0:
 					continue
 				_do_damaging_hit(attacker, tgt, move, spread_dmg_reduction, hh_boost,
-						_dmg_power_override)
+						_dmg_power_override, false, _me_first_boost_active)
 		elif move.multi_hit or move.strike_count > 1:
 			# [M18.5g] Multi-hit moves (Bullet Seed/Double Kick/Triple Kick/etc. family)
 			# — see _do_multi_hit_sequence's own doc comment for the full mechanism.
@@ -2482,12 +2697,14 @@ func _phase_move_execution() -> void:
 			# so this branch and the spread branch above are mutually exclusive in
 			# practice, not just by construction.
 			var hh_boost: bool = _helping_hand[attacker_idx]
-			_do_multi_hit_sequence(attacker, defender, move, hh_boost, _dmg_power_override)
+			_do_multi_hit_sequence(attacker, defender, move, hh_boost, _dmg_power_override,
+					_me_first_boost_active)
 		else:
 			# Single-target damaging move.
 			var hh_boost: bool = _helping_hand[attacker_idx]
 			he_sub_before = defender.substitute_hp
-			he_single_dmg = _do_damaging_hit(attacker, defender, move, false, hh_boost, _dmg_power_override)
+			he_single_dmg = _do_damaging_hit(attacker, defender, move, false, hh_boost,
+					_dmg_power_override, false, _me_first_boost_active)
 
 		# ── Rollout / Ice Ball: advance the consecutive-hit counter ───────────────
 		# Source: SetSameMoveTurnValues, case EFFECT_ROLLOUT (L4899-4909): a successful
@@ -2954,6 +3171,55 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Heal Pulse ────────────────────────────────────────────────────────
+		# Source: BS_TryHealPulse (battle_script_commands.c L11645-11663): heals
+		#   the SELECTED TARGET (not the user) 50% max HP, or 75% if the
+		#   ATTACKER holds Mega Launcher and this move is `pulse_move` — a
+		#   HARDCODED special case inside the heal calc itself, NOT the generic
+		#   pulse-move damage multiplier (moot anyway, power=0). Fails if the
+		#   target is already at full HP.
+		if move.is_heal_pulse:
+			if defender.current_hp >= defender.max_hp:
+				move_effect_failed.emit(defender, "already_full_hp")
+			else:
+				var hp_heal_frac: float = 0.75 if (
+						AbilityManager.effective_ability_id(attacker, ng_active) \
+								== AbilityManager.ABILITY_MEGA_LAUNCHER \
+						and move.pulse_move) else 0.5
+				var hp_heal: int = max(1, int(defender.max_hp * hp_heal_frac))
+				defender.current_hp = min(defender.max_hp, defender.current_hp + hp_heal)
+				drain_heal.emit(defender, hp_heal)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Life Dew ──────────────────────────────────────────────────────────
+		# Source: BattleScript_EffectLifeDew (data/battle_scripts_1.s L704-727):
+		#   heals the user 25% max HP if not full; INDEPENDENTLY, if a live
+		#   ally exists and isn't full, heals the ally 25% max HP too (a no-op,
+		#   not a failure, in singles where no ally exists). The WHOLE move
+		#   only fails if NEITHER side has anything to heal.
+		if move.is_life_dew:
+			var ld_ally: BattlePokemon = _get_ally(attacker)
+			var ld_user_full: bool = attacker.current_hp >= attacker.max_hp
+			var ld_ally_healable: bool = ld_ally != null and ld_ally.current_hp < ld_ally.max_hp
+			if ld_user_full and not ld_ally_healable:
+				move_effect_failed.emit(attacker, "already_full_hp")
+			else:
+				if not ld_user_full:
+					var ld_user_heal: int = max(1, attacker.max_hp / 4)
+					attacker.current_hp = min(attacker.max_hp, attacker.current_hp + ld_user_heal)
+					drain_heal.emit(attacker, ld_user_heal)
+				if ld_ally_healable:
+					var ld_ally_heal: int = max(1, ld_ally.max_hp / 4)
+					ld_ally.current_hp = min(ld_ally.max_hp, ld_ally.current_hp + ld_ally_heal)
+					drain_heal.emit(ld_ally, ld_ally_heal)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# ── Heal Bell / Aromatherapy ────────────────────────────────────────────
 		# Source: Cmd_healpartystatus (battle_script_commands.c L8259-8340) — see
 		# MoveData.is_heal_bell's own doc comment for the full Soundproof-partner
@@ -3374,6 +3640,74 @@ func _phase_move_execution() -> void:
 			else:
 				_side_conditions[srock_side]["stealth_rock"] = true
 				hazard_set.emit(srock_side, "stealth_rock", 1)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Tailwind ──────────────────────────────────────────────────────────
+		# Source: Cmd_settailwind (battle_script_commands.c L8172-8187): fails if
+		#   already up on the caster's own side; else 4-turn timer (this project's
+		#   Gen5+ config; source's pre-Gen5 branch is 3, not modeled).
+		if move.is_tailwind:
+			if _side_conditions[attacker_side]["tailwind_turns"] > 0:
+				move_effect_failed.emit(attacker, "already_tailwind")
+			else:
+				_side_conditions[attacker_side]["tailwind_turns"] = 4
+				side_condition_set.emit(attacker_side, "tailwind")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Safeguard ─────────────────────────────────────────────────────────
+		# Source: Cmd_setsafeguard (battle_script_commands.c L8480-8495): fails if
+		#   already up on the caster's own side; else 5-turn timer. Blocks status
+		#   infliction AND confusion on the protected side — see
+		#   StatusManager.try_apply_status/try_apply_confusion's own Safeguard gate.
+		if move.is_safeguard:
+			if _side_conditions[attacker_side]["safeguard_turns"] > 0:
+				move_effect_failed.emit(attacker, "already_safeguard")
+			else:
+				_side_conditions[attacker_side]["safeguard_turns"] = 5
+				side_condition_set.emit(attacker_side, "safeguard")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Mist ──────────────────────────────────────────────────────────────
+		# Source: Cmd_setmist (battle_script_commands.c L7700-7715): fails if
+		#   already up on the caster's own side; else 5-turn timer. Blocks a
+		#   stat DECREASE on the protected side — see
+		#   `_apply_one_stat_change_pair`'s own Mist gate, checked BEFORE the
+		#   Mirror-Armor/ability-block chain, matching source's own
+		#   IsMistProtected-first ordering in CanDecreaseStat.
+		if move.is_mist:
+			if _side_conditions[attacker_side]["mist_turns"] > 0:
+				move_effect_failed.emit(attacker, "already_mist")
+			else:
+				_side_conditions[attacker_side]["mist_turns"] = 5
+				side_condition_set.emit(attacker_side, "mist")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Sticky Web ────────────────────────────────────────────────────────
+		# Source: Cmd_setstickyweb (battle_script_commands.c L8691-8707): targets
+		#   the OPPONENT's side (same as Spikes/Toxic Spikes/Stealth Rock); single
+		#   application (no layers, like Stealth Rock) — fails if already up.
+		#   `sticky_web_setter` records the setter for Mirror Armor/Defiant
+		#   attribution at switch-in, mirroring source's own `stickyWebBattlerId`.
+		if move.is_sticky_web:
+			var sw_side: int = 1 - attacker_side
+			if _side_conditions[sw_side]["sticky_web"]:
+				move_effect_failed.emit(attacker, "sticky_web_already_set")
+			else:
+				_side_conditions[sw_side]["sticky_web"] = true
+				_side_conditions[sw_side]["sticky_web_setter"] = attacker
+				hazard_set.emit(sw_side, "sticky_web", 1)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -3870,7 +4204,7 @@ func _phase_move_execution() -> void:
 					if ally_actual != 0:
 						stat_stage_changed.emit(howl_ally, move.stat_change_stat, ally_actual)
 		elif move.secondary_effect != MoveData.SE_NONE:
-			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move, null, ng_active, _effective_weather(), _is_uproar_active())
+			var applied: bool = StatusManager.try_secondary_effect(attacker, defender, move, null, ng_active, _effective_weather(), _is_uproar_active(), null, _is_safeguard_active_for(attacker, defender, ng_active))
 			if applied:
 				secondary_applied.emit(defender, move.secondary_effect)
 				# Synchronize: defender received a primary status — check back-reflect.
@@ -4464,6 +4798,20 @@ func _phase_end_of_turn() -> void:
 			sc["aurora_veil_turns"] -= 1
 			if sc["aurora_veil_turns"] == 0:
 				screen_expired.emit(side, "aurora_veil")
+		# [D4 Bundle 4] Tailwind/Safeguard/Mist — same decrement shape as the
+		# screens above, just a different side-status bit/timer in source.
+		if sc["tailwind_turns"] > 0:
+			sc["tailwind_turns"] -= 1
+			if sc["tailwind_turns"] == 0:
+				side_condition_expired.emit(side, "tailwind")
+		if sc["safeguard_turns"] > 0:
+			sc["safeguard_turns"] -= 1
+			if sc["safeguard_turns"] == 0:
+				side_condition_expired.emit(side, "safeguard")
+		if sc["mist_turns"] > 0:
+			sc["mist_turns"] -= 1
+			if sc["mist_turns"] == 0:
+				side_condition_expired.emit(side, "mist")
 
 	# [D1 easy bundle] Retaliate's own decrement was MOVED to
 	# `_phase_priority_resolution` (a bug fix — see that site's own doc
@@ -4653,6 +5001,25 @@ func _get_ally(mon: BattlePokemon) -> BattlePokemon:
 		if not ally.fainted:
 			return ally
 	return null
+
+
+# [D4 Bundle 4] Safeguard — is `defender`'s side protected against a status/
+# confusion infliction from `attacker` right now? Source: IsSafeguardProtected
+# (battle_util.c L5224-5231): protected if the side's SIDE_STATUS_SAFEGUARD is
+# up, UNLESS the attacker is on a DIFFERENT side and holds Infiltrator (an
+# ally-inflicted status — including self — is still protected, since source's
+# own ally-check short-circuits to "protected" before the Infiltrator check
+# is ever reached).
+func _is_safeguard_active_for(attacker: BattlePokemon, defender: BattlePokemon, ng_active: bool) -> bool:
+	var def_idx: int = _actor_indices.get(defender, _combatants.find(defender))
+	var def_side: int = def_idx / _active_per_side
+	if _side_conditions[def_side]["safeguard_turns"] <= 0:
+		return false
+	var atk_idx: int = _actor_indices.get(attacker, _combatants.find(attacker))
+	var atk_side: int = atk_idx / _active_per_side
+	if atk_side != def_side and AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
+		return false
+	return true
 
 
 # M17f: live (non-fainted, opposing-side) combatants for mon — same loop shape as
@@ -4901,6 +5268,23 @@ func _apply_switch_in_hazards(new_mon: BattlePokemon, mon_side: int) -> void:
 			if new_mon.current_hp == 0:
 				new_mon.fainted = true
 				pokemon_fainted.emit(new_mon)
+
+	# [D4 Bundle 4] Sticky Web — grounded-only (like Spikes), gated by Heavy
+	# Duty Boots, but deliberately NOT Magic Guard (this is a stat-stage
+	# drop, not indirect damage — Magic Guard's own scope never covers stat
+	# changes). Applies via the FULL stat-change pipeline
+	# (`_apply_one_stat_change_pair`, via a throwaway foe-targeted MoveData)
+	# so Mist/Defiant/Competitive/Mirror Armor/Opportunist/Mirror Herb all
+	# react exactly as they would to a move-inflicted drop — source confirms
+	# this switch-in effect dispatches through the ordinary `SetStatChange`+
+	# battle-script stat-buff pipeline, not a raw hazard tick (see
+	# MoveData.is_sticky_web's own doc comment for the full citation).
+	# Source: battle_switch_in.c L328-333.
+	if not new_mon.fainted and sc["sticky_web"] and grounded and not hazard_immune:
+		var sw_dummy_move := MoveData.new()
+		sw_dummy_move.stat_change_self = false
+		_apply_one_stat_change_pair(sc["sticky_web_setter"], new_mon, sw_dummy_move,
+				BattlePokemon.STAGE_SPEED, -1, ng_active)
 
 
 # M16d: Stealth Rock's type-effectiveness-based damage table.
@@ -5212,6 +5596,11 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	# this exact state on switch-out (battle_main.c L3214), same shape as
 	# throat_chop_turns/yawn_turns above.
 	mon.stomping_tantrum_timer = 0
+	# [D4 Bundle 4] Stockpile family — all three live in source's per-battler
+	# `volatiles` struct, cleared here like every other switch-scoped field.
+	mon.stockpile_count = 0
+	mon.stockpile_def_added = 0
+	mon.stockpile_spdef_added = 0
 	# [D2 batch 2] Tar Shot/Foresight — both permanent per-mon volatiles
 	# (no turn counter), cleared on switch-out like every other
 	# `volatiles`-struct field here.
@@ -5986,6 +6375,40 @@ func _pick_sleep_talk_move(attacker: BattlePokemon, ng_active: bool) -> MoveData
 	return pool[randi() % pool.size()]
 
 
+# [D4 Bundle 4] Copycat: returns `_last_landed_move_anyone` unless it's null or
+# `copycatBanned` (BAN_COPYCAT) — no randomness involved, unlike Metronome/
+# Assist/Sleep Talk's own random pool picks.
+# Source: GetCopycatMove (battle_move_resolution.c L5132-5140).
+func _pick_copycat_move() -> MoveData:
+	if _last_landed_move_anyone == null:
+		return null
+	if (_last_landed_move_anyone.ban_flags & MoveData.BAN_COPYCAT) != 0:
+		return null
+	return _last_landed_move_anyone
+
+
+# [D4 Bundle 4] Assist: a random move from `attacker`'s OWN bench (non-active,
+# non-fainted party members), excluding `assistBanned` (BAN_ASSIST) moves.
+# Source: GetAssistMove (battle_move_resolution.c L5029-5075).
+func _pick_assist_move(attacker: BattlePokemon) -> MoveData:
+	var atk_idx: int = _actor_indices.get(attacker, _combatants.find(attacker))
+	var atk_side: int = atk_idx / _active_per_side
+	var party: BattleParty = _parties[atk_side]
+	var pool: Array = []
+	for i in range(party.members.size()):
+		if party.active_indices.has(i):
+			continue
+		var mon: BattlePokemon = party.members[i]
+		if mon == null or mon.fainted:
+			continue
+		for m: MoveData in mon.moves:
+			if m != null and (m.ban_flags & MoveData.BAN_ASSIST) == 0:
+				pool.append(m)
+	if pool.is_empty():
+		return null
+	return pool[randi() % pool.size()]
+
+
 # M11: Check whether a Pokémon is immune to weather chip damage.
 # Source: HandleEndTurnWeatherDamage (battle_end_turn.c L143–182).
 # Sandstorm: immune if any type is Rock(6), Ground(5), or Steel(9), OR semi-invulnerable.
@@ -6157,7 +6580,8 @@ func _resolve_multi_hit_count(move: MoveData, attacker: BattlePokemon, ng_active
 #   block. Distinguished from the Substitute-standing case above by checking
 #   whether a Substitute was actually in play for this hit at all.
 func _do_multi_hit_sequence(attacker: BattlePokemon, target: BattlePokemon,
-		move: MoveData, helping_hand: bool, power_override: int) -> void:
+		move: MoveData, helping_hand: bool, power_override: int,
+		me_first: bool = false) -> void:
 	var ng_active: bool = _is_neutralizing_gas_active()
 	var hit_count: int = _resolve_multi_hit_count(move, attacker, ng_active)
 	var total_damage: int = 0
@@ -6181,7 +6605,7 @@ func _do_multi_hit_sequence(attacker: BattlePokemon, target: BattlePokemon,
 
 		var had_standing_sub: bool = target.substitute_hp > 0 and not move.ignores_substitute
 		var dmg: int = _do_damaging_hit(
-				attacker, target, move, false, helping_hand, this_power_override, true)
+				attacker, target, move, false, helping_hand, this_power_override, true, me_first)
 		total_damage += dmg
 		hits_landed += 1
 
@@ -6254,8 +6678,33 @@ func _apply_stat_change_effect(attacker: BattlePokemon, defender: BattlePokemon,
 
 
 func _apply_one_stat_change_pair(attacker: BattlePokemon, defender: BattlePokemon, move: MoveData,
-		stat: int, amount: int, ng_active: bool) -> void:
+		stat: int, amount: int, ng_active: bool) -> int:
 	var stat_target: BattlePokemon = attacker if move.stat_change_self else defender
+
+	# [D4 Bundle 4] Mist — blocks ANY decrease (post-Simple/Contrary
+	# adjustment) on the protected side, checked BEFORE Mirror Armor/the
+	# ability-block chain below, matching source's own CanDecreaseStat
+	# ordering (IsMistProtected is the FIRST check in that chain, ahead of
+	# IsAbilityBlocked/IsMirrorArmorReflected — battle_stat_change.c
+	# L316-321). An opposing Infiltrator holder bypasses it (source:
+	# IsMistProtected, battle_stat_change.c L580-590); reuses
+	# `bypasses_infiltrator_barriers` directly — that function's own doc
+	# comment already anticipated this exact addition. Checked on the
+	# ADJUSTED (post-Contrary) sign, not the raw `amount` — a genuinely
+	# self-inflicted Contrary decrease against one's OWN Mist is still
+	# blocked per source (IsBattlerAlly(battlerDef, battlerAtk) is
+	# trivially TRUE when the two are the same battler), a real, source-
+	# faithful edge case rather than a special-cased exemption.
+	var adjusted_for_mist: int = AbilityManager.adjust_stat_stage_amount(
+			stat_target, amount, ng_active, attacker)
+	if adjusted_for_mist < 0:
+		var mist_idx: int = _actor_indices.get(stat_target, _combatants.find(stat_target))
+		var mist_side: int = mist_idx / _active_per_side
+		if _side_conditions[mist_side]["mist_turns"] > 0 \
+				and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
+			move_effect_failed.emit(stat_target, "mist_protected")
+			return 0
+
 	if not move.stat_change_self and amount < 0 \
 			and AbilityManager.mirror_armor_reflects(stat_target, attacker, ng_active, attacker):
 		var reflected: int = StatusManager.apply_stat_change(
@@ -6265,7 +6714,7 @@ func _apply_one_stat_change_pair(attacker: BattlePokemon, defender: BattlePokemo
 		else:
 			stat_stage_changed.emit(attacker, stat, reflected)
 		ability_triggered.emit(stat_target, "mirror_armor")
-		return
+		return 0
 	var actual: int = StatusManager.apply_stat_change(
 			stat_target, stat, amount,
 			null, ng_active, attacker)
@@ -6294,6 +6743,7 @@ func _apply_one_stat_change_pair(attacker: BattlePokemon, defender: BattlePokemo
 					if mh_actual != 0:
 						stat_stage_changed.emit(opp, stat, mh_actual)
 					_consume_item(opp)
+	return actual
 
 
 # M14b: Execute one damaging hit from attacker onto target.
@@ -6307,7 +6757,8 @@ func _apply_one_stat_change_pair(attacker: BattlePokemon, defender: BattlePokemo
 # Source: battle_script_commands.c :: MoveDamageDataHpUpdate + downstream effect handlers.
 func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		move: MoveData, is_spread: bool = false, helping_hand: bool = false,
-		power_override: int = -1, suppress_shell_bell: bool = false) -> int:
+		power_override: int = -1, suppress_shell_bell: bool = false,
+		me_first: bool = false) -> int:
 	var target_idx: int = _combatants.find(target)
 	var target_side: int = target_idx / _active_per_side
 	var sc: Dictionary = _side_conditions[target_side]
@@ -6353,7 +6804,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	var result: Dictionary = DamageCalculator.calculate(
 			attacker, target, move, roll, _force_crit, _effective_weather(), is_spread, helping_hand,
 			power_override, screen_active, _active_per_side > 1, _get_ally(attacker),
-			_get_ally(target), ng_active, _is_last_to_move(attacker))
+			_get_ally(target), ng_active, _is_last_to_move(attacker), me_first)
 	var damage: int = result["damage"]
 
 	# M17n-6: Wonder Guard — the block already happened inside DamageCalculator
@@ -6426,6 +6877,13 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	if damage > 0 and ItemManager.holds_air_balloon(target, ng_active):
 		_consume_item(target)
 		item_effect_triggered.emit(target, "air_balloon_pop")
+
+	# [D4 Bundle 4] Copycat's own global tracker — same `damage > 0`
+	# (INCLUDING_SUBSTITUTES) gate as Rapid Spin/Air Balloon just above. See
+	# `_last_landed_move_anyone`'s own doc comment for the full citation and
+	# its disclosed status-move-coverage gap.
+	if damage > 0:
+		_last_landed_move_anyone = move
 
 	# M17n-9: Infiltrator bypasses Substitute for damaging hits too (same shared
 	# IsSubstituteProtected chokepoint source routes every substitute check through).
@@ -6780,7 +7238,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	# even after that function's own internal gate (status_manager.gd) was
 	# extended to accept them.
 	if damage > 0 and (move.secondary_effect != MoveData.SE_NONE or move.stat_change_stat >= 0):
-		var effect_hit: bool = StatusManager.try_secondary_effect(attacker, target, move, null, ng_active, _effective_weather(), _is_uproar_active())
+		var effect_hit: bool = StatusManager.try_secondary_effect(attacker, target, move, null, ng_active, _effective_weather(), _is_uproar_active(), null, _is_safeguard_active_for(attacker, target, ng_active))
 		if effect_hit:
 			if move.secondary_effect == MoveData.SE_FLINCH:
 				var target_turn_pos: int = _turn_order.find(target)
@@ -6880,7 +7338,8 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		slot2_move.secondary_effect = move.secondary_effect_2
 		slot2_move.secondary_chance = move.secondary_chance_2
 		var effect2_hit: bool = StatusManager.try_secondary_effect(
-				attacker, target, slot2_move, null, ng_active, _effective_weather())
+				attacker, target, slot2_move, null, ng_active, _effective_weather(), false, null,
+				_is_safeguard_active_for(attacker, target, ng_active))
 		if effect2_hit:
 			if move.secondary_effect_2 == MoveData.SE_FLINCH:
 				var target_turn_pos2: int = _turn_order.find(target)

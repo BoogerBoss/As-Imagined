@@ -111,6 +111,10 @@ const UQ412_SCREEN_DOUBLES: int = 2732
 # ng_active: bool       — M17g: whether Neutralizing Gas is active anywhere on the field
 #                         (BattleManager._is_neutralizing_gas_active()). Suppresses every
 #                         ability check below field-wide, attacker or defender side alike.
+# me_first: bool        — [D4 Bundle 4] the CURRENT move was borrowed via Me First —
+#                         applies the SAME ×1.5 base-power multiplier as helping_hand,
+#                         at the identical pipeline stage (source: battle_util.c
+#                         L6443-6444, the exact line after Helping Hand's own loop).
 static func calculate(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
@@ -126,7 +130,8 @@ static func calculate(
 		ally: BattlePokemon = null,
 		defender_ally: BattlePokemon = null,
 		ng_active: bool = false,
-		is_last_to_move: bool = false) -> Dictionary:
+		is_last_to_move: bool = false,
+		me_first: bool = false) -> Dictionary:
 
 	# [D1] Hidden Power(237) — its own IV-derived type, computed BEFORE the
 	# ability-based mutation step below (source's SetTypeBeforeUsingMove computes
@@ -442,6 +447,10 @@ static func calculate(
 	#   returned power = uq4_12_multiply_by_int_half_down(modifier, basePower) (L6603).
 	var effective_power: int = power_override if power_override >= 0 else move.power
 	if helping_hand:
+		effective_power = _uq412_half_down(effective_power, 6144)  # UQ_4_12(1.5)
+	# [D4 Bundle 4] Me First — same ×1.5, same pipeline stage, independent of
+	# (and stacks multiplicatively with) Helping Hand above.
+	if me_first:
 		effective_power = _uq412_half_down(effective_power, 6144)  # UQ_4_12(1.5)
 
 	# M17a: ability-driven base-power modifiers (Toxic Boost, Flare Boost, Sand Force,

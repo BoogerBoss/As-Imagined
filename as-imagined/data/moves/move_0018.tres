@@ -12,6 +12,7 @@ accuracy = 0
 pp = 20
 priority = -6
 sound_move = true
+ban_flags = 96
 ignores_substitute = true
 ignores_protect = true
 is_roar = true

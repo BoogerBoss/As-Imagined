@@ -11,5 +11,5 @@ power = 1
 pp = 20
 makes_contact = true
 priority = -5
-ban_flags = 16
+ban_flags = 116
 counter = true

@@ -91,11 +91,21 @@ static func try_apply_status(
 		attacker: BattlePokemon = null,
 		weather: int = DamageCalculator.WEATHER_NONE,
 		attacker_move: MoveData = null,
-		uproar_active: bool = false) -> bool:
+		uproar_active: bool = false,
+		safeguard_active: bool = false) -> bool:
 
 	# One major status at a time.
 	# Source: CanSetNonVolatileStatus L5391 — "already has STATUS1_ANY → fails"
 	if mon.status != BattlePokemon.STATUS_NONE:
+		return false
+
+	# [D4 Bundle 4] Safeguard — blocks non-volatile status infliction on the
+	# protected side. Source: IsSafeguardProtected (battle_util.c
+	# L5224-5231), consulted from CanSetNonVolatileStatus; `safeguard_active`
+	# is resolved by the caller (BattleManager._is_safeguard_active_for) as
+	# "the defender's side has Safeguard up, AND it's not an opposing
+	# Infiltrator holder" — the one exemption source's own check encodes.
+	if safeguard_active:
 		return false
 
 	# [M19-rampage] Uproar — while ANY active battler (field-wide, both sides)
@@ -247,10 +257,19 @@ static func try_apply_confusion(
 		ng_active: bool = false,
 		attacker: BattlePokemon = null,
 		attacker_move: MoveData = null,
-		infinite: bool = false) -> bool:
+		infinite: bool = false,
+		safeguard_active: bool = false) -> bool:
 
 	if mon.confusion_turns > 0:
 		return false  # already confused
+
+	# [D4 Bundle 4] Safeguard also blocks confusion, not just non-volatile
+	# status — source: CanBeConfused (battle_util.c L5443-5452) consults
+	# IsSafeguardProtected the same way CanSetNonVolatileStatus does. See
+	# try_apply_status's own doc comment for the full citation; resolved by
+	# the same caller-side helper (`_is_safeguard_active_for`).
+	if safeguard_active:
+		return false
 
 	# M17n-3: `attacker_move` threads through Mycelium Might's status-move-gated
 	# Mold-Breaker-type bypass of Own Tempo, null (no bypass) at every pre-existing
@@ -1015,7 +1034,8 @@ static func try_secondary_effect(
 		ng_active: bool = false,
 		weather: int = DamageCalculator.WEATHER_NONE,
 		uproar_active: bool = false,
-		force_random_status_index: Variant = null) -> bool:
+		force_random_status_index: Variant = null,
+		safeguard_active: bool = false) -> bool:
 
 	# [M19-stat-raised-trigger] Burning Jealousy/Alluring Voice — an
 	# ELIGIBILITY pre-check, before the chance roll (matching source's own
@@ -1116,21 +1136,21 @@ static func try_secondary_effect(
 
 	match move.secondary_effect:
 		MoveData.SE_BURN:
-			return try_apply_status(defender, BattlePokemon.STATUS_BURN, null, null, ng_active, attacker, weather, move)
+			return try_apply_status(defender, BattlePokemon.STATUS_BURN, null, null, ng_active, attacker, weather, move, false, safeguard_active)
 		MoveData.SE_FREEZE:
-			return try_apply_status(defender, BattlePokemon.STATUS_FREEZE, null, null, ng_active, attacker, weather, move)
+			return try_apply_status(defender, BattlePokemon.STATUS_FREEZE, null, null, ng_active, attacker, weather, move, false, safeguard_active)
 		MoveData.SE_PARALYSIS:
-			return try_apply_status(defender, BattlePokemon.STATUS_PARALYSIS, null, null, ng_active, attacker, weather, move)
+			return try_apply_status(defender, BattlePokemon.STATUS_PARALYSIS, null, null, ng_active, attacker, weather, move, false, safeguard_active)
 		MoveData.SE_SLEEP:
 			return try_apply_status(defender, BattlePokemon.STATUS_SLEEP, null, null,
-					ng_active, attacker, weather, move, uproar_active)
+					ng_active, attacker, weather, move, uproar_active, safeguard_active)
 		MoveData.SE_TOXIC:
-			return try_apply_status(defender, BattlePokemon.STATUS_TOXIC, null, null, ng_active, attacker, weather, move)
+			return try_apply_status(defender, BattlePokemon.STATUS_TOXIC, null, null, ng_active, attacker, weather, move, false, safeguard_active)
 		MoveData.SE_POISON:
 			# [M18.5g] Regular (non-toxic) poison — Twineedle's own secondary effect.
-			return try_apply_status(defender, BattlePokemon.STATUS_POISON, null, null, ng_active, attacker, weather, move)
+			return try_apply_status(defender, BattlePokemon.STATUS_POISON, null, null, ng_active, attacker, weather, move, false, safeguard_active)
 		MoveData.SE_CONFUSION:
-			return try_apply_confusion(defender, null, ng_active, attacker, move)
+			return try_apply_confusion(defender, null, ng_active, attacker, move, false, safeguard_active)
 		MoveData.SE_FLINCH:
 			# M17n-1: ABILITY_INNER_FOCUS blocks flinch specifically (not Shield Dust's
 			# broad gate above) — battle_util.c L8830, same CancelerFlinch-adjacent
@@ -1221,7 +1241,7 @@ static func try_secondary_effect(
 #   needed inside this function at all.
 static func effective_speed(
 		mon: BattlePokemon, weather: int = DamageCalculator.WEATHER_NONE,
-		ng_active: bool = false) -> int:
+		ng_active: bool = false, tailwind_active: bool = false) -> int:
 	var spd: int = DamageCalculator._apply_stage(
 			mon.speed, mon.stat_stages[BattlePokemon.STAGE_SPEED])
 	var id: int = AbilityManager.effective_ability_id(mon, ng_active)
@@ -1255,6 +1275,15 @@ static func effective_speed(
 	# volatile set the moment the holder's OWN item is removed by any means (see
 	# BattleManager._consume_item / AbilityManager._try_steal_item's doc comments).
 	if id == AbilityManager.ABILITY_UNBURDEN and mon.unburden_active:
+		spd *= 2
+	# [D4 Bundle 4] Tailwind — unconditional Speed ×2 for every battler on the
+	# affected side while its 4-turn timer is running (`tailwind_active`
+	# pre-resolved by the caller from `_side_conditions[side]["tailwind_turns"]`,
+	# since this is side-wide state a static function has no access to).
+	# Source: GetChosenMovePriority-adjacent speed calc; SIDE_STATUS_TAILWIND
+	# doubles speed for every battler on that side, stacking multiplicatively
+	# with everything else in this chain (Choice Scarf included).
+	if tailwind_active:
 		spd *= 2
 	# M12: Choice Scarf — (speed * 150) / 100 integer arithmetic.
 	# Source: battle_main.c GetChoiceScarf case (L4703–4704).

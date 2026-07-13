@@ -11,5 +11,5 @@ category = 2
 accuracy = 0
 pp = 10
 priority = 4
-ban_flags = 16
+ban_flags = 112
 is_protect = true

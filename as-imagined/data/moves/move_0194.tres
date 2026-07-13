@@ -9,5 +9,5 @@ move_name = "Destiny Bond"
 type = 8
 category = 2
 accuracy = 0
-ban_flags = 16
+ban_flags = 112
 destiny_bond = true

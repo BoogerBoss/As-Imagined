@@ -12,4 +12,5 @@ accuracy = 90
 pp = 10
 makes_contact = true
 priority = -6
+ban_flags = 96
 is_hit_switch_target = true
