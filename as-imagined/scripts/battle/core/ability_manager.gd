@@ -2387,6 +2387,13 @@ static func effective_move_type(
 	# function is even called).
 	if move.is_hidden_power:
 		return -1
+	# [D4 Bundle 5] Weather Ball(311) — source explicitly excludes
+	# EFFECT_WEATHER_BALL from Normalize/the "-ate" family (battle_main.c
+	# L6013-6017), the identical exclusion shape Hidden Power already
+	# established just above; its own weather-conditional type is computed
+	# separately in DamageCalculator.calculate's pre-processing pass.
+	if move.is_weather_ball:
+		return -1
 	var id: int = effective_ability_id(attacker, ng_active)
 	if move.sound_move and id == ABILITY_LIQUID_VOICE:
 		return TypeChart.TYPE_WATER

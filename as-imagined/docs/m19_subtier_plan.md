@@ -2467,6 +2467,227 @@ identical GRAND TOTAL both runs**.
 67→55. Reconciliation: 664 implemented + 55 D4 residual + 215 excluded =
 934, confirmed by direct addition.
 
+#### D4 Bundle 5 — CLOSED, COMPLETE (`[D4 Bundle 5]`, 2026-07-14)
+
+13 more moves shipped, self-selected from Section D's residual by the
+assistant and confirmed by Rob before Step 0, across 7 mechanism-clusters:
+Mud Sport(300)/Water Sport(346) (field-wide damage-reduction timers),
+Weather Ball(311)/Reflect Type(513) (type-mutation family), Roost(355)/
+Strength Sap(631) (heal-and-drain family), Steel Beam(724)/
+Chloroblast(763) (HP-cost-attached-to-damage family), Charge(268)/Laser
+Focus(636) (persistent-flag-consumed-by-next-action family),
+Topsy-Turvy(576)/Autotomize(475) (stat-array manipulation), Fury
+Cutter(210) (escalating power).
+
+Real Step-0 corrections found before implementing (full citations in
+`docs/decisions.md`'s own `[D4 Bundle 5]` entry): Mud Sport/Water Sport's
+damage reduction is x0.33 at this project's `B_SPORT_DMG_REDUCTION>=GEN_5`
+config, NOT x0.5 (the pre-Gen-5 value some folk knowledge assumes) —
+confirmed genuinely FIELD-WIDE (`.target = TARGET_FIELD`), not per-side
+like Tailwind/Safeguard/Mist, via two standalone `_mud_sport_turns`/
+`_water_sport_turns` battle-wide ints mirroring `_echoed_voice_counter`'s
+own shape rather than extending `_side_conditions`. Weather Ball bundles
+TWO independently-computed pieces under one effect ID — a type mutation
+(Sun→Fire/Rain→Water/Sandstorm→Rock/Hail→Ice, computed in
+`DamageCalculator.calculate`'s pre-processing pass alongside Hidden
+Power, with a matching `is_weather_ball` exclusion added to
+`AbilityManager.effective_move_type`) and a SEPARATE x2 power multiplier
+in any weather except Strong Winds — confirmed as two distinct source
+hookups (`battle_main.c` L5812-5833 for the type; `battle_util.c`
+L6175-6177 for the power), not one shared function. Reflect Type needed
+a genuinely NEW `_set_mon_type_array` sibling function — `_set_mon_type`
+(the pre-existing function backing Conversion/Conversion 2/Protean/
+Libero/Multitype/Forecast) always forces a mono-type result and cannot
+represent copying a dual-type target's full array — confirmed via a
+REQUIRED regression test that all 3 reachable existing callers
+(Conversion/Protean/Multitype) still produce byte-identical mono-type
+results afterward (all still padding to `[TYPE_X, TYPE_NONE]`, a real
+test-authoring correction caught on the first run — see below). Reflect
+Type's Multitype exclusion is ability-keyed (`effective_ability_id ==
+ABILITY_MULTITYPE`), not species-keyed like source's own
+`targetBaseSpecies == SPECIES_ARCEUS` check — this project has no
+species-check pattern anywhere, and Multitype is itself implemented
+purely as an ability+Plate check (`[M17n-4]`), so the ability-keyed
+equivalent is the establishment-consistent choice, not a new pattern for
+one move. Reflect Type is also exempted from the general
+foe-targeting-move type-immunity gate — confirmed via direct source read
+(`BattleScript_EffectReflectType`, `data/battle_scripts_1.s` L991-999)
+that its own script never calls `typecalc`, the same precedent
+Foresight/Purify/Nightmare/Spite already established. Roost's type
+removal is a query-time overlay in real source (a plain `roostActive`
+bool consulted at every type-read call site via ONE funneled getter,
+`GetBattlerTypes`) — this project has no such funneled getter (type
+reads happen directly off `species.types` at each call site), so Roost
+instead mutates `species.types` directly at use-time (via
+`_set_mon_type_array`) and restores the EXACT pre-mutation snapshot
+(`BattlePokemon.roost_pre_types` — deliberately NOT `original_types`,
+since a mon with an already-active Conversion/Protean mutation must be
+restored to THAT state, not its natural species type) via a NEW
+end-of-turn trigger, rather than reusing `_reset_mon_type`'s existing
+switch-in-only restore. Confirmed a mono-Flying Roost user becomes pure
+NORMAL-type for the turn (not typeless) at this project's
+`B_ROOST_PURE_FLYING>=GEN_5` config. Strength Sap's heal and stat-lower
+are NOT independent — confirmed via source
+(`CheckSpecificMoveCondition`/`SetStrengthSapHealing`,
+`battle_stat_change.c` L50-113) that if the target's Attack is already at
+-6, NEITHER the heal NOR the lower happens (the whole move fails with
+"Attack won't go any lower"), rather than healing unconditionally and
+merely failing the stat-lower half; the heal amount reads the target's
+CURRENT (stat-stage-adjusted) Attack, reusing
+`DamageCalculator._apply_stage` directly. Steel Beam and Chloroblast —
+despite the "same family" framing — diverge in a load-bearing way,
+exactly as Step 0 flagged to verify rather than assume symmetric: Steel
+Beam applies ceil(maxHP/2) self-recoil UNCONDITIONALLY (hit, miss, OR
+Protect-blocked), gated ONLY by Magic Guard, dispatched from THREE
+separate call sites (the Protect-block early return, the accuracy-miss
+early return, and the normal post-hit-resolution path) via a new shared
+`_apply_max_hp_50_recoil` helper — a genuinely different, UNCONDITIONAL
+shape from both this project's existing `crash_damage` (fires only on a
+FAILED hit) and `recoil_percent` (fires only on a CONNECTING hit)
+mechanisms; Chloroblast, despite sharing the identical ceil(maxHP/2)
+formula, is dispatched through the ORDINARY `EFFECT_RECOIL`-shaped path
+(requires a connecting hit, blocked by BOTH Rock Head and Magic Guard via
+the existing `AbilityManager.blocks_recoil`) — confirmed via source that
+it shares literally the same switch-case as ordinary recoil moves
+(`battle_move_resolution.c` L3370-3389), not Steel Beam's own
+`MoveEndAbsorb`-routed dispatch. Charge's `attacker.charged` flag, per
+the ACTUAL executable source (`TryClearChargeVolatile`,
+`battle_move_resolution.c` L4927-4939) at this project's
+`B_CHARGE=GEN_LATEST(>=GEN_9)` config, is consumed ONLY by using a
+genuinely LATER Electric-type move — the function's OWN inline comment
+claims "Charge status is lost regardless of the typing of the next
+move," which directly CONTRADICTS its own executable code; the comment
+is deliberately NOT trusted here, and a code comment at the implementation
+site explicitly preserves this finding so a future session doesn't "fix"
+it back to match the misleading comment. Laser Focus is a flat,
+UNCONDITIONAL 2-turn guaranteed-crit window (`B_LASER_FOCUS_TIMER=2`,
+decremented every end of turn regardless of whether the holder even
+attacks) — genuinely NOT "consumed by the next qualifying hit" the way
+Charge is; grants `CRITICAL_HIT_ALWAYS`, the SAME outright-guarantee tier
+this project's Merciless ability already uses
+(`DamageCalculator.calculate`'s own `merciless_guaranteed` pre-check,
+extended with a parallel `laser_focus_guaranteed` condition) — NOT the
+separate, dormant `MoveData.always_critical_hit` field (Storm
+Throw/Frost Breath/Zippy Zap), which was found during this session to be
+completely unconsumed anywhere in the codebase (those 3 moves are
+actually represented via `critical_hit_stage=3` instead) — flagged as a
+pre-existing, unrelated gap, not fixed here. Topsy-Turvy inverts the SIGN
+of every nonzero stat stage (`new = -old`, cleanly symmetric at both
++6/-6 caps — `BS_InvertStatStages`, `battle_script_commands.c`
+L13064-13074), NOT a reset-to-0 like Haze/Clear Smog; fails only if ALL 7
+stats (including Accuracy/Evasion) are simultaneously at stage 0,
+confirmed via the exact check order in
+`BattleScript_EffectTopsyTurvy` (succeeds if even one is non-neutral).
+Autotomize is SCOPE-LIMITED per Rob's explicit instruction: only the +2
+Speed self-raise ships this bundle (a pure reuse of the generic
+`stat_change_stat`/`amount`/`self` dispatch, confirmed via source that
+Autotomize shares the literal same `BattleScript_EffectStatChange`
+generic script Charge/Strength Sap also use — zero new code needed for
+this half); the weight-reduction half (a stacking `autotomizeCount`
+counter, -100kg per use down to a 0.1kg floor) is DELIBERATELY NOT BUILT
+— this project's Low Kick/Grass Knot/Heavy Slam/Heat Crash formulas
+(`BattleManager._low_kick_power`/`_heat_crash_power`) read
+`species.weight` directly off the static species Resource, and there is
+no mutable per-instance weight field on `BattlePokemon` at all; adding
+one would mean editing those two already-shipped, already-tested
+formulas' call sites, out of scope for this bundle. Fury Cutter's power
+escalates per consecutive successful use (base 40 at this project's
+`B_UPDATED_MOVE_DATA>=GEN_6` config, doubling per use, clamped at 160
+total), but a real, non-obvious nuance was confirmed at Step 0: the
+counter itself caps at 5, and source's own increment condition
+(`SetSameMoveTurnValues`, case `EFFECT_FURY_CUTTER`,
+`battle_move_resolution.c` L4893-4897) is `if (increment && counter < 5)
+counter++; else counter = 0` — the counter does NOT plateau once
+capped; the very next SUCCESSFUL use after reaching 5 WRAPS back to 0
+(back to base power), confirmed via a dedicated 7-use full-battle test
+reading the counter at each `move_executed` (0,1,2,3,4,5,0 — the wrap
+happening after the 6th use, confirmed explicitly by observing the 7th
+use read 0 again rather than assuming it).
+
+A real, pre-existing PRODUCTION bug was found and fixed mid-session, not
+merely a test bug: Charge's own power-doubling consumption
+(`attacker.charged = false` on a later Electric-type move) was originally
+implemented as an unconditional per-action check positioned BEFORE the
+`if move.power > 0:` branch even splits — but `DamageCalculator.calculate`
+reads `attacker.charged` to decide the power double DURING that same
+later branch's own damage computation, meaning the flag would have been
+cleared before the very move that's supposed to consume it ever got to
+read it, silently robbing that move of its own boost. Caught by this
+bundle's own I.05 test (which initially read `atk3.charged` from the
+WRONG snapshot point too — see the test-authoring bugs below). Fixed by
+moving the clear to the shared post-dispatch tail (alongside the Steel
+Beam/Fury Cutter post-hit code), which runs only AFTER `_do_damaging_hit`
+has already consumed the flag for that action.
+
+New signals: `field_sport_set`(sport_name) for Mud Sport/Water Sport;
+`types_changed`(mon, new_types, reason) — a general-purpose replacement
+for the single-int `type_changed` signal's inability to carry a dual-type
+array, used by both Reflect Type (`"reflect_type"`) and Roost
+(`"roost"`/`"roost_restore"`); `charge_set`(mon); `laser_focus_set`(mon).
+New `BattlePokemon` fields: `roost_active`/`roost_pre_types`, `charged`,
+`laser_focus_turns`, `fury_cutter_counter` — all cleared in
+`_clear_volatiles` like every other switch-scoped volatile. New
+`BattleManager._mud_sport_turns`/`_water_sport_turns` (field-wide, not
+per-mon). New `BattleManager._set_mon_type_array`,
+`_apply_max_hp_50_recoil`, `_invert_stat_stages`, `_fury_cutter_power`
+(static). New `DamageCalculator._weather_ball_type` (static); `calculate`
+gained trailing `mud_sport_active`/`water_sport_active` bool params (both
+additive, no breaking changes) and a `laser_focus_guaranteed` pre-check
+alongside the existing `merciless_guaranteed` one.
+
+New `d4_bundle5_test.gd`/`.tscn`: 85/85 assertions, stable across 5
+reruns after fixing 8 real test-authoring bugs on the first run
+(75/85) — (1) a dual-type-mon construction bug: reassigning
+`mon.species.types` directly AFTER `_make_mon`/`from_species` construction
+does NOT stick, since every switch-in site calls `_reset_mon_type`, which
+restores `species.types` from `original_types` (captured ONCE at
+construction time, BEFORE the post-hoc reassignment) — fixed with a new
+`_make_dual_type_mon` helper building the dual-type species BEFORE
+`from_species` is called, so both fields agree from the start; (2) the
+Conversion/Protean/Multitype regression tests originally expected a
+length-1 mono-type result, not accounting for `_set_mon_type`'s own
+established `[TYPE_X, TYPE_NONE]` padding convention; (3) a fresh
+whole-battle-aggregation recurrence in the Steel-Beam-Magic-Guard and
+Chloroblast-Rock-Head tests — both moves have only 5 PP, so once
+exhausted the mon falls back to Struggle, whose OWN recoil is
+unconditional (not ability-gated, per this project's established
+`blocks_recoil` precedent) — a plain "did recoil ever fire" boolean
+incorrectly caught Struggle's later, unrelated recoil; fixed via a
+move-count guard scoping the check to strictly the first use; (4) the
+SAME whole-battle-aggregation shape in the Topsy-Turvy inversion tests —
+the mon's only move keeps re-inverting the same stages every turn once
+queued actions drain, making a post-battle stage read depend purely on
+whether an even or odd number of turns elapsed; fixed via a first-use
+signal-snapshot guard; (5) a speed-tie bug in the Strength Sap tests
+(both mons defaulted to the same base_spd=60, risking the defender's
+Tackle resolving first against the attacker's deliberately-low 1 HP and
+fainting it before it ever acted) — fixed by making the attacker
+strictly faster; (6) the Charge-persistence test (I.05) had the SAME
+"snapshot before the real update lands" ordering issue as the production
+bug above — `move_executed` fires inside `_do_damaging_hit`, before the
+post-dispatch clear runs — fixed by snapshotting at the NEXT
+`move_executed` event of any kind (the defender's own reply) rather than
+synchronously at the tested move's own event; (7) the Fury-Cutter
+different-move-reset test similarly read state post-battle instead of
+snapshotting right after the one relevant action, since the mon's
+moveset auto-repeats Fury Cutter from slot 0 once the single queued
+action drains.
+
+Regression: the required suites plus a full 109-file sweep (this
+session's changes touch `DamageCalculator.calculate`'s signature,
+`AbilityManager.effective_move_type`, and several shared
+`BattleManager` dispatch chokepoints), run twice from independent
+process states via `scripts/count_assertions.sh` — **11492 total
+assertions, 0 failures, identical GRAND TOTAL both runs**. Special
+attention paid to `m19_pre1_test.tscn` (the Low Kick/Grass Knot/Heavy
+Slam/Heat Crash/Return/Frustration suite) given Autotomize's own
+scope-limitation claim about not touching those formulas — confirmed
+unchanged at 48/48.
+
+**Total move-implementation count: 664→677.** Section D's residual:
+55→42. Reconciliation: 677 implemented + 42 D4 residual + 215 excluded =
+934, confirmed by direct addition.
+
 ### D5 — Recommended next steps out of Section D
 
 1. **`M19-blocked-on-other-tier4`'s unblock (D0, 4 moves: Leech
@@ -2570,14 +2791,14 @@ re-deriving this breakdown from scratch.
 
 | Bucket | Move count |
 |---|---|
-| Already implemented (excluded from this plan) — includes Heal Order/Dragon Darts (resolved conflicts); `M19-secondary-stat-on-hit` (79) shipped `[M19-secondary-stat-on-hit]` 2026-07-09; Bucket 3 in its entirety (30) shipped across `[Bucket 3 multi-stat]` + `[Bucket 3 clusters 1-2]`, both 2026-07-09; 7 of Bucket 4's single-move sub-groups shipped `[Bucket 4 cheapest singles]` 2026-07-09; `M19-rampage` (5) shipped `[M19-rampage]` 2026-07-09; `M19-recharge` (10) shipped `[M19-recharge]` 2026-07-09; `M19-break-protect` (4) shipped `[M19-break-protect]` 2026-07-09; `M19-recoil-on-miss` (4) shipped `[M19-recoil-on-miss]` 2026-07-09; `M19-weather-conditional-accuracy` (5) shipped `[M19-weather-conditional-accuracy]` 2026-07-09; 9 more 2-move sub-groups (19) shipped `[Bucket 4 2-move sub-groups]` 2026-07-09; `M19-steal-stats` (1) + `M19-ally-targeting-stat-change` (3) shipped `[M19-steal-stats]`/`[M19-ally-targeting-stat-change]` 2026-07-09; M19e (4) + M19f (5, incl. Spirit Shackle/`M19-trap-secondary`) shipped `[M19e]`/`[M19f]` 2026-07-09; M19c (7) + M19d (2) shipped `[M19c]`/`[M19d]` 2026-07-09; D0's 11 moves (Leech Seed/Haze/Aromatherapy/Heal Bell/Follow Me/Rage Powder/Soft-Boiled/Milk Drink/Sappy Seed/Freezy Frost/Sparkly Swirl) shipped `[D0]` 2026-07-09; D1's 4 moves (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09; D1 cheap clusters' 21 moves (Sandstorm/Rain Dance/Sunny Day/Hail/Snowscape, Eruption/Water Spout/Dragon Energy, Wring Out/Crush Grip/Hard Press, Thief/Covet, Mind Reader/Lock-On, Swagger/Flatter, Sucker Punch/Thunderclap, Stored Power/Power Trip) shipped `[D1 cheap clusters]` 2026-07-09; D2's on-hit hazard/screen family (6: Stone Axe/Ceaseless Edge/Ice Spinner/Mortal Spin/Tidy Up/Defog) + ability-manipulation family (4: Role Play/Skill Swap/Worry Seed/Heart Swap) shipped `[D2 batch]` 2026-07-09; D1's `EFFECT_FORESIGHT` cluster (2: Foresight/Odor Sleuth) + D2's offense-stat-source-override family (3: Foul Play/Body Press/Photon Geyser) + per-mon TypeChart-override family (2: Freeze-Dry/Tar Shot) shipped `[D2 batch 2]` 2026-07-10; D2's turn-order-manipulation family (4: After You/Quash/Upper Hand/Instruct) + "stat/event happened this turn" tracker family (4: Lash Out/Retaliate/Rage Fist/Echoed Voice) shipped `[D3 turn-order/event-tracker batch]` 2026-07-10; D2's delayed-effect family (6: Future Sight/Doom Desire/Wish/Yawn/Healing Wish/Lunar Dance) + D1's `EFFECT_PSYSHOCK` cluster (2: Psyshock/Psystrike) shipped in the Delayed-effect-family session 2026-07-10; D1's remaining 6 easy clusters (13: U-turn/Volt Switch/Flip Turn, Circle Throw/Dragon Tail, Fake Out/First Impression, Trick/Switcheroo, Revenge/Avalanche, Stomping Tantrum/Temper Flare) shipped in the D1 easy bundle session 2026-07-10; D1's LAST cluster (5: Smelling Salts/Venoshock/Hex/Barb Barrage/Infernal Parade, `EFFECT_DOUBLE_POWER_ON_ARG_STATUS`) shipped 2026-07-10, closing D1 entirely; D4 bundle (6: Struggle/Helping Hand/Sleep Talk/Taunt/Assurance/Magic Coat) shipped `[D4 bundle]` 2026-07-10; D4 CHEAP bundle (12: Dream Eater/Torment/Gyro Ball/Electro Ball/Snore/Endure/Fell Stinger/Magnet Rise/Smack Down/Ingrain/Aqua Ring/Payback) shipped `[D4 CHEAP bundle]` 2026-07-10; D4 bundle 3 (12: Splash/Refresh/Purify/Memento/Belly Drum/Fillet Away/Clangorous Soul/Nightmare/Spite/Recycle/Facade/Take Heart) shipped `[D4 bundle 3]` 2026-07-10; D4 Bundle 4 (12: Tailwind/Sticky Web/Safeguard/Mist/Copycat/Me First/Assist/Heal Pulse/Life Dew/Stockpile/Spit Up/Swallow) shipped `[D4 Bundle 4]` 2026-07-13 | 664 |
+| Already implemented (excluded from this plan) — includes Heal Order/Dragon Darts (resolved conflicts); `M19-secondary-stat-on-hit` (79) shipped `[M19-secondary-stat-on-hit]` 2026-07-09; Bucket 3 in its entirety (30) shipped across `[Bucket 3 multi-stat]` + `[Bucket 3 clusters 1-2]`, both 2026-07-09; 7 of Bucket 4's single-move sub-groups shipped `[Bucket 4 cheapest singles]` 2026-07-09; `M19-rampage` (5) shipped `[M19-rampage]` 2026-07-09; `M19-recharge` (10) shipped `[M19-recharge]` 2026-07-09; `M19-break-protect` (4) shipped `[M19-break-protect]` 2026-07-09; `M19-recoil-on-miss` (4) shipped `[M19-recoil-on-miss]` 2026-07-09; `M19-weather-conditional-accuracy` (5) shipped `[M19-weather-conditional-accuracy]` 2026-07-09; 9 more 2-move sub-groups (19) shipped `[Bucket 4 2-move sub-groups]` 2026-07-09; `M19-steal-stats` (1) + `M19-ally-targeting-stat-change` (3) shipped `[M19-steal-stats]`/`[M19-ally-targeting-stat-change]` 2026-07-09; M19e (4) + M19f (5, incl. Spirit Shackle/`M19-trap-secondary`) shipped `[M19e]`/`[M19f]` 2026-07-09; M19c (7) + M19d (2) shipped `[M19c]`/`[M19d]` 2026-07-09; D0's 11 moves (Leech Seed/Haze/Aromatherapy/Heal Bell/Follow Me/Rage Powder/Soft-Boiled/Milk Drink/Sappy Seed/Freezy Frost/Sparkly Swirl) shipped `[D0]` 2026-07-09; D1's 4 moves (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09; D1 cheap clusters' 21 moves (Sandstorm/Rain Dance/Sunny Day/Hail/Snowscape, Eruption/Water Spout/Dragon Energy, Wring Out/Crush Grip/Hard Press, Thief/Covet, Mind Reader/Lock-On, Swagger/Flatter, Sucker Punch/Thunderclap, Stored Power/Power Trip) shipped `[D1 cheap clusters]` 2026-07-09; D2's on-hit hazard/screen family (6: Stone Axe/Ceaseless Edge/Ice Spinner/Mortal Spin/Tidy Up/Defog) + ability-manipulation family (4: Role Play/Skill Swap/Worry Seed/Heart Swap) shipped `[D2 batch]` 2026-07-09; D1's `EFFECT_FORESIGHT` cluster (2: Foresight/Odor Sleuth) + D2's offense-stat-source-override family (3: Foul Play/Body Press/Photon Geyser) + per-mon TypeChart-override family (2: Freeze-Dry/Tar Shot) shipped `[D2 batch 2]` 2026-07-10; D2's turn-order-manipulation family (4: After You/Quash/Upper Hand/Instruct) + "stat/event happened this turn" tracker family (4: Lash Out/Retaliate/Rage Fist/Echoed Voice) shipped `[D3 turn-order/event-tracker batch]` 2026-07-10; D2's delayed-effect family (6: Future Sight/Doom Desire/Wish/Yawn/Healing Wish/Lunar Dance) + D1's `EFFECT_PSYSHOCK` cluster (2: Psyshock/Psystrike) shipped in the Delayed-effect-family session 2026-07-10; D1's remaining 6 easy clusters (13: U-turn/Volt Switch/Flip Turn, Circle Throw/Dragon Tail, Fake Out/First Impression, Trick/Switcheroo, Revenge/Avalanche, Stomping Tantrum/Temper Flare) shipped in the D1 easy bundle session 2026-07-10; D1's LAST cluster (5: Smelling Salts/Venoshock/Hex/Barb Barrage/Infernal Parade, `EFFECT_DOUBLE_POWER_ON_ARG_STATUS`) shipped 2026-07-10, closing D1 entirely; D4 bundle (6: Struggle/Helping Hand/Sleep Talk/Taunt/Assurance/Magic Coat) shipped `[D4 bundle]` 2026-07-10; D4 CHEAP bundle (12: Dream Eater/Torment/Gyro Ball/Electro Ball/Snore/Endure/Fell Stinger/Magnet Rise/Smack Down/Ingrain/Aqua Ring/Payback) shipped `[D4 CHEAP bundle]` 2026-07-10; D4 bundle 3 (12: Splash/Refresh/Purify/Memento/Belly Drum/Fillet Away/Clangorous Soul/Nightmare/Spite/Recycle/Facade/Take Heart) shipped `[D4 bundle 3]` 2026-07-10; D4 Bundle 4 (12: Tailwind/Sticky Web/Safeguard/Mist/Copycat/Me First/Assist/Heal Pulse/Life Dew/Stockpile/Spit Up/Swallow) shipped `[D4 Bundle 4]` 2026-07-13; D4 Bundle 5 (13: Mud Sport/Water Sport/Weather Ball/Reflect Type/Roost/Strength Sap/Steel Beam/Chloroblast/Charge/Laser Focus/Topsy-Turvy/Autotomize/Fury Cutter) shipped `[D4 Bundle 5]` 2026-07-14 | 677 |
 | Proposed sub-tiers (Section B: Bucket 4 is now fully closed — `M19-secret-power` PERMANENTLY EXCLUDED by Rob 2026-07-10, moved below; `M19-blocked-on-other-tier4` CLOSED by `[D0]`) | 0 |
 | Deferred (Section C3 — Population Bomb PERMANENTLY EXCLUDED by Rob 2026-07-10, moved below; C4 closed) | 0 |
 | Permanently excluded, confirmed by Rob (Section C1 Z-Move/Max-Move + Section C2 `[M19-exclusions]`, incl. Raging Bull + Psychic Noise addenda; + Secret Power(290)/`M19-secret-power` + Population Bomb(788), both confirmed excluded 2026-07-10) | 215 |
-| Tier 4 residual, mechanism-clustered (Section D, `[M19-section-d-cluster]` 2026-07-09) — D0's 8 moves shipped `[D0]` 2026-07-09; D1's 4 D4 singletons (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09; D1's 8 remaining CHEAP clusters (21 moves) shipped `[D1 cheap clusters]` 2026-07-09; D2's on-hit hazard/screen + ability-manipulation families (10 moves) shipped `[D2 batch]` 2026-07-09; D1's `EFFECT_FORESIGHT` cluster + D2's offense-stat-source-override and per-mon TypeChart-override families (7 moves) shipped `[D2 batch 2]` 2026-07-10; D2's turn-order-manipulation + "stat/event happened this turn" tracker families (8 moves) shipped `[D3 turn-order/event-tracker batch]` 2026-07-10; D2's delayed-effect family + D1's `EFFECT_PSYSHOCK` cluster (8 moves) shipped 2026-07-10; D1's remaining 6 easy clusters (13 moves) shipped 2026-07-10; D1's LAST cluster (5 moves, `EFFECT_DOUBLE_POWER_ON_ARG_STATUS`) shipped 2026-07-10; D4's own recon re-derivation (`[D4 bundle]` — 2 FREE/62 CHEAP/27 MODERATE/4 HARD/2 BLOCKED after the Nature Power correction) shipped 6 of the pool's moves 2026-07-10; `[D4 CHEAP bundle]` shipped 12 more 2026-07-10 (Snore(173) surfaced as a genuine prose-completeness gap in this pool's own itemization — see that entry); `[D4 bundle 3]` shipped 12 more 2026-07-10; `[D4 Bundle 4]` shipped 12 more 2026-07-13 (side-condition timers/call-a-different-move family/target-heal variants/Stockpile family) | 55 |
+| Tier 4 residual, mechanism-clustered (Section D, `[M19-section-d-cluster]` 2026-07-09) — D0's 8 moves shipped `[D0]` 2026-07-09; D1's 4 D4 singletons (Solar Blade/Snipe Shot/Hidden Power/Hyperspace Fury) shipped `[D1]` 2026-07-09; D1's 8 remaining CHEAP clusters (21 moves) shipped `[D1 cheap clusters]` 2026-07-09; D2's on-hit hazard/screen + ability-manipulation families (10 moves) shipped `[D2 batch]` 2026-07-09; D1's `EFFECT_FORESIGHT` cluster + D2's offense-stat-source-override and per-mon TypeChart-override families (7 moves) shipped `[D2 batch 2]` 2026-07-10; D2's turn-order-manipulation + "stat/event happened this turn" tracker families (8 moves) shipped `[D3 turn-order/event-tracker batch]` 2026-07-10; D2's delayed-effect family + D1's `EFFECT_PSYSHOCK` cluster (8 moves) shipped 2026-07-10; D1's remaining 6 easy clusters (13 moves) shipped 2026-07-10; D1's LAST cluster (5 moves, `EFFECT_DOUBLE_POWER_ON_ARG_STATUS`) shipped 2026-07-10; D4's own recon re-derivation (`[D4 bundle]` — 2 FREE/62 CHEAP/27 MODERATE/4 HARD/2 BLOCKED after the Nature Power correction) shipped 6 of the pool's moves 2026-07-10; `[D4 CHEAP bundle]` shipped 12 more 2026-07-10 (Snore(173) surfaced as a genuine prose-completeness gap in this pool's own itemization — see that entry); `[D4 bundle 3]` shipped 12 more 2026-07-10; `[D4 Bundle 4]` shipped 12 more 2026-07-13 (side-condition timers/call-a-different-move family/target-heal variants/Stockpile family); `[D4 Bundle 5]` shipped 13 more 2026-07-14 (field-wide damage reducers/type-mutation family/heal-and-drain family/HP-cost-attached-to-damage family/persistent-flag family/stat-array manipulation/escalating power) | 42 |
 | **Total (matches the recon's 934-move catalog)** | **934** |
 
-664 + 0 + 0 + 215 + 55 = 934, confirmed by direct addition. Zero
+677 + 0 + 0 + 215 + 42 = 934, confirmed by direct addition. Zero
 outstanding discrepancy. **D1 and D2 are now both fully closed, and Bucket
 4/Section C3 are now both fully closed too** (Secret Power and Population
 Bomb both moved from pending/deferred into permanently excluded, per Rob's
@@ -2599,7 +2820,7 @@ the ONLY open scope left in all of M19.**
 | M19g — DISSOLVED, all 3 moves permanently excluded | 0 | — | — |
 | M19h — Weight-ratio dynamic power | **COMPLETE** (`[M19-pre1]`, confirmed `[M19-rescope-followup]`) | — | — |
 | M19i — Friendship-based dynamic power | **COMPLETE** (`[M19-pre1]`, confirmed `[M19-rescope-followup]`) | — | — |
-| Tier 4 sub-clustering pass | 55 (was 181 — D0/D1/D1-cheap-clusters/D2/D2-batch-2/D3/delayed-effect-family/D1-easy-bundle/D1's-last-cluster fully shipped, all sessions 2026-07-09/2026-07-10; D4's own recon re-derivation then shipped 42 of its 97 moves across `[D4 bundle]` (6) + `[D4 CHEAP bundle]` (12) + `[D4 bundle 3]` (12) + `[D4 Bundle 4]` (12)) | D1 and D2 are now FULLY CLOSED. Remaining: D4's singleton pool, 55 moves (FREE tier now fully exhausted — see D4's own tier breakdown for the current CHEAP/MODERATE/HARD/BLOCKED split) | D0/D1/D1-cheap-clusters/D2-batch-1+2/D3/delayed-effect-family/D1-easy-bundle/D1's-last-cluster are all CLOSED — D4's own remaining pool (55 moves) is the only open Section D scope; see D4's own "Newly-discovered clusters"/"Reclassified CHEAP"/MODERATE/HARD sections for candidate next picks |
+| Tier 4 sub-clustering pass | 42 (was 181 — D0/D1/D1-cheap-clusters/D2/D2-batch-2/D3/delayed-effect-family/D1-easy-bundle/D1's-last-cluster fully shipped, all sessions 2026-07-09/2026-07-10; D4's own recon re-derivation then shipped 55 of its 97 moves across `[D4 bundle]` (6) + `[D4 CHEAP bundle]` (12) + `[D4 bundle 3]` (12) + `[D4 Bundle 4]` (12) + `[D4 Bundle 5]` (13)) | D1 and D2 are now FULLY CLOSED. Remaining: D4's singleton pool, 42 moves (FREE tier now fully exhausted — see D4's own tier breakdown for the current CHEAP/MODERATE/HARD/BLOCKED split) | D0/D1/D1-cheap-clusters/D2-batch-1+2/D3/delayed-effect-family/D1-easy-bundle/D1's-last-cluster are all CLOSED — D4's own remaining pool (42 moves) is the only open Section D scope; see D4's own "Newly-discovered clusters"/"Reclassified CHEAP"/MODERATE/HARD sections for candidate next picks |
 
 **M19c-i is now FULLY CLOSED** — every sub-tier proposed in Section B (M19c
 through M19i) has shipped. **`[D0]` update (2026-07-09): Bucket 4's

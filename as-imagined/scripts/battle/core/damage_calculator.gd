@@ -131,7 +131,9 @@ static func calculate(
 		defender_ally: BattlePokemon = null,
 		ng_active: bool = false,
 		is_last_to_move: bool = false,
-		me_first: bool = false) -> Dictionary:
+		me_first: bool = false,
+		mud_sport_active: bool = false,
+		water_sport_active: bool = false) -> Dictionary:
 
 	# [D1] Hidden Power(237) — its own IV-derived type, computed BEFORE the
 	# ability-based mutation step below (source's SetTypeBeforeUsingMove computes
@@ -145,6 +147,19 @@ static func calculate(
 		var hp_move: MoveData = move.duplicate()
 		hp_move.type = _hidden_power_type(attacker)
 		move = hp_move
+
+	# [D4 Bundle 5] Weather Ball(311) — EFFECT_WEATHER_BALL: type mutates to
+	# Fire/Water/Rock/Ice depending on current weather (else stays Normal),
+	# computed in the SAME pre-processing pass as Hidden Power just above —
+	# source explicitly excludes EFFECT_WEATHER_BALL from Normalize/the "-ate"
+	# family (battle_main.c L6013-6017), matching Hidden Power's own
+	# established exclusion (see AbilityManager.effective_move_type's matching
+	# is_weather_ball check). The separate x2 power-doubling half is applied
+	# later, alongside Solar Beam's own weather-conditional power modifier.
+	if move.is_weather_ball:
+		var wb_move: MoveData = move.duplicate()
+		wb_move.type = _weather_ball_type(attacker, weather, ng_active)
+		move = wb_move
 
 	# [D2 batch 2] Photon Geyser(675) — EFFECT_PHOTON_GEYSER: category is
 	# DYNAMICALLY swapped based on the attacker's own stage-adjusted Atk vs
@@ -319,7 +334,20 @@ static func calculate(
 			AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_MERCILESS \
 			and (defender.status == BattlePokemon.STATUS_POISON \
 					or defender.status == BattlePokemon.STATUS_TOXIC)
-	var is_crit: bool = true if merciless_guaranteed else \
+	# [D4 Bundle 5] Laser Focus(636) — grants CRITICAL_HIT_ALWAYS for as long
+	# as `laser_focus_turns > 0` (an unconditional 2-turn window, decremented
+	# by BattleManager regardless of whether the holder attacks — see
+	# BattlePokemon.laser_focus_turns's own doc comment), the SAME
+	# unconditional-override branch Merciless uses just above (battle_util.c
+	# L7828/L7906), checked BEFORE the normal stage-sum path exactly like
+	# Merciless. NOTE: this project's separate `MoveData.always_critical_hit`
+	# field (Storm Throw/Frost Breath/Zippy Zap) is a pre-existing, unrelated
+	# dormant field — those moves are actually represented via
+	# `critical_hit_stage=3` instead (stage 3+ = always, per this file's own
+	# header doc) — confirmed while building this feature, flagged in
+	# docs/decisions.md, NOT fixed here (out of scope for this bundle).
+	var laser_focus_guaranteed: bool = attacker.laser_focus_turns > 0
+	var is_crit: bool = true if (merciless_guaranteed or laser_focus_guaranteed) else \
 			(_roll_crit(move.critical_hit_stage, attacker.focus_energy, super_luck_bonus, \
 					item_crit_bonus) \
 					if force_crit == null else bool(force_crit))
@@ -496,6 +524,40 @@ static func calculate(
 			solar_weather = WEATHER_NONE
 		if solar_weather in [WEATHER_RAIN, WEATHER_SANDSTORM, WEATHER_HAIL]:
 			effective_power = _uq412_half_down(effective_power, 2048)  # UQ_4_12(0.5)
+
+	# [D4 Bundle 5] Weather Ball(311) — the separate x2 power-doubling half
+	# (type mutation already happened earlier in this function, alongside
+	# Hidden Power's own pre-processing pass). Source:
+	# CalcMoveBasePowerAfterModifiers :: EFFECT_WEATHER_BALL (battle_util.c
+	# L6175-6177): doubles in ANY weather except Strong Winds. Utility
+	# Umbrella strips Sun/Rain specifically (never Sandstorm/Hail/Strong
+	# Winds), the same asymmetric-strip precedent as Solar Beam just above.
+	if move.is_weather_ball:
+		var wb_weather: int = weather
+		if wb_weather in [WEATHER_SUN, WEATHER_RAIN] \
+				and ItemManager.blocks_weather_modifier(attacker, ng_active):
+			wb_weather = WEATHER_NONE
+		if wb_weather != WEATHER_NONE and wb_weather != WEATHER_STRONG_WINDS:
+			effective_power = _uq412_half_down(effective_power, 8192)  # UQ_4_12(2.0)
+
+	# [D4 Bundle 5] Charge(268) — doubles the power of the attacker's next
+	# Electric-type move (`attacker.charged`, consumed by BattleManager
+	# immediately after this call resolves — see BattlePokemon.charged's own
+	# doc comment for the source-verified consumption timing). Source:
+	# battle_util.c L6441-6442: `if (moveType == TYPE_ELECTRIC &&
+	# volatiles.chargeTimer > 0) modifier *= UQ_4_12(2.0)`.
+	if attacker.charged and move.type == TypeChart.TYPE_ELECTRIC:
+		effective_power = _uq412_half_down(effective_power, 8192)  # UQ_4_12(2.0)
+
+	# [D4 Bundle 5] Mud Sport/Water Sport — x0.33 (this project's
+	# B_SPORT_DMG_REDUCTION>=GEN_5 config; 0.5 is the pre-Gen-5 value) against
+	# Electric/Fire-type moves respectively, checked against the FINAL
+	# (possibly weather-ball/type-mutated) move type. Source: battle_util.c
+	# L6453-6456.
+	if move.type == TypeChart.TYPE_ELECTRIC and mud_sport_active:
+		effective_power = _uq412_half_down(effective_power, 1352)  # UQ_4_12(0.33), rounded per fpmath.h's UQ_4_12 macro (n*4096+0.5)
+	if move.type == TypeChart.TYPE_FIRE and water_sport_active:
+		effective_power = _uq412_half_down(effective_power, 1352)  # UQ_4_12(0.33), rounded per fpmath.h's UQ_4_12 macro (n*4096+0.5)
 
 	var dmg: int = effective_power * atk * (2 * attacker.level / 5 + 2) / def / 50 + 2
 
@@ -802,3 +864,27 @@ static func _hidden_power_type(attacker: BattlePokemon) -> int:
 			| ((ivs[BattlePokemon.STAT_SPDEF] & 1) << 5)
 	var index: int = (HP_TYPES.size() - 1) * type_bits / 63
 	return HP_TYPES[index]
+
+
+# [D4 Bundle 5] Weather Ball(311) type lookup. Source: battle_main.c
+# L5812-5833 — Sun->Fire, Rain->Water, Sandstorm->Rock, Hail/Snow->Ice, else
+# Normal. Utility Umbrella strips Sun/Rain specifically (never Sandstorm/
+# Hail) — the exact same asymmetric-strip precedent Solar Beam/[M19e]'s
+# weather-heal formula already established; `weather` here is already
+# Air-Lock/Cloud-Nine-filtered by the caller (passes `_effective_weather()`).
+static func _weather_ball_type(attacker: BattlePokemon, weather: int, ng_active: bool) -> int:
+	var w: int = weather
+	if (w == WEATHER_SUN or w == WEATHER_RAIN) \
+			and ItemManager.blocks_weather_modifier(attacker, ng_active):
+		w = WEATHER_NONE
+	match w:
+		WEATHER_SUN:
+			return TypeChart.TYPE_FIRE
+		WEATHER_RAIN:
+			return TypeChart.TYPE_WATER
+		WEATHER_SANDSTORM:
+			return TypeChart.TYPE_ROCK
+		WEATHER_HAIL:
+			return TypeChart.TYPE_ICE
+		_:
+			return TypeChart.TYPE_NORMAL

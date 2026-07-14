@@ -175,6 +175,11 @@ signal side_condition_expired(side: int, condition_name: String)  # [D4 Bundle 4
 signal stockpile_gained(mon: BattlePokemon, count: int)  # [D4 Bundle 4] Stockpile stacked (new count)
 signal stockpile_released(mon: BattlePokemon, count: int)  # [D4 Bundle 4] Spit Up/Swallow consumed all stacks (count released)
 
+signal field_sport_set(sport_name: String)  # [D4 Bundle 5] Mud Sport/Water Sport went up ("mud_sport"/"water_sport")
+signal types_changed(mon: BattlePokemon, new_types: Array, reason: String)  # [D4 Bundle 5] Reflect Type ("reflect_type") / Roost's one-turn removal ("roost") / Roost's end-of-turn restore ("roost_restore")
+signal charge_set(mon: BattlePokemon)  # [D4 Bundle 5] Charge set the user's charged flag
+signal laser_focus_set(mon: BattlePokemon)  # [D4 Bundle 5] Laser Focus set the user's 2-turn guaranteed-crit window
+
 
 const MAX_PHASES_PER_ADVANCE: int = 4096
 
@@ -442,6 +447,18 @@ var _retaliate_timer: Array[int] = [0, 0]
 # ->incrementEchoedVoice.
 var _echoed_voice_counter: int = 0
 var _echoed_voice_used_this_turn: bool = false
+
+# [D4 Bundle 5] Mud Sport(300)/Water Sport(346) — FIELD-WIDE (not per-side,
+# not per-mon) 5-turn timers, mirroring `_echoed_voice_counter`'s own
+# battle-wide (not `_side_conditions`-indexed) shape. Confirmed via source
+# (moves_info.h MOVE_MUD_SPORT/MOVE_WATER_SPORT: .target = TARGET_FIELD)
+# this is genuinely field-wide, not per-side like Tailwind/Safeguard/Mist.
+# Source: Cmd_settypebasedhalvers (battle_script_commands.c L9463-9500),
+# gFieldTimers.mudSportTimer/waterSportTimer = 5 (B_SPORT_TURNS >= GEN_6,
+# this project's config); HandleEndTurnMudSport/HandleEndTurnWaterSport
+# (battle_end_turn.c L1184-1198).
+var _mud_sport_turns: int = 0
+var _water_sport_turns: int = 0
 
 # [Delayed-effect family] Future Sight/Doom Desire — keyed by the TARGET's
 # combatant index (matching source's own per-slot gBattleStruct->futureSight
@@ -1539,6 +1556,10 @@ func _phase_move_execution() -> void:
 		# reasons that trigger crash damage (see crashes_on_miss's doc comment).
 		if move.crashes_on_miss:
 			_apply_crash_damage(attacker, ng_active)
+		# [D4 Bundle 5] Steel Beam — unconditional self-recoil fires even when
+		# blocked by Protect (see MoveData.is_steel_beam's own doc comment).
+		if move.is_steel_beam:
+			_apply_max_hp_50_recoil(attacker, ng_active)
 		# [M19c] Spiky Shield/Baneful Bunker/Burning Bulwark/Obstruct/Silk
 		# Trap's own contact-punish retaliation — fires only when the BLOCKED
 		# move actually made contact (see the helper's own doc comment).
@@ -1865,6 +1886,15 @@ func _phase_move_execution() -> void:
 		attacker.rollout_base_power = _rb_power
 		_dmg_power_override = _rb_power
 
+	# ── Fury Cutter: power scales with the consecutive-use counter ───────────
+	# Source: CalcFuryCutterBasePower (battle_util.c L6046-6051) — see
+	# MoveData.is_fury_cutter's own doc comment for the full citation.
+	# Counter read BEFORE this hit's own increment/reset (applied further
+	# down, after the hit resolves), matching source's own read-then-write
+	# ordering exactly.
+	if move.is_fury_cutter:
+		_dmg_power_override = _fury_cutter_power(attacker.fury_cutter_counter)
+
 	# ── Magnitude: roll variable base power once per use ──────────────────────
 	# Source: battle_move_resolution.c :: CalculateMagnitudeDamage (L5196-5234) — weighted
 	#   table {10,30,50,70,90,110,150} with bands {5,10,20,30,20,10,5}% respectively.
@@ -2144,6 +2174,13 @@ func _phase_move_execution() -> void:
 		#   IsAnyTargetAffected() — a miss resets the consecutive-hit counter to 0.
 		if move.is_rollout:
 			attacker.rollout_turns = 0
+		# [D4 Bundle 5] Fury Cutter — same reset-on-miss shape as Rollout above.
+		if move.is_fury_cutter:
+			attacker.fury_cutter_counter = 0
+		# [D4 Bundle 5] Steel Beam — unconditional self-recoil fires even on a
+		# missed hit (see MoveData.is_steel_beam's own doc comment).
+		if move.is_steel_beam:
+			_apply_max_hp_50_recoil(attacker, ng_active)
 		# [M19-rampage] A miss does NOT cancel a CONTINUING rampage/Uproar lock —
 		# the counter still decrements and (rampage only) still self-confuses on
 		# schedule regardless of whether this turn's hit connected. A first-use
@@ -2506,6 +2543,11 @@ func _phase_move_execution() -> void:
 	if not move.is_rollout:
 		attacker.rollout_turns = 0
 
+	# [D4 Bundle 5] Fury Cutter — same "used a different move" reset shape as
+	# Rollout above (source's own `default:` case resets both counters).
+	if not move.is_fury_cutter:
+		attacker.fury_cutter_counter = 0
+
 	# Track the last move used by this Pokémon (for Disable / Encore targeting).
 	# Source: gLastMoves[] is set after each successful move execution.
 	attacker.last_move_used = move
@@ -2734,6 +2776,38 @@ func _phase_move_execution() -> void:
 		# MoveData.is_hit_escape's own doc comment for full source citations.
 		var he_connected: bool = he_single_dmg > 0 \
 				or (he_sub_before > 0 and defender.substitute_hp < he_sub_before)
+
+		# [D4 Bundle 5] Fury Cutter — increment-or-wrap the consecutive-hit
+		# counter. Source: SetSameMoveTurnValues, case EFFECT_FURY_CUTTER
+		# (battle_move_resolution.c L4893-4897) — see MoveData.is_fury_cutter's
+		# own doc comment for the full citation, including the confirmed
+		# wrap-to-0 (not plateau) behavior once the counter reaches 5.
+		if move.is_fury_cutter:
+			if he_connected and attacker.fury_cutter_counter < 5:
+				attacker.fury_cutter_counter += 1
+			else:
+				attacker.fury_cutter_counter = 0
+
+		# [D4 Bundle 5] Steel Beam — unconditional self-recoil, same amount
+		# and gate regardless of whether this hit connected (see
+		# MoveData.is_steel_beam's own doc comment).
+		if move.is_steel_beam:
+			_apply_max_hp_50_recoil(attacker, ng_active)
+
+		# [D4 Bundle 5] Charge — consumed the instant a genuinely LATER
+		# Electric-type move is used, AFTER that move's own damage has
+		# already been computed (DamageCalculator.calculate reads
+		# `attacker.charged` during `_do_damaging_hit` above — clearing it
+		# any earlier would rob the very move that's supposed to consume
+		# it of its own boost). See BattlePokemon.charged's own doc comment
+		# for the source-verified consumption timing. A disclosed
+		# simplification: checks the move's own declared type, not any
+		# ability-mutated effective type (Galvanize/Normalize's mutation is
+		# computed only inside DamageCalculator.calculate, not threaded
+		# back out to this point).
+		if attacker.charged and move.type == TypeChart.TYPE_ELECTRIC:
+			attacker.charged = false
+
 		if move.is_hit_escape and he_connected and attacker.current_hp > 0:
 			var he_slot: int = _get_replacement_slot(attacker_idx)
 			if he_slot >= 0:
@@ -3304,6 +3378,102 @@ func _phase_move_execution() -> void:
 			if try_set_weather(move.weather_type, attacker, false):
 				weather_set.emit(attacker, move.weather_type)
 				_notify_weather_changed()
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Mud Sport / Water Sport ──────────────────────────────────────────
+		# Source: Cmd_settypebasedhalvers (battle_script_commands.c
+		# L9463-9500) — FIELD-WIDE (not per-side) 5-turn timers; see
+		# MoveData.is_mud_sport/is_water_sport's own doc comment for the full
+		# citation, including the x0.33 (not x0.5) reduction correction.
+		# Fails outright (no refresh) if already active.
+		if move.is_mud_sport:
+			if _mud_sport_turns > 0:
+				move_effect_failed.emit(attacker, "mud_sport_failed")
+			else:
+				_mud_sport_turns = 5
+				field_sport_set.emit("mud_sport")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		if move.is_water_sport:
+			if _water_sport_turns > 0:
+				move_effect_failed.emit(attacker, "water_sport_failed")
+			else:
+				_water_sport_turns = 5
+				field_sport_set.emit("water_sport")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Charge ────────────────────────────────────────────────────────────
+		# Source: EFFECT_CHARGE (battle_move_resolution.c L4728-4739), shares
+		# BattleScript_EffectStatChange with Autotomize/Strength Sap — the
+		# Sp. Def+1 self-raise is handled by the generic `stat_change_stat`
+		# dispatch further below; this block ONLY sets the persistent
+		# power-doubling flag (`attacker.charged`), consumed inside
+		# DamageCalculator.calculate and cleared by BattleManager immediately
+		# after the next Electric-type move resolves (see
+		# BattlePokemon.charged's own doc comment for the source-verified
+		# consumption timing, including the deliberately-preserved
+		# comment-vs-code divergence).
+		if move.is_charge:
+			attacker.charged = true
+			charge_set.emit(attacker)
+
+		# ── Laser Focus ───────────────────────────────────────────────────────
+		# Source: trysetvolatile VOLATILE_LASER_FOCUS (battle_script_commands.c
+		# L9271-9280) — fails if already active (BattleScript_ButItFailed via
+		# `trysetvolatile`'s own already-set gate). See
+		# MoveData.is_laser_focus's own doc comment for the full citation.
+		if move.is_laser_focus:
+			if attacker.laser_focus_turns > 0:
+				move_effect_failed.emit(attacker, "laser_focus_failed")
+			else:
+				attacker.laser_focus_turns = 2
+				laser_focus_set.emit(attacker)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Roost ─────────────────────────────────────────────────────────────
+		# Source: BattleScript_EffectRoost (data/battle_scripts_1.s
+		# L1410-1414) — heals 50% max HP (fails outright if already full,
+		# same shape as is_restore_hp) AND removes the Flying type for
+		# exactly the rest of this turn. See MoveData.is_roost's own doc
+		# comment for the full citation, including the mutate-and-restore
+		# design (this project has no query-time type-overlay
+		# infrastructure) and the confirmed mono-Flying->Normal (not
+		# typeless) case at this project's config.
+		if move.is_roost:
+			if attacker.current_hp >= attacker.max_hp:
+				move_effect_failed.emit(attacker, "already_full_hp")
+			else:
+				var roost_heal: int = max(1, attacker.max_hp / 2)
+				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + roost_heal)
+				drain_heal.emit(attacker, roost_heal)
+			var roost_types: Array = attacker.species.types.duplicate()
+			if TypeChart.TYPE_FLYING in roost_types:
+				attacker.roost_pre_types = roost_types.duplicate()
+				attacker.roost_active = true
+				var roost_flying_count: int = 0
+				for _rt in roost_types:
+					if _rt == TypeChart.TYPE_FLYING:
+						roost_flying_count += 1
+				# [D4 Bundle 5] B_ROOST_PURE_FLYING=GEN_LATEST at this
+				# project's config — a mono-Flying user becomes pure
+				# NORMAL-type for the turn, NOT typeless.
+				var roost_new_types: Array = [TypeChart.TYPE_NORMAL] \
+						if roost_flying_count == roost_types.size() \
+						else roost_types.filter(func(_t): return _t != TypeChart.TYPE_FLYING)
+				_set_mon_type_array(attacker, roost_new_types)
+				types_changed.emit(attacker, roost_new_types, "roost")
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -3954,9 +4124,14 @@ func _phase_move_execution() -> void:
 		# this project's own chart is immune to Dark-type moves — so it's
 		# deliberately left off this list rather than added for no
 		# behavioral effect.)
+		# [D4 Bundle 5] Reflect Type(513) — confirmed via direct source read
+		# (BattleScript_EffectReflectType, data/battle_scripts_1.s L991-999)
+		# that this move's own script never calls `typecalc` either — same
+		# exemption shape as Foresight/Purify/Nightmare/Spite just below.
 		if foe_targeting and move.type != TypeChart.TYPE_NONE \
 				and not corrosion_bypasses_type_gate and not move.is_foresight \
-				and not move.is_purify and not move.is_nightmare and not move.is_spite:
+				and not move.is_purify and not move.is_nightmare and not move.is_spite \
+				and not move.is_reflect_type:
 			var eff: float = TypeChart.get_effectiveness(move.type, defender.species.types)
 			if eff == 0.0:
 				move_missed.emit(attacker, "immune")
@@ -3969,6 +4144,69 @@ func _phase_move_execution() -> void:
 		# execution-time canceler positioned alongside the type-immunity check above.
 		if foe_targeting and AbilityManager.blocks_prankster_move(attacker, defender, move, ng_active):
 			move_effect_failed.emit(defender, "prankster_dark_immune")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Reflect Type ──────────────────────────────────────────────────────
+		# Source: BS_TryReflectType (battle_script_commands.c L11488-11531) —
+		# see MoveData.is_reflect_type's own doc comment for the full
+		# citation, including the ability-keyed (not species-keyed)
+		# Multitype exclusion and the new `_set_mon_type_array` sibling
+		# function. `ignores_substitute=true` in this move's own data
+		# already exempted it from the Substitute check above.
+		if move.is_reflect_type:
+			if AbilityManager.effective_ability_id(defender, ng_active, attacker) \
+					== AbilityManager.ABILITY_MULTITYPE:
+				move_effect_failed.emit(attacker, "reflect_type_failed")
+			else:
+				var rt_types: Array = defender.species.types.duplicate()
+				_set_mon_type_array(attacker, rt_types)
+				types_changed.emit(attacker, rt_types, "reflect_type")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Strength Sap ──────────────────────────────────────────────────────
+		# Source: CheckSpecificMoveCondition/SetStrengthSapHealing
+		# (battle_stat_change.c L50-113) — see MoveData.is_strength_sap's own
+		# doc comment for the full citation, including the confirmed
+		# heal-gated-on-the-lower-succeeding fork (NOT independent — if the
+		# TARGET's Attack is already at -6, NEITHER the heal NOR the lower
+		# happens). Falls through the shared foe_targeting/Magic-Bounce/
+		# Substitute/type-immunity gates above like any ordinary
+		# foe-targeting status move (no ignores_substitute flag; no
+		# type-immunity exemption needed — Grass has no blanket type-chart
+		# immunity).
+		if move.is_strength_sap:
+			if defender.stat_stages[BattlePokemon.STAGE_ATK] <= -6:
+				move_effect_failed.emit(defender, "stat_wont_change")
+			else:
+				var ss_eff_atk: int = DamageCalculator._apply_stage(
+						defender.attack, defender.stat_stages[BattlePokemon.STAGE_ATK])
+				if attacker.current_hp < attacker.max_hp:
+					attacker.current_hp = min(attacker.max_hp, attacker.current_hp + ss_eff_atk)
+					drain_heal.emit(attacker, ss_eff_atk)
+				_apply_one_stat_change_pair(attacker, defender, move,
+						BattlePokemon.STAGE_ATK, -1, ng_active)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Topsy-Turvy ───────────────────────────────────────────────────────
+		# Source: BattleScript_EffectTopsyTurvy (data/battle_scripts_1.s
+		# L1025-1040) / BS_InvertStatStages (battle_script_commands.c
+		# L13064-13074) — see MoveData.is_topsy_turvy's own doc comment for
+		# the full citation. Falls through the shared foe_targeting/
+		# Magic-Bounce/Substitute gates above (no ignores_substitute flag;
+		# no type-immunity concern — Dark has no blanket type-chart
+		# immunity, matching the Memento precedent).
+		if move.is_topsy_turvy:
+			if not _invert_stat_stages(defender):
+				move_effect_failed.emit(defender, "topsy_turvy_failed")
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -4452,6 +4690,15 @@ func _phase_end_of_turn() -> void:
 			weather_expired.emit(expired_w)
 			_notify_weather_changed()
 
+	# ── [D4 Bundle 5] Mud Sport / Water Sport — FIELD-WIDE 5-turn countdown ──
+	# Source: HandleEndTurnMudSport/HandleEndTurnWaterSport (battle_end_turn.c
+	# L1184-1198) — see the `_mud_sport_turns`/`_water_sport_turns` fields'
+	# own doc comment for the full citation.
+	if _mud_sport_turns > 0:
+		_mud_sport_turns -= 1
+	if _water_sport_turns > 0:
+		_water_sport_turns -= 1
+
 	# ── M11: Weather chip damage (ENDTURN_WEATHER_DAMAGE, position 3) ────────────────────
 	# Source: HandleEndTurnWeatherDamage (battle_end_turn.c L100–186).
 	# Fires BEFORE poison/burn (ENDTURN_POISON=12, ENDTURN_BURN=13 in handler table).
@@ -4557,6 +4804,24 @@ func _phase_end_of_turn() -> void:
 	for mon: BattlePokemon in _turn_order:
 		if mon.magnet_rise_turns > 0:
 			mon.magnet_rise_turns -= 1
+
+	# ── [D4 Bundle 5] Roost — restore the pre-mutation type snapshot at the
+	# END of the SAME turn it was used (HandleEndTurnRoost, battle_end_turn.c
+	# L1005-1013) — see BattlePokemon.roost_active's own doc comment for the
+	# full mutate-and-restore design rationale.
+	for mon: BattlePokemon in _turn_order:
+		if mon.roost_active:
+			_set_mon_type_array(mon, mon.roost_pre_types)
+			types_changed.emit(mon, mon.roost_pre_types, "roost_restore")
+			mon.roost_active = false
+			mon.roost_pre_types = []
+
+	# ── [D4 Bundle 5] Laser Focus — flat, UNCONDITIONAL 2-turn countdown,
+	# decremented regardless of whether the holder even attacked this turn.
+	# Source: battle_end_turn.c L74-75.
+	for mon: BattlePokemon in _turn_order:
+		if mon.laser_focus_turns > 0:
+			mon.laser_focus_turns -= 1
 
 	# ── Status damage (ENDTURN_POISON=12, ENDTURN_BURN=13 in source handler table) ────────
 	# Apply end-of-turn status damage in speed order (matching source ENDTURN_POISON
@@ -5131,6 +5396,31 @@ func _reset_stat_stages(mon: BattlePokemon) -> void:
 			stat_stage_changed.emit(mon, i, delta)
 
 
+# [D4 Bundle 5] Topsy-Turvy(576) — inverts the SIGN of every one of mon's
+# current stat stages (`new = -old`, cleanly symmetric at both +6/-6 caps —
+# BS_InvertStatStages, battle_script_commands.c L13064-13074). Returns
+# whether ANY stat was actually inverted, matching source's own fail
+# condition exactly: fails ONLY if all 7 stats (this project's own 7-entry
+# stat_stages array — Atk/Def/SpAtk/SpDef/Speed/Accuracy/Evasion) are
+# already at stage 0 (BattleScript_EffectTopsyTurvy, data/
+# battle_scripts_1.s L1025-1040 — succeeds if even ONE is non-neutral).
+func _invert_stat_stages(mon: BattlePokemon) -> bool:
+	var any_nonzero: bool = false
+	for i in range(mon.stat_stages.size()):
+		if mon.stat_stages[i] != 0:
+			any_nonzero = true
+			break
+	if not any_nonzero:
+		return false
+	for i in range(mon.stat_stages.size()):
+		if mon.stat_stages[i] != 0:
+			var new_stage: int = -mon.stat_stages[i]
+			var delta: int = new_stage - mon.stat_stages[i]
+			mon.stat_stages[i] = new_stage
+			stat_stage_changed.emit(mon, i, delta)
+	return true
+
+
 # [D2 batch] Clears EVERY hazard type on one side at once (Spikes/Toxic
 # Spikes/Stealth Rock) — used by Defog/Tidy Up, both of which clear
 # everything clearable in a single move use, unlike Rapid Spin/Mortal Spin's
@@ -5701,6 +5991,15 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	# comment (persists across switches, matching last_consumed_berry's
 	# established precedent).
 	mon.nightmare_active = false
+	# [D4 Bundle 5] Roost/Charge/Laser Focus/Fury Cutter — all four live in
+	# source's same bulk-memset `volatiles` struct, cleared here like every
+	# other switch-scoped field above. None need a reciprocal cross-battler
+	# scan (all self-contained per-mon state).
+	mon.roost_active = false
+	mon.roost_pre_types = []
+	mon.charged = false
+	mon.laser_focus_turns = 0
+	mon.fury_cutter_counter = 0
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
@@ -5966,6 +6265,23 @@ func _set_mon_type(mon: BattlePokemon, new_type: int) -> void:
 	mon.species.types[1] = TypeChart.TYPE_NONE
 
 
+# [D4 Bundle 5] A NEW sibling to `_set_mon_type` above, rather than a
+# signature change to it — Reflect Type(513) needs to copy a TARGET's full
+# (possibly dual-type) type array onto the user, which `_set_mon_type`'s
+# single-int signature can't represent (it always forces a mono-type
+# result). Adding a separate function guarantees zero risk to any of
+# `_set_mon_type`'s existing callers (Conversion/Conversion 2/Protean/
+# Libero/Multitype/Forecast) — none of them are touched by this change at
+# all. `new_types` may be length 1 or 2; `species.types` is resized to
+# match exactly (unlike `_set_mon_type`, which always pads to length 2 with
+# a TYPE_NONE filler — that established behavior for the single-type
+# callers above is deliberately left untouched).
+func _set_mon_type_array(mon: BattlePokemon, new_types: Array) -> void:
+	mon.species.types.resize(new_types.size())
+	for _ti in range(new_types.size()):
+		mon.species.types[_ti] = new_types[_ti]
+
+
 # Follow-up fixes session, 2026-07-02: restores this Pokémon's natural species types on
 # every switch-in, undoing any Conversion/Conversion 2 mutation from its last time on the
 # field. Source: CopyMonAbilityAndTypesToBattleMon (battle_util.c L9365-9379) and
@@ -6130,6 +6446,27 @@ func _apply_crash_damage(attacker: BattlePokemon, ng_active: bool) -> void:
 		crash_damage.emit(attacker, crash)
 
 
+# [D4 Bundle 5] Steel Beam(724) — EFFECT_MAX_HP_50_RECOIL. UNCONDITIONALLY
+# applies ceil(maxHP/2) self-damage once the move is attempted, regardless
+# of whether the hit connected, missed, or was Protect-blocked — gated only
+# by Magic Guard (Rock Head is never checked). A deliberately NEW, separate
+# helper from `_apply_crash_damage` just above — that one only fires on a
+# FAILED hit and floors its fraction (attacker.max_hp/2); this one fires
+# ALWAYS (called from the Protect-block/accuracy-miss early-return paths
+# AND after a normal connecting hit) and rounds UP, matching source's own
+# `(GetNonDynamaxMaxHP(atk)+1)/2` exactly (MoveEndAbsorb, battle_move_
+# resolution.c L2642-2653). Guards `attacker.current_hp > 0` since a prior
+# recoil/contact-punish could have already fainted the attacker earlier in
+# this same resolution (the current_hp-vs-.fainted timing convention).
+func _apply_max_hp_50_recoil(attacker: BattlePokemon, ng_active: bool) -> void:
+	if attacker.current_hp <= 0 or AbilityManager.blocks_indirect_damage(attacker, ng_active):
+		return
+	var recoil: int = (attacker.max_hp + 1) / 2
+	if recoil > 0:
+		attacker.current_hp = max(0, attacker.current_hp - recoil)
+		recoil_damage.emit(attacker, recoil)
+
+
 # Magnitude's weighted base-power roll.
 # Source: battle_move_resolution.c :: CalculateMagnitudeDamage (L5196-5234):
 #   magnitude = RandomUniform(0, 99); weighted bands →
@@ -6153,6 +6490,20 @@ func _roll_magnitude_power() -> int:
 		return 110
 	else:
 		return 150
+
+
+# [D4 Bundle 5] Fury Cutter(210) power lookup — base 40 (this project's
+# B_UPDATED_MOVE_DATA>=GEN_6 config), doubled once per current counter
+# value, clamped at 160 total. `counter` is the value BEFORE this use's own
+# increment (read fresh each use, matching source's own
+# CalcFuryCutterBasePower, battle_util.c L6046-6051, which reads
+# `volatiles.furyCutterCounter` at damage-calc time, before
+# SetSameMoveTurnValues' own later increment/wrap runs at MoveEnd).
+static func _fury_cutter_power(counter: int) -> int:
+	var p: int = 40
+	for _i in range(counter):
+		p *= 2
+	return min(p, 160)
 
 
 # [M19-pre1] Low Kick / Grass Knot power lookup — the TARGET's own weight
@@ -6804,7 +7155,8 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	var result: Dictionary = DamageCalculator.calculate(
 			attacker, target, move, roll, _force_crit, _effective_weather(), is_spread, helping_hand,
 			power_override, screen_active, _active_per_side > 1, _get_ally(attacker),
-			_get_ally(target), ng_active, _is_last_to_move(attacker), me_first)
+			_get_ally(target), ng_active, _is_last_to_move(attacker), me_first,
+			_mud_sport_turns > 0, _water_sport_turns > 0)
 	var damage: int = result["damage"]
 
 	# M17n-6: Wonder Guard — the block already happened inside DamageCalculator
@@ -6973,6 +7325,17 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		if recoil > 0:
 			attacker.current_hp = max(0, attacker.current_hp - recoil)
 			recoil_damage.emit(attacker, recoil)
+	# [D4 Bundle 5] Chloroblast — SAME ceil(maxHP/2) formula as Steel Beam,
+	# but dispatched through the ordinary hit-gated/Rock-Head-and-Magic-
+	# Guard-blocked recoil shape (`AbilityManager.blocks_recoil`), a
+	# confirmed real divergence from Steel Beam's own unconditional/
+	# Magic-Guard-only dispatch — see MoveData.is_chloroblast's own doc
+	# comment for the full citation.
+	elif move.is_chloroblast and damage > 0 and not AbilityManager.blocks_recoil(attacker, ng_active):
+		var cb_recoil: int = (attacker.max_hp + 1) / 2
+		if cb_recoil > 0:
+			attacker.current_hp = max(0, attacker.current_hp - cb_recoil)
+			recoil_damage.emit(attacker, cb_recoil)
 
 	if move.drain_percent > 0 and damage > 0:
 		var heal: int = damage * move.drain_percent / 100

@@ -3692,6 +3692,63 @@ MOVES = [
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
      "ignores_protect": True, "healing_move": True,
      "ban_flags": BAN_MIRROR_MOVE, "is_swallow": True},
+
+    # ── [D4 Bundle 5] Cluster 1: field-wide side conditions ──────────────────
+    {"id":  300, "name": "Mud Sport",
+     "type": TYPE_GROUND, "category": STAT, "accuracy": 0, "pp": 15,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_mud_sport": True},
+    {"id":  346, "name": "Water Sport",
+     "type": TYPE_WATER, "category": STAT, "accuracy": 0, "pp": 15,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_water_sport": True},
+
+    # ── [D4 Bundle 5] Cluster 2: type-mutation family ─────────────────────────
+    {"id":  311, "name": "Weather Ball",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 50, "accuracy": 100, "pp": 10,
+     "ballistic_move": True, "is_weather_ball": True},
+    {"id":  513, "name": "Reflect Type",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 15,
+     "ignores_substitute": True, "ban_flags": BAN_MIRROR_MOVE, "is_reflect_type": True},
+
+    # ── [D4 Bundle 5] Cluster 3: heal-and-drain family ────────────────────────
+    {"id":  355, "name": "Roost",
+     "type": TYPE_FLYING, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True, "healing_move": True,
+     "ban_flags": BAN_MIRROR_MOVE, "is_roost": True},
+    {"id":  631, "name": "Strength Sap",
+     "type": TYPE_GRASS, "category": STAT, "accuracy": 100, "pp": 10,
+     "bounceable": True, "healing_move": True, "is_strength_sap": True},
+
+    # ── [D4 Bundle 5] Cluster 4: HP-cost-attached-to-damage family ────────────
+    {"id":  724, "name": "Steel Beam",
+     "type": TYPE_STEEL, "category": SPEC, "power": 140, "accuracy": 95, "pp": 5,
+     "ban_flags": BAN_METRONOME, "is_steel_beam": True},
+    {"id":  763, "name": "Chloroblast",
+     "type": TYPE_GRASS, "category": SPEC, "power": 150, "accuracy": 95, "pp": 5,
+     "is_chloroblast": True},
+
+    # ── [D4 Bundle 5] Cluster 5: persistent-flag-consumed-by-next-action family ─
+    {"id":  268, "name": "Charge",
+     "type": TYPE_ELECTRIC, "category": STAT, "accuracy": 0, "pp": 20,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE,
+     "stat_change_stat": STAGE_SPDEF, "stat_change_amount": 1, "stat_change_self": True,
+     "is_charge": True},
+    {"id":  636, "name": "Laser Focus",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 30,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_laser_focus": True},
+
+    # ── [D4 Bundle 5] Cluster 6: stat-array manipulation ──────────────────────
+    {"id":  576, "name": "Topsy-Turvy",
+     "type": TYPE_DARK, "category": STAT, "accuracy": 0, "pp": 20,
+     "bounceable": True, "is_topsy_turvy": True},
+    {"id":  475, "name": "Autotomize",
+     "type": TYPE_STEEL, "category": STAT, "accuracy": 0, "pp": 15,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE,
+     "stat_change_stat": STAGE_SPEED, "stat_change_amount": 2, "stat_change_self": True},
+
+    # ── [D4 Bundle 5] Cluster 7: escalating power ─────────────────────────────
+    {"id":  210, "name": "Fury Cutter",
+     "type": TYPE_BUG, "category": PHYS, "power": 40, "accuracy": 95, "pp": 20,
+     "makes_contact": True, "slicing_move": True, "is_fury_cutter": True},
 ]
 
 
@@ -4000,6 +4057,20 @@ DEFAULTS = {
     "is_stockpile":           False,
     "is_spit_up":             False,
     "is_swallow":             False,
+
+    # [D4 Bundle 5]
+    "is_mud_sport":           False,
+    "is_water_sport":         False,
+    "is_weather_ball":        False,
+    "is_reflect_type":        False,
+    "is_roost":               False,
+    "is_strength_sap":        False,
+    "is_steel_beam":          False,
+    "is_chloroblast":         False,
+    "is_charge":              False,
+    "is_laser_focus":         False,
+    "is_topsy_turvy":         False,
+    "is_fury_cutter":         False,
 }
 
 HEADER = """\
@@ -4129,6 +4200,10 @@ FIELD_ORDER = [
     "is_copycat", "is_me_first", "is_assist",
     "is_heal_pulse", "is_life_dew",
     "is_stockpile", "is_spit_up", "is_swallow",
+    # [D4 Bundle 5] fields
+    "is_mud_sport", "is_water_sport", "is_weather_ball", "is_reflect_type",
+    "is_roost", "is_strength_sap", "is_steel_beam", "is_chloroblast",
+    "is_charge", "is_laser_focus", "is_topsy_turvy", "is_fury_cutter",
 ]
 
 

@@ -2966,3 +2966,197 @@ const STATUS_ARG_ANY: int = -3
 @export var is_stockpile: bool = false
 @export var is_spit_up: bool = false
 @export var is_swallow: bool = false
+
+# [D4 Bundle 5] Cluster 1 — field-wide (TARGET_FIELD, not per-side) damage
+#   reducers. Confirmed via source (moves_info.h MOVE_MUD_SPORT/MOVE_WATER_SPORT:
+#   .target = TARGET_FIELD) this is genuinely field-wide, not a per-side
+#   condition like Tailwind/Safeguard/Mist — reuses BattleManager's own
+#   `_side_conditions` PATTERN but as two standalone battle-wide int timers
+#   (`_mud_sport_turns`/`_water_sport_turns`), the same shape as
+#   `_echoed_voice_counter`. Reduction is x0.33 (NOT x0.5 — a real correction:
+#   0.5 is the pre-Gen-5 value) against Electric/Fire-type moves respectively,
+#   for 5 turns (Cmd_settypebasedhalvers, battle_script_commands.c L9463-9500;
+#   modifier itself at battle_util.c L6453-6456,
+#   GetConfig(B_SPORT_DMG_REDUCTION) >= GEN_5). Fails outright (no refresh) if
+#   already active, matching the established already-up-no-refresh shape.
+@export var is_mud_sport: bool = false
+@export var is_water_sport: bool = false
+
+# [D4 Bundle 5] Cluster 2 — Weather Ball(311): EFFECT_WEATHER_BALL. TWO
+#   independently-computed pieces sharing one effect ID — a type mutation
+#   (Fire in sun / Water in rain / Rock in sandstorm / Ice in hail, else
+#   Normal, computed in DamageCalculator alongside Hidden Power's own
+#   pre-processing pass — source explicitly excludes this effect from
+#   Normalize/the "-ate" family, battle_main.c L6013-6017, matching Hidden
+#   Power's established exclusion shape) and a separate x2 power multiplier
+#   in ANY weather except Strong Winds (battle_util.c L6175-6177). Utility
+#   Umbrella strips Sun/Rain specifically from BOTH halves (never Sandstorm/
+#   Hail), the same asymmetric-strip precedent Solar Beam/M19e already
+#   established.
+@export var is_weather_ball: bool = false
+
+# [D4 Bundle 5] Reflect Type(513): EFFECT_REFLECT_TYPE. Copies the TARGET's
+#   CURRENT effective type array onto the USER (BS_TryReflectType,
+#   battle_script_commands.c L11488-11531) — genuinely a DUAL-type copy,
+#   unlike every existing `_set_mon_type` caller (Conversion/Conversion 2/
+#   Protean/Libero/Multitype/Forecast), all of which force the user to a
+#   single type. Needs a new sibling function (`_set_mon_type_array`)
+#   rather than a signature change to `_set_mon_type` itself, to guarantee
+#   zero risk to its existing callers. Fails against a target holding
+#   Multitype — source's own exclusion is a species check
+#   (`targetBaseSpecies == SPECIES_ARCEUS`), but this project has no
+#   species-based gate anywhere (Multitype itself is implemented purely as
+#   an ability+Plate check, `[M17n-4]`) — the ability-keyed equivalent
+#   (`effective_ability_id == ABILITY_MULTITYPE`) is used instead, matching
+#   this project's own established Multitype convention rather than
+#   introducing a new species-check pattern for one move. Confirmed via
+#   direct source read (BattleScript_EffectReflectType, data/
+#   battle_scripts_1.s L991-999) that this move's own script never calls
+#   `typecalc` — exempted from the general "type immunity check for
+#   foe-targeting moves" gate, the same precedent Foresight/Purify/
+#   Nightmare/Spite already established. `ignores_substitute=true` in this
+#   move's own data handles the Substitute bypass at the existing generic
+#   checkpoint.
+@export var is_reflect_type: bool = false
+
+# [D4 Bundle 5] Cluster 3 — Roost(355): EFFECT_ROOST. Heals 50% max HP
+#   (ordinary reuse of the existing heal-formula shape) AND removes the
+#   Flying type from the user for exactly the REST OF THIS TURN (restored
+#   at end of turn, HandleEndTurnRoost, battle_end_turn.c L1005-1013) — a
+#   mono-Flying user becomes pure NORMAL-type for the turn at this
+#   project's B_ROOST_PURE_FLYING=GEN_LATEST config (NOT typeless; source:
+#   GetBattlerTypes, battle_util.c L9566-9592). Source implements this as a
+#   query-time overlay (a plain `roostActive` bool consulted at every type
+#   read via ONE funneled getter) — this project has no such funneled
+#   getter (type reads happen directly off `species.types` at each call
+#   site), so this instead mutates `species.types` directly at use-time via
+#   the new `_set_mon_type_array` and restores the EXACT pre-mutation
+#   snapshot (`BattlePokemon.roost_pre_types` — NOT `original_types`, since
+#   a mon with an already-active Conversion/Protean mutation must be
+#   restored to THAT state, not reset to its natural species type) via a
+#   NEW end-of-turn trigger, rather than reusing `_reset_mon_type`'s
+#   existing switch-in-only restore.
+@export var is_roost: bool = false
+
+# [D4 Bundle 5] Strength Sap(631): EFFECT_STRENGTH_SAP. Heals the user by an
+#   amount equal to the TARGET's own CURRENT (stat-stage-adjusted) Attack —
+#   confirmed via source (SetStrengthSapHealing, battle_stat_change.c
+#   L50-73) this reads the target's raw Attack stat multiplied by the
+#   stat-stage ratio table for its CURRENT stage, i.e. the same "effective
+#   stat" this project's `DamageCalculator` already computes — then lowers
+#   the target's Attack by 1 stage. A REAL, load-bearing fork found at Step
+#   0: the heal and the lower are NOT independent — source's own
+#   `CheckSpecificMoveCondition` (battle_stat_change.c L97-113) computes
+#   the heal ONLY if the Attack-lower would actually succeed (target not
+#   already at -6); if Attack is already at -6, NEITHER the heal NOR the
+#   lower happens and the whole move fails with "Attack won't go any
+#   lower," rather than healing unconditionally and merely failing the
+#   stat-lower half.
+@export var is_strength_sap: bool = false
+
+# [D4 Bundle 5] Cluster 4 — Steel Beam(724): EFFECT_MAX_HP_50_RECOIL. Deals
+#   ordinary damage, THEN costs the user ceil(maxHP/2) regardless of
+#   whether the hit connected, missed, or was Protect-blocked — gated ONLY
+#   by Magic Guard (Rock Head is never checked). Confirmed via source
+#   (MoveEndAbsorb, battle_move_resolution.c L2642-2653) this does NOT
+#   check `IsBattlerTurnDamaged` at all, unlike ordinary recoil — a
+#   genuinely different, UNCONDITIONAL dispatch shape from both this
+#   project's existing `crash_damage` (fires ONLY on a failed hit — the
+#   opposite direction) and `recoil_percent` (fires ONLY on a connecting
+#   hit) mechanisms; reproduced via a dedicated helper called from every
+#   early-return path (Protect block, accuracy miss) AND the normal
+#   single-target hit resolution, rather than reusing either existing
+#   mechanism's gate.
+@export var is_steel_beam: bool = false
+
+# [D4 Bundle 5] Chloroblast(763): EFFECT_CHLOROBLAST. SAME ceil(maxHP/2)
+#   formula as Steel Beam, but a GENUINELY DIFFERENT gating shape — source
+#   dispatches this through the ordinary EFFECT_RECOIL switch-case
+#   (battle_move_resolution.c L3370-3389), requiring `IsBattlerTurnDamaged`
+#   (the hit must actually connect, including hitting a Substitute) and
+#   blocked by BOTH Rock Head and Magic Guard (`AbilityManager.
+#   blocks_recoil`) — confirmed a real divergence from Steel Beam's own
+#   unconditional/Magic-Guard-only shape, exactly as Step 0 flagged this
+#   "same family" pairing to verify rather than assume symmetric.
+@export var is_chloroblast: bool = false
+
+# [D4 Bundle 5] Cluster 5 — Charge(268): EFFECT_CHARGE. Self Sp. Def +1
+#   (ordinary reuse of the generic stat_change_stat/self dispatch) PLUS
+#   sets a persistent flag doubling the power of the NEXT Electric-type
+#   move used, however many turns later that occurs. A REAL, deliberately-
+#   preserved correction: source's own `TryClearChargeVolatile`
+#   (battle_move_resolution.c L4927-4939) — at this project's
+#   B_CHARGE=GEN_LATEST(>=GEN_9) config — only clears the flag when the
+#   move actually used is Electric-type; using any number of non-Electric
+#   moves in between does NOT clear it. The function's OWN inline comment
+#   claims "Charge status is lost regardless of the typing of the next
+#   move," which contradicts its own executable code — trusting the code,
+#   not the comment (see BattlePokemon.charged's own doc comment; do NOT
+#   "fix" this back to a next-move-regardless-of-type consumption without
+#   re-reading the source directly).
+@export var is_charge: bool = false
+
+# [D4 Bundle 5] Laser Focus(636): EFFECT_LASER_FOCUS. Sets a flat,
+#   UNCONDITIONAL 2-turn (B_LASER_FOCUS_TIMER=2) guaranteed-crit window —
+#   grants CRITICAL_HIT_ALWAYS (battle_util.c :: CalcCritChanceStage,
+#   L7828/L7906), the SAME outright-guarantee tier this project's
+#   Merciless ability already uses (DamageCalculator's own
+#   `merciless_guaranteed` pre-check), NOT merely a maximized crit stage —
+#   NOTE: the separate `always_critical_hit` field below (Storm Throw/Frost
+#   Breath/Zippy Zap) is a pre-existing, unrelated DORMANT field, found
+#   while building this feature and flagged in docs/decisions.md, not fixed
+#   here. Genuinely NOT "consumed by the next qualifying hit" the
+#   way Charge is — decremented unconditionally every end of turn
+#   regardless of whether the holder even attacks (battle_end_turn.c
+#   L74-75), so a holder that attacks twice within the window gets
+#   guaranteed crits both times.
+@export var is_laser_focus: bool = false
+
+# [D4 Bundle 5] Cluster 6 — Topsy-Turvy(576): EFFECT_TOPSY_TURVY. Inverts
+#   the SIGN of every one of the target's current stat stages (`new =
+#   -old`, cleanly symmetric at both +6/-6 caps — BS_InvertStatStages,
+#   battle_script_commands.c L13064-13074) — NOT a reset-to-0 like Haze/
+#   Clear Smog. Fails only if ALL 7 stats (Atk/Def/SpAtk/SpDef/Speed/
+#   Accuracy/Evasion) are simultaneously at stage 0 (confirmed via the
+#   exact check order in BattleScript_EffectTopsyTurvy, data/
+#   battle_scripts_1.s L1025-1040 — succeeds if even ONE is non-neutral).
+#   Always hits at this project's config (B_UPDATED_MOVE_DATA>=GEN_7),
+#   bounceable (`magicCoatAffected=TRUE` in source).
+@export var is_topsy_turvy: bool = false
+
+# [D4 Bundle 5] Cluster 7 — Fury Cutter(210): EFFECT_FURY_CUTTER. Power
+#   escalates on each consecutive SUCCESSFUL use (base 40 at this
+#   project's B_UPDATED_MOVE_DATA>=GEN_6 config, doubling per use, clamped
+#   at 160 total — CalcFuryCutterBasePower, battle_util.c L6046-6051).
+#   A real, non-obvious nuance confirmed at Step 0: the counter itself
+#   caps at 5, and source's own increment condition (SetSameMoveTurnValues,
+#   case EFFECT_FURY_CUTTER, battle_move_resolution.c L4893-4897) is `if
+#   (increment && counter < 5) counter++; else counter = 0` — the counter
+#   does NOT plateau once capped; the very next SUCCESSFUL use after
+#   reaching 5 WRAPS back to 0 (back to base power), not "stays maxed
+#   forever." Resets to 0 on a miss/immune hit, being unable to act, or
+#   choosing a different move (the `default:` case in the same source
+#   switch) — reuses `BattlePokemon.fury_cutter_counter`, cleared on
+#   switch-out via the standard `_clear_volatiles` convention, the same
+#   shape as Rollout's own `rollout_turns`.
+@export var is_fury_cutter: bool = false
+
+# [D4 Bundle 5] Autotomize(475) — SCOPE-LIMITED per Rob's explicit
+#   instruction: implements ONLY the +2 Speed self stat raise (a pure reuse
+#   of the existing generic `stat_change_stat`/`stat_change_amount`/
+#   `stat_change_self` dispatch — zero new code needed for this half,
+#   confirmed via source that Autotomize shares the literal same
+#   `BattleScript_EffectStatChange` generic script Charge/Strength Sap
+#   also use). The weight-reduction half (source: a stacking
+#   `autotomizeCount` counter, -100kg per use down to a 0.1kg floor,
+#   gated on the Speed raise actually landing — GetBattlerWeight,
+#   battle_util.c L5912-5930) is DELIBERATELY NOT BUILT this bundle: this
+#   project's Low Kick/Grass Knot/Heavy Slam/Heat Crash formulas
+#   (`BattleManager._low_kick_power`/`_heat_crash_power`) read
+#   `species.weight` directly off the static species Resource — there is
+#   currently NO mutable per-instance weight field on `BattlePokemon` at
+#   all, and adding one would mean editing those two already-shipped,
+#   already-tested formulas' call sites, which is out of scope here. A
+#   PARTIAL implementation, not full parity with source — see
+#   docs/decisions.md's `[D4 Bundle 5]` entry for the full citation. No
+#   new MoveData flag needed for the shipped half.

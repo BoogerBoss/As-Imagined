@@ -773,6 +773,66 @@ var stockpile_count: int = 0
 var stockpile_def_added: int = 0
 var stockpile_spdef_added: int = 0
 
+# [D4 Bundle 5] Roost(355) — one-turn Flying-type removal. `roost_active`
+# gates the end-of-turn restore; `roost_pre_types` snapshots the EXACT type
+# array immediately before Roost's own mutation (NOT the mon's species-
+# original type — a mon with an already-active Conversion/Protean mutation
+# must be restored to THAT state, not reset back to its natural species
+# type) so BattleManager can restore precisely at end of turn. Source:
+# Cmd_setroost (battle_script_commands.c L4791-4796) sets a plain
+# `roostActive` volatile consulted at every type-read call site via
+# GetBattlerTypes (battle_util.c L9566-9592) — a query-time overlay this
+# project doesn't have infrastructure for (type reads happen directly off
+# `species.types` at each call site, not through one funneled getter), so
+# this project instead mutates `species.types` directly at use-time and
+# restores the exact pre-mutation snapshot via a NEW end-of-turn trigger
+# (BattleManager._phase_end_of_turn), rather than reusing `_reset_mon_type`'s
+# existing switch-in-only restore (which pulls from `original_types` — the
+# species-original type, not "whatever it was right before Roost").
+var roost_active: bool = false
+var roost_pre_types: Array = []
+
+# [D4 Bundle 5] Charge(268) — persistent flag doubling the power of the NEXT
+# Electric-type move used, however many turns later that occurs. Source:
+# TryClearChargeVolatile (battle_move_resolution.c L4927-4939) — at this
+# project's B_CHARGE=GEN_LATEST(>=GEN_9) config, the function's own inline
+# comment claims "Charge status is lost regardless of the typing of the next
+# move," but the ACTUAL code only clears the flag when the move used is
+# Electric-type (`moveType == TYPE_ELECTRIC && chargeTimer == 1`) — using any
+# number of non-Electric moves in between does NOT clear it. Trusting the
+# executable code over the (apparently stale/misleading) comment — do NOT
+# "fix" this back to a next-move-regardless-of-type consumption without
+# re-reading the source directly. Cleared on switch-out via the standard
+# `_clear_volatiles` convention.
+var charged: bool = false
+
+# [D4 Bundle 5] Laser Focus(636) — flat, UNCONDITIONAL 2-turn guaranteed-
+# crit window (B_LASER_FOCUS_TIMER=2), decremented every end of turn
+# regardless of whether the holder even attacks — genuinely NOT "consumed
+# by the next qualifying hit" the way Charge is (a holder that attacks
+# twice within the window gets guaranteed crits both times). Source:
+# battle_end_turn.c L74-75 (unconditional per-turn decrement); battle_util.c
+# :: CalcCritChanceStage (L7828/L7906) — grants CRITICAL_HIT_ALWAYS, the SAME
+# outright-guarantee tier this project's Merciless ability already uses
+# (DamageCalculator.calculate's own `merciless_guaranteed` pre-check), not
+# merely a maximized crit stage. NOTE: MoveData's separate
+# `always_critical_hit` field (Storm Throw/Frost Breath/Zippy Zap) is a
+# pre-existing, unrelated DORMANT field — those moves are actually
+# represented via `critical_hit_stage=3` instead — found while building
+# this feature, flagged in docs/decisions.md, not fixed here.
+var laser_focus_turns: int = 0
+
+# [D4 Bundle 5] Fury Cutter(210) — consecutive-use power-escalation counter
+# (0-5). Source: CalcFuryCutterBasePower (battle_util.c L6046-6051) doubles
+# base power once per counter value, clamped at 160 total; source's own
+# increment (SetSameMoveTurnValues, case EFFECT_FURY_CUTTER,
+# battle_move_resolution.c L4893-4897) is `if (increment && counter < 5)
+# counter++; else counter = 0` — meaning the counter does NOT plateau once
+# capped; the very next SUCCESSFUL use after reaching 5 wraps back to 0
+# (back to base power), a real non-obvious cycle confirmed at Step 0, not
+# "stays maxed forever."
+var fury_cutter_counter: int = 0
+
 var fainted: bool = false
 
 
