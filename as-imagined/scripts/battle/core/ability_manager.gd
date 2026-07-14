@@ -911,6 +911,23 @@ static func try_sticky_barb_transfer(
 	return _try_steal_item(attacker, holder, ng_active, true)
 
 
+# [D4 Bundle 6] Knock Off(282) — is the target's held item removable at all?
+# Reuses the SAME two gates `_try_steal_item` checks (Sticky Hold, form-lock),
+# minus the transfer-to-attacker step (Knock Off destroys the item, it never
+# moves to the attacker) and minus the "stealer already holds something" check
+# (irrelevant here — nobody is receiving it). Source: CanBattlerGetOrLoseItem
+# (battle_util.c L8686) gates both the power boost and the removal itself on
+# this same underlying check.
+static func can_remove_item(victim: BattlePokemon, ng_active: bool = false) -> bool:
+	if victim.held_item == null:
+		return false
+	if effective_ability_id(victim, ng_active) == ABILITY_STICKY_HOLD:
+		return false
+	if is_form_locked_by_item(victim, victim.held_item, ng_active):
+		return false
+	return true
+
+
 # [D1] Thief(168)/Covet(343) — on a successful hit, steals the TARGET's held
 # item outright (possession TRANSFER, not eaten in place — genuinely
 # different from Pluck/Bug Bite's own steal-and-eat shape), gated on the
@@ -2698,6 +2715,13 @@ static func is_grounded(mon: BattlePokemon, ng_active: bool = false) -> bool:
 	# three checked together in source's IsBattlerUngroundedByAbilityItemOrEffect).
 	if mon.magnet_rise_turns > 0:
 		return false
+	# [D4 Bundle 6] Telekinesis — a peer addition to this SAME ungrounded
+	# tier (source: IsBattlerUngroundedByAbilityItemOrEffect, battle_util.c
+	# L5866-5872, lists telekinesis alongside magnetRise/Air Balloon/
+	# Levitate in one OR chain) — still subordinate to Iron Ball/Ingrain/
+	# Smack Down's forced-grounded checks above.
+	if mon.telekinesis_turns > 0:
+		return false
 	if effective_ability_id(mon, ng_active) == ABILITY_LEVITATE:
 		return false
 	if ItemManager.holds_air_balloon(mon, ng_active):
@@ -2794,6 +2818,13 @@ static func is_trapped(
 	# Ghost-type Ingrain user still correctly bypasses this via the shared
 	# early return above.
 	if mon.ingrain_active:
+		return true
+	# [D4 Bundle 6] No Retreat — the SECOND self-inflicted (no source
+	# battler) trapping volatile at this same check tier, same reasoning as
+	# Ingrain just above. Deliberately a dedicated bool, NOT
+	# escape_prevented_by — see BattlePokemon.no_retreat_active's own doc
+	# comment for why that reuse would be wrong.
+	if mon.no_retreat_active:
 		return true
 	for opp: BattlePokemon in live_opponents:
 		var opp_id: int = effective_ability_id(opp, ng_active)

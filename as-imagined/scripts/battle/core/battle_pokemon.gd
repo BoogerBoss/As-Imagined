@@ -228,6 +228,33 @@ var tar_shot_active: bool = false
 # convention.
 var foresight_active: bool = false
 
+# [D4 Bundle 6] Telekinesis(477) — turns remaining (set to 3 on use). While
+# > 0: ungrounds this mon (AbilityManager.is_grounded) AND any move used
+# against this mon auto-hits (except OHKO moves, and except while this mon
+# is semi-invulnerable — see MoveData.is_telekinesis's own doc comment).
+# Decremented once per end of turn (BattleManager._phase_end_of_turn),
+# cleared on switch-out via the standard `_clear_volatiles` convention.
+var telekinesis_turns: int = 0
+
+# [D4 Bundle 6] No Retreat(694) — permanent per-mon flag, no turn counter.
+# Traps this mon (checked by AbilityManager.is_trapped) and blocks any
+# FURTHER use of No Retreat by this mon (see MoveData.is_no_retreat's own
+# doc comment for why this is a single dedicated bool, not a reuse of
+# escape_prevented_by). Cleared on switch-out via the standard
+# `_clear_volatiles` convention — a fresh switch-in is not trapped.
+var no_retreat_active: bool = false
+
+# [D4 Bundle 6] Octolock(699) — direct object reference to whoever cast it,
+# the same shape as wrapped_by/infatuated_by/escape_prevented_by/leeched_by.
+# null = not octolocked; non-null = a -1 Defense/-1 Sp. Defense tick fires
+# every end of turn (BattleManager._phase_end_of_turn, gated on this mon
+# still being alive) until the caster leaves the field (reciprocal clear in
+# BattleManager._clear_volatiles, the same established pattern) or this mon
+# itself switches out/faints. Does NOT block switching — see
+# MoveData.is_octolock's own doc comment for the source-confirmed finding
+# that Octolock never actually traps in this reference source.
+var octolocked_by: BattlePokemon = null
+
 # [D4 CHEAP bundle] Torment(259) — permanent (switch-cleared) per-mon flag
 # on the TARGET, blocking use of the exact same move used on the
 # immediately preceding turn. Confirmed from source (not the decoy timer-

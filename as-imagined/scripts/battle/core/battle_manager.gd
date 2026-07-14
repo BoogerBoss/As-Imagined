@@ -155,6 +155,8 @@ signal sure_hit_set(attacker: BattlePokemon, target: BattlePokemon)  # [D1] Lock
 signal item_stolen(stealer: BattlePokemon, victim: BattlePokemon)  # [D1] Thief/Covet stole the target's held item
 
 signal foresight_set(target: BattlePokemon)  # [D2 batch 2] Foresight/Odor Sleuth set the target's foresight_active
+signal telekinesis_set(target: BattlePokemon)  # [D4 Bundle 6] Telekinesis set the target's telekinesis_turns
+signal octolock_set(target: BattlePokemon, caster: BattlePokemon)  # [D4 Bundle 6] Octolock set the target's octolocked_by
 signal tar_shot_set(target: BattlePokemon)  # [D2 batch 2] Tar Shot set the target's tar_shot_active
 
 signal turn_order_changed(mover: BattlePokemon, reason: String)  # [D3] After You ("after_you") / Quash ("quash") successfully reordered _turn_order
@@ -266,6 +268,10 @@ var _force_magnitude_power: Variant = null
 # else an index into the SORTED candidate list (ascending TypeChart.TYPE_* ids) after
 # the user's current types have already been excluded — see _pick_conversion2_type().
 var _force_conversion2_pick: Variant = null
+
+# [D4 Bundle 6] Test seam: force Present's 0-255 roll. null = use real RNG.
+# < 102 = 40 power, < 178 = 80 power, < 204 = 120 power, else = heal branch.
+var _force_present_roll: Variant = null
 
 # M17b: force which STAGE_* Moody raises (+2) / lowers (-1) this battle.
 # null = use real RNG. Mirrors the null-sentinel convention of the other _force_* seams.
@@ -2083,6 +2089,46 @@ func _phase_move_execution() -> void:
 			or attacker.status == BattlePokemon.STATUS_PARALYSIS):
 		_dmg_power_override = move.power * 2
 
+	# [D4 Bundle 6] Brine: power doubles if the target's HP is at or below 50%.
+	if move.is_brine and defender.current_hp * 2 <= defender.max_hp:
+		_dmg_power_override = move.power * 2
+
+	# [D4 Bundle 6] Knock Off: power x1.5 if the target's item is actually
+	# removable right now (Sticky Hold / form-lock gated) — computed here,
+	# before the hit, matching source; the actual removal happens after a
+	# connecting hit, further down.
+	if move.is_knock_off and AbilityManager.can_remove_item(defender, ng_active):
+		_dmg_power_override = int(move.power * 1.5)
+
+	# [D4 Bundle 6] Acrobatics: power doubles if the user holds no item.
+	if move.is_acrobatics and attacker.held_item == null:
+		_dmg_power_override = move.power * 2
+
+	# [D4 Bundle 6] Punishment: power = 60 + 20 x the target's positive
+	# stat-stage COUNT, capped at 200.
+	if move.is_punishment:
+		var pun_count: int = 0
+		for pun_stage in defender.stat_stages:
+			if pun_stage > 0:
+				pun_count += 1
+		_dmg_power_override = min(60 + 20 * pun_count, 200)
+
+	# [D4 Bundle 6] Present: a flat 0-255 uniform roll, split 102/76/26/51
+	# into power bands 40/80/120/heal. `_present_heal_branch` is consumed
+	# just below, inside the `if move.power > 0:` branch, to bypass the
+	# whole damaging dispatch and heal the target instead.
+	var _present_heal_branch: bool = false
+	if move.is_present:
+		var pr_roll: int = _force_present_roll if _force_present_roll != null else randi() % 256
+		if pr_roll < 102:
+			_dmg_power_override = 40
+		elif pr_roll < 178:
+			_dmg_power_override = 80
+		elif pr_roll < 204:
+			_dmg_power_override = 120
+		else:
+			_present_heal_branch = true
+
 	# ── Priority-move-block (Dazzling / Queenly Majesty / Armor Tail) ────────────
 	# Source: battle_move_resolution.c :: CancelerPriorityBlock (L1511-1548), dispatched
 	# BEFORE CancelerAccuracyCheck in source's canceler chain — inserted at the same
@@ -2156,6 +2202,27 @@ func _phase_move_execution() -> void:
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
+
+	# [D4 Bundle 6] Belch: fails outright unless the user has EVER consumed a
+	# real berry this battle. Checked BEFORE the accuracy roll, same shape as
+	# Dream Eater's own fail check above.
+	if move.is_belch and attacker.last_consumed_berry == null:
+		move_effect_failed.emit(attacker, "belch_no_berry_eaten")
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# [D4 Bundle 6] Poltergeist: fails outright if the target holds no item.
+	# Checked BEFORE the accuracy roll, same shape as Belch/Dream Eater above.
+	if move.is_poltergeist and defender.held_item == null:
+		move_effect_failed.emit(attacker, "poltergeist_no_item")
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
 
 	# ── Accuracy check ────────────────────────────────────────────────────────
 	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
@@ -2352,6 +2419,38 @@ func _phase_move_execution() -> void:
 		# Baton Pass block either); Mirror Armor, like Guard Dog, needed no separate
 		# wiring for the SAME reason (lives inside the shared `try_switch_in` call,
 		# handled by the `mirror_armor_reflect_change` branch immediately above).
+		move_executed.emit(attacker, defender, move, 0)
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# ── Teleport / Chilly Reception: unconditional self-switch, no stat pass ──
+	# See MoveData.is_teleport's/is_chilly_reception's own doc comments for the
+	# full source citation (both bypass trapping via the same
+	# SWITCH_IGNORE_ESCAPE_PREVENTION flag Baton Pass uses, and neither passes
+	# stat stages/volatiles the way Baton Pass does — a plain `_do_voluntary_switch`
+	# reuse, not the heavier Baton Pass apparatus above). Chilly Reception's own
+	# weather-set is handled by the ordinary weather-setting dispatch further
+	# below (in the status-move branch) since power==0 for it; this block only
+	# needs to fire the switch itself once execution reaches this point again
+	# on the SAME action — so instead both moves are dispatched fully here,
+	# right where the switch needs to happen, with Chilly Reception's weather
+	# attempted first.
+	if move.is_teleport or move.is_chilly_reception:
+		if move.is_chilly_reception:
+			if try_set_weather(WEATHER_HAIL, attacker, false):
+				weather_set.emit(attacker, WEATHER_HAIL)
+				_notify_weather_changed()
+		var tp_party: BattleParty = _parties[attacker_side]
+		if not tp_party.has_valid_switch_target():
+			move_effect_failed.emit(attacker, "no_switch_target")
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+		var tp_slot: int = _get_replacement_slot(attacker_idx)
+		_do_voluntary_switch(attacker_idx, tp_slot)
 		move_executed.emit(attacker, defender, move, 0)
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
@@ -2707,6 +2806,23 @@ func _phase_move_execution() -> void:
 	var he_single_dmg: int = -1
 	var he_sub_before: int = -1
 	if move.power > 0:
+		# [D4 Bundle 6] Present: heal branch bypasses the whole damaging
+		# dispatch — heals the TARGET max_hp/4 (type effectiveness never
+		# computed, matching source's ignoreTypeCalc), fails with
+		# "already at full HP" if capped.
+		if move.is_present and _present_heal_branch:
+			if defender.current_hp >= defender.max_hp:
+				move_effect_failed.emit(defender, "already_full_hp")
+			else:
+				var pr_heal: int = max(1, defender.max_hp / 4)
+				defender.current_hp = min(defender.max_hp, defender.current_hp + pr_heal)
+				drain_heal.emit(defender, pr_heal)
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# ── Damaging move ──────────────────────────────────────────────────────
 		# M14b: spread moves hit all live opposing combatants independently.
 		# Source: IsSpreadMove (include/battle.h L1163): TARGET_BOTH or TARGET_FOES_AND_ALLY.
@@ -3650,6 +3766,101 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Rest ──────────────────────────────────────────────────────────────
+		# See MoveData.is_rest's own doc comment for the full source citation.
+		# All 3 fail conditions checked BEFORE any heal/status-clear happens.
+		if move.is_rest:
+			var rest_id: int = AbilityManager.effective_ability_id(attacker, ng_active)
+			if attacker.status == BattlePokemon.STATUS_SLEEP or rest_id == AbilityManager.ABILITY_COMATOSE:
+				move_effect_failed.emit(attacker, "rest_already_asleep")
+			elif attacker.current_hp >= attacker.max_hp:
+				move_effect_failed.emit(attacker, "already_full_hp")
+			elif rest_id == AbilityManager.ABILITY_INSOMNIA or rest_id == AbilityManager.ABILITY_VITAL_SPIRIT \
+					or rest_id == AbilityManager.ABILITY_PURIFYING_SALT:
+				move_effect_failed.emit(attacker, "rest_blocked_by_ability")
+				ability_triggered.emit(attacker, "insomnia_protects")
+			else:
+				attacker.status = BattlePokemon.STATUS_NONE
+				var rest_heal: int = attacker.max_hp - attacker.current_hp
+				attacker.current_hp = attacker.max_hp
+				if rest_heal > 0:
+					drain_heal.emit(attacker, rest_heal)
+				StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_SLEEP, 2, null, ng_active, attacker)
+				secondary_applied.emit(attacker, MoveData.SE_SLEEP)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Acupressure ───────────────────────────────────────────────────────
+		# See MoveData.is_acupressure's own doc comment for the full citation.
+		if move.is_acupressure:
+			var acu_candidates: Array = []
+			for acu_stat in range(7):  # STAGE_ATK..STAGE_EVASION, all 7
+				if attacker.stat_stages[acu_stat] < 6:
+					acu_candidates.append(acu_stat)
+			if acu_candidates.is_empty():
+				move_effect_failed.emit(attacker, "stat_limit")
+			else:
+				var acu_stat_pick: int = acu_candidates[randi() % acu_candidates.size()]
+				var acu_actual: int = StatusManager.apply_stat_change(
+						attacker, acu_stat_pick, 2, null, ng_active)
+				if acu_actual != 0:
+					stat_stage_changed.emit(attacker, acu_stat_pick, acu_actual)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Stuff Cheeks ──────────────────────────────────────────────────────
+		# See MoveData.is_stuff_cheeks's own doc comment for the full citation.
+		if move.is_stuff_cheeks:
+			if attacker.held_item == null or attacker.held_item.pocket != ItemManager.POCKET_BERRIES:
+				move_effect_failed.emit(attacker, "stuff_cheeks_no_berry")
+			else:
+				var sc_result: Dictionary = ItemManager.steal_and_eat_berry_effect(
+						attacker, attacker.held_item, ng_active)
+				var sc_berry: ItemData = attacker.held_item
+				_consume_item(attacker)
+				match sc_result.get("kind", ""):
+					"heal":
+						attacker.current_hp = min(attacker.max_hp, attacker.current_hp + sc_result["amount"])
+						drain_heal.emit(attacker, sc_result["amount"])
+					"cure_status":
+						attacker.status = BattlePokemon.STATUS_NONE
+					"cure_confusion":
+						attacker.confusion_turns = 0
+					"stat":
+						var sc_actual: int = StatusManager.apply_stat_change(
+								attacker, sc_result["stat"], sc_result["amount"], null, ng_active)
+						if sc_actual != 0:
+							stat_stage_changed.emit(attacker, sc_result["stat"], sc_actual)
+				item_effect_triggered.emit(attacker, "stuff_cheeks_berry")
+				var sc_def_actual: int = StatusManager.apply_stat_change(
+						attacker, BattlePokemon.STAGE_DEF, 2, null, ng_active)
+				if sc_def_actual != 0:
+					stat_stage_changed.emit(attacker, BattlePokemon.STAGE_DEF, sc_def_actual)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── No Retreat ────────────────────────────────────────────────────────
+		# See MoveData.is_no_retreat's own doc comment for the full citation.
+		if move.is_no_retreat:
+			if attacker.no_retreat_active:
+				move_effect_failed.emit(attacker, "no_retreat_already_used")
+				move_executed.emit(attacker, defender, move, 0)
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				return
+			attacker.no_retreat_active = true
+			_apply_stat_change_effect(attacker, attacker, move, ng_active)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# ── Growth ────────────────────────────────────────────────────────────
 		# Source: moves_info.h MOVE_GROWTH (L2003): B_UPDATED_MOVE_DATA >= GEN_5 →
 		#   raises ATK +1 AND SpATK +1 (Gen 5+). In harsh sun: +2 to both.
@@ -4128,10 +4339,55 @@ func _phase_move_execution() -> void:
 		# (BattleScript_EffectReflectType, data/battle_scripts_1.s L991-999)
 		# that this move's own script never calls `typecalc` either — same
 		# exemption shape as Foresight/Purify/Nightmare/Spite just below.
+		# [D4 Bundle 6] Toxic Thread(635)/Venom Drench(599) — both share
+		# `BattleScript_EffectStatChange` (data/battle_scripts_1.s L75-78:
+		# attackcanceler + trymovestatchanges + MoveEnd, no typecalc call),
+		# confirmed via source's own test suite (toxic_thread.c: "Toxic
+		# Thread still lowers speed if the target can't be Poisoned [a
+		# Steel-type]"). That entry flagged, but did not audit, whether the
+		# rest of this project's already-shipped EFFECT_STAT_CHANGE-family
+		# roster shares the same gap.
+		# [EFFECT_STAT_CHANGE audit] Resolved: every move whose real script
+		# maps to BattleScript_EffectStatChange (EFFECT_STAT_CHANGE,
+		# EFFECT_STAT_CHANGE_ON_STATUS, EFFECT_TOXIC_THREAD, and
+		# EFFECT_STAT_CHANGE_MAGNETIC all share that literal script per
+		# src/data/battle_move_effects.h) never calls typecalc — confirmed by
+		# reading Cmd_trymovestatchanges/DoStatChange directly
+		# (battle_script_commands.c L10744-10752, battle_move_resolution.c
+		# L4823-4863), neither of which contains any type-effectiveness call.
+		# Programmatically derived the full 56-move EFFECT_STAT_CHANGE roster
+		# from source, narrowed to the 25 already-implemented, genuinely
+		# foe/selected-targeting members (self-targeting moves never reach
+		# this gate since foe_targeting = not stat_change_self; Howl/Aromatic
+		# Mist/Coaching are ally-targeting and dispatch through a separate,
+		# earlier bypass), then cross-checked each move's own type against
+		# this project's actual TypeChart.TABLE for a real 0.0x cell. 16 are
+		# CONFIRMED AFFECTED (a real 0x matchup exists and the move was
+		# reaching this gate unexempted): Sand Attack(28, vs Flying), Tail
+		# Whip/Leer/Growl/Screech/Smokescreen/Flash/Scary Face/Sweet Scent/
+		# Tickle/Noble Roar/Play Nice/Confide/Tearful Look (all Normal-type,
+		# vs Ghost), Eerie Impulse(598, vs Ground), Kinesis(134, vs Dark) —
+		# each confirmed to carry only a single, non-probabilistic stat-change
+		# additionalEffect (no separate typecalc-requiring secondary), so no
+		# genuine per-move exception was found within this batch. New shared
+		# MoveData.stat_change_bypasses_type_gate flag (one field for the
+		# whole newly-confirmed family, rather than 16 more single-purpose is_*
+		# dispatch flags like Foresight/Toxic Thread/etc. carry, since none of
+		# these 16 need a dedicated dispatch branch — they already run through
+		# the fully generic stat_change_stat/amount mechanism). The remaining 9
+		# candidates (String Shot/Cotton Spore/Charm/Feather Dance/Fake Tears/
+		# Metal Sound/Baby-Doll Eyes/Decorate/Spicy Extract) share the
+		# identical latent gap in principle, but are each provably UNREACHABLE
+		# — their own type's row in this project's TypeChart.TABLE contains no
+		# 0.0x cell at all — so, matching the established Memento precedent,
+		# they are deliberately left unexempted rather than flagged for zero
+		# behavioral effect.
 		if foe_targeting and move.type != TypeChart.TYPE_NONE \
 				and not corrosion_bypasses_type_gate and not move.is_foresight \
 				and not move.is_purify and not move.is_nightmare and not move.is_spite \
-				and not move.is_reflect_type:
+				and not move.is_reflect_type and not move.is_toxic_thread \
+				and not move.is_venom_drench \
+				and not move.stat_change_bypasses_type_gate:
 			var eff: float = TypeChart.get_effectiveness(move.type, defender.species.types)
 			if eff == 0.0:
 				move_missed.emit(attacker, "immune")
@@ -4242,6 +4498,121 @@ func _phase_move_execution() -> void:
 			else:
 				defender.foresight_active = true
 				foresight_set.emit(defender)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Telekinesis ───────────────────────────────────────────────────────
+		# See MoveData.is_telekinesis's own doc comment for the full citation.
+		# Falls through the shared gates above like Lock-On/Foresight.
+		if move.is_telekinesis:
+			if defender.telekinesis_turns > 0:
+				move_effect_failed.emit(attacker, "telekinesis_already_active")
+			else:
+				defender.telekinesis_turns = 3
+				telekinesis_set.emit(defender)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Octolock ──────────────────────────────────────────────────────────
+		# See MoveData.is_octolock's own doc comment for the full citation
+		# (including the confirmed-does-NOT-trap finding).
+		if move.is_octolock:
+			if defender.octolocked_by != null:
+				move_effect_failed.emit(attacker, "octolock_already_active")
+			else:
+				defender.octolocked_by = attacker
+				octolock_set.emit(defender, attacker)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Psycho Shift ──────────────────────────────────────────────────────
+		# See MoveData.is_psycho_shift's own doc comment for the full citation.
+		if move.is_psycho_shift:
+			if attacker.status == BattlePokemon.STATUS_NONE:
+				move_effect_failed.emit(attacker, "psycho_shift_no_status")
+			elif defender.status != BattlePokemon.STATUS_NONE:
+				move_effect_failed.emit(attacker, "psycho_shift_target_has_status")
+			else:
+				var ps_status: int = attacker.status
+				var ps_safeguard: bool = _is_safeguard_active_for(attacker, defender, ng_active)
+				if StatusManager.try_apply_status(defender, ps_status, null, null, ng_active,
+						attacker, DamageCalculator.WEATHER_NONE, null, false, ps_safeguard):
+					secondary_applied.emit(defender, _status_to_se(ps_status))
+					_try_synchronize(defender, attacker, ps_status)
+					attacker.status = BattlePokemon.STATUS_NONE
+				else:
+					move_effect_failed.emit(attacker, "psycho_shift_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Toxic Thread ──────────────────────────────────────────────────────
+		# See MoveData.is_toxic_thread's own doc comment for the full citation
+		# — poison and the Speed drop are INDEPENDENT; the move only fails if
+		# NEITHER does anything.
+		if move.is_toxic_thread:
+			var tt_safeguard: bool = _is_safeguard_active_for(attacker, defender, ng_active)
+			var tt_poisoned: bool = StatusManager.try_apply_status(defender, BattlePokemon.STATUS_POISON,
+					null, null, ng_active, attacker, DamageCalculator.WEATHER_NONE, null, false, tt_safeguard)
+			if tt_poisoned:
+				secondary_applied.emit(defender, MoveData.SE_POISON)
+				_try_synchronize(defender, attacker, BattlePokemon.STATUS_POISON)
+			var tt_stat_actual: int = _apply_one_stat_change_pair(
+					attacker, defender, move, BattlePokemon.STAGE_SPEED, -1, ng_active)
+			if not tt_poisoned and tt_stat_actual == 0:
+				move_effect_failed.emit(attacker, "toxic_thread_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Venom Drench ────────────────────────────────────────────────────────
+		# See MoveData.is_venom_drench's own doc comment for the full citation
+		# — TARGET_BOTH (spread, opponents only), independently gated per
+		# opponent on their own current Poison/Toxic status.
+		if move.is_venom_drench:
+			var vd_any: bool = false
+			for vd_opp: BattlePokemon in _get_live_opponents(attacker):
+				if vd_opp.status != BattlePokemon.STATUS_POISON and vd_opp.status != BattlePokemon.STATUS_TOXIC:
+					continue
+				var vd_atk: int = _apply_one_stat_change_pair(
+						attacker, vd_opp, move, BattlePokemon.STAGE_ATK, -1, ng_active)
+				var vd_spatk: int = _apply_one_stat_change_pair(
+						attacker, vd_opp, move, BattlePokemon.STAGE_SPATK, -1, ng_active)
+				var vd_speed: int = _apply_one_stat_change_pair(
+						attacker, vd_opp, move, BattlePokemon.STAGE_SPEED, -1, ng_active)
+				if vd_atk != 0 or vd_spatk != 0 or vd_speed != 0:
+					vd_any = true
+			if not vd_any:
+				move_effect_failed.emit(attacker, "venom_drench_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Parting Shot ──────────────────────────────────────────────────────
+		# See MoveData.is_parting_shot's own doc comment for the full citation
+		# — the switch is GATED ON the stat-lower actually landing (Gen7+),
+		# the opposite of Memento's independence.
+		if move.is_parting_shot:
+			var ps2_atk: int = _apply_one_stat_change_pair(
+					attacker, defender, move, BattlePokemon.STAGE_ATK, -1, ng_active)
+			var ps2_spatk: int = _apply_one_stat_change_pair(
+					attacker, defender, move, BattlePokemon.STAGE_SPATK, -1, ng_active)
+			if ps2_atk != 0 or ps2_spatk != 0:
+				var ps2_party: BattleParty = _parties[attacker_side]
+				if ps2_party.has_valid_switch_target():
+					var ps2_slot: int = _get_replacement_slot(attacker_idx)
+					_do_voluntary_switch(attacker_idx, ps2_slot)
+			else:
+				move_effect_failed.emit(attacker, "parting_shot_failed")
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -4823,6 +5194,12 @@ func _phase_end_of_turn() -> void:
 		if mon.laser_focus_turns > 0:
 			mon.laser_focus_turns -= 1
 
+	# ── [D4 Bundle 6] Telekinesis — 3-turn countdown, same shape as Magnet
+	# Rise above. Source: battle_end_turn.c :: HandleEndTurnTelekinesis.
+	for mon: BattlePokemon in _turn_order:
+		if mon.telekinesis_turns > 0:
+			mon.telekinesis_turns -= 1
+
 	# ── Status damage (ENDTURN_POISON=12, ENDTURN_BURN=13 in source handler table) ────────
 	# Apply end-of-turn status damage in speed order (matching source ENDTURN_POISON
 	# and ENDTURN_BURN handlers in battle_end_turn.c which iterate by battler order).
@@ -4899,6 +5276,24 @@ func _phase_end_of_turn() -> void:
 		if mon.current_hp == 0:
 			mon.fainted = true
 			pokemon_fainted.emit(mon)
+
+	# ── [D4 Bundle 6] Octolock — recurring -1 Def/-1 Sp. Defense tick,
+	# positioned right after Wrap (source: battle_end_turn.c's own handler
+	# table has ENDTURN_OCTOLOCK immediately after ENDTURN_WRAP/ENDTURN_
+	# SALT_CURE) and gated on the target still being alive — matters
+	# observably here, unlike Magnet Rise/Roost/Laser Focus/Telekinesis's own
+	# pure decrements above, since a mon that fainted from poison/burn/wrap
+	# this same tick must not also take the Octolock stat-lower.
+	# Source: HandleEndTurnOctolock (battle_end_turn.c L715-724).
+	for mon: BattlePokemon in _turn_order:
+		if mon.fainted or mon.octolocked_by == null:
+			continue
+		var ol_def: int = StatusManager.apply_stat_change(mon, BattlePokemon.STAGE_DEF, -1, null, ng_active)
+		if ol_def != 0:
+			stat_stage_changed.emit(mon, BattlePokemon.STAGE_DEF, ol_def)
+		var ol_spdef: int = StatusManager.apply_stat_change(mon, BattlePokemon.STAGE_SPDEF, -1, null, ng_active)
+		if ol_spdef != 0:
+			stat_stage_changed.emit(mon, BattlePokemon.STAGE_SPDEF, ol_spdef)
 
 	# M12: Leftovers EOT heal (FIRST_EVENT_BLOCK_HEAL_ITEMS, after status damage).
 	# Source: TryLeftovers (battle_hold_effects.c L634–648); fires via FIRST_EVENT_BLOCK_HEAL_ITEMS
@@ -6001,6 +6396,23 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.laser_focus_turns = 0
 	mon.fury_cutter_counter = 0
 
+	# [D4 Bundle 6] Telekinesis/No Retreat — self-contained per-mon state,
+	# same switch-scoped shape as the block above (no reciprocal scan needed).
+	mon.telekinesis_turns = 0
+	mon.no_retreat_active = false
+
+	# [D4 Bundle 6] Octolock — the SIXTH move-based volatile using the
+	# reciprocal-clear shape (source: CanBattlerEscape's own doc comment on
+	# `is_octolock` notwithstanding, `octolockedBy` still lives in the same
+	# bulk-cleared struct source clears on switch-out/faint, battle_main.c
+	# L3173-3174/L3287-3288). `mon.octolocked_by` is who octolocked `mon`
+	# (mon's own half); the scan below stops any OTHER battler `mon` had
+	# octolocked once `mon` itself leaves the field.
+	mon.octolocked_by = null
+	for other: BattlePokemon in _combatants:
+		if other != mon and other.octolocked_by == mon:
+			other.octolocked_by = null
+
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
 # stat stages and Counter/Mirror Coat per-turn trackers).
@@ -6677,6 +7089,11 @@ func _status_to_se(status: int) -> int:
 		# Verified no existing test asserts the old (wrong) SE_TOXIC value for either.
 		BattlePokemon.STATUS_POISON:    return MoveData.SE_POISON
 		BattlePokemon.STATUS_TOXIC:     return MoveData.SE_TOXIC
+		# [D4 Bundle 6] Psycho Shift's own transfer can carry Sleep/Freeze too
+		# (unlike this function's prior 4 callers) — added here rather than a
+		# bespoke mapping at that one call site.
+		BattlePokemon.STATUS_SLEEP:     return MoveData.SE_SLEEP
+		BattlePokemon.STATUS_FREEZE:    return MoveData.SE_FREEZE
 	return MoveData.SE_NONE
 
 
@@ -7268,6 +7685,12 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	# — a pre-application lethality prediction on the target's own still-current
 	# HP, not a post-hit aliveness check on a different Pokemon, so this has no
 	# analogous timing bug to the current_hp-vs-.fainted convention.
+	# [D4 Bundle 6] False Swipe: unconditionally floors the target at 1 HP,
+	# checked first so the Endure/Sturdy/Focus Band/Focus Sash chain below
+	# naturally no-ops afterward (damage no longer exceeds current_hp).
+	if move.is_false_swipe and damage >= target.current_hp:
+		damage = target.current_hp - 1
+
 	if damage >= target.current_hp and target.endure_active:
 		damage = target.current_hp - 1
 		endured.emit(target)
@@ -7310,6 +7733,24 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		else:
 			target.last_special_damage = damage
 			target.last_hit_was_special = true
+
+	# [D4 Bundle 6] Knock Off: on a connecting hit, actually remove the
+	# target's item (re-checked here, not just trusted from the pre-hit
+	# power computation, since the target's ability/held item could
+	# theoretically differ by the time the hit resolves). Deliberately does
+	# NOT route through `_consume_item` — that function's Cheek Pouch heal
+	# and `last_consumed_berry` tracking are both specifically for EATING a
+	# berry, and Knock Off never does that (the item is knocked away, not
+	# ingested) — only Unburden ("any item, berry or not") and Symbiosis
+	# apply here, replicated directly.
+	if move.is_knock_off and damage > 0 and AbilityManager.can_remove_item(target, ng_active):
+		var knocked_item: ItemData = target.held_item
+		target.held_item = null
+		item_consumed.emit(target, knocked_item)
+		item_effect_triggered.emit(attacker, "knock_off")
+		if AbilityManager.effective_ability_id(target, ng_active) == AbilityManager.ABILITY_UNBURDEN:
+			target.unburden_active = true
+		_try_symbiosis(target)
 
 	if target.bide_turns > 0 and damage > 0:
 		target.bide_damage += damage

@@ -277,26 +277,30 @@ MOVES = [
     # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id":  28, "name": "Sand Attack",
      "type": TYPE_GROUND, "category": STAT, "accuracy": 100, "pp": 15,
-     "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1, "bounceable": True},
+     "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1, "bounceable": True,
+     "stat_change_bypasses_type_gate": True},
 
     # Tail Whip: -1 Def foe
     # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id":  39, "name": "Tail Whip",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 30,
-     "stat_change_stat": STAGE_DEF, "stat_change_amount": -1, "bounceable": True},
+     "stat_change_stat": STAGE_DEF, "stat_change_amount": -1, "bounceable": True,
+     "stat_change_bypasses_type_gate": True},
 
     # Leer: -1 Def foe
     # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id":  43, "name": "Leer",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 30,
-     "stat_change_stat": STAGE_DEF, "stat_change_amount": -1, "bounceable": True},
+     "stat_change_stat": STAGE_DEF, "stat_change_amount": -1, "bounceable": True,
+     "stat_change_bypasses_type_gate": True},
 
     # Growl: -1 Atk foe, sound_move=true (source: struct MoveInfo.soundMove)
     # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
     {"id":  45, "name": "Growl",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 40,
      "sound_move": True, "bounceable": True,
-     "stat_change_stat": STAGE_ATK, "stat_change_amount": -1},
+     "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
+     "stat_change_bypasses_type_gate": True},
 
     # ── Tier 2: status-inflicting moves ──────────────────────────────────────
 
@@ -1570,7 +1574,8 @@ MOVES = [
 
     {"id": 103, "name": "Screech",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 85, "pp": 40,
-     "sound_move": True, "bounceable": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -2},
+     "sound_move": True, "bounceable": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -2,
+     "stat_change_bypasses_type_gate": True},
 
     {"id": 104, "name": "Double Team",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 15,
@@ -1582,7 +1587,8 @@ MOVES = [
 
     {"id": 108, "name": "Smokescreen",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 20,
-     "bounceable": True, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1},
+     "bounceable": True, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1,
+     "stat_change_bypasses_type_gate": True},
 
     {"id": 110, "name": "Withdraw",
      "type": TYPE_WATER, "category": STAT, "power": 0, "accuracy": 0, "pp": 40,
@@ -1622,7 +1628,8 @@ MOVES = [
 
     {"id": 134, "name": "Kinesis",
      "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 80, "pp": 15,
-     "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1},
+     "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1,
+     "stat_change_bypasses_type_gate": True},
 
     {"id": 137, "name": "Glare",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 30,
@@ -1650,7 +1657,8 @@ MOVES = [
 
     {"id": 148, "name": "Flash",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 20,
-     "bounceable": True, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1},
+     "bounceable": True, "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1,
+     "stat_change_bypasses_type_gate": True},
 
     {"id": 151, "name": "Acid Armor",
      "type": TYPE_POISON, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
@@ -1674,7 +1682,8 @@ MOVES = [
 
     {"id": 184, "name": "Scary Face",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 10,
-     "bounceable": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -2},
+     "bounceable": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": -2,
+     "stat_change_bypasses_type_gate": True},
 
     {"id": 186, "name": "Sweet Kiss",
      "type": TYPE_FAIRY, "category": STAT, "power": 0, "accuracy": 75, "pp": 10,
@@ -1710,7 +1719,8 @@ MOVES = [
 
     {"id": 230, "name": "Sweet Scent",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 20,
-     "is_spread": True, "bounceable": True, "stat_change_stat": STAGE_EVASION, "stat_change_amount": -2},
+     "is_spread": True, "bounceable": True, "stat_change_stat": STAGE_EVASION, "stat_change_amount": -2,
+     "stat_change_bypasses_type_gate": True},
 
     {"id": 239, "name": "Twister",
      "type": TYPE_DRAGON, "category": SPEC, "power": 40, "accuracy": 100, "pp": 20,
@@ -1938,11 +1948,13 @@ MOVES = [
 
     {"id": 589, "name": "Play Nice",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
-     "ignores_protect": True, "ignores_substitute": True, "bounceable": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1},
+     "ignores_protect": True, "ignores_substitute": True, "bounceable": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
+     "stat_change_bypasses_type_gate": True},
 
     {"id": 590, "name": "Confide",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
-     "sound_move": True, "ignores_protect": True, "bounceable": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -1},
+     "sound_move": True, "ignores_protect": True, "bounceable": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -1,
+     "stat_change_bypasses_type_gate": True},
 
     {"id": 592, "name": "Steam Eruption",
      "type": TYPE_WATER, "category": SPEC, "power": 110, "accuracy": 95, "pp": 5,
@@ -1950,7 +1962,8 @@ MOVES = [
 
     {"id": 598, "name": "Eerie Impulse",
      "type": TYPE_ELECTRIC, "category": STAT, "power": 0, "accuracy": 100, "pp": 15,
-     "bounceable": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -2},
+     "bounceable": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -2,
+     "stat_change_bypasses_type_gate": True},
 
     {"id": 608, "name": "Baby-Doll Eyes",
      "type": TYPE_FAIRY, "category": STAT, "power": 0, "accuracy": 100, "pp": 30,
@@ -2364,7 +2377,7 @@ MOVES = [
     {"id":  321, "name": "Tickle",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100,
      "pp": 20, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1, "extra_stat_change_stats": [STAGE_DEF],
-     "extra_stat_change_amounts": [-1]},
+     "extra_stat_change_amounts": [-1], "stat_change_bypasses_type_gate": True},
     {"id":  322, "name": "Cosmic Power",
      "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 1,
@@ -2416,7 +2429,8 @@ MOVES = [
     {"id":  568, "name": "Noble Roar",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100,
      "pp": 30, "sound_move": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
-     "extra_stat_change_stats": [STAGE_SPATK], "extra_stat_change_amounts": [-1]},
+     "extra_stat_change_stats": [STAGE_SPATK], "extra_stat_change_amounts": [-1],
+     "stat_change_bypasses_type_gate": True},
     {"id":  620, "name": "Dragon Ascent",
      "type": TYPE_FLYING, "category": PHYS, "power": 120, "accuracy": 100,
      "pp": 5, "makes_contact": True, "stat_change_self": True, "stat_change_stat": STAGE_DEF,
@@ -2424,7 +2438,7 @@ MOVES = [
     {"id":  669, "name": "Tearful Look",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1, "extra_stat_change_stats": [STAGE_SPATK],
-     "extra_stat_change_amounts": [-1]},
+     "extra_stat_change_amounts": [-1], "stat_change_bypasses_type_gate": True},
     {"id":  705, "name": "Decorate",
      "type": TYPE_FAIRY, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 15, "stat_change_stat": STAGE_ATK, "stat_change_amount": 2, "extra_stat_change_stats": [STAGE_SPATK],
@@ -3749,6 +3763,90 @@ MOVES = [
     {"id":  210, "name": "Fury Cutter",
      "type": TYPE_BUG, "category": PHYS, "power": 40, "accuracy": 95, "pp": 20,
      "makes_contact": True, "slicing_move": True, "is_fury_cutter": True},
+
+    # ── [D4 Bundle 6] 23 REUSE-LIKELY residual moves ──────────────────────────
+    {"id":  100, "name": "Teleport",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 20, "priority": -6,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_teleport": True},
+    {"id":  156, "name": "Rest",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True, "healing_move": True,
+     "ban_flags": BAN_MIRROR_MOVE, "is_rest": True},
+    {"id":  206, "name": "False Swipe",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 40, "accuracy": 100, "pp": 40,
+     "makes_contact": True, "is_false_swipe": True},
+    {"id":  217, "name": "Present",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 1, "accuracy": 90, "pp": 15,
+     "is_present": True},
+    {"id":  282, "name": "Knock Off",
+     "type": TYPE_DARK, "category": PHYS, "power": 65, "accuracy": 100, "pp": 20,
+     "makes_contact": True, "is_knock_off": True},
+    {"id":  283, "name": "Endeavor",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 1, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "is_endeavor": True},
+    {"id":  362, "name": "Brine",
+     "type": TYPE_WATER, "category": SPEC, "power": 65, "accuracy": 100, "pp": 10,
+     "is_brine": True},
+    {"id":  367, "name": "Acupressure",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 30,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_acupressure": True},
+    {"id":  375, "name": "Psycho Shift",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 100, "pp": 10,
+     "is_psycho_shift": True},
+    {"id":  386, "name": "Punishment",
+     "type": TYPE_DARK, "category": PHYS, "power": 60, "accuracy": 100, "pp": 5,
+     "makes_contact": True, "is_punishment": True},
+    {"id":  477, "name": "Telekinesis",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 15,
+     "bounceable": True, "is_telekinesis": True},
+    {"id":  512, "name": "Acrobatics",
+     "type": TYPE_FLYING, "category": PHYS, "power": 55, "accuracy": 100, "pp": 15,
+     "makes_contact": True, "is_acrobatics": True},
+    {"id":  523, "name": "Bulldoze",
+     "type": TYPE_GROUND, "category": PHYS, "power": 60, "accuracy": 100, "pp": 20,
+     "is_spread": True,
+     "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1, "secondary_chance": 100},
+    {"id":  562, "name": "Belch",
+     "type": TYPE_POISON, "category": SPEC, "power": 120, "accuracy": 90, "pp": 10,
+     "ban_flags": (BAN_MIRROR_MOVE | BAN_ME_FIRST | BAN_METRONOME | BAN_MIMIC
+                   | BAN_COPYCAT | BAN_SLEEP_TALK | BAN_INSTRUCT | BAN_ASSIST),
+     "is_belch": True},
+    {"id":  575, "name": "Parting Shot",
+     "type": TYPE_DARK, "category": STAT, "accuracy": 100, "pp": 20,
+     "bounceable": True, "ignores_substitute": True, "sound_move": True,
+     "is_parting_shot": True},
+    {"id":  599, "name": "Venom Drench",
+     "type": TYPE_POISON, "category": STAT, "accuracy": 100, "pp": 20,
+     "is_spread": True, "bounceable": True, "is_venom_drench": True},
+    {"id":  601, "name": "Geomancy",
+     "type": TYPE_FAIRY, "category": STAT, "accuracy": 0, "pp": 10,
+     "ban_flags": (BAN_SLEEP_TALK | BAN_INSTRUCT), "two_turn": True,
+     "stat_change_stat": STAGE_SPATK, "stat_change_amount": 2, "stat_change_self": True,
+     "extra_stat_change_stats": [STAGE_SPDEF, STAGE_SPEED],
+     "extra_stat_change_amounts": [2, 2]},
+    {"id":  635, "name": "Toxic Thread",
+     "type": TYPE_POISON, "category": STAT, "accuracy": 100, "pp": 20,
+     "bounceable": True, "is_toxic_thread": True},
+    {"id":  693, "name": "Stuff Cheeks",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_stuff_cheeks": True},
+    {"id":  694, "name": "No Retreat",
+     "type": TYPE_FIGHTING, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE,
+     "stat_change_stat": STAGE_ATK, "stat_change_amount": 1, "stat_change_self": True,
+     "extra_stat_change_stats": [STAGE_DEF, STAGE_SPATK, STAGE_SPDEF, STAGE_SPEED],
+     "extra_stat_change_amounts": [1, 1, 1, 1],
+     "is_no_retreat": True},
+    {"id":  699, "name": "Octolock",
+     "type": TYPE_FIGHTING, "category": STAT, "accuracy": 100, "pp": 15,
+     "is_octolock": True},
+    {"id":  737, "name": "Poltergeist",
+     "type": TYPE_GHOST, "category": PHYS, "power": 110, "accuracy": 90, "pp": 5,
+     "is_poltergeist": True},
+    {"id":  807, "name": "Chilly Reception",
+     "type": TYPE_ICE, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "ban_flags": (BAN_MIRROR_MOVE | BAN_METRONOME),
+     "is_chilly_reception": True},
 ]
 
 
@@ -3782,6 +3880,8 @@ DEFAULTS = {
     "stat_change_stat":    -1,
     "stat_change_amount":  0,
     "stat_change_self":    False,
+    # [EFFECT_STAT_CHANGE audit] see move_data.gd's own doc comment
+    "stat_change_bypasses_type_gate": False,
     # [Bucket 3 multi-stat] extra (stat, amount) pairs beyond the primary one
     "extra_stat_change_stats":   [],
     "extra_stat_change_amounts": [],
@@ -4071,6 +4171,29 @@ DEFAULTS = {
     "is_laser_focus":         False,
     "is_topsy_turvy":         False,
     "is_fury_cutter":         False,
+
+    # [D4 Bundle 6]
+    "is_teleport":            False,
+    "is_rest":                False,
+    "is_false_swipe":         False,
+    "is_present":             False,
+    "is_knock_off":           False,
+    "is_endeavor":            False,
+    "is_brine":               False,
+    "is_acupressure":         False,
+    "is_psycho_shift":        False,
+    "is_punishment":          False,
+    "is_telekinesis":         False,
+    "is_acrobatics":          False,
+    "is_belch":               False,
+    "is_parting_shot":        False,
+    "is_venom_drench":        False,
+    "is_toxic_thread":        False,
+    "is_stuff_cheeks":        False,
+    "is_no_retreat":          False,
+    "is_octolock":            False,
+    "is_poltergeist":         False,
+    "is_chilly_reception":    False,
 }
 
 HEADER = """\
@@ -4091,6 +4214,7 @@ FIELD_ORDER = [
     "secondary_effect", "secondary_chance",
     "secondary_effect_2", "secondary_chance_2",
     "stat_change_stat", "stat_change_amount", "stat_change_self",
+    "stat_change_bypasses_type_gate",
     "extra_stat_change_stats", "extra_stat_change_amounts",
     # M6 fields
     "two_turn", "semi_inv_state",
@@ -4204,6 +4328,12 @@ FIELD_ORDER = [
     "is_mud_sport", "is_water_sport", "is_weather_ball", "is_reflect_type",
     "is_roost", "is_strength_sap", "is_steel_beam", "is_chloroblast",
     "is_charge", "is_laser_focus", "is_topsy_turvy", "is_fury_cutter",
+    # [D4 Bundle 6] fields
+    "is_teleport", "is_rest", "is_false_swipe", "is_present", "is_knock_off",
+    "is_endeavor", "is_brine", "is_acupressure", "is_psycho_shift",
+    "is_punishment", "is_telekinesis", "is_acrobatics", "is_belch",
+    "is_parting_shot", "is_venom_drench", "is_toxic_thread", "is_stuff_cheeks",
+    "is_no_retreat", "is_octolock", "is_poltergeist", "is_chilly_reception",
 ]
 
 

@@ -12,6 +12,7 @@ accuracy = 0
 pp = 20
 stat_change_stat = 0
 stat_change_amount = -1
+stat_change_bypasses_type_gate = true
 ignores_substitute = true
 ignores_protect = true
 bounceable = true

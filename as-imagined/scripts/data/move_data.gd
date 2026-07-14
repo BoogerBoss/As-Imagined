@@ -228,6 +228,20 @@ const SE_TRAP_BOTH: int = 14
 @export var stat_change_amount: int = 0
 @export var stat_change_self: bool = false
 
+# [EFFECT_STAT_CHANGE audit] true for a foe/selected-targeting stat-change
+# move whose real script (BattleScript_EffectStatChange, and everything
+# that maps to it: EFFECT_STAT_CHANGE / EFFECT_STAT_CHANGE_ON_STATUS /
+# EFFECT_TOXIC_THREAD / EFFECT_STAT_CHANGE_MAGNETIC — src/data/
+# battle_move_effects.h) never calls typecalc, so this project's general
+# foe-targeting type-immunity gate in BattleManager must be bypassed for
+# it too — matching the precedent already set by the dedicated
+# is_foresight/is_purify/is_nightmare/is_spite/is_reflect_type/
+# is_toxic_thread/is_venom_drench flags, but as one shared field rather
+# than N more single-purpose dispatch flags, since none of the moves this
+# flag covers need a dedicated dispatch branch of their own — they run
+# through the fully generic stat_change_stat/amount mechanism already.
+@export var stat_change_bypasses_type_gate: bool = false
+
 # [Bucket 3 multi-stat] Additional (stat, amount) pairs beyond the primary
 # stat_change_stat/amount above, for moves that touch 2+ distinct stats in
 # one shot (Ancient Power's +1 to all 5 non-HP stats, Shell Smash's mixed
@@ -3160,3 +3174,187 @@ const STATUS_ARG_ANY: int = -3
 #   PARTIAL implementation, not full parity with source — see
 #   docs/decisions.md's `[D4 Bundle 5]` entry for the full citation. No
 #   new MoveData flag needed for the shipped half.
+
+# ── [D4 Bundle 6] ────────────────────────────────────────────────────────────
+
+# Teleport(100): EFFECT_TELEPORT. At this project's GEN_LATEST config, a
+#   trainer-battle self-switch — jumps into the SAME `BattleScript_EffectBatonPass`
+#   script Baton Pass uses, but the stat-stage-passing check in
+#   `Cmd_switchindataupdate` is keyed on `GetMoveEffect(gCurrentMove) ==
+#   EFFECT_BATON_PASS`, not on which script ran — Teleport's own effect is
+#   EFFECT_TELEPORT, so NO stat-passing occurs. That same script's
+#   `jumpifcantswitch SWITCH_IGNORE_ESCAPE_PREVENTION | BS_ATTACKER` flag means
+#   it bypasses trapping entirely, the same established exemption Baton Pass
+#   already has in this project. Fails only if no valid switch-in target exists.
+@export var is_teleport: bool = false
+
+# Rest(156): EFFECT_REST. Fails if already asleep (or Comatose), fails if
+#   already at full HP, and fails if blocked by the user's OWN Insomnia/Vital
+#   Spirit/Purifying Salt (self-inflicted sleep still respects the user's own
+#   sleep-immunity ability) — ALL THREE checked before any heal/status-clear
+#   happens (source: battle_move_resolution.c L1268-1277). Otherwise: clears
+#   any existing status, heals to full HP, and sets sleep for exactly 2 turns
+#   (force_sleep_turns, not the random 2-4 range).
+@export var is_rest: bool = false
+
+# False Swipe(206): EFFECT_FALSE_SWIPE. Ordinary damage, floored so the
+#   defender is never brought below 1 HP.
+@export var is_false_swipe: bool = false
+
+# Present(217): EFFECT_PRESENT. A flat 0-255 uniform roll split 102/76/26/51
+#   into power bands 40/80/120/heal (battle_move_resolution.c L1311-1320) —
+#   confirmed NOT Magnitude's weighted table shape. The heal branch (max_hp/4,
+#   type-effectiveness bypassed, fails with "already at full HP" if capped) is
+#   a genuinely different bypass from the 3 damage bands, not merely a 4th
+#   power value.
+@export var is_present: bool = false
+
+# Knock Off(282): EFFECT_KNOCK_OFF. Removes the target's held item (gated by
+#   Sticky Hold / form-lock, reusing AbilityManager's existing
+#   `_try_steal_item`/`is_form_locked_by_item` checks minus the transfer-to-
+#   attacker step) and gets a x1.5 power boost when the item is actually
+#   removable. Source: battle_util.c L6425-6429 (power),
+#   CanBattlerGetOrLoseItem (L8686).
+@export var is_knock_off: bool = false
+
+# Endeavor(283): EFFECT_ENDEAVOR. Sets the target's current HP equal to the
+#   attacker's current HP; fails (0 damage) unless the target's HP is
+#   strictly greater than the attacker's. Source: battle_util.c L7685-7688.
+@export var is_endeavor: bool = false
+
+# Brine(362): EFFECT_BRINE. Power doubles if the target's HP is at or below
+#   50%. Source: moves_info.h description; battle_util.c EFFECT_BRINE case.
+@export var is_brine: bool = false
+
+# Acupressure(367): EFFECT_ACUPRESSURE. Raises ONE random eligible stat
+#   (all 7 — Atk/Def/SpAtk/SpDef/Speed/Accuracy/Evasion, unlike Moody's
+#   narrower pool) by +2; fails if every stat is already at +6.
+@export var is_acupressure: bool = false
+
+# Psycho Shift(375): EFFECT_PSYCHO_SHIFT. Transfers the ATTACKER's own
+#   status1 (Poison/Toxic/Burn/Paralysis/Sleep/Freeze — never confusion,
+#   which is STATUS2 in source) onto the target, then cures the attacker's
+#   own status ONLY on success. Fails outright if the attacker has no
+#   status, if the target already has one, if Safeguard blocks it, or if
+#   the specific status can't be inflicted on the target (type/ability
+#   immunity, reusing StatusManager.try_apply_status's own gates).
+#   Source: data/battle_scripts_1.s L898-921; BS_TryPsychoShift
+#   (battle_script_commands.c L13215-13270).
+@export var is_psycho_shift: bool = false
+
+# Punishment(386): EFFECT_PUNISHMENT. Power = 60 + 20 x (target's positive
+#   stat-stage COUNT), capped at 200. Source: battle_util.c L6235-6238;
+#   CountBattlerStatIncreases(battlerDef, FALSE).
+@export var is_punishment: bool = false
+
+# Telekinesis(477): EFFECT_TELEKINESIS. Two independent halves, both gated
+#   on BattlePokemon.telekinesis_turns (set to 3 on the target): (1)
+#   ungrounds the target — a peer addition to AbilityManager.is_grounded's
+#   existing tier (subordinate to Iron Ball/Ingrain/Smack Down's forced-
+#   grounded overrides, same priority as Magnet Rise/Levitate/Air Balloon —
+#   source: IsBattlerUngroundedByAbilityItemOrEffect, battle_util.c
+#   L5866-5872); (2) any move against the target auto-hits, EXCEPT OHKO
+#   moves and while the target is semi-invulnerable (source: battle_util.c
+#   L10196-10199) — checked in StatusManager.check_accuracy AFTER the
+#   semi-invulnerable gate, not before. Gravity's own ban flag is moot —
+#   this project has no Gravity mechanic.
+@export var is_telekinesis: bool = false
+
+# Acrobatics(512): EFFECT_ACROBATICS. Power doubles if the user holds no
+#   item. Source: battle_util.c L6210-6215 (Gem edge case not modeled — no
+#   Gems in this project's item roster).
+@export var is_acrobatics: bool = false
+
+# Belch(562): EFFECT_BELCH. Fails unless the user has EVER consumed a real
+#   berry this battle — reads `BattlePokemon.last_consumed_berry != null`,
+#   the deliberately switch-persistent tracker (source's own `ateBerry` is a
+#   party-level flag, matching this project's field exactly), NOT
+#   `held_item == null` (a different condition: a mon that never held a
+#   berry, or one that later picked up/received a different item after
+#   eating a berry, would both be measured wrong by that check). Source:
+#   battle_util.c L1301-1307 (IsBelchPreventingMove).
+@export var is_belch: bool = false
+
+# Parting Shot(575): EFFECT_PARTING_SHOT. Lowers the target's Atk/SpAtk by 1
+#   each (stat_change_stat + one extra_stat_change pair), THEN switches the
+#   user out — but at this project's GEN_LATEST (Gen7+) config the switch is
+#   GATED ON the stat-lower having actually landed on at least one stat
+#   (MOVE_RESULT_STAT_CHANGED) — the OPPOSITE of Memento's independence
+#   finding. A Substitute-blocked stat-lower means NEITHER the stat change
+#   NOR the switch happens. Source: CanPartingShotTrigger
+#   (battle_move_resolution.c L3885-3899).
+@export var is_parting_shot: bool = false
+
+# Venom Drench(599): EFFECT_STAT_CHANGE_ON_STATUS. TARGET_BOTH (spread,
+#   opponents only): lowers Atk/SpAtk/Speed by 1 each on every opponent
+#   currently Poisoned or Badly Poisoned — independently per opponent, no
+#   effect on a non-poisoned target. Source: moves_info.h MOVE_VENOM_DRENCH.
+@export var is_venom_drench: bool = false
+
+# Toxic Thread(635): EFFECT_TOXIC_THREAD. Poisons the target AND lowers its
+#   Speed by 1 — CONFIRMED INDEPENDENT applications (source's own test
+#   suite: `toxic_thread.c` — poisoning a Steel-type still lowers Speed;
+#   lowering Speed at an already-capped stage still poisons). The whole
+#   move only fails if NEITHER would do anything (CanBePoisoned false AND
+#   the stat-lower would do nothing). Source: battle_stat_change.c
+#   L139-144 (CanBePoisoned gate); moves_info.h's own additionalEffects.
+@export var is_toxic_thread: bool = false
+
+# Stuff Cheeks(693): EFFECT_STUFF_CHEEKS. Forces the user to consume its own
+#   held Berry immediately (fails if not holding one), applying whichever of
+#   the 4 already-built berry-family functions (hp_threshold_berry_heal /
+#   status_cure_berry_cures / confusion_cure_berry_cures /
+#   stat_raise_berry_trigger) matches via their existing `override_item`
+#   forced-trigger param (the same pattern `[M17n-7]`'s Cud Chew fix and
+#   `steal_and_eat_berry_effect` already established) — THEN raises Defense
+#   by 2. Scoped to those 4 families, same disclosed limitation as
+#   `steal_and_eat_berry_effect` (Starf/Micle/Enigma/White Herb/Lansat/
+#   Custap not covered). Source: battle_script_commands.c L8544-8551
+#   (ACTIVATION_ON_STUFF_CHEEKS); battle_move_resolution.c L1292-1294 (fail
+#   gate); L4612-4622 (queue-swap/restore around the stat-change script).
+@export var is_stuff_cheeks: bool = false
+
+# No Retreat(694): EFFECT_NO_RETREAT. Self-targeted +1 to 5 stats
+#   (Atk/Def/SpAtk/SpDef/Speed — NOT Accuracy/Evasion — stat_change_stat +
+#   4 extra pairs), THEN
+#   traps the user via its OWN dedicated bool (`no_retreat_active`) — kept
+#   deliberately SEPARATE from `escape_prevented_by` (the Mean-Look-style
+#   object-reference shape), since that field's reciprocal-clear-when-the-
+#   source-leaves-the-field rule is wrong for a SELF-inflicted trap (a later
+#   opponent's Mean Look would overwrite the reference, and that opponent
+#   later leaving the field would incorrectly free the No-Retreat user).
+#   Fails if already used (no_retreat_active already true) — source sets
+#   TWO separate fields for exactly this reason (battle_stat_change.c
+#   L1003-1009: `noRetreat` blocks reuse, `escapePrevention` is the shared
+#   trap flag; this project's single bool covers both roles since nothing
+#   else needs to read it as a foe-inflicted trap).
+@export var is_no_retreat: bool = false
+
+# Octolock(699): EFFECT_OCTOLOCK. Despite its own flavor text ("traps the
+#   foe"), a direct source read (CanBattlerEscape, battle_util.c L4943-4959)
+#   confirms Octolock's own volatile is NEVER checked there — it does NOT
+#   actually block switching in this reference source. Sets
+#   `octolocked_by` (a reference to the caster) on the target; every end of
+#   turn while set (gated on the target still being alive, AFTER the
+#   poison/burn/frostbite/nightmare/wrap HP-based ticks — battle_end_turn.c's
+#   own handler-table position, ENDTURN_OCTOLOCK sits right after
+#   ENDTURN_WRAP), lowers the target's Defense and Sp. Defense by 1 each.
+#   Cleared reciprocally (same shape as wrapped_by/infatuated_by/
+#   escape_prevented_by/leeched_by) if the caster leaves the field.
+@export var is_octolock: bool = false
+
+# Poltergeist(737): EFFECT_POLTERGEIST. Fails outright if the target holds
+#   no item (checked before the accuracy roll); otherwise plain damage.
+@export var is_poltergeist: bool = false
+
+# Chilly Reception(807): EFFECT_WEATHER_AND_SWITCH. Sets Hail (this
+#   project's only modeled Ice-weather value; Snow is not separately
+#   implemented), THEN switches the user out UNCONDITIONALLY — the switch
+#   proceeds regardless of whether the weather-set itself succeeded (source:
+#   `BattleScript_EffectWeatherAndSwitch` always falls through to
+#   `BattleScript_MoveSwitch` after the weather attempt) — the OPPOSITE
+#   gating from Parting Shot above, despite both being "effect then switch"
+#   moves. Bypasses trapping via the same `SWITCH_IGNORE_ESCAPE_PREVENTION`
+#   flag Teleport/Baton Pass use. Fails only if no valid switch-in target
+#   exists.
+@export var is_chilly_reception: bool = false

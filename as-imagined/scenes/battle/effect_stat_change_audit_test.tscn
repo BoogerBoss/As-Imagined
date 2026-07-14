@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://effectstatchangeaudittest"]
+
+[ext_resource type="Script" path="res://scenes/battle/effect_stat_change_audit_test.gd" id="1_effectstatchangeaudittest"]
+
+[node name="EffectStatChangeAuditTest" type="Node"]
+script = ExtResource("1_effectstatchangeaudittest")

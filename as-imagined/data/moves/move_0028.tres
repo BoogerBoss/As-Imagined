@@ -11,4 +11,5 @@ category = 2
 pp = 15
 stat_change_stat = 5
 stat_change_amount = -1
+stat_change_bypasses_type_gate = true
 bounceable = true

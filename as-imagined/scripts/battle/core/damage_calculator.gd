@@ -311,6 +311,14 @@ static func calculate(
 		var pct_dmg: int = defender.current_hp * move.percent_current_hp_damage / 100
 		return {"damage": pct_dmg, "is_crit": false, "effectiveness": effectiveness,
 				"defender_item_consumed": false}
+	# [D4 Bundle 6] Endeavor: sets the target's HP equal to the attacker's own
+	# current HP — 0 (no effect) unless the target's HP is strictly greater
+	# than the attacker's. Same bypass shape as fixed_damage/level_damage/
+	# percent_current_hp_damage above. Source: battle_util.c L7685-7688.
+	if move.is_endeavor:
+		var endeavor_dmg: int = max(0, defender.current_hp - attacker.current_hp)
+		return {"damage": endeavor_dmg, "is_crit": false, "effectiveness": effectiveness,
+				"defender_item_consumed": false}
 
 	# --- Critical hit determination ---
 	# Source: src/battle_util.c :: IsCriticalHit → CalcCritChanceStage (L7820)

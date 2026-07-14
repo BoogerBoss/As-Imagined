@@ -22077,3 +22077,424 @@ calculate` gained trailing `mud_sport_active`/`water_sport_active` params
 subsection added under D4, Section E's summary table/reconciliation
 recomputed (677+0+0+215+42=934, reconfirmed). **Section D's residual:
 55→42.**
+
+## [D4 Bundle 6] — Teleport / Rest / False Swipe / Present / Knock Off /
+Endeavor / Brine / Acupressure / Psycho Shift / Punishment / Telekinesis /
+Acrobatics / Bulldoze / Belch / Parting Shot / Venom Drench / Geomancy /
+Toxic Thread / Stuff Cheeks / No Retreat / Octolock / Poltergeist / Chilly
+Reception (23 moves) — 2026-07-14
+
+All 23 of the REUSE-LIKELY moves flagged by the immediately-preceding
+verification pass, confirmed by Rob before Step 0. Step 0 was re-run
+fresh against source for every move (per the standing convention of not
+trusting a prior recon's own infra-reuse claims), using brace-matched
+`moves_info.h` block extraction plus direct C-function reads
+(`battle_util.c`/`battle_move_resolution.c`/`battle_script_commands.c`/
+`battle_stat_change.c`/`battle_end_turn.c`/`data/battle_scripts_1.s`).
+
+### Step 0 findings (8 real forks, all confirmed load-bearing)
+
+1. **Octolock does NOT actually trap.** `CanBattlerEscape`
+   (battle_util.c L4943-4959, the function behind
+   `AbilityManager.is_trapped`) checks `escapePrevention`/`wrapped`/
+   `root`/Fairy Lock/Sky Drop — it never references the Octolock
+   volatile anywhere. Confirmed via a full grep of every `.octolock`
+   reference in the reference tree: set in `BS_TrySetOctolock`, ticked
+   in `HandleEndTurnOctolock` (battle_end_turn.c L715-724), and cleared
+   reciprocally when the caster leaves (battle_main.c L3173-3174/
+   L3287-3288) — nowhere else. Implemented as stat-lower-only;
+   `octolocked_by` deliberately never touches `is_trapped`.
+2. **No Retreat's self-trap needed its own dedicated bool.** Source sets
+   TWO separate fields (battle_stat_change.c L1003-1009): `noRetreat`
+   (blocks reuse) and `escapePrevention` (the shared Mean-Look-style trap,
+   only set `if (!already set)`). This project's `escape_prevented_by`
+   is a BattlePokemon reference with a documented reciprocal-clear-when-
+   the-source-leaves-the-field rule (correct for Mean Look). If No
+   Retreat set `escape_prevented_by = self`, a LATER opponent's Mean Look
+   would overwrite the reference, and that opponent's own later departure
+   would incorrectly free the No-Retreat user. `BattlePokemon.no_retreat_active`
+   is a single dedicated bool covering both roles (trap query + reuse
+   block), since nothing else in this project reads it as a foe-inflicted
+   trap.
+3. **Telekinesis is two independent halves.** Ungrounding: confirmed via
+   `IsBattlerUngroundedByAbilityItemOrEffect` (battle_util.c L5866-5872)
+   that `telekinesis` sits in the exact same tier as Magnet Rise/Air
+   Balloon/Levitate — a clean peer addition to `AbilityManager.is_grounded`'s
+   existing ordering, subordinate to Iron Ball/Ingrain/Smack Down's
+   forced-grounded overrides. Guaranteed hit: confirmed via battle_util.c
+   L10196-10199 that this is CONDITIONAL on the target NOT being semi-
+   invulnerable (`!IsSemiInvulnerable`) and EXCLUDES OHKO moves
+   (`moveEffect != EFFECT_OHKO`) — inserted into
+   `StatusManager.check_accuracy` AFTER the semi-invulnerable gate, the
+   opposite ordering from Lock-On (which bypasses semi-invulnerability
+   entirely).
+4. **Parting Shot's switch is GATED ON the stat-lower landing.**
+   `CanPartingShotTrigger` (battle_move_resolution.c L3885-3899): at this
+   project's Gen7+ config, the switch fires only if
+   `MOVE_RESULT_STAT_CHANGED` was set on some target — a fully blocked
+   stat-lower means neither the stat change nor the switch happens. The
+   OPPOSITE of Memento's own independence finding (self-faint happens
+   regardless of the stat-drop's success). Confirmed via direct debug
+   tracing that this project's own `ignores_substitute = true` data field
+   on Parting Shot (matching source's real B_UPDATED_MOVE_FLAGS>=GEN_6
+   config) means Substitute specifically canNOT be used as the blocking
+   scenario for this discriminator — a target's Atk/SpAtk both pre-capped
+   at -6 was used instead.
+5. **Chilly Reception's switch is UNCONDITIONAL.**
+   `BattleScript_EffectWeatherAndSwitch` (data/battle_scripts_1.s
+   L2289-2299) always falls through to `BattleScript_MoveSwitch` after
+   the weather-set attempt, regardless of whether `setfieldweather`
+   actually changed anything — the opposite gating from Parting Shot,
+   confirmed via a full-battle test where the weather is already Hail
+   before the move is used (switch still happens).
+6. **Toxic Thread/Venom Drench both needed a type-immunity-gate
+   exemption.** Both share `BattleScript_EffectStatChange`
+   (data/battle_scripts_1.s L75-78: `attackcanceler` + `trymovestatchanges`
+   + MoveEnd — no `typecalc` call at all), confirmed via source's own test
+   suite (test/battle/move_effects_combined/toxic_thread.c: "Toxic Thread
+   still lowers Speed if the target can't be Poisoned [a Steel-type]").
+   The same class of bug `[D2 batch 2]`'s Foresight finding first
+   surfaced, and the same class of bug `[D4 bundle 3]` resolved for
+   Purify/Nightmare/Spite. FLAGGED, NOT FIXED: this generic script also
+   backs every other already-shipped plain `EFFECT_STAT_CHANGE`
+   foe-targeting move in this project (Growl/Leer/etc.), which may share
+   this exact gap against an immune-type target — auditing/fixing the
+   full existing roster is out of scope for this bundle; only Toxic
+   Thread and Venom Drench are exempted.
+7. **Knock Off's power boost and item removal share one gate.** Source's
+   `CanBattlerGetOrLoseItem` (battle_util.c L8686) gates both the x1.5
+   power boost and the removal itself on the identical check. New
+   `AbilityManager.can_remove_item` reuses the Sticky Hold check and
+   `is_form_locked_by_item` gate `_try_steal_item` already established
+   (`[M17j]`/`[Multitype-Plate fix]`), minus the transfer-to-attacker
+   step. A real test-authoring correction confirmed this must NOT route
+   through `_consume_item` — that function's Cheek Pouch heal and
+   `last_consumed_berry` tracking are both specifically for EATING a
+   berry, and Knock Off never does that (the item is knocked away, not
+   ingested); only Unburden ("any item, berry or not" per its own doc
+   comment) and Symbiosis apply here, replicated directly.
+8. **Present is a flat 0-255 uniform roll**, NOT Magnitude's weighted-
+   table shape — confirmed via battle_move_resolution.c L1311-1320: split
+   102/76/26/51 into bands 40/80/120/heal. The heal branch
+   (battle_util.c L8151: `isPresentHealing`) bypasses the whole damaging
+   dispatch — heals the TARGET (not the user) `max_hp/4`, with type
+   effectiveness never computed (`ignoreTypeCalc`), and fails with
+   "already at full HP" if the target is capped
+   (`Cmd_presentdamagecalculation`, battle_script_commands.c L8455-8471).
+
+### Confirmed zero-new-code (pure data entries)
+
+- **Bulldoze(523)**: reuses `is_spread` (TARGET_FOES_AND_ALLY) plus the
+  already-built generic guaranteed-secondary-stat-change dispatch
+  (`[M19-secondary-stat-on-hit]`) — confirmed its own `.chance = 100` is
+  the EXPLICIT-100%-roll shape (Sheer-Force-eligible, Serene-Grace-capped),
+  not the guaranteed/omitted-`.chance` shape Overheat/Draco Meteor use.
+- **Geomancy(601)**: reuses `two_turn` (charge/release, Power-Herb-aware
+  for free) plus the generic multi-stat `stat_change_stat`/
+  `extra_stat_change_stats`/`extra_stat_change_amounts` mechanism
+  (`[Bucket 3 multi-stat]`) — the release-turn stat application already
+  falls naturally into the same `move.stat_change_stat >= 0` dispatch
+  every pure-status stat-change move uses.
+- **Stuff Cheeks(693)**: reuses `ItemManager.steal_and_eat_berry_effect`
+  (built for Pluck/Bug Bite in the Bucket-4-2-move-sub-groups session)
+  self-targeted (`beneficiary == stolen_item's own holder`) — confirms
+  that function's multi-family dispatch (heal/cure_status/cure_confusion/
+  stat) generalizes cleanly to a second, unrelated caller with zero
+  changes to the function itself.
+
+### Confirmed-as-expected (no forks beyond the recon's own claim)
+
+Teleport (self-switch reusing Baton Pass's script sans stat-passing,
+bypasses trapping via the same `SWITCH_IGNORE_ESCAPE_PREVENTION` flag);
+Rest (3-way fail chain — already asleep/Comatose, already full HP, blocked
+by the user's own Insomnia/Vital Spirit/Purifying Salt — checked before
+any heal/status-clear, matching battle_move_resolution.c L1268-1277
+exactly); False Swipe (unconditional 1-HP floor); Endeavor (target HP set
+to attacker HP, fails unless target HP is strictly greater); Brine (power
+x2 at <=50% target HP); Acupressure (random eligible stat +2 across all 7
+including Accuracy/Evasion, fails if all maxed); Psycho Shift (transfers
+Poison/Toxic/Burn/Paralysis/Sleep/Freeze — never confusion, which is
+STATUS2 in source — respecting per-status type/ability immunities via
+`StatusManager.try_apply_status`, cures the attacker only on success);
+Punishment (power = 60 + 20 x target's positive stat-stage COUNT, capped
+200); Acrobatics (power x2 with no held item); Belch (fails unless
+`last_consumed_berry != null`, the switch-persistent tracker, NOT
+`held_item == null`); Poltergeist (fails if target holds no item,
+checked before accuracy).
+
+### Implementation notes
+
+New `BattlePokemon` fields: `telekinesis_turns`, `no_retreat_active`,
+`octolocked_by` — all three cleared via `_clear_volatiles`, with
+`octolocked_by` using the established reciprocal-clear-on-source-leaving
+pattern (`wrapped_by`/`infatuated_by`/`escape_prevented_by`/`leeched_by`).
+New `AbilityManager.can_remove_item`. New `DamageCalculator` bypass
+branch for Endeavor, added alongside `percent_current_hp_damage`'s own
+identical shape. New `_force_present_roll` test seam. New signals:
+`telekinesis_set`, `octolock_set`. Octolock's end-of-turn tick was
+positioned immediately after the existing Wrap tick (matching source's
+own handler-table order — `ENDTURN_WRAP` immediately precedes
+`ENDTURN_OCTOLOCK`), gated on `not mon.fainted`, since a mon that faints
+from an earlier tick this same end-of-turn must not also take Octolock's
+stat-lower.
+
+### Test-authoring bugs found and fixed (11, all confirmed via direct
+### debug tracing to be test bugs, not production bugs)
+
+New `d4_bundle6_test.gd`/`.tscn` reached 90/90 only after fixing 11 bugs
+on the first run (72/90) — the largest count of test-only bugs in any D4
+bundle so far:
+
+1-7. **Seven fresh instances of the whole-battle-aggregation pitfall**:
+   Rest's heal amount (hardcoded to `300 - 50` assuming `max_hp ==
+   base_hp`, when the real HP formula adds `+level+10`); False Swipe's
+   HP floor (post-battle read caught def already fainted from its own
+   later Struggle recoil, unrelated to False Swipe's own floor); Endeavor
+   (same root cause — Endeavor kept re-firing across many turns);
+   Telekinesis's turn count (`telekinesis_turns` decrements every end of
+   turn, so a post-battle read is turn-count-dependent — fixed by
+   snapshotting inside the `telekinesis_set` handler itself); Parting
+   Shot's and Venom Drench's and Geomancy's and No Retreat's stat-change
+   counts (all guarded to their expected first-N events only, since each
+   move's own re-selection or a Mist-style repeated attempt would
+   otherwise keep re-applying the same stat changes until capped).
+8-10. **Three raw-`DamageCalculator.calculate()`-bypasses-power-override
+   bugs**: Brine/Punishment/Acrobatics all compute their power scaling in
+   `BattleManager`'s own pre-branch override section
+   (`_dmg_power_override`), NOT inside `DamageCalculator` — a direct
+   `calculate()` call (as several other D4-bundle tests have used for
+   simpler cases) silently never sees the override. Rewritten as full
+   two-battle comparisons (forced roll+crit on both sides, per CLAUDE.md's
+   pairwise-comparison convention). Two further confounds surfaced while
+   rewriting these: (a) the Punishment rewrite's first draft boosted the
+   TARGET's own Defense/Sp. Defense to trigger the power scaling — but
+   raising Defense directly reduces damage through the ordinary formula,
+   nearly canceling Punishment's own power increase by coincidence (fixed
+   by boosting Speed/Accuracy instead, neither of which affects physical
+   damage); (b) the Acrobatics AND Knock-Off-vs-Sticky-Hold rewrites'
+   first drafts used Choice Band as the "holds an item" test item — but
+   Choice Band itself boosts Attack by 50%, confounding both comparisons
+   (fixed with a mechanically-inert `HOLD_EFFECT_NONE` item for Acrobatics,
+   and reused for the Sticky Hold discriminator alongside a genuinely
+   separate power-boost-comparison sub-test for Knock Off).
+11. A recurrence of the berry-eaten-mid-battle confound `[D4 CHEAP
+   bundle]` already flagged for a different move: the Knock-Off-vs-
+   Sticky-Hold discriminator's first draft used an Oran-Berry-shaped item
+   (`HOLD_EFFECT_RESTORE_HP`) as the "removable item," which got silently
+   consumed via the UNRELATED HP-threshold berry pathway once the
+   holder's HP dropped low enough across the multi-turn battle — fixed
+   with a non-berry Choice Band item there instead (a different item than
+   the confound-driving one in bug 8-10's Acrobatics fix, since that test
+   needed a mechanically-inert item specifically).
+12. A fresh instance of the "type immunity precedes ability logic"
+   pitfall: the Poltergeist damage test used the default Normal-type
+   defender — but Poltergeist is Ghost-type, and Normal-types are flatly
+   IMMUNE to Ghost-type moves, reporting 0 damage regardless of the
+   item-check logic under test. Fixed with a Water-type defender.
+13. No Retreat's own expected stat-raise count was simply wrong (6,
+   assumed all 6 stat stages including Accuracy/Evasion) — direct source
+   confirmation (and a direct debug trace showing exactly 5
+   `stat_stage_changed` events: Atk/Def/SpAtk/SpDef/Speed) corrected the
+   expectation to 5. A genuine test-bug, not an implementation bug — the
+   production code was correct throughout.
+14. The Octolock direct-`_phase_end_of_turn()` unit test originally
+   overwrote `bm._side_conditions` with `[{}, {}]`, crashing on an
+   already-templated key read (`sc["reflect_turns"]`) inside
+   `_phase_end_of_turn` itself — fixed by leaving `_side_conditions` at
+   its own properly-initialized default entirely (never touching it).
+
+Stable across 5 reruns after all fixes.
+
+### Regression
+
+Given how many central chokepoints this bundle touches
+(`AbilityManager.is_grounded`/`is_trapped`, `StatusManager.check_accuracy`,
+`DamageCalculator.calculate`, `_clear_volatiles`), ran a full
+`scripts/count_assertions.sh` sweep (110 files) twice from independent
+process states — **11582 total assertions, 0 failures, identical GRAND
+TOTAL both runs** (11492 prior + 90 new = 11582, confirmed by direct
+addition). Special attention paid to `m19_pre1_test.tscn` (Low Kick/Grass
+Knot/Heavy Slam/Heat Crash/Return/Frustration, given this bundle also
+touches `DamageCalculator.calculate`) and `switch_test.tscn` (given the
+new Teleport/Chilly-Reception/Parting-Shot switch dispatches reuse
+`_do_voluntary_switch`/`_get_replacement_slot` directly) — both rerun 3x
+independently, confirmed unchanged at 48/48 and 64/64.
+
+**Total move-implementation count: 677→700.**
+`docs/m19_subtier_plan.md` updated throughout: new `[D4 Bundle 6]`
+subsection added under D4, Section E's summary table/reconciliation
+recomputed (700+0+0+215+19=934, reconfirmed). **Section D's residual:
+42→19.**
+
+## [EFFECT_STAT_CHANGE audit] — roster-wide type-immunity-gate audit
+(bugfix, not a move-count-changing tier) — 2026-07-14
+
+Resolves the gap `[D4 Bundle 6]`'s own Toxic Thread/Venom Drench fix
+explicitly flagged but did not investigate: "this same generic script
+backs every other already-shipped plain EFFECT_STAT_CHANGE foe-targeting
+move in this project (Growl/Leer/etc.), which may share this same gap
+against an immune-type target — auditing/fixing the existing roster is
+out of scope here."
+
+### Mechanism, re-confirmed from source
+
+`src/data/battle_move_effects.h` maps FOUR distinct `.effect` enum
+values to the literal same script:
+
+```
+[EFFECT_STAT_CHANGE]           = { .battleScript = BattleScript_EffectStatChange, ... }
+[EFFECT_STAT_CHANGE_ON_STATUS] = { .battleScript = BattleScript_EffectStatChange, ... }
+[EFFECT_TOXIC_THREAD]          = { .battleScript = BattleScript_EffectStatChange, ... }
+[EFFECT_STAT_CHANGE_MAGNETIC]  = { .battleScript = BattleScript_EffectStatChange, ... }
+```
+
+(`EFFECT_STAT_CHANGE_HALF_HP` — Belly Drum/Fillet Away/Clangorous Soul's
+family — maps to a DIFFERENT script, `BattleScript_EffectStatChangeHalfHp`;
+irrelevant here since those 3 moves are self-targeted and never reach the
+foe-targeting gate at all.)
+
+`BattleScript_EffectStatChange` itself (`data/battle_scripts_1.s`
+L75-78) is just `attackcanceler` + `trymovestatchanges` + `MoveEnd` — no
+`typecalc` call. Traced one level deeper than `[D4 Bundle 6]`'s own
+citation: `Cmd_trymovestatchanges` (`battle_script_commands.c`
+L10744-10752) calls `DoStatChange()` (`battle_move_resolution.c`
+L4823-4863) and nothing else; neither function contains any
+type-effectiveness call anywhere. Confirms the finding is airtight, not
+just true for Toxic Thread's own specific case.
+
+### Deriving the true candidate list
+
+Programmatically extracted every `[MOVE_X] = { ..., .effect =
+EFFECT_STAT_CHANGE, ... }` block from `moves_info.h` (brace-matched, not
+hand-recalled) — **56 moves total**, not the 4-move example list
+(Growl/Leer/Screech/String Shot) the audit task itself suggested
+starting from. Filtered to the already-implemented subset via
+`gen_moves.py`'s own `"id":` entries — all 56 turned out to already
+have a canonical ID; cross-checked against `data/moves/move_NNNN.tres`
+presence — **25 are actually implemented in this project**.
+
+Of those 25, further filtered by `.target`: `TARGET_USER` moves
+(Swords Dance, Agility, Calm Mind, etc. — 27 of the 56) are self-buffs,
+`foe_targeting = not stat_change_self` is already false for them, and
+they never reach this gate regardless — correctly out of scope by
+construction, not by omission. `TARGET_USER_AND_ALLY`/`TARGET_ALLY`
+moves (Howl, Aromatic Mist, Coaching) are dispatched through a separate,
+earlier bypass built for `[M19-ally-targeting-stat-change]` — also
+correctly out of scope. The remaining **25 moves** (`TARGET_SELECTED` or
+`TARGET_BOTH`) are the true audit population.
+
+### Per-move type-chart cross-check
+
+For each of the 25, checked its own `.type` against this project's
+actual `TypeChart.TABLE` (`scripts/data/type_chart.gd`) for a genuine
+`0.0` cell — not assumed from mainline-game type-chart memory, since a
+move could theoretically be affected in principle but unreachable in
+THIS project's specific config (the same shape `[D4 Bundle 6]`'s own
+Memento-vs-Dark exclusion already established as precedent).
+
+**16 CONFIRMED AFFECTED** (real 0x cell exists, move was reaching the
+gate unexempted):
+
+| Move | ID | Type | Immune vs |
+|---|---|---|---|
+| Sand Attack | 28 | Ground | Flying |
+| Tail Whip | 39 | Normal | Ghost |
+| Leer | 43 | Normal | Ghost |
+| Growl | 45 | Normal | Ghost |
+| Screech | 103 | Normal | Ghost |
+| Smokescreen | 108 | Normal | Ghost |
+| Kinesis | 134 | Psychic | Dark |
+| Flash | 148 | Normal | Ghost |
+| Scary Face | 184 | Normal | Ghost |
+| Sweet Scent | 230 | Normal | Ghost |
+| Tickle | 321 | Normal | Ghost |
+| Noble Roar | 568 | Normal | Ghost |
+| Play Nice | 589 | Normal | Ghost |
+| Confide | 590 | Normal | Ghost |
+| Eerie Impulse | 598 | Electric | Ground |
+| Tearful Look | 669 | Normal | Ghost |
+
+Each of the 16 was individually checked (per the task's explicit "do not
+assume symmetry within the family" instruction) for a bonus secondary
+effect that might separately route through `typecalc` — none found; all
+16 carry exactly one `additionalEffects` block, a plain stat-change with
+no accompanying chance-based status/flinch/etc. **No genuine exceptions
+turned up in this batch.**
+
+**9 further candidates share the identical latent gap in principle, but
+are provably UNREACHABLE** — checked each move's own type's full row in
+`TypeChart.TABLE` and confirmed no `0.0` cell exists anywhere in it:
+String Shot(81, Bug), Cotton Spore(178, Grass), Charm(204, Fairy),
+Feather Dance(297, Flying), Fake Tears(313, Dark), Metal Sound(319,
+Steel), Baby-Doll Eyes(608, Fairy), Decorate(705, Fairy), Spicy
+Extract(786, Grass). Matching the established Memento precedent, these
+are deliberately left unexempted rather than flagged for zero
+behavioral effect — adding the flag would change nothing observable.
+
+(Decorate is a real structural curiosity worth noting for any future
+session: its own `.target = TARGET_SELECTED`, not `TARGET_ALLY`, despite
+RAISING the target's stats — i.e. it's mechanically capable of buffing
+an opponent if one were selected, not restricted to allies at the data
+level. Irrelevant to this audit specifically since Fairy has no 0x row,
+but worth flagging as a genuine oddity if Decorate is ever revisited.)
+
+### Fix
+
+New `MoveData.stat_change_bypasses_type_gate: bool = false`. Deliberately
+ONE shared field for the whole newly-confirmed family rather than 16 more
+single-purpose `is_*` dispatch flags in the shape of
+`is_foresight`/`is_toxic_thread`/etc. — those 7 existing flags each do
+double duty (gate exemption AND routing to the move's own dedicated
+dispatch block), but none of these 16 moves need a dedicated dispatch
+branch of their own; they already run through the fully generic
+`stat_change_stat`/`stat_change_amount`/`extra_stat_change_stats`
+mechanism. Threaded into the existing general foe-targeting
+type-immunity gate in `BattleManager._phase_move_execution` alongside
+the 7 existing per-move exemptions. `gen_moves.py`'s `DEFAULTS`/
+`FIELD_ORDER` updated; all 16 `.tres` files regenerated (confirmed via
+`git status` that exactly these 16 changed and no other of the 684
+other already-generated move files were touched, proving the
+default-omitted-from-.tres convention held).
+
+### Testing
+
+New `effect_stat_change_audit_test.gd`/`.tscn`: 36/36 assertions —
+Section A (16 data-integrity checks confirming the flag landed in each
+`.tres`), Section B (one full-battle discriminator per move, forcing the
+hit and confirming the stat change lands against the move's real immune
+type; Tickle/Noble Roar/Tearful Look split into 2 assertions each since
+they're multi-stat), Section C (a negative control: a synthetic
+`MoveData` shaped exactly like the 16 but with
+`stat_change_bypasses_type_gate = false` left explicit, proving the
+general gate still correctly blocks a non-exempted stat-change move
+against a Ghost-type target — confirms the test harness genuinely
+discriminates rather than vacuously passing). Passed clean on the first
+run (no test-authoring bugs this time), stable across 4 reruns.
+
+### Regression
+
+`scripts/count_assertions.sh` run twice from independent process states
+(111 files) — **11618 total assertions, 0 failures, identical GRAND
+TOTAL both runs** (11582 prior + 36 new = 11618, confirmed by direct
+addition). The first sweep attempt aborted with no output due to
+`count_assertions.sh`'s own `set -euo pipefail` combined with a single
+transient nonzero exit somewhere in the 111-file loop (not reproduced on
+either of the two clean runs that followed) — re-run manually via a
+loop that doesn't abort on a single suite's exit code, confirmed
+identical GRAND TOTAL both times; not a real regression.
+
+### Documentation
+
+`move_status_table.md` NOT regenerated — this session fixed a dispatch
+bug on 16 already-implemented moves, it did not change which moves are
+implemented/excluded/residual, so the 700/215/19 counts are unaffected.
+`CLAUDE.md` gained a new status bullet (this entry's own summary) plus a
+new standing "Step 0 checklist item" subsection under the status-history
+area, formalizing "confirm whether a foe-targeting move's real script
+calls `typecalc` before assuming the general type-immunity gate applies
+correctly" as a permanent check for future move-implementation sessions
+— this is the fourth independent discovery of this exact bug shape
+(Foresight → Purify/Nightmare/Spite → Toxic Thread/Venom Drench → this
+audit), the threshold past which this project's own convention is to
+stop treating a recurring finding as a one-off and instead encode it as
+a standing check.

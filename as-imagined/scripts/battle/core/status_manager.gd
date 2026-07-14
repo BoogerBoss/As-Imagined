@@ -798,6 +798,15 @@ static func check_accuracy(
 		if not _can_hit_semi_invulnerable(move, defender.semi_invulnerable):
 			return false
 
+	# [D4 Bundle 6] Telekinesis — any move against the target auto-hits,
+	# EXCEPT OHKO moves, and CONDITIONAL on the target not being semi-
+	# invulnerable (checked here, AFTER the semi-invulnerable gate above —
+	# the opposite ordering from Lock-On, which bypasses semi-invulnerability
+	# entirely). Source: battle_util.c L10196-10199.
+	if defender.telekinesis_turns > 0 and not move.is_ohko \
+			and defender.semi_invulnerable == MoveData.SEMI_INV_NONE:
+		return true
+
 	if move.accuracy == 0:
 		return true  # always hits (Swift, Aerial Ace, Swords Dance, etc.)
 	# [M19-weather-conditional-accuracy] Thunder/Hurricane/Bleakwind Storm/

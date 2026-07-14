@@ -5,13 +5,9 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Screech"
-type = 1
-category = 2
-accuracy = 85
-pp = 40
-sound_move = true
-stat_change_stat = 1
-stat_change_amount = -2
-stat_change_bypasses_type_gate = true
-bounceable = true
+move_name = "Brine"
+type = 12
+category = 1
+power = 65
+pp = 10
+is_brine = true
