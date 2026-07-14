@@ -25,12 +25,25 @@ GODOT="/home/rob/Godot_v4.3-stable_linux.x86_64"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Hardening note (see CLAUDE.md's "regression-sweep dispatch" standing rule):
+# this cd is unconditional and runs BEFORE anything else below, regardless of
+# which branch (fresh sweep vs. parsing an existing log) ends up executing, and
+# regardless of the caller's own cwd at invocation time. This does NOT fix the
+# class of failure where `bash` itself can't locate this script from a relative
+# path (that happens before this script's own code ever runs, so nothing here
+# can address it) — that failure mode is fixed by always invoking this script
+# via its absolute path, per the standing rule in CLAUDE.md, not by anything
+# in this file. This cd is a genuine defensive hardening on top of that: any
+# FUTURE code path added to this script (e.g. one that reads project-relative
+# files outside the fresh-sweep branch) can now assume PROJECT_DIR is already
+# the current directory, rather than needing its own cd.
+cd "$PROJECT_DIR"
+
 if [[ $# -ge 1 ]]; then
 	LOG_FILE="$1"
 else
 	LOG_FILE="$(mktemp)"
 	trap 'rm -f "$LOG_FILE"' EXIT
-	cd "$PROJECT_DIR"
 	for f in scenes/battle/*.tscn; do
 		echo "=== $f ==="
 		timeout 25 "$GODOT" --headless --path . "$f" 2>&1

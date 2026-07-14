@@ -3660,3 +3660,27 @@ const STATUS_ARG_ANY: int = -3
 # known outside a Sketch slot. Source's "attacker already Transformed" fail
 # condition is likewise not modeled yet, same reasoning as Mimic above.
 @export var is_sketch: bool = false
+
+# [Perish Song] Perish Song(195): EFFECT_PERISH_SONG (`Cmd_trysetperishsong`,
+# battle_script_commands.c L8400-8424). `.target = TARGET_ALL_BATTLERS` — the
+# first move in this project to actually use this dormant targeting
+# constant (previously read only by AbilityManager's Pressure PP-cost
+# calc). Sets a 3-turn countdown on EVERY currently-active combatant, both
+# sides, including the caster itself — not a foe-targeting move in any
+# sense. Per-target exclusions confirmed from source: already counting
+# down; Soundproof (`.soundMove = TRUE`, reuses the existing
+# `AbilityManager.blocks_move_flag` gate); Prankster-boosted-and-Dark-type-
+# blocked (reuses `AbilityManager.blocks_prankster_move`, checked
+# per-target). `.ignoresProtect`/`.ignoresSubstitute` are both TRUE in
+# source, so neither is checked. Source's own `IsBattlerUnaffectedByMove`/
+# Commander checks are deliberately NOT modeled — traced
+# `MOVE_RESULT_NO_EFFECT`'s only two set-sites in the whole reference tree
+# and confirmed neither is reachable from this move's own dispatch (its
+# script never runs through the single-target type-effectiveness/protect
+# pipeline that sets that flag for other moves); Commander is moot (this
+# project has no Commander/Dondozo mechanic). Fails outright ONLY if every
+# single combatant was excluded (source: `notAffectedCount ==
+# gBattlersCount`). See `BattlePokemon.perish_song_active`/
+# `perish_song_timer`'s own doc comment for the end-of-turn countdown
+# citation.
+@export var is_perish_song: bool = false

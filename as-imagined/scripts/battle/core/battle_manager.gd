@@ -109,6 +109,7 @@ signal item_effect_triggered(pokemon: BattlePokemon, effect_key: String)   # M18
                                                                              # items with no dedicated signal)
 signal pp_restored(pokemon: BattlePokemon, move_index: int, new_pp: int)   # M18d: Leppa Berry
 signal move_learned(pokemon: BattlePokemon, slot: int, new_move: MoveData)  # Mimic/Sketch overwrote a move slot
+signal perish_song_activated(pokemon: BattlePokemon)  # Perish Song set a 3-turn countdown on this combatant
 # M14b signals
 signal helping_hand_used(user: BattlePokemon, ally: BattlePokemon)         # Helping Hand boosted ally
 signal follow_me_used(user: BattlePokemon)                                 # Follow Me/Rage Powder active
@@ -2343,7 +2344,14 @@ func _phase_move_execution() -> void:
 	# as Levitate/the absorb family, checked here (not inside DamageCalculator) since
 	# it must apply uniformly to BOTH damaging AND status moves (Growl/Roar/Whirlwind
 	# are all sound_move status moves) — one choke point, not two.
-	if AbilityManager.blocks_move_flag(defender, move, ng_active, attacker):
+	# [Perish Song] Exempted: this generic gate is single-`defender`-shaped and would
+	# incorrectly block the WHOLE move (including the caster and every other
+	# combatant) if the one arbitrary default `defender` happens to hold Soundproof —
+	# a real bug caught by this move's own first test run. Perish Song's dispatch
+	# (below, in the all-battlers cluster) already applies this exact same check
+	# PER COMBATANT individually, which is the only correct shape for a move that
+	# was never single-target to begin with.
+	if not move.is_perish_song and AbilityManager.blocks_move_flag(defender, move, ng_active, attacker):
 		move_effect_failed.emit(defender, "move_flag_blocked")
 		ability_triggered.emit(defender, "soundproof_bulletproof")
 		move_executed.emit(attacker, defender, move, 0)
@@ -3785,6 +3793,32 @@ func _phase_move_execution() -> void:
 			for mon: BattlePokemon in _combatants:
 				if not mon.fainted:
 					_reset_stat_stages(mon)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Perish Song ─────────────────────────────────────────────────────
+		# Source: Cmd_trysetperishsong (battle_script_commands.c L8400-8424) —
+		# see MoveData.is_perish_song's own doc comment for the full citation
+		# on the per-target exclusions and the all-unaffected fail condition.
+		if move.is_perish_song:
+			var ps_any_affected := false
+			for ps_mon: BattlePokemon in _combatants:
+				if ps_mon.fainted:
+					continue
+				if ps_mon.perish_song_active:
+					continue
+				if AbilityManager.blocks_move_flag(ps_mon, move, ng_active, attacker):
+					continue
+				if AbilityManager.blocks_prankster_move(attacker, ps_mon, move, ng_active):
+					continue
+				ps_mon.perish_song_active = true
+				ps_mon.perish_song_timer = 3
+				ps_any_affected = true
+				perish_song_activated.emit(ps_mon)
+			if not ps_any_affected:
+				move_effect_failed.emit(attacker, "perish_song_failed")
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -5854,6 +5888,23 @@ func _phase_end_of_turn() -> void:
 						null, _get_ally(mon), ng_active, null, _effective_weather(), null,
 						_is_uproar_active()):
 					secondary_applied.emit(mon, MoveData.SE_SLEEP)
+		# [Perish Song] Checked BEFORE decrementing (matching the exact
+		# off-by-one shape source's own HandleEndTurnPerishSong uses,
+		# battle_end_turn.c L979-996): a timer of 3 ticks 3→2→1→0 across 3
+		# end-of-turn passes (message-only in source, no state change here
+		# beyond the decrement itself), then the 4th pass — timer already
+		# 0 — deals the fatal blow. Damage is a direct HP-zero, the same
+		# shape Self-Destruct/Explosion already use, not a real damage-calc
+		# call (source: `SetPassiveDamageAmount(battler, hp)`, i.e. exactly
+		# the holder's own current HP).
+		if mon.perish_song_active:
+			if mon.perish_song_timer <= 0:
+				mon.perish_song_active = false
+				mon.current_hp = 0
+				mon.fainted = true
+				pokemon_fainted.emit(mon)
+			else:
+				mon.perish_song_timer -= 1
 
 	# [Delayed-effect family] Future Sight / Doom Desire — decrement each
 	# pending slot's counter once per turn; resolve (via the normal

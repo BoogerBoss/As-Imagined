@@ -352,6 +352,18 @@ var mimicked_slot: int = -1
 var mimicked_original_move: MoveData = null
 var mimicked_original_pp: int = 0
 
+# [Perish Song] Perish Song(195) — the first move in this project needing
+# genuine ALL-BATTLERS dispatch (see MoveData.is_perish_song's own doc
+# comment for the full citation). `perish_song_timer` starts at 3 on a
+# successful cast and is checked BEFORE being decremented each end of turn
+# (source: HandleEndTurnPerishSong, battle_end_turn.c L979-996) — 3 ticks
+# just count down (3→2→1→0, message only), the 4th tick (timer already 0)
+# deals the fatal blow, matching the move's own "faints in 3 [full] turns"
+# flavor text. `perish_song_active` gates both the tick itself and the
+# "already counting down" exclusion on a second cast.
+var perish_song_active: bool = false
+var perish_song_timer: int = 0
+
 # [D4 Bundle 9] Sky Drop(507) — direct object reference to whoever this
 # mon is currently holding aloft, the same reciprocal-reference shape as
 # wrapped_by/infatuated_by/escape_prevented_by/leeched_by/octolocked_by,

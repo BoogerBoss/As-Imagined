@@ -24,6 +24,11 @@ Sources for move data:
 import os
 import pathlib
 
+# ── Target constants (MoveData.target) — only TARGET_ALL_BATTLERS is ever
+# actually set by a move entry so far (Perish Song, the first move needing
+# it); matches MoveData.TARGET_ALL_BATTLERS's own value exactly.
+TARGET_ALL_BATTLERS = 14
+
 # ── Category constants (MoveData.category) ───────────────────────────────────
 PHYS = 0
 SPEC = 1
@@ -3965,6 +3970,18 @@ MOVES = [
                    | BAN_SLEEP_TALK | BAN_INSTRUCT | BAN_ENCORE | BAN_ASSIST
                    | BAN_SKETCH),
      "is_sketch": True},
+
+    # [Perish Song] Perish Song(195): EFFECT_PERISH_SONG. accuracy=0,
+    # target=ALL_BATTLERS (both sides, incl. the caster). ignoresProtect/
+    # ignoresSubstitute=TRUE, soundMove=TRUE (Soundproof-blockable, per
+    # target), mirrorMoveBanned=TRUE. See MoveData.is_perish_song's own doc
+    # comment for the full citation.
+    {"id":  195, "name": "Perish Song",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
+     "target": TARGET_ALL_BATTLERS,
+     "ignores_protect": True, "ignores_substitute": True, "sound_move": True,
+     "ban_flags": BAN_MIRROR_MOVE,
+     "is_perish_song": True},
 ]
 
 
@@ -4330,6 +4347,8 @@ DEFAULTS = {
     "is_sky_drop":            False,
     "is_mimic":               False,
     "is_sketch":              False,
+    "is_perish_song":         False,
+    "target":                 0,
 }
 
 HEADER = """\
@@ -4481,6 +4500,8 @@ FIELD_ORDER = [
     "two_typed_move", "second_type", "is_sky_drop",
     # [Mimic/Sketch] fields
     "is_mimic", "is_sketch",
+    # [Perish Song] fields
+    "is_perish_song", "target",
 ]
 
 

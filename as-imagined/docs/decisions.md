@@ -23792,3 +23792,236 @@ Transform(144)/Perish Song(195) remain, both still confirmed genuinely
 NOVEL-MECHANISM.**
 
 No commit made — per standing instruction, Rob commits.
+
+## [Sweep-dispatch fix] — root-caused and fixed the recurring
+regression-sweep cwd-drift failure, properly this time — 2026-07-14
+
+Every prior session hitting this failure (`[Charge-cancellation fix]`,
+`[Mimic/Sketch]`) diagnosed it fresh and worked around it ad hoc, closing
+with "root cause not fully identified." This session found the actual
+mechanism.
+
+### Diagnosis
+
+Read `scripts/count_assertions.sh` in full: `PROJECT_DIR` is correctly
+computed via a subshell (`$(cd "$SCRIPT_DIR/.." && pwd)`, which cannot
+affect the caller's own cwd), but the actual `cd "$PROJECT_DIR"` that acts
+on it only ran INSIDE the `else` branch (the fresh-sweep path) — not
+unconditionally at the top of the script. More importantly: the reported
+failure (`bash: scripts/count_assertions.sh: No such file or directory`)
+happens when `bash` is asked to resolve a RELATIVE path from a shell whose
+cwd has drifted — this happens BEFORE the script's own first line ever
+executes, so no fix inside the script itself could ever have addressed it.
+Every previous session's own reactive fix (chaining a `cd` into the same
+dispatch command) was treating the symptom near its source without ever
+identifying why the drift kept recurring in the first place.
+
+**The real root cause, confirmed directly this session**: the true git
+repository root this environment enforces is `/home/rob/GodotAsImagined` —
+ONE LEVEL ABOVE this project's own directory (`/home/rob/GodotAsImagined/
+as-imagined`). Ran `cd /tmp` deliberately as a diagnostic — the shell did
+NOT move to `/tmp` at all; the environment silently intercepted it and
+reset the cwd to `/home/rob/GodotAsImagined` (the repo root), not to
+`as-imagined`, and not to `/tmp`. Any `cd` at any point in a session that
+targets a path outside that repo boundary — not only the already-documented
+`reference/pokeemerald_expansion` case (which stays inside the repo, so
+isn't caught by this specific mechanism, and is a genuinely different,
+narrower bug) — lands the shell one level too high, silently, and every
+subsequent RELATIVE-path command then fails to resolve. This is the actual
+reason the failure kept recurring across unrelated sessions despite each
+one being individually "fixed": the trigger is much broader than anyone had
+identified.
+
+### Fix
+
+1. `scripts/count_assertions.sh` hardened: the `cd "$PROJECT_DIR"` now runs
+   unconditionally, immediately after `PROJECT_DIR` is computed, before the
+   `if/else` branch — not nested inside one path. This does not fix the
+   "`bash` can't locate a relative path" failure mode (nothing inside the
+   script can, since the script's own code never runs at all in that
+   scenario) but is a genuine hardening for any future code path added to
+   this script.
+2. New standing rule, documented directly in CLAUDE.md (a dedicated
+   "Standing process rule: how to dispatch a full regression sweep"
+   section, not just narrative here) rather than left as a decisions.md
+   story: **always invoke the sweep via its full absolute path**
+   (`bash /home/rob/GodotAsImagined/as-imagined/scripts/count_assertions.sh`),
+   in the same command string, never a bare relative path and never relying
+   on a `cd` from a separate prior command. A `cd`-prefixed-then-relative-
+   path invocation (`cd /path && bash scripts/count_assertions.sh`) was
+   explicitly NOT adopted as the primary rule — it has also been observed
+   to fail in this environment across several sessions now, likely for the
+   same "a `cd` cannot be trusted to land where requested" reason.
+
+### Verification
+
+Deliberately `cd /tmp`, confirmed the reset to `/home/rob/GodotAsImagined`
+directly (not assumed), then dispatched a sweep using ONLY the hardened
+absolute-path invocation with no manual `cd` at all — succeeded on the
+first attempt: 116 files, GRAND TOTAL 11847, 0 failures (matching the exact
+baseline from the prior session's own final sweep). This is the strongest
+form of verification available: reproducing the failure precondition on
+purpose, then confirming the fix holds against it.
+
+**One honest caveat, not swept under the rug**: during this same session's
+later `[Perish Song]` regression sweeps (see that entry below), one sweep
+dispatch — using the exact same hardened absolute-path invocation this fix
+established — still failed once (empty log, exit code 1, no directory
+issue involved, no stray processes found, succeeded immediately on a bare
+retry with zero changes). This confirms the directory-drift bug specifically
+is fixed (that failure mode has a clear mechanism and this fix directly
+targets it, verified above), but there appears to be a SEPARATE, still-
+unexplained transient flakiness in sweep dispatch that this fix does not
+address. Flagged here explicitly rather than claimed as resolved — a future
+session hitting an unexplained one-off sweep failure with a clean directory
+state should treat it as this second, distinct class, not assume the
+directory-drift fix has regressed.
+
+No commit made — per standing instruction, Rob commits.
+
+## [Perish Song] — Perish Song(195), the last of D4's residual pool cheap
+enough to ship without its own dedicated session (Transform remains) —
+2026-07-14
+
+### Step 0 findings
+
+Traced `Cmd_trysetperishsong` (battle_script_commands.c L8400-8424) and
+`HandleEndTurnPerishSong` (battle_end_turn.c L979-996) in full, plus
+Perish Song's own move data (moves_info.h L5341-5362).
+
+**Confirmed the ALL-BATTLERS shape precisely**: the cast loops over
+`gBattlersCount` (every currently-active combatant, both sides — 2 in
+singles, 4 in doubles), setting a 3-turn countdown on each one not already
+counting down and not otherwise excluded — including the CASTER itself,
+confirmed not a foe-targeting move in any sense. `MoveData.
+TARGET_ALL_BATTLERS` (value 14) already existed as a dormant constant, read
+only by `AbilityManager.pressure_pp_cost` — this is the first move to
+actually set `.target` to it, which needed `target` added to both
+`gen_moves.py`'s `DEFAULTS`/`FIELD_ORDER` (neither previously existed —
+confirmed via grep that NO move entry anywhere in the whole pipeline had
+ever set `target` before this).
+
+**Per-target exclusion conditions, confirmed rather than assumed**: source
+checks `perishSong` (already counting), `IsBattlerUnaffectedByMove`,
+`BlocksPrankster`, and `STATE_COMMANDER`, in that order. Traced
+`IsBattlerUnaffectedByMove` to its literal definition
+(`moveResultFlags[battler] & MOVE_RESULT_NO_EFFECT`) and then searched the
+entire reference tree for the only 2 call sites that ever SET that flag
+(`battle_move_resolution.c` L2030/L2038) — both are `EFFECT_SYNCHRONOISE`/
+`EFFECT_SKY_DROP`-specific conditions inside the SINGLE-target damage-
+resolution pipeline, which Perish Song's own dispatch (a dedicated Cmd, not
+routed through that pipeline at all — no `accuracycheck`/`jumpifsubstitute
+blocks` in its own battle script) never reaches. Concluded this check is
+effectively always false for Perish Song specifically and is NOT modeled.
+`STATE_COMMANDER` is moot (no Commander/Dondozo mechanic in this project).
+`BlocksPrankster` IS real and reachable (Perish Song's own `.category =
+DAMAGE_CATEGORY_STATUS` at priority 0 could be Prankster-boosted) — reused
+the existing `AbilityManager.blocks_prankster_move`, checked per-target
+inside the loop (matching source's own per-battler `BlocksPrankster` call).
+`.ignoresProtect`/`.ignoresSubstitute` are both TRUE in source, confirming
+neither Protect nor Substitute ever excludes anyone.
+
+**A genuinely new per-target exclusion this project didn't previously
+need to check for status moves generally**: Perish Song is `.soundMove =
+TRUE` — Soundproof blocks it, per target, reusing the existing
+`AbilityManager.blocks_move_flag` gate (`[M17n-1]`'s own established
+mechanism). This surfaced a real, previously-latent bug (see below).
+
+**Fail condition confirmed exact, not simplified**: `notAffectedCount ==
+gBattlersCount` — the move fails ONLY if literally every single combatant
+was excluded, not some simpler majority/any-excluded condition.
+
+**End-of-turn timer, confirmed the exact off-by-one shape from source**:
+checked BEFORE decrementing (`if timer == 0: {deal damage; clear} else:
+{decrement}`), meaning a freshly-set timer of 3 takes 3 "count-down-only"
+ticks (3→2, 2→1, 1→0) plus a 4th tick (timer already 0) that deals the
+fatal blow — matching the move's own "faints in 3 [full] turns" flavor
+text exactly (3 full turns pass after casting, then the faint on the 4th).
+Damage is `SetPassiveDamageAmount(battler, hp)` — the holder's own current
+HP exactly, a direct HP-zero, the same shape Self-Destruct/Explosion
+already use in this project, not a real damage-calc call.
+
+### A real implementation bug found and fixed via this move's own first test run
+
+Section B.05 (Soundproof exclusion) failed on the first run: the caster
+itself wasn't being marked affected at all, even though it doesn't hold
+Soundproof. Traced this to a PRE-EXISTING, generic single-`defender`-shaped
+gate already in `_phase_move_execution` (`if AbilityManager.blocks_move_
+flag(defender, move, ng_active, attacker): ... return`, built for ordinary
+sound/ballistic moves like Growl/Roar/Whirlwind where blocking one
+defender's ability correctly blocks the WHOLE move, since those moves only
+ever have one relevant defender). Perish Song's own dispatch sits later in
+the function (in the Haze/field-wide-move neighborhood), so this earlier
+gate ran FIRST and — since the test's own default `_chosen_targets` entry
+happened to point at the Soundproof-holding mon — incorrectly treated the
+ENTIRE move as blocked before ever reaching Perish Song's own, correctly-
+shaped per-combatant loop. Fixed by exempting `move.is_perish_song` from
+that generic gate explicitly (`if not move.is_perish_song and
+AbilityManager.blocks_move_flag(...)`), deferring Soundproof handling
+entirely to Perish Song's own dispatch, which already does it correctly
+per-target. Confirmed no regression to the gate's own origin suite
+(`m17n1_test.tscn`, Soundproof/Bulletproof's origin, 82/82 unchanged).
+
+### Implementation
+
+New `MoveData.is_perish_song` flag. New `BattlePokemon.perish_song_active`/
+`perish_song_timer` fields. Cast dispatch placed in `_phase_move_execution`
+right after Haze's own block (the established "field-wide move" cluster) —
+loops `_combatants`, applying the exclusions above, counting how many were
+actually affected; fails outright (`move_effect_failed`, reason
+`"perish_song_failed"`) only if none were. End-of-turn tick added as one
+more check inside the EXISTING per-mon decrement loop (`_phase_end_of_turn`,
+the same loop Disable/Encore/Throat Chop/Taunt/Yawn already occupy) rather
+than a new separate loop, matching that established convention exactly.
+New `BattleManager.perish_song_activated(pokemon)` signal (per-mon, fires
+on a successful individual activation).
+
+### PERISH BODY — flagged, not resolved
+
+`perish_song_active`/`perish_song_timer` now exist and are exactly the
+fields Perish Body's own contact-reactive mechanism would set on both the
+holder and the attacker who made contact (confirmed mechanically trivial
+once these fields exist, per the original Step 0 finding from the
+Mimic/Sketch/Transform/Perish Song recon session). NOT implemented this
+session — Rob's own explicit instruction was to flag this, not resolve it
+unilaterally. Perish Body remains excluded, a small well-scoped follow-up
+whenever Rob decides to revisit that exclusion.
+
+### Testing and regression
+
+New `scenes/battle/perish_song_test.gd`/`.tscn`: 29/29 assertions across 5
+sections (A: data integrity incl. the new dormant `target` field actually
+being set for the first time; B: cast dispatch — hits both sides including
+the caster, an already-counting mon keeps its own timer rather than being
+reset by a second cast, the all-unaffected fail case, the Soundproof
+exclusion incl. the bug fix above; C: the full 4-tick end-of-turn sequence
+via direct `_phase_end_of_turn()` calls — 3 count-down-only ticks then the
+fatal 4th; D: doubles reachability, all 4 combatants in a single cast; E: a
+Tackle negative control). Two real GDScript typed-array bugs caught and
+fixed before the first real run (assigning a plain `Array` to `Array
+[BattlePokemon]`/`Array[int]`-typed `BattleManager` properties fails at
+runtime even though inline array literals get coerced automatically) and
+one real missing-initialization bug (`_chosen_switch_slots` was never set
+on the manually-constructed `BattleManager`, causing an out-of-bounds crash
+inside `_is_last_to_move` — only manifested in the 4-combatant doubles
+scenario, not the 2-combatant ones, since the crash path is only reached
+when a later battler in `_turn_order` still has a pending move action).
+Stable across 4 reruns after all three fixes.
+
+Full regression: `bash /home/rob/GodotAsImagined/as-imagined/scripts/
+count_assertions.sh` (the newly-hardened absolute-path invocation — this
+session's own first real test of the `[Sweep-dispatch fix]` above) run
+twice from independent process states — **117 files, GRAND TOTAL 11876, 0
+failures both runs** (11847 prior + 29). See `[Sweep-dispatch fix]`'s own
+entry for the one transient, unrelated retry needed on the second sweep.
+
+**Total move-implementation count: 715→716.** `docs/move_status_table.md`
+regenerated and confirmed: **716 implemented / 217 excluded / 1 residual /
+16 needs-manual-review** (the new `target` field needed adding to `gen_
+move_status_table.py`'s allowlist — the same recurring gap class as
+`two_typed_move`/`second_type`/`snatch_affected` before it, caught and
+fixed the same way, restoring the 16-move baseline). **Section D's
+residual: 2→1 — only Transform(144) remains, the one move in all of M19
+confirmed to need its own dedicated session.**
+
+No commit made — per standing instruction, Rob commits.

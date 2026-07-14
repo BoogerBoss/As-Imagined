@@ -328,6 +328,8 @@ def describe_move(fields):
                         "snatch_affected",
                         # [D4 Bundle 9]
                         "two_typed_move", "second_type",
+                        # [Perish Song]
+                        "target",
                     }]
     if unrecognized:
         return None, unrecognized

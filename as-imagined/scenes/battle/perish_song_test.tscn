@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://perishsongtest"]
+
+[ext_resource type="Script" path="res://scenes/battle/perish_song_test.gd" id="1_perishsongtest"]
+
+[node name="PerishSongTest" type="Node"]
+script = ExtResource("1_perishsongtest")
