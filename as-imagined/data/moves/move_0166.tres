@@ -5,10 +5,12 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Metronome"
+move_name = "Sketch"
 type = 1
 category = 2
 accuracy = 0
-pp = 10
-ban_flags = 120
-is_metronome = true
+pp = 1
+ban_flags = 5114
+ignores_substitute = true
+ignores_protect = true
+is_sketch = true

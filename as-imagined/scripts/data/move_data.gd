@@ -3627,3 +3627,36 @@ const STATUS_ARG_ANY: int = -3
 # behavior was verified (not built) — see the dedicated discriminator test
 # and the implementation report for which way it falls in practice.
 @export var is_sky_drop: bool = false
+
+# [Mimic/Sketch] Mimic(102): EFFECT_MIMIC (`Cmd_mimicattackcopy`,
+# battle_script_commands.c L7843-7879). Copies the TARGET's own last-used
+# move into Mimic's OWN move slot — a TEMPORARY overwrite, restored to
+# Mimic itself on switch-out (see BattlePokemon.mimicked_slot's own doc
+# comment for the full snapshot/restore citation, since this project has no
+# separate party-record layer the way source's own restoration relies on).
+# Fails if the target has no usable last move, that move carries
+# `BAN_MIMIC` (checked via `ban_flags`), or the attacker already knows it in
+# any slot. Copied move's PP is capped at `min(realPP, 5)`. Reuses
+# `BattlePokemon.last_move_used` directly for "the target's last move" —
+# confirmed equivalent to source's own `gLastMoves` for every scenario this
+# project can produce (no Dancer ability implemented). Source's additional
+# "attacker already Transformed" fail condition is NOT modeled — Transform
+# isn't implemented in this project yet; add it here when it ships.
+@export var is_mimic: bool = false
+
+# [Mimic/Sketch] Sketch(166): EFFECT_SKETCH (`Cmd_copymovepermanently`,
+# battle_script_commands.c L8101-8144). Copies the target's last-used move
+# into Sketch's own slot PERMANENTLY — no restoration on switch-out, unlike
+# Mimic, and no PP cap (full real PP, not capped at 5). The "already known"
+# check EXCLUDES other Sketch-carrying slots from the comparison (confirmed
+# from source: a Pokémon holding multiple Sketch moves doesn't have them
+# block each other, only a genuine different known move does) — see the
+# dispatch site for the exact per-slot skip logic. Source reads a DIFFERENT
+# tracked field than Mimic (`gLastPrintedMoves`, not `gLastMoves`) — traced
+# and confirmed this project's own `BattlePokemon.last_move_used` is
+# functionally equivalent to both for every scenario reachable here (see
+# Mimic's own doc comment above for the same citation). Fails if the
+# target's last move is unavailable, carries `BAN_SKETCH`, or is already
+# known outside a Sketch slot. Source's "attacker already Transformed" fail
+# condition is likewise not modeled yet, same reasoning as Mimic above.
+@export var is_sketch: bool = false

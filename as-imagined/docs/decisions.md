@@ -23533,3 +23533,262 @@ sweep command; both the corrected sweep and the original first sweep
 (run before the drift occurred) agree exactly.
 
 No commit made — per standing instruction, Rob commits.
+
+## [Ability-reset fix] — `.ability` now resets on switch-in, matching
+source's `SwitchInClearSetData` — bugfix to already-shipped code
+([M17h] 2026-07-03, [D2 batch] 2026-07-09) — 2026-07-14
+
+Found while answering a follow-up question during the Mimic/Sketch/
+Transform/Perish Song Step 0 recon: source's `SwitchInClearSetData`
+(battle_main.c) unconditionally re-derives `ability = GetAbilityBySpecies
+(species, abilityNum)` on EVERY switch-in. This project's own
+`_reset_mon_type` (called at every switch-in site) only ever reset
+`species.types` — `.ability` was never reset anywhere except the one
+Primal-Reversion switch-in trigger (M18w). This meant Trace/Mummy/
+Wandering Spirit/Lingering Aroma/Skill Swap/Role Play's ability overwrites
+persisted PERMANENTLY across switch-outs, diverging from source.
+
+### Step 0 findings
+
+Confirmed all 6 named abilities/moves are implemented (`AbilityManager.
+try_trace`/`try_mummy_overwrite`/`try_wandering_spirit_swap`/
+`try_role_play`/`try_skill_swap`, all reading/writing the raw `.ability`
+field directly — Mummy and Lingering Aroma share one function, matching
+`[M17h]`'s own finding). **A real architectural gap, not just a missing
+call**: source re-derives ability from `species` + a per-instance
+`abilityNum` (which of the 3 possible ability slots was rolled) — this
+project has NO equivalent per-instance field at all (`PokemonSpecies.
+abilities: Array[int]` holds the 3 possible slot values, but `BattlePokemon
+.ability` is never derived from it; `from_species` sets `ability = null`
+unconditionally, and every test/setup path assigns a real `AbilityData`
+Resource externally, exactly once, after construction). This means the
+literal "re-derive from species + slot" approach source uses isn't
+available here — an equivalent "remember the true original" mechanism was
+needed instead.
+
+**Design chosen**: `BattlePokemon.ability` gained a custom setter that
+captures a new `original_ability: AbilityData` field on the FIRST
+assignment only (mirrors `original_types`'s own capture-once shape, but via
+a setter rather than a value copied inside `from_species`, since ability
+is never known at construction time). Considered and rejected: lazily
+capturing at first switch-in instead — checked `_phase_battle_start` (the
+starting-leads code path) and confirmed it does NOT go through
+`_do_switch_in` at all (a separate parallel loop), so a switch-in-time
+capture would silently miss both starting leads; a setter captures
+regardless of entry point or timing, sidestepping this entirely. New
+`BattleManager._reset_mon_ability(mon)` (`mon.ability = mon.original_
+ability`), a sibling to `_reset_mon_type` — not folded into it, since that
+function's own name/scope is specifically about type, matching this
+project's established convention of several small parallel reset/apply
+functions run in sequence (`_apply_switch_in_hazards`/`_apply_switch_in_
+abilities`/`_apply_stored_healing_effect`). Called at all 5 sites
+`_reset_mon_type` already occupies (`_phase_battle_start`'s starting-leads
+loop, `_do_voluntary_switch`, the Baton Pass inline switch-in block,
+`_do_forced_switch_in`, `_do_switch_in`).
+
+**M18w Primal Reversion ordering, explicitly checked, not assumed**: Primal
+Reversion's own ability-set (`ItemManager.primal_orb_target_ability_id`,
+consumed inside `_apply_switch_in_abilities`) runs AFTER `_reset_mon_type`/
+`_reset_mon_ability` at every one of those 5 sites — confirmed by reading
+`_do_switch_in`'s own call order directly, not assumed from the two
+functions' names. This means the natural reset-then-reapply ordering is
+already correct with zero special-casing: a Kyogre holding Blue Orb gets
+its own natural ability restored first, then Primal Reversion's own
+switch-in dispatch immediately re-sets Primordial Sea on top, exactly as
+before this fix. Verified with a dedicated test (S7) rather than assumed
+safe from the ordering alone.
+
+**Confirmed no existing test breaks**: grepped `m17h_test.gd`/
+`d2_batch_test.gd` (the two origin suites for all 6 abilities/moves) for
+any switch-out-and-back-in scenario — neither has one; both suites only
+ever assert the copy/swap/overwrite happening, never check ability
+persistence across a subsequent switch. Both suites reran unchanged
+(64/64, 82/82) — nothing was asserting the old (buggy) persist-forever
+behavior, so nothing needed correcting.
+
+### Testing and regression
+
+New `scenes/battle/ability_reset_test.gd`/`.tscn`: 34/34 assertions across
+7 sections — S1 (setter/capture unit tests: first assignment captures,
+second doesn't re-capture, `_reset_mon_ability` restores correctly), S2
+(Trace: reverts on switch-out+in, AND immediately re-traces on the same
+switch-in — proving the reset runs BEFORE `_apply_switch_in_abilities`
+re-applies, not after), S3 (Mummy/Lingering Aroma: attacker's overwritten
+ability reverts, holder's own ability confirmed untouched throughout), S4
+(Wandering Spirit: BOTH sides independently revert to their own natural
+ability when each separately switches out+in), S5 (Skill Swap: same
+both-sides shape as S4), S6 (Role Play: attacker's copied ability reverts,
+target's own untouched), S7 (Primal Reversion ordering, described above).
+Stable across the first run — no test-authoring bugs this time (the
+switch-cycle scenarios used real `queue_switch`-driven battles safely
+since none of them read PP or other turn-accumulating state, only
+`.ability`/`.original_ability`, which are invariant across however many
+extra turns a battle runs).
+
+Full regression folded into the same two sweeps as the `[Mimic/Sketch]`
+entry immediately below (both tasks landed in the same session) — see
+that entry's own regression subsection for the numbers.
+
+No commit made — per standing instruction, Rob commits.
+
+## [Mimic/Sketch] — Mimic(102), Sketch(166), the last 2 of D4's 4 confirmed
+NOVEL-MECHANISM moves that are cheap enough to bundle together (Transform/
+Perish Song remain, per the Step 0 recon's own recommendation to give
+Transform its own dedicated session) — 2026-07-14
+
+### Step 0 findings
+
+Re-confirmed the prior recon's own findings rather than re-deriving from
+scratch, since that recon already traced both dispatch functions in full
+detail: `Cmd_mimicattackcopy` (battle_script_commands.c L7843-7879) and
+`Cmd_copymovepermanently` (L8101-8144). Both copy the target's last-used
+move; this project's own `BattlePokemon.last_move_used` (already built,
+used by Conversion 2/Disable/Encore/Torment/Blood Moon/Copycat) is
+confirmed equivalent to source's `gLastMoves`/`gLastPrintedMoves` for
+every scenario this project can produce (no Dancer ability implemented,
+no Baton-Pass/Healing-Wish re-attribution chains reaching this) — zero new
+move-tracking state needed for "what was the target's last move."
+
+**Moveset representation check (this task's own explicit ask)**: confirmed
+`attacker.moves` is a plain `Array` of `MoveData` object references, and
+this project already compares moves by direct reference equality
+pervasively (`attacker.last_move_used == move`, `attacker.moves.find(move)`,
+etc.) rather than by a numeric ID field (`MoveData` has no `id`/`move_id`
+field at all, only `move_name`) — so both the "already known" checks
+(Mimic: any slot; Sketch: any slot EXCEPT other Sketch-flagged slots) are
+fully supported via a plain loop reading each slot's own `.is_sketch` flag,
+no new representation needed.
+
+**Ban-flag population — smaller than expected**: `MoveData.BAN_MIMIC`/
+`BAN_SKETCH` bitmask constants ALREADY EXISTED, dormant, in the schema
+(same class of pre-anticipated-but-unpopulated field as `TARGET_ALL_
+BATTLERS`/`ItemData.pocket` before their own respective fixes) — and
+`BAN_MIMIC` was ALREADY correctly populated on 6 of the 8 previously-
+expected moves (Struggle, Sleep Talk, Assist, Me First, Copycat, Belch,
+from earlier `[D1 easy bundle]`/`[D4 Bundle 4]`-era work). Only Metronome
+(118) and Mirror Move(119) were missing it — a real, small, previously-
+uncaught gap, now fixed. Transform(144) isn't implemented yet, so its own
+`BAN_MIMIC` flag will need adding whenever that move ships — noted in both
+`MoveData.is_mimic`'s own doc comment and this move's own test file rather
+than silently deferred with no trace.
+
+**A real asymmetry found while writing tests, not assumed**: Sleep Talk is
+`mimicBanned` in source but NOT `sketchBanned` — the two ban lists are NOT
+identical despite mostly overlapping (source's real `sketchBanned` list is
+just Struggle/Sketch itself/Chatter). Caught by a test failure (using Sleep
+Talk as the BAN_SKETCH discriminator target failed, since it isn't
+actually sketchBanned) — fixed by switching to Struggle and adding a
+permanent regression-guard assertion confirming the asymmetry explicitly
+(A.20-A.22 in the new test file) rather than silently changing the test
+and moving on.
+
+### Implementation
+
+**Mimic**: new `MoveData.is_mimic` flag. Dispatch reads `defender.
+last_move_used`; fails if null, `BAN_MIMIC`-flagged, or already known in
+any attacker slot. On success: overwrites the SAME slot Mimic itself
+occupies (`attacker.moves.find(move)`) with the copied move, PP capped at
+`min(copied.pp, 5)`. New `BattlePokemon.mimicked_slot`/`mimicked_original_
+move`/`mimicked_original_pp` snapshot Mimic's own slot index, its own
+MoveData reference, and — confirmed by tracing this project's own PP-
+deduction code (`attacker.use_pp(move_idx, pp_cost)`, which runs BEFORE
+the new Mimic/Sketch dispatch block in `_phase_move_execution`) — Mimic's
+own remaining PP AFTER its own normal 1-PP-per-use deduction (9, not full
+10), matching source's real behavior (the party record's own PP for the
+Mimic slot is left exactly as the normal move-use deduction leaves it,
+since `MOVE_IS_PERMANENT` is still true at the moment Mimic's own PP gets
+deducted, before the overwrite happens later in the same script). New
+`BattleManager._reset_mon_mimicked_move(mon)`, a third sibling alongside
+`_reset_mon_type`/`_reset_mon_ability` (called at the same 5 switch-in
+sites) restores the slot to Mimic itself with the snapshotted PP —
+matching source's switch-IN-time party-data restoration, not a switch-out
+one (this project has no separate party-record layer the way source's
+own restoration mechanism relies on, so an explicit snapshot/restore was
+needed instead of "just don't touch it").
+
+**Sketch**: new `MoveData.is_sketch` flag. Same dispatch shape as Mimic
+but: fails if the target's last move is `BAN_SKETCH`-flagged or already
+known in any NON-Sketch-flagged slot (the per-slot `.is_sketch` check
+skips comparing against slots that still hold Sketch itself, matching
+source's exact `EFFECT_SKETCH`-slot-skip logic) — no PP cap (full real
+PP) — no restoration mechanism at all, ever (permanent, by design; there
+is no `_reset_mon_sketched_move`-equivalent function, which is itself the
+point, confirmed via a test that runs the real switch-in reset functions
+and shows they leave Sketch's slot untouched).
+
+Both dispatch blocks were placed in `_phase_move_execution`'s existing
+"ability/moveset-mutation cluster" (right after the Role Play/Skill Swap/
+Worry Seed/Heart Swap block), reusing the exact same upstream foe-
+targeting/Substitute/type-immunity/Prankster gates every other move in
+that cluster already falls through — no new gating needed. New
+`BattleManager.move_learned(pokemon, slot, new_move)` signal (mirrors
+`pp_restored`/`disabled`/`encored`'s own shape) fires on a successful copy
+for either move.
+
+### Testing and regression
+
+New `scenes/battle/mimic_sketch_test.gd`/`.tscn`: 46/46 assertions across
+4 sections (A: data integrity for both moves' new fields plus the ban-flag
+gap fixes and the Sleep-Talk/Struggle asymmetry lock-in; B: Mimic's
+successful copy incl. the PP-cap and snapshot fields, the already-known
+fail, the BAN_MIMIC fail using Sleep Talk as a Transform stand-in, and the
+switch-in restoration via the real `_reset_mon_mimicked_move` function; C:
+Sketch's successful copy incl. full PP, the already-known fail, the
+BAN_SKETCH fail, the own-Sketch-slot-exclusion discriminator, and
+permanence confirmed by running the real switch-in reset functions and
+showing nothing changes; D: an ordinary Tackle exchange negative control
+confirming `move_learned` never fires for it).
+
+**A real test-authoring bug caught and fixed on the first run (37/43)**:
+every PP-value check that ran through a FULL `start_battle_with_parties`
+battle failed, because the battle keeps running turns after the point of
+interest (auto-selecting whatever move now sits in the mimicked/sketched
+slot, consuming its PP further) — the exact whole-battle-aggregation
+pitfall CLAUDE.md's own testing-conventions section documents. Fixed by
+switching every state-inspecting sub-test to a single deterministic
+`_phase_move_execution()` call on a manually-constructed `BattleManager`
+(the same pattern already established for Sky Drop's own C.10/C.11 tests
+in `d4_bundle9_test.gd`), and by setting `defender.last_move_used`
+directly on the fixture rather than orchestrating a preceding real move-use
+turn — eliminating the aggregation risk entirely rather than working
+around it with signal snapshots. A second, smaller bug (using Sleep Talk
+instead of Struggle for the BAN_SKETCH discriminator, described above in
+Step 0) was caught and fixed the same run. Stable across 3 reruns after
+both fixes (46/46, then 46/46 again after adding the asymmetry-lock-in
+assertions).
+
+Full regression (this task and `[Ability-reset fix]` above landed in the
+same session, both bugfix-adjacent and both touching switch-in handling —
+run together as one full sweep per standing convention, given `[Ability-
+reset fix]` touches shared switch-in infrastructure): `scripts/count_
+assertions.sh` run twice from independent process states — **116 files,
+GRAND TOTAL 11847, 0 failures both runs** (11767 prior + 34 `ability_
+reset_test` + 46 `mimic_sketch_test`). One process-hygiene note, a WORSE
+recurrence of the same directory-drift pitfall this session's own
+`[Charge-cancellation fix]` entry already flagged: the persistent shell's
+cwd drifted back to the outer `/home/rob/GodotAsImagined` repeatedly
+during this session's second sweep attempt — 4 consecutive failures (two
+empty-log/exit-1 failures, one exit-127 "command not found" even with a
+bare `pwd &&` prefix in the same invocation) before a `cd /home/rob/
+GodotAsImagined/as-imagined && bash scripts/count_assertions.sh ...`
+prefix with NO leading `pwd` finally succeeded. This suggests background-
+dispatched commands in this environment may not reliably inherit the
+foreground shell's current directory at all (a `pwd` check at the front of
+a background command is not sufficient evidence the rest of that same
+command will run from the expected directory) — worth treating "always
+`cd` explicitly as the very first token of any background Godot-sweep
+command" as the standing rule going forward, not just a reactive fix
+applied per-incident. Root cause of the underlying drift itself remains
+unidentified. Both final sweeps agree exactly.
+
+**Total move-implementation count: 713→715.** `docs/move_status_table.md`
+regenerated and confirmed: **715 implemented / 217 excluded / 2 residual
+/ 16 needs-manual-review** (unchanged manual-review count — `is_mimic`/
+`is_sketch` are both `is_*`-prefixed boolean flags, already covered by the
+generator's own generic pattern, no allowlist addition needed this time,
+unlike `two_typed_move`/`second_type`/`snatch_affected`'s own non-`is_*`
+shape in earlier sessions). **Section D's residual: 4→2 — only
+Transform(144)/Perish Song(195) remain, both still confirmed genuinely
+NOVEL-MECHANISM.**
+
+No commit made — per standing instruction, Rob commits.

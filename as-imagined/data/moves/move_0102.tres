@@ -5,10 +5,11 @@
 [resource]
 script = ExtResource("1")
 
-move_name = "Metronome"
+move_name = "Mimic"
 type = 1
 category = 2
 accuracy = 0
 pp = 10
-ban_flags = 120
-is_metronome = true
+ban_flags = 1016
+ignores_substitute = true
+is_mimic = true

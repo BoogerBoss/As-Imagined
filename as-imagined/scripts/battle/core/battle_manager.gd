@@ -108,6 +108,7 @@ signal item_effect_triggered(pokemon: BattlePokemon, effect_key: String)   # M18
                                                                              # ability_triggered's shape for
                                                                              # items with no dedicated signal)
 signal pp_restored(pokemon: BattlePokemon, move_index: int, new_pp: int)   # M18d: Leppa Berry
+signal move_learned(pokemon: BattlePokemon, slot: int, new_move: MoveData)  # Mimic/Sketch overwrote a move slot
 # M14b signals
 signal helping_hand_used(user: BattlePokemon, ally: BattlePokemon)         # Helping Hand boosted ally
 signal follow_me_used(user: BattlePokemon)                                 # Follow Me/Rage Powder active
@@ -730,6 +731,8 @@ func _phase_battle_start() -> void:
 	for i in range(_combatants.size()):
 		var mon: BattlePokemon = _combatants[i]
 		_reset_mon_type(mon)
+		_reset_mon_ability(mon)
+		_reset_mon_mimicked_move(mon)
 		_apply_switch_in_hazards(mon, i / _active_per_side)
 		_apply_switch_in_abilities(mon, i / _active_per_side)
 	# [D1 easy bundle] A REAL, previously-latent gap found and fixed here:
@@ -2631,6 +2634,8 @@ func _phase_move_execution() -> void:
 		var incoming: BattlePokemon = _combatants[attacker_idx]
 		_baton_pass_apply(incoming, saved)
 		_reset_mon_type(incoming)
+		_reset_mon_ability(incoming)
+		_reset_mon_mimicked_move(incoming)
 		pokemon_switched_out.emit(attacker, attacker_side)
 		pokemon_switched_in.emit(incoming, attacker_side, bp_slot)
 		baton_passed.emit(attacker, incoming)
@@ -5152,6 +5157,57 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Mimic / Sketch ─────────────────────────────────────────────────
+		# Source: Cmd_mimicattackcopy (battle_script_commands.c L7843-7879) /
+		# Cmd_copymovepermanently (L8101-8144) — see MoveData.is_mimic/
+		# is_sketch's own doc comments for the full citation. Both reuse
+		# `defender.last_move_used` directly for "the target's last move"
+		# (confirmed equivalent to source's gLastMoves/gLastPrintedMoves for
+		# every scenario this project can produce).
+		if move.is_mimic:
+			var mimic_slot: int = attacker.moves.find(move)
+			var mimic_target: MoveData = defender.last_move_used
+			var mimic_ok: bool = (mimic_slot >= 0 and mimic_target != null
+					and (mimic_target.ban_flags & MoveData.BAN_MIMIC) == 0
+					and not attacker.moves.has(mimic_target))
+			if mimic_ok:
+				attacker.mimicked_slot = mimic_slot
+				attacker.mimicked_original_move = move
+				attacker.mimicked_original_pp = attacker.current_pp[mimic_slot]
+				attacker.moves[mimic_slot] = mimic_target
+				attacker.current_pp[mimic_slot] = min(mimic_target.pp, 5)
+				move_learned.emit(attacker, mimic_slot, mimic_target)
+			else:
+				move_effect_failed.emit(attacker, "mimic_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		if move.is_sketch:
+			var sketch_slot: int = attacker.moves.find(move)
+			var sketch_target: MoveData = defender.last_move_used
+			var sketch_already_known := false
+			for _si in range(attacker.moves.size()):
+				if attacker.moves[_si].is_sketch:
+					continue
+				if attacker.moves[_si] == sketch_target:
+					sketch_already_known = true
+					break
+			var sketch_ok: bool = (sketch_slot >= 0 and sketch_target != null
+					and (sketch_target.ban_flags & MoveData.BAN_SKETCH) == 0
+					and not sketch_already_known)
+			if sketch_ok:
+				attacker.moves[sketch_slot] = sketch_target
+				attacker.current_pp[sketch_slot] = sketch_target.pp
+				move_learned.emit(attacker, sketch_slot, sketch_target)
+			else:
+				move_effect_failed.emit(attacker, "sketch_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		if move.stat_change_stat >= 0:
 			# [M19-secondary-stat-on-hit]: extracted into _apply_stat_change_effect
 			# (below) so the new damage-move secondary-stat-change dispatch in
@@ -6964,6 +7020,8 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
 	new_mon.switched_in_this_turn = true
 	_reset_mon_type(new_mon)
+	_reset_mon_ability(new_mon)
+	_reset_mon_mimicked_move(new_mon)
 	pokemon_switched_out.emit(old_mon, side)
 	pokemon_switched_in.emit(new_mon, side, slot)
 	# Switch-in hazards then abilities fire for the incoming Pokémon.
@@ -6990,6 +7048,8 @@ func _do_forced_switch_in(side: int, slot: int, field_slot: int = 0) -> void:
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
 	new_mon.switched_in_this_turn = true
 	_reset_mon_type(new_mon)
+	_reset_mon_ability(new_mon)
+	_reset_mon_mimicked_move(new_mon)
 	# Switch-in hazards then abilities fire for the forced-in Pokémon.
 	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
@@ -7006,6 +7066,8 @@ func _do_switch_in(combatant_idx: int, slot: int) -> void:
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
 	new_mon.switched_in_this_turn = true
 	_reset_mon_type(new_mon)
+	_reset_mon_ability(new_mon)
+	_reset_mon_mimicked_move(new_mon)
 	pokemon_switched_in.emit(new_mon, side, slot)
 	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
@@ -7173,6 +7235,37 @@ func _reset_mon_type(mon: BattlePokemon) -> void:
 	mon.species.types.resize(orig.size())
 	for _ti in range(orig.size()):
 		mon.species.types[_ti] = orig[_ti]
+
+
+# [Ability-reset fix] Sibling to _reset_mon_type, called alongside it at every
+# switch-in site (a separate function, not folded into _reset_mon_type
+# itself, since that function's own name/scope is specifically about type —
+# matches this project's established convention of several small parallel
+# reset/apply functions called in sequence, e.g. _apply_switch_in_hazards/
+# _apply_switch_in_abilities/_apply_stored_healing_effect). Reassigning
+# `mon.ability = mon.original_ability` goes through the setter above but is a
+# safe no-op re: capture (original_ability is already non-null by this point
+# in every reachable case, so the guard correctly declines to re-capture).
+# Source: SwitchInClearSetData (battle_main.c) — see `ability`'s own doc
+# comment on BattlePokemon for the full citation.
+func _reset_mon_ability(mon: BattlePokemon) -> void:
+	mon.ability = mon.original_ability
+
+
+# [Mimic/Sketch] Sibling to _reset_mon_type/_reset_mon_ability, called
+# alongside them at every switch-in site — restores a Mimic'd move slot back
+# to Mimic itself (matching source's own switch-IN-time restoration, not a
+# switch-out one — SwitchInClearSetData reloads the whole struct from party
+# data during the switch-IN process, battle_main.c). Sketch's own overwrite
+# is deliberately never touched here (permanent, per its own doc comment).
+func _reset_mon_mimicked_move(mon: BattlePokemon) -> void:
+	if mon.mimicked_slot < 0:
+		return
+	mon.moves[mon.mimicked_slot] = mon.mimicked_original_move
+	mon.current_pp[mon.mimicked_slot] = mon.mimicked_original_pp
+	mon.mimicked_slot = -1
+	mon.mimicked_original_move = null
+	mon.mimicked_original_pp = 0
 
 
 # Gen 5+ protect success formula. First use: always succeeds.

@@ -517,7 +517,8 @@ MOVES = [
     {"id": 118, "name": "Metronome",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
      # [D4 Bundle 4] copycatBanned/assistBanned=TRUE.
-     "ban_flags": BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST, "is_metronome": True},
+     # [Mimic/Sketch] mimicBanned=TRUE added (was missing).
+     "ban_flags": BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST | BAN_MIMIC, "is_metronome": True},
 
     # Substitute(164)  L4299  Normal/Status/0/—/10
     #   Source: moves_info.h MOVE_SUBSTITUTE: .effect=EFFECT_SUBSTITUTE, .pp=10,
@@ -2928,7 +2929,8 @@ MOVES = [
      "type": TYPE_FLYING, "category": STAT, "accuracy": 0, "pp": 20,
      "ignores_protect": True,
      # [D4 Bundle 4] copycatBanned/assistBanned=TRUE.
-     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST,
+     # [Mimic/Sketch] mimicBanned=TRUE added (was missing).
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST | BAN_MIMIC,
      "is_mirror_move": True},
 
     # ── [D0] Priority unblock: Leech Seed / Haze / Aromatherapy+Heal Bell ──
@@ -3937,6 +3939,32 @@ MOVES = [
      "pp": 10, "makes_contact": True,
      "ban_flags": (BAN_SLEEP_TALK | BAN_INSTRUCT | BAN_ASSIST),
      "is_sky_drop": True},
+
+    # [Mimic/Sketch] Mimic(102): EFFECT_MIMIC. accuracy=0 (no accuracy check
+    # at GEN_LATEST), ignoresSubstitute=TRUE. mimicBanned/metronomeBanned/
+    # copycatBanned/sleepTalkBanned/instructBanned/encoreBanned/assistBanned
+    # all TRUE (moves_info.h MOVE_MIMIC) — see MoveData.is_mimic's own doc
+    # comment for the full citation.
+    {"id":  102, "name": "Mimic",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_substitute": True,
+     "ban_flags": (BAN_MIMIC | BAN_METRONOME | BAN_COPYCAT | BAN_SLEEP_TALK
+                   | BAN_INSTRUCT | BAN_ENCORE | BAN_ASSIST),
+     "is_mimic": True},
+
+    # [Mimic/Sketch] Sketch(166): EFFECT_SKETCH. accuracy=0, pp=1,
+    # ignoresProtect/ignoresSubstitute=TRUE (GEN_5+). mirrorMoveBanned/
+    # mimicBanned/metronomeBanned/copycatBanned/sleepTalkBanned/
+    # instructBanned/encoreBanned/assistBanned/sketchBanned all TRUE
+    # (moves_info.h MOVE_SKETCH) — see MoveData.is_sketch's own doc comment
+    # for the full citation, including the confirmed differences from Mimic.
+    {"id":  166, "name": "Sketch",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 1,
+     "ignores_protect": True, "ignores_substitute": True,
+     "ban_flags": (BAN_MIRROR_MOVE | BAN_MIMIC | BAN_METRONOME | BAN_COPYCAT
+                   | BAN_SLEEP_TALK | BAN_INSTRUCT | BAN_ENCORE | BAN_ASSIST
+                   | BAN_SKETCH),
+     "is_sketch": True},
 ]
 
 
@@ -4300,6 +4328,8 @@ DEFAULTS = {
     "two_typed_move":         False,
     "second_type":            -1,
     "is_sky_drop":            False,
+    "is_mimic":               False,
+    "is_sketch":              False,
 }
 
 HEADER = """\
@@ -4449,6 +4479,8 @@ FIELD_ORDER = [
     "is_round", "is_snatch", "is_imprison",
     # [D4 Bundle 9] fields
     "two_typed_move", "second_type", "is_sky_drop",
+    # [Mimic/Sketch] fields
+    "is_mimic", "is_sketch",
 ]
 
 

@@ -119,7 +119,32 @@ var evs: Array[int] = []
 var moves: Array = []  # Array of MoveData
 var current_pp: Array[int] = []
 
-var ability: AbilityData = null
+# [Ability-reset fix] `ability` has a custom setter that captures
+# `original_ability` on the FIRST assignment only (whatever this mon's real
+# ability is set to before battle, by whatever test/setup code constructs it
+# — this project has no per-instance "ability slot index" the way source's
+# `abilityNum` field has, since PokemonSpecies.abilities is never consulted
+# at construction time here; every mon's ability is set once, externally,
+# after from_species returns). Every LATER assignment (Trace/Mummy/Wandering
+# Spirit/Lingering Aroma/Skill Swap/Role Play/Worry Seed/Receiver-Power-of-
+# Alchemy — anything that mutates `.ability` mid-battle) does NOT overwrite
+# `original_ability`, so BattleManager._reset_mon_ability can restore the
+# true natural ability on switch-in, matching source's own
+# `SwitchInClearSetData` (`ability = GetAbilityBySpecies(species,
+# abilityNum)`, battle_main.c) unconditionally re-deriving ability on every
+# switch-in. See docs/decisions.md's [Ability-reset fix] entry for the full
+# citation and the reasoning for why a setter (not a switch-in-time lazy
+# capture) was chosen — starting leads never pass through BattleManager
+# .`_do_switch_in` at all (see `_phase_battle_start`'s own separate loop),
+# so a switch-in-time capture would miss them; a setter captures regardless
+# of entry point.
+var ability: AbilityData = null:
+	set(value):
+		if original_ability == null and value != null:
+			original_ability = value
+		ability = value
+var original_ability: AbilityData = null
+
 var held_item: ItemData = null  # null = no item
 
 var status: int = STATUS_NONE
@@ -308,6 +333,24 @@ var snatch_active: bool = false
 # standard `_clear_volatiles` convention. See MoveData.is_imprison's own
 # doc comment for the full source citation.
 var imprison_active: bool = false
+
+# [Mimic/Sketch] Mimic(102) overwrites its OWN move slot with the copied move
+# temporarily — restored to "Mimic" itself on switch-out (source:
+# `mimickedMoves` bitmask, battle_script_commands.c L7876, consumed only to
+# decide whether the party record should sync PP changes; this project has
+# no separate party-record layer, so it needs its own explicit snapshot/
+# restore instead). `mimicked_slot` is the array index into `moves`/
+# `current_pp` currently holding the copied move; -1 = not mimicking.
+# `mimicked_original_pp` is Mimic's own remaining PP at the moment it was
+# cast (AFTER its own normal 1-PP deduction, confirmed via source's
+# `MOVE_IS_PERMANENT` check running before the overwrite) — NOT full PP,
+# and NOT the copied move's own remaining PP. Sketch(166) has no equivalent
+# fields — its overwrite is permanent, never restored (see MoveData
+# .is_sketch's own doc comment for the full citation on why the two moves
+# diverge here despite the shared "copy the target's last move" premise).
+var mimicked_slot: int = -1
+var mimicked_original_move: MoveData = null
+var mimicked_original_pp: int = 0
 
 # [D4 Bundle 9] Sky Drop(507) — direct object reference to whoever this
 # mon is currently holding aloft, the same reciprocal-reference shape as
