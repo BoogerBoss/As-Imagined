@@ -15,3 +15,4 @@ stat_change_amount = 1
 stat_change_self = true
 extra_stat_change_stats = [4]
 extra_stat_change_amounts = [1]
+snatch_affected = true

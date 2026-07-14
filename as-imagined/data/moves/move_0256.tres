@@ -13,4 +13,5 @@ pp = 10
 ban_flags = 2
 ignores_protect = true
 healing_move = true
+snatch_affected = true
 is_swallow = true

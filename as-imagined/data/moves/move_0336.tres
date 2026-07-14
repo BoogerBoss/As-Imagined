@@ -16,4 +16,5 @@ stat_change_amount = 1
 stat_change_self = true
 ban_flags = 2
 ignores_protect = true
+snatch_affected = true
 also_boosts_ally = true

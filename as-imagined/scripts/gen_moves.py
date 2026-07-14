@@ -271,7 +271,7 @@ MOVES = [
     # Swords Dance: +2 Atk self (source: STAT_CHANGE_EFFECT_PLUS(STAT_ATK, 2))
     {"id":  14, "name": "Swords Dance",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
-     "stat_change_stat": STAGE_ATK, "stat_change_amount": 2, "stat_change_self": True},
+     "stat_change_stat": STAGE_ATK, "stat_change_amount": 2, "stat_change_self": True, "snatch_affected": True},
 
     # Sand Attack: -1 Acc foe (source: STAT_CHANGE_EFFECT_MINUS(STAT_ACC, 1))
     # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
@@ -524,7 +524,7 @@ MOVES = [
     #   .category=STATUS, .metronomeBanned=TRUE
     {"id": 164, "name": "Substitute",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
-     "ban_flags": BAN_METRONOME, "creates_substitute": True},
+     "ban_flags": BAN_METRONOME, "creates_substitute": True, "snatch_affected": True},
 
     # Protect(182)     L4788  Normal/Status/0/—/10, priority=4
     #   Source: moves_info.h MOVE_PROTECT: .effect=EFFECT_PROTECT,
@@ -637,7 +637,7 @@ MOVES = [
     #   Raises ATK +1 AND SpATK +1 (GEN_5+); +2 each in harsh sun.
     {"id":  74, "name": "Growth",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
-     "ignores_protect": True, "is_growth": True},
+     "ignores_protect": True, "is_growth": True, "snatch_affected": True},
 
     # Fissure(90)     L2381  Ground/Phys/1/30/5, OHKO, damages_underground
     #   Source: moves_info.h MOVE_FISSURE: .effect=EFFECT_OHKO, .power=1, .type=TYPE_GROUND,
@@ -651,21 +651,21 @@ MOVES = [
     #   .accuracy=0, .ignoresProtect=TRUE, .healingMove=TRUE.
     {"id": 105, "name": "Recover",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
-     "ignores_protect": True, "is_restore_hp": True, "healing_move": True},
+     "ignores_protect": True, "is_restore_hp": True, "healing_move": True, "snatch_affected": True},
 
     # Focus Energy(116) L3008  Normal/Status/0/0/30
     #   Source: moves_info.h MOVE_FOCUS_ENERGY: .effect=EFFECT_FOCUS_ENERGY, .pp=30,
     #   .accuracy=0, .ignoresProtect=TRUE. Raises crit stage +2 (Gen3+).
     {"id": 116, "name": "Focus Energy",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 30,
-     "ignores_protect": True, "is_focus_energy": True},
+     "ignores_protect": True, "is_focus_energy": True, "snatch_affected": True},
 
     # Slack Off(303)  L8253  Normal/Status/0/0/5
     #   Source: moves_info.h MOVE_SLACK_OFF: .effect=EFFECT_RESTORE_HP, .pp=5 (B_UPDATED>=GEN_9),
     #   .accuracy=0, .ignoresProtect=TRUE, .healingMove=TRUE.
     {"id": 303, "name": "Slack Off",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
-     "ignores_protect": True, "is_restore_hp": True, "healing_move": True},
+     "ignores_protect": True, "is_restore_hp": True, "healing_move": True, "snatch_affected": True},
 
     # Sheer Cold(329) L8977  Ice/Spec/1/30/5, OHKO
     #   Source: moves_info.h MOVE_SHEER_COLD: .effect=EFFECT_OHKO, .power=1, .type=TYPE_ICE,
@@ -680,7 +680,7 @@ MOVES = [
     #   .type=TYPE_BUG, .accuracy=0, .ignoresProtect=TRUE, .healingMove=TRUE.
     {"id": 456, "name": "Heal Order",
      "type": TYPE_BUG, "category": STAT, "accuracy": 0, "pp": 10,
-     "ignores_protect": True, "is_restore_hp": True, "healing_move": True},
+     "ignores_protect": True, "is_restore_hp": True, "healing_move": True, "snatch_affected": True},
 
     # ── M16b: Tier B move effects ─────────────────────────────────────────────
 
@@ -700,7 +700,7 @@ MOVES = [
     #   additionalEffects {STAT_CHANGE_EFFECT_PLUS, .evasion=2} (B_MINIMIZE_EVASION>=GEN_5).
     {"id": 107, "name": "Minimize",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
-     "ignores_protect": True, "is_minimize": True},
+     "ignores_protect": True, "is_minimize": True, "snatch_affected": True},
 
     # Defense Curl(111)  L3011  Normal/Status/0/0/40, self, +1 Defense, ignoresProtect
     #   Source: moves_info.h MOVE_DEFENSE_CURL: .effect=EFFECT_DEFENSE_CURL, .accuracy=0,
@@ -708,7 +708,7 @@ MOVES = [
     #   additionalEffects {STAT_CHANGE_EFFECT_PLUS, .defense=1}.
     {"id": 111, "name": "Defense Curl",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 40,
-     "ignores_protect": True, "is_defense_curl": True},
+     "ignores_protect": True, "is_defense_curl": True, "snatch_affected": True},
 
     # Rollout(205)  L5618  Rock/Phys/30/90/20, contact, 5-turn power-doubling
     #   Source: moves_info.h MOVE_ROLLOUT: .effect=EFFECT_ROLLOUT, .power=30, .accuracy=90,
@@ -742,14 +742,14 @@ MOVES = [
     #   .pp=30, .target=TARGET_USER, .ignoresProtect=TRUE.
     {"id": 113, "name": "Light Screen",
      "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 30,
-     "ignores_protect": True, "is_light_screen": True},
+     "ignores_protect": True, "is_light_screen": True, "snatch_affected": True},
 
     # Reflect(115)  L3123  Psychic/Status/0/0/20, self, ignoresProtect, halves Physical dmg
     #   Source: moves_info.h MOVE_REFLECT: .effect=EFFECT_REFLECT, .accuracy=0, .pp=20,
     #   .target=TARGET_USER, .ignoresProtect=TRUE.
     {"id": 115, "name": "Reflect",
      "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 20,
-     "ignores_protect": True, "is_reflect": True},
+     "ignores_protect": True, "is_reflect": True, "snatch_affected": True},
 
     # Brick Break(280)  L7672  Fighting/Phys/75/100/15, contact, breaks target's screens
     #   Source: moves_info.h MOVE_BRICK_BREAK: .effect=EFFECT_HIT, .power=75, .accuracy=100,
@@ -766,7 +766,7 @@ MOVES = [
     #   GetWeather() & B_WEATHER_ICY_ANY (this project only models Hail).
     {"id": 657, "name": "Aurora Veil",
      "type": TYPE_ICE, "category": STAT, "accuracy": 0, "pp": 20,
-     "ignores_protect": True, "is_aurora_veil": True},
+     "ignores_protect": True, "is_aurora_veil": True, "snatch_affected": True},
 
     # ── M16d: Tier D move effects (hazards + Trick Room) ──────────────────────
 
@@ -1566,11 +1566,11 @@ MOVES = [
 
     {"id": 96, "name": "Meditate",
      "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0, "pp": 40,
-     "ignores_protect": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 97, "name": "Agility",
      "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0, "pp": 30,
-     "ignores_protect": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": 2, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": 2, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 103, "name": "Screech",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 85, "pp": 40,
@@ -1579,11 +1579,11 @@ MOVES = [
 
     {"id": 104, "name": "Double Team",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 15,
-     "ignores_protect": True, "stat_change_stat": STAGE_EVASION, "stat_change_amount": 1, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_EVASION, "stat_change_amount": 1, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 106, "name": "Harden",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 30,
-     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 1, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 1, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 108, "name": "Smokescreen",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 20,
@@ -1592,11 +1592,11 @@ MOVES = [
 
     {"id": 110, "name": "Withdraw",
      "type": TYPE_WATER, "category": STAT, "power": 0, "accuracy": 0, "pp": 40,
-     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 1, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 1, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 112, "name": "Barrier",
      "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
-     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 2, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 2, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 122, "name": "Lick",
      "type": TYPE_GHOST, "category": PHYS, "power": 30, "accuracy": 100, "pp": 30,
@@ -1624,7 +1624,7 @@ MOVES = [
 
     {"id": 133, "name": "Amnesia",
      "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
-     "ignores_protect": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": 2, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": 2, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 134, "name": "Kinesis",
      "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 80, "pp": 15,
@@ -1662,7 +1662,7 @@ MOVES = [
 
     {"id": 151, "name": "Acid Armor",
      "type": TYPE_POISON, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
-     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 2, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 2, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 158, "name": "Hyper Fang",
      "type": TYPE_NORMAL, "category": PHYS, "power": 80, "accuracy": 90, "pp": 15,
@@ -1670,7 +1670,7 @@ MOVES = [
 
     {"id": 159, "name": "Sharpen",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 30,
-     "ignores_protect": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 178, "name": "Cotton Spore",
      "type": TYPE_GRASS, "category": STAT, "power": 0, "accuracy": 100, "pp": 40,
@@ -1738,7 +1738,7 @@ MOVES = [
 
     {"id": 294, "name": "Tail Glow",
      "type": TYPE_BUG, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
-     "ignores_protect": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 3, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 3, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 297, "name": "Feather Dance",
      "type": TYPE_FLYING, "category": STAT, "power": 0, "accuracy": 100, "pp": 15,
@@ -1786,7 +1786,7 @@ MOVES = [
 
     {"id": 334, "name": "Iron Defense",
      "type": TYPE_STEEL, "category": STAT, "power": 0, "accuracy": 0, "pp": 15,
-     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 2, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 2, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 340, "name": "Bounce",
      "type": TYPE_FLYING, "category": PHYS, "power": 85, "accuracy": 85, "pp": 5,
@@ -1816,7 +1816,7 @@ MOVES = [
 
     {"id": 397, "name": "Rock Polish",
      "type": TYPE_ROCK, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
-     "ignores_protect": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": 2, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": 2, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 398, "name": "Poison Jab",
      "type": TYPE_POISON, "category": PHYS, "power": 80, "accuracy": 100, "pp": 20,
@@ -1836,7 +1836,7 @@ MOVES = [
 
     {"id": 417, "name": "Nasty Plot",
      "type": TYPE_DARK, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
-     "ignores_protect": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 2, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 2, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 428, "name": "Zen Headbutt",
      "type": TYPE_PSYCHIC, "category": PHYS, "power": 80, "accuracy": 90, "pp": 15,
@@ -1904,7 +1904,7 @@ MOVES = [
 
     {"id": 538, "name": "Cotton Guard",
      "type": TYPE_GRASS, "category": STAT, "power": 0, "accuracy": 0, "pp": 10,
-     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 3, "stat_change_self": True},
+     "ignores_protect": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 3, "stat_change_self": True, "snatch_affected": True},
 
     {"id": 543, "name": "Head Charge",
      "type": TYPE_NORMAL, "category": PHYS, "power": 120, "accuracy": 100, "pp": 15,
@@ -2381,19 +2381,19 @@ MOVES = [
     {"id":  322, "name": "Cosmic Power",
      "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [1]},
+     "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [1], "snatch_affected": True},
     {"id":  339, "name": "Bulk Up",
      "type": TYPE_FIGHTING, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_DEF], "extra_stat_change_amounts": [1]},
+     "extra_stat_change_stats": [STAGE_DEF], "extra_stat_change_amounts": [1], "snatch_affected": True},
     {"id":  347, "name": "Calm Mind",
      "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [1]},
+     "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [1], "snatch_affected": True},
     {"id":  349, "name": "Dragon Dance",
      "type": TYPE_DRAGON, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_SPEED], "extra_stat_change_amounts": [1]},
+     "extra_stat_change_stats": [STAGE_SPEED], "extra_stat_change_amounts": [1], "snatch_affected": True},
     {"id":  370, "name": "Close Combat",
      "type": TYPE_FIGHTING, "category": PHYS, "power": 120, "accuracy": 100,
      "pp": 5, "makes_contact": True, "stat_change_self": True, "stat_change_stat": STAGE_DEF,
@@ -2405,27 +2405,27 @@ MOVES = [
     {"id":  468, "name": "Hone Claws",
      "type": TYPE_DARK, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 15, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_ACCURACY], "extra_stat_change_amounts": [1]},
+     "extra_stat_change_stats": [STAGE_ACCURACY], "extra_stat_change_amounts": [1], "snatch_affected": True},
     {"id":  483, "name": "Quiver Dance",
      "type": TYPE_BUG, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_SPDEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1]},
+     "extra_stat_change_stats": [STAGE_SPDEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1], "snatch_affected": True},
     {"id":  489, "name": "Coil",
      "type": TYPE_POISON, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_DEF, STAGE_ACCURACY], "extra_stat_change_amounts": [1, 1]},
+     "extra_stat_change_stats": [STAGE_DEF, STAGE_ACCURACY], "extra_stat_change_amounts": [1, 1], "snatch_affected": True},
     {"id":  504, "name": "Shell Smash",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 15, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 2,
-     "extra_stat_change_stats": [STAGE_SPATK, STAGE_SPEED, STAGE_DEF, STAGE_SPDEF], "extra_stat_change_amounts": [2, 2, -1, -1]},
+     "extra_stat_change_stats": [STAGE_SPATK, STAGE_SPEED, STAGE_DEF, STAGE_SPDEF], "extra_stat_change_amounts": [2, 2, -1, -1], "snatch_affected": True},
     {"id":  508, "name": "Shift Gear",
      "type": TYPE_STEEL, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 10, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_SPEED], "extra_stat_change_amounts": [2]},
+     "extra_stat_change_stats": [STAGE_SPEED], "extra_stat_change_amounts": [2], "snatch_affected": True},
     {"id":  526, "name": "Work Up",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 30, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_SPATK], "extra_stat_change_amounts": [1]},
+     "extra_stat_change_stats": [STAGE_SPATK], "extra_stat_change_amounts": [1], "snatch_affected": True},
     {"id":  568, "name": "Noble Roar",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100,
      "pp": 30, "sound_move": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
@@ -2446,7 +2446,7 @@ MOVES = [
     {"id":  765, "name": "Victory Dance",
      "type": TYPE_FIGHTING, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_DEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1]},
+     "extra_stat_change_stats": [STAGE_DEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1], "snatch_affected": True},
     {"id":  766, "name": "Headlong Rush",
      "type": TYPE_GROUND, "category": PHYS, "power": 120, "accuracy": 100,
      "pp": 5, "makes_contact": True, "stat_change_self": True, "stat_change_stat": STAGE_DEF,
@@ -2786,7 +2786,7 @@ MOVES = [
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 40,
      "ignores_protect": True, "sound_move": True, "ban_flags": BAN_MIRROR_MOVE,
      "stat_change_stat": STAGE_ATK, "stat_change_amount": 1, "stat_change_self": True,
-     "also_boosts_ally": True},
+     "also_boosts_ally": True, "snatch_affected": True},
 
     # Aromatic Mist(597): TARGET_ALLY only, +1 SpDef on the ally, fails if
     # not doubles (see BattleManager's _get_ally-based dispatch).
@@ -2812,17 +2812,17 @@ MOVES = [
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
      "ignores_protect": True,
      "heals_based_on_weather": True, "weather_heal_boost_type": WEATHER_SUN,
-     "weather_heal_has_quarter_branch": True},
+     "weather_heal_has_quarter_branch": True, "snatch_affected": True},
     {"id":  235, "name": "Synthesis",
      "type": TYPE_GRASS, "category": STAT, "accuracy": 0, "pp": 5,
      "ignores_protect": True,
      "heals_based_on_weather": True, "weather_heal_boost_type": WEATHER_SUN,
-     "weather_heal_has_quarter_branch": True},
+     "weather_heal_has_quarter_branch": True, "snatch_affected": True},
     {"id":  236, "name": "Moonlight",
      "type": TYPE_FAIRY, "category": STAT, "accuracy": 0, "pp": 5,
      "ignores_protect": True,
      "heals_based_on_weather": True, "weather_heal_boost_type": WEATHER_SUN,
-     "weather_heal_has_quarter_branch": True},
+     "weather_heal_has_quarter_branch": True, "snatch_affected": True},
     # Shore Up(622): sandstorm-boosted (2/3) / else (1/2) — no 1/4 branch at
     # all, a genuine non-uniformity within this sub-group (confirmed from
     # source, not assumed symmetric with the 3 sun-based moves above).
@@ -2830,7 +2830,7 @@ MOVES = [
      "type": TYPE_GROUND, "category": STAT, "accuracy": 0, "pp": 5,
      "ignores_protect": True,
      "heals_based_on_weather": True, "weather_heal_boost_type": WEATHER_SANDSTORM,
-     "weather_heal_has_quarter_branch": False},
+     "weather_heal_has_quarter_branch": False, "snatch_affected": True},
 
     # ── [M19f] Escape-prevention family ──
     # Spider Web(169): ignoresProtect=FALSE at GEN_LATEST (a real asymmetry
@@ -2869,12 +2869,12 @@ MOVES = [
     {"id":  469, "name": "Wide Guard",
      "type": TYPE_ROCK, "category": STAT, "accuracy": 0, "pp": 10, "priority": 3,
      "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
-     "is_protect": True, "protect_method": PROTECT_METHOD_WIDE_GUARD},
+     "is_protect": True, "protect_method": PROTECT_METHOD_WIDE_GUARD, "snatch_affected": True},
     # Quick Guard(501): side-wide, blocks only PRIORITY>0 moves (ability-boosted).
     {"id":  501, "name": "Quick Guard",
      "type": TYPE_FIGHTING, "category": STAT, "accuracy": 0, "pp": 15, "priority": 3,
      "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME,
-     "is_protect": True, "protect_method": PROTECT_METHOD_QUICK_GUARD},
+     "is_protect": True, "protect_method": PROTECT_METHOD_QUICK_GUARD, "snatch_affected": True},
     # Spiky Shield(596): blocks everything; contact -> maxHP/8 recoil to attacker.
     {"id":  596, "name": "Spiky Shield",
      "type": TYPE_GRASS, "category": STAT, "accuracy": 0, "pp": 10, "priority": 4,
@@ -2951,10 +2951,10 @@ MOVES = [
     {"id":  215, "name": "Heal Bell",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
      "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE,
-     "sound_move": True, "is_heal_bell": True},
+     "sound_move": True, "is_heal_bell": True, "snatch_affected": True},
     {"id":  312, "name": "Aromatherapy",
      "type": TYPE_GRASS, "category": STAT, "accuracy": 0, "pp": 5,
-     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_heal_bell": True},
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_heal_bell": True, "snatch_affected": True},
 
     # ── [D0] Follow Me / Rage Powder — mechanism already fully built (M14b),
     # near-pure data entry against an already-tested dispatch. Rage Powder
@@ -2981,10 +2981,10 @@ MOVES = [
     # rather than assumed duplicated, genuinely identical data. ──
     {"id":  135, "name": "Soft-Boiled",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
-     "ignores_protect": True, "is_restore_hp": True, "healing_move": True},
+     "ignores_protect": True, "is_restore_hp": True, "healing_move": True, "snatch_affected": True},
     {"id":  208, "name": "Milk Drink",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
-     "ignores_protect": True, "is_restore_hp": True, "healing_move": True},
+     "ignores_protect": True, "is_restore_hp": True, "healing_move": True, "snatch_affected": True},
 
     # ── [D0] Sappy Seed / Freezy Frost / Sparkly Swirl — the 3 moves Bucket
     # 4's M19-blocked-on-other-tier4 sub-group was gated on, now unblocked.
@@ -3557,7 +3557,7 @@ MOVES = [
     {"id":  275, "name": "Ingrain",
      "type": TYPE_GRASS, "category": STAT, "accuracy": 0, "pp": 20,
      "ignores_protect": True, "is_ingrain": True,
-     "ban_flags": BAN_MIRROR_MOVE},
+     "ban_flags": BAN_MIRROR_MOVE, "snatch_affected": True},
     {"id":  360, "name": "Gyro Ball",
      "type": TYPE_STEEL, "category": PHYS, "power": 1, "accuracy": 100, "pp": 5,
      "makes_contact": True, "ballistic_move": True, "is_gyro_ball": True},
@@ -3601,7 +3601,7 @@ MOVES = [
     {"id":  287, "name": "Refresh",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
      "ignores_protect": True, "is_refresh": True,
-     "ban_flags": BAN_MIRROR_MOVE},
+     "ban_flags": BAN_MIRROR_MOVE, "snatch_affected": True},
     {"id":  648, "name": "Purify",
      "type": TYPE_POISON, "category": STAT, "accuracy": 0, "pp": 20,
      "healing_move": True, "bounceable": True, "is_purify": True,
@@ -3615,14 +3615,14 @@ MOVES = [
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
      "ignores_protect": True, "hp_cost_stat_boost": True, "hp_cost_divisor": 2,
      "stat_change_stat": STAGE_ATK, "stat_change_amount": 12, "stat_change_self": True,
-     "ban_flags": BAN_MIRROR_MOVE},
+     "ban_flags": BAN_MIRROR_MOVE, "snatch_affected": True},
     {"id":  796, "name": "Fillet Away",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
      "ignores_protect": True, "hp_cost_stat_boost": True, "hp_cost_divisor": 2,
      "stat_change_stat": STAGE_ATK, "stat_change_amount": 2, "stat_change_self": True,
      "extra_stat_change_stats": [STAGE_SPATK, STAGE_SPEED],
      "extra_stat_change_amounts": [2, 2],
-     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME},
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME, "snatch_affected": True},
     {"id":  703, "name": "Clangorous Soul",
      "type": TYPE_DRAGON, "category": STAT, "accuracy": 100, "pp": 5,
      "ignores_protect": True, "sound_move": True,
@@ -3630,7 +3630,7 @@ MOVES = [
      "stat_change_stat": STAGE_ATK, "stat_change_amount": 1, "stat_change_self": True,
      "extra_stat_change_stats": [STAGE_DEF, STAGE_SPATK, STAGE_SPDEF, STAGE_SPEED],
      "extra_stat_change_amounts": [1, 1, 1, 1],
-     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME},
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME, "snatch_affected": True},
     {"id":  171, "name": "Nightmare",
      "type": TYPE_GHOST, "category": STAT, "accuracy": 100, "pp": 15,
      "is_nightmare": True},
@@ -3647,22 +3647,22 @@ MOVES = [
     {"id":  778, "name": "Take Heart",
      "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 10,
      "ignores_protect": True, "is_take_heart": True,
-     "ban_flags": BAN_MIRROR_MOVE},
+     "ban_flags": BAN_MIRROR_MOVE, "snatch_affected": True},
 
     # ── [D4 Bundle 4] Cluster 1: side-condition timers ───────────────────────
     {"id":  366, "name": "Tailwind",
      "type": TYPE_FLYING, "category": STAT, "accuracy": 0, "pp": 15,
-     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_tailwind": True},
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_tailwind": True, "snatch_affected": True},
     {"id":  564, "name": "Sticky Web",
      "type": TYPE_BUG, "category": STAT, "accuracy": 0, "pp": 20,
      "ignores_protect": True, "bounceable": True, "ban_flags": BAN_MIRROR_MOVE,
      "is_sticky_web": True},
     {"id":  219, "name": "Safeguard",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 25,
-     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_safeguard": True},
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_safeguard": True, "snatch_affected": True},
     {"id":   54, "name": "Mist",
      "type": TYPE_ICE, "category": STAT, "accuracy": 0, "pp": 30,
-     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_mist": True},
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_mist": True, "snatch_affected": True},
 
     # ── [D4 Bundle 4] Cluster 2: call-a-different-move family ────────────────
     {"id":  383, "name": "Copycat",
@@ -3692,20 +3692,20 @@ MOVES = [
     {"id":  719, "name": "Life Dew",
      "type": TYPE_WATER, "category": STAT, "accuracy": 0, "pp": 10,
      "ignores_protect": True, "ignores_substitute": True, "healing_move": True,
-     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME, "is_life_dew": True},
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME, "is_life_dew": True, "snatch_affected": True},
 
     # ── [D4 Bundle 4] Cluster 4: Stockpile family ─────────────────────────────
     {"id":  254, "name": "Stockpile",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
      "ignores_protect": True, "stat_change_self": True,
-     "ban_flags": BAN_MIRROR_MOVE, "is_stockpile": True},
+     "ban_flags": BAN_MIRROR_MOVE, "is_stockpile": True, "snatch_affected": True},
     {"id":  255, "name": "Spit Up",
      "type": TYPE_NORMAL, "category": SPEC, "power": 1, "accuracy": 100, "pp": 10,
      "ban_flags": BAN_MIRROR_MOVE, "is_spit_up": True},
     {"id":  256, "name": "Swallow",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
      "ignores_protect": True, "healing_move": True,
-     "ban_flags": BAN_MIRROR_MOVE, "is_swallow": True},
+     "ban_flags": BAN_MIRROR_MOVE, "is_swallow": True, "snatch_affected": True},
 
     # ── [D4 Bundle 5] Cluster 1: field-wide side conditions ──────────────────
     {"id":  300, "name": "Mud Sport",
@@ -3727,7 +3727,7 @@ MOVES = [
     {"id":  355, "name": "Roost",
      "type": TYPE_FLYING, "category": STAT, "accuracy": 0, "pp": 5,
      "ignores_protect": True, "healing_move": True,
-     "ban_flags": BAN_MIRROR_MOVE, "is_roost": True},
+     "ban_flags": BAN_MIRROR_MOVE, "is_roost": True, "snatch_affected": True},
     {"id":  631, "name": "Strength Sap",
      "type": TYPE_GRASS, "category": STAT, "accuracy": 100, "pp": 10,
      "bounceable": True, "healing_move": True, "is_strength_sap": True},
@@ -3745,10 +3745,10 @@ MOVES = [
      "type": TYPE_ELECTRIC, "category": STAT, "accuracy": 0, "pp": 20,
      "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE,
      "stat_change_stat": STAGE_SPDEF, "stat_change_amount": 1, "stat_change_self": True,
-     "is_charge": True},
+     "is_charge": True, "snatch_affected": True},
     {"id":  636, "name": "Laser Focus",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 30,
-     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_laser_focus": True},
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_laser_focus": True, "snatch_affected": True},
 
     # ── [D4 Bundle 5] Cluster 6: stat-array manipulation ──────────────────────
     {"id":  576, "name": "Topsy-Turvy",
@@ -3757,7 +3757,7 @@ MOVES = [
     {"id":  475, "name": "Autotomize",
      "type": TYPE_STEEL, "category": STAT, "accuracy": 0, "pp": 15,
      "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE,
-     "stat_change_stat": STAGE_SPEED, "stat_change_amount": 2, "stat_change_self": True},
+     "stat_change_stat": STAGE_SPEED, "stat_change_amount": 2, "stat_change_self": True, "snatch_affected": True},
 
     # ── [D4 Bundle 5] Cluster 7: escalating power ─────────────────────────────
     {"id":  210, "name": "Fury Cutter",
@@ -3771,7 +3771,7 @@ MOVES = [
     {"id":  156, "name": "Rest",
      "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 5,
      "ignores_protect": True, "healing_move": True,
-     "ban_flags": BAN_MIRROR_MOVE, "is_rest": True},
+     "ban_flags": BAN_MIRROR_MOVE, "is_rest": True, "snatch_affected": True},
     {"id":  206, "name": "False Swipe",
      "type": TYPE_NORMAL, "category": PHYS, "power": 40, "accuracy": 100, "pp": 40,
      "makes_contact": True, "is_false_swipe": True},
@@ -3829,14 +3829,14 @@ MOVES = [
      "bounceable": True, "is_toxic_thread": True},
     {"id":  693, "name": "Stuff Cheeks",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
-     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_stuff_cheeks": True},
+     "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE, "is_stuff_cheeks": True, "snatch_affected": True},
     {"id":  694, "name": "No Retreat",
      "type": TYPE_FIGHTING, "category": STAT, "accuracy": 0, "pp": 5,
      "ignores_protect": True, "ban_flags": BAN_MIRROR_MOVE,
      "stat_change_stat": STAGE_ATK, "stat_change_amount": 1, "stat_change_self": True,
      "extra_stat_change_stats": [STAGE_DEF, STAGE_SPATK, STAGE_SPDEF, STAGE_SPEED],
      "extra_stat_change_amounts": [1, 1, 1, 1],
-     "is_no_retreat": True},
+     "is_no_retreat": True, "snatch_affected": True},
     {"id":  699, "name": "Octolock",
      "type": TYPE_FIGHTING, "category": STAT, "accuracy": 100, "pp": 15,
      "is_octolock": True},
@@ -3888,6 +3888,30 @@ MOVES = [
      "ban_flags": (BAN_MIRROR_MOVE | BAN_ME_FIRST | BAN_METRONOME
                    | BAN_COPYCAT | BAN_ASSIST | BAN_SLEEP_TALK | BAN_INSTRUCT),
      "is_shell_trap": True},
+
+    # [D4 Bundle 8] Round/Snatch/Imprison — reinstated after Rob reversed
+    # [Exclusion bookkeeping]'s own same-day exclusion; Grav Apple is a pure
+    # data entry reusing the existing generic secondary-stat-on-hit dispatch
+    # (M19-secondary-stat-on-hit), no new is_* flag needed at all.
+    {"id":  496, "name": "Round",
+     "type": TYPE_NORMAL, "category": SPEC, "power": 60, "accuracy": 100,
+     "pp": 15, "sound_move": True, "ignores_substitute": True,
+     "is_round": True},
+    {"id":  289, "name": "Snatch",
+     "type": TYPE_DARK, "category": STAT, "accuracy": 0, "pp": 10,
+     "priority": 4, "ignores_protect": True, "ignores_substitute": True,
+     "ban_flags": (BAN_MIRROR_MOVE | BAN_METRONOME | BAN_COPYCAT),
+     "is_snatch": True},
+    {"id":  286, "name": "Imprison",
+     "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "ignores_substitute": True,
+     "ban_flags": BAN_MIRROR_MOVE, "snatch_affected": True,
+     "is_imprison": True},
+    {"id":  716, "name": "Grav Apple",
+     "type": TYPE_GRASS, "category": PHYS, "power": 80, "accuracy": 100,
+     "pp": 10, "ban_flags": BAN_METRONOME,
+     "stat_change_stat": STAGE_DEF, "stat_change_amount": -1,
+     "stat_change_self": False},
 ]
 
 
@@ -4005,6 +4029,9 @@ DEFAULTS = {
     "pulse_move":                 False,
     # M17n-9 field: bounceable (Magic Bounce's magicCoatAffected-derived subset).
     "bounceable":                 False,
+    # [D4 Bundle 8] snatch_affected (Snatch's own snatchAffected-derived field —
+    # see MoveData.is_snatch's own doc comment for the full source citation).
+    "snatch_affected":            False,
     # M18.5d-2 field: is_attract (Attract's own dedicated dispatch — deliberately
     # NOT added to blocked_by_aroma_veil's list, see that field's own doc comment
     # in move_data.gd for why).
@@ -4242,6 +4269,9 @@ DEFAULTS = {
     "is_pollen_puff":         False,
     "is_beak_blast":          False,
     "is_shell_trap":          False,
+    "is_round":               False,
+    "is_snatch":              False,
+    "is_imprison":            False,
 }
 
 HEADER = """\
@@ -4298,6 +4328,8 @@ FIELD_ORDER = [
     "biting_move", "slicing_move", "pulse_move",
     # M17n-9 fields
     "bounceable",
+    # [D4 Bundle 8] fields
+    "snatch_affected",
     # M18.5d-2 fields
     "is_attract",
     # M18.5g fields
@@ -4385,6 +4417,8 @@ FIELD_ORDER = [
     # [D4 Bundle 7] fields
     "is_curse", "is_focus_punch", "is_grudge", "is_last_resort",
     "is_pollen_puff", "is_beak_blast", "is_shell_trap",
+    # [D4 Bundle 8] fields
+    "is_round", "is_snatch", "is_imprison",
 ]
 
 

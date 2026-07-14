@@ -22856,3 +22856,281 @@ recomputed (707+0+0+221+6=934, reconfirmed). **Section D's residual:
 13→6 — every remaining move (Mimic/Transform/Sketch/Perish Song/Sky
 Drop/Flying Press) is confirmed NOVEL-MECHANISM; no REUSE-LIKELY moves
 remain anywhere in M19.**
+
+## [Reversal: Round/Snatch/Imprison/Grav Apple] — Rob reversed part of
+[Exclusion bookkeeping] the same day (docs-only) — 2026-07-14
+
+Rob reversed his own `[Exclusion bookkeeping]` decision (recorded
+earlier this same day) for 4 of its 6 excluded moves: Round(496),
+Snatch(289), Imprison(286), and Grav Apple(716) are to be implemented
+after all. Nature Power(267)/Camouflage(293) — the other two moves
+`[Exclusion bookkeeping]` excluded, for a genuine capability gap rather
+than a choice — are explicitly UNCHANGED by this reversal.
+
+This entry does not rewrite `[Exclusion bookkeeping]`'s own history —
+that entry's Step 0 findings (Round/Snatch/Imprison/Grav Apple were all
+confirmed REUSE-LIKELY at the original recon pass) remain accurate and
+are reused directly as the starting point for this session's own fresh
+Step 0 re-verification (see `[D4 Bundle 8]` below). Only the SCOPE
+DECISION — exclude vs. implement — has changed, per Rob's own updated
+judgment.
+
+### Implementation (docs-only)
+
+`docs/m19_subtier_plan.md`'s Section C2 bullet excluding these 4 moves
+was removed outright (not just annotated) — the Nature Power/Camouflage
+bullet immediately after it is untouched. A new paragraph documents the
+reversal for anyone reading this section's history, deliberately NOT
+written in `Name(ID)` form (a real, self-caught bug during this exact
+edit: `scripts/gen_move_status_table.py`'s own C2 parser pattern-matches
+`Name(ID)` anywhere in the C2⋯C3 span, including inside a plain prose
+paragraph that isn't itself a `- **label:**` bullet — the first draft of
+this reversal note, which did write "Round(496)/Snatch(289)/..." in
+prose, got silently absorbed into the END of the immediately-preceding
+Nature Power/Camouflage bullet's own text chunk during parsing, causing
+the generator to re-exclude all 4 moves under THAT bullet's wrong
+reason string. Caught by regenerating `move_status_table.md` immediately
+after the edit and finding the count hadn't changed as expected — fixed
+by rewriting the note to reference the 4 move IDs without the
+parenthesized-name-then-ID shape the regex requires).
+
+Section C2's own header (132→128 moves) and running total math
+(dropping the "+ 4" term) updated; Section C's own overall header
+(220→216 moves: 219→215 permanently excluded + 1 deferred, unchanged
+convention) updated; Section E's "Permanently excluded" row recomputed
+(221→217) with its own citation reworded to reflect only the 2-move
+Nature-Power/Camouflage exclusion plus a pointer to this entry, rather
+than re-describing the reversed 4-move exclusion as if it were still
+current.
+
+`docs/move_status_table.md` regenerated via
+`scripts/gen_move_status_table.py` and confirmed: **707 implemented /
+217 excluded / 10 residual**, with Round(496)/Snatch(289)/Imprison(286)/
+Grav Apple(716) all showing `Residual / not yet implemented` again
+(cross-checked directly against the regenerated table's own rows).
+
+No code or test changes in this reversal itself — implementation of the
+4 reinstated moves follows immediately in this same session, see
+`[D4 Bundle 8]` below.
+
+## [D4 Bundle 8] — Round / Snatch / Imprison / Grav Apple (the 4 moves
+reinstated by [Reversal: Round/Snatch/Imprison/Grav Apple]) — 2026-07-14
+
+Per Rob's explicit instruction, all 4 moves were re-derived fresh from
+source at Step 0 rather than trusting the original recon pass's
+REUSE-LIKELY classification, despite that classification being only one
+session old at this point — "enough sessions have elapsed that a fresh
+Step 0 is warranted." Each move's own focus area (given explicitly by
+Rob) is addressed below.
+
+### Step 0 findings
+
+**Round(496)** — confirmed the power-double condition against this
+project's real `_turn_order`/`_chosen_moves`/`_current_actor_index`
+state rather than assuming a clean drop-in. Source
+(`battle_util.c` L6301-6304, `Cmd_adjustsetdamage`'s Round case) doubles
+power if the PREVIOUS action in turn order was also Round AND it
+actually connected. Reproduced as two independent checks: (1) was the
+immediately-preceding `_turn_order` slot's OWN chosen move `is_round`
+(read from `_chosen_moves`, not from the mon's current field, since a
+mon could have PP-exhausted or been forced elsewhere since selection);
+(2) did `_last_landed_move_anyone` (the battle-wide tracker built for
+Copycat in `[D4 Bundle 4]`, set only on `damage > 0`) also carry
+`is_round`. Both must hold. A switch-choosing combatant has
+`_chosen_moves[i] = null`, so it's excluded from condition (1) for
+free — no special-casing needed, reusing existing precedent.
+Confirmed via source that `TryUpdateRoundTurnOrder` (the "Round
+self-promotes to act next" turn-order splice this project's own source
+citation flagged as worth comparing against After You/Quash) is gated
+on `IsDoubleBattle()` and is a **complete no-op in singles** — this
+project's current M19 scope is singles-only for every move shipped so
+far, so the splice was deliberately NOT implemented; only the
+power-double half was built. This is a real, disclosed simplification,
+not an oversight — flagged for whenever a future doubles-scoped session
+revisits Round.
+
+**Snatch(289)** — confirmed the exact scope of "next status move used
+this turn by anyone" against source (`battle_move_resolution.c`
+L1800-1835, `battle_script_commands.c` L9302-9314). Snatch's own
+`snatchAffected` per-move data flag (NOT "any status move," a real
+distinction) was programmatically re-derived from `moves_info.h`: 76
+moves carry it project-wide, 67 already implemented in this project
+(bulk-tagged `snatch_affected: True` across all 67 `gen_moves.py`
+entries this session — Swords Dance, Recover, Toxic, Will-O-Wisp-style
+status moves, screens, etc.), 9 not implemented (Camouflage, Defend
+Order, Mat Block, Magnetic Flux, Gear Up, Power Shift, Shelter, Lunar
+Blessing, and one Z-move ID — all independently already excluded or
+residual, so nothing further to tag). Confirms the flag is
+foe-AND-self-targeting-agnostic in source — it keys on the MOVE, not
+the target — so no additional self/foe scoping logic was needed beyond
+the per-move flag. Confirmed the interaction with Magic
+Coat/Magic Bounce is a SEPARATE, parallel chokepoint, not the same one:
+Magic Coat/Magic Bounce redirect a status move back at its own caster
+(an attacker/defender reassignment happening at cast time, before the
+move resolves), while Snatch intercepts a status move BEFORE IT WOULD
+HAVE CAST AT ALL, reassigning the attacker to the Snatch user instead —
+confirmed via source that Snatch's own check
+(`sub_80D3128`/`gProtectStructs[].stealMove`) is evaluated earlier than
+Magic Coat's own bounce check in the command dispatch order, so a
+Snatch user always gets first claim over a Magic Bounce holder in the
+same turn (not tested directly this session — no Magic Coat/Bounce
++ Snatch doubles scenario exists in the test suite, flagged as an
+untested but source-confirmed ordering fact). Confirmed doubles
+behavior via source's own `snatchedMoveIsUsed` global: **only one
+steal per turn, TOTAL — a global guard, not per-snatcher.** If two
+Snatch users are both active and a third mon casts a snatchable
+status move, only the FIRST Snatch user in turn order (the earliest
+`_turn_order` slot with `snatch_active == true`) gets the steal; the
+second Snatch user's own `snatch_active` flag stays armed into a later
+turn. Reproduced via `_snatch_used_this_turn: bool`, reset once per
+turn, checked before scanning for a thief candidate.
+
+**Imprison(286)** — confirmed this project's simplified
+execution-time-only restriction model (the same established pattern as
+Disable/Taunt/Torment/Assault Vest — no menu-legality/Struggle-fallback
+architecture exists anywhere in this project for ANY move restriction)
+is sufficient with zero special-casing. Source
+(`battle_util.c` L1669-1688, `battle_script_commands.c` L9195-9204):
+a move fails at cast time if ANY live opponent has Imprison active AND
+that opponent ALSO knows the move being cast (the caster-must-also-know
+requirement — confirmed via `_get_live_opponents`, the existing helper
+from `[M17f]`'s trapping check, reused directly). No new architecture
+needed — matches the established pattern exactly, as anticipated.
+
+**Grav Apple(716)** — re-confirmed the "reduces to a plain
+guaranteed-stat-drop hit" framing still holds now that other moves
+have shipped since the original analysis (Gravity(356) itself remains
+unimplemented — re-checked via grep, no field/status/`_side_conditions`
+key for Gravity exists anywhere in `battle_manager.gd`, confirmed
+unchanged). Grav Apple ships as a plain 80-power Grass-type physical
+hit with a guaranteed (not chance-based) -1 Defense on the target, via
+the pre-existing `stat_change_stat`/`stat_change_amount`/
+`stat_change_self` generic fields and `_apply_one_stat_change_pair`
+dispatch (`[M19-secondary-stat-on-hit]`) — zero new code. The
+Gravity-power-boost half is explicitly NOT modeled, matching the
+already-excluded status of Gravity itself.
+
+### Implementation
+
+New `MoveData` fields: `is_round`, `is_snatch`, `is_imprison` (each with
+a full source-cited doc comment), plus `snatch_affected` (near
+`bounceable`, bulk-populated across 67 existing moves plus Imprison
+itself, which is itself snatchable per source).
+
+New `BattlePokemon` fields: `snatch_active` (per-turn, reset in the
+priority-resolution per-mon cleanup loop alongside `shell_trap_armed` —
+NOT switch-cleared, since Snatch's own arm-and-wait window is
+turn-scoped, not battle-scoped) and `imprison_active` (permanent until
+switch-out, cleared in `_clear_volatiles`).
+
+New `BattleManager` state: `_snatch_used_this_turn: bool` (reset in
+`_phase_priority_resolution` alongside `_last_attacker.clear()`).
+
+Dispatch, in call order within a turn:
+1. **Imprison's execution-time block** — inserted right after the
+   existing Taunt check, before "user-thaw": scans
+   `_get_live_opponents(attacker)` for any `imprison_active` opponent
+   who also knows the move; if found, `move_skipped.emit(attacker,
+   "imprison")` and the actor advances without acting.
+2. **Snatch's steal interception** — inserted right after Roar/
+   Whirlwind, before Baton Pass: if `move.snatch_affected` and no
+   steal has happened yet this turn, scans every EARLIER `_turn_order`
+   slot for a `snatch_active` mon (excluding the current attacker
+   itself); if found, reassigns `attacker`/`defender` to the thief,
+   recomputes `attacker_idx`/`attacker_side` (a genuinely new pattern
+   for this codebase — see below), clears the thief's `snatch_active`,
+   sets `_snatch_used_this_turn = true`, and emits `move_stolen`.
+3. **Round's power-double** — inserted right after Pursuit's own
+   `_dmg_power_override` block: doubles `move.power` if both Step-0
+   conditions above hold.
+4. **Cast-time dispatch** for `is_imprison` (sets `imprison_active`,
+   fails if already active) and `is_snatch` (sets `snatch_active`,
+   fails if `_is_last_to_move(attacker)` — the existing helper built
+   for Analytic, reused directly since a Snatch user with nothing left
+   to steal from this turn should fail exactly like source's own
+   `IsLastInBattleGroundOrder`-gated check).
+
+**Snatch's steal is the FIRST mechanic in this project to reassign the
+ATTACKER itself**, not just `move`/`defender` (the "reassign and fall
+through" pattern established by Mirror Move/Metronome/Copycat). This
+required recomputing `attacker_idx`/`attacker_side` as plain `var`
+locals (not `const`, since they're now reassigned mid-function) —
+confirmed via a full downstream read of both to ensure nothing later in
+`_phase_move_execution` still reads the pre-reassignment values.
+
+### Bugs found and fixed
+
+1. **Round test tolerance too tight (test bug, not implementation
+   bug)**: first run measured `dmg_a=42, dmg_b=81` (a genuine 1.93x
+   ratio from a real doubled-power hit), but the test asserted
+   `dmg_b` within `dmg_a*2 ± 2` (82-86) — too tight, since power is
+   doubled BEFORE independent floor-roundings elsewhere in the damage
+   formula (the same "over-precise exact-equality" pitfall CLAUDE.md
+   already documents for pairwise damage comparisons). Fixed with a
+   ratio-based tolerance (1.8x-2.2x).
+2. **Imprison test design flaw (test bug)**: the Imprison caster only
+   knew Imprison itself, never Growl, but the test expected Imprison to
+   block the opponent's Growl — impossible per the real "blocks moves
+   the CASTER also knows" mechanic. Fixed by giving the caster both
+   moves and forcing move-slot 0 (Imprison) via `queue_move`.
+3. **Snatch "fails if last to move" test crash**: a manually-constructed
+   `BattleManager` calling `_phase_move_execution()` directly (bypassing
+   `start_battle()`) never populated `_chosen_targets`/`_chosen_moves`,
+   causing an out-of-bounds crash. Fixed by explicitly setting both
+   arrays before the direct call.
+4. **Lambda-scalar-capture bug in the test file itself (recurrence)**:
+   two redirect/stat-change assertions used plain `int` locals mutated
+   inside a `move_executed.connect(func(...): ...)` lambda — GDScript
+   captures scalars by value, so the outer variables never updated
+   despite the underlying mechanism working correctly (confirmed via
+   debug tracing). Fixed by wrapping both in single-element Arrays per
+   CLAUDE.md's own documented convention — the second recurrence of
+   this exact pitfall in one session's own test-writing despite already
+   being aware of it going in.
+5. **Forgot to declare `snatch_affected` as an actual `MoveData` field**:
+   added it to `gen_moves.py`'s DEFAULTS/FIELD_ORDER and wired it into
+   dispatch code, but never added the `@export var` declaration itself —
+   caused a widespread regression (`switch_test.tscn` 64/64 → 35/64,
+   `SCRIPT ERROR: Invalid access to property or key 'snatch_affected'`).
+   Found via a switch_test smoke-check immediately after initial
+   implementation. Fixed by adding the missing declaration; re-verified
+   clean.
+6. **`gen_move_status_table.py`'s "Needs manual review" spiked 16→84**:
+   the new `snatch_affected` field (present on 68 moves after this
+   session) wasn't in `describe_move()`'s recognized-field allowlist.
+   Fixed by adding it to that set; regenerated back to the 16-move
+   baseline.
+
+### Testing and regression
+
+New `scenes/battle/d4_bundle8_test.gd`/`.tscn`: 24/24 assertions across
+6 sections (A: data integrity for all 4 moves' new flags; B: Grav
+Apple's guaranteed -1 Defense; C: Round's power-double with the
+ratio-based tolerance, plus a switch-doesn't-count-as-Round negative
+case; D: Imprison's block-when-caster-also-knows-it plus a
+doesn't-block-moves-it-doesn't-know negative case; E: Snatch's steal
+redirect via the Array-wrapped signal snapshot, the fails-if-last-to-
+move negative case, and the only-one-steal-per-turn global-guard case
+with two Snatch users active; F: a negative control), stable across 5
+reruns.
+
+Full regression run twice from a clean state:
+`scripts/count_assertions.sh` confirmed **11676 total assertions across
+all `.tscn` files, 0 real failures both runs** (11652 prior + 24).
+Every prior M1-M18.5/M19 suite passed unchanged both runs.
+
+### Docs
+
+`docs/m19_subtier_plan.md`: Section E's "already implemented" row
+707→711 (D4 Bundle 8 shipment note added), reconciliation formula
+711+0+0+217+6=934 confirmed; a new `[D4 Bundle 8]` update paragraph
+added in Section C2 (right after the reversal paragraph) closing the
+loop that paragraph's own "see the update note just below" pointer
+promised, confirming the net effect on D4's own singleton pool is zero
+(6 moves before this session, briefly 10 mid-session, back to the same
+6 by identity — Mimic/Transform/Sketch/Perish Song/Sky Drop/Flying
+Press — once these 4 were implemented rather than left residual).
+`docs/move_status_table.md` regenerated and confirmed: **711
+implemented / 217 excluded / 6 residual / 16 needs-manual-review**.
+
+No commit made — per standing instruction, Rob commits.

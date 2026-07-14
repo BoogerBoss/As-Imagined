@@ -14,3 +14,4 @@ stat_change_stat = 6
 stat_change_amount = 1
 stat_change_self = true
 ignores_protect = true
+snatch_affected = true

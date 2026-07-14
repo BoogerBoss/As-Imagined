@@ -16,5 +16,6 @@ extra_stat_change_stats = [1, 2, 3, 4]
 extra_stat_change_amounts = [1, 1, 1, 1]
 ban_flags = 18
 ignores_protect = true
+snatch_affected = true
 hp_cost_stat_boost = true
 hp_cost_divisor = 3

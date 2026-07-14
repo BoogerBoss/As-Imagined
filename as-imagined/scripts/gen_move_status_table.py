@@ -324,6 +324,8 @@ def describe_move(fields):
                         "usable_while_asleep", "hp_cost_stat_boost",
                         "counter", "creates_substitute", "destiny_bond",
                         "mirror_coat", "metal_burst",
+                        # [D4 Bundle 8]
+                        "snatch_affected",
                     }]
     if unrecognized:
         return None, unrecognized

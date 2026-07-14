@@ -161,6 +161,8 @@ signal octolock_set(target: BattlePokemon, caster: BattlePokemon)  # [D4 Bundle 
 signal tar_shot_set(target: BattlePokemon)  # [D2 batch 2] Tar Shot set the target's tar_shot_active
 signal curse_set(target: BattlePokemon)  # [D4 Bundle 7] Curse (Ghost-type user) set the target's cursed
 signal pp_drained(mon: BattlePokemon, move: MoveData)  # [D4 Bundle 7] Grudge drained the killer's move to 0 PP
+signal imprison_set(mon: BattlePokemon)  # [D4 Bundle 8] Imprison set the caster's imprison_active
+signal move_stolen(stealer: BattlePokemon, original_caster: BattlePokemon, move: MoveData)  # [D4 Bundle 8] Snatch intercepted a status move
 
 signal turn_order_changed(mover: BattlePokemon, reason: String)  # [D3] After You ("after_you") / Quash ("quash") successfully reordered _turn_order
 
@@ -379,6 +381,11 @@ var _me_first_boost_active: bool = false
 # Source: gSideTimers[side].followmeTimer / followmeTarget (battle_main.c L5060–5061).
 # Cleared at the start of each turn (PRIORITY_RESOLUTION / TurnValuesCleanUp equivalent).
 var _follow_me_targets: Array[int] = [-1, -1]
+
+# [D4 Bundle 8] Snatch: whether ANY steal has already happened this turn
+# (source: `snatchedMoveIsUsed`, a global per-turn guard, NOT per-snatcher).
+# Cleared at the start of each turn alongside _follow_me_targets above.
+var _snatch_used_this_turn: bool = false
 
 # M14b: per-combatant Helping Hand boost flag for this turn.
 # True = this combatant's ally used Helping Hand; next damaging move gets 1.5× base power.
@@ -870,6 +877,9 @@ func _phase_priority_resolution() -> void:
 		# [D4 Bundle 7] Shell Trap: same single-turn-only per-battler
 		# gProtectStructs shape as protect_active/endure_active above.
 		mon.shell_trap_armed = false
+		# [D4 Bundle 8] Snatch: same single-turn-only shape as shell_trap_armed
+		# just above (gProtectStructs' own stealMove field, memset every turn).
+		mon.snatch_active = false
 		# [D1 easy bundle] The starting leads count as having "just switched
 		# in" for turn 1 specifically (`_pending_initial_switch_in`, set by
 		# `_phase_battle_start`) — every other turn resets normally to false.
@@ -918,6 +928,10 @@ func _phase_priority_resolution() -> void:
 	_last_attacker.clear()
 	_last_attacker_move.clear()
 	_last_attacker_hp_before.clear()
+	# [D4 Bundle 8] Snatch: only ONE steal can happen per turn TOTAL (source:
+	# `snatchedMoveIsUsed`, a global per-turn guard, NOT per-snatcher — see
+	# MoveData.is_snatch's own doc comment for the full source citation).
+	_snatch_used_this_turn = false
 	_follow_me_targets[0] = -1
 	_follow_me_targets[1] = -1
 	for _hi in range(_helping_hand.size()):
@@ -1342,6 +1356,23 @@ func _phase_move_execution() -> void:
 	# MoveData.is_taunt's own doc comment for the full citation.
 	if move.category == 2 and attacker.taunt_turns > 0:
 		move_skipped.emit(attacker, "taunt")
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# [D4 Bundle 8] Imprison — blocks USING a move any OPPOSING Imprison-
+	# holder also knows, checked at execution time (same insertion point
+	# and shape as Assault Vest/Taunt just above — this project's own
+	# established execution-time-only pattern for every move restriction
+	# source implements as a menu-legality filter). See
+	# MoveData.is_imprison's own doc comment for the full source citation.
+	var imprisoned_by_opponent: bool = false
+	for opp: BattlePokemon in _get_live_opponents(attacker):
+		if opp.imprison_active and opp.moves.has(move):
+			imprisoned_by_opponent = true
+			break
+	if imprisoned_by_opponent:
+		move_skipped.emit(attacker, "imprison")
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
@@ -1933,6 +1964,27 @@ func _phase_move_execution() -> void:
 		if _pursuit_def_idx >= 0 and _chosen_switch_slots[_pursuit_def_idx] >= 0:
 			_dmg_power_override = move.power * 2
 
+	# [D4 Bundle 8] Round: doubles if the immediately-preceding resolved
+	# action this turn was ALSO a landed Round. Reuses `_chosen_moves`
+	# (was the previous actor's chosen move Round — correctly false for a
+	# switch, since switch-choosing actors get `_chosen_moves[i] = null`)
+	# combined with `_last_landed_move_anyone` (did it actually connect —
+	# built for Copycat, `[D4 Bundle 4]`). DISCLOSED, NOT BUILT: source's
+	# own turn-order self-promotion splice (`TryUpdateRoundTurnOrder`) is
+	# gated entirely on `IsDoubleBattle()` — a genuine no-op in singles —
+	# see MoveData.is_round's own doc comment for the full citation.
+	if move.is_round and _current_actor_index > 0:
+		var _round_prev: BattlePokemon = _turn_order[_current_actor_index - 1]
+		var _round_prev_idx: int = _combatants.find(_round_prev)
+		var _round_prev_chose_round: bool = _round_prev_idx >= 0 \
+				and _round_prev_idx < _chosen_moves.size() \
+				and _chosen_moves[_round_prev_idx] != null \
+				and _chosen_moves[_round_prev_idx].is_round
+		var _round_prev_landed: bool = _last_landed_move_anyone != null \
+				and _last_landed_move_anyone.is_round
+		if _round_prev_chose_round and _round_prev_landed:
+			_dmg_power_override = move.power * 2
+
 	# ── Low Kick / Grass Knot: power from the TARGET's own weight only ───────
 	# Source: battle_util.c, case EFFECT_LOW_KICK (L6216-6225).
 	if move.is_low_kick_power:
@@ -2396,6 +2448,34 @@ func _phase_move_execution() -> void:
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
+
+	# [D4 Bundle 8] Snatch: intercepts the next snatch_affected move used by
+	# ANYONE this turn, reassigning attacker (and attacker_idx/attacker_side,
+	# since this is the FIRST call-a-move mechanic in this project to
+	# reassign the ATTACKER itself rather than just move/defender) to
+	# whichever earlier-in-turn-order combatant is still armed. Every
+	# snatchable move in this project's roster is self/field-targeting
+	# (buffs, heals, screens, Substitute, party-wide cures), so collapsing
+	# BOTH attacker and defender onto the thief matches source's own
+	# `battlerAtk == battlerDef` handling and needs no per-move branching.
+	# Only ONE steal per turn total (`_snatch_used_this_turn`, a global
+	# guard — NOT per-snatcher; see MoveData.is_snatch's own doc comment
+	# for the full source citation).
+	if move.snatch_affected and not _snatch_used_this_turn:
+		var _snatch_thief: BattlePokemon = null
+		for _si in range(_current_actor_index):
+			var _snatch_cand: BattlePokemon = _turn_order[_si]
+			if _snatch_cand.snatch_active and _snatch_cand != attacker:
+				_snatch_thief = _snatch_cand
+				break
+		if _snatch_thief != null:
+			_snatch_thief.snatch_active = false
+			_snatch_used_this_turn = true
+			move_stolen.emit(_snatch_thief, attacker, move)
+			attacker = _snatch_thief
+			defender = _snatch_thief
+			attacker_idx = _actor_indices.get(attacker, _combatants.find(attacker))
+			attacker_side = attacker_idx / _active_per_side
 
 	# ── Baton Pass ────────────────────────────────────────────────────────────
 	# Source: data/moves_info.h MOVE_BATON_PASS :: .effect = EFFECT_BATON_PASS
@@ -3366,6 +3446,21 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# ── Snatch ────────────────────────────────────────────────────────────
+		# [D4 Bundle 8] Fails if the caster is the last to move this turn
+		# (nothing left to steal from) — reuses the existing `_is_last_to_move`
+		# built for Analytic. See MoveData.is_snatch's own doc comment for the
+		# full source citation.
+		if move.is_snatch:
+			if _is_last_to_move(attacker):
+				move_effect_failed.emit(attacker, "snatch_failed")
+			else:
+				attacker.snatch_active = true
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 
 		# ── Mean Look family (Spider Web / Mean Look / Block) ──────────────────
 		# Source: EFFECT_MEAN_LOOK -> BattleScript_EffectMeanLook
@@ -3985,6 +4080,21 @@ func _phase_move_execution() -> void:
 				return
 			attacker.no_retreat_active = true
 			_apply_stat_change_effect(attacker, attacker, move, ng_active)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Imprison ──────────────────────────────────────────────────────────
+		# [D4 Bundle 8] Fails only if already active (permanent, no natural
+		# expiry). See MoveData.is_imprison's own doc comment for the full
+		# source citation.
+		if move.is_imprison:
+			if attacker.imprison_active:
+				move_effect_failed.emit(attacker, "imprison_already_used")
+			else:
+				attacker.imprison_active = true
+				imprison_set.emit(attacker)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -6590,6 +6700,9 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	mon.used_move_slots = []
 	for _i in range(mon.moves.size()):
 		mon.used_move_slots.append(false)
+	# [D4 Bundle 8] Imprison — self-contained per-mon state, same
+	# switch-scoped shape as No Retreat's own permanent flag.
+	mon.imprison_active = false
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets

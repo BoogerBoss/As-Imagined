@@ -14,4 +14,5 @@ priority = 3
 ban_flags = 18
 ignores_protect = true
 is_protect = true
+snatch_affected = true
 protect_method = 6

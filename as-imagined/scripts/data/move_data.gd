@@ -1297,6 +1297,17 @@ const TARGET_ALL_BATTLERS:   int = 14
 # Pain Split, Trick Room, self-targeting stat moves).
 @export var bounceable: bool = false
 
+# [D4 Bundle 8] Snatch — true for the exact subset of moves that carry
+# `snatchAffected = TRUE` in source (`gMovesInfo[move].snatchAffected`,
+# include/move.h L355-357). Re-derived programmatically from source: 76
+# moves total, all self/field-targeting buffs/heals/screens — 67 already
+# implemented in this project (bulk-set via gen_moves.py), 9 not (all
+# independently already excluded/blocked for unrelated reasons: Camouflage/
+# Defend Order/Mat Block/Magnetic Flux/Gear Up/Power Shift/Shelter/Lunar
+# Blessing/one Z-move). See MoveData.is_snatch's own doc comment for the
+# full source citation on how this flag is consumed.
+@export var snatch_affected: bool = false
+
 # [M19-recoil-on-miss] crashes_on_miss: Jump Kick(26)/High Jump Kick(136)/Axe
 #   Kick(781)/Supercell Slam(844) — all 4 share the literal same
 #   `.effect = EFFECT_RECOIL_IF_MISS` in source, a genuinely uniform mechanism
@@ -3474,3 +3485,46 @@ const STATUS_ARG_ANY: int = -3
 #   actor to already have resolved by the time Shell Trap's own -3 slot is
 #   reached).
 @export var is_shell_trap: bool = false
+
+# ── [D4 Bundle 8] — Round/Snatch/Imprison, reinstated after Rob reversed
+# [Exclusion bookkeeping]'s own same-day exclusion decision; Grav Apple is
+# pure data (no new flag — see gen_moves.py's own entry).
+# Round(496): EFFECT_ROUND. Power doubles if the immediately-preceding
+#   resolved action this turn was ALSO a landed Round (battle_util.c
+#   L6301-6304) — reuses `_chosen_moves`+`_last_landed_move_anyone`
+#   directly, no new tracking. REAL FINDING: source's own turn-order
+#   self-promotion splice (`TryUpdateRoundTurnOrder`) is gated entirely on
+#   `IsDoubleBattle()` — it is a genuine no-op in singles. Only the
+#   power-double half is built; the doubles-only splice is a disclosed,
+#   unbuilt gap (singles-only correctness unaffected, same shape as Shell
+#   Trap's own disclosed doubles gap in `[D4 Bundle 7]`).
+@export var is_round: bool = false
+
+# Snatch(289): EFFECT_SNATCH. Self-targeted; fails if the caster is the
+#   last to move this turn (`Cmd_trysetsnatch`, battle_script_commands.c
+#   L9302-9314 — reuses the existing `_is_last_to_move`, built for
+#   Analytic). Once armed, intercepts the NEXT `snatch_affected` move used
+#   by ANYONE this turn (not scoped to foe-targeting — the real 76-move
+#   source list, `snatchAffected=TRUE`, is overwhelmingly self-targeting
+#   buffs/heals), reassigning the ATTACKER to the snatcher while
+#   preserving the same move object — the identical "reassign and fall
+#   through" shape Mirror Move/Metronome/Copycat already use. Only ONE
+#   steal can happen per turn TOTAL (a global per-turn guard, source:
+#   `snatchedMoveIsUsed`, battle_move_resolution.c L1808-1819) — not
+#   per-snatcher, so a second still-armed Snatch user gets nothing later
+#   the same turn even if the first steal already happened. Dark-type,
+#   priority +4, `ignoresProtect`/`ignoresSubstitute`.
+@export var is_snatch: bool = false
+
+# Imprison(286): EFFECT_IMPRISON. Self-targeted; fails only if already
+#   active (permanent, no natural expiry — `Cmd_tryimprison`,
+#   battle_script_commands.c L9195-9204). Blocks an OPPOSING combatant
+#   (never an ally) from using any move the Imprison-caster also knows
+#   (`GetImprisonedMovesCount`, battle_util.c L1669-1688) — checked at
+#   execution time only, the exact same simplified pattern this project
+#   already established for Disable/Torment/Taunt/Encore/Choice-item/
+#   Assault-Vest (all of which share source's own `CheckMoveLimitations`
+#   menu-legality function with Imprison — this project has no
+#   menu-legality architecture, so Imprison needs zero special-casing
+#   beyond that already-established execution-time-fail convention).
+@export var is_imprison: bool = false

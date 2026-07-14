@@ -13,3 +13,4 @@ pp = 10
 ignores_protect = true
 is_restore_hp = true
 healing_move = true
+snatch_affected = true

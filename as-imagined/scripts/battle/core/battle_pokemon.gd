@@ -295,6 +295,20 @@ var used_move_slots: Array[bool] = []
 # the full source citation.
 var shell_trap_armed: bool = false
 
+# [D4 Bundle 8] Snatch(289) — armed for the rest of THIS turn only (same
+# per-turn lifetime as shell_trap_armed above — reset every turn, NOT
+# switch-cleared, since a switch can't happen mid-turn before Snatch's
+# own window closes anyway). Consumed the instant a snatchable move is
+# intercepted. See MoveData.is_snatch's own doc comment for the full
+# source citation.
+var snatch_active: bool = false
+
+# [D4 Bundle 8] Imprison(286) — permanent per-mon flag, no turn counter
+# (matches No Retreat's own shape). Cleared on switch-out via the
+# standard `_clear_volatiles` convention. See MoveData.is_imprison's own
+# doc comment for the full source citation.
+var imprison_active: bool = false
+
 # [D4 CHEAP bundle] Torment(259) — permanent (switch-cleared) per-mon flag
 # on the TARGET, blocking use of the exact same move used on the
 # immediately preceding turn. Confirmed from source (not the decoy timer-

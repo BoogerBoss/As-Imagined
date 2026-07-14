@@ -15,5 +15,6 @@ stat_change_amount = 12
 stat_change_self = true
 ban_flags = 2
 ignores_protect = true
+snatch_affected = true
 hp_cost_stat_boost = true
 hp_cost_divisor = 2
