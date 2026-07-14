@@ -255,6 +255,46 @@ var no_retreat_active: bool = false
 # that Octolock never actually traps in this reference source.
 var octolocked_by: BattlePokemon = null
 
+# [D4 Bundle 7] Curse(174, Ghost-type user) — plain bool, no back-reference
+# needed (unlike wrapped_by/leeched_by/etc.) since the end-of-turn tick
+# (maxHP/4, Magic-Guard-gated) damages THIS mon only — no heal-back to the
+# caster, so there's nothing to look up on the caster's side. Cleared on
+# switch-out via the standard `_clear_volatiles` convention. See
+# MoveData.is_curse's own doc comment for the full source citation.
+var cursed: bool = false
+
+# [D4 Bundle 7] Grudge(288) — self-targeted; set true when the Grudge-user
+# itself casts Grudge. Checked at BattleManager's own faint-check
+# chokepoint (the same one Destiny Bond/Fell Stinger already use): if this
+# mon faints from a hit this turn while this flag is set, the killer's own
+# move (the specific slot used) has its PP drained to exactly 0. Cleared
+# on switch-out via the standard `_clear_volatiles` convention. See
+# MoveData.is_grudge's own doc comment for the full source citation.
+var grudge_active: bool = false
+
+# [D4 Bundle 7] Last Resort(387) — per-switch-in-stint tracker, parallel to
+# `moves` (index N = has move slot N been used since the last switch-in).
+# REAL CORRECTION from the recon pass: this is NOT a battle-lifetime
+# tracker like times_hit/last_consumed_berry — source's own equivalent
+# field lives in the same per-switch-in memset Volatiles struct Protean/
+# Libero's flag does, so it resets on switch-out here too, via the
+# standard `_clear_volatiles` convention (reset to an all-false array
+# sized to `moves.size()`). Set at the same point PP is deducted,
+# unconditional on hit/miss/fail — see MoveData.is_last_resort's own doc
+# comment for the full source citation, including why this correctly
+# marks a CALLING move's own slot rather than a Metronome/Sleep-Talk
+# substituted move's slot.
+var used_move_slots: Array[bool] = []
+
+# [D4 Bundle 7] Shell Trap(658) — per-turn flag (reset every turn, same
+# per-turn lifetime as `protect_active`, NOT cleared via
+# `_clear_volatiles` since it lives for at most one turn regardless). Set
+# reactively the instant this mon takes a PHYSICAL hit while its own
+# chosen move this turn is Shell Trap; consumed (and reset) by Shell
+# Trap's own dispatch. See MoveData.is_shell_trap's own doc comment for
+# the full source citation.
+var shell_trap_armed: bool = false
+
 # [D4 CHEAP bundle] Torment(259) — permanent (switch-cleared) per-mon flag
 # on the TARGET, blocking use of the exact same move used on the
 # immediately preceding turn. Confirmed from source (not the decoy timer-
@@ -1070,6 +1110,7 @@ func add_move(move: MoveData) -> void:
 	if moves.size() < 4:
 		moves.append(move)
 		current_pp.append(move.pp)
+		used_move_slots.append(false)
 
 
 func has_pp(move_index: int) -> bool:

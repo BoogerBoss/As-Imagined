@@ -90,6 +90,7 @@ signal weather_expired(weather_type: int)                                  # wea
 signal weather_damage(pokemon: BattlePokemon, amount: int)                 # sandstorm/hail chip
 # M18.5f signals
 signal wrap_damage(pokemon: BattlePokemon, amount: int)                    # Bind/Wrap-family end-of-turn tick
+signal curse_damage(pokemon: BattlePokemon, amount: int)                   # [D4 Bundle 7] Curse's own end-of-turn tick
 signal wrap_ended(pokemon: BattlePokemon)                                  # trap duration ran out (broke free)
 # M18.5g signal
 signal multi_hit_sequence_finished(attacker: BattlePokemon, target: BattlePokemon, hits_landed: int, total_damage: int)  # whole multi-hit move resolved
@@ -158,6 +159,8 @@ signal foresight_set(target: BattlePokemon)  # [D2 batch 2] Foresight/Odor Sleut
 signal telekinesis_set(target: BattlePokemon)  # [D4 Bundle 6] Telekinesis set the target's telekinesis_turns
 signal octolock_set(target: BattlePokemon, caster: BattlePokemon)  # [D4 Bundle 6] Octolock set the target's octolocked_by
 signal tar_shot_set(target: BattlePokemon)  # [D2 batch 2] Tar Shot set the target's tar_shot_active
+signal curse_set(target: BattlePokemon)  # [D4 Bundle 7] Curse (Ghost-type user) set the target's cursed
+signal pp_drained(mon: BattlePokemon, move: MoveData)  # [D4 Bundle 7] Grudge drained the killer's move to 0 PP
 
 signal turn_order_changed(mover: BattlePokemon, reason: String)  # [D3] After You ("after_you") / Quash ("quash") successfully reordered _turn_order
 
@@ -864,6 +867,9 @@ func _phase_priority_resolution() -> void:
 		mon.last_physical_damage = 0
 		mon.last_special_damage = 0
 		mon.last_hit_was_special = false
+		# [D4 Bundle 7] Shell Trap: same single-turn-only per-battler
+		# gProtectStructs shape as protect_active/endure_active above.
+		mon.shell_trap_armed = false
 		# [D1 easy bundle] The starting leads count as having "just switched
 		# in" for turn 1 specifically (`_pending_initial_switch_in`, set by
 		# `_phase_battle_start`) — every other turn resets normally to false.
@@ -1376,6 +1382,14 @@ func _phase_move_execution() -> void:
 			var pp_cost: int = AbilityManager.pressure_pp_cost(
 					move, attacker, defender, attacker_side, _combatants, _active_per_side, ng_active)
 			attacker.use_pp(move_idx, pp_cost)
+			# [D4 Bundle 7] Last Resort — mark THIS slot as used, unconditional
+			# on hit/miss/fail, at the SAME point PP is deducted (matching
+			# source's CancelerAttackstring, which runs before any Mirror-
+			# Move/Metronome/Sleep-Talk reassignment of `move`/`attacker`
+			# below in this function — see MoveData.is_last_resort's own doc
+			# comment for the full source citation).
+			if move_idx < attacker.used_move_slots.size():
+				attacker.used_move_slots[move_idx] = true
 
 	# M18d: Leppa Berry — checked once per own move use, same MoveEnd cadence as
 	# source's MoveEndSprayLeppaBlunder step. Scans ALL of the attacker's moves for
@@ -2223,6 +2237,55 @@ func _phase_move_execution() -> void:
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
+	# [D4 Bundle 7] Focus Punch: fails outright (no damage, PP already spent
+	# above) if the user took ANY damage this turn before its own turn came
+	# up — reuses hit_by_this_turn directly. Checked BEFORE the accuracy
+	# roll, same shape as Belch/Poltergeist/Dream Eater above. See
+	# MoveData.is_focus_punch's own doc comment for the full source citation.
+	if move.is_focus_punch and not attacker.hit_by_this_turn.is_empty():
+		move_effect_failed.emit(attacker, "focus_punch_lost_focus")
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# [D4 Bundle 7] Last Resort: fails unless every OTHER known move slot has
+	# been used since this mon's last switch-in, AND it knows at least 2
+	# moves total. See BattlePokemon.used_move_slots' own doc comment for the
+	# full source citation (including the real correction that this tracker
+	# resets on switch-out).
+	if move.is_last_resort:
+		var lr_ok: bool = attacker.moves.size() >= 2
+		if lr_ok:
+			for lr_i in range(attacker.moves.size()):
+				if attacker.moves[lr_i] == move:
+					continue
+				if lr_i >= attacker.used_move_slots.size() or not attacker.used_move_slots[lr_i]:
+					lr_ok = false
+					break
+		if not lr_ok:
+			move_effect_failed.emit(attacker, "last_resort_not_ready")
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+	# [D4 Bundle 7] Shell Trap: fails ("Shell Trap didn't work!") unless
+	# armed by a physical hit landing before this mon's own turn this same
+	# turn (shell_trap_armed, set reactively — see MoveData.is_shell_trap's
+	# own doc comment for the full source citation and the priority-(-3)
+	# by-construction argument). If armed, falls through to the ordinary
+	# accuracy check + hit below, exactly like a normal move.
+	if move.is_shell_trap and not attacker.shell_trap_armed:
+		move_effect_failed.emit(attacker, "shell_trap_didnt_work")
+		move_executed.emit(attacker, defender, move, 0)
+		attacker.last_move_used = move
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
 
 	# ── Accuracy check ────────────────────────────────────────────────────────
 	# Source: battle_script_commands.c :: Cmd_accuracycheck (L1058)
@@ -2823,6 +2886,26 @@ func _phase_move_execution() -> void:
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
 
+		# [D4 Bundle 7] Pollen Puff: if the chosen target is an ally
+		# (doubles only — never reachable in singles), jumps straight to
+		# Heal Pulse's own formula instead of dealing damage (source:
+		# BattleScript_EffectHitEnemyHealAlly, `jumpiftargetally
+		# BattleScript_EffectHealPulse` — literally calls Heal Pulse's own
+		# script, not just its formula). No pulse_move flag on this move
+		# (confirmed absent), so no Mega Launcher interaction.
+		if move.is_pollen_puff and defender == _get_ally(attacker):
+			if defender.current_hp >= defender.max_hp:
+				move_effect_failed.emit(defender, "already_full_hp")
+			else:
+				var pp_heal: int = max(1, int(defender.max_hp * 0.5))
+				defender.current_hp = min(defender.max_hp, defender.current_hp + pp_heal)
+				drain_heal.emit(defender, pp_heal)
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# ── Damaging move ──────────────────────────────────────────────────────
 		# M14b: spread moves hit all live opposing combatants independently.
 		# Source: IsSpreadMove (include/battle.h L1163): TARGET_BOTH or TARGET_FOES_AND_ALLY.
@@ -3237,6 +3320,52 @@ func _phase_move_execution() -> void:
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
+
+		# ── Curse ─────────────────────────────────────────────────────────────
+		# [D4 Bundle 7] Source: Cmd_cursetarget (battle_script_commands.c
+		#   L8351-8369) — genuinely TWO different scripts, not one script with
+		#   a conditional. Ghost-type user: fails if the target is already
+		#   cursed; else costs the USER maxHP/2 (floor) and curses the target
+		#   (ticked maxHP/4 at end of turn, Magic-Guard-gated). Never calls
+		#   typecalc (same gap as Foresight/Purify/Nightmare/Spite/Reflect
+		#   Type/Toxic Thread/Venom Drench) — no type-immunity check at all,
+		#   handled here by simply never computing one. Non-Ghost user: self
+		#   +1 Atk/+1 Def/-1 Speed instead (defender is irrelevant) — reuses
+		#   the existing generic multi-stat dispatch via `stat_change_self=
+		#   true` in this move's own data, the same Bucket-3 shape every
+		#   other plain multi-stat move uses.
+		if move.is_curse:
+			if attacker.species.types.has(TypeChart.TYPE_GHOST):
+				if defender.substitute_hp > 0 and not move.ignores_substitute \
+						and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
+					move_missed.emit(attacker, "substitute")
+				elif defender.cursed:
+					move_effect_failed.emit(defender, "curse_failed")
+				else:
+					var curse_cost: int = attacker.max_hp / 2
+					attacker.current_hp = max(0, attacker.current_hp - curse_cost)
+					defender.cursed = true
+					curse_set.emit(defender)
+			else:
+				_apply_stat_change_effect(attacker, defender, move, ng_active)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Grudge ────────────────────────────────────────────────────────────
+		# [D4 Bundle 7] Self-targeted; simply arms grudge_active — the actual
+		# PP-drain effect is entirely reactive, dispatched at the faint-check
+		# chokepoint (see MoveData.is_grudge's own doc comment for the full
+		# source citation). Always succeeds when cast (source sets the
+		# volatile unconditionally).
+		if move.is_grudge:
+			attacker.grudge_active = true
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 
 		# ── Mean Look family (Spider Web / Mean Look / Block) ──────────────────
 		# Source: EFFECT_MEAN_LOOK -> BattleScript_EffectMeanLook
@@ -4876,6 +5005,9 @@ func _phase_faint_check() -> void:
 			# Source: battle_main.c :: FAINT_BLOCK_TRY_DESTINY_BOND (battle_move_resolution.c L2953)
 			#   If the fainted mon had destinyBond active, the Pokémon who KO'd it also faints.
 			var had_destiny_bond: bool = combatant.destiny_bond
+			# [D4 Bundle 7] Grudge — capture BEFORE _clear_volatiles wipes it,
+			# same reasoning as had_destiny_bond just above.
+			var had_grudge: bool = combatant.grudge_active
 			combatant.fainted = true
 			# Clear ALL volatiles on faint.
 			# Source: FaintClearSetData in battle_main.c clears gBattleMons[].volatiles.
@@ -4955,6 +5087,24 @@ func _phase_faint_check() -> void:
 					retal_killer.fainted = true
 					_clear_volatiles(retal_killer)
 					pokemon_fainted.emit(retal_killer)
+
+			# [D4 Bundle 7] Grudge — reuses the SAME retal_killer/retal_move
+			# lookup Aftermath/Innards Out just used above (FAINT_BLOCK_DO_
+			# GRUDGE, battle_move_resolution.c L2931-2949): if the fainted
+			# mon had cast Grudge, drains the killer's own move (the exact
+			# slot used) to 0 PP. Excludes an ally kill, Struggle, and
+			# Future Sight/Doom Desire (the shared is_future_sight flag) —
+			# see MoveData.is_grudge's own doc comment for the full citation.
+			if had_grudge and retal_killer != null and not retal_killer.fainted \
+					and retal_move != null and not retal_move.is_struggle \
+					and not retal_move.is_future_sight:
+				var grudge_same_side: bool = _combatants.find(combatant) / _active_per_side \
+						== _combatants.find(retal_killer) / _active_per_side
+				if not grudge_same_side:
+					var grudge_slot: int = retal_killer.moves.find(retal_move)
+					if grudge_slot >= 0 and grudge_slot < retal_killer.current_pp.size():
+						retal_killer.current_pp[grudge_slot] = 0
+						pp_drained.emit(retal_killer, retal_move)
 
 	# M18m: White Herb / Eject Pack — this function is BattleManager's own
 	# MoveEnd-equivalent checkpoint (runs once per resolved move regardless of
@@ -5294,6 +5444,21 @@ func _phase_end_of_turn() -> void:
 		var ol_spdef: int = StatusManager.apply_stat_change(mon, BattlePokemon.STAGE_SPDEF, -1, null, ng_active)
 		if ol_spdef != 0:
 			stat_stage_changed.emit(mon, BattlePokemon.STAGE_SPDEF, ol_spdef)
+
+	# [D4 Bundle 7] Curse (Ghost-type user's half) — recurring maxHP/4 tick
+	# on the cursed mon, Magic-Guard-gated. No back-reference to the caster
+	# to check (see BattlePokemon.cursed's own doc comment for why this is
+	# simpler than Leech Seed's shape). Source: HandleEndTurnCurse
+	# (battle_end_turn.c L635-650).
+	for mon: BattlePokemon in _turn_order:
+		if mon.fainted or not mon.cursed or AbilityManager.blocks_indirect_damage(mon, ng_active):
+			continue
+		var curse_tick_dmg: int = mon.max_hp / 4
+		mon.current_hp = max(0, mon.current_hp - curse_tick_dmg)
+		curse_damage.emit(mon, curse_tick_dmg)
+		if mon.current_hp == 0:
+			mon.fainted = true
+			pokemon_fainted.emit(mon)
 
 	# M12: Leftovers EOT heal (FIRST_EVENT_BLOCK_HEAL_ITEMS, after status damage).
 	# Source: TryLeftovers (battle_hold_effects.c L634–648); fires via FIRST_EVENT_BLOCK_HEAL_ITEMS
@@ -6412,6 +6577,19 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	for other: BattlePokemon in _combatants:
 		if other != mon and other.octolocked_by == mon:
 			other.octolocked_by = null
+
+	# [D4 Bundle 7] Curse/Grudge — self-contained per-mon state, same
+	# switch-scoped shape as the D4-Bundle-5/6 blocks above (no reciprocal
+	# scan needed — Curse's own tick has no back-reference to the caster).
+	mon.cursed = false
+	mon.grudge_active = false
+	# [D4 Bundle 7] Last Resort — per-switch-in-stint tracker, reset to an
+	# all-false array sized to this mon's own move count (see
+	# BattlePokemon.used_move_slots' own doc comment for the source citation
+	# confirming this resets on switch-out, unlike times_hit).
+	mon.used_move_slots = []
+	for _i in range(mon.moves.size()):
+		mon.used_move_slots.append(false)
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
@@ -7733,6 +7911,19 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		else:
 			target.last_special_damage = damage
 			target.last_hit_was_special = true
+		# [D4 Bundle 7] Shell Trap — armed reactively the instant TARGET takes a
+		# PHYSICAL hit, unconditional on contact (unlike Beak Blast just below),
+		# reusing the `move.category == 0` check already available at this
+		# exact chokepoint (the same one Metal Burst's last_hit_was_special
+		# reads). Gated on the TARGET's own chosen move this turn being Shell
+		# Trap. See MoveData.is_shell_trap's own doc comment for the full
+		# source citation.
+		var st_idx: int = _combatants.find(target)
+		var st_chosen: MoveData = _chosen_moves[st_idx] \
+				if st_idx != -1 and st_idx < _chosen_moves.size() else null
+		if st_chosen != null and st_chosen.is_shell_trap and move.category == 0:
+			target.shell_trap_armed = true
+
 
 	# [D4 Bundle 6] Knock Off: on a connecting hit, actually remove the
 	# target's item (re-checked here, not just trusted from the pre-hit
@@ -8323,6 +8514,23 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		if rh_dmg > 0:
 			attacker.current_hp = max(0, attacker.current_hp - rh_dmg)
 			item_damage.emit(attacker, rh_dmg)
+
+	# [D4 Bundle 7] Beak Blast — CONTACT-gated (source's own dispatch sits
+	# behind the SAME CanBattlerAvoidContactEffects early-return the whole
+	# Protect-family/Rocky-Helmet function above uses) reactive burn on the
+	# ATTACKER, whenever the TARGET's own chosen move this turn is Beak
+	# Blast. Reuses ordinary status application (respects Fire-type/Water
+	# Veil immunity normally). See MoveData.is_beak_blast's own doc comment
+	# for the full source citation and the by-construction turn-order
+	# argument.
+	if damage > 0 and target.current_hp > 0 \
+			and AbilityManager.move_triggers_contact_retaliation(attacker, move, ng_active):
+		var bb_idx: int = _combatants.find(target)
+		var bb_chosen: MoveData = _chosen_moves[bb_idx] \
+				if bb_idx != -1 and bb_idx < _chosen_moves.size() else null
+		if bb_chosen != null and bb_chosen.is_beak_blast:
+			if StatusManager.try_apply_status(attacker, BattlePokemon.STATUS_BURN, null, null, ng_active):
+				secondary_applied.emit(attacker, MoveData.SE_BURN)
 
 	# M18p: Sticky Barb — CONTACT-gated transfer of the item from the holder onto the
 	# attacker (bypasses Sticky Hold, see AbilityManager.try_sticky_barb_transfer's

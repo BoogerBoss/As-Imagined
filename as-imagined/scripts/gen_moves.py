@@ -3847,6 +3847,47 @@ MOVES = [
      "type": TYPE_ICE, "category": STAT, "accuracy": 0, "pp": 10,
      "ignores_protect": True, "ban_flags": (BAN_MIRROR_MOVE | BAN_METRONOME),
      "is_chilly_reception": True},
+
+    # [D4 Bundle 7] Curse: Ghost-type user curses the target (see is_curse's
+    # own doc comment); non-Ghost user self +1 Atk/+1 Def/-1 Speed via the
+    # generic multi-stat dispatch (stat_change_self=True).
+    {"id":  174, "name": "Curse",
+     "type": TYPE_GHOST, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True, "ignores_substitute": True,
+     "ban_flags": BAN_MIRROR_MOVE,
+     "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
+     "extra_stat_change_stats": [STAGE_DEF, STAGE_SPEED],
+     "extra_stat_change_amounts": [1, -1], "stat_change_self": True,
+     "is_curse": True},
+    {"id":  264, "name": "Focus Punch",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 150, "accuracy": 100,
+     "pp": 20, "priority": -3, "makes_contact": True, "punching_move": True,
+     "ban_flags": (BAN_MIRROR_MOVE | BAN_ME_FIRST | BAN_METRONOME
+                   | BAN_COPYCAT | BAN_ASSIST | BAN_SLEEP_TALK | BAN_INSTRUCT),
+     "is_focus_punch": True},
+    {"id":  288, "name": "Grudge",
+     "type": TYPE_GHOST, "category": STAT, "accuracy": 0, "pp": 5,
+     "ignores_protect": True, "ignores_substitute": True,
+     "ban_flags": BAN_MIRROR_MOVE,
+     "stat_change_self": True, "is_grudge": True},
+    {"id":  387, "name": "Last Resort",
+     "type": TYPE_NORMAL, "category": PHYS, "power": 140, "accuracy": 100,
+     "pp": 5, "makes_contact": True, "is_last_resort": True},
+    {"id":  639, "name": "Pollen Puff",
+     "type": TYPE_BUG, "category": SPEC, "power": 90, "accuracy": 100,
+     "pp": 15, "ballistic_move": True, "is_pollen_puff": True},
+    {"id":  653, "name": "Beak Blast",
+     "type": TYPE_FLYING, "category": PHYS, "power": 100, "accuracy": 100,
+     "pp": 15, "priority": -3, "ballistic_move": True,
+     "ban_flags": (BAN_MIRROR_MOVE | BAN_ME_FIRST | BAN_METRONOME
+                   | BAN_COPYCAT | BAN_ASSIST | BAN_SLEEP_TALK | BAN_INSTRUCT),
+     "is_beak_blast": True},
+    {"id":  658, "name": "Shell Trap",
+     "type": TYPE_FIRE, "category": SPEC, "power": 150, "accuracy": 100,
+     "pp": 5, "priority": -3,
+     "ban_flags": (BAN_MIRROR_MOVE | BAN_ME_FIRST | BAN_METRONOME
+                   | BAN_COPYCAT | BAN_ASSIST | BAN_SLEEP_TALK | BAN_INSTRUCT),
+     "is_shell_trap": True},
 ]
 
 
@@ -4194,6 +4235,13 @@ DEFAULTS = {
     "is_octolock":            False,
     "is_poltergeist":         False,
     "is_chilly_reception":    False,
+    "is_curse":               False,
+    "is_focus_punch":         False,
+    "is_grudge":              False,
+    "is_last_resort":         False,
+    "is_pollen_puff":         False,
+    "is_beak_blast":          False,
+    "is_shell_trap":          False,
 }
 
 HEADER = """\
@@ -4334,6 +4382,9 @@ FIELD_ORDER = [
     "is_punishment", "is_telekinesis", "is_acrobatics", "is_belch",
     "is_parting_shot", "is_venom_drench", "is_toxic_thread", "is_stuff_cheeks",
     "is_no_retreat", "is_octolock", "is_poltergeist", "is_chilly_reception",
+    # [D4 Bundle 7] fields
+    "is_curse", "is_focus_punch", "is_grudge", "is_last_resort",
+    "is_pollen_puff", "is_beak_blast", "is_shell_trap",
 ]
 
 

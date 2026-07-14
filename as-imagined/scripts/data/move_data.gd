@@ -3358,3 +3358,119 @@ const STATUS_ARG_ANY: int = -3
 #   flag Teleport/Baton Pass use. Fails only if no valid switch-in target
 #   exists.
 @export var is_chilly_reception: bool = false
+
+# ── [D4 Bundle 7] — the last 7 REUSE-LIKELY residual moves ──────────────────
+# Curse(174): EFFECT_CURSE. Ghost/non-Ghost dual dispatch (Cmd_cursetarget,
+#   battle_script_commands.c L8351-8369) — genuinely DIFFERENT scripts, not a
+#   shared one with a conditional inside. Non-Ghost user: self +1 Atk/+1 Def/
+#   -1 Speed (plain multi-stat, the `additionalEffects` data on this move —
+#   never read at all by the Ghost branch). Ghost user: fails outright if the
+#   target is already cursed; else costs the CASTER exactly maxHP/2
+#   (`GetNonDynamaxMaxHP(atk)/2`, floor) and sets `cursed` on the target,
+#   ticked at end of turn for maxHP/4 (HandleEndTurnCurse, battle_end_turn.c
+#   L635-650; Magic-Guard-gated, reusing `blocks_indirect_damage`). Simpler
+#   than Leech Seed's own shape: the tick deals damage to the cursed mon only
+#   — no heal-back to the caster — so `cursed` is a plain bool, not a
+#   `leeched_by`-style back-reference.
+@export var is_curse: bool = false
+
+# Focus Punch(264): EFFECT_FOCUS_PUNCH. Dispatches through the ORDINARY
+#   BattleScript_EffectHit (not its own script) — the entire mechanic is one
+#   pre-move canceler (CancelerFocus, battle_move_resolution.c L272-288):
+#   fails (no damage, PP already spent) if the user took ANY damage this
+#   turn before its own turn — reuses this project's existing
+#   `BattlePokemon.hit_by_this_turn` directly, checked immediately before the
+#   accuracy roll. This project has no flavor-text/message-sequencing layer,
+#   so source's own two-stage "tightening its focus!" pre-announcement
+#   (BattleScript_FocusPunchSetUp — confirmed via direct read to be PURELY
+#   an animation + message, no functional state) is not modeled; a disclosed
+#   simplification, not a functional gap. Also disclosed: this project does
+#   NOT exempt a hit "survived via a blocked OHKO" (Sturdy/Focus
+#   Sash/Focus Band) from breaking focus, unlike source's own
+#   `!survivedOHKO` carve-out — any hit taken breaks it here.
+@export var is_focus_punch: bool = false
+
+# Grudge(288): EFFECT_GRUDGE. Self-targeted; sets `grudge_active`. Reactive,
+#   at the SAME faint-check chokepoint Destiny Bond/Fell Stinger already use
+#   (FAINT_BLOCK_DO_GRUDGE, battle_move_resolution.c L2931-2947): if the
+#   Grudge-holder faints from a hit this turn, drains the KILLER'S move
+#   (the specific slot used, via `_last_attacker_move`) to EXACTLY 0 PP —
+#   not "remaining PP", a hard set. Excluded from triggering: an ally kill,
+#   Struggle (`move.is_struggle`), and Future Sight/Doom Desire
+#   (`move.is_future_sight`, the shared flag both moves already carry).
+@export var is_grudge: bool = false
+
+# Last Resort(387): EFFECT_LAST_RESORT. Usable only once every OTHER known
+#   move has been used at least once — AND the user must know at least 2
+#   moves total (CanUseLastResort, battle_script_commands.c L6644-6657:
+#   `moveIndex >= 2` at the end — a mon that only knows Last Resort can
+#   NEVER use it). REAL CORRECTION from the recon pass: the "used moves"
+#   bitmask (`volatiles.usedMoves`) lives inside the same per-switch-in
+#   memset `Volatiles` struct Protean/Libero's own flag does (`[M17n-4]`'s
+#   precedent) — it resets on SWITCH-OUT, it is NOT a battle-lifetime
+#   tracker like `times_hit`/`last_consumed_berry` as originally assumed.
+#   The bit is set at the same point PP is deducted (CancelerAttackstring,
+#   battle_move_resolution.c L630-642), unconditional on hit/miss/fail —
+#   and, per that function's own comment ("Set Sleep Talk as used move, so
+#   it works with Last Resort"), marks the CALLING move's own slot even
+#   when Metronome/Sleep Talk substitutes a different move at execution
+#   time. This project's own PP-deduction block already runs before its own
+#   Mirror-Move/Metronome/Sleep-Talk reassignment, so marking
+#   `used_move_slots` at that same point reproduces this for free.
+@export var is_last_resort: bool = false
+
+# Pollen Puff(639): EFFECT_HIT_ENEMY_HEAL_ALLY. REAL CORRECTION, simpler
+#   than assumed: `BattleScript_EffectHitEnemyHealAlly` (data/
+#   battle_scripts_1.s L940-942) is literally `jumpiftargetally
+#   BattleScript_EffectHealPulse; else BattleScript_EffectHit` — not "reuses
+#   Heal Pulse's formula", it calls Heal Pulse's own script outright when
+#   the chosen target is an ally. No `pulse_move` flag (confirmed absent
+#   from this move's own data), so no Mega Launcher interaction exists to
+#   replicate. Doubles-only reachability of the heal branch is correct by
+#   construction (no ally slot exists in singles).
+@export var is_pollen_puff: bool = false
+
+# Beak Blast(653): EFFECT_BEAK_BLAST. An ordinary EFFECT_HIT move (100
+#   power, Flying-type, Physical, priority -3, NOT `makes_contact`) PLUS a
+#   reactive burn: anyone making CONTACT with the Beak-Blast user before its
+#   own turn this turn gets burned (IsBattlerUsingBeakBlast, battle_move_
+#   resolution.c L4942-4948 + its call site L2571-2580) — reuses the
+#   EXISTING contact-punish chokepoint (the same one Rocky Helmet/Rough Skin
+#   already occupy), gated on the DEFENDER's own chosen move this turn being
+#   Beak Blast (via `_chosen_moves`), triggering `StatusManager.
+#   try_apply_status` on the ATTACKER (respecting Fire-type/Water-Veil
+#   immunity normally). HIGH-SCRUTINY FINDING (re-verified per explicit
+#   instruction, not assumed): source's own separate pre-turn pass
+#   (TryDoMoveEffectsBeforeMoves) exists ONLY to show the "heating up its
+#   beak!" announcement before the main per-actor loop begins — traced
+#   BattleScript_BeakBlastSetUp directly and confirmed it is PURELY an
+#   animation + message, no functional state mutation at all. The real
+#   mechanical guarantee (a slower Beak Blast user still punishes a faster
+#   attacker that hits it first) comes entirely from priority -3 sorting
+#   this move near the end of `_turn_order`, combined with this project's
+#   sequential per-actor resolution — an earlier-index attacker's hit always
+#   fully resolves (populating the contact-punish check) before a
+#   later-index Beak-Blast user's own action is ever reached. Holds BY
+#   CONSTRUCTION, not by coincidence — confirmed correct, no split needed.
+@export var is_beak_blast: bool = false
+
+# Shell Trap(658): EFFECT_SHELL_TRAP. Its OWN dedicated script
+#   (BattleScript_EffectShellTrap, data/battle_scripts_1.s) checks a
+#   `shell_trap_armed` flag: if armed, fires immediately (bypassing its own
+#   accuracy check per source's `jumpifshelltrap`); if not, fails
+#   ("Shell Trap didn't work!"). The flag is set reactively — mirrors Beak
+#   Blast's own contact-punish chokepoint, but gated on a PHYSICAL hit
+#   specifically (MoveEndShellTrap, battle_move_resolution.c L3660-3676:
+#   `IsBattleMovePhysical(cv->move)`), reusing the EXISTING `move.category
+#   == 0` check already available at that exact hit-resolution chokepoint
+#   (the same one Metal Burst's `last_hit_was_special` already reads) — no
+#   NEW contact-vs-category tracking needed. Priority -3 (same as Focus
+#   Punch/Beak Blast) makes the same by-construction turn-order argument
+#   hold. DISCLOSED, NOT BUILT: source additionally splices the Shell-Trap
+#   holder to act immediately after its attacker in DOUBLES
+#   (`ChangeOrderTargetAfterAttacker`) rather than waiting for its own -3
+#   slot — a genuine doubles-only wrinkle, out of scope for this bundle
+#   (singles-only correctness is unaffected, since there's only one other
+#   actor to already have resolved by the time Shell Trap's own -3 slot is
+#   reached).
+@export var is_shell_trap: bool = false

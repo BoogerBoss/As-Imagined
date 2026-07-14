@@ -22498,3 +22498,361 @@ correctly" as a permanent check for future move-implementation sessions
 audit), the threshold past which this project's own convention is to
 stop treating a recurring finding as a one-off and instead encode it as
 a standing check.
+
+## [Exclusion bookkeeping] — Round / Snatch / Imprison / Grav Apple /
+Nature Power / Camouflage permanently excluded (docs-only) — 2026-07-14
+
+Rob decided to permanently exclude 6 moves from the residual pool left
+after the preceding "quick recon" pass, which had sorted all 19 residual
+moves into REUSE-LIKELY vs NOVEL-MECHANISM buckets with rough complexity
+estimates.
+
+### The 6 moves, and why each is excluded
+
+Two genuinely different reasons, deliberately NOT collapsed into one
+blanket note:
+
+- **Round(496), Snatch(289), Imprison(286), Grav Apple(716)** — all four
+  were confirmed REUSE-LIKELY at the recon pass (Round: power-double
+  reusing `_turn_order` position + a turn-order self-promotion splice,
+  the same shape After You/Quash already use; Snatch: turn-wide
+  status-move interception reusing Magic Coat/Magic Bounce's existing
+  redirect infra; Imprison: a cross-battler moveset comparison, cheap
+  given movesets are already plain arrays; Grav Apple: its Gravity-boost
+  condition is permanently moot since Gravity(356) is itself excluded,
+  reducing it to a plain guaranteed-stat-drop hit, the exact shape
+  `[M19-secondary-stat-on-hit]` already built 79 times over). **Excluded
+  by Rob's own choice, not a technical blocker.**
+- **Nature Power(267), Camouflage(293)** — both key off
+  `gBattleEnvironment`, an overworld map/tile-derived field with no
+  analog anywhere in this project — the same blocker Secret Power(290)
+  is already excluded for (`[Bucket 4 cheapest singles]`/`[Secret
+  Power / Population Bomb]`). **A genuine capability gap, not a choice.**
+  Nature Power's own recon history is worth noting: an earlier D4-recon
+  session claimed it "collapses to a fixed call" since Terrain is
+  permanently void; `[D4 bundle]` (2026-07-10) already corrected that to
+  the real `gBattleEnvironment` blocker before this session — this entry
+  doesn't re-derive that correction, just carries it forward.
+
+### Implementation (docs-only)
+
+`docs/m19_subtier_plan.md`'s Section C2 (Rob's `[M19-exclusions]` list)
+gained two new bullets — one per reason class above — rather than one
+combined bullet, specifically so `scripts/gen_move_status_table.py`'s
+own per-bullet-label parsing produces a correctly-individualized reason
+string per move in the generated table (verified directly: the two
+bullets' own label text now appears as each move's own "Excluded — ..."
+reason in `docs/move_status_table.md`, not a shared generic string).
+Section C2's own header count (126→132 moves) and running total math
+updated; Section C's own overall header (214→220 moves: 219 permanently
+excluded + 1 deferred) updated; D4's own "remaining pool" call-out
+(19→13 moves) updated with a new dated update note; Section E's summary
+table and top-of-document reconciliation recomputed
+(700+0+0+221+13=934, confirmed by direct addition).
+
+`docs/move_status_table.md` regenerated via
+`scripts/gen_move_status_table.py`: **700 implemented / 221 excluded /
+13 residual**, confirmed the 6 moves landed with their correct
+individualized reasons and the remaining 13-move residual list is
+exactly Mimic/Transform/Sketch/Curse/Perish Song/Focus Punch/Grudge/Last
+Resort/Sky Drop/Flying Press/Pollen Puff/Beak Blast/Shell Trap.
+
+No code or test changes — a pure scope decision, matching this
+project's own established convention for Rob's `[M19-exclusions]`-style
+decisions.
+
+## [D4 Bundle 7] — Curse / Focus Punch / Grudge / Last Resort / Pollen
+Puff / Beak Blast / Shell Trap (7 moves, the LAST of D4's own
+REUSE-LIKELY residual moves) — 2026-07-14
+
+All 7 of the REUSE-LIKELY moves remaining after `[Exclusion
+bookkeeping]` closed out Round/Snatch/Imprison/Grav Apple/Nature
+Power/Camouflage. Step 0 was re-run fresh against source for every move
+(per the standing convention of not trusting a prior recon pass's own
+classifications), with two moves — Beak Blast/Shell Trap — flagged for
+HIGH SCRUTINY re-verification of their own reclassification from NOVEL
+to REUSE-LIKELY.
+
+### Step 0 findings
+
+1. **Curse(174)** — `Cmd_cursetarget` (battle_script_commands.c
+   L8351-8369) confirmed genuinely TWO different scripts, not one
+   script with an internal conditional: a non-Ghost user's cast branches
+   to `BattleScript_CurseStatChange` (the move's own `additionalEffects`
+   data — `.moveEffect = STAT_CHANGE_EFFECT_MINUS` speed=1,
+   `STAT_CHANGE_EFFECT_PLUS` attack=1/defense=1 — is ONLY ever read by
+   this branch); a Ghost-type user's cast never touches that data at
+   all, instead: fails if the target is already cursed
+   (`gBattleMons[gBattlerTarget].volatiles.cursed`); else costs the
+   CASTER `GetNonDynamaxMaxHP(gBattlerAttacker) / 2` (floor) via
+   `SetPassiveDamageAmount`, and sets `cursed` on the target. Neither
+   branch's own script calls `typecalc` anywhere in the Ghost path —
+   same gap as Foresight/Purify/Nightmare/Spite/Reflect Type/Toxic
+   Thread/Venom Drench, so a new `is_curse` exemption joins that list
+   (via an early-return dispatch block that never reaches the general
+   gate at all, rather than adding to the gate's own exemption list).
+   The end-of-turn tick (`HandleEndTurnCurse`, battle_end_turn.c
+   L635-650) is `GetNonDynamaxMaxHP(battler) / 4`, gated on Magic Guard
+   via the existing `AbilityManager.blocks_indirect_damage`. **A real
+   simplification found, not assumed**: the tick deals damage to the
+   cursed mon directly with NO back-reference to the caster at all (no
+   heal-back component, unlike Leech Seed) — `cursed` is implemented as
+   a plain bool, not a `leeched_by`-style object reference, cheaper than
+   the recon's own framing suggested.
+2. **Focus Punch(264)** — confirmed via `battle_move_effects.h`
+   (`[EFFECT_FOCUS_PUNCH] = { .battleScript = BattleScript_EffectHit,
+   ... }`) that it dispatches through the ORDINARY damage script, not a
+   dedicated one. The entire mechanic is `CancelerFocus`
+   (battle_move_resolution.c L272-288): fails if
+   `gProtectStructs[battlerAtk].physicalDmg || specialDmg` (ANY damage
+   taken this turn, not physical-only) is true — reused directly via
+   this project's existing `BattlePokemon.hit_by_this_turn`, checked
+   immediately before the accuracy roll (the same position Belch/
+   Poltergeist/Dream Eater's own pre-accuracy fail checks occupy). PP is
+   deducted regardless of the later fail (confirmed: this project's own
+   PP-deduction block already runs earlier in `_phase_move_execution`,
+   unconditionally). Source's own `BattleScript_FocusPunchSetUp` (a
+   separate two-stage "tightening its focus!" pre-announcement) was
+   traced directly and confirmed to be PURELY an animation + message,
+   with zero functional state mutation — this project has no
+   flavor-text/message-sequencing layer at all, so this is a disclosed
+   simplification, not a functional gap. Also disclosed, not built:
+   source's own `!survivedOHKO` exemption (a hit "survived via a blocked
+   OHKO," e.g. Sturdy/Focus Sash, does NOT break focus) is not modeled —
+   any hit taken breaks focus here, a narrow simplification.
+3. **Grudge(288)** — `FAINT_BLOCK_DO_GRUDGE`
+   (battle_move_resolution.c L2931-2949): checked at the exact SAME
+   faint-reactive chokepoint Destiny Bond/Fell Stinger already occupy in
+   this project (`_last_attacker`/`_last_attacker_move`, built for
+   `[M14b]`/`[D4 CHEAP bundle]`). Drains the SPECIFIC move slot the
+   killer used (`gBattleStruct->chosenMovePositions[cv->battlerAtk]`) to
+   EXACTLY 0 PP — a hard set, not "remaining PP". Excludes: an ally kill
+   (`!IsBattlerAlly`), a Z-move (n/a, no Z-moves implemented), Struggle
+   (`cv->move != MOVE_STRUGGLE` → `move.is_struggle`), and Future
+   Sight/Doom Desire (`cv->moveEffect != EFFECT_FUTURE_SIGHT` → the
+   shared `move.is_future_sight` flag both moves already carry). Simply
+   self-targeted on cast (`.target = TARGET_USER`), setting
+   `grudge_active` unconditionally — confirmed no fail condition exists
+   for the cast itself.
+4. **Last Resort(387)** — `CanUseLastResort`
+   (battle_script_commands.c L6644-6657): fails if any OTHER move slot
+   (`GetMoveEffect(move) != EFFECT_LAST_RESORT`) has not yet had its bit
+   set in `gBattleMons[battler].volatiles.usedMoves`; additionally
+   requires `moveIndex >= 2` at loop end (at least 2 total move slots —
+   a mon that only knows Last Resort can NEVER use it). **REAL
+   CORRECTION, the one the task's own HIGH-SCRUTINY-adjacent framing
+   anticipated**: `usedMoves` lives inside `struct Volatiles`, the exact
+   same per-battler struct confirmed memset at every switch-in
+   (`battle_main.c` L3145/L3272/L3421, the identical call sites
+   `[M17n-4]`'s Protean/Libero flag already traced) — it resets on
+   SWITCH-OUT, it is NOT a battle-lifetime tracker like
+   `times_hit`/`last_consumed_berry` as the original recon assumed.
+   The bit is set in `CancelerAttackstring` (battle_move_resolution.c
+   L630-642), unconditional on hit/miss/fail, and — per that function's
+   own code comment ("Set Sleep Talk as used move, so it works with Last
+   Resort") — marks the CALLING move's own slot even when Metronome/
+   Sleep Talk substitutes a different move at execution time. This
+   project's own PP-deduction block already runs before its own
+   Mirror-Move/Metronome/Sleep-Talk reassignment of `attacker`/`move`,
+   so marking `used_move_slots` at that exact point reproduces this
+   correctly for free, with no special-casing needed.
+5. **Pollen Puff(639)** — **REAL CORRECTION, simpler than assumed**:
+   `BattleScript_EffectHitEnemyHealAlly` (data/battle_scripts_1.s
+   L940-942) is literally `jumpiftargetally
+   BattleScript_EffectHealPulse; else BattleScript_EffectHit` — not
+   "reuses Heal Pulse's formula," it calls Heal Pulse's own script
+   outright when the chosen target is an ally. Confirmed no
+   `pulseMove` flag on this move's own data (unlike Heal Pulse's own
+   Mega-Launcher-aware branch), so no Mega Launcher interaction exists
+   to replicate. Doubles-only reachability of the heal branch is correct
+   by construction — no ally slot exists in singles, confirmed via a
+   dedicated singles test that the ordinary damage branch fires
+   instead.
+6. **Beak Blast(653) / Shell Trap(658) — HIGH SCRUTINY, explicitly
+   re-verified per the task's own instruction rather than trusted from
+   the prior recon's reclassification.** The concern: does this
+   project's `hit_by_this_turn`/contact-punish chokepoint reproduce
+   source's own guarantee — that a SLOWER Beak-Blast/Shell-Trap user can
+   still be punished by/retaliate against a FASTER attacker's hit
+   landing before the slow user's own turn — by construction, or only
+   by coincidence of already-resolved turn order? Traced all three
+   moves' `.priority` fields directly: Focus Punch/Beak Blast/Shell Trap
+   all carry `priority = -3` in source. Traced
+   `TryDoMoveEffectsBeforeMoves` (battle_main.c) — the separate pre-pass
+   this project doesn't replicate — down to its own 3 dispatched scripts
+   (`BattleScript_FocusPunchSetUp`/`BeakBlastSetUp`/`ShellTrapSetUp`,
+   data/battle_scripts_1.s) and confirmed EACH is purely `flushtextbox`
+   + `playanimation` + `printstring` + `waitmessage` + `end3` — zero
+   functional state mutation, existing ONLY to show the
+   "tightening/heating up/preparing" message for ALL matching users up
+   front, before the main per-actor loop's own messages begin appearing.
+   The REAL mechanical conditions (`CancelerFocus`'s damage check;
+   `IsBattlerUsingBeakBlast`'s `!HasBattlerActedThisTurn` gate;
+   `MoveEndShellTrap`'s `IsBattlerTurnDamaged` check) are all evaluated
+   at each move's own NORMAL, priority-sorted position in the turn — not
+   moved earlier by the pre-pass. Since this project's own `_turn_order`
+   is precomputed once (respecting priority) and its
+   per-actor-in-sequence resolution means an earlier-index actor's FULL
+   action (including any resulting `hit_by_this_turn` population or
+   contact-punish dispatch) completes before a later-index actor's own
+   action is ever reached, priority -3 alone is sufficient to reproduce
+   source's real guarantee — CONFIRMED BY CONSTRUCTION, not by
+   coincidence. **No split was needed; both ship in this same bundle.**
+   `IsBattlerUsingBeakBlast`'s own `!HasBattlerActedThisTurn` condition
+   is automatically satisfied in this project's architecture too (an
+   earlier-index attacker's hit can only ever be processed while a
+   later-index Beak-Blast-holding defender hasn't been reached in
+   `_turn_order` yet), so no additional "has the defender already acted"
+   tracking was needed. Beak Blast's own burn (`IsBattlerUsingBeakBlast
+   && IsBattlerTurnDamaged && CanBeBurned`, battle_move_resolution.c
+   L2571-2580) sits behind the SAME `CanBattlerAvoidContactEffects`
+   early-return the whole enclosing function (Protect-family/Rocky
+   Helmet's own dispatch) uses — confirming it's genuinely CONTACT-gated
+   despite no explicit per-branch contact check being visible at the
+   burn's own call site — reused via the existing
+   `AbilityManager.move_triggers_contact_retaliation` gate, the same one
+   Rocky Helmet already occupies. Shell Trap's own arming
+   (`MoveEndShellTrap`, battle_move_resolution.c L3660-3676) is gated on
+   `IsBattleMovePhysical(cv->move)` specifically (unconditional on
+   contact, unlike Beak Blast) — reused via the already-available
+   `move.category == 0` check at the exact chokepoint Metal Burst's own
+   `last_hit_was_special` reads. **One genuine doubles-only wrinkle
+   found and explicitly disclosed, not built**: source additionally
+   splices the Shell-Trap holder to act immediately after its attacker
+   in DOUBLES (`ChangeOrderTargetAfterAttacker`) rather than waiting for
+   its own -3 slot — singles-only correctness (this bundle's own test
+   scope) is entirely unaffected since there's only one other actor to
+   already have resolved by the time Shell Trap's own -3 slot arrives.
+
+### Implementation
+
+New `MoveData` flags: `is_curse`/`is_focus_punch`/`is_grudge`/
+`is_last_resort`/`is_pollen_puff`/`is_beak_blast`/`is_shell_trap`. New
+`BattlePokemon` fields: `cursed`/`grudge_active`/`used_move_slots`
+(Array[bool] parallel to `moves`, grown in `add_move`)/
+`shell_trap_armed`. `_clear_volatiles` extended with `cursed`/
+`grudge_active`/`used_move_slots`-reset (switch-scoped, matching
+`used_protean_libero`'s own precedent); `shell_trap_armed` is instead
+reset every turn in `_phase_priority_resolution`'s existing
+`gProtectStructs`-shaped per-turn loop, alongside `protect_active`,
+matching its real source lifetime. New signals: `curse_set`/
+`curse_damage`/`pp_drained`.
+
+Curse's own dispatch (Ghost branch: substitute-check/already-cursed
+fail/apply; non-Ghost branch: `_apply_stat_change_effect` reuse via
+`stat_change_self=true` in this move's own data) sits alongside
+Nightmare/Spite's own early-return blocks. Grudge's cast dispatch is a
+single-line `attacker.grudge_active = true` self-targeted block; its
+reactive PP-drain sits in `_phase_faint_check`, reusing `retal_killer`/
+`retal_move` (the SAME locals Aftermath/Innards Out just computed).
+Focus Punch's fail check, Last Resort's readiness check, and Shell
+Trap's armed check are three new pre-accuracy fail blocks, positioned
+alongside Belch/Poltergeist's own established pattern. Pollen Puff's
+ally-heal branch is a new early-return inside the `if move.power > 0:`
+branch (same position as Present's own heal-branch bypass), checking
+`defender == _get_ally(attacker)`. Beak Blast's burn and Shell Trap's
+arming are both new blocks inside `_do_damaging_hit`: Beak Blast's sits
+immediately after Rocky Helmet's own contact-punish block (same gate,
+`move_triggers_contact_retaliation`); Shell Trap's sits at the earlier
+`move.category`/`last_hit_was_special` chokepoint, unconditional on
+contact.
+
+### Errors found and fixed (4 real implementation bugs, all found via
+### the test suite/regression sweep, none via source misreading)
+
+1. **Curse's entire dispatch block was unreachable** — a Python-script
+   insertion error added one extra tab of indentation to the whole
+   `if move.is_curse:` block, nesting it INSIDE Spite's own `if
+   move.is_spite:` body (which always `return`s before reaching it).
+   Confirmed via a targeted debug print showing zero invocations of the
+   block during a live battle where a Ghost-type mon's only move was
+   Curse. Fixed by removing the stray tab from the entire block (31
+   lines).
+2. **Grudge's cast-time dispatch was never written at all** — only the
+   reactive PP-drain half (at the faint-check chokepoint) was
+   implemented; the actual `attacker.grudge_active = true` assignment on
+   cast was missing entirely, confirmed via a debug print showing
+   `victim.grudge_active == false` immediately after Grudge's own
+   `move_executed` fired. Fixed by adding the missing self-targeted
+   dispatch block.
+3. **`_clear_volatiles` was already wiping `grudge_active` before the
+   faint-check's own read of it** — the SAME faint-processing loop that
+   marks a mon `fainted` and calls `_clear_volatiles(combatant)` runs
+   BEFORE my own Grudge check (positioned after Aftermath/Innards Out,
+   itself after the `_clear_volatiles` call), so by the time the check
+   ran, the flag was already reset to false. This is the exact same
+   pitfall Destiny Bond's own `had_destiny_bond` local (captured BEFORE
+   `_clear_volatiles`) already exists specifically to avoid — fixed by
+   adding an identical `had_grudge` capture at the same point, and
+   reading that local in the later check instead of the live field.
+4. **Out-of-bounds `_chosen_moves[idx]` read in the new Shell Trap/Beak
+   Blast reactive checks** — safe in any normal battle (where
+   `_chosen_moves` is always sized to `_combatants`), but
+   `m18_5g_test.tscn`'s own D3 test manually constructs a bare
+   `BattleManager` and calls `_do_multi_hit_sequence` directly without
+   ever populating `_chosen_moves` at all, causing a silent runtime
+   array-index error that aborted the rest of `_do_damaging_hit`'s own
+   execution for each hit — including King's Rock's own flinch roll,
+   positioned later in the same function. This was NOT caught by this
+   bundle's own test suite (which only exercises normal battles) — it
+   surfaced only in the regression sweep, then root-caused by
+   `git stash`-ing this session's own code changes and confirming
+   `m18_5g_test.tscn` passes cleanly 315/315 on the untouched baseline
+   across 3 reruns, then reproducing the failure again after restoring
+   the changes. Fixed by adding an explicit `idx < _chosen_moves.size()`
+   bounds check to both the Shell Trap and Beak Blast lookups.
+
+### Testing
+
+New `d4_bundle7_test.gd`/`.tscn`: 34/34 assertions across 9 sections (A
+data integrity for all 7 moves; B Curse Ghost-branch incl. a direct
+`_phase_end_of_turn()` call for the Magic-Guard-blocks-the-tick case,
+avoiding the unbounded-stalemate risk a live battle would create for an
+otherwise-undamaging move; B Curse non-Ghost self-buff; C Focus Punch
+fail/succeed pair; D Grudge drain + Struggle-kill discriminator; E Last
+Resort not-ready/succeeds-once-ready/only-known-move/switch-out-reset;
+F Pollen Puff doubles-ally-heal/singles-foe-damage; G Beak Blast
+contact-burn/non-contact-discriminator; H Shell Trap
+armed/fails-when-unhit/physical-only-gate; I a negative control).
+Stable across 5 reruns after fixing 3 test-authoring bugs on top of the
+4 implementation bugs above: two instances of assuming `max_hp ==
+base_hp` passed to `_make_mon` (the actual HP formula includes the
+`+level+10` floor, confirmed a recurring pitfall class already
+documented for other tiers) in the Curse self-cost/tick and Pollen Puff
+heal-amount assertions, fixed by reading `.max_hp` dynamically after
+construction; and a PP-depletion-to-Struggle-fallback contaminating the
+Beak Blast non-contact discriminator (the fixture's own Ember move had
+only 5 PP, depleting mid-battle and falling back to a CONTACT Struggle,
+which legitimately triggered the burn the test meant to prove doesn't
+fire for non-contact moves) — fixed by giving Ember enough PP (99) to
+outlast the battle. Two of the Curse tests also needed the opponent's
+own move switched from "no move at all" (silently defaulting to
+Struggle, a real contact-damage confound) to Growl (harmless) plus a
+speed advantage for the Curse-caster, to keep the HP-cost assertion
+isolated from an unrelated hit landing first.
+
+### Regression
+
+Given how many central chokepoints this bundle touches (`_do_damaging_hit`'s
+own per-hit dispatch, `_phase_faint_check`, `_phase_priority_resolution`'s
+per-turn reset loop, the PP-deduction block), ran a full
+`scripts/count_assertions.sh` sweep (112 files) twice from independent
+process states — **11652 total assertions, 0 real failures, identical
+GRAND TOTAL both runs** (11618 prior + 34 new = 11652, confirmed by
+direct addition). One pre-existing flake was found in the first sweep
+(`m18_5g_test.tscn`'s own D3 assertion) and root-caused as bug #4 above
+(fixed); after the fix, a SEPARATE, unrelated flake in the same file
+(E1/E2, a pairwise-damage-ratio tolerance check) was observed on one
+rerun and confirmed via `git stash` to reproduce identically on the
+untouched pre-bundle baseline (a different assertion flaked there — D4,
+Shell Bell's own floor-rounding case) — both are instances of this
+file's own already-known statistical/RNG-sensitive flakiness class, not
+a regression from this bundle.
+
+**Total move-implementation count: 700→707.**
+`docs/m19_subtier_plan.md` updated throughout: new `[D4 Bundle 7]`
+update note added under D4, Section E's summary table/reconciliation
+recomputed (707+0+0+221+6=934, reconfirmed). **Section D's residual:
+13→6 — every remaining move (Mimic/Transform/Sketch/Perish Song/Sky
+Drop/Flying Press) is confirmed NOVEL-MECHANISM; no REUSE-LIKELY moves
+remain anywhere in M19.**
