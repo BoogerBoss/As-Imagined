@@ -3912,6 +3912,31 @@ MOVES = [
      "pp": 10, "ban_flags": BAN_METRONOME,
      "stat_change_stat": STAGE_DEF, "stat_change_amount": -1,
      "stat_change_self": False},
+
+    # [D4 Bundle 9] Flying Press(560): EFFECT_TWO_TYPED_MOVE. Power 100 at
+    # this project's GEN_LATEST config (B_UPDATED_MOVE_DATA>=GEN_7 ? 100:80).
+    # double_power_on_minimized=True — source's own .minimizeDoubleDamage
+    # field explicitly names this move as one of its carriers (confirmed via
+    # this project's own pre-existing MoveData.double_power_on_minimized doc
+    # comment, which already listed Flying Press by name before this move was
+    # ever implemented). second_type=Flying is the move's own
+    # .argument.type — see MoveData.two_typed_move's own doc comment for the
+    # full source citation and the STAB deviation decision.
+    {"id":  560, "name": "Flying Press",
+     "type": TYPE_FIGHTING, "category": PHYS, "power": 100, "accuracy": 95,
+     "pp": 10, "makes_contact": True, "double_power_on_minimized": True,
+     "two_typed_move": True, "second_type": TYPE_FLYING},
+
+    # [D4 Bundle 9] Sky Drop(507): EFFECT_SKY_DROP. gravityBanned/
+    # skyBattleBanned are moot (neither Gravity nor Sky Battle exists in this
+    # project). sleepTalkBanned/instructBanned/assistBanned (GEN_6+) all
+    # carry over — see MoveData.is_sky_drop's own doc comment for the full
+    # source citation.
+    {"id":  507, "name": "Sky Drop",
+     "type": TYPE_FLYING, "category": PHYS, "power": 60, "accuracy": 100,
+     "pp": 10, "makes_contact": True,
+     "ban_flags": (BAN_SLEEP_TALK | BAN_INSTRUCT | BAN_ASSIST),
+     "is_sky_drop": True},
 ]
 
 
@@ -4272,6 +4297,9 @@ DEFAULTS = {
     "is_round":               False,
     "is_snatch":              False,
     "is_imprison":            False,
+    "two_typed_move":         False,
+    "second_type":            -1,
+    "is_sky_drop":            False,
 }
 
 HEADER = """\
@@ -4419,6 +4447,8 @@ FIELD_ORDER = [
     "is_pollen_puff", "is_beak_blast", "is_shell_trap",
     # [D4 Bundle 8] fields
     "is_round", "is_snatch", "is_imprison",
+    # [D4 Bundle 9] fields
+    "two_typed_move", "second_type", "is_sky_drop",
 ]
 
 

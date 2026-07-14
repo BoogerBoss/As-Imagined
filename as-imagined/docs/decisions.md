@@ -23134,3 +23134,402 @@ Press — once these 4 were implemented rather than left residual).
 implemented / 217 excluded / 6 residual / 16 needs-manual-review**.
 
 No commit made — per standing instruction, Rob commits.
+
+## [D4 Bundle 9] — Flying Press(560), Sky Drop(507) (the LAST 2 of D4's
+6 confirmed NOVEL-MECHANISM moves) — 2026-07-14
+
+Report-only Step 0 requested first ("DO NOT IMPLEMENT YET"), re-deriving
+both moves fresh from source rather than trusting the prior recon's own
+"smaller than the label implies" complexity estimate. Findings were
+reported, Rob then made 3 explicit decisions on the open questions and
+authorized implementation in the same session.
+
+### Step 0 findings (report, not yet implementation)
+
+**Flying Press(560)** — confirmed `EFFECT_TWO_TYPED_MOVE` runs TWO
+independent type-effectiveness computations (`CalcTypeEffectiveness
+Multiplier`, `battle_util.c` L8221-8236): `move.type` (Fighting) vs.
+defender, then `GetMoveArgType(move)` (Flying) vs. defender, multiplied
+together — each pass itself already correctly combining a dual-typed
+defender's own two types via `CalcTypeEffectivenessMultiplierInternal`,
+the FULL modifier pipeline (Wonder Guard/Ring Target/Iron Ball/illusion-
+detection/STAB-slide-trigger), not a bare table lookup — meaning every
+existing type-override applies to BOTH components independently.
+**Real surprising finding**: traced the actual damage-calc call chain
+(`DoMoveDamageCalc`→`DoMoveDamageCalcVars`→`ApplyModifiersAfterDmgRoll`)
+and confirmed `ctx->moveType` is a SINGLE mutable field shared between
+the type-effectiveness pass (which reassigns it Fighting→Flying,
+`battle_util.c` L8230) and the LATER STAB check
+(`GetSameTypeAttackBonusModifier`, L7239) — nothing resets it between
+the two reads, so the literal current C code grants STAB for Flying-type
+attackers, not Fighting-type ones. This directly contradicts the dev
+team's own unimplemented test placeholder
+(`test/battle/move_effect/two_typed_move.c`:
+`TO_DO_BATTLE_TEST("Flying-type Pokémon don't receive STAB on Flying
+Press")`), which has no enforcing test behind it either way — judged an
+unintentional ordering artifact of the shared mutable context, not
+deliberate design, and flagged as an open question for Rob rather than
+silently picking a side.
+
+**Sky Drop(507)** — confirmed via `HandleSkyDropResult`
+(`battle_move_resolution.c` L1676-1733) that turn 1 grabs the target
+(hard fails, not accuracy-based: ally target [N/A in this project's
+singles scope]; target already semi-invulnerable; Substitute blocks it;
+target weight >= 200.0kg/2000hg) and sets BOTH combatants semi-
+invulnerable (`STATE_SKY_DROP_ATTACKER`/`STATE_SKY_DROP_TARGET`) — a
+real finding beyond the recon's own framing, which only mentioned the
+target. The target's own action is unconditionally skipped every turn
+held via `CancelerSkyDrop` (`battle_move_resolution.c` L76-85), the
+EARLIEST canceler in the whole chain (position 3, well ahead of
+`CANCELER_ASLEEP_OR_FROZEN` at position 6) — no status counter ticks for
+the skipped turn. Confirmed via `CanBreakThroughSemiInvulnerablity
+Internal` (L10464-10493) and `IsBattlerOnAir` (L8508-8516) that both new
+states share Fly's EXACT `STATE_ON_AIR` anti-air bypass rule — zero new
+bypass logic needed. **Re-verified the user's own premise on a Flying-
+type-target restriction and found it doesn't exist**: checked
+`HandleSkyDropResult` in full plus Sky Drop's own move data
+(`moves_info.h` L13514-13534) plus a whole-tree grep for any
+`TYPE_FLYING` check tied to Sky Drop's target — no such restriction
+exists anywhere in this reference source; a Flying-type target is
+handled purely through ordinary type effectiveness. Confirmed the
+target-left-early case (turn 2's own release check,
+`gBattleMons[cv->battlerDef].volatiles.semiInvulnerable == STATE_NONE`)
+is a LAZY check at release time, not an eager cross-battler clear — this
+project's own `_clear_volatiles` already handles a target's own
+departure generically, reproducing this for free. **Found the
+attacker-faints-while-holding case is NOT auto-handled by
+`FaintClearSetData`/`CancelMultiTurnMoves`** (the latter has an explicit
+carve-out PROTECTING `STATE_SKY_DROP_TARGET` from being cleared by
+generic cancellation) — the real release-on-attacker-faint logic lives
+in a dedicated battle-script command, `Cmd_tryconfusionafterskydrop`
+(`battle_script_commands.c` L10710-10740), which frees the target and
+conditionally confuses it (if `confuseAfterDrop` was set from an
+interrupted rampage) — flagged as needing new code, not something that
+falls out of existing infrastructure. **Found and precisely
+characterized the freeze/paralysis-on-release-turn asymmetry in
+source**: `CancelerParalyzed` (`battle_move_resolution.c` L447-458)
+explicitly calls `CancelMultiTurnMoves(gBattlerAttacker)` on full-
+paralysis failure, canceling a normal 2-turn move's charge outright —
+but `CancelerAsleepOrFrozen`'s own freeze branch (L172-186) calls no such
+function, so a normal 2-turn move's charge PERSISTS if frozen on the
+release turn. For Sky Drop specifically, paralysis clears the
+ATTACKER's own state (their own semi-invulnerable is
+`STATE_SKY_DROP_ATTACKER`, not the protected `STATE_SKY_DROP_TARGET`)
+but `CancelMultiTurnMoves` only touches the ONE battler passed in — the
+TARGET's own state is untouched, and nothing else releases it, since the
+attacker's own `gLockedMoves`/`multipleTurns` got cleared too (they're
+no longer locked into repeating Sky Drop, so `HandleSkyDropResult`'s own
+turn-2 release logic never runs again). This looks like a genuine latent
+gap in the reference engine itself, flagged explicitly rather than
+silently working around it.
+
+### Rob's 3 decisions (given after the Step 0 report)
+
+1. **Flying Press STAB**: port the documented INTENDED behavior
+   (Fighting-only STAB), not the literal current-source mutation side
+   effect — the dev team's own test-name states the intended behavior
+   explicitly, no test enforces the current behavior, and the mutation
+   reads as an ordering artifact rather than deliberate design.
+2. **Sky Drop's attacker-faints-while-holding case**: build the real
+   mechanism (reciprocal release + conditional confuse-on-drop), not a
+   disclosed simplification — judged a real player-facing bug risk
+   (target left permanently stuck airborne) if skipped.
+3. **Freeze/paralysis stuck-an-extra-turn behavior**: do NOT build
+   bespoke handling — verify and document whichever behavior this
+   project's own existing pre-move-check ordering naturally produces,
+   via a discriminator test, rather than porting source's own paralysis-
+   specific `CancelMultiTurnMoves` call.
+
+### Implementation
+
+**Flying Press**: new `MoveData.two_typed_move`/`second_type` fields
+(generic/reusable, `second_type` defaulting to `TYPE_NONE`/-1). New
+`DamageCalculator._type_mod_for_attacking_type(atk_type, def_types,
+scrappy_bypass, super_effective_vs_type, iron_ball_grounded,
+strong_winds)` — extracted verbatim from `calculate`'s own pre-existing
+inline UQ4.12 type-effectiveness block (behavior-preserving for every
+single-attacking-type move), called ONCE normally or TWICE (multiplying
+the results) when `move.two_typed_move` is set; the SAME shape applied
+to the early `effectiveness` float gate (`TypeChart.get_effectiveness`
+called twice and multiplied) so Wonder Guard's own downstream read of
+the combined value stays correct for free. STAB code itself is
+UNTOUCHED — it already reads `move.type` directly and this project's
+`MoveData` Resources are never mutated mid-calculation (unlike source's
+shared `ctx`), so Rob's decision 1 falls out for free from the existing
+code, not a new branch. Confirmed via `Resource.duplicate()`'s own
+default behavior (copies all `@export var` fields) that the Normalize/
+Pixilate/etc. type-mutation pipeline (`AbilityManager.effective_move_
+type`, called via a shallow-duplicated `MoveData`) correctly preserves
+`second_type`/`two_typed_move` across the duplication, matching the dev
+team's OWN test-name expectation for that combo
+(`TO_DO_BATTLE_TEST("Flying Press under Normalize does both Normal and
+Flying-type...")`) without any dedicated code for it.
+
+**Sky Drop**: new `MoveData.is_sky_drop` flag; two new semi-invulnerable
+state constants (`SEMI_INV_SKY_DROP_ATTACKER`/`_TARGET`), both routed
+through the existing `_can_hit_semi_invulnerable` helper with the same
+`damages_airborne` check `SEMI_INV_ON_AIR` already uses. New
+`BattlePokemon.sky_drop_target` (direct object reference, the SOURCE-side
+reciprocal-reference shape — mirrors `sure_hit_target`'s own direction,
+not the victim-side `wrapped_by`/`octolocked_by` shape) and
+`BattlePokemon.confuse_after_drop` (target-side rampage-interruption
+flag). New dedicated dispatch block in `_phase_move_execution` (NOT the
+generic `move.two_turn` block — genuinely different fail conditions and
+target-side state): turn 1 checks already-semi-invulnerable/Substitute/
+weight in order and fails gracefully with a distinct reason string each;
+on success, reuses the existing `charging_move` field (no new lock
+primitive) plus the target's own rampage-interruption check (mirroring
+source's `CancelMultiTurnMoves(defender)` call, using the fields this
+project actually has: `locked_move`/`rampage_turns`/`uproar_turns`/
+`charging_move`/`semi_invulnerable`). Turn 2 clears the attacker's own
+state FIRST (matching source's exact ordering), then checks the target's
+own `semi_invulnerable` — if already cleared by some other route
+(`_clear_volatiles`'s existing generic per-mon reset, already unconditional
+before this bundle), fails gracefully with no damage; otherwise releases
+the target and falls through to the normal damage pipeline. New early
+check in `_phase_pre_move_checks` (before `pre_move_check` is even
+called): a mon with `semi_invulnerable == SEMI_INV_SKY_DROP_TARGET`
+fails its own action outright, matching `CancelerSkyDrop`'s exact
+earliest-canceler position. New reciprocal-release scan added to
+`_clear_volatiles` (the SEVENTH move-based volatile using this shape,
+but in the source-not-victim direction): if the departing mon was
+holding a target (`sky_drop_target != null`), that target is freed
+immediately, with the conditional confuse-on-drop attempted via the
+existing `StatusManager.try_apply_confusion` — directly implementing
+Rob's decision 2, matching source's `Cmd_tryconfusionafterskydrop`.
+Decision 3 required NO new code — verified via a direct unit-level call
+to `StatusManager.pre_move_check` with forced full paralysis that this
+project's own pre-move-check never touches `charging_move`/
+`semi_invulnerable` on ANY failure path, so a paralyzed (or frozen, or
+flinched, etc.) Sky Drop attacker leaves BOTH combatants' hold state
+untouched — a uniform "stuck an extra turn" behavior for every pre-move-
+check failure reason, not just freeze as in the asymmetric reference
+source. This is a real, disclosed DIVERGENCE from source (which clears
+the attacker's own charge on paralysis specifically) — documented, not
+silently ported, per Rob's own explicit instruction.
+
+**[SUPERSEDED — see the `[Charge-cancellation fix]` entry below, same
+day]**: a follow-up recon session found this "uniform stuck an extra
+turn" framing was incomplete in two ways — it generalizes to Truant and
+Infatuation as well, not just Paralysis/Flinch, and (for Sky Drop
+specifically) source's own version of "cancel the attacker, orphan the
+target" is a genuine, non-self-healing SOFT-LOCK, not a mere one-turn
+delay. The fix below cancels the charge AND releases the target for all
+four conditions, deliberately diverging from source's own confirmed bug
+rather than reproducing it. Decision 3 above is retained verbatim as the
+historical record of what was decided and verified at the time — it was
+not wrong given what had been checked, just incomplete.
+
+### Testing and regression
+
+New `scenes/battle/d4_bundle9_test.gd`/`.tscn`: 53/53 assertions across
+4 sections (A: data integrity for both moves' new fields, plus negative
+checks confirming zero cross-contamination on an unrelated move; B:
+Flying Press's dual-type product discriminator [Rock/Steel defender,
+4.0×0.25=1.0 — a value neither single-attacking-type calculation would
+produce], the Ghost-immunity-zeroes-the-whole-move case, the STAB
+decision discriminator [Fighting-type attacker gets STAB, Flying-type
+does not], and a Scrappy-bypasses-both-components interaction test; C:
+Sky Drop's full lifecycle — turn 1 setup [no damage, both semi-
+invulnerable states, target's own action skipped], turn 2 release [real
+damage, both states cleared], all 3 fail conditions plus a just-under-
+weight-threshold negative control, the anti-air bypass shared with Fly
+[Gust hits both new states, Tackle doesn't], the reciprocal release on
+attacker faint plus the confuse-on-drop and its own negative control, the
+turn-2 lazy-check-fails-gracefully case, and the freeze/paralysis
+verify-and-document discriminator; D: an ordinary-Tackle-exchange
+negative control confirming zero unintended interaction with unrelated
+moves), stable across 5 reruns.
+
+**One real test-authoring bug caught and fixed on the first run**: every
+attacker in Section C initially fell back to Struggle instead of casting
+Sky Drop, traced via a temporary debug print to `atk.moves = [move]`
+never populating the PARALLEL `current_pp`/`used_move_slots` arrays
+`add_move(move)` is responsible for — direct `.moves =` assignment left
+`current_pp` empty, so PP-legality checking (silently) treated the move
+as unusable and fell back to Struggle. Fixed by switching every test
+fixture to the established `add_move()` convention already used
+throughout this project's other D4 Bundle test files (confirmed via
+`d4_bundle8_test.gd`'s own precedent) rather than direct field
+assignment.
+
+Full regression run twice from independent process states:
+`scripts/count_assertions.sh` — **114 files, GRAND TOTAL 11729, 0
+failures both runs** (11676 prior + 53). A pre-check targeted sweep
+(`damage_test`/`move_test`/`stat_test`/`status_test`/`tier3_test`/
+`tier4_test`/`m17d_test`/`m17n2_test`/`m17n6_test`/`m18t_test`/
+`two_turn_test`/`weather_test`/`m18g_test` — chosen for direct exposure
+to the refactored `DamageCalculator` type-effectiveness path and the
+semi-invulnerable/two-turn-charge machinery this bundle shares with
+every other 2-turn move) also passed clean before the full sweep.
+
+**Total move-implementation count: 711→713.** `docs/m19_subtier_plan.md`
+updated throughout: new `[D4 Bundle 9]` shipment note added to Section
+E's "already implemented" row, reconciliation formula
+713+0+0+217+4=934 confirmed. `docs/move_status_table.md` regenerated and
+confirmed: **713 implemented / 217 excluded / 4 residual / 16
+needs-manual-review** (the `gen_move_status_table.py` allowlist needed
+`two_typed_move`/`second_type` added, the same recurring gap class as
+`[D4 Bundle 8]`'s own `snatch_affected` fix — caught and fixed the same
+way, back to the 16-move baseline). **Section D's residual: 6→4 — only
+Mimic(102)/Transform(144)/Sketch(166)/Perish Song(195) remain, all
+confirmed genuinely NOVEL-MECHANISM builds.**
+
+No commit made — per standing instruction, Rob commits.
+
+## [Charge-cancellation fix] — Truant/Flinch/Paralysis/Infatuation now
+cancel an in-progress charge on every two-turn/semi-invulnerable move,
+including Sky Drop — 2026-07-14, same day as `[D4 Bundle 9]`
+
+A dedicated recon session (report-only, no implementation) enumerated
+every `pre_move_check`/`_phase_pre_move_checks` fail branch this project
+actually implements — Recharge, Sleep, Freeze, Truant, Flinch, Confusion
+(self-hit), Paralysis, Infatuation, plus Sky Drop's own dedicated
+target-held check — and checked each one independently against source's
+real canceler chain (`sMoveSuccessOrderCancelers`, all 9 sitting well
+before `CANCELER_CHARGING`, so source's own charge/release logic never
+runs on any of these turns either — nothing to flag there) for whether
+that canceler calls `CancelMultiTurnMoves(battlerAtk)`
+(`battle_util.c` L1076-1093, which clears `multipleTurns` +
+`semiInvulnerable` unconditionally, with one internal guard that
+protects a battler already in `STATE_SKY_DROP_TARGET` specifically —
+irrelevant to the ATTACKER's own state, whose own value during a hold is
+`STATE_SKY_DROP_ATTACKER`).
+
+**Findings**: Truant (`CancelerTruant`, L258-270), Flinch
+(`CancelerFlinch`, L298-316), Paralysis (`CancelerParalyzed`, L446-456),
+and Infatuation (`CancelerInfatuation`, L458-470) all call it — canceling
+the charge outright. Sleep/Frozen (`CancelerAsleepOrFrozen`, L118-186)
+and Confusion's self-hit branch (`CancelerConfused`, L389-415) never do —
+confirmed via direct read, no special substitution-for-release behavior
+exists for confusion's self-hit either, it's a plain fail with zero
+interaction with `multipleTurns`/`semiInvulnerable`. Recharge
+(`CancelerRecharge`, L87-96) also calls it, but is confirmed unreachable
+in combination with a charging move in this project (recharge moves and
+two-turn moves are architecturally disjoint — nothing sets both
+`must_recharge` and `charging_move` on the same mon). This project's
+prior behavior (established across all of M15 Task 5 and `[D4 Bundle
+9]`) never cleared `charging_move`/`semi_invulnerable` on ANY failure
+path — matching source correctly for Sleep/Freeze/Confusion, but
+diverging (wrongly) for Truant/Flinch/Paralysis/Infatuation.
+
+**The Sky Drop-specific follow-up question — confirmed, not assumed**:
+does reproducing source's cancellation for these 4 conditions on a Sky
+Drop attacker leave the held TARGET stuck (a real soft-lock), or does
+some later/lazy check eventually free it? Traced the full chain: (1)
+`battle_main.c` L4108-4110 only auto-forces `B_ACTION_USE_MOVE` (skipping
+normal move selection) when `multipleTurns || rechargeTimer > 0` — once
+`CancelMultiTurnMoves` clears `multipleTurns`, the attacker returns to
+completely FREE move selection next turn, not guaranteed to reselect Sky
+Drop at all. (2) Even if it does reselect Sky Drop against the SAME
+orphaned target, `HandleSkyDropResult`'s own "first turn" branch
+(L1696-1699, reached because `multipleTurns` is now false) checks
+`semiInvulnerable != STATE_NONE` on the would-be target and just fails
+with "But it failed!" — it does NOT clear the target's stale state. (3)
+No other reference to `STATE_SKY_DROP_TARGET` anywhere in the source
+tree ever clears it outside the normal turn-2 release (never reached
+again here) and `Cmd_tryconfusionafterskydrop` (fires ONLY from the
+attacker-faint script path, `data/battle_scripts_1.s` L2733). (4) The
+target can't even free itself: `CanBattlerEscape` (`battle_util.c`
+L4943-4958) explicitly returns FALSE for `semiInvulnerable ==
+STATE_SKY_DROP_TARGET`, and gates BOTH the wild-battle Run action AND
+the party-switch menu's `B_ACTION_SWITCH` case (`battle_main.c` L4233).
+**Conclusion: this is a genuine, non-self-healing soft-lock in the
+reference engine** — the only way out is an opponent-initiated forced
+switch (Roar/Whirlwind/Red Card/Eject Button, which bypass
+`CanBattlerEscape` by construction) or the held mon fainting some other
+way. Neither is turn-bounded or guaranteed.
+
+### Confuse-after-drop symmetry — verified, not assumed
+
+Before writing final code, checked whether the interrupted-rampage
+confuse-on-drop consequence (`confuseAfterDrop`) should also fire from
+this new release path, since it's conceptually similar to the
+attacker-faint release `[D4 Bundle 9]` already built. Re-read
+`HandleSkyDropResult`'s own NORMAL "second turn" success branch
+(`battle_move_resolution.c` L1678-1694, reached on an ordinary
+successful release) — it clears `multipleTurns`/`semiInvulnerable`/
+`skyDropTarget` and releases the target, but never checks
+`confuseAfterDrop` at all. That flag is consumed ONLY by
+`Cmd_tryconfusionafterskydrop`, called ONLY from the attacker-faint
+script path. Source deliberately scopes this consequence to "the holder
+died," not to "the target was released for any reason" — so, since this
+new trigger (Truant/Flinch/Paralysis/Infatuation) is functionally much
+closer to "the holder is still alive, just failed one action" than to
+death, confuse-after-drop is deliberately NOT applied from this new
+release path either, matching source's own actual scope rather than
+assuming symmetry with the faint case.
+
+### Implementation
+
+Extracted a small directly-testable `BattleManager._cancel_charge_if_
+needed(actor: BattlePokemon, reason: String) -> void`, called from
+`_phase_pre_move_checks` right after `reason` is fully computed (before
+`move_skipped.emit`). Returns immediately if `actor.charging_move ==
+null` or `reason` isn't one of `"loafing"/"flinched"/"paralyzed"/
+"infatuated"`. For an ordinary two-turn move this is a plain 2-field
+clear (`charging_move = null`, `semi_invulnerable = SEMI_INV_NONE`). For
+Sky Drop (discriminated via `actor.sky_drop_target != null`), it
+additionally calls a new shared helper, `_release_sky_drop_target(mon:
+BattlePokemon, apply_confuse_after_drop: bool) -> void` — extracted from
+`_clear_volatiles`' own pre-existing reciprocal-release block (which now
+just calls `_release_sky_drop_target(mon, true)`, behavior-preserving)
+so the state-clearing core is shared between the two call sites while
+`apply_confuse_after_drop` stays `true` only from `_clear_volatiles`'
+faint/switch-out case (matching `Cmd_tryconfusionafterskydrop`'s real
+scope) and `false` from the new pre-move-check-triggered release
+(matching the verified-non-symmetric finding above). This function was
+extracted as its own callable (rather than left inline) specifically so
+it could be unit-tested deterministically — `_phase_pre_move_checks`
+has no RNG-forcing seam for the paralysis/infatuation rolls the way
+`BattleManager` exposes `_force_roll`/`_force_crit`/etc. for other
+mechanics, so tests call `_cancel_charge_if_needed(mon, "paralyzed")`
+directly with a known `reason` rather than trying to force the
+underlying roll.
+
+### Testing and regression
+
+`two_turn_test.gd` gained a new **T7** section (16 new assertions, 46
+total in the file): T7.01-T7.04 confirm Truant/Flinch/Paralysis/
+Infatuation each cancel a Fly user's `charging_move`/`semi_invulnerable`
+via a direct `_cancel_charge_if_needed` call; T7.05-T7.07 are the
+Sleep/Frozen/Confusion negative controls (charge untouched); T7.08 is a
+full end-to-end check through the REAL `_phase_pre_move_checks()`
+dispatch (Truant, since `truant_loafing` needs no RNG), confirming the
+wiring from the phase function through to the extracted helper is
+correct, not just the helper in isolation.
+
+`d4_bundle9_test.gd`'s old C.11 series (which asserted the NOW-SUPERSEDED
+"paralysis leaves everything untouched" behavior as the expected/passing
+result) was replaced, not left contradictory alongside the new fix: new
+C.11-C.14 confirm all 4 conditions clear the attacker's own
+`charging_move`/`semi_invulnerable`/`sky_drop_target` AND release the
+held target's `semi_invulnerable` back to normal (the key "no soft-lock"
+proof); C.15-C.17 are the Sleep/Frozen/Confusion negative controls
+(neither side touched); C.18 confirms confuse-after-drop is deliberately
+NOT consumed from this path even when the target was mid-rampage when
+grabbed (released from semi-invulnerability, but `confuse_after_drop`
+itself stays `true`/unconsumed and no confusion is actually applied);
+C.19 is the same full end-to-end wiring check as `two_turn_test.gd`'s
+T7.08, adapted for Sky Drop (Truant, both the attacker's charge clearing
+AND the target's release confirmed through the real phase function).
+File total: 53→77 assertions, stable on first run.
+
+Full regression: `scripts/count_assertions.sh` run twice from
+independent process states (touches the shared two-turn-move
+infrastructure every semi-invulnerable/charging move in the roster uses,
+so treated as full-suite-mandatory rather than a targeted subset).
+**114 files, GRAND TOTAL 11767, 0 failures both runs** (11729 prior +
+38 new: 24 in `d4_bundle9_test.gd`'s C.11-C.19 rewrite, 14 net new in
+`two_turn_test.gd`'s new T7 section). One process-hygiene note, not a
+regression: the second sweep attempt failed twice with an empty log
+before the numbers above were obtained — root-caused to the persistent
+shell's own cwd having drifted to the outer `/home/rob/GodotAsImagined`
+(one level above the project root) during this session's earlier
+source-tree investigation, the exact directory-drift pitfall CLAUDE.md's
+own "never `cd` into the reference checkout" rule warns about. Fixed by
+explicitly `cd`-ing to the project root in the same invocation as the
+sweep command; both the corrected sweep and the original first sweep
+(run before the drift occurred) agree exactly.
+
+No commit made — per standing instruction, Rob commits.

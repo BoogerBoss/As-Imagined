@@ -916,12 +916,17 @@ static func check_accuracy(
 #     this function's own default would incorrectly return true (any move
 #     hits), the opposite of source's real behavior for this specific state.
 # In our model, damages_airborne covers both Airborne and AirborneDoubleDamage flags.
+# [D4 Bundle 9] SEMI_INV_SKY_DROP_ATTACKER/_TARGET share STATE_ON_AIR's exact
+# bypass rule — confirmed via source, see SEMI_INV_SKY_DROP_ATTACKER's own doc
+# comment on MoveData for the full citation.
 static func _can_hit_semi_invulnerable(move: MoveData, state: int) -> bool:
 	match state:
-		MoveData.SEMI_INV_UNDERGROUND: return move.damages_underground
-		MoveData.SEMI_INV_ON_AIR:      return move.damages_airborne
-		MoveData.SEMI_INV_UNDERWATER:  return move.damages_underwater
-		MoveData.SEMI_INV_VANISH:      return false
+		MoveData.SEMI_INV_UNDERGROUND:        return move.damages_underground
+		MoveData.SEMI_INV_ON_AIR:             return move.damages_airborne
+		MoveData.SEMI_INV_UNDERWATER:         return move.damages_underwater
+		MoveData.SEMI_INV_VANISH:             return false
+		MoveData.SEMI_INV_SKY_DROP_ATTACKER:  return move.damages_airborne
+		MoveData.SEMI_INV_SKY_DROP_TARGET:    return move.damages_airborne
 	return true  # STATE_NONE or unknown: no restriction
 
 

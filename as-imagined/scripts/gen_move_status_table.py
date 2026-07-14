@@ -326,6 +326,8 @@ def describe_move(fields):
                         "mirror_coat", "metal_burst",
                         # [D4 Bundle 8]
                         "snatch_affected",
+                        # [D4 Bundle 9]
+                        "two_typed_move", "second_type",
                     }]
     if unrecognized:
         return None, unrecognized

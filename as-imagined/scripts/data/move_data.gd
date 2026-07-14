@@ -336,6 +336,18 @@ const SEMI_INV_UNDERWATER: int  = 3  # Dive — underwater on turn 1
 # match case returning false, not reliance on that default. See
 # `_can_hit_semi_invulnerable`'s own doc comment.
 const SEMI_INV_VANISH: int      = 4  # Shadow Force, Phantom Force
+# [D4 Bundle 9] Sky Drop(507) — BOTH combatants become semi-invulnerable
+# during the charge (source: battle_move_resolution.c :: HandleSkyDropResult
+# L1676-1733). STATE_SKY_DROP_ATTACKER/STATE_SKY_DROP_TARGET share the
+# EXACT SAME anti-air bypass case as STATE_ON_AIR (battle_util.c
+# L10464-10493, IsBattlerOnAir L8508-8516: `damages_airborne` hits through
+# all three identically) — genuinely distinct states only because they
+# live on two different battlers at once (the attacker holding the target,
+# and the target being held), not because they need different bypass
+# rules. See BattleManager's own is_sky_drop dispatch for the full
+# turn-1/turn-2 mechanics.
+const SEMI_INV_SKY_DROP_ATTACKER: int = 5
+const SEMI_INV_SKY_DROP_TARGET: int   = 6
 
 # two_turn: Move requires a charge turn before releasing damage.
 # Source: struct MoveInfo.effect == EFFECT_TWO_TURNS_ATTACK or EFFECT_SEMI_INVULNERABLE
@@ -3528,3 +3540,90 @@ const STATUS_ARG_ANY: int = -3
 #   menu-legality architecture, so Imprison needs zero special-casing
 #   beyond that already-established execution-time-fail convention).
 @export var is_imprison: bool = false
+
+# [D4 Bundle 9] Flying Press(560): EFFECT_TWO_TYPED_MOVE. Damage-side type
+# effectiveness is computed as TWO independent lookups multiplied together —
+# `move.type` (Fighting) vs. the defender's type(s), AND `second_type`
+# (Flying) vs. the defender's type(s) — each pass itself already correctly
+# combining a dual-typed defender's two types (source: CalcTypeEffectiveness
+# Multiplier, battle_util.c L8221-8236: `CalcTypeEffectivenessMultiplierInternal`
+# runs once with the move's own type, then AGAIN with `GetMoveArgType(move)`
+# when `.effect == EFFECT_TWO_TYPED_MOVE`, multiplying onto the first pass's
+# result rather than resetting). Every existing type-override (Scrappy/Mind's
+# Eye's bypass_ghost_immunity, Iron-Ball/Smack-Down/Ingrain's grounded_override,
+# Delta Stream's Strong-Winds weakening, Freeze-Dry's force_super_effective_type)
+# applies to BOTH component calculations independently, confirmed via source —
+# `CalcTypeEffectivenessMultiplierInternal` is the FULL modifier pipeline (not a
+# bare table lookup) and runs unmodified on both passes.
+#
+# STAB is a DELIBERATE DEVIATION from the literal current source behavior, per
+# Rob's explicit decision (2026-07-14): source's own `ctx->moveType` is a
+# single mutable field shared between the type-effectiveness computation
+# (which reassigns it Fighting→Flying for the second pass, `battle_util.c`
+# L8230) and the LATER STAB check (`GetSameTypeAttackBonusModifier`,
+# `battle_util.c` L7239, called from `ApplyModifiersAfterDmgRoll` — AFTER
+# `ctx->typeEffectivenessModifier` has already been computed and left
+# `ctx->moveType` at Flying). Traced the full call chain
+# (`DoMoveDamageCalc`→`DoMoveDamageCalcVars`→`ApplyModifiersAfterDmgRoll`) and
+# confirmed nothing resets `ctx->moveType` between the two reads — meaning the
+# literal current C code grants STAB for Flying-type attackers, not
+# Fighting-type ones. This contradicts the dev team's own unimplemented test
+# placeholder (`test/battle/move_effect/two_typed_move.c`:
+# `TO_DO_BATTLE_TEST("Flying-type Pokémon don't receive STAB on Flying
+# Press")`), which has no enforcing test behind it either way. Judged an
+# unintentional ordering artifact, not deliberate design — this project
+# implements the documented INTENDED behavior instead: STAB keyed on
+# `move.type` (Fighting) only, via `DamageCalculator.calculate`'s own
+# pre-existing STAB code, which already reads `move.type` directly and is
+# NOT touched by this move's dual-type computation (this project's `move`
+# Resource is never mutated mid-calculation, unlike source's shared `ctx`).
+@export var two_typed_move: bool = false
+# second_type: the move's second type-effectiveness component (Flying, for
+# Flying Press). Generic/reusable field, TYPE_NONE (-1) for every other move.
+@export var second_type: int = -1
+
+# [D4 Bundle 9] Sky Drop(507): EFFECT_SKY_DROP. Turn 1 grabs the target
+# (fails on: ally target [N/A in this project's singles-only scope, not
+# modeled]; target already semi-invulnerable; Substitute blocks it; target's
+# species weight >= 200.0kg/2000 hg — all HARD fails, not accuracy-based,
+# source: `HandleSkyDropResult`, `battle_move_resolution.c` L1676-1733) —
+# sets BOTH combatants semi-invulnerable (`SEMI_INV_SKY_DROP_ATTACKER`/
+# `_TARGET`), locks the attacker into repeating Sky Drop next turn (reuses
+# the existing `charging_move` field/mechanism, NOT a new lock), and — if
+# the target was mid-rampage (`rampage_turns > 0`) — flags it to be
+# confused once dropped, matching source's `confuseAfterDrop`. The target's
+# own action is unconditionally skipped every turn it's held (source:
+# `CancelerSkyDrop`, `battle_move_resolution.c` L76-85 — the EARLIEST
+# canceler in the whole chain, ahead of sleep/freeze/paralysis, so no
+# status counter ticks for that skipped turn). Turn 2 releases the target
+# (clearing both combatants' semi-invulnerable state) and deals ordinary
+# damage against them — but fails gracefully with no damage if the target's
+# own semi-invulnerable state is already gone by then (they left the field
+# via a different route in the meantime; this project's existing
+# `_clear_volatiles` already handles that generically, matching source's own
+# lazy check-at-release-time approach rather than an eager cross-battler
+# clear). If the ATTACKER instead leaves the field first (faints) while
+# still holding a target, the target is released immediately as part of
+# that departure — source's dedicated `Cmd_tryconfusionafterskydrop`
+# (`battle_script_commands.c` L10710-10740), reproduced here as a new
+# reciprocal-release scan in `BattleManager._clear_volatiles` (the same
+# shape as the `sure_hit_target`/`wrapped_by`/`escape_prevented_by`
+# precedents, but releasing a captive on the SOURCE's own departure rather
+# than clearing a dependent field on the departing mon itself), including
+# the conditional confuse-on-drop for the interrupted-rampage case.
+#
+# Freeze/paralysis on the attacker's scheduled release turn: deliberately
+# NOT special-cased, per Rob's explicit instruction — this project's own
+# `StatusManager.pre_move_check` never clears `charging_move`/
+# `semi_invulnerable` on ANY failure path (recharge/sleep/freeze/truant/
+# flinch/confusion-self-hit/paralysis/infatuation all just return
+# `can_move=false` without touching those fields) — only a SUCCESSFUL
+# release turn clears them. This already differs from the reference
+# source, which explicitly cancels a paralyzed attacker's OWN charge via
+# `CancelMultiTurnMoves` (`battle_util.c` L1076-1093, called from
+# `CancelerParalyzed`) — but does NOT call `CancelMultiTurnMoves` for
+# freeze at all, so source itself is asymmetric between the two statuses.
+# This project's own uniform "nothing clears on any pre-move-check failure"
+# behavior was verified (not built) — see the dedicated discriminator test
+# and the implementation report for which way it falls in practice.
+@export var is_sky_drop: bool = false

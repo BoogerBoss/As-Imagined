@@ -115,6 +115,36 @@ const UQ412_SCREEN_DOUBLES: int = 2732
 #                         applies the SAME ×1.5 base-power multiplier as helping_hand,
 #                         at the identical pipeline stage (source: battle_util.c
 #                         L6443-6444, the exact line after Helping Hand's own loop).
+# [D4 Bundle 9] Extracted from `calculate`'s own inline UQ4.12 type-effectiveness
+# block so Flying Press(560) can call it twice (once per EFFECT_TWO_TYPED_MOVE
+# component) and multiply the two combined-across-defender-types results
+# together, rather than duplicating the defender-dual-type-combination logic.
+# Behavior-preserving for every other move (single attacking-type callers get
+# byte-identical output to the pre-refactor inline code).
+# Source: CalcTypeEffectivenessMultiplierInternal (battle_util.c L8134-8144).
+static func _type_mod_for_attacking_type(atk_type: int, def_types: Array,
+		scrappy_bypass: bool, super_effective_vs_type: int, iron_ball_grounded: bool,
+		strong_winds: bool) -> int:
+	var first_type: int = def_types[0] if def_types.size() > 0 else TypeChart.TYPE_NONE
+	var type_mod: int = TypeChart.get_uq412(
+			atk_type, first_type, scrappy_bypass, super_effective_vs_type, iron_ball_grounded)
+	# M17d: Delta Stream — a super-effective (>=2.0x) component against a Flying-type
+	# defender is weakened to neutral, checked PER type component to match source's
+	# exact granularity (battle_util.c :: MulByTypeEffectiveness L8069-8074).
+	if strong_winds and first_type == TypeChart.TYPE_FLYING and type_mod >= 8192:
+		type_mod = 4096
+	if def_types.size() > 1:
+		var second_type: int = def_types[1]
+		if second_type != first_type and second_type != TypeChart.TYPE_NONE:
+			var second_mod: int = TypeChart.get_uq412(
+					atk_type, second_type, scrappy_bypass, super_effective_vs_type,
+					iron_ball_grounded)
+			if strong_winds and second_type == TypeChart.TYPE_FLYING and second_mod >= 8192:
+				second_mod = 4096
+			type_mod = _uq412_multiply(type_mod, second_mod)
+	return type_mod
+
+
 static func calculate(
 		attacker: BattlePokemon,
 		defender: BattlePokemon,
@@ -273,6 +303,23 @@ static func calculate(
 	var effectiveness: float = TypeChart.get_effectiveness(
 			move.type, defender.species.types, weather == WEATHER_STRONG_WINDS, scrappy_bypass,
 			iron_ball_grounded, move.super_effective_vs_type, defender.tar_shot_active)
+	# [D4 Bundle 9] Flying Press(560) — EFFECT_TWO_TYPED_MOVE: two independent
+	# type-effectiveness computations (move.type vs defender, second_type vs
+	# defender — each already correctly combining a dual-typed defender's own
+	# two types internally) multiplied together, mirroring source's own
+	# `CalcTypeEffectivenessMultiplier` (battle_util.c L8221-8236). Every
+	# override param (scrappy_bypass/iron_ball_grounded/super_effective_vs_type/
+	# Strong-Winds weakening/tar_shot_active) applies to BOTH components
+	# independently — confirmed via source, see MoveData.two_typed_move's own
+	# doc comment for the full citation. If either component alone is a flat
+	# 0x immunity, the whole move is blocked (e.g. a Ghost-type defender's
+	# Fighting-immunity zeroes Flying Press entirely, regardless of the
+	# Flying component) — this is the CORRECT, expected behavior, not a bug.
+	if move.two_typed_move:
+		effectiveness *= TypeChart.get_effectiveness(
+				move.second_type, defender.species.types, weather == WEATHER_STRONG_WINDS,
+				scrappy_bypass, iron_ball_grounded, move.super_effective_vs_type,
+				defender.tar_shot_active)
 	if effectiveness == 0.0:
 		return {"damage": 0, "is_crit": false, "effectiveness": 0.0,
 				"defender_item_consumed": false}
@@ -638,24 +685,17 @@ static func calculate(
 	if move.type != TypeChart.TYPE_MYSTERY:
 		var def_types: Array = defender.species.types
 		var strong_winds: bool = weather == WEATHER_STRONG_WINDS
-		var first_type: int = def_types[0] if def_types.size() > 0 else TypeChart.TYPE_NONE
-		var type_mod: int = TypeChart.get_uq412(
-				move.type, first_type, scrappy_bypass, move.super_effective_vs_type,
-				iron_ball_grounded)
-		# M17d: Delta Stream — a super-effective (>=2.0x) component against a Flying-type
-		# defender is weakened to neutral, checked PER type component to match source's
-		# exact granularity (battle_util.c :: MulByTypeEffectiveness L8069-8074).
-		if strong_winds and first_type == TypeChart.TYPE_FLYING and type_mod >= 8192:
-			type_mod = 4096
-		if def_types.size() > 1:
-			var second_type: int = def_types[1]
-			if second_type != first_type and second_type != TypeChart.TYPE_NONE:
-				var second_mod: int = TypeChart.get_uq412(
-						move.type, second_type, scrappy_bypass, move.super_effective_vs_type,
-						iron_ball_grounded)
-				if strong_winds and second_type == TypeChart.TYPE_FLYING and second_mod >= 8192:
-					second_mod = 4096
-				type_mod = _uq412_multiply(type_mod, second_mod)
+		var type_mod: int = _type_mod_for_attacking_type(move.type, def_types,
+				scrappy_bypass, move.super_effective_vs_type, iron_ball_grounded, strong_winds)
+		# [D4 Bundle 9] Flying Press(560) — the SAME per-attacking-type
+		# computation run a second time for `second_type` (Flying), then
+		# multiplied onto the first pass's result — mirrors the early
+		# `effectiveness` float gate above exactly. See
+		# MoveData.two_typed_move's own doc comment for the full citation.
+		if move.two_typed_move:
+			var second_type_mod: int = _type_mod_for_attacking_type(move.second_type, def_types,
+					scrappy_bypass, move.super_effective_vs_type, iron_ball_grounded, strong_winds)
+			type_mod = _uq412_multiply(type_mod, second_type_mod)
 		if type_mod == 0:
 			return {"damage": 0, "is_crit": is_crit, "effectiveness": 0.0}
 		# [D2 batch 2] Tar Shot(695) — flat post-combination ×2.0 doubler, gated on

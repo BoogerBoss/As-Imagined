@@ -18,6 +18,15 @@ extends Node
 #   T4: Solar Beam fires immediately in sun (no charge turn)
 #   T5: Solar Beam takes two turns in rain (charge turn required)
 #   T6: Skull Bash applies +1 Defense on charge turn only
+#   T7: [Charge-cancellation fix] Truant/Flinch/Paralysis/Infatuation cancel
+#       an in-progress charge on ANY two-turn/semi-invulnerable move (not just
+#       Sky Drop — see d4_bundle9_test.gd for Sky Drop's own additional
+#       target-release coverage); Sleep/Frozen/Confusion negative controls
+#       confirm those three still correctly do NOT cancel it. Source:
+#       CancelerTruant/CancelerFlinch/CancelerParalyzed/CancelerInfatuation
+#       all call CancelMultiTurnMoves (battle_util.c L1076-1093); Cancelers
+#       AsleepOrFrozen/Confused never do. See docs/decisions.md's
+#       [Charge-cancellation fix] entry for the full citations.
 
 var _pass := 0
 var _fail := 0
@@ -30,6 +39,7 @@ func _ready() -> void:
 	_test_t4_solar_beam_sun_instant()
 	_test_t5_solar_beam_rain_two_turns()
 	_test_t6_skull_bash_def_boost()
+	_test_t7_charge_cancellation()
 
 	var total := _pass + _fail
 	print("two_turn_test: %d/%d passed" % [_pass, total])
@@ -343,3 +353,77 @@ func _test_t6_skull_bash_def_boost() -> void:
 	_chk("T6.04 Defense boost fires exactly once (charge turn only)",
 			def_boosts.size() == 1)
 	bm.queue_free()
+
+
+# ── T7: [Charge-cancellation fix] ─────────────────────────────────────────────
+# Calls BattleManager._cancel_charge_if_needed(actor, reason) directly rather
+# than through a full battle — _phase_pre_move_checks has no forcing seam for
+# the paralysis/infatuation rolls, so this exercises the real, extracted
+# production function deterministically instead of relying on RNG. Fly (Dig
+# and the rest of the semi-invulnerable family share the same charging_move/
+# semi_invulnerable fields) is used so this also confirms semi_invulnerable
+# clears, not just charging_move.
+
+func _test_t7_charge_cancellation() -> void:
+	var fly := _load_move(19)
+	_chk("T7.00 Fly loads for charge-cancellation test", fly != null)
+	if fly == null:
+		return
+
+	var bm := _make_bm()
+
+	for case in [
+		{"tag": "T7.01", "cond": "Paralysis", "reason": "paralyzed"},
+		{"tag": "T7.02", "cond": "Flinch", "reason": "flinched"},
+		{"tag": "T7.03", "cond": "Truant", "reason": "loafing"},
+		{"tag": "T7.04", "cond": "Infatuation", "reason": "infatuated"},
+	]:
+		var mon := _make_mon("FlyMon_" + case["cond"], TypeChart.TYPE_FLYING)
+		mon.charging_move = fly
+		mon.semi_invulnerable = MoveData.SEMI_INV_ON_AIR
+		bm._cancel_charge_if_needed(mon, case["reason"])
+		_chk(case["tag"] + " " + case["cond"] + " cancels charging_move",
+				mon.charging_move == null)
+		_chk(case["tag"] + "b " + case["cond"] + " cancels semi_invulnerable",
+				mon.semi_invulnerable == MoveData.SEMI_INV_NONE)
+
+	# T7.05-T7.07: negative controls — Sleep/Frozen/Confusion must NOT cancel.
+	for case in [
+		{"tag": "T7.05", "cond": "Sleep", "reason": "asleep"},
+		{"tag": "T7.06", "cond": "Frozen", "reason": "frozen"},
+		{"tag": "T7.07", "cond": "Confusion", "reason": "confused"},
+	]:
+		var mon := _make_mon("FlyMonNeg_" + case["cond"], TypeChart.TYPE_FLYING)
+		mon.charging_move = fly
+		mon.semi_invulnerable = MoveData.SEMI_INV_ON_AIR
+		bm._cancel_charge_if_needed(mon, case["reason"])
+		_chk(case["tag"] + " " + case["cond"] + " does NOT cancel the charge (negative control)",
+				mon.charging_move == fly and mon.semi_invulnerable == MoveData.SEMI_INV_ON_AIR)
+
+	# T7.08: full end-to-end wiring check through the REAL
+	# _phase_pre_move_checks() — Truant again, since truant_loafing is a
+	# plain bool with no RNG involved.
+	var atk := _make_mon("FlyAtk08", TypeChart.TYPE_FLYING)
+	atk.ability = load("res://data/abilities/ability_0054.tres") as AbilityData
+	atk.truant_loafing = true
+	atk.charging_move = fly
+	atk.semi_invulnerable = MoveData.SEMI_INV_ON_AIR
+	var def := _make_mon("FlyDef08", TypeChart.TYPE_NORMAL)
+	var bm08 := _make_bm()
+	bm08._combatants = [atk, def]
+	bm08._actor_indices = {atk: 0, def: 1}
+	bm08._active_per_side = 1
+	bm08._chosen_moves = [fly, _make_tackle()]
+	bm08._chosen_targets = [1, 0]
+	bm08._turn_order = [atk, def]
+	bm08._current_actor_index = 0
+	var skip_reason := [""]
+	bm08.move_skipped.connect(func(mon, reason):
+		if mon == atk:
+			skip_reason[0] = reason)
+	bm08._phase_pre_move_checks()
+	_chk("T7.08 End-to-end: Truant fires move_skipped with the loafing reason",
+			skip_reason[0] == "loafing")
+	_chk("T7.08b End-to-end: charge cleared via the real phase function",
+			atk.charging_move == null)
+	bm08.queue_free()

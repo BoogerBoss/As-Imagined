@@ -309,6 +309,26 @@ var snatch_active: bool = false
 # doc comment for the full source citation.
 var imprison_active: bool = false
 
+# [D4 Bundle 9] Sky Drop(507) — direct object reference to whoever this
+# mon is currently holding aloft, the same reciprocal-reference shape as
+# wrapped_by/infatuated_by/escape_prevented_by/leeched_by/octolocked_by,
+# but held on the SOURCE side (mirrors sure_hit_target's own direction)
+# rather than the victim side. Non-null only on the attacker, only while
+# `charging_move == <the Sky Drop MoveData>`. If this mon leaves the field
+# (faints) while holding a target, `BattleManager._clear_volatiles`
+# releases that target immediately — source's dedicated
+# `Cmd_tryconfusionafterskydrop` (battle_script_commands.c L10710-10740).
+# See MoveData.is_sky_drop's own doc comment for the full citation.
+var sky_drop_target: BattlePokemon = null
+
+# [D4 Bundle 9] Sky Drop(507) — set on the TARGET at grab time only if it
+# was mid-rampage (rampage_turns > 0) when picked up; consumed (attempting
+# StatusManager.try_apply_confusion) the instant this mon is actually
+# released, whether by the attacker's own successful turn-2 resolution or
+# by the reciprocal release on the attacker's departure. Mirrors source's
+# `confuseAfterDrop` exactly. See MoveData.is_sky_drop's own doc comment.
+var confuse_after_drop: bool = false
+
 # [D4 CHEAP bundle] Torment(259) — permanent (switch-cleared) per-mon flag
 # on the TARGET, blocking use of the exact same move used on the
 # immediately preceding turn. Confirmed from source (not the decoy timer-

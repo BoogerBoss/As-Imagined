@@ -1105,6 +1105,19 @@ func _phase_pre_move_checks() -> void:
 		_set_phase(BattlePhase.MOVE_EXECUTION)
 		return
 
+	# [D4 Bundle 9] Sky Drop: a mon currently held aloft cannot act at all —
+	# checked BEFORE every other pre-move status check (no sleep/freeze/
+	# confusion/paralysis counter ticks for this skipped action), matching
+	# source's own EARLIEST canceler position (`CancelerSkyDrop`,
+	# battle_move_resolution.c L76-85 — position 3 in the whole canceler
+	# chain, well ahead of CANCELER_ASLEEP_OR_FROZEN at position 6). See
+	# MoveData.is_sky_drop's own doc comment for the full citation.
+	if actor.semi_invulnerable == MoveData.SEMI_INV_SKY_DROP_TARGET:
+		move_skipped.emit(actor, "sky_drop_held")
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
 	# Status pre-move checks — source: battle_move_resolution.c canceler chain
 	# Order: sleep → freeze → confusion → paralysis → infatuation (matching source
 	# canceler order — [M18.5d-2] added infatuation as the final check)
@@ -1147,12 +1160,49 @@ func _phase_pre_move_checks() -> void:
 			reason = "infatuated"
 		else:
 			reason = "confused"
+
+		_cancel_charge_if_needed(actor, reason)
+
 		move_skipped.emit(actor, reason)
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
 	_set_phase(BattlePhase.MOVE_EXECUTION)
+
+
+# [Charge-cancellation fix] Truant/Flinch/Paralysis/Infatuation cancel an
+# in-progress two-turn/semi-invulnerable charge outright — source:
+# CancelerTruant (battle_move_resolution.c L258-270), CancelerFlinch
+# (L298-316), CancelerParalyzed (L446-456), CancelerInfatuation (L458-470),
+# each of which calls CancelMultiTurnMoves(battlerAtk) (battle_util.c
+# L1076-1093), clearing multipleTurns + semiInvulnerable unconditionally.
+# Sleep/Frozen's own canceler (CancelerAsleepOrFrozen, L118-186) and
+# Confusion's self-hit branch (CancelerConfused, L389-415) never call it —
+# confirmed via direct read, no cancel for those three, so `reason` is
+# deliberately checked against only these four strings, not "every failure
+# reason." Extracted into its own function (rather than left inline in
+# _phase_pre_move_checks) so it's directly unit-testable without needing new
+# RNG-forcing seams for the paralysis/infatuation rolls.
+func _cancel_charge_if_needed(actor: BattlePokemon, reason: String) -> void:
+	if actor.charging_move == null:
+		return
+	if reason != "loafing" and reason != "flinched" \
+			and reason != "paralyzed" and reason != "infatuated":
+		return
+	# Sky Drop needs one extra piece ordinary two-turn moves don't: source's
+	# own CancelMultiTurnMoves clears only the ATTACKER's state, and has no
+	# path that releases an orphaned held target — confirmed a genuine,
+	# non-self-healing soft-lock in source (the attacker isn't even forced to
+	# reselect Sky Drop next turn under free move selection, and
+	# HandleSkyDropResult's own fall-through just fails a retry against the
+	# same target without freeing it — see _release_sky_drop_target's own doc
+	# comment for the full citation trail). This project deliberately does
+	# NOT reproduce that soft-lock.
+	if actor.sky_drop_target != null:
+		_release_sky_drop_target(actor, false)
+	actor.charging_move = null
+	actor.semi_invulnerable = MoveData.SEMI_INV_NONE
 
 
 func _phase_move_execution() -> void:
@@ -1181,6 +1231,82 @@ func _phase_move_execution() -> void:
 	var attacker_side: int = attacker_idx / _active_per_side
 	var defender: BattlePokemon = _combatants[_chosen_targets[attacker_idx]]
 	var move: MoveData = _chosen_moves[attacker_idx]
+
+	# [D4 Bundle 9] Sky Drop — dedicated two-phase dispatch (NOT the generic
+	# `move.two_turn` block further below — Sky Drop's own fail conditions,
+	# target-side state, and reciprocal-release shape are genuinely
+	# different). See MoveData.is_sky_drop's own doc comment for the full
+	# source citation.
+	if move.is_sky_drop:
+		if attacker.charging_move != null:
+			# Turn 2: release. Clear the attacker's own state FIRST, matching
+			# source's exact ordering (HandleSkyDropResult, "Second turn"
+			# branch clears multipleTurns/semiInvulnerable/skyDropTarget
+			# before checking whether the target is still there).
+			attacker.charging_move = null
+			attacker.semi_invulnerable = MoveData.SEMI_INV_NONE
+			attacker.sky_drop_target = null
+			if defender.semi_invulnerable != MoveData.SEMI_INV_SKY_DROP_TARGET:
+				# Target already left the field via some other route
+				# (_clear_volatiles already cleared its own semi_invulnerable
+				# generically) — fails gracefully, no damage. Source:
+				# BattleScript_SkyDropNoTarget.
+				move_effect_failed.emit(attacker, "sky_drop_no_target")
+				move_executed.emit(attacker, defender, move, 0)
+				attacker.last_move_used = move
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				return
+			defender.semi_invulnerable = MoveData.SEMI_INV_NONE
+			# Fall through: the rest of this function resolves an ordinary
+			# damaging hit against `defender` (accuracy/damage/secondary
+			# effects all apply normally, matching source's release turn).
+		else:
+			# Turn 1: setup. Ally-targeting is N/A in this project's
+			# singles-only scope (defender is always the opposing side) —
+			# not modeled, matching this project's established precedent for
+			# other singles-only simplifications.
+			if defender.semi_invulnerable != MoveData.SEMI_INV_NONE:
+				move_effect_failed.emit(attacker, "sky_drop_already_semi_invulnerable")
+				move_executed.emit(attacker, defender, move, 0)
+				attacker.last_move_used = move
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				return
+			if defender.substitute_hp > 0:
+				move_effect_failed.emit(attacker, "sky_drop_substitute_blocks")
+				move_executed.emit(attacker, defender, move, 0)
+				attacker.last_move_used = move
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				return
+			if defender.species.weight >= 2000:
+				move_effect_failed.emit(attacker, "sky_drop_too_heavy")
+				move_executed.emit(attacker, defender, move, 0)
+				attacker.last_move_used = move
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				return
+			# CancelMultiTurnMoves(defender) — source cancels the TARGET's own
+			# multi-turn state when grabbed (battle_util.c L1076-1093), and
+			# flags an interrupted rampage for a confuse-on-drop later.
+			if defender.rampage_turns > 0:
+				defender.confuse_after_drop = true
+			defender.locked_move = null
+			defender.rampage_turns = 0
+			defender.uproar_turns = 0
+			defender.charging_move = null
+			defender.semi_invulnerable = MoveData.SEMI_INV_NONE
+			attacker.charging_move = move
+			attacker.sky_drop_target = defender
+			attacker.semi_invulnerable = MoveData.SEMI_INV_SKY_DROP_ATTACKER
+			defender.semi_invulnerable = MoveData.SEMI_INV_SKY_DROP_TARGET
+			charge_started.emit(attacker, move)
+			move_executed.emit(attacker, defender, move, 0)
+			attacker.last_move_used = move
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
 
 	# [M19-self-faint] Self-Destruct/Explosion — Damp blocks the move
 	# entirely, a simplified EXECUTION-time translation of source's
@@ -6497,6 +6623,34 @@ func _default_target(combatant_idx: int) -> int:
 	return (1 - side) * _active_per_side
 
 
+# [Charge-cancellation fix] Shared core of Sky Drop's reciprocal target-release.
+# Used from two call sites with different confuse-after-drop behavior:
+#   1. _clear_volatiles' attacker-faint/switch-out case (apply_confuse_after_drop=
+#      true) — matches source's dedicated Cmd_tryconfusionafterskydrop
+#      (battle_script_commands.c L10707-10740), called only from the BS_FAINTED
+#      script path (data/battle_scripts_1.s L2733).
+#   2. The new pre-move-check-triggered release in _phase_pre_move_checks
+#      (Truant/Flinch/Paralysis/Infatuation on the attacker's own release turn;
+#      apply_confuse_after_drop=false) — source has no equivalent path for this
+#      trigger at all (a confirmed soft-lock, not silently ported here), and
+#      HandleSkyDropResult's own NORMAL "second turn" success branch
+#      (battle_move_resolution.c L1678-1694) never checks confuseAfterDrop
+#      either — confirmed via direct read that this flag is faint-specific, not
+#      a general "target released" consequence, so it must NOT fire from this
+#      second call site.
+func _release_sky_drop_target(mon: BattlePokemon, apply_confuse_after_drop: bool) -> void:
+	var held: BattlePokemon = mon.sky_drop_target
+	mon.sky_drop_target = null
+	if held == null:
+		return
+	if held.semi_invulnerable == MoveData.SEMI_INV_SKY_DROP_TARGET:
+		held.semi_invulnerable = MoveData.SEMI_INV_NONE
+		if apply_confuse_after_drop and held.confuse_after_drop:
+			held.confuse_after_drop = false
+			if StatusManager.try_apply_confusion(held):
+				secondary_applied.emit(held, MoveData.SE_CONFUSION)
+
+
 # Clear all volatile fields on a Pokémon (faint or switch-out, non-BP).
 # Source: FaintClearSetData / SwitchInClearSetData (battle_main.c L3266, L3117)
 func _clear_volatiles(mon: BattlePokemon) -> void:
@@ -6703,6 +6857,22 @@ func _clear_volatiles(mon: BattlePokemon) -> void:
 	# [D4 Bundle 8] Imprison — self-contained per-mon state, same
 	# switch-scoped shape as No Retreat's own permanent flag.
 	mon.imprison_active = false
+
+	# [D4 Bundle 9] Sky Drop — `confuse_after_drop` is self-contained per-mon
+	# state (no reciprocal scan needed for it specifically). `sky_drop_target`
+	# is the SEVENTH move-based volatile using the reciprocal-clear shape, but
+	# in the SOURCE direction (mirrors sure_hit_target's own direction, not
+	# wrapped_by/octolocked_by's victim direction): if `mon` itself is
+	# currently holding a target aloft and leaves the field (faints) before
+	# releasing it, that target must be freed immediately — source's
+	# dedicated `Cmd_tryconfusionafterskydrop` (battle_script_commands.c
+	# L10710-10740), not the generic per-battler faint/switch cleanup. This
+	# is the reciprocal half of the relationship the base clear above already
+	# handles for `mon`'s OWN semi_invulnerable (covers `mon` itself being the
+	# one released, whichever side of the hold it was on) — this block
+	# additionally frees whoever `mon` was holding.
+	mon.confuse_after_drop = false
+	_release_sky_drop_target(mon, true)
 
 
 # M9: clear volatiles on switch-out (superset of _clear_volatiles: also resets
