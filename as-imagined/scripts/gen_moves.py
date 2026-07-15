@@ -2809,12 +2809,14 @@ MOVES = [
     # hit/miss, Damp-blocked. TARGET_FOES_AND_ALLY modeled as is_spread
     # (opponents only) — the ally-hit half in doubles is a flagged,
     # not-built gap (see move_data.gd's own doc comment).
+    # [M21] target_includes_ally: also hits the user's own ally in doubles
+    # (TARGET_FOES_AND_ALLY), confirmed from source alongside is_spread.
     {"id":  120, "name": "Self-Destruct",
      "type": TYPE_NORMAL, "category": PHYS, "power": 200, "accuracy": 100, "pp": 5,
-     "is_spread": True, "is_self_faint": True},
+     "is_spread": True, "is_self_faint": True, "target_includes_ally": True},
     {"id":  153, "name": "Explosion",
      "type": TYPE_NORMAL, "category": PHYS, "power": 250, "accuracy": 100, "pp": 5,
-     "is_spread": True, "is_self_faint": True},
+     "is_spread": True, "is_self_faint": True, "target_includes_ally": True},
 
     # M19-berry-steal: MOVE_EFFECT_BUG_BITE, both share the literal same
     # steal-and-immediately-eat mechanism (Pluck's own name is a historical
@@ -4248,6 +4250,7 @@ DEFAULTS = {
     "requires_target_stat_raised": False,
     "random_status_pool":         [],
     "is_self_faint":              False,
+    "target_includes_ally":       False,
     "steals_and_eats_berry":      False,
     "ignores_target_ability":     False,
 
@@ -4518,7 +4521,7 @@ FIELD_ORDER = [
     # [Bucket 4 2-move sub-groups] fields
     "percent_current_hp_damage", "ignores_defense_evasion_stages",
     "charge_turn_spatk_boost", "skips_charge_in_rain", "is_flail_power",
-    "requires_target_stat_raised", "random_status_pool", "is_self_faint",
+    "requires_target_stat_raised", "random_status_pool", "is_self_faint", "target_includes_ally",
     "steals_and_eats_berry", "ignores_target_ability",
     # [M19-steal-stats] / [M19-ally-targeting-stat-change] fields
     "steals_positive_stat_stages", "stat_change_target_ally", "also_boosts_ally",

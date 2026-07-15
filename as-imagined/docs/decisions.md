@@ -25312,3 +25312,361 @@ already-documented statistical-flakiness class). Zero failures
 traceable to this session's own changes in either run.
 
 No commit made — per standing instruction, Rob commits.
+
+## [M21] Doubles interaction cleanup — bundle-safe group, 2026-07-15,
+same day
+
+Implements the bundle-safe group from M21's own recon inventory: items
+1, 2, 3, 4, 7, 8, 9, 10. **Item 6 (Guard Dog + Flower Veil ally
+tie-break) was explicitly EXCLUDED this session per Rob's own decision**
+— low value/niche, recorded here as a deliberate scope-out, not an
+oversight; still open for a future session if ever prioritized. Item 5
+(Dragon Darts smart-redirect) and item 8's ORIGINAL scope (a passing
+doubles regression test) were both deferred mid-session after their own
+Step 0 investigations revealed materially bigger scope than the
+recon's own "bundle-safe" classification — see their own subsections
+below.
+
+### Item 7 — TrainerAI `active_index` bug (done FIRST, a live correctness
+bug, not an unbuilt nuance)
+
+Confirmed and reproduced precisely: `TrainerAI.choose_replacement`
+(faint-replacement AI) and `TrainerAI._best_switch_target` (proactive
+switch AI) both checked `i == my_party.active_index` — only
+`active_indices[0]`, the FIRST doubles slot. `BattleParty
+.get_first_non_fainted_not_active` (the final fallback both functions
+defer to) was already correctly fixed to check ALL `active_indices`;
+these two AI-driven paths, checked FIRST, were not. Confirmed reachable
+via two real call paths: `choose_action_doubles`'s own proactive-switch
+check (`_should_switch` → `_best_switch_target`) and
+`_get_replacement_slot`'s faint-replacement dispatch (`choose_replacement`),
+both traced directly in `trainer_ai.gd`/`battle_manager.gd`. In a
+doubles battle with both slots alive, the AI could recommend
+"switching in" a mon already active in the OTHER slot. Fixed by mirroring
+`get_first_non_fainted_not_active`'s exact pattern:
+`my_party.active_indices.has(i)` instead of `i == my_party.active_index`,
+in both functions. New assertions in `m21_test.gd`: a reproduction case
+(the bug's own worst offender — the OTHER slot's mon has objectively the
+best type matchup, so pre-fix the buggy code would select it) proving
+the fix now correctly excludes it and falls back to the real bench
+candidate, for both `choose_replacement` and `_best_switch_target`
+independently, plus a singles negative control confirming ordinary
+singles selection is unaffected.
+
+### Item 3 — Red Card double-trigger guard
+
+Source (`battle_move_resolution.c`): `TryRedCard` (L3732-3755) sets
+`gBattleStruct->redCardActivated = TRUE` (L3741) the moment a valid
+replacement slot is found (`CanBattlerSwitch` succeeds) — BEFORE the
+Guard Dog check even runs, meaning even the Guard-Dog-blocked "no
+switch" branch still counts as a real activation. `MoveEndCardButton`
+(L3777-3805) re-checks that flag on every subsequent Red-Card-holding
+battler it scans this same move, preventing a SECOND holder from also
+forcing the attacker to switch; the flag resets to FALSE once the whole
+scan finishes (L3801) — scoped to ONE MOVE's own resolution, genuinely
+different scope from Snatch's own `_snatch_used_this_turn` (which is
+scoped per TURN). New `BattleManager._red_card_activated_this_move: bool`,
+reset at the top of every `_phase_move_execution` call (alongside the
+pre-existing `_current_action_failed`/`_me_first_boost_active` resets),
+checked in the outer `if` gate before Red Card's own dispatch and set
+TRUE only inside the `if rc_slot >= 0:` branch (matching source's real
+"activation" scope — NOT set when no valid switch target exists at all,
+since source's own `!CanBattlerSwitch` early-return never sets the flag
+either, correctly letting a second holder still trigger in that case).
+New `m21_test.gd` assertions: a doubles scenario with BOTH opponents
+holding Red Card, confirming the attacker is forced to switch exactly
+once (not twice) and exactly one of the two holders' items is consumed
+(the second one's own trigger correctly blocked) — snapshotted at the
+precise moment of the attacker's own forced-switch event (not a
+post-battle read), plus a singles negative control confirming a single
+holder still triggers normally.
+
+### Item 1 — Shell Bell / Life Orb + Red Card interaction (done AFTER
+item 3, since it depends on knowing whether Red Card already fired)
+
+Source (`battle_hold_effects.c`): `TryShellBell` (L526-545) AND
+`TryLifeOrb` (L547-559) BOTH check
+`!gBattleStruct->battlerState[battlerAtk].redCardSwitched` — a real
+finding beyond the original recon's Shell-Bell-only framing, confirmed
+via direct citation that Life Orb shares the identical gate. This is a
+genuinely SEPARATE, NARROWER flag from item 3's own `redCardActivated`:
+`redCardSwitched` is set TRUE only when the attacker ACTUALLY leaves the
+field (`battle_script_commands.c` L7421, inside the real switch-command
+execution), NOT in the Guard-Dog-blocked "activated but no switch"
+branch. Confirmed via source's own MoveEnd dispatch table order
+(`MOVEEND_CARD_BUTTON` before `MOVEEND_LIFE_ORB_SHELL_BELL`,
+`battle_move_resolution.c` L4389/L4391) that Red Card's own trigger is
+meant to be evaluated BEFORE Shell Bell/Life Orb — but this project's
+existing code had Shell Bell's heal (and Life Orb's recoil) positioned
+EARLIER in `_do_damaging_hit` than Red Card's own dispatch. Rather than
+reorder the whole (700+ line) function, the two small (~5-line) Shell
+Bell/Life Orb blocks were relocated to the TAIL of `_do_damaging_hit`,
+immediately after Red Card's dispatch, reproducing source's real
+effective order with minimal footprint. New
+`BattleManager._red_card_switched_this_move: bool`, reset alongside
+item 3's own flag, set TRUE only in the real-switch branch. New
+`m21_test.gd` assertions for both Shell Bell and Life Orb: confirmed via
+a timeline-adjacency check (not a post-battle state read) that neither
+fires for the attacker in the SAME hit resolution that got it
+Red-Card-switched out — a first draft using a simple "did this event
+ever fire for this mon" check produced a false failure, since the
+attacker can legitimately cycle back into the field later via
+faint-replacement and earn a real, separate heal/recoil on an unrelated
+later turn; fixed by tracking `pokemon_switched_in` too and bounding the
+check to the window strictly between the switch-out and the attacker's
+own next return to the field. Plus negative controls confirming both
+items still work normally without Red Card involved.
+
+### Item 4 — Self-Destruct/Explosion ally-hit
+
+Confirmed via `moves_info.h`: both moves carry `.target =
+TARGET_FOES_AND_ALLY` (`src/data/moves_info.h` L3283/L4179).
+`CancelerSetTargets` (`battle_move_resolution.c` L920-933) confirms this
+hits EVERY other battler in doubles — both opponents AND the user's own
+ally. `GetMoveTargetCount` (`battle_util.c` L5993-5996) sums a THIRD
+term for `BATTLE_PARTNER(battlerAtk)`, and `GetTargetDamageModifier`
+(`battle_util.c` L7220-7230) returns the SAME flat `UQ_4_12(0.75)` for
+both the 2-target and 3-target case at this project's `GEN_LATEST`
+config (`B_MULTIPLE_TARGETS_DMG>=GEN_4`) — no separate reduction value
+needed, only the target SET needs extending. New
+`MoveData.target_includes_ally: bool`, set on Self-Destruct(120)/
+Explosion(153) only. Extended the spread-move dispatch loop
+(`_phase_move_execution`) to also hit the attacker's own ally (via
+`_get_ally`) when this flag is set, folding it into the SAME
+`live_target_count`/`spread_dmg_reduction` computation.
+
+**A genuinely broader finding beyond this item's own Self-Destruct/
+Explosion scope, confirmed via a full programmatic grep of
+`moves_info.h`**: ~18 OTHER moves share this exact real target type —
+Surf, Earthquake, Magnitude, Discharge, Lava Plume, Sludge Wave,
+Bulldoze, Searing Shot, Parabolic Charge, Petal Blizzard, Boomburst,
+Sparkling Aria, Brutal Swing, Teeter Dance (all 14 already implemented
+in this project with `is_spread` only, sharing the identical ally-hit
+gap) plus Synchronoise, Mind Blown, Misty Explosion, Corrosive Gas (not
+yet implemented). Deliberately NOT retroactively fixed on any of these
+— flagged for a dedicated future sweep, out of this item's own
+contained scope.
+
+New `m21_test.gd` assertions: a doubles scenario confirming Self-Destruct
+hits both opponents AND the user's own ally (captured via `move_executed`,
+filtered to Self-Destruct's own single, self-fainting action — inherently
+immune to whole-battle-aggregation since the attacker can never act
+again after using it), confirming the attacker still correctly faints
+afterward, plus a singles negative control confirming no crash/no
+ally-hit attempt when there's no ally slot at all.
+
+### Item 5 — Dragon Darts smart-redirect: DEFERRED, per Rob's own decision
+
+Step 0 (before any implementation) found the real mechanism is
+genuinely TWO separate triggers, not the single condition originally
+assumed:
+1. **Pre-move immunity redirect** (`SetPossibleNewSmartTarget`, called
+   from `CancelerMultihitMoves`, `battle_move_resolution.c:2293-2304`):
+   if the originally-selected target is fully immune/unaffected (type
+   immunity, Wonder Guard, etc.) before the move even executes, retarget
+   to the partner (if the partner isn't also immune).
+2. **Mid-execution miss redirect** (`battle_move_resolution.c:2216-2224`,
+   inside the accuracy-canceler loop): if the FIRST hit specifically
+   MISSES (accuracy roll fails — confirmed NOT "fainted", which isn't
+   one of the triggers at all), retarget the SECOND hit to the partner.
+
+Neither trigger matches "target fainted," which the recon's own framing
+had assumed. Implementing this correctly requires dynamic mid-loop
+retargeting inside `_do_multi_hit_sequence` — the shared function all
+~30 other multi-hit moves also use — specifically for this one move, a
+materially bigger and more delicate change than "bundle-safe, low
+complexity." Presented to Rob via a 3-way choice (implement both
+triggers now / implement immunity-redirect only and defer the
+miss-redirect / defer the whole item to its own dedicated session);
+**Rob chose to defer item 5 entirely to its own dedicated future
+session.** No code changed for this item.
+
+### Item 8 — Trick Room x Pursuit doubles: a REAL BUG FOUND, not just an
+untested-but-correct gap — deferred, no test shipped
+
+`m16_review_test.gd`'s own Area 3 explicitly scoped "Doubles x Trick
+Room x Pursuit" OUT (singles-only), on the belief the mechanism was
+"believed correct by construction" (both `_phase_priority_resolution`'s
+sort comparator and `_pursuit_targets_switcher` are pure generic
+comparisons with zero singles-vs-doubles branching). **This session's
+own Step 0 found that belief was wrong.** Godot's `Array.sort_custom`
+is an unstable algorithm with no transitivity guarantee, and the
+comparator's Pursuit-intercept override
+(`if b_switch and not a_switch and _pursuit_targets_switcher(ia, ib): return true`)
+is only checked for the SPECIFIC pair being compared — it does not hold
+up transitively against the rest of the comparator (the ordinary
+switch-first/speed/tiebreak rules) once a third or fourth combatant is
+present.
+
+A first regression-test draft (Pursuit user A0 and its own ally A1
+tied at the exact same speed) reproduced the bug directly: `_turn_order`
+came out `[B0, A1, A0, B1]` (interception MISSED — the switcher B0
+placed before the pursuer A0) instead of the correct `[A0, B0, ...]`,
+via debug-printed `_turn_order`/`_chosen_switch_slots` state. Removing
+the A0/A1 speed tie was initially assumed to be the fix (the direct
+pairwise chain becomes fully resolvable without a random tiebreak
+needed anywhere) — a rerun immediately after confirmed this "fixed"
+version passing. **A second isolation rerun (3x, with only this one
+test enabled, no other code changed) proved this was a false fix**: the
+SAME test, with fully DISTINCT (non-tied) speeds, passed, then failed,
+then passed again across identical reruns — genuinely non-deterministic,
+not reliably tied to the specific tie-triggered mechanism first
+diagnosed. This means Godot's own `sort_custom` likely uses some
+internal non-determinism (e.g. randomized pivot selection, common in
+quicksort-family implementations) that interacts unpredictably with the
+already-confirmed non-transitive comparator — a deeper bug than "avoid
+same-side speed ties," not something this session's own bundle-safe
+scope can responsibly fix or reliably test.
+
+Presented to Rob via a 3-way choice (fix now / document-and-defer with
+a flaky-but-shipped test / fold into the deferred turn-order-splice
+session alongside Round/Shell Trap/Quash); **Rob chose to fold this
+into the deferred turn-order session.** No test was shipped this
+session for item 8 — shipping a test that sometimes passes and
+sometimes fails for reasons unrelated to the code under test would
+misrepresent reliability that doesn't exist, and this codebase has no
+precedent for intentionally-flaky shipped tests. The turn-order-splice
+session (Round/Shell Trap/Quash, already deferred per the original M21
+recon) now has a fourth item: this Pursuit-interception transitivity
+bug, which likely needs a fundamentally different approach (e.g. a
+multi-key/tiered sort or explicit bucketing rather than a single
+pairwise comparator) to guarantee correctness under `sort_custom`'s
+own lack of ordering guarantees.
+
+### Item 9 — Snatch vs Magic Coat/Bounce doubles ordering test
+
+Source-confirmed ordering (already established in this project's own
+M19 Snatch work, re-verified this session): Snatch's own steal check
+(`move.snatch_affected` block in `battle_manager.gd`, reassigning BOTH
+attacker and defender to the thief) runs, and completes its
+reassignment, BEFORE the shared Magic Bounce/Magic Coat swap check
+reached later in the same function — confirmed via direct code reading
+this session (no early return between the two sites), so a Snatch user
+always gets first claim.
+
+**A real finding from this session's own Step 0, beyond what the
+original recon flagged**: this exact race is STRUCTURALLY UNREACHABLE
+with any real move currently in this project's roster. `snatch_affected`
+moves are, per this project's own established finding, exclusively
+self/field-targeting (buffs, heals, screens) — and `bounceable` moves
+are, by Magic Bounce's own definition, exclusively FOE-targeting (a
+move that affects an opponent, reflected back at its own caster). No
+move can be both at once; confirmed via a direct programmatic scan of
+all 717 `gen_moves.py` entries — ZERO carry both flags simultaneously.
+This test therefore uses a SYNTHETIC `MoveData` (both flags forced on)
+purely to exercise the two code paths' real relative order, matching
+this project's own established precedent for flag combinations no real
+move yet exercises (e.g. `[M17n-5]`'s synthetic Strong Jaw/Sharpness/
+Mega Launcher tests) — not a claim this scenario can occur in real play
+with the current roster. New `m21_test.gd` assertions (doubles, per the
+recon's own framing): a Snatch user (acting first) steals a synthetic
+snatchable-and-bounceable status move originally aimed at a Magic
+Bounce holder, confirming the steal fires (`move_stolen`) and Magic
+Bounce never gets a chance to bounce it (`move_bounced` never fires for
+the original intended target) — Snatch's own reassignment happens
+first, so the original defender is never reached by the Magic Bounce
+check at all.
+
+### Item 2 — Shell Bell / Life Orb spread-move damage accumulation (done
+LAST, its own dedicated test pass, touches shared damage-dispatch code)
+
+Source: `gBattleScripting.savedDmg` accumulates across ALL targets of a
+spread move before Shell Bell/Life Orb's own MoveEnd effect ever runs
+(`battle_move_resolution.c` L4389-4391) — the same once-per-move MoveEnd
+timing already established (and already correctly implemented) for
+multi-hit moves in `_do_multi_hit_sequence`. This project's own
+per-target `_do_damaging_hit` dispatch previously healed/recoiled once
+PER TARGET instead of once per whole move. Fixed by accumulating
+`spread_total_damage`/`spread_hits_landed` across the spread-move
+dispatch loop (`_phase_move_execution`, including the ally for
+`TARGET_FOES_AND_ALLY` moves per item 4's own mechanism) and applying
+ONE combined heal/recoil after the whole loop, passing
+`suppress_shell_bell=true` to every per-target `_do_damaging_hit` call
+(this parameter now suppresses BOTH Shell Bell and Life Orb, per item
+1's own relocation — its doc comment updated to reflect this).
+
+**A second, genuinely separate bug found and fixed alongside Shell
+Bell's own accumulation, discovered while implementing this item**:
+Life Orb's recoil is a FLAT `maxHP/10`, not damage-proportional — so
+its own bug shape was the OPPOSITE of Shell Bell's (which under-counts
+via floor-division truncation when summed per-hit): Life Orb was
+REPEATING the same flat deduction once per target hit, inflating a
+2-target spread hit's total recoil to 2x the real single deduction.
+Fixed identically (suppressed per-hit, applied once after the loop).
+**A related, pre-existing bug in the OPPOSITE direction was found and
+fixed as a side effect in `_do_multi_hit_sequence`**: that function
+already correctly suppressed Shell Bell per-hit and applied it once
+after the loop, but had NO equivalent handling for Life Orb at all —
+meaning every per-hit `_do_damaging_hit` call there already passed
+`suppress_shell_bell=true` (for Shell Bell's own sake), which, once this
+session's change made that same flag also suppress Life Orb, would have
+made multi-hit moves take ZERO Life Orb recoil instead of the correct
+single deduction. Fixed by adding the same "once, after the loop"
+Life Orb application to `_do_multi_hit_sequence`, alongside its existing
+Shell Bell block — this ALSO retroactively fixes a genuine pre-existing
+bug in that function (Life Orb recoil had been firing once PER HIT in a
+multi-hit move all along, e.g. a 5-hit Bullet-Seed-style move taking 5x
+the real recoil), found only as a side effect of this session's own
+fix, not separately investigated against source beyond confirming Life
+Orb's amount is flat.
+
+New `m21_test.gd` assertions, using a NEW direct single-dispatch helper
+(`_dispatch_doubles_spread_with_signals`, resolving exactly ONE
+`_phase_move_execution()` call rather than running a full multi-turn
+battle) to sidestep the whole-battle-aggregation pitfall by
+construction — a first draft using full multi-turn `start_battle_doubles`
+battles hit this exact pitfall repeatedly (the attacker, knowing only
+one move, re-casts it every turn, producing legitimate additional
+heals/recoils that broke "exactly once" assertions), rebuilt with
+direct dispatch instead: Shell Bell heals exactly once from the
+TRUE SUM of both hits (not the sum of two independently-floored per-hit
+heals — a real discriminator confirmed via observed, not hand-derived,
+per-hit damage values); Life Orb recoils exactly once (not once per
+target); one target being fully type-immune (0 damage, still counted
+toward the live-target reduction) doesn't break accumulation off the
+other, real hit; one target already fainted before the hit is excluded
+entirely and accumulation still works off the remaining target; the
+ally-hit case (Self-Destruct) correctly folds the ally's own damage
+into the SAME accumulated total as both opponents; and a full-battle
+singles negative control confirming ordinary non-spread Shell Bell
+behavior is completely unaffected.
+
+### Item 10 — stale Infiltrator/screens code comment (doc-only, zero
+functional risk)
+
+`damage_calculator.gd`'s own `GetScreensModifier` port carried a comment
+("Infiltrator ability bypass is not modeled — Infiltrator is outside
+this project's ability scope") written before Infiltrator was
+implemented (`[M17n-9]`, well after this comment). The actual behavior
+has been correct since then — Infiltrator's screens bypass is handled
+at the CALLER level (`BattleManager._do_damaging_hit`, via
+`AbilityManager.bypasses_infiltrator_barriers` forcing `screen_active =
+false` before this function is ever called) — the comment was simply
+never updated. Fixed to describe the real, correct architecture. No
+functional change, no test needed.
+
+### Testing
+
+New `scenes/battle/m21_test.gd`/`.tscn`: 33/33 assertions across items
+1, 2, 3, 4, 7, 9 (item 8 shipped no test, per its own deferral above;
+item 10 needed none; item 5 and item 6 were not touched). Stable across
+multiple reruns for every item except the deliberately-not-shipped
+item 8. One real test-authoring bug caught and fixed along the way for
+item 3 (a first draft's "did the item ever get consumed" check read
+post-battle state, contaminated by a SEPARATE, legitimate consumption
+via the attacker's own ally acting independently later the same turn —
+fixed via a live signal snapshot at the exact moment of the attacker's
+own forced-switch) — a fresh instance of this project's own documented
+whole-battle-aggregation pitfall, caught the same way for items 1 and 2
+too (both fixed via timeline-adjacency/direct-dispatch approaches
+respectively, detailed in their own subsections above).
+
+Regression (targeted, not a full sweep, per instruction): `m18n_test`
+(22/22, Red Card's own origin suite), `m18q_test` (16/16, Shell Bell's
+own origin suite), `item_test` (77/77, Life Orb's own origin suite),
+`m18_5g_test` (315/315, multi-hit's own origin suite, confirming the
+new Life Orb once-per-sequence fix didn't disturb anything), `doubles_test`
+(54/54), `m19_bucket4_pairs_test` (52/52, Self-Destruct/Explosion's own
+origin suite) — all unchanged, 0 failures.
+
+No commit made — per standing instruction, Rob commits.

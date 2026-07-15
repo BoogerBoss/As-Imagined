@@ -761,8 +761,13 @@ static func calculate(
 	# Minimize modifier above (both are folded into GetOtherModifiers in source, in the
 	# order Minimize → Underground → Dive → Airborne → Screens → CollisionCourse).
 	# Source: battle_util.c :: GetScreensModifier (L7347-7365): crits bypass screens
-	#   entirely (checked first in source; mirrored here via the is_crit guard) — Infiltrator
-	#   ability bypass is not modeled (Infiltrator is outside this project's ability scope).
+	#   entirely (checked first in source; mirrored here via the is_crit guard).
+	#   [M21] Stale comment fixed: Infiltrator was implemented in [M17n-9], well
+	#   after this comment was originally written — its screens bypass is handled
+	#   at the CALLER level (BattleManager._do_damaging_hit, via
+	#   AbilityManager.bypasses_infiltrator_barriers forcing screen_active=false
+	#   before this function is ever called), not inside this stateless utility.
+	#   This function correctly has no Infiltrator awareness of its own by design.
 	if screen_active and not is_crit:
 		var screen_mod: int = UQ412_SCREEN_DOUBLES if is_doubles else UQ412_SCREEN_SINGLES
 		dmg = _uq412_half_down(dmg, screen_mod)

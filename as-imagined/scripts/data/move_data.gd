@@ -263,19 +263,38 @@ const SE_TRAP_BOTH: int = 14
 #   (confirmed via grep, B_USE_FROSTBITE is not modeled).
 @export var random_status_pool: Array[int] = []
 
-# [M19-self-faint] is_self_faint: Self-Destruct(120)/Explosion(153) —
-#   unconditional self-KO, regardless of whether the move's own hit lands.
-#   Blocked entirely by Damp anywhere on the field (a simplified execution-
-#   time translation of source's selection-time `.dampBanned` flag — this
-#   project has no move-selection legality filter). TARGET_FOES_AND_ALLY in
-#   source (hits every OTHER battler, opponents AND the user's own ally) —
-#   modeled here as `is_spread` (opponents only); the ally-hit half in
-#   doubles is a known, FLAGGED-not-built gap (same class as Shell Bell's
-#   own doubles spread-accumulation gap, deferred to M22).
+# [M19-self-faint, ally-hit half closed [M21]] is_self_faint: Self-
+#   Destruct(120)/Explosion(153) — unconditional self-KO, regardless of
+#   whether the move's own hit lands. Blocked entirely by Damp anywhere on
+#   the field (a simplified execution-time translation of source's
+#   selection-time `.dampBanned` flag — this project has no move-selection
+#   legality filter). TARGET_FOES_AND_ALLY in source (hits every OTHER
+#   battler, opponents AND the user's own ally) — the ally-hit half is now
+#   modeled via `target_includes_ally` (see that field's own doc comment).
 # Source: moves_info.h .explosion=TRUE, .dampBanned=TRUE; battle_move_resolution.c
 #   :: CancelerExplosion (L1841-1848) — see the BattleManager call site's own
 #   doc comment for the full pre-move-canceler-timing citation.
 @export var is_self_faint: bool = false
+
+# [M21] target_includes_ally: TARGET_FOES_AND_ALLY moves ALSO hit the
+#   attacker's own ally in doubles, on top of both opponents `is_spread`
+#   already covers. Source: GetMoveTargetCount (battle_util.c L5993-5996)
+#   sums a third term for BATTLE_PARTNER(battlerAtk); GetTargetDamageModifier
+#   (battle_util.c L7220-7230) returns the SAME flat UQ_4_12(0.75) for both
+#   the 2-target and 3-target case at this project's GEN_LATEST config
+#   (B_MULTIPLE_TARGETS_DMG>=GEN_4), so no separate reduction value is
+#   needed — only the target SET extends. Set on Self-Destruct(120)/
+#   Explosion(153) only (this session's own explicit scope). CONFIRMED
+#   VIA FULL SOURCE GREP: ~18 other moves share this exact real target type
+#   (Surf/Earthquake/Magnitude/Discharge/Lava Plume/Sludge Wave/Bulldoze/
+#   Searing Shot/Parabolic Charge/Petal Blizzard/Boomburst/Sparkling Aria/
+#   Brutal Swing/Teeter Dance — all already implemented in this project's
+#   roster with `is_spread` only — plus Synchronoise/Mind Blown/Misty
+#   Explosion/Corrosive Gas, not yet implemented) and share the IDENTICAL
+#   ally-hit gap. Deliberately NOT retroactively flipped on any of those —
+#   flagged as a genuinely broader finding for a dedicated future sweep,
+#   out of this item's own contained scope.
+@export var target_includes_ally: bool = false
 
 # [M19-berry-steal] steals_and_eats_berry: Pluck(365)/Bug Bite(450) — both
 #   share the LITERAL SAME `MOVE_EFFECT_BUG_BITE` additionalEffect in

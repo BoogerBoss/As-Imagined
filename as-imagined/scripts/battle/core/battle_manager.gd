@@ -472,6 +472,42 @@ var _last_landed_move_anyone: MoveData = null
 # (battle_util.c L6443-6444).
 var _me_first_boost_active: bool = false
 
+# [M21] Red Card's own double-trigger guard — mirrors source's real
+# gBattleStruct->redCardActivated (battle_move_resolution.c L3732-3755,
+# L3801). Prevents a spread move hitting TWO Red Card holders from forcing
+# the same attacker to switch twice in one move. Reset at the top of every
+# `_phase_move_execution` call (per-MOVE scope, not per-turn — a different
+# scope than `_snatch_used_this_turn`). Set TRUE the moment a Red Card
+# holder's forced-switch attempt has a valid replacement slot available
+# (`rc_slot >= 0`), regardless of whether Guard Dog then blocks the actual
+# switch — matching source's own TryRedCard, which sets the flag
+# unconditionally once `CanBattlerSwitch` succeeds, before the Guard Dog
+# check even runs. NOT set when no valid replacement slot exists at all
+# (source's own `!CanBattlerSwitch` early-return never sets the flag
+# either), so a second Red Card holder can still legitimately trigger if
+# the first one's own attempt found no bench to switch into.
+var _red_card_activated_this_move: bool = false
+
+# [M21] A genuinely SEPARATE flag from `_red_card_activated_this_move` above
+# — mirrors source's real gBattleStruct->battlerState[battlerAtk]
+# .redCardSwitched (battle_move_resolution.c L3811/L3914,
+# battle_hold_effects.c L403/L483/L533/L552, set at
+# battle_script_commands.c L7421). Source's `redCardActivated` only guards
+# against a SECOND Red Card holder also triggering; `redCardSwitched` is
+# narrower — set TRUE ONLY when the attacker ACTUALLY leaves the field (NOT
+# in the Guard-Dog-blocked "activation but no switch" branch), and gates
+# Shell Bell AND Life Orb (source's own TryShellBell/TryLifeOrb both check
+# it) from firing for an attacker that was just forced out by the very hit
+# that would have triggered them. Confirmed from source's own MoveEnd
+# dispatch table order (MOVEEND_CARD_BUTTON before MOVEEND_LIFE_ORB_SHELL_
+# BELL, battle_move_resolution.c L4389/L4391) that Red Card's own trigger
+# is meant to be evaluated BEFORE Shell Bell/Life Orb — reproduced here not
+# by reordering this whole function, but by relocating the (much smaller)
+# Shell Bell/Life Orb blocks to occur AFTER this flag is set, at the tail
+# of `_do_damaging_hit`. Reset at the top of every `_phase_move_execution`
+# call, per-move scope like `_red_card_activated_this_move`.
+var _red_card_switched_this_move: bool = false
+
 # M14b: per-side Follow Me/Rage Powder state. -1 = no Follow Me active this turn.
 # Value = combatant index of the Pokémon that used Follow Me/Rage Powder.
 # Source: gSideTimers[side].followmeTimer / followmeTarget (battle_main.c L5060–5061).
@@ -1352,6 +1388,18 @@ func _phase_move_execution() -> void:
 	# First branch triggers, read further down wherever the (possibly
 	# reassigned) move's damage is actually dealt.
 	_me_first_boost_active = false
+	# [M21] Reset Red Card's own per-move double-trigger guard — mirrors
+	# source's real gBattleStruct->redCardActivated (battle_move_resolution.c
+	# L3736/L3801), which is set TRUE the moment ONE Red Card holder
+	# successfully forces the attacker to switch (or would, but for Guard
+	# Dog blocking just the switch itself — TryRedCard sets the flag
+	# unconditionally once CanBattlerSwitch succeeds, BEFORE the Guard Dog
+	# check even runs) and is reset back to FALSE once the whole MoveEnd
+	# item-scan for THIS move finishes — i.e. scoped to one move's own
+	# resolution, not one turn (a different scope than Snatch's own
+	# `_snatch_used_this_turn`, which really is turn-scoped).
+	_red_card_activated_this_move = false
+	_red_card_switched_this_move = false
 
 	# M14a: use combatant index for move/target lookup; derive side from that.
 	var attacker_idx: int = _actor_indices.get(attacker, _combatants.find(attacker))
@@ -3272,14 +3320,68 @@ func _phase_move_execution() -> void:
 				var _c: BattlePokemon = _combatants[opp_start + _fi]
 				if not _c.fainted and _c.current_hp > 0:
 					live_target_count += 1
+			# [M21] TARGET_FOES_AND_ALLY (Self-Destruct(120)/Explosion(153) —
+			# the only 2 moves this project sets this flag on so far): the
+			# attacker's own ally is ALSO a target, on top of both opponents.
+			# Source's own GetMoveTargetCount (battle_util.c L5993-5996) sums
+			# a THIRD term for this target type (BATTLE_PARTNER(battlerAtk)),
+			# and GetTargetDamageModifier (battle_util.c L7220-7230) returns
+			# the SAME flat UQ_4_12(0.75) for both count==2 and count>=3 at
+			# this project's GEN_LATEST config (B_MULTIPLE_TARGETS_DMG>=GEN_4)
+			# — no separate reduction value needed for the 3-target case, just
+			# the target SET needs extending. Confirmed via a full grep of
+			# moves_info.h that ~18 OTHER already-shipped moves (Surf,
+			# Earthquake, Magnitude, Discharge, Lava Plume, Sludge Wave,
+			# Bulldoze, Searing Shot, Parabolic Charge, Petal Blizzard,
+			# Boomburst, Sparkling Aria, Brutal Swing, Teeter Dance, and 3
+			# unimplemented others) share this EXACT same real target type and
+			# the identical ally-hit gap — a genuinely broader finding than
+			# this item's own Self-Destruct/Explosion scope, flagged for a
+			# dedicated future sweep, NOT retroactively fixed here.
+			var ally: BattlePokemon = _get_ally(attacker)
+			var ally_included: bool = move.target_includes_ally and ally != null \
+					and not ally.fainted and ally.current_hp > 0
+			if ally_included:
+				live_target_count += 1
 			var spread_dmg_reduction: bool = live_target_count >= 2
 			var hh_boost: bool = _helping_hand[attacker_idx]
+			# [M21] Shell Bell's own heal AND Life Orb's own recoil must both
+			# fire only ONCE per whole spread-move use (across every target
+			# actually hit), not once per target — source's real
+			# gBattleScripting.savedDmg accumulates across the ENTIRE spread
+			# hit before MOVEEND_LIFE_ORB_SHELL_BELL ever runs (battle_move_
+			# resolution.c L4389-4391, the same once-per-move MoveEnd timing
+			# already established for multi-hit moves in
+			# _do_multi_hit_sequence). Each per-target `_do_damaging_hit` call
+			# below passes suppress_shell_bell=true and its own real damage
+			# dealt is accumulated into `spread_total_damage`; the single
+			# combined heal/recoil is applied once, after every target
+			# (including the ally, if TARGET_FOES_AND_ALLY) has been hit.
+			var spread_total_damage: int = 0
+			var spread_hits_landed: int = 0
 			for _fi in range(_active_per_side):
 				var tgt: BattlePokemon = _combatants[opp_start + _fi]
 				if tgt.fainted or tgt.current_hp <= 0:
 					continue
-				_do_damaging_hit(attacker, tgt, move, spread_dmg_reduction, hh_boost,
-						_dmg_power_override, false, _me_first_boost_active)
+				var _dmg: int = _do_damaging_hit(attacker, tgt, move, spread_dmg_reduction, hh_boost,
+						_dmg_power_override, true, _me_first_boost_active)
+				spread_total_damage += _dmg
+				spread_hits_landed += 1
+			if ally_included:
+				var _ally_dmg: int = _do_damaging_hit(attacker, ally, move, spread_dmg_reduction, hh_boost,
+						_dmg_power_override, true, _me_first_boost_active)
+				spread_total_damage += _ally_dmg
+				spread_hits_landed += 1
+			if spread_total_damage > 0:
+				var spread_shell_bell: int = ItemManager.shell_bell_heal(attacker, spread_total_damage, ng_active)
+				if spread_shell_bell > 0:
+					attacker.current_hp = min(attacker.max_hp, attacker.current_hp + spread_shell_bell)
+					item_healed.emit(attacker, spread_shell_bell)
+			if spread_hits_landed > 0 and not attacker.fainted and not _red_card_switched_this_move:
+				var spread_lo_recoil: int = ItemManager.life_orb_recoil(attacker, ng_active)
+				if spread_lo_recoil > 0:
+					attacker.current_hp = max(0, attacker.current_hp - spread_lo_recoil)
+					item_damage.emit(attacker, spread_lo_recoil)
 		elif move.multi_hit or move.strike_count > 1:
 			# [M18.5g] Multi-hit moves (Bullet Seed/Double Kick/Triple Kick/etc. family)
 			# — see _do_multi_hit_sequence's own doc comment for the full mechanism.
@@ -8481,14 +8583,17 @@ func _resolve_multi_hit_count(move: MoveData, attacker: BattlePokemon, ng_active
 #   re-runs on every hit of a multi-hit sequence (confirmed via the `+=`
 #   accumulation in MoveEndSetValues, battle_move_resolution.c L2490, which
 #   would be meaningless if MoveEnd only ran once).
-# - Shell Bell: the ONE confirmed exception to "just call it per hit" — source
-#   accumulates `gBattleScripting.savedDmg` across every hit and only actually
-#   triggers the heal once the sequence's own MoveEnd loop terminates. Passing
-#   suppress_shell_bell=true to every per-hit call and manually applying ONE
-#   heal from the accumulated total after the loop reproduces this exactly (a
-#   per-hit heal would under-heal vs. the real total due to floor-division
-#   truncation — five 7-damage hits under Shell Bell: 5×floor(7/8)=0 per-hit vs.
-#   floor(35/8)=4 on the total).
+# - Shell Bell AND Life Orb recoil [M21]: BOTH are exceptions to "just call it
+#   per hit" — source accumulates `gBattleScripting.savedDmg` across every hit
+#   for Shell Bell, and Life Orb shares the same once-per-move MoveEnd timing
+#   (MOVEEND_LIFE_ORB_SHELL_BELL is a single combined dispatch in source,
+#   battle_move_resolution.c L4391). Passing suppress_shell_bell=true to every
+#   per-hit call and manually applying ONE heal/ONE recoil after the loop
+#   reproduces this exactly — for Shell Bell, a per-hit heal would under-heal
+#   vs. the real total due to floor-division truncation (five 7-damage hits:
+#   5×floor(7/8)=0 per-hit vs. floor(35/8)=4 on the total); for Life Orb
+#   (a FLAT maxHP/10, not damage-proportional), a per-hit recoil would instead
+#   OVER-recoil by repeating the same flat deduction once per hit landed.
 # - Scale Shot (is_scale_shot): a one-time self stat change applied once after
 #   the loop, gated on ≥1 hit landing — battle_move_resolution.c L3620-3628.
 #
@@ -8570,6 +8675,22 @@ func _do_multi_hit_sequence(attacker: BattlePokemon, target: BattlePokemon,
 		if shell_bell_amount > 0:
 			attacker.current_hp = min(attacker.max_hp, attacker.current_hp + shell_bell_amount)
 			item_healed.emit(attacker, shell_bell_amount)
+	# [M21] Life Orb: exactly ONE flat maxHP/10 recoil for the WHOLE multi-hit
+	# sequence, not once per individual hit — every per-hit `_do_damaging_hit`
+	# call above already passes `suppress_shell_bell=true` (which now also
+	# suppresses Life Orb, see that function's own doc comment), so without
+	# this the attacker would take ZERO Life Orb recoil for the entire
+	# sequence instead of the correct single deduction. A real, previously-
+	# existing bug in the OPPOSITE direction (repeating the flat recoil once
+	# per hit, inflating a 5-hit Bullet-Seed-style move's recoil to 5x the
+	# real amount) is fixed as a side effect of adding this — flagged here,
+	# not separately investigated against source beyond confirming Life
+	# Orb's own real amount is flat (not proportional), unlike Shell Bell.
+	if hits_landed > 0 and not attacker.fainted and not _red_card_switched_this_move:
+		var lo_recoil: int = ItemManager.life_orb_recoil(attacker, ng_active)
+		if lo_recoil > 0:
+			attacker.current_hp = max(0, attacker.current_hp - lo_recoil)
+			item_damage.emit(attacker, lo_recoil)
 
 	multi_hit_sequence_finished.emit(attacker, target, hits_landed, total_damage)
 
@@ -8686,6 +8807,10 @@ func _apply_one_stat_change_pair(attacker: BattlePokemon, defender: BattlePokemo
 # helping_hand: pass true when attacker's ally used Helping Hand → 1.5× base power.
 # power_override: M16b — pass ≥0 to override move.power for this hit (Rollout scaling,
 #   Magnitude's rolled power). -1 (default) = use move.power.
+# suppress_shell_bell: [M21] despite the name, suppresses BOTH Shell Bell's heal
+#   AND Life Orb's recoil for this call — pass true when the CALLER is going to
+#   apply ONE combined heal/recoil itself after a batch of hits (spread moves,
+#   multi-hit sequences) rather than once per individual hit in this function.
 # Source: battle_script_commands.c :: MoveDamageDataHpUpdate + downstream effect handlers.
 func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		move: MoveData, is_spread: bool = false, helping_hand: bool = false,
@@ -8981,27 +9106,12 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 				attacker.current_hp = min(attacker.max_hp, attacker.current_hp + heal)
 				drain_heal.emit(attacker, heal)
 
-	# M18q: Shell Bell — heals the ATTACKER by a fraction of the FINAL damage just
-	# dealt (this `damage` local is already post-crit/post-type-effectiveness/
-	# post-item-and-ability-boosts by construction, matching source's own
-	# gBattleScripting.savedDmg, set in the very first moveend state immediately
-	# after damage is applied). Unconditioned on target.fainted — the classic use
-	# case is healing off the killing blow itself. ItemManager.shell_bell_heal
-	# already gates on not-already-at-max-HP and final_damage > 0 internally.
-	# [M18.5g] suppress_shell_bell: multi-hit callers pass true here and instead
-	# accumulate `damage` across every hit themselves, applying ONE Shell Bell heal
-	# after the whole sequence completes. Source: `gBattleScripting.savedDmg +=
-	# gBattleStruct->moveDamage[...]` (battle_move_resolution.c L2490, MoveEndSetValues
-	# — re-runs every hit, ACCUMULATING) feeding a Shell Bell trigger that itself only
-	# actually fires once the multi-hit sequence's own MoveEnd loop terminates — NOT
-	# a per-hit heal of `floor(hit_damage/8)` each, which (confirmed via a concrete
-	# counter-example: five 7-damage hits) would under-heal relative to
-	# `floor(sum(hit_damage)/8)` due to per-hit floor-division truncation.
-	if not suppress_shell_bell:
-		var shell_bell_amount: int = ItemManager.shell_bell_heal(attacker, damage, ng_active)
-		if shell_bell_amount > 0:
-			attacker.current_hp = min(attacker.max_hp, attacker.current_hp + shell_bell_amount)
-			item_healed.emit(attacker, shell_bell_amount)
+	# [M21] Shell Bell's own heal (M18q/M18.5g doc history) was relocated to
+	# the tail of this function, AFTER Red Card's own trigger — see the
+	# `_red_card_switched_this_move` doc comment (near its declaration) and
+	# the block near this function's `return damage` for the full citation
+	# of why the ordering matters and why only these ~5 lines moved rather
+	# than the whole function.
 
 	# [Bucket 4 cheapest singles] Rage: sets rage_active on the ATTACKER after a
 	# successful hit — guaranteed, no `.chance` field, so unconditional on
@@ -9636,11 +9746,9 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	if result.get("defender_item_consumed", false):
 		_consume_item(target)
 
-	if damage > 0 and not attacker.fainted:
-		var lo_recoil: int = ItemManager.life_orb_recoil(attacker, ng_active)
-		if lo_recoil > 0:
-			attacker.current_hp = max(0, attacker.current_hp - lo_recoil)
-			item_damage.emit(attacker, lo_recoil)
+	# [M21] Life Orb's own recoil was relocated to the tail of this function,
+	# AFTER Red Card's own trigger — same citation as Shell Bell's own
+	# relocation comment above.
 
 	if not target.fainted:
 		# M17n-7: Unnerve — blocks Sitrus/Oran Berry while any of target's opponents has it.
@@ -9759,9 +9867,17 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		# BattleScript_RedCardActivationNoSwitch, is still an "activation"), matching
 		# the confirmed distinction from the no-valid-target case below (which does
 		# NOT consume at all).
-		if ItemManager.holds_red_card(target, ng_active) and attacker.current_hp > 0:
+		if ItemManager.holds_red_card(target, ng_active) and attacker.current_hp > 0 \
+				and not _red_card_activated_this_move:
 			var rc_slot: int = _parties[attacker_side].get_random_non_fainted_not_active(_force_roar_rng)
 			if rc_slot >= 0:
+				# [M21] Set unconditionally here, matching source's own
+				# TryRedCard — BEFORE the Guard Dog check below, since even
+				# the Guard-Dog-blocked "no switch" branch is still a real
+				# activation in source (BattleScript_RedCardActivationNoSwitch),
+				# correctly preventing a second Red Card holder from also
+				# triggering this same move.
+				_red_card_activated_this_move = true
 				_consume_item(target)
 				if AbilityManager.blocks_forced_switch(attacker, target, ng_active):
 					# [D4 CHEAP bundle]: Ingrain blocks Red Card's forced switch too,
@@ -9769,9 +9885,50 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 					if not attacker.ingrain_active:
 						ability_triggered.emit(attacker, "guard_dog")
 				else:
+					# [M21] Set ONLY here (the attacker genuinely leaves the
+					# field), NOT in the Guard-Dog-blocked branch above —
+					# matching source's own narrower `redCardSwitched` scope,
+					# set at the actual switch-command site
+					# (battle_script_commands.c L7421), not at TryRedCard's
+					# own broader "activated" point.
+					_red_card_switched_this_move = true
 					var old_attacker: BattlePokemon = attacker
 					_do_forced_switch_in(attacker_side, rc_slot, attacker_field_slot)
 					forced_switch.emit(old_attacker, _parties[attacker_side].get_active_at(attacker_field_slot))
+
+	# [M21] Shell Bell and Life Orb's own recoil are both deliberately
+	# evaluated HERE, at the tail of this function — AFTER Red Card's own
+	# trigger above — not at their originally-ported positions earlier in
+	# this function. Source's real MoveEnd dispatch order processes Red
+	# Card/Eject Button (MOVEEND_CARD_BUTTON) BEFORE Life Orb/Shell Bell
+	# (MOVEEND_LIFE_ORB_SHELL_BELL) — battle_move_resolution.c L4389/L4391 —
+	# specifically so that if Red Card forces this attacker to switch out,
+	# both TryShellBell (battle_hold_effects.c L526-545) and TryLifeOrb
+	# (L547-559) see `redCardSwitched` already TRUE and correctly skip: an
+	# attacker flung out of the field mid-hit doesn't get to keep healing
+	# (or recoil) off the hit that got it switched out. Relocating just
+	# these two ~5-line blocks (rather than moving the much larger Red
+	# Card/Eject Button block, or reordering this whole function) reproduces
+	# that same effective order with minimal footprint.
+	if not suppress_shell_bell and not _red_card_switched_this_move:
+		var shell_bell_amount: int = ItemManager.shell_bell_heal(attacker, damage, ng_active)
+		if shell_bell_amount > 0:
+			attacker.current_hp = min(attacker.max_hp, attacker.current_hp + shell_bell_amount)
+			item_healed.emit(attacker, shell_bell_amount)
+	# [M21] Life Orb's flat maxHP/10 recoil ALSO needs to fire only ONCE per
+	# whole spread-move use, not once per target — a genuinely different
+	# reason than Shell Bell's own accumulation (Life Orb's amount is FLAT,
+	# not damage-proportional, so the bug here isn't under-counting via
+	# floor-division truncation, it's outright REPEATING a fixed deduction
+	# per target). `suppress_shell_bell` doubles as this same "not the last
+	# hit of a batched sequence" signal for spread/multi-hit callers — see
+	# this function's own spread-move caller for where the ONE deferred
+	# application actually happens.
+	if not suppress_shell_bell and damage > 0 and not attacker.fainted and not _red_card_switched_this_move:
+		var lo_recoil: int = ItemManager.life_orb_recoil(attacker, ng_active)
+		if lo_recoil > 0:
+			attacker.current_hp = max(0, attacker.current_hp - lo_recoil)
+			item_damage.emit(attacker, lo_recoil)
 
 	# [M18.5g] Real HP damage dealt to the target by this hit — used by the multi-hit
 	# loop to accumulate a running total for Shell Bell (see suppress_shell_bell

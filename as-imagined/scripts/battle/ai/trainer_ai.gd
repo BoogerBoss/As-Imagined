@@ -234,7 +234,13 @@ func choose_replacement(my_party: BattleParty, opponent: BattlePokemon) -> int:
 	var best_slot: int = -1
 	var best_eff: float = -1.0
 	for i in range(my_party.members.size()):
-		if i == my_party.active_index:
+		# [M21] Bug fix: was `i == my_party.active_index`, which only excludes
+		# slot 0 of the active pair. In doubles with BOTH slots alive, this let
+		# the AI recommend "switching in" a mon already active in the OTHER
+		# slot. `get_first_non_fainted_not_active` was already fixed to check
+		# ALL active_indices; this function (checked FIRST, before that
+		# fallback) was not. Mirrors that same fix exactly.
+		if my_party.active_indices.has(i):
 			continue
 		var mon: BattlePokemon = my_party.members[i]
 		if mon.fainted:
@@ -512,7 +518,8 @@ func _best_switch_target(my_party: BattleParty, opponent: BattlePokemon) -> int:
 	var best_slot: int = -1
 	var best_eff: float = -1.0
 	for i in range(my_party.members.size()):
-		if i == my_party.active_index:
+		# [M21] Same bug fix as choose_replacement above — was slot-0-only.
+		if my_party.active_indices.has(i):
 			continue
 		var mon: BattlePokemon = my_party.members[i]
 		if mon.fainted:

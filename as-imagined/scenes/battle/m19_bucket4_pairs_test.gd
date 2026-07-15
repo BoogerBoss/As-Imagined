@@ -151,11 +151,13 @@ func _test_data_integrity() -> void:
 							BattlePokemon.STATUS_PARALYSIS, BattlePokemon.STATUS_SLEEP])
 
 	var self_destruct := _load_move(120)
-	_chk("120 Self-Destruct: power=200, is_spread, is_self_faint",
-			self_destruct.power == 200 and self_destruct.is_spread and self_destruct.is_self_faint)
+	_chk("120 Self-Destruct: power=200, is_spread, is_self_faint, target_includes_ally [M21]",
+			self_destruct.power == 200 and self_destruct.is_spread and self_destruct.is_self_faint
+					and self_destruct.target_includes_ally)
 	var explosion := _load_move(153)
-	_chk("153 Explosion: power=250, is_spread, is_self_faint",
-			explosion.power == 250 and explosion.is_spread and explosion.is_self_faint)
+	_chk("153 Explosion: power=250, is_spread, is_self_faint, target_includes_ally [M21]",
+			explosion.power == 250 and explosion.is_spread and explosion.is_self_faint
+					and explosion.target_includes_ally)
 
 	var pluck := _load_move(365)
 	_chk("365 Pluck: 60/100/20 Flying + steals_and_eats_berry",

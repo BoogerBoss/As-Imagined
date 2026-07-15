@@ -10,3 +10,4 @@ type = 1
 power = 200
 is_spread = true
 is_self_faint = true
+target_includes_ally = true
