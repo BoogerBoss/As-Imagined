@@ -24986,3 +24986,164 @@ existing list without Rob's own confirmation — per this project's
 standing discipline against asserting equivalence without verifying it.
 
 No commit made — per standing instruction, Rob commits.
+
+## [M20b] Level-up trigger + stat recalculation + move-learning — recon
+then implementation, 2026-07-15, same day
+
+Closes the last major piece of M20's original scope. `current_exp` (M20)
+was a pure accumulator fed by real per-species data (M20a); nothing
+consumed it until this session.
+
+### Recon findings (report-only pass first, per instruction)
+
+1. **Level derivation**: `data/exp_curves.json` (6 growth-rate arrays,
+   101 entries each, cumulative-Exp-to-reach-that-level) and
+   `PokemonRegistry.get_exp_for_level()` both already existed and are
+   correct — confirmed the real derivation
+   (`GetLevelFromMonExp`, `pokemon.c:1466-1476`) is a **fresh re-scan of
+   the whole table every time**, not an increment-and-check-once loop:
+   `level=1; while level<=100 and curve[level]<=exp: level++`. This means
+   a single Exp award crossing several level thresholds lands on the
+   correct final level in one pass with no special multi-level-up
+   handling needed — confirmed via a Python-verified `MediumSlow` worked
+   example (curve[8]=314, curve[12]=973 — a jump from 8 straight to 12).
+   Dispatch order traced directly (`Cmd_getexp` states 2-4,
+   `battle_script_commands.c:3960-4066`): give-Exp → level-up check →
+   stat recalc/move-learn, all **per-recipient-immediate**, confirming
+   `_award_exp_for_fainted_opponent` (right after
+   `recipient.current_exp += amount`) is the correct insertion point.
+2. **Stat recalculation**: `BattlePokemon._calculate_stats()` already
+   existed and is already correct (Gen III+ formula, matching
+   `CalculateMonStats` exactly) — its own doc comment already flagged
+   "Call after level-up... Does not update current_hp," confirming this
+   session's job was to call it and handle the HP delta, not rebuild it.
+   **HP behavior confirmed exactly from source** (`pokemon.c:1429-1448`):
+   a flat **additive** delta — `if new_max_hp > old_max_hp: current_hp +=
+   (new_max_hp - old_max_hp)`, then clamp to the new max. NOT
+   proportional scaling, NOT a full heal, NOT left unchanged — a
+   materially different (and simpler) rule than any of those three naive
+   guesses.
+3. **Move learning**: `data/learnsets.json` (M15) confirmed to already
+   exist with the exact schema needed, entries in ascending level order,
+   confirmed a single level CAN teach multiple moves (Bulbasaur's own
+   level 15 → both Poison Powder and Sleep Powder). Fail/prompt behavior
+   at 4 moves known (`Cmd_handlelearnnewmove`,
+   `battle_script_commands.c:5553-5615`): auto-learn if <4 moves; if
+   already known, skip re-adding; if 4 moves already known, source runs a
+   real yes/no + replace-which-slot player prompt this project has no UI
+   for (M23 is still ahead). **Flagged for Rob's sign-off rather than
+   resolved unilaterally** — recommended auto-skip-by-default with a
+   forced-replacement-slot seam for future UI wiring, mirroring
+   `forced_nature`/`forced_ivs`. Rob approved wiring the seam now, not
+   deferring to M23.
+4. **Evolution interaction**: `get_evolutions()`/`evolutions.json`
+   confirmed to exist but have zero consumers anywhere — evolution itself
+   stays fully out of scope (M26's territory). Confirmed the design
+   doesn't implicitly assume "no Pokémon ever evolves": both growth-rate
+   and learnset are read fresh from `PokemonRegistry` by the recipient's
+   CURRENT `species.national_dex_num` on every single level crossed, no
+   caching anywhere, so a future evolution mechanic needs no rework here.
+5. **Existing infrastructure**: `BattlePokemon.level` already existed;
+   `_calculate_stats()`/`exp_curves.json`/`get_exp_for_level()` already
+   existed and correct; `learnsets.json` existed but had **zero runtime
+   consumers** before this session (confirmed via grep) — this half was
+   genuinely greenfield.
+6. **Difficulty/distribution interaction**: confirmed
+   `_award_exp_for_fainted_opponent` already adds the FULLY-adjusted
+   `amount` (base formula → distribution% → difficulty%, computed by
+   `_compute_exp_award`) to `current_exp` before any level-up check could
+   run — the accumulator being consumed is definitely the final award,
+   not an intermediate one.
+
+### Implementation
+
+A key design question resolved during implementation, not part of the
+original 6-point recon: `PokemonSpecies.growth_rate` is a **dormant
+`int` field** (comment: "GrowthRate enum id") that no production code
+path ever populates from `pokemon.json`'s real string values (e.g.
+`"MediumSlow"`) — the same "schema field exists, nothing populates it in
+production" shape `exp_yield` had before M20a. Rather than inventing a
+new int↔string enum mapping for a field nothing else uses, `_check_level_up`
+resolves growth_rate and learnset **fresh from `PokemonRegistry` by the
+recipient's `species.national_dex_num`** every call — this is also
+exactly what "no caching, evolution-safe" (recon point 4) requires, so
+the same design decision satisfies both concerns at once. An invalid/
+unset dex (e.g. a synthetic test fixture with `national_dex_num == 0`)
+degrades safely to a no-op: `get_exp_for_level("", level)` always returns
+0 for an unrecognized growth-rate key, and the level-up loop's own `> 0`
+guard on that same lookup prevents a spurious level-up cascade this would
+otherwise cause (an empty-curve 0 would trivially satisfy `0 <=
+current_exp` for any non-negative Exp total).
+
+New `BattleManager` members:
+- `signal level_up(pokemon, new_level)` — fired once per level actually
+  crossed.
+- `signal move_learn_skipped(pokemon, move)` — fired when 4 moves are
+  already known and no forced replacement slot is set.
+- `var _force_move_replacement_slot: Variant = null` — the forcing seam
+  Rob asked to be wired now: null = auto-skip (default); 0-3 = force that
+  move slot to be overwritten instead. Same null-sentinel shape as every
+  other `_force_*` seam in this file (`_force_conversion2_pick`,
+  `_force_present_roll`, etc.).
+- `_check_level_up(recipient)`: re-derives `new_level` via the re-scan
+  loop described above; for each level actually crossed, snapshots
+  `old_max_hp`, sets `.level`, calls the pre-existing `_calculate_stats()`,
+  applies the additive HP delta with the safety clamp, emits `level_up`,
+  then processes every learnset entry at that exact level (handles the
+  multi-move-per-level case by iterating all matching entries, not just
+  the first).
+- `_try_learn_move_at_level(recipient, move_id)`: the 3-way branch from
+  `MonTryLearningNewMove` — already-known (reference-equality check via
+  `moves.has(candidate)`, relying on `MoveRegistry.get_move(id)`'s
+  Resource-caching identity guarantee, the same reliance Mimic/Sketch/
+  Blood Moon already established) → no-op; <4 moves → `add_move` (already
+  existed, already correctly capped at 4) + `move_learned`; 4 moves known
+  → `_force_move_replacement_slot` gates `replace_move` (new
+  `BattlePokemon` method, mirrors `add_move`'s shape) + `move_learned`, or
+  `move_learn_skipped` if the seam is unset.
+- Wired into `_award_exp_for_fainted_opponent` with one added line,
+  `_check_level_up(recipient)`, immediately after
+  `recipient.current_exp += amount` — exactly the insertion point recon
+  point 1 confirmed.
+
+### Testing
+
+New `scenes/battle/m20b_test.gd`/`.tscn`: 30/30 assertions — single
+level-up; the multi-level-up-in-one-award case (Bulbasaur 8→12 via
+curve[12], `level_up` firing 4 times in ascending order: 9,10,11,12); the
+HP-delta math specifically (hand-computed `max_hp(8)=25`/`max_hp(12)=32`
+against both a below-max and an exactly-at-max starting `current_hp`,
+confirming the flat additive rule and its clamp); a negative control (one
+Exp short of the next threshold: nothing changes, no signals fire); the
+Bulbasaur-style multi-move-per-level case (level 15 → both Poison Powder
+and Sleep Powder, two `move_learned` events); plain auto-learn under 4
+moves; the already-known-move skip (no duplicate, no signal); the
+4-moves-known skip case (`move_learn_skipped` fires, moveset untouched);
+the 4-moves-known forced-replacement-slot override case (slot 2
+overwritten, PP reset, the other 3 slots confirmed untouched); a
+dedicated evolution-interaction-safety test (mid-battle species
+reassignment from Bulbasaur to Charizard — both `MediumSlow` so the level
+math is unaffected, but the learnset is completely different — confirms
+the very next level crossed learns Charizard's own level-20 move (Rage)
+and NOT Bulbasaur's (Razor Leaf), proving the lookup is genuinely
+re-derived fresh rather than cached); and one full-battle integration
+test driving the real `_award_exp_for_fainted_opponent` call site
+end-to-end (a hand-verified award of 103 Exp crossing exactly one level
+threshold), confirming the wiring works through actual production
+dispatch, not just direct `_check_level_up` calls. All 30 passed clean on
+the first run.
+
+### Regression
+
+Two full sweeps via the hardened absolute-path invocation. **Sweep 1**:
+124 files, GRAND TOTAL 13147 — exactly the clean baseline (13117 prior +
+30 new), zero suites differed from clean. **Sweep 2**: 124 files, GRAND
+TOTAL 13146 — a direct line-by-line diff of every suite's own pass count
+between the two runs found exactly **one** differing suite,
+`m19a_gen1_test.tscn` (51/51 in sweep 1, 50/51 in sweep 2) — confirmed by
+name against CLAUDE.md's documented flaky-suite list (the "Hydro Pump
+does NOT trigger Rough Skin" whole-battle-aggregation bug from `[D4 CHEAP
+bundle]`), not a new or unexplained finding this time. Zero failures
+traceable to this session's own changes in either run.
+
+No commit made — per standing instruction, Rob commits.

@@ -163,7 +163,8 @@ not just what value it currently resolves to:**
   single-player, non-tournament context (see D4).
 
 **B4. Exp-Share / recipient-list dispatch — the highest-leverage open
-design question.** Source's real system is genuinely PARTY-WIDE: every
+design question. ✅ COMPLETE (`[M20 EXP implementation]`, 2026-07-15).**
+Source's real system is genuinely PARTY-WIDE: every
 `Cmd_getexp` call computes a recipient list from (a) which mons were sent
 into battle this fight and (b) which mons hold `HOLD_EFFECT_EXP_SHARE` or
 have the Gen6+ Exp Share flag active, then awards Exp to the whole list in
@@ -178,7 +179,8 @@ narrower system than source's real one — the exact same tension
 unavoidable rather than deferrable, since Exp gain (unlike EV gain) is
 M20's own primary deliverable. See D1.
 
-**B5. Level-up trigger + stat recalculation.** Needs a real `current_exp`
+**B5. Level-up trigger + stat recalculation. ✅ COMPLETE (`[M20b]`,
+2026-07-15)** — Needs a real `current_exp`
 field (doesn't exist anywhere yet) checked against
 `PokemonRegistry.get_exp_for_level` each time Exp is awarded, looping
 while the threshold is exceeded (a single big Exp award — e.g. from a
@@ -191,8 +193,14 @@ current HP typically increases by the exact delta in max HP on a level-up
 (not reset to full, not left unchanged) — confirmed this project has no
 existing precedent for this specific "stat recompute mid-battle,
 preserving the damage-taken proportion or delta" shape anywhere.
+**Resolved via direct source read** (`CalculateMonStats`,
+`pokemon.c:1429-1448`): the real rule is a flat ADDITIVE HP delta
+(`current_hp += new_max_hp - old_max_hp`, clamped), not proportional and
+not a full heal — see `docs/decisions.md`'s `[M20b]` entry for the full
+build writeup (`BattleManager._check_level_up`/`level_up` signal).
 
-**B6. Level-up move learning — a related but distinct concern from B5.**
+**B6. Level-up move learning — a related but distinct concern from B5.
+✅ COMPLETE (`[M20b]`, 2026-07-15)** —
 `data/learnsets.json`/`data/all_learnables.json` already exist (M15's
 pipeline, `[M18.5j]`'s own species_name wrapper) but have **zero runtime
 consumers** anywhere in battle logic yet (confirmed via
@@ -203,7 +211,14 @@ existing "no menu-legality/mid-battle-choice architecture" precedent — see
 CLAUDE.md's own Torment/Disable notes on this point) vs. building an
 actual move-replacement prompt, which would be the FIRST player-facing
 choice UI this project has ever needed mid-battle-flow (M1-M19 explicitly
-deferred all UI to last). See D2.
+deferred all UI to last). See D2. **Resolved**: source's real 3-way branch
+(`MonTryLearningNewMove`, `battle_script_commands.c:5553-5615`) is
+already-known→no-op, <4 moves→auto-learn, 4 moves known→a real player
+prompt this project has no UI for — Rob's decision was auto-skip by
+default with a `_force_move_replacement_slot` forcing seam (mirroring
+`forced_nature`/`forced_ivs`) wired now rather than deferred to M23. See
+`docs/decisions.md`'s `[M20b]` entry (`_try_learn_move_at_level`,
+`move_learned`/`move_learn_skipped` signals).
 
 **B7. Level cap / Rare Candy — likely out of scope, flagged not
 resolved.** Rare Candy is a non-held BAG item (already covered by
@@ -216,14 +231,20 @@ treating this as out of scope for M20's own core deliverable unless Rob
 has a specific in-game-progression reason to want it now (see D4).
 
 **B8. Evolution-on-level-up interaction — an ordering dependency, not a
-blocker.** The roadmap (per the M20-M32 discussion) already sequences
+blocker. ✅ Hook point delivered (`[M20b]`, 2026-07-15).** The roadmap (per
+the M20-M32 discussion) already sequences
 Evolution (M26) after Leveling (M20), so this is confirmed correctly
 ordered already, not a new finding — noted here only so a future session
 picking up M20 doesn't have to re-derive that the two milestones are
 related. Level-up-triggered evolution checks are M26's own concern, not
 M20's — M20 only needs to leave a clean signal/hook point (e.g. an
 analogous `pokemon_leveled_up` signal, mirroring `battle_ended`'s/
-`pokemon_fainted`'s existing shape) for M26 to later consume.
+`pokemon_fainted`'s existing shape) for M26 to later consume. **Delivered
+exactly this**: `BattleManager.level_up(pokemon, new_level)` fires once
+per level crossed, and (per this recon's own point 4) growth-rate/
+learnset are re-derived fresh from `PokemonRegistry` by the recipient's
+current `species.national_dex_num` on every call — no cached
+pre-evolution state anywhere for M26 to have to unwind.
 
 ## Section C — Explicitly out of scope / deferred, and why
 
@@ -294,11 +315,20 @@ bag-item/UI/progression-format concerns belonging to M25 or a future
    `gen_*.py`-and-new-`PokemonSpecies`-field pattern (`[M18.5d]`/
    `[M19-pre1]`'s own precedent). Shipped as `scripts/gen_exp_ev_
    yield_data.py` — see `docs/decisions.md`'s `[M20a]` entry.
-2. **M20b — Core Exp-gain-and-level-up dispatch**: `current_exp` field,
-   the exact GEN_9-config formula (B3), the recipient-list dispatch per
-   D1's resolution (B4), the level-up loop + stat recompute with correct
-   current-HP-delta handling (B5). The largest and most architecturally
-   consequential sub-tier — should not start until D1 is resolved.
+2. **M20b — Core Exp-gain-and-level-up dispatch. ✅ COMPLETE, in two
+   parts under slightly different labels than originally proposed here —
+   noted so a future reader isn't confused by the naming drift.** B3 (the
+   exact GEN_9-config base formula) + B4 (the recipient-list/participant
+   dispatch) + `current_exp` shipped earlier under the `[M20 EXP design]`/
+   `[M20 EXP implementation]` labels in `docs/decisions.md` (2026-07-15).
+   B5 (the level-up loop + stat recompute with the correct additive
+   current-HP-delta) + B6 (level-up move-learning) shipped in this same
+   day's own dedicated `[M20b]` session — see that entry in
+   `docs/decisions.md` for the full build writeup
+   (`BattleManager._check_level_up`/`_try_learn_move_at_level`,
+   `level_up`/`move_learned`/`move_learn_skipped` signals,
+   `_force_move_replacement_slot` seam). **M20b as a whole (all of B3-B6)
+   is now fully complete.**
 3. **M20c — EV-gain grant logic**: once M20b's dispatch shape exists,
    attach EV-yield-driven EV gain to the same recipient list (reusing
    B2's data) — this is the piece `docs/m18_5h_recon.md`'s own option (b)

@@ -1273,6 +1273,17 @@ func add_move(move: MoveData) -> void:
 		used_move_slots.append(false)
 
 
+# [M20b] Overwrites an existing move slot with a new move at full PP —
+# used by level-up move-learning when a Pokémon already knows 4 moves and a
+# forced replacement slot is supplied (see BattleManager._try_learn_move_at_level).
+func replace_move(slot: int, move: MoveData) -> void:
+	if slot < 0 or slot >= moves.size():
+		return
+	moves[slot] = move
+	current_pp[slot] = move.pp
+	used_move_slots[slot] = false
+
+
 func has_pp(move_index: int) -> bool:
 	if move_index < 0 or move_index >= current_pp.size():
 		return false

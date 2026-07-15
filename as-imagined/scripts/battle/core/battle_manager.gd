@@ -106,6 +106,7 @@ signal move_executed(attacker: BattlePokemon, defender: BattlePokemon, move: Mov
 signal pokemon_fainted(pokemon: BattlePokemon)
 signal battle_ended(winner_side: int)  # 0 = player/side-0 wins, 1 = opponent/side-1 wins
 signal exp_gained(recipient: BattlePokemon, amount: int)  # [M20] I.1/I.2/I.4
+signal level_up(pokemon: BattlePokemon, new_level: int)  # [M20b] fired once per level crossed
 signal status_damage(pokemon: BattlePokemon, amount: int)  # end-of-turn status tick
 signal move_skipped(pokemon: BattlePokemon, reason: String)  # sleep/freeze/para/confusion/flinch
 signal confusion_self_hit(pokemon: BattlePokemon, damage: int)
@@ -173,7 +174,8 @@ signal item_effect_triggered(pokemon: BattlePokemon, effect_key: String)   # M18
                                                                              # ability_triggered's shape for
                                                                              # items with no dedicated signal)
 signal pp_restored(pokemon: BattlePokemon, move_index: int, new_pp: int)   # M18d: Leppa Berry
-signal move_learned(pokemon: BattlePokemon, slot: int, new_move: MoveData)  # Mimic/Sketch overwrote a move slot
+signal move_learned(pokemon: BattlePokemon, slot: int, new_move: MoveData)  # Mimic/Sketch overwrote a move slot, or M20b level-up learned/replaced one
+signal move_learn_skipped(pokemon: BattlePokemon, move: MoveData)  # [M20b] 4 moves already known, no forced replacement slot set
 signal perish_song_activated(pokemon: BattlePokemon)  # Perish Song set a 3-turn countdown on this combatant
 signal pokemon_transformed(pokemon: BattlePokemon, copied_from: BattlePokemon)  # Transform succeeded
 # M14b signals
@@ -345,6 +347,15 @@ var _force_conversion2_pick: Variant = null
 # [D4 Bundle 6] Test seam: force Present's 0-255 roll. null = use real RNG.
 # < 102 = 40 power, < 178 = 80 power, < 204 = 120 power, else = heal branch.
 var _force_present_roll: Variant = null
+
+# [M20b] Level-up move-learning: which slot (0-3) to overwrite when a
+# Pokémon already knows 4 moves and would learn a new one. null = this
+# project has no UI yet (M23 is still ahead) to run the real yes/no +
+# replace-which-slot prompt, so the default is auto-skip (move_learn_skipped
+# fires, nothing changes). Set to 0-3 to force a specific slot to be
+# overwritten instead — wired now, not deferred, per Rob's explicit
+# instruction, mirroring forced_nature/forced_ivs' forcing-seam shape.
+var _force_move_replacement_slot: Variant = null
 
 # M17b: force which STAGE_* Moody raises (+2) / lowers (-1) this battle.
 # null = use real RNG. Mirrors the null-sentinel convention of the other _force_* seams.
@@ -6513,6 +6524,86 @@ func _award_exp_for_fainted_opponent(fainted: BattlePokemon) -> void:
 		var amount: int = _compute_exp_award(fainted, recipient, participant_count)
 		recipient.current_exp += amount
 		exp_gained.emit(recipient, amount)
+		_check_level_up(recipient)
+
+
+# [M20b] Derives the recipient's new level from its (now-updated) current_exp
+# total via a fresh re-scan of the growth-rate curve — mirroring source's real
+# GetLevelFromMonExp (pokemon.c:1466-1476), which is a monotonic re-derivation
+# from the total, NOT an increment-and-check-once loop. This means a single
+# large Exp award that crosses several level thresholds at once is handled
+# correctly in one pass, exactly like source. Growth rate and learnset are
+# both read FRESH from PokemonRegistry by the recipient's CURRENT
+# species.national_dex_num every time (never cached on the instance) — see
+# docs/m20_recon.md's M20b Section 4 for why this matters: it keeps this path
+# automatically safe for a future evolution mechanic (M26) without any
+# rework, since there's no stale species/learnset snapshot anywhere to
+# invalidate.
+#
+# For each level actually crossed: snapshot old_max_hp -> mutate level ->
+# recompute stats via the pre-existing, already-correct `_calculate_stats()`
+# -> apply the HP delta exactly as source does (`CalculateMonStats`,
+# pokemon.c:1429-1448): a flat ADDITIVE increase to current_hp equal to
+# however much max_hp just went up, clamped to the new max — not a
+# proportional heal, not a full heal, not left untouched. Then attempts to
+# learn every learnset entry at that exact level (a single level can teach
+# more than one move — e.g. Bulbasaur's own level 15 entry teaches both
+# Poison Powder and Sleep Powder — each processed independently in learnset
+# order, matching source's own per-level move-learning loop).
+func _check_level_up(recipient: BattlePokemon) -> void:
+	if recipient.species == null or recipient.level >= 100:
+		return
+	var dex: int = recipient.species.national_dex_num
+	var species_data: Dictionary = PokemonRegistry.get_species(dex)
+	var growth_rate: String = species_data.get("growth_rate", "")
+	var new_level: int = recipient.level
+	while new_level < 100 \
+			and PokemonRegistry.get_exp_for_level(growth_rate, new_level + 1) > 0 \
+			and PokemonRegistry.get_exp_for_level(growth_rate, new_level + 1) <= recipient.current_exp:
+		new_level += 1
+	if new_level <= recipient.level:
+		return
+	var learnset: Array = PokemonRegistry.get_learnset(dex)
+	for lvl in range(recipient.level + 1, new_level + 1):
+		var old_max_hp: int = recipient.max_hp
+		recipient.level = lvl
+		recipient._calculate_stats()
+		if recipient.max_hp > old_max_hp:
+			recipient.current_hp += (recipient.max_hp - old_max_hp)
+		if recipient.current_hp > recipient.max_hp:
+			recipient.current_hp = recipient.max_hp
+		level_up.emit(recipient, lvl)
+		for entry: Dictionary in learnset:
+			if int(entry.get("level", -1)) == lvl:
+				_try_learn_move_at_level(recipient, int(entry.get("move_id", -1)))
+
+
+# [M20b] Mirrors source's 3-way MonTryLearningNewMove branch
+# (Cmd_handlelearnnewmove, battle_script_commands.c:5553-5615): already known
+# -> no-op; fewer than 4 moves known -> auto-learn into the next open slot;
+# already at 4 moves -> source runs a real yes/no + replace-which-slot player
+# prompt this project has no UI for yet (M23 is still ahead), so the default
+# is auto-skip (move_learn_skipped fires, nothing changes) UNLESS
+# `_force_move_replacement_slot` is set (0-3), which forces that specific
+# slot to be overwritten instead — see that var's own doc comment.
+func _try_learn_move_at_level(recipient: BattlePokemon, move_id: int) -> void:
+	if move_id <= 0:
+		return
+	var candidate: MoveData = MoveRegistry.get_move(move_id)
+	if candidate == null:
+		return
+	if recipient.moves.has(candidate):
+		return
+	if recipient.moves.size() < 4:
+		recipient.add_move(candidate)
+		move_learned.emit(recipient, recipient.moves.size() - 1, candidate)
+		return
+	if _force_move_replacement_slot != null:
+		var slot: int = clampi(int(_force_move_replacement_slot), 0, 3)
+		recipient.replace_move(slot, candidate)
+		move_learned.emit(recipient, slot, candidate)
+	else:
+		move_learn_skipped.emit(recipient, candidate)
 
 
 # M17g: whether Neutralizing Gas is active anywhere on the field right now — checked
