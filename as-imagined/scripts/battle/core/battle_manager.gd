@@ -29,6 +29,70 @@ enum BattlePhase {
 	BATTLE_END,
 }
 
+# [M20] I.1: Gen VII+ level-difference scaling table, ported VERBATIM from
+# source (`sExperienceScalingFactors`, battle_script_commands.c:100-311) —
+# NOT recomputed from sqrt() at runtime. Source's own comment states this
+# returns `(i^2.5)/4`; verified numerically against 6 spot-checked entries
+# (i=2,11,20,100,150,210) before trusting it — see docs/decisions.md's
+# `[M20 EXP design]` entry for the full verification, including why the
+# `/4` is real and material (NOT a constant that cancels out of the ratio),
+# making a live floor(sqrt(i)*i^2) recomputation produce WRONG results.
+# Indexed 0-210 (covers every `level+level+10` combination up to level 100
+# twice over). Used as EXP_SCALING_FACTORS[A] / EXP_SCALING_FACTORS[C] in
+# `_compute_exp_award`, mirroring ApplyExperienceMultipliers:11188-11198's
+# `value *= table[A]; value /= table[C]; value += 1` exactly.
+const EXP_SCALING_FACTORS: Array[int] = [
+	0, 0, 1, 3, 8, 13, 22, 32, 45, 60, 79, 100, 124, 152, 183, 217, 256, 297,
+	343, 393, 447, 505, 567, 634, 705, 781, 861, 946, 1037, 1132, 1232, 1337,
+	1448, 1563, 1685, 1811, 1944, 2081, 2225, 2374, 2529, 2690, 2858, 3031,
+	3210, 3396, 3587, 3786, 3990, 4201, 4419, 4643, 4874, 5112, 5357, 5608,
+	5866, 6132, 6404, 6684, 6971, 7265, 7566, 7875, 8192, 8515, 8847, 9186,
+	9532, 9886, 10249, 10619, 10996, 11382, 11776, 12178, 12588, 13006,
+	13433, 13867, 14310, 14762, 15222, 15690, 16167, 16652, 17146, 17649,
+	18161, 18681, 19210, 19748, 20295, 20851, 21417, 21991, 22574, 23166,
+	23768, 24379, 25000, 25629, 26268, 26917, 27575, 28243, 28920, 29607,
+	30303, 31010, 31726, 32452, 33188, 33934, 34689, 35455, 36231, 37017,
+	37813, 38619, 39436, 40262, 41099, 41947, 42804, 43673, 44551, 45441,
+	46340, 47251, 48172, 49104, 50046, 50999, 51963, 52938, 53924, 54921,
+	55929, 56947, 57977, 59018, 60070, 61133, 62208, 63293, 64390, 65498,
+	66618, 67749, 68891, 70045, 71211, 72388, 73576, 74777, 75989, 77212,
+	78448, 79695, 80954, 82225, 83507, 84802, 86109, 87427, 88758, 90101,
+	91456, 92823, 94202, 95593, 96997, 98413, 99841, 101282, 102735, 104201,
+	105679, 107169, 108672, 110188, 111716, 113257, 114811, 116377, 117956,
+	119548, 121153, 122770, 124401, 126044, 127700, 129369, 131052, 132747,
+	134456, 136177, 137912, 139660, 141421, 143195, 144983, 146784, 148598,
+	150426, 152267, 154122, 155990, 157872, 159767,
+]
+
+# [M20] I.2: custom participant-count distribution table (original design,
+# NOT source-verified — see docs/m20_recon.md Section I.2). Keyed by however
+# many currently-alive participants (Section G1's eligibility rules,
+# unchanged) share this specific opponent kill.
+const DISTRIBUTION_PERCENT: Dictionary = {
+	1: 100,
+	2: 65,
+	3: 55,
+	4: 50,
+	5: 45,
+	6: 40,
+}
+
+# [M20] I.4: Difficulty Setting — a single mutually-exclusive enum (matching
+# this file's own BattlePhase convention), applied as the LAST multiplicative
+# step in Exp computation. Custom design, no source equivalent
+# (docs/m20_recon.md Section I.4).
+enum DifficultyMode {
+	NORMAL,
+	HARD,
+	CASUAL,
+}
+
+const DIFFICULTY_PERCENT: Dictionary = {
+	DifficultyMode.NORMAL: 100,
+	DifficultyMode.HARD: 50,
+	DifficultyMode.CASUAL: 135,
+}
+
 # Emitted whenever the phase changes (useful for debug / UI overlays).
 signal phase_changed(new_phase: BattlePhase)
 
@@ -41,6 +105,7 @@ signal action_needed(phase: BattlePhase)
 signal move_executed(attacker: BattlePokemon, defender: BattlePokemon, move: MoveData, damage: int)
 signal pokemon_fainted(pokemon: BattlePokemon)
 signal battle_ended(winner_side: int)  # 0 = player/side-0 wins, 1 = opponent/side-1 wins
+signal exp_gained(recipient: BattlePokemon, amount: int)  # [M20] I.1/I.2/I.4
 signal status_damage(pokemon: BattlePokemon, amount: int)  # end-of-turn status tick
 signal move_skipped(pokemon: BattlePokemon, reason: String)  # sleep/freeze/para/confusion/flinch
 signal confusion_self_hit(pokemon: BattlePokemon, damage: int)
@@ -402,6 +467,25 @@ var _helping_hand: Array[bool] = [false, false, false, false]
 var weather: int = WEATHER_NONE
 var weather_duration: int = 0  # turns remaining; 0 when no weather is active
 
+# [M20] I.4: Difficulty Setting — per-BattleManager-instance for now, the only
+# option available given this project has no persistent save/settings layer
+# yet (M32). Flagged for future migration once that layer exists, mirroring
+# `forced_nature`/`forced_ivs`'s own "built now, consumed later" precedent.
+var difficulty_mode: int = DifficultyMode.NORMAL
+
+# [M20] Exp-participant tracking, per OPPONENT field slot — mirrors source's
+# gSentPokesToOpponent[flank] (battle_util.c:1207-1234). Each entry is an
+# Array[int] of the PLAYER's own party indices that have been active against
+# whichever mon currently occupies that opponent field slot, since it last
+# changed. Reset via `_reset_exp_participants_for_opponent_slot` whenever a
+# NEW opponent occupies that slot; added to (never removed) via
+# `_add_exp_participant` whenever ANY player mon switches in. Membership
+# persists across a participant's own later fainting — eligibility to
+# actually RECEIVE Exp is governed separately, by aliveness at award time
+# (see `_award_exp_for_fainted_opponent`). See docs/m20_recon.md Section G1
+# for the full source citations this reproduces.
+var _exp_participants: Array = []
+
 # [Batch fix] Whether the CURRENTLY active `weather` was set by one of the 3
 # Primal-weather abilities (Desolate Land/Primordial Sea/Delta Stream). Since
 # `[M17d]` deliberately reuses the plain WEATHER_SUN/WEATHER_RAIN/
@@ -726,6 +810,13 @@ func get_phase() -> BattlePhase:
 # --- Phase handlers ---
 
 func _phase_battle_start() -> void:
+	# [M20] Exp-participant tracking, initial state — mirrors source's
+	# ResetSentPokesToOpponentValue (battle_util.c:1193-1204): every opponent
+	# field slot starts out tracking whichever PLAYER combatants are the
+	# starting leads.
+	_exp_participants = []
+	for _f in range(_active_per_side):
+		_exp_participants.append(_parties[0].active_indices.duplicate())
 	# Fire switch-in hazard and ability effects for all starting Pokémon (they enter
 	# simultaneously). Hazards before abilities — see _apply_switch_in_hazards for the
 	# source-confirmed FIRST_EVENT_BLOCK ordering.
@@ -2651,6 +2742,11 @@ func _phase_move_execution() -> void:
 		_reset_mon_ability(incoming)
 		_reset_mon_mimicked_move(incoming)
 		_reset_mon_transform(incoming)
+		# [M20] Exp-participant tracking — see _do_voluntary_switch's own comment.
+		if attacker_side == 0:
+			_add_exp_participant(bp_slot)
+		else:
+			_reset_exp_participants_for_opponent_slot(bp_field_slot)
 		pokemon_switched_out.emit(attacker, attacker_side)
 		pokemon_switched_in.emit(incoming, attacker_side, bp_slot)
 		baton_passed.emit(attacker, incoming)
@@ -5458,6 +5554,7 @@ func _phase_faint_check() -> void:
 			# Source: FaintClearSetData in battle_main.c clears gBattleMons[].volatiles.
 			_clear_volatiles(combatant)
 			pokemon_fainted.emit(combatant)
+			_award_exp_for_fainted_opponent(combatant)
 			# [D3 turn-order/event-tracker batch] Retaliate — set the FAINTED
 			# mon's own side's timer to 2 (side-wide, never the opposing side).
 			# See MoveData.is_retaliate's own doc comment for full source citations.
@@ -5510,6 +5607,7 @@ func _phase_faint_check() -> void:
 					_clear_volatiles(killer)
 					destiny_bond_triggered.emit(combatant, killer)
 					pokemon_fainted.emit(killer)
+					_award_exp_for_fainted_opponent(killer)
 
 			# M17n-8: Aftermath / Innards Out — retaliate against whoever's hit caused
 			# this faint. Independent lookup from Destiny Bond's own `killer` above
@@ -5532,6 +5630,7 @@ func _phase_faint_check() -> void:
 					retal_killer.fainted = true
 					_clear_volatiles(retal_killer)
 					pokemon_fainted.emit(retal_killer)
+					_award_exp_for_fainted_opponent(retal_killer)
 
 			# [D4 Bundle 7] Grudge — reuses the SAME retal_killer/retal_move
 			# lookup Aftermath/Innards Out just used above (FAINT_BLOCK_DO_
@@ -5701,6 +5800,7 @@ func _phase_end_of_turn() -> void:
 				if mon.current_hp == 0:
 					mon.fainted = true
 					pokemon_fainted.emit(mon)
+					_award_exp_for_fainted_opponent(mon)
 
 	# ── [D4 CHEAP bundle] Aqua Ring / Ingrain end-of-turn self-heal
 	# (ENDTURN_AQUA_RING=1557, ENDTURN_INGRAIN=1558 in source's own handler
@@ -5753,6 +5853,7 @@ func _phase_end_of_turn() -> void:
 		if mon.current_hp == 0:
 			mon.fainted = true
 			pokemon_fainted.emit(mon)
+			_award_exp_for_fainted_opponent(mon)
 
 	# ── [D1] Lock-On / Mind Reader — 2-tick countdown ─────────────────────────
 	# Source: battle_end_turn.c L68-69: `if (lockOn > 0 && --lockOn == 0)
@@ -5809,6 +5910,7 @@ func _phase_end_of_turn() -> void:
 			if mon.current_hp == 0:
 				mon.fainted = true
 				pokemon_fainted.emit(mon)
+				_award_exp_for_fainted_opponent(mon)
 		elif dmg < 0:
 			# M17d: Poison Heal — negative return means heal, not damage.
 			mon.current_hp = min(mon.max_hp, mon.current_hp - dmg)
@@ -5838,6 +5940,7 @@ func _phase_end_of_turn() -> void:
 		if mon.current_hp == 0:
 			mon.fainted = true
 			pokemon_fainted.emit(mon)
+			_award_exp_for_fainted_opponent(mon)
 
 	# ── [M18.5f] Bind/Wrap-family recurring damage (ENDTURN_WRAP, source's handler
 	# table slot right after Burn/Frostbite/Nightmare/Curse, before Salt Cure) ──────
@@ -5871,6 +5974,7 @@ func _phase_end_of_turn() -> void:
 		if mon.current_hp == 0:
 			mon.fainted = true
 			pokemon_fainted.emit(mon)
+			_award_exp_for_fainted_opponent(mon)
 
 	# ── [D4 Bundle 6] Octolock — recurring -1 Def/-1 Sp. Defense tick,
 	# positioned right after Wrap (source: battle_end_turn.c's own handler
@@ -5904,6 +6008,7 @@ func _phase_end_of_turn() -> void:
 		if mon.current_hp == 0:
 			mon.fainted = true
 			pokemon_fainted.emit(mon)
+			_award_exp_for_fainted_opponent(mon)
 
 	# M12: Leftovers EOT heal (FIRST_EVENT_BLOCK_HEAL_ITEMS, after status damage).
 	# Source: TryLeftovers (battle_hold_effects.c L634–648); fires via FIRST_EVENT_BLOCK_HEAL_ITEMS
@@ -5938,6 +6043,7 @@ func _phase_end_of_turn() -> void:
 			if mon.current_hp == 0:
 				mon.fainted = true
 				pokemon_fainted.emit(mon)
+				_award_exp_for_fainted_opponent(mon)
 
 	# M18p: Sticky Barb's end-of-turn self-damage half (TryStickyBarbOnEndTurn) — NOT
 	# contact-related at all, unconditional every end of turn, gated by the HOLDER's
@@ -5955,6 +6061,7 @@ func _phase_end_of_turn() -> void:
 			if mon.current_hp == 0:
 				mon.fainted = true
 				pokemon_fainted.emit(mon)
+				_award_exp_for_fainted_opponent(mon)
 
 	# M18i: Status Orbs (Flame Orb/Toxic Orb) — checked EVERY end of turn (no
 	# turn-counter mechanic exists in source; see ItemManager.status_orb_status's
@@ -6022,6 +6129,7 @@ func _phase_end_of_turn() -> void:
 				mon.current_hp = 0
 				mon.fainted = true
 				pokemon_fainted.emit(mon)
+				_award_exp_for_fainted_opponent(mon)
 			else:
 				mon.perish_song_timer -= 1
 
@@ -6326,6 +6434,87 @@ func _get_live_opponents(mon: BattlePokemon) -> Array:
 	return opponents
 
 
+# [M20] Resets ONE opponent field slot's tracked participant list to whichever
+# PLAYER combatants are CURRENTLY active — called whenever a new opponent
+# occupies that slot (switch-in, forced switch-in, faint replacement, Baton
+# Pass). Mirrors source's OpponentSwitchInResetSentPokesToOpponentValue
+# (battle_util.c:1207-1222).
+func _reset_exp_participants_for_opponent_slot(field_slot: int) -> void:
+	while _exp_participants.size() <= field_slot:
+		_exp_participants.append([])
+	_exp_participants[field_slot] = _parties[0].active_indices.duplicate()
+
+
+# [M20] Adds a PLAYER party index to EVERY currently-tracked opponent field
+# slot's participant list — called whenever any player mon switches in.
+# Mirrors source's UpdateSentPokesToOpponentValue's player-switch branch
+# (battle_util.c:1224-1234): a new player combatant becomes a participant
+# against EVERY opponent currently on the field, not just one flank.
+func _add_exp_participant(player_party_index: int) -> void:
+	for f in range(_exp_participants.size()):
+		if not _exp_participants[f].has(player_party_index):
+			_exp_participants[f].append(player_party_index)
+
+
+# [M20] I.1: Gen VII+ base per-recipient Exp value (source-verified — see
+# docs/decisions.md's `[M20 EXP design]` entry for the full citation trail),
+# then I.2 (custom participant-count distribution %) and I.4 (Difficulty
+# Setting %) applied as two further truncating integer multiplies, in that
+# exact order (base -> distribution -> difficulty). B carries zero modifiers
+# this session (Lucky Egg/Traded/Affection/Exp Charm/unevolved-bonus all
+# confirmed unbuilt in this project — see the recon's own I.1 writeup).
+func _compute_exp_award(fainted: BattlePokemon, recipient: BattlePokemon,
+		participant_count: int) -> int:
+	var fainted_level: int = fainted.level
+	var b: int = (fainted.species.exp_yield * fainted_level) / 5
+	var max_index: int = EXP_SCALING_FACTORS.size() - 1
+	var a_index: int = clampi(fainted_level * 2 + 10, 0, max_index)
+	var c_index: int = clampi(fainted_level + recipient.level + 10, 0, max_index)
+	var value: int = (b * EXP_SCALING_FACTORS[a_index]) / EXP_SCALING_FACTORS[c_index]
+	value += 1
+	var dist_pct: int = DISTRIBUTION_PERCENT.get(participant_count, DISTRIBUTION_PERCENT[6])
+	value = (value * dist_pct) / 100
+	var diff_pct: int = DIFFICULTY_PERCENT.get(difficulty_mode, 100)
+	value = (value * diff_pct) / 100
+	return value
+
+
+# [M20] Awards Exp to every currently-alive tracked participant when an
+# OPPONENT-side (side 1) Pokémon faints — mirrors source's
+# `IsOnPlayerSide(gBattlerFainted)` gate in Cmd_getexp (a player-side faint
+# never awards Exp; a no-op here by construction since `side != 1` returns
+# early). Eligibility is Section G1's two-layer rule: tracked in
+# `_exp_participants[field_slot]` (ever active against this specific
+# opponent instance) AND alive right now (`current_hp > 0` — this project's
+# own standing convention is to check current_hp directly rather than
+# `.fainted` for a synchronous within-function aliveness check, since
+# `.fainted` is only set later in a separate phase for some callers).
+# Called from every `pokemon_fainted.emit(...)` site in this file.
+func _award_exp_for_fainted_opponent(fainted: BattlePokemon) -> void:
+	var idx: int = _combatants.find(fainted)
+	if idx < 0:
+		return
+	var side: int = idx / _active_per_side
+	if side != 1:
+		return
+	var field_slot: int = idx % _active_per_side
+	if field_slot >= _exp_participants.size():
+		return
+	var player_party: BattleParty = _parties[0]
+	var alive_participants: Array = []
+	for party_idx in _exp_participants[field_slot]:
+		var member: BattlePokemon = player_party.members[party_idx]
+		if member.current_hp > 0:
+			alive_participants.append(member)
+	if alive_participants.is_empty():
+		return
+	var participant_count: int = alive_participants.size()
+	for recipient: BattlePokemon in alive_participants:
+		var amount: int = _compute_exp_award(fainted, recipient, participant_count)
+		recipient.current_exp += amount
+		exp_gained.emit(recipient, amount)
+
+
 # M17g: whether Neutralizing Gas is active anywhere on the field right now — checked
 # across ALL live combatants (both sides), unlike _get_live_opponents (one side only),
 # since Neutralizing Gas suppresses field-wide including the holder's own side.
@@ -6545,6 +6734,7 @@ func _apply_switch_in_hazards(new_mon: BattlePokemon, mon_side: int) -> void:
 			if new_mon.current_hp == 0:
 				new_mon.fainted = true
 				pokemon_fainted.emit(new_mon)
+				_award_exp_for_fainted_opponent(new_mon)
 
 	# Toxic Spikes — grounded-only; a grounded Poison-type ABSORBS (clears) it instead of
 	# being poisoned — this happens regardless of Heavy Duty Boots (source checks
@@ -6580,6 +6770,7 @@ func _apply_switch_in_hazards(new_mon: BattlePokemon, mon_side: int) -> void:
 			if new_mon.current_hp == 0:
 				new_mon.fainted = true
 				pokemon_fainted.emit(new_mon)
+				_award_exp_for_fainted_opponent(new_mon)
 
 	# [D4 Bundle 4] Sticky Web — grounded-only (like Spikes), gated by Heavy
 	# Duty Boots, but deliberately NOT Magic Guard (this is a stat-stage
@@ -7195,6 +7386,12 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 	_reset_mon_ability(new_mon)
 	_reset_mon_mimicked_move(new_mon)
 	_reset_mon_transform(new_mon)
+	# [M20] Exp-participant tracking: a player switch-in adds to every tracked
+	# opponent's participant list; an opponent switch-in resets its own slot.
+	if side == 0:
+		_add_exp_participant(slot)
+	else:
+		_reset_exp_participants_for_opponent_slot(field_slot)
 	pokemon_switched_out.emit(old_mon, side)
 	pokemon_switched_in.emit(new_mon, side, slot)
 	# Switch-in hazards then abilities fire for the incoming Pokémon.
@@ -7226,6 +7423,11 @@ func _do_forced_switch_in(side: int, slot: int, field_slot: int = 0) -> void:
 	_reset_mon_ability(new_mon)
 	_reset_mon_mimicked_move(new_mon)
 	_reset_mon_transform(new_mon)
+	# [M20] Exp-participant tracking — see _do_voluntary_switch's own comment.
+	if side == 0:
+		_add_exp_participant(slot)
+	else:
+		_reset_exp_participants_for_opponent_slot(field_slot)
 	# Switch-in hazards then abilities fire for the forced-in Pokémon.
 	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
@@ -7247,6 +7449,11 @@ func _do_switch_in(combatant_idx: int, slot: int) -> void:
 	_reset_mon_ability(new_mon)
 	_reset_mon_mimicked_move(new_mon)
 	_reset_mon_transform(new_mon)
+	# [M20] Exp-participant tracking — see _do_voluntary_switch's own comment.
+	if side == 0:
+		_add_exp_participant(slot)
+	else:
+		_reset_exp_participants_for_opponent_slot(field_slot)
 	pokemon_switched_in.emit(new_mon, side, slot)
 	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)

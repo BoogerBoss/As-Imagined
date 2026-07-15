@@ -112,6 +112,15 @@ var nature: int = NATURE_HARDY
 # (move.is_return_power / move.is_frustration_power).
 var friendship: int = 50
 
+# [M20] Accumulated Exp gained this battle from `BattleManager
+# ._award_exp_for_fainted_opponent`. Pure accumulator only — no level-up
+# threshold check, stat recompute, or move-learning dispatch is wired to it
+# yet (that remains unbuilt, deferred territory per the M20 recon's own
+# Section B5/B6, out of scope for the I.1/I.2/I.4 base-formula work this
+# field supports). Never reset by `_clear_volatiles`/switching — persists
+# for the whole battle like `level`/`friendship`.
+var current_exp: int = 0
+
 # Current battle HP and computed stats (not base stats — those live on species)
 var current_hp: int = 0
 var max_hp: int = 0

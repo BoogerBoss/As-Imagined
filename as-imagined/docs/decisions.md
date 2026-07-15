@@ -24570,3 +24570,267 @@ move-count or exclusion-accounting changes). `docs/move_status_table.md`:
 **717 implemented / 217 excluded / 0 residual / 0 needs-manual-review**.
 
 No commit made — per standing instruction, Rob commits.
+
+## [M19.5 addendum] — Field-coverage audit findings, documented only, no
+## implementation (2026-07-14, same day)
+
+A follow-up field-coverage audit (auditing `gen_moves.py`'s fields against
+`moves_info.h` more broadly than just the 14 ban-flag bits `[M19.5]`'s
+Task 1 covered) surfaced 2 candidate findings. One did not survive
+verification against the actual codebase state and was dropped entirely
+before being written up; the other 2 items below are documented as-is,
+matching the same "known, accepted limitation" precedent already
+established for Perish Body (`[M17n-11]`'s exclusion, reconfirmed at the
+`[M17 Final Reconciliation]`) — not fixed, not scheduled, just recorded.
+
+**Dropped, not documented**: an initial claim that Fling(374)/Natural
+Gift(363) "currently ship with flat/non-varying damage regardless of the
+held item's identity" did not hold up under direct verification. Both
+moves are listed in `docs/move_status_table.md` as **Excluded**, under
+Rob's own `[M19-exclusions]` list (permanently excluded, no shared
+technical blocker — a design decision, not a technical gap) — neither has
+a `.tres` file, neither has an entry in `gen_moves.py`. This is already
+independently documented in `ability_manager.gd:972-975`'s own comment
+("neither Fling nor Natural Gift exist in this project's move roster
+(confirmed via grep), a known, out-of-scope gap rather than a silently-
+dropped check"), written during Magician's `[M17j]` implementation. There
+is no "ignores the item's identity" behavior to record, since the moves
+were never built — the original claim was simply incorrect, confirmed via
+a direct grep/status-table check before writing anything into this file.
+
+**skyBattleBanned — confirmed fully moot, no action needed, ever, unless
+that changes.** No Sky Battle system exists anywhere in this project, nor
+is one planned anywhere in the documented roadmap (checked CLAUDE.md and
+every `docs/` file referencing future milestones). This matches the
+existing `gen_moves.py:4008` comment on Sky Drop's own entry ("gravityBanned
+/skyBattleBanned are moot (neither Gravity nor Sky Battle exists in this
+project)") — this addendum is a reconfirmation, not a new finding.
+
+**Audit methodology sanity check**: before trusting this audit's own 2
+new candidate findings, its methodology was checked against the 4
+previously-known, already-fixed field-coverage gaps this project has
+independently discovered and closed over the course of M19 (`snatch_
+affected` — `[D4 Bundle 8]`; `two_typed_move`/`second_type` — `[D4 Bundle
+9]`'s Flying Press; `target` — `[Perish Song]`'s `TARGET_ALL_BATTLERS`;
+`stat_change_bypasses_type_gate` — `[M19.5]` Task 5). Confirmed via direct
+grep of `scripts/gen_move_status_table.py`'s field-recognition allowlist
+that all 4 are already present (lines 328-334) — the audit correctly
+rediscovered every known gap before surfacing its 2 candidate findings,
+one of which (Fling/Natural Gift) still turned out to be wrong on
+independent verification. Documented here as the reason the surviving
+skyBattleBanned finding is trusted despite the other one not being.
+
+No code changes, no new tests. Docs-only, closing out M19.5 for real.
+
+## [M20 EXP design] — Gen VII+ base formula verified against source,
+## final 4-piece design locked in, no implementation (2026-07-15)
+
+Report-only Step 0 pass (three rounds total: multi-participant split
+detail, traded-bonus/Exp-All follow-up, and this final base-formula
+verification), superseding the earlier Gen III formula target
+(`[M20 Recon]` Sections F/G/H) for the base per-recipient VALUE only —
+the eligibility rules (`IsValidForBattle`, `gSentPokesToOpponent`,
+Section G1) and the summation-before-multiplier finding (Section H1)
+are unchanged and still apply. Full detail lives in `docs/m20_recon.md`
+Section I; this entry is the decisions-log summary.
+
+**Base formula (I.1), source-verified with one material correction to
+the design draft**: confirmed live via the same `B_SCALED_EXP`-gated
+code already found controlling this project's `GEN_9` config
+(`Cmd_getexp`'s `/5` divisor, `ApplyExperienceMultipliers`'s
+level-scaling block). The draft's `floor(sqrt(A)*A^2)` / `floor(sqrt(C)
+*C^2)` is **not quite right** — source's actual 211-entry precomputed
+table (`sExperienceScalingFactors[]`, `battle_script_commands.c:100-311`)
+encodes `floor(i^2 * sqrt(i) / 4)` per its own source comment, verified
+numerically against two real table entries (`table[11]=100`,
+`table[20]=447`, both matching `floor(i^2.5/4)` exactly and NOT matching
+the `/4`-omitted draft formula — e.g. at `i=2` the draft gives `floor
+(5.657)=5` but the real table value is `1`). **Recommend porting the
+literal table verbatim** rather than computing `sqrt()` at runtime,
+matching this project's existing exact-table-porting precedent
+(`exp_curves.json`). Confirmed `A`/`C`'s index formulas otherwise match
+the draft exactly (`A=faintedLevel*2+10`, `C=faintedLevel+
+recipientLevel+10`, the latter fetched fresh per recipient — directly
+confirms each recipient computes their own full value independently,
+not from a shared/opponent-only C). Confirmed zero float/live-sqrt
+anywhere at runtime — pure integer table lookup, `u64` only to avoid
+multiply overflow.
+
+**B's modifiers — none implementable in this project today, confirmed
+individually via source and this project's own code**: Lucky Egg,
+Traded/"Outsider" bonus (no trade system or OT tracking exists at all),
+Affection (`B_AFFECTION_MECHANICS=TRUE` unconditionally in source, not
+gated to `GEN_LATEST` like most `B_*` flags — an always-on mechanic in
+the reference engine, still unbuilt here), and Exp Charm (a bag item,
+out of scope for `ItemManager`'s held-item shape anyway) are all
+confirmed absent from this project via direct grep. **A 5th modifier not
+in the original design list was found and flagged, not silently
+added or dropped**: `B_UNEVOLVED_EXP_MULTIPLIER` (`×4915/4096≈1.2003`,
+live at `GEN_9`, needs `IsMonPastEvolutionLevel`-equivalent data more
+naturally owned by the future M26 Evolution milestone). **Net: B =
+`expYield * faintedLevel / 5`, zero modifiers, for M20's actual build.**
+
+**I.2 (custom distribution table, 100/65/55/50/45/40% for 1-6
+participants)** and **I.4 (Difficulty Setting: NORMAL ×1.0 / HARD ×0.5 /
+CASUAL ×1.35, applied last)** are original design, not checked against
+source, per instruction — both confirmed final and in scope for this
+session's eventual implementation (not yet authorized as of this entry).
+Difficulty Setting confirmed as a genuine mutually-exclusive Godot
+`enum DifficultyMode` (matching `BattleManager`'s own existing
+`enum BattlePhase` convention), stored as a new `var difficulty_mode:
+int` directly on `BattleManager` — the only currently-available option
+given this project has no persistent save/settings layer yet (M32),
+explicitly flagged as needing a future migration once that layer exists,
+mirroring `forced_nature`/`forced_ivs`'s own "built now, consumed by a
+later milestone" precedent.
+
+**I.3 (20% automatic non-participant bonus) is explicitly DEFERRED, NOT
+built this session** — and is a **correction to `[M20 Recon]` Section
+G's own "classic held-item Exp Share is the right target" conclusion**:
+the real, final target for non-participants is the **Gen VI+ "always-on,
+no item required" party-wide mechanic**, not the older held-item
+version Section G investigated. A dated correction note was added
+directly into Section G itself (not just here) so a future session
+reading that section in isolation doesn't build the wrong mechanic. The
+exact figure (**20%**) and the "automatic, no item, Gen VI+ style"
+characterization are preserved in `docs/m20_recon.md` Section I.3 as the
+spec for whenever this gets picked up — matching this project's Perish
+Body-exclusion-note precedent for consciously-deferred, clearly-spec'd
+future work.
+
+No code or test changes — verification and design documentation only.
+Implementation of I.1/I.2/I.4 awaits explicit authorization per this
+Step 0's own closing instruction.
+
+## [M20 EXP implementation] — I.1 (Gen VII+ base formula) + I.2
+## (distribution table) + I.4 (Difficulty Setting) built; I.3 remains
+## deferred (2026-07-15)
+
+First real Exp-gain/leveling infrastructure this project has ever built
+— confirmed genuinely greenfield per `[M20 Recon]`'s own finding
+(`current_exp`/`level_up` were absent everywhere before this session).
+Implements exactly the 3 pieces authorized in `[M20 EXP design]`, using
+the literal 211-entry table (not runtime `sqrt()`), with B carrying zero
+modifiers and `B_UNEVOLVED_EXP_MULTIPLIER`'s absence noted as intentional
+pending M26. **The 386-species `exp_yield` data-pipeline backfill (the
+recon's own M20a) was deliberately NOT done this session** — the
+mechanism reads `BattlePokemon.species.exp_yield` directly (already a
+real field, just not yet populated per-species in `pokemon.json`), and
+nothing in this project's current architecture converts `pokemon.json`
+rows into `PokemonSpecies` objects at runtime yet (confirmed via the
+same M18.5d-era finding: species data lives only as bulk JSON +
+`PokemonRegistry`'s dictionary API, with zero consumers building real
+`PokemonSpecies` instances from it) — so the backfill has zero effect on
+anything testable this session and was left as a separate, still-open
+M20a item, exactly as the recon's own proposed sub-tier split intended.
+
+**New `BattleManager.EXP_SCALING_FACTORS`**: the literal 211-entry table
+ported verbatim from `sExperienceScalingFactors`
+(`battle_script_commands.c:100-311`), copy-pasted then independently
+re-verified via a Python round-trip diff against the source-extracted
+array (exact match, all 211 entries) — not retyped by hand and trusted.
+
+**New participant-tracking infrastructure** — a genuinely new mechanism,
+not a small addition, since `[M20 Recon]`'s own Section G1 confirmed
+this project had zero "who fought this specific opponent" tracking
+before now. `BattleManager._exp_participants: Array` (one entry per
+opponent field slot) mirrors source's `gSentPokesToOpponent[flank]`
+exactly: `_reset_exp_participants_for_opponent_slot(field_slot)` resets
+one slot to the player's currently-active combatants (mirrors
+`OpponentSwitchInResetSentPokesToOpponentValue`), called whenever an
+OPPONENT mon switches in at that slot; `_add_exp_participant(idx)` adds
+a player party index to EVERY tracked slot (mirrors
+`UpdateSentPokesToOpponentValue`'s player-switch branch), called
+whenever a PLAYER mon switches in. Wired into all 4 switch-in call sites
+this project's `[M17h]`-era convention already established
+(`_do_voluntary_switch`, `_do_forced_switch_in`, `_do_switch_in`, the
+Baton Pass inline block) plus a one-time initialization in
+`_phase_battle_start` (mirrors `ResetSentPokesToOpponentValue`). Per this
+project's own standing convention ("check `current_hp > 0`, not
+`.fainted`, for synchronous within-function aliveness checks"),
+eligibility-to-RECEIVE is checked via `current_hp > 0` at award time,
+layered on top of `_exp_participants`' own tracked-membership check —
+reproducing Section G1's confirmed two-layer rule exactly (membership
+persists across a participant's own later fainting; only aliveness at
+the moment of award excludes it).
+
+**New `BattleManager._compute_exp_award(fainted, recipient,
+participant_count)`**: I.1 (B = `species.exp_yield * fainted.level / 5`,
+zero modifiers, then `× EXP_SCALING_FACTORS[A] / EXP_SCALING_FACTORS[C]`,
+`+1`, exactly mirroring `ApplyExperienceMultipliers`'s own operation
+order) → I.2 (`× DISTRIBUTION_PERCENT[participant_count] / 100`) → I.4
+(`× DIFFICULTY_PERCENT[difficulty_mode] / 100`) — three sequential
+truncating integer multiplies, in that exact order, per the design's own
+explicit ordering requirement. `A`/`C` indices `clampi`'d defensively
+against the table's bounds (211 entries covers level ≤100 twice over;
+this project has no `MAX_LEVEL` enforcement of its own, so the clamp is
+a pure safety net, not a new game rule).
+
+**New `BattleManager._award_exp_for_fainted_opponent(fainted)`**: the
+`side != 1` early return reproduces source's `IsOnPlayerSide(
+gBattlerFainted)` gate exactly (a player-side faint is a guaranteed
+no-op). Wired after all 14 `pokemon_fainted.emit(...)` call sites in
+`battle_manager.gd` (confirmed via a full-file grep before and after —
+`_phase_faint_check`'s main faint loop, Destiny Bond's killer-faint,
+Aftermath/Innards-Out's retaliation-faint, and every `_phase_end_of_turn`
+status/weather/hazard/item-damage faint site, plus the 2 switch-in-
+triggered hazard-faint sites) — ensuring Exp is awarded for an opponent
+fainting from ANY cause, not just a direct damaging hit, matching real
+games' behavior.
+
+**New `BattlePokemon.current_exp: int = 0`**: a pure accumulator only —
+no level-up threshold check, stat recompute, or move-learning dispatch
+is wired to it (that remains the recon's own still-unbuilt Section
+B5/B6, explicitly out of scope for this session).
+
+**New `BattleManager.difficulty_mode: int`** (`enum DifficultyMode {
+NORMAL, HARD, CASUAL }`, matching this file's own existing `enum
+BattlePhase` convention) stored directly on `BattleManager`, per
+`[M20 EXP design]`'s own analysis — the only option available given
+this project has no persistent save/settings layer yet (M32), flagged
+there for future migration.
+
+**New `scenes/battle/m20_exp_test.gd`/`.tscn`**: 34/34 assertions across
+8 sections — data integrity (table size/spot-values, distribution/
+difficulty dicts); direct `_compute_exp_award` unit tests including the
+same-level self-check (A_index==C_index reduces the formula to a clean
+`B+1`, independent of the scaling table's own correctness) and an
+asymmetric-levels worked example (both hand-verified via Python before
+being trusted as test assertions); full single-participant and doubles
+2-participant integration tests (each recipient's share independently
+computed from their OWN level, then commonly scaled by the same
+participant-count %); the switched-out-but-alive-still-counts and
+fainted-before-the-kill-excluded eligibility pair (Section G1's two-
+layer rule, now proven end-to-end); the opponent-switch-in-resets-
+tracking scenario (a 2-opponent trainer-battle-shaped sequence proving a
+still-alive prior participant is correctly EXCLUDED from a later
+opponent's kill once that opponent's own slot resets); Difficulty
+Setting proven through a real end-to-end battle (not just a direct
+call); and the player-side-faint negative control. **One real test-
+authoring bug caught and fixed on the first run**: the doubles 2-
+participant test's own hand-verified expected value for the FASTER
+attacker was computed against the wrong recipient level (10, from a
+different worked example) rather than the level actually assigned to
+that fixture (20, the SAME level as the fainted opponent, which
+correctly reduces to the same-level `B+1` case, not the asymmetric one)
+— confirmed via direct debug printing before fixing, not guessed;
+stable across 4 reruns after.
+
+Full regression: `scripts/count_assertions.sh` run twice via the
+hardened absolute-path invocation (one dispatch attempt hit the still-
+separately-flagged transient empty-log/exit-1 failure with no
+directory-drift cause found, resolved by a bare retry — consistent with
+the same still-open flakiness class noted in `[Sweep-dispatch fix]`).
+Sweep 1: 122 files, GRAND TOTAL 12726 (one known pre-existing flake,
+`m17l_test.tscn` 44/45). Sweep 2: 122 files, GRAND TOTAL 12725 (two
+DIFFERENT known pre-existing flakes fired instead — `m18q_test.tscn`
+15/16 and `m19a_gen1_test.tscn` 50/51 — while `m17l_test` passed clean
+that run). Both outcomes exactly match CLAUDE.md's own documented
+flaky-suite class (a different subset flaking each run, scattered noise
+across independent RNG-based suites unrelated to this session's
+changes) — **12727 is the clean baseline with zero flakes firing**
+(12693 prior + 34 new), confirmed via direct arithmetic against both
+observed totals. Zero failures traceable to this session's own changes
+in either run.
+
+No commit made — per standing instruction, Rob commits.
