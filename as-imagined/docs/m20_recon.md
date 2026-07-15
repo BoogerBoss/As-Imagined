@@ -75,23 +75,33 @@ share a mechanism with its neighbors without individual verification at
 implementation time (the standing discipline this project has followed
 since M17n).
 
-**B1. Exp-yield data population (386-species gap).** `exp_yield` is
-already a schema field, but needs real per-species values extracted from
-source (`gSpeciesInfo[].expYield` across `src/data/pokemon/species_info/
-gen_*_families.h`) into `pokemon.json`, the same shape as the `growth_rate`
-column that's already there. Cheap, well-precedented (same pattern as
-`[M19-pre1]`'s weight/friendship extraction) — no rerunnable extractor
-tool exists in this repo for any species field (a recurring, expected gap
-class per multiple prior sessions), so a new one-off script would be
-needed, matching `scripts/gen_weight_data.py`'s own precedent.
+**B1. Exp-yield data population (386-species gap). ✅ COMPLETE (`[M20a]`,
+2026-07-15)** — `exp_yield` is already a schema field, but needs real
+per-species values extracted from source (`gSpeciesInfo[].expYield` across
+`src/data/pokemon/species_info/gen_*_families.h`) into `pokemon.json`, the
+same shape as the `growth_rate` column that's already there. Cheap, well-
+precedented (same pattern as `[M19-pre1]`'s weight/friendship extraction)
+— no rerunnable extractor tool exists in this repo for any species field
+(a recurring, expected gap class per multiple prior sessions), so a new
+one-off script would be needed, matching `scripts/gen_weight_data.py`'s
+own precedent. **Shipped as `scripts/gen_exp_ev_yield_data.py`** — see
+`docs/decisions.md`'s `[M20a]` entry for the full extraction methodology
+(3 value shapes: literal/ternary/named-macro, all resolved against this
+project's real GEN_9 config) and 7 spot-checked reference values.
 
 **B2. EV-yield data population (386-species gap, the larger of the two
-data-pipeline items).** Source's `evYield_HP`/`evYield_Attack`/
-`evYield_Defense`/`evYield_SpAttack`/`evYield_SpDefense`/`evYield_Speed` (6
-fields per species, most species yielding 1-3 total points across 1-2
-stats) need new `PokemonSpecies` fields plus a 386-row extraction pass —
-already flagged as the single largest data-pipeline item M18.5h's own
-Section D2 deferred here in full.
+data-pipeline items). ✅ COMPLETE (`[M20a]`, 2026-07-15)** — Source's
+`evYield_HP`/`evYield_Attack`/`evYield_Defense`/`evYield_SpAttack`/
+`evYield_SpDefense`/`evYield_Speed` (6 fields per species, most species
+yielding 1-3 total points across 1-2 stats — confirmed each is a 2-bit
+bitfield, `[0,3]` range, `include/pokemon.h:404-409`) needed new
+`PokemonSpecies` fields plus a 386-row extraction pass — SHIPPED in the
+same `[M20a]` session/script as B1 above, since both fields live in the
+identical source struct literal per species (one extraction pass grabs
+both, the efficiency opportunity this section originally flagged). This
+was the single largest data-pipeline item `docs/m18_5h_recon.md`'s own
+Section D2 deferred here in full, back when M18.5h scoped Nature/IV/EV —
+now closed.
 
 **B3. Exp-gain formula — the live branch at this project's actual
 `GEN_LATEST=GEN_9` config, confirmed directly from `include/config/
@@ -279,11 +289,11 @@ bag-item/UI/progression-format concerns belonging to M25 or a future
 
 ## Section E — Proposed sub-tier sequence
 
-1. **M20a — Data pipeline**: exp_yield (B1) + EV-yield (B2) extraction,
-   386-species scale, reusing the established `gen_*.py`-and-new-
-   `PokemonSpecies`-field pattern (`[M18.5d]`/`[M19-pre1]`'s own
-   precedent). Cheap, no design decisions blocking it — could start
-   immediately regardless of how D1/D2 resolve.
+1. **M20a — Data pipeline. ✅ COMPLETE (2026-07-15).** exp_yield (B1) +
+   EV-yield (B2) extraction, 386-species scale, reusing the established
+   `gen_*.py`-and-new-`PokemonSpecies`-field pattern (`[M18.5d]`/
+   `[M19-pre1]`'s own precedent). Shipped as `scripts/gen_exp_ev_
+   yield_data.py` — see `docs/decisions.md`'s `[M20a]` entry.
 2. **M20b — Core Exp-gain-and-level-up dispatch**: `current_exp` field,
    the exact GEN_9-config formula (B3), the recipient-list dispatch per
    D1's resolution (B4), the level-up loop + stat recompute with correct
@@ -1029,3 +1039,32 @@ files; 12726 and 12725 respectively, each differing from the clean
 12727 baseline — 12693 prior + 34 new — only by already-documented
 pre-existing flaky suites rotating between runs, zero failures
 traceable to this session's own changes).
+
+### ✅ M20a IMPLEMENTED (2026-07-15, same day) — see `docs/decisions.md`'s
+### `[M20a]` entry for the full recon + build writeup
+
+The "deliberately NOT done" item immediately above is now closed. B1
+and B2 (Section B, both marked complete in place) are shipped via new
+`scripts/gen_exp_ev_yield_data.py`: all 386 species now have real
+`exp_yield` and 6 real `ev_yield_*` values in `pokemon.json` (2702 field
+values written, 7 spot-checked against known reference values — all
+exact matches). New `PokemonSpecies.ev_yield_hp/atk/def/spa/spd/spe`
+fields (schema-only — M20c's grant logic still doesn't exist).
+`PokemonRegistry` needed zero changes (pure JSON passthrough). New
+`scenes/battle/m20a_data_test.gd`/`.tscn` (387/387, a pure data-
+completeness check, no `BattleManager`). `m20_exp_test.gd` gained a new
+Section I (34→37): 3 real-species spot-checks (Bulbasaur/Ivysaur/
+Charizard) proving `_compute_exp_award` produces the mathematically
+correct result now that real data exists, closing the loop between this
+session's data and M20's already-shipped formula.
+
+Two full regression sweeps: 123 files, GRAND TOTAL 13115 then 13116
+(clean baseline 13117 = 12727 prior + 3 + 387). **A new, previously-
+undocumented flaky-suite observation surfaced in sweep 1**:
+`m18k_test.tscn` (15/16), unrelated to anything this session touched,
+recovered to clean (16/16) in sweep 2 — flagged explicitly as NOT yet
+part of the documented flaky-suite list (unlike `m19a_gen1_test.tscn`,
+which fired in both sweeps and IS already documented), per this
+project's standing discipline against asserting equivalence without
+confirmation. Zero failures traceable to this session's own changes in
+either sweep.

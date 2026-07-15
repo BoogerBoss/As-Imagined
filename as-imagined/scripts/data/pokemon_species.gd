@@ -43,6 +43,20 @@ extends Resource
 # override shape.
 @export var base_friendship: int = 50
 
+# [M20a] Per-stat EV yield (0-3 each — source's own fields are 2-bit
+# bitfields, `include/pokemon.h:404-409`), granted to a recipient once
+# M20c's EV-gain dispatch is built (still unbuilt — this is schema-only,
+# matching `exp_yield`'s own dormant-field precedent before M20's core
+# dispatch consumed it). Matches `pokemon.json`'s `ev_yield_hp`/`_atk`/
+# `_def`/`_spa`/`_spd`/`_spe` naming, itself matching this file's own
+# `base_hp`/`base_atk`/... abbreviation convention.
+@export var ev_yield_hp: int = 0
+@export var ev_yield_atk: int = 0
+@export var ev_yield_def: int = 0
+@export var ev_yield_spa: int = 0
+@export var ev_yield_spd: int = 0
+@export var ev_yield_spe: int = 0
+
 # Level-up learnset. Each entry: {"level": int, "move_id": int}
 # Populated with real data in Milestone 4+; empty for Milestone 1.
 @export var learnset: Array[Dictionary] = []

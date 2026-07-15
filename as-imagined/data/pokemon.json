@@ -25,7 +25,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 69
+    "weight": 69,
+    "exp_yield": 64,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 2,
@@ -53,7 +60,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 130
+    "weight": 130,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 3,
@@ -81,7 +95,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 1000
+    "weight": 1000,
+    "exp_yield": 263,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 4,
@@ -109,7 +130,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 85
+    "weight": 85,
+    "exp_yield": 62,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 5,
@@ -137,7 +165,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 190
+    "weight": 190,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 6,
@@ -165,7 +200,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 905
+    "weight": 905,
+    "exp_yield": 267,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 7,
@@ -193,7 +235,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 90
+    "weight": 90,
+    "exp_yield": 63,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 8,
@@ -221,7 +270,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 225
+    "weight": 225,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 9,
@@ -249,7 +305,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 855
+    "weight": 855,
+    "exp_yield": 265,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 3,
+    "ev_yield_spe": 0
   },
   {
     "dex": 10,
@@ -277,7 +340,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 29
+    "weight": 29,
+    "exp_yield": 39,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 11,
@@ -305,7 +375,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 99
+    "weight": 99,
+    "exp_yield": 72,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 12,
@@ -333,7 +410,14 @@
     "item_common": null,
     "item_rare": "ITEM_SILVER_POWDER",
     "growth_rate": "MediumFast",
-    "weight": 320
+    "weight": 320,
+    "exp_yield": 198,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 13,
@@ -361,7 +445,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 32
+    "weight": 32,
+    "exp_yield": 39,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 14,
@@ -389,7 +480,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 100
+    "weight": 100,
+    "exp_yield": 72,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 15,
@@ -417,7 +515,14 @@
     "item_common": null,
     "item_rare": "ITEM_POISON_BARB",
     "growth_rate": "MediumFast",
-    "weight": 295
+    "weight": 295,
+    "exp_yield": 159,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 16,
@@ -445,7 +550,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 18
+    "weight": 18,
+    "exp_yield": 50,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 17,
@@ -473,7 +585,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 300
+    "weight": 300,
+    "exp_yield": 122,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 18,
@@ -501,7 +620,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 395
+    "weight": 395,
+    "exp_yield": 172,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 3
   },
   {
     "dex": 19,
@@ -529,7 +655,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 35
+    "weight": 35,
+    "exp_yield": 51,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 20,
@@ -557,7 +690,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 185
+    "weight": 185,
+    "exp_yield": 145,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 21,
@@ -585,7 +725,14 @@
     "item_common": null,
     "item_rare": "ITEM_SHARP_BEAK",
     "growth_rate": "MediumFast",
-    "weight": 20
+    "weight": 20,
+    "exp_yield": 52,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 22,
@@ -613,7 +760,14 @@
     "item_common": null,
     "item_rare": "ITEM_SHARP_BEAK",
     "growth_rate": "MediumFast",
-    "weight": 380
+    "weight": 380,
+    "exp_yield": 155,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 23,
@@ -641,7 +795,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 69
+    "weight": 69,
+    "exp_yield": 58,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 24,
@@ -669,7 +830,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 650
+    "weight": 650,
+    "exp_yield": 147,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 25,
@@ -697,7 +865,14 @@
     "item_common": null,
     "item_rare": "ITEM_LIGHT_BALL",
     "growth_rate": "MediumFast",
-    "weight": 60
+    "weight": 60,
+    "exp_yield": 112,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 26,
@@ -725,7 +900,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 300
+    "weight": 300,
+    "exp_yield": 243,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 3
   },
   {
     "dex": 27,
@@ -753,7 +935,14 @@
     "item_common": null,
     "item_rare": "ITEM_GRIP_CLAW",
     "growth_rate": "MediumFast",
-    "weight": 120
+    "weight": 120,
+    "exp_yield": 60,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 28,
@@ -781,7 +970,14 @@
     "item_common": null,
     "item_rare": "ITEM_GRIP_CLAW",
     "growth_rate": "MediumFast",
-    "weight": 295
+    "weight": 295,
+    "exp_yield": 158,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 29,
@@ -809,7 +1005,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 70
+    "weight": 70,
+    "exp_yield": 55,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 30,
@@ -837,7 +1040,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 200
+    "weight": 200,
+    "exp_yield": 128,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 31,
@@ -865,7 +1075,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 600
+    "weight": 600,
+    "exp_yield": 194,
+    "ev_yield_hp": 3,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 32,
@@ -893,7 +1110,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 90
+    "weight": 90,
+    "exp_yield": 55,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 33,
@@ -921,7 +1145,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 195
+    "weight": 195,
+    "exp_yield": 128,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 34,
@@ -949,7 +1180,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 620
+    "weight": 620,
+    "exp_yield": 195,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 3,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 35,
@@ -977,7 +1215,14 @@
     "item_common": null,
     "item_rare": "ITEM_MOON_STONE",
     "growth_rate": "Fast",
-    "weight": 75
+    "weight": 75,
+    "exp_yield": 113,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 36,
@@ -1005,7 +1250,14 @@
     "item_common": null,
     "item_rare": "ITEM_MOON_STONE",
     "growth_rate": "Fast",
-    "weight": 400
+    "weight": 400,
+    "exp_yield": 129,
+    "ev_yield_hp": 3,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 37,
@@ -1033,7 +1285,14 @@
     "item_common": null,
     "item_rare": "ITEM_CHARCOAL",
     "growth_rate": "MediumFast",
-    "weight": 99
+    "weight": 99,
+    "exp_yield": 60,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 38,
@@ -1061,7 +1320,14 @@
     "item_common": null,
     "item_rare": "ITEM_CHARCOAL",
     "growth_rate": "MediumFast",
-    "weight": 199
+    "weight": 199,
+    "exp_yield": 177,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 1
   },
   {
     "dex": 39,
@@ -1089,7 +1355,14 @@
     "item_common": null,
     "item_rare": "ITEM_MOON_STONE",
     "growth_rate": "Fast",
-    "weight": 55
+    "weight": 55,
+    "exp_yield": 95,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 40,
@@ -1117,7 +1390,14 @@
     "item_common": null,
     "item_rare": "ITEM_MOON_STONE",
     "growth_rate": "Fast",
-    "weight": 120
+    "weight": 120,
+    "exp_yield": 109,
+    "ev_yield_hp": 3,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 41,
@@ -1145,7 +1425,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 75
+    "weight": 75,
+    "exp_yield": 49,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 42,
@@ -1173,7 +1460,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 550
+    "weight": 550,
+    "exp_yield": 159,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 43,
@@ -1201,7 +1495,14 @@
     "item_common": null,
     "item_rare": "ITEM_ABSORB_BULB",
     "growth_rate": "MediumSlow",
-    "weight": 54
+    "weight": 54,
+    "exp_yield": 64,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 44,
@@ -1229,7 +1530,14 @@
     "item_common": null,
     "item_rare": "ITEM_ABSORB_BULB",
     "growth_rate": "MediumSlow",
-    "weight": 86
+    "weight": 86,
+    "exp_yield": 138,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 45,
@@ -1257,7 +1565,14 @@
     "item_common": null,
     "item_rare": "ITEM_ABSORB_BULB",
     "growth_rate": "MediumSlow",
-    "weight": 186
+    "weight": 186,
+    "exp_yield": 184,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 46,
@@ -1285,7 +1600,14 @@
     "item_common": "ITEM_TINY_MUSHROOM",
     "item_rare": "ITEM_BIG_MUSHROOM",
     "growth_rate": "MediumFast",
-    "weight": 54
+    "weight": 54,
+    "exp_yield": 57,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 47,
@@ -1313,7 +1635,14 @@
     "item_common": "ITEM_TINY_MUSHROOM",
     "item_rare": "ITEM_BIG_MUSHROOM",
     "growth_rate": "MediumFast",
-    "weight": 295
+    "weight": 295,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 48,
@@ -1341,7 +1670,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 300
+    "weight": 300,
+    "exp_yield": 61,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 49,
@@ -1369,7 +1705,14 @@
     "item_common": null,
     "item_rare": "ITEM_SHED_SHELL",
     "growth_rate": "MediumFast",
-    "weight": 125
+    "weight": 125,
+    "exp_yield": 158,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 50,
@@ -1397,7 +1740,14 @@
     "item_common": null,
     "item_rare": "ITEM_SOFT_SAND",
     "growth_rate": "MediumFast",
-    "weight": 8
+    "weight": 8,
+    "exp_yield": 53,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 51,
@@ -1425,7 +1775,14 @@
     "item_common": null,
     "item_rare": "ITEM_SOFT_SAND",
     "growth_rate": "MediumFast",
-    "weight": 333
+    "weight": 333,
+    "exp_yield": 153,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 52,
@@ -1453,7 +1810,14 @@
     "item_common": null,
     "item_rare": "ITEM_QUICK_CLAW",
     "growth_rate": "MediumFast",
-    "weight": 42
+    "weight": 42,
+    "exp_yield": 58,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 53,
@@ -1481,7 +1845,14 @@
     "item_common": null,
     "item_rare": "ITEM_QUICK_CLAW",
     "growth_rate": "MediumFast",
-    "weight": 320
+    "weight": 320,
+    "exp_yield": 154,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 54,
@@ -1509,7 +1880,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 196
+    "weight": 196,
+    "exp_yield": 64,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 55,
@@ -1537,7 +1915,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 766
+    "weight": 766,
+    "exp_yield": 175,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 56,
@@ -1565,7 +1950,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 280
+    "weight": 280,
+    "exp_yield": 61,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 57,
@@ -1593,7 +1985,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 320
+    "weight": 320,
+    "exp_yield": 159,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 58,
@@ -1621,7 +2020,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 190
+    "weight": 190,
+    "exp_yield": 70,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 59,
@@ -1649,7 +2055,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 1550
+    "weight": 1550,
+    "exp_yield": 194,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 60,
@@ -1677,7 +2090,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 124
+    "weight": 124,
+    "exp_yield": 60,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 61,
@@ -1705,7 +2125,14 @@
     "item_common": null,
     "item_rare": "ITEM_KINGS_ROCK",
     "growth_rate": "MediumSlow",
-    "weight": 200
+    "weight": 200,
+    "exp_yield": 135,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 62,
@@ -1733,7 +2160,14 @@
     "item_common": null,
     "item_rare": "ITEM_KINGS_ROCK",
     "growth_rate": "MediumSlow",
-    "weight": 540
+    "weight": 540,
+    "exp_yield": 185,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 3,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 63,
@@ -1761,7 +2195,14 @@
     "item_common": null,
     "item_rare": "ITEM_TWISTED_SPOON",
     "growth_rate": "MediumSlow",
-    "weight": 195
+    "weight": 195,
+    "exp_yield": 73,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 64,
@@ -1789,7 +2230,14 @@
     "item_common": null,
     "item_rare": "ITEM_TWISTED_SPOON",
     "growth_rate": "MediumSlow",
-    "weight": 565
+    "weight": 565,
+    "exp_yield": 140,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 65,
@@ -1817,7 +2265,14 @@
     "item_common": null,
     "item_rare": "ITEM_TWISTED_SPOON",
     "growth_rate": "MediumSlow",
-    "weight": 480
+    "weight": 480,
+    "exp_yield": 186,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 66,
@@ -1845,7 +2300,14 @@
     "item_common": null,
     "item_rare": "ITEM_FOCUS_BAND",
     "growth_rate": "MediumSlow",
-    "weight": 195
+    "weight": 195,
+    "exp_yield": 88,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 67,
@@ -1873,7 +2335,14 @@
     "item_common": null,
     "item_rare": "ITEM_FOCUS_BAND",
     "growth_rate": "MediumSlow",
-    "weight": 705
+    "weight": 705,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 68,
@@ -1901,7 +2370,14 @@
     "item_common": null,
     "item_rare": "ITEM_FOCUS_BAND",
     "growth_rate": "MediumSlow",
-    "weight": 1300
+    "weight": 1300,
+    "exp_yield": 253,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 3,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 69,
@@ -1929,7 +2405,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 40
+    "weight": 40,
+    "exp_yield": 60,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 70,
@@ -1957,7 +2440,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 64
+    "weight": 64,
+    "exp_yield": 137,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 71,
@@ -1985,7 +2475,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 155
+    "weight": 155,
+    "exp_yield": 191,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 3,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 72,
@@ -2013,7 +2510,14 @@
     "item_common": null,
     "item_rare": "ITEM_POISON_BARB",
     "growth_rate": "Slow",
-    "weight": 455
+    "weight": 455,
+    "exp_yield": 67,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 73,
@@ -2041,7 +2545,14 @@
     "item_common": null,
     "item_rare": "ITEM_POISON_BARB",
     "growth_rate": "Slow",
-    "weight": 550
+    "weight": 550,
+    "exp_yield": 180,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 74,
@@ -2069,7 +2580,14 @@
     "item_common": null,
     "item_rare": "ITEM_EVERSTONE",
     "growth_rate": "MediumSlow",
-    "weight": 200
+    "weight": 200,
+    "exp_yield": 86,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 75,
@@ -2097,7 +2615,14 @@
     "item_common": null,
     "item_rare": "ITEM_EVERSTONE",
     "growth_rate": "MediumSlow",
-    "weight": 1050
+    "weight": 1050,
+    "exp_yield": 137,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 76,
@@ -2125,7 +2650,14 @@
     "item_common": null,
     "item_rare": "ITEM_EVERSTONE",
     "growth_rate": "MediumSlow",
-    "weight": 3000
+    "weight": 3000,
+    "exp_yield": 177,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 3,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 77,
@@ -2153,7 +2685,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 300
+    "weight": 300,
+    "exp_yield": 82,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 78,
@@ -2181,7 +2720,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 950
+    "weight": 950,
+    "exp_yield": 175,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 79,
@@ -2209,7 +2755,14 @@
     "item_common": null,
     "item_rare": "ITEM_LAGGING_TAIL",
     "growth_rate": "MediumFast",
-    "weight": 360
+    "weight": 360,
+    "exp_yield": 63,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 80,
@@ -2237,7 +2790,14 @@
     "item_common": null,
     "item_rare": "ITEM_KINGS_ROCK",
     "growth_rate": "MediumFast",
-    "weight": 785
+    "weight": 785,
+    "exp_yield": 172,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 81,
@@ -2265,7 +2825,14 @@
     "item_common": null,
     "item_rare": "ITEM_METAL_COAT",
     "growth_rate": "MediumFast",
-    "weight": 60
+    "weight": 60,
+    "exp_yield": 65,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 82,
@@ -2293,7 +2860,14 @@
     "item_common": null,
     "item_rare": "ITEM_METAL_COAT",
     "growth_rate": "MediumFast",
-    "weight": 600
+    "weight": 600,
+    "exp_yield": 163,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 83,
@@ -2321,7 +2895,14 @@
     "item_common": null,
     "item_rare": "ITEM_LEEK",
     "growth_rate": "MediumFast",
-    "weight": 150
+    "weight": 150,
+    "exp_yield": 94,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 84,
@@ -2349,7 +2930,14 @@
     "item_common": null,
     "item_rare": "ITEM_SHARP_BEAK",
     "growth_rate": "MediumFast",
-    "weight": 392
+    "weight": 392,
+    "exp_yield": 62,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 85,
@@ -2377,7 +2965,14 @@
     "item_common": null,
     "item_rare": "ITEM_SHARP_BEAK",
     "growth_rate": "MediumFast",
-    "weight": 852
+    "weight": 852,
+    "exp_yield": 158,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 86,
@@ -2405,7 +3000,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 900
+    "weight": 900,
+    "exp_yield": 65,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 87,
@@ -2433,7 +3035,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 1200
+    "weight": 1200,
+    "exp_yield": 166,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 88,
@@ -2461,7 +3070,14 @@
     "item_common": null,
     "item_rare": "ITEM_BLACK_SLUDGE",
     "growth_rate": "MediumFast",
-    "weight": 300
+    "weight": 300,
+    "exp_yield": 65,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 89,
@@ -2489,7 +3105,14 @@
     "item_common": null,
     "item_rare": "ITEM_BLACK_SLUDGE",
     "growth_rate": "MediumFast",
-    "weight": 300
+    "weight": 300,
+    "exp_yield": 175,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 90,
@@ -2517,7 +3140,14 @@
     "item_common": "ITEM_PEARL",
     "item_rare": "ITEM_BIG_PEARL",
     "growth_rate": "Slow",
-    "weight": 40
+    "weight": 40,
+    "exp_yield": 61,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 91,
@@ -2545,7 +3175,14 @@
     "item_common": "ITEM_PEARL",
     "item_rare": "ITEM_BIG_PEARL",
     "growth_rate": "Slow",
-    "weight": 1325
+    "weight": 1325,
+    "exp_yield": 184,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 92,
@@ -2573,7 +3210,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 1
+    "weight": 1,
+    "exp_yield": 62,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 93,
@@ -2601,7 +3245,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 1
+    "weight": 1,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 94,
@@ -2629,7 +3280,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 405
+    "weight": 405,
+    "exp_yield": 250,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 95,
@@ -2657,7 +3315,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 2100
+    "weight": 2100,
+    "exp_yield": 77,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 96,
@@ -2685,7 +3350,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 324
+    "weight": 324,
+    "exp_yield": 66,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 97,
@@ -2713,7 +3385,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 756
+    "weight": 756,
+    "exp_yield": 169,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 98,
@@ -2741,7 +3420,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 65
+    "weight": 65,
+    "exp_yield": 65,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 99,
@@ -2769,7 +3455,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 600
+    "weight": 600,
+    "exp_yield": 166,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 100,
@@ -2797,7 +3490,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 104
+    "weight": 104,
+    "exp_yield": 66,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 101,
@@ -2825,7 +3525,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 666
+    "weight": 666,
+    "exp_yield": 150,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 102,
@@ -2853,7 +3560,14 @@
     "item_common": null,
     "item_rare": "ITEM_PSYCHIC_SEED",
     "growth_rate": "Slow",
-    "weight": 25
+    "weight": 25,
+    "exp_yield": 65,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 103,
@@ -2881,7 +3595,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 1200
+    "weight": 1200,
+    "exp_yield": 212,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 104,
@@ -2909,7 +3630,14 @@
     "item_common": null,
     "item_rare": "ITEM_THICK_CLUB",
     "growth_rate": "MediumFast",
-    "weight": 65
+    "weight": 65,
+    "exp_yield": 64,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 105,
@@ -2937,7 +3665,14 @@
     "item_common": null,
     "item_rare": "ITEM_THICK_CLUB",
     "growth_rate": "MediumFast",
-    "weight": 450
+    "weight": 450,
+    "exp_yield": 149,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 106,
@@ -2965,7 +3700,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 498
+    "weight": 498,
+    "exp_yield": 159,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 107,
@@ -2993,7 +3735,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 502
+    "weight": 502,
+    "exp_yield": 159,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 108,
@@ -3021,7 +3770,14 @@
     "item_common": null,
     "item_rare": "ITEM_LAGGING_TAIL",
     "growth_rate": "MediumFast",
-    "weight": 655
+    "weight": 655,
+    "exp_yield": 77,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 109,
@@ -3049,7 +3805,14 @@
     "item_common": null,
     "item_rare": "ITEM_SMOKE_BALL",
     "growth_rate": "MediumFast",
-    "weight": 10
+    "weight": 10,
+    "exp_yield": 68,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 110,
@@ -3077,7 +3840,14 @@
     "item_common": null,
     "item_rare": "ITEM_SMOKE_BALL",
     "growth_rate": "MediumFast",
-    "weight": 95
+    "weight": 95,
+    "exp_yield": 172,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 111,
@@ -3105,7 +3875,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 1150
+    "weight": 1150,
+    "exp_yield": 69,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 112,
@@ -3133,7 +3910,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 1200
+    "weight": 1200,
+    "exp_yield": 170,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 113,
@@ -3161,7 +3945,14 @@
     "item_common": "ITEM_OVAL_STONE",
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 346
+    "weight": 346,
+    "exp_yield": 395,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 114,
@@ -3189,7 +3980,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 350
+    "weight": 350,
+    "exp_yield": 87,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 115,
@@ -3217,7 +4015,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 800
+    "weight": 800,
+    "exp_yield": 172,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 116,
@@ -3245,7 +4050,14 @@
     "item_common": null,
     "item_rare": "ITEM_DRAGON_SCALE",
     "growth_rate": "MediumFast",
-    "weight": 80
+    "weight": 80,
+    "exp_yield": 59,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 117,
@@ -3273,7 +4085,14 @@
     "item_common": null,
     "item_rare": "ITEM_DRAGON_SCALE",
     "growth_rate": "MediumFast",
-    "weight": 250
+    "weight": 250,
+    "exp_yield": 154,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 118,
@@ -3301,7 +4120,14 @@
     "item_common": null,
     "item_rare": "ITEM_MYSTIC_WATER",
     "growth_rate": "MediumFast",
-    "weight": 150
+    "weight": 150,
+    "exp_yield": 64,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 119,
@@ -3329,7 +4155,14 @@
     "item_common": null,
     "item_rare": "ITEM_MYSTIC_WATER",
     "growth_rate": "MediumFast",
-    "weight": 390
+    "weight": 390,
+    "exp_yield": 158,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 120,
@@ -3357,7 +4190,14 @@
     "item_common": "ITEM_STARDUST",
     "item_rare": "ITEM_STAR_PIECE",
     "growth_rate": "Slow",
-    "weight": 345
+    "weight": 345,
+    "exp_yield": 68,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 121,
@@ -3385,7 +4225,14 @@
     "item_common": "ITEM_STARDUST",
     "item_rare": "ITEM_STAR_PIECE",
     "growth_rate": "Slow",
-    "weight": 800
+    "weight": 800,
+    "exp_yield": 182,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 122,
@@ -3413,7 +4260,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 545
+    "weight": 545,
+    "exp_yield": 161,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 123,
@@ -3441,7 +4295,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 560
+    "weight": 560,
+    "exp_yield": 100,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 124,
@@ -3469,7 +4330,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 406
+    "weight": 406,
+    "exp_yield": 159,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 125,
@@ -3497,7 +4365,14 @@
     "item_common": null,
     "item_rare": "ITEM_ELECTIRIZER",
     "growth_rate": "MediumFast",
-    "weight": 300
+    "weight": 300,
+    "exp_yield": 172,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 126,
@@ -3525,7 +4400,14 @@
     "item_common": null,
     "item_rare": "ITEM_MAGMARIZER",
     "growth_rate": "MediumFast",
-    "weight": 445
+    "weight": 445,
+    "exp_yield": 173,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 127,
@@ -3553,7 +4435,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 550
+    "weight": 550,
+    "exp_yield": 175,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 128,
@@ -3581,7 +4470,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 884
+    "weight": 884,
+    "exp_yield": 172,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 129,
@@ -3609,7 +4505,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 100
+    "weight": 100,
+    "exp_yield": 40,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 130,
@@ -3637,7 +4540,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 2350
+    "weight": 2350,
+    "exp_yield": 189,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 131,
@@ -3665,7 +4575,14 @@
     "item_common": "ITEM_MYSTIC_WATER",
     "item_rare": "ITEM_MYSTIC_WATER",
     "growth_rate": "Slow",
-    "weight": 2200
+    "weight": 2200,
+    "exp_yield": 187,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 132,
@@ -3693,7 +4610,14 @@
     "item_common": "ITEM_QUICK_POWDER",
     "item_rare": "ITEM_METAL_POWDER",
     "growth_rate": "MediumFast",
-    "weight": 40
+    "weight": 40,
+    "exp_yield": 101,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 133,
@@ -3721,7 +4645,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 65
+    "weight": 65,
+    "exp_yield": 65,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 134,
@@ -3749,7 +4680,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 290
+    "weight": 290,
+    "exp_yield": 184,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 135,
@@ -3777,7 +4715,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 245
+    "weight": 245,
+    "exp_yield": 184,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 136,
@@ -3805,7 +4750,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 250
+    "weight": 250,
+    "exp_yield": 184,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 137,
@@ -3833,7 +4785,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 365
+    "weight": 365,
+    "exp_yield": 79,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 138,
@@ -3861,7 +4820,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 75
+    "weight": 75,
+    "exp_yield": 120,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 139,
@@ -3889,7 +4855,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 350
+    "weight": 350,
+    "exp_yield": 173,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 140,
@@ -3917,7 +4890,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 115
+    "weight": 115,
+    "exp_yield": 119,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 141,
@@ -3945,7 +4925,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 405
+    "weight": 405,
+    "exp_yield": 201,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 142,
@@ -3973,7 +4960,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 590
+    "weight": 590,
+    "exp_yield": 180,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 143,
@@ -4001,7 +4995,14 @@
     "item_common": "ITEM_LEFTOVERS",
     "item_rare": "ITEM_LEFTOVERS",
     "growth_rate": "Slow",
-    "weight": 4600
+    "weight": 4600,
+    "exp_yield": 189,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 144,
@@ -4029,7 +5030,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 554
+    "weight": 554,
+    "exp_yield": 215,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 3,
+    "ev_yield_spe": 0
   },
   {
     "dex": 145,
@@ -4057,7 +5065,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 526
+    "weight": 526,
+    "exp_yield": 216,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 146,
@@ -4085,7 +5100,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 600
+    "weight": 600,
+    "exp_yield": 217,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 147,
@@ -4113,7 +5135,14 @@
     "item_common": null,
     "item_rare": "ITEM_DRAGON_SCALE",
     "growth_rate": "Slow",
-    "weight": 33
+    "weight": 33,
+    "exp_yield": 60,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 148,
@@ -4141,7 +5170,14 @@
     "item_common": null,
     "item_rare": "ITEM_DRAGON_SCALE",
     "growth_rate": "Slow",
-    "weight": 165
+    "weight": 165,
+    "exp_yield": 147,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 149,
@@ -4169,7 +5205,14 @@
     "item_common": null,
     "item_rare": "ITEM_DRAGON_SCALE",
     "growth_rate": "Slow",
-    "weight": 2100
+    "weight": 2100,
+    "exp_yield": 218,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 3,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 150,
@@ -4197,7 +5240,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 1220
+    "weight": 1220,
+    "exp_yield": 220,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 151,
@@ -4225,7 +5275,14 @@
     "item_common": "ITEM_LUM_BERRY",
     "item_rare": "ITEM_LUM_BERRY",
     "growth_rate": "MediumSlow",
-    "weight": 40
+    "weight": 40,
+    "exp_yield": 64,
+    "ev_yield_hp": 3,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 152,
@@ -4253,7 +5310,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 64
+    "weight": 64,
+    "exp_yield": 64,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 153,
@@ -4281,7 +5345,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 158
+    "weight": 158,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 154,
@@ -4309,7 +5380,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 1005
+    "weight": 1005,
+    "exp_yield": 208,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 155,
@@ -4337,7 +5415,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 79
+    "weight": 79,
+    "exp_yield": 62,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 156,
@@ -4365,7 +5450,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 190
+    "weight": 190,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 157,
@@ -4393,7 +5485,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 795
+    "weight": 795,
+    "exp_yield": 209,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 158,
@@ -4421,7 +5520,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 95
+    "weight": 95,
+    "exp_yield": 63,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 159,
@@ -4449,7 +5555,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 250
+    "weight": 250,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 160,
@@ -4477,7 +5590,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 888
+    "weight": 888,
+    "exp_yield": 210,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 161,
@@ -4505,7 +5625,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 60
+    "weight": 60,
+    "exp_yield": 43,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 162,
@@ -4533,7 +5660,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 325
+    "weight": 325,
+    "exp_yield": 145,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 163,
@@ -4561,7 +5695,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 212
+    "weight": 212,
+    "exp_yield": 52,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 164,
@@ -4589,7 +5730,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 408
+    "weight": 408,
+    "exp_yield": 162,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 165,
@@ -4617,7 +5765,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 108
+    "weight": 108,
+    "exp_yield": 53,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 166,
@@ -4645,7 +5800,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 356
+    "weight": 356,
+    "exp_yield": 137,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 167,
@@ -4673,7 +5835,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 85
+    "weight": 85,
+    "exp_yield": 50,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 168,
@@ -4701,7 +5870,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 335
+    "weight": 335,
+    "exp_yield": 134,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 169,
@@ -4729,7 +5905,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 750
+    "weight": 750,
+    "exp_yield": 204,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 3
   },
   {
     "dex": 170,
@@ -4757,7 +5940,14 @@
     "item_common": null,
     "item_rare": "ITEM_DEEP_SEA_SCALE",
     "growth_rate": "Slow",
-    "weight": 120
+    "weight": 120,
+    "exp_yield": 66,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 171,
@@ -4785,7 +5975,14 @@
     "item_common": null,
     "item_rare": "ITEM_DEEP_SEA_SCALE",
     "growth_rate": "Slow",
-    "weight": 225
+    "weight": 225,
+    "exp_yield": 161,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 172,
@@ -4813,7 +6010,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 20
+    "weight": 20,
+    "exp_yield": 41,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 173,
@@ -4841,7 +6045,14 @@
     "item_common": null,
     "item_rare": "ITEM_MOON_STONE",
     "growth_rate": "Fast",
-    "weight": 30
+    "weight": 30,
+    "exp_yield": 44,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 174,
@@ -4869,7 +6080,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 10
+    "weight": 10,
+    "exp_yield": 42,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 175,
@@ -4897,7 +6115,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 15
+    "weight": 15,
+    "exp_yield": 49,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 176,
@@ -4925,7 +6150,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 32
+    "weight": 32,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 177,
@@ -4953,7 +6185,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 20
+    "weight": 20,
+    "exp_yield": 64,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 178,
@@ -4981,7 +6220,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 150
+    "weight": 150,
+    "exp_yield": 165,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 179,
@@ -5009,7 +6255,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 78
+    "weight": 78,
+    "exp_yield": 56,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 180,
@@ -5037,7 +6290,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 133
+    "weight": 133,
+    "exp_yield": 128,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 181,
@@ -5065,7 +6325,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 615
+    "weight": 615,
+    "exp_yield": 194,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 182,
@@ -5093,7 +6360,14 @@
     "item_common": null,
     "item_rare": "ITEM_ABSORB_BULB",
     "growth_rate": "MediumSlow",
-    "weight": 58
+    "weight": 58,
+    "exp_yield": 184,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 3,
+    "ev_yield_spe": 0
   },
   {
     "dex": 183,
@@ -5121,7 +6395,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 85
+    "weight": 85,
+    "exp_yield": 88,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 184,
@@ -5149,7 +6430,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 285
+    "weight": 285,
+    "exp_yield": 153,
+    "ev_yield_hp": 3,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 185,
@@ -5177,7 +6465,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 380
+    "weight": 380,
+    "exp_yield": 144,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 186,
@@ -5205,7 +6500,14 @@
     "item_common": null,
     "item_rare": "ITEM_KINGS_ROCK",
     "growth_rate": "MediumSlow",
-    "weight": 339
+    "weight": 339,
+    "exp_yield": 185,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 3,
+    "ev_yield_spe": 0
   },
   {
     "dex": 187,
@@ -5233,7 +6535,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 5
+    "weight": 5,
+    "exp_yield": 50,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 188,
@@ -5261,7 +6570,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 10
+    "weight": 10,
+    "exp_yield": 119,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 189,
@@ -5289,7 +6605,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 30
+    "weight": 30,
+    "exp_yield": 176,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 3
   },
   {
     "dex": 190,
@@ -5317,7 +6640,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 115
+    "weight": 115,
+    "exp_yield": 72,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 191,
@@ -5345,7 +6675,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 18
+    "weight": 18,
+    "exp_yield": 36,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 192,
@@ -5373,7 +6710,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 85
+    "weight": 85,
+    "exp_yield": 149,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 193,
@@ -5401,7 +6745,14 @@
     "item_common": null,
     "item_rare": "ITEM_WIDE_LENS",
     "growth_rate": "MediumFast",
-    "weight": 380
+    "weight": 380,
+    "exp_yield": 78,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 194,
@@ -5429,7 +6780,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 85
+    "weight": 85,
+    "exp_yield": 42,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 195,
@@ -5457,7 +6815,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 750
+    "weight": 750,
+    "exp_yield": 151,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 196,
@@ -5485,7 +6850,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 265
+    "weight": 265,
+    "exp_yield": 184,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 197,
@@ -5513,7 +6885,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 270
+    "weight": 270,
+    "exp_yield": 184,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 198,
@@ -5541,7 +6920,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 21
+    "weight": 21,
+    "exp_yield": 81,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 199,
@@ -5569,7 +6955,14 @@
     "item_common": null,
     "item_rare": "ITEM_KINGS_ROCK",
     "growth_rate": "MediumFast",
-    "weight": 795
+    "weight": 795,
+    "exp_yield": 172,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 200,
@@ -5597,7 +6990,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 10
+    "weight": 10,
+    "exp_yield": 87,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 201,
@@ -5625,7 +7025,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 50
+    "weight": 50,
+    "exp_yield": 118,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 202,
@@ -5653,7 +7060,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 285
+    "weight": 285,
+    "exp_yield": 142,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 203,
@@ -5681,7 +7095,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 415
+    "weight": 415,
+    "exp_yield": 159,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 204,
@@ -5709,7 +7130,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 72
+    "weight": 72,
+    "exp_yield": 58,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 205,
@@ -5737,7 +7165,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 1258
+    "weight": 1258,
+    "exp_yield": 163,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 206,
@@ -5765,7 +7200,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 140
+    "weight": 140,
+    "exp_yield": 75,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 207,
@@ -5793,7 +7235,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 648
+    "weight": 648,
+    "exp_yield": 86,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 208,
@@ -5821,7 +7270,14 @@
     "item_common": null,
     "item_rare": "ITEM_METAL_COAT",
     "growth_rate": "MediumFast",
-    "weight": 4000
+    "weight": 4000,
+    "exp_yield": 179,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 209,
@@ -5849,7 +7305,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 78
+    "weight": 78,
+    "exp_yield": 60,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 210,
@@ -5877,7 +7340,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 487
+    "weight": 487,
+    "exp_yield": 158,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 211,
@@ -5905,7 +7375,14 @@
     "item_common": null,
     "item_rare": "ITEM_POISON_BARB",
     "growth_rate": "MediumFast",
-    "weight": 39
+    "weight": 39,
+    "exp_yield": 100,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 212,
@@ -5933,7 +7410,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 1180
+    "weight": 1180,
+    "exp_yield": 175,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 213,
@@ -5961,7 +7445,14 @@
     "item_common": "ITEM_BERRY_JUICE",
     "item_rare": "ITEM_BERRY_JUICE",
     "growth_rate": "MediumSlow",
-    "weight": 205
+    "weight": 205,
+    "exp_yield": 177,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 214,
@@ -5989,7 +7480,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 540
+    "weight": 540,
+    "exp_yield": 175,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 215,
@@ -6017,7 +7515,14 @@
     "item_common": null,
     "item_rare": "ITEM_QUICK_CLAW",
     "growth_rate": "MediumSlow",
-    "weight": 280
+    "weight": 280,
+    "exp_yield": 86,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 216,
@@ -6045,7 +7550,14 @@
     "item_common": null,
     "item_rare": "ITEM_HONEY",
     "growth_rate": "MediumFast",
-    "weight": 88
+    "weight": 88,
+    "exp_yield": 66,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 217,
@@ -6073,7 +7585,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 1258
+    "weight": 1258,
+    "exp_yield": 175,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 218,
@@ -6101,7 +7620,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 350
+    "weight": 350,
+    "exp_yield": 50,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 219,
@@ -6129,7 +7655,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 550
+    "weight": 550,
+    "exp_yield": 154,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 220,
@@ -6157,7 +7690,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 65
+    "weight": 65,
+    "exp_yield": 50,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 221,
@@ -6185,7 +7725,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 558
+    "weight": 558,
+    "exp_yield": 158,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 222,
@@ -6213,7 +7760,14 @@
     "item_common": null,
     "item_rare": "ITEM_LUMINOUS_MOSS",
     "growth_rate": "Fast",
-    "weight": 50
+    "weight": 50,
+    "exp_yield": 113,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 223,
@@ -6241,7 +7795,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 120
+    "weight": 120,
+    "exp_yield": 60,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 224,
@@ -6269,7 +7830,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 285
+    "weight": 285,
+    "exp_yield": 168,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 225,
@@ -6297,7 +7865,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 160
+    "weight": 160,
+    "exp_yield": 116,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 226,
@@ -6325,7 +7900,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 2200
+    "weight": 2200,
+    "exp_yield": 168,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 227,
@@ -6353,7 +7935,14 @@
     "item_common": null,
     "item_rare": "ITEM_METAL_COAT",
     "growth_rate": "Slow",
-    "weight": 505
+    "weight": 505,
+    "exp_yield": 163,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 228,
@@ -6381,7 +7970,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 108
+    "weight": 108,
+    "exp_yield": 66,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 229,
@@ -6409,7 +8005,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 350
+    "weight": 350,
+    "exp_yield": 175,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 230,
@@ -6437,7 +8040,14 @@
     "item_common": null,
     "item_rare": "ITEM_DRAGON_SCALE",
     "growth_rate": "MediumFast",
-    "weight": 1520
+    "weight": 1520,
+    "exp_yield": 207,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 231,
@@ -6465,7 +8075,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 335
+    "weight": 335,
+    "exp_yield": 66,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 232,
@@ -6493,7 +8110,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 1200
+    "weight": 1200,
+    "exp_yield": 175,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 233,
@@ -6521,7 +8145,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 325
+    "weight": 325,
+    "exp_yield": 180,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 234,
@@ -6549,7 +8180,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 712
+    "weight": 712,
+    "exp_yield": 163,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 235,
@@ -6577,7 +8215,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 580
+    "weight": 580,
+    "exp_yield": 88,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 236,
@@ -6605,7 +8250,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 210
+    "weight": 210,
+    "exp_yield": 42,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 237,
@@ -6633,7 +8285,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 480
+    "weight": 480,
+    "exp_yield": 159,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 238,
@@ -6661,7 +8320,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 60
+    "weight": 60,
+    "exp_yield": 61,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 239,
@@ -6689,7 +8355,14 @@
     "item_common": null,
     "item_rare": "ITEM_ELECTIRIZER",
     "growth_rate": "MediumFast",
-    "weight": 235
+    "weight": 235,
+    "exp_yield": 72,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 240,
@@ -6717,7 +8390,14 @@
     "item_common": null,
     "item_rare": "ITEM_MAGMARIZER",
     "growth_rate": "MediumFast",
-    "weight": 214
+    "weight": 214,
+    "exp_yield": 73,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 241,
@@ -6745,7 +8425,14 @@
     "item_common": "ITEM_MOOMOO_MILK",
     "item_rare": "ITEM_MOOMOO_MILK",
     "growth_rate": "Slow",
-    "weight": 755
+    "weight": 755,
+    "exp_yield": 172,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 242,
@@ -6773,7 +8460,14 @@
     "item_common": "ITEM_OVAL_STONE",
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 468
+    "weight": 468,
+    "exp_yield": 255,
+    "ev_yield_hp": 3,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 243,
@@ -6801,7 +8495,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 1780
+    "weight": 1780,
+    "exp_yield": 216,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 244,
@@ -6829,7 +8530,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 1980
+    "weight": 1980,
+    "exp_yield": 217,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 245,
@@ -6857,7 +8565,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 1870
+    "weight": 1870,
+    "exp_yield": 215,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 246,
@@ -6885,7 +8600,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 720
+    "weight": 720,
+    "exp_yield": 60,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 247,
@@ -6913,7 +8635,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 1520
+    "weight": 1520,
+    "exp_yield": 144,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 248,
@@ -6941,7 +8670,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 2020
+    "weight": 2020,
+    "exp_yield": 218,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 3,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 249,
@@ -6969,7 +8705,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 2160
+    "weight": 2160,
+    "exp_yield": 220,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 3,
+    "ev_yield_spe": 0
   },
   {
     "dex": 250,
@@ -6997,7 +8740,14 @@
     "item_common": "ITEM_SACRED_ASH",
     "item_rare": "ITEM_SACRED_ASH",
     "growth_rate": "Slow",
-    "weight": 1990
+    "weight": 1990,
+    "exp_yield": 220,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 3,
+    "ev_yield_spe": 0
   },
   {
     "dex": 251,
@@ -7025,7 +8775,14 @@
     "item_common": "ITEM_LUM_BERRY",
     "item_rare": "ITEM_LUM_BERRY",
     "growth_rate": "MediumSlow",
-    "weight": 50
+    "weight": 50,
+    "exp_yield": 64,
+    "ev_yield_hp": 3,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 252,
@@ -7053,7 +8810,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 50
+    "weight": 50,
+    "exp_yield": 62,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 253,
@@ -7081,7 +8845,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 216
+    "weight": 216,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 254,
@@ -7109,7 +8880,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 522
+    "weight": 522,
+    "exp_yield": 208,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 3
   },
   {
     "dex": 255,
@@ -7137,7 +8915,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 25
+    "weight": 25,
+    "exp_yield": 62,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 256,
@@ -7165,7 +8950,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 195
+    "weight": 195,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 257,
@@ -7193,7 +8985,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 520
+    "weight": 520,
+    "exp_yield": 209,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 3,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 258,
@@ -7221,7 +9020,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 76
+    "weight": 76,
+    "exp_yield": 62,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 259,
@@ -7249,7 +9055,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 280
+    "weight": 280,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 260,
@@ -7277,7 +9090,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 819
+    "weight": 819,
+    "exp_yield": 210,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 3,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 261,
@@ -7305,7 +9125,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 136
+    "weight": 136,
+    "exp_yield": 55,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 262,
@@ -7333,7 +9160,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 370
+    "weight": 370,
+    "exp_yield": 147,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 263,
@@ -7361,7 +9195,14 @@
     "item_common": "ITEM_POTION",
     "item_rare": "ITEM_REVIVE",
     "growth_rate": "MediumFast",
-    "weight": 175
+    "weight": 175,
+    "exp_yield": 60,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 264,
@@ -7389,7 +9230,14 @@
     "item_common": "ITEM_POTION",
     "item_rare": "ITEM_MAX_REVIVE",
     "growth_rate": "MediumFast",
-    "weight": 325
+    "weight": 325,
+    "exp_yield": 147,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 265,
@@ -7417,7 +9265,14 @@
     "item_common": "ITEM_PECHA_BERRY",
     "item_rare": "ITEM_BRIGHT_POWDER",
     "growth_rate": "MediumFast",
-    "weight": 36
+    "weight": 36,
+    "exp_yield": 54,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 266,
@@ -7445,7 +9300,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 100
+    "weight": 100,
+    "exp_yield": 72,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 267,
@@ -7473,7 +9335,14 @@
     "item_common": null,
     "item_rare": "ITEM_SHED_SHELL",
     "growth_rate": "MediumFast",
-    "weight": 284
+    "weight": 284,
+    "exp_yield": 161,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 268,
@@ -7501,7 +9370,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 115
+    "weight": 115,
+    "exp_yield": 72,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 269,
@@ -7529,7 +9405,14 @@
     "item_common": null,
     "item_rare": "ITEM_SHED_SHELL",
     "growth_rate": "MediumFast",
-    "weight": 316
+    "weight": 316,
+    "exp_yield": 160,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 3,
+    "ev_yield_spe": 0
   },
   {
     "dex": 270,
@@ -7557,7 +9440,14 @@
     "item_common": null,
     "item_rare": "ITEM_MENTAL_HERB",
     "growth_rate": "MediumSlow",
-    "weight": 26
+    "weight": 26,
+    "exp_yield": 44,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 271,
@@ -7585,7 +9475,14 @@
     "item_common": null,
     "item_rare": "ITEM_MENTAL_HERB",
     "growth_rate": "MediumSlow",
-    "weight": 325
+    "weight": 325,
+    "exp_yield": 119,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 272,
@@ -7613,7 +9510,14 @@
     "item_common": null,
     "item_rare": "ITEM_MENTAL_HERB",
     "growth_rate": "MediumSlow",
-    "weight": 550
+    "weight": 550,
+    "exp_yield": 181,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 3,
+    "ev_yield_spe": 0
   },
   {
     "dex": 273,
@@ -7641,7 +9545,14 @@
     "item_common": null,
     "item_rare": "ITEM_POWER_HERB",
     "growth_rate": "MediumSlow",
-    "weight": 40
+    "weight": 40,
+    "exp_yield": 44,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 274,
@@ -7669,7 +9580,14 @@
     "item_common": null,
     "item_rare": "ITEM_POWER_HERB",
     "growth_rate": "MediumSlow",
-    "weight": 280
+    "weight": 280,
+    "exp_yield": 119,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 275,
@@ -7697,7 +9615,14 @@
     "item_common": null,
     "item_rare": "ITEM_POWER_HERB",
     "growth_rate": "MediumSlow",
-    "weight": 596
+    "weight": 596,
+    "exp_yield": 181,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 3,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 276,
@@ -7725,7 +9650,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 23
+    "weight": 23,
+    "exp_yield": 54,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 277,
@@ -7753,7 +9685,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 198
+    "weight": 198,
+    "exp_yield": 162,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 278,
@@ -7781,7 +9720,14 @@
     "item_common": "ITEM_PRETTY_FEATHER",
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 95
+    "weight": 95,
+    "exp_yield": 54,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 279,
@@ -7809,7 +9755,14 @@
     "item_common": "ITEM_PRETTY_FEATHER",
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 280
+    "weight": 280,
+    "exp_yield": 164,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 280,
@@ -7837,7 +9790,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 66
+    "weight": 66,
+    "exp_yield": 40,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 281,
@@ -7865,7 +9825,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 202
+    "weight": 202,
+    "exp_yield": 97,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 282,
@@ -7893,7 +9860,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 484
+    "weight": 484,
+    "exp_yield": 208,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 283,
@@ -7921,7 +9895,14 @@
     "item_common": null,
     "item_rare": "ITEM_HONEY",
     "growth_rate": "MediumFast",
-    "weight": 17
+    "weight": 17,
+    "exp_yield": 54,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 284,
@@ -7949,7 +9930,14 @@
     "item_common": null,
     "item_rare": "ITEM_SILVER_POWDER",
     "growth_rate": "MediumFast",
-    "weight": 36
+    "weight": 36,
+    "exp_yield": 128,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 285,
@@ -7977,7 +9965,14 @@
     "item_common": "ITEM_TINY_MUSHROOM",
     "item_rare": "ITEM_BIG_MUSHROOM",
     "growth_rate": "Fluctuating",
-    "weight": 45
+    "weight": 45,
+    "exp_yield": 59,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 286,
@@ -8005,7 +10000,14 @@
     "item_common": "ITEM_TINY_MUSHROOM",
     "item_rare": "ITEM_BIG_MUSHROOM",
     "growth_rate": "Fluctuating",
-    "weight": 392
+    "weight": 392,
+    "exp_yield": 161,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 287,
@@ -8033,7 +10035,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 240
+    "weight": 240,
+    "exp_yield": 56,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 288,
@@ -8061,7 +10070,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 465
+    "weight": 465,
+    "exp_yield": 154,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 289,
@@ -8089,7 +10105,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 1305
+    "weight": 1305,
+    "exp_yield": 210,
+    "ev_yield_hp": 3,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 290,
@@ -8117,7 +10140,14 @@
     "item_common": null,
     "item_rare": "ITEM_SOFT_SAND",
     "growth_rate": "Erratic",
-    "weight": 55
+    "weight": 55,
+    "exp_yield": 53,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 291,
@@ -8145,7 +10175,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Erratic",
-    "weight": 120
+    "weight": 120,
+    "exp_yield": 160,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 292,
@@ -8173,7 +10210,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Erratic",
-    "weight": 12
+    "weight": 12,
+    "exp_yield": 83,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 293,
@@ -8201,7 +10245,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 163
+    "weight": 163,
+    "exp_yield": 48,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 294,
@@ -8229,7 +10280,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 405
+    "weight": 405,
+    "exp_yield": 126,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 295,
@@ -8257,7 +10315,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 840
+    "weight": 840,
+    "exp_yield": 184,
+    "ev_yield_hp": 3,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 296,
@@ -8285,7 +10350,14 @@
     "item_common": null,
     "item_rare": "ITEM_BLACK_BELT",
     "growth_rate": "Fluctuating",
-    "weight": 864
+    "weight": 864,
+    "exp_yield": 47,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 297,
@@ -8313,7 +10385,14 @@
     "item_common": null,
     "item_rare": "ITEM_KINGS_ROCK",
     "growth_rate": "Fluctuating",
-    "weight": 2538
+    "weight": 2538,
+    "exp_yield": 166,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 298,
@@ -8341,7 +10420,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 20
+    "weight": 20,
+    "exp_yield": 38,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 299,
@@ -8369,7 +10455,14 @@
     "item_common": null,
     "item_rare": "ITEM_MAGNET",
     "growth_rate": "MediumFast",
-    "weight": 970
+    "weight": 970,
+    "exp_yield": 75,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 300,
@@ -8397,7 +10490,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 110
+    "weight": 110,
+    "exp_yield": 52,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 301,
@@ -8425,7 +10525,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 326
+    "weight": 326,
+    "exp_yield": 138,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 302,
@@ -8453,7 +10560,14 @@
     "item_common": null,
     "item_rare": "ITEM_WIDE_LENS",
     "growth_rate": "MediumSlow",
-    "weight": 110
+    "weight": 110,
+    "exp_yield": 133,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 303,
@@ -8481,7 +10595,14 @@
     "item_common": null,
     "item_rare": "ITEM_IRON_BALL",
     "growth_rate": "Fast",
-    "weight": 115
+    "weight": 115,
+    "exp_yield": 133,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 304,
@@ -8509,7 +10630,14 @@
     "item_common": null,
     "item_rare": "ITEM_HARD_STONE",
     "growth_rate": "Slow",
-    "weight": 600
+    "weight": 600,
+    "exp_yield": 66,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 305,
@@ -8537,7 +10665,14 @@
     "item_common": null,
     "item_rare": "ITEM_HARD_STONE",
     "growth_rate": "Slow",
-    "weight": 1200
+    "weight": 1200,
+    "exp_yield": 151,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 306,
@@ -8565,7 +10700,14 @@
     "item_common": null,
     "item_rare": "ITEM_HARD_STONE",
     "growth_rate": "Slow",
-    "weight": 3600
+    "weight": 3600,
+    "exp_yield": 205,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 3,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 307,
@@ -8593,7 +10735,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 112
+    "weight": 112,
+    "exp_yield": 56,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 308,
@@ -8621,7 +10770,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 315
+    "weight": 315,
+    "exp_yield": 144,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 309,
@@ -8649,7 +10805,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 152
+    "weight": 152,
+    "exp_yield": 59,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 310,
@@ -8677,7 +10840,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 402
+    "weight": 402,
+    "exp_yield": 166,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 311,
@@ -8705,7 +10875,14 @@
     "item_common": null,
     "item_rare": "ITEM_CELL_BATTERY",
     "growth_rate": "MediumFast",
-    "weight": 42
+    "weight": 42,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 312,
@@ -8733,7 +10910,14 @@
     "item_common": null,
     "item_rare": "ITEM_CELL_BATTERY",
     "growth_rate": "MediumFast",
-    "weight": 42
+    "weight": 42,
+    "exp_yield": 142,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 313,
@@ -8761,7 +10945,14 @@
     "item_common": null,
     "item_rare": "ITEM_BRIGHT_POWDER",
     "growth_rate": "Erratic",
-    "weight": 177
+    "weight": 177,
+    "exp_yield": 146,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 314,
@@ -8789,7 +10980,14 @@
     "item_common": null,
     "item_rare": "ITEM_BRIGHT_POWDER",
     "growth_rate": "Fluctuating",
-    "weight": 177
+    "weight": 177,
+    "exp_yield": 146,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 315,
@@ -8817,7 +11015,14 @@
     "item_common": null,
     "item_rare": "ITEM_POISON_BARB",
     "growth_rate": "MediumSlow",
-    "weight": 20
+    "weight": 20,
+    "exp_yield": 140,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 316,
@@ -8845,7 +11050,14 @@
     "item_common": "ITEM_ORAN_BERRY",
     "item_rare": "ITEM_SITRUS_BERRY",
     "growth_rate": "Fluctuating",
-    "weight": 103
+    "weight": 103,
+    "exp_yield": 60,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 317,
@@ -8873,7 +11085,14 @@
     "item_common": "ITEM_ORAN_BERRY",
     "item_rare": "ITEM_SITRUS_BERRY",
     "growth_rate": "Fluctuating",
-    "weight": 800
+    "weight": 800,
+    "exp_yield": 163,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 318,
@@ -8901,7 +11120,14 @@
     "item_common": null,
     "item_rare": "ITEM_DEEP_SEA_TOOTH",
     "growth_rate": "Slow",
-    "weight": 208
+    "weight": 208,
+    "exp_yield": 61,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 319,
@@ -8929,7 +11155,14 @@
     "item_common": null,
     "item_rare": "ITEM_DEEP_SEA_TOOTH",
     "growth_rate": "Slow",
-    "weight": 888
+    "weight": 888,
+    "exp_yield": 161,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 320,
@@ -8957,7 +11190,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fluctuating",
-    "weight": 1300
+    "weight": 1300,
+    "exp_yield": 80,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 321,
@@ -8985,7 +11225,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fluctuating",
-    "weight": 3980
+    "weight": 3980,
+    "exp_yield": 175,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 322,
@@ -9013,7 +11260,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 240
+    "weight": 240,
+    "exp_yield": 61,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 323,
@@ -9041,7 +11295,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 2200
+    "weight": 2200,
+    "exp_yield": 161,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 324,
@@ -9069,7 +11330,14 @@
     "item_common": null,
     "item_rare": "ITEM_CHARCOAL",
     "growth_rate": "MediumFast",
-    "weight": 804
+    "weight": 804,
+    "exp_yield": 165,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 325,
@@ -9097,7 +11365,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 306
+    "weight": 306,
+    "exp_yield": 66,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 326,
@@ -9125,7 +11400,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 715
+    "weight": 715,
+    "exp_yield": 165,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 327,
@@ -9153,7 +11435,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 50
+    "weight": 50,
+    "exp_yield": 126,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 328,
@@ -9181,7 +11470,14 @@
     "item_common": null,
     "item_rare": "ITEM_SOFT_SAND",
     "growth_rate": "MediumSlow",
-    "weight": 150
+    "weight": 150,
+    "exp_yield": 58,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 329,
@@ -9209,7 +11505,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 153
+    "weight": 153,
+    "exp_yield": 119,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 330,
@@ -9237,7 +11540,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 820
+    "weight": 820,
+    "exp_yield": 197,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 2
   },
   {
     "dex": 331,
@@ -9265,7 +11575,14 @@
     "item_common": null,
     "item_rare": "ITEM_STICKY_BARB",
     "growth_rate": "MediumSlow",
-    "weight": 513
+    "weight": 513,
+    "exp_yield": 67,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 332,
@@ -9293,7 +11610,14 @@
     "item_common": null,
     "item_rare": "ITEM_STICKY_BARB",
     "growth_rate": "MediumSlow",
-    "weight": 774
+    "weight": 774,
+    "exp_yield": 166,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 333,
@@ -9321,7 +11645,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Erratic",
-    "weight": 12
+    "weight": 12,
+    "exp_yield": 62,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 334,
@@ -9349,7 +11680,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Erratic",
-    "weight": 206
+    "weight": 206,
+    "exp_yield": 172,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 335,
@@ -9377,7 +11715,14 @@
     "item_common": null,
     "item_rare": "ITEM_QUICK_CLAW",
     "growth_rate": "Erratic",
-    "weight": 403
+    "weight": 403,
+    "exp_yield": 160,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 336,
@@ -9405,7 +11750,14 @@
     "item_common": null,
     "item_rare": "ITEM_SHED_SHELL",
     "growth_rate": "Fluctuating",
-    "weight": 525
+    "weight": 525,
+    "exp_yield": 160,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 337,
@@ -9433,7 +11785,14 @@
     "item_common": "ITEM_STARDUST",
     "item_rare": "ITEM_MOON_STONE",
     "growth_rate": "Fast",
-    "weight": 1680
+    "weight": 1680,
+    "exp_yield": 150,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 338,
@@ -9461,7 +11820,14 @@
     "item_common": "ITEM_STARDUST",
     "item_rare": "ITEM_SUN_STONE",
     "growth_rate": "Fast",
-    "weight": 1540
+    "weight": 1540,
+    "exp_yield": 150,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 339,
@@ -9489,7 +11855,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 19
+    "weight": 19,
+    "exp_yield": 58,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 340,
@@ -9517,7 +11890,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 236
+    "weight": 236,
+    "exp_yield": 164,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 341,
@@ -9545,7 +11925,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fluctuating",
-    "weight": 115
+    "weight": 115,
+    "exp_yield": 62,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 342,
@@ -9573,7 +11960,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Fluctuating",
-    "weight": 328
+    "weight": 328,
+    "exp_yield": 164,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 343,
@@ -9601,7 +11995,14 @@
     "item_common": null,
     "item_rare": "ITEM_LIGHT_CLAY",
     "growth_rate": "MediumFast",
-    "weight": 215
+    "weight": 215,
+    "exp_yield": 60,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 344,
@@ -9629,7 +12030,14 @@
     "item_common": null,
     "item_rare": "ITEM_LIGHT_CLAY",
     "growth_rate": "MediumFast",
-    "weight": 1080
+    "weight": 1080,
+    "exp_yield": 175,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 345,
@@ -9657,7 +12065,14 @@
     "item_common": null,
     "item_rare": "ITEM_BIG_ROOT",
     "growth_rate": "Erratic",
-    "weight": 238
+    "weight": 238,
+    "exp_yield": 121,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 346,
@@ -9685,7 +12100,14 @@
     "item_common": null,
     "item_rare": "ITEM_BIG_ROOT",
     "growth_rate": "Erratic",
-    "weight": 604
+    "weight": 604,
+    "exp_yield": 201,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 347,
@@ -9713,7 +12135,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Erratic",
-    "weight": 125
+    "weight": 125,
+    "exp_yield": 119,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 348,
@@ -9741,7 +12170,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Erratic",
-    "weight": 682
+    "weight": 682,
+    "exp_yield": 200,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 349,
@@ -9769,7 +12205,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Erratic",
-    "weight": 74
+    "weight": 74,
+    "exp_yield": 40,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 350,
@@ -9797,7 +12240,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Erratic",
-    "weight": 1620
+    "weight": 1620,
+    "exp_yield": 189,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 2,
+    "ev_yield_spe": 0
   },
   {
     "dex": 351,
@@ -9825,7 +12275,14 @@
     "item_common": "ITEM_MYSTIC_WATER",
     "item_rare": "ITEM_MYSTIC_WATER",
     "growth_rate": "MediumFast",
-    "weight": 8
+    "weight": 8,
+    "exp_yield": 147,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 352,
@@ -9853,7 +12310,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 220
+    "weight": 220,
+    "exp_yield": 154,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 353,
@@ -9881,7 +12345,14 @@
     "item_common": null,
     "item_rare": "ITEM_SPELL_TAG",
     "growth_rate": "Fast",
-    "weight": 23
+    "weight": 23,
+    "exp_yield": 59,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 354,
@@ -9909,7 +12380,14 @@
     "item_common": null,
     "item_rare": "ITEM_SPELL_TAG",
     "growth_rate": "Fast",
-    "weight": 125
+    "weight": 125,
+    "exp_yield": 159,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 355,
@@ -9937,7 +12415,14 @@
     "item_common": null,
     "item_rare": "ITEM_SPELL_TAG",
     "growth_rate": "Fast",
-    "weight": 150
+    "weight": 150,
+    "exp_yield": 59,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 356,
@@ -9965,7 +12450,14 @@
     "item_common": null,
     "item_rare": "ITEM_SPELL_TAG",
     "growth_rate": "Fast",
-    "weight": 306
+    "weight": 306,
+    "exp_yield": 159,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 357,
@@ -9993,7 +12485,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 1000
+    "weight": 1000,
+    "exp_yield": 161,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 358,
@@ -10021,7 +12520,14 @@
     "item_common": null,
     "item_rare": "ITEM_CLEANSE_TAG",
     "growth_rate": "Fast",
-    "weight": 10
+    "weight": 10,
+    "exp_yield": 147,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 359,
@@ -10049,7 +12555,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 470
+    "weight": 470,
+    "exp_yield": 163,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 360,
@@ -10077,7 +12590,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 140
+    "weight": 140,
+    "exp_yield": 52,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 361,
@@ -10105,7 +12625,14 @@
     "item_common": null,
     "item_rare": "ITEM_SNOWBALL",
     "growth_rate": "MediumFast",
-    "weight": 168
+    "weight": 168,
+    "exp_yield": 60,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 362,
@@ -10133,7 +12660,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumFast",
-    "weight": 2565
+    "weight": 2565,
+    "exp_yield": 168,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 363,
@@ -10161,7 +12695,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 395
+    "weight": 395,
+    "exp_yield": 58,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 364,
@@ -10189,7 +12730,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 876
+    "weight": 876,
+    "exp_yield": 144,
+    "ev_yield_hp": 2,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 365,
@@ -10217,7 +12765,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "MediumSlow",
-    "weight": 1506
+    "weight": 1506,
+    "exp_yield": 192,
+    "ev_yield_hp": 3,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 366,
@@ -10245,7 +12800,14 @@
     "item_common": "ITEM_PEARL",
     "item_rare": "ITEM_BIG_PEARL",
     "growth_rate": "Erratic",
-    "weight": 525
+    "weight": 525,
+    "exp_yield": 69,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 367,
@@ -10273,7 +12835,14 @@
     "item_common": null,
     "item_rare": "ITEM_DEEP_SEA_TOOTH",
     "growth_rate": "Erratic",
-    "weight": 270
+    "weight": 270,
+    "exp_yield": 170,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 368,
@@ -10301,7 +12870,14 @@
     "item_common": null,
     "item_rare": "ITEM_DEEP_SEA_SCALE",
     "growth_rate": "Erratic",
-    "weight": 226
+    "weight": 226,
+    "exp_yield": 170,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 2,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 369,
@@ -10329,7 +12905,14 @@
     "item_common": null,
     "item_rare": "ITEM_DEEP_SEA_SCALE",
     "growth_rate": "Slow",
-    "weight": 234
+    "weight": 234,
+    "exp_yield": 170,
+    "ev_yield_hp": 1,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 370,
@@ -10357,7 +12940,14 @@
     "item_common": "ITEM_HEART_SCALE",
     "item_rare": null,
     "growth_rate": "Fast",
-    "weight": 87
+    "weight": 87,
+    "exp_yield": 116,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   },
   {
     "dex": 371,
@@ -10385,7 +12975,14 @@
     "item_common": null,
     "item_rare": "ITEM_DRAGON_FANG",
     "growth_rate": "Slow",
-    "weight": 421
+    "weight": 421,
+    "exp_yield": 60,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 372,
@@ -10413,7 +13010,14 @@
     "item_common": null,
     "item_rare": "ITEM_DRAGON_FANG",
     "growth_rate": "Slow",
-    "weight": 1105
+    "weight": 1105,
+    "exp_yield": 147,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 373,
@@ -10441,7 +13045,14 @@
     "item_common": null,
     "item_rare": "ITEM_DRAGON_FANG",
     "growth_rate": "Slow",
-    "weight": 1026
+    "weight": 1026,
+    "exp_yield": 218,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 3,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 374,
@@ -10469,7 +13080,14 @@
     "item_common": null,
     "item_rare": "ITEM_METAL_COAT",
     "growth_rate": "Slow",
-    "weight": 952
+    "weight": 952,
+    "exp_yield": 60,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 1,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 375,
@@ -10497,7 +13115,14 @@
     "item_common": null,
     "item_rare": "ITEM_METAL_COAT",
     "growth_rate": "Slow",
-    "weight": 2025
+    "weight": 2025,
+    "exp_yield": 147,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 376,
@@ -10525,7 +13150,14 @@
     "item_common": null,
     "item_rare": "ITEM_METAL_COAT",
     "growth_rate": "Slow",
-    "weight": 5500
+    "weight": 5500,
+    "exp_yield": 210,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 3,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 377,
@@ -10553,7 +13185,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 2300
+    "weight": 2300,
+    "exp_yield": 217,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 3,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 378,
@@ -10581,7 +13220,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 1750
+    "weight": 1750,
+    "exp_yield": 216,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 3,
+    "ev_yield_spe": 0
   },
   {
     "dex": 379,
@@ -10609,7 +13255,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 2050
+    "weight": 2050,
+    "exp_yield": 215,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 2,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 1,
+    "ev_yield_spe": 0
   },
   {
     "dex": 380,
@@ -10637,7 +13290,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 400
+    "weight": 400,
+    "exp_yield": 211,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 3,
+    "ev_yield_spe": 0
   },
   {
     "dex": 381,
@@ -10665,7 +13325,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 600
+    "weight": 600,
+    "exp_yield": 211,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 382,
@@ -10693,7 +13360,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 3520
+    "weight": 3520,
+    "exp_yield": 218,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 3,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 383,
@@ -10721,7 +13395,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 9500
+    "weight": 9500,
+    "exp_yield": 218,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 3,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 384,
@@ -10749,7 +13430,14 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 2065
+    "weight": 2065,
+    "exp_yield": 220,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 2,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 385,
@@ -10777,7 +13465,14 @@
     "item_common": "ITEM_STAR_PIECE",
     "item_rare": "ITEM_STAR_PIECE",
     "growth_rate": "Slow",
-    "weight": 11
+    "weight": 11,
+    "exp_yield": 215,
+    "ev_yield_hp": 3,
+    "ev_yield_atk": 0,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 0,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 0
   },
   {
     "dex": 386,
@@ -10805,6 +13500,13 @@
     "item_common": null,
     "item_rare": null,
     "growth_rate": "Slow",
-    "weight": 608
+    "weight": 608,
+    "exp_yield": 300,
+    "ev_yield_hp": 0,
+    "ev_yield_atk": 1,
+    "ev_yield_def": 0,
+    "ev_yield_spa": 1,
+    "ev_yield_spd": 0,
+    "ev_yield_spe": 1
   }
 ]

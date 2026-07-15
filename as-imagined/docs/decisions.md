@@ -24834,3 +24834,155 @@ observed totals. Zero failures traceable to this session's own changes
 in either run.
 
 No commit made — per standing instruction, Rob commits.
+
+## [M20a] exp_yield / ev_yield_* data-pipeline backfill — recon then
+## implementation (2026-07-15)
+
+Closes the one M20 sub-tier deliberately left open by `[M20 EXP
+implementation]` — that entry's own core dispatch reads
+`species.exp_yield` directly, but the field was still schema-only
+(dormant, default 64 for every species) before this session.
+
+### Recon findings
+
+**Struct fields, confirmed exact from source** (`include/pokemon.h:403-
+410`, the `SpeciesInfo` struct): `u16 expYield` (a comment on the same
+line notes it was widened from `u8` "for the new Exp System" — a real
+historical detail, not incidental) and 6 **2-bit bitfields**:
+`evYield_HP`/`evYield_Attack`/`evYield_Defense`/`evYield_Speed`/
+`evYield_SpAttack`/`evYield_SpDefense` — confirming each EV yield is
+capped at exactly **[0,3]** by the struct's own bit width, not an
+assumption.
+
+**All 386 species covered, but via 3 different value shapes, not
+1** — confirmed via a full-source grep before writing any extraction
+logic, not assumed uniform:
+1. A plain integer literal (the common case, both fields).
+2. An inline ternary gated on `P_UPDATED_EXP_YIELDS` (expYield) or
+   `P_UPDATED_EVS` (evYield_*) — confirmed these are the ONLY 2 config
+   variables ever used for either field family across all 3 relevant
+   files (`gen_{1,2,3}_families.h`), both resolving to this project's
+   real `GEN_LATEST=GEN_9` config.
+3. **expYield only** (confirmed zero `evYield_*` fields ever use this
+   shape): a named macro reference — 9 species (Blastoise/Butterfree/
+   Charizard/Deoxys/Gengar/Machamp/Pikachu/Raichu/Venusaur), each
+   resolved via its own `#if/#elif/#else #define NAME value #endif`
+   block defined just above its species entry (e.g. Venusaur:
+   `#if P_UPDATED_EXP_YIELDS >= GEN_8` → 263, confirmed the live branch
+   at GEN_9).
+
+**A precision detail that would have silently broken any hand-rolled
+GEN comparison**: `include/config/general.h:62-70` confirms
+`GEN_1=0, GEN_2=1, ..., GEN_9=8` — a genuinely **0-indexed** enum, not
+1-indexed. Every comparison in the new extraction script uses this real
+ordinal mapping directly rather than assuming `GEN_N == N`.
+
+**Unown (#201)**: confirmed via its `UNOWN_MISC_INFO` macro block
+(`gen_2_families.h:4059-4061`, not parseable by the generic per-species
+block regex — the same blind spot `[M19-pre1]`'s weight extractor
+already documented and worked around identically): `.expYield =
+(P_UPDATED_EXP_YIELDS >= GEN_5) ? 118 : 61` → 118 at GEN_9;
+`.evYield_Attack = 1`, `.evYield_SpAttack = 1`, all 4 other evYield
+fields absent from the block (a legitimate implicit 0 in C, not a gap).
+
+**M15's pipeline structure**: confirmed (again) that no rerunnable
+extractor tool exists anywhere in this repo for ANY species field — the
+same gap `[M18.5d Phase 1]`/`[M19-pre1]`/`[M18.5j]` each independently
+rediscovered and worked around by writing a fresh one-off script
+reading `gen_{1,2,3}_families.h` directly. This session follows the
+identical precedent (`gen_weight_data.py`'s exact structure: dex-ordinal
+map via `include/constants/pokedex.h`'s `NationalDexOrder` enum,
+per-species block splitting via the `[SPECIES_X] = {` regex, first-
+occurrence-per-dex-wins dedup for multi-form species, a hard
+`SystemExit` if any of the 386 dex numbers can't be resolved).
+
+**Target schema**: `exp_yield` (matches `PokemonSpecies.gd`'s own
+already-existing dormant field name exactly) plus 6 new
+`ev_yield_hp`/`_atk`/`_def`/`_spa`/`_spd`/`_spe` fields, matching
+`pokemon.json`'s own existing `base_hp`/`base_atk`/`base_def`/
+`base_spa`/`base_spd`/`base_spe` abbreviation convention — confirmed
+`PokemonSpecies.gd` had NO `ev_yield_*` fields at all before this
+session (unlike `exp_yield`, which pre-existed dormant), so these are
+genuinely new schema additions, not a backfill of an existing field.
+
+### Implementation
+
+New `scripts/gen_exp_ev_yield_data.py` (mirrors `gen_weight_data.py`'s
+exact structure). Resolves all 3 value shapes (literal/ternary/named-
+macro) against the real GEN_9 ordinal, with a dedicated
+`build_macro_table()` pass that evaluates each of the 9 named macros'
+own `#if/#elif/#else` branches **in file order** (first true condition
+wins, mirroring real preprocessor evaluation — not "first/last branch,"
+the exact bug class `[M19-bucket2]` already found and fixed once for a
+different GEN-ternary resolver). Hard-validates: all 386 dex numbers
+resolved, every `ev_yield_*` in `[0,3]`, every `exp_yield` positive —
+before ever writing to `pokemon.json`. Idempotent (matching
+`gen_weight_data.py`'s own convention), reruns safely.
+
+Ran once against the real `pokemon.json`: **2702 field values updated
+across 386 species** (7 fields × 386 species = 2702 exactly — every
+single field changed from its prior placeholder/absent state, confirmed
+via the script's own change-counter). **7 spot-checks verified against
+known real reference values, all exact matches**: Bulbasaur
+(exp_yield=64, +1 SpAtk), Ivysaur (142, the GEN_5+ ternary branch, +1
+SpAtk/+1 SpDef), Venusaur (263, the `VENUSAUR_EXP_YIELD` named-macro
+branch, +2 SpAtk/+1 SpDef), Charizard (267, +3 SpAtk), Pikachu (112, +2
+Speed), Raichu (243, +3 Speed), Unown (118, +1 Atk/+1 SpAtk, matching
+the hardcoded `UNOWN_MISC_INFO` values exactly).
+
+**New `PokemonSpecies.gd` fields**: `ev_yield_hp`/`ev_yield_atk`/
+`ev_yield_def`/`ev_yield_spa`/`ev_yield_spd`/`ev_yield_spe` (schema-only
+— no EV-gain grant-logic consumes them yet; that remains M20c, still
+unbuilt, matching `exp_yield`'s own dormant-before-M20 precedent
+exactly).
+
+**`PokemonRegistry` needed zero code changes** — confirmed
+`get_species(dex)` is a pure JSON-dictionary passthrough with no field
+allowlist, so the 7 new keys are automatically visible the instant
+`pokemon.json` contains them.
+
+**New `scenes/battle/m20a_data_test.gd`/`.tscn`**: a pure data-
+completeness check (no `BattleManager` at all, per the task's own
+explicit "not a battle-logic test" framing), one assertion per species
+(387/387 — 386 species + one "exactly 386 species" count check),
+confirming every entry has `exp_yield > 0` and all 6 `ev_yield_*` in
+`[0,3]` — independent of the generator script's own internal validation,
+so a future hand-edit to `pokemon.json` would still be caught.
+
+**`m20_exp_test.gd` gained a new Section I** (3 new assertions, 34→37):
+real-species integration, closing the loop between this session's new
+data and M20's already-shipped formula — builds a `PokemonSpecies` from
+`PokemonRegistry.get_species(dex)`'s own real `exp_yield` (the minimal
+JSON-row-to-`PokemonSpecies` copy done locally inside the test itself,
+since no production converter exists — a known, disclosed architectural
+gap, not this test's job to fix) and confirms `_compute_exp_award`
+produces the mathematically correct result for 3 real species:
+Bulbasaur (64 → 129), Ivysaur (142 → 285), Charizard (267, the named-
+macro branch → 535) — all hand-verified via Python before being trusted
+as assertions, same-level self-check shape (A_index==C_index) to keep
+each spot-check isolated from anything but `exp_yield` itself.
+
+### Regression
+
+Two full sweeps via the hardened absolute-path invocation. **Sweep 1**:
+123 files, GRAND TOTAL 13115 (expected clean: 13117 = 12727 prior +
+3 new in `m20_exp_test` + 387 new `m20a_data_test`). Two suites
+differed from clean: `m19a_gen1_test.tscn` (50/51 — already on
+CLAUDE.md's documented flaky-suite list) **and `m18k_test.tscn` (15/16
+— NOT previously documented anywhere as flaky, in CLAUDE.md or this
+file)**. **Sweep 2**: 123 files, GRAND TOTAL 13116 (only
+`m19a_gen1_test.tscn` 50/51 differed this time; `m18k_test.tscn` passed
+clean, 16/16). Both totals reconcile exactly against the clean 13117
+baseline once each run's own specific flake(s) are subtracted — zero
+failures traceable to this session's own changes in either run.
+`m18k_test.tscn` exercises King's Rock/Razor Fang flinch statistics, a
+suite this session's changes (pokemon.json data + 2 new/extended test
+files, none touching item/flinch dispatch) have no plausible causal
+path to affect — its recovery to clean on the very next run is
+consistent with the same statistical-sample-flakiness class the other
+5 documented suites already exhibit, but this is reported here as a
+**new, previously-undocumented observation**, not folded into the
+existing list without Rob's own confirmation — per this project's
+standing discipline against asserting equivalence without verifying it.
+
+No commit made — per standing instruction, Rob commits.

@@ -38,6 +38,7 @@ func _ready() -> void:
 	_test_opponent_switch_in_resets_tracking()
 	_test_difficulty_setting_end_to_end()
 	_test_player_side_faint_negative_control()
+	_test_real_species_data_integration()
 
 	var total := _pass + _fail
 	print("m20_exp_test: %d/%d passed" % [_pass, total])
@@ -397,3 +398,42 @@ func _test_player_side_faint_negative_control() -> void:
 	bm._award_exp_for_fainted_opponent(a)
 	_chk("H.1 a player-side faint never awards Exp (side gate, mirrors IsOnPlayerSide)",
 			not fired[0])
+
+
+# ── Section I: [M20a] real species data now flows correctly end-to-end ───
+# `PokemonRegistry` is a raw JSON dictionary API (no production code converts
+# a row into a real `PokemonSpecies` object yet — confirmed, a known,
+# disclosed gap, not this test's job to fix) — so this test does the minimal
+# JSON-row -> PokemonSpecies field copy itself, purely to prove the newly-
+# regenerated real exp_yield values produce the mathematically expected
+# result through the SAME `_compute_exp_award` every other section already
+# exercises, closing the loop between M20a's data and M20's formula.
+
+func _species_from_registry(dex: int) -> PokemonSpecies:
+	var data: Dictionary = PokemonRegistry.get_species(dex)
+	var sp := PokemonSpecies.new()
+	sp.species_name = data.get("name", "")
+	sp.exp_yield = data.get("exp_yield", 0)
+	return sp
+
+
+func _test_real_species_data_integration() -> void:
+	var bm := _make_bm()
+
+	# Same-level self-check (A_index==C_index, reduces cleanly to B+1) keeps
+	# each spot-check independent of anything but exp_yield itself.
+	var bulbasaur := BattlePokemon.from_species(_species_from_registry(1), 10)
+	var recipient10 := BattlePokemon.from_species(_species_from_registry(1), 10)
+	_chk("I.1 Bulbasaur (real exp_yield=64): B=(64*10)/5=128, +1=129",
+			bulbasaur.species.exp_yield == 64
+			and bm._compute_exp_award(bulbasaur, recipient10, 1) == 129)
+
+	var ivysaur := BattlePokemon.from_species(_species_from_registry(2), 10)
+	_chk("I.2 Ivysaur (real exp_yield=142, the GEN_5+ ternary branch): B=284, +1=285",
+			ivysaur.species.exp_yield == 142
+			and bm._compute_exp_award(ivysaur, recipient10, 1) == 285)
+
+	var charizard := BattlePokemon.from_species(_species_from_registry(6), 10)
+	_chk("I.3 Charizard (real exp_yield=267, the CHARIZARD_EXP_YIELD named macro): B=534, +1=535",
+			charizard.species.exp_yield == 267
+			and bm._compute_exp_award(charizard, recipient10, 1) == 535)
