@@ -8,3 +8,4 @@ script = ExtResource("1")
 item_id = 422
 item_name = "Power Lens"
 hold_effect = 81
+ev_boost_stat = 3

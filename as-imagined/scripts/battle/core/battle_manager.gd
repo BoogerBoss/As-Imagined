@@ -93,6 +93,22 @@ const DIFFICULTY_PERCENT: Dictionary = {
 	DifficultyMode.CASUAL: 135,
 }
 
+# [M20c] EV-gain caps — source-verified at this project's real config:
+# MAX_PER_STAT_EVS = (P_EV_CAP >= GEN_6) ? 252 : 255 → 252 here
+# (`include/config/pokemon.h:55`, GEN_LATEST=GEN_9); MAX_TOTAL_EVS = 510
+# unconditionally (`include/constants/pokemon.h:230-231`). No badge-
+# gated progressive cap is needed — source's own `GetCurrentEVCap()`
+# defaults to `B_EV_CAP_TYPE == EV_CAP_NONE`, which falls through to the
+# flat 510 regardless (`src/caps.c:85-117`); this project has no
+# badge/overworld-save-flag system to gate on anyway.
+const EV_CAP_PER_STAT: int = 252
+const EV_CAP_TOTAL: int = 510
+
+# [M20c] Power Item's flat EV bonus to its one targeted stat — source:
+# `POWER_ITEM_BOOST = (I_POWER_ITEM_BOOST >= GEN_7) ? 8 : 4`
+# (`src/data/items.h:11`), 8 at this project's GEN_LATEST config.
+const POWER_ITEM_EV_BONUS: int = 8
+
 # Emitted whenever the phase changes (useful for debug / UI overlays).
 signal phase_changed(new_phase: BattlePhase)
 
@@ -107,6 +123,7 @@ signal pokemon_fainted(pokemon: BattlePokemon)
 signal battle_ended(winner_side: int)  # 0 = player/side-0 wins, 1 = opponent/side-1 wins
 signal exp_gained(recipient: BattlePokemon, amount: int)  # [M20] I.1/I.2/I.4
 signal level_up(pokemon: BattlePokemon, new_level: int)  # [M20b] fired once per level crossed
+signal ev_gained(recipient: BattlePokemon, stat_idx: int, amount: int)  # [M20c] fired once per stat actually increased
 signal status_damage(pokemon: BattlePokemon, amount: int)  # end-of-turn status tick
 signal move_skipped(pokemon: BattlePokemon, reason: String)  # sleep/freeze/para/confusion/flinch
 signal confusion_self_hit(pokemon: BattlePokemon, damage: int)
@@ -6525,6 +6542,76 @@ func _award_exp_for_fainted_opponent(fainted: BattlePokemon) -> void:
 		recipient.current_exp += amount
 		exp_gained.emit(recipient, amount)
 		_check_level_up(recipient)
+		# [M20c] EV-gain reuses this exact same `alive_participants` set —
+		# confirmed via direct source trace (`Cmd_getexp`, battle_script_
+		# commands.c:3887-3900) that the true recipient candidate list
+		# (IsValidForBattle AND sent-in-or-Exp-Share) is built ONCE per
+		# fainted-opponent event and is IDENTICAL for both Exp and EV
+		# grants — source's "max-level mon still gets EVs but 0 Exp"
+		# behavior is a difference in OUTPUT VALUE for one specific
+		# recipient category, not a different INPUT SET. This project's
+		# own Exp dispatch has no max-level special case at all (a
+		# level-100 recipient still receives a (harmless) Exp award,
+		# per `[M20b]`'s own `_check_level_up` early-return), so there is
+		# no divergence to reconcile here in practice either — no
+		# separate EV-eligible tracking exists or is needed.
+		_grant_evs(recipient, fainted.species)
+
+
+# [M20c] Grants EVs to one recipient from the fainted opponent's species —
+# mirrors source's real MonGainEVs (pokemon.c:5049-5152) exactly: base
+# ev_yield_X (Pokerus's x2 multiplier is permanently excluded — no
+# infrastructure exists for it, matching the Rare-Candy/level-cap
+# out-of-scope precedent) -> Power Item +8 to its one specific targeted
+# stat (POWER_ITEM_EV_BONUS, checked BEFORE Macho Brace) -> Macho Brace x2
+# of the (possibly-already-boosted) total -> clamp against remaining TOTAL
+# cap room (EV_CAP_TOTAL=510) -> clamp against remaining PER-STAT cap room
+# (EV_CAP_PER_STAT=252) -> add. No participant-count distribution applies
+# (confirmed doubly from source — MonGainEVs takes no participant-count
+# parameter at all) — full base yield per eligible recipient, unlike Exp's
+# own custom distribution table.
+#
+# Iterates in THIS PROJECT'S OWN STAT_* order (HP=0/ATK=1/DEF=2/SPATK=3/
+# SPDEF=4/SPEED=5), NOT a transcription of source's raw `enum Stat` loop
+# order (which places Speed before SpAtk/SpDef) — matters for which stat
+# gets shortchanged once the total cap is nearly hit, since the loop
+# breaks ENTIRELY the instant total EVs reach the cap (no partial credit
+# to remaining stats that same event, matching source's own early `break`).
+#
+# Confirmed and worth noting for future test-writing: granting EVs here
+# does NOT retroactively change `recipient`'s current battle stats unless
+# a level-up ALSO fires this same event (`_check_level_up`, called just
+# above, is the only thing that ever calls `_calculate_stats()`) — matches
+# source exactly (stats only recompute at level-up/switch-in, never on a
+# bare EV change).
+func _grant_evs(recipient: BattlePokemon, fainted_species: PokemonSpecies) -> void:
+	var yields: Array[int] = [
+		fainted_species.ev_yield_hp, fainted_species.ev_yield_atk,
+		fainted_species.ev_yield_def, fainted_species.ev_yield_spa,
+		fainted_species.ev_yield_spd, fainted_species.ev_yield_spe,
+	]
+	var total_evs: int = 0
+	for v in recipient.evs:
+		total_evs += v
+	var item: ItemData = ItemManager.effective_held_item(recipient, _is_neutralizing_gas_active())
+	for stat_idx in range(6):
+		if total_evs >= EV_CAP_TOTAL:
+			break
+		var increase: int = yields[stat_idx]
+		if item != null and item.hold_effect == ItemManager.HOLD_EFFECT_POWER_ITEM \
+				and item.ev_boost_stat == stat_idx:
+			increase += POWER_ITEM_EV_BONUS
+		if item != null and item.hold_effect == ItemManager.HOLD_EFFECT_MACHO_BRACE:
+			increase *= 2
+		if total_evs + increase > EV_CAP_TOTAL:
+			increase = EV_CAP_TOTAL - total_evs
+		if recipient.evs[stat_idx] + increase > EV_CAP_PER_STAT:
+			increase = EV_CAP_PER_STAT - recipient.evs[stat_idx]
+		if increase <= 0:
+			continue
+		recipient.evs[stat_idx] += increase
+		total_evs += increase
+		ev_gained.emit(recipient, stat_idx, increase)
 
 
 # [M20b] Derives the recipient's new level from its (now-updated) current_exp

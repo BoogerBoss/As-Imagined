@@ -25147,3 +25147,168 @@ bundle]`), not a new or unexplained finding this time. Zero failures
 traceable to this session's own changes in either run.
 
 No commit made — per standing instruction, Rob commits.
+
+## [M20c] EV-gain grant logic — recon then implementation, 2026-07-15,
+same day
+
+The last piece of M20's original 4-part sequence (data pipeline → core
+dispatch → EV-gain grant logic → level-up move learning). Closes out
+M20 entirely.
+
+### Recon findings (report-only pass first, per instruction)
+
+1. **Trigger point**: `MonGainEVs` (`pokemon.c:5049-5152`) is called from
+   TWO branches of `Cmd_getexp`'s per-recipient dispatch — the normal
+   `IsValidForBattle` branch (right after the Exp-reward computation,
+   unconditional on the Exp reward itself), AND a separate max-level/
+   partner-excluded branch (`B_MAX_LEVEL_EV_GAINS >= GEN_5`, true at this
+   project's config) where Exp is forced to 0 but EVs still gain. Same
+   event (one fainted opponent), same per-recipient loop, EV-gain fires
+   unconditionally within the eligible branch.
+2. **Eligibility — traced precisely per Rob's explicit correction
+   request, not assumed identical to Exp's own set**: the true recipient
+   candidate list is built ONCE per fainted-opponent event
+   (`Cmd_getexp` state 1, `battle_script_commands.c:3887-3900`) via a
+   loop gated on `IsValidForBattle` (alive) AND (sent-in-this-fight OR
+   holds Exp Share/Gen6 Exp Share) — `*expMonId` values fed into every
+   later per-recipient state (2, 3, 4) are drawn ONLY from this
+   pre-built list. Both the main branch and the max-level branch operate
+   on members of this SAME list — source's "max-level mon still gets
+   EVs but 0 Exp" is a difference in OUTPUT VALUE for one specific
+   recipient category, NOT a different INPUT SET. **Confirmed plainly,
+   per Rob's own request**: in this project's current code,
+   `alive_participants` (already computed in
+   `_award_exp_for_fainted_opponent` for Exp) is genuinely the correct
+   and complete EV-eligible set — no separate tracking exists or is
+   needed, since this project's own Exp dispatch has no max-level
+   special case at all (`_check_level_up`'s own early-return at
+   level≥100 just means a level-100 recipient's Exp accumulates
+   harmlessly rather than being explicitly zeroed — a pre-existing
+   simplification, not something EV-gain needed to fix).
+3. **Grant formula + items**: confirmed exact per-stat formula and order
+   from source — Pokerus ×2 multiplier (excluded, no infrastructure)
+   → Power Item +8 to its one targeted stat (`POWER_ITEM_BOOST =
+   (I_POWER_ITEM_BOOST >= GEN_7) ? 8 : 4` → 8 at this project's config,
+   `src/data/items.h:11`) → Macho Brace ×2 (applied AFTER the Power Item
+   check) → clamp vs remaining TOTAL cap room → clamp vs remaining
+   PER-STAT cap room → add. Confirmed Macho Brace + all 6 Power items
+   are already implemented in this project (`[M18h]`) but only their
+   Speed-halving half — their EV-modifying half was explicitly marked
+   "permanently moot" back then, pending EV-gain existing (now false).
+   **Real gap found**: `ItemData` had no field distinguishing which
+   Power item targets which stat (source: `.secondaryId = STAT_X` per
+   item, `src/data/items.h:8731-8853`) — all 6 shared identical data
+   except name/ID.
+4. **EV caps**: `MAX_PER_STAT_EVS = (P_EV_CAP >= GEN_6) ? 252 : 255` →
+   **252** at this project's `GEN_LATEST=GEN_9` config
+   (`include/config/pokemon.h:55`); `MAX_TOTAL_EVS = 510` unconditionally.
+   Confirmed no badge-gated progressive cap is needed — source's own
+   `GetCurrentEVCap()` defaults to `B_EV_CAP_TYPE == EV_CAP_NONE`, which
+   bypasses the badge-flag system entirely and falls through to the flat
+   510 (`src/caps.c:85-117`) — this project has no badge/overworld-save
+   state to gate on anyway, so nothing was built for it.
+5. **Existing infrastructure**: `BattlePokemon.evs` already existed
+   (M18.5h-2), zeroed in `from_species`, indexed by this project's own
+   `STAT_*` order. Confirmed via grep: **no cap-enforcement logic
+   existed anywhere in GDScript** — `_hp_formula`/`_stat_formula` read
+   `evs[i]` raw with no clamp, since nothing had ever written a nonzero
+   EV before this session.
+6. **Interaction with level-up**: independent triggers off the same
+   faint event; EV-gain fires before the level-up check in source's own
+   sequence, but the two are functionally decoupled — a level-up's stat
+   recalculation reads whatever EVs are currently stored at that moment.
+   Confirmed: granting EVs alone has **zero visible effect on current
+   battle stats** unless a level-up (or any other stat recalc) also
+   fires — stats only recompute at level-up/switch-in, matching source
+   exactly, not on a bare EV write.
+
+Rob's decisions, confirmed before implementation: EVs full-value-always
+(no participant-count distribution — source has no split logic for EVs
+at all); Pokérus excluded (matches the Rare-Candy/level-cap precedent,
+zero infrastructure to build on); Power Item/Macho Brace EV-modifying
+half built now (a new `ItemData.ev_boost_stat` field, populated for the
+6 Power items).
+
+### Implementation
+
+New `ItemData.ev_boost_stat: int = -1` (matches `BattlePokemon.STAT_*`
+order, NOT source's raw `secondaryId` enum order which places Speed
+before SpAtk/SpDef — mapped by stat NAME in `gen_items.py`, not
+transcribed index-for-index from source). Populated for the 6 Power
+items (`419`-`424`) via `gen_items.py`; Macho Brace (`418`) stays at the
+default `-1` (not stat-specific). 156 total `.tres` items now
+(regenerated, 6 modified).
+
+New `BattleManager` constants: `EV_CAP_PER_STAT = 252`,
+`EV_CAP_TOTAL = 510`, `POWER_ITEM_EV_BONUS = 8`. New `signal
+ev_gained(recipient, stat_idx, amount)`, fired once per stat actually
+increased (mirrors `exp_gained`'s shape). New `_grant_evs(recipient,
+fainted_species)`: builds a `yields` array from the fainted species'
+6 `ev_yield_*` fields, reads the recipient's held item via
+`ItemManager.effective_held_item()` (Klutz-aware, matching every other
+item-effect chokepoint in this project), then iterates in THIS
+PROJECT'S OWN `STAT_*` order (HP/ATK/DEF/SPATK/SPDEF/SPEED) applying
+the exact formula/order traced above, breaking the loop entirely once
+`total_evs >= EV_CAP_TOTAL` (no partial credit to remaining stats that
+event, matching source's own early `break`).
+
+Wired directly into `_award_exp_for_fainted_opponent`'s existing
+`alive_participants` loop — `_grant_evs(recipient, fainted.species)`
+called unconditionally alongside the Exp award and `_check_level_up`,
+for the SAME recipient set, with an explanatory comment documenting the
+eligibility-identity finding from recon point 2 directly at the call
+site (so a future reader doesn't have to re-derive it).
+
+### Testing
+
+New `scenes/battle/m20c_test.gd`/`.tscn`: 30/30 assertions — data
+integrity (cap constants, `POWER_ITEM_EV_BONUS`, the 6 Power items'
+`ev_boost_stat` values incl. Power Lens=STAT_SPATK/Power Anklet=
+STAT_SPEED, Macho Brace's stays -1); a basic single-stat grant; the
+**key discriminator** (2 participants sharing a kill each receive the
+FULL undivided EV yield — proven both directly via `evs[]` and via
+comparing against the two recipients' own *Exp* amounts, which ARE
+scaled identically to each other by the 65%-for-2 distribution,
+contrasting with the EVs' un-scaled full value); both cap types
+independently (a per-stat-cap clamp at 251→252 rather than 254; a
+total-cap scenario at exactly 508→510 that fills DEF and SPATK in this
+project's own STAT_ order but leaves SPDEF — processed last — with
+NOTHING once the loop breaks, the STAT_-order tie-break case
+specifically requested); Power Item's +8 bonus and Macho Brace's ×2
+doubling each tested independently (they can never combine on one held
+item — a single item's `hold_effect` can't be both values at once,
+confirmed via a dedicated "mutually exclusive" test proving Power Item
+alone doesn't also double and Macho Brace alone doesn't also add +8);
+the max-level-still-gains-EVs case (a level-100 recipient still gets
+its full EV yield through the real `_award_exp_for_fainted_opponent`
+call site, while `level` correctly stays at 100); the
+EVs-don't-retroactively-change-stats discriminator (granting EVs alone
+leaves `attack`/`defense`/etc. completely unchanged; only a subsequent
+direct `_calculate_stats()` call — the same one `_check_level_up` uses
+— makes the change visible); Klutz suppression (the Power Item bonus is
+correctly suppressed, matching every other item-effect chokepoint); and
+a player-side-faint negative control. One real test-authoring bug
+caught and fixed on the first run: the stats-don't-retroactively-change
+discriminator's original level-10/4-EV fixture change was too small to
+move `_stat_formula`'s own floored result (120→121 pre-scale still
+floors to the same value at level 10) — made vacuously true rather than
+a real proof; fixed by using a level-50/20-EV fixture large enough to
+guarantee a visible floor shift. Stable after.
+
+### Regression
+
+Two full sweeps via the hardened absolute-path invocation. Clean
+baseline: 13147 (M20b's own clean total) + 30 new = **13177**.
+**Sweep 1**: 125 files, GRAND TOTAL 13175 — a line-by-line diff against
+M20b's own clean sweep found exactly two differing suites,
+`m19a_gen1_test.tscn` (50/51) and `m18_5g_test.tscn` (314/315), both
+confirmed by name against CLAUDE.md's documented flaky-suite list (the
+Hydro Pump/Rough Skin bug from `[D4 CHEAP bundle]`, and the King's
+Rock/Shell Bell statistical tests also from `[D4 CHEAP bundle]`) — not
+new or unexplained findings. **Sweep 2**: 125 files, GRAND TOTAL 13174
+— `m19a_gen1_test.tscn` unchanged (50/51), `m18_5g_test.tscn` flaked
+further (313/315, one more failure than sweep 1 within the same
+already-documented statistical-flakiness class). Zero failures
+traceable to this session's own changes in either run.
+
+No commit made — per standing instruction, Rob commits.

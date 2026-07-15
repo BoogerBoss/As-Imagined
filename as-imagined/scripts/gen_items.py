@@ -423,13 +423,17 @@ ITEMS = [
     #    is identical to the 6 Power items — source dispatches both through one
     #    shared OR'd condition. EV-doubling half confirmed permanently moot for
     #    all 7 (no EV-gain mechanism exists anywhere in this project's battle logic).
+    # [M20c] ev_boost_stat matches BattlePokemon.STAT_* order (HP=0/ATK=1/
+    # DEF=2/SPATK=3/SPDEF=4/SPEED=5), NOT source's raw `secondaryId` enum
+    # order (which places Speed before SpAtk/SpDef) — each mapped by NAME,
+    # not transcribed index-for-index from src/data/items.h:8731-8853.
     {"id": 418, "name": "Macho Brace",    "hold_effect": HOLD_EFFECT_MACHO_BRACE},
-    {"id": 419, "name": "Power Weight",   "hold_effect": HOLD_EFFECT_POWER_ITEM},
-    {"id": 420, "name": "Power Bracer",   "hold_effect": HOLD_EFFECT_POWER_ITEM},
-    {"id": 421, "name": "Power Belt",     "hold_effect": HOLD_EFFECT_POWER_ITEM},
-    {"id": 422, "name": "Power Lens",     "hold_effect": HOLD_EFFECT_POWER_ITEM},
-    {"id": 423, "name": "Power Band",     "hold_effect": HOLD_EFFECT_POWER_ITEM},
-    {"id": 424, "name": "Power Anklet",   "hold_effect": HOLD_EFFECT_POWER_ITEM},
+    {"id": 419, "name": "Power Weight",   "hold_effect": HOLD_EFFECT_POWER_ITEM, "ev_boost_stat": 0},
+    {"id": 420, "name": "Power Bracer",   "hold_effect": HOLD_EFFECT_POWER_ITEM, "ev_boost_stat": 1},
+    {"id": 421, "name": "Power Belt",     "hold_effect": HOLD_EFFECT_POWER_ITEM, "ev_boost_stat": 2},
+    {"id": 422, "name": "Power Lens",     "hold_effect": HOLD_EFFECT_POWER_ITEM, "ev_boost_stat": 3},
+    {"id": 423, "name": "Power Band",     "hold_effect": HOLD_EFFECT_POWER_ITEM, "ev_boost_stat": 4},
+    {"id": 424, "name": "Power Anklet",   "hold_effect": HOLD_EFFECT_POWER_ITEM, "ev_boost_stat": 5},
 
     # ── M18i: Status Orbs (2) — checked every end of turn (no turn-counter
     #    mechanic exists in source), NOT Unnerve-gated (POCKET_ITEMS, not
@@ -609,6 +613,7 @@ DEFAULTS = {
     "price":              0,
     "required_species":   0,  # M18g: species-gated items — 0 = unrestricted
     "required_species2":  0,  # M18g: matched-pair second species — 0 = none
+    "ev_boost_stat":     -1,  # M20c: which stat a Power item boosts — -1 = N/A
 }
 
 # Fields to emit in .tres, in canonical order. item_id/item_name are always
@@ -624,6 +629,7 @@ FIELD_ORDER = [
     "hold_effect", "hold_effect_param",
     "description", "pocket", "importance", "not_consumed", "battle_usage",
     "fling_power", "price", "required_species", "required_species2",
+    "ev_boost_stat",
 ]
 
 

@@ -329,17 +329,33 @@ bag-item/UI/progression-format concerns belonging to M25 or a future
    `level_up`/`move_learned`/`move_learn_skipped` signals,
    `_force_move_replacement_slot` seam). **M20b as a whole (all of B3-B6)
    is now fully complete.**
-3. **M20c — EV-gain grant logic**: once M20b's dispatch shape exists,
-   attach EV-yield-driven EV gain to the same recipient list (reusing
-   B2's data) — this is the piece `docs/m18_5h_recon.md`'s own option (b)
-   explicitly deferred here in full; closes that milestone's own open
-   loop. Directly unblocks the Power-item/Macho-Brace family flagged in
-   Section C.
-4. **M20d — Level-up move learning**: per D2's resolution — likely a
-   small, cheap addition once M20b's level-up loop exists to hook into.
-5. **Not part of M20** (see Section C): move relearning flow, Rare Candy,
+3. **M20c — EV-gain grant logic. ✅ COMPLETE (2026-07-15, same day).**
+   Attaches EV-yield-driven EV gain to the SAME recipient list Exp
+   already uses (`alive_participants`, confirmed genuinely identical to
+   the real EV-eligible set via direct source trace — see
+   `docs/decisions.md`'s `[M20c]` entry) — this is the piece
+   `docs/m18_5h_recon.md`'s own option (b) explicitly deferred here in
+   full; closes that milestone's own open loop. Directly unblocked the
+   Power-item/Macho-Brace family flagged in Section C — both now fully
+   wired (new `ItemData.ev_boost_stat` field, `BattleManager._grant_evs`,
+   `ev_gained` signal, `EV_CAP_PER_STAT`/`EV_CAP_TOTAL`/
+   `POWER_ITEM_EV_BONUS` constants). Confirmed EVs are full-value-always
+   (no participant-count distribution, unlike Exp's own custom table) and
+   Pokérus stays excluded (zero infrastructure to build on, matching the
+   Rare-Candy/level-cap precedent) — both per Rob's own explicit sign-off.
+   **M20d (a separately-proposed "level-up move learning" sub-tier) never
+   ran as its own session** — that work shipped as part of `[M20b]`
+   itself (B6), folded in rather than split out; noted here so a future
+   reader isn't confused looking for a standalone M20d entry.
+4. **Not part of M20** (see Section C): move relearning flow, Rare Candy,
    Exp Share bag-item management, friendship mechanics, trainer-side
    leveling — each flagged for its own future milestone.
+
+**M20 (Experience & Leveling) is now fully complete** — every proposed
+sub-tier (M20a data pipeline, M20b core dispatch + level-up +
+move-learning, M20c EV-gain grant logic) has shipped. Only the
+explicitly-deferred I.3 (automatic 20% non-participant bonus, `[M20 EXP
+design]`) remains unbuilt, by design, not by omission.
 
 ## Section F — Gen III EXP formula, verified against source (Step 0,
 ## report-only — design intent: Gen III formula shape, trainer-battle

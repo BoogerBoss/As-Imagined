@@ -38,3 +38,10 @@ extends Resource
 # risk for what is at most a 2-element set.
 @export var required_species: int = 0   # national_dex_num, matching PokemonSpecies
 @export var required_species2: int = 0  # second species for a matched pair, or 0
+
+# [M20c] Which stat a Power item boosts EV-gain for — matches
+# BattlePokemon.STAT_* ordinal order (HP=0/ATK=1/DEF=2/SPATK=3/SPDEF=4/
+# SPEED=5), NOT source's raw `enum Stat` (which places Speed before
+# SpAtk/SpDef). -1 = not applicable (every item except the 6 Power items).
+# Source: `.secondaryId = STAT_X` per item, `src/data/items.h:8731-8853`.
+@export var ev_boost_stat: int = -1
