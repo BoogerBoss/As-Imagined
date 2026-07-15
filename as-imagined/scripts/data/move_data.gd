@@ -2126,17 +2126,17 @@ const TARGET_ALL_BATTLERS:   int = 14
 #   Trap/Burning Bulwark/Wide Guard/Quick Guard are NOT banned, a real,
 #   move-specific data quirk, not a general Protect-family rule), or is a
 #   rampage/Uproar lock (Thrash/Petal Dance/Outrage/Uproar); or if the target
-#   is currently mid-Bide. Source: battle_script_commands.c :: BS_TryInstruct
-#   (L13149-13195); the exclusion list re-derived directly against this
-#   project's OWN currently-implemented `instructBanned`-flagged moves (all
-#   23 confirmed covered — 21 via the pre-existing `two_turn`/`is_recharge`/
-#   `is_rollout`/`is_bide` checks, Metronome/Mirror Move via their own
-#   `is_metronome`/`is_mirror_move` flags, Obstruct via `protect_method`,
-#   Thrash/Petal Dance/Outrage/Uproar via `is_rampage`/`is_uproar`) rather
-#   than the source's full list or the project's own sparsely-populated
-#   `BAN_INSTRUCT` bitflag (only 2 of these 23 moves currently carry it).
-#   `ignoresSubstitute = TRUE`; Sky-Drop-target semi-invulnerable exclusion
-#   is permanently moot (Sky Drop unimplemented).
+#   is currently mid-Bide, or (added in the [Transform] session) is
+#   Transform itself (`is_transform` — source's real instructBanned flag).
+#   Source: battle_script_commands.c :: BS_TryInstruct (L13149-13195); the
+#   exclusion list re-derived directly against this project's OWN
+#   currently-implemented `instructBanned`-flagged moves rather than the
+#   source's full list or the project's own sparsely-populated
+#   `BAN_INSTRUCT` bitflag (set on `ban_flags` for documentation
+#   completeness across every instructBanned move added since, but never
+#   actually consulted here — the real check is this hardcoded per-field
+#   list). `ignoresSubstitute = TRUE`; Sky-Drop-target semi-invulnerable
+#   exclusion is permanently moot (Sky Drop unimplemented).
 @export var is_instruct: bool = false
 
 # ── [D3 turn-order/event-tracker batch] "Event happened this turn/battle"
@@ -3640,8 +3640,8 @@ const STATUS_ARG_ANY: int = -3
 # `BattlePokemon.last_move_used` directly for "the target's last move" —
 # confirmed equivalent to source's own `gLastMoves` for every scenario this
 # project can produce (no Dancer ability implemented). Source's additional
-# "attacker already Transformed" fail condition is NOT modeled — Transform
-# isn't implemented in this project yet; add it here when it ships.
+# "attacker already Transformed" fail condition ([Transform] session) IS now
+# modeled — see the dispatch site's `not attacker.transformed` check.
 @export var is_mimic: bool = false
 
 # [Mimic/Sketch] Sketch(166): EFFECT_SKETCH (`Cmd_copymovepermanently`,
@@ -3658,7 +3658,7 @@ const STATUS_ARG_ANY: int = -3
 # Mimic's own doc comment above for the same citation). Fails if the
 # target's last move is unavailable, carries `BAN_SKETCH`, or is already
 # known outside a Sketch slot. Source's "attacker already Transformed" fail
-# condition is likewise not modeled yet, same reasoning as Mimic above.
+# condition ([Transform] session) is likewise now modeled, same as Mimic above.
 @export var is_sketch: bool = false
 
 # [Perish Song] Perish Song(195): EFFECT_PERISH_SONG (`Cmd_trysetperishsong`,
@@ -3684,3 +3684,91 @@ const STATUS_ARG_ANY: int = -3
 # `perish_song_timer`'s own doc comment for the end-of-turn countdown
 # citation.
 @export var is_perish_song: bool = false
+
+# [Transform] Transform(144): EFFECT_TRANSFORM (`Cmd_transformdataexecution`,
+# battle_script_commands.c L7747-7823) — the last move in all of M19,
+# confirmed the largest lift in the residual pool at Step 0. Fails if: the
+# target is semi-invulnerable (`defender.semi_invulnerable !=
+# MoveData.SEMI_INV_NONE`, `B_TRANSFORM_SEMI_INV_FAIL >= GEN_2`); the target
+# is already Transformed (`B_TRANSFORM_TARGET_FAIL >= GEN_2`); the attacker
+# is already Transformed (`B_TRANSFORM_USER_FAIL >= GEN_5`); Substitute
+# blocks it (`defender.substitute_hp > 0 and not move.ignores_substitute`,
+# `B_TRANSFORM_SUBSTITUTE_FAIL >= GEN_5` — `ignoresSubstitute =
+# B_UPDATED_MOVE_FLAGS < GEN_5` resolves FALSE at this project's GEN_LATEST
+# config, so Substitute DOES block it, confirmed not assumed); Illusion is
+# permanently excluded (this project's own scope decision), so its
+# `ILLUSION_ON` check needs no code. `.ignoresProtect = TRUE` in source —
+# Transform bypasses Protect entirely, an easy detail to drop since most
+# status moves don't; this is handled for free by the existing generic
+# `_is_protected_from` gate once this flag is set correctly, no new code
+# needed at the dispatch site.
+#
+# On success, copies from the TARGET onto the attacker: species (duplicated,
+# NOT a bare reference — see BattlePokemon.original_species's own doc
+# comment for the full shared-Resource-mutation-hazard citation), the 5
+# computed stats (attack/defense/sp_attack/sp_defense/speed — NOT hp/
+# max_hp/level/friendship, confirmed via source's own struct field order:
+# `for (i = 0; i < offsetof(struct BattlePokemon, pp); i++)` copies
+# everything up to (not including) `pp`, and hp/level/friendship/maxHP all
+# sit AFTER that boundary), stat_stages (confirmed WITHIN the copied byte
+# range, sitting right before `ability`/`types`/`pp` in source's struct — a
+# real, easy-to-miss detail: Transform copies the target's CURRENT stat
+# stage progress, not a reset to 0; no dedicated reset code is needed for
+# this project's own copy either, since `_switch_out_clear` ALREADY
+# unconditionally zeroes every mon's `stat_stages` on switch-out regardless
+# of cause), ability (a RAW reference copy — `attacker.ability =
+# target.ability` through the normal setter, deliberately NOT through
+# `AbilityManager.effective_ability_id` — copying a Neutralizing-Gas-
+# suppressed/resolved-to-none value would be permanently wrong once NG
+# later left the field; suppression is correctly re-applied on every
+# future read via the normal accessor, exactly as it already is for every
+# other battler), types (comes along for free via the species duplicate;
+# `BattleManager._reset_mon_type` still runs afterward at switch-in and is
+# a correct no-op once species itself has been restored first), and moves
+# (`attacker.moves = target.moves.duplicate()` — a container copy only;
+# sharing the actual `MoveData` Resource references is confirmed safe,
+# since nothing in this codebase ever mutates a `MoveData` Resource in
+# place). PP per copied slot = `min(target.moves[i].pp, 5)` — the copied
+# move's own BASE max PP capped at 5, not the target's current remaining
+# PP. `attacker.times_hit = target.times_hit` is a separate, explicit
+# special-case copy in source (`GetBattlerPartyState(attacker)-
+# >timesGotHit = ...target...`, distinct from the general struct-copy) —
+# writes into a field this project deliberately never resets on switch-out
+# (Harvest's `last_consumed_berry` precedent), so this copy is correctly
+# PERMANENT, not restored on switch-out; this is confirmed source behavior,
+# not a bug to fix. Also clears the attacker's own `disabled_move`/
+# `disable_turns`, `mimicked_slot`-family fields, and `used_move_slots`
+# (Last Resort tracker) on cast, matching source's explicit reset of the
+# same three trackers.
+#
+# `pre_transform_moves`/`pre_transform_pp` (see BattlePokemon's own doc
+# comment) snapshot the attacker's TRUE moveset/PP at the moment Transform
+# fires, restored on switch-out via `BattleManager._reset_mon_transform`.
+# `original_species`/`original_attack`/etc. are captured once at
+# construction (species/computed stats are static/eternal, unlike PP),
+# restored via `_reset_mon_species`/`_reset_mon_stats`. Also gained: an
+# `not attacker.transformed` fail-condition check on Mimic/Sketch's own
+# dispatch (source's real, pre-existing fail condition for both moves,
+# previously flagged as "not modeled — Transform isn't implemented yet" in
+# their own doc comments, now closed since `transformed` exists) and a new
+# `move.is_transform` line in Instruct's own hardcoded exclusion list
+# (Instruct has no dormant `ban_flags`-based exclusion for this project —
+# confirmed `BAN_INSTRUCT` is set on `ban_flags` for documentation
+# completeness but never actually consulted anywhere in this codebase, the
+# real check is a hardcoded per-field list at the dispatch site).
+#
+# `SortBattlersByRawSpeed` re-sort in source (also called by this move) was
+# confirmed via a full grep of every one of its call sites to serve ONLY
+# infrastructure this project hasn't built (Dancer's target-picking order,
+# the `moveEndBattler`/`switchInBattlerCounter` per-battler event-iteration
+# loops, Snatch's bounce-battler lookup) — never the PRIMARY turn-action-
+# order array this project's own `_turn_order` is the real analogue of, and
+# source's own primary order is likewise untouched by this call. `_turn_order`
+# needs zero change for Transform.
+#
+# Multitype interaction reconfirmed a non-issue: its dispatch lives solely
+# in switch-in (`_apply_switch_in_abilities`), never re-triggered by a
+# Transform cast; if the TARGET holds it, its Plate-adjusted typing was
+# already baked into `species.types` at the target's own earlier switch-in,
+# so the general species/type copy captures it for free.
+@export var is_transform: bool = false

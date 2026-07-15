@@ -24025,3 +24025,216 @@ residual: 2→1 — only Transform(144) remains, the one move in all of M19
 confirmed to need its own dedicated session.**
 
 No commit made — per standing instruction, Rob commits.
+
+## [Transform] — Transform(144), the LAST move in all of M19 (2026-07-14)
+
+Closes M19 entirely. Two-part session: a Step 0 re-verification (report
+only, re-checking the prior recon's own findings rather than trusting
+them) followed by full implementation once confirmed. Ground truth:
+`src/battle_script_commands.c :: Cmd_transformdataexecution` (L7747-7823);
+`include/pokemon.h :: struct BattlePokemon` (L338-372, the copied-byte-range
+field order); `src/battle_util.c :: GetBattlerAbilityInternal` (L4844-4879).
+
+**Step 0 findings, re-confirmed against source, not re-asserted:**
+
+1. **The switch-out snapshot/restore gap.** Confirmed `_reset_mon_ability`
+   (shipped in the `[Ability-reset fix]` session) already covers Transform's
+   own ability reversion for free — its `original_ability` guard captures
+   on the mon's very FIRST `.ability` assignment (at construction, before any
+   Transform could fire), so a later `mon.ability = target.ability` never
+   re-captures over it, and `_reset_mon_ability` unconditionally resets to
+   the true natural ability regardless of what mutated it (Trace, Skill
+   Swap, or Transform — source's own `SwitchInClearSetData` collapses all of
+   these to the same natural-ability reset too, not a "restore to whatever
+   it was right before this mutation" model). No new ability-snapshot
+   infrastructure was needed. Everything else DID need new infrastructure:
+   `species` (whole reference — no existing mechanism touched it at all),
+   the 5 computed stats (`attack`/`defense`/`sp_attack`/`sp_defense`/`speed`
+   — no existing mechanism), and `moves`+`current_pp` (needs a CAST-TIME
+   snapshot, not construction-time, since PP is consumed as the battle
+   progresses — the one place a `original_types`-shaped capture would have
+   been wrong). `stat_stages` needed ZERO new infrastructure — confirmed
+   `_switch_out_clear` already unconditionally zeroes every mon's
+   `stat_stages` on switch-out regardless of cause, so Transform's own
+   stat-stage copy self-resolves for free.
+2. **The shared-Resource mutation hazard.** Confirmed `_set_mon_type`/
+   `_set_mon_type_array` mutate `mon.species.types` IN PLACE on whatever
+   Resource object `.species` currently references — a bare
+   `attacker.species = target.species` would let a LATER type-mutating
+   ability/move on the transformed attacker (Color Change/Conversion/
+   Protean/etc.) corrupt the REAL target's own species Resource. Fix:
+   `target.species.duplicate()`, matching the established Normalize/Hidden
+   Power/Foul Play/Body Press/Photon Geyser shallow-duplicate-and-substitute
+   pattern — plus this codebase's own established paranoia of explicitly
+   re-duplicating the nested `types` array on top of the Resource-level
+   duplicate (matching `original_types`/Roost/Reflect Type's own precedent),
+   rather than trusting `Resource.duplicate()` alone. Checked every other
+   `PokemonSpecies` Array field (`abilities`/`egg_groups`/`learnset`) — none
+   are read at battle runtime, so none need the same treatment. `moves`
+   (Array of `MoveData` references) needed only a container-level
+   `.duplicate()` — sharing the actual `MoveData` Resource references is
+   confirmed safe, since nothing in this codebase ever mutates a `MoveData`
+   Resource in place.
+3. **The mechanism re-derived fresh.** Fail conditions (all four active at
+   this project's GEN_LATEST config): target semi-invulnerable, target
+   already Transformed, attacker already Transformed, Substitute-blocked
+   (`ignoresSubstitute = B_UPDATED_MOVE_FLAGS < GEN_5` resolves FALSE here,
+   so Substitute DOES block it — confirmed, not assumed). Illusion is
+   permanently excluded, so its own check needs no code.
+   `.ignoresProtect = TRUE` in source — bypasses Protect entirely, handled
+   for free by the existing generic `_is_protected_from` gate once the flag
+   is set correctly (confirmed via direct trace: that gate's own
+   `move.ignores_protect` early-return runs before Transform's dispatch is
+   ever reached, no new code needed). Byte-range clone boundary re-derived
+   directly from `struct BattlePokemon`'s field order: species, the 5
+   computed stats, stat_stages (a real, easy-to-miss detail — sits WITHIN
+   the copied range, right before `ability`/`types`/`pp`, meaning Transform
+   copies the target's CURRENT stat-stage progress, not a reset to 0), moves
+   — all BEFORE the `pp` boundary; hp/level/friendship/maxHP/item all sit
+   AFTER it and are correctly excluded. Ability copy: a RAW reference copy
+   (`attacker.ability = target.ability` through the normal setter),
+   deliberately NOT through `AbilityManager.effective_ability_id` — traced
+   `GetBattlerAbilityInternal` and confirmed copying a Neutralizing-Gas-
+   suppressed/resolved-to-none value would be permanently wrong once NG
+   later left the field; suppression correctly re-applies on every future
+   read via the normal accessor, exactly as it already does for every other
+   battler. PP per copied slot: `min(target.moves[i].pp, 5)` — the copied
+   move's own base max PP capped at 5. `times_hit`: a separate, explicit
+   special-case copy in source (`GetBattlerPartyState(attacker)-
+   >timesGotHit = ...target...`), writing into the attacker's own
+   PERSISTENT party-level record with no restoration anywhere in
+   `SwitchInClearSetData` — this project's own `times_hit` is likewise
+   deliberately excluded from every switch-cleared mechanism (Harvest's
+   `last_consumed_berry` precedent), so this copy is correctly PERMANENT,
+   confirmed real source behavior and not "fixed" to feel safer.
+4. **`SortBattlersByRawSpeed`, definitively resolved.** Grepped every call
+   site in the whole reference tree: Dancer's target-picking order (not
+   implemented here), the `moveEndBattler`/`switchInBattlerCounter`
+   per-battler event-iteration loops, and Snatch's bounce-battler lookup —
+   never the PRIMARY turn-action-order array. This project's `_turn_order`
+   is the real analogue of that primary array (itself untouched by this
+   same source call), and this project has no analogue at all of the
+   secondary raw-speed-ordered constructs `gBattlersByRawSpeed` actually
+   serves. **`_turn_order` needs zero change for Transform.**
+5. **Multitype, reconfirmed a non-issue.** Its dispatch lives solely in
+   `_apply_switch_in_abilities` (switch-in only) — nothing shipped since the
+   original recon (D4 Bundle 5's Reflect Type, the Multitype-Plate fix)
+   touches that or re-triggers it. If the target holds it, its Plate-
+   adjusted typing was already baked into `species.types` at the target's
+   own earlier switch-in, so the general species/type copy captures it for
+   free.
+
+**Design, confirmed and implemented exactly as laid out in Step 0:**
+
+New `BattlePokemon` fields: `original_species` (setter-captured on the
+FIRST `.species` assignment only, mirroring `original_ability`'s exact
+pattern — confirmed SAFE via a full-codebase grep finding exactly ONE
+assignment site for `.species` anywhere, `from_species` itself, so the
+guard can't accidentally capture a wrong value from some other mid-battle
+mutator); `original_attack`/`original_defense`/`original_sp_attack`/
+`original_sp_defense`/`original_speed` (5 separate scalars, matching the
+existing scalar style of `attack`/`defense`/etc. rather than an array,
+captured once in `from_species` right after `_calculate_stats()` runs);
+`transformed: bool`; `pre_transform_moves`/`pre_transform_pp` (a CAST-TIME
+snapshot, populated only inside the dispatch itself, NOT construction-time).
+
+New `BattleManager` functions, called in this exact order at all 5
+switch-in sites (`_phase_battle_start`'s leads loop, `_do_voluntary_switch`,
+the Baton Pass inline block, `_do_forced_switch_in`, `_do_switch_in`) —
+`_reset_mon_species` MUST run before `_reset_mon_type`, since the latter
+patches `.types` on whatever species object is CURRENTLY referenced:
+`_reset_mon_species` → `_reset_mon_stats` → `_reset_mon_type` (existing) →
+`_reset_mon_ability` (existing) → `_reset_mon_mimicked_move` (existing) →
+`_reset_mon_transform` (new — restores `moves`/`current_pp` from the
+cast-time snapshot and clears `transformed`; deliberately does NOT touch
+`times_hit`).
+
+Dispatch inserted immediately after Sketch's own block in
+`_phase_move_execution` (the established "ability/moveset-mutation
+cluster"). New `pokemon_transformed(pokemon, copied_from)` signal.
+
+**Two small, directly-connected fixes to already-shipped code, found and
+closed as a byproduct of this session, not silently left as gaps:**
+
+- **Mimic/Sketch's own "attacker already Transformed" fail condition** — a
+  real source-confirmed check (`Cmd_mimicattackcopy`/
+  `Cmd_copymovepermanently` both check
+  `gBattleMons[gBattlerAttacker].volatiles.transformed`) — was previously
+  flagged in both moves' own doc comments as "not modeled — Transform isn't
+  implemented in this project yet." Now closed: `not attacker.transformed`
+  added to both `mimic_ok`/`sketch_ok` conditions, both doc comments updated
+  to point at this session instead of leaving the stale deferral note.
+- **Instruct's own hardcoded exclusion list** gained a new
+  `or instr_last.is_transform` line — confirmed `BAN_INSTRUCT` (Transform's
+  own `ban_flags` bit, set for documentation completeness matching every
+  other `instructBanned` move) is never actually consulted anywhere in this
+  codebase; the real check is the hardcoded per-field list Instruct's own
+  dispatch already uses, which needed this new line explicitly so Transform
+  doesn't silently become Instruct-able.
+
+New `MoveData.is_transform` flag with a full doc-comment citation. New
+`gen_moves.py` entry (id 144, type Normal, category Status, accuracy 0,
+pp 10, `ignores_protect=True`, `ban_flags` = MIRROR_MOVE|MIMIC|METRONOME|
+COPYCAT|INSTRUCT|ENCORE|ASSIST — no `BAN_SKETCH`, confirmed source's real
+`sketchBanned` list is only Struggle/Sketch/Chatter). Added `not
+move.is_transform` to the general foe-targeting type-immunity gate — traced
+`BattleScript_EffectTransform` directly and confirmed it never calls
+`typecalc`, the same standing-checklist pattern (Foresight/Purify/
+Nightmare/Spite/Toxic Thread/Venom Drench/the 16-move `EFFECT_STAT_CHANGE`
+audit) — without this exemption, a Ghost-type target would have incorrectly
+blocked Transform entirely (Normal-type is a flat 0x vs Ghost in this
+project's chart).
+
+New `scenes/battle/transform_test.gd`/`.tscn`: 59/59 assertions across 11
+sections (data integrity; basic successful Transform incl. the PP-cap
+direction both ways; all 4 fail conditions independently; stat_stages
+copied from the target, not left at the attacker's own pre-Transform
+value; the shared-Resource-mutation-hazard regression test itself — 
+Transform into a target, then cast Conversion on the transformed attacker,
+confirming the REAL target's own `species.types` stays untouched; switch-out
+restoration via `_do_voluntary_switch` called directly twice — OUT then
+back IN, explicitly confirming the reset does NOT fire on switch-OUT
+[F.00b] and DOES fire once the same mon switches back IN [F.01-F.08], a
+more precise isolation than routing through a full `start_battle_with_parties`
+call, which would have been confounded by `_phase_battle_start`'s own
+leads-loop reset firing first); times_hit permanence (does NOT revert,
+confirmed via the same switch-out+in mechanism); ability copy correctness
+under forced Neutralizing Gas (proving the RAW copy bypasses suppression at
+copy time via `effective_ability_id(target, true)` returning NONE while the
+actual copied field is still Overgrow, then confirming it resolves
+correctly both ways via the normal accessor afterward); Transform bypassing
+Protect; Instruct failing to force a Transform re-use; a negative control.
+
+One real test-authoring bug caught and fixed on the first run (58/59): an
+`atk_true_pp` snapshot taken BEFORE dispatch (naive full PP) didn't account
+for Transform's OWN cast deducting its own 1 PP before this project's
+dispatch code snapshots `pre_transform_pp` — the correct restore target is
+9/10, not a fresh 10/10, matching how a real Ditto's Transform slot
+correctly shows 9/10 after using it once and reverts to 9 (not 10) on
+switch-out. Fixed by sourcing the expected value from `pre_transform_pp`
+itself (the real value the production code captured) rather than a
+hand-guessed pre-dispatch number. Stable across 4 reruns after the fix.
+
+Full regression: `scripts/count_assertions.sh` run twice from independent
+process states (one deliberately preceded by `cd /tmp` to reconfirm the
+`[Sweep-dispatch fix]` invocation still works unattended) — **118 files,
+GRAND TOTAL 11935, 0 failures, identical both runs** (11876 prior + 59).
+One transient empty-log/exit-1 sweep-dispatch failure occurred on the very
+first attempt of the first sweep, matching the same still-open, separate
+flakiness class flagged during the `[Perish Song]` session — not
+directory-drift-related (the hardened absolute-path invocation was used
+correctly), resolved by a bare retry with zero changes, consistent with
+that class's own prior description.
+
+**Total move-implementation count: 716→717 — the FINAL move in all of
+M19.** `docs/move_status_table.md` regenerated and confirmed: **717
+implemented / 217 excluded / 0 residual / 16 needs-manual-review**
+(unchanged review count — `is_transform` is `is_*`-prefixed, already
+covered by the generator's own generic boolean-flag fallback, no allowlist
+update needed this time). `docs/m19_subtier_plan.md` updated throughout:
+Section E's "already implemented" row 716→717, "Tier 4 residual" row 1→0,
+the top reconciliation (717+0+0+217+0=934, confirmed), and the closing
+prose all updated to state M19 is now fully complete — no further M19
+sub-tier, bundle, or session is anticipated.
+
+No commit made — per standing instruction, Rob commits.

@@ -110,6 +110,7 @@ signal item_effect_triggered(pokemon: BattlePokemon, effect_key: String)   # M18
 signal pp_restored(pokemon: BattlePokemon, move_index: int, new_pp: int)   # M18d: Leppa Berry
 signal move_learned(pokemon: BattlePokemon, slot: int, new_move: MoveData)  # Mimic/Sketch overwrote a move slot
 signal perish_song_activated(pokemon: BattlePokemon)  # Perish Song set a 3-turn countdown on this combatant
+signal pokemon_transformed(pokemon: BattlePokemon, copied_from: BattlePokemon)  # Transform succeeded
 # M14b signals
 signal helping_hand_used(user: BattlePokemon, ally: BattlePokemon)         # Helping Hand boosted ally
 signal follow_me_used(user: BattlePokemon)                                 # Follow Me/Rage Powder active
@@ -731,9 +732,12 @@ func _phase_battle_start() -> void:
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...) (battle_util.c L3310)
 	for i in range(_combatants.size()):
 		var mon: BattlePokemon = _combatants[i]
+		_reset_mon_species(mon)
+		_reset_mon_stats(mon)
 		_reset_mon_type(mon)
 		_reset_mon_ability(mon)
 		_reset_mon_mimicked_move(mon)
+		_reset_mon_transform(mon)
 		_apply_switch_in_hazards(mon, i / _active_per_side)
 		_apply_switch_in_abilities(mon, i / _active_per_side)
 	# [D1 easy bundle] A REAL, previously-latent gap found and fixed here:
@@ -2641,9 +2645,12 @@ func _phase_move_execution() -> void:
 		_combatants[attacker_idx] = att_party.get_active_at(bp_field_slot)
 		var incoming: BattlePokemon = _combatants[attacker_idx]
 		_baton_pass_apply(incoming, saved)
+		_reset_mon_species(incoming)
+		_reset_mon_stats(incoming)
 		_reset_mon_type(incoming)
 		_reset_mon_ability(incoming)
 		_reset_mon_mimicked_move(incoming)
+		_reset_mon_transform(incoming)
 		pokemon_switched_out.emit(attacker, attacker_side)
 		pokemon_switched_in.emit(incoming, attacker_side, bp_slot)
 		baton_passed.emit(attacker, incoming)
@@ -2896,6 +2903,7 @@ func _phase_move_execution() -> void:
 				or instr_last.is_rampage
 				or instr_last.is_uproar
 				or instr_last.is_first_turn_only
+				or instr_last.is_transform
 				or defender.bide_turns != 0)
 		if instr_fail:
 			move_effect_failed.emit(attacker, "instruct_failed")
@@ -4790,7 +4798,7 @@ func _phase_move_execution() -> void:
 				and not corrosion_bypasses_type_gate and not move.is_foresight \
 				and not move.is_purify and not move.is_nightmare and not move.is_spite \
 				and not move.is_reflect_type and not move.is_toxic_thread \
-				and not move.is_venom_drench \
+				and not move.is_venom_drench and not move.is_transform \
 				and not move.stat_change_bypasses_type_gate:
 			var eff: float = TypeChart.get_effectiveness(move.type, defender.species.types)
 			if eff == 0.0:
@@ -5203,7 +5211,8 @@ func _phase_move_execution() -> void:
 			var mimic_target: MoveData = defender.last_move_used
 			var mimic_ok: bool = (mimic_slot >= 0 and mimic_target != null
 					and (mimic_target.ban_flags & MoveData.BAN_MIMIC) == 0
-					and not attacker.moves.has(mimic_target))
+					and not attacker.moves.has(mimic_target)
+					and not attacker.transformed)
 			if mimic_ok:
 				attacker.mimicked_slot = mimic_slot
 				attacker.mimicked_original_move = move
@@ -5230,13 +5239,103 @@ func _phase_move_execution() -> void:
 					break
 			var sketch_ok: bool = (sketch_slot >= 0 and sketch_target != null
 					and (sketch_target.ban_flags & MoveData.BAN_SKETCH) == 0
-					and not sketch_already_known)
+					and not sketch_already_known
+					and not attacker.transformed)
 			if sketch_ok:
 				attacker.moves[sketch_slot] = sketch_target
 				attacker.current_pp[sketch_slot] = sketch_target.pp
 				move_learned.emit(attacker, sketch_slot, sketch_target)
 			else:
 				move_effect_failed.emit(attacker, "sketch_failed")
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
+		# ── Transform ─────────────────────────────────────────────────────
+		# Source: Cmd_transformdataexecution (battle_script_commands.c
+		# L7747-7823) — see MoveData.is_transform's own doc comment for the
+		# full citation of every field copied/excluded and every design
+		# decision behind the snapshot/restore shape (species duplicate-and-
+		# substitute for the shared-Resource hazard, raw ability copy not
+		# effective_ability_id, times_hit's deliberate permanence, etc.).
+		if move.is_transform:
+			var xform_fail: bool = (defender.semi_invulnerable != MoveData.SEMI_INV_NONE
+					or defender.transformed
+					or attacker.transformed
+					or (defender.substitute_hp > 0 and not move.ignores_substitute))
+			if xform_fail:
+				move_effect_failed.emit(attacker, "transform_failed")
+			else:
+				attacker.transformed = true
+				# Cast-time snapshot — NOT construction-time, since PP is
+				# consumed as the battle progresses (see BattlePokemon
+				# .pre_transform_moves's own doc comment).
+				attacker.pre_transform_moves = attacker.moves.duplicate()
+				attacker.pre_transform_pp = attacker.current_pp.duplicate()
+				# Source explicitly resets these 3 attacker-own trackers on
+				# a successful Transform (disabledMove/disableTimer/
+				# mimickedMoves/usedMoves).
+				attacker.disabled_move = null
+				attacker.disable_turns = 0
+				attacker.mimicked_slot = -1
+				attacker.mimicked_original_move = null
+				attacker.mimicked_original_pp = 0
+				for _ui in range(attacker.used_move_slots.size()):
+					attacker.used_move_slots[_ui] = false
+				# Species: duplicate-and-substitute, NOT a bare reference —
+				# sharing the actual Resource object would let a later
+				# type-mutating ability/move on the transformed attacker
+				# (Color Change/Conversion/Protean/etc.) corrupt the REAL
+				# target's own species.types in place via
+				# _set_mon_type/_set_mon_type_array's existing in-place
+				# mutation. Matches the established Normalize/Hidden Power/
+				# Foul Play/Body Press/Photon Geyser shallow-duplicate
+				# pattern, plus this codebase's own established paranoia of
+				# explicitly re-duplicating the nested `types` array rather
+				# than trusting Resource.duplicate() alone (same as
+				# original_types/Roost/Reflect Type).
+				var xform_species: PokemonSpecies = defender.species.duplicate()
+				xform_species.types = defender.species.types.duplicate()
+				attacker.species = xform_species
+				# Computed stats — confirmed via source's own struct field
+				# order to be the TARGET's calculated attack/defense/speed/
+				# spAttack/spDefense values, NOT hp/maxHP/level/friendship
+				# (all sit after the copied byte range in source's struct).
+				attacker.attack = defender.attack
+				attacker.defense = defender.defense
+				attacker.sp_attack = defender.sp_attack
+				attacker.sp_defense = defender.sp_defense
+				attacker.speed = defender.speed
+				# Stat stages ARE within the copied byte range in source —
+				# confirmed, not assumed. No dedicated reset is needed for
+				# this project's own copy: _switch_out_clear already
+				# unconditionally zeroes every mon's stat_stages on
+				# switch-out regardless of cause.
+				attacker.stat_stages = defender.stat_stages.duplicate()
+				# RAW reference copy through the normal setter — NOT
+				# AbilityManager.effective_ability_id. Copying a
+				# Neutralizing-Gas-suppressed/resolved-to-none value would
+				# be permanently wrong once NG later left the field;
+				# suppression correctly re-applies on every future read via
+				# the normal accessor, same as every other battler.
+				attacker.ability = defender.ability
+				# Moves: container copy only — sharing the actual MoveData
+				# Resource references is safe (nothing in this codebase
+				# ever mutates a MoveData Resource in place).
+				attacker.moves = defender.moves.duplicate()
+				var xform_pp: Array[int] = []
+				for _mi in range(attacker.moves.size()):
+					xform_pp.append(min(attacker.moves[_mi].pp, 5))
+				attacker.current_pp = xform_pp
+				# Explicit special-case copy in source, separate from the
+				# general struct-copy — writes into the attacker's own
+				# PERSISTENT record with no restoration anywhere, so this
+				# is correctly PERMANENT (not restored on switch-out, unlike
+				# every other field above). Confirmed source behavior, not
+				# a bug to fix.
+				attacker.times_hit = defender.times_hit
+				pokemon_transformed.emit(attacker, defender)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
@@ -7070,9 +7169,12 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 	_combatants[combatant_idx] = _parties[side].get_active_at(field_slot)
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
 	new_mon.switched_in_this_turn = true
+	_reset_mon_species(new_mon)
+	_reset_mon_stats(new_mon)
 	_reset_mon_type(new_mon)
 	_reset_mon_ability(new_mon)
 	_reset_mon_mimicked_move(new_mon)
+	_reset_mon_transform(new_mon)
 	pokemon_switched_out.emit(old_mon, side)
 	pokemon_switched_in.emit(new_mon, side, slot)
 	# Switch-in hazards then abilities fire for the incoming Pokémon.
@@ -7098,9 +7200,12 @@ func _do_forced_switch_in(side: int, slot: int, field_slot: int = 0) -> void:
 	_combatants[combatant_idx] = _parties[side].get_active_at(field_slot)
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
 	new_mon.switched_in_this_turn = true
+	_reset_mon_species(new_mon)
+	_reset_mon_stats(new_mon)
 	_reset_mon_type(new_mon)
 	_reset_mon_ability(new_mon)
 	_reset_mon_mimicked_move(new_mon)
+	_reset_mon_transform(new_mon)
 	# Switch-in hazards then abilities fire for the forced-in Pokémon.
 	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
@@ -7116,9 +7221,12 @@ func _do_switch_in(combatant_idx: int, slot: int) -> void:
 	_combatants[combatant_idx] = _parties[side].get_active_at(field_slot)
 	var new_mon: BattlePokemon = _combatants[combatant_idx]
 	new_mon.switched_in_this_turn = true
+	_reset_mon_species(new_mon)
+	_reset_mon_stats(new_mon)
 	_reset_mon_type(new_mon)
 	_reset_mon_ability(new_mon)
 	_reset_mon_mimicked_move(new_mon)
+	_reset_mon_transform(new_mon)
 	pokemon_switched_in.emit(new_mon, side, slot)
 	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
@@ -7317,6 +7425,52 @@ func _reset_mon_mimicked_move(mon: BattlePokemon) -> void:
 	mon.mimicked_slot = -1
 	mon.mimicked_original_move = null
 	mon.mimicked_original_pp = 0
+
+
+# [Transform] Sibling to _reset_mon_type/_reset_mon_ability/
+# _reset_mon_mimicked_move — restores `.species` to the mon's TRUE original
+# species object. MUST be called BEFORE _reset_mon_type at every switch-in
+# site: _reset_mon_type patches `.types` on whatever species object is
+# CURRENTLY referenced, so if species itself hasn't been restored yet, that
+# patch would land on the (still Transform-copied, duplicated) species
+# object instead of the mon's real one. A safe no-op for any Pokémon that
+# has never used Transform (species already IS original_species by
+# identity). Source: SwitchInClearSetData re-deriving the whole struct from
+# the party record on every switch-in (battle_main.c) — see `species`'s own
+# doc comment on BattlePokemon for the full citation.
+func _reset_mon_species(mon: BattlePokemon) -> void:
+	mon.species = mon.original_species
+
+
+# [Transform] Sibling to _reset_mon_species above — restores the 5 computed
+# stat fields from their construction-time captures. A safe no-op for any
+# Pokémon that has never used Transform.
+func _reset_mon_stats(mon: BattlePokemon) -> void:
+	mon.attack = mon.original_attack
+	mon.defense = mon.original_defense
+	mon.sp_attack = mon.original_sp_attack
+	mon.sp_defense = mon.original_sp_defense
+	mon.speed = mon.original_speed
+
+
+# [Transform] Sibling to _reset_mon_species/_reset_mon_stats — restores the
+# whole moveset+PP from the cast-time snapshot and clears `transformed`. A
+# safe no-op (early return) for any Pokémon that hasn't used Transform since
+# its last switch-in. Deliberately does NOT touch `times_hit` — source's own
+# copy (`GetBattlerPartyState(attacker)->timesGotHit = ...target...`) writes
+# directly into the attacker's PERSISTENT party-level record, with no
+# restoration anywhere in SwitchInClearSetData; this project's own
+# `times_hit` is likewise deliberately excluded from every switch-cleared
+# mechanism (Harvest's `last_consumed_berry` precedent), so Transform's own
+# overwrite of it is correctly PERMANENT, not reverted here.
+func _reset_mon_transform(mon: BattlePokemon) -> void:
+	if not mon.transformed:
+		return
+	mon.moves = mon.pre_transform_moves
+	mon.current_pp = mon.pre_transform_pp
+	mon.pre_transform_moves = []
+	mon.pre_transform_pp = []
+	mon.transformed = false
 
 
 # Gen 5+ protect success formula. First use: always succeeds.

@@ -66,7 +66,23 @@ const NATURE_SASSY: int   = 22  # +SpDef -Speed
 const NATURE_CAREFUL: int = 23  # +SpDef -SpAtk
 const NATURE_QUIRKY: int  = 24  # Neutral
 
-var species: PokemonSpecies = null
+# [Transform] `species` has a custom setter mirroring `ability`'s exact
+# pattern (see its own doc comment below), capturing `original_species` on
+# the FIRST assignment only. Confirmed safe via a full-codebase grep: today
+# there is exactly ONE assignment site for this field anywhere (`from_species`
+# below) — nothing else ever reassigns `.species`, so the guard can't
+# accidentally capture a wrong "original" value from some other mid-battle
+# mutator firing before Transform does. Restored via
+# BattleManager._reset_mon_species, called BEFORE _reset_mon_type at every
+# switch-in site (must run first — _reset_mon_type operates on whatever
+# `.species` is CURRENTLY referenced, so species has to be back to the true
+# original object before that patch is applied).
+var species: PokemonSpecies = null:
+	set(value):
+		if original_species == null and value != null:
+			original_species = value
+		species = value
+var original_species: PokemonSpecies = null
 var nickname: String = ""
 var level: int = 1
 # [M18.5d] Rolled once in from_species() (see _roll_gender), matching the
@@ -104,6 +120,20 @@ var defense: int = 0
 var sp_attack: int = 0
 var sp_defense: int = 0
 var speed: int = 0
+
+# [Transform] Snapshot of this mon's own TRUE computed stats, captured once in
+# from_species right after _calculate_stats() runs — these 5 fields (unlike
+# moves/current_pp below) are static/eternal once computed (no EV-gain
+# mechanic, no other mutator ever touches attack/defense/sp_attack/
+# sp_defense/speed), so a construction-time capture is sufficient, matching
+# original_types/original_ability rather than the cast-time shape
+# pre_transform_moves/pre_transform_pp need. Restored via
+# BattleManager._reset_mon_stats at every switch-in site.
+var original_attack: int = 0
+var original_defense: int = 0
+var original_sp_attack: int = 0
+var original_sp_defense: int = 0
+var original_speed: int = 0
 
 # [M18.5h-2] IVs: rolled once in from_species() (see _roll_ivs), independent
 # real 0-31 per stat unless a forced_ivs override is threaded through
@@ -351,6 +381,24 @@ var imprison_active: bool = false
 var mimicked_slot: int = -1
 var mimicked_original_move: MoveData = null
 var mimicked_original_pp: int = 0
+
+# [Transform] Whole-moveset overwrite, the widest of this project's
+# moveset-mutating mechanics — source: Cmd_transformdataexecution
+# (battle_script_commands.c L7747-7823). `transformed` gates both the two
+# already-transformed fail conditions (source: B_TRANSFORM_TARGET_FAIL/
+# B_TRANSFORM_USER_FAIL) and whether switch-out restoration has anything to
+# undo. `pre_transform_moves`/`pre_transform_pp` are POPULATED ONLY AT THE
+# MOMENT TRANSFORM FIRES (a cast-time snapshot) — deliberately NOT a
+# construction-time capture like original_types/original_ability/the
+# original_* stat fields above, since PP is consumed as the battle
+# progresses and a stale construction-time snapshot would incorrectly
+# refill PP on switch-out. Restored (and then cleared) via
+# BattleManager._reset_mon_transform at every switch-in site, mirroring
+# source's SwitchInClearSetData re-deriving the whole struct from the
+# untouched party record on switch-in.
+var transformed: bool = false
+var pre_transform_moves: Array = []
+var pre_transform_pp: Array[int] = []
 
 # [Perish Song] Perish Song(195) — the first move in this project needing
 # genuine ALL-BATTLERS dispatch (see MoveData.is_perish_song's own doc
@@ -1042,6 +1090,11 @@ static func from_species(p_species: PokemonSpecies, p_level: int,
 	bp.eject_pack_snapshot = [0, 0, 0, 0, 0, 0, 0]
 	bp.fainted = false
 	bp._calculate_stats()
+	bp.original_attack = bp.attack
+	bp.original_defense = bp.defense
+	bp.original_sp_attack = bp.sp_attack
+	bp.original_sp_defense = bp.sp_defense
+	bp.original_speed = bp.speed
 	bp.current_hp = bp.max_hp
 	return bp
 

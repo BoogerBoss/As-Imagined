@@ -3982,6 +3982,25 @@ MOVES = [
      "ignores_protect": True, "ignores_substitute": True, "sound_move": True,
      "ban_flags": BAN_MIRROR_MOVE,
      "is_perish_song": True},
+
+    # [Transform] Transform(144): EFFECT_TRANSFORM. accuracy=0, pp=10,
+    # target=SELECTED (this project's default — no explicit "target" key
+    # needed). ignoresProtect=TRUE; ignoresSubstitute = B_UPDATED_MOVE_FLAGS
+    # < GEN_5, which resolves FALSE at this project's GEN_LATEST config, so
+    # Substitute DOES block it (confirmed, not assumed — deliberately
+    # omitted here so it defaults to False). mirrorMoveBanned/mimicBanned/
+    # metronomeBanned (GEN_5+)/copycatBanned (GEN_5+)/instructBanned/
+    # encoreBanned/assistBanned (GEN_5+) all TRUE at this config; no
+    # sketchBanned (source's real sketchBanned list is only Struggle/Sketch
+    # itself/Chatter — confirmed during the Mimic/Sketch session — so Sketch
+    # can legitimately copy Transform). See MoveData.is_transform's own doc
+    # comment for the full citation of every field copied/excluded on cast.
+    {"id":  144, "name": "Transform",
+     "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
+     "ignores_protect": True,
+     "ban_flags": (BAN_MIRROR_MOVE | BAN_MIMIC | BAN_METRONOME | BAN_COPYCAT
+                   | BAN_INSTRUCT | BAN_ENCORE | BAN_ASSIST),
+     "is_transform": True},
 ]
 
 
@@ -4348,6 +4367,7 @@ DEFAULTS = {
     "is_mimic":               False,
     "is_sketch":              False,
     "is_perish_song":         False,
+    "is_transform":           False,
     "target":                 0,
 }
 
@@ -4502,6 +4522,8 @@ FIELD_ORDER = [
     "is_mimic", "is_sketch",
     # [Perish Song] fields
     "is_perish_song", "target",
+    # [Transform] fields
+    "is_transform",
 ]
 
 
