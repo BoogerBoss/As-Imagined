@@ -11,4 +11,5 @@ category = 1
 power = 100
 accuracy = 90
 pp = 10
+ban_flags = 16
 is_haze_on_hit = true

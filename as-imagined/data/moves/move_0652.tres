@@ -10,5 +10,6 @@ type = 15
 category = 2
 accuracy = 0
 pp = 15
+ban_flags = 16
 ignores_substitute = true
 is_instruct = true

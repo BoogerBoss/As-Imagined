@@ -9,5 +9,6 @@ move_name = "Photon Geyser"
 type = 15
 category = 1
 power = 100
+ban_flags = 16
 ignores_target_ability = true
 is_photon_geyser = true

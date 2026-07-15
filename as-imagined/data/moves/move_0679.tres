@@ -11,4 +11,5 @@ category = 1
 power = 1
 accuracy = 0
 pp = 20
+ban_flags = 16
 is_return_power = true

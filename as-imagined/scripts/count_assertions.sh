@@ -44,9 +44,25 @@ if [[ $# -ge 1 ]]; then
 else
 	LOG_FILE="$(mktemp)"
 	trap 'rm -f "$LOG_FILE"' EXIT
+	# [M19.5 Task 1] `|| true` on the Godot invocation is REQUIRED, not
+	# cosmetic — root-causes the "separate, still-unexplained transient
+	# sweep-dispatch failure" flagged (but never fully explained) in the
+	# Perish Song/Transform sessions. This whole for-loop's real output is
+	# redirected into $LOG_FILE (a mktemp'd temp file, deleted via the
+	# `trap ... EXIT` above on ANY exit, successful or not) — completely
+	# separate from whatever this script's own caller captures. Under
+	# `set -euo pipefail` (script-wide), a SINGLE scene returning nonzero —
+	# whether a real failure or a known-flaky pre-existing test like
+	# m19a_gen1_test.gd's own documented whole-battle-aggregation flake —
+	# aborts this entire script immediately, before the python analysis step
+	# ever runs, and before the caller sees ANY output at all (looking like a
+	# total, silent failure with an empty log). `|| true` lets every scene
+	# run to completion and be recorded regardless of its own exit code — a
+	# single flaky/failing scene must not prevent the other 117 from being
+	# reported.
 	for f in scenes/battle/*.tscn; do
 		echo "=== $f ==="
-		timeout 25 "$GODOT" --headless --path . "$f" 2>&1
+		timeout 25 "$GODOT" --headless --path . "$f" 2>&1 || true
 	done > "$LOG_FILE"
 fi
 

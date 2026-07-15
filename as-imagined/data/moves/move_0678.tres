@@ -13,3 +13,4 @@ pp = 15
 makes_contact = true
 secondary_effect = 7
 secondary_chance = 30
+ban_flags = 16

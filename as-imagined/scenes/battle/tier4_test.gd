@@ -105,13 +105,21 @@ func _test_section_1_move_data() -> void:
 	var encore := _load_move(227)
 	_chk("S1.17 Encore is_encore=true",       encore.is_encore == true)
 	_chk("S1.18 Encore BAN_ENCORE set",        (encore.ban_flags & MoveData.BAN_ENCORE) != 0)
-	_chk("S1.19 Encore BAN_METRONOME set",     (encore.ban_flags & MoveData.BAN_METRONOME) != 0)
+	# [M19.5 Task 1] Encore does NOT carry BAN_METRONOME in real source
+	# (moves_info.h has no .metronomeBanned field on MOVE_ENCORE at all) —
+	# this assertion previously baked in the confirmed-extra flag the ban-flag
+	# audit found and removed; see ban_flag_audit_test.gd's own Section A.
+	_chk("S1.19 Encore does NOT carry BAN_METRONOME (confirmed extra, removed)",
+			(encore.ban_flags & MoveData.BAN_METRONOME) == 0)
 
 	var bide := _load_move(117)
 	_chk("S1.20 Bide is_bide=true",      bide.is_bide == true)
 	_chk("S1.21 Bide priority=1",        bide.priority == 1)
 	_chk("S1.22 Bide accuracy=0",        bide.accuracy == 0)
-	_chk("S1.23 Bide BAN_METRONOME",     (bide.ban_flags & MoveData.BAN_METRONOME) != 0)
+	# [M19.5 Task 1] Same correction as Encore above — Bide has no
+	# .metronomeBanned in source either.
+	_chk("S1.23 Bide does NOT carry BAN_METRONOME (confirmed extra, removed)",
+			(bide.ban_flags & MoveData.BAN_METRONOME) == 0)
 
 	var metro := _load_move(118)
 	_chk("S1.24 Metronome is_metronome=true", metro.is_metronome == true)
@@ -119,7 +127,10 @@ func _test_section_1_move_data() -> void:
 
 	var sub := _load_move(164)
 	_chk("S1.26 Substitute creates_substitute=true", sub.creates_substitute == true)
-	_chk("S1.27 Substitute BAN_METRONOME",            (sub.ban_flags & MoveData.BAN_METRONOME) != 0)
+	# [M19.5 Task 1] Same correction — Substitute has no .metronomeBanned in
+	# source either (confirmed directly against MOVE_SUBSTITUTE's real data).
+	_chk("S1.27 Substitute does NOT carry BAN_METRONOME (confirmed extra, removed)",
+			(sub.ban_flags & MoveData.BAN_METRONOME) == 0)
 
 
 # ── Section 2: Substitute ─────────────────────────────────────────────────────

@@ -13,3 +13,4 @@ critical_hit_stage = 1
 secondary_effect = 7
 secondary_chance = 30
 two_turn = true
+ban_flags = 128

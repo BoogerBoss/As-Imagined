@@ -10,3 +10,4 @@ type = 13
 power = 40
 pp = 40
 makes_contact = true
+ban_flags = 16

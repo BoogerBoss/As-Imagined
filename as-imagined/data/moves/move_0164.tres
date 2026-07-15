@@ -10,6 +10,5 @@ type = 1
 category = 2
 accuracy = 0
 pp = 10
-ban_flags = 16
 creates_substitute = true
 snatch_affected = true

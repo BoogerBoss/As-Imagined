@@ -10,4 +10,5 @@ type = 2
 power = 80
 pp = 10
 makes_contact = true
+ban_flags = 16
 is_body_press = true

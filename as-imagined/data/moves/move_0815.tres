@@ -11,4 +11,5 @@ power = 50
 pp = 10
 makes_contact = true
 punching_move = true
+ban_flags = 16
 is_rage_fist = true

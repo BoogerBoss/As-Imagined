@@ -9,4 +9,5 @@ move_name = "Astral Barrage"
 type = 8
 category = 1
 power = 120
+ban_flags = 16
 is_spread = true

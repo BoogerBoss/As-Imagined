@@ -11,4 +11,5 @@ category = 1
 power = 60
 pp = 20
 drain_percent = 100
+ban_flags = 16
 healing_move = true

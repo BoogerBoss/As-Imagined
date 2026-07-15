@@ -11,4 +11,5 @@ category = 1
 power = 80
 pp = 10
 sound_move = true
+ban_flags = 16
 is_spread = true

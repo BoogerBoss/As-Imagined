@@ -13,3 +13,4 @@ pp = 10
 secondary_chance = 100
 stat_change_stat = 3
 stat_change_amount = -1
+ban_flags = 16

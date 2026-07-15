@@ -396,6 +396,15 @@ var mimicked_original_pp: int = 0
 # BattleManager._reset_mon_transform at every switch-in site, mirroring
 # source's SwitchInClearSetData re-deriving the whole struct from the
 # untouched party record on switch-in.
+#
+# [M19.5 Task 2] If `mimicked_slot >= 0` at the moment Transform fires (the
+# attacker has an ACTIVE Mimic overlay from earlier this same stint),
+# BattleManager's Transform dispatch calls `_reset_mon_mimicked_move` FIRST,
+# before this snapshot — otherwise the snapshot would capture the
+# temporarily-mimicked move instead of Mimic itself, and clearing
+# `mimicked_slot` in the same breath would permanently lose the only record
+# that a restore-to-Mimic was ever owed. See
+# mimic_transform_composition_test.gd for the dedicated regression test.
 var transformed: bool = false
 var pre_transform_moves: Array = []
 var pre_transform_pp: Array[int] = []

@@ -13,3 +13,4 @@ accuracy = 95
 thaws_user = true
 secondary_effect = 1
 secondary_chance = 30
+ban_flags = 16

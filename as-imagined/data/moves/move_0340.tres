@@ -14,4 +14,4 @@ secondary_effect = 3
 secondary_chance = 30
 two_turn = true
 semi_inv_state = 2
-ban_flags = 64
+ban_flags = 192

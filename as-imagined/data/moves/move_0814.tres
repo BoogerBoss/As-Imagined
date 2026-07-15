@@ -10,4 +10,5 @@ type = 15
 category = 1
 power = 40
 pp = 10
+ban_flags = 16
 strike_count = 2

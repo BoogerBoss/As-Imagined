@@ -10,6 +10,6 @@ type = 1
 category = 2
 accuracy = 0
 pp = 20
-ban_flags = 506
+ban_flags = 1018
 ignores_protect = true
 is_copycat = true

@@ -11,3 +11,4 @@ category = 1
 power = 140
 accuracy = 90
 recoil_percent = 50
+ban_flags = 16

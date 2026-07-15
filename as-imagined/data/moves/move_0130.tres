@@ -11,4 +11,5 @@ power = 130
 pp = 10
 makes_contact = true
 two_turn = true
+ban_flags = 128
 charge_turn_defense_boost = 1

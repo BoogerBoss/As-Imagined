@@ -12,3 +12,4 @@ power = 60
 pp = 20
 secondary_effect = 3
 secondary_chance = 100
+ban_flags = 16

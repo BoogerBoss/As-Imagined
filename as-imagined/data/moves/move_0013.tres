@@ -12,3 +12,4 @@ power = 80
 pp = 10
 critical_hit_stage = 1
 two_turn = true
+ban_flags = 128

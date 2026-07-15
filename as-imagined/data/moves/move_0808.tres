@@ -15,5 +15,6 @@ stat_change_amount = 1
 stat_change_self = true
 extra_stat_change_stats = [4]
 extra_stat_change_amounts = [1]
+ban_flags = 16
 ignores_protect = true
 is_tidy_up = true

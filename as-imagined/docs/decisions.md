@@ -24238,3 +24238,335 @@ prose all updated to state M19 is now fully complete — no further M19
 sub-tier, bundle, or session is anticipated.
 
 No commit made — per standing instruction, Rob commits.
+
+## [M19.5] — Testing & Hardening pass: recon then implementation of the 5
+## priority items (2026-07-14)
+
+Two-part session. First a report-only recon (5 areas: full-roster smoke
+test, cross-move interaction audit, the 16 needs-manual-review moves,
+ban-flag/exclusion-list consistency, regression baseline), then
+implementation of the 5 priority findings, in dependency order, with a
+full regression sweep after each major piece per explicit instruction.
+Ground truth for Task 1: `include/move.h` (the 14-field ban-flag struct
+layout) and `src/data/moves_info.h` (per-move values).
+
+### Task 1 — Ban-flag audit fixes
+
+**The actual fix count differed from the recon's own framing in one
+important way, reported here explicitly per instruction**: of the 8
+ban-flag bits the recon identified as actually CONSULTED anywhere in
+`battle_manager.gd` (`BAN_MIMIC`/`BAN_SKETCH`/`BAN_METRONOME`/
+`BAN_COPYCAT`/`BAN_ASSIST`/`BAN_SLEEP_TALK`/`BAN_ENCORE`/`BAN_ME_FIRST`),
+re-running the same cross-reference script found only **5 actually had
+gaps** — `BAN_MIMIC`, `BAN_COPYCAT`, and `BAN_ME_FIRST` were already fully
+correct before this session (zero gaps for any of the three, confirmed
+both by the script and by direct grep of their own dispatch functions).
+`BAN_MIRROR_MOVE`/`BAN_INSTRUCT`/`BAN_GRAVITY` were deliberately left
+unpopulated as instructed — confirmed (again) zero read sites for all
+three anywhere in this codebase.
+
+**Fixes applied**: 91 flag additions across 87 distinct moves (~70
+`BAN_METRONOME` — spanning LGPE partner moves, legendary signatures, and
+ordinary multi-hit/utility moves added across many different D4 bundles,
+none of which were ever cross-checked against source's `metronomeBanned`
+field at the time they shipped; ~15 `BAN_SLEEP_TALK`, mostly two-turn/
+charge moves; `BAN_ENCORE` on Metronome/Mirror Move/Struggle/Copycat;
+`BAN_ASSIST` on Snatch; `BAN_SKETCH` on Hyperspace Fury) plus 4 removals
+(Bide/Substitute/Encore/Burning Bulwark incorrectly carried
+`BAN_METRONOME` with zero source basis — each individually confirmed via
+direct read of its own `moves_info.h` entry: none sets `.metronomeBanned`
+at all). Every one of the 91+4 fixes was spot-verified against source
+directly (not just trusted from the recon's own script output) before
+being applied — a handful of spot-checks (`MOVE_RELIC_SONG`,
+`MOVE_SNATCH`, `MOVE_RAGE_FIST`, `MOVE_ENDURE`, `MOVE_TRICK`,
+`MOVE_BODY_PRESS`, `MOVE_ENCORE`, `MOVE_BURNING_BULWARK`, `MOVE_BIDE`)
+confirmed the script's extraction was accurate before trusting the full
+list.
+
+**Applied via a purpose-built Python patcher operating directly on
+`gen_moves.py`'s own source text** (not a bulk lookup-table bolted on at
+the end of the file) — chosen deliberately to keep every move's own dict
+holding its true, complete field set in place, matching this file's
+existing hand-authored, per-move-editable convention, rather than
+introducing a second, scattered source of truth for `ban_flags` that a
+future reader would need to cross-reference. Uses brace-depth counting
+(not a naive regex chunk-split) to find each move dict's TRUE extent,
+since dicts in this file close in two different styles (some on their
+own `    },` line, some inline on the last key's own line). Two real bugs
+were caught and fixed IN THE PATCHER SCRIPT ITSELF before trusting its
+output against the real file: (1) an early version's ban_flags-value
+regex was anchored to the next newline rather than the next comma/brace,
+silently swallowing unrelated LATER keys into what it thought was the
+`ban_flags` expression whenever a dict packed multiple keys onto one
+physical line after `ban_flags` (caught via a failed "Chunks changed"
+sanity check plus a full dry-run diff review before any write); (2) the
+same regex didn't distinguish "ban_flags terminated by a comma" from
+"ban_flags terminated by the dict's own closing brace" (its own last
+key), which produced a stray duplicate-comma corruption for full-removal
+cases (Substitute, once BAN_METRONOME was its only flag) — fixed by
+capturing which terminator was actually matched and handling each case
+distinctly. Verified via `ast.parse()` (syntax) AND actually executing
+the regenerated module (semantics — every target move's `ban_flags`
+bitwise value checked by direct computation, not just visual diff
+review) before regenerating any `.tres` file.
+
+New `scenes/battle/ban_flag_audit_test.gd`/`.tscn`: 29/29 assertions
+across 9 sections — data integrity (Section A, all fixes spot-checked
+directly against the regenerated `.tres` files); live dispatch-level
+discriminators for the 5 flags with real gaps (Sections B-F) — Sleep
+Talk's own pool-picker (`_pick_sleep_talk_move`) only scans the
+attacker's own small moveset with no disk I/O, making a genuine n=100
+statistical exclusion proof cheap and reliable (Fly, now BAN_SLEEP_TALK,
+never picked across 100 trials; Tackle, unaffected, always available as
+a sanity check the pool isn't vacuously empty); Metronome's own
+pool-picker (`_pick_metronome_move`) by contrast re-scans AND RE-LOADS
+all 717 `.tres` files from disk on EVERY single call, making a repeated-
+trial statistical proof prohibitively expensive (a single call already
+costs 717 resource loads) — that flag's dispatch coverage is instead a
+direct data-level check (already the exact boolean condition the
+dispatch's one-line filter reads) plus a single call confirming the
+function still executes correctly post-fix, explicitly documented as
+this narrower scope rather than silently presenting it as an equivalent
+statistical proof; Encore/Assist/Sketch are all keyed against one
+specific move rather than a random pool draw, so each got a fully
+deterministic positive+negative pair instead. Sections G-I are
+regression guards (explicitly labeled as such, not fixes) confirming the
+3 already-correct flags (Mimic/Copycat/Me First) remain correct — Me
+First's own guard deliberately uses Counter (a non-status move) rather
+than a status move, since Me First's fail condition ALSO independently
+excludes status-category moves, and a status-move test wouldn't isolate
+which check was actually firing.
+
+**A real, fully-expected regression surfaced and was fixed, not silently
+tolerated**: `tier4_test.gd` — an original M7-era suite — had 3
+assertions (S1.19/S1.23/S1.27) that directly asserted Encore/Bide/
+Substitute carry `BAN_METRONOME`, baking in the exact "confirmed extra"
+bug this session's audit found and removed as PASSING test expectations.
+Updated all 3 in place to assert the flag's correct absence, with a
+comment citing this session and pointing at `ban_flag_audit_test.gd`'s
+own Section A for the fuller citation — the same "a genuine correctness
+fix legitimately invalidates a stale test assumption" shape as the
+Nature-system and Solar-Beam-halving regressions in earlier sessions,
+not a bug in the fix itself. `tier4_test.tscn` reran clean at 86/86
+after the update.
+
+### Task 2 — Transform + Mimic composition bug
+
+Confirmed exactly as flagged during the recon, via direct code read (not
+re-derived from scratch): `battle_manager.gd`'s Transform dispatch
+snapshotted `attacker.pre_transform_moves = attacker.moves.duplicate()`
+BEFORE clearing `attacker.mimicked_slot` a few lines later. If the
+attacker had an ACTIVE Mimic overlay (`mimicked_slot >= 0` — it used
+Mimic earlier the same stint and hasn't switched out since) at the exact
+moment it cast Transform, the snapshot captured the temporarily-mimicked
+move (e.g. "Water Gun") instead of Mimic itself, and clearing
+`mimicked_slot` in the same breath permanently destroyed the only record
+that a restore-to-Mimic move was ever owed — on a later switch-out+in,
+`_reset_mon_mimicked_move` no-ops (already `-1`) and `_reset_mon_transform`
+restores the moveset to the wrongly-captured mimicked move instead.
+Source avoids this entirely by construction (Mimic and Transform are both
+ephemeral mutations of the same temporary battle struct, discarded
+wholesale via a fresh party-record re-derivation on switch-in) — this
+project's own per-mechanic snapshot/restore fields needed one explicit
+ordering fix to reproduce that when the two mechanics compose on the same
+mon.
+
+**Fix**: a single guarded call, `if attacker.mimicked_slot >= 0:
+_reset_mon_mimicked_move(attacker)`, inserted immediately before the
+`pre_transform_moves`/`pre_transform_pp` snapshot lines. This restores the
+overlaid slot back to Mimic FIRST, so the snapshot correctly captures the
+true underlying moveset. Confirmed no other composition issue surfaced
+while writing the dedicated test — species/stats/ability/stat_stages/
+times_hit all remain correctly unaffected by this ordering change (their
+own snapshot/copy logic sits at different points in the same dispatch
+block, untouched).
+
+New `scenes/battle/mimic_transform_composition_test.gd`/`.tscn`: 12/12
+assertions — a single attacker successfully Mimics a real move (Ember)
+into its own slot, then Transforms (into a different target, same stint,
+no switch-out in between) — confirms `pre_transform_moves[0]` holds Mimic
+itself (not Ember, the temporarily-copied move); confirms the moveset
+correctly reflects the Transform target's own moves immediately after
+(Hydro Pump, not Ember); confirms `mimicked_slot` is correctly cleared by
+the pre-snapshot restore; then confirms a full switch-out+in cycle (via
+two direct `_do_voluntary_switch` calls, matching this arc's established
+precedent for isolating the switch-triggered reset specifically) reverts
+the moveset to Mimic itself in slot 0 (not Ember, not Hydro Pump) and
+Tackle unchanged in slot 1. Stable across 4 reruns. `transform_test.tscn`
+(59/59) and `mimic_sketch_test.tscn` (46/46) both reran unchanged,
+confirming no regression to either origin suite.
+
+### Task 3 — Full-roster smoke test, Tier A
+
+Confirmed no equivalent existed, per the recon's own finding: the
+`PokemonRegistry: smoke test passed — ... 935 moves ...` line every
+suite already prints operates on `data/moves.json` via
+`PokemonRegistry.get_move()`, a completely separate, JSON-backed pipeline
+with zero call sites in real battle logic. `gen_move_status_table.py`
+also touches every `.tres` file, but only via raw Python text parsing,
+never through Godot's own `load()`.
+
+First draft: `scenes/battle/move_roster_smoke_test.gd`/`.tscn`, 4
+aggregate assertions covering all 717 moves in one loop. **Follow-up
+correction, same day**: Rob asked for this to exist as a dedicated,
+standalone, independently-runnable artifact — not merely "the general
+sweep happens to touch every move" — and pointed out the original ask
+had specified mirroring `item_registry_test.gd`'s own Section 1
+convention, which emits one assertion PER catalog entry, not a handful
+of aggregate checks over the whole set. Replaced (same session, file
+never committed) with `scenes/battle/move_smoke_test.gd`/`.tscn`:
+deliberately scans the filesystem directly via `ResourceLoader.exists`
+across the full canonical ID range (1-934) rather than hardcoding a
+717-entry expected-ID list (the `item_registry_test.gd` convention,
+reasonable there at item-roster scale but a needless maintenance burden
+at move-roster scale) — `move_status_table.md`'s own "Implemented"
+classification is itself derived from exactly this same file-existence
+check (`gen_move_status_table.py`'s `parse_implemented()`), so scanning
+the filesystem directly is equivalent by construction and self-updating,
+needing no list maintenance as future sessions add moves — but now
+emits ONE `_chk` per implemented move rather than a handful of aggregate
+checks, matching the requested convention exactly. **717/717**,
+confirmed exactly matching the expected implemented-move count, stable
+across 4 reruns. Each move's own assertion confirms it loads without
+error and is genuinely a `MoveData` instance (not a corrupt resource or
+a script-class mismatch).
+
+### Task 4 — Baseline recording
+
+See CLAUDE.md's "M19-complete baseline (2026-07-14)" testing-convention
+entry, added immediately after the existing "baseline-total
+verification" convention it extends. **Updated once more, same day**,
+after the Task 3 redesign above changed the file's own assertion count
+from 4 to 717 (a net +713 to the grand total): the confirmed clean
+number is now **121 files / GRAND TOTAL 12693 / 0 real failures**
+(11980 prior clean baseline − 4 old-suite assertions + 717 new-suite
+assertions = 12693, confirmed both by direct arithmetic and by a fresh
+sweep). The baseline entry's own flaky-suite caveat was ALSO broadened
+during this update: two more confirmation sweeps surfaced 3 MORE
+already-documented pre-existing flaky suites beyond the original 2 named
+(`m17l_test.tscn`, `m18_5g_test.tscn`'s King's-Rock/Shell-Bell
+statistical tests, `m18q_test.tscn`'s Shell Bell discriminator) — a
+different subset flaked on each of 2 fresh runs, confirming this is
+generic scattered statistical noise across many independent RNG-based
+suites in this large test corpus, not anything caused by the rename
+itself. CLAUDE.md's own baseline entry now names 5 known-flaky suites
+(not an exhaustive list) and instructs future sessions to add newly-
+discovered ones to that list rather than re-diagnosing them from
+scratch — written this explicitly so a future M20+ session doesn't
+mistake expected flake noise for a real regression, or vice versa.
+
+### Task 5 — Quick opportunistic fix
+
+Added `stat_change_bypasses_type_gate` to `gen_move_status_table.py`'s
+own field-recognition allowlist (the same recurring doc-generator gap
+class as `snatch_affected`/`two_typed_move`/`second_type`/`target` before
+it). Regenerated `move_status_table.md`: needs-manual-review dropped
+16→0, confirming — as the recon found — that all 16 were purely a
+doc-generator gap with a fully correct, already-tested implementation
+behind every one of them (`effect_stat_change_audit_test.tscn`, unchanged
+by this session).
+
+### Two unplanned infrastructure fixes, both discovered as direct
+### byproducts of Task 1's own regression sweep, not scope creep
+
+**(1) Root-caused the "separate, still-unexplained transient sweep-
+dispatch failure"** flagged — but never fully explained — across both
+the `[Perish Song]` and `[Transform]` sessions. Task 1's very first
+sweep attempt reproduced the exact "empty log, exit 1" symptom, and this
+time it was traced all the way down rather than retried-and-forgotten:
+`count_assertions.sh`'s fresh-sweep branch runs its real per-scene test
+loop under script-wide `set -euo pipefail`, and redirects ALL of that
+loop's real output into a `mktemp`'d temporary file — one that a
+`trap 'rm -f "$LOG_FILE"' EXIT` unconditionally deletes on ANY script
+exit, successful or not. This is a COMPLETELY SEPARATE stream from
+whatever the script's own caller captures (the python analysis step's
+own print statements, much further down). Under `set -e`, a SINGLE scene
+returning nonzero — a real failure, OR merely one of this codebase's
+already-documented pre-existing flaky tests, OR even just a Godot
+"WARNING: ObjectDB instances leaked at exit"/"ERROR: N resources still
+in use at exit" shutdown diagnostic escalating the process's own exit
+code — aborts the ENTIRE script immediately, before the python analysis
+step (and therefore any visible output at all) is ever reached, and
+before the now-doomed temp file's own content can be inspected (it gets
+deleted moments later by the trap regardless). This produces EXACTLY the
+symptom both prior sessions observed and could not explain: a completely
+empty captured log, exit code 1, with a bare retry often "fixing" it
+purely because the SAME flaky scene happened not to flake on the very
+next attempt.
+
+**Fix**: `|| true` appended to the per-scene Godot invocation inside the
+for-loop. This is the correct, intended behavior for a sweep script
+whose entire purpose is "run every suite and report all their results" —
+one flaky or genuinely failing scene must not prevent the other 120 from
+being run and reported at all. Verified by re-running the sweep
+immediately after the fix and confirming it now completes and reports
+full results even when a known-flaky scene fires mid-sweep, rather than
+dying silently.
+
+**(2) The fix's own very first real application immediately surfaced two
+ALREADY-DOCUMENTED pre-existing flakes doing exactly this** —
+`m19a_gen1_test.tscn`'s own "Hydro Pump does NOT trigger Rough Skin"
+whole-battle-aggregation bug (flagged, not fixed, during `[D4 CHEAP
+bundle]`) and, on the session's second confirmation sweep,
+`m18_5g_test.tscn`'s own King's-Rock/Shell-Bell statistical test (also
+flagged, not fixed, during `[D4 CHEAP bundle]`) and `doubles_test.tscn`'s
+own documented pre-existing RNG-flakiness class (`[M17n-2]`). All three
+were reconfirmed unrelated to this session's actual changes (none
+reference ban flags, Transform, or Mimic in any way) and were
+deliberately NOT (re-)fixed here, matching their own original
+out-of-scope disposition from the sessions that first found them —
+flagged again here only because this session's own infrastructure fix is
+what finally made them VISIBLE in a completed sweep report, rather than
+silently killing the whole sweep the way they always had before.
+
+### Deferred items (explicitly NOT implemented this session, per
+### instruction)
+
+- **Perish Song + semi-invulnerable target test** — real but lower-value
+  per the recon's own framing; not built this session. Follow-up:
+  `Cmd_trysetperishsong`'s own `IsBattlerUnaffectedByMove` check reads a
+  stale result flag nothing sets by the time this move's own field-wide
+  command runs (confirmed during the recon), meaning source's real rule is
+  that semi-invulnerable targets (Fly/Dig/Dive/Sky-Drop-mid-grip) are NOT
+  excluded from Perish Song — this project's own dispatch already matches
+  that correctly by omission (no `semi_invulnerable` check exists in its
+  Perish Song block at all), but zero test coverage exists for this
+  specific scenario. A small, cheap addition whenever picked up (~30-45
+  min): one test confirming a Fly/Dig-mid-charge combatant still receives
+  the countdown from a Perish Song cast.
+- **Snatch + Magic Coat/Magic Bounce** — confirmed no live conflict during
+  the recon (zero moves in the current roster are both `snatch_affected`
+  and `bounceable`, verified via direct `gen_moves.py` cross-check) — no
+  action needed, not revisited this session.
+- **Choice item + Transform** — flagged during the recon as a real,
+  plausible interaction (a Choice-item holder whose first move is
+  Transform could get `choice_locked_move` permanently pointed at a
+  Transform `MoveData` object no longer present in its own post-Transform
+  moveset) but explicitly NOT source-verified — still needs its own Step 0
+  check before any fix is scoped. Not attempted this session, per explicit
+  instruction.
+- **Full-roster smoke test, Tier B (dispatch-level)** — explicitly
+  deferred to a future session; only Tier A (load-only) was built here.
+
+### Regression summary
+
+Full regression run after each of Tasks 1 and 2 individually (per
+explicit instruction, given how many shared/cross-cutting chokepoints
+both tasks touch), a consolidated pair of sweeps after Tasks 3-5 landed,
+and two more sweeps after the same-day Task 3 redesign (`move_smoke_test
+.tscn` replacing `move_roster_smoke_test.tscn`). All via the (now
+further-hardened, see the infrastructure fix above) absolute-path
+invocation. Final state: **121 files / GRAND TOTAL 12693 with zero
+flakes firing** (observed 12690-12693 across runs depending on which of
+5 confirmed, already-documented pre-existing statistical-flake suites —
+`m19a_gen1_test`/`doubles_test`/`m17l_test`/`m18_5g_test`/`m18q_test`,
+not necessarily exhaustive — happened to fire that run; a different
+subset flaked on each run observed, confirming generic scattered noise
+across many independent RNG-based suites rather than anything caused by
+this session's own changes), **0 failures traceable to this session's
+own changes any run**. Move-implementation count unchanged at **717**
+(M19.5 is pure data-correctness and test-infrastructure work — zero
+move-count or exclusion-accounting changes). `docs/move_status_table.md`:
+**717 implemented / 217 excluded / 0 residual / 0 needs-manual-review**.
+
+No commit made — per standing instruction, Rob commits.

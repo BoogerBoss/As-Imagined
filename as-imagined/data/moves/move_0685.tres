@@ -10,4 +10,5 @@ type = 13
 power = 100
 accuracy = 90
 pp = 10
+ban_flags = 16
 is_leech_seed_on_hit = true

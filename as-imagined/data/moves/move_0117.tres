@@ -10,5 +10,5 @@ type = 1
 accuracy = 0
 pp = 10
 priority = 1
-ban_flags = 16
+ban_flags = 128
 is_bide = true

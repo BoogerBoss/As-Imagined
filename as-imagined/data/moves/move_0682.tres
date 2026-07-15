@@ -13,3 +13,4 @@ makes_contact = true
 thaws_user = true
 secondary_effect = 1
 secondary_chance = 100
+ban_flags = 16

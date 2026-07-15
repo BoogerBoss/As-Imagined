@@ -11,5 +11,6 @@ category = 1
 power = 110
 accuracy = 85
 pp = 10
+ban_flags = 16
 is_spread = true
 pulse_move = true

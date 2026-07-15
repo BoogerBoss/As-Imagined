@@ -10,4 +10,5 @@ type = 19
 category = 1
 power = 120
 accuracy = 85
+ban_flags = 16
 is_heal_bell_on_hit = true

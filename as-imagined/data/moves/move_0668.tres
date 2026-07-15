@@ -9,4 +9,5 @@ move_name = "Moongeist Beam"
 type = 8
 category = 1
 power = 100
+ban_flags = 16
 ignores_target_ability = true

@@ -13,4 +13,5 @@ accuracy = 80
 secondary_chance = 30
 stat_change_stat = 0
 stat_change_amount = -1
+ban_flags = 16
 is_spread = true

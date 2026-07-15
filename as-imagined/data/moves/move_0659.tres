@@ -13,3 +13,4 @@ accuracy = 90
 stat_change_stat = 2
 stat_change_amount = -2
 stat_change_self = true
+ban_flags = 16

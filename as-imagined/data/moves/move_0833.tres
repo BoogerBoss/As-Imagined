@@ -11,5 +11,6 @@ category = 1
 power = 130
 pp = 10
 two_turn = true
+ban_flags = 128
 charge_turn_spatk_boost = 1
 skips_charge_in_rain = true

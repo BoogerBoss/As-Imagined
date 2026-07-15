@@ -11,4 +11,5 @@ power = 25
 makes_contact = true
 punching_move = true
 always_critical_hit = true
+ban_flags = 16
 strike_count = 3

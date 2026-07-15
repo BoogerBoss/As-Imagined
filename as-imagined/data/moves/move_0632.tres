@@ -11,5 +11,6 @@ power = 125
 pp = 10
 makes_contact = true
 two_turn = true
+ban_flags = 128
 is_solar_beam = true
 slicing_move = true

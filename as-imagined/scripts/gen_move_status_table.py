@@ -330,6 +330,8 @@ def describe_move(fields):
                         "two_typed_move", "second_type",
                         # [Perish Song]
                         "target",
+                        # [EFFECT_STAT_CHANGE audit]
+                        "stat_change_bypasses_type_gate",
                     }]
     if unrecognized:
         return None, unrecognized

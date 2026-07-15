@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://mimictransformcomptest"]
+
+[ext_resource type="Script" path="res://scenes/battle/mimic_transform_composition_test.gd" id="1_mimictransformcomptest"]
+
+[node name="MimicTransformCompositionTest" type="Node"]
+script = ExtResource("1_mimictransformcomptest")

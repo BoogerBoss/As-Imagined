@@ -13,3 +13,4 @@ accuracy = 90
 secondary_effect = 1
 secondary_chance = 30
 two_turn = true
+ban_flags = 144

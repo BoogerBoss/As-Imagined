@@ -13,3 +13,4 @@ accuracy = 95
 pp = 10
 secondary_effect = 6
 secondary_chance = 20
+ban_flags = 16

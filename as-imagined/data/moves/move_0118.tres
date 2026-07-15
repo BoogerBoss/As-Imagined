@@ -10,5 +10,5 @@ type = 1
 category = 2
 accuracy = 0
 pp = 10
-ban_flags = 120
+ban_flags = 760
 is_metronome = true

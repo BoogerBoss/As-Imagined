@@ -9,4 +9,5 @@ move_name = "Quash"
 type = 18
 category = 2
 pp = 15
+ban_flags = 16
 is_quash = true

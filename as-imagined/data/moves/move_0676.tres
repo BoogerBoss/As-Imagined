@@ -15,3 +15,4 @@ always_critical_hit = true
 stat_change_stat = 6
 stat_change_amount = 1
 stat_change_self = true
+ban_flags = 16

@@ -11,4 +11,5 @@ category = 1
 power = 120
 pp = 10
 two_turn = true
+ban_flags = 128
 is_solar_beam = true

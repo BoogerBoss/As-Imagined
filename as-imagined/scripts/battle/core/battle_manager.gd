@@ -5268,6 +5268,26 @@ func _phase_move_execution() -> void:
 				move_effect_failed.emit(attacker, "transform_failed")
 			else:
 				attacker.transformed = true
+				# [M19.5 Task 2] If the attacker has an ACTIVE Mimic overlay
+				# (mimicked_slot >= 0 — it used Mimic earlier this same
+				# stint and hasn't switched out since), restore that slot
+				# back to Mimic itself FIRST, before snapshotting. Without
+				# this, pre_transform_moves would capture the temporarily-
+				# mimicked move (e.g. "Water Gun") rather than Mimic, and
+				# clearing mimicked_slot below would then permanently lose
+				# the only record that a restore-to-Mimic was ever owed —
+				# on a later switch-out+in, _reset_mon_mimicked_move would
+				# no-op (mimicked_slot already -1) and _reset_mon_transform
+				# would restore the moveset to the wrongly-snapshotted
+				# mimicked move instead of Mimic. Source avoids this by
+				# construction (Mimic and Transform are both ephemeral
+				# mutations of the same temp struct, discarded wholesale via
+				# a fresh party-record re-derivation on switch-in) — this
+				# project's own per-mechanic snapshot fields need this one
+				# explicit ordering fix to compose correctly when Mimic sits
+				# underneath Transform on the same mon.
+				if attacker.mimicked_slot >= 0:
+					_reset_mon_mimicked_move(attacker)
 				# Cast-time snapshot — NOT construction-time, since PP is
 				# consumed as the battle progresses (see BattlePokemon
 				# .pre_transform_moves's own doc comment).
