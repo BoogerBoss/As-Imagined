@@ -60,9 +60,17 @@ else
 	# run to completion and be recorded regardless of its own exit code — a
 	# single flaky/failing scene must not prevent the other 117 from being
 	# reported.
+	# [cwd-drift audit] The Godot invocation itself uses "$PROJECT_DIR"
+	# directly, NOT a bare `--path .` relying on the `cd` above — per
+	# CLAUDE.md's "known footgun: working-directory drift" section, every
+	# Godot invocation should be self-contained (cwd-independent) rather
+	# than trusting a prior `cd` to have taken effect. The `cd` above is
+	# kept (it's still genuinely useful for the relative `scenes/battle/*
+	# .tscn` glob below and any future code path that reads project-
+	# relative files), but the Godot call itself no longer depends on it.
 	for f in scenes/battle/*.tscn; do
 		echo "=== $f ==="
-		timeout 25 "$GODOT" --headless --path . "$f" 2>&1 || true
+		timeout 25 "$GODOT" --headless --path "$PROJECT_DIR" "$f" 2>&1 || true
 	done > "$LOG_FILE"
 fi
 

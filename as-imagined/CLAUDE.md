@@ -949,10 +949,48 @@ Every item below was discovered during M18 implementation/testing/migration work
 
 ## Development workflow
 
-Run a verification scene headless (from project root):
+## ⚠️ Known footgun: working-directory drift (READ BEFORE RUNNING ANY TEST)
+
+The git repo root (`/home/rob/GodotAsImagined`) sits ONE LEVEL ABOVE the
+actual Godot project directory (`/home/rob/GodotAsImagined/as-imagined`).
+Godot's `--path` flag requires the PROJECT directory, not the repo root.
+
+This has caused repeated, confusing failures across this project's
+history — commands timing out, silently loading the wrong (or no)
+project, or `cd`-then-run patterns losing the correct directory between
+tool calls (e.g. `pwd` shows the repo root even after an earlier `cd`
+in a prior tool call — each new tool invocation does NOT inherit shell
+state from the previous one).
+
+**Standing rule: every Godot invocation must include the full absolute
+path in the SAME command string — never rely on a prior `cd`.**
+
+WRONG (drift-prone — a separate/prior `cd` does not persist):
+```bash
+cd /home/rob/GodotAsImagined/as-imagined
+timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17l_test.tscn
+```
+
+RIGHT (self-contained, cwd-independent):
+```bash
+timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless \
+  --path /home/rob/GodotAsImagined/as-imagined \
+  scenes/battle/m17l_test.tscn
+```
+
+This applies to EVERY Godot invocation — single test runs, `--import`
+passes, and full sweeps alike. `scripts/count_assertions.sh` was
+already hardened this way after `[D4 CHEAP bundle]`'s own investigation
+found this exact pattern silently truncating sweep output; that same
+discipline was never extended to ad-hoc single-scene runs, which is
+where it keeps recurring. If a Godot command times out or produces no
+output, check the invocation for a bare `--path .` or `--path
+as-imagined` before assuming a real test hang.
+
+Run a verification scene headless (self-contained, works from any cwd):
 
 ```bash
-/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/SCENE.tscn
+/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path /home/rob/GodotAsImagined/as-imagined scenes/battle/SCENE.tscn
 ```
 
 **Verification scenes:**
