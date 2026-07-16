@@ -2042,16 +2042,19 @@ static func big_root_drain_heal(mon: BattlePokemon, heal: int, ng_active: bool =
 # move-category gate in source). Future Sight and Heal Block exclusions are
 # both non-applicable here (neither exists in this project).
 #
-# NOT modeled, flagged not built (both genuine doubles-only edge cases, out of
-# this tier's singles-focused test scope, matching M18n's own flagged Red Card
-# doubles gap):
-#   1. Source excludes healing if the attacker was JUST forced to switch out by
-#      Red Card earlier in this same hit resolution (`redCardSwitched`) — this
-#      project's `attacker` reference stays valid post-switch, so without an
-#      explicit guard this WOULD still heal in that case, a real discrepancy.
-#   2. Source's savedDmg accumulates across ALL targets of a spread move before
-#      healing once; this project's per-target dispatch would heal once per
-#      target hit in a hypothetical doubles spread-move scenario.
+# [M21] Both of this function's own doubles-only gaps (flagged here since
+# M18q) are now handled — at the BattleManager call-site level, not inside
+# this pure calculation function, which is unchanged and still correct:
+#   1. Source excludes healing if the attacker was JUST forced to switch out
+#      by Red Card earlier in this same hit resolution (`redCardSwitched`).
+#      Every call site of this function now gates on
+#      `not _red_card_switched_this_move` (see that flag's own doc comment
+#      in battle_manager.gd) before calling in at all.
+#   2. Source's savedDmg accumulates across ALL targets of a spread move
+#      before healing once; battle_manager.gd's spread-move dispatch now
+#      accumulates total damage across all targets hit and calls this
+#      function exactly once, off that combined total, instead of once
+#      per target.
 static func shell_bell_heal(mon: BattlePokemon, final_damage: int, ng_active: bool = false) -> int:
 	var item: ItemData = effective_held_item(mon, ng_active)
 	if item == null or item.hold_effect != HOLD_EFFECT_SHELL_BELL:

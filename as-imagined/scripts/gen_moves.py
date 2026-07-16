@@ -2806,9 +2806,7 @@ MOVES = [
      "random_status_pool": [STATUS_POISON, STATUS_PARALYSIS, STATUS_SLEEP]},
 
     # M19-self-faint: .explosion=TRUE, unconditional self-KO regardless of
-    # hit/miss, Damp-blocked. TARGET_FOES_AND_ALLY modeled as is_spread
-    # (opponents only) — the ally-hit half in doubles is a flagged,
-    # not-built gap (see move_data.gd's own doc comment).
+    # hit/miss, Damp-blocked.
     # [M21] target_includes_ally: also hits the user's own ally in doubles
     # (TARGET_FOES_AND_ALLY), confirmed from source alongside is_spread.
     {"id":  120, "name": "Self-Destruct",

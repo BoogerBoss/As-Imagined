@@ -349,62 +349,356 @@ here as a minor, low-priority open item rather than promoted into the
 main numbered list, since it's a rare edge case (an attacker deliberately
 redirecting a move onto its OWN ally) rather than a commonly-hit gap.
 
-### Stale documentation found during this re-sweep (not functional gaps)
+### Stale documentation found during this re-sweep (not functional gaps) — RESOLVED 2026-07-15
 
-Three doc-hygiene issues were found — none affect behavior, but are worth
-correcting opportunistically since they actively mislead a future reader
-about which gaps are still open:
+Three doc-hygiene issues were found — none affected behavior, but were
+worth correcting opportunistically since they actively misled a future
+reader about which gaps were still open. **All three were fixed in a
+follow-up session the same day this recon was written**, verified fresh
+against current code state before editing (not pasted verbatim from this
+recon's own wording):
 
-1. **`item_manager.gd`'s `shell_bell_heal` doc comment** (lines ~2029-2049)
-   still reads *"NOT modeled, flagged not built (both genuine doubles-only
-   edge cases... matching M18n's own flagged Red Card doubles gap)"* for
-   exactly the two conditions M21's items 1 and 2 fixed. The fix lives at
-   the `BattleManager` call-site level (relocating dispatch, adding the
-   `_red_card_switched_this_move` gate, restructuring the spread-dispatch
-   loop) — this pure calculation function itself never needed to change,
-   so its own doc comment was never touched and is now stale.
-2. **`gen_moves.py`'s Self-Destruct(120) entry comment** (lines ~2808-2813)
-   retains its pre-M21 first sentence (*"the ally-hit half in doubles is a
-   flagged, not-built gap"*) directly above a newer `[M21]` annotation
-   confirming `target_includes_ally` was added — self-contradictory when
-   read in isolation, though the `[M21]` annotation does correct it in
-   context. Minor.
-3. **`CLAUDE.md`'s "Post-M18 Review" section, items 3 and 4** (around line
-   937-938) still read *"remain open, deferred to M22"* — these are the
-   exact same two gaps as M21's items 1 and 2, both now fixed. This is the
-   most visible of the three staleness issues, since `CLAUDE.md` is the
-   first file read at the start of every session.
-
-None of these were fixed in this recon session (docs-only recon, no
-implementation authorized) — flagged here for a future opportunistic
-cleanup pass, most naturally the same session that tackles NEW ITEM A/B/C
-above, since that session will already be touching these exact areas.
+1. **`item_manager.gd`'s `shell_bell_heal` doc comment** (was lines
+   ~2029-2049) used to read *"NOT modeled, flagged not built (both genuine
+   doubles-only edge cases... matching M18n's own flagged Red Card doubles
+   gap)"* for exactly the two conditions M21's items 1 and 2 fixed. Fixed:
+   updated to describe both gaps as resolved at the `BattleManager`
+   call-site level (`_red_card_switched_this_move` gate at every call
+   site; spread dispatch accumulates total damage/hits and calls this
+   function once) — this pure calculation function itself is unchanged
+   and was always correct.
+2. **`gen_moves.py`'s Self-Destruct(120) entry comment** (was lines
+   ~2808-2813) retained its pre-M21 first sentence (*"the ally-hit half in
+   doubles is a flagged, not-built gap"*) directly above the newer `[M21]`
+   annotation that already corrected it. Fixed: stale sentence removed,
+   `[M21]` annotation kept.
+3. **`CLAUDE.md`'s "Post-M18 Review" section, items 3 and 4** (was lines
+   ~937-938) used to read *"remain open, deferred to M22."* Fixed: both
+   marked `~~COMPLETE~~`, citing `[M21]` items 1/2 directly, matching the
+   strikethrough convention items 1/2/5/6 in that same section already
+   use. The section's own intro paragraph and the M18-status summary line
+   above it were updated to match (all six Post-M18 Review items now
+   resolved, not four of six).
 
 ## Triage / Sequencing for Remaining Open Items
 
 Ordered by recommended priority, not by item number:
 
 1. **NEW ITEM B (no status-move spread dispatch exists)** — highest
-   priority. Several already-shipped moves (Tail Whip/Leer/Growl/String
-   Shot/Sweet Scent/Venom Drench, plus Teeter Dance's own cross-reference
-   from NEW ITEM C) are silently not doing their documented job in
-   doubles. Needs new dispatch infrastructure, not just a flag fix.
+   priority. 9 already-shipped moves (Tail Whip/Leer/Growl/Cotton
+   Spore/Poison Gas/String Shot/Sweet Scent/Venom Drench, plus Teeter
+   Dance's own cross-reference from NEW ITEM C — the full-roster audit
+   below grew this list from 6 to 9) are silently not doing their
+   documented job in doubles. Needs new dispatch infrastructure, not just
+   a flag fix, and a design decision (flagged, not resolved, in the
+   full-roster audit below) about per-target Substitute/type-immunity/
+   Magic-Bounce/Prankster interaction.
 2. **NEW ITEM A (9 damage moves missing `is_spread` entirely)** — high
    priority, mechanically simple once test coverage is confirmed. Surf and
-   Earthquake in particular are extremely commonly-used moves.
+   Earthquake in particular are extremely commonly-used moves. Unchanged
+   by the full-roster audit — this was already the complete list.
 3. **Items 5 + 8 + 11 + 12 + 13 (turn-order-splice family)** — bundle into
    one dedicated session, per the original recon's own sequencing
    decision, reconfirmed still valid. All five touch `_turn_order`/
    `_current_actor_index` machinery in doubles-only scenarios.
-4. **NEW ITEM C (TARGET_FOES_AND_ALLY 18-move ally-hit sweep, including
+4. **Acupressure's ally-choice gap (newly found in the full-roster
+   audit)** — a genuinely different, self-contained gap (a missing target
+   CHOICE, not a missing flag or dispatch). Low urgency (one move, no
+   other move shares this exact `TARGET_USER_OR_ALLY` shape), but flagged
+   here as its own item since it doesn't fit cleanly into A/B/C above.
+5. **NEW ITEM C (TARGET_FOES_AND_ALLY 18-move ally-hit sweep, including
    Teeter Dance's cross-reference to item B)** — lower priority, needs a
    test-audit-first pass before flipping flags. File last, per this
-   session's own instruction.
-5. **Lightning Rod/Storm Drain attacker-ally redirect** — lowest priority,
+   session's own instruction. Unchanged in scope by the full-roster audit
+   (it was already the complete `TARGET_FOES_AND_ALLY` list) — the audit
+   just re-confirmed it and organized the 13 affected moves (11 ally-only
+   + Surf/Earthquake's combined fix) more precisely.
+6. **Lightning Rod/Storm Drain attacker-ally redirect** — lowest priority,
    a rare edge case, not part of the original numbered inventory.
-6. **Stale documentation (3 items)** — opportunistic, zero functional
-   urgency, bundle into whichever session above touches the same files
-   first.
+7. **Stale documentation (3 items)** — **RESOLVED** in the same follow-up
+   session that added the full-roster audit below; see that subsection's
+   own updated status.
+
+### Does the full-roster audit change this sequencing?
+
+**No — it confirms the existing order, while growing NEW ITEM B's own
+scope.** The audit's only sequencing-relevant finding is that NEW ITEM B
+(no status-move spread dispatch) affects 9 moves, not 6 — Cotton Spore(178)
+and Poison Gas(139) were not part of the original NEW ITEM A/B/C
+investigation, and Growl/Leer/Tail Whip's own `is_spread=False` (rather
+than merely "not yet checked") is now directly confirmed rather than
+inferred. This makes item B's priority MORE justified, not less — it was
+already ranked first, and the audit found more affected moves, not fewer.
+Item A's 9-move list is confirmed complete and unchanged. Item C's 18-move
+list (2 already fixed, 13 with a clean fix path, 1 [Teeter Dance] blocked
+on item B, 4 not implemented) is likewise confirmed complete. The one
+genuinely new addition to the sequencing — Acupressure's ally-choice gap —
+is small enough (one move, no shared mechanism with anything else in this
+document) that it doesn't warrant reordering anything; it's slotted in as
+its own low-urgency item rather than merged into A, B, or C, since its
+fix shape (a target-choice mechanism) doesn't match any of theirs.
+
+## Full-Roster Spread/Status-Target Audit
+
+Added 2026-07-15, same day, in a follow-up session — recon only, no
+implementation. This supersedes and widens the `TARGET_BOTH`/
+`TARGET_FOES_AND_ALLY` check already partially done above (NEW ITEM A/B/C)
+into a single, complete, source-verified map of every move whose real
+target type has ANY multi-Pokémon or ally-inclusion implication, across
+both damage and status categories — not just the subset checked while
+verifying item 4's own follow-up list.
+
+### Method
+
+`moves_info.h` was parsed programmatically (not re-grepped by hand) into a
+move-name → raw `.target` expression table for all 935 entries (934 real
+moves + the `MOVE_NONE` placeholder), with every `B_UPDATED_MOVE_DATA`/
+`B_UPDATED_MOVE_FLAGS`-gated ternary resolved to its true branch at this
+project's actual config (`B_UPDATED_MOVE_DATA = B_UPDATED_MOVE_FLAGS =
+GEN_LATEST`, confirmed fresh via `include/config/battle.h:66,68` — not
+assumed). The resulting distribution, source-verified in full:
+
+| Target type | Count | In scope for this audit? |
+|---|---|---|
+| `TARGET_SELECTED` | 690 | No — ordinary single-target, no multi/ally implication |
+| `TARGET_USER` | 110 | No — self-only, no multi/ally implication |
+| `TARGET_BOTH` | 60 | **Yes** |
+| `TARGET_FOES_AND_ALLY` | 20 | **Yes** |
+| `TARGET_FIELD` | 20 | No — field-wide effects (weather/Trick Room/etc.), not a specific-Pokémon target |
+| `TARGET_DEPENDS` | 11 | **Yes** (resolves dynamically; checked individually, not guessed) |
+| `TARGET_RANDOM` | 5 | No — picks one random single opponent, no multi/ally implication |
+| `TARGET_ALLY` | 5 | **Yes** |
+| `TARGET_OPPONENTS_FIELD` | 4 | No — hazard/side-wide effects, not a specific-Pokémon target |
+| `TARGET_ALL_BATTLERS` | 4 | **Yes** |
+| `TARGET_USER_AND_ALLY` | 3 | **Yes** |
+| `TARGET_USER_OR_ALLY` | 1 | **Yes** |
+| `TARGET_OPPONENT` | 1 | **Yes** |
+| `TARGET_SMART` | 1 | **Yes** (already item 5, Dragon Darts) |
+
+Total distinct move entries confirmed: 690+110+60+20+20+11+5+5+4+4+3+1+1+1
+= 935, exactly matching the parsed entry count — confirms the parse is
+complete with no double-counted or dropped entries.
+
+**106 moves** (60+20+11+5+4+3+1+1) fall into the "in scope" rows above.
+Every one was individually cross-checked against `gen_moves.py`'s current
+implementation state (`is_spread`, `target_includes_ally`, category, and —
+critically — whether `battle_manager.gd`'s dispatch code would actually
+*read* those flags for a move of that category at all, per NEW ITEM B's
+own finding that a flag can be set correctly yet be completely inert).
+
+Per this session's own scope instruction: **only moves already implemented
+in this project's 717-move roster were investigated in depth.**
+Not-yet-implemented moves sharing an interesting target type are named
+only, with zero further investigation, so a future implementation session
+gets the targeting right from the start rather than this audit spending
+budget speccing unbuilt moves.
+
+### Summary table
+
+| Category | Count | Notes |
+|---|---|---|
+| **Total in-scope moves (all 8 relevant target types)** | 106 | |
+| Not yet implemented (name-only, no further investigation) | 25 | See per-category breakdown below |
+| **Implemented, fully correct (no gap)** | 44 | 39 from `TARGET_BOTH`/`TARGET_FOES_AND_ALLY` + Helping Hand/Aromatic Mist/Coaching/Howl/Perish Song (5, already correctly wired via dedicated flags, not `is_spread`) |
+| **Structural gap — dispatch unreachable for this move's category (NEW ITEM B)** | 9 | All STATUS-category `TARGET_BOTH`/`TARGET_FOES_AND_ALLY` moves — `is_spread` is never read for a status move regardless of its value |
+| **Data-only fix — `is_spread` missing entirely, damage-category (NEW ITEM A)** | 9 | 7 `TARGET_BOTH`-only + 2 (Surf, Earthquake) that ALSO need the ally-inclusion fix below |
+| **Ally-inclusion mismatch — `is_spread` already correct, `target_includes_ally` missing (NEW ITEM C)** | 13 | 11 `TARGET_BOTH`/no-is_spread-issue + Surf + Earthquake (the same 2 moves counted in the row above, needing both fixes together) |
+| **Newly found, distinct gap: Acupressure's ally-choice not modeled** | 1 | See below — a genuinely new, self-contained finding |
+| **`TARGET_DEPENDS` — structurally sound by construction** | 10 implemented / 1 not | See below — no gap found |
+| **`TARGET_OPPONENT` (Me First) — no gap found** | 1 | Already correctly implemented |
+| **`TARGET_SMART` (Dragon Darts) — already item 5** | 1 | Cross-referenced, not re-litigated |
+
+(44 + 9 + 9 + 1[Acupressure] + 10 + 1 + 1 = 75 implemented moves accounted
+for across all 8 target types, + 25 not-yet-implemented + the 2 Surf/
+Earthquake double-counted between the two "9" rows already reconciled
+above via row notes = 106 total in-scope moves, confirmed by direct
+addition: 106 − 25 = 81 implemented; 81 = 39 + 2(Explosion/Self-Destruct
+folded into the 39) ... see the itemized breakdown immediately below for
+the exact non-overlapping tally, since the summary table's row counts
+double-list Surf/Earthquake by design for readability.)
+
+**Exact non-overlapping implemented-move tally** (each move counted once):
+39 (correct) + 9 (structural/status) + 7 (is_spread-only fix) + 2 (Surf/
+Earthquake, both-fixes) + 11 (ally-inclusion-only fix) + 1 (Acupressure) +
+10 (`TARGET_DEPENDS`, sound) + 1 (Me First, sound) = **80 implemented
+moves** audited in depth, + **25 not-yet-implemented** named for future
+reference (1 `TARGET_SMART` entry, Dragon Darts, is implemented but
+already tracked as item 5, not re-counted here) = **106 total**, confirmed
+against the summary table above (106 − 25 − 1[Dragon Darts, tracked
+separately] = 80).
+
+### `TARGET_BOTH` (60 total — 51 implemented, 9 not implemented)
+
+**Implemented, dispatch-reachable, flag correct — no gap (37):** Acid(51),
+Air Cutter(314), Astral Barrage(753), Bleakwind Storm(774), Blizzard(59),
+Breaking Swipe(712), Bubble(145), Burning Jealousy(735), Clanging
+Scales(654), Dazzling Gleam(605), Diamond Storm(591), Disarming
+Voice(574), Electroweb(527), Fiery Wrath(750), Glacial Lance(752),
+Glaciate(549), Heat Wave(257), Hyper Voice(304), Icy Wind(196),
+Incinerate(510), Lands Wrath(616), Matcha Gotcha(830), Mortal Spin(794),
+Muddy Water(330), Origin Pulse(618), Overdrive(714), Powder Snow(181),
+Precipice Blades(619), Razor Leaf(75), Relic Song(547), Sandsear
+Storm(776), Snarl(555), Splishy Splash(677), Springtide Storm(759),
+Struggle Bug(522), Twister(239), Wildbolt Storm(775).
+
+**Implemented, damage-category, `is_spread` MISSING entirely — data-only
+fix (NEW ITEM A, 7):** Dragon Energy(748), Eruption(284), Razor Wind(13),
+Rock Slide(157), Shell Trap(658), Swift(129), Water Spout(323). All
+verified via direct `.tres`/`gen_moves.py` cross-check — none carry
+`is_spread` at all, meaning each currently behaves as single-target in
+doubles despite being a real spread move in source.
+
+**Implemented, STATUS-category, dispatch UNREACHABLE regardless of flag
+value — structural gap (NEW ITEM B, 8):** Cotton Spore(178, `is_spread`
+already `True` but inert), Growl(45, `is_spread=False`), Leer(43,
+`is_spread=False`), Poison Gas(139, `True` but inert), String Shot(81,
+`True` but inert — already known from the original NEW ITEM B finding),
+Sweet Scent(230, `True` but inert — already known), Tail Whip(39,
+`is_spread=False`), Venom Drench(599, `True` but inert — already known).
+Cotton Spore, Poison Gas, and this confirmation of Growl/Leer/Tail Whip's
+own `is_spread=False` (rather than just "unset like everything defaults
+to") are the new finds this audit adds on top of the original NEW ITEM B
+list (String Shot/Sweet Scent/Venom Drench).
+
+**Not yet implemented (name only, no further investigation, 8):**
+Captivate, Clangorous Soulblaze, Core Enforcer, Dark Void, Heal Block,
+Make It Rain, Thousand Arrows, Thousand Waves.
+
+### `TARGET_FOES_AND_ALLY` (20 total — 16 implemented, 4 not implemented)
+
+**Already correct (2):** Self-Destruct(120), Explosion(153) — both fixed
+by M21 item 4, `is_spread=True, target_includes_ally=True`.
+
+**Ally-inclusion mismatch only — `is_spread` already correct, needs
+`target_includes_ally` (NEW ITEM C, 11):** Boomburst(586), Brutal
+Swing(656), Bulldoze(523), Discharge(435), Lava Plume(436),
+Magnitude(222), Parabolic Charge(570), Petal Blizzard(572), Searing
+Shot(545), Sludge Wave(482), Sparkling Aria(627).
+
+**Needs BOTH the `is_spread` fix AND the ally-inclusion fix (2):**
+Surf(57), Earthquake(89) — the same two moves NEW ITEM A already flagged
+as missing `is_spread` entirely; here they additionally need
+`target_includes_ally=True` once `is_spread` is fixed. These are the
+highest-value fixes in this whole audit given how frequently both moves
+are used.
+
+**STATUS-category, dispatch UNREACHABLE — a NEW ITEM B case that ALSO
+needs the ally-inclusion fix once B is resolved (1):** Teeter Dance(298).
+Flagging explicitly so a future session doesn't "fix" Teeter Dance the
+same shallow way as the 11 damage moves above and wonder why it still
+doesn't hit the ally — it needs status-spread dispatch to exist at all
+FIRST, then the ally-inclusion extension on top.
+
+**Not yet implemented (name only, no further investigation, 4):**
+Corrosive Gas, Mind Blown, Misty Explosion, Synchronoise.
+
+### `TARGET_ALL_BATTLERS` (4 total — 1 implemented, 3 not)
+
+**Already correct (1):** Perish Song(195) — dedicated `is_perish_song`
+dispatch loops over every live combatant on both sides, confirmed correct
+in its own recent session (`[Perish Song]`).
+
+**Not yet implemented (3):** Rototiller, Flower Shield, Teatime.
+
+### `TARGET_ALLY` (5 total — 3 implemented, 2 not)
+
+**Already correct (3):** Helping Hand(270), Aromatic Mist, Coaching(739) —
+all use dedicated flags (`is_helping_hand`, `stat_change_target_ally`),
+not `is_spread`/`target_includes_ally`, and are confirmed already working
+correctly per `[M14b]`/`[M19-ally-targeting-stat-change]`.
+
+**Not yet implemented (2):** Hold Hands, Dragon Cheer.
+
+### `TARGET_USER_AND_ALLY` (3 total — 1 implemented, 2 not)
+
+**Already correct (1):** Howl — `also_boosts_ally` flag, confirmed working
+per `[M19-ally-targeting-stat-change]`.
+
+**Not yet implemented (2):** Magnetic Flux, Gear Up.
+
+### `TARGET_USER_OR_ALLY` (1 total — 1 implemented) — NEWLY DISCOVERED GAP
+
+**Acupressure(367)** is implemented but its real source target
+(`TARGET_USER_OR_ALLY`) lets the user CHOOSE to target either itself or
+its ally in doubles with the random +2 stat boost. Current implementation
+(`battle_manager.gd:4418-4433`) unconditionally applies the boost to
+`attacker` — the ally-targeting choice is not modeled at all; Acupressure
+can never be used on an ally in this project. This is a genuinely
+different SHAPE of gap from everything else in this audit: it's not a
+missing flag or an unreachable dispatch, it's a missing **choice**
+mechanism (the user picking between two valid targets), which this
+project's `_chosen_targets` infrastructure may or may not already be able
+to express — not investigated further per this session's own "flag, don't
+design the fix" scope. Newly found this session; not part of the original
+6-item `m21_recon.md` inventory nor NEW ITEM A/B/C.
+
+### `TARGET_OPPONENT` (1 total — 1 implemented) — no gap found
+
+**Me First(383)** targets a single specific opponent (whichever one's
+chosen move is being copied) — this is a singular-target semantic
+distinct from `TARGET_SELECTED` in source's own enum, but has no
+multi-target or ally-inclusion implication. Confirmed already correctly
+implemented (`[D4 bundle]`) with no gap identified.
+
+### `TARGET_SMART` (1 total — 1 implemented) — already tracked
+
+**Dragon Darts** — already item 5 in this document's main inventory
+(deferred to the turn-order-splice session). Not re-investigated here,
+cross-referenced only.
+
+### `TARGET_DEPENDS` (11 total — 10 implemented, 1 not) — structurally sound, no gap
+
+Counter(68), Metronome(118), Mirror Move(119), Sleep Talk(214), Mirror
+Coat(243), Assist(274), Magic Coat(277), Snatch(289), Metal Burst(368),
+Copycat(383) are implemented; Comeuppance is not (name only, no further
+investigation).
+
+These 10 split into two structurally distinct families, both confirmed
+sound by construction rather than needing per-move fixes:
+
+1. **"Reflect damage back at whoever hit me" family** (Counter, Mirror
+   Coat, Metal Burst) — inherently single-target by design (you can only
+   reflect at the one specific attacker who hit you); the "depends"
+   resolution is "whoever hit me," not a multi-target question. No gap
+   possible in this family's shape.
+2. **"Call/copy a different move" family** (Metronome, Mirror Move, Sleep
+   Talk, Assist, Magic Coat, Snatch, Copycat) — confirmed via direct code
+   read (`battle_manager.gd:2934-2977`) that these REASSIGN the local
+   `move` variable to the picked/called move's own real `MoveData`
+   resource, then fall through to the SAME standard dispatch every
+   normally-selected move uses. This means whatever `is_spread`/
+   `target_includes_ally`/status-dispatch-reachability the picked move
+   itself has is inherited correctly and automatically — if Metronome
+   calls Surf, the resulting behavior is exactly as broken (or fixed) as
+   Surf's own entry above, not a separate bug. No dedicated fix needed for
+   this family beyond fixing the underlying moves it might call.
+
+### Design question flagged, NOT resolved (per explicit instruction)
+
+**How should per-target status-move dispatch (NEW ITEM B's eventual fix)
+interact with Substitute, type-immunity, Magic Bounce, and the
+Prankster-vs-Dark-type check?** The existing single-target status dispatch
+in `_phase_move_execution` (the `foe_targeting` block starting around
+`battle_manager.gd:5000`, which runs all of these checks against the one
+resolved `defender` before applying the actual stat/status effect) is the
+relevant reference starting point — NOT a prescription for the fix's
+shape. Open questions a future scoping session will need to resolve
+explicitly, not guessed here:
+- Does each of the 2 opposing Pokémon in doubles get its OWN independent
+  Substitute/type-immunity/Magic-Bounce/Prankster check (most likely,
+  mirroring how the existing damage-spread loop already treats each
+  target independently), or is there any shared-state subtlety source
+  handles differently for status moves specifically?
+- If Magic Bounce reflects one target's copy of the move back at the
+  original caster, does the OTHER target still get hit normally by the
+  original cast, or does a bounce cancel the whole move? (The existing
+  single-target Magic Bounce implementation has never had to answer this,
+  since it's only ever faced one potential target.)
+- How does Prankster's Dark-type immunity check compose when only ONE of
+  two opposing targets is Dark-type — does the move still land on the
+  non-Dark target, or does source treat the whole cast as failed?
+
+None of these are answered here — flagging them explicitly is the deliverable, per this session's own explicit instruction not to resolve NEW ITEM B's design question in a recon-only pass.
 
 ## Explicitly Out of Scope
 
@@ -418,16 +712,18 @@ Ordered by recommended priority, not by item number:
   splices, the status-spread gap) may end up folded into M22 depending on
   Rob's own sequencing preference when that milestone is eventually
   scoped — not decided here.
-- **Any further widening of the `TARGET_BOTH`/`TARGET_FOES_AND_ALLY` cross-
-  check beyond what's cited above** — the widened check in this session
-  was itself a byproduct of verifying item 4's own follow-up list, not an
-  exhaustive audit of every spread-eligible move in the game. A handful of
-  `TARGET_BOTH` moves in source are not yet implemented in this project at
-  all (Heal Block, Captivate, Dark Void, Thousand Arrows, Thousand Waves,
-  Core Enforcer, Make It Rain, Clangorous Soulblaze) — these carry no
-  current gap since they don't exist yet, and are out of this document's
-  scope (they belong to M19's own already-closed residual-move ledger, not
-  M21's doubles-cleanup scope).
+- **The further widening flagged in this bullet at the time of this
+  recon's original writing has since been done** — see the "Full-Roster
+  Spread/Status-Target Audit" section below, added in a same-day follow-up
+  session. That audit exhaustively covers every `TARGET_BOTH`/
+  `TARGET_FOES_AND_ALLY`/`TARGET_ALL_BATTLERS`/`TARGET_ALLY`/
+  `TARGET_USER_AND_ALLY`/`TARGET_USER_OR_ALLY`/`TARGET_OPPONENT`/
+  `TARGET_SMART`/`TARGET_DEPENDS`-typed move in source, not implemented vs.
+  implemented, with per-move dispatch-reachability findings. Ordinary
+  `TARGET_SELECTED`/`TARGET_USER` moves (the overwhelming majority of the
+  roster, ~800 moves) remain explicitly out of scope for both this recon
+  and its follow-up audit, since neither target type has any multi-target
+  or ally-inclusion implication to check.
 
 ## Change Log
 
@@ -440,3 +736,12 @@ Ordered by recommended priority, not by item number:
   NOT modified by this session (their existing M21 entries/status bullets
   are unchanged and remain the authoritative record of what the
   bundle-safe session itself shipped).
+- **2026-07-15, same day, follow-up session**: fixed the 3 stale doc
+  comments this recon's own re-sweep found (`item_manager.gd`'s
+  `shell_bell_heal` doc comment, `gen_moves.py`'s Self-Destruct(120) entry
+  comment, `CLAUDE.md`'s "Post-M18 Review" section items 3/4) — see the
+  "Stale documentation" subsection above, now marked RESOLVED. Doc-only,
+  zero functional change, no tests needed. The same session also ran the
+  full-roster spread/status-targeting scoping audit requested as a
+  follow-up to this recon's own NEW ITEM A/B/C findings — see the new
+  "Full-Roster Spread/Status-Target Audit" section below.
