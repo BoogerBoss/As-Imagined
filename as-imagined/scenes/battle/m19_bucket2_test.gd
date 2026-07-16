@@ -234,7 +234,7 @@ func _test_effect_hit() -> void:
 		[398, "Poison Jab", TypeChart.TYPE_POISON, 0, 80, 100, 20, MoveData.SE_POISON, 30, ["contact"]],
 		[399, "Dark Pulse", TypeChart.TYPE_DARK, 1, 80, 100, 15, MoveData.SE_FLINCH, 20, ["pulse"]],
 		[403, "Air Slash", TypeChart.TYPE_FLYING, 1, 75, 95, 15, MoveData.SE_FLINCH, 30, ["slicing"]],
-		[407, "Dragon Rush", TypeChart.TYPE_DRAGON, 0, 100, 75, 10, MoveData.SE_FLINCH, 20, ["contact"]],
+		[407, "Dragon Rush", TypeChart.TYPE_DRAGON, 0, 100, 75, 10, MoveData.SE_FLINCH, 20, ["contact", "double_min"]],
 		[428, "Zen Headbutt", TypeChart.TYPE_PSYCHIC, 0, 80, 90, 15, MoveData.SE_FLINCH, 20, ["contact"]],
 		[431, "Rock Climb", TypeChart.TYPE_NORMAL, 0, 90, 85, 20, MoveData.SE_CONFUSION, 20, ["contact"]],
 		[435, "Discharge", TypeChart.TYPE_ELECTRIC, 1, 80, 100, 15, MoveData.SE_PARALYSIS, 30, ["spread"]],
@@ -248,7 +248,7 @@ func _test_effect_hit() -> void:
 		[531, "Heart Stamp", TypeChart.TYPE_PSYCHIC, 0, 60, 100, 25, MoveData.SE_FLINCH, 30, ["contact"]],
 		[537, "Steamroller", TypeChart.TYPE_BUG, 0, 65, 100, 20, MoveData.SE_FLINCH, 30, ["contact", "double_min"]],
 		[545, "Searing Shot", TypeChart.TYPE_FIRE, 1, 100, 100, 5, MoveData.SE_BURN, 30, ["ballistic", "spread"]],
-		[547, "Relic Song", TypeChart.TYPE_NORMAL, 1, 75, 100, 10, MoveData.SE_SLEEP, 10, ["sound", "spread"]],
+		[547, "Relic Song", TypeChart.TYPE_NORMAL, 1, 75, 100, 10, MoveData.SE_SLEEP, 10, ["sound", "spread", "ignores_sub"]],
 		[550, "Bolt Strike", TypeChart.TYPE_ELECTRIC, 0, 130, 85, 5, MoveData.SE_PARALYSIS, 20, ["contact"]],
 		[551, "Blue Flare", TypeChart.TYPE_FIRE, 1, 130, 85, 5, MoveData.SE_BURN, 20, []],
 		[556, "Icicle Crash", TypeChart.TYPE_ICE, 0, 85, 90, 10, MoveData.SE_FLINCH, 30, []],
@@ -258,8 +258,12 @@ func _test_effect_hit() -> void:
 		[670, "Zing Zap", TypeChart.TYPE_ELECTRIC, 0, 80, 100, 10, MoveData.SE_FLINCH, 30, ["contact"]],
 		[677, "Splishy Splash", TypeChart.TYPE_WATER, 1, 90, 100, 15, MoveData.SE_PARALYSIS, 30, ["spread"]],
 		[678, "Floaty Fall", TypeChart.TYPE_FLYING, 0, 90, 95, 15, MoveData.SE_FLINCH, 30, ["contact"]],
-		[681, "Buzzy Buzz", TypeChart.TYPE_ELECTRIC, 1, 60, 100, 20, MoveData.SE_PARALYSIS, 100, []],
-		[682, "Sizzly Slide", TypeChart.TYPE_FIRE, 0, 60, 100, 20, MoveData.SE_BURN, 100, ["contact", "thaws"]],
+		# [M21.5 Bucket 3] chance corrected 100->0: source omits `.chance`
+		# entirely for both (unlike Nuzzle's own explicit `.chance = 100`
+		# two rows up) -- 0 = guaranteed, Sheer-Force-exempt, matching this
+		# project's own established convention for that shape.
+		[681, "Buzzy Buzz", TypeChart.TYPE_ELECTRIC, 1, 60, 100, 20, MoveData.SE_PARALYSIS, 0, []],
+		[682, "Sizzly Slide", TypeChart.TYPE_FIRE, 0, 60, 100, 20, MoveData.SE_BURN, 0, ["contact", "thaws"]],
 		[708, "Pyro Ball", TypeChart.TYPE_FIRE, 0, 120, 90, 5, MoveData.SE_BURN, 10, ["ballistic", "thaws"]],
 		[718, "Strange Steam", TypeChart.TYPE_FAIRY, 1, 90, 95, 10, MoveData.SE_CONFUSION, 20, []],
 		[743, "Scorching Sands", TypeChart.TYPE_GROUND, 1, 70, 100, 10, MoveData.SE_BURN, 30, ["thaws"]],
@@ -293,14 +297,14 @@ func _test_effect_stat_change() -> void:
 		[81, "String Shot", TypeChart.TYPE_BUG, 95, 40, BattlePokemon.STAGE_SPEED, -2, false, ["bounceable", "spread"]],
 		[96, "Meditate", TypeChart.TYPE_PSYCHIC, 0, 40, BattlePokemon.STAGE_ATK, 1, true, ["ignores_protect"]],
 		[97, "Agility", TypeChart.TYPE_PSYCHIC, 0, 30, BattlePokemon.STAGE_SPEED, 2, true, ["ignores_protect"]],
-		[103, "Screech", TypeChart.TYPE_NORMAL, 85, 40, BattlePokemon.STAGE_DEF, -2, false, ["sound", "bounceable"]],
+		[103, "Screech", TypeChart.TYPE_NORMAL, 85, 40, BattlePokemon.STAGE_DEF, -2, false, ["sound", "bounceable", "ignores_sub"]],
 		[104, "Double Team", TypeChart.TYPE_NORMAL, 0, 15, BattlePokemon.STAGE_EVASION, 1, true, ["ignores_protect"]],
 		[106, "Harden", TypeChart.TYPE_NORMAL, 0, 30, BattlePokemon.STAGE_DEF, 1, true, ["ignores_protect"]],
 		[108, "Smokescreen", TypeChart.TYPE_NORMAL, 100, 20, BattlePokemon.STAGE_ACCURACY, -1, false, ["bounceable"]],
 		[110, "Withdraw", TypeChart.TYPE_WATER, 0, 40, BattlePokemon.STAGE_DEF, 1, true, ["ignores_protect"]],
 		[112, "Barrier", TypeChart.TYPE_PSYCHIC, 0, 20, BattlePokemon.STAGE_DEF, 2, true, ["ignores_protect"]],
 		[133, "Amnesia", TypeChart.TYPE_PSYCHIC, 0, 20, BattlePokemon.STAGE_SPDEF, 2, true, ["ignores_protect"]],
-		[134, "Kinesis", TypeChart.TYPE_PSYCHIC, 80, 15, BattlePokemon.STAGE_ACCURACY, -1, false, []],
+		[134, "Kinesis", TypeChart.TYPE_PSYCHIC, 80, 15, BattlePokemon.STAGE_ACCURACY, -1, false, ["bounceable"]],
 		[148, "Flash", TypeChart.TYPE_NORMAL, 100, 20, BattlePokemon.STAGE_ACCURACY, -1, false, ["bounceable"]],
 		[151, "Acid Armor", TypeChart.TYPE_POISON, 0, 20, BattlePokemon.STAGE_DEF, 2, true, ["ignores_protect"]],
 		[159, "Sharpen", TypeChart.TYPE_NORMAL, 0, 30, BattlePokemon.STAGE_ATK, 1, true, ["ignores_protect"]],
@@ -311,13 +315,13 @@ func _test_effect_stat_change() -> void:
 		[294, "Tail Glow", TypeChart.TYPE_BUG, 0, 20, BattlePokemon.STAGE_SPATK, 3, true, ["ignores_protect"]],
 		[297, "Feather Dance", TypeChart.TYPE_FLYING, 100, 15, BattlePokemon.STAGE_ATK, -2, false, ["bounceable"]],
 		[313, "Fake Tears", TypeChart.TYPE_DARK, 100, 20, BattlePokemon.STAGE_SPDEF, -2, false, ["bounceable"]],
-		[319, "Metal Sound", TypeChart.TYPE_STEEL, 85, 40, BattlePokemon.STAGE_SPDEF, -2, false, ["sound", "bounceable"]],
+		[319, "Metal Sound", TypeChart.TYPE_STEEL, 85, 40, BattlePokemon.STAGE_SPDEF, -2, false, ["sound", "bounceable", "ignores_sub"]],
 		[334, "Iron Defense", TypeChart.TYPE_STEEL, 0, 15, BattlePokemon.STAGE_DEF, 2, true, ["ignores_protect"]],
 		[397, "Rock Polish", TypeChart.TYPE_ROCK, 0, 20, BattlePokemon.STAGE_SPEED, 2, true, ["ignores_protect"]],
 		[417, "Nasty Plot", TypeChart.TYPE_DARK, 0, 20, BattlePokemon.STAGE_SPATK, 2, true, ["ignores_protect"]],
 		[538, "Cotton Guard", TypeChart.TYPE_GRASS, 0, 10, BattlePokemon.STAGE_DEF, 3, true, ["ignores_protect"]],
 		[589, "Play Nice", TypeChart.TYPE_NORMAL, 0, 20, BattlePokemon.STAGE_ATK, -1, false, ["ignores_protect", "ignores_sub", "bounceable"]],
-		[590, "Confide", TypeChart.TYPE_NORMAL, 0, 20, BattlePokemon.STAGE_SPATK, -1, false, ["sound", "ignores_protect", "bounceable"]],
+		[590, "Confide", TypeChart.TYPE_NORMAL, 0, 20, BattlePokemon.STAGE_SPATK, -1, false, ["sound", "ignores_protect", "bounceable", "ignores_sub"]],
 		[598, "Eerie Impulse", TypeChart.TYPE_ELECTRIC, 100, 15, BattlePokemon.STAGE_SPATK, -2, false, ["bounceable"]],
 		[608, "Baby-Doll Eyes", TypeChart.TYPE_FAIRY, 100, 30, BattlePokemon.STAGE_ATK, -1, false, ["bounceable", "prio:1"]],	]
 	for e: Array in expected:
@@ -341,7 +345,7 @@ func _test_effect_stat_change() -> void:
 
 func _test_effect_non_volatile_status() -> void:
 	var expected := [
-		[47, "Sing", TypeChart.TYPE_NORMAL, 55, 15, MoveData.SE_SLEEP, ["sound", "bounceable"]],
+		[47, "Sing", TypeChart.TYPE_NORMAL, 55, 15, MoveData.SE_SLEEP, ["sound", "bounceable", "ignores_sub"]],
 		[77, "Poison Powder", TypeChart.TYPE_POISON, 75, 35, MoveData.SE_POISON, ["powder", "bounceable"]],
 		[78, "Stun Spore", TypeChart.TYPE_GRASS, 75, 30, MoveData.SE_PARALYSIS, ["powder", "bounceable"]],
 		[95, "Hypnosis", TypeChart.TYPE_PSYCHIC, 60, 20, MoveData.SE_SLEEP, ["bounceable"]],
@@ -349,7 +353,7 @@ func _test_effect_non_volatile_status() -> void:
 		[139, "Poison Gas", TypeChart.TYPE_POISON, 90, 40, MoveData.SE_POISON, ["bounceable", "spread"]],
 		[142, "Lovely Kiss", TypeChart.TYPE_NORMAL, 75, 10, MoveData.SE_SLEEP, ["bounceable"]],
 		[147, "Spore", TypeChart.TYPE_GRASS, 100, 15, MoveData.SE_SLEEP, ["powder", "bounceable"]],
-		[320, "Grass Whistle", TypeChart.TYPE_GRASS, 55, 15, MoveData.SE_SLEEP, ["sound", "bounceable"]],	]
+		[320, "Grass Whistle", TypeChart.TYPE_GRASS, 55, 15, MoveData.SE_SLEEP, ["sound", "bounceable", "ignores_sub"]],	]
 	for e: Array in expected:
 		var id: int = e[0]
 		var mv: MoveData = _load_move(id)
@@ -435,7 +439,7 @@ func _test_effect_absorb() -> void:
 
 func _test_effect_confuse() -> void:
 	var expected := [
-		[48, "Supersonic", TypeChart.TYPE_NORMAL, 55, 20, ["sound", "bounceable"]],
+		[48, "Supersonic", TypeChart.TYPE_NORMAL, 55, 20, ["sound", "bounceable", "ignores_sub"]],
 		[186, "Sweet Kiss", TypeChart.TYPE_FAIRY, 75, 10, ["bounceable"]],
 		[298, "Teeter Dance", TypeChart.TYPE_NORMAL, 100, 20, ["spread"]],	]
 	for e: Array in expected:

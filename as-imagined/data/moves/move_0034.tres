@@ -12,3 +12,4 @@ pp = 15
 makes_contact = true
 secondary_effect = 3
 secondary_chance = 30
+double_power_on_minimized = true

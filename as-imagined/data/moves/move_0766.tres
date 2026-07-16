@@ -9,6 +9,7 @@ move_name = "Headlong Rush"
 type = 5
 power = 120
 makes_contact = true
+punching_move = true
 stat_change_stat = 1
 stat_change_amount = -1
 stat_change_self = true

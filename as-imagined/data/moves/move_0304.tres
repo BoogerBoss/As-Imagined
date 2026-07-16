@@ -11,4 +11,5 @@ category = 1
 power = 90
 pp = 10
 sound_move = true
+ignores_substitute = true
 is_spread = true

@@ -13,5 +13,6 @@ sound_move = true
 stat_change_stat = 0
 stat_change_amount = -1
 stat_change_bypasses_type_gate = true
+ignores_substitute = true
 is_spread = true
 bounceable = true

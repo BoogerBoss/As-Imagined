@@ -12,4 +12,5 @@ power = 40
 accuracy = 0
 pp = 15
 sound_move = true
+ignores_substitute = true
 is_spread = true

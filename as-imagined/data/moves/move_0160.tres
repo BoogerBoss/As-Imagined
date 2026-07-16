@@ -12,3 +12,4 @@ accuracy = 0
 pp = 30
 ignores_protect = true
 is_conversion = true
+snatch_affected = true

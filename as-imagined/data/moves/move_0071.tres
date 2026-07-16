@@ -11,3 +11,4 @@ category = 1
 power = 20
 pp = 25
 drain_percent = 50
+healing_move = true

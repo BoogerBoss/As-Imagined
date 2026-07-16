@@ -10,6 +10,7 @@ type = 19
 category = 2
 accuracy = 0
 ignores_protect = true
+healing_move = true
 snatch_affected = true
 heals_based_on_weather = true
 weather_heal_boost_type = 2

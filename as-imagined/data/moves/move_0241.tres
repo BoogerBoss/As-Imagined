@@ -10,4 +10,5 @@ type = 11
 category = 2
 accuracy = 0
 ban_flags = 2
+ignores_protect = true
 weather_type = 2

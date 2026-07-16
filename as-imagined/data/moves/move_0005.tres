@@ -11,3 +11,4 @@ power = 80
 accuracy = 85
 pp = 20
 makes_contact = true
+punching_move = true

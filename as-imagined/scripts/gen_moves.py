@@ -19,6 +19,43 @@ Why no uid= in [ext_resource]:
 Sources for move data:
     pokeemerald_expansion/src/data/moves_info.h   (GEN_LATEST config values)
     pokeemerald_expansion/include/constants/moves.h (canonical IDs)
+
+KNOWN NON-BUGS -- flags/fields correctly ABSENT from a move below because
+their consumer mechanism is unreachable or deliberately excluded for this
+project. Read this list FIRST before "fixing" one of these during a future
+flag/field sweep -- each was already investigated and confirmed to have zero
+current runtime effect if added. Full citations: docs/m21_5_scope.md's
+"Bucket 1" section and docs/decisions.md's matching entries. This is an
+index, not the reasoning itself -- do not duplicate the full writeup here.
+
+  - dance_move (11 moves: Swords Dance/Petal Dance/Feather Dance/Teeter
+    Dance/Dragon Dance/Lunar Dance/Quiver Dance/Fiery Dance/Clangorous
+    Soul/Victory Dance/Aqua Step) -- zero consumers anywhere; Dancer (the
+    only ability that would read it) is itself excluded from this project.
+  - makes_contact on Bide(117) -- its damage path (_apply_fixed_dmg_to_
+    target, shared with Counter/Mirror Coat) never reads makes_contact at
+    all; no contact-reactive ability can currently fire off Bide regardless.
+  - ignores_protect on Protect(182)/Detect(197)/Endure(203) -- their own
+    is_protect dispatch returns unconditionally BEFORE the generic Protect-
+    block gate (_is_protected_from) is ever reached.
+  - bounceable on Whirlwind(18)/Roar(46) (is_roar), Disable(50)
+    (is_disable), Encore(227) (is_encore), Attract(213) (is_attract), and
+    Sappy Seed(685) (is_leech_seed_on_hit, a damaging-move dispatch) --
+    each has its own dedicated early-return branch in _phase_move_
+    execution that never reaches the generic Magic Bounce/Coat check.
+  - bounceable on Spikes(191)/Toxic Spikes(390)/Stealth Rock(446) -- a
+    genuinely different, PRE-EXISTING known limitation (not unreachable,
+    just unbuilt): hazard-bounce needs a side-wide dispatch rework,
+    flagged since [M17n-9] for a future tier, not silently dropped.
+  - ignores_substitute on Haze(114)/Destiny Bond(194)/Heal Bell(215) --
+    each dispatches purely against the whole field/self, never reading
+    defender.substitute_hp at all.
+
+All 10 of the above were verified with a REAL runtime-behavior test in
+scenes/battle/bucket1_behavior_test.gd before this list was written (that
+file also proves the 10 flags Bucket 1 DID fix each have a real, working
+consumer) -- this index is for the fields that were checked and correctly
+left alone, so a future sweep doesn't re-discover and re-investigate them.
 """
 
 import os
@@ -214,7 +251,7 @@ MOVES = [
     {"id":  34, "name": "Body Slam",
      "type": TYPE_NORMAL, "category": PHYS, "power": 85, "accuracy": 100, "pp": 15,
      "makes_contact": True,
-     "secondary_effect": SE_PARALYSIS, "secondary_chance": 30},
+     "secondary_effect": SE_PARALYSIS, "secondary_chance": 30, "double_power_on_minimized": True,},
 
     # Ember: 10% burn secondary
     {"id":  52, "name": "Ember",
@@ -281,14 +318,14 @@ MOVES = [
 
     {"id": 332, "name": "Aerial Ace",
      "type": TYPE_FLYING, "category": PHYS, "power": 60, "accuracy": 0, "pp": 20,
-     "makes_contact": True},
+     "makes_contact": True, "slicing_move": True,},
 
     # ── Tier 2: stat-changing moves ───────────────────────────────────────────
 
     # Swords Dance: +2 Atk self (source: STAT_CHANGE_EFFECT_PLUS(STAT_ATK, 2))
     {"id":  14, "name": "Swords Dance",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 20,
-     "stat_change_stat": STAGE_ATK, "stat_change_amount": 2, "stat_change_self": True, "snatch_affected": True},
+     "stat_change_stat": STAGE_ATK, "stat_change_amount": 2, "stat_change_self": True, "snatch_affected": True, "ignores_protect": True,},
 
     # Sand Attack: -1 Acc foe (source: STAT_CHANGE_EFFECT_MINUS(STAT_ACC, 1))
     # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
@@ -323,7 +360,7 @@ MOVES = [
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 40,
      "sound_move": True, "bounceable": True,
      "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
-     "stat_change_bypasses_type_gate": True, "is_spread": True},
+     "stat_change_bypasses_type_gate": True, "is_spread": True, "ignores_substitute": True,},
 
     # ── Tier 2: status-inflicting moves ──────────────────────────────────────
 
@@ -453,27 +490,27 @@ MOVES = [
     #   Source: .effect=EFFECT_ABSORB; .argument.absorbPercentage=50; pp=25 (B_UPDATED>=GEN_4)
     {"id":  71, "name": "Absorb",
      "type": TYPE_GRASS, "category": SPEC, "power": 20, "accuracy": 100, "pp": 25,
-     "drain_percent": 50},
+     "drain_percent": 50, "healing_move": True,},
 
     # Mega Drain(72)   L1943  Grass/Spec/40/100/15, 50% drain
     #   Source: .effect=EFFECT_ABSORB; .argument.absorbPercentage=50; pp=15 (B_UPDATED>=GEN_4)
     {"id":  72, "name": "Mega Drain",
      "type": TYPE_GRASS, "category": SPEC, "power": 40, "accuracy": 100, "pp": 15,
-     "drain_percent": 50},
+     "drain_percent": 50, "healing_move": True,},
 
     # Giga Drain(202)  L5530  Grass/Spec/75/100/10, 50% drain
     #   Source: .effect=EFFECT_ABSORB; .argument.absorbPercentage=50
     #   Power=75 (B_UPDATED>=GEN_5); pp=10 (B_UPDATED>=GEN_4).
     {"id": 202, "name": "Giga Drain",
      "type": TYPE_GRASS, "category": SPEC, "power": 75, "accuracy": 100, "pp": 10,
-     "drain_percent": 50},
+     "drain_percent": 50, "healing_move": True,},
 
     # Drain Punch(409) L11016 Fighting/Phys/75/100/10, contact, punching, 50% drain
     #   Source: .effect=EFFECT_ABSORB; .argument.absorbPercentage=50
     #   Power=75 (B_UPDATED>=GEN_5); pp=10 (B_UPDATED>=GEN_5); makesContact, punchingMove.
     {"id": 409, "name": "Drain Punch",
      "type": TYPE_FIGHTING, "category": PHYS, "power": 75, "accuracy": 100, "pp": 10,
-     "makes_contact": True, "punching_move": True, "drain_percent": 50},
+     "makes_contact": True, "punching_move": True, "drain_percent": 50, "healing_move": True,},
 
     # ── Tier 3: fixed-damage moves ────────────────────────────────────────────
     #
@@ -553,14 +590,14 @@ MOVES = [
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
      # [D4 Bundle 4] copycatBanned/assistBanned=TRUE.
      # [Mimic/Sketch] mimicBanned=TRUE added (was missing).
-     "ban_flags": (BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST | BAN_MIMIC | BAN_SLEEP_TALK | BAN_ENCORE), "is_metronome": True},
+     "ban_flags": (BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST | BAN_MIMIC | BAN_SLEEP_TALK | BAN_ENCORE), "is_metronome": True, "ignores_protect": True,},
 
     # Substitute(164)  L4299  Normal/Status/0/—/10
     #   Source: moves_info.h MOVE_SUBSTITUTE: .effect=EFFECT_SUBSTITUTE, .pp=10,
     #   .category=STATUS, .metronomeBanned=TRUE
     {"id": 164, "name": "Substitute",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
-      "creates_substitute": True, "snatch_affected": True},
+      "creates_substitute": True, "snatch_affected": True, "ignores_protect": True,},
 
     # Protect(182)     L4788  Normal/Status/0/—/10, priority=4
     #   Source: moves_info.h MOVE_PROTECT: .effect=EFFECT_PROTECT,
@@ -580,7 +617,7 @@ MOVES = [
     {"id": 194, "name": "Destiny Bond",
      "type": TYPE_GHOST, "category": STAT, "accuracy": 0, "pp": 5,
      # [D4 Bundle 4] copycatBanned/assistBanned=TRUE.
-     "ban_flags": BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST, "destiny_bond": True},
+     "ban_flags": BAN_METRONOME | BAN_COPYCAT | BAN_ASSIST, "destiny_bond": True, "ignores_protect": True,},
 
     # Detect(197)      L5167  Fighting/Status/0/—/5, priority=4
     #   Source: moves_info.h MOVE_DETECT: .effect=EFFECT_PROTECT (same handler),
@@ -599,7 +636,7 @@ MOVES = [
     {"id": 227, "name": "Encore",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 5,
      "ban_flags": BAN_ENCORE, "is_encore": True,
-     "blocked_by_aroma_veil": True},
+     "blocked_by_aroma_veil": True, "ignores_substitute": True,},
 
     # Mirror Coat(243) L6450  Psychic/Spec/1/100/20, priority=-5
     #   Source: moves_info.h MOVE_MIRROR_COAT: .effect=EFFECT_MIRROR_COAT,
@@ -819,9 +856,20 @@ MOVES = [
     # Rapid Spin(229)  L6247  Normal/Phys/50/100/40, contact, clears one hazard on own side
     #   Source: moves_info.h MOVE_RAPID_SPIN: .effect=EFFECT_RAPID_SPIN,
     #   .power=50 (B_UPDATED_MOVE_DATA>=GEN_8), .accuracy=100, .pp=40, .makesContact=TRUE.
+    # [M21.5 Bucket 3] Rapid Spin's real source additionalEffects block
+    # (gated `#if B_SPEED_BUFFING_RAPID_SPIN >= GEN_8`, TRUE at this
+    # project's GEN_LATEST=GEN_9 config) is `MOVE_EFFECT_STAT_PLUS, .speed=1,
+    # .self=TRUE, .chance=100` -- a guaranteed self Speed+1 on every hit that
+    # was never wired at all (is_rapid_spin's own dispatch only clears
+    # hazards). Reuses the existing [M19-secondary-stat-on-hit] generic
+    # damaging-move stat-change mechanism (stat_change_stat/self set,
+    # secondary_effect left at SE_NONE) -- the exact same shape Torch Song(799)
+    # already uses for its own guaranteed self SpAtk+1, zero new dispatch code.
     {"id": 229, "name": "Rapid Spin",
      "type": TYPE_NORMAL, "category": PHYS, "power": 50, "accuracy": 100, "pp": 40,
-     "makes_contact": True, "is_rapid_spin": True},
+     "makes_contact": True, "is_rapid_spin": True,
+     "stat_change_stat": STAGE_SPEED, "stat_change_amount": 1, "stat_change_self": True,
+     "secondary_chance": 100},
 
     # Toxic Spikes(390)  L10542  Poison/Status/0/0/20, opponent's field, ignoresProtect,
     #   layered (max 2)
@@ -868,7 +916,7 @@ MOVES = [
     #   .pp=30, .target=TARGET_USER, .ignoresProtect=TRUE.
     {"id": 160, "name": "Conversion",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 30,
-     "ignores_protect": True, "is_conversion": True},
+     "ignores_protect": True, "is_conversion": True, "snatch_affected": True,},
 
     # Conversion 2(176)  L4822  Normal/Status/0/0/30, selected target, ignoresProtect,
     #   ignoresSubstitute, type = a random type resisting the target's last move
@@ -920,7 +968,7 @@ MOVES = [
      "makes_contact": True, "secondary_effect": SE_WRAP},
     {"id": 250, "name": "Whirlpool",
      "type": TYPE_WATER, "category": SPEC, "power": 35, "accuracy": 85, "pp": 15,
-     "secondary_effect": SE_WRAP},
+     "secondary_effect": SE_WRAP, "damages_underwater": True,},
     {"id": 328, "name": "Sand Tomb",
      "type": TYPE_GROUND, "category": PHYS, "power": 35, "accuracy": 85, "pp": 15,
      "secondary_effect": SE_WRAP},
@@ -1097,14 +1145,14 @@ MOVES = [
     #   .accuracy=100, .makesContact=TRUE.
     {"id": 484, "name": "Heavy Slam",
      "type": TYPE_STEEL, "category": PHYS, "power": 1, "accuracy": 100, "pp": 10,
-     "makes_contact": True, "is_heat_crash_power": True},
+     "makes_contact": True, "is_heat_crash_power": True, "double_power_on_minimized": True,},
 
     # Heat Crash(535) L14224  Fire/Phys/1/100/10, contact
     #   Source: moves_info.h MOVE_HEAT_CRASH: .effect=EFFECT_HEAT_CRASH, .power=1,
     #   .accuracy=100, .makesContact=TRUE.
     {"id": 535, "name": "Heat Crash",
      "type": TYPE_FIRE, "category": PHYS, "power": 1, "accuracy": 100, "pp": 10,
-     "makes_contact": True, "is_heat_crash_power": True},
+     "makes_contact": True, "is_heat_crash_power": True, "double_power_on_minimized": True,},
 
     # Return(216) L5918  Normal/Phys/1/100/20, contact
     #   Source: moves_info.h MOVE_RETURN: .effect=EFFECT_RETURN, .power=1,
@@ -1151,7 +1199,7 @@ MOVES = [
     # Mega Punch(5) L189  Normal/Phys/80/85/20, contact
     {"id": 5, "name": "Mega Punch",
      "type": TYPE_NORMAL, "category": PHYS, "power": 80, "accuracy": 85, "pp": 20,
-     "makes_contact": True},
+     "makes_contact": True, "punching_move": True,},
 
     # Pay Day(6) L165  Normal/Phys/40/100/20 — MOVE_EFFECT_PAYDAY is a cosmetic
     #   money-scatter with zero battle-mechanical effect, not modeled.
@@ -1242,7 +1290,7 @@ MOVES = [
 
     # Feint Attack(185)  Dark/Phys/60/0/20, no flags
     {"id": 185, "name": "Feint Attack",
-     "type": TYPE_DARK, "category": PHYS, "power": 60, "accuracy": 0, "pp": 20},
+     "type": TYPE_DARK, "category": PHYS, "power": 60, "accuracy": 0, "pp": 20, "makes_contact": True,},
 
     # Megahorn(224)  Bug/Phys/120/85/10, makes_contact
     {"id": 224, "name": "Megahorn",
@@ -1268,7 +1316,7 @@ MOVES = [
     # Hyper Voice(304)  Normal/Spec/90/100/10, sound_move, is_spread
     {"id": 304, "name": "Hyper Voice",
      "type": TYPE_NORMAL, "category": SPEC, "power": 90, "accuracy": 100, "pp": 10,
-     "sound_move": True, "is_spread": True},
+     "sound_move": True, "is_spread": True, "ignores_substitute": True,},
 
     # Air Cutter(314)  Flying/Spec/60/95/25, slicing_move, is_spread, critical_hit_stage
     {"id": 314, "name": "Air Cutter",
@@ -1421,7 +1469,7 @@ MOVES = [
     # Disarming Voice(574)  Fairy/Spec/40/0/15, sound_move, is_spread
     {"id": 574, "name": "Disarming Voice",
      "type": TYPE_FAIRY, "category": SPEC, "power": 40, "accuracy": 0, "pp": 15,
-     "sound_move": True, "is_spread": True},
+     "sound_move": True, "is_spread": True, "ignores_substitute": True,},
 
     # Fairy Wind(584)  Fairy/Spec/40/100/30, no flags
     {"id": 584, "name": "Fairy Wind",
@@ -1431,7 +1479,7 @@ MOVES = [
     # [NEW ITEM C] target_includes_ally: real .target=TARGET_FOES_AND_ALLY.
     {"id": 586, "name": "Boomburst",
      "type": TYPE_NORMAL, "category": SPEC, "power": 140, "accuracy": 100, "pp": 10,
-     "sound_move": True, "is_spread": True, "target_includes_ally": True},
+     "sound_move": True, "is_spread": True, "target_includes_ally": True, "ignores_substitute": True,},
 
     # Dazzling Gleam(605)  Fairy/Spec/80/100/10, is_spread
     {"id": 605, "name": "Dazzling Gleam",
@@ -1496,7 +1544,7 @@ MOVES = [
     {"id": 714, "name": "Overdrive",
      "type": TYPE_ELECTRIC, "category": SPEC, "power": 80, "accuracy": 100, "pp": 10,
      "sound_move": True, "is_spread": True,
-     "ban_flags": BAN_METRONOME},
+     "ban_flags": BAN_METRONOME, "ignores_substitute": True,},
 
     # False Surrender(721)  Dark/Phys/80/0/10, makes_contact
     {"id": 721, "name": "False Surrender",
@@ -1544,7 +1592,7 @@ MOVES = [
     {"id": 813, "name": "Hyper Drill",
      "type": TYPE_NORMAL, "category": PHYS, "power": 100, "accuracy": 100, "pp": 5,
      "makes_contact": True,
-     "ban_flags": BAN_METRONOME},
+     "ban_flags": BAN_METRONOME, "ignores_protect": True,},
 
     # Aqua Cutter(821)  Water/Phys/70/100/20, slicing_move, critical_hit_stage
     {"id": 821, "name": "Aqua Cutter",
@@ -1583,11 +1631,11 @@ MOVES = [
 
     {"id": 47, "name": "Sing",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 55, "pp": 15,
-     "sound_move": True, "bounceable": True, "secondary_effect": SE_SLEEP, "secondary_chance": 0},
+     "sound_move": True, "bounceable": True, "secondary_effect": SE_SLEEP, "secondary_chance": 0, "ignores_substitute": True,},
 
     {"id": 48, "name": "Supersonic",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 55, "pp": 20,
-     "sound_move": True, "bounceable": True, "secondary_effect": SE_CONFUSION, "secondary_chance": 0},
+     "sound_move": True, "bounceable": True, "secondary_effect": SE_CONFUSION, "secondary_chance": 0, "ignores_substitute": True,},
 
     {"id": 59, "name": "Blizzard",
      "type": TYPE_ICE, "category": SPEC, "power": 110, "accuracy": 70, "pp": 5,
@@ -1632,7 +1680,7 @@ MOVES = [
     {"id": 103, "name": "Screech",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 85, "pp": 40,
      "sound_move": True, "bounceable": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -2,
-     "stat_change_bypasses_type_gate": True},
+     "stat_change_bypasses_type_gate": True, "ignores_substitute": True,},
 
     {"id": 104, "name": "Double Team",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 15,
@@ -1686,7 +1734,7 @@ MOVES = [
     {"id": 134, "name": "Kinesis",
      "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 80, "pp": 15,
      "stat_change_stat": STAGE_ACCURACY, "stat_change_amount": -1,
-     "stat_change_bypasses_type_gate": True},
+     "stat_change_bypasses_type_gate": True, "bounceable": True,},
 
     {"id": 137, "name": "Glare",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 30,
@@ -1834,11 +1882,11 @@ MOVES = [
 
     {"id": 319, "name": "Metal Sound",
      "type": TYPE_STEEL, "category": STAT, "power": 0, "accuracy": 85, "pp": 40,
-     "sound_move": True, "bounceable": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -2},
+     "sound_move": True, "bounceable": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -2, "ignores_substitute": True,},
 
     {"id": 320, "name": "Grass Whistle",
      "type": TYPE_GRASS, "category": STAT, "power": 0, "accuracy": 55, "pp": 15,
-     "sound_move": True, "bounceable": True, "secondary_effect": SE_SLEEP, "secondary_chance": 0},
+     "sound_move": True, "bounceable": True, "secondary_effect": SE_SLEEP, "secondary_chance": 0, "ignores_substitute": True,},
 
     {"id": 324, "name": "Signal Beam",
      "type": TYPE_BUG, "category": SPEC, "power": 75, "accuracy": 100, "pp": 15,
@@ -1896,7 +1944,7 @@ MOVES = [
 
     {"id": 407, "name": "Dragon Rush",
      "type": TYPE_DRAGON, "category": PHYS, "power": 100, "accuracy": 75, "pp": 10,
-     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 20},
+     "makes_contact": True, "secondary_effect": SE_FLINCH, "secondary_chance": 20, "double_power_on_minimized": True,},
 
     {"id": 417, "name": "Nasty Plot",
      "type": TYPE_DARK, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
@@ -1989,7 +2037,7 @@ MOVES = [
     {"id": 547, "name": "Relic Song",
      "type": TYPE_NORMAL, "category": SPEC, "power": 75, "accuracy": 100, "pp": 10,
      "sound_move": True, "is_spread": True, "secondary_effect": SE_SLEEP, "secondary_chance": 10,
-     "ban_flags": BAN_METRONOME},
+     "ban_flags": BAN_METRONOME, "ignores_substitute": True,},
 
     {"id": 550, "name": "Bolt Strike",
      "type": TYPE_ELECTRIC, "category": PHYS, "power": 130, "accuracy": 85, "pp": 5,
@@ -2037,7 +2085,7 @@ MOVES = [
     {"id": 590, "name": "Confide",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0, "pp": 20,
      "sound_move": True, "ignores_protect": True, "bounceable": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -1,
-     "stat_change_bypasses_type_gate": True},
+     "stat_change_bypasses_type_gate": True, "ignores_substitute": True,},
 
     {"id": 592, "name": "Steam Eruption",
      "type": TYPE_WATER, "category": SPEC, "power": 110, "accuracy": 95, "pp": 5,
@@ -2089,14 +2137,23 @@ MOVES = [
      "drain_percent": 100, "healing_move": True,
      "ban_flags": BAN_METRONOME},
 
+    # [M21.5 Bucket 3] secondary_chance corrected 100->0: source's own
+    # additionalEffects block for this move omits `.chance` entirely (unlike
+    # Nuzzle(609), which explicitly sets `.chance = 100`) -- MoveIsAffected
+    # BySheerForce evaluates `(chance > 0) != sheerForceOverride`, so an
+    # absent/0 chance with no override means Sheer Force does NOT apply,
+    # matching this project's own established "0 = guaranteed, Sheer-Force-
+    # exempt" convention for the Overheat/Draco-Meteor-style self-drop family.
     {"id": 681, "name": "Buzzy Buzz",
      "type": TYPE_ELECTRIC, "category": SPEC, "power": 60, "accuracy": 100, "pp": 20,
-     "secondary_effect": SE_PARALYSIS, "secondary_chance": 100,
+     "secondary_effect": SE_PARALYSIS, "secondary_chance": 0,
      "ban_flags": BAN_METRONOME},
 
+    # [M21.5 Bucket 3] secondary_chance corrected 100->0 -- same reasoning as
+    # Buzzy Buzz above: source omits `.chance` entirely for this move too.
     {"id": 682, "name": "Sizzly Slide",
      "type": TYPE_FIRE, "category": PHYS, "power": 60, "accuracy": 100, "pp": 20,
-     "makes_contact": True, "thaws_user": True, "secondary_effect": SE_BURN, "secondary_chance": 100,
+     "makes_contact": True, "thaws_user": True, "secondary_effect": SE_BURN, "secondary_chance": 0,
      "ban_flags": BAN_METRONOME},
 
     {"id": 708, "name": "Pyro Ball",
@@ -2248,7 +2305,7 @@ MOVES = [
     {"id":  405, "name": "Bug Buzz",
      "type": TYPE_BUG, "category": SPEC, "power": 90, "accuracy": 100,
      "pp": 10, "sound_move": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1,
-     "secondary_chance": 10},
+     "secondary_chance": 10, "ignores_substitute": True,},
     {"id":  411, "name": "Focus Blast",
      "type": TYPE_FIGHTING, "category": SPEC, "power": 120, "accuracy": 70,
      "pp": 5, "ballistic_move": True, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1,
@@ -2327,7 +2384,7 @@ MOVES = [
      "type": TYPE_DARK, "category": SPEC, "power": 55, "accuracy": 95,
      "pp": 15, "sound_move": True, "is_spread": True, "stat_change_stat": STAGE_SPATK,
      "stat_change_amount": -1, "secondary_chance": 100,
-     "ban_flags": BAN_METRONOME},
+     "ban_flags": BAN_METRONOME, "ignores_substitute": True,},
     {"id":  583, "name": "Play Rough",
      "type": TYPE_FAIRY, "category": PHYS, "power": 90, "accuracy": 90,
      "pp": 10, "makes_contact": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
@@ -2366,7 +2423,7 @@ MOVES = [
     {"id":  654, "name": "Clanging Scales",
      "type": TYPE_DRAGON, "category": SPEC, "power": 110, "accuracy": 100,
      "pp": 5, "sound_move": True, "is_spread": True, "stat_change_stat": STAGE_DEF,
-     "stat_change_amount": -1, "stat_change_self": True, "secondary_chance": 0},
+     "stat_change_amount": -1, "stat_change_self": True, "secondary_chance": 0, "ignores_substitute": True,},
     {"id":  659, "name": "Fleur Cannon",
      "type": TYPE_FAIRY, "category": SPEC, "power": 130, "accuracy": 90,
      "pp": 5, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -2, "stat_change_self": True,
@@ -2441,7 +2498,7 @@ MOVES = [
     {"id":  799, "name": "Torch Song",
      "type": TYPE_FIRE, "category": SPEC, "power": 80, "accuracy": 100,
      "pp": 10, "sound_move": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 1,
-     "stat_change_self": True, "secondary_chance": 100},
+     "stat_change_self": True, "secondary_chance": 100, "ignores_substitute": True,},
     {"id":  800, "name": "Aqua Step",
      "type": TYPE_WATER, "category": PHYS, "power": 80, "accuracy": 100,
      "pp": 10, "makes_contact": True, "stat_change_stat": STAGE_SPEED, "stat_change_amount": 1,
@@ -2484,23 +2541,23 @@ MOVES = [
     {"id":  321, "name": "Tickle",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100,
      "pp": 20, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1, "extra_stat_change_stats": [STAGE_DEF],
-     "extra_stat_change_amounts": [-1], "stat_change_bypasses_type_gate": True},
+     "extra_stat_change_amounts": [-1], "stat_change_bypasses_type_gate": True, "bounceable": True,},
     {"id":  322, "name": "Cosmic Power",
      "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [1], "snatch_affected": True},
+     "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [1], "snatch_affected": True, "ignores_protect": True,},
     {"id":  339, "name": "Bulk Up",
      "type": TYPE_FIGHTING, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_DEF], "extra_stat_change_amounts": [1], "snatch_affected": True},
+     "extra_stat_change_stats": [STAGE_DEF], "extra_stat_change_amounts": [1], "snatch_affected": True, "ignores_protect": True,},
     {"id":  347, "name": "Calm Mind",
      "type": TYPE_PSYCHIC, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [1], "snatch_affected": True},
+     "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [1], "snatch_affected": True, "ignores_protect": True,},
     {"id":  349, "name": "Dragon Dance",
      "type": TYPE_DRAGON, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_SPEED], "extra_stat_change_amounts": [1], "snatch_affected": True},
+     "extra_stat_change_stats": [STAGE_SPEED], "extra_stat_change_amounts": [1], "snatch_affected": True, "ignores_protect": True,},
     {"id":  370, "name": "Close Combat",
      "type": TYPE_FIGHTING, "category": PHYS, "power": 120, "accuracy": 100,
      "pp": 5, "makes_contact": True, "stat_change_self": True, "stat_change_stat": STAGE_DEF,
@@ -2512,32 +2569,32 @@ MOVES = [
     {"id":  468, "name": "Hone Claws",
      "type": TYPE_DARK, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 15, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_ACCURACY], "extra_stat_change_amounts": [1], "snatch_affected": True},
+     "extra_stat_change_stats": [STAGE_ACCURACY], "extra_stat_change_amounts": [1], "snatch_affected": True, "ignores_protect": True,},
     {"id":  483, "name": "Quiver Dance",
      "type": TYPE_BUG, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_SPDEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1], "snatch_affected": True},
+     "extra_stat_change_stats": [STAGE_SPDEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1], "snatch_affected": True, "ignores_protect": True,},
     {"id":  489, "name": "Coil",
      "type": TYPE_POISON, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_DEF, STAGE_ACCURACY], "extra_stat_change_amounts": [1, 1], "snatch_affected": True},
+     "extra_stat_change_stats": [STAGE_DEF, STAGE_ACCURACY], "extra_stat_change_amounts": [1, 1], "snatch_affected": True, "ignores_protect": True,},
     {"id":  504, "name": "Shell Smash",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 15, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 2,
-     "extra_stat_change_stats": [STAGE_SPATK, STAGE_SPEED, STAGE_DEF, STAGE_SPDEF], "extra_stat_change_amounts": [2, 2, -1, -1], "snatch_affected": True},
+     "extra_stat_change_stats": [STAGE_SPATK, STAGE_SPEED, STAGE_DEF, STAGE_SPDEF], "extra_stat_change_amounts": [2, 2, -1, -1], "snatch_affected": True, "ignores_protect": True,},
     {"id":  508, "name": "Shift Gear",
      "type": TYPE_STEEL, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 10, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_SPEED], "extra_stat_change_amounts": [2], "snatch_affected": True},
+     "extra_stat_change_stats": [STAGE_SPEED], "extra_stat_change_amounts": [2], "snatch_affected": True, "ignores_protect": True,},
     {"id":  526, "name": "Work Up",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 30, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_SPATK], "extra_stat_change_amounts": [1], "snatch_affected": True},
+     "extra_stat_change_stats": [STAGE_SPATK], "extra_stat_change_amounts": [1], "snatch_affected": True, "ignores_protect": True,},
     {"id":  568, "name": "Noble Roar",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100,
      "pp": 30, "sound_move": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
      "extra_stat_change_stats": [STAGE_SPATK], "extra_stat_change_amounts": [-1],
-     "stat_change_bypasses_type_gate": True},
+     "stat_change_bypasses_type_gate": True, "bounceable": True, "ignores_substitute": True,},
     {"id":  620, "name": "Dragon Ascent",
      "type": TYPE_FLYING, "category": PHYS, "power": 120, "accuracy": 100,
      "pp": 5, "makes_contact": True, "stat_change_self": True, "stat_change_stat": STAGE_DEF,
@@ -2546,25 +2603,25 @@ MOVES = [
     {"id":  669, "name": "Tearful Look",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_stat": STAGE_ATK, "stat_change_amount": -1, "extra_stat_change_stats": [STAGE_SPATK],
-     "extra_stat_change_amounts": [-1], "stat_change_bypasses_type_gate": True},
+     "extra_stat_change_amounts": [-1], "stat_change_bypasses_type_gate": True, "ignores_protect": True, "bounceable": True,},
     {"id":  705, "name": "Decorate",
      "type": TYPE_FAIRY, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 15, "stat_change_stat": STAGE_ATK, "stat_change_amount": 2, "extra_stat_change_stats": [STAGE_SPATK],
      "extra_stat_change_amounts": [2],
-     "ban_flags": BAN_METRONOME},
+     "ban_flags": BAN_METRONOME, "ignores_protect": True,},
     {"id":  765, "name": "Victory Dance",
      "type": TYPE_FIGHTING, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 20, "stat_change_self": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": 1,
-     "extra_stat_change_stats": [STAGE_DEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1], "snatch_affected": True},
+     "extra_stat_change_stats": [STAGE_DEF, STAGE_SPEED], "extra_stat_change_amounts": [1, 1], "snatch_affected": True, "ignores_protect": True,},
     {"id":  766, "name": "Headlong Rush",
      "type": TYPE_GROUND, "category": PHYS, "power": 120, "accuracy": 100,
      "pp": 5, "makes_contact": True, "stat_change_self": True, "stat_change_stat": STAGE_DEF,
-     "stat_change_amount": -1, "secondary_chance": 0, "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [-1]},
+     "stat_change_amount": -1, "secondary_chance": 0, "extra_stat_change_stats": [STAGE_SPDEF], "extra_stat_change_amounts": [-1], "punching_move": True,},
     {"id":  786, "name": "Spicy Extract",
      "type": TYPE_GRASS, "category": STAT, "power": 0, "accuracy": 0,
      "pp": 15, "stat_change_stat": STAGE_ATK, "stat_change_amount": 2, "extra_stat_change_stats": [STAGE_DEF],
      "extra_stat_change_amounts": [-2],
-     "ban_flags": BAN_METRONOME},
+     "ban_flags": BAN_METRONOME, "bounceable": True,},
     {"id":  816, "name": "Armor Cannon",
      "type": TYPE_FIRE, "category": SPEC, "power": 120, "accuracy": 100,
      "pp": 5, "stat_change_self": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -1,
@@ -2938,17 +2995,17 @@ MOVES = [
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 5,
      "ignores_protect": True,
      "heals_based_on_weather": True, "weather_heal_boost_type": WEATHER_SUN,
-     "weather_heal_has_quarter_branch": True, "snatch_affected": True},
+     "weather_heal_has_quarter_branch": True, "snatch_affected": True, "healing_move": True,},
     {"id":  235, "name": "Synthesis",
      "type": TYPE_GRASS, "category": STAT, "accuracy": 0, "pp": 5,
      "ignores_protect": True,
      "heals_based_on_weather": True, "weather_heal_boost_type": WEATHER_SUN,
-     "weather_heal_has_quarter_branch": True, "snatch_affected": True},
+     "weather_heal_has_quarter_branch": True, "snatch_affected": True, "healing_move": True,},
     {"id":  236, "name": "Moonlight",
      "type": TYPE_FAIRY, "category": STAT, "accuracy": 0, "pp": 5,
      "ignores_protect": True,
      "heals_based_on_weather": True, "weather_heal_boost_type": WEATHER_SUN,
-     "weather_heal_has_quarter_branch": True, "snatch_affected": True},
+     "weather_heal_has_quarter_branch": True, "snatch_affected": True, "healing_move": True,},
     # Shore Up(622): sandstorm-boosted (2/3) / else (1/2) — no 1/4 branch at
     # all, a genuine non-uniformity within this sub-group (confirmed from
     # source, not assumed symmetric with the 3 sun-based moves above).
@@ -2956,7 +3013,7 @@ MOVES = [
      "type": TYPE_GROUND, "category": STAT, "accuracy": 0, "pp": 5,
      "ignores_protect": True,
      "heals_based_on_weather": True, "weather_heal_boost_type": WEATHER_SANDSTORM,
-     "weather_heal_has_quarter_branch": False, "snatch_affected": True},
+     "weather_heal_has_quarter_branch": False, "snatch_affected": True, "healing_move": True,},
 
     # ── [M19f] Escape-prevention family ──
     # Spider Web(169): ignoresProtect=FALSE at GEN_LATEST (a real asymmetry
@@ -3178,19 +3235,19 @@ MOVES = [
     # weather_type's own doc comment for the FLAGGED Hail/Snow split gap). ──
     {"id":  201, "name": "Sandstorm",
      "type": TYPE_ROCK, "category": STAT, "accuracy": 0, "pp": 10,
-     "ban_flags": BAN_MIRROR_MOVE, "weather_type": WEATHER_SANDSTORM},
+     "ban_flags": BAN_MIRROR_MOVE, "weather_type": WEATHER_SANDSTORM, "ignores_protect": True,},
     {"id":  240, "name": "Rain Dance",
      "type": TYPE_WATER, "category": STAT, "accuracy": 0, "pp": 5,
-     "ban_flags": BAN_MIRROR_MOVE, "weather_type": WEATHER_RAIN},
+     "ban_flags": BAN_MIRROR_MOVE, "weather_type": WEATHER_RAIN, "ignores_protect": True,},
     {"id":  241, "name": "Sunny Day",
      "type": TYPE_FIRE, "category": STAT, "accuracy": 0, "pp": 5,
-     "ban_flags": BAN_MIRROR_MOVE, "weather_type": WEATHER_SUN},
+     "ban_flags": BAN_MIRROR_MOVE, "weather_type": WEATHER_SUN, "ignores_protect": True,},
     {"id":  258, "name": "Hail",
      "type": TYPE_ICE, "category": STAT, "accuracy": 0, "pp": 10,
-     "ban_flags": BAN_MIRROR_MOVE, "weather_type": WEATHER_HAIL},
+     "ban_flags": BAN_MIRROR_MOVE, "weather_type": WEATHER_HAIL, "ignores_protect": True,},
     {"id":  809, "name": "Snowscape",
      "type": TYPE_ICE, "category": STAT, "accuracy": 0, "pp": 10,
-     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME, "weather_type": WEATHER_HAIL},
+     "ban_flags": BAN_MIRROR_MOVE | BAN_METRONOME, "weather_type": WEATHER_HAIL, "ignores_protect": True,},
 
     # ── [D1] EFFECT_POWER_BASED_ON_USER_HP: Eruption/Water Spout/Dragon
     # Energy — continuous power_scales_with_user_hp, all uniform data. ──
@@ -3471,7 +3528,7 @@ MOVES = [
     # counter (capped at +4x), reset the instant a turn passes without use.
     {"id":  497, "name": "Echoed Voice",
      "type": TYPE_NORMAL, "category": SPEC, "power": 40, "accuracy": 100, "pp": 15,
-     "sound_move": True, "is_echoed_voice": True},
+     "sound_move": True, "is_echoed_voice": True, "ignores_substitute": True,},
 
     # ── [Delayed-effect family] Per-slot delayed scheduler ──────────────────
     # Future Sight(248)/Doom Desire(353): schedule a hit resolving 2 turns
@@ -3488,7 +3545,7 @@ MOVES = [
     # HP / 2) against whoever occupies the CASTER's own slot then.
     {"id":  273, "name": "Wish",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
-     "ignores_protect": True, "healing_move": True, "is_wish": True},
+     "ignores_protect": True, "healing_move": True, "is_wish": True, "snatch_affected": True,},
 
     # ── [Delayed-effect family] Per-mon volatile counter ────────────────────
     # Yawn(281): 2-turn drowsiness counter, fresh sleep-infliction attempt
@@ -3503,10 +3560,10 @@ MOVES = [
     # Lunar Dance) for whoever next switches into that slot.
     {"id":  361, "name": "Healing Wish",
      "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 10,
-     "ignores_protect": True, "healing_move": True, "is_healing_wish": True},
+     "ignores_protect": True, "healing_move": True, "is_healing_wish": True, "snatch_affected": True,},
     {"id":  461, "name": "Lunar Dance",
      "type": TYPE_PSYCHIC, "category": STAT, "accuracy": 0, "pp": 10,
-     "ignores_protect": True, "healing_move": True, "is_lunar_dance": True},
+     "ignores_protect": True, "healing_move": True, "is_lunar_dance": True, "snatch_affected": True,},
 
     # ── [Psyshock/Psystrike] Defense-stat-source override ───────────────────
     # Psyshock(473)/Psystrike(540): Special-category moves that compute
@@ -3709,11 +3766,11 @@ MOVES = [
     {"id":  392, "name": "Aqua Ring",
      "type": TYPE_WATER, "category": STAT, "accuracy": 0, "pp": 20,
      "ignores_protect": True, "is_aqua_ring": True,
-     "ban_flags": BAN_MIRROR_MOVE},
+     "ban_flags": BAN_MIRROR_MOVE, "snatch_affected": True,},
     {"id":  393, "name": "Magnet Rise",
      "type": TYPE_ELECTRIC, "category": STAT, "accuracy": 0, "pp": 10,
      "ignores_protect": True, "is_magnet_rise": True,
-     "ban_flags": BAN_MIRROR_MOVE},
+     "ban_flags": BAN_MIRROR_MOVE, "snatch_affected": True,},
     {"id":  479, "name": "Smack Down",
      "type": TYPE_ROCK, "category": PHYS, "power": 50, "accuracy": 100, "pp": 15,
      "damages_airborne": True, "is_smack_down": True},
@@ -3782,7 +3839,7 @@ MOVES = [
     {"id":  278, "name": "Recycle",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 0, "pp": 10,
      "ignores_protect": True, "is_recycle": True,
-     "ban_flags": BAN_MIRROR_MOVE},
+     "ban_flags": BAN_MIRROR_MOVE, "snatch_affected": True,},
     {"id":  263, "name": "Facade",
      "type": TYPE_NORMAL, "category": PHYS, "power": 70, "accuracy": 100, "pp": 20,
      "makes_contact": True, "is_facade": True},

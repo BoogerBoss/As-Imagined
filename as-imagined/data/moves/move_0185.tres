@@ -10,3 +10,4 @@ type = 18
 power = 60
 accuracy = 0
 pp = 20
+makes_contact = true

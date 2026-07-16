@@ -12,4 +12,5 @@ accuracy = 55
 pp = 15
 sound_move = true
 secondary_effect = 4
+ignores_substitute = true
 bounceable = true

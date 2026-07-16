@@ -15,3 +15,4 @@ secondary_chance = 100
 stat_change_stat = 2
 stat_change_amount = 1
 stat_change_self = true
+ignores_substitute = true

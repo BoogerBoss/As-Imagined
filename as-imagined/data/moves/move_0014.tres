@@ -13,4 +13,5 @@ pp = 20
 stat_change_stat = 0
 stat_change_amount = 2
 stat_change_self = true
+ignores_protect = true
 snatch_affected = true

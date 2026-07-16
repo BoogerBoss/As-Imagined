@@ -14,4 +14,5 @@ sound_move = true
 secondary_effect = 4
 secondary_chance = 10
 ban_flags = 16
+ignores_substitute = true
 is_spread = true

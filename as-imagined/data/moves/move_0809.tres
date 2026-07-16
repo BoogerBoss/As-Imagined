@@ -11,4 +11,5 @@ category = 2
 accuracy = 0
 pp = 10
 ban_flags = 18
+ignores_protect = true
 weather_type = 4

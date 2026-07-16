@@ -14,3 +14,4 @@ sound_move = true
 secondary_chance = 10
 stat_change_stat = 3
 stat_change_amount = -1
+ignores_substitute = true

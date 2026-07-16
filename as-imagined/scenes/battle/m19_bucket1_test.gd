@@ -91,7 +91,7 @@ func _test_section_a_move_data() -> void:
 	var expected := [
 		[177, "Aeroblast", TypeChart.TYPE_FLYING, 1, 100, 95, 5, false, ["crit:1"]],
 		[183, "Mach Punch", TypeChart.TYPE_FIGHTING, 0, 40, 100, 30, true, ["punching", "prio:1"]],
-		[185, "Feint Attack", TypeChart.TYPE_DARK, 0, 60, 0, 20, false, []],
+		[185, "Feint Attack", TypeChart.TYPE_DARK, 0, 60, 0, 20, true, []],
 		[224, "Megahorn", TypeChart.TYPE_BUG, 0, 120, 85, 10, true, []],
 		[233, "Vital Throw", TypeChart.TYPE_FIGHTING, 0, 70, 0, 10, true, ["prio:-1"]],
 		[238, "Cross Chop", TypeChart.TYPE_FIGHTING, 0, 100, 80, 5, true, ["crit:1"]],

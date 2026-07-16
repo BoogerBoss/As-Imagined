@@ -12,4 +12,5 @@ power = 80
 pp = 10
 sound_move = true
 ban_flags = 16
+ignores_substitute = true
 is_spread = true

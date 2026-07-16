@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bucket1behaviortest"]
+
+[ext_resource type="Script" path="res://scenes/battle/bucket1_behavior_test.gd" id="1_bucket1behaviortest"]
+
+[node name="Bucket1BehaviorTest" type="Node"]
+script = ExtResource("1_bucket1behaviortest")

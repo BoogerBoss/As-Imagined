@@ -12,3 +12,4 @@ power = 35
 accuracy = 85
 pp = 15
 secondary_effect = 8
+damages_underwater = true

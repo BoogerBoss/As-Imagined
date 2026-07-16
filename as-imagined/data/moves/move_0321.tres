@@ -14,3 +14,4 @@ stat_change_amount = -1
 stat_change_bypasses_type_gate = true
 extra_stat_change_stats = [1]
 extra_stat_change_amounts = [-1]
+bounceable = true

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bucket3secondarysweeptest"]
+
+[ext_resource type="Script" path="res://scenes/battle/bucket3_secondary_sweep_test.gd" id="1_bucket3secondarysweeptest"]
+
+[node name="Bucket3SecondarySweepTest" type="Node"]
+script = ExtResource("1_bucket3secondarysweeptest")

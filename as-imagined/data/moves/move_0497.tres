@@ -11,4 +11,5 @@ category = 1
 power = 40
 pp = 15
 sound_move = true
+ignores_substitute = true
 is_echoed_voice = true

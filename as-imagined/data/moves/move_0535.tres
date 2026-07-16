@@ -10,4 +10,5 @@ type = 11
 power = 1
 pp = 10
 makes_contact = true
+double_power_on_minimized = true
 is_heat_crash_power = true

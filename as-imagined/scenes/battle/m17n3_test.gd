@@ -130,9 +130,17 @@ func _test_section_1_ability_data() -> void:
 			mycelium.ability_id == 298 and not mycelium.breakable)
 
 	# The dormant `healing_move` MoveData flag, wired for the first time this tier —
-	# only Recover/Slack Off/Heal Order carry it in this project's roster (confirmed
-	# via source's own healingMove-flagged move list; drain moves like Giga Drain do
-	# NOT carry it, despite also being "healing" in a loose sense).
+	# Recover/Slack Off/Heal Order carry it in this project's roster (confirmed via
+	# source's own healingMove-flagged move list).
+	# [M21.5 Bucket 1 correction, 2026-07-16]: this test's own original S1.10
+	# assertion ("drain moves like Giga Drain do NOT carry it") was wrong — source's
+	# real `.healingMove` field on the EFFECT_ABSORB family (Absorb/Mega Drain/Giga
+	# Drain/Drain Punch/etc.) is `B_HEAL_BLOCKING >= GEN_6`, which resolves TRUE at
+	# this project's own GEN_LATEST=GEN_9 config, exactly like the 8 absorb moves
+	# `[M19-bucket2]` correctly flagged TRUE for the same reason. Giga Drain/Absorb/
+	# Mega Drain/Drain Punch were implemented before that generalization existed and
+	# were never retroactively swept — `[M21.5 Bucket 1]`'s full-roster
+	# `healingMove` cross-reference caught the gap and fixed it in `gen_moves.py`.
 	var recover := _load_move(105)
 	_chk("S1.07 Recover carries healing_move=true", recover.healing_move)
 	var slack_off := _load_move(303)
@@ -140,8 +148,9 @@ func _test_section_1_ability_data() -> void:
 	var heal_order := _load_move(456)
 	_chk("S1.09 Heal Order carries healing_move=true", heal_order.healing_move)
 	var giga_drain := _load_move(202)
-	_chk("S1.10 Giga Drain (a drain move, NOT a healingMove-flagged move in source) " +
-			"does NOT carry healing_move", not giga_drain.healing_move)
+	_chk("S1.10 Giga Drain DOES carry healing_move=true (corrected — B_HEAL_BLOCKING" +
+			" >= GEN_6 resolves true at this project's config, matching the other" +
+			" EFFECT_ABSORB moves)", giga_drain.healing_move)
 
 
 # ── Section 2: move_priority_bonus — direct unit tests ───────────────────────
