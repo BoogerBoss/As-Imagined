@@ -233,6 +233,25 @@ HOLD_EFFECT_LOADED_DICE = 126  # Re-rolls multi-hit count within [4,5] instead
                                 # see item_manager.gd's own doc comment for the
                                 # full source citation.
 
+# ── BATTLE_USE_* constants (must match scripts/battle/core/item_manager.gd) ──
+# [M22 Phase 1] Source: include/constants/items.h's `enum EffectItem`, read by
+# ItemData.battle_usage -- a SEPARATE dispatch axis from HOLD_EFFECT_* above
+# (held items vs. bag-use items share one data struct in source but resolve
+# through two different functions -- see item_manager.gd's own doc comment).
+BATTLE_USE_RESTORE_HP = 1  # Potion/Super Potion/Hyper Potion/etc.
+# [M22 Phase 2]
+BATTLE_USE_CURE_STATUS   = 2  # Full Heal -- ALL non-volatile status PLUS
+                               # confusion/infatuation (source's real
+                               # ITEM3_STATUS_ALL scope -- see item_manager.gd's
+                               # bag_item_cure_status doc comment)
+BATTLE_USE_INCREASE_STAT = 4  # X Attack/X Defense/etc.
+BATTLE_USE_THROW_BALL    = 8  # Poké Ball -- a deliberate M22 stub, see
+                               # item_manager.gd's attempt_catch doc comment
+
+# ── STAGE_* constants (must match MoveData's own stat-stage ordinal, NOT the
+#    STAT_* EV-shaped ordinal used by ev_boost_stat above) ────────────────────
+STAGE_ATK = 0
+
 # ── TYPE_* constants (must match scripts/data/type_chart.gd) ──────────────────
 TYPE_NORMAL   = 1
 TYPE_FIGHTING = 2
@@ -588,6 +607,40 @@ ITEMS = [
     #    No hold_effect_param needed for either.
     {"id": 488, "name": "Grip Claw",   "hold_effect": HOLD_EFFECT_GRIP_CLAW},
     {"id": 762, "name": "Loaded Dice", "hold_effect": HOLD_EFFECT_LOADED_DICE},
+
+    # ── [M22 Phase 1]: first bag-item (battle_usage, not hold_effect) entry --
+    #    proof-of-concept item for the new item-action-queue mechanism. Source:
+    #    src/data/items.h ITEM_POTION -- .holdEffectParam = 20 (a flat heal,
+    #    reused directly even though Potion has no .holdEffect at all -- see
+    #    item_manager.gd's bag_item_heal doc comment for the full citation),
+    #    .battleUsage = EFFECT_ITEM_RESTORE_HP.
+    {"id": 28, "name": "Potion", "battle_usage": BATTLE_USE_RESTORE_HP,
+        "hold_effect_param": 20},
+
+    # ── [M22 Phase 2]: the remaining 3 items from the recon's own minimal set ──
+    # Full Heal: source's real ITEM3_STATUS_ALL scope cures non-volatile status
+    # PLUS confusion/infatuation (BS_ItemCureStatus calls BOTH
+    # HealStatusConditions AND ItemHealMonVolatile) -- see item_manager.gd's
+    # bag_item_cure_status doc comment for the full citation and why this
+    # project's own architecture makes source's "active-battler-only" volatile
+    # restriction moot. No numeric param needed (cures unconditionally).
+    {"id": 48, "name": "Full Heal", "battle_usage": BATTLE_USE_CURE_STATUS},
+
+    # X Attack: +2 stages at this project's GEN_LATEST config (X_ITEM_STAGES,
+    # B_X_ITEMS_BUFF>=GEN_7 -- see item_manager.gd's own X_ITEM_STAGES
+    # constant). stat_boost_stage=STAGE_ATK (0), NOT ev_boost_stat's own
+    # STAT_* ordinal -- see ItemData.stat_boost_stage's own doc comment.
+    {"id": 121, "name": "X Attack", "battle_usage": BATTLE_USE_INCREASE_STAT,
+        "stat_boost_stage": STAGE_ATK},
+
+    # Poké Ball: a deliberate M22 stub (attempt_catch always fails) -- see
+    # item_manager.gd's own doc comment. No numeric param needed; targets the
+    # OPPONENT (via _chosen_targets, the same mechanism every foe-targeting
+    # move already uses), NOT a party slot like the 3 items above -- a real,
+    # source-confirmed distinction (.type=ITEM_USE_BAG_MENU, no party-menu
+    # step at all, unlike Potion/Full Heal's ITEM_USE_PARTY_MENU or X Attack's
+    # ITEM_USE_BATTLER).
+    {"id": 1, "name": "Poké Ball", "battle_usage": BATTLE_USE_THROW_BALL},
 ]
 
 HEADER = """\
@@ -614,6 +667,7 @@ DEFAULTS = {
     "required_species":   0,  # M18g: species-gated items — 0 = unrestricted
     "required_species2":  0,  # M18g: matched-pair second species — 0 = none
     "ev_boost_stat":     -1,  # M20c: which stat a Power item boosts — -1 = N/A
+    "stat_boost_stage":  -1,  # M22 Phase 2: which stat STAGE an X-item raises — -1 = N/A
 }
 
 # Fields to emit in .tres, in canonical order. item_id/item_name are always
@@ -625,11 +679,14 @@ DEFAULTS = {
 # lean" scope. `pocket` was the same story until [M18-patch-1] populated it on
 # every real berry entry — the first of these dormant fields to actually be
 # needed by a real mechanic (Cheek Pouch/Harvest/Cud Chew's berry gate).
+# `battle_usage` was the next of these fields to come out of dormancy —
+# [M22 Phase 1] populated it (BATTLE_USE_RESTORE_HP) on Potion, the new
+# item-action-queue mechanism's one proof-of-concept item.
 FIELD_ORDER = [
     "hold_effect", "hold_effect_param",
     "description", "pocket", "importance", "not_consumed", "battle_usage",
     "fling_power", "price", "required_species", "required_species2",
-    "ev_boost_stat",
+    "ev_boost_stat", "stat_boost_stage",
 ]
 
 

@@ -392,13 +392,25 @@ def describe_move(fields):
             f"{cat_label} hit, power {power}, {acc_str}, {pp} PP{contact}{spread_str}"
         )
 
-    # stat changes (primary + extra pairs)
+    # stat changes (primary + extra pairs). For a damage-category move, the
+    # stat change is a probabilistic (or guaranteed-but-optional) secondary
+    # effect keyed off secondary_chance (0 == guaranteed), not an unconditional
+    # effect the way it is on a Status move -- surface that chance explicitly.
+    is_damage_move = cat_label != "Status"
+    chance_prefix = ""
+    if is_damage_move:
+        chance = coerce(fields.get("secondary_chance", "0"))
+        chance_str = "guaranteed" if chance == 0 else f"{chance}% chance"
+        chance_prefix = f"{chance_str} of "
+
     stat_stage = coerce(fields.get("stat_change_stat", "-1"))
     if stat_stage is not None and stat_stage != -1:
         amt = coerce(fields.get("stat_change_amount", "0"))
         who = "ally's" if target_ally else ("own" if self_target else "target's")
-        direction = "raises" if amt > 0 else "lowers"
-        clause = f"{direction} {who} {STAGE_NAMES.get(stat_stage, stat_stage)} by {abs(amt)} stage(s)"
+        direction = "raising" if is_damage_move else "raises"
+        lower_word = "lowering" if is_damage_move else "lowers"
+        direction = direction if amt > 0 else lower_word
+        clause = f"{chance_prefix}{direction} {who} {STAGE_NAMES.get(stat_stage, stat_stage)} by {abs(amt)} stage(s)"
         if coerce(fields.get("also_boosts_ally", "false")):
             clause += " (also boosts the user's ally in doubles)"
         parts.append(clause)
@@ -406,8 +418,10 @@ def describe_move(fields):
     extra_amts = coerce(fields.get("extra_stat_change_amounts", "[]")) or []
     for st, amt in zip(extra_stats, extra_amts):
         who = "ally's" if target_ally else ("own" if self_target else "target's")
-        direction = "raises" if amt > 0 else "lowers"
-        parts.append(f"{direction} {who} {STAGE_NAMES.get(st, st)} by {abs(amt)} stage(s)")
+        direction = "raising" if is_damage_move else "raises"
+        lower_word = "lowering" if is_damage_move else "lowers"
+        direction = direction if amt > 0 else lower_word
+        parts.append(f"{chance_prefix}{direction} {who} {STAGE_NAMES.get(st, st)} by {abs(amt)} stage(s)")
 
     # secondary effects (slot 1 + slot 2)
     for eff_key, chance_key in (("secondary_effect", "secondary_chance"),

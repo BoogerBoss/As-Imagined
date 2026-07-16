@@ -45,3 +45,18 @@ extends Resource
 # SpAtk/SpDef). -1 = not applicable (every item except the 6 Power items).
 # Source: `.secondaryId = STAT_X` per item, `src/data/items.h:8731-8853`.
 @export var ev_boost_stat: int = -1
+
+# [M22 Phase 2] Which BATTLE STAT STAGE an X-item (X Attack, etc.) raises —
+# matches MoveData's own `stat_change_stat`/`BattlePokemon.STAGE_*` ordinal
+# order (ATK=0/DEF=1/SPATK=2/SPDEF=3/SPEED=4/ACCURACY=5/EVASION=6), the SAME
+# generic stat-stage dispatch every stat-changing move already reuses —
+# deliberately NOT `ev_boost_stat` above, which is a DIFFERENT ordinal
+# (BattlePokemon.STAT_*, EV-shaped, HP-inclusive, Speed-before-SpAtk/SpDef)
+# for a different mechanic (M20c's EV gain) entirely. Conflating the two
+# would silently reproduce this whole project's own well-documented Nature/
+# Hidden-Power "Speed ordering" pitfall. -1 = not applicable (every item
+# except the X-item family). Source: `.effect[1] = ITEM1_X_ATTACK` etc.
+# (`ITEM1_X_ATTACK` is literally `#define`d as source's own `STAT_ATK`,
+# src/data/pokemon/item_effects.h), resolved here to this project's STAGE_*
+# convention at data-entry time, not carried as a raw source enum value.
+@export var stat_boost_stage: int = -1

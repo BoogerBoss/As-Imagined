@@ -152,6 +152,11 @@ func _dispatch_priority(a0: BattlePokemon, a1: BattlePokemon,
 	bm._actor_indices = actor_indices
 	bm._chosen_moves = moves
 	bm._chosen_switch_slots = switch_slots
+	# [M22 Phase 1] _phase_priority_resolution's comparator now also reads
+	# _chosen_items — must be sized to match or every pairwise comparison
+	# crashes on an out-of-bounds read. None of these tests exercise item
+	# actions, so an all-null array is the correct "nothing changed" fixture.
+	bm._chosen_items = [null, null, null, null]
 	bm._phase_priority_resolution()
 	return bm
 
@@ -261,6 +266,7 @@ func _test_item12_shell_trap_doubles_splice() -> void:
 	# session's own splice hooks into).
 	bm._chosen_moves = [tackle, null, shell_trap, null]
 	bm._chosen_switch_slots = [-1, -1, -1, -1]
+	bm._chosen_items = [null, null, null, null]  # [M22 Phase 1] sizing guard
 	bm._chosen_targets = [2, 0, 0, 0]  # A0 targets B0 (index 2)
 	# Initial (pre-splice) order: A0 fastest, then A1, then B0, then B1 —
 	# B0 is SLOW, normally scheduled last; the splice must move it up.
@@ -305,6 +311,7 @@ func _test_item12_singles_no_splice() -> void:
 	bm._actor_indices = actor_indices
 	bm._chosen_moves = [tackle, shell_trap]
 	bm._chosen_switch_slots = [-1, -1]
+	bm._chosen_items = [null, null]  # [M22 Phase 1] sizing guard
 	bm._chosen_targets = [1, 0]
 	bm._turn_order = combatants.duplicate()
 	bm._current_actor_index = 0
@@ -340,6 +347,7 @@ func _dispatch_round(a0: BattlePokemon, a1: BattlePokemon, b0: BattlePokemon,
 	bm._actor_indices = actor_indices
 	bm._chosen_moves = moves
 	bm._chosen_switch_slots = [-1, -1, -1, -1]
+	bm._chosen_items = [null, null, null, null]  # [M22 Phase 1] sizing guard
 	bm._chosen_targets = [2, 2, 0, 0]  # A0/A1 both target B0 for simplicity
 	bm._turn_order = combatants.duplicate()
 	bm._current_actor_index = 0
@@ -399,6 +407,7 @@ func _test_item11_singles_no_promotion() -> void:
 	bm._actor_indices = actor_indices
 	bm._chosen_moves = [round_move, round_move]
 	bm._chosen_switch_slots = [-1, -1]
+	bm._chosen_items = [null, null]  # [M22 Phase 1] sizing guard
 	bm._chosen_targets = [1, 0]
 	bm._turn_order = combatants.duplicate()
 	bm._current_actor_index = 0
@@ -443,6 +452,7 @@ func _dispatch_quash(a0: BattlePokemon, a1: BattlePokemon, b0: BattlePokemon,
 	bm._actor_indices = actor_indices
 	bm._chosen_moves = [quash, tackle, tackle, tackle]
 	bm._chosen_switch_slots = [-1, -1, -1, -1]
+	bm._chosen_items = [null, null, null, null]  # [M22 Phase 1] sizing guard
 	bm._chosen_targets = [2, 0, 0, 0]  # A0's Quash targets B0 (index 2)
 	bm._turn_order = initial_order.duplicate()
 	bm._current_actor_index = 0
@@ -536,6 +546,7 @@ func _dispatch_dragon_darts(a0: BattlePokemon, a1: BattlePokemon, b0: BattlePoke
 	bm._actor_indices = actor_indices
 	bm._chosen_moves = [dragon_darts, null, null, null]
 	bm._chosen_switch_slots = [-1, -1, -1, -1]
+	bm._chosen_items = [null, null, null, null]  # [M22 Phase 1] sizing guard
 	bm._chosen_targets = [2, 0, 0, 0]  # A0 targets B0 (index 2)
 	bm._turn_order = combatants.duplicate()
 	bm._current_actor_index = 0
@@ -670,6 +681,7 @@ func _test_item5_dragon_darts_singles_no_redirect() -> void:
 	bm._actor_indices = actor_indices
 	bm._chosen_moves = [dragon_darts, null]
 	bm._chosen_switch_slots = [-1, -1]
+	bm._chosen_items = [null, null]  # [M22 Phase 1] sizing guard
 	bm._chosen_targets = [1, 0]
 	bm._turn_order = combatants.duplicate()
 	bm._current_actor_index = 0

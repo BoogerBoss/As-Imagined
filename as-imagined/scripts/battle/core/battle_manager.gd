@@ -271,6 +271,21 @@ signal healing_wish_activated(recipient: BattlePokemon, kind: String, healed: in
 signal hit_escape_switch(old_mon: BattlePokemon, new_mon: BattlePokemon)  # [D1 easy bundle] U-turn/Volt Switch/Flip Turn's own voluntary-style switch fired
 signal hit_switch_target(old_mon: BattlePokemon, new_mon: BattlePokemon)  # [D1 easy bundle] Circle Throw/Dragon Tail forced the defender out
 signal items_swapped(attacker: BattlePokemon, defender: BattlePokemon)  # [D1 easy bundle] Trick/Switcheroo successfully swapped held items
+# [M22 Phase 1] a bag item (not a held item — mon.held_item is untouched) was
+# used as this turn's action. Deliberately NOT item_consumed (that signal's
+# established meaning in this codebase is coupled to a HELD item being
+# removed from mon.held_item, e.g. triggering Unburden/last_consumed_berry —
+# none of which applies here). The heal itself (if any) still emits the
+# existing item_healed signal below, since that one's semantics ("this mon
+# was healed by this amount due to an item") genuinely do apply unchanged.
+signal item_action_used(user: BattlePokemon, item: ItemData, target: BattlePokemon)
+# [M22 Phase 2] a Poké Ball was thrown and the (currently always-stubbed,
+# see ItemManager.attempt_catch) catch attempt resolved. Fired IN ADDITION
+# TO item_action_used above (which already fires generically for every item
+# type, Ball included) — this one exists specifically so a future M27
+# session (and this session's own tests) can observe the catch outcome
+# without needing a new generic signal shape.
+signal catch_attempted(user: BattlePokemon, target: BattlePokemon, item: ItemData, caught: bool)
 
 signal side_condition_set(side: int, condition_name: String)  # [D4 Bundle 4] Tailwind/Safeguard/Mist went up ("tailwind"/"safeguard"/"mist")
 signal side_condition_expired(side: int, condition_name: String)  # [D4 Bundle 4] duration ran out
@@ -310,6 +325,18 @@ var _turn_tiebreak: Dictionary = {}
 var _chosen_moves: Array = []
 # M9: switch slot per combatant (-1 = not switching, ≥0 = party slot to switch to).
 var _chosen_switch_slots: Array[int] = []
+# [M22 Phase 1] chosen bag item per combatant (null = not using an item this turn).
+# Sized to 4 exactly like _chosen_moves/_chosen_switch_slots for doubles-readiness.
+var _chosen_items: Array = []
+# [M22 Phase 1] PARTY SLOT (not combatant index) the item targets — a real,
+# source-confirmed distinction from every other "target" concept in this file.
+# Source: item_use.c's CannotUseItemsInBattle keys off gPartyMenu.slotId, a
+# party index, completely independent of battlerTarget (which _chosen_targets
+# models for moves). This lets an item target ANY party member, active or
+# benched — e.g. healing a benched Pokémon — with zero extra plumbing, since
+# resolving it is just BattleParty.members[slot], the same array every other
+# party-indexed lookup in this project already uses. -1 = unset/not using an item.
+var _chosen_item_targets: Array[int] = []
 # M9: actor→side map set at PRIORITY_RESOLUTION, used to recover side index mid-turn.
 # Keyed by BattlePokemon object (the active mon at resolution time).
 var _actor_sides: Dictionary = {}
@@ -732,6 +759,8 @@ func start_battle_with_parties(player_party: BattleParty,
 	_chosen_moves = [null, null]
 	_chosen_switch_slots = [-1, -1]
 	_chosen_targets = [1, 0]  # each targets the single opponent
+	_chosen_items = [null, null]
+	_chosen_item_targets = [-1, -1]
 	_set_phase(BattlePhase.BATTLE_START)
 	advance()
 
@@ -754,6 +783,8 @@ func start_battle_doubles(player_party: BattleParty,
 	_chosen_moves   = [null, null, null, null]
 	_chosen_switch_slots = [-1, -1, -1, -1]
 	_chosen_targets = [2, 2, 0, 0]  # default: each targets first slot of opposing side
+	_chosen_items = [null, null, null, null]
+	_chosen_item_targets = [-1, -1, -1, -1]
 	_set_phase(BattlePhase.BATTLE_START)
 	advance()
 
@@ -784,6 +815,21 @@ func queue_move_targeted(combatant_idx: int, move_index: int, target_idx: int) -
 
 func queue_switch_for(combatant_idx: int, slot: int) -> void:
 	_action_queues[combatant_idx].append({"type": "switch", "slot": slot})
+
+# [M22 Phase 1] party_target is a PARTY SLOT index (BattleParty.members),
+# not a combatant index — see _chosen_item_targets' own doc comment. -1 (the
+# default) means "use the acting combatant's own currently-active party slot,"
+# resolved at selection time in _phase_move_selection since active_indices can
+# only be read once _parties/_active_per_side are known.
+# [M22 Phase 2] target_idx is the OPPOSING combatant index — only meaningful
+# for the Poké Ball case (see _do_item_use), mirroring queue_move_targeted's
+# own "target" key exactly. -1 (the default) leaves _chosen_targets at
+# whatever _default_target already resolved (the first opponent slot).
+func queue_item_for(combatant_idx: int, item_id: int, party_target: int = -1,
+		target_idx: int = -1) -> void:
+	_action_queues[combatant_idx].append(
+		{"type": "item", "item_id": item_id, "party_target": party_target,
+		"target_idx": target_idx})
 
 func queue_replacement_for(combatant_idx: int, slot: int) -> void:
 	_replacement_queues[combatant_idx].append(slot)
@@ -945,6 +991,10 @@ func _phase_move_selection() -> void:
 		var mon: BattlePokemon = _combatants[i]
 		_chosen_switch_slots[i] = -1
 		_chosen_targets[i] = _default_target(i)
+		# [M22 Phase 1] reset alongside _chosen_switch_slots — same "not this turn"
+		# default shape.
+		_chosen_items[i] = null
+		_chosen_item_targets[i] = -1
 		# Skip fainted combatants (doubles: a slot can be empty with no bench replacement).
 		if mon.fainted:
 			_chosen_moves[i] = null
@@ -964,6 +1014,24 @@ func _phase_move_selection() -> void:
 			var action: Dictionary = _action_queues[i].pop_front()
 			if action["type"] == "switch":
 				_chosen_switch_slots[i] = action["slot"]
+				_chosen_moves[i] = null
+			elif action["type"] == "item":
+				# [M22 Phase 1] party_target defaults (-1 from queue_item_for) to
+				# this combatant's own currently-active party slot — resolved here
+				# since active_indices needs _parties/_active_per_side, neither of
+				# which queue_item_for itself has access to at queue time.
+				_chosen_items[i] = ItemRegistry.get_item(action["item_id"])
+				var party_target: int = action.get("party_target", -1)
+				if party_target < 0:
+					party_target = _parties[side].active_indices[i % _active_per_side]
+				_chosen_item_targets[i] = party_target
+				# [M22 Phase 2] Poké Ball's own opposing-combatant target —
+				# _chosen_targets[i] already defaults correctly via
+				# _default_target(i) above; only overridden here if the
+				# caller explicitly asked for the OTHER opposing slot.
+				var target_idx: int = action.get("target_idx", -1)
+				if target_idx >= 0:
+					_chosen_targets[i] = target_idx
 				_chosen_moves[i] = null
 			else:
 				var idx: int = action.get("index", 0)
@@ -1027,12 +1095,18 @@ func _phase_move_selection() -> void:
 		# M12: Choice lock enforcement — overrides whatever path set above.
 		# Source: gBattleStruct->chosenMovePositions[battler] checked in CanChooseMove.
 		# Only applies when not switching and not already locked by a charge move.
+		# [M22 Phase 1]: also must not clobber a queued item action — a Choice-locked
+		# Pokémon's TRAINER can still use a bag item on it (the lock is on the
+		# Pokémon's own move selection, never on the trainer's Bag/Switch options).
 		if mon.choice_locked_move != null and _chosen_switch_slots[i] < 0 \
-				and mon.charging_move == null:
+				and _chosen_items[i] == null and mon.charging_move == null:
 			_chosen_moves[i] = mon.choice_locked_move
 		# M15 Task 3: Struggle override — all PP depleted forces Struggle.
 		# Source: battle_main.c L4727-4728; CancelerPPDeduction skips Struggle (L979).
-		if _is_forced_struggle(mon) and _chosen_switch_slots[i] < 0:
+		# [M22 Phase 1]: same reasoning as the choice-lock guard directly above —
+		# a fully-PP-depleted Pokémon's trainer can still use an item on it instead
+		# of being forced into Struggle.
+		if _is_forced_struggle(mon) and _chosen_switch_slots[i] < 0 and _chosen_items[i] == null:
 			_chosen_moves[i] = _struggle_move
 	_set_phase(BattlePhase.PRIORITY_RESOLUTION)
 
@@ -1183,8 +1257,12 @@ func _phase_priority_resolution() -> void:
 		# not _actor_sides (which is now 0 or 1, not the combatant position).
 		var ia: int = _actor_indices.get(a, _combatants.find(a))
 		var ib: int = _actor_indices.get(b, _combatants.find(b))
-		var a_switch: bool = _chosen_switch_slots[ia] >= 0
-		var b_switch: bool = _chosen_switch_slots[ib] >= 0
+		# [M22 Phase 1] generalized from a pure "is this a switch" check to the
+		# full front tier the source comment right below already named (Item/
+		# Switch/Ball, battle_main.c L4967-4990) — Item actions never reached
+		# this comparator before M22 existed, since _chosen_items didn't exist.
+		var a_switch: bool = _chosen_switch_slots[ia] >= 0 or _chosen_items[ia] != null
+		var b_switch: bool = _chosen_switch_slots[ib] >= 0 or _chosen_items[ib] != null
 
 		# [Turn-order-splice trio] Pursuit interception used to be embedded HERE
 		# as a pairwise override — REMOVED. It made the comparator non-
@@ -1261,6 +1339,18 @@ func _phase_action_execution() -> void:
 		var slot: int = _chosen_switch_slots[actor_idx]
 		_chosen_switch_slots[actor_idx] = -1
 		_do_voluntary_switch(actor_idx, slot)
+		_current_actor_index += 1
+		_set_phase(BattlePhase.FAINT_CHECK)
+		return
+
+	# [M22 Phase 1] check if this actor's trainer chose to use a bag item this
+	# turn — mirrors the switch branch immediately above exactly (same early-
+	# return shape, same FAINT_CHECK follow-up, no new BattlePhase needed).
+	if actor_idx >= 0 and _chosen_items[actor_idx] != null:
+		var item: ItemData = _chosen_items[actor_idx]
+		var party_target: int = _chosen_item_targets[actor_idx]
+		_chosen_items[actor_idx] = null
+		_do_item_use(actor_idx, item, party_target)
 		_current_actor_index += 1
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
@@ -7846,6 +7936,59 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 	_apply_stored_healing_effect(new_mon, combatant_idx)
 
 
+# [M22 Phase 1] Resolve and apply a bag-item action chosen this turn.
+# party_target is a PARTY SLOT (BattleParty.members index), not a combatant
+# index — an item can target ANY party member of the ACTING trainer's own
+# side, active or benched (source: item_use.c's CannotUseItemsInBattle keys
+# off gPartyMenu.slotId, fully independent of battlerTarget — a genuinely
+# different targeting axis from _chosen_targets, which moves use). Only
+# EFFECT_ITEM_RESTORE_HP is wired so far (Potion, this milestone's one proof-
+# of-concept item) — see ItemManager.BATTLE_USE_* for the full source enum
+# this dispatch will grow into as M22's remaining representative items
+# (Full Heal, X Attack, the Poké Ball placeholder) are added in a later
+# session, per docs/m22_recon.md's own proposed sequencing.
+func _do_item_use(actor_idx: int, item: ItemData, party_target: int) -> void:
+	var side: int = actor_idx / _active_per_side
+	var user: BattlePokemon = _combatants[actor_idx]
+
+	# [M22 Phase 2] Poké Ball is a genuinely different targeting axis from
+	# every other item this project has: it targets the OPPONENT (via
+	# _chosen_targets, the same combatant-index mechanism every foe-targeting
+	# MOVE already uses — already resolved to the default first-opponent-slot
+	# by _default_target at MOVE_SELECTION time unless a test explicitly
+	# overrides it), not a party slot on the acting trainer's own side.
+	# Source-confirmed: Poké Ball's `.type = ITEM_USE_BAG_MENU` (no party-menu
+	# step at all), unlike Potion/Full Heal's `ITEM_USE_PARTY_MENU` or X
+	# Attack's `ITEM_USE_BATTLER` — none of which apply here. `party_target`
+	# is deliberately unused for this branch.
+	if item.battle_usage == ItemManager.BATTLE_USE_THROW_BALL:
+		var opponent: BattlePokemon = _combatants[_chosen_targets[actor_idx]]
+		item_action_used.emit(user, item, opponent)
+		var caught: bool = ItemManager.attempt_catch(opponent, item)
+		catch_attempted.emit(user, opponent, item, caught)
+		return
+
+	var target_mon: BattlePokemon = _parties[side].members[party_target]
+	item_action_used.emit(user, item, target_mon)
+	if item.battle_usage == ItemManager.BATTLE_USE_RESTORE_HP:
+		var healed: int = ItemManager.bag_item_heal(target_mon, item)
+		if healed > 0:
+			item_healed.emit(target_mon, healed)
+	elif item.battle_usage == ItemManager.BATTLE_USE_CURE_STATUS:
+		if ItemManager.bag_item_cure_status(target_mon, item):
+			party_status_cured.emit(target_mon)
+	elif item.battle_usage == ItemManager.BATTLE_USE_INCREASE_STAT:
+		# Source: CannotUseItemsInBattle's EFFECT_ITEM_INCREASE_STAT case gates
+		# on `hp == 0` (menu-legality) — reproduced as a pure no-op here,
+		# matching bag_item_heal's own established precedent, rather than an
+		# action-queue-level rejection this project's mechanism doesn't model.
+		if target_mon.current_hp > 0:
+			var actual: int = StatusManager.apply_stat_change(
+					target_mon, item.stat_boost_stage, ItemManager.X_ITEM_STAGES)
+			if actual != 0:
+				stat_stage_changed.emit(target_mon, item.stat_boost_stage, actual)
+
+
 # M9/M14b: forced switch-in for Roar/Whirlwind — forces out the combatant at
 # the given field_slot of the specified side.
 # M14b: field_slot parameter defaults to 0 (singles-compatible) but is now passed
@@ -8134,11 +8277,13 @@ func _apply_quash_bubble(target: BattlePokemon, ng_active: bool) -> void:
 			return
 		var next_mon: BattlePokemon = _turn_order[next_pos]
 		var next_idx: int = _actor_indices.get(next_mon, _combatants.find(next_mon))
-		# Switches always sort before every move action already — Quash's
-		# own target (a move-user by construction, since only living move
-		# actions can be Quashed) should never actually encounter a switcher
-		# here, but this guard keeps the loop from ever misordering one.
-		if _chosen_switch_slots[next_idx] >= 0:
+		# Switches (and, since [M22 Phase 1], items — the same front tier,
+		# battle_main.c L4967-4990) always sort before every move action
+		# already — Quash's own target (a move-user by construction, since
+		# only living move actions can be Quashed) should never actually
+		# encounter a switcher or item-user here, but this guard keeps the
+		# loop from ever misordering one.
+		if _chosen_switch_slots[next_idx] >= 0 or _chosen_items[next_idx] != null:
 			return
 		if _move_action_precedes(target, next_mon, ng_active):
 			return  # target is no longer slower than what's next — stop
@@ -8153,9 +8298,13 @@ func _apply_quash_bubble(target: BattlePokemon, ng_active: bool) -> void:
 # abilities — NOT a raw speed comparison, confirmed via source rather than assumed).
 # `_turn_order` holds BattlePokemon references directly (not combatant indices), so
 # `mon`'s own position is found via `.find()`; later positions are checked against
-# `_chosen_switch_slots` (via `_actor_indices`) to distinguish a still-pending MOVE
-# action from a switch action or an already-fainted battler — mirrors source's own
-# `gActionsByTurnOrder[i] == B_ACTION_USE_MOVE` check exactly.
+# `_chosen_switch_slots`/`_chosen_items` (via `_actor_indices`) to distinguish a
+# still-pending MOVE action from a switch/item action or an already-fainted
+# battler — mirrors source's own `gActionsByTurnOrder[i] == B_ACTION_USE_MOVE`
+# check exactly. [M22 Phase 1]: a later battler using an item is just as much
+# "not a pending move action" as one switching — without this check, Analytic
+# would incorrectly think it isn't the last to move whenever a later actor's
+# chosen action for the turn is an item.
 func _is_last_to_move(mon: BattlePokemon) -> bool:
 	var pos: int = _turn_order.find(mon)
 	if pos == -1 or pos >= _turn_order.size() - 1:
@@ -8165,7 +8314,7 @@ func _is_last_to_move(mon: BattlePokemon) -> bool:
 		if other.fainted:
 			continue
 		var oidx: int = _actor_indices.get(other, _combatants.find(other))
-		if _chosen_switch_slots[oidx] < 0:
+		if _chosen_switch_slots[oidx] < 0 and _chosen_items[oidx] == null:
 			return false  # a later battler still has a pending MOVE action
 	return true
 

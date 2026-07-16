@@ -1000,4 +1000,145 @@ spot-check with a measured 0% defect rate. Bucket 5 (D1-D4 cluster
 spot-check, ~90 moves, lowest priority per the scoping doc's own
 sequencing) is the only remaining item in the original bucket plan.
 
+## Bucket 5 — D1-D4 cluster spot-check (CLOSED, 2026-07-16, follow-up session)
+
+**Step 0 re-derived the real population from `gen_moves.py`'s own
+D0/D1/D2/D3/D4 comment markers rather than trusting the "~90" estimate**:
+programmatically extracted every move grouped under a section header
+containing `D0`/`D1`/`D2`/`D3`/`D4`, plus the `[Delayed-effect family]`
+and `[Psyshock/Psystrike]` markers (both explicitly documented as
+closing out D2's own cross-cutting family in their own decisions.md
+entry) — **182 distinct move IDs**, roughly DOUBLE the original
+estimate. Cross-checked this list is exhaustive by confirming it
+accounts for every move mentioned across the D0/D1/D2/D3/D4-labeled
+`docs/decisions.md` entries (D0 through the Mimic/Sketch/Perish
+Song/Transform sessions, all of which are D4's own final residual-pool
+closures per their own entries' text) — no gaps found. The original
+"~90" figure was simply an unverified guess made at scoping time, not a
+stale-but-once-accurate count; Section D's own residual pool was
+already fully known to be ~181-182 moves by the time M21.5 started
+(M19 was already marked COMPLETE), so this was always knowable, just
+never actually counted until now.
+
+**Confirmed what Buckets 1/2/3 already cover for these 182 moves**:
+Bucket 1 (all 25 boolean move-property flags) and Bucket 3
+(`secondary_effect`/`secondary_chance`/`stat_change_stat`/`amount`) are
+both confirmed **full-717-roster** sweeps (re-read their own closing
+text directly rather than assumed) — these 182 moves are included in
+that coverage, no gap. `ban_flags` is likewise confirmed fully audited
+project-wide by `[M19.5]` Task 1 (for the 8 bits with a real consumer;
+see the ban-flag finding below for the 3 bits it explicitly declined to
+audit). **What Bucket 2 does NOT cover for this population**: Bucket
+2's own base-field (`power`/`accuracy`/`pp`/`priority`/`type`/`category`)
+programmatic cross-reference was scoped only to Bucket 2's own 238
+moves — never run against these 182 D-cluster moves, or any of the
+other ~479 non-Bucket-2 moves. This is the one genuinely-still-unswept
+category for this population, mirroring exactly the gap Bucket 2 found
+(and fixed 2 real bugs from) for its own population.
+
+**The bespoke `is_X` mechanism risk is real but LOWER than Bucket 2's
+own risk profile, not higher**: unlike Bucket 2's "bulk data-entry,
+reuses one existing mechanism" moves, every D-cluster move went through
+its own dedicated Step-0-with-real-source-citations session at
+implementation time (Curse, Belly Drum, Transform, Perish Song, Sky
+Drop, etc. each have their own `docs/decisions.md` entry citing exact
+source functions/line numbers). Re-auditing every bespoke mechanism
+from scratch would largely be re-doing already-careful work, not
+closing a real gap — this is why the check below is a base-field sweep
+plus a moderate spot-check, not a full re-verification of every move's
+unique mechanism.
+
+**Implemented**: extended Bucket 2's exact base-field extraction
+methodology (GEN-ternary resolution against this project's
+`GEN_LATEST=GEN_9=8` config, dynamic `B_*`/`I_*`/`P_*` constant
+resolution via direct `#define` lookup rather than hardcoding, symbolic
+`TYPE_*`/`DAMAGE_CATEGORY_*` constant mapping) and re-pointed it at the
+182-move D-cluster population. Verified the tooling itself before
+trusting any result: confirmed it correctly resolves a real `.type`
+ternary (Curse's Gen5+ Ghost/Mystery typing) and a non-`B_UPDATED_MOVE_DATA`
+macro (`B_HIDDEN_POWER_DMG`, Hidden Power's power), confirmed it
+reproduces the already-known-correct Luster Purge/Mist Ball power=95
+fix, and confirmed a deliberately-injected wrong value is actually
+caught (a positive-control sanity check, not just a vacuous "0
+mismatches" pass).
+
+**Programmatic base-field result: 0 mismatches across all 182 moves**,
+covering 48 GEN-conditional ternary expressions genuinely exercised
+along the way (not just plain literals) — a real, clean pass, not an
+under-exercised one.
+
+**Manual spot-check**: 12 moves, matching Bucket 2's own escalation-step
+depth, stratified across the population and weighted toward D4 (the
+largest and most structurally diverse cluster) — Aromatherapy (D0),
+Swagger/Stored Power (D1), Foul Play/Freeze-Dry (D2), Instruct/Rage Fist
+(D3), Curse/Transform/Perish Song/Sky Drop/Belly Drum (D4). Each move's
+COMPLETE `moves_info.h` struct entry read side-by-side with its
+COMPLETE `gen_moves.py` entry, plus a direct grep confirming each
+move's `is_X` flag has a real, live dispatch consumer in
+`battle_manager.gd`/`damage_calculator.gd`. **0 functional defects
+found** — every base field, secondary-effect field, and dispatch flag
+matched source exactly for all 12 sampled moves.
+
+**One real, non-functional finding surfaced during the spot-check,
+then fully quantified across the whole 182-move population**: Instruct
+(652) and After You (495) are both missing `BAN_MIRROR_MOVE` relative
+to source's own `mirrorMoveBanned = TRUE`, and Instruct is additionally
+missing `BAN_INSTRUCT`. Extending the check to all 182 moves found
+**18 total moves** (≈10%) with a gap in one of exactly three
+`ban_flags` bits — `BAN_MIRROR_MOVE`, `BAN_INSTRUCT`, or
+`BAN_GRAVITY`. **Confirmed via direct grep this is a non-bug, not a
+new defect class**: all three bits have **zero read sites anywhere**
+in `battle_manager.gd` — the identical three bits `[M19.5]` Task 1's
+own entry already named as "confirmed to have ZERO read sites and
+were deliberately NOT populated, to avoid pure no-op busywork."
+`BAN_GRAVITY` is additionally moot in principle, not just in practice
+(the Gravity move itself is unimplemented, so nothing could ever
+consume it). This is the exact same "real data-completeness gap, zero
+functional impact" classification as Bucket 1's own `dance_move`
+finding (11 moves missing a flag Dancer would consume, if Dancer were
+implemented) — flagged here for completeness and quantified precisely,
+but **not fixed**, per the established non-bug-vs-real-bug standard:
+fixing 18 moves' bitmasks for bits nothing reads would be pure
+busywork with zero behavior change. Revisit only if Mirror Move's own
+ban-enforcement, Instruct's ban-enforcement, or the Gravity move itself
+is ever built and starts consuming one of these bits.
+
+**Escalation decision**: per the task's own criterion (0% or near-0%
+functional defect rate → close out; a real new defect class → escalate
+to that sub-group only), this bucket closes with **0 functional
+defects across a 182-move programmatic sweep plus a 12-move manual
+spot-check** — no escalation to full manual coverage of the remaining
+170 moves is warranted. `docs/move_status_table.md` counts unaffected
+(717/217/0/0 — no code was changed, since no real bug was found).
+
+**Bucket 5 is now closed.**
+
+## Bucket 4 — converted to a standing CLAUDE.md checklist item (CLOSED, 2026-07-16)
+
+Per Part 5's own sequencing note ("Add one checklist line to CLAUDE.md
+now... rather than scheduling dedicated time"), added a new
+`### Standing Step 0 checklist item` section to
+`as-imagined/CLAUDE.md`'s development-workflow area, immediately after
+the existing `typecalc` standing-checklist precedent: any future
+ability/item session building a new consumer for an existing-but-
+previously-dormant `MoveData` field must grep the full roster for
+every move that should carry it per source, not just the specific
+moves already in mind for that session — citing this arc's own
+confirmed instances (Ice Ball/`ballistic_move`, Air Balloon/Iron Ball
+groundedness, Mega Punch/Headlong Rush/`punching_move`, Aerial
+Ace/`slicing_move`, and Bucket 1's broader 69-move/10-category sweep)
+as precedent, matching the existing `typecalc` entry's own brevity
+rather than re-explaining the whole arc.
+
+**Bucket 4 is now closed** (as a process-doc change, not a session, per
+the original plan's own framing).
+
+## M21.5's original bucket plan is now fully closed
+
+Buckets 1, 2, 3, 4, and 5 are all closed. No further M21.5 sub-tier
+remains in the originally-scoped bucket plan. `docs/move_status_table.md`
+final counts: 717 implemented / 217 excluded / 0 residual / 0 needs
+manual review — unchanged from before this session, since no real bug
+was found requiring a fix.
+
 No commit made this session — per standing instruction, Rob commits.

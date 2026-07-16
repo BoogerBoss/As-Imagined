@@ -820,6 +820,29 @@ const HOLD_EFFECT_LOADED_DICE:  int = 126  # Source: SetRandomMultiHitCounter
                                             # deterministic-5 effect
                                             # (ability_manager.gd).
 
+# ── Battle-usage constants (bag items, M22 Phase 1) ───────────────────────────
+# Source: include/constants/items.h's `enum EffectItem` — a SEPARATE enum from
+# HOLD_EFFECT_* above, read by `ItemData.battle_usage` (a dormant field carried
+# in the schema since M18's item-data infrastructure, first actually consumed
+# here). Held items and bag-use items are two genuinely different DISPATCH
+# mechanisms sharing one data struct in source (holdEffect/holdEffectParam vs.
+# battleUsage) — see docs/m22_recon.md's Step 0 point 1 for the full citation.
+# Only RESTORE_HP is wired so far (Potion); the rest of source's enum
+# (CURE_STATUS=2, HEAL_AND_CURE_STATUS=3, INCREASE_STAT=4, SET_MIST=5,
+# SET_FOCUS_ENERGY=6, ESCAPE=7, THROW_BALL=8, REVIVE=9, RESTORE_PP=10;
+# INCREASE_ALL_STATS=11 is source's own dead code, "// Never called") is left
+# for M22's later sessions per docs/m22_recon.md's own sequencing.
+const BATTLE_USE_RESTORE_HP: int = 1  # Potion/Super Potion/Hyper Potion/etc.
+# [M22 Phase 2]
+const BATTLE_USE_CURE_STATUS: int   = 2  # Full Heal
+const BATTLE_USE_INCREASE_STAT: int = 4  # X Attack/X Defense/etc.
+const BATTLE_USE_THROW_BALL: int    = 8  # Poké Ball (M22 stub — see attempt_catch)
+
+# [M22 Phase 2] X-item stage amount. Source: src/data/items.h:13,
+# `#define X_ITEM_STAGES ((B_X_ITEMS_BUFF >= GEN_7) ? 2 : 1)` — resolves to
+# 2 at this project's GEN_LATEST=GEN_9 config (confirmed, not assumed).
+const X_ITEM_STAGES: int = 2
+
 # Weather duration with the matching rock item vs. without.
 # Source: TryChangeBattleWeather (battle_util.c L1993–1996): 8 if rock holder, else 5.
 const WEATHER_DURATION_ROCK: int    = 8
@@ -1200,6 +1223,95 @@ static func hp_threshold_berry_heal(mon: BattlePokemon, ng_active: bool = false,
 	if mon.ability != null and mon.ability.ability_id == AbilityManager.ABILITY_RIPEN:
 		heal_amount *= 2
 	return max(1, heal_amount)
+
+
+# [M22 Phase 1] Bag-item HP restoration (Potion and its family). Deliberately
+# NOT a call-site reuse of hp_threshold_berry_heal directly above — that
+# function threads Ripen-doubling, Gluttony's eat-early threshold, and the
+# Cud-Chew-style override_item bypass, none of which apply to a bag item
+# (Ripen's own gate is explicitly berry-POCKET-scoped in source, and a Potion
+# is never a berry — confirmed at recon time, docs/m22_recon.md Step 0 point
+# 1). Only the flat-heal ARITHMETIC shape is shared, reproduced fresh here.
+# Source: item_use.c's CannotUseItemsInBattle, EFFECT_ITEM_RESTORE_HP case
+# (L1279-1281): `if (hp == 0 || hp == GetMonData(mon, MON_DATA_MAX_HP))
+# cannotUse = TRUE` — reproduced here as a pure no-op (0 healed) rather than
+# an action-rejection, since this project's action-queue mechanism has no
+# menu-legality layer to reject an invalid choice at selection time (that's
+# M25's own future territory) — matches what would happen if source's own
+# gate were bypassed: the heal amount is computed and clamped, doing nothing.
+# `item.hold_effect_param` is reused directly for the flat heal amount,
+# mirroring source's own struct (Potion's `.holdEffectParam = 20` even though
+# it has no `.holdEffect` at all — the two fields are never both meaningful
+# on the same item, so reusing the field is safe and source-faithful, the
+# same "pragmatic field-repurposing" precedent already used for Multitype's
+# Plate-type read of hold_effect_param, [M17n-4]). Full-heal items
+# (Max Potion/Full Restore) and percent-based items are out of this
+# session's scope — Potion is a pure flat heal.
+static func bag_item_heal(target: BattlePokemon, item: ItemData) -> int:
+	if item == null or item.battle_usage != BATTLE_USE_RESTORE_HP:
+		return 0
+	if target.current_hp <= 0 or target.current_hp >= target.max_hp:
+		return 0
+	var heal_amount: int = min(item.hold_effect_param, target.max_hp - target.current_hp)
+	target.current_hp += heal_amount
+	return heal_amount
+
+
+# [M22 Phase 2] Bag-item "cure everything" (Full Heal). Deliberately a NEW,
+# dedicated function — NOT a call to status_cure_berry_cures (Lum Berry) or
+# BattleManager._apply_heal_bell (Heal Bell/Aromatherapy), both of which have
+# a narrower real scope than Full Heal and/or carry item-specific baggage a
+# bag item shouldn't inherit, matching bag_item_heal's own precedent above:
+#   - status_cure_berry_cures threads Unnerve-blocking and the Cud-Chew-style
+#     override_item bypass, neither applicable to a bag item.
+#   - _apply_heal_bell ONLY clears `.status` (confirmed via direct read) —
+#     correct for Heal Bell/Aromatherapy, whose real source scope genuinely
+#     is status1-only, but WRONG for Full Heal.
+# Source: BS_ItemCureStatus (battle_script_commands.c) calls BOTH
+# HealStatusConditions(..., GetItemStatus1Mask(item)) — status1, resolving to
+# STATUS1_ANY|STATUS1_TOXIC_COUNTER for Full Heal's own ITEM3_STATUS_ALL
+# effect byte (src/data/pokemon/item_effects.h: `gItemEffect_FullHeal[3] =
+# ITEM3_STATUS_ALL`) — AND ItemHealMonVolatile(...) — confusion/infatuation,
+# but ONLY when the target IS THE ACTIVE BATTLER (or its doubles partner) in
+# source. Confirmed this project's own architecture makes that restriction
+# moot: BattleManager._clear_volatiles unconditionally zeroes BOTH
+# confusion_turns AND infatuated_by on every switch-out, so a benched
+# BattlePokemon here can never carry either state in the first place —
+# applying the cure uniformly regardless of active/benched status reproduces
+# source's real behavior in every observable case, with no need to thread an
+# "is this the active battler" check through at all.
+static func bag_item_cure_status(target: BattlePokemon, item: ItemData) -> bool:
+	if item == null or item.battle_usage != BATTLE_USE_CURE_STATUS:
+		return false
+	var cured := false
+	if target.status != BattlePokemon.STATUS_NONE:
+		target.status = BattlePokemon.STATUS_NONE
+		cured = true
+	if target.confusion_turns > 0:
+		target.confusion_turns = 0
+		cured = true
+	if target.infatuated_by != null:
+		target.infatuated_by = null
+		cured = true
+	return cured
+
+
+# [M22 Phase 2] Poké Ball catch attempt — a DELIBERATE STUB, matching this
+# project's own established "stub now, un-stub later at the same call site"
+# precedent (Drizzle/Drought, [M8]->[M11]: CLAUDE.md's own Build Order cites
+# this exact pattern). Source's real catch-rate formula (species catch_rate ×
+# ball modifier × HP/status multipliers, a shake-check RNG loop) is
+# EXPLICITLY OUT OF SCOPE for M22 — deferred to M27 (docs/m22_recon.md's own
+# Step 5). This function's only job right now is to always report failure,
+# matching source's own real behavior of the turn always being consumed
+# regardless of catch outcome (confirmed: GetBallThrowableState has no
+# "instant success" branch of any kind — every throw goes through the same
+# shake-check regardless). M27 replaces ONLY this function's internals — the
+# call site in BattleManager._do_item_use, the catch_attempted signal, and
+# the action-queue integration built in M22 need zero rework when that
+# session lands the real formula.
+static func attempt_catch(target: BattlePokemon, item: ItemData) -> bool:
+	return false  # M27 will replace this with the real formula.
 
 
 # ── Status-cure berries (Lum / Cheri / Chesto / Pecha / Rawst / Aspear) ────────

@@ -26880,3 +26880,27 @@ Lightning Rod/Storm Drain) is now either shipped or explicitly excluded
 (item 6, Rob's own decision). No open items remain from this arc.
 
 No commit made this session — per standing instruction, Rob commits.
+
+## [M22 Phase 1] Item action-queue infrastructure, proven with Potion — 2026-07-16
+
+Full implementation writeup lives in `docs/m22_recon.md`'s own "M22 Phase 1
+— IMPLEMENTATION COMPLETE" section (the same document this session's Step 0
+re-verified against and then implemented into) — summarized here per this
+file's own indexing convention. Turn-order placement (Item joins Switch in
+one front tier, ordered by raw battler index, generalized from the existing
+Switch-only comparator with a one-line change), the action-queue shape
+(`_chosen_items`/`_chosen_item_targets`, a new `"item"` action-queue entry
+type, `queue_item_for`), the real pre-existing choice-lock/forced-Struggle
+bug fix, and two more analogous gaps found and fixed in the same audit pass
+(`_apply_quash_bubble`'s guard, `_is_last_to_move`) are all detailed there.
+Potion (ID 28) is the one item wired (`ItemManager.BATTLE_USE_RESTORE_HP`,
+`ItemManager.bag_item_heal`). New `scenes/battle/m22_item_action_test.gd`/
+`.tscn`: 33/33 assertions. Fixed a real test-audit finding in
+`turn_order_splice_test.gd` (8 manually-constructed `BattleManager` fixtures
+needed a `_chosen_items` sizing line added, now that the generalized
+comparator/`_apply_quash_bubble`/`_is_last_to_move` all read it
+unconditionally) — reran 26/26 clean. Full regression: 136 files, GRAND
+TOTAL 13420, 0 failures, twice. Full Heal/X Attack/the Poké Ball placeholder
+remain for M22's next session, per `docs/m22_recon.md`'s own sequencing.
+
+No commit made this session — per standing instruction, Rob commits.
