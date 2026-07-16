@@ -7936,17 +7936,19 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 	_apply_stored_healing_effect(new_mon, combatant_idx)
 
 
-# [M22 Phase 1] Resolve and apply a bag-item action chosen this turn.
+# [M22 Phase 1/2] Resolve and apply a bag-item action chosen this turn.
 # party_target is a PARTY SLOT (BattleParty.members index), not a combatant
 # index — an item can target ANY party member of the ACTING trainer's own
 # side, active or benched (source: item_use.c's CannotUseItemsInBattle keys
 # off gPartyMenu.slotId, fully independent of battlerTarget — a genuinely
-# different targeting axis from _chosen_targets, which moves use). Only
-# EFFECT_ITEM_RESTORE_HP is wired so far (Potion, this milestone's one proof-
-# of-concept item) — see ItemManager.BATTLE_USE_* for the full source enum
-# this dispatch will grow into as M22's remaining representative items
-# (Full Heal, X Attack, the Poké Ball placeholder) are added in a later
-# session, per docs/m22_recon.md's own proposed sequencing.
+# different targeting axis from _chosen_targets, which moves use) —
+# EXCEPT the Poké Ball case just below, which deliberately ignores
+# party_target entirely and targets the opponent instead (see its own
+# comment). All 4 of M22's minimal representative items are wired here:
+# EFFECT_ITEM_RESTORE_HP (Potion), EFFECT_ITEM_CURE_STATUS (Full Heal),
+# EFFECT_ITEM_INCREASE_STAT (X Attack), EFFECT_ITEM_THROW_BALL (Poké Ball
+# placeholder) — see ItemManager.BATTLE_USE_* for the full source enum this
+# dispatch could still grow into for M25's future full item roster.
 func _do_item_use(actor_idx: int, item: ItemData, party_target: int) -> void:
 	var side: int = actor_idx / _active_per_side
 	var user: BattlePokemon = _combatants[actor_idx]

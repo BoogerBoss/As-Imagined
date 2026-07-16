@@ -478,7 +478,9 @@ resolved by a bare retry with no other change) — **136 files, GRAND
 TOTAL 13420, 0 failures both runs**, identical both times.
 
 **Deliberately NOT built this session, per the recon's own proposed
-sequencing — next session's scope**:
+sequencing — next session's scope** *(accurate as of Phase 1's own end;
+all 3 items below shipped in the M22 Phase 2 section further down this
+document — see that section for what actually changed)*:
 - **Full Heal** (`BATTLE_USE_CURE_STATUS`) — status-cure dispatch.
 - **X Attack** (`BATTLE_USE_INCREASE_STAT`) — active-battler-only
   targeting (the `ITEM_USE_BATTLER` case), reusing the generic stat-
@@ -488,7 +490,9 @@ sequencing — next session's scope**:
   un-stub at M27" precedent.
 - Dire Hit/Guard Spec. as a cheap addition alongside the above, per the
   recon's own note (zero new mechanism — reuses Focus Energy's
-  `focus_energy` volatile and Mist's `_side_conditions` timer directly).
+  `focus_energy` volatile and Mist's `_side_conditions` timer directly)
+  — still NOT built as of the end of M22 Phase 2 either; remains a
+  future near-zero-cost addition, not required for M22's own minimal set.
 
 No commit made this session — per standing instruction, Rob commits.
 
@@ -778,5 +782,133 @@ milestones:
   trainer-AI-tiers milestone's territory, per Phase 1's own confirmed
   finding that source's `ShouldUseItem`/`AI_TrySwitchOrUseItem` is a
   wholly separate, not-yet-built AI subsystem).
+
+No commit made this session — per standing instruction, Rob commits.
+
+## M22 Final Review — full-arc sanity pass (2026-07-16, follow-up session)
+
+A holistic pass across all 3 prior M22 sessions together, not re-doing
+what the verification pass already confirmed. **Verdict: PASS — M22 is
+genuinely done and safe to commit as-is.** Two trivial stale-comment
+fixes and one test-only gap closure were made; no production logic
+changed.
+
+**Check 1 (cross-session consistency)**: Phase 2 restructured
+`_do_item_use` significantly (new Ball branch first, `target_mon`
+resolution moved after it). Disable-and-verified a representative
+Phase 1 assertion post-Phase-2: temporarily short-circuited Potion's
+own `BATTLE_USE_RESTORE_HP` branch (`if false and ...`) and reran — all
+of Phase 1's own heal-outcome assertions (Sections B/C/D/G) correctly
+failed (56/64), confirming they're still real, non-vacuous
+discriminators after Phase 2's restructuring, not accidentally made
+trivially-true. Restored (byte-identical diff) and confirmed 64/64.
+Did NOT re-run the turn-order disable-and-verify experiment the
+verification pass already did — Phase 2 touched zero turn-order code
+(confirmed via the M22-marker grep in Check 2 below), so repeating that
+exact experiment with no intervening change would add no new
+information.
+
+**Check 2 (full diff read, final cumulative state)**: Read
+`item_data.gd`, `gen_items.py`'s full M22 footprint, and every M22-
+marked block in `item_manager.gd`/`battle_manager.gd` end-to-end.
+**Found and fixed 2 real stale comments** (both harmless — pure
+documentation drift, no logic implicated):
+1. `item_manager.gd`'s `BATTLE_USE_*` constants block still said "Only
+   RESTORE_HP is wired so far... left for M22's later sessions" —
+   stale since Phase 2 wired 3 more. Updated to list all 4 as wired and
+   correctly frame the rest of source's enum as M25's future scope.
+2. `_do_item_use`'s own doc header still said "Only EFFECT_ITEM_
+   RESTORE_HP is wired so far (Potion)... added in a later session" —
+   the exact Phase-1-era description of the function, unchanged text
+   even after Phase 2 quadrupled its dispatch branches. Rewritten to
+   describe the function's actual final shape (all 4 items, the Ball's
+   deliberate `party_target`-bypass exception called out explicitly).
+
+No dead code or leftover TEMP/debug artifacts were found — both
+disable-and-restore experiments from the verification pass and this
+session's own new one were confirmed byte-identical via direct `diff`
+against a pre-experiment backup before this review even started
+touching anything, and again after this session's own experiment.
+Signal-emission consistency confirmed clean: `item_action_used` fires
+unconditionally for all 4 items (either at the shared `target_mon`
+resolution point, or explicitly in the Ball's own early-return branch);
+each item's own specific signal (`item_healed`/`party_status_cured`/
+`stat_stage_changed`/`catch_attempted`) fires only when something
+genuinely changed, except `catch_attempted`, which deliberately always
+fires since the outcome itself (including "false") is the informative
+content — no item silently skips an event a sibling item of the same
+shape fires.
+
+**Check 3 (doubles correctness sweep) — found one real, narrow gap,
+closed with a test-only addition.** X Attack needs no doubles-specific
+test: it shares the exact `_parties[side].members[party_target]`
+resolution Potion's own Section D doubles test already proves correct,
+and `StatusManager.apply_stat_change`'s ability-blocking logic only
+ever gates NEGATIVE changes (confirmed via direct read) — X Attack's
+strictly-positive raise has no analogous doubles risk. **Full Heal was
+genuinely under-tested**: its singles test only exercises the self-cure
+case, where the only non-self target is always a BENCHED party member
+(confusion/infatuation provably always 0 there). The one case source's
+own restriction (`ItemHealMonVolatile`, active battler OR doubles
+partner) is actually about — curing an ACTIVE ALLY's confusion/
+infatuation in doubles — was never exercised. Confirmed via code
+reading that the implementation has no active/benched branching at all
+(so it almost certainly already works), but this was asserted, not
+proven, until this session. Added
+`_test_full_heal_cures_active_ally_confusion_in_doubles` (3 new
+assertions) — passed clean on the first run, confirming the
+"apply uniformly" implementation choice was correct in the one
+scenario that could have distinguished it from a naive active-only
+port.
+
+**Check 4 (turn-order proxy-pattern sweep) — the highest-value check,
+came back clean.** Grepped every one of the 17 `_chosen_switch_slots[`
+occurrences in `battle_manager.gd` and individually classified each:
+writes (no concern), the 2 sites Phase 1 already fixed
+(`_apply_quash_bubble`, `_is_last_to_move`), the comparator (already
+fixed), the choice-lock/Struggle guards (already fixed), and 5 more
+read sites re-examined fresh — the M17f trapping gate (line ~1089,
+correctly switch-specific: trapping is irrelevant to item use), the
+Quick Draw/slow-effect precompute (line ~1231, reads `_chosen_moves`
+which is already null for an item action — computed but never
+consumed for item-choosers either way, since the front-tier check
+short-circuits before `_move_action_precedes` is ever reached), Pursuit's
+own `_pursuit_targets_switcher` and `_apply_pursuit_interception` (lines
+~8093-8166, correctly switch-only by design — Pursuit's power-double
+and interception have no item-action equivalent in the real game
+either), and Round's turn-order promotion (line ~8191, same "reads
+`_chosen_moves`, already null" safety as the Quick Draw precompute).
+**No third missed site was found** — the 2 sites Phase 1 fixed were
+the only ones that needed it.
+
+**Check 5 (test file organization)**: `m22_item_action_test.gd`'s 12
+section headers (A-K, in call order matching `_ready()`) are clean,
+sequential, and non-duplicated across all 67 assertions. One minor,
+non-blocking observation: `_make_singles_bm`'s returned `party0`/`party1`
+dictionary keys are never read by any caller — harmless unused surface
+area, not dead code, left as-is (plausibly useful for a future test).
+
+**Check 6 (docs/m22_recon.md coherence)**: the document reads
+coherently end-to-end. One minor staleness found and fixed: Phase 1's
+own closing "Deliberately NOT built this session — next session's
+scope" list (Full Heal/X Attack/Ball) could read as a live TODO to a
+reader who stops before the Phase 2 section further down — added an
+inline forward-pointer clarifying it's accurate as of Phase 1's own end
+and that all 3 shipped in Phase 2 (Dire Hit/Guard Spec. correctly
+remains the one item still genuinely unbuilt). No contradictions found
+between sessions' own claims.
+
+**Final assertion count: 67** (64 prior + 3 new). Stable across 4
+reruns. Full regression: two sweeps via the hardened absolute-path
+invocation (the second attempt's first try again produced an empty log
+— the same still-open transient flakiness, resolved by a bare retry) —
+**136 files, GRAND TOTAL 13453 both times, identical, 0 failures**.
+
+**M22 is genuinely done.** All 4 minimal representative items work
+correctly individually and in combination, the turn-order generalization
+has no missed proxy-pattern site, doubles behavior is now fully
+verified (not just assumed) for all 4 items, and the documentation
+record is internally consistent. Safe to commit as-is — no follow-up
+session required before moving to M23.
 
 No commit made this session — per standing instruction, Rob commits.

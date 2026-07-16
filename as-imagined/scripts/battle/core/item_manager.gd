@@ -827,11 +827,12 @@ const HOLD_EFFECT_LOADED_DICE:  int = 126  # Source: SetRandomMultiHitCounter
 # here). Held items and bag-use items are two genuinely different DISPATCH
 # mechanisms sharing one data struct in source (holdEffect/holdEffectParam vs.
 # battleUsage) — see docs/m22_recon.md's Step 0 point 1 for the full citation.
-# Only RESTORE_HP is wired so far (Potion); the rest of source's enum
-# (CURE_STATUS=2, HEAL_AND_CURE_STATUS=3, INCREASE_STAT=4, SET_MIST=5,
-# SET_FOCUS_ENERGY=6, ESCAPE=7, THROW_BALL=8, REVIVE=9, RESTORE_PP=10;
-# INCREASE_ALL_STATS=11 is source's own dead code, "// Never called") is left
-# for M22's later sessions per docs/m22_recon.md's own sequencing.
+# RESTORE_HP/CURE_STATUS/INCREASE_STAT/THROW_BALL are wired (M22 Phases 1-2:
+# Potion/Full Heal/X Attack/Poké Ball, M22's full minimal representative
+# set). The rest of source's enum (HEAL_AND_CURE_STATUS=3, SET_MIST=5,
+# SET_FOCUS_ENERGY=6, ESCAPE=7, REVIVE=9, RESTORE_PP=10; INCREASE_ALL_STATS=11
+# is source's own dead code, "// Never called") is left for a future M25
+# full-roster session per docs/m22_recon.md's own closing scope note.
 const BATTLE_USE_RESTORE_HP: int = 1  # Potion/Super Potion/Hyper Potion/etc.
 # [M22 Phase 2]
 const BATTLE_USE_CURE_STATUS: int   = 2  # Full Heal

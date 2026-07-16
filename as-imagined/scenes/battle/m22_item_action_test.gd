@@ -107,6 +107,7 @@ func _ready() -> void:
 	_test_full_heal_data_integrity()
 	_test_full_heal_cures_status_and_confusion_and_infatuation()
 	_test_full_heal_already_healthy_is_noop()
+	_test_full_heal_cures_active_ally_confusion_in_doubles()
 	_test_x_attack_data_integrity()
 	_test_x_attack_basic_boost()
 	_test_x_attack_already_max_stage_is_noop()
@@ -643,6 +644,58 @@ func _test_full_heal_already_healthy_is_noop() -> void:
 			used_events.size() == 1)
 	_chk("Full Heal already-healthy: no cure event fires (pure no-op, not an error)",
 			cured_events.is_empty())
+
+
+# [M22 Final Review] The one genuinely un-exercised doubles scenario:
+# Full Heal's confusion/infatuation cure specifically for an ACTIVE ALLY.
+# Every other doubles-targeting proof (Section D, Poké Ball's own doubles
+# test) already confirms the shared party_target resolution mechanism works
+# correctly in doubles — that part is NOT re-tested here on purpose, it
+# would be pure repetition. What's new: source's real ItemHealMonVolatile
+# restricts the confusion/infatuation half to "the active battler OR its
+# doubles partner" — in singles, the only non-self target is always
+# BENCHED (confusion_turns/infatuated_by provably always 0 there, per
+# _clear_volatiles), so Section I's own singles test can only ever prove
+# the self-cure case. An ACTIVE ally is the one case where the target
+# genuinely CAN carry nonzero confusion/infatuation — this test closes
+# that specific gap.
+func _test_full_heal_cures_active_ally_confusion_in_doubles() -> void:
+	var a0 := _make_mon("I3_A0", 100)
+	var a1 := _make_mon("I3_A1", 100)
+	var a_bench := _make_mon("I3_ABench", 100)
+	var b0 := _make_mon("I3_B0", 100)
+	var b1 := _make_mon("I3_B1", 100)
+	a1.confusion_turns = 3
+	a1.infatuated_by = b0
+
+	var bm := BattleManager.new()
+	add_child(bm)
+	var party0 := BattleParty.new()
+	party0.members = [a0, a1, a_bench]
+	party0.active_indices = [0, 1]
+	var party1 := BattleParty.new()
+	party1.members = [b0, b1]
+	party1.active_indices = [0, 1]
+	bm._parties = [party0, party1]
+	bm._combatants = [a0, a1, b0, b1]
+	bm._active_per_side = 2
+	_init_chosen_arrays(bm)
+
+	var cured_events: Array = []
+	bm.party_status_cured.connect(func(mon): cured_events.append(mon))
+
+	bm.queue_item_for(0, 48, 1)  # A0 uses Full Heal, targeting A1 (party slot 1)
+	bm.queue_move_targeted(1, 0, 2)
+	bm.queue_move_targeted(2, 0, 0)
+	bm.queue_move_targeted(3, 0, 0)
+	_dispatch_one_turn(bm)
+
+	_chk("Full Heal doubles: party_status_cured fired on the active ally A1",
+			cured_events.size() == 1 and cured_events[0] == a1)
+	_chk("Full Heal doubles: active ally's confusion cleared",
+			a1.confusion_turns == 0)
+	_chk("Full Heal doubles: active ally's infatuation cleared",
+			a1.infatuated_by == null)
 
 
 # ── Section J: X Attack (M22 Phase 2) ────────────────────────────────────────
