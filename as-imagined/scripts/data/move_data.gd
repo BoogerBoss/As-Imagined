@@ -562,6 +562,19 @@ const SEMI_INV_SKY_DROP_TARGET: int   = 6
 # pattern (see BattleManager._do_multi_hit_sequence's own doc comment).
 @export var is_scale_shot: bool = false
 
+# [Turn-order-splice trio, item 5] Dragon Darts' TARGET_SMART redirect — a
+# ONE-TIME accuracy+retarget decision made BEFORE the whole 2-hit sequence
+# begins (not per-hit): source's own `isSmartTarget` branch lives inside
+# `CancelerAccuracyCheck`, which is only reached for the FIRST hit of an
+# ordinary multi-hit move (`ShouldSkipAccuracyCalcPastFirstHit` skips every
+# subsequent hit) — battle_move_resolution.c L2189-2225. Skips the general
+# shared accuracy check entirely (like a spread move) in favor of
+# `BattleManager._resolve_dragon_darts_target`, which rolls once against the
+# originally-chosen target and, if that misses, silently redirects ONCE to
+# that target's own ally (doubles only) for a second roll — whichever
+# target this settles on (hit or still-missed) receives BOTH hits.
+@export var is_dragon_darts: bool = false
+
 # is_bide: stores damage taken over 2 waiting turns then releases 2× total.
 # Priority +1 (Gen 4+). Locks into Bide via charging_move.
 # Source: battle_move_resolution.c :: CancelerBide (L1106)

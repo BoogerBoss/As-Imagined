@@ -210,8 +210,22 @@ func _test_after_you() -> void:
 # ── Section C: Quash ──────────────────────────────────────────────────────────
 
 func _test_quash() -> void:
-	# C.01: doubles, P0 (fastest) uses Quash on O0 (currently 2nd in turn
-	# order) — pushes O0 to the very end.
+	# [Turn-order-splice trio, item 13] C.01/C.02 CORRECTED: this fixture's
+	# own assertion originally asserted the OLD "always push to the
+	# absolute end" behavior (Gen7-). Re-derived from source this session
+	# (BS_TryQuash, battle_script_commands.c L11762-11796): at this
+	# project's GEN_LATEST=GEN_9 config, Quash's real algorithm only pushes
+	# the target back PAST remaining battlers it's genuinely SLOWER than,
+	# stopping the instant it reaches one it's faster than — it does NOT
+	# unconditionally relocate to the very end. In THIS fixture, O0 (speed
+	# 90) is already faster than every remaining battler (P1 speed 80, O1
+	# speed 70) — a properly speed-sorted array already has O0 in the
+	# correct position relative to both, so the corrected Gen8+ bubble
+	# genuinely does nothing here (the same "as close to last as possible
+	# without changing order relative to Pokémon it's faster than"
+	# behavior real Gen8+ games document). See
+	# turn_order_splice_test.gd's own dedicated item-13 section for a
+	# fixture that DOES exercise genuine partial movement.
 	var p0 := _make_mon("QP0", 300, 60, 60, 60, 60, 100)
 	var p1 := _make_mon("QP1", 300, 60, 60, 60, 60, 80)
 	var o0 := _make_mon("QO0", 300, 60, 60, 60, 60, 90)
@@ -235,11 +249,15 @@ func _test_quash() -> void:
 	bm.queue_move_targeted(0, 0, 2)  # P0 uses Quash(idx 0) targeting O0 (combatant idx 2)
 	bm.start_battle_doubles(pp, op)
 
-	_chk("C.01 turn_order_changed fired for O0/quash",
+	_chk("C.01 turn_order_changed still fires for O0/quash (the move " +
+			"itself succeeds — Quash only fails if the target already acted)",
 			reorder_events.size() >= 1 and reorder_events[0][0] == o0 and reorder_events[0][1] == "quash")
-	_chk("C.02 execution order: P0, P1, O1, O0",
-			order.size() >= 4 and order[0] == p0 and order[1] == p1
-			and order[2] == o1 and order[3] == o0)
+	_chk("C.02 CORRECTED: execution order stays P0, O0, P1, O1 — O0 is " +
+			"already faster than everything remaining (P1, O1), so the real " +
+			"Gen8+ bubble genuinely does nothing here (was incorrectly " +
+			"asserted as 'pushed to the very end' before this session's fix)",
+			order.size() >= 4 and order[0] == p0 and order[1] == o0
+			and order[2] == p1 and order[3] == o1)
 	bm.queue_free()
 
 	# C.03: singles, attacker SLOWER than target — target already acted, fails.

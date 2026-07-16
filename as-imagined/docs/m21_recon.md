@@ -476,10 +476,37 @@ Ordered by recommended priority, not by item number:
    (Hydro Pump/Rough Skin, unrelated). See `docs/decisions.md`'s
    `[NEW ITEM D]` entry for the full Step 0 citations and implementation
    writeup.
-4. **Items 5 + 8 + 11 + 12 + 13 (turn-order-splice family)** — bundle into
-   one dedicated session, per the original recon's own sequencing
-   decision, reconfirmed still valid. All five touch `_turn_order`/
-   `_current_actor_index` machinery in doubles-only scenarios.
+4. **Items 5 + 8 + 11 + 12 + 13 (turn-order-splice family) — COMPLETE**,
+   2026-07-16. Step 0 found NO single shared primitive covers all three
+   of 11/12/13 (confirmed via source, not assumed symmetric) — items 8
+   (Pursuit) and 12 (Shell Trap), plus this project's already-shipped
+   After You, genuinely share one primitive (source's
+   `ChangeOrderTargetAfterAttacker`, extracted into a new shared
+   `_splice_battler_to_position` helper); item 11 (Round) needs a STABLE
+   PARTITION shape instead (source's `TryUpdateRoundTurnOrder`); item 13
+   (Quash) needs a third, different shape — an INCREMENTAL BUBBLE-SWAP
+   (source's real Gen8+ `BS_TryQuash` algorithm), confirmed via this
+   project's own `GEN_LATEST=GEN_9` config that the OLD "always push to
+   the absolute end" implementation was a genuine bug for this project's
+   own active config, not a disclosed simplification. Item 8 itself was a
+   real, confirmed transitivity-violation bug in the single
+   `_turn_order.sort_custom` comparator (Pursuit's interception embedded
+   as a pairwise override, producing a genuine cycle with a 3rd/4th
+   battler present) — fixed by removing it from the comparator entirely
+   and applying it as a separate post-sort splice pass, matching source's
+   own real architecture (Pursuit is never baked into the initial sort in
+   source either). Item 5 (Dragon Darts) confirmed genuinely different in
+   shape from all four other items: not a spread/redirect at all — a
+   ONE-TIME accuracy+retarget decision made before its whole 2-hit
+   sequence begins, reusing NEW ITEM D's now-per-target-capable
+   `StatusManager.check_accuracy`. New `scenes/battle/
+   turn_order_splice_test.gd`/`.tscn`: 26/26 assertions (item 8's own
+   transitivity fix run across 20 trials per execution, stable across
+   6+ full reruns = 120+ trials total with zero failures). One existing
+   test (`d3_batch_test.gd`'s Quash section) had a stale assertion
+   encoding the OLD Gen7- "always to the end" behavior — fixed in place.
+   See `docs/decisions.md`'s `[Turn-order-splice trio]` entry for the
+   full Step 0 citations and implementation writeup.
 5. **Acupressure's ally-choice gap (newly found in the full-roster
    audit)** — a genuinely different, self-contained gap (a missing target
    CHOICE, not a missing flag or dispatch). Low urgency (one move, no

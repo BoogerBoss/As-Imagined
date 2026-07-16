@@ -10,3 +10,4 @@ type = 17
 power = 50
 pp = 10
 strike_count = 2
+is_dragon_darts = true

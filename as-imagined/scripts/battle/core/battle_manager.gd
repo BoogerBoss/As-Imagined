@@ -292,6 +292,20 @@ var _parties: Array[BattleParty] = []
 # Index 0 = player side, index 1 = opponent side — always the ACTIVE Pokémon.
 var _combatants: Array[BattlePokemon] = []
 var _turn_order: Array[BattlePokemon] = []
+# [Turn-order-splice trio, item 13] The per-turn priority/quick-slow-effect/
+# tiebreak state `_phase_priority_resolution`'s own sort comparator computes
+# ONCE — persisted here (rather than kept as local variables) so Quash's own
+# bubble-swap (`_apply_quash_bubble`, fired later during move execution) can
+# read the SAME already-rolled values instead of re-rolling Quick Draw/Quick
+# Claw/Custap Berry a second time, which would violate the "exactly once per
+# battler per turn" invariant [M17n-3] established and risk double-consuming
+# Custap Berry. Mirrors source's own `gProtectStructs[...].quickDraw`/
+# `.usedCustapBerry`/etc. (read, never re-rolled, by `GetWhichBattlerFasterArgs`)
+# and `gBattleStruct->speedTieBreaks` (one random permutation chosen per turn,
+# reused for every tie throughout it).
+var _turn_quick_effect: Dictionary = {}
+var _turn_slow_effect: Dictionary = {}
+var _turn_tiebreak: Dictionary = {}
 # Chosen move per combatant (null if that side is switching this turn).
 var _chosen_moves: Array = []
 # M9: switch slot per combatant (-1 = not switching, ≥0 = party slot to switch to).
@@ -1121,22 +1135,22 @@ func _phase_priority_resolution() -> void:
 		_actor_sides[_combatants[i]] = i / _active_per_side
 		_actor_indices[_combatants[i]] = i
 
-	var tiebreak: Dictionary = {}
+	_turn_tiebreak = {}
 	for mon in _combatants:
-		tiebreak[mon] = randi()
+		_turn_tiebreak[mon] = randi()
 
 	# M17n-3: Quick Draw's roll and Mycelium Might's status-move-gated slow-effect
 	# must each be evaluated EXACTLY ONCE per battler per turn — not re-derived per
 	# pairwise comparison, which could otherwise make the sort non-transitive — so
 	# both are precomputed here into per-mon Dictionaries, the same pattern the
-	# pre-rolled `tiebreak` dict right above already establishes. `ng_active` is
+	# pre-rolled `_turn_tiebreak` dict right above already establishes. `ng_active` is
 	# likewise hoisted so the comparator closure below can just read it (a safe,
 	# read-only scalar capture — the documented lambda-scalar-capture pitfall only
 	# bites on IN-closure mutation, never on reading a value fixed before the
 	# closure is defined).
 	var ng_active: bool = _is_neutralizing_gas_active()
-	var quick_effect: Dictionary = {}
-	var slow_effect: Dictionary = {}
+	_turn_quick_effect = {}
+	_turn_slow_effect = {}
 	for mon in _combatants:
 		var midx: int = _actor_indices.get(mon, _combatants.find(mon))
 		var chosen_move: MoveData = \
@@ -1154,13 +1168,13 @@ func _phase_priority_resolution() -> void:
 		# this precompute's own "exactly once per battler per turn" requirement
 		# (the same reasoning [M17n-3] documented for why this loop exists at all).
 		var custap_item: ItemData = ItemManager.custap_berry_activates(mon, ng_active)
-		quick_effect[mon] = AbilityManager.quick_draw_activates(
+		_turn_quick_effect[mon] = AbilityManager.quick_draw_activates(
 				mon, chosen_move, ng_active, _force_quick_draw_roll) \
 				or ItemManager.quick_claw_activates(mon, ng_active, _force_quick_claw_roll) \
 				or custap_item != null
 		if custap_item != null:
 			_consume_item(mon)
-		slow_effect[mon] = AbilityManager.has_slow_turn_order_effect(
+		_turn_slow_effect[mon] = AbilityManager.has_slow_turn_order_effect(
 				mon, chosen_move, ng_active) \
 				or ItemManager.has_slow_turn_order_item(mon, ng_active)
 
@@ -1172,17 +1186,26 @@ func _phase_priority_resolution() -> void:
 		var a_switch: bool = _chosen_switch_slots[ia] >= 0
 		var b_switch: bool = _chosen_switch_slots[ib] >= 0
 
-		# M16e: Pursuit interception — a queued Pursuit move on the OPPOSING side of a
-		# switcher must strike before the switch resolves, overriding the normal
-		# switches-always-first rule. Source: Cmd_jumpifnopursuitswitchdmg
-		# (battle_script_commands.c L8494) reorders the pursuer to the front right as the
-		# switch action is about to run; GEN_LATEST (B_PURSUIT_TARGET >= GEN_4) means ANY
-		# opposing Pursuit user intercepts, not only one that specifically targeted the
-		# switcher. See _pursuit_targets_switcher() for the exact condition.
-		if b_switch and not a_switch and _pursuit_targets_switcher(ia, ib):
-			return true  # a (the pursuer) goes first
-		if a_switch and not b_switch and _pursuit_targets_switcher(ib, ia):
-			return false  # b (the pursuer) goes first
+		# [Turn-order-splice trio] Pursuit interception used to be embedded HERE
+		# as a pairwise override — REMOVED. It made the comparator non-
+		# transitive (only valid for the specific pair being compared, not
+		# transitively consistent once a 3rd/4th battler is present), which
+		# is undefined behavior for Godot's `Array.sort_custom` (no
+		# transitivity guarantee) and produced a genuine, confirmed cycle
+		# (A0 < B0 < A1 < A0) in a doubles Trick-Room-adjacent scenario —
+		# see docs/decisions.md's `[Turn-order-splice trio]` entry for the
+		# full reproduction. Source itself does NOT bake Pursuit into its own
+		# priority/speed sort either — `ChangeOrderTargetAfterAttacker` fires
+		# reactively, exactly when a switch action is about to execute
+		# (`Cmd_jumpifnopursuitswitchdmg`, battle_script_commands.c L8499),
+		# not during the initial ordering. This comparator is now a clean,
+		# transitive total order (switch-tier → priority → quick/slow →
+		# speed → tiebreak) with ZERO knowledge of Pursuit; interception is
+		# now applied as a separate, explicit POST-SORT splice pass
+		# (`_apply_pursuit_interception`, called right after this sort
+		# completes) — the same shape this project's own pre-existing After
+		# You implementation already uses, extracted into the shared
+		# `_splice_battler_to_position` helper both now call.
 
 		# Switch actions before all move actions.
 		# Source: battle_main.c L4967-4990 — items/switches placed before moves
@@ -1194,47 +1217,23 @@ func _phase_priority_resolution() -> void:
 		if a_switch:
 			return ia < ib
 
-		# Both using moves: priority bracket → effective speed → pre-rolled tiebreak.
-		# M16d: Trick Room inverts ONLY the speed tiebreak within a shared priority
-		# bracket — priority itself is compared first and is completely unaffected.
-		# Source: battle_main.c :: GetWhichBattlerFasterArgs (L4775-4821): `if (priority1
-		#   == priority2) { ... speed comparison, inverted under STATUS_FIELD_TRICK_ROOM
-		#   ... } else if (priority1 < priority2) strikesFirst = -1; else strikesFirst = 1;`
-		#   — the priority branch runs first and never consults Trick Room at all.
-		# M17n-3: effective priority now includes Gale Wings/Prankster/Triage's
-		# per-move bonus (mirrors GetBattleMovePriority, battle_main.c L4735-4775),
-		# not just the move's own raw data priority.
-		var move_a: MoveData = _chosen_moves[ia]
-		var move_b: MoveData = _chosen_moves[ib]
-		var pa: int = (move_a.priority + AbilityManager.move_priority_bonus(a, move_a, ng_active)) \
-				if move_a else 0
-		var pb: int = (move_b.priority + AbilityManager.move_priority_bonus(b, move_b, ng_active)) \
-				if move_b else 0
-		if pa != pb:
-			return pa > pb
-		# M17n-3: Quick Draw (always first) / Stall & Mycelium Might (always last),
-		# extended by M18l with Quick Claw / Full Incense / Lagging Tail (items,
-		# OR'd into the same quick_effect/slow_effect dicts above) — all within a
-		# tied priority bracket, checked strictly BEFORE the speed
-		# comparison, mirroring source's own ordering exactly (battle_main.c
-		# L4786-4800: quick-effect check, then slow-effect check, then speed).
-		if quick_effect[a] and not quick_effect[b]:
-			return true
-		if quick_effect[b] and not quick_effect[a]:
-			return false
-		if slow_effect[a] and not slow_effect[b]:
-			return false
-		if slow_effect[b] and not slow_effect[a]:
-			return true
-		var eff_w: int = _effective_weather()
-		var sa: int = StatusManager.effective_speed(a, eff_w, ng_active,
-				_side_conditions[ia / _active_per_side]["tailwind_turns"] > 0)
-		var sb: int = StatusManager.effective_speed(b, eff_w, ng_active,
-				_side_conditions[ib / _active_per_side]["tailwind_turns"] > 0)
-		if sa != sb:
-			return sa < sb if trick_room_turns > 0 else sa > sb
-		return tiebreak[a] > tiebreak[b]
+		# Both using moves: priority bracket → quick/slow effect → effective
+		# speed → pre-rolled tiebreak. Extracted into `_move_action_precedes`
+		# (below) — a genuinely shared comparison, not just refactored for
+		# style: Quash's own bubble-swap (item 13) needs this EXACT same
+		# tied-priority-and-below logic for its own pairwise re-comparison
+		# later in the same turn, and must read the SAME already-rolled
+		# `_turn_quick_effect`/`_turn_slow_effect`/`_turn_tiebreak` state
+		# rather than re-rolling Quick Draw/Quick Claw/Custap Berry a second
+		# time (see those fields' own doc comment for why that would be a
+		# real bug, not just redundant work).
+		return _move_action_precedes(a, b, ng_active)
 	)
+	# [Turn-order-splice trio] Applied AFTER the sort settles into a clean,
+	# transitive total order — see the comparator's own removed-branch
+	# comment above for why this can no longer live inside the comparator
+	# itself.
+	_apply_pursuit_interception()
 	_current_actor_index = 0
 	_set_phase(BattlePhase.ACTION_EXECUTION)
 
@@ -1963,6 +1962,10 @@ func _phase_move_execution() -> void:
 	# [D3 turn-order/event-tracker batch] After You — push the target to act
 	# IMMEDIATELY NEXT. Fails if the target has already acted this turn.
 	# See MoveData.is_after_you's own doc comment for full source citations.
+	# [Turn-order-splice trio] Now reuses the shared `_splice_battler_to_
+	# position` primitive (this WAS its own copy of that exact remove_at/
+	# insert shape — extracted once the Pursuit-interception fix needed the
+	# identical operation elsewhere) — behavior-unchanged, pure refactor.
 	if move.is_after_you:
 		var ay_pos: int = _turn_order.find(defender)
 		if ay_pos == -1 or ay_pos <= _current_actor_index:
@@ -1972,8 +1975,7 @@ func _phase_move_execution() -> void:
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
-		_turn_order.remove_at(ay_pos)
-		_turn_order.insert(_current_actor_index + 1, defender)
+		_splice_battler_to_position(defender, _current_actor_index + 1)
 		turn_order_changed.emit(defender, "after_you")
 		move_executed.emit(attacker, defender, move, 0)
 		attacker.last_move_used = move
@@ -1981,10 +1983,17 @@ func _phase_move_execution() -> void:
 		_set_phase(BattlePhase.FAINT_CHECK)
 		return
 
-	# [D3 turn-order/event-tracker batch] Quash — push the target to act LAST
-	# among all remaining (not-yet-acted) battlers this turn. Fails if the
-	# target has already acted. See MoveData.is_quash's own doc comment for
-	# full source citations, including the doubles-simplification note.
+	# [Turn-order-splice trio, item 13] Quash — push the target back one
+	# slot at a time via pairwise speed comparison, stopping the instant
+	# it's no longer slower than whoever's now next (Gen8+ algorithm,
+	# `BS_TryQuash`, battle_script_commands.c L11762-11796) — CORRECTED
+	# this session from the old "always push all the way to the absolute
+	# end" behavior, which is only the PRE-Gen8 branch
+	# (`B_QUASH_TURN_ORDER < GEN_8`). This project's `GEN_LATEST=GEN_9`
+	# config activates the Gen8+ branch, so the old behavior was a real,
+	# confirmed bug for this project's own active config, not a disclosed
+	# simplification. Fails if the target has already acted. See
+	# MoveData.is_quash's own doc comment for full source citations.
 	if move.is_quash:
 		var qs_pos: int = _turn_order.find(defender)
 		if qs_pos == -1 or qs_pos <= _current_actor_index:
@@ -1994,8 +2003,7 @@ func _phase_move_execution() -> void:
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)
 			return
-		_turn_order.remove_at(qs_pos)
-		_turn_order.append(defender)
+		_apply_quash_bubble(defender, ng_active)
 		turn_order_changed.emit(defender, "quash")
 		move_executed.emit(attacker, defender, move, 0)
 		attacker.last_move_used = move
@@ -2674,7 +2682,13 @@ func _phase_move_execution() -> void:
 	# confirmed via gen_moves.py to never co-occur with is_spread, so
 	# skipping this whole block for spread moves loses none of that
 	# bookkeeping — it's structurally unreachable for them either way.
-	if not (move.is_spread and _active_per_side > 1):
+	# [Turn-order-splice trio, item 5] Dragon Darts ALSO skips this shared
+	# check — its own accuracy is resolved via `_resolve_dragon_darts_target`
+	# (see MoveData.is_dragon_darts's own doc comment), dispatched from the
+	# multi-hit branch below rather than here. Also confirmed via
+	# gen_moves.py to never co-occur with any of the move-level mechanics
+	# this block's own miss branch handles.
+	if not (move.is_spread and _active_per_side > 1) and not move.is_dragon_darts:
 		var m18c_accuracy_hit: bool = StatusManager.check_accuracy(
 				attacker, defender, move, _force_hit, ng_active, _effective_weather(),
 				_has_target_already_acted(defender))
@@ -3440,14 +3454,34 @@ func _phase_move_execution() -> void:
 				if spread_lo_recoil > 0:
 					attacker.current_hp = max(0, attacker.current_hp - spread_lo_recoil)
 					item_damage.emit(attacker, spread_lo_recoil)
+		elif move.is_dragon_darts:
+			# [Turn-order-splice trio, item 5] Dragon Darts' own one-time
+			# smart-target accuracy+redirect resolution (skipped the shared
+			# check above) — see `_resolve_dragon_darts_target`'s own doc
+			# comment for the full mechanism. A genuine miss (even after a
+			# failed redirect attempt) is handled exactly like the ordinary
+			# shared-check miss path above, just resolved via this move's own
+			# bespoke function instead.
+			var dd_result: Dictionary = _resolve_dragon_darts_target(attacker, defender, move, ng_active)
+			attacker.micle_boost_active = false
+			if not dd_result["hit"]:
+				move_missed.emit(attacker, "accuracy")
+				_apply_blunder_policy_on_miss(attacker, ng_active)
+				attacker.last_move_used = move
+				_current_actor_index += 1
+				_set_phase(BattlePhase.FAINT_CHECK)
+				return
+			var hh_boost_dd: bool = _helping_hand[attacker_idx]
+			_do_multi_hit_sequence(attacker, dd_result["target"], move, hh_boost_dd,
+					_dmg_power_override, _me_first_boost_active)
 		elif move.multi_hit or move.strike_count > 1:
 			# [M18.5g] Multi-hit moves (Bullet Seed/Double Kick/Triple Kick/etc. family)
 			# — see _do_multi_hit_sequence's own doc comment for the full mechanism.
-			# None of the 31 in-scope moves are also spread moves (TARGET_SELECTED
-			# throughout; Dragon Darts' TARGET_SMART doubles-redirect is a separate,
-			# flagged-not-built doubles-only nuance — see gen_moves.py's own comment),
-			# so this branch and the spread branch above are mutually exclusive in
-			# practice, not just by construction.
+			# None of the other 30 in-scope moves are also spread moves
+			# (TARGET_SELECTED throughout), so this branch and the spread branch
+			# above are mutually exclusive in practice, not just by construction.
+			# Dragon Darts (the sole TARGET_SMART exception) is handled in its
+			# own dedicated branch just above, not here.
 			var hh_boost: bool = _helping_hand[attacker_idx]
 			_do_multi_hit_sequence(attacker, defender, move, hh_boost, _dmg_power_override,
 					_me_first_boost_active)
@@ -7901,6 +7935,198 @@ func _pursuit_targets_switcher(pursuer_idx: int, switcher_idx: int) -> bool:
 	return (pursuer_idx / _active_per_side) != (switcher_idx / _active_per_side)
 
 
+# [Turn-order-splice trio] Shared mid-resolution reordering primitive —
+# mirrors source's `ChangeOrderTargetAfterAttacker` (battle_util.c
+# L10743-10781), generalized to an explicit destination index rather than
+# always "attacker's position + 1", since different callers need different
+# reference points (Pursuit/Shell Trap splice a battler to occupy the
+# SWITCHER's/hit-target's own current slot; After You splices to
+# `_current_actor_index + 1`). Removes `mon` from `_turn_order` and
+# reinserts it at `dest_pos`, computed in the PRE-removal index space (i.e.
+# "make mon occupy this exact slot, sliding whoever's currently there and
+# everyone after them back by one") — matches source's own single swap-pair
+# semantics for the 2/3/4-battler cases in one general form. Returns false
+# (no-op) if `mon` isn't found or is already at `dest_pos`.
+func _splice_battler_to_position(mon: BattlePokemon, dest_pos: int) -> bool:
+	var pos: int = _turn_order.find(mon)
+	if pos == -1 or pos == dest_pos:
+		return false
+	_turn_order.remove_at(pos)
+	# Removing `mon` from AFTER `dest_pos` doesn't shift anything at/before
+	# dest_pos, so dest_pos itself is still the correct insert index. Removing
+	# it from BEFORE dest_pos shifts everything after `pos` left by one, so
+	# the same conceptual slot is now at dest_pos - 1.
+	var insert_at: int = dest_pos if pos > dest_pos else dest_pos - 1
+	_turn_order.insert(insert_at, mon)
+	return true
+
+
+# [Turn-order-splice trio] Post-sort Pursuit interception pass — replaces
+# the removed comparator branches (see the sort's own doc comment). Source
+# doesn't bake this into its own priority/speed sort either; it fires
+# reactively via `Cmd_jumpifnopursuitswitchdmg` exactly when a switch action
+# is about to execute. This project resolves the same external effect
+# (pursuer's move completes before the switch it intercepts) up front, right
+# after the base sort settles, by splicing each intercepting pursuer to
+# occupy its target switcher's current slot — preserving this project's own
+# already-tested "pursuer sorts before switcher" behavior from the prior
+# (buggy) comparator-embedded version, just without the transitivity
+# violation. Handles MULTIPLE opposing Pursuit users against the same
+# switcher (a real doubles scenario, both opposing slots choosing Pursuit)
+# by repeatedly searching for another qualifying pursuer after each splice,
+# which naturally preserves their own relative speed/priority order — each
+# new pursuer is inserted immediately at the switcher's (now-shifted)
+# current slot, so earlier-placed pursuers (already sitting before that
+# slot) are never disturbed.
+func _apply_pursuit_interception() -> void:
+	var i: int = 0
+	while i < _turn_order.size():
+		var mon: BattlePokemon = _turn_order[i]
+		var midx: int = _actor_indices.get(mon, _combatants.find(mon))
+		if _chosen_switch_slots[midx] < 0:
+			i += 1
+			continue
+		while true:
+			var mon_pos: int = _turn_order.find(mon)
+			var pursuer_pos: int = -1
+			for j in range(mon_pos + 1, _turn_order.size()):
+				var cand: BattlePokemon = _turn_order[j]
+				var cand_idx: int = _actor_indices.get(cand, _combatants.find(cand))
+				if _chosen_switch_slots[cand_idx] < 0 \
+						and _pursuit_targets_switcher(cand_idx, midx):
+					pursuer_pos = j
+					break
+			if pursuer_pos == -1:
+				break
+			_splice_battler_to_position(_turn_order[pursuer_pos], mon_pos)
+		i = _turn_order.find(mon) + 1
+
+
+# [Turn-order-splice trio, item 11] Round's turn-order self-promotion —
+# see the call site's own doc comment (inside `_do_damaging_hit`) for the
+# full source citation. A stable partition, genuinely different in shape
+# from `_splice_battler_to_position`'s pairwise splice: every battler from
+# `_current_actor_index + 1` onward that has ALSO chosen Round this turn
+# (and hasn't switched instead) is moved to occupy the slots immediately
+# following the current attacker, in their own existing relative order,
+# followed by everyone else (also in their own existing relative order).
+# Confirmed idempotent for a 3+-Round-user chain: re-running this same
+# partition from a LATER Round user's own turn (once the first user's own
+# splice already grouped everyone correctly) is a stable no-op, since a
+# stable partition of an already-correctly-grouped sequence reproduces the
+# identical sequence.
+func _apply_round_turn_order_promotion() -> void:
+	var start: int = _current_actor_index + 1
+	if start >= _turn_order.size():
+		return
+	var round_users: Array[BattlePokemon] = []
+	var others: Array[BattlePokemon] = []
+	for i in range(start, _turn_order.size()):
+		var mon: BattlePokemon = _turn_order[i]
+		var midx: int = _actor_indices.get(mon, _combatants.find(mon))
+		var chosen: MoveData = _chosen_moves[midx] if _chosen_switch_slots[midx] < 0 else null
+		if chosen != null and chosen.is_round:
+			round_users.append(mon)
+		else:
+			others.append(mon)
+	var new_tail: Array[BattlePokemon] = round_users + others
+	for i in range(new_tail.size()):
+		_turn_order[start + i] = new_tail[i]
+
+
+# [Turn-order-splice trio, items 8/13] Shared "both battlers have a pending
+# MOVE action" comparison — priority bracket → quick/slow effect → effective
+# speed → pre-rolled tiebreak. Extracted so `_phase_priority_resolution`'s
+# own sort comparator and Quash's bubble-swap (`_apply_quash_bubble`) share
+# ONE implementation rather than risking drift between two copies. Reads
+# `_turn_quick_effect`/`_turn_slow_effect`/`_turn_tiebreak` (this turn's
+# already-rolled state — see those fields' own doc comment) rather than
+# recomputing anything, so calling this a second time later in the same
+# turn (Quash) is always safe and never re-rolls Quick Draw/Quick Claw/
+# Custap Berry. Returns true if `a` should act before `b`.
+func _move_action_precedes(a: BattlePokemon, b: BattlePokemon, ng_active: bool) -> bool:
+	var ia: int = _actor_indices.get(a, _combatants.find(a))
+	var ib: int = _actor_indices.get(b, _combatants.find(b))
+	# M16d: Trick Room inverts ONLY the speed tiebreak within a shared priority
+	# bracket — priority itself is compared first and is completely unaffected.
+	# Source: battle_main.c :: GetWhichBattlerFasterArgs (L4775-4821): `if (priority1
+	#   == priority2) { ... speed comparison, inverted under STATUS_FIELD_TRICK_ROOM
+	#   ... } else if (priority1 < priority2) strikesFirst = -1; else strikesFirst = 1;`
+	#   — the priority branch runs first and never consults Trick Room at all.
+	# M17n-3: effective priority now includes Gale Wings/Prankster/Triage's
+	# per-move bonus (mirrors GetBattleMovePriority, battle_main.c L4735-4775),
+	# not just the move's own raw data priority.
+	var move_a: MoveData = _chosen_moves[ia]
+	var move_b: MoveData = _chosen_moves[ib]
+	var pa: int = (move_a.priority + AbilityManager.move_priority_bonus(a, move_a, ng_active)) \
+			if move_a else 0
+	var pb: int = (move_b.priority + AbilityManager.move_priority_bonus(b, move_b, ng_active)) \
+			if move_b else 0
+	if pa != pb:
+		return pa > pb
+	# M17n-3: Quick Draw (always first) / Stall & Mycelium Might (always last),
+	# extended by M18l with Quick Claw / Full Incense / Lagging Tail (items,
+	# OR'd into the same quick_effect/slow_effect dicts above) — all within a
+	# tied priority bracket, checked strictly BEFORE the speed
+	# comparison, mirroring source's own ordering exactly (battle_main.c
+	# L4786-4800: quick-effect check, then slow-effect check, then speed).
+	# .get(...) with an explicit default rather than raw [] access — defensive
+	# against a caller (e.g. Quash's own bubble, dispatched directly in a test
+	# without first running the priority-resolution precompute) reaching this
+	# function before these per-turn Dictionaries have been populated for a
+	# given battler; falls back to "no quick/slow effect, tiebreak 0" rather
+	# than relying on GDScript's own missing-key behavior.
+	if _turn_quick_effect.get(a, false) and not _turn_quick_effect.get(b, false):
+		return true
+	if _turn_quick_effect.get(b, false) and not _turn_quick_effect.get(a, false):
+		return false
+	if _turn_slow_effect.get(a, false) and not _turn_slow_effect.get(b, false):
+		return false
+	if _turn_slow_effect.get(b, false) and not _turn_slow_effect.get(a, false):
+		return true
+	var eff_w: int = _effective_weather()
+	var sa: int = StatusManager.effective_speed(a, eff_w, ng_active,
+			_side_conditions[ia / _active_per_side]["tailwind_turns"] > 0)
+	var sb: int = StatusManager.effective_speed(b, eff_w, ng_active,
+			_side_conditions[ib / _active_per_side]["tailwind_turns"] > 0)
+	if sa != sb:
+		return sa < sb if trick_room_turns > 0 else sa > sb
+	return _turn_tiebreak.get(a, 0) > _turn_tiebreak.get(b, 0)
+
+
+# [Turn-order-splice trio, item 13] Quash's real Gen8+ algorithm —
+# `BS_TryQuash` (battle_script_commands.c L11762-11796): starting at the
+# target's own current slot, repeatedly compare it against whoever's
+# immediately next; push the target back one slot (swap) as long as it's
+# genuinely slower than that next battler (via `_move_action_precedes`,
+# reusing this turn's already-rolled quick/slow-effect/tiebreak state — see
+# that function's own doc comment for why re-rolling would be a bug), and
+# stop the INSTANT it's no longer slower — NOT "always push to the absolute
+# end", which is only the pre-Gen8 branch (`B_QUASH_TURN_ORDER < GEN_8`).
+# This project's `GEN_LATEST=GEN_9` config always takes the Gen8+ branch, so
+# no config toggle is needed here — confirmed via source's own condition
+# (`B_QUASH_TURN_ORDER < GEN_8 || GetWhichBattlerFaster(...) == -1`), which
+# collapses to just the speed check at this project's fixed config.
+func _apply_quash_bubble(target: BattlePokemon, ng_active: bool) -> void:
+	while true:
+		var pos: int = _turn_order.find(target)
+		var next_pos: int = pos + 1
+		if next_pos >= _turn_order.size():
+			return
+		var next_mon: BattlePokemon = _turn_order[next_pos]
+		var next_idx: int = _actor_indices.get(next_mon, _combatants.find(next_mon))
+		# Switches always sort before every move action already — Quash's
+		# own target (a move-user by construction, since only living move
+		# actions can be Quashed) should never actually encounter a switcher
+		# here, but this guard keeps the loop from ever misordering one.
+		if _chosen_switch_slots[next_idx] >= 0:
+			return
+		if _move_action_precedes(target, next_mon, ng_active):
+			return  # target is no longer slower than what's next — stop
+		_turn_order[pos] = next_mon
+		_turn_order[next_pos] = target
+
+
 # M17n-5: Analytic's "is `mon` the last battler with a pending MOVE action this turn"
 # check. Source: battle_util.c :: IsLastMonToMove (L1098-1115) — checked against the
 # FINAL resolved turn order (`_turn_order`, already fully sorted by
@@ -8747,6 +8973,47 @@ func _resolve_multi_hit_count(move: MoveData, attacker: BattlePokemon, ng_active
 #   `!IsBattlerUnaffectedByMove(battlerDef)` gate on the whole continuation
 #   block. Distinguished from the Substitute-standing case above by checking
 #   whether a Substitute was actually in play for this hit at all.
+
+# [Turn-order-splice trio, item 5] Dragon Darts' one-time smart-target
+# accuracy+redirect resolution — see MoveData.is_dragon_darts's own doc
+# comment for the full source citation (CancelerAccuracyCheck's isSmartTarget
+# branch, battle_move_resolution.c L2189-2225). Rolls once against the
+# originally-chosen target; if that misses, and eligibility holds (doubles,
+# a live ally of the ORIGINAL target exists, that ally isn't itself wholly
+# immune to the move), redirects ONCE to the ally for a second roll.
+# Whichever target this settles on (hit or still-missed) is returned for the
+# caller to dispatch the WHOLE 2-hit sequence against — this function itself
+# never deals damage or dispatches any hits.
+# Source's own eligibility check also excludes an active Follow Me/Rage
+# Powder redirect (`!IsAffectedByFollowMe`) — not re-checked here because
+# this project's existing Follow Me handling already resolves and returns
+# earlier in `_phase_move_execution`, so Dragon Darts structurally never
+# reaches this function while an active Follow Me redirect applies.
+func _resolve_dragon_darts_target(attacker: BattlePokemon, defender: BattlePokemon,
+		move: MoveData, ng_active: bool) -> Dictionary:
+	var hit: bool = StatusManager.check_accuracy(
+			attacker, defender, move, _force_hit, ng_active, _effective_weather(),
+			_has_target_already_acted(defender))
+	if hit:
+		return {"target": defender, "hit": true}
+	if _active_per_side <= 1:
+		return {"target": defender, "hit": false}
+	var ally: BattlePokemon = _get_ally(defender)
+	if ally == null or ally.fainted or ally.current_hp <= 0:
+		return {"target": defender, "hit": false}
+	if AbilityManager.blocks_move_type(ally, move.type, ng_active, attacker):
+		return {"target": defender, "hit": false}
+	var ally_eff: float = TypeChart.get_effectiveness(
+			move.type, ally.species.types, false, false,
+			ItemManager.holds_iron_ball(ally, ng_active))
+	if ally_eff == 0.0:
+		return {"target": defender, "hit": false}
+	var ally_hit: bool = StatusManager.check_accuracy(
+			attacker, ally, move, _force_hit, ng_active, _effective_weather(),
+			_has_target_already_acted(ally))
+	return {"target": ally, "hit": ally_hit}
+
+
 func _do_multi_hit_sequence(attacker: BattlePokemon, target: BattlePokemon,
 		move: MoveData, helping_hand: bool, power_override: int,
 		me_first: bool = false) -> void:
@@ -9148,6 +9415,19 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	if damage > 0:
 		_last_landed_move_anyone = move
 
+	# [Turn-order-splice trio, item 11] Round's doubles-only turn-order
+	# self-promotion — source: `TryUpdateRoundTurnOrder`
+	# (battle_script_commands.c L11099-11141), dispatched via
+	# `MOVE_EFFECT_ROUND` right after a landed Round connects
+	# (battle_script_commands.c L2696-2698), gated on `IsDoubleBattle()`.
+	# Genuinely a DIFFERENT shape from Pursuit/Shell Trap/After You's shared
+	# splice-to-position primitive (confirmed via source, not assumed
+	# symmetric) — a STABLE PARTITION of every not-yet-acted battler into
+	# [other Round users] then [everyone else], both preserving their own
+	# relative order, placed contiguously right after the current attacker.
+	if damage > 0 and move.is_round and _active_per_side > 1:
+		_apply_round_turn_order_promotion()
+
 	# M17n-9: Infiltrator bypasses Substitute for damaging hits too (same shared
 	# IsSubstituteProtected chokepoint source routes every substitute check through).
 	var went_to_sub: bool = (target.substitute_hp > 0 and not move.ignores_substitute \
@@ -9239,6 +9519,22 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 				if st_idx != -1 and st_idx < _chosen_moves.size() else null
 		if st_chosen != null and st_chosen.is_shell_trap and move.category == 0:
 			target.shell_trap_armed = true
+			# [Turn-order-splice trio, item 12] Doubles-only turn-order
+			# splice — the Shell Trap holder moves immediately after its own
+			# attacker's current slot, so it counterattacks right away
+			# rather than waiting for its own -3 priority slot. Source:
+			# `MoveEndShellTrap` (battle_move_resolution.c L4318-4335),
+			# gated on `IsDoubleBattle()`; reuses the same shared
+			# `_splice_battler_to_position` primitive Pursuit interception
+			# (item 8) and After You already use. Guarded on the target not
+			# having already acted this turn (a target hit AFTER its own
+			# turn already passed has nothing left to splice forward into —
+			# arming still happens for bookkeeping symmetry with source, but
+			# moving an already-executed slot would cause it to act twice).
+			if _active_per_side > 1:
+				var st_turn_pos: int = _turn_order.find(target)
+				if st_turn_pos > _current_actor_index:
+					_splice_battler_to_position(target, _current_actor_index + 1)
 
 
 	# [D4 Bundle 6] Knock Off: on a connecting hit, actually remove the

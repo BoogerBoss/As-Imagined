@@ -1033,14 +1033,12 @@ MOVES = [
      "makes_contact": True, "punching_move": True, "strike_count": 2,
      "secondary_effect": SE_FLINCH, "secondary_chance": 30,
      "ban_flags": BAN_METRONOME},
-    # Dragon Darts: real source's TARGET_SMART doubles-redirect (its second hit
-    # can retarget to the ally if the first target is unaffected) is a doubles-
-    # only nuance, flagged not built, matching Shell Bell's own established
-    # precedent — in singles (this project's current test scope) both hits
-    # simply land on the one opponent, which TARGET_SELECTED already produces.
+    # [Turn-order-splice trio, item 5] Dragon Darts: TARGET_SMART doubles-
+    # redirect now implemented — see MoveData.is_dragon_darts's own doc
+    # comment for the full source citation and mechanism.
     {"id": 697, "name": "Dragon Darts",
      "type": TYPE_DRAGON, "category": PHYS, "power": 50, "accuracy": 100, "pp": 10,
-     "strike_count": 2},
+     "strike_count": 2, "is_dragon_darts": True},
     # Scale Shot: -1 Defense / +1 Speed to the user ONCE after the sequence,
     # gated on at least one hit landing — is_scale_shot dispatches this in
     # BattleManager._do_multi_hit_sequence, matching Shell Bell's own
@@ -4280,6 +4278,7 @@ DEFAULTS = {
     "multi_hit":                  False,
     "is_triple_kick":             False,
     "is_scale_shot":              False,
+    "is_dragon_darts":            False,
 
     # [M19-pre1] weight-based and friendship-based dynamic power.
     "is_low_kick_power":          False,
@@ -4573,7 +4572,7 @@ FIELD_ORDER = [
     # M18.5d-2 fields
     "is_attract",
     # M18.5g fields
-    "strike_count", "multi_hit", "is_triple_kick", "is_scale_shot",
+    "strike_count", "multi_hit", "is_triple_kick", "is_scale_shot", "is_dragon_darts",
     # M19-pre1 fields
     "is_low_kick_power", "is_heat_crash_power", "is_return_power", "is_frustration_power",
     # [Bucket 4 cheapest singles] fields

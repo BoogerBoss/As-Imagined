@@ -26503,3 +26503,232 @@ Rod/Storm Drain's attacker-ally redirect — none touched, all still
 flagged for future sessions.
 
 No commit made this session — per standing instruction, Rob commits.
+
+## [Turn-order-splice trio] Items 5, 8, 11, 12, 13 — Step 0 + implementation,
+2026-07-16
+
+Closes the turn-order-splice family deferred since M21's own bundle-safe
+session (`[M21]` items 5/8/11/12/13's own deferral). Full session, per
+Rob's own choice via `AskUserQuestion` after Step 0 confirmed the
+"no shared primitive for 11/12/13" fork the task explicitly asked to stop
+for.
+
+### Step 0
+
+**Item 8 (Trick Room x Pursuit doubles) — root cause confirmed, the ONE
+genuine bug in this whole family.** Grepped fresh for every `sort_custom`
+call site in `battle_manager.gd`: exactly one, `_phase_priority_resolution`'s
+own `_turn_order.sort_custom`. Its Pursuit-intercept branch
+(`if b_switch and not a_switch and _pursuit_targets_switcher(ia, ib): return
+true`) is a pairwise override valid only for the specific pair being
+compared — with a 3rd/4th battler present it produces a genuine, confirmed
+CYCLE (A0 < B0 < A1 < A0, reproduced via debug-printed `_turn_order` in a
+same-side speed-tie scenario), undefined behavior for Godot's
+`Array.sort_custom` (no transitivity guarantee documented anywhere in
+Godot's own API). The prior session's "internal non-determinism, e.g.
+randomized pivot selection" framing was a plausible-sounding guess, not
+confirmed — this session's own re-derivation: the sort algorithm itself is
+deterministic given fixed inputs; `tiebreak[mon] = randi()` differs every
+turn, and different random tiebreak values resolve the undefined cyclic
+comparator differently run to run, which is functionally indistinguishable
+from "the sort is randomized" without tracing the actual mechanism.
+
+Source itself does NOT bake Pursuit into its own priority/speed sort at
+all — `Cmd_jumpifnopursuitswitchdmg` (`battle_script_commands.c:8499-8522`)
+fires REACTIVELY, exactly when a switch action is about to execute, calling
+the generic `ChangeOrderTargetAfterAttacker()` (`battle_util.c:10743-10781`)
+to splice the pursuer into the turn order at that point — never during the
+initial sort.
+
+**Shared-primitive question (Step 0 point 2) — answered by checking each of
+items 11/12/13 against source individually, not assumed symmetric:**
+- **Items 8 (Pursuit) and 12 (Shell Trap), plus this project's ALREADY-
+  SHIPPED After You**, all genuinely share ONE primitive:
+  `ChangeOrderTargetAfterAttacker` itself — confirmed via direct source
+  grep, it's called from THREE sites: `Cmd_jumpifnopursuitswitchdmg`
+  (Pursuit), `BS_TryAfterYou`, and `MoveEndShellTrap`
+  (`battle_move_resolution.c:4318-4335`, gated on `IsDoubleBattle()`,
+  comment: "Change move order in double battles, so the hit mon with shell
+  trap moves immediately after being hit"). This project's own PRE-EXISTING
+  After You implementation (`_turn_order.remove_at(ay_pos);
+  _turn_order.insert(_current_actor_index + 1, defender)`) already WAS this
+  exact shape, just not extracted — confirms the primitive is real and
+  already validated by After You's own passing tests.
+- **Item 11 (Round)** needs a genuinely different shape: source's
+  `TryUpdateRoundTurnOrder` (`battle_script_commands.c:11099-11141`) is a
+  STABLE PARTITION — every not-yet-acted battler from the current
+  attacker's position onward is bucketed into [other Round users] then
+  [everyone else], each bucket preserving its own relative order, placed
+  contiguously right after the attacker. Also sets
+  `gProtectStructs[roundUsers[i]].quash = TRUE` ("make it so their turn
+  order can't be changed again") — a lock this project's own
+  reimplementation doesn't need: a stable partition of an
+  already-correctly-grouped sequence (from an earlier Round user's own
+  splice) reproduces the identical sequence, confirmed via a dedicated
+  3-Round-user-chain-shaped test (multiple later users).
+- **Item 13 (Quash)** needs a THIRD different shape: source's real Gen8+
+  algorithm (`BS_TryQuash`, `battle_script_commands.c:11762-11796`) is an
+  INCREMENTAL BUBBLE-SWAP, not "always push to the end" — starting at the
+  target's own position, repeatedly compare against whoever's immediately
+  next; swap (push the target back one slot) only while the target is
+  genuinely SLOWER (`GetWhichBattlerFaster(atk=target, def=next) == -1`),
+  stopping the instant it isn't. The old code
+  (`_turn_order.remove_at(qs_pos); _turn_order.append(defender)`) was the
+  PRE-Gen8 branch (`B_QUASH_TURN_ORDER < GEN_8`) — this project's own
+  `GEN_LATEST=GEN_9` config always takes the Gen8+ branch (confirmed via
+  source's own condition, `B_QUASH_TURN_ORDER < GEN_8 || GetWhichBattlerFaster
+  (...) == -1`, which collapses to just the speed check at this project's
+  fixed config), meaning the OLD behavior was a genuine, confirmed BUG for
+  this project's own active config, not a disclosed simplification as item
+  13's own framing had assumed going in. Traced `GetWhichBattlerFasterArgs`
+  (`battle_main.c:4777-4823`) closely: it reads (never re-rolls)
+  `gProtectStructs[...].quickDraw`/`.usedCustapBerry`/etc. and a per-turn
+  persistent random tiebreak permutation (`gBattleStruct->speedTieBreaks`)
+  — this project's own equivalent per-turn precomputed `quick_effect`/
+  `slow_effect`/`tiebreak` local Dictionaries needed to be PERSISTED as
+  member fields (`_turn_quick_effect`/`_turn_slow_effect`/`_turn_tiebreak`)
+  so Quash's own later-in-the-turn bubble-swap can read the SAME
+  already-rolled state rather than re-rolling Quick Draw/Quick Claw/Custap
+  Berry a second time — re-rolling would violate the `[M17n-3]`-established
+  "exactly once per battler per turn" invariant and could double-consume
+  Custap Berry, a real correctness risk caught and avoided at design time,
+  not discovered via a failing test.
+
+**Item 5 (Dragon Darts) confirmed genuinely different in shape from all
+four items above — not a spread/redirect at all.** Traced
+`CancelerAccuracyCheck`'s `isSmartTarget` branch precisely
+(`battle_move_resolution.c:2189-2225`): for a smart-target move, the
+accuracy-canceler loop always re-reads `cv->battlerDef = gBattlerTarget`
+(never `GetTargetBySlot`), and this whole loop is only ever REACHED for the
+FIRST hit of a multi-hit move (`ShouldSkipAccuracyCalcPastFirstHit` skips
+every subsequent hit's own accuracy check for an ordinary multi-hit move —
+already an established exception in this project for Triple Kick/Axel
+only). This means the redirect decision is made EXACTLY ONCE, before the
+whole 2-hit sequence begins: roll against the originally-chosen target; if
+it misses, and eligibility holds (`!IsAffectedByFollowMe`,
+`CanTargetPartner`, the partner not itself already unaffected by the move),
+silently redirect ONCE to that target's own ally for a second roll — no
+further per-hit retargeting after that. This significantly simplified the
+implementation versus what was originally feared (per-hit mid-sequence
+retargeting) — the resolved target (hit or still-missed) is simply handed
+to the EXISTING `_do_multi_hit_sequence` function unchanged, which already
+assumes "the accuracy question is already settled, just deal `hit_count`
+hits" for every non-Triple-Kick multi-hit move.
+
+Cross-referenced with NEW ITEM D (shipped earlier this same arc): Dragon
+Darts' own resolution reuses `StatusManager.check_accuracy` (now
+confirmed fully per-target-capable and side-effect-free) directly — no
+conflict, no further changes needed to NEW ITEM D's own spread-move
+per-target loop, since Dragon Darts never enters that branch at all
+(`is_spread` is false for it).
+
+### Implementation
+
+- New `_splice_battler_to_position(mon, dest_pos)` — the shared primitive
+  for items 8/12 and (refactored) After You. Generalizes source's
+  `ChangeOrderTargetAfterAttacker`'s fixed "attacker position + 1" target
+  into an explicit destination index, since different callers need
+  different reference points (Pursuit/Shell Trap splice to the SWITCHER's/
+  TARGET's own current slot; After You splices to
+  `_current_actor_index + 1`).
+- `_apply_pursuit_interception()` — new post-sort pass, called right after
+  `_turn_order.sort_custom` completes. For each switching action found (in
+  order), repeatedly searches for any opposing, not-yet-placed Pursuit user
+  later in the order and splices each one found to the switcher's own
+  current slot — handles MULTIPLE intercepting pursuers (both opposing
+  doubles slots choosing Pursuit against the same switcher) correctly,
+  preserving their own relative speed/priority order (each new pursuer is
+  inserted immediately before the switcher, so earlier-placed ones are
+  never disturbed).
+- The comparator's own two Pursuit-intercept branches were deleted outright;
+  its "both using moves" tail was extracted into a new shared
+  `_move_action_precedes(a, b, ng_active)` function (priority → quick/slow
+  effect → speed → tiebreak), now called both by the comparator itself and
+  by Quash's own bubble-swap — one implementation, not two copies at risk of
+  drifting apart.
+- `_apply_round_turn_order_promotion()` — new stable-partition function,
+  called from `_do_damaging_hit` right where `_last_landed_move_anyone` is
+  set (i.e., only on an actually-connecting hit), gated on
+  `move.is_round and _active_per_side > 1`.
+- Quash's own dispatch replaced `remove_at`/`append` with a new
+  `_apply_quash_bubble(target, ng_active)`, implementing the real
+  incremental bubble-swap described above.
+- New `MoveData.is_dragon_darts` flag (set on Dragon Darts(697) only). The
+  shared accuracy-check guard in `_phase_move_execution` was extended to
+  also skip Dragon Darts (alongside spread moves); a new dedicated `elif
+  move.is_dragon_darts:` branch calls the new
+  `_resolve_dragon_darts_target(attacker, defender, move, ng_active)` —
+  rolls once against `defender`, and on a miss (doubles only, a live
+  non-immune ally exists) redirects once to `_get_ally(defender)` for a
+  second roll — returning `{"target": ..., "hit": ...}` for the caller to
+  either emit a genuine miss (reusing the same `_apply_blunder_policy_on_miss`
+  helper NEW ITEM D built) or dispatch the whole 2-hit sequence via the
+  UNCHANGED `_do_multi_hit_sequence` against the resolved target.
+
+### Testing
+
+New `scenes/battle/turn_order_splice_test.gd`/`.tscn`: 26/26 assertions,
+stable across 6+ full reruns (item 8's own reproduction runs 20 internal
+trials per execution — 120+ trials total across reruns, zero failures):
+
+- Item 8: the exact same-side-speed-tie reproduction from the prior
+  session's own diagnosis, run 20 times per execution and asserted correct
+  every single time; a multiple-simultaneous-pursuers doubles scenario
+  (both opposing slots choose Pursuit, confirming their own relative order
+  is preserved); a no-Pursuit negative control.
+- Item 12: a doubles Shell Trap scenario confirming the holder (originally
+  scheduled last, slowest) is spliced to occupy the slot immediately after
+  its own attacker; a singles negative control confirming the
+  `IsDoubleBattle()`-equivalent gate.
+- Item 11: a single later Round user promoted ahead of a non-Round user; a
+  multiple-later-Round-users scenario confirming their own relative order
+  is preserved; a singles negative control.
+- Item 13: three fixtures constructed via direct `_turn_order` manipulation
+  (this project's own established direct-dispatch convention) — a target
+  genuinely slower than the very next battler but faster than the one after
+  (swaps exactly once, then stops — the core "distinct from move-to-end"
+  proof); a target slower than everyone remaining (still correctly bubbles
+  all the way, for the right underlying reason this time); a target already
+  faster than everyone remaining (a genuine no-op, distinct from the old
+  unconditional-relocation bug).
+- Item 5: a normal-hit case (no redirect engaged, both hits on the original
+  target); the core redirect-on-miss case (semi-invulnerable original
+  target, both hits land on the ally instead); a genuine total-miss case
+  (both original target and ally semi-invulnerable); no-redirect-when-ally-
+  fainted; no-redirect-when-ally-type-immune; a singles negative control.
+  All 6 scenarios use semi-invulnerability rather than evasion-stage
+  probability bands for full determinism (Dragon Darts carries none of
+  `damages_underground`/`damages_airborne`/`damages_underwater`, so ANY
+  semi-invulnerable state blocks its own accuracy check unconditionally,
+  no RNG needed) — matching NEW ITEM D's own established testing pattern
+  for exactly this situation.
+
+**One real, expected regression found and fixed**: `d3_batch_test.gd`'s own
+Quash section (C.01/C.02) had encoded the OLD Gen7- "always to the end"
+behavior as its passing assertion. Re-derived correct behavior for that
+exact fixture: the target (speed 90) is already faster than both remaining
+battlers (speed 80, 70), so the corrected Gen8+ bubble genuinely does
+nothing — updated the assertion in place to expect the unchanged order,
+with a comment explaining why (matches real Gen8+ Quash's documented
+"as close to last as possible without changing order relative to Pokémon
+it's faster than" behavior, not unconditional relocation).
+
+Test-audit-first pass: grepped every test file referencing Round/Quash/
+Pursuit/After You/Dragon Darts (`d4_bundle8_test.gd`, `m16e_test.gd`,
+`m16_review_test.gd`, `m18_5g_test.gd`, `d3_batch_test.gd`) — all reran
+clean except the one stale Quash assertion above, which was fixed.
+
+Full regression: two independent full sweeps via
+`scripts/count_assertions.sh`'s hardened absolute-path invocation — 131
+files, GRAND TOTAL 13343 then 13344, differing by exactly the
+already-documented pre-existing `m19a_gen1_test.tscn` flake (confirmed via
+direct diff of both sweep logs), 0 failures traceable to this session's own
+changes in either run.
+
+**This closes the full turn-order-splice family (items 5, 8, 11, 12, 13) —
+the last open item from M21's own bundle-safe deferral list.** Remaining
+open items from the full-roster audit: Acupressure's ally-choice gap and
+Lightning Rod/Storm Drain's attacker-ally redirect — neither touched, both
+still flagged for future sessions.
+
+No commit made this session — per standing instruction, Rob commits.
