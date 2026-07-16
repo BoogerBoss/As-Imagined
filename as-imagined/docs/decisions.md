@@ -26732,3 +26732,151 @@ Lightning Rod/Storm Drain's attacker-ally redirect — neither touched, both
 still flagged for future sessions.
 
 No commit made this session — per standing instruction, Rob commits.
+
+## [M21 closeout] Acupressure ally-choice + Lightning Rod/Storm Drain
+attacker-ally redirect — Step 0 + implementation, 2026-07-16
+
+Closes the final two open items from `docs/m21_recon.md`'s doubles-
+interaction-cleanup inventory.
+
+### Item 1 — Acupressure's TARGET_USER_OR_ALLY ally-choice gap
+
+**Step 0.** Confirmed via direct source grep that Acupressure's real
+self-vs-ally choice is resolved as a genuine PLAYER-FACING target-
+selection menu decision, not an AI-only or automatic rule —
+`battle_controller_player.c` has multiple `TARGET_USER_OR_ALLY`-specific
+branches (L472, L529, L682, L708, L732, L781) governing exactly this menu
+flow. `IsTargetingSelfOrAlly` (`battle_move_resolution.c:721-734`) itself
+is a pure eligibility check, not the choice mechanism.
+
+**The key finding**: this project's own architecture already has a
+general-purpose "which target did the actor pick" resolution —
+`_chosen_targets[attacker_idx]`, already used by every ordinary
+foe-targeting move to let a test/AI choose between two opponents in
+doubles (defaulting to `_default_target`, which always returns the first
+opposing combatant, if nothing explicit is set). Checked whether any
+existing ally-targeting move already used this same pathway for an
+ally-choice: Helping Hand, Aromatic Mist, and Coaching are all confirmed
+to bypass `_chosen_targets`/`defender` entirely for their own ally
+selection, calling `_get_ally(attacker)` directly in their own dispatch —
+because all three are `TARGET_ALLY` (fixed, ally-only, never a genuine
+choice between two options). Acupressure is the FIRST move in this
+project needing a real choice, not a fixed ally target — but the
+underlying `_chosen_targets` mechanism itself needed zero changes to
+support it; it already generalizes correctly.
+
+**Conclusion: NOT blocked on new UI infrastructure.** Implemented:
+Acupressure's own dispatch now reads `defender` (the already-resolved
+`_chosen_targets` value, computed generically before Acupressure's own
+branch is ever reached) and uses it AS the effective target — but ONLY
+if that resolved value is the attacker's own live (non-fainted) ally;
+any other value (an opponent, from `_default_target`'s own generic
+behavior — this is what happens by default since nothing move-type-aware
+computes `_default_target`, confirmed via reading it directly) falls back
+safely to self, matching source's own real default behavior. Both
+eligibility computation (which of the 7 stats are below +6) and the
+actual `apply_stat_change` call now operate on whichever target was
+resolved — reading the ALLY's own `stat_stages` when the ally is chosen,
+not the caster's.
+
+**Explicitly out of scope, confirmed deliberately**: teaching TrainerAI
+to ever prefer targeting the ally with Acupressure — this session only
+fixes the DISPATCH gap (does the mechanism correctly respect an ally
+choice if one is made), not AI decision-making about when such a choice
+would be good, which is a separate, unrelated task.
+
+### Item 2 — Lightning Rod/Storm Drain attacker-ally redirect
+
+**Step 0.** Re-derived `HandleMoveTargetRedirection`
+(`battle_move_resolution.c:822-888`) precisely. The real mechanism is
+**ONE UNIFIED loop** over every battler (`for battler = 0; battler <
+gBattlersCount; battler++`), excluding only the attacker itself and the
+CURRENT target (`battler != cv->battlerAtk && battler != cv->battlerDef`)
+— NOT two separate special cases for "target's ally" vs "attacker's
+ally" as the task's own framing suggested going in. The loop picks
+whichever qualifying Lightning-Rod/Storm-Drain holder has the EARLIEST
+turn order (`GetBattlerTurnOrderNum(battler) < redirectorOrderNum`), all
+gated on `B_REDIRECT_ABILITY_ALLIES >= GEN_4` (true at this project's
+config) bypassing the `!IsBattlerAlly(cv->battlerAtk, battler)`
+ally-exclusion entirely.
+
+**Since this project's doubles shape is a fixed 4-battler 2v2**, excluding
+the attacker and the current target from that unified loop always leaves
+exactly the two candidates already suspected: the target's own ally, and
+the attacker's own ally — so modeling both explicitly (rather than a
+generic N-battler loop) is equivalent for this project's actual doubles
+shape, not a simplification of real behavior.
+
+This project's existing implementation (`AbilityManager.
+resolve_redirect_target`, `M17l`) only ever computed `_get_ally(defender)`
+— the target's own ally — confirmed via its own pre-existing doc comment,
+which had ALREADY flagged this exact gap by name.
+
+**Implementation**: `resolve_redirect_target` gained a new required
+`attacker_ally` parameter (inserted before `move_type`) and two optional
+turn-position ints (`target_ally_turn_pos`/`attacker_ally_turn_pos`,
+default -1) for the tie-break when both candidates qualify at once.
+Turn-order lookups stay in `BattleManager` (which owns `_turn_order`) —
+`AbilityManager` remains a pure/stateless utility, matching this
+project's established convention; the caller passes
+`_turn_order.find(...)` results directly. If both qualify and turn
+positions were supplied, the earlier one wins exactly as source does; if
+turn positions weren't supplied, falls back deterministically to
+`target_ally` (the originally-modeled, overwhelmingly common case) rather
+than crashing or guessing. Mold-Breaker-awareness carries over unchanged
+— every ability check already routes through
+`effective_ability_id(..., attacker)`, so a Mold-Breaker-holding attacker
+still bypasses the whole redirect, both candidates included, with no
+additional code needed.
+
+The call site (`_phase_move_execution`'s Follow-Me/Lightning-Rod-Storm-
+Drain redirect block) now computes BOTH `_get_ally(defender)` and
+`_get_ally(attacker)`, passing both plus their `_turn_order.find(...)`
+positions into the extended function.
+
+### Testing
+
+Test-audit-first pass caught a real issue before it became a silent bug:
+`m17l_test.gd`'s own pre-existing direct unit tests (S2.06-S2.12) called
+`resolve_redirect_target` with the OLD 4-positional-argument signature.
+Running the suite post-signature-change produced a genuine HANG (not a
+clean error) — confirmed via direct reproduction (first suspected the
+well-documented cwd-drift bug, ruled that out by re-running with the
+full absolute path and still hanging) to be a GDScript static-type
+mismatch: `TypeChart.TYPE_ELECTRIC` (an int) landing in the new
+`attacker_ally: BattlePokemon`-typed parameter slot. Fixed by updating
+all 7 call sites to pass `null` for the new parameter (none of those
+tests exercise the attacker-ally case, which gets its own dedicated
+coverage in the new test file). `d4_bundle6_test.gd`'s own Acupressure
+section (J.01/J.02) reconfirmed unaffected — both scenarios are singles,
+a structural no-op for this session's change.
+
+New `scenes/battle/m21_closeout_test.gd`/`.tscn`: 9/9 assertions, stable
+across 4 reruns:
+- Acupressure: the ally raised when explicitly chosen (the core fix);
+  falling back to self when the resolved target is an opponent (the
+  generic `_default_target` case); falling back to self when the chosen
+  ally has fainted; choosing a maxed-out ally FAILS outright rather than
+  silently falling back to raising self instead (confirming the choice
+  is genuinely locked in, matching source); a singles negative control.
+- Lightning Rod: the core fix (redirects onto the attacker's OWN ally);
+  a negative control confirming the pre-existing target's-ally redirect
+  case is completely unaffected; both directions of the "both candidates
+  qualify" tie-break (attacker's ally wins when earlier in turn order;
+  target's ally wins when reversed), confirming the rule is genuinely
+  turn-order-driven and never produces a double-redirect.
+
+Targeted regression, per this session's own explicitly lower-risk scope
+(no full sweep needed): `m17l_test` (45/45), `d4_bundle6_test` (90/90),
+`m17m_test` (63/63, the absorb-family's own origin suite, confirmed
+`resolve_redirect_target`'s neighbors unaffected), `m17g_test` (31/31,
+Mold-Breaker/Neutralizing-Gas's own origin suite), `doubles_test`
+(54/54) — all clean.
+
+**This closes the ENTIRE M21 doubles-interaction-cleanup inventory** —
+every item from the original recon (1-13) plus every full-roster-audit
+follow-up (NEW ITEM A/B/C/D, the turn-order-splice family, Acupressure,
+Lightning Rod/Storm Drain) is now either shipped or explicitly excluded
+(item 6, Rob's own decision). No open items remain from this arc.
+
+No commit made this session — per standing instruction, Rob commits.

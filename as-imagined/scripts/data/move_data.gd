@@ -3284,6 +3284,18 @@ const STATUS_ARG_ANY: int = -3
 # Acupressure(367): EFFECT_ACUPRESSURE. Raises ONE random eligible stat
 #   (all 7 — Atk/Def/SpAtk/SpDef/Speed/Accuracy/Evasion, unlike Moody's
 #   narrower pool) by +2; fails if every stat is already at +6.
+# [M21 closeout] Real source target type is TARGET_USER_OR_ALLY — in
+#   doubles, the CASTER can choose to target itself OR its own ally (a
+#   genuine player-facing menu choice, confirmed via
+#   battle_controller_player.c's own TARGET_USER_OR_ALLY-specific menu
+#   branches). This project has no real target-selection UI (deliberately
+#   deferred to M10, unbuilt), but the SAME `_chosen_targets` mechanism
+#   already used to let a test/AI pick which of two opponents a foe-
+#   targeting move hits in doubles serves this identically — dispatch
+#   reads whichever combatant `_chosen_targets` resolved to and uses IT
+#   (self or ally) for both eligibility and the actual stat raise,
+#   defaulting safely to self whenever that resolved value isn't the
+#   attacker's own live ally (singles, or nothing explicitly chosen).
 @export var is_acupressure: bool = false
 
 # Psycho Shift(375): EFFECT_PSYCHO_SHIFT. Transfers the ATTACKER's own

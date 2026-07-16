@@ -168,10 +168,13 @@ func _test_section_2_lightning_rod_storm_drain_unit() -> void:
 			AbilityManager.absorbs_move_type(lr_holder, TypeChart.TYPE_ELECTRIC, false, mb_attacker).is_empty())
 
 	# (iii) resolve_redirect_target: ally holds it, original target doesn't → redirects.
+	# [M21 closeout] Signature gained a new required `attacker_ally` param (null here
+	# — these unit tests aren't exercising the attacker-ally redirect case, which gets
+	# its own dedicated coverage below).
 	var target_plain := _make_mon("TargetPlain", [TypeChart.TYPE_NORMAL])
 	var attacker := _make_mon("Attacker1", [TypeChart.TYPE_NORMAL])
 	_chk("S2.06 redirects to the ally holding Lightning Rod",
-			AbilityManager.resolve_redirect_target(target_plain, lr_holder, attacker, TypeChart.TYPE_ELECTRIC) == lr_holder)
+			AbilityManager.resolve_redirect_target(target_plain, lr_holder, attacker, null, TypeChart.TYPE_ELECTRIC) == lr_holder)
 
 	# (iv) Original target already holds the matching ability → no redirect needed.
 	var lr_holder2 := _make_mon("LRHolder2", [TypeChart.TYPE_NORMAL])
@@ -179,28 +182,28 @@ func _test_section_2_lightning_rod_storm_drain_unit() -> void:
 	var another_lr := _make_mon("AnotherLR", [TypeChart.TYPE_NORMAL])
 	another_lr.ability = lightning_rod
 	_chk("S2.07 no redirect when the original target already absorbs it directly",
-			AbilityManager.resolve_redirect_target(lr_holder2, another_lr, attacker, TypeChart.TYPE_ELECTRIC) == null)
+			AbilityManager.resolve_redirect_target(lr_holder2, another_lr, attacker, null, TypeChart.TYPE_ELECTRIC) == null)
 
 	# (v) No ally (singles): no redirect.
 	_chk("S2.08 no redirect with a null ally (singles)",
-			AbilityManager.resolve_redirect_target(target_plain, null, attacker, TypeChart.TYPE_ELECTRIC) == null)
+			AbilityManager.resolve_redirect_target(target_plain, null, attacker, null, TypeChart.TYPE_ELECTRIC) == null)
 
 	# (vi) A fainted ally does not redirect.
 	var fainted_lr := _make_mon("FaintedLR", [TypeChart.TYPE_NORMAL])
 	fainted_lr.ability = lightning_rod
 	fainted_lr.fainted = true
 	_chk("S2.09 no redirect to a FAINTED ally", AbilityManager.resolve_redirect_target(
-			target_plain, fainted_lr, attacker, TypeChart.TYPE_ELECTRIC) == null)
+			target_plain, fainted_lr, attacker, null, TypeChart.TYPE_ELECTRIC) == null)
 
 	# (vii) Mold Breaker bypasses the redirect itself.
 	_chk("S2.10 Mold Breaker bypasses the redirect entirely",
-			AbilityManager.resolve_redirect_target(target_plain, lr_holder, mb_attacker, TypeChart.TYPE_ELECTRIC) == null)
+			AbilityManager.resolve_redirect_target(target_plain, lr_holder, mb_attacker, null, TypeChart.TYPE_ELECTRIC) == null)
 
 	# (viii) Neutralizing Gas suppresses both the absorb and the redirect.
 	_chk("S2.11 Neutralizing Gas suppresses Lightning Rod's absorb",
 			AbilityManager.absorbs_move_type(lr_holder, TypeChart.TYPE_ELECTRIC, true).is_empty())
 	_chk("S2.12 Neutralizing Gas suppresses the redirect",
-			AbilityManager.resolve_redirect_target(target_plain, lr_holder, attacker, TypeChart.TYPE_ELECTRIC, true) == null)
+			AbilityManager.resolve_redirect_target(target_plain, lr_holder, attacker, null, TypeChart.TYPE_ELECTRIC, true) == null)
 
 
 # ── Section 3: Telepathy — direct unit tests ─────────────────────────────────

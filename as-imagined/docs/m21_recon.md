@@ -507,11 +507,21 @@ Ordered by recommended priority, not by item number:
    encoding the OLD Gen7- "always to the end" behavior — fixed in place.
    See `docs/decisions.md`'s `[Turn-order-splice trio]` entry for the
    full Step 0 citations and implementation writeup.
-5. **Acupressure's ally-choice gap (newly found in the full-roster
-   audit)** — a genuinely different, self-contained gap (a missing target
-   CHOICE, not a missing flag or dispatch). Low urgency (one move, no
-   other move shares this exact `TARGET_USER_OR_ALLY` shape), but flagged
-   here as its own item since it doesn't fit cleanly into A/B/C above.
+5. **Acupressure's ally-choice gap — COMPLETE**, 2026-07-16 (M21
+   closeout session). Step 0 confirmed source's real self-vs-ally choice
+   is a genuine player-facing target-selection menu decision
+   (`battle_controller_player.c`'s own `TARGET_USER_OR_ALLY` branches),
+   but also confirmed this project's OWN existing `_chosen_targets`
+   mechanism (already general-purpose — it's how any test/AI picks which
+   of two opponents a foe-targeting move hits in doubles) needed ZERO new
+   UI infrastructure to serve this identically; every ally-targeting move
+   shipped before this session (Helping Hand, Aromatic Mist, Coaching)
+   was always ally-ONLY (a fixed target, never a genuine choice), so this
+   was the first move needing a real choice between two options —
+   resolved by having Acupressure's own dispatch read whichever
+   combatant `_chosen_targets` already resolved to, falling back to self
+   whenever that isn't the attacker's own live ally. See
+   `docs/decisions.md`'s `[M21 closeout]` entry for the full writeup.
 6. **NEW ITEM C (TARGET_FOES_AND_ALLY full-roster ally-hit sweep)** —
    **COMPLETE**, 2026-07-16. Fresh Step 0 re-derivation (not copied from
    this recon's own earlier count) confirmed the corrected worklist: 13
@@ -539,8 +549,20 @@ Ordered by recommended priority, not by item number:
    from NEW ITEM A, `target_includes_ally` from this session) are now
    done for Surf/Earthquake, and all 13 previously-open moves are fully
    correct.
-7. **Lightning Rod/Storm Drain attacker-ally redirect** — lowest priority,
-   a rare edge case, not part of the original numbered inventory.
+7. **Lightning Rod/Storm Drain attacker-ally redirect — COMPLETE**,
+   2026-07-16 (M21 closeout session, same session as item 5 above). Step
+   0 re-derived `HandleMoveTargetRedirection` precisely
+   (battle_move_resolution.c:822-888) and found the real mechanism is ONE
+   UNIFIED loop over every battler (excluding the attacker and the
+   current target), not two separate special cases — this project's
+   fixed 2v2 doubles shape means excluding those two always leaves
+   exactly the two candidates already suspected (the target's own ally,
+   the attacker's own ally). `AbilityManager.resolve_redirect_target`
+   gained a new required `attacker_ally` parameter plus optional turn-
+   position ints for the tie-break when both qualify at once (source's
+   own "earliest turn order wins" rule, tested in both directions to
+   confirm it's genuinely turn-order-driven). See `docs/decisions.md`'s
+   `[M21 closeout]` entry for the full writeup.
 8. **Stale documentation (3 items)** — **RESOLVED** in the same follow-up
    session that added the full-roster audit below; see that subsection's
    own updated status.
@@ -1221,3 +1243,26 @@ what was actually decided:
   entire NEW ITEM A/B/C/D arc — remaining open items are the
   turn-order-splice family, Acupressure's ally-choice gap, and Lightning
   Rod/Storm Drain's attacker-ally redirect.
+- **2026-07-16, same-day M21 closeout session**: implemented items 5 and
+  7 above (Acupressure's ally-choice gap, Lightning Rod/Storm Drain's
+  attacker-ally redirect) — the final two open items from this recon's
+  own doubles-interaction-cleanup inventory. Both confirmed small,
+  independent, and NOT blocked on new infrastructure, per each item's own
+  Step 0. New `scenes/battle/m21_closeout_test.gd`/`.tscn`: 9/9
+  assertions, stable across 4 reruns. Test-audit-first pass caught and
+  fixed a real signature-mismatch hang in `m17l_test.gd`'s own existing
+  direct unit tests (calling `resolve_redirect_target`'s OLD 4-arg
+  signature after the new required `attacker_ally` parameter was added —
+  a GDScript static-type mismatch, not a logic bug), plus reconfirmed
+  `d4_bundle6_test.gd`'s own Acupressure section unaffected (both its
+  scenarios are singles, a structural no-op for this session's change).
+  Targeted regression (`m17l_test`/`d4_bundle6_test`/`m17m_test`/
+  `m17g_test`/`doubles_test`) all clean, per this session's own
+  lower-risk scope (no full sweep needed). **This closes the ENTIRE
+  M21 doubles-interaction-cleanup inventory — every item from the
+  original recon (1-13) plus the full-roster-audit follow-ups (NEW ITEM
+  A/B/C/D, the turn-order-splice family, Acupressure, Lightning
+  Rod/Storm Drain) is now either shipped or explicitly excluded (item 6,
+  Rob's own decision). No open items remain.** See `docs/decisions.md`'s
+  `[M21 closeout]` entry for the full Step 0 citations and implementation
+  detail.

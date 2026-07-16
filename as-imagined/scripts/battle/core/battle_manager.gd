@@ -1559,10 +1559,18 @@ func _phase_move_execution() -> void:
 		# M17l: Lightning Rod / Storm Drain redirect (doubles only) — only checked when
 		# Follow Me/Rage Powder didn't already redirect this hit, matching source's
 		# `gSideTimers[side].followmeTimer == 0` gate on entering this branch at all.
+		# [M21 closeout] Now considers BOTH candidates source's own unified redirect
+		# loop can find in a 4-battler doubles match (excluding the attacker and the
+		# current target): the target's own ally AND the attacker's own ally — turn
+		# positions supplied for the (rare) both-qualify tie-break. See
+		# AbilityManager.resolve_redirect_target's own doc comment for the full
+		# source citation.
 		if not followed_this_hit and _active_per_side > 1:
-			var redirect_ally: BattlePokemon = _get_ally(defender)
+			var redirect_target_ally: BattlePokemon = _get_ally(defender)
+			var redirect_attacker_ally: BattlePokemon = _get_ally(attacker)
 			var redirect_target: BattlePokemon = AbilityManager.resolve_redirect_target(
-					defender, redirect_ally, attacker, move.type, ng_active)
+					defender, redirect_target_ally, attacker, redirect_attacker_ally, move.type, ng_active,
+					_turn_order.find(redirect_target_ally), _turn_order.find(redirect_attacker_ally))
 			if redirect_target != null:
 				defender = redirect_target
 
@@ -4509,19 +4517,30 @@ func _phase_move_execution() -> void:
 
 		# ── Acupressure ───────────────────────────────────────────────────────
 		# See MoveData.is_acupressure's own doc comment for the full citation.
+		# [M21 closeout] `acu_effective_target` resolves to the attacker's own
+		# live ally ONLY if `_chosen_targets` (this project's existing target-
+		# selection mechanism, reused rather than building new UI
+		# infrastructure) actually points at it — any other value (an
+		# opponent from `_default_target`'s own generic behavior, a fainted
+		# ally, or singles where no ally exists at all) safely falls back to
+		# self, matching source's own real default.
 		if move.is_acupressure:
+			var acu_ally: BattlePokemon = _get_ally(attacker)
+			var acu_effective_target: BattlePokemon = attacker
+			if defender == acu_ally and acu_ally != null and not acu_ally.fainted:
+				acu_effective_target = acu_ally
 			var acu_candidates: Array = []
 			for acu_stat in range(7):  # STAGE_ATK..STAGE_EVASION, all 7
-				if attacker.stat_stages[acu_stat] < 6:
+				if acu_effective_target.stat_stages[acu_stat] < 6:
 					acu_candidates.append(acu_stat)
 			if acu_candidates.is_empty():
 				move_effect_failed.emit(attacker, "stat_limit")
 			else:
 				var acu_stat_pick: int = acu_candidates[randi() % acu_candidates.size()]
 				var acu_actual: int = StatusManager.apply_stat_change(
-						attacker, acu_stat_pick, 2, null, ng_active)
+						acu_effective_target, acu_stat_pick, 2, null, ng_active)
 				if acu_actual != 0:
-					stat_stage_changed.emit(attacker, acu_stat_pick, acu_actual)
+					stat_stage_changed.emit(acu_effective_target, acu_stat_pick, acu_actual)
 			move_executed.emit(attacker, defender, move, 0)
 			_current_actor_index += 1
 			_set_phase(BattlePhase.FAINT_CHECK)

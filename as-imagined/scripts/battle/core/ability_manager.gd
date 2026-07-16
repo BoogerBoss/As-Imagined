@@ -2643,34 +2643,63 @@ static func bypasses_redirection(
 # `HandleMoveTargetRedirection` (battle_move_resolution.c L822-888): if the move's
 # ORIGINAL target doesn't already hold the matching ability itself (in which case it
 # already absorbs the hit directly — no redirect needed, checked via
-# `currTargetCantAbsorb`, L847-850), and the original target's doubles partner DOES hold
-# it, the move redirects onto that partner instead.
-# NOT modeled (a known, narrower gap, consistent with this project's established
-# defender/defender_ally-pair convention rather than a full N-battler search): source's
-# `B_REDIRECT_ABILITY_ALLIES >= GEN_4` quirk, which also lets these abilities redirect a
-# move used by the ATTACKER's OWN ally onto that ally — this project only models
-# redirect onto the ORIGINAL TARGET's ally, the overwhelmingly common real scenario (an
-# opposing attacker's move aimed at one of two Pokémon on the defending side gets pulled
-# onto the other one instead).
-# Correctly Mold-Breaker-aware "for free": since both the original-target check and the
-# ally check route through `effective_ability_id(..., attacker)`, a Mold-Breaker-holding
-# attacker's move is never redirected at all — matching source, where the SAME
-# suppression-aware `GetBattlerAbility` read backs `cv->abilities[]` throughout this
-# entire function.
-# Returns the redirect target (the ally), or null if no redirect applies.
+# `currTargetCantAbsorb`, L847-850), source then runs ONE UNIFIED loop over every
+# battler (excluding the attacker itself and the current target) looking for a
+# matching-ability holder, picking whichever qualifying redirector has the EARLIEST
+# turn order (`GetBattlerTurnOrderNum(battler) < redirectorOrderNum`) — NOT two
+# separate special cases. In a 4-battler doubles match with attacker+target already
+# excluded, the only two possible candidates are the TARGET's own ally and the
+# ATTACKER's own ally, so this project models both explicitly rather than a full
+# N-battler search (equivalent for this project's fixed 2v2 doubles shape).
+# [M21 closeout] Previously only modeled the target's-ally case — this session closes
+# the confirmed gap this doc comment itself flagged: `B_REDIRECT_ABILITY_ALLIES >=
+# GEN_4` (this project's config) also lets these abilities redirect a move used by the
+# ATTACKER's OWN ally onto that ally. Turn-order positions for the tie-break (both
+# candidates qualifying at once) are supplied by the caller as plain ints — this
+# function stays a pure/stateless utility, `_turn_order` lookups belong to
+# BattleManager, matching this project's established convention.
+# Correctly Mold-Breaker-aware "for free": every ability check routes through
+# `effective_ability_id(..., attacker)`, so a Mold-Breaker-holding attacker's move is
+# never redirected at all — matching source, where the SAME suppression-aware
+# `GetBattlerAbility` read backs `cv->abilities[]` throughout this entire function.
+# Returns the redirect target (whichever ally qualifies), or null if no redirect applies.
 static func resolve_redirect_target(
 		original_target: BattlePokemon, target_ally: BattlePokemon,
-		attacker: BattlePokemon, move_type: int, ng_active: bool = false) -> BattlePokemon:
-	if target_ally == null or target_ally.fainted:
-		return null
+		attacker: BattlePokemon, attacker_ally: BattlePokemon, move_type: int,
+		ng_active: bool = false,
+		target_ally_turn_pos: int = -1, attacker_ally_turn_pos: int = -1) -> BattlePokemon:
 	var orig_id: int = effective_ability_id(original_target, ng_active, attacker)
 	if (orig_id == ABILITY_LIGHTNING_ROD and move_type == TypeChart.TYPE_ELECTRIC) \
 			or (orig_id == ABILITY_STORM_DRAIN and move_type == TypeChart.TYPE_WATER):
 		return null
-	var ally_id: int = effective_ability_id(target_ally, ng_active, attacker)
-	if (ally_id == ABILITY_LIGHTNING_ROD and move_type == TypeChart.TYPE_ELECTRIC) \
-			or (ally_id == ABILITY_STORM_DRAIN and move_type == TypeChart.TYPE_WATER):
+
+	var target_ally_qualifies: bool = target_ally != null and not target_ally.fainted \
+			and target_ally != attacker
+	if target_ally_qualifies:
+		var ta_id: int = effective_ability_id(target_ally, ng_active, attacker)
+		target_ally_qualifies = (ta_id == ABILITY_LIGHTNING_ROD and move_type == TypeChart.TYPE_ELECTRIC) \
+				or (ta_id == ABILITY_STORM_DRAIN and move_type == TypeChart.TYPE_WATER)
+
+	var attacker_ally_qualifies: bool = attacker_ally != null and not attacker_ally.fainted \
+			and attacker_ally != original_target
+	if attacker_ally_qualifies:
+		var aa_id: int = effective_ability_id(attacker_ally, ng_active, attacker)
+		attacker_ally_qualifies = (aa_id == ABILITY_LIGHTNING_ROD and move_type == TypeChart.TYPE_ELECTRIC) \
+				or (aa_id == ABILITY_STORM_DRAIN and move_type == TypeChart.TYPE_WATER)
+
+	if target_ally_qualifies and attacker_ally_qualifies:
+		# Both qualify (a real doubles scenario — an ability holder on each side) —
+		# earliest turn order wins, matching source's own tie-break exactly. If turn
+		# positions weren't supplied, fall back deterministically to target_ally (the
+		# originally-modeled, overwhelmingly common case).
+		if attacker_ally_turn_pos >= 0 and target_ally_turn_pos >= 0 \
+				and attacker_ally_turn_pos < target_ally_turn_pos:
+			return attacker_ally
 		return target_ally
+	if target_ally_qualifies:
+		return target_ally
+	if attacker_ally_qualifies:
+		return attacker_ally
 	return null
 
 
