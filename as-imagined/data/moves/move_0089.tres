@@ -10,3 +10,4 @@ type = 5
 power = 100
 pp = 10
 damages_underground = true
+is_spread = true

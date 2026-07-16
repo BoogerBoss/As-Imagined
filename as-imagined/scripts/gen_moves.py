@@ -229,9 +229,17 @@ MOVES = [
     {"id":  55, "name": "Water Gun",
      "type": TYPE_WATER, "category": SPEC, "power": 40, "accuracy": 100, "pp": 25},
 
+    # [NEW ITEM A] is_spread=True: real source .target=TARGET_FOES_AND_ALLY
+    # (config-gated B_UPDATED_MOVE_DATA>=GEN_4, true here) — was missing
+    # entirely since this move predates the M14a/M14b spread infrastructure.
+    # target_includes_ally (the ally-hit half) is DELIBERATELY NOT set here
+    # — that's NEW ITEM C's own test-audit-first sweep, deferred. After this
+    # fix, Surf correctly hits both opponents in doubles but NOT the user's
+    # own ally — an intermediate, disclosed state, not a final one. See
+    # docs/m21_recon.md's "Full-Roster Spread/Status-Target Audit" section.
     {"id":  57, "name": "Surf",
      "type": TYPE_WATER, "category": SPEC, "power": 90, "accuracy": 100, "pp": 15,
-     "damages_underwater": True},
+     "damages_underwater": True, "is_spread": True},
 
     # Ice Beam: 10% freeze secondary
     {"id":  58, "name": "Ice Beam",
@@ -259,13 +267,19 @@ MOVES = [
      "type": TYPE_NORMAL, "category": PHYS, "power": 40, "accuracy": 100, "pp": 30,
      "makes_contact": True, "priority": 1},
 
+    # [NEW ITEM A] is_spread=True: real source .target=TARGET_BOTH, was
+    # missing entirely. See docs/m21_recon.md's "Full-Roster Spread/
+    # Status-Target Audit" section.
     {"id": 129, "name": "Swift",
-     "type": TYPE_NORMAL, "category": SPEC, "power": 60, "accuracy": 0, "pp": 20},
+     "type": TYPE_NORMAL, "category": SPEC, "power": 60, "accuracy": 0, "pp": 20,
+     "is_spread": True},
 
     # Rock Slide: 30% flinch secondary
+    # [NEW ITEM A] is_spread=True: real source .target=TARGET_BOTH, was
+    # missing entirely.
     {"id": 157, "name": "Rock Slide",
      "type": TYPE_ROCK, "category": PHYS, "power": 75, "accuracy": 90, "pp": 10,
-     "secondary_effect": SE_FLINCH, "secondary_chance": 30},
+     "secondary_effect": SE_FLINCH, "secondary_chance": 30, "is_spread": True},
 
     {"id": 332, "name": "Aerial Ace",
      "type": TYPE_FLYING, "category": PHYS, "power": 60, "accuracy": 0, "pp": 20,
@@ -359,9 +373,13 @@ MOVES = [
     #
     # Razor Wind(13)   L344   Normal/Spec/80/100/10, two-turn, crit=1
     #   Source: .effect=EFFECT_TWO_TURNS_ATTACK; B_UPDATED>=GEN_4 → critStage=1
+    # [NEW ITEM A] is_spread=True: real source .target=TARGET_BOTH, was
+    # missing entirely — confirmed the two-turn charge is target-agnostic
+    # (no targeting resolution during the charge turn) and the release
+    # turn falls through the ordinary spread dispatch cleanly.
     {"id":  13, "name": "Razor Wind",
      "type": TYPE_NORMAL, "category": SPEC, "power": 80, "accuracy": 100, "pp": 10,
-     "critical_hit_stage": 1, "two_turn": True,
+     "critical_hit_stage": 1, "two_turn": True, "is_spread": True,
      "ban_flags": BAN_SLEEP_TALK},
 
     # Solar Beam(76)   L2052  Grass/Spec/120/100/10, two-turn
@@ -490,9 +508,13 @@ MOVES = [
     # Earthquake(89)   L2394  Ground/Phys/100/100/10, damages_underground
     #   Source: .effect=EFFECT_EARTHQUAKE; .damagesUnderground=TRUE (B_UPDATED>=GEN_2)
     #   Hits Dig users on their charge turn; deals double damage (M8+ scope).
+    # [NEW ITEM A] is_spread=True: real source .target=TARGET_FOES_AND_ALLY,
+    # was missing entirely. target_includes_ally (the ally-hit half)
+    # deliberately NOT set — deferred to NEW ITEM C's own test-audit-first
+    # sweep, same as Surf above.
     {"id":  89, "name": "Earthquake",
      "type": TYPE_GROUND, "category": PHYS, "power": 100, "accuracy": 100, "pp": 10,
-     "damages_underground": True},
+     "damages_underground": True, "is_spread": True},
 
     # ── Tier 4: unique / one-off mechanics ────────────────────────────────────
     #
@@ -3149,15 +3171,21 @@ MOVES = [
 
     # ── [D1] EFFECT_POWER_BASED_ON_USER_HP: Eruption/Water Spout/Dragon
     # Energy — continuous power_scales_with_user_hp, all uniform data. ──
+    # [NEW ITEM A] is_spread=True on all 3: real source .target=TARGET_BOTH,
+    # was missing entirely. Confirmed `_dmg_power_override` (which
+    # power_scales_with_user_hp feeds) is computed ONCE, before the spread/
+    # single split, from attacker.current_hp/max_hp — unaffected by target
+    # count, applied identically to every target in the spread loop. No
+    # per-target power divergence risk.
     {"id":  284, "name": "Eruption",
      "type": TYPE_FIRE, "category": SPEC, "power": 150, "accuracy": 100, "pp": 5,
-     "power_scales_with_user_hp": True},
+     "power_scales_with_user_hp": True, "is_spread": True},
     {"id":  323, "name": "Water Spout",
      "type": TYPE_WATER, "category": SPEC, "power": 150, "accuracy": 100, "pp": 5,
-     "power_scales_with_user_hp": True},
+     "power_scales_with_user_hp": True, "is_spread": True},
     {"id":  748, "name": "Dragon Energy",
      "type": TYPE_DRAGON, "category": SPEC, "power": 150, "accuracy": 100, "pp": 5,
-     "ban_flags": BAN_METRONOME, "power_scales_with_user_hp": True},
+     "ban_flags": BAN_METRONOME, "power_scales_with_user_hp": True, "is_spread": True},
 
     # ── [D1] EFFECT_POWER_BASED_ON_TARGET_HP: Wring Out/Crush Grip/Hard
     # Press — continuous power_scales_with_target_hp. Hard Press is a real
@@ -3972,12 +4000,17 @@ MOVES = [
      "ban_flags": (BAN_MIRROR_MOVE | BAN_ME_FIRST | BAN_METRONOME
                    | BAN_COPYCAT | BAN_ASSIST | BAN_SLEEP_TALK | BAN_INSTRUCT),
      "is_beak_blast": True},
+    # [NEW ITEM A] is_spread=True: real source .target=TARGET_BOTH, was
+    # missing entirely — confirmed once armed, Shell Trap falls through to
+    # the ordinary accuracy+hit dispatch exactly like a normal move (its own
+    # is_shell_trap gate only intercepts the UNARMED-fail case above), so
+    # the spread branch is the correct, unmodified integration point.
     {"id":  658, "name": "Shell Trap",
      "type": TYPE_FIRE, "category": SPEC, "power": 150, "accuracy": 100,
      "pp": 5, "priority": -3,
      "ban_flags": (BAN_MIRROR_MOVE | BAN_ME_FIRST | BAN_METRONOME
                    | BAN_COPYCAT | BAN_ASSIST | BAN_SLEEP_TALK | BAN_INSTRUCT),
-     "is_shell_trap": True},
+     "is_shell_trap": True, "is_spread": True},
 
     # [D4 Bundle 8] Round/Snatch/Imprison — reinstated after Rob reversed
     # [Exclusion bookkeeping]'s own same-day exclusion; Grav Apple is a pure

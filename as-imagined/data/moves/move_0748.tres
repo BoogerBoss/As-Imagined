@@ -10,4 +10,5 @@ type = 17
 category = 1
 power = 150
 ban_flags = 16
+is_spread = true
 power_scales_with_user_hp = true

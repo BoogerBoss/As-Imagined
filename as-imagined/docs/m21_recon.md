@@ -408,29 +408,66 @@ Ordered by recommended priority, not by item number:
    entry for the full Step 0 citations and both fixed bugs (the Venom
    Drench interception, a production bug; and a singles negative control's
    own whole-battle-aggregation instance, a test bug).
-2. **NEW ITEM A (9 damage moves missing `is_spread` entirely)** — high
-   priority, mechanically simple once test coverage is confirmed. Surf and
-   Earthquake in particular are extremely commonly-used moves. Unchanged
-   by the full-roster audit — this was already the complete list.
-3. **Items 5 + 8 + 11 + 12 + 13 (turn-order-splice family)** — bundle into
+2. **NEW ITEM A (9 damage moves missing `is_spread` entirely)** —
+   **COMPLETE**, 2026-07-15, same day, in a same-day follow-up session.
+   All 9 confirmed clean flag-only fixes (Shell Trap falls through to
+   ordinary dispatch once armed; Eruption/Water Spout/Dragon Energy's
+   HP-scaled power computed once before the spread/single split; Razor
+   Wind's charge turn is target-agnostic). Surf(57)/Earthquake(89)
+   deliberately do NOT gain `target_includes_ally` — that stays deferred
+   to NEW ITEM C, proven explicitly (not just assumed) via a dedicated
+   test showing they now hit both opponents but not the ally. **A real,
+   significant, but PRE-EXISTING architectural finding surfaced during
+   Step 0**: this project's accuracy roll is checked exactly once,
+   against the single default target, for EVERY damaging move already
+   shipped — not independently per spread target as source does. This
+   affects all ~37 already-"OK" spread damage moves too, not just
+   Swift/Rock Slide — flagged as a new, high-value item for a future
+   dedicated session (see the Triage note below), but didn't block this
+   session since it's inherited, unworsened behavior. New
+   `scenes/battle/new_item_a_test.gd`/`.tscn`: 31/31 assertions. See
+   `docs/decisions.md`'s `[NEW ITEM A]` entry for full Step 0 citations.
+3. **NEW ITEM D (newly discovered in the NEW ITEM A fix session): spread
+   damage moves share ONE accuracy roll across all targets, instead of
+   each target getting its own independent roll.** Traced
+   `StatusManager.check_accuracy`'s single call site
+   (`battle_manager.gd:2658`) and confirmed it fires exactly once, against
+   the single default `defender`, before the spread-vs-single split — the
+   SAME shared roll then gates whether ANY target in the spread loop gets
+   hit at all. Source's own spread moves can hit one opponent and miss the
+   other in the same use; this project's cannot. Affects every spread
+   damage move already shipped (~37+ moves: Icy Wind, Snarl, Blizzard,
+   Discharge, Magnitude, etc.), not just the 9 from NEW ITEM A — a real,
+   moderately high-value architecture fix (would need `check_accuracy`
+   called once per target inside the spread loop instead of once upfront,
+   with careful attention to what "the move missed" even means when some
+   targets would have been hit and others not), but out of scope for a
+   flag-flip session and not attempted. Secondary effects (stat changes,
+   flinch, status infliction) are UNAFFECTED by this finding — those are
+   already correctly rolled independently per target inside
+   `_do_damaging_hit`. See `docs/decisions.md`'s `[NEW ITEM A]` entry for
+   the full citation.
+4. **Items 5 + 8 + 11 + 12 + 13 (turn-order-splice family)** — bundle into
    one dedicated session, per the original recon's own sequencing
    decision, reconfirmed still valid. All five touch `_turn_order`/
    `_current_actor_index` machinery in doubles-only scenarios.
-4. **Acupressure's ally-choice gap (newly found in the full-roster
+5. **Acupressure's ally-choice gap (newly found in the full-roster
    audit)** — a genuinely different, self-contained gap (a missing target
    CHOICE, not a missing flag or dispatch). Low urgency (one move, no
    other move shares this exact `TARGET_USER_OR_ALLY` shape), but flagged
    here as its own item since it doesn't fit cleanly into A/B/C above.
-5. **NEW ITEM C (TARGET_FOES_AND_ALLY 18-move ally-hit sweep, including
+6. **NEW ITEM C (TARGET_FOES_AND_ALLY 18-move ally-hit sweep, including
    Teeter Dance's cross-reference to item B)** — lower priority, needs a
    test-audit-first pass before flipping flags. File last, per this
    session's own instruction. Unchanged in scope by the full-roster audit
    (it was already the complete `TARGET_FOES_AND_ALLY` list) — the audit
    just re-confirmed it and organized the 13 affected moves (11 ally-only
-   + Surf/Earthquake's combined fix) more precisely.
-6. **Lightning Rod/Storm Drain attacker-ally redirect** — lowest priority,
+   + Surf/Earthquake's combined fix) more precisely. Surf/Earthquake's own
+   `is_spread` half is now done (NEW ITEM A) — only the ally-hit half
+   remains for those two.
+7. **Lightning Rod/Storm Drain attacker-ally redirect** — lowest priority,
    a rare edge case, not part of the original numbered inventory.
-7. **Stale documentation (3 items)** — **RESOLVED** in the same follow-up
+8. **Stale documentation (3 items)** — **RESOLVED** in the same follow-up
    session that added the full-roster audit below; see that subsection's
    own updated status.
 
@@ -786,3 +823,22 @@ None of these are answered here — flagging them explicitly is the deliverable,
   COMPLETE. New `scenes/battle/new_item_b_test.gd`/`.tscn`: 29/29
   assertions. See `docs/decisions.md`'s `[NEW ITEM B]` entry for the full
   Step 0 citations and implementation detail.
+- **2026-07-15, same day, third follow-up session**: implemented NEW ITEM
+  A (9 damage-category moves missing `is_spread` entirely — Razor
+  Wind/Surf/Earthquake/Swift/Rock Slide/Eruption/Water Spout/Shell
+  Trap/Dragon Energy). All 9 confirmed clean flag-only fixes. Surf/
+  Earthquake deliberately left without `target_includes_ally` (still
+  deferred to NEW ITEM C), explicitly proven via a dedicated test rather
+  than just assumed. **A new, significant finding surfaced and added as
+  NEW ITEM D**: this project's accuracy roll is checked once, against the
+  default target only, for every spread damage move already shipped —
+  not just the 9 from this session — a real architectural gap flagged for
+  a future dedicated session, not fixed here. The "Triage / Sequencing"
+  section above was renumbered to include this new item. New
+  `scenes/battle/new_item_a_test.gd`/`.tscn`: 31/31 assertions. Also
+  fixed, as a byproduct: `scripts/gen_move_status_table.py`'s own field
+  allowlist was missing `target_includes_ally` (needs-manual-review had
+  silently drifted 0→3 across the `[M21]`/`[NEW ITEM B]` sessions) — the
+  same recurring gap class this script has hit before; fixed the same
+  way, confirmed back to 0. See `docs/decisions.md`'s `[NEW ITEM A]`
+  entry for the full Step 0 citations.

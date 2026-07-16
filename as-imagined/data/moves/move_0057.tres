@@ -11,3 +11,4 @@ category = 1
 power = 90
 pp = 15
 damages_underwater = true
+is_spread = true

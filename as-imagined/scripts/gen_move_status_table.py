@@ -332,6 +332,8 @@ def describe_move(fields):
                         "target",
                         # [EFFECT_STAT_CHANGE audit]
                         "stat_change_bypasses_type_gate",
+                        # [M21] / [NEW ITEM B] — the ally-hit half of TARGET_FOES_AND_ALLY
+                        "target_includes_ally",
                     }]
     if unrecognized:
         return None, unrecognized

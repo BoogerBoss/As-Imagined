@@ -25850,3 +25850,162 @@ all unchanged, 0 failures across every suite referencing any of these
 9 moves.
 
 No commit made — per standing instruction, Rob commits.
+
+## [NEW ITEM A] 9 damage-category moves missing `is_spread` entirely —
+Step 0 + implementation, 2026-07-15, same day
+
+Closes NEW ITEM A from `docs/m21_recon.md`'s "Full-Roster Spread/
+Status-Target Audit" section: Razor Wind(13), Surf(57), Earthquake(89),
+Swift(129), Rock Slide(157), Eruption(284), Water Spout(323), Shell
+Trap(658), Dragon Energy(748) all carry real source target types
+(`TARGET_BOTH` or `TARGET_FOES_AND_ALLY`) requiring spread dispatch, but
+none had `is_spread` set — each behaved as single-target only in
+doubles.
+
+### Step 0
+
+Confirmed all 9 are clean flag-only fixes reusing the existing damage-
+spread dispatch branch (`_phase_move_execution`, `if move.is_spread and
+_active_per_side > 1:`), proven correct by M21's own bundle-safe
+session (Self-Destruct/Explosion):
+
+1. **Shell Trap(658)**: its own `is_shell_trap` gate
+   (`battle_manager.gd:2641`) only intercepts the UNARMED-fail case
+   ("Shell Trap didn't work!"); once armed, the code falls through to
+   the ordinary accuracy check + damage dispatch "exactly like a normal
+   move" (the existing code comment's own words, re-verified accurate).
+   The spread branch is therefore the correct, unmodified integration
+   point — no bespoke resolution path exists to conflict with it.
+2. **Eruption(284) / Water Spout(323) / Dragon Energy(748)**: traced
+   `power_scales_with_user_hp`'s own consumer
+   (`battle_manager.gd:2320-2321`, `_dmg_power_override = move.power *
+   attacker.current_hp / attacker.max_hp`) and confirmed it's computed
+   ONCE, early in `_phase_move_execution`, well BEFORE the later branch
+   into the spread-vs-single split — a single scalar derived only from
+   the ATTACKER's own HP (fixed at computation time, unaffected by
+   target count), then passed identically into every per-target
+   `_do_damaging_hit(...)` call within the spread loop. No per-target
+   recomputation, no interaction risk with the existing 0.75x spread-
+   reduction modifier (a separate, independently-computed value).
+3. **Razor Wind(13)**: traced the two-turn charge dispatch
+   (`battle_manager.gd:1783-1809`) and confirmed the CHARGE turn never
+   references `defender`/targeting in any functional way (only sets
+   `charging_move`/`semi_invulnerable` and returns) — fully target-
+   agnostic. The RELEASE turn clears `charging_move` and falls through
+   to the rest of `_phase_move_execution` unmodified, reaching the
+   ordinary spread dispatch cleanly.
+4. **Swift(129) / Rock Slide(157) — a real, but PRE-EXISTING and NOT
+   newly-introduced, architectural finding.** Traced the actual
+   accuracy-roll call site (`battle_manager.gd:2658`,
+   `StatusManager.check_accuracy(attacker, defender, move, ...)`) and
+   confirmed it is called EXACTLY ONCE, against the single default
+   `defender`, unconditionally for every damaging move, BEFORE the
+   later branch into "Damaging move" (which contains the spread-vs-
+   single split). `check_accuracy`'s own signature
+   (`status_manager.gd:766-773`) takes one `defender` param — there is
+   no per-target accuracy mechanism anywhere in this project's current
+   architecture. **This means EVERY spread damage move already shipped
+   (the ~37 already-"OK" moves from NEW ITEM A/C's own original
+   audit — Icy Wind, Snarl, Blizzard, Discharge, Magnitude, etc.) shares
+   this exact same simplification: one shared accuracy roll for the
+   whole move, checked against the default target only, not
+   independently per target as real source does** (source's own spread
+   moves can hit one opponent and miss the other in the same use — this
+   project's cannot). This is a genuine divergence from source, but it
+   is NOT something Swift/Rock Slide's own flag-flip introduces or
+   worsens — they inherit the identical behavior every other spread
+   move already has. Separately confirmed: SECONDARY effects (including
+   Rock Slide's own flinch chance) ARE correctly rolled independently
+   per target, via `StatusManager.try_secondary_effect(attacker,
+   target, move, ...)` called with the per-target `target` inside
+   `_do_damaging_hit` (called once per target in the spread loop,
+   confirmed via direct code read at `battle_manager.gd:9460`). Swift's
+   own `accuracy=0` (unconditional bypass, no roll at all) makes this
+   finding moot for Swift specifically.
+
+   **This finding is significant enough to flag prominently for a future
+   dedicated session** (a real "independent per-target accuracy roll"
+   architecture fix spanning the whole spread-move system, affecting
+   dozens of already-shipped moves, not just these 9) — but it does not
+   block or change the scope of THIS session, since it's inherited,
+   unchanged behavior. Not touched here.
+5. Surf(57)/Earthquake(89)'s own `damages_underwater`/`damages_underground`
+   flags are read INSIDE `StatusManager.check_accuracy` (the same single
+   shared call from point 4 above) — confirmed unaffected by spread
+   targeting for the identical reason: it's a per-move data flag read
+   once per move-use, not per-target, with no new conflict introduced.
+
+Nothing here required stopping to ask before implementing — every
+per-move complication traced back to either "no conflict" (1-3) or "a
+real but pre-existing, non-worsened, out-of-scope architectural
+characteristic shared by every spread move already shipped" (4-5).
+Proceeded to implementation in the same session.
+
+### Implementation
+
+- `gen_moves.py`: added `is_spread=True` to all 9 moves. Surf(57) and
+  Earthquake(89)'s own entries gained explicit code comments noting
+  `target_includes_ally` is deliberately NOT set — deferred to NEW ITEM
+  C's own test-audit-first sweep — so a future reader doesn't mistake
+  "is_spread now true" for "fully fixed." Regenerated all 717 `.tres`
+  files.
+- Re-ran `scripts/gen_move_status_table.py` per instruction. Counts
+  confirmed UNCHANGED as expected (717 implemented / 217 excluded / 0
+  residual) — this session changes a targeting flag, not implementation
+  status. **A real, but unrelated, discrepancy was found and fixed as a
+  byproduct**: needs-manual-review jumped 0→3 (Self-Destruct/Explosion/
+  Teeter Dance), NOT because of anything this session's `is_spread`
+  additions did (that field already matches the generator's own generic
+  `is_*` allowlist exemption, confirmed zero risk) — the true cause is
+  that `target_includes_ally` (added to these 3 moves across the
+  earlier `[M21]` and `[NEW ITEM B]` sessions) was never added to
+  `gen_move_status_table.py`'s own field allowlist, the same recurring
+  gap class this script has hit at least 4 times before (`snatch_affected`,
+  `two_typed_move`/`second_type`, `target`, `stat_change_bypasses_type_gate`).
+  Fixed the same way each prior instance was: added `target_includes_ally`
+  to the allowlist. Needs-manual-review confirmed back to 0 after the fix.
+- NEW ITEM C (`target_includes_ally`) and NEW ITEM B (already shipped)
+  were explicitly NOT touched, per instruction.
+
+### Test-audit-first pass (before flipping any flag)
+
+Checked every existing reference to these 9 moves across the test suite
+(12 files: `ability_test`, `d4_bundle2_test`, `d4_bundle7_test`,
+`m17j_test`, `m17g_test`, `m18k_test`, `m19_bucket2_test`,
+`m19_d1_cheap_clusters_test`, `stat_test`, `tier3_test`, `weather_test`,
+plus `m21_test`/`new_item_b_test` from prior sessions). Every usage was
+confirmed to be either a plain singles battle (`start_battle`,
+`_active_per_side` defaults to 1, the new spread branch never fires) or
+a direct `DamageCalculator.calculate()` unit test bypassing full battle
+dispatch entirely. **Zero existing assertions needed fixing.**
+
+### Testing
+
+New `scenes/battle/new_item_a_test.gd`/`.tscn`: 31/31 assertions, stable
+across 4 reruns — data integrity for all 9 moves' `is_spread` flags plus
+the Surf/Earthquake scope-boundary confirmation (`target_includes_ally`
+still false); Swift and Rock Slide each hitting BOTH opponents in a real
+doubles dispatch; Eruption's HP-scaled power confirmed computed ONCE and
+applied IDENTICALLY across two structurally-identical targets, with a
+discriminator proving a full-HP attacker deals strictly more damage than
+a half-HP one (proving the scaling is genuinely applied, not
+coincidentally equal); Shell Trap arming then dealing spread damage to
+both opponents; Razor Wind's full two-turn charge-then-release sequence
+(charge turn deals no damage and sets `charging_move`; release turn
+hits both opponents); the existing 0.75x spread-damage-reduction
+modifier confirmed to still compose correctly with a newly-flagged move
+(2-live-target damage strictly less than a 1-live-target comparison);
+Surf and Earthquake each explicitly proven to hit BOTH opponents but NOT
+the user's own ally (the intentional partial-fix boundary, not just
+assumed); a singles negative control. No test-authoring bugs — passed
+clean on the first run.
+
+Regression: `ability_test` (64/64), `d4_bundle2_test` (66/66),
+`d4_bundle7_test` (34/34), `m17j_test` (60/60), `m17g_test` (31/31),
+`m18k_test` (16/16), `m19_bucket2_test` (2760/2760),
+`m19_d1_cheap_clusters_test` (47/47), `stat_test` (78/78), `tier3_test`
+(62/62), `weather_test` (64/64), `doubles_test` (54/54), `m21_test`
+(33/33), `new_item_b_test` (29/29), `move_smoke_test` (717/717),
+`item_registry_test` (309/309) — all unchanged, 0 failures.
+
+No commit made — per standing instruction, Rob commits.

@@ -11,4 +11,5 @@ category = 1
 power = 150
 priority = -3
 ban_flags = 502
+is_spread = true
 is_shell_trap = true
