@@ -4889,6 +4889,60 @@ func _phase_move_execution() -> void:
 
 		var foe_targeting: bool = not move.stat_change_self
 
+		# [NEW ITEM B] Status-move spread dispatch (doubles only). Source-
+		# confirmed structural gap: this project's only spread-targeting loop
+		# (the damage-move branch a few hundred lines below, `if move.is_spread
+		# and _active_per_side > 1:`) sits strictly inside the damaging-move
+		# section, reached only when `move.power > 0` — every pure status move
+		# returns from an earlier branch before that code is ever reached, so
+		# `is_spread` was never even READ for a status move, regardless of its
+		# value. Fixes Tail Whip(39)/Leer(43)/Growl(45)/String Shot(81)/Cotton
+		# Spore(178)/Poison Gas(139)/Sweet Scent(230) (TARGET_BOTH) and Teeter
+		# Dance(298) (TARGET_FOES_AND_ALLY, via `target_includes_ally`).
+		# Reuses `_apply_status_move_to_target` (the SAME per-target gate
+		# sequence — Magic Bounce/Coat, Substitute, type-immunity, Prankster-
+		# vs-Dark, then the actual effect — the single-target path below
+		# already runs once) called once per live opposing combatant,
+		# mirroring the existing damage-spread loop's own shape.
+		# See docs/m21_recon.md's "Full-Roster Spread/Status-Target Audit"
+		# section for the full source citation trail (StatChangeSubstitute's
+		# own per-battler loop, MoveEndBouncedMove's per-battler bounce
+		# bitmask) confirming each target gets a fully independent resolution,
+		# not a shared/single roll.
+		#
+		# EXCLUDES Venom Drench(599) deliberately, even though it's also
+		# TARGET_BOTH with `is_spread=True`: a real finding caught by this
+		# session's own test suite (C.01/C.02 in new_item_b_test.gd) — Venom
+		# Drench has its OWN special `is_venom_drench` dispatch (below, in
+		# this same function) that already loops `_get_live_opponents(attacker)`
+		# directly, entirely independent of `_active_per_side`/`is_spread`.
+		# It was ALREADY correctly hitting both opponents in doubles before
+		# this session; its `is_spread` flag is vestigial for its own dispatch
+		# (the original recon's "structurally inert" classification was
+		# accurate about the FLAG being unread, but didn't check whether the
+		# move had an alternate, already-correct path — it does). Intercepting
+		# it here instead would have been a regression: this generic branch
+		# only knows `stat_change_stat`/`secondary_effect`, neither of which
+		# Venom Drench's own data sets (its 3-stat/poison-gated effect lives
+		# entirely in the `is_venom_drench` branch's own hardcoded logic).
+		if foe_targeting and move.is_spread and _active_per_side > 1 \
+				and not move.is_venom_drench:
+			var opp_start: int = (1 - attacker_side) * _active_per_side
+			var ally: BattlePokemon = _get_ally(attacker)
+			var ally_included: bool = move.target_includes_ally and ally != null \
+					and not ally.fainted and ally.current_hp > 0
+			for _fi in range(_active_per_side):
+				var tgt: BattlePokemon = _combatants[opp_start + _fi]
+				if tgt.fainted or tgt.current_hp <= 0:
+					continue
+				_apply_status_move_to_target(attacker, tgt, move, ng_active)
+			if ally_included:
+				_apply_status_move_to_target(attacker, ally, move, ng_active)
+			move_executed.emit(attacker, defender, move, 0)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
+
 		# M17n-9: Magic Bounce — reflects the move back at its own user BEFORE the
 		# Substitute/type-immunity/Prankster gates below even run (a bounced move
 		# never resolves against the original defender at all). Scoped to this
@@ -8728,6 +8782,80 @@ func _apply_stat_change_effect(attacker: BattlePokemon, defender: BattlePokemon,
 	for i in range(move.extra_stat_change_stats.size()):
 		_apply_one_stat_change_pair(attacker, defender, move,
 				move.extra_stat_change_stats[i], move.extra_stat_change_amounts[i], ng_active)
+
+
+# [NEW ITEM B] Per-target status-move resolution, reused for BOTH the
+# ordinary single-target case and the new spread-status dispatch below.
+# Re-derives, independently per target, the exact same gate sequence this
+# project's single-target status dispatch already runs once (Magic Bounce/
+# Magic Coat -> Substitute -> type-immunity -> Prankster-vs-Dark), then
+# applies the move's own effect (a plain stat_change_stat move, or a
+# guaranteed secondary_effect like Teeter Dance's SE_CONFUSION).
+#
+# Source-confirmed this is the correct shape, not a guess: `StatChangeSubstitute`
+# (battle_move_resolution.c L4475-4490) loops over EVERY battler independently,
+# marking `moveResultFlags[battler]` per-battler before any stat is actually
+# applied; `MoveEndBouncedMove` (L3141-3202) tracks Magic Bounce/Magic Coat as a
+# PER-BATTLER BITMASK (`magicBouncePending`/`magicCoatPending`, one bit per
+# battler) and resolves each pending bounce with its own full script
+# re-execution — confirming a bounce by one target does NOT cancel or alter
+# the move's resolution against any OTHER target, which still proceeds
+# normally. See docs/m21_recon.md's "Full-Roster Spread/Status-Target Audit"
+# section for the full citation trail.
+#
+# Returns true if the move's effect actually landed on this specific target
+# (accounting for a Magic Bounce/Coat redirect back at the attacker, which
+# still counts as "landed," just on a different battler).
+func _apply_status_move_to_target(attacker: BattlePokemon, tgt: BattlePokemon,
+		move: MoveData, ng_active: bool) -> bool:
+	var eff_attacker: BattlePokemon = attacker
+	var eff_defender: BattlePokemon = tgt
+
+	var mc_active: bool = tgt.magic_coat_active
+	if move.bounceable and (AbilityManager.bounces_status_move(tgt, ng_active, attacker, move) \
+			or mc_active):
+		move_bounced.emit(tgt, attacker)
+		if mc_active:
+			tgt.magic_coat_active = false
+			ability_triggered.emit(tgt, "magic_coat")
+		else:
+			ability_triggered.emit(tgt, "magic_bounce")
+		eff_defender = attacker
+		eff_attacker = tgt
+	elif tgt.substitute_hp > 0 and not move.ignores_substitute \
+			and not AbilityManager.bypasses_infiltrator_barriers(attacker, ng_active):
+		move_missed.emit(attacker, "substitute")
+		return false
+	elif move.type != TypeChart.TYPE_NONE and not move.stat_change_bypasses_type_gate \
+			and TypeChart.get_effectiveness(move.type, tgt.species.types) == 0.0:
+		move_missed.emit(attacker, "immune")
+		return false
+	elif AbilityManager.blocks_prankster_move(attacker, tgt, move, ng_active):
+		move_effect_failed.emit(tgt, "prankster_dark_immune")
+		return false
+
+	if move.stat_change_stat >= 0:
+		_apply_stat_change_effect(eff_attacker, eff_defender, move, ng_active)
+		return true
+	elif move.secondary_effect != MoveData.SE_NONE:
+		var applied: bool = StatusManager.try_secondary_effect(eff_attacker, eff_defender, move,
+				null, ng_active, _effective_weather(), _is_uproar_active(), null,
+				_is_safeguard_active_for(eff_attacker, eff_defender, ng_active))
+		if applied:
+			secondary_applied.emit(eff_defender, move.secondary_effect)
+			_try_synchronize(eff_defender, eff_attacker, _se_to_status(move.secondary_effect))
+			if ItemManager.status_cure_berry_cures(eff_defender, ng_active,
+					AbilityManager.is_unnerve_active(_get_live_opponents(eff_defender), ng_active)):
+				eff_defender.status = BattlePokemon.STATUS_NONE
+				_consume_item(eff_defender)
+			elif ItemManager.confusion_cure_berry_cures(eff_defender, ng_active,
+					AbilityManager.is_unnerve_active(_get_live_opponents(eff_defender), ng_active)):
+				eff_defender.confusion_turns = 0
+				_consume_item(eff_defender)
+		else:
+			move_effect_failed.emit(eff_defender, "immune")
+		return applied
+	return false
 
 
 func _apply_one_stat_change_pair(attacker: BattlePokemon, defender: BattlePokemon, move: MoveData,

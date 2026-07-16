@@ -11,3 +11,4 @@ category = 2
 pp = 20
 secondary_effect = 6
 is_spread = true
+target_includes_ally = true

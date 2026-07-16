@@ -384,15 +384,30 @@ recon's own wording):
 
 Ordered by recommended priority, not by item number:
 
-1. **NEW ITEM B (no status-move spread dispatch exists)** — highest
-   priority. 9 already-shipped moves (Tail Whip/Leer/Growl/Cotton
-   Spore/Poison Gas/String Shot/Sweet Scent/Venom Drench, plus Teeter
-   Dance's own cross-reference from NEW ITEM C — the full-roster audit
-   below grew this list from 6 to 9) are silently not doing their
-   documented job in doubles. Needs new dispatch infrastructure, not just
-   a flag fix, and a design decision (flagged, not resolved, in the
-   full-roster audit below) about per-target Substitute/type-immunity/
-   Magic-Bounce/Prankster interaction.
+1. **NEW ITEM B (no status-move spread dispatch exists)** — **COMPLETE**,
+   2026-07-15, same day, in a same-day follow-up session. Real final scope
+   was **8 moves, not 9**: Tail Whip(39)/Leer(43)/Growl(45) (gained
+   `is_spread=True`, were missing it entirely), String Shot(81)/Cotton
+   Spore(178)/Poison Gas(139)/Sweet Scent(230) (already had
+   `is_spread=True`, now finally live), and Teeter Dance(298) (gained
+   `target_includes_ally=True`). **Venom Drench(599) needed ZERO
+   changes** — a real correction found only via the fix session's own
+   first test run: Venom Drench has its own pre-existing `is_venom_drench`
+   dispatch branch that already loops `_get_live_opponents(attacker)`
+   directly, confirmed to already return every live opponent regardless of
+   `_active_per_side` — it was ALREADY correctly hitting both opponents in
+   doubles before this session, via a completely separate mechanism; its
+   `is_spread=True` flag was genuinely vestigial for its own dispatch, not
+   evidence of a shared bug with the other 8. New
+   `BattleManager._apply_status_move_to_target()` (per-target Magic
+   Bounce/Coat → Substitute → type-immunity → Prankster-vs-Dark → effect),
+   called once per live opposing combatant (+ally) from a new early branch
+   gated on `foe_targeting and move.is_spread and _active_per_side > 1 and
+   not move.is_venom_drench`. New `scenes/battle/new_item_b_test.gd`/
+   `.tscn`: 29/29 assertions. See `docs/decisions.md`'s `[NEW ITEM B]`
+   entry for the full Step 0 citations and both fixed bugs (the Venom
+   Drench interception, a production bug; and a singles negative control's
+   own whole-battle-aggregation instance, a test bug).
 2. **NEW ITEM A (9 damage moves missing `is_spread` entirely)** — high
    priority, mechanically simple once test coverage is confirmed. Surf and
    Earthquake in particular are extremely commonly-used moves. Unchanged
@@ -499,8 +514,8 @@ budget speccing unbuilt moves.
 |---|---|---|
 | **Total in-scope moves (all 8 relevant target types)** | 106 | |
 | Not yet implemented (name-only, no further investigation) | 25 | See per-category breakdown below |
-| **Implemented, fully correct (no gap)** | 44 | 39 from `TARGET_BOTH`/`TARGET_FOES_AND_ALLY` + Helping Hand/Aromatic Mist/Coaching/Howl/Perish Song (5, already correctly wired via dedicated flags, not `is_spread`) |
-| **Structural gap — dispatch unreachable for this move's category (NEW ITEM B)** | 9 | All STATUS-category `TARGET_BOTH`/`TARGET_FOES_AND_ALLY` moves — `is_spread` is never read for a status move regardless of its value |
+| **Implemented, fully correct (no gap)** | 45 (corrected from 44 — see below) | 39 from `TARGET_BOTH`/`TARGET_FOES_AND_ALLY` + Helping Hand/Aromatic Mist/Coaching/Howl/Perish Song (5) + Venom Drench (1, corrected — see below) |
+| **Structural gap — dispatch unreachable for this move's category (NEW ITEM B)** | 8 (corrected from 9 — **COMPLETE**, see Triage section) | STATUS-category `TARGET_BOTH`/`TARGET_FOES_AND_ALLY` moves whose ONLY path was the now-fixed generic dispatch. Venom Drench(599) was originally counted here but corrected out: it has its own pre-existing `is_venom_drench` branch that already loops all live opponents independently of `is_spread` — it was never actually broken, just carrying a vestigial flag. See `docs/decisions.md`'s `[NEW ITEM B]` entry. |
 | **Data-only fix — `is_spread` missing entirely, damage-category (NEW ITEM A)** | 9 | 7 `TARGET_BOTH`-only + 2 (Surf, Earthquake) that ALSO need the ally-inclusion fix below |
 | **Ally-inclusion mismatch — `is_spread` already correct, `target_includes_ally` missing (NEW ITEM C)** | 13 | 11 `TARGET_BOTH`/no-is_spread-issue + Surf + Earthquake (the same 2 moves counted in the row above, needing both fixes together) |
 | **Newly found, distinct gap: Acupressure's ally-choice not modeled** | 1 | See below — a genuinely new, self-contained finding |
@@ -549,16 +564,31 @@ verified via direct `.tres`/`gen_moves.py` cross-check — none carry
 doubles despite being a real spread move in source.
 
 **Implemented, STATUS-category, dispatch UNREACHABLE regardless of flag
-value — structural gap (NEW ITEM B, 8):** Cotton Spore(178, `is_spread`
-already `True` but inert), Growl(45, `is_spread=False`), Leer(43,
-`is_spread=False`), Poison Gas(139, `True` but inert), String Shot(81,
-`True` but inert — already known from the original NEW ITEM B finding),
-Sweet Scent(230, `True` but inert — already known), Tail Whip(39,
-`is_spread=False`), Venom Drench(599, `True` but inert — already known).
-Cotton Spore, Poison Gas, and this confirmation of Growl/Leer/Tail Whip's
-own `is_spread=False` (rather than just "unset like everything defaults
-to") are the new finds this audit adds on top of the original NEW ITEM B
-list (String Shot/Sweet Scent/Venom Drench).
+value — structural gap (NEW ITEM B, 7 confirmed + 1 corrected out, see
+below):** Cotton Spore(178, `is_spread` already `True` but inert),
+Growl(45, `is_spread=False`), Leer(43, `is_spread=False`), Poison
+Gas(139, `True` but inert), String Shot(81, `True` but inert — already
+known from the original NEW ITEM B finding), Sweet Scent(230, `True` but
+inert — already known), Tail Whip(39, `is_spread=False`). Cotton Spore,
+Poison Gas, and this confirmation of Growl/Leer/Tail Whip's own
+`is_spread=False` (rather than just "unset like everything defaults to")
+are the new finds this audit adds on top of the original NEW ITEM B list
+(String Shot/Sweet Scent).
+>
+> **[CORRECTED by the NEW ITEM B fix session, same day]: Venom Drench(599)
+> does NOT belong in this list.** This audit originally listed it here
+> (`is_spread=True` but seemingly inert, matching the other 7's shape) —
+> but the fix session's own first test run found Venom Drench has its OWN
+> pre-existing `is_venom_drench` dispatch branch that already loops
+> `_get_live_opponents(attacker)` directly, independent of
+> `_active_per_side`/`is_spread` entirely. It was ALREADY correctly hitting
+> both opponents in doubles before any of this M21 work began. Its
+> `is_spread=True` flag really is inert — but for a completely benign
+> reason (a second, unrelated, already-correct mechanism makes the generic
+> flag moot for this one move), not because of the structural gap the
+> other 7 shared. **NEW ITEM B's real, confirmed scope is 7 TARGET_BOTH
+> moves + Teeter Dance = 8 total, not 9.** See `docs/decisions.md`'s
+> `[NEW ITEM B]` entry for the full citation.
 
 **Not yet implemented (name only, no further investigation, 8):**
 Captivate, Clangorous Soulblaze, Core Enforcer, Dark Void, Heal Block,
@@ -745,3 +775,14 @@ None of these are answered here — flagging them explicitly is the deliverable,
   full-roster spread/status-targeting scoping audit requested as a
   follow-up to this recon's own NEW ITEM A/B/C findings — see the new
   "Full-Roster Spread/Status-Target Audit" section below.
+- **2026-07-15, same day, second follow-up session**: implemented NEW ITEM
+  B (status-move spread-targeting dispatch), the highest-priority open
+  item the full-roster audit confirmed. Real final scope was 8 moves, not
+  9 — Venom Drench(599) was corrected OUT of the structural-gap list
+  (confirmed already correct via its own pre-existing `is_venom_drench`
+  dispatch, unrelated to `is_spread`). Both the "Full-Roster Spread/
+  Status-Target Audit" section and the "Triage / Sequencing" section above
+  were updated in place to reflect this correction and mark NEW ITEM B
+  COMPLETE. New `scenes/battle/new_item_b_test.gd`/`.tscn`: 29/29
+  assertions. See `docs/decisions.md`'s `[NEW ITEM B]` entry for the full
+  Step 0 citations and implementation detail.

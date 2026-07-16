@@ -12,4 +12,5 @@ pp = 30
 stat_change_stat = 1
 stat_change_amount = -1
 stat_change_bypasses_type_gate = true
+is_spread = true
 bounceable = true

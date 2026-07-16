@@ -287,25 +287,31 @@ MOVES = [
 
     # Tail Whip: -1 Def foe
     # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
+    # [NEW ITEM B] is_spread=True: real source .target=TARGET_BOTH (hits both
+    # opponents in doubles) — missing since this move predates the M14a/M14b
+    # spread infrastructure; see docs/m21_recon.md's "Full-Roster Spread/
+    # Status-Target Audit" section.
     {"id":  39, "name": "Tail Whip",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 30,
      "stat_change_stat": STAGE_DEF, "stat_change_amount": -1, "bounceable": True,
-     "stat_change_bypasses_type_gate": True},
+     "stat_change_bypasses_type_gate": True, "is_spread": True},
 
     # Leer: -1 Def foe
     # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
+    # [NEW ITEM B] is_spread=True: real source .target=TARGET_BOTH.
     {"id":  43, "name": "Leer",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 30,
      "stat_change_stat": STAGE_DEF, "stat_change_amount": -1, "bounceable": True,
-     "stat_change_bypasses_type_gate": True},
+     "stat_change_bypasses_type_gate": True, "is_spread": True},
 
     # Growl: -1 Atk foe, sound_move=true (source: struct MoveInfo.soundMove)
     # bounceable: magicCoatAffected=TRUE in source (M17n-9, Magic Bounce).
+    # [NEW ITEM B] is_spread=True: real source .target=TARGET_BOTH.
     {"id":  45, "name": "Growl",
      "type": TYPE_NORMAL, "category": STAT, "accuracy": 100, "pp": 40,
      "sound_move": True, "bounceable": True,
      "stat_change_stat": STAGE_ATK, "stat_change_amount": -1,
-     "stat_change_bypasses_type_gate": True},
+     "stat_change_bypasses_type_gate": True, "is_spread": True},
 
     # ── Tier 2: status-inflicting moves ──────────────────────────────────────
 
@@ -1771,9 +1777,16 @@ MOVES = [
      "type": TYPE_FLYING, "category": STAT, "power": 0, "accuracy": 100, "pp": 15,
      "bounceable": True, "stat_change_stat": STAGE_ATK, "stat_change_amount": -2},
 
+    # [NEW ITEM B/C] Real source .target=TARGET_FOES_AND_ALLY (confuses
+    # every OTHER battler in doubles, opponents AND the user's own ally) —
+    # target_includes_ally mirrors Self-Destruct/Explosion's own [M21] fix;
+    # is_spread alone (opponents only) was already set but structurally
+    # inert until the new status-move spread dispatch below existed. See
+    # docs/m21_recon.md's "Full-Roster Spread/Status-Target Audit" section.
     {"id": 298, "name": "Teeter Dance",
      "type": TYPE_NORMAL, "category": STAT, "power": 0, "accuracy": 100, "pp": 20,
-     "is_spread": True, "secondary_effect": SE_CONFUSION, "secondary_chance": 0},
+     "is_spread": True, "target_includes_ally": True,
+     "secondary_effect": SE_CONFUSION, "secondary_chance": 0},
 
     {"id": 299, "name": "Blaze Kick",
      "type": TYPE_FIRE, "category": PHYS, "power": 85, "accuracy": 90, "pp": 10,

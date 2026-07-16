@@ -25670,3 +25670,183 @@ new Life Orb once-per-sequence fix didn't disturb anything), `doubles_test`
 origin suite) — all unchanged, 0 failures.
 
 No commit made — per standing instruction, Rob commits.
+
+## [NEW ITEM B] Status-move spread-targeting dispatch (structural gap) —
+Step 0 + implementation, 2026-07-15, same day
+
+Closes the highest-priority open item from `docs/m21_recon.md`'s
+"Full-Roster Spread/Status-Target Audit" section: 8 already-implemented
+status moves (Tail Whip(39)/Leer(43)/Growl(45)/String Shot(81)/Cotton
+Spore(178)/Poison Gas(139)/Sweet Scent(230), all `TARGET_BOTH`, plus
+Teeter Dance(298), `TARGET_FOES_AND_ALLY`) had NO functioning spread
+dispatch in doubles — `is_spread` was structurally never even read for a
+status-category move, since this project's only spread-targeting loop
+sat strictly inside the damaging-move branch of `_phase_move_execution`
+(reached only when `move.power > 0`).
+
+### Step 0
+
+Re-derived the real per-target resolution mechanism directly from
+source rather than assuming symmetry with the damage-move spread loop:
+
+1. **`StatChangeSubstitute`** (`battle_move_resolution.c` L4475-4490)
+   loops over EVERY battler independently
+   (`for (battler = 0; battler < gBattlersCount; battler++)`), marking
+   `moveResultFlags[battler]` per-battler via `IsSubstituteProtected`
+   BEFORE any stat is actually applied — confirming Substitute is
+   checked per-target, not once for the whole move.
+2. **`MoveEndBouncedMove`** (`battle_move_resolution.c` L3141-3202)
+   tracks Magic Bounce/Magic Coat as a PER-BATTLER BITMASK
+   (`magicBouncePending`/`magicCoatPending`, one bit per battler), and
+   resolves each pending bounce with its own full script re-execution,
+   clearing only that one battler's bit. **This directly answers the
+   "does one bounce cancel the whole move for other targets" question:
+   NO** — a bounce is a per-target event; the original move still
+   proceeds normally against every OTHER (non-bouncing) target, exactly
+   like the existing damage-spread loop already handles per-target
+   Substitute/immunity independently.
+3. **Teeter Dance(298)** is `EFFECT_CONFUSE`, NOT `EFFECT_STAT_CHANGE`
+   — a real correction to the original recon's framing, which grouped
+   it alongside the 8 stat-change moves as "structurally similar." Its
+   real mechanism dispatches through `try_apply_confusion`, not
+   `_apply_stat_change_effect` — confirmed via its own `moves_info.h`
+   entry (`.effect = EFFECT_CONFUSE`) and this project's own
+   `secondary_effect=SE_CONFUSION, secondary_chance=0` encoding
+   (matching Confuse Ray's identical "guaranteed primary confusion"
+   pattern). It does NOT carry `.magicCoatAffected` in source (unlike
+   Growl et al.), so it's correctly not bounceable.
+4. **Integration point**: traced this project's own single-target
+   status dispatch (`_phase_move_execution`, the `foe_targeting` block)
+   and confirmed its exact gate order — Magic Bounce/Coat swap →
+   Substitute block → type-immunity block → Prankster-vs-Dark block →
+   the generic tail (`if move.stat_change_stat >= 0: ... elif
+   move.secondary_effect != SE_NONE: ...`). Recommended approach:
+   extract this exact gate sequence into a new reusable per-target
+   helper, `_apply_status_move_to_target(attacker, tgt, move,
+   ng_active)`, called once per live opposing target (+ally, if
+   `target_includes_ally`) in a NEW early branch — NOT a refactor of the
+   existing ~750-line single-target function, which contains many
+   unrelated move-specific branches (Trick, Role Play, Skill Swap, etc.)
+   none of these 9 moves touch.
+5. **A real, initially-missed conflict found only via this session's own
+   test run (not caught by static Step 0 reading alone)**: Venom
+   Drench(599) — also `TARGET_BOTH` with `is_spread=True` — has its OWN
+   special `is_venom_drench` dispatch branch (later in the same
+   function) that already loops `_get_live_opponents(attacker)`
+   directly, entirely independent of `_active_per_side`/`is_spread`.
+   `_get_live_opponents` was confirmed (`battle_manager.gd:6590-6601`)
+   to already return ALL live opponents regardless of doubles/singles —
+   meaning **Venom Drench was ALREADY correctly hitting both opponents
+   in doubles before this session**, via a completely separate
+   mechanism. The original recon's "structurally inert `is_spread`"
+   classification was accurate about the flag being unread by the
+   generic path, but didn't check whether the move had an alternate,
+   already-correct path — it does. The new generic branch was caught
+   incorrectly intercepting Venom Drench on the FIRST test run (its
+   own C.01 assertion failed, since the generic branch only knows
+   `stat_change_stat`/`secondary_effect`, neither of which Venom
+   Drench's own data sets) — fixed by excluding `move.is_venom_drench`
+   from the new branch's gate condition, letting it fall through
+   unchanged to its own pre-existing, already-correct branch. **NEW
+   ITEM B's real scope is 8 moves, not 9** — Venom Drench needed zero
+   changes.
+
+Nothing here was tangled enough to warrant stopping — the per-target
+gate stack is confirmed straightforward (each target independently
+evaluated through the same single-target gates this project already
+has), so implementation proceeded in the same session per the task's
+own instruction.
+
+### Implementation
+
+- `gen_moves.py`: added `is_spread=True` to Tail Whip(39)/Leer(43)/
+  Growl(45) (previously missing entirely); added
+  `target_includes_ally=True` to Teeter Dance(298) (already had
+  `is_spread=True`, but it was inert). String Shot/Cotton Spore/Poison
+  Gas/Sweet Scent already had `is_spread=True` set — no data change
+  needed for those 4. Regenerated all 717 `.tres` files.
+- New `BattleManager._apply_status_move_to_target(attacker, tgt, move,
+  ng_active) -> bool`: the per-target gate sequence (Magic Bounce/Coat →
+  Substitute → type-immunity → Prankster-vs-Dark → the actual effect —
+  `_apply_stat_change_effect` for a plain stat-change move, or
+  `StatusManager.try_secondary_effect` + berry-cure handling for a
+  guaranteed secondary like Teeter Dance's confusion), placed
+  immediately before `_apply_one_stat_change_pair` near the existing
+  `_apply_stat_change_effect`.
+- New early branch in `_phase_move_execution`, positioned right after
+  `foe_targeting` is computed (before the existing single-target Magic
+  Bounce/Substitute/type-immunity/Prankster gate sequence, so it takes
+  precedence for spread moves and returns early): `if foe_targeting and
+  move.is_spread and _active_per_side > 1 and not move.is_venom_drench:`
+  — loops over every live opposing combatant (+ally if
+  `target_includes_ally`) calling the new helper once each.
+- NEW ITEM A (the 9 separate damage-move `is_spread` gaps) and NEW ITEM
+  C (the `TARGET_FOES_AND_ALLY` ally-hit sweep) were explicitly NOT
+  touched, per the recon doc's own sequencing.
+
+### Test-audit-first pass (before flipping any flag)
+
+Per this project's own established discipline (same caution already
+applied to item 4's own follow-up sweep), every existing reference to
+these 9 moves across the whole test suite (27 files) was checked BEFORE
+writing new tests. Every single usage was confirmed to be one of: a
+plain singles battle (`start_battle`, the overwhelming majority — these
+moves are used throughout the suite purely as "harmless, deals no
+damage" filler status moves for testing unrelated mechanics); a direct
+unit test bypassing full battle dispatch entirely (checking a data
+field like `move.power == 0` directly); or (one case,
+`d4_bundle8_test.gd`'s Round test C.03) a genuine `start_battle_doubles`
+battle where Growl is used as a "different, non-Round preceding move"
+filler and the test's own `move_executed` listener explicitly filters
+to Round's own execution, ignoring Growl's targeting entirely. **Zero
+existing assertions needed fixing.**
+
+### Testing
+
+New `scenes/battle/new_item_b_test.gd`/`.tscn`: 29/29 assertions, stable
+across 4 reruns — data integrity for all 9 moves' flags; Growl hitting
+BOTH opponents in a real doubles dispatch (the core fix); Venom Drench's
+per-target-independent poison condition (one poisoned target gets all 3
+drops, one non-poisoned target gets none — confirming each target's own
+condition is evaluated independently, not shared); Teeter Dance
+confusing both opponents AND the user's own ally
+(`target_includes_ally`); Substitute blocking one target while the
+OTHER target in the same spread use is still hit normally; a Magic
+Bounce holder reflecting Growl back at the original attacker while the
+OTHER (non-Magic-Bounce) target is STILL hit normally in the same
+spread use (the key cross-target independence proof); a singles
+negative control; a plain single-target status move (Scary Face)
+negative control confirming it still only hits the one selected
+opponent in doubles. Two real test-authoring bugs caught and fixed on
+the first run (27/29): the Venom Drench interception described above
+(a production bug, fixed in `battle_manager.gd`, not the test); and the
+singles negative control's own whole-battle-aggregation bug (Growl has
+no other move to fall back to, so a plain `start_battle` runs many
+turns with Growl re-casting repeatedly past -1 — fixed by
+signal-snapshotting the FIRST `stat_stage_changed` event instead of
+reading post-battle state).
+
+A real, out-of-scope aside flagged (not fixed): `_apply_one_stat_change_pair`
+(the function Venom Drench's own branch calls per-opponent) does not
+itself check Substitute/Magic-Bounce/type-immunity before applying a
+stat change — a separate, pre-existing gap in Venom Drench's own
+implementation, unrelated to this session's fix. Not touched here.
+
+Regression: `stat_test` (78/78), `status_test` (78/78), `m17b_test`
+(109/109), `m17n1_test` (82/82), `m17n11_test` (51/51), `m19_bucket2_test`
+(2760/2760), `effect_stat_change_audit_test` (36/36), `d4_bundle6_test`
+(90/90, Venom Drench's own origin suite), `d4_bundle8_test` (24/24,
+Round's own doubles test — confirms Growl's new doubles behavior
+doesn't disturb it), `d4_bundle7_test` (34/34), `d4_bundle_test` (39/39,
+Magic Coat/Magic Bounce's own doubles suite), `m17l_test` (45/45),
+`m19cd_test` (38/38), `m21_test` (33/33), `doubles_test` (54/54),
+`item_test` (77/77), `m20b_test` (30/30), `move_smoke_test` (717/717),
+`item_registry_test` (309/309), `m18l_test` (17/17), `m18x_test`
+(15/15), `m19_pipeline_fix_test` (415/415), `m16e_test` (58/58),
+`m17n5_test` (78/78), `m17n6_test` (101/101), `m17n9_test` (63/63),
+`d1_easy_bundle_test` (53/53), `d4_bundle2_test` (66/66),
+`d4_bundle3_test` (56/56), `m19_bucket4_cheap_singles_test` (46/46) —
+all unchanged, 0 failures across every suite referencing any of these
+9 moves.
+
+No commit made — per standing instruction, Rob commits.
