@@ -222,6 +222,32 @@ PROTECT_METHOD_NAMES = {
     4: "Obstruct", 5: "Silk Trap", 6: "Wide Guard", 7: "Quick Guard",
     8: "Endure",
 }
+WEATHER_NAMES = {
+    0: None, 1: "rain", 2: "sun", 3: "sandstorm", 4: "hail",
+    5: "strong winds",
+}
+STATUS_NAMES = {
+    0: None, 1: "burn", 2: "freeze", 3: "paralysis", 4: "poison",
+    5: "toxic", 6: "sleep",
+}
+# non-default/notable MoveData.target values worth calling out explicitly —
+# TARGET_SELECTED (1, the overwhelming default for ordinary moves) and
+# TARGET_NONE (0, the literal .tres/class default) are deliberately excluded.
+TARGET_NAMES = {
+    2: "smart-targets (can redirect on a miss)",
+    3: "depends on the called/reflected move",
+    4: "one random opponent",
+    5: "a random target, including the ally",
+    6: "both opponents",
+    7: "self only",
+    8: "the user's ally only",
+    9: "self and the user's ally",
+    10: "self or the user's ally (chosen)",
+    11: "both opponents and the user's ally",
+    12: "the whole field",
+    13: "the opponents' whole field",
+    14: "all battlers on the field",
+}
 
 # fields already consumed by a dedicated clause below -- excluded from the
 # generic boolean-flag fallback listing so they aren't double-reported.
@@ -372,7 +398,10 @@ def describe_move(fields):
         amt = coerce(fields.get("stat_change_amount", "0"))
         who = "ally's" if target_ally else ("own" if self_target else "target's")
         direction = "raises" if amt > 0 else "lowers"
-        parts.append(f"{direction} {who} {STAGE_NAMES.get(stat_stage, stat_stage)} by {abs(amt)} stage(s)")
+        clause = f"{direction} {who} {STAGE_NAMES.get(stat_stage, stat_stage)} by {abs(amt)} stage(s)"
+        if coerce(fields.get("also_boosts_ally", "false")):
+            clause += " (also boosts the user's ally in doubles)"
+        parts.append(clause)
     extra_stats = coerce(fields.get("extra_stat_change_stats", "[]")) or []
     extra_amts = coerce(fields.get("extra_stat_change_amounts", "[]")) or []
     for st, amt in zip(extra_stats, extra_amts):
@@ -410,7 +439,15 @@ def describe_move(fields):
     if coerce(fields.get("two_turn", "false")):
         semi = coerce(fields.get("semi_inv_state", "0"))
         semi_name = SEMI_INV_NAMES.get(semi)
-        parts.append(f"two-turn charge move" + (f" ({semi_name})" if semi_name else ""))
+        charge_boosts = []
+        def_boost = coerce(fields.get("charge_turn_defense_boost", "0"))
+        if def_boost:
+            charge_boosts.append(f"+{def_boost} Defense on the charge turn")
+        spatk_boost = coerce(fields.get("charge_turn_spatk_boost", "0"))
+        if spatk_boost:
+            charge_boosts.append(f"+{spatk_boost} Sp. Atk on the charge turn")
+        extras = "; ".join(filter(None, [semi_name] + charge_boosts))
+        parts.append(f"two-turn charge move" + (f" ({extras})" if extras else ""))
 
     if "is_protect" in fields:
         pm = coerce(fields.get("protect_method", "0"))
@@ -448,6 +485,29 @@ def describe_move(fields):
     oid = coerce(fields.get("overwrite_target_ability_id", "-1"))
     if oid is not None and oid != -1:
         parts.append(f"overwrites ability with id {oid}")
+
+    if coerce(fields.get("two_typed_move", "false")):
+        stype = coerce(fields.get("second_type", "-1"))
+        if stype is not None and stype != -1:
+            parts.append(f"also {TYPE_NAMES.get(stype, stype)}-type")
+
+    target_val = coerce(fields.get("target", "0"))
+    if target_val:
+        target_label = TARGET_NAMES.get(target_val)
+        if target_label:
+            parts.append(f"targets {target_label}")
+
+    if coerce(fields.get("heals_based_on_weather", "false")):
+        boost_weather = coerce(fields.get("weather_heal_boost_type", "0"))
+        boost_name = WEATHER_NAMES.get(boost_weather)
+        if boost_name:
+            other = "1/4 max HP" if coerce(fields.get("weather_heal_has_quarter_branch", "false")) else "1/2 max HP"
+            parts.append(f"heals 2/3 max HP boosted by {boost_name}, {other} otherwise")
+
+    status_pool = coerce(fields.get("random_status_pool", "[]")) or []
+    if status_pool:
+        names = [STATUS_NAMES.get(s, str(s)) for s in status_pool]
+        parts.append(f"may inflict one of: {'/'.join(names)}")
 
     # boolean move-flag fallback: every remaining true `is_*`-style flag or
     # other recognized boolean not already covered by a clause above
