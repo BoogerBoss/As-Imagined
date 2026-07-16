@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://newitemdtest"]
+
+[ext_resource type="Script" path="res://scenes/battle/new_item_d_test.gd" id="1_newitemdtest"]
+
+[node name="NewItemDTest" type="Node"]
+script = ExtResource("1_newitemdtest")

@@ -26315,3 +26315,191 @@ scopes implementation.
 
 No implementation, no tests, no commit this session — recon only, per
 standing instruction.
+
+## [NEW ITEM D] Shared Accuracy Roll Architecture Gap — Step 0 +
+implementation, 2026-07-16
+
+Same-day follow-up to `[NEW ITEM D scoping]` immediately above. Rob
+requested Step 0 design resolution first, with implementation to
+proceed in the same session only if every open question resolved
+cleanly with no genuine tangle requiring a stop.
+
+### Step 0: design resolution
+
+**1. `crashes_on_miss` semantics for a partial spread miss — resolved
+as a non-issue, confirmed via source, not assumed.** Re-read all 4
+`EFFECT_RECOIL_IF_MISS` entries directly in `moves_info.h` (Jump Kick
+L719, High Jump Kick L3708, Axe Kick L20480, Supercell Slam L21903):
+every one of them is `.target = TARGET_SELECTED`. No move in source (or
+this project) combines `crashes_on_miss` with a spread target type —
+the sets are disjoint. The existing single-target crash-on-miss
+dispatch (Protect block / type-immunity pre-check / accuracy-miss, all
+three call sites of `_apply_crash_damage`) is therefore entirely
+unreachable for spread moves and needed zero changes.
+
+**2. `recoil_percent` and other "whole-move outcome" mechanics —
+resolved cleanly, all already per-target by construction.**
+`recoil_percent`/`drain_percent`/`is_rage`/`is_recharge` are all gated
+on `damage > 0` INSIDE `_do_damaging_hit` (`battle_manager.gd:9194` and
+neighboring blocks), which is already called once per target inside the
+spread-dispatch loop. A target that misses simply never reaches
+`_do_damaging_hit` under the new design — these mechanics compose
+correctly for free, no changes needed to any of them.
+`is_rollout`/`is_fury_cutter`/`is_steel_beam`/`is_rampage`/`is_uproar`
+were independently re-checked via `gen_moves.py` grep and confirmed to
+never co-occur with `is_spread` either (Rollout/Ice Ball, Thrash/Petal
+Dance/Outrage/Raging Fury, Uproar, Steel Beam, Fury Cutter are all
+single-target moves) — the pre-existing shared miss-handling block that
+resets/continues these on a miss is simply skipped for spread moves,
+losing none of that bookkeeping since it was already unreachable for
+them.
+
+**3. Signal/event shape — resolved: two signals, different scopes, by
+design.** New `move_missed_target(attacker, target, reason)` fires once
+per individual target that misses within a spread use. The existing
+`move_missed(attacker, reason)` signal deliberately stays single-shot,
+firing only when EVERY live target in the spread use missed — this
+preserves `_current_action_failed`'s existing consumer
+(`_phase_faint_check`'s Stomping Tantrum timer, the only consumer found
+via grep) without needing to redefine what "my whole move failed" means
+for a move with mixed per-target outcomes. A partial hit (some targets
+connected) is NOT treated as an overall failure, matching source, which
+has no single "the move missed" flag for a spread move with divergent
+per-target results.
+
+**4. Smart-target interaction (Dragon Darts) — confirmed
+architecturally independent, not merged.** Dragon Darts dispatches
+through the separate `move.multi_hit or move.strike_count > 1` branch
+(`_do_multi_hit_sequence`), confirmed via that branch's own existing
+code comment to be mutually exclusive with `is_spread` in this
+project's roster. This fix touches only the `is_spread` branch — zero
+changes to `_do_multi_hit_sequence` or Dragon Darts' own deferred
+smart-redirect item (still separately tracked in the turn-order-splice
+family).
+
+**5. Semi-invulnerable per-target scoping — confirmed a pure call-site
+change.** Re-read `StatusManager.check_accuracy` (`status_manager.gd:
+766-`) directly: it already calls `_can_hit_semi_invulnerable` internally
+using its own `defender` parameter — fully stateless, fully
+per-target-capable, with zero shared state between calls. Calling it
+once per target inside the spread loop (instead of once before it)
+automatically makes the semi-invulnerable bypass per-target too, with
+no logic changes to either function.
+
+**6. Blunder Policy — the one item needing a disclosed simplification,
+not a hard blocker.** Real source sets `gBattleStruct->blunderPolicy`
+inside the same per-target accuracy loop the recon flagged as needing
+its own design pass. Rather than building full per-target Blunder
+Policy semantics (a rare item + spread move + partial miss combination),
+this project fires it only when the WHOLE spread move missed every live
+target — the same threshold `move_missed`'s single-shot signal already
+uses. Extracted into a new shared `_apply_blunder_policy_on_miss(attacker,
+ng_active)` helper, used by both the pre-existing single-target miss
+path (a pure extraction, zero behavior change there) and the new
+spread-move full-miss path.
+
+**Conclusion: every point resolved cleanly with no genuine design
+conflict — proceeded to implementation in the same session**, per Rob's
+own explicit instruction.
+
+### Implementation
+
+- The pre-existing single shared accuracy-check block
+  (`battle_manager.gd`, the `── Accuracy check ──` comment, formerly
+  unconditional) is now guarded with
+  `if not (move.is_spread and _active_per_side > 1):` — spread moves
+  skip it entirely and are handled by the new per-target loop below;
+  singles moves (including `is_spread` moves in a singles battle, where
+  `_active_per_side == 1`) are completely unaffected, byte-for-byte the
+  same code path as before.
+- Inside the spread-dispatch branch, each live opposing-side target (and
+  the ally too, if `target_includes_ally`) now gets its own independent
+  `StatusManager.check_accuracy` call before `_do_damaging_hit` is
+  invoked for it. A miss emits `move_missed_target` and `continue`s to
+  the next target — the others in the same use are completely
+  unaffected, mirroring source's real per-battler
+  `CancelerAccuracyCheck` loop.
+- Micle Berry's `attacker.micle_boost_active` flag is now cleared once,
+  after every target's own roll has had a chance to consume it (was
+  previously cleared right after the single shared check) — consistent
+  with "one boost, consumed by this whole move use," now correctly
+  spanning however many independent per-target rolls that use actually
+  makes.
+- `spread_any_target_hit` tracks whether ANY live target connected. If
+  false after the loop (and the optional ally check), `move_missed` fires
+  once (restoring `_current_action_failed`'s existing behavior for a
+  fully-missed spread move) and `_apply_blunder_policy_on_miss` is
+  called.
+- Confirmed composes correctly with M21's own item 2 fix (Shell Bell/
+  Life Orb spread-accumulation, `docs/decisions.md`'s `[M21]` entry): a
+  missed target is simply never passed to `_do_damaging_hit`, so it
+  contributes 0 to `spread_total_damage`/`spread_hits_landed` by
+  construction — no changes needed to that accumulation logic itself.
+
+### Testing
+
+Test-audit-first pass (grepped every file referencing `is_spread`/
+doubles dispatch for one NOT using `_force_hit` or a hardcoded
+`accuracy = 100`): found exactly 3 — `doubles_test.gd` (its own
+`_make_spread` helper hardcodes `accuracy = 100`, which is
+unconditionally `randi() % 100 < 100`, always true regardless of how
+many times it's independently rolled), `m19_weather_accuracy_test.gd`'s
+Bleakwind Storm full-battle test (a SINGLES battle — `_active_per_side`
+never exceeds 1, so the spread branch this fix touches is never reached
+at all), and `m21_test.gd` (all its spread-move helpers hardcode
+`accuracy = 100` too). **Zero existing assertions needed fixing** — every
+existing spread-move test in this codebase behaves identically whether
+accuracy is checked once for the whole move or once per target, since
+none of them rely on real (unforced) accuracy variance for a spread
+move.
+
+New `scenes/battle/new_item_d_test.gd`/`.tscn`: 18/18 assertions, stable
+across 5 reruns:
+- A fully-deterministic semi-invulnerable + grounded independence proof
+  (no RNG needed at all): Earthquake (`damages_underground=true`) hits
+  both a grounded target and one that's mid-Dig in the same spread use;
+  Rock Slide (no such flag) hits the grounded target but correctly skips
+  the semi-invulnerable one — the core per-target-independence proof,
+  one target's own state blocking it while the other in the same use is
+  completely unaffected.
+- Partial-miss vs. full-miss signal-shape discriminators: a partial miss
+  fires `move_missed_target` for the missed target only, NOT the
+  whole-move `move_missed`; a full miss (`_force_hit = false`, forcing
+  every per-target call to return false) fires `move_missed_target` for
+  each of the 2 targets AND `move_missed` exactly once (not once per
+  target).
+- Blunder Policy fires on a full miss but NOT on a partial miss.
+- A 60-trial statistical evasion-divergence proof: a 0-evasion target
+  (deterministic 100% hit, since Rock Slide's accuracy is overridden to
+  100 in-memory for the test) hits in every trial regardless of the
+  OTHER target's own outcome, while a +6-evasion target
+  (`ACCURACY_STAGE_RATIOS[0] = [33, 100]` → 33% hit chance) hits in a
+  genuinely reduced, non-zero, non-total fraction of trials — proving
+  independent per-target resolution rather than a shared roll.
+- Shell Bell accumulation confirmed to exclude a missed target's
+  (nonexistent) contribution — heals off exactly the one landed hit's
+  damage, not a phantom combined total.
+- A singles negative control confirming the non-spread path is
+  completely unaffected.
+
+Targeted regression (14 suites directly touching spread-move dispatch
+or doubles machinery: `m21_test`, `new_item_a_test`, `new_item_b_test`,
+`new_item_c_test`, `doubles_test`, `m19_bucket4_pairs_test`,
+`m17n10_test`, `m19_weather_accuracy_test`, `m17n2_test`, `damage_test`,
+`stat_test`, `move_test`, `m19_bucket2_test`, `m17b_test`) — all clean,
+0 failures. Given the scope (59 affected moves, a core dispatch-path
+change), also ran **two full regression sweeps** via
+`scripts/count_assertions.sh`'s hardened absolute-path invocation: 130
+files, GRAND TOTAL 13317 both times, with the second sweep fully clean
+and the first showing only the already-documented pre-existing
+`m19a_gen1_test.tscn` flake (Hydro Pump/Rough Skin whole-battle-
+aggregation bug, `[D4 CHEAP bundle]`) — reconfirmed via a standalone
+rerun to be that exact known flake, unrelated to this session's changes.
+
+**This closes NEW ITEM D and the full NEW ITEM A/B/C/D arc.** Remaining
+open items from the full-roster audit: the turn-order-splice family
+(items 5/8/11/12/13), Acupressure's ally-choice gap, and Lightning
+Rod/Storm Drain's attacker-ally redirect — none touched, all still
+flagged for future sessions.
+
+No commit made this session — per standing instruction, Rob commits.

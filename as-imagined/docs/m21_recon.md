@@ -427,31 +427,55 @@ Ordered by recommended priority, not by item number:
    session since it's inherited, unworsened behavior. New
    `scenes/battle/new_item_a_test.gd`/`.tscn`: 31/31 assertions. See
    `docs/decisions.md`'s `[NEW ITEM A]` entry for full Step 0 citations.
-3. **NEW ITEM D (severity CORRECTED/RAISED, 2026-07-16 scoping session —
-   see the dedicated section above): spread damage moves share ONE
-   accuracy roll across all targets, instead of each target getting its
-   own independent roll — CONFIRMED via source (not assumed) to be a
-   genuine divergence, not a simplification source also makes.**
+3. **NEW ITEM D — COMPLETE (implemented 2026-07-16, same-day follow-up to
+   the scoping session above).** Spread damage moves previously shared ONE
+   accuracy roll across all targets instead of each target getting its own
+   independent roll — CONFIRMED via source (not assumed) to have been a
+   genuine divergence, not a simplification source also makes.
    `CancelerAccuracyCheck` (`battle_move_resolution.c:2174-2260`) and the
    target-validity canceler (`battle_move_resolution.c:1960-2010`) both
-   loop and check accuracy/semi-invulnerability INDEPENDENTLY per target
-   in real source — this project's own single shared
-   `StatusManager.check_accuracy` call (`battle_manager.gd:2658`) is a
-   confirmed gap, not shared upstream behavior. Affects **59 currently-
-   implemented spread damage moves** (exact count, queried directly — not
-   the "~37" originally estimated). Neither `check_accuracy` nor
-   `_can_hit_semi_invulnerable` need logic changes (both already
-   per-target-capable); the gap is purely a call-site scoping issue, but
-   real surrounding bookkeeping (`move_missed`'s per-move-not-per-target
-   signal shape, `crashes_on_miss`'s unresolved partial-spread-miss
-   semantics, Blunder Policy's own per-target trigger point) needs its
-   own design pass first. **Flagged explicitly per this session's own
-   instruction — no firm priority assigned; awaiting Rob's input on
-   whether this becomes its own dedicated session, folds into the
-   turn-order-splice session (only a soft/thematic connection via Dragon
-   Darts), or is deprioritized.** See the dedicated "NEW ITEM D" section
-   above and `docs/decisions.md`'s `[NEW ITEM D scoping]` entry for the
-   full citation trail.
+   loop and check accuracy/semi-invulnerability INDEPENDENTLY per target in
+   real source. Step 0 (re-verified fresh, not trusted from the scoping
+   session) resolved every open question cleanly, with no genuine tangle
+   requiring a stop: crashes_on_miss never co-occurs with is_spread
+   (confirmed via direct source read of all 4 crash-on-miss moves — all
+   `.target=TARGET_SELECTED`); recoil_percent/drain_percent/is_rage/
+   is_recharge are all already gated on `damage > 0` inside
+   `_do_damaging_hit` (called once per target), so they compose correctly
+   for free; is_rollout/is_fury_cutter/is_steel_beam/is_rampage/is_uproar
+   also never co-occur with is_spread, so the pre-existing shared
+   miss-handling block (Rollout/Fury Cutter/Steel Beam/rampage-uproar
+   bookkeeping) is simply skipped for spread moves with nothing lost;
+   Dragon Darts' smart-target mechanism dispatches through the separate
+   `multi_hit` branch and was not touched. Implemented: `check_accuracy`
+   (already per-target-capable, including its own internal
+   semi-invulnerable check) is now called independently for each live
+   target inside the spread-dispatch loop (opponents and, if
+   `target_includes_ally`, the ally too), skipping `_do_damaging_hit` for
+   any target that misses; a new `move_missed_target(attacker, target,
+   reason)` signal fires per individual miss, while the existing
+   `move_missed` signal stays single-shot, firing only when EVERY live
+   target missed (preserving `_current_action_failed`'s "did my whole move
+   fail" semantics for Stomping Tantrum). Blunder Policy — a disclosed
+   simplification, not silently dropped — fires only on that same
+   "every target missed" threshold, via a new shared
+   `_apply_blunder_policy_on_miss` helper. Confirmed composes correctly
+   with M21's own item 2 fix (Shell Bell/Life Orb spread accumulation):
+   a missed target simply never contributes to `spread_total_damage`.
+   New `scenes/battle/new_item_d_test.gd`/`.tscn`: 18/18 assertions,
+   stable across 5 reruns, covering the fully-deterministic
+   semi-invulnerable+grounded independence case, partial-miss vs.
+   full-miss signal shapes, Blunder Policy's threshold, a 60-trial
+   statistical evasion-divergence proof, and Shell Bell accumulation
+   excluding a missed target. Test-audit-first pass found zero existing
+   assertions needed fixing (every existing spread-move test uses
+   `_force_hit` or a hardcoded accuracy=100, both of which behave
+   identically whether accuracy is checked once or once-per-target).
+   Two full regression sweeps (130 files, GRAND TOTAL 13317) both clean
+   except for the already-documented `m19a_gen1_test.tscn` flake
+   (Hydro Pump/Rough Skin, unrelated). See `docs/decisions.md`'s
+   `[NEW ITEM D]` entry for the full Step 0 citations and implementation
+   writeup.
 4. **Items 5 + 8 + 11 + 12 + 13 (turn-order-splice family)** — bundle into
    one dedicated session, per the original recon's own sequencing
    decision, reconfirmed still valid. All five touch `_turn_order`/
@@ -1026,37 +1050,22 @@ begins.
 NEW ITEM D can be picked up independently of all three, in any order,
 whenever prioritized.
 
-### Recommendation
+### Recommendation — RESOLVED, implemented 2026-07-16
 
-**This session's own findings raise the severity above the original
-NEW ITEM A framing** — the original entry described this as behavior
-"inherited... not something these 9 moves introduce or worsen," true on
-its face but incomplete: it left open whether source shares the same
-simplification. It does not. This is a confirmed, genuine divergence
-from source affecting 59 already-shipped moves, with at least one
-concrete scenario (spread move vs. one semi-invulnerable + one grounded
-target) that can produce a flatly wrong outcome (wrongly hitting a
-Dig/Fly user, or wrongly blocking a hit against a grounded ally-side
-target), not just a probability-distribution nuance.
-
-**Per this session's own explicit instruction: flagging this now and
-stopping for input, rather than assigning a firm priority tier or
-recommending immediate implementation scoping.** The three candidate
-placements, for reference:
-- **Its own dedicated session**: justified by the real scope (59
-  moves, a genuine architecture change, an unresolved partial-miss
-  question for `crashes_on_miss`) — probably the more honest framing
-  given the moderate-but-real complexity found here.
-- **Folded into the turn-order-splice session**: only a soft, thematic
-  connection (Dragon Darts' own per-hit-miss handling); would make that
-  session larger without a strong architectural reason to combine them.
-- **Deprioritized**: would leave a confirmed, source-divergent
-  correctness gap in 59 moves unaddressed indefinitely — not recommended
-  given the concrete semi-invulnerable scenario found above, but
-  ultimately a scope/priority call, not a technical one.
-
-Added to the recon doc's open-items list below, positioned by
-recommended priority pending your own input on which placement to take.
+Rob chose the "own dedicated session" placement (implemented the same day
+as this scoping session, as a same-day follow-up rather than a separately
+scheduled future session). Step 0's re-verification found every open
+question from this recon resolved cleanly with no genuine tangle — see
+the Triage item 3 entry above and `docs/decisions.md`'s `[NEW ITEM D]`
+entry for the full implementation writeup. The three candidate
+placements originally offered here (own session / fold into turn-order-
+splice / deprioritize) are preserved below for the historical record of
+what was actually decided:
+- **Its own dedicated session** — the option chosen.
+- **Folded into the turn-order-splice session**: not chosen; the
+  connection to Dragon Darts turned out to be exactly as soft as
+  flagged (zero actual coupling in the implementation).
+- **Deprioritized**: not chosen.
 
 ## Explicitly Out of Scope
 
@@ -1151,3 +1160,37 @@ recommended priority pending your own input on which placement to take.
   Sequencing" section above were updated in place to mark NEW ITEM C
   COMPLETE. See `docs/decisions.md`'s `[NEW ITEM C]` entry for the full
   Step 0 citations and implementation detail.
+- **2026-07-16, scoping session**: added the dedicated "NEW ITEM D —
+  Shared Accuracy Roll Architecture Gap" section, correcting and raising
+  the severity of NEW ITEM A's own byproduct finding above — confirmed
+  via source that this project's single shared accuracy check per move
+  (rather than per target) is a genuine divergence from source, not a
+  shared simplification. Recon-only, no code/tests, per explicit
+  instruction — stopped short of a firm priority recommendation and
+  flagged for Rob's own input on placement.
+- **2026-07-16, same-day implementation session**: NEW ITEM D
+  implemented in full. Step 0 re-verified fresh (not trusted from the
+  scoping session) and resolved every open design question cleanly —
+  crashes_on_miss/rollout/fury-cutter/steel-beam/rampage/uproar all
+  confirmed to never co-occur with `is_spread`; recoil/drain/rage/
+  recharge mechanics confirmed already gated inside `_do_damaging_hit`
+  per-target, needing no changes. `StatusManager.check_accuracy` (already
+  per-target-capable, semi-invulnerable check included) is now called
+  independently per live target inside the spread-dispatch loop; a new
+  `move_missed_target` signal reports individual misses while the
+  existing `move_missed` signal stays single-shot for the "every target
+  missed" case; Blunder Policy fires only on that same full-miss
+  threshold (disclosed simplification, via a new shared
+  `_apply_blunder_policy_on_miss` helper). New
+  `scenes/battle/new_item_d_test.gd`/`.tscn`: 18/18 assertions, stable
+  across 5 reruns. Test-audit-first pass found zero stale assertions
+  (every existing spread-move test already used `_force_hit` or a
+  hardcoded accuracy=100). Two full regression sweeps (130 files, GRAND
+  TOTAL 13317) both clean except the already-documented
+  `m19a_gen1_test.tscn` flake. The "Triage / Sequencing" section and the
+  "Recommendation" subsection above were both updated in place to mark
+  NEW ITEM D COMPLETE. See `docs/decisions.md`'s `[NEW ITEM D]` entry for
+  the full Step 0 citations and implementation detail. This closes the
+  entire NEW ITEM A/B/C/D arc — remaining open items are the
+  turn-order-splice family, Acupressure's ally-choice gap, and Lightning
+  Rod/Storm Drain's attacker-ally redirect.

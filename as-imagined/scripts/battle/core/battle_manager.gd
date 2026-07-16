@@ -129,6 +129,14 @@ signal move_skipped(pokemon: BattlePokemon, reason: String)  # sleep/freeze/para
 signal confusion_self_hit(pokemon: BattlePokemon, damage: int)
 signal pokemon_thawed(pokemon: BattlePokemon)  # freeze cleared mid-battle
 signal move_missed(attacker: BattlePokemon, reason: String)  # "accuracy", "immune", or "semi_invulnerable"
+# [NEW ITEM D] Per-target miss within a spread move's own dispatch loop —
+# `move_missed` above stays single-shot (fired once, only if EVERY live
+# target in a spread use missed, preserving `_current_action_failed`'s
+# existing "did my whole move fail" semantics for Stomping Tantrum et al.).
+# This signal fires once per INDIVIDUAL target that missed, alongside
+# whichever targets in the same use still landed normally — see
+# docs/m21_recon.md's "NEW ITEM D" section for the full source citation.
+signal move_missed_target(attacker: BattlePokemon, target: BattlePokemon, reason: String)
 signal stat_stage_changed(target: BattlePokemon, stat_idx: int, actual_change: int)
 signal move_effect_failed(target: BattlePokemon, reason: String)  # "stat_limit", "immune", "already_status"
 signal secondary_applied(target: BattlePokemon, effect: int)  # MoveData.SE_* value
@@ -2655,64 +2663,71 @@ func _phase_move_execution() -> void:
 	# M18j: Zoom Lens needs to know whether the TARGET has already acted this
 	# turn — resolved via the same _turn_order/_current_actor_index position
 	# tracking _is_last_to_move already established for Analytic ([M17n-5]).
-	var m18c_accuracy_hit: bool = StatusManager.check_accuracy(
-			attacker, defender, move, _force_hit, ng_active, _effective_weather(),
-			_has_target_already_acted(defender))
-	attacker.micle_boost_active = false
-	if not m18c_accuracy_hit:
-		# Source: SetSameMoveTurnValues, case EFFECT_ROLLOUT (L4899): increment requires
-		#   IsAnyTargetAffected() — a miss resets the consecutive-hit counter to 0.
-		if move.is_rollout:
-			attacker.rollout_turns = 0
-		# [D4 Bundle 5] Fury Cutter — same reset-on-miss shape as Rollout above.
-		if move.is_fury_cutter:
-			attacker.fury_cutter_counter = 0
-		# [D4 Bundle 5] Steel Beam — unconditional self-recoil fires even on a
-		# missed hit (see MoveData.is_steel_beam's own doc comment).
-		if move.is_steel_beam:
-			_apply_max_hp_50_recoil(attacker, ng_active)
-		# [M19-rampage] A miss does NOT cancel a CONTINUING rampage/Uproar lock —
-		# the counter still decrements and (rampage only) still self-confuses on
-		# schedule regardless of whether this turn's hit connected. A first-use
-		# miss never sets the lock at all (only reached here if already locked
-		# from an earlier turn's successful hit). Source: MoveEndRampage/the
-		# Uproar end-of-turn decrement both run independent of accuracy outcome.
-		if (move.is_rampage or move.is_uproar) and attacker.locked_move == move:
-			if move.is_rampage:
-				attacker.rampage_turns -= 1
-				if attacker.rampage_turns <= 0:
-					attacker.locked_move = null
-					var confused_on_miss: bool = StatusManager.try_apply_confusion(
-							attacker, null, ng_active)
-					if confused_on_miss:
-						secondary_applied.emit(attacker, MoveData.SE_CONFUSION)
-					rampage_lock_ended.emit(attacker, move, confused_on_miss)
-			else:
-				attacker.uproar_turns -= 1
-				if attacker.uproar_turns <= 0:
-					attacker.locked_move = null
-					rampage_lock_ended.emit(attacker, move, false)
-		move_missed.emit(attacker, "accuracy")
-		# [M19-recoil-on-miss] An accuracy-roll miss (or a semi-invulnerable
-		# dodge — both report "accuracy" from this same site) is one of the 4
-		# "unaffected" reasons that trigger crash damage.
-		if move.crashes_on_miss:
-			_apply_crash_damage(attacker, ng_active)
-		# M18r: Blunder Policy — +2 Speed on the holder when its own move misses
-		# via THIS accuracy check specifically. OHKO moves never reach this point
-		# at all (move.is_ohko returns early at the OHKO block above, L1098), so
-		# no separate exclusion check is needed here — it's structural, matching
-		# source's `moveEffect != EFFECT_OHKO` guard by construction rather than
-		# by an explicit runtime check.
-		if ItemManager.holds_blunder_policy(attacker, ng_active):
-			var bp_actual: int = StatusManager.apply_stat_change(
-					attacker, BattlePokemon.STAGE_SPEED, 2, null, ng_active)
-			if bp_actual != 0:
-				stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPEED, bp_actual)
-				_consume_item(attacker)
-		_current_actor_index += 1
-		_set_phase(BattlePhase.FAINT_CHECK)
-		return
+	# [NEW ITEM D] This single shared check only ever applies to the ONE
+	# default `defender` — for a spread move (is_spread, doubles/multi-target)
+	# it is skipped entirely here and replaced by an independent per-target
+	# check inside the spread-dispatch loop further down (mirroring source's
+	# real CancelerAccuracyCheck, itself a per-battler loop — see
+	# docs/m21_recon.md's "NEW ITEM D" section for the full citation trail).
+	# Every move-level mechanic this block's own miss branch handles
+	# (Rollout/Fury Cutter/Steel Beam/rampage-uproar/crashes_on_miss) is
+	# confirmed via gen_moves.py to never co-occur with is_spread, so
+	# skipping this whole block for spread moves loses none of that
+	# bookkeeping — it's structurally unreachable for them either way.
+	if not (move.is_spread and _active_per_side > 1):
+		var m18c_accuracy_hit: bool = StatusManager.check_accuracy(
+				attacker, defender, move, _force_hit, ng_active, _effective_weather(),
+				_has_target_already_acted(defender))
+		attacker.micle_boost_active = false
+		if not m18c_accuracy_hit:
+			# Source: SetSameMoveTurnValues, case EFFECT_ROLLOUT (L4899): increment requires
+			#   IsAnyTargetAffected() — a miss resets the consecutive-hit counter to 0.
+			if move.is_rollout:
+				attacker.rollout_turns = 0
+			# [D4 Bundle 5] Fury Cutter — same reset-on-miss shape as Rollout above.
+			if move.is_fury_cutter:
+				attacker.fury_cutter_counter = 0
+			# [D4 Bundle 5] Steel Beam — unconditional self-recoil fires even on a
+			# missed hit (see MoveData.is_steel_beam's own doc comment).
+			if move.is_steel_beam:
+				_apply_max_hp_50_recoil(attacker, ng_active)
+			# [M19-rampage] A miss does NOT cancel a CONTINUING rampage/Uproar lock —
+			# the counter still decrements and (rampage only) still self-confuses on
+			# schedule regardless of whether this turn's hit connected. A first-use
+			# miss never sets the lock at all (only reached here if already locked
+			# from an earlier turn's successful hit). Source: MoveEndRampage/the
+			# Uproar end-of-turn decrement both run independent of accuracy outcome.
+			if (move.is_rampage or move.is_uproar) and attacker.locked_move == move:
+				if move.is_rampage:
+					attacker.rampage_turns -= 1
+					if attacker.rampage_turns <= 0:
+						attacker.locked_move = null
+						var confused_on_miss: bool = StatusManager.try_apply_confusion(
+								attacker, null, ng_active)
+						if confused_on_miss:
+							secondary_applied.emit(attacker, MoveData.SE_CONFUSION)
+						rampage_lock_ended.emit(attacker, move, confused_on_miss)
+				else:
+					attacker.uproar_turns -= 1
+					if attacker.uproar_turns <= 0:
+						attacker.locked_move = null
+						rampage_lock_ended.emit(attacker, move, false)
+			move_missed.emit(attacker, "accuracy")
+			# [M19-recoil-on-miss] An accuracy-roll miss (or a semi-invulnerable
+			# dodge — both report "accuracy" from this same site) is one of the 4
+			# "unaffected" reasons that trigger crash damage.
+			if move.crashes_on_miss:
+				_apply_crash_damage(attacker, ng_active)
+			# M18r: Blunder Policy — +2 Speed on the holder when its own move misses
+			# via THIS accuracy check specifically. OHKO moves never reach this point
+			# at all (move.is_ohko returns early at the OHKO block above, L1098), so
+			# no separate exclusion check is needed here — it's structural, matching
+			# source's `moveEffect != EFFECT_OHKO` guard by construction rather than
+			# by an explicit runtime check.
+			_apply_blunder_policy_on_miss(attacker, ng_active)
+			_current_actor_index += 1
+			_set_phase(BattlePhase.FAINT_CHECK)
+			return
 
 	# ── Roar / Whirlwind ─────────────────────────────────────────────────────
 	# Source: data/moves_info.h MOVE_ROAR / MOVE_WHIRLWIND :: .effect = EFFECT_ROAR
@@ -3357,21 +3372,64 @@ func _phase_move_execution() -> void:
 			# dealt is accumulated into `spread_total_damage`; the single
 			# combined heal/recoil is applied once, after every target
 			# (including the ally, if TARGET_FOES_AND_ALLY) has been hit.
+			# [NEW ITEM D] Independent per-target accuracy (and, via
+			# StatusManager.check_accuracy's own internal check, semi-
+			# invulnerable-bypass) roll for EACH live target — source's real
+			# CancelerAccuracyCheck is itself a per-battler loop
+			# (battle_move_resolution.c L2174-2260), calling
+			# DoesMoveMissTarget independently per battler and reading each
+			# target's OWN evasion stage; this project previously checked
+			# accuracy exactly once against the single default `defender`
+			# before this whole spread/single split, applying that one
+			# result to every live target (strict all-or-nothing). A miss
+			# here excludes only THIS target from the hit — every other
+			# target in the same spread use still resolves normally. See
+			# docs/m21_recon.md's "NEW ITEM D" section for the full citation
+			# trail (59 currently-implemented spread damage moves affected).
 			var spread_total_damage: int = 0
 			var spread_hits_landed: int = 0
+			var spread_any_target_hit: bool = false
 			for _fi in range(_active_per_side):
 				var tgt: BattlePokemon = _combatants[opp_start + _fi]
 				if tgt.fainted or tgt.current_hp <= 0:
 					continue
+				var tgt_hit: bool = StatusManager.check_accuracy(
+						attacker, tgt, move, _force_hit, ng_active, _effective_weather(),
+						_has_target_already_acted(tgt))
+				if not tgt_hit:
+					move_missed_target.emit(attacker, tgt, "accuracy")
+					continue
+				spread_any_target_hit = true
 				var _dmg: int = _do_damaging_hit(attacker, tgt, move, spread_dmg_reduction, hh_boost,
 						_dmg_power_override, true, _me_first_boost_active)
 				spread_total_damage += _dmg
 				spread_hits_landed += 1
 			if ally_included:
-				var _ally_dmg: int = _do_damaging_hit(attacker, ally, move, spread_dmg_reduction, hh_boost,
-						_dmg_power_override, true, _me_first_boost_active)
-				spread_total_damage += _ally_dmg
-				spread_hits_landed += 1
+				var ally_hit: bool = StatusManager.check_accuracy(
+						attacker, ally, move, _force_hit, ng_active, _effective_weather(),
+						_has_target_already_acted(ally))
+				if not ally_hit:
+					move_missed_target.emit(attacker, ally, "accuracy")
+				else:
+					spread_any_target_hit = true
+					var _ally_dmg: int = _do_damaging_hit(attacker, ally, move, spread_dmg_reduction, hh_boost,
+							_dmg_power_override, true, _me_first_boost_active)
+					spread_total_damage += _ally_dmg
+					spread_hits_landed += 1
+			# M18c: Micle Berry consumed once per move use, after every
+			# target's own roll has had a chance to benefit from it —
+			# mirrors the single-target path's identical unconditional clear.
+			attacker.micle_boost_active = false
+			# [NEW ITEM D] Preserves `_current_action_failed`'s existing "did
+			# my whole move fail" semantics (Stomping Tantrum's own timer)
+			# for the one case with no per-target analogue: EVERY live
+			# target missed. A partial hit (some targets connected) is not
+			# treated as an overall failure — matching source, where a
+			# spread move with mixed per-target outcomes has no single
+			# "the move missed" flag at all.
+			if not spread_any_target_hit:
+				move_missed.emit(attacker, "accuracy")
+				_apply_blunder_policy_on_miss(attacker, ng_active)
 			if spread_total_damage > 0:
 				var spread_shell_bell: int = ItemManager.shell_bell_heal(attacker, spread_total_damage, ng_active)
 				if spread_shell_bell > 0:
@@ -8176,6 +8234,25 @@ func _apply_crash_damage(attacker: BattlePokemon, ng_active: bool) -> void:
 	if crash > 0:
 		attacker.current_hp = max(0, attacker.current_hp - crash)
 		crash_damage.emit(attacker, crash)
+
+
+# M18r: Blunder Policy — +2 Speed on the holder when its own move misses via
+# the accuracy check. Extracted into its own function so the single-target
+# miss path and [NEW ITEM D]'s spread-move "every target missed" path can
+# both call it without duplicating the item-lookup/stat-change/consume
+# sequence. Disclosed simplification for the spread case: real source's own
+# per-target trigger point for this item was flagged in the NEW ITEM D recon
+# as needing its own dedicated design pass (docs/m21_recon.md) — this project
+# fires it only when a spread move's accuracy roll misses EVERY live target
+# (the same "did my whole move fail" threshold `_current_action_failed`
+# already uses for Stomping Tantrum), not per individual missed target.
+func _apply_blunder_policy_on_miss(attacker: BattlePokemon, ng_active: bool) -> void:
+	if ItemManager.holds_blunder_policy(attacker, ng_active):
+		var bp_actual: int = StatusManager.apply_stat_change(
+				attacker, BattlePokemon.STAGE_SPEED, 2, null, ng_active)
+		if bp_actual != 0:
+			stat_stage_changed.emit(attacker, BattlePokemon.STAGE_SPEED, bp_actual)
+			_consume_item(attacker)
 
 
 # [D4 Bundle 5] Steel Beam(724) — EFFECT_MAX_HP_50_RECOIL. UNCONDITIONALLY
