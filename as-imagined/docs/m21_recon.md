@@ -427,26 +427,31 @@ Ordered by recommended priority, not by item number:
    session since it's inherited, unworsened behavior. New
    `scenes/battle/new_item_a_test.gd`/`.tscn`: 31/31 assertions. See
    `docs/decisions.md`'s `[NEW ITEM A]` entry for full Step 0 citations.
-3. **NEW ITEM D (newly discovered in the NEW ITEM A fix session): spread
-   damage moves share ONE accuracy roll across all targets, instead of
-   each target getting its own independent roll.** Traced
-   `StatusManager.check_accuracy`'s single call site
-   (`battle_manager.gd:2658`) and confirmed it fires exactly once, against
-   the single default `defender`, before the spread-vs-single split — the
-   SAME shared roll then gates whether ANY target in the spread loop gets
-   hit at all. Source's own spread moves can hit one opponent and miss the
-   other in the same use; this project's cannot. Affects every spread
-   damage move already shipped (~37+ moves: Icy Wind, Snarl, Blizzard,
-   Discharge, Magnitude, etc.), not just the 9 from NEW ITEM A — a real,
-   moderately high-value architecture fix (would need `check_accuracy`
-   called once per target inside the spread loop instead of once upfront,
-   with careful attention to what "the move missed" even means when some
-   targets would have been hit and others not), but out of scope for a
-   flag-flip session and not attempted. Secondary effects (stat changes,
-   flinch, status infliction) are UNAFFECTED by this finding — those are
-   already correctly rolled independently per target inside
-   `_do_damaging_hit`. See `docs/decisions.md`'s `[NEW ITEM A]` entry for
-   the full citation.
+3. **NEW ITEM D (severity CORRECTED/RAISED, 2026-07-16 scoping session —
+   see the dedicated section above): spread damage moves share ONE
+   accuracy roll across all targets, instead of each target getting its
+   own independent roll — CONFIRMED via source (not assumed) to be a
+   genuine divergence, not a simplification source also makes.**
+   `CancelerAccuracyCheck` (`battle_move_resolution.c:2174-2260`) and the
+   target-validity canceler (`battle_move_resolution.c:1960-2010`) both
+   loop and check accuracy/semi-invulnerability INDEPENDENTLY per target
+   in real source — this project's own single shared
+   `StatusManager.check_accuracy` call (`battle_manager.gd:2658`) is a
+   confirmed gap, not shared upstream behavior. Affects **59 currently-
+   implemented spread damage moves** (exact count, queried directly — not
+   the "~37" originally estimated). Neither `check_accuracy` nor
+   `_can_hit_semi_invulnerable` need logic changes (both already
+   per-target-capable); the gap is purely a call-site scoping issue, but
+   real surrounding bookkeeping (`move_missed`'s per-move-not-per-target
+   signal shape, `crashes_on_miss`'s unresolved partial-spread-miss
+   semantics, Blunder Policy's own per-target trigger point) needs its
+   own design pass first. **Flagged explicitly per this session's own
+   instruction — no firm priority assigned; awaiting Rob's input on
+   whether this becomes its own dedicated session, folds into the
+   turn-order-splice session (only a soft/thematic connection via Dragon
+   Darts), or is deprioritized.** See the dedicated "NEW ITEM D" section
+   above and `docs/decisions.md`'s `[NEW ITEM D scoping]` entry for the
+   full citation trail.
 4. **Items 5 + 8 + 11 + 12 + 13 (turn-order-splice family)** — bundle into
    one dedicated session, per the original recon's own sequencing
    decision, reconfirmed still valid. All five touch `_turn_order`/
@@ -785,6 +790,273 @@ explicitly, not guessed here:
   non-Dark target, or does source treat the whole cast as failed?
 
 None of these are answered here — flagging them explicitly is the deliverable, per this session's own explicit instruction not to resolve NEW ITEM B's design question in a recon-only pass.
+
+## NEW ITEM D — Shared Accuracy Roll Architecture Gap
+
+Added 2026-07-16, scoping-only recon session — no code changes, no
+tests. Found as a byproduct of NEW ITEM A's own Step 0 investigation
+(`docs/decisions.md`'s `[NEW ITEM A]` entry), which observed that this
+project's damage-move dispatch checks accuracy exactly once, against the
+single default target, before the spread/single split. That entry's own
+framing characterized this as "inherited, pre-existing behavior... not
+something these 9 moves introduce or worsen" — true as far as it goes,
+but that framing did NOT verify whether source ITSELF shares this
+simplification. **This session did that verification, and the answer is
+no — source resolves both accuracy and semi-invulnerability completely
+independently per target, via two separate per-target loops. This
+project's single shared check is a genuine, confirmed divergence from
+source, not a simplification source also makes.** This corrects and
+raises the severity of the original framing — flagged explicitly per
+this session's own instruction, and this document stops short of a
+firm implementation recommendation as a result (see "Recommendation"
+below).
+
+### Step 0: source's real mechanism (re-derived, not assumed)
+
+**1. The ordinary accuracy roll is genuinely per-target.** `Cmd_accuracycheck`
+(`battle_script_commands.c:1058-1093`) explicitly documents itself as
+"Only used for non damage moves (damaging moves are handled in move
+resolution)" — damage-move accuracy is NOT resolved by this function at
+all. The real mechanism is `CancelerAccuracyCheck`
+(`battle_move_resolution.c:2174-2260`), which contains its own explicit
+loop:
+
+```c
+while (gBattleStruct->eventState.atkCancelerBattler < gBattlersCount)
+{
+    cv->battlerDef = GetTargetBySlot(cv->battlerAtk, gBattleStruct->eventState.atkCancelerBattler);
+    gBattleStruct->eventState.atkCancelerBattler++;
+    if (ShouldSkipFailureCheckOnBattler(cv->battlerAtk, cv->battlerDef, TRUE))
+        continue;
+    if (DoesMoveMissTarget(cv))
+    {
+        gBattleStruct->moveResultFlags[cv->battlerDef] |= MOVE_RESULT_MISSED;
+        ...
+    }
+    ...
+}
+```
+
+This iterates every battler slot, calling `DoesMoveMissTarget(cv)`
+independently for each one (a freshly-set `cv->battlerDef` per
+iteration), and stores the result PER BATTLER
+(`moveResultFlags[cv->battlerDef]`). `DoesMoveMissTarget`
+(`battle_util.c:10437-10453`) computes `GetTotalAccuracy(battlerAtk,
+battlerDef, ...)`, which reads `gBattleMons[battlerDef].statStages[STAT_EVASION]`
+— the DEFENDER's own evasion stage — confirming the odds genuinely
+differ per target when their evasion (or accuracy-affecting abilities/
+items/weather) differ.
+
+**2. The semi-invulnerable bypass is ALSO genuinely per-target**, via a
+SEPARATE canceler loop (the target-validity/`CancelerSetTargets`-style
+function, `battle_move_resolution.c:1960-2010`), structurally identical
+in shape:
+
+```c
+while (gBattleStruct->eventState.atkCancelerBattler < MAX_BATTLERS_COUNT)
+{
+    cv->battlerDef = GetTargetBySlot(cv->battlerAtk, gBattleStruct->eventState.atkCancelerBattler);
+    gBattleStruct->eventState.atkCancelerBattler++;
+    ...
+    else if (!CanBreakThroughSemiInvulnerablity(cv->battlerAtk, cv->battlerDef, ...))
+    {
+        gBattleStruct->moveResultFlags[cv->battlerDef] |= MOVE_RESULT_FAILED;
+        ...
+    }
+    ...
+}
+```
+
+Each target's own `semiInvulnerable` state is checked independently.
+**Answering the task's own Fissure-vs-Dig-user-plus-grounded-target
+question directly**: source would correctly fail against the Dig user
+specifically (unless the move carries the matching
+`damagesUnderground`/etc. bypass) while resolving completely normally
+against the grounded target in the same spread use — two independent
+outcomes in one move, exactly as the "obvious" per-target shape
+suggests, confirmed rather than assumed.
+
+### Current project behavior: precisely traced, not just characterized
+
+`StatusManager.check_accuracy` (`status_manager.gd:766-`) is called
+EXACTLY ONCE in `_phase_move_execution`, against the single default
+`defender` resolved before the spread/single split
+(`battle_manager.gd:2658`, `m18c_accuracy_hit`). If it returns `false`
+(miss), `move_missed.emit(...)` fires and the function returns
+immediately — **the entire move, spread or not, never reaches the
+damage-dispatch section at all; zero targets take damage.** If it
+returns `true` (hit), execution falls through into the "Damaging move"
+section, and — for a spread move — every live opposing target (+ally,
+if `target_includes_ally`) is unconditionally passed to
+`_do_damaging_hit()`, which calls `DamageCalculator.calculate(...)`
+directly with **no further accuracy or semi-invulnerable roll of any
+kind** (confirmed by reading `_do_damaging_hit`'s full body,
+`battle_manager.gd:8943-9020` — it goes straight to damage calculation).
+
+**Concretely, this means the current behavior is a strict binary: either
+the single shared roll succeeds and EVERY live target takes damage
+(subject only to their own type-immunity/ability-absorb/Substitute
+checks, which — confirmed separately — ARE already correctly per-target
+inside `_do_damaging_hit`), or it fails and NO target takes damage at
+all.** There is currently no code path, anywhere, that can produce a
+"hit one target, miss the other" outcome for a spread damage move.
+
+**Important: neither `check_accuracy` nor `_can_hit_semi_invulnerable`
+themselves need any logic changes to become correct per-target** — both
+are already stateless, generic functions taking `attacker`/`defender`/
+`move` as plain parameters (`status_manager.gd:766`, `922`), already
+correctly reading the DEFENDER's own evasion stage, semi-invulnerable
+state, etc. The gap is purely a CALL-SITE problem: the function is
+invoked once, at the wrong scope, instead of once per target inside the
+spread loop.
+
+### Exact affected-move count (queried directly, not estimated)
+
+**59 currently-implemented moves** carry `is_spread=True` with a
+damage category (not the "~37" originally estimated during NEW ITEM A —
+that estimate predated NEW ITEM A/C's own additions, which grew the
+`is_spread` pool by 22 moves since): Razor Wind(13), Acid(51), Surf(57),
+Blizzard(59), Razor Leaf(75), Earthquake(89), Self-Destruct(120),
+Swift(129), Bubble(145), Explosion(153), Rock Slide(157), Powder
+Snow(181), Icy Wind(196), Magnitude(222), Twister(239), Heat Wave(257),
+Eruption(284), Hyper Voice(304), Air Cutter(314), Water Spout(323),
+Muddy Water(330), Discharge(435), Lava Plume(436), Sludge Wave(482),
+Incinerate(510), Struggle Bug(522), Bulldoze(523), Electroweb(527),
+Searing Shot(545), Relic Song(547), Glaciate(549), Snarl(555), Parabolic
+Charge(570), Petal Blizzard(572), Disarming Voice(574), Boomburst(586),
+Diamond Storm(591), Dazzling Gleam(605), Land's Wrath(616), Origin
+Pulse(618), Precipice Blades(619), Sparkling Aria(627), Clanging
+Scales(654), Brutal Swing(656), Shell Trap(658), Splishy Splash(677),
+Breaking Swipe(712), Overdrive(714), Burning Jealousy(735), Dragon
+Energy(748), Fiery Wrath(750), Glacial Lance(752), Astral Barrage(753),
+Springtide Storm(759), Bleakwind Storm(774), Wildbolt Storm(775),
+Sandsear Storm(776), Mortal Spin(794), Matcha Gotcha(830).
+
+### Player-visible impact: concrete scenarios, not theoretical
+
+**The high-frequency case (affects potentially any of the 59, whenever
+two opposing Pokémon have different accuracy-relevant state)**: if the
+two opposing Pokémon in a doubles battle have DIFFERENT effective
+evasion (one used Double Team/Minimize, holds an evasion item like
+Bright Powder, has Sand Veil/Snow Cloak active in the matching weather,
+etc.) or different effective accuracy modifiers on the attacker's own
+side interacting differently per-target (rare, but e.g. Foresight/
+Miracle Eye/Odor Sleuth applied to only one of the two), source would
+roll independently and could hit one while missing the other. This
+project's single roll (against whichever target happens to be resolved
+as the "default" — this project's own existing targeting-resolution
+logic, not examined further in this recon) makes that divergence
+architecturally impossible: the outcome is always shared.
+
+**The lower-frequency but higher-severity case**: a spread move used
+against one semi-invulnerable target (mid-Fly/Dig/Dive) and one grounded
+target in the same use. Depending on which of the two the project's
+existing default-target-resolution logic happens to pick as `defender`
+for the single shared check:
+- If the GROUNDED target is picked: the shared roll passes normally
+  (grounded targets have no special miss condition), and the
+  semi-invulnerable target INCORRECTLY also takes damage — since there is
+  no separate semi-invulnerable check for it at all in the spread branch.
+- If the SEMI-INVULNERABLE target is picked and the move lacks the
+  matching bypass flag (`damages_underground`/`damages_airborne`/
+  `damages_underwater`): the shared check correctly fails for THAT
+  target, but the move then returns immediately (per the "no further
+  code runs on a miss" behavior above) — INCORRECTLY blocking the hit
+  against the grounded target too, which should have connected normally.
+
+This second scenario was not empirically reproduced in this recon
+session (scoping-only, no test code was written), but is a direct,
+confident conclusion from tracing the code paths above — not a guess.
+
+### Blast-radius assessment: contained core, moderate surrounding bookkeeping
+
+**The core fix is contained**: wrap the existing `check_accuracy` call
+(and, before it, the semi-invulnerable/target-validity check) in a loop
+inside the spread-dispatch branch, calling both once per live target
+using that target's own state, skipping the `_do_damaging_hit` call
+for any target that individually misses — mechanically similar in
+shape to the existing per-target Substitute/type-immunity checks this
+project's damage dispatch already does correctly. Neither underlying
+check function needs new logic.
+
+**The surrounding bookkeeping is where real complexity lives**, and
+needs its own design pass before implementation, not assumed clean:
+- `move_missed.emit(attacker, "accuracy")` currently fires once per
+  whole-move-miss; would need to become per-target-scoped, and every
+  downstream consumer of that signal (tests, any future UI) would need
+  re-auditing for the new multi-fire-per-move shape.
+- `move.crashes_on_miss` (Jump Kick-family crash damage) currently
+  triggers once per move-use on a miss. Source's own real semantics for
+  a PARTIAL spread miss (some targets hit, one missed) is not verified
+  in this recon — a genuine open question requiring its own Step 0 before
+  any implementation.
+- Blunder Policy's own miss-triggered consumption
+  (`gBattleStruct->blunderPolicy`) is set inside the SAME per-target loop
+  in source (confirmed above) — this project's own equivalent would need
+  the same per-target scoping, another piece of bookkeeping to migrate.
+- Secondary effects (flinch, stat-lowering, status infliction) are
+  ALREADY correctly per-target (confirmed via NEW ITEM B's own
+  investigation, reused here) — the fix does NOT need to touch that
+  layer, since a per-target hit/miss upstream would simply gate whether
+  `_do_damaging_hit` (which already correctly does per-target secondary
+  effects) is called for that target at all.
+
+**Overall: a real, moderate-effort, well-contained architecture task —
+not a one-line fix, but not "deep rework of shared dispatch state"
+either.** The core mechanical change is small; the bookkeeping
+migration (particularly `crashes_on_miss`'s own partial-miss semantics)
+is the part that needs its own dedicated Step 0 before implementation
+begins.
+
+### Cross-reference: independent of other deferred items
+
+- **Turn-order-splice trio** (Dragon Darts, Trick Room × Pursuit,
+  Round/Shell Trap/Quash): no direct coupling. Dragon Darts' own
+  "smart redirect" (item 5) is thematically adjacent — it also reacts to
+  a target's own hit missing — but it's a sequential single-target
+  redirect mechanic (`TARGET_SMART`), not simultaneous multi-target
+  accuracy resolution; a future NEW ITEM D implementation might
+  incidentally share some "did this specific hit miss" plumbing with
+  Dragon Darts' own fix, but neither blocks the other.
+- **Acupressure's ally-choice gap**: unrelated — a target-CHOICE
+  mechanism, not accuracy resolution. No coupling.
+- **Lightning Rod/Storm Drain attacker-ally redirect**: unrelated —
+  ability-based redirect targeting, not accuracy. No coupling.
+
+NEW ITEM D can be picked up independently of all three, in any order,
+whenever prioritized.
+
+### Recommendation
+
+**This session's own findings raise the severity above the original
+NEW ITEM A framing** — the original entry described this as behavior
+"inherited... not something these 9 moves introduce or worsen," true on
+its face but incomplete: it left open whether source shares the same
+simplification. It does not. This is a confirmed, genuine divergence
+from source affecting 59 already-shipped moves, with at least one
+concrete scenario (spread move vs. one semi-invulnerable + one grounded
+target) that can produce a flatly wrong outcome (wrongly hitting a
+Dig/Fly user, or wrongly blocking a hit against a grounded ally-side
+target), not just a probability-distribution nuance.
+
+**Per this session's own explicit instruction: flagging this now and
+stopping for input, rather than assigning a firm priority tier or
+recommending immediate implementation scoping.** The three candidate
+placements, for reference:
+- **Its own dedicated session**: justified by the real scope (59
+  moves, a genuine architecture change, an unresolved partial-miss
+  question for `crashes_on_miss`) — probably the more honest framing
+  given the moderate-but-real complexity found here.
+- **Folded into the turn-order-splice session**: only a soft, thematic
+  connection (Dragon Darts' own per-hit-miss handling); would make that
+  session larger without a strong architectural reason to combine them.
+- **Deprioritized**: would leave a confirmed, source-divergent
+  correctness gap in 59 moves unaddressed indefinitely — not recommended
+  given the concrete semi-invulnerable scenario found above, but
+  ultimately a scope/priority call, not a technical one.
+
+Added to the recon doc's open-items list below, positioned by
+recommended priority pending your own input on which placement to take.
 
 ## Explicitly Out of Scope
 

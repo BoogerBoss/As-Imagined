@@ -26179,3 +26179,139 @@ Rod/Storm Drain's attacker-ally redirect — none touched here, all
 flagged for future dedicated sessions.
 
 No commit made — per standing instruction, Rob commits.
+
+## [NEW ITEM D scoping] Shared Accuracy Roll Architecture Gap — recon
+only, 2026-07-16
+
+Scoping-only session, no code changes, no tests, per explicit
+instruction. Found as a byproduct of NEW ITEM A's own Step 0 (this
+file's own `[NEW ITEM A]` entry above), which observed this project's
+damage-move dispatch checks accuracy exactly once, against the single
+default target, before the spread/single split — characterized at the
+time as "inherited, pre-existing behavior... not something these 9
+moves introduce or worsen." **That framing was incomplete: it never
+verified whether source itself shares the same simplification. This
+session did, and found it does not.**
+
+### Source's real mechanism (re-derived, cited directly)
+
+Confirmed both accuracy and semi-invulnerability are resolved via
+DEDICATED PER-TARGET LOOPS in source, not a single shared check:
+
+- `Cmd_accuracycheck` (`battle_script_commands.c:1058-1093`) explicitly
+  self-documents "Only used for non damage moves (damaging moves are
+  handled in move resolution)" — damage-move accuracy is NOT this
+  function's job.
+- The real mechanism, `CancelerAccuracyCheck`
+  (`battle_move_resolution.c:2174-2260`), contains its own
+  `while (gBattleStruct->eventState.atkCancelerBattler < gBattlersCount)`
+  loop, calling `DoesMoveMissTarget(cv)` independently per battler slot,
+  storing the result per-battler
+  (`gBattleStruct->moveResultFlags[cv->battlerDef] |= MOVE_RESULT_MISSED`).
+  `DoesMoveMissTarget` (`battle_util.c:10437-10453`) computes
+  `GetTotalAccuracy`, which reads the DEFENDER's own
+  `statStages[STAT_EVASION]` — confirming genuinely divergent odds when
+  two targets' evasion/accuracy-modifying state differs.
+- Semi-invulnerability is checked in a SEPARATE canceler
+  (`battle_move_resolution.c:1960-2010`), structurally identical in
+  shape — its own per-target loop calls
+  `CanBreakThroughSemiInvulnerablity(cv->battlerAtk, cv->battlerDef,
+  ...)` independently per target, setting `MOVE_RESULT_FAILED` only for
+  the specific battler that fails the check.
+
+**Direct answer to the Fissure-vs-Dig-user-plus-grounded-target
+question**: source resolves these completely independently — the Dig
+user correctly fails (unless the move has a matching bypass flag) while
+the grounded target resolves normally, in the SAME spread use.
+
+### Current project behavior (precisely traced)
+
+`StatusManager.check_accuracy` is called EXACTLY ONCE
+(`battle_manager.gd:2658`, against the single default `defender`,
+BEFORE the spread/single split). A miss returns immediately — the whole
+move, spread or not, never reaches damage dispatch, zero targets take
+damage. A hit falls through into the spread-dispatch branch, where
+EVERY live target is unconditionally passed to `_do_damaging_hit()`
+(confirmed via its full body, `battle_manager.gd:8943-9020`) with **no
+further accuracy or semi-invulnerable check of any kind**. Current
+behavior is therefore a strict binary: all live targets hit, or none —
+no code path can currently produce a partial "hit one, miss the other"
+outcome.
+
+**Neither `check_accuracy` nor `_can_hit_semi_invulnerable`
+(`status_manager.gd:766`, `922`) need logic changes** — both are
+already stateless functions taking `attacker`/`defender`/`move` as
+plain parameters, already correctly reading the defender's own state.
+The gap is a pure call-site scoping issue: called once, at the wrong
+scope, instead of once per target inside the spread loop.
+
+### Exact affected-move count
+
+**59 currently-implemented `is_spread=True` damage-category moves**,
+queried directly against `gen_moves.py`'s current state (not the "~37"
+originally estimated — that estimate predated NEW ITEM A/C's own
+additions, which grew the pool by 22 moves). Full list in
+`docs/m21_recon.md`'s own "NEW ITEM D" section.
+
+### Player-visible impact
+
+Two concrete scenario classes, not theoretical:
+1. **High-frequency**: any two opposing Pokémon with different
+   evasion/accuracy-modifying state (Double Team stacks, Sand Veil/Snow
+   Cloak in the right weather, an evasion-boosting held item on only
+   one) — source could hit one and miss the other; this project's
+   single shared roll makes that architecturally impossible, the
+   outcome is always shared.
+2. **Lower-frequency, higher-severity**: a spread move against one
+   semi-invulnerable target (mid-Fly/Dig/Dive) and one grounded target.
+   Depending on which the project's existing default-target-resolution
+   logic happens to pick as the checked `defender`, this can EITHER
+   wrongly let the move hit the semi-invulnerable target (if the
+   grounded one gets checked instead), OR wrongly block the hit against
+   the grounded target too (if the semi-invulnerable one gets checked
+   and the move lacks the matching bypass flag). Not empirically
+   reproduced this session (recon-only, no test code written) — a
+   direct conclusion from the traced code paths, not a guess.
+
+### Blast-radius assessment
+
+Core mechanical fix is CONTAINED (wrap the existing, already-correct
+`check_accuracy`/`_can_hit_semi_invulnerable` calls in a per-target loop
+inside the spread branch, skip `_do_damaging_hit` for any target that
+individually misses — mirroring the shape this project's per-target
+Substitute/type-immunity checks already use). Surrounding bookkeeping
+needs its own design pass first, not assumed clean: `move_missed`'s
+per-move (not per-target) signal shape; `move.crashes_on_miss`'s
+unresolved semantics for a PARTIAL spread miss (source's own real
+behavior here was not verified this session); Blunder Policy's
+per-target trigger point in source
+(`gBattleStruct->blunderPolicy`, set inside the SAME per-target
+accuracy loop). Secondary effects (flinch, stat-lowering, status
+infliction) are confirmed UNAFFECTED — already correctly per-target
+inside `_do_damaging_hit`, reused from NEW ITEM B's own investigation.
+
+**Overall: a real, moderate-effort, well-contained architecture task —
+not a one-line fix, not a deep rework of shared dispatch state either.**
+
+### Cross-reference
+
+Independent of the turn-order-splice trio (Dragon Darts/Trick Room ×
+Pursuit/Round-Shell Trap-Quash), Acupressure's ally-choice gap, and
+Lightning Rod/Storm Drain's attacker-ally redirect. Only a soft,
+thematic overlap with Dragon Darts' own "did this specific hit miss"
+concept (a sequential single-target redirect, not simultaneous
+multi-target accuracy) — no hard coupling either way.
+
+### Recommendation — flagged, not decided
+
+**This session's own findings raise the severity above the original
+NEW ITEM A framing.** Per explicit instruction, this is flagged
+plainly rather than assigned a firm priority or scoped for
+implementation. Three candidate placements identified (own dedicated
+session; folded into the turn-order-splice session; deprioritized) —
+see `docs/m21_recon.md`'s own "NEW ITEM D" section for the full
+reasoning on each. Awaiting Rob's input before any future session
+scopes implementation.
+
+No implementation, no tests, no commit this session — recon only, per
+standing instruction.
