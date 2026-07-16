@@ -11,3 +11,4 @@ power = 60
 pp = 20
 makes_contact = true
 is_spread = true
+target_includes_ally = true

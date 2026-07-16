@@ -13,3 +13,4 @@ pp = 10
 secondary_effect = 9
 secondary_chance = 10
 is_spread = true
+target_includes_ally = true

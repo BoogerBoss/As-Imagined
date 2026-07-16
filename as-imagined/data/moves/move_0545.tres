@@ -13,3 +13,4 @@ secondary_effect = 1
 secondary_chance = 30
 is_spread = true
 ballistic_move = true
+target_includes_ally = true

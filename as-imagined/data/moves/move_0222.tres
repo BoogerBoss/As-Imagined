@@ -12,3 +12,4 @@ pp = 30
 damages_underground = true
 is_spread = true
 is_magnitude = true
+target_includes_ally = true

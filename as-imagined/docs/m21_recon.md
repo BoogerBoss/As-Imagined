@@ -456,15 +456,33 @@ Ordered by recommended priority, not by item number:
    CHOICE, not a missing flag or dispatch). Low urgency (one move, no
    other move shares this exact `TARGET_USER_OR_ALLY` shape), but flagged
    here as its own item since it doesn't fit cleanly into A/B/C above.
-6. **NEW ITEM C (TARGET_FOES_AND_ALLY 18-move ally-hit sweep, including
-   Teeter Dance's cross-reference to item B)** — lower priority, needs a
-   test-audit-first pass before flipping flags. File last, per this
-   session's own instruction. Unchanged in scope by the full-roster audit
-   (it was already the complete `TARGET_FOES_AND_ALLY` list) — the audit
-   just re-confirmed it and organized the 13 affected moves (11 ally-only
-   + Surf/Earthquake's combined fix) more precisely. Surf/Earthquake's own
-   `is_spread` half is now done (NEW ITEM A) — only the ally-hit half
-   remains for those two.
+6. **NEW ITEM C (TARGET_FOES_AND_ALLY full-roster ally-hit sweep)** —
+   **COMPLETE**, 2026-07-16. Fresh Step 0 re-derivation (not copied from
+   this recon's own earlier count) confirmed the corrected worklist: 13
+   moves needed `target_includes_ally` (Magnitude, Discharge, Lava
+   Plume, Sludge Wave, Bulldoze, Searing Shot, Parabolic Charge, Petal
+   Blizzard, Boomburst, Sparkling Aria, Brutal Swing, plus Surf/
+   Earthquake — the latter two closing the gap NEW ITEM A had
+   deliberately left open), 3 were already fully correct (Self-Destruct/
+   Explosion/Teeter Dance, verified not assumed), 4 remain unimplemented.
+   A real, specifically-checked interaction (not assumed safe):
+   `AbilityManager.pressure_pp_cost` structurally cannot count the ally
+   (its own loop only ever scans the opposing side), confirmed via
+   source that Pressure's PP surcharge is genuinely opponent-only by
+   design even for a `TARGET_FOES_AND_ALLY` move — `m17n10_test.gd`'s own
+   Magnitude-vs-Pressure doubles test reconfirmed unaffected. Parabolic
+   Charge's drain reconfirmed genuinely per-hit, explicitly NOT
+   converted to the Shell-Bell accumulate-then-heal-once pattern. **Also
+   found and fixed a real, expected regression in this arc's own
+   `new_item_a_test.gd`**: its own A.10/A.11/H.03/I.03 had explicitly
+   asserted Surf/Earthquake's OLD "ally not yet hit" boundary — updated
+   in place to assert the new correct behavior. New
+   `scenes/battle/new_item_c_test.gd`/`.tscn`: 30/30 assertions. See
+   `docs/decisions.md`'s `[NEW ITEM C]` entry for full Step 0 citations.
+   **This closes the full NEW ITEM A/B/C arc** — both halves (`is_spread`
+   from NEW ITEM A, `target_includes_ally` from this session) are now
+   done for Surf/Earthquake, and all 13 previously-open moves are fully
+   correct.
 7. **Lightning Rod/Storm Drain attacker-ally redirect** — lowest priority,
    a rare edge case, not part of the original numbered inventory.
 8. **Stale documentation (3 items)** — **RESOLVED** in the same follow-up
@@ -553,8 +571,8 @@ budget speccing unbuilt moves.
 | Not yet implemented (name-only, no further investigation) | 25 | See per-category breakdown below |
 | **Implemented, fully correct (no gap)** | 45 (corrected from 44 — see below) | 39 from `TARGET_BOTH`/`TARGET_FOES_AND_ALLY` + Helping Hand/Aromatic Mist/Coaching/Howl/Perish Song (5) + Venom Drench (1, corrected — see below) |
 | **Structural gap — dispatch unreachable for this move's category (NEW ITEM B)** | 8 (corrected from 9 — **COMPLETE**, see Triage section) | STATUS-category `TARGET_BOTH`/`TARGET_FOES_AND_ALLY` moves whose ONLY path was the now-fixed generic dispatch. Venom Drench(599) was originally counted here but corrected out: it has its own pre-existing `is_venom_drench` branch that already loops all live opponents independently of `is_spread` — it was never actually broken, just carrying a vestigial flag. See `docs/decisions.md`'s `[NEW ITEM B]` entry. |
-| **Data-only fix — `is_spread` missing entirely, damage-category (NEW ITEM A)** | 9 | 7 `TARGET_BOTH`-only + 2 (Surf, Earthquake) that ALSO need the ally-inclusion fix below |
-| **Ally-inclusion mismatch — `is_spread` already correct, `target_includes_ally` missing (NEW ITEM C)** | 13 | 11 `TARGET_BOTH`/no-is_spread-issue + Surf + Earthquake (the same 2 moves counted in the row above, needing both fixes together) |
+| **Data-only fix — `is_spread` missing entirely, damage-category (NEW ITEM A)** | 9 — **COMPLETE**, 2026-07-15 | 7 `TARGET_BOTH`-only + 2 (Surf, Earthquake) that ALSO need the ally-inclusion fix below |
+| **Ally-inclusion mismatch — `is_spread` already correct, `target_includes_ally` missing (NEW ITEM C)** | 13 — **COMPLETE**, 2026-07-16 | 11 `TARGET_BOTH`/no-is_spread-issue + Surf + Earthquake (the same 2 moves counted in the row above, needing both fixes together) |
 | **Newly found, distinct gap: Acupressure's ally-choice not modeled** | 1 | See below — a genuinely new, self-contained finding |
 | **`TARGET_DEPENDS` — structurally sound by construction** | 10 implemented / 1 not | See below — no gap found |
 | **`TARGET_OPPONENT` (Me First) — no gap found** | 1 | Already correctly implemented |
@@ -637,15 +655,16 @@ Make It Rain, Thousand Arrows, Thousand Waves.
 by M21 item 4, `is_spread=True, target_includes_ally=True`.
 
 **Ally-inclusion mismatch only — `is_spread` already correct, needs
-`target_includes_ally` (NEW ITEM C, 11):** Boomburst(586), Brutal
-Swing(656), Bulldoze(523), Discharge(435), Lava Plume(436),
-Magnitude(222), Parabolic Charge(570), Petal Blizzard(572), Searing
-Shot(545), Sludge Wave(482), Sparkling Aria(627).
+`target_includes_ally` (NEW ITEM C, 11) — ALL 11 FIXED, 2026-07-16:**
+Boomburst(586), Brutal Swing(656), Bulldoze(523), Discharge(435), Lava
+Plume(436), Magnitude(222), Parabolic Charge(570), Petal Blizzard(572),
+Searing Shot(545), Sludge Wave(482), Sparkling Aria(627).
 
-**Needs BOTH the `is_spread` fix AND the ally-inclusion fix (2):**
+**Needs BOTH the `is_spread` fix AND the ally-inclusion fix (2) — BOTH
+NOW FIXED (is_spread 2026-07-15, target_includes_ally 2026-07-16):**
 Surf(57), Earthquake(89) — the same two moves NEW ITEM A already flagged
-as missing `is_spread` entirely; here they additionally need
-`target_includes_ally=True` once `is_spread` is fixed. These are the
+as missing `is_spread` entirely; here they additionally needed
+`target_includes_ally=True` once `is_spread` was fixed. These were the
 highest-value fixes in this whole audit given how frequently both moves
 are used.
 
@@ -842,3 +861,21 @@ None of these are answered here — flagging them explicitly is the deliverable,
   same recurring gap class this script has hit before; fixed the same
   way, confirmed back to 0. See `docs/decisions.md`'s `[NEW ITEM A]`
   entry for the full Step 0 citations.
+- **2026-07-16**: implemented NEW ITEM C (`TARGET_FOES_AND_ALLY`
+  full-roster ally-hit sweep), closing the full NEW ITEM A/B/C arc. Fresh
+  Step 0 re-derivation confirmed the corrected 13-move worklist (11
+  damage-only moves + Surf/Earthquake, the latter two closing NEW ITEM
+  A's own deferred gap) and reconfirmed Self-Destruct/Explosion/Teeter
+  Dance already fully correct. A specifically-checked interaction (not
+  assumed safe): `AbilityManager.pressure_pp_cost` structurally cannot
+  count the ally, confirmed via source that Pressure's PP surcharge is
+  genuinely opponent-only by design. Parabolic Charge's drain
+  reconfirmed genuinely per-hit, explicitly not converted to a Shell-
+  Bell-style accumulation. Found and fixed a real, expected regression in
+  this arc's own `new_item_a_test.gd` (its A.10/A.11/H.03/I.03 had
+  asserted Surf/Earthquake's now-superseded "ally not yet hit" boundary).
+  New `scenes/battle/new_item_c_test.gd`/`.tscn`: 30/30 assertions. Both
+  the "Full-Roster Spread/Status-Target Audit" section and the "Triage /
+  Sequencing" section above were updated in place to mark NEW ITEM C
+  COMPLETE. See `docs/decisions.md`'s `[NEW ITEM C]` entry for the full
+  Step 0 citations and implementation detail.

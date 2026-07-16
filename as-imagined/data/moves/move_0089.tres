@@ -11,3 +11,4 @@ power = 100
 pp = 10
 damages_underground = true
 is_spread = true
+target_includes_ally = true

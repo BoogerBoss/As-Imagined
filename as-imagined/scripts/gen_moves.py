@@ -232,14 +232,12 @@ MOVES = [
     # [NEW ITEM A] is_spread=True: real source .target=TARGET_FOES_AND_ALLY
     # (config-gated B_UPDATED_MOVE_DATA>=GEN_4, true here) — was missing
     # entirely since this move predates the M14a/M14b spread infrastructure.
-    # target_includes_ally (the ally-hit half) is DELIBERATELY NOT set here
-    # — that's NEW ITEM C's own test-audit-first sweep, deferred. After this
-    # fix, Surf correctly hits both opponents in doubles but NOT the user's
-    # own ally — an intermediate, disclosed state, not a final one. See
+    # [NEW ITEM C] target_includes_ally=True: the ally-hit half, closing the
+    # gap the NEW ITEM A entry above originally deferred. See
     # docs/m21_recon.md's "Full-Roster Spread/Status-Target Audit" section.
     {"id":  57, "name": "Surf",
      "type": TYPE_WATER, "category": SPEC, "power": 90, "accuracy": 100, "pp": 15,
-     "damages_underwater": True, "is_spread": True},
+     "damages_underwater": True, "is_spread": True, "target_includes_ally": True},
 
     # Ice Beam: 10% freeze secondary
     {"id":  58, "name": "Ice Beam",
@@ -509,12 +507,12 @@ MOVES = [
     #   Source: .effect=EFFECT_EARTHQUAKE; .damagesUnderground=TRUE (B_UPDATED>=GEN_2)
     #   Hits Dig users on their charge turn; deals double damage (M8+ scope).
     # [NEW ITEM A] is_spread=True: real source .target=TARGET_FOES_AND_ALLY,
-    # was missing entirely. target_includes_ally (the ally-hit half)
-    # deliberately NOT set — deferred to NEW ITEM C's own test-audit-first
-    # sweep, same as Surf above.
+    # was missing entirely.
+    # [NEW ITEM C] target_includes_ally=True: the ally-hit half, closing the
+    # gap the entry above originally deferred, same as Surf above.
     {"id":  89, "name": "Earthquake",
      "type": TYPE_GROUND, "category": PHYS, "power": 100, "accuracy": 100, "pp": 10,
-     "damages_underground": True, "is_spread": True},
+     "damages_underground": True, "is_spread": True, "target_includes_ally": True},
 
     # ── Tier 4: unique / one-off mechanics ────────────────────────────────────
     #
@@ -769,9 +767,12 @@ MOVES = [
     #   Source: moves_info.h MOVE_MAGNITUDE: .effect=EFFECT_MAGNITUDE, .power=1 (placeholder;
     #   overridden every use), .accuracy=100, .pp=30, .target=TARGET_FOES_AND_ALLY,
     #   .damagesUnderground=TRUE. Power table rolled in CalculateMagnitudeDamage.
+    # [NEW ITEM C] target_includes_ally=True: real source .target=
+    # TARGET_FOES_AND_ALLY, already is_spread but missing the ally-hit half.
     {"id": 222, "name": "Magnitude",
      "type": TYPE_GROUND, "category": PHYS, "power": 1, "accuracy": 100, "pp": 30,
-     "damages_underground": True, "is_spread": True, "is_magnitude": True},
+     "damages_underground": True, "is_spread": True, "is_magnitude": True,
+     "target_includes_ally": True},
 
     # ── M16c: Tier C move effects (screens) ───────────────────────────────────
 
@@ -1414,9 +1415,10 @@ MOVES = [
      "makes_contact": True, "critical_hit_stage": 1},
 
     # Petal Blizzard(572)  Grass/Phys/90/100/15, is_spread
+    # [NEW ITEM C] target_includes_ally: real .target=TARGET_FOES_AND_ALLY.
     {"id": 572, "name": "Petal Blizzard",
      "type": TYPE_GRASS, "category": PHYS, "power": 90, "accuracy": 100, "pp": 15,
-     "is_spread": True},
+     "is_spread": True, "target_includes_ally": True},
 
     # Disarming Voice(574)  Fairy/Spec/40/0/15, sound_move, is_spread
     {"id": 574, "name": "Disarming Voice",
@@ -1428,9 +1430,10 @@ MOVES = [
      "type": TYPE_FAIRY, "category": SPEC, "power": 40, "accuracy": 100, "pp": 30},
 
     # Boomburst(586)  Normal/Spec/140/100/10, sound_move, is_spread
+    # [NEW ITEM C] target_includes_ally: real .target=TARGET_FOES_AND_ALLY.
     {"id": 586, "name": "Boomburst",
      "type": TYPE_NORMAL, "category": SPEC, "power": 140, "accuracy": 100, "pp": 10,
-     "sound_move": True, "is_spread": True},
+     "sound_move": True, "is_spread": True, "target_includes_ally": True},
 
     # Dazzling Gleam(605)  Fairy/Spec/80/100/10, is_spread
     {"id": 605, "name": "Dazzling Gleam",
@@ -1475,9 +1478,10 @@ MOVES = [
      "makes_contact": True},
 
     # Brutal Swing(656)  Dark/Phys/60/100/20, makes_contact, is_spread
+    # [NEW ITEM C] target_includes_ally: real .target=TARGET_FOES_AND_ALLY.
     {"id": 656, "name": "Brutal Swing",
      "type": TYPE_DARK, "category": PHYS, "power": 60, "accuracy": 100, "pp": 20,
-     "makes_contact": True, "is_spread": True},
+     "makes_contact": True, "is_spread": True, "target_includes_ally": True},
 
     # Accelerock(663)  Rock/Phys/40/100/20, makes_contact, priority
     {"id": 663, "name": "Accelerock",
@@ -1908,13 +1912,17 @@ MOVES = [
      "type": TYPE_NORMAL, "category": PHYS, "power": 90, "accuracy": 85, "pp": 20,
      "makes_contact": True, "secondary_effect": SE_CONFUSION, "secondary_chance": 20},
 
+    # [NEW ITEM C] target_includes_ally: real .target=TARGET_FOES_AND_ALLY.
     {"id": 435, "name": "Discharge",
      "type": TYPE_ELECTRIC, "category": SPEC, "power": 80, "accuracy": 100, "pp": 15,
-     "is_spread": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 30},
+     "is_spread": True, "secondary_effect": SE_PARALYSIS, "secondary_chance": 30,
+     "target_includes_ally": True},
 
+    # [NEW ITEM C] target_includes_ally: real .target=TARGET_FOES_AND_ALLY.
     {"id": 436, "name": "Lava Plume",
      "type": TYPE_FIRE, "category": SPEC, "power": 80, "accuracy": 100, "pp": 15,
-     "is_spread": True, "secondary_effect": SE_BURN, "secondary_chance": 30},
+     "is_spread": True, "secondary_effect": SE_BURN, "secondary_chance": 30,
+     "target_includes_ally": True},
 
     {"id": 440, "name": "Cross Poison",
      "type": TYPE_POISON, "category": PHYS, "power": 70, "accuracy": 100, "pp": 20,
@@ -1936,9 +1944,11 @@ MOVES = [
      "type": TYPE_ROCK, "category": PHYS, "power": 150, "accuracy": 80, "pp": 5,
      "makes_contact": True, "recoil_percent": 50},
 
+    # [NEW ITEM C] target_includes_ally: real .target=TARGET_FOES_AND_ALLY.
     {"id": 482, "name": "Sludge Wave",
      "type": TYPE_POISON, "category": SPEC, "power": 95, "accuracy": 100, "pp": 10,
-     "is_spread": True, "secondary_effect": SE_POISON, "secondary_chance": 10},
+     "is_spread": True, "secondary_effect": SE_POISON, "secondary_chance": 10,
+     "target_includes_ally": True},
 
     {"id": 503, "name": "Scald",
      "type": TYPE_WATER, "category": SPEC, "power": 80, "accuracy": 100, "pp": 15,
@@ -1972,9 +1982,11 @@ MOVES = [
      "type": TYPE_NORMAL, "category": PHYS, "power": 120, "accuracy": 100, "pp": 15,
      "makes_contact": True, "recoil_percent": 25},
 
+    # [NEW ITEM C] target_includes_ally: real .target=TARGET_FOES_AND_ALLY.
     {"id": 545, "name": "Searing Shot",
      "type": TYPE_FIRE, "category": SPEC, "power": 100, "accuracy": 100, "pp": 5,
-     "ballistic_move": True, "is_spread": True, "secondary_effect": SE_BURN, "secondary_chance": 30},
+     "ballistic_move": True, "is_spread": True, "secondary_effect": SE_BURN,
+     "secondary_chance": 30, "target_includes_ally": True},
 
     {"id": 547, "name": "Relic Song",
      "type": TYPE_NORMAL, "category": SPEC, "power": 75, "accuracy": 100, "pp": 10,
@@ -2003,9 +2015,17 @@ MOVES = [
      "type": TYPE_ICE, "category": PHYS, "power": 85, "accuracy": 90, "pp": 10,
      "secondary_effect": SE_FLINCH, "secondary_chance": 30},
 
+    # [NEW ITEM C] target_includes_ally: real .target=TARGET_FOES_AND_ALLY.
+    # Re-confirmed the drain mechanism needs NO change: drain_percent is
+    # applied inside _do_damaging_hit (damage * drain_percent / 100), called
+    # once per target in the spread loop — the ally is simply one more
+    # target in that same existing loop, healing the attacker off the
+    # ally's own hit just like any opponent's, matching source's real
+    # per-hit (not accumulate-then-heal-once) drain behavior.
     {"id": 570, "name": "Parabolic Charge",
      "type": TYPE_ELECTRIC, "category": SPEC, "power": 65, "accuracy": 100, "pp": 20,
-     "is_spread": True, "drain_percent": 50, "healing_move": True},
+     "is_spread": True, "drain_percent": 50, "healing_move": True,
+     "target_includes_ally": True},
 
     {"id": 577, "name": "Draining Kiss",
      "type": TYPE_FAIRY, "category": SPEC, "power": 50, "accuracy": 100, "pp": 10,
@@ -2601,10 +2621,15 @@ MOVES = [
     {"id":  510, "name": "Incinerate",
      "type": TYPE_FIRE, "category": SPEC, "power": 60, "accuracy": 100, "pp": 15,
      "is_spread": True, "is_incinerate": True},
+    # [NEW ITEM C] target_includes_ally: real .target=TARGET_FOES_AND_ALLY.
+    # Re-confirmed its own burn-cure (is_sparkling_aria) reads `target`
+    # inside _do_damaging_hit (called once per target in the spread loop),
+    # so it correctly extends to cure the ally's own burn too if the ally
+    # is hit and burned — no special-casing needed.
     {"id":  627, "name": "Sparkling Aria",
      "type": TYPE_WATER, "category": SPEC, "power": 90, "accuracy": 100, "pp": 10,
      "sound_move": True, "ignores_substitute": True, "is_spread": True,
-     "is_sparkling_aria": True},
+     "is_sparkling_aria": True, "target_includes_ally": True},
     {"id":  638, "name": "Throat Chop",
      "type": TYPE_DARK, "category": PHYS, "power": 80, "accuracy": 100, "pp": 15,
      "makes_contact": True, "secondary_effect": SE_THROAT_CHOP, "secondary_chance": 100},
@@ -3920,9 +3945,10 @@ MOVES = [
     {"id":  512, "name": "Acrobatics",
      "type": TYPE_FLYING, "category": PHYS, "power": 55, "accuracy": 100, "pp": 15,
      "makes_contact": True, "is_acrobatics": True},
+    # [NEW ITEM C] target_includes_ally: real .target=TARGET_FOES_AND_ALLY.
     {"id":  523, "name": "Bulldoze",
      "type": TYPE_GROUND, "category": PHYS, "power": 60, "accuracy": 100, "pp": 20,
-     "is_spread": True,
+     "is_spread": True, "target_includes_ally": True,
      "stat_change_stat": STAGE_SPEED, "stat_change_amount": -1, "secondary_chance": 100},
     {"id":  562, "name": "Belch",
      "type": TYPE_POISON, "category": SPEC, "power": 120, "accuracy": 90, "pp": 10,

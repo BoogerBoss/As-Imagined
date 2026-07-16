@@ -12,3 +12,4 @@ power = 140
 pp = 10
 sound_move = true
 is_spread = true
+target_includes_ally = true

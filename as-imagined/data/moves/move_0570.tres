@@ -13,3 +13,4 @@ pp = 20
 drain_percent = 50
 is_spread = true
 healing_move = true
+target_includes_ally = true

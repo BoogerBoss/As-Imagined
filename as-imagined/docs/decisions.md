@@ -26009,3 +26009,173 @@ Regression: `ability_test` (64/64), `d4_bundle2_test` (66/66),
 `item_registry_test` (309/309) — all unchanged, 0 failures.
 
 No commit made — per standing instruction, Rob commits.
+
+## [NEW ITEM C] TARGET_FOES_AND_ALLY full-roster ally-hit sweep — Step 0 +
+implementation, 2026-07-16
+
+Closes NEW ITEM C from `docs/m21_recon.md`'s "Full-Roster Spread/
+Status-Target Audit" section (and the original item 4 follow-up from
+M21's own bundle-safe session).
+
+### Step 0
+
+1. **Re-derived the full 20-move `TARGET_FOES_AND_ALLY` list fresh**, via
+   a from-scratch `moves_info.h` parse (not copied from any prior
+   session's count): SURF, EARTHQUAKE, SELF_DESTRUCT, EXPLOSION,
+   MAGNITUDE, TEETER_DANCE, DISCHARGE, LAVA_PLUME, SLUDGE_WAVE,
+   SYNCHRONOISE, BULLDOZE, SEARING_SHOT, PARABOLIC_CHARGE,
+   PETAL_BLIZZARD, BOOMBURST, SPARKLING_ARIA, BRUTAL_SWING, MIND_BLOWN,
+   MISTY_EXPLOSION, CORROSIVE_GAS — exactly 20, matching the earlier
+   recon's own count. Cross-checked each against CURRENT `gen_moves.py`
+   state (not assumed from the recon doc's older snapshot) and produced
+   the corrected worklist:
+   - **13 confirmed still open** (needed `target_includes_ally`):
+     Magnitude(222), Discharge(435), Lava Plume(436), Sludge Wave(482),
+     Bulldoze(523), Searing Shot(545), Parabolic Charge(570), Petal
+     Blizzard(572), Boomburst(586), Sparkling Aria(627), Brutal
+     Swing(656), plus **Surf(57)/Earthquake(89)** — both already gained
+     `is_spread=True` from this arc's own NEW ITEM A session but were
+     deliberately left without `target_includes_ally`, confirmed still
+     missing it (not assumed).
+   - **3 already fully correct, confirmed not just assumed**:
+     Self-Destruct(120)/Explosion(153) (M21's own bundle-safe session)
+     and Teeter Dance(298) (this arc's own NEW ITEM B session — verified
+     it already carries BOTH `is_spread=True` AND
+     `target_includes_ally=True`, zero further work needed).
+   - **4 not yet implemented**, no gap, noted only: Synchronoise, Mind
+     Blown, Misty Explosion, Corrosive Gas.
+2. **Re-confirmed `GetTargetDamageModifier`'s flat `UQ_4_12(0.75)` fresh**
+   (`battle_util.c` L7220-7229) — applies identically whether
+   `GetMoveTargetCount` returns 2 (opponents only) or >=3 (opponents +
+   ally), for at least one of the 11 damage moves, not just re-citing
+   the earlier Self-Destruct/Explosion finding. Also re-confirmed
+   `GetMoveTargetCount`'s own `TARGET_FOES_AND_ALLY` case
+   (`battle_util.c` L5993-5996) sums three terms — both opponents plus
+   `BATTLE_PARTNER(battlerAtk)` (the user's own ally).
+3. **Per-move safety check for all 11 damage moves** (lighter than NEW
+   ITEM A's own per-move audit, since these are already spread-flagged
+   and proven to go through the correct dispatch branch — the only real
+   question is whether extending the target SET itself is safe):
+   - **Magnitude(222)**'s own `is_magnitude` power-roll
+     (`battle_manager.gd:2253-2254`, `_dmg_power_override =
+     _roll_magnitude_power()`) is computed ONCE via `_dmg_power_override`
+     before the spread/single split — the exact same shape already
+     proven safe for Eruption in NEW ITEM A. No conflict.
+   - **Sparkling Aria(627)**'s own `is_sparkling_aria` burn-cure
+     (`battle_manager.gd:9391`, `if damage > 0 and move.is_sparkling_aria
+     and target.status == BattlePokemon.STATUS_BURN:`) reads the
+     per-target `target` parameter INSIDE `_do_damaging_hit`, which is
+     called once per target in the spread loop — confirming it
+     correctly extends to cure the ally's own burn too, once the ally
+     becomes a real target. A genuine win, not just "no conflict."
+   - The other 9 (Discharge/Lava Plume/Sludge Wave/Bulldoze/Searing
+     Shot/Petal Blizzard/Boomburst/Brutal Swing, plus Surf/Earthquake
+     already checked in NEW ITEM A) carry no other move-specific
+     dispatch flags — pure data fixes.
+4. **A real, specifically-checked interaction, not assumed safe**:
+   `AbilityManager.pressure_pp_cost`'s own spread-move branch
+   (`ability_manager.gd:1803-1812`) loops ONLY over the opposing side's
+   combatants (`opp_start = (1 - attacker_side) * active_per_side`) — it
+   never reads `target_includes_ally` at all and structurally cannot
+   count the ally, regardless of this session's changes. This matters
+   because `m17n10_test.gd`'s own S6.03 test ("Magnitude vs two Pressure
+   holders in doubles costs 3 PP") uses a real doubles battle — verified
+   this test remains valid: the test's own ally fixture doesn't hold
+   Pressure, AND `pressure_pp_cost` couldn't count it even if it did.
+   Re-confirmed via source that Pressure's PP surcharge is genuinely
+   opponent-only by design, even for a `TARGET_FOES_AND_ALLY` move that
+   also hits the ally — a real, deliberate asymmetry in source itself,
+   not a gap this session's own fix needs to (or should) touch.
+5. **Parabolic Charge(570) guardrail, explicitly re-confirmed per
+   instruction**: the drain (`damage * move.drain_percent / 100`,
+   `battle_manager.gd:9211-9212`) is computed INSIDE `_do_damaging_hit`,
+   called once per target in the spread loop. Adding the ally via
+   `target_includes_ally` means this block simply runs ONE MORE TIME
+   (once for the ally's own hit), healing the attacker off the ally's
+   own damage taken independently — exactly matching source's real
+   per-hit drain behavior. **This is explicitly NOT the Shell-Bell-style
+   accumulate-then-heal-once pattern and must never become one** — no
+   change to the drain mechanism itself was made or is needed.
+
+Nothing here required stopping to ask before implementing — every
+per-move check traced back to "no conflict" or "a genuine, correctly-
+composing win." Proceeded to implementation in the same session.
+
+### Implementation
+
+- `gen_moves.py`: added `target_includes_ally=True` to all 13 confirmed-
+  open moves (the 11 damage-only moves plus Surf/Earthquake). Teeter
+  Dance was NOT touched, confirmed already fully correct from NEW ITEM
+  B. Regenerated all 717 `.tres` files.
+- Re-ran `scripts/gen_move_status_table.py`. Counts confirmed UNCHANGED
+  as expected: **717 implemented / 217 excluded / 0 residual / 0
+  needs-manual-review** (the needs-manual-review count is back to 0
+  after NEW ITEM A's own allowlist fix — no new drift introduced by this
+  session's `target_includes_ally` additions, since that field is now
+  correctly allowlisted).
+
+### Test-audit-first pass (before flipping any flag)
+
+Checked every existing reference to these 13 moves across the test
+suite (9 files: `d1_double_power_status_test`, `d4_bundle6_test`,
+`m16b_test`, `m17b_test`, `m17n10_test`, `m19_bucket1_test`,
+`m19_bucket2_test`, `m19_bucket4_cheap_singles_test`,
+`m19_secondary_stat_test`). Found exactly ONE genuine doubles-context
+usage — `m17n10_test.gd`'s S6.03 (Magnitude vs two Pressure holders,
+`start_battle_doubles`) — confirmed UNAFFECTED per the Step 0 point 4
+finding above (the ally fixture in that test doesn't hold Pressure, and
+`pressure_pp_cost` structurally can't count the ally regardless). Every
+other reference was a plain singles battle. **Also found and fixed a
+real, expected regression in this arc's OWN `new_item_a_test.gd`**: its
+own A.10/A.11 (data integrity) and H.03/I.03 (full-battle) assertions
+had explicitly asserted Surf/Earthquake's OLD "ally not yet hit"
+intermediate boundary from the immediately-preceding session — updated
+in place (and the two full-battle test functions renamed, dropping
+"_but_not_ally" from their names) to assert the NEW, fully-correct
+behavior instead. This is the exact "a genuine correctness fix
+legitimately invalidates a stale test assumption" pattern this
+project's own testing conventions document, not a bug in either
+session's original design.
+
+### Testing
+
+New `scenes/battle/new_item_c_test.gd`/`.tscn`: 30/30 assertions, stable
+across 4 reruns, passed clean on the first run — data integrity for all
+13 newly-fixed moves plus explicit confirmation that Self-Destruct/
+Explosion/Teeter Dance needed no changes; Discharge confirmed hitting
+BOTH opponents AND the ally in a real 3-target doubles dispatch (the
+core fix); the 0.75x spread-reduction modifier confirmed still applying
+correctly in the 3-target case (a 3-target hit dealing strictly less
+damage than a comparable 1-target hit); Parabolic Charge's drain
+confirmed genuinely per-hit — exactly 3 separate `drain_heal` events
+fire (not one combined event), and the total heal amount equals the SUM
+of each individual hit's own 50% drain including the ally's, not a
+combined-then-halved total; Sparkling Aria confirmed curing the ally's
+own burn too, not just the opponent's; Pressure's PP-cost calculation
+re-verified directly (`AbilityManager.pressure_pp_cost` called
+directly) to still return exactly 3 for a 2-Pressure-holder-opponent
+scenario even with a THIRD Pressure holder now sitting in the ally
+slot — proving the interaction checked in Step 0 holds; a negative
+control confirming Rock Slide (from NEW ITEM A, no
+`target_includes_ally`) still correctly excludes the ally; a singles
+negative control.
+
+Regression: `d1_double_power_status_test` (60/60), `d4_bundle6_test`
+(90/90), `m16b_test` (55/55), `m17b_test` (109/109), `m17n10_test`
+(59/59, the Pressure-PP-cost origin suite — confirmed unaffected),
+`m19_bucket1_test` (736/736), `m19_bucket2_test` (2760/2760),
+`m19_bucket4_cheap_singles_test` (46/46), `m19_secondary_stat_test`
+(1754/1754), `new_item_a_test` (31/31, fixed and reconfirmed),
+`new_item_b_test` (29/29), `m21_test` (33/33), `doubles_test` (54/54),
+`move_smoke_test` (717/717), `item_registry_test` (309/309) — all
+unchanged (or fixed-and-reconfirmed for `new_item_a_test`), 0 failures.
+
+**This closes out the full NEW ITEM A/B/C arc from
+`docs/m21_recon.md`'s "Full-Roster Spread/Status-Target Audit" section.**
+Remaining open items from that recon: NEW ITEM D (the shared-accuracy-
+roll architecture finding from NEW ITEM A), the turn-order-splice family
+(items 5/8/11/12/13), Acupressure's ally-choice gap, and Lightning
+Rod/Storm Drain's attacker-ally redirect — none touched here, all
+flagged for future dedicated sessions.
+
+No commit made — per standing instruction, Rob commits.

@@ -9,13 +9,15 @@ extends Node
 # doubles, but none had `is_spread` set — each behaved as single-target
 # only. Fix: `is_spread = True` added to all 9 in gen_moves.py.
 #
-# IMPORTANT SCOPE BOUNDARY: this session does NOT add `target_includes_ally`
-# to Surf/Earthquake (both TARGET_FOES_AND_ALLY) — that's NEW ITEM C's own
-# test-audit-first sweep, deliberately deferred. After this fix, Surf and
-# Earthquake correctly hit both opponents in doubles but do NOT yet hit the
-# user's own ally — an intermediate, disclosed state (see the H section
-# below, which explicitly proves this boundary rather than just assuming
-# it holds).
+# [UPDATED by NEW ITEM C, same day]: this session originally left
+# Surf/Earthquake WITHOUT `target_includes_ally` (deferred to NEW ITEM C's
+# own test-audit-first sweep). NEW ITEM C has since landed and added
+# `target_includes_ally=True` to both — the assertions below (A.10/A.11,
+# H.03/I.03) were updated in place to assert the new, fully-correct
+# behavior (ally IS hit) rather than the old intermediate boundary. This is
+# the exact "a genuine correctness fix legitimately invalidates a stale
+# test assumption" pattern this project's own testing conventions document
+# — not a bug in this file's own original design.
 #
 # Step 0 (see docs/decisions.md's own entry for this session) confirmed all
 # 9 moves are simple flag-only fixes:
@@ -60,8 +62,8 @@ func _ready() -> void:
 	_test_shell_trap_arms_and_deals_spread_damage_in_doubles()
 	_test_razor_wind_two_turn_charge_hits_both_opponents()
 	_test_spread_damage_reduction_applies()
-	_test_surf_hits_both_opponents_but_not_ally()
-	_test_earthquake_hits_both_opponents_but_not_ally()
+	_test_surf_hits_both_opponents()
+	_test_earthquake_hits_both_opponents()
 	_test_negative_control_singles_unaffected()
 
 	var total := _pass + _fail
@@ -151,10 +153,10 @@ func _test_data_integrity() -> void:
 	_chk("A.07 Water Spout is_spread=true (was missing)", water_spout.is_spread)
 	_chk("A.08 Shell Trap is_spread=true (was missing)", shell_trap.is_spread)
 	_chk("A.09 Dragon Energy is_spread=true (was missing)", dragon_energy.is_spread)
-	_chk("A.10 REQUIRED scope boundary: Surf does NOT carry target_includes_ally " +
-			"(NEW ITEM C's own deferred sweep)", not surf.target_includes_ally)
-	_chk("A.11 REQUIRED scope boundary: Earthquake does NOT carry " +
-			"target_includes_ally either", not earthquake.target_includes_ally)
+	_chk("A.10 UPDATED by NEW ITEM C: Surf now carries target_includes_ally=true " +
+			"(the ally-hit half, closed by that session)", surf.target_includes_ally)
+	_chk("A.11 UPDATED by NEW ITEM C: Earthquake now carries " +
+			"target_includes_ally=true too", earthquake.target_includes_ally)
 
 
 func _test_swift_hits_both_opponents_in_doubles() -> void:
@@ -317,7 +319,12 @@ func _test_spread_damage_reduction_applies() -> void:
 			spread_dmg > 0 and single_dmg > 0 and spread_dmg < single_dmg)
 
 
-func _test_surf_hits_both_opponents_but_not_ally() -> void:
+func _test_surf_hits_both_opponents() -> void:
+	# [UPDATED by NEW ITEM C]: originally named
+	# "_test_surf_hits_both_opponents_but_not_ally" and asserted the ally was
+	# NOT hit (the intermediate, deliberately-deferred state this session
+	# shipped with). NEW ITEM C has since added target_includes_ally=True to
+	# Surf — renamed and updated to assert the ally IS now hit too.
 	var surf := _load_move(57)
 	var a0 := _make_mon_stats("SfA0", TypeChart.TYPE_WATER, 60, 60)
 	var a1 := _make_mon_stats("SfA1", TypeChart.TYPE_NORMAL, 60, 60)
@@ -328,13 +335,14 @@ func _test_surf_hits_both_opponents_but_not_ally() -> void:
 	var bm := _dispatch_doubles_damage(a0, a1, b0, b1, surf, per_target_dmg)
 	_chk("H.01 REQUIRED: Surf deals damage to B0", per_target_dmg.get(b0, 0) > 0)
 	_chk("H.02 REQUIRED: Surf ALSO deals damage to B1", per_target_dmg.get(b1, 0) > 0)
-	_chk("H.03 REQUIRED SCOPE BOUNDARY: Surf does NOT hit the user's own ally " +
-			"(A1) — target_includes_ally is deliberately deferred to NEW ITEM C, " +
-			"not a bug", not per_target_dmg.has(a1))
+	_chk("H.03 UPDATED by NEW ITEM C: Surf now ALSO hits the user's own ally " +
+			"(A1) — target_includes_ally was closed by that session",
+			per_target_dmg.get(a1, 0) > 0)
 	bm.queue_free()
 
 
-func _test_earthquake_hits_both_opponents_but_not_ally() -> void:
+func _test_earthquake_hits_both_opponents() -> void:
+	# [UPDATED by NEW ITEM C]: same rename/update as Surf above.
 	var earthquake := _load_move(89)
 	var a0 := _make_mon_stats("EqA0", TypeChart.TYPE_GROUND, 60, 60)
 	var a1 := _make_mon_stats("EqA1", TypeChart.TYPE_NORMAL, 60, 60)
@@ -345,9 +353,9 @@ func _test_earthquake_hits_both_opponents_but_not_ally() -> void:
 	var bm := _dispatch_doubles_damage(a0, a1, b0, b1, earthquake, per_target_dmg)
 	_chk("I.01 REQUIRED: Earthquake deals damage to B0", per_target_dmg.get(b0, 0) > 0)
 	_chk("I.02 REQUIRED: Earthquake ALSO deals damage to B1", per_target_dmg.get(b1, 0) > 0)
-	_chk("I.03 REQUIRED SCOPE BOUNDARY: Earthquake does NOT hit the user's own " +
-			"ally (A1) — deferred to NEW ITEM C, not a bug",
-			not per_target_dmg.has(a1))
+	_chk("I.03 UPDATED by NEW ITEM C: Earthquake now ALSO hits the user's own " +
+			"ally (A1) — target_includes_ally was closed by that session",
+			per_target_dmg.get(a1, 0) > 0)
 	bm.queue_free()
 
 
