@@ -881,4 +881,123 @@ either been fully cross-referenced (this session's 2 big fields plus
 the prior session's 5 numeric scalars) or reconfirmed via move-count
 against its own already-known enumerated list (the 15 small fields).
 
+## Bucket 2 — mechanical pass + stratified spot-check (COMPLETE, 2026-07-16, follow-up session)
+
+**Step 0 re-derived Bucket 2's real move list rather than trusting the
+original "~246" estimate**: `gen_moves.py` groups Bucket 2's own moves
+contiguously under a `# ── Bucket 2: reuses a single existing secondary
+mechanism (M19-bucket2) ──` comment marker — extracted this block
+programmatically and found **238 moves currently living there**, not
+246 (the gap is fully explained by the original session's own Step 0
+reclassifying 15 moves to Bucket 4 for a new mechanism and 15 more to
+Bucket 3 for multi-stat handling before it ever shipped — a historical
+detail, not a discrepancy needing reconciliation now). This 238-move
+list is the real, current, authoritative Bucket 2 population.
+
+**Confirmed what Buckets 1/3 (both already full-717-roster) leave
+genuinely uncovered for these 238 moves**: every boolean flag (Bucket 1)
+and every `secondary_effect`/`secondary_chance`/`stat_change_stat`/
+`amount` value (Bucket 3) is already checked. `ban_flags` is ALSO
+already fully audited project-wide (`[M19.5]` Task 1, confirmed by
+reading that entry directly rather than assuming) — not this bucket's
+scope either. That leaves exactly one genuinely unswept category: the
+base `power`/`accuracy`/`pp`/`priority`/`type`/`category` values
+themselves, never once cross-referenced against source project-wide in
+this entire arc (every individual tier's own "data integrity" check
+only ever validated against a HAND-TRANSCRIBED expected table, which
+could itself have drifted from source without anyone noticing).
+
+**The originally-proposed "is_X dispatch-flag" manual spot-check
+category was confirmed NOT APPLICABLE to Bucket 2's real population** —
+a real, concrete Step 0 finding, not an assumption: grepped the entire
+238-move block for any `is_\w+` flag and found exactly ONE occurrence,
+`is_spread`, itself a generic targeting flag consumed by the doubles
+spread-loop, not a bespoke per-move mechanism. Every genuinely bespoke
+`is_X` move (Curse, Belly Drum, Shell Trap, etc.) lives in a DIFFERENT,
+separately-labeled section of `gen_moves.py` (D1-D4/M19e/M19f/
+M19-rampage/M19-recharge/etc.) — Bucket 5's scope, not Bucket 2's. This
+meant the original "mechanical pass + is_X stratified spot-check" plan
+needed genuine re-scoping, not just execution — confirmed rather than
+assumed still correct, exactly as the task itself asked.
+
+**Methodology adopted**: (a) a programmatic power/accuracy/pp/priority/
+type/category cross-reference across all 238 moves, extending Bucket
+1/3's own hardened extraction script; (b) since the is_X category
+doesn't exist here, a stratified MANUAL spot-check reinterpreted as a
+full side-by-side read of each sampled move's COMPLETE source struct
+entry against its COMPLETE `gen_moves.py` entry (not just the fields
+already checked programmatically) — the genuine "escalate on signal"
+check this bucket's real risk profile calls for.
+
+**Two more real bugs found in the extraction script itself before
+trusting any result** (a third and fourth instance of this arc's own
+recurring "symbolic-constant/ternary resolution" pitfall class):
+`category` is stored in `gen_moves.py` as a symbolic `PHYS`/`SPEC`/
+`STAT` constant, not a bare int (produced 238 false-positive
+"mismatches" — literally every move — on the first run); and `eval_cond`
+needed outer-parenthesis stripping to resolve ternaries like
+`(B_UPDATED_MOVE_DATA >= GEN_9) ? 95 : 70` (source wraps some but not
+all ternary conditions in parens, and the un-stripped form silently
+failed to match). Fixed both, then re-ran clean.
+
+**Programmatic pass final result**: 0 mismatches on
+accuracy/pp/priority/type/category across all 238 moves. **Exactly 2 on
+power**: **Luster Purge(295)** and **Mist Ball(296)**, both showing
+`power=9` in `gen_moves.py` where source's own
+`(B_UPDATED_MOVE_DATA >= GEN_9) ? 95 : 70` resolves to **95** at this
+project's `GEN_LATEST=GEN_9` config — a real transcription typo (a
+dropped trailing digit), not a GEN-conditional resolution artifact,
+confirmed by finding the IDENTICAL wrong value (`9`) already hardcoded
+into `m19_secondary_stat_test.gd`'s own expected-value table for both
+moves — the test had been silently validating the wrong number since
+these two moves were first implemented, a false-negative masking a real
+~10x power bug undetected until this sweep.
+
+**Manual spot-check**: 12 moves stratified across mechanism shapes
+(punching/sleep-status/stat-lower/confusion/spread/thaw/paralysis/
+self-buff-on-hit — Fire Punch, Sing, Acid, Confusion, Hypnosis, Poison
+Tail, Draco Meteor, Overheat, Icy Wind, Scald, Nuzzle, Torch Song),
+each move's full `moves_info.h` entry read side-by-side with its full
+`gen_moves.py` entry. **0 additional defects found — a 0% sample defect
+rate.** Per the task's own escalation criterion, this defect rate does
+NOT warrant escalating to full manual coverage of the remaining ~226
+unsampled moves — the existing programmatic coverage (this session's
+base-field sweep + Buckets 1/3's own full-roster sweeps + `[M19.5]`'s
+ban_flags audit) is comprehensive enough to close this bucket out.
+
+**Test-audit-first pass**: grepped every scene file referencing Luster
+Purge/Mist Ball by name or ID — found and fixed the one real conflict
+(`m19_secondary_stat_test.gd`'s own hardcoded `power=9` expected values,
+now corrected to 95 with a doc comment explaining the shared typo). No
+other file references either move.
+
+**New runtime-behavior test coverage**: new
+`scenes/battle/bucket2_base_fields_test.gd`/`.tscn`, 4 assertions —
+each move's real, fixed `power=95` confirmed via direct field read, plus
+a damage comparison against a synthetic power=9 fixture proving the fix
+has a real, substantial (>5x) runtime consequence, not just a cosmetic
+data change. All 4 pass, stable across 3 reruns.
+
+**Regenerated** `data/moves/move_0295.tres`/`move_0296.tres`, then
+`docs/move_status_table.md` — counts confirmed **unchanged**: 717/217/0/0.
+
+**Regression**: targeted suites (`m19_secondary_stat_test` 1754/1754,
+`move_smoke_test` 717/717) clean. Two full sweeps via
+`scripts/count_assertions.sh` from independent process states: **135
+files, GRAND TOTAL 13385 then 13386**, differing only by
+`doubles_test.tscn` — a FOURTH already-documented pre-existing flaky
+suite from CLAUDE.md's own baseline note (distinct from
+`m17l_test`/`m19a_gen1_test`/`m18q_test`, which surfaced in earlier
+Bucket 1/3 sessions) — zero failures traceable to this session's
+changes in either run. `git status` on `data/moves/` confirmed only the
+2 expected files touched, no other drift.
+
+**Bucket 2 is now closed.** Combined with Buckets 1 and 3, every
+`MoveData` field with a real source equivalent across the entire
+717-move roster has now been either fully cross-referenced
+programmatically or reconfirmed via a genuine, non-vacuous manual
+spot-check with a measured 0% defect rate. Bucket 5 (D1-D4 cluster
+spot-check, ~90 moves, lowest priority per the scoping doc's own
+sequencing) is the only remaining item in the original bucket plan.
+
 No commit made this session — per standing instruction, Rob commits.

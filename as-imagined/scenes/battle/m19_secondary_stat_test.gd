@@ -141,8 +141,13 @@ func _test_data_integrity() -> void:
 		[242, "Crunch", TypeChart.TYPE_DARK, 0, 80, 100, 15, BattlePokemon.STAGE_DEF, -1, false, 20, ["contact", "biting"]],
 		[247, "Shadow Ball", TypeChart.TYPE_GHOST, 1, 80, 100, 15, BattlePokemon.STAGE_SPDEF, -1, false, 20, ["ballistic"]],
 		[249, "Rock Smash", TypeChart.TYPE_FIGHTING, 0, 40, 100, 15, BattlePokemon.STAGE_DEF, -1, false, 50, ["contact"]],
-		[295, "Luster Purge", TypeChart.TYPE_PSYCHIC, 1, 9, 100, 5, BattlePokemon.STAGE_SPDEF, -1, false, 50, []],
-		[296, "Mist Ball", TypeChart.TYPE_PSYCHIC, 1, 9, 100, 5, BattlePokemon.STAGE_SPATK, -1, false, 50, ["ballistic"]],
+		# [M21.5 Bucket 2] power corrected 9->95: both rows had the same
+		# transcription typo (a dropped trailing digit) as the underlying
+		# data itself, so this table was silently validating the wrong
+		# value all along -- source's own `(B_UPDATED_MOVE_DATA >= GEN_9)
+		# ? 95 : 70` resolves to 95 at this project's GEN_LATEST=GEN_9 config.
+		[295, "Luster Purge", TypeChart.TYPE_PSYCHIC, 1, 95, 100, 5, BattlePokemon.STAGE_SPDEF, -1, false, 50, []],
+		[296, "Mist Ball", TypeChart.TYPE_PSYCHIC, 1, 95, 100, 5, BattlePokemon.STAGE_SPATK, -1, false, 50, ["ballistic"]],
 		[306, "Crush Claw", TypeChart.TYPE_NORMAL, 0, 75, 95, 10, BattlePokemon.STAGE_DEF, -1, false, 50, ["contact"]],
 		[309, "Meteor Mash", TypeChart.TYPE_STEEL, 0, 90, 90, 10, BattlePokemon.STAGE_ATK, 1, true, 20, ["contact", "punching"]],
 		[315, "Overheat", TypeChart.TYPE_FIRE, 1, 130, 90, 5, BattlePokemon.STAGE_SPATK, -2, true, 0, []],

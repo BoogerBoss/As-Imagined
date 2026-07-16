@@ -2265,11 +2265,17 @@ MOVES = [
      "type": TYPE_FIGHTING, "category": PHYS, "power": 40, "accuracy": 100,
      "pp": 15, "makes_contact": True, "stat_change_stat": STAGE_DEF, "stat_change_amount": -1,
      "secondary_chance": 50},
+    # [M21.5 Bucket 2] power corrected 9->95: a real transcription typo (a
+    # dropped trailing digit), not a GEN-conditional resolution artifact --
+    # source's `(B_UPDATED_MOVE_DATA >= GEN_9) ? 95 : 70` resolves to 95 at
+    # this project's own GEN_LATEST=GEN_9 config.
     {"id":  295, "name": "Luster Purge",
-     "type": TYPE_PSYCHIC, "category": SPEC, "power": 9, "accuracy": 100,
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 95, "accuracy": 100,
      "pp": 5, "stat_change_stat": STAGE_SPDEF, "stat_change_amount": -1, "secondary_chance": 50},
+    # [M21.5 Bucket 2] power corrected 9->95 -- same reasoning as Luster
+    # Purge above, the identical typo shape on its sibling move.
     {"id":  296, "name": "Mist Ball",
-     "type": TYPE_PSYCHIC, "category": SPEC, "power": 9, "accuracy": 100,
+     "type": TYPE_PSYCHIC, "category": SPEC, "power": 95, "accuracy": 100,
      "pp": 5, "ballistic_move": True, "stat_change_stat": STAGE_SPATK, "stat_change_amount": -1,
      "secondary_chance": 50},
     {"id":  306, "name": "Crush Claw",
