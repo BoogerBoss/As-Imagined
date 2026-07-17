@@ -1,5 +1,13 @@
+class_name BattleScreen
 extends Control
 
+# [M23.6] `class_name` added so battle_setup_screen.gd can call this
+# script's static fixture-team builders (BattleScreen.build_fixture_opp
+# _party(), etc.) without needing to instantiate a scene — a small,
+# purely-additive declaration (registers a global identifier, changes no
+# runtime behavior) rather than a rewrite; every other class in this
+# project already uses class_name, this file was simply the one exception.
+#
 # [M23.1] Bare-bones battle screen — proves M23.0a's async pause/resume
 # mechanism end-to-end through real UI. Two hardcoded teams (hand-built
 # BattlePokemon fixtures, following the exact pattern established across
@@ -20,6 +28,19 @@ extends Control
 # scratch on every state change rather than trying to manage node
 # visibility toggling, since that's simplest for a "bare-bones, functional
 # buttons only" screen.
+#
+# [M23.6] `_ready()` now checks BattleSetupContext (scripts/battle/core/
+# battle_setup_context.gd) for externally-supplied teams BEFORE falling
+# back to this file's own hardcoded Blaze/Torrent-vs-Leaf/Volt fixture —
+# see `_ready()`'s own comment for the exact injection mechanism. This is
+# the ONLY behavioral change `_ready()` itself gained; the queue_*()/
+# advance() contract, the --autoplay path, and every button handler below
+# are byte-for-byte unchanged. `_build_teams()` was split into two static
+# functions (`build_fixture_player_party`/`build_fixture_opp_party`) so
+# battle_setup_screen.gd's own "Quick Test" opponent option can reuse the
+# EXACT same hardcoded Leaf/Volt data with zero duplication — `_build_teams
+# ()` itself still exists, now just a 2-line instance wrapper calling both,
+# preserving the fallback path's own behavior exactly.
 
 const POTION_ITEM_ID := 28
 const FULL_HEAL_ITEM_ID := 48
@@ -207,7 +228,26 @@ var _menu: Menu = Menu.MAIN
 
 
 func _ready() -> void:
-	_build_teams()
+	# [M23.6 injection point] BattleSetupContext is a plain static-var
+	# holder (scripts/battle/core/battle_setup_context.gd, class_name
+	# BattleSetupContext extends RefCounted) — GDScript class-level statics
+	# persist for the whole process regardless of scene tree, so
+	# battle_setup_screen.gd can populate it, call change_scene_to_file to
+	# this scene, and this fresh instance's own _ready() picks the data up
+	# here with zero coupling beyond the one shared static-holder class.
+	# Consumed (cleared) immediately after reading so a LATER direct launch
+	# of this scene (e.g. re-running it from the editor, or this exact
+	# --autoplay sweep invocation below) never accidentally reuses stale
+	# data from an earlier setup. When nothing is pending — the case for
+	# every pre-existing caller, including the sweep's own direct
+	# `battle_screen.tscn` invocation — this falls through to the exact
+	# same hardcoded-fixture path M23.1 always used.
+	if BattleSetupContext.has_pending():
+		_player_party = BattleSetupContext.player_party
+		_opp_party = BattleSetupContext.opp_party
+		BattleSetupContext.clear()
+	else:
+		_build_teams()
 
 	var ai := TrainerAI.new()
 	ai.tier = TrainerAI.Tier.SMART
@@ -534,7 +574,7 @@ func _log(text: String) -> void:
 # PokemonRegistry/species-data-converter involved (that's M23.3/M23.4,
 # explicitly out of scope here).
 
-func _make_mon(mon_name: String, type1: int, type2: int = TypeChart.TYPE_NONE,
+static func _make_mon(mon_name: String, type1: int, type2: int = TypeChart.TYPE_NONE,
 		hp: int = 180, atk: int = 80, def_stat: int = 80,
 		spatk: int = 80, spdef: int = 80, spd: int = 80) -> BattlePokemon:
 	var sp := PokemonSpecies.new()
@@ -551,11 +591,15 @@ func _make_mon(mon_name: String, type1: int, type2: int = TypeChart.TYPE_NONE,
 	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 
 
-func _load_move(id: int) -> MoveData:
+static func _load_move(id: int) -> MoveData:
 	return load("res://data/moves/move_%04d.tres" % id) as MoveData
 
 
-func _build_teams() -> void:
+# [M23.6] Split out of the former single `_build_teams()` so
+# battle_setup_screen.gd's "Quick Test" opponent option can reuse the exact
+# same hardcoded Leaf/Volt data with zero duplication/drift risk. Static —
+# no instance state involved, matching `_make_mon`/`_load_move` above.
+static func build_fixture_player_party() -> BattleParty:
 	var blaze := _make_mon("Blaze", TypeChart.TYPE_FIRE, TypeChart.TYPE_NONE,
 			180, 90, 70, 100, 70, 90)
 	blaze.add_move(_load_move(52))   # Ember
@@ -570,10 +614,13 @@ func _build_teams() -> void:
 	torrent.add_move(_load_move(44))  # Bite
 	torrent.add_move(_load_move(33))  # Tackle
 
-	_player_party = BattleParty.new()
-	_player_party.members = [blaze, torrent]
-	_player_party.active_indices = [0]
+	var party := BattleParty.new()
+	party.members = [blaze, torrent]
+	party.active_indices = [0]
+	return party
 
+
+static func build_fixture_opp_party() -> BattleParty:
 	var leaf := _make_mon("Leaf", TypeChart.TYPE_GRASS, TypeChart.TYPE_NONE,
 			180, 85, 75, 85, 75, 85)
 	leaf.add_move(_load_move(22))   # Vine Whip
@@ -588,9 +635,15 @@ func _build_teams() -> void:
 	volt.add_move(_load_move(98))   # Quick Attack
 	volt.add_move(_load_move(231))  # Iron Tail
 
-	_opp_party = BattleParty.new()
-	_opp_party.members = [leaf, volt]
-	_opp_party.active_indices = [0]
+	var party := BattleParty.new()
+	party.members = [leaf, volt]
+	party.active_indices = [0]
+	return party
+
+
+func _build_teams() -> void:
+	_player_party = build_fixture_player_party()
+	_opp_party = build_fixture_opp_party()
 
 
 # ── UI rendering ─────────────────────────────────────────────────────────

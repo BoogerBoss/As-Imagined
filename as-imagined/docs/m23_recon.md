@@ -1922,3 +1922,356 @@ across every sweep this session (56/56 and 44/44 throughout).
   out of scope, per the task's own explicit M23.6 boundary — nothing here
   reads a saved team back into `battle_manager.gd` or `battle_screen.gd`.
 - Nothing committed, per standing instruction.
+
+### Roadmap update (2026-07-17, recorded at the start of the M23.6 session)
+
+Rob decided to defer the following 3 M23.5 edge-case polish items to
+**M23.8**, rather than address them during M23.6 (or leave them
+undecided) — recorded here, in the M23.5 section, since they're M23.5's
+own known trade-offs, not new M23.6 findings. None of these were touched
+during M23.6; `team_storage.gd`/`roster_screen.gd`'s edge-case behavior is
+byte-identical to what M23.5 shipped:
+
+1. **Duplicate team names** (currently rejected outright at save time) —
+   M23.8 will add an overwrite/rename option.
+2. **No delete confirmation step** (a single button press deletes
+   immediately) — M23.8 will add one.
+3. **Editing a slot fully rebuilds it from scratch** rather than
+   pre-populating the embedded builder with the slot's existing
+   species/moves/EVs/etc. — M23.8 will add pre-population (likely via a
+   new `load_spec()`-style method on `team_builder_screen.gd`, the same
+   follow-up this section's own "Roster screen UI mechanism" write-up
+   already flagged as a reasonable low-risk addition).
+
+---
+
+## M23.6 — Battle setup / format selection
+
+**COMPLETE** — 2026-07-17.
+
+### Injection mechanism into `battle_screen.gd`
+
+Read `battle_screen.gd`'s existing hardcoded team setup first, per this
+task's own instruction. `_ready()` unconditionally called `_build_teams()`
+(a private instance method building Blaze/Torrent vs. Leaf/Volt via
+`_make_mon`/`_load_move` helpers) before wiring `set_trainer_ai`/
+`set_human_controlled`/`start_battle_with_parties`. Nothing about the
+queue_*()/advance() contract, the `--autoplay` path, or the log wiring
+touches team construction at all — confirming the injection point only
+needed to intercept WHERE `_player_party`/`_opp_party` come from, nothing
+downstream.
+
+**Mechanism: `BattleSetupContext`** (`scripts/battle/core
+/battle_setup_context.gd`) — a plain `RefCounted` class with `static var
+player_party`/`opp_party` and `set_pending`/`has_pending`/`clear`. GDScript
+class-level statics persist for the whole process regardless of scene
+tree (the same mechanism `MoveNameMap`'s own lazy-loaded cache already
+relies on, `[M23.4]`), so this needed no `project.godot` `[autoload]`
+registration — `battle_setup_screen.gd` calls `set_pending(...)` then
+`get_tree().change_scene_to_file("res://scenes/battle/battle_screen
+.tscn")`; the freshly-instantiated `battle_screen.gd`'s own `_ready()`
+checks `has_pending()` FIRST, consumes (and immediately clears) both
+parties if present, and only falls back to `_build_teams()` when nothing
+is pending — the case for every pre-existing direct launch of
+`battle_screen.tscn`, autoplay sweep included.
+
+`_build_teams()` itself was split into two **static** functions
+(`build_fixture_player_party`/`build_fixture_opp_party`, `_make_mon`/
+`_load_move` also made static) so `battle_setup_screen.gd`'s "Quick Test"
+opponent option could reuse the EXACT same hardcoded Leaf/Volt data with
+zero duplication — `_build_teams()` is now just a 2-line wrapper calling
+both. `class_name BattleScreen` was added (this file was the one
+exception left over from M23.1 — every other class in this project already
+declares one) purely so this static function could be called as
+`BattleScreen.build_fixture_opp_party()` without instantiating a scene.
+
+### Battle setup screen (UI mechanism)
+
+`scenes/battle/battle_setup_screen.gd`/`.tscn` — plain Control nodes +
+`scenes/main_theme.tres`, matching M23.1/M23.4/M23.5's shared convention.
+Two `OptionButton` dropdowns (player team source, opponent team source)
+rather than an embedded roster browser — this screen's whole job is
+picking WHICH already-built thing to use (team_builder_screen.gd/
+roster_screen.gd already own "build a new one"), so a flat dropdown per
+side is the smallest correct mechanism. A "Refresh Team Lists" button
+re-populates both dropdowns from disk (no file-watching exists anywhere in
+this project) for the realistic case of saving a new team via the roster
+screen earlier in the same session and returning here later.
+
+- **Player dropdown**: always offers "Random Team" (index 0) plus every
+  non-corrupted saved team. **[Fallback requirement, confirmed]** — if at
+  least one saved team exists, the default SELECTION is the first saved
+  team, not Random; Random only becomes the actual default when nothing is
+  saved. The user can still explicitly pick Random even when saved teams
+  exist.
+- **Opponent dropdown**: "Random Team", "Quick Test (Leaf & Volt fixture)",
+  then every saved team — defaults to Random.
+- **Resolution** (`_resolve_party`): reads the selected `OptionButton`
+  item's metadata (`{"type": "random"/"saved"/fixture-sentinel, "id":...}`)
+  and dispatches to `RandomTeamGenerator.generate_team()`,
+  `TeamStorage.load_team(id)` + `TeamStorage.build_member()` per spec
+  (skipping any member that fails to build), or
+  `BattleScreen.build_fixture_opp_party()` — the last gated behind an
+  `allow_fixture` param the PLAYER side's own call site passes `false` for,
+  since the fixture option is never even offered in that dropdown but the
+  resolver refuses it defensively too (tested explicitly, S5.11).
+
+### Doubles-toggle status — **FLAGGED, NOT FUNCTIONAL**
+
+The Singles/Doubles toggle is real UI (a `Button` whose text flips and
+whose state persists), but selecting Doubles disables the Launch button
+outright and shows an explicit status message rather than attempting a
+broken launch. `battle_screen.gd`'s entire interactive surface — every
+button handler's hardcoded opponent-index-1 targeting, the move/switch/
+item menu shapes, `start_battle_with_parties` itself (confirmed
+singles-only back in M23.1's own recon) — would need real doubles-specific
+UI rework (a 4-combatant menu/targeting layer) to make Doubles genuinely
+playable. Explicitly out of this "mostly UI glue" milestone's scope, per
+the task's own framing. Re-toggling back to Singles re-enables Launch
+immediately.
+
+### Random-team-generator approach
+
+`scripts/battle/core/random_team_generator.gd` (`RandomTeamGenerator`) —
+picks random INPUTS, then calls the exact same, already-tested
+`PokemonFactory.create_battle_pokemon()` every other real `BattlePokemon`
+in this project goes through; zero new stat/legality computation. Every
+legality source is reused directly, never re-derived:
+
+- **Species**: a random entry from `PokemonRegistry.get_all_species()`
+  (all 386), with a bounded retry loop (not a fixed sample) in case a
+  picked dex fails to build.
+- **Moves**: `MovepoolResolver.legal_move_ids(dex, level)` — the EXACT
+  real-legality pool `team_builder_screen.gd`'s own move dropdown uses —
+  shuffled then sliced to 1-4 (a random subset without replacement, not
+  independent rolls that could repeat a move).
+- **EVs**: a bounded random-chunk distribution respecting BOTH
+  `BattleManager.EV_CAP_PER_STAT` and `EV_CAP_TOTAL` directly (read, not
+  re-declared) — confirmed via the automated suite that every generated
+  team's EV total never exceeds 510 and no single stat exceeds 252.
+- **IVs**: uniform random 0-31 per stat.
+- **Ability slot**: a random pick among the species' own real, nonzero
+  ability slots only (same "id 0 = no ability" rule `PokemonFactory`/
+  `team_builder_screen.gd` already establish) — never falls back to a
+  fake slot unless a species genuinely has zero populated slots (defends
+  toward `ABILITY_SLOT_PRIMARY`, never observed triggering against real
+  data).
+- **Nature**: uniform random 0-24.
+- **Level**: uniform random within a caller-supplied `[min_level,
+  max_level]` bound (default `[10,70]`).
+- **Team size**: defaults to a full 6, clamped to `TeamStorage
+  .MAX_TEAM_SIZE` — reused directly rather than a second hardcoded `6`.
+
+Deliberately NOT competitive-quality (no move-synergy/stat-optimization
+logic) — the task's own scope is "genuinely random and genuinely legal,"
+confirmed via a 6-trial visual smoke check (real species/abilities/moves,
+EV totals landing exactly at cap) before the automated suite was written,
+and via the automated suite's own per-member legality sweep afterward.
+
+### `scenes/main.gd` entry point (flagged choice)
+
+Routes to `battle_setup_screen.tscn` instead of `battle_screen.tscn`
+directly — **no second "skip setup" entry point was kept**. Nothing in
+this project's actual use of `main.tscn` benefits from bypassing setup: a
+direct launch of `battle_screen.tscn` itself (the `--autoplay` sweep test,
+or running that scene directly from the editor) remains fully independent
+of `main.gd` and unaffected either way, so there was nothing a bypass
+button would have uniquely enabled.
+
+### A real bug found and fixed by this session's own automated test
+
+`battle_setup_screen.gd` gained its own `--autoplay` exit path (see
+"Regression sweep results" below for why), matching the `[M23.1 addendum]`
+precedent exactly — but doing so surfaced a genuine bug the FIRST time
+`m23_6_battle_setup_test.gd`'s Section 5 ran with the fix in place:
+`--autoplay` is a process-WIDE CLI flag (`OS.get_cmdline_args()`), not a
+scene-scoped one. Section 5 embeds a real `battle_setup_screen` instance
+as a CHILD (to exercise `_resolve_party` etc. without a real scene
+transition — see that test file's own top-of-file note on why a real
+transition is deliberately avoided in an automated context). Under the
+sweep's own unconditional `--autoplay` flag, that EMBEDDED child's own
+`_ready()` ALSO saw the flag and fired its new autoplay path, printing a
+SECOND `"battle_setup_screen_autoplay: 1/1 passed"` line into the same
+captured output — which `count_assertions.sh`'s own regex-sum parsing
+(sums every matching line in a file's section, not just the last one)
+silently folded into `m23_6`'s own total, reporting 105 instead of the
+real 104. Fixed by additionally gating the autoplay trigger on `get_tree
+().current_scene == self` — true for a real direct/sweep launch, false
+for any embedded/child instantiation. Confirmed fixed by rerunning with
+`--autoplay` explicitly appended (matching the sweep's own invocation
+shape) and reconfirming a clean, correctly-attributed 104/104 both
+standalone and inside the real sweep.
+
+### Automated test coverage
+
+New `scenes/battle/m23_6_battle_setup_test.gd`/`.tscn`, 104/104 assertions,
+stable across 5+ consecutive reruns (after fixing the two issues below).
+Deliberately does NOT instantiate `battle_screen.tscn` at all (same
+`--autoplay`-collision risk class as the bug above, avoided by construction
+rather than caught and patched) — see the suite's own top-of-file comment.
+
+- **Section 1** (team size/clamping): default `generate_team()` produces a
+  full 6; explicit sizes (1, 3) respected; oversized (10) clamped to 6;
+  undersized (0) clamped up to at least 1; `active_indices` defaults to
+  `[0]`.
+- **Section 2** (per-member legality, 6-member team × 12 checks/member):
+  real species; level within the requested bound; every move genuinely in
+  the species' real legal pool at that level (cross-checked by name against
+  `MovepoolResolver.legal_move_ids`, not assumed); no duplicate moves;
+  moveset size 0-4; EV total ≤510 and every individual EV ≤252 (both read
+  from `BattleManager`'s own real constants); IVs all in [0,31]; ability
+  null-or-a-real-slot (see the flake-fix note below); nature in [0,24].
+- **Section 3** (stat-formula cross-check, seeded for determinism): HP
+  formula re-derived independently from `battle_pokemon.gd`'s own
+  documented formula comment (`floor((2*base+iv+floor(ev/4))*level/100)+
+  level+10`), computed from the BUILT `BattlePokemon`'s own recorded
+  species/level/ivs/evs — NOT by re-calling any `BattlePokemon`/
+  `PokemonFactory` function, so this is a genuine independent check, not a
+  circular one; `current_hp == max_hp` on a freshly-built mon.
+- **Section 4** (`BattleSetupContext` in isolation): `set_pending`/
+  `has_pending`/`clear` direct unit tests, no scene instantiation.
+- **Section 5** (`battle_setup_screen.gd` real UI, no scene transition):
+  format toggle disabling/re-enabling Launch; both dropdowns' fixed
+  options present; a freshly-saved team appearing after refresh; resolving
+  Random/Saved/Fixture options each producing a correct, real `BattleParty`
+  via the actual `_resolve_party` code path; the fixture option correctly
+  refused when `allow_fixture=false`.
+
+**Two real issues caught and fixed during this session, both by the test
+suite's own first runs, not by inspection:**
+1. **A flaky total-assertion-count bug** (103/103 one run, 104/104 the
+   next) — Section 2's original ability check was inside an `if bp.ability
+   != null:` guard, so it silently didn't fire for a randomly-generated
+   ability-less member, changing the suite's own total count run to run —
+   exactly the "conditional assertion count" pitfall CLAUDE.md's own
+   testing-conventions section warns about. Fixed by folding it into one
+   unconditional `ability == null or ability in real slots` check. Stable
+   at 104/104 across 5+ reruns after.
+2. The `--autoplay`-collision bug described in its own section above.
+
+### Manual verification — three real end-to-end scene-transition launches
+
+Three throwaway driver scenes (`_scratch_launch_a`/`_b`/`_c.gd`/`.tscn`,
+deleted after this session — confirmed clean via directory listings, and
+any team files accidentally left behind by two early failed attempts
+(before a real plumbing issue was fixed — see below) were also found and
+removed). Each drives the REAL chain: `get_tree().change_scene_to_file`
+into `battle_setup_screen.tscn`, real `Button.pressed.emit()`/
+`OptionButton.select()` calls on the real instantiated screen, a real
+press of the real Launch button (a real second `change_scene_to_file`
+into `battle_screen.tscn`), then inspects the resulting
+`get_tree().current_scene` directly.
+
+**A real plumbing issue found and fixed while building the FIRST
+scenario, before any scenario produced valid output**:
+`change_scene_to_file()` frees whatever `get_tree().current_scene`
+CURRENTLY is and replaces it — since a directly-launched `.tscn` IS that
+current scene by default, the verification script's own node would be
+freed mid-`await`-driven-coroutine the moment the REAL Launch button
+fired its own internal `change_scene_to_file` call, breaking the flow
+before the second transition's result could be inspected. Fixed by having
+each driver immediately repoint `get_tree().current_scene` at a throwaway
+dummy node (after one `await get_tree().process_frame` to get past the
+tree's own "busy setting up children" window during the driver's own
+`_ready()`) — every subsequent real scene-transition call then only ever
+replaces that dummy (then whatever succeeds it), never the driver script's
+own node, which stays alive under `get_tree().root` for the whole run.
+
+- **Scenario A — saved team vs. saved team**: two real teams saved via
+  `TeamStorage` directly (Bulbasaur+Charmander vs. Squirtle). Both found
+  correctly in their respective dropdowns, launched, and the resulting
+  `BattleScreen`'s `_player_party`/`_opp_party` showed EXACTLY the saved
+  species/levels/moves (`Bulbasaur Lv.30 [Tackle, Growl]` / `Charmander
+  Lv.30 [Ember]` vs. `Squirtle Lv.30 [Water Gun]`), with
+  `bm.get_phase() == MOVE_SELECTION` confirming a genuinely playable battle,
+  not just a constructed-but-inert scene.
+- **Scenario B — saved team vs. random-generated team**: a saved Mewtwo
+  vs. a freshly-`RandomTeamGenerator`-built 6-member opponent. The saved
+  side matched exactly (`Mewtwo Lv.60 nature=10 [Tackle, Growl]`); the
+  random side showed 6 genuinely distinct real species (Octillery/
+  Vaporeon/Zapdos/Poliwag/Smeargle/Ekans) each with its own EV total
+  landing exactly at the 510 cap and real, varied movesets — visibly
+  different from Scenario A/C's own random picks, confirming genuine
+  randomness across runs, not a cached/fixed result. `MOVE_SELECTION`
+  confirmed reachable.
+- **Scenario C — random-generated team vs. the Quick Test fixture**: the
+  opponent side was confirmed to be EXACTLY `[Leaf, Volt]` with their own
+  original M23.1 movesets intact (`Vine Whip/Razor Leaf/Growl/Tackle` and
+  `Thunderbolt/Thunder Wave/Quick Attack/Iron Tail`), proving
+  `BattleScreen.build_fixture_opp_party()`'s reuse is byte-faithful to the
+  original hardcoded data — zero drift from extracting it into a static
+  function. `MOVE_SELECTION` confirmed reachable.
+
+**All three scenarios reached a genuinely playable `BattleScreen` with
+verifiably correct team data**, using the real production scene-transition
+mechanism end to end (not an in-process shortcut) — satisfying this
+milestone's own manual-verification requirement directly.
+
+### Regression sweep results — including the highest-risk autoplay check
+
+Per this task's own explicit call-out, `scenes/battle/battle_screen.tscn`'s
+`--autoplay` fallback path (the hardcoded-fixture path, exercised by every
+prior M23 session's own sweep) was checked FIRST and IN ISOLATION,
+immediately after the `battle_screen.gd` refactor and again after every
+later change this session — `battle_screen_autoplay: 1/1 passed`,
+byte-identical, every single time it was checked.
+
+The repo was clean (M23.5 committed) at the start of this session, so a
+true "before" baseline needed no `mv`-based workaround at all — the sweep
+was run directly against the untouched HEAD state before any edit was
+made, avoiding the tracked-file-stash gap CLAUDE.md's own standing note
+flags as open.
+
+- **Before** (clean HEAD, no changes): 141 files, GRAND TOTAL **13684**,
+  0 failures. `battle_screen.tscn`: `battle_screen_autoplay: 1/1 passed`.
+- **After, sweep 1**: 143 files (`battle_setup_screen.tscn` and
+  `m23_6_battle_setup_test.tscn` both newly picked up), GRAND TOTAL
+  **13790** (+106: 104 from the new test suite, +1 from
+  `battle_setup_screen.tscn`'s own new genuine autoplay check, +1 from
+  `m18_5g_test.tscn` (314→315) — an unrelated, pre-existing suite this
+  session never touched, already named in CLAUDE.md's own documented
+  statistical-flake list). `m23_3_converter_test.tscn` (56/56),
+  `m23_4_team_builder_test.tscn` (44/44), `m23_5_team_persistence_test
+  .tscn` (51/51), and `battle_screen.tscn`'s own autoplay line (1/1) all
+  byte-identical to before.
+- **After, sweep 2**: 143 files, GRAND TOTAL **13789** — a direct diff
+  against sweep 1 shows exactly one differing line, `m18_5g_test.tscn`
+  flipping back to 314 (matching the "before" sweep's own value exactly),
+  confirming it as the same pre-existing flake settling differently run to
+  run, not a regression. Zero real failures in either sweep.
+
+**Zero regressions.** `m23_3_converter_test.tscn`, `m23_4_team_builder
+_test.tscn`, `m23_5_team_persistence_test.tscn`, and — the highest-risk
+check this session — `battle_screen.tscn`'s own `--autoplay` fallback path
+are all byte-identical across every sweep this session.
+
+### Deviations / assumptions flagged
+
+- `battle_screen.gd` gained `class_name BattleScreen` — a small, purely
+  additive declaration (registers a global identifier, changes no runtime
+  behavior) needed so `battle_setup_screen.gd` could call its static
+  fixture-team builders without instantiating a scene. Every other class
+  in this project already declares one; this file was the sole exception.
+- `_make_mon`/`_load_move`/the two fixture-team builders were made
+  `static` — a mechanical, behavior-preserving change (none referenced
+  instance state) needed purely so they're callable without a live
+  `BattleScreen` instance.
+- Doubles remains genuinely non-functional, by explicit design — the
+  toggle exists and is honest about its own limitation (disables Launch,
+  explains why) rather than attempting a broken launch. Flagged per the
+  task's own explicit instruction.
+- `battle_setup_screen.tscn` gained its own `--autoplay` exit path
+  (matching the `[M23.1 addendum]` precedent) — not explicitly requested
+  by this task's own requirement list, but added to avoid leaving a second,
+  permanent "0 assertions / 25s sweep-timeout cost" scene alongside
+  `battle_test.tscn`'s own already-accepted one, now that a second
+  interactive scene exists. Building it surfaced the real `--autoplay`-is-
+  process-wide bug documented above.
+- No second "skip setup" entry point was kept in `main.gd` — flagged per
+  the task's own explicit instruction, reasoning given above.
+- Species selection continues to use M23.4's own dex-number-entry
+  placeholder throughout (untouched, not this milestone's job to revisit).
+- The 3 M23.5 edge-case items Rob deferred to M23.8 (duplicate names, no
+  delete confirmation, no slot pre-population on edit) were NOT touched —
+  recorded in the M23.5 section above, per this task's own requirement 1.
+- Nothing committed, per standing instruction.

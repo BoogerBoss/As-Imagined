@@ -7,6 +7,15 @@ extends Control
 # (scenes/battle/battle_screen.tscn) rather than just incrementing a
 # counter — a minimal but real launch flow, still no persistence/menu
 # system beyond this.
+# [M23.6] The button now routes to scenes/battle/battle_setup_screen.tscn
+# instead of jumping straight into battle_screen.tscn — format/team
+# selection is now the normal path in, not a bypassable extra step. No
+# second "skip setup" entry point was kept here: nothing in this project's
+# actual USE of main.tscn benefits from bypassing setup (a direct launch of
+# battle_screen.tscn itself — e.g. the --autoplay sweep test, or running
+# that scene directly from the editor — remains fully independent of this
+# file and unaffected either way, so there was nothing this bypass would
+# have uniquely enabled).
 
 @onready var _label: Label = $VBoxContainer/StatusLabel
 @onready var _button: Button = $VBoxContainer/PingButton
@@ -19,4 +28,4 @@ func _ready() -> void:
 
 
 func _on_button_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/battle/battle_screen.tscn")
+	get_tree().change_scene_to_file("res://scenes/battle/battle_setup_screen.tscn")
