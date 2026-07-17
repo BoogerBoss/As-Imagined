@@ -449,3 +449,209 @@ M23.1 (bare-bones battle screen, two hardcoded teams) can now build real
 battle UI directly into a new scene, wiring a `BattleManager` node into the
 tree and driving it via the exact `queue_*`/`advance()` pattern confirmed
 here — no further scaffolding decisions are needed first.
+
+---
+
+## M23.1 — Bare-bones battle screen, two hardcoded teams
+
+**COMPLETE** — 2026-07-16.
+
+### Pre-implementation confirmations
+
+**Fixture pattern, quoted from `scenes/battle/ai_test.gd:83-99`** (the
+pattern followed exactly, unchanged, for both hardcoded teams):
+
+```gdscript
+func _make_mon(mon_name: String, type1: int, type2: int = TypeChart.TYPE_NONE,
+		hp: int = 160, atk: int = 80, def_stat: int = 80,
+		spatk: int = 80, spdef: int = 80, spd: int = 80) -> BattlePokemon:
+	var sp := PokemonSpecies.new()
+	sp.species_name = mon_name
+	sp.types.append(type1)
+	if type2 != TypeChart.TYPE_NONE:
+		sp.types.append(type2)
+	sp.base_hp    = hp
+	sp.base_attack = atk
+	...
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+```
+
+paired with `_load_move(id)` (`load("res://data/moves/move_%04d.tres" % id)
+as MoveData`) for real move data and `mon.add_move(move)` to build a
+moveset (which also correctly populates the parallel `current_pp` array —
+`add_move`'s own established purpose per this project's own documented
+`[D4 Bundle 9]` gotcha about bypassing it via a bare `moves = [...]`
+assignment). Both hardcoded teams (`battle_screen.gd`'s `_build_teams`) use
+this identical pattern — no `PokemonRegistry`/species-data-converter
+involved anywhere, matching the explicit M23.3/M23.4 scope boundary.
+
+**Singles confirmed as the target mode, not doubles** — checked, not
+assumed: `grep -rl "start_battle_with_parties\|\.start_battle("
+scenes/battle/*.gd` matched 105 files; `grep -rl "start_battle_doubles"`
+matched 21. Singles is the dominant mode across the whole existing test
+suite (5:1) and is this engine's original/primary entry point (`BattleParty
+.active_indices: Array[int] = [0]` is the class default; doubles was a
+later, secondary M14a extension with its own separate `start_battle_doubles`
+entry point). No genuine ambiguity found — singles is the correct,
+lower-risk choice for a first "bare-bones" UI pass, and is what this session
+built.
+
+### Implementation
+
+- New `scenes/battle/battle_screen.gd`/`.tscn`: the battle screen itself.
+  Placed inside `scenes/battle/`, matching CLAUDE.md's own documented
+  architecture grouping ("`scenes/battle/`: Battle scene(s), UI scene(s)"),
+  unlike M23.0b's `scenes/main.tscn` (the whole game's entry point, not
+  itself a battle scene).
+  - A `BattleManager` node is placed DIRECTLY in the `.tscn` tree (script
+    assigned, no manual `.new()`/`add_child()`) — exactly the "even
+    simpler than the test harness" usage M23.0b's own Step 0 confirmed.
+  - `_build_teams()`: two 2-member hardcoded parties — side 0 (human):
+    Blaze (Fire; Ember/Flamethrower/Quick Attack/Swords Dance) and Torrent
+    (Water; Water Gun/Surf/Bite/Tackle, bench); side 1 (AI): Leaf (Grass;
+    Vine Whip/Razor Leaf/Growl/Tackle) and Volt (Electric; Thunderbolt/
+    Thunder Wave/Quick Attack/Iron Tail, bench).
+  - `_ready()`: builds teams, `set_trainer_ai(1, ai)` with `ai.tier =
+    TrainerAI.Tier.SMART` (the existing, already-proven AI — zero new AI
+    logic), `set_human_controlled(0, true)`, connects `battle_ended`, then
+    `start_battle_with_parties(...)` — which, per M23.0a's own confirmed
+    design, immediately stalls at `MOVE_SELECTION` before `_ready()`
+    returns, since side 0 has nothing queued yet.
+  - `_refresh_ui()`: reads `bm.get_phase()` and rebuilds the button area
+    from scratch (no visibility toggling on pre-declared nodes — simplest
+    correct approach for a screen whose available actions genuinely change
+    shape). Three phase-driven states: `BATTLE_END` (win/lose label, no
+    buttons), `SWITCH_PROMPT` (mandatory bench-picker only, no "Back" — a
+    forced faint replacement), and `MOVE_SELECTION` (a `Menu` enum —
+    `MAIN`/`SWITCH`/`ITEM` — selects between the 4 move buttons + Switch +
+    Item, a bench sub-menu with Back, or an item sub-menu with Back).
+  - Every button handler is the exact `queue_*()` + `advance()` +
+    `_refresh_ui()` pattern confirmed by M23.0a/M23.0b:
+    `queue_move_targeted(0, move_index, 1)` (move buttons — `1` is the
+    opponent's active combatant index, always correct in singles),
+    `queue_switch_for(0, slot)` (voluntary switch) / `queue_replacement_for
+    (0, slot)` (forced faint replacement — same bench-picker UI, different
+    queue call, matching M23.0a's own documented distinction between the
+    two pause points), and `queue_item_for(0, item_id)` (item menu — 3
+    fixed buttons, Potion(28)/Full Heal(48)/X Attack(121), IDs confirmed via
+    `grep` against `data/items/*.tres`, reusing M22's existing mechanism
+    exactly with no new item-action logic).
+  - `scenes/main.gd`/`.tscn` (M23.0b): the entry-point button now reads
+    "Start Battle" and calls `get_tree().change_scene_to_file(
+    "res://scenes/battle/battle_screen.tscn")` instead of just incrementing
+    a counter — a minimal but real launch flow, still no menu/persistence
+    system beyond this one transition.
+- Zero changes to `battle_manager.gd` or any other production battle-logic
+  file — this session is UI-only, consuming M23.0a's contract exactly as
+  documented, with no genuine bug surfaced (see "deviations" below for the
+  two things that looked bug-shaped at first glance but weren't).
+
+### Manual verification (no formal test file — an interactive scene, not a
+### test suite; see the regression-sweep interaction note below for why)
+
+Two independent checks, per this project's own "confirm both logic and
+rendering" precedent from M23.0b:
+
+1. **Headless logic drive**: a temporary, throwaway driver scene (not
+   committed) loaded the REAL `battle_screen.tscn`, and called
+   `.pressed.emit()` on the actual dynamically-created Button nodes (the
+   same signal a real mouse click fires) to walk a full battle to
+   completion — deliberately exercising Switch once, Item (Potion) once,
+   then spamming the first available move/bench button otherwise. Result:
+   the human's Torrent switched in and was immediately hit by the AI's
+   turn (HP 250→178, since switching consumes the turn exactly like a
+   move — expected engine behavior, not a bug); Potion's heal was
+   partially offset by a subsequent Grass-vs-Water super-effective hit,
+   net HP still dropping (178→126 — correct type-chart interaction, not a
+   bug); Torrent fainted, the mandatory bench-picker correctly appeared
+   with no "Back" option, and pressing it switched Blaze in; Blaze's Ember
+   spam correctly fainted Leaf, at which point the AI's OWN bench member
+   (Volt) auto-switched in with **zero UI involvement** (confirming
+   AI-side faint-replacement is untouched, pre-existing, working logic);
+   the battle correctly reached `BATTLE_END` after 13 real button presses,
+   `winner_side=1`, and the screen correctly rendered "You lose!". No
+   crashes, no hangs, no incorrect phase transitions.
+2. **Real non-headless visual confirmation**: launched `battle_screen.tscn`
+   without `--headless` (`--quit-after 10`), with a temporary screenshot
+   capture swapped into `_ready()` for one run and then restored
+   byte-for-byte (confirmed via `diff`, matching the established M23.0b
+   precedent). Screenshot confirms all 6 controls (status label, both HP
+   labels, 4 move buttons with live PP, Switch, Item) render legibly with
+   the same `main_theme.tres` (`default_font_size = 20`) — no additional
+   theming was needed.
+
+### Regression sweep results
+
+- **Before** (baseline, no M23.1 changes yet): 137 files, GRAND TOTAL
+  13532. One pre-existing flake: `m19a_gen1_test.tscn` 50/51 (matches the
+  already-documented Hydro Pump/Rough Skin whole-battle-aggregation bug).
+- **After, sweep 1**: 138 files (the new `battle_screen.tscn` is picked up
+  by the sweep script, since it lives in `scenes/battle/`), GRAND TOTAL
+  **unchanged at 13532**. `battle_screen.tscn` correctly reported under
+  "Files with NO recognized summary line" alongside the pre-existing
+  `battle_test.tscn` — expected and harmless: it's an interactive scene
+  with no `get_tree().quit()` call of its own, so the sweep script's
+  existing per-scene `timeout 25` wrapper (unmodified, already built for
+  exactly this "some scenes don't quit" case) lets it run harmlessly for up
+  to 25 seconds before being killed, contributing 0 assertions and 0
+  failures — the same handling `battle_test.tscn` has always received, not
+  a new gap. `m19a_gen1_test.tscn` still 50/51, unchanged.
+- **After, sweep 2**: 138 files, GRAND TOTAL 13532, byte-for-byte identical
+  to sweep 1 (including `m19a_gen1_test.tscn` still 50/51 both times — the
+  flake happened to sit still across all 3 sweeps this session, unlike its
+  flip-flopping behavior in the M23.0a session; still the same
+  already-documented suite, still unrelated).
+
+**Zero regressions.** Every one of the 136 pre-existing test files'
+assertion counts is byte-identical before and after, across 3 independent
+sweeps. **One accepted, documented cost**: every future regression sweep
+now takes roughly 25 extra seconds waiting for `battle_screen.tscn`'s own
+`timeout` to fire, mirroring the exact cost `battle_test.tscn` has always
+carried — not a new problem, an extension of an already-accepted one.
+
+### Deviations from the task's literal spec, and why
+
+- **Two things that looked bug-shaped during manual verification but
+  weren't, worth recording explicitly since a future session might
+  otherwise "re-discover" and try to "fix" them**: (1) switching consumes
+  the turn (the newly-switched-in mon can be hit by the opponent in the
+  same button press that performed the switch) — this is the existing,
+  correct, already-tested M9 switching mechanic, not something this
+  session introduced or should paper over with a free "safe switch." (2)
+  Potion's heal can still result in a net HP decrease within the same
+  button press, if the opponent's follow-up hit that same turn is large
+  enough (e.g. a super-effective Grass hit on the Water-type Torrent) —
+  again correct, pre-existing turn-resolution order, not a bug in the item
+  menu.
+- **No deviation found from the explicit constraints**: `_trainer_ais[side]
+  == null` semantics untouched; M23.0a's core contract untouched (no
+  changes to `battle_manager.gd` at all this session); UI kept to plain
+  functional buttons with zero animation/polish beyond the one shared
+  theme already established in M23.0b.
+- **One scope interpretation, not a deviation**: the task said "no battle
+  log (M23.2)" — read as excluding a scrolling/persistent history of past
+  events specifically, not excluding ANY display of current state. The
+  screen shows the two active mons' names/HP and a one-line status message
+  (whose turn it is / what's happening / the win-lose result) since a
+  screen with literally zero state feedback beyond buttons would not be
+  meaningfully "playable" for the manual-verification purpose this
+  milestone exists for. This is presented as an explicit interpretation
+  for review, not asserted as obviously correct.
+
+### Open questions before this gets committed
+
+1. **Is showing current HP/active-mon-name state (not a scrolling log) the
+   right read of "no battle log (M23.2)"?** Flagged above as an explicit
+   interpretation, not a unilateral scope expansion — happy to strip it
+   back to literally nothing but buttons if that's not the intent.
+2. **`scenes/battle/battle_screen.tscn`'s ~25s contribution to every future
+   sweep** (documented above, not a bug) — acceptable as-is (matching
+   `battle_test.tscn`'s own precedent), or worth a follow-up exclusion
+   mechanism in `count_assertions.sh` for genuinely-interactive scenes?
+   Not fixed here since it wasn't flagged as in-scope and the cost is
+   small and precedented.
+3. **The item menu's fixed 3-button list (Potion/Full Heal/X Attack)** has
+   no real bag-inventory/quantity tracking behind it (every button is
+   always available, unlimited uses) — matches "no team builder... purely
+   to prove the async loop," but flagging explicitly in case a bag/
+   inventory system is expected sooner than assumed.
