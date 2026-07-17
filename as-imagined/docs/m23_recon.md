@@ -655,3 +655,392 @@ carried — not a new problem, an extension of an already-accepted one.
    always available, unlimited uses) — matches "no team builder... purely
    to prove the async loop," but flagging explicitly in case a bag/
    inventory system is expected sooner than assumed.
+
+---
+
+## M23.1 addendum — headless autoplay exit path
+
+**COMPLETE** — 2026-07-16, closes Open Question 2 above.
+
+### Convention check
+
+Grepped for any existing CLI-arg/env-var toggle anywhere in the codebase
+(`OS.get_cmdline_args`/`OS.get_environment`/`DisplayServer.get_name`/
+`OS.has_feature`) before building anything: zero hits. None of the 137
+pre-existing test scenes needed one — every one of them is unconditionally
+"in test mode," so there was nothing to match. **A new convention was
+proposed rather than matched, per the task's own explicit fallback
+instruction**: a literal CLI flag, `--autoplay`, checked via `"--autoplay"
+in OS.get_cmdline_args()` — a deliberate, explicit toggle rather than
+implicit `DisplayServer.get_name() == "headless"` detection, since the task
+asked specifically for "a flag (CLI arg or env var)." This is now the
+established pattern for any future interactive scene needing the same
+headless/sweep-friendly exit path.
+
+### Implementation
+
+`scenes/battle/battle_screen.gd`:
+- `_ready()` gained one new branch, checked immediately after
+  `start_battle_with_parties()` (which already stalls at `MOVE_SELECTION`
+  synchronously): if `--autoplay` is present, call `_run_autoplay()` and
+  `return` — skipping `_refresh_ui()` and every button/label entirely.
+  Without the flag, execution falls through to the exact same
+  `_refresh_ui()` call as before this session, byte-for-byte unchanged.
+- New `_run_autoplay()`: a `while` loop (capped at 200 iterations, matching
+  this project's own established `guard`-loop convention) driving the
+  battle via the SAME `queue_move_targeted`/`queue_replacement_for` +
+  `advance()` calls the interactive button handlers already use — always
+  picking the first move with remaining PP (`_first_usable_move_index`,
+  falling back to index 0 if none remain, letting the engine's own
+  pre-existing forced-Struggle logic take over exactly as it does for a
+  human player in the same situation) and the first available bench slot
+  for a mandatory faint replacement (`_first_switch_slot`). Deliberately
+  does not exercise voluntary switching or the item menu — a move is
+  always the most basic "first legal action," and this is a plumbing
+  check, not an AI-behavior test.
+- On `BATTLE_END`, prints `"battle_screen_autoplay: %d/1 passed" %
+  passed`, matching `scripts/count_assertions.sh`'s own documented
+  `"<suite_name>: N/M passed"` regex exactly (the majority convention
+  across this whole codebase) — genuinely conditional, not an
+  unconditional pass: `passed` requires BOTH that `BATTLE_END` was reached
+  (not just the guard cap firing) AND that `_winner_side` recorded a real
+  value (0 or 1), so a hang or a broken `battle_ended` wiring would
+  correctly report `0/1` and `FAILED`, not a vacuous pass. Calls
+  `get_tree().quit(0 if passed == 1 else 1)`.
+- `scripts/count_assertions.sh`: the one line launching every scene now
+  appends `--autoplay` unconditionally, for all 138 files — not
+  special-cased to `battle_screen.tscn` alone. This is safe (the other 137
+  scenes don't check for or care about any extra trailing CLI arg — Godot
+  doesn't error on an unrecognized one) and avoids hardcoding a filename
+  into the sweep script's own generic loop.
+
+### Interactive path — confirmed completely unaffected
+
+Two checks, mirroring M23.1's own verification approach:
+1. **Headless, no flag** (`--quit-after 5`): loads and idles exactly as
+   before — no summary line, no `quit()`, matching pre-session behavior
+   precisely.
+2. **Real button-press replay** (the same throwaway `.pressed.emit()`
+   driver scene M23.1 used, recreated temporarily and deleted afterward —
+   confirmed clean via a directory listing showing zero scratch files
+   left behind): walked the interactive scene through a full battle via
+   real signal emission with the flag absent — identical outcome to
+   M23.1's own original verification run (`BATTLE_END` after 13 presses,
+   `winner_side=1`). Zero behavioral difference from before this session.
+
+### Regression sweep results
+
+- **Before**: 138 files, GRAND TOTAL 13532. `battle_screen.tscn` under
+  "no recognized summary line" (alongside `battle_test.tscn`).
+- **After, sweep 1**: 138 files, GRAND TOTAL **13533** (+1, exactly the new
+  `battle_screen_autoplay: 1/1 passed` line). `battle_screen.tscn` is now
+  correctly REMOVED from the "no recognized summary line" list — only
+  `battle_test.tscn` remains, exactly as documented/expected. A direct
+  diff against the "before" sweep shows **every other file's count
+  byte-identical** — the only line that changed at all is
+  `battle_screen.tscn` itself, going from 0 (unrecognized) to 1
+  (recognized).
+- **After, sweep 2**: 138 files, GRAND TOTAL 13533 again. `battle_screen`
+  stable at 1/1 in both sweeps. The only two differing lines between
+  sweep 1 and sweep 2 are `m17l_test.tscn` (45→44) and
+  `m19a_gen1_test.tscn` (50→51) — both already-documented, named,
+  pre-existing statistical/aggregation-flaky suites (CLAUDE.md's own
+  "M19-complete baseline" flaky-suite list), unrelated to this session.
+
+**Zero regressions.** `battle_screen.tscn` now contributes a real,
+genuinely-conditional assertion to every future sweep instead of silently
+burning ~25 seconds on a `timeout` kill, closing Open Question 2 from the
+M23.1 section above.
+
+---
+
+## M23.2 — Battle log
+
+**COMPLETE** — 2026-07-16.
+
+### Signal inventory
+
+Grepped every `^signal` declaration in `battle_manager.gd`: **~110 distinct
+signals** (close to the "~127" figure cited in prior M23 notes — the exact
+count drifts slightly session to session as new mechanics ship, not worth
+re-deriving precisely for this purpose). Per the task's own explicit
+constraint ("do not invent new event types unless something critical is
+missing"), zero new signals were added — `battle_manager.gd` was not
+touched at all this session. The existing surface was already more than
+sufficient for every category the task named.
+
+**Deliberately wired a representative ~16-signal subset, not all ~110** —
+this screen's own hardcoded 2-team roster (2 items, zero abilities
+assigned, zero held items, zero hazard/screen/weather-setting moves) can
+only ever trigger a specific slice of the full signal surface; wiring
+literally all ~110 would mean connecting dozens of handlers for mechanics
+(Bide, Substitute, weather, hazards, screens, ability triggers, doubles-
+only redirects, the whole delayed-effect-scheduling family, etc.) this
+roster structurally cannot reach, for zero observable benefit. The 16
+chosen cover every category the task explicitly named (moves used, damage,
+faints, switches, item use, status effects) plus a few cheap, generally-
+useful extras:
+
+- `move_executed` — "X used Y!" / "X used Y! (N damage)"
+- `move_missed` / `move_missed_target` — "X's attack missed!" / "X avoided
+  the attack!"
+- `pokemon_fainted` — "X fainted!"
+- `pokemon_switched_out` / `pokemon_switched_in` — "X was withdrawn!" /
+  "Go, X!" (covers both a voluntary Switch button press and the AI's own
+  automatic faint-replacement, confirmed via the manual playthrough below
+  — `_do_voluntary_switch` emits both; faint-replacement's `_do_switch_in`
+  only emits the "switched_in" half, correctly matching what's already
+  logged via `pokemon_fainted` for the mon that left)
+- `stat_stage_changed` — "X's STAT rose/fell!" (covers Swords Dance,
+  Growl, X Attack, and any secondary stat-drop chance)
+- `secondary_applied` — mapped from `MoveData.SE_*` to plain status text
+  ("was burned"/"was paralyzed"/"fell asleep"/"became confused"/
+  "flinched"/etc.)
+- `status_cured` / `party_status_cured` — "X's status was cured!" (the
+  latter is Full Heal's own actual signal, confirmed via direct source
+  read of `_do_item_use` — NOT `status_cured`, a real naming trap this
+  session checked rather than assumed)
+- `item_action_used` — "X used ITEM!" (fires generically for every bag
+  item, confirmed via source to fire unconditionally before any
+  item-specific effect signal)
+- `item_healed` — "X recovered N HP!" (Potion)
+- `recoil_damage` / `drain_heal` / `status_damage` / `confusion_self_hit` —
+  cheap, generally-useful extras; none of this specific roster's moves
+  currently trigger them, but they cost nothing to wire and generalize the
+  log to future rosters for free.
+
+**Explicitly NOT wired** (flagged, not silently dropped): weather/hazard/
+screen signals, ability-trigger signals (`ability_triggered`,
+`ability_changed`, etc.), doubles-only redirect signals, and the long tail
+of move-specific one-off signals (Bide, Substitute, the delayed-effect
+scheduling family, turn-order-splice signals, etc.). None are reachable by
+this screen's current fixed roster. Adding log coverage for any of them
+later is a one-line `_bm.SIGNAL.connect(...)` addition inside
+`_wire_log_signals()`, not a redesign.
+
+### Implementation
+
+- `scenes/battle/battle_screen.tscn`: new `RichTextLabel` (`LogLabel`),
+  placed between the HP labels and the button area (so its position stays
+  fixed regardless of how many buttons are currently showing), with
+  `scroll_active = true` and `scroll_following = true` — Godot's own
+  built-in auto-scroll-to-bottom behavior, needing zero manual scroll
+  management code. `bbcode_enabled = false` — plain text only, no color-
+  coding. `custom_minimum_size = Vector2(500, 220)`.
+- `scenes/battle/battle_screen.gd`:
+  - New `_wire_log_signals()`, called once from `_ready()` (unconditionally
+    — see the autoplay decision below), connecting the ~16 signals above.
+  - New `_log(text: String)`: appends `text + "\n"` to `_log_label.text` —
+    literally "plain text lines appended in order," matching the task's
+    own requirement 1 exactly, no buffering or reordering.
+  - New `_mon_label(mon) -> String`: "Your X" / "Foe X", determined via
+    `_player_party.members.has(mon)` membership check (this screen is
+    fixed 2-side singles, so this is sufficient — no combatant-index
+    lookup needed).
+  - `_on_battle_ended` (already existed, M23.1) gained one added line
+    logging the win/lose result — the only change to any pre-existing
+    function; every other M23.1 code path (labels, buttons, menus, input
+    handlers) is untouched.
+
+### Autoplay decision
+
+**Wired unconditionally — the log populates during BOTH the interactive
+and `--autoplay` paths, no branching on the flag.** Reasoning, per the
+task's own explicit prompt: it named "useful for debugging failures" as a
+reason FOR populating during autoplay, and connecting ~16 signal handlers
+plus short string appends has no meaningful performance cost (a typical
+autoplay run is ~13 turns; this is not the kind of per-frame cost this
+project's own performance-sensitive code — the battle engine itself —
+needs to worry about). Keeping one unconditional wiring path is also
+simpler than adding a second conditional branch for a feature with
+negligible cost either way.
+
+### Manual verification
+
+A real button-press replay (the same `.pressed.emit()`-driven throwaway
+scratch scene established in M23.1/M23.1-addendum, recreated temporarily
+and deleted afterward — confirmed clean via a directory listing showing
+zero scratch files left behind), printing the final `_log_label.text` at
+`BATTLE_END`. Confirmed the log correctly captured, in order: a voluntary
+switch ("Your Blaze was withdrawn! / Go, Your Torrent!"), moves with and
+without damage, an item use plus its heal ("Your Torrent used Potion! /
+Your Torrent recovered 19 HP!"), a faint ("Your Torrent fainted!"), the
+resulting forced replacement ("Go, Your Blaze!"), a status effect
+("Your Blaze was paralyzed!"), the opponent's own faint and the AI's
+completely automatic replacement (zero UI/log-wiring special-casing needed
+— "Foe Leaf was withdrawn! / Go, Foe Volt!"), and the final result
+("You lose!"). Separately confirmed via a real non-headless screenshot
+that the `RichTextLabel` itself renders legibly against the shared
+`main_theme.tres` theme, matching every prior M23 session's own visual-
+confirmation precedent.
+
+**One honest, non-bug nuance observed and flagged, not fixed**: in one
+exchange, the log printed `"Your Blaze used Ember! (36 damage)"` then
+`"Your Blaze was paralyzed!"` then `"Foe Volt used Thunder Wave!"` — the
+paralysis line appears to "precede its own cause" in reading order. This
+is not a bug in the log (which appends strictly in the order signals
+actually fire) — it reflects `battle_manager.gd`'s own existing dispatch
+order for Thunder Wave's execution (the status is applied, emitting
+`secondary_applied`, before the function's own trailing `move_executed`
+call summarizing the action). Reordering this would require buffering and
+re-sorting a turn's events by "narrative cause" before display — real
+scope creep beyond "plain text lines appended in order" (this session's
+literal requirement 1), and out of scope for a bare-bones milestone.
+Flagged here for visibility, not fixed.
+
+### Regression sweep results
+
+- **Before**: 138 files, GRAND TOTAL 13534.
+- **After, sweep 1**: 138 files, GRAND TOTAL 13533. The only differing line
+  vs. "before" is `m19a_gen1_test.tscn` (51→50) — the same
+  already-documented, named, pre-existing statistical/aggregation-flaky
+  suite (CLAUDE.md's own "M19-complete baseline" flaky-suite list),
+  unrelated to this session. `battle_screen.tscn` unchanged at 1/1.
+- **After, sweep 2**: 138 files, GRAND TOTAL 13534 again. The only
+  differing line vs. sweep 1 is the same `m19a_gen1_test.tscn` flipping
+  back (50→51). `battle_screen.tscn` stable at 1/1 in both sweeps.
+
+**Zero regressions.** Every other file's count is byte-identical across
+all three sweeps (before, after-1, after-2) — this session's changes are
+purely additive to `battle_screen.gd`/`.tscn`, with `battle_manager.gd`
+untouched.
+
+## M23.2 addendum — broadened signal coverage + log-ordering fix
+
+Two independent follow-up fixes to the M23.2 battle log, requested
+together. `battle_manager.gd` untouched in both parts, per the task's own
+constraint.
+
+### Part 1 — broadened signal coverage
+
+Wired 13 more signals: `weather_set`/`weather_expired`/`weather_damage`,
+`hazard_set`/`hazard_damage`/`hazard_status_applied`/`hazard_absorbed`/
+`hazards_cleared`, `screen_set`/`screen_expired`/`screens_broken`,
+`ability_triggered`/`ability_healed`. Confirmed via direct signature
+inspection (not assumed) that all 13 are singles-safe — every one is keyed
+by a plain `side: int` (0/1) or a single `pokemon` parameter, with no
+ally-slot/field-position argument anywhere. None were doubles-gated, so
+none needed to be skipped.
+
+- Weather: fixed start/end flavor text per `DamageCalculator.WEATHER_*`
+  (`"It started to rain!"` / `"The sunlight turned harsh!"` / etc.),
+  ignoring which Pokémon/move caused it (consistent with this screen's own
+  "plain text, no filtering" scope). `weather_damage` reuses the
+  established `"%s was hurt by X! (%d damage)"` shape.
+- Hazards/screens: display-name dictionaries keyed off the same string
+  tags `battle_manager.gd`'s own signals already use ("spikes"/
+  "toxic_spikes"/"stealth_rock"/"sticky_web", "reflect"/"light_screen"/
+  "aurora_veil") plus a new `_side_label(side)` helper ("your"/"the foe's").
+  `hazard_status_applied` reuses a new `_status_name(status)` helper
+  mirroring the existing `secondary_applied` status-name mapping.
+- `ability_triggered`: its own `effect_key` is a slug string with ~50
+  distinct values across the whole ability roster. Rather than
+  hand-authoring bespoke text per key (which would also go stale the next
+  time a new ability ships), this screen formats it generically —
+  `"%s's %s activated!" % [mon, effect_key.replace("_", " ")]`. Readable
+  and always in sync with the real signal surface, though less polished
+  than a per-ability phrase — flagged as a reasonable simplification, not
+  silently under-scoped.
+- `ability_healed`: handles both signs of its `amount` param (Poison
+  Heal's own dispatch emits a *negative* value to represent damage, not a
+  heal) — positive logs a heal line, negative logs a damage line.
+
+This screen's own fixed 2v2 roster (Blaze/Torrent vs Leaf/Volt, no held
+items, no abilities assigned to any fixture) cannot naturally trigger any
+of these 13 signals through real gameplay — confirmed via a scripted
+direct-signal-emission check instead (see Manual verification below),
+per the task's own explicitly allowed alternative to a live playthrough.
+
+### Part 2 — log-ordering fix
+
+**Root cause, confirmed via direct source read**: `battle_manager.gd`'s
+own pure single-target status-move dispatch (`_phase_move_selection`'s
+downstream execution block, `if move.stat_change_stat >= 0: ... elif
+move.secondary_effect != MoveData.SE_NONE: ...`) emits `stat_stage_changed`
+/`secondary_applied` *inside* that branch, then emits the causing
+`move_executed` at the very end of the same synchronous block — this is
+exactly the "paralyzed" line preceding "used Thunder Wave!" nuance flagged
+in M23.2. Confirmed the DAMAGING-hit path (`_do_damaging_hit`) does **not**
+have this problem: `move_executed` already fires immediately after HP is
+reduced, with any post-hit secondary effects (`SE_FLINCH`, on-hit stat
+drops, etc.) emitted afterward in that same function — no reordering
+needed there, and none was applied there.
+
+Fix, scoped to the narrowest mechanism that corrects the flagged case
+(per the task's own "simplest mechanism... without a large architectural
+change" instruction) — also extended to `stat_stage_changed`, since it is
+the identical bug in the identical dispatch block (e.g. Growl's own stat
+drop precedes "used Growl!" the same way), not a separate issue requiring
+separate scope:
+
+- `_on_log_secondary_applied`/`_on_log_stat_stage_changed` no longer call
+  `_log()` directly — they append their formatted line to a new
+  `_pending_effect_lines: Array[String]` buffer instead.
+- `_log()` (the sink every *other* handler still calls directly) now
+  flushes that buffer *before* appending its own new line — so a buffered
+  line is never dropped or permanently stuck; it surfaces at the very next
+  log event, in its original relative position, unless that next event is
+  specifically the causing `move_executed`.
+- `_on_log_move_executed` is the one deliberate exception: it appends its
+  own cause line directly (bypassing `_log()`'s auto-flush), *then* calls
+  the new `_flush_pending_effect_lines()` — swapping the order only in
+  exactly the case that needed swapping.
+
+No new signals, no new BattleManager involvement, no per-action
+correlation key — the fix is purely a one-step reordering local to
+`battle_screen.gd`'s own log-building code.
+
+### Manual verification
+
+A scripted signal-emission test (a throwaway scratch scene,
+`_scratch_verify_addendum.gd`/`.tscn`, created temporarily then deleted —
+confirmed clean via a directory listing showing zero scratch files left
+behind), instantiating the real `battle_screen.tscn`, driving a real
+3-turn sequence through the actual `queue_switch_for`/`queue_move_targeted`
++ `advance()` contract (forcing Leaf → Volt via a genuine voluntary
+switch, then Volt using Thunder Wave on Blaze with `_force_hit = true`),
+and inspecting the resulting `_log_label.text`:
+
+```
+Your Blaze used Quick Attack! (19 damage)
+Foe Leaf used Tackle! (19 damage)
+Foe Leaf was withdrawn!
+Go, Foe Volt!
+Your Blaze used Quick Attack! (22 damage)
+Your Blaze used Quick Attack! (23 damage)
+Foe Volt used Thunder Wave!
+Your Blaze was paralyzed!
+```
+
+Confirmed **"Foe Volt used Thunder Wave!" now precedes "Your Blaze was
+paralyzed!"** — the exact case flagged in M23.2, now cause-before-effect.
+Separately confirmed a newly-wired signal category produces a correct log
+line via a direct `weather_set.emit(mon, DamageCalculator.WEATHER_SANDSTORM)`
+call against the same live instance, producing `"A sandstorm kicked up!"`.
+
+### Regression sweep results
+
+- **Before**: 138 files, GRAND TOTAL 13531.
+- **After**: 138 files, GRAND TOTAL 13531 (a second independent sweep read
+  13532 — the +1/-1 swing matches the same already-documented pre-existing
+  statistical/aggregation-flaky-suite noise class every prior M23 session
+  has observed, not a regression). `battle_screen.tscn` unchanged at 1/1
+  in every run.
+
+**Zero regressions.** This session's changes are purely additive/
+reordering within `battle_screen.gd`/`.tscn` — `battle_manager.gd` was not
+touched, per the task's own constraint.
+
+### Deviations / assumptions flagged
+
+- `ability_triggered`'s generic `effect_key`-derived text (see Part 1
+  above) trades per-ability flavor for zero maintenance burden — flagged
+  as a deliberate simplification, open to revisiting if a future session
+  wants bespoke text for specific abilities.
+- The ordering fix's scope was widened from "the specific case flagged in
+  M23.2" (`secondary_applied`) to also cover `stat_stage_changed`, since
+  both signals share the exact same root cause in the exact same
+  dispatch block — treated as one fix, not two, per the task's own
+  "simplest mechanism" instruction rather than narrowly patching only the
+  literal example given.
+- Nothing committed, per standing instruction.

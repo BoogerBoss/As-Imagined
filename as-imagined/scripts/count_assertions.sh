@@ -68,9 +68,17 @@ else
 	# kept (it's still genuinely useful for the relative `scenes/battle/*
 	# .tscn` glob below and any future code path that reads project-
 	# relative files), but the Godot call itself no longer depends on it.
+	# [Autoplay] --autoplay is passed unconditionally to every scene, not
+	# just battle_screen.tscn — harmless for the other 137 (none of them
+	# check for it, Godot doesn't error on an unrecognized trailing custom
+	# arg), and avoids special-casing one filename inside this loop.
+	# battle_screen.tscn itself is interactive with no get_tree().quit() of
+	# its own outside this flag, so without it every sweep would otherwise
+	# burn a full 25s timeout on it for nothing (see CLAUDE.md's own
+	# verification-scenes list for the flag's exact behavior).
 	for f in scenes/battle/*.tscn; do
 		echo "=== $f ==="
-		timeout 25 "$GODOT" --headless --path "$PROJECT_DIR" "$f" 2>&1 || true
+		timeout 25 "$GODOT" --headless --path "$PROJECT_DIR" "$f" --autoplay 2>&1 || true
 	done > "$LOG_FILE"
 fi
 
