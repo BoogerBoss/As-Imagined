@@ -42,6 +42,7 @@ const _OPTION_FIXTURE := "__fixture__"
 @onready var _player_option: OptionButton = $Scroll/VBox/PlayerRow/PlayerTeamOptionButton
 @onready var _opponent_option: OptionButton = $Scroll/VBox/OpponentRow/OpponentTeamOptionButton
 @onready var _refresh_button: Button = $Scroll/VBox/RefreshButton
+@onready var _manage_teams_button: Button = $Scroll/VBox/ManageTeamsButton
 @onready var _launch_button: Button = $Scroll/VBox/LaunchButton
 
 var _format: Format = Format.SINGLES
@@ -50,6 +51,7 @@ var _format: Format = Format.SINGLES
 func _ready() -> void:
 	_format_toggle_button.pressed.connect(_on_format_toggle_pressed)
 	_refresh_button.pressed.connect(_refresh_team_lists)
+	_manage_teams_button.pressed.connect(_on_manage_teams_pressed)
 	_launch_button.pressed.connect(_on_launch_pressed)
 	_refresh_team_lists()
 
@@ -110,6 +112,25 @@ func _on_format_toggle_pressed() -> void:
 	else:
 		_status_label.text = "Set up a battle."
 		_launch_button.disabled = false
+
+
+# ── Roster navigation [M23.7] ────────────────────────────────────────────
+# [Real integration gap found and closed by M23.7's own end-to-end
+# walkthrough] Before this session, NOTHING in this project's real game
+# flow (main.tscn -> this screen) linked to scenes/team_builder/
+# roster_screen.tscn at all — roster_screen.tscn/team_builder_screen.tscn
+# were only ever reachable by launching them directly (editor/command
+# line) or from test scripts. A player using only real UI navigation could
+# never build or save a team in the first place. Closed with the smallest
+# possible addition: one button, one real change_scene_to_file call —
+# mirroring this screen's own Launch button's exact mechanism. Returning
+# from roster_screen.tscn (its own new Back button, see that file's own
+# M23.7 note) lands back on a FRESH instance of this screen, whose _ready()
+# already unconditionally calls _refresh_team_lists() — so a newly-saved
+# team is picked up for free, no extra plumbing needed.
+
+func _on_manage_teams_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/team_builder/roster_screen.tscn")
 
 
 # ── Team-source dropdowns ─────────────────────────────────────────────────

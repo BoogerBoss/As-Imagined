@@ -57,6 +57,7 @@ const _NATURE_NAMES: Array[String] = [
 @onready var _team_list_container: VBoxContainer = $Scroll/VBox/ListView/TeamListContainer
 @onready var _new_team_name_edit: LineEdit = $Scroll/VBox/ListView/NewTeamRow/NewTeamNameEdit
 @onready var _create_team_button: Button = $Scroll/VBox/ListView/NewTeamRow/CreateTeamButton
+@onready var _back_to_setup_button: Button = $Scroll/VBox/ListView/BackToSetupButton
 
 @onready var _editor_view: VBoxContainer = $Scroll/VBox/EditorView
 @onready var _editor_name_edit: LineEdit = $Scroll/VBox/EditorView/EditorNameRow/EditorNameEdit
@@ -75,10 +76,24 @@ var _builder_instance: Node = null
 
 func _ready() -> void:
 	_create_team_button.pressed.connect(_on_create_team_pressed)
+	_back_to_setup_button.pressed.connect(_on_back_to_setup_pressed)
 	_save_team_button.pressed.connect(_on_save_team_pressed)
 	_cancel_editor_button.pressed.connect(_on_cancel_editor_pressed)
 	_cancel_builder_button.pressed.connect(_on_cancel_builder_pressed)
 	_show_list_view()
+
+
+# [M23.7 — real integration gap found and closed] Before this session,
+# roster_screen.tscn had no way back to battle_setup_screen.tscn (or
+# anywhere else) at all — once here, a player was stuck, since nothing
+# linked TO this screen from real game navigation either (see
+# battle_setup_screen.gd's own matching M23.7 note for the other half of
+# this fix). Only shown on the ListView (the EditorView already returns to
+# the ListView via its own pre-existing Save/Cancel buttons) — placed
+# alongside Create New Team since ListView is this screen's own "resting"
+# state.
+func _on_back_to_setup_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/battle/battle_setup_screen.tscn")
 
 
 # ── List view ─────────────────────────────────────────────────────────────

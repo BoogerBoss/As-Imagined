@@ -668,6 +668,7 @@ func _refresh_ui() -> void:
 
 	if _bm.get_phase() == BattleManager.BattlePhase.BATTLE_END:
 		_status_label.text = ("You win!" if _winner_side == 0 else "You lose!")
+		_build_battle_end_buttons()
 		return
 
 	if _bm.get_phase() == BattleManager.BattlePhase.SWITCH_PROMPT:
@@ -687,6 +688,31 @@ func _refresh_ui() -> void:
 		_:
 			_status_label.text = "Choose an action for %s." % side0_mon.species.species_name
 			_build_main_menu(side0_mon)
+
+
+# [M23.7 — real integration gap found and closed] Before this session,
+# reaching BATTLE_END was a genuine dead end: `_refresh_ui()` clears
+# `_button_area` at the top of every call and, on this specific branch,
+# returned immediately afterward with nothing added back — confirmed via a
+# real button-press walkthrough (not assumed) that this left ZERO buttons
+# on screen, no way to play again or navigate anywhere, forcing the
+# process to be killed to escape. Closed with the smallest addition that
+# fits this file's own established "rebuild button_area from scratch"
+# pattern exactly — no new .tscn nodes needed, since `_button_area` is
+# already fully dynamic. Routes to battle_setup_screen.tscn (not straight
+# back into another battle) so win/loss result stays visible for a beat
+# and the player can freely reconfigure format/teams before their next
+# battle, mirroring the same screen every OTHER path into a battle already
+# goes through.
+func _build_battle_end_buttons() -> void:
+	var play_again_btn := Button.new()
+	play_again_btn.text = "Play Again"
+	play_again_btn.pressed.connect(_on_play_again_pressed)
+	_button_area.add_child(play_again_btn)
+
+
+func _on_play_again_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/battle/battle_setup_screen.tscn")
 
 
 func _build_main_menu(side0_mon: BattlePokemon) -> void:

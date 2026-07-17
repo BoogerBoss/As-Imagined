@@ -67,6 +67,10 @@ custom_minimum_size = Vector2(260, 0)
 layout_mode = 2
 text = "Refresh Team Lists"
 
+[node name="ManageTeamsButton" type="Button" parent="Scroll/VBox"]
+layout_mode = 2
+text = "Manage Teams (Build / Edit / Delete)"
+
 [node name="LaunchButton" type="Button" parent="Scroll/VBox"]
 layout_mode = 2
 text = "Launch Battle"

@@ -52,6 +52,10 @@ custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 text = "Create New Team"
 
+[node name="BackToSetupButton" type="Button" parent="Scroll/VBox/ListView"]
+layout_mode = 2
+text = "Back to Battle Setup"
+
 [node name="EditorView" type="VBoxContainer" parent="Scroll/VBox"]
 visible = false
 layout_mode = 2

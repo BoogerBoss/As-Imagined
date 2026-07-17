@@ -2275,3 +2275,187 @@ are all byte-identical across every sweep this session.
   delete confirmation, no slot pre-population on edit) were NOT touched —
   recorded in the M23.5 section above, per this task's own requirement 1.
 - Nothing committed, per standing instruction.
+
+---
+
+## M23.7 — Solo-play "complete" milestone
+
+**COMPLETE** — 2026-07-17.
+
+Framed by the roadmap as an integration/verification milestone, not a
+build — confirmed true: every gap found this session was a missing
+CONNECTION between two already-working M23.1-M23.6 pieces, never a bug
+inside any of them.
+
+### Walkthrough narrative
+
+**Pass 1 (before any fixes)** — a throwaway driver (`_scratch_walkthrough
+_before.gd`, deleted after this session) started at the actual boot scene
+(`main.tscn`) and proceeded via real `Button.pressed.emit()` calls and
+real `get_tree().change_scene_to_file()` transitions (the same real-
+transition-chain mechanism `[M23.6]` established, including its own
+"detach from `current_scene` first" plumbing fix, reused unchanged here):
+
+1. `main.tscn` → pressed "Start Battle" → `battle_setup_screen.tscn`.
+2. Searched the setup screen (and a fresh `main.tscn` instance) for any
+   button leading to the team builder/roster — found none.
+3. Confirmed this by directly instantiating `roster_screen.tscn` as a
+   child (explicitly NOT a real transition, since none exists) to still
+   build+save a team and keep the walkthrough moving.
+4. Searched `roster_screen.tscn` for any way back to the setup screen or
+   main menu — found none.
+5. Manually refreshed the (still-open) setup screen, selected the
+   just-saved team as player and a random team as opponent, pressed
+   Launch — reached a real, playable `battle_screen.tscn`.
+6. Played the battle to completion via real per-turn button presses
+   (always the first enabled button — a plausible simple human playstyle,
+   deliberately NOT the pre-existing `--autoplay` code path, which is a
+   separate, already-tested mechanism) — reached `BATTLE_END` cleanly
+   ("You lose!") after 8 real turns.
+7. Inspected `_button_area` one frame after the last `_refresh_ui()` call
+   (a real timing fix needed mid-session — see below) — **zero buttons**.
+   Dead end confirmed.
+
+**Pass 2 (after fixes)** — a second driver (`_scratch_walkthrough_after
+.gd`, also deleted) ran the COMPLETE closed loop twice in one process,
+covering every combination requirement 1 asked for: `main.tscn` → Start
+Battle → setup → **Manage Teams** (new, real transition) → roster →
+build+save a NEW 2-member team via the embedded team builder (Charizard +
+Blastoise) → **Back to Battle Setup** (new, real transition) → setup
+(confirmed the freshly-saved team auto-appeared after the transition, no
+manual refresh needed) → picked the **freshly-built** team vs. the
+**Quick Test fixture** → Launch → real per-turn play to `BATTLE_END`
+("You lose!" after 14 turns) → **Play Again** (new) → back on a fresh,
+working setup screen → picked the SAME, now **previously-saved** team vs.
+a **random-generated** team → Launch → real per-turn play to `BATTLE_END`
+("You lose!" after 19 turns) → **Play Again** again → confirmed the loop
+survives a second full lap with no leaks or dead ends.
+
+### Gaps found, severity, and disposition
+
+| # | Gap | Severity | Disposition |
+|---|---|---|---|
+| 1 | No real in-game navigation path from `main.tscn`/`battle_setup_screen.tscn` to `roster_screen.tscn` — the team builder/roster was only reachable by launching it directly (editor/CLI) or from test code. | **BLOCKING** — a player using only real UI navigation could never build or save a team at all. | **FIXED**: new "Manage Teams" button on the setup screen. |
+| 2 | No way back from `roster_screen.tscn` to the setup screen (or anywhere) once there. | **BLOCKING** — combined with #1, the roster screen was a genuine one-way trip. | **FIXED**: new "Back to Battle Setup" button on the roster screen's list view. |
+| 3 | `BATTLE_END` left `_button_area` completely empty — zero buttons, no way to play again or navigate anywhere. | **BLOCKING** — the exact dead-end the roadmap's own requirement 4 anticipated in advance. | **FIXED**: new "Play Again" button, shown only at battle end, routing back to the setup screen. |
+| 4 | No way back from `battle_setup_screen.tscn` to `main.tscn`. | **Cosmetic/non-blocking** — `main.tscn` has no functionality the setup screen doesn't already provide (it's a single "Start Battle" button that itself just forwards to setup), so this doesn't trap the player anywhere or block completing the loop. | **DEFERRED to M23.8** — flagged, not built, to keep this session's fix minimal per requirement 5. |
+| 5 | A verification-script-only false positive: `_button_area`'s children read as still-present immediately after `_refresh_ui()`'s own `queue_free()` calls, because `queue_free()` is deferred (doesn't remove children until the next idle frame). | Not a real bug — a timing artifact in the FIRST walkthrough driver's own inspection code. | **FIXED in the verification script itself** (added a `process_frame` await before the final inspection); confirmed real `_button_area` state is correctly empty at battle end once actually settled — see gap #3 above, which this timing fix is what revealed accurately. |
+| 6 | `WARNING: ObjectDB instances leaked at exit` / `13 resources still in use at exit`, observed at process-quit time in BOTH walkthrough drivers. | Cosmetic — appears only at the scratch harness's own process exit, after every real-game-relevant assertion had already completed successfully; not reproduced by any of the ~140 existing automated `.tscn` suites (none of which do this driver's own multi-hop `change_scene_to_file`-plus-manual-`current_scene`-reassignment pattern). | **Flagged, not investigated further** — most plausibly an artifact of the verification harness's own unusual scene-tree manipulation (no real player path ever reassigns `get_tree().current_scene` directly), not a production bug. Worth a closer look in a future session if it ever surfaces outside a throwaway driver. |
+
+No gap required touching `battle_manager.gd`, `team_builder_screen.gd`'s
+core building logic, or `roster_screen.gd`'s edit/save/delete logic — every
+fix was a new button + a one-line `change_scene_to_file` handler, matching
+requirement 5's own "minimal and additive" instruction exactly.
+
+### What was built
+
+Three small, additive changes, each following the established "plain
+Control node + shared Theme, `change_scene_to_file` for real navigation"
+convention every prior M23 screen already uses — no new scenes, no new
+persistent state, no new autoloads:
+
+- `scenes/battle/battle_setup_screen.tscn`/`.gd`: new "Manage Teams (Build
+  / Edit / Delete)" button → `roster_screen.tscn`.
+- `scenes/team_builder/roster_screen.tscn`/`.gd`: new "Back to Battle
+  Setup" button (list view only — the editor view already returns to the
+  list view via its own pre-existing Save/Cancel buttons) →
+  `battle_setup_screen.tscn`.
+- `scenes/battle/battle_screen.gd`: new `_build_battle_end_buttons()`,
+  called from the existing `BATTLE_END` branch of `_refresh_ui()` — a
+  single "Play Again" button reusing this file's own established
+  `Button.new()`/`.pressed.connect()`/`add_child()` dynamic-button pattern
+  (no new `.tscn` nodes needed, since `_button_area` was already fully
+  dynamic) → `battle_setup_screen.tscn`. Confirmed this new code path is
+  UNREACHABLE from `--autoplay` (`_run_autoplay()` returns/quits before
+  `_refresh_ui()` is ever called), so it cannot affect that path by
+  construction, not just by testing.
+
+### Verification approach (flagged, per requirement 7's "your call")
+
+**Manual verification, not a new automated `.tscn` suite** — these three
+additions are pure scene-transition glue (a button, a signal connection, a
+one-line `change_scene_to_file` call each), already exercised end-to-end,
+twice, by the "after" walkthrough's real button-press/real-transition
+chain (including a SECOND full lap proving the loop doesn't leak or break
+on reuse). Judged that a dedicated automated suite would either (a)
+re-implement the same real-transition-chain testing shape `[M23.6]`'s own
+suite deliberately AVOIDED for `battle_screen.tscn` specifically because of
+the `--autoplay`-is-process-wide hazard documented in that section, or (b)
+add a shallow, lower-value node-existence check that the manual walkthrough
+already subsumes more thoroughly. The existing `--autoplay` checks for
+`battle_screen.tscn`/`battle_setup_screen.tscn` continue to cover their own
+own already-established scope (a genuine, conditional pass/fail on the
+hardcoded-fixture and dropdown-resolution paths respectively) and were
+explicitly reconfirmed unaffected below.
+
+### Regression sweep results
+
+Repo was clean (M23.6 committed) at session start, so — matching `[M23.6]`'s
+own precedent — the true "before" baseline needed no `mv`-based workaround
+at all.
+
+- **Before** (clean HEAD): 143 files, GRAND TOTAL **13790**, 0 failures.
+- **After, sweep 1**: 143 files (no new `.tscn` this session, per the
+  verification-approach decision above), GRAND TOTAL **13789** (−1, purely
+  `m18_5g_test.tscn` (315→314) — the same already-documented,
+  CLAUDE.md-listed statistical-flake suite this session never touched).
+- **After, sweep 2**: 143 files, GRAND TOTAL **13790** — `m18_5g_test.tscn`
+  settled back to 315, exactly matching the "before" baseline's own value;
+  every other line byte-identical across all three sweeps.
+
+**Zero regressions.** `m23_3_converter_test.tscn` (56/56),
+`m23_4_team_builder_test.tscn` (44/44), `m23_5_team_persistence_test.tscn`
+(51/51), `m23_6_battle_setup_test.tscn` (104/104), `battle_screen.tscn`'s
+own `--autoplay` fallback (`battle_screen_autoplay: 1/1 passed`), and
+`battle_setup_screen.tscn`'s own `--autoplay` check
+(`battle_setup_screen_autoplay: 1/1 passed`) are all byte-identical across
+every sweep this session — explicitly re-confirmed by name, per this
+task's own requirement 6, on top of the full-sweep diff.
+
+### Is M23 solo-play genuinely "complete"?
+
+**Yes, per the roadmap's own definition** ("Player vs. AI-controlled team,
+full battle start to finish through real UI... the actual 'humanly
+playable' completion marker for M23"). Confirmed directly, not assumed: a
+player can now go from Godot's actual boot scene, through building and
+saving a real team (or picking a previously-saved one, or a random one),
+against a real AI opponent (saved, random, or the original fixture), play
+a complete battle to a real win/loss via genuine button presses, and land
+back on a working setup screen ready to do it again — verified through TWO
+consecutive full laps with no dead end, stuck state, or crash anywhere in
+that chain.
+
+**What explicitly remains, none of it blocking "complete":**
+- Doubles battles (flagged non-functional since `[M23.6]`, unchanged this
+  session — out of scope by the roadmap's own M23.6 framing, not
+  reopened here).
+- The 3 M23.5 polish items + the "no way back to `main.tscn` from setup"
+  item found this session — all explicitly deferred to **M23.8**.
+- The ObjectDB-leak-at-exit observation (gap #6 above) — flagged for a
+  future look if it ever recurs outside a throwaway driver.
+
+### Deviations / assumptions flagged
+
+- Two throwaway verification drivers (`_scratch_walkthrough_before/after
+  .gd`/`.tscn`) were used and deleted after this session — confirmed clean
+  via directory listings, and the real `user://teams/` save directory was
+  confirmed empty both before and after (each driver deletes its own
+  fixture team(s) at the end of its run).
+- This session's various `--import`/scene-load invocations caused Godot to
+  auto-generate `.gd.uid` sidecar files for ~150 scripts across the WHOLE
+  project (not just files this session touched) that hadn't been generated
+  before, plus a purely cosmetic section-reordering diff in
+  `project.godot` (same key/value content, different physical ordering),
+  plus one new empty `reference/.gdignore` marker file (Godot's own
+  "don't scan this directory as a resource folder" convention, auto-placed
+  next to the `reference/pokeemerald_expansion` nested git clone) —
+  none of these are intentional changes from this session's own work. Not
+  reverted: deleting freshly-generated `.uid` files risks Godot deriving
+  different ones on the next import for no benefit, the `project.godot`
+  reordering carries zero semantic difference, and the empty `.gdignore`
+  marker is inert. Left in the working tree for Rob's own review, flagged
+  explicitly rather than silently included or silently reverted.
+- No `battle_manager.gd` changes, per the task's own constraint — confirmed
+  by construction, since every fix this session was pure scene-navigation
+  glue in the UI layer.
+- Nothing committed, per standing instruction.
