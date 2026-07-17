@@ -2916,3 +2916,143 @@ comfortable with copyrighted assets entering the git-tracked repo
 (personal fangame, not for distribution).
 
 No commit made this session — per standing instruction, Rob commits.
+
+### Phase 4a — battle screen visual layer (sprites + HP bars), MVP
+
+**COMPLETE** — 2026-07-17. The first phase that makes the battle screen
+visually look like a battle rather than a text log — Pokémon front/back
+sprites and HP bars, additive alongside the existing text-based UI
+(`Side0Label`/`Side1Label`/`LogLabel` untouched, confirmed both by direct
+grep and by visual inspection of all 3 screenshots below).
+
+**Confirmed at Step 0, before building**: `_refresh_ui()`
+(`battle_screen.gd`) is already the single call point that runs after
+every state change (move resolution, switches, item use, battle end) —
+no new `BattleManager` signal wiring was needed for the visual sync,
+correcting the larger original Phase 4 sketch's own assumption.
+
+**New `scripts/battle/core/sprite_registry.gd`**: dex-keyed loader
+mirroring `MoveRegistry`/`ItemRegistry`'s static convention, but using a
+lazily-built directory-scan cache rather than a pure string template
+(filenames embed the species slug, not just the ID). `get_front()` slices
+the 64×128 sheet to its top frame via `AtlasTexture` (no animation in this
+phase); `get_back()` returns the already-single-frame 64×64 texture
+directly. `get_icon()` deliberately not built — nothing consumes it yet.
+Returns `null` for an unresolvable dex, matching `MoveRegistry.get_move()`'s
+own convention — the caller decides fallback policy, not the registry.
+
+**A real, must-solve gap found and closed, not deferred**: this screen's
+own hardcoded fixture teams (`_make_mon()`, used whenever no
+`BattleSetupContext` team is pending — including the `--autoplay` sweep's
+own direct invocation of `battle_screen.tscn`) build `PokemonSpecies.new()`
+directly and never set `national_dex_num`, leaving it at `0` — confirmed
+via `pokemon_factory.gd:79` that only the *real* team-building path sets a
+genuine dex number. Extended `scripts/gen_pokemon_sprites.py` with one
+small additional block pulling `graphics/pokemon/question_mark/circled/
+{anim_front,back}.png` (the reference engine's own classic "unknown
+Pokémon" silhouette) as `assets/sprites/pokemon/{front,back}/0000_unknown
+.png` — 1,160 files total now (1,158 prior + 2). `battle_screen.gd` falls
+back to `SpriteRegistry.get_front/back(0)` whenever the primary dex lookup
+returns `null`.
+
+**New `scenes/battle/sprite_registry_test.gd`/`.tscn`**: tests the
+registry's own resolution LOGIC (correct file per dex, correct 64×64
+slice, the dex-0 fallback, graceful `null` on an out-of-range dex) —
+distinct from `pokemon_sprite_smoke_test.gd`, which checks raw asset file
+integrity. **1,550/1,550 passing** (386 dex × 4 checks [front non-null,
+front size, back non-null, back size] + 4 fallback checks + 2
+invalid-dex checks = 1,550, confirmed exact), stable across 2 standalone
+reruns.
+
+**Scene changes** — `battle_screen.tscn` gained a new `BattleStage`
+sibling (before `VBox` in the tree) with 4 children:
+`OpponentSprite`/`OpponentHpBar` (top-right) and `PlayerSprite`/
+`PlayerHpBar` (upper-left). `battle_screen.gd` gained 4 new `@onready`
+refs, 2 small helpers (`_sprite_or_fallback_front/back`, `_hp_bar_color` —
+a cheap green/yellow/red HP-fraction threshold via `modulate`, no new
+nodes/assets), and ~10 new lines inside the existing `_refresh_ui()`
+right alongside the pre-existing label updates.
+
+### Real non-headless screenshot verification — required, not skipped, and it found a real bug
+
+Per this phase's own explicit "required, not optional" instruction — a
+disposable driver script (`_scratch_screenshot_4a.gd`/`.tscn`, deleted
+after this session, matching the established scratch-driver precedent)
+instantiated the real scene under a genuine windowed launch (`DISPLAY=:0`,
+`llvmpipe` software Vulkan, no `--headless`), captured the initial state,
+then drove one real move via the same `queue_move_targeted`/`advance()`
+contract the UI buttons use and captured a second screenshot.
+
+**Two real driver bugs caught and fixed before any useful screenshot came
+out** (both `add_child` mid-setup / null-reference errors — see the
+session transcript for the exact fix): switched to
+`add_child.call_deferred()` with extra frame waits.
+
+**First screenshot round found a real, clear layout bug** — not just
+confirmed correctness. The originally-scoped anchor positions (opponent
+sprite/bar near the top text block, player sprite/bar near the button
+list) put `OpponentSprite` overlapping the "Choose an action..." title
+text and, worse, put `PlayerHpBar` almost directly behind the "Switch"
+button, nearly invisible. **This is exactly the class of bug automated
+headless tests cannot catch** (the sweep, `sprite_registry_test`, and
+`battle_screen_autoplay` all passed clean throughout) — the same shape as
+the project's own prior roster-screen Container-collapse precedent this
+phase's own instructions cited by name.
+
+**Root cause and fix**: recomputed real pixel boundaries from the actual
+1152×648 screenshot (text block ~y50-195, buttons ~y365-605, both
+horizontally centered in x325-825) and found the side margins (x<325,
+x>825) are **completely empty across the full screen height** — repositioned
+both sprite/HP-bar pairs into those margins as clearly-grouped vertical
+stacks (sprite above its own HP bar) instead of threading the narrow,
+crowded band between the text block and the button list. Re-verified with
+a second screenshot round: clean, no overlaps, both pairs read as
+distinct, clearly-associated groups.
+
+**Confirmed dynamic update, not just static positioning**: the "after
+move" screenshot shows both HP bars visually shrinking to match real
+combat state (Blaze 240→210/219/218 across the three verification rounds,
+Leaf/Venusaur correspondingly), both remaining correctly green (matching
+`_hp_bar_color`'s >50%-threshold branch), matching the log's own printed
+damage numbers exactly.
+
+**A third, genuinely unexpected finding — flagged, not silently fixed**:
+the fixture teams' dex-0 fallback exercises the "unknown" sprite
+correctly, but this only tests the FALLBACK path. A dedicated additional
+check (temporarily forcing real dex numbers — Charizard/6 player,
+Venusaur/3 opponent — onto the fixture mons before a third screenshot
+round) confirmed real species sprites also render, position, and update
+correctly. **But it also surfaced something the earlier GBA-style
+transparency check (done during the original Pokémon sprite pull) never
+covered**: the **modern-style** sprites actually pulled for this project
+have **no alpha transparency at all** — confirmed via direct PIL
+inspection of `assets/sprites/pokemon/front/0003_venusaur.png`
+(`'transparency' in im.info` is `False`, corner pixel fully opaque at
+`(152, 160, 208, 255)`) — every sprite renders as a solid colored
+rectangle (its own background-plate color), not a transparent silhouette,
+unlike the GBA-style variant this project explicitly did NOT choose. This
+wasn't a regression in this phase's own work — it's a real, previously
+unverified property of the "modern style" art choice itself, only
+discoverable by actually looking at a rendered non-fallback sprite, which
+is exactly why this phase's screenshot check specifically asked for a
+real-species check, not just the fallback path. **Not fixed here** —
+doesn't visually clash badly against the current flat-gray background
+(no real battle background exists yet, that's separate future scope), but
+will look wrong once a real background image is added in a later phase.
+Flagging for Rob's own decision: accept as a known cosmetic limitation of
+the modern-style choice, revert to GBA-style (which IS transparent,
+confirmed during the original pull), or a background-stripping
+post-process — not decided or silently resolved here.
+
+### Regression sweep
+
+Three full runs via `scripts/count_assertions.sh` across this phase
+(before the anchor fix, after it, and a final confirmation run) — **147
+files, GRAND TOTAL 18,514, exit 0, byte-for-byte identical across all
+three runs** (diffed pairwise, zero differences). Diffed against the
+prior baseline (146 files, 16,964) — the only addition is
+`sprite_registry_test.tscn` at exactly 1,550; every one of the 146
+pre-existing files, including `battle_screen_autoplay` itself, is
+unchanged.
+
+No commit made this session — per standing instruction, Rob commits.

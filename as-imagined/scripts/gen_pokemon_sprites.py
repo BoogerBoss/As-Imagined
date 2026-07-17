@@ -75,6 +75,21 @@ UNOWN_SLUG = "unown"
 # pulled, matching every other species' single-entry treatment).
 UNOWN_FRONT_FILENAME = "front.png"
 
+# [M23.11 Phase 4a] dex 0 is not a real species -- it's the fallback used
+# by SpriteRegistry whenever a BattlePokemon's species has no resolvable
+# dex number (e.g. battle_screen.gd's own hardcoded fixture teams, built
+# via plain PokemonSpecies.new() rather than PokemonFactory, never set
+# national_dex_num, leaving it at its default 0). graphics/pokemon/
+# question_mark/circled/ is the reference engine's own classic "unknown
+# Pokémon" silhouette -- same anim_front.png/back.png shape as every real
+# species, no special slicing/format handling needed. Icon deliberately
+# NOT pulled here (no icon.png exists in this specific subdirectory, and
+# SpriteRegistry itself doesn't build get_icon() as of Phase 4a either --
+# nothing consumes it yet).
+UNKNOWN_DEX = 0
+UNKNOWN_SLUG = "unknown"
+UNKNOWN_SRC_SLUG = "question_mark/circled"
+
 
 def build_dex_ordinal_map():
     with open(POKEDEX_H, encoding="utf-8") as f:
@@ -164,6 +179,18 @@ def main():
             shutil.copyfile(src, dst)
             copied += 1
 
+    # dex 0 fallback -- front + back only (see UNKNOWN_* constants' own
+    # comment above for why icon is excluded).
+    for kind in ("front", "back"):
+        filename = ASSET_KINDS[kind]
+        src = os.path.join(SPRITE_SRC_DIR, UNKNOWN_SRC_SLUG, filename)
+        if not os.path.isfile(src):
+            missing_files.append(src)
+            continue
+        dst = os.path.join(DEST_DIR, kind, "%04d_%s.png" % (UNKNOWN_DEX, UNKNOWN_SLUG))
+        shutil.copyfile(src, dst)
+        copied += 1
+
     if missing_files:
         raise SystemExit(
             "ERROR: %d expected source sprite files were missing:\n%s"
@@ -171,7 +198,8 @@ def main():
         )
 
     print(f"pokemon sprites: {copied} files copied ({len(dex_to_slug)} dex numbers resolved, "
-          f"{len(ASSET_KINDS)} asset kinds each) into {os.path.relpath(DEST_DIR, ROOT)}")
+          f"{len(ASSET_KINDS)} asset kinds each, plus the dex-0 unknown fallback front+back) "
+          f"into {os.path.relpath(DEST_DIR, ROOT)}")
 
 
 if __name__ == "__main__":

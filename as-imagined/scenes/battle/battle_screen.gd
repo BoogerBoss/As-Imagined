@@ -212,6 +212,14 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 @onready var _log_label: RichTextLabel = $VBox/LogLabel
 @onready var _button_area: VBoxContainer = $VBox/ButtonArea
 
+# [M23.11 Phase 4a] Visual battle stage -- additive alongside the existing
+# text-based UI above, not a replacement (Side0Label/Side1Label/LogLabel
+# stay exactly as they are, per this phase's own explicit scope).
+@onready var _opponent_sprite: TextureRect = $BattleStage/OpponentSprite
+@onready var _opponent_hp_bar: ProgressBar = $BattleStage/OpponentHpBar
+@onready var _player_sprite: TextureRect = $BattleStage/PlayerSprite
+@onready var _player_hp_bar: ProgressBar = $BattleStage/PlayerHpBar
+
 var _player_party: BattleParty
 var _opp_party: BattleParty
 var _winner_side: int = -1
@@ -653,6 +661,35 @@ func _build_teams() -> void:
 # shape (move/switch/item vs. a mandatory bench-picker vs. nothing at
 # battle end).
 
+# [M23.11 Phase 4a] SpriteRegistry itself is a pure lookup (returns null
+# for an unresolvable dex, e.g. dex 0 -- battle_screen.gd's own hardcoded
+# fixture teams, built via plain PokemonSpecies.new() rather than
+# PokemonFactory, never set national_dex_num). This screen decides the
+# fallback: dex 0's own "unknown" silhouette sprite, resolved through the
+# exact same registry call rather than a separately-preloaded texture.
+func _sprite_or_fallback_front(dex: int) -> Texture2D:
+	var tex := SpriteRegistry.get_front(dex)
+	return tex if tex != null else SpriteRegistry.get_front(0)
+
+
+func _sprite_or_fallback_back(dex: int) -> Texture2D:
+	var tex := SpriteRegistry.get_back(dex)
+	return tex if tex != null else SpriteRegistry.get_back(0)
+
+
+# [M23.11 Phase 4a] Green/yellow/red HP-fraction threshold via modulate --
+# no new nodes/assets needed, cheap readability win over a single-color bar.
+func _hp_bar_color(current: int, max_hp: int) -> Color:
+	if max_hp <= 0:
+		return Color(1, 1, 1)
+	var frac := float(current) / float(max_hp)
+	if frac > 0.5:
+		return Color(0.2, 0.8, 0.2)
+	elif frac > 0.2:
+		return Color(0.9, 0.8, 0.1)
+	return Color(0.9, 0.2, 0.2)
+
+
 func _refresh_ui() -> void:
 	for child in _button_area.get_children():
 		child.queue_free()
@@ -665,6 +702,22 @@ func _refresh_ui() -> void:
 	_side1_label.text = "%s  HP: %d/%d%s" % [
 			side1_mon.species.species_name, side1_mon.current_hp, side1_mon.max_hp,
 			" (fainted)" if side1_mon.fainted else ""]
+
+	# [M23.11 Phase 4a] Visual sprite/HP-bar sync -- _refresh_ui() is
+	# already the single call point that runs after every state change
+	# (move resolution, switches, item use, battle end), so no new
+	# BattleManager signal wiring is needed for this.
+	_opponent_sprite.texture = _sprite_or_fallback_front(side1_mon.species.national_dex_num)
+	_opponent_sprite.modulate = Color(1, 1, 1, 0.3) if side1_mon.fainted else Color(1, 1, 1, 1)
+	_opponent_hp_bar.max_value = side1_mon.max_hp
+	_opponent_hp_bar.value = side1_mon.current_hp
+	_opponent_hp_bar.modulate = _hp_bar_color(side1_mon.current_hp, side1_mon.max_hp)
+
+	_player_sprite.texture = _sprite_or_fallback_back(side0_mon.species.national_dex_num)
+	_player_sprite.modulate = Color(1, 1, 1, 0.3) if side0_mon.fainted else Color(1, 1, 1, 1)
+	_player_hp_bar.max_value = side0_mon.max_hp
+	_player_hp_bar.value = side0_mon.current_hp
+	_player_hp_bar.modulate = _hp_bar_color(side0_mon.current_hp, side0_mon.max_hp)
 
 	if _bm.get_phase() == BattleManager.BattlePhase.BATTLE_END:
 		_status_label.text = ("You win!" if _winner_side == 0 else "You lose!")
