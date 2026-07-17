@@ -31,7 +31,7 @@ var _cleanup_ids: Array[String] = []
 
 func _ready() -> void:
 	_test_section_1_storage_api()
-	_test_section_2_ui_driven_flow()
+	await _test_section_2_ui_driven_flow()
 
 	_cleanup()
 
@@ -213,6 +213,22 @@ func _test_section_2_ui_driven_flow() -> void:
 	# Slot 0: Bulbasaur.
 	roster._on_slot_action_pressed(0)
 	_chk("S2.02 pressing a slot's Add button embeds a real team_builder_screen instance", roster._builder_instance != null)
+	# [Bugfix regression guard] A real bug shipped here once: the embedded
+	# instance was genuinely instantiated/added/`visible == true` (every
+	# check above this line already passed) but rendered at a real,
+	# confirmed-via-screenshot ZERO height — BuilderHost is a
+	# VBoxContainer, and Godot's Container layout silently overrides an
+	# anchor-laid-out child's own anchors entirely, collapsing it to
+	# whatever its own (absent) custom_minimum_size provided: nothing.
+	# Confirmed this collapse is fully visible in --headless mode too (not
+	# a rendering-only symptom) — the ONLY reason this shipped was that no
+	# assertion here had ever checked the resulting Control's actual size,
+	# only its existence/parentage. One process_frame await lets the
+	# deferred container-sort settle before checking.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_chk("S2.02b the embedded builder actually has a real, nonzero rendered size (not collapsed by its Container parent)",
+			roster._builder_instance.size.y > 0)
 	_drive_embedded_build(roster, 1, 15, [33, 45], BattlePokemon.NATURE_BOLD)
 	_chk("S2.03 slot 0 is populated after the embedded build completes", roster._slot_specs[0] != null)
 	_chk("S2.04 the embedded builder instance is freed after the slot completes", roster._builder_instance == null)

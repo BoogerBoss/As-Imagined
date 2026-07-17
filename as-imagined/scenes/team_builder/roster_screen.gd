@@ -239,6 +239,25 @@ func _on_slot_action_pressed(index: int) -> void:
 	_builder_instance = scene.instantiate()
 	_builder_instance.pokemon_built.connect(_on_slot_pokemon_built)
 	_builder_host.add_child(_builder_instance)
+	# [Bugfix] team_builder_screen.tscn's own root Control is laid out via
+	# anchors (anchors_preset=15, "Full Rect") — correct when it's a
+	# TOP-LEVEL scene (its own M23.4/M23.6 usage: launched directly, or
+	# swapped in via change_scene_to_file), but anchors are silently
+	# IGNORED by Godot whenever a Control's direct parent is a Container
+	# (BuilderHost here is a VBoxContainer) — the container takes over
+	# sizing entirely, using only the child's own custom_minimum_size/
+	# size_flags. Since the embedded instance had neither, it collapsed to
+	# a real, confirmed (screenshot-verified) 0-height rect: technically
+	# instantiated, in the tree, and `visible == true` — so every prior
+	# check that only asked "does _builder_instance exist / is it a child"
+	# (this project's own automated tests AND the M23.5/M23.7 manual
+	# walkthrough drivers) reported success, while a real human saw
+	# nothing but a sliver of clipped, unclickable content. Fixed by
+	# giving the embedded instance an explicit minimum height and letting
+	# it expand — team_builder_screen.gd/.tscn itself is untouched, so its
+	# own top-level usage (M23.4's own test, a direct launch) is unaffected.
+	_builder_instance.custom_minimum_size = Vector2(0, 1000)
+	_builder_instance.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_cancel_builder_row.visible = true
 	_status_label.text = "Building Pokémon for slot %d — use the builder below, then press Build Pokémon." % (index + 1)
 	_refresh_slots()

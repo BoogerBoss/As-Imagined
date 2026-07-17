@@ -15,7 +15,7 @@ extends Node
 #
 # Source: pokeemerald_expansion (GEN_LATEST config)
 #
-# Run: /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/stat_test.tscn
+# Run: /home/rob/Godot_v4.7.1-stable_linux.x86_64 --headless --path . scenes/battle/stat_test.tscn
 
 var _pass := 0
 var _fail := 0

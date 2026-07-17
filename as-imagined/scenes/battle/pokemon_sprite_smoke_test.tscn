@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://pokemonspritesmoketest"]
+
+[ext_resource type="Script" path="res://scenes/battle/pokemon_sprite_smoke_test.gd" id="1_pokemonspritesmoketest"]
+
+[node name="PokemonSpriteSmokeTest" type="Node"]
+script = ExtResource("1_pokemonspritesmoketest")
