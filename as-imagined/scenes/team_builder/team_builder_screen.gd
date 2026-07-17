@@ -159,7 +159,7 @@ func _on_load_species_pressed() -> void:
 	var types_text := TypeChart.type_name(species.types[0])
 	if species.types.size() > 1:
 		types_text += " / " + TypeChart.type_name(species.types[1])
-	_species_info_label.text = "#%d %s (%s)" % [dex, species.species_name, types_text]
+	_species_info_label.text = "#%03d - %s (%s)" % [dex, species.species_name, types_text]
 	_status_label.text = "Loaded %s. Pick a level, ability, nature, moves, EVs, and IVs." % species.species_name
 
 	_rebuild_ability_options()
