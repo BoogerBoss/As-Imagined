@@ -15,13 +15,31 @@ extends Node
 # filesystem listing wouldn't (corrupt PNG, wrong resource type, etc.) —
 # the same "load(), not just exists()" discipline move_smoke_test.gd
 # established.
+#
+# [Found during the GBA-style-switch session, not caused by it] This test
+# was never updated when M23.11 Phase 4a added the dex-0 "unknown"
+# fallback (front.png/back.png only, no icon) to
+# scripts/gen_pokemon_sprites.py -- it had been silently failing 2/2324
+# ("no unexpected extra dex numbers" for both front and back) across all
+# of Phase 4a's own sweep runs. Caught only because this session actually
+# ran this suite standalone rather than trusting a sweep GRAND TOTAL that
+# happened to still balance (count_assertions.sh sums the PASSED count
+# from each suite's own "N/M passed" line, not M -- a partial failure
+# doesn't perturb the running total the way a full suite disappearing
+# would). Fixed here by explicitly asserting the fallback's own presence,
+# not just widening the tolerance to quietly accept it.
 
 var _pass := 0
 var _fail := 0
 
 const DEX_MIN := 1
 const DEX_MAX := 386
+const DEX_UNKNOWN := 0
 const ASSET_KINDS := ["front", "back", "icon"]
+# Which kinds the dex-0 "unknown" fallback exists for -- icon deliberately
+# excluded, matching gen_pokemon_sprites.py's own scope (nothing consumes
+# a fallback icon yet).
+const KINDS_WITH_UNKNOWN_FALLBACK := ["front", "back"]
 
 
 func _ready() -> void:
@@ -67,4 +85,10 @@ func _test_kind(kind: String) -> void:
 
 	for dex in range(DEX_MIN, DEX_MAX + 1):
 		_chk("%s: dex %d present exactly once" % [kind, dex], seen_dex.get(dex, false) == true)
-	_chk("%s: no unexpected extra dex numbers" % kind, seen_dex.size() == (DEX_MAX - DEX_MIN + 1))
+
+	var expected_total := DEX_MAX - DEX_MIN + 1
+	if kind in KINDS_WITH_UNKNOWN_FALLBACK:
+		_chk("%s: dex %d (unknown fallback) present" % [kind, DEX_UNKNOWN],
+				seen_dex.get(DEX_UNKNOWN, false) == true)
+		expected_total += 1
+	_chk("%s: no unexpected extra dex numbers" % kind, seen_dex.size() == expected_total)
