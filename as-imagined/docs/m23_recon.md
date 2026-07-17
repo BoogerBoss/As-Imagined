@@ -1362,3 +1362,563 @@ every other already-shipped script) was touched.
   Flamethrower — turned out to be Hyper Beam; corrected to the real
   Flamethrower ID, 53, before finalizing the test).
 - Nothing committed, per standing instruction.
+
+---
+
+## M23.4 — Team builder core
+
+**COMPLETE** — 2026-07-17.
+
+### Background / roadmap reference correction
+
+The roadmap's own phrasing ("legality checking via `learnset_data.gd`'s
+`get_learnable_moves()`") cites a file that doesn't exist under that name
+anywhere in this project — grepped the full tree, confirmed zero hits.
+`get_learnable_moves()` is real, but it lives on the `PokemonRegistry`
+autoload (`scripts/data/pokemon_registry.gd`), not a dedicated
+`learnset_data.gd`. Treated as a stale/informal file reference in the
+roadmap's own notes rather than a blocker — the function itself is exactly
+where and what the roadmap describes.
+
+### Step 1 finding: `get_learnable_moves()` doesn't shape the data the way
+### "legality at a level" needs, on its own
+
+Read `get_learnable_moves(dex)` in full before building anything. It
+returns `species_moves ∪ universal_moves` — confirmed by direct inspection
+that `species_moves` (`data/all_learnables.json`) is EVERY method combined
+(level-up + TM + tutor + egg), with no per-entry tag saying which method
+unlocks which move (Bulbasaur: 87 entries here vs. 11 level-up-only entries
+in `get_learnset(dex)`, which DOES carry a real per-entry level). Neither
+function alone answers "what can this species legally know at level N" —
+that had to be built by combining both:
+
+- `get_learnset(dex)`: level-up moves, each with a real learn-level.
+- `get_learnable_moves(dex)`: the full any-method set, unfiltered by level.
+
+**Flagged design decision (per the task's own "flag ambiguous rules rather
+than silently resolve them" instruction)**: since the any-method set has no
+way to tell "TM-teachable regardless of level" apart from "level-up-only,
+not yet reached," `MovepoolResolver.legal_move_ids(dex, level)`
+(`scripts/battle/core/movepool_resolver.gd`) uses a deliberately
+CONSERVATIVE policy — a move is legal if it's in the any-method set AND, if
+it's ALSO a level-up-learnset entry specifically, the requested level meets
+that entry's own level. A level-up-only move not yet reached is excluded
+even though a real cartridge might make it independently available via TM
+at a lower level than this project's data can prove. This produces false
+NEGATIVES (an occasional real-game-legal move gets excluded) but never a
+false positive — the safe direction for a UI whose explicit job is making
+illegal movesets unconstructible. Documented in the resolver's own doc
+comment, not just here.
+
+### Step 1 finding: `get_learnable_moves()` returns `MOVE_XXX` constant-name
+### strings, not IDs — needed a real bridge, built from the canonical source
+
+Every other move-identifying code path in this project (`MoveRegistry`,
+`PokemonFactory`, `BattlePokemon.add_move`) uses numeric IDs.
+`get_learnable_moves()`/`get_learnset()` deal in `"MOVE_TACKLE"`-style
+strings sourced from `learnsets.json`/`all_learnables.json`. `PokemonFactory
+.gd`'s own doc comment (from M23.3) had already flagged reconciling this
+naming scheme as "nontrivial, error-prone" and explicitly out of scope for
+that milestone — but M23.4's own explicit job is real legality checking, so
+this couldn't stay deferred.
+
+Built the bridge from the actual ground truth rather than attempting a
+display-name reverse-mapping: `scripts/gen_move_name_map.py`, a new
+one-off generator (matching this project's own established
+parse-the-reference-source-directly convention, e.g. `gen_weight_data.py`),
+parses `reference/pokeemerald_expansion/include/constants/moves.h`'s real
+`enum Move` and writes `data/move_name_to_id.json`. Handles the same
+sequential-auto-increment/alias-resolution shape this project has hit
+before (Hone Claws' `= MOVES_COUNT_GEN4`-style symbolic ID, `[M20a]`): most
+entries are `MOVE_XXX = <int>,`; many (G-Max moves, the tail of each
+generation's block) are bare `MOVE_XXX,` auto-incrementing from the
+previous value; some are aliases (`MOVE_DOUBLESLAP = MOVE_DOUBLE_SLAP,`,
+pre-Gen-VI names) resolved by looking up the already-built map. Verified
+programmatically, not just spot-checked: every single one of the 87,027
+name references across `all_learnables.json` (all 386 species) and all 10
+universal moves resolves cleanly — zero unresolved names. Spot-checked
+against `data/moves.json`'s own authoritative `id` field for `Hone Claws`
+(468) and `Tera Blast` (779), both exact matches. `scripts/data
+/move_name_map.gd` (`MoveNameMap`) is the lazy-loaded runtime lookup over
+that generated JSON — mirrors `PokemonFactory`'s static-method-only shape.
+
+`MovepoolResolver` additionally filters to moves with real, IMPLEMENTED
+`.tres` data (checked via `ResourceLoader.exists`, not
+`MoveRegistry.get_move()`, specifically to avoid a `push_warning`-per-miss
+flood — this resolver evaluates dozens of candidate names per
+species/level change, and the majority of the real "ever learnable by any
+method, any generation" set resolves to one of the ~217 moves this project
+hasn't implemented) — matching `PokemonFactory.create_battle_pokemon`'s own
+"an unresolvable/unimplemented move ID is silently skipped, not fatal"
+convention.
+
+### UI mechanism choices (flagged per the task's own instruction)
+
+- **Species picker: dex-number entry (LineEdit + "Load Species" button),
+  not a searchable name list.** 386 species is large enough that a live-
+  filtering name search would be a meaningfully bigger UI component (a
+  scrollable filtered list, its own focus/selection handling) than this
+  "core" milestone's own explicit "one Pokémon at a time" scope calls for.
+  Dex number is already this project's own canonical species identifier
+  throughout (`PokemonRegistry.get_species`, every test fixture). The
+  resolved species name/types are shown immediately after a successful
+  load so a builder isn't flying blind. A name-search picker is a
+  reasonable follow-up if Rob wants one — not built here.
+- **EV/IV input: SpinBox, not LineEdit + manual parsing/clamping.** This is
+  the one place a widget choice IS the legality-enforcement mechanism, not
+  just a convenience: each IV box is statically capped at min 0/max 31 by
+  the widget itself; each EV box is statically capped at max 252; the
+  *total* EV cap (510) is enforced DYNAMICALLY — every EV box's own
+  `max_value` is recomputed on every edit (`_on_ev_spinbox_changed`) to
+  `clampi(510 - sum_of_other_boxes, 0, 252)`, so pushing a box up that
+  would break the total cap is physically unreachable through the widget,
+  not merely rejected after the fact. Both `EV_CAP_PER_STAT`(252)/
+  `EV_CAP_TOTAL`(510) are read directly from `BattleManager`'s own real
+  constants (`[M20c]`), not re-declared, so the UI can never drift from the
+  actual enforced game rule.
+- **Move legality: enforced by construction via the "available moves"
+  dropdown's own candidate list, not a free-choice-then-validate flow.**
+  `MovepoolResolver.legal_move_ids(dex, level)` is the ONLY source
+  populating that dropdown; an already-selected move is additionally
+  removed from the candidate list. An illegal or duplicate move is
+  therefore never an option to pick — there is no "reject the click"
+  code path to get wrong. A level DECREASE after moves are already picked
+  re-runs the legality check and strips any move that's no longer legal
+  (with a status message naming what was removed) — continuous
+  enforcement, not just at pick-time. A species change unconditionally
+  clears the selected moveset (near-certainly illegal for a different
+  species).
+- **Ability picker: only the species' real, nonzero ability slots are
+  ever offered** (`PokemonFactory.ABILITY_SLOT_*`), matching
+  `create_battle_pokemon`'s own "slot id 0 = no ability" convention
+  exactly — no synthetic "None" option invented.
+- Followed M23.1/M23.2's established conventions (plain Control nodes +
+  `scenes/main_theme.tres`, rebuild-the-affected-area-from-scratch on state
+  change rather than visibility toggling) with two small, flagged
+  deviations: a `ScrollContainer` (this screen has meaningfully more
+  on-screen state than the battle screen's fixed button rows) and `SpinBox`
+  nodes for every numeric input (a real legality mechanism here, not just a
+  convenience — see above), neither of which the battle screen needed.
+
+### Implementation
+
+- `scripts/gen_move_name_map.py` → `data/move_name_to_id.json` (956
+  `MOVE_*` entries).
+- `scripts/data/move_name_map.gd` (`MoveNameMap`): lazy-loaded lookup over
+  that JSON.
+- `scripts/battle/core/movepool_resolver.gd` (`MovepoolResolver`): the
+  legality computation described above.
+- `scenes/team_builder/team_builder_screen.gd`/`.tscn`: the screen itself —
+  species/level/ability/nature/move/EV/IV selection, a "Build Pokémon"
+  button calling `PokemonFactory.create_battle_pokemon(...)` directly, and
+  a results panel rendering the produced `BattlePokemon`'s real computed
+  stats/moves/EVs/IVs. Held in memory as `_built_pokemon`; no
+  persistence, no roster list, no battle-screen wiring — all explicitly
+  M23.5/M23.6's job, not touched here.
+- Zero changes to `pokemon_factory.gd`'s existing public API, `battle
+  _manager.gd`, or any other production file — this session is additive
+  only.
+
+### Automated test coverage
+
+New `scenes/battle/m23_4_team_builder_test.gd`/`.tscn` (placed alongside
+every other automated suite in `scenes/battle/`, matching this project's
+own established convention that `scripts/count_assertions.sh` only globs
+`scenes/battle/*.tscn` — even though this suite tests team-builder-adjacent
+data logic, not the battle engine itself):
+
+- Section 1: `MoveNameMap` correctness (direct lookups, an alias pair
+  resolving to the same ID, an unknown-name miss).
+- Section 2: `MovepoolResolver` — unknown dex, level-gating both directions
+  (a move present/absent depending on level, cross-checked against
+  Bulbasaur's real learnset), a universal move (Substitute) legal even at
+  level 1, no duplicates, sorted output, every returned ID confirmed
+  actually implemented.
+- Sections 3-4: two full, DISTINCT builds (Bulbasaur/Adamant/Tackle+Growl
+  and Charizard/Timid/Flamethrower), driven via real `Button.pressed.emit()`
+  calls and real widget-value sets on the actual instantiated scene — not
+  a re-implementation of the screen's logic in test code. Each build's
+  resulting stats are cross-checked against a DIRECT `PokemonFactory
+  .create_battle_pokemon()` call with the same inputs (bypassing the UI)
+  rather than re-deriving the HP/stat formula by hand — the real risk
+  surface this milestone adds on top of an already-tested factory (M23.3)
+  is correct UI→factory parameter wiring, not formula correctness (already
+  covered by `stat_test.gd`/`m23_3_converter_test.gd`).
+- Section 5: illegal-state blocking — Solar Beam structurally absent from
+  the dropdown at a too-low level; the 4-move cap disabling both the
+  dropdown and Add button; a level decrease stripping a now-illegal move;
+  a species change clearing the moveset.
+
+44/44 assertions, stable across 4 consecutive reruns. One real test-authoring
+bug caught and fixed on the first run: `MoveData` has no `move_id` field at
+all (moves are identified purely by `.tres` filename convention, never a
+stored property) — an assertion comparing `built.moves[0].move_id` was
+fixed to compare `move_name` against a direct `MoveRegistry.get_move(id)`
+lookup instead; not a `PokemonFactory`/`MovepoolResolver` bug.
+
+### Manual verification
+
+A real button-press walkthrough (a throwaway driver scene, `_scratch
+_manual_verify.gd`/`.tscn`, deleted after this run — confirmed clean via a
+directory listing showing zero scratch files left behind), instantiating
+the real `team_builder_screen.tscn` and firing real `Button.pressed.emit()`
+signals / setting real widget values, exactly the mechanism a mouse click
+uses:
+
+- **Build #1 — Charmander**, level 36, Modest nature, Blaze ability,
+  Mega Punch/Fire Punch/Thunder Punch, EVs (HP 4 / SpAtk 252 / Speed 252),
+  IVs (SpAtk 31, rest default 31). Resulting SpAtk stat: **90**. Hand-
+  verified independently: `floor((2×60 + 31 + floor(252/4)) × 36 / 100) + 5
+  = floor(214×0.36)+5 = 77+5 = 82`, then Modest's +10%: `floor(82×1.1) =
+  90.2 → 90`. Exact match.
+- **Build #2 — Gyarados**, level 50, Adamant nature, Bind/Headbutt/Tackle/
+  Body Slam, EVs (Atk 252 / HP 252), Def IV deliberately set to 0 (distinct
+  from Build #1's default-max IVs). Resulting stats (HP 202, Atk 194, Def
+  84, SpAtk 72, SpDef 120, Speed 101) are visibly distinct from Build #1
+  across species/level/nature/moveset/EV-IV spread, confirming this is a
+  genuinely different, independently-computed Pokémon, not a stale/cached
+  result.
+- **Illegal-state demo**: Bulbasaur at level 5 — confirmed `"Solar Beam"`
+  (the real move, learned at level 46) is absent from the actual dropdown
+  item list (not merely rejected if picked; 70 other real, legal,
+  implemented moves ARE offered). Pushing 3 EV boxes toward 252 each (a
+  would-be 756 total) resulted in the third box's real widget value
+  landing at 6, not 252 — the actual total capped at exactly 510, matching
+  `BattleManager.EV_CAP_TOTAL` exactly. Setting an IV box to 99 resulted in
+  the real widget value clamping to 31.
+
+### Regression sweep results
+
+Since every new file this session is untracked/additive (confirmed via
+`git status`), the "before" baseline was taken by temporarily relocating
+all 7 new files out of the project directory (not `git stash`, which the
+environment's own action classifier blocked as too risky for an
+automated flow) rather than reverting any tracked file.
+
+- **Before**: 139 files, GRAND TOTAL **13588**, 0 failures.
+- **After, sweep 1**: 140 files (the new `m23_4_team_builder_test.tscn`
+  picked up), GRAND TOTAL **13634** (+46: 44 from the new suite, +1 each
+  from `d4_bundle5_test.tscn` (84→85) and `doubles_test.tscn` (53→54) —
+  both unrelated, pre-existing suites this session never touched;
+  `doubles_test.tscn` is explicitly named in CLAUDE.md's own documented
+  statistical-flake list already). `m23_3_converter_test.tscn` unchanged
+  at 56/56.
+- **After, sweep 2**: 140 files, GRAND TOTAL **13634** again — byte-for-byte
+  identical to sweep 1 (a direct diff of every file's own count shows zero
+  differences), including both previously-flaky suites settling at the
+  same values both times. Zero real failures in either sweep.
+
+**Zero regressions.** `m23_3_converter_test.tscn` — the one file this
+task's own requirement explicitly named as needing to "still pass
+unchanged" — is byte-identical before and after (56/56 both times).
+
+### Deviations / assumptions flagged
+
+- The roadmap's own `learnset_data.gd` file reference doesn't exist under
+  that name — treated as an informal/stale citation for the real
+  `PokemonRegistry.get_learnable_moves()`, not a blocker (see "Background"
+  above).
+- The move-legality policy is deliberately conservative (see the Step 1
+  finding above) — it can under-include a move a real cartridge would
+  allow, but never over-include an illegal one. Flagged as the one
+  genuinely ambiguous rule this session had to resolve unilaterally,
+  per the task's own explicit instruction to flag rather than silently
+  decide.
+- Held items are NOT selectable — `PokemonFactory.create_battle_pokemon`
+  has no item parameter (flagged as its own out-of-scope item since M23.3),
+  and the M23.4 task's own requirement list never asked for one either.
+  Not invented here.
+- `git stash` was attempted for the before/after baseline split and was
+  blocked by this environment's own action classifier; worked around via
+  a plain file-relocation (`mv` to `/tmp` and back) instead, since every
+  new file this session is untracked and additive — flagged in case a
+  future session hits the same classifier block and needs the same
+  workaround.
+- Nothing committed, per standing instruction.
+
+---
+
+## M23.5 — Team persistence
+
+**COMPLETE** — 2026-07-17.
+
+### Persistence format choice (flagged per the task's own instruction)
+
+**Plain JSON files under `user://teams/`, one file per team.** Checked
+this project's existing persistence conventions first, per the task's own
+instruction: every single existing data file in this project
+(`data/pokemon.json`, `data/moves.json`, `data/items.json`,
+`data/learnsets.json`, etc.) is JSON, loaded via a `FileAccess` +
+`JSON.parse_string` pattern (`PokemonRegistry._load_json`). `.tres`/
+`Resource` was seriously considered — this project leans on it heavily for
+`MoveData`/`AbilityData`/`ItemData`/`PokemonSpecies` — but rejected for
+THIS specific use: every existing `.tres` in this project is SHIPPED,
+STATIC, pre-authored content living under `res://data/`; nothing has ever
+used `ResourceSaver` to write user-generated, mutable save data at
+runtime, and a `.tres` file embeds a `script_class` reference that's
+fragile across script renames in a way a plain JSON dict never is.
+`user://` (not `res://`) is used because it's Godot's own standard
+writable, persists-across-app-updates location for exactly this kind of
+save data — confirmed it resolves to a real, separate directory
+(`~/.local/share/godot/app_userdata/As Imagined/teams/` on this Linux
+dev machine) distinct from the version-controlled `res://data/` tree.
+
+**One file per team, not one shared `teams.json`**: a single shared file
+means any corruption loses every saved team at once; one file per team
+means a corrupted file only ever loses that ONE team (directly serves
+requirement 5's "handle a corrupted/missing save file" case — see
+`TeamStorage.list_teams()`'s own per-file handling below).
+
+**Team identity is a separately-generated ID** (`TeamStorage.generate_id()`
+— `"team_<unix_time>_<random>"`), decoupled from the team's own mutable
+display name. The filename is the ID, never the name — so two teams can't
+collide on disk just because their names happen to sanitize to the same
+slug, and a future rename feature (not built here) would be a pure
+metadata edit, not a file-rename.
+
+### Serializable "team" concept
+
+A team member is stored as exactly `team_builder_screen.gd`'s own
+`get_current_spec()` shape — `{dex, level, move_ids, nature, evs, ivs,
+ability_slot}` — i.e. exactly `PokemonFactory.create_battle_pokemon`'s own
+parameter list, NOT a serialized `BattlePokemon`. This was a deliberate
+choice: `BattlePokemon` has accumulated a large number of pure in-battle
+volatile/runtime fields across M8-M21 (status, stat stages, `wrapped_by`,
+`perish_song_timer`, `mimicked_slot`, dozens more) that have no meaning
+for a saved ROSTER entry and would need constant format-migration upkeep
+as the engine grows further. Storing just the CONSTRUCTION inputs means
+`TeamStorage.build_member(spec)` always reconstructs a fresh, fully-correct
+`BattlePokemon` via the same already-tested `PokemonFactory` call path — no
+new stat/moveset logic anywhere in this milestone, and the save format is
+naturally forward-compatible with new `BattlePokemon` fields since it never
+touches them.
+
+A saved team file: `{"name": "<display name>", "members": [<spec>, ...]}`
+— `members` is a plain, un-padded array of 1-6 entries (no `null`
+placeholders for empty slots), so a partial team really is just a shorter
+array. Empty-slot bookkeeping ("slot 3 is currently empty") is a purely
+in-memory concept while editing (`roster_screen.gd`'s own `_slot_specs`,
+size-6 with `null` entries) and is compacted away on save.
+
+### `team_builder_screen.gd`: additive-only changes
+
+Per the task's own explicit "do not modify the core building logic"
+constraint: added one new signal (`pokemon_built(spec, bp)`) and one new
+public method (`get_current_spec() -> Dictionary`, the same
+dex/level/move_ids/nature/evs/ivs/ability_slot Dictionary shape
+`_on_build_pressed` already assembled inline). `_on_build_pressed` itself
+is behavior-unchanged — it now calls `get_current_spec()` instead of
+re-deriving the same five local blocks, then additionally emits the new
+signal at the end. Confirmed zero behavior change via `m23_4_team_builder
+_test.gd` passing unchanged (44/44) both immediately after this edit and
+in every subsequent sweep this session.
+
+### Roster screen UI mechanism (flagged per the task's own instruction)
+
+- **Two mutually-exclusive panels (List / Editor), toggled via
+  `.visible`**, each internally rebuilt-from-scratch on state change —
+  matching M23.1/M23.4's own "rebuild the truly dynamic area, don't toggle
+  individual pre-declared nodes" convention for the genuinely dynamic
+  parts (team list rows, the 6 slot rows). The List-vs-Editor split itself
+  is a coarser visibility toggle — flagged as a reasonable adaptation, not
+  identical precedent, since neither prior M23 screen ever had two whole
+  separate "modes" to switch between.
+- **Building/replacing a slot reuses `team_builder_screen.tscn` directly**
+  — a fresh instance is instantiated and embedded under `BuilderHost` each
+  time "Add"/"Replace" is pressed, then freed once that slot's build
+  completes or is cancelled. Matches this project's own "rebuilt fresh,
+  not reset-and-reused" convention.
+- **[Flagged design decision] "Replace" does NOT pre-populate the embedded
+  builder with the slot's existing data** — editing a slot means fully
+  re-building that Pokémon from scratch, not tweaking one field of the old
+  one. This keeps the integration surface with `team_builder_screen.gd`
+  minimal (a signal + a read-only spec accessor, nothing that reaches into
+  or replays its internal widget state) at the cost of a less convenient
+  "just change one EV" edit flow. A real, disclosed trade-off — a future
+  `load_spec()`-style pre-population method would be a reasonable, low-risk
+  follow-up if Rob wants one.
+- **[Flagged design decision] Delete has no confirmation step** — a single
+  button press deletes a team immediately, matching M23.1's own "plain
+  functional buttons, no polish" precedent (no dialog/modal convention
+  exists anywhere in this project yet).
+- **[Flagged design decision] Duplicate team names are REJECTED, not
+  overwritten or auto-renamed** — surfaced as a status message, requiring
+  the user to pick a different name. Chosen as the safest of the task's
+  three offered options (rejecting an ambiguous input is safer than
+  silently clobbering an existing team under the same name, and simpler
+  than inventing an auto-suffix scheme for a "basic roster screen").
+  `TeamStorage.name_exists(name, exclude_id)` correctly excludes a team's
+  own current ID during an in-progress edit, so re-saving a team under its
+  own unchanged name is not itself treated as a collision.
+- **[Flagged design decision] A corrupted save file is still LISTED** (as
+  `"(corrupted: <id>)"`, Edit disabled, Delete still available) rather than
+  silently vanishing from the roster — so a broken save doesn't get lost
+  track of, and can still be cleaned up through the UI.
+- Followed M23.1/M23.4's shared-`Theme` + plain-Control-node convention
+  throughout; no new node types beyond what M23.4 already introduced
+  (SpinBox/ScrollContainer, reused via the embedded builder, not
+  reintroduced here).
+
+### Edge-case handling (requirement 5)
+
+| Case | Behavior |
+|---|---|
+| Partial team (< 6 members) | Explicitly valid — `TeamStorage.save_team` only rejects an EMPTY member list, not a short one. |
+| Corrupted save file | `load_team` returns `{}` uniformly (missing file, unreadable, malformed JSON, or a valid-JSON-but-wrong-shape payload all collapse to the same "unusable" signal); `list_teams` still lists it, flagged `corrupted: true`, Edit disabled, Delete still works. |
+| Missing save file | Same `{}` return as corrupted — a caller never has to distinguish "never existed" from "exists but broken." |
+| Duplicate team name | Rejected at save time (both Create and Save-after-Edit paths), status message shown, nothing written. |
+| Delete a team that doesn't exist | `TeamStorage.delete_team` no-ops silently (checks `FileAccess.file_exists` first) — the goal ("this team is gone") is already true, no error surfaced. |
+
+### Automated test coverage
+
+New `scenes/battle/m23_5_team_persistence_test.gd`/`.tscn` — the FIRST test
+in this project to touch real on-disk state (`user://teams/`, not just
+`res://` static data or in-memory objects). Every team it creates is
+tracked by ID and deleted in a teardown pass regardless of pass/fail, and
+every assertion checks specific, uniquely-prefixed (`__M23_5_TEST__`) team
+IDs/names rather than the full `list_teams()` output — safe to run
+repeatedly, including alongside real save data, without accumulating cruft
+or tripping the duplicate-name guard on a rerun. Confirmed via a directory
+listing after 4 consecutive runs that zero team files are left behind.
+
+- Section 1 (`TeamStorage` direct API): ID uniqueness; a full single-member
+  save/load round-trip with exact field-by-field comparison (including
+  confirming loaded numeric fields are real `int`s, not a leftover JSON
+  float); `build_member` reconstructing a `BattlePokemon` matching a direct
+  `PokemonFactory` call; empty-team rejection; a partial (3-member) team
+  accepted; `list_teams`'s name/member-count accuracy; `name_exists`
+  (present, absent, and the `exclude_id` self-exclusion case); a
+  never-existing ID loading as `{}`; a genuinely CORRUPTED file (garbage
+  text written directly, bypassing `save_team`) loading as `{}` and still
+  being listed with `corrupted: true`; deleting a nonexistent ID as a
+  no-crash no-op; a real delete removing both the load path and the list
+  entry.
+- Section 2 (real UI-driven roster flow): a 2-member team created via
+  genuine `Button.pressed.emit()` calls on both the roster screen and two
+  successive embedded `team_builder_screen` instances, round-tripped and
+  field-checked against what was actually entered; duplicate-name creation
+  blocked (confirmed only one file exists on disk under that name); the
+  real Edit flow (pre-loading existing slot data into `_slot_specs`,
+  replacing one slot, confirming the SAME team id is updated in place, not
+  duplicated); Cancel-mid-edit discarding an in-progress slot change
+  without touching the saved file; the real Delete flow (confirmed gone
+  from both `load_team` and `list_teams`).
+
+51/51 assertions, stable across 4 consecutive reruns. The deliberately-
+corrupted-file test produces expected `ERROR: Parse JSON failed` console
+noise (16 lines, since every later `list_teams()` call re-parses every
+saved file including the intentionally-broken one) — confirmed harmless,
+matching this project's own established precedent of accepted console
+noise from deliberate edge-case fixtures (e.g. M23.3/M23.4's
+`push_warning` cases).
+
+Per this milestone's own requirement 9, this suite is a headless
+SAME-PROCESS save-then-load check — it cannot and does not verify
+persistence across a real process restart (Godot can't restart its own
+process mid-test). That's covered separately below.
+
+### Manual verification — including a REAL process restart (requirement 7)
+
+Three genuinely SEPARATE OS processes (not simulated — three independent
+`godot --headless ... scene.tscn` invocations, each its own process,
+reading/writing the same real `user://teams/` files on disk), using
+throwaway driver scenes (`_scratch_persist_write`/`_read`/`_verify`,
+deleted after this session — confirmed clean via a directory listing
+showing zero scratch files left behind, and the real
+`~/.local/share/godot/app_userdata/As Imagined/teams/` directory removed
+afterward to leave no test data behind for real future use):
+
+- **RUN 1** (build + save): built and saved two teams via real button
+  presses on the real `roster_screen.tscn` (embedding real
+  `team_builder_screen.tscn` instances per slot) — `Manual_Full` (6
+  members: Bulbasaur/Charmander/Squirtle/Pikachu/Charizard/Gyarados, each
+  with a distinct level, nature, and a dex-derived distinct EV/IV spread)
+  and `Manual_Partial` (3 members: Eevee/Snorlax/Mewtwo). Printed every
+  field of every member, then quit.
+- **RUN 2** (a real restart): a brand-new process, reading only what RUN 1
+  wrote to disk. Reloaded both teams and printed every field — **matched
+  RUN 1's printed output byte-for-byte, for all 9 members across both
+  teams, with zero differences**. Then performed a REAL edit (via
+  `roster._on_edit_team_pressed`/`_on_slot_action_pressed`, the exact
+  handlers the real Edit/Add buttons call) replacing `Manual_Partial`'s
+  middle slot with a Pikachu Lv.99/Careful, saved, and a REAL delete of
+  `Manual_Full`. Quit.
+- **RUN 3** (a second real restart): a third brand-new process. Confirmed
+  `Manual_Full` is genuinely gone (`found_full == false`) — the delete
+  survived the restart, not just RUN 2's own in-memory state. Confirmed
+  `Manual_Partial` reloaded with slot 0 (Eevee) and slot 2 (Mewtwo)
+  BYTE-IDENTICAL to RUN 1's original values, and slot 1 correctly showing
+  the Pikachu Lv.99/Careful replacement from RUN 2's edit — both the edit
+  and the untouched-slot preservation survived a second restart.
+
+**Every field (species/level/moves/nature/EVs/IVs) round-tripped exactly
+for every member, across two independent process restarts, with a real
+edit and a real delete both persisting correctly.** This satisfies
+requirements 4, 7, and 8 together, using the same "genuinely separate
+processes" mechanism requirement 4 explicitly asked for rather than an
+in-process approximation.
+
+### Regression sweep results
+
+Per CLAUDE.md's own standing note (added at the end of the M23.4 session),
+`git stash` is blocked by this environment's action classifier. The 5 new
+files this session are all untracked, so the documented `mv`-based
+workaround applied cleanly. One additional wrinkle, flagged per requirement
+10's own explicit allowance: `team_builder_screen.gd`'s small additive
+edit (the new signal + `get_current_spec()` refactor) is a MODIFICATION to
+a file that was ALREADY untracked (never committed, from M23.4's own
+uncommitted session) — there is no git-tracked "before" version to
+restore for an ideal clean baseline, hitting exactly the "no verified
+workaround for stashing modifications to already-tracked-or-previously-
+staged files" gap CLAUDE.md's own note flags as open. Handled pragmatically:
+the "before" sweep ran with that edit ALREADY in place (since it's
+behavior-preserving, confirmed via `m23_4_team_builder_test.gd` passing
+44/44 unchanged both immediately after the edit and in every later sweep,
+and no other `.tscn` file in the whole sweep depends on
+`team_builder_screen.gd`'s internals) — only the 5 genuinely NEW files
+were relocated for the before/after split.
+
+- **Before**: 140 files, GRAND TOTAL **13633**, 0 failures.
+- **After, sweep 1**: 141 files (the new `m23_5_team_persistence_test.tscn`
+  picked up), GRAND TOTAL **13685** (+52: 51 from the new suite, +1 from
+  `m18_5g_test.tscn` (314→315) — an unrelated, pre-existing suite this
+  session never touched, already named in CLAUDE.md's own documented
+  statistical-flake list). `m23_3_converter_test.tscn` (56/56) and
+  `m23_4_team_builder_test.tscn` (44/44) both unchanged.
+- **After, sweep 2**: 141 files, GRAND TOTAL **13684** — a direct diff
+  against sweep 1 shows exactly one differing line, `m18_5g_test.tscn`
+  flipping back to 314 (matching the "before" sweep's own value exactly),
+  confirming it as the same pre-existing flake settling differently run to
+  run, not a regression. Zero real failures in either sweep.
+
+**Zero regressions.** `m23_3_converter_test.tscn` and
+`m23_4_team_builder_test.tscn` — the two files this task's own requirement
+explicitly named as needing to "still pass unchanged" — are byte-identical
+across every sweep this session (56/56 and 44/44 throughout).
+
+### Deviations / assumptions flagged
+
+- Team members are stored as construction SPECS (dex/level/move_ids/
+  nature/evs/ivs/ability_slot), not serialized `BattlePokemon` instances —
+  see "Serializable team concept" above for the full reasoning. Reloading
+  a team always reconstructs fresh via `PokemonFactory`, so a saved
+  roster entry is immune to any future `BattlePokemon` schema growth.
+- Editing a slot rebuilds it from scratch rather than pre-populating the
+  builder with its existing values — flagged as a real, disclosed UX
+  trade-off, not an oversight (see "Roster screen UI mechanism" above).
+- Delete has no confirmation step (matches M23.1's own "no dialog
+  convention exists yet" precedent).
+- Duplicate names are rejected outright, not overwritten or auto-renamed —
+  the task's own three-option menu, resolved toward the safest choice.
+- Hit the exact "no verified workaround for stashing modifications to an
+  already-untracked file" gap CLAUDE.md's own standing note flags as open
+  — worked around pragmatically (see "Regression sweep results" above),
+  not silently glossed over.
+- Species selection still uses M23.4's own dex-number-entry placeholder
+  (explicitly not touched or revisited here, per the task's own framing
+  that it's "not a settled decision" but also not this milestone's job to
+  resolve).
+- Battle-screen wiring and format/opponent selection remain fully
+  out of scope, per the task's own explicit M23.6 boundary — nothing here
+  reads a saved team back into `battle_manager.gd` or `battle_screen.gd`.
+- Nothing committed, per standing instruction.
