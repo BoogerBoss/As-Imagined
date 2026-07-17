@@ -326,3 +326,126 @@ defaults to `[false, false]` and is set nowhere outside the new proof scene.
   pass" tracking — an already-resolved combatant (AI, auto-select, or
   test-queue) is never re-touched by a resumed call, regardless of how many
   times the phase function is re-entered while another side remains paused.
+
+---
+
+## M23.0b — UI tech decision + entry point
+
+**COMPLETE** — 2026-07-16.
+
+### Step 0 findings
+
+**1. Confirmed no existing UI/main_scene setup** (verified, not assumed):
+`project.godot`'s `[application]` section had no `run/main_scene` key at all
+before this session (`grep` returned nothing). A full-repo grep for any
+`.tscn` file containing a `Control`/`Button`/`Label`/`VBoxContainer`/
+`CanvasLayer` node type found zero matches anywhere — `scenes/` only had
+`maps/`, `battle/`, and `tilesets/` subfolders, none of them UI. `scripts/
+ui/` (mentioned in CLAUDE.md's architecture overview) is confirmed empty.
+This is genuinely greenfield.
+
+**2. UI tech decision: plain Control nodes + one minimal shared `Theme`
+resource (just `default_font_size`).** Recommended and built: a single
+`scenes/main_theme.tres` setting `default_font_size = 20` (Godot 4's
+default theme font is small enough at a typical window size to be a real
+readability problem during dogfooding) and nothing else — no custom
+StyleBoxes, no color palette, no font family override. This is the smallest
+possible investment that avoids the "illegible grey-on-grey default Godot
+UI becomes its own debugging obstacle" failure mode the task flagged, while
+staying genuinely disposable — deleting this one `.tres` file and the one
+`theme = ExtResource(...)` line reverts to pure Godot defaults with zero
+other cleanup. Confirmed visually (screenshot, see below) that this single
+setting alone produces perfectly legible white-on-dark-grey text and a
+clearly-readable button label — no further theming was needed or added.
+
+**3. M23.0a's external API translates with zero friction.** Read
+`m23_0a_proof_test.gd`'s own calling pattern: construct a `BattleManager`
+(`BattleManager.new()`), `add_child()` it, call `set_human_controlled`/
+`start_battle*`, then from what would be a signal-handler in a real scene,
+call `queue_move`/`queue_move_targeted`/`queue_switch_for`/
+`queue_item_for`/`queue_replacement_for` followed by `advance()`. Confirmed
+`BattleManager extends Node` (`battle_manager.gd:1-2`) and its own `_ready()`
+(`:754-765`) does nothing but construct the internal Struggle placeholder
+move and connect two purely-internal signals — no assumption anywhere that
+it was constructed programmatically or added via `add_child()` specifically
+(as tests do) rather than placed directly as a pre-existing node in a
+scene's own `.tscn` tree (as a real scene naturally would). If anything,
+real-scene usage is SIMPLER than the test harness's own pattern: a real
+`.tscn` can place a `BattleManager` node directly in the scene tree with the
+script already assigned, and Godot calls `_ready()` on it automatically via
+ordinary node lifecycle — no manual `.new()`/`add_child()` needed at all.
+A Button's `pressed` signal handler calling `bm.queue_move_targeted(...)`
+then `bm.advance()` is a direct, one-to-one translation of the proof
+scene's own external-call pattern. The only guidance a future UI needs (not
+a gap, just a usage note): after each `advance()` call, check
+`bm.get_phase()` (or connect to the pre-existing `phase_changed` signal) to
+know whether the battle is now paused again (render the next input prompt)
+or has moved on (e.g. to `BATTLE_END`). **No friction found; no API changes
+needed.**
+
+### Implementation
+
+- New `scenes/main_theme.tres`: a `Theme` resource with only
+  `default_font_size = 20` set.
+- New `scenes/main.gd` + `scenes/main.tscn`: a single `Control` root (theme
+  applied) containing a `VBoxContainer` with one `Label` and one `Button`.
+  The button's `pressed` signal is connected in `_ready()` and updates the
+  label text with a press count — deliberately NOT battle-specific, proving
+  only that the entry point loads and that Control-node signal wiring works
+  end-to-end. The real battle screen (move buttons, HP bars, switch/replace
+  prompts) is M23.1's job.
+- `project.godot`: added `run/main_scene="res://scenes/main.tscn"` to
+  `[application]` (previously absent entirely).
+- Placement: `scenes/main.tscn` sits at the `scenes/` root rather than
+  inside `scenes/battle/` or a new `scenes/ui/` folder — this is the whole
+  GAME's entry point (not itself a battle scene or a battle-specific UI
+  element), so it doesn't fit CLAUDE.md's own "`scenes/battle/`: Battle
+  scene(s), UI scene(s)" grouping, which is scoped to battle-related UI
+  specifically. `scripts/ui/` (still empty) remains the intended home for
+  future UI *script* logic; there is no established `scenes/ui/` convention
+  to follow, so none was invented.
+
+### Confirmed: launches normally, not just headless
+
+Before this session, launching without `--headless` immediately failed with
+`Error: Can't run project: no main scene defined in the project.` — this
+confirmed the display/rendering path itself works in this environment
+(reached that error, not a display-connection failure) and pinpointed the
+exact gap this session closes.
+
+After wiring `run/main_scene`:
+- Headless smoke check (`--headless --quit-after 5`): loads cleanly, no
+  errors, `PokemonRegistry`'s own autoload smoke test still prints
+  correctly.
+- **Real (non-headless) launch** (`--quit-after 15`, no `--headless`):
+  initializes Vulkan via `llvmpipe` software rendering (no GPU in this
+  sandbox, but a real rendering context all the same — not a stub), falls
+  back to a dummy audio driver (expected: no ALSA/PulseAudio libraries in
+  this sandbox, unrelated to the scene itself), loads the scene, runs 15
+  real frames, exits cleanly with no scene-related errors.
+- **Visually confirmed via a temporary screenshot capture** (a throwaway
+  debug script swapped in for one run, then restored byte-for-byte via
+  `diff`, not left in the repo): the button and label render exactly as
+  designed, fully legible white-on-dark-grey text — confirming the
+  `default_font_size`-only theme decision is sufficient on its own.
+- A pre-existing, unrelated discrepancy was noted and confirmed NOT a
+  blocker: `project.godot`'s `config/features` lists `"4.7"`, a feature-set
+  string ahead of the `4.3.stable` binary this project actually uses
+  (per CLAUDE.md's own documented invocation) — launching non-headlessly
+  produced no version-mismatch warning or error of any kind, so this
+  pre-existing discrepancy (not something this session introduced or
+  needs to fix) does not affect anything built here.
+
+Confirmed via a rerun of `scenes/battle/m23_0a_proof_test.tscn` (still
+79/79) that this session's changes — purely new/additive UI-scaffolding
+files plus one `project.godot` line — have zero effect on the battle
+engine or its existing test suite; no battle logic was touched, so a full
+regression sweep was not run (out of proportion for this session's actual
+scope).
+
+### Next step
+
+M23.1 (bare-bones battle screen, two hardcoded teams) can now build real
+battle UI directly into a new scene, wiring a `BattleManager` node into the
+tree and driving it via the exact `queue_*`/`advance()` pattern confirmed
+here — no further scaffolding decisions are needed first.
