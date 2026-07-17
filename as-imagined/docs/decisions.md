@@ -27357,3 +27357,96 @@ across this 3-session arc**: `m17l_test.gd`, `m18q_test.gd`,
 unconfirmed but structurally real). No open items remain from this arc.
 
 No commit made this session — per standing instruction, Rob commits.
+
+## [Godot 4.3 → 4.7.1 test-infra migration] 2026-07-17
+
+**Reason for migration:** every prior session's automated test
+infrastructure hardcoded a Godot **4.3** Linux binary
+(`/home/rob/Godot_v4.3-stable_linux.x86_64`), while Rob's actual
+editor/play target has always been Godot **4.7** on Windows
+(`D:\Godot\Godot_v4.7-stable_win64.exe`, auto-updating). This meant every
+regression sweep to date had been validated against a different
+engine major/minor line than the one the project actually ships on — a
+real mismatch, not a cosmetic one.
+
+**Old path:** `/home/rob/Godot_v4.3-stable_linux.x86_64` (kept on disk,
+not deleted — no ongoing purpose for this project, but costs nothing to
+keep and preserves the option to re-run a specific historical comparison
+later; do not use it for new work).
+
+**New canonical path:** `/home/rob/Godot_v4.7.1-stable_linux.x86_64`
+(4.7.1-stable, the current maintenance release on the 4.7 line).
+Downloaded from the official GitHub release, SHA512-verified against the
+release's own published `SHA512-SUMS.txt` before use. `scripts/
+count_assertions.sh`'s `GODOT` variable now points here by default, and
+every hardcoded `Godot_v4.3` reference anywhere in the repo (`.sh`/`.gd`/
+`.md`) was updated — confirmed via a repo-wide grep, zero remaining
+invocation references (the only two `Godot_v4.3` strings left anywhere
+are inside CLAUDE.md's own prose documenting the old binary's deprecated
+status, not commands).
+
+**`project.godot`'s `config/features` field:** reads `"4.7"`, matching
+the new binary. No manual edit was needed — Godot's own editor keeps this
+field in sync with whichever binary last touches the project on disk (an
+`--import` pass or any real launch), so it self-corrected during this
+migration's own sweep runs without any code change.
+
+### Sweep comparison — 3 independent full runs, by engine version
+
+| Run | Binary | Files | GRAND TOTAL | Diff vs. clean baseline |
+|---|---|---|---|---|
+| 4.3 baseline (fresh run, this exact codebase) | 4.3-stable | 143 | 13791 | — |
+| 4.7.1 sweep 1 | 4.7.1-stable | 143 | 13791 | 0 |
+| 4.7.1 sweep 2 | 4.7.1-stable | 143 | 13790 | −1 (see below) |
+| 4.7.1 sweep 3 (script's own unmodified default, post-finalization) | 4.7.1-stable | 143 | 13791 | 0 |
+
+Every per-file diff across all four runs is empty except for one line in
+the sweep-1-vs-sweep-2 comparison: `scenes/battle/m18_5g_test.tscn` read
+315 in sweep 1 and 314 in sweep 2. This suite (King's Rock/Shell Bell
+multi-hit statistical tests) is already named explicitly in CLAUDE.md's
+own "M19-complete baseline" section as one of this project's known
+pre-existing statistically-flaky suites — engine-version-independent,
+not a new 4.3→4.7 discrepancy. No other suite, on any run, differed by
+even one assertion.
+
+**Explicit confirmation: this was a clean, zero-behavior-change
+migration.** The 4.3→4.7 jump did not surface any Container-layout,
+signal-timing, GDScript-semantics, or other engine-version-driven
+difference anywhere in this project's 143-file test suite. The
+roster-screen embedded-builder Container-collapse regression-guard
+assertion (`S2.02b` in `m23_5_team_persistence_test.gd`) passed on every
+4.7.1 run alongside the rest of its suite, with no special handling
+needed.
+
+### Two false leads investigated and closed during this migration
+
+Both are also noted briefly in CLAUDE.md itself (Standing infrastructure
+note section) so a future session recognizes either immediately rather
+than re-diagnosing from scratch:
+
+1. **Cold-cache class-name-resolution scare.** A report described every
+   `class_name`-declared type failing to resolve on 4.7.1
+   (`"Identifier 'X' not declared in the current scope"` cascading across
+   every test file, each hanging near its 25s per-file timeout). Directly
+   re-tested the specific file named in the report
+   (`scenes/battle/m17f_test.tscn`) against the 4.7.1 binary: ran clean in
+   0.6s, 30/30 passing, zero parse errors. `global_script_class_cache.cfg`
+   was inspected and found intact and correctly populated. Grepped every
+   sweep log produced this session for the claimed error text — zero
+   occurrences anywhere. Did not reproduce; no cache rebuild, `--editor`
+   launch, or code change was needed or applied.
+2. **Background-dispatch exit-144 deaths.** The second confirmatory sweep,
+   dispatched via backgrounded `bash count_assertions.sh`, died twice with
+   exit code 144 and no log output — no Godot crash signature, no hung
+   process left behind (`pgrep` came back empty both times), both deaths
+   landing close to a context-compaction boundary in the conversation.
+   Resolved by dispatching the identical, unmodified sweep script in the
+   **foreground** with a defensive `timeout` ceiling instead — every
+   foreground attempt since completed cleanly in ~70-71s (matching this
+   project's historical 4.3-era sweep timing closely, confirming no
+   performance regression from the engine jump either). Root cause of the
+   background-dispatch deaths themselves was not further investigated
+   (tooling/session-layer, not a Godot or project issue) — flagged as a
+   process note, not a bug to fix in this codebase.
+
+No commit made this session — per standing instruction, Rob commits.

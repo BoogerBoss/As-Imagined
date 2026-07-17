@@ -21,7 +21,7 @@
 
 set -euo pipefail
 
-GODOT="/home/rob/Godot_v4.3-stable_linux.x86_64"
+GODOT="/home/rob/Godot_v4.7.1-stable_linux.x86_64"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 

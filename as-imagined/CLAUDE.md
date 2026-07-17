@@ -765,6 +765,70 @@ session first needs to isolate uncommitted edits to existing files (e.g.
 for a clean before/after sweep comparison mid-edit) rather than only new
 ones.
 
+## Standing infrastructure note: Godot engine version — 4.7.1 is canonical, 4.3 is deprecated
+
+**Migrated 2026-07-17.** Every prior session's automated test infrastructure
+hardcoded a Godot **4.3** Linux binary
+(`/home/rob/Godot_v4.3-stable_linux.x86_64`), even though Rob's actual
+editor/play target has always been Godot **4.7** on Windows
+(`D:\Godot\Godot_v4.7-stable_win64.exe`). This was a real mismatch, not a
+cosmetic one — every regression sweep to date had been validated against a
+different engine major/minor line than the one the project actually ships
+on. This session installed a real Godot **4.7.1-stable** Linux binary
+(`/home/rob/Godot_v4.7.1-stable_linux.x86_64`, SHA512-verified against the
+official release's own published checksums) and repointed all automated
+testing at it.
+
+**Canonical binary going forward:** `/home/rob/Godot_v4.7.1-stable_linux.x86_64`
+— this is what `scripts/count_assertions.sh`'s `GODOT` variable points at,
+and what every ad-hoc verification command in this file's own examples
+uses. Use this path for all future test runs, `--import` passes, and
+manual verification scenes.
+
+**4.3 binary status: deprecated, kept on disk, not deleted.**
+`/home/rob/Godot_v4.3-stable_linux.x86_64` still exists on this machine and
+was NOT removed — it has no ongoing purpose for this project, but keeping
+it costs nothing and preserves the option to re-run a specific historical
+comparison if a future session ever needs to distinguish "this behavior
+changed because of the engine version" from "this behavior changed because
+of a code change." Do not use it for any new work; treat any command that
+still references it as stale and fix it to point at the 4.7.1 binary
+instead.
+
+**Migration verification (full detail in `docs/decisions.md`'s dated
+migration entry):** three independent full sweeps were run on the 4.7.1
+binary (plus a fresh 4.3 sweep on the identical codebase for comparison),
+and per-file diffs came back clean across the board — 143 files, GRAND
+TOTAL 13791 on the 4.3 baseline and on two of the three 4.7.1 runs; the
+third differed by exactly 1 assertion, isolated to `m18_5g_test.tscn`, an
+already-documented pre-existing statistical flake (named in this file's
+own "M19-complete baseline" section) unrelated to engine version. This was
+a clean, zero-behavior-change migration; the 4.3→4.7 jump surfaced no
+Container-layout, signal-timing, or GDScript-semantics differences
+anywhere in this project's own test suite. `project.godot`'s
+`config/features` field is `"4.7"`, matching the new canonical binary
+(Godot's own editor silently keeps this field in sync with whichever
+binary last touches the project — it self-corrected during this
+migration's own sweeps with no manual edit needed).
+
+**Two false leads from the migration session, noted here so a future
+session doesn't waste time re-diagnosing either as new:**
+1. A cold-cache scare where a hypothesized "every `class_name` fails to
+   resolve on 4.7.1" parse-error cascade was reported — direct re-test of
+   the specific file named in that report ran clean in 0.6s with 30/30
+   passing and zero parse errors, and a grep across every sweep log this
+   session produced found zero occurrences of the claimed error text
+   anywhere. Did not reproduce; no code or cache fix was needed or applied.
+2. A background sweep dispatch died twice with exit code 144 and no log
+   output, both times right around a context-compaction boundary — not a
+   Godot crash, not a script bug (`pgrep` showed no hung processes either
+   time). Resolved by dispatching the same unmodified sweep script in the
+   **foreground** with a defensive `timeout` ceiling instead of
+   backgrounding it; every foreground attempt since has completed cleanly
+   in ~70s. If a background sweep dispatch ever dies silently again with a
+   nonzero exit and an empty log, try foreground-with-timeout before
+   assuming a real regression.
+
 ## Setup
 
 ```bash
@@ -996,12 +1060,12 @@ path in the SAME command string — never rely on a prior `cd`.**
 WRONG (drift-prone — a separate/prior `cd` does not persist):
 ```bash
 cd /home/rob/GodotAsImagined/as-imagined
-timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . scenes/battle/m17l_test.tscn
+timeout 60 /home/rob/Godot_v4.7.1-stable_linux.x86_64 --headless --path . scenes/battle/m17l_test.tscn
 ```
 
 RIGHT (self-contained, cwd-independent):
 ```bash
-timeout 60 /home/rob/Godot_v4.3-stable_linux.x86_64 --headless \
+timeout 60 /home/rob/Godot_v4.7.1-stable_linux.x86_64 --headless \
   --path /home/rob/GodotAsImagined/as-imagined \
   scenes/battle/m17l_test.tscn
 ```
@@ -1018,7 +1082,7 @@ as-imagined` before assuming a real test hang.
 Run a verification scene headless (self-contained, works from any cwd):
 
 ```bash
-/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path /home/rob/GodotAsImagined/as-imagined scenes/battle/SCENE.tscn
+/home/rob/Godot_v4.7.1-stable_linux.x86_64 --headless --path /home/rob/GodotAsImagined/as-imagined scenes/battle/SCENE.tscn
 ```
 
 **Verification scenes:**
@@ -1092,7 +1156,7 @@ Run a verification scene headless (self-contained, works from any cwd):
 will see it:
 
 ```bash
-/home/rob/Godot_v4.3-stable_linux.x86_64 --headless --path . --import
+/home/rob/Godot_v4.7.1-stable_linux.x86_64 --headless --path . --import
 ```
 
 ### Data pipeline scripts
