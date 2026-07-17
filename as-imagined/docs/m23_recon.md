@@ -2788,3 +2788,131 @@ this was first raised during the Pokémon sprite pull and again explicitly
 for this phase specifically.
 
 No commit made this session — per standing instruction, Rob commits.
+
+### Phase 2 — item icons, keyed to `ItemData.item_id`
+
+**COMPLETE** — 2026-07-17. Pulls item icon sprites for every item this
+project's own data model actually covers, keyed by `ItemData.item_id`
+(confirmed via `scripts/data/item_data.gd` — a plain `@export var
+item_id: int`, matching `AbilityData.ability_id`'s own convention).
+
+**Correction to this phase's own prior pre-scoping note**:
+`reference/pokeemerald_expansion/src/data/item_icon_table.h` — previously
+assumed to be a direct `ITEM_X → icon path` table, the shape that powered
+the earlier scoping conversation's expectation — is actually **empty** in
+this checkout (confirmed by inspection, 1 line, no content). The real
+mapping lives inline in `src/data/items.h`'s own per-item struct blocks
+instead (`[ITEM_X] = { ..., .iconPic = gItemIcon_<Name>, ... }`), the same
+"identifier declared inline in the main data table" shape
+`species_info.h` used for Pokémon (`.frontPic` there, `.iconPic` here) —
+not a blocker, just a different join path than originally expected, and
+flagged rather than silently substituted without comment.
+
+**Scope, confirmed against the real data model rather than the reference
+roster**: this project's `data/items/` holds **160 real `.tres` files**
+(the `item_registry.gd` header comment claiming "only 40 items" is stale,
+predating many M18 sub-tiers — confirmed via direct disk scan, not
+trusted). The reference tree models ~919 items total (key items, TMs,
+mail, battle-irrelevant items this project has no data for at all) — per
+this phase's own instruction to flag a scope mismatch before pulling, the
+resolution was straightforward: **pull exactly the 160 this project's
+`ItemData` actually models, nothing more**, read directly from
+`data/items/*.tres` at generation time (self-updating — no hardcoded ID
+list to maintain as future M18+/M25 sessions add more items). No exclusion
+judgment call was needed this time (unlike Phase 1's Mega/Dynamax/Tera
+question) since the real scope was already exactly defined by what
+`ItemData` covers.
+
+**New `scripts/gen_item_sprites.py`** (mirrors `gen_pokemon_sprites.py`'s
+shape and "never guess a name transform" discipline) — a 3-file join:
+`include/constants/items.h`'s `enum Item` (identifier → numeric ID),
+`src/data/items.h`'s per-item block (`ITEM_X` → icon identifier), and
+`src/data/graphics/items.h`'s `gItemIcon_<Name>` declaration (icon
+identifier → literal filename, never reconstructed from PascalCase).
+
+**A real gap found and fixed during the first run, not just a hardcoded
+exception**: item 514 (Cheri Berry, a real item in this project's scope)
+failed to resolve — its canonical identifier is defined as `ITEM_CHERI_BERRY
+= FIRST_BERRY_INDEX`, a symbolic alias to a marker constant, not a plain
+numeric literal (the same class of gap this project has hit before with
+auto-incremented enum values — Hone Claws' `= MOVES_COUNT_GEN4`,
+Clangorous Soulblaze's auto-incremented ID). A full grep found dozens of
+similar aliases in `include/constants/items.h`, nearly all deprecated
+pre-Gen-VI/VII/VIII old item names irrelevant to this project's own
+(canonically-named) item IDs — but `FIRST_BERRY_INDEX = 514` matters
+directly. Fixed generically, not by special-casing item 514 alone: the
+extractor now does a two-pass resolution (capture every plain `X = N`
+literal — including non-`ITEM_`-prefixed marker constants like
+`FIRST_BERRY_INDEX`/`FIRST_MAIL_INDEX`, a second real bug caught when the
+first fix attempt still failed because the lookup table only held
+`ITEM_`-prefixed names — then resolve single-level `ITEM_X = OTHER_NAME`
+aliases against that same table). Confirmed via a full grep that no alias
+in this file chains more than one level deep, so a single resolution pass
+is sufficient.
+
+**Result: 160/160 real items resolved and copied.**
+
+**Destination layout**: `res://assets/sprites/items/%04d_%s.png` (e.g.
+`0001_poke_ball.png`), matching the Pokémon pull's ID-prefixed naming
+convention exactly.
+
+**A real, source-accurate finding worth flagging (not a mapping defect)**:
+3 icon filenames are shared across multiple item IDs — `plate.png` (all
+17 Plates, item IDs 250-266), `ditto_powder.png` (Metal Powder/Quick
+Powder, 396/397), and `in_battle_herb.png` (2 herb items, 460/464).
+Confirmed this matches real game behavior (all Plates genuinely share one
+generic gray-tablet icon in the actual games, distinguished by name/
+description rather than art) — not a script bug. No actual filename
+collisions in the destination directory, since each copy still carries its
+own unique ID prefix.
+
+**Import settings verified via genuine runtime check** (same rigor as
+prior pulls, not assumed from `project.godot` alone): loaded
+`0001_poke_ball.png` in a disposable script, confirmed the resolved
+project setting (`0` = Nearest), the texture's real dimensions (24×24,
+matching the on-disk inventory), and the `TextureRect` node's own
+`texture_filter` value (`0` = `TEXTURE_FILTER_PARENT_NODE`, correctly
+inheriting).
+
+**New `scenes/battle/item_sprite_smoke_test.gd`/`.tscn`**: unlike
+`pokemon_sprite_smoke_test.gd`'s plain directory-scan shape, this one is
+**cross-checked directly against `data/items/*.tres`** (the same
+authoritative source `gen_item_sprites.py` itself reads) rather than only
+asserting "every present file loads" — checked in both directions (every
+real item has a matching icon that loads correctly; every icon
+corresponds to a real item, catching an orphaned pull) plus an exact
+count-match assertion, so the test can't silently pass on a mismatched or
+incomplete pull the way a plain scan-and-load check could. **643/643
+passing** (1 + 1 + 160×3 + 160×1 + 1, confirmed exact).
+
+**Total added**: 160 files, **47,053 bytes** of PNG content — small, as
+expected for a 160-item icon set (24×24 each).
+
+**Regression sweep**: two full runs via `scripts/count_assertions.sh`,
+**146 files** both times. Sweep 1: GRAND TOTAL **16,964** (16,321 prior +
+643 new, exact match). Sweep 2: GRAND TOTAL **16,963** — a genuine
+1-assertion difference, diffed to `scenes/battle/d4_bundle5_test.tscn`
+(85 → 84). **Investigated, not waved off**: reran `d4_bundle5_test.tscn`
+standalone 5 times, 85/85 clean every time — confirmed NOT reproducible
+in isolation, confirmed unrelated to this session's own changes (zero
+existing move/ability/battle logic touched this session, only new files
+added), and `item_sprite_smoke_test.tscn` itself confirmed stable at
+643/643 in both full-sweep runs. This matches the shape of this project's
+several already-documented sweep-context-only statistical flakes
+(`m19a_gen1_test`, `m18_5g_test`, `doubles_test`, etc.) — a new,
+previously-undocumented-by-name instance of the same class, not a
+regression from this phase's own work. Worth adding to CLAUDE.md's
+flaky-suite list at some point, not chased down further here (matching
+this project's own established flag-not-fix practice for this class of
+finding).
+
+**Explicit confirmation per this phase's own scope**: nothing wired into
+visible UI this session — M22's item-action turn-queue logic is
+unaffected, no bag/item-select screen exists yet. That remains future
+work.
+
+**Licensing**: same confirmation as Phases 1 and the Pokémon pull — Rob
+comfortable with copyrighted assets entering the git-tracked repo
+(personal fangame, not for distribution).
+
+No commit made this session — per standing instruction, Rob commits.
