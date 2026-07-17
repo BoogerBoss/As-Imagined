@@ -29,11 +29,17 @@ extends RefCounted
 const FRONT_DIR := "res://assets/sprites/pokemon/front"
 const BACK_DIR := "res://assets/sprites/pokemon/back"
 
-# Both front and back sprite sheets are a fixed 64x64-per-frame canvas
-# (confirmed via direct pixel inspection during the original sprite pull,
-# uniform across every species regardless of the Pokémon's own visual
-# size) -- front sheets are 64x128 (2 frames, idle-bob animation), back
-# sheets are already single-frame 64x64.
+# Every front/back sprite sheet has a fixed 64x64-per-frame canvas
+# (confirmed via direct pixel inspection, uniform across every species
+# regardless of the Pokémon's own visual size). Front sheets are always
+# 64x128 (2 frames, idle-bob animation). Back sheets are single-frame
+# 64x64 for 385 of 386 species, EXCEPT Deoxys (#386), whose GBA-style back
+# sheet is genuinely animated (64x128, 2 frames) -- found via
+# sprite_registry_test.gd catching a real size-check failure, not assumed.
+# Both get_front() and get_back() always slice to the top frame via this
+# same FRAME_SIZE region, which is a safe no-op for every single-frame
+# source (slicing a 64x64 region out of an already-64x64 image just
+# returns the whole image unchanged).
 const FRAME_SIZE := Vector2(64, 64)
 
 static var _front_path_by_dex: Dictionary = {}
@@ -66,8 +72,22 @@ static func get_back(dex: int) -> Texture2D:
 	var path: String = _back_path_by_dex.get(dex, "")
 	if path.is_empty():
 		return null
-	# Already single-frame -- no slicing needed.
-	return load(path) as Texture2D
+	var full_sheet: Texture2D = load(path)
+	if full_sheet == null:
+		return null
+	# [Found via sprite_registry_test.gd, GBA-style switch session] Back
+	# sprites are single-frame 64x64 for 385 of 386 species, but Deoxys
+	# (#386) has a genuinely animated 2-frame 64x128 back sheet under GBA
+	# style. Always slicing to the top frame (rather than special-casing
+	# just Deoxys) is both simpler and defensively correct -- a no-op for
+	# every other species, since slicing a 64x64 region out of an
+	# already-64x64 source just returns the whole image unchanged
+	# (confirmed with Castform's single-frame front_gba.png earlier in
+	# this same session).
+	var atlas := AtlasTexture.new()
+	atlas.atlas = full_sheet
+	atlas.region = Rect2(Vector2.ZERO, FRAME_SIZE)
+	return atlas
 
 
 static func _scan_dir(dir_path: String, cache: Dictionary) -> void:

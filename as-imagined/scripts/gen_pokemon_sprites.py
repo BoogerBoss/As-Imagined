@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Copies front/back/icon sprites (modern art style, not the classic-GBA
-variant) for all 386 in-scope species from the read-only reference clone
-into a project-owned, git-tracked asset directory.
+Copies front/back/icon sprites (classic GBA art style) for all 386
+in-scope species from the read-only reference clone into a project-owned,
+git-tracked asset directory.
 
 Usage (from project root):
     python3 scripts/gen_pokemon_sprites.py
@@ -14,6 +14,14 @@ paths under reference/ directly without silently breaking for anyone
 without that exact local clone present. This script performs a one-time
 (re-runnable, idempotent) copy of just the files this project actually
 needs into res://assets/sprites/pokemon/, which IS committed.
+
+[Switched modern-style -> GBA-style] The original pull used the modern
+art style; switched to GBA style after a real screenshot check (M23.11
+Phase 4a) found the modern-style PNGs have NO alpha transparency at all
+(confirmed via direct pixel inspection -- every sprite renders as a solid
+colored rectangle, not a silhouette). GBA-style sprites were independently
+confirmed transparent (palette index 0 tagged transparent) during this
+project's very first sprite-format investigation.
 
 Mapping approach (matches [M19-pre1]'s gen_weight_data.py precedent --
 parses source directly since no rerunnable extractor for this exists in
@@ -32,18 +40,38 @@ in source, never reconstructed:
      used for that species' sprite data.
   3. src/data/graphics/pokemon.h -> the identifier's own
      `const u32 gMonFrontPic_<Identifier>[] = INCGFX_U32("graphics/
-     pokemon/<slug>/anim_front.png", ...)` declaration (the non-GBA-style
-     #if branch specifically, matching this project's "modern style"
-     choice) gives the literal, authoritative directory slug.
+     pokemon/<slug>/anim_front.png", ...)` declaration gives the literal,
+     authoritative directory slug. Deliberately still anchored to the
+     non-GBA-style #if branch's own path string here -- this step only
+     resolves the DIRECTORY (style-independent, both anim_front.png and
+     anim_front_gba.png live in the same per-species folder), not which
+     literal file within it gets copied (that's ASSET_KINDS, below).
 
-Unown (#201) is hardcoded (slug "unown") -- its species block uses the
-UNOWN_MISC_INFO macro instead of a plain struct literal, the same
-extractor blind spot gen_weight_data.py already documents for every other
-field.
+GBA_FILENAME_OVERRIDES handles the (species, kind) pairs where a plain
+"swap the filename" doesn't hold -- confirmed by a full coverage check
+against all 386 already-pulled species before switching styles, not
+assumed:
+  - Unown (#201): has NO _gba variant of ANYTHING (no anim_front_gba.png,
+    back_gba.png, or icon_gba.png) -- only plain, style-agnostic
+    front.png/back.png/icon.png (its real per-letter-form art lives in
+    subdirectories out of this project's scope; the base slug's own files
+    are apparently shared across both style toggles).
+  - Castform (#351): has a GBA-style front, but named "front_gba.png" --
+    no "anim_" prefix, and confirmed via direct pixel inspection to be a
+    single 64x64 frame, not the usual 2-frame 64x128 sheet every other
+    species has (Castform's real in-game animation is weather-form-linked
+    rather than the standard idle-bob). This needs no special handling on
+    the SpriteRegistry/consumer side -- slicing a Rect2(0,0,64,64) region
+    out of an already-64x64 source correctly returns the whole image.
+
+Unown (#201) is ALSO hardcoded for slug resolution (slug "unown") --
+its species block uses the UNOWN_MISC_INFO macro instead of a plain
+struct literal, the same extractor blind spot gen_weight_data.py already
+documents for every other field.
 
 Idempotent: re-running overwrites the destination files with a fresh copy
 from source, so reruns (e.g. after a `git pull` inside the reference
-clone) are safe.
+clone, or a future style change) are safe.
 """
 
 import os
@@ -62,18 +90,24 @@ SPRITE_SRC_DIR = os.path.join(REF, "graphics", "pokemon")
 
 DEST_DIR = os.path.join(ROOT, "assets", "sprites", "pokemon")
 ASSET_KINDS = {
-    "front": "anim_front.png",
-    "back": "back.png",
-    "icon": "icon.png",
+    "front": "anim_front_gba.png",
+    "back": "back_gba.png",
+    "icon": "icon_gba.png",
 }
 
 UNOWN_DEX = 201
 UNOWN_SLUG = "unown"
-# Unown's base directory has a plain front.png, not an animated
-# anim_front.png -- it uses per-letter-form subdirectories (a/b/c/...) for
-# the actual playable forms, out of scope here (only the base slug is
-# pulled, matching every other species' single-entry treatment).
-UNOWN_FRONT_FILENAME = "front.png"
+CASTFORM_DEX = 351
+
+# (dex, kind) -> filename override, for species where the default
+# ASSET_KINDS filename doesn't exist under GBA style -- see the module
+# doc comment above for the full explanation of each entry.
+GBA_FILENAME_OVERRIDES = {
+    (UNOWN_DEX, "front"): "front.png",
+    (UNOWN_DEX, "back"): "back.png",
+    (UNOWN_DEX, "icon"): "icon.png",
+    (CASTFORM_DEX, "front"): "front_gba.png",
+}
 
 # [M23.11 Phase 4a] dex 0 is not a real species -- it's the fallback used
 # by SpriteRegistry whenever a BattlePokemon's species has no resolvable
@@ -168,9 +202,8 @@ def main():
     missing_files = []
     for dex in range(1, 387):
         slug = dex_to_slug[dex]
-        for kind, filename in ASSET_KINDS.items():
-            if dex == UNOWN_DEX and kind == "front":
-                filename = UNOWN_FRONT_FILENAME
+        for kind, default_filename in ASSET_KINDS.items():
+            filename = GBA_FILENAME_OVERRIDES.get((dex, kind), default_filename)
             src = os.path.join(SPRITE_SRC_DIR, slug, filename)
             if not os.path.isfile(src):
                 missing_files.append(src)
@@ -180,7 +213,9 @@ def main():
             copied += 1
 
     # dex 0 fallback -- front + back only (see UNKNOWN_* constants' own
-    # comment above for why icon is excluded).
+    # comment above for why icon is excluded). question_mark/circled/ has
+    # real _gba variants for both (confirmed by inspection), no override
+    # needed here.
     for kind in ("front", "back"):
         filename = ASSET_KINDS[kind]
         src = os.path.join(SPRITE_SRC_DIR, UNKNOWN_SRC_SLUG, filename)
