@@ -473,6 +473,31 @@ var _baton_pass_queues: Array = [[], [], [], []]
 # Set before start_battle*() with set_trainer_ai(side, ai).
 var _trainer_ais: Array = [null, null]
 
+# [M23.0a] Per-side "this side is paused for external (human/UI) input" flag —
+# a genuinely distinct axis from _trainer_ais[side] == null, which continues to
+# mean exactly what it always meant (fall through to auto-select). Only checked
+# once _trainer_ais[side] == null and the test-queue is empty, so setting this
+# true has ZERO effect on any of the 136 pre-existing AI-driven or auto-select-
+# driven tests unless they also call set_human_controlled(side, true), which
+# none do. Set via set_human_controlled(side, value).
+var _human_controlled: Array[bool] = [false, false]
+
+# [M23.0a] Recompute-vs-lock-in tracking for _phase_move_selection: per-combatant
+# "has this combatant's action for the CURRENT move-selection pass already been
+# finalized" — guards the top of the per-combatant loop so a paused-and-resumed
+# call never re-touches (and never re-rolls, e.g. TrainerAI's own RNG decisions)
+# a combatant that already resolved earlier in the same pass. Reset to all-false
+# only on a genuinely fresh entry into MOVE_SELECTION (_move_selection_active
+# false -> true); sized to _combatants.size() at that same moment.
+var _move_selection_active: bool = false
+var _move_choice_resolved: Array[bool] = []
+
+# [M23.0a] Same shape as _move_choice_resolved above, but for _phase_switch_prompt
+# (faint-replacement) — a genuinely separate pause point from move-selection,
+# using the identical per-combatant "resolved this pass" tracking pattern.
+var _switch_prompt_active: bool = false
+var _switch_prompt_resolved: Array[bool] = []
+
 # M14b: tracks the last Pokémon to deal damage to each target this turn.
 # Key: BattlePokemon (defender), Value: BattlePokemon (attacker that last hit them).
 # Cleared at the start of each turn (PRIORITY_RESOLUTION).
@@ -841,6 +866,19 @@ func set_trainer_ai(side: int, ai) -> void:
 	_trainer_ais[side] = ai
 
 
+# [M23.0a] Mark one side as "awaiting external input" — the new distinct state
+# needed so a human/UI-driven side can pause mid-phase rather than falling
+# through to auto-select. Independent of _trainer_ais[side]; do not set this
+# true on an AI-controlled side (the AI branch is checked first and always
+# wins, so it would be silently ignored, not an error, but it's not the
+# intended use). External input is supplied via the EXISTING queue_move(),
+# queue_switch(), queue_move_targeted(), queue_switch_for(), queue_item_for(),
+# and queue_replacement_for() methods above — there is no separate "supply the
+# human's action" API; a UI click-handler calls one of those, then advance().
+func set_human_controlled(side: int, value: bool) -> void:
+	_human_controlled[side] = value
+
+
 # M11/M12: Attempt to set field weather. Returns true if weather changed.
 # Source: TryChangeBattleWeather (battle_util.c L1969–2015):
 #   — Returns FALSE if gBattleWeather already has the requested weather flag active.
@@ -987,7 +1025,23 @@ func _phase_move_selection() -> void:
 	# Source: battle_main.c gLockedMoves + gBattleMons[].volatiles.encoredMove
 	# M14a: iterates all combatants (2 in singles, 4 in doubles).
 	#   _action_queues indexed by combatant index; side = combatant_idx / _active_per_side.
+	# [M23.0a] Fresh-entry detection: only reset the per-combatant "resolved this
+	# pass" tracking the FIRST time this function runs for a given move-selection
+	# turn. A resumed call (after an external queue_*/advance() following a human
+	# pause) must NOT re-run this reset, or an already-resolved combatant's choice
+	# (including an AI's own RNG roll) would be silently wiped and re-rolled.
+	if not _move_selection_active:
+		_move_selection_active = true
+		_move_choice_resolved = []
+		for i in range(_combatants.size()):
+			_move_choice_resolved.append(false)
+
 	for i in range(_combatants.size()):
+		# [M23.0a] Already finalized earlier in this same pass (possibly a prior
+		# call, if we're resuming from a human pause) — skip entirely, including
+		# the resets below, so nothing about this combatant's choice changes.
+		if _move_choice_resolved[i]:
+			continue
 		var mon: BattlePokemon = _combatants[i]
 		_chosen_switch_slots[i] = -1
 		_chosen_targets[i] = _default_target(i)
@@ -995,9 +1049,18 @@ func _phase_move_selection() -> void:
 		# default shape.
 		_chosen_items[i] = null
 		_chosen_item_targets[i] = -1
+		# [M23.0a] Reset alongside the other 4 fields above — while this
+		# combatant remains unresolved (e.g. mid-pause, awaiting external
+		# input), _chosen_moves[i] should read null rather than a stale value
+		# left over from a PRIOR turn's resolution. Every branch below that
+		# actually resolves this combatant overwrites it with a real value
+		# regardless, so this is a no-op for every already-existing path;
+		# it only matters for the new human-controlled "still waiting" case.
+		_chosen_moves[i] = null
 		# Skip fainted combatants (doubles: a slot can be empty with no bench replacement).
 		if mon.fainted:
 			_chosen_moves[i] = null
+			_move_choice_resolved[i] = true
 			continue
 		var side: int = i / _active_per_side
 		if mon.charging_move != null:
@@ -1068,6 +1131,21 @@ func _phase_move_selection() -> void:
 				_chosen_moves[i] = mon.moves[idx] if idx < mon.moves.size() else null
 				if action.has("target"):
 					_chosen_targets[i] = action["target"]
+		elif _human_controlled[side]:
+			# [M23.0a] Awaiting external input for this combatant — leave
+			# _move_choice_resolved[i] false and skip the rest of this
+			# iteration (the M17f/M12/M15 post-processing below all require a
+			# real choice to already exist). advance()'s existing
+			# phase == phase_before stall-detection halts the whole battle
+			# loop here, since this function returns below without ever
+			# reaching _set_phase(PRIORITY_RESOLUTION) while any entry stays
+			# unresolved. A future caller supplies the action via
+			# queue_move_targeted()/queue_switch_for()/queue_item_for() (the
+			# same methods a test already uses) on this exact combatant
+			# index, then calls advance() again — this exact iteration
+			# re-runs from the top, sees _action_queues[i] is no longer
+			# empty, and resolves normally through that branch instead.
+			continue
 		else:
 			_chosen_moves[i] = mon.moves[0] if mon.moves.size() > 0 else null
 		# M17f: Trapping check (Shadow Tag/Arena Trap/Magnet Pull) blocks VOLUNTARY
@@ -1108,6 +1186,15 @@ func _phase_move_selection() -> void:
 		# of being forced into Struggle.
 		if _is_forced_struggle(mon) and _chosen_switch_slots[i] < 0 and _chosen_items[i] == null:
 			_chosen_moves[i] = _struggle_move
+		_move_choice_resolved[i] = true
+
+	# [M23.0a] Stall here (no phase change) if any combatant is still awaiting
+	# human input — advance()'s own phase == phase_before check then halts the
+	# whole battle loop cleanly. Only proceed once every entry has resolved.
+	for i in range(_combatants.size()):
+		if not _move_choice_resolved[i]:
+			return
+	_move_selection_active = false
 	_set_phase(BattlePhase.PRIORITY_RESOLUTION)
 
 
@@ -6713,20 +6800,54 @@ func _phase_switch_prompt() -> void:
 	# Source: battle_main.c :: L3671+, monToSwitchIntoId, SwitchInClearSetData.
 	# M14a: iterates all combatants (not just parties); supports doubles where
 	#   one side can have a fainted slot with no bench (other active slot still fights).
+	# [M23.0a] Same fresh-entry / per-combatant "resolved this pass" pattern as
+	# _phase_move_selection — see that function's own comment for the full
+	# reasoning. A non-fainted combatant, a fully-fainted party, and a resolved
+	# replacement are all marked resolved immediately since none of them can
+	# ever need to wait on external input.
+	if not _switch_prompt_active:
+		_switch_prompt_active = true
+		_switch_prompt_resolved = []
+		for i in range(_combatants.size()):
+			_switch_prompt_resolved.append(false)
+
 	for ci in range(_combatants.size()):
+		if _switch_prompt_resolved[ci]:
+			continue
 		var mon: BattlePokemon = _combatants[ci]
 		if not mon.fainted:
+			_switch_prompt_resolved[ci] = true
 			continue
 		var side: int = ci / _active_per_side
 		var party: BattleParty = _parties[side]
 		if party.is_fully_fainted():
+			_switch_prompt_resolved[ci] = true
 			continue  # no replacements; BATTLE_END_CHECK will declare winner
+		# [M23.0a] Awaiting external input for this replacement — leave
+		# _switch_prompt_resolved[ci] false so the stall-check below halts the
+		# battle loop here. A future caller supplies the replacement via
+		# queue_replacement_for(ci, slot) (the same method a test already
+		# uses), then calls advance() again — _get_replacement_slot below then
+		# finds the queue non-empty and resolves normally. Deliberately checked
+		# BEFORE calling _get_replacement_slot rather than changing that
+		# function's own return contract, since it has 3 other call sites
+		# (Teleport/Chilly Reception, Hit Escape, Parting Shot's mid-move
+		# self-switches) unrelated to this pause point.
+		if _human_controlled[side] and _replacement_queues[ci].is_empty():
+			continue
 		# Determine replacement slot (-1 = no bench member available).
 		var slot: int = _get_replacement_slot(ci)
 		if slot < 0:
+			_switch_prompt_resolved[ci] = true
 			continue  # all surviving party members are already active (doubles)
 		_do_switch_in(ci, slot)
 		replacement_needed.emit(side)
+		_switch_prompt_resolved[ci] = true
+
+	for ci in range(_combatants.size()):
+		if not _switch_prompt_resolved[ci]:
+			return
+	_switch_prompt_active = false
 	_set_phase(BattlePhase.BATTLE_END_CHECK)
 
 
