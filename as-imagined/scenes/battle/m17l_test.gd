@@ -98,7 +98,7 @@ func _make_mon(mon_name: String, types: Array[int], hp: int = 100, atk: int = 80
 	sp.base_sp_attack = spatk
 	sp.base_sp_defense = spdef
 	sp.base_speed = spd
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])  # [Flaky-suite audit fix] pinned neutral nature + zero IVs -- Section 10's damage-magnitude comparison predates the Nature/IV system
 
 
 func _doubles_party(m0: BattlePokemon, m1: BattlePokemon) -> BattleParty:

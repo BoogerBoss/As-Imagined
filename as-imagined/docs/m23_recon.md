@@ -1044,3 +1044,321 @@ touched, per the task's own constraint.
   "simplest mechanism" instruction rather than narrowly patching only the
   literal example given.
 - Nothing committed, per standing instruction.
+
+## ability_triggered message quality pass
+
+Follow-up to the M23.2 addendum's own flagged simplification: the generic
+`effect_key.replace("_", " ")` formatter is replaced with a full lookup
+table. No signals rewired, no ordering-buffer changes — a
+message-formatting-only pass, per the task's own scope.
+
+### What was built
+
+Grepped every `ability_triggered.emit(...)` call site in
+`battle_manager.gd` (63 literal string arguments, plus 4 sites passing a
+dynamically-resolved variable — `attract_result`, `eot_dmg_tag`,
+`retaliation["ability_name"]`, `contact_result["ability_name"]` — each
+traced back to its own small, fixed set of possible values by reading the
+assigning code, not guessed). Combined literal + resolved-dynamic set: **86
+distinct `effect_key` values**, all now covered by a new
+`_ABILITY_TRIGGER_TEXT: Dictionary` constant in `battle_screen.gd`, each
+mapped to a `"%s's <AbilityName> <what it did>!"`-style message (or, where
+the pokemon param isn't the ability's own holder — e.g. `"damp"` fires on
+the blocked attacker, not the Damp holder — phrasing that stays correct
+without needing the holder's name at all).
+
+New `_on_log_ability_triggered(mon, effect_key)` replaces the inline lambda:
+looks up `effect_key` in the table and formats with `_mon_label(mon)`; if
+absent, falls back to the exact prior generic formatter (requirement 4 —
+nothing silently breaks for a missed or future-added key).
+
+### Flagged low-confidence / intentionally generic messages
+
+Per requirement 3, these keys are used across mechanically different call
+sites, or bundle multiple distinct abilities/effects under one shared
+string — the key alone can't disambiguate which sub-case fired, so the
+message uses the most accurate generic phrasing that stays true for every
+sub-case rather than guessing a specific one incorrectly:
+
+- **`guard_dog`** — 3 shapes: blocks a Roar/Whirlwind-forced switch, blocks
+  a Red-Card-forced switch, or reverses an incoming Intimidate into a
+  self-buff on switch-in.
+- **`moody`** — raise-or-lower and which of 7 stats isn't in the key
+  (`stat_stage_changed`'s own buffered line, logged right after, does show
+  the specific stat).
+- **`defiant_competitive`** — Defiant (Atk) vs. Competitive (Sp. Atk) isn't
+  distinguishable from the key.
+- **`download`** — raises Atk or Sp. Atk depending on the target's own
+  bulkier defensive stat; not in the key.
+- **`hydration_shed_skin`** — Hydration (rain-cure) vs. Shed Skin
+  (random-chance cure) isn't distinguishable.
+- **`immunity_family_cure`** — any of Insomnia/Vital Spirit/Immunity/
+  Limber/Water Veil/Magma Armor; isn't distinguishable.
+- **`rain_dish_ice_body_dry_skin`** — which of the 3 heals isn't in the key.
+- **`absorb_stat_boost`** — Sap Sipper/Motor Drive/Well-Baked Body, and
+  which stat/magnitude, isn't in the key.
+- **`absorb_heal`** — Volt Absorb/Water Absorb/Dry Skin/Earth Eater isn't
+  distinguishable.
+- **`dazzling_family`** — Dazzling/Queenly Majesty/Armor Tail isn't
+  distinguishable.
+- **`soundproof_bulletproof`** — which of the two blocked isn't in the key.
+- **`effect_spore`** — poison/sleep/paralysis isn't in the key, but the
+  buffered `secondary_applied` line logged right after already names the
+  specific status, so this line doesn't need to repeat it.
+
+Every other one of the 86 keys maps 1:1 to a single, unambiguous ability
+(confirmed individually from source context) and got specific, accurate
+text — nothing else was left generic.
+
+### Manual verification
+
+A scripted signal-emission test (throwaway scratch scene, deleted after),
+instantiating the real `battle_screen.tscn` and calling
+`bm.ability_triggered.emit(mon, key)` directly for 5 keys:
+
+```
+key=intimidate -> Your Blaze's Intimidate lowered the opposing Pokémon's Attack!
+key=sturdy -> Foe Volt's Sturdy endured the hit!
+key=magic_bounce -> Your Blaze's Magic Bounce reflected the move!
+key=rain_dish_ice_body_dry_skin -> Foe Volt's ability restored some HP!
+key=some_totally_unknown_future_key -> Your Blaze's some totally unknown future key activated!
+```
+
+Confirms 4 mapped keys each produce their intended readable message, and
+an unrecognized key correctly falls through to the old generic formatter
+unchanged.
+
+### Regression sweep results
+
+- **Before**: 138 files, GRAND TOTAL 13531.
+- **After**: 138 files; three independent sweeps read 13533, 13533, and
+  13534 — all within the same already-documented pre-existing
+  statistical/aggregation-flaky-suite noise band this project's sweeps
+  have shown throughout M23 (confirmed by name: `m17l_test.tscn` and
+  `m19a_gen1_test.tscn` both read clean, 45/45 and 51/51, in the final
+  sweep — the ±1-3 swing traces to other suites in the documented flaky
+  set, not to this session's changes). `battle_screen.tscn` unchanged at
+  1/1 in every run.
+
+**Zero regressions.** This session's changes are confined to
+`battle_screen.gd` (one new dictionary constant, one new handler function,
+one changed `connect()` call) — no other file was touched.
+
+### Deviations / assumptions flagged
+
+- 12 of the 86 keys use intentionally generic (not per-sub-case) phrasing
+  — see the flagged list above; this is a documented simplification, not
+  an oversight.
+- `lansat_berry`/`micle_berry` are technically item effects (berries), not
+  abilities, but `battle_manager.gd` emits them via `ability_triggered`
+  anyway — the existing signal contract was treated as fixed input, per
+  the task's own constraint not to modify `battle_manager.gd`, so they're
+  included in the lookup table rather than left on the generic fallback.
+- Nothing committed, per standing instruction.
+
+## M23.3 — PokemonSpecies-from-real-data converter
+
+### What was built
+
+New `scripts/battle/core/pokemon_factory.gd` (`class_name PokemonFactory`,
+`extends RefCounted`, all `static func` — matching `MoveRegistry`/
+`ItemRegistry`/`AbilityManager`/`DamageCalculator`'s own established
+utility-class convention, not an autoload; placed alongside `move_registry
+.gd`/`item_registry.gd` in `scripts/battle/core/` rather than
+`scripts/data/`, since it produces battle-domain `BattlePokemon`s, not raw
+registry data). Two public entry points:
+
+- `build_species(dex) -> PokemonSpecies`: converts `PokemonRegistry.
+  get_species(dex)`'s raw JSON dict into a real, fully-populated
+  `PokemonSpecies` Resource. Returns `null` for a nonexistent dex.
+- `create_battle_pokemon(dex, level, move_ids, forced_nature, forced_ivs,
+  forced_friendship, evs, ability_slot) -> BattlePokemon`: builds the
+  species, then a real `BattlePokemon` via the SAME `BattlePokemon.
+  from_species(...)` constructor every hand-built test fixture already
+  uses — no new `BattlePokemon`/`BattleManager` machinery of any kind, and
+  `battle_manager.gd` was not touched.
+
+### How real data is sourced
+
+- **Species data**: `PokemonRegistry.get_species(dex)` (`data/pokemon
+  .json`, loaded by the `PokemonRegistry` autoload — the same registry
+  every scene's own "PokemonRegistry: smoke test passed..." boot log
+  confirms, found by reading `scripts/data/pokemon_registry.gd` in full
+  per this task's own explicit instruction, not guessed).
+- **Moves**: `MoveRegistry.get_move(id)` (`res://data/moves/move_%04d.tres`
+  — the real, implemented `.tres` `MoveData` Resources), **NOT**
+  `PokemonRegistry.get_move()`. Confirmed via `[M19-pipeline-fix]`'s own
+  decisions.md entry that `PokemonRegistry`'s own `data/moves.json`
+  pipeline has zero real production consumers anywhere in this codebase —
+  using it would have produced a converter that "worked" but fed the
+  battle engine data nothing else in the project actually trusts.
+- **Learnset**: `PokemonRegistry.get_learnset(dex)`, used both to populate
+  `PokemonSpecies.learnset` (informational — nothing in the battle engine
+  reads this field off the instance) and to auto-derive a default moveset
+  when no explicit `move_ids` are given.
+- **Abilities**: loaded ad hoc via `res://data/abilities/ability_%04d.tres`
+  — matching this project's own already-established "no AbilityRegistry"
+  convention (`AbilityManager`'s mechanic dispatch is 100% hardcoded
+  ability-ID constants; the `.tres` layer is a metadata catalog only).
+
+### Real-data quirks found and handled (not assumed from the schema's own doc comments)
+
+- **Mono-typed species are stored as the SAME type twice** in `pokemon
+  .json` (e.g. Mewtwo/Pikachu = `[15, 15]`), **not** `[type, TYPE_NONE]` as
+  `PokemonSpecies.types`'s own doc comment describes for hand-built
+  fixtures. Confirmed by direct inspection (Bulbasaur `[13, 4]`, Mewtwo
+  `[15, 15]`), not assumed — `build_species()` de-duplicates this
+  explicitly (verified in Section 1 of the test suite, S1.12, which checks
+  the RESULT is `[PSYCHIC]`, not a duplicated pair).
+- **`growth_rate` is a STRING in real data** (`"MediumSlow"`, `"Slow"`),
+  but `PokemonSpecies.growth_rate` is a dormant `int` enum with no defined
+  values anywhere in this codebase. Traced `BattleManager._check_level_up`
+  directly and confirmed it already reads growth rate FRESH from
+  `PokemonRegistry.get_species(dex)` every time, BY DESIGN (its own doc
+  comment: keeps the level-up path automatically evolution-safe with no
+  stale-species-snapshot risk) — never from a `PokemonSpecies` instance
+  field. Left unpopulated rather than inventing an int mapping nothing
+  would consume.
+- **JSON float coercion**: `JSON.parse_string` returns every numeric value
+  as `float`, not `int` — a standing project-wide gotcha (already in this
+  assistant's own memory notes). Every numeric field read from the raw
+  dict is explicitly `int()`-cast in `build_species()`; without this,
+  assigning a bare float into one of `PokemonSpecies`'s strictly
+  `int`-typed `@export` fields throws a runtime type-mismatch error.
+
+### Verification — 4 diverse real species, checked against the registry's own data
+
+**Bulbasaur** (1, Grass/Poison, standard dual-type/ability layout),
+**Charizard** (6, Fire/Flying, real hidden ability Solar Power),
+**Mewtwo** (150, mono Psychic — the type-dedup case — genderless, no 2nd
+ability), **Rayquaza** (384, Dragon/Flying, genderless, EMPTY hidden
+ability slot — `ability_h=0`, the "no hidden ability at all" case).
+
+Every exact-value assertion compares against either (a) `PokemonRegistry`'s
+own raw dict for that species directly, or (b) an independently
+hand-computed expected stat via the documented Gen III+ HP/stat formula
+(Bulbasaur L50 and Charizard L36, both with `NATURE_HARDY` + all-zero IVs
+forced, hand-verified via Python before being trusted as assertions,
+matching this project's own established convention) — never a value read
+back from the same code path under test.
+
+### Edge cases handled vs. explicitly deferred
+
+**Handled** (per requirement 5):
+- Fewer than 4 learnable moves at the target level (Bulbasaur L1 → exactly
+  1 move, Tackle) — `BattlePokemon.add_move` already tolerates this with
+  no special-casing needed.
+- Zero learnable moves at or below the target level — falls back to the
+  single lowest-level learnset entry. Confirmed via a full 386-species
+  dataset scan that this branch is UNREACHABLE through the public
+  `create_battle_pokemon` entry point at any valid level (every species
+  has a real level-1 move) — tested directly against the underlying
+  `_default_moveset` helper with an artificial sub-1 level instead,
+  rather than leaving it unverified.
+- Invalid/unimplemented explicit move ID requests — skipped silently
+  (`MoveRegistry.get_move()`'s own `push_warning` is the visible signal).
+- More than 4 valid move IDs requested — only the first 4 used.
+- A duplicate move ID in an explicit request — not added twice.
+- Level bounds — clamped to `[1, 100]` with a `push_warning` if the
+  caller's request was out of range.
+- Invalid/nonexistent dex number — returns `null` (both `build_species`
+  and `create_battle_pokemon`), not a bogus zero-stat Pokémon.
+- Malformed EV array (wrong size) — ignored, EVs stay at zero.
+- An ability slot resolving to ID 0 ("None" — e.g. Rayquaza's empty
+  secondary/hidden slots) — leaves `BattlePokemon.ability` at `null`,
+  matching the project-wide "ability == null means no ability" convention
+  (`AbilityManager.effective_ability_id`'s own null check), deliberately
+  NOT resolved to `ability_0000.tres`'s own real "None" placeholder
+  Resource.
+- Out-of-range `ability_slot` index — leaves `.ability` at `null`, no
+  crash.
+
+**Explicitly deferred** (flagged per requirement 5, not silently
+skipped — see the new file's own top-of-file doc comment for the full
+reasoning):
+- Held items — no parameter for one; the task's own parameter list never
+  asked for it, and guessing a "reasonable default" would be inventing
+  scope. Adding one later is a one-line `ItemRegistry.get_item(id)` call,
+  same shape as the ability-loading code already in place.
+- Cross-validating an EXPLICIT move request against the species' own
+  learnable-move list (`PokemonRegistry.get_learnable_moves(dex)`, which
+  returns `"MOVE_TACKLE"`-style constant-name strings). Reconciling that
+  naming scheme against `MoveData.move_name`'s own display-string field
+  ("Tackle") would need a nontrivial, error-prone reverse name-mapping —
+  the same class of complexity `PokemonRegistry._name_to_learnable_key`
+  already fights on the species-name side. This factory validates only
+  that a requested move ID resolves to a real, IMPLEMENTED `MoveData` —
+  it does not check whether the species could actually learn that move in
+  the source game.
+- Evolution-aware construction — builds exactly the requested
+  species/level, nothing more.
+
+### Not wired into the battle screen — flagged, not decided unilaterally
+
+Per requirement 4, M23.1's hardcoded `battle_screen.gd` teams are
+completely untouched — this milestone is the converter standalone. Per
+the M23 roadmap, connecting real team data to the battle screen is M23.6's
+job, once M23.4's team builder exists to actually produce a team; wiring
+this converter into the battle screen now, ahead of either, was
+considered and NOT done. Flagging explicitly per the task's own
+instruction: if Rob wants the battle screen switched over to real
+Pokémon sooner than M23.6 (e.g. as an interim step before the team
+builder exists), that's a one-line change per team slot
+(`PokemonFactory.create_battle_pokemon(dex, level)` in place of the
+current `_make_mon(...)` + `add_move(...)` calls in `_build_teams()`) —
+but it wasn't done without confirmation first.
+
+### Manual verification
+
+A scratch signal-free direct-call script (created temporarily, deleted
+after use), constructing several real species end-to-end and printing
+species name/types/base stats/level/max HP/moveset/ability — confirmed by
+eye before the formal test suite was written: Charizard L36 correctly
+showed `types=[11, 3]` (Fire/Flying), `base_hp=78`, a 4-move auto-derived
+learnset (Rage/Scary Face/Flamethrower/Wing Attack, all real Charizard
+learnset entries by level 36), and `ability=Blaze`; Bulbasaur L1 correctly
+showed exactly 1 move (Tackle); Mewtwo showed the type-dedup fix working
+(`types=[15]`, not `[15, 15]`); the invalid-dex and out-of-range-level
+cases produced the expected `null`/clamped results with warnings.
+
+### Regression sweep results
+
+- **Before**: 139 files, GRAND TOTAL 13590 (the new suite already present
+  in this count — see below for why "before" here means "before the two
+  fixture bugs this session's own test-writing caught were fixed," not
+  "before the suite existed," since the suite's own first run surfaced
+  two real bugs in `pokemon_factory.gd` itself, fixed before any sweep was
+  taken — see Deviations below).
+- **After**: 139 files, GRAND TOTAL 13590, byte-for-byte identical
+  per-file output across two independent sweeps (confirmed via a direct
+  diff of both full sweep tables — zero differences anywhere). Matches
+  the immediately-prior session's own established baseline exactly:
+  13534 (138 files) + 56 (this session's new suite) = 13590.
+- `m23_3_converter_test.tscn` itself: stable at 56/56 across 5 separate
+  runs (3 standalone reruns plus the 2 full-sweep runs).
+
+**Zero regressions.** This session's changes are additive only: one new
+script (`pokemon_factory.gd`), one new test file/scene. No existing
+production file (including `battle_manager.gd`, `battle_screen.gd`, and
+every other already-shipped script) was touched.
+
+### Deviations / assumptions flagged
+
+- The test suite's own first run caught 2 real bugs in `pokemon_factory
+  .gd` before any regression sweep was taken (both fixed, not shipped
+  broken): (1) a hand-computed expected EV-boosted stat in the test itself
+  was wrong (assumed EVs add linearly AFTER the level-scaling term; they
+  actually add INSIDE it, before scaling — `floor((2*base+iv+floor(ev/4))
+  *level/100)+5`, not `base_stat + floor(ev/4)` — caught by the test
+  itself failing on its first run, fixed by recomputing via Python and
+  correcting the assertion, not the factory); (2) a genuine
+  `pokemon_factory.gd` bug — `_default_moveset`'s zero-eligible-moves
+  fallback branch returned a plain untyped `Array` from a ternary
+  expression where the function's own signature requires `Array[int]`,
+  crashing at runtime — fixed by building the typed array explicitly.
+- Move IDs used in the explicit-moveset test cases were independently
+  verified against each move's own `.tres` `move_name` field before
+  writing assertions (one initial guess — move ID 63 assumed to be
+  Flamethrower — turned out to be Hyper Beam; corrected to the real
+  Flamethrower ID, 53, before finalizing the test).
+- Nothing committed, per standing instruction.

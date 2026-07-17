@@ -86,7 +86,7 @@ func _make_mon(mon_name: String, type1: int, base_hp: int = 100, base_atk: int =
 	sp.base_sp_attack  = base_spatk
 	sp.base_sp_defense = base_spdef
 	sp.base_speed      = base_spd
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])  # [Flaky-suite audit fix] pinned neutral nature + zero IVs -- Q02.09's max-HP discriminator predates the Nature/IV system, only partially narrowed by [M18.5a]'s forced-crit fix
 
 
 func _load_ability(id: int) -> AbilityData:

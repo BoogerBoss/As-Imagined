@@ -66,7 +66,7 @@ func _make_mon(mon_name: String, type1: int, gender: int = BattlePokemon.GENDER_
 	sp.base_sp_attack  = base_spatk
 	sp.base_sp_defense = base_spdef
 	sp.base_speed      = base_spd
-	var bp := BattlePokemon.from_species(sp, 50)
+	var bp := BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])  # [Flaky-suite audit] pinned neutral nature + zero IVs -- R7's Rivalry gender-damage comparison is a cross-instance damage-magnitude check
 	bp.gender = gender
 	return bp
 

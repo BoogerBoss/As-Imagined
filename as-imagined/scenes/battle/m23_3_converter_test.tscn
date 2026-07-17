@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m23_3convertertest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m23_3_converter_test.gd" id="1_m23_3convertertest"]
+
+[node name="M233ConverterTest" type="Node"]
+script = ExtResource("1_m23_3convertertest")

@@ -62,7 +62,7 @@ func _make_mon(species_name: String, level: int, types: Array[int],
 	sp.base_sp_attack = base_spatk
 	sp.base_sp_defense = base_spdef
 	sp.base_speed = base_speed
-	return BattlePokemon.from_species(sp, level)
+	return BattlePokemon.from_species(sp, level, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])  # [Flaky-suite audit] pinned neutral nature + zero IVs -- S2.03's Pursuit doubled-power comparison is a cross-instance damage-magnitude check
 
 
 # ── Section 1: Move data spot-checks ─────────────────────────────────────────

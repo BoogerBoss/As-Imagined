@@ -26904,3 +26904,456 @@ TOTAL 13420, 0 failures, twice. Full Heal/X Attack/the Poké Ball placeholder
 remain for M22's next session, per `docs/m22_recon.md`'s own sequencing.
 
 No commit made this session — per standing instruction, Rob commits.
+
+## [Flaky-suite audit] GRAND TOTAL drift re-investigated — the 2-file citation was incomplete, and a real root cause was found for 3 of the suites — 2026-07-17
+
+Project-wide testing-infrastructure diagnostic, prompted by recent M23
+sessions repeatedly attributing `scripts/count_assertions.sh`'s GRAND TOTAL
+drift (13531 → 13532 → 13533/13534) to "known pre-existing flaky-suite
+noise in `m17l_test.tscn`/`m19a_gen1_test.tscn`" without independently
+re-verifying that citation each time. Read the 2026-07-06 diagnostic
+session in full first (see this file's own entry above, "Follow-up
+(2026-07-06, same day)") for continuity: that session's own methodology
+(instrumented scratch copies, byte-for-byte reproduction across two clean
+runs) found the sweep **fully deterministic** at the time — 2246 assertions
+across 41 files, reproduced identically twice, **zero flakiness of any
+kind**. This means every flaky suite discussed below was introduced (or
+started actually flaking) at some point AFTER 2026-07-06, as the suite grew
+from 41 to 138 files — not something that diagnostic session missed.
+
+### Method
+
+Ran `scripts/count_assertions.sh` (no arguments — a genuine fresh sweep
+each time, not a reused log) **5 times in a row** from the current
+project state (138 files each run). Extracted every file's own printed
+count from each run's output and diffed all 5 against each other
+file-by-file — not spot-checking only the 2 files recent sessions have
+been naming.
+
+### Result: only 3 files varied across the 5 runs, GRAND TOTAL fully reconciles
+
+```
+scenes/battle/m17l_test.tscn      [45, 45, 44, 45, 45]
+scenes/battle/m18q_test.tscn      [16, 16, 16, 16, 15]
+scenes/battle/m19a_gen1_test.tscn [51, 50, 50, 50, 51]
+```
+
+Every one of the other 135 files printed byte-identical counts in all 5
+runs. GRAND TOTAL across the 5 runs: **13534, 13533, 13532, 13533, 13533**.
+Confirmed this fully reconciles arithmetically: the 135 constant files sum
+to a fixed 13422 in every run; adding each run's own actual values for the
+3 varying files (112, 111, 110, 111, 111 respectively) reproduces
+13534/13533/13532/13533/13533 exactly, with zero unexplained residual —
+**no other file, and no other mechanism, contributes to the observed
+drift.**
+
+**Direct answer to the audit question**: recent M23 sessions' 2-file
+citation (`m17l_test.tscn`, `m19a_gen1_test.tscn`) was an **incomplete but
+not wrong** shorthand. `m18q_test.tscn` is not a newly-discovered file — it
+already sits on `CLAUDE.md`'s own "M19-complete baseline" flaky-suite list
+(5 suites: `m19a_gen1_test.tscn`, `doubles_test.tscn`, `m18_5g_test.tscn`,
+`m18q_test.tscn`, `m17l_test.tscn`) — but no M23 session's own write-up
+named it specifically, each time narrowing the citation to whichever 2
+files that session's own single or double sweep happened to catch. The
+outcome was "consistent with known flakiness" by luck of the full list
+already covering it, not because any session actually verified the
+2-file explanation was complete. This audit is the first time anyone
+checked.
+
+### Root-caused: `m17l_test.tscn`, `m19a_gen1_test.tscn`, and `m18q_test.tscn` share ONE common mechanism, never previously identified
+
+All three of the observed-flaky files (`[M17l]`, shipped 2026-07-03;
+`[M19a-gen1]`/`m19a_gen1_test.gd`, shipped 2026-07-08; `[M18q]`, shipped
+2026-07-07) construct their fixtures via a local `_make_mon` helper that
+calls `BattlePokemon.from_species(sp, 50)` — the bare 2-argument form,
+supplying neither `forced_nature` nor `forced_ivs`. `from_species`'s real
+signature (`battle_pokemon.gd:1061-1063`) is
+`from_species(p_species, p_level, forced_nature=null, forced_ivs=null,
+forced_friendship=null)`, and when either forcing argument is omitted it
+calls `_roll_nature(null)` (a genuine random pick among 25 natures, each
+with a real ±10% stat multiplier on 2 stats) and `_roll_ivs(null)` (6
+independent `randi() % 32` rolls) — **the Nature/IV system shipped
+2026-07-08 (`[M18.5h-1]`/`[M18.5h-2]`), AFTER `m17l_test.gd` was written
+and on the SAME DAY as `m18q_test.gd`/`m19a_gen1_test.gd`.** None of the
+three files' `_make_mon` helpers were ever updated to pin these — unlike
+`doubles_test.gd` (also on the documented flaky list), whose own
+`_make_mon` carries an explicit `[M18.5h-1/2] pinned neutral nature + zero
+IVs` comment confirming it WAS caught and fixed during that system's own
+26-file regression sweep. These 3 files were missed by that sweep (or,
+for `m18q_test.gd`/`m19a_gen1_test.gd`, didn't exist yet at the time it
+ran, and were never retrofitted afterward).
+
+Confirmed empirically for two of the three, not just inferred from source
+(`m18q_test.tscn`'s own mechanism is inferred from its identical `_make_mon`
+pattern plus its own pre-existing doc comment already narrating one prior
+incident of the same shape — see below — not independently re-instrumented
+this session, given the other two already conclusively demonstrate the
+mechanism):
+
+- **`m17l_test.tscn` (Section 10, Friend Guard full-battle doubles
+  integration)**: compares `attacker0`'s damage into `fg_defender`
+  (Friend-Guard-reduced, expected ×0.75) against `attacker1`'s damage into
+  `fg_ally` (unreduced) via a strict `<` — despite the test's own comment
+  claiming `_force_roll = 100` / `_force_crit = false` make this
+  deterministic, the two attacker/defender PAIRS have independently
+  randomized Attack/Defense IVs (confirmed via a temporary debug-instrumented
+  scratch copy, deleted after use, printing every `move_executed` event
+  across 25 repeated subprocess runs): in one captured failing run,
+  `defender_dmg=52` vs `ally_dmg=51` — the 0.75x reduction was real, but
+  independently-rolled IVs on the two attacker/defender pairs closed the
+  intended ~25% gap to the point of inversion. A minimal in-process repro
+  using EXPLICITLY pinned `NATURE_HARDY`/all-zero IVs reproduced **0
+  failures in 400 trials**, while the real file (unpinned) failed 4/25
+  subprocess trials in this session's own reproduction — strong,
+  contrastive confirmation the missing pin is the actual cause, not a
+  side effect of something else.
+- **`m19a_gen1_test.tscn` (Section B3, "Hydro Pump does NOT trigger Rough
+  Skin" discriminator)**: `recoil_damage` is checked for ANY firing
+  attributed to the attacker across the WHOLE battle (`queue_move` once
+  each side, then `start_battle` runs to completion) — a real instance of
+  CLAUDE.md's own documented "whole-battle-aggregation" pitfall, but the
+  proximate trigger was never identified before this session. Confirmed via
+  a debug-instrumented scratch copy (deleted after use) across 15 repeated
+  runs: whenever the two (independently, randomly IV'd) 60-power-class
+  attackers' actual Hydro Pump damage output is too low to KO within
+  Hydro Pump's own 5 PP, the move depletes and BOTH sides are forced to
+  **Struggle**, whose own self-recoil fires the exact `recoil_damage`
+  signal this discriminator listens for on the attacker — entirely
+  unrelated to Rough Skin, the ability actually under test. Observed
+  max_hp swinging from 360 to 375 and per-hit damage from 60 to 88 across
+  runs purely from IV variance, tipping whether the fight ends inside or
+  outside the 5-PP window. This is the SAME root cause as `m17l_test`'s
+  flake (unpinned nature/IVs), manifesting through a different proximate
+  symptom (Struggle's own recoil, not a magnitude-comparison inversion).
+- **`m18q_test.tscn` (Q02.09, Shell Bell max-HP discriminator)**: shares
+  the identical `_make_mon` gap. Its own doc comment (added during
+  `[M18.5a]`, 2026-07-08) already narrates one prior incident of this
+  exact shape — the fixture's assumed max HP (61, from the HP formula's
+  `+level+10` floor with `base_hp=1`) wasn't reliably one-shot by a forced
+  max-roll non-crit hit, so `[M18.5a]` additionally forced `_force_crit =
+  true` to guarantee a kill. That fix narrows but does not eliminate the
+  window: `def3`'s actual max HP (driven by its own random HP IV, 0-31)
+  can range roughly 61-76, and `atk3`'s own randomized Attack IV shifts
+  the real computed crit damage — this session's own empirical sweep
+  caught it flaking again (15/16 in one of 5 runs) despite that fix,
+  confirming the earlier "fix" narrowed the window without closing it,
+  for the same underlying reason `[M18.5a]`'s own comment already
+  half-diagnosed without naming the true root cause (unpinned IVs, not
+  "an unlucky roll").
+
+### Is this a real bug or benign noise?
+
+**Not a production bug** — `battle_manager.gd`/`DamageCalculator`/
+`AbilityManager` are all functioning exactly as designed in every
+reproduced case (Friend Guard really does apply ×0.75; Rough Skin really
+doesn't fire for a non-contact move; Shell Bell really doesn't heal past
+max HP). This is a **test-fixture-authoring gap**: 3 pre-existing test
+files were never updated when the Nature/IV system shipped, unlike
+`doubles_test.gd`'s own sibling fixture in the same file family, which
+was. It is a genuinely **fixable, well-understood, one-line-per-file**
+gap (pin `forced_nature = BattlePokemon.NATURE_HARDY` and
+`forced_ivs = [0, 0, 0, 0, 0, 0]` in each `_make_mon`'s own
+`from_species(...)` call) — this is deliberately **not fixed as part of
+this diagnostic session**, per the task's explicit instruction to report
+rather than silently patch.
+
+This is a meaningfully different class from `m18_5g_test.tscn` (also on
+the documented list, NOT observed flaking in this session's own 5 runs) —
+that suite's own flake is a genuine King's Rock/Shell Bell **statistical
+rate** test, inherently variable no matter how well-pinned the fixture is
+(sampling a real probability over finitely many trials). `m17l_test`/
+`m19a_gen1_test`/`m18q_test`'s flakes are NOT statistical-rate tests —
+they're exact-value/boolean assertions that SHOULD be fully deterministic
+once roll/crit are forced, and would be, if nature/IVs were pinned too.
+
+### Broader latent risk found (not individually verified, flagged for a future session)
+
+A quick pattern grep (not a full empirical re-verification of each) found
+**59 of the 138 `.tscn` test files** construct fixtures via the same bare
+`from_species(sp, <level>)` call with no forced nature/IVs — the large
+majority of these predate 2026-07-08 and were never touched by the
+Nature/IV system's own 26-file regression-fixing sweep. Most are presumably
+safe in practice (boolean "did X happen" checks are robust to small IV-
+driven stat noise), but any of the 59 that also does a precise magnitude
+comparison or a PP-exhaustion-dependent whole-battle check carries the
+exact same latent risk as the 3 confirmed here. `m18k_test.tscn` (flagged
+during `[M20a]`, 2026-07-15, as "NOT previously documented anywhere as
+flaky," never subsequently confirmed one way or the other) is one such
+file using the same unpinned pattern — its own King's Rock/Razor Fang
+content is a statistical-rate test (the `m18_5g_test`-shaped benign class),
+so it may be unrelated to this session's root cause, but wasn't
+independently re-verified either way this session (out of scope — the
+question this audit was actually asked to answer is already fully
+answered by the 3 confirmed files above).
+
+### Recommendation
+
+**Worth fixing, but not urgent** — these are 3 (or up to 59, unverified)
+one-line test-fixture edits, zero production risk. Recommend a small,
+dedicated future session: pin `NATURE_HARDY`/all-zero IVs in
+`m17l_test.gd`, `m19a_gen1_test.gd`, and `m18q_test.gd`'s own `_make_mon`
+helpers at minimum (closes the 3 confirmed sources of this exact drift),
+and optionally sweep the other 56 flagged files for the same pattern,
+checking each for a genuinely sensitive assertion before deciding whether
+it needs the same pin. Until then: **the 5-suite list already documented
+in `CLAUDE.md`'s "M19-complete baseline" section remains the correct
+citation** — future sessions should name suites from that full list (or
+this entry) rather than an ad hoc 2-file shorthand, and should not assume
+"consistent with known flakiness" without at least checking the file
+actually appears on a documented list.
+
+No commit made this session — per standing instruction, Rob commits.
+
+## [Flaky-fixture fix + risk-pool audit] The 3 confirmed flakes are fixed; the 56-file latent-risk pool is fully classified — 2026-07-17
+
+Direct follow-up to `[Flaky-suite audit]` above (same day) — reads that
+entry's own root-cause findings as its starting point rather than
+re-deriving them.
+
+### Part 1 — fixed the 3 confirmed files
+
+Pinned `BattlePokemon.NATURE_HARDY` + all-zero IVs in each file's own
+`_make_mon` helper's `from_species(...)` call, matching the exact
+already-established pattern (`doubles_test.gd`'s own `[M18.5h-1/2]`-tagged
+fix). One line changed per file, nothing else touched (confirmed via
+`git diff --stat`: 3 files, 1 insertion/1 deletion each):
+
+- `m17l_test.gd` — Section 10's Friend Guard damage-magnitude comparison.
+- `m19a_gen1_test.gd` — Section B3's PP-exhaustion-dependent Rough Skin
+  discriminator.
+- `m18q_test.gd` — Q02.09's max-HP discriminator (the one `[M18.5a]` had
+  already partially, but not fully, narrowed by forcing crit alone).
+
+**Verification**: ran each fixed file standalone 20 times (headless,
+`--autoplay`, matching the prior session's own repro method) —
+**60/60 runs clean, 0 failures across all three files**, where the prior
+session had reproduced real failures in each (4/25 for `m17l_test`, and
+observed failures for the other two across the diagnostic's own 5-run
+sweep).
+
+### Part 2 — risk-pool audit (56 remaining files)
+
+Regenerated the unpinned-pattern file list fresh (not reused from the
+prior session): **56 files** now match `from_species(sp, 50)`/`(sp,
+p_level)`/`(sp, level)` with no forcing args — exactly 59 minus the 3 just
+fixed, confirming the fix correctly removed them from the pattern.
+
+**Method**: for each file, grepped every line containing a comparison
+operator (`<`/`>`/`<=`/`>=`) outside of type-hint contexts (`Array[...]`,
+`@export`, etc.), then read each hit's surrounding code to determine the
+underlying mechanism. Classification key:
+
+- **SAFE** — the comparison is one of: (a) a plain boolean/categorical
+  check (`> 0`, `< 0`, `.size() > N`) that a small IV/nature-driven stat
+  shift can't flip from true to false in practice; (b) self-consistent —
+  both sides of the comparison are derived from the SAME live mon
+  instance (e.g. `expected_heal == mon.max_hp / 2`, computed from that
+  same randomized instance, so IV variance cancels out); (c) a pure
+  stat-independent modifier-function comparison (e.g.
+  `AbilityManager.move_power_modifier_uq412(...)`, which returns a fixed
+  UQ4.12 multiplier constant based on ability/move-flag identity, never
+  reading the mon's actual Attack/Defense/HP) — NOT exposed to nature/IV
+  at all, despite superficially looking like a magnitude comparison; (d)
+  a statistical n-trial rate test whose measured randomness is the
+  mechanic's OWN intentional RNG (a flinch/crit/multi-hit proc chance)
+  rather than raw stat magnitude — confirmed per-file that the sampled
+  function/mechanic doesn't route through real Attack/Defense stat values;
+  (e) PP-exhaustion that is DETERMINISTIC BY CONSTRUCTION (e.g. a move's
+  PP explicitly set to 1 in the fixture) rather than a race between
+  random damage output and a fixed PP budget — structurally immune to the
+  `m19a_gen1_test`-shaped confound since Struggle firing isn't in doubt.
+- **AT-RISK** — a genuine cross-independent-instance comparison of REAL
+  damage output (through `DamageCalculator.calculate(...)` or an actual
+  `move_executed` signal from a real battle), where both sides come from
+  independently-constructed (and thus independently-IV/nature-randomized)
+  fixtures — the exact shape that broke in Part 1, even where not yet
+  observed flaking.
+- **UNCLEAR** — none found; every file examined resolved cleanly into one
+  of the above with enough confidence to classify.
+
+**Result: 52 SAFE, 4 AT-RISK, 0 UNCLEAR.**
+
+**AT-RISK files** (real cross-instance damage comparisons, margin noted —
+larger margins are more resistant to IV noise in practice, but all 4 are
+structurally the same shape as the 3 already-broken files):
+
+1. `m16e_test.gd` (S2.03) — Pursuit's doubled-power damage vs. its
+   normal-power damage, two fully independent attacker/defender pairs.
+   Margin: 2x (100% power increase) — large.
+2. `m18_5d2_test.gd` (R7) — Rivalry's same-gender vs. opposite-gender
+   damage; ONE shared attacker instance, but two independently-built
+   defender instances (their own random Defense IVs differ). Margin: the
+   ability's own 1.25x/0.75x split (~1.67x relative) — large, and only
+   one side of the pairing is actually independently randomized (smaller
+   exposure than the other three).
+3. `m19_bucket1_test.gd` (B4) — Mega Launcher's pulse-move boost vs. a
+   plain attacker, two fully independent attacker/defender pairs, via a
+   real `start_battle` + `move_executed` capture. Margin: 1.5x — moderate.
+4. `m17n9_test.gd` (S5.02) — Infiltrator bypassing Reflect vs. a plain
+   attacker still being halved by it, two fully independent
+   attacker/defender pairs, via real `start_battle`. Margin: 2x (Reflect's
+   own 0.5x) — large.
+
+None of these 4 were observed flaking in the prior session's own 5-run
+sweep or this session's 2 confirmation sweeps — they are LATENT risk,
+flagged per the task's own instruction, not fixed.
+
+**`m18k_test.tscn` re-verified specifically** (flagged in `[M20a]`,
+2026-07-15, never previously resolved): its two statistical sections both
+confirmed **SAFE** from this specific bug, for two different reasons —
+K01.05/K01.06 call `ItemManager.kings_rock_flinch_activates(...)` directly,
+a pure function that never reads the holder's Attack/Defense/HP at all
+(just ability/item identity plus a raw RNG roll); K03.02 measures Rock
+Slide's own native 30% secondary-effect flinch chance through a real
+battle, but that roll is independent of both combatants' stat values —
+IV/nature variance on the fresh mons built each of its 300 trials cannot
+skew a chance that never reads those stats. `m18k_test.tscn`'s own
+previously-observed/flagged flakiness (if it recurs) is the SAME class of
+benign statistical noise as `m18_5g_test.tscn`'s already-documented
+King's-Rock/Shell-Bell rate test, unrelated to this session's root cause.
+
+**The other 51 SAFE files**, by category (not exhaustive per-file prose,
+since each was individually confirmed against the classification key
+above): the large majority are boolean/categorical "did X happen"
+assertions (e.g. `ability_reset_test.gd`, `ban_flag_audit_test.gd`,
+`item_registry_test.gd`, and ~20 more with no real comparison at all
+beyond each file's own final pass/fail-count boilerplate); several are
+self-consistent same-instance HP/heal-fraction checks
+(`m16a_test.gd`, `m16d_test.gd`, `pp_test.gd`, `transform_test.gd`); one
+(`m19_secondary_stat_test.gd`'s Sheer Force check, B5) looked like a
+cross-instance magnitude comparison but resolved to two pure
+`move_power_modifier_uq412(...)` constant reads, immune by construction;
+the remaining statistical-rate files (`m17n8_test.gd`, `m17n11_test.gd`,
+`m18e_test.gd`, `m18_5g_test.gd`, `m18_5h1_test.gd`, `m18_5i_test.gd`,
+`m18k_test.gd`, `m18o_test.gd`, `m19_bucket3_cluster12_test.gd`) all sample
+a mechanic's own intentional RNG (crit-stage rolls, item-proc chances, a
+move's own secondary-effect chance, or — for `m18_5h1_test.gd` specifically
+— the Nature-roll distribution itself, which is DIRECTLY testing the
+randomness this whole audit is about, by design) rather than raw stat
+magnitude, and are unaffected. `pp_test.gd`'s own Struggle-recoil check
+looked structurally similar to `m19a_gen1_test.gd`'s broken discriminator
+but is safe specifically because its PP-exhaustion is forced deterministic
+by construction (PP explicitly set to 1), not a race against random damage
+output.
+
+### Regression sweep results
+
+Two full sweeps via `scripts/count_assertions.sh` (no arguments — a fresh
+sweep each time), both **138 files, GRAND TOTAL 13534, byte-for-byte
+identical per-file output between the two runs** (confirmed via a direct
+diff of both sweeps' full per-file tables — zero differences anywhere,
+not just in the 3 fixed files). `m17l_test.tscn`/`m18q_test.tscn`/
+`m19a_gen1_test.tscn` now read their full max counts (45/16/51) in both
+runs, matching the highest values observed across the prior diagnostic
+session's own 5-run sweep (13534, 13533, 13532, 13533, 13533) — the fix
+eliminates the downward variance entirely rather than merely narrowing it.
+Reconciles exactly against the prior session's own established baseline:
+13422 (135 always-constant files) + 45 + 16 + 51 = 13534.
+
+**No other file's count changed as a side effect of the fixture pinning**
+— confirmed by the same full-sweep diff: all 135 previously-constant
+files remain unchanged, and no new variance was introduced (e.g. no
+Speed-tie/turn-order flip in any of the 3 fixed files' own other
+assertions — all three files pass at their full 45/16/51 counts, matching
+their pre-fix maximum-observed values exactly, not some other number).
+
+### Deviations / notes
+
+- Part 1's "before" sweep data is the prior `[Flaky-suite audit]` session's
+  own 5-run record (same day, same codebase state modulo these exact 3
+  lines) rather than a freshly re-reverted "before" sweep in this session
+  — reverting the fix just to re-earn already-established numbers was
+  judged unnecessary; this is flagged explicitly rather than silently
+  assumed equivalent.
+- Part 2's audit is a source-reading classification, not a re-run-N-times
+  empirical reproduction of all 56 files (that would be prohibitively
+  slow — each fresh sweep already takes ~70s for 138 files, and the whole
+  point of this pass is triage, not exhaustive proof, per the task's own
+  "do not fix AT-RISK/UNCLEAR files" scope). The 4 AT-RISK files are
+  flagged on structural grounds (matching the exact confirmed-broken
+  shape), not because they were caught flaking.
+- Nothing committed, per standing instruction.
+
+## [Flaky-suite loose ends closed] File-count discrepancy reconciled; all 4 AT-RISK files fixed — 2026-07-17
+
+Direct follow-up to both same-day entries above (`[Flaky-suite audit]` and
+`[Flaky-fixture fix + risk-pool audit]`) — closes the two items either
+left explicitly open.
+
+### Part 1 — the 59-vs-56 discrepancy: fully reconciled, no new files
+
+Re-ran the exact original grep pattern
+(`from_species(sp, 50)|from_species(sp,50)|from_species(sp, p_level)|from_species(sp, level)`)
+against the current tree: **56**, identical to the second session's own
+count (same pattern, same result, since nothing in `scenes/battle/*.gd`
+changed between those two sessions except the 3 already-fixed files).
+Reconstructed the true explanation directly rather than assuming it:
+added the 3 already-fixed filenames (`m17l_test.gd`, `m18q_test.gd`,
+`m19a_gen1_test.gd`) back into the current 56-file list, confirmed via
+`git status` that no other `.gd` test file has any uncommitted change,
+and confirmed the union is **exactly 59 unique names with the 3 additions
+not already present in the 56** (no double-counting). This is a complete,
+verified reconciliation, not an assumption: **the entire 59→56 gap is the
+3 files fixed in the intermediate session, nothing else** — no 4th file
+silently entered or left the pattern, no grep-pattern inconsistency, no
+false positive/negative in either count. No additional unpinned files
+surfaced, so there was nothing new to classify for Part 1.
+
+### Part 2 — fixed all 4 AT-RISK files, and empirically re-tested the risk itself
+
+Pinned `BattlePokemon.NATURE_HARDY` + all-zero IVs in each file's own
+`_make_mon`'s `from_species(...)` call (one line changed per file,
+confirmed via `git diff --stat`: 4 files, 1 insertion/1 deletion each):
+
+- `m16e_test.gd` — S2.03's Pursuit doubled-power comparison.
+- `m18_5d2_test.gd` — R7's Rivalry gender-damage comparison.
+- `m19_bucket1_test.gd` — B4's Mega Launcher comparison.
+- `m17n9_test.gd` — S5.02's Infiltrator-vs-Reflect comparison.
+
+**Rigorous before/after empirical test, not just a post-fix check**:
+temporarily stashed all 4 fixes (`git stash push` on just those 4 files),
+ran each file standalone **20 times pre-fix**, then restored the fixes
+(`git stash pop`) and ran each **20 times post-fix** — 160 total runs.
+
+**Result: 0 failures in all 160 runs — pre-fix AND post-fix, for all 4
+files.** The AT-RISK classification was correct on structural grounds
+(each is a genuine cross-independent-instance real-damage comparison,
+exposed to nature/IV variance in principle), but **none of the 4 actually
+reproduced a flake in 20 pre-fix trials each** — consistent with the
+margins identified in the audit (1.5x-2x, all noticeably larger than
+`m17l_test.gd`'s already-broken 0.75x Friend Guard case) being wide enough
+that ordinary IV/nature variance (a few percent stat swing at most) never
+closed the gap in practice, at least not within 80 combined pre-fix trials.
+**This risk was real but latent, not a confirmed flake** — reported
+honestly per the task's own instruction not to overstate it. The fix is
+kept as defense-in-depth (matching the established pinning convention
+used everywhere else in the codebase) rather than reverted, since the
+structural exposure is real even though it didn't manifest empirically in
+this sample size.
+
+### Regression sweep results
+
+Two full sweeps via `scripts/count_assertions.sh`, both **138 files, GRAND
+TOTAL 13534, byte-for-byte identical per-file output between the two runs**
+— matching the immediately-prior session's own post-fix baseline exactly
+(pinning 4 more files doesn't change any assertion COUNT, only removes
+latent variance risk). The 4 newly-fixed files hold their expected counts
+in both runs (`m16e_test.tscn` 58, `m17n9_test.tscn` 63, `m18_5d2_test.tscn`
+49, `m19_bucket1_test.tscn` 736) — **no side effects from the fixture
+pinning on any of the 138 files**, confirmed via a direct diff of the two
+full sweep tables (zero differences anywhere, not just in the 4 fixed
+files).
+
+### Status
+
+Both loose ends from the prior two sessions are now closed: the file-count
+discrepancy has a complete, verified explanation (not a lingering
+mystery), and all 4 AT-RISK files identified in the risk-pool audit are
+now pinned to the same neutral-nature/zero-IV convention as every other
+already-fixed file in this arc. **7 test files total have now been pinned
+across this 3-session arc**: `m17l_test.gd`, `m18q_test.gd`,
+`m19a_gen1_test.gd` (confirmed flakes), `m16e_test.gd`, `m18_5d2_test.gd`,
+`m19_bucket1_test.gd`, `m17n9_test.gd` (latent risk, empirically
+unconfirmed but structurally real). No open items remain from this arc.
+
+No commit made this session — per standing instruction, Rob commits.

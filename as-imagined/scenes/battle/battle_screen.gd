@@ -59,6 +59,131 @@ const _SCREEN_NAMES: Dictionary = {
 	"reflect": "Reflect", "light_screen": "Light Screen", "aurora_veil": "Aurora Veil",
 }
 
+# [ability_triggered message quality pass] Full lookup table for every
+# effect_key value battle_manager.gd's own ability_triggered.emit(...) call
+# sites actually produce — both literal string arguments (grepped directly)
+# and the handful of dynamically-resolved ones (eot_dmg_tag ∈ {"solar_power",
+# "dry_skin"}; contact_result["ability_name"] ∈ {"poison_touch",
+# "pickpocket", "tangling_hair", "gooey", "iron_barbs", "rough_skin",
+# "static", "flame_body", "poison_point", "cute_charm", "effect_spore",
+# "wandering_spirit", "lingering_aroma", "mummy"}; retaliation["ability_name"]
+# ∈ {"aftermath", "innards_out"}; attract_result ∈ {"oblivious", "aroma_veil"}
+# — both already covered by their own literal-string entries below) — traced
+# by reading every call site's surrounding source, not guessed from the key
+# name alone. %s is always filled with _mon_label(pokemon) — the Pokémon
+# battle_manager.gd itself attributes the trigger to (which is not always
+# the "obvious" side — e.g. "damp" fires on the blocked ATTACKER, not the
+# Damp holder; contact_result's poison_touch/pickpocket/etc. fire on
+# whichever combatant _phase_move_execution resolved as this ability's own
+# holder, correctly attacker- or defender-side per ability).
+#
+# Several keys are used across 2+ mechanically-different call sites, OR
+# collapse multiple distinct abilities under one shared string (documented
+# per-key in each call site's own comment) — where the key alone can't
+# disambiguate WHICH sub-case fired, the message below uses the most
+# accurate GENERIC phrasing that stays true for every sub-case, rather than
+# guessing a specific one incorrectly (flagged, not silently narrowed):
+# "guard_dog" (3 shapes: blocks a Roar/Whirlwind-forced switch, blocks a
+# Red-Card-forced switch, OR reverses Intimidate into a self-buff on
+# switch-in), "moody"/"defiant_competitive"/"download" (which stat, and
+# raise-vs-lower for Moody, isn't in the key), "hydration_shed_skin"/
+# "immunity_family_cure"/"rain_dish_ice_body_dry_skin"/"absorb_stat_boost"/
+# "absorb_heal" (which of 2-6 bundled abilities fired isn't in the key),
+# "dazzling_family"/"soundproof_bulletproof" (which of 2-3 bundled abilities
+# blocked isn't in the key), "effect_spore" (which of poison/sleep/paralysis
+# — the accompanying buffered secondary_applied line already shows the
+# specific status right after this one, so the ability line itself doesn't
+# need to repeat it).
+const _ABILITY_TRIGGER_TEXT: Dictionary = {
+	"absorb_heal": "%s's ability absorbed the move and restored HP!",
+	"absorb_stat_boost": "%s's ability absorbed the move and boosted a stat!",
+	"aftermath": "%s's Aftermath hurt the attacker as it fainted!",
+	"anger_point": "%s's Anger Point maxed out its Attack!",
+	"anger_shell": "%s's Anger Shell shuffled its stats!",
+	"aroma_veil": "%s's Aroma Veil blocked the move!",
+	"berserk": "%s's Berserk raised its Sp. Atk!",
+	"cheek_pouch": "%s's Cheek Pouch restored some HP!",
+	"color_change": "%s's Color Change changed its type to match the move!",
+	"costar": "%s's Costar copied its ally's stat changes!",
+	"cotton_down": "%s's Cotton Down lowered the attacker's Speed!",
+	"cud_chew": "%s's Cud Chew re-triggered its berry!",
+	"cursed_body": "%s's Cursed Body disabled the attacker's move!",
+	"cute_charm": "%s's Cute Charm infatuated the attacker!",
+	"damp": "%s's move was prevented by Damp!",
+	"dazzling_family": "%s blocked the priority move with its ability!",
+	"defiant_competitive": "%s's ability sharply raised a stat after being lowered!",
+	"download": "%s's Download boosted one of its stats!",
+	"dry_skin": "%s's Dry Skin was hurt by the sun!",
+	"effect_spore": "%s's Effect Spore afflicted the attacker!",
+	"flame_body": "%s's Flame Body burned the attacker!",
+	"flash_fire_boosted": "%s's Flash Fire absorbed the Fire-type move!",
+	"forecast": "%s's Forecast changed its type to match the weather!",
+	"gooey": "%s's Gooey lowered the attacker's Speed!",
+	"guard_dog": "%s's Guard Dog activated!",
+	"harvest": "%s's Harvest regrew its held berry!",
+	"healer": "%s's Healer cured its ally's status!",
+	"hospitality": "%s's Hospitality healed its ally!",
+	"hydration_shed_skin": "%s's ability cured its own status!",
+	"immunity_family_cure": "%s's ability cured its own status!",
+	"innards_out": "%s's Innards Out hurt the attacker as it fainted!",
+	"insomnia_protects": "%s's ability kept it from falling asleep!",
+	"intimidate": "%s's Intimidate lowered the opposing Pokémon's Attack!",
+	"iron_barbs": "%s's Iron Barbs hurt the attacker!",
+	"justified": "%s's Justified raised its Attack!",
+	"lansat_berry": "%s's Lansat Berry sharply raised its critical-hit ratio!",
+	"libero": "%s's Libero changed its type to match the move!",
+	"lingering_aroma": "%s's Lingering Aroma overwrote the attacker's ability!",
+	"liquid_ooze": "%s's Liquid Ooze turned the drain into damage!",
+	"magic_bounce": "%s's Magic Bounce reflected the move!",
+	"magic_coat": "%s's Magic Coat reflected the move!",
+	"magician": "%s's Magician stole the target's item!",
+	"micle_berry": "%s's Micle Berry boosted its accuracy!",
+	"mirror_armor": "%s's Mirror Armor reflected the stat change!",
+	"moody": "%s's Moody shuffled its stats!",
+	"moxie": "%s's Moxie raised its Attack after a KO!",
+	"mummy": "%s's Mummy overwrote the attacker's ability!",
+	"natural_cure": "%s's Natural Cure cured its status as it left the field!",
+	"oblivious": "%s's Oblivious blocked the move!",
+	"oblivious_cure": "%s's Oblivious cured its infatuation!",
+	"opportunist": "%s's Opportunist copied the opponent's stat rise!",
+	"own_tempo": "%s's Own Tempo prevented the move's effect!",
+	"own_tempo_cure": "%s's Own Tempo cured its confusion!",
+	"pastel_veil": "%s's Pastel Veil cured its poison!",
+	"pickpocket": "%s's Pickpocket stole the attacker's item!",
+	"poison_heal": "%s's Poison Heal activated instead of taking damage!",
+	"poison_point": "%s's Poison Point poisoned the attacker!",
+	"poison_touch": "%s's Poison Touch poisoned its target!",
+	"protean": "%s's Protean changed its type to match the move!",
+	"rain_dish_ice_body_dry_skin": "%s's ability restored some HP!",
+	"rattled": "%s's Rattled raised its Speed!",
+	"receiver_power_of_alchemy": "%s copied its fainted ally's ability!",
+	"regenerator": "%s's Regenerator restored some HP as it left the field!",
+	"rough_skin": "%s's Rough Skin hurt the attacker!",
+	"sand_spit": "%s's Sand Spit whipped up a sandstorm!",
+	"screen_cleaner": "%s's Screen Cleaner cleared the screens!",
+	"slow_start_ended": "%s's Slow Start wore off!",
+	"solar_power": "%s's Solar Power drained its own HP in the sun!",
+	"soundproof_bulletproof": "%s's ability made it immune to the move!",
+	"speed_boost": "%s's Speed Boost raised its Speed!",
+	"stamina": "%s's Stamina raised its Defense!",
+	"static": "%s's Static paralyzed the attacker!",
+	"steadfast": "%s's Steadfast raised its Speed!",
+	"steam_engine": "%s's Steam Engine sharply raised its Speed!",
+	"sticky_hold": "%s's Sticky Hold prevented the item from being stolen!",
+	"sturdy": "%s's Sturdy endured the hit!",
+	"supersweet_syrup": "%s's Supersweet Syrup lowered the opposing Pokémon's evasiveness!",
+	"symbiosis": "%s's Symbiosis passed its item to its ally!",
+	"synchronize": "%s's Synchronize passed the status back!",
+	"tangling_hair": "%s's Tangling Hair lowered the attacker's Speed!",
+	"thermal_exchange": "%s's Thermal Exchange raised its Attack!",
+	"toxic_debris": "%s's Toxic Debris scattered Toxic Spikes at the attacker's feet!",
+	"trace": "%s's Trace copied the opponent's ability!",
+	"wandering_spirit": "%s's Wandering Spirit swapped abilities with the attacker!",
+	"water_compaction": "%s's Water Compaction raised its Defense!",
+	"weak_armor": "%s's Weak Armor lowered its Defense and raised its Speed!",
+	"wonder_guard": "%s's Wonder Guard blocked the non-super-effective hit!",
+}
+
 @onready var _bm: BattleManager = $BattleManager
 @onready var _status_label: Label = $VBox/StatusLabel
 @onready var _side0_label: Label = $VBox/Side0Label
@@ -272,9 +397,9 @@ func _wire_log_signals() -> void:
 	_bm.screens_broken.connect(func(side: int):
 		_log("The screens shattered on %s side!" % _side_label(side)))
 
-	# [M23.2 addendum] Generic ability triggers.
-	_bm.ability_triggered.connect(func(mon: BattlePokemon, effect_key: String):
-		_log("%s's %s activated!" % [_mon_label(mon), effect_key.replace("_", " ")]))
+	# [ability_triggered message quality pass] Readable per-key text, not a
+	# generic underscore-to-space formatter — see _on_log_ability_triggered.
+	_bm.ability_triggered.connect(_on_log_ability_triggered)
 	_bm.ability_healed.connect(_on_log_ability_healed)
 
 
@@ -330,6 +455,19 @@ func _on_log_ability_healed(mon: BattlePokemon, amount: int) -> void:
 		_log("%s recovered %d HP from its ability!" % [_mon_label(mon), amount])
 	elif amount < 0:
 		_log("%s was hurt by its ability! (%d damage)" % [_mon_label(mon), -amount])
+
+
+# [ability_triggered message quality pass] Looks up a readable message from
+# _ABILITY_TRIGGER_TEXT; falls back to the old generic underscore-to-space
+# formatter for any effect_key not in the table (requirement 4 — nothing
+# silently breaks if a key is missed here or a new one is added to
+# battle_manager.gd later).
+func _on_log_ability_triggered(mon: BattlePokemon, effect_key: String) -> void:
+	var template: Variant = _ABILITY_TRIGGER_TEXT.get(effect_key, null)
+	if template != null:
+		_log(template % _mon_label(mon))
+	else:
+		_log("%s's %s activated!" % [_mon_label(mon), effect_key.replace("_", " ")])
 
 
 func _status_name(status: int) -> String:
