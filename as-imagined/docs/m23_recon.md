@@ -2459,3 +2459,260 @@ that chain.
   by construction, since every fix this session was pure scene-navigation
   glue in the UI layer.
 - Nothing committed, per standing instruction.
+
+---
+
+## Bugfix — embedded team builder rendered at zero height on roster_screen.tscn
+
+**COMPLETE** — 2026-07-17. Reported by Rob from real windowed play (not
+headless/autoplay): after pressing "Add"/"Replace" on a roster slot (or
+implicitly, "Create New Team" → the first slot's own Add button), the
+embedded team builder did not visibly appear.
+
+### Root cause (confirmed via real non-headless screenshot, not guessed)
+
+`team_builder_screen.tscn`'s own root `Control` is laid out via anchors
+(`layout_mode = 3`, `anchors_preset = 15` — "Full Rect") — correct for its
+two ESTABLISHED usages (a direct top-level launch, or swapped in via
+`change_scene_to_file`), where the direct parent is the viewport/scene
+root, not a `Container`. `roster_screen.gd`'s `_on_slot_action_pressed()`
+does something neither of those usages does: it `add_child()`s a fresh
+instance under `BuilderHost`, a `VBoxContainer`. In Godot 4, a `Container`
+ALWAYS overrides its Control children's position and size, ignoring the
+child's own anchors entirely, and sizes each child using only that
+child's `custom_minimum_size`/`size_flags` — neither of which
+`team_builder_screen.tscn`'s root had ever set (never needed to, for its
+two prior usages). Net effect: the embedded instance was genuinely
+instantiated, genuinely added to the tree, and genuinely `visible == true`
+— every check either automated suite or the M23.5/M23.7 manual walkthrough
+drivers had ever made — while its actual rendered rect collapsed to
+`(1152, 0)`: zero height, real screenshot-confirmed
+(`builder size: (1152, 0)`, before the fix; the same collapse independently
+reproduced in `--headless` mode too, ruling out "only visible with real
+rendering" as an explanation).
+
+### Fix
+
+Minimal and additive, confined to `roster_screen.gd`'s own
+`_on_slot_action_pressed()` — two lines right after `add_child()`:
+
+```gdscript
+_builder_instance.custom_minimum_size = Vector2(0, 1000)
+_builder_instance.size_flags_vertical = Control.SIZE_EXPAND_FILL
+```
+
+`team_builder_screen.gd`/`.tscn` itself is untouched — its own two
+existing top-level usages (a direct launch, `[M23.4]`'s own test,
+`change_scene_to_file`) never went through `BuilderHost` and were never
+affected by this bug in the first place, so nothing there needed changing.
+`1000` is a generous fixed height (the builder's own content — species/
+level/ability/nature/moves/EV/IV/build/result — comfortably needs it);
+`roster_screen.tscn`'s outer `Scroll` (`ScrollContainer`) already handles
+anything taller than the visible viewport, exactly the same way it already
+scrolls the rest of the editor view.
+
+Checked for the same bug class elsewhere: grepped every `.instantiate()`
+call across this project's own (non-test) scene scripts —
+`roster_screen.gd`'s embedding of `team_builder_screen.tscn` is the ONLY
+place any screen scene is added as a child of another node's scene tree.
+Every other M23 navigation path (`[M23.7]`'s "Manage Teams"/"Back to
+Battle Setup"/"Play Again", `[M23.6]`'s Launch) uses a real
+`change_scene_to_file` top-level scene swap, which is categorically
+unaffected (the new scene's direct parent is always the viewport root, never
+a `Container`) — confirmed by inspection, not just assumed, since this was
+exactly the kind of "check the others too" step the task asked for.
+
+### Verification
+
+- **Visual**: a real non-headless launch (`llvmpipe` software Vulkan,
+  matching the `[M23.0b]`/`[M23.1]` screenshot-verification precedent) with
+  a temporary screenshot-capture driver (deleted after this session).
+  Before the fix: the builder is a barely-visible sliver squeezed between
+  "Cancel Add/Replace" and "Save Team"/"Cancel". After the fix: the full
+  builder UI (species entry, level, ability, nature, moves, and — via the
+  outer scroll — EVs/IVs/Build button) renders correctly and is genuinely
+  clickable.
+- **Functional, end-to-end, not just visual**: the same real, non-headless
+  process drove the now-visible builder through a COMPLETE real cycle —
+  loaded a real species (Charizard) via the real Species field + Load
+  Species button, added a real legal move via the real dropdown, pressed
+  the real Build Pokémon button, confirmed the resulting slot spec was
+  correct, pressed the real Save Team button, and confirmed the saved data
+  round-tripped correctly from disk via `TeamStorage.load_team` — proving
+  the fix isn't cosmetic, the widget is fully interactive.
+
+### Why the existing tests didn't catch this — coverage gap, closed
+
+- **`m23_4_team_builder_test.gd`**: never embeds `team_builder_screen.tscn`
+  under a `Container` at all — it always instantiates it directly as a
+  child of the test's own root `Node` (matching the TOP-LEVEL usage
+  pattern), so it structurally could never have exercised this code path.
+  Not a gap in that suite — it correctly tests what it's scoped to.
+- **`m23_5_team_persistence_test.gd`**: DOES exercise the exact real bug
+  path — Section 2 calls `roster._on_slot_action_pressed(0)`, the same
+  handler a real "Add" click invokes — but its every assertion checked
+  only LOGICAL/state correctness (`_builder_instance != null`, the
+  `pokemon_built` signal firing, the resulting spec's fields) and never
+  once asserted anything about the resulting Control's actual rendered
+  size. Confirmed directly (not assumed) that this collapse is fully
+  visible in headless mode too — so the gap was never "headless can't see
+  layout," it was specifically "nobody had asserted on layout."
+- **Closed**: added `S2.02b` immediately after the existing "was a real
+  instance embedded" check — asserts `roster._builder_instance.size.y > 0`
+  after one `process_frame` await (letting the deferred `Container` sort
+  settle). **Proven to actually catch this exact regression**, not just
+  assumed to: temporarily reverted the fix and reran the suite, which
+  failed exactly as expected (`51/52 passed`, `FAIL: S2.02b...`), then
+  restored the fix and reran clean (`52/52`).
+
+### Regression sweep results
+
+- **Before** (fix + test-strengthening both reverted to the last committed
+  state): 143 files, GRAND TOTAL **13790**, 0 failures.
+  `m23_5_team_persistence_test.tscn`: 51/51 (no size assertion yet).
+- **After, sweep 1**: 143 files, GRAND TOTAL **13791** (+1, exactly the new
+  `S2.02b` assertion). `m23_5_team_persistence_test.tscn`: **52/52**.
+  `m23_4_team_builder_test.tscn`: 44/44, unchanged (confirming it was never
+  exposed to this bug either way). Zero other differing lines.
+- **After, sweep 2**: 143 files, GRAND TOTAL **13791** again — byte-for-byte
+  identical to sweep 1 (empty diff). Zero real failures across every sweep.
+
+**Zero regressions**, and the delta is fully accounted for (exactly the one
+new, proven-effective regression-guard assertion).
+
+### Deviations / assumptions flagged
+
+- Two throwaway diagnostic drivers were used and deleted after this session
+  (`_scratch_screenshot_bug.gd`/`.tscn`, a real non-headless
+  screenshot-and-full-cycle driver; `_scratch_headless_size_check.gd`/
+  `.tscn`, used only to confirm the collapse reproduces headlessly too) —
+  confirmed clean via directory listings; the real `user://teams/` save
+  directory confirmed empty before and after.
+- This session's real (non-headless) Godot launches caused one further,
+  real (not purely cosmetic like `[M23.7]`'s own reordering-only finding)
+  self-correction in `project.godot`: `config/features` changed from a
+  stale `"4.7"` to the actual `"4.3"` engine version — an already-documented
+  pre-existing discrepancy from `[M23.0b]`'s own session (confirmed
+  harmless there), now auto-corrected by Godot's own editor the first time
+  a real windowed launch touched the project settings save path. Not
+  reverted, flagged for Rob's own review alongside `[M23.7]`'s own similar
+  tooling-artifact disclosures.
+- Nothing committed, per standing instruction.
+
+## M23.11 — Pulling reference-material art assets into the project
+
+Umbrella label for pulling real Pokémon/battle-UI art out of the
+gitignored, local-only `reference/pokeemerald_expansion/` clone and into a
+new, project-owned, git-tracked `assets/` directory — necessary because
+nothing under `reference/` is committed to this repo (`.gitignore`: "large,
+and not ours to version"), so any real UI work needs its own copy.
+
+**Documentation gap, flagged rather than silently backfilled**: an earlier
+same-day session pulled front/back/icon sprites for all 386 species
+(`scripts/gen_pokemon_sprites.py` → `assets/sprites/pokemon/{front,back,
+icon}/`, 1,158 files, modern art style, `pokemon_sprite_smoke_test.gd`,
+2,322/2,322 passing) but never received its own `docs/m23_recon.md` entry
+— this section starts numbering from that work's own retroactive label
+(hence "Phase 1" below, not the first pull performed) without duplicating
+its full writeup here. If a complete record of that pull is needed later,
+it should get its own backfilled entry rather than being reconstructed
+from this note.
+
+### Phase 1 — battle_interface/, types/, text_window/
+
+**COMPLETE** — 2026-07-17. Pulls the battle HUD chrome (HP bars, health
+boxes, status/type indicator icons, EXP bar, textbox), type badge icons,
+and message-box window-frame tiles. Unlike the Pokémon sprite pull, this
+set has no ID-keyed authoritative mapping table to join against — it's a
+small, fixed, hand-named file list — so no generation script was written;
+a direct filtered copy was sufficient.
+
+**Source paths, confirmed by inspection (not assumed from the directory
+names given in the task):**
+- `reference/pokeemerald_expansion/graphics/battle_interface/` — 68 PNGs
+- `reference/pokeemerald_expansion/graphics/types/` — 28 PNGs
+- `reference/pokeemerald_expansion/graphics/text_window/` — 24 PNGs
+
+**Two exclusion decisions made with Rob before copying** (materially
+changed the file list, so raised explicitly rather than silently decided):
+1. **10 mechanic-specific icons excluded**: `mega_indicator`/`mega_trigger`,
+   `dynamax_indicator`/`dynamax_trigger`, `z_move_trigger`, `tera_trigger`,
+   `alpha_indicator`/`omega_indicator` (Primal), `burst_trigger`, plus
+   `stellar_indicator` (all `battle_interface/`) and `types/stellar.png`
+   (Tera-exclusive type) — 11 files total. Matches this project's own
+   repeated, deliberate exclusion of Mega Evolution/Dynamax/Z-Moves/
+   Terastallization/Primal Reversion everywhere else (abilities, items,
+   moves) — pulling UI icons for mechanics that will never be built would
+   be pure clutter.
+2. **8 files the source engine itself names "unused" excluded**:
+   `hpbar_unused.png`, `hpbar_anim_unused.png`, `unused_status_summary.png`,
+   `unused_window.png`/`2.png`/`2bar.png`/`3.png`/`4.png` (all
+   `battle_interface/`) — confirmed dead/leftover assets, not used by the
+   actual game.
+
+**Full inventory taken before copying** (all 120 source files, names/
+dimensions/byte sizes) — not just sampled, given the small total count.
+Two byte-size outliers noted, not blockers: `types/stellar.png` (5,861B
+vs. ~200-350B siblings — excluded anyway per above) and
+`battle_interface/healthbox_doubles_frameend.png`/`_bar.png` (5,681B/
+5,762B despite an 8×8 canvas — unusually large for the pixel dimensions,
+kept as-is since it still loads as a valid Texture2D; the size anomaly
+wasn't investigated further, flagged only).
+
+**Result: 101 of 120 files copied** (50 interface + 27 types + 24
+text_window), **43,039 bytes of PNG content** (well under a few MB as
+expected for a small fixed set — nowhere near the Pokémon pull's 4.7MB).
+
+**Destination layout — flagged choice**: `res://assets/sprites/battle_ui/
+{interface,types,text_window}/`, mirroring the source directory names
+one-for-one and matching the same asset-kind-grouped ("Option B") layout
+already established for the Pokémon sprite pull, so a future
+`BattleUiRegistry`-style loader (if built) can use the same flat
+`"res://assets/sprites/battle_ui/<kind>/<filename>.png"` path-convention
+shape `MoveRegistry`/`ItemRegistry` already use elsewhere. Original source
+filenames preserved unchanged — none were judged cryptic enough to need
+cleanup (`hpbar.png`, `healthbox_singles_player.png`, `fire_indicator.png`,
+etc. are already self-describing).
+
+**Import settings verified via genuine runtime check, not assumed**: the
+project-wide `rendering/textures/canvas_textures/default_texture_filter=0`
+(Nearest) setting already added during the Pokémon sprite pull applies
+automatically to this new directory too (Godot 4's texture filtering is a
+rendering default, not a per-file import setting) — confirmed by loading
+`interface/hpbar.png` in a disposable script and reading back both the
+resolved project setting (`0`) and the real loaded texture's dimensions
+(96×8, matching the inventory exactly) and the `TextureRect` node's own
+`texture_filter` value (`0` = `TEXTURE_FILTER_PARENT_NODE`, i.e. correctly
+inheriting rather than overriding). No per-file import fix was needed.
+
+**New `scenes/battle/battle_ui_sprite_smoke_test.gd`/`.tscn`**: mirrors
+`pokemon_sprite_smoke_test.gd`'s own directory-scan discipline (never
+hardcodes the expected file list, since that would duplicate — and risk
+drifting from — the copy step's own curated selection) rather than
+`move_smoke_test.gd`'s fixed-ID-range shape, since this asset set has no
+numeric ID scheme. **208/208 passing** (3 directory-exists checks + 3
+"at least one file found" checks + 101 files × 2 checks each [loads as
+Texture2D, nonzero dimensions] = 208, confirmed exact).
+
+**Regression sweep**: two full runs via `scripts/count_assertions.sh`
+(hardened absolute-path invocation), both **145 files, GRAND TOTAL 16321,
+0 failures, byte-for-byte identical between the two runs**. Diffed against
+the last known-clean pre-both-sprite-pulls baseline (143 files, 13791) —
+the only differences are the two new smoke-test lines being added
+(`pokemon_sprite_smoke_test.tscn` 2,322 + `battle_ui_sprite_smoke_test
+.tscn` 208 = 13791 + 2322 + 208 = 16321, confirmed exact); every one of
+the 143 pre-existing files is byte-identical, zero regressions anywhere.
+
+**Explicit confirmation per this phase's own scope**: nothing in this
+session wires any of these assets into a visible UI — `battle_screen.tscn`
+remains pure text/`Label`-based, unchanged. That's Phase 4 (a separate,
+future battle-screen visual rebuild), not attempted here.
+
+**Licensing**: these are the actual copyrighted Pokémon Company assets,
+now committed as concrete files in `as-imagined/`'s own git-tracked tree
+(unlike `reference/`, which stays gitignored/local-only) — Rob confirmed
+comfortable with this (personal fangame, not for distribution) both when
+this was first raised during the Pokémon sprite pull and again explicitly
+for this phase specifically.
+
+No commit made this session — per standing instruction, Rob commits.

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://battleuispritesmoketest"]
+
+[ext_resource type="Script" path="res://scenes/battle/battle_ui_sprite_smoke_test.gd" id="1_battleuispritesmoketest"]
+
+[node name="BattleUiSpriteSmokeTest" type="Node"]
+script = ExtResource("1_battleuispritesmoketest")
