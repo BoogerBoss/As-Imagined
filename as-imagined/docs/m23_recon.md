@@ -2607,16 +2607,88 @@ new, project-owned, git-tracked `assets/` directory — necessary because
 nothing under `reference/` is committed to this repo (`.gitignore`: "large,
 and not ours to version"), so any real UI work needs its own copy.
 
-**Documentation gap, flagged rather than silently backfilled**: an earlier
-same-day session pulled front/back/icon sprites for all 386 species
-(`scripts/gen_pokemon_sprites.py` → `assets/sprites/pokemon/{front,back,
-icon}/`, 1,158 files, modern art style, `pokemon_sprite_smoke_test.gd`,
-2,322/2,322 passing) but never received its own `docs/m23_recon.md` entry
-— this section starts numbering from that work's own retroactive label
-(hence "Phase 1" below, not the first pull performed) without duplicating
-its full writeup here. If a complete record of that pull is needed later,
-it should get its own backfilled entry rather than being reconstructed
-from this note.
+### Pokémon front/back/icon sprite pull (undocumented at the time — backfilled)
+
+**COMPLETE** — 2026-07-17, same session as Phase 1 below, but performed
+first. Flagged as a documentation gap in Phase 1's own original entry
+("references `pokemon_sprite_smoke_test.tscn`'s 2,322 assertions in its
+sweep reconciliation but never explains where that count comes from") —
+this sub-section closes that gap via a fresh inspection of the actual
+on-disk state and source script, rather than reconstructing intent from
+memory alone.
+
+**Source paths**: `reference/pokeemerald_expansion/graphics/pokemon/
+<slug>/{anim_front,back,icon}.png`, one directory per species/form (1,029
+total in the reference tree; only dex 1-386 pulled, matching this
+project's actual roster scope).
+
+**Mapping approach, confirmed via inspection of `scripts/
+gen_pokemon_sprites.py`** (present on disk, re-runnable): a 3-file join,
+not a guessed name transform — `include/constants/pokedex.h`'s
+`NationalDexOrder` enum resolves `.natDexNum` to a dex number,
+`src/data/pokemon/species_info/gen_{1,2,3}_families.h`'s per-species
+`.frontPic = gMonFrontPic_<Identifier>` line gives the C identifier, and
+`src/data/graphics/pokemon.h`'s own `INCGFX_U32("graphics/pokemon/<slug>/
+anim_front.png", ...)` declaration for that identifier gives the literal,
+authoritative directory slug (never reconstructed from the identifier's
+PascalCase spelling, since that transform isn't always a plain lowercase
+— e.g. `NidoranF` → `nidoran_f`, not `nidoranf`). Unown (dex 201) is
+hardcoded — its base directory has a plain `front.png`, not the animated
+`anim_front.png` every other species has (letter-form subdirectories hold
+the real per-form art, out of scope here), the same "Unown needs an
+exception" pattern already established for `gen_weight_data.py`.
+
+**Art style, confirmed by inspection (not assumed)**: the script's regex
+targets the non-GBA-style `#if` branch specifically
+(`gen_pokemon_sprites.py:120-124`, matching its own doc comment "modern
+art style, not the classic-GBA variant") — **modern style**, not the
+classic-GBA look. Visually confirmed via a direct render check on
+`0006_charizard.png` at pull time.
+
+**Destination layout**: `res://assets/sprites/pokemon/{front,back,icon}/
+%04d_%s.png` (dex-number-prefixed, e.g. `0001_bulbasaur.png`) — the same
+asset-kind-grouped ("Option B") shape Phase 1 below also uses, chosen at
+pull time specifically so a future loader can use one flat
+`"res://assets/sprites/pokemon/<kind>/%04d_%s.png" % [dex, slug]` template
+per kind, matching `MoveRegistry`/`ItemRegistry`'s existing
+path-convention-loader shape.
+
+**Fresh on-disk verification performed for this backfill** (not just
+re-stating the original pull's own intent):
+- File counts: **386/386/386** across `front/`, `back/`, and `icon/` —
+  exact match to the planned 3 kinds × 386 species = 1,158 total.
+- Dex coverage: every dex 1-386 present in `front/` exactly once, zero
+  missing, zero duplicates (confirmed via a direct Python scan, not
+  assumed from the file count alone).
+- Unown's special case confirmed present and correctly named
+  (`0201_unown.png`) in all 3 kinds.
+- Import settings: `.import` sidecar files confirmed present for all
+  1,158 files (386 in each of `back/`/`icon/`, spot-checked; `front/`
+  confirmed during the same pass) — the project-wide `rendering/textures/
+  canvas_textures/default_texture_filter=0` (Nearest) setting applies
+  automatically, same mechanism verified via runtime check during Phase
+  1's own work.
+- Size: **897,819 bytes of actual PNG content** (~876KB) — the "4.7M"
+  figure reported at original pull time was `du -sh`'s block-rounded disk
+  usage (1,158 small files × ~4KB minimum block size ≈ 4.6MB overhead,
+  not real content growth); both figures are individually correct for
+  what they measured, reconciled here to avoid the appearance of an
+  unexplained discrepancy. Current `du -sh` reads ~9.3M now that `.import`
+  sidecars (another 1,158 small files) have roughly doubled the
+  block-rounded total without doubling real content.
+
+**Smoke test**: `scenes/battle/pokemon_sprite_smoke_test.gd`/`.tscn`,
+directory-scan-based (never hardcodes the expected file list). Assertion
+shape confirmed by inspection: per kind, 1 dir-exists check + 386
+load-as-Texture2D checks + 386 dex-presence checks + 1 no-unexpected-extra
+check = 774, × 3 kinds = **2,322**, matching both the test file's own
+logic and the last recorded sweep line exactly (`pokemon_sprite_smoke_test
+.tscn 2322` in `/tmp/sweep_ui2.log`, Phase 1's own final sweep — confirmed
+unchanged, no drift since that run, as expected since nothing has touched
+these files since).
+
+**Reconciles cleanly — no real gap found.** This was a documentation-only
+backfill; nothing on disk needed fixing.
 
 ### Phase 1 — battle_interface/, types/, text_window/
 
