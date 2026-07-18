@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 271
+level = 18
+move_ids = Array[int]([310, 45, 71, 267])
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 218
+level = 18
+move_ids = Array[int]([123, 281, 52, 88])
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 259
+level = 20
+move_ids = Array[int]([55, 117, 341, 193])
+ivs = Array[int]([12, 12, 12, 12, 12, 12])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 95
+trainer_key = "TRAINER_BRENDAN_ROUTE_110_TORCHIC"
+trainer_name = "BRENDAN"
+trainer_class_id = 50
+trainer_pic_id = 11
+gender = 0
+ai_flags = 7
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2")])

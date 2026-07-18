@@ -1,0 +1,57 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 278
+level = 22
+move_ids = Array[int]([55, 48, 17, 54])
+ivs = Array[int]([1, 1, 1, 1, 1, 1])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 285
+level = 22
+move_ids = Array[int]([78, 73, 72, 29])
+ivs = Array[int]([1, 1, 1, 1, 1, 1])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 183
+level = 22
+move_ids = Array[int]([39, 55, 205, 61])
+ivs = Array[int]([1, 1, 1, 1, 1, 1])
+
+[sub_resource type="Resource" id="PartyMon_3"]
+script = ExtResource("2")
+species_dex = 315
+level = 22
+move_ids = Array[int]([40, 78, 72, 73])
+ivs = Array[int]([1, 1, 1, 1, 1, 1])
+
+[sub_resource type="Resource" id="PartyMon_4"]
+script = ExtResource("2")
+species_dex = 300
+level = 22
+move_ids = Array[int]([213, 47, 3, 274])
+ivs = Array[int]([1, 1, 1, 1, 1, 1])
+
+[sub_resource type="Resource" id="PartyMon_5"]
+script = ExtResource("2")
+species_dex = 118
+level = 22
+move_ids = Array[int]([39, 346, 48, 30])
+ivs = Array[int]([1, 1, 1, 1, 1, 1])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 562
+trainer_key = "TRAINER_LYDIA_2"
+trainer_name = "LYDIA"
+trainer_class_id = 4
+trainer_pic_id = 62
+gender = 1
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2"), SubResource("PartyMon_3"), SubResource("PartyMon_4"), SubResource("PartyMon_5")])

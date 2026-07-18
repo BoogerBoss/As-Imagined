@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 278
+level = 13
+move_ids = Array[int]([45, 55, 48, 17])
+ivs = Array[int]([3, 3, 3, 3, 3, 3])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 252
+level = 15
+move_ids = Array[int]([1, 43, 71, 98])
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 607
+trainer_key = "TRAINER_MAY_RUSTBORO_MUDKIP"
+trainer_name = "MAY"
+trainer_class_id = 50
+trainer_pic_id = 52
+gender = 1
+ai_flags = 11
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1")])

@@ -1,0 +1,53 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 321
+level = 57
+move_ids = Array[int]([240, 323, 38, 59])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 73
+level = 55
+move_ids = Array[int]([92, 56, 188, 58])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 272
+level = 56
+move_ids = Array[int]([202, 57, 73, 104])
+
+[sub_resource type="Resource" id="PartyMon_3"]
+script = ExtResource("2")
+species_dex = 340
+level = 56
+move_ids = Array[int]([89, 57, 133, 63])
+
+[sub_resource type="Resource" id="PartyMon_4"]
+script = ExtResource("2")
+species_dex = 130
+level = 56
+move_ids = Array[int]([349, 89, 63, 57])
+
+[sub_resource type="Resource" id="PartyMon_5"]
+script = ExtResource("2")
+species_dex = 350
+level = 58
+move_ids = Array[int]([105, 57, 58, 92])
+held_item_id = 523
+
+[resource]
+script = ExtResource("1")
+trainer_id = 814
+trainer_key = "TRAINER_WALLACE"
+trainer_name = "WALLACE"
+trainer_class_id = 38
+trainer_pic_id = 15
+gender = 0
+ai_flags = 7
+mugshot_color = "Yellow"
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2"), SubResource("PartyMon_3"), SubResource("PartyMon_4"), SubResource("PartyMon_5")])

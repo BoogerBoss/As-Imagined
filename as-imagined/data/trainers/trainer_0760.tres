@@ -1,0 +1,49 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 79
+level = 48
+move_ids = Array[int]([281, 94, 347, 182])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 344
+level = 49
+move_ids = Array[int]([89, 246, 94, 113])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 178
+level = 49
+move_ids = Array[int]([94, 156, 109, 347])
+held_item_id = 515
+
+[sub_resource type="Resource" id="PartyMon_3"]
+script = ExtResource("2")
+species_dex = 337
+level = 50
+move_ids = Array[int]([89, 94, 156, 347])
+held_item_id = 515
+
+[sub_resource type="Resource" id="PartyMon_4"]
+script = ExtResource("2")
+species_dex = 338
+level = 50
+move_ids = Array[int]([241, 76, 94, 53])
+held_item_id = 523
+
+[resource]
+script = ExtResource("1")
+trainer_id = 760
+trainer_key = "TRAINER_TATE_AND_LIZA_2"
+trainer_name = "TATE&LIZA"
+trainer_class_id = 32
+trainer_pic_id = 44
+gender = 0
+is_doubles = true
+ai_flags = 7
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2"), SubResource("PartyMon_3"), SubResource("PartyMon_4")])

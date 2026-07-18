@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 311
+level = 9
+move_ids = Array[int]([45, 86])
+ivs = Array[int]([0, 0, 0, 0, 0, 0])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 312
+level = 9
+move_ids = Array[int]([45, 86])
+ivs = Array[int]([0, 0, 0, 0, 0, 0])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 23
+trainer_key = "TRAINER_AMY_AND_LIV_3"
+trainer_name = "AMY & LIV"
+trainer_class_id = 46
+trainer_pic_id = 89
+gender = 0
+is_doubles = true
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1")])

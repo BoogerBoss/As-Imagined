@@ -1,0 +1,42 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 68
+level = 38
+move_ids = Array[int]([2, 157, 264, 339])
+held_item_id = 523
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 308
+level = 38
+move_ids = Array[int]([94, 113, 115, 264])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 237
+level = 40
+move_ids = Array[int]([228, 68, 182, 167])
+
+[sub_resource type="Resource" id="PartyMon_3"]
+script = ExtResource("2")
+species_dex = 297
+level = 42
+move_ids = Array[int]([252, 264, 187, 89])
+held_item_id = 523
+
+[resource]
+script = ExtResource("1")
+trainer_id = 82
+trainer_key = "TRAINER_BRAWLY_3"
+trainer_name = "BRAWLY"
+trainer_class_id = 32
+trainer_pic_id = 39
+gender = 0
+is_doubles = true
+ai_flags = 7
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2"), SubResource("PartyMon_3")])

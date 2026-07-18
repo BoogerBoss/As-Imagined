@@ -1,0 +1,44 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 327
+level = 27
+move_ids = Array[int]([298, 60, 263, 227])
+ivs = Array[int]([24, 24, 24, 24, 24, 24])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 288
+level = 27
+move_ids = Array[int]([163, 263, 227, 185])
+ivs = Array[int]([24, 24, 24, 24, 24, 24])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 264
+level = 29
+move_ids = Array[int]([163, 187, 263, 29])
+ivs = Array[int]([24, 24, 24, 24, 24, 24])
+
+[sub_resource type="Resource" id="PartyMon_3"]
+script = ExtResource("2")
+species_dex = 289
+level = 31
+move_ids = Array[int]([68, 281, 263, 185])
+held_item_id = 523
+ivs = Array[int]([30, 30, 30, 30, 30, 30])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 646
+trainer_key = "TRAINER_NORMAN_1"
+trainer_name = "NORMAN"
+trainer_class_id = 32
+trainer_pic_id = 42
+gender = 0
+ai_flags = 7
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2"), SubResource("PartyMon_3")])

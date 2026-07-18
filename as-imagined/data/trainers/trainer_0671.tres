@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 289
+level = 43
+move_ids = Array[int]([213, 58, 85, 53])
+ivs = Array[int]([12, 12, 12, 12, 12, 12])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 356
+level = 43
+move_ids = Array[int]([285, 182, 261, 92])
+ivs = Array[int]([12, 12, 12, 12, 12, 12])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 671
+trainer_key = "TRAINER_QUINCY"
+trainer_name = "QUINCY"
+trainer_class_id = 5
+trainer_pic_id = 18
+gender = 0
+ai_flags = 7
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1")])

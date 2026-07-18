@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 310
+level = 34
+move_ids = Array[int]([44, 46, 86, 85])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 585
+trainer_key = "TRAINER_MARLEY"
+trainer_name = "MARLEY"
+trainer_class_id = 5
+trainer_pic_id = 17
+gender = 1
+ai_flags = 7
+party = Array[Resource]([SubResource("PartyMon_0")])

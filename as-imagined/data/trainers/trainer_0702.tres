@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 74
+level = 12
+move_ids = Array[int]([33, 111, 88, 317])
+ivs = Array[int]([12, 12, 12, 12, 12, 12])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 74
+level = 12
+move_ids = Array[int]([33, 111, 88, 317])
+ivs = Array[int]([12, 12, 12, 12, 12, 12])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 299
+level = 15
+move_ids = Array[int]([335, 106, 33, 317])
+held_item_id = 520
+ivs = Array[int]([24, 24, 24, 24, 24, 24])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 702
+trainer_key = "TRAINER_ROXANNE_1"
+trainer_name = "ROXANNE"
+trainer_class_id = 32
+trainer_pic_id = 43
+gender = 1
+ai_flags = 7
+battle_items = Array[int]([28, 28])
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2")])

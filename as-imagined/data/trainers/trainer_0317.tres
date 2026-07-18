@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 261
+level = 22
+move_ids = Array[int]([28, 44, 316, 46])
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 322
+level = 22
+move_ids = Array[int]([45, 33, 52, 222])
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 317
+trainer_key = "TRAINER_GRUNT_JAGGED_PASS"
+trainer_name = "GRUNT"
+trainer_class_id = 9
+trainer_pic_id = 50
+gender = 0
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1")])

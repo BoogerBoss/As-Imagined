@@ -1,0 +1,48 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 25
+level = 39
+move_ids = Array[int]([87, 21, 240, 351])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 180
+level = 41
+move_ids = Array[int]([87, 182, 86, 113])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 101
+level = 41
+move_ids = Array[int]([205, 87, 153, 240])
+
+[sub_resource type="Resource" id="PartyMon_3"]
+script = ExtResource("2")
+species_dex = 82
+level = 43
+move_ids = Array[int]([48, 182, 87, 240])
+held_item_id = 523
+
+[sub_resource type="Resource" id="PartyMon_4"]
+script = ExtResource("2")
+species_dex = 310
+level = 45
+move_ids = Array[int]([44, 86, 87, 182])
+held_item_id = 523
+
+[resource]
+script = ExtResource("1")
+trainer_id = 829
+trainer_key = "TRAINER_WATTSON_3"
+trainer_name = "WATTSON"
+trainer_class_id = 32
+trainer_pic_id = 45
+gender = 0
+is_doubles = true
+ai_flags = 7
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2"), SubResource("PartyMon_3"), SubResource("PartyMon_4")])

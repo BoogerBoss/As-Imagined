@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 276
+level = 22
+move_ids = Array[int]([116, 98, 17, 104])
+ivs = Array[int]([0, 0, 0, 0, 0, 0])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 274
+level = 22
+move_ids = Array[int]([106, 74, 267, 252])
+ivs = Array[int]([0, 0, 0, 0, 0, 0])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 77
+trainer_key = "TRAINER_BRANDEN"
+trainer_name = "BRANDEN"
+trainer_class_id = 26
+trainer_pic_id = 14
+gender = 0
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1")])

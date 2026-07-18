@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 318
+level = 28
+move_ids = Array[int]([116, 184, 242, 103])
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 262
+level = 28
+move_ids = Array[int]([44, 316, 46, 207])
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 731
+trainer_key = "TRAINER_SHELLY_WEATHER_INSTITUTE"
+trainer_name = "SHELLY"
+trainer_class_id = 11
+gender = 1
+ai_flags = 7
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1")])

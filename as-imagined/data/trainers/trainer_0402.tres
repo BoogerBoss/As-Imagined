@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 121
+level = 45
+move_ids = Array[int]([229, 105, 129, 109])
+ivs = Array[int]([3, 3, 3, 3, 3, 3])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 402
+trainer_key = "TRAINER_ISAIAH_4"
+trainer_name = "ISAIAH"
+trainer_class_id = 40
+trainer_pic_id = 86
+gender = 0
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0")])

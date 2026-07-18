@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 280
+level = 36
+move_ids = Array[int]([347, 94, 286, 248])
+ivs = Array[int]([12, 12, 12, 12, 12, 12])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 809
+trainer_key = "TRAINER_VIRGIL"
+trainer_name = "VIRGIL"
+trainer_class_id = 29
+trainer_pic_id = 67
+gender = 0
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0")])

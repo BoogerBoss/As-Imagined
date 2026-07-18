@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 297
+level = 43
+move_ids = Array[int]([18, 282, 265, 187])
+ivs = Array[int]([4, 4, 4, 4, 4, 4])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 68
+level = 43
+move_ids = Array[int]([193, 279, 233, 66])
+ivs = Array[int]([4, 4, 4, 4, 4, 4])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 68
+level = 43
+move_ids = Array[int]([193, 279, 233, 66])
+ivs = Array[int]([4, 4, 4, 4, 4, 4])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 522
+trainer_key = "TRAINER_KOJI_5"
+trainer_name = "KOJI"
+trainer_class_id = 12
+trainer_pic_id = 10
+gender = 0
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2")])

@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 370
+level = 36
+move_ids = Array[int]([97, 36, 213, 186])
+ivs = Array[int]([2, 2, 2, 2, 2, 2])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 320
+level = 36
+move_ids = Array[int]([250, 310, 352, 54])
+ivs = Array[int]([2, 2, 2, 2, 2, 2])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 117
+level = 36
+move_ids = Array[int]([108, 43, 55, 239])
+ivs = Array[int]([2, 2, 2, 2, 2, 2])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 769
+trainer_key = "TRAINER_THALIA_3"
+trainer_name = "THALIA"
+trainer_class_id = 21
+trainer_pic_id = 8
+gender = 1
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2")])

@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 74
+level = 21
+move_ids = Array[int]([300, 88, 222, 120])
+ivs = Array[int]([0, 0, 0, 0, 0, 0])
+
+[resource]
+script = ExtResource("1")
+trainer_id = 713
+trainer_key = "TRAINER_SAWYER_1"
+trainer_name = "SAWYER"
+trainer_class_id = 2
+trainer_pic_id = 34
+gender = 0
+ai_flags = 7
+party = Array[Resource]([SubResource("PartyMon_0")])
