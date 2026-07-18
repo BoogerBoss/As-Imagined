@@ -48,7 +48,19 @@ static var _front_scanned := false
 static var _back_scanned := false
 
 
-static func get_front(dex: int) -> Texture2D:
+# [M23.11 Phase 4c] `frame` selects which of the (up to) 2 idle-animation
+# frames to slice -- confirmed via direct source inspection
+# (species_info's own `.frontAnimFrames = ANIM_FRAMES(ANIMCMD_FRAME(0,
+# 30), ANIMCMD_FRAME(1, 30), ANIMCMD_FRAME(0, 1))`, e.g. Bulbasaur) that
+# frame 0/frame 1 genuinely are the two real idle-bob frames the reference
+# engine itself alternates between, not a guessed convention. Defaults to
+# 0 so every pre-Phase-4c call site's behavior is unchanged.
+#
+# Single-frame species (Unown, Castform under GBA style) have a 64x64
+# source with no real second frame to slice -- gracefully falls back to
+# frame 0 rather than requesting an out-of-bounds AtlasTexture region,
+# giving a correctly-static (non-crashing, non-blank) result.
+static func get_front(dex: int, frame: int = 0) -> Texture2D:
 	if not _front_scanned:
 		_scan_dir(FRONT_DIR, _front_path_by_dex)
 		_front_scanned = true
@@ -58,10 +70,11 @@ static func get_front(dex: int) -> Texture2D:
 	var full_sheet: Texture2D = load(path)
 	if full_sheet == null:
 		return null
-	# Slice to the top (first) frame only -- no animation in Phase 4a.
+	var has_second_frame: bool = full_sheet.get_height() >= FRAME_SIZE.y * 2
+	var actual_frame: int = frame if has_second_frame else 0
 	var atlas := AtlasTexture.new()
 	atlas.atlas = full_sheet
-	atlas.region = Rect2(Vector2.ZERO, FRAME_SIZE)
+	atlas.region = Rect2(0, actual_frame * FRAME_SIZE.y, FRAME_SIZE.x, FRAME_SIZE.y)
 	return atlas
 
 
@@ -84,6 +97,19 @@ static func get_back(dex: int) -> Texture2D:
 	# already-64x64 source just returns the whole image unchanged
 	# (confirmed with Castform's single-frame front_gba.png earlier in
 	# this same session).
+	#
+	# [M23.11 Phase 4c] Deliberately NOT given a `frame` parameter like
+	# get_front() gained -- confirmed via direct source inspection
+	# (include/pokemon.h's SpeciesInfo struct has a single `backAnimId`
+	# byte and NO accompanying `backAnimFrames` array field at all, unlike
+	# `.frontAnimFrames`) that back sprites don't use frame-swap idle
+	# animation in the real engine -- `backAnimId` drives a single
+	# positional effect (e.g. Bulbasaur's `BACK_ANIM_DIP_RIGHT_SIDE`)
+	# applied to ONE static frame, not a 2-frame alternation. Deoxys's own
+	# second back frame is therefore NOT idle-bob content and is
+	# deliberately left unanimated/unused here -- adding a `frame` param
+	# here would invite a caller to wire up an idle-bob loop using content
+	# that was never meant for that purpose.
 	var atlas := AtlasTexture.new()
 	atlas.atlas = full_sheet
 	atlas.region = Rect2(Vector2.ZERO, FRAME_SIZE)

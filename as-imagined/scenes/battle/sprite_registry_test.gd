@@ -19,10 +19,19 @@ const INVALID_DEX := 9999
 const EXPECTED_FRAME_SIZE := Vector2(64, 64)
 
 
+# [M23.11 Phase 4c] Species confirmed (via direct pixel-dimension
+# inspection) to have only a single 64x64 front frame -- no real second
+# frame exists to slice, so get_front(dex, 1) must gracefully collapse to
+# the same region as get_front(dex, 0) rather than requesting an
+# out-of-bounds AtlasTexture region.
+const SINGLE_FRAME_DEX := [201, 351]  # Unown, Castform
+
+
 func _ready() -> void:
 	_test_real_species_range()
 	_test_unknown_fallback()
 	_test_invalid_dex()
+	_test_frame_1_animation()
 
 	var total := _pass + _fail
 	print("sprite_registry_test: %d/%d passed" % [_pass, total])
@@ -71,3 +80,33 @@ func _test_invalid_dex() -> void:
 			SpriteRegistry.get_front(INVALID_DEX) == null)
 	_chk("invalid dex %d: get_back returns null, not a crash" % INVALID_DEX,
 			SpriteRegistry.get_back(INVALID_DEX) == null)
+
+
+# [M23.11 Phase 4c] Full-roster coverage (dex 1-386 + the dex-0 fallback)
+# for get_front()'s new `frame` parameter -- for every genuinely 2-frame
+# species, frame 0 and frame 1 must resolve to non-null, correctly-sized,
+# and DISTINCT regions (confirming frame 1 isn't silently just returning
+# frame 0's own slice). For the 2 known single-frame species, frame 0 and
+# frame 1 must resolve to the SAME region (the graceful-fallback path),
+# not null and not an out-of-bounds crash.
+func _test_frame_1_animation() -> void:
+	for dex in range(DEX_MIN, DEX_MAX + 1):
+		_check_frame_pair(dex)
+	_check_frame_pair(UNKNOWN_DEX)
+
+
+func _check_frame_pair(dex: int) -> void:
+	var frame0: AtlasTexture = SpriteRegistry.get_front(dex, 0)
+	var frame1: AtlasTexture = SpriteRegistry.get_front(dex, 1)
+	_chk("dex %d: frame 0 resolves to a non-null Texture2D" % dex, frame0 != null)
+	_chk("dex %d: frame 1 resolves to a non-null Texture2D" % dex, frame1 != null)
+	if frame0 == null or frame1 == null:
+		return
+	_chk("dex %d: frame 1 is exactly 64x64" % dex, frame1.get_size() == EXPECTED_FRAME_SIZE)
+
+	if dex in SINGLE_FRAME_DEX:
+		_chk("dex %d (single-frame species): frame 1 gracefully falls back to frame 0's own region" % dex,
+				frame1.region == frame0.region)
+	else:
+		_chk("dex %d: frame 1's region is genuinely distinct from frame 0's" % dex,
+				frame1.region != frame0.region)

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://idleanimtest"]
+
+[ext_resource type="Script" path="res://scenes/battle/idle_anim_test.gd" id="1_idleanimtest"]
+
+[node name="IdleAnimTest" type="Node"]
+script = ExtResource("1_idleanimtest")

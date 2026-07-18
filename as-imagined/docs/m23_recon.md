@@ -3291,3 +3291,150 @@ the transparency-fix-affected `healthbox_*` PNGs (no test asserts on
 their exact pixel content), is unchanged.
 
 No commit made this session — per standing instruction, Rob commits.
+
+### Phase 4c — idle animation pass: 2-frame idle-bob
+
+**COMPLETE** — 2026-07-17. Converts the static frame-0-only Pokémon
+sprite display into a genuine 2-frame idle-bob loop.
+
+**Frame 2 confirmed genuine idle-animation content, not assumed** —
+inspected Bulbasaur/Charizard/Pikachu/Mewtwo/the dex-0 fallback directly:
+every one shows a real, sensible-sized pixel diff between the top and
+bottom 64×64 regions (not identical, not a totally unrelated image like a
+shiny palette swap). Cross-checked against source
+(`species_info.h`'s own `.frontAnimFrames = ANIM_FRAMES(ANIMCMD_FRAME(0,
+30), ANIMCMD_FRAME(1, 30), ANIMCMD_FRAME(0, 1))` for Bulbasaur) — this
+confirms frame 0/frame 1 genuinely are the two real frames the reference
+engine itself alternates between, not a guessed convention.
+
+**A real, visually-striking finding worth flagging explicitly**:
+Charizard's frame 2 is NOT a subtle bob like Bulbasaur's — it's a
+dramatically different pose (wings repositioned, tail flame visible,
+head turned). Verified this is still correct, intended content, not a
+different kind of frame: source's own `frontAnimId` field names a
+DIFFERENT animation TYPE per species (Bulbasaur:
+`ANIM_V_JUMPS_H_JUMPS`, Charizard: `ANIM_V_SHAKE`) — some species have
+much more dynamic secondary poses than others by design. Not a gap, just
+a documented expectation-setting note (some Pokémon will visibly "pop"
+more than others when idle-bobbing).
+
+**A real, scope-narrowing finding, confirmed via source before
+implementing anything** — this phase's own task framing said "convert
+the static frame-0 Pokémon sprites" (plural), but direct inspection of
+`include/pokemon.h`'s `SpeciesInfo` struct shows back sprites have a
+single `backAnimId` byte and **no accompanying `backAnimFrames` array
+field at all** (unlike `.frontAnimFrames`) — back sprites don't use
+frame-swap idle animation in the real engine, only a single positional
+effect (e.g. Bulbasaur's `BACK_ANIM_DIP_RIGHT_SIDE`) applied to one
+static frame. **Idle-bob was scoped to the front sprite (opponent) only
+— the back sprite (player) deliberately stays static**, a source-grounded
+deviation from the task's literal plural framing, not a silent
+under-scoping. Deoxys's own anomalous 2-frame back sheet (found during
+the earlier GBA-style-switch session) is therefore correctly left
+unanimated — it was never idle-bob content to begin with.
+
+**Animation mechanism, chosen and justified**: `AnimatedSprite2D`/
+`SpriteFrames` are used nowhere else in this project (confirmed via
+grep) — no existing precedent to match. Chose **Option A** (extend
+`SpriteRegistry`, manual `Timer`-driven frame swap on the existing
+`TextureRect` node) since it requires zero new node types and stays
+consistent with the established plain-`TextureRect`-plus-`AtlasTexture`-
+slicing pattern already used throughout Phase 4a/4b.
+
+**`SpriteRegistry.get_front()`** gained an optional `frame: int = 0`
+parameter (every pre-Phase-4c call site's behavior is unchanged, since
+the default preserves the old single-arg behavior exactly). Single-frame
+species (Unown, Castform) gracefully collapse `frame=1` back to `frame=0`
+by checking the source texture's real height (`>= 128` required for a
+genuine second frame) rather than a hardcoded species list — the same
+general, derive-from-actual-dimensions discipline already used for
+`get_back()`'s own Deoxys-driven robustness fix. `get_back()` deliberately
+did **not** gain a `frame` parameter, per the source finding above.
+
+**New `Timer` node** (`OpponentAnimTimer`, `wait_time=0.5`,
+`autostart=true`) in `battle_screen.tscn`. **0.5s per frame** — matches
+the task's own suggested default; not an exact per-species replication of
+source's own `ANIMCMD_FRAME` hold durations (which vary slightly per
+species), since this phase's scope is the frame-alternation mechanism
+itself, not exact per-species timing fidelity.
+
+**Faint composition, verified not just assumed**: a new pure static
+`BattleScreen._next_anim_frame(current_frame, is_fainted) -> int` freezes
+the current frame when fainted rather than continuing to alternate —
+composes correctly with Phase 4a's existing `modulate.a=0.3` fade (both
+apply independently, confirmed via a real pixel-level comparison in the
+screenshot verification below, not just reasoned about).
+`_refresh_ui()`'s own state-driven texture assignment resets
+`_opponent_anim_frame = 0` on every call (a genuinely new/switched-in
+Pokémon shouldn't inherit mid-bob state from whatever the previous
+occupant was showing); the timer-driven handler continues alternating
+independently from that reset point.
+
+**Files touched**: `scripts/battle/core/sprite_registry.gd` (frame
+param + doc updates), `scenes/battle/battle_screen.tscn` (new
+`OpponentAnimTimer` node), `scenes/battle/battle_screen.gd`
+(`_next_anim_frame()`, `_on_opponent_anim_timer_timeout()`, threaded frame
+param through `_sprite_or_fallback_front()`/`_refresh_ui()`), new
+`scenes/battle/idle_anim_test.gd`/`.tscn`, extended
+`scenes/battle/sprite_registry_test.gd`.
+
+**New `idle_anim_test.gd`/`.tscn`**: unit tests for the pure
+`_next_anim_frame()` mapping — basic alternation both directions, a
+5-tick simulated sequence (asserting on frame INDEX, not visual output,
+per this phase's own instruction), and fainted-freezes-the-current-frame
+from both starting frames including a realistic "bobbed twice then
+fainted" sequence confirming the freeze holds across several further
+simulated ticks. **10/10 passing.**
+
+**`sprite_registry_test.gd` extended**, not a new file (testing the same
+`SpriteRegistry` class) — full dex 1-386 + dex-0 coverage for the new
+`frame` parameter: every genuinely 2-frame species gets a non-null,
+correctly-sized, **genuinely distinct** frame-1 region; the 2 known
+single-frame species (Unown, Castform) get a non-null frame-1 that
+**gracefully equals** frame-0's own region (the fallback path, not a
+crash or blank). **3,098/3,098 passing** (1,550 prior + 1,548 new, exact
+match: 387 dex values × 4 checks each).
+
+### Real screenshot verification (required, all conditions covered)
+
+A disposable driver captured 4 states with the same Charizard/Venusaur
+pairing used in every prior Phase 4 check, for direct visual continuity —
+**waited on REAL wall-clock time** (`get_tree().create_timer()`, not a
+simulated/mocked clock) so the live `Timer` node genuinely fires, not just
+the pure-function logic:
+
+1. **t=0 (frame 0)**: Venusaur upright, standard pose.
+2. **t=0.6s (one real timer tick later)**: Venusaur's pose **visibly,
+   unambiguously different** — leaning forward, flower more prominent —
+   confirmed via direct visual comparison, not inferred from state alone
+   (though the driver's own printed `opponent_anim_frame` value also
+   confirmed the internal state flipped 0→1 exactly as expected). Player
+   Charizard (back sprite) stayed static throughout, confirming the
+   front-only scope decision holds in practice, not just in code.
+3. **Fainted, t=0**: frame reset to 0 (matching state-refresh behavior),
+   visible fade applied.
+4. **Fainted, t=1.2s later** (long enough for 2 real timer ticks): frame
+   still 0, screenshot pixel-identical to state 3's own frame region —
+   confirms the freeze holds across real elapsed time, not just a single
+   simulated tick. A direct pixel-level sample comparison between the
+   healthy and fainted screenshots confirmed the `modulate.a` fade is
+   genuinely applied (sprite-body pixels clearly blended toward the gray
+   background color) and composes correctly alongside the frame-freeze —
+   neither fights the other.
+
+**No positioning/scale regression versus Phase 4b's layout** — confirmed
+across all 4 screenshots (health-box art, HP bars, status-icon area all
+unchanged in position/size).
+
+### Regression sweep
+
+Two full runs via `scripts/count_assertions.sh` — **149 files, GRAND
+TOTAL 20,090, exit 0, byte-for-byte identical between both runs**. Diffed
+against the prior baseline (18,532) — exactly two additions accounted
+for: `idle_anim_test.tscn` (10, new file) and `sprite_registry_test
+.tscn`'s growth (1,550 → 3,098, the same file extended, not a new one).
+Every other file, including `battle_screen_autoplay`'s own 1/1 (unaffected
+by the new Timer node, confirmed via a direct headless rerun), is
+unchanged.
+
+No commit made this session — per standing instruction, Rob commits.

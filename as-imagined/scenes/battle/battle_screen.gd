@@ -233,6 +233,12 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 var _opponent_status_atlas: AtlasTexture
 var _player_status_atlas: AtlasTexture
 
+# [M23.11 Phase 4c] Idle-bob animation -- front sprite (opponent) ONLY, see
+# _setup_health_ui() area's own doc comment on _next_anim_frame() for why
+# the back sprite (player) is deliberately excluded.
+@onready var _opponent_anim_timer: Timer = $OpponentAnimTimer
+var _opponent_anim_frame: int = 0
+
 var _player_party: BattleParty
 var _opp_party: BattleParty
 var _winner_side: int = -1
@@ -250,6 +256,7 @@ var _menu: Menu = Menu.MAIN
 
 func _ready() -> void:
 	_setup_health_ui()
+	_opponent_anim_timer.timeout.connect(_on_opponent_anim_timer_timeout)
 
 	# [M23.6 injection point] BattleSetupContext is a plain static-var
 	# holder (scripts/battle/core/battle_setup_context.gd, class_name
@@ -682,14 +689,56 @@ func _build_teams() -> void:
 # PokemonFactory, never set national_dex_num). This screen decides the
 # fallback: dex 0's own "unknown" silhouette sprite, resolved through the
 # exact same registry call rather than a separately-preloaded texture.
-func _sprite_or_fallback_front(dex: int) -> Texture2D:
-	var tex := SpriteRegistry.get_front(dex)
-	return tex if tex != null else SpriteRegistry.get_front(0)
+func _sprite_or_fallback_front(dex: int, frame: int = 0) -> Texture2D:
+	var tex := SpriteRegistry.get_front(dex, frame)
+	return tex if tex != null else SpriteRegistry.get_front(0, frame)
 
 
 func _sprite_or_fallback_back(dex: int) -> Texture2D:
 	var tex := SpriteRegistry.get_back(dex)
 	return tex if tex != null else SpriteRegistry.get_back(0)
+
+
+# [M23.11 Phase 4c] Idle-bob animation, front sprite (opponent) only.
+#
+# Front-only, not both sprites -- confirmed via direct source inspection
+# (see SpriteRegistry.get_back()'s own doc comment) that back sprites
+# don't use frame-swap idle animation in the real engine at all (a single
+# positional `backAnimId` effect on ONE static frame, no `backAnimFrames`
+# array field exists in the species struct) -- this is a deliberate,
+# source-grounded narrowing of this phase's own "convert the static
+# frame-0 Pokémon sprites" framing to the one sprite that actually has
+# real 2-frame idle content to alternate.
+#
+# 0.5s per frame -- matches the task's own suggested default and is a
+# reasonable approximation of typical GBA idle pacing; the real engine's
+# own per-species ANIMCMD_FRAME durations vary slightly (e.g. Bulbasaur's
+# own frontAnimFrames holds each frame for 30 ticks at a 60Hz-ish tick
+# rate, close to 0.5s) but weren't replicated exactly per-species, since
+# this phase's own scope is the frame alternation itself, not
+# reproducing each species' individual timing.
+#
+# A fainted Pokémon's sprite freezes on its current frame rather than
+# continuing to alternate -- consistent with Phase 4a's own fade-on-faint
+# treatment (a half-transparent sprite that kept bobbing would look
+# wrong; real games don't animate a fainted sprite either). Pure/static
+# so a smoke test can call it directly without a live Timer/scene tree,
+# matching _status_icon_row()'s own precedent from Phase 4b.
+static func _next_anim_frame(current_frame: int, is_fainted: bool) -> int:
+	if is_fainted:
+		return current_frame
+	return 1 - current_frame
+
+
+func _on_opponent_anim_timer_timeout() -> void:
+	if _opp_party == null:
+		return
+	var side1_mon: BattlePokemon = _opp_party.get_active()
+	if side1_mon == null:
+		return
+	_opponent_anim_frame = _next_anim_frame(_opponent_anim_frame, side1_mon.fainted)
+	_opponent_sprite.texture = _sprite_or_fallback_front(
+			side1_mon.species.national_dex_num, _opponent_anim_frame)
 
 
 # [M23.11 Phase 4a] Green/yellow/red HP-fraction threshold -- applied via
@@ -821,7 +870,14 @@ func _refresh_ui() -> void:
 	# already the single call point that runs after every state change
 	# (move resolution, switches, item use, battle end), so no new
 	# BattleManager signal wiring is needed for this.
-	_opponent_sprite.texture = _sprite_or_fallback_front(side1_mon.species.national_dex_num)
+	#
+	# [M23.11 Phase 4c] Every state-driven refresh (a switch, a new battle,
+	# etc.) resets the idle-bob back to frame 0 -- a genuinely new/changed
+	# Pokémon shouldn't pick up mid-bob on whatever frame the PREVIOUS
+	# occupant happened to be on. The timer-driven _on_opponent_anim_timer
+	# _timeout() continues alternating from this reset point independently.
+	_opponent_anim_frame = 0
+	_opponent_sprite.texture = _sprite_or_fallback_front(side1_mon.species.national_dex_num, _opponent_anim_frame)
 	_opponent_sprite.modulate = Color(1, 1, 1, 0.3) if side1_mon.fainted else Color(1, 1, 1, 1)
 	_opponent_hp_fill.max_value = side1_mon.max_hp
 	_opponent_hp_fill.value = side1_mon.current_hp
