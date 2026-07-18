@@ -3056,3 +3056,238 @@ pre-existing files, including `battle_screen_autoplay` itself, is
 unchanged.
 
 No commit made this session — per standing instruction, Rob commits.
+
+### Phase 4a follow-up — switched modern-style sprites to GBA-style (fixes the flagged transparency gap)
+
+**COMPLETE** — 2026-07-17, same day. Directly resolves the "known issue,
+unresolved" flagged at the end of Phase 4a's own entry above: modern-style
+sprites have no alpha transparency (every sprite rendered as a solid
+colored rectangle). GBA-style sprites were already confirmed transparent
+during this project's very first sprite-format investigation (long before
+any pull happened) — this follow-up switches `scripts/gen_pokemon_sprites
+.py`'s `ASSET_KINDS` from `anim_front.png`/`back.png`/`icon.png` to
+`anim_front_gba.png`/`back_gba.png`/`icon_gba.png` and re-runs the pull.
+
+**Coverage checked before switching, not assumed** — a full 386-species
+scan against the GBA-style filenames found exactly 3 gaps:
+- **Unown (#201)**: has NO `_gba` variant of anything — only plain,
+  style-agnostic `front.png`/`back.png`/`icon.png` (its real per-letter
+  form art lives in subdirectories out of scope here; the base slug's own
+  files are apparently shared across both style toggles).
+- **Castform (#351)**: has a GBA-style front, but named `front_gba.png`
+  (no `anim_` prefix) — confirmed via direct pixel inspection to be a
+  single 64×64 frame, not the usual 64×128 2-frame sheet (its real
+  in-game animation is weather-form-linked rather than the standard
+  idle-bob).
+
+Fixed generically via a new `GBA_FILENAME_OVERRIDES` dict keyed by
+`(dex, kind)`, replacing the single hardcoded Unown-front special case the
+script previously had — 3 entries total (Unown ×3, Castform front only).
+Re-ran: still 1,160 files copied (386×3 + the dex-0 fallback's front+back),
+zero missing this time. Transparency re-confirmed via direct PIL
+inspection on 7 representative files (including both special cases and
+the dex-0 fallback) — all `transparency: True` this time.
+
+### Two real, previously-undetected test failures caught by re-running the verification suite — not caused by today's switch in one case, directly caused by it in the other
+
+**`pokemon_sprite_smoke_test.gd` (2/2324 failing) — pre-existing gap from
+Phase 4a itself, NOT caused by today's style switch.** Confirmed by
+checking Phase 4a's own 3 archived sweep logs: all 3 already showed
+`2322/2324 passed` for this suite. The test was never updated when Phase
+4a added the dex-0 "unknown" fallback (front+back only, no icon) —
+`count_assertions.sh` sums each suite's own PASSED count from its "N/M
+passed" line, not M, so this partial failure never perturbed the sweep's
+running GRAND TOTAL enough to look wrong against a hand-predicted number,
+and Phase 4a's own verification never re-ran this specific suite
+standalone after adding the fallback. Fixed by adding an explicit,
+named assertion for the fallback's own presence (not just widening the
+tolerance to silently accept it) — `pokemon_sprite_smoke_test.tscn` now
+**2,326/2,326 passing** (+2 from Phase 4a's committed baseline: 2 new
+explicit fallback-presence checks, one each for front/back).
+
+**`sprite_registry_test.gd` (1/1550 failing) — genuinely NEW, caused by
+today's style switch.** Confirmed via the same archived-log check: Phase
+4a's own final sweep already showed this suite fully passing
+(1,550/1,550) under modern style. Root cause: **Deoxys's (#386) GBA-style
+back sprite is a real 2-frame animated 64×128 sheet**, unlike every other
+species' single-frame 64×64 back sprite — `SpriteRegistry.get_back()`
+returned the raw unsliced texture, which would have shown both frames
+stacked for this one species. Fixed by making `get_back()` always slice
+to the top frame via the same `AtlasTexture` mechanism `get_front()`
+already uses (a safe no-op for the 385 species where the source is
+already 64×64, confirmed via Castform's own single-frame `front_gba.png`
+found in the same session) rather than a Deoxys-specific special case —
+more robust against any future species-specific back-sprite quirk.
+`sprite_registry_test.tscn` back to **1,550/1,550 passing**.
+
+### Real screenshot re-verification
+
+A fresh disposable driver (same pattern as Phase 4a's, deleted after this
+session) rendered the same Charizard/Venusaur pairing under the new
+GBA-style sprites. **Visually confirmed**: both sprites now render with
+clean transparent backgrounds, blending naturally against the screen —
+no colored matte/rectangle behind either sprite, directly resolving the
+issue the Phase 4a screenshot check itself first surfaced.
+
+### Regression sweep
+
+Two full runs via `scripts/count_assertions.sh`: **147 files, GRAND TOTAL
+18,518, exit 0, byte-for-byte identical between both runs**. Diffed
+against Phase 4a's own committed baseline (18,514) — the only difference
+is `pokemon_sprite_smoke_test.tscn` (2,322 → 2,326, exactly the fix
+above); every other file, including `sprite_registry_test.tscn` (already
+1,550 under the OLD modern-style baseline, now 1,550 again under the NEW
+GBA-style baseline via the `get_back()` fix), is unchanged.
+
+### Unexpected git-state finding, flagged not resolved
+
+While staging follow-up work, found **two commits with byte-identical
+commit messages** (`ed72d69d` at 19:02:07, `4d7c494e` at 19:09:03) — the
+second commit was never triggered by an explicit `git commit` in this
+session. Diffing the two showed the second commit's content is exactly
+this session's own subsequent, uncommitted edits to the SAME 4 file paths
+named in the original commit's own file list (`sprite_registry.gd`,
+`gen_pokemon_sprites.py`, both `0000_unknown.png` files) — but critically,
+it did **not** pick up the other 1,155 regenerated sprite PNGs (files
+never named in the original commit list at all). This pattern — capturing
+fresh edits to exactly the original file list, nothing outside it — reads
+as something replaying the original `git add <explicit file list> && git
+commit -m "<same message>"` command a second time, rather than a blind
+"commit everything modified" mechanism. Not something this session did
+deliberately or can explain with certainty from inside the session alone
+— flagged directly to Rob rather than guessed at further or silently
+"fixed" (no history rewrite attempted). The 1,155 regenerated sprite files
+plus this session's `pokemon_sprite_smoke_test.gd` fix remain uncommitted
+as of this entry, per standing instruction.
+
+No further commit made by this session beyond what's flagged above as
+unexplained — per standing instruction, Rob commits.
+
+### Phase 4b — HUD authenticity pass: real health-box art + status icons
+
+**COMPLETE** — 2026-07-17. Swaps Phase 4a's plain `ProgressBar` placeholder
+HP bars for the real health-box pixel art (frame background + the actual
+`hpbar.png` fill graphic), and adds status condition icon display.
+
+**Asset inventory, confirmed directly rather than assumed**: everything
+needed (`healthbox_singles_player.png`, `healthbox_singles_opponent.png`,
+`hpbar.png`, `status.png`/`status2.png`/`status3.png`/`status4.png`) was
+already present from Phase 1 — no new pull needed.
+
+**`hpbar.png`'s real structure, determined via direct pixel inspection
+before writing any scaling logic** (96×8 total): a FIXED "HP" text glyph
+baked into its own left 24×8 region, followed by a separate 72×8 notched
+fill region — a single uniform green color throughout, not multiple
+color-state variants side by side. This matters: naively using the whole
+96×8 sheet as one `TextureProgressBar.texture_progress` would have
+incorrectly shrunk the "HP" label itself as HP drops (fill-clipping
+operates on the assigned texture's own full width). Sliced into two
+separate `AtlasTexture`s instead — a fixed always-visible label, and a
+separately-clipped/tinted fill — so the label stays put and only the
+notch-bar portion shrinks, matching the real game's own behavior.
+
+**Status icon sheet structure, also confirmed via pixel inspection**:
+`status.png`/`status2.png`/`status3.png`/`status4.png` are all the exact
+same 24×48 art (6 stacked 24×8 badges: PSN/PAR/SLP/FRZ/BRN/FRB) —
+confirmed via the reference engine's own source comment
+(`src/graphics.c:722`, "these three duplicate sets of graphics are for
+the opponent/partner Pokémon") that 2/3/4 are VRAM-bank duplicates, not
+different art. Used `status.png` for the player side and `status2.png`
+for the opponent, matching that comment's own intent.
+
+**Status field confirmed before designing anything**: `BattlePokemon
+.status` (`battle_pokemon.gd`), a plain `int` with `STATUS_NONE=0/BURN=1/
+FREEZE=2/PARALYSIS=3/POISON=4/TOXIC=5/SLEEP=6`. New static
+`BattleScreen._status_icon_row(status: int) -> int` maps this to the
+correct 0-indexed badge row (or `-1` for "hidden") — `STATUS_TOXIC`
+deliberately shares `STATUS_POISON`'s row, since the sprite sheet has no
+separate "badly poisoned" badge (matching the real game's own HUD, not a
+gap in this project's own implementation).
+
+**Node structure** — `battle_screen.tscn`'s `OpponentHpBar`/`PlayerHpBar`
+(plain `ProgressBar`s) replaced with `OpponentHealthGroup`/
+`PlayerHealthGroup` (`Control`), each containing `Background`
+(`TextureRect`, the health-box frame), `StatusIcon` (`TextureRect`,
+hidden by default), `HpLabel` (`TextureRect`, the fixed "HP" glyph), and
+`HpFill` (`TextureProgressBar`, the clipped/tinted notch bar). Scale
+(1.75×) and internal positions were laid out from direct pixel-boundary
+measurements of the source art (cream-panel bounds, EXP-row cutoff) —
+expected to need visual confirmation, not assumed correct from the
+numbers alone (see screenshot section below).
+
+**`battle_screen.gd` changes**: new `_setup_health_ui()` (called once
+from `_ready()`) wires the fixed textures/`AtlasTexture` instances;
+`_refresh_ui()`'s existing bar-update lines now set `TextureProgressBar
+.value`/`.max_value`/`.tint_progress` (was `ProgressBar.value`/
+`.modulate`) and call a new `_update_status_icon()` helper — still zero
+new `BattleManager` signal wiring, `_refresh_ui()` remains the single
+sync point exactly as Phase 4a established. `_hp_bar_color()` itself is
+unchanged, only the property consuming its return value changed.
+
+**Layout math verified against Phase 4a's own proven-safe side margins
+before building anything** (not just assumed to still hold): both new,
+larger health groups (224×56 opponent, 224×112 player) recomputed against
+the same 1152×648 viewport boundaries Phase 4a's own screenshot fix
+established — both confirmed to stay fully within the empty left/right
+margins (x<325 / x>825) regardless of vertical extent, the same insight
+that resolved Phase 4a's own overlap bug.
+
+**New `scenes/battle/status_icon_row_test.gd`/`.tscn`**: unit tests for
+the pure `_status_icon_row()` mapping (per this phase's own instruction
+that non-trivial new logic needs test coverage, not just visual
+verification) — every real status maps to its own distinct row, `TOXIC`
+confirmed sharing `POISON`'s row, `STATUS_NONE` maps to `-1`, and a
+stateless-transition check (BURN → NONE → BURN gives identical results
+both times, confirming no hidden state between calls). **14/14 passing.**
+
+### A real bug found by the mandatory screenshot check, not by any automated test
+
+**First screenshot round** showed the health-box art rendering as a
+**solid black rectangle** — confirmed via a full pixel-color histogram of
+`healthbox_singles_player.png` that these 2 files (unlike every other
+asset pulled anywhere in this project's whole M23.11 arc) have **no alpha
+channel in source at all** (`(0,0,0,255)` is the single most common
+color, 4,807 of the player box's pixels). No automated test could have
+caught this — `sprite_registry_test`/the sweep/`battle_screen_autoplay`
+all passed clean throughout, exactly the class of bug this phase's own
+"required, not optional" screenshot instruction exists to catch.
+
+**Fix**: new `scripts/fix_healthbox_transparency.py` — confirmed safe
+before writing it (the next-most-common color is a genuinely distinct
+dark green outline stroke, `(32,57,0,255)`, no risk of a naive
+black-key stripping legitimate border pixels), chroma-keys pure
+`(0,0,0)` to transparent in both health-box files, idempotent. Re-ran,
+re-screenshotted: clean transparent cutout, blending naturally against
+the screen, confirmed across all 3 screenshot rounds (healthy/damaged/
+status).
+
+### Real screenshot verification (required, all 3 covered)
+
+A disposable driver (deleted after this session, same pattern as prior
+phases) captured 3 states with the Charizard/Venusaur pairing used in
+Phase 4a's own checks, for direct visual continuity:
+1. **Healthy, full HP** (after the transparency fix): clean health-box
+   art, correctly positioned, HP bar full and green, status icon
+   correctly hidden, EXP bar row visible on the player's box.
+2. **After real damage**: HP bars correctly shrunk to reflect real
+   combat values (220/240, 178/240), matching the log's own printed
+   damage exactly, both still green (>50% threshold).
+3. **Forced status conditions**: player shows a correctly-positioned
+   purple "PSN" badge, opponent shows a correctly-positioned orange-red
+   "BRN" badge — both confirmed at the right row/color, no overlap with
+   either sprite, the sprite's own health group, or anything else.
+
+**No new overlap/positioning regressions versus Phase 4a** — confirmed
+across all 3 screenshots.
+
+### Regression sweep
+
+Three full runs via `scripts/count_assertions.sh` (before the
+transparency fix, after it, and a final confirmation) — **148 files,
+GRAND TOTAL 18,532, exit 0, byte-for-byte identical across all three**.
+Diffed against the prior baseline (18,518) — the only addition is
+`status_icon_row_test.tscn` at exactly 14; every other file, including
+the transparency-fix-affected `healthbox_*` PNGs (no test asserts on
+their exact pixel content), is unchanged.
+
+No commit made this session — per standing instruction, Rob commits.

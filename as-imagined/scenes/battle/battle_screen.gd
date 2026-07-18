@@ -216,9 +216,22 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # text-based UI above, not a replacement (Side0Label/Side1Label/LogLabel
 # stay exactly as they are, per this phase's own explicit scope).
 @onready var _opponent_sprite: TextureRect = $BattleStage/OpponentSprite
-@onready var _opponent_hp_bar: ProgressBar = $BattleStage/OpponentHpBar
 @onready var _player_sprite: TextureRect = $BattleStage/PlayerSprite
-@onready var _player_hp_bar: ProgressBar = $BattleStage/PlayerHpBar
+
+# [M23.11 Phase 4b] Real health-box art replacing Phase 4a's plain
+# ProgressBar placeholders -- see _setup_health_ui()'s own doc comment for
+# the asset structure this relies on.
+@onready var _opponent_health_bg: TextureRect = $BattleStage/OpponentHealthGroup/Background
+@onready var _opponent_status_icon: TextureRect = $BattleStage/OpponentHealthGroup/StatusIcon
+@onready var _opponent_hp_label: TextureRect = $BattleStage/OpponentHealthGroup/HpLabel
+@onready var _opponent_hp_fill: TextureProgressBar = $BattleStage/OpponentHealthGroup/HpFill
+@onready var _player_health_bg: TextureRect = $BattleStage/PlayerHealthGroup/Background
+@onready var _player_status_icon: TextureRect = $BattleStage/PlayerHealthGroup/StatusIcon
+@onready var _player_hp_label: TextureRect = $BattleStage/PlayerHealthGroup/HpLabel
+@onready var _player_hp_fill: TextureProgressBar = $BattleStage/PlayerHealthGroup/HpFill
+
+var _opponent_status_atlas: AtlasTexture
+var _player_status_atlas: AtlasTexture
 
 var _player_party: BattleParty
 var _opp_party: BattleParty
@@ -236,6 +249,8 @@ var _menu: Menu = Menu.MAIN
 
 
 func _ready() -> void:
+	_setup_health_ui()
+
 	# [M23.6 injection point] BattleSetupContext is a plain static-var
 	# holder (scripts/battle/core/battle_setup_context.gd, class_name
 	# BattleSetupContext extends RefCounted) — GDScript class-level statics
@@ -677,8 +692,10 @@ func _sprite_or_fallback_back(dex: int) -> Texture2D:
 	return tex if tex != null else SpriteRegistry.get_back(0)
 
 
-# [M23.11 Phase 4a] Green/yellow/red HP-fraction threshold via modulate --
-# no new nodes/assets needed, cheap readability win over a single-color bar.
+# [M23.11 Phase 4a] Green/yellow/red HP-fraction threshold -- applied via
+# TextureProgressBar.tint_progress as of Phase 4b (was modulate on a plain
+# ProgressBar before); the function itself is unchanged, only what
+# property consumes its return value changed.
 func _hp_bar_color(current: int, max_hp: int) -> Color:
 	if max_hp <= 0:
 		return Color(1, 1, 1)
@@ -688,6 +705,103 @@ func _hp_bar_color(current: int, max_hp: int) -> Color:
 	elif frac > 0.2:
 		return Color(0.9, 0.8, 0.1)
 	return Color(0.9, 0.2, 0.2)
+
+
+# [M23.11 Phase 4b] hpbar.png (assets/sprites/battle_ui/interface/) is a
+# single 96x8 sheet: a fixed "HP" text glyph in its own left 24x8 region,
+# followed by a 72x8 notched fill region -- confirmed via direct pixel
+# inspection, not assumed. These are sliced as two SEPARATE AtlasTextures
+# (not one texture_progress covering the whole sheet) specifically so the
+# "HP" label stays fully visible at any HP fraction -- a single combined
+# region would incorrectly shrink the label itself as HP drops, since
+# TextureProgressBar's fill clipping operates on its own texture's full
+# width.
+const _HP_LABEL_REGION := Rect2(0, 0, 24, 8)
+const _HP_FILL_REGION := Rect2(24, 0, 72, 8)
+
+# [M23.11 Phase 4b] status.png/status2.png (assets/sprites/battle_ui/
+# interface/) are both the same 24x48 sheet -- 6 stacked 24x8 status
+# badges (PSN/PAR/SLP/FRZ/BRN/FRB), confirmed via direct pixel inspection.
+# status2.png (not status.png) is used for the opponent side, per the
+# reference engine's own source comment (src/graphics.c:722) confirming
+# status2/3/4.png are "duplicate sets of graphics... for the
+# opponent/partner Pokémon" -- functionally identical art, just a
+# different source file, matching that comment's own intent rather than
+# reusing status.png for both sides.
+const _STATUS_ICON_SIZE := Vector2(24, 8)
+
+
+# [M23.11 Phase 4b] Maps a BattlePokemon.STATUS_* value to its 0-indexed
+# row within the 6-row status icon sheet, or -1 for "no icon" (STATUS_
+# NONE). STATUS_TOXIC deliberately shares STATUS_POISON's row -- the
+# sprite sheet has no separate "badly poisoned" badge, matching the real
+# game's own HUD. Static (not an instance method) so a smoke test can call
+# it directly without instantiating the scene, matching this file's own
+# existing static-helper convention (_make_mon/_load_move/
+# build_fixture_player_party).
+static func _status_icon_row(status: int) -> int:
+	match status:
+		BattlePokemon.STATUS_POISON, BattlePokemon.STATUS_TOXIC:
+			return 0
+		BattlePokemon.STATUS_PARALYSIS:
+			return 1
+		BattlePokemon.STATUS_SLEEP:
+			return 2
+		BattlePokemon.STATUS_FREEZE:
+			return 3
+		BattlePokemon.STATUS_BURN:
+			return 4
+		_:
+			return -1
+
+
+# [M23.11 Phase 4b] One-time wiring, called from _ready() -- every texture
+# assigned here is FIXED (the health-box frame, the HP label/fill regions)
+# except the two status-icon AtlasTextures, which are created once here
+# and have their own .region mutated per-refresh in _update_status_icon()
+# (safe: each is a freshly-created instance this script alone owns, not a
+# cached/shared Resource from load(), so mutating its .region can't leak
+# into any other consumer).
+func _setup_health_ui() -> void:
+	_opponent_health_bg.texture = load("res://assets/sprites/battle_ui/interface/healthbox_singles_opponent.png")
+	_player_health_bg.texture = load("res://assets/sprites/battle_ui/interface/healthbox_singles_player.png")
+
+	var hpbar_sheet: Texture2D = load("res://assets/sprites/battle_ui/interface/hpbar.png")
+
+	var hp_label_atlas := AtlasTexture.new()
+	hp_label_atlas.atlas = hpbar_sheet
+	hp_label_atlas.region = _HP_LABEL_REGION
+	_opponent_hp_label.texture = hp_label_atlas
+	_player_hp_label.texture = hp_label_atlas
+
+	var hp_fill_atlas := AtlasTexture.new()
+	hp_fill_atlas.atlas = hpbar_sheet
+	hp_fill_atlas.region = _HP_FILL_REGION
+	_opponent_hp_fill.texture_progress = hp_fill_atlas
+	_player_hp_fill.texture_progress = hp_fill_atlas
+	_opponent_hp_fill.fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
+	_player_hp_fill.fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
+
+	var opponent_status_sheet: Texture2D = load("res://assets/sprites/battle_ui/interface/status2.png")
+	_opponent_status_atlas = AtlasTexture.new()
+	_opponent_status_atlas.atlas = opponent_status_sheet
+	_opponent_status_atlas.region = Rect2(Vector2.ZERO, _STATUS_ICON_SIZE)
+	_opponent_status_icon.texture = _opponent_status_atlas
+
+	var player_status_sheet: Texture2D = load("res://assets/sprites/battle_ui/interface/status.png")
+	_player_status_atlas = AtlasTexture.new()
+	_player_status_atlas.atlas = player_status_sheet
+	_player_status_atlas.region = Rect2(Vector2.ZERO, _STATUS_ICON_SIZE)
+	_player_status_icon.texture = _player_status_atlas
+
+
+func _update_status_icon(icon_node: TextureRect, atlas: AtlasTexture, status: int) -> void:
+	var row := _status_icon_row(status)
+	if row < 0:
+		icon_node.visible = false
+		return
+	icon_node.visible = true
+	atlas.region = Rect2(0, row * _STATUS_ICON_SIZE.y, _STATUS_ICON_SIZE.x, _STATUS_ICON_SIZE.y)
 
 
 func _refresh_ui() -> void:
@@ -709,15 +823,17 @@ func _refresh_ui() -> void:
 	# BattleManager signal wiring is needed for this.
 	_opponent_sprite.texture = _sprite_or_fallback_front(side1_mon.species.national_dex_num)
 	_opponent_sprite.modulate = Color(1, 1, 1, 0.3) if side1_mon.fainted else Color(1, 1, 1, 1)
-	_opponent_hp_bar.max_value = side1_mon.max_hp
-	_opponent_hp_bar.value = side1_mon.current_hp
-	_opponent_hp_bar.modulate = _hp_bar_color(side1_mon.current_hp, side1_mon.max_hp)
+	_opponent_hp_fill.max_value = side1_mon.max_hp
+	_opponent_hp_fill.value = side1_mon.current_hp
+	_opponent_hp_fill.tint_progress = _hp_bar_color(side1_mon.current_hp, side1_mon.max_hp)
+	_update_status_icon(_opponent_status_icon, _opponent_status_atlas, side1_mon.status)
 
 	_player_sprite.texture = _sprite_or_fallback_back(side0_mon.species.national_dex_num)
 	_player_sprite.modulate = Color(1, 1, 1, 0.3) if side0_mon.fainted else Color(1, 1, 1, 1)
-	_player_hp_bar.max_value = side0_mon.max_hp
-	_player_hp_bar.value = side0_mon.current_hp
-	_player_hp_bar.modulate = _hp_bar_color(side0_mon.current_hp, side0_mon.max_hp)
+	_player_hp_fill.max_value = side0_mon.max_hp
+	_player_hp_fill.value = side0_mon.current_hp
+	_player_hp_fill.tint_progress = _hp_bar_color(side0_mon.current_hp, side0_mon.max_hp)
+	_update_status_icon(_player_status_icon, _player_status_atlas, side0_mon.status)
 
 	if _bm.get_phase() == BattleManager.BattlePhase.BATTLE_END:
 		_status_label.text = ("You win!" if _winner_side == 0 else "You lose!")

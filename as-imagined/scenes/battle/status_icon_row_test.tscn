@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://statusiconrowtest"]
+
+[ext_resource type="Script" path="res://scenes/battle/status_icon_row_test.gd" id="1_statusiconrowtest"]
+
+[node name="StatusIconRowTest" type="Node"]
+script = ExtResource("1_statusiconrowtest")

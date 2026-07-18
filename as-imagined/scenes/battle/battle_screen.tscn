@@ -37,15 +37,49 @@ offset_bottom = 110.0
 expand_mode = 1
 stretch_mode = 4
 
-[node name="OpponentHpBar" type="ProgressBar" parent="BattleStage"]
+[node name="OpponentHealthGroup" type="Control" parent="BattleStage"]
 layout_mode = 1
 anchor_left = 0.75
 anchor_top = 0.25
 anchor_right = 0.75
 anchor_bottom = 0.25
-offset_right = 180.0
-offset_bottom = 22.0
-show_percentage = false
+offset_right = 224.0
+offset_bottom = 56.0
+mouse_filter = 2
+
+[node name="Background" type="TextureRect" parent="BattleStage/OpponentHealthGroup"]
+layout_mode = 1
+offset_right = 224.0
+offset_bottom = 56.0
+expand_mode = 1
+stretch_mode = 4
+
+[node name="StatusIcon" type="TextureRect" parent="BattleStage/OpponentHealthGroup"]
+layout_mode = 1
+offset_left = 8.0
+offset_top = 6.0
+offset_right = 50.0
+offset_bottom = 20.0
+expand_mode = 1
+stretch_mode = 4
+visible = false
+
+[node name="HpLabel" type="TextureRect" parent="BattleStage/OpponentHealthGroup"]
+layout_mode = 1
+offset_left = 42.0
+offset_top = 20.0
+offset_right = 84.0
+offset_bottom = 34.0
+expand_mode = 1
+stretch_mode = 4
+
+[node name="HpFill" type="TextureProgressBar" parent="BattleStage/OpponentHealthGroup"]
+layout_mode = 1
+offset_left = 84.0
+offset_top = 20.0
+offset_right = 210.0
+offset_bottom = 34.0
+fill_mode = 0
 
 [node name="PlayerSprite" type="TextureRect" parent="BattleStage"]
 layout_mode = 1
@@ -58,15 +92,49 @@ offset_bottom = 110.0
 expand_mode = 1
 stretch_mode = 4
 
-[node name="PlayerHpBar" type="ProgressBar" parent="BattleStage"]
+[node name="PlayerHealthGroup" type="Control" parent="BattleStage"]
 layout_mode = 1
 anchor_left = 0.03
 anchor_top = 0.47
 anchor_right = 0.03
 anchor_bottom = 0.47
-offset_right = 180.0
-offset_bottom = 22.0
-show_percentage = false
+offset_right = 224.0
+offset_bottom = 112.0
+mouse_filter = 2
+
+[node name="Background" type="TextureRect" parent="BattleStage/PlayerHealthGroup"]
+layout_mode = 1
+offset_right = 224.0
+offset_bottom = 112.0
+expand_mode = 1
+stretch_mode = 4
+
+[node name="StatusIcon" type="TextureRect" parent="BattleStage/PlayerHealthGroup"]
+layout_mode = 1
+offset_left = 8.0
+offset_top = 6.0
+offset_right = 50.0
+offset_bottom = 20.0
+expand_mode = 1
+stretch_mode = 4
+visible = false
+
+[node name="HpLabel" type="TextureRect" parent="BattleStage/PlayerHealthGroup"]
+layout_mode = 1
+offset_left = 42.0
+offset_top = 44.0
+offset_right = 84.0
+offset_bottom = 58.0
+expand_mode = 1
+stretch_mode = 4
+
+[node name="HpFill" type="TextureProgressBar" parent="BattleStage/PlayerHealthGroup"]
+layout_mode = 1
+offset_left = 84.0
+offset_top = 44.0
+offset_right = 210.0
+offset_bottom = 58.0
+fill_mode = 0
 
 [node name="VBox" type="VBoxContainer" parent="."]
 layout_mode = 1
