@@ -233,6 +233,15 @@ HOLD_EFFECT_LOADED_DICE = 126  # Re-rolls multi-hit count within [4,5] instead
                                 # see item_manager.gd's own doc comment for the
                                 # full source citation.
 
+# [M24b] Smoke Ball -- data-only, no dispatch (see item_manager.gd's own doc
+# comment: its real effect, HOLD_EFFECT_CAN_ALWAYS_RUN, is a wild-battle-only
+# "Run" guarantee this project's battle engine has no mechanism for at all).
+HOLD_EFFECT_CAN_ALWAYS_RUN = 36
+
+# [M24b] Amulet Coin -- doubles the trainer-defeat money reward once per
+# battle when held by a player-side Pokémon that gets switched in.
+HOLD_EFFECT_DOUBLE_PRIZE = 31
+
 # ── BATTLE_USE_* constants (must match scripts/battle/core/item_manager.gd) ──
 # [M22 Phase 1] Source: include/constants/items.h's `enum EffectItem`, read by
 # ItemData.battle_usage -- a SEPARATE dispatch axis from HOLD_EFFECT_* above
@@ -641,6 +650,19 @@ ITEMS = [
     # step at all, unlike Potion/Full Heal's ITEM_USE_PARTY_MENU or X Attack's
     # ITEM_USE_BATTLER).
     {"id": 1, "name": "Poké Ball", "battle_usage": BATTLE_USE_THROW_BALL},
+
+    # ── [M24b rollover]: Smoke Ball -- confirmed genuinely unflagged M18 gap ──
+    # (a real Gen III held item, should have qualified under
+    # docs/m18_item_ledger.md's own Rule 1). Data-only -- see
+    # HOLD_EFFECT_CAN_ALWAYS_RUN's own doc comment above for why no dispatch
+    # function exists for it (the wild-battle "Run" mechanic it modifies
+    # doesn't exist in this project at all).
+    {"id": 468, "name": "Smoke Ball", "hold_effect": HOLD_EFFECT_CAN_ALWAYS_RUN},
+
+    # ── [M24b]: Amulet Coin -- doubles the trainer money reward, see
+    # ItemManager.triggers_double_prize()'s own doc comment for the full
+    # source citation and switch-in-site wiring.
+    {"id": 466, "name": "Amulet Coin", "hold_effect": HOLD_EFFECT_DOUBLE_PRIZE},
 ]
 
 HEADER = """\

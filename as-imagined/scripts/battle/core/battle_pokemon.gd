@@ -1117,6 +1117,45 @@ static func from_species(p_species: PokemonSpecies, p_level: int,
 	return bp
 
 
+# [M24b] Builds a real, fully-resolved BattlePokemon from a trainer's static
+# party-mon data (TrainerPartyMon) — the first production consumer of
+# PokemonRegistry.get_species_resource() and the piece M24a's own data
+# pipeline stopped short of (M24a was data-only; nothing constructed a real
+# battle-ready Pokémon from it). Layers moves/held item/ability/gender/
+# nickname/EVs on top of from_species() exactly the way every existing test
+# fixture's own `_make_mon`-style helper already does by hand — this is
+# that same layering, generalized once for real trainer data instead of
+# hand-rolled per test.
+#
+# Nature/IVs/friendship are always passed as CONCRETE (never null/"roll
+# randomly") values — matching the fact that trainer mons' nature/IVs/
+# friendship are never randomly rolled in source (trainerproc's own real
+# defaults — Hardy nature, all-31 IVs, 0 friendship — are themselves
+# already baked into TrainerPartyMon's own field defaults, not a "roll
+# randomly" sentinel).
+static func from_trainer_mon(tpm: TrainerPartyMon) -> BattlePokemon:
+	var p_species: PokemonSpecies = PokemonRegistry.get_species_resource(tpm.species_dex)
+	if p_species == null:
+		return null
+	var bp := from_species(p_species, tpm.level, tpm.nature, tpm.ivs, tpm.friendship)
+	for move_id in tpm.move_ids:
+		var move: MoveData = MoveRegistry.get_move(move_id)
+		if move != null:
+			bp.add_move(move)
+	if tpm.held_item_id > 0:
+		bp.held_item = ItemRegistry.get_item(tpm.held_item_id)
+	if tpm.ability_id > 0:
+		var ability_path := "res://data/abilities/ability_%04d.tres" % tpm.ability_id
+		if ResourceLoader.exists(ability_path):
+			bp.ability = ResourceLoader.load(ability_path) as AbilityData
+	if tpm.gender != -1:
+		bp.gender = tpm.gender
+	if not tpm.nickname.is_empty():
+		bp.nickname = tpm.nickname
+	bp.evs = tpm.evs.duplicate()
+	return bp
+
+
 # [M18.5d] Resolves a species' raw gender_ratio byte to a per-instance GENDER_*
 # value, exactly mirroring source's GetGenderFromSpeciesAndPersonality
 # (pokemon.c L1847-1861): the three gender-locked sentinel values (MON_MALE=0,

@@ -29,6 +29,7 @@ script = ExtResource("2")
 species_dex = 110
 level = 35
 move_ids = Array[int]([33, 124])
+held_item_id = 468
 ivs = Array[int]([4, 4, 4, 4, 4, 4])
 
 [resource]

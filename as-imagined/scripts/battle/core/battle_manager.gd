@@ -121,6 +121,7 @@ signal action_needed(phase: BattlePhase)
 signal move_executed(attacker: BattlePokemon, defender: BattlePokemon, move: MoveData, damage: int)
 signal pokemon_fainted(pokemon: BattlePokemon)
 signal battle_ended(winner_side: int)  # 0 = player/side-0 wins, 1 = opponent/side-1 wins
+signal money_awarded(amount: int)  # [M24b] fired once, right before battle_ended(0), only when the opponent side had a real TrainerData attached
 signal exp_gained(recipient: BattlePokemon, amount: int)  # [M20] I.1/I.2/I.4
 signal level_up(pokemon: BattlePokemon, new_level: int)  # [M20b] fired once per level crossed
 signal ev_gained(recipient: BattlePokemon, stat_idx: int, amount: int)  # [M20c] fired once per stat actually increased
@@ -473,6 +474,40 @@ var _baton_pass_queues: Array = [[], [], [], []]
 # M10: per-side TrainerAI instances (null = human / test-queue side).
 # Set before start_battle*() with set_trainer_ai(side, ai).
 var _trainer_ais: Array = [null, null]
+
+# [M24b] Per-side TrainerData (null = no real trainer attached — wild/test
+# battle, matching _trainer_ais[side]==null's own "no AI attached" meaning).
+# Set before start_battle*() with set_trainer_data(side, data). Drives the
+# end-of-battle money formula (reads the LOSING side's TrainerData) and the
+# battle-use-item AI heuristic (reads the AI side's own TrainerData).
+var _trainer_data: Array = [null, null]
+
+# [M24b] Per-side remaining battle-item stock, keyed by item_id -> count
+# remaining this battle. Rebuilt from TrainerData.battle_items every time
+# set_trainer_data() is called (a trainer's "Items:" field can list the same
+# item more than once — e.g. Roxanne's two Potions — each usable once).
+var _trainer_battle_item_stock: Array[Dictionary] = [{}, {}]
+
+# [M24b] One-shot per-battle latch for Amulet Coin's money-doubling effect —
+# mirrors source's own gBattleStruct->moneyMultiplierItem flag exactly
+# (TryDoublePrize, battle_hold_effects.c L41-51): the FIRST player-side
+# Pokémon switched in (including the starting lead) holding Amulet Coin
+# permanently doubles the trainer money reward for the rest of the battle;
+# a later switch of the SAME or a DIFFERENT Amulet Coin holder does not
+# double it again. Checked at all 4 switch-in call sites via
+# _check_amulet_coin_trigger(), the same 4 sites _apply_switch_in_abilities()
+# already occupies (battle-start leads, voluntary switch, forced switch,
+# faint replacement/Baton Pass).
+var _amulet_coin_triggered: bool = false
+
+# [M24b] The money reward computed by the most recent battle_ended(0) (player
+# win against a real attached opponent TrainerData) — 0 if the battle hasn't
+# ended yet, the opponent had no TrainerData attached (wild/test battle), or
+# the player lost. Read-only outside this file; set only by
+# _phase_battle_end_check(). No persistent player currency/save-state exists
+# in this project (that's M32/M33 territory) — this is purely the computed
+# reward for this one battle, for a caller (test/future UI) to consume.
+var last_money_awarded: int = 0
 
 # [M23.0a] Per-side "this side is paused for external (human/UI) input" flag —
 # a genuinely distinct axis from _trainer_ais[side] == null, which continues to
@@ -867,6 +902,95 @@ func set_trainer_ai(side: int, ai) -> void:
 	_trainer_ais[side] = ai
 
 
+# [M24b] Attach a TrainerData to one side (null = detach / wild-test battle).
+# Also rebuilds this side's battle-item stock from data.battle_items (a plain
+# item_id -> remaining-count tally — see _trainer_battle_item_stock's own
+# doc comment), since a fresh TrainerData means a fresh, full stock.
+func set_trainer_data(side: int, data: TrainerData) -> void:
+	_trainer_data[side] = data
+	var stock: Dictionary = {}
+	if data != null:
+		for item_id in data.battle_items:
+			stock[item_id] = stock.get(item_id, 0) + 1
+	_trainer_battle_item_stock[side] = stock
+
+
+# [M24b] Amulet Coin's one-shot switch-in latch — see _amulet_coin_triggered's
+# own doc comment. Called alongside _apply_switch_in_abilities() at all 4
+# switch-in sites; a no-op once already triggered or for the opponent side
+# (source: IsOnPlayerSide gate, TryDoublePrize).
+func _check_amulet_coin_trigger(mon: BattlePokemon, mon_side: int) -> void:
+	if _amulet_coin_triggered or mon_side != 0:
+		return
+	if ItemManager.triggers_double_prize(mon, _is_neutralizing_gas_active()):
+		_amulet_coin_triggered = true
+
+
+# [M24b] Consults TrainerAI.should_use_item() using this side's remaining
+# battle-item stock (see _trainer_battle_item_stock's own doc comment).
+# Returns true and populates _chosen_items[combatant_idx]/
+# _chosen_item_targets[combatant_idx]/_chosen_moves[combatant_idx]=null if
+# the AI chose to use an item this turn; false (no side effects) otherwise —
+# including the common case of an AI side with no TrainerData/no remaining
+# stock at all, which returns false immediately without ever calling into
+# TrainerAI.
+func _maybe_ai_use_item(combatant_idx: int, side: int, mon: BattlePokemon, ai: TrainerAI) -> bool:
+	var stock: Dictionary = _trainer_battle_item_stock[side]
+	if stock.is_empty():
+		return false
+	var available: Array[ItemData] = []
+	for item_id in stock.keys():
+		if stock[item_id] > 0:
+			var item: ItemData = ItemRegistry.get_item(item_id)
+			if item != null:
+				available.append(item)
+	if available.is_empty():
+		return false
+	var chosen: ItemData = ai.should_use_item(mon, available)
+	if chosen == null:
+		return false
+	stock[chosen.item_id] -= 1
+	_chosen_items[combatant_idx] = chosen
+	_chosen_item_targets[combatant_idx] = _parties[side].active_indices[combatant_idx % _active_per_side]
+	_chosen_moves[combatant_idx] = null
+	return true
+
+
+# [M24b] Pure formula function — source: GetTrainerMoneyToGive
+# (battle_script_commands.c L5820-5847). `trainer_data` is the LOSING
+# trainer's data; `is_two_opponents`/`is_doubles` are confirmed mutually
+# exclusive branches in source's own if/else-if/else chain, never combined.
+# `money_multiplier` is 2 if Amulet Coin triggered this battle, else 1 (see
+# _amulet_coin_triggered — Happy Hour, source's OTHER moneyMultiplier
+# doubler, is unimplemented in this project and Pay Day's own bonus money
+# is a wholly separate, non-multiplier mechanism — see item_manager.gd's/
+# this function's own callers for the full citation correcting
+# docs/m24_recon.md §3's "Pay Day" mis-citation).
+#
+# NOTE: `is_two_opponents` (BATTLE_TYPE_TWO_OPPONENTS — two independent
+# trainers sharing one side, e.g. a Multi Battle) is NOT reachable through
+# this project's real battle flow today — _trainer_data has exactly one
+# slot per side, not two. This function still accepts and correctly
+# computes that branch (matching source exactly) so it's directly
+# unit-testable; only the singles/doubles branches are wired to a real
+# battle_ended callsite below.
+func _compute_trainer_money_reward(trainer_data: TrainerData, is_doubles: bool,
+		is_two_opponents: bool, money_multiplier: int) -> int:
+	if trainer_data == null or trainer_data.party.is_empty():
+		return 0
+	var trainer_class: TrainerClassData = TrainerClassRegistry.get_trainer_class(trainer_data.trainer_class_id)
+	var trainer_money: int = 5
+	if trainer_class != null and trainer_class.money > 0:
+		trainer_money = trainer_class.money
+	var last_mon_level: int = trainer_data.party[trainer_data.party.size() - 1].level
+	if is_two_opponents:
+		return 4 * last_mon_level * money_multiplier * trainer_money
+	elif is_doubles:
+		return 4 * last_mon_level * money_multiplier * 2 * trainer_money
+	else:
+		return 4 * last_mon_level * money_multiplier * trainer_money
+
+
 # [M23.0a] Mark one side as "awaiting external input" — the new distinct state
 # needed so a human/UI-driven side can pause mid-phase rather than falling
 # through to auto-select. Independent of _trainer_ais[side]; do not set this
@@ -981,6 +1105,10 @@ func get_phase() -> BattlePhase:
 # --- Phase handlers ---
 
 func _phase_battle_start() -> void:
+	# [M24b] Per-battle money state reset — mirrors source's own
+	# gBattleStruct->moneyMultiplier = 1 reset (battle_main.c L3074).
+	_amulet_coin_triggered = false
+	last_money_awarded = 0
 	# [M20] Exp-participant tracking, initial state — mirrors source's
 	# ResetSentPokesToOpponentValue (battle_util.c:1193-1204): every opponent
 	# field slot starts out tracking whichever PLAYER combatants are the
@@ -1002,6 +1130,7 @@ func _phase_battle_start() -> void:
 		_reset_mon_transform(mon)
 		_apply_switch_in_hazards(mon, i / _active_per_side)
 		_apply_switch_in_abilities(mon, i / _active_per_side)
+		_check_amulet_coin_trigger(mon, i / _active_per_side)
 	# [D1 easy bundle] A REAL, previously-latent gap found and fixed here:
 	# `switched_in_this_turn` was only ever set TRUE by the mid-battle
 	# switch-in functions — the starting leads never got it set at all,
@@ -1107,31 +1236,51 @@ func _phase_move_selection() -> void:
 			# M14c: doubles uses choose_action_doubles (per-slot target scoring);
 			#   singles uses choose_action (single defender).
 			var ai: TrainerAI = _trainer_ais[side]
-			var action: Dictionary
-			if _active_per_side == 2:
+			# [M24b] Battle-use item check, BEFORE move scoring — mirrors source's
+			# own AI_TrySwitchOrUseItem ordering (item-use is considered ahead of
+			# move selection, same neighborhood as the SMART-tier proactive-switch
+			# check right above this whole branch). A chosen item populates
+			# _chosen_items/_chosen_item_targets directly (the exact same shape
+			# the "item" test-queue action above already uses) and skips move
+			# scoring entirely for this combatant this turn — but still falls
+			# through to the same trapping-check/_move_choice_resolved bookkeeping
+			# below every other branch reaches (deliberately NOT a `continue`,
+			# which would skip _move_choice_resolved[i] = true at the end of this
+			# loop body and stall the phase).
+			if _maybe_ai_use_item(i, side, mon, ai):
+				pass
+			elif _active_per_side == 2:
 				# Doubles: pass both opponent slots so AI can pick (move, target) jointly.
 				# Source: ChooseMoveOrAction_Doubles (battle_ai_main.c L918).
 				var opp_start: int = (1 - side) * _active_per_side
 				var ally_idx: int = side * _active_per_side + (1 - i % _active_per_side)
-				action = ai.choose_action_doubles(
+				var action: Dictionary = ai.choose_action_doubles(
 						mon,
 						_combatants[ally_idx],
 						_combatants[opp_start], opp_start,
 						_combatants[opp_start + 1], opp_start + 1,
 						_parties[side], _parties[1 - side], weather)
+				if action["type"] == "switch":
+					_chosen_switch_slots[i] = action["slot"]
+					_chosen_moves[i] = null
+				else:
+					var idx: int = action.get("index", 0)
+					_chosen_moves[i] = mon.moves[idx] if idx < mon.moves.size() else null
+					if action.has("target"):
+						_chosen_targets[i] = action["target"]
 			else:
 				# Singles: original path, unchanged.
 				var opponent: BattlePokemon = _get_first_opponent(mon)
-				action = ai.choose_action(
+				var action: Dictionary = ai.choose_action(
 						mon, opponent, _parties[side], _parties[1 - side], weather)
-			if action["type"] == "switch":
-				_chosen_switch_slots[i] = action["slot"]
-				_chosen_moves[i] = null
-			else:
-				var idx: int = action.get("index", 0)
-				_chosen_moves[i] = mon.moves[idx] if idx < mon.moves.size() else null
-				if action.has("target"):
-					_chosen_targets[i] = action["target"]
+				if action["type"] == "switch":
+					_chosen_switch_slots[i] = action["slot"]
+					_chosen_moves[i] = null
+				else:
+					var idx: int = action.get("index", 0)
+					_chosen_moves[i] = mon.moves[idx] if idx < mon.moves.size() else null
+					if action.has("target"):
+						_chosen_targets[i] = action["target"]
 		elif _human_controlled[side]:
 			# [M23.0a] Awaiting external input for this combatant — leave
 			# _move_choice_resolved[i] false and skip the rest of this
@@ -6870,7 +7019,22 @@ func _phase_battle_end_check() -> void:
 	for i in range(_parties.size()):
 		if _parties[i].is_fully_fainted():
 			_set_phase(BattlePhase.BATTLE_END)
-			battle_ended.emit(1 - i)  # the other side wins
+			var winner_side: int = 1 - i
+			# [M24b] Money reward: only when the PLAYER wins against a real
+			# attached opponent TrainerData (source: Cmd_getmoneyreward only
+			# calls GetTrainerMoneyToGive on B_OUTCOME_WON — a wild-battle/
+			# test battle with no TrainerData attached to the opponent side
+			# yields nothing, matching this project's own "no trainer, no
+			# money" scope since wild encounters/catching aren't in the
+			# battle engine at all). "Two opponents" (BATTLE_TYPE_TWO_
+			# OPPONENTS) is architecturally unreachable here — always false;
+			# see _compute_trainer_money_reward's own doc comment.
+			if winner_side == 0 and _trainer_data[1] != null:
+				var multiplier: int = 2 if _amulet_coin_triggered else 1
+				last_money_awarded = _compute_trainer_money_reward(
+						_trainer_data[1], _active_per_side == 2, false, multiplier)
+				money_awarded.emit(last_money_awarded)
+			battle_ended.emit(winner_side)  # the other side wins
 			return
 	# No side fully fainted — start the next turn.
 	_set_phase(BattlePhase.MOVE_SELECTION)
@@ -8113,6 +8277,7 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 	# Source: AbilityBattleEffects(ABILITYEFFECT_ON_SWITCHIN, ...) (battle_util.c L2960)
 	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
+	_check_amulet_coin_trigger(new_mon, side)
 	_apply_stored_healing_effect(new_mon, combatant_idx)
 
 
@@ -8201,6 +8366,7 @@ func _do_forced_switch_in(side: int, slot: int, field_slot: int = 0) -> void:
 	# Switch-in hazards then abilities fire for the forced-in Pokémon.
 	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
+	_check_amulet_coin_trigger(new_mon, side)
 	_apply_stored_healing_effect(new_mon, combatant_idx)
 
 
@@ -8227,6 +8393,7 @@ func _do_switch_in(combatant_idx: int, slot: int) -> void:
 	pokemon_switched_in.emit(new_mon, side, slot)
 	_apply_switch_in_hazards(new_mon, side)
 	_apply_switch_in_abilities(new_mon, side)
+	_check_amulet_coin_trigger(new_mon, side)
 	_apply_stored_healing_effect(new_mon, combatant_idx)
 
 

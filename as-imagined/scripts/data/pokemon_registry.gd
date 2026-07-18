@@ -128,6 +128,76 @@ func get_species(dex_number: int) -> Dictionary:
 	return _species_by_dex.get(dex_number, {})
 
 
+# [M24b] The first real production JSON-row -> PokemonSpecies Resource
+# converter this project has built — every prior consumer either read the
+# raw Dictionary directly or (m20_exp_test.gd's own `_species_from_registry`)
+# built a deliberately partial, test-local 2-field copy, both explicitly
+# flagged as "no production converter exists" gaps since M18.5d Phase 1.
+# M24b's own real-battle-instantiation need (BattlePokemon.from_trainer_mon)
+# is the first consumer that actually needs a FULL, correct copy, so this
+# closes that gap for real rather than adding a third partial one.
+#
+# Field-name mapping is NOT 1:1 — pokemon.json uses source's own abbreviated
+# key style (base_atk/base_def/base_spa/base_spd/base_spe), while
+# PokemonSpecies (this project's own schema, predating pokemon.json) spells
+# them out in full (base_attack/base_defense/base_sp_attack/
+# base_sp_defense/base_speed). abilities is a single Array[int] on
+# PokemonSpecies ([standard_1, standard_2, hidden]) but three separate keys
+# in the JSON (ability1/ability2/ability_h).
+#
+# growth_rate is deliberately LEFT UNMAPPED (stays at PokemonSpecies' own
+# class default, 0) — pokemon.json stores it as a STRING ("MediumSlow"),
+# and no string->GrowthRate-enum mapping exists anywhere in this project
+# (the same gap M20b's own recon flagged and deliberately bypassed via a
+# fresh PokemonRegistry lookup instead of caching); nothing M24b builds
+# reads it, so mapping it now would be untested, unverified surface.
+# `learnset` is similarly left empty — it lives in a separate JSON file
+# (learnsets.json) this function doesn't touch, and isn't needed by
+# anything M24b consumes (a trainer's moveset is already fully resolved by
+# gen_trainer_data.py at conversion time).
+#
+# Returns null for an unresolvable dex (matching every other Registry's own
+# "return null, let the caller decide" convention in this project).
+func get_species_resource(dex_number: int) -> PokemonSpecies:
+	var data: Dictionary = get_species(dex_number)
+	if data.is_empty():
+		return null
+	var sp := PokemonSpecies.new()
+	sp.species_name = data.get("name", "")
+	sp.national_dex_num = dex_number
+	sp.base_hp = data.get("base_hp", 1)
+	sp.base_attack = data.get("base_atk", 1)
+	sp.base_defense = data.get("base_def", 1)
+	sp.base_sp_attack = data.get("base_spa", 1)
+	sp.base_sp_defense = data.get("base_spd", 1)
+	sp.base_speed = data.get("base_spe", 1)
+	var types_arr: Array[int] = []
+	for t in data.get("types", []):
+		types_arr.append(int(t))
+	sp.types = types_arr
+	var abilities_arr: Array[int] = []
+	abilities_arr.append(int(data.get("ability1", 0)))
+	abilities_arr.append(int(data.get("ability2", 0)))
+	abilities_arr.append(int(data.get("ability_h", 0)))
+	sp.abilities = abilities_arr
+	sp.catch_rate = data.get("catch_rate", 45)
+	sp.exp_yield = data.get("exp_yield", 64)
+	sp.gender_ratio = data.get("gender_ratio", 127)
+	var egg_arr: Array[int] = []
+	for e in data.get("egg_groups", []):
+		egg_arr.append(int(e))
+	sp.egg_groups = egg_arr
+	sp.weight = data.get("weight", 1)
+	sp.base_friendship = data.get("base_friendship", 50)
+	sp.ev_yield_hp = data.get("ev_yield_hp", 0)
+	sp.ev_yield_atk = data.get("ev_yield_atk", 0)
+	sp.ev_yield_def = data.get("ev_yield_def", 0)
+	sp.ev_yield_spa = data.get("ev_yield_spa", 0)
+	sp.ev_yield_spd = data.get("ev_yield_spd", 0)
+	sp.ev_yield_spe = data.get("ev_yield_spe", 0)
+	return sp
+
+
 func get_move(move_id: int) -> Dictionary:
 	return _moves_by_id.get(move_id, {})
 

@@ -220,6 +220,41 @@ func choose_action(attacker: BattlePokemon, defender: BattlePokemon,
 	return {"type": "move", "index": _pick_best(scores, attacker.moves)}
 
 
+# ── Battle-use item AI (M24b) ─────────────────────────────────────────────────
+#
+# Confirmed via direct source read (battle_ai_items.c :: ShouldUseItem/
+# AI_ShouldHeal) that TrainerAI had ZERO item-use decision logic before this —
+# every prior "item" reference in this file is about a HELD item composing
+# through DamageCalculator automatically (M13), a completely different axis
+# from a trainer's own battle-use bag items (Potions/etc., TrainerData's
+# "Items:" field). This is genuinely new plumbing, not a reuse.
+#
+# Deliberately narrow, matching this project's own BASIC/SMART scoring-only
+# philosophy: reuses source's own FIRST-ORDER threshold from AI_ShouldHeal
+# (battle_ai_items.c L204 — `hp < maxHP/4`) but WITHOUT its deeper
+# AI_OpponentCanFaintAiWithMod/GetBestDmgFromBattler damage-prediction layer
+# (would a heal actually save this Pokémon from a lethal hit?) — that's
+# genuine deep item-strategy AI, explicitly out of scope for this tier.
+#
+# Only BATTLE_USE_RESTORE_HP items are considered — the one battle-use kind
+# with a real, reachable data path in this project's own trainer roster today
+# (854 real trainers: only Roxanne carries a resolved battle item at all,
+# 2x Potion — every other trainer's "Items:" field resolves to Full Restore/
+# Hyper Potion/Super Potion/Nugget, all confirmed M18 exclusions deferred to
+# M25, see docs/m18_item_ledger.md). CURE_STATUS/INCREASE_STAT/THROW_BALL
+# items are left for a future tier once real trainer data can actually
+# reach them.
+func should_use_item(mon: BattlePokemon, available_items: Array) -> ItemData:
+	if mon == null or mon.current_hp <= 0:
+		return null
+	if mon.current_hp >= mon.max_hp / 4.0:
+		return null
+	for item in available_items:
+		if item != null and item.battle_usage == ItemManager.BATTLE_USE_RESTORE_HP:
+			return item
+	return null
+
+
 # ── Faint replacement: which party slot to send in ────────────────────────────
 #
 # Source: GetSwitchinCandidate (battle_ai_switch.c L2004). The real source picks

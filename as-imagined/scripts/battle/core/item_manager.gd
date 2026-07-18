@@ -820,6 +820,46 @@ const HOLD_EFFECT_LOADED_DICE:  int = 126  # Source: SetRandomMultiHitCounter
                                             # deterministic-5 effect
                                             # (ability_manager.gd).
 
+# [M24b rollover] Smoke Ball. CORRECTION to this item's own commonly-assumed
+# "trap prevention" framing: direct source read (battle_util.c L558,
+# L4917-4941's IsAbilityPreventingEscape, battle_main.c L3984) confirms
+# HOLD_EFFECT_CAN_ALWAYS_RUN has NOTHING to do with Shadow Tag/Arena Trap/
+# Magnet Pull trapping (that check never reads this hold effect at all) —
+# it exclusively guarantees a WILD-BATTLE "Run" menu attempt always
+# succeeds (TryRunFromBattle). This project has NO wild-battle flee/Run
+# mechanic at all (confirmed via grep — the same "out of battle-engine
+# scope" precedent already established for the Run Away ability,
+# `[M17n-1]`), so this hold effect's real mechanical consequence is
+# provably unreachable here. Added as a DATA-ONLY constant/item entry (no
+# dispatch function) purely so Weezing's held Smoke Ball resolves correctly
+# in trainer data (M24a's own converter run flagged this as an unresolved
+# item name) — matching Run Away's own "data recorded, no mechanism built"
+# precedent, not new plumbing.
+const HOLD_EFFECT_CAN_ALWAYS_RUN: int = 36
+
+# [M24b] Amulet Coin / Luck Incense share this hold effect in source
+# (src/data/items.h — both `.holdEffect = HOLD_EFFECT_DOUBLE_PRIZE`); only
+# Amulet Coin (Gen III) is in this project's scope — Luck Incense is Gen VI+
+# and not on Rob's 23-item Gen V+ inclusion list (`docs/m18_item_ledger.md`).
+# Source: TryDoublePrize (battle_hold_effects.c L41-51), dispatched via
+# ItemBattleEffects at ON-SWITCH-IN timing (`.onSwitchIn = TRUE`,
+# src/data/hold_effects.h L178) — checked once, on the PLAYER side only
+# (`IsOnPlayerSide`), latched via a one-shot `moneyMultiplierItem` flag so a
+# later switch-out/switch-in of the same or another Amulet Coin holder
+# doesn't re-double it. See BattleManager._amulet_coin_triggered for the
+# switch-in-site wiring (mirrors the existing 4-call-site pattern every
+# other switch-in-reactive mechanism in this project already uses).
+const HOLD_EFFECT_DOUBLE_PRIZE: int = 31
+
+
+# [M24b] Pure data check — mirrors holds_shed_shell()/holds_red_card()'s own
+# shape (a plain hold-effect-id comparison through the Klutz-aware
+# accessor). Called only from the player-side switch-in sites.
+static func triggers_double_prize(mon: BattlePokemon, ng_active: bool) -> bool:
+	var item: ItemData = effective_held_item(mon, ng_active)
+	return item != null and item.hold_effect == HOLD_EFFECT_DOUBLE_PRIZE
+
+
 # ── Battle-usage constants (bag items, M22 Phase 1) ───────────────────────────
 # Source: include/constants/items.h's `enum EffectItem` — a SEPARATE enum from
 # HOLD_EFFECT_* above, read by `ItemData.battle_usage` (a dormant field carried
