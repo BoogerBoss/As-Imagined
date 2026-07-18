@@ -73,7 +73,7 @@ func _make_mon(mon_name: String, hp: int = 160, atk: int = 80, def_stat: int = 1
 	sp.base_sp_attack = spatk
 	sp.base_sp_defense = spdef
 	sp.base_speed = spd
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 
 
 # ── Section 1: BattleParty unit tests ────────────────────────────────────────

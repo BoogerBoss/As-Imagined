@@ -311,7 +311,7 @@ func _make_mon(mon_name: String, type1: int, type2: int = TypeChart.TYPE_NONE,
 	sp.base_sp_attack  = base_spatk
 	sp.base_sp_defense = base_spdef
 	sp.base_speed      = base_spd
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 
 
 func _make_move(move_name: String, move_type: int, category: int, power: int) -> MoveData:

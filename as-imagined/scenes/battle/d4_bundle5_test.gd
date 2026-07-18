@@ -782,25 +782,25 @@ func _test_charge() -> void:
 	atk3.add_move(tackle)
 	atk3.add_move(thunder_shock)
 	def3.add_move(_load_move(33))
-	# `move_executed` fires INSIDE `_do_damaging_hit`, which runs BEFORE
-	# the Charge-consumption clear further down in `_phase_move_execution`
-	# (the same ordering already found for Fury Cutter's own counter) — so
-	# snapshotting AT atk3's 3rd own move_executed would read the
-	# PRE-clear value. Snapshotted instead at the very NEXT move_executed
-	# event of ANY kind (def3's own reply), by which point atk3's 3rd
-	# action has fully resolved including the clear.
-	var atk3_uses := [0]
-	var charged_after_3rd := [true]
-	var snapshot_taken := [false]
+	# [Flaky-test fix — d4_bundle5_test rollover] The ORIGINAL approach here
+	# snapshotted on "the next move_executed event of any kind" after atk3's
+	# 3rd action, reasoning that the charge-consumption clear would have
+	# already committed by then. Root-caused via direct reproduction (not
+	# assumed) that this is NOT reliable: once the 3-action queue (Charge/
+	# Tackle/Thunder Shock) drains, atk3 auto-repeats from its own moves[0]
+	# (Charge) — and on a real, confirmed fraction of runs, atk3's own
+	# re-cast RE-SETS `charged = true` BEFORE emitting its own
+	# `move_executed` (Charge's status-move dispatch sets the flag before
+	# signaling, unlike the damaging-hit path Thunder Shock's own clear
+	# lives in) — so "the next move_executed" can itself already be a
+	# corrupted reading. Fixed properly by listening for the new, precise
+	# `charge_cleared` signal instead (added specifically for this reason —
+	# see battle_manager.gd's own doc comment at the clear site), which
+	# fires at the exact instant of the clear with no such ambiguity.
+	var charge_cleared_seen := [false]
 	var bm3 := _make_bm()
-	bm3.move_executed.connect(func(a, _d, _m, _amt):
-		if snapshot_taken[0]:
-			return
-		if a == atk3:
-			atk3_uses[0] += 1
-		elif atk3_uses[0] >= 3:
-			charged_after_3rd[0] = atk3.charged
-			snapshot_taken[0] = true)
+	bm3.charge_cleared.connect(func(mon):
+		if mon == atk3: charge_cleared_seen[0] = true)
 	bm3.queue_move(0, 0)  # Charge
 	bm3.queue_move(0, 1)  # Tackle (non-Electric, should NOT clear charged)
 	bm3.queue_move(0, 2)  # Thunder Shock (Electric, SHOULD clear charged after)
@@ -808,7 +808,7 @@ func _test_charge() -> void:
 	bm3.start_battle(atk3, def3)
 	bm3.queue_free()
 	_chk("I.05 Charge persists through a non-Electric move, cleared only by an Electric one",
-			charged_after_3rd[0] == false)
+			charge_cleared_seen[0] == true)
 
 
 # ── Section J: Laser Focus ─────────────────────────────────────────────────

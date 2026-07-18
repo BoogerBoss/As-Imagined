@@ -87,7 +87,7 @@ func _make_mon(mon_name: String, mon_type: int = TypeChart.TYPE_NORMAL,
 	sp.base_sp_attack = spatk
 	sp.base_sp_defense = spdef
 	sp.base_speed = spd
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 
 
 func _make_bm() -> BattleManager:
@@ -335,7 +335,7 @@ func _test_s7_primal_reversion_ordering() -> void:
 	kyogre_sp.base_sp_attack = 80
 	kyogre_sp.base_sp_defense = 80
 	kyogre_sp.base_speed = 80
-	var kyogre := BattlePokemon.from_species(kyogre_sp, 50)
+	var kyogre := BattlePokemon.from_species(kyogre_sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 	kyogre.ability = _load_ability(2)  # Drizzle — Kyogre's own natural ability
 	kyogre.held_item = load("res://data/items/item_0291.tres") as ItemData  # Blue Orb
 

@@ -81,7 +81,7 @@ func _make_mon(mon_name: String, type1: int) -> BattlePokemon:
 	sp.base_sp_attack  = 80
 	sp.base_sp_defense = 80
 	sp.base_speed      = 80
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 
 
 func _make_move(move_name: String, move_type: int, category: int, power: int) -> MoveData:

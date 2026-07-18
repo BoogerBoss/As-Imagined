@@ -295,6 +295,7 @@ signal stockpile_released(mon: BattlePokemon, count: int)  # [D4 Bundle 4] Spit 
 signal field_sport_set(sport_name: String)  # [D4 Bundle 5] Mud Sport/Water Sport went up ("mud_sport"/"water_sport")
 signal types_changed(mon: BattlePokemon, new_types: Array, reason: String)  # [D4 Bundle 5] Reflect Type ("reflect_type") / Roost's one-turn removal ("roost") / Roost's end-of-turn restore ("roost_restore")
 signal charge_set(mon: BattlePokemon)  # [D4 Bundle 5] Charge set the user's charged flag
+signal charge_cleared(mon: BattlePokemon)  # [Flaky-test fix, d4_bundle5_test rollover] Charge's flag was consumed by a later Electric-type move — see the clear site's own doc comment for why this precise signal (not "the next move_executed") is needed
 signal laser_focus_set(mon: BattlePokemon)  # [D4 Bundle 5] Laser Focus set the user's 2-turn guaranteed-crit window
 
 
@@ -3736,6 +3737,17 @@ func _phase_move_execution() -> void:
 		# back out to this point).
 		if attacker.charged and move.type == TypeChart.TYPE_ELECTRIC:
 			attacker.charged = false
+			# [Flaky-test fix, d4_bundle5_test rollover] A dedicated signal,
+			# not reused from `move_executed` — a test snapshotting "the very
+			# next move_executed event" to observe this clear can be fooled
+			# by the attacker's OWN later auto-repeated Charge re-cast (once
+			# a queued-action sequence drains and falls back to moves[0]),
+			# since Charge's own status-move dispatch sets `charged = true`
+			# BEFORE emitting ITS OWN `move_executed` — confirmed via direct
+			# reproduction, not assumed, root-causing a real d4_bundle5_test
+			# flake. This signal fires at the exact instant of the clear
+			# itself, with no such ambiguity.
+			charge_cleared.emit(attacker)
 
 		if move.is_hit_escape and he_connected and attacker.current_hp > 0:
 			var he_slot: int = _get_replacement_slot(attacker_idx)

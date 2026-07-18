@@ -86,7 +86,7 @@ func _make_mon(mon_name: String, mon_types: Array = [TypeChart.TYPE_NORMAL],
 	sp.base_sp_attack = base_spa
 	sp.base_sp_defense = base_spd
 	sp.base_speed = base_spe
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 
 
 func _make_bm() -> BattleManager:

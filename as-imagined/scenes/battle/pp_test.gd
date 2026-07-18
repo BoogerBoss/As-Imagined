@@ -54,7 +54,7 @@ func _make_mon(mon_name: String, speed: int = 80,
 	sp.base_sp_attack = 80
 	sp.base_sp_defense = 80
 	sp.base_speed = speed
-	return BattlePokemon.from_species(sp, 50)
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 
 
 func _make_move(move_name: String, pp_val: int = 10, power: int = 40) -> MoveData:
