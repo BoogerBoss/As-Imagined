@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m230aprooftest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m23_0a_proof_test.gd" id="1_m230aprooftest"]
+
+[node name="M230aProofTest" type="Node"]
+script = ExtResource("1_m230aprooftest")

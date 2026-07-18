@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+ability_id = 255
+ability_name = "Gorilla Tactics"
+description = "Boosts the Pokémon's Attack but only allows the use of one move."
+ai_rating = 4

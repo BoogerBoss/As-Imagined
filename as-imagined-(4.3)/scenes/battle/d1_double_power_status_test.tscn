@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://d1doublepowerstatustest"]
+
+[ext_resource type="Script" path="res://scenes/battle/d1_double_power_status_test.gd" id="1_d1doublepowerstatustest"]
+
+[node name="D1DoublePowerStatusTest" type="Node"]
+script = ExtResource("1_d1doublepowerstatustest")

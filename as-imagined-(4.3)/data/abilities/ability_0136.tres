@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+ability_id = 136
+ability_name = "Multiscale"
+description = "Reduces the amount of damage the Pokémon takes while its HP is full."
+ai_rating = 7
+breakable = true

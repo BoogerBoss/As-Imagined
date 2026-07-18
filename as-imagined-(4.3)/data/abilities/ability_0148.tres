@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+ability_id = 148
+ability_name = "Analytic"
+description = "Boosts move power when the Pokémon moves last."
+ai_rating = 5

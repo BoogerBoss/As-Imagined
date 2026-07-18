@@ -3816,3 +3816,206 @@ open question — this is a definite "not yet," not a "maybe."
   pre-existing M9/M14a architecture.
 
 No commit made this session — per standing instruction, Rob commits.
+
+### Phase 4d — doubles visual layer: IMPLEMENTED, full session
+
+Extends Phase 4a-4c's singles-only visual layout (1 sprite/health-box group
+per side) to 2-per-side using the `healthbox_doubles_*` art, now that Phase
+4f's targeting layer (committed) makes doubles genuinely interactable.
+
+**Asset structure findings (step 1)** — inspected directly via PIL (dimensions)
+and zoomed pixel crops (structure), not assumed from filenames:
+- `healthbox_doubles_opponent.png` / `healthbox_doubles_player.png`: both
+  128x32 RGBA — a single self-contained rounded-rectangle health box with its
+  own small triangular "tail" pointing toward its own Pokémon (opponent's
+  tail points down-right, player's points down-left), matching
+  `healthbox_singles_opponent.png`'s own 128x32 shape/proportions exactly —
+  NOT `healthbox_singles_player.png`'s taller 128x64 (that extra height is a
+  second row reserved for the player-side-only numeric HP-text overlay,
+  confirmed absent from the doubles player art).
+- `healthbox_doubles_frameend.png` / `healthbox_doubles_frameend_bar.png`:
+  both tiny 8x8 corner-cap pieces (a diagonal box-border-to-transparent
+  corner gradient). Their exact intended compositing role (e.g. capping a
+  seam between adjacent boxes) could not be confirmed from the assets alone
+  and was NOT guessed at — **deliberately unused this session, flagged
+  rather than incorporated**, since each doubles healthbox image already
+  renders as a complete, self-contained box+tail with no visible seam or
+  cut edge when used standalone (confirmed via the real screenshot
+  verification below).
+- `hpbar.png` (96x8, HP label + fill regions) and `status.png`/`status2.png`
+  (24x48 status-badge sheets) are NOT doubles-specific — confirmed no
+  parallel "doubles" variant exists on disk — reused as-is via the same
+  `AtlasTexture` slicing Phase 4b already established, just applied to twice
+  as many nodes.
+
+**Generalize vs. duplicate decision (step 2)**: hybrid, stated explicitly
+since a pure "one approach" answer doesn't fit a static Godot scene tree.
+The **.tscn nodes** had to be duplicated — 8 new nodes (2 sprites + 2 health
+groups, each with Background/StatusIcon/HpLabel/HpFill, per side) — since a
+`.tscn` has no runtime "instantiate N copies" mechanism short of manual
+`PackedScene` construction, judged unnecessary complexity for a fixed
+maximum of 2 slots/side. The **GDScript logic**, however, is fully
+generalized: one new `_refresh_doubles_side(party, is_player, sprites,
+groups, status_icons, status_atlases, hp_fills)` function is called once
+per side (opponent, player) rather than hand-duplicating the per-slot
+render logic 4 times — this satisfies the project's own "generalize, don't
+duplicate" instinct at the layer that actually matters (behavior), while
+being honest that the presentation layer's nodes themselves couldn't avoid
+duplication.
+
+**Files touched**:
+- `scenes/battle/battle_screen.tscn` — `load_steps` 8→10, 2 new
+  `ext_resource` entries (`healthbox_doubles_opponent.png`/
+  `healthbox_doubles_player.png`), 8 new nodes: `OpponentSpriteD0`/`D1`,
+  `OpponentHealthGroupD0`/`D1` (+ Background/StatusIcon/HpLabel/HpFill each),
+  `PlayerSpriteD0`/`D1`, `PlayerHealthGroupD0`/`D1` (+ same 4 children each)
+  — all default `visible = false` in the .tscn (shown only when doubles is
+  active). Zero changes to any existing singles node's anchors/offsets/
+  order — confirmed via the true before/after sweep below being a pure
+  additive diff.
+- `scenes/battle/battle_screen.gd` — new instance fields (`_is_doubles_mode`,
+  the 7 `_opp_*_d`/`_ply_*_d` plain-`Array` node collections, `_opp_anim_frame_d`),
+  new `_opponent_health_group`/`_player_health_group` onready refs (needed to
+  toggle the whole singles group's visibility, not just its children), a new
+  one-shot toggle in `_ready()` (hide singles nodes when
+  `BattleSetupContext.is_doubles` is true — set once, not per-refresh, since
+  the format never changes mid-battle), doubles-node wiring appended to the
+  end of `_setup_health_ui()`, a new `_refresh_doubles_side()` function, a
+  doubles branch in `_refresh_ui()`'s sprite/health-box section (singles
+  branch is the exact pre-existing code, unmoved/unedited beside being
+  wrapped in an `else:`), and a doubles branch in
+  `_on_opponent_anim_timer_timeout()` (checked first, returns early; singles
+  branch below is untouched).
+- `scenes/battle/phase4d_doubles_visual_test.gd`/`.tscn` — new, 33/33
+  assertions, stable across 4 reruns.
+
+**Idle-animation/faint-fade/HP-color/status independence (step 4)**:
+confirmed via both automated tests and the real screenshot below.
+`_opp_anim_frame_d` is a 2-element array, one frame counter per doubles
+opponent slot — `_on_opponent_anim_timer_timeout()`'s doubles branch advances
+each slot's frame using only THAT slot's own `mon.fainted`, so a fainted
+slot 0 freezes on its current frame while slot 1 keeps alternating,
+confirmed by a dedicated test forcing one mon fainted (frame stays 0 across
+2 ticks) and the other healthy (frame flips 0→1→0). `_refresh_doubles_side`
+reads each slot's own `current_hp`/`max_hp`/`status`/`fainted` independently
+— a dedicated test with one healthy + one fainted-and-poisoned mon in the
+same call confirmed the healthy slot's modulate alpha, status-icon
+visibility, and HP-bar tint color are completely unaffected by its
+teammate's state.
+
+**Test results**: `phase4d_doubles_visual_test.gd`/`.tscn`, 33/33 assertions
+across 6 sections (art dimensions; basic 2-slot render; independent
+fade/status/HP-color — the key regression-risk section; a singles-shaped
+`BattleParty` correctly hiding slot 1 even when fed through the generalized
+doubles function; anim-timer independence; a redundant static-helper
+regression guard alongside the real autoplay smoke test). Deliberately does
+NOT instantiate `battle_screen.tscn` — same established precedent as
+`phase4f_targeting_test.gd` (count_assertions.sh's `--autoplay` flag is
+process-wide, and `battle_screen.gd`'s own autoplay check reads
+`OS.get_cmdline_args()` globally) — every function tested is called
+directly on a bare, never-tree-added `BattleScreen.new()` instance plus
+manually-constructed node arguments, sidestepping the pitfall entirely.
+Stable across 4 reruns.
+
+**Sweep before/after, twice, singles-regression-guard called out
+specifically**: true "before" state reconstructed from git HEAD (confirmed
+identical to a manual reconstruction stripping this session's own .tscn
+additions back out — HEAD already included the prior session's placeholder-
+texture commit, `03b97dc8`, contrary to this conversation's own summary
+claiming it was uncommitted; Rob evidently committed it between sessions).
+Before: 150 files, GRAND TOTAL 20134 raw / **20135 true-clean** (the raw
+figure already carried one instance of the pre-existing `m18_5g_test.tscn`
+statistical flake, caught only by eye — see the note below). After, run 1:
+151 files, 20166 (carrying BOTH `doubles_test.tscn` 53/54 and
+`m18_5g_test.tscn` 314/315 flaked). After, run 2: 151 files, 20168, **zero
+mismatched X/Y suites** — the true clean total, confirmed via a full
+X/Y-fraction scan of every suite across all 3 sweep logs (not just a
+`FAILED`-keyword grep, which would have missed both flakes since neither
+prints the literal word "FAILED"): 20135 (true-clean before) + 33 (new
+suite) = 20168, exact match. Both flaking suites (`doubles_test.tscn`,
+`m18_5g_test.tscn`) are pre-existing, already documented in CLAUDE.md's own
+"M19-complete baseline" note, and reference nothing in `battle_screen.gd`/
+`.tscn` at all — confirmed unrelated to this session's changes.
+`battle_screen_autoplay: 1/1 passed` (singles, via direct `.tscn` launch)
+reconfirmed unchanged both before and after, rerun a 3rd time post-cleanup
+for the singles-regression-guard specifically.
+
+**Screenshot verification, all 4 required captures**:
+1. **Singles unchanged**: direct `battle_screen.tscn` launch (no
+   `BattleSetupContext` pending, falls back to the hardcoded Blaze/Torrent
+   vs. Leaf/Volt fixture) — pixel-identical in composition to every prior
+   Phase 4c/placeholder-session singles screenshot (opponent top-right,
+   player bottom-left, singles-shaped health boxes, doubles nodes correctly
+   invisible).
+2. **Doubles 4-group layout**: a real doubles battle (`BattleSetupContext
+   .set_pending(..., true)`, 2v2) shows all 4 sprite/health-box groups
+   correctly positioned with zero overlap — 2 opponent groups in the
+   top-right region (x≈0.72-1.0), 2 player groups in the upper-left/left
+   region (x≈0.0-0.3), both bands kept clear of the centered
+   VBox/log/button column (x≈0.27-0.73) by construction, so overlap with the
+   text UI never depends on vertical positioning at all.
+3. **Independent fade**: one player slot forced to 0 HP/fainted while its
+   teammate stays full-HP — the fainted slot's sprite fades to translucent
+   gray and its HP bar empties, while the healthy teammate's sprite and
+   green HP bar are completely unaffected, confirming the independence
+   found in step 4 above holds visually, not just in the unit tests.
+4. **Doubles healthbox art quality**: a 4x-zoomed crop of both a healthy and
+   the fainted health box confirms the art renders crisply at its intended
+   size — the box border, tail, and shared `hpbar.png` "HP" label/fill
+   render with no stretching or clipping, including the fainted box's
+   correctly-empty (zero-width) fill.
+
+All 4 captured via a disposable `_scratch_screenshot_phase4d.gd`/`.tscn`
+driver (deleted after use, along with a second disposable
+`_scratch_screenshot_singles_regression.gd`/`.tscn`) — `DISPLAY=:0` +
+`--rendering-driver opengl3` (llvmpipe software rendering) for a real
+non-headless capture, matching this project's established discipline.
+
+**Interaction-layer confirmation (step 9)**: the doubles screenshot driver
+didn't just render a static frame — it called `bs._on_move_pressed(0, 0)`
+(Tackle, 2 live opponents) to genuinely enter Phase 4f's `TARGET_SELECT`
+menu, screenshotted the real "Foe Gamma / Foe Delta / Back" picker rendered
+against the new 4-group layout, then called `bs._on_target_selected(...)`
+for both active player slots and confirmed via the real battle log
+("Your Alpha used Tackle! (25 damage)", "Foe Gamma used Tackle! (28
+damage)", etc.) that actual moves resolved end-to-end through the real
+`queue_move_targeted`/`advance()` dispatch — the visual layer change did not
+break Phase 4f's interaction layer in any way.
+
+**Doubles toggle re-enable assessment**: **NOT re-enabled, and Rob's own
+explicit go-ahead should be sought before flipping it** —
+`battle_setup_screen.gd` was not touched this session. Both of Phase 4f's
+interaction layer and this phase's visual layer are now confirmed working
+together end-to-end (previous paragraph), which removes the two blockers
+the toggle's own disabled-message previously cited. Remaining known gaps
+before a fully-polished interactive doubles experience: (1) `_run_autoplay()`
+is still hardcoded singles-only (flagged, unreachable today since
+`is_doubles` defaults false everywhere autoplay actually runs — but IS
+reachable the moment the toggle is re-enabled, since a human could still
+launch `--autoplay` against a real doubles battle); (2) the corner-band
+layout above was tuned for a fixed 1152x648-class viewport and hasn't been
+stress-tested at other aspect ratios/window sizes; (3) no real interactive
+(mouse-click, not directly-called-handler) doubles playthrough has been
+attempted end-to-end. None of these are regressions from this session — all
+are pre-existing or newly-surfaced-but-not-yet-addressed scope items. My
+assessment: the two hard blockers are now closed, so re-enabling is
+technically defensible, but I'd recommend Rob explicitly confirm rather than
+have it flipped silently this session, per the task's own instruction.
+
+**Deviations/assumptions/blockers flagged explicitly**:
+- The `frameend`/`frameend_bar` 8x8 art pieces are unused — their exact
+  compositing purpose couldn't be confirmed from the assets alone, and each
+  doubles healthbox image already looks complete without them.
+- Corner-band anchor placement (opponent x∈[0.72,1.0], player x∈[0.0,0.3])
+  is a deliberate choice to guarantee zero overlap with the centered VBox
+  log/button column regardless of its own vertical extent, rather than
+  precisely reproducing the real game's own doubles composition — flagged
+  as a project-specific layout constraint (the centered log/menu box is
+  this project's own UI choice, not present in the original game's
+  letterboxed layout).
+- `_run_autoplay()` deliberately left untouched (still singles-only) —
+  same flagged-but-unreached status Phase 4f's own entry already
+  established, now slightly more reachable in principle (see the toggle
+  assessment above).
+
+No commit made this session — per standing instruction, Rob commits.

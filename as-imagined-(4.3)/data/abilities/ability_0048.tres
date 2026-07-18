@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+ability_id = 48
+ability_name = "Early Bird"
+description = "The Pokémon awakens from sleep twice as fast."
+ai_rating = 4

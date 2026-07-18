@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+move_name = "Razor Wind"
+type = 1
+category = 1
+power = 80
+pp = 10
+critical_hit_stage = 1
+two_turn = true
+ban_flags = 128
+is_spread = true

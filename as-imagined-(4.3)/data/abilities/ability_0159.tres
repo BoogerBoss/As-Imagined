@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+ability_id = 159
+ability_name = "Sand Force"
+description = "Boosts the power of Rock-, Ground-, and Steel-type moves in a sandstorm."
+ai_rating = 5

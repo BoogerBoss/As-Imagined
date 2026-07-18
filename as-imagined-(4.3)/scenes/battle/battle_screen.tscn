@@ -1,0 +1,52 @@
+[gd_scene load_steps=4 format=3 uid="uid://battlescreen"]
+
+[ext_resource type="Script" path="res://scenes/battle/battle_screen.gd" id="1_screen"]
+[ext_resource type="Script" path="res://scripts/battle/core/battle_manager.gd" id="2_bm"]
+[ext_resource type="Theme" path="res://scenes/main_theme.tres" id="3_theme"]
+
+[node name="BattleScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("3_theme")
+script = ExtResource("1_screen")
+
+[node name="BattleManager" type="Node" parent="."]
+script = ExtResource("2_bm")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="StatusLabel" type="Label" parent="VBox"]
+layout_mode = 2
+text = "..."
+horizontal_alignment = 1
+
+[node name="Side0Label" type="Label" parent="VBox"]
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="Side1Label" type="Label" parent="VBox"]
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="LogLabel" type="RichTextLabel" parent="VBox"]
+custom_minimum_size = Vector2(500, 220)
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = false
+scroll_active = true
+scroll_following = true
+
+[node name="ButtonArea" type="VBoxContainer" parent="VBox"]
+layout_mode = 2

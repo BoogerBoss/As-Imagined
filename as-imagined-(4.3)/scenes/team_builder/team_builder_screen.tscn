@@ -1,0 +1,282 @@
+[gd_scene load_steps=3 format=3 uid="uid://teambuilderscreen"]
+
+[ext_resource type="Script" path="res://scenes/team_builder/team_builder_screen.gd" id="1_screen"]
+[ext_resource type="Theme" path="res://scenes/main_theme.tres" id="2_theme"]
+
+[node name="TeamBuilderScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_screen")
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatusLabel" type="Label" parent="Scroll/VBox"]
+layout_mode = 2
+text = "Enter a dex number and press Load Species to begin."
+autowrap_mode = 2
+
+[node name="SpeciesRow" type="HBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="SpeciesLineEdit" type="LineEdit" parent="Scroll/VBox/SpeciesRow"]
+layout_mode = 2
+placeholder_text = "Dex #"
+custom_minimum_size = Vector2(100, 0)
+
+[node name="LoadSpeciesButton" type="Button" parent="Scroll/VBox/SpeciesRow"]
+layout_mode = 2
+text = "Load Species"
+
+[node name="SpeciesInfoLabel" type="Label" parent="Scroll/VBox/SpeciesRow"]
+layout_mode = 2
+text = "(no species loaded)"
+
+[node name="LevelRow" type="HBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="LevelLabel" type="Label" parent="Scroll/VBox/LevelRow"]
+layout_mode = 2
+text = "Level:"
+
+[node name="LevelSpinBox" type="SpinBox" parent="Scroll/VBox/LevelRow"]
+layout_mode = 2
+min_value = 1
+max_value = 100
+value = 50
+
+[node name="AbilityRow" type="HBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="AbilityLabel" type="Label" parent="Scroll/VBox/AbilityRow"]
+layout_mode = 2
+text = "Ability:"
+
+[node name="AbilityOptionButton" type="OptionButton" parent="Scroll/VBox/AbilityRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(220, 0)
+
+[node name="NatureRow" type="HBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="NatureLabel" type="Label" parent="Scroll/VBox/NatureRow"]
+layout_mode = 2
+text = "Nature:"
+
+[node name="NatureOptionButton" type="OptionButton" parent="Scroll/VBox/NatureRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(160, 0)
+
+[node name="MovesSection" type="VBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="MovesLabel" type="Label" parent="Scroll/VBox/MovesSection"]
+layout_mode = 2
+text = "Moves (up to 4):"
+
+[node name="SelectedMovesList" type="VBoxContainer" parent="Scroll/VBox/MovesSection"]
+layout_mode = 2
+
+[node name="AddMoveRow" type="HBoxContainer" parent="Scroll/VBox/MovesSection"]
+layout_mode = 2
+
+[node name="AvailableMovesOptionButton" type="OptionButton" parent="Scroll/VBox/MovesSection/AddMoveRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(220, 0)
+
+[node name="AddMoveButton" type="Button" parent="Scroll/VBox/MovesSection/AddMoveRow"]
+layout_mode = 2
+text = "Add Move"
+
+[node name="EVSection" type="VBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="EVLabel" type="Label" parent="Scroll/VBox/EVSection"]
+layout_mode = 2
+text = "EVs (each 0-252, total 0-510):"
+
+[node name="EVRowHP" type="HBoxContainer" parent="Scroll/VBox/EVSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/EVSection/EVRowHP"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "HP:"
+
+[node name="SpinBox" type="SpinBox" parent="Scroll/VBox/EVSection/EVRowHP"]
+layout_mode = 2
+max_value = 252
+
+[node name="EVRowAtk" type="HBoxContainer" parent="Scroll/VBox/EVSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/EVSection/EVRowAtk"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "Attack:"
+
+[node name="SpinBox" type="SpinBox" parent="Scroll/VBox/EVSection/EVRowAtk"]
+layout_mode = 2
+max_value = 252
+
+[node name="EVRowDef" type="HBoxContainer" parent="Scroll/VBox/EVSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/EVSection/EVRowDef"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "Defense:"
+
+[node name="SpinBox" type="SpinBox" parent="Scroll/VBox/EVSection/EVRowDef"]
+layout_mode = 2
+max_value = 252
+
+[node name="EVRowSpAtk" type="HBoxContainer" parent="Scroll/VBox/EVSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/EVSection/EVRowSpAtk"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "Sp. Atk:"
+
+[node name="SpinBox" type="SpinBox" parent="Scroll/VBox/EVSection/EVRowSpAtk"]
+layout_mode = 2
+max_value = 252
+
+[node name="EVRowSpDef" type="HBoxContainer" parent="Scroll/VBox/EVSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/EVSection/EVRowSpDef"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "Sp. Def:"
+
+[node name="SpinBox" type="SpinBox" parent="Scroll/VBox/EVSection/EVRowSpDef"]
+layout_mode = 2
+max_value = 252
+
+[node name="EVRowSpeed" type="HBoxContainer" parent="Scroll/VBox/EVSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/EVSection/EVRowSpeed"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "Speed:"
+
+[node name="SpinBox" type="SpinBox" parent="Scroll/VBox/EVSection/EVRowSpeed"]
+layout_mode = 2
+max_value = 252
+
+[node name="EVTotalLabel" type="Label" parent="Scroll/VBox/EVSection"]
+layout_mode = 2
+text = "Total: 0 / 510"
+
+[node name="IVSection" type="VBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="IVLabel" type="Label" parent="Scroll/VBox/IVSection"]
+layout_mode = 2
+text = "IVs (each 0-31):"
+
+[node name="IVRowHP" type="HBoxContainer" parent="Scroll/VBox/IVSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/IVSection/IVRowHP"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "HP:"
+
+[node name="SpinBox" type="SpinBox" parent="Scroll/VBox/IVSection/IVRowHP"]
+layout_mode = 2
+max_value = 31
+value = 31
+
+[node name="IVRowAtk" type="HBoxContainer" parent="Scroll/VBox/IVSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/IVSection/IVRowAtk"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "Attack:"
+
+[node name="SpinBox" type="SpinBox" parent="Scroll/VBox/IVSection/IVRowAtk"]
+layout_mode = 2
+max_value = 31
+value = 31
+
+[node name="IVRowDef" type="HBoxContainer" parent="Scroll/VBox/IVSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/IVSection/IVRowDef"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "Defense:"
+
+[node name="SpinBox" type="SpinBox" parent="Scroll/VBox/IVSection/IVRowDef"]
+layout_mode = 2
+max_value = 31
+value = 31
+
+[node name="IVRowSpAtk" type="HBoxContainer" parent="Scroll/VBox/IVSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/IVSection/IVRowSpAtk"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "Sp. Atk:"
+
+[node name="SpinBox" type="SpinBox" parent="Scroll/VBox/IVSection/IVRowSpAtk"]
+layout_mode = 2
+max_value = 31
+value = 31
+
+[node name="IVRowSpDef" type="HBoxContainer" parent="Scroll/VBox/IVSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/IVSection/IVRowSpDef"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "Sp. Def:"
+
+[node name="SpinBox" type="SpinBox" parent="Scroll/VBox/IVSection/IVRowSpDef"]
+layout_mode = 2
+max_value = 31
+value = 31
+
+[node name="IVRowSpeed" type="HBoxContainer" parent="Scroll/VBox/IVSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/IVSection/IVRowSpeed"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "Speed:"
+
+[node name="SpinBox" type="SpinBox" parent="Scroll/VBox/IVSection/IVRowSpeed"]
+layout_mode = 2
+max_value = 31
+value = 31
+
+[node name="BuildButton" type="Button" parent="Scroll/VBox"]
+layout_mode = 2
+text = "Build Pokémon"
+
+[node name="ResultLabel" type="RichTextLabel" parent="Scroll/VBox"]
+custom_minimum_size = Vector2(500, 220)
+layout_mode = 2
+bbcode_enabled = false
+scroll_active = false
+fit_content = true

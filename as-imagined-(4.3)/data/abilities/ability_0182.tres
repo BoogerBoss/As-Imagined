@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+ability_id = 182
+ability_name = "Pixilate"
+description = "Normal-type moves become Fairy-type moves. The power of those moves is boosted a little."
+ai_rating = 8

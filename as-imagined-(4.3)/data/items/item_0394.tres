@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/item_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+item_id = 394
+item_name = "Thick Club"
+hold_effect = 47
+required_species = 104
+required_species2 = 105

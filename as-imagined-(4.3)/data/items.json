@@ -1,0 +1,7346 @@
+[
+  {
+    "id": 0,
+    "name": "????????",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 1,
+    "name": "Poké Ball",
+    "price": 200,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A tool used for\\ncatching wild\\nPokémon."
+  },
+  {
+    "id": 2,
+    "name": "Great Ball",
+    "price": 600,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A good Ball with a\\nhigher catch rate\\nthan a Poké Ball."
+  },
+  {
+    "id": 3,
+    "name": "Ultra Ball",
+    "price": 800,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A better Ball with\\na higher catch rate\\nthan a Great Ball."
+  },
+  {
+    "id": 4,
+    "name": "Master Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "The best Ball that\\ncatches a Pokémon\\nwithout fail."
+  },
+  {
+    "id": 5,
+    "name": "Premier Ball",
+    "price": 20,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A rare Ball made\\nin commemoration\\nof some event."
+  },
+  {
+    "id": 6,
+    "name": "Heal Ball",
+    "price": 300,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A remedial Ball\\nthat restores\\ncaught Pokémon."
+  },
+  {
+    "id": 7,
+    "name": "Net Ball",
+    "price": 1000,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Ball that works\\nwell on Water- and\\nBug-type Pokémon."
+  },
+  {
+    "id": 8,
+    "name": "Nest Ball",
+    "price": 1000,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Ball that works\\nbetter on weaker\\nPokémon."
+  },
+  {
+    "id": 9,
+    "name": "Dive Ball",
+    "price": 1000,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Ball that works\\nbetter on Pokémon\\non the ocean floor."
+  },
+  {
+    "id": 10,
+    "name": "Dusk Ball",
+    "price": 1000,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Works well if\\nused in a\\ndark place."
+  },
+  {
+    "id": 11,
+    "name": "Timer Ball",
+    "price": 1000,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Ball that gains\\npower in battles\\ntaking many turns."
+  },
+  {
+    "id": 12,
+    "name": "Quick Ball",
+    "price": 1000,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Works well if\\nused on the\\nfirst turn."
+  },
+  {
+    "id": 13,
+    "name": "Repeat Ball",
+    "price": 1000,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Ball that works\\nbetter on Pokémon\\ncaught before."
+  },
+  {
+    "id": 14,
+    "name": "Luxury Ball",
+    "price": 3000,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A cozy Ball that\\nmakes Pokémon\\nmore friendly."
+  },
+  {
+    "id": 15,
+    "name": "Level Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Ball that works\\nwell on lower\\nlevel Pokémon."
+  },
+  {
+    "id": 16,
+    "name": "Lure Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Ball that works\\nwell on fished\\nup Pokémon."
+  },
+  {
+    "id": 17,
+    "name": "Moon Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Ball that works\\nwell on Moon\\nStone users."
+  },
+  {
+    "id": 18,
+    "name": "Friend Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Ball that makes\\na Pokémon friendly\\nwhen caught."
+  },
+  {
+    "id": 19,
+    "name": "Love Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Works well on\\nPokémon of the\\nopposite gender."
+  },
+  {
+    "id": 20,
+    "name": "Fast Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Works well on\\nvery fast\\nPokémon."
+  },
+  {
+    "id": 21,
+    "name": "Heavy Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Works well on\\nvery heavy\\nPokémon."
+  },
+  {
+    "id": 22,
+    "name": "Dream Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Ball that works\\nwell on sleeping\\nPokémon."
+  },
+  {
+    "id": 23,
+    "name": "Safari Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A special Ball that\\nis used only in the\\nSafari Zone."
+  },
+  {
+    "id": 24,
+    "name": "Sport Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A special Ball\\nused in the Bug-\\nCatching Contest."
+  },
+  {
+    "id": 25,
+    "name": "Park Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A special Ball for\\nthe Pal Park."
+  },
+  {
+    "id": 26,
+    "name": "Beast Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Ball designed to\\ncatch Ultra Beasts."
+  },
+  {
+    "id": 27,
+    "name": "Cherish Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A rare Ball made\\nin commemoration\\nof some event."
+  },
+  {
+    "id": 28,
+    "name": "Potion",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 20,
+    "description": "Restores the HP of\\na Pokémon by\\n20 points."
+  },
+  {
+    "id": 29,
+    "name": "Super Potion",
+    "price": 700,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 60,
+    "description": "Restores the HP of\\na Pokémon by\\n60 points."
+  },
+  {
+    "id": 30,
+    "name": "Hyper Potion",
+    "price": 1500,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 120,
+    "description": "Restores the HP of\\na Pokémon by\\n120 points."
+  },
+  {
+    "id": 31,
+    "name": "Max Potion",
+    "price": 2500,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 255,
+    "description": "Fully restores the\\nHP of a Pokémon."
+  },
+  {
+    "id": 32,
+    "name": "Full Restore",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 255,
+    "description": "Fully restores the\\nHP and status of a\\nPokémon."
+  },
+  {
+    "id": 33,
+    "name": "Revive",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Revives a fainted\\nPokémon with half\\nits HP."
+  },
+  {
+    "id": 34,
+    "name": "Max Revive",
+    "price": 4000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Revives a fainted\\nPokémon with all\\nits HP."
+  },
+  {
+    "id": 35,
+    "name": "Fresh Water",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 30,
+    "description": "A mineral water\\nthat restores HP\\nby 30 points."
+  },
+  {
+    "id": 36,
+    "name": "Soda Pop",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 50,
+    "description": "A fizzy soda drink\\nthat restores HP\\nby 50 points."
+  },
+  {
+    "id": 37,
+    "name": "Lemonade",
+    "price": 400,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 70,
+    "description": "A very sweet drink\\nthat restores HP\\nby 70 points."
+  },
+  {
+    "id": 38,
+    "name": "Moomoo Milk",
+    "price": 600,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 100,
+    "description": "A nutritious milk\\nthat restores HP\\nby 100 points."
+  },
+  {
+    "id": 39,
+    "name": "Energy Powder",
+    "price": 500,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A bitter powder\\nthat restores HP\\nby 60 points."
+  },
+  {
+    "id": 40,
+    "name": "Energy Root",
+    "price": 1200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A bitter root\\nthat restores HP\\nby 120 points."
+  },
+  {
+    "id": 41,
+    "name": "Heal Powder",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A bitter powder\\nthat heals all\\nstatus problems."
+  },
+  {
+    "id": 42,
+    "name": "Revival Herb",
+    "price": 2800,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A very bitter herb\\nthat revives a\\nfainted Pokémon."
+  },
+  {
+    "id": 43,
+    "name": "Antidote",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Heals a poisoned\\nPokémon."
+  },
+  {
+    "id": 44,
+    "name": "Paralyze Heal",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Heals a paralyzed\\nPokémon."
+  },
+  {
+    "id": 45,
+    "name": "Burn Heal",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Heals Pokémon\\nof a burn."
+  },
+  {
+    "id": 46,
+    "name": "Ice Heal",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Defrosts a frozen\\nPokémon."
+  },
+  {
+    "id": 47,
+    "name": "Awakening",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Awakens a sleeping\\nPokémon."
+  },
+  {
+    "id": 48,
+    "name": "Full Heal",
+    "price": 400,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Heals all the\\nstatus problems of\\none Pokémon."
+  },
+  {
+    "id": 49,
+    "name": "Ether",
+    "price": 1200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 10,
+    "description": "Restores the PP\\nof a selected move\\nby 10."
+  },
+  {
+    "id": 50,
+    "name": "Max Ether",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 255,
+    "description": "Fully restores the\\nPP of a selected\\nmove."
+  },
+  {
+    "id": 51,
+    "name": "Elixir",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 10,
+    "description": "Restores the PP\\nof all moves by 10."
+  },
+  {
+    "id": 52,
+    "name": "Max Elixir",
+    "price": 4500,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 255,
+    "description": "Fully restores the\\nPP of a Pokémon's\\nmoves."
+  },
+  {
+    "id": 53,
+    "name": "Berry Juice",
+    "price": 100,
+    "pocket": "items",
+    "hold_effect": 1,
+    "hold_effect_param": 20,
+    "description": "A 100% pure juice\\nthat restores HP\\nby 20 points."
+  },
+  {
+    "id": 54,
+    "name": "Sacred Ash",
+    "price": 50000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Fully revives and\\nrestores all\\nfainted Pokémon."
+  },
+  {
+    "id": 55,
+    "name": "Sweet Heart",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 20,
+    "description": "A sweet chocolate\\nthat restores HP\\nby 20 points."
+  },
+  {
+    "id": 56,
+    "name": "Max Honey",
+    "price": 8000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Revives a fainted\\nPokémon with all\\nits HP."
+  },
+  {
+    "id": 57,
+    "name": "Pewter Crunchies",
+    "price": 250,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Heals all the\\nstatus problems of\\none Pokémon."
+  },
+  {
+    "id": 58,
+    "name": "Rage Candy Bar",
+    "price": 350,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Heals all the\\nstatus problems of\\none Pokémon."
+  },
+  {
+    "id": 59,
+    "name": "Lava Cookie",
+    "price": 350,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A local specialty\\nthat heals all\\nstatus problems."
+  },
+  {
+    "id": 60,
+    "name": "Old Gateau",
+    "price": 350,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Heals all the\\nstatus problems of\\none Pokémon."
+  },
+  {
+    "id": 61,
+    "name": "Casteliacone",
+    "price": 350,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Heals all the\\nstatus problems of\\none Pokémon."
+  },
+  {
+    "id": 62,
+    "name": "Lumiose Galette",
+    "price": 350,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Heals all the\\nstatus problems of\\none Pokémon."
+  },
+  {
+    "id": 63,
+    "name": "Shalour Sable",
+    "price": 350,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Heals all the\\nstatus problems of\\none Pokémon."
+  },
+  {
+    "id": 64,
+    "name": "Big Malasada",
+    "price": 350,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Heals all the\\nstatus problems of\\none Pokémon."
+  },
+  {
+    "id": 65,
+    "name": "HP Up",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises the base HP\\nof one Pokémon."
+  },
+  {
+    "id": 66,
+    "name": "Protein",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises the base\\nAttack stat of one\\nPokémon."
+  },
+  {
+    "id": 67,
+    "name": "Iron",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises the base\\nDefense stat of\\none Pokémon."
+  },
+  {
+    "id": 68,
+    "name": "Calcium",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises the base\\nSp. Atk stat of one\\nPokémon."
+  },
+  {
+    "id": 69,
+    "name": "Zinc",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises the base\\nSp. Def stat of one\\nPokémon."
+  },
+  {
+    "id": 70,
+    "name": "Carbos",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises the base\\nSpeed stat of one\\nPokémon."
+  },
+  {
+    "id": 71,
+    "name": "PP Up",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises the maximum\\nPP of a selected\\nmove."
+  },
+  {
+    "id": 72,
+    "name": "PP Max",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises the PP of a\\nmove to its maximum\\npoints."
+  },
+  {
+    "id": 73,
+    "name": "Health Feather",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that raises\\nthe base HP of\\na Pokémon."
+  },
+  {
+    "id": 74,
+    "name": "Muscle Feather",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that raises\\nthe base Attack of\\na Pokémon."
+  },
+  {
+    "id": 75,
+    "name": "Resist Feather",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that raises\\nthe base Defense\\nof a Pokémon."
+  },
+  {
+    "id": 76,
+    "name": "Genius Feather",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that raises\\nthe base Sp. Atk.\\nof a Pokémon."
+  },
+  {
+    "id": 77,
+    "name": "Clever Feather",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that raises\\nthe base Sp. Def.\\nof a Pokémon."
+  },
+  {
+    "id": 78,
+    "name": "Swift Feather",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that raises\\nthe base Speed of\\na Pokémon."
+  },
+  {
+    "id": 79,
+    "name": "Ability Capsule",
+    "price": 100000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Switches a Poké-\\nmon's ability."
+  },
+  {
+    "id": 80,
+    "name": "Ability Patch",
+    "price": 250000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Turns the ability\\nof a Pokémon into\\na rare ability."
+  },
+  {
+    "id": 81,
+    "name": "Lonely Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Attack, but\\nreduces Defense."
+  },
+  {
+    "id": 82,
+    "name": "Adamant Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Attack, but\\nreduces Sp. Atk."
+  },
+  {
+    "id": 83,
+    "name": "Naughty Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Attack, but\\nreduces Sp. Def."
+  },
+  {
+    "id": 84,
+    "name": "Brave Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Attack, but\\nreduces Speed."
+  },
+  {
+    "id": 85,
+    "name": "Bold Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Defense, but\\nreduces Attack."
+  },
+  {
+    "id": 86,
+    "name": "Impish Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Defense, but\\nreduces Sp. Atk."
+  },
+  {
+    "id": 87,
+    "name": "Lax Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Defense, but\\nreduces Sp. Def."
+  },
+  {
+    "id": 88,
+    "name": "Relaxed Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Defense, but\\nreduces Speed."
+  },
+  {
+    "id": 89,
+    "name": "Modest Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Sp. Atk, but\\nreduces Attack."
+  },
+  {
+    "id": 90,
+    "name": "Mild Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Sp. Atk, but\\nreduces Defense."
+  },
+  {
+    "id": 91,
+    "name": "Rash Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Sp. Atk, but\\nreduces Sp. Def."
+  },
+  {
+    "id": 92,
+    "name": "Quiet Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Sp. Atk, but\\nreduces Speed."
+  },
+  {
+    "id": 93,
+    "name": "Calm Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Sp. Def, but\\nreduces Attack."
+  },
+  {
+    "id": 94,
+    "name": "Gentle Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Sp. Def, but\\nreduces Defense."
+  },
+  {
+    "id": 95,
+    "name": "Careful Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Sp. Def, but\\nreduces Sp. Atk."
+  },
+  {
+    "id": 96,
+    "name": "Sassy Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Sp. Def, but\\nreduces Speed."
+  },
+  {
+    "id": 97,
+    "name": "Timid Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Speed, but\\nreduces Attack."
+  },
+  {
+    "id": 98,
+    "name": "Hasty Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Speed, but\\nreduces Defense."
+  },
+  {
+    "id": 99,
+    "name": "Jolly Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Speed, but\\nreduces Sp. Atk."
+  },
+  {
+    "id": 100,
+    "name": "Naive Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nups Speed, but\\nreduces Sp. Def."
+  },
+  {
+    "id": 101,
+    "name": "Serious Mint",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be smelled. It\\nmakes each stat\\ngrow equally."
+  },
+  {
+    "id": 102,
+    "name": "Rare Candy",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises the level\\nof a Pokémon by\\none."
+  },
+  {
+    "id": 103,
+    "name": "Exp. Candy XS",
+    "price": 20,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Gives a very small\\namount of Exp. to\\na single Pokémon."
+  },
+  {
+    "id": 104,
+    "name": "Exp. Candy S",
+    "price": 240,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Gives a small\\namount of Exp. to\\na single Pokémon."
+  },
+  {
+    "id": 105,
+    "name": "Exp. Candy M",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Gives a moderate\\namount of Exp. to\\na single Pokémon."
+  },
+  {
+    "id": 106,
+    "name": "Exp. Candy L",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Gives a large\\namount of Exp. to\\na single Pokémon."
+  },
+  {
+    "id": 107,
+    "name": "Exp. Candy XL",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Gives a very large\\namount of Exp. to\\na single Pokémon."
+  },
+  {
+    "id": 108,
+    "name": "Dynamax Candy",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises the Dynamax\\nLevel of a single\\nPokémon by one."
+  },
+  {
+    "id": 109,
+    "name": "Blue Flute",
+    "price": 20,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A glass flute that\\nawakens sleeping\\nPokémon."
+  },
+  {
+    "id": 110,
+    "name": "Yellow Flute",
+    "price": 20,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A glass flute that\\nsnaps Pokémon\\nout of confusion."
+  },
+  {
+    "id": 111,
+    "name": "Red Flute",
+    "price": 20,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A glass flute that\\nsnaps Pokémon\\nout of attraction."
+  },
+  {
+    "id": 112,
+    "name": "Black Flute",
+    "price": 20,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 50,
+    "description": "A glass flute that\\nkeeps away wild\\nPokémon."
+  },
+  {
+    "id": 113,
+    "name": "White Flute",
+    "price": 20,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 150,
+    "description": "A glass flute that\\nlures wild Pokémon."
+  },
+  {
+    "id": 114,
+    "name": "Repel",
+    "price": 400,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 100,
+    "description": "Repels weak wild\\nPokémon for 100\\nsteps."
+  },
+  {
+    "id": 115,
+    "name": "Super Repel",
+    "price": 700,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 200,
+    "description": "Repels weak wild\\nPokémon for 200\\nsteps."
+  },
+  {
+    "id": 116,
+    "name": "Max Repel",
+    "price": 900,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 250,
+    "description": "Repels weak wild\\nPokémon for 250\\nsteps."
+  },
+  {
+    "id": 117,
+    "name": "Lure",
+    "price": 400,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 100,
+    "description": "Makes Pokémon more\\nlikely to appear\\nfor 100 steps."
+  },
+  {
+    "id": 118,
+    "name": "Super Lure",
+    "price": 700,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 200,
+    "description": "Makes Pokémon more\\nlikely to appear\\nfor 200 steps."
+  },
+  {
+    "id": 119,
+    "name": "Max Lure",
+    "price": 900,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 250,
+    "description": "Makes Pokémon more\\nlikely to appear\\nfor 250 steps."
+  },
+  {
+    "id": 120,
+    "name": "Escape Rope",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Use to escape\\ninstantly from a\\ncave or a dungeon."
+  },
+  {
+    "id": 121,
+    "name": "X Attack",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Sharply raises stat\\nAttack during\\none battle."
+  },
+  {
+    "id": 122,
+    "name": "X Defense",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Sharply raises stat\\nDefense during\\none battle."
+  },
+  {
+    "id": 123,
+    "name": "X Sp. Atk",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Sharply raises stat\\nSp. Atk during\\none battle."
+  },
+  {
+    "id": 124,
+    "name": "X Sp. Def",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Sharply raises stat\\nSp. Def during\\none battle."
+  },
+  {
+    "id": 125,
+    "name": "X Speed",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Sharply raises stat\\nSpeed during\\none battle."
+  },
+  {
+    "id": 126,
+    "name": "X Accuracy",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Sharply raises move\\naccuracy during\\none battle."
+  },
+  {
+    "id": 127,
+    "name": "Dire Hit",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises the\\ncritical-hit ratio\\nduring one battle."
+  },
+  {
+    "id": 128,
+    "name": "Guard Spec.",
+    "price": 1500,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Prevents stat\\nreduction when\\nused in battle."
+  },
+  {
+    "id": 129,
+    "name": "Poké Doll",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Use to flee from\\nany battle with\\na wild Pokémon."
+  },
+  {
+    "id": 130,
+    "name": "Fluffy Tail",
+    "price": 100,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Use to flee from\\nany battle with\\na wild Pokémon."
+  },
+  {
+    "id": 131,
+    "name": "Poké Toy",
+    "price": 100,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Use to flee from\\nany battle with\\na wild Pokémon."
+  },
+  {
+    "id": 132,
+    "name": "Max Mushrooms",
+    "price": 8000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises every stat\\nduring one battle\\nby one stage."
+  },
+  {
+    "id": 133,
+    "name": "Bottle Cap",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A beautiful bottle\\ncap that gives off\\na silver gleam."
+  },
+  {
+    "id": 134,
+    "name": "Gold Bottle Cap",
+    "price": 60000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A beautiful bottle\\ncap that gives off\\na golden gleam."
+  },
+  {
+    "id": 135,
+    "name": "Nugget",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A nugget of pure\\ngold. Can be sold at\\na high price."
+  },
+  {
+    "id": 136,
+    "name": "Big Nugget",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A big nugget made\\nof gold, sellable\\nat a high price."
+  },
+  {
+    "id": 137,
+    "name": "Tiny Mushroom",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A plain mushroom\\nthat would sell\\nat a cheap price."
+  },
+  {
+    "id": 138,
+    "name": "Big Mushroom",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A rare mushroom\\nthat would sell at a\\nhigh price."
+  },
+  {
+    "id": 139,
+    "name": "Balm Mushroom",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A rare mushroom\\nthat would sell at a\\nhigh price."
+  },
+  {
+    "id": 140,
+    "name": "Pearl",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A pretty pearl\\nthat would sell at a\\ncheap price."
+  },
+  {
+    "id": 141,
+    "name": "Big Pearl",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A lovely large pearl\\nthat would sell at a\\nhigh price."
+  },
+  {
+    "id": 142,
+    "name": "Pearl String",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Very large pearls\\nthat would sell at a\\nhigh price."
+  },
+  {
+    "id": 143,
+    "name": "Stardust",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Beautiful red sand.\\nCan be sold at a\\nhigh price."
+  },
+  {
+    "id": 144,
+    "name": "Star Piece",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A red gem shard.\\nIt would sell for a\\nvery high price."
+  },
+  {
+    "id": 145,
+    "name": "Comet Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A comet's shard.\\nIt would sell for a\\nhigh price."
+  },
+  {
+    "id": 146,
+    "name": "Shoal Salt",
+    "price": 20,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Salt obtained from\\ndeep inside the\\nShoal Cave."
+  },
+  {
+    "id": 147,
+    "name": "Shoal Shell",
+    "price": 20,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A seashell found\\ndeep inside the\\nShoal Cave."
+  },
+  {
+    "id": 148,
+    "name": "Red Shard",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A shard from an\\nancient item. Can\\nbe sold cheaply."
+  },
+  {
+    "id": 149,
+    "name": "Blue Shard",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A shard from an\\nancient item. Can\\nbe sold cheaply."
+  },
+  {
+    "id": 150,
+    "name": "Yellow Shard",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A shard from an\\nancient item. Can\\nbe sold cheaply."
+  },
+  {
+    "id": 151,
+    "name": "Green Shard",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A shard from an\\nancient item. Can\\nbe sold cheaply."
+  },
+  {
+    "id": 152,
+    "name": "Heart Scale",
+    "price": 100,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A lovely scale.\\nIt is coveted by\\ncollectors."
+  },
+  {
+    "id": 153,
+    "name": "Honey",
+    "price": 900,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Sweet honey that\\nattracts wild\\nPokémon when used."
+  },
+  {
+    "id": 154,
+    "name": "Rare Bone",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A very rare bone.\\nIt can be sold at\\na high price."
+  },
+  {
+    "id": 155,
+    "name": "Odd Keystone",
+    "price": 2100,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Voices can be heard\\nfrom this odd stone\\noccasionally."
+  },
+  {
+    "id": 156,
+    "name": "Pretty Feather",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A beautiful yet\\nplain feather that\\ndoes nothing."
+  },
+  {
+    "id": 157,
+    "name": "Relic Copper",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A copper coin used\\nlong ago. It sells\\nat a high price."
+  },
+  {
+    "id": 158,
+    "name": "Relic Silver",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A silver coin used\\nlong ago. It sells\\nat a high price."
+  },
+  {
+    "id": 159,
+    "name": "Relic Gold",
+    "price": 60000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A gold coin used\\nlong ago. It sells\\nat a high price."
+  },
+  {
+    "id": 160,
+    "name": "Relic Vase",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A vase made long\\nago. It sells at\\na high price."
+  },
+  {
+    "id": 161,
+    "name": "Relic Band",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An old bracelet.\\nIt sells at a\\nhigh price."
+  },
+  {
+    "id": 162,
+    "name": "Relic Statue",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An old statue.\\nIt sells at a\\nhigh price."
+  },
+  {
+    "id": 163,
+    "name": "Relic Crown",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An old crown.\\nIt sells at a\\nhigh price."
+  },
+  {
+    "id": 164,
+    "name": "Strange Souvenir",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An ornament that\\ndepicts a Pokémon\\nfrom Alola."
+  },
+  {
+    "id": 165,
+    "name": "Helix Fossil",
+    "price": 7000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A piece of an\\nancient marine\\nPokémon's seashell."
+  },
+  {
+    "id": 166,
+    "name": "Dome Fossil",
+    "price": 7000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A piece of an\\nancient marine\\nPokémon's shell."
+  },
+  {
+    "id": 167,
+    "name": "Old Amber",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A stone containing\\nthe genes of an\\nancient Pokémon."
+  },
+  {
+    "id": 168,
+    "name": "Root Fossil",
+    "price": 7000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fossil of an\\nancient, seafloor-\\ndwelling Pokémon."
+  },
+  {
+    "id": 169,
+    "name": "Claw Fossil",
+    "price": 7000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fossil of an\\nancient, seafloor-\\ndwelling Pokémon."
+  },
+  {
+    "id": 170,
+    "name": "Armor Fossil",
+    "price": 7000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A piece of a\\nprehistoric Poké-\\nmon's head."
+  },
+  {
+    "id": 171,
+    "name": "Skull Fossil",
+    "price": 7000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A piece of a\\nprehistoric Poké-\\nmon's collar."
+  },
+  {
+    "id": 172,
+    "name": "Cover Fossil",
+    "price": 7000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A piece of a\\nprehistoric Poké-\\nmon's back."
+  },
+  {
+    "id": 173,
+    "name": "Plume Fossil",
+    "price": 7000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A piece of a\\nprehistoric Poké-\\nmon's wing."
+  },
+  {
+    "id": 174,
+    "name": "Jaw Fossil",
+    "price": 7000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A piece of a\\nprehistoric Poké-\\nmon's large jaw."
+  },
+  {
+    "id": 175,
+    "name": "Sail Fossil",
+    "price": 7000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A piece of a\\nprehistoric Poké-\\nmon's skin sail."
+  },
+  {
+    "id": 176,
+    "name": "Fossilized Bird",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fossil of an\\nancient, sky-\\nsoaring Pokémon."
+  },
+  {
+    "id": 177,
+    "name": "Fossilized Fish",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fossil of an\\nancient, sea-\\ndwelling Pokémon."
+  },
+  {
+    "id": 178,
+    "name": "Fossilized Drake",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fossil of an\\nancient, land-\\nroaming Pokémon."
+  },
+  {
+    "id": 179,
+    "name": "Fossilized Dino",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fossil of an\\nancient, sea-\\ndwelling Pokémon."
+  },
+  {
+    "id": 180,
+    "name": "Growth Mulch",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fertilizer that\\naccelerates the\\ngrowth of Berries."
+  },
+  {
+    "id": 181,
+    "name": "Damp Mulch",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fertilizer that\\ndecelerates the\\ngrowth of Berries."
+  },
+  {
+    "id": 182,
+    "name": "Stable Mulch",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fertilizer that\\nups the life time\\nof Berry trees."
+  },
+  {
+    "id": 183,
+    "name": "Gooey Mulch",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fertilizer that\\nmakes more Berries\\nregrow after fall."
+  },
+  {
+    "id": 184,
+    "name": "Rich Mulch",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fertilizer that\\nups the number of\\nBerries harvested."
+  },
+  {
+    "id": 185,
+    "name": "Surprise Mulch",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fertilizer that\\nups the chance of\\nBerry mutations."
+  },
+  {
+    "id": 186,
+    "name": "Boost Mulch",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fertilizer that\\nups the dry speed\\nof soft soil."
+  },
+  {
+    "id": 187,
+    "name": "Amaze Mulch",
+    "price": 200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A fertilizer Rich\\nSurprising and\\nBoosting as well."
+  },
+  {
+    "id": 188,
+    "name": "Red Apricorn",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A red apricorn.\\nIt assails your\\nnostrils."
+  },
+  {
+    "id": 189,
+    "name": "Blue Apricorn",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A blue apricorn.\\nIt smells a bit\\nlike grass."
+  },
+  {
+    "id": 190,
+    "name": "Yellow Apricorn",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A yellow apricorn.\\nIt has an invigor-\\nating scent."
+  },
+  {
+    "id": 191,
+    "name": "Green Apricorn",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A green apricorn.\\nIt has a strange,\\naromatic scent."
+  },
+  {
+    "id": 192,
+    "name": "Pink Apricorn",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A pink apricorn.\\nIt has a nice,\\nsweet scent."
+  },
+  {
+    "id": 193,
+    "name": "White Apricorn",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A white apricorn.\\nIt doesn't smell\\nlike anything."
+  },
+  {
+    "id": 194,
+    "name": "Black Apricorn",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A black apricorn.\\nIt has an inde-\\nscribable scent."
+  },
+  {
+    "id": 195,
+    "name": "Wishing Piece",
+    "price": 20,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Throw into a\\n{PKMN} Den to attract\\nDynamax Pokémon."
+  },
+  {
+    "id": 196,
+    "name": "Galarica Twig",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A twig from a tree\\nin Galar called\\nGalarica."
+  },
+  {
+    "id": 197,
+    "name": "Armorite Ore",
+    "price": 20,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A rare ore. Can be\\nfound in the Isle\\nof Armor at Galar."
+  },
+  {
+    "id": 198,
+    "name": "Dynite Ore",
+    "price": 20,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A mysterious ore.\\nIt can be found in\\nGalar's Max Lair."
+  },
+  {
+    "id": 199,
+    "name": "Orange Mail",
+    "price": 50,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Zigzagoon-print\\nMail to be held by\\na Pokémon."
+  },
+  {
+    "id": 200,
+    "name": "Harbor Mail",
+    "price": 50,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Wingull-print\\nMail to be held by\\na Pokémon."
+  },
+  {
+    "id": 201,
+    "name": "Glitter Mail",
+    "price": 50,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Pikachu-print\\nMail to be held by\\na Pokémon."
+  },
+  {
+    "id": 202,
+    "name": "Mech Mail",
+    "price": 50,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Magnemite-print\\nMail to be held by\\na Pokémon."
+  },
+  {
+    "id": 203,
+    "name": "Wood Mail",
+    "price": 50,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Slakoth-print\\nMail to be held by\\na Pokémon."
+  },
+  {
+    "id": 204,
+    "name": "Wave Mail",
+    "price": 50,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Wailmer-print\\nMail to be held by\\na Pokémon."
+  },
+  {
+    "id": 205,
+    "name": "Bead Mail",
+    "price": 50,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Mail featuring a\\nsketch of the\\nholding Pokémon."
+  },
+  {
+    "id": 206,
+    "name": "Shadow Mail",
+    "price": 50,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Duskull-print\\nMail to be held by\\na Pokémon."
+  },
+  {
+    "id": 207,
+    "name": "Tropic Mail",
+    "price": 50,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A Bellossom-print\\nMail to be held by\\na Pokémon."
+  },
+  {
+    "id": 208,
+    "name": "Dream Mail",
+    "price": 50,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Mail featuring a\\nsketch of the\\nholding Pokémon."
+  },
+  {
+    "id": 209,
+    "name": "Fab Mail",
+    "price": 50,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A gorgeous-print\\nMail to be held\\nby a Pokémon."
+  },
+  {
+    "id": 210,
+    "name": "Retro Mail",
+    "price": 50,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Mail featuring the\\ndrawings of three\\nPokémon."
+  },
+  {
+    "id": 211,
+    "name": "Fire Stone",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes certain\\nspecies of Pokémon\\nevolve."
+  },
+  {
+    "id": 212,
+    "name": "Water Stone",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes certain\\nspecies of Pokémon\\nevolve."
+  },
+  {
+    "id": 213,
+    "name": "Thunder Stone",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes certain\\nspecies of Pokémon\\nevolve."
+  },
+  {
+    "id": 214,
+    "name": "Leaf Stone",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes certain\\nspecies of Pokémon\\nevolve."
+  },
+  {
+    "id": 215,
+    "name": "Ice Stone",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes certain\\nspecies of Pokémon\\nevolve."
+  },
+  {
+    "id": 216,
+    "name": "Sun Stone",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes certain\\nspecies of Pokémon\\nevolve."
+  },
+  {
+    "id": 217,
+    "name": "Moon Stone",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes certain\\nspecies of Pokémon\\nevolve."
+  },
+  {
+    "id": 218,
+    "name": "Shiny Stone",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes certain\\nspecies of Pokémon\\nevolve."
+  },
+  {
+    "id": 219,
+    "name": "Dusk Stone",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes certain\\nspecies of Pokémon\\nevolve."
+  },
+  {
+    "id": 220,
+    "name": "Dawn Stone",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes certain\\nspecies of Pokémon\\nevolve."
+  },
+  {
+    "id": 221,
+    "name": "Sweet Apple",
+    "price": 2200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A very sweet apple\\nthat makes certain\\nPokémon evolve."
+  },
+  {
+    "id": 222,
+    "name": "Tart Apple",
+    "price": 2200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A very tart apple\\nthat makes certain\\nPokémon evolve."
+  },
+  {
+    "id": 223,
+    "name": "Cracked Pot",
+    "price": 1600,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A cracked teapot\\nthat makes certain\\nPokémon evolve."
+  },
+  {
+    "id": 224,
+    "name": "Chipped Pot",
+    "price": 38000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A chipped teapot\\nthat makes certain\\nPokémon evolve."
+  },
+  {
+    "id": 225,
+    "name": "Galarica Cuff",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A cuff from Galar\\nthat makes certain\\nPokémon evolve."
+  },
+  {
+    "id": 226,
+    "name": "Galarica Wreath",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A wreath made in\\nGalar. Makes some\\nPokémon evolve."
+  },
+  {
+    "id": 227,
+    "name": "Dragon Scale",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 10,
+    "description": "A strange scale\\nheld by Dragon-\\ntype Pokémon."
+  },
+  {
+    "id": 228,
+    "name": "Upgrade",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A peculiar box made\\nby Silph Co."
+  },
+  {
+    "id": 229,
+    "name": "Protector",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Loved by a certain\\nPokémon. It's stiff\\nand heavy."
+  },
+  {
+    "id": 230,
+    "name": "Electirizer",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Loved by a certain\\nPokémon. It's full\\nof electric energy."
+  },
+  {
+    "id": 231,
+    "name": "Magmarizer",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Loved by a certain\\nPokémon. It's full\\nof magma energy."
+  },
+  {
+    "id": 232,
+    "name": "Dubious Disc",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A clear device\\noverflowing with\\ndubious data."
+  },
+  {
+    "id": 233,
+    "name": "Reaper Cloth",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Loved by a certain\\nPokémon. Imbued\\nwith spirit energy."
+  },
+  {
+    "id": 234,
+    "name": "Prism Scale",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A mysterious scale\\nthat evolves a\\ncertain Pokémon."
+  },
+  {
+    "id": 235,
+    "name": "Whipped Dream",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A soft and sweet\\ntreat loved by\\na certain Pokémon."
+  },
+  {
+    "id": 236,
+    "name": "Sachet",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A sachet of strong\\nperfumes, loved by\\na certain Pokémon."
+  },
+  {
+    "id": 237,
+    "name": "Oval Stone",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Peculiar stone\\nthat evolves a\\ncertain Pokémon."
+  },
+  {
+    "id": 238,
+    "name": "Strawberry Sweet",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Strawberry-shaped\\nsweet loved by\\nMilcery."
+  },
+  {
+    "id": 239,
+    "name": "Love Sweet",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A heart-shaped\\nsweet loved by\\nMilcery."
+  },
+  {
+    "id": 240,
+    "name": "Berry Sweet",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A berry-shaped\\nsweet loved by\\nMilcery."
+  },
+  {
+    "id": 241,
+    "name": "Clover Sweet",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A clover-shaped\\nsweet loved by\\nMilcery."
+  },
+  {
+    "id": 242,
+    "name": "Flower Sweet",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A flower-shaped\\nsweet loved by\\nMilcery."
+  },
+  {
+    "id": 243,
+    "name": "Star Sweet",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A star-shaped\\nsweet loved by\\nMilcery."
+  },
+  {
+    "id": 244,
+    "name": "Ribbon Sweet",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A ribbon-shaped\\nsweet loved by\\nMilcery."
+  },
+  {
+    "id": 245,
+    "name": "Everstone",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 37,
+    "hold_effect_param": 0,
+    "description": "A wondrous hold\\nitem that prevents\\nevolution."
+  },
+  {
+    "id": 246,
+    "name": "Red Nectar",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Flower nectar that\\nchanges the form\\nof certain Pokémon."
+  },
+  {
+    "id": 247,
+    "name": "Yellow Nectar",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Flower nectar that\\nchanges the form\\nof certain Pokémon."
+  },
+  {
+    "id": 248,
+    "name": "Pink Nectar",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Flower nectar that\\nchanges the form\\nof certain Pokémon."
+  },
+  {
+    "id": 249,
+    "name": "Purple Nectar",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Flower nectar that\\nchanges the form\\nof certain Pokémon."
+  },
+  {
+    "id": 250,
+    "name": "Flame Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nFire-type moves."
+  },
+  {
+    "id": 251,
+    "name": "Splash Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nWater-type moves."
+  },
+  {
+    "id": 252,
+    "name": "Zap Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of Elec-\\ntric-type moves."
+  },
+  {
+    "id": 253,
+    "name": "Meadow Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nGrass-type moves."
+  },
+  {
+    "id": 254,
+    "name": "Icicle Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nIce-type moves."
+  },
+  {
+    "id": 255,
+    "name": "Fist Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of Fight-\\ning-type moves."
+  },
+  {
+    "id": 256,
+    "name": "Toxic Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nPoison-type moves."
+  },
+  {
+    "id": 257,
+    "name": "Earth Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nGround-type moves."
+  },
+  {
+    "id": 258,
+    "name": "Sky Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nFlying-type moves."
+  },
+  {
+    "id": 259,
+    "name": "Mind Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of Psy\\nchic-type moves."
+  },
+  {
+    "id": 260,
+    "name": "Insect Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nBug-type moves."
+  },
+  {
+    "id": 261,
+    "name": "Stone Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nRock-type moves."
+  },
+  {
+    "id": 262,
+    "name": "Spooky Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nGhost-type moves."
+  },
+  {
+    "id": 263,
+    "name": "Draco Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nDragon-type moves."
+  },
+  {
+    "id": 264,
+    "name": "Dread Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nDark-type moves."
+  },
+  {
+    "id": 265,
+    "name": "Iron Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nSteel-type moves."
+  },
+  {
+    "id": 266,
+    "name": "Pixie Plate",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 89,
+    "hold_effect_param": 20,
+    "description": "A tablet that ups\\nthe power of\\nFairy-type moves."
+  },
+  {
+    "id": 267,
+    "name": "Douse Drive",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 93,
+    "hold_effect_param": 0,
+    "description": "Changes Genesect's\\nTechno Blast to\\nWater-type."
+  },
+  {
+    "id": 268,
+    "name": "Shock Drive",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 93,
+    "hold_effect_param": 0,
+    "description": "Changes Genesect's\\nTechno Blast to\\nElectric-type."
+  },
+  {
+    "id": 269,
+    "name": "Burn Drive",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 93,
+    "hold_effect_param": 0,
+    "description": "Changes Genesect's\\nTechno Blast to\\nFire-type."
+  },
+  {
+    "id": 270,
+    "name": "Chill Drive",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 93,
+    "hold_effect_param": 0,
+    "description": "Changes Genesect's\\nTechno Blast to\\nIce-type."
+  },
+  {
+    "id": 271,
+    "name": "Fire Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Fire\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 272,
+    "name": "Water Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Water\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 273,
+    "name": "Electric Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Electric\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 274,
+    "name": "Grass Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Grass\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 275,
+    "name": "Ice Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Ice\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 276,
+    "name": "Fighting Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "Disc with Fighting\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 277,
+    "name": "Poison Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Poison\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 278,
+    "name": "Ground Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Ground\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 279,
+    "name": "Flying Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Flying\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 280,
+    "name": "Psychic Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Psychic\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 281,
+    "name": "Bug Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Bug\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 282,
+    "name": "Rock Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Rock\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 283,
+    "name": "Ghost Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Ghost\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 284,
+    "name": "Dragon Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Dragon\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 285,
+    "name": "Dark Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Dark\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 286,
+    "name": "Steel Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Steel\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 287,
+    "name": "Fairy Memory",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 113,
+    "hold_effect_param": 0,
+    "description": "A disc with Fairy\\ntype data. It swaps\\nSilvally's type."
+  },
+  {
+    "id": 288,
+    "name": "Rusted Sword",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A rusty sword. A\\nhero used it to\\nhalt a disaster."
+  },
+  {
+    "id": 289,
+    "name": "Rusted Shield",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A rusty shield. A\\nhero used it to\\nhalt a disaster."
+  },
+  {
+    "id": 290,
+    "name": "Red Orb",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 108,
+    "hold_effect_param": 0,
+    "description": "A red, glowing orb\\nsaid to contain an\\nancient power."
+  },
+  {
+    "id": 291,
+    "name": "Blue Orb",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 108,
+    "hold_effect_param": 0,
+    "description": "A blue, glowing orb\\nsaid to contain an\\nancient power."
+  },
+  {
+    "id": 292,
+    "name": "Venusaurite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nVenusaur to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 293,
+    "name": "Charizardite X",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nCharizard to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 294,
+    "name": "Charizardite Y",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nCharizard to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 295,
+    "name": "Blastoisinite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nBlastoise to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 296,
+    "name": "Beedrillite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nBeedrill to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 297,
+    "name": "Pidgeotite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nPidgeot to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 298,
+    "name": "Alakazite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nAlakazam to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 299,
+    "name": "Slowbronite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nSlowbro to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 300,
+    "name": "Gengarite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nGengar to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 301,
+    "name": "Kangaskhanite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nKangaskhan to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 302,
+    "name": "Pinsirite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nPinsir to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 303,
+    "name": "Gyaradosite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nGyarados to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 304,
+    "name": "Aerodactylite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nAerodactyl to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 305,
+    "name": "Mewtwonite X",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nMewtwo to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 306,
+    "name": "Mewtwonite Y",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nMewtwo to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 307,
+    "name": "Ampharosite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nAmpharos to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 308,
+    "name": "Steelixite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nSteelix to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 309,
+    "name": "Scizorite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nScizor to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 310,
+    "name": "Heracronite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nHeracross to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 311,
+    "name": "Houndoominite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nHoundoom to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 312,
+    "name": "Tyranitarite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nTyranitar to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 313,
+    "name": "Sceptilite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nSceptile to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 314,
+    "name": "Blazikenite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nBlaziken to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 315,
+    "name": "Swampertite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nSwampert to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 316,
+    "name": "Gardevoirite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nGardevoir to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 317,
+    "name": "Sablenite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nSableye to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 318,
+    "name": "Mawilite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nMawile to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 319,
+    "name": "Aggronite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nAggron to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 320,
+    "name": "Medichamite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nMedicham to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 321,
+    "name": "Manectite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nManectric to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 322,
+    "name": "Sharpedonite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nSharpedo to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 323,
+    "name": "Cameruptite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nCamerupt to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 324,
+    "name": "Altarianite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nAltaria to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 325,
+    "name": "Banettite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nBanette to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 326,
+    "name": "Absolite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nAbsol to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 327,
+    "name": "Glalitite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nGlalie to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 328,
+    "name": "Salamencite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nSalamence to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 329,
+    "name": "Metagrossite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nMetagross to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 330,
+    "name": "Latiasite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nLatias to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 331,
+    "name": "Latiosite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nLatios to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 332,
+    "name": "Lopunnite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nLopunny to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 333,
+    "name": "Garchompite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nGarchomp to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 334,
+    "name": "Lucarionite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nLucario to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 335,
+    "name": "Abomasite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nAbomasnow to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 336,
+    "name": "Galladite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nGallade to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 337,
+    "name": "Audinite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nAudino to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 338,
+    "name": "Diancite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nDiancie to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 339,
+    "name": "Normal Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Normal\\nType moves."
+  },
+  {
+    "id": 340,
+    "name": "Fire Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Fire\\nType moves."
+  },
+  {
+    "id": 341,
+    "name": "Water Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Water\\nType moves."
+  },
+  {
+    "id": 342,
+    "name": "Electric Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Electric\\nType moves."
+  },
+  {
+    "id": 343,
+    "name": "Grass Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Grass\\nType moves."
+  },
+  {
+    "id": 344,
+    "name": "Ice Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Ice\\nType moves."
+  },
+  {
+    "id": 345,
+    "name": "Fighting Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Fighting\\nType moves."
+  },
+  {
+    "id": 346,
+    "name": "Poison Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Poison\\nType moves."
+  },
+  {
+    "id": 347,
+    "name": "Ground Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Ground\\nType moves."
+  },
+  {
+    "id": 348,
+    "name": "Flying Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Flying\\nType moves."
+  },
+  {
+    "id": 349,
+    "name": "Psychic Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Psychic\\nType moves."
+  },
+  {
+    "id": 350,
+    "name": "Bug Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Bug\\nType moves."
+  },
+  {
+    "id": 351,
+    "name": "Rock Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Rock\\nType moves."
+  },
+  {
+    "id": 352,
+    "name": "Ghost Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Ghost\\nType moves."
+  },
+  {
+    "id": 353,
+    "name": "Dragon Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Dragon\\nType moves."
+  },
+  {
+    "id": 354,
+    "name": "Dark Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Dark\\nType moves."
+  },
+  {
+    "id": 355,
+    "name": "Steel Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Steel\\nType moves."
+  },
+  {
+    "id": 356,
+    "name": "Fairy Gem",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 94,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of Fairy\\nType moves."
+  },
+  {
+    "id": 357,
+    "name": "Normalium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Normal-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 358,
+    "name": "Firium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Fire-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 359,
+    "name": "Waterium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Water-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 360,
+    "name": "Electrium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Electric-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 361,
+    "name": "Grassium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Grass-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 362,
+    "name": "Icium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Ice-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 363,
+    "name": "Fightinium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Fighting-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 364,
+    "name": "Poisonium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Poison-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 365,
+    "name": "Groundium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Ground-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 366,
+    "name": "Flyinium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Flying-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 367,
+    "name": "Psychium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Psychic-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 368,
+    "name": "Buginium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Bug-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 369,
+    "name": "Rockium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Rock-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 370,
+    "name": "Ghostium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Ghost-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 371,
+    "name": "Dragonium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Dragon-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 372,
+    "name": "Darkinium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Dark-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 373,
+    "name": "Steelium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Steel-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 374,
+    "name": "Fairium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Fairy-\\ntype moves into\\nZ-Moves."
+  },
+  {
+    "id": 375,
+    "name": "Pikanium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Pikachu's\\nVolt Tackle\\ninto a Z-Move."
+  },
+  {
+    "id": 376,
+    "name": "Eevium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Eevee's\\nLast Resort\\ninto a Z-Move."
+  },
+  {
+    "id": 377,
+    "name": "Snorlium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Snorlax's\\nGiga Impact\\ninto a Z-Move."
+  },
+  {
+    "id": 378,
+    "name": "Mewnium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Mew's\\nPsychic into\\na Z-Move."
+  },
+  {
+    "id": 379,
+    "name": "Decidium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Decidu-\\neye's Spirit Sha-\\nckle into a Z-Move."
+  },
+  {
+    "id": 380,
+    "name": "Incinium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Incine-\\nroar's Darkest La-\\nriat into a Z-Move."
+  },
+  {
+    "id": 381,
+    "name": "Primarium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Primarina's\\nSparkling Aria\\ninto a Z-Move."
+  },
+  {
+    "id": 382,
+    "name": "Lycanium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Lycanroc's\\nStone Edge\\ninto a Z-Move."
+  },
+  {
+    "id": 383,
+    "name": "Mimikium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Mimikyu's\\nPlay Rough\\ninto a Z-Move."
+  },
+  {
+    "id": 384,
+    "name": "Kommonium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Kommo-o's\\nClanging Scales\\ninto a Z-Move."
+  },
+  {
+    "id": 385,
+    "name": "Tapunium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade the tapus'\\nNature's Madness\\ninto a Z-Move."
+  },
+  {
+    "id": 386,
+    "name": "Solganium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Solgaleo's\\nSunsteel Strike\\ninto a Z-Move."
+  },
+  {
+    "id": 387,
+    "name": "Lunalium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Lunala's\\nMoongeist Beam\\ninto a Z-Move."
+  },
+  {
+    "id": 388,
+    "name": "Marshadium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Marsha-\\ndow's Spectral Thi-\\nef into a Z-Move."
+  },
+  {
+    "id": 389,
+    "name": "Aloraichium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Alolan\\nRaichu's Thunder-\\nbolt into a Z-Move."
+  },
+  {
+    "id": 390,
+    "name": "Pikashunium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "Upgrade Pikachu w/\\na cap's Thunderbolt\\ninto a Z-Move."
+  },
+  {
+    "id": 391,
+    "name": "Ultranecrozium Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 114,
+    "hold_effect_param": 0,
+    "description": "A crystal to turn\\nfused Necrozma\\ninto a new form."
+  },
+  {
+    "id": 392,
+    "name": "Light Ball",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 42,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the Atk and\\nSp. Atk of Pikachu."
+  },
+  {
+    "id": 393,
+    "name": "Leek",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 48,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises Farfetch'd's\\ncritical-hit ratio."
+  },
+  {
+    "id": 394,
+    "name": "Thick Club",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 47,
+    "hold_effect_param": 0,
+    "description": "A hold item that \\nraises Cubone or\\nMarowak's Attack."
+  },
+  {
+    "id": 395,
+    "name": "Lucky Punch",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 45,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises Chansey's\\ncritical-hit rate."
+  },
+  {
+    "id": 396,
+    "name": "Metal Powder",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 46,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises Ditto's\\nDefense."
+  },
+  {
+    "id": 397,
+    "name": "Quick Powder",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 75,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the Speed\\nof Ditto."
+  },
+  {
+    "id": 398,
+    "name": "Deep Sea Scale",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 35,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the Sp. Def\\nof Clamperl."
+  },
+  {
+    "id": 399,
+    "name": "Deep Sea Tooth",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 34,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the Sp. Atk\\nof Clamperl."
+  },
+  {
+    "id": 400,
+    "name": "Soul Dew",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 33,
+    "hold_effect_param": 20,
+    "description": "Powers up Latios' &\\nLatias' Psychic and\\nDragon-type moves."
+  },
+  {
+    "id": 401,
+    "name": "Adamant Orb",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 76,
+    "hold_effect_param": 20,
+    "description": "Powers up Dialga's\\nDragon and Steel-\\ntype moves."
+  },
+  {
+    "id": 402,
+    "name": "Lustrous Orb",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 77,
+    "hold_effect_param": 20,
+    "description": "Powers up Palkia's\\nDragon and Water-\\ntype moves."
+  },
+  {
+    "id": 403,
+    "name": "Griseous Orb",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 78,
+    "hold_effect_param": 20,
+    "description": "Boosts Giratina's\\nDragon and Ghost-\\ntype moves."
+  },
+  {
+    "id": 404,
+    "name": "Sea Incense",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 20,
+    "description": "A hold item that\\nslightly boosts\\nWater-type moves."
+  },
+  {
+    "id": 405,
+    "name": "Lax Incense",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 22,
+    "hold_effect_param": 10,
+    "description": "A hold item that\\nlowers the\\nfoe's accuracy."
+  },
+  {
+    "id": 406,
+    "name": "Odd Incense",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 20,
+    "description": "A hold item that\\nboosts Psychic-\\ntype moves."
+  },
+  {
+    "id": 407,
+    "name": "Rock Incense",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 20,
+    "description": "A hold item that\\nraises the power of\\nRock-type moves."
+  },
+  {
+    "id": 408,
+    "name": "Full Incense",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 66,
+    "hold_effect_param": 5,
+    "description": "A held item that\\nmakes the holder\\nmove slower."
+  },
+  {
+    "id": 409,
+    "name": "Wave Incense",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 20,
+    "description": "A hold item that\\nslightly boosts\\nWater-type moves."
+  },
+  {
+    "id": 410,
+    "name": "Rose Incense",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 20,
+    "description": "A hold item that\\nraises the power of\\nGrass-type moves."
+  },
+  {
+    "id": 411,
+    "name": "Luck Incense",
+    "price": 11000,
+    "pocket": "items",
+    "hold_effect": 31,
+    "hold_effect_param": 0,
+    "description": "Doubles money in\\nbattle if the\\nholder takes part."
+  },
+  {
+    "id": 412,
+    "name": "Pure Incense",
+    "price": 6000,
+    "pocket": "items",
+    "hold_effect": 32,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nhelps repel wild\\nPokémon."
+  },
+  {
+    "id": 413,
+    "name": "Red Scarf",
+    "price": 100,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises Cool in\\nContests."
+  },
+  {
+    "id": 414,
+    "name": "Blue Scarf",
+    "price": 100,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises Beauty in\\nContests."
+  },
+  {
+    "id": 415,
+    "name": "Pink Scarf",
+    "price": 100,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises Cute in\\nContests."
+  },
+  {
+    "id": 416,
+    "name": "Green Scarf",
+    "price": 100,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises Smart in\\nContests."
+  },
+  {
+    "id": 417,
+    "name": "Yellow Scarf",
+    "price": 100,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises Tough in\\nContests."
+  },
+  {
+    "id": 418,
+    "name": "Macho Brace",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 24,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\npromotes growth,\\nbut reduces Speed."
+  },
+  {
+    "id": 419,
+    "name": "Power Weight",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 81,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\npromotes HP gain,\\nbut reduces Speed."
+  },
+  {
+    "id": 420,
+    "name": "Power Bracer",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 81,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\npromotes Atk gain,\\nbut reduces Speed."
+  },
+  {
+    "id": 421,
+    "name": "Power Belt",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 81,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\npromotes Def gain,\\nbut reduces Speed."
+  },
+  {
+    "id": 422,
+    "name": "Power Lens",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 81,
+    "hold_effect_param": 0,
+    "description": "Hold item that pro-\\nmotes Sp. Atk gain,\\nbut reduces Speed."
+  },
+  {
+    "id": 423,
+    "name": "Power Band",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 81,
+    "hold_effect_param": 0,
+    "description": "Hold item that pro-\\nmotes Sp. Def gain,\\nbut reduces Speed."
+  },
+  {
+    "id": 424,
+    "name": "Power Anklet",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 81,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\npromotes Spd gain,\\nbut reduces Speed."
+  },
+  {
+    "id": 425,
+    "name": "Silk Scarf",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nNormal-type moves."
+  },
+  {
+    "id": 426,
+    "name": "Charcoal",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nFire-type moves."
+  },
+  {
+    "id": 427,
+    "name": "Mystic Water",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nWater-type moves."
+  },
+  {
+    "id": 428,
+    "name": "Magnet",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nboosts Electric-\\ntype moves."
+  },
+  {
+    "id": 429,
+    "name": "Miracle Seed",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nGrass-type moves."
+  },
+  {
+    "id": 430,
+    "name": "Never-Melt Ice",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nIce-type moves."
+  },
+  {
+    "id": 431,
+    "name": "Black Belt",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nboosts Fighting-\\ntype moves."
+  },
+  {
+    "id": 432,
+    "name": "Poison Barb",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nPoison-type moves."
+  },
+  {
+    "id": 433,
+    "name": "Soft Sand",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nGround-type moves."
+  },
+  {
+    "id": 434,
+    "name": "Sharp Beak",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nFlying-type moves."
+  },
+  {
+    "id": 435,
+    "name": "Twisted Spoon",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nboosts Psychic-\\ntype moves."
+  },
+  {
+    "id": 436,
+    "name": "Silver Powder",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nBug-type moves."
+  },
+  {
+    "id": 437,
+    "name": "Hard Stone",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nRock-type moves."
+  },
+  {
+    "id": 438,
+    "name": "Spell Tag",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nGhost-type moves."
+  },
+  {
+    "id": 439,
+    "name": "Dragon Fang",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nDragon-type moves."
+  },
+  {
+    "id": 440,
+    "name": "Black Glasses",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nDark-type moves."
+  },
+  {
+    "id": 441,
+    "name": "Metal Coat",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nSteel-type moves."
+  },
+  {
+    "id": 442,
+    "name": "Choice Band",
+    "price": 100000,
+    "pocket": "items",
+    "hold_effect": 29,
+    "hold_effect_param": 0,
+    "description": "Boosts Attack, but\\nallows the use of\\nonly one move."
+  },
+  {
+    "id": 443,
+    "name": "Choice Specs",
+    "price": 100000,
+    "pocket": "items",
+    "hold_effect": 50,
+    "hold_effect_param": 0,
+    "description": "Boosts Sp. Atk, but\\nallows the use of\\nonly one move."
+  },
+  {
+    "id": 444,
+    "name": "Choice Scarf",
+    "price": 100000,
+    "pocket": "items",
+    "hold_effect": 49,
+    "hold_effect_param": 0,
+    "description": "Boosts Speed, but\\nallows the use of\\nonly one move."
+  },
+  {
+    "id": 445,
+    "name": "Flame Orb",
+    "price": 15000,
+    "pocket": "items",
+    "hold_effect": 68,
+    "hold_effect_param": 0,
+    "description": "A bizarre orb that\\ninflicts a burn on\\nholder in battle."
+  },
+  {
+    "id": 446,
+    "name": "Toxic Orb",
+    "price": 15000,
+    "pocket": "items",
+    "hold_effect": 69,
+    "hold_effect_param": 0,
+    "description": "A bizarre orb that\\nbadly poisons the\\nholder in battle."
+  },
+  {
+    "id": 447,
+    "name": "Damp Rock",
+    "price": 8000,
+    "pocket": "items",
+    "hold_effect": 51,
+    "hold_effect_param": 0,
+    "description": "Extends the length\\nof Rain Dance if\\nused by the holder."
+  },
+  {
+    "id": 448,
+    "name": "Heat Rock",
+    "price": 8000,
+    "pocket": "items",
+    "hold_effect": 53,
+    "hold_effect_param": 0,
+    "description": "Extends the length\\nof Sunny Day if\\nused by the holder."
+  },
+  {
+    "id": 449,
+    "name": "Smooth Rock",
+    "price": 8000,
+    "pocket": "items",
+    "hold_effect": 56,
+    "hold_effect_param": 0,
+    "description": "Extends the length\\nof Sandstorm if\\nused by the holder."
+  },
+  {
+    "id": 450,
+    "name": "Icy Rock",
+    "price": 8000,
+    "pocket": "items",
+    "hold_effect": 54,
+    "hold_effect_param": 0,
+    "description": "Extends the length\\nof the move Hail\\nused by the holder."
+  },
+  {
+    "id": 451,
+    "name": "Electric Seed",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 111,
+    "hold_effect_param": 0,
+    "description": "Boosts Defense on\\nElectric Terrain,\\nbut only one time."
+  },
+  {
+    "id": 452,
+    "name": "Psychic Seed",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 111,
+    "hold_effect_param": 0,
+    "description": "Boosts Sp. Def. on\\nPsychic Terrain,\\nbut only one time."
+  },
+  {
+    "id": 453,
+    "name": "Misty Seed",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 111,
+    "hold_effect_param": 0,
+    "description": "Boosts Sp. Def. on\\nMisty Terrain,\\nbut only one time."
+  },
+  {
+    "id": 454,
+    "name": "Grassy Seed",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 111,
+    "hold_effect_param": 0,
+    "description": "Boosts Defense on\\nGrassy Terrain,\\nbut only one time."
+  },
+  {
+    "id": 455,
+    "name": "Absorb Bulb",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 101,
+    "hold_effect_param": 0,
+    "description": "Raises Sp. Atk if\\nthe holder is hit by\\na Water-type move."
+  },
+  {
+    "id": 456,
+    "name": "Cell Battery",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 102,
+    "hold_effect_param": 0,
+    "description": "Raises Attack if\\nthe holder is hit by\\nan Electric move."
+  },
+  {
+    "id": 457,
+    "name": "Luminous Moss",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 105,
+    "hold_effect_param": 0,
+    "description": "Raises Sp. Def if\\nthe holder is hit by\\na Water-type move."
+  },
+  {
+    "id": 458,
+    "name": "Snowball",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 106,
+    "hold_effect_param": 0,
+    "description": "Raises Atk if its\\nholder is hit by an\\nIce-type move."
+  },
+  {
+    "id": 459,
+    "name": "Bright Powder",
+    "price": 30000,
+    "pocket": "items",
+    "hold_effect": 22,
+    "hold_effect_param": 10,
+    "description": "A hold item that\\ncasts a glare to\\nreduce accuracy."
+  },
+  {
+    "id": 460,
+    "name": "White Herb",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 23,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nrestores any\\nlowered stat."
+  },
+  {
+    "id": 461,
+    "name": "Exp. Share",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 25,
+    "hold_effect_param": 0,
+    "description": "This device gives\\nexp. to other\\nparty members."
+  },
+  {
+    "id": 462,
+    "name": "Quick Claw",
+    "price": 8000,
+    "pocket": "items",
+    "hold_effect": 26,
+    "hold_effect_param": 20,
+    "description": "A hold item that\\noccasionally allows\\nthe first strike."
+  },
+  {
+    "id": 463,
+    "name": "Soothe Bell",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 27,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\ncalms spirits and\\nfosters friendship."
+  },
+  {
+    "id": 464,
+    "name": "Mental Herb",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 28,
+    "hold_effect_param": 0,
+    "description": "Snaps Pokémon out\\nof move-binding\\neffects."
+  },
+  {
+    "id": 465,
+    "name": "King's Rock",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 30,
+    "hold_effect_param": 10,
+    "description": "A hold item that\\nmay cause flinching\\nwhen the foe is hit."
+  },
+  {
+    "id": 466,
+    "name": "Amulet Coin",
+    "price": 30000,
+    "pocket": "items",
+    "hold_effect": 31,
+    "hold_effect_param": 0,
+    "description": "Doubles money in\\nbattle if the\\nholder takes part."
+  },
+  {
+    "id": 467,
+    "name": "Cleanse Tag",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 32,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nhelps repel wild\\nPokémon."
+  },
+  {
+    "id": 468,
+    "name": "Smoke Ball",
+    "price": 15000,
+    "pocket": "items",
+    "hold_effect": 36,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nassures fleeing\\nfrom wild Pokémon."
+  },
+  {
+    "id": 469,
+    "name": "Focus Band",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 38,
+    "hold_effect_param": 10,
+    "description": "A hold item that\\noccasionally\\nprevents fainting."
+  },
+  {
+    "id": 470,
+    "name": "Lucky Egg",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 39,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nboosts Exp. points\\nearned in battle."
+  },
+  {
+    "id": 471,
+    "name": "Scope Lens",
+    "price": 15000,
+    "pocket": "items",
+    "hold_effect": 40,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nimproves the\\ncritical-hit rate."
+  },
+  {
+    "id": 472,
+    "name": "Leftovers",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 41,
+    "hold_effect_param": 10,
+    "description": "A hold item that\\ngradually restores\\nHP in battle."
+  },
+  {
+    "id": 473,
+    "name": "Shell Bell",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 44,
+    "hold_effect_param": 8,
+    "description": "A hold item that\\nrestores HP upon\\nstriking the foe."
+  },
+  {
+    "id": 474,
+    "name": "Wide Lens",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 63,
+    "hold_effect_param": 10,
+    "description": "A magnifying lens\\nthat boosts the\\naccuracy of moves."
+  },
+  {
+    "id": 475,
+    "name": "Muscle Band",
+    "price": 8000,
+    "pocket": "items",
+    "hold_effect": 62,
+    "hold_effect_param": 10,
+    "description": "A headband that\\nboosts the power\\nof physical moves."
+  },
+  {
+    "id": 476,
+    "name": "Wise Glasses",
+    "price": 8000,
+    "pocket": "items",
+    "hold_effect": 64,
+    "hold_effect_param": 10,
+    "description": "A pair of glasses\\nthat ups the power\\nof special moves."
+  },
+  {
+    "id": 477,
+    "name": "Expert Belt",
+    "price": 30000,
+    "pocket": "items",
+    "hold_effect": 59,
+    "hold_effect_param": 20,
+    "description": "A belt that boosts\\nthe power of super\\neffective moves."
+  },
+  {
+    "id": 478,
+    "name": "Light Clay",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 55,
+    "hold_effect_param": 0,
+    "description": "Extends the length\\nof barrier moves\\nused by the holder."
+  },
+  {
+    "id": 479,
+    "name": "Life Orb",
+    "price": 50000,
+    "pocket": "items",
+    "hold_effect": 60,
+    "hold_effect_param": 0,
+    "description": "Boosts move power\\nbut holder loses HP\\nwith each attack."
+  },
+  {
+    "id": 480,
+    "name": "Power Herb",
+    "price": 30000,
+    "pocket": "items",
+    "hold_effect": 57,
+    "hold_effect_param": 0,
+    "description": "Allows immediate\\nuse of a move that\\ncharges first."
+  },
+  {
+    "id": 481,
+    "name": "Focus Sash",
+    "price": 50000,
+    "pocket": "items",
+    "hold_effect": 67,
+    "hold_effect_param": 0,
+    "description": "If the holder has\\nfull HP, it endures\\nKO hits with 1 HP."
+  },
+  {
+    "id": 482,
+    "name": "Zoom Lens",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 65,
+    "hold_effect_param": 20,
+    "description": "If the holder moves\\nafter the foe, it'll\\nboost accuracy."
+  },
+  {
+    "id": 483,
+    "name": "Metronome",
+    "price": 15000,
+    "pocket": "items",
+    "hold_effect": 61,
+    "hold_effect_param": 20,
+    "description": "A held item that\\nboosts a move used\\nconsecutively."
+  },
+  {
+    "id": 484,
+    "name": "Iron Ball",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 71,
+    "hold_effect_param": 0,
+    "description": "Cuts Speed and\\nbecomes vulnerable\\nto Ground moves."
+  },
+  {
+    "id": 485,
+    "name": "Lagging Tail",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 66,
+    "hold_effect_param": 0,
+    "description": "A held item that\\nmakes the holder\\nmove slower."
+  },
+  {
+    "id": 486,
+    "name": "Destiny Knot",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 73,
+    "hold_effect_param": 0,
+    "description": "If the holder falls\\nin love, the foe\\ndoes too."
+  },
+  {
+    "id": 487,
+    "name": "Black Sludge",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 72,
+    "hold_effect_param": 0,
+    "description": "Restores HP for\\nPoison-types.\\nDamages all others."
+  },
+  {
+    "id": 488,
+    "name": "Grip Claw",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 52,
+    "hold_effect_param": 0,
+    "description": "A held item that\\nextends binding\\nmoves like Wrap."
+  },
+  {
+    "id": 489,
+    "name": "Sticky Barb",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 70,
+    "hold_effect_param": 0,
+    "description": "Damages the holder\\neach turn. May\\nlatch on to foes."
+  },
+  {
+    "id": 490,
+    "name": "Shed Shell",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 74,
+    "hold_effect_param": 0,
+    "description": "Allows the holder\\nto switch out\\nwithout fail."
+  },
+  {
+    "id": 491,
+    "name": "Big Root",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 58,
+    "hold_effect_param": 30,
+    "description": "A held item that\\nups the power of\\nHP-stealing moves."
+  },
+  {
+    "id": 492,
+    "name": "Razor Claw",
+    "price": 15000,
+    "pocket": "items",
+    "hold_effect": 40,
+    "hold_effect_param": 0,
+    "description": "A hooked claw that\\nups the holder's\\ncritical-hit ratio."
+  },
+  {
+    "id": 493,
+    "name": "Razor Fang",
+    "price": 15000,
+    "pocket": "items",
+    "hold_effect": 30,
+    "hold_effect_param": 10,
+    "description": "A hold item that\\nmay cause flinching\\nwhen the foe is hit."
+  },
+  {
+    "id": 494,
+    "name": "Eviolite",
+    "price": 50000,
+    "pocket": "items",
+    "hold_effect": 91,
+    "hold_effect_param": 50,
+    "description": "Raises the Def and\\nSp. Def of Pokémon\\nthat can evolve."
+  },
+  {
+    "id": 495,
+    "name": "Float Stone",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 90,
+    "hold_effect_param": 0,
+    "description": "It's so light that\\nwhen held, it halves\\na Pokémon's weight."
+  },
+  {
+    "id": 496,
+    "name": "Rocky Helmet",
+    "price": 50000,
+    "pocket": "items",
+    "hold_effect": 95,
+    "hold_effect_param": 0,
+    "description": "Hurts the foe if\\nthey touch its\\nholder."
+  },
+  {
+    "id": 497,
+    "name": "Air Balloon",
+    "price": 15000,
+    "pocket": "items",
+    "hold_effect": 96,
+    "hold_effect_param": 0,
+    "description": "Makes the holder\\nfloat but bursts\\nif hit by an attack."
+  },
+  {
+    "id": 498,
+    "name": "Red Card",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 97,
+    "hold_effect_param": 0,
+    "description": "Switches out the\\nfoe if they hit the\\nholder."
+  },
+  {
+    "id": 499,
+    "name": "Ring Target",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 98,
+    "hold_effect_param": 0,
+    "description": "Moves that usually\\nhave no effect will\\nhit the holder."
+  },
+  {
+    "id": 500,
+    "name": "Binding Band",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 99,
+    "hold_effect_param": 0,
+    "description": "Increases the\\npower of binding\\nmoves when held."
+  },
+  {
+    "id": 501,
+    "name": "Eject Button",
+    "price": 30000,
+    "pocket": "items",
+    "hold_effect": 100,
+    "hold_effect_param": 0,
+    "description": "Switches out the\\nuser if they're hit\\nby the foe."
+  },
+  {
+    "id": 502,
+    "name": "Weakness Policy",
+    "price": 50000,
+    "pocket": "items",
+    "hold_effect": 107,
+    "hold_effect_param": 0,
+    "description": "If hit by a super-\\neffective move,\\nups Atk and Sp. Atk."
+  },
+  {
+    "id": 503,
+    "name": "Assault Vest",
+    "price": 50000,
+    "pocket": "items",
+    "hold_effect": 92,
+    "hold_effect_param": 50,
+    "description": "Raises Sp. Def but\\nprevents the use\\nof status moves."
+  },
+  {
+    "id": 504,
+    "name": "Safety Goggles",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 104,
+    "hold_effect_param": 0,
+    "description": "Protect from\\nweather damage and\\npowder moves."
+  },
+  {
+    "id": 505,
+    "name": "Adrenaline Orb",
+    "price": 5000,
+    "pocket": "items",
+    "hold_effect": 112,
+    "hold_effect_param": 0,
+    "description": "This orb boosts\\nSpeed if the holder\\nis intimidated."
+  },
+  {
+    "id": 506,
+    "name": "Terrain Extender",
+    "price": 15000,
+    "pocket": "items",
+    "hold_effect": 110,
+    "hold_effect_param": 0,
+    "description": "Extends the length\\nof the active\\nbattle terrain."
+  },
+  {
+    "id": 507,
+    "name": "Protective Pads",
+    "price": 15000,
+    "pocket": "items",
+    "hold_effect": 109,
+    "hold_effect_param": 0,
+    "description": "Guard the holder\\nfrom contact move\\neffects."
+  },
+  {
+    "id": 508,
+    "name": "Throat Spray",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 120,
+    "hold_effect_param": 0,
+    "description": "Raises Sp. Atk. if\\nthe holder uses a\\nsound-based move."
+  },
+  {
+    "id": 509,
+    "name": "Eject Pack",
+    "price": 30000,
+    "pocket": "items",
+    "hold_effect": 116,
+    "hold_effect_param": 0,
+    "description": "Forces the user to\\nswitch if its stats\\nare lowered."
+  },
+  {
+    "id": 510,
+    "name": "Heavy-Duty Boots",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 119,
+    "hold_effect_param": 0,
+    "description": "Boots that prevent\\neffects of traps\\nset in the field."
+  },
+  {
+    "id": 511,
+    "name": "Blunder Policy",
+    "price": 30000,
+    "pocket": "items",
+    "hold_effect": 118,
+    "hold_effect_param": 0,
+    "description": "Raises Speed if\\nthe user misses\\ndue to Accuracy."
+  },
+  {
+    "id": 512,
+    "name": "Room Service",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 117,
+    "hold_effect_param": 0,
+    "description": "Lowers Speed if\\nTrick Room is\\nactive."
+  },
+  {
+    "id": 513,
+    "name": "Utility Umbrella",
+    "price": 15000,
+    "pocket": "items",
+    "hold_effect": 115,
+    "hold_effect_param": 0,
+    "description": "An umbrella that\\nprotects from\\nweather effects."
+  },
+  {
+    "id": 514,
+    "name": "Cheri Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 2,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nheals paralysis\\nin battle."
+  },
+  {
+    "id": 515,
+    "name": "Chesto Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 3,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nawakens Pokémon\\nin battle."
+  },
+  {
+    "id": 516,
+    "name": "Pecha Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 4,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nheals poisoning\\nin battle."
+  },
+  {
+    "id": 517,
+    "name": "Rawst Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 5,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nheals a burn in\\nbattle."
+  },
+  {
+    "id": 518,
+    "name": "Aspear Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 6,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\ndefrosts Pokémon\\nin battle."
+  },
+  {
+    "id": 519,
+    "name": "Leppa Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 7,
+    "hold_effect_param": 10,
+    "description": "A hold item that\\nrestores 10 PP in\\nbattle."
+  },
+  {
+    "id": 520,
+    "name": "Oran Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 1,
+    "hold_effect_param": 10,
+    "description": "A hold item that\\nrestores 10 HP in\\nbattle."
+  },
+  {
+    "id": 521,
+    "name": "Persim Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 8,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nheals confusion\\nin battle."
+  },
+  {
+    "id": 522,
+    "name": "Lum Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 9,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nheals any status\\nproblem in battle."
+  },
+  {
+    "id": 523,
+    "name": "Sitrus Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 82,
+    "hold_effect_param": 25,
+    "description": "A hold item that\\nrestores the user's\\nHP a little."
+  },
+  {
+    "id": 524,
+    "name": "Figy Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 10,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nrestores HP but\\nmay confuse."
+  },
+  {
+    "id": 525,
+    "name": "Wiki Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 11,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nrestores HP but\\nmay confuse."
+  },
+  {
+    "id": 526,
+    "name": "Mago Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 12,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nrestores HP but\\nmay confuse."
+  },
+  {
+    "id": 527,
+    "name": "Aguav Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 13,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nrestores HP but\\nmay confuse."
+  },
+  {
+    "id": 528,
+    "name": "Iapapa Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 14,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nrestores HP but\\nmay confuse."
+  },
+  {
+    "id": 529,
+    "name": "Razz Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Razz."
+  },
+  {
+    "id": 530,
+    "name": "Bluk Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Bluk."
+  },
+  {
+    "id": 531,
+    "name": "Nanab Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Nanab."
+  },
+  {
+    "id": 532,
+    "name": "Wepear Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Wepear."
+  },
+  {
+    "id": 533,
+    "name": "Pinap Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Pinap."
+  },
+  {
+    "id": 534,
+    "name": "Pomeg Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes a Pokémon\\nfriendly but lowers\\nbase HP."
+  },
+  {
+    "id": 535,
+    "name": "Kelpsy Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes a Pokémon\\nfriendly but lowers\\nbase Attack."
+  },
+  {
+    "id": 536,
+    "name": "Qualot Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes a Pokémon\\nfriendly but lowers\\nbase Defense."
+  },
+  {
+    "id": 537,
+    "name": "Hondew Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes a Pokémon\\nfriendly but lowers\\nbase Sp. Atk."
+  },
+  {
+    "id": 538,
+    "name": "Grepa Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes a Pokémon\\nfriendly but lowers\\nbase Sp. Def."
+  },
+  {
+    "id": 539,
+    "name": "Tamato Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Makes a Pokémon\\nfriendly but lowers\\nbase Speed."
+  },
+  {
+    "id": 540,
+    "name": "Cornn Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Cornn."
+  },
+  {
+    "id": 541,
+    "name": "Magost Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Magost."
+  },
+  {
+    "id": 542,
+    "name": "Rabuta Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Rabuta."
+  },
+  {
+    "id": 543,
+    "name": "Nomel Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Nomel."
+  },
+  {
+    "id": 544,
+    "name": "Spelon Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Spelon."
+  },
+  {
+    "id": 545,
+    "name": "Pamtre Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Pamtre."
+  },
+  {
+    "id": 546,
+    "name": "Watmel Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Watmel."
+  },
+  {
+    "id": 547,
+    "name": "Durin Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Durin."
+  },
+  {
+    "id": 548,
+    "name": "Belue Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow Belue."
+  },
+  {
+    "id": 549,
+    "name": "Chilan Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Normal\\nmove."
+  },
+  {
+    "id": 550,
+    "name": "Occa Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Fire\\nmove if weak to it."
+  },
+  {
+    "id": 551,
+    "name": "Passho Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Water\\nmove if weak to it."
+  },
+  {
+    "id": 552,
+    "name": "Wacan Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Electric\\nmove if weak to it."
+  },
+  {
+    "id": 553,
+    "name": "Rindo Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Grass\\nmove if weak to it."
+  },
+  {
+    "id": 554,
+    "name": "Yache Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Ice\\nmove if weak to it."
+  },
+  {
+    "id": 555,
+    "name": "Chople Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Fighting\\nmove if weak to it."
+  },
+  {
+    "id": 556,
+    "name": "Kebia Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Poison\\nmove if weak to it."
+  },
+  {
+    "id": 557,
+    "name": "Shuca Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Ground\\nmove if weak to it."
+  },
+  {
+    "id": 558,
+    "name": "Coba Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Flying\\nmove if weak to it."
+  },
+  {
+    "id": 559,
+    "name": "Payapa Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Psychic\\nmove if weak to it."
+  },
+  {
+    "id": 560,
+    "name": "Tanga Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Bug\\nmove if weak to it."
+  },
+  {
+    "id": 561,
+    "name": "Charti Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Rock\\nmove if weak to it."
+  },
+  {
+    "id": 562,
+    "name": "Kasib Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Ghost\\nmove if weak to it."
+  },
+  {
+    "id": 563,
+    "name": "Haban Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Dragon\\nmove if weak to it."
+  },
+  {
+    "id": 564,
+    "name": "Colbur Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Dark\\nmove if weak to it."
+  },
+  {
+    "id": 565,
+    "name": "Babiri Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Steel\\nmove if weak to it."
+  },
+  {
+    "id": 566,
+    "name": "Roseli Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 80,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nweakens a Fairy\\nmove if weak to it."
+  },
+  {
+    "id": 567,
+    "name": "Liechi Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 15,
+    "hold_effect_param": 4,
+    "description": "A hold item that\\nraises Attack in\\na pinch."
+  },
+  {
+    "id": 568,
+    "name": "Ganlon Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 16,
+    "hold_effect_param": 4,
+    "description": "A hold item that\\nraises Defense in\\na pinch."
+  },
+  {
+    "id": 569,
+    "name": "Salac Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 17,
+    "hold_effect_param": 4,
+    "description": "A hold item that\\nraises Speed in\\na pinch."
+  },
+  {
+    "id": 570,
+    "name": "Petaya Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 18,
+    "hold_effect_param": 4,
+    "description": "A hold item that\\nraises Sp. Atk in\\na pinch."
+  },
+  {
+    "id": 571,
+    "name": "Apicot Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 19,
+    "hold_effect_param": 4,
+    "description": "A hold item that\\nraises Sp. Def in\\na pinch."
+  },
+  {
+    "id": 572,
+    "name": "Lansat Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 20,
+    "hold_effect_param": 4,
+    "description": "A hold item that\\nups the critical-\\nhit rate in a pinch."
+  },
+  {
+    "id": 573,
+    "name": "Starf Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 21,
+    "hold_effect_param": 4,
+    "description": "A hold item that\\nsharply boosts a\\nstat in a pinch."
+  },
+  {
+    "id": 574,
+    "name": "Enigma Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 79,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nheals from super\\neffective moves."
+  },
+  {
+    "id": 575,
+    "name": "Micle Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 83,
+    "hold_effect_param": 4,
+    "description": "When held, it ups\\nthe Accuracy of a\\nmove in a pinch."
+  },
+  {
+    "id": 576,
+    "name": "Custap Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 84,
+    "hold_effect_param": 4,
+    "description": "It allows a Pokémon\\nin a pinch to move\\nfirst just once."
+  },
+  {
+    "id": 577,
+    "name": "Jaboca Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 85,
+    "hold_effect_param": 0,
+    "description": "If hit by a physical\\nmove, it will hurt\\nthe attacker a bit."
+  },
+  {
+    "id": 578,
+    "name": "Rowap Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 86,
+    "hold_effect_param": 0,
+    "description": "If hit by a special\\nmove, it will hurt\\nthe attacker a bit."
+  },
+  {
+    "id": 579,
+    "name": "Kee Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 87,
+    "hold_effect_param": 0,
+    "description": "If hit by a physical\\nmove, it raises the\\nDefense a bit."
+  },
+  {
+    "id": 580,
+    "name": "Maranga Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 88,
+    "hold_effect_param": 0,
+    "description": "If hit by a special\\nmove, it raises the\\nSp. Def. a bit."
+  },
+  {
+    "id": 581,
+    "name": "Enigma Berry",
+    "price": 80,
+    "pocket": "berries",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "{POKEBLOCK} ingredient.\\nPlant in loamy soil\\nto grow a mystery."
+  },
+  {
+    "id": 632,
+    "name": "TM51",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 633,
+    "name": "TM52",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 634,
+    "name": "TM53",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 635,
+    "name": "TM54",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 636,
+    "name": "TM55",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 637,
+    "name": "TM56",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 638,
+    "name": "TM57",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 639,
+    "name": "TM58",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 640,
+    "name": "TM59",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 641,
+    "name": "TM60",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 642,
+    "name": "TM61",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 643,
+    "name": "TM62",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 644,
+    "name": "TM63",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 645,
+    "name": "TM64",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 646,
+    "name": "TM65",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 647,
+    "name": "TM66",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 648,
+    "name": "TM67",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 649,
+    "name": "TM68",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 650,
+    "name": "TM69",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 651,
+    "name": "TM70",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 652,
+    "name": "TM71",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 653,
+    "name": "TM72",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 654,
+    "name": "TM73",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 655,
+    "name": "TM74",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 656,
+    "name": "TM75",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 657,
+    "name": "TM76",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 658,
+    "name": "TM77",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 659,
+    "name": "TM78",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 660,
+    "name": "TM79",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 661,
+    "name": "TM80",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 662,
+    "name": "TM81",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 663,
+    "name": "TM82",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 664,
+    "name": "TM83",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 665,
+    "name": "TM84",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 666,
+    "name": "TM85",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 667,
+    "name": "TM86",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 668,
+    "name": "TM87",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 669,
+    "name": "TM88",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 670,
+    "name": "TM89",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 671,
+    "name": "TM90",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 672,
+    "name": "TM91",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 673,
+    "name": "TM92",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 674,
+    "name": "TM93",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 675,
+    "name": "TM94",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 676,
+    "name": "TM95",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 677,
+    "name": "TM96",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 678,
+    "name": "TM97",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 679,
+    "name": "TM98",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 680,
+    "name": "TM99",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 681,
+    "name": "TM100",
+    "price": 3000,
+    "pocket": "tm_hm",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 690,
+    "name": "Oval Charm",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Raises the chance\\nof finding eggs\\nat the daycare."
+  },
+  {
+    "id": 691,
+    "name": "Shiny Charm",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A charm that will\\nraise the chance\\nof Shiny Pokémon."
+  },
+  {
+    "id": 692,
+    "name": "Catching Charm",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A charm that raises\\nthe chance of\\nCritical Captures."
+  },
+  {
+    "id": 693,
+    "name": "Exp. Charm",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A charm that raises\\nthe amount of Exp.\\nearned in battle."
+  },
+  {
+    "id": 694,
+    "name": "Rotom Catalog",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A catalog full of\\ndevices liked by\\nRotom."
+  },
+  {
+    "id": 695,
+    "name": "Gracidea",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Bouquets made with\\nit are offered as a\\ntoken of gratitude."
+  },
+  {
+    "id": 696,
+    "name": "Reveal Glass",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "This glass returns\\na Pokémon back to\\nits original form."
+  },
+  {
+    "id": 697,
+    "name": "DNA Splicers",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Splicer that fuses\\nKyurem and a\\ncertain Pokémon."
+  },
+  {
+    "id": 698,
+    "name": "Zygarde Cube",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item to store\\nZygarde Cores and\\nCells."
+  },
+  {
+    "id": 699,
+    "name": "Prison Bottle",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A bottle used to\\nseal a certain\\nPokémon long ago."
+  },
+  {
+    "id": 700,
+    "name": "N-Solarizer",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A device to fuse\\nand split Necrozma\\nusing a Solgaleo."
+  },
+  {
+    "id": 701,
+    "name": "N-Lunarizer",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A device to fuse\\nand split Necrozma\\nusing a Lunala."
+  },
+  {
+    "id": 702,
+    "name": "Reins of Unity",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Reins that unite\\nCalyrex with its\\nbeloved steed."
+  },
+  {
+    "id": 703,
+    "name": "Mega Ring",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Enables {PKMN} holding\\ntheir Mega Stone to\\nMega Evolve."
+  },
+  {
+    "id": 704,
+    "name": "Z-Power Ring",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A strange ring\\nthat enables\\nZ-Move usage."
+  },
+  {
+    "id": 705,
+    "name": "Dynamax Band",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A band carrying a\\nWishing Star that\\nallows Dynamaxing."
+  },
+  {
+    "id": 706,
+    "name": "Bike",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A folding bicycle\\nthat is faster than\\nthe Running Shoes."
+  },
+  {
+    "id": 707,
+    "name": "Mach Bike",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A folding bicycle\\nthat doubles your\\nspeed or better."
+  },
+  {
+    "id": 708,
+    "name": "Acro Bike",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A folding bicycle\\ncapable of jumps\\nand wheelies."
+  },
+  {
+    "id": 709,
+    "name": "Old Rod",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Use by any body of\\nwater to fish for\\nwild Pokémon."
+  },
+  {
+    "id": 710,
+    "name": "Good Rod",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A decent fishing\\nrod for catching\\nwild Pokémon."
+  },
+  {
+    "id": 711,
+    "name": "Super Rod",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "The best fishing\\nrod for catching\\nwild Pokémon."
+  },
+  {
+    "id": 712,
+    "name": "Dowsing Machine",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A device that\\nsignals an invisible\\nitem by sound."
+  },
+  {
+    "id": 713,
+    "name": "Town Map",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Can be viewed\\nanytime. Shows your\\npresent location."
+  },
+  {
+    "id": 714,
+    "name": "Vs. Seeker",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A rechargeable unit\\nthat flags battle-\\nready Trainers."
+  },
+  {
+    "id": 715,
+    "name": "TM Case",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A convenient case\\nthat holds TMs and\\nHMs."
+  },
+  {
+    "id": 716,
+    "name": "Berry Pouch",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A convenient\\ncontainer that\\nholds Berries."
+  },
+  {
+    "id": 717,
+    "name": "{PKMN} Box Link",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "This device grants\\naccess to the {PKMN}\\nStorage System."
+  },
+  {
+    "id": 718,
+    "name": "Coin Case",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A case that holds\\nup to 9,999 Coins."
+  },
+  {
+    "id": 719,
+    "name": "Powder Jar",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Stores Berry\\nPowder made using\\na Berry Crusher."
+  },
+  {
+    "id": 720,
+    "name": "Wailmer Pail",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A tool used for\\nwatering Berries\\nand plants."
+  },
+  {
+    "id": 721,
+    "name": "Poké Radar",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A tool used to\\nsearch out Pokémon\\nhiding in grass."
+  },
+  {
+    "id": 722,
+    "name": "{POKEBLOCK} Case",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A case for holding\\n{POKEBLOCK}s made with\\na Berry Blender."
+  },
+  {
+    "id": 723,
+    "name": "Soot Sack",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A sack used to\\ngather and hold\\nvolcanic ash."
+  },
+  {
+    "id": 724,
+    "name": "Poké Flute",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A sweet-sounding\\nflute that awakens\\nPokémon."
+  },
+  {
+    "id": 725,
+    "name": "Fame Checker",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Stores information\\non famous people\\nfor instant recall."
+  },
+  {
+    "id": 726,
+    "name": "Teachy TV",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A TV set tuned to\\nan advice program\\nfor Trainers."
+  },
+  {
+    "id": 727,
+    "name": "S.S. Ticket",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "The ticket required\\nfor sailing on a\\nferry."
+  },
+  {
+    "id": 728,
+    "name": "Eon Ticket",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "The ticket for a\\nferry to a distant\\nsouthern island."
+  },
+  {
+    "id": 729,
+    "name": "Mystic Ticket",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A ticket required\\nto board the ship\\nto Navel Rock."
+  },
+  {
+    "id": 730,
+    "name": "Aurora Ticket",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A ticket required\\nto board the ship\\nto Birth Island."
+  },
+  {
+    "id": 731,
+    "name": "Old Sea Map",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A faded sea chart\\nthat shows the way\\nto a certain island."
+  },
+  {
+    "id": 732,
+    "name": "Letter",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A letter to Steven\\nfrom the President\\nof the Devon Corp."
+  },
+  {
+    "id": 733,
+    "name": "Devon Parts",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A package that\\ncontains Devon's\\nmachine parts."
+  },
+  {
+    "id": 734,
+    "name": "Go-Goggles",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Nifty goggles that\\nprotect eyes from\\ndesert sandstorms."
+  },
+  {
+    "id": 735,
+    "name": "Devon Scope",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A device by Devon\\nthat signals any\\nunseeable Pokémon."
+  },
+  {
+    "id": 736,
+    "name": "Basement Key",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "The key for New\\nMauville beneath\\nMauville City."
+  },
+  {
+    "id": 737,
+    "name": "Scanner",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A device found\\ninside the\\nAbandoned Ship."
+  },
+  {
+    "id": 738,
+    "name": "Storage Key",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "The key to the\\nstorage inside the\\nAbandoned Ship."
+  },
+  {
+    "id": 739,
+    "name": "Key to Room 1",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A key that opens a\\ndoor inside the\\nAbandoned Ship."
+  },
+  {
+    "id": 740,
+    "name": "Key to Room 2",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A key that opens a\\ndoor inside the\\nAbandoned Ship."
+  },
+  {
+    "id": 741,
+    "name": "Key to Room 4",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A key that opens a\\ndoor inside the\\nAbandoned Ship."
+  },
+  {
+    "id": 742,
+    "name": "Key to Room 6",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A key that opens a\\ndoor inside the\\nAbandoned Ship."
+  },
+  {
+    "id": 743,
+    "name": "Meteorite",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A meteorite found\\nat Meteor Falls."
+  },
+  {
+    "id": 744,
+    "name": "Magma Emblem",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A medal-like item in\\nthe same shape as\\nTeam Magma's mark."
+  },
+  {
+    "id": 745,
+    "name": "Contest Pass",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "The pass required\\nfor entering\\nPokémon Contests."
+  },
+  {
+    "id": 746,
+    "name": "Parcel",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A parcel for Prof.\\nOak from a Pokémon\\nMart's clerk."
+  },
+  {
+    "id": 747,
+    "name": "Secret Key",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "The key to the\\nCinnabar Island\\nGym's entrance."
+  },
+  {
+    "id": 748,
+    "name": "Bike Voucher",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A voucher for\\nobtaining a bicycle\\nfrom the Bike Shop."
+  },
+  {
+    "id": 749,
+    "name": "Gold Teeth",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Gold dentures lost\\nby the Safari\\nZone's Warden."
+  },
+  {
+    "id": 750,
+    "name": "Card Key",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A card-type door\\nkey used in Silph\\nCo's office."
+  },
+  {
+    "id": 751,
+    "name": "Lift Key",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An elevator key\\nused in Team\\nRocket's Hideout."
+  },
+  {
+    "id": 752,
+    "name": "Silph Scope",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Silph Co's scope\\nmakes unseeable\\nPOKéMON visible."
+  },
+  {
+    "id": 753,
+    "name": "Tri-Pass",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A pass for ferries\\nbetween One, Two,\\nand Three Island."
+  },
+  {
+    "id": 754,
+    "name": "Rainbow Pass",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "For ferries serving\\nVermilion and the\\nSevii Islands."
+  },
+  {
+    "id": 755,
+    "name": "Tea",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A thirst-quenching\\ntea prepared by an\\nold lady."
+  },
+  {
+    "id": 756,
+    "name": "Ruby",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An exquisite, red-\\nglowing gem that\\nsymbolizes passion."
+  },
+  {
+    "id": 757,
+    "name": "Sapphire",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A brilliant blue gem\\nthat symbolizes\\nhonesty."
+  },
+  {
+    "id": 758,
+    "name": "Ability Shield",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 121,
+    "hold_effect_param": 0,
+    "description": "Ability changes are\\nprevented for this\\nitems's holder."
+  },
+  {
+    "id": 759,
+    "name": "Clear Amulet",
+    "price": 30000,
+    "pocket": "items",
+    "hold_effect": 122,
+    "hold_effect_param": 0,
+    "description": "Stat lowering is\\nprevented for this\\nitems's holder."
+  },
+  {
+    "id": 760,
+    "name": "Punching Glove",
+    "price": 15000,
+    "pocket": "items",
+    "hold_effect": 124,
+    "hold_effect_param": 0,
+    "description": "Powers up punching\\nmoves and removes\\ntheir contact."
+  },
+  {
+    "id": 761,
+    "name": "Covert Cloak",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 125,
+    "hold_effect_param": 0,
+    "description": "Protects holder\\nfrom additional\\neffects of moves."
+  },
+  {
+    "id": 762,
+    "name": "Loaded Dice",
+    "price": 20000,
+    "pocket": "items",
+    "hold_effect": 126,
+    "hold_effect_param": 0,
+    "description": "Rolls high numbers.\\nMultihit strikes\\nhit more times."
+  },
+  {
+    "id": 763,
+    "name": "Auspicious Armor",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Armor inhabited by\\nauspicious wishes.\\nCauses evolution."
+  },
+  {
+    "id": 764,
+    "name": "Booster Energy",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 127,
+    "hold_effect_param": 0,
+    "description": "Encapsuled energy\\nups Pokémon with\\ncertain Abilities."
+  },
+  {
+    "id": 765,
+    "name": "Big Bamboo Shoot",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A large and rare\\nbamboo shoot. Best\\nsold to gourmands."
+  },
+  {
+    "id": 766,
+    "name": "Gimmighoul Coin",
+    "price": 400,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Gimmighoul hoard\\nand treasure these\\ncurious coins."
+  },
+  {
+    "id": 767,
+    "name": "Leader's Crest",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A shard of an old\\nblade of some sort.\\nHeld by Bisharp."
+  },
+  {
+    "id": 768,
+    "name": "Malicious Armor",
+    "price": 3000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Armor inhabited by\\nmalicious will.\\nCauses evolution."
+  },
+  {
+    "id": 769,
+    "name": "Mirror Herb",
+    "price": 30000,
+    "pocket": "items",
+    "hold_effect": 123,
+    "hold_effect_param": 0,
+    "description": "Mirrors an enemy's\\nstat increases\\nbut only once."
+  },
+  {
+    "id": 770,
+    "name": "Scroll of Darkness",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A peculiar scroll\\nwith secrets of\\nthe dark path."
+  },
+  {
+    "id": 771,
+    "name": "Scroll of Waters",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A peculiar scroll\\nwith secrets of\\nthe water path."
+  },
+  {
+    "id": 772,
+    "name": "Tera Orb",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Energy charges can\\nbe used to cause\\nTerastallization."
+  },
+  {
+    "id": 773,
+    "name": "Tiny Bamboo Shoot",
+    "price": 750,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A small and rare\\nbamboo shoot. Best\\nsold to gourmands."
+  },
+  {
+    "id": 774,
+    "name": "Bug Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 775,
+    "name": "Dark Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 776,
+    "name": "Dragon Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 777,
+    "name": "Electric Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 778,
+    "name": "Fairy Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 779,
+    "name": "Fighting Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 780,
+    "name": "Fire Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 781,
+    "name": "Flying Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 782,
+    "name": "Ghost Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 783,
+    "name": "Grass Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 784,
+    "name": "Ground Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 785,
+    "name": "Ice Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 786,
+    "name": "Normal Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 787,
+    "name": "Poison Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 788,
+    "name": "Psychic Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 789,
+    "name": "Rock Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 790,
+    "name": "Steel Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 791,
+    "name": "Water Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 792,
+    "name": "Adamant Crystal",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 76,
+    "hold_effect_param": 20,
+    "description": "A large, glowing gem\\nthat lets Dialga\\nchange form."
+  },
+  {
+    "id": 793,
+    "name": "Griseous Core",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 78,
+    "hold_effect_param": 20,
+    "description": "A large, glowing gem\\nthat lets Giratina\\nchange form."
+  },
+  {
+    "id": 794,
+    "name": "Lustrous Globe",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 77,
+    "hold_effect_param": 20,
+    "description": "A large, glowing gem\\nthat lets Palkia\\nchange form."
+  },
+  {
+    "id": 795,
+    "name": "Black Augurite",
+    "price": 8000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A black stone that\\nmakes some Pokémon\\nevolve."
+  },
+  {
+    "id": 796,
+    "name": "Linking Cord",
+    "price": 8000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A mysterious string\\nthat makes some\\nPokémon evolve."
+  },
+  {
+    "id": 797,
+    "name": "Peat Block",
+    "price": 10000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A block of material\\nthat makes some\\nPokémon evolve."
+  },
+  {
+    "id": 798,
+    "name": "Berserk Gene",
+    "price": 20,
+    "pocket": "items",
+    "hold_effect": 129,
+    "hold_effect_param": 0,
+    "description": "Sharply boosts\\nAttack, but causes\\nlasting confusion."
+  },
+  {
+    "id": 799,
+    "name": "Fairy Feather",
+    "price": 1000,
+    "pocket": "items",
+    "hold_effect": 43,
+    "hold_effect_param": 0,
+    "description": "A hold item that\\nraises the power of\\nFairy-type moves."
+  },
+  {
+    "id": 800,
+    "name": "Syrupy Apple",
+    "price": 2200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A very syrupy apple\\nthat makes certain\\nPokémon evolve."
+  },
+  {
+    "id": 801,
+    "name": "Unremarkable Teacup",
+    "price": 1600,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A cracked teacup\\nthat makes certain\\nPokémon evolve."
+  },
+  {
+    "id": 802,
+    "name": "Masterpiece Teacup",
+    "price": 38000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A chipped teacup\\nthat makes certain\\nPokémon evolve."
+  },
+  {
+    "id": 803,
+    "name": "Cornerstone Mask",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 128,
+    "hold_effect_param": 20,
+    "description": "Allows Ogerpon to\\nwield the Rock-\\ntype in battle."
+  },
+  {
+    "id": 804,
+    "name": "Wellspring Mask",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 128,
+    "hold_effect_param": 20,
+    "description": "Allows Ogerpon to\\nwield the Water-\\ntype in battle."
+  },
+  {
+    "id": 805,
+    "name": "Hearthflame Mask",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 128,
+    "hold_effect_param": 20,
+    "description": "Allows Ogerpon to\\nwield the Fire-\\ntype in battle."
+  },
+  {
+    "id": 806,
+    "name": "Health Mochi",
+    "price": 500,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that raises\\nthe base HP of\\na Pokémon."
+  },
+  {
+    "id": 807,
+    "name": "Muscle Mochi",
+    "price": 500,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that raises\\nthe base Attack of\\na Pokémon."
+  },
+  {
+    "id": 808,
+    "name": "Resist Mochi",
+    "price": 500,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that raises\\nthe base Defense\\nof a Pokémon."
+  },
+  {
+    "id": 809,
+    "name": "Genius Mochi",
+    "price": 500,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that raises\\nthe base Sp. Atk.\\nof a Pokémon."
+  },
+  {
+    "id": 810,
+    "name": "Clever Mochi",
+    "price": 500,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that raises\\nthe base Sp. Def.\\nof a Pokémon."
+  },
+  {
+    "id": 811,
+    "name": "Swift Mochi",
+    "price": 500,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that raises\\nthe base Speed of\\na Pokémon."
+  },
+  {
+    "id": 812,
+    "name": "Fresh-Start Mochi",
+    "price": 300,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An item that resets\\nall base points of\\na Pokémon."
+  },
+  {
+    "id": 813,
+    "name": "Glimmering Charm",
+    "price": 0,
+    "pocket": "key_items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A charm that will\\nraise the shards\\nfrom Tera Raids."
+  },
+  {
+    "id": 814,
+    "name": "Metal Alloy",
+    "price": 6000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A peculiar metal\\nthat makes certain\\nPokémon evolve."
+  },
+  {
+    "id": 815,
+    "name": "Stellar Tera Shard",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "These shards may\\nform when a Tera\\nPokémon faints."
+  },
+  {
+    "id": 816,
+    "name": "Jubilife Muffin",
+    "price": 250,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Heals all the\\nstatus problems of\\none Pokémon."
+  },
+  {
+    "id": 817,
+    "name": "Remedy",
+    "price": 150,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A bitter powder\\nthat restores HP\\nby 20 points."
+  },
+  {
+    "id": 818,
+    "name": "Fine Remedy",
+    "price": 150,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A bitter powder\\nthat restores HP\\nby 60 points."
+  },
+  {
+    "id": 819,
+    "name": "Superb Remedy",
+    "price": 750,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A bitter powder\\nthat restores HP\\nby 120 points."
+  },
+  {
+    "id": 820,
+    "name": "Aux Evasion",
+    "price": 800,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Sharply raises\\nevasiveness during\\none battle."
+  },
+  {
+    "id": 821,
+    "name": "Aux Guard",
+    "price": 400,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Sharply raises\\ndefenses during\\none battle."
+  },
+  {
+    "id": 822,
+    "name": "Aux Power",
+    "price": 400,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Sharply raises\\noffenses during\\none battle."
+  },
+  {
+    "id": 823,
+    "name": "Aux Powerguard",
+    "price": 1200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "Sharply raises\\noffense & defense\\nduring one battle."
+  },
+  {
+    "id": 824,
+    "name": "Choice Dumpling",
+    "price": 1200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 825,
+    "name": "Swap Snack",
+    "price": 1200,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 826,
+    "name": "Twice-Spiced Radish",
+    "price": 1600,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "?????"
+  },
+  {
+    "id": 827,
+    "name": "Pokéshi Doll",
+    "price": 2000,
+    "pocket": "items",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "A wooden toy\\nresembling a Poké-\\nmon. Can be sold."
+  },
+  {
+    "id": 828,
+    "name": "Strange Ball",
+    "price": 0,
+    "pocket": "poke_balls",
+    "hold_effect": 0,
+    "hold_effect_param": 0,
+    "description": "An unusual Ball\\nwarped through\\nspace and time."
+  },
+  {
+    "id": 829,
+    "name": "Clefablite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nClefable to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 830,
+    "name": "Victreebelite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nVictreebel to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 831,
+    "name": "Starminite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nStarmie to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 832,
+    "name": "Dragoninite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nDragonite to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 833,
+    "name": "Meganiumite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nMeganium to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 834,
+    "name": "Feraligite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nFeraligatr to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 835,
+    "name": "Skarmorite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nSkarmory to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 836,
+    "name": "Froslassite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nFroslass to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 837,
+    "name": "Emboarite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nEmboar to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 838,
+    "name": "Excadrite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nExcadrill to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 839,
+    "name": "Scolipite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nScolipede to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 840,
+    "name": "Scraftinite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nScrafty to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 841,
+    "name": "Eelektrossite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nEelektross to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 842,
+    "name": "Chandelurite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nChandelure to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 843,
+    "name": "Chesnaughtite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nChesnaught to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 844,
+    "name": "Delphoxite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nDelphox to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 845,
+    "name": "Greninjite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nGreninja to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 846,
+    "name": "Pyroarite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nPyroar to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 847,
+    "name": "Floettite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nFloette to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 848,
+    "name": "Malamarite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nMalamar to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 849,
+    "name": "Barbaracite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nBarbaracle to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 850,
+    "name": "Dragalgite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nDragalge to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 851,
+    "name": "Hawluchanite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nHawlucha to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 852,
+    "name": "Zygardite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nZygarde to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 853,
+    "name": "Drampanite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nDrampa to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 854,
+    "name": "Falinksite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nFalinks to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 855,
+    "name": "Heatranite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nHeatran to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 856,
+    "name": "Darkranite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nDarkrai to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 857,
+    "name": "Zeraorite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nZeraora to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 858,
+    "name": "Raichunite X",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nRaichu to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 859,
+    "name": "Raichunite Y",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nRaichu to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 860,
+    "name": "Chimechite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nChimecho to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 861,
+    "name": "Absolite Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nAbsol to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 862,
+    "name": "Staraptite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nStaraptor to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 863,
+    "name": "Garchompite Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nGarchomp to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 864,
+    "name": "Lucarionite Z",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nLucario to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 865,
+    "name": "Golurkite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nGolurk to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 866,
+    "name": "Meowsticite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nMeowstic to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 867,
+    "name": "Crabominite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nCrabominable to\\nMega in battle."
+  },
+  {
+    "id": 868,
+    "name": "Golisopite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nGolisopod to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 869,
+    "name": "Magearnite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nMagearna to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 870,
+    "name": "Scovillainite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nScovillain to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 871,
+    "name": "Baxcalibrite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nBaxcalibur to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 872,
+    "name": "Tatsugirinite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nTatsugiri to Mega\\nEvolve in battle."
+  },
+  {
+    "id": 873,
+    "name": "Glimmoranite",
+    "price": 0,
+    "pocket": "items",
+    "hold_effect": 103,
+    "hold_effect_param": 0,
+    "description": "This stone enables\\nGlimmora to Mega\\nEvolve in battle."
+  }
+]

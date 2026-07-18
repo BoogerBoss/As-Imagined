@@ -1,0 +1,101 @@
+[gd_scene load_steps=3 format=3 uid="uid://rosterscreen"]
+
+[ext_resource type="Script" path="res://scenes/team_builder/roster_screen.gd" id="1_screen"]
+[ext_resource type="Theme" path="res://scenes/main_theme.tres" id="2_theme"]
+
+[node name="RosterScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_screen")
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatusLabel" type="Label" parent="Scroll/VBox"]
+layout_mode = 2
+text = "Saved teams."
+autowrap_mode = 2
+
+[node name="ListView" type="VBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="ListLabel" type="Label" parent="Scroll/VBox/ListView"]
+layout_mode = 2
+text = "Saved Teams:"
+
+[node name="TeamListContainer" type="VBoxContainer" parent="Scroll/VBox/ListView"]
+layout_mode = 2
+
+[node name="NewTeamRow" type="HBoxContainer" parent="Scroll/VBox/ListView"]
+layout_mode = 2
+
+[node name="NewTeamNameEdit" type="LineEdit" parent="Scroll/VBox/ListView/NewTeamRow"]
+layout_mode = 2
+placeholder_text = "New team name"
+custom_minimum_size = Vector2(200, 0)
+
+[node name="CreateTeamButton" type="Button" parent="Scroll/VBox/ListView/NewTeamRow"]
+layout_mode = 2
+text = "Create New Team"
+
+[node name="BackToSetupButton" type="Button" parent="Scroll/VBox/ListView"]
+layout_mode = 2
+text = "Back to Battle Setup"
+
+[node name="EditorView" type="VBoxContainer" parent="Scroll/VBox"]
+visible = false
+layout_mode = 2
+
+[node name="EditorNameRow" type="HBoxContainer" parent="Scroll/VBox/EditorView"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/EditorView/EditorNameRow"]
+layout_mode = 2
+text = "Team Name:"
+
+[node name="EditorNameEdit" type="LineEdit" parent="Scroll/VBox/EditorView/EditorNameRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(200, 0)
+
+[node name="SlotsLabel" type="Label" parent="Scroll/VBox/EditorView"]
+layout_mode = 2
+text = "Slots (1-6 Pokémon):"
+
+[node name="SlotsContainer" type="VBoxContainer" parent="Scroll/VBox/EditorView"]
+layout_mode = 2
+
+[node name="CancelBuilderRow" type="HBoxContainer" parent="Scroll/VBox/EditorView"]
+visible = false
+layout_mode = 2
+
+[node name="CancelBuilderButton" type="Button" parent="Scroll/VBox/EditorView/CancelBuilderRow"]
+layout_mode = 2
+text = "Cancel Add/Replace"
+
+[node name="BuilderHost" type="VBoxContainer" parent="Scroll/VBox/EditorView"]
+layout_mode = 2
+
+[node name="EditorButtonsRow" type="HBoxContainer" parent="Scroll/VBox/EditorView"]
+layout_mode = 2
+
+[node name="SaveTeamButton" type="Button" parent="Scroll/VBox/EditorView/EditorButtonsRow"]
+layout_mode = 2
+text = "Save Team"
+
+[node name="CancelEditorButton" type="Button" parent="Scroll/VBox/EditorView/EditorButtonsRow"]
+layout_mode = 2
+text = "Cancel"

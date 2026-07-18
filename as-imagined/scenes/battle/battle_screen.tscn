@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://battlescreen"]
+[gd_scene load_steps=10 format=3 uid="uid://battlescreen"]
 
 [ext_resource type="Script" uid="uid://bckp4vcyuq4v8" path="res://scenes/battle/battle_screen.gd" id="1_screen"]
 [ext_resource type="Script" uid="uid://by21x2021is5s" path="res://scripts/battle/core/battle_manager.gd" id="2_bm"]
@@ -7,6 +7,8 @@
 [ext_resource type="Texture2D" uid="uid://oa5advdirqvm" path="res://assets/sprites/pokemon/front/0006_charizard.png" id="5_charizard_front"]
 [ext_resource type="Texture2D" uid="uid://dcw4vmorqe6v" path="res://assets/sprites/battle_ui/interface/healthbox_singles_player.png" id="6_healthbox_player"]
 [ext_resource type="Texture2D" uid="uid://dt4oswkhv3ibt" path="res://assets/sprites/battle_ui/interface/healthbox_singles_opponent.png" id="7_healthbox_opponent"]
+[ext_resource type="Texture2D" uid="uid://dgekqkfaiwylq" path="res://assets/sprites/battle_ui/interface/healthbox_doubles_opponent.png" id="8_healthbox_doubles_opponent"]
+[ext_resource type="Texture2D" uid="uid://yaso2qj7fru5" path="res://assets/sprites/battle_ui/interface/healthbox_doubles_player.png" id="9_healthbox_doubles_player"]
 
 [node name="BattleScreen" type="Control" unique_id=1754921007]
 layout_mode = 3
@@ -151,6 +153,250 @@ offset_left = 84.0
 offset_top = 44.0
 offset_right = 210.0
 offset_bottom = 58.0
+
+[node name="OpponentSpriteD0" type="TextureRect" parent="BattleStage" unique_id=2001000001]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.83
+anchor_top = 0.06
+anchor_right = 0.83
+anchor_bottom = 0.06
+offset_left = -32.0
+offset_top = -33.0
+offset_right = 99.0
+offset_bottom = 98.0
+texture = ExtResource("5_charizard_front")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="OpponentHealthGroupD0" type="Control" parent="BattleStage" unique_id=2001000002]
+visible = false
+layout_mode = 1
+anchor_left = 0.72
+anchor_top = 0.24
+anchor_right = 0.72
+anchor_bottom = 0.24
+offset_right = 134.0
+offset_bottom = 34.0
+mouse_filter = 2
+
+[node name="Background" type="TextureRect" parent="BattleStage/OpponentHealthGroupD0" unique_id=2001000003]
+layout_mode = 1
+offset_right = 134.0
+offset_bottom = 34.0
+texture = ExtResource("8_healthbox_doubles_opponent")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="StatusIcon" type="TextureRect" parent="BattleStage/OpponentHealthGroupD0" unique_id=2001000004]
+visible = false
+layout_mode = 1
+offset_left = 5.0
+offset_top = 4.0
+offset_right = 30.0
+offset_bottom = 12.0
+expand_mode = 1
+stretch_mode = 4
+
+[node name="HpLabel" type="TextureRect" parent="BattleStage/OpponentHealthGroupD0" unique_id=2001000005]
+layout_mode = 1
+offset_left = 25.0
+offset_top = 12.0
+offset_right = 50.0
+offset_bottom = 20.0
+expand_mode = 1
+stretch_mode = 4
+
+[node name="HpFill" type="TextureProgressBar" parent="BattleStage/OpponentHealthGroupD0" unique_id=2001000006]
+layout_mode = 1
+offset_left = 50.0
+offset_top = 12.0
+offset_right = 126.0
+offset_bottom = 20.0
+
+[node name="OpponentSpriteD1" type="TextureRect" parent="BattleStage" unique_id=2001000007]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.83
+anchor_top = 0.34
+anchor_right = 0.83
+anchor_bottom = 0.34
+offset_left = -32.0
+offset_top = -33.0
+offset_right = 99.0
+offset_bottom = 98.0
+texture = ExtResource("5_charizard_front")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="OpponentHealthGroupD1" type="Control" parent="BattleStage" unique_id=2001000008]
+visible = false
+layout_mode = 1
+anchor_left = 0.72
+anchor_top = 0.52
+anchor_right = 0.72
+anchor_bottom = 0.52
+offset_right = 134.0
+offset_bottom = 34.0
+mouse_filter = 2
+
+[node name="Background" type="TextureRect" parent="BattleStage/OpponentHealthGroupD1" unique_id=2001000009]
+layout_mode = 1
+offset_right = 134.0
+offset_bottom = 34.0
+texture = ExtResource("8_healthbox_doubles_opponent")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="StatusIcon" type="TextureRect" parent="BattleStage/OpponentHealthGroupD1" unique_id=2001000010]
+visible = false
+layout_mode = 1
+offset_left = 5.0
+offset_top = 4.0
+offset_right = 30.0
+offset_bottom = 12.0
+expand_mode = 1
+stretch_mode = 4
+
+[node name="HpLabel" type="TextureRect" parent="BattleStage/OpponentHealthGroupD1" unique_id=2001000011]
+layout_mode = 1
+offset_left = 25.0
+offset_top = 12.0
+offset_right = 50.0
+offset_bottom = 20.0
+expand_mode = 1
+stretch_mode = 4
+
+[node name="HpFill" type="TextureProgressBar" parent="BattleStage/OpponentHealthGroupD1" unique_id=2001000012]
+layout_mode = 1
+offset_left = 50.0
+offset_top = 12.0
+offset_right = 126.0
+offset_bottom = 20.0
+
+[node name="PlayerSpriteD0" type="TextureRect" parent="BattleStage" unique_id=2001000013]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.14
+anchor_top = 0.22
+anchor_right = 0.14
+anchor_bottom = 0.22
+offset_left = -32.0
+offset_top = -33.0
+offset_right = 99.0
+offset_bottom = 98.0
+texture = ExtResource("4_pikachu_back")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="PlayerHealthGroupD0" type="Control" parent="BattleStage" unique_id=2001000014]
+visible = false
+layout_mode = 1
+anchor_left = 0.03
+anchor_top = 0.40
+anchor_right = 0.03
+anchor_bottom = 0.40
+offset_right = 134.0
+offset_bottom = 34.0
+mouse_filter = 2
+
+[node name="Background" type="TextureRect" parent="BattleStage/PlayerHealthGroupD0" unique_id=2001000015]
+layout_mode = 1
+offset_right = 134.0
+offset_bottom = 34.0
+texture = ExtResource("9_healthbox_doubles_player")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="StatusIcon" type="TextureRect" parent="BattleStage/PlayerHealthGroupD0" unique_id=2001000016]
+visible = false
+layout_mode = 1
+offset_left = 5.0
+offset_top = 4.0
+offset_right = 30.0
+offset_bottom = 12.0
+expand_mode = 1
+stretch_mode = 4
+
+[node name="HpLabel" type="TextureRect" parent="BattleStage/PlayerHealthGroupD0" unique_id=2001000017]
+layout_mode = 1
+offset_left = 25.0
+offset_top = 12.0
+offset_right = 50.0
+offset_bottom = 20.0
+expand_mode = 1
+stretch_mode = 4
+
+[node name="HpFill" type="TextureProgressBar" parent="BattleStage/PlayerHealthGroupD0" unique_id=2001000018]
+layout_mode = 1
+offset_left = 50.0
+offset_top = 12.0
+offset_right = 126.0
+offset_bottom = 20.0
+
+[node name="PlayerSpriteD1" type="TextureRect" parent="BattleStage" unique_id=2001000019]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.14
+anchor_top = 0.50
+anchor_right = 0.14
+anchor_bottom = 0.50
+offset_left = -32.0
+offset_top = -33.0
+offset_right = 99.0
+offset_bottom = 98.0
+texture = ExtResource("4_pikachu_back")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="PlayerHealthGroupD1" type="Control" parent="BattleStage" unique_id=2001000020]
+visible = false
+layout_mode = 1
+anchor_left = 0.03
+anchor_top = 0.68
+anchor_right = 0.03
+anchor_bottom = 0.68
+offset_right = 134.0
+offset_bottom = 34.0
+mouse_filter = 2
+
+[node name="Background" type="TextureRect" parent="BattleStage/PlayerHealthGroupD1" unique_id=2001000021]
+layout_mode = 1
+offset_right = 134.0
+offset_bottom = 34.0
+texture = ExtResource("9_healthbox_doubles_player")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="StatusIcon" type="TextureRect" parent="BattleStage/PlayerHealthGroupD1" unique_id=2001000022]
+visible = false
+layout_mode = 1
+offset_left = 5.0
+offset_top = 4.0
+offset_right = 30.0
+offset_bottom = 12.0
+expand_mode = 1
+stretch_mode = 4
+
+[node name="HpLabel" type="TextureRect" parent="BattleStage/PlayerHealthGroupD1" unique_id=2001000023]
+layout_mode = 1
+offset_left = 25.0
+offset_top = 12.0
+offset_right = 50.0
+offset_bottom = 20.0
+expand_mode = 1
+stretch_mode = 4
+
+[node name="HpFill" type="TextureProgressBar" parent="BattleStage/PlayerHealthGroupD1" unique_id=2001000024]
+layout_mode = 1
+offset_left = 50.0
+offset_top = 12.0
+offset_right = 126.0
+offset_bottom = 20.0
 
 [node name="VBox" type="VBoxContainer" parent="." unique_id=401385552]
 layout_mode = 1

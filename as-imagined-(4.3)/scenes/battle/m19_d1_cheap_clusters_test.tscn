@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m19d1cheaptest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m19_d1_cheap_clusters_test.gd" id="1_m19d1cheaptest"]
+
+[node name="M19D1CheapClustersTest" type="Node"]
+script = ExtResource("1_m19d1cheaptest")

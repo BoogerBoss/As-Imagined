@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://turnordersplicetest"]
+
+[ext_resource type="Script" path="res://scenes/battle/turn_order_splice_test.gd" id="1_turnordersplicetest"]
+
+[node name="TurnOrderSpliceTest" type="Node"]
+script = ExtResource("1_turnordersplicetest")

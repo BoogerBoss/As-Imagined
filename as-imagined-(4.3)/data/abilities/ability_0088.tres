@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+ability_id = 88
+ability_name = "Download"
+description = "Compares opponents' stats before raising its own Attack or Sp. Atk."
+ai_rating = 7

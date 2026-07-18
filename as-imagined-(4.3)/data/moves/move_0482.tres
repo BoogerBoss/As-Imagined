@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+move_name = "Sludge Wave"
+type = 4
+category = 1
+power = 95
+pp = 10
+secondary_effect = 9
+secondary_chance = 10
+is_spread = true
+target_includes_ally = true

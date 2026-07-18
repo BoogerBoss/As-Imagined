@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m16btest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m16b_test.gd" id="1_m16btest"]
+
+[node name="M16bTest" type="Node"]
+script = ExtResource("1_m16btest")

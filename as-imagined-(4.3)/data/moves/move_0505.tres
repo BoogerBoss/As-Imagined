@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+move_name = "Heal Pulse"
+type = 15
+category = 2
+accuracy = 0
+pp = 10
+ban_flags = 2
+healing_move = true
+pulse_move = true
+bounceable = true
+is_heal_pulse = true

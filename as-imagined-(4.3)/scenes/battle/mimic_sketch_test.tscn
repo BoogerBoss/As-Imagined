@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://mimicsketchtest"]
+
+[ext_resource type="Script" path="res://scenes/battle/mimic_sketch_test.gd" id="1_mimicsketchtest"]
+
+[node name="MimicSketchTest" type="Node"]
+script = ExtResource("1_mimicsketchtest")

@@ -1,0 +1,742 @@
+extends Node
+
+# M17n-2 test suite — Weather/evasion + speed family, plus Air Lock (docs/m17n_recon.md
+# Group 2). Continues the m17n<N> numeral-suffix naming convention established in
+# [M17n-1] (Godot resource names can't contain hyphens).
+#
+# Scope: 8 abilities, per docs/decisions.md [M17n-2]:
+#   Weather-conditional Speed doublers: Swift Swim (33, rain), Chlorophyll (34, sun),
+#     Sand Rush (146, sandstorm) — extend the EXISTING StatusManager.effective_speed
+#     (the Slush Rush precedent, [M17c]). Swift Swim/Chlorophyll ALSO respect the
+#     holder's own Utility Umbrella (a source-confirmed nuance NOT shared with Sand
+#     Rush/Slush Rush, since Umbrella only ever strips rain/sun).
+#   Weather-conditional evasion (accuracy-reduction shape): Sand Veil (8, sandstorm),
+#     Snow Cloak (81, hail) — extend the EXISTING AbilityManager.accuracy_modifier_percent
+#     ([M17a]'s Compound Eyes/Hustle precedent), now also defender-aware.
+#   Field-wide weather negation: Air Lock (76), Cloud Nine (13) — confirmed genuinely
+#     identical from source (same case branch, no asymmetry). New
+#     `AbilityManager.is_weather_negated`/`BattleManager._effective_weather()` — ONE
+#     substitution point that automatically covers every existing weather-conditional
+#     ability (Flower Gift, Solar Power, Dry Skin, Leaf Guard, Slush Rush) as well as
+#     this tier's own three new abilities, without touching their individual code.
+#   Reactive weather-setter: Sand Spit (245) — sets Sandstorm on any damaging hit,
+#     reusing the EXISTING try_set_weather (Drizzle/Drought/Sand Stream's function).
+#
+# Testing conventions applied throughout (CLAUDE.md):
+#   - Signal-snapshot, not post-battle state.
+#   - Array-wrapper for any lambda reporting a scalar back to the enclosing test function.
+#   - Type immunity precedes ability logic: all scenarios use Normal-type combatants
+#     except where a specific type interaction is the mechanic under test.
+
+var _pass := 0
+var _fail := 0
+
+
+func _ready() -> void:
+	_test_section_1_ability_data()
+	_test_section_2_speed_doublers_unit()
+	_test_section_3_utility_umbrella_nuance_unit()
+	_test_section_4_evasion_unit()
+	_test_section_5_weather_negated_unit()
+	_test_section_6_swift_swim_full_battle()
+	_test_section_7_air_lock_negates_speed_doubler_full_battle()
+	_test_section_8_damage_modifier_negation_full_battle()
+	_test_section_9_end_of_turn_chip_negation_full_battle()
+	_test_section_10_sand_veil_full_battle()
+	_test_section_11_sand_spit_full_battle()
+	_test_section_12_mold_breaker_bypass()
+	_test_section_13_neutralizing_gas_suppression()
+	_test_section_14_negative_case()
+	_test_section_15_air_lock_sand_spit_interaction_full_battle()
+	_test_section_16_weather_chip_immunity_follow_up_fix()
+
+	var total := _pass + _fail
+	print("m17n2_test: %d/%d passed" % [_pass, total])
+	if _fail > 0:
+		print("FAILED")
+	get_tree().quit(0 if _fail == 0 else 1)
+
+
+func _chk(label: String, cond: bool) -> void:
+	if cond:
+		_pass += 1
+	else:
+		_fail += 1
+		print("FAIL: " + label)
+
+
+func _load_ability(id: int) -> AbilityData:
+	return load("res://data/abilities/ability_%04d.tres" % id) as AbilityData
+
+
+func _load_move(id: int) -> MoveData:
+	return load("res://data/moves/move_%04d.tres" % id) as MoveData
+
+
+func _make_mon(mon_name: String, types: Array[int], hp: int = 100, atk: int = 80,
+		def_stat: int = 80, spatk: int = 80, spdef: int = 80, spd: int = 80) -> BattlePokemon:
+	var sp := PokemonSpecies.new()
+	sp.species_name = mon_name
+	sp.types = types
+	sp.base_hp = hp
+	sp.base_attack = atk
+	sp.base_defense = def_stat
+	sp.base_sp_attack = spatk
+	sp.base_sp_defense = spdef
+	sp.base_speed = spd
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])  # [M18.5h-1/2] pinned neutral nature + zero IVs -- exact-value assertions predate both
+
+
+func _give_item(mon: BattlePokemon, hold_effect: int) -> void:
+	var item := ItemData.new()
+	item.item_name = "TestItem"
+	item.hold_effect = hold_effect
+	mon.held_item = item
+
+
+# ── Section 1: Ability data spot-checks ──────────────────────────────────────
+
+func _test_section_1_ability_data() -> void:
+	var sand_veil := _load_ability(8)
+	_chk("S1.01 Sand Veil id=8, breakable=true", sand_veil.ability_id == 8 and sand_veil.breakable)
+
+	var snow_cloak := _load_ability(81)
+	_chk("S1.02 Snow Cloak id=81, breakable=true", snow_cloak.ability_id == 81 and snow_cloak.breakable)
+
+	var swift_swim := _load_ability(33)
+	_chk("S1.03 Swift Swim id=33, NOT breakable (self-check)",
+			swift_swim.ability_id == 33 and not swift_swim.breakable)
+
+	var chlorophyll := _load_ability(34)
+	_chk("S1.04 Chlorophyll id=34, NOT breakable", chlorophyll.ability_id == 34 and not chlorophyll.breakable)
+
+	var sand_rush := _load_ability(146)
+	_chk("S1.05 Sand Rush id=146, NOT breakable", sand_rush.ability_id == 146 and not sand_rush.breakable)
+
+	var air_lock := _load_ability(76)
+	_chk("S1.06 Air Lock id=76, NOT breakable (field-wide passive)",
+			air_lock.ability_id == 76 and not air_lock.breakable)
+
+	var cloud_nine := _load_ability(13)
+	_chk("S1.07 Cloud Nine id=13, NOT breakable", cloud_nine.ability_id == 13 and not cloud_nine.breakable)
+
+	var sand_spit := _load_ability(245)
+	_chk("S1.08 Sand Spit id=245, NOT breakable", sand_spit.ability_id == 245 and not sand_spit.breakable)
+
+
+# ── Section 2: Speed doublers — direct unit tests ────────────────────────────
+
+func _test_section_2_speed_doublers_unit() -> void:
+	var swift_swim := _load_ability(33)
+	var chlorophyll := _load_ability(34)
+	var sand_rush := _load_ability(146)
+
+	var ss := _make_mon("SwiftSwimMon", [TypeChart.TYPE_NORMAL], 100, 80, 80, 80, 80, 50)
+	ss.ability = swift_swim
+	var base_speed: int = StatusManager.effective_speed(ss, DamageCalculator.WEATHER_NONE)
+	var rain_speed: int = StatusManager.effective_speed(ss, DamageCalculator.WEATHER_RAIN)
+	_chk("S2.01 Swift Swim doubles Speed in rain", rain_speed == base_speed * 2)
+	_chk("S2.02 Swift Swim does NOT double outside rain (sun discriminator)",
+			StatusManager.effective_speed(ss, DamageCalculator.WEATHER_SUN) == base_speed)
+
+	var ch := _make_mon("ChlorophyllMon", [TypeChart.TYPE_NORMAL], 100, 80, 80, 80, 80, 50)
+	ch.ability = chlorophyll
+	var ch_base: int = StatusManager.effective_speed(ch, DamageCalculator.WEATHER_NONE)
+	_chk("S2.03 Chlorophyll doubles Speed in sun",
+			StatusManager.effective_speed(ch, DamageCalculator.WEATHER_SUN) == ch_base * 2)
+	_chk("S2.04 Chlorophyll does NOT double in rain (discriminator)",
+			StatusManager.effective_speed(ch, DamageCalculator.WEATHER_RAIN) == ch_base)
+
+	var sr := _make_mon("SandRushMon", [TypeChart.TYPE_NORMAL], 100, 80, 80, 80, 80, 50)
+	sr.ability = sand_rush
+	var sr_base: int = StatusManager.effective_speed(sr, DamageCalculator.WEATHER_NONE)
+	_chk("S2.05 Sand Rush doubles Speed in sandstorm",
+			StatusManager.effective_speed(sr, DamageCalculator.WEATHER_SANDSTORM) == sr_base * 2)
+	_chk("S2.06 Sand Rush does NOT double in hail (discriminator)",
+			StatusManager.effective_speed(sr, DamageCalculator.WEATHER_HAIL) == sr_base)
+
+
+# ── Section 3: Utility Umbrella nuance — Swift Swim/Chlorophyll only ─────────
+
+func _test_section_3_utility_umbrella_nuance_unit() -> void:
+	var swift_swim := _load_ability(33)
+	var sand_rush := _load_ability(146)
+
+	var ss := _make_mon("UmbrellaSwiftSwim", [TypeChart.TYPE_NORMAL], 100, 80, 80, 80, 80, 50)
+	ss.ability = swift_swim
+	_give_item(ss, ItemManager.HOLD_EFFECT_UTILITY_UMBRELLA)
+	var base: int = StatusManager.effective_speed(ss, DamageCalculator.WEATHER_NONE)
+	_chk("S3.01 Utility Umbrella blocks Swift Swim's rain boost",
+			StatusManager.effective_speed(ss, DamageCalculator.WEATHER_RAIN) == base)
+
+	# Discriminator: Sand Rush's sandstorm boost is NOT blocked by Utility Umbrella
+	# (source only strips rain/sun, never sandstorm/hail).
+	var sr := _make_mon("UmbrellaSandRush", [TypeChart.TYPE_NORMAL], 100, 80, 80, 80, 80, 50)
+	sr.ability = sand_rush
+	_give_item(sr, ItemManager.HOLD_EFFECT_UTILITY_UMBRELLA)
+	var sr_base: int = StatusManager.effective_speed(sr, DamageCalculator.WEATHER_NONE)
+	_chk("S3.02 Utility Umbrella does NOT block Sand Rush's sandstorm boost",
+			StatusManager.effective_speed(sr, DamageCalculator.WEATHER_SANDSTORM) == sr_base * 2)
+
+
+# ── Section 4: Evasion (Sand Veil / Snow Cloak) — direct unit tests ──────────
+
+func _test_section_4_evasion_unit() -> void:
+	var sand_veil := _load_ability(8)
+	var snow_cloak := _load_ability(81)
+	var tackle := _load_move(33)
+
+	var attacker := _make_mon("EvasionAttacker", [TypeChart.TYPE_NORMAL])
+	var sv := _make_mon("SandVeilMon", [TypeChart.TYPE_NORMAL])
+	sv.ability = sand_veil
+	_chk("S4.01 Sand Veil: attacker accuracy x0.80 in sandstorm",
+			AbilityManager.accuracy_modifier_percent(attacker, tackle, false, sv,
+					DamageCalculator.WEATHER_SANDSTORM) == 80)
+	_chk("S4.02 Sand Veil: no effect outside sandstorm (discriminator)",
+			AbilityManager.accuracy_modifier_percent(attacker, tackle, false, sv,
+					DamageCalculator.WEATHER_NONE) == 100)
+
+	var sc := _make_mon("SnowCloakMon", [TypeChart.TYPE_NORMAL])
+	sc.ability = snow_cloak
+	_chk("S4.03 Snow Cloak: attacker accuracy x0.80 in hail",
+			AbilityManager.accuracy_modifier_percent(attacker, tackle, false, sc,
+					DamageCalculator.WEATHER_HAIL) == 80)
+	_chk("S4.04 Snow Cloak: no effect in sandstorm (discriminator)",
+			AbilityManager.accuracy_modifier_percent(attacker, tackle, false, sc,
+					DamageCalculator.WEATHER_SANDSTORM) == 100)
+
+
+# ── Section 5: is_weather_negated — direct unit tests ────────────────────────
+
+func _test_section_5_weather_negated_unit() -> void:
+	var air_lock := _load_ability(76)
+	var cloud_nine := _load_ability(13)
+
+	var al := _make_mon("AirLockMon", [TypeChart.TYPE_NORMAL])
+	al.ability = air_lock
+	_chk("S5.01 Air Lock negates weather (field-wide check)",
+			AbilityManager.is_weather_negated([al]) == true)
+
+	var cn := _make_mon("CloudNineMon", [TypeChart.TYPE_NORMAL])
+	cn.ability = cloud_nine
+	_chk("S5.02 Cloud Nine negates weather too (confirmed identical)",
+			AbilityManager.is_weather_negated([cn]) == true)
+
+	var plain := _make_mon("NoNegationMon", [TypeChart.TYPE_NORMAL])
+	_chk("S5.03 ordinary Pokémon: weather NOT negated",
+			AbilityManager.is_weather_negated([plain]) == false)
+
+	# A fainted Air Lock holder does not negate weather.
+	var al_fainted := _make_mon("AirLockFainted", [TypeChart.TYPE_NORMAL])
+	al_fainted.ability = air_lock
+	al_fainted.fainted = true
+	_chk("S5.04 a FAINTED Air Lock holder does not negate weather",
+			AbilityManager.is_weather_negated([al_fainted]) == false)
+
+
+# ── Section 6: Swift Swim — full-battle turn-order confirmation ──────────────
+
+func _test_section_6_swift_swim_full_battle() -> void:
+	var tackle := _load_move(33)
+	var swift_swim := _load_ability(33)
+
+	# Normally slower attacker gets Swift Swim; in rain it should outrun the opponent.
+	var slow_ss := _make_mon("BattleSwiftSwim", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 40)
+	slow_ss.ability = swift_swim
+	slow_ss.add_move(tackle)
+	var faster_opp := _make_mon("BattleFasterOpp", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 60)
+	faster_opp.add_move(tackle)
+
+	var move_executed_events := []
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.weather = DamageCalculator.WEATHER_RAIN
+	bm.weather_duration = 10
+	bm.move_executed.connect(func(a, d, m, dmg): move_executed_events.push_back([a, d, m, dmg]))
+
+	bm.start_battle_with_parties(BattleParty.single(slow_ss), BattleParty.single(faster_opp))
+
+	_chk("S6.01 Swift Swim's holder (normally slower) acted FIRST in rain",
+			not move_executed_events.is_empty() and move_executed_events[0][0] == slow_ss)
+
+	bm.queue_free()
+
+
+# ── Section 7: Air Lock negates a speed-doubler — key cross-ability test ────
+
+func _test_section_7_air_lock_negates_speed_doubler_full_battle() -> void:
+	var tackle := _load_move(33)
+	var swift_swim := _load_ability(33)
+	var air_lock := _load_ability(76)
+
+	var slow_ss := _make_mon("ALBattleSwiftSwim", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 40)
+	slow_ss.ability = swift_swim
+	slow_ss.add_move(tackle)
+	var faster_al := _make_mon("ALBattleFasterOpp", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 60)
+	faster_al.ability = air_lock
+	faster_al.add_move(tackle)
+
+	var move_executed_events := []
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.weather = DamageCalculator.WEATHER_RAIN
+	bm.weather_duration = 10
+	bm.move_executed.connect(func(a, d, m, dmg): move_executed_events.push_back([a, d, m, dmg]))
+
+	bm.start_battle_with_parties(BattleParty.single(slow_ss), BattleParty.single(faster_al))
+
+	_chk("S7.01 with Air Lock present, Swift Swim's boost is negated — the naturally " +
+			"FASTER Pokémon (Air Lock holder) acts first despite rain being active",
+			not move_executed_events.is_empty() and move_executed_events[0][0] == faster_al)
+
+	bm.queue_free()
+
+
+# ── Section 8: Air Lock negates the weather DAMAGE modifier ──────────────────
+
+func _test_section_8_damage_modifier_negation_full_battle() -> void:
+	var water_gun := _load_move(55)
+	var air_lock := _load_ability(76)
+
+	var attacker_plain := _make_mon("DmgModAttackerPlain", [TypeChart.TYPE_WATER], 100, 80, 60, 60, 60, 60)
+	var target_plain := _make_mon("DmgModTargetPlain", [TypeChart.TYPE_NORMAL], 200, 60, 60, 60, 60, 60)
+	var baseline: Dictionary = DamageCalculator.calculate(attacker_plain, target_plain, water_gun, 100, false,
+			DamageCalculator.WEATHER_NONE)
+	var boosted: Dictionary = DamageCalculator.calculate(attacker_plain, target_plain, water_gun, 100, false,
+			DamageCalculator.WEATHER_RAIN)
+	_chk("S8.01 sanity: rain boosts a Water move's damage (x1.5) when weather is NOT negated",
+			boosted["damage"] > baseline["damage"])
+
+	# Full-battle confirmation: with Air Lock present, damage matches the NO-weather
+	# baseline even though bm.weather is set to rain.
+	var attacker := _make_mon("DmgModAttacker", [TypeChart.TYPE_WATER], 100, 80, 60, 60, 60, 60)
+	attacker.add_move(water_gun)
+	var target := _make_mon("DmgModTarget", [TypeChart.TYPE_NORMAL], 200, 60, 60, 60, 60, 30)
+	target.ability = air_lock
+	target.add_move(water_gun)
+
+	var move_executed_events := []
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.weather = DamageCalculator.WEATHER_RAIN
+	bm.weather_duration = 10
+	bm._force_roll = 100  # deterministic, matches the forced-roll baseline/boosted calcs above
+	bm._force_crit = false  # matches the baseline/boosted calcs' force_crit=false — a stray
+	# crit here would inflate damage above the baseline even with the roll forced, a real
+	# flaky-test bug caught during this tier's own reruns (see docs/decisions.md [M17n-2])
+	bm.move_executed.connect(func(a, d, m, dmg): move_executed_events.push_back([a, d, m, dmg]))
+
+	bm.start_battle_with_parties(BattleParty.single(attacker), BattleParty.single(target))
+
+	var hit := move_executed_events.filter(func(e): return e[0] == attacker and e[1] == target)
+	_chk("S8.02 with Air Lock present, damage matches the un-boosted baseline (rain negated)",
+			not hit.is_empty() and hit[0][3] == baseline["damage"])
+	_chk("S8.03 damage is LESS than what rain would have boosted it to",
+			not hit.is_empty() and hit[0][3] < boosted["damage"])
+
+	bm.queue_free()
+
+
+# ── Section 9: Air Lock negates end-of-turn weather chip damage ─────────────
+
+func _test_section_9_end_of_turn_chip_negation_full_battle() -> void:
+	var tackle := _load_move(33)
+	var air_lock := _load_ability(76)
+
+	# Without Air Lock: sandstorm chip should occur.
+	var a1 := _make_mon("ChipAttacker1", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 200)
+	a1.add_move(tackle)
+	var b1 := _make_mon("ChipTarget1", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 40)
+	b1.add_move(tackle)
+
+	var chip_events1 := []
+	var bm1 := BattleManager.new()
+	add_child(bm1)
+	bm1.weather = DamageCalculator.WEATHER_SANDSTORM
+	bm1.weather_duration = 10
+	bm1.weather_damage.connect(func(m, amt): chip_events1.push_back([m, amt]))
+	bm1.start_battle_with_parties(BattleParty.single(a1), BattleParty.single(b1))
+	_chk("S9.01 sanity: sandstorm chip damage occurs without Air Lock",
+			not chip_events1.is_empty())
+	bm1.queue_free()
+
+	# With Air Lock present (on either side): no chip damage at all.
+	var a2 := _make_mon("ChipAttacker2", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 200)
+	a2.ability = air_lock
+	a2.add_move(tackle)
+	var b2 := _make_mon("ChipTarget2", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 40)
+	b2.add_move(tackle)
+
+	var chip_events2 := []
+	var bm2 := BattleManager.new()
+	add_child(bm2)
+	bm2.weather = DamageCalculator.WEATHER_SANDSTORM
+	bm2.weather_duration = 10
+	bm2.weather_damage.connect(func(m, amt): chip_events2.push_back([m, amt]))
+	bm2.start_battle_with_parties(BattleParty.single(a2), BattleParty.single(b2))
+	_chk("S9.02 with Air Lock present, NO sandstorm chip damage occurs at all",
+			chip_events2.is_empty())
+	bm2.queue_free()
+
+
+# ── Section 10: Sand Veil — full-battle accuracy reduction ──────────────────
+
+func _test_section_10_sand_veil_full_battle() -> void:
+	var tackle := _load_move(33)
+	var sand_veil := _load_ability(8)
+
+	var attacker := _make_mon("SandVeilAttacker", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 60)
+	attacker.add_move(tackle)
+	var target := _make_mon("SandVeilTarget", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 30)
+	target.ability = sand_veil
+	target.add_move(tackle)
+
+	var move_missed_events := []
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.weather = DamageCalculator.WEATHER_SANDSTORM
+	bm.weather_duration = 10
+	bm.move_missed.connect(func(a, r): move_missed_events.push_back([a, r]))
+	bm.start_battle_with_parties(BattleParty.single(attacker), BattleParty.single(target))
+
+	# Not asserting a specific hit/miss outcome (accuracy is probabilistic) — instead
+	# confirm the modifier itself is correct via the direct unit test in Section 4;
+	# here just confirm the battle runs to completion without error as an integration
+	# sanity check.
+	_chk("S10.01 Sand Veil full-battle scenario runs without error",
+			bm.get_phase() == BattleManager.BattlePhase.BATTLE_END)
+
+	bm.queue_free()
+
+
+# ── Section 11: Sand Spit — full-battle reactive weather-set ────────────────
+
+func _test_section_11_sand_spit_full_battle() -> void:
+	var tackle := _load_move(33)
+	var sand_spit := _load_ability(245)
+
+	var attacker := _make_mon("SandSpitAttacker", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 60)
+	attacker.add_move(tackle)
+	var target := _make_mon("SandSpitTarget", [TypeChart.TYPE_NORMAL], 200, 60, 60, 60, 60, 30)
+	target.ability = sand_spit
+	target.add_move(tackle)
+
+	var weather_set_events := []
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm.weather_set.connect(func(p, w): weather_set_events.push_back([p, w]))
+
+	bm.start_battle_with_parties(BattleParty.single(attacker), BattleParty.single(target))
+
+	_chk("S11.01 Sand Spit set Sandstorm after being hit",
+			weather_set_events.any(func(e): return e[0] == target and e[1] == DamageCalculator.WEATHER_SANDSTORM))
+
+	bm.queue_free()
+
+	# Negative-shape: Sand Spit does NOT re-fire the signal once Sandstorm is already active.
+	var attacker2 := _make_mon("SandSpitAttacker2", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 200)
+	attacker2.add_move(tackle)
+	var target2 := _make_mon("SandSpitTarget2", [TypeChart.TYPE_NORMAL], 200, 60, 60, 60, 60, 30)
+	target2.ability = sand_spit
+	target2.add_move(tackle)
+
+	var weather_set_events2 := []
+	var bm2 := BattleManager.new()
+	add_child(bm2)
+	bm2.weather = DamageCalculator.WEATHER_SANDSTORM
+	bm2.weather_duration = 10
+	bm2.weather_set.connect(func(p, w): weather_set_events2.push_back([p, w]))
+	bm2.start_battle_with_parties(BattleParty.single(attacker2), BattleParty.single(target2))
+
+	_chk("S11.02 Sand Spit does NOT re-emit weather_set when Sandstorm is already active",
+			weather_set_events2.is_empty())
+
+	bm2.queue_free()
+
+
+# ── Section 12: Mold Breaker bypass — Sand Veil/Snow Cloak only (breakable) ──
+
+func _test_section_12_mold_breaker_bypass() -> void:
+	var mold_breaker := _load_ability(104)
+	var sand_veil := _load_ability(8)
+	var tackle := _load_move(33)
+
+	var mb_attacker := _make_mon("MBAttackerN2", [TypeChart.TYPE_NORMAL])
+	mb_attacker.ability = mold_breaker
+
+	var sv := _make_mon("SandVeilMB", [TypeChart.TYPE_NORMAL])
+	sv.ability = sand_veil
+	_chk("S12.01 Mold Breaker bypasses Sand Veil's accuracy reduction",
+			AbilityManager.accuracy_modifier_percent(mb_attacker, tackle, false, sv,
+					DamageCalculator.WEATHER_SANDSTORM) == 100)
+
+
+# ── Section 13: Neutralizing Gas suppression ─────────────────────────────────
+
+func _test_section_13_neutralizing_gas_suppression() -> void:
+	var sand_veil := _load_ability(8)
+	var swift_swim := _load_ability(33)
+	var air_lock := _load_ability(76)
+	var tackle := _load_move(33)
+
+	var attacker := _make_mon("NGAttackerN2", [TypeChart.TYPE_NORMAL])
+
+	var sv := _make_mon("SandVeilNG", [TypeChart.TYPE_NORMAL])
+	sv.ability = sand_veil
+	_chk("S13.01 Neutralizing Gas suppresses Sand Veil",
+			AbilityManager.accuracy_modifier_percent(attacker, tackle, true, sv,
+					DamageCalculator.WEATHER_SANDSTORM) == 100)
+
+	var ss := _make_mon("SwiftSwimNG", [TypeChart.TYPE_NORMAL], 100, 80, 80, 80, 80, 50)
+	ss.ability = swift_swim
+	var ss_base: int = StatusManager.effective_speed(ss, DamageCalculator.WEATHER_NONE, true)
+	_chk("S13.02 Neutralizing Gas suppresses Swift Swim",
+			StatusManager.effective_speed(ss, DamageCalculator.WEATHER_RAIN, true) == ss_base)
+
+	var al := _make_mon("AirLockNG", [TypeChart.TYPE_NORMAL])
+	al.ability = air_lock
+	_chk("S13.03 Neutralizing Gas suppresses Air Lock's own weather-negation",
+			AbilityManager.is_weather_negated([al], true) == false)
+
+
+# ── Section 14: Negative case ────────────────────────────────────────────────
+
+func _test_section_14_negative_case() -> void:
+	var tackle := _load_move(33)
+	var plain := _make_mon("NegControlN2", [TypeChart.TYPE_NORMAL], 100, 80, 80, 80, 80, 50)
+	var base: int = StatusManager.effective_speed(plain, DamageCalculator.WEATHER_NONE)
+	_chk("S14.01 ordinary Pokémon: no speed change under any weather",
+			StatusManager.effective_speed(plain, DamageCalculator.WEATHER_RAIN) == base
+			and StatusManager.effective_speed(plain, DamageCalculator.WEATHER_SUN) == base
+			and StatusManager.effective_speed(plain, DamageCalculator.WEATHER_SANDSTORM) == base)
+
+	var attacker := _make_mon("NegControlAttackerN2", [TypeChart.TYPE_NORMAL])
+	_chk("S14.02 ordinary Pokémon: no accuracy change under any weather",
+			AbilityManager.accuracy_modifier_percent(attacker, tackle, false, plain,
+					DamageCalculator.WEATHER_SANDSTORM) == 100)
+
+	_chk("S14.03 ordinary Pokémon: does not negate weather",
+			AbilityManager.is_weather_negated([plain]) == false)
+
+
+# ── Section 15: Air Lock / Sand Spit interaction — formalizes a post-hoc scratch ────
+# check into a permanent regression test ([M17n-2] follow-up).
+#
+# Confirmed from source before writing this: `TryChangeBattleWeather`
+# (battle_util.c L1969-2016) never references Air Lock/Cloud Nine — weather-SETTING is
+# unaffected by them; only `GetWeather()` (L9274-9279), the READ side, is filtered.
+# Sand Spit's own dispatch (battle_util.c L4181-4196) guards its outer "already
+# sandstorm" check via the FILTERED `GetWeather()` (meaning, oddly, that check alone
+# would look "not sandstorm" the whole time Air Lock is present) — but the real
+# idempotency comes from `TryChangeBattleWeather`'s OWN internal check against the RAW
+# `gBattleWeather` field, so no observable re-trigger happens either way. This
+# project's `try_set_weather` (battle_manager.gd) mirrors that exact raw-field check
+# directly (`if weather == weather_type: return false`), so `AbilityManager.
+# try_hit_reactive_effects`'s Sand Spit branch doesn't need its own "already
+# sandstorm" gate at all — confirmed intentional, not a gap.
+#
+# Scenario: an Air Lock holder (mon1, on a 2-member bench so the battle continues past
+# its own faint) attacks a Sand Spit holder (defender) for exactly 3 turns before
+# fainting from defender's counter-attacks on the 4th (HP tuned via a direct
+# DamageCalculator probe so the faint turn is exact, not guessed) — Sand Spit triggers
+# on mon1's FIRST hit (turn 1), setting Sandstorm despite Air Lock being present the
+# whole time. Correctness is checked via signal ORDERING (not turn-counting or
+# post-battle state): every accumulated event is tagged and timestamped by insertion
+# order, then checked against the index of mon1's `pokemon_fainted` event — matching
+# this project's established ordering-based assertion pattern (e.g. the M16 Review's
+# Pursuit-vs-switch ordering tests) rather than manually pumping the state machine
+# turn-by-turn.
+func _test_section_15_air_lock_sand_spit_interaction_full_battle() -> void:
+	var tackle := _load_move(33)
+	var air_lock := _load_ability(76)
+	var sand_spit := _load_ability(245)
+
+	# Probe the exact per-hit damage against mon1's real Defense stat first, so its
+	# max_hp can be tuned to survive EXACTLY 3 hits and faint on the 4th — avoids
+	# hand-deriving the damage formula, matching this project's established
+	# compute-HP-from-a-known-per-hit-damage testing convention. Weather is WEATHER_NONE
+	# here deliberately: Air Lock is present for all 4 real hits (mon1 hasn't fainted
+	# yet when each hit's damage is calculated, including the lethal 4th), so the
+	# EFFECTIVE weather during every one of mon1's real hits is also NONE — this probe
+	# matches the real in-battle damage exactly, not just approximately.
+	var probe_defender := _make_mon("Probe", [TypeChart.TYPE_NORMAL], 100, 100, 60, 60, 60, 100)
+	var probe_target := _make_mon("ProbeTarget", [TypeChart.TYPE_NORMAL], 999, 60, 60, 60, 60, 60)
+	var probe_result: Dictionary = DamageCalculator.calculate(probe_defender, probe_target, tackle, 100, false)
+	var per_hit_damage: int = probe_result["damage"]
+
+	var mon1 := _make_mon("AirLockLeavesViaFaint", [TypeChart.TYPE_NORMAL],
+			per_hit_damage * 3 + 1, 60, 60, 60, 60, 200)
+	mon1.ability = air_lock
+	mon1.add_move(tackle)
+	var mon2 := _make_mon("BenchNoAirLock", [TypeChart.TYPE_NORMAL], 100, 60, 60, 60, 60, 60)
+	mon2.add_move(tackle)
+	var defender := _make_mon("SandSpitDefenderN2", [TypeChart.TYPE_NORMAL], 500, 100, 60, 60, 60, 100)
+	defender.ability = sand_spit
+	defender.add_move(tackle)
+
+	var events := []  # ordered log: {"type": "weather_set"/"chip"/"fainted", ...}
+	var weather_set_confirmations := []
+	var bm := BattleManager.new()
+	add_child(bm)
+	bm._force_roll = 100
+	bm._force_crit = false
+	bm.weather_set.connect(func(p, w):
+		events.append({"type": "weather_set", "mon": p, "w": w})
+		weather_set_confirmations.append(bm.weather == DamageCalculator.WEATHER_SANDSTORM)
+		# Pin the duration so it can't expire naturally mid-test (this tier's own task
+		# explicitly flagged the earlier scratch test's ambiguous double-weather_set,
+		# caused by natural expiry, as something to avoid here).
+		bm.weather_duration = 20)
+	bm.weather_damage.connect(func(m, amt): events.append({"type": "chip", "mon": m, "amt": amt}))
+	bm.pokemon_fainted.connect(func(p): events.append({"type": "fainted", "mon": p}))
+
+	var player_party := BattleParty.new()
+	player_party.members = [mon1, mon2]
+	player_party.active_index = 0
+
+	bm.start_battle_with_parties(player_party, BattleParty.single(defender))
+
+	# 1. Sandstorm was successfully SET despite Air Lock (mon1) being present.
+	_chk("S15.01 Sand Spit set Sandstorm despite Air Lock being present",
+			events.any(func(e): return e["type"] == "weather_set" and e["w"] == DamageCalculator.WEATHER_SANDSTORM))
+	_chk("S15.02 bm.weather read WEATHER_SANDSTORM at the exact moment the signal fired",
+			not weather_set_confirmations.is_empty() and weather_set_confirmations[0] == true)
+
+	# Locate mon1's faint in the ordered event log.
+	var fainted_idx := -1
+	for i in range(events.size()):
+		if events[i]["type"] == "fainted" and events[i]["mon"] == mon1:
+			fainted_idx = i
+			break
+	_chk("S15.03 mon1 (Air Lock holder) did eventually faint (sanity check the scenario ran as designed)",
+			fainted_idx != -1)
+
+	var chip_before_faint := false
+	var chip_after_faint := false
+	for i in range(events.size()):
+		if events[i]["type"] == "chip":
+			if fainted_idx == -1 or i < fainted_idx:
+				chip_before_faint = true
+			else:
+				chip_after_faint = true
+
+	# 2. While Air Lock (mon1) remains on the field, ZERO chip-damage events occur —
+	# spans at least 3 end-of-turn ticks by construction (mon1 survives exactly 3 hits
+	# before fainting on the 4th).
+	_chk("S15.04 NO sandstorm chip damage occurred at any point while Air Lock was present",
+			not chip_before_faint)
+
+	# 3. Once Air Lock leaves the field (faints; mon2, which has no Air Lock, replaces
+	# it), chip damage resumes — proving Sandstorm was genuinely set and unmodified
+	# the whole time, only its EFFECTS were filtered at the read side. (The negative
+	# control — Sand Spit triggering Sandstorm chip damage normally with NO Air Lock
+	# anywhere — already exists as S11.01/the implicit baseline behavior Section 11
+	# tests; not duplicated here.)
+	_chk("S15.05 sandstorm chip damage resumed once Air Lock left the field",
+			chip_after_faint)
+
+	bm.queue_free()
+
+
+# ── Section 16: Sand Veil/Sand Force/Sand Rush/Snow Cloak — weather-chip immunity
+# (follow-up fix, post-[M17n-6]) ─────────────────────────────────────────────
+#
+# This tier's ORIGINAL entry concluded these four abilities grant NO sandstorm/hail
+# chip-damage immunity, and shipped a supporting code comment saying so. That
+# conclusion was confirmed WRONG during [M17n-6]'s Overcoat work — current source
+# (battle_end_turn.c :: HandleEndTurnWeatherDamage, L143-169) explicitly exempts
+# Sand Veil/Sand Force/Sand Rush from sandstorm chip and Snow Cloak from hail chip,
+# the same shape as Overcoat's own (already-shipped) exemption. Fixed here rather
+# than left as a flagged-but-unfixed gap — see docs/decisions.md's [M17n-2] follow-up
+# subsection.
+
+func _test_section_16_weather_chip_immunity_follow_up_fix() -> void:
+	var sand_veil := _load_ability(8)
+	var sand_force := _load_ability(159)
+	var sand_rush := _load_ability(146)
+	var snow_cloak := _load_ability(81)
+	var tackle := _load_move(33)
+
+	# Direct unit tests: each ability blocks chip ONLY during its own matching
+	# weather, never the other.
+	var sv := _make_mon("ChipSandVeil", [TypeChart.TYPE_NORMAL])
+	sv.ability = sand_veil
+	_chk("S16.01 Sand Veil blocks sandstorm chip",
+			AbilityManager.blocks_weather_chip_damage(sv, false, DamageCalculator.WEATHER_SANDSTORM))
+	_chk("S16.02 Sand Veil does NOT block hail chip (discriminator)",
+			not AbilityManager.blocks_weather_chip_damage(sv, false, DamageCalculator.WEATHER_HAIL))
+
+	var sf := _make_mon("ChipSandForce", [TypeChart.TYPE_NORMAL])
+	sf.ability = sand_force
+	_chk("S16.03 Sand Force blocks sandstorm chip",
+			AbilityManager.blocks_weather_chip_damage(sf, false, DamageCalculator.WEATHER_SANDSTORM))
+	_chk("S16.04 Sand Force does NOT block hail chip (discriminator)",
+			not AbilityManager.blocks_weather_chip_damage(sf, false, DamageCalculator.WEATHER_HAIL))
+
+	var sr := _make_mon("ChipSandRush", [TypeChart.TYPE_NORMAL])
+	sr.ability = sand_rush
+	_chk("S16.05 Sand Rush blocks sandstorm chip",
+			AbilityManager.blocks_weather_chip_damage(sr, false, DamageCalculator.WEATHER_SANDSTORM))
+	_chk("S16.06 Sand Rush does NOT block hail chip (discriminator)",
+			not AbilityManager.blocks_weather_chip_damage(sr, false, DamageCalculator.WEATHER_HAIL))
+
+	var sc := _make_mon("ChipSnowCloak", [TypeChart.TYPE_NORMAL])
+	sc.ability = snow_cloak
+	_chk("S16.07 Snow Cloak blocks hail chip",
+			AbilityManager.blocks_weather_chip_damage(sc, false, DamageCalculator.WEATHER_HAIL))
+	_chk("S16.08 Snow Cloak does NOT block sandstorm chip (discriminator)",
+			not AbilityManager.blocks_weather_chip_damage(sc, false, DamageCalculator.WEATHER_SANDSTORM))
+
+	# Neutralizing Gas suppression — one representative ability.
+	_chk("S16.09 Neutralizing Gas suppresses Sand Veil's weather-chip immunity",
+			not AbilityManager.blocks_weather_chip_damage(sv, true, DamageCalculator.WEATHER_SANDSTORM))
+
+	# Full-battle confirmation: Sand Rush holder takes no sandstorm chip; a plain
+	# control (same stats) does.
+	var control := _make_mon("ChipControlN2", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 40)
+	control.add_move(tackle)
+	var control_atk := _make_mon("ChipControlAtkN2", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 200)
+	control_atk.add_move(tackle)
+	var chip_events_control := []
+	var bm1 := BattleManager.new()
+	add_child(bm1)
+	bm1.weather = DamageCalculator.WEATHER_SANDSTORM
+	bm1.weather_duration = 10
+	bm1.weather_damage.connect(func(m, amt): chip_events_control.push_back([m, amt]))
+	bm1.start_battle_with_parties(BattleParty.single(control_atk), BattleParty.single(control))
+	_chk("S16.10 sanity: without Sand Rush, sandstorm chip damage occurs",
+			chip_events_control.any(func(e): return e[0] == control))
+	bm1.queue_free()
+
+	var sand_rush_holder := _make_mon("ChipSandRushBattle", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 40)
+	sand_rush_holder.ability = sand_rush
+	sand_rush_holder.add_move(tackle)
+	var sr_atk := _make_mon("ChipSandRushAtkN2", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 200)
+	sr_atk.add_move(tackle)
+	var chip_events_sr := []
+	var bm2 := BattleManager.new()
+	add_child(bm2)
+	bm2.weather = DamageCalculator.WEATHER_SANDSTORM
+	bm2.weather_duration = 10
+	bm2.weather_damage.connect(func(m, amt): chip_events_sr.push_back([m, amt]))
+	bm2.start_battle_with_parties(BattleParty.single(sr_atk), BattleParty.single(sand_rush_holder))
+	_chk("S16.11 Sand Rush holder never takes sandstorm chip damage",
+			not chip_events_sr.any(func(e): return e[0] == sand_rush_holder))
+	bm2.queue_free()
+
+	# Full-battle confirmation: Snow Cloak holder takes no hail chip.
+	var snow_cloak_holder := _make_mon("ChipSnowCloakBattle", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 40)
+	snow_cloak_holder.ability = snow_cloak
+	snow_cloak_holder.add_move(tackle)
+	var sc_atk := _make_mon("ChipSnowCloakAtkN2", [TypeChart.TYPE_NORMAL], 100, 40, 40, 40, 40, 200)
+	sc_atk.add_move(tackle)
+	var chip_events_sc := []
+	var bm3 := BattleManager.new()
+	add_child(bm3)
+	bm3.weather = DamageCalculator.WEATHER_HAIL
+	bm3.weather_duration = 10
+	bm3.weather_damage.connect(func(m, amt): chip_events_sc.push_back([m, amt]))
+	bm3.start_battle_with_parties(BattleParty.single(sc_atk), BattleParty.single(snow_cloak_holder))
+	_chk("S16.12 Snow Cloak holder never takes hail chip damage",
+			not chip_events_sc.any(func(e): return e[0] == snow_cloak_holder))
+	bm3.queue_free()

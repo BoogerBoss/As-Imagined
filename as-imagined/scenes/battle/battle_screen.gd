@@ -221,10 +221,12 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # [M23.11 Phase 4b] Real health-box art replacing Phase 4a's plain
 # ProgressBar placeholders -- see _setup_health_ui()'s own doc comment for
 # the asset structure this relies on.
+@onready var _opponent_health_group: Control = $BattleStage/OpponentHealthGroup
 @onready var _opponent_health_bg: TextureRect = $BattleStage/OpponentHealthGroup/Background
 @onready var _opponent_status_icon: TextureRect = $BattleStage/OpponentHealthGroup/StatusIcon
 @onready var _opponent_hp_label: TextureRect = $BattleStage/OpponentHealthGroup/HpLabel
 @onready var _opponent_hp_fill: TextureProgressBar = $BattleStage/OpponentHealthGroup/HpFill
+@onready var _player_health_group: Control = $BattleStage/PlayerHealthGroup
 @onready var _player_health_bg: TextureRect = $BattleStage/PlayerHealthGroup/Background
 @onready var _player_status_icon: TextureRect = $BattleStage/PlayerHealthGroup/StatusIcon
 @onready var _player_hp_label: TextureRect = $BattleStage/PlayerHealthGroup/HpLabel
@@ -232,6 +234,46 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 
 var _opponent_status_atlas: AtlasTexture
 var _player_status_atlas: AtlasTexture
+
+# [M23.11 Phase 4d] Doubles visual layer — 2 sprite/health-box groups per
+# side, reusing the already-pulled healthbox_doubles_* art (see
+# _setup_health_ui()'s own doc comment for the asset structure this relies
+# on). Kept as plain (untyped) Array, not Array[TextureRect] — this
+# project's own documented GDScript gotcha (typed-Array literal assignment
+# can silently fail) applies to `@onready var x: Array[T] = [$A, $B]`
+# specifically; a plain Array sidesteps it entirely since these are only
+# ever indexed 0/1 within this script, never passed anywhere a strict
+# element type matters. Populated once in _setup_health_ui() by
+# _collect_doubles_nodes() — singles' own existing single-node fields
+# above are completely untouched, this is purely additive.
+var _opp_sprites_d: Array = []
+var _opp_groups_d: Array = []
+var _opp_bg_d: Array = []
+var _opp_status_icon_d: Array = []
+var _opp_status_atlas_d: Array = [null, null]
+var _opp_hp_label_d: Array = []
+var _opp_hp_fill_d: Array = []
+# [M23.11 Phase 4d] Idle-bob frame state, one per doubles opponent slot —
+# mirrors the singles-only `_opponent_anim_frame` below but per-slot, so
+# one opponent fainting doesn't freeze/desync its still-live teammate's
+# own animation (each slot's frame only advances/freezes based on THAT
+# slot's own `mon.fainted`, exactly like the singles case already does).
+var _opp_anim_frame_d: Array = [0, 0]
+
+var _ply_sprites_d: Array = []
+var _ply_groups_d: Array = []
+var _ply_bg_d: Array = []
+var _ply_status_icon_d: Array = []
+var _ply_status_atlas_d: Array = [null, null]
+var _ply_hp_label_d: Array = []
+var _ply_hp_fill_d: Array = []
+
+# [M23.11 Phase 4d] Set once in _ready() from BattleSetupContext.is_doubles
+# (captured into the local `is_doubles_battle` there already) — governs
+# which of the singles vs. doubles node sets is shown/refreshed for the
+# whole battle (never changes mid-battle, so this is a plain one-shot flag
+# rather than something recomputed every _refresh_ui() call).
+var _is_doubles_mode: bool = false
 
 # [M23.11 Phase 4c] Idle-bob animation -- front sprite (opponent) ONLY, see
 # _setup_health_ui() area's own doc comment on _next_anim_frame() for why
@@ -316,6 +358,19 @@ func _ready() -> void:
 		BattleSetupContext.clear()
 	else:
 		_build_teams()
+
+	# [M23.11 Phase 4d] One-shot node-set toggle — singles nodes stay exactly
+	# as before (visible, unchanged) when not in doubles; when in doubles,
+	# they're hidden entirely and the D0/D1 node pairs (already default-
+	# hidden in the .tscn) take over via _refresh_doubles_side()'s own
+	# per-slot visibility below. Set here, once, rather than every
+	# _refresh_ui() call, since the format never changes mid-battle.
+	_is_doubles_mode = is_doubles_battle
+	if _is_doubles_mode:
+		_opponent_sprite.visible = false
+		_opponent_health_group.visible = false
+		_player_sprite.visible = false
+		_player_health_group.visible = false
 
 	var ai := TrainerAI.new()
 	ai.tier = TrainerAI.Tier.SMART
@@ -775,6 +830,21 @@ static func _next_anim_frame(current_frame: int, is_fainted: bool) -> int:
 func _on_opponent_anim_timer_timeout() -> void:
 	if _opp_party == null:
 		return
+	# [M23.11 Phase 4d] Doubles branch, checked first and returning early —
+	# the singles branch below is completely untouched. Each doubles slot's
+	# frame/fainted state is tracked and advanced fully independently (see
+	# _opp_anim_frame_d's own doc comment), so one opponent fainting freezes
+	# only its own sprite, never its still-live teammate's.
+	if _is_doubles_mode:
+		var active_count := _opp_party.num_active()
+		for slot in range(2):
+			if slot >= active_count:
+				continue
+			var mon: BattlePokemon = _opp_party.get_active_at(slot)
+			_opp_anim_frame_d[slot] = _next_anim_frame(_opp_anim_frame_d[slot], mon.fainted)
+			_opp_sprites_d[slot].texture = _sprite_or_fallback_front(
+					mon.species.national_dex_num, _opp_anim_frame_d[slot])
+		return
 	var side1_mon: BattlePokemon = _opp_party.get_active()
 	if side1_mon == null:
 		return
@@ -885,6 +955,56 @@ func _setup_health_ui() -> void:
 	_player_status_atlas.region = Rect2(Vector2.ZERO, _STATUS_ICON_SIZE)
 	_player_status_icon.texture = _player_status_atlas
 
+	# [M23.11 Phase 4d] Doubles node collection + wiring — see the field
+	# declarations' own doc comment (near _is_doubles_mode) for why these are
+	# plain Arrays. hpbar_sheet's two fixed-region atlases (hp_label_atlas/
+	# hp_fill_atlas) are safely SHARED across every node here (singles' own
+	# existing code already shares them between the opponent and player
+	# nodes) since their .region never changes after creation. Status icons
+	# are the one thing that CANNOT share an atlas instance across slots —
+	# two doubles opponents can have different statuses simultaneously, and
+	# mutating one shared atlas's .region would corrupt every node
+	# displaying it — so each of the 4 doubles slots gets its own freshly-
+	# created AtlasTexture, matching the singles opponent/player split
+	# already established, just doubled.
+	_opp_sprites_d = [$BattleStage/OpponentSpriteD0, $BattleStage/OpponentSpriteD1]
+	_opp_groups_d = [$BattleStage/OpponentHealthGroupD0, $BattleStage/OpponentHealthGroupD1]
+	_opp_bg_d = [$BattleStage/OpponentHealthGroupD0/Background, $BattleStage/OpponentHealthGroupD1/Background]
+	_opp_status_icon_d = [$BattleStage/OpponentHealthGroupD0/StatusIcon, $BattleStage/OpponentHealthGroupD1/StatusIcon]
+	_opp_hp_label_d = [$BattleStage/OpponentHealthGroupD0/HpLabel, $BattleStage/OpponentHealthGroupD1/HpLabel]
+	_opp_hp_fill_d = [$BattleStage/OpponentHealthGroupD0/HpFill, $BattleStage/OpponentHealthGroupD1/HpFill]
+
+	_ply_sprites_d = [$BattleStage/PlayerSpriteD0, $BattleStage/PlayerSpriteD1]
+	_ply_groups_d = [$BattleStage/PlayerHealthGroupD0, $BattleStage/PlayerHealthGroupD1]
+	_ply_bg_d = [$BattleStage/PlayerHealthGroupD0/Background, $BattleStage/PlayerHealthGroupD1/Background]
+	_ply_status_icon_d = [$BattleStage/PlayerHealthGroupD0/StatusIcon, $BattleStage/PlayerHealthGroupD1/StatusIcon]
+	_ply_hp_label_d = [$BattleStage/PlayerHealthGroupD0/HpLabel, $BattleStage/PlayerHealthGroupD1/HpLabel]
+	_ply_hp_fill_d = [$BattleStage/PlayerHealthGroupD0/HpFill, $BattleStage/PlayerHealthGroupD1/HpFill]
+
+	var doubles_opponent_bg: Texture2D = load("res://assets/sprites/battle_ui/interface/healthbox_doubles_opponent.png")
+	var doubles_player_bg: Texture2D = load("res://assets/sprites/battle_ui/interface/healthbox_doubles_player.png")
+
+	for i in range(2):
+		_opp_bg_d[i].texture = doubles_opponent_bg
+		_opp_hp_label_d[i].texture = hp_label_atlas
+		_opp_hp_fill_d[i].texture_progress = hp_fill_atlas
+		_opp_hp_fill_d[i].fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
+		var opp_atlas_d := AtlasTexture.new()
+		opp_atlas_d.atlas = opponent_status_sheet
+		opp_atlas_d.region = Rect2(Vector2.ZERO, _STATUS_ICON_SIZE)
+		_opp_status_atlas_d[i] = opp_atlas_d
+		_opp_status_icon_d[i].texture = opp_atlas_d
+
+		_ply_bg_d[i].texture = doubles_player_bg
+		_ply_hp_label_d[i].texture = hp_label_atlas
+		_ply_hp_fill_d[i].texture_progress = hp_fill_atlas
+		_ply_hp_fill_d[i].fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
+		var ply_atlas_d := AtlasTexture.new()
+		ply_atlas_d.atlas = player_status_sheet
+		ply_atlas_d.region = Rect2(Vector2.ZERO, _STATUS_ICON_SIZE)
+		_ply_status_atlas_d[i] = ply_atlas_d
+		_ply_status_icon_d[i].texture = ply_atlas_d
+
 
 func _update_status_icon(icon_node: TextureRect, atlas: AtlasTexture, status: int) -> void:
 	var row := _status_icon_row(status)
@@ -893,6 +1013,52 @@ func _update_status_icon(icon_node: TextureRect, atlas: AtlasTexture, status: in
 		return
 	icon_node.visible = true
 	atlas.region = Rect2(0, row * _STATUS_ICON_SIZE.y, _STATUS_ICON_SIZE.x, _STATUS_ICON_SIZE.y)
+
+
+# [M23.11 Phase 4d] Generalized doubles per-side refresh — one function
+# reused for BOTH sides (opponent/player) and BOTH slots, rather than
+# hand-duplicating this logic 4 times, per this project's own "generalize,
+# don't duplicate" instinct. The .tscn nodes themselves still had to be
+# duplicated (a static scene tree has no runtime "instantiate N copies"
+# equivalent short of manual PackedScene work, judged not worth the added
+# complexity for a fixed maximum of 2 slots/side) — see docs/m23_recon.md's
+# Phase 4d entry for the full generalize-vs-duplicate writeup.
+#
+# `slot < active_count` hiding: party.num_active() is fixed for the whole
+# battle (2 for a real doubles battle, 1 for singles — active_indices never
+# shrinks when a mon faints, matching this project's existing singles
+# behavior of showing a fainted mon in place until it's switched), so this
+# is really a doubles-vs-singles distinction rather than a per-turn count,
+# but is written generically rather than assuming exactly 2.
+#
+# Each slot's own `mon.fainted`/`mon.status`/`mon.current_hp` drives ONLY
+# that slot's own sprite/health-box state — one Pokémon fainting on a side
+# cannot affect its still-live teammate's own fade/status/HP display, since
+# each slot is processed as a fully independent iteration reading only that
+# slot's own BattlePokemon instance.
+func _refresh_doubles_side(party: BattleParty, is_player: bool, sprites: Array, groups: Array,
+		status_icons: Array, status_atlases: Array, hp_fills: Array) -> void:
+	var active_count := party.num_active()
+	for slot in range(2):
+		var visible_now: bool = slot < active_count
+		sprites[slot].visible = visible_now
+		groups[slot].visible = visible_now
+		if not visible_now:
+			continue
+		var mon: BattlePokemon = party.get_active_at(slot)
+		if is_player:
+			sprites[slot].texture = _sprite_or_fallback_back(mon.species.national_dex_num)
+		else:
+			# [M23.11 Phase 4c precedent] Idle-bob is front-sprite (opponent)
+			# only — reset this slot's own frame to 0 on every state-driven
+			# refresh, matching the singles branch's identical reset above.
+			_opp_anim_frame_d[slot] = 0
+			sprites[slot].texture = _sprite_or_fallback_front(mon.species.national_dex_num, 0)
+		sprites[slot].modulate = Color(1, 1, 1, 0.3) if mon.fainted else Color(1, 1, 1, 1)
+		hp_fills[slot].max_value = mon.max_hp
+		hp_fills[slot].value = mon.current_hp
+		hp_fills[slot].tint_progress = _hp_bar_color(mon.current_hp, mon.max_hp)
+		_update_status_icon(status_icons[slot], status_atlases[slot], mon.status)
 
 
 func _refresh_ui() -> void:
@@ -918,20 +1084,30 @@ func _refresh_ui() -> void:
 	# Pokémon shouldn't pick up mid-bob on whatever frame the PREVIOUS
 	# occupant happened to be on. The timer-driven _on_opponent_anim_timer
 	# _timeout() continues alternating from this reset point independently.
-	_opponent_anim_frame = 0
-	_opponent_sprite.texture = _sprite_or_fallback_front(side1_mon.species.national_dex_num, _opponent_anim_frame)
-	_opponent_sprite.modulate = Color(1, 1, 1, 0.3) if side1_mon.fainted else Color(1, 1, 1, 1)
-	_opponent_hp_fill.max_value = side1_mon.max_hp
-	_opponent_hp_fill.value = side1_mon.current_hp
-	_opponent_hp_fill.tint_progress = _hp_bar_color(side1_mon.current_hp, side1_mon.max_hp)
-	_update_status_icon(_opponent_status_icon, _opponent_status_atlas, side1_mon.status)
+	#
+	# [M23.11 Phase 4d] Doubles branch — singles path below is completely
+	# untouched (same lines, same order), matching this phase's own "singles
+	# must remain the unchanged fast path" requirement.
+	if _is_doubles_mode:
+		_refresh_doubles_side(_opp_party, false, _opp_sprites_d, _opp_groups_d,
+				_opp_status_icon_d, _opp_status_atlas_d, _opp_hp_fill_d)
+		_refresh_doubles_side(_player_party, true, _ply_sprites_d, _ply_groups_d,
+				_ply_status_icon_d, _ply_status_atlas_d, _ply_hp_fill_d)
+	else:
+		_opponent_anim_frame = 0
+		_opponent_sprite.texture = _sprite_or_fallback_front(side1_mon.species.national_dex_num, _opponent_anim_frame)
+		_opponent_sprite.modulate = Color(1, 1, 1, 0.3) if side1_mon.fainted else Color(1, 1, 1, 1)
+		_opponent_hp_fill.max_value = side1_mon.max_hp
+		_opponent_hp_fill.value = side1_mon.current_hp
+		_opponent_hp_fill.tint_progress = _hp_bar_color(side1_mon.current_hp, side1_mon.max_hp)
+		_update_status_icon(_opponent_status_icon, _opponent_status_atlas, side1_mon.status)
 
-	_player_sprite.texture = _sprite_or_fallback_back(side0_mon.species.national_dex_num)
-	_player_sprite.modulate = Color(1, 1, 1, 0.3) if side0_mon.fainted else Color(1, 1, 1, 1)
-	_player_hp_fill.max_value = side0_mon.max_hp
-	_player_hp_fill.value = side0_mon.current_hp
-	_player_hp_fill.tint_progress = _hp_bar_color(side0_mon.current_hp, side0_mon.max_hp)
-	_update_status_icon(_player_status_icon, _player_status_atlas, side0_mon.status)
+		_player_sprite.texture = _sprite_or_fallback_back(side0_mon.species.national_dex_num)
+		_player_sprite.modulate = Color(1, 1, 1, 0.3) if side0_mon.fainted else Color(1, 1, 1, 1)
+		_player_hp_fill.max_value = side0_mon.max_hp
+		_player_hp_fill.value = side0_mon.current_hp
+		_player_hp_fill.tint_progress = _hp_bar_color(side0_mon.current_hp, side0_mon.max_hp)
+		_update_status_icon(_player_status_icon, _player_status_atlas, side0_mon.status)
 
 	if _bm.get_phase() == BattleManager.BattlePhase.BATTLE_END:
 		_status_label.text = ("You win!" if _winner_side == 0 else "You lose!")

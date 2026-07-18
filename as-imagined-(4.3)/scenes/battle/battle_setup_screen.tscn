@@ -1,0 +1,76 @@
+[gd_scene load_steps=3 format=3 uid="uid://battlesetupscreen"]
+
+[ext_resource type="Script" path="res://scenes/battle/battle_setup_screen.gd" id="1_screen"]
+[ext_resource type="Theme" path="res://scenes/main_theme.tres" id="2_theme"]
+
+[node name="BattleSetupScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_screen")
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatusLabel" type="Label" parent="Scroll/VBox"]
+layout_mode = 2
+text = "Set up a battle."
+autowrap_mode = 2
+
+[node name="FormatRow" type="HBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/FormatRow"]
+layout_mode = 2
+text = "Format:"
+
+[node name="FormatToggleButton" type="Button" parent="Scroll/VBox/FormatRow"]
+layout_mode = 2
+text = "Singles"
+
+[node name="PlayerRow" type="HBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/PlayerRow"]
+layout_mode = 2
+text = "Your Team:"
+
+[node name="PlayerTeamOptionButton" type="OptionButton" parent="Scroll/VBox/PlayerRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(260, 0)
+
+[node name="OpponentRow" type="HBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/OpponentRow"]
+layout_mode = 2
+text = "Opponent:"
+
+[node name="OpponentTeamOptionButton" type="OptionButton" parent="Scroll/VBox/OpponentRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(260, 0)
+
+[node name="RefreshButton" type="Button" parent="Scroll/VBox"]
+layout_mode = 2
+text = "Refresh Team Lists"
+
+[node name="ManageTeamsButton" type="Button" parent="Scroll/VBox"]
+layout_mode = 2
+text = "Manage Teams (Build / Edit / Delete)"
+
+[node name="LaunchButton" type="Button" parent="Scroll/VBox"]
+layout_mode = 2
+text = "Launch Battle"

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m19bucket4finalpairstest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m19_bucket4_final_pairs_test.gd" id="1_m19bucket4finalpairstest"]
+
+[node name="M19Bucket4FinalPairsTest" type="Node"]
+script = ExtResource("1_m19bucket4finalpairstest")

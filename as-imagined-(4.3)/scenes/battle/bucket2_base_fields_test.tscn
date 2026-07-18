@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bucket2basefieldstest"]
+
+[ext_resource type="Script" path="res://scenes/battle/bucket2_base_fields_test.gd" id="1_bucket2basefieldstest"]
+
+[node name="Bucket2BaseFieldsTest" type="Node"]
+script = ExtResource("1_bucket2basefieldstest")

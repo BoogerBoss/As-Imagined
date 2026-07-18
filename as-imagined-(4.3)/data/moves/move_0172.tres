@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+move_name = "Flame Wheel"
+type = 11
+power = 60
+pp = 25
+makes_contact = true
+thaws_user = true
+secondary_effect = 1
+secondary_chance = 10

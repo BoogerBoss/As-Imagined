@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+move_name = "Laser Focus"
+type = 1
+category = 2
+accuracy = 0
+pp = 30
+ban_flags = 2
+ignores_protect = true
+snatch_affected = true
+is_laser_focus = true

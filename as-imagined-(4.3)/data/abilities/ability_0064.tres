@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+ability_id = 64
+ability_name = "Liquid Ooze"
+description = "The Pokémon's draining move sucks health from the opponent — but if this Pokémon is hit by a draining move, the tables are turned, and its HP is reduced instead."
+ai_rating = 3

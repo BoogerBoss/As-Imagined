@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+ability_id = 51
+ability_name = "Keen Eye"
+description = "Prevents other Pokémon from lowering its accuracy; ignores the target's evasion boosts."
+ai_rating = 5
+breakable = true

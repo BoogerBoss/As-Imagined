@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+move_name = "Parabolic Charge"
+type = 14
+category = 1
+power = 65
+pp = 20
+drain_percent = 50
+is_spread = true
+healing_move = true
+target_includes_ally = true

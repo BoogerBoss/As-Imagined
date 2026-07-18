@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="AbilityData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ability_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+ability_id = 65
+ability_name = "Overgrow"
+description = "Powers up Grass-type moves when the Pokémon's HP is low."
+ai_rating = 6

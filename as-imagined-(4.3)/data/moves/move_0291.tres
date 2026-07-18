@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+move_name = "Dive"
+type = 12
+power = 80
+pp = 10
+makes_contact = true
+two_turn = true
+semi_inv_state = 3
+ban_flags = 192

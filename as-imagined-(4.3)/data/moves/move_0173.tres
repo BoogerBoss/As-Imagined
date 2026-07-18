@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+
+move_name = "Snore"
+type = 1
+category = 1
+power = 50
+pp = 15
+sound_move = true
+secondary_effect = 7
+secondary_chance = 30
+ban_flags = 16
+ignores_substitute = true
+usable_while_asleep = true
+is_snore = true
