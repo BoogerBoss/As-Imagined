@@ -919,6 +919,18 @@ high-level companion to that section, not a replacement for it.
 | M33 | Save/load | ⬜ Not started |
 | M34 | **Advanced Battle Systems** — consolidates every exclusion/deferral flagged during M24 scoping (`docs/m24_recon.md`), not new discovery: **Trainer Pools** (procedural/pool-based party generation — species clause, role tags, pick/prune rules; confirmed zero real usage across all 855 base trainers but real expansion infrastructure, deferred per `docs/m24_recon.md` §6.1); **full AI-flag engine** (the complete 34-flag bitmask AI system — OMNISCIENT, SMART_SWITCHING, PREDICT_MOVE, PREDICT_SWITCH, SMART_TERA, etc. — beyond the narrow 6-combination extension M24 ships; deferred per §6.2, flagged there as a candidate to pick back up starting around M30 onward); **facility/special trainers** (Trainer Tower, Trainer Hill, Battle Frontier trainers, Secret Base trainers — own money-formula branch — and roaming/`AI_FLAG_SAFARI`/`AI_FLAG_FIRST_BATTLE` special cases, none part of the core 855-trainer `trainers.party` dataset M24 covers; deferred per §6.3, needs its own dedicated recon session before implementation); **full rematch/postgame progression system** (the persistent, save-state-backed rematch-tier mechanic — `trainerRematches[]`, `HasTrainerBeenFought`, gym-leader rematch escalation; M24 ships base trainers only, deferred per §6.5 pending M33 or an interim save-state mechanism). See `docs/m24_recon.md` for full reasoning on each item — not duplicated here. | ⬜ Not started |
 
+**M24 note (item-roster verification, 2026-07-18):** a post-M24a check of the
+5 item names `gen_trainer_data.py` failed to resolve (Full Restore, Hyper
+Potion, Super Potion, Nugget, Smoke Ball) confirmed all 5 are real Gen III
+items in source and genuinely absent from this project's item roster — not a
+converter bug. 4 of 5 (Full Restore/Hyper Potion/Super Potion/Nugget) are
+known, already-documented M18 exclusions (bag-consumable/non-held items,
+deferred to M25 per `docs/m18_item_ledger.md`) — no action needed. The 5th,
+**Smoke Ball, is a genuine unflagged gap**: a real Gen III held item that
+should have qualified under the item ledger's own Rule 1 ("all held items
+through Gen IV included") but was never added and was never excluded
+anywhere either. Backlog item for a future item-tier session.
+
 **Renumbering history** (kept inline so future sessions don't cross-reference
 stale numbers or wonder why M21/M22/M26 read differently than a flat
 sequential list would suggest — this is the single, resolved account;
