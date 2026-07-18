@@ -76,7 +76,22 @@ func _make_mon(mon_name: String, type1: int,
 	sp.base_sp_attack  = base_spatk
 	sp.base_sp_defense = base_spdef
 	sp.base_speed      = base_spd
-	return BattlePokemon.from_species(sp, 50)
+	# [Flaky-test fix, Phase 4e] Root cause of this file's own documented
+	# "statistical test" flakiness: this call was never updated to pin
+	# nature/IVs when M18.5h-1/h-2 (2026-07-08, same day as this file's own
+	# M18.5g origin) turned on real random nature/IV rolling as `from_species`
+	# `null`-default behavior. Every mon built here therefore got a genuinely
+	# random Attack (nature ±10%, IV 0-31) on every single run — D4's own
+	# exact-value damage-floor assertion ("each hit's damage/8 == 0") sits
+	# close enough to its threshold that some IV/nature rolls push a hit's
+	# damage to 8+ and flip the assertion, exactly matching the
+	# "pairwise damage comparisons must force every RNG input" pitfall class,
+	# just via an unpinned FIXTURE stat rather than an unforced roll/crit —
+	# this was misdiagnosed in `[D4 CHEAP bundle]`'s own regression note as
+	# generic "statistical test" flakiness rather than root-caused. Pinned
+	# neutral nature + zero IVs, matching every other already-fixed suite's
+	# own `_make_mon` convention (e.g. doubles_test.gd/d4_bundle6_test.gd).
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 
 
 func _make_bm() -> BattleManager:

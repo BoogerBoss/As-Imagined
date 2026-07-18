@@ -555,6 +555,19 @@ func _test_b2_spread_immune_target() -> void:
 	var b1_dmg := [0]
 	var bm := BattleManager.new()
 	add_child(bm)
+	# [Flaky-test fix, Phase 4e] This assertion's own margin (max=73 with the
+	# 0.75x spread reduction correctly applied, vs. min=82 without it) is only
+	# a safe discriminator against the DAMAGE ROLL's normal 85-100 variance —
+	# it does NOT account for a crit's 1.5x multiplier, which can push even
+	# the correctly-reduced damage (73*1.5=109.5) well past B1's 74 max HP.
+	# Without forcing, a real (rare) crit made this test nondeterministically
+	# fail even when the reduction logic was completely correct — the same
+	# "pairwise damage comparisons must force every RNG input" pitfall
+	# CLAUDE.md's own testing conventions document, applied here to a
+	# threshold-margin check rather than a direct comparison. Forcing both
+	# removes the false-failure path entirely without changing what's proven.
+	bm._force_roll = 100
+	bm._force_crit = false
 	bm.move_executed.connect(func(attacker, defender, _mv, dmg):
 		if attacker == a0:
 			if defender == b0:

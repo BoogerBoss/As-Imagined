@@ -4019,3 +4019,150 @@ have it flipped silently this session, per the task's own instruction.
   assessment above).
 
 No commit made this session — per standing instruction, Rob commits.
+
+### Phase 4e — flaky-test root-cause fix + Doubles toggle re-enable (message-box work held off, per Rob's own choice)
+
+Rob explicitly scoped this session to the 2 "rollover items" from the Phase
+4e handoff prompt (flaky-test fix, Doubles toggle) and held off on the
+text_window message-box rebuild for a future session — the Dialogue Manager
+addon question (enable vs. stay custom) was flagged to Rob rather than
+decided unilaterally, since enabling it would be a project-wide plugin
+activation CLAUDE.md's own tech-stack rules require explicit approval for;
+Rob's answer deferred the whole message-box item rather than picking a side.
+
+**Baseline**: per Rob's own choice, used the Phase 4d session's own recorded
+final numbers (151 files, GRAND TOTAL 20168, both flaky suites clean) as
+this session's trusted baseline rather than reconstructing from git HEAD —
+no persisted sweep-log artifact exists in the repo to diff against (flagged
+to Rob, who confirmed this approach). One confirmatory sweep at the very
+start (151 files, 20166 raw, `m18_5g_test` alone flaked at 313/315) matched
+expectations exactly once the known flake is accounted for.
+
+**`doubles_test.tscn` root cause — genuinely different from `m18_5g_test`'s,
+confirmed by direct reproduction, not assumed shared**: `_test_b2_spread
+_immune_target`'s own "B1 survived the reduced-damage spread hit" assertion
+relies on a narrow numeric margin (max=73 with the correct 0.75x spread
+reduction applied, vs. min=82 without it) that is only a safe discriminator
+against the damage roll's normal 85-100% variance — it does NOT account for
+a crit's 1.5x multiplier, which can push even correctly-reduced damage
+(73×1.5=109.5) well past B1's 74 max HP. `bm._force_roll`/`bm._force_crit`
+were never set in this test, so a real (rare) crit intermittently caused a
+false failure even when the production reduction logic was completely
+correct — the exact "pairwise damage comparisons must force every RNG
+input" pitfall CLAUDE.md's own testing conventions document, here applied
+to a threshold-margin check rather than a direct A-vs-B comparison. Found
+by isolating the suite and running it 30 times in a row until it
+reproduced directly (10/11/25th runs), not by guesswork. Fixed by forcing
+`_force_roll = 100`/`_force_crit = false`, matching every other forced
+scenario already in this same file.
+
+**`m18_5g_test.tscn` root cause — a fixture-pinning gap, not a "statistical
+test" as every prior session's own flaky-suite note assumed**: its
+`_make_mon` helper called `BattlePokemon.from_species(sp, 50)` with only 2
+positional args — no `forced_nature`/`forced_ivs` — meaning every
+constructed mon got a genuinely random nature (±10% Attack) and random IVs
+(0-31 per stat) on every single run, a real behavior turned on by
+M18.5h-1/h-2 (2026-07-08, the SAME day as this file's own M18.5g origin,
+which evidently predated that day's own "pin 26 already-known-sensitive
+files" regression-fixing pass and slipped through). Section D4's own
+damage-floor assertion ("each individual hit's damage/8 == 0") sits close
+enough to its threshold that some Attack rolls tip a hit's damage to 8+,
+flipping the assertion — reproduced directly and consistently (5 of 20
+isolated runs failed on the exact same line once identified). This had been
+mis-attributed by every prior session's own carried-forward note (most
+recently `[D4 CHEAP bundle]`) to "King's Rock/Shell Bell statistical tests"
+— a plausible-sounding but never-actually-verified guess, since the file
+does contain real statistical (n=1500/n=300) sections elsewhere. Fixed by
+pinning `BattlePokemon.NATURE_HARDY` + all-zero IVs on `_make_mon`, matching
+every other already-fixed suite's own established convention (e.g.
+`doubles_test.gd`/`d4_bundle6_test.gd`). **Flagged, not fixed**: at least one
+other older file (`m19_rampage_test.gd`, spot-checked) shares this same
+unpinned-fixture pattern but hasn't been observed to flake yet — a latent,
+systemic risk across any pre-M18.5h-1 test file whose own assertions happen
+to sit near a similarly narrow threshold, worth a dedicated future sweep.
+
+**Stability confirmation**: both fixed suites reran clean 15 CONSECUTIVE
+times each in isolation (well beyond the 3+ required) — zero failures.
+
+**Doubles toggle re-enable**: `battle_setup_screen.gd`'s `_on_format_toggle
+_pressed`/`_on_launch_pressed` no longer gate on Doubles at all (`_launch
+_button.disabled` no longer flips true, the "not supported yet" status text
+removed). **Real singles-only assumption found and fixed beyond the toggle
+itself**: every party-resolution path this screen has (`RandomTeamGenerator
+.generate_team`, `_build_saved_party`, `BattleScreen.build_fixture_opp
+_party`) always builds `active_indices = [0]` regardless of format — a
+singles-only assumption baked into each of those 3 functions individually.
+New `_make_doubles_shaped(party)` reshapes to `active_indices = [0, 1]`
+when the party has ≥2 members, or returns `null` (a friendly per-side error
+message, not a silent guess/pad) when it doesn't — called from `_on_launch
+_pressed` only when `_format == Format.DOUBLES`, right before handing off
+via `BattleSetupContext.set_pending(..., _format == Format.DOUBLES)`.
+
+**Files touched**:
+- `scenes/battle/battle_setup_screen.gd` — toggle re-enable, new
+  `_make_doubles_shaped`, `_on_launch_pressed` doubles-aware reshaping +
+  error paths, updated top-of-file doc comment.
+- `scenes/battle/doubles_test.gd` — `_test_b2_spread_immune_target` forces
+  roll/crit.
+- `scenes/battle/m18_5g_test.gd` — `_make_mon` pins nature/IVs.
+- `scenes/battle/m23_6_battle_setup_test.gd` — S5.03/S5.04 corrected in
+  place (the OLD "Doubles disables Launch" expectation is now genuinely
+  wrong, the same "a correctness fix legitimately invalidates a stale test
+  assumption" shape documented elsewhere in this project's history); new
+  Section 6 (7 assertions: `_make_doubles_shaped` unit tests including the
+  null/too-small/happy-path cases, composed with the real `_resolve_party`
+  path for both the Quick Test fixture and a genuine too-small saved team)
+  — deliberately does NOT call `_on_launch_pressed()` itself (which would
+  fire a real `change_scene_to_file` into `battle_screen.tscn`, and that
+  file's own `--autoplay` check has no "am I the current scene" guard the
+  way `battle_setup_screen.gd`'s own check does — confirmed this would kill
+  the test process mid-sweep), matching this project's established
+  "call handlers/helpers directly" convention; the real end-to-end proof is
+  the mandated screenshot instead.
+
+**Sweep before/after, twice**: before (Phase 4d's own recorded baseline,
+re-verified with one confirmatory run): 151 files / 20168 true-clean. After,
+run 1: 151 files / 20175, **zero mismatched suites** (both `doubles_test`
+54/54 and `m18_5g_test` 315/315 clean on the very first after-sweep). After,
+run 2: 151 files / 20175, byte-identical diff against run 1 across all 151
+files. 20168 (before) + 7 (new Section 6 assertions) = 20175, exact match —
+confirms zero regressions and confirms the flaky-fixes are genuinely stable
+under real sweep conditions, not just isolated reruns.
+
+**Screenshot verification**: a disposable `_scratch_screenshot_setup
+_doubles.gd`/`.tscn` driver (deleted after use) pressed the REAL
+`FormatToggleButton` and `LaunchButton` signals (not a bypassed handler
+call) on a live `battle_setup_screen.tscn` instance — screenshot (a) shows
+"Format: Doubles" with Launch enabled and the Quick Test fixture selected;
+screenshot (b), captured after the real Launch press actually fired
+`get_tree().change_scene_to_file(...)`, shows the resulting LIVE doubles
+battle screen — a real `RandomTeamGenerator`-built player team (Scyther
+front and center, real dex sprite, plus a second real party member visible
+below it) against the Leaf/Volt fixture opponent, all 4 sprite/health-box
+groups from Phase 4d correctly positioned, and a real move-selection menu
+for Scyther. `tree.current_scene.name == "BattleScreen"` confirmed
+programmatically. One real implementation snag hit and fixed along the
+way: `change_scene_to_file` frees the entire current scene (including
+whatever node called it), so any code suspended on `await` against `self`
+after that point silently never resumes — fixed by connecting a plain
+Callable (closing only over locally-captured `SceneTree`/`Viewport`
+references, no `self` access) to `tree.process_frame` instead, confirmed
+this survives the scene swap where the naive `await self.get_tree()...`
+approach did not.
+
+**Deviations/blockers flagged explicitly**:
+- Message-box/`text_window` work (Phase 4e's own original "core" item) is
+  NOT done this session — held off per Rob's explicit instruction. The
+  Dialogue-Manager-vs-custom fork remains open for whichever future session
+  picks this back up.
+- `m19_rampage_test.gd`'s own shared unpinned-fixture vulnerability (see
+  above) was spot-checked and flagged, not fixed — out of this session's
+  explicit two-item scope.
+- `_run_autoplay()` in `battle_screen.gd` is still hardcoded singles-only
+  (a pre-existing, previously-flagged limitation, now genuinely MORE
+  reachable than before since a real player can now launch a doubles battle
+  via the setup screen and, in principle, invoke `--autoplay` against it) —
+  not addressed this session, re-flagged for whoever eventually touches
+  autoplay's own doubles-awareness.
+
+No commit made this session — per standing instruction, Rob commits.

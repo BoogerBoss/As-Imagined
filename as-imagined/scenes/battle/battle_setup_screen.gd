@@ -10,16 +10,17 @@ extends Control
 # pokemon_factory.gd, team_builder_screen.gd's or roster_screen.gd's core
 # logic — pure composition of already-built pieces.
 #
-# [Doubles status — FLAGGED, NOT FUNCTIONAL] The Singles/Doubles toggle
-# exists in the UI (FormatToggleButton), but selecting Doubles disables the
-# Launch button and shows an explicit status message rather than
-# attempting a broken launch. battle_screen.gd's entire UI (move/switch/
-# item menus, single hardcoded opponent-index-1 targeting in every button
-# handler, `start_battle_with_parties` — confirmed singles-only per M23.1's
-# own recon) would need real doubles-specific rework — a 4-combatant
-# menu/targeting layer — to make Doubles genuinely playable, which is
-# explicitly out of this "mostly UI glue" milestone's scope. The toggle is
-# real (state persists, the button visibly reflects it), just gated.
+# [Doubles status — RE-ENABLED, M23.11 Phase 4e] The Singles/Doubles toggle
+# is now fully functional — both hard blockers this file's own original
+# comment cited (the 4-combatant menu/targeting layer, and the visual
+# sprite/health-box layer) shipped in Phase 4f and Phase 4d respectively,
+# confirmed working together end-to-end via Phase 4d's own screenshot
+# verification. Selecting Doubles no longer disables Launch; `_on_launch
+# _pressed` instead reshapes whichever party each dropdown resolves to into
+# a 2-active-slot BattleParty (see `_make_doubles_shaped`) and hands off via
+# `BattleSetupContext.set_pending(..., true)`, exactly the mechanism
+# `_scratch_screenshot_phase4d.gd`'s disposable driver used manually last
+# session — this session wires the SAME hand-off through the real UI flow.
 #
 # [UI mechanism] Matches M23.1/M23.4/M23.5's shared-Theme + plain-Control-
 # node convention. Two OptionButtons (player/opponent team source) rather
@@ -106,12 +107,13 @@ func _run_autoplay() -> void:
 func _on_format_toggle_pressed() -> void:
 	_format = Format.DOUBLES if _format == Format.SINGLES else Format.SINGLES
 	_format_toggle_button.text = "Doubles" if _format == Format.DOUBLES else "Singles"
-	if _format == Format.DOUBLES:
-		_status_label.text = "Doubles battles aren't supported by the battle screen yet (flagged for a future milestone) — switch back to Singles to launch."
-		_launch_button.disabled = true
-	else:
-		_status_label.text = "Set up a battle."
-		_launch_button.disabled = false
+	# [M23.11 Phase 4e] Doubles no longer disables Launch — see this file's
+	# own top-of-file doc comment for why both blockers this message used to
+	# cite are closed. Status text stays the same neutral "set up a battle"
+	# framing either way; `_on_launch_pressed` reports a specific error only
+	# if a chosen team turns out too small for doubles.
+	_status_label.text = "Set up a battle."
+	_launch_button.disabled = false
 
 
 # ── Roster navigation [M23.7] ────────────────────────────────────────────
@@ -206,11 +208,24 @@ func _build_saved_party(id: String) -> BattleParty:
 
 # ── Launch ──────────────────────────────────────────────────────────────
 
-func _on_launch_pressed() -> void:
-	if _format == Format.DOUBLES:
-		_status_label.text = "Doubles isn't supported yet — switch to Singles first."
-		return
+# [M23.11 Phase 4e] Every party this screen can resolve (`RandomTeamGenerator
+# .generate_team`, `_build_saved_party`, `BattleScreen.build_fixture_opp
+# _party`) always builds `active_indices = [0]` — a singles-only assumption
+# baked into each of those functions individually, not something this screen
+# can control from the outside except by re-assigning `active_indices`
+# after the fact. Reshapes to 2 active slots when the party has enough
+# members; returns null (caller shows a friendly error) rather than
+# guessing/padding when it doesn't — a 1-member saved team genuinely can't
+# field a doubles side.
+func _make_doubles_shaped(party: BattleParty) -> BattleParty:
+	if party == null or party.members.size() < 2:
+		return null
+	var doubles_indices: Array[int] = [0, 1]
+	party.active_indices = doubles_indices
+	return party
 
+
+func _on_launch_pressed() -> void:
 	var player_party := _resolve_party(_player_option, false)
 	if player_party == null or player_party.members.is_empty():
 		_status_label.text = "Couldn't build your team — pick a different option and try again."
@@ -221,5 +236,15 @@ func _on_launch_pressed() -> void:
 		_status_label.text = "Couldn't build the opponent's team — pick a different option and try again."
 		return
 
-	BattleSetupContext.set_pending(player_party, opp_party)
+	if _format == Format.DOUBLES:
+		player_party = _make_doubles_shaped(player_party)
+		if player_party == null:
+			_status_label.text = "Your team needs at least 2 Pokémon for a Doubles battle — pick a different option or switch to Singles."
+			return
+		opp_party = _make_doubles_shaped(opp_party)
+		if opp_party == null:
+			_status_label.text = "The opponent's team needs at least 2 Pokémon for a Doubles battle — pick a different option or switch to Singles."
+			return
+
+	BattleSetupContext.set_pending(player_party, opp_party, _format == Format.DOUBLES)
 	get_tree().change_scene_to_file("res://scenes/battle/battle_screen.tscn")

@@ -34,6 +34,7 @@ func _ready() -> void:
 	_test_section_3_stat_formula_cross_check()
 	_test_section_4_battle_setup_context()
 	_test_section_5_setup_screen_ui()
+	_test_section_6_doubles_launch_shaping()
 
 	_cleanup()
 
@@ -228,11 +229,14 @@ func _test_section_5_setup_screen_ui() -> void:
 
 	format_btn.pressed.emit()
 	_chk("S5.02 pressing the format toggle switches to Doubles", format_btn.text == "Doubles")
-	_chk("S5.03 selecting Doubles disables Launch (not yet functional, per this session's own scope)",
-			launch_btn.disabled)
+	# [M23.11 Phase 4e] Corrected in place — Doubles no longer disables
+	# Launch (both blockers this assertion's own original comment cited are
+	# closed; see battle_setup_screen.gd's own updated top-of-file note).
+	_chk("S5.03 selecting Doubles keeps Launch enabled (re-enabled, M23.11 Phase 4e)",
+			not launch_btn.disabled)
 
 	format_btn.pressed.emit()
-	_chk("S5.04 toggling back to Singles re-enables Launch", format_btn.text == "Singles" and not launch_btn.disabled)
+	_chk("S5.04 toggling back to Singles still leaves Launch enabled", format_btn.text == "Singles" and not launch_btn.disabled)
 
 	var player_option: OptionButton = setup.get_node("Scroll/VBox/PlayerRow/PlayerTeamOptionButton")
 	var opponent_option: OptionButton = setup.get_node("Scroll/VBox/OpponentRow/OpponentTeamOptionButton")
@@ -273,6 +277,69 @@ func _test_section_5_setup_screen_ui() -> void:
 	# dropdown, but the resolver itself also refuses it defensively).
 	var blocked_fixture: BattleParty = setup._resolve_party(opponent_option, false)
 	_chk("S5.11 resolving the fixture option with allow_fixture=false is refused", blocked_fixture == null)
+
+	setup.queue_free()
+
+
+# ── Section 6: Doubles launch shaping [M23.11 Phase 4e] ─────────────────
+# Deliberately does NOT call `_on_launch_pressed()` — that function's real
+# job on success is `get_tree().change_scene_to_file("res://scenes/battle/
+# battle_screen.tscn")`, and battle_screen.gd's own autoplay check (unlike
+# battle_setup_screen.gd's own, which requires being the tree's CURRENT
+# scene) has no such guard — a real transition during this sweep-driven
+# process (count_assertions.sh's own unconditional --autoplay flag) would
+# trigger `_run_autoplay()`'s `get_tree().quit()` and kill this whole test
+# process before it ever prints its own summary line. Instead this tests
+# the exact pieces `_on_launch_pressed` composes (`_resolve_party` +
+# `_make_doubles_shaped`) directly, matching this project's established
+# "call handlers/helpers directly, don't embed battle_screen.tscn in
+# autoplay-swept scenes" convention — the genuine end-to-end proof (a real
+# Launch press transitioning into a live, playable doubles battle) is the
+# mandated screenshot verification instead.
+
+func _test_section_6_doubles_launch_shaping() -> void:
+	var scene: PackedScene = load("res://scenes/battle/battle_setup_screen.tscn")
+	var setup := scene.instantiate()
+	add_child(setup)
+
+	_chk("S6.01 _make_doubles_shaped(null) returns null", setup._make_doubles_shaped(null) == null)
+
+	var one_member := RandomTeamGenerator.generate_team(1)
+	_chk("S6.02 a 1-member party is refused (too small for Doubles)",
+			setup._make_doubles_shaped(one_member) == null)
+
+	var six_member := RandomTeamGenerator.generate_team(6)
+	var shaped: BattleParty = setup._make_doubles_shaped(six_member)
+	_chk("S6.03 a 6-member party is reshaped to 2 active slots",
+			shaped != null and shaped.active_indices == [0, 1])
+	_chk("S6.04 reshaping doesn't touch the member roster itself",
+			shaped.members.size() == 6)
+
+	# Compose with the real dropdown-resolution path, exactly as
+	# `_on_launch_pressed` would for the opponent side in Doubles mode.
+	var opponent_option: OptionButton = setup.get_node("Scroll/VBox/OpponentRow/OpponentTeamOptionButton")
+	opponent_option.select(1)  # Quick Test fixture (Leaf & Volt, 2 members)
+	var fixture_party: BattleParty = setup._resolve_party(opponent_option, true)
+	var fixture_shaped: BattleParty = setup._make_doubles_shaped(fixture_party)
+	_chk("S6.05 the Quick Test fixture (2 members) reshapes cleanly for Doubles",
+			fixture_shaped != null and fixture_shaped.active_indices == [0, 1]
+			and fixture_shaped.members[0].species.species_name == "Leaf"
+			and fixture_shaped.members[1].species.species_name == "Volt")
+
+	# A too-small SAVED team (the same 1-member fixture Section 5 already
+	# saved to disk) hits the real "too small" error path `_on_launch_pressed`
+	# would report, confirmed here without triggering a scene transition.
+	var player_option: OptionButton = setup.get_node("Scroll/VBox/PlayerRow/PlayerTeamOptionButton")
+	var saved_idx := _index_with_text_prefix(player_option, _NAME_PREFIX + "SetupScreen")
+	if saved_idx >= 0:
+		player_option.select(saved_idx)
+		var saved_party: BattleParty = setup._resolve_party(player_option, false)
+		_chk("S6.06 a real 1-member saved team resolves successfully on its own",
+				saved_party != null and saved_party.members.size() == 1)
+		_chk("S6.07 ...but is correctly refused once Doubles-shaping is attempted",
+				setup._make_doubles_shaped(saved_party) == null)
+	else:
+		_chk("S6.06/07 skipped — Section 5's saved fixture team not found (unexpected)", false)
 
 	setup.queue_free()
 
