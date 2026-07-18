@@ -250,8 +250,33 @@ var _pending_effect_lines: Array[String] = []
 # Which sub-menu the MOVE_SELECTION main-action screen is currently showing.
 # Irrelevant during SWITCH_PROMPT, which always shows the bench-picker
 # directly (a mandatory faint replacement, no "back" option).
-enum Menu { MAIN, SWITCH, ITEM }
+#
+# [M23.11 Phase 4f] New TARGET_SELECT case — shown after picking a move that
+# needs a foe/ally choice among 2+ live candidates (see
+# BattleManager.get_live_targets' own doc comment for exactly which moves
+# this applies to).
+enum Menu { MAIN, SWITCH, ITEM, TARGET_SELECT }
 var _menu: Menu = Menu.MAIN
+
+# [M23.11 Phase 4f] _menu above is deliberately kept as ONE flat variable,
+# not an Array[Menu] sized to num_active() field slots, even though this
+# phase's own scoping report raised that as the expected shape — this
+# screen only ever DISPLAYS one field slot's menu at a time (sequential
+# decision-making, matching the reference engine's own real per-battler
+# selection flow, not simultaneous side-by-side pickers), so there's no
+# risk of one slot's menu state bleeding into another's. `_slot_acted`
+# tracks which of _player_party's active field slots have already
+# submitted an action THIS move-selection turn; `_current_action_field_slot
+# ()` derives which slot _menu currently applies to. Reset together
+# whenever a fresh turn is detected (see _ensure_slot_tracking_for_new_turn).
+# In singles (num_active() == 1) this is a 1-element always-resetting array
+# — _menu's own behavior is untouched from before this phase.
+var _slot_acted: Array[bool] = []
+
+# [M23.11 Phase 4f] Which move (by index into the acting mon's own moves
+# array) is awaiting a target choice — only meaningful while
+# _menu == Menu.TARGET_SELECT. -1 otherwise.
+var _pending_move_index: int = -1
 
 
 func _ready() -> void:
@@ -272,9 +297,22 @@ func _ready() -> void:
 	# every pre-existing caller, including the sweep's own direct
 	# `battle_screen.tscn` invocation — this falls through to the exact
 	# same hardcoded-fixture path M23.1 always used.
+	# [M23.11 Phase 4f] _is_doubles governs which BattleManager entry point
+	# _ready() calls at the very end — captured here (before .clear() wipes
+	# it) rather than read fresh later, matching how _player_party/_opp_party
+	# are already consumed. Defaults false: every pre-existing caller
+	# (the hardcoded fixture fallback below, and battle_setup_screen.gd's own
+	# still-singles-only Launch button) leaves this at its default, so this
+	# branch is unreachable except via a caller that deliberately sets
+	# BattleSetupContext.is_doubles = true first (currently: this phase's own
+	# scratch screenshot drivers and test suite only — see
+	# docs/m23_recon.md's Phase 4f entry for why the real Doubles toggle
+	# itself is NOT wired to this yet).
+	var is_doubles_battle := false
 	if BattleSetupContext.has_pending():
 		_player_party = BattleSetupContext.player_party
 		_opp_party = BattleSetupContext.opp_party
+		is_doubles_battle = BattleSetupContext.is_doubles
 		BattleSetupContext.clear()
 	else:
 		_build_teams()
@@ -290,10 +328,14 @@ func _ready() -> void:
 	# why autoplay isn't special-cased here).
 	_wire_log_signals()
 
-	# start_battle_with_parties() calls advance() internally — this already
-	# stalls at MOVE_SELECTION (side 0 is human-controlled, nothing queued
-	# yet) before this function returns.
-	_bm.start_battle_with_parties(_player_party, _opp_party)
+	# start_battle_with_parties()/start_battle_doubles() both call advance()
+	# internally — this already stalls at MOVE_SELECTION (side 0 is human-
+	# controlled, nothing queued yet for at least one active slot) before
+	# this function returns.
+	if is_doubles_battle:
+		_bm.start_battle_doubles(_player_party, _opp_party)
+	else:
+		_bm.start_battle_with_parties(_player_party, _opp_party)
 
 	# [Autoplay] No existing CLI-arg/env-var convention exists anywhere in
 	# this codebase for a headless-vs-interactive toggle — every one of the
@@ -896,23 +938,103 @@ func _refresh_ui() -> void:
 		_build_battle_end_buttons()
 		return
 
+	# [M23.11 Phase 4f] SWITCH_PROMPT (mandatory faint replacement) —
+	# generalized to whichever player field slot currently has a fainted
+	# active mon, not just field slot 0. Needs no stored "already handled"
+	# tracking the way MOVE_SELECTION does below: once a replacement is
+	# queued and advance() runs, that slot's active mon is no longer
+	# fainted, so a fresh scan next refresh naturally finds the next
+	# fainted slot (if a simultaneous doubles double-faint left one) or
+	# nothing. Singles: _current_switch_prompt_field_slot() always returns
+	# 0 or -1, identical in effect to the pre-4f hardcoded side0_mon check.
 	if _bm.get_phase() == BattleManager.BattlePhase.SWITCH_PROMPT:
-		_status_label.text = "%s fainted! Choose a replacement." % side0_mon.species.species_name
-		_build_switch_buttons(true)
+		var prompt_slot := _current_switch_prompt_field_slot()
+		if prompt_slot < 0:
+			# Defensive only — BattleManager wouldn't still be stalled at
+			# SWITCH_PROMPT with a human-controlled side unless at least one
+			# of its active slots were fainted and awaiting a reply.
+			_status_label.text = "Waiting..."
+			return
+		var fainted_mon: BattlePokemon = _player_party.get_active_at(prompt_slot)
+		_status_label.text = "%s fainted! Choose a replacement." % fainted_mon.species.species_name
+		_build_switch_buttons(true, prompt_slot)
 		return
 
-	# MOVE_SELECTION (the only other phase this screen ever stalls at,
-	# since side 0 is the only human-controlled side).
-	match _menu:
-		Menu.SWITCH:
-			_status_label.text = "Choose a Pokémon to switch in."
-			_build_switch_buttons(false)
-		Menu.ITEM:
-			_status_label.text = "Choose an item."
-			_build_item_buttons()
-		_:
-			_status_label.text = "Choose an action for %s." % side0_mon.species.species_name
-			_build_main_menu(side0_mon)
+	# [M23.11 Phase 4f] MOVE_SELECTION — iterates player field slots in
+	# sequence, one menu shown at a time, until every active slot has
+	# submitted an action this turn. Singles always has exactly one active
+	# slot, so this collapses to the pre-4f single-slot flow with no
+	# behavior change (see _ensure_slot_tracking_for_new_turn's own doc
+	# comment).
+	if _bm.get_phase() == BattleManager.BattlePhase.MOVE_SELECTION:
+		_ensure_slot_tracking_for_new_turn()
+		var field_slot := _current_action_field_slot()
+		if field_slot < 0:
+			# Every player-side slot already submitted an action this turn —
+			# BattleManager just hasn't advanced past MOVE_SELECTION in this
+			# exact call yet (the handler that set the last slot's action
+			# already called advance() itself; nothing further to show here).
+			_status_label.text = "Waiting..."
+			return
+		var acting_mon: BattlePokemon = _player_party.get_active_at(field_slot)
+		match _menu:
+			Menu.SWITCH:
+				_status_label.text = "Choose a Pokémon to switch in."
+				_build_switch_buttons(false, field_slot)
+			Menu.ITEM:
+				_status_label.text = "Choose an item."
+				_build_item_buttons(field_slot)
+			Menu.TARGET_SELECT:
+				var pending_move: MoveData = acting_mon.moves[_pending_move_index]
+				_status_label.text = "Choose a target for %s." % pending_move.move_name
+				_build_target_select_buttons(field_slot, _pending_move_index)
+			_:
+				_status_label.text = "Choose an action for %s." % acting_mon.species.species_name
+				_build_main_menu(field_slot)
+
+
+# [M23.11 Phase 4f] First player field slot with a fainted active mon
+# needing a forced replacement, or -1 if none.
+func _current_switch_prompt_field_slot() -> int:
+	for slot in range(_player_party.num_active()):
+		if _player_party.get_active_at(slot).fainted:
+			return slot
+	return -1
+
+
+# [M23.11 Phase 4f] Detects a fresh MOVE_SELECTION turn (every slot already
+# acted, or this is the very first call this battle) and resets the
+# per-slot tracking for it. BattleManager's own equivalent internal state
+# (_move_choice_resolved) isn't publicly readable, so this screen keeps its
+# own mirror — see _slot_acted's own doc comment (near the Menu enum) for
+# why a single flat _menu plus this array was chosen over a full per-slot
+# Menu array.
+func _ensure_slot_tracking_for_new_turn() -> void:
+	var expected_size := _player_party.num_active()
+	if _slot_acted.size() != expected_size or not _slot_acted.has(false):
+		_slot_acted = []
+		for i in range(expected_size):
+			_slot_acted.append(false)
+		_menu = Menu.MAIN
+		_pending_move_index = -1
+
+
+# [M23.11 Phase 4f] First not-yet-acted, non-fainted player field slot this
+# turn, or -1 if every active slot has already submitted an action (or, a
+# defensive case that can't happen while BattleManager itself is still
+# stalled at MOVE_SELECTION, if every slot happens to be fainted — that
+# function resolves fainted combatants automatically with no stall).
+# Mirrors BattleManager._phase_move_selection's own "skip fainted
+# combatants" rule exactly.
+func _current_action_field_slot() -> int:
+	for slot in range(_slot_acted.size()):
+		if _slot_acted[slot]:
+			continue
+		if _player_party.get_active_at(slot).fainted:
+			_slot_acted[slot] = true
+			continue
+		return slot
+	return -1
 
 
 # [M23.7 — real integration gap found and closed] Before this session,
@@ -940,15 +1062,20 @@ func _on_play_again_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/battle/battle_setup_screen.tscn")
 
 
-func _build_main_menu(side0_mon: BattlePokemon) -> void:
-	for i in range(side0_mon.moves.size()):
-		var move: MoveData = side0_mon.moves[i]
+# [M23.11 Phase 4f] field_slot replaces the old bare `side0_mon` param —
+# reads _player_party.get_active_at(field_slot) instead of the singular
+# get_active() accessor, so this works for either of a doubles battle's 2
+# active slots. Singles: field_slot is always 0, byte-identical to before.
+func _build_main_menu(field_slot: int) -> void:
+	var mon: BattlePokemon = _player_party.get_active_at(field_slot)
+	for i in range(mon.moves.size()):
+		var move: MoveData = mon.moves[i]
 		if move == null:
 			continue
 		var btn := Button.new()
-		btn.text = "%s (PP %d/%d)" % [move.move_name, side0_mon.current_pp[i], move.pp]
-		btn.disabled = side0_mon.current_pp[i] <= 0
-		btn.pressed.connect(_on_move_pressed.bind(i))
+		btn.text = "%s (PP %d/%d)" % [move.move_name, mon.current_pp[i], move.pp]
+		btn.disabled = mon.current_pp[i] <= 0
+		btn.pressed.connect(_on_move_pressed.bind(field_slot, i))
 		_button_area.add_child(btn)
 
 	var switch_btn := Button.new()
@@ -967,14 +1094,19 @@ func _build_main_menu(side0_mon: BattlePokemon) -> void:
 	_button_area.add_child(item_btn)
 
 
-func _build_switch_buttons(is_forced_replacement: bool) -> void:
+# [M23.11 Phase 4f] field_slot is the player's own active slot performing
+# the switch (irrelevant for is_forced_replacement — SWITCH_PROMPT already
+# resolves which slot via _current_switch_prompt_field_slot(), passed in
+# by the caller either way) — needed so _on_switch_pressed can resolve the
+# right combatant_idx for queue_switch_for/queue_replacement_for.
+func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void:
 	for i in range(_player_party.members.size()):
 		if _player_party.active_indices.has(i) or _player_party.members[i].fainted:
 			continue
 		var mon: BattlePokemon = _player_party.members[i]
 		var btn := Button.new()
 		btn.text = "%s  HP: %d/%d" % [mon.species.species_name, mon.current_hp, mon.max_hp]
-		btn.pressed.connect(_on_switch_pressed.bind(i, is_forced_replacement))
+		btn.pressed.connect(_on_switch_pressed.bind(i, is_forced_replacement, field_slot))
 		_button_area.add_child(btn)
 
 	if not is_forced_replacement:
@@ -986,20 +1118,20 @@ func _build_switch_buttons(is_forced_replacement: bool) -> void:
 		_button_area.add_child(back_btn)
 
 
-func _build_item_buttons() -> void:
+func _build_item_buttons(field_slot: int) -> void:
 	var potion_btn := Button.new()
 	potion_btn.text = "Potion (heal)"
-	potion_btn.pressed.connect(_on_item_pressed.bind(POTION_ITEM_ID))
+	potion_btn.pressed.connect(_on_item_pressed.bind(POTION_ITEM_ID, field_slot))
 	_button_area.add_child(potion_btn)
 
 	var full_heal_btn := Button.new()
 	full_heal_btn.text = "Full Heal (cure status)"
-	full_heal_btn.pressed.connect(_on_item_pressed.bind(FULL_HEAL_ITEM_ID))
+	full_heal_btn.pressed.connect(_on_item_pressed.bind(FULL_HEAL_ITEM_ID, field_slot))
 	_button_area.add_child(full_heal_btn)
 
 	var x_attack_btn := Button.new()
 	x_attack_btn.text = "X Attack (+1 Attack)"
-	x_attack_btn.pressed.connect(_on_item_pressed.bind(X_ATTACK_ITEM_ID))
+	x_attack_btn.pressed.connect(_on_item_pressed.bind(X_ATTACK_ITEM_ID, field_slot))
 	_button_area.add_child(x_attack_btn)
 
 	var back_btn := Button.new()
@@ -1010,32 +1142,124 @@ func _build_item_buttons() -> void:
 	_button_area.add_child(back_btn)
 
 
+# [M23.11 Phase 4f] Target-picker — one Button per live candidate returned
+# by BattleManager.get_live_targets(mon, move) (see that function's own doc
+# comment for exactly which candidates show up here: 2 live opponents for
+# an ordinary foe-targeting move in doubles, or [self, ally] for
+# TARGET_USER_OR_ALLY moves like Acupressure). Only ever built when
+# _on_move_pressed has already confirmed candidates.size() > 1 — this
+# function doesn't re-check ambiguity itself, matching every other
+# _build_*_buttons function's existing "caller already decided to show
+# this menu" convention.
+func _build_target_select_buttons(field_slot: int, move_index: int) -> void:
+	var mon: BattlePokemon = _player_party.get_active_at(field_slot)
+	var move: MoveData = mon.moves[move_index]
+	var candidates: Array[BattlePokemon] = _bm.get_live_targets(mon, move)
+	for target_mon: BattlePokemon in candidates:
+		var target_idx: int = _bm.get_combatant_index(target_mon)
+		var btn := Button.new()
+		btn.text = "%s  HP: %d/%d" % [_mon_label(target_mon), target_mon.current_hp, target_mon.max_hp]
+		btn.pressed.connect(_on_target_selected.bind(field_slot, move_index, target_idx))
+		_button_area.add_child(btn)
+
+	# [M23.11 Phase 4f] Matches every other sub-menu's own "Back" convention
+	# (_build_switch_buttons'/_build_item_buttons' non-forced branches) —
+	# returns to the move list for this same slot without submitting an
+	# action, so the player can pick a different move instead.
+	var back_btn := Button.new()
+	back_btn.text = "Back"
+	back_btn.pressed.connect(func():
+		_menu = Menu.MAIN
+		_pending_move_index = -1
+		_refresh_ui())
+	_button_area.add_child(back_btn)
+
+
 # ── Input handlers — the M23.0a external contract in action ────────────────
 # Every handler below is the exact queue_*() + advance() pattern confirmed
 # in docs/m23_recon.md (M23.0a's proof scene and M23.0b's own translation
 # check): supply the human's action via the pre-existing queue API, call
 # advance() to resume the paused battle loop, then re-render from whatever
 # phase advance() left the battle in.
+#
+# [M23.11 Phase 4f] Every handler below now takes field_slot, resolving
+# combatant_idx as field_slot directly — side 0's own combatant_idx is
+# always side*_active_per_side + field_slot = 0*_active_per_side +
+# field_slot = field_slot, since this screen only ever acts for side 0.
 
-func _on_move_pressed(move_index: int) -> void:
-	_bm.queue_move_targeted(0, move_index, 1)  # 1 = the opponent's active combatant (singles)
+# [M23.11 Phase 4f] Pure decision logic extracted to a static function,
+# matching this file's own established testability convention
+# (_status_icon_row/_next_anim_frame/_hp_bar_color) — lets a headless test
+# exercise the "when do we show a target picker" boundary directly, with
+# no scene/BattleManager needed at all. Spread/ally-inclusive moves
+# (move.is_spread) already dispatch to every qualifying combatant in
+# _phase_move_execution regardless of the target index passed to
+# queue_move_targeted — never show a picker for them, matching the
+# scoping report's own confirmed finding. Ambiguous single-target moves
+# (2+ live foe candidates in doubles, or the TARGET_USER_OR_ALLY
+# self-vs-ally choice) DO need one.
+static func _needs_target_select(move: MoveData, candidate_count: int) -> bool:
+	return not move.is_spread and candidate_count > 1
+
+
+func _on_move_pressed(field_slot: int, move_index: int) -> void:
+	var mon: BattlePokemon = _player_party.get_active_at(field_slot)
+	var move: MoveData = mon.moves[move_index]
+	var candidates: Array[BattlePokemon] = _bm.get_live_targets(mon, move)
+	if _needs_target_select(move, candidates.size()):
+		_menu = Menu.TARGET_SELECT
+		_pending_move_index = move_index
+		_refresh_ui()
+		return
+	# Singles (and any doubles case with only one valid/no candidate, e.g. a
+	# TARGET_ALLY move auto-resolving to the lone live ally): preserve the
+	# exact pre-4f default of targeting combatant 1 when there's nothing
+	# more specific to resolve to (harmless for ally-exclusive moves, whose
+	# own dispatch reads the ally directly rather than consulting this
+	# target index at all).
+	var target_idx := 1
+	if not candidates.is_empty():
+		target_idx = _bm.get_combatant_index(candidates[0])
+	_dispatch_move(field_slot, move_index, target_idx)
+
+
+# [M23.11 Phase 4f] Reached only from the target picker above, once the
+# player has chosen among 2+ ambiguous candidates.
+func _on_target_selected(field_slot: int, move_index: int, target_idx: int) -> void:
+	_dispatch_move(field_slot, move_index, target_idx)
+
+
+func _dispatch_move(field_slot: int, move_index: int, target_idx: int) -> void:
+	var combatant_idx := field_slot
+	_bm.queue_move_targeted(combatant_idx, move_index, target_idx)
 	_bm.advance()
+	_slot_acted[field_slot] = true
 	_menu = Menu.MAIN
+	_pending_move_index = -1
 	_refresh_ui()
 
 
-func _on_switch_pressed(slot: int, is_forced_replacement: bool) -> void:
+func _on_switch_pressed(slot: int, is_forced_replacement: bool, field_slot: int) -> void:
+	var combatant_idx := field_slot
 	if is_forced_replacement:
-		_bm.queue_replacement_for(0, slot)
+		_bm.queue_replacement_for(combatant_idx, slot)
 	else:
-		_bm.queue_switch_for(0, slot)
+		_bm.queue_switch_for(combatant_idx, slot)
 	_bm.advance()
+	# [M23.11 Phase 4f] Forced replacement doesn't use _slot_acted at all
+	# (see _current_switch_prompt_field_slot's own doc comment) — only a
+	# voluntary switch, chosen from the MOVE_SELECTION main menu, counts as
+	# this slot's action for the turn.
+	if not is_forced_replacement:
+		_slot_acted[field_slot] = true
 	_menu = Menu.MAIN
 	_refresh_ui()
 
 
-func _on_item_pressed(item_id: int) -> void:
-	_bm.queue_item_for(0, item_id)
+func _on_item_pressed(item_id: int, field_slot: int) -> void:
+	var combatant_idx := field_slot
+	_bm.queue_item_for(combatant_idx, item_id)
 	_bm.advance()
+	_slot_acted[field_slot] = true
 	_menu = Menu.MAIN
 	_refresh_ui()

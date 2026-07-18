@@ -3438,3 +3438,381 @@ by the new Timer node, confirmed via a direct headless rerun), is
 unchanged.
 
 No commit made this session — per standing instruction, Rob commits.
+
+### Phase 4d — doubles support: STOPPED before implementation, blocker found and confirmed with Rob
+
+**NOT IMPLEMENTED, deliberately** — 2026-07-17. Investigated per this
+phase's own explicit "confirm before assuming" instruction; found a real
+blocker one layer higher than the task itself anticipated, stopped, and
+got an explicit decision from Rob before writing any UI code. Zero files
+touched this session.
+
+**BattleManager/BattleParty doubles DATA layer — confirmed fully
+working, NOT the blocker.** `BattleParty.active_indices`/`get_active_at
+(field_slot)`/`num_active()` and `BattleManager.start_battle_doubles()`
+(`_active_per_side = 2`) are all real, already-shipped, functioning APIs
+(M14a/M14b/M14c, well before this M23 arc). This part of the task's own
+premise ("BattleManager's doubles logic already exists") is correct.
+
+**The real blocker, one layer higher — `battle_screen.gd`'s entire
+action UI is singles-only by deliberate, already-documented design, not
+an oversight.** `battle_setup_screen.gd`'s own existing code comment
+(written during M23.6, predating this session) states plainly: the
+Doubles format toggle exists in the setup UI but is disabled at launch
+("Doubles battles aren't supported by the battle screen yet... switch
+back to Singles to launch") because `battle_screen.gd`'s move/switch/item
+button handlers hardcode singles-only targeting (`queue_move_targeted(0,
+move_index, 1)` — a literal hardcoded opponent-index of `1`, no
+target-picker for "which of 2 opponents"). That same comment already
+scopes the real fix as "a 4-combatant menu/targeting layer," explicitly
+"out of this... milestone's scope" (M23.6's own, not this phase's).
+
+**Consequence for Phase 4d specifically**: building a visually-correct
+4-mon-per-side DISPLAY layer would not fix this — the underlying battle
+would still be uninteractable as doubles through this screen's real
+controls, and (separately) no real player can currently even REACH a
+doubles `battle_screen` instance at all, since the setup screen's own
+launch button stays disabled for that format. A presentation-only pass
+would be building visual UI for a battle mode nothing in the real game
+flow can ever produce.
+
+**Stopped before any UI implementation, per this phase's own explicit
+instruction not to guess at a workaround.** Presented 3 options to Rob
+directly (stop and defer / build display-only verified via direct
+`BattleManager` calls bypassing the setup screen's own gate / expand
+scope to also build the real targeting UI and unblock launch). **Rob
+chose to stop and defer Phase 4d entirely** — it becomes a sub-task of
+the future doubles-interaction rework `battle_setup_screen.gd`'s own
+comment already scopes out, not a standalone presentation pass run ahead
+of it.
+
+**`healthbox_doubles_*` art inspection**: NOT performed this session —
+correctly skipped once the blocker was found and confirmed, per the
+task's own explicit "do not attempt a partial/mocked workaround" and
+"report back for a scoping decision rather than guessing" instructions;
+inspecting art for a deferred feature would be premature work product
+tied to a design that may change once the real interaction-layer rework
+is actually scoped.
+
+**No sweep run this session** — no code changed, nothing to verify.
+
+No commit made this session — per standing instruction, Rob commits
+(there is nothing to commit).
+
+### Phase 4f scoping — 4-combatant menu/targeting layer (retroactive backfill)
+
+**Investigation-only, backfilled here** — the scoping report for this
+phase was delivered directly in chat in the session immediately following
+Phase 4d's stop, but was never written to this file at the time (a real
+documentation gap, caught only when the follow-up implementation
+session's own opening instruction — "read docs/m23_recon.md's Phase 4f
+scoping entry first" — found nothing here to read). Recorded now, after
+the fact, so this file stays the actual source of truth for the phase
+sequence. No code was touched in the scoping session itself.
+
+**Inventory of `battle_screen.gd`'s hardcoded singles-only assumptions**
+(file:line as of the scoping session): `_on_move_pressed`
+(`queue_move_targeted(0, move_index, 1)`, literal combatant 0/target 1),
+`_on_switch_pressed`/`_on_item_pressed` (combatant `0` hardcoded),
+`_run_autoplay` (same shape), `_build_main_menu(side0_mon)` (takes a
+single mon, no field-slot concept), `_refresh_ui` (reads
+`_player_party.get_active()`/`_opp_party.get_active()`, both hardwired to
+`active_indices[0]`), and the single flat `Menu` enum (one menu state for
+the whole screen, not per-slot).
+
+**BattleManager/BattleParty doubles API — confirmed complete at the data
+layer.** `BattleParty.active_indices`/`get_active_at(field_slot)`/
+`num_active()` and `BattleManager.queue_move_targeted(combatant_idx,
+move_index, target_idx)`/`queue_switch_for`/`queue_item_for` already
+accept arbitrary combatant indices — no BattleManager changes anticipated
+for basic dispatch. `_get_live_opponents(mon)` and `_default_target
+(combatant_idx)` already exist as the "who are the valid targets"/"what's
+the sane default" primitives, just private. Confirmed
+`_default_target`'s own resolution means spread/`target_includes_ally`
+moves already dispatch to every qualifying combatant in
+`_phase_move_execution` regardless of the UI-chosen target index — a
+target picker is only ever needed for genuinely single-target moves.
+`TrainerAI.choose_action_doubles` (M14c, already shipped) is the existing
+proof that per-slot target scoring is a solved problem at the AI layer.
+
+**Reference engine's own doubles menu — confirmed a real, second menu
+state**, not an instant dispatch: `battle_controller_player.c`'s
+`gMultiUsePlayerCursor` cycles between valid battler positions via
+`CanTargetBattler`-filtered D-pad input with a live effectiveness
+preview, entered only for single-target moves and skipped entirely for
+spread ones — confirming the phased plan's own shape (a new menu state,
+legality-filtered, auto-skipped when unambiguous) rather than a simpler
+alternative.
+
+**Existing project UI convention confirmed reusable as-is**: both
+`battle_screen.gd`'s own `_build_switch_buttons`/`_build_item_buttons`
+and `team_builder_screen.gd`'s move-list UI already use the identical
+dynamic-`VBoxContainer`-of-`Button`s pattern a target-picker needs — no
+new interaction model required.
+
+**Proposed phased plan** (implemented essentially as proposed — see the
+`Phase 4f` implementation entry below for the one real deviation, the
+`_menu`/`_slot_acted` shape): 4f-1 slot-aware action dispatch (a public
+`get_live_targets` wrapper, per-slot menu state, `_build_main_menu
+(field_slot)`); 4f-2 the target-selection UI itself (`Menu.TARGET_SELECT`,
+skipped for spread moves and auto-resolved for `TARGET_ALLY`-only moves);
+4f-3 multi-slot turn sequencing (iterate not-yet-acted player field slots
+in sequence — confirmed via `_phase_move_selection`'s own per-combatant
+stall/resume shape that this needs zero BattleManager changes, just UI
+sequencing); 4f-4 a confirming pass that spread-move dispatch is
+genuinely unaffected by whatever target index the "skip picker" path
+resolves to. Singles stays the unchanged fast path throughout — every
+addition is a strict generalization with `field_slot` defaulting to 0 and
+the picker auto-skipping when only one candidate exists.
+
+**No new blockers found.** Everything needed either already existed
+(BattleParty/BattleManager doubles API, AI doubles scoring, the dynamic-
+button-list convention) or was a mechanical extension of existing code.
+The one genuinely new artifact identified was the target-picker menu
+state itself.
+
+### Phase 4f — 4-combatant menu/targeting layer: IMPLEMENTED, full session
+
+**COMPLETE** — 2026-07-18. Implements the plan scoped immediately above
+(4f-1 through 4f-4), verified with a new BattleManager-level test suite,
+a full regression sweep (twice), and the mandated real screenshot
+capture (all 4 required shots). Doubles battles are now genuinely
+playable through `battle_screen.gd`'s real button-driven UI — the
+blocker Phase 4d stopped on is closed. Phase 4d's own visual layer (2
+sprites/health-boxes per side) remains **explicitly not built this
+session** — see the Doubles-toggle decision below for why that still
+matters.
+
+**Files touched, by sub-phase:**
+- **4f-1 (data plumbing)**: `scripts/battle/core/battle_manager.gd` — two
+  new public methods, `get_combatant_index(mon) -> int` (a thin
+  `_combatants.find(mon)` wrapper — the target-picker needs to turn a
+  `BattlePokemon` back into a combatant index for `queue_move_targeted`,
+  and nothing public did that) and `get_live_targets(mon, move: MoveData
+  = null) -> Array[BattlePokemon]` (see its own signature-decision
+  writeup below). `scripts/battle/core/battle_setup_context.gd` — new
+  `is_doubles: bool` field (default `false`), `set_pending` gained an
+  optional 3rd param, `clear()` resets it too. Needed so a doubles battle
+  is reachable through the REAL `battle_screen.tscn` code path at all
+  (for both this session's screenshot verification and any future use),
+  without touching `battle_setup_screen.gd`'s own still-disabled toggle —
+  see the Doubles-toggle section below.
+- **4f-1/4f-2/4f-3 (the UI itself)**: `scenes/battle/battle_screen.gd` —
+  `_ready()` now branches on `BattleSetupContext.is_doubles` to call
+  `start_battle_doubles()` instead of `start_battle_with_parties()`; the
+  `Menu` enum gained `TARGET_SELECT`; new `_slot_acted: Array[bool]` +
+  `_pending_move_index: int` state; new helpers
+  `_ensure_slot_tracking_for_new_turn()`/`_current_action_field_slot()`/
+  `_current_switch_prompt_field_slot()`; `_build_main_menu`/
+  `_build_switch_buttons`/`_build_item_buttons` all gained a `field_slot`
+  param; new `_build_target_select_buttons(field_slot, move_index)`; new
+  static `BattleScreen._needs_target_select(move, candidate_count) ->
+  bool` (the picker-vs-auto-resolve decision, extracted for headless
+  testability — see this file's own established
+  `_status_icon_row`/`_next_anim_frame` precedent); `_on_move_pressed`/
+  `_on_switch_pressed`/`_on_item_pressed` all gained `field_slot`; new
+  `_on_target_selected`/`_dispatch_move`; `_refresh_ui`'s
+  `SWITCH_PROMPT`/`MOVE_SELECTION` branches rewritten to be slot-aware.
+  `scenes/battle/battle_screen.tscn` — **not directly edited by hand**;
+  its `M` diff in this session is entirely the pre-existing, already-
+  documented Phase 4a/4b/4c uncommitted state carried forward from
+  earlier in this same conversation (confirmed via `git diff` — nothing
+  in this session's own work touched the scene file, only the script).
+- **4f-1/4f-3 (SWITCH_PROMPT)**: covered by the same `battle_screen.gd`
+  edit above — `_current_switch_prompt_field_slot()` is stateless (no
+  `_slot_acted`-style tracking needed; see its own doc comment for why),
+  scanning `_player_party`'s active slots fresh on every refresh.
+- **Tests**: new `scenes/battle/phase4f_targeting_test.gd`/`.tscn` (45
+  assertions) — see the Test results section below.
+- **Docs**: this file (the scoping backfill above, plus this entry).
+
+**`get_live_targets` signature decision, and why**: `get_live_targets(mon:
+BattlePokemon, move: MoveData = null) -> Array[BattlePokemon]`, matching
+the task's own suggested shape exactly once source-checked against this
+project's real ally-targeting fields — there is no single unified "is
+ally-targeting" `MoveData` flag (confirmed via grep: `is_helping_hand`,
+`stat_change_target_ally`, and `is_acupressure` are three independent,
+already-shipped booleans, no shared parent flag). Three branches: (1)
+`move == null` or an ordinary foe-targeting move → live opponents,
+unchanged from the existing private `_get_live_opponents` shape; (2)
+`is_helping_hand`/`stat_change_target_ally` (TARGET_ALLY-only moves) →
+the live ally only, or empty in singles/if the ally has fainted — never
+ambiguous (at most 1 result), so the caller auto-resolves rather than
+showing a picker; (3) `is_acupressure` (TARGET_USER_OR_ALLY) → `[self,
+live ally]`, a genuine 2-way choice in doubles that reuses the exact same
+picker mechanism, or just `[self]` in singles (matching Acupressure's
+own already-shipped fallback-to-self default from `[M21 closeout]`).
+Confirmed via a dedicated test that Acupressure needed zero special-
+casing in `battle_screen.gd` itself — it's just another 2-candidate case
+the same `_needs_target_select`/picker/`get_combatant_index` pipeline
+already handles.
+
+**Menu-state refactor approach, and why it deviates from the scoping
+report's own `Array[Menu]`/`Dictionary[int, Menu]` suggestion**: kept
+`_menu` as a single flat variable (unchanged shape from before this
+phase) and added a separate `_slot_acted: Array[bool]` tracking which
+player field slots have already submitted an action this turn. This
+screen only ever DISPLAYS one field slot's menu at a time — sequential
+decision-making, matching the reference engine's own real per-battler
+selection flow, not simultaneous side-by-side pickers — so there is no
+risk of one slot's menu state bleeding into another's, and a full
+per-slot `Array[Menu]` would track state that's never actually needed
+(no slot's menu is ever read once that slot has acted and moved on).
+This is a smaller diff than either option the scoping report offered,
+and singles behaves identically (a 1-element `_slot_acted` that resets
+every turn, `_menu` itself untouched in shape from before 4f).
+`_current_action_field_slot()` mirrors `BattleManager._phase_move_
+selection`'s own "skip fainted combatants" rule exactly.
+`_current_switch_prompt_field_slot()` needed no stored state at all
+(unlike the MOVE_SELECTION case) — once a replacement is queued and
+`advance()` runs, that slot's active mon is no longer fainted, so a
+fresh scan next refresh naturally finds the next fainted slot (a
+simultaneous doubles double-faint) or nothing.
+
+**Test results**: `scenes/battle/phase4f_targeting_test.gd`/`.tscn`, 45/45
+assertions, stable across 3 reruns. Deliberately does NOT instantiate
+`battle_screen.tscn` — matching `m23_6_battle_setup_test.gd`'s own
+established precedent (this project's sweep script appends `--autoplay`
+to every scene invocation unconditionally; embedding `battle_screen.tscn`
+as a child during a sweep run would trigger `_run_autoplay()`'s
+`get_tree().quit()` and silently kill the whole test process). Every
+mechanism the new UI drives is plain `BattleManager` API, fully testable
+without the Control scene:
+- Section A (`get_live_targets`): ordinary moves (singles 1 candidate,
+  doubles 2, a fainted opponent excluded), `TARGET_ALLY` moves (1
+  candidate or 0 with a fainted/absent ally), Acupressure (`[self,
+  ally]` in doubles, `[self]` in singles).
+- Section B (`get_combatant_index`): all 4 doubles combatants resolve to
+  their own index; a mon not in the battle returns -1.
+- Section C: multi-slot MOVE_SELECTION stall/resume — confirmed (not
+  just trusted from the scoping report) that the phase stalls after only
+  one of two human-controlled slots submits an action, and the full
+  turn (4 moves) resolves only once both have.
+- Section D: multi-slot SWITCH_PROMPT stall/resume — a genuine
+  simultaneous doubles double-faint (via a single spread hit, the only
+  way this engine's per-action-immediate-faint-check architecture
+  produces one — see the deviation note below), confirming the forced-
+  replacement flow stalls and resumes per-combatant exactly like
+  MOVE_SELECTION.
+- Section E: a real doubles battle confirming a spread move (Surf) hits
+  BOTH opponents despite the UI's own "skip picker" path resolving a
+  single shared target index — empirically confirmed, not re-asserted.
+- Section F: Helping Hand, dispatched via the picker's own auto-resolve
+  path (`get_live_targets` → `get_combatant_index` → `queue_move_
+  targeted`), correctly boosts the ally.
+- Section G: singles regression guard — the exact pre-4f dispatch shape
+  (`combatant_idx=0`, `target_idx=1`) falls out of the new
+  `get_live_targets`/`get_combatant_index`-driven path with zero
+  behavior change, confirmed end-to-end through a real battle turn.
+- Section H: `BattleScreen._needs_target_select` — the pure picker-vs-
+  auto-resolve decision, unit-tested directly with no scene/BattleManager
+  needed (spread never needs a picker regardless of candidate count;
+  `TARGET_ALLY`/`TARGET_USER_OR_ALLY` only need one at 2+ candidates).
+
+**A real test-authoring pitfall found and fixed while writing Section
+D, worth flagging for future doubles test-writing**: the first draft
+queued each of 4 combatants' actions directly via `queue_move_targeted`
+without also marking side 1 `human_controlled` — since neither a
+`TrainerAI` nor `human_controlled` was set for side 1, its two combatants
+auto-selected `moves[0]` and were marked resolved during the very FIRST
+`advance()` call (the one inside `start_battle_doubles()` itself, called
+before the test function ever got to queue anything), making the later
+`queue_move_targeted` calls for those two combatants silent no-ops for
+the rest of that turn. Fixed by also setting `set_human_controlled(1,
+true)` — but only when done BEFORE `start_battle_doubles()`, confirmed
+via direct diagnosis (a scratch scene, deleted after use) that setting
+it afterward is too late. Not a production bug — `battle_screen.gd`
+itself only ever drives side 0 and never hits this ordering trap.
+
+**A second, related finding (architectural, not a bug)**: this engine
+checks for a fainted combatant immediately after EACH resolved action
+within a turn (not once at the end), and a mid-turn stall (a
+human-controlled side awaiting a replacement) abandons the rest of that
+turn's already-queued actions rather than resuming them once the
+replacement is supplied — confirmed via a scratch diagnostic, not
+assumed. This meant a genuine SIMULTANEOUS doubles double-faint can only
+be produced by a single spread-move hit connecting with both targets in
+one action, not by two separately-queued single-target hits landing in
+the same turn (the second interrupts before the first's target check
+even runs). Section D's fixture was built around this constraint
+directly rather than working around it — this is pre-existing,
+established engine behavior, not something this session changed or
+needed to change.
+
+**Sweep results**: baseline (before any change) — 149 files, GRAND TOTAL
+20090, 0 real failures. Post-change sweep #1 — 150 files (the new
+`phase4f_targeting_test.tscn`), GRAND TOTAL 20135 (exactly 20090 + 45new,
+confirmed via a per-file diff that zero pre-existing suite's count
+changed), 0 real failures. Post-change sweep #2 — identical: 150 files,
+GRAND TOTAL 20135, 0 real failures. **Singles regression guard, called
+out specifically**: `battle_screen_autoplay` (the existing singles
+end-to-end suite) reconfirmed 1/1 passing standalone, both before any
+edit and again after the scratch screenshot drivers were deleted at the
+end of the session — zero change to its own dispatch shape.
+
+**Screenshot verification — all 4 required captures obtained**, via 3
+disposable scratch drivers (`_scratch_screenshot_singles`/
+`_doubles_picker`/`_doubles_spread`, each `.gd`+`.tscn`+leftover `.uid`,
+all deleted immediately after use, confirmed via `git status` showing no
+trace remaining):
+- (a) Singles parity: identical shape to Phase 4c's own confirmed state
+  — "Choose an action for Blaze." with its 4-move + Switch + Item main
+  menu, unchanged sprite/health-bar layout. No doubles-specific UI leaks
+  into the singles path.
+- (b) Doubles target-picker mid-selection: "Choose a target for
+  Tackle." with two buttons, "Foe Leaf HP: 240/240" and "Foe Volt HP:
+  230/230", plus Back — both live opponents visible and correctly
+  labeled/HP'd, confirming `Menu.TARGET_SELECT` (menu=3) was reached and
+  populated correctly from real button-press-equivalent input.
+- (c) Doubles spread move, no picker: after choosing Surf (is_spread)
+  for field slot 0, the screen shows field slot 1's own ordinary main
+  menu ("Choose an action for Torrent.") — `_menu` back at `MAIN` (0),
+  `_slot_acted = [true, false]` — confirming no picker ever appeared for
+  a spread move and the screen correctly moved on to the next unacted
+  slot.
+- (d) No positioning/overlap regressions: confirmed directly in all 3
+  captures above — the target-picker reuses the exact same dynamic
+  `VBoxContainer`-of-`Button`s node (`_button_area`) every other sub-menu
+  already renders into, so there was no new layout to regress; all 3
+  screenshots render cleanly with no overlapping elements.
+
+**Doubles-toggle decision**: **NOT re-enabled this session, per the
+task's own explicit instruction to confirm rather than assume.**
+`battle_setup_screen.gd` itself was not touched at all — its Doubles
+toggle remains hard-disabled with the same status message as before
+("Doubles battles aren't supported by the battle screen yet..."). Phase
+4f closes the interaction-layer blocker that message points at, but
+Phase 4d's own visual layer (2 sprites/health-boxes per side — currently
+`battle_screen.tscn` still only ever shows field slot 0 of each side,
+regardless of format) remains unbuilt and was explicitly out of this
+session's own scope. Flipping the toggle on now would let a real player
+reach a doubles battle that's fully interactable through text/buttons
+but visually still only shows half the field — a genuinely confusing
+half-finished state, not a reasonable interim. Recommend re-enabling the
+toggle only once Phase 4d ships, as a small final step of that future
+session (not a new one), rather than doing it here or leaving it as an
+open question — this is a definite "not yet," not a "maybe."
+
+**Deviations/assumptions/blockers flagged explicitly**:
+- `_run_autoplay()` was deliberately NOT generalized for doubles — it
+  remains the exact pre-4f singles-only hardcoded path. Since
+  `BattleSetupContext.is_doubles` defaults to `false` and nothing in the
+  real launch path (`battle_setup_screen.gd`) or the sweep's own direct
+  `battle_screen.tscn --autoplay` invocation ever sets it, autoplay never
+  actually runs in doubles today — this is a known, disclosed, currently-
+  unreachable limitation, not a silent gap. Flagged for whoever
+  eventually re-enables the Doubles toggle: autoplay will need its own
+  doubles-aware pass at that point too.
+- The visual sprite/health-bar layer (`_opponent_sprite`/`_player_sprite`
+  and their health groups) was deliberately left untouched — it
+  continues to reflect only field slot 0 of each side in a doubles
+  battle, exactly as before this session. This is Phase 4d's own scope,
+  not 4f's; screenshot (b)/(c) above show this plainly (only one
+  opponent/player sprite ever renders) while the new text-based
+  target-picker buttons correctly enumerate both combatants regardless.
+- No BattleManager mechanism changes were needed anywhere (confirmed,
+  not just assumed, per item 10's own instruction) — every multi-slot
+  stall/resume behavior this phase relies on was already correct,
+  pre-existing M9/M14a architecture.
+
+No commit made this session — per standing instruction, Rob commits.

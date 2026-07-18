@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://c8p4f0targeting"]
+
+[ext_resource type="Script" path="res://scenes/battle/phase4f_targeting_test.gd" id="1_p4f0t"]
+
+[node name="Phase4fTargetingTest" type="Node"]
+script = ExtResource("1_p4f0t")

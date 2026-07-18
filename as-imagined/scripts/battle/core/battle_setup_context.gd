@@ -22,10 +22,21 @@ extends RefCounted
 static var player_party: BattleParty = null
 static var opp_party: BattleParty = null
 
+# [M23.11 Phase 4f] Doubles flag — added so battle_screen.gd's _ready() can
+# call BattleManager.start_battle_doubles() instead of the singles-only
+# start_battle_with_parties() when the hand-off parties are doubles-shaped
+# (active_indices = [0, 1]). Optional, defaults false — every pre-existing
+# caller (battle_setup_screen.gd's own singles-only Launch button, which
+# stays that way this session; see docs/m23_recon.md's Phase 4f entry for
+# why the Doubles toggle itself is NOT re-enabled here) is unaffected.
+static var is_doubles: bool = false
 
-static func set_pending(p_player_party: BattleParty, p_opp_party: BattleParty) -> void:
+
+static func set_pending(p_player_party: BattleParty, p_opp_party: BattleParty,
+		p_is_doubles: bool = false) -> void:
 	player_party = p_player_party
 	opp_party = p_opp_party
+	is_doubles = p_is_doubles
 
 
 static func has_pending() -> bool:
@@ -35,3 +46,4 @@ static func has_pending() -> bool:
 static func clear() -> void:
 	player_party = null
 	opp_party = null
+	is_doubles = false

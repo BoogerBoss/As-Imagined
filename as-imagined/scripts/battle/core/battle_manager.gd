@@ -6923,6 +6923,53 @@ func _is_safeguard_active_for(attacker: BattlePokemon, defender: BattlePokemon, 
 	return true
 
 
+# [M23.11 Phase 4f] Public combatant-index lookup — battle_screen.gd's new
+# target-picker UI needs to turn a BattlePokemon (returned by get_live_targets
+# below) back into the combatant_idx queue_move_targeted() expects, without
+# reaching into the private _combatants array itself. Returns -1 if mon isn't
+# a combatant in the current battle (defensive; every real caller only ever
+# passes a value get_live_targets() itself just returned).
+func get_combatant_index(mon: BattlePokemon) -> int:
+	return _combatants.find(mon)
+
+
+# [M23.11 Phase 4f] Public wrapper around _get_live_opponents, extended to
+# report ally candidates too for ally-targeting moves — the one chokepoint
+# battle_screen.gd's target-picker needs instead of duplicating combatant-
+# index/target-type math itself. `move` is optional so ordinary foe-targeting
+# callers (the common case) don't need to pass anything.
+#
+# Three shapes, matching this project's own existing ally-targeting flags
+# (there is no single unified "is ally-targeting" MoveData field — see
+# is_helping_hand/stat_change_target_ally/is_acupressure's own doc comments):
+#   - TARGET_ALLY-only moves (is_helping_hand, stat_change_target_ally —
+#     Helping Hand/Aromatic Mist/Coaching): the ONLY valid candidate is the
+#     live ally, or none in singles/if the ally has fainted. Never ambiguous
+#     (at most 1 result) — callers auto-resolve rather than showing a picker.
+#   - TARGET_USER_OR_ALLY (is_acupressure): candidates are [self, live ally]
+#     — a genuine 2-way choice in doubles, or just [self] in singles/if the
+#     ally has fainted (matching Acupressure's own established fallback-to-
+#     self default, M21 closeout).
+#   - Everything else (ordinary foe-targeting moves, or move == null): the
+#     live opponents, unchanged from _get_live_opponents' own shape.
+func get_live_targets(mon: BattlePokemon, move: MoveData = null) -> Array[BattlePokemon]:
+	var result: Array[BattlePokemon] = []
+	if move != null and (move.is_helping_hand or move.stat_change_target_ally):
+		var ally: BattlePokemon = _get_ally(mon)
+		if ally != null:
+			result.append(ally)
+		return result
+	if move != null and move.is_acupressure:
+		result.append(mon)
+		var ally: BattlePokemon = _get_ally(mon)
+		if ally != null:
+			result.append(ally)
+		return result
+	for opp: BattlePokemon in _get_live_opponents(mon):
+		result.append(opp)
+	return result
+
+
 # M17f: live (non-fainted, opposing-side) combatants for mon — same loop shape as
 # _apply_switch_in_abilities's live_opponents gathering. Used by the voluntary-switch
 # trapping gate (AbilityManager.is_trapped) in _phase_move_selection.
