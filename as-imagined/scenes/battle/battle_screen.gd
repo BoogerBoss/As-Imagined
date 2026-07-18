@@ -209,7 +209,17 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 @onready var _status_label: Label = $VBox/StatusLabel
 @onready var _side0_label: Label = $VBox/Side0Label
 @onready var _side1_label: Label = $VBox/Side1Label
-@onready var _log_label: RichTextLabel = $VBox/LogLabel
+
+# [M23.11 Phase 4e] DialogueLabel (addons/dialogue_manager/dialogue_label.gd)
+# rather than a plain RichTextLabel -- see _setup_message_box()'s own doc
+# comment for the full reasoning. DialogueLabel `extends RichTextLabel` and
+# adds nothing to its behavior unless its own `dialogue_line`/`type_out()`/
+# `skip_typing()` API is used -- confirmed via direct source read, not
+# assumed -- so every existing `.text +=` append site below (_log(),
+# _flush_pending_effect_lines(), _on_log_move_executed()) is completely
+# untouched: same property, same accumulating-scroll behavior, same
+# queuing/sequencing/timing as every prior phase.
+@onready var _log_label: DialogueLabel = $VBox/LogLabel
 @onready var _button_area: VBoxContainer = $VBox/ButtonArea
 
 # [M23.11 Phase 4a] Visual battle stage -- additive alongside the existing
@@ -323,6 +333,7 @@ var _pending_move_index: int = -1
 
 func _ready() -> void:
 	_setup_health_ui()
+	_setup_message_box()
 	_opponent_anim_timer.timeout.connect(_on_opponent_anim_timer_timeout)
 
 	# [M23.6 injection point] BattleSetupContext is a plain static-var
@@ -1004,6 +1015,110 @@ func _setup_health_ui() -> void:
 		ply_atlas_d.region = Rect2(Vector2.ZERO, _STATUS_ICON_SIZE)
 		_ply_status_atlas_d[i] = ply_atlas_d
 		_ply_status_icon_d[i].texture = ply_atlas_d
+
+
+# [M23.11 Phase 4e] text_window/std.png's own fixed (non-stretching) corner
+# size, in the TEXTURE's own pixel space -- confirmed via direct pixel
+# inspection (numpy scanline), not assumed from the filename: pixels 0-1 are
+# background-key green, 2-3 a dark border, 4 a light transition, then a flat
+# 14x14 white interior (pixels 5-18), mirrored on the far edge. 5px on each
+# side covers green+border+transition, leaving exactly the flat interior to
+# stretch -- matches StyleBoxTexture's own texture_margin_* semantics.
+const _MESSAGE_BOX_MARGIN := 5.0
+
+# [M23.11 Phase 4e] The exact background-key color found in EVERY
+# text_window/*.png file inspected (std.png, message_box.png, name_box.png,
+# signpost.png, and all 20 numbered frame-style preview tiles) -- confirmed
+# via direct pixel read, not assumed: RGB (115, 205, 164), alpha=255 (a
+# fully OPAQUE mint green, not real PNG transparency -- these files have no
+# "transparency" info in their PNG metadata at all). This is a classic
+# GBA-era sprite-sheet background/canvas-key color from the original
+# pokeemerald_expansion extraction, not an intentionally-visible color —
+# using it as-is would render a visible green blob around every corner.
+# Color-keyed to real alpha=0 at runtime (see _color_keyed_texture below)
+# rather than pre-processing/overwriting the pulled asset file on disk, so
+# the original pull stays byte-for-byte available for any future reprocessing.
+const _MESSAGE_BOX_KEY_COLOR := Color8(115, 205, 164, 255)
+
+# [M23.11 Phase 4e] Pure function (no scene/Image-loading side effects of its
+# own) so a headless test can verify the color-matching logic directly
+# without needing a real Image/texture round-trip. `is_equal_approx`'s
+# default epsilon is far tighter than a single 8-bit channel step, so this
+# is effectively an exact match — correct and sufficient here, since a
+# palette-indexed PNG's background-key color is byte-identical across every
+# pixel (confirmed directly against the real std.png asset in this phase's
+# own test suite), not something that needs fuzzy tolerance.
+static func _is_message_box_key_color(c: Color) -> bool:
+	return c.is_equal_approx(_MESSAGE_BOX_KEY_COLOR)
+
+
+# [M23.11 Phase 4e] Loads text_window/std.png, replaces every background-key
+# pixel with real alpha=0 (see _MESSAGE_BOX_KEY_COLOR's own doc comment),
+# and returns the result as a fresh ImageTexture. Runtime color-keying
+# rather than an offline preprocessing script -- matches this file's own
+# established "script controls final on-screen appearance" convention
+# (the HP-bar/status-icon AtlasTexture slicing in _setup_health_ui above is
+# the same shape: load the raw pulled art, transform it in code, never touch
+# the file on disk).
+static func _color_keyed_texture(source: Image) -> ImageTexture:
+	var img := source.duplicate()
+	img.convert(Image.FORMAT_RGBA8)
+	for y in range(img.get_height()):
+		for x in range(img.get_width()):
+			if _is_message_box_key_color(img.get_pixel(x, y)):
+				img.set_pixel(x, y, Color(0, 0, 0, 0))
+	return ImageTexture.create_from_image(img)
+
+
+# [M23.11 Phase 4e] Message-box authenticity via the real text_window art,
+# using the now-enabled Dialogue Manager plugin's own DialogueLabel node
+# class (see _log_label's own onready doc comment for why that's safe) --
+# called once from _ready(), alongside _setup_health_ui().
+#
+# [Dialogue-Manager-vs-custom decision, stated here since this is the one
+# call site it governs] Deliberately does NOT instantiate Dialogue Manager's
+# own example_balloon.tscn / call DialogueManager.show_dialogue_balloon() --
+# that API is shaped around ONE DialogueResource/DialogueLine at a time,
+# gated on player input to advance to the next line (a genuine branching-
+# conversation balloon). This screen's battle log is the opposite shape: an
+# ACCUMULATING, non-blocking scroll of many short lines arriving in rapid
+# succession (Phase 4f's per-slot doubles messages especially), which the
+# task's own "must not regress queuing/sequencing/timing" constraint asks
+# to preserve exactly as built across M23.2-4f. Forcing every log line
+# through a synthetic DialogueLine + balloon-advance gate would be a large,
+# genuinely risky rearchitecture for zero real benefit here (there is no
+# authored branching content to gain from it) -- so the integration is
+# scoped to what's actually a good fit: the DialogueLabel component class
+# itself (a real Dialogue-Manager-provided RichTextLabel subclass, used
+# here as a plain accumulating label, its own typewriter/dialogue-line API
+# simply never invoked) plus the real text_window art as its background.
+# Dialogue Manager's full balloon/branching machinery remains available,
+# unused by this screen, for whatever future overworld NPC dialogue system
+# M26 eventually builds -- see CLAUDE.md's "Project Roadmap" section.
+func _setup_message_box() -> void:
+	var raw_image: Image = load("res://assets/sprites/battle_ui/text_window/std.png").get_image()
+	var keyed_texture: ImageTexture = _color_keyed_texture(raw_image)
+
+	var box_style := StyleBoxTexture.new()
+	box_style.texture = keyed_texture
+	box_style.texture_margin_left = _MESSAGE_BOX_MARGIN
+	box_style.texture_margin_top = _MESSAGE_BOX_MARGIN
+	box_style.texture_margin_right = _MESSAGE_BOX_MARGIN
+	box_style.texture_margin_bottom = _MESSAGE_BOX_MARGIN
+
+	_log_label.add_theme_stylebox_override("normal", box_style)
+
+	# [M23.11 Phase 4e — real bug found via screenshot verification] Without
+	# this, the log's text rendered as invisible white-on-white: this
+	# project's theme has no RichTextLabel font-color override at all, so
+	# `_log_label` was relying on the engine default (light/white) being
+	# visible against the SCREEN's own dark gray background -- true before
+	# this function ran (LogLabel had no background of its own), false the
+	# instant a real, opaque, light-interior text_window panel sits behind
+	# it. A near-black color matches the real game's own dark-text-on-a-
+	# light-box convention (the same cream/pale interior already used by
+	# this project's healthbox art).
+	_log_label.add_theme_color_override("default_color", Color(0.1, 0.1, 0.1))
 
 
 func _update_status_icon(icon_node: TextureRect, atlas: AtlasTexture, status: int) -> void:

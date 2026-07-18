@@ -4166,3 +4166,133 @@ approach did not.
   autoplay's own doubles-awareness.
 
 No commit made this session — per standing instruction, Rob commits.
+
+### Phase 4e continued — message-box authenticity via Dialogue Manager, plus m19_rampage_test.gd rollover fix
+
+**Part A: Dialogue Manager activation.** The plugin existed on disk
+(`addons/dialogue_manager/`) but was never enabled. Adding `[editor_plugins]
+enabled=...` to `project.godot` and running `--import` DID successfully
+load the plugin ("Initializing plugins" ran clean) but did NOT
+auto-register its `DialogueManager` autoload — confirmed empirically:
+`_enable_plugin()`'s `add_autoload_singleton(...)` call only fires on the
+real editor's own enable-checkbox transition, not on a direct `.cfg`-list
+file edit re-parsed via headless `--import`. Fixed by manually adding the
+exact autoload entry the plugin's own `_enable_plugin()` would have written
+(`DialogueManager="*res://addons/dialogue_manager/dialogue_manager.gd"`),
+confirmed live via a scratch scene reading `DialogueManager.get_class()`/
+`.has_method("show_dialogue_balloon")` before wiring anything further.
+
+**text_window art findings**: the 20 numbered 24x24 tiles
+(`1.png`-`20.png`) plus `std.png` are NOT tileable pieces of one box —
+each is a self-contained preview thumbnail of a distinct selectable
+"Frame Type" border skin (matching Emerald's real Options-menu frame
+gallery), confirmed via a 4x contact-sheet render showing 20 visually
+distinct decorative styles. `std.png` (the plain gray "standard" style) IS
+usable directly: a clean, unambiguous 9-slice source (measured via a raw
+numpy pixel scanline, not assumed) — 2px background-key green, 2px dark
+border, 1px transition, 14x14 flat white interior, mirrored. `message_box
+.png`/`name_box.png`/`signpost.png` (56x16/24x16/40x8) look like
+purpose-specific UI fragments (top-edge strip, name-tag popup, sign-reading
+variant) whose exact intended slicing wasn't unambiguous from pixel
+inspection alone — deliberately NOT used this session, flagged rather than
+guessed at, matching Phase 4d's own precedent for the unused doubles
+`frameend`/`frameend_bar` pieces.
+
+**A real, non-obvious finding**: every text_window PNG (all 24 files) uses
+the exact same background-key color (RGB 115,205,164) with alpha=255 — a
+fully OPAQUE color, not real PNG transparency (confirmed: zero
+`transparency` metadata in any of them). This is a classic GBA-era
+sprite-sheet canvas/background-key color from the original
+`pokeemerald_expansion` extraction that needs runtime color-keying to
+render correctly — using it as-is would show a visible green blob around
+every corner. Handled via a new pure `_color_keyed_texture()` that
+duplicates the loaded `Image`, replaces exact-matching pixels with real
+alpha=0, and returns a fresh `ImageTexture` — runtime-only, the pulled
+asset file on disk is untouched.
+
+**Dialogue-Manager-vs-custom decision, stated precisely**: does NOT
+instantiate Dialogue Manager's own `example_balloon.tscn` or call
+`DialogueManager.show_dialogue_balloon()` — that API is shaped around ONE
+`DialogueResource`/`DialogueLine` at a time, gated on player input to
+advance (a genuine branching-conversation balloon). This screen's battle
+log is the opposite shape: an accumulating, non-blocking scroll of many
+short lines arriving in rapid succession (Phase 4f's per-slot doubles
+messages especially) — forcing every line through a synthetic
+`DialogueLine` + balloon-advance gate would be a large, risky
+rearchitecture for zero real benefit (no authored branching content to
+gain from it), and would directly conflict with this task's own "must not
+regress queuing/sequencing/timing" constraint. Instead: `LogLabel`'s own
+script was changed from a plain `RichTextLabel` to Dialogue Manager's real
+`DialogueLabel` class (`extends RichTextLabel`, confirmed via direct source
+read to add zero behavior unless its own `dialogue_line`/`type_out()`/
+`skip_typing()` API is invoked — which it never is here), styled with the
+real `text_window` art via a `StyleBoxTexture`. This is a genuine use of a
+real Dialogue-Manager-provided component, not just an enabled-and-unused
+plugin, while every single existing `.text +=` append site (`_log()`,
+`_flush_pending_effect_lines()`, `_on_log_move_executed()`) is completely
+untouched. Dialogue Manager's full balloon/branching machinery remains
+available, unused by this screen, for the real future overworld NPC
+dialogue system M26 will need (per CLAUDE.md's now-corrected "Project
+Roadmap").
+
+**A real bug found via the mandated screenshot verification, not by
+inspection alone**: the first working build rendered the message box as a
+plain white rectangle with NO visible text at all. Root cause: this
+project's theme has no `RichTextLabel` font-color override anywhere, so
+`_log_label`'s text was relying on the engine's own light/white default
+being visible against the SCREEN's dark gray background — true before this
+session (LogLabel had no background of its own) and false the instant an
+opaque, light-interior `text_window` panel sits behind it (white-on-white).
+Fixed with `_log_label.add_theme_color_override("default_color", Color(0.1,
+0.1, 0.1))` — confirmed via a second screenshot round that text is now
+fully legible, dark-on-cream, matching the real game's own convention.
+
+**Files touched**: `project.godot` (`[editor_plugins]` + `[autoload]`
+entries), `scenes/battle/battle_screen.tscn` (new `ext_resource` for
+`dialogue_label.gd`, `LogLabel`'s script attached), `scenes/battle/battle
+_screen.gd` (`_log_label` retyped to `DialogueLabel`, new `_setup_message
+_box()` + `_color_keyed_texture()`/`_is_message_box_key_color()` helpers,
+called from `_ready()`), `scenes/battle/m19_rampage_test.gd` (Part B fix),
+new `scenes/battle/phase4e_message_box_test.gd`/`.tscn` (23/23, stable
+across 3 reruns).
+
+**Part B: m19_rampage_test.gd rollover fix.** Confirmed the exact same
+unpinned-`from_species(sp, 50)` fixture shape flagged during `m18_5g_test
+.gd`'s own root-cause session. 10 reruns before the fix: 33/33 clean every
+time (passing "by luck," per the task's own framing, not because the
+exposure wasn't real). Fixed identically (`BattlePokemon.NATURE_HARDY` +
+all-zero IVs). 10 reruns after: 33/33 clean every time — same pass/fail
+shape, exposure closed. A broader pattern-based scan (not necessarily
+exhaustive) found **at least 43 more files** sharing the identical
+`from_species(sp, <level>)`-with-no-forcing shape — flagged in full in the
+session report, none fixed beyond `m19_rampage_test.gd` per this task's own
+explicit scope.
+
+**Sweep**: per Rob's own confirmed process change, used this session's own
+last recorded baseline (151 files / 20175, byte-identical across 2 reruns)
+rather than reconstructing from git HEAD. One confirmatory + two full
+"after" sweeps, all clean: 152 files (the one new test suite), GRAND TOTAL
+20198 = 20175 + 23 (the new message-box test) exactly, twice, byte-identical
+diff between the two "after" runs. A third sweep (run after the
+white-on-white text-color fix, to confirm that fix introduced no
+regression) surfaced ONE flake — `d4_bundle5_test.tscn` (84/85) — confirmed
+via 10 isolated reruns (85/85 every time) to be a genuine, previously-
+undocumented, low-probability pre-existing flaky suite, unrelated to
+anything touched this session (Mud Sport/Weather Ball/Roost/Steel Beam
+mechanics, nothing this session's changes come near) — flagged as a new
+observation, not silently folded in, matching this project's own
+established convention for this exact situation.
+
+**Screenshot verification**: a disposable `_scratch_screenshot_message_box
+.gd`/`.tscn` driver (deleted after use) drove real `_log()` calls through
+both a singles battle and a real doubles battle (`BattleSetupContext
+.set_pending(..., true)`). Singles: message box renders with the real
+text_window border/interior, dark legible text, positioned exactly where
+the old plain LogLabel sat. Doubles: same box, confirmed zero overlap with
+any of Phase 4d's 4 sprite/health-box corner-band groups — the box's own
+layout size/position is completely unchanged from before (same
+`RichTextLabel`/now-`DialogueLabel` node, same `custom_minimum_size`, same
+centered `VBox`), so Phase 4d's own already-confirmed no-overlap layout
+holds by construction, re-confirmed visually.
+
+No commit made this session — per standing instruction, Rob commits.

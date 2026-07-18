@@ -82,7 +82,15 @@ func _make_mon(mon_name: String, type1: int,
 	sp.base_sp_attack  = base_spatk
 	sp.base_sp_defense = base_spdef
 	sp.base_speed      = base_spd
-	return BattlePokemon.from_species(sp, 50)
+	# [Flaky-test rollover fix, Phase 4e] Pinned nature/IVs — this file
+	# shares the identical latent unpinned-fixture vulnerability flagged
+	# (but not fixed) while root-causing m18_5g_test.gd's own flake: without
+	# forcing, every mon here got a genuinely random nature (±10% Attack)
+	# and random IVs (0-31 per stat) on every run, exposing any exact-value
+	# assertion to a threshold flake it just hadn't hit yet. Matches the
+	# established convention (doubles_test.gd/d4_bundle6_test.gd/
+	# m18_5g_test.gd).
+	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
 
 
 func _make_bm() -> BattleManager:

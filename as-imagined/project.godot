@@ -22,11 +22,16 @@ config/icon="res://icon.svg"
 [autoload]
 
 PokemonRegistry="*res://scripts/data/pokemon_registry.gd"
+DialogueManager="*res://addons/dialogue_manager/dialogue_manager.gd"
 
 [display]
 
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/dialogue_manager/plugin.cfg")
 
 [physics]
 

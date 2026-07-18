@@ -1,13 +1,32 @@
-# Emerald Battle Engine Clone — Project Guide for Claude Code
+# Pokémon As Imagined — Project Guide for Claude Code
 
 ## What this project is
 
-A standalone recreation of Pokémon Emerald's turn-based battle system in
-Godot 4.x, using GDScript, based on the **expanded/upgraded battle engine**
-(DizzyEgg's battle engine upgrade, as found in `pokeemerald_expansion`) rather
-than vanilla Gen III mechanics. This means modern conveniences and later-gen
-mechanics are in scope and expected — Physical/Special split, newer abilities,
-newer moves, etc. — not just what shipped in the original 2004 release.
+**Pokémon As Imagined** is a full Pokémon RPG fangame — overworld, story,
+trainers, towns — built in Godot (see the engine-version note below for the
+confirmed configured version) using GDScript, targeting
+`pokeemerald_expansion`'s **expanded/upgraded battle engine** (DizzyEgg's
+battle engine upgrade) as the canonical mechanics reference rather than
+vanilla Gen III mechanics. This means modern conveniences and later-gen
+mechanics are in scope and expected — Physical/Special split, newer
+abilities, newer moves, etc. — not just what shipped in the original 2004
+release.
+
+Everything built so far (M1–M23.11) is the **battle simulator** — a
+decoupled subsystem of this same project, not a separately importable
+module or separate codebase. It plugs into the RPG wrapper once M26 ("Full
+RPG rescope") lands, but is also directly playable standalone right now via
+`battle_setup_screen.tscn`. See "Project Roadmap" (below, before "Current
+status") for the full milestone plan past M23.11, including this session's
+framing correction and the M21/M22 numbering discrepancy it surfaced.
+
+[**Flagged, not resolved** — see this session's report rather than trusting
+this sentence at face value] The line below predates this session's framing
+correction. It may now be stale (if "the farming/action-RPG hybrid" and
+this fuller RPG scope are the same thing described two different ways at
+two different points in time), or it may still accurately describe a
+genuinely separate, unrelated project — confirm which before relying on it
+for anything:
 
 This is a separate project from my other Godot project (a farming/action-RPG
 hybrid). Do not assume any code, autoloads, or conventions from that project
@@ -43,15 +62,30 @@ implementing, or ask me to confirm before making something up.
 
 ## Tech stack
 
-- **Engine:** Godot 4.x, Standard edition (GDScript, not C#/.NET)
-- **Why GDScript:** consistency with my other Godot project, plus standard
-  edition keeps Web export available if I ever want it
+- **Engine:** Godot 4.7.x, Standard edition (GDScript, not C#/.NET) — confirmed
+  directly via `project.godot`'s own `config/features=PackedStringArray
+  ("4.7", "Forward Plus")` field (2026-07-18), not assumed from memory; see
+  "Standing infrastructure note: Godot engine version" below for the full
+  4.3→4.7.1 migration history. If you ever see "4.3" cited for this project
+  (including possibly the line below, or in an older/external handoff doc),
+  treat it as stale.
+- **Why GDScript:** consistency with my other Godot project [see this
+  file's own "What this project is" flag above — unresolved whether that's
+  this project under an earlier description or a genuinely different one],
+  plus standard edition keeps Web export available if I ever want it
 - **Data format:** Godot `Resource` (`.tres`) or plain `.json` for
   Pokémon/move/ability/item data — decide and lock this in during Milestone 1,
   don't mix formats later
 - **No external plugins/addons** unless I approve one explicitly
 
 ## Architecture overview
+
+[Scope note, added this session] This tree describes the **battle
+simulator subsystem's** own layout, which is all that exists as of
+M23.11 — it is not the whole project's architecture. Overworld/RPG-wrapper
+directories (maps, NPC/trigger logic, save data, etc.) don't exist yet and
+are expected starting at M26 ("Full RPG rescope") — see "Project Roadmap"
+below.
 
 ```
 scripts/
@@ -94,6 +128,12 @@ This skeleton should be built and tested with simple placeholder moves
 Get the loop solid first.
 
 ## Build order (milestones — do not skip ahead)
+
+[Scope note, added this session] This numbered list (M1–M10) and the "Phase
+2" list below it (M11–M14) are the **battle simulator's own** original
+build order — the full project roadmap now extends well past this into the
+RPG wrapper itself (M24–M33); see "Project Roadmap" below, inserted before
+"Current status".
 
 1. **Data schema + state machine skeleton**
    Define `PokemonSpecies`, `MoveData`, `AbilityData`, `ItemData` resource
@@ -204,7 +244,10 @@ at a time, verify against source, regression-sweep before moving on.
 - Write unit-test-style verification scenes/scripts for damage calc and status
   logic as they're built (e.g. a debug scene that runs known move/stat
   combinations and prints expected vs. actual damage), since correctness here
-  is the entire point of the project.
+  is foundational to the battle simulator this milestone sequence builds
+  [corrected from "the entire point of the project" — see "Project Roadmap"
+  below; the battle simulator is now one subsystem of a larger RPG, not the
+  whole project, though correctness within it remains just as important].
 - Keep `docs/decisions.md` updated with any mechanic verified against source,
   especially when a constant or rule was ambiguous and required a judgment
   call — so we don't re-litigate it later.
@@ -838,6 +881,70 @@ git clone https://github.com/rh-hideout/pokeemerald-expansion reference/pokeemer
 
 This reference clone is for reading only — never modify it, never build it,
 it exists purely to look up exact source logic.
+
+## Project Roadmap
+
+[Added this session, 2026-07-18 — sourced from the latest project handoff
+doc, treated as authoritative and reproduced faithfully below, not
+re-derived from this file's own pre-existing per-milestone notes.] Before
+this session, CLAUDE.md had no single at-a-glance roadmap — only the
+scattered per-milestone notes in "Current status" below (accurate, but
+detailed and narrative, not a high-level map). This table is the
+high-level companion to that section, not a replacement for it.
+
+| # | Milestone | Status |
+|---|---|---|
+| M1–M14 | Foundational scaffold, doubles core battle support | ✅ Done |
+| M15 | Data pipeline (`pokemon.json`, `moves.json`, etc. + `PokemonRegistry`) | ✅ Done |
+| M16 | Move effects (5 sub-tiers) | ✅ Done |
+| M17 | Abilities (3 passes, full 1,571-species sweep) | ✅ Done |
+| M17.5 | Type/flag immunity audit | ✅ Done |
+| M18 | Full item set | ✅ Done |
+| M18.5 | Deferred item infra, gender, natures/IVs/EVs | ✅ Done |
+| M19 | Remaining moves (717 implemented, 217 excluded) | ✅ Done |
+| M19.5 | Testing & hardening | ✅ Done |
+| M20 | Experience & Leveling (see this file's own detail section, if present) | ✅ Done except deferred 20%-non-participant EXP |
+| M21 | *Retired as a standalone milestone slot — folded into M23 (see renumbering history below).* The doubles-interaction-cleanup work this number used to refer to is unaffected and remains fully complete — see "Current status" below's existing M21 entries (2026-07-15 bundle-safe group, 2026-07-16 closeout); this row exists only so the retired number isn't mistaken for missing/abandoned work | ✅ Underlying work complete; number retired |
+| M22 | Battle item actions (turn-queue) | ✅ Done — no consuming UI |
+| M23 | Simulator layer (Showdown-style standalone battle mode) | 🔶 In progress via M23.11 sub-arc |
+| M24 | Trainer data (all Emerald trainers, AI tiers, rematches) | ⬜ Not started |
+| M25 | Battle UI mastery & battle game modes | ⬜ Not started (scope not yet locked — confirm before treating as final) |
+| M26 | **Full RPG rescope** — UI & overworld: shops, bag/inventory, item-use, plus the overworld scene, map system, player movement, NPC/trigger logic, and encounter-triggering infra. This is the milestone where the project expands from battle-simulator-only into the full RPG game loop | ⬜ Not started |
+| M27 | Evolution (post-battle checks, trade/item/happiness conditions) | ⬜ Not started |
+| M28 | Encounters & catching (catch-rate math, Repel, roaming/static encounters) | ⬜ Not started |
+| M29 | Move learning & relearning | ⬜ Not started |
+| M30 | Egg/breeding | ⬜ Not started |
+| M31 | HM field effects | ⬜ Not started |
+| M32 | PC storage & Pokédex | ⬜ Not started |
+| M33 | Save/load | ⬜ Not started |
+
+**Renumbering history** (kept inline so future sessions don't cross-reference
+stale numbers or wonder why M21/M22/M26 read differently than a flat
+sequential list would suggest — this is the single, resolved account;
+supersedes an earlier version of this note from the prior session that left
+the M21/M22 discrepancy below flagged as unresolved):
+
+- **M21 (Doubles interaction cleanup) was retired as a standalone milestone
+  slot and folded into M23**, specifically to avoid M23 (simulator layer)
+  being blocked waiting on a separate M21 slot. The underlying work itself
+  is NOT affected by this — it was completed in full under the old M21
+  label (`2026-07-15` bundle-safe group, `2026-07-16` closeout — "closes
+  the ENTIRE M21 doubles-interaction-cleanup inventory... No open items
+  remain") — see "Current status" below's existing M21 entries, which stay
+  exactly as written and are NOT being relabeled or duplicated. Only the
+  roadmap table's own reference to that milestone NUMBER changed (see the
+  M21 row above); confirmed directly by the project owner, resolving the
+  prior session's own flagged conflict.
+- **M22 (Battle item actions — turn-queue) was introduced as a genuinely
+  new milestone slot**, created during this same renumbering to absorb the
+  remaining/reassigned items that the M21 retirement displaced — not a
+  phantom or mistaken number; the table's existing M22 row is accurate as
+  given and needed no correction.
+- Separately, **M25 was inserted on 2026-07-18**, shifting whatever
+  previously occupied M25–M32 up by one.
+- **M26 was relabeled "Full RPG rescope" this same session**, specifically
+  to mark it as the project's actual pivot point from battle-sim-only to
+  the full game loop.
 
 ## Current status
 

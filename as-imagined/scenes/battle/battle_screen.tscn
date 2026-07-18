@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://battlescreen"]
+[gd_scene load_steps=11 format=3 uid="uid://battlescreen"]
 
 [ext_resource type="Script" uid="uid://bckp4vcyuq4v8" path="res://scenes/battle/battle_screen.gd" id="1_screen"]
 [ext_resource type="Script" uid="uid://by21x2021is5s" path="res://scripts/battle/core/battle_manager.gd" id="2_bm"]
@@ -9,6 +9,7 @@
 [ext_resource type="Texture2D" uid="uid://dt4oswkhv3ibt" path="res://assets/sprites/battle_ui/interface/healthbox_singles_opponent.png" id="7_healthbox_opponent"]
 [ext_resource type="Texture2D" uid="uid://dgekqkfaiwylq" path="res://assets/sprites/battle_ui/interface/healthbox_doubles_opponent.png" id="8_healthbox_doubles_opponent"]
 [ext_resource type="Texture2D" uid="uid://yaso2qj7fru5" path="res://assets/sprites/battle_ui/interface/healthbox_doubles_player.png" id="9_healthbox_doubles_player"]
+[ext_resource type="Script" uid="uid://g32um0mltv5d" path="res://addons/dialogue_manager/dialogue_label.gd" id="10_dialogue_label"]
 
 [node name="BattleScreen" type="Control" unique_id=1754921007]
 layout_mode = 3
@@ -422,6 +423,7 @@ layout_mode = 2
 horizontal_alignment = 1
 
 [node name="LogLabel" type="RichTextLabel" parent="VBox" unique_id=1177135432]
+script = ExtResource("10_dialogue_label")
 custom_minimum_size = Vector2(500, 220)
 layout_mode = 2
 size_flags_vertical = 3
