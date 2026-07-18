@@ -917,6 +917,7 @@ high-level companion to that section, not a replacement for it.
 | M31 | HM field effects | ⬜ Not started |
 | M32 | PC storage & Pokédex | ⬜ Not started |
 | M33 | Save/load | ⬜ Not started |
+| M34 | **Advanced Battle Systems** — consolidates every exclusion/deferral flagged during M24 scoping (`docs/m24_recon.md`), not new discovery: **Trainer Pools** (procedural/pool-based party generation — species clause, role tags, pick/prune rules; confirmed zero real usage across all 855 base trainers but real expansion infrastructure, deferred per `docs/m24_recon.md` §6.1); **full AI-flag engine** (the complete 34-flag bitmask AI system — OMNISCIENT, SMART_SWITCHING, PREDICT_MOVE, PREDICT_SWITCH, SMART_TERA, etc. — beyond the narrow 6-combination extension M24 ships; deferred per §6.2, flagged there as a candidate to pick back up starting around M30 onward); **facility/special trainers** (Trainer Tower, Trainer Hill, Battle Frontier trainers, Secret Base trainers — own money-formula branch — and roaming/`AI_FLAG_SAFARI`/`AI_FLAG_FIRST_BATTLE` special cases, none part of the core 855-trainer `trainers.party` dataset M24 covers; deferred per §6.3, needs its own dedicated recon session before implementation); **full rematch/postgame progression system** (the persistent, save-state-backed rematch-tier mechanic — `trainerRematches[]`, `HasTrainerBeenFought`, gym-leader rematch escalation; M24 ships base trainers only, deferred per §6.5 pending M33 or an interim save-state mechanism). See `docs/m24_recon.md` for full reasoning on each item — not duplicated here. | ⬜ Not started |
 
 **Renumbering history** (kept inline so future sessions don't cross-reference
 stale numbers or wonder why M21/M22/M26 read differently than a flat
@@ -942,6 +943,19 @@ the M21/M22 discrepancy below flagged as unresolved):
   given and needed no correction.
 - Separately, **M25 was inserted on 2026-07-18**, shifting whatever
   previously occupied M25–M32 up by one.
+- **M34 (Advanced Battle Systems) is a consolidation point, not new
+  discovery** — added 2026-07-18 specifically to give every exclusion
+  flagged during M24 scoping a formal future home, rather than letting them
+  live only as scattered notes inside `docs/m24_recon.md`. Sequenced right
+  after M33 (not earlier) because the rematch-progression piece explicitly
+  depends on M33's save-state infrastructure existing first. Full reasoning
+  for each of the 4 consolidated items lives in `docs/m24_recon.md`'s own
+  §6 — cross-referenced from the M34 row above, deliberately not
+  duplicated here. [Citation correction made while writing this entry: the
+  original task prompt cited these items as deferred from sub-tiers
+  "M24d/M24e/M24f/M24g" — those labels don't exist anywhere in
+  `docs/m24_recon.md`, which only defines M24a/M24b/M24c; the M34 row above
+  cites the real section numbers (§6.1/§6.2/§6.3/§6.5) instead.]
 - **M26 was relabeled "Full RPG rescope" this same session**, specifically
   to mark it as the project's actual pivot point from battle-sim-only to
   the full game loop.

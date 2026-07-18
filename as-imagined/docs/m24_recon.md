@@ -321,40 +321,64 @@ confirming this exact forcing-parameter API (built ahead of need during
 M18.5h-1/h-2, explicitly "ready for M24" per that session's own closing
 note) is sufficient with zero further `BattlePokemon` changes.
 
-## 6. Open exclusion/scope questions for Rob — not guessed at
+## 6. Scope decisions — resolved with Rob (same day as the recon)
 
-1. **Trainer Pools (§1.5)**: build procedural/pool-based party generation in
-   M24's first pass, or exclude it (fixed `party` array only) and treat
-   pool-using trainers as a later, separate extension? Given this is an
-   expansion-specific, opt-in feature layered on top of the base concept,
-   my recommendation is to exclude it initially — but this is Rob's scope
-   call, not mine to make silently.
-2. **AI-tier fidelity (§2)**: extend `TrainerAI` narrowly to cover the 6
-   real combinations found (small, low-risk), or invest in a genuine
-   bitmask-based AI engine covering all 34 flags now (large, and currently
-   unused by any real trainer in the base roster, per the same data)?
-3. **Trainer scope breadth**: are ALL 855 entries in scope for M24 (gym
-   leaders, Elite Four, rivals, generic trainers, gym-leader rematches), or
-   should anything be deferred — e.g. Trainer Tower/Trainer Hill/Battle
-   Frontier-facility trainers (separate systems, `trainer_tower.c`/
-   `trainer_hill.c`, not part of `trainers.party` at all and not
-   investigated this session), Secret Base trainers (`TRAINER_SECRET_BASE`,
-   a special-cased ID with its own money formula branch, §3), or the
-   roaming-trainer/`AI_FLAG_SAFARI`/`AI_FLAG_FIRST_BATTLE` special cases?
-4. **`overrideTrainer` field (§4)**: not fully traced this session — is this
-   in scope for M24, or does it belong to a later milestone (e.g. a
-   version-exclusive-trainer-swap feature)? Needs a dedicated look before
-   implementation either way.
-5. **Rematch scope**: model the full progressive rematch-tier system (§4)
-   in M24 itself, or ship base trainers only and defer rematch progression
-   to a later session once M33 (save/load) actually exists to back it?
-6. **Held-item field (§1.1)**: 144 of many hundreds of party mons carry a
-   held item — confirmed real, but should M24 wire this into
-   `ItemManager`'s existing battle-item mechanics immediately, or land the
-   data field now and defer the wiring? (Leaning toward "wire it now,"
-   since `ItemManager` already handles every held-item mechanic a wild
-   Pokémon could carry — this is very likely a zero-new-mechanism
-   integration, but flagged rather than assumed.)
+All 6 questions below were originally raised as open, unresolved
+exclusion/scope forks — resolved directly with Rob in a follow-up
+discussion, recorded here so no future session re-derives or re-asks them.
+
+1. **Trainer Pools (§1.5) — EXCLUDED from M24.** Re-confirmed at decision
+   time (not just recommended): a direct grep of `trainers.party` found
+   **zero** of the 855 real trainer entries use any pool field at all — the
+   only "pool" text matches in the whole file are the move name
+   "Whirlpool" (a false positive). `tools/trainerproc/main.c` does parse
+   real `Pool Rules`/`Pool Pick Functions`/`Pool Prune`/`Copy Pool` fields
+   from this exact file format, confirming the feature is genuinely
+   available infrastructure — it's just that vanilla-based content never
+   uses it (it's there for hack authors building their own custom
+   procedural trainers). Building it now would be pure unused code with
+   zero current consumer. Decision: excluded entirely for M24; revisit only
+   if/when Rob wants to author custom procedural trainers of his own.
+2. **AI-tier fidelity (§2) — NARROW extension, flagged for a future
+   revisit.** `TrainerAI` gets extended just enough to cover the 6 real
+   combinations found in §2 (a `Check Bad Move`-only sub-tier below BASIC,
+   plus `+Risky`/`+Force Setup First Turn` modifiers) — not a full 34-flag
+   bitmask engine, matching the recommendation (the real roster doesn't use
+   anything heavier). **Explicitly flagged to revisit later**: Rob intends
+   to reconsider AI sophistication as part of scope work starting around
+   **M30 onward** — a more advanced AI build (closer to the real 34-flag
+   system) is an anticipated FUTURE upgrade, not abandoned, just correctly
+   sequenced after the base trainer roster is fielded. Whoever picks up
+   that future AI work should start from §2's own 34-flag inventory
+   directly rather than re-deriving it.
+3. **Trainer scope breadth — core 855 only, rest flagged for future.** All
+   855 `trainers.party` entries (gym leaders, Elite Four, rivals, generic
+   trainers, gym-leader rematch entries as separate table rows) are in
+   scope for M24. Explicitly DEFERRED, flagged for a future session's own
+   recon rather than decided now: Trainer Tower/Trainer Hill/Battle
+   Frontier-facility trainers (separate systems entirely, not part of
+   `trainers.party`, not investigated this session at all), Secret Base
+   trainers (`TRAINER_SECRET_BASE`'s own special-cased money-formula
+   branch, §3), and the roaming-trainer/`AI_FLAG_SAFARI`/
+   `AI_FLAG_FIRST_BATTLE` special cases.
+4. **`overrideTrainer` field (§4) — investigate during M24 implementation,
+   not a separate session.** Small, contained follow-up: trace its real
+   source usage once M24a implementation actually starts, fold the finding
+   directly into that sub-tier rather than spinning up a dedicated recon
+   session for it.
+5. **Rematch scope — ship base trainers only, defer rematch progression.**
+   M24 covers the base (non-rematch) trainer roster only. The progressive
+   rematch-tier system (§4) — genuinely dependent on persistent save-state
+   `trainerRematches[]`/`HasTrainerBeenFought` tracking — gets its own
+   dedicated future session once M33 (or an earlier interim save-state
+   mechanism) actually exists to back those persistent flags, rather than
+   building it now against a placeholder that would likely need rework.
+6. **Held-item field (§1.1) — wire it now.** `TrainerPartyMon.held_item_id`
+   feeds directly into the same `ItemManager` path a wild Pokémon's held
+   item already uses — confirmed as the recommended default (very likely a
+   zero-new-mechanism integration, since `ItemManager` already handles
+   every held-item mechanic a wild Pokémon could carry) and locked in as
+   the decision, not just landing the data field inert.
 
 ## 7. Serialization-in-mind notes (per this session's own standing
 constraint — design for M33, don't build M33)
@@ -431,39 +455,49 @@ Mirrors this project's own established multi-session-per-milestone
 discipline (M20's core/a/b/c split, M23.11's phase split) — sub-tiers, not
 one combined session, given the real scope found above:
 
+Updated to reflect §6's resolved decisions — Trainer Pools and the full
+rematch-progression system are now confirmed OUT of M24 entirely (not
+deferred-pending-a-choice), and the AI-tier direction is locked in as the
+narrow path:
+
 - **M24a — Data pipeline**: `gen_trainer_data.py` (both parsers),
   `TrainerData`/`TrainerPartyMon`/`TrainerClassData` resource classes,
   `TrainerRegistry`/`TrainerClassRegistry`, the directory-scan smoke test.
-  No battle-integration yet. **Low-to-medium risk** — mechanical parsing
-  work, well-precedented pipeline shape, but 855+116 real entries is a
-  large first-pass volume to get right.
+  Core 855-trainer roster only (§6.3) — no Trainer Pools fields (§6.1,
+  confirmed zero real usage), no Trainer Tower/Hill/Battle Frontier/Secret
+  Base/roaming trainers (§6.3, deferred). Fold in a real trace of the
+  `overrideTrainer` field (§6.4) as part of this sub-tier's own
+  implementation, not a separate session. No battle-integration yet.
+  **Low-to-medium risk** — mechanical parsing work, well-precedented
+  pipeline shape, but 855+116 real entries is a large first-pass volume to
+  get right.
 - **M24b — Money + held items + battle-use items**: wire `GetTrainerMoney
   ToGive`'s formula (§3) into whatever end-of-battle hook this project's
   own battle-outcome handling uses; wire `battle_items`/party-mon held
-  items into `ItemManager`'s existing mechanics (a confirm-not-assumed
-  check first, per open question 6). **Low risk** if held items turn out
-  to be a clean reuse, as expected.
-- **M24c — AI-tier extension**: extend `TrainerAI` per whichever direction
-  Rob picks in open question 2 (narrow 6-combination extension vs. full
-  bitmask engine) — **risk depends entirely on which path is chosen**; the
-  narrow path is low-risk, the full engine is a much larger, higher-risk
-  undertaking most of which would go unused by real data (per §2's own
-  finding).
-- **M24d — Rematch/postgame system**: the progressive rematch-tier
-  modeling (§4) — deliberately sequenced LAST and flagged as possibly
-  worth deferring past M24 entirely (open question 5) given its real
-  dependency on save-state infrastructure M33 doesn't build until much
-  later. **Medium-to-high risk if attempted before a save-state design
-  exists** to actually back the persistent flags it needs (§7) — a strong
-  candidate for its own dedicated future session regardless of whether
-  it's nominally "M24" or gets its own number.
+  items into `ItemManager`'s existing mechanics NOW, not deferred (§6.6,
+  locked in). **Low risk** — expected to be a clean reuse of existing
+  `ItemManager` mechanics.
+- **M24c — AI-tier extension**: extend `TrainerAI` with the NARROW
+  6-combination extension only (§6.2, locked in) — a `Check Bad Move`-only
+  sub-tier plus `+Risky`/`+Force Setup First Turn` modifiers. **Low risk.**
+  **Flagged for a future revisit**: Rob intends to reconsider AI
+  sophistication starting around M30 onward, once the base trainer roster
+  is fielded — whoever picks that up should start from §2's own 34-flag
+  inventory rather than re-deriving it.
+- **Rematch/postgame system is OUT of M24 entirely** (§6.5, locked in) —
+  not deferred-pending-a-decision, confirmed deferred. Gets its own
+  dedicated future session once M33 (or an earlier interim save-state
+  mechanism) exists to back `trainerRematches[]`/`HasTrainerBeenFought`'s
+  persistent flags (§7).
 - **Phase 3 (trainer portraits) unblocks after M24a alone** — it only needs
-  the `TrainerPicRegistry`/ID scheme (§1.4), not money/AI/rematch, so it
-  could reasonably run concurrently with or immediately after M24a rather
-  than waiting for all of M24b-d.
+  the `TrainerPicRegistry`/ID scheme (§1.4), not money/AI, so it could
+  reasonably run concurrently with or immediately after M24a rather than
+  waiting for M24b/c.
 
 No code written for M24 itself this session, per the task's own explicit
-scope.
+scope. §6 above now reflects the FINAL, resolved scope decisions — a
+future M24 implementation session can proceed directly from this doc
+without re-litigating any of the 6 forks.
 
 ## Appendix: test-fixing rollover (append at end of this session)
 
