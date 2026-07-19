@@ -135,6 +135,21 @@ signal move_announced(attacker: BattlePokemon, defender: BattlePokemon, move: Mo
 # DamageCalculator.calculate's own already-computed float (0.0/0.25/0.5/1.0/
 # 2.0/4.0); UI consumers should stay silent on a neutral 1x, matching source.
 signal move_effectiveness_computed(defender: BattlePokemon, effectiveness: float, is_crit: bool)
+# [M25d] Fired from the same two real-hit sites as move_effectiveness_computed
+# above, right alongside it — carries DamageCalculator.calculate's own FULL
+# breakdown dict verbatim (damage/is_crit/effectiveness/base_damage/
+# stab_multiplier/roll/defender_item_consumed) for the combat-debug overlay,
+# which needs more of it than the player-facing log does. `base_damage`/
+# `stab_multiplier`/`roll` are newly captured this session (previously
+# computed but not returned) — a purely additive read of values the formula
+# already produces, no calculation logic changed. Not present at all for the
+# handful of fixed-damage/early-return moves whose own dicts never reach the
+# main formula (Sonic Boom, Dragon Rage, OHKO, Wonder Guard blocks, absorb
+# abilities, etc.) — UI consumers must use Dictionary.get() with a default,
+# matching this project's own established convention for optional result
+# keys (see the wonder_guard_blocked/absorb_result reads just above this
+# signal's own emission sites).
+signal move_damage_breakdown(attacker: BattlePokemon, defender: BattlePokemon, move: MoveData, breakdown: Dictionary)
 signal pokemon_fainted(pokemon: BattlePokemon)
 signal battle_ended(winner_side: int)  # 0 = player/side-0 wins, 1 = opponent/side-1 wins
 signal money_awarded(amount: int)  # [M24b] fired once, right before battle_ended(0), only when the opponent side had a real TrainerData attached
@@ -10138,6 +10153,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		# effectiveness/crit result — the real games report both normally
 		# even though the Substitute (not the Pokemon) took the damage.
 		move_effectiveness_computed.emit(target, result["effectiveness"], result["is_crit"])
+		move_damage_breakdown.emit(attacker, target, move, result)
 		move_executed.emit(attacker, target, move, sub_dmg)
 		return 0
 
@@ -10190,6 +10206,7 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 	# of which still want their effectiveness/crit reported; the two earlier
 	# early returns (Wonder Guard/absorb) deliberately do NOT reach here.
 	move_effectiveness_computed.emit(target, result["effectiveness"], result["is_crit"])
+	move_damage_breakdown.emit(attacker, target, move, result)
 	move_executed.emit(attacker, target, move, damage)
 
 	if damage > 0:

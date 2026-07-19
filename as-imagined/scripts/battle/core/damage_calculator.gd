@@ -615,6 +615,10 @@ static func calculate(
 		effective_power = _uq412_half_down(effective_power, 1352)  # UQ_4_12(0.33), rounded per fpmath.h's UQ_4_12 macro (n*4096+0.5)
 
 	var dmg: int = effective_power * atk * (2 * attacker.level / 5 + 2) / def / 50 + 2
+	# [M25d] Captured for the combat-debug overlay's own breakdown display —
+	# purely additive, read-only capture of a value the formula already
+	# computes; does not affect `dmg` itself or any modifier below.
+	var base_damage: int = dmg
 
 	# M14b: Spread damage reduction — first modifier after base formula.
 	# Source: DoMoveDamageCalcVars (battle_util.c L7592): DAMAGE_APPLY_MODIFIER(GetTargetDamageModifier)
@@ -666,10 +670,16 @@ static func calculate(
 	# Source: include/fpmath.h :: uq4_12_multiply_by_int_half_down (L70–73)
 	# M17a: Adaptability raises STAB from ×1.5 to ×2.0 (L7244/L7247: ternary on
 	# ABILITY_ADAPTABILITY). Pledge combos still not implemented.
+	# [M25d] Hoisted to plain-float scope (default 1.0, no STAB) so the
+	# combat-debug overlay's own breakdown can report it the same way
+	# `effectiveness` already is — a human-readable float, not the internal
+	# UQ4.12 int used for the actual multiply below.
+	var stab_multiplier: float = 1.0
 	if move.type != TypeChart.TYPE_MYSTERY and move.type in attacker.species.types:
 		var stab_mod: int = UQ412_1_5
 		if AbilityManager.effective_ability_id(attacker, ng_active) == AbilityManager.ABILITY_ADAPTABILITY:
 			stab_mod = 8192  # UQ_4_12(2.0)
+		stab_multiplier = stab_mod / 4096.0
 		dmg = _uq412_half_down(dmg, stab_mod)
 
 	# Type effectiveness — accumulate both type modifiers in UQ4.12 space, apply combined once.
@@ -802,7 +812,8 @@ static func calculate(
 		dmg = 1
 
 	return {"damage": dmg, "is_crit": is_crit, "effectiveness": effectiveness,
-			"defender_item_consumed": defender_item_consumed}
+			"defender_item_consumed": defender_item_consumed,
+			"base_damage": base_damage, "stab_multiplier": stab_multiplier, "roll": roll}
 
 
 # UQ4.12 × UQ4.12 multiply — source: include/fpmath.h :: uq4_12_multiply (L50–54)

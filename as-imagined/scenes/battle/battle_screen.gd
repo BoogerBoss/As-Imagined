@@ -222,6 +222,14 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 @onready var _log_label: DialogueLabel = $VBox/LogLabel
 @onready var _button_area: VBoxContainer = $VBox/ButtonArea
 
+# [M25d] Combat-debug overlay — a separate top-level node (drawn last, so it
+# renders on top of both BattleStage's sprites/health-boxes and VBox's own
+# log/menu column), deliberately not a child of either. Off by default
+# (DebugOverlay.visible = false in the .tscn); toggled via F3, never via a
+# gameplay button, so it has zero visual footprint for a normal player.
+@onready var _debug_overlay: Control = $DebugOverlay
+@onready var _debug_overlay_text: Label = $DebugOverlay/Text
+
 # [M23.11 Phase 4a] Visual battle stage -- additive alongside the existing
 # text-based UI above, not a replacement (Side0Label/Side1Label/LogLabel
 # stay exactly as they are, per this phase's own explicit scope).
@@ -260,11 +268,16 @@ var _active_hit_effect_nodes: Array = []
 @onready var _opponent_status_icon: TextureRect = $BattleStage/OpponentHealthGroup/StatusIcon
 @onready var _opponent_hp_label: TextureRect = $BattleStage/OpponentHealthGroup/HpLabel
 @onready var _opponent_hp_fill: TextureProgressBar = $BattleStage/OpponentHealthGroup/HpFill
+# [M25d] Name/level display — see _refresh_ui()'s own doc comment for why
+# this is updated in lockstep with the HP bar (same call site, every state
+# change) rather than only on switch-in, guaranteeing it can never lag.
+@onready var _opponent_name_level_label: Label = $BattleStage/OpponentHealthGroup/NameLevelLabel
 @onready var _player_health_group: Control = $BattleStage/PlayerHealthGroup
 @onready var _player_health_bg: TextureRect = $BattleStage/PlayerHealthGroup/Background
 @onready var _player_status_icon: TextureRect = $BattleStage/PlayerHealthGroup/StatusIcon
 @onready var _player_hp_label: TextureRect = $BattleStage/PlayerHealthGroup/HpLabel
 @onready var _player_hp_fill: TextureProgressBar = $BattleStage/PlayerHealthGroup/HpFill
+@onready var _player_name_level_label: Label = $BattleStage/PlayerHealthGroup/NameLevelLabel
 
 var _opponent_status_atlas: AtlasTexture
 var _player_status_atlas: AtlasTexture
@@ -287,6 +300,7 @@ var _opp_status_icon_d: Array = []
 var _opp_status_atlas_d: Array = [null, null]
 var _opp_hp_label_d: Array = []
 var _opp_hp_fill_d: Array = []
+var _opp_name_level_label_d: Array = []  # [M25d]
 # [M23.11 Phase 4d] Idle-bob frame state, one per doubles opponent slot —
 # mirrors the singles-only `_opponent_anim_frame` below but per-slot, so
 # one opponent fainting doesn't freeze/desync its still-live teammate's
@@ -301,6 +315,7 @@ var _ply_status_icon_d: Array = []
 var _ply_status_atlas_d: Array = [null, null]
 var _ply_hp_label_d: Array = []
 var _ply_hp_fill_d: Array = []
+var _ply_name_level_label_d: Array = []  # [M25d]
 
 # [M23.11 Phase 4d] Set once in _ready() from BattleSetupContext.is_doubles
 # (captured into the local `is_doubles_battle` there already) — governs
@@ -484,6 +499,15 @@ func _ready() -> void:
 	# unconditionally (interactive + --autoplay both), matching every other
 	# signal wire-up in this file.
 	_bm.move_executed.connect(_on_hit_effect_move_executed)
+
+	# [M25d] Combat-debug overlay — its own independent connect(), same
+	# "additional listener on an existing signal" shape as Phase 5c's hit-
+	# effect wiring immediately above. Deliberately NOT inside
+	# _wire_log_signals(): that function owns the player-facing log
+	# specifically, and this overlay is explicitly a separate, structurally
+	# unrelated consumer of move_damage_breakdown (a signal the log itself
+	# never reads).
+	_bm.move_damage_breakdown.connect(_on_debug_move_damage_breakdown)
 
 	# start_battle_with_parties()/start_battle_doubles() both call advance()
 	# internally — this already stalls at MOVE_SELECTION (side 0 is human-
@@ -1003,6 +1027,17 @@ func _side_label(side: int) -> String:
 	return "your" if side == 0 else "the foe's"
 
 
+# [M25d] "Lv" immediately followed by the number, no space — matches the
+# real games' own exact convention (confirmed against reference/
+# pokeemerald_expansion/src/battle_interface.c :: UpdateLvlInHealthbox,
+# which writes `text[1] = CHAR_LV_2` directly followed by the level digits
+# with nothing in between; a space DOES separate the species name from
+# "Lv", matching the same source's nickname/level being two visually
+# distinct rendered elements in the real health box).
+func _name_level_text(mon: BattlePokemon) -> String:
+	return "%s Lv%d" % [mon.species.species_name, mon.level]
+
+
 func _mon_label(mon: BattlePokemon) -> String:
 	if _player_party.members.has(mon):
 		return "Your %s" % mon.species.species_name
@@ -1214,6 +1249,64 @@ static func _next_anim_frame(current_frame: int, is_fainted: bool) -> int:
 	return 1 - current_frame
 
 
+# ── Combat-debug overlay [M25d] ─────────────────────────────────────────────
+# Off by default, toggled with F3 (see _unhandled_input below), structurally
+# separate from both the player-facing log (VBox/LogLabel) and the sprite/
+# health-box layer (BattleStage) -- its own top-level node, drawn last.
+#
+# [Doubles/multi-action judgment call] Shows only the MOST RECENT real hit's
+# own breakdown, replaced wholesale on every move_damage_breakdown signal --
+# deliberately NOT an accumulating history within the panel itself. Per this
+# sub-phase's own explicit scope note, the panel must not duplicate the real
+# battle log's accumulating-history role; M25c's own log already shows every
+# action's move-announcement/damage/effectiveness text in order (now with
+# real pacing), so a developer wanting the full turn's sequence already has
+# that available for correlation. In a 2v2 turn, this means the overlay's
+# content changes once per REAL damaging hit (up to 4 times per turn, once
+# per acting combatant) -- confirmed via the doubles screenshot/test below,
+# not merely assumed from the single-target behavior.
+func _on_debug_move_damage_breakdown(attacker: BattlePokemon, defender: BattlePokemon,
+		move: MoveData, breakdown: Dictionary) -> void:
+	_debug_overlay_text.text = _format_debug_breakdown(attacker, defender, move, breakdown)
+
+
+# Pure/static so a test can call it directly without a live signal round-trip
+# -- matches _next_anim_frame's/_status_icon_row's own established
+# precedent. `breakdown.get(..., default)` throughout: base_damage/
+# stab_multiplier/roll are absent for the handful of fixed-damage/early-
+# return moves that never reach DamageCalculator.calculate's main formula
+# (Sonic Boom, Dragon Rage, OHKO, etc.) -- see move_damage_breakdown's own
+# doc comment in battle_manager.gd for the full list of excluded cases.
+static func _format_debug_breakdown(attacker: BattlePokemon, defender: BattlePokemon,
+		move: MoveData, breakdown: Dictionary) -> String:
+	var atk_name: String = attacker.species.species_name
+	var def_name: String = defender.species.species_name
+	var lines: Array[String] = []
+	lines.append("Combat Debug (F3 to toggle)")
+	lines.append("%s -> %s" % [atk_name, def_name])
+	lines.append("Move: %s (Power %d, Acc %d)" % [move.move_name, move.power, move.accuracy])
+	if breakdown.has("base_damage"):
+		lines.append("Base damage: %d" % breakdown["base_damage"])
+		lines.append("STAB: %.2fx" % (breakdown.get("stab_multiplier", 1.0) as float))
+		lines.append("Type eff.: %.2fx" % (breakdown.get("effectiveness", 1.0) as float))
+		lines.append("Crit: %s" % ("Yes" if breakdown.get("is_crit", false) else "No"))
+		lines.append("Roll: %d%%" % (breakdown.get("roll", 100) as int))
+	lines.append("Final damage: %d" % (breakdown.get("damage", 0) as int))
+	return "\n".join(lines)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# [M25d] Raw keycode check rather than an InputMap action -- this
+	# project has no [input] section/action convention established yet
+	# anywhere (confirmed via direct project.godot inspection before adding
+	# this), so introducing one for a single debug toggle would be more
+	# machinery than this task needs; a plain keycode check is the simplest
+	# mechanism and stays entirely self-contained in this file.
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_F3:
+		_debug_overlay.visible = not _debug_overlay.visible
+
+
 func _on_opponent_anim_timer_timeout() -> void:
 	if _opp_party == null:
 		return
@@ -1386,6 +1479,7 @@ func _setup_health_ui() -> void:
 	_opp_status_icon_d = [$BattleStage/OpponentHealthGroupD0/StatusIcon, $BattleStage/OpponentHealthGroupD1/StatusIcon]
 	_opp_hp_label_d = [$BattleStage/OpponentHealthGroupD0/HpLabel, $BattleStage/OpponentHealthGroupD1/HpLabel]
 	_opp_hp_fill_d = [$BattleStage/OpponentHealthGroupD0/HpFill, $BattleStage/OpponentHealthGroupD1/HpFill]
+	_opp_name_level_label_d = [$BattleStage/OpponentHealthGroupD0/NameLevelLabel, $BattleStage/OpponentHealthGroupD1/NameLevelLabel]
 
 	_ply_sprites_d = [$BattleStage/PlayerSpriteD0, $BattleStage/PlayerSpriteD1]
 	_ply_groups_d = [$BattleStage/PlayerHealthGroupD0, $BattleStage/PlayerHealthGroupD1]
@@ -1393,6 +1487,7 @@ func _setup_health_ui() -> void:
 	_ply_status_icon_d = [$BattleStage/PlayerHealthGroupD0/StatusIcon, $BattleStage/PlayerHealthGroupD1/StatusIcon]
 	_ply_hp_label_d = [$BattleStage/PlayerHealthGroupD0/HpLabel, $BattleStage/PlayerHealthGroupD1/HpLabel]
 	_ply_hp_fill_d = [$BattleStage/PlayerHealthGroupD0/HpFill, $BattleStage/PlayerHealthGroupD1/HpFill]
+	_ply_name_level_label_d = [$BattleStage/PlayerHealthGroupD0/NameLevelLabel, $BattleStage/PlayerHealthGroupD1/NameLevelLabel]
 
 	var doubles_opponent_bg: Texture2D = load("res://assets/sprites/battle_ui/interface/healthbox_doubles_opponent.png")
 	var doubles_player_bg: Texture2D = load("res://assets/sprites/battle_ui/interface/healthbox_doubles_player.png")
@@ -1554,7 +1649,8 @@ func _update_status_icon(icon_node: TextureRect, atlas: AtlasTexture, status: in
 # each slot is processed as a fully independent iteration reading only that
 # slot's own BattlePokemon instance.
 func _refresh_doubles_side(party: BattleParty, is_player: bool, sprites: Array, groups: Array,
-		status_icons: Array, status_atlases: Array, hp_fills: Array) -> void:
+		status_icons: Array, status_atlases: Array, hp_fills: Array,
+		name_level_labels: Array) -> void:
 	var active_count := party.num_active()
 	for slot in range(2):
 		var visible_now: bool = slot < active_count
@@ -1576,6 +1672,7 @@ func _refresh_doubles_side(party: BattleParty, is_player: bool, sprites: Array, 
 		hp_fills[slot].value = mon.current_hp
 		hp_fills[slot].tint_progress = _hp_bar_color(mon.current_hp, mon.max_hp)
 		_update_status_icon(status_icons[slot], status_atlases[slot], mon.status)
+		name_level_labels[slot].text = _name_level_text(mon)
 
 
 func _refresh_ui() -> void:
@@ -1607,9 +1704,9 @@ func _refresh_ui() -> void:
 	# must remain the unchanged fast path" requirement.
 	if _is_doubles_mode:
 		_refresh_doubles_side(_opp_party, false, _opp_sprites_d, _opp_groups_d,
-				_opp_status_icon_d, _opp_status_atlas_d, _opp_hp_fill_d)
+				_opp_status_icon_d, _opp_status_atlas_d, _opp_hp_fill_d, _opp_name_level_label_d)
 		_refresh_doubles_side(_player_party, true, _ply_sprites_d, _ply_groups_d,
-				_ply_status_icon_d, _ply_status_atlas_d, _ply_hp_fill_d)
+				_ply_status_icon_d, _ply_status_atlas_d, _ply_hp_fill_d, _ply_name_level_label_d)
 	else:
 		_opponent_anim_frame = 0
 		_opponent_sprite.texture = _sprite_or_fallback_front(side1_mon.species.national_dex_num, _opponent_anim_frame)
@@ -1618,6 +1715,7 @@ func _refresh_ui() -> void:
 		_opponent_hp_fill.value = side1_mon.current_hp
 		_opponent_hp_fill.tint_progress = _hp_bar_color(side1_mon.current_hp, side1_mon.max_hp)
 		_update_status_icon(_opponent_status_icon, _opponent_status_atlas, side1_mon.status)
+		_opponent_name_level_label.text = _name_level_text(side1_mon)
 
 		_player_sprite.texture = _sprite_or_fallback_back(side0_mon.species.national_dex_num)
 		_player_sprite.modulate = Color(1, 1, 1, 0.3) if side0_mon.fainted else Color(1, 1, 1, 1)
@@ -1625,6 +1723,7 @@ func _refresh_ui() -> void:
 		_player_hp_fill.value = side0_mon.current_hp
 		_player_hp_fill.tint_progress = _hp_bar_color(side0_mon.current_hp, side0_mon.max_hp)
 		_update_status_icon(_player_status_icon, _player_status_atlas, side0_mon.status)
+		_player_name_level_label.text = _name_level_text(side0_mon)
 
 	if _bm.get_phase() == BattleManager.BattlePhase.BATTLE_END:
 		_status_label.text = ("You win!" if _winner_side == 0 else "You lose!")

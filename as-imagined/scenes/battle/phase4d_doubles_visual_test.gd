@@ -84,6 +84,7 @@ func _make_node_set() -> Dictionary:
 		"status_icons": [TextureRect.new(), TextureRect.new()],
 		"status_atlases": [AtlasTexture.new(), AtlasTexture.new()],
 		"hp_fills": [TextureProgressBar.new(), TextureProgressBar.new()],
+		"name_level_labels": [Label.new(), Label.new()],  # [M25d]
 	}
 
 
@@ -111,7 +112,8 @@ func _test_refresh_doubles_side_basic_render() -> void:
 
 	var nodes := _make_node_set()
 	bs._refresh_doubles_side(party, false, nodes["sprites"], nodes["groups"],
-			nodes["status_icons"], nodes["status_atlases"], nodes["hp_fills"])
+			nodes["status_icons"], nodes["status_atlases"], nodes["hp_fills"],
+			nodes["name_level_labels"])
 
 	_chk("slot 0 sprite visible", nodes["sprites"][0].visible)
 	_chk("slot 1 sprite visible", nodes["sprites"][1].visible)
@@ -142,7 +144,8 @@ func _test_refresh_doubles_side_independent_fade_and_status() -> void:
 
 	var nodes := _make_node_set()
 	bs._refresh_doubles_side(party, false, nodes["sprites"], nodes["groups"],
-			nodes["status_icons"], nodes["status_atlases"], nodes["hp_fills"])
+			nodes["status_icons"], nodes["status_atlases"], nodes["hp_fills"],
+			nodes["name_level_labels"])
 
 	var healthy_sprite: TextureRect = nodes["sprites"][0]
 	var fainted_sprite: TextureRect = nodes["sprites"][1]
@@ -177,7 +180,8 @@ func _test_refresh_doubles_side_singles_shaped_party_hides_slot1() -> void:
 
 	var nodes := _make_node_set()
 	bs._refresh_doubles_side(party, true, nodes["sprites"], nodes["groups"],
-			nodes["status_icons"], nodes["status_atlases"], nodes["hp_fills"])
+			nodes["status_icons"], nodes["status_atlases"], nodes["hp_fills"],
+			nodes["name_level_labels"])
 
 	_chk("slot 0 shown for a 1-active party", nodes["sprites"][0].visible)
 	_chk("slot 0 group shown for a 1-active party", nodes["groups"][0].visible)
