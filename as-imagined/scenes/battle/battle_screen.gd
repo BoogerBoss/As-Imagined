@@ -229,6 +229,29 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 @onready var _opponent_sprite: TextureRect = $BattleStage/OpponentSprite
 @onready var _player_sprite: TextureRect = $BattleStage/PlayerSprite
 
+# [M23.11 Phase 5c] Hit-effect nodes are spawned/freed here at runtime --
+# the LAST child of BattleStage in battle_screen.tscn, so every sprite/
+# health-box added above it in the tree draws underneath for free (same
+# "later sibling draws on top" convention Phase 5a's own Background doc
+# comment already established), while VBox (message box/menu), a LATER
+# sibling of BattleStage itself at the BattleScreen root, still always
+# draws on top of anything here -- no z_index needed either direction.
+@onready var _effect_layer: Control = $BattleStage/EffectLayer
+
+# [M23.11 Phase 5c] Root nodes of any hit effect currently mid-animation --
+# each entry removes itself the moment its own Tween finishes and frees it
+# naturally (see the tree_exited.connect() at each spawn site), so this
+# never grows across a real playthrough. Only exists so _on_battle_ended can
+# force an immediate, SYNCHRONOUS free() of anything still animating right
+# when the battle ends -- found necessary because --autoplay's own
+# get_tree().quit() (called the instant BATTLE_END is reached, see
+# _run_autoplay()) fires before a merely-queued queue_free() would ever
+# actually run, which without this left Tween-owned TextureRect/
+# AtlasTexture nodes alive at process exit (a real, new ObjectDB-leak
+# warning this phase's own regression check caught -- confirmed absent on
+# the pre-Phase-5c code via a direct git-stash comparison).
+var _active_hit_effect_nodes: Array = []
+
 # [M23.11 Phase 4b] Real health-box art replacing Phase 4a's plain
 # ProgressBar placeholders -- see _setup_health_ui()'s own doc comment for
 # the asset structure this relies on.
@@ -405,6 +428,14 @@ func _ready() -> void:
 	# why autoplay isn't special-cased here).
 	_wire_log_signals()
 
+	# [M23.11 Phase 5c] A SEPARATE connect() on the same move_executed signal
+	# _wire_log_signals() already listens to above -- Godot signals support
+	# multiple independent handlers, so this is purely additive and cannot
+	# change _on_log_move_executed's own behavior/ordering. Wired
+	# unconditionally (interactive + --autoplay both), matching every other
+	# signal wire-up in this file.
+	_bm.move_executed.connect(_on_hit_effect_move_executed)
+
 	# start_battle_with_parties()/start_battle_doubles() both call advance()
 	# internally — this already stalls at MOVE_SELECTION (side 0 is human-
 	# controlled, nothing queued yet for at least one active slot) before
@@ -484,6 +515,24 @@ func _first_switch_slot() -> int:
 func _on_battle_ended(winner_side: int) -> void:
 	_winner_side = winner_side
 	_log("You win!" if winner_side == 0 else "You lose!")
+	_clear_active_hit_effects()
+
+
+# [M23.11 Phase 5c] See _active_hit_effect_nodes' own doc comment.
+# Synchronous free() (not queue_free()) -- must take effect before
+# --autoplay's immediate get_tree().quit() on this same call stack.
+func _clear_active_hit_effects() -> void:
+	for node: Node in _active_hit_effect_nodes.duplicate():
+		if is_instance_valid(node):
+			# Kill the Tween BEFORE freeing its target node -- freeing first
+			# left an already-queued tween_callback() step trying to run
+			# against a freed node next frame (a real bug this phase's own
+			# --autoplay smoke run caught: "Lambda capture ... was freed").
+			var tween: Variant = node.get_meta("_hit_effect_tween", null)
+			if tween is Tween and (tween as Tween).is_valid():
+				(tween as Tween).kill()
+			node.free()
+	_active_hit_effect_nodes.clear()
 
 
 # ── Battle log [M23.2, broadened in the M23.2 addendum] ────────────────────
@@ -657,6 +706,184 @@ func _on_log_ability_triggered(mon: BattlePokemon, effect_key: String) -> void:
 		_log(template % _mon_label(mon))
 	else:
 		_log("%s's %s activated!" % [_mon_label(mon), effect_key.replace("_", " ")])
+
+
+# ── Hit effects [M23.11 Phase 5c] ───────────────────────────────────────────
+# Wired as a second, independent handler on move_executed (see _ready()'s own
+# connect() call) -- kept entirely separate from _on_log_move_executed/the
+# message-log pipeline above, both so a bug here can't touch log text and so
+# this can be reasoned about as one self-contained addition. Every function
+# below is non-blocking: no `await` anywhere in this section, so a spawned
+# effect's Tween runs independently of BattleManager's own turn/message
+# sequencing -- the very next move_executed (or any other signal) fires and
+# is handled immediately regardless of whether a previous effect is still
+# animating. HitEffectRegistry (scripts/battle/core/hit_effect_registry.gd)
+# owns the pure "which texture(s)" lookup; only node creation/animation
+# lives here, matching how _apply_background() consumes
+# BattleBackgroundRegistry.
+
+func _on_hit_effect_move_executed(attacker: BattlePokemon, defender: BattlePokemon,
+		move: MoveData, _damage: int) -> void:
+	if move == null:
+		return
+	# Self-targeting moves (Swords Dance, Rest, etc.) resolve defender ==
+	# attacker at the BattleManager layer already -- target_mon naturally
+	# becomes the attacker in that case with no special-casing needed here.
+	# A null defender (a handful of pure-field-effect moves) falls back to
+	# the attacker's own position rather than skipping the effect outright.
+	var target_mon: BattlePokemon = defender if defender != null else attacker
+	var target_node := _sprite_node_for(target_mon)
+	if target_node == null:
+		return
+
+	var move_id := HitEffectRegistry.move_id_of(move)
+	match move_id:
+		HitEffectRegistry.MOVE_ID_FLAMETHROWER:
+			_play_multi_stage_strip_effect([HitEffectRegistry.get_flamethrower_texture()], target_node)
+		HitEffectRegistry.MOVE_ID_THUNDER:
+			_play_multi_stage_strip_effect(HitEffectRegistry.get_thunder_textures(), target_node)
+		HitEffectRegistry.MOVE_ID_SURF:
+			var attacker_is_player: bool = _player_party.members.has(attacker)
+			_play_surf_effect(attacker_is_player, target_node)
+		_:
+			var tex := HitEffectRegistry.get_generic_texture(move)
+			if tex != null:
+				_play_multi_stage_strip_effect([tex], target_node)
+
+
+# Resolves which field slot `mon` currently occupies within `party`'s own
+# active_indices, for doubles targeting -- mirrors _refresh_doubles_side's
+# own party.get_active_at(slot) reads. Defaults to slot 0 if not found
+# (shouldn't happen for a mon that just executed/received a move, but keeps
+# this a total function rather than returning -1 into an array index).
+func _field_slot_for(mon: BattlePokemon, party: BattleParty) -> int:
+	for slot in range(party.num_active()):
+		if party.get_active_at(slot) == mon:
+			return slot
+	return 0
+
+
+# Singles-vs-doubles-aware sprite-node lookup, reusing Phase 4d's own
+# party/slot model rather than adding any new BattleManager-side targeting
+# concept. Player-vs-opponent side is resolved the exact same way
+# _mon_label() already does (_player_party.members.has(mon)).
+func _sprite_node_for(mon: BattlePokemon) -> Control:
+	if mon == null:
+		return null
+	var is_player: bool = _player_party.members.has(mon)
+	if not _is_doubles_mode:
+		return _player_sprite if is_player else _opponent_sprite
+	var party: BattleParty = _player_party if is_player else _opp_party
+	var slot := _field_slot_for(mon, party)
+	var sprites: Array = _ply_sprites_d if is_player else _opp_sprites_d
+	return sprites[slot] as Control
+
+
+# Generic + Flamethrower + Thunder all share this ONE renderer -- Flamethrower
+# is a single self-contained strip (the same shape as any generic pick, per
+# 5b's own finding), and Thunder is just two strips played back to back on
+# the same node (see HitEffectRegistry.get_thunder_textures()'s own doc
+# comment on why no runtime palette compositing is actually needed). Surf is
+# the one genuinely different shape -- see _play_surf_effect below.
+#
+# Builds one Tween per call: steps through every texture's own frame count
+# (via HitEffectRegistry.compute_frame_layout), holds briefly, fades out,
+# frees the node. A single-frame source (most of the 21 generic picks) still
+# goes through this same loop with frame_count == 1 -- a one-iteration
+# no-op step followed immediately by the hold, not a special case.
+func _play_multi_stage_strip_effect(textures: Array, target: Control,
+		frame_time: float = 0.05, hold_time: float = 0.12) -> void:
+	if textures.is_empty() or target == null or _effect_layer == null:
+		return
+	var first_layout: Dictionary = HitEffectRegistry.compute_frame_layout(textures[0].get_size())
+	var frame_size: Vector2 = first_layout["frame_size"]
+
+	var rect := TextureRect.new()
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.size = frame_size
+	var atlas := AtlasTexture.new()
+	atlas.atlas = textures[0]
+	atlas.region = Rect2(Vector2.ZERO, frame_size)
+	rect.texture = atlas
+	_effect_layer.add_child(rect)
+	rect.global_position = target.get_global_rect().get_center() - frame_size / 2.0
+
+	var tween := create_tween()
+	rect.set_meta("_hit_effect_tween", tween)
+	_active_hit_effect_nodes.append(rect)
+	rect.tree_exited.connect(func(): _active_hit_effect_nodes.erase(rect))
+	for tex: Texture2D in textures:
+		var layout: Dictionary = HitEffectRegistry.compute_frame_layout(tex.get_size())
+		var f_size: Vector2 = layout["frame_size"]
+		var f_count: int = layout["frame_count"]
+		var vertical: bool = layout["vertical"]
+		for f in range(f_count):
+			var origin: Vector2 = Vector2(0, f * f_size.y) if vertical else Vector2(f * f_size.x, 0)
+			tween.tween_callback(func():
+				atlas.atlas = tex
+				atlas.region = Rect2(origin, f_size)
+				rect.size = f_size
+				rect.global_position = target.get_global_rect().get_center() - f_size / 2.0)
+			tween.tween_interval(frame_time)
+	tween.tween_interval(hold_time)
+	tween.tween_property(rect, "modulate:a", 0.0, 0.15)
+	tween.tween_callback(rect.queue_free)
+
+
+# Surf's genuinely different shape (see HitEffectRegistry.get_surf_texture's
+# own doc comment + 5b's own "the session's real surprise" finding): a full
+# uncropped 512x256 BG-layer canvas, not a sprite strip. Rendered as a
+# clip_contents Control window (sized smaller than the canvas) with the full
+# canvas panning horizontally underneath it -- "a brief scrolling pan across
+# the canvas," confirmed as the natural fit for this asset's own shape
+# rather than trying to force it through the same frame-slicing path as
+# every sprite-shaped effect above.
+func _play_surf_effect(attacker_is_player: bool, target: Control) -> void:
+	if target == null or _effect_layer == null:
+		return
+	var tex := HitEffectRegistry.get_surf_texture(attacker_is_player)
+	if tex == null:
+		return
+
+	var window_size := Vector2(120, 90)
+	var clip := Control.new()
+	clip.clip_contents = true
+	clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clip.size = window_size
+	_effect_layer.add_child(clip)
+	clip.global_position = target.get_global_rect().get_center() - window_size / 2.0
+
+	var pan_rect := TextureRect.new()
+	pan_rect.texture = tex
+	pan_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pan_rect.size = tex.get_size()
+	clip.add_child(pan_rect)
+	var canvas_size: Vector2 = tex.get_size()
+	var start_x := 0.0
+	var end_x := -(canvas_size.x - window_size.x)
+	# NOT vertically centered -- confirmed via direct visual inspection this
+	# session (the real screenshot-verification pass) that the actual
+	# curling-wave detail sits in a narrow band near one edge of the
+	# 512x256 canvas, with a large flat-blue field filling the rest (a
+	# vertically-centered window landed squarely in that flat field,
+	# showing a featureless blue rectangle instead of the wave) -- AND that
+	# the two pulled variants are mirrored, not identically laid out:
+	# water_player.png's crest sits at the TOP, water_opponent.png's sits
+	# at the BOTTOM (thematically sensible -- the player's own wave crests
+	# away from their side of the screen, toward the opponent, and vice
+	# versa), so the anchor itself must follow attacker_is_player rather
+	# than using one fixed offset for both.
+	var y_offset := 0.0 if attacker_is_player else -(canvas_size.y - window_size.y)
+	pan_rect.position = Vector2(start_x, y_offset)
+
+	var tween := create_tween()
+	clip.set_meta("_hit_effect_tween", tween)
+	_active_hit_effect_nodes.append(clip)
+	clip.tree_exited.connect(func(): _active_hit_effect_nodes.erase(clip))
+	tween.tween_property(pan_rect, "position:x", end_x, 0.6).set_trans(Tween.TRANS_LINEAR)
+	tween.tween_interval(0.1)
+	tween.tween_property(clip, "modulate:a", 0.0, 0.15)
+	tween.tween_callback(clip.queue_free)
 
 
 func _status_name(status: int) -> String:
