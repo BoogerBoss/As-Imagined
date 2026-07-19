@@ -225,6 +225,7 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # [M23.11 Phase 4a] Visual battle stage -- additive alongside the existing
 # text-based UI above, not a replacement (Side0Label/Side1Label/LogLabel
 # stay exactly as they are, per this phase's own explicit scope).
+@onready var _background_rect: TextureRect = $BattleStage/Background
 @onready var _opponent_sprite: TextureRect = $BattleStage/OpponentSprite
 @onready var _player_sprite: TextureRect = $BattleStage/PlayerSprite
 
@@ -361,14 +362,24 @@ func _ready() -> void:
 	# scratch screenshot drivers and test suite only — see
 	# docs/m23_recon.md's Phase 4f entry for why the real Doubles toggle
 	# itself is NOT wired to this yet).
+	# [M23.11 Phase 5a] Read the SAME way is_doubles_battle is above — a
+	# local captured before .clear() wipes the static holder, not read
+	# fresh later. "" (unset) covers every pre-existing caller (the
+	# hardcoded-fixture fallback below, any direct/--autoplay launch of
+	# this scene, and battle_setup_screen.gd callers from before this
+	# session) and resolves to _apply_background()'s own documented
+	# default rather than leaving the stage with no background at all.
+	var background_id := ""
 	var is_doubles_battle := false
 	if BattleSetupContext.has_pending():
 		_player_party = BattleSetupContext.player_party
 		_opp_party = BattleSetupContext.opp_party
 		is_doubles_battle = BattleSetupContext.is_doubles
+		background_id = BattleSetupContext.background_id
 		BattleSetupContext.clear()
 	else:
 		_build_teams()
+	_apply_background(background_id)
 
 	# [M23.11 Phase 4d] One-shot node-set toggle — singles nodes stay exactly
 	# as before (visible, unchanged) when not in doubles; when in doubles,
@@ -925,6 +936,32 @@ static func _status_icon_row(status: int) -> int:
 			return 4
 		_:
 			return -1
+
+
+# [M23.11 Phase 5a] One-time wiring, called from _ready(). BattleStage's
+# own "Background" TextureRect (see battle_screen.tscn — the FIRST child
+# of BattleStage, so every sprite/health-box/etc. added after it in the
+# tree draws on top for free, no z_index needed) is left with no texture
+# at scene-authoring time, since the actual choice depends on runtime
+# picker/hand-off state, not something fixed at .tscn-authoring time —
+# assigned here instead. "building" is the documented default for an
+# unset/unresolvable id: it's the same background real source's own
+# LoadBattleEnvironmentGfx() falls back to (BATTLE_ENVIRONMENT_PLAIN,
+# which itself shares BUILDING's tiles — see gen_battle_backgrounds.py's
+# own doc comment), and it's also BattleBackgroundRegistry's own
+# alphabetically-first id, matching the manual picker's own default
+# selection in battle_setup_screen.gd — so a direct/--autoplay launch of
+# this scene (no picker ever run) renders the identical background a
+# freshly-opened setup screen's own default pick would produce.
+const _DEFAULT_BACKGROUND_ID := "building"
+
+
+func _apply_background(background_id: String) -> void:
+	var id := background_id if not background_id.is_empty() else _DEFAULT_BACKGROUND_ID
+	var tex := BattleBackgroundRegistry.get_background_texture(id)
+	if tex == null and id != _DEFAULT_BACKGROUND_ID:
+		tex = BattleBackgroundRegistry.get_background_texture(_DEFAULT_BACKGROUND_ID)
+	_background_rect.texture = tex
 
 
 # [M23.11 Phase 4b] One-time wiring, called from _ready() -- every texture

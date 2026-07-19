@@ -31,12 +31,24 @@ static var opp_party: BattleParty = null
 # why the Doubles toggle itself is NOT re-enabled here) is unaffected.
 static var is_doubles: bool = false
 
+# [M23.11 Phase 5a] The manually-picked battle background id (a
+# BattleBackgroundRegistry key, e.g. "rock" — see battle_background
+# _registry.gd), or "" for unset. Optional, defaults to "" so every
+# pre-existing caller (this file's own prior callers, plus every direct/
+# --autoplay launch of battle_screen.tscn that never goes through
+# battle_setup_screen.gd at all) is unaffected — battle_screen.gd's own
+# _ready() falls back to a fixed default background when this is empty,
+# matching how it already falls back to its own hardcoded fixture teams
+# when has_pending() is false.
+static var background_id: String = ""
+
 
 static func set_pending(p_player_party: BattleParty, p_opp_party: BattleParty,
-		p_is_doubles: bool = false) -> void:
+		p_is_doubles: bool = false, p_background_id: String = "") -> void:
 	player_party = p_player_party
 	opp_party = p_opp_party
 	is_doubles = p_is_doubles
+	background_id = p_background_id
 
 
 static func has_pending() -> bool:
@@ -47,3 +59,4 @@ static func clear() -> void:
 	player_party = null
 	opp_party = null
 	is_doubles = false
+	background_id = ""

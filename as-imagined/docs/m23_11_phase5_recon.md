@@ -6,6 +6,36 @@ numbered findings sections, a resolved-vs-open scope-decisions section, and
 a proposed sequencing plan, all subject to confirmation before any
 implementation session begins.
 
+## 0. Locked scope decisions (resolved 2026-07-19)
+
+All 6 open questions from §5 have been resolved by the project owner.
+Findings sections below are left as originally written (including the
+now-superseded recommendation language in §2/§4.4) for audit-trail
+purposes; §5 and §6 have been updated in place to reflect the decisions
+directly. Summary:
+
+1. **Background reconstruction**: flat PNGs via a one-time Python script
+   (§2's own recommendation) — confirmed, not a live Godot tile renderer.
+2. **Intro-reveal animation**: excluded from Phase 5 scope. Flagged as a
+   possible future standalone item — **not yet assigned to any milestone**,
+   not tracked against Phase 5 or any other numbered slot.
+3. **Background selection**: a manual picker added to
+   `battle_setup_screen.gd` — not a single hardcoded default.
+4. **Palette-variant scope**: only the 11 real base tilesets are pulled in
+   5a. The ~11 palette-only recolors (Elite Four, Champion, legendaries,
+   Frontier, etc.) are deferred to 5d — still no real consumer (no
+   trainer-vs-player battle flow exists yet).
+5. **Move-animation approach**: a **hybrid model** — the generic
+   type/category-keyed hit-effect library (§4.4) remains the baseline for
+   the full move roster, but 3 hand-picked moves (**Flamethrower, Thunder,
+   Surf**) get real bespoke, higher-fidelity animations instead of falling
+   into the generic dispatch. See the updated §4.4/§6 for what this means
+   for 5b (asset pull) and 5c (dispatch engine).
+6. **Secret Power/Nature Power/Camouflage**: not built, not scoped into
+   Phase 5. The finding itself (§1.3) has been added to CLAUDE.md's M34 row
+   as an optional/nice-to-have item, explicitly marked lower-priority than
+   M34's other consolidated exclusions.
+
 ## 1. Environments — source structure, re-derived directly
 
 Source: `graphics/battle_environment/` (art) + `src/data/graphics/
@@ -220,74 +250,112 @@ GENERIC and type/theme-appropriate (`blue_flames`, `black_smoke`,
 (`assurance_hand`, `baton_pass_ball`, `blacephalon_head`) that wouldn't
 generalize.
 
-### 4.4 Recommendation: a small generic hit-effect library, per-move fidelity explicitly deferred
+### 4.4 Locked scope: hybrid model — generic library baseline + 3 bespoke moves
 
-Given 4.2/4.3: **build a small, type/category-keyed generic hit-effect
-system** (e.g. ~15-30 curated particle sprites pulled flat — a burst per
-major type family, a physical-impact star, a status-cloud puff, a
-stat-buff shimmer — driven by a lightweight Godot `AnimationPlayer`/tween
-dispatcher keyed on `move.type`/`move.category`), NOT an attempt at real
-per-move fidelity. This directly matches the task's own suggested
-fallback option and is the only realistic path given the confirmed 941-
-script/125-opcode scope of full fidelity. Real per-move animation
-fidelity, if ever wanted, would need its own dedicated multi-session
-sub-arc on the scale of M17/M19's own tiered ability/move rollouts — not
-attempted here, not silently ruled out either (see Open Question 5).
+**Resolved by Open Question 5 (§0/§5): a hybrid model**, not a pure
+generic-only system. Two tiers:
 
-## 5. Open scope decisions for the project owner (mirrors `docs/m24_recon.md` §6 format)
+- **Baseline (the whole roster minus the 3 below)**: the originally
+  recommended small, type/category-keyed generic hit-effect system —
+  ~15-30 curated particle sprites pulled flat (a burst per major type
+  family, a physical-impact star, a status-cloud puff, a stat-buff
+  shimmer), driven by a lightweight Godot `AnimationPlayer`/tween
+  dispatcher keyed on `move.type`/`move.category`. This remains the only
+  realistic path for the other ~938 moves, given the confirmed
+  941-script/125-opcode scope a full-fidelity port would require.
+- **Bespoke (Flamethrower, Thunder, Surf only)**: these 3 hand-picked
+  moves get their own real, higher-fidelity animation instead of falling
+  into the generic dispatch — a deliberately small, bounded proof-of-
+  concept for what real per-move fidelity looks like in this project,
+  without committing to the full 941-move scope. 5b's asset pull now
+  needs to also identify and pull whatever source assets these 3 moves'
+  own `gBattleAnimMove_*` scripts actually reference (their real sprite
+  strips, not just the generic library's own curated set); 5c's dispatch
+  engine needs a special-case branch — check the move's own ID against
+  these 3 first, dispatch to its bespoke animation if matched, only fall
+  through to the generic type/category dispatch otherwise.
 
-1. **Background reconstruction approach**: confirm the "one-time Python
-   reconstruction script → flat PNG → this project's existing flat-copy
-   pipeline" approach (§2's recommendation) rather than a live Godot-side
-   tile renderer.
-2. **Intro-reveal animation**: confirm excluding the `.entry` layer
-   (grass-parting-style intro wipe) from scope — Phase 5 delivers only the
-   steady-state background, not the GBA-style reveal animation.
-3. **Background-selection mechanism**: given no overworld/map data exists
-   yet (§3), which placeholder approach do you want — (a) one single
-   hardcoded default background for every battle, (b) a manual picker
-   added to `battle_setup_screen.gd`, (c) something else? Real per-
-   encounter selection waits for M26 either way.
-4. **Palette-variant scope**: pull only the 11 base terrain tilesets now,
-   or also the ~11 extra palette-only recolors (Elite Four members, Team
-   Aqua/Magma HQ, Champion, Frontier, Groudon/Kyogre)? The latter has no
-   real consumer yet (no trainer-vs-player battle flow exists — same
-   "data ahead of consumer" situation M24a/M24c already established as an
-   acceptable pattern in this project).
-5. **Move-animation scope**: confirm the generic hit-effect library
-   approach (§4.4) as Phase 5's real deliverable for move animations
-   rather than (a) skipping move animations entirely for now (just damage
-   numbers/HP drain, no VFX), or (b) attempting real per-move fidelity for
-   a small hand-picked subset of "iconic" moves first.
-6. **Secret Power/Nature Power/Camouflage reconsideration**: building even
-   a minimal environment-id concept in Phase 5 would remove the specific
-   blocker that's kept these 3 moves permanently excluded (§1.3). Not
-   proposing to build them now — just flagging that Phase 5 may make them
-   newly buildable, for Rob's own future prioritization.
+Real per-move fidelity for the REMAINING ~938 moves, if ever wanted, would
+still need its own dedicated multi-session sub-arc on the scale of
+M17/M19's own tiered ability/move rollouts — this hybrid model is not a
+first step toward that, just a bounded exception for 3 specific moves.
 
-## 6. Proposed sequencing plan (mirrors M23.11's own Phase 4a-4f discipline)
+## 5. Scope decisions (mirrors `docs/m24_recon.md` §6 format) — RESOLVED 2026-07-19
+
+All 6 questions below are now closed. Original question text preserved for
+context; each is marked with the locked decision.
+
+1. **Background reconstruction approach** — **RESOLVED: confirmed.** The
+   "one-time Python reconstruction script → flat PNG → this project's
+   existing flat-copy pipeline" approach (§2's recommendation), not a live
+   Godot-side tile renderer.
+2. **Intro-reveal animation** — **RESOLVED: excluded from Phase 5 scope.**
+   Phase 5 delivers only the steady-state background, not the `.entry`
+   layer's GBA-style grass-parting reveal wipe. Flagged as a possible
+   future standalone item, **not yet assigned to any milestone**.
+3. **Background-selection mechanism** — **RESOLVED: (b), a manual picker
+   added to `battle_setup_screen.gd`.** Not a single hardcoded default.
+   Real per-encounter selection still waits for M26.
+4. **Palette-variant scope** — **RESOLVED: only the 11 base terrain
+   tilesets are pulled in 5a.** The ~11 extra palette-only recolors (Elite
+   Four members, Team Aqua/Magma HQ, Champion, Frontier, Groudon/Kyogre)
+   are deferred to 5d — still no real consumer (no trainer-vs-player
+   battle flow exists yet, same "data ahead of consumer" pattern
+   M24a/M24c already established as acceptable in this project).
+5. **Move-animation scope** — **RESOLVED: a hybrid model.** The generic
+   hit-effect library (§4.4) remains the baseline for the full roster, PLUS
+   3 hand-picked moves (Flamethrower, Thunder, Surf) get real bespoke,
+   higher-fidelity animations rather than the generic dispatch. Neither of
+   the original two alternatives (skip VFX entirely, or attempt full
+   fidelity for a hand-picked subset) was chosen outright — see §4.4 for
+   the resolved shape.
+6. **Secret Power/Nature Power/Camouflage reconsideration** — **RESOLVED:
+   not built, not scoped into Phase 5.** The finding (§1.3) has been added
+   to CLAUDE.md's M34 row as an optional/nice-to-have item, explicitly
+   marked lower-priority than M34's other consolidated exclusions.
+
+## 6. Sequencing plan (mirrors M23.11's own Phase 4a-4f discipline) — LOCKED 2026-07-19
 
 - **Phase 5a — Environment backgrounds**: build the one-time reconstruction
-  script (§2), pull the 11 base tilesets as flat PNGs via the established
-  flat-copy convention, wire a manual/default selector into
-  `battle_setup_screen.gd` (§3), regression sweep. No move animations yet.
-- **Phase 5b — Generic hit-effect asset pull**: curate and flat-copy ~15-30
-  representative particle sprites from `graphics/battle_anims/sprites/`
-  (§4.4), following the exact `gen_*_sprites.py` precedent — asset staging
-  only, no engine wiring yet (matching Phase 1's own "no UI consumption
-  this session" discipline).
-- **Phase 5c — Generic hit-effect dispatch**: a small type/category-keyed
-  effect-selection system wired into `battle_screen.gd`'s existing
-  `move_executed` signal handling, triggering the appropriate pulled
-  sprite via `AnimationPlayer`/tween. This is the first phase with real UI
-  consumption.
-- **Phase 5d (explicitly NOT scoped now, a future candidate only)**:
-  palette-variant pull for special-context battles (Elite Four/Champion/
-  legendary encounters) — deferred pending a real trainer-battle
-  consumer, per Open Question 4.
+  script (§2), pull the **11 base tilesets only** as flat PNGs via the
+  established flat-copy convention (palette recolors deferred to 5d, per
+  §5 item 4), wire a **manual picker** into `battle_setup_screen.gd` (§5
+  item 3 — not a hardcoded default), regression sweep. No move animations
+  yet. The intro-reveal wipe (§5 item 2) stays out of scope here and
+  everywhere else in Phase 5.
+- **Phase 5b — Hit-effect asset pull (hybrid)**: two parts, per the locked
+  §4.4 hybrid model —
+  1. Curate and flat-copy ~15-30 representative GENERIC particle sprites
+     from `graphics/battle_anims/sprites/`, following the exact
+     `gen_*_sprites.py` precedent (the original baseline scope, unchanged).
+  2. Additionally identify and pull whichever real source assets
+     Flamethrower's, Thunder's, and Surf's own individual
+     `gBattleAnimMove_*` scripts actually reference (their real bespoke
+     sprite strips, not just the generic library's curated set) — a
+     separate, move-ID-keyed pull alongside the generic one.
+  Asset staging only for both parts, no engine wiring yet (matching Phase
+  1's own "no UI consumption this session" discipline).
+- **Phase 5c — Hit-effect dispatch (hybrid)**: a dispatch engine wired
+  into `battle_screen.gd`'s existing `move_executed` signal handling, now
+  with two tiers per the locked hybrid model —
+  1. **Special-case branch, checked first**: if the executed move's ID is
+     Flamethrower, Thunder, or Surf, dispatch to that move's own bespoke
+     animation (5b's move-specific pull) instead of the generic path.
+  2. **Generic fallback**: every other move falls through to the original
+     type/category-keyed effect-selection system, triggering the
+     appropriate generic pulled sprite via `AnimationPlayer`/tween.
+  This is the first phase with real UI consumption.
+- **Phase 5d — Palette-variant pull (still explicitly deferred)**:
+  palette-variant recolors for special-context battles (Elite Four/
+  Champion/legendary encounters) — still deferred pending a real
+  trainer-battle consumer, per §5 item 4. Unchanged by this session's
+  decisions; listed here for completeness of the locked plan.
 
 Risk/complexity ranking: 5a (moderate — new reconstruction-script format,
-but small/bounded scope) < 5b (low — same flat-copy shape as every prior
-asset phase) < 5c (moderate — first real animation-dispatch engine code
-in this project, though deliberately small) < 5d (low effort, but
-explicitly deferred, no consumer yet).
+but small/bounded scope) < 5b (low-to-moderate — the generic half is the
+same flat-copy shape as every prior asset phase; the 3-move bespoke half
+is new territory, identifying and isolating real per-script asset
+references for the first time, but bounded to exactly 3 moves) < 5c
+(moderate-to-higher — first real animation-dispatch engine code in this
+project, now with two dispatch tiers instead of one) < 5d (low effort,
+but explicitly deferred, no consumer yet).

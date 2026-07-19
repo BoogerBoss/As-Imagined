@@ -42,6 +42,7 @@ const _OPTION_FIXTURE := "__fixture__"
 @onready var _format_toggle_button: Button = $Scroll/VBox/FormatRow/FormatToggleButton
 @onready var _player_option: OptionButton = $Scroll/VBox/PlayerRow/PlayerTeamOptionButton
 @onready var _opponent_option: OptionButton = $Scroll/VBox/OpponentRow/OpponentTeamOptionButton
+@onready var _background_option: OptionButton = $Scroll/VBox/BackgroundRow/BackgroundOptionButton
 @onready var _refresh_button: Button = $Scroll/VBox/RefreshButton
 @onready var _manage_teams_button: Button = $Scroll/VBox/ManageTeamsButton
 @onready var _launch_button: Button = $Scroll/VBox/LaunchButton
@@ -55,6 +56,7 @@ func _ready() -> void:
 	_manage_teams_button.pressed.connect(_on_manage_teams_pressed)
 	_launch_button.pressed.connect(_on_launch_pressed)
 	_refresh_team_lists()
+	_populate_background_options()
 
 	# [Autoplay — matches the M23.1-addendum precedent] Without this, a
 	# direct sweep invocation of this scene idles forever with no
@@ -90,7 +92,8 @@ func _ready() -> void:
 
 
 func _run_autoplay() -> void:
-	var dropdowns_ok: bool = _player_option.item_count > 0 and _opponent_option.item_count > 0
+	var dropdowns_ok: bool = (_player_option.item_count > 0 and _opponent_option.item_count > 0
+			and _background_option.item_count > 0)
 	var player_party := _resolve_party(_player_option, false)
 	var opp_party := _resolve_party(_opponent_option, true)
 	var resolved_ok: bool = (player_party != null and not player_party.members.is_empty()
@@ -172,6 +175,34 @@ func _refresh_team_lists() -> void:
 		saved_teams.size(), "" if saved_teams.size() == 1 else "s"]
 
 
+# ── Background picker [M23.11 Phase 5a] ─────────────────────────────────
+# A manual picker, not tied to any overworld/terrain concept (that's M26's
+# future job — see docs/m23_11_phase5_recon.md Section 0 item 3) and not a
+# single hardcoded default. Populated once from BattleBackgroundRegistry's
+# own directory scan rather than a hardcoded 11-name list, so a future
+# background added to assets/sprites/battle_backgrounds/ shows up here
+# automatically without touching this file. Unlike the team dropdowns,
+# this never needs re-populating mid-session (the background asset
+# directory isn't user-editable at runtime the way saved teams are), so
+# it's populated once in _ready() rather than folded into
+# _refresh_team_lists().
+func _populate_background_options() -> void:
+	_background_option.clear()
+	var ids := BattleBackgroundRegistry.list_background_ids()
+	for id in ids:
+		var idx := _background_option.item_count
+		_background_option.add_item(BattleBackgroundRegistry.display_name(id), idx)
+		_background_option.set_item_metadata(idx, id)
+	if _background_option.item_count > 0:
+		_background_option.select(0)
+
+
+func _selected_background_id() -> String:
+	if _background_option.item_count == 0 or _background_option.selected < 0:
+		return ""
+	return _background_option.get_item_metadata(_background_option.selected)
+
+
 # ── Resolving a dropdown selection into a real BattleParty ────────────────
 
 func _resolve_party(option: OptionButton, allow_fixture: bool) -> BattleParty:
@@ -246,5 +277,6 @@ func _on_launch_pressed() -> void:
 			_status_label.text = "The opponent's team needs at least 2 Pokémon for a Doubles battle — pick a different option or switch to Singles."
 			return
 
-	BattleSetupContext.set_pending(player_party, opp_party, _format == Format.DOUBLES)
+	BattleSetupContext.set_pending(player_party, opp_party, _format == Format.DOUBLES,
+			_selected_background_id())
 	get_tree().change_scene_to_file("res://scenes/battle/battle_screen.tscn")

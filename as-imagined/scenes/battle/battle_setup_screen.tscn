@@ -63,6 +63,17 @@ text = "Opponent:"
 layout_mode = 2
 custom_minimum_size = Vector2(260, 0)
 
+[node name="BackgroundRow" type="HBoxContainer" parent="Scroll/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Scroll/VBox/BackgroundRow"]
+layout_mode = 2
+text = "Background:"
+
+[node name="BackgroundOptionButton" type="OptionButton" parent="Scroll/VBox/BackgroundRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(260, 0)
+
 [node name="RefreshButton" type="Button" parent="Scroll/VBox"]
 layout_mode = 2
 text = "Refresh Team Lists"
