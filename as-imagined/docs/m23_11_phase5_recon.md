@@ -1,5 +1,28 @@
 # M23.11 Phase 5 Recon — Environments & Move Animations
 
+## OPEN FOLLOW-UP (flagged 2026-07-19, not fixed — pick up after Phase 5 wraps)
+
+Phase 5a's reconstructed background art (`scripts/gen_battle_backgrounds.py`
+→ `assets/sprites/battle_backgrounds/*.png`) does not look right in real
+use, per Rob's own report. The reconstruction pipeline made several
+judgment calls documented in that script's own docstring — the top-left
+240×160px crop window, substituting `battle_frontier.pal` for `stadium`'s
+missing default palette, wrapping out-of-range palette-bank-3 entries —
+any of which could be the real cause. Rob has real replacement PNGs ready
+to swap in directly rather than re-deriving the tile/tilemap decode.
+**Deliberately deferred until after the rest of Phase 5 (5b/5c/5d)
+completes** — do not fix this opportunistically mid-5b/5c/5d.
+
+When picked back up: the swap itself is mechanical (`BattleBackgroundRegistry`
+and `battle_screen.gd` are both already texture-agnostic — plain
+`load()`/`TextureRect` assignment, no code changes needed to consume
+different art); `battle_background_smoke_test.gd`'s hardcoded 240×160
+per-file assertion will need loosening/updating if the replacement art's
+resolution differs; `gen_battle_backgrounds.py` itself should likely be
+deleted or explicitly marked unused at that point (still an open question
+for Rob — keep as a reference for a possible future correct reconstruction,
+or remove outright since its output is being replaced).
+
 Recon and planning only, per explicit instruction — no code written, no
 assets pulled this session. Mirrors `docs/m24_recon.md`'s own precedent:
 numbered findings sections, a resolved-vs-open scope-decisions section, and
