@@ -312,6 +312,22 @@ var _is_doubles_mode: bool = false
 # [M23.11 Phase 4c] Idle-bob animation -- front sprite (opponent) ONLY, see
 # _setup_health_ui() area's own doc comment on _next_anim_frame() for why
 # the back sprite (player) is deliberately excluded.
+#
+# [M25b bugfix] `one_shot = true` on this Timer in battle_screen.tscn (was
+# unset, i.e. Godot's own default of continuous/repeating) -- confirmed via
+# direct reference-source inspection (pokeemerald_expansion's own
+# sprite.c: the AnimCmd interpreter sets `animEnded = TRUE` and stops
+# advancing when it hits the ANIMCMD_END sentinel a species' own
+# frontAnimFrames sequence ends with, no jump-back-to-start; and
+# DoMonFrontSpriteAnimation in pokemon.c triggers it once, on a Pokémon's
+# own appearance, not on a recurring timer) that the real games play this
+# as a brief one-shot double-bob, not a forever-looping ambient "alive"
+# indicator -- Phase 4c's own prior framing of this as deliberately
+# continuous was an assumption that session made, not something it
+# verified against source (unlike the front-only/frame-value parts of
+# this same doc comment, which do cite source). Deliberately NOT expanded
+# into a real per-switch-in replay/reveal system here -- that remains its
+# own, separately-scoped future item; this is just "stop looping."
 @onready var _opponent_anim_timer: Timer = $OpponentAnimTimer
 var _opponent_anim_frame: int = 0
 
@@ -327,12 +343,22 @@ var _pending_effect_lines: Array[String] = []
 # Irrelevant during SWITCH_PROMPT, which always shows the bench-picker
 # directly (a mandatory faint replacement, no "back" option).
 #
-# [M23.11 Phase 4f] New TARGET_SELECT case — shown after picking a move that
-# needs a foe/ally choice among 2+ live candidates (see
-# BattleManager.get_live_targets' own doc comment for exactly which moves
-# this applies to).
-enum Menu { MAIN, SWITCH, ITEM, TARGET_SELECT }
-var _menu: Menu = Menu.MAIN
+# [M23.11 Phase 4f] TARGET_SELECT — shown after picking a move that needs a
+# foe/ally choice among 2+ live candidates (see BattleManager.get_live_targets'
+# own doc comment for exactly which moves this applies to).
+#
+# [M25b] Real top-level Fight/Item/Switch/Run menu, replacing the old flat
+# "every move button plus Switch/Item inline" MAIN screen (renamed TOP here)
+# with a genuine two-tier structure matching the real games: TOP shows
+# exactly the 4 top-level options; picking Fight drops into the NEW FIGHT
+# state (the move list, previously shown directly on MAIN, unchanged in
+# content — just moved one tier deeper). SWITCH/ITEM/TARGET_SELECT are
+# otherwise unchanged in shape; only their own "Back" targets moved (see
+# each button's own call site) to route to TOP (or, for TARGET_SELECT
+# specifically, back to FIGHT — the immediate previous step — so picking a
+# different move doesn't require re-entering Fight from TOP).
+enum Menu { TOP, FIGHT, SWITCH, ITEM, TARGET_SELECT }
+var _menu: Menu = Menu.TOP
 
 # [M23.11 Phase 4f] _menu above is deliberately kept as ONE flat variable,
 # not an Array[Menu] sized to num_active() field slots, even though this
@@ -1533,6 +1559,9 @@ func _refresh_ui() -> void:
 			return
 		var acting_mon: BattlePokemon = _player_party.get_active_at(field_slot)
 		match _menu:
+			Menu.FIGHT:
+				_status_label.text = "Choose a move for %s." % acting_mon.species.species_name
+				_build_fight_menu(field_slot)
 			Menu.SWITCH:
 				_status_label.text = "Choose a Pokémon to switch in."
 				_build_switch_buttons(false, field_slot)
@@ -1545,7 +1574,7 @@ func _refresh_ui() -> void:
 				_build_target_select_buttons(field_slot, _pending_move_index)
 			_:
 				_status_label.text = "Choose an action for %s." % acting_mon.species.species_name
-				_build_main_menu(field_slot)
+				_build_top_menu(field_slot)
 
 
 # [M23.11 Phase 4f] First player field slot with a fainted active mon
@@ -1570,7 +1599,7 @@ func _ensure_slot_tracking_for_new_turn() -> void:
 		_slot_acted = []
 		for i in range(expected_size):
 			_slot_acted.append(false)
-		_menu = Menu.MAIN
+		_menu = Menu.TOP
 		_pending_move_index = -1
 
 
@@ -1632,17 +1661,18 @@ func _on_play_again_pressed() -> void:
 # reads _player_party.get_active_at(field_slot) instead of the singular
 # get_active() accessor, so this works for either of a doubles battle's 2
 # active slots. Singles: field_slot is always 0, byte-identical to before.
-func _build_main_menu(field_slot: int) -> void:
-	var mon: BattlePokemon = _player_party.get_active_at(field_slot)
-	for i in range(mon.moves.size()):
-		var move: MoveData = mon.moves[i]
-		if move == null:
-			continue
-		var btn := Button.new()
-		btn.text = "%s (PP %d/%d)" % [move.move_name, mon.current_pp[i], move.pp]
-		btn.disabled = mon.current_pp[i] <= 0
-		btn.pressed.connect(_on_move_pressed.bind(field_slot, i))
-		_button_area.add_child(btn)
+#
+# [M25b] Real top-level Fight/Item/Switch/Run menu — the 4 real games'
+# own top-level options, replacing the old single screen that showed every
+# move button inline alongside Switch/Item. field_slot is threaded through
+# unchanged into whichever sub-menu gets picked, exactly as it already was.
+func _build_top_menu(field_slot: int) -> void:
+	var fight_btn := Button.new()
+	fight_btn.text = "Fight"
+	fight_btn.pressed.connect(func():
+		_menu = Menu.FIGHT
+		_refresh_ui())
+	_button_area.add_child(fight_btn)
 
 	var switch_btn := Button.new()
 	switch_btn.text = "Switch"
@@ -1658,6 +1688,60 @@ func _build_main_menu(field_slot: int) -> void:
 		_menu = Menu.ITEM
 		_refresh_ui())
 	_button_area.add_child(item_btn)
+
+	# [M25b] Temporary placeholder — NOT real flee logic (success chance,
+	# speed comparison, trainer-battle refusal, etc. are all explicitly out
+	# of scope this session, per this sub-phase's own locked scope note).
+	# Exists because there is currently no way to exit an in-progress
+	# battle at all otherwise. See _on_run_pressed's own doc comment for
+	# exactly what it does.
+	var run_btn := Button.new()
+	run_btn.text = "Run"
+	run_btn.pressed.connect(_on_run_pressed)
+	_button_area.add_child(run_btn)
+
+
+# [M25b] The move list — content unchanged from the old _build_main_menu's
+# own move-button loop, just moved one tier deeper (behind Fight) and given
+# its own "Back" button (returns to TOP), matching every other sub-menu's
+# existing convention (_build_switch_buttons'/_build_item_buttons' own
+# non-forced "Back" branches).
+func _build_fight_menu(field_slot: int) -> void:
+	var mon: BattlePokemon = _player_party.get_active_at(field_slot)
+	for i in range(mon.moves.size()):
+		var move: MoveData = mon.moves[i]
+		if move == null:
+			continue
+		var btn := Button.new()
+		btn.text = "%s (PP %d/%d)" % [move.move_name, mon.current_pp[i], move.pp]
+		btn.disabled = mon.current_pp[i] <= 0
+		btn.pressed.connect(_on_move_pressed.bind(field_slot, i))
+		_button_area.add_child(btn)
+
+	var back_btn := Button.new()
+	back_btn.text = "Back"
+	back_btn.pressed.connect(func():
+		_menu = Menu.TOP
+		_refresh_ui())
+	_button_area.add_child(back_btn)
+
+
+# [M25b] Run placeholder — ends the current battle immediately and returns
+# to the setup/home screen. Mirrors _on_play_again_pressed's own exact
+# shape: a bare scene change is sufficient. BattleSetupContext is already
+# cleared at CONSUMPTION time in _ready() (not at battle-end), so there's
+# nothing stale left for the next launch to see regardless of how this
+# battle ends; the whole current scene tree (BattleManager, timers,
+# hit-effect nodes) is freed automatically by change_scene_to_file(). The
+# one thing a normal battle-end (_on_battle_ended) does that this path
+# wouldn't otherwise reach is _clear_active_hit_effects() — called
+# explicitly here too, so a still-animating hit effect's Tween can't
+# outlive the node it's driving for even one frame during the scene swap
+# (matching the exact leak this project's own M25c session already found
+# and fixed for the normal win/loss path).
+func _on_run_pressed() -> void:
+	_clear_active_hit_effects()
+	get_tree().change_scene_to_file("res://scenes/battle/battle_setup_screen.tscn")
 
 
 # [M23.11 Phase 4f] field_slot is the player's own active slot performing
@@ -1715,7 +1799,7 @@ func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void
 		var back_btn := Button.new()
 		back_btn.text = "Back"
 		back_btn.pressed.connect(func():
-			_menu = Menu.MAIN
+			_menu = Menu.TOP
 			_refresh_ui())
 		_button_area.add_child(back_btn)
 
@@ -1739,7 +1823,7 @@ func _build_item_buttons(field_slot: int) -> void:
 	var back_btn := Button.new()
 	back_btn.text = "Back"
 	back_btn.pressed.connect(func():
-		_menu = Menu.MAIN
+		_menu = Menu.TOP
 		_refresh_ui())
 	_button_area.add_child(back_btn)
 
@@ -1768,10 +1852,13 @@ func _build_target_select_buttons(field_slot: int, move_index: int) -> void:
 	# (_build_switch_buttons'/_build_item_buttons' non-forced branches) —
 	# returns to the move list for this same slot without submitting an
 	# action, so the player can pick a different move instead.
+	# [M25b] Returns to FIGHT specifically (not all the way to TOP) — the
+	# immediate previous step in the now-two-tier menu, so picking a
+	# different move doesn't require re-entering Fight from the top menu.
 	var back_btn := Button.new()
 	back_btn.text = "Back"
 	back_btn.pressed.connect(func():
-		_menu = Menu.MAIN
+		_menu = Menu.FIGHT
 		_pending_move_index = -1
 		_refresh_ui())
 	_button_area.add_child(back_btn)
@@ -1836,7 +1923,7 @@ func _dispatch_move(field_slot: int, move_index: int, target_idx: int) -> void:
 	_bm.queue_move_targeted(combatant_idx, move_index, target_idx)
 	_bm.advance()
 	_slot_acted[field_slot] = true
-	_menu = Menu.MAIN
+	_menu = Menu.TOP
 	_pending_move_index = -1
 	_refresh_ui()
 
@@ -1854,7 +1941,7 @@ func _on_switch_pressed(slot: int, is_forced_replacement: bool, field_slot: int)
 	# this slot's action for the turn.
 	if not is_forced_replacement:
 		_slot_acted[field_slot] = true
-	_menu = Menu.MAIN
+	_menu = Menu.TOP
 	_refresh_ui()
 
 
@@ -1863,5 +1950,5 @@ func _on_item_pressed(item_id: int, field_slot: int) -> void:
 	_bm.queue_item_for(combatant_idx, item_id)
 	_bm.advance()
 	_slot_acted[field_slot] = true
-	_menu = Menu.MAIN
+	_menu = Menu.TOP
 	_refresh_ui()

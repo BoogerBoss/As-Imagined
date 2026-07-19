@@ -26,6 +26,7 @@ script = ExtResource("2_bm")
 
 [node name="OpponentAnimTimer" type="Timer" parent="." unique_id=1013485273]
 wait_time = 0.5
+one_shot = true
 autostart = true
 
 [node name="BattleStage" type="Control" parent="." unique_id=1082976444]
