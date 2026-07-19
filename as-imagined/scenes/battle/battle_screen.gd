@@ -1588,6 +1588,17 @@ func _current_action_field_slot() -> int:
 		if _player_party.get_active_at(slot).fainted:
 			_slot_acted[slot] = true
 			continue
+		# [M25a bugfix] A forced-Struggle slot (every move at 0 PP) is
+		# already auto-resolved by BattleManager itself the moment
+		# MOVE_SELECTION reaches it (is_forced_struggle()) -- it never waits
+		# for a real player decision, matching the real games' own "no menu
+		# shown at all" behavior. Without this check, this slot would still
+		# read as unresolved here (nothing ever sets _slot_acted for it via
+		# a button press) and the Fight menu would render with every move
+		# button disabled and no way to actually act.
+		if _bm.is_forced_struggle(_player_party.get_active_at(slot)):
+			_slot_acted[slot] = true
+			continue
 		return slot
 	return -1
 
@@ -1654,7 +1665,22 @@ func _build_main_menu(field_slot: int) -> void:
 # resolves which slot via _current_switch_prompt_field_slot(), passed in
 # by the caller either way) — needed so _on_switch_pressed can resolve the
 # right combatant_idx for queue_switch_for/queue_replacement_for.
+# [M25a bugfix] Pure/static so its "is there anything to show here" logic
+# is directly unit-testable without a live scene tree (the button-building
+# function itself touches @onready UI nodes and calls _refresh_ui(), which
+# needs a real, running BattleScreen -- matching this project's own
+# established precedent, e.g. _status_icon_row/_next_anim_frame, of pulling
+# the PURE decision logic out into a small static helper rather than
+# leaving it inline where only a real screenshot pass could exercise it).
+static func _party_has_switch_candidate(party: BattleParty) -> bool:
+	for i in range(party.members.size()):
+		if not party.active_indices.has(i) and not party.members[i].fainted:
+			return true
+	return false
+
+
 func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void:
+	var any_candidate := _party_has_switch_candidate(_player_party)
 	for i in range(_player_party.members.size()):
 		if _player_party.active_indices.has(i) or _player_party.members[i].fainted:
 			continue
@@ -1663,6 +1689,27 @@ func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void
 		btn.text = "%s  HP: %d/%d" % [mon.species.species_name, mon.current_hp, mon.max_hp]
 		btn.pressed.connect(_on_switch_pressed.bind(i, is_forced_replacement, field_slot))
 		_button_area.add_child(btn)
+
+	# [M25a bugfix] A forced replacement (SWITCH_PROMPT) with genuinely NO
+	# valid bench candidate (e.g. a doubles battle where the only remaining
+	# live party member is already active in the OTHER field slot) used to
+	# leave this screen with zero buttons -- a real hardlock, since
+	# BattleManager's own _phase_switch_prompt waits indefinitely for
+	# queue_replacement_for() on a human-controlled side, and nothing could
+	# ever call it. BattleManager already handles an explicit "no
+	# replacement" submission correctly (_get_replacement_slot falls
+	# through to BattleParty.get_first_non_fainted_not_active(), which
+	# returns -1 and resolves this slot as "no replacement available" —
+	# the same fallback the AI-driven path already relies on) — this just
+	# needed to actually BE submitted rather than the player being left
+	# with nothing to press. Auto-resolves the same turn a real player
+	# would otherwise be stuck on, instead of requiring a button that
+	# can't exist.
+	if is_forced_replacement and not any_candidate:
+		_bm.queue_replacement_for(field_slot, -1)
+		_bm.advance()
+		_refresh_ui()
+		return
 
 	if not is_forced_replacement:
 		var back_btn := Button.new()

@@ -1254,12 +1254,28 @@ func _phase_move_selection() -> void:
 				# Source: ChooseMoveOrAction_Doubles (battle_ai_main.c L918).
 				var opp_start: int = (1 - side) * _active_per_side
 				var ally_idx: int = side * _active_per_side + (1 - i % _active_per_side)
+				# [M25a bugfix] _chosen_switch_slots[ally_idx] is already set at
+				# this point if the ally (processed earlier this same
+				# MOVE_SELECTION pass, since combatants are iterated in index
+				# order) already chose to switch -- passed through so THIS
+				# combatant's own switch-target search excludes it. Without
+				# this, two combatants of the SAME side could each
+				# independently (and validly, from each one's own
+				# point-in-time view of active_indices, which doesn't reflect
+				# the ally's own not-yet-applied choice) pick the IDENTICAL
+				# bench slot, aliasing both field slots onto one
+				# BattlePokemon once both switches are applied in
+				# ACTION_EXECUTION -- confirmed via a direct stress-test
+				# repro (isolated to the AI/opponent side specifically, since
+				# only SMART-tier's proactive doubles switch check exercises
+				# this path).
 				var action: Dictionary = ai.choose_action_doubles(
 						mon,
 						_combatants[ally_idx],
 						_combatants[opp_start], opp_start,
 						_combatants[opp_start + 1], opp_start + 1,
-						_parties[side], _parties[1 - side], weather)
+						_parties[side], _parties[1 - side], weather,
+						_chosen_switch_slots[ally_idx])
 				if action["type"] == "switch":
 					_chosen_switch_slots[i] = action["slot"]
 					_chosen_moves[i] = null
@@ -1289,7 +1305,7 @@ func _phase_move_selection() -> void:
 					_chosen_moves[i] = mon.moves[idx] if idx < mon.moves.size() else null
 					if action.has("target"):
 						_chosen_targets[i] = action["target"]
-		elif _human_controlled[side]:
+		elif _human_controlled[side] and not _is_forced_struggle(mon):
 			# [M23.0a] Awaiting external input for this combatant — leave
 			# _move_choice_resolved[i] false and skip the rest of this
 			# iteration (the M17f/M12/M15 post-processing below all require a
@@ -1304,6 +1320,21 @@ func _phase_move_selection() -> void:
 			# re-runs from the top, sees _action_queues[i] is no longer
 			# empty, and resolves normally through that branch instead.
 			continue
+		elif _human_controlled[side]:
+			# [M25a bugfix] A forced-Struggle mon (every move at 0 PP, or no
+			# moves at all) has no real choice in the real games at all --
+			# Struggle is auto-selected without even showing the Fight menu.
+			# Before this fix, a human-controlled combatant in this exact
+			# state just stalled here forever: the branch above always won
+			# (human_controlled was true regardless of PP state) and waited
+			# for external input that could never correctly arrive through
+			# the normal queue_move_targeted() path, since Struggle isn't a
+			# member of mon.moves at all -- confirmed via direct code
+			# inspection, a real, reproducible gap (the AI/default-fallback
+			# branches already handle this correctly via the "M15 Task 3"
+			# override further below; only the human-controlled path skipped
+			# it, via the unconditional `continue` immediately above).
+			_chosen_moves[i] = _struggle_move
 		else:
 			_chosen_moves[i] = mon.moves[0] if mon.moves.size() > 0 else null
 		# M17f: Trapping check (Shadow Tag/Arena Trap/Magnet Pull) blocks VOLUNTARY
@@ -7017,6 +7048,38 @@ func _phase_switch_prompt() -> void:
 		if not _switch_prompt_resolved[ci]:
 			return
 	_switch_prompt_active = false
+	# [M25a bugfix] A real, confirmed bug found during a doubles playthrough:
+	# when a mid-turn faint happened (e.g. the first-acting Pokémon's own
+	# move KOs its target), this always jumped straight to
+	# BATTLE_END_CHECK -> (if the battle isn't over) MOVE_SELECTION,
+	# unconditionally starting a NEW turn -- silently dropping every OTHER
+	# not-yet-acted combatant's own already-queued action for the CURRENT
+	# turn (in singles this is invisible, since a faint always coincides
+	# with turn_order being exhausted anyway; doubles is where 2+
+	# combatants can still have pending actions). Confirmed via a direct
+	# reproduction: Fast KOs an opponent (current_actor_index advances to
+	# 1 of 4), the remaining 3 turn_order entries (including the player's
+	# OWN second, still-alive Pokémon) never got to act, and the engine
+	# went straight to a fresh MOVE_SELECTION.
+	#
+	# Fix: if the CURRENT turn still has combatants left in _turn_order AND
+	# neither side has been fully defeated (a whole-side wipe ends the
+	# battle immediately, matching the real games -- remaining queued
+	# actions never get a chance to resolve once there's no opponent left),
+	# resume ACTION_EXECUTION to let them act, exactly like
+	# _phase_faint_check's own "no new faint" branch already does --
+	# mirrors that same `_current_actor_index < _turn_order.size()` check.
+	# When nothing is left (whether because the faint was the LAST
+	# action's own faint, or an end-of-turn-effect-triggered faint after
+	# _phase_end_of_turn already ran), or either side is fully fainted,
+	# this falls through to BATTLE_END_CHECK exactly as before -- a pure
+	# additive change, zero behavior difference for every case that isn't
+	# this specific mid-turn/more-actors-pending/battle-still-ongoing
+	# scenario.
+	var either_side_defeated: bool = _parties[0].is_fully_fainted() or _parties[1].is_fully_fainted()
+	if _current_actor_index < _turn_order.size() and not either_side_defeated:
+		_set_phase(BattlePhase.ACTION_EXECUTION)
+		return
 	_set_phase(BattlePhase.BATTLE_END_CHECK)
 
 
@@ -8411,18 +8474,73 @@ func _do_switch_in(combatant_idx: int, slot: int) -> void:
 #   both work correctly (in singles, side == combatant_idx).
 func _get_replacement_slot(combatant_idx: int) -> int:
 	var side: int = combatant_idx / _active_per_side
+	var party: BattleParty = _parties[side]
+
+	# [M25a bugfix, part 2] A doubles sibling combatant may already have a
+	# VOLUNTARY switch decided this same turn (MOVE_SELECTION's own
+	# _chosen_switch_slots[i] = action["slot"]) that hasn't been APPLIED
+	# yet -- _do_voluntary_switch only runs later, during that sibling's
+	# own ACTION_EXECUTION turn slot, in speed order. If THIS combatant
+	# faints and needs a SWITCH_PROMPT replacement before the sibling's own
+	# turn comes up, `active_indices` still shows the pre-switch state, so
+	# the part-1 guard above can't see the collision. Rare (needs both a
+	# same-turn voluntary switch AND a same-turn faint on the sibling slot,
+	# racing against turn order) but confirmed via the same stress-test
+	# repro (1/60 random doubles battles after part 1's fix). Excluding the
+	# sibling's own pending slot here closes it regardless of which of the
+	# two resolves first.
+	var sibling_pending_slot: int = -1
+	if _active_per_side == 2:
+		var sibling_idx: int = side * _active_per_side + (1 - combatant_idx % _active_per_side)
+		sibling_pending_slot = _chosen_switch_slots[sibling_idx]
+
 	if not _replacement_queues[combatant_idx].is_empty():
 		var slot: int = _replacement_queues[combatant_idx].pop_front()
-		var party: BattleParty = _parties[side]
-		if slot >= 0 and slot < party.members.size() and not party.members[slot].fainted:
+		# [M25a bugfix] Missing the `active_indices` guard below was a real,
+		# confirmed bug: in doubles, when BOTH of one side's active slots
+		# faint the same turn (e.g. a spread move double-KO),
+		# _phase_switch_prompt resolves each fainted combatant_idx
+		# sequentially within one pass, calling this function once per
+		# fainted slot. Without checking `active_indices`, a caller (a
+		# human player's own switch-in pick, via queue_replacement_for)
+		# could supply the SAME bench slot for BOTH fainted combatant_idx
+		# values, and this function would happily hand back that same slot
+		# twice -- both field slots' active_indices then point at the
+		# identical BattleParty member/BattlePokemon instance, a real
+		# shared-state aliasing bug (confirmed via a direct stress-test
+		# repro: 21/60 random doubles battles produced this exact
+		# aliasing, several of which then hard-locked in a later
+		# SWITCH_PROMPT/FAINT_CHECK cycle once the aliased mon's fainted
+		# state became internally contradictory). `_get_baton_pass_slot`
+		# (immediately below) already carries this identical
+		# `not party.active_indices.has(slot)` check -- this was a genuine
+		# inconsistency between two structurally-parallel slot-resolution
+		# functions, not an intentional difference.
+		if slot >= 0 and slot < party.members.size() \
+				and not party.active_indices.has(slot) \
+				and slot != sibling_pending_slot \
+				and not party.members[slot].fainted:
 			return slot
 	# M10: AI chooses the best matchup replacement.
 	# Source: Ai_InitPartyStruct + GetSwitchinCandidate SWITCHIN_CONSIDER_MOST_SUITABLE
 	#   (battle_ai_switch.c L55+). AI has the opponent's data to make this choice.
 	if _trainer_ais[side] != null:
 		var opponent: BattlePokemon = _get_first_opponent(_combatants[combatant_idx])
-		return _trainer_ais[side].choose_replacement(_parties[side], opponent)
-	return _parties[side].get_first_non_fainted_not_active()
+		var ai_slot: int = _trainer_ais[side].choose_replacement(party, opponent)
+		if ai_slot >= 0 and ai_slot != sibling_pending_slot:
+			return ai_slot
+	return _first_replacement_excluding(party, sibling_pending_slot)
+
+
+# [M25a bugfix, part 2] Same shape as BattleParty.get_first_non_fainted_not_active(),
+# with one additional exclusion for a doubles sibling's own not-yet-applied
+# pending switch slot -- see _get_replacement_slot's own doc comment.
+func _first_replacement_excluding(party: BattleParty, extra_excluded_slot: int) -> int:
+	for i in range(party.members.size()):
+		if party.active_indices.has(i) or party.members[i].fainted or i == extra_excluded_slot:
+			continue
+		return i
+	return -1
 
 
 # M9/M14a: determine Baton Pass incoming slot from queue or auto-select first valid.
@@ -9374,6 +9492,16 @@ func _is_forced_struggle(mon: BattlePokemon) -> bool:
 		if mon.current_pp[_pi] > 0:
 			return false
 	return true
+
+
+# [M25a] Public wrapper around _is_forced_struggle -- battle_screen.gd's own
+# move-selection UI needs this same check (to recognize a field slot
+# BattleManager already auto-resolved to Struggle, rather than still
+# waiting on a real player decision for it) without reaching into a
+# private method, matching this project's own convention of keeping
+# battle_screen.gd strictly on BattleManager's public API surface.
+func is_forced_struggle(mon: BattlePokemon) -> bool:
+	return _is_forced_struggle(mon)
 
 
 # Apply a pre-calculated damage amount to defender, routing through substitute if active.

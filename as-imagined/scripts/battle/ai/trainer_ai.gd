@@ -154,12 +154,17 @@ func choose_action_doubles(
 		opp1: BattlePokemon, opp1_idx: int,
 		my_party: BattleParty,
 		_opp_party: BattleParty,
-		weather: int = DamageCalculator.WEATHER_NONE) -> Dictionary:
+		weather: int = DamageCalculator.WEATHER_NONE,
+		ally_chosen_switch_slot: int = -1) -> Dictionary:
 	# SMART tier: proactive switch vs first live opponent (same logic as singles).
 	if tier == Tier.SMART:
 		var first_opp: BattlePokemon = opp0 if (opp0 != null and not opp0.fainted) else opp1
 		if first_opp != null and not first_opp.fainted:
-			var switch_slot: int = _should_switch(attacker, first_opp, my_party, weather)
+			# [M25a bugfix] ally_chosen_switch_slot -- see battle_manager.gd's
+			# own call-site comment for the full aliasing mechanism this
+			# guards against.
+			var switch_slot: int = _should_switch(
+					attacker, first_opp, my_party, weather, ally_chosen_switch_slot)
 			if switch_slot >= 0:
 				return {"type": "switch", "slot": switch_slot}
 
@@ -604,14 +609,15 @@ func _score_move_doubles(attacker: BattlePokemon, defender: BattlePokemon,
 #     ≥ 50% HP, switch out. Switch chance = 50% (SHOULD_SWITCH_HASBADODDS = 50).
 
 func _should_switch(attacker: BattlePokemon, defender: BattlePokemon,
-		my_party: BattleParty, weather: int = DamageCalculator.WEATHER_NONE) -> int:
+		my_party: BattleParty, weather: int = DamageCalculator.WEATHER_NONE,
+		excluded_slot: int = -1) -> int:
 	if not my_party.has_valid_switch_target():
 		return -1  # no candidates: must stay
 
 	# ShouldSwitchIfAllMovesBad — 100% chance when all moves immune.
 	# Source: battle_ai_switch.c L484-538. SHOULD_SWITCH_ALL_MOVES_BAD_PERCENTAGE=100.
 	if _all_damaging_moves_immune(attacker, defender):
-		return _best_switch_target(my_party, defender)
+		return _best_switch_target(my_party, defender, excluded_slot)
 
 	# ShouldSwitchIfHasBadOdds — 50% chance.
 	# Source: battle_ai_switch.c L367-419. SHOULD_SWITCH_HASBADODDS_PERCENTAGE=50.
@@ -620,7 +626,7 @@ func _should_switch(attacker: BattlePokemon, defender: BattlePokemon,
 		if not _has_super_effective_move(attacker, defender):
 			if attacker.current_hp >= attacker.max_hp / 2:
 				if _roll_switch_decision(50):
-					return _best_switch_target(my_party, defender)
+					return _best_switch_target(my_party, defender, excluded_slot)
 
 	# M13: ShouldSwitchIfBadChoiceLock — 100% deterministic, no RNG seam needed.
 	# Source: battle_ai_switch.c L1170-1213 (singles branch L1206-1209).
@@ -634,7 +640,7 @@ func _should_switch(attacker: BattlePokemon, defender: BattlePokemon,
 		var is_immune: bool = (TypeChart.get_effectiveness(
 				locked.type, defender.species.types) == 0.0)
 		if is_status or is_immune:
-			return _best_switch_target(my_party, defender)
+			return _best_switch_target(my_party, defender, excluded_slot)
 
 	return -1
 
@@ -675,7 +681,8 @@ func _can_defender_ko_attacker(attacker: BattlePokemon,
 	return false
 
 
-func _best_switch_target(my_party: BattleParty, opponent: BattlePokemon) -> int:
+func _best_switch_target(my_party: BattleParty, opponent: BattlePokemon,
+		excluded_slot: int = -1) -> int:
 	# Source: GetSwitchinCandidate (battle_ai_switch.c L2004). Real source picks by
 	#   priority tier (not type effectiveness). Simplification: pick by highest type
 	#   effectiveness. Kept as-is — see decisions.md F15/F32 entry.
@@ -684,6 +691,13 @@ func _best_switch_target(my_party: BattleParty, opponent: BattlePokemon) -> int:
 	for i in range(my_party.members.size()):
 		# [M21] Same bug fix as choose_replacement above — was slot-0-only.
 		if my_party.active_indices.has(i):
+			continue
+		# [M25a bugfix] excluded_slot -- a doubles ally's own already-chosen
+		# (but not-yet-applied) switch target this same turn, passed through
+		# from choose_action_doubles. See battle_manager.gd's own call-site
+		# comment for why active_indices alone isn't enough to prevent two
+		# allies from picking the identical bench slot.
+		if i == excluded_slot:
 			continue
 		var mon: BattlePokemon = my_party.members[i]
 		if mon.fainted:
@@ -701,7 +715,19 @@ func _best_switch_target(my_party: BattleParty, opponent: BattlePokemon) -> int:
 
 	if best_slot >= 0:
 		return best_slot
-	return my_party.get_first_non_fainted_not_active()
+	# [M25a bugfix] my_party.get_first_non_fainted_not_active() has no
+	# excluded_slot parameter -- calling it here as a bare fallback was the
+	# actual remaining bug: when excluded_slot was the ONLY live,
+	# non-active candidate (so the scored loop above excludes it and never
+	# sets best_slot), this fallback picked it right back up anyway, since
+	# it only checks active_indices, not excluded_slot. Confirmed via a
+	# direct trace this was the exact final mechanism behind the residual
+	# ~1.7% collision rate the earlier two M25a fixes didn't close.
+	for i in range(my_party.members.size()):
+		if my_party.active_indices.has(i) or my_party.members[i].fainted or i == excluded_slot:
+			continue
+		return i
+	return -1
 
 
 # ── AI_CompareDamagingMoves (battle_ai_main.c L3940) — bounded port ───────────

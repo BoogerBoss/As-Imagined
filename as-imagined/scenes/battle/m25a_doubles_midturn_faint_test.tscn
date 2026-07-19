@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/battle/m25a_doubles_midturn_faint_test.gd" id="1"]
+
+[node name="M25aDoublesMidturnFaintTest" type="Node"]
+script = ExtResource("1")
