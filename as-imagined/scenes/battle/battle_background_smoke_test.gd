@@ -67,8 +67,17 @@ func _test_directory_scan() -> void:
 					res != null and res is Texture2D)
 			if res is Texture2D:
 				var size: Vector2 = (res as Texture2D).get_size()
-				_chk("%s: %s is 240x160 (one full GBA screen, per the locked crop)" % [BACKGROUND_DIR, filename],
-						size.x == 240 and size.y == 160)
+				# [M25e] Mixed dimensions, by design — 9 of 11 ids were replaced
+				# this session with a direct CFRU PNG pull (each cropped to its
+				# own real-content region, uniformly 256×112 across every CFRU
+				# source file, confirmed via direct pixel inspection before
+				# cropping); "sky" and "underwater" have no reasonable CFRU
+				# match and were deliberately left at Phase 5a's own original
+				# 240×160 reconstruction rather than force a bad substitute.
+				var is_240x160 := size.x == 240 and size.y == 160
+				var is_256x112 := size.x == 256 and size.y == 112
+				_chk("%s: %s is either 240x160 (unreplaced Phase 5a reconstruction) or 256x112 (M25e's CFRU pull, cropped to its real-content region)" % [BACKGROUND_DIR, filename],
+						is_240x160 or is_256x112)
 		filename = dir.get_next()
 	dir.list_dir_end()
 

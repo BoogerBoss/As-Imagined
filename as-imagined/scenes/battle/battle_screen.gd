@@ -1405,8 +1405,7 @@ static func _status_icon_row(status: int) -> int:
 # assigned here instead. "building" is the documented default for an
 # unset/unresolvable id: it's the same background real source's own
 # LoadBattleEnvironmentGfx() falls back to (BATTLE_ENVIRONMENT_PLAIN,
-# which itself shares BUILDING's tiles — see gen_battle_backgrounds.py's
-# own doc comment), and it's also BattleBackgroundRegistry's own
+# which itself shares BUILDING's tiles), and it's also BattleBackgroundRegistry's own
 # alphabetically-first id, matching the manual picker's own default
 # selection in battle_setup_screen.gd — so a direct/--autoplay launch of
 # this scene (no picker ever run) renders the identical background a

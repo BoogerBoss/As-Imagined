@@ -6,10 +6,12 @@ extends RefCounted
 # (see trainer_pic_registry.gd's doc comment): rather than a numeric-ID
 # path template, this scans res://assets/sprites/battle_backgrounds/ once
 # and caches path-by-id, where id is each file's own name stem (e.g.
-# "rock", "tall_grass") — matching gen_battle_backgrounds.py's own output
-# naming (no numeric battle-environment-ID concept exists anywhere else in
-# this project yet, so a name-keyed lookup is the honest shape rather than
-# inventing one).
+# "rock", "tall_grass") — this naming was originally established by Phase
+# 5a's own gen_battle_backgrounds.py (since deleted, M25e — see this file's
+# own asset-directory doc history in CLAUDE.md) and preserved unchanged
+# when M25e replaced 9 of the 11 PNGs with a direct CFRU pull (no numeric
+# battle-environment-ID concept exists anywhere else in this project yet,
+# so a name-keyed lookup is the honest shape rather than inventing one).
 #
 # Returns null for an unresolvable id (matching every other Registry's own
 # "return null, let the caller decide" convention in this project).
