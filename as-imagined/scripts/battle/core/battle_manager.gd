@@ -1271,8 +1271,16 @@ func _phase_move_selection() -> void:
 			else:
 				# Singles: original path, unchanged.
 				var opponent: BattlePokemon = _get_first_opponent(mon)
+				# [M24c] _pending_initial_switch_in is still true at this point
+				# in the phase order (MOVE_SELECTION runs before PRIORITY_
+				# RESOLUTION, which is where it gets consumed/cleared — see its
+				# own doc comment) — reused directly as "is this the battle's
+				# very first turn" for AI_FLAG_FORCE_SETUP_FIRST_TURN, matching
+				# source's own `gBattleResults.battleTurnCounter != 0` check,
+				# rather than adding a second, redundant turn-counter field.
 				var action: Dictionary = ai.choose_action(
-						mon, opponent, _parties[side], _parties[1 - side], weather)
+						mon, opponent, _parties[side], _parties[1 - side], weather,
+						_pending_initial_switch_in)
 				if action["type"] == "switch":
 					_chosen_switch_slots[i] = action["slot"]
 					_chosen_moves[i] = null

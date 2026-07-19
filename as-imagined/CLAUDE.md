@@ -907,7 +907,7 @@ high-level companion to that section, not a replacement for it.
 | M21 | *Retired as a standalone milestone slot — folded into M23 (see renumbering history below).* The doubles-interaction-cleanup work this number used to refer to is unaffected and remains fully complete — see "Current status" below's existing M21 entries (2026-07-15 bundle-safe group, 2026-07-16 closeout); this row exists only so the retired number isn't mistaken for missing/abandoned work | ✅ Underlying work complete; number retired |
 | M22 | Battle item actions (turn-queue) | ✅ Done — no consuming UI |
 | M23 | Simulator layer (Showdown-style standalone battle mode) | 🔶 In progress via M23.11 sub-arc |
-| M24 | Trainer data (all Emerald trainers, AI tiers, rematches) | ⬜ Not started |
+| M24 | Trainer data (all Emerald trainers, AI tiers, rematches) | 🔶 M24a/b/c done (data pipeline, money/held-items/battle-use items, narrow 6-combo AI tier); Trainer Pools/full AI-flag engine/facility trainers/rematch progression deferred to M34 per `docs/m24_recon.md` §6 |
 | M25 | Battle UI mastery & battle game modes | ⬜ Not started (scope not yet locked — confirm before treating as final) |
 | M26 | **Full RPG rescope** — UI & overworld: shops, bag/inventory, item-use, plus the overworld scene, map system, player movement, NPC/trigger logic, and encounter-triggering infra. This is the milestone where the project expands from battle-simulator-only into the full RPG game loop | ⬜ Not started |
 | M27 | Evolution (post-battle checks, trade/item/happiness conditions) | ⬜ Not started |
@@ -930,6 +930,15 @@ deferred to M25 per `docs/m18_item_ledger.md`) — no action needed. The 5th,
 should have qualified under the item ledger's own Rule 1 ("all held items
 through Gen IV included") but was never added and was never excluded
 anywhere either. Backlog item for a future item-tier session.
+
+**M24 note (doubles-mode AI gap, found M24c):** M24c wired the new
+`ai_flags` bitmask (RISKY/FORCE_SETUP_FIRST_TURN/narrow-combo gating) into
+`TrainerAI`'s singles path (`_score_move`/`choose_action`) only. The
+parallel doubles path (`_score_move_doubles`/`choose_action_doubles`) is
+unaffected and still behaves as unconditional BASIC-tier regardless of a
+trainer's real `ai_flags`. This is disclosed, not an oversight — affects
+77/854 real trainers flagged `Double Battle: Yes`. Needs porting the same
+gating logic into the doubles scoring path in a future session.
 
 **Renumbering history** (kept inline so future sessions don't cross-reference
 stale numbers or wonder why M21/M22/M26 read differently than a flat
@@ -1160,6 +1169,96 @@ This project's `BattleManager._phase_move_execution` runs every foe-targeting mo
 A recurring gap shape across this whole M19/M21.5 arc: a `MoveData` field already exists in the schema and already has real ability/item logic reading it, but was never actually SET on every move that should carry it per source — only on the specific moves a session happened to be thinking about at the time. Confirmed instances: Ice Ball's `ballistic_move` (flagged in a comment since `[M16b]` but never actually set on the data dict until `[M17n-1]`), Air Balloon/Iron Ball's groundedness (`[M18t]`), Mega Punch/Headlong Rush's `punching_move` and Aerial Ace's `slicing_move` (M21.5 Session 3's Part 4 Punch-family check), and 69 more moves across 10 flag categories found by M21.5's own Bucket 1 full-roster sweep.
 
 **Before building any new ability/item mechanic that reads an existing-but-previously-unconsumed `MoveData` field**: grep the full roster (`gen_moves.py`, or the reference `moves_info.h` struct field directly) for every move that should carry the flag per source — not just the specific named moves already in mind for that session. A session scoped to "does move X need this flag" will reliably miss sibling moves Y and Z that need the identical flag for the identical reason.
+
+### M23.11 phase table (persisted here — full narrative detail lives in `docs/m23_recon.md`, not duplicated)
+
+M23.11 is the "pull reference-material art assets into the project" sub-arc
+of M23 (Simulator layer). Full session-by-session detail (Step 0 findings,
+screenshot verification, regression-sweep numbers) for every phase below
+lives in `docs/m23_recon.md`'s own `## M23.11` section — this table plus
+the bullets right below it are the CLAUDE.md-level summary every other
+milestone in this file already gets; they were simply never written for
+M23.11 until this pass (found via a Phase 5 roadmap-consistency check).
+Phase numbering has a genuine, pre-existing gap (2 → 4a) — not a mistake
+introduced here, confirmed via direct search of `docs/m23_recon.md` itself
+(no "Phase 3" was ever defined).
+
+| Phase | Description | Status |
+|---|---|---|
+| *(sprite pull)* | Pokémon front/back/icon sprite pull (386 species × 3 kinds) | ✅ Done |
+| 1 | Battle HUD chrome, type badges, message-box window tiles | ✅ Done |
+| 2 | Item icon sprites, keyed to `ItemData.item_id` | ✅ Done |
+| 4a | Battle screen visual layer (sprites + HP bars), MVP + GBA-style transparency follow-up | ✅ Done |
+| 4b | HUD authenticity — real health-box art + status icons | ✅ Done |
+| 4c | Idle animation — 2-frame idle-bob | ✅ Done |
+| 4d | Doubles visual layer (2 sprites/health-boxes per side) | ✅ Done (after an initial stop-and-confirm-with-Rob pass found a real blocker) |
+| 4e | Flaky-test fix + Doubles toggle re-enable, then message-box authenticity via Dialogue Manager | ✅ Done |
+| 4f | 4-combatant menu/targeting layer for doubles | ✅ Done |
+| 5 | Battle environments (backgrounds) + move animations | ⬜ Recon complete (`docs/m23_11_phase5_recon.md`), not started |
+
+- M23.11 sprite pull + Phases 1-2 (Pokémon front/back/icon sprites, battle
+  HUD chrome/type badges/message-box tiles, item icons): **COMPLETE** —
+  2026-07-17. The foundational asset-staging work underlying every later
+  Phase 4x visual session — pulls real art out of the gitignored
+  `reference/pokeemerald_expansion/` clone into a project-owned, git-tracked
+  `assets/` directory via `gen_pokemon_sprites.py`/direct filtered copies,
+  keyed by dex number (sprites) and `ItemData.item_id` (items). GBA-style
+  (not modern-style) sprite art confirmed as the correct transparent
+  variant, `GBA_FILENAME_OVERRIDES` handles Unown/Castform's real
+  exceptions. See `docs/m23_recon.md`'s own dedicated entries for full
+  per-phase Step 0 citations, asset-mapping methodology, and sweep numbers.
+- M23.11 Phase 4a (+follow-up)/4b/4c — battle screen visual layer, HUD
+  authenticity, idle-bob animation: **COMPLETE** — 2026-07-17. The first
+  three sessions that make `battle_screen.gd` visually look like a real
+  battle rather than a text log: Pokémon front/back sprites + HP bars
+  (4a, additive alongside the pre-existing text UI), real health-box art +
+  status condition icons replacing the placeholder `ProgressBar` (4b), and
+  a genuine 2-frame idle-bob loop on the opponent's front sprite only (4c,
+  confirmed via real wall-clock `Timer` verification, not a mocked clock).
+  Each phase's own mandated real (non-headless) screenshot check caught a
+  genuine bug before ship — most notably 4a's own modern-style-sprites-have-
+  no-alpha-transparency gap, fixed same-day by switching the whole pull to
+  GBA-style art. Regression sweeps clean throughout (149 files/20,090 by
+  the end of Phase 4c). See `docs/m23_recon.md` for full detail.
+- M23.11 Phase 4d/4e/4f — doubles visual layer, message-box authenticity,
+  4-combatant targeting: **COMPLETE** — 2026-07-17/18. A genuinely
+  non-linear sequence, not built in numeric order: Phase 4d's own first
+  attempt deliberately STOPPED before writing any UI code once a real
+  blocker was found (the interaction/targeting layer doubles would need
+  didn't exist yet) and got explicit confirmation from Rob before
+  proceeding — that blocker became Phase 4f (4-combatant menu/targeting
+  layer, implemented first, closing the interaction gap and making doubles
+  genuinely playable through real buttons) — only then did Phase 4d return
+  to build the actual visual layer (2 sprite/health-box groups per side,
+  corner-band layout guaranteed not to overlap the centered log/menu
+  column). Phase 4e closed out the arc in two parts: first a flaky-test
+  root-cause fix (`d4_bundle5_test.tscn`'s own charge-signal-ordering bug,
+  fixed via a new dedicated `charge_cleared` signal — see `[D4 bundle
+  5]`-adjacent testing-convention entries) plus re-enabling the
+  Singles/Doubles toggle in `battle_setup_screen.gd` now that both
+  blockers were closed; then, in a follow-up session, real message-box
+  authenticity via the Dialogue Manager plugin (`LogLabel` retyped from
+  plain `RichTextLabel` to Dialogue Manager's own `DialogueLabel` class,
+  styled with the real `text_window` art — a genuine use of a real
+  plugin-provided component, not just an enabled-and-unused dependency;
+  every existing `.text +=` log-append call site left completely
+  untouched) plus a rollover fix for `m19_rampage_test.gd`'s own
+  unpinned-nature/IV fixture gap (at least 43 more files confirmed to
+  share the identical gap shape, flagged not fixed, per that session's own
+  explicit scope). A real bug was caught by the mandated screenshot check,
+  not by any automated test: the message box initially rendered as
+  white-on-white illegible text, fixed with an explicit dark
+  `default_color` theme override. Final regression baseline at the end of
+  this whole sub-arc: **152 files / GRAND TOTAL 20,198**, confirmed
+  byte-identical across repeated sweeps — this is the exact baseline
+  M24a's own "before" sweep was taken against. See `docs/m23_recon.md`'s
+  own Phase 4d/4f/4e entries (including the retroactively-backfilled 4f
+  scoping entry) for full detail. **M23.11 Phase 5 (environments + move
+  animations) is scoped (`docs/m23_11_phase5_recon.md`) but not started.**
+
+- M24a (Trainer Data Pipeline — converter + resources + registry): **COMPLETE** — 2026-07-18. Pure data-pipeline milestone, no AI/money/held-item wiring yet (that came in M24b/c). `scripts/gen_trainer_data.py` parses `trainers.party` (a Showdown-export-style text format) and `gTrainerClasses[]` directly from `reference/pokeemerald_expansion` source, emitting **854 real `TrainerData` .tres files** (`TRAINER_NONE`'s blank sentinel entry excluded), **117 `TrainerClassData`** (matching `TRAINER_CLASS_COUNT`), and **93 `TrainerPicData`** (a deliberately separate id space from trainer identity — confirmed 854 trainers share only 93 distinct portrait values). New `TrainerRegistry`/`TrainerPicRegistry`/`TrainerClassRegistry` mirror `MoveRegistry`/`ItemRegistry`'s existing path-convention-loader precedent exactly. Species/move/ability name resolution came back 100% clean against this project's own already-implemented rosters; only 5 held/battle-item names failed to resolve (see M24b below). New `trainer_data_smoke_test.gd`/`.tscn`: 2915/2915. A same-day M23.11 Phase 3 follow-up pulled the real 93 trainer-portrait PNGs (`gen_trainer_portraits.py`, keyed to `TrainerPicRegistry`) using the same flat-copy convention as every other sprite phase — confirmed via direct source read that the reference engine's "Mugshot" battle-transition effect reuses each trainer's own front-pic sprite rather than a separate dedicated asset, so this was the only portrait asset type needed.
+- M24b (Money, Held Items & Battle-Use Items + Smoke Ball rollover): **COMPLETE** — 2026-07-18. Wires `GetTrainerMoneyToGive`'s formula (singles/doubles/two-opponents branches, confirmed mutually exclusive per source's own if/elif/else, not stackable) into a real `battle_ended`-driven payout, gated on a new `set_trainer_data(side, data)` attachment API. Amulet Coin (confirmed totally unimplemented beforehand) added with a 4-switch-in-site one-shot latch mirroring source's own `moneyMultiplierItem` flag. **Corrected a real mis-citation found this session**: the formula's second multiplier-doubler is Happy Hour (unimplemented, moot), NOT Pay Day as `docs/m24_recon.md` originally stated — Pay Day's own `gPaydayMoney` is a wholly separate, non-multiplier bonus mechanic. Built the missing `TrainerPartyMon → BattlePokemon` construction path that M24a itself stopped short of (`PokemonRegistry.get_species_resource()`, the first real production JSON→`PokemonSpecies` converter, plus `BattlePokemon.from_trainer_mon()`) — held-item mechanics themselves needed zero changes, confirmed clean reuse. Battle-use items (`TrainerData.battle_items`) wired into a new, deliberately narrow `TrainerAI.should_use_item()` heuristic (source's own `AI_ShouldHeal` first-order `hp < maxHP/4` threshold, without its deeper damage-prediction layer) — found that **Roxanne is the only one of 854 real trainers whose battle-items resolve to anything real** (2× Potion; everyone else uses still-excluded Full Restore/Hyper Potion/Super Potion). **Rollover**: added Smoke Ball (confirmed via direct source read to be a wild-battle-only "guaranteed Run success" item with NO connection to trapping — this project has no wild-battle flee mechanic at all, so it ships data-only, no dispatch, matching Run Away's own precedent) — closes the one genuine unflagged gap from the post-M24a item-roster verification. New `m24b_test.gd`/`.tscn`: 61/61. Caught and fixed a real regression in `item_sprite_smoke_test.gd` (the 2 new items needed icon art too — re-ran the existing self-updating `gen_item_sprites.py`, 645→651). Final sweep: 155 files / 23,282.
+- M24c (AI-Tier Extension — narrow, covering the 6 real trainer AI-flag combinations): **COMPLETE** — 2026-07-18. Re-derived all 6 real `AI:` combinations directly from `trainers.party` (not trusted from M24a's own prior grep): **"Check Bad Move" alone is 640/854 trainers (75%) — the single most common configuration in the whole roster**, and one the old pure `BASIC`/`SMART` `enum Tier` model couldn't represent at all. Added an orthogonal `ai_flags: int` bitmask (default = `AI_FLAG_BASIC_TRAINER`, so every pre-existing test stays byte-for-byte unaffected) gating `TrainerAI`'s 3 already-cleanly-separated scoring passes independently; `TrainerData.ai_flags → TrainerAI.ai_flags` turned out to be a pure identity copy, both encodings already sharing the same real bit positions since M24a. Shipped a deliberately narrow slice of the 2 modifier flags (RISKY's damage-roll-assumption + crit/explosion scoring bonus; FORCE_SETUP_FIRST_TURN's self-buff-move bonus on turn 1 only, reusing the existing `_pending_initial_switch_in` flag rather than a new counter) — source's own full scope for each (~15-25 move-effect-specific cases apiece) explicitly NOT ported, flagged for a future session. **Known, disclosed gap**: the doubles scoring path (`_score_move_doubles`/`choose_action_doubles`) was left untouched, still unconditionally BASIC-shaped — affects 77/854 real doubles-format trainers. `from_trainer_data()` has no live caller yet (M26 encounter code doesn't exist), matching M24a's own "data ahead of consumer" precedent. New `m24c_test.gd`/`.tscn`: 28/28. Final sweep: 156 files / 23,310.
 
 ## Post-M18 Review — flagged-but-unfixed items queued for disposition
 

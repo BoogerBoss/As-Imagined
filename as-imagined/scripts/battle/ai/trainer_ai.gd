@@ -22,14 +22,51 @@ extends RefCounted
 #   Items compose through DamageCalculator automatically — no scoring changes needed.
 #   Berry-triggered awareness: confirmed absent from source (docs/decisions.md).
 #
-# Explicitly deferred (not implemented, documented in docs/decisions.md):
-#   - Partner coordination (AI_DoubleBattle's partnerMove checks): confirmed-partial;
-#     source has it but it is out of scope for M14c's three targeted decisions.
-#   - AI_AttacksPartner: confirmed absent for trainer AI (only wild natural enemies).
-#   - AI_FLAG_PREDICT_SWITCH, AI_FLAG_OMNISCIENT, and other advanced flags:
-#     scope beyond basic + smart tier.
+# [M24c] `tier`/`Tier` above controls ONLY the proactive-switch axis (SMART vs
+# BASIC) — a completely orthogonal, second axis, `ai_flags` (below), now
+# controls exactly which of the 3 BASIC-tier scoring passes actually run, plus
+# 2 optional modifiers. This is needed because real trainer data (854 real
+# trainers, `docs/m24_recon.md` §2) uses 6 distinct AI-flag combinations, and
+# NONE of them use SMART_SWITCHING at all — but 2 of the 6 are narrower than
+# "Basic Trainer" (missing TRY_TO_FAINT and/or CHECK_VIABILITY), which the
+# old pure `enum Tier{BASIC,SMART}` model had no way to represent at all
+# (BASIC always meant "all 3 passes on"). `tier` stays exactly as it was for
+# backward compatibility — every pre-existing test that only ever sets
+# `.tier` is completely unaffected, since `ai_flags` defaults to
+# AI_FLAG_BASIC_TRAINER (below), matching BASIC's own pre-existing behavior
+# exactly.
+#
+# Step 0 (re-derived fresh from trainers.party + include/constants/
+# battle_ai.h, not assumed from M24a's own prior grep): the 6 real
+# combinations and their trainer counts out of 854 —
+#   173 Basic Trainer                                            = 7  (CHECK_BAD_MOVE|TRY_TO_FAINT|CHECK_VIABILITY)
+#     1 Basic Trainer / Force Setup First Turn                    = 15 (7|8)
+#     5 Basic Trainer / Risky                                     = 23 (7|16)
+#   640 Check Bad Move                                             = 1  (CHECK_BAD_MOVE only)
+#     7 Check Bad Move / Try To Faint                              = 3  (1|2)
+#    13 Check Bad Move / Try To Faint / Force Setup First Turn     = 11 (1|2|8)
+# "Check Bad Move" ALONE is the single most common configuration in the
+# entire roster (640/854, 75%) — a real, load-bearing gap in the old
+# BASIC-only model, not a rare edge case.
 
 enum Tier { BASIC, SMART }
+
+# [M24c] AI-flag bit values — MUST match scripts/gen_trainer_data.py's own
+# AI_TOKEN_MAP exactly (same cross-language-duplication precedent already
+# established for ItemManager.HOLD_EFFECT_*/gen_items.py's own HOLD_EFFECT_*
+# constants — no shared source between the Python build-time script and this
+# GDScript runtime file is possible). Both were independently derived from
+# the identical real bit POSITIONS in include/constants/battle_ai.h
+# (AI_FLAG(0)=CHECK_BAD_MOVE ... AI_FLAG(4)=RISKY), so TrainerData.ai_flags
+# (parsed by gen_trainer_data.py) and TrainerAI.ai_flags (this file) use the
+# EXACT SAME numeric encoding — see from_trainer_data() below, a plain
+# identity copy, not a translation.
+const AI_FLAG_CHECK_BAD_MOVE: int         = 1   # bit 0
+const AI_FLAG_TRY_TO_FAINT: int           = 2   # bit 1
+const AI_FLAG_CHECK_VIABILITY: int        = 4   # bit 2
+const AI_FLAG_FORCE_SETUP_FIRST_TURN: int = 8   # bit 3
+const AI_FLAG_RISKY: int                  = 16  # bit 4
+const AI_FLAG_BASIC_TRAINER: int = AI_FLAG_CHECK_BAD_MOVE | AI_FLAG_TRY_TO_FAINT | AI_FLAG_CHECK_VIABILITY  # = 7
 
 # Score constants — source: include/battle_ai_main.h L21-41
 const AI_SCORE_DEFAULT: int  = 100  # constants/battle_ai.h L57
@@ -42,6 +79,25 @@ const GOOD_EFFECT: int       = 3    # good bonus
 const BEST_EFFECT: int       = 4    # large bonus
 
 var tier: Tier = Tier.BASIC
+
+# [M24c] Defaults to AI_FLAG_BASIC_TRAINER — the exact set BASIC tier already
+# implied before this session, so every pre-existing test/call site that
+# never touches this field keeps its old behavior byte-for-byte.
+var ai_flags: int = AI_FLAG_BASIC_TRAINER
+
+
+# [M24c] Data → config factory — mirrors M24a's own "build the registry/data
+# plumbing ahead of its real consumer" precedent. NO live caller wires this
+# into an actual trainer battle yet: M26 (the overworld/encounter system
+# that would call set_trainer_ai() for a real trainer fight) doesn't exist
+# yet, confirmed via grep — this is data-ready infrastructure for that
+# future consumer, exactly like TrainerRegistry/TrainerPicRegistry were for
+# M24a's own portrait/data lookups before Phase 3 built a real consumer for
+# one of them.
+static func from_trainer_data(data: TrainerData) -> TrainerAI:
+	var ai := TrainerAI.new()
+	ai.ai_flags = data.ai_flags
+	return ai
 
 # Test determinism: override RNG for move tie-breaking.
 # Source: RandomUniform(RNG_AI_SCORE_TIE_SINGLES) in ChooseMoveOrAction_Singles L915.
@@ -183,7 +239,8 @@ func choose_action_doubles(
 
 func choose_action(attacker: BattlePokemon, defender: BattlePokemon,
 		my_party: BattleParty, _opp_party: BattleParty,
-		weather: int = DamageCalculator.WEATHER_NONE) -> Dictionary:
+		weather: int = DamageCalculator.WEATHER_NONE,
+		is_first_turn: bool = false) -> Dictionary:
 	# SMART tier: proactive switch evaluation before move scoring.
 	# Basic trainers never proactively switch in source — that logic is gated
 	# behind AI_FLAG_SMART_SWITCHING which is absent from AI_FLAG_BASIC_TRAINER.
@@ -212,10 +269,17 @@ func choose_action(attacker: BattlePokemon, defender: BattlePokemon,
 		if move == null:
 			scores.append(-999)
 		else:
-			scores.append(_score_move(attacker, defender, move, weather))
+			scores.append(_score_move(attacker, defender, move, weather, is_first_turn))
 
-	# AI_CompareDamagingMoves pass (battle_ai_main.c L881).
-	_apply_best_damage_move(attacker, defender, scores, weather)
+	# [M24c] AI_CompareDamagingMoves pass (battle_ai_main.c L881) — source
+	# gates this specifically on AI_FLAG_CHECK_VIABILITY (L879-880), not run
+	# unconditionally the way this project's own code did before this
+	# session (every real trainer previously implemented was BASIC_TRAINER-
+	# shaped, so CHECK_VIABILITY was always on anyway — this only changes
+	# observable behavior for the new narrower "Check Bad Move [/ Try To
+	# Faint]" combinations, 647/854 real trainers).
+	if ai_flags & AI_FLAG_CHECK_VIABILITY:
+		_apply_best_damage_move(attacker, defender, scores, weather)
 
 	return {"type": "move", "index": _pick_best(scores, attacker.moves)}
 
@@ -305,58 +369,68 @@ func choose_replacement(my_party: BattleParty, opponent: BattlePokemon) -> int:
 #   3. AI_CheckViability (partial) — bonus for type advantage and useful status.
 
 func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
-		move: MoveData, weather: int = DamageCalculator.WEATHER_NONE) -> int:
+		move: MoveData, weather: int = DamageCalculator.WEATHER_NONE,
+		is_first_turn: bool = false) -> int:
 	var score: int = AI_SCORE_DEFAULT
 
 	# ── Pass 1: AI_CheckBadMove (battle_ai_main.c L1201) ──────────────────────
+	# [M24c] Gated on AI_FLAG_CHECK_BAD_MOVE — present in all 6 real
+	# combinations (never actually off for a real trainer today), but the
+	# gate is real and correct for direct unit testing / future data.
+	if ai_flags & AI_FLAG_CHECK_BAD_MOVE:
+		# Type immunity (includes Thunder Wave vs Ground via Electric→Ground = 0.0).
+		# Source: L1294 — if (effectiveness == UQ_4_12(0.0)) RETURN_SCORE_MINUS(20).
+		var effectiveness: float = TypeChart.get_effectiveness(
+				move.type, defender.species.types)
+		if effectiveness == 0.0:
+			return score - 20  # nothing further redeems a type-immune move
 
-	# Type immunity (includes Thunder Wave vs Ground via Electric→Ground = 0.0).
-	# Source: L1294 — if (effectiveness == UQ_4_12(0.0)) RETURN_SCORE_MINUS(20).
-	var effectiveness: float = TypeChart.get_effectiveness(
-			move.type, defender.species.types)
-	if effectiveness == 0.0:
-		return score - 20  # nothing further redeems a type-immune move
+		# Two-turn non-semi-invulnerable move when defender can KO us on their turn.
+		# Source: L1254 — if (CanTargetFaintAi && IsTwoTurnNotSemiInvulnerableMove)
+		#   RETURN_SCORE_MINUS(10). Semi-inv moves (Dig/Fly) gain invulnerability that
+		#   partially offsets the cost, so we only penalise the non-inv variant here.
+		if move.two_turn and move.semi_inv_state == MoveData.SEMI_INV_NONE:
+			if _can_defender_ko_attacker(attacker, defender, weather):
+				score -= 10
 
-	# Two-turn non-semi-invulnerable move when defender can KO us on their turn.
-	# Source: L1254 — if (CanTargetFaintAi && IsTwoTurnNotSemiInvulnerableMove)
-	#   RETURN_SCORE_MINUS(10). Semi-inv moves (Dig/Fly) gain invulnerability that
-	#   partially offsets the cost, so we only penalise the non-inv variant here.
-	if move.two_turn and move.semi_inv_state == MoveData.SEMI_INV_NONE:
-		if _can_defender_ko_attacker(attacker, defender, weather):
-			score -= 10
-
-	# Pure status move: penalise if target already has a non-volatile status.
-	# Source: L2933-2960 — AI_CanParalyze/AI_CanPoison/AI_CanBurn/AI_CanPutToSleep
-	#   all return FALSE when gBattleMons[battlerDef].status1 already set → -10.
-	if move.category == 2 and move.secondary_effect in [
-			MoveData.SE_BURN, MoveData.SE_PARALYSIS, MoveData.SE_SLEEP,
-			MoveData.SE_TOXIC, MoveData.SE_FREEZE]:
-		if defender.status != BattlePokemon.STATUS_NONE:
-			score -= 10
+		# Pure status move: penalise if target already has a non-volatile status.
+		# Source: L2933-2960 — AI_CanParalyze/AI_CanPoison/AI_CanBurn/AI_CanPutToSleep
+		#   all return FALSE when gBattleMons[battlerDef].status1 already set → -10.
+		if move.category == 2 and move.secondary_effect in [
+				MoveData.SE_BURN, MoveData.SE_PARALYSIS, MoveData.SE_SLEEP,
+				MoveData.SE_TOXIC, MoveData.SE_FREEZE]:
+			if defender.status != BattlePokemon.STATUS_NONE:
+				score -= 10
 
 	# ── Pass 2: AI_TryToFaint (battle_ai_main.c L3000) ───────────────────────
-
-	# Status moves always return early here: "if (IsBattleMoveStatus(move)) return score"
-	# M11: DamageCalculator.calculate now receives weather so the estimated damage
-	# automatically reflects the current field boost/reduction — no AI-specific logic needed.
-	# _force_roll / _force_crit are null/-1 in production; pinnable in tests for determinism.
-	if move.category != 2 and move.power > 0:
-		var result: Dictionary = DamageCalculator.calculate(
-				attacker, defender, move, _force_roll, _force_crit, weather)
-		if result["damage"] >= defender.current_hp:
-			# Source: L3015-3019 — FAST_KILL if AI is faster, SLOW_KILL otherwise.
-			if StatusManager.effective_speed(attacker) >= StatusManager.effective_speed(defender):
-				score += FAST_KILL
-			else:
-				score += SLOW_KILL
+	# [M24c] Gated on AI_FLAG_TRY_TO_FAINT — real for 4/6 combos, absent for
+	# the 640/854-trainer "Check Bad Move" alone configuration.
+	if ai_flags & AI_FLAG_TRY_TO_FAINT:
+		# Status moves always return early here: "if (IsBattleMoveStatus(move)) return score"
+		# M11: DamageCalculator.calculate now receives weather so the estimated damage
+		# automatically reflects the current field boost/reduction — no AI-specific logic needed.
+		# _force_roll / _force_crit are null/-1 in production; pinnable in tests for determinism.
+		# [M24c] Uses _effective_ai_roll(), not _force_roll directly — see its own
+		# doc comment for AI_FLAG_RISKY's real "assumes it deals max damage" effect
+		# (battle_ai_util.c L112-113).
+		if move.category != 2 and move.power > 0:
+			var result: Dictionary = DamageCalculator.calculate(
+					attacker, defender, move, _effective_ai_roll(), _force_crit, weather)
+			if result["damage"] >= defender.current_hp:
+				# Source: L3015-3019 — FAST_KILL if AI is faster, SLOW_KILL otherwise.
+				if StatusManager.effective_speed(attacker) >= StatusManager.effective_speed(defender):
+					score += FAST_KILL
+				else:
+					score += SLOW_KILL
 
 	# ── Pass 3: AI_CalcMoveEffectScore (battle_ai_main.c L4143), called by AI_CheckViability (L5862) ──
+	# [M24c] Gated on AI_FLAG_CHECK_VIABILITY.
 	#
 	# Source-accurate ports of IncreasePoisonScore / IncreaseBurnScore /
 	# IncreaseParalyzeScore / IncreaseSleepScore (battle_ai_util.c L4791-4907).
 	# Common guard: skip bonus if AI can already KO the target this turn.
 	# See decisions.md for what is ported vs omitted per function.
-	if move.category == 2 and defender.status == BattlePokemon.STATUS_NONE:
+	if (ai_flags & AI_FLAG_CHECK_VIABILITY) and move.category == 2 and defender.status == BattlePokemon.STATUS_NONE:
 		var can_faint: bool = _can_attacker_ko_defender(attacker, defender, weather)
 		match move.secondary_effect:
 			MoveData.SE_TOXIC:
@@ -391,6 +465,50 @@ func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
 				if not can_faint:
 					score += DECENT_EFFECT
 
+	# ── Pass 4: AI_ForceSetupFirstTurn (battle_ai_main.c L5905-5959) ─────────
+	# [M24c] Gated on AI_FLAG_FORCE_SETUP_FIRST_TURN AND is_first_turn (source:
+	# `gBattleResults.battleTurnCounter != 0` returns unchanged score on any
+	# turn but the battle's very first). Source's real switch-case covers ~25
+	# distinct move EFFECT_* values (Conversion/Light Screen/Focus Energy/
+	# Confuse/Reflect/non-volatile-status/Substitute/Leech Seed/Curse/Swagger/
+	# Camouflage/Yawn/Torment/Ingrain/Imprison/Acupressure/4 terrains/Stealth
+	# Rock/Toxic Spikes/Trick Room/Wonder Room/Magic Room/Tailwind/Tidy Up/
+	# Sticky Web/Weather/Ceaseless Edge/Stone Axe) — a deliberately NARROWED
+	# slice ships here, matching this whole tier's own "narrow, not the full
+	# engine" scope: only the single most common and cleanly-detectable
+	# shape, a plain self-targeted POSITIVE stat-change status move (Swords
+	# Dance/Bulk Up/Calm Mind/Growth-style — `stat_change_self` +
+	# `stat_change_amount > 0`), gets the +DECENT_EFFECT bonus. The other
+	# ~24 specific move-effect cases are NOT ported — flagged for a future
+	# session, not silently dropped.
+	if (ai_flags & AI_FLAG_FORCE_SETUP_FIRST_TURN) and is_first_turn:
+		if move.category == 2 and move.stat_change_self \
+				and move.stat_change_stat >= 0 and move.stat_change_amount > 0:
+			score += DECENT_EFFECT
+
+	# ── Pass 5: AI_Risky (battle_ai_main.c L5966-6040+) ──────────────────────
+	# [M24c] Gated on AI_FLAG_RISKY. Source's real function has ~15 further
+	# move-EFFECT-specific cases (Memento/Revenge/Belly Drum/Clangorous
+	# Soul/Reflect Damage/etc., each with its own HP%/stat condition) beyond
+	# the two ported here — deliberately NOT ported, same narrow-slice
+	# scoping as Pass 4 above. The two kept are the cheapest, most broadly
+	# applicable, and most easily verified:
+	#   - `GetMoveCriticalHitStage(move) > 0` → +DECENT_EFFECT (any move with
+	#     an elevated crit stage, e.g. Slash/Crabhammer/Storm Throw).
+	#   - `IsExplosionMove(move)` → +STRONG_RISKY_EFFECT and RETURN (source's
+	#     own early return — Self-Destruct/Explosion, `is_self_faint`).
+	# STRONG_RISKY_EFFECT isn't one of this project's own pre-existing score
+	# constants (WEAK/DECENT/GOOD/BEST_EFFECT) — reuses BEST_EFFECT (4) as
+	# the closest existing magnitude rather than inventing a new unverified
+	# numeric constant (source's own AI_SCORE_MAX-scaled values aren't
+	# reproduced by this project's simplified point scale at all).
+	if ai_flags & AI_FLAG_RISKY:
+		if move.critical_hit_stage > 0:
+			score += DECENT_EFFECT
+		if move.is_self_faint:
+			score += BEST_EFFECT
+			return score
+
 	return score
 
 
@@ -400,6 +518,17 @@ func _score_move(attacker: BattlePokemon, defender: BattlePokemon,
 #   is_spread_active passed to DamageCalculator so KO estimation uses 0.75×.
 # No spread bonus: simulatedDmg already incorporates the reduction (see header).
 
+# [M24c] KNOWN GAP, deliberately NOT fixed this session (out of this tier's
+# own explicit scope): unlike _score_move above, this function is NOT gated
+# on ai_flags at all — it always runs all 3 passes unconditionally
+# (BASIC_TRAINER-shaped), and has no FORCE_SETUP_FIRST_TURN/RISKY passes or
+# _effective_ai_roll() awareness either. Real consequence: a doubles-format
+# trainer (77/854 real trainers use "Double Battle: Yes") whose ai_flags
+# encode one of the narrower combinations (e.g. "Check Bad Move" alone)
+# still gets full BASIC-shaped scoring in a doubles battle specifically,
+# unlike the now-correctly-gated singles path above. Flagged for a future
+# session, not silently dropped — mirrors this whole tier's own "narrow
+# slice, not full parity" scoping already applied to Pass 4/5 above.
 func _score_move_doubles(attacker: BattlePokemon, defender: BattlePokemon,
 		move: MoveData, weather: int,
 		is_spread_active: bool) -> int:
@@ -630,16 +759,45 @@ func _can_attacker_ko_defender(attacker: BattlePokemon, defender: BattlePokemon,
 		weather: int = DamageCalculator.WEATHER_NONE) -> bool:
 	# CanAIFaintTarget equivalent — does any of attacker's damaging moves KO the defender?
 	# Source: used as early-return guard in Increase*Score (battle_ai_util.c L4793).
+	# [M24c] Uses _effective_ai_roll() — see its own doc comment.
 	for move: MoveData in attacker.moves:
 		if move == null or move.category == 2 or move.power == 0:
 			continue
 		if TypeChart.get_effectiveness(move.type, defender.species.types) == 0.0:
 			continue
 		var result: Dictionary = DamageCalculator.calculate(
-				attacker, defender, move, _force_roll, _force_crit, weather)
+				attacker, defender, move, _effective_ai_roll(), _force_crit, weather)
 		if result["damage"] >= defender.current_hp:
 			return true
 	return false
+
+
+# [M24c] AI_FLAG_RISKY's damage-roll-assumption half — source: AI_GetDamage
+# (battle_ai_util.c L109-115, AI_ATTACKING context): "Risky assumes it deals
+# max damage" — `if (RISKY && !CONSERVATIVE) return simulatedDmg.maximum`.
+# AI_FLAG_CONSERVATIVE (the opposite modifier, "assumes min damage") is not
+# implemented in this project at all (absent from every one of the 6 real
+# trainer AI-flag combinations, per this file's own Step 0 above) — so the
+# `!CONSERVATIVE` half of source's condition is permanently true here and
+# correctly omitted, not silently dropped.
+#
+# Deliberately scoped to the ATTACKER'S OWN estimated damage only — source's
+# separate AI_DEFENDING-context assumption ("Risky assumes it takes MIN
+# damage" from the opponent) is NOT ported here; that half only ever feeds
+# SMART-tier proactive-switch decisions (`_should_switch`), and none of the
+# 6 real trainer AI-flag combinations use SMART_SWITCHING at all — building
+# it now would be untested, unreachable surface for this project's actual
+# data.
+#
+# A test-level `_force_roll` pin always wins over Risky's own assumption
+# (matches every other test-seam in this file — tests must stay fully
+# deterministic regardless of which AI flags are set).
+func _effective_ai_roll() -> int:
+	if _force_roll >= 0:
+		return _force_roll
+	if ai_flags & AI_FLAG_RISKY:
+		return DamageCalculator.DMG_ROLL_HI
+	return -1  # real random roll, unchanged default behavior
 
 
 func _has_damaging_moves(mon: BattlePokemon) -> bool:

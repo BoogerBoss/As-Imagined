@@ -225,13 +225,28 @@ else                     moneyReward = 4 * lastMonLevel * moneyMultiplier * trai
 
 - `lastMonLevel` = the level of the trainer's **last** party member (not an
   average, not the highest).
-- `moneyMultiplier` starts at 1 per battle (`battle_main.c`), doubled by the
-  attacker holding **Amulet Coin** (`battle_hold_effects.c`) and separately
-  doubled by a successful **Pay Day** use (`battle_script_commands.c`) —
-  both already-implemented moves/items in this project (Pay Day shipped in
-  `[M19a-gen1]`; Amulet Coin's own implementation status needs a quick
-  confirm-not-assumed check before M24 implementation, not confirmed this
-  session).
+- `moneyMultiplier` starts at 1 per battle (`battle_main.c` L3074:
+  `gBattleStruct->moneyMultiplier = 1`), doubled by the attacker holding
+  **Amulet Coin** (`TryDoublePrize`, `battle_hold_effects.c` L41-51 —
+  `HOLD_EFFECT_DOUBLE_PRIZE`, checked at switch-in time, player side only,
+  latched so a later switch-in doesn't re-double it).
+  **[CORRECTED post-M24b — this recon's own original citation below this
+  point was wrong, verified directly against source rather than assumed]**:
+  the SECOND doubler is **Happy Hour** (`MOVE_EFFECT_HAPPY_HOUR`,
+  `battle_script_commands.c` L2439-2445 — `IsOnPlayerSide(battlerAtk) &&
+  !gBattleStruct->moneyMultiplierMove` then `moneyMultiplier *= 2`), **NOT
+  Pay Day** as originally stated here. Pay Day (`MOVE_EFFECT_PAY_DAY`,
+  same file L2419-2423) only accumulates a wholly separate, additive
+  `gPaydayMoney` counter (`+= level * 5` per hit, capped at 0xFFFF) that
+  gets added as its own bonus at battle end (`bonusMoney = gPaydayMoney *
+  moneyMultiplier`, L7549-7551) — it **never sets or touches
+  `moneyMultiplier` itself**. Happy Hour is confirmed unimplemented in this
+  project (no `.tres`/`gen_moves.py` entry — grep confirmed), so it is moot
+  for M24's own money-formula wiring; Pay Day's own `gPaydayMoney` bonus is
+  a separate, out-of-scope mechanic M24b deliberately did not build (it
+  isn't part of `GetTrainerMoneyToGive` at all). M24b shipped the money
+  formula with `moneyMultiplier` driven by Amulet Coin only, which is the
+  correct, complete scope given Happy Hour's absence.
 - A related but distinct mechanic, only worth flagging not scoping into
   M24: losing refunds half your money (Gen 3 rule, `B_WHITEOUT_MONEY`) — a
   battle-outcome/save-money concern, not trainer-data itself.
