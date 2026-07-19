@@ -1152,7 +1152,16 @@ static func from_trainer_mon(tpm: TrainerPartyMon) -> BattlePokemon:
 		bp.gender = tpm.gender
 	if not tpm.nickname.is_empty():
 		bp.nickname = tpm.nickname
+	# [Consolidation fix] from_species() already computed stats/current_hp
+	# once, before EVs are known — setting bp.evs here without recomputing
+	# left every stat (and max_hp) silently wrong for any TrainerPartyMon
+	# with nonzero EVs. PokemonFactory.create_battle_pokemon's own EV path
+	# already re-applies this pair; mirrored here rather than delegated,
+	# since this function's ability-by-raw-ID and held-item-by-ID resolution
+	# has no equivalent in create_battle_pokemon's slot-based interface.
 	bp.evs = tpm.evs.duplicate()
+	bp._calculate_stats()
+	bp.current_hp = bp.max_hp
 	return bp
 
 
