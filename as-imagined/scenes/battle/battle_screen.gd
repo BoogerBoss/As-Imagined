@@ -339,6 +339,22 @@ var _winner_side: int = -1
 # doc comment for the full mechanism.
 var _pending_effect_lines: Array[String] = []
 
+# [M25c] Effectiveness/crit data for the hit _on_log_move_executed is about
+# to report — set by _on_hit_effectiveness_computed, which BattleManager
+# fires (from _do_damaging_hit) immediately before the move_executed call it
+# corresponds to, so this is always fresh by the time it's read. Never set
+# for a non-damaging move (status moves never emit move_effectiveness_
+# computed at all), matching that case's own silence requirement.
+var _pending_hit_effectiveness: float = 1.0
+var _pending_hit_is_crit: bool = false
+var _pending_hit_has_data: bool = false
+
+# [M25c] Paced log reveal — see _queue_log_line()'s own doc comment.
+const _LOG_REVEAL_DELAY_SEC: float = 0.6
+var _log_reveal_queue: Array[String] = []
+var _log_reveal_running: bool = false
+var _is_autoplay_run: bool = false
+
 # Which sub-menu the MOVE_SELECTION main-action screen is currently showing.
 # Irrelevant during SWITCH_PROMPT, which always shows the bench-picker
 # directly (a mandatory faint replacement, no "back" option).
@@ -449,6 +465,13 @@ func _ready() -> void:
 	_bm.set_human_controlled(0, true)
 	_bm.battle_ended.connect(_on_battle_ended)
 
+	# [M25c] Computed once, ahead of _wire_log_signals() below, since the very
+	# first log lines (switch-in/hazard/ability messages from start_battle_*
+	# a few lines down) already need to know whether to pace themselves.
+	# Reused verbatim by the pre-existing "--autoplay" check further below
+	# instead of re-deriving it a second time.
+	_is_autoplay_run = "--autoplay" in OS.get_cmdline_args()
+
 	# [M23.2] Wired unconditionally — interactive AND autoplay both populate
 	# the log (see _wire_log_signals's own doc comment for the reasoning on
 	# why autoplay isn't special-cased here).
@@ -482,7 +505,7 @@ func _ready() -> void:
 	# whether Godot recognizes them), not `get_cmdline_user_args()`, since
 	# either works identically for an unrecognized flag like this one and
 	# the former needs no `--` separator convention to be established.
-	if "--autoplay" in OS.get_cmdline_args():
+	if _is_autoplay_run:
 		_run_autoplay()
 		return
 
@@ -603,6 +626,12 @@ func _clear_active_hit_effects() -> void:
 # for a negligible-cost feature.
 
 func _wire_log_signals() -> void:
+	# [M25c] turn_started/move_announced/move_effectiveness_computed are all
+	# new this session — see each signal's own doc comment in battle_manager.gd
+	# for exactly when/why each fires.
+	_bm.turn_started.connect(_on_log_turn_started)
+	_bm.move_announced.connect(_on_log_move_announced)
+	_bm.move_effectiveness_computed.connect(_on_hit_effectiveness_computed)
 	_bm.move_executed.connect(_on_log_move_executed)
 	_bm.move_missed.connect(func(attacker: BattlePokemon, _reason: String):
 		_log("%s's attack missed!" % _mon_label(attacker)))
@@ -667,18 +696,65 @@ func _wire_log_signals() -> void:
 	_bm.ability_healed.connect(_on_log_ability_healed)
 
 
-func _on_log_move_executed(attacker: BattlePokemon, _defender: BattlePokemon,
-		move: MoveData, damage: int) -> void:
-	var text: String
+func _on_log_turn_started(turn_number: int) -> void:
+	_log("──── Turn %d ────" % turn_number)
+
+
+# [M25c] Fires exactly once per action (see move_announced's own doc comment
+# in battle_manager.gd) — this is the sole "used MOVE!" print site now;
+# _on_log_move_executed below no longer prints it, so a 2-target spread hit
+# (which fires move_executed twice) doesn't double-announce.
+# Target naming: real pokeemerald_expansion phrasing never names a target in
+# this line at all (STRINGID_USEDMOVE has no target slot) — this project
+# deliberately goes further than that per its own explicit scope (naming the
+# target reads better in a text-only log with no HP-bar-drain animation to
+# supply that context visually). Named only when it's actually meaningful:
+# omitted for a self-targeting move (defender == attacker, e.g. Swords
+# Dance) and omitted for a spread hit (move.is_spread and doubles — no
+# single "the target" exists; per-target detail comes from the damage/
+# effectiveness lines below instead, once per real target).
+func _on_log_move_announced(attacker: BattlePokemon, defender: BattlePokemon, move: MoveData) -> void:
+	var text := "%s used %s" % [_mon_label(attacker), move.move_name]
+	if defender != null and defender != attacker and not (move.is_spread and _is_doubles_mode):
+		text += " on %s" % _mon_label(defender)
+	_log(text + "!")
+
+
+# [M25c] Buffers the effectiveness/crit result for the very next
+# _on_log_move_executed call — always fires immediately before its
+# corresponding move_executed within the same synchronous BattleManager call
+# (see move_effectiveness_computed's own doc comment), so there is no
+# ordering risk despite this being a separate handler.
+func _on_hit_effectiveness_computed(_defender: BattlePokemon, effectiveness: float, is_crit: bool) -> void:
+	_pending_hit_effectiveness = effectiveness
+	_pending_hit_is_crit = is_crit
+	_pending_hit_has_data = true
+
+
+# [M25c] Fires once per TARGET (twice for a 2-target spread hit) — reports
+# THIS hit's own crit/effectiveness/damage only; the shared "used MOVE!"
+# announcement moved to _on_log_move_announced above. Phrasing/thresholds
+# confirmed directly against reference/pokeemerald_expansion/src/battle_
+# message.c: STRINGID_CRITICALHIT ("A critical hit!"), STRINGID_SUPEREFFECTIVE
+# ("It's super effective!", >=2.0x), STRINGID_NOTVERYEFFECTIVE ("It's not
+# very effective…", 0<x<1.0), STRINGID_ITDOESNTAFFECT ("It doesn't affect
+# {target}…", exactly 0.0x — the real games DO name the target on this one
+# line, unlike the super/not-very-effective lines, which name no one).
+# Neutral (1.0x) stays silent on effectiveness, matching source exactly.
+func _on_log_move_executed(_attacker: BattlePokemon, defender: BattlePokemon,
+		_move: MoveData, damage: int) -> void:
+	if _pending_hit_has_data:
+		if _pending_hit_is_crit:
+			_log("A critical hit!")
+		if _pending_hit_effectiveness >= 2.0:
+			_log("It's super effective!")
+		elif _pending_hit_effectiveness == 0.0:
+			_log("It doesn't affect %s…" % _mon_label(defender))
+		elif _pending_hit_effectiveness < 1.0:
+			_log("It's not very effective…")
+		_pending_hit_has_data = false
 	if damage > 0:
-		text = "%s used %s! (%d damage)" % [_mon_label(attacker), move.move_name, damage]
-	else:
-		text = "%s used %s!" % [_mon_label(attacker), move.move_name]
-	# [M23.2 addendum] Append this cause line directly (bypassing _log()'s own
-	# auto-flush) so it lands BEFORE any already-buffered effect line, then
-	# flush those effects after it — see _flush_pending_effect_lines()'s doc
-	# comment for why this reordering is needed at all.
-	_log_label.text += text + "\n"
+		_log("%s took %d damage!" % [_mon_label(defender), damage])
 	_flush_pending_effect_lines()
 
 
@@ -959,13 +1035,49 @@ func _mon_label(mon: BattlePokemon) -> String:
 # swapping the order only in exactly the case that needed swapping.
 func _flush_pending_effect_lines() -> void:
 	for line in _pending_effect_lines:
-		_log_label.text += line + "\n"
+		_queue_log_line(line)
 	_pending_effect_lines.clear()
 
 
 func _log(text: String) -> void:
 	_flush_pending_effect_lines()
-	_log_label.text += text + "\n"
+	_queue_log_line(text)
+
+
+# [M25c] Action pacing — every log line now goes through here instead of
+# appending to `_log_label.text` directly, so the ENGINE still resolves a
+# whole turn instantly/synchronously (BattleManager is completely untouched
+# by this — no await anywhere in battle_manager.gd), while the UI staggers
+# when each already-computed line becomes VISIBLE. Relative ORDER is
+# unaffected (still a plain FIFO queue) — only the wall-clock reveal timing
+# changes, which is exactly the "display/formatting, not engine" scope this
+# task was given.
+#
+# Two cases fall back to the old immediate-append behavior, unchanged:
+#   - `--autoplay` (`_is_autoplay_run`): explicitly must NOT slow down,
+#     matching how it already bypasses every other player-facing wait.
+#   - `not is_inside_tree()`: this project's own established bare-instance
+#     test convention (BattleScreen.new(), never added to the SceneTree) —
+#     get_tree() itself prints a loud engine error when called outside the
+#     tree (even though it still returns null gracefully), so this checks
+#     tree membership directly instead; those tests already expect log
+#     lines to land synchronously and immediately.
+func _queue_log_line(text: String) -> void:
+	if _is_autoplay_run or not is_inside_tree():
+		_log_label.text += text + "\n"
+		return
+	_log_reveal_queue.append(text)
+	if not _log_reveal_running:
+		_run_log_reveal()
+
+
+func _run_log_reveal() -> void:
+	_log_reveal_running = true
+	while not _log_reveal_queue.is_empty():
+		var line: String = _log_reveal_queue.pop_front()
+		_log_label.text += line + "\n"
+		await get_tree().create_timer(_LOG_REVEAL_DELAY_SEC).timeout
+	_log_reveal_running = false
 
 
 # ── Team fixtures ────────────────────────────────────────────────────────

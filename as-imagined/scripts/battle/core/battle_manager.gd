@@ -119,6 +119,22 @@ signal action_needed(phase: BattlePhase)
 
 # Battle event signals consumed by the UI / test runner.
 signal move_executed(attacker: BattlePokemon, defender: BattlePokemon, move: MoveData, damage: int)
+# [M25c] Fired exactly ONCE per action, before any move-effect dispatch —
+# unlike move_executed (which fires once per TARGET, so a 2-target spread hit
+# fires it twice), this is the single correct choke point for a "used MOVE!"
+# announcement line. `defender` is the action's nominal chosen target (before
+# spread expansion); UI consumers should treat it as meaningless for a spread
+# move (move.is_spread) since a spread hit has no single "the" target.
+signal move_announced(attacker: BattlePokemon, defender: BattlePokemon, move: MoveData)
+# [M25c] Fired only from the two REAL-hit branches inside _do_damaging_hit
+# (a landed hit, whether or not it went to a Substitute), immediately before
+# that branch's own move_executed — deliberately NOT fired from the Wonder
+# Guard / absorb-ability early returns, which already have their own
+# dedicated ability_triggered message and would otherwise print a redundant/
+# contradictory "It had no effect!" line alongside it. `effectiveness` is
+# DamageCalculator.calculate's own already-computed float (0.0/0.25/0.5/1.0/
+# 2.0/4.0); UI consumers should stay silent on a neutral 1x, matching source.
+signal move_effectiveness_computed(defender: BattlePokemon, effectiveness: float, is_crit: bool)
 signal pokemon_fainted(pokemon: BattlePokemon)
 signal battle_ended(winner_side: int)  # 0 = player/side-0 wins, 1 = opponent/side-1 wins
 signal money_awarded(amount: int)  # [M24b] fired once, right before battle_ended(0), only when the opponent side had a real TrainerData attached
@@ -250,6 +266,14 @@ signal party_status_cured(pokemon: BattlePokemon)  # [D0] Heal Bell/Aromatherapy
 
 signal sure_hit_set(attacker: BattlePokemon, target: BattlePokemon)  # [D1] Lock-On/Mind Reader set the attacker's sure_hit_target
 signal item_stolen(stealer: BattlePokemon, victim: BattlePokemon)  # [D1] Thief/Covet stole the target's held item
+
+# [M25c] Fired once per turn, on the first (non-resumed) entry into
+# MOVE_SELECTION — mirrors `_move_selection_active`'s own existing fresh-
+# entry guard, the only place in this state machine that already
+# distinguishes "a new turn began" from "resuming a paused turn after a
+# human input". `turn_number` is 1-indexed (the pre-increment value is 0,
+# so the very first MOVE_SELECTION of a battle emits turn_number=1).
+signal turn_started(turn_number: int)
 
 signal foresight_set(target: BattlePokemon)  # [D2 batch 2] Foresight/Odor Sleuth set the target's foresight_active
 signal telekinesis_set(target: BattlePokemon)  # [D4 Bundle 6] Telekinesis set the target's telekinesis_turns
@@ -527,6 +551,11 @@ var _human_controlled: Array[bool] = [false, false]
 # false -> true); sized to _combatants.size() at that same moment.
 var _move_selection_active: bool = false
 var _move_choice_resolved: Array[bool] = []
+
+# [M25c] 1-indexed turn counter, public so the UI can read it directly (e.g.
+# after a scene reload) without waiting on turn_started; incremented in
+# lockstep with turn_started, at the exact same fresh-entry point.
+var turn_number: int = 0
 
 # [M23.0a] Same shape as _move_choice_resolved above, but for _phase_switch_prompt
 # (faint-replacement) — a genuinely separate pause point from move-selection,
@@ -1162,6 +1191,8 @@ func _phase_move_selection() -> void:
 	# (including an AI's own RNG roll) would be silently wiped and re-rolled.
 	if not _move_selection_active:
 		_move_selection_active = true
+		turn_number += 1
+		turn_started.emit(turn_number)
 		_move_choice_resolved = []
 		for i in range(_combatants.size()):
 			_move_choice_resolved.append(false)
@@ -1779,6 +1810,18 @@ func _phase_move_execution() -> void:
 	var attacker_side: int = attacker_idx / _active_per_side
 	var defender: BattlePokemon = _combatants[_chosen_targets[attacker_idx]]
 	var move: MoveData = _chosen_moves[attacker_idx]
+
+	# [M25c] Single per-action "used MOVE!" announcement point — every
+	# skip-worthy pre-move state (sleep/freeze/paralysis/confusion/flinch/
+	# recharge/loafing/Sky-Drop-held) was already filtered out one phase
+	# earlier by _phase_pre_move_checks (which routes straight to FAINT_CHECK
+	# instead of ever reaching MOVE_EXECUTION), so unconditionally reaching
+	# this line already means the move IS being used — matching the real
+	# games, which print "used MOVE!" even for a move that goes on to miss/
+	# fail. Emitted once here, BEFORE any of the per-effect branches below
+	# (as opposed to move_executed, which fires once per TARGET — twice for a
+	# 2-target spread hit).
+	move_announced.emit(attacker, defender, move)
 
 	# [D4 Bundle 9] Sky Drop — dedicated two-phase dispatch (NOT the generic
 	# `move.two_turn` block further below — Sky Drop's own fail conditions,
@@ -10091,6 +10134,10 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 		if target.substitute_hp <= 0:
 			target.substitute_hp = 0
 			substitute_broke.emit(target)
+		# [M25c] A Substitute-absorbed hit still rolled a real type-
+		# effectiveness/crit result — the real games report both normally
+		# even though the Substitute (not the Pokemon) took the damage.
+		move_effectiveness_computed.emit(target, result["effectiveness"], result["is_crit"])
 		move_executed.emit(attacker, target, move, sub_dmg)
 		return 0
 
@@ -10137,6 +10184,12 @@ func _do_damaging_hit(attacker: BattlePokemon, target: BattlePokemon,
 
 	var hp_before_hit: int = target.current_hp
 	target.current_hp = max(0, target.current_hp - damage)
+	# [M25c] Emitted here, not right after `result` is computed above — this
+	# is the one spot common to every real-hit outcome (a plain hit, an
+	# Endure/Sturdy/Focus Band/Focus Sash survive, a False Swipe floor), all
+	# of which still want their effectiveness/crit reported; the two earlier
+	# early returns (Wonder Guard/absorb) deliberately do NOT reach here.
+	move_effectiveness_computed.emit(target, result["effectiveness"], result["is_crit"])
 	move_executed.emit(attacker, target, move, damage)
 
 	if damage > 0:
