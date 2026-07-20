@@ -401,6 +401,64 @@ var _log_reveal_queue: Array[String] = []
 var _log_reveal_running: bool = false
 var _is_autoplay_run: bool = false
 
+# [M25h-1.2] The real GBA bitmap fonts (see scripts/gen_battle_fonts.py's own
+# doc comment for the full Step 0 sourcing) -- loaded once in _ready(),
+# before any of _setup_health_ui()/_setup_message_box()/
+# _setup_action_region_panel()/the menu-button builders run, since all of
+# them apply one of these three. Native pixel sizes are baked into the
+# atlas itself (15 for both "normal"-derived fonts, 13 for "small") --
+# `add_theme_font_size_override` is still set explicitly to that same
+# native value at every call site rather than left at the theme's generic
+# default (20), so nothing silently asks Godot to rescale a bitmap glyph
+# and soften its pixel-perfect edges.
+var _font_message: FontFile
+var _font_menu: FontFile
+var _font_healthbox: FontFile
+
+const _FONT_NORMAL_SIZE := 15
+const _FONT_SMALL_SIZE := 13
+
+
+func _load_battle_fonts() -> void:
+	_font_message = FontFile.new()
+	_font_message.load_bitmap_font("res://assets/fonts/latin_normal_message.fnt")
+	_font_menu = FontFile.new()
+	_font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
+	_font_healthbox = FontFile.new()
+	_font_healthbox.load_bitmap_font("res://assets/fonts/latin_small_healthbox.fnt")
+
+
+# [M25h-1.2] Every menu Button (TOP/FIGHT/TARGET_SELECT/SWITCH/ITEM/battle-
+# end) goes through this one helper -- see _build_top_menu's own doc comment
+# for why source's real B_WIN_MOVE_NAME (FONT_NARROW) isn't reproduced
+# separately: this project's move-name buttons are plain Buttons, not a
+# dedicated GBA window, so they reuse this same "menu" context. Colors are
+# baked into the atlas texture itself (see gen_battle_fonts.py), so every
+# font_*_color override here is intentionally Color(1,1,1,1) -- a neutral,
+# non-tinting modulate -- rather than an actual color choice; leaving Godot's
+# own default (light grey) in place would multiply against the baked-in
+# dark-grey/light-grey pixels and crush them. font_disabled_color keeps a
+# partial-alpha fade (the one real color decision here) so a disabled button
+# still reads as visibly different, matching Godot's own default disabled
+# convention.
+func _style_menu_button(btn: Button) -> void:
+	# [M25h-1.2] Guards against _font_menu being unloaded -- the real
+	# production caller (_ready()) always runs _load_battle_fonts() first,
+	# but this project's own established test convention (m25b_menu_test.gd
+	# and others) directly calls _build_top_menu()/_build_fight_menu()/etc.
+	# on a bare BattleScreen.new() with no full _ready() pass, where a real
+	# font resource was never a thing those tests needed or checked for.
+	# Treated as a legitimate no-styling-yet state, not an error condition.
+	if _font_menu == null:
+		return
+	btn.add_theme_font_override("font", _font_menu)
+	btn.add_theme_font_size_override("font_size", _FONT_NORMAL_SIZE)
+	btn.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	btn.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
+	btn.add_theme_color_override("font_pressed_color", Color(1, 1, 1, 1))
+	btn.add_theme_color_override("font_focus_color", Color(1, 1, 1, 1))
+	btn.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.5))
+
 # Which sub-menu the MOVE_SELECTION main-action screen is currently showing.
 # Irrelevant during SWITCH_PROMPT, which always shows the bench-picker
 # directly (a mandatory faint replacement, no "back" option).
@@ -444,6 +502,7 @@ var _pending_move_index: int = -1
 
 
 func _ready() -> void:
+	_load_battle_fonts()
 	_setup_health_ui()
 	_setup_message_box()
 	_setup_action_region_panel()
@@ -1461,6 +1520,22 @@ func _apply_background(background_id: String) -> void:
 # cached/shared Resource from load(), so mutating its .region can't leak
 # into any other consumer).
 func _setup_health_ui() -> void:
+	# [M25h-1.2] Real bitmap font (FONT_SMALL, "healthbox" context -- see
+	# gen_battle_fonts.py's own Step 0 citation for sHealthBoxTextColor).
+	# Unlike the message/menu contexts, this one's own bulk-fill role is
+	# genuinely TRANSPARENT (a real GBA sprite-palette-index-0 hardware
+	# convention, not an opaque plaque color) -- confirmed via source, and
+	# correct here too: these labels sit directly on top of the already-
+	# pulled real health-box art (Phase 4b), which must stay visible through
+	# the unlit parts of each glyph. font_size stays at each node's own
+	# pre-existing value (13 singles / 9 doubles, a real-estate constraint
+	# from M25d, not changed here) -- doubles' non-native-size scaling of a
+	# 13px-native bitmap font is a disclosed minor softness, not a blocker.
+	_opponent_name_level_label.add_theme_font_override("font", _font_healthbox)
+	_opponent_name_level_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	_player_name_level_label.add_theme_font_override("font", _font_healthbox)
+	_player_name_level_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+
 	_opponent_health_bg.texture = load("res://assets/sprites/battle_ui/interface/healthbox_singles_opponent.png")
 	_player_health_bg.texture = load("res://assets/sprites/battle_ui/interface/healthbox_singles_player.png")
 
@@ -1519,6 +1594,12 @@ func _setup_health_ui() -> void:
 	_ply_hp_label_d = [$BattleStage/PlayerHealthGroupD0/HpLabel, $BattleStage/PlayerHealthGroupD1/HpLabel]
 	_ply_hp_fill_d = [$BattleStage/PlayerHealthGroupD0/HpFill, $BattleStage/PlayerHealthGroupD1/HpFill]
 	_ply_name_level_label_d = [$BattleStage/PlayerHealthGroupD0/NameLevelLabel, $BattleStage/PlayerHealthGroupD1/NameLevelLabel]
+
+	# [M25h-1.2] Same real bitmap font as the singles NameLevelLabel pair
+	# above, applied to all 4 doubles slots now that the arrays exist.
+	for label: Label in _opp_name_level_label_d + _ply_name_level_label_d:
+		label.add_theme_font_override("font", _font_healthbox)
+		label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 
 	var doubles_opponent_bg: Texture2D = load("res://assets/sprites/battle_ui/interface/healthbox_doubles_opponent.png")
 	var doubles_player_bg: Texture2D = load("res://assets/sprites/battle_ui/interface/healthbox_doubles_player.png")
@@ -1669,17 +1750,19 @@ func _setup_message_box() -> void:
 
 	_log_label.add_theme_stylebox_override("normal", box_style)
 
-	# [M23.11 Phase 4e — real bug found via screenshot verification] Without
-	# this, the log's text rendered as invisible white-on-white: this
-	# project's theme has no RichTextLabel font-color override at all, so
-	# `_log_label` was relying on the engine default (light/white) being
-	# visible against the SCREEN's own dark gray background -- true before
-	# this function ran (LogLabel had no background of its own), false the
-	# instant a real, opaque, light-interior text_window panel sits behind
-	# it. A near-black color matches the real game's own dark-text-on-a-
-	# light-box convention (the same cream/pale interior already used by
-	# this project's healthbox art).
-	_log_label.add_theme_color_override("default_color", Color(0.1, 0.1, 0.1))
+	# [M25h-1.2] Real bitmap font (see gen_battle_fonts.py's "message"
+	# context -- the real B_WIN_MSG colors, red foreground/black shadow,
+	# baked directly into the atlas). Supersedes Phase 4e's own flat
+	# near-black `default_color` fix below: that was compensating for the
+	# engine's generic default font having no color of its own against this
+	# panel's light interior. A real bitmap font's glyph pixels are already
+	# fully colored, so `default_color` is now set to a neutral, non-tinting
+	# Color(1,1,1,1) instead -- leaving the old dark tint in place would
+	# multiply against the baked-in red/black pixels and crush them toward
+	# black, discarding the real sourced color.
+	_log_label.add_theme_font_override("normal_font", _font_message)
+	_log_label.add_theme_font_size_override("normal_font_size", _FONT_NORMAL_SIZE)
+	_log_label.add_theme_color_override("default_color", Color(1, 1, 1, 1))
 
 
 # [M25h-1.1] Real window art for the new shared bottom region (ActionRegion
@@ -1707,13 +1790,17 @@ func _setup_action_region_panel() -> void:
 
 	_action_panel.add_theme_stylebox_override("panel", panel_style)
 
-	# [Same white-on-white risk Phase 4e's own doc comment already found and
-	# fixed for LogLabel -- confirmed via this session's own real screenshot
-	# verification, not just assumed from that precedent] StatusLabel and
-	# every button built into _new_button_area sit on this same light-
-	# interior panel now; Godot's own default Label/Button text color is
-	# light, invisible against it without an explicit override.
-	_status_label.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
+	# [M25h-1.2] Real bitmap font -- StatusLabel shows the "What will X do?"
+	# style prompt text, matching source's B_WIN_ACTION_PROMPT (the SAME
+	# color context as B_WIN_MSG/LogLabel -- see gen_battle_fonts.py's own
+	# Step 0 citation). Supersedes the flat near-black `font_color` fix
+	# Phase 4e/M25h-1.1 originally applied here for the same reason
+	# _setup_message_box's own updated comment explains: a real bitmap
+	# font's pixels are already colored, so the override is now a neutral
+	# Color(1,1,1,1) instead of a tint that would crush the baked-in red.
+	_status_label.add_theme_font_override("font", _font_message)
+	_status_label.add_theme_font_size_override("font_size", _FONT_NORMAL_SIZE)
+	_status_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 
 
 func _update_status_icon(icon_node: TextureRect, atlas: AtlasTexture, status: int) -> void:
@@ -1960,6 +2047,7 @@ func _current_action_field_slot() -> int:
 # goes through.
 func _build_battle_end_buttons() -> void:
 	var play_again_btn := Button.new()
+	_style_menu_button(play_again_btn)
 	play_again_btn.text = "Play Again"
 	play_again_btn.pressed.connect(_on_play_again_pressed)
 	_button_area.add_child(play_again_btn)
@@ -1980,6 +2068,7 @@ func _on_play_again_pressed() -> void:
 # unchanged into whichever sub-menu gets picked, exactly as it already was.
 func _build_top_menu(field_slot: int) -> void:
 	var fight_btn := Button.new()
+	_style_menu_button(fight_btn)
 	fight_btn.text = "Fight"
 	fight_btn.pressed.connect(func():
 		_menu = Menu.FIGHT
@@ -1993,6 +2082,7 @@ func _build_top_menu(field_slot: int) -> void:
 	# this correct with zero special-casing. Real separate screens for both
 	# are M25h-2/h-3's own job, not this one.
 	var switch_btn := Button.new()
+	_style_menu_button(switch_btn)
 	switch_btn.text = "Switch"
 	switch_btn.disabled = not _player_party.has_valid_switch_target()
 	switch_btn.pressed.connect(func():
@@ -2001,6 +2091,7 @@ func _build_top_menu(field_slot: int) -> void:
 	_new_button_area.add_child(switch_btn)
 
 	var item_btn := Button.new()
+	_style_menu_button(item_btn)
 	item_btn.text = "Item"
 	item_btn.pressed.connect(func():
 		_menu = Menu.ITEM
@@ -2014,6 +2105,7 @@ func _build_top_menu(field_slot: int) -> void:
 	# battle at all otherwise. See _on_run_pressed's own doc comment for
 	# exactly what it does.
 	var run_btn := Button.new()
+	_style_menu_button(run_btn)
 	run_btn.text = "Run"
 	run_btn.pressed.connect(_on_run_pressed)
 	_new_button_area.add_child(run_btn)
@@ -2031,12 +2123,14 @@ func _build_fight_menu(field_slot: int) -> void:
 		if move == null:
 			continue
 		var btn := Button.new()
+		_style_menu_button(btn)
 		btn.text = "%s (PP %d/%d)" % [move.move_name, mon.current_pp[i], move.pp]
 		btn.disabled = mon.current_pp[i] <= 0
 		btn.pressed.connect(_on_move_pressed.bind(field_slot, i))
 		_new_button_area.add_child(btn)
 
 	var back_btn := Button.new()
+	_style_menu_button(back_btn)
 	back_btn.text = "Back"
 	back_btn.pressed.connect(func():
 		_menu = Menu.TOP
@@ -2088,6 +2182,7 @@ func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void
 			continue
 		var mon: BattlePokemon = _player_party.members[i]
 		var btn := Button.new()
+		_style_menu_button(btn)
 		btn.text = "%s  HP: %d/%d" % [mon.species.species_name, mon.current_hp, mon.max_hp]
 		btn.pressed.connect(_on_switch_pressed.bind(i, is_forced_replacement, field_slot))
 		_button_area.add_child(btn)
@@ -2115,6 +2210,7 @@ func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void
 
 	if not is_forced_replacement:
 		var back_btn := Button.new()
+		_style_menu_button(back_btn)
 		back_btn.text = "Back"
 		back_btn.pressed.connect(func():
 			_menu = Menu.TOP
@@ -2124,21 +2220,25 @@ func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void
 
 func _build_item_buttons(field_slot: int) -> void:
 	var potion_btn := Button.new()
+	_style_menu_button(potion_btn)
 	potion_btn.text = "Potion (heal)"
 	potion_btn.pressed.connect(_on_item_pressed.bind(POTION_ITEM_ID, field_slot))
 	_button_area.add_child(potion_btn)
 
 	var full_heal_btn := Button.new()
+	_style_menu_button(full_heal_btn)
 	full_heal_btn.text = "Full Heal (cure status)"
 	full_heal_btn.pressed.connect(_on_item_pressed.bind(FULL_HEAL_ITEM_ID, field_slot))
 	_button_area.add_child(full_heal_btn)
 
 	var x_attack_btn := Button.new()
+	_style_menu_button(x_attack_btn)
 	x_attack_btn.text = "X Attack (+1 Attack)"
 	x_attack_btn.pressed.connect(_on_item_pressed.bind(X_ATTACK_ITEM_ID, field_slot))
 	_button_area.add_child(x_attack_btn)
 
 	var back_btn := Button.new()
+	_style_menu_button(back_btn)
 	back_btn.text = "Back"
 	back_btn.pressed.connect(func():
 		_menu = Menu.TOP
@@ -2162,6 +2262,7 @@ func _build_target_select_buttons(field_slot: int, move_index: int) -> void:
 	for target_mon: BattlePokemon in candidates:
 		var target_idx: int = _bm.get_combatant_index(target_mon)
 		var btn := Button.new()
+		_style_menu_button(btn)
 		btn.text = "%s  HP: %d/%d" % [_mon_label(target_mon), target_mon.current_hp, target_mon.max_hp]
 		btn.pressed.connect(_on_target_selected.bind(field_slot, move_index, target_idx))
 		_new_button_area.add_child(btn)
@@ -2174,6 +2275,7 @@ func _build_target_select_buttons(field_slot: int, move_index: int) -> void:
 	# immediate previous step in the now-two-tier menu, so picking a
 	# different move doesn't require re-entering Fight from the top menu.
 	var back_btn := Button.new()
+	_style_menu_button(back_btn)
 	back_btn.text = "Back"
 	back_btn.pressed.connect(func():
 		_menu = Menu.FIGHT

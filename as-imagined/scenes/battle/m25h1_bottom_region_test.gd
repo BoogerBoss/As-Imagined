@@ -35,7 +35,7 @@ func _ready() -> void:
 	_test_action_panel_has_real_window_art_stylebox()
 	_test_action_panel_key_color_is_distinct_from_message_box_key_color()
 	_test_color_keyed_texture_generalizes_to_a_custom_key_color()
-	_test_status_label_has_dark_font_color_override()
+	_test_status_label_has_neutral_font_color_override()
 
 	var total := _pass + _fail
 	print("m25h1_bottom_region_test: %d/%d passed" % [_pass, total])
@@ -306,6 +306,14 @@ func _test_action_panel_has_real_window_art_stylebox() -> void:
 	var bs := BattleScreen.new()
 	bs._action_panel = PanelContainer.new()
 	bs._status_label = Label.new()
+	# [M25h-1.2] _setup_action_region_panel() now also applies the real
+	# message-context bitmap font to _status_label -- a null font here
+	# (this function's own production caller, _ready(), always loads one
+	# first via _load_battle_fonts()) makes add_theme_font_override log a
+	# real engine error rather than silently no-op, so this bare-instance
+	# test needs one too, same as _test_status_label_has_neutral_font_color_override.
+	bs._font_message = FontFile.new()
+	bs._font_message.load_bitmap_font("res://assets/fonts/latin_normal_message.fnt")
 
 	bs._setup_action_region_panel()
 
@@ -358,21 +366,38 @@ func _test_color_keyed_texture_generalizes_to_a_custom_key_color() -> void:
 			not BattleScreen._is_message_box_key_color(custom_key))
 
 
-func _test_status_label_has_dark_font_color_override() -> void:
-	# [Same white-on-white risk Phase 4e's own doc comment already found and
-	# fixed for LogLabel] Confirmed via real screenshot verification this
-	# session that StatusLabel needed the identical fix once it started
-	# sitting on ActionPanel's own light-interior window art. Bare-instance
-	# direct call, same reasoning as the test immediately above.
+func _test_status_label_has_neutral_font_color_override() -> void:
+	# [M25h-1.2 superseded this test's own original finding] Phase 4e/M25h-1.1
+	# originally fixed StatusLabel's white-on-white risk with a flat dark
+	# `font_color` override, correct for the engine's generic default font
+	# (a plain white glyph mask that the override tints directly). M25h-1.2
+	# replaced that generic font with a real bitmap font whose glyph pixels
+	# are ALREADY fully colored (baked in at atlas-generation time — see
+	# gen_battle_fonts.py) -- a dark tint would now multiply against those
+	# real colors and crush them toward black, so the correct override is a
+	# neutral, non-tinting Color(1,1,1,1) instead. This is a genuine,
+	# deliberate behavior change, not a regression: confirmed via this
+	# session's own real screenshot verification that StatusLabel's text
+	# (source's B_WIN_ACTION_PROMPT red) renders correctly with the new
+	# override in place. Bare-instance direct call, same reasoning as the
+	# test immediately above; _font_message loaded for real (from disk) so
+	# _setup_action_region_panel's new font-override line has a real
+	# resource to apply, matching how the panel's own texture load already
+	# touches disk in this same function.
 	var bs := BattleScreen.new()
 	bs._action_panel = PanelContainer.new()
 	var label := Label.new()
 	bs._status_label = label
+	bs._font_message = FontFile.new()
+	bs._font_message.load_bitmap_font("res://assets/fonts/latin_normal_message.fnt")
 
 	bs._setup_action_region_panel()
 
-	_chk("StatusLabel has a real dark font_color override (not left at the engine's light default)",
+	_chk("StatusLabel has the real message-context bitmap font applied",
+			label.get_theme_font("font") == bs._font_message)
+	_chk("StatusLabel has a font_color override (not left at the engine's own default)",
 			label.has_theme_color_override("font_color"))
 	if label.has_theme_color_override("font_color"):
 		var c: Color = label.get_theme_color("font_color")
-		_chk("the override is genuinely dark (not accidentally light/white)", c.v < 0.5)
+		_chk("the override is neutral/non-tinting white (the bitmap font's own baked-in colors show through unmodified)",
+				c.is_equal_approx(Color(1, 1, 1, 1)))

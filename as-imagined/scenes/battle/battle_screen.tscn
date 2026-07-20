@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://bckp4vcyuq4v8" path="res://scenes/battle/battle_screen.gd" id="1_screen"]
 [ext_resource type="Script" uid="uid://by21x2021is5s" path="res://scripts/battle/core/battle_manager.gd" id="2_bm"]
 [ext_resource type="Theme" path="res://scenes/main_theme.tres" id="3_theme"]
-[ext_resource type="Texture2D" uid="uid://dj63beu4mjhgk" path="res://assets/sprites/battle_backgrounds/long_grass.png" id="4_1pli6"]
+[ext_resource type="Texture2D" uid="uid://dklxb61akkufy" path="res://assets/sprites/battle_backgrounds/cave.png" id="4_1pli6"]
 [ext_resource type="Texture2D" uid="uid://dbv7by4kbgmqj" path="res://assets/sprites/pokemon/back/0025_pikachu.png" id="4_pikachu_back"]
 [ext_resource type="Texture2D" uid="uid://oa5advdirqvm" path="res://assets/sprites/pokemon/front/0006_charizard.png" id="5_charizard_front"]
 [ext_resource type="Texture2D" uid="uid://dcw4vmorqe6v" path="res://assets/sprites/battle_ui/interface/healthbox_singles_player.png" id="6_healthbox_player"]
@@ -54,21 +54,23 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="OpponentSprite" type="TextureRect" parent="BattleStage" unique_id=1530435969]
+visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.8
 anchor_top = 0.08
 anchor_right = 0.8
 anchor_bottom = 0.08
-offset_left = -262.60004
-offset_top = 67.16
-offset_right = -17.43982
-offset_bottom = 312.32004
+offset_left = -268.60004
+offset_top = -2.8400002
+offset_right = 23.560242
+offset_bottom = 289.32004
 texture = ExtResource("5_charizard_front")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="OpponentHealthGroup" type="Control" parent="BattleStage" unique_id=1650050192]
+visible = false
 layout_mode = 1
 anchor_left = 0.75
 anchor_top = 0.25
@@ -82,6 +84,8 @@ mouse_filter = 2
 
 [node name="Background" type="TextureRect" parent="BattleStage/OpponentHealthGroup" unique_id=574999890]
 layout_mode = 1
+offset_left = -48.0
+offset_top = -12.0
 offset_right = 224.0
 offset_bottom = 56.0
 texture = ExtResource("7_healthbox_opponent")
@@ -91,38 +95,42 @@ stretch_mode = 4
 [node name="StatusIcon" type="TextureRect" parent="BattleStage/OpponentHealthGroup" unique_id=1278893383]
 visible = false
 layout_mode = 1
-offset_left = 8.0
-offset_top = 6.0
-offset_right = 50.0
-offset_bottom = 20.0
+offset_left = 111.0
+offset_top = 35.0
+offset_right = 153.0
+offset_bottom = 49.0
 expand_mode = 1
 stretch_mode = 4
 
 [node name="HpLabel" type="TextureRect" parent="BattleStage/OpponentHealthGroup" unique_id=1968519389]
+visible = false
 layout_mode = 1
-offset_left = 42.0
+offset_left = -29.0
 offset_top = 20.0
-offset_right = 84.0
+offset_right = 13.0
 offset_bottom = 34.0
 expand_mode = 1
 stretch_mode = 4
 
 [node name="HpFill" type="TextureProgressBar" parent="BattleStage/OpponentHealthGroup" unique_id=1597787635]
+visible = false
 layout_mode = 1
-offset_left = 84.0
-offset_top = 20.0
-offset_right = 210.0
-offset_bottom = 34.0
+offset_left = 14.0
+offset_top = 21.0
+offset_right = 140.0
+offset_bottom = 35.0
 
 [node name="NameLevelLabel" type="Label" parent="BattleStage/OpponentHealthGroup" unique_id=-1794967295]
+visible = false
 layout_mode = 1
-offset_left = 54.0
-offset_top = 4.0
-offset_right = 216.0
-offset_bottom = 18.0
+offset_left = -27.0
+offset_top = -2.0
+offset_right = 135.0
+offset_bottom = 16.0
 theme_override_font_sizes/font_size = 13
 
 [node name="PlayerSprite" type="TextureRect" parent="BattleStage" unique_id=626580134]
+visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.03
@@ -138,6 +146,7 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="PlayerHealthGroup" type="Control" parent="BattleStage" unique_id=810825783]
+visible = false
 layout_mode = 1
 anchor_left = 0.03
 anchor_top = 0.47
@@ -150,6 +159,7 @@ offset_bottom = 244.44
 mouse_filter = 2
 
 [node name="Background" type="TextureRect" parent="BattleStage/PlayerHealthGroup" unique_id=812620117]
+visible = false
 layout_mode = 1
 offset_right = 224.0
 offset_bottom = 112.0
@@ -168,6 +178,7 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="HpLabel" type="TextureRect" parent="BattleStage/PlayerHealthGroup" unique_id=2021977869]
+visible = false
 layout_mode = 1
 offset_left = 42.0
 offset_top = 44.0
@@ -177,6 +188,7 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="HpFill" type="TextureProgressBar" parent="BattleStage/PlayerHealthGroup" unique_id=1061243133]
+visible = false
 layout_mode = 1
 offset_left = 84.0
 offset_top = 44.0
@@ -184,6 +196,7 @@ offset_right = 210.0
 offset_bottom = 58.0
 
 [node name="NameLevelLabel" type="Label" parent="BattleStage/PlayerHealthGroup" unique_id=-1794967294]
+visible = false
 layout_mode = 1
 offset_left = 54.0
 offset_top = 22.0
@@ -192,30 +205,30 @@ offset_bottom = 38.0
 theme_override_font_sizes/font_size = 13
 
 [node name="OpponentSpriteD0" type="TextureRect" parent="BattleStage" unique_id=2001000001]
-visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.83
 anchor_top = 0.06
 anchor_right = 0.83
 anchor_bottom = 0.06
-offset_left = -32.0
-offset_top = -33.0
-offset_right = 99.0
-offset_bottom = 98.0
+offset_left = -220.15997
+offset_top = 143.12
+offset_right = -89.160034
+offset_bottom = 274.12
 texture = ExtResource("5_charizard_front")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="OpponentHealthGroupD0" type="Control" parent="BattleStage" unique_id=2001000002]
-visible = false
 layout_mode = 1
 anchor_left = 0.72
 anchor_top = 0.24
 anchor_right = 0.72
 anchor_bottom = 0.24
-offset_right = 134.0
-offset_bottom = 34.0
+offset_left = -770.44006
+offset_top = -100.51999
+offset_right = -636.44006
+offset_bottom = -66.51999
 mouse_filter = 2
 
 [node name="Background" type="TextureRect" parent="BattleStage/OpponentHealthGroupD0" unique_id=2001000003]
@@ -227,7 +240,6 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="StatusIcon" type="TextureRect" parent="BattleStage/OpponentHealthGroupD0" unique_id=2001000004]
-visible = false
 layout_mode = 1
 offset_left = 5.0
 offset_top = 4.0
@@ -261,7 +273,6 @@ offset_bottom = 34.0
 theme_override_font_sizes/font_size = 9
 
 [node name="OpponentSpriteD1" type="TextureRect" parent="BattleStage" unique_id=2001000007]
-visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.83
@@ -277,14 +288,15 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="OpponentHealthGroupD1" type="Control" parent="BattleStage" unique_id=2001000008]
-visible = false
 layout_mode = 1
 anchor_left = 0.72
 anchor_top = 0.52
 anchor_right = 0.72
 anchor_bottom = 0.52
-offset_right = 134.0
-offset_bottom = 34.0
+offset_left = -770.44006
+offset_top = -190.95999
+offset_right = -636.44006
+offset_bottom = -156.95999
 mouse_filter = 2
 
 [node name="Background" type="TextureRect" parent="BattleStage/OpponentHealthGroupD1" unique_id=2001000009]
@@ -330,30 +342,30 @@ offset_bottom = 34.0
 theme_override_font_sizes/font_size = 9
 
 [node name="PlayerSpriteD0" type="TextureRect" parent="BattleStage" unique_id=2001000013]
-visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.14
 anchor_top = 0.22
 anchor_right = 0.14
 anchor_bottom = 0.22
-offset_left = -32.0
-offset_top = -33.0
-offset_right = 99.0
-offset_bottom = 98.0
+offset_left = 123.72
+offset_top = 267.44
+offset_right = 254.72
+offset_bottom = 398.44
 texture = ExtResource("4_pikachu_back")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="PlayerHealthGroupD0" type="Control" parent="BattleStage" unique_id=2001000014]
-visible = false
 layout_mode = 1
 anchor_left = 0.03
 anchor_top = 0.4
 anchor_right = 0.03
 anchor_bottom = 0.4
-offset_right = 134.0
-offset_bottom = 34.0
+offset_left = 918.44
+offset_top = 97.79999
+offset_right = 1052.44
+offset_bottom = 131.79999
 mouse_filter = 2
 
 [node name="Background" type="TextureRect" parent="BattleStage/PlayerHealthGroupD0" unique_id=2001000015]
@@ -399,30 +411,30 @@ offset_bottom = 34.0
 theme_override_font_sizes/font_size = 9
 
 [node name="PlayerSpriteD1" type="TextureRect" parent="BattleStage" unique_id=2001000019]
-visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.14
 anchor_top = 0.5
 anchor_right = 0.14
 anchor_bottom = 0.5
-offset_left = -32.0
-offset_top = -33.0
-offset_right = 99.0
-offset_bottom = 98.0
+offset_left = -42.28
+offset_top = 64.0
+offset_right = 88.72
+offset_bottom = 195.0
 texture = ExtResource("4_pikachu_back")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="PlayerHealthGroupD1" type="Control" parent="BattleStage" unique_id=2001000020]
-visible = false
 layout_mode = 1
 anchor_left = 0.03
 anchor_top = 0.68
 anchor_right = 0.03
 anchor_bottom = 0.68
-offset_right = 134.0
-offset_bottom = 34.0
+offset_left = 921.44
+offset_top = -28.640015
+offset_right = 1055.44
+offset_bottom = 5.3599854
 mouse_filter = 2
 
 [node name="Background" type="TextureRect" parent="BattleStage/PlayerHealthGroupD1" unique_id=2001000021]
@@ -502,8 +514,10 @@ layout_mode = 1
 anchor_top = 0.75
 anchor_right = 1.0
 anchor_bottom = 0.95
-offset_left = 16.0
-offset_right = -16.0
+offset_left = 14.0
+offset_top = 18.0
+offset_right = -18.0
+offset_bottom = 18.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2

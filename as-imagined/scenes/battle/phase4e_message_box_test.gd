@@ -123,6 +123,13 @@ func _test_setup_message_box_applies_stylebox() -> void:
 	var bs := BattleScreen.new()
 	var fake_log_label := DialogueLabel.new()
 	bs._log_label = fake_log_label
+	# [M25h-1.2] _setup_message_box() now also applies the real message-
+	# context bitmap font to _log_label -- a null font here (this
+	# function's own production caller, _ready(), always loads one first
+	# via _load_battle_fonts()) makes add_theme_font_override log a real
+	# engine error rather than silently no-op.
+	bs._font_message = FontFile.new()
+	bs._font_message.load_bitmap_font("res://assets/fonts/latin_normal_message.fnt")
 
 	bs._setup_message_box()
 
