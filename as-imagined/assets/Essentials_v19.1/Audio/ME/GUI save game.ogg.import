@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://c03erdi8epcsj"
+path="res://.godot/imported/GUI save game.ogg-f0aaecd50c105eb990cb6159a3b34cf8.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/ME/GUI save game.ogg"
+dest_files=["res://.godot/imported/GUI save game.ogg-f0aaecd50c105eb990cb6159a3b34cf8.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://h242kxqsppny"
+path="res://.godot/imported/PC close.ogg-1a12bd9134b6f28213f6d3900d4f5959.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/PC close.ogg"
+dest_files=["res://.godot/imported/PC close.ogg-1a12bd9134b6f28213f6d3900d4f5959.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://cyhl53qrhunwu"
+path="res://.godot/imported/Mega Punch.mp3-178af435ff08e8ddd0926304067d525c.mp3str"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Anim/Mega Punch.mp3"
+dest_files=["res://.godot/imported/Mega Punch.mp3-178af435ff08e8ddd0926304067d525c.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

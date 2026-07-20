@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://bh63sl8tj0o67"
+path="res://.godot/imported/Voltorb Flip game over.ogg-c23c26a7f96671b0b1736423f1532381.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/ME/Voltorb Flip game over.ogg"
+dest_files=["res://.godot/imported/Voltorb Flip game over.ogg-c23c26a7f96671b0b1736423f1532381.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

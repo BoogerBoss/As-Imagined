@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://bwjs8bdv118od"
+path="res://.godot/imported/Rock Smash.ogg-56c4286f594ecabe62a3417b88515bce.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Rock Smash.ogg"
+dest_files=["res://.godot/imported/Rock Smash.ogg-56c4286f594ecabe62a3417b88515bce.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

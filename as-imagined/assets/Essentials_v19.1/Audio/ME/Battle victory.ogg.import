@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://bjw3o6s84f666"
+path="res://.godot/imported/Battle victory.ogg-f45b5fd9e41847b3717214e8a2b23383.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/ME/Battle victory.ogg"
+dest_files=["res://.godot/imported/Battle victory.ogg-f45b5fd9e41847b3717214e8a2b23383.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

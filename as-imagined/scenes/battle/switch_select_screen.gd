@@ -130,10 +130,18 @@ func _build() -> void:
 	# list panel), rendered the same STRETCH_SCALE way bag_frame.png is on
 	# the Item screen -- see that screen's own _build() doc comment for the
 	# shared precedent citation (M25e's stretch convention).
+	# [Panel-sizing follow-up] anchor_right was originally 0.48 (paired with
+	# anchor_bottom=0.75), giving a near-1:1 box that stretched
+	# party_frame.png away from its own real 240x192 (5:4) proportions.
+	# Recomputed to preserve the panel's original HEIGHT (anchor_bottom
+	# unchanged) while deriving width from the real 5:4 ratio instead, the
+	# same "resize the box to the asset's own real aspect ratio rather than
+	# stretch the asset to fit an arbitrary box" fix applied to the Item
+	# screen's own Panel.
 	var panel := Control.new()
 	panel.anchor_left = 0.08
 	panel.anchor_top = 0.06
-	panel.anchor_right = 0.48
+	panel.anchor_right = 0.565
 	panel.anchor_bottom = 0.75
 	add_child(panel)
 

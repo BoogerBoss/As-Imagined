@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://0pxy1gcdt1o"
+path="res://.godot/imported/Badge get.ogg-7dc0397786d4bc1a981d4206d94aaf0e.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/ME/Badge get.ogg"
+dest_files=["res://.godot/imported/Badge get.ogg-7dc0397786d4bc1a981d4206d94aaf0e.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

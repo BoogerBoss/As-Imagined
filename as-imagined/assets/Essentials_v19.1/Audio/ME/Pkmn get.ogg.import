@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dw1a0aelbla22"
+path="res://.godot/imported/Pkmn get.ogg-ef600ad011bcfdfc2c2afc729c0b266c.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/ME/Pkmn get.ogg"
+dest_files=["res://.godot/imported/Pkmn get.ogg-ef600ad011bcfdfc2c2afc729c0b266c.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

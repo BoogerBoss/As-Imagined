@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://bw176x1xb3e0i"
+path="res://.godot/imported/Register phone.ogg-76b3f26c54adf451c4dd4bbf4eb14db3.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/ME/Register phone.ogg"
+dest_files=["res://.godot/imported/Register phone.ogg-76b3f26c54adf451c4dd4bbf4eb14db3.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

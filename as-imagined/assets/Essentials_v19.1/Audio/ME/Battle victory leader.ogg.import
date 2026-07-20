@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dcd4qw77kc33k"
+path="res://.godot/imported/Battle victory leader.ogg-4548935157b68e42d9bc411cd0a48108.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/ME/Battle victory leader.ogg"
+dest_files=["res://.godot/imported/Battle victory leader.ogg-4548935157b68e42d9bc411cd0a48108.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cafx7psjmxcet"
+path="res://.godot/imported/Slots win.ogg-89b33341e225db0dbb041aa9a8a4d84b.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/ME/Slots win.ogg"
+dest_files=["res://.godot/imported/Slots win.ogg-89b33341e225db0dbb041aa9a8a4d84b.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

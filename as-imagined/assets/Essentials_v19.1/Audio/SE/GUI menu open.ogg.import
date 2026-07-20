@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://danefj1r5627f"
+path="res://.godot/imported/GUI menu open.ogg-5a7a386818fb32f2da696cf6d3e22c28.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/GUI menu open.ogg"
+dest_files=["res://.godot/imported/GUI menu open.ogg-5a7a386818fb32f2da696cf6d3e22c28.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

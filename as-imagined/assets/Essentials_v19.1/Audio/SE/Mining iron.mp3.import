@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://sfj47n8csivt"
+path="res://.godot/imported/Mining iron.mp3-a0ffae247d20c85953e9405c70e9d21a.mp3str"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Mining iron.mp3"
+dest_files=["res://.godot/imported/Mining iron.mp3-a0ffae247d20c85953e9405c70e9d21a.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

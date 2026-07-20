@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://boau3wofo334j"
+path="res://.godot/imported/GUI naming confirm.ogg-d5a78aa0fae21e82f128140b9aeb5e7b.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/GUI naming confirm.ogg"
+dest_files=["res://.godot/imported/GUI naming confirm.ogg-d5a78aa0fae21e82f128140b9aeb5e7b.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

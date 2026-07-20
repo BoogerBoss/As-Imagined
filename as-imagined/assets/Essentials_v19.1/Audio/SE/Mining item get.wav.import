@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://d1w4iwjgaq0aj"
+path="res://.godot/imported/Mining item get.wav-7cbcec0371dfae8be20c0e3d028fe7ca.sample"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Mining item get.wav"
+dest_files=["res://.godot/imported/Mining item get.wav-7cbcec0371dfae8be20c0e3d028fe7ca.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

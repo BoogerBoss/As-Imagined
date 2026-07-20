@@ -121,6 +121,29 @@ const _ITEMS := [
 	{"id": 121, "label": "X Attack (+1 Attack)", "pocket": 0},
 ]
 
+# [M25h-4-follow-up] The screen's own structural/positioning nodes
+# (Backdrop/Panel/FrameRect/Margin/VBox/Header/Spacer) now live as REAL
+# nodes in item_select_screen.tscn, not built in code -- this lets the
+# whole panel (position, size, the real bag_frame.png art) be dragged/
+# resized directly in the Godot editor's 2D viewport, rather than only
+# tunable by editing anchor float literals here and re-running the game to
+# see the result. Only the ITEM ROWS + Cancel button stay dynamic (built
+# from _ITEMS below), since their count/content is genuinely data-driven,
+# not something a fixed scene-tree layout can represent. If you resize
+# Panel in the editor, this script keeps working unchanged -- it never
+# reads back the panel's own size, only adds its dynamic content into
+# VBox, whose container layout follows wherever Panel/Margin end up.
+#
+# [Deliberately $Path in _build(), NOT @onready] @onready only resolves at
+# NOTIFICATION_READY (real tree entry) -- this project's own established
+# bare-instance test convention (item_select_screen_test.gd) calls
+# setup()/_build() directly on a freshly instantiate()'d overlay that's
+# NEVER added to a tree at all, to avoid the --autoplay sweep risk a real
+# battle_screen.tscn instance would carry (see that file's own doc
+# comment). A plain $Path lookup inside _build() itself resolves against
+# the child nodes instantiate() already created regardless of tree
+# membership, so it works in both the real (tree-added) and test
+# (bare-instance) cases with no special-casing.
 var _parent_bs: BattleScreen = null
 var _field_slot: int = 0
 
@@ -132,72 +155,14 @@ func setup(parent_bs: BattleScreen, field_slot: int) -> void:
 
 
 func _build() -> void:
-	anchor_right = 1.0
-	anchor_bottom = 1.0
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	var vbox: VBoxContainer = $Panel/Margin/VBox
+	var header: Label = $Panel/Margin/VBox/Header
 
-	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.05, 0.05, 0.05, 1.0)
-	backdrop.anchor_right = 1.0
-	backdrop.anchor_bottom = 1.0
-	add_child(backdrop)
-
-	# [M25h-4] Real decoded Bag-screen frame art (gen_ui_frames.py, from
-	# graphics/bag/menu.png+menu.bin+menu_male.pal), replacing M25h-1.4's
-	# text_window reuse now that a 3rd tilemap-decode attempt (unlike
-	# Phase 5a's own flagged-incorrect background reconstruction) produced
-	# a clean, artifact-free result -- see gen_ui_frames.py's own doc
-	# comment for the full Step 0 writeup. bag_frame.png is a FIXED, non-
-	# tileable 240x160 composition (a real title bar + cream list panel +
-	# description boxes), not a stretchy 9-patch chrome like text_window --
-	# rendered via plain STRETCH_SCALE across the panel's own anchored
-	# area, matching M25e's own already-established "fills the full
-	# anchored stage area regardless of source aspect ratio" precedent,
-	# with the real text content positioned inside the image's own cream
-	# list-panel region (screenshot-verified, not assumed).
-	var panel := Control.new()
-	panel.anchor_left = 0.08
-	panel.anchor_top = 0.06
-	panel.anchor_right = 0.58
-	panel.anchor_bottom = 0.653
-	add_child(panel)
-
-	var frame_rect := TextureRect.new()
-	frame_rect.texture = load("res://assets/sprites/battle_ui/screens/bag_frame.png")
-	frame_rect.anchor_right = 1.0
-	frame_rect.anchor_bottom = 1.0
-	frame_rect.stretch_mode = TextureRect.STRETCH_SCALE
-	frame_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(frame_rect)
-
-	# Cream list-panel region within bag_frame.png's own 240x160 canvas:
-	# x=[112,232]/240, y=[16,144]/160 (WIN_ITEM_LIST's real tile coords,
-	# tilemapLeft=14/tilemapTop=2/width=15/height=16, item_menu.c).
-	var margin := MarginContainer.new()
-	margin.anchor_left = 112.0 / 240.0
-	margin.anchor_top = 16.0 / 160.0
-	margin.anchor_right = 232.0 / 240.0
-	margin.anchor_bottom = 144.0 / 160.0
-	margin.add_theme_constant_override("margin_left", 8)
-	margin.add_theme_constant_override("margin_top", 6)
-	margin.add_theme_constant_override("margin_right", 8)
-	margin.add_theme_constant_override("margin_bottom", 6)
-	panel.add_child(margin)
-
-	var vbox := VBoxContainer.new()
-	margin.add_child(vbox)
-
-	var header := Label.new()
 	header.text = _HEADER_TEXT
 	if _parent_bs != null:
 		header.add_theme_font_override("font", _parent_bs._font_menu)
 		header.add_theme_font_size_override("font_size", BattleScreen._FONT_NORMAL_SIZE)
 		header.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-	vbox.add_child(header)
-
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 8)
-	vbox.add_child(spacer)
 
 	var buttons: Array[Button] = []
 	for entry in _ITEMS:

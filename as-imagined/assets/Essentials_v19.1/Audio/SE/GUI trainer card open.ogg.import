@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://qrtto4iife0y"
+path="res://.godot/imported/GUI trainer card open.ogg-1b68ccc10f10cc3aed8fbb58aa1f5988.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/GUI trainer card open.ogg"
+dest_files=["res://.godot/imported/GUI trainer card open.ogg-1b68ccc10f10cc3aed8fbb58aa1f5988.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

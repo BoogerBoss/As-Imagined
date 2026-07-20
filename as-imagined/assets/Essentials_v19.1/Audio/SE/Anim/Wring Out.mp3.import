@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://b044yxmfug4xe"
+path="res://.godot/imported/Wring Out.mp3-f06224c95486c138f7e3cc025d08d514.mp3str"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Anim/Wring Out.mp3"
+dest_files=["res://.godot/imported/Wring Out.mp3-f06224c95486c138f7e3cc025d08d514.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

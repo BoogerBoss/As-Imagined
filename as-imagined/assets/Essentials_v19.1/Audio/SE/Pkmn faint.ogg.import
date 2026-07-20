@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://byv4r71ftw7rw"
+path="res://.godot/imported/Pkmn faint.ogg-9d9f6fe9bff8e80d759ab54b7a7eb3a8.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Pkmn faint.ogg"
+dest_files=["res://.godot/imported/Pkmn faint.ogg-9d9f6fe9bff8e80d759ab54b7a7eb3a8.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

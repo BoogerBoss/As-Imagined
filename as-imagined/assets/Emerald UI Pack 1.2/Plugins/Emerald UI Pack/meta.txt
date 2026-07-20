@@ -1,0 +1,5 @@
+Name       = Emerald UI Pack
+Version    = 1.2
+Essentials = 21.1
+Link       = https://eeveeexpo.com/resources/965/
+Credits    = Voltseon, ENLS

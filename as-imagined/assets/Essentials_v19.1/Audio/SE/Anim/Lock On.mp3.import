@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://s3t6si8p14gh"
+path="res://.godot/imported/Lock On.mp3-09ecd4072984d20a413a2d4d89c9a16b.mp3str"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Anim/Lock On.mp3"
+dest_files=["res://.godot/imported/Lock On.mp3-09ecd4072984d20a413a2d4d89c9a16b.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

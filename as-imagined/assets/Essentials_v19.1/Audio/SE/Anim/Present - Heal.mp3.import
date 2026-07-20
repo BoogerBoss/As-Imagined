@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://nh6pjh106a5y"
+path="res://.godot/imported/Present - Heal.mp3-964be9aebfb8ed3d6e58fd4f79096a5a.mp3str"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Anim/Present - Heal.mp3"
+dest_files=["res://.godot/imported/Present - Heal.mp3-964be9aebfb8ed3d6e58fd4f79096a5a.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

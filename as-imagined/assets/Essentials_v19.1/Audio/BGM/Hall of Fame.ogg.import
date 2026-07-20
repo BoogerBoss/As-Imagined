@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://bg1543w0v71eb"
+path="res://.godot/imported/Hall of Fame.ogg-573fd463079ca086b32eb2404bc739e8.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/BGM/Hall of Fame.ogg"
+dest_files=["res://.godot/imported/Hall of Fame.ogg-573fd463079ca086b32eb2404bc739e8.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dhb7agqc37pcp"
+path="res://.godot/imported/Sweet Scent.ogg-5490a2615a04cb9e8a3a7ecc076dc22f.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Anim/Sweet Scent.ogg"
+dest_files=["res://.godot/imported/Sweet Scent.ogg-5490a2615a04cb9e8a3a7ecc076dc22f.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

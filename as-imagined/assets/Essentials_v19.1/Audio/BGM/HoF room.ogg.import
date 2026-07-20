@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dhu52lj32acc0"
+path="res://.godot/imported/HoF room.ogg-82c1f15ae7d0c53cb7d383fbf9212bd2.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/BGM/HoF room.ogg"
+dest_files=["res://.godot/imported/HoF room.ogg-82c1f15ae7d0c53cb7d383fbf9212bd2.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

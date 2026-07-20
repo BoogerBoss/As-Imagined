@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bvaxtajhvfoeq"
+path="res://.godot/imported/Shell Smash.mp3-393421c201171f266d6b68b035a05981.mp3str"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Anim/Shell Smash.mp3"
+dest_files=["res://.godot/imported/Shell Smash.mp3-393421c201171f266d6b68b035a05981.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://d3xegq7mihu1a"
+path="res://.godot/imported/Lovely Kiss.mp3-2e3d81e097f676f19fa706bd40bc4367.mp3str"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Anim/Lovely Kiss.mp3"
+dest_files=["res://.godot/imported/Lovely Kiss.mp3-2e3d81e097f676f19fa706bd40bc4367.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

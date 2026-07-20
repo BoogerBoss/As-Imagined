@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://cm6u8p242f02f"
+path="res://.godot/imported/Psycho Cut.wav-093ac61387df510020e36c785158e73c.sample"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Anim/Psycho Cut.wav"
+dest_files=["res://.godot/imported/Psycho Cut.wav-093ac61387df510020e36c785158e73c.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

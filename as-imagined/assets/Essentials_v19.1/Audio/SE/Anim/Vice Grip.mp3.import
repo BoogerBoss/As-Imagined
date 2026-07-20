@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://cd8i1r80j2yns"
+path="res://.godot/imported/Vice Grip.mp3-ef9abfd35ef7e2bb09b92df9a6988b01.mp3str"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Anim/Vice Grip.mp3"
+dest_files=["res://.godot/imported/Vice Grip.mp3-ef9abfd35ef7e2bb09b92df9a6988b01.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

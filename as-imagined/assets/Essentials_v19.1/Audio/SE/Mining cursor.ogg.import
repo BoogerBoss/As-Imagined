@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://c6umsh4jpxxao"
+path="res://.godot/imported/Mining cursor.ogg-8823aeeb5311230d92f50910ef3a76af.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Mining cursor.ogg"
+dest_files=["res://.godot/imported/Mining cursor.ogg-8823aeeb5311230d92f50910ef3a76af.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

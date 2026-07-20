@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://cppxi4jjbtlae"
+path="res://.godot/imported/Comet Punch.mp3-e265768004f68dbd79913a78eded69a0.mp3str"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/Anim/Comet Punch.mp3"
+dest_files=["res://.godot/imported/Comet Punch.mp3-e265768004f68dbd79913a78eded69a0.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

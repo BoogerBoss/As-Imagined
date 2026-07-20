@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://btoxbtdtwfm15"
+path="res://.godot/imported/PC access.ogg-67ee691199775736c908a3003ae75bcd.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/PC access.ogg"
+dest_files=["res://.godot/imported/PC access.ogg-67ee691199775736c908a3003ae75bcd.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

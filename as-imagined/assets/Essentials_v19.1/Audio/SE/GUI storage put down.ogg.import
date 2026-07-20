@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://suldl3xexvr3"
+path="res://.godot/imported/GUI storage put down.ogg-cd06f0298fc18e456052b6ce5789d064.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/Essentials_v19.1/Audio/SE/GUI storage put down.ogg"
+dest_files=["res://.godot/imported/GUI storage put down.ogg-cd06f0298fc18e456052b6ce5789d064.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
