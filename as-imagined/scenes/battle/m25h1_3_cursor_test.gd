@@ -27,7 +27,7 @@ func _ready() -> void:
 	_test_top_menu_buttons_have_chrome_stripped_and_cursor_wired()
 	_test_fight_menu_buttons_have_chrome_stripped_and_cursor_wired()
 	_test_target_select_buttons_have_chrome_stripped_and_cursor_wired()
-	_test_switch_and_item_buttons_deliberately_unaffected()
+	_test_switch_buttons_deliberately_unaffected()
 	_test_battle_end_button_deliberately_unaffected()
 
 	var total := _pass + _fail
@@ -267,9 +267,12 @@ func _test_target_select_buttons_have_chrome_stripped_and_cursor_wired() -> void
 
 
 # ── G. The old inline _button_area (no real window art) is deliberately
-# left untouched -- a real, disclosed scope boundary, not an oversight ────
+# left untouched -- a real, disclosed scope boundary, not an oversight.
+# [M25h-1.4 note] Item is NO LONGER in this "deliberately unaffected"
+# category as of M25h-1.4 -- it now has its own real overlay screen (see
+# item_select_screen_test.gd). Only Switch/battle-end remain here. ────────
 
-func _test_switch_and_item_buttons_deliberately_unaffected() -> void:
+func _test_switch_buttons_deliberately_unaffected() -> void:
 	var mon := _make_mon("CursorSwitchTester")
 	var bench := _make_mon("CursorBench")
 	var bs := BattleScreen.new()

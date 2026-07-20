@@ -29,7 +29,7 @@ func _ready() -> void:
 	_test_fight_menu_builds_into_new_area_not_old()
 	_test_target_select_builds_into_new_area_not_old()
 	_test_switch_still_builds_into_old_area()
-	_test_item_still_builds_into_old_area()
+	_test_item_opens_a_real_overlay_not_the_old_button_areas()
 	_test_player_health_group_d1_clears_action_region()
 	_test_action_panel_exists_as_panel_container()
 	_test_action_panel_has_real_window_art_stylebox()
@@ -210,7 +210,8 @@ func _test_target_select_builds_into_new_area_not_old() -> void:
 	bm.queue_free()
 
 
-# ── 7-8. SWITCH/ITEM deliberately still build into the OLD area ─────────
+# ── 7. SWITCH deliberately still builds into the OLD area (M25h-1.5's own
+# future job, not yet done) ───────────────────────────────────────────────
 
 func _test_switch_still_builds_into_old_area() -> void:
 	var mon := _make_mon("SwitchTester")
@@ -228,19 +229,31 @@ func _test_switch_still_builds_into_old_area() -> void:
 			bs._new_button_area.get_child_count() == 0)
 
 
-func _test_item_still_builds_into_old_area() -> void:
+# ── 8. [M25h-1.4 superseded this test's own original finding] ITEM no
+# longer builds into EITHER _button_area or _new_button_area at all -- it
+# now opens a real separate ItemSelectScreen overlay (see
+# item_select_screen_test.gd for that screen's own dedicated coverage).
+# This is a genuine, deliberate architecture change, not a regression:
+# confirmed via this session's own real screenshot verification that the
+# overlay renders correctly. Rewritten to confirm the NEW real behavior
+# instead of the old inline-panel assumption.
+func _test_item_opens_a_real_overlay_not_the_old_button_areas() -> void:
 	var mon := _make_mon("ItemTester")
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
 	bs._new_button_area = VBoxContainer.new()
 	bs._button_area = VBoxContainer.new()
+	bs._font_menu = FontFile.new()
+	bs._font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
 
 	bs._build_item_buttons(0)
 
-	_chk("ITEM's own buttons (3 items + Back) still land in the OLD button area, untouched this session",
-			_button_texts(bs._button_area).size() == 4)
-	_chk("ITEM does NOT write into the new region's button area",
+	_chk("ITEM does NOT write into the old _button_area at all anymore",
+			bs._button_area.get_child_count() == 0)
+	_chk("ITEM does NOT write into the new region's button area either",
 			bs._new_button_area.get_child_count() == 0)
+	_chk("ITEM instead opens a real separate ItemSelectScreen overlay",
+			bs._item_select_overlay != null and bs._item_select_overlay is ItemSelectScreen)
 
 
 # ── 9. Doubles clearance re-check — the exact real anchor/offset values,

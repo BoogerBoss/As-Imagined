@@ -569,6 +569,12 @@ var _slot_acted: Array[bool] = []
 # _menu == Menu.TARGET_SELECT. -1 otherwise.
 var _pending_move_index: int = -1
 
+# [M25h-1.4] The currently-open Item overlay, if any — see
+# _build_item_buttons' own doc comment for why this needs an explicit
+# idempotency guard rather than being rebuilt unconditionally like every
+# other _build_*_buttons function.
+var _item_select_overlay: Control = null
+
 
 func _ready() -> void:
 	_load_battle_fonts()
@@ -2312,35 +2318,42 @@ func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void
 		_button_area.add_child(back_btn)
 
 
-# [M25h-1.3] Deliberately NOT chrome-stripped/cursor-wired — see
-# _build_battle_end_buttons' own doc comment for why (`_button_area` has no
-# real window art behind it; M25h-2's own future job).
+# [M25h-1.4] Item is now a real separate full-screen overlay (ItemSelectScreen)
+# rather than an inline `_button_area` panel — see item_select_screen.gd's own
+# doc comment for the full architecture rationale (a child overlay on the
+# still-alive battle_screen instance, not a literal change_scene_to_file swap,
+# since BattleManager must survive the trip). Idempotent: `_refresh_ui()` can
+# legitimately re-enter this function while `_menu == Menu.ITEM` (e.g. a
+# doubles-mode refresh triggered by the OTHER field slot while this one is
+# still mid-selection) — guarded so a second call never stacks a duplicate
+# overlay on top of an already-open one.
 func _build_item_buttons(field_slot: int) -> void:
-	var potion_btn := Button.new()
-	_style_menu_button(potion_btn)
-	potion_btn.text = "Potion (heal)"
-	potion_btn.pressed.connect(_on_item_pressed.bind(POTION_ITEM_ID, field_slot))
-	_button_area.add_child(potion_btn)
+	if _item_select_overlay != null and is_instance_valid(_item_select_overlay):
+		return
+	var overlay_scene: PackedScene = load("res://scenes/battle/item_select_screen.tscn")
+	var overlay: ItemSelectScreen = overlay_scene.instantiate()
+	add_child(overlay)
+	overlay.item_chosen.connect(_on_item_screen_item_chosen.bind(field_slot))
+	overlay.cancelled.connect(_on_item_screen_cancelled.bind(field_slot))
+	overlay.setup(self, field_slot)
+	_item_select_overlay = overlay
 
-	var full_heal_btn := Button.new()
-	_style_menu_button(full_heal_btn)
-	full_heal_btn.text = "Full Heal (cure status)"
-	full_heal_btn.pressed.connect(_on_item_pressed.bind(FULL_HEAL_ITEM_ID, field_slot))
-	_button_area.add_child(full_heal_btn)
 
-	var x_attack_btn := Button.new()
-	_style_menu_button(x_attack_btn)
-	x_attack_btn.text = "X Attack (+1 Attack)"
-	x_attack_btn.pressed.connect(_on_item_pressed.bind(X_ATTACK_ITEM_ID, field_slot))
-	_button_area.add_child(x_attack_btn)
+func _on_item_screen_item_chosen(item_id: int, field_slot: int) -> void:
+	_close_item_select_overlay()
+	_on_item_pressed(item_id, field_slot)
 
-	var back_btn := Button.new()
-	_style_menu_button(back_btn)
-	back_btn.text = "Back"
-	back_btn.pressed.connect(func():
-		_menu = Menu.TOP
-		_refresh_ui())
-	_button_area.add_child(back_btn)
+
+func _on_item_screen_cancelled(field_slot: int) -> void:
+	_close_item_select_overlay()
+	_menu = Menu.TOP
+	_refresh_ui()
+
+
+func _close_item_select_overlay() -> void:
+	if _item_select_overlay != null and is_instance_valid(_item_select_overlay):
+		_item_select_overlay.queue_free()
+	_item_select_overlay = null
 
 
 # [M23.11 Phase 4f] Target-picker — one Button per live candidate returned

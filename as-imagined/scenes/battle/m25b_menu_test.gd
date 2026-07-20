@@ -243,20 +243,43 @@ func _test_switch_back_returns_to_top() -> void:
 			back_btn.pressed.get_connections().size() > 0)
 
 
+# [M25h-1.4] Item is now a real separate full-screen overlay
+# (ItemSelectScreen), not an inline _button_area panel with its own Back
+# button -- see item_select_screen.gd's own doc comment and
+# item_select_screen_test.gd for this new screen's own dedicated coverage
+# (Cancel behavior, item selection wiring, doubles idempotency). This test
+# is narrowed to confirming _build_item_buttons' own real integration
+# surface: it opens a real overlay, wires it to the real handlers, and is
+# idempotent against a second call (the real risk this function's own doc
+# comment flags -- a doubles-mode _refresh_ui re-entry while the overlay is
+# still open must not stack a duplicate).
 func _test_item_back_returns_to_top() -> void:
 	var mon := _make_mon("ItemTester")
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
-	bs._button_area = VBoxContainer.new()
 	bs._menu = BattleScreen.Menu.ITEM
+	bs._font_menu = FontFile.new()
+	bs._font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
 
 	bs._build_item_buttons(0)
-	var back_btn: Button = bs._button_area.get_children().filter(
-			func(c): return c is Button and c.text == "Back")[0]
-	# See _test_fight_menu_back_returns_to_top's own doc comment for why
-	# this deliberately doesn't call back_btn.pressed.emit().
-	_chk("Item Back button has a real pressed connection",
-			back_btn.pressed.get_connections().size() > 0)
+
+	_chk("Item opens a real ItemSelectScreen overlay (not an inline _button_area panel)",
+			bs._item_select_overlay != null and bs._item_select_overlay is ItemSelectScreen)
+	_chk("the overlay is a real child of the battle screen",
+			bs._item_select_overlay.get_parent() == bs)
+	var overlay: ItemSelectScreen = bs._item_select_overlay
+	_chk("the overlay's own cancelled signal has a real connection back to the battle screen",
+			overlay.cancelled.get_connections().size() > 0)
+	_chk("the overlay's own item_chosen signal has a real connection back to the battle screen",
+			overlay.item_chosen.get_connections().size() > 0)
+
+	bs._build_item_buttons(0)
+	var overlay_count := 0
+	for c in bs.get_children():
+		if c is ItemSelectScreen:
+			overlay_count += 1
+	_chk("a second call while the overlay is still open does not stack a duplicate",
+			overlay_count == 1)
 
 
 # ── 7. TARGET_SELECT's own Back returns to FIGHT specifically, not TOP
