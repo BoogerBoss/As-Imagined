@@ -93,11 +93,21 @@ func _doubles_party(mons: Array) -> BattleParty:
 
 
 func _button_texts(container: VBoxContainer) -> Array:
+	# [M25h-1.3] Every button collected here comes from a cursor-wired group
+	# (_build_top_menu/_build_fight_menu -- every call site in this file),
+	# so its raw .text carries the real "▶ "/"  " selection-cursor prefix
+	# (see battle_screen.gd's own _wire_cursor_group). Stripped here, once,
+	# so every existing exact-text assertion downstream keeps comparing
+	# against the real underlying option text unchanged.
 	var texts: Array = []
 	for child in container.get_children():
 		if child is Button:
-			texts.append((child as Button).text)
+			texts.append(_base_text((child as Button).text))
 	return texts
+
+
+func _base_text(t: String) -> String:
+	return t.substr(BattleScreen._CURSOR_PREFIX.length())
 
 
 # ── 1. The top menu shows exactly Fight/Switch/Item/Run ─────────────────
@@ -131,7 +141,7 @@ func _test_fight_button_switches_to_fight_menu() -> void:
 
 	bs._build_top_menu(0)
 	var fight_btn: Button = bs._new_button_area.get_children().filter(
-			func(c): return c is Button and c.text == "Fight")[0]
+			func(c): return c is Button and _base_text(c.text) == "Fight")[0]
 	# _refresh_ui() itself needs a live scene (see this file's own top doc
 	# comment) -- disconnect it isn't possible cleanly, so instead confirm
 	# the callable directly captures the right target state by invoking
@@ -174,7 +184,7 @@ func _test_fight_menu_back_returns_to_top() -> void:
 
 	bs._build_fight_menu(0)
 	var back_btn: Button = bs._new_button_area.get_children().filter(
-			func(c): return c is Button and c.text == "Back")[0]
+			func(c): return c is Button and _base_text(c.text) == "Back")[0]
 	# [Deliberately NOT calling back_btn.pressed.emit()] The Back lambda's
 	# own second statement is _refresh_ui(), which needs the FULL live UI
 	# node tree (health bars, sprites, message box, and so on) to run
@@ -201,7 +211,7 @@ func _test_switch_button_disabled_without_valid_target() -> void:
 
 	bs._build_top_menu(0)
 	var switch_btn: Button = bs._new_button_area.get_children().filter(
-			func(c): return c is Button and c.text == "Switch")[0]
+			func(c): return c is Button and _base_text(c.text) == "Switch")[0]
 	_chk("Switch is disabled on TOP with no valid bench target", switch_btn.disabled)
 
 	var bench := _make_mon("Bench")
@@ -210,7 +220,7 @@ func _test_switch_button_disabled_without_valid_target() -> void:
 	bs2._new_button_area = VBoxContainer.new()
 	bs2._build_top_menu(0)
 	var switch_btn2: Button = bs2._new_button_area.get_children().filter(
-			func(c): return c is Button and c.text == "Switch")[0]
+			func(c): return c is Button and _base_text(c.text) == "Switch")[0]
 	_chk("Switch is enabled on TOP with a real bench member", not switch_btn2.disabled)
 
 
@@ -274,7 +284,7 @@ func _test_target_select_back_returns_to_fight_not_top() -> void:
 
 	bs._build_target_select_buttons(0, 0)
 	var back_btn: Button = bs._new_button_area.get_children().filter(
-			func(c): return c is Button and c.text == "Back")[0]
+			func(c): return c is Button and _base_text(c.text) == "Back")[0]
 	# See _test_fight_menu_back_returns_to_top's own doc comment for why
 	# this deliberately doesn't call back_btn.pressed.emit() -- the
 	# FIGHT-not-TOP destination itself (the one thing that genuinely
@@ -299,7 +309,7 @@ func _test_run_button_present_and_wired() -> void:
 
 	bs._build_top_menu(0)
 	var run_btn: Button = bs._new_button_area.get_children().filter(
-			func(c): return c is Button and c.text == "Run")[0]
+			func(c): return c is Button and _base_text(c.text) == "Run")[0]
 	_chk("Run button exists and has a real pressed connection",
 			run_btn.pressed.get_connections().size() > 0)
 	_chk("Run is connected specifically to _on_run_pressed",

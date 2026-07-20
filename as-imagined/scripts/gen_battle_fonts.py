@@ -103,6 +103,21 @@ for i in range(26):
     CHARMAP[chr(ord("A") + i)] = 0xBB + i
     CHARMAP[chr(ord("a") + i)] = 0xD5 + i
 
+# [M25h-1.3] The real menu-selection cursor glyph -- confirmed via direct
+# source read, not assumed: BOTH of source's two cursor mechanisms (the
+# generic list-menu cursor, `RedrawMenuCursor` in menu.c, which literally
+# prints `gText_SelectorArrow3 = _("▶")` through the same font/window
+# text system a menu's own options use; and the action-selection 2x2 grid's
+# own `ActionSelectionCreateCursorAt`, a raw-BG-tile mechanism whose exact
+# source tileset file could not be located in this reference checkout) draw
+# the same real Pokemon-wide selection marker, a right-pointing triangle.
+# Reusing this glyph (already present in the same latin_normal/latin_small
+# sheets at charmap id 0xEF, confirmed via direct pixel inspection to be a
+# clean filled triangle) means the cursor renders through the exact same
+# per-context bitmap-font pipeline as the text it sits beside -- no new
+# asset pull, no separate color to source.
+CHARMAP["▶"] = 0xEF
+
 # raw preview-palette RGB -> semantic role, confirmed identical across
 # both latin_normal.png and latin_small.png
 ROLE_BY_RAW_RGB = {

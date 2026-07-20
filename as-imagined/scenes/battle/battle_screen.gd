@@ -459,6 +459,75 @@ func _style_menu_button(btn: Button) -> void:
 	btn.add_theme_color_override("font_focus_color", Color(1, 1, 1, 1))
 	btn.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.5))
 
+
+# [M25h-1.3] Real right-pointing-triangle cursor glyph -- see
+# gen_battle_fonts.py's own doc comment for the source citation (both of
+# source's two distinct cursor mechanisms draw this same "▶" marker; this
+# project reuses it via the exact same bitmap-font pipeline the surrounding
+# menu text already goes through, rather than a separately-sourced sprite).
+const _CURSOR_GLYPH := "▶"
+const _CURSOR_PREFIX := _CURSOR_GLYPH + " "
+const _CURSOR_BLANK := "  "
+
+# One shared StyleBoxEmpty instance -- StyleBoxEmpty carries no per-instance
+# state, so every stripped button safely reuses the same Resource rather
+# than each allocating its own no-op box.
+static var _empty_button_style: StyleBoxEmpty = StyleBoxEmpty.new()
+
+
+# [M25h-1.3] Removes Godot's own default flat-grey Button chrome (normal/
+# hover/pressed/focus/disabled) so the real window art already sitting
+# behind these buttons (ActionPanel's text_window/1.png pull, M25h-1.1) is
+# fully visible with nothing but text on it -- matching source's own real
+# convention (the action-selection/move-select screens have no per-row
+# button-background art at all; selection is indicated purely by the ▶
+# cursor). Deliberately NOT applied to _button_area's own Switch/Item/
+# battle-end buttons -- that old inline region has no real window art
+# behind it at all (M25h-2/h-3's own future job), so stripping its chrome
+# would drop its text onto the plain dark battle background with nothing
+# to back it, a real legibility regression rather than a fix. See
+# _build_switch_buttons'/_build_item_buttons'/_build_battle_end_buttons'
+# own doc comments for this same boundary stated at their call sites.
+func _strip_button_chrome(btn: Button) -> void:
+	btn.add_theme_stylebox_override("normal", _empty_button_style)
+	btn.add_theme_stylebox_override("hover", _empty_button_style)
+	btn.add_theme_stylebox_override("pressed", _empty_button_style)
+	btn.add_theme_stylebox_override("focus", _empty_button_style)
+	btn.add_theme_stylebox_override("disabled", _empty_button_style)
+	btn.add_theme_stylebox_override("hover_pressed", _empty_button_style)
+
+
+# [M25h-1.3] Wires the shared selection cursor across one menu's own button
+# group. Source always has SOME option selected the instant a menu opens
+# (`initialCursorPos`/`gActionSelectionCursor[battler]`, both real fields
+# with a real starting value, never an absent/no-selection state) -- so
+# this defaults to index 0 immediately, rather than waiting for the first
+# hover. Mouse-only: this project's menus have never wired keyboard/gamepad
+# focus navigation (confirmed via a direct grep for grab_focus/
+# focus_neighbor/ui_up/ui_down before this sub-phase touched anything --
+# none exist anywhere in this file), so mouse hover is the one real,
+# functional input method to track. The cursor never explicitly hides on
+# mouse_exited -- matching source's own real behavior (the cursor always
+# marks the current selection; moving the mouse off a list doesn't erase
+# it, it simply stays wherever it last was), and incidentally sidesteps a
+# flicker a naive show-on-enter/hide-on-exit pair would cause when the
+# mouse crosses directly from one button to its neighbor.
+func _wire_cursor_group(buttons: Array[Button]) -> void:
+	for i in range(buttons.size()):
+		var btn: Button = buttons[i]
+		btn.set_meta("cursor_base_text", btn.text)
+		btn.mouse_entered.connect(_set_cursor_selected.bind(buttons, i))
+	if buttons.size() > 0:
+		_set_cursor_selected(buttons, 0)
+
+
+func _set_cursor_selected(buttons: Array[Button], selected_index: int) -> void:
+	for i in range(buttons.size()):
+		var btn: Button = buttons[i]
+		var base_text: String = btn.get_meta("cursor_base_text")
+		btn.text = (_CURSOR_PREFIX + base_text) if i == selected_index else (_CURSOR_BLANK + base_text)
+
+
 # Which sub-menu the MOVE_SELECTION main-action screen is currently showing.
 # Irrelevant during SWITCH_PROMPT, which always shows the bench-picker
 # directly (a mandatory faint replacement, no "back" option).
@@ -2045,6 +2114,11 @@ func _current_action_field_slot() -> int:
 # and the player can freely reconfigure format/teams before their next
 # battle, mirroring the same screen every OTHER path into a battle already
 # goes through.
+# [M25h-1.3] Deliberately NOT chrome-stripped/cursor-wired — this button
+# lives in `_button_area` ($VBox/ButtonArea), which has no real window art
+# behind it at all (unlike ActionPanel's own text_window/1.png pull). See
+# _strip_button_chrome's own doc comment for why stripping chrome here
+# would be a real legibility regression, not a fix.
 func _build_battle_end_buttons() -> void:
 	var play_again_btn := Button.new()
 	_style_menu_button(play_again_btn)
@@ -2069,6 +2143,7 @@ func _on_play_again_pressed() -> void:
 func _build_top_menu(field_slot: int) -> void:
 	var fight_btn := Button.new()
 	_style_menu_button(fight_btn)
+	_strip_button_chrome(fight_btn)
 	fight_btn.text = "Fight"
 	fight_btn.pressed.connect(func():
 		_menu = Menu.FIGHT
@@ -2083,6 +2158,7 @@ func _build_top_menu(field_slot: int) -> void:
 	# are M25h-2/h-3's own job, not this one.
 	var switch_btn := Button.new()
 	_style_menu_button(switch_btn)
+	_strip_button_chrome(switch_btn)
 	switch_btn.text = "Switch"
 	switch_btn.disabled = not _player_party.has_valid_switch_target()
 	switch_btn.pressed.connect(func():
@@ -2092,6 +2168,7 @@ func _build_top_menu(field_slot: int) -> void:
 
 	var item_btn := Button.new()
 	_style_menu_button(item_btn)
+	_strip_button_chrome(item_btn)
 	item_btn.text = "Item"
 	item_btn.pressed.connect(func():
 		_menu = Menu.ITEM
@@ -2106,9 +2183,15 @@ func _build_top_menu(field_slot: int) -> void:
 	# exactly what it does.
 	var run_btn := Button.new()
 	_style_menu_button(run_btn)
+	_strip_button_chrome(run_btn)
 	run_btn.text = "Run"
 	run_btn.pressed.connect(_on_run_pressed)
 	_new_button_area.add_child(run_btn)
+
+	# [M25h-1.3] Real ▶ cursor, defaulting to Fight (index 0) -- matches
+	# source's own always-defined initial cursor position.
+	var top_buttons: Array[Button] = [fight_btn, switch_btn, item_btn, run_btn]
+	_wire_cursor_group(top_buttons)
 
 
 # [M25b] The move list — content unchanged from the old _build_main_menu's
@@ -2118,24 +2201,32 @@ func _build_top_menu(field_slot: int) -> void:
 # non-forced "Back" branches).
 func _build_fight_menu(field_slot: int) -> void:
 	var mon: BattlePokemon = _player_party.get_active_at(field_slot)
+	var fight_buttons: Array[Button] = []
 	for i in range(mon.moves.size()):
 		var move: MoveData = mon.moves[i]
 		if move == null:
 			continue
 		var btn := Button.new()
 		_style_menu_button(btn)
+		_strip_button_chrome(btn)
 		btn.text = "%s (PP %d/%d)" % [move.move_name, mon.current_pp[i], move.pp]
 		btn.disabled = mon.current_pp[i] <= 0
 		btn.pressed.connect(_on_move_pressed.bind(field_slot, i))
 		_new_button_area.add_child(btn)
+		fight_buttons.append(btn)
 
 	var back_btn := Button.new()
 	_style_menu_button(back_btn)
+	_strip_button_chrome(back_btn)
 	back_btn.text = "Back"
 	back_btn.pressed.connect(func():
 		_menu = Menu.TOP
 		_refresh_ui())
 	_new_button_area.add_child(back_btn)
+	fight_buttons.append(back_btn)
+
+	# [M25h-1.3] Real ▶ cursor, defaulting to the first move.
+	_wire_cursor_group(fight_buttons)
 
 
 # [M25b] Run placeholder — ends the current battle immediately and returns
@@ -2175,6 +2266,9 @@ static func _party_has_switch_candidate(party: BattleParty) -> bool:
 	return false
 
 
+# [M25h-1.3] Deliberately NOT chrome-stripped/cursor-wired — see
+# _build_battle_end_buttons' own doc comment for why (`_button_area` has no
+# real window art behind it; M25h-2's own future job).
 func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void:
 	var any_candidate := _party_has_switch_candidate(_player_party)
 	for i in range(_player_party.members.size()):
@@ -2218,6 +2312,9 @@ func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void
 		_button_area.add_child(back_btn)
 
 
+# [M25h-1.3] Deliberately NOT chrome-stripped/cursor-wired — see
+# _build_battle_end_buttons' own doc comment for why (`_button_area` has no
+# real window art behind it; M25h-2's own future job).
 func _build_item_buttons(field_slot: int) -> void:
 	var potion_btn := Button.new()
 	_style_menu_button(potion_btn)
@@ -2259,13 +2356,16 @@ func _build_target_select_buttons(field_slot: int, move_index: int) -> void:
 	var mon: BattlePokemon = _player_party.get_active_at(field_slot)
 	var move: MoveData = mon.moves[move_index]
 	var candidates: Array[BattlePokemon] = _bm.get_live_targets(mon, move)
+	var target_buttons: Array[Button] = []
 	for target_mon: BattlePokemon in candidates:
 		var target_idx: int = _bm.get_combatant_index(target_mon)
 		var btn := Button.new()
 		_style_menu_button(btn)
+		_strip_button_chrome(btn)
 		btn.text = "%s  HP: %d/%d" % [_mon_label(target_mon), target_mon.current_hp, target_mon.max_hp]
 		btn.pressed.connect(_on_target_selected.bind(field_slot, move_index, target_idx))
 		_new_button_area.add_child(btn)
+		target_buttons.append(btn)
 
 	# [M23.11 Phase 4f] Matches every other sub-menu's own "Back" convention
 	# (_build_switch_buttons'/_build_item_buttons' non-forced branches) —
@@ -2276,12 +2376,17 @@ func _build_target_select_buttons(field_slot: int, move_index: int) -> void:
 	# different move doesn't require re-entering Fight from the top menu.
 	var back_btn := Button.new()
 	_style_menu_button(back_btn)
+	_strip_button_chrome(back_btn)
 	back_btn.text = "Back"
 	back_btn.pressed.connect(func():
 		_menu = Menu.FIGHT
 		_pending_move_index = -1
 		_refresh_ui())
 	_new_button_area.add_child(back_btn)
+	target_buttons.append(back_btn)
+
+	# [M25h-1.3] Real ▶ cursor, defaulting to the first candidate.
+	_wire_cursor_group(target_buttons)
 
 
 # ── Input handlers — the M23.0a external contract in action ────────────────

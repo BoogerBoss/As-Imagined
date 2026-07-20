@@ -54,7 +54,6 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="OpponentSprite" type="TextureRect" parent="BattleStage" unique_id=1530435969]
-visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.8
@@ -70,7 +69,6 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="OpponentHealthGroup" type="Control" parent="BattleStage" unique_id=1650050192]
-visible = false
 layout_mode = 1
 anchor_left = 0.75
 anchor_top = 0.25
@@ -103,7 +101,6 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="HpLabel" type="TextureRect" parent="BattleStage/OpponentHealthGroup" unique_id=1968519389]
-visible = false
 layout_mode = 1
 offset_left = -29.0
 offset_top = 20.0
@@ -113,7 +110,6 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="HpFill" type="TextureProgressBar" parent="BattleStage/OpponentHealthGroup" unique_id=1597787635]
-visible = false
 layout_mode = 1
 offset_left = 14.0
 offset_top = 21.0
@@ -121,7 +117,6 @@ offset_right = 140.0
 offset_bottom = 35.0
 
 [node name="NameLevelLabel" type="Label" parent="BattleStage/OpponentHealthGroup" unique_id=-1794967295]
-visible = false
 layout_mode = 1
 offset_left = -27.0
 offset_top = -2.0
@@ -130,7 +125,6 @@ offset_bottom = 16.0
 theme_override_font_sizes/font_size = 13
 
 [node name="PlayerSprite" type="TextureRect" parent="BattleStage" unique_id=626580134]
-visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.03
@@ -146,7 +140,6 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="PlayerHealthGroup" type="Control" parent="BattleStage" unique_id=810825783]
-visible = false
 layout_mode = 1
 anchor_left = 0.03
 anchor_top = 0.47
@@ -159,7 +152,6 @@ offset_bottom = 244.44
 mouse_filter = 2
 
 [node name="Background" type="TextureRect" parent="BattleStage/PlayerHealthGroup" unique_id=812620117]
-visible = false
 layout_mode = 1
 offset_right = 224.0
 offset_bottom = 112.0
@@ -178,7 +170,6 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="HpLabel" type="TextureRect" parent="BattleStage/PlayerHealthGroup" unique_id=2021977869]
-visible = false
 layout_mode = 1
 offset_left = 42.0
 offset_top = 44.0
@@ -188,7 +179,6 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="HpFill" type="TextureProgressBar" parent="BattleStage/PlayerHealthGroup" unique_id=1061243133]
-visible = false
 layout_mode = 1
 offset_left = 84.0
 offset_top = 44.0
@@ -196,7 +186,6 @@ offset_right = 210.0
 offset_bottom = 58.0
 
 [node name="NameLevelLabel" type="Label" parent="BattleStage/PlayerHealthGroup" unique_id=-1794967294]
-visible = false
 layout_mode = 1
 offset_left = 54.0
 offset_top = 22.0
@@ -205,6 +194,7 @@ offset_bottom = 38.0
 theme_override_font_sizes/font_size = 13
 
 [node name="OpponentSpriteD0" type="TextureRect" parent="BattleStage" unique_id=2001000001]
+visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.83
@@ -220,6 +210,7 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="OpponentHealthGroupD0" type="Control" parent="BattleStage" unique_id=2001000002]
+visible = false
 layout_mode = 1
 anchor_left = 0.72
 anchor_top = 0.24
@@ -273,6 +264,7 @@ offset_bottom = 34.0
 theme_override_font_sizes/font_size = 9
 
 [node name="OpponentSpriteD1" type="TextureRect" parent="BattleStage" unique_id=2001000007]
+visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.83
@@ -288,6 +280,7 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="OpponentHealthGroupD1" type="Control" parent="BattleStage" unique_id=2001000008]
+visible = false
 layout_mode = 1
 anchor_left = 0.72
 anchor_top = 0.52
@@ -342,6 +335,7 @@ offset_bottom = 34.0
 theme_override_font_sizes/font_size = 9
 
 [node name="PlayerSpriteD0" type="TextureRect" parent="BattleStage" unique_id=2001000013]
+visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.14
@@ -357,6 +351,7 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="PlayerHealthGroupD0" type="Control" parent="BattleStage" unique_id=2001000014]
+visible = false
 layout_mode = 1
 anchor_left = 0.03
 anchor_top = 0.4
@@ -411,6 +406,7 @@ offset_bottom = 34.0
 theme_override_font_sizes/font_size = 9
 
 [node name="PlayerSpriteD1" type="TextureRect" parent="BattleStage" unique_id=2001000019]
+visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.14
@@ -426,6 +422,7 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="PlayerHealthGroupD1" type="Control" parent="BattleStage" unique_id=2001000020]
+visible = false
 layout_mode = 1
 anchor_left = 0.03
 anchor_top = 0.68
@@ -456,6 +453,7 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="HpLabel" type="TextureRect" parent="BattleStage/PlayerHealthGroupD1" unique_id=2001000023]
+visible = false
 layout_mode = 1
 offset_left = 25.0
 offset_top = 12.0
@@ -465,6 +463,7 @@ expand_mode = 1
 stretch_mode = 4
 
 [node name="HpFill" type="TextureProgressBar" parent="BattleStage/PlayerHealthGroupD1" unique_id=2001000024]
+visible = false
 layout_mode = 1
 offset_left = 50.0
 offset_top = 12.0
