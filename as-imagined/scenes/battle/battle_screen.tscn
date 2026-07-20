@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://bckp4vcyuq4v8" path="res://scenes/battle/battle_screen.gd" id="1_screen"]
 [ext_resource type="Script" uid="uid://by21x2021is5s" path="res://scripts/battle/core/battle_manager.gd" id="2_bm"]
 [ext_resource type="Theme" path="res://scenes/main_theme.tres" id="3_theme"]
+[ext_resource type="Texture2D" uid="uid://dj63beu4mjhgk" path="res://assets/sprites/battle_backgrounds/long_grass.png" id="4_1pli6"]
 [ext_resource type="Texture2D" uid="uid://dbv7by4kbgmqj" path="res://assets/sprites/pokemon/back/0025_pikachu.png" id="4_pikachu_back"]
 [ext_resource type="Texture2D" uid="uid://oa5advdirqvm" path="res://assets/sprites/pokemon/front/0006_charizard.png" id="5_charizard_front"]
 [ext_resource type="Texture2D" uid="uid://dcw4vmorqe6v" path="res://assets/sprites/battle_ui/interface/healthbox_singles_player.png" id="6_healthbox_player"]
@@ -43,10 +44,14 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_top = -72.0
+offset_bottom = -72.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+texture = ExtResource("4_1pli6")
 expand_mode = 1
+stretch_mode = 5
 
 [node name="OpponentSprite" type="TextureRect" parent="BattleStage" unique_id=1530435969]
 layout_mode = 1
@@ -55,10 +60,10 @@ anchor_left = 0.8
 anchor_top = 0.08
 anchor_right = 0.8
 anchor_bottom = 0.08
-offset_left = -46.600037
-offset_top = -48.84
-offset_right = 171.56012
-offset_bottom = 169.32
+offset_left = -215.60004
+offset_top = 72.16
+offset_right = 121.56024
+offset_bottom = 409.32004
 texture = ExtResource("5_charizard_front")
 expand_mode = 1
 stretch_mode = 4
@@ -69,8 +74,10 @@ anchor_left = 0.75
 anchor_top = 0.25
 anchor_right = 0.75
 anchor_bottom = 0.25
-offset_right = 224.0
-offset_bottom = 56.0
+offset_left = -775.0
+offset_top = -120.0
+offset_right = -551.0
+offset_bottom = -64.0
 mouse_filter = 2
 
 [node name="Background" type="TextureRect" parent="BattleStage/OpponentHealthGroup" unique_id=574999890]
@@ -122,10 +129,10 @@ anchor_left = 0.03
 anchor_top = 0.3
 anchor_right = 0.03
 anchor_bottom = 0.3
-offset_left = -18.559998
-offset_top = 217.59999
-offset_right = 214.44
-offset_bottom = 450.59998
+offset_left = 118.44
+offset_top = 101.59999
+offset_right = 351.44
+offset_bottom = 334.59998
 texture = ExtResource("4_pikachu_back")
 expand_mode = 1
 stretch_mode = 4
@@ -136,8 +143,10 @@ anchor_left = 0.03
 anchor_top = 0.47
 anchor_right = 0.03
 anchor_bottom = 0.47
-offset_right = 224.0
-offset_bottom = 112.0
+offset_left = 816.44
+offset_top = 132.44
+offset_right = 1040.44
+offset_bottom = 244.44
 mouse_filter = 2
 
 [node name="Background" type="TextureRect" parent="BattleStage/PlayerHealthGroup" unique_id=812620117]
@@ -466,29 +475,17 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+metadata/_edit_lock_ = true
 
 [node name="VBox" type="VBoxContainer" parent="." unique_id=401385552]
 layout_mode = 1
-anchors_preset = 8
+anchors_preset = -1
 anchor_left = 0.5
-anchor_top = 0.5
+anchor_top = 0.04
 anchor_right = 0.5
-anchor_bottom = 0.5
+anchor_bottom = 0.04
 grow_horizontal = 2
-grow_vertical = 2
-
-[node name="StatusLabel" type="Label" parent="VBox" unique_id=321370111]
-layout_mode = 2
-text = "..."
-horizontal_alignment = 1
-
-[node name="Side0Label" type="Label" parent="VBox" unique_id=102801150]
-layout_mode = 2
-horizontal_alignment = 1
-
-[node name="Side1Label" type="Label" parent="VBox" unique_id=497648195]
-layout_mode = 2
-horizontal_alignment = 1
+grow_vertical = 1
 
 [node name="LogLabel" type="RichTextLabel" parent="VBox" unique_id=1177135432]
 custom_minimum_size = Vector2(500, 220)
@@ -501,9 +498,41 @@ skip_pause_at_abbreviations = PackedStringArray("Mr", "Mrs", "Ms", "Dr", "etc", 
 [node name="ButtonArea" type="VBoxContainer" parent="VBox" unique_id=1135293509]
 layout_mode = 2
 
+[node name="ActionRegion" type="Control" parent="." unique_id=2700000001]
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 0.75
+anchor_right = 1.0
+anchor_bottom = 0.95
+offset_left = 16.0
+offset_right = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="ActionPanel" type="PanelContainer" parent="ActionRegion" unique_id=2700000004]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ActionVBox" type="VBoxContainer" parent="ActionRegion/ActionPanel" unique_id=2700000002]
+layout_mode = 2
+
+[node name="StatusLabel" type="Label" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=321370111]
+layout_mode = 2
+text = "..."
+horizontal_alignment = 1
+
+[node name="NewButtonArea" type="VBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=2700000003]
+layout_mode = 2
+
 [node name="DebugOverlay" type="Control" parent="." unique_id=-1694967295]
 visible = false
 layout_mode = 1
+anchors_preset = 11
 anchor_left = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -511,6 +540,8 @@ offset_left = -300.0
 offset_top = 20.0
 offset_right = -20.0
 offset_bottom = -20.0
+grow_horizontal = 0
+grow_vertical = 2
 mouse_filter = 2
 
 [node name="Background" type="ColorRect" parent="DebugOverlay" unique_id=-1694967294]

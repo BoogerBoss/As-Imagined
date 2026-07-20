@@ -107,11 +107,11 @@ func _test_top_menu_has_four_options() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
-	bs._button_area = VBoxContainer.new()
+	bs._new_button_area = VBoxContainer.new()
 
 	bs._build_top_menu(0)
 
-	var texts := _button_texts(bs._button_area)
+	var texts := _button_texts(bs._new_button_area)
 	_chk("top menu has exactly 4 buttons", texts.size() == 4)
 	_chk("top menu shows Fight", texts.has("Fight"))
 	_chk("top menu shows Switch", texts.has("Switch"))
@@ -126,11 +126,11 @@ func _test_fight_button_switches_to_fight_menu() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
-	bs._button_area = VBoxContainer.new()
+	bs._new_button_area = VBoxContainer.new()
 	bs._menu = BattleScreen.Menu.TOP
 
 	bs._build_top_menu(0)
-	var fight_btn: Button = bs._button_area.get_children().filter(
+	var fight_btn: Button = bs._new_button_area.get_children().filter(
 			func(c): return c is Button and c.text == "Fight")[0]
 	# _refresh_ui() itself needs a live scene (see this file's own top doc
 	# comment) -- disconnect it isn't possible cleanly, so instead confirm
@@ -151,11 +151,11 @@ func _test_fight_menu_shows_moves_and_back_button() -> void:
 	mon.add_move(_load_move(52))  # Ember
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
-	bs._button_area = VBoxContainer.new()
+	bs._new_button_area = VBoxContainer.new()
 
 	bs._build_fight_menu(0)
 
-	var texts := _button_texts(bs._button_area)
+	var texts := _button_texts(bs._new_button_area)
 	_chk("Fight menu shows exactly 2 moves + Back", texts.size() == 3)
 	_chk("Fight menu shows Tackle with its own PP", texts.any(func(t): return t.begins_with("Tackle")))
 	_chk("Fight menu shows Ember with its own PP", texts.any(func(t): return t.begins_with("Ember")))
@@ -169,11 +169,11 @@ func _test_fight_menu_back_returns_to_top() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
-	bs._button_area = VBoxContainer.new()
+	bs._new_button_area = VBoxContainer.new()
 	bs._menu = BattleScreen.Menu.FIGHT
 
 	bs._build_fight_menu(0)
-	var back_btn: Button = bs._button_area.get_children().filter(
+	var back_btn: Button = bs._new_button_area.get_children().filter(
 			func(c): return c is Button and c.text == "Back")[0]
 	# [Deliberately NOT calling back_btn.pressed.emit()] The Back lambda's
 	# own second statement is _refresh_ui(), which needs the FULL live UI
@@ -197,19 +197,19 @@ func _test_switch_button_disabled_without_valid_target() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)  # no bench at all
-	bs._button_area = VBoxContainer.new()
+	bs._new_button_area = VBoxContainer.new()
 
 	bs._build_top_menu(0)
-	var switch_btn: Button = bs._button_area.get_children().filter(
+	var switch_btn: Button = bs._new_button_area.get_children().filter(
 			func(c): return c is Button and c.text == "Switch")[0]
 	_chk("Switch is disabled on TOP with no valid bench target", switch_btn.disabled)
 
 	var bench := _make_mon("Bench")
 	var bs2 := BattleScreen.new()
 	bs2._player_party = _singles_party(mon, [bench])
-	bs2._button_area = VBoxContainer.new()
+	bs2._new_button_area = VBoxContainer.new()
 	bs2._build_top_menu(0)
-	var switch_btn2: Button = bs2._button_area.get_children().filter(
+	var switch_btn2: Button = bs2._new_button_area.get_children().filter(
 			func(c): return c is Button and c.text == "Switch")[0]
 	_chk("Switch is enabled on TOP with a real bench member", not switch_btn2.disabled)
 
@@ -261,7 +261,7 @@ func _test_target_select_back_returns_to_fight_not_top() -> void:
 
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(attacker)
-	bs._button_area = VBoxContainer.new()
+	bs._new_button_area = VBoxContainer.new()
 	bs._menu = BattleScreen.Menu.TARGET_SELECT
 	bs._pending_move_index = 0
 
@@ -273,7 +273,7 @@ func _test_target_select_back_returns_to_fight_not_top() -> void:
 	bs._bm = bm
 
 	bs._build_target_select_buttons(0, 0)
-	var back_btn: Button = bs._button_area.get_children().filter(
+	var back_btn: Button = bs._new_button_area.get_children().filter(
 			func(c): return c is Button and c.text == "Back")[0]
 	# See _test_fight_menu_back_returns_to_top's own doc comment for why
 	# this deliberately doesn't call back_btn.pressed.emit() -- the
@@ -295,10 +295,10 @@ func _test_run_button_present_and_wired() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
-	bs._button_area = VBoxContainer.new()
+	bs._new_button_area = VBoxContainer.new()
 
 	bs._build_top_menu(0)
-	var run_btn: Button = bs._button_area.get_children().filter(
+	var run_btn: Button = bs._new_button_area.get_children().filter(
 			func(c): return c is Button and c.text == "Run")[0]
 	_chk("Run button exists and has a real pressed connection",
 			run_btn.pressed.get_connections().size() > 0)
@@ -351,29 +351,29 @@ func _test_doubles_top_menu_independent_per_slot() -> void:
 	m1.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _doubles_party([m0, m1])
-	bs._button_area = VBoxContainer.new()
+	bs._new_button_area = VBoxContainer.new()
 
 	# Slot 0's own top menu.
 	bs._build_top_menu(0)
-	var slot0_texts := _button_texts(bs._button_area)
+	var slot0_texts := _button_texts(bs._new_button_area)
 	_chk("doubles slot 0 gets its own real 4-option top menu", slot0_texts.size() == 4)
 
 	# Slot 1 gets an independently-built top menu too (a fresh call, exactly
 	# how _refresh_ui's own per-slot sequencing already drives this —
 	# Phase 4f's own single-flat-_menu-variable design, confirmed still
 	# correct under M25b: nothing here is keyed to slot 0 specifically).
-	bs._button_area = VBoxContainer.new()
+	bs._new_button_area = VBoxContainer.new()
 	bs._build_top_menu(1)
-	var slot1_texts := _button_texts(bs._button_area)
+	var slot1_texts := _button_texts(bs._new_button_area)
 	_chk("doubles slot 1 also gets its own real 4-option top menu", slot1_texts.size() == 4)
 
 	# Fight menu content is genuinely PER-MON, not shared/aliased across
 	# slots -- confirms the field_slot threading through _build_fight_menu
 	# still resolves the correct active mon per slot.
 	m1.add_move(_load_move(52))  # give slot 1's own mon a second move
-	bs._button_area = VBoxContainer.new()
+	bs._new_button_area = VBoxContainer.new()
 	bs._build_fight_menu(1)
-	var slot1_fight_texts := _button_texts(bs._button_area)
+	var slot1_fight_texts := _button_texts(bs._new_button_area)
 	_chk("doubles slot 1's own Fight menu reflects ITS mon's own moveset (2 moves + Back), not slot 0's",
 			slot1_fight_texts.size() == 3)
 

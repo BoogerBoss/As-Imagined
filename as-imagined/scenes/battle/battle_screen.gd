@@ -206,9 +206,16 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 }
 
 @onready var _bm: BattleManager = $BattleManager
-@onready var _status_label: Label = $VBox/StatusLabel
-@onready var _side0_label: Label = $VBox/Side0Label
-@onready var _side1_label: Label = $VBox/Side1Label
+# [M25h-1] Relocated from $VBox/StatusLabel into the new real-proportion
+# bottom region (ActionRegion — anchor_top=0.75/anchor_bottom=0.95 in the
+# .tscn, matching source's own B_WIN_MSG tilemapTop=15/height=4 tiles =
+# y=120-152px of a 160px screen) — same node (unique_id unchanged), same
+# role, just a new parent. Side0Label/Side1Label (confirmed redundant M23.2-era
+# plain-text HP scaffolding, superseded by Phase 4b's real health-box HP
+# bars, plus a confirmed real doubles bug — fed via BattlePokemon.get_active()
+# which is hardcoded to get_active_at(0), so they never reflected field slot
+# 1) are deleted outright, not relocated.
+@onready var _status_label: Label = $ActionRegion/ActionPanel/ActionVBox/StatusLabel
 
 # [M23.11 Phase 4e] DialogueLabel (addons/dialogue_manager/dialogue_label.gd)
 # rather than a plain RichTextLabel -- see _setup_message_box()'s own doc
@@ -218,9 +225,33 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # assumed -- so every existing `.text +=` append site below (_log(),
 # _flush_pending_effect_lines(), _on_log_move_executed()) is completely
 # untouched: same property, same accumulating-scroll behavior, same
-# queuing/sequencing/timing as every prior phase.
+# queuing/sequencing/timing as every prior phase. [M25h-1] Deliberately left
+# exactly where/how it is today -- relocating/merging the log is M25h-4's
+# own job, not this sub-phase's.
 @onready var _log_label: DialogueLabel = $VBox/LogLabel
+# [M25h-1] Still used by SWITCH/ITEM only now (left inline/untouched per
+# this sub-phase's own locked scope -- M25h-2/h-3 pull those out into real
+# separate screens later). TOP/FIGHT/TARGET_SELECT moved to _new_button_area
+# below, inside the new real-proportion region.
+#
+# [M25h-1 anchor fix] `VBox`'s own .tscn anchors changed from a floating
+# CENTER point (anchor_top=anchor_bottom=0.5, grow_vertical=BOTH) to a
+# TOP-pinned point near the top of the screen (anchor_top=anchor_bottom=
+# 0.04, grow_vertical=END) — found necessary via real screenshot
+# verification, not assumed. With StatusLabel/Side0Label/Side1Label
+# removed, VBox's total content shrank; under the OLD center-point/grow-
+# BOTH anchoring this recentered the whole block, pulling `_button_area`'s
+# own buttons up into LogLabel's own fixed 220px box for anything more than
+# ~2 rows (confirmed: Item's real 4-button list visibly overlapped the
+# log). LogLabel's own node/properties are still completely untouched (per
+# this sub-phase's own explicit instruction), but its SCREEN POSITION did
+# move — a deliberate, disclosed trade-off: pinning the top and moving the
+# whole block higher was the only way to guarantee `_button_area` (still
+# holding SWITCH/ITEM's real content) never overlaps either the log above
+# it or ActionRegion below it, for every row-count SWITCH/ITEM can produce.
 @onready var _button_area: VBoxContainer = $VBox/ButtonArea
+@onready var _new_button_area: VBoxContainer = $ActionRegion/ActionPanel/ActionVBox/NewButtonArea
+@onready var _action_panel: PanelContainer = $ActionRegion/ActionPanel
 
 # [M25d] Combat-debug overlay — a separate top-level node (drawn last, so it
 # renders on top of both BattleStage's sprites/health-boxes and VBox's own
@@ -415,6 +446,7 @@ var _pending_move_index: int = -1
 func _ready() -> void:
 	_setup_health_ui()
 	_setup_message_box()
+	_setup_action_region_panel()
 	_opponent_anim_timer.timeout.connect(_on_opponent_anim_timer_timeout)
 
 	# [M23.6 injection point] BattleSetupContext is a plain static-var
@@ -1536,6 +1568,29 @@ const _MESSAGE_BOX_MARGIN := 5.0
 # the original pull stays byte-for-byte available for any future reprocessing.
 const _MESSAGE_BOX_KEY_COLOR := Color8(115, 205, 164, 255)
 
+# [M25h-1.1] text_window/1.png's own background-key color and margin —
+# confirmed via direct pixel inspection, not assumed from std.png's own
+# values (they differ): pixel 0 (a SINGLE pixel, not std.png's own 2px) is
+# key color RGB (98, 197, 98) alpha=255, then a 5px decorative border/
+# transition band (pixels 1-5), then a flat white interior starting at
+# pixel 6 (12px wide, mirrored on the far edge: 1+5+12+5+1=24, matching the
+# file's own 24x24 size exactly). This is `graphics/text_window/1.png` in
+# source — `sWindowFrames[0]`, the file `LoadUserWindowBorderGfx` actually
+# draws for the battle message/action-menu/move-select window border
+# (`LoadBattleMenuWindowGfx` -> `LoadUserWindowBorderGfx` -> `LoadWindowGfx`
+# indexed by `gSaveBlock2Ptr->optionsWindowFrameType`, defaulting to 0 on a
+# fresh save per `new_game.c`) — confirmed directly against source, NOT the
+# same asset Phase 4e's own `_MESSAGE_BOX_KEY_COLOR`/std.png pull used
+# (that file is drawn by the separate `LoadStdWindowGfx` function instead,
+# used elsewhere, not for battle's own message/action windows). Both files
+# were already present in this project's own Phase 1 asset pull (the whole
+# `text_window/` directory, all 20 numbered frames + std/message_box/
+# name_box/signpost, was pulled then even though only std.png was ever
+# actually wired up) — so this session needed zero new asset pull, only
+# correctly identifying and applying the one that was always the real match.
+const _ACTION_PANEL_KEY_COLOR := Color8(98, 197, 98, 255)
+const _ACTION_PANEL_MARGIN := 6.0
+
 # [M23.11 Phase 4e] Pure function (no scene/Image-loading side effects of its
 # own) so a headless test can verify the color-matching logic directly
 # without needing a real Image/texture round-trip. `is_equal_approx`'s
@@ -1544,8 +1599,13 @@ const _MESSAGE_BOX_KEY_COLOR := Color8(115, 205, 164, 255)
 # palette-indexed PNG's background-key color is byte-identical across every
 # pixel (confirmed directly against the real std.png asset in this phase's
 # own test suite), not something that needs fuzzy tolerance.
-static func _is_message_box_key_color(c: Color) -> bool:
-	return c.is_equal_approx(_MESSAGE_BOX_KEY_COLOR)
+# [M25h-1.1] Generalized to accept the key color explicitly rather than
+# reading the module-level constant directly, so the same pure check works
+# for text_window/1.png's own different key color too — every existing
+# caller (still implicitly std.png-only, via _color_keyed_texture's own
+# default) is unaffected.
+static func _is_message_box_key_color(c: Color, key_color: Color = _MESSAGE_BOX_KEY_COLOR) -> bool:
+	return c.is_equal_approx(key_color)
 
 
 # [M23.11 Phase 4e] Loads text_window/std.png, replaces every background-key
@@ -1556,12 +1616,17 @@ static func _is_message_box_key_color(c: Color) -> bool:
 # (the HP-bar/status-icon AtlasTexture slicing in _setup_health_ui above is
 # the same shape: load the raw pulled art, transform it in code, never touch
 # the file on disk).
-static func _color_keyed_texture(source: Image) -> ImageTexture:
+# [M25h-1.1] Gained an explicit key_color param (default preserves the
+# original std.png-only behavior for _setup_message_box's own call site
+# unchanged) so _setup_action_region_panel below can reuse this same
+# function for text_window/1.png's own different key color instead of a
+# near-duplicate copy.
+static func _color_keyed_texture(source: Image, key_color: Color = _MESSAGE_BOX_KEY_COLOR) -> ImageTexture:
 	var img := source.duplicate()
 	img.convert(Image.FORMAT_RGBA8)
 	for y in range(img.get_height()):
 		for x in range(img.get_width()):
-			if _is_message_box_key_color(img.get_pixel(x, y)):
+			if _is_message_box_key_color(img.get_pixel(x, y), key_color):
 				img.set_pixel(x, y, Color(0, 0, 0, 0))
 	return ImageTexture.create_from_image(img)
 
@@ -1615,6 +1680,40 @@ func _setup_message_box() -> void:
 	# light-box convention (the same cream/pale interior already used by
 	# this project's healthbox art).
 	_log_label.add_theme_color_override("default_color", Color(0.1, 0.1, 0.1))
+
+
+# [M25h-1.1] Real window art for the new shared bottom region (ActionRegion
+# -> ActionPanel), built in M25h-1 with no visual styling at all. Uses
+# text_window/1.png specifically, not std.png -- see _ACTION_PANEL_KEY_COLOR's
+# own doc comment for the full source citation on why this is the real
+# asset for B_WIN_MSG/B_WIN_ACTION_MENU/B_WIN_ACTION_PROMPT/move-select,
+# not the file Phase 4e's own _setup_message_box already applied to the
+# (separately-styled, untouched-by-this-session) log. PanelContainer
+# (ActionPanel) rather than a raw stylebox on ActionVBox directly -- unlike
+# Label/RichTextLabel, VBoxContainer has no "normal"/panel theme slot of
+# its own; PanelContainer is the standard Godot container specifically for
+# "a background panel behind a group of child controls, with automatic
+# margin inset from the stylebox's own texture_margin values."
+func _setup_action_region_panel() -> void:
+	var raw_image: Image = load("res://assets/sprites/battle_ui/text_window/1.png").get_image()
+	var keyed_texture: ImageTexture = _color_keyed_texture(raw_image, _ACTION_PANEL_KEY_COLOR)
+
+	var panel_style := StyleBoxTexture.new()
+	panel_style.texture = keyed_texture
+	panel_style.texture_margin_left = _ACTION_PANEL_MARGIN
+	panel_style.texture_margin_top = _ACTION_PANEL_MARGIN
+	panel_style.texture_margin_right = _ACTION_PANEL_MARGIN
+	panel_style.texture_margin_bottom = _ACTION_PANEL_MARGIN
+
+	_action_panel.add_theme_stylebox_override("panel", panel_style)
+
+	# [Same white-on-white risk Phase 4e's own doc comment already found and
+	# fixed for LogLabel -- confirmed via this session's own real screenshot
+	# verification, not just assumed from that precedent] StatusLabel and
+	# every button built into _new_button_area sit on this same light-
+	# interior panel now; Godot's own default Label/Button text color is
+	# light, invisible against it without an explicit override.
+	_status_label.add_theme_color_override("font_color", Color(0.1, 0.1, 0.1))
 
 
 func _update_status_icon(icon_node: TextureRect, atlas: AtlasTexture, status: int) -> void:
@@ -1675,17 +1774,20 @@ func _refresh_doubles_side(party: BattleParty, is_player: bool, sprites: Array, 
 
 
 func _refresh_ui() -> void:
+	# [M25h-1] Both button areas are cleared unconditionally every call —
+	# only one of them gets repopulated below depending on _menu, so the
+	# OTHER one stays empty (visually absent) rather than needing an
+	# explicit show/hide toggle. This is exactly what makes the ITEM/SWITCH
+	# (old _button_area) <-> TOP/FIGHT/TARGET_SELECT (new _new_button_area)
+	# hybrid transition work correctly with no special-casing: a Back button
+	# from either region just sets _menu and calls _refresh_ui() as before.
 	for child in _button_area.get_children():
+		child.queue_free()
+	for child in _new_button_area.get_children():
 		child.queue_free()
 
 	var side0_mon: BattlePokemon = _player_party.get_active()
 	var side1_mon: BattlePokemon = _opp_party.get_active()
-	_side0_label.text = "%s  HP: %d/%d%s" % [
-			side0_mon.species.species_name, side0_mon.current_hp, side0_mon.max_hp,
-			" (fainted)" if side0_mon.fainted else ""]
-	_side1_label.text = "%s  HP: %d/%d%s" % [
-			side1_mon.species.species_name, side1_mon.current_hp, side1_mon.max_hp,
-			" (fainted)" if side1_mon.fainted else ""]
 
 	# [M23.11 Phase 4a] Visual sprite/HP-bar sync -- _refresh_ui() is
 	# already the single call point that runs after every state change
@@ -1882,22 +1984,28 @@ func _build_top_menu(field_slot: int) -> void:
 	fight_btn.pressed.connect(func():
 		_menu = Menu.FIGHT
 		_refresh_ui())
-	_button_area.add_child(fight_btn)
+	_new_button_area.add_child(fight_btn)
 
+	# [M25h-1] Switch/Item still route to the old, untouched inline panels
+	# (_button_area, in $VBox) -- pressing either of these buttons (now
+	# living in the new region) transitions OUT of the new region into the
+	# old one. _refresh_ui()'s own unconditional dual-clear is what makes
+	# this correct with zero special-casing. Real separate screens for both
+	# are M25h-2/h-3's own job, not this one.
 	var switch_btn := Button.new()
 	switch_btn.text = "Switch"
 	switch_btn.disabled = not _player_party.has_valid_switch_target()
 	switch_btn.pressed.connect(func():
 		_menu = Menu.SWITCH
 		_refresh_ui())
-	_button_area.add_child(switch_btn)
+	_new_button_area.add_child(switch_btn)
 
 	var item_btn := Button.new()
 	item_btn.text = "Item"
 	item_btn.pressed.connect(func():
 		_menu = Menu.ITEM
 		_refresh_ui())
-	_button_area.add_child(item_btn)
+	_new_button_area.add_child(item_btn)
 
 	# [M25b] Temporary placeholder — NOT real flee logic (success chance,
 	# speed comparison, trainer-battle refusal, etc. are all explicitly out
@@ -1908,7 +2016,7 @@ func _build_top_menu(field_slot: int) -> void:
 	var run_btn := Button.new()
 	run_btn.text = "Run"
 	run_btn.pressed.connect(_on_run_pressed)
-	_button_area.add_child(run_btn)
+	_new_button_area.add_child(run_btn)
 
 
 # [M25b] The move list — content unchanged from the old _build_main_menu's
@@ -1926,14 +2034,14 @@ func _build_fight_menu(field_slot: int) -> void:
 		btn.text = "%s (PP %d/%d)" % [move.move_name, mon.current_pp[i], move.pp]
 		btn.disabled = mon.current_pp[i] <= 0
 		btn.pressed.connect(_on_move_pressed.bind(field_slot, i))
-		_button_area.add_child(btn)
+		_new_button_area.add_child(btn)
 
 	var back_btn := Button.new()
 	back_btn.text = "Back"
 	back_btn.pressed.connect(func():
 		_menu = Menu.TOP
 		_refresh_ui())
-	_button_area.add_child(back_btn)
+	_new_button_area.add_child(back_btn)
 
 
 # [M25b] Run placeholder — ends the current battle immediately and returns
@@ -2056,7 +2164,7 @@ func _build_target_select_buttons(field_slot: int, move_index: int) -> void:
 		var btn := Button.new()
 		btn.text = "%s  HP: %d/%d" % [_mon_label(target_mon), target_mon.current_hp, target_mon.max_hp]
 		btn.pressed.connect(_on_target_selected.bind(field_slot, move_index, target_idx))
-		_button_area.add_child(btn)
+		_new_button_area.add_child(btn)
 
 	# [M23.11 Phase 4f] Matches every other sub-menu's own "Back" convention
 	# (_build_switch_buttons'/_build_item_buttons' non-forced branches) —
@@ -2071,7 +2179,7 @@ func _build_target_select_buttons(field_slot: int, move_index: int) -> void:
 		_menu = Menu.FIGHT
 		_pending_move_index = -1
 		_refresh_ui())
-	_button_area.add_child(back_btn)
+	_new_button_area.add_child(back_btn)
 
 
 # ── Input handlers — the M23.0a external contract in action ────────────────
