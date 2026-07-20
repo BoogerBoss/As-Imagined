@@ -27,7 +27,7 @@ func _ready() -> void:
 	_test_top_menu_buttons_have_chrome_stripped_and_cursor_wired()
 	_test_fight_menu_buttons_have_chrome_stripped_and_cursor_wired()
 	_test_target_select_buttons_have_chrome_stripped_and_cursor_wired()
-	_test_switch_buttons_deliberately_unaffected()
+	_test_switch_buttons_no_longer_use_old_button_area()
 	_test_battle_end_button_deliberately_unaffected()
 
 	var total := _pass + _fail
@@ -268,35 +268,31 @@ func _test_target_select_buttons_have_chrome_stripped_and_cursor_wired() -> void
 
 # ── G. The old inline _button_area (no real window art) is deliberately
 # left untouched -- a real, disclosed scope boundary, not an oversight.
-# [M25h-1.4 note] Item is NO LONGER in this "deliberately unaffected"
-# category as of M25h-1.4 -- it now has its own real overlay screen (see
-# item_select_screen_test.gd). Only Switch/battle-end remain here. ────────
-
-func _test_switch_buttons_deliberately_unaffected() -> void:
+# [M25h-1.4/M25h-1.5 note] Neither Item NOR Switch is in this "deliberately
+# unaffected" category anymore -- both now have their own real overlay
+# screens (see item_select_screen_test.gd/switch_select_screen_test.gd).
+# Only battle-end remains here. Switch's own real chrome/cursor coverage
+# now lives entirely in switch_select_screen_test.gd's own Test C
+# (_test_overlay_buttons_use_real_font_chrome_and_cursor) -- this test is
+# narrowed to a regression guard confirming _button_area stays genuinely
+# untouched (empty) when Switch opens its real overlay instead, rather than
+# re-asserting Switch's old "no chrome" premise, which is no longer true.
+func _test_switch_buttons_no_longer_use_old_button_area() -> void:
 	var mon := _make_mon("CursorSwitchTester")
 	var bench := _make_mon("CursorBench")
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon, [bench])
 	bs._button_area = VBoxContainer.new()
 	bs._menu = BattleScreen.Menu.SWITCH
+	bs._font_menu = FontFile.new()
+	bs._font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
 
 	bs._build_switch_buttons(false, 0)
 
-	var buttons: Array = bs._button_area.get_children()
-	var any_stripped := false
-	var any_wired := false
-	var any_prefixed := false
-	for c in buttons:
-		if _is_chrome_stripped(c):
-			any_stripped = true
-		if c.mouse_entered.get_connections().size() > 0:
-			any_wired = true
-		if (c.text as String).begins_with(BattleScreen._CURSOR_PREFIX) or (c.text as String).begins_with(BattleScreen._CURSOR_BLANK):
-			any_prefixed = true
-	_chk("Switch buttons keep Godot's own default chrome (no real window art behind them yet)",
-			not any_stripped)
-	_chk("Switch buttons have no cursor wiring", not any_wired)
-	_chk("Switch buttons' text has no cursor prefix at all", not any_prefixed)
+	_chk("Switch no longer writes into the old _button_area at all (real overlay instead)",
+			bs._button_area.get_child_count() == 0)
+	_chk("Switch opens a real SwitchSelectScreen overlay",
+			bs._switch_select_overlay != null and bs._switch_select_overlay is SwitchSelectScreen)
 
 
 func _test_battle_end_button_deliberately_unaffected() -> void:

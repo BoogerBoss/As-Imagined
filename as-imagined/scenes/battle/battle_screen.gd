@@ -575,6 +575,10 @@ var _pending_move_index: int = -1
 # other _build_*_buttons function.
 var _item_select_overlay: Control = null
 
+# [M25h-1.5] Same idempotency need as _item_select_overlay above, for the
+# real Switch/Party overlay.
+var _switch_select_overlay: Control = null
+
 
 func _ready() -> void:
 	_load_battle_fonts()
@@ -2272,50 +2276,68 @@ static func _party_has_switch_candidate(party: BattleParty) -> bool:
 	return false
 
 
-# [M25h-1.3] Deliberately NOT chrome-stripped/cursor-wired — see
-# _build_battle_end_buttons' own doc comment for why (`_button_area` has no
-# real window art behind it; M25h-2's own future job).
+# [M25h-1.5] Switch is now a real separate full-screen overlay
+# (SwitchSelectScreen), matching source's own OpenPartyMenuToChooseMon/
+# OpenPartyMenuInBattle architecture — see switch_select_screen.gd's own doc
+# comment for the full rationale, identical in shape to M25h-1.4's Item
+# overlay. Idempotent for the same reason as _build_item_buttons: _refresh_ui
+# can legitimately re-enter this function while a switch/replacement is
+# already being chosen (e.g. a doubles refresh triggered by the OTHER field
+# slot mid-selection) — guarded so a second call never stacks a duplicate
+# overlay on top of an already-open one.
+#
+# [M25a bugfix, preserved unchanged] A forced replacement (SWITCH_PROMPT)
+# with genuinely NO valid bench candidate (e.g. a doubles battle where the
+# only remaining live party member is already active in the OTHER field
+# slot) used to leave the old inline screen with zero buttons -- a real
+# hardlock, since BattleManager's own _phase_switch_prompt waits
+# indefinitely for queue_replacement_for() on a human-controlled side, and
+# nothing could ever call it. BattleManager already handles an explicit "no
+# replacement" submission correctly (_get_replacement_slot falls through to
+# BattleParty.get_first_non_fainted_not_active(), which returns -1 and
+# resolves this slot as "no replacement available" — the same fallback the
+# AI-driven path already relies on) — this just needed to actually BE
+# submitted rather than the player being left with nothing to press.
+# Auto-resolves the same turn a real player would otherwise be stuck on,
+# instead of requiring a screen that can't show anything. This check runs
+# BEFORE the overlay is ever opened, so the zero-candidate case never shows
+# a screen at all (matching the old inline behavior exactly) rather than
+# opening a real screen with zero rows and a stray Cancel.
 func _build_switch_buttons(is_forced_replacement: bool, field_slot: int) -> void:
-	var any_candidate := _party_has_switch_candidate(_player_party)
-	for i in range(_player_party.members.size()):
-		if _player_party.active_indices.has(i) or _player_party.members[i].fainted:
-			continue
-		var mon: BattlePokemon = _player_party.members[i]
-		var btn := Button.new()
-		_style_menu_button(btn)
-		btn.text = "%s  HP: %d/%d" % [mon.species.species_name, mon.current_hp, mon.max_hp]
-		btn.pressed.connect(_on_switch_pressed.bind(i, is_forced_replacement, field_slot))
-		_button_area.add_child(btn)
+	if _switch_select_overlay != null and is_instance_valid(_switch_select_overlay):
+		return
 
-	# [M25a bugfix] A forced replacement (SWITCH_PROMPT) with genuinely NO
-	# valid bench candidate (e.g. a doubles battle where the only remaining
-	# live party member is already active in the OTHER field slot) used to
-	# leave this screen with zero buttons -- a real hardlock, since
-	# BattleManager's own _phase_switch_prompt waits indefinitely for
-	# queue_replacement_for() on a human-controlled side, and nothing could
-	# ever call it. BattleManager already handles an explicit "no
-	# replacement" submission correctly (_get_replacement_slot falls
-	# through to BattleParty.get_first_non_fainted_not_active(), which
-	# returns -1 and resolves this slot as "no replacement available" —
-	# the same fallback the AI-driven path already relies on) — this just
-	# needed to actually BE submitted rather than the player being left
-	# with nothing to press. Auto-resolves the same turn a real player
-	# would otherwise be stuck on, instead of requiring a button that
-	# can't exist.
+	var any_candidate := _party_has_switch_candidate(_player_party)
 	if is_forced_replacement and not any_candidate:
 		_bm.queue_replacement_for(field_slot, -1)
 		_bm.advance()
 		_refresh_ui()
 		return
 
-	if not is_forced_replacement:
-		var back_btn := Button.new()
-		_style_menu_button(back_btn)
-		back_btn.text = "Back"
-		back_btn.pressed.connect(func():
-			_menu = Menu.TOP
-			_refresh_ui())
-		_button_area.add_child(back_btn)
+	var overlay_scene: PackedScene = load("res://scenes/battle/switch_select_screen.tscn")
+	var overlay: SwitchSelectScreen = overlay_scene.instantiate()
+	add_child(overlay)
+	overlay.mon_chosen.connect(_on_switch_screen_mon_chosen.bind(is_forced_replacement, field_slot))
+	overlay.cancelled.connect(_on_switch_screen_cancelled.bind(field_slot))
+	overlay.setup(self, field_slot, is_forced_replacement)
+	_switch_select_overlay = overlay
+
+
+func _on_switch_screen_mon_chosen(slot: int, is_forced_replacement: bool, field_slot: int) -> void:
+	_close_switch_select_overlay()
+	_on_switch_pressed(slot, is_forced_replacement, field_slot)
+
+
+func _on_switch_screen_cancelled(field_slot: int) -> void:
+	_close_switch_select_overlay()
+	_menu = Menu.TOP
+	_refresh_ui()
+
+
+func _close_switch_select_overlay() -> void:
+	if _switch_select_overlay != null and is_instance_valid(_switch_select_overlay):
+		_switch_select_overlay.queue_free()
+	_switch_select_overlay = null
 
 
 # [M25h-1.4] Item is now a real separate full-screen overlay (ItemSelectScreen)

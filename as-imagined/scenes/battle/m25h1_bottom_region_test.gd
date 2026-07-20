@@ -4,9 +4,13 @@ extends Node
 # TOP/FIGHT/TARGET_SELECT relocated into a new real-proportion region
 # (ActionRegion, anchor_top=0.75/anchor_bottom=0.95, matching source's own
 # B_WIN_MSG tilemapTop=15/height=4 tiles = y=120-152px of a 160px screen),
-# while SWITCH/ITEM deliberately stay in the old inline `_button_area`
-# (left untouched — M25h-2/h-3's own job to pull out into real separate
-# screens), plus the Side0Label/Side1Label deletion.
+# plus the Side0Label/Side1Label deletion. SWITCH/ITEM originally stayed in
+# the old inline `_button_area` at this sub-phase's own time of writing —
+# both have since been rebuilt as real separate full-screen overlays
+# (M25h-1.4 for Item, M25h-1.5 for Switch), so `_button_area` itself is now
+# dead weight neither of them writes into anymore (see Test 7/8 below, both
+# rewritten from this suite's own original "still builds into old area"
+# assumption to confirm the real current behavior instead).
 #
 # [Deliberately NOT tested here] _refresh_ui() itself, and the real visual
 # non-overlap between the old VBox block and the new region for every
@@ -28,7 +32,7 @@ func _ready() -> void:
 	_test_top_menu_builds_into_new_area_not_old()
 	_test_fight_menu_builds_into_new_area_not_old()
 	_test_target_select_builds_into_new_area_not_old()
-	_test_switch_still_builds_into_old_area()
+	_test_switch_opens_a_real_overlay_not_the_old_button_areas()
 	_test_item_opens_a_real_overlay_not_the_old_button_areas()
 	_test_player_health_group_d1_clears_action_region()
 	_test_action_panel_exists_as_panel_container()
@@ -210,23 +214,33 @@ func _test_target_select_builds_into_new_area_not_old() -> void:
 	bm.queue_free()
 
 
-# ── 7. SWITCH deliberately still builds into the OLD area (M25h-1.5's own
-# future job, not yet done) ───────────────────────────────────────────────
-
-func _test_switch_still_builds_into_old_area() -> void:
+# ── 7. [M25h-1.5 superseded this test's own original finding] SWITCH no
+# longer builds into EITHER _button_area or _new_button_area at all -- it
+# now opens a real separate SwitchSelectScreen overlay, matching M25h-1.4's
+# own Item precedent exactly (see switch_select_screen_test.gd for that
+# screen's own dedicated coverage). This is a genuine, deliberate
+# architecture change, not a regression: confirmed via this session's own
+# real screenshot verification that the overlay renders correctly.
+# Rewritten to confirm the NEW real behavior instead of the old
+# inline-panel assumption.
+func _test_switch_opens_a_real_overlay_not_the_old_button_areas() -> void:
 	var mon := _make_mon("SwitchTester")
 	var bench := _make_mon("Bench")
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon, [bench])
 	bs._new_button_area = VBoxContainer.new()
 	bs._button_area = VBoxContainer.new()
+	bs._font_menu = FontFile.new()
+	bs._font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
 
 	bs._build_switch_buttons(false, 0)
 
-	_chk("SWITCH's own buttons (1 candidate + Back) still land in the OLD button area, untouched this session",
-			_button_texts(bs._button_area).size() == 2)
-	_chk("SWITCH does NOT write into the new region's button area",
+	_chk("SWITCH does NOT write into the old _button_area at all anymore",
+			bs._button_area.get_child_count() == 0)
+	_chk("SWITCH does NOT write into the new region's button area either",
 			bs._new_button_area.get_child_count() == 0)
+	_chk("SWITCH instead opens a real separate SwitchSelectScreen overlay",
+			bs._switch_select_overlay != null and bs._switch_select_overlay is SwitchSelectScreen)
 
 
 # ── 8. [M25h-1.4 superseded this test's own original finding] ITEM no

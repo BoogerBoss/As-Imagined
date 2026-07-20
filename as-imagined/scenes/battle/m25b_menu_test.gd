@@ -16,8 +16,12 @@ extends Node
 # precedent. This suite calls _build_top_menu/_build_fight_menu/
 # _build_switch_buttons/_build_item_buttons directly on a bare
 # BattleScreen.new() with only the specific fields each one touches
-# manually assigned (_player_party, _button_area) -- the real end-to-end
-# proof is this session's own real, non-headless screenshot verification.
+# manually assigned (_player_party, plus _new_button_area for TOP/FIGHT) --
+# Switch and Item (M25h-1.5/M25h-1.4) no longer touch _button_area at all,
+# opening a real overlay instead; see switch_select_screen_test.gd/
+# item_select_screen_test.gd for their own dedicated coverage. The real
+# end-to-end proof is this session's own real, non-headless screenshot
+# verification.
 
 var _pass := 0
 var _fail := 0
@@ -29,7 +33,7 @@ func _ready() -> void:
 	_test_fight_menu_shows_moves_and_back_button()
 	_test_fight_menu_back_returns_to_top()
 	_test_switch_button_disabled_without_valid_target()
-	_test_switch_back_returns_to_top()
+	_test_switch_opens_a_real_overlay()
 	_test_item_back_returns_to_top()
 	_test_target_select_back_returns_to_fight_not_top()
 	_test_run_button_present_and_wired()
@@ -224,23 +228,30 @@ func _test_switch_button_disabled_without_valid_target() -> void:
 	_chk("Switch is enabled on TOP with a real bench member", not switch_btn2.disabled)
 
 
-# ── 6. Switch/Item sub-menus' own (non-forced) Back returns to TOP ──────
-
-func _test_switch_back_returns_to_top() -> void:
+# [M25h-1.5] Switch is now a real separate full-screen overlay
+# (SwitchSelectScreen), not an inline _button_area panel with its own Back
+# button -- see switch_select_screen.gd's own doc comment and
+# switch_select_screen_test.gd for this new screen's own dedicated coverage
+# (Cancel/forced-replacement behavior, mon selection wiring, doubles
+# idempotency). Narrowed the same way M25h-1.4's own _test_item_back_
+# returns_to_top was: confirms _build_switch_buttons' own real integration
+# surface (opens a real overlay, wired to the real handlers) rather than
+# the old inline Back-button assumption.
+func _test_switch_opens_a_real_overlay() -> void:
 	var mon := _make_mon("SwitchTester")
 	var bench := _make_mon("Bench2")
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon, [bench])
-	bs._button_area = VBoxContainer.new()
 	bs._menu = BattleScreen.Menu.SWITCH
+	bs._font_menu = FontFile.new()
+	bs._font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
 
 	bs._build_switch_buttons(false, 0)
-	var back_btn: Button = bs._button_area.get_children().filter(
-			func(c): return c is Button and c.text == "Back")[0]
-	# See _test_fight_menu_back_returns_to_top's own doc comment for why
-	# this deliberately doesn't call back_btn.pressed.emit().
-	_chk("voluntary-switch Back button has a real pressed connection",
-			back_btn.pressed.get_connections().size() > 0)
+
+	_chk("Switch opens a real SwitchSelectScreen overlay (not an inline _button_area panel)",
+			bs._switch_select_overlay != null and bs._switch_select_overlay is SwitchSelectScreen)
+	_chk("the overlay is a real child of the battle screen",
+			bs._switch_select_overlay.get_parent() == bs)
 
 
 # [M25h-1.4] Item is now a real separate full-screen overlay
