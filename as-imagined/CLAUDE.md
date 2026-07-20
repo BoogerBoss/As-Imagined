@@ -786,6 +786,39 @@ all, succeeding on the first attempt:**
    suspicion; prefer absolute paths over `cd`-and-relative-path sequences
    wherever the destination might be outside the repo.
 
+## Standing process rule: pull real reference-game assets/structure first, iterate from there
+
+**For any new UI element, screen, or visual component, the default approach
+is to identify and pull the real reference-game assets and structure (art,
+fonts, layout proportions, styling/color conventions) FIRST — confirmed via
+direct source inspection, the same Step 0 discipline already standing for
+everything else in this project — and build against that real, source-
+accurate baseline from the start.** Only iterate/adjust from there, rather
+than building a generic/placeholder version first and retrofitting
+authenticity in a later pass.
+
+**Why this is a standing rule, not just advice**: M25h's own sequence is the
+concrete cost this rule exists to prevent. The shared bottom region was
+built generically in M25h-1 (real proportions, no real art at all); a
+dedicated follow-up session (M25h-1.1) was then needed to discover and wire
+the real `text_window` border art; a further recon session immediately
+after that found the TEXT rendered inside that same border still isn't
+using any real font/styling. Three separate sessions to reach one
+authentic-looking element, each one re-discovering and re-verifying a layer
+that could have been identified and sourced correctly the first time, had
+the real baseline been pulled before anything was built.
+
+**This does not preclude iteration or legitimate project-specific
+deviations** made AFTER understanding the real baseline — e.g. M25h-2/h-3's
+own decision to build real separate Bag/Party screens, or M25h's own
+earlier menu-simplification calls. Those are informed design choices made
+with the real source already in hand, not a license to skip investigating
+it in the first place.
+
+**Not retroactive.** This governs new UI work going forward; it does not
+imply any already-completed session should have followed it, and no prior
+session's own history is rewritten to suggest otherwise.
+
 ## Known limitation: `git stash` is blocked by this environment's permission classifier
 
 Discovered during `[M23.4]`, attempting to capture a clean "before" sweep

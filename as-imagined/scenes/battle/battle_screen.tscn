@@ -60,10 +60,10 @@ anchor_left = 0.8
 anchor_top = 0.08
 anchor_right = 0.8
 anchor_bottom = 0.08
-offset_left = -215.60004
-offset_top = 72.16
-offset_right = 121.56024
-offset_bottom = 409.32004
+offset_left = -262.60004
+offset_top = 67.16
+offset_right = -17.43982
+offset_bottom = 312.32004
 texture = ExtResource("5_charizard_front")
 expand_mode = 1
 stretch_mode = 4
@@ -485,7 +485,6 @@ anchor_top = 0.04
 anchor_right = 0.5
 anchor_bottom = 0.04
 grow_horizontal = 2
-grow_vertical = 1
 
 [node name="LogLabel" type="RichTextLabel" parent="VBox" unique_id=1177135432]
 custom_minimum_size = Vector2(500, 220)
@@ -498,9 +497,8 @@ skip_pause_at_abbreviations = PackedStringArray("Mr", "Mrs", "Ms", "Dr", "etc", 
 [node name="ButtonArea" type="VBoxContainer" parent="VBox" unique_id=1135293509]
 layout_mode = 2
 
-[node name="ActionRegion" type="Control" parent="." unique_id=2700000001]
+[node name="ActionRegion" type="Control" parent="." unique_id=-1594967295]
 layout_mode = 1
-anchors_preset = -1
 anchor_top = 0.75
 anchor_right = 1.0
 anchor_bottom = 0.95
@@ -510,7 +508,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="ActionPanel" type="PanelContainer" parent="ActionRegion" unique_id=2700000004]
+[node name="ActionPanel" type="PanelContainer" parent="ActionRegion" unique_id=-1594967292]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -518,7 +516,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="ActionVBox" type="VBoxContainer" parent="ActionRegion/ActionPanel" unique_id=2700000002]
+[node name="ActionVBox" type="VBoxContainer" parent="ActionRegion/ActionPanel" unique_id=-1594967294]
 layout_mode = 2
 
 [node name="StatusLabel" type="Label" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=321370111]
@@ -526,7 +524,7 @@ layout_mode = 2
 text = "..."
 horizontal_alignment = 1
 
-[node name="NewButtonArea" type="VBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=2700000003]
+[node name="NewButtonArea" type="VBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=-1594967293]
 layout_mode = 2
 
 [node name="DebugOverlay" type="Control" parent="." unique_id=-1694967295]
