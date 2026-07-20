@@ -29,6 +29,9 @@ func _ready() -> void:
 	_test_field_slot_propagates_correctly_to_bound_handlers()
 	_test_item_chosen_reaches_real_queue_item_for_end_to_end()
 	_test_cancelled_reaches_real_menu_reset_end_to_end()
+	_test_all_three_items_are_real_pocket_items()
+	_test_header_shows_the_real_pocket_name()
+	_test_non_battle_usable_item_is_a_graceful_no_op_not_a_crash()
 
 	var total := _pass + _fail
 	print("item_select_screen_test: %d/%d passed" % [_pass, total])
@@ -341,3 +344,80 @@ func _test_cancelled_reaches_real_menu_reset_end_to_end() -> void:
 	# a 3-line function with no branching to hide a bug in.
 	_chk("_menu starts at ITEM (about to be reset by a real Cancel press)",
 			bs._menu == BattleScreen.Menu.ITEM)
+
+
+# ── K. [Pocket-sorting investigation, same day] Real pocket data ──────────
+# Confirmed via direct source read (data/items.h) that Potion/Full Heal/
+# X Attack all carry .pocket = POCKET_ITEMS in the real games -- this
+# proves that data is now correctly modeled in this project too, not just
+# claimed in a doc comment.
+
+func _test_all_three_items_are_real_pocket_items() -> void:
+	var potion := ItemRegistry.get_item(28)
+	var full_heal := ItemRegistry.get_item(48)
+	var x_attack := ItemRegistry.get_item(121)
+	_chk("Potion is a real POCKET_ITEMS entry", potion.pocket == ItemManager.POCKET_ITEMS)
+	_chk("Full Heal is a real POCKET_ITEMS entry", full_heal.pocket == ItemManager.POCKET_ITEMS)
+	_chk("X Attack is a real POCKET_ITEMS entry", x_attack.pocket == ItemManager.POCKET_ITEMS)
+
+
+# ── L. The screen's own header shows the real pocket name (source:
+# gPocketNamesStringsTable[POCKET_ITEMS] = "ITEMS"), not a generic "BAG" ──
+
+func _test_header_shows_the_real_pocket_name() -> void:
+	_chk("the screen's own header is the real source pocket name, not a generic placeholder",
+			ItemSelectScreen._HEADER_TEXT == "ITEMS")
+
+
+# ── M. [PP Up/Rare Candy investigation] Neither item exists anywhere in
+# this project's own data (confirmed via a direct grep of data/items/ and
+# every battle script before this session started) -- there was nothing
+# to hide/disable for them specifically. What IS confirmed and tested
+# here is the general mechanism: source's own battle-context Bag screen
+# does NOT hide or grey out a non-battle-usable item in the list -- it's
+# selectable, but choosing it opens a context menu offering ONLY "Cancel"
+# (OpenContextMenu's ITEMMENULOCATION_BATTLE case, gated by
+# GetItemBattleUsage() -- item_menu.c). This project has no such UI-layer
+# context-menu concept to reproduce that exact behavior, but the BACKEND
+# dispatch a real non-battle-usable item would eventually reach
+# (BattleManager._do_item_use) is confirmed here to already degrade
+# gracefully -- a synthetic ItemData with battle_usage left at its own
+# schema default (0, matching what a real non-battle-usable item would
+# carry) hits no branch in _do_item_use's own if/elif chain and simply
+# no-ops past the unconditional item_action_used emission, rather than
+# crashing or silently applying an effect it shouldn't.
+func _test_non_battle_usable_item_is_a_graceful_no_op_not_a_crash() -> void:
+	var mon := _make_mon("NonUsableItemTester", 100)
+	mon.current_hp = 100
+	var opp := _make_mon("Opp2", 100)
+
+	var bm := BattleManager.new()
+	add_child(bm)
+	var p0 := _singles_party(mon)
+	var p1 := _singles_party(opp)
+	var combatants: Array[BattlePokemon] = [mon, opp]
+	bm._combatants = combatants
+	var parties: Array[BattleParty] = [p0, p1]
+	bm._parties = parties
+	bm._active_per_side = 1
+
+	var non_battle_usable_item := ItemData.new()
+	non_battle_usable_item.item_id = 999999
+	non_battle_usable_item.item_name = "Synthetic Non-Battle-Usable Item"
+	# battle_usage deliberately left at its own schema default (0) --
+	# matching a real PP-Up/Rare-Candy-shaped item exactly.
+
+	var used_events: Array = []
+	bm.item_action_used.connect(func(user, item, target): used_events.append([user, item, target]))
+	var healed_events: Array = []
+	bm.item_healed.connect(func(mon2, amount): healed_events.append([mon2, amount]))
+
+	bm._do_item_use(0, non_battle_usable_item, 0)
+
+	_chk("item_action_used still fires (the item was genuinely selected/used, matching source's own unconditional emission before the battle_usage branch)",
+			used_events.size() == 1 and used_events[0][1] == non_battle_usable_item)
+	_chk("no effect actually applied -- a graceful no-op, not a crash and not a silent unintended effect",
+			healed_events.is_empty())
+	_chk("the user's own HP is completely unaffected", mon.current_hp == 100)
+
+	bm.queue_free()

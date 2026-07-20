@@ -56,6 +56,15 @@ import pathlib
 # populated for any item.
 POCKET_BERRIES = 3
 
+# [M25h-1.4 pocket-sorting investigation] POCKET_ITEMS (must match
+# ItemManager.POCKET_ITEMS) — confirmed via direct source read
+# (include/constants/item.h) that Potion(28)/Full Heal(48)/X Attack(121),
+# this project's entire current battle-usable Item-screen roster, are all
+# real POCKET_ITEMS entries. The value (0) happens to already be
+# ItemData.pocket's own schema default, so this is set explicitly below
+# for documentation/intent, not because leaving it unset would be wrong.
+POCKET_ITEMS = 0
+
 # ── HOLD_EFFECT_* constants (must match scripts/battle/core/item_manager.gd) ──
 HOLD_EFFECT_RESTORE_HP      = 1   # Oran Berry — flat heal (M18b)
 HOLD_EFFECT_CURE_PAR        = 2   # Cheri Berry (M18b)
@@ -624,7 +633,7 @@ ITEMS = [
     #    item_manager.gd's bag_item_heal doc comment for the full citation),
     #    .battleUsage = EFFECT_ITEM_RESTORE_HP.
     {"id": 28, "name": "Potion", "battle_usage": BATTLE_USE_RESTORE_HP,
-        "hold_effect_param": 20},
+        "hold_effect_param": 20, "pocket": POCKET_ITEMS},
 
     # ── [M22 Phase 2]: the remaining 3 items from the recon's own minimal set ──
     # Full Heal: source's real ITEM3_STATUS_ALL scope cures non-volatile status
@@ -633,14 +642,15 @@ ITEMS = [
     # bag_item_cure_status doc comment for the full citation and why this
     # project's own architecture makes source's "active-battler-only" volatile
     # restriction moot. No numeric param needed (cures unconditionally).
-    {"id": 48, "name": "Full Heal", "battle_usage": BATTLE_USE_CURE_STATUS},
+    {"id": 48, "name": "Full Heal", "battle_usage": BATTLE_USE_CURE_STATUS,
+        "pocket": POCKET_ITEMS},
 
     # X Attack: +2 stages at this project's GEN_LATEST config (X_ITEM_STAGES,
     # B_X_ITEMS_BUFF>=GEN_7 -- see item_manager.gd's own X_ITEM_STAGES
     # constant). stat_boost_stage=STAGE_ATK (0), NOT ev_boost_stat's own
     # STAT_* ordinal -- see ItemData.stat_boost_stage's own doc comment.
     {"id": 121, "name": "X Attack", "battle_usage": BATTLE_USE_INCREASE_STAT,
-        "stat_boost_stage": STAGE_ATK},
+        "stat_boost_stage": STAGE_ATK, "pocket": POCKET_ITEMS},
 
     # Poké Ball: a deliberate M22 stub (attempt_catch always fails) -- see
     # item_manager.gd's own doc comment. No numeric param needed; targets the

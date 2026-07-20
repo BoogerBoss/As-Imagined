@@ -14,6 +14,16 @@ extends RefCounted
 # constant/field mirrors that exact mechanism, not a bespoke "is_berry" flag.
 const POCKET_BERRIES: int = 3
 
+# [M25h-1.4 pocket-sorting investigation] POCKET_ITEMS added alongside
+# POCKET_BERRIES for the same reason -- confirmed via direct source read
+# (include/constants/item.h) that Potion/Full Heal/X Attack, and every
+# other currently-modeled battle-usable item in this project, are real
+# POCKET_ITEMS entries (the value happens to be 0, ItemData.pocket's own
+# schema default, but is set explicitly on those items now rather than
+# left as an unlabeled default -- see item_select_screen.gd's own doc
+# comment for why this didn't turn into multi-tab pocket-switching UI).
+const POCKET_ITEMS: int = 0
+
 # ── Hold-effect constants ─────────────────────────────────────────────────────
 # Source: include/constants/hold_effects.h
 const HOLD_EFFECT_NONE:          int = 0

@@ -59,18 +59,52 @@ class_name ItemSelectScreen
 # inventory system this would need. One single flat list (matching what
 # genuinely IS usable right now) is the faithful-but-proportionate choice.
 
+# [Pocket-sorting investigation, same day] Confirmed via direct source read
+# (data/items.h) that Potion(28)/Full Heal(48)/X Attack(121) -- this
+# screen's entire real item roster -- all carry `.pocket = POCKET_ITEMS`.
+# So do PP Up and Rare Candy (checked as part of the same investigation,
+# since a task prompt raised them -- though NEITHER exists anywhere in
+# this project's own data at all, confirmed via a direct grep; there was
+# nothing to resolve for them specifically, only the general principle to
+# confirm). Every real pocket-tab candidate this project could plausibly
+# add given its own current battle-item scope (more POCKET_ITEMS medicine/
+# X-items) still lands in the exact same single pocket -- POCKET_POKE_BALLS/
+# POCKET_TM_HM/POCKET_KEY_ITEMS are never battle-relevant, and
+# POCKET_BERRIES would need a "manually feed a held berry from the bag"
+# mechanic this project has never built (berries are currently held-item-
+# only, M12/M18's own scope). Real multi-pocket TAB-SWITCHING UI (source's
+# own `PrintPocketNames`/`DrawPocketIndicatorSquare`/pocket-switch scroll
+# arrows) was investigated and confirmed buildable with zero new asset
+# pulls (pocket names are plain text through the same font already in use;
+# the current-pocket indicator is a raw solid-color tilemap square, not an
+# icon; the switch arrows are the same generic SCROLL_ARROW_LEFT/RIGHT
+# primitive used all over source, not Bag-specific art) -- but building
+# real switching chrome for a screen that can only ever show ONE populated
+# tab, given this project's own real current scope, would be pure unused
+# machinery, the same principle this screen's own original scope decision
+# above already applied to the pocket-tab question in general. What IS
+# built: the real POCKET_ITEMS data (ItemManager.POCKET_ITEMS, set
+# explicitly on all 3 items in gen_items.py, even though it's already the
+# schema default) and the real pocket NAME as this screen's own header
+# (source: `gPocketNamesStringsTable[POCKET_ITEMS] = "ITEMS"`,
+# strings.c:206) -- genuine source-accurate architecture and the one real,
+# cheap authenticity win available, without the zero-payoff tab UI.
 signal item_chosen(item_id: int)
 signal cancelled()
 
-const _HEADER_TEXT := "BAG"
+const _HEADER_TEXT := "ITEMS"
 
 # [Reuses the exact same 3 hardcoded items/descriptions already shown by
 # the old inline _button_area implementation -- no new item data, this is
-# a screen-architecture change only, not new item content.]
+# a screen-architecture change only, not new item content. "pocket" is
+# carried here for documentation/future-proofing (if this roster ever
+# grows to include a genuinely different real pocket, grouping logic can
+# key off this field directly) -- not read by _build() yet, since every
+# entry currently shares the same real pocket.]
 const _ITEMS := [
-	{"id": 28, "label": "Potion (heal)"},
-	{"id": 48, "label": "Full Heal (cure status)"},
-	{"id": 121, "label": "X Attack (+1 Attack)"},
+	{"id": 28, "label": "Potion (heal)", "pocket": 0},
+	{"id": 48, "label": "Full Heal (cure status)", "pocket": 0},
+	{"id": 121, "label": "X Attack (+1 Attack)", "pocket": 0},
 ]
 
 var _parent_bs: BattleScreen = null
