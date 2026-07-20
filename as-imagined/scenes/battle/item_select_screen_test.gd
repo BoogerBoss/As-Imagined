@@ -32,6 +32,8 @@ func _ready() -> void:
 	_test_all_three_items_are_real_pocket_items()
 	_test_header_shows_the_real_pocket_name()
 	_test_non_battle_usable_item_is_a_graceful_no_op_not_a_crash()
+	_test_bag_frame_art_exists_with_real_dimensions()
+	_test_quantity_placeholder_exists_and_is_empty_by_default()
 
 	var total := _pass + _fail
 	print("item_select_screen_test: %d/%d passed" % [_pass, total])
@@ -421,3 +423,40 @@ func _test_non_battle_usable_item_is_a_graceful_no_op_not_a_crash() -> void:
 	_chk("the user's own HP is completely unaffected", mon.current_hp == 100)
 
 	bm.queue_free()
+
+
+# ── N. [M25h-4, Part A] The real decoded Bag frame art exists with a real,
+# non-trivial decoded dimension (240x160 -- one full GBA screen) ──────────
+
+func _test_bag_frame_art_exists_with_real_dimensions() -> void:
+	var frame: Texture2D = load("res://assets/sprites/battle_ui/screens/bag_frame.png")
+	_chk("bag_frame.png loads at its real decoded dimensions (240x160)",
+			frame != null and frame.get_width() == 240 and frame.get_height() == 160)
+
+
+# ── O. [M25h-4, Part C] The reserved item-quantity text slot exists, is
+# correctly positioned (right-aligned, a sibling of each item row's own
+# Button), and renders empty by default -- this project's items still have
+# no real quantity data to show (item_menu.c:1011-1014's own real layout,
+# reserved but not yet fed real data) ──────────────────────────────────────
+
+func _test_quantity_placeholder_exists_and_is_empty_by_default() -> void:
+	var bs := _make_battle_screen_with_font()
+	var overlay := _make_overlay(bs)
+
+	var buttons: Array[Button] = []
+	_collect_buttons(overlay, buttons)
+	# buttons[0] is Potion -- its qty_label is a sibling within the same
+	# HBoxContainer row, not a child of the Button itself.
+	var row: Node = buttons[0].get_parent()
+
+	var qty_label: Label = null
+	for c in row.get_children():
+		if c is Label:
+			qty_label = c
+	_chk("each item row carries a real quantity-text Label sibling",
+			qty_label != null)
+	_chk("the quantity Label is right-aligned, matching source's real GetStringRightAlignXOffset placement",
+			qty_label != null and qty_label.horizontal_alignment == HORIZONTAL_ALIGNMENT_RIGHT)
+	_chk("the quantity Label renders empty by default (no real quantity data modeled yet)",
+			qty_label != null and qty_label.text == "")

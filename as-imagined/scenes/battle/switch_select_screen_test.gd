@@ -1,12 +1,17 @@
 extends Node
 
-# [M25h-1.5] Regression suite for the real separate Switch/Party full-screen
-# overlay — see switch_select_screen.gd's own doc comment for the full
-# architecture rationale (a child overlay on the still-alive battle_screen
-# instance, matching M25h-1.4's Item overlay exactly) and Step 0 source
-# citations (gText_ChoosePokemon header, HandleChooseMonCancel's real
-# voluntary-vs-forced cancel behavior, the raw-tileset party_menu/bg.png
-# scope-narrowing decision).
+# [M25h-1.5, extended M25h-4] Regression suite for the real separate
+# Switch/Party full-screen overlay — see switch_select_screen.gd's own doc
+# comment for the full architecture rationale (a child overlay on the
+# still-alive battle_screen instance, matching M25h-1.4's Item overlay
+# exactly) and Step 0 source citations (gText_ChoosePokemon header,
+# HandleChooseMonCancel's real voluntary-vs-forced cancel behavior). M25h-4
+# later succeeded at the tilemap-decode reconstruction M25h-1.5 had
+# originally declined (party_menu/bg.png's own raw tileset) -- see
+# gen_ui_frames.py's own doc comment for that session's full writeup; the
+# real decoded frame/slot art, HP-fraction color tint, party-specific
+# status icons, and held-item icons are all covered by this suite's own
+# later sections (K onward).
 #
 # [Deliberately NOT tested here] The real on-screen visual result (real
 # window art, HP-bar/status-icon placement, legible text) — matches every
@@ -53,6 +58,10 @@ func _ready() -> void:
 	_test_header_shows_the_real_source_string()
 	_test_row_includes_real_hp_bar_and_status_icon_children()
 	_test_fainted_and_active_members_excluded_from_rows()
+	_test_frame_and_slot_art_assets_exist_with_real_dimensions()
+	_test_party_status_icon_row_mapping_matches_real_ailment_order()
+	_test_held_item_icon_shown_only_when_holding_an_item()
+	_test_fainted_dim_helper_darkens_slot_art()
 
 	var total := _pass + _fail
 	print("switch_select_screen_test: %d/%d passed" % [_pass, total])
@@ -467,6 +476,16 @@ func _test_header_shows_the_real_source_string() -> void:
 # ── O. Each row carries a real HP bar (hpbar.png, Phase 4b) and, when
 # statused, a real status icon (status.png, Phase 4b) as child nodes ──────
 
+# [M25h-4, Part A/B/C rewrite] Rewritten from the old TextureProgressBar/
+# Phase-4b-hpbar.png assumption -- M25h-4 replaced the HP bar with a real
+# color-tinted overlay (ColorRect) positioned over the decoded slot art's
+# own known bar-fill pixel region, and moved it (plus the status icon) from
+# being a child of the row's Button to a child of the row's own outer
+# Control (a sibling of the Button, not nested inside it -- see
+# _build_mon_row's own doc comment for why). Matches this project's own
+# established "a genuine architecture change legitimately invalidates a
+# stale test assumption" precedent (M25h-1.4's own item_select_screen_test
+# rewrite, M25h-1.5's own m25h1_bottom_region_test/m25b_menu_test rewrites).
 func _test_row_includes_real_hp_bar_and_status_icon_children() -> void:
 	var active := _make_mon("HpRowActive")
 	var bench := _make_mon("HpRowBench", 100)
@@ -478,24 +497,23 @@ func _test_row_includes_real_hp_bar_and_status_icon_children() -> void:
 
 	var buttons: Array[Button] = []
 	_collect_buttons(overlay, buttons)
-	var row: Button = buttons[0]
+	var row_container: Node = buttons[0].get_parent()
 
-	var has_hp_bar := false
-	var has_status_icon := false
-	for child in row.get_children():
-		if child is TextureProgressBar:
-			has_hp_bar = true
-			# [max_hp is a COMPUTED field, not the raw base_hp passed to
-			# _make_mon -- the real Gen-3 HP formula at level 50 turns
-			# base_hp=100 into something well above 100, so this compares
-			# against bench's own real .max_hp field, not a hardcoded guess.]
-			_chk("the row's HP bar reflects the real current/max HP",
-					(child as TextureProgressBar).value == 40 and (child as TextureProgressBar).max_value == bench.max_hp)
+	var has_hp_tint := false
+	var texture_rect_count := 0
+	for child in row_container.get_children():
+		if child is ColorRect:
+			has_hp_tint = true
+			var expected := bs._hp_bar_color(bench.current_hp, bench.max_hp)
+			var actual: Color = (child as ColorRect).color
+			_chk("the row's HP tint reflects the real current/max HP threshold color",
+					is_equal_approx(actual.r, expected.r) and is_equal_approx(actual.g, expected.g)
+					and is_equal_approx(actual.b, expected.b))
 		if child is TextureRect:
-			has_status_icon = true
-	_chk("the row carries a real HP bar child (Phase 4b hpbar.png reuse)", has_hp_bar)
-	_chk("the row carries a real status icon child for a statused mon (Phase 4b status.png reuse)",
-			has_status_icon)
+			texture_rect_count += 1
+	_chk("the row carries a real HP-fraction color tint (M25h-4 Part B)", has_hp_tint)
+	_chk("the row carries both the real slot-art background AND a status icon for a statused mon (M25h-4 Parts A/C)",
+			texture_rect_count >= 2)
 
 
 # ── P. Active and fainted party members never appear as switch rows
@@ -520,3 +538,95 @@ func _test_fainted_and_active_members_excluded_from_rows() -> void:
 	_chk("the active member never appears as a row", not texts.any(func(t): return (t as String).begins_with("ExclActive")))
 	_chk("a fainted bench member never appears as a row", not texts.any(func(t): return (t as String).begins_with("ExclFaintedBench")))
 	_chk("a live bench member appears as a row", texts.any(func(t): return (t as String).begins_with("ExclLiveBench")))
+
+
+# ── Q. [M25h-4, Part A] The real decoded frame/slot art assets exist and
+# have plausible real dimensions -- a lightweight sanity check that
+# gen_ui_frames.py's own output is present and non-trivial (the actual
+# decode correctness is a Python-side concern verified via this session's
+# own report, not re-derivable from GDScript) ────────────────────────────
+
+func _test_frame_and_slot_art_assets_exist_with_real_dimensions() -> void:
+	var frame: Texture2D = load("res://assets/sprites/battle_ui/screens/party_frame.png")
+	var slot: Texture2D = load("res://assets/sprites/battle_ui/screens/party_slot_wide.png")
+	_chk("party_frame.png loads as a real, non-trivial texture",
+			frame != null and frame.get_width() > 32 and frame.get_height() > 32)
+	_chk("party_slot_wide.png loads at its real decoded dimensions (144x24)",
+			slot != null and slot.get_width() == 144 and slot.get_height() == 24)
+
+
+# ── R. [M25h-4, Part C] _party_status_icon_row's own real AILMENT-order
+# mapping (party_menu.c's GetMonAilment/UpdatePartyMonAilmentGfx), distinct
+# from the in-battle _status_icon_row (M23.11 Phase 4b) ───────────────────
+
+func _test_party_status_icon_row_mapping_matches_real_ailment_order() -> void:
+	var mon := _make_mon("AilmentTester")
+	mon.status = BattlePokemon.STATUS_POISON
+	_chk("poison maps to row 0 (AILMENT_PSN=1, anim index 0)",
+			SwitchSelectScreen._party_status_icon_row(mon) == 0)
+	mon.status = BattlePokemon.STATUS_PARALYSIS
+	_chk("paralysis maps to row 1 (AILMENT_PRZ=2, anim index 1)",
+			SwitchSelectScreen._party_status_icon_row(mon) == 1)
+	mon.status = BattlePokemon.STATUS_SLEEP
+	_chk("sleep maps to row 2 (AILMENT_SLP=3, anim index 2)",
+			SwitchSelectScreen._party_status_icon_row(mon) == 2)
+	mon.status = BattlePokemon.STATUS_FREEZE
+	_chk("freeze maps to row 3 (AILMENT_FRZ=4, anim index 3)",
+			SwitchSelectScreen._party_status_icon_row(mon) == 3)
+	mon.status = BattlePokemon.STATUS_BURN
+	_chk("burn maps to row 4 (AILMENT_BRN=5, anim index 4)",
+			SwitchSelectScreen._party_status_icon_row(mon) == 4)
+	mon.status = BattlePokemon.STATUS_NONE
+	_chk("no status maps to -1 (no icon)",
+			SwitchSelectScreen._party_status_icon_row(mon) == -1)
+
+	# [Real source priority order, GetMonAilment] Fainted beats status --
+	# confirmed via direct read (party_menu.c:2248): "if (HP == 0) return
+	# AILMENT_FNT;" runs BEFORE the status check.
+	var fainted_with_status := _make_mon("FaintedWithStatusTester")
+	fainted_with_status.status = BattlePokemon.STATUS_POISON
+	fainted_with_status.fainted = true
+	_chk("a fainted mon shows FNT (row 6) even if it also carries a real status, matching GetMonAilment's own real priority order",
+			SwitchSelectScreen._party_status_icon_row(fainted_with_status) == SwitchSelectScreen._PARTY_STATUS_ROW_FNT)
+
+
+# ── S. [M25h-4, Part C] Held-item icon shown only for a mon actually
+# holding an item -- this project's first-ever held-item UI display ───────
+
+func _test_held_item_icon_shown_only_when_holding_an_item() -> void:
+	var active := _make_mon("HoldActive")
+	var holder := _make_mon("HoldBenchHolder")
+	holder.held_item = ItemRegistry.get_item(28)  # Potion -- any real item.
+	var non_holder := _make_mon("HoldBenchNonHolder")
+	var bs := _make_battle_screen_with_font()
+	bs._player_party = _singles_party_with_bench(active, [holder, non_holder])
+	var overlay := _make_overlay(bs, 0, false)
+
+	var buttons: Array[Button] = []
+	_collect_buttons(overlay, buttons)
+
+	var holder_row: Node = buttons[0].get_parent()
+	var non_holder_row: Node = buttons[1].get_parent()
+	var holder_texture_rects := 0
+	for c in holder_row.get_children():
+		if c is TextureRect:
+			holder_texture_rects += 1
+	var non_holder_texture_rects := 0
+	for c in non_holder_row.get_children():
+		if c is TextureRect:
+			non_holder_texture_rects += 1
+
+	_chk("a held-item-carrying mon's row has one more TextureRect than a non-carrying mon's row (the held-item icon)",
+			holder_texture_rects == non_holder_texture_rects + 1)
+
+
+# ── T. [M25h-4, Part B] The fainted-slot dim helper itself works correctly
+# (disclosed: no current row can reach it, since fainted members are never
+# listed as rows at all -- see _apply_fainted_dim's own doc comment) ──────
+
+func _test_fainted_dim_helper_darkens_slot_art() -> void:
+	var slot_art := TextureRect.new()
+	slot_art.modulate = Color(1, 1, 1, 1)
+	SwitchSelectScreen._apply_fainted_dim(slot_art)
+	_chk("the fainted-dim helper darkens the slot art's own modulate (mechanism works, even though this screen's own row list never currently shows a fainted member)",
+			slot_art.modulate.r < 1.0 and slot_art.modulate.a == 1.0)

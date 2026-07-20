@@ -25,9 +25,16 @@ class_name ItemSelectScreen
 # for the call-site side of this.
 #
 # [Real source structural findings, reused directly rather than invented]
-# - Item list font is FONT_NORMAL (source's WIN_ITEM_LIST window, confirmed
-#   via direct read of item_menu.c) -- this project's own "menu" FONT_NORMAL
-#   context (M25h-1.2) is the exact right font to reuse, not a new pull.
+# - Item list font: this doc comment originally claimed FONT_NORMAL,
+#   re-checked and CORRECTED by M25h-3's own later audit -- source's real
+#   WIN_ITEM_LIST rows use FONT_NARROW (`sItemListMenu.fontId`,
+#   item_menu.c:287), not FONT_NORMAL (that's the CURSOR glyph's own font,
+#   a separate direct BagMenu_Print call, and the header's font -- both
+#   still correctly FONT_NORMAL). Left unfixed here deliberately -- the
+#   actual font swap is M25h-5's own scoped job (FONT_NARROW isn't pulled/
+#   extracted into this project yet), not this session's (M25h-4, visual
+#   ELEMENTS only). This project's own "menu" FONT_NORMAL context
+#   (M25h-1.2) remains what's actually wired below until then.
 # - The cursor is the SAME "▶" glyph already pulled for M25h-1.3
 #   (gText_SelectorArrow2 in source -- a different C constant NAME from the
 #   battle menu's own gText_SelectorArrow3, but the literal same "▶"
@@ -44,20 +51,27 @@ class_name ItemSelectScreen
 #
 # [Deliberate scope narrowing, disclosed] Source's real Bag shows ALL
 # pockets (POCKETS_COUNT: Items/Balls/TM-HM/Berries/Key Items) with tab
-# switching, item icons are absent in the classic list but a quantity
-# ("x12") is shown per stackable item, and the big animated bag_male.png/
-# bag_female.png graphic bounces behind the list. NONE of that is
-# reproduced here: this project has no player-gender/overworld-avatar
-# concept the big bag graphic depends on, no bag/inventory/quantity data
-# structure exists anywhere yet (confirmed -- `ItemData` has no quantity or
-# description field, and the 3 items below are this project's own already-
-# established "always available, unlimited use" placeholder set, unchanged
-# since M23.1), and every other pocket besides the one already-implemented
-# battle-item set has zero real content to show. Building real multi-pocket
-# browsing now would be scope far beyond what has real data behind it --
-# explicitly deferred to M26 (Full RPG rescope), which owns the real bag/
-# inventory system this would need. One single flat list (matching what
-# genuinely IS usable right now) is the faithful-but-proportionate choice.
+# switching, and the big animated bag_male.png/bag_female.png graphic
+# bounces behind the list. NONE of that is reproduced here: this project has
+# no player-gender/overworld-avatar concept the big bag graphic depends on,
+# and every other pocket besides the one already-implemented battle-item set
+# has zero real content to show. Building real multi-pocket browsing now
+# would be scope far beyond what has real data behind it -- explicitly
+# deferred to M26 (Full RPG rescope), which owns the real bag/inventory
+# system this would need. One single flat list (matching what genuinely IS
+# usable right now) is the faithful-but-proportionate choice.
+#
+# [M25h-4, Part C] Item icons remain absent (confirmed via direct read of
+# the list-drawing function: BlitBitmapToWindow is only used for the TM/HM
+# slot's icon and a "registered item" indicator, neither applicable to a
+# curated battle-item list -- text rows only). The per-row quantity ("x12")
+# slot DOES now exist as a real, correctly-positioned layout element (see
+# _build()'s own qty_label, right-aligned matching item_menu.c:1011-1014's
+# real GetStringRightAlignXOffset placement) -- but renders empty, since
+# `ItemData` still has no quantity field and these 3 items are still this
+# project's own "always available, unlimited use" placeholder set, unchanged
+# since M23.1. A future session wiring in real item-quantity data needs only
+# to set qty_label.text, not touch layout.
 
 # [Pocket-sorting investigation, same day] Confirmed via direct source read
 # (data/items.h) that Potion(28)/Full Heal(48)/X Attack(121) -- this
@@ -128,28 +142,46 @@ func _build() -> void:
 	backdrop.anchor_bottom = 1.0
 	add_child(backdrop)
 
-	var panel := PanelContainer.new()
+	# [M25h-4] Real decoded Bag-screen frame art (gen_ui_frames.py, from
+	# graphics/bag/menu.png+menu.bin+menu_male.pal), replacing M25h-1.4's
+	# text_window reuse now that a 3rd tilemap-decode attempt (unlike
+	# Phase 5a's own flagged-incorrect background reconstruction) produced
+	# a clean, artifact-free result -- see gen_ui_frames.py's own doc
+	# comment for the full Step 0 writeup. bag_frame.png is a FIXED, non-
+	# tileable 240x160 composition (a real title bar + cream list panel +
+	# description boxes), not a stretchy 9-patch chrome like text_window --
+	# rendered via plain STRETCH_SCALE across the panel's own anchored
+	# area, matching M25e's own already-established "fills the full
+	# anchored stage area regardless of source aspect ratio" precedent,
+	# with the real text content positioned inside the image's own cream
+	# list-panel region (screenshot-verified, not assumed).
+	var panel := Control.new()
 	panel.anchor_left = 0.08
 	panel.anchor_top = 0.06
-	panel.anchor_right = 0.55
-	panel.anchor_bottom = 0.5
+	panel.anchor_right = 0.58
+	panel.anchor_bottom = 0.653
 	add_child(panel)
 
-	var raw_image: Image = load("res://assets/sprites/battle_ui/text_window/1.png").get_image()
-	var keyed_texture: ImageTexture = BattleScreen._color_keyed_texture(raw_image, BattleScreen._ACTION_PANEL_KEY_COLOR)
-	var panel_style := StyleBoxTexture.new()
-	panel_style.texture = keyed_texture
-	panel_style.texture_margin_left = BattleScreen._ACTION_PANEL_MARGIN
-	panel_style.texture_margin_top = BattleScreen._ACTION_PANEL_MARGIN
-	panel_style.texture_margin_right = BattleScreen._ACTION_PANEL_MARGIN
-	panel_style.texture_margin_bottom = BattleScreen._ACTION_PANEL_MARGIN
-	panel.add_theme_stylebox_override("panel", panel_style)
+	var frame_rect := TextureRect.new()
+	frame_rect.texture = load("res://assets/sprites/battle_ui/screens/bag_frame.png")
+	frame_rect.anchor_right = 1.0
+	frame_rect.anchor_bottom = 1.0
+	frame_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	frame_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(frame_rect)
 
+	# Cream list-panel region within bag_frame.png's own 240x160 canvas:
+	# x=[112,232]/240, y=[16,144]/160 (WIN_ITEM_LIST's real tile coords,
+	# tilemapLeft=14/tilemapTop=2/width=15/height=16, item_menu.c).
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 16)
-	margin.add_theme_constant_override("margin_top", 12)
-	margin.add_theme_constant_override("margin_right", 16)
-	margin.add_theme_constant_override("margin_bottom", 12)
+	margin.anchor_left = 112.0 / 240.0
+	margin.anchor_top = 16.0 / 160.0
+	margin.anchor_right = 232.0 / 240.0
+	margin.anchor_bottom = 144.0 / 160.0
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_top", 6)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_bottom", 6)
 	panel.add_child(margin)
 
 	var vbox := VBoxContainer.new()
@@ -169,15 +201,38 @@ func _build() -> void:
 
 	var buttons: Array[Button] = []
 	for entry in _ITEMS:
+		var row := HBoxContainer.new()
+		vbox.add_child(row)
+
 		var btn := Button.new()
 		if _parent_bs != null:
 			_parent_bs._style_menu_button(btn)
 			_parent_bs._strip_button_chrome(btn)
 		btn.text = entry["label"]
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.pressed.connect(_on_item_button_pressed.bind(entry["id"]))
-		vbox.add_child(btn)
+		row.add_child(btn)
 		buttons.append(btn)
+
+		# [M25h-4, Part C] Reserved quantity-text slot, matching source's
+		# real right-aligned "xNN" placement (GetStringRightAlignXOffset(
+		# FONT_NARROW, gStringVar4, 119), item_menu.c:1011-1014) -- this
+		# project's items are currently unlimited-use placeholders with no
+		# real stack count (M25h-1.4's own disclosed scope decision,
+		# unchanged), so this renders empty rather than fabricating a
+		# number. The layout slot itself is real and correctly positioned
+		# now, so a future session wiring in real item quantities needs no
+		# layout change, only setting this label's own .text.
+		var qty_label := Label.new()
+		qty_label.text = ""
+		qty_label.custom_minimum_size = Vector2(32, 0)
+		qty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		if _parent_bs != null:
+			qty_label.add_theme_font_override("font", _parent_bs._font_menu)
+			qty_label.add_theme_font_size_override("font_size", BattleScreen._FONT_NORMAL_SIZE)
+			qty_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+		row.add_child(qty_label)
 
 	var cancel_btn := Button.new()
 	if _parent_bs != null:
