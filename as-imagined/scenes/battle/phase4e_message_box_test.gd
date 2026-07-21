@@ -1,22 +1,26 @@
 extends Node
 
-# [M23.11 Phase 4e] Test suite for the Dialogue-Manager-balloon-based
-# message box — the runtime color-keying of text_window/std.png's
-# background-key green, the resulting StyleBoxTexture's margins, and
-# confirmation that _setup_message_box() doesn't disturb the existing
-# accumulating-scroll log behavior (DialogueLabel IS-A RichTextLabel; see
-# battle_screen.gd's own doc comments for the full reasoning).
+# [M23.11 Phase 4e, narrowed by M26b] Test suite for the reusable color-
+# keying utility (`_color_keyed_texture`/`_is_message_box_key_color`) that
+# originally backed the Dialogue-Manager-balloon-based message box built in
+# this phase. [M26b] retired that message box outright (VBox/LogLabel and
+# `_setup_message_box()` no longer exist — see battle_screen.gd's own
+# former `_log_label` doc comment) as part of merging the always-visible
+# log into the F3-only debug/log panel, so this file's old Section D
+# (`_setup_message_box()` itself) and Section E (DialogueLabel's own
+# generic append behavior, unrelated to anything this project's UI still
+# uses) were removed rather than left asserting dead functionality. The
+# color-keying functions themselves are NOT dead — ItemSelectScreen/
+# SwitchSelectScreen both still call `_color_keyed_texture` directly for
+# their own real window art (see m25h1_bottom_region_test.gd's own
+# `_test_color_keyed_texture_generalizes_to_a_custom_key_color` for a
+# second, independent regression guard on the same function) — so Sections
+# A-C, which only ever exercised those reusable pieces, are kept unchanged.
 #
 # [Deliberately NOT tested here] Instantiating battle_screen.tscn — same
 # established precedent as phase4d_doubles_visual_test.gd/
 # phase4f_targeting_test.gd (count_assertions.sh's own unconditional
 # --autoplay flag, battle_screen.gd's own process-wide autoplay check).
-# Every function this suite exercises is called directly on a bare
-# `BattleScreen.new()` instance never added to the scene tree, plus a
-# manually-constructed DialogueLabel node standing in for the real
-# scene's onready `_log_label` — the genuine end-to-end proof (real art,
-# real singles/doubles battles, no overlap with Phase 4d's visual layer)
-# is the mandated real screenshot verification instead.
 
 var _pass := 0
 var _fail := 0
@@ -26,8 +30,6 @@ func _ready() -> void:
 	_test_key_color_detection()
 	_test_color_keyed_texture_synthetic()
 	_test_color_keyed_texture_real_asset()
-	_test_setup_message_box_applies_stylebox()
-	_test_log_label_still_plain_richtextlabel_append()
 
 	var total := _pass + _fail
 	print("phase4e_message_box_test: %d/%d passed" % [_pass, total])
@@ -114,52 +116,6 @@ func _test_color_keyed_texture_real_asset() -> void:
 	_chk("C.04 the known white interior pixel stays opaque white",
 			result.get_pixel(12, 12).is_equal_approx(Color(1, 1, 1, 1)))
 
-
-# ── D. _setup_message_box() applies a real StyleBoxTexture with the
-# expected margins, called directly on a bare instance with a manually-
-# constructed stand-in node for the onready _log_label. ──────────────────
-
-func _test_setup_message_box_applies_stylebox() -> void:
-	var bs := BattleScreen.new()
-	var fake_log_label := DialogueLabel.new()
-	bs._log_label = fake_log_label
-	# [M25h-1.2] _setup_message_box() now also applies the real message-
-	# context bitmap font to _log_label -- a null font here (this
-	# function's own production caller, _ready(), always loads one first
-	# via _load_battle_fonts()) makes add_theme_font_override log a real
-	# engine error rather than silently no-op.
-	bs._font_message = FontFile.new()
-	bs._font_message.load_bitmap_font("res://assets/fonts/latin_normal_message.fnt")
-
-	bs._setup_message_box()
-
-	var applied: StyleBox = fake_log_label.get_theme_stylebox("normal")
-	_chk("D.01 a StyleBoxTexture was applied to the log label",
-			applied != null and applied is StyleBoxTexture)
-	if applied is StyleBoxTexture:
-		var st: StyleBoxTexture = applied
-		_chk("D.02 texture_margin_left matches the measured 5px corner",
-				st.texture_margin_left == BattleScreen._MESSAGE_BOX_MARGIN)
-		_chk("D.03 texture_margin_top matches the measured 5px corner",
-				st.texture_margin_top == BattleScreen._MESSAGE_BOX_MARGIN)
-		_chk("D.04 texture_margin_right matches the measured 5px corner",
-				st.texture_margin_right == BattleScreen._MESSAGE_BOX_MARGIN)
-		_chk("D.05 texture_margin_bottom matches the measured 5px corner",
-				st.texture_margin_bottom == BattleScreen._MESSAGE_BOX_MARGIN)
-		_chk("D.06 the stylebox's own texture is set", st.texture != null)
-
-
-# ── E. Confirm DialogueLabel's own dialogue_line/type_out API being
-# untouched means plain `.text +=` still behaves exactly like a normal
-# RichTextLabel — the key claim behind not regressing queuing/sequencing.
-
-func _test_log_label_still_plain_richtextlabel_append() -> void:
-	var label := DialogueLabel.new()
-	label.text = ""
-	label.text += "line one\n"
-	label.text += "line two\n"
-	_chk("E.01 plain .text += accumulates normally, untouched by DialogueLabel's own API",
-			label.text == "line one\nline two\n")
-	_chk("E.02 dialogue_line was never set (no typewriter side effect triggered)",
-			label.dialogue_line == null)
-	_chk("E.03 is_typing stays false since type_out() was never called", not label.is_typing)
+# [M26b] Sections D (_setup_message_box() itself) and E (DialogueLabel's own
+# generic append behavior) were removed here — see this file's own top doc
+# comment for why.

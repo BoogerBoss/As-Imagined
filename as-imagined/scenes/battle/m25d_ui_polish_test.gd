@@ -156,8 +156,11 @@ func _test_format_debug_breakdown_full_content() -> void:
 
 	var text := BattleScreen._format_debug_breakdown(attacker, defender, move, breakdown)
 
+	# [M26b] The old leading "Combat Debug (F3 to toggle)" line was dropped
+	# from _format_debug_breakdown's own output — that's now the merged
+	# panel's static Header label, shown once, not repeated per entry.
 	_chk("debug text exactly reflects every field of the real breakdown dict passed in, not approximated",
-			text == "Combat Debug (F3 to toggle)\nBlastoise -> Charizard\nMove: Water Gun (Power 40, Acc 100)\n" \
+			text == "Blastoise -> Charizard\nMove: Water Gun (Power 40, Acc 100)\n" \
 					+ "Base damage: 41\nSTAB: 1.50x\nType eff.: 2.00x\nCrit: Yes\nRoll: 92%\nFinal damage: 62")
 
 
@@ -194,7 +197,7 @@ func _test_format_debug_breakdown_missing_keys_fixed_damage_move() -> void:
 	var text := BattleScreen._format_debug_breakdown(attacker, defender, move, breakdown)
 
 	_chk("a fixed-damage move's breakdown (no base_damage/STAB/roll keys) formats without crashing",
-			text == "Combat Debug (F3 to toggle)\nVoltorb -> Geodude\nMove: Sonic Boom (Power 1, Acc 90)\nFinal damage: 20")
+			text == "Voltorb -> Geodude\nMove: Sonic Boom (Power 1, Acc 90)\nFinal damage: 20")
 
 
 # ── 8-9. DamageCalculator's own new breakdown keys ───────────────────────
@@ -249,7 +252,6 @@ func _test_real_battle_end_to_end_debug_signal_wiring() -> void:
 	bm._force_crit = true
 
 	var bs := BattleScreen.new()
-	bs._debug_overlay_text = Label.new()
 	bs._bm = bm
 	bs._bm.move_damage_breakdown.connect(bs._on_debug_move_damage_breakdown)
 
@@ -268,13 +270,31 @@ func _test_real_battle_end_to_end_debug_signal_wiring() -> void:
 	bm.queue_move_targeted(1, 0, 0)
 	bm.advance()
 
+	# [M26b] No more single wholesale-replaced Label — the real breakdown now
+	# lands as its own DAMAGE_MATH-tagged entry in the merged, permanent
+	# `_debug_entries` history (bare `bs` here is never added to the
+	# SceneTree, so `_debug_overlay` stays null and nothing auto-renders —
+	# matching this project's own established bare-instance test convention
+	# — but the entry itself is still appended regardless).
+	var damage_math_text := _last_category_text(bs, BattleScreen.DebugCategory.DAMAGE_MATH)
+
 	_chk("the real hit actually dealt damage (sanity check the scenario itself is valid)", real_damage[0] > 0)
-	_chk("move_damage_breakdown reached the overlay via a genuine signal, naming the real attacker/defender",
-			"RealBlastoise -> RealCharizard" in bs._debug_overlay_text.text)
-	_chk("the overlay's own displayed final damage EXACTLY matches the real move_executed damage value, not approximated",
-			("Final damage: %d" % real_damage[0]) in bs._debug_overlay_text.text)
-	_chk("the forced crit is reflected exactly (Crit: Yes)", "Crit: Yes" in bs._debug_overlay_text.text)
+	_chk("move_damage_breakdown reached the merged history via a genuine signal, naming the real attacker/defender",
+			"RealBlastoise -> RealCharizard" in damage_math_text)
+	_chk("the entry's own displayed final damage EXACTLY matches the real move_executed damage value, not approximated",
+			("Final damage: %d" % real_damage[0]) in damage_math_text)
+	_chk("the forced crit is reflected exactly (Crit: Yes)", "Crit: Yes" in damage_math_text)
 	_chk("the real super-effective Water-vs-Fire matchup is reflected exactly (Type eff.: 2.00x)",
-			"Type eff.: 2.00x" in bs._debug_overlay_text.text)
+			"Type eff.: 2.00x" in damage_math_text)
 
 	bm.queue_free()
+
+
+# [M26b] Returns the most recently-appended entry's own text for a given
+# category, or "" if none exists yet.
+func _last_category_text(bs: BattleScreen, category: int) -> String:
+	for i in range(bs._debug_entries.size() - 1, -1, -1):
+		var entry: Dictionary = bs._debug_entries[i]
+		if entry["category"] == category:
+			return entry["text"]
+	return ""

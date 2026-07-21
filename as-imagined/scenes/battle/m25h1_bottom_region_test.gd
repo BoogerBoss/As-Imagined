@@ -290,12 +290,18 @@ func _test_player_health_group_d1_clears_action_region() -> void:
 
 	# PlayerHealthGroupD1 is a POINT anchor (anchor_top == anchor_bottom);
 	# its own real bottom edge, as a fraction of viewport height, is
-	# anchor_top + (its own local offset_bottom / viewport_height). Uses
-	# the same real viewport height this session's own screenshots were
-	# captured and measured against (648px) to reproduce the exact
-	# clearance figure found there, not just check the anchor fraction
-	# alone (which wouldn't catch a local-offset-only regression).
-	const VIEWPORT_HEIGHT := 648.0
+	# anchor_top + (its own local offset_bottom / viewport_height).
+	# [M26a] Updated from 648.0 (the pre-M26a implicit engine-default
+	# viewport height) to 768.0, matching the real base resolution now set
+	# explicitly in project.godot (1024x768). The original 11.36px
+	# clearance figure was screenshot-measured against the OLD 648px
+	# canvas and is NOT assumed to still hold true here -- PlayerHealthGroupD1
+	# and ActionRegion's own anchor/offset values are unchanged (both still
+	# among the 13 confirmed M26a-audit findings explicitly deferred to
+	# M26c, not touched by this fix), so the real clearance in PIXELS
+	# changes once VIEWPORT_HEIGHT does, even though nothing about the
+	# node tree itself moved.
+	const VIEWPORT_HEIGHT := 768.0
 	var d1_bottom_px: float = d1.anchor_top * VIEWPORT_HEIGHT + d1.offset_bottom
 	var region_top_px: float = region.anchor_top * VIEWPORT_HEIGHT
 

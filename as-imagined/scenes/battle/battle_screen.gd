@@ -80,6 +80,86 @@ const _SCREEN_NAMES: Dictionary = {
 	"reflect": "Reflect", "light_screen": "Light Screen", "aurora_veil": "Aurora Veil",
 }
 
+# [M26b] Log/debug-overlay merge — category-tagged entry data structure.
+# Every line that used to go straight to the old always-visible LogLabel (or
+# the old debug overlay's single replaced-wholesale Label) now becomes one
+# entry in `_debug_entries` (see var declaration further down), tagged with
+# a category from this enum and the real turn number it happened on. The
+# full history is NEVER discarded — only what's currently RENDERED is
+# filtered by `_debug_category_on`, so toggling a category or scrolling back
+# through turns both read the exact same underlying data; nothing is
+# recomputed or lost either way. Locked design: CLAUDE.md's own M26b entry.
+enum DebugCategory {
+	NARRATIVE,        # M25c's move-announcement/target-naming/damage-effectiveness text
+	DAMAGE_MATH,       # M25d's existing power/accuracy/STAB/type/crit/roll/final-damage breakdown
+	RNG,               # accuracy/secondary-proc/etc. — see _wire_debug_signals()'s own doc comment for the real data-availability gap here
+	TURN_ORDER,        # speed/priority/Trick Room reasoning — real coverage limited to After You/Quash splices (turn_order_changed)
+	DURATIONS,         # remaining-turn counters for screens/hazards/weather/Trick Room/Tailwind/Safeguard/Mist/Mud-Water Sport
+	STAT_CHANGES,      # before->after stage values, not just a narrative "rose/fell" line
+	ITEMS_BERRIES,     # real trigger context (HP at the moment an item/berry fired)
+	MULTI_HIT,         # multi_hit_sequence_finished — aggregate only, see its own wiring doc comment
+	DELAYED,           # Future Sight/Doom Desire/Wish/Yawn/Healing Wish/Lunar Dance scheduled<->resolved pairs
+	ABILITY_IMMUNITY,  # ability_triggered/ability_healed — Mold Breaker/Neutralizing Gas/absorb outcomes etc.
+	NICHE,             # low-traffic/situational: Leech Seed/Curse/Nightmare/Grudge ticks, item-transfer chains, Snatch/Magic Bounce redirection
+}
+
+# Stable render/toggle-row order — NOT the enum's own declaration order is
+# relied on anywhere, this array is the single source of truth for display
+# order.
+const _DEBUG_CATEGORY_ORDER: Array[int] = [
+	DebugCategory.NARRATIVE, DebugCategory.DAMAGE_MATH, DebugCategory.RNG,
+	DebugCategory.TURN_ORDER, DebugCategory.DURATIONS, DebugCategory.STAT_CHANGES,
+	DebugCategory.ITEMS_BERRIES, DebugCategory.MULTI_HIT, DebugCategory.DELAYED,
+	DebugCategory.ABILITY_IMMUNITY, DebugCategory.NICHE,
+]
+
+const _DEBUG_CATEGORY_LABEL: Dictionary = {
+	DebugCategory.NARRATIVE: "Narrative Text",
+	DebugCategory.DAMAGE_MATH: "Damage Math",
+	DebugCategory.RNG: "RNG & Probability",
+	DebugCategory.TURN_ORDER: "Turn Order & Priority",
+	DebugCategory.DURATIONS: "Durations & Field State",
+	DebugCategory.STAT_CHANGES: "Stat Changes",
+	DebugCategory.ITEMS_BERRIES: "Items & Berries",
+	DebugCategory.MULTI_HIT: "Multi-Hit Detail",
+	DebugCategory.DELAYED: "Delayed Effects",
+	DebugCategory.ABILITY_IMMUNITY: "Ability & Immunity",
+	DebugCategory.NICHE: "Niche/Situational",
+}
+
+# BBCode hex colors, one per category, so the merged history stays visually
+# scannable once several categories are toggled on together.
+const _DEBUG_CATEGORY_COLOR: Dictionary = {
+	DebugCategory.NARRATIVE: "#dddddd",
+	DebugCategory.DAMAGE_MATH: "#33cc66",
+	DebugCategory.RNG: "#cc66ff",
+	DebugCategory.TURN_ORDER: "#66ccff",
+	DebugCategory.DURATIONS: "#ffcc66",
+	DebugCategory.STAT_CHANGES: "#ff9966",
+	DebugCategory.ITEMS_BERRIES: "#99ff99",
+	DebugCategory.MULTI_HIT: "#ff6699",
+	DebugCategory.DELAYED: "#66ffcc",
+	DebugCategory.ABILITY_IMMUNITY: "#ffff66",
+	DebugCategory.NICHE: "#999999",
+}
+
+# Default-on per the locked design: today's existing content (Narrative/
+# Damage Math) plus every new category EXCEPT Niche/Situational, which is
+# explicitly default-off (low traffic/relevance per the design's own text).
+const _DEBUG_CATEGORY_DEFAULT_ON: Dictionary = {
+	DebugCategory.NARRATIVE: true,
+	DebugCategory.DAMAGE_MATH: true,
+	DebugCategory.RNG: true,
+	DebugCategory.TURN_ORDER: true,
+	DebugCategory.DURATIONS: true,
+	DebugCategory.STAT_CHANGES: true,
+	DebugCategory.ITEMS_BERRIES: true,
+	DebugCategory.MULTI_HIT: true,
+	DebugCategory.DELAYED: true,
+	DebugCategory.ABILITY_IMMUNITY: true,
+	DebugCategory.NICHE: false,
+}
+
 # [ability_triggered message quality pass] Full lookup table for every
 # effect_key value battle_manager.gd's own ability_triggered.emit(...) call
 # sites actually produce — both literal string arguments (grepped directly)
@@ -217,18 +297,18 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # 1) are deleted outright, not relocated.
 @onready var _status_label: Label = $ActionRegion/ActionPanel/ActionVBox/StatusLabel
 
-# [M23.11 Phase 4e] DialogueLabel (addons/dialogue_manager/dialogue_label.gd)
-# rather than a plain RichTextLabel -- see _setup_message_box()'s own doc
-# comment for the full reasoning. DialogueLabel `extends RichTextLabel` and
-# adds nothing to its behavior unless its own `dialogue_line`/`type_out()`/
-# `skip_typing()` API is used -- confirmed via direct source read, not
-# assumed -- so every existing `.text +=` append site below (_log(),
-# _flush_pending_effect_lines(), _on_log_move_executed()) is completely
-# untouched: same property, same accumulating-scroll behavior, same
-# queuing/sequencing/timing as every prior phase. [M25h-1] Deliberately left
-# exactly where/how it is today -- relocating/merging the log is M25h-4's
-# own job, not this sub-phase's.
-@onready var _log_label: DialogueLabel = $VBox/LogLabel
+# [M26b] The old always-visible VBox/LogLabel (DialogueLabel, M23.11 Phase
+# 4e's real GBA message-box art) is retired outright — its whole node was
+# removed from battle_screen.tscn. Every line it used to print now flows
+# into the merged, category-tagged, F3-only debug/log system below instead
+# (see the "Combat debug/log [M26b]" section further down this file). This
+# is a deliberate, disclosed UX trade-off already locked into this project's
+# own CLAUDE.md M26b design note: a player gets zero textual battle
+# information without opening the F3 panel, off by default — revisit only
+# if that proves a real problem in practice. `_color_keyed_texture`/
+# `_is_message_box_key_color` (below) are NOT retired — ItemSelectScreen/
+# SwitchSelectScreen both still call them directly for their own real
+# window art.
 # [M25h-1] Still used by SWITCH/ITEM only now (left inline/untouched per
 # this sub-phase's own locked scope -- M25h-2/h-3 pull those out into real
 # separate screens later). TOP/FIGHT/TARGET_SELECT moved to _new_button_area
@@ -253,17 +333,23 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 @onready var _new_button_area: VBoxContainer = $ActionRegion/ActionPanel/ActionVBox/NewButtonArea
 @onready var _action_panel: PanelContainer = $ActionRegion/ActionPanel
 
-# [M25d] Combat-debug overlay — a separate top-level node (drawn last, so it
-# renders on top of both BattleStage's sprites/health-boxes and VBox's own
-# log/menu column), deliberately not a child of either. Off by default
-# (DebugOverlay.visible = false in the .tscn); toggled via F3, never via a
-# gameplay button, so it has zero visual footprint for a normal player.
+# [M25d, expanded M26b] Combat-debug/log overlay — a separate top-level node
+# (drawn last, so it renders on top of both BattleStage's sprites/health-
+# boxes and VBox's own menu column), deliberately not a child of either. Off
+# by default (DebugOverlay.visible = false in the .tscn); toggled via F3,
+# never via a gameplay button, so it has zero visual footprint for a normal
+# player. [M26b] Now the SOLE textual battle-info surface (the old always-
+# visible VBox/LogLabel was retired — see that var's own former doc comment
+# above) — see the "Combat debug/log [M26b]" section further down this file
+# for the category-tagged entry system feeding `_debug_body`.
 @onready var _debug_overlay: Control = $DebugOverlay
-@onready var _debug_overlay_text: Label = $DebugOverlay/Text
+@onready var _debug_toggle_row: HFlowContainer = $DebugOverlay/VBox/ToggleRow
+@onready var _debug_body: RichTextLabel = $DebugOverlay/VBox/Scroll/Body
 
 # [M23.11 Phase 4a] Visual battle stage -- additive alongside the existing
-# text-based UI above, not a replacement (Side0Label/Side1Label/LogLabel
-# stay exactly as they are, per this phase's own explicit scope).
+# text-based UI above, not a replacement (Side0Label/Side1Label stayed as
+# they were at the time, per this phase's own explicit scope -- LogLabel
+# itself was later retired outright by M26b, see above).
 @onready var _background_rect: TextureRect = $BattleStage/Background
 @onready var _opponent_sprite: TextureRect = $BattleStage/OpponentSprite
 @onready var _player_sprite: TextureRect = $BattleStage/PlayerSprite
@@ -395,17 +481,25 @@ var _pending_hit_effectiveness: float = 1.0
 var _pending_hit_is_crit: bool = false
 var _pending_hit_has_data: bool = false
 
-# [M25c] Paced log reveal — see _queue_log_line()'s own doc comment.
-const _LOG_REVEAL_DELAY_SEC: float = 0.6
-var _log_reveal_queue: Array[String] = []
-var _log_reveal_running: bool = false
 var _is_autoplay_run: bool = false
+
+# [M26b] The full, permanently-accumulating category-tagged history — never
+# discarded, never trimmed. `_debug_category_on` filters what's RENDERED
+# only (see _render_debug_overlay()); scrolling back through turns and
+# toggling a category on/off both read this exact same array. Each entry:
+# {"turn": int, "category": DebugCategory, "text": String}. Toggle state is
+# a plain in-memory var per the locked design (session-only — this project
+# has no save/settings infrastructure yet, that's M33's own job).
+var _debug_entries: Array[Dictionary] = []
+var _debug_category_on: Dictionary = {}
+var _current_debug_turn: int = 0
 
 # [M25h-1.2] The real GBA bitmap fonts (see scripts/gen_battle_fonts.py's own
 # doc comment for the full Step 0 sourcing) -- loaded once in _ready(),
-# before any of _setup_health_ui()/_setup_message_box()/
-# _setup_action_region_panel()/the menu-button builders run, since all of
-# them apply one of these three. Native pixel sizes are baked into the
+# before any of _setup_health_ui()/_setup_action_region_panel()/the menu-
+# button builders run, since all of them apply one of these three
+# ("_setup_message_box()" was retired by M26b -- see that function's own
+# former doc comment). Native pixel sizes are baked into the
 # atlas itself (15 for both "normal"-derived fonts, 13 for "small") --
 # `add_theme_font_size_override` is still set explicitly to that same
 # native value at every call site rather than left at the theme's generic
@@ -583,8 +677,8 @@ var _switch_select_overlay: Control = null
 func _ready() -> void:
 	_load_battle_fonts()
 	_setup_health_ui()
-	_setup_message_box()
 	_setup_action_region_panel()
+	_setup_debug_overlay()
 	_opponent_anim_timer.timeout.connect(_on_opponent_anim_timer_timeout)
 
 	# [M23.6 injection point] BattleSetupContext is a plain static-var
@@ -657,10 +751,20 @@ func _ready() -> void:
 	# instead of re-deriving it a second time.
 	_is_autoplay_run = "--autoplay" in OS.get_cmdline_args()
 
-	# [M23.2] Wired unconditionally — interactive AND autoplay both populate
-	# the log (see _wire_log_signals's own doc comment for the reasoning on
-	# why autoplay isn't special-cased here).
+	# [M23.2, retargeted M26b] Wired unconditionally — interactive AND
+	# autoplay both populate the merged debug/log history; only whether F3
+	# is currently OPEN decides whether a new entry re-renders immediately
+	# (see _add_debug_entry()'s own doc comment). "NARRATIVE" category —
+	# today's move-announcement/damage/effectiveness text.
 	_wire_log_signals()
+
+	# [M26b] Every other category this design adds (RNG/Turn Order/
+	# Durations/Stat Changes/Items & Berries/Multi-Hit/Delayed Effects/
+	# Ability & Immunity/Niche) — kept in its own function, separate from
+	# _wire_log_signals(), since that one function was already large before
+	# this session and the two are conceptually distinct passes over the
+	# same signal set.
+	_wire_debug_signals()
 
 	# [M23.11 Phase 5c] A SEPARATE connect() on the same move_executed signal
 	# _wire_log_signals() already listens to above -- Godot signals support
@@ -670,13 +774,12 @@ func _ready() -> void:
 	# signal wire-up in this file.
 	_bm.move_executed.connect(_on_hit_effect_move_executed)
 
-	# [M25d] Combat-debug overlay — its own independent connect(), same
-	# "additional listener on an existing signal" shape as Phase 5c's hit-
-	# effect wiring immediately above. Deliberately NOT inside
-	# _wire_log_signals(): that function owns the player-facing log
-	# specifically, and this overlay is explicitly a separate, structurally
-	# unrelated consumer of move_damage_breakdown (a signal the log itself
-	# never reads).
+	# [M25d, retargeted M26b] Combat-debug overlay — its own independent
+	# connect(), same "additional listener on an existing signal" shape as
+	# Phase 5c's hit-effect wiring immediately above. move_damage_breakdown
+	# now feeds a DAMAGE_MATH-tagged entry into the same merged history
+	# _wire_log_signals()/_wire_debug_signals() feed, rather than replacing
+	# a separate Label wholesale.
 	_bm.move_damage_breakdown.connect(_on_debug_move_damage_breakdown)
 
 	# start_battle_with_parties()/start_battle_doubles() both call advance()
@@ -884,14 +987,20 @@ func _wire_log_signals() -> void:
 	_bm.screens_broken.connect(func(side: int):
 		_log("The screens shattered on %s side!" % _side_label(side)))
 
-	# [ability_triggered message quality pass] Readable per-key text, not a
-	# generic underscore-to-space formatter — see _on_log_ability_triggered.
-	_bm.ability_triggered.connect(_on_log_ability_triggered)
-	_bm.ability_healed.connect(_on_log_ability_healed)
+	# [M26b] ability_triggered/ability_healed moved to _wire_debug_signals()
+	# below — the locked design puts ability-trigger/immunity text in its own
+	# "Ability & Immunity" category, not Narrative.
 
 
+# [M26b] Turn separator is now structural, not a text line: _current_debug_
+# turn is updated here and every subsequent _add_debug_entry() call stamps
+# its entry with this value; _render_debug_overlay() inserts a visible
+# "──── Turn N ────" separator itself whenever the rendered entry stream's
+# own turn number changes, which correctly recomputes even after a category
+# toggle hides some entries (since it's based on what's actually being
+# rendered, not a fixed pre-baked text line).
 func _on_log_turn_started(turn_number: int) -> void:
-	_log("──── Turn %d ────" % turn_number)
+	_current_debug_turn = turn_number
 
 
 # [M25c] Fires exactly once per action (see move_announced's own doc comment
@@ -984,24 +1093,30 @@ func _on_log_secondary_applied(target: BattlePokemon, effect: int) -> void:
 	_pending_effect_lines.append("%s %s!" % [_mon_label(target), text])
 
 
+# [M26b] Retagged from Narrative into "Ability & Immunity" per the locked
+# design — same text, new category.
 func _on_log_ability_healed(mon: BattlePokemon, amount: int) -> void:
 	if amount > 0:
-		_log("%s recovered %d HP from its ability!" % [_mon_label(mon), amount])
+		_add_debug_entry(DebugCategory.ABILITY_IMMUNITY,
+				"%s recovered %d HP from its ability!" % [_mon_label(mon), amount])
 	elif amount < 0:
-		_log("%s was hurt by its ability! (%d damage)" % [_mon_label(mon), -amount])
+		_add_debug_entry(DebugCategory.ABILITY_IMMUNITY,
+				"%s was hurt by its ability! (%d damage)" % [_mon_label(mon), -amount])
 
 
-# [ability_triggered message quality pass] Looks up a readable message from
-# _ABILITY_TRIGGER_TEXT; falls back to the old generic underscore-to-space
-# formatter for any effect_key not in the table (requirement 4 — nothing
-# silently breaks if a key is missed here or a new one is added to
-# battle_manager.gd later).
+# [ability_triggered message quality pass, retagged M26b] Looks up a readable
+# message from _ABILITY_TRIGGER_TEXT; falls back to the old generic
+# underscore-to-space formatter for any effect_key not in the table
+# (requirement 4 — nothing silently breaks if a key is missed here or a new
+# one is added to battle_manager.gd later). Now tagged "Ability & Immunity"
+# instead of Narrative, per the locked M26b design.
 func _on_log_ability_triggered(mon: BattlePokemon, effect_key: String) -> void:
 	var template: Variant = _ABILITY_TRIGGER_TEXT.get(effect_key, null)
 	if template != null:
-		_log(template % _mon_label(mon))
+		_add_debug_entry(DebugCategory.ABILITY_IMMUNITY, template % _mon_label(mon))
 	else:
-		_log("%s's %s activated!" % [_mon_label(mon), effect_key.replace("_", " ")])
+		_add_debug_entry(DebugCategory.ABILITY_IMMUNITY,
+				"%s's %s activated!" % [_mon_label(mon), effect_key.replace("_", " ")])
 
 
 # ── Hit effects [M23.11 Phase 5c] ───────────────────────────────────────────
@@ -1240,49 +1355,296 @@ func _mon_label(mon: BattlePokemon) -> String:
 # swapping the order only in exactly the case that needed swapping.
 func _flush_pending_effect_lines() -> void:
 	for line in _pending_effect_lines:
-		_queue_log_line(line)
+		_add_debug_entry(DebugCategory.NARRATIVE, line)
 	_pending_effect_lines.clear()
 
 
+# [M26b] Every pre-existing call site below this function in the file is
+# completely unchanged (text construction/wording/ordering all stayed
+# exactly as M25c built it) — only WHERE the text ends up changed: it used
+# to append straight to the always-visible LogLabel (with real-time paced
+# reveal); it now becomes one NARRATIVE-tagged entry in the merged, F3-only
+# debug/log history. Pacing (M25c's `_queue_log_line`/`_run_log_reveal`,
+# 0.6s between lines) was deliberately dropped, not preserved — the merged
+# view is an on-demand dev/inspection panel behind F3 (off by default), not
+# a mandatory always-visible player experience, so there's no one "watching
+# it happen live" to pace for; entries simply accumulate instantly as the
+# engine resolves them, exactly like every non-Narrative category already
+# does. This is a disclosed simplification versus the locked design's own
+# text, which doesn't call for pacing at all in the merged view's spec.
 func _log(text: String) -> void:
 	_flush_pending_effect_lines()
-	_queue_log_line(text)
+	_add_debug_entry(DebugCategory.NARRATIVE, text)
 
 
-# [M25c] Action pacing — every log line now goes through here instead of
-# appending to `_log_label.text` directly, so the ENGINE still resolves a
-# whole turn instantly/synchronously (BattleManager is completely untouched
-# by this — no await anywhere in battle_manager.gd), while the UI staggers
-# when each already-computed line becomes VISIBLE. Relative ORDER is
-# unaffected (still a plain FIFO queue) — only the wall-clock reveal timing
-# changes, which is exactly the "display/formatting, not engine" scope this
-# task was given.
-#
-# Two cases fall back to the old immediate-append behavior, unchanged:
-#   - `--autoplay` (`_is_autoplay_run`): explicitly must NOT slow down,
-#     matching how it already bypasses every other player-facing wait.
-#   - `not is_inside_tree()`: this project's own established bare-instance
-#     test convention (BattleScreen.new(), never added to the SceneTree) —
-#     get_tree() itself prints a loud engine error when called outside the
-#     tree (even though it still returns null gracefully), so this checks
-#     tree membership directly instead; those tests already expect log
-#     lines to land synchronously and immediately.
-func _queue_log_line(text: String) -> void:
-	if _is_autoplay_run or not is_inside_tree():
-		_log_label.text += text + "\n"
+# ── Combat debug/log [M26b] ──────────────────────────────────────────────
+# The one shared sink every category-tagged handler in this file ultimately
+# calls. Appends to the permanent `_debug_entries` history (never trimmed —
+# see that var's own doc comment) and, only if the F3 panel is CURRENTLY
+# open, re-renders immediately so an open panel always shows live data
+# without needing to be closed and reopened.
+func _add_debug_entry(category: int, text: String) -> void:
+	_debug_entries.append({"turn": _current_debug_turn, "category": category, "text": text})
+	if _debug_overlay != null and _debug_overlay.visible:
+		_render_debug_overlay()
+
+
+# Builds the toggle-button row once (default state per
+# _DEBUG_CATEGORY_DEFAULT_ON) and configures the RichTextLabel body for
+# BBCode + real scrolling (the "scrollable N-turn history" requirement —
+# Godot's own ScrollContainer/RichTextLabel scrolling handles this natively
+# over the full, never-discarded entry list; no separate windowing/
+# "last N turns" trimming logic is needed). Guarded so a bare-instance test
+# that never called _ready() (this project's own established convention)
+# can still safely call _add_debug_entry()/_on_debug_category_toggled()
+# without crashing on a null toggle-row/body.
+func _setup_debug_overlay() -> void:
+	for category in _DEBUG_CATEGORY_ORDER:
+		_debug_category_on[category] = _DEBUG_CATEGORY_DEFAULT_ON[category]
+	if _debug_toggle_row == null:
 		return
-	_log_reveal_queue.append(text)
-	if not _log_reveal_running:
-		_run_log_reveal()
+	for category in _DEBUG_CATEGORY_ORDER:
+		var cb := CheckBox.new()
+		cb.text = _DEBUG_CATEGORY_LABEL[category]
+		cb.button_pressed = _debug_category_on[category]
+		cb.toggled.connect(_on_debug_category_toggled.bind(category))
+		_debug_toggle_row.add_child(cb)
+	if _debug_body != null:
+		_debug_body.bbcode_enabled = true
+		_debug_body.scroll_active = true
 
 
-func _run_log_reveal() -> void:
-	_log_reveal_running = true
-	while not _log_reveal_queue.is_empty():
-		var line: String = _log_reveal_queue.pop_front()
-		_log_label.text += line + "\n"
-		await get_tree().create_timer(_LOG_REVEAL_DELAY_SEC).timeout
-	_log_reveal_running = false
+func _on_debug_category_toggled(pressed: bool, category: int) -> void:
+	_debug_category_on[category] = pressed
+	if _debug_overlay != null and _debug_overlay.visible:
+		_render_debug_overlay()
+
+
+# Filters the full, permanent `_debug_entries` history down to whatever's
+# currently toggled on and rebuilds the displayed BBCode text from scratch —
+# cheap enough for a single battle's worth of entries, and simplest to keep
+# correct (no incremental-append bookkeeping to get wrong when a toggle
+# flips). Inserts a turn separator whenever the RENDERED stream's own turn
+# number changes (not a fixed pre-baked separator line), so toggling a
+# category on/off recomputes separators correctly even though the
+# underlying data never changes.
+func _render_debug_overlay() -> void:
+	if _debug_body == null:
+		return
+	var lines: Array[String] = []
+	var last_turn := -1
+	for entry in _debug_entries:
+		var category: int = entry["category"]
+		if not _debug_category_on.get(category, true):
+			continue
+		var turn: int = entry["turn"]
+		if turn != last_turn:
+			lines.append("[color=#888888]──── Turn %d ────[/color]" % turn)
+			last_turn = turn
+		lines.append("[color=%s]%s[/color]" % [_DEBUG_CATEGORY_COLOR.get(category, "#ffffff"), entry["text"]])
+	_debug_body.text = "\n".join(lines)
+	_debug_body.scroll_to_line(_debug_body.get_line_count())
+
+
+# [M26b] Every category beyond Narrative/Damage Math. Grouped by real
+# signal/data availability, confirmed via direct BattleManager source read
+# before wiring anything (not assumed):
+#
+#   RNG & Probability — a REAL, MATERIAL GAP, disclosed rather than silently
+#   worked around: raw roll values for accuracy/secondary-proc/confusion/
+#   paralysis/flinch/speed-tie checks are NOT exposed anywhere in the
+#   current codebase — the roll happens inside StatusManager/BattleManager
+#   with only a boolean or reason-string ever crossing back out (confirmed:
+#   `StatusManager.check_accuracy` returns bool only; `move_missed.emit(
+#   attacker, "accuracy")` carries a reason string, no roll/threshold).
+#   Building this fully would need new, separately-risked signal emissions
+#   inside that RNG-consuming core logic — explicitly NOT done in this pass.
+#   What IS wired below: the pass/fail OUTCOME of an accuracy check via the
+#   existing move_missed/move_missed_target signals, tagged RNG, plus one
+#   one-time disclosure entry so the gap is visible in the panel itself
+#   rather than only in this comment.
+#
+#   Turn Order & Priority — real coverage limited to the splice-override
+#   cases (After You/Quash) via the existing turn_order_changed signal.
+#   Normal-case turn-order reasoning (speed comparison, priority bracket,
+#   Trick Room inversion) has no exposing signal either — same gap shape as
+#   RNG above, same disclosure treatment.
+#
+#   Durations & Field State / Stat Changes / Items & Berries / Multi-Hit
+#   Detail / Delayed Effects / Ability & Immunity / Niche — all have real,
+#   already-existing signals/fields to read (see each wiring block's own
+#   comment for the specific source), no BattleManager changes needed.
+func _wire_debug_signals() -> void:
+	_add_debug_entry(DebugCategory.RNG,
+			"[i]Raw roll values aren't exposed by the current engine — showing hit/miss outcomes only.[/i]")
+	_add_debug_entry(DebugCategory.TURN_ORDER,
+			"[i]Normal-case turn-order reasoning isn't exposed — showing only real After You/Quash splices.[/i]")
+
+	# ── RNG & Probability (partial — see this function's own doc comment) ──
+	# [Bugfix] move_missed's own `reason` is NOT always an RNG outcome — it's
+	# a general "why didn't this move connect" tag covering 8 distinct cases
+	# (confirmed via every move_missed.emit(...) call site in
+	# battle_manager.gd): "protected"/"immune"/"doesnt_affect"/"substitute"/
+	# "semi_invulnerable"/"ohko_failed"/"sturdy_blocks_ohko" are ALL
+	# deterministic blocks with no roll involved at all — only "accuracy"
+	# (used for both the ordinary accuracy check and the OHKO family's own
+	# custom-formula roll, `battle_manager.gd`'s `DoesOHKOMoveMissTarget`
+	# port) is a genuine probability outcome. The original version tagged
+	# every reason as "accuracy check failed (%s)", which was actively wrong
+	# for the 7 deterministic reasons and vacuously redundant for the one
+	# real case ("accuracy check failed (accuracy)") — filtered to the one
+	# reason that actually belongs under this category, and the now-
+	# pointless self-referential parenthetical dropped entirely (there's
+	# nothing else to report: the real roll value/threshold still isn't
+	# exposed, per this function's own disclosure entry above).
+	_bm.move_missed.connect(func(attacker: BattlePokemon, reason: String):
+		if reason == "accuracy":
+			_add_debug_entry(DebugCategory.RNG, "%s's accuracy check failed" % _mon_label(attacker)))
+	_bm.move_missed_target.connect(func(attacker: BattlePokemon, target: BattlePokemon, reason: String):
+		if reason == "accuracy":
+			_add_debug_entry(DebugCategory.RNG,
+					"%s's accuracy check failed against %s" % [_mon_label(attacker), _mon_label(target)]))
+	_bm.secondary_applied.connect(func(target: BattlePokemon, _effect: int):
+		_add_debug_entry(DebugCategory.RNG, "%s's secondary-effect roll succeeded" % _mon_label(target)))
+
+	# ── Turn Order & Priority (partial — see this function's own doc comment) ──
+	_bm.turn_order_changed.connect(func(mover: BattlePokemon, reason: String):
+		_add_debug_entry(DebugCategory.TURN_ORDER, "%s's turn order changed (%s)" % [_mon_label(mover), reason]))
+
+	# ── Durations & Field State — trick_room_turns/_side_conditions/
+	# weather_duration are all real, already-tracked BattleManager fields;
+	# reading them right after their own set/expire signal fires reports the
+	# real starting/current duration, not a guessed one.
+	_bm.trick_room_set.connect(func():
+		_add_debug_entry(DebugCategory.DURATIONS, "Trick Room activated (%d turns)" % _bm.trick_room_turns))
+	_bm.trick_room_ended.connect(func():
+		_add_debug_entry(DebugCategory.DURATIONS, "Trick Room ended"))
+	_bm.screen_set.connect(func(side: int, screen_name: String):
+		var turns: int = _bm._side_conditions[side].get(screen_name + "_turns", 0)
+		_add_debug_entry(DebugCategory.DURATIONS,
+				"%s up on %s side (%d turns)" % [_SCREEN_NAMES.get(screen_name, screen_name), _side_label(side), turns]))
+	_bm.screen_expired.connect(func(side: int, screen_name: String):
+		_add_debug_entry(DebugCategory.DURATIONS,
+				"%s expired on %s side" % [_SCREEN_NAMES.get(screen_name, screen_name), _side_label(side)]))
+	_bm.hazard_set.connect(func(side: int, hazard_name: String, layers: int):
+		_add_debug_entry(DebugCategory.DURATIONS,
+				"%s set on %s side (layer %d)" % [_HAZARD_NAMES.get(hazard_name, hazard_name), _side_label(side), layers]))
+	_bm.hazards_cleared.connect(func(side: int, hazard_name: String):
+		_add_debug_entry(DebugCategory.DURATIONS,
+				"%s cleared from %s side" % [_HAZARD_NAMES.get(hazard_name, hazard_name), _side_label(side)]))
+	_bm.weather_set.connect(func(_by: BattlePokemon, weather_type: int):
+		_add_debug_entry(DebugCategory.DURATIONS,
+				"Weather %d set (%d turns)" % [weather_type, _bm.weather_duration]))
+	_bm.weather_expired.connect(func(_weather_type: int):
+		_add_debug_entry(DebugCategory.DURATIONS, "Weather expired"))
+	_bm.side_condition_set.connect(func(side: int, condition_name: String):
+		_add_debug_entry(DebugCategory.DURATIONS,
+				"%s set on %s side" % [condition_name.capitalize(), _side_label(side)]))
+	_bm.side_condition_expired.connect(func(side: int, condition_name: String):
+		_add_debug_entry(DebugCategory.DURATIONS,
+				"%s expired on %s side" % [condition_name.capitalize(), _side_label(side)]))
+	_bm.field_sport_set.connect(func(sport_name: String):
+		_add_debug_entry(DebugCategory.DURATIONS, "%s set (field-wide)" % sport_name.capitalize()))
+
+	# ── Stat Changes — before->after stage values via stat_stage_changed's
+	# own actual_change, computed at the UI layer (target.stat_stages[stat_idx]
+	# is already the AFTER value by the time this signal fires).
+	_bm.stat_stage_changed.connect(func(target: BattlePokemon, stat_idx: int, actual_change: int):
+		if actual_change == 0:
+			return
+		var after: int = target.stat_stages[stat_idx]
+		var before: int = after - actual_change
+		var stat_name: String = _STAGE_NAMES[stat_idx] if stat_idx < _STAGE_NAMES.size() else "stat"
+		_add_debug_entry(DebugCategory.STAT_CHANGES,
+				"%s's %s: %+d -> %+d" % [_mon_label(target), stat_name, before, after]))
+
+	# ── Items & Berries — real HP context (current/max) at the moment an
+	# item/berry effect actually fired, not just that it fired.
+	_bm.item_healed.connect(func(mon: BattlePokemon, amount: int):
+		_add_debug_entry(DebugCategory.ITEMS_BERRIES,
+				"%s's item healed %d (now %d/%d HP)" % [_mon_label(mon), amount, mon.current_hp, mon.max_hp]))
+	_bm.item_damage.connect(func(mon: BattlePokemon, amount: int):
+		_add_debug_entry(DebugCategory.ITEMS_BERRIES,
+				"%s's item dealt %d (now %d/%d HP)" % [_mon_label(mon), amount, mon.current_hp, mon.max_hp]))
+	_bm.item_consumed.connect(func(mon: BattlePokemon, item: ItemData):
+		_add_debug_entry(DebugCategory.ITEMS_BERRIES,
+				"%s consumed %s at %d/%d HP" % [_mon_label(mon), item.item_name, mon.current_hp, mon.max_hp]))
+	_bm.item_action_used.connect(func(user: BattlePokemon, item: ItemData, target: BattlePokemon):
+		_add_debug_entry(DebugCategory.ITEMS_BERRIES,
+				"%s used %s on %s (%d/%d HP)" % [_mon_label(user), item.item_name, _mon_label(target), target.current_hp, target.max_hp]))
+	_bm.item_effect_triggered.connect(func(mon: BattlePokemon, effect_key: String):
+		_add_debug_entry(DebugCategory.ITEMS_BERRIES,
+				"%s's item effect (%s) fired at %d/%d HP" % [_mon_label(mon), effect_key, mon.current_hp, mon.max_hp]))
+
+	# ── Multi-Hit Detail — aggregate only (see multi_hit_sequence_finished's
+	# own doc comment in battle_manager.gd: no per-hit breakdown signal
+	# exists), disclosed inline rather than presented as complete.
+	_bm.multi_hit_sequence_finished.connect(
+			func(attacker: BattlePokemon, target: BattlePokemon, hits_landed: int, total_damage: int):
+		_add_debug_entry(DebugCategory.MULTI_HIT,
+				"%s's multi-hit vs %s: %d hits, %d total damage [i](aggregate only)[/i]"
+						% [_mon_label(attacker), _mon_label(target), hits_landed, total_damage]))
+
+	# ── Delayed Effects — real scheduled<->resolved signal pairs, correlated
+	# here at the UI layer with zero BattleManager changes.
+	_bm.future_sight_scheduled.connect(func(caster: BattlePokemon, target: BattlePokemon, move: MoveData):
+		_add_debug_entry(DebugCategory.DELAYED,
+				"%s scheduled %s against %s" % [_mon_label(caster), move.move_name, _mon_label(target)]))
+	_bm.future_sight_resolved.connect(func(caster: BattlePokemon, target: BattlePokemon, move: MoveData, damage: int):
+		_add_debug_entry(DebugCategory.DELAYED,
+				"%s's scheduled %s resolved against %s: %d damage" % [_mon_label(caster), move.move_name, _mon_label(target), damage]))
+	_bm.wish_scheduled.connect(func(caster: BattlePokemon):
+		_add_debug_entry(DebugCategory.DELAYED, "%s scheduled Wish" % _mon_label(caster)))
+	_bm.wish_resolved.connect(func(recipient: BattlePokemon, healed: int):
+		_add_debug_entry(DebugCategory.DELAYED, "Wish resolved on %s: %d HP" % [_mon_label(recipient), healed]))
+	_bm.yawn_set.connect(func(target: BattlePokemon):
+		_add_debug_entry(DebugCategory.DELAYED, "%s scheduled to fall asleep (Yawn)" % _mon_label(target)))
+	_bm.healing_wish_activated.connect(
+			func(recipient: BattlePokemon, kind: String, healed: int, cured: bool, pp_restored: bool):
+		_add_debug_entry(DebugCategory.DELAYED,
+				"%s's %s resolved: %d HP, cured=%s, pp_restored=%s"
+						% [_mon_label(recipient), kind, healed, cured, pp_restored]))
+
+	# ── Ability & Immunity Interactions — Mold Breaker/Neutralizing Gas
+	# suppressions and type-immunity absorb outcomes both already surface via
+	# ability_triggered's own per-effect-key readable text (the same
+	# lookup table _on_log_ability_triggered already uses) — no separate
+	# mechanism needed, just a different category than Narrative.
+	_bm.ability_triggered.connect(_on_log_ability_triggered)
+	_bm.ability_healed.connect(_on_log_ability_healed)
+
+	# ── Niche/Situational (default-off) — trapping-check reasoning has no
+	# exposing signal (skipped, same gap shape as RNG/Turn Order above); the
+	# rest are real, already-signaled mechanics.
+	_bm.leech_seed_drained.connect(func(target: BattlePokemon, source: BattlePokemon, amount: int):
+		_add_debug_entry(DebugCategory.NICHE,
+				"Leech Seed: %s -> %s, %d" % [_mon_label(target), _mon_label(source), amount]))
+	_bm.curse_damage.connect(func(mon: BattlePokemon, amount: int):
+		_add_debug_entry(DebugCategory.NICHE, "%s's Curse tick: %d damage" % [_mon_label(mon), amount]))
+	_bm.nightmare_damage.connect(func(target: BattlePokemon, amount: int):
+		_add_debug_entry(DebugCategory.NICHE, "%s's Nightmare tick: %d damage" % [_mon_label(target), amount]))
+	_bm.pp_drained.connect(func(mon: BattlePokemon, move: MoveData):
+		_add_debug_entry(DebugCategory.NICHE, "%s's %s drained to 0 PP (Grudge)" % [_mon_label(mon), move.move_name]))
+	_bm.pp_reduced.connect(func(target: BattlePokemon, move: MoveData, amount: int):
+		_add_debug_entry(DebugCategory.NICHE,
+				"%s's %s PP reduced by %d (Spite)" % [_mon_label(target), move.move_name, amount]))
+	_bm.item_transferred.connect(func(from_mon: BattlePokemon, to_mon: BattlePokemon, item: ItemData):
+		_add_debug_entry(DebugCategory.NICHE,
+				"Item transferred: %s's %s -> %s" % [_mon_label(from_mon), item.item_name, _mon_label(to_mon)]))
+	_bm.berry_stolen_and_eaten.connect(func(victim: BattlePokemon, beneficiary: BattlePokemon, item: ItemData):
+		_add_debug_entry(DebugCategory.NICHE,
+				"%s's %s stolen and eaten by %s" % [_mon_label(victim), item.item_name, _mon_label(beneficiary)]))
+	_bm.item_stolen.connect(func(stealer: BattlePokemon, victim: BattlePokemon):
+		_add_debug_entry(DebugCategory.NICHE, "%s stole %s's item" % [_mon_label(stealer), _mon_label(victim)]))
+	_bm.items_swapped.connect(func(attacker: BattlePokemon, defender: BattlePokemon):
+		_add_debug_entry(DebugCategory.NICHE,
+				"Items swapped: %s <-> %s" % [_mon_label(attacker), _mon_label(defender)]))
+	_bm.move_bounced.connect(func(holder: BattlePokemon, new_target: BattlePokemon):
+		_add_debug_entry(DebugCategory.NICHE,
+				"Move bounced by %s back at %s (Magic Bounce)" % [_mon_label(holder), _mon_label(new_target)]))
+	_bm.move_stolen.connect(func(stealer: BattlePokemon, original_caster: BattlePokemon, move: MoveData):
+		_add_debug_entry(DebugCategory.NICHE,
+				"%s intercepted %s's %s (Snatch)" % [_mon_label(stealer), _mon_label(original_caster), move.move_name]))
 
 
 # ── Team fixtures ────────────────────────────────────────────────────────
@@ -1419,25 +1781,16 @@ static func _next_anim_frame(current_frame: int, is_fainted: bool) -> int:
 	return 1 - current_frame
 
 
-# ── Combat-debug overlay [M25d] ─────────────────────────────────────────────
-# Off by default, toggled with F3 (see _unhandled_input below), structurally
-# separate from both the player-facing log (VBox/LogLabel) and the sprite/
-# health-box layer (BattleStage) -- its own top-level node, drawn last.
-#
-# [Doubles/multi-action judgment call] Shows only the MOST RECENT real hit's
-# own breakdown, replaced wholesale on every move_damage_breakdown signal --
-# deliberately NOT an accumulating history within the panel itself. Per this
-# sub-phase's own explicit scope note, the panel must not duplicate the real
-# battle log's accumulating-history role; M25c's own log already shows every
-# action's move-announcement/damage/effectiveness text in order (now with
-# real pacing), so a developer wanting the full turn's sequence already has
-# that available for correlation. In a 2v2 turn, this means the overlay's
-# content changes once per REAL damaging hit (up to 4 times per turn, once
-# per acting combatant) -- confirmed via the doubles screenshot/test below,
-# not merely assumed from the single-target behavior.
+# ── Combat-debug overlay [M25d, merged into the M26b history above] ────────
+# [M26b] No longer replaces a dedicated Label wholesale — every real hit's
+# breakdown becomes its own DAMAGE_MATH-tagged entry in the same permanent,
+# never-discarded history every other category feeds, so a developer can
+# scroll back through a whole battle's worth of breakdowns rather than only
+# ever seeing the most recent one. In a 2v2 turn this means one entry per
+# REAL damaging hit (up to 4 per turn, once per acting combatant).
 func _on_debug_move_damage_breakdown(attacker: BattlePokemon, defender: BattlePokemon,
 		move: MoveData, breakdown: Dictionary) -> void:
-	_debug_overlay_text.text = _format_debug_breakdown(attacker, defender, move, breakdown)
+	_add_debug_entry(DebugCategory.DAMAGE_MATH, _format_debug_breakdown(attacker, defender, move, breakdown))
 
 
 # Pure/static so a test can call it directly without a live signal round-trip
@@ -1447,12 +1800,15 @@ func _on_debug_move_damage_breakdown(attacker: BattlePokemon, defender: BattlePo
 # return moves that never reach DamageCalculator.calculate's main formula
 # (Sonic Boom, Dragon Rage, OHKO, etc.) -- see move_damage_breakdown's own
 # doc comment in battle_manager.gd for the full list of excluded cases.
+# [M26b] The old leading "Combat Debug (F3 to toggle)" line was dropped —
+# that's now the panel's own static Header label (shown once, not repeated
+# per entry), since this text is now ONE entry among many in a scrolling
+# history rather than the sole, wholesale-replaced content of the panel.
 static func _format_debug_breakdown(attacker: BattlePokemon, defender: BattlePokemon,
 		move: MoveData, breakdown: Dictionary) -> String:
 	var atk_name: String = attacker.species.species_name
 	var def_name: String = defender.species.species_name
 	var lines: Array[String] = []
-	lines.append("Combat Debug (F3 to toggle)")
 	lines.append("%s -> %s" % [atk_name, def_name])
 	lines.append("Move: %s (Power %d, Acc %d)" % [move.move_name, move.power, move.accuracy])
 	if breakdown.has("base_damage"):
@@ -1475,6 +1831,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo \
 			and event.keycode == KEY_F3:
 		_debug_overlay.visible = not _debug_overlay.visible
+		# [M26b] Re-render on open so a panel that accumulated entries while
+		# closed shows them immediately, not just from the next new entry.
+		if _debug_overlay.visible:
+			_render_debug_overlay()
 
 
 func _on_opponent_anim_timer_timeout() -> void:
@@ -1791,57 +2151,15 @@ static func _color_keyed_texture(source: Image, key_color: Color = _MESSAGE_BOX_
 	return ImageTexture.create_from_image(img)
 
 
-# [M23.11 Phase 4e] Message-box authenticity via the real text_window art,
-# using the now-enabled Dialogue Manager plugin's own DialogueLabel node
-# class (see _log_label's own onready doc comment for why that's safe) --
-# called once from _ready(), alongside _setup_health_ui().
-#
-# [Dialogue-Manager-vs-custom decision, stated here since this is the one
-# call site it governs] Deliberately does NOT instantiate Dialogue Manager's
-# own example_balloon.tscn / call DialogueManager.show_dialogue_balloon() --
-# that API is shaped around ONE DialogueResource/DialogueLine at a time,
-# gated on player input to advance to the next line (a genuine branching-
-# conversation balloon). This screen's battle log is the opposite shape: an
-# ACCUMULATING, non-blocking scroll of many short lines arriving in rapid
-# succession (Phase 4f's per-slot doubles messages especially), which the
-# task's own "must not regress queuing/sequencing/timing" constraint asks
-# to preserve exactly as built across M23.2-4f. Forcing every log line
-# through a synthetic DialogueLine + balloon-advance gate would be a large,
-# genuinely risky rearchitecture for zero real benefit here (there is no
-# authored branching content to gain from it) -- so the integration is
-# scoped to what's actually a good fit: the DialogueLabel component class
-# itself (a real Dialogue-Manager-provided RichTextLabel subclass, used
-# here as a plain accumulating label, its own typewriter/dialogue-line API
-# simply never invoked) plus the real text_window art as its background.
-# Dialogue Manager's full balloon/branching machinery remains available,
-# unused by this screen, for whatever future overworld NPC dialogue system
-# M26 eventually builds -- see CLAUDE.md's "Project Roadmap" section.
-func _setup_message_box() -> void:
-	var raw_image: Image = load("res://assets/sprites/battle_ui/text_window/std.png").get_image()
-	var keyed_texture: ImageTexture = _color_keyed_texture(raw_image)
-
-	var box_style := StyleBoxTexture.new()
-	box_style.texture = keyed_texture
-	box_style.texture_margin_left = _MESSAGE_BOX_MARGIN
-	box_style.texture_margin_top = _MESSAGE_BOX_MARGIN
-	box_style.texture_margin_right = _MESSAGE_BOX_MARGIN
-	box_style.texture_margin_bottom = _MESSAGE_BOX_MARGIN
-
-	_log_label.add_theme_stylebox_override("normal", box_style)
-
-	# [M25h-1.2] Real bitmap font (see gen_battle_fonts.py's "message"
-	# context -- the real B_WIN_MSG colors, red foreground/black shadow,
-	# baked directly into the atlas). Supersedes Phase 4e's own flat
-	# near-black `default_color` fix below: that was compensating for the
-	# engine's generic default font having no color of its own against this
-	# panel's light interior. A real bitmap font's glyph pixels are already
-	# fully colored, so `default_color` is now set to a neutral, non-tinting
-	# Color(1,1,1,1) instead -- leaving the old dark tint in place would
-	# multiply against the baked-in red/black pixels and crush them toward
-	# black, discarding the real sourced color.
-	_log_label.add_theme_font_override("normal_font", _font_message)
-	_log_label.add_theme_font_size_override("normal_font_size", _FONT_NORMAL_SIZE)
-	_log_label.add_theme_color_override("default_color", Color(1, 1, 1, 1))
+# [M23.11 Phase 4e, RETIRED by M26b] `_setup_message_box()` used to apply
+# real text_window/std.png art + the real bitmap message font to the old
+# always-visible VBox/LogLabel — removed outright along with that node (see
+# the former `_log_label` onready var's own doc comment for the full
+# reasoning). `_color_keyed_texture`/`_MESSAGE_BOX_MARGIN`/
+# `_MESSAGE_BOX_KEY_COLOR` themselves are NOT retired — ItemSelectScreen/
+# SwitchSelectScreen both still call `_color_keyed_texture` directly for
+# their own real window art, and `_is_message_box_key_color`'s default
+# key-color param still points at `_MESSAGE_BOX_KEY_COLOR`.
 
 
 # [M25h-1.1] Real window art for the new shared bottom region (ActionRegion

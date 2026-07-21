@@ -1,25 +1,23 @@
 extends Node
 
-# [M25c] Regression suite for battle message/log authenticity: move-
-# announcement text, target naming, damage/effectiveness reporting, and the
-# turn separator — plus one real end-to-end proof that BattleManager's own
-# new signals (turn_started/move_announced/move_effectiveness_computed)
-# actually fire correctly from real gameplay, not just that the UI handler
-# logic is correct in isolation.
+# [M25c, retargeted M26b] Regression suite for battle message/log
+# authenticity: move-announcement text, target naming, damage/effectiveness
+# reporting, and the turn separator — plus one real end-to-end proof that
+# BattleManager's own signals (turn_started/move_announced/
+# move_effectiveness_computed) actually fire correctly from real gameplay,
+# not just that the UI handler logic is correct in isolation.
 #
-# [Deliberately NOT tested here] The paced log-reveal queue's own genuine
-# staggered-timing behavior (_queue_log_line/_run_log_reveal) — every test
-# below uses a bare BattleScreen.new() never added to the SceneTree, which
-# is this project's own established convention (see m25b_menu_test.gd's own
-# top doc comment) and means get_tree() == null, so _queue_log_line's own
-# bare-instance fallback (immediate append, no pacing) is what's actually
-# exercised here, same as it always was pre-M25c. The pacing mechanism
-# itself needs a live tree to observe staggering, and the --autoplay-must-
-# stay-fast requirement was confirmed empirically instead (a direct
-# `battle_screen.tscn --autoplay` timed run completed in ~0.6s total
-# process time, which would be impossible if 0.6s-per-line pacing were
-# mistakenly active across a multi-turn battle's worth of log lines) —
-# see this session's own report for the exact measurement.
+# [M26b] The old always-visible VBox/LogLabel (and its paced reveal queue)
+# was retired outright — every assertion below that used to read
+# `bs._log_label.text` now reads the NARRATIVE-category entries in the new
+# merged, category-tagged `_debug_entries` history instead (via the
+# `_narrative_text()` helper below), which is where this exact same text
+# now lands. Content/wording/ordering are unchanged from M25c's own
+# original work — only the sink changed. Pacing itself (M25c's own
+# `_queue_log_line`/`_run_log_reveal`, 0.6s between lines) was dropped
+# entirely by M26b, not merely bypassed by this suite's bare-instance
+# convention as it was before — see battle_screen.gd's own current `_log()`
+# doc comment for the disclosed reasoning.
 
 var _pass := 0
 var _fail := 0
@@ -103,9 +101,21 @@ func _doubles_party(mons: Array) -> BattleParty:
 
 func _make_bs(attacker: BattlePokemon) -> BattleScreen:
 	var bs := BattleScreen.new()
-	bs._log_label = DialogueLabel.new()
 	bs._player_party = _singles_party(attacker)
 	return bs
+
+
+# [M26b] Joins every NARRATIVE-category entry's own text, each followed by
+# "\n" — reproduces the exact shape `bs._log_label.text` used to have
+# (`_log()` always appended `text + "\n"`), so most of this file's own
+# pre-existing exact-string assertions needed no change beyond swapping
+# `bs._log_label.text` for `_narrative_text(bs)`.
+func _narrative_text(bs: BattleScreen) -> String:
+	var out := ""
+	for entry in bs._debug_entries:
+		if entry["category"] == BattleScreen.DebugCategory.NARRATIVE:
+			out += entry["text"] + "\n"
+	return out
 
 
 # ── 1-4. Move announcement / target naming ───────────────────────────────
@@ -119,7 +129,7 @@ func _test_announcement_foe_targeting_names_target() -> void:
 	bs._on_log_move_announced(attacker, defender, move)
 
 	_chk("foe-targeting announcement names the target",
-			bs._log_label.text == "Your Angler used Water Gun on Foe Blaze!\n")
+			_narrative_text(bs) == "Your Angler used Water Gun on Foe Blaze!\n")
 
 
 func _test_announcement_self_targeting_omits_target() -> void:
@@ -133,7 +143,7 @@ func _test_announcement_self_targeting_omits_target() -> void:
 	bs._on_log_move_announced(attacker, attacker, move)
 
 	_chk("self-targeting announcement does NOT awkwardly name the user as a target",
-			bs._log_label.text == "Your Angler2 used Swords Dance!\n")
+			_narrative_text(bs) == "Your Angler2 used Swords Dance!\n")
 
 
 func _test_announcement_doubles_spread_omits_target() -> void:
@@ -146,7 +156,7 @@ func _test_announcement_doubles_spread_omits_target() -> void:
 	bs._on_log_move_announced(attacker, opp0, move)
 
 	_chk("a real doubles spread hit's announcement names no single target (ambiguous)",
-			bs._log_label.text == "Your Angler3 used Surf!\n")
+			_narrative_text(bs) == "Your Angler3 used Surf!\n")
 
 
 func _test_announcement_spread_move_in_singles_names_target() -> void:
@@ -164,7 +174,7 @@ func _test_announcement_spread_move_in_singles_names_target() -> void:
 	bs._on_log_move_announced(attacker, opp, move)
 
 	_chk("a spread-flagged move used in an actual singles battle still names its one real target",
-			bs._log_label.text == "Your Angler4 used Surf on Foe SoloOpp!\n")
+			_narrative_text(bs) == "Your Angler4 used Surf on Foe SoloOpp!\n")
 
 
 # ── 5-9. Damage / effectiveness / crit reporting ─────────────────────────
@@ -184,7 +194,7 @@ func _test_effectiveness_super_effective() -> void:
 	bs._on_log_move_executed(attacker, defender, move, 40)
 
 	_chk("super-effective (2.0x) prints the real games' own exact line",
-			bs._log_label.text == "It's super effective!\nFoe D5 took 40 damage!\n")
+			_narrative_text(bs) == "It's super effective!\nFoe D5 took 40 damage!\n")
 
 
 func _test_effectiveness_not_very_effective() -> void:
@@ -197,7 +207,7 @@ func _test_effectiveness_not_very_effective() -> void:
 	bs._on_log_move_executed(attacker, defender, move, 10)
 
 	_chk("not-very-effective (0.5x) prints the real games' own exact line",
-			bs._log_label.text == "It's not very effective…\nFoe D6 took 10 damage!\n")
+			_narrative_text(bs) == "It's not very effective…\nFoe D6 took 10 damage!\n")
 
 
 func _test_effectiveness_no_effect_names_target_and_suppresses_damage_line() -> void:
@@ -210,7 +220,7 @@ func _test_effectiveness_no_effect_names_target_and_suppresses_damage_line() -> 
 	bs._on_log_move_executed(attacker, defender, move, 0)
 
 	_chk("a true 0x immunity names the target (matching source's own STRINGID_ITDOESNTAFFECT) and prints no damage line",
-			bs._log_label.text == "It doesn't affect Foe D7…\n")
+			_narrative_text(bs) == "It doesn't affect Foe D7…\n")
 
 
 func _test_effectiveness_neutral_stays_silent() -> void:
@@ -223,7 +233,7 @@ func _test_effectiveness_neutral_stays_silent() -> void:
 	bs._on_log_move_executed(attacker, defender, move, 25)
 
 	_chk("a neutral 1.0x hit stays silent on effectiveness, matching source exactly",
-			bs._log_label.text == "Foe D8 took 25 damage!\n")
+			_narrative_text(bs) == "Foe D8 took 25 damage!\n")
 
 
 func _test_critical_hit_line_precedes_effectiveness_line() -> void:
@@ -236,7 +246,7 @@ func _test_critical_hit_line_precedes_effectiveness_line() -> void:
 	bs._on_log_move_executed(attacker, defender, move, 80)
 
 	_chk("a crit prints 'A critical hit!' before the effectiveness line, then the damage line",
-			bs._log_label.text == "A critical hit!\nIt's super effective!\nFoe D9 took 80 damage!\n")
+			_narrative_text(bs) == "A critical hit!\nIt's super effective!\nFoe D9 took 80 damage!\n")
 
 
 func _test_status_move_produces_no_effectiveness_or_damage_line() -> void:
@@ -250,18 +260,36 @@ func _test_status_move_produces_no_effectiveness_or_damage_line() -> void:
 	bs._on_log_move_executed(attacker, defender, move, 0)
 
 	_chk("a status move's own move_executed (damage=0, no pending hit data) prints nothing on its own",
-			bs._log_label.text == "")
+			_narrative_text(bs) == "")
 
 
 # ── 10. Turn separator ───────────────────────────────────────────────────
+# [M26b] The turn separator is now structural, not a text line —
+# _on_log_turn_started updates _current_debug_turn, and every subsequent
+# entry is stamped with it; _render_debug_overlay() inserts the visible
+# "──── Turn N ────" line itself at render time. Confirmed two ways: the
+# structural stamp itself, and the actual rendered BBCode output (which
+# needs a real onready _debug_body — added directly here on a bare
+# instance, mirroring this project's own established "manually construct
+# the one onready node a bare-instance test needs" convention, e.g.
+# phase4e_message_box_test.gd's own fake_log_label).
 
 func _test_turn_separator() -> void:
 	var attacker := _make_typed_mon("A11", TypeChart.TYPE_NORMAL)
 	var bs := _make_bs(attacker)
 
 	bs._on_log_turn_started(5)
+	_chk("turn separator updates _current_debug_turn structurally, not as a text line",
+			bs._current_debug_turn == 5)
 
-	_chk("turn separator prints the turn number", "Turn 5" in bs._log_label.text)
+	bs._add_debug_entry(BattleScreen.DebugCategory.NARRATIVE, "something happened")
+	_chk("a subsequent entry is stamped with the real current turn number",
+			bs._debug_entries[-1]["turn"] == 5)
+
+	bs._debug_body = RichTextLabel.new()
+	bs._render_debug_overlay()
+	_chk("the rendered panel text contains a real turn separator for turn 5",
+			"Turn 5" in bs._debug_body.text)
 
 
 # ── 11. Doubles: one announcement, two independently-thresholded per-
@@ -282,7 +310,7 @@ func _test_doubles_spread_two_targets_one_announcement_two_damage_lines() -> voi
 	bs._on_log_move_executed(attacker, opp1, move, 8)
 
 	_chk("a 2-target spread hit announces once and reports each target's own damage/effectiveness separately",
-			bs._log_label.text == "Your A12 used Surf!\nIt's super effective!\nFoe Opp0_12 took 30 damage!\n" \
+			_narrative_text(bs) == "Your A12 used Surf!\nIt's super effective!\nFoe Opp0_12 took 30 damage!\n" \
 					+ "It's not very effective…\nFoe Opp1_12 took 8 damage!\n")
 
 
@@ -310,7 +338,6 @@ func _test_real_battle_end_to_end_signal_wiring() -> void:
 	bm.set_human_controlled(1, true)
 
 	var bs := BattleScreen.new()
-	bs._log_label = DialogueLabel.new()
 	bs._player_party = _singles_party(attacker)
 	bs._opp_party = _singles_party(opp)
 	bs._bm = bm
@@ -318,18 +345,18 @@ func _test_real_battle_end_to_end_signal_wiring() -> void:
 
 	bm.start_battle_with_parties(_singles_party(attacker), _singles_party(opp))
 	_chk("battle starts at turn 1 already emitted", bm.turn_number == 1)
-	_chk("turn separator reached the real log via a genuinely fired turn_started signal",
-			"Turn 1" in bs._log_label.text)
+	_chk("the turn separator's own structural stamp reached the merged history via a genuinely fired turn_started signal",
+			bs._current_debug_turn == 1)
 
 	bm.queue_move_targeted(0, 0, 1)
 	bm.queue_move_targeted(1, 0, 0)
 	bm.advance()
 
 	_chk("the real attacker's own move-announcement line reached the log via a genuinely fired move_announced signal",
-			"Your RealAngler used Water Gun on Foe RealBlaze!" in bs._log_label.text)
+			"Your RealAngler used Water Gun on Foe RealBlaze!" in _narrative_text(bs))
 	_chk("the real hit's own effectiveness line reached the log via a genuinely fired move_effectiveness_computed signal",
-			"It's super effective!" in bs._log_label.text)
+			"It's super effective!" in _narrative_text(bs))
 	_chk("the real hit's own damage line reached the log via the existing move_executed signal",
-			"Foe RealBlaze took" in bs._log_label.text and "damage!" in bs._log_label.text)
+			"Foe RealBlaze took" in _narrative_text(bs) and "damage!" in _narrative_text(bs))
 
 	bm.queue_free()
