@@ -61,7 +61,13 @@ static func _make_mon(mon_name: String, hp: int = 100) -> BattlePokemon:
 	sp.base_sp_attack = 80
 	sp.base_sp_defense = 80
 	sp.base_speed = 80
-	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var mon := BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	# [M26c-1 follow-up] from_species() always rolls a real gender from the
+	# class-default gender_ratio (~50/50) -- forced deterministic since
+	# _name_text() now renders a trailing gender glyph and this suite's own
+	# new name/level assertions need a stable expected string.
+	mon.gender = BattlePokemon.GENDER_MALE
+	return mon
 
 
 static func _make_party(mons: Array, active: Array) -> BattleParty:
@@ -78,28 +84,58 @@ static func _make_party(mons: Array, active: Array) -> BattleParty:
 
 
 func _make_node_set() -> Dictionary:
+	# [M26c battle-UI polish] Sprite nodes need a real, nonzero
+	# offset_left/offset_right (a fake "authored" 64x64 box, matching the
+	# real .tscn nodes' own square-box convention) -- width :=
+	# offset_right - offset_left feeds _apply_bottom_anchored_front_sprite's
+	# own scale computation, which early-returns (leaving .texture untouched)
+	# for a zero-width box. offset_top/offset_bottom are likewise given a
+	# real starting baseline (0..64) since callers now pass these as the
+	# fixed "base_top"/"base_bottom" pair via BASE_TOP/BASE_BOTTOM below.
+	var sprite0 := TextureRect.new()
+	var sprite1 := TextureRect.new()
+	for s in [sprite0, sprite1]:
+		s.offset_left = 0.0
+		s.offset_right = 64.0
+		s.offset_top = 0.0
+		s.offset_bottom = 64.0
 	return {
-		"sprites": [TextureRect.new(), TextureRect.new()],
+		"sprites": [sprite0, sprite1],
 		"groups": [Control.new(), Control.new()],
 		"status_icons": [TextureRect.new(), TextureRect.new()],
 		"status_atlases": [AtlasTexture.new(), AtlasTexture.new()],
 		"hp_fills": [TextureProgressBar.new(), TextureProgressBar.new()],
-		"name_level_labels": [Label.new(), Label.new()],  # [M25d]
+		"name_labels": [Label.new(), Label.new()],  # [M25d, split M26c-1 follow-up]
+		"level_labels": [Label.new(), Label.new()],  # [M25d, split M26c-1 follow-up]
 	}
 
 
-# ── A. Doubles healthbox art — dimensions confirmed via direct load, not
-# assumed from the earlier manual PIL inspection alone. ────────────────────
+# [M26c battle-UI polish] Matches _make_node_set()'s own fake 64x64 sprite
+# box baseline above -- passed as the new sprite_base_top/sprite_base_bottom
+# params on every _refresh_doubles_side(..., is_player=false) call site
+# below, mirroring how battle_screen.gd's own _setup_health_ui() captures
+# the real .tscn nodes' baseline once before any mutation.
+const _SPRITE_BASE_TOP := [0.0, 0.0]
+const _SPRITE_BASE_BOTTOM := [64.0, 64.0]
+
+
+# ── A. Doubles databox art — dimensions confirmed via direct load, not
+# assumed from the earlier manual PIL inspection alone.
+# [M26c-1] Retargeted to the real files _setup_health_ui() actually loads
+# now (the Emerald UI Pack's own "thin" doubles boxes) — the old
+# healthbox_doubles_*.png files are no longer referenced anywhere in
+# battle_screen.gd, so asserting against them here would silently stop
+# testing what's actually on screen. ────────────────────────────────────
 
 func _test_doubles_art_dimensions() -> void:
-	var opp_tex: Texture2D = load("res://assets/sprites/battle_ui/interface/healthbox_doubles_opponent.png")
-	var ply_tex: Texture2D = load("res://assets/sprites/battle_ui/interface/healthbox_doubles_player.png")
+	var opp_tex: Texture2D = load("res://assets/sprites/battle_ui/interface/databox_doubles_opponent.png")
+	var ply_tex: Texture2D = load("res://assets/sprites/battle_ui/interface/databox_doubles_player.png")
 	_chk("doubles opponent art loads", opp_tex != null)
 	_chk("doubles player art loads", ply_tex != null)
 	if opp_tex != null:
-		_chk("doubles opponent art is 128x32", opp_tex.get_width() == 128 and opp_tex.get_height() == 32)
+		_chk("doubles opponent art is 260x62", opp_tex.get_width() == 260 and opp_tex.get_height() == 62)
 	if ply_tex != null:
-		_chk("doubles player art is 128x32", ply_tex.get_width() == 128 and ply_tex.get_height() == 32)
+		_chk("doubles player art is 260x62", ply_tex.get_width() == 260 and ply_tex.get_height() == 62)
 
 
 # ── B. _refresh_doubles_side basic two-slot render ──────────────────────
@@ -113,12 +149,23 @@ func _test_refresh_doubles_side_basic_render() -> void:
 	var nodes := _make_node_set()
 	bs._refresh_doubles_side(party, false, nodes["sprites"], nodes["groups"],
 			nodes["status_icons"], nodes["status_atlases"], nodes["hp_fills"],
-			nodes["name_level_labels"])
+			nodes["name_labels"], nodes["level_labels"],
+			_SPRITE_BASE_TOP, _SPRITE_BASE_BOTTOM)
 
 	_chk("slot 0 sprite visible", nodes["sprites"][0].visible)
 	_chk("slot 1 sprite visible", nodes["sprites"][1].visible)
 	_chk("slot 0 group visible", nodes["groups"][0].visible)
 	_chk("slot 1 group visible", nodes["groups"][1].visible)
+	# [M26c-1 follow-up] Split label wiring — name and level are set
+	# independently (name gets the trailing gender glyph, level does not).
+	_chk("slot 0 name label set independently of level label",
+			nodes["name_labels"][0].text == bs._name_text(mon0))
+	_chk("slot 1 name label set independently of level label",
+			nodes["name_labels"][1].text == bs._name_text(mon1))
+	_chk("slot 0 level label set independently of name label",
+			nodes["level_labels"][0].text == bs._level_text(mon0))
+	_chk("slot 1 level label set independently of name label",
+			nodes["level_labels"][1].text == bs._level_text(mon1))
 	# [from_species HP formula] max_hp is computed from base_hp/level/IVs, not
 	# equal to the raw base_hp passed to _make_mon — checked against each
 	# mon's own real .max_hp/.current_hp rather than a hardcoded 100.
@@ -145,7 +192,8 @@ func _test_refresh_doubles_side_independent_fade_and_status() -> void:
 	var nodes := _make_node_set()
 	bs._refresh_doubles_side(party, false, nodes["sprites"], nodes["groups"],
 			nodes["status_icons"], nodes["status_atlases"], nodes["hp_fills"],
-			nodes["name_level_labels"])
+			nodes["name_labels"], nodes["level_labels"],
+			_SPRITE_BASE_TOP, _SPRITE_BASE_BOTTOM)
 
 	var healthy_sprite: TextureRect = nodes["sprites"][0]
 	var fainted_sprite: TextureRect = nodes["sprites"][1]
@@ -161,10 +209,17 @@ func _test_refresh_doubles_side_independent_fade_and_status() -> void:
 	_chk("healthy slot's own status icon unaffected by teammate's poison",
 			healthy_icon.visible != fainted_icon.visible)
 
+	# [M26c-1] Compared against the real BattleScreen._hp_bar_color() function
+	# rather than a hardcoded literal -- that function's own return values
+	# changed (now the Emerald UI Pack's real sourced HP-bar colors) as part
+	# of this session's databox art swap; this test cares that the doubles
+	# refresh path calls it correctly, not what its own literal values are.
 	var healthy_fill: TextureProgressBar = nodes["hp_fills"][0]
 	var fainted_fill: TextureProgressBar = nodes["hp_fills"][1]
-	_chk("healthy slot HP fill at full green", healthy_fill.tint_progress == Color(0.2, 0.8, 0.2))
-	_chk("fainted (0 HP) slot HP fill at red", fainted_fill.tint_progress == Color(0.9, 0.2, 0.2))
+	_chk("healthy slot HP fill at full-HP color",
+			healthy_fill.tint_progress == bs._hp_bar_color(healthy.current_hp, healthy.max_hp))
+	_chk("fainted (0 HP) slot HP fill at 0-HP color",
+			fainted_fill.tint_progress == bs._hp_bar_color(fainted.current_hp, fainted.max_hp))
 
 
 # ── D. A singles-shaped BattleParty (num_active()==1) passed through the
@@ -181,7 +236,8 @@ func _test_refresh_doubles_side_singles_shaped_party_hides_slot1() -> void:
 	var nodes := _make_node_set()
 	bs._refresh_doubles_side(party, true, nodes["sprites"], nodes["groups"],
 			nodes["status_icons"], nodes["status_atlases"], nodes["hp_fills"],
-			nodes["name_level_labels"])
+			nodes["name_labels"], nodes["level_labels"],
+			_SPRITE_BASE_TOP, _SPRITE_BASE_BOTTOM)
 
 	_chk("slot 0 shown for a 1-active party", nodes["sprites"][0].visible)
 	_chk("slot 0 group shown for a 1-active party", nodes["groups"][0].visible)
@@ -207,7 +263,22 @@ func _test_anim_timer_doubles_independence() -> void:
 
 	bs._is_doubles_mode = true
 	bs._opp_party = party
-	bs._opp_sprites_d = [TextureRect.new(), TextureRect.new()]
+	var opp_sprite0 := TextureRect.new()
+	var opp_sprite1 := TextureRect.new()
+	for s in [opp_sprite0, opp_sprite1]:
+		s.offset_left = 0.0
+		s.offset_right = 64.0
+		s.offset_top = 0.0
+		s.offset_bottom = 64.0
+	bs._opp_sprites_d = [opp_sprite0, opp_sprite1]
+	# [M26c battle-UI polish] _on_opponent_anim_timer_timeout()'s doubles
+	# branch now calls _apply_bottom_anchored_front_sprite(), which reads
+	# these baseline arrays directly (see battle_screen.gd's own
+	# _opp_sprite_d_base_top/_bottom doc comment) -- left at their default
+	# empty-Array value here, indexing [slot] would be an out-of-bounds
+	# error, matching _make_node_set()'s own fake 64x64 baseline above.
+	bs._opp_sprite_d_base_top = _SPRITE_BASE_TOP
+	bs._opp_sprite_d_base_bottom = _SPRITE_BASE_BOTTOM
 	bs._opp_anim_frame_d = [0, 0]
 
 	bs._on_opponent_anim_timer_timeout()

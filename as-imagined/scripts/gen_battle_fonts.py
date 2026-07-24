@@ -118,6 +118,17 @@ for i in range(26):
 # asset pull, no separate color to source.
 CHARMAP["▶"] = 0xEF
 
+# [Gender symbols] Real, non-blank glyphs confirmed via direct pixel dump
+# (same 4-role preview palette as every other glyph -- background=
+# (144,200,255), foreground=(56,56,56), shadow=(216,216,216), accent=
+# (255,255,255)) at the exact charmap.txt-transcribed IDs (reference/
+# pokeemerald_expansion/charmap.txt: '♂'=B5, '♀'=B6), present in BOTH
+# latin_normal.png and latin_small.png. Added once to the shared CHARMAP
+# (not per-context) so every one of the 3 contexts this script builds
+# gets it automatically, matching the cursor glyph's own precedent above.
+CHARMAP["♂"] = 0xB5
+CHARMAP["♀"] = 0xB6
+
 # raw preview-palette RGB -> semantic role, confirmed identical across
 # both latin_normal.png and latin_small.png
 ROLE_BY_RAW_RGB = {

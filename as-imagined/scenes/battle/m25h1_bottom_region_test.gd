@@ -86,7 +86,7 @@ func _singles_party(mon: BattlePokemon, bench: Array = []) -> BattleParty:
 	return p
 
 
-func _button_texts(container: VBoxContainer) -> Array:
+func _button_texts(container: Container) -> Array:
 	var texts: Array = []
 	for child in container.get_children():
 		if child is Button:
@@ -148,13 +148,16 @@ func _test_top_menu_builds_into_new_area_not_old() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
-	bs._new_button_area = VBoxContainer.new()
+	bs._new_button_grid = GridContainer.new()
 	bs._button_area = VBoxContainer.new()
 
 	bs._build_top_menu(0)
 
-	_chk("TOP menu's 4 buttons land in the NEW region's button area",
-			_button_texts(bs._new_button_area).size() == 4)
+	# [M26c-3] TOP now builds into the real 2x2 grid (_new_button_grid),
+	# not the old plain _new_button_area VBox -- see battle_screen.gd's
+	# own _new_button_grid onready doc comment.
+	_chk("TOP menu's 4 buttons land in the NEW region's grid",
+			_button_texts(bs._new_button_grid).size() == 4)
 	_chk("TOP menu does NOT also write into the old (SWITCH/ITEM-only) button area",
 			bs._button_area.get_child_count() == 0)
 
@@ -164,18 +167,32 @@ func _test_fight_menu_builds_into_new_area_not_old() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
+	bs._new_button_grid = GridContainer.new()
 	bs._new_button_area = VBoxContainer.new()
 	bs._button_area = VBoxContainer.new()
 
 	bs._build_fight_menu(0)
 
-	_chk("FIGHT menu (1 move + Back) lands in the NEW region's button area",
-			_button_texts(bs._new_button_area).size() == 2)
+	# [M26c-3] The 1 move lands in the real grid; Back is a separate row
+	# in _new_button_area below it -- see _build_fight_menu's own doc
+	# comment for why Back isn't a 5th grid cell.
+	_chk("FIGHT menu's 1 move lands in the NEW region's grid",
+			_button_texts(bs._new_button_grid).size() == 1)
+	_chk("FIGHT menu's Back button lands in the NEW region's (non-grid) button area",
+			_button_texts(bs._new_button_area).size() == 1)
 	_chk("FIGHT menu does NOT also write into the old button area",
 			bs._button_area.get_child_count() == 0)
 
 
 func _test_target_select_builds_into_new_area_not_old() -> void:
+	# [M26c-4 superseded this test's own original finding] TARGET_SELECT no
+	# longer builds any candidate buttons at all -- candidates are wired as
+	# hoverable/clickable health-group Controls via _target_select_wired
+	# (see m25h1_3_cursor_test.gd's own dedicated coverage for the real
+	# chrome/cursor/wiring assertions). Only the single "Back" button still
+	# lands in the new region's button area; this test now confirms that
+	# narrower, still-true claim instead of the old candidates-as-buttons
+	# shape.
 	var attacker := _make_mon("Attacker")
 	var earthquake := _load_move(89)  # spread move -- only used to reach target-select
 	attacker.add_move(earthquake)
@@ -183,9 +200,9 @@ func _test_target_select_builds_into_new_area_not_old() -> void:
 	var opp1 := _make_mon("Opp1")
 
 	var bs := BattleScreen.new()
-	bs._player_party = _singles_party(attacker)
 	bs._new_button_area = VBoxContainer.new()
 	bs._button_area = VBoxContainer.new()
+	bs._is_doubles_mode = true
 
 	var bm := BattleManager.new()
 	add_child(bm)
@@ -204,13 +221,31 @@ func _test_target_select_builds_into_new_area_not_old() -> void:
 	bm.start_battle_doubles(ally_party, opp_party)
 	bs._bm = bm
 
+	# _health_group_for()/_field_slot_for() need real party objects (not the
+	# null defaults a bare BattleScreen.new() carries) -- see
+	# m25h1_3_cursor_test.gd's own fix for the duplicate-group bug this
+	# omission caused there.
+	bs._player_party = ally_party
+	bs._opp_party = opp_party
+	bs._opp_groups_d = [Control.new(), Control.new()]
+	bs._ply_groups_d = [Control.new(), Control.new()]
+	# [Phase B: sprite hover/click] _sprite_node_for() needs these too, the
+	# same manual-wiring requirement as _opp_groups_d/_ply_groups_d above.
+	bs._opp_sprites_d = [Control.new(), Control.new()]
+	bs._ply_sprites_d = [Control.new(), Control.new()]
+
 	bs._build_target_select_buttons(0, 0)
 
-	_chk("TARGET_SELECT's own buttons (2 candidates + Back) land in the NEW region's button area",
-			_button_texts(bs._new_button_area).size() == 3)
+	# [Phase B] Each of the 2 live opponents now wires TWO zones (health
+	# group + sprite), so the real total is 4, not 2.
+	_chk("TARGET_SELECT wires the 2 live opponents as hoverable health groups AND sprites, not buttons",
+			bs._target_select_wired.size() == 4)
+	_chk("TARGET_SELECT's own Back button lands in the NEW region's button area",
+			_button_texts(bs._new_button_area).size() == 1)
 	_chk("TARGET_SELECT does NOT also write into the old button area",
 			bs._button_area.get_child_count() == 0)
 
+	bs._clear_target_select_hover_wiring()
 	bm.queue_free()
 
 

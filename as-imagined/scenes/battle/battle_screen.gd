@@ -310,9 +310,12 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # SwitchSelectScreen both still call them directly for their own real
 # window art.
 # [M25h-1] Still used by SWITCH/ITEM only now (left inline/untouched per
-# this sub-phase's own locked scope -- M25h-2/h-3 pull those out into real
-# separate screens later). TOP/FIGHT/TARGET_SELECT moved to _new_button_area
-# below, inside the new real-proportion region.
+# this sub-phase's own locked scope -- M25h-1.4/M25h-1.5 pulled those two
+# out into real separate overlay screens; only their own top-level launcher
+# buttons live here). TOP/FIGHT/TARGET_SELECT moved to _new_button_area/
+# _new_button_grid below, inside the new real-proportion region -- see
+# _new_button_grid's own onready doc comment (M26c-3) for exactly which
+# menu uses which of the two.
 #
 # [M25h-1 anchor fix] `VBox`'s own .tscn anchors changed from a floating
 # CENTER point (anchor_top=anchor_bottom=0.5, grow_vertical=BOTH) to a
@@ -331,6 +334,17 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # it or ActionRegion below it, for every row-count SWITCH/ITEM can produce.
 @onready var _button_area: VBoxContainer = $VBox/ButtonArea
 @onready var _new_button_area: VBoxContainer = $ActionRegion/ActionPanel/ActionVBox/NewButtonArea
+# [M26c-3] The real 2x2 grid — TOP (Fight/Bag/Pokémon/Run) and FIGHT
+# (move-select) both build into this GridContainer(columns=2) instead of
+# _new_button_area now, matching source's own confirmed real layout
+# (ActionSelectionCreateCursorAt/MoveSelectionCreateCursorAt's identical
+# bit-math tile-paste cursor: bit0=column, bit1=row — see _build_top_menu's
+# own doc comment for the full source citation and cell-order mapping).
+# TARGET_SELECT is untouched (still _new_button_area) — that screen's real
+# source mechanism isn't a menu at all (a health-box bounce + D-pad cycle,
+# M26c-4's own future job per M25h-3's audit), so it was never part of this
+# grid regrid's scope.
+@onready var _new_button_grid: GridContainer = $ActionRegion/ActionPanel/ActionVBox/NewButtonGrid
 @onready var _action_panel: PanelContainer = $ActionRegion/ActionPanel
 
 # [M25d, expanded M26b] Combat-debug/log overlay — a separate top-level node
@@ -353,6 +367,19 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 @onready var _background_rect: TextureRect = $BattleStage/Background
 @onready var _opponent_sprite: TextureRect = $BattleStage/OpponentSprite
 @onready var _player_sprite: TextureRect = $BattleStage/PlayerSprite
+
+# [M26c battle-UI polish] Bottom-anchor baseline -- the opponent sprite box's
+# own ORIGINAL (.tscn-authored) offset_top/offset_bottom, captured once in
+# _setup_health_ui() before any species-driven texture/offset mutation ever
+# happens. _apply_bottom_anchored_front_sprite() always computes a fresh
+# offset_top/offset_bottom FROM this fixed baseline, never from the box's own
+# current (possibly already-shifted-for-a-different-species) live offset --
+# see that function's own doc comment for why the math needs a stable
+# baseline. Doubles' own two slots get one baseline pair each.
+var _opponent_sprite_base_top: float = 0.0
+var _opponent_sprite_base_bottom: float = 0.0
+var _opp_sprite_d_base_top: Array = []
+var _opp_sprite_d_base_bottom: Array = []
 
 # [M23.11 Phase 5c] Hit-effect nodes are spawned/freed here at runtime --
 # the LAST child of BattleStage in battle_screen.tscn, so every sprite/
@@ -383,18 +410,36 @@ var _active_hit_effect_nodes: Array = []
 @onready var _opponent_health_group: Control = $BattleStage/OpponentHealthGroup
 @onready var _opponent_health_bg: TextureRect = $BattleStage/OpponentHealthGroup/Background
 @onready var _opponent_status_icon: TextureRect = $BattleStage/OpponentHealthGroup/StatusIcon
-@onready var _opponent_hp_label: TextureRect = $BattleStage/OpponentHealthGroup/HpLabel
 @onready var _opponent_hp_fill: TextureProgressBar = $BattleStage/OpponentHealthGroup/HpFill
-# [M25d] Name/level display — see _refresh_ui()'s own doc comment for why
-# this is updated in lockstep with the HP bar (same call site, every state
-# change) rather than only on switch-in, guaranteeing it can never lag.
-@onready var _opponent_name_level_label: Label = $BattleStage/OpponentHealthGroup/NameLevelLabel
+# [M25d, split M26c-1 follow-up] Name/level display — see _refresh_ui()'s
+# own doc comment for why this is updated in lockstep with the HP bar (same
+# call site, every state change) rather than only on switch-in, guaranteeing
+# it can never lag. Split into two separate Label nodes (was one combined
+# NameLevelLabel) so the gender symbol can be appended to the name text
+# alone without disturbing the level text's own right-aligned position.
+@onready var _opponent_name_label: Label = $BattleStage/OpponentHealthGroup/NameLabel
+@onready var _opponent_gender_label: Label = $BattleStage/OpponentHealthGroup/GenderLabel
+@onready var _opponent_level_label: Label = $BattleStage/OpponentHealthGroup/LevelLabel
 @onready var _player_health_group: Control = $BattleStage/PlayerHealthGroup
 @onready var _player_health_bg: TextureRect = $BattleStage/PlayerHealthGroup/Background
 @onready var _player_status_icon: TextureRect = $BattleStage/PlayerHealthGroup/StatusIcon
-@onready var _player_hp_label: TextureRect = $BattleStage/PlayerHealthGroup/HpLabel
 @onready var _player_hp_fill: TextureProgressBar = $BattleStage/PlayerHealthGroup/HpFill
-@onready var _player_name_level_label: Label = $BattleStage/PlayerHealthGroup/NameLevelLabel
+# [M26c-1] Real EXP bar — singles player only, matching the real games' own
+# scope (never shown for the opponent's mon, never shown in doubles at all —
+# see gen_databox_sprites.py's own doc comment: the pack ships no EXP-ledge
+# variant for either the opponent box or the doubles "thin" box, confirming
+# this isn't just a design choice made in isolation).
+@onready var _player_exp_fill: TextureProgressBar = $BattleStage/PlayerHealthGroup/ExpFill
+# [M26c-3] Numeric HP readout ("100/120") -- singles player only, matching
+# the real games' own scope exactly (PrintHpOnHealthbox, battle_interface.c
+# -- the player's own box always prints currHp/maxHp; the opponent's box
+# only does under a debug-only "hpNumbersNoBars" flag this project doesn't
+# model, and doubles boxes are gated behind that same flag too). Sits in
+# the real vertical gap between the HP bar and the EXP bar below it.
+@onready var _player_hp_number_label: Label = $BattleStage/PlayerHealthGroup/HpNumberLabel
+@onready var _player_name_label: Label = $BattleStage/PlayerHealthGroup/NameLabel
+@onready var _player_gender_label: Label = $BattleStage/PlayerHealthGroup/GenderLabel
+@onready var _player_level_label: Label = $BattleStage/PlayerHealthGroup/LevelLabel
 
 var _opponent_status_atlas: AtlasTexture
 var _player_status_atlas: AtlasTexture
@@ -415,9 +460,10 @@ var _opp_groups_d: Array = []
 var _opp_bg_d: Array = []
 var _opp_status_icon_d: Array = []
 var _opp_status_atlas_d: Array = [null, null]
-var _opp_hp_label_d: Array = []
 var _opp_hp_fill_d: Array = []
-var _opp_name_level_label_d: Array = []  # [M25d]
+var _opp_name_label_d: Array = []  # [M25d, split M26c-1 follow-up]
+var _opp_gender_label_d: Array = []  # [M26c battle-UI polish]
+var _opp_level_label_d: Array = []  # [M25d, split M26c-1 follow-up]
 # [M23.11 Phase 4d] Idle-bob frame state, one per doubles opponent slot —
 # mirrors the singles-only `_opponent_anim_frame` below but per-slot, so
 # one opponent fainting doesn't freeze/desync its still-live teammate's
@@ -430,9 +476,10 @@ var _ply_groups_d: Array = []
 var _ply_bg_d: Array = []
 var _ply_status_icon_d: Array = []
 var _ply_status_atlas_d: Array = [null, null]
-var _ply_hp_label_d: Array = []
 var _ply_hp_fill_d: Array = []
-var _ply_name_level_label_d: Array = []  # [M25d]
+var _ply_name_label_d: Array = []  # [M25d, split M26c-1 follow-up]
+var _ply_gender_label_d: Array = []  # [M26c battle-UI polish]
+var _ply_level_label_d: Array = []  # [M25d, split M26c-1 follow-up]
 
 # [M23.11 Phase 4d] Set once in _ready() from BattleSetupContext.is_doubles
 # (captured into the local `is_doubles_battle` there already) — governs
@@ -520,6 +567,22 @@ func _load_battle_fonts() -> void:
 	_font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
 	_font_healthbox = FontFile.new()
 	_font_healthbox.load_bitmap_font("res://assets/fonts/latin_small_healthbox.fnt")
+	# [M26c battle-UI polish] load_bitmap_font() leaves fixed_size_scale_mode
+	# at its default (0, DISABLE) -- confirmed via a direct isolated probe
+	# (four Labels sharing this font at font_size 9/13/24/48 rendered
+	# PIXEL-IDENTICAL in size with scale_mode left at its default) that this
+	# makes every Label using this font render its glyphs at the .fnt's own
+	# native 13px size REGARDLESS of any theme_override_font_sizes/font_size
+	# a Label requests -- the .tscn's own font_size values on the name/level
+	# Labels (13 singles / 9 doubles pre-this-session) were therefore always
+	# silently ignored for actual glyph size, real only for line-height/
+	# layout metrics. Setting scale_mode=2 (confirmed via the same probe to
+	# enable real proportional up/down scaling, matching this project's
+	# established "requested-size bitmap-font scaling is an accepted,
+	# already-used pattern" precedent -- see doubles' own pre-existing
+	# smaller-than-native font_size=9) is required for the increased
+	# font_size values below to have any visible effect at all.
+	_font_healthbox.fixed_size_scale_mode = 2
 
 
 # [M25h-1.2] Every menu Button (TOP/FIGHT/TARGET_SELECT/SWITCH/ITEM/battle-
@@ -672,6 +735,33 @@ var _item_select_overlay: Control = null
 # [M25h-1.5] Same idempotency need as _item_select_overlay above, for the
 # real Switch/Party overlay.
 var _switch_select_overlay: Control = null
+
+# [M26c-4] TARGET_SELECT click-to-target — real health-box hover zones
+# instead of a text button per candidate, matching source's own real
+# targeting cue in spirit (a bounce on the current candidate's health box)
+# while staying mouse-only, since this project has no D-pad/keyboard
+# navigation yet (M26d's own future job). See _build_target_select_buttons'
+# own doc comment for the full source citation and design rationale.
+#
+# _target_select_wired tracks every health-group Control this session
+# temporarily made clickable (mouse_filter STOP + 3 connected signals) so
+# _clear_target_select_hover_wiring can precisely disconnect the exact
+# bound Callables used and restore mouse_filter to IGNORE — these are
+# PERSISTENT battlefield nodes (unlike _button_area/_new_button_area/
+# _new_button_grid, which are freely rebuilt from scratch every refresh),
+# so leaving a stale connection or a stuck STOP filter on one would leak
+# into every future refresh, not just this one.
+var _target_select_wired: Array[Dictionary] = []
+
+# Which candidate currently has the hover-focus bounce/bob effect active,
+# or null. Tracked (rather than trusting mouse_exited alone) so a
+# _start_target_focus for a NEW candidate always tears down the OLD one
+# first regardless of event ordering, and so a stray mouse_exited for a
+# candidate that's no longer the focus (e.g. arriving after a newer
+# mouse_entered already switched focus elsewhere) is a safe no-op.
+var _target_focus_mon: BattlePokemon = null
+var _target_focus_health_tween: Tween = null
+var _target_focus_sprite_tween: Tween = null
 
 
 func _ready() -> void:
@@ -862,6 +952,10 @@ func _on_battle_ended(winner_side: int) -> void:
 	_winner_side = winner_side
 	_log("You win!" if winner_side == 0 else "You lose!")
 	_clear_active_hit_effects()
+	# [M26c-4] Defensive, matching _clear_active_hit_effects' own precedent
+	# just above -- a focus tween is one more Tween object that could
+	# otherwise outlive the node it's animating across a scene teardown.
+	_clear_target_select_hover_wiring()
 
 
 # [M23.11 Phase 5c] See _active_hit_effect_nodes' own doc comment.
@@ -1190,6 +1284,21 @@ func _sprite_node_for(mon: BattlePokemon) -> Control:
 	return sprites[slot] as Control
 
 
+# [M26c-4] Same singles-vs-doubles-aware lookup as _sprite_node_for, for a
+# mon's own health-group Control instead of its sprite -- used to make the
+# real health box itself the click/hover target for TARGET_SELECT.
+func _health_group_for(mon: BattlePokemon) -> Control:
+	if mon == null:
+		return null
+	var is_player: bool = _player_party.members.has(mon)
+	if not _is_doubles_mode:
+		return _player_health_group if is_player else _opponent_health_group
+	var party: BattleParty = _player_party if is_player else _opp_party
+	var slot := _field_slot_for(mon, party)
+	var groups: Array = _ply_groups_d if is_player else _opp_groups_d
+	return groups[slot] as Control
+
+
 # Generic + Flamethrower + Thunder all share this ONE renderer -- Flamethrower
 # is a single self-contained strip (the same shape as any generic pick, per
 # 5b's own finding), and Thunder is just two strips played back to back on
@@ -1312,15 +1421,106 @@ func _side_label(side: int) -> String:
 	return "your" if side == 0 else "the foe's"
 
 
+# [Split from _name_level_text, M26c-1 follow-up] The gender glyph is
+# appended DIRECTLY after the name, no space — confirmed via source
+# (reference/pokeemerald_expansion/src/battle_interface.c ::
+# UpdateNickInHealthbox): `ptr = StringCopy(gDisplayedStringBattle,
+# nickname)` returns a pointer immediately after the copied nickname, and
+# `StringCopy(ptr, gText_HealthboxGender_Male/_Female/_None)` writes the
+# glyph string starting exactly there — no separator of any kind. Source
+# also has two gender-suppression special cases this project's simpler
+# model doesn't need: the Nidoran M/F species-name-is-still-the-nickname
+# check (this project has no nickname system at all — every mon is always
+# shown by its own species name) and an opponent-side Ghost-illusion check
+# (Illusion is a documented exclusion, `docs/m17_final_ledger.md`) — both
+# structurally unreachable here, not silently dropped.
+func _gender_glyph(gender: int) -> String:
+	match gender:
+		BattlePokemon.GENDER_MALE:
+			return "♂"
+		BattlePokemon.GENDER_FEMALE:
+			return "♀"
+		_:
+			return ""
+
+
+func _name_text(mon: BattlePokemon) -> String:
+	return mon.species.species_name
+
+
+# [M26c battle-UI polish] The gender glyph is now rendered by its own
+# separate GenderLabel node, NOT appended into the name string -- per
+# explicit request, so the glyph reads as a distinct element next to the
+# name rather than part of the name text itself. Since the glyph's own
+# horizontal position depends on how wide the (now-much-larger) name text
+# renders, and Label offers no "size to content, then place a sibling right
+# after it" layout primitive on its own, this measures the name's real
+# rendered width via the SAME font/size the name label is using and places
+# GenderLabel immediately after it -- recomputed on every call, so it stays
+# correct across every font-size/box change this or a future session makes,
+# rather than a hardcoded offset that would need re-tuning by hand.
+# [M26c-2] level_label is optional (default null) so every pre-existing
+# 3-arg caller/test is unaffected. When given, LevelLabel is ALSO
+# repositioned dynamically, immediately after whichever of
+# gender_label/name_label ends furthest right -- a fixed right-aligned box
+# (this project's original design) overlaps the gender glyph for this
+# project's own longest real species names (e.g. "Weepinbell"/"Aerodactyl",
+# 10 characters) once the name font grew large enough to fill the box's
+# top band, since the level box's own left edge never moved to make room.
+# Positioning it dynamically, the same way gender_label already is, closes
+# that gap by construction regardless of name length -- confirmed via a
+# real screenshot with both 10-character worst-case names before this fix
+# shipped (see this session's own scratch-driver verification).
+#
+# Clamped against the health group's own "Background" sibling's real width
+# (read live, not hardcoded) -- an unclamped dynamic position pushed the
+# level text past the databox's own right edge (and for the player group,
+# off the visible screen entirely) for this project's longest real names,
+# a real regression a follow-up screenshot caught. name_label's own parent
+# is the health-group Control; falls back to no clamp when no "Background"
+# sibling exists (e.g. this function's own bare-Label unit tests), matching
+# this function's pre-clamp behavior for those callers.
+func _position_gender_label(name_label: Label, gender_label: Label, mon: BattlePokemon,
+		level_label: Label = null) -> void:
+	var glyph := _gender_glyph(mon.gender)
+	gender_label.text = glyph
+	var font: Font = name_label.get_theme_font("font")
+	if font == null:
+		return
+	var font_size: int = name_label.get_theme_font_size("font_size")
+	var name_width: float = font.get_string_size(
+			_name_text(mon), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var gap: float = font_size * 0.15
+	var content_right: float = name_label.offset_left + name_width
+	if not glyph.is_empty():
+		gender_label.offset_top = name_label.offset_top
+		gender_label.offset_bottom = name_label.offset_bottom
+		gender_label.offset_left = name_label.offset_left + name_width + gap
+		gender_label.offset_right = gender_label.offset_left + font_size * 1.2
+		content_right = gender_label.offset_right
+	if level_label != null:
+		var level_width: float = font.get_string_size(
+				_level_text(mon), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		var desired_left: float = content_right + gap * 2.5
+		var max_left: float = INF
+		var parent := name_label.get_parent()
+		if parent != null and parent.has_node("Background"):
+			var background := parent.get_node("Background")
+			max_left = background.offset_right - level_width - gap
+		level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		level_label.offset_top = name_label.offset_top
+		level_label.offset_bottom = name_label.offset_bottom
+		level_label.offset_left = minf(desired_left, max_left)
+		level_label.offset_right = level_label.offset_left + font_size * 4.0
+
+
 # [M25d] "Lv" immediately followed by the number, no space — matches the
 # real games' own exact convention (confirmed against reference/
 # pokeemerald_expansion/src/battle_interface.c :: UpdateLvlInHealthbox,
 # which writes `text[1] = CHAR_LV_2` directly followed by the level digits
-# with nothing in between; a space DOES separate the species name from
-# "Lv", matching the same source's nickname/level being two visually
-# distinct rendered elements in the real health box).
-func _name_level_text(mon: BattlePokemon) -> String:
-	return "%s Lv%d" % [mon.species.species_name, mon.level]
+# with nothing in between).
+func _level_text(mon: BattlePokemon) -> String:
+	return "Lv%d" % mon.level
 
 
 func _mon_label(mon: BattlePokemon) -> String:
@@ -1750,6 +1950,45 @@ func _sprite_or_fallback_back(dex: int) -> Texture2D:
 	return tex if tex != null else SpriteRegistry.get_back(0)
 
 
+# [M26c battle-UI polish] Bottom-anchors an opponent front-sprite box so its
+# VISUAL bottom edge (the sprite's own real drawn-content bottom, not the
+# 64x64 canvas's own bottom, which varies per species by however much
+# transparent padding that species' own sprite art carries) always lands at
+# the SAME fixed screen line regardless of which species is currently shown.
+#
+# `rect` keeps its own width fixed (`offset_left`/`offset_right` are never
+# touched here) -- only `offset_top`/`offset_bottom` are recomputed, both
+# derived from `base_top`/`base_bottom` (the box's own ORIGINAL, .tscn-
+# authored offsets, captured once in _setup_health_ui() -- see that var's own
+# doc comment for why a live/already-shifted offset can't be reused as the
+# baseline).
+#
+# The real anchor mechanism is pokeemerald_expansion's own `frontPicYOffset`
+# (see gen_sprite_y_offsets.py's doc comment for the full source citation:
+# "the number of pixels between the drawn pixel area and the bottom edge" of
+# the 64x64 source canvas) -- SpriteRegistry.get_front_y_offset(dex) exposes
+# it dex-keyed. The box stays SQUARE (stretch_mode KEEP_ASPECT already set in
+# the .tscn, unchanged here) and the source region stays the full, un-cropped
+# 64x64 frame (idle-bob frame slicing untouched) -- so scale = box_width/64
+# is constant regardless of species, and shifting the WHOLE box down by
+# `y_offset * scale` exactly cancels out that species' own bottom padding,
+# algebraically guaranteeing the sprite's own real content-bottom always
+# lands at exactly `base_bottom` (worked out in full in this task's own
+# planning -- content_bottom_screen simplifies to base_bottom for any
+# y_offset, since the padding shifted INTO the box top is exactly what the
+# whole-box downward shift adds back at the bottom).
+func _apply_bottom_anchored_front_sprite(rect: TextureRect, dex: int, frame: int,
+		base_top: float, base_bottom: float) -> void:
+	rect.texture = _sprite_or_fallback_front(dex, frame)
+	var width := rect.offset_right - rect.offset_left
+	if width <= 0.0:
+		return
+	var scale := width / 64.0
+	var shift := SpriteRegistry.get_front_y_offset(dex) * scale
+	rect.offset_top = base_top + shift
+	rect.offset_bottom = base_bottom + shift
+
+
 # [M23.11 Phase 4c] Idle-bob animation, front sprite (opponent) only.
 #
 # Front-only, not both sprites -- confirmed via direct source inspection
@@ -1852,43 +2091,122 @@ func _on_opponent_anim_timer_timeout() -> void:
 				continue
 			var mon: BattlePokemon = _opp_party.get_active_at(slot)
 			_opp_anim_frame_d[slot] = _next_anim_frame(_opp_anim_frame_d[slot], mon.fainted)
-			_opp_sprites_d[slot].texture = _sprite_or_fallback_front(
-					mon.species.national_dex_num, _opp_anim_frame_d[slot])
+			_apply_bottom_anchored_front_sprite(_opp_sprites_d[slot], mon.species.national_dex_num,
+					_opp_anim_frame_d[slot], _opp_sprite_d_base_top[slot], _opp_sprite_d_base_bottom[slot])
 		return
 	var side1_mon: BattlePokemon = _opp_party.get_active()
 	if side1_mon == null:
 		return
 	_opponent_anim_frame = _next_anim_frame(_opponent_anim_frame, side1_mon.fainted)
-	_opponent_sprite.texture = _sprite_or_fallback_front(
-			side1_mon.species.national_dex_num, _opponent_anim_frame)
+	_apply_bottom_anchored_front_sprite(_opponent_sprite, side1_mon.species.national_dex_num,
+			_opponent_anim_frame, _opponent_sprite_base_top, _opponent_sprite_base_bottom)
 
 
-# [M23.11 Phase 4a] Green/yellow/red HP-fraction threshold -- applied via
-# TextureProgressBar.tint_progress as of Phase 4b (was modulate on a plain
-# ProgressBar before); the function itself is unchanged, only what
-# property consumes its return value changed.
+# [M23.11 Phase 4a, recolored M26c-1] Green/yellow/red HP-fraction
+# threshold -- applied via TextureProgressBar.tint_progress as of Phase 4b
+# (was modulate on a plain ProgressBar before); the function's own shape is
+# unchanged, only the 3 return values changed. [M26c-1] Now the REAL sourced
+# colors from the Emerald UI Pack's own Graphics/UI/Battle/overlay_hp.png
+# (96x12 -- 3 stacked shadow/highlight color PAIRS, confirmed via direct
+# pixel sampling, not invented) -- each threshold uses that pair's own
+# brighter "highlight" value, matching how gen_databox_sprites.py's own doc
+# comment explains this file was intentionally NOT pulled as a texture
+# asset (it's flat, uniform color bands with no pixel detail worth
+# preserving as a file -- a tinted solid fill reproduces it exactly).
 func _hp_bar_color(current: int, max_hp: int) -> Color:
 	if max_hp <= 0:
 		return Color(1, 1, 1)
 	var frac := float(current) / float(max_hp)
 	if frac > 0.5:
-		return Color(0.2, 0.8, 0.2)
+		return Color8(115, 255, 173)
 	elif frac > 0.2:
-		return Color(0.9, 0.8, 0.1)
-	return Color(0.9, 0.2, 0.2)
+		return Color8(255, 231, 57)
+	return Color8(255, 90, 57)
 
 
-# [M23.11 Phase 4b] hpbar.png (assets/sprites/battle_ui/interface/) is a
-# single 96x8 sheet: a fixed "HP" text glyph in its own left 24x8 region,
-# followed by a 72x8 notched fill region -- confirmed via direct pixel
-# inspection, not assumed. These are sliced as two SEPARATE AtlasTextures
-# (not one texture_progress covering the whole sheet) specifically so the
-# "HP" label stays fully visible at any HP fraction -- a single combined
-# region would incorrectly shrink the label itself as HP drops, since
-# TextureProgressBar's fill clipping operates on its own texture's full
-# width.
-const _HP_LABEL_REGION := Rect2(0, 0, 24, 8)
-const _HP_FILL_REGION := Rect2(24, 0, 72, 8)
+# [M26c-1] The Emerald UI Pack's own real EXP-bar color, sampled directly
+# from Graphics/UI/Battle/overlay_exp.png (170x4, one single flat color --
+# no shadow/highlight pair, unlike the HP bar's own 3-state bands, matching
+# the real games' own EXP bar never changing color).
+const _EXP_BAR_COLOR := Color8(66, 206, 255)
+
+
+# [M26c-1] A tiny solid-color-tintable fill texture, generated once at
+# runtime rather than pulled as an asset file -- both the HP bar and the
+# new EXP bar are plain rectangular fills with no shape/border of their own
+# (the pill/bar OUTLINE is now baked directly into the databox art itself,
+# see gen_databox_sprites.py's own doc comment), so a 1x1 white pixel
+# stretched by TextureProgressBar's own fill + recolored via tint_progress
+# reproduces either bar exactly, matching this file's own established
+# "generate simple textures in code, don't manage a file for it" precedent
+# (_color_keyed_texture below does the equivalent transform for a different
+# case). Replaces Phase 4b's old hpbar.png-sourced AtlasTexture fill
+# region entirely -- that file (and its "HP" label region, now redundant
+# since the new databox art bakes "HP" in directly) is no longer loaded
+# anywhere in this script.
+static func _solid_fill_texture() -> ImageTexture:
+	var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	img.fill(Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+
+# [Bugfix, found via real screenshot verification] TextureProgressBar does
+# NOT stretch `texture_progress` to the control's own size by default --
+# confirmed via a dedicated isolated repro scene: without `nine_patch_
+# stretch`, the fill renders at the TEXTURE's own native pixel dimensions
+# (clipped by the fill fraction), regardless of how big the control itself
+# is -- for a 1x1 fill texture this meant NOTHING was visible at all (a
+# "bar" 1 pixel wide, invisible at any zoom level a screenshot would catch).
+# `nine_patch_stretch = true` with all 4 stretch margins at 0 (no fixed
+# corners at all -- the whole texture is "middle," which is correct for a
+# flat solid color with no border/corner art of its own) makes it behave
+# the way a plain ColorRect would: genuinely stretched to fill the
+# control's own real size. Applied uniformly to every HP/EXP fill bar
+# (singles + doubles) via this one shared helper, rather than repeating
+# the same 5 property assignments at each of the 7 call sites.
+static func _configure_solid_fill_bar(bar: TextureProgressBar, fill_tex: Texture2D) -> void:
+	bar.texture_progress = fill_tex
+	bar.fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
+	bar.nine_patch_stretch = true
+	bar.stretch_margin_left = 0
+	bar.stretch_margin_right = 0
+	bar.stretch_margin_top = 0
+	bar.stretch_margin_bottom = 0
+
+
+# [M26c-1] Real progress-to-next-level fraction, reusing M20's own already-
+# correct EXP infrastructure verbatim (mirrors BattleManager._check_level_up's
+# exact pattern: growth rate read FRESH from PokemonRegistry by the mon's
+# CURRENT species.national_dex_num, never cached/assumed on the instance —
+# see that function's own doc comment for why this matters for a future
+# evolution mechanic). Not static: no state needed beyond the parameter, but
+# kept as an instance method to match _hp_bar_color's own established shape
+# for the two sibling "compute a HP/EXP bar fraction" functions.
+#
+# [Disclosed fallback] A hand-built test fixture (this screen's own
+# _make_mon-style fallback teams, built via PokemonSpecies.new() with no
+# real national_dex_num) has no real registry entry to look up -- dex 0
+# resolves to an empty Dictionary, growth_rate defaults to "", and
+# PokemonRegistry.get_exp_for_level("", level) returns 0 for any level
+# (confirmed via that function's own empty-curve early-return), making
+# `needed` 0 and this function return 0.0 -- an empty bar, not a crash or a
+# misleading fabricated value. Only a real PokemonFactory-built Pokémon
+# (Team Builder, random teams, trainer battles) has real growth-rate data
+# to show progress for.
+func _exp_bar_fraction(mon: BattlePokemon) -> float:
+	if mon.species == null or mon.level >= 100:
+		return 0.0
+	var dex: int = mon.species.national_dex_num
+	var species_data: Dictionary = PokemonRegistry.get_species(dex)
+	var growth_rate: String = species_data.get("growth_rate", "")
+	var exp_this_level: int = PokemonRegistry.get_exp_for_level(growth_rate, mon.level)
+	var exp_next_level: int = PokemonRegistry.get_exp_for_level(growth_rate, mon.level + 1)
+	var needed: int = exp_next_level - exp_this_level
+	if needed <= 0:
+		return 0.0
+	var into: int = mon.current_exp - exp_this_level
+	return clampf(float(into) / float(needed), 0.0, 1.0)
+
 
 # [M23.11 Phase 4b] status.png/status2.png (assets/sprites/battle_ui/
 # interface/) are both the same 24x48 sheet -- 6 stacked 24x8 status
@@ -1970,29 +2288,33 @@ func _setup_health_ui() -> void:
 	# pre-existing value (13 singles / 9 doubles, a real-estate constraint
 	# from M25d, not changed here) -- doubles' non-native-size scaling of a
 	# 13px-native bitmap font is a disclosed minor softness, not a blocker.
-	_opponent_name_level_label.add_theme_font_override("font", _font_healthbox)
-	_opponent_name_level_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-	_player_name_level_label.add_theme_font_override("font", _font_healthbox)
-	_player_name_level_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	for label: Label in [_opponent_name_label, _opponent_gender_label, _opponent_level_label,
+			_player_name_label, _player_gender_label, _player_level_label, _player_hp_number_label]:
+		label.add_theme_font_override("font", _font_healthbox)
+		label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 
-	_opponent_health_bg.texture = load("res://assets/sprites/battle_ui/interface/healthbox_singles_opponent.png")
-	_player_health_bg.texture = load("res://assets/sprites/battle_ui/interface/healthbox_singles_player.png")
+	# [M26c-1] Real Emerald UI Pack databox art (see gen_databox_sprites.py's
+	# own doc comment for the full Step 0 sourcing) — supersedes Phase 4b's
+	# raw-pokeemerald-decode health-box art. "HP" is baked directly into
+	# both files as real pixel art now, so the old separate HpLabel overlay
+	# node is gone entirely (removed from battle_screen.tscn), not just
+	# hidden. The Background nodes' own `texture` property is set directly
+	# in battle_screen.tscn (an ExtResource reference), not here — a real
+	# pulled asset needs to render live in the Godot editor viewport
+	# without running the scene, which a script-only `load()` assignment
+	# can't provide.
+	var fill_tex := _solid_fill_texture()
+	_configure_solid_fill_bar(_opponent_hp_fill, fill_tex)
+	_configure_solid_fill_bar(_player_hp_fill, fill_tex)
 
-	var hpbar_sheet: Texture2D = load("res://assets/sprites/battle_ui/interface/hpbar.png")
-
-	var hp_label_atlas := AtlasTexture.new()
-	hp_label_atlas.atlas = hpbar_sheet
-	hp_label_atlas.region = _HP_LABEL_REGION
-	_opponent_hp_label.texture = hp_label_atlas
-	_player_hp_label.texture = hp_label_atlas
-
-	var hp_fill_atlas := AtlasTexture.new()
-	hp_fill_atlas.atlas = hpbar_sheet
-	hp_fill_atlas.region = _HP_FILL_REGION
-	_opponent_hp_fill.texture_progress = hp_fill_atlas
-	_player_hp_fill.texture_progress = hp_fill_atlas
-	_opponent_hp_fill.fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
-	_player_hp_fill.fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
+	# [M26c-1] The new EXP bar — singles player only (see _player_exp_fill's
+	# own onready doc comment for why). Same solid-fill-plus-tint mechanism
+	# as the HP bar, just a fixed color rather than a threshold function.
+	_configure_solid_fill_bar(_player_exp_fill, fill_tex)
+	_player_exp_fill.tint_progress = _EXP_BAR_COLOR
+	_player_exp_fill.min_value = 0.0
+	_player_exp_fill.max_value = 1.0
+	_player_exp_fill.step = 0.0
 
 	var opponent_status_sheet: Texture2D = load("res://assets/sprites/battle_ui/interface/status2.png")
 	_opponent_status_atlas = AtlasTexture.new()
@@ -2008,56 +2330,70 @@ func _setup_health_ui() -> void:
 
 	# [M23.11 Phase 4d] Doubles node collection + wiring — see the field
 	# declarations' own doc comment (near _is_doubles_mode) for why these are
-	# plain Arrays. hpbar_sheet's two fixed-region atlases (hp_label_atlas/
-	# hp_fill_atlas) are safely SHARED across every node here (singles' own
-	# existing code already shares them between the opponent and player
-	# nodes) since their .region never changes after creation. Status icons
-	# are the one thing that CANNOT share an atlas instance across slots —
+	# plain Arrays. `fill_tex` (the shared solid-color fill texture) is
+	# safely SHARED across every node here (singles' own existing code
+	# already shares it between the opponent and player nodes) since it
+	# never changes after creation — only each node's own `tint_progress`
+	# differs. Status icons are the one thing that CANNOT share an atlas
+	# instance across slots —
 	# two doubles opponents can have different statuses simultaneously, and
 	# mutating one shared atlas's .region would corrupt every node
 	# displaying it — so each of the 4 doubles slots gets its own freshly-
 	# created AtlasTexture, matching the singles opponent/player split
 	# already established, just doubled.
+	# [M26c battle-UI polish] Bottom-anchor baselines, captured HERE (once,
+	# before any species-driven texture/offset write ever touches these
+	# nodes) rather than read lazily on first use -- _setup_health_ui() is
+	# the first thing _ready() calls, guaranteeing every later
+	# _apply_bottom_anchored_front_sprite() call always has a real, still-
+	# original baseline to compute from.
+	_opponent_sprite_base_top = _opponent_sprite.offset_top
+	_opponent_sprite_base_bottom = _opponent_sprite.offset_bottom
+
 	_opp_sprites_d = [$BattleStage/OpponentSpriteD0, $BattleStage/OpponentSpriteD1]
+	_opp_sprite_d_base_top = [_opp_sprites_d[0].offset_top, _opp_sprites_d[1].offset_top]
+	_opp_sprite_d_base_bottom = [_opp_sprites_d[0].offset_bottom, _opp_sprites_d[1].offset_bottom]
 	_opp_groups_d = [$BattleStage/OpponentHealthGroupD0, $BattleStage/OpponentHealthGroupD1]
 	_opp_bg_d = [$BattleStage/OpponentHealthGroupD0/Background, $BattleStage/OpponentHealthGroupD1/Background]
 	_opp_status_icon_d = [$BattleStage/OpponentHealthGroupD0/StatusIcon, $BattleStage/OpponentHealthGroupD1/StatusIcon]
-	_opp_hp_label_d = [$BattleStage/OpponentHealthGroupD0/HpLabel, $BattleStage/OpponentHealthGroupD1/HpLabel]
 	_opp_hp_fill_d = [$BattleStage/OpponentHealthGroupD0/HpFill, $BattleStage/OpponentHealthGroupD1/HpFill]
-	_opp_name_level_label_d = [$BattleStage/OpponentHealthGroupD0/NameLevelLabel, $BattleStage/OpponentHealthGroupD1/NameLevelLabel]
+	_opp_name_label_d = [$BattleStage/OpponentHealthGroupD0/NameLabel, $BattleStage/OpponentHealthGroupD1/NameLabel]
+	_opp_gender_label_d = [$BattleStage/OpponentHealthGroupD0/GenderLabel, $BattleStage/OpponentHealthGroupD1/GenderLabel]
+	_opp_level_label_d = [$BattleStage/OpponentHealthGroupD0/LevelLabel, $BattleStage/OpponentHealthGroupD1/LevelLabel]
 
 	_ply_sprites_d = [$BattleStage/PlayerSpriteD0, $BattleStage/PlayerSpriteD1]
 	_ply_groups_d = [$BattleStage/PlayerHealthGroupD0, $BattleStage/PlayerHealthGroupD1]
 	_ply_bg_d = [$BattleStage/PlayerHealthGroupD0/Background, $BattleStage/PlayerHealthGroupD1/Background]
 	_ply_status_icon_d = [$BattleStage/PlayerHealthGroupD0/StatusIcon, $BattleStage/PlayerHealthGroupD1/StatusIcon]
-	_ply_hp_label_d = [$BattleStage/PlayerHealthGroupD0/HpLabel, $BattleStage/PlayerHealthGroupD1/HpLabel]
 	_ply_hp_fill_d = [$BattleStage/PlayerHealthGroupD0/HpFill, $BattleStage/PlayerHealthGroupD1/HpFill]
-	_ply_name_level_label_d = [$BattleStage/PlayerHealthGroupD0/NameLevelLabel, $BattleStage/PlayerHealthGroupD1/NameLevelLabel]
+	_ply_name_label_d = [$BattleStage/PlayerHealthGroupD0/NameLabel, $BattleStage/PlayerHealthGroupD1/NameLabel]
+	_ply_gender_label_d = [$BattleStage/PlayerHealthGroupD0/GenderLabel, $BattleStage/PlayerHealthGroupD1/GenderLabel]
+	_ply_level_label_d = [$BattleStage/PlayerHealthGroupD0/LevelLabel, $BattleStage/PlayerHealthGroupD1/LevelLabel]
 
-	# [M25h-1.2] Same real bitmap font as the singles NameLevelLabel pair
-	# above, applied to all 4 doubles slots now that the arrays exist.
-	for label: Label in _opp_name_level_label_d + _ply_name_level_label_d:
+	# [M25h-1.2, split M26c-1 follow-up] Same real bitmap font as the singles
+	# name/level pair above, applied to all 4 doubles slots' 12 label nodes
+	# now that the arrays exist.
+	for label: Label in (_opp_name_label_d + _opp_gender_label_d + _opp_level_label_d
+			+ _ply_name_label_d + _ply_gender_label_d + _ply_level_label_d):
 		label.add_theme_font_override("font", _font_healthbox)
 		label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 
-	var doubles_opponent_bg: Texture2D = load("res://assets/sprites/battle_ui/interface/healthbox_doubles_opponent.png")
-	var doubles_player_bg: Texture2D = load("res://assets/sprites/battle_ui/interface/healthbox_doubles_player.png")
-
+	# [M26c-1] Real Emerald UI Pack doubles ("thin") databox art -- see
+	# gen_databox_sprites.py's own doc comment: this pack ships no EXP-ledge
+	# variant for either doubles box, confirming the EXP bar's own singles-
+	# player-only scope isn't just a design choice made in isolation. Each
+	# of the 4 doubles Background nodes' own `texture` property is set
+	# directly in battle_screen.tscn, same reasoning as the singles pair
+	# above -- not re-assigned here.
 	for i in range(2):
-		_opp_bg_d[i].texture = doubles_opponent_bg
-		_opp_hp_label_d[i].texture = hp_label_atlas
-		_opp_hp_fill_d[i].texture_progress = hp_fill_atlas
-		_opp_hp_fill_d[i].fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
+		_configure_solid_fill_bar(_opp_hp_fill_d[i], fill_tex)
 		var opp_atlas_d := AtlasTexture.new()
 		opp_atlas_d.atlas = opponent_status_sheet
 		opp_atlas_d.region = Rect2(Vector2.ZERO, _STATUS_ICON_SIZE)
 		_opp_status_atlas_d[i] = opp_atlas_d
 		_opp_status_icon_d[i].texture = opp_atlas_d
 
-		_ply_bg_d[i].texture = doubles_player_bg
-		_ply_hp_label_d[i].texture = hp_label_atlas
-		_ply_hp_fill_d[i].texture_progress = hp_fill_atlas
-		_ply_hp_fill_d[i].fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
+		_configure_solid_fill_bar(_ply_hp_fill_d[i], fill_tex)
 		var ply_atlas_d := AtlasTexture.new()
 		ply_atlas_d.atlas = player_status_sheet
 		ply_atlas_d.region = Rect2(Vector2.ZERO, _STATUS_ICON_SIZE)
@@ -2232,7 +2568,9 @@ func _update_status_icon(icon_node: TextureRect, atlas: AtlasTexture, status: in
 # slot's own BattlePokemon instance.
 func _refresh_doubles_side(party: BattleParty, is_player: bool, sprites: Array, groups: Array,
 		status_icons: Array, status_atlases: Array, hp_fills: Array,
-		name_level_labels: Array) -> void:
+		name_labels: Array, level_labels: Array,
+		sprite_base_top: Array = [], sprite_base_bottom: Array = [],
+		gender_labels: Array = []) -> void:
 	var active_count := party.num_active()
 	for slot in range(2):
 		var visible_now: bool = slot < active_count
@@ -2248,27 +2586,44 @@ func _refresh_doubles_side(party: BattleParty, is_player: bool, sprites: Array, 
 			# only — reset this slot's own frame to 0 on every state-driven
 			# refresh, matching the singles branch's identical reset above.
 			_opp_anim_frame_d[slot] = 0
-			sprites[slot].texture = _sprite_or_fallback_front(mon.species.national_dex_num, 0)
+			_apply_bottom_anchored_front_sprite(sprites[slot], mon.species.national_dex_num, 0,
+					sprite_base_top[slot], sprite_base_bottom[slot])
 		sprites[slot].modulate = Color(1, 1, 1, 0.3) if mon.fainted else Color(1, 1, 1, 1)
 		hp_fills[slot].max_value = mon.max_hp
 		hp_fills[slot].value = mon.current_hp
 		hp_fills[slot].tint_progress = _hp_bar_color(mon.current_hp, mon.max_hp)
 		_update_status_icon(status_icons[slot], status_atlases[slot], mon.status)
-		name_level_labels[slot].text = _name_level_text(mon)
+		name_labels[slot].text = _name_text(mon)
+		level_labels[slot].text = _level_text(mon)
+		if not gender_labels.is_empty():
+			_position_gender_label(name_labels[slot], gender_labels[slot], mon, level_labels[slot])
 
 
 func _refresh_ui() -> void:
-	# [M25h-1] Both button areas are cleared unconditionally every call —
-	# only one of them gets repopulated below depending on _menu, so the
-	# OTHER one stays empty (visually absent) rather than needing an
-	# explicit show/hide toggle. This is exactly what makes the ITEM/SWITCH
-	# (old _button_area) <-> TOP/FIGHT/TARGET_SELECT (new _new_button_area)
-	# hybrid transition work correctly with no special-casing: a Back button
-	# from either region just sets _menu and calls _refresh_ui() as before.
+	# [M25h-1, extended M26c-3] All three button areas are cleared
+	# unconditionally every call — only whichever ones _menu actually needs
+	# get repopulated below, so the others stay empty (visually absent)
+	# rather than needing an explicit show/hide toggle. This is exactly
+	# what makes the ITEM/SWITCH (old _button_area) <-> TOP/FIGHT (new
+	# _new_button_grid) <-> TARGET_SELECT (new _new_button_area) hybrid
+	# transitions work correctly with no special-casing: a Back button from
+	# any region just sets _menu and calls _refresh_ui() as before. FIGHT is
+	# the one state that repopulates TWO of the three at once (the real 2x2
+	# move grid in _new_button_grid, plus a single Back button in
+	# _new_button_area, rendered as the row immediately below the grid) —
+	# see _build_fight_menu's own doc comment for why Back isn't a 5th grid
+	# cell.
 	for child in _button_area.get_children():
 		child.queue_free()
 	for child in _new_button_area.get_children():
 		child.queue_free()
+	for child in _new_button_grid.get_children():
+		child.queue_free()
+	# [M26c-4] TARGET_SELECT's own click/hover zones live on PERSISTENT
+	# battlefield nodes (health groups), not a freely-rebuilt container —
+	# see _clear_target_select_hover_wiring's own doc comment for why this
+	# needs an explicit disconnect pass rather than a plain queue_free loop.
+	_clear_target_select_hover_wiring()
 
 	var side0_mon: BattlePokemon = _player_party.get_active()
 	var side1_mon: BattlePokemon = _opp_party.get_active()
@@ -2289,26 +2644,35 @@ func _refresh_ui() -> void:
 	# must remain the unchanged fast path" requirement.
 	if _is_doubles_mode:
 		_refresh_doubles_side(_opp_party, false, _opp_sprites_d, _opp_groups_d,
-				_opp_status_icon_d, _opp_status_atlas_d, _opp_hp_fill_d, _opp_name_level_label_d)
+				_opp_status_icon_d, _opp_status_atlas_d, _opp_hp_fill_d, _opp_name_label_d, _opp_level_label_d,
+				_opp_sprite_d_base_top, _opp_sprite_d_base_bottom, _opp_gender_label_d)
 		_refresh_doubles_side(_player_party, true, _ply_sprites_d, _ply_groups_d,
-				_ply_status_icon_d, _ply_status_atlas_d, _ply_hp_fill_d, _ply_name_level_label_d)
+				_ply_status_icon_d, _ply_status_atlas_d, _ply_hp_fill_d, _ply_name_label_d, _ply_level_label_d,
+				[], [], _ply_gender_label_d)
 	else:
 		_opponent_anim_frame = 0
-		_opponent_sprite.texture = _sprite_or_fallback_front(side1_mon.species.national_dex_num, _opponent_anim_frame)
+		_apply_bottom_anchored_front_sprite(_opponent_sprite, side1_mon.species.national_dex_num,
+				_opponent_anim_frame, _opponent_sprite_base_top, _opponent_sprite_base_bottom)
 		_opponent_sprite.modulate = Color(1, 1, 1, 0.3) if side1_mon.fainted else Color(1, 1, 1, 1)
 		_opponent_hp_fill.max_value = side1_mon.max_hp
 		_opponent_hp_fill.value = side1_mon.current_hp
 		_opponent_hp_fill.tint_progress = _hp_bar_color(side1_mon.current_hp, side1_mon.max_hp)
 		_update_status_icon(_opponent_status_icon, _opponent_status_atlas, side1_mon.status)
-		_opponent_name_level_label.text = _name_level_text(side1_mon)
+		_opponent_name_label.text = _name_text(side1_mon)
+		_opponent_level_label.text = _level_text(side1_mon)
+		_position_gender_label(_opponent_name_label, _opponent_gender_label, side1_mon, _opponent_level_label)
 
 		_player_sprite.texture = _sprite_or_fallback_back(side0_mon.species.national_dex_num)
 		_player_sprite.modulate = Color(1, 1, 1, 0.3) if side0_mon.fainted else Color(1, 1, 1, 1)
 		_player_hp_fill.max_value = side0_mon.max_hp
 		_player_hp_fill.value = side0_mon.current_hp
 		_player_hp_fill.tint_progress = _hp_bar_color(side0_mon.current_hp, side0_mon.max_hp)
+		_player_hp_number_label.text = "%d/%d" % [side0_mon.current_hp, side0_mon.max_hp]
 		_update_status_icon(_player_status_icon, _player_status_atlas, side0_mon.status)
-		_player_name_level_label.text = _name_level_text(side0_mon)
+		_player_name_label.text = _name_text(side0_mon)
+		_player_level_label.text = _level_text(side0_mon)
+		_position_gender_label(_player_name_label, _player_gender_label, side0_mon, _player_level_label)
+		_player_exp_fill.value = _exp_bar_fraction(side0_mon)
 
 	if _bm.get_phase() == BattleManager.BattlePhase.BATTLE_END:
 		_status_label.text = ("You win!" if _winner_side == 0 else "You lose!")
@@ -2464,44 +2828,68 @@ func _on_play_again_pressed() -> void:
 # get_active() accessor, so this works for either of a doubles battle's 2
 # active slots. Singles: field_slot is always 0, byte-identical to before.
 #
-# [M25b] Real top-level Fight/Item/Switch/Run menu — the 4 real games'
-# own top-level options, replacing the old single screen that showed every
-# move button inline alongside Switch/Item. field_slot is threaded through
-# unchanged into whichever sub-menu gets picked, exactly as it already was.
+# [M25b, regridded M26c-3] Real top-level Fight/Bag/Pokémon/Run menu — the
+# 4 real games' own top-level options, replacing the old single screen that
+# showed every move button inline alongside Switch/Item.
+#
+# [M26c-3] Laid out as a real 2x2 GRID now, not a vertical list — confirmed
+# directly from source rather than assumed: `ActionSelectionCreateCursorAt`
+# (battle_controller_player.c) positions its tile-paste cursor via
+# `7 * (cursorPosition & 1) + 16, 35 + (cursorPosition & 2)` — bit 0 of the
+# cursor position selects the COLUMN, bit 1 selects the ROW, giving a fixed
+# 2x2 cell layout, not a scrollable list. The A_BUTTON dispatch switch in
+# the same file confirms the real cell assignment: cursor 0 (top-left) =
+# B_ACTION_USE_MOVE (Fight), 1 (top-right) = B_ACTION_USE_ITEM (Bag), 2
+# (bottom-left) = B_ACTION_SWITCH (Pokémon), 3 (bottom-right) =
+# B_ACTION_RUN (Run) — a genuinely different reading order from this
+# project's own prior vertical Fight/Switch/Item/Run list (Item and Switch
+# swap positions). `GridContainer(columns=2)` lays out children left-to-
+# right, top-to-bottom as they're added, so adding them in exactly this
+# order (Fight, Item, Switch, Run) reproduces the real cell grid with zero
+# extra positioning code. D-pad-driven cursor movement (source's own
+# `DPAD_LEFT/RIGHT/UP/DOWN` handlers, which XOR the relevant bit) is
+# deliberately NOT reproduced here — this project's menus have no
+# keyboard/gamepad navigation at all yet (confirmed via grep, M25h-1.3),
+# that's M26d's own separate job; mouse hover already drives the same ▶
+# cursor via `_wire_cursor_group` regardless of grid vs. list shape.
 func _build_top_menu(field_slot: int) -> void:
 	var fight_btn := Button.new()
 	_style_menu_button(fight_btn)
 	_strip_button_chrome(fight_btn)
+	fight_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	fight_btn.text = "Fight"
 	fight_btn.pressed.connect(func():
 		_menu = Menu.FIGHT
 		_refresh_ui())
-	_new_button_area.add_child(fight_btn)
+	_new_button_grid.add_child(fight_btn)
 
 	# [M25h-1] Switch/Item still route to the old, untouched inline panels
 	# (_button_area, in $VBox) -- pressing either of these buttons (now
 	# living in the new region) transitions OUT of the new region into the
-	# old one. _refresh_ui()'s own unconditional dual-clear is what makes
+	# old one. _refresh_ui()'s own unconditional clear-all is what makes
 	# this correct with zero special-casing. Real separate screens for both
-	# are M25h-2/h-3's own job, not this one.
+	# are M25h-1.4/M25h-1.5's own job (already shipped) — this session only
+	# moves WHERE their own launcher buttons live, not their own behavior.
+	var item_btn := Button.new()
+	_style_menu_button(item_btn)
+	_strip_button_chrome(item_btn)
+	item_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	item_btn.text = "Item"
+	item_btn.pressed.connect(func():
+		_menu = Menu.ITEM
+		_refresh_ui())
+	_new_button_grid.add_child(item_btn)
+
 	var switch_btn := Button.new()
 	_style_menu_button(switch_btn)
 	_strip_button_chrome(switch_btn)
+	switch_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	switch_btn.text = "Switch"
 	switch_btn.disabled = not _player_party.has_valid_switch_target()
 	switch_btn.pressed.connect(func():
 		_menu = Menu.SWITCH
 		_refresh_ui())
-	_new_button_area.add_child(switch_btn)
-
-	var item_btn := Button.new()
-	_style_menu_button(item_btn)
-	_strip_button_chrome(item_btn)
-	item_btn.text = "Item"
-	item_btn.pressed.connect(func():
-		_menu = Menu.ITEM
-		_refresh_ui())
-	_new_button_area.add_child(item_btn)
+	_new_button_grid.add_child(switch_btn)
 
 	# [M25b] Temporary placeholder — NOT real flee logic (success chance,
 	# speed comparison, trainer-battle refusal, etc. are all explicitly out
@@ -2512,21 +2900,48 @@ func _build_top_menu(field_slot: int) -> void:
 	var run_btn := Button.new()
 	_style_menu_button(run_btn)
 	_strip_button_chrome(run_btn)
+	run_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	run_btn.text = "Run"
 	run_btn.pressed.connect(_on_run_pressed)
-	_new_button_area.add_child(run_btn)
+	_new_button_grid.add_child(run_btn)
 
 	# [M25h-1.3] Real ▶ cursor, defaulting to Fight (index 0) -- matches
-	# source's own always-defined initial cursor position.
-	var top_buttons: Array[Button] = [fight_btn, switch_btn, item_btn, run_btn]
+	# source's own always-defined initial cursor position. Array order here
+	# matches the grid's own real reading order (top-left, top-right,
+	# bottom-left, bottom-right), same as the add_child order above.
+	var top_buttons: Array[Button] = [fight_btn, item_btn, switch_btn, run_btn]
 	_wire_cursor_group(top_buttons)
 
 
-# [M25b] The move list — content unchanged from the old _build_main_menu's
-# own move-button loop, just moved one tier deeper (behind Fight) and given
-# its own "Back" button (returns to TOP), matching every other sub-menu's
-# existing convention (_build_switch_buttons'/_build_item_buttons' own
-# non-forced "Back" branches).
+# [M25b, regridded M26c-3] The move list — content unchanged from the old
+# _build_main_menu's own move-button loop, just moved one tier deeper
+# (behind Fight).
+#
+# [M26c-3] Laid out as a real 2x2 grid now, matching source's own confirmed
+# layout — see _build_top_menu's own doc comment for the full source
+# citation (the same `ActionSelectionCreateCursorAt`-shaped bit-math cursor
+# is used for move selection too, via the sibling `MoveSelectionCreateCursorAt`
+# in the same file). Move slot index IS the grid cell index directly in
+# source (`gMoveSelectionCursor` is both the move array index AND the
+# cursor position the same bit-math decodes) — this project's own moves
+# array is already in that exact order, so no remapping is needed: move 0
+# lands top-left, move 1 top-right, move 2 bottom-left, move 3 bottom-
+# right, purely as a side effect of adding them to a
+# `GridContainer(columns=2)` in array order. A Pokémon with fewer than 4
+# moves naturally leaves the trailing grid cell(s) empty (GridContainer
+# just doesn't lay out a row/cell that has no child) — matching source's
+# own real clamping behavior (`gNumberOfMovesToChoose`), which likewise
+# never lets the cursor land on a slot with no real move.
+#
+# Back is deliberately NOT a 5th grid cell — source doesn't need one at
+# all (B_BUTTON always cancels back to the action-selection grid, and this
+# project has no keyboard input wired yet, M26d's own job), so a literal
+# 5th cell would be a pure invention with no source basis, more visual
+# noise than the real 2x2 core. Instead it reuses _new_button_area (the
+# same VBoxContainer TARGET_SELECT/SWITCH/ITEM already used before this
+# session), which renders as a single row directly below the grid in the
+# same ActionVBox stack — a real, disclosed mouse-only concession, not a
+# reproduction of anything in source.
 func _build_fight_menu(field_slot: int) -> void:
 	var mon: BattlePokemon = _player_party.get_active_at(field_slot)
 	var fight_buttons: Array[Button] = []
@@ -2537,10 +2952,11 @@ func _build_fight_menu(field_slot: int) -> void:
 		var btn := Button.new()
 		_style_menu_button(btn)
 		_strip_button_chrome(btn)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.text = "%s (PP %d/%d)" % [move.move_name, mon.current_pp[i], move.pp]
 		btn.disabled = mon.current_pp[i] <= 0
 		btn.pressed.connect(_on_move_pressed.bind(field_slot, i))
-		_new_button_area.add_child(btn)
+		_new_button_grid.add_child(btn)
 		fight_buttons.append(btn)
 
 	var back_btn := Button.new()
@@ -2553,7 +2969,10 @@ func _build_fight_menu(field_slot: int) -> void:
 	_new_button_area.add_child(back_btn)
 	fight_buttons.append(back_btn)
 
-	# [M25h-1.3] Real ▶ cursor, defaulting to the first move.
+	# [M25h-1.3] Real ▶ cursor, defaulting to the first move. One shared
+	# cursor group spans both containers (grid cells + the Back row below
+	# them) -- _wire_cursor_group only needs an ordered Array[Button], it
+	# has no dependency on every button sharing one parent.
 	_wire_cursor_group(fight_buttons)
 
 
@@ -2696,8 +3115,157 @@ func _close_item_select_overlay() -> void:
 	_item_select_overlay = null
 
 
-# [M23.11 Phase 4f] Target-picker — one Button per live candidate returned
-# by BattleManager.get_live_targets(mon, move) (see that function's own doc
+# [M26c-4] Starts the hover-focus bounce/bob for `mon`, tearing down
+# whatever candidate previously had it first (regardless of event
+# ordering -- see _target_focus_mon's own field doc comment). Two visual
+# treatments, chosen by which side `mon` is on, per Rob's own explicit
+# design call:
+#   - EITHER side's health box bounces (a small vertical position
+#     ping-pong loop) -- this part is symmetric.
+#   - The OPPONENT's sprite additionally cycles through its own real
+#     2-frame idle-bob art (the same frames/anchoring
+#     _apply_bottom_anchored_front_sprite already draws for the ambient
+#     one-shot entry animation, M23.11 Phase 4c) -- reused here as a
+#     repeating loop instead, since a real animation asset already exists
+#     for front sprites.
+#   - A PLAYER-side sprite (only reachable in doubles, e.g. Acupressure/
+#     Helping Hand targeting an ally) instead gets the same positional
+#     bob as the health box -- back sprites are single-frame everywhere
+#     except Deoxys (SpriteRegistry's own doc comment), so there is no
+#     second real frame to alternate to.
+# Source itself uses a blink (SpriteCB_ShowAsMoveTarget/
+# SpriteCB_BlinkVisible, battle_main.c) for the targeted sprite -- this is
+# a deliberate, disclosed departure, reusing this project's own existing
+# idle-bob asset instead of building a new blink effect from scratch.
+func _start_target_focus(mon: BattlePokemon) -> void:
+	_stop_target_focus()
+	_target_focus_mon = mon
+
+	var health_group := _health_group_for(mon)
+	if health_group != null:
+		var orig_y: float = health_group.position.y
+		health_group.set_meta("_focus_orig_y", orig_y)
+		var hb_tween := create_tween().set_loops()
+		hb_tween.tween_property(health_group, "position:y", orig_y - 5.0, 0.15) \
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		hb_tween.tween_property(health_group, "position:y", orig_y, 0.15) \
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		_target_focus_health_tween = hb_tween
+
+	var sprite := _sprite_node_for(mon)
+	if sprite == null:
+		return
+	var is_player: bool = _player_party.members.has(mon)
+	if is_player:
+		var orig_sy: float = sprite.position.y
+		sprite.set_meta("_focus_orig_y", orig_sy)
+		var sp_tween := create_tween().set_loops()
+		sp_tween.tween_property(sprite, "position:y", orig_sy - 5.0, 0.15) \
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		sp_tween.tween_property(sprite, "position:y", orig_sy, 0.15) \
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		_target_focus_sprite_tween = sp_tween
+	else:
+		var dex := mon.species.national_dex_num
+		var base_top: float
+		var base_bottom: float
+		if _is_doubles_mode:
+			var slot := _field_slot_for(mon, _opp_party)
+			base_top = _opp_sprite_d_base_top[slot]
+			base_bottom = _opp_sprite_d_base_bottom[slot]
+		else:
+			base_top = _opponent_sprite_base_top
+			base_bottom = _opponent_sprite_base_bottom
+		var frame_tween := create_tween().set_loops()
+		frame_tween.tween_callback(_apply_bottom_anchored_front_sprite.bind(
+				sprite, dex, 1, base_top, base_bottom)).set_delay(0.5)
+		frame_tween.tween_callback(_apply_bottom_anchored_front_sprite.bind(
+				sprite, dex, 0, base_top, base_bottom)).set_delay(0.5)
+		_target_focus_sprite_tween = frame_tween
+
+
+# [M26c-4] Kills both active tweens (if any) and restores every property
+# they were animating back to its real pre-focus value -- position for the
+# health box and (player-side only) the sprite; the opponent's own frame
+# is reset to 0 via the same _apply_bottom_anchored_front_sprite call every
+# other "state changed" refresh site already uses, not a position restore.
+func _stop_target_focus() -> void:
+	if _target_focus_health_tween != null and _target_focus_health_tween.is_valid():
+		_target_focus_health_tween.kill()
+	if _target_focus_sprite_tween != null and _target_focus_sprite_tween.is_valid():
+		_target_focus_sprite_tween.kill()
+
+	if _target_focus_mon != null:
+		var health_group := _health_group_for(_target_focus_mon)
+		if health_group != null and health_group.has_meta("_focus_orig_y"):
+			health_group.position.y = health_group.get_meta("_focus_orig_y")
+
+		var sprite := _sprite_node_for(_target_focus_mon)
+		var is_player: bool = _player_party.members.has(_target_focus_mon)
+		if sprite != null:
+			if is_player and sprite.has_meta("_focus_orig_y"):
+				sprite.position.y = sprite.get_meta("_focus_orig_y")
+			elif not is_player:
+				var dex := _target_focus_mon.species.national_dex_num
+				if _is_doubles_mode:
+					var slot := _field_slot_for(_target_focus_mon, _opp_party)
+					_apply_bottom_anchored_front_sprite(sprite, dex, 0,
+							_opp_sprite_d_base_top[slot], _opp_sprite_d_base_bottom[slot])
+				else:
+					_apply_bottom_anchored_front_sprite(sprite, dex, 0,
+							_opponent_sprite_base_top, _opponent_sprite_base_bottom)
+
+	_target_focus_mon = null
+	_target_focus_health_tween = null
+	_target_focus_sprite_tween = null
+
+
+func _on_target_hover_entered(mon: BattlePokemon) -> void:
+	_start_target_focus(mon)
+
+
+func _on_target_hover_exited(mon: BattlePokemon) -> void:
+	# Only reset if THIS candidate is still the one actually focused --
+	# guards against a stray exit for a candidate that's no longer current
+	# (e.g. arriving after a newer mouse_entered on a different candidate
+	# already switched focus elsewhere).
+	if _target_focus_mon == mon:
+		_stop_target_focus()
+
+
+func _on_target_hover_gui_input(event: InputEvent, field_slot: int, move_index: int, target_idx: int) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_on_target_selected(field_slot, move_index, target_idx)
+
+
+# [M26c-4] Unwires every health-group Control _build_target_select_buttons
+# temporarily made clickable -- restores mouse_filter to IGNORE and
+# disconnects the exact bound Callables that were connected (tracked in
+# _target_select_wired, not re-derived), since these are PERSISTENT
+# battlefield nodes, unlike _button_area/_new_button_area/_new_button_grid
+# which are freely rebuilt from scratch every refresh. Called
+# unconditionally at the top of every _refresh_ui(), the same "clear
+# everything, only whichever _menu actually needs gets repopulated"
+# pattern the other three button containers already use.
+func _clear_target_select_hover_wiring() -> void:
+	_stop_target_focus()
+	for entry: Dictionary in _target_select_wired:
+		var group: Control = entry["group"]
+		if group == null or not is_instance_valid(group):
+			continue
+		group.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if group.mouse_entered.is_connected(entry["enter_cb"]):
+			group.mouse_entered.disconnect(entry["enter_cb"])
+		if group.mouse_exited.is_connected(entry["exit_cb"]):
+			group.mouse_exited.disconnect(entry["exit_cb"])
+		if group.gui_input.is_connected(entry["click_cb"]):
+			group.gui_input.disconnect(entry["click_cb"])
+	_target_select_wired.clear()
+
+
+# [M23.11 Phase 4f, regridded M26c-4] Target-picker — real click/hover
+# zones directly on each live candidate's own health box, returned by
+# BattleManager.get_live_targets(mon, move) (see that function's own doc
 # comment for exactly which candidates show up here: 2 live opponents for
 # an ordinary foe-targeting move in doubles, or [self, ally] for
 # TARGET_USER_OR_ALLY moves like Acupressure). Only ever built when
@@ -2705,20 +3273,42 @@ func _close_item_select_overlay() -> void:
 # function doesn't re-check ambiguity itself, matching every other
 # _build_*_buttons function's existing "caller already decided to show
 # this menu" convention.
+#
+# [M26c-4] Confirmed directly from source (HandleInputChooseTarget,
+# battle_controller_player.c) that real targeting has no text menu at all
+# — the game bounces the current candidate's health box and lets D-pad
+# Left/Right/Up/Down cycle it between the 4 battle positions. This project
+# has no D-pad/keyboard navigation anywhere yet (M26d's own future job,
+# confirmed via the same grep M25h-1.3 already ran finding none exists),
+# so this reproduces the SPATIAL part (click the Pokémon you want to hit,
+# its health box bounces to confirm the hover) without the cycling input
+# — a disclosed, deliberate mouse-only interim, not the full source
+# mechanism. Each candidate's own health-group Control AND its sprite
+# Control (both already uniquely-positioned, always-visible Controls per
+# combatant — no new node needed) are temporarily made clickable via
+# _target_select_wired, per explicit request: hovering OR clicking either
+# the health bar or the Pokémon's own sprite triggers the same focus
+# animation / submits the same target. Back stays a real Button (still
+# the only way to cancel with no keyboard input to bind Back/B to).
 func _build_target_select_buttons(field_slot: int, move_index: int) -> void:
 	var mon: BattlePokemon = _player_party.get_active_at(field_slot)
 	var move: MoveData = mon.moves[move_index]
 	var candidates: Array[BattlePokemon] = _bm.get_live_targets(mon, move)
-	var target_buttons: Array[Button] = []
 	for target_mon: BattlePokemon in candidates:
 		var target_idx: int = _bm.get_combatant_index(target_mon)
-		var btn := Button.new()
-		_style_menu_button(btn)
-		_strip_button_chrome(btn)
-		btn.text = "%s  HP: %d/%d" % [_mon_label(target_mon), target_mon.current_hp, target_mon.max_hp]
-		btn.pressed.connect(_on_target_selected.bind(field_slot, move_index, target_idx))
-		_new_button_area.add_child(btn)
-		target_buttons.append(btn)
+		var enter_cb: Callable = _on_target_hover_entered.bind(target_mon)
+		var exit_cb: Callable = _on_target_hover_exited.bind(target_mon)
+		var click_cb: Callable = _on_target_hover_gui_input.bind(field_slot, move_index, target_idx)
+		for zone: Control in [_health_group_for(target_mon), _sprite_node_for(target_mon)]:
+			if zone == null:
+				continue
+			zone.mouse_filter = Control.MOUSE_FILTER_STOP
+			zone.mouse_entered.connect(enter_cb)
+			zone.mouse_exited.connect(exit_cb)
+			zone.gui_input.connect(click_cb)
+			_target_select_wired.append({
+				"group": zone, "enter_cb": enter_cb, "exit_cb": exit_cb, "click_cb": click_cb,
+			})
 
 	# [M23.11 Phase 4f] Matches every other sub-menu's own "Back" convention
 	# (_build_switch_buttons'/_build_item_buttons' non-forced branches) —
@@ -2736,10 +3326,12 @@ func _build_target_select_buttons(field_slot: int, move_index: int) -> void:
 		_pending_move_index = -1
 		_refresh_ui())
 	_new_button_area.add_child(back_btn)
-	target_buttons.append(back_btn)
 
-	# [M25h-1.3] Real ▶ cursor, defaulting to the first candidate.
-	_wire_cursor_group(target_buttons)
+	# [M25h-1.3] Real ▶ cursor -- kept even for this single remaining
+	# button so _base_text()'s established "every button always carries
+	# either the real prefix or the blank one" assumption (relied on by
+	# every existing test's own text-comparison helper) stays true.
+	_wire_cursor_group([back_btn])
 
 
 # ── Input handlers — the M23.0a external contract in action ────────────────

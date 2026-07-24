@@ -277,7 +277,16 @@ func _build_mon_row(mon: BattlePokemon, slot: int) -> Dictionary:
 	if _parent_bs != null:
 		_parent_bs._style_menu_button(btn)
 		_parent_bs._strip_button_chrome(btn)
-	var name_level: String = _parent_bs._name_level_text(mon) if _parent_bs != null else "%s Lv%d" % [mon.species.species_name, mon.level]
+	# [M26c-1 follow-up, updated M26c battle-UI polish] _name_level_text was
+	# split into _name_text + _level_text on BattleScreen; _name_text() no
+	# longer appends the gender glyph itself (that's now rendered by a
+	# separate GenderLabel node in the main health-box UI) -- this screen has
+	# no such separate node, so the glyph is appended back inline here via
+	# _gender_glyph() directly, preserving this row's own existing
+	# "Name♂ Lv##" display exactly as before.
+	var name_level: String = ("%s%s %s" % [_parent_bs._name_text(mon),
+			_parent_bs._gender_glyph(mon.gender), _parent_bs._level_text(mon)]) \
+			if _parent_bs != null else "%s Lv%d" % [mon.species.species_name, mon.level]
 	btn.text = "%s   HP %d/%d" % [name_level, mon.current_hp, mon.max_hp]
 	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	btn.anchor_right = 0.85

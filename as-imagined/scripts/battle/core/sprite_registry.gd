@@ -42,10 +42,44 @@ const BACK_DIR := "res://assets/sprites/pokemon/back"
 # returns the whole image unchanged).
 const FRAME_SIZE := Vector2(64, 64)
 
+# [M26c battle-UI polish] Real per-species `frontPicYOffset` data (see
+# gen_sprite_y_offsets.py's own doc comment for the full source citation) --
+# "the number of pixels between the drawn pixel area and the bottom edge" of
+# the 64x64 front-sprite canvas, the real mechanism pokeemerald_expansion
+# itself uses so every species' front sprite appears to stand at a
+# consistent height despite wildly varying transparent padding within that
+# uniform canvas. Lazily loaded once, matching _scan_dir's own established
+# lazy-cache convention. Returns 0 (no padding assumed) for an unresolvable
+# dex, the safe default matching get_front()'s own "unknown dex" handling.
+const Y_OFFSET_PATH := "res://data/sprite_y_offsets.json"
+
 static var _front_path_by_dex: Dictionary = {}
 static var _back_path_by_dex: Dictionary = {}
 static var _front_scanned := false
 static var _back_scanned := false
+static var _y_offset_by_dex: Dictionary = {}
+static var _y_offset_loaded := false
+
+
+static func get_front_y_offset(dex: int) -> int:
+	if not _y_offset_loaded:
+		_load_y_offsets()
+		_y_offset_loaded = true
+	return _y_offset_by_dex.get(dex, 0)
+
+
+static func _load_y_offsets() -> void:
+	var f := FileAccess.open(Y_OFFSET_PATH, FileAccess.READ)
+	if f == null:
+		return
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	if parsed == null or not (parsed is Dictionary):
+		return
+	# JSON object keys are always Strings; JSON numeric values decode as
+	# float -- both cast explicitly here (the same float-key/float-value
+	# gotcha this project's own CLAUDE.md gdscript-gotchas memory documents).
+	for key: String in (parsed as Dictionary).keys():
+		_y_offset_by_dex[int(key)] = int((parsed as Dictionary)[key])
 
 
 # [M23.11 Phase 4c] `frame` selects which of the (up to) 2 idle-animation

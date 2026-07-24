@@ -20,6 +20,7 @@ var _fail := 0
 
 func _ready() -> void:
 	_test_name_level_text_format()
+	_test_gender_glyph_variants()
 	_test_debug_overlay_default_hidden()
 	_test_debug_overlay_toggle_via_f3()
 	_test_debug_overlay_ignores_other_keys()
@@ -57,7 +58,15 @@ func _make_typed_mon(mon_name: String, type_id: int, lvl: int, hp: int = 150) ->
 	sp.base_sp_attack = 90
 	sp.base_sp_defense = 70
 	sp.base_speed = 70
-	return BattlePokemon.from_species(sp, lvl, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	var mon := BattlePokemon.from_species(sp, lvl, BattlePokemon.NATURE_HARDY, [0, 0, 0, 0, 0, 0])
+	# [M26c-1 follow-up] from_species() always rolls a real gender from
+	# PokemonSpecies.gender_ratio's own class default (127, ~50/50) --
+	# forced deterministic here so every existing assertion in this file
+	# (none of which cares about gender) stays stable across runs, now that
+	# _name_text() renders a gender glyph. Tests that specifically exercise
+	# the glyph override mon.gender directly afterward.
+	mon.gender = BattlePokemon.GENDER_MALE
+	return mon
 
 
 func _make_move(move_name: String, type_id: int, power: int, accuracy: int = 0) -> MoveData:
@@ -83,16 +92,68 @@ func _singles_party(mons: Array) -> BattleParty:
 
 
 # ── 1. Name/level text format ────────────────────────────────────────────
+# [M26c-1 follow-up, updated M26c battle-UI polish] _name_level_text was
+# split into _name_text (species name ALONE, per the follow-up request that
+# the gender glyph render as its own separate element rather than being
+# baked into the name string) and _level_text ("Lv" immediately followed by
+# the number, no space). The glyph itself is still produced by
+# _gender_glyph() and placed via the new _position_gender_label() helper —
+# see the dedicated section below for glyph-content coverage.
 
 func _test_name_level_text_format() -> void:
 	var mon := _make_typed_mon("Charizard", TypeChart.TYPE_FIRE, 50)
 	var bs := BattleScreen.new()
-	_chk("name/level format is 'Species LvN' — 'Lv' immediately followed by the number, no space, matching source's own CHAR_LV_2-adjacent digits",
-			bs._name_level_text(mon) == "Charizard Lv50")
+	_chk("name format is just the species name — no gender glyph baked in",
+			bs._name_text(mon) == "Charizard")
+	_chk("level format is 'LvN' — 'Lv' immediately followed by the number, no space",
+			bs._level_text(mon) == "Lv50")
 
 	var low_level := _make_typed_mon("Ratata", TypeChart.TYPE_NORMAL, 3)
-	_chk("format holds for a single-digit level too",
-			bs._name_level_text(low_level) == "Ratata Lv3")
+	_chk("level format holds for a single-digit level too",
+			bs._level_text(low_level) == "Lv3")
+
+
+func _test_gender_glyph_variants() -> void:
+	var bs := BattleScreen.new()
+	var male_mon := _make_typed_mon("Nidoking", TypeChart.TYPE_POISON, 50)
+	male_mon.gender = BattlePokemon.GENDER_MALE
+	_chk("male gender's own glyph is ♂", bs._gender_glyph(male_mon.gender) == "♂")
+
+	var female_mon := _make_typed_mon("Nidoqueen", TypeChart.TYPE_POISON, 50)
+	female_mon.gender = BattlePokemon.GENDER_FEMALE
+	_chk("female gender's own glyph is ♀", bs._gender_glyph(female_mon.gender) == "♀")
+
+	var genderless_mon := _make_typed_mon("Magnemite", TypeChart.TYPE_ELECTRIC, 50)
+	genderless_mon.gender = BattlePokemon.GENDER_GENDERLESS
+	_chk("genderless has no glyph at all", bs._gender_glyph(genderless_mon.gender) == "")
+
+	# [M26c battle-UI polish] _position_gender_label() places the separate
+	# GenderLabel node's own text/offsets based on the name label's real
+	# rendered width -- confirmed here directly on bare (unattached) Label
+	# nodes given a real loaded font, without needing a live scene tree.
+	var name_label := Label.new()
+	name_label.text = bs._name_text(male_mon)
+	name_label.offset_left = 100.0
+	name_label.offset_top = 5.0
+	name_label.offset_bottom = 45.0
+	var font := FontFile.new()
+	font.load_bitmap_font("res://assets/fonts/latin_small_healthbox.fnt")
+	font.fixed_size_scale_mode = 2
+	name_label.add_theme_font_override("font", font)
+	name_label.add_theme_font_size_override("font_size", 40)
+	var gender_label := Label.new()
+	bs._position_gender_label(name_label, gender_label, male_mon)
+	_chk("gender label text set to the real glyph", gender_label.text == "♂")
+	_chk("gender label positioned strictly after the name label's own left edge",
+			gender_label.offset_left > name_label.offset_left)
+	_chk("gender label shares the name label's own top/bottom",
+			gender_label.offset_top == name_label.offset_top
+			and gender_label.offset_bottom == name_label.offset_bottom)
+
+	var genderless_label := Label.new()
+	bs._position_gender_label(name_label, genderless_label, genderless_mon)
+	_chk("a genderless mon's gender label renders empty text",
+			genderless_label.text == "")
 
 
 # ── 2. Debug overlay is hidden by default ────────────────────────────────

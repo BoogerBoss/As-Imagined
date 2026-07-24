@@ -96,13 +96,18 @@ func _doubles_party(mons: Array) -> BattleParty:
 	return p
 
 
-func _button_texts(container: VBoxContainer) -> Array:
+func _button_texts(container: Container) -> Array:
 	# [M25h-1.3] Every button collected here comes from a cursor-wired group
 	# (_build_top_menu/_build_fight_menu -- every call site in this file),
 	# so its raw .text carries the real "▶ "/"  " selection-cursor prefix
 	# (see battle_screen.gd's own _wire_cursor_group). Stripped here, once,
 	# so every existing exact-text assertion downstream keeps comparing
 	# against the real underlying option text unchanged.
+	# [M26c-3] Container widened from VBoxContainer to its own base class
+	# Container -- callers now pass either _new_button_grid (GridContainer)
+	# or _new_button_area (VBoxContainer), or concatenate both results
+	# when a test needs the FIGHT menu's combined grid-cells-plus-Back-row
+	# content.
 	var texts: Array = []
 	for child in container.get_children():
 		if child is Button:
@@ -121,16 +126,24 @@ func _test_top_menu_has_four_options() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
-	bs._new_button_area = VBoxContainer.new()
+	bs._new_button_grid = GridContainer.new()
 
 	bs._build_top_menu(0)
 
-	var texts := _button_texts(bs._new_button_area)
+	var texts := _button_texts(bs._new_button_grid)
 	_chk("top menu has exactly 4 buttons", texts.size() == 4)
 	_chk("top menu shows Fight", texts.has("Fight"))
 	_chk("top menu shows Switch", texts.has("Switch"))
 	_chk("top menu shows Item", texts.has("Item"))
 	_chk("top menu shows Run", texts.has("Run"))
+	# [M26c-3] The real cell ORDER too, not just presence -- confirmed
+	# from source (ActionSelectionCreateCursorAt's bit-math, see
+	# _build_top_menu's own doc comment): top-left=Fight, top-right=Item,
+	# bottom-left=Switch, bottom-right=Run. GridContainer(columns=2) lays
+	# children out left-to-right/top-to-bottom in add order, so this array
+	# order IS the real grid reading order.
+	_chk("top menu's real grid order is Fight/Item/Switch/Run (source cell order)",
+			texts == ["Fight", "Item", "Switch", "Run"])
 
 
 # ── 2. Pressing Fight transitions _menu to FIGHT ─────────────────────────
@@ -140,11 +153,11 @@ func _test_fight_button_switches_to_fight_menu() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
-	bs._new_button_area = VBoxContainer.new()
+	bs._new_button_grid = GridContainer.new()
 	bs._menu = BattleScreen.Menu.TOP
 
 	bs._build_top_menu(0)
-	var fight_btn: Button = bs._new_button_area.get_children().filter(
+	var fight_btn: Button = bs._new_button_grid.get_children().filter(
 			func(c): return c is Button and _base_text(c.text) == "Fight")[0]
 	# _refresh_ui() itself needs a live scene (see this file's own top doc
 	# comment) -- disconnect it isn't possible cleanly, so instead confirm
@@ -165,11 +178,17 @@ func _test_fight_menu_shows_moves_and_back_button() -> void:
 	mon.add_move(_load_move(52))  # Ember
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
+	bs._new_button_grid = GridContainer.new()
 	bs._new_button_area = VBoxContainer.new()
 
 	bs._build_fight_menu(0)
 
-	var texts := _button_texts(bs._new_button_area)
+	# [M26c-3] Moves now live in the real 2x2 grid; Back is a separate row
+	# in _new_button_area below it (see _build_fight_menu's own doc
+	# comment for why it's not a 5th grid cell) -- combined here since this
+	# assertion cares about the FIGHT menu's total content, not which of
+	# the two containers each button happens to live in.
+	var texts := _button_texts(bs._new_button_grid) + _button_texts(bs._new_button_area)
 	_chk("Fight menu shows exactly 2 moves + Back", texts.size() == 3)
 	_chk("Fight menu shows Tackle with its own PP", texts.any(func(t): return t.begins_with("Tackle")))
 	_chk("Fight menu shows Ember with its own PP", texts.any(func(t): return t.begins_with("Ember")))
@@ -183,6 +202,7 @@ func _test_fight_menu_back_returns_to_top() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
+	bs._new_button_grid = GridContainer.new()
 	bs._new_button_area = VBoxContainer.new()
 	bs._menu = BattleScreen.Menu.FIGHT
 
@@ -211,19 +231,19 @@ func _test_switch_button_disabled_without_valid_target() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)  # no bench at all
-	bs._new_button_area = VBoxContainer.new()
+	bs._new_button_grid = GridContainer.new()
 
 	bs._build_top_menu(0)
-	var switch_btn: Button = bs._new_button_area.get_children().filter(
+	var switch_btn: Button = bs._new_button_grid.get_children().filter(
 			func(c): return c is Button and _base_text(c.text) == "Switch")[0]
 	_chk("Switch is disabled on TOP with no valid bench target", switch_btn.disabled)
 
 	var bench := _make_mon("Bench")
 	var bs2 := BattleScreen.new()
 	bs2._player_party = _singles_party(mon, [bench])
-	bs2._new_button_area = VBoxContainer.new()
+	bs2._new_button_grid = GridContainer.new()
 	bs2._build_top_menu(0)
-	var switch_btn2: Button = bs2._new_button_area.get_children().filter(
+	var switch_btn2: Button = bs2._new_button_grid.get_children().filter(
 			func(c): return c is Button and _base_text(c.text) == "Switch")[0]
 	_chk("Switch is enabled on TOP with a real bench member", not switch_btn2.disabled)
 
@@ -339,10 +359,10 @@ func _test_run_button_present_and_wired() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
-	bs._new_button_area = VBoxContainer.new()
+	bs._new_button_grid = GridContainer.new()
 
 	bs._build_top_menu(0)
-	var run_btn: Button = bs._new_button_area.get_children().filter(
+	var run_btn: Button = bs._new_button_grid.get_children().filter(
 			func(c): return c is Button and _base_text(c.text) == "Run")[0]
 	_chk("Run button exists and has a real pressed connection",
 			run_btn.pressed.get_connections().size() > 0)
@@ -395,29 +415,30 @@ func _test_doubles_top_menu_independent_per_slot() -> void:
 	m1.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _doubles_party([m0, m1])
-	bs._new_button_area = VBoxContainer.new()
+	bs._new_button_grid = GridContainer.new()
 
 	# Slot 0's own top menu.
 	bs._build_top_menu(0)
-	var slot0_texts := _button_texts(bs._new_button_area)
+	var slot0_texts := _button_texts(bs._new_button_grid)
 	_chk("doubles slot 0 gets its own real 4-option top menu", slot0_texts.size() == 4)
 
 	# Slot 1 gets an independently-built top menu too (a fresh call, exactly
 	# how _refresh_ui's own per-slot sequencing already drives this —
 	# Phase 4f's own single-flat-_menu-variable design, confirmed still
 	# correct under M25b: nothing here is keyed to slot 0 specifically).
-	bs._new_button_area = VBoxContainer.new()
+	bs._new_button_grid = GridContainer.new()
 	bs._build_top_menu(1)
-	var slot1_texts := _button_texts(bs._new_button_area)
+	var slot1_texts := _button_texts(bs._new_button_grid)
 	_chk("doubles slot 1 also gets its own real 4-option top menu", slot1_texts.size() == 4)
 
 	# Fight menu content is genuinely PER-MON, not shared/aliased across
 	# slots -- confirms the field_slot threading through _build_fight_menu
 	# still resolves the correct active mon per slot.
 	m1.add_move(_load_move(52))  # give slot 1's own mon a second move
+	bs._new_button_grid = GridContainer.new()
 	bs._new_button_area = VBoxContainer.new()
 	bs._build_fight_menu(1)
-	var slot1_fight_texts := _button_texts(bs._new_button_area)
+	var slot1_fight_texts := _button_texts(bs._new_button_grid) + _button_texts(bs._new_button_area)
 	_chk("doubles slot 1's own Fight menu reflects ITS mon's own moveset (2 moves + Back), not slot 0's",
 			slot1_fight_texts.size() == 3)
 

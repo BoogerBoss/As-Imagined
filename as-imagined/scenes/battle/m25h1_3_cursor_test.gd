@@ -170,11 +170,14 @@ func _test_top_menu_buttons_have_chrome_stripped_and_cursor_wired() -> void:
 	mon.add_move(_load_move(33))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
-	bs._new_button_area = VBoxContainer.new()
+	bs._new_button_grid = GridContainer.new()
 
 	bs._build_top_menu(0)
 
-	var buttons: Array = bs._new_button_area.get_children()
+	# [M26c-3] TOP now builds into the real 2x2 grid (_new_button_grid),
+	# not _new_button_area -- see battle_screen.gd's own _new_button_grid
+	# onready doc comment.
+	var buttons: Array = bs._new_button_grid.get_children()
 	_chk("TOP menu has exactly 4 buttons", buttons.size() == 4)
 	var all_stripped := true
 	var all_wired := true
@@ -199,21 +202,27 @@ func _test_fight_menu_buttons_have_chrome_stripped_and_cursor_wired() -> void:
 	mon.add_move(_load_move(52))
 	var bs := BattleScreen.new()
 	bs._player_party = _singles_party(mon)
+	bs._new_button_grid = GridContainer.new()
 	bs._new_button_area = VBoxContainer.new()
 
 	bs._build_fight_menu(0)
 
-	var buttons: Array = bs._new_button_area.get_children()
-	_chk("Fight menu has exactly 2 moves + Back", buttons.size() == 3)
+	# [M26c-3] The 2 moves now live in the real 2x2 grid; Back is a
+	# separate row in _new_button_area below it -- see
+	# _build_fight_menu's own doc comment.
+	var move_buttons: Array = bs._new_button_grid.get_children()
+	var back_buttons: Array = bs._new_button_area.get_children()
+	_chk("Fight menu has exactly 2 moves in the grid", move_buttons.size() == 2)
+	_chk("Fight menu has exactly 1 Back button below the grid", back_buttons.size() == 1)
 	var all_stripped := true
-	for c in buttons:
+	for c in move_buttons + back_buttons:
 		if not _is_chrome_stripped(c):
 			all_stripped = false
 	_chk("every Fight menu button has its chrome stripped", all_stripped)
 	_chk("the first move is the default-selected option",
-			(buttons[0].text as String).begins_with(BattleScreen._CURSOR_PREFIX))
+			(move_buttons[0].text as String).begins_with(BattleScreen._CURSOR_PREFIX))
 	_chk("Back is NOT selected by default (only one cursor position at a time)",
-			_base_text(buttons[2].text) == "Back" and (buttons[2].text as String).begins_with(BattleScreen._CURSOR_BLANK))
+			_base_text(back_buttons[0].text) == "Back" and (back_buttons[0].text as String).begins_with(BattleScreen._CURSOR_BLANK))
 
 
 func _test_target_select_buttons_have_chrome_stripped_and_cursor_wired() -> void:
@@ -228,6 +237,7 @@ func _test_target_select_buttons_have_chrome_stripped_and_cursor_wired() -> void
 	bs._new_button_area = VBoxContainer.new()
 	bs._menu = BattleScreen.Menu.TARGET_SELECT
 	bs._pending_move_index = 0
+	bs._is_doubles_mode = true
 
 	var bm := BattleManager.new()
 	add_child(bm)
@@ -247,22 +257,67 @@ func _test_target_select_buttons_have_chrome_stripped_and_cursor_wired() -> void
 	bm.start_battle_doubles(p1, p2)
 	bs._bm = bm
 
+	# _health_group_for() reads _opp_groups_d/_ply_groups_d in doubles mode —
+	# these @onready fields never get assigned on a bare BattleScreen.new()
+	# instance, so they must be wired manually here, mirroring
+	# m26c1_databox_test.gd's established manual-onready-wiring convention.
+	# _opp_party/_ply_party (used by _field_slot_for to resolve which doubles
+	# slot a candidate occupies) also need to be the SAME real party objects
+	# start_battle_doubles built, not left null — a null _opp_party silently
+	# makes _field_slot_for's range(party.num_active()) loop never execute,
+	# defaulting every candidate to slot 0 and wiring both opponents onto the
+	# same Control (caught via the duplicate-signal-connection errors this
+	# produced before this fix).
+	bs._opp_party = p2
+	bs._player_party = p1
+	bs._opp_groups_d = [Control.new(), Control.new()]
+	bs._ply_groups_d = [Control.new(), Control.new()]
+	# [Phase B: sprite hover/click] _sprite_node_for() reads _opp_sprites_d/
+	# _ply_sprites_d the same way _health_group_for() reads _opp_groups_d/
+	# _ply_groups_d — must be wired manually here too, mirroring the exact
+	# health-group precedent right above, so both real candidates' sprite
+	# zones (not just their health boxes) get wired.
+	bs._opp_sprites_d = [Control.new(), Control.new()]
+	bs._ply_sprites_d = [Control.new(), Control.new()]
+
 	bs._build_target_select_buttons(0, 0)
 
-	var buttons: Array = bs._new_button_area.get_children()
-	_chk("TARGET_SELECT has at least one candidate + Back", buttons.size() >= 2)
-	var all_stripped := true
-	var all_wired := true
-	for c in buttons:
-		if not _is_chrome_stripped(c):
-			all_stripped = false
-		if c.mouse_entered.get_connections().size() == 0:
-			all_wired = false
-	_chk("every TARGET_SELECT button has its chrome stripped", all_stripped)
-	_chk("every TARGET_SELECT button has a real mouse_entered cursor connection", all_wired)
-	_chk("the first candidate is the default-selected option",
-			(buttons[0].text as String).begins_with(BattleScreen._CURSOR_PREFIX))
+	# [Phase B] Each of the 2 live opponents now wires TWO zones (health
+	# group + sprite), so the real total is 4, not 2.
+	_chk("TARGET_SELECT wires 4 zones (2 opponents x health-group + sprite)",
+			bs._target_select_wired.size() == 4)
+	var wired_controls: Array = []
+	for entry: Dictionary in bs._target_select_wired:
+		wired_controls.append(entry.get("group"))
+	var unique_controls := {}
+	for c in wired_controls:
+		unique_controls[c] = true
+	_chk("all 4 wired zones are distinct Controls (no duplicate/aliased slot)",
+			unique_controls.size() == 4)
+	_chk("both opponents' own health group AND sprite are present among the wired zones",
+			wired_controls.has(bs._opp_groups_d[0]) and wired_controls.has(bs._opp_groups_d[1])
+			and wired_controls.has(bs._opp_sprites_d[0]) and wired_controls.has(bs._opp_sprites_d[1]))
+	var all_hoverable := true
+	var all_click_wired := true
+	for entry: Dictionary in bs._target_select_wired:
+		var group: Control = entry.get("group")
+		if group == null or group.mouse_filter != Control.MOUSE_FILTER_STOP:
+			all_hoverable = false
+		if not entry.get("enter_cb").is_valid() or not entry.get("exit_cb").is_valid() \
+				or not entry.get("click_cb").is_valid():
+			all_click_wired = false
+	_chk("every wired zone is mouse_filter STOP (hoverable)",
+			all_hoverable)
+	_chk("every wired zone has real bound enter/exit/click callables",
+			all_click_wired)
 
+	var back_buttons: Array = bs._new_button_area.get_children()
+	_chk("TARGET_SELECT still builds exactly one Back button", back_buttons.size() == 1)
+	_chk("Back button has its chrome stripped", _is_chrome_stripped(back_buttons[0]))
+	_chk("Back button is the default-selected cursor option",
+			(back_buttons[0].text as String).begins_with(BattleScreen._CURSOR_PREFIX))
+
+	bs._clear_target_select_hover_wiring()
 	bm.queue_free()
 
 
