@@ -119,7 +119,7 @@ func _test_toggle_row_built_with_all_categories() -> void:
 	var instance: BattleScreen = scene.instantiate()
 	add_child(instance)
 
-	var toggle_row: HFlowContainer = instance.get_node("DebugOverlay/VBox/ToggleRow")
+	var toggle_row: HFlowContainer = instance.get_node("SharedChrome/DebugOverlay/VBox/ToggleRow")
 	_chk("the toggle row has one CheckBox per category",
 			toggle_row.get_child_count() == BattleScreen._DEBUG_CATEGORY_ORDER.size())
 

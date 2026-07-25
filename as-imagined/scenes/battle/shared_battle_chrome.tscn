@@ -1,0 +1,174 @@
+[gd_scene load_steps=2 format=3 uid="uid://sharedbattlechrome"]
+
+[ext_resource type="Texture2D" uid="uid://dlln17tpesyg" path="res://assets/sprites/battle_ui/category/physical.png" id="20_category_physical"]
+
+[node name="SharedChrome" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.04
+anchor_right = 0.5
+anchor_bottom = 0.04
+grow_horizontal = 2
+
+[node name="ButtonArea" type="VBoxContainer" parent="VBox"]
+layout_mode = 2
+
+[node name="ActionRegion" type="Control" parent="."]
+layout_mode = 1
+anchor_top = 0.75
+anchor_right = 1.0
+anchor_bottom = 0.95
+offset_left = 14.0
+offset_top = 18.0
+offset_right = -18.0
+offset_bottom = 18.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="ActionPanel" type="PanelContainer" parent="ActionRegion"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ActionVBox" type="VBoxContainer" parent="ActionRegion/ActionPanel"]
+layout_mode = 2
+
+[node name="StatusLabel" type="Label" parent="ActionRegion/ActionPanel/ActionVBox"]
+layout_mode = 2
+text = "..."
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TopActionHBox" type="HBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="TopPromptSlot" type="MarginContainer" parent="ActionRegion/ActionPanel/ActionVBox/TopActionHBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.17
+
+[node name="TopGridSlot" type="MarginContainer" parent="ActionRegion/ActionPanel/ActionVBox/TopActionHBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="FightActionHBox" type="HBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="FightGridSlot" type="MarginContainer" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 4.25
+
+[node name="MoveInfoPanel" type="VBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+alignment = 1
+
+[node name="MoveInfoCategory" type="TextureRect" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("20_category_physical")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="MoveInfoType" type="Label" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel"]
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="MoveInfoPP" type="Label" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel"]
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="NewButtonGrid" type="GridContainer" parent="ActionRegion/ActionPanel/ActionVBox"]
+layout_mode = 2
+theme_override_constants/h_separation = 24
+theme_override_constants/v_separation = 4
+columns = 2
+
+[node name="NewButtonArea" type="VBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox"]
+layout_mode = 2
+
+[node name="MessageLabel" type="RichTextLabel" parent="ActionRegion/ActionPanel/ActionVBox"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+scroll_active = false
+
+[node name="DebugOverlay" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="Background" type="ColorRect" parent="DebugOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.85)
+
+[node name="VBox" type="VBoxContainer" parent="DebugOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Header" type="Label" parent="DebugOverlay/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 1, 0.4, 1)
+theme_override_font_sizes/font_size = 16
+text = "Combat Debug (F3 to toggle) — category filters below"
+autowrap_mode = 3
+
+[node name="ToggleRow" type="HFlowContainer" parent="DebugOverlay/VBox"]
+layout_mode = 2
+
+[node name="Scroll" type="ScrollContainer" parent="DebugOverlay/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Body" type="RichTextLabel" parent="DebugOverlay/VBox/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_font_sizes/normal_font_size = 14
+bbcode_enabled = true

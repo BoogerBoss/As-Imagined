@@ -42,13 +42,24 @@ static var is_doubles: bool = false
 # when has_pending() is false.
 static var background_id: String = ""
 
+# [M26l] Optional opponent TrainerData id (TrainerRegistry space, not
+# TrainerPicRegistry's — see trainer_data.gd's own trainer_id field), or -1
+# for unset. Optional, defaults -1 so every pre-existing caller (which never
+# picks a trainer identity today — battle_setup_screen.gd has no trainer
+# concept at all) is unaffected and battle_screen.gd's _ready() skips the
+# intro-banner entirely, matching how it already skips when has_pending()
+# is false.
+static var opp_trainer_id: int = -1
+
 
 static func set_pending(p_player_party: BattleParty, p_opp_party: BattleParty,
-		p_is_doubles: bool = false, p_background_id: String = "") -> void:
+		p_is_doubles: bool = false, p_background_id: String = "",
+		p_opp_trainer_id: int = -1) -> void:
 	player_party = p_player_party
 	opp_party = p_opp_party
 	is_doubles = p_is_doubles
 	background_id = p_background_id
+	opp_trainer_id = p_opp_trainer_id
 
 
 static func has_pending() -> bool:
@@ -60,3 +71,4 @@ static func clear() -> void:
 	opp_party = null
 	is_doubles = false
 	background_id = ""
+	opp_trainer_id = -1

@@ -4,7 +4,7 @@
 [ext_resource type="Script" uid="uid://by21x2021is5s" path="res://scripts/battle/core/battle_manager.gd" id="2_bm"]
 [ext_resource type="Theme" path="res://scenes/main_theme.tres" id="3_theme"]
 [ext_resource type="Texture2D" uid="uid://dbv7by4kbgmqj" path="res://assets/sprites/pokemon/back/0025_pikachu.png" id="4_pikachu_back"]
-[ext_resource type="Texture2D" uid="uid://ca4r3yw5l1vw4" path="res://scenes/battle/arena2_bg.png" id="4_y1o2w"]
+[ext_resource type="Texture2D" uid="uid://p40biqq41hsj" path="res://assets/sprites/battle_backgrounds/building.png" id="4_y1o2w"]
 [ext_resource type="Texture2D" uid="uid://oa5advdirqvm" path="res://assets/sprites/pokemon/front/0006_charizard.png" id="5_charizard_front"]
 [ext_resource type="Texture2D" uid="uid://dm8tkpqsidjil" path="res://assets/sprites/battle_ui/interface/databox_opponent.png" id="11_databox_opponent"]
 [ext_resource type="Texture2D" uid="uid://m5lxuasxlfxk" path="res://assets/sprites/battle_ui/interface/databox_player.png" id="12_databox_player"]
@@ -12,14 +12,20 @@
 [ext_resource type="Texture2D" uid="uid://c805rpimdxdep" path="res://assets/sprites/battle_ui/interface/databox_doubles_player.png" id="14_databox_doubles_player"]
 [ext_resource type="Texture2D" uid="uid://ddiixuyv1m6re" path="res://assets/sprites/battle_ui/interface/status.png" id="15_status_player"]
 [ext_resource type="Texture2D" uid="uid://dbybdkk37lft6" path="res://assets/sprites/battle_ui/interface/status2.png" id="16_status_opponent"]
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_opp_status_preview"]
-atlas = ExtResource("16_status_opponent")
-region = Rect2(0, 0, 24, 8)
+[ext_resource type="PackedScene" uid="uid://sharedbattlechrome" path="res://scenes/battle/shared_battle_chrome.tscn" id="19_shared_chrome"]
+[ext_resource type="Texture2D" uid="uid://d2p3p3nsfeycn" path="res://assets/sprites/battle_ui/party_status/ball_normal.png" id="21_ball_normal"]
+[ext_resource type="Texture2D" uid="uid://c27v35tiu3pc" path="res://assets/sprites/battle_ui/party_status/ball_status.png" id="22_ball_status"]
+[ext_resource type="Texture2D" uid="uid://b2hk8ympj8i5h" path="res://assets/sprites/battle_ui/party_status/ball_fainted.png" id="23_ball_fainted"]
+[ext_resource type="Texture2D" uid="uid://u5nenbe1yr5i" path="res://assets/sprites/battle_ui/party_status/ball_empty.png" id="24_ball_empty"]
+[ext_resource type="Texture2D" uid="uid://c4lgygj6twkss" path="res://assets/sprites/trainers/portraits/0039_leader_brawly.png" id="25_trainer_portrait_sample"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_opp_sprite_preview"]
 atlas = ExtResource("5_charizard_front")
 region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_opp_status_preview"]
+atlas = ExtResource("16_status_opponent")
+region = Rect2(0, 0, 24, 8)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ply_status_preview"]
 atlas = ExtResource("15_status_player")
@@ -73,10 +79,10 @@ anchor_left = 0.66200006
 anchor_top = 0.615
 anchor_right = 0.66200006
 anchor_bottom = 0.615
-offset_left = 47.11194
-offset_top = -455.32
-offset_right = 339.27222
-offset_bottom = -163.16003
+offset_left = -86.88806
+offset_top = -512.32
+offset_right = 205.27222
+offset_bottom = -220.16003
 grow_horizontal = 2
 grow_vertical = 0
 texture = SubResource("AtlasTexture_opp_sprite_preview")
@@ -138,14 +144,13 @@ offset_bottom = 54.0
 theme_override_font_sizes/font_size = 64
 text = "Pokémon"
 
-[node name="GenderLabel" type="Label" parent="BattleStage/OpponentHealthGroup" unique_id=3100000001]
+[node name="GenderLabel" type="Label" parent="BattleStage/OpponentHealthGroup" unique_id=-1194967295]
 layout_mode = 1
 offset_left = 280.0
 offset_top = -21.0
 offset_right = 350.0
 offset_bottom = 54.0
 theme_override_font_sizes/font_size = 64
-text = ""
 
 [node name="LevelLabel" type="Label" parent="BattleStage/OpponentHealthGroup" unique_id=-1293967294]
 layout_mode = 1
@@ -218,7 +223,7 @@ offset_top = -6.9600067
 offset_right = 194.05597
 offset_bottom = 7.0399933
 
-[node name="HpNumberLabel" type="Label" parent="BattleStage/PlayerHealthGroup" unique_id=3100000004]
+[node name="HpNumberLabel" type="Label" parent="BattleStage/PlayerHealthGroup" unique_id=-1194967292]
 layout_mode = 1
 offset_left = 320.0
 offset_top = 185.0
@@ -245,14 +250,13 @@ offset_bottom = 170.0
 theme_override_font_sizes/font_size = 64
 text = "Pokémon"
 
-[node name="GenderLabel" type="Label" parent="BattleStage/PlayerHealthGroup" unique_id=3100000002]
+[node name="GenderLabel" type="Label" parent="BattleStage/PlayerHealthGroup" unique_id=-1194967294]
 layout_mode = 1
 offset_left = 480.0
 offset_top = 95.0
 offset_right = 550.0
 offset_bottom = 170.0
 theme_override_font_sizes/font_size = 64
-text = ""
 
 [node name="LevelLabel" type="Label" parent="BattleStage/PlayerHealthGroup" unique_id=-1293967292]
 layout_mode = 1
@@ -327,14 +331,13 @@ offset_bottom = 17.0
 theme_override_font_sizes/font_size = 14
 text = "Pokémon"
 
-[node name="GenderLabel" type="Label" parent="BattleStage/OpponentHealthGroupD0" unique_id=3100000003]
+[node name="GenderLabel" type="Label" parent="BattleStage/OpponentHealthGroupD0" unique_id=-1194967293]
 layout_mode = 1
 offset_left = 80.0
 offset_top = 1.0
 offset_right = 100.0
 offset_bottom = 17.0
 theme_override_font_sizes/font_size = 14
-text = ""
 
 [node name="LevelLabel" type="Label" parent="BattleStage/OpponentHealthGroupD0" unique_id=-1293967290]
 layout_mode = 1
@@ -410,14 +413,13 @@ offset_bottom = 17.0
 theme_override_font_sizes/font_size = 14
 text = "Pokémon"
 
-[node name="GenderLabel" type="Label" parent="BattleStage/OpponentHealthGroupD1" unique_id=3100000004]
+[node name="GenderLabel" type="Label" parent="BattleStage/OpponentHealthGroupD1" unique_id=920939894]
 layout_mode = 1
 offset_left = 80.0
 offset_top = 1.0
 offset_right = 100.0
 offset_bottom = 17.0
 theme_override_font_sizes/font_size = 14
-text = ""
 
 [node name="LevelLabel" type="Label" parent="BattleStage/OpponentHealthGroupD1" unique_id=-1293967288]
 layout_mode = 1
@@ -493,14 +495,13 @@ offset_bottom = 17.0
 theme_override_font_sizes/font_size = 14
 text = "Pokémon"
 
-[node name="GenderLabel" type="Label" parent="BattleStage/PlayerHealthGroupD0" unique_id=3100000005]
+[node name="GenderLabel" type="Label" parent="BattleStage/PlayerHealthGroupD0" unique_id=-1194967291]
 layout_mode = 1
 offset_left = 80.0
 offset_top = 1.0
 offset_right = 100.0
 offset_bottom = 17.0
 theme_override_font_sizes/font_size = 14
-text = ""
 
 [node name="LevelLabel" type="Label" parent="BattleStage/PlayerHealthGroupD0" unique_id=-1293967286]
 layout_mode = 1
@@ -577,14 +578,13 @@ offset_bottom = 17.0
 theme_override_font_sizes/font_size = 14
 text = "Pokémon"
 
-[node name="GenderLabel" type="Label" parent="BattleStage/PlayerHealthGroupD1" unique_id=3100000006]
+[node name="GenderLabel" type="Label" parent="BattleStage/PlayerHealthGroupD1" unique_id=-1194967290]
 layout_mode = 1
 offset_left = 80.0
 offset_top = 1.0
 offset_right = 100.0
 offset_bottom = 17.0
 theme_override_font_sizes/font_size = 14
-text = ""
 
 [node name="LevelLabel" type="Label" parent="BattleStage/PlayerHealthGroupD1" unique_id=-1293967284]
 layout_mode = 1
@@ -606,110 +606,161 @@ grow_vertical = 2
 mouse_filter = 2
 metadata/_edit_lock_ = true
 
-[node name="VBox" type="VBoxContainer" parent="." unique_id=401385552]
+[node name="PartyStatusOpponent" type="HBoxContainer" parent="BattleStage" unique_id=-2694967201]
+visible = false
 layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
+anchor_left = 0.58
 anchor_top = 0.04
-anchor_right = 0.5
+anchor_right = 0.58
 anchor_bottom = 0.04
-grow_horizontal = 2
-
-[node name="ButtonArea" type="VBoxContainer" parent="VBox" unique_id=1135293509]
-layout_mode = 2
-
-[node name="ActionRegion" type="Control" parent="." unique_id=-1594967295]
-layout_mode = 1
-anchor_top = 0.75
-anchor_right = 1.0
-anchor_bottom = 0.95
-offset_left = 14.0
-offset_top = 18.0
-offset_right = -18.0
-offset_bottom = 18.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_right = 216.0
+offset_bottom = 30.0
+theme_override_constants/separation = 6
 mouse_filter = 2
 
-[node name="ActionPanel" type="PanelContainer" parent="ActionRegion" unique_id=-1594967292]
+[node name="Ball0" type="TextureRect" parent="BattleStage/PartyStatusOpponent" unique_id=-2694967202]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("21_ball_normal")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball1" type="TextureRect" parent="BattleStage/PartyStatusOpponent" unique_id=-2694967203]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("22_ball_status")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball2" type="TextureRect" parent="BattleStage/PartyStatusOpponent" unique_id=-2694967204]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("23_ball_fainted")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball3" type="TextureRect" parent="BattleStage/PartyStatusOpponent" unique_id=-2694967205]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("21_ball_normal")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball4" type="TextureRect" parent="BattleStage/PartyStatusOpponent" unique_id=-2694967206]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("21_ball_normal")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball5" type="TextureRect" parent="BattleStage/PartyStatusOpponent" unique_id=-2694967207]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("24_ball_empty")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="PartyStatusPlayer" type="HBoxContainer" parent="BattleStage" unique_id=-2694967208]
+visible = false
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+anchor_left = 0.05
+anchor_top = 0.68
+anchor_right = 0.05
+anchor_bottom = 0.68
+offset_right = 216.0
+offset_bottom = 30.0
+theme_override_constants/separation = 6
+mouse_filter = 2
 
-[node name="ActionVBox" type="VBoxContainer" parent="ActionRegion/ActionPanel" unique_id=-1594967294]
+[node name="Ball0" type="TextureRect" parent="BattleStage/PartyStatusPlayer" unique_id=-2694967209]
+custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
+texture = ExtResource("21_ball_normal")
+expand_mode = 1
+stretch_mode = 4
 
-[node name="StatusLabel" type="Label" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=321370111]
+[node name="Ball1" type="TextureRect" parent="BattleStage/PartyStatusPlayer" unique_id=-2694967210]
+custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
-text = "..."
-horizontal_alignment = 1
+texture = ExtResource("21_ball_normal")
+expand_mode = 1
+stretch_mode = 4
 
-[node name="NewButtonGrid" type="GridContainer" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=3100000005]
+[node name="Ball2" type="TextureRect" parent="BattleStage/PartyStatusPlayer" unique_id=-2694967211]
+custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
-columns = 2
-theme_override_constants/h_separation = 24
-theme_override_constants/v_separation = 4
+texture = ExtResource("22_ball_status")
+expand_mode = 1
+stretch_mode = 4
 
-[node name="NewButtonArea" type="VBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=-1594967293]
+[node name="Ball3" type="TextureRect" parent="BattleStage/PartyStatusPlayer" unique_id=-2694967212]
+custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
+texture = ExtResource("21_ball_normal")
+expand_mode = 1
+stretch_mode = 4
 
-[node name="DebugOverlay" type="Control" parent="." unique_id=-1694967295]
+[node name="Ball4" type="TextureRect" parent="BattleStage/PartyStatusPlayer" unique_id=-2694967213]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("23_ball_fainted")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball5" type="TextureRect" parent="BattleStage/PartyStatusPlayer" unique_id=-2694967214]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("24_ball_empty")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="TrainerIntroBanner" type="Control" parent="BattleStage" unique_id=-2694967215]
 visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 20.0
-offset_top = 20.0
-offset_right = -20.0
-offset_bottom = -20.0
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 1
+mouse_filter = 2
 
-[node name="Background" type="ColorRect" parent="DebugOverlay" unique_id=-1694967294]
+[node name="Backdrop" type="ColorRect" parent="BattleStage/TrainerIntroBanner" unique_id=-2694967216]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+color = Color(0, 0, 0, 0.55)
 mouse_filter = 2
-color = Color(0, 0, 0, 0.85)
 
-[node name="VBox" type="VBoxContainer" parent="DebugOverlay" unique_id=-1694967296]
+[node name="Portrait" type="TextureRect" parent="BattleStage/TrainerIntroBanner" unique_id=-2694967217]
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 8.0
-offset_top = 8.0
-offset_right = -8.0
-offset_bottom = -8.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -96.0
+offset_top = -176.0
+offset_right = 96.0
+offset_bottom = 16.0
+texture = ExtResource("25_trainer_portrait_sample")
+expand_mode = 1
+stretch_mode = 4
 
-[node name="Header" type="Label" parent="DebugOverlay/VBox" unique_id=-1694967297]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.2, 1, 0.4, 1)
-theme_override_font_sizes/font_size = 16
-text = "Combat Debug (F3 to toggle) — category filters below"
-autowrap_mode = 3
+[node name="NameLabel" type="Label" parent="BattleStage/TrainerIntroBanner" unique_id=-2694967218]
+layout_mode = 1
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -160.0
+offset_top = 26.0
+offset_right = 160.0
+offset_bottom = 76.0
+theme_override_font_sizes/font_size = 36
+horizontal_alignment = 1
+text = "Leader Brawly wants to battle!"
 
-[node name="ToggleRow" type="HFlowContainer" parent="DebugOverlay/VBox" unique_id=-1694967298]
-layout_mode = 2
-
-[node name="Scroll" type="ScrollContainer" parent="DebugOverlay/VBox" unique_id=-1694967299]
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="Body" type="RichTextLabel" parent="DebugOverlay/VBox/Scroll" unique_id=-1694967300]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-theme_override_font_sizes/normal_font_size = 14
-bbcode_enabled = true
+[node name="SharedChrome" parent="." instance=ExtResource("19_shared_chrome")]
+layout_mode = 1

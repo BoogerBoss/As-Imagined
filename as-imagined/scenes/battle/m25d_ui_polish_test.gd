@@ -161,7 +161,7 @@ func _test_gender_glyph_variants() -> void:
 func _test_debug_overlay_default_hidden() -> void:
 	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
 	var instance: Node = scene.instantiate()
-	var overlay: Control = instance.get_node("DebugOverlay")
+	var overlay: Control = instance.get_node("SharedChrome/DebugOverlay")
 	_chk("DebugOverlay is hidden by default, per this sub-phase's own locked scope",
 			overlay.visible == false)
 	instance.queue_free()

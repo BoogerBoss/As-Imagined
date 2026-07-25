@@ -144,11 +144,21 @@ const _ITEMS := [
 # the child nodes instantiate() already created regardless of tree
 # membership, so it works in both the real (tree-added) and test
 # (bare-instance) cases with no special-casing.
-var _parent_bs: BattleScreen = null
+# [Doubles-split roadmap, step 5] Deliberately UNTYPED, not the specific
+# BattleScreen class -- battle_screen_shared.gd's own BattleScreenShared
+# (used by the new battle_screen_singles.tscn/_doubles.tscn) is an
+# unrelated class, not a BattleScreen subclass, so a strict BattleScreen
+# type here would reject it, and a looser `Control` type would still fail
+# GDScript's static member-access checking for the custom fields/methods
+# this overlay calls on it (_font_menu/_style_menu_button/_player_party/
+# etc., none of which exist on plain Control). Both real classes expose the
+# same duck-typed interface here, resolved dynamically at runtime either
+# way.
+var _parent_bs = null
 var _field_slot: int = 0
 
 
-func setup(parent_bs: BattleScreen, field_slot: int) -> void:
+func setup(parent_bs, field_slot: int) -> void:
 	_parent_bs = parent_bs
 	_field_slot = field_slot
 	_build()

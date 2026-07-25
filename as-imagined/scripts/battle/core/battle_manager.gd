@@ -959,6 +959,13 @@ func set_trainer_data(side: int, data: TrainerData) -> void:
 	_trainer_battle_item_stock[side] = stock
 
 
+# [M26l] Read-back accessor — the only pre-existing way to reach
+# _trainer_data was internal (money-reward calc, AI item logic); UI code
+# (the trainer-intro portrait banner) needs to read the same data back out.
+func get_trainer_data(side: int) -> TrainerData:
+	return _trainer_data[side]
+
+
 # [M24b] Amulet Coin's one-shot switch-in latch — see _amulet_coin_triggered's
 # own doc comment. Called alongside _apply_switch_in_abilities() at all 4
 # switch-in sites; a no-op once already triggered or for the opponent side

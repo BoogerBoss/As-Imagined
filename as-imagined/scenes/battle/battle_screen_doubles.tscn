@@ -1,0 +1,337 @@
+[gd_scene load_steps=13 format=3 uid="uid://battlescreendoubles"]
+
+[ext_resource type="Script" path="res://scenes/battle/battle_screen_shared.gd" id="1_screen"]
+[ext_resource type="Script" uid="uid://by21x2021is5s" path="res://scripts/battle/core/battle_manager.gd" id="2_bm"]
+[ext_resource type="Theme" path="res://scenes/main_theme.tres" id="3_theme"]
+[ext_resource type="Texture2D" uid="uid://dbv7by4kbgmqj" path="res://assets/sprites/pokemon/back/0025_pikachu.png" id="4_pikachu_back"]
+[ext_resource type="Texture2D" uid="uid://p40biqq41hsj" path="res://assets/sprites/battle_backgrounds/building.png" id="4_y1o2w"]
+[ext_resource type="Texture2D" uid="uid://oa5advdirqvm" path="res://assets/sprites/pokemon/front/0006_charizard.png" id="5_charizard_front"]
+[ext_resource type="PackedScene" path="res://scenes/battle/health_group_panel_doubles_opponent.tscn" id="6_opp_panel"]
+[ext_resource type="PackedScene" path="res://scenes/battle/health_group_panel_doubles_player.tscn" id="7_ply_panel"]
+[ext_resource type="Texture2D" uid="uid://d2p3p3nsfeycn" path="res://assets/sprites/battle_ui/party_status/ball_normal.png" id="21_ball_normal"]
+[ext_resource type="Texture2D" uid="uid://c27v35tiu3pc" path="res://assets/sprites/battle_ui/party_status/ball_status.png" id="22_ball_status"]
+[ext_resource type="Texture2D" uid="uid://b2hk8ympj8i5h" path="res://assets/sprites/battle_ui/party_status/ball_fainted.png" id="23_ball_fainted"]
+[ext_resource type="Texture2D" uid="uid://u5nenbe1yr5i" path="res://assets/sprites/battle_ui/party_status/ball_empty.png" id="24_ball_empty"]
+[ext_resource type="Texture2D" uid="uid://c4lgygj6twkss" path="res://assets/sprites/trainers/portraits/0039_leader_brawly.png" id="25_trainer_portrait_sample"]
+[ext_resource type="PackedScene" path="res://scenes/battle/shared_battle_chrome.tscn" id="30_shared_chrome"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_opp_sprite_preview"]
+atlas = ExtResource("5_charizard_front")
+region = Rect2(0, 0, 64, 64)
+
+[node name="BattleScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("3_theme")
+script = ExtResource("1_screen")
+
+[node name="BattleManager" type="Node" parent="."]
+script = ExtResource("2_bm")
+
+[node name="OpponentAnimTimer" type="Timer" parent="."]
+wait_time = 0.5
+one_shot = true
+autostart = true
+
+[node name="BattleStage" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Background" type="TextureRect" parent="BattleStage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -96.0
+offset_bottom = -96.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("4_y1o2w")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="OpponentSprite0" type="TextureRect" parent="BattleStage"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.83
+anchor_top = 0.06
+anchor_right = 0.83
+anchor_bottom = 0.06
+offset_left = -220.15997
+offset_top = 143.12
+offset_right = -89.160034
+offset_bottom = 274.12
+texture = SubResource("AtlasTexture_opp_sprite_preview")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="OpponentPanel0" parent="BattleStage" instance=ExtResource("6_opp_panel")]
+layout_mode = 1
+anchor_left = 0.72
+anchor_top = 0.24
+anchor_right = 0.72
+anchor_bottom = 0.24
+offset_left = -720.44006
+offset_top = -100.51999
+offset_right = -586.44006
+offset_bottom = -66.51999
+mouse_filter = 2
+
+[node name="OpponentSprite1" type="TextureRect" parent="BattleStage"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.83
+anchor_top = 0.34
+anchor_right = 0.83
+anchor_bottom = 0.34
+offset_left = -32.0
+offset_top = -33.0
+offset_right = 99.0
+offset_bottom = 98.0
+texture = SubResource("AtlasTexture_opp_sprite_preview")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="OpponentPanel1" parent="BattleStage" instance=ExtResource("6_opp_panel")]
+layout_mode = 1
+anchor_left = 0.72
+anchor_top = 0.52
+anchor_right = 0.72
+anchor_bottom = 0.52
+offset_left = -720.44006
+offset_top = -190.95999
+offset_right = -586.44006
+offset_bottom = -156.95999
+mouse_filter = 2
+
+[node name="PlayerSprite0" type="TextureRect" parent="BattleStage"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.14
+anchor_top = 0.22
+anchor_right = 0.14
+anchor_bottom = 0.22
+offset_left = 123.72
+offset_top = 267.44
+offset_right = 254.72
+offset_bottom = 398.44
+texture = ExtResource("4_pikachu_back")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="PlayerPanel0" parent="BattleStage" instance=ExtResource("7_ply_panel")]
+layout_mode = 1
+anchor_left = 0.03
+anchor_top = 0.4
+anchor_right = 0.03
+anchor_bottom = 0.4
+offset_left = 848.44
+offset_top = 97.79999
+offset_right = 982.44
+offset_bottom = 131.79999
+mouse_filter = 2
+
+[node name="PlayerSprite1" type="TextureRect" parent="BattleStage"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.14
+anchor_top = 0.5
+anchor_right = 0.14
+anchor_bottom = 0.5
+offset_left = -42.28
+offset_top = 64.0
+offset_right = 88.72
+offset_bottom = 195.0
+texture = ExtResource("4_pikachu_back")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="PlayerPanel1" parent="BattleStage" instance=ExtResource("7_ply_panel")]
+layout_mode = 1
+anchor_left = 0.03
+anchor_top = 0.68
+anchor_right = 0.03
+anchor_bottom = 0.68
+offset_left = 851.44
+offset_top = -28.640015
+offset_right = 985.44
+offset_bottom = 5.3599854
+mouse_filter = 2
+
+[node name="EffectLayer" type="Control" parent="BattleStage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="PartyStatusOpponent" type="HBoxContainer" parent="BattleStage"]
+visible = false
+layout_mode = 1
+anchor_left = 0.58
+anchor_top = 0.04
+anchor_right = 0.58
+anchor_bottom = 0.04
+offset_right = 216.0
+offset_bottom = 30.0
+theme_override_constants/separation = 6
+mouse_filter = 2
+
+[node name="Ball0" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("21_ball_normal")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball1" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("22_ball_status")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball2" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("23_ball_fainted")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball3" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("21_ball_normal")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball4" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("21_ball_normal")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball5" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("24_ball_empty")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="PartyStatusPlayer" type="HBoxContainer" parent="BattleStage"]
+visible = false
+layout_mode = 1
+anchor_left = 0.05
+anchor_top = 0.68
+anchor_right = 0.05
+anchor_bottom = 0.68
+offset_right = 216.0
+offset_bottom = 30.0
+theme_override_constants/separation = 6
+mouse_filter = 2
+
+[node name="Ball0" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("21_ball_normal")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball1" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("21_ball_normal")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball2" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("22_ball_status")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball3" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("21_ball_normal")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball4" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("23_ball_fainted")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="Ball5" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("24_ball_empty")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="TrainerIntroBanner" type="Control" parent="BattleStage"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Backdrop" type="ColorRect" parent="BattleStage/TrainerIntroBanner"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.55)
+mouse_filter = 2
+
+[node name="Portrait" type="TextureRect" parent="BattleStage/TrainerIntroBanner"]
+layout_mode = 1
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -96.0
+offset_top = -176.0
+offset_right = 96.0
+offset_bottom = 16.0
+texture = ExtResource("25_trainer_portrait_sample")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="NameLabel" type="Label" parent="BattleStage/TrainerIntroBanner"]
+layout_mode = 1
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -160.0
+offset_top = 26.0
+offset_right = 160.0
+offset_bottom = 76.0
+theme_override_font_sizes/font_size = 36
+horizontal_alignment = 1
+text = "Leader Brawly wants to battle!"
+
+[node name="SharedChrome" parent="." instance=ExtResource("30_shared_chrome")]
+layout_mode = 1

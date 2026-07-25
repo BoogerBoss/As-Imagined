@@ -1,4 +1,4 @@
-class_name BattleScreen
+class_name BattleScreenShared
 extends Control
 
 # [M23.6] `class_name` added so battle_setup_screen.gd can call this
@@ -408,8 +408,6 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # they were at the time, per this phase's own explicit scope -- LogLabel
 # itself was later retired outright by M26b, see above).
 @onready var _background_rect: TextureRect = $BattleStage/Background
-@onready var _opponent_sprite: TextureRect = $BattleStage/OpponentSprite
-@onready var _player_sprite: TextureRect = $BattleStage/PlayerSprite
 
 # [M26o] Compact 6-pokéball party status row -- one per side, mirroring
 # source's CreatePartyStatusSummarySprites (battle_interface.c:1206). Hidden
@@ -425,18 +423,17 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 @onready var _trainer_intro_portrait: TextureRect = $BattleStage/TrainerIntroBanner/Portrait
 @onready var _trainer_intro_name_label: Label = $BattleStage/TrainerIntroBanner/NameLabel
 
-# [M26c battle-UI polish] Bottom-anchor baseline -- the opponent sprite box's
-# own ORIGINAL (.tscn-authored) offset_top/offset_bottom, captured once in
-# _setup_health_ui() before any species-driven texture/offset mutation ever
-# happens. _apply_bottom_anchored_front_sprite() always computes a fresh
-# offset_top/offset_bottom FROM this fixed baseline, never from the box's own
-# current (possibly already-shifted-for-a-different-species) live offset --
-# see that function's own doc comment for why the math needs a stable
-# baseline. Doubles' own two slots get one baseline pair each.
-var _opponent_sprite_base_top: float = 0.0
-var _opponent_sprite_base_bottom: float = 0.0
-var _opp_sprite_d_base_top: Array = []
-var _opp_sprite_d_base_bottom: Array = []
+# [Doubles-split roadmap, step 5] Bottom-anchor baseline -- each opponent
+# sprite slot's own ORIGINAL (.tscn-authored) offset_top/offset_bottom,
+# captured once in _setup_health_ui() before any species-driven texture/
+# offset mutation ever happens. _apply_bottom_anchored_front_sprite() always
+# computes a fresh offset_top/offset_bottom FROM this fixed baseline, never
+# from the box's own current (possibly already-shifted-for-a-different-
+# species) live offset -- see that function's own doc comment for why the
+# math needs a stable baseline. One element per opponent slot (1 for
+# battle_screen_singles.tscn, 2 for battle_screen_doubles.tscn).
+var _opp_sprite_base_top: Array = []
+var _opp_sprite_base_bottom: Array = []
 
 # [M23.11 Phase 5c] Hit-effect nodes are spawned/freed here at runtime --
 # the LAST child of BattleStage in battle_screen.tscn, so every sprite/
@@ -461,89 +458,38 @@ var _opp_sprite_d_base_bottom: Array = []
 # the pre-Phase-5c code via a direct git-stash comparison).
 var _active_hit_effect_nodes: Array = []
 
-# [M23.11 Phase 4b] Real health-box art replacing Phase 4a's plain
-# ProgressBar placeholders -- see _setup_health_ui()'s own doc comment for
-# the asset structure this relies on.
-@onready var _opponent_health_group: Control = $BattleStage/OpponentHealthGroup
-@onready var _opponent_health_bg: TextureRect = $BattleStage/OpponentHealthGroup/Background
-@onready var _opponent_status_icon: TextureRect = $BattleStage/OpponentHealthGroup/StatusIcon
-@onready var _opponent_hp_fill: TextureProgressBar = $BattleStage/OpponentHealthGroup/HpFill
-# [M25d, split M26c-1 follow-up] Name/level display — see _refresh_ui()'s
-# own doc comment for why this is updated in lockstep with the HP bar (same
-# call site, every state change) rather than only on switch-in, guaranteeing
-# it can never lag. Split into two separate Label nodes (was one combined
-# NameLevelLabel) so the gender symbol can be appended to the name text
-# alone without disturbing the level text's own right-aligned position.
-@onready var _opponent_name_label: Label = $BattleStage/OpponentHealthGroup/NameLabel
-@onready var _opponent_gender_label: Label = $BattleStage/OpponentHealthGroup/GenderLabel
-@onready var _opponent_level_label: Label = $BattleStage/OpponentHealthGroup/LevelLabel
-@onready var _player_health_group: Control = $BattleStage/PlayerHealthGroup
-@onready var _player_health_bg: TextureRect = $BattleStage/PlayerHealthGroup/Background
-@onready var _player_status_icon: TextureRect = $BattleStage/PlayerHealthGroup/StatusIcon
-@onready var _player_hp_fill: TextureProgressBar = $BattleStage/PlayerHealthGroup/HpFill
-# [M26c-1] Real EXP bar — singles player only, matching the real games' own
-# scope (never shown for the opponent's mon, never shown in doubles at all —
-# see gen_databox_sprites.py's own doc comment: the pack ships no EXP-ledge
-# variant for either the opponent box or the doubles "thin" box, confirming
-# this isn't just a design choice made in isolation).
-@onready var _player_exp_fill: TextureProgressBar = $BattleStage/PlayerHealthGroup/ExpFill
-# [M26c-3] Numeric HP readout ("100/120") -- singles player only, matching
-# the real games' own scope exactly (PrintHpOnHealthbox, battle_interface.c
-# -- the player's own box always prints currHp/maxHp; the opponent's box
-# only does under a debug-only "hpNumbersNoBars" flag this project doesn't
-# model, and doubles boxes are gated behind that same flag too). Sits in
-# the real vertical gap between the HP bar and the EXP bar below it.
-@onready var _player_hp_number_label: Label = $BattleStage/PlayerHealthGroup/HpNumberLabel
-@onready var _player_name_label: Label = $BattleStage/PlayerHealthGroup/NameLabel
-@onready var _player_gender_label: Label = $BattleStage/PlayerHealthGroup/GenderLabel
-@onready var _player_level_label: Label = $BattleStage/PlayerHealthGroup/LevelLabel
+# [Doubles-split roadmap, step 5] Real health-box art now lives inside each
+# HealthGroupPanel instance (health_group_panel.gd) rather than as raw
+# per-widget fields here -- one array per side, one element per active
+# slot, collected in _setup_health_ui() by probing however many
+# OpponentPanelN/PlayerPanelN nodes actually exist under BattleStage.
+# battle_screen_singles.tscn wires exactly 1 element into each; battle_
+# screen_doubles.tscn wires exactly 2 -- the generic per-slot loops in
+# _refresh_ui()/_on_opponent_anim_timer_timeout()/etc. work identically
+# either way via BattleParty.num_active(), with no _is_doubles() branch
+# anywhere in this file. Plain (untyped) Array for the same reason the old
+# doubles-only arrays were -- this project's own documented GDScript gotcha
+# (typed-Array literal assignment can silently fail) applies to `@onready
+# var x: Array[T] = [$A, $B]` specifically.
+var _opp_sprites: Array = []
+var _opp_panels: Array = []
+# [Doubles-split roadmap, step 5] Idle-bob frame state, one per opponent
+# slot -- each slot's frame only advances/freezes based on THAT slot's own
+# `mon.fainted`, so one opponent fainting never freezes/desyncs a still-live
+# teammate's own animation in doubles.
+var _opp_anim_frame: Array = []
 
-var _opponent_status_atlas: AtlasTexture
-var _player_status_atlas: AtlasTexture
+var _ply_sprites: Array = []
+var _ply_panels: Array = []
 
-# [M23.11 Phase 4d] Doubles visual layer — 2 sprite/health-box groups per
-# side, reusing the already-pulled healthbox_doubles_* art (see
-# _setup_health_ui()'s own doc comment for the asset structure this relies
-# on). Kept as plain (untyped) Array, not Array[TextureRect] — this
-# project's own documented GDScript gotcha (typed-Array literal assignment
-# can silently fail) applies to `@onready var x: Array[T] = [$A, $B]`
-# specifically; a plain Array sidesteps it entirely since these are only
-# ever indexed 0/1 within this script, never passed anywhere a strict
-# element type matters. Populated once in _setup_health_ui() by
-# _collect_doubles_nodes() — singles' own existing single-node fields
-# above are completely untouched, this is purely additive.
-var _opp_sprites_d: Array = []
-var _opp_groups_d: Array = []
-var _opp_bg_d: Array = []
-var _opp_status_icon_d: Array = []
-var _opp_status_atlas_d: Array = [null, null]
-var _opp_hp_fill_d: Array = []
-var _opp_name_label_d: Array = []  # [M25d, split M26c-1 follow-up]
-var _opp_gender_label_d: Array = []  # [M26c battle-UI polish]
-var _opp_level_label_d: Array = []  # [M25d, split M26c-1 follow-up]
-# [M23.11 Phase 4d] Idle-bob frame state, one per doubles opponent slot —
-# mirrors the singles-only `_opponent_anim_frame` below but per-slot, so
-# one opponent fainting doesn't freeze/desync its still-live teammate's
-# own animation (each slot's frame only advances/freezes based on THAT
-# slot's own `mon.fainted`, exactly like the singles case already does).
-var _opp_anim_frame_d: Array = [0, 0]
 
-var _ply_sprites_d: Array = []
-var _ply_groups_d: Array = []
-var _ply_bg_d: Array = []
-var _ply_status_icon_d: Array = []
-var _ply_status_atlas_d: Array = [null, null]
-var _ply_hp_fill_d: Array = []
-var _ply_name_label_d: Array = []  # [M25d, split M26c-1 follow-up]
-var _ply_gender_label_d: Array = []  # [M26c battle-UI polish]
-var _ply_level_label_d: Array = []  # [M25d, split M26c-1 follow-up]
-
-# [M23.11 Phase 4d] Set once in _ready() from BattleSetupContext.is_doubles
-# (captured into the local `is_doubles_battle` there already) — governs
-# which of the singles vs. doubles node sets is shown/refreshed for the
-# whole battle (never changes mid-battle, so this is a plain one-shot flag
-# rather than something recomputed every _refresh_ui() call).
-var _is_doubles_mode: bool = false
+# [Doubles-split roadmap, step 5] Replaces the old _is_doubles_mode flag --
+# derived directly from how many opponent panels this SCENE actually wired
+# (1 for battle_screen_singles.tscn, 2 for battle_screen_doubles.tscn)
+# rather than a separately-tracked bool that could drift out of sync with
+# the real node count.
+func _is_doubles() -> bool:
+	return _opp_panels.size() > 1
 
 # [M23.11 Phase 4c] Idle-bob animation -- front sprite (opponent) ONLY, see
 # _setup_health_ui() area's own doc comment on _next_anim_frame() for why
@@ -565,7 +511,6 @@ var _is_doubles_mode: bool = false
 # into a real per-switch-in replay/reveal system here -- that remains its
 # own, separately-scoped future item; this is just "stop looping."
 @onready var _opponent_anim_timer: Timer = $OpponentAnimTimer
-var _opponent_anim_frame: int = 0
 
 var _player_party: BattleParty
 var _opp_party: BattleParty
@@ -962,7 +907,7 @@ func _ready() -> void:
 		opp_trainer_id = BattleSetupContext.opp_trainer_id
 		BattleSetupContext.clear()
 	else:
-		_build_teams()
+		is_doubles_battle = _build_teams()
 	_apply_background(background_id)
 
 	# [M26l] Resolve BEFORE start_battle_*() below so BattleManager already
@@ -973,18 +918,6 @@ func _ready() -> void:
 	if opp_trainer_id >= 0:
 		opp_trainer_data = TrainerRegistry.get_trainer(opp_trainer_id)
 
-	# [M23.11 Phase 4d] One-shot node-set toggle — singles nodes stay exactly
-	# as before (visible, unchanged) when not in doubles; when in doubles,
-	# they're hidden entirely and the D0/D1 node pairs (already default-
-	# hidden in the .tscn) take over via _refresh_doubles_side()'s own
-	# per-slot visibility below. Set here, once, rather than every
-	# _refresh_ui() call, since the format never changes mid-battle.
-	_is_doubles_mode = is_doubles_battle
-	if _is_doubles_mode:
-		_opponent_sprite.visible = false
-		_opponent_health_group.visible = false
-		_player_sprite.visible = false
-		_player_health_group.visible = false
 
 	var ai := TrainerAI.new()
 	ai.tier = TrainerAI.Tier.SMART
@@ -1096,6 +1029,16 @@ func _ready() -> void:
 # available bench slot for a mandatory faint replacement). Deliberately dumb/
 # fast/deterministic: this proves the async loop completes headlessly through
 # the real production code path, not that the AI plays well.
+#
+# [Doubles-split roadmap, step 5] Generalized over however many player field
+# slots need an action, reusing the SAME per-slot tracking/target-resolution
+# functions the interactive path uses (_ensure_slot_tracking_for_new_turn/
+# _current_action_field_slot/_current_switch_prompt_field_slot) rather than
+# hardcoding field_slot 0 -- the original singles-only version silently
+# never addressed field slot 1 at all, a latent gap invisible until a
+# genuinely doubles-shaped --autoplay run (battle_screen_doubles.tscn)
+# actually exercised it. Target resolution mirrors _on_move_pressed's own
+# default (first live candidate from get_live_targets, else combatant 1).
 
 func _run_autoplay() -> void:
 	var guard := 0
@@ -1103,13 +1046,32 @@ func _run_autoplay() -> void:
 		guard += 1
 		match _bm.get_phase():
 			BattleManager.BattlePhase.MOVE_SELECTION:
-				var mon: BattlePokemon = _player_party.get_active()
-				var move_idx := _first_usable_move_index(mon)
-				_bm.queue_move_targeted(0, max(move_idx, 0), 1)
+				_ensure_slot_tracking_for_new_turn()
+				var field_slot := _current_action_field_slot()
+				if field_slot >= 0:
+					var mon: BattlePokemon = _player_party.get_active_at(field_slot)
+					var move_idx: int = max(_first_usable_move_index(mon), 0)
+					var move: MoveData = mon.moves[move_idx]
+					var target_idx := 1
+					if move != null:
+						var candidates: Array[BattlePokemon] = _bm.get_live_targets(mon, move)
+						if not candidates.is_empty():
+							target_idx = _bm.get_combatant_index(candidates[0])
+					_bm.queue_move_targeted(field_slot, move_idx, target_idx)
+					_slot_acted[field_slot] = true
 			BattleManager.BattlePhase.SWITCH_PROMPT:
-				var slot := _first_switch_slot()
-				if slot >= 0:
-					_bm.queue_replacement_for(0, slot)
+				var prompt_slot := _current_switch_prompt_field_slot()
+				if prompt_slot >= 0:
+					var slot := _first_switch_slot()
+					# [Doubles-split roadmap, step 5, real bug found via this
+					# scene's own first --autoplay run] Submitting NOTHING when
+					# no bench candidate exists (e.g. a doubles battle where
+					# the last live member is already active in the other
+					# field slot) left BattleManager stalled at SWITCH_PROMPT
+					# forever -- reused the same explicit "no replacement"
+					# submission _build_switch_buttons' own M25a hardlock fix
+					# already established for the interactive path.
+					_bm.queue_replacement_for(prompt_slot, slot)
 			_:
 				pass
 		_bm.advance()
@@ -1301,7 +1263,7 @@ func _on_log_turn_started(turn_number: int) -> void:
 # effectiveness lines below instead, once per real target).
 func _on_log_move_announced(attacker: BattlePokemon, defender: BattlePokemon, move: MoveData) -> void:
 	var text := "%s used %s" % [_mon_label(attacker), move.move_name]
-	if defender != null and defender != attacker and not (move.is_spread and _is_doubles_mode):
+	if defender != null and defender != attacker and not (move.is_spread and _is_doubles()):
 		text += " on %s" % _mon_label(defender)
 	# [M26 pacing] Source's own CancelerAttackstring fires this announcement
 	# with NO trailing wait command -- the interpreter falls straight through
@@ -1513,50 +1475,45 @@ func _field_slot_for(mon: BattlePokemon, party: BattleParty) -> int:
 	return 0
 
 
-# Singles-vs-doubles-aware sprite-node lookup, reusing Phase 4d's own
-# party/slot model rather than adding any new BattleManager-side targeting
-# concept. Player-vs-opponent side is resolved the exact same way
-# _mon_label() already does (_player_party.members.has(mon)).
+# [Doubles-split roadmap, step 5] Generic slot lookup shared by the three
+# functions below -- reuses Phase 4f's own party/slot model, generalized
+# over however many slots this scene's arrays actually hold (1 for singles,
+# 2 for doubles) rather than branching on a mode flag. Player-vs-opponent
+# side is resolved the exact same way _mon_label() already does
+# (_player_party.members.has(mon)).
+func _panel_for(mon: BattlePokemon) -> HealthGroupPanel:
+	if mon == null:
+		return null
+	var is_player: bool = _player_party.members.has(mon)
+	var party: BattleParty = _player_party if is_player else _opp_party
+	var slot := _field_slot_for(mon, party)
+	var panels: Array = _ply_panels if is_player else _opp_panels
+	return panels[slot] as HealthGroupPanel
+
+
 func _sprite_node_for(mon: BattlePokemon) -> Control:
 	if mon == null:
 		return null
 	var is_player: bool = _player_party.members.has(mon)
-	if not _is_doubles_mode:
-		return _player_sprite if is_player else _opponent_sprite
 	var party: BattleParty = _player_party if is_player else _opp_party
 	var slot := _field_slot_for(mon, party)
-	var sprites: Array = _ply_sprites_d if is_player else _opp_sprites_d
+	var sprites: Array = _ply_sprites if is_player else _opp_sprites
 	return sprites[slot] as Control
 
 
-# [Message pacing] Same singles-vs-doubles-aware lookup as _sprite_node_for,
-# for a mon's own HP TextureProgressBar -- used by the "hp_drain" beat to
-# tween the correct bar rather than snapping it via _refresh_ui().
+# [Message pacing] Same generic slot lookup as _sprite_node_for, for a
+# mon's own HP TextureProgressBar -- used by the "hp_drain" beat to tween
+# the correct bar rather than snapping it via _refresh_ui().
 func _hp_fill_bar_for(mon: BattlePokemon) -> TextureProgressBar:
-	if mon == null:
-		return null
-	var is_player: bool = _player_party.members.has(mon)
-	if not _is_doubles_mode:
-		return _player_hp_fill if is_player else _opponent_hp_fill
-	var party: BattleParty = _player_party if is_player else _opp_party
-	var slot := _field_slot_for(mon, party)
-	var bars: Array = _ply_hp_fill_d if is_player else _opp_hp_fill_d
-	return bars[slot] as TextureProgressBar
+	var panel := _panel_for(mon)
+	return panel.get_hp_fill_bar() if panel != null else null
 
 
-# [M26c-4] Same singles-vs-doubles-aware lookup as _sprite_node_for, for a
-# mon's own health-group Control instead of its sprite -- used to make the
-# real health box itself the click/hover target for TARGET_SELECT.
+# [M26c-4] Same generic slot lookup as _sprite_node_for, for a mon's own
+# health-group panel instead of its sprite -- used to make the real health
+# box itself the click/hover target for TARGET_SELECT.
 func _health_group_for(mon: BattlePokemon) -> Control:
-	if mon == null:
-		return null
-	var is_player: bool = _player_party.members.has(mon)
-	if not _is_doubles_mode:
-		return _player_health_group if is_player else _opponent_health_group
-	var party: BattleParty = _player_party if is_player else _opp_party
-	var slot := _field_slot_for(mon, party)
-	var groups: Array = _ply_groups_d if is_player else _opp_groups_d
-	return groups[slot] as Control
+	return _panel_for(mon)
 
 
 # Generic + Flamethrower + Thunder all share this ONE renderer -- Flamethrower
@@ -1742,72 +1699,6 @@ func _gender_glyph(gender: int) -> String:
 
 func _name_text(mon: BattlePokemon) -> String:
 	return mon.species.species_name
-
-
-# [M26c battle-UI polish] The gender glyph is now rendered by its own
-# separate GenderLabel node, NOT appended into the name string -- per
-# explicit request, so the glyph reads as a distinct element next to the
-# name rather than part of the name text itself. Since the glyph's own
-# horizontal position depends on how wide the (now-much-larger) name text
-# renders, and Label offers no "size to content, then place a sibling right
-# after it" layout primitive on its own, this measures the name's real
-# rendered width via the SAME font/size the name label is using and places
-# GenderLabel immediately after it -- recomputed on every call, so it stays
-# correct across every font-size/box change this or a future session makes,
-# rather than a hardcoded offset that would need re-tuning by hand.
-# [M26c-2] level_label is optional (default null) so every pre-existing
-# 3-arg caller/test is unaffected. When given, LevelLabel is ALSO
-# repositioned dynamically, immediately after whichever of
-# gender_label/name_label ends furthest right -- a fixed right-aligned box
-# (this project's original design) overlaps the gender glyph for this
-# project's own longest real species names (e.g. "Weepinbell"/"Aerodactyl",
-# 10 characters) once the name font grew large enough to fill the box's
-# top band, since the level box's own left edge never moved to make room.
-# Positioning it dynamically, the same way gender_label already is, closes
-# that gap by construction regardless of name length -- confirmed via a
-# real screenshot with both 10-character worst-case names before this fix
-# shipped (see this session's own scratch-driver verification).
-#
-# Clamped against the health group's own "Background" sibling's real width
-# (read live, not hardcoded) -- an unclamped dynamic position pushed the
-# level text past the databox's own right edge (and for the player group,
-# off the visible screen entirely) for this project's longest real names,
-# a real regression a follow-up screenshot caught. name_label's own parent
-# is the health-group Control; falls back to no clamp when no "Background"
-# sibling exists (e.g. this function's own bare-Label unit tests), matching
-# this function's pre-clamp behavior for those callers.
-func _position_gender_label(name_label: Label, gender_label: Label, mon: BattlePokemon,
-		level_label: Label = null) -> void:
-	var glyph := _gender_glyph(mon.gender)
-	gender_label.text = glyph
-	var font: Font = name_label.get_theme_font("font")
-	if font == null:
-		return
-	var font_size: int = name_label.get_theme_font_size("font_size")
-	var name_width: float = font.get_string_size(
-			_name_text(mon), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	var gap: float = font_size * 0.15
-	var content_right: float = name_label.offset_left + name_width
-	if not glyph.is_empty():
-		gender_label.offset_top = name_label.offset_top
-		gender_label.offset_bottom = name_label.offset_bottom
-		gender_label.offset_left = name_label.offset_left + name_width + gap
-		gender_label.offset_right = gender_label.offset_left + font_size * 1.2
-		content_right = gender_label.offset_right
-	if level_label != null:
-		var level_width: float = font.get_string_size(
-				_level_text(mon), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		var desired_left: float = content_right + gap * 2.5
-		var max_left: float = INF
-		var parent := name_label.get_parent()
-		if parent != null and parent.has_node("Background"):
-			var background := parent.get_node("Background")
-			max_left = background.offset_right - level_width - gap
-		level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		level_label.offset_top = name_label.offset_top
-		level_label.offset_bottom = name_label.offset_bottom
-		level_label.offset_left = minf(desired_left, max_left)
-		level_label.offset_right = level_label.offset_left + font_size * 4.0
 
 
 # [M25d] "Lv" immediately followed by the number, no space — matches the
@@ -2223,9 +2114,52 @@ static func build_fixture_opp_party() -> BattleParty:
 	return party
 
 
-func _build_teams() -> void:
+# [Doubles-split roadmap, step 5] Fallback fixture teams for a direct/
+# --autoplay launch with no BattleSetupContext pending. The fixture
+# builders themselves stay singles-shaped (active_indices=[0], exactly 2
+# members) since they're also called directly elsewhere (battle_setup_
+# screen.gd's own static references); shaped up to doubles here instead,
+# based on however many opponent panels this SCENE actually has
+# (_setup_health_ui() already ran and populated _opp_panels before this is
+# called) -- so a direct launch of battle_screen_doubles.tscn exercises a
+# real 2-active-slot battle rather than silently running singles-shaped
+# teams inside a doubles-shaped scene. Returns whether the doubles shape
+# was applied, so _ready() can pass the same answer to
+# start_battle_doubles()/start_battle_with_parties().
+#
+# [Real bug found via this scene's own first --autoplay run] Marking both
+# of the singles fixture's 2 members active (active_indices=[0,1]) with no
+# THIRD member leaves genuinely zero bench -- a mandatory faint replacement
+# can never resolve (_first_switch_slot() always returns -1), stalling
+# SWITCH_PROMPT forever. Two extra bench members are appended per side so a
+# doubles fixture always has a real switch-in available, matching what an
+# actual doubles battle needs.
+func _build_teams() -> bool:
 	_player_party = build_fixture_player_party()
 	_opp_party = build_fixture_opp_party()
+	if _opp_panels.size() > 1:
+		_player_party.active_indices = [0, 1]
+		_opp_party.active_indices = [0, 1]
+		var bench := _make_mon("Gale", TypeChart.TYPE_FLYING, TypeChart.TYPE_NONE,
+				170, 80, 70, 80, 70, 100)
+		bench.add_move(_load_move(16))  # Gust
+		bench.add_move(_load_move(98))  # Quick Attack
+		_player_party.members.append(bench)
+		_player_party.members.append(_make_mon("Boulder", TypeChart.TYPE_ROCK, TypeChart.TYPE_NONE,
+				190, 90, 100, 60, 60, 50))
+		_player_party.members[-1].add_move(_load_move(33))  # Tackle
+		_player_party.members[-1].add_move(_load_move(157))  # Rock Slide
+
+		_opp_party.members.append(_make_mon("Frost", TypeChart.TYPE_ICE, TypeChart.TYPE_NONE,
+				170, 75, 70, 90, 80, 85))
+		_opp_party.members[-1].add_move(_load_move(33))  # Tackle
+		_opp_party.members[-1].add_move(_load_move(58))  # Ice Beam
+		_opp_party.members.append(_make_mon("Shade", TypeChart.TYPE_GHOST, TypeChart.TYPE_NONE,
+				160, 70, 70, 90, 90, 90))
+		_opp_party.members[-1].add_move(_load_move(33))  # Tackle
+		_opp_party.members[-1].add_move(_load_move(506))  # Hex
+		return true
+	return false
 
 
 # ── UI rendering ─────────────────────────────────────────────────────────
@@ -2380,27 +2314,17 @@ func _unhandled_input(event: InputEvent) -> void:
 func _on_opponent_anim_timer_timeout() -> void:
 	if _opp_party == null:
 		return
-	# [M23.11 Phase 4d] Doubles branch, checked first and returning early —
-	# the singles branch below is completely untouched. Each doubles slot's
+	# [Doubles-split roadmap, step 5] Generic over however many opponent
+	# slots this scene has (1 for singles, 2 for doubles) -- each slot's
 	# frame/fainted state is tracked and advanced fully independently (see
-	# _opp_anim_frame_d's own doc comment), so one opponent fainting freezes
+	# _opp_anim_frame's own doc comment), so one opponent fainting freezes
 	# only its own sprite, never its still-live teammate's.
-	if _is_doubles_mode:
-		var active_count := _opp_party.num_active()
-		for slot in range(2):
-			if slot >= active_count:
-				continue
-			var mon: BattlePokemon = _opp_party.get_active_at(slot)
-			_opp_anim_frame_d[slot] = _next_anim_frame(_opp_anim_frame_d[slot], mon.fainted)
-			_apply_bottom_anchored_front_sprite(_opp_sprites_d[slot], mon.species.national_dex_num,
-					_opp_anim_frame_d[slot], _opp_sprite_d_base_top[slot], _opp_sprite_d_base_bottom[slot])
-		return
-	var side1_mon: BattlePokemon = _opp_party.get_active()
-	if side1_mon == null:
-		return
-	_opponent_anim_frame = _next_anim_frame(_opponent_anim_frame, side1_mon.fainted)
-	_apply_bottom_anchored_front_sprite(_opponent_sprite, side1_mon.species.national_dex_num,
-			_opponent_anim_frame, _opponent_sprite_base_top, _opponent_sprite_base_bottom)
+	var active_count := _opp_party.num_active()
+	for slot in range(active_count):
+		var mon: BattlePokemon = _opp_party.get_active_at(slot)
+		_opp_anim_frame[slot] = _next_anim_frame(_opp_anim_frame[slot], mon.fainted)
+		_apply_bottom_anchored_front_sprite(_opp_sprites[slot], mon.species.national_dex_num,
+				_opp_anim_frame[slot], _opp_sprite_base_top[slot], _opp_sprite_base_bottom[slot])
 
 
 # [M23.11 Phase 4a, recolored M26c-1] Green/yellow/red HP-fraction
@@ -2423,66 +2347,6 @@ func _hp_bar_color(current: int, max_hp: int) -> Color:
 	elif frac > 0.2:
 		return Color8(255, 231, 57)
 	return Color8(255, 90, 57)
-
-
-# [M26c-1] The Emerald UI Pack's own real EXP-bar color, sampled directly
-# from Graphics/UI/Battle/overlay_exp.png (170x4, one single flat color --
-# no shadow/highlight pair, unlike the HP bar's own 3-state bands, matching
-# the real games' own EXP bar never changing color).
-const _EXP_BAR_COLOR := Color8(66, 206, 255)
-
-
-# [M26c-1] A tiny solid-color-tintable fill texture, generated once at
-# runtime rather than pulled as an asset file -- both the HP bar and the
-# new EXP bar are plain rectangular fills with no shape/border of their own
-# (the pill/bar OUTLINE is now baked directly into the databox art itself,
-# see gen_databox_sprites.py's own doc comment), so a 1x1 white pixel
-# stretched by TextureProgressBar's own fill + recolored via tint_progress
-# reproduces either bar exactly, matching this file's own established
-# "generate simple textures in code, don't manage a file for it" precedent
-# (_color_keyed_texture below does the equivalent transform for a different
-# case). Replaces Phase 4b's old hpbar.png-sourced AtlasTexture fill
-# region entirely -- that file (and its "HP" label region, now redundant
-# since the new databox art bakes "HP" in directly) is no longer loaded
-# anywhere in this script.
-static func _solid_fill_texture() -> ImageTexture:
-	var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
-	img.fill(Color.WHITE)
-	return ImageTexture.create_from_image(img)
-
-
-# [Bugfix, found via real screenshot verification] TextureProgressBar does
-# NOT stretch `texture_progress` to the control's own size by default --
-# confirmed via a dedicated isolated repro scene: without `nine_patch_
-# stretch`, the fill renders at the TEXTURE's own native pixel dimensions
-# (clipped by the fill fraction), regardless of how big the control itself
-# is -- for a 1x1 fill texture this meant NOTHING was visible at all (a
-# "bar" 1 pixel wide, invisible at any zoom level a screenshot would catch).
-# `nine_patch_stretch = true` with all 4 stretch margins at 0 (no fixed
-# corners at all -- the whole texture is "middle," which is correct for a
-# flat solid color with no border/corner art of its own) makes it behave
-# the way a plain ColorRect would: genuinely stretched to fill the
-# control's own real size. Applied uniformly to every HP/EXP fill bar
-# (singles + doubles) via this one shared helper, rather than repeating
-# the same 5 property assignments at each of the 7 call sites.
-static func _configure_solid_fill_bar(bar: TextureProgressBar, fill_tex: Texture2D) -> void:
-	bar.texture_progress = fill_tex
-	bar.fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
-	bar.nine_patch_stretch = true
-	bar.stretch_margin_left = 0
-	bar.stretch_margin_right = 0
-	bar.stretch_margin_top = 0
-	bar.stretch_margin_bottom = 0
-	# [Message pacing bugfix] Range.step defaults to 1.0 -- harmless for
-	# _refresh_ui()'s own real-HP-unit assignments (each single-HP rounding
-	# is imperceptible against a ~100+ max_hp scale), but fatal for the
-	# "hp_drain" beat's normalized [0,1] fraction scale: any value between 0
-	# and 1 rounds to whichever whole number it's closer to, so a tween
-	# between two fractions visually SNAPS to full-or-empty instead of
-	# draining smoothly (confirmed via a real screenshot-verification pass —
-	# the bar never moved at all). Zero step disables rounding entirely, for
-	# every consumer of this bar's value from here on.
-	bar.step = 0.0
 
 
 # [M26c-1] Real progress-to-next-level fraction, reusing M20's own already-
@@ -2519,41 +2383,6 @@ func _exp_bar_fraction(mon: BattlePokemon) -> float:
 	return clampf(float(into) / float(needed), 0.0, 1.0)
 
 
-# [M23.11 Phase 4b] status.png/status2.png (assets/sprites/battle_ui/
-# interface/) are both the same 24x48 sheet -- 6 stacked 24x8 status
-# badges (PSN/PAR/SLP/FRZ/BRN/FRB), confirmed via direct pixel inspection.
-# status2.png (not status.png) is used for the opponent side, per the
-# reference engine's own source comment (src/graphics.c:722) confirming
-# status2/3/4.png are "duplicate sets of graphics... for the
-# opponent/partner Pokémon" -- functionally identical art, just a
-# different source file, matching that comment's own intent rather than
-# reusing status.png for both sides.
-const _STATUS_ICON_SIZE := Vector2(24, 8)
-
-
-# [M23.11 Phase 4b] Maps a BattlePokemon.STATUS_* value to its 0-indexed
-# row within the 6-row status icon sheet, or -1 for "no icon" (STATUS_
-# NONE). STATUS_TOXIC deliberately shares STATUS_POISON's row -- the
-# sprite sheet has no separate "badly poisoned" badge, matching the real
-# game's own HUD. Static (not an instance method) so a smoke test can call
-# it directly without instantiating the scene, matching this file's own
-# existing static-helper convention (_make_mon/_load_move/
-# build_fixture_player_party).
-static func _status_icon_row(status: int) -> int:
-	match status:
-		BattlePokemon.STATUS_POISON, BattlePokemon.STATUS_TOXIC:
-			return 0
-		BattlePokemon.STATUS_PARALYSIS:
-			return 1
-		BattlePokemon.STATUS_SLEEP:
-			return 2
-		BattlePokemon.STATUS_FREEZE:
-			return 3
-		BattlePokemon.STATUS_BURN:
-			return 4
-		_:
-			return -1
-
 
 # [M23.11 Phase 5a] One-time wiring, called from _ready(). BattleStage's
 # own "Background" TextureRect (see battle_screen.tscn — the FIRST child
@@ -2587,129 +2416,46 @@ func _apply_background(background_id: String) -> void:
 # (safe: each is a freshly-created instance this script alone owns, not a
 # cached/shared Resource from load(), so mutating its .region can't leak
 # into any other consumer).
+# [Doubles-split roadmap, step 5] Each HealthGroupPanel now owns its own
+# font/atlas/solid-fill-bar setup internally (see health_group_panel.gd's
+# own _ready()) -- Godot calls a child's _ready() before its parent's own
+# (NOTIFICATION_READY propagates bottom-up), so every panel instanced under
+# BattleStage is already fully configured by the time this runs. This
+# function's only remaining job is collecting however many opponent/player
+# sprite+panel slots this SCENE actually wired -- 1 for
+# battle_screen_singles.tscn (OpponentSprite0/OpponentPanel0/
+# PlayerSprite0/PlayerPanel0), 2 for battle_screen_doubles.tscn (…Sprite1/
+# …Panel1 too) -- via plain node-presence probing, the same "let the real
+# node count be the source of truth" principle _is_doubles() already uses.
+# Bottom-anchor baselines (each opponent sprite's own ORIGINAL .tscn-
+# authored offset_top/offset_bottom) are captured here too, once, before
+# any species-driven texture/offset write ever touches these nodes --
+# _setup_health_ui() is the first thing _ready() calls, guaranteeing every
+# later _apply_bottom_anchored_front_sprite() call always has a real,
+# still-original baseline to compute from.
 func _setup_health_ui() -> void:
-	# [M25h-1.2] Real bitmap font (FONT_SMALL, "healthbox" context -- see
-	# gen_battle_fonts.py's own Step 0 citation for sHealthBoxTextColor).
-	# Unlike the message/menu contexts, this one's own bulk-fill role is
-	# genuinely TRANSPARENT (a real GBA sprite-palette-index-0 hardware
-	# convention, not an opaque plaque color) -- confirmed via source, and
-	# correct here too: these labels sit directly on top of the already-
-	# pulled real health-box art (Phase 4b), which must stay visible through
-	# the unlit parts of each glyph. font_size stays at each node's own
-	# pre-existing value (13 singles / 9 doubles, a real-estate constraint
-	# from M25d, not changed here) -- doubles' non-native-size scaling of a
-	# 13px-native bitmap font is a disclosed minor softness, not a blocker.
-	for label: Label in [_opponent_name_label, _opponent_gender_label, _opponent_level_label,
-			_player_name_label, _player_gender_label, _player_level_label, _player_hp_number_label]:
-		label.add_theme_font_override("font", _font_healthbox)
-		label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	_opp_sprites.clear()
+	_opp_panels.clear()
+	_opp_sprite_base_top.clear()
+	_opp_sprite_base_bottom.clear()
+	_opp_anim_frame.clear()
+	var slot := 0
+	while has_node("BattleStage/OpponentPanel%d" % slot):
+		var sprite: TextureRect = get_node("BattleStage/OpponentSprite%d" % slot)
+		_opp_sprites.append(sprite)
+		_opp_panels.append(get_node("BattleStage/OpponentPanel%d" % slot))
+		_opp_sprite_base_top.append(sprite.offset_top)
+		_opp_sprite_base_bottom.append(sprite.offset_bottom)
+		_opp_anim_frame.append(0)
+		slot += 1
 
-	# [M26c-1] Real Emerald UI Pack databox art (see gen_databox_sprites.py's
-	# own doc comment for the full Step 0 sourcing) — supersedes Phase 4b's
-	# raw-pokeemerald-decode health-box art. "HP" is baked directly into
-	# both files as real pixel art now, so the old separate HpLabel overlay
-	# node is gone entirely (removed from battle_screen.tscn), not just
-	# hidden. The Background nodes' own `texture` property is set directly
-	# in battle_screen.tscn (an ExtResource reference), not here — a real
-	# pulled asset needs to render live in the Godot editor viewport
-	# without running the scene, which a script-only `load()` assignment
-	# can't provide.
-	var fill_tex := _solid_fill_texture()
-	_configure_solid_fill_bar(_opponent_hp_fill, fill_tex)
-	_configure_solid_fill_bar(_player_hp_fill, fill_tex)
-
-	# [M26c-1] The new EXP bar — singles player only (see _player_exp_fill's
-	# own onready doc comment for why). Same solid-fill-plus-tint mechanism
-	# as the HP bar, just a fixed color rather than a threshold function.
-	_configure_solid_fill_bar(_player_exp_fill, fill_tex)
-	_player_exp_fill.tint_progress = _EXP_BAR_COLOR
-	_player_exp_fill.min_value = 0.0
-	_player_exp_fill.max_value = 1.0
-	_player_exp_fill.step = 0.0
-
-	var opponent_status_sheet: Texture2D = load("res://assets/sprites/battle_ui/interface/status2.png")
-	_opponent_status_atlas = AtlasTexture.new()
-	_opponent_status_atlas.atlas = opponent_status_sheet
-	_opponent_status_atlas.region = Rect2(Vector2.ZERO, _STATUS_ICON_SIZE)
-	_opponent_status_icon.texture = _opponent_status_atlas
-
-	var player_status_sheet: Texture2D = load("res://assets/sprites/battle_ui/interface/status.png")
-	_player_status_atlas = AtlasTexture.new()
-	_player_status_atlas.atlas = player_status_sheet
-	_player_status_atlas.region = Rect2(Vector2.ZERO, _STATUS_ICON_SIZE)
-	_player_status_icon.texture = _player_status_atlas
-
-	# [M23.11 Phase 4d] Doubles node collection + wiring — see the field
-	# declarations' own doc comment (near _is_doubles_mode) for why these are
-	# plain Arrays. `fill_tex` (the shared solid-color fill texture) is
-	# safely SHARED across every node here (singles' own existing code
-	# already shares it between the opponent and player nodes) since it
-	# never changes after creation — only each node's own `tint_progress`
-	# differs. Status icons are the one thing that CANNOT share an atlas
-	# instance across slots —
-	# two doubles opponents can have different statuses simultaneously, and
-	# mutating one shared atlas's .region would corrupt every node
-	# displaying it — so each of the 4 doubles slots gets its own freshly-
-	# created AtlasTexture, matching the singles opponent/player split
-	# already established, just doubled.
-	# [M26c battle-UI polish] Bottom-anchor baselines, captured HERE (once,
-	# before any species-driven texture/offset write ever touches these
-	# nodes) rather than read lazily on first use -- _setup_health_ui() is
-	# the first thing _ready() calls, guaranteeing every later
-	# _apply_bottom_anchored_front_sprite() call always has a real, still-
-	# original baseline to compute from.
-	_opponent_sprite_base_top = _opponent_sprite.offset_top
-	_opponent_sprite_base_bottom = _opponent_sprite.offset_bottom
-
-	_opp_sprites_d = [$BattleStage/OpponentSpriteD0, $BattleStage/OpponentSpriteD1]
-	_opp_sprite_d_base_top = [_opp_sprites_d[0].offset_top, _opp_sprites_d[1].offset_top]
-	_opp_sprite_d_base_bottom = [_opp_sprites_d[0].offset_bottom, _opp_sprites_d[1].offset_bottom]
-	_opp_groups_d = [$BattleStage/OpponentHealthGroupD0, $BattleStage/OpponentHealthGroupD1]
-	_opp_bg_d = [$BattleStage/OpponentHealthGroupD0/Background, $BattleStage/OpponentHealthGroupD1/Background]
-	_opp_status_icon_d = [$BattleStage/OpponentHealthGroupD0/StatusIcon, $BattleStage/OpponentHealthGroupD1/StatusIcon]
-	_opp_hp_fill_d = [$BattleStage/OpponentHealthGroupD0/HpFill, $BattleStage/OpponentHealthGroupD1/HpFill]
-	_opp_name_label_d = [$BattleStage/OpponentHealthGroupD0/NameLabel, $BattleStage/OpponentHealthGroupD1/NameLabel]
-	_opp_gender_label_d = [$BattleStage/OpponentHealthGroupD0/GenderLabel, $BattleStage/OpponentHealthGroupD1/GenderLabel]
-	_opp_level_label_d = [$BattleStage/OpponentHealthGroupD0/LevelLabel, $BattleStage/OpponentHealthGroupD1/LevelLabel]
-
-	_ply_sprites_d = [$BattleStage/PlayerSpriteD0, $BattleStage/PlayerSpriteD1]
-	_ply_groups_d = [$BattleStage/PlayerHealthGroupD0, $BattleStage/PlayerHealthGroupD1]
-	_ply_bg_d = [$BattleStage/PlayerHealthGroupD0/Background, $BattleStage/PlayerHealthGroupD1/Background]
-	_ply_status_icon_d = [$BattleStage/PlayerHealthGroupD0/StatusIcon, $BattleStage/PlayerHealthGroupD1/StatusIcon]
-	_ply_hp_fill_d = [$BattleStage/PlayerHealthGroupD0/HpFill, $BattleStage/PlayerHealthGroupD1/HpFill]
-	_ply_name_label_d = [$BattleStage/PlayerHealthGroupD0/NameLabel, $BattleStage/PlayerHealthGroupD1/NameLabel]
-	_ply_gender_label_d = [$BattleStage/PlayerHealthGroupD0/GenderLabel, $BattleStage/PlayerHealthGroupD1/GenderLabel]
-	_ply_level_label_d = [$BattleStage/PlayerHealthGroupD0/LevelLabel, $BattleStage/PlayerHealthGroupD1/LevelLabel]
-
-	# [M25h-1.2, split M26c-1 follow-up] Same real bitmap font as the singles
-	# name/level pair above, applied to all 4 doubles slots' 12 label nodes
-	# now that the arrays exist.
-	for label: Label in (_opp_name_label_d + _opp_gender_label_d + _opp_level_label_d
-			+ _ply_name_label_d + _ply_gender_label_d + _ply_level_label_d):
-		label.add_theme_font_override("font", _font_healthbox)
-		label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-
-	# [M26c-1] Real Emerald UI Pack doubles ("thin") databox art -- see
-	# gen_databox_sprites.py's own doc comment: this pack ships no EXP-ledge
-	# variant for either doubles box, confirming the EXP bar's own singles-
-	# player-only scope isn't just a design choice made in isolation. Each
-	# of the 4 doubles Background nodes' own `texture` property is set
-	# directly in battle_screen.tscn, same reasoning as the singles pair
-	# above -- not re-assigned here.
-	for i in range(2):
-		_configure_solid_fill_bar(_opp_hp_fill_d[i], fill_tex)
-		var opp_atlas_d := AtlasTexture.new()
-		opp_atlas_d.atlas = opponent_status_sheet
-		opp_atlas_d.region = Rect2(Vector2.ZERO, _STATUS_ICON_SIZE)
-		_opp_status_atlas_d[i] = opp_atlas_d
-		_opp_status_icon_d[i].texture = opp_atlas_d
-
-		_configure_solid_fill_bar(_ply_hp_fill_d[i], fill_tex)
-		var ply_atlas_d := AtlasTexture.new()
-		ply_atlas_d.atlas = player_status_sheet
-		ply_atlas_d.region = Rect2(Vector2.ZERO, _STATUS_ICON_SIZE)
-		_ply_status_atlas_d[i] = ply_atlas_d
-		_ply_status_icon_d[i].texture = ply_atlas_d
+	_ply_sprites.clear()
+	_ply_panels.clear()
+	slot = 0
+	while has_node("BattleStage/PlayerPanel%d" % slot):
+		_ply_sprites.append(get_node("BattleStage/PlayerSprite%d" % slot))
+		_ply_panels.append(get_node("BattleStage/PlayerPanel%d" % slot))
+		slot += 1
 
 
 # [M23.11 Phase 4e] text_window/std.png's own fixed (non-stretching) corner
@@ -3082,67 +2828,45 @@ func _show_trainer_intro(trainer: TrainerData) -> void:
 	_trainer_intro_banner.visible = false
 
 
-func _update_status_icon(icon_node: TextureRect, atlas: AtlasTexture, status: int) -> void:
-	var row := _status_icon_row(status)
-	if row < 0:
-		icon_node.visible = false
-		return
-	icon_node.visible = true
-	atlas.region = Rect2(0, row * _STATUS_ICON_SIZE.y, _STATUS_ICON_SIZE.x, _STATUS_ICON_SIZE.y)
-
-
-# [M23.11 Phase 4d] Generalized doubles per-side refresh — one function
-# reused for BOTH sides (opponent/player) and BOTH slots, rather than
-# hand-duplicating this logic 4 times, per this project's own "generalize,
-# don't duplicate" instinct. The .tscn nodes themselves still had to be
-# duplicated (a static scene tree has no runtime "instantiate N copies"
-# equivalent short of manual PackedScene work, judged not worth the added
-# complexity for a fixed maximum of 2 slots/side) — see docs/m23_recon.md's
-# Phase 4d entry for the full generalize-vs-duplicate writeup.
-#
-# `slot < active_count` hiding: party.num_active() is fixed for the whole
-# battle (2 for a real doubles battle, 1 for singles — active_indices never
-# shrinks when a mon faints, matching this project's existing singles
-# behavior of showing a fainted mon in place until it's switched), so this
-# is really a doubles-vs-singles distinction rather than a per-turn count,
-# but is written generically rather than assuming exactly 2.
+# [Doubles-split roadmap, step 5] Generalized per-side battlefield refresh —
+# one function reused for both sides (opponent/player), generic over
+# however many slots this scene actually has (1 for battle_screen_singles.
+# tscn, 2 for battle_screen_doubles.tscn) via BattleParty.num_active(),
+# rather than a fixed-2-slot loop with a visibility toggle. Supersedes the
+# old singles-inline-code/_refresh_doubles_side() split entirely — one code
+# path for both formats now.
 #
 # Each slot's own `mon.fainted`/`mon.status`/`mon.current_hp` drives ONLY
-# that slot's own sprite/health-box state — one Pokémon fainting on a side
+# that slot's own sprite/panel state — one Pokémon fainting on a side
 # cannot affect its still-live teammate's own fade/status/HP display, since
 # each slot is processed as a fully independent iteration reading only that
 # slot's own BattlePokemon instance.
-func _refresh_doubles_side(party: BattleParty, is_player: bool, sprites: Array, groups: Array,
-		status_icons: Array, status_atlases: Array, hp_fills: Array,
-		name_labels: Array, level_labels: Array,
-		sprite_base_top: Array = [], sprite_base_bottom: Array = [],
-		gender_labels: Array = []) -> void:
+func _refresh_battlefield_side(party: BattleParty, is_player: bool) -> void:
+	var sprites: Array = _ply_sprites if is_player else _opp_sprites
+	var panels: Array = _ply_panels if is_player else _opp_panels
 	var active_count := party.num_active()
-	for slot in range(2):
-		var visible_now: bool = slot < active_count
-		sprites[slot].visible = visible_now
-		groups[slot].visible = visible_now
-		if not visible_now:
-			continue
+	for slot in range(active_count):
 		var mon: BattlePokemon = party.get_active_at(slot)
+		var sprite: TextureRect = sprites[slot]
+		var panel: HealthGroupPanel = panels[slot]
 		if is_player:
-			sprites[slot].texture = _sprite_or_fallback_back(mon.species.national_dex_num)
+			sprite.texture = _sprite_or_fallback_back(mon.species.national_dex_num)
 		else:
 			# [M23.11 Phase 4c precedent] Idle-bob is front-sprite (opponent)
 			# only — reset this slot's own frame to 0 on every state-driven
-			# refresh, matching the singles branch's identical reset above.
-			_opp_anim_frame_d[slot] = 0
-			_apply_bottom_anchored_front_sprite(sprites[slot], mon.species.national_dex_num, 0,
-					sprite_base_top[slot], sprite_base_bottom[slot])
-		sprites[slot].modulate = Color(1, 1, 1, 0.3) if mon.fainted else Color(1, 1, 1, 1)
-		hp_fills[slot].max_value = mon.max_hp
-		hp_fills[slot].value = mon.current_hp
-		hp_fills[slot].tint_progress = _hp_bar_color(mon.current_hp, mon.max_hp)
-		_update_status_icon(status_icons[slot], status_atlases[slot], mon.status)
-		name_labels[slot].text = _name_text(mon)
-		level_labels[slot].text = _level_text(mon)
-		if not gender_labels.is_empty():
-			_position_gender_label(name_labels[slot], gender_labels[slot], mon, level_labels[slot])
+			# refresh, matching the pre-split singles/doubles behavior.
+			_opp_anim_frame[slot] = 0
+			_apply_bottom_anchored_front_sprite(sprite, mon.species.national_dex_num, 0,
+					_opp_sprite_base_top[slot], _opp_sprite_base_bottom[slot])
+		sprite.modulate = Color(1, 1, 1, 0.3) if mon.fainted else Color(1, 1, 1, 1)
+		# [Doubles-split roadmap, step 5] exp_fraction is passed unconditionally
+		# for the player side -- a panel with no ExpFill/HpNumberLabel node
+		# (opponent panels, and both doubles panel shapes) simply ignores it,
+		# already confirmed by health_group_panel_test.gd's own
+		# "_test_opponent_variant_refresh_tolerates_missing_exp_fraction_arg".
+		var exp_fraction := _exp_bar_fraction(mon) if is_player else -1.0
+		panel.refresh(_name_text(mon), _gender_glyph(mon.gender), _level_text(mon), mon.status,
+				mon.current_hp, mon.max_hp, _hp_bar_color(mon.current_hp, mon.max_hp), exp_fraction)
 
 
 # [M26c-3 real-proportion fix] Reparents the two single-instance shared
@@ -3223,9 +2947,6 @@ func _refresh_ui() -> void:
 	# _layout_action_menu_for's own doc comment.
 	_layout_action_menu_for(false, false)
 
-	var side0_mon: BattlePokemon = _player_party.get_active()
-	var side1_mon: BattlePokemon = _opp_party.get_active()
-
 	# [M23.11 Phase 4a] Visual sprite/HP-bar sync -- _refresh_ui() is
 	# already the single call point that runs after every state change
 	# (move resolution, switches, item use, battle end), so no new
@@ -3237,40 +2958,11 @@ func _refresh_ui() -> void:
 	# occupant happened to be on. The timer-driven _on_opponent_anim_timer
 	# _timeout() continues alternating from this reset point independently.
 	#
-	# [M23.11 Phase 4d] Doubles branch — singles path below is completely
-	# untouched (same lines, same order), matching this phase's own "singles
-	# must remain the unchanged fast path" requirement.
-	if _is_doubles_mode:
-		_refresh_doubles_side(_opp_party, false, _opp_sprites_d, _opp_groups_d,
-				_opp_status_icon_d, _opp_status_atlas_d, _opp_hp_fill_d, _opp_name_label_d, _opp_level_label_d,
-				_opp_sprite_d_base_top, _opp_sprite_d_base_bottom, _opp_gender_label_d)
-		_refresh_doubles_side(_player_party, true, _ply_sprites_d, _ply_groups_d,
-				_ply_status_icon_d, _ply_status_atlas_d, _ply_hp_fill_d, _ply_name_label_d, _ply_level_label_d,
-				[], [], _ply_gender_label_d)
-	else:
-		_opponent_anim_frame = 0
-		_apply_bottom_anchored_front_sprite(_opponent_sprite, side1_mon.species.national_dex_num,
-				_opponent_anim_frame, _opponent_sprite_base_top, _opponent_sprite_base_bottom)
-		_opponent_sprite.modulate = Color(1, 1, 1, 0.3) if side1_mon.fainted else Color(1, 1, 1, 1)
-		_opponent_hp_fill.max_value = side1_mon.max_hp
-		_opponent_hp_fill.value = side1_mon.current_hp
-		_opponent_hp_fill.tint_progress = _hp_bar_color(side1_mon.current_hp, side1_mon.max_hp)
-		_update_status_icon(_opponent_status_icon, _opponent_status_atlas, side1_mon.status)
-		_opponent_name_label.text = _name_text(side1_mon)
-		_opponent_level_label.text = _level_text(side1_mon)
-		_position_gender_label(_opponent_name_label, _opponent_gender_label, side1_mon, _opponent_level_label)
-
-		_player_sprite.texture = _sprite_or_fallback_back(side0_mon.species.national_dex_num)
-		_player_sprite.modulate = Color(1, 1, 1, 0.3) if side0_mon.fainted else Color(1, 1, 1, 1)
-		_player_hp_fill.max_value = side0_mon.max_hp
-		_player_hp_fill.value = side0_mon.current_hp
-		_player_hp_fill.tint_progress = _hp_bar_color(side0_mon.current_hp, side0_mon.max_hp)
-		_player_hp_number_label.text = "%d/%d" % [side0_mon.current_hp, side0_mon.max_hp]
-		_update_status_icon(_player_status_icon, _player_status_atlas, side0_mon.status)
-		_player_name_label.text = _name_text(side0_mon)
-		_player_level_label.text = _level_text(side0_mon)
-		_position_gender_label(_player_name_label, _player_gender_label, side0_mon, _player_level_label)
-		_player_exp_fill.value = _exp_bar_fraction(side0_mon)
+	# [Doubles-split roadmap, step 5] One generic call per side, working for
+	# either 1 or 2 active slots -- supersedes the old singles-inline/
+	# doubles-branch split entirely.
+	_refresh_battlefield_side(_opp_party, false)
+	_refresh_battlefield_side(_player_party, true)
 
 	if _bm.get_phase() == BattleManager.BattlePhase.BATTLE_END:
 		_status_label.text = ("You win!" if _winner_side == 0 else "You lose!")
@@ -3822,15 +3514,9 @@ func _start_target_focus(mon: BattlePokemon) -> void:
 		_target_focus_sprite_tween = sp_tween
 	else:
 		var dex := mon.species.national_dex_num
-		var base_top: float
-		var base_bottom: float
-		if _is_doubles_mode:
-			var slot := _field_slot_for(mon, _opp_party)
-			base_top = _opp_sprite_d_base_top[slot]
-			base_bottom = _opp_sprite_d_base_bottom[slot]
-		else:
-			base_top = _opponent_sprite_base_top
-			base_bottom = _opponent_sprite_base_bottom
+		var slot := _field_slot_for(mon, _opp_party)
+		var base_top: float = _opp_sprite_base_top[slot]
+		var base_bottom: float = _opp_sprite_base_bottom[slot]
 		var frame_tween := create_tween().set_loops()
 		frame_tween.tween_callback(_apply_bottom_anchored_front_sprite.bind(
 				sprite, dex, 1, base_top, base_bottom)).set_delay(0.5)
@@ -3862,13 +3548,9 @@ func _stop_target_focus() -> void:
 				sprite.position.y = sprite.get_meta("_focus_orig_y")
 			elif not is_player:
 				var dex := _target_focus_mon.species.national_dex_num
-				if _is_doubles_mode:
-					var slot := _field_slot_for(_target_focus_mon, _opp_party)
-					_apply_bottom_anchored_front_sprite(sprite, dex, 0,
-							_opp_sprite_d_base_top[slot], _opp_sprite_d_base_bottom[slot])
-				else:
-					_apply_bottom_anchored_front_sprite(sprite, dex, 0,
-							_opponent_sprite_base_top, _opponent_sprite_base_bottom)
+				var slot := _field_slot_for(_target_focus_mon, _opp_party)
+				_apply_bottom_anchored_front_sprite(sprite, dex, 0,
+						_opp_sprite_base_top[slot], _opp_sprite_base_bottom[slot])
 
 	_target_focus_mon = null
 	_target_focus_health_tween = null

@@ -39,7 +39,7 @@ func _ready() -> void:
 	_test_action_panel_has_real_window_art_stylebox()
 	_test_action_panel_key_color_is_distinct_from_message_box_key_color()
 	_test_color_keyed_texture_generalizes_to_a_custom_key_color()
-	_test_status_label_has_neutral_font_color_override()
+	_test_status_label_has_real_message_color_override()
 
 	var total := _pass + _fail
 	print("m25h1_bottom_region_test: %d/%d passed" % [_pass, total])
@@ -101,7 +101,7 @@ func _button_texts(container: Container) -> Array:
 func _test_action_region_anchored_to_real_proportion() -> void:
 	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
 	var instance: Node = scene.instantiate()
-	var region: Control = instance.get_node("ActionRegion")
+	var region: Control = instance.get_node("SharedChrome/ActionRegion")
 	_chk("ActionRegion's top anchor matches source's own B_WIN_MSG proportion (tilemapTop=15/160=0.75)",
 			is_equal_approx(region.anchor_top, 0.75))
 	_chk("ActionRegion's bottom anchor matches source's own B_WIN_MSG proportion ((15+4)/20=0.95)",
@@ -112,8 +112,8 @@ func _test_action_region_anchored_to_real_proportion() -> void:
 func _test_new_button_area_is_distinct_node_from_old() -> void:
 	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
 	var instance: Node = scene.instantiate()
-	var new_area: Node = instance.get_node("ActionRegion/ActionPanel/ActionVBox/NewButtonArea")
-	var old_area: Node = instance.get_node("VBox/ButtonArea")
+	var new_area: Node = instance.get_node("SharedChrome/ActionRegion/ActionPanel/ActionVBox/NewButtonArea")
+	var old_area: Node = instance.get_node("SharedChrome/VBox/ButtonArea")
 	_chk("the new region's own button area exists", new_area != null)
 	_chk("the old VBox's own button area still exists (SWITCH/ITEM's own home)", old_area != null)
 	_chk("they are genuinely two distinct nodes, not aliases of the same one",
@@ -124,7 +124,7 @@ func _test_new_button_area_is_distinct_node_from_old() -> void:
 func _test_side_labels_deleted() -> void:
 	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
 	var instance: Node = scene.instantiate()
-	var vbox: Node = instance.get_node("VBox")
+	var vbox: Node = instance.get_node("SharedChrome/VBox")
 	_chk("Side0Label is gone (confirmed redundant M23.2-era scaffolding + real doubles bug)",
 			not vbox.has_node("Side0Label"))
 	_chk("Side1Label is gone", not vbox.has_node("Side1Label"))
@@ -137,7 +137,7 @@ func _test_status_label_relocated_into_action_region() -> void:
 	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
 	var instance: Node = scene.instantiate()
 	_chk("StatusLabel now lives under ActionRegion/ActionPanel/ActionVBox (same node, new parent)",
-			instance.has_node("ActionRegion/ActionPanel/ActionVBox/StatusLabel"))
+			instance.has_node("SharedChrome/ActionRegion/ActionPanel/ActionVBox/StatusLabel"))
 	instance.queue_free()
 
 
@@ -321,7 +321,7 @@ func _test_player_health_group_d1_clears_action_region() -> void:
 	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
 	var instance: Node = scene.instantiate()
 	var d1: Control = instance.get_node("BattleStage/PlayerHealthGroupD1")
-	var region: Control = instance.get_node("ActionRegion")
+	var region: Control = instance.get_node("SharedChrome/ActionRegion")
 
 	# PlayerHealthGroupD1 is a POINT anchor (anchor_top == anchor_bottom);
 	# its own real bottom edge, as a fraction of viewport height, is
@@ -353,7 +353,7 @@ func _test_player_health_group_d1_clears_action_region() -> void:
 func _test_action_panel_exists_as_panel_container() -> void:
 	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
 	var instance: Node = scene.instantiate()
-	var panel: Node = instance.get_node("ActionRegion/ActionPanel")
+	var panel: Node = instance.get_node("SharedChrome/ActionRegion/ActionPanel")
 	_chk("ActionPanel exists", panel != null)
 	_chk("ActionPanel is genuinely a PanelContainer (has a 'panel' theme stylebox slot to override), not a plain Control",
 			panel is PanelContainer)
@@ -374,12 +374,16 @@ func _test_action_panel_has_real_window_art_stylebox() -> void:
 	var bs := BattleScreen.new()
 	bs._action_panel = PanelContainer.new()
 	bs._status_label = Label.new()
-	# [M25h-1.2] _setup_action_region_panel() now also applies the real
-	# message-context bitmap font to _status_label -- a null font here
-	# (this function's own production caller, _ready(), always loads one
-	# first via _load_battle_fonts()) makes add_theme_font_override log a
-	# real engine error rather than silently no-op, so this bare-instance
-	# test needs one too, same as _test_status_label_has_neutral_font_color_override.
+	# [M25h-1.2, font itself since migrated] _setup_action_region_panel()
+	# now also applies the real message-context font to _status_label -- a
+	# null font here (this function's own production caller, _ready(),
+	# always loads one first via _load_battle_fonts()) makes
+	# add_theme_font_override log a real engine error rather than silently
+	# no-op, so this bare-instance test needs one too, same as
+	# _test_status_label_has_real_message_color_override. A plain hand-
+	# constructed bitmap FontFile still works fine here -- this test only
+	# cares that _setup_action_region_panel() applies WHATEVER _font_message
+	# currently holds, not what type it is (that's the OTHER test's job).
 	bs._font_message = FontFile.new()
 	bs._font_message.load_bitmap_font("res://assets/fonts/latin_normal_message.fnt")
 
@@ -434,38 +438,48 @@ func _test_color_keyed_texture_generalizes_to_a_custom_key_color() -> void:
 			not BattleScreen._is_message_box_key_color(custom_key))
 
 
-func _test_status_label_has_neutral_font_color_override() -> void:
-	# [M25h-1.2 superseded this test's own original finding] Phase 4e/M25h-1.1
-	# originally fixed StatusLabel's white-on-white risk with a flat dark
-	# `font_color` override, correct for the engine's generic default font
-	# (a plain white glyph mask that the override tints directly). M25h-1.2
-	# replaced that generic font with a real bitmap font whose glyph pixels
-	# are ALREADY fully colored (baked in at atlas-generation time — see
-	# gen_battle_fonts.py) -- a dark tint would now multiply against those
-	# real colors and crush them toward black, so the correct override is a
-	# neutral, non-tinting Color(1,1,1,1) instead. This is a genuine,
-	# deliberate behavior change, not a regression: confirmed via this
-	# session's own real screenshot verification that StatusLabel's text
-	# (source's B_WIN_ACTION_PROMPT red) renders correctly with the new
-	# override in place. Bare-instance direct call, same reasoning as the
-	# test immediately above; _font_message loaded for real (from disk) so
-	# _setup_action_region_panel's new font-override line has a real
-	# resource to apply, matching how the panel's own texture load already
-	# touches disk in this same function.
+func _test_status_label_has_real_message_color_override() -> void:
+	# [M25h-1.2 superseded this test's own original Phase 4e/M25h-1.1
+	# finding; superseded AGAIN by the message-box font migration] Phase
+	# 4e/M25h-1.1 originally fixed StatusLabel's white-on-white risk with a
+	# flat dark `font_color` override, correct for the engine's generic
+	# default font. M25h-1.2 replaced that generic font with a real bitmap
+	# font whose glyph pixels were already fully colored (baked in at
+	# atlas-generation time), making a neutral, non-tinting Color(1,1,1,1)
+	# the correct override instead. The message-box font migration (see
+	# _font_message's own doc comment) replaced THAT bitmap font with a
+	# real TTF for _font_message specifically -- a TTF carries no baked-in
+	# color at all, so neutral white would now be genuinely invisible
+	# against the message box's own light interior art. The correct
+	# override is once again a real, non-neutral color choice — this time
+	# _MESSAGE_FONT_COLOR (red, matching source's own B_WIN_ACTION_PROMPT
+	# scheme), plus a new real font_shadow_color override this TTF also
+	# needs that the bitmap font never did (its shadow was baked into the
+	# glyph pixels too). Confirmed via this session's own real screenshot
+	# verification. Bare-instance direct call, same reasoning as the test
+	# immediately above; _font_message loaded for real (from disk, via the
+	# real production _load_battle_fonts() path this time, not a manual
+	# bitmap-font stub, since the whole point here is confirming the real
+	# TTF's color scheme) so _setup_action_region_panel's font-override
+	# lines have a real resource to apply.
 	var bs := BattleScreen.new()
 	bs._action_panel = PanelContainer.new()
 	var label := Label.new()
 	bs._status_label = label
-	bs._font_message = FontFile.new()
-	bs._font_message.load_bitmap_font("res://assets/fonts/latin_normal_message.fnt")
+	bs._load_battle_fonts()
 
 	bs._setup_action_region_panel()
 
-	_chk("StatusLabel has the real message-context bitmap font applied",
+	_chk("StatusLabel has the real message-context font applied",
 			label.get_theme_font("font") == bs._font_message)
 	_chk("StatusLabel has a font_color override (not left at the engine's own default)",
 			label.has_theme_color_override("font_color"))
 	if label.has_theme_color_override("font_color"):
 		var c: Color = label.get_theme_color("font_color")
-		_chk("the override is neutral/non-tinting white (the bitmap font's own baked-in colors show through unmodified)",
-				c.is_equal_approx(Color(1, 1, 1, 1)))
+		_chk("the override is the real message color (red), not a neutral pass-through -- this TTF has no baked-in color",
+				c.is_equal_approx(BattleScreen._MESSAGE_FONT_COLOR))
+	_chk("StatusLabel also has a real font_shadow_color override (the TTF has no baked-in shadow either)",
+			label.has_theme_color_override("font_shadow_color"))
+	if label.has_theme_color_override("font_shadow_color"):
+		_chk("the shadow override is the real message shadow color (black)",
+				label.get_theme_color("font_shadow_color").is_equal_approx(BattleScreen._MESSAGE_FONT_SHADOW_COLOR))

@@ -128,7 +128,13 @@ func _test_load_battle_fonts_populates_all_three_fields() -> void:
 	_chk("_font_message is a real loaded FontFile", bs._font_message != null and bs._font_message is FontFile)
 	_chk("_font_menu is a real loaded FontFile", bs._font_menu != null and bs._font_menu is FontFile)
 	_chk("_font_healthbox is a real loaded FontFile", bs._font_healthbox != null and bs._font_healthbox is FontFile)
-	_chk("_font_message and _font_menu are genuinely distinct resources (different baked colors)",
+	# [Message-box font migration] _font_message is now a real TTF
+	# (assets/Essentials_v19.1/Fonts/power green.ttf) while _font_menu
+	# remains the extracted GBA bitmap font -- genuinely distinct resources
+	# for a much bigger reason than "different baked colors" now (a
+	# completely different font FILE/format, not just a different
+	# recoloring of the same atlas).
+	_chk("_font_message and _font_menu are genuinely distinct resources (different font files entirely)",
 			bs._font_message != bs._font_menu)
 
 

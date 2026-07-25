@@ -1,0 +1,69 @@
+[gd_scene load_steps=4 format=3 uid="uid://healthgrouppaneldoublesply"]
+
+[ext_resource type="Script" path="res://scenes/battle/health_group_panel.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/sprites/battle_ui/interface/databox_doubles_player.png" id="2_databox"]
+[ext_resource type="Texture2D" path="res://assets/sprites/battle_ui/interface/status.png" id="3_status"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_status_preview"]
+atlas = ExtResource("3_status")
+region = Rect2(0, 0, 24, 8)
+
+[node name="HealthGroupPanel" type="Control"]
+layout_mode = 1
+mouse_filter = 2
+script = ExtResource("1_script")
+databox_texture = ExtResource("2_databox")
+status_sheet = ExtResource("3_status")
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+offset_right = 130.0
+offset_bottom = 31.0
+texture = ExtResource("2_databox")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="StatusIcon" type="TextureRect" parent="."]
+visible = false
+layout_mode = 1
+offset_left = 4.0
+offset_top = 3.0
+offset_right = 15.0
+offset_bottom = 10.0
+texture = SubResource("AtlasTexture_status_preview")
+expand_mode = 1
+stretch_mode = 4
+
+[node name="HpFill" type="TextureProgressBar" parent="."]
+layout_mode = 1
+offset_left = 67.0
+offset_top = 19.0
+offset_right = 115.0
+offset_bottom = 23.0
+
+[node name="NameLabel" type="Label" parent="."]
+layout_mode = 1
+offset_left = 5.0
+offset_top = 1.0
+offset_right = 80.0
+offset_bottom = 17.0
+theme_override_font_sizes/font_size = 14
+text = "Pokémon"
+
+[node name="GenderLabel" type="Label" parent="."]
+layout_mode = 1
+offset_left = 80.0
+offset_top = 1.0
+offset_right = 100.0
+offset_bottom = 17.0
+theme_override_font_sizes/font_size = 14
+
+[node name="LevelLabel" type="Label" parent="."]
+layout_mode = 1
+offset_left = 5.0
+offset_top = 1.0
+offset_right = 122.0
+offset_bottom = 17.0
+theme_override_font_sizes/font_size = 14
+text = "Lv50"
+horizontal_alignment = 2

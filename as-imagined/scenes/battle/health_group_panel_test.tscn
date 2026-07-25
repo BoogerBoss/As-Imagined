@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://healthgrouppaneltest"]
+
+[ext_resource type="Script" path="res://scenes/battle/health_group_panel_test.gd" id="1_healthgrouppaneltest"]
+
+[node name="HealthGroupPanelTest" type="Node"]
+script = ExtResource("1_healthgrouppaneltest")

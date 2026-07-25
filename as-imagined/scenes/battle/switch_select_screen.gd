@@ -101,12 +101,18 @@ const _PARTY_STATUS_ROW_FNT := 6
 const _SLOT_ART_SIZE := Vector2(144, 24)
 const _SLOT_HP_FILL_RECT := Rect2(94, 9, 40, 6)
 
-var _parent_bs: BattleScreen = null
+# [Doubles-split roadmap, step 5] Deliberately UNTYPED -- see
+# item_select_screen.gd's own identical field for the full rationale
+# (BattleScreenShared is an unrelated class exposing the same duck-typed
+# interface, not a BattleScreen subclass, and even a looser `Control` type
+# would still fail GDScript's static member-access checking for the custom
+# fields/methods this overlay calls).
+var _parent_bs = null
 var _field_slot: int = 0
 var _is_forced_replacement: bool = false
 
 
-func setup(parent_bs: BattleScreen, field_slot: int, is_forced_replacement: bool) -> void:
+func setup(parent_bs, field_slot: int, is_forced_replacement: bool) -> void:
 	_parent_bs = parent_bs
 	_field_slot = field_slot
 	_is_forced_replacement = is_forced_replacement
