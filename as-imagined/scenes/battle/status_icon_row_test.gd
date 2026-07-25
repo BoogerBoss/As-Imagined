@@ -1,11 +1,16 @@
 extends Node
 
-# [M23.11 Phase 4b] Unit test for BattleScreen._status_icon_row() -- the
+# [M23.11 Phase 4b] Unit test for HealthGroupPanel.status_icon_row() -- the
 # pure mapping from BattlePokemon.STATUS_* to a status-icon-sheet row (or
 # -1 for "no icon"). Static function, called directly with no scene
 # instantiation needed, matching this project's established convention
-# for testing a screen's own static helpers (see e.g. ai_test.gd's use of
-# BattleScreen.build_fixture_player_party()).
+# for testing a static helper directly (see e.g. ai_test.gd's use of
+# BattleScreenShared.build_fixture_player_party()).
+# [Doubles-split roadmap, step 5] Originally BattleScreen._status_icon_row()
+# -- the underscore-prefixed function was removed from battle_screen_shared.gd
+# as dead code once status-icon setup moved entirely into the new
+# HealthGroupPanel component; the equivalent logic now lives there as a
+# public (no leading underscore) static function instead.
 #
 # Covers: every real status value maps to its own distinct row, POISON and
 # TOXIC deliberately share one row (confirmed intentional, not a bug --
@@ -49,7 +54,7 @@ func _test_each_status_maps_to_its_own_row() -> void:
 	}
 	for status in expected:
 		_chk("status %d maps to row %d" % [status, expected[status]],
-				BattleScreen._status_icon_row(status) == expected[status])
+				HealthGroupPanel.status_icon_row(status) == expected[status])
 
 	# Every expected row is distinct from every other (no accidental
 	# collision between two different real statuses).
@@ -62,23 +67,23 @@ func _test_each_status_maps_to_its_own_row() -> void:
 
 
 func _test_toxic_shares_poison_row() -> void:
-	var poison_row := BattleScreen._status_icon_row(BattlePokemon.STATUS_POISON)
-	var toxic_row := BattleScreen._status_icon_row(BattlePokemon.STATUS_TOXIC)
+	var poison_row := HealthGroupPanel.status_icon_row(BattlePokemon.STATUS_POISON)
+	var toxic_row := HealthGroupPanel.status_icon_row(BattlePokemon.STATUS_TOXIC)
 	_chk("TOXIC deliberately shares POISON's own row (no separate badge exists)",
 			poison_row == toxic_row and poison_row == 0)
 
 
 func _test_none_maps_to_hidden() -> void:
 	_chk("STATUS_NONE maps to -1 (icon hidden)",
-			BattleScreen._status_icon_row(BattlePokemon.STATUS_NONE) == -1)
+			HealthGroupPanel.status_icon_row(BattlePokemon.STATUS_NONE) == -1)
 
 
 func _test_transition_has_no_hidden_state() -> void:
 	# Pure function -- calling it repeatedly with different inputs in
 	# sequence must never leak state between calls.
-	var first := BattleScreen._status_icon_row(BattlePokemon.STATUS_BURN)
-	var mid := BattleScreen._status_icon_row(BattlePokemon.STATUS_NONE)
-	var last := BattleScreen._status_icon_row(BattlePokemon.STATUS_BURN)
+	var first := HealthGroupPanel.status_icon_row(BattlePokemon.STATUS_BURN)
+	var mid := HealthGroupPanel.status_icon_row(BattlePokemon.STATUS_NONE)
+	var last := HealthGroupPanel.status_icon_row(BattlePokemon.STATUS_BURN)
 	_chk("BURN -> NONE -> BURN transition is stateless (same result both times)",
 			first == last and first == 4)
 	_chk("the NONE call in between correctly reported hidden", mid == -1)

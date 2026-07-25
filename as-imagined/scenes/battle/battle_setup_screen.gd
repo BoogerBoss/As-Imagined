@@ -213,7 +213,7 @@ func _resolve_party(option: OptionButton, allow_fixture: bool) -> BattleParty:
 		_OPTION_RANDOM:
 			return RandomTeamGenerator.generate_team()
 		_OPTION_FIXTURE:
-			return BattleScreen.build_fixture_opp_party() if allow_fixture else null
+			return BattleScreenShared.build_fixture_opp_party() if allow_fixture else null
 		"saved":
 			return _build_saved_party(meta.get("id", ""))
 		_:
@@ -240,7 +240,7 @@ func _build_saved_party(id: String) -> BattleParty:
 # ── Launch ──────────────────────────────────────────────────────────────
 
 # [M23.11 Phase 4e] Every party this screen can resolve (`RandomTeamGenerator
-# .generate_team`, `_build_saved_party`, `BattleScreen.build_fixture_opp
+# .generate_team`, `_build_saved_party`, `BattleScreenShared.build_fixture_opp
 # _party`) always builds `active_indices = [0]` — a singles-only assumption
 # baked into each of those functions individually, not something this screen
 # can control from the outside except by re-assigning `active_indices`
@@ -279,4 +279,9 @@ func _on_launch_pressed() -> void:
 
 	BattleSetupContext.set_pending(player_party, opp_party, _format == Format.DOUBLES,
 			_selected_background_id())
-	get_tree().change_scene_to_file("res://scenes/battle/battle_screen.tscn")
+	# [Doubles-split roadmap, step 6] Launches the real split scene matching
+	# the chosen format -- battle_screen.tscn (the pre-split monolith) is no
+	# longer reachable from here at all, kept only until step 7 retires it.
+	var target := "res://scenes/battle/battle_screen_doubles.tscn" if _format == Format.DOUBLES \
+			else "res://scenes/battle/battle_screen_singles.tscn"
+	get_tree().change_scene_to_file(target)

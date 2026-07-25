@@ -175,7 +175,7 @@ func _build() -> void:
 	header.text = _HEADER_TEXT
 	if _parent_bs != null:
 		header.add_theme_font_override("font", _parent_bs._font_menu)
-		header.add_theme_font_size_override("font_size", BattleScreen._FONT_NORMAL_SIZE)
+		header.add_theme_font_size_override("font_size", BattleScreenShared._FONT_NORMAL_SIZE)
 		header.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 	vbox.add_child(header)
 

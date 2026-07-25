@@ -346,6 +346,36 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # grid regrid's scope.
 @onready var _new_button_grid: GridContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/NewButtonGrid
 
+# [Doubles-split roadmap, step 8] TOP's 4 options (Fight/Item/Switch/Run)
+# never change in count or text — a fixed, always-4 menu — so they're
+# authored as real, permanent Button nodes directly in
+# shared_battle_chrome.tscn (editable in the Godot editor) instead of being
+# created fresh via Button.new() every _refresh_ui() call. Grid order here
+# matches the .tscn's own child order, which is itself the real GridContainer
+# reading order (top-left, top-right, bottom-left, bottom-right).
+@onready var _top_fight_btn: Button = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/NewButtonGrid/TopFightButton
+@onready var _top_item_btn: Button = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/NewButtonGrid/TopItemButton
+@onready var _top_switch_btn: Button = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/NewButtonGrid/TopSwitchButton
+@onready var _top_run_btn: Button = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/NewButtonGrid/TopRunButton
+
+# [Doubles-split roadmap, step 8] FIGHT's move slots DO vary — 1 to 4 real
+# moves depending on the active Pokémon — so this is a fixed POOL of 4
+# template Button nodes (also authored directly in shared_battle_chrome.tscn,
+# also editable in the editor) that _build_fight_menu() shows/hides/relabels
+# per turn, rather than a variable-length list built from scratch each time.
+# Move slot index IS the pool index directly (see _build_fight_menu's own
+# doc comment for why no remapping is needed) -- a Pokémon with fewer than 4
+# moves just leaves the trailing pool entries hidden, and GridContainer skips
+# hidden children entirely when laying out visible ones (confirmed: Godot 4
+# Container sort logic ignores non-visible children), so the grid still
+# renders as a clean N-cell block with no gaps.
+@onready var _move_buttons: Array[Button] = [
+	$SharedChrome/ActionRegion/ActionPanel/ActionVBox/NewButtonGrid/Move0Button,
+	$SharedChrome/ActionRegion/ActionPanel/ActionVBox/NewButtonGrid/Move1Button,
+	$SharedChrome/ActionRegion/ActionPanel/ActionVBox/NewButtonGrid/Move2Button,
+	$SharedChrome/ActionRegion/ActionPanel/ActionVBox/NewButtonGrid/Move3Button,
+]
+
 # [M26c-3 real-proportion fix] `_new_button_grid`/`_status_label` are single
 # shared nodes reused across every menu (matching this file's own
 # established "one grid, cleared and rebuilt per _refresh_ui() call"
@@ -372,8 +402,11 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # flagged as a further follow-up, not silently expanded into this pass).
 # Updated live on cursor hover -- see _on_fight_move_hovered's own doc
 # comment.
+# [M26 polish batch, item 3] MoveInfoCategory (the Physical/Special/Status
+# icon) removed per explicit request -- the node itself, its ext_resource,
+# _move_info_category_rect, and _category_icon_texture() are all gone; only
+# MoveInfoType/MoveInfoPP remain in MoveInfoPanel.
 @onready var _move_info_panel: VBoxContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel
-@onready var _move_info_category_rect: TextureRect = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel/MoveInfoCategory
 @onready var _move_info_type_label: Label = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel/MoveInfoType
 @onready var _move_info_pp_label: Label = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel/MoveInfoPP
 
@@ -408,6 +441,17 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # they were at the time, per this phase's own explicit scope -- LogLabel
 # itself was later retired outright by M26b, see above).
 @onready var _background_rect: TextureRect = $BattleStage/Background
+# [M26 polish batch, item 1] The two platform-oval layers (source: <name>
+# _base0/_base1 in the Emerald UI Pack) are now real, independently
+# positioned/editable nodes instead of being baked into Background's own
+# texture at generation time -- see gen_battle_backgrounds_emerald.py's own
+# doc comment and BattleBackgroundRegistry.get_player_base_texture()/
+# get_enemy_base_texture(). Drawn as BattleStage's own children right after
+# Background, so they still sit fully underneath every sprite/health-box/
+# menu element that follows (all of which were already relying on
+# BattleStage's own draw-order-by-child-index convention).
+@onready var _player_base_rect: TextureRect = $BattleStage/PlayerBase
+@onready var _enemy_base_rect: TextureRect = $BattleStage/EnemyBase
 
 # [M26o] Compact 6-pokéball party status row -- one per side, mirroring
 # source's CreatePartyStatusSummarySprites (battle_interface.c:1206). Hidden
@@ -618,6 +662,12 @@ var _font_healthbox: FontFile
 
 const _FONT_NORMAL_SIZE := 15
 const _FONT_SMALL_SIZE := 13
+# [M26 polish batch, item 4] Deliberately a SEPARATE constant from
+# _FONT_NORMAL_SIZE (still 15, still governing MoveInfoType/PP) rather than
+# scaling that shared constant directly -- only the battle menu text and the
+# Fight/Switch/Item/Run button labels were asked to grow 4x, not the PP/Type
+# info panel next to them. 60 = 15 * 4.
+const _MENU_BUTTON_FONT_SIZE := 60
 
 # [Message-box font migration] All-message-box text (both real "message
 # boxes" this project has: the paced battle-narration overlay
@@ -670,6 +720,13 @@ func _load_battle_fonts() -> void:
 	# smaller-than-native font_size=9) is required for the increased
 	# font_size values below to have any visible effect at all.
 	_font_healthbox.fixed_size_scale_mode = 2
+	# [M26 polish batch, item 4 -- real bug found] _font_menu had this exact
+	# same gap and nobody had noticed: EVERY menu-button font_size request
+	# (buttons AND MoveInfoType/PP) was being silently ignored, always
+	# rendering at the .fnt's own native ~13px regardless of the requested
+	# size (15, barely different from native, so the gap was imperceptible
+	# until this session's 4x request made it obvious). Same fix as above.
+	_font_menu.fixed_size_scale_mode = 2
 
 
 # [M25h-1.2] Every menu Button (TOP/FIGHT/TARGET_SELECT/SWITCH/ITEM/battle-
@@ -696,7 +753,13 @@ func _style_menu_button(btn: Button) -> void:
 	if _font_menu == null:
 		return
 	btn.add_theme_font_override("font", _font_menu)
-	btn.add_theme_font_size_override("font_size", _FONT_NORMAL_SIZE)
+	# [M26 polish batch, item 4] _MENU_BUTTON_FONT_SIZE (4x _FONT_NORMAL_SIZE)
+	# -- every caller of this function scales together (TOP's Fight/Item/
+	# Switch/Run, FIGHT's move-list + Back, TARGET_SELECT's Back, and
+	# BATTLE_END's Play Again), since they're all "the battle menu text"
+	# sharing this one styling function -- flagged explicitly in case a
+	# narrower scope (excluding Back/Play Again) was actually intended.
+	btn.add_theme_font_size_override("font_size", _MENU_BUTTON_FONT_SIZE)
 	btn.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 	btn.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
 	btn.add_theme_color_override("font_pressed_color", Color(1, 1, 1, 1))
@@ -756,10 +819,38 @@ func _strip_button_chrome(btn: Button) -> void:
 # it, it simply stays wherever it last was), and incidentally sidesteps a
 # flicker a naive show-on-enter/hide-on-exit pair would cause when the
 # mouse crosses directly from one button to its neighbor.
+# [Doubles-split roadmap, step 8] Disconnects every existing listener on a
+# signal before rewiring it -- needed now that TOP/FIGHT reuse the SAME
+# permanent Button nodes turn after turn instead of creating fresh ones each
+# time. Without this, calling _wire_cursor_group() (or _build_fight_menu's
+# own mouse_entered.connect for the MoveInfoPanel) on an already-wired
+# persistent button would stack a second, third, etc. listener alongside the
+# old one(s), each holding a stale bound closure. A one-time no-op for a
+# genuinely fresh button (nothing to disconnect).
+static func _disconnect_all(sig: Signal) -> void:
+	for conn in sig.get_connections():
+		sig.disconnect(conn["callable"])
+
+
+# [Doubles-split roadmap, step 8] A no-op in the real running scene (the 8
+# TOP/FIGHT button nodes are already declared as children of NewButtonGrid
+# directly in shared_battle_chrome.tscn), but load-bearing for this
+# project's own established bare-instance test convention -- a test
+# constructing a fresh GridContainer.new() stand-in for _new_button_grid and
+# separate Button.new() stand-ins for _top_fight_btn/_move_buttons/etc. has
+# no way to also reproduce the .tscn's own parent-child relationship between
+# them, so _build_top_menu()/_build_fight_menu() re-assert it defensively
+# every call instead of assuming it.
+static func _ensure_child(parent: Node, child: Node) -> void:
+	if child.get_parent() != parent:
+		parent.add_child(child)
+
+
 func _wire_cursor_group(buttons: Array[Button]) -> void:
 	for i in range(buttons.size()):
 		var btn: Button = buttons[i]
 		btn.set_meta("cursor_base_text", btn.text)
+		_disconnect_all(btn.mouse_entered)
 		btn.mouse_entered.connect(_set_cursor_selected.bind(buttons, i))
 	if buttons.size() > 0:
 		_set_cursor_selected(buttons, 0)
@@ -993,6 +1084,25 @@ func _ready() -> void:
 	else:
 		_bm.start_battle_with_parties(_player_party, _opp_party)
 
+	# [M26 polish batch, item 7b -- startup texture-flash fix] Sets the real
+	# sprite textures/HP state BEFORE the trainer-intro/party-summary awaits
+	# below, instead of only at the end of _ready() via _refresh_ui() (the
+	# ONLY other caller of _refresh_battlefield_side). Root cause: every
+	# sprite node's own .tscn declares a static design-time preview texture
+	# (e.g. OpponentSprite0's AtlasTexture_opp_sprite_preview) so it renders
+	# SOMETHING immediately on scene entry -- but with the real assignment
+	# deferred until after both awaited intro sequences finish, that preview
+	# texture stayed visible on screen for their entire real-time duration
+	# (multiple seconds) before ever being replaced. Calling the exact same,
+	# already-tested function here (no logic changes) means the correct
+	# texture is set before a single frame renders past this point, matching
+	# the "set texture, then show -- not show, then set" principle directly.
+	# _setup_health_ui() (panels/sprites arrays) and party assignment both
+	# already ran earlier in this same function, so nothing this reads is
+	# still unpopulated at this point.
+	_refresh_battlefield_side(_opp_party, false)
+	_refresh_battlefield_side(_player_party, true)
+
 	# [M26l/M26o] Real send-out/party-summary beats, played once before the
 	# first real menu ever appears — matching source's own isBattleStart=
 	# TRUE call. Trainer intro only plays when a real opp_trainer_data was
@@ -1184,7 +1294,20 @@ func _wire_log_signals() -> void:
 	_bm.pokemon_switched_out.connect(func(mon: BattlePokemon, _side: int):
 		_log("%s was withdrawn!" % _mon_label(mon)))
 	_bm.pokemon_switched_in.connect(func(mon: BattlePokemon, _side: int, _slot: int):
-		_log("Go, %s!" % _mon_label(mon)))
+		_log("Go, %s!" % _mon_label(mon))
+		# [M26 polish batch, item 7a] Sprite/HP-panel textures are otherwise
+		# only synced once, in _refresh_ui(), AFTER the whole turn's beats
+		# (including any subsequent attack's own "anim" hit-flash beat) have
+		# already played -- meaning a switch resolving earlier in the SAME
+		# turn as an attack (switches always resolve first, correctly, since
+		# that's what lets the incoming Pokemon take the hit) left the
+		# attack's hit-effect visually flashing against the OLD, still-
+		# displayed sprite. Queuing a "switch_reveal" beat right after the
+		# "Go, X!" text beat re-syncs that one side's sprites/panels at the
+		# correct point in the sequence, before any later beat plays.
+		var is_player: bool = _player_party.members.has(mon)
+		var party: BattleParty = _player_party if is_player else _opp_party
+		_pending_beats.append({"kind": "switch_reveal", "party": party, "is_player": is_player}))
 	_bm.stat_stage_changed.connect(_on_log_stat_stage_changed)
 	_bm.secondary_applied.connect(_on_log_secondary_applied)
 	_bm.status_cured.connect(func(mon: BattlePokemon):
@@ -1488,6 +1611,18 @@ func _panel_for(mon: BattlePokemon) -> HealthGroupPanel:
 	var party: BattleParty = _player_party if is_player else _opp_party
 	var slot := _field_slot_for(mon, party)
 	var panels: Array = _ply_panels if is_player else _opp_panels
+	# [Real bug found via m25c_message_log_test.gd's own end-to-end signal-
+	# wiring test] A bare/incompletely-set-up instance (never ran
+	# _setup_health_ui(), e.g. a test driving BattleManager directly against
+	# a manually-constructed BattleScreenShared) has empty panel/sprite
+	# arrays -- indexing unconditionally crashed with an out-of-bounds
+	# error, unlike the OLD per-field lookup this replaced, which degraded
+	# gracefully to null for an unset field. Matches that same graceful-null
+	# contract this function's own callers (_hp_fill_bar_for/
+	# _health_group_for, both already null-checked by every consumer)
+	# already expect.
+	if slot >= panels.size():
+		return null
 	return panels[slot] as HealthGroupPanel
 
 
@@ -1498,6 +1633,9 @@ func _sprite_node_for(mon: BattlePokemon) -> Control:
 	var party: BattleParty = _player_party if is_player else _opp_party
 	var slot := _field_slot_for(mon, party)
 	var sprites: Array = _ply_sprites if is_player else _opp_sprites
+	# See _panel_for's own identical bounds-check comment just above.
+	if slot >= sprites.size():
+		return null
 	return sprites[slot] as Control
 
 
@@ -2404,9 +2542,15 @@ const _DEFAULT_BACKGROUND_ID := "building"
 func _apply_background(background_id: String) -> void:
 	var id := background_id if not background_id.is_empty() else _DEFAULT_BACKGROUND_ID
 	var tex := BattleBackgroundRegistry.get_background_texture(id)
+	var player_base_tex := BattleBackgroundRegistry.get_player_base_texture(id)
+	var enemy_base_tex := BattleBackgroundRegistry.get_enemy_base_texture(id)
 	if tex == null and id != _DEFAULT_BACKGROUND_ID:
 		tex = BattleBackgroundRegistry.get_background_texture(_DEFAULT_BACKGROUND_ID)
+		player_base_tex = BattleBackgroundRegistry.get_player_base_texture(_DEFAULT_BACKGROUND_ID)
+		enemy_base_tex = BattleBackgroundRegistry.get_enemy_base_texture(_DEFAULT_BACKGROUND_ID)
 	_background_rect.texture = tex
+	_player_base_rect.texture = player_base_tex
+	_enemy_base_rect.texture = enemy_base_tex
 
 
 # [M23.11 Phase 4b] One-time wiring, called from _ready() -- every texture
@@ -2761,6 +2905,15 @@ func _run_message_pacing() -> void:
 						await drain_tween.finished
 					else:
 						bar.value = to_frac
+			"switch_reveal":
+				# [M26 polish batch, item 7a] Re-syncs one side's sprite
+				# textures/HP panels mid-sequence, right after that switch's
+				# own "Go, X!" text beat -- see the pokemon_switched_in
+				# handler's own doc comment in _wire_log_signals() for why
+				# this is needed instead of waiting for _refresh_ui().
+				var reveal_party: BattleParty = beat.get("party", null)
+				if reveal_party != null:
+					_refresh_battlefield_side(reveal_party, beat.get("is_player", false))
 
 	_pending_beats.clear()
 	_exit_message_mode()
@@ -2918,9 +3071,9 @@ func _layout_action_menu_for(is_top: bool, is_fight: bool) -> void:
 
 
 func _refresh_ui() -> void:
-	# [M25h-1, extended M26c-3] All three button areas are cleared
-	# unconditionally every call — only whichever ones _menu actually needs
-	# get repopulated below, so the others stay empty (visually absent)
+	# [M25h-1, extended M26c-3] _button_area/_new_button_area are cleared
+	# unconditionally every call — only whichever one _menu actually needs
+	# gets repopulated below, so the others stay empty (visually absent)
 	# rather than needing an explicit show/hide toggle. This is exactly
 	# what makes the ITEM/SWITCH (old _button_area) <-> TOP/FIGHT (new
 	# _new_button_grid) <-> TARGET_SELECT (new _new_button_area) hybrid
@@ -2935,8 +3088,24 @@ func _refresh_ui() -> void:
 		child.queue_free()
 	for child in _new_button_area.get_children():
 		child.queue_free()
-	for child in _new_button_grid.get_children():
-		child.queue_free()
+	# [Doubles-split roadmap, step 8] _new_button_grid's own 8 children
+	# (TOP's 4 fixed options + FIGHT's 4-slot move pool) are now PERMANENT
+	# nodes authored in shared_battle_chrome.tscn, not freely rebuilt each
+	# call like the two areas above -- queue_free()-ing them here would
+	# destroy the pool _build_top_menu()/_build_fight_menu() rely on being
+	# there next time. Hidden instead, matching the "safe default: nothing
+	# visible until whichever specific menu state needs it" property the old
+	# clear-then-rebuild pattern gave for free; _build_top_menu()/_build_
+	# fight_menu() are each independently responsible for showing their own
+	# subset (and already defensively hide the OTHER function's subset too,
+	# so this reset isn't the only thing preventing both from being visible
+	# at once).
+	for btn in _move_buttons:
+		btn.visible = false
+	_top_fight_btn.visible = false
+	_top_item_btn.visible = false
+	_top_switch_btn.visible = false
+	_top_run_btn.visible = false
 	# [M26c-4] TARGET_SELECT's own click/hover zones live on PERSISTENT
 	# battlefield nodes (health groups), not a freely-rebuilt container —
 	# see _clear_target_select_hover_wiring's own doc comment for why this
@@ -3144,17 +3313,29 @@ func _on_play_again_pressed() -> void:
 # keyboard/gamepad navigation at all yet (confirmed via grep, M25h-1.3),
 # that's M26d's own separate job; mouse hover already drives the same ▶
 # cursor via `_wire_cursor_group` regardless of grid vs. list shape.
+# [Doubles-split roadmap, step 8] Reuses the 4 permanent Button nodes
+# authored directly in shared_battle_chrome.tscn (_top_fight_btn/_top_item_
+# btn/_top_switch_btn/_top_run_btn) instead of creating fresh ones via
+# Button.new() every call -- TOP's own 4 options never change in count or
+# text, so there's nothing genuinely dynamic here besides Switch's disabled
+# state and hiding FIGHT's own move-button pool. _disconnect_all() guards
+# both signals before rewiring so repeated calls (every _refresh_ui(), or a
+# test calling this function more than once) don't stack duplicate
+# listeners on the same persistent nodes.
 func _build_top_menu(field_slot: int) -> void:
-	var fight_btn := Button.new()
-	_style_menu_button(fight_btn)
-	_strip_button_chrome(fight_btn)
-	fight_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	fight_btn.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	fight_btn.text = "Fight"
-	fight_btn.pressed.connect(func():
+	for btn in [_top_fight_btn, _top_item_btn, _top_switch_btn, _top_run_btn] + _move_buttons:
+		_ensure_child(_new_button_grid, btn)
+	for btn in _move_buttons:
+		btn.visible = false
+
+	_top_fight_btn.visible = true
+	_style_menu_button(_top_fight_btn)
+	_strip_button_chrome(_top_fight_btn)
+	_top_fight_btn.text = "Fight"
+	_disconnect_all(_top_fight_btn.pressed)
+	_top_fight_btn.pressed.connect(func():
 		_menu = Menu.FIGHT
 		_refresh_ui())
-	_new_button_grid.add_child(fight_btn)
 
 	# [M25h-1] Switch/Item still route to the old, untouched inline panels
 	# (_button_area, in $SharedChrome/VBox) -- pressing either of these buttons (now
@@ -3163,28 +3344,24 @@ func _build_top_menu(field_slot: int) -> void:
 	# this correct with zero special-casing. Real separate screens for both
 	# are M25h-1.4/M25h-1.5's own job (already shipped) — this session only
 	# moves WHERE their own launcher buttons live, not their own behavior.
-	var item_btn := Button.new()
-	_style_menu_button(item_btn)
-	_strip_button_chrome(item_btn)
-	item_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	item_btn.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	item_btn.text = "Item"
-	item_btn.pressed.connect(func():
+	_top_item_btn.visible = true
+	_style_menu_button(_top_item_btn)
+	_strip_button_chrome(_top_item_btn)
+	_top_item_btn.text = "Item"
+	_disconnect_all(_top_item_btn.pressed)
+	_top_item_btn.pressed.connect(func():
 		_menu = Menu.ITEM
 		_refresh_ui())
-	_new_button_grid.add_child(item_btn)
 
-	var switch_btn := Button.new()
-	_style_menu_button(switch_btn)
-	_strip_button_chrome(switch_btn)
-	switch_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	switch_btn.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	switch_btn.text = "Switch"
-	switch_btn.disabled = not _player_party.has_valid_switch_target()
-	switch_btn.pressed.connect(func():
+	_top_switch_btn.visible = true
+	_style_menu_button(_top_switch_btn)
+	_strip_button_chrome(_top_switch_btn)
+	_top_switch_btn.text = "Switch"
+	_top_switch_btn.disabled = not _player_party.has_valid_switch_target()
+	_disconnect_all(_top_switch_btn.pressed)
+	_top_switch_btn.pressed.connect(func():
 		_menu = Menu.SWITCH
 		_refresh_ui())
-	_new_button_grid.add_child(switch_btn)
 
 	# [M25b] Temporary placeholder — NOT real flee logic (success chance,
 	# speed comparison, trainer-battle refusal, etc. are all explicitly out
@@ -3192,20 +3369,18 @@ func _build_top_menu(field_slot: int) -> void:
 	# Exists because there is currently no way to exit an in-progress
 	# battle at all otherwise. See _on_run_pressed's own doc comment for
 	# exactly what it does.
-	var run_btn := Button.new()
-	_style_menu_button(run_btn)
-	_strip_button_chrome(run_btn)
-	run_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	run_btn.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	run_btn.text = "Run"
-	run_btn.pressed.connect(_on_run_pressed)
-	_new_button_grid.add_child(run_btn)
+	_top_run_btn.visible = true
+	_style_menu_button(_top_run_btn)
+	_strip_button_chrome(_top_run_btn)
+	_top_run_btn.text = "Run"
+	_disconnect_all(_top_run_btn.pressed)
+	_top_run_btn.pressed.connect(_on_run_pressed)
 
 	# [M25h-1.3] Real ▶ cursor, defaulting to Fight (index 0) -- matches
 	# source's own always-defined initial cursor position. Array order here
-	# matches the grid's own real reading order (top-left, top-right,
-	# bottom-left, bottom-right), same as the add_child order above.
-	var top_buttons: Array[Button] = [fight_btn, item_btn, switch_btn, run_btn]
+	# matches the .tscn's own real reading order (top-left, top-right,
+	# bottom-left, bottom-right).
+	var top_buttons: Array[Button] = [_top_fight_btn, _top_item_btn, _top_switch_btn, _top_run_btn]
 	_wire_cursor_group(top_buttons)
 
 
@@ -3238,19 +3413,36 @@ func _build_top_menu(field_slot: int) -> void:
 # session), which renders as a single row directly below the grid in the
 # same ActionVBox stack — a real, disclosed mouse-only concession, not a
 # reproduction of anything in source.
+# [Doubles-split roadmap, step 8] Reuses the fixed 4-Button pool authored
+# directly in shared_battle_chrome.tscn (_move_buttons) instead of creating
+# fresh Button.new() instances every call -- a Pokémon with fewer than 4
+# moves just leaves the trailing pool entries hidden (see this function's
+# own top-level doc comment for why that still lays out as a clean N-cell
+# grid with no gaps). _disconnect_all() guards both signals before rewiring
+# so repeated calls don't stack duplicate listeners on the same persistent
+# nodes.
 func _build_fight_menu(field_slot: int) -> void:
 	var mon: BattlePokemon = _player_party.get_active_at(field_slot)
+	for btn in [_top_fight_btn, _top_item_btn, _top_switch_btn, _top_run_btn] + _move_buttons:
+		_ensure_child(_new_button_grid, btn)
+	_top_fight_btn.visible = false
+	_top_item_btn.visible = false
+	_top_switch_btn.visible = false
+	_top_run_btn.visible = false
+
 	var fight_buttons: Array[Button] = []
 	var first_move_index := -1
-	for i in range(mon.moves.size()):
-		var move: MoveData = mon.moves[i]
+	for i in range(_move_buttons.size()):
+		var btn: Button = _move_buttons[i]
+		_disconnect_all(btn.pressed)
+		_disconnect_all(btn.mouse_entered)
+		var move: MoveData = mon.moves[i] if i < mon.moves.size() else null
 		if move == null:
+			btn.visible = false
 			continue
-		var btn := Button.new()
+		btn.visible = true
 		_style_menu_button(btn)
 		_strip_button_chrome(btn)
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		# [M26c-3 real-proportion fix] PP moved out of the button label --
 		# it now lives in the real MoveInfoPanel beside the grid (matching
 		# source's own separate B_WIN_PP window), updated live on hover
@@ -3259,7 +3451,6 @@ func _build_fight_menu(field_slot: int) -> void:
 		btn.disabled = mon.current_pp[i] <= 0
 		btn.pressed.connect(_on_move_pressed.bind(field_slot, i))
 		btn.mouse_entered.connect(_on_fight_move_hovered.bind(mon, i))
-		_new_button_grid.add_child(btn)
 		fight_buttons.append(btn)
 		if first_move_index < 0:
 			first_move_index = i
@@ -3296,23 +3487,10 @@ func _on_fight_move_hovered(mon: BattlePokemon, move_index: int) -> void:
 	var move: MoveData = mon.moves[move_index]
 	if move == null:
 		return
-	_move_info_category_rect.texture = _category_icon_texture(move.category)
-	_move_info_type_label.text = TypeChart.type_name(move.type)
+	# [M26 polish batch, item 5] Display-string formatting only -- the
+	# underlying TypeChart.type_name() lookup is untouched, just prefixed.
+	_move_info_type_label.text = "TYPE/" + TypeChart.type_name(move.type)
 	_move_info_pp_label.text = "PP %d/%d" % [mon.current_pp[move_index], move.pp]
-
-
-# [M26q-1] MoveData.category is a plain int (0=Physical/1=Special/2=Status,
-# no named enum -- see move_data.gd's own doc comment); category has no
-# string-name helper the way type does via TypeChart.type_name(), so this is
-# a small local match rather than a shared path-convention loader.
-static func _category_icon_texture(category: int) -> Texture2D:
-	match category:
-		1:
-			return load("res://assets/sprites/battle_ui/category/special.png")
-		2:
-			return load("res://assets/sprites/battle_ui/category/status.png")
-		_:
-			return load("res://assets/sprites/battle_ui/category/physical.png")
 
 
 # [M25b] Run placeholder — ends the current battle immediately and returns

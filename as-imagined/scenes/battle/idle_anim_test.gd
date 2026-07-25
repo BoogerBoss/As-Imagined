@@ -1,6 +1,6 @@
 extends Node
 
-# [M23.11 Phase 4c] Unit test for BattleScreen._next_anim_frame() -- the
+# [M23.11 Phase 4c] Unit test for BattleScreenShared._next_anim_frame() -- the
 # pure frame-toggle logic driving idle-bob animation. Static, called
 # directly with no scene/Timer instantiation needed, matching this
 # project's established convention for testing a screen's own static
@@ -37,9 +37,9 @@ func _chk(label: String, cond: bool) -> void:
 
 func _test_basic_alternation() -> void:
 	_chk("frame 0, not fainted -> advances to frame 1",
-			BattleScreen._next_anim_frame(0, false) == 1)
+			BattleScreenShared._next_anim_frame(0, false) == 1)
 	_chk("frame 1, not fainted -> advances back to frame 0",
-			BattleScreen._next_anim_frame(1, false) == 0)
+			BattleScreenShared._next_anim_frame(1, false) == 0)
 
 
 func _test_multi_tick_sequence() -> void:
@@ -48,25 +48,25 @@ func _test_multi_tick_sequence() -> void:
 	var frame := 0
 	var expected := [1, 0, 1, 0, 1]
 	for i in range(expected.size()):
-		frame = BattleScreen._next_anim_frame(frame, false)
+		frame = BattleScreenShared._next_anim_frame(frame, false)
 		_chk("tick %d: frame is %d" % [i + 1, expected[i]], frame == expected[i])
 
 
 func _test_fainted_freezes_current_frame() -> void:
 	_chk("frame 0, fainted -> stays on frame 0 (does not advance)",
-			BattleScreen._next_anim_frame(0, true) == 0)
+			BattleScreenShared._next_anim_frame(0, true) == 0)
 	_chk("frame 1, fainted -> stays on frame 1 (does not advance)",
-			BattleScreen._next_anim_frame(1, true) == 1)
+			BattleScreenShared._next_anim_frame(1, true) == 1)
 
 	# A fainted mon that was mid-bob when it fainted should freeze exactly
 	# where it was, not reset or continue -- confirmed via a short
 	# sequence: alternate twice while alive, then faint and confirm no
 	# further movement across several more simulated ticks.
 	var frame := 0
-	frame = BattleScreen._next_anim_frame(frame, false)  # -> 1
-	frame = BattleScreen._next_anim_frame(frame, false)  # -> 0
+	frame = BattleScreenShared._next_anim_frame(frame, false)  # -> 1
+	frame = BattleScreenShared._next_anim_frame(frame, false)  # -> 0
 	var frame_at_faint := frame
 	for i in range(3):
-		frame = BattleScreen._next_anim_frame(frame, true)
+		frame = BattleScreenShared._next_anim_frame(frame, true)
 	_chk("frozen frame after fainting mid-sequence matches the frame at the moment of fainting",
 			frame == frame_at_faint)

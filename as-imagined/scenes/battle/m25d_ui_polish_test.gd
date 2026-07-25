@@ -102,7 +102,7 @@ func _singles_party(mons: Array) -> BattleParty:
 
 func _test_name_level_text_format() -> void:
 	var mon := _make_typed_mon("Charizard", TypeChart.TYPE_FIRE, 50)
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	_chk("name format is just the species name — no gender glyph baked in",
 			bs._name_text(mon) == "Charizard")
 	_chk("level format is 'LvN' — 'Lv' immediately followed by the number, no space",
@@ -114,7 +114,7 @@ func _test_name_level_text_format() -> void:
 
 
 func _test_gender_glyph_variants() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	var male_mon := _make_typed_mon("Nidoking", TypeChart.TYPE_POISON, 50)
 	male_mon.gender = BattlePokemon.GENDER_MALE
 	_chk("male gender's own glyph is ♂", bs._gender_glyph(male_mon.gender) == "♂")
@@ -127,39 +127,27 @@ func _test_gender_glyph_variants() -> void:
 	genderless_mon.gender = BattlePokemon.GENDER_GENDERLESS
 	_chk("genderless has no glyph at all", bs._gender_glyph(genderless_mon.gender) == "")
 
-	# [M26c battle-UI polish] _position_gender_label() places the separate
-	# GenderLabel node's own text/offsets based on the name label's real
-	# rendered width -- confirmed here directly on bare (unattached) Label
-	# nodes given a real loaded font, without needing a live scene tree.
-	var name_label := Label.new()
-	name_label.text = bs._name_text(male_mon)
-	name_label.offset_left = 100.0
-	name_label.offset_top = 5.0
-	name_label.offset_bottom = 45.0
-	var font := FontFile.new()
-	font.load_bitmap_font("res://assets/fonts/latin_small_healthbox.fnt")
-	font.fixed_size_scale_mode = 2
-	name_label.add_theme_font_override("font", font)
-	name_label.add_theme_font_size_override("font_size", 40)
-	var gender_label := Label.new()
-	bs._position_gender_label(name_label, gender_label, male_mon)
-	_chk("gender label text set to the real glyph", gender_label.text == "♂")
-	_chk("gender label positioned strictly after the name label's own left edge",
-			gender_label.offset_left > name_label.offset_left)
-	_chk("gender label shares the name label's own top/bottom",
-			gender_label.offset_top == name_label.offset_top
-			and gender_label.offset_bottom == name_label.offset_bottom)
-
-	var genderless_label := Label.new()
-	bs._position_gender_label(name_label, genderless_label, genderless_mon)
-	_chk("a genderless mon's gender label renders empty text",
-			genderless_label.text == "")
+	# [Doubles-split roadmap, step 7] The gender-label POSITIONING logic
+	# itself (placing the separate GenderLabel node's text/offsets based on
+	# the name label's real rendered width) moved from
+	# BattleScreen._position_gender_label(name_label, gender_label, mon) to
+	# HealthGroupPanel._position_gender_and_level(name_text, gender_glyph,
+	# level_text) in step 5's panel-extraction refactor -- a genuinely
+	# different shape (an instance method reading the panel's own internal
+	# _name_label/_gender_label/_level_label fields directly, not taking
+	# label nodes as parameters), already covered by
+	# health_group_panel_test.gd's own _test_refresh_gender_glyph_positions_
+	# after_name and _test_refresh_no_gender_glyph_positions_level_after_
+	# name_alone. This file keeps only the glyph-CONTENT assertions above
+	# (still genuinely BattleScreenShared._gender_glyph()'s own job, since
+	# HealthGroupPanel.refresh() takes the already-resolved glyph string as
+	# a plain parameter, not a BattlePokemon it derives one from itself).
 
 
 # ── 2. Debug overlay is hidden by default ────────────────────────────────
 
 func _test_debug_overlay_default_hidden() -> void:
-	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
+	var scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
 	var instance: Node = scene.instantiate()
 	var overlay: Control = instance.get_node("SharedChrome/DebugOverlay")
 	_chk("DebugOverlay is hidden by default, per this sub-phase's own locked scope",
@@ -178,7 +166,7 @@ func _fake_key_event(code: Key, pressed: bool = true, echo: bool = false) -> Inp
 
 
 func _test_debug_overlay_toggle_via_f3() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._debug_overlay = Control.new()
 	bs._debug_overlay.visible = false
 
@@ -191,7 +179,7 @@ func _test_debug_overlay_toggle_via_f3() -> void:
 
 
 func _test_debug_overlay_ignores_other_keys() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._debug_overlay = Control.new()
 	bs._debug_overlay.visible = false
 
@@ -215,7 +203,7 @@ func _test_format_debug_breakdown_full_content() -> void:
 		"stab_multiplier": 1.5, "roll": 92,
 	}
 
-	var text := BattleScreen._format_debug_breakdown(attacker, defender, move, breakdown)
+	var text := BattleScreenShared._format_debug_breakdown(attacker, defender, move, breakdown)
 
 	# [M26b] The old leading "Combat Debug (F3 to toggle)" line was dropped
 	# from _format_debug_breakdown's own output — that's now the merged
@@ -238,7 +226,7 @@ func _test_format_debug_breakdown_self_targeting_still_names_both() -> void:
 		"stab_multiplier": 1.5, "roll": 100,
 	}
 
-	var text := BattleScreen._format_debug_breakdown(attacker, defender, move, breakdown)
+	var text := BattleScreenShared._format_debug_breakdown(attacker, defender, move, breakdown)
 
 	_chk("a non-crit, neutral-effectiveness hit formats 'Crit: No' and 'Type eff.: 1.00x' exactly",
 			"Crit: No" in text and "Type eff.: 1.00x" in text)
@@ -255,7 +243,7 @@ func _test_format_debug_breakdown_missing_keys_fixed_damage_move() -> void:
 	var move := _make_move("Sonic Boom", TypeChart.TYPE_NORMAL, 1, 90)
 	var breakdown := {"damage": 20, "is_crit": false, "effectiveness": 1.0}
 
-	var text := BattleScreen._format_debug_breakdown(attacker, defender, move, breakdown)
+	var text := BattleScreenShared._format_debug_breakdown(attacker, defender, move, breakdown)
 
 	_chk("a fixed-damage move's breakdown (no base_damage/STAB/roll keys) formats without crashing",
 			text == "Voltorb -> Geodude\nMove: Sonic Boom (Power 1, Acc 90)\nFinal damage: 20")
@@ -312,7 +300,7 @@ func _test_real_battle_end_to_end_debug_signal_wiring() -> void:
 	bm._force_roll = 100
 	bm._force_crit = true
 
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._bm.move_damage_breakdown.connect(bs._on_debug_move_damage_breakdown)
 
@@ -337,7 +325,7 @@ func _test_real_battle_end_to_end_debug_signal_wiring() -> void:
 	# SceneTree, so `_debug_overlay` stays null and nothing auto-renders —
 	# matching this project's own established bare-instance test convention
 	# — but the entry itself is still appended regardless).
-	var damage_math_text := _last_category_text(bs, BattleScreen.DebugCategory.DAMAGE_MATH)
+	var damage_math_text := _last_category_text(bs, BattleScreenShared.DebugCategory.DAMAGE_MATH)
 
 	_chk("the real hit actually dealt damage (sanity check the scenario itself is valid)", real_damage[0] > 0)
 	_chk("move_damage_breakdown reached the merged history via a genuine signal, naming the real attacker/defender",
@@ -353,7 +341,7 @@ func _test_real_battle_end_to_end_debug_signal_wiring() -> void:
 
 # [M26b] Returns the most recently-appended entry's own text for a given
 # category, or "" if none exists yet.
-func _last_category_text(bs: BattleScreen, category: int) -> String:
+func _last_category_text(bs: BattleScreenShared, category: int) -> String:
 	for i in range(bs._debug_entries.size() - 1, -1, -1):
 		var entry: Dictionary = bs._debug_entries[i]
 		if entry["category"] == category:

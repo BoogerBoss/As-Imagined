@@ -1,25 +1,25 @@
-[gd_scene load_steps=11 format=3 uid="uid://battlescreensingles"]
+[gd_scene format=3 uid="uid://cv3swd3baqg5s"]
 
-[ext_resource type="Script" path="res://scenes/battle/battle_screen_shared.gd" id="1_screen"]
+[ext_resource type="Script" uid="uid://bw8op4f3uioqo" path="res://scenes/battle/battle_screen_shared.gd" id="1_screen"]
 [ext_resource type="Script" uid="uid://by21x2021is5s" path="res://scripts/battle/core/battle_manager.gd" id="2_bm"]
 [ext_resource type="Theme" path="res://scenes/main_theme.tres" id="3_theme"]
 [ext_resource type="Texture2D" uid="uid://dbv7by4kbgmqj" path="res://assets/sprites/pokemon/back/0025_pikachu.png" id="4_pikachu_back"]
 [ext_resource type="Texture2D" uid="uid://p40biqq41hsj" path="res://assets/sprites/battle_backgrounds/building.png" id="4_y1o2w"]
 [ext_resource type="Texture2D" uid="uid://oa5advdirqvm" path="res://assets/sprites/pokemon/front/0006_charizard.png" id="5_charizard_front"]
-[ext_resource type="PackedScene" path="res://scenes/battle/health_group_panel.tscn" id="6_opp_panel"]
-[ext_resource type="PackedScene" path="res://scenes/battle/health_group_panel_player.tscn" id="7_ply_panel"]
+[ext_resource type="PackedScene" uid="uid://d1gbrvetcb2t4" path="res://scenes/battle/health_group_panel.tscn" id="6_opp_panel"]
+[ext_resource type="PackedScene" uid="uid://dscsnlvercuer" path="res://scenes/battle/health_group_panel_player.tscn" id="7_ply_panel"]
 [ext_resource type="Texture2D" uid="uid://d2p3p3nsfeycn" path="res://assets/sprites/battle_ui/party_status/ball_normal.png" id="21_ball_normal"]
 [ext_resource type="Texture2D" uid="uid://c27v35tiu3pc" path="res://assets/sprites/battle_ui/party_status/ball_status.png" id="22_ball_status"]
 [ext_resource type="Texture2D" uid="uid://b2hk8ympj8i5h" path="res://assets/sprites/battle_ui/party_status/ball_fainted.png" id="23_ball_fainted"]
 [ext_resource type="Texture2D" uid="uid://u5nenbe1yr5i" path="res://assets/sprites/battle_ui/party_status/ball_empty.png" id="24_ball_empty"]
 [ext_resource type="Texture2D" uid="uid://c4lgygj6twkss" path="res://assets/sprites/trainers/portraits/0039_leader_brawly.png" id="25_trainer_portrait_sample"]
-[ext_resource type="PackedScene" path="res://scenes/battle/shared_battle_chrome.tscn" id="30_shared_chrome"]
+[ext_resource type="PackedScene" uid="uid://dad4jum0ut4ey" path="res://scenes/battle/shared_battle_chrome.tscn" id="30_shared_chrome"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_opp_sprite_preview"]
 atlas = ExtResource("5_charizard_front")
 region = Rect2(0, 0, 64, 64)
 
-[node name="BattleScreen" type="Control"]
+[node name="BattleScreen" type="Control" unique_id=1326083943]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -29,15 +29,15 @@ grow_vertical = 2
 theme = ExtResource("3_theme")
 script = ExtResource("1_screen")
 
-[node name="BattleManager" type="Node" parent="."]
+[node name="BattleManager" type="Node" parent="." unique_id=51872485]
 script = ExtResource("2_bm")
 
-[node name="OpponentAnimTimer" type="Timer" parent="."]
+[node name="OpponentAnimTimer" type="Timer" parent="." unique_id=1355917925]
 wait_time = 0.5
 one_shot = true
 autostart = true
 
-[node name="BattleStage" type="Control" parent="."]
+[node name="BattleStage" type="Control" parent="." unique_id=2070079749]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -46,7 +46,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Background" type="TextureRect" parent="BattleStage"]
+[node name="Background" type="TextureRect" parent="BattleStage" unique_id=135400655]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -60,7 +60,35 @@ texture = ExtResource("4_y1o2w")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="OpponentSprite0" type="TextureRect" parent="BattleStage"]
+[node name="PlayerBase" type="TextureRect" parent="BattleStage"]
+layout_mode = 1
+anchor_left = 0.05
+anchor_top = 0.52
+anchor_right = 0.05
+anchor_bottom = 0.52
+offset_left = -220.0
+offset_top = -35.0
+offset_right = 280.0
+offset_bottom = 105.0
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="EnemyBase" type="TextureRect" parent="BattleStage"]
+layout_mode = 1
+anchor_left = 0.72
+anchor_top = 0.28
+anchor_right = 0.72
+anchor_bottom = 0.28
+offset_left = -260.0
+offset_top = -85.0
+offset_right = 260.0
+offset_bottom = 85.0
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="OpponentSprite0" type="TextureRect" parent="BattleStage" unique_id=12449981]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.66200006
@@ -77,8 +105,7 @@ texture = SubResource("AtlasTexture_opp_sprite_preview")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="OpponentPanel0" parent="BattleStage" instance=ExtResource("6_opp_panel")]
-layout_mode = 1
+[node name="OpponentPanel0" parent="BattleStage" unique_id=1567867656 instance=ExtResource("6_opp_panel")]
 anchor_left = 0.75
 anchor_top = 0.25
 anchor_right = 0.75
@@ -88,9 +115,8 @@ offset_top = -167.0
 offset_right = -471.0
 offset_bottom = -111.0
 scale = Vector2(0.7999991, 0.7999991)
-mouse_filter = 2
 
-[node name="PlayerSprite0" type="TextureRect" parent="BattleStage"]
+[node name="PlayerSprite0" type="TextureRect" parent="BattleStage" unique_id=435381219]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.03
@@ -105,8 +131,7 @@ texture = ExtResource("4_pikachu_back")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="PlayerPanel0" parent="BattleStage" instance=ExtResource("7_ply_panel")]
-layout_mode = 1
+[node name="PlayerPanel0" parent="BattleStage" unique_id=688733453 instance=ExtResource("7_ply_panel")]
 anchor_left = 0.03
 anchor_top = 0.47
 anchor_right = 0.03
@@ -116,9 +141,8 @@ offset_top = 52.04001
 offset_right = 812.28
 offset_bottom = 164.04001
 scale = Vector2(0.6206874, 0.6206874)
-mouse_filter = 2
 
-[node name="EffectLayer" type="Control" parent="BattleStage"]
+[node name="EffectLayer" type="Control" parent="BattleStage" unique_id=1607399811]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -127,115 +151,117 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="PartyStatusOpponent" type="HBoxContainer" parent="BattleStage"]
+[node name="PartyStatusOpponent" type="HBoxContainer" parent="BattleStage" unique_id=36237301]
 visible = false
 layout_mode = 1
+anchors_preset = -1
 anchor_left = 0.58
 anchor_top = 0.04
 anchor_right = 0.58
 anchor_bottom = 0.04
 offset_right = 216.0
 offset_bottom = 30.0
-theme_override_constants/separation = 6
 mouse_filter = 2
+theme_override_constants/separation = 6
 
-[node name="Ball0" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
+[node name="Ball0" type="TextureRect" parent="BattleStage/PartyStatusOpponent" unique_id=1014110571]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 texture = ExtResource("21_ball_normal")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="Ball1" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
+[node name="Ball1" type="TextureRect" parent="BattleStage/PartyStatusOpponent" unique_id=1180700929]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 texture = ExtResource("22_ball_status")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="Ball2" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
+[node name="Ball2" type="TextureRect" parent="BattleStage/PartyStatusOpponent" unique_id=999112286]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 texture = ExtResource("23_ball_fainted")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="Ball3" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
+[node name="Ball3" type="TextureRect" parent="BattleStage/PartyStatusOpponent" unique_id=153556070]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 texture = ExtResource("21_ball_normal")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="Ball4" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
+[node name="Ball4" type="TextureRect" parent="BattleStage/PartyStatusOpponent" unique_id=522973723]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 texture = ExtResource("21_ball_normal")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="Ball5" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
+[node name="Ball5" type="TextureRect" parent="BattleStage/PartyStatusOpponent" unique_id=1798310662]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 texture = ExtResource("24_ball_empty")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="PartyStatusPlayer" type="HBoxContainer" parent="BattleStage"]
+[node name="PartyStatusPlayer" type="HBoxContainer" parent="BattleStage" unique_id=873741424]
 visible = false
 layout_mode = 1
+anchors_preset = -1
 anchor_left = 0.05
 anchor_top = 0.68
 anchor_right = 0.05
 anchor_bottom = 0.68
 offset_right = 216.0
 offset_bottom = 30.0
-theme_override_constants/separation = 6
 mouse_filter = 2
+theme_override_constants/separation = 6
 
-[node name="Ball0" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
+[node name="Ball0" type="TextureRect" parent="BattleStage/PartyStatusPlayer" unique_id=448443700]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 texture = ExtResource("21_ball_normal")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="Ball1" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
+[node name="Ball1" type="TextureRect" parent="BattleStage/PartyStatusPlayer" unique_id=763484597]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 texture = ExtResource("21_ball_normal")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="Ball2" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
+[node name="Ball2" type="TextureRect" parent="BattleStage/PartyStatusPlayer" unique_id=691640255]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 texture = ExtResource("22_ball_status")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="Ball3" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
+[node name="Ball3" type="TextureRect" parent="BattleStage/PartyStatusPlayer" unique_id=545230233]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 texture = ExtResource("21_ball_normal")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="Ball4" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
+[node name="Ball4" type="TextureRect" parent="BattleStage/PartyStatusPlayer" unique_id=497719608]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 texture = ExtResource("23_ball_fainted")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="Ball5" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
+[node name="Ball5" type="TextureRect" parent="BattleStage/PartyStatusPlayer" unique_id=1251145272]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 texture = ExtResource("24_ball_empty")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="TrainerIntroBanner" type="Control" parent="BattleStage"]
+[node name="TrainerIntroBanner" type="Control" parent="BattleStage" unique_id=679750074]
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -245,18 +271,19 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Backdrop" type="ColorRect" parent="BattleStage/TrainerIntroBanner"]
+[node name="Backdrop" type="ColorRect" parent="BattleStage/TrainerIntroBanner" unique_id=112133969]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 0.55)
 mouse_filter = 2
+color = Color(0, 0, 0, 0.55)
 
-[node name="Portrait" type="TextureRect" parent="BattleStage/TrainerIntroBanner"]
+[node name="Portrait" type="TextureRect" parent="BattleStage/TrainerIntroBanner" unique_id=390924470]
 layout_mode = 1
+anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
@@ -269,8 +296,9 @@ texture = ExtResource("25_trainer_portrait_sample")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="NameLabel" type="Label" parent="BattleStage/TrainerIntroBanner"]
+[node name="NameLabel" type="Label" parent="BattleStage/TrainerIntroBanner" unique_id=2035788936]
 layout_mode = 1
+anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
@@ -280,8 +308,8 @@ offset_top = 26.0
 offset_right = 160.0
 offset_bottom = 76.0
 theme_override_font_sizes/font_size = 36
-horizontal_alignment = 1
 text = "Leader Brawly wants to battle!"
+horizontal_alignment = 1
 
-[node name="SharedChrome" parent="." instance=ExtResource("30_shared_chrome")]
+[node name="SharedChrome" parent="." unique_id=1509682598 instance=ExtResource("30_shared_chrome")]
 layout_mode = 1

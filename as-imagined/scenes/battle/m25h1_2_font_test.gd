@@ -88,7 +88,7 @@ func _test_each_font_has_the_full_needed_character_set() -> void:
 func _test_fonts_are_genuinely_proportional_not_monospaced() -> void:
 	var font := FontFile.new()
 	font.load_bitmap_font("res://assets/fonts/latin_normal_message.fnt")
-	var size := BattleScreen._FONT_NORMAL_SIZE
+	var size := BattleScreenShared._FONT_NORMAL_SIZE
 
 	# [Real Step-0 finding, not an assumption] gFontNormalLatinGlyphWidths
 	# turns out to be near-monospace for the capital-letter/digit block
@@ -122,7 +122,7 @@ func _test_fonts_are_genuinely_proportional_not_monospaced() -> void:
 # instance (no scene tree needed -- pure disk load + field assignment) ────
 
 func _test_load_battle_fonts_populates_all_three_fields() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._load_battle_fonts()
 
 	_chk("_font_message is a real loaded FontFile", bs._font_message != null and bs._font_message is FontFile)
@@ -142,7 +142,7 @@ func _test_load_battle_fonts_populates_all_three_fields() -> void:
 # (non-tinting) color set, on a bare Button with no scene tree needed ─────
 
 func _test_style_menu_button_applies_menu_font_and_neutral_color() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._load_battle_fonts()
 	var btn := Button.new()
 
@@ -151,7 +151,7 @@ func _test_style_menu_button_applies_menu_font_and_neutral_color() -> void:
 	_chk("Button has the real menu-context bitmap font applied",
 			btn.get_theme_font("font") == bs._font_menu)
 	_chk("Button font_size matches the font's own native pixel size (no soft rescaling)",
-			btn.get_theme_font_size("font_size") == BattleScreen._FONT_NORMAL_SIZE)
+			btn.get_theme_font_size("font_size") == BattleScreenShared._FONT_NORMAL_SIZE)
 	_chk("Button font_color is neutral white (the baked-in dark-grey/light-grey pixels show through unmodified)",
 			btn.get_theme_color("font_color").is_equal_approx(Color(1, 1, 1, 1)))
 	_chk("Button font_hover_color is also neutral",
@@ -159,7 +159,7 @@ func _test_style_menu_button_applies_menu_font_and_neutral_color() -> void:
 
 
 func _test_style_menu_button_sets_a_visibly_different_disabled_color() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._load_battle_fonts()
 	var btn := Button.new()
 

@@ -99,9 +99,27 @@ func _doubles_party(mons: Array) -> BattleParty:
 	return p
 
 
-func _make_bs(attacker: BattlePokemon) -> BattleScreen:
-	var bs := BattleScreen.new()
+func _make_bs(attacker: BattlePokemon) -> BattleScreenShared:
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(attacker)
+	# [Doubles-split roadmap, step 6, real bug found via this file's own
+	# rewrite] _sprite_node_for/_panel_for now ALWAYS resolve field slot via
+	# _field_slot_for(mon, party) regardless of format (no more "singles
+	# fast path that never touches _opp_party" the old per-field lookup
+	# had) -- a party of null crashes .num_active(). None of this suite's
+	# own defender/opponent mons are ever added to a real _opp_party (only
+	# passed directly as function args), so a plain empty BattleParty is
+	# enough: BattleParty.num_active() on it is 0, and _field_slot_for
+	# gracefully falls through to its own documented "not found -> slot 0"
+	# default rather than crashing. [Real bug #2, found immediately after
+	# fixing #1] BattleParty.new()'s own default active_indices is [0], NOT
+	# empty (members defaults to [] though) -- num_active() therefore
+	# returns 1, not 0, so _field_slot_for's loop DOES run once and calls
+	# get_active_at(0) -> members[active_indices[0]], indexing into an
+	# empty members array. Explicitly emptying active_indices too keeps
+	# num_active() at a genuine 0, so the loop never runs at all.
+	bs._opp_party = BattleParty.new()
+	bs._opp_party.active_indices = []
 	return bs
 
 
@@ -110,10 +128,10 @@ func _make_bs(attacker: BattlePokemon) -> BattleScreen:
 # (`_log()` always appended `text + "\n"`), so most of this file's own
 # pre-existing exact-string assertions needed no change beyond swapping
 # `bs._log_label.text` for `_narrative_text(bs)`.
-func _narrative_text(bs: BattleScreen) -> String:
+func _narrative_text(bs: BattleScreenShared) -> String:
 	var out := ""
 	for entry in bs._debug_entries:
-		if entry["category"] == BattleScreen.DebugCategory.NARRATIVE:
+		if entry["category"] == BattleScreenShared.DebugCategory.NARRATIVE:
 			out += entry["text"] + "\n"
 	return out
 
@@ -151,7 +169,10 @@ func _test_announcement_doubles_spread_omits_target() -> void:
 	var opp0 := _make_typed_mon("Opp0", TypeChart.TYPE_FIRE)
 	var move := _make_move("Surf", TypeChart.TYPE_WATER, 30, true)
 	var bs := _make_bs(attacker)
-	bs._is_doubles_mode = true
+	# [Doubles-split roadmap, step 6] _is_doubles() is now derived from real
+	# panel count, not a directly-settable flag -- 2 dummy elements are
+	# enough (_on_log_move_announced never reads their contents).
+	bs._opp_panels = [null, null]
 
 	bs._on_log_move_announced(attacker, opp0, move)
 
@@ -163,13 +184,13 @@ func _test_announcement_spread_move_in_singles_names_target() -> void:
 	# A move flagged is_spread (a per-move data property, independent of
 	# battle format) used in an ACTUAL singles battle only ever has one
 	# possible target — must still be named, unlike the real doubles case
-	# above. Confirms the gate is `move.is_spread AND _is_doubles_mode`, not
+	# above. Confirms the gate is `move.is_spread AND _is_doubles()`, not
 	# raw `move.is_spread` alone.
 	var attacker := _make_typed_mon("Angler4", TypeChart.TYPE_WATER)
 	var opp := _make_typed_mon("SoloOpp", TypeChart.TYPE_FIRE)
 	var move := _make_move("Surf", TypeChart.TYPE_WATER, 30, true)
 	var bs := _make_bs(attacker)
-	bs._is_doubles_mode = false
+	bs._opp_panels = [null]  # 1 opponent panel -> _is_doubles() == false
 
 	bs._on_log_move_announced(attacker, opp, move)
 
@@ -282,7 +303,7 @@ func _test_turn_separator() -> void:
 	_chk("turn separator updates _current_debug_turn structurally, not as a text line",
 			bs._current_debug_turn == 5)
 
-	bs._add_debug_entry(BattleScreen.DebugCategory.NARRATIVE, "something happened")
+	bs._add_debug_entry(BattleScreenShared.DebugCategory.NARRATIVE, "something happened")
 	_chk("a subsequent entry is stamped with the real current turn number",
 			bs._debug_entries[-1]["turn"] == 5)
 
@@ -301,7 +322,7 @@ func _test_doubles_spread_two_targets_one_announcement_two_damage_lines() -> voi
 	var opp1 := _make_typed_mon("Opp1_12", TypeChart.TYPE_GRASS)  # 0.5x
 	var move := _make_move("Surf", TypeChart.TYPE_WATER, 30, true)
 	var bs := _make_bs(attacker)
-	bs._is_doubles_mode = true
+	bs._opp_panels = [null, null]
 
 	bs._on_log_move_announced(attacker, opp0, move)
 	bs._on_hit_effectiveness_computed(opp0, 2.0, false)
@@ -318,7 +339,7 @@ func _test_doubles_spread_two_targets_one_announcement_two_damage_lines() -> voi
 # fire from a genuine battle, not just correct handler logic in isolation.
 # Mirrors m25b_menu_test.gd's own _test_target_select_back_returns_to_
 # fight_not_top precedent (a real BattleManager.new() safely add_child()-able
-# into the test's own tree, unlike BattleScreen which needs its scene's real
+# into the test's own tree, unlike BattleScreenShared which needs its scene's real
 # child nodes to survive _ready()). `bs` itself stays bare/un-added (its own
 # get_tree() stays null), so _wire_log_signals() is called manually instead
 # of via _ready(), and log lines still land synchronously/immediately —
@@ -337,7 +358,7 @@ func _test_real_battle_end_to_end_signal_wiring() -> void:
 	bm.set_human_controlled(0, true)
 	bm.set_human_controlled(1, true)
 
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(attacker)
 	bs._opp_party = _singles_party(opp)
 	bs._bm = bm

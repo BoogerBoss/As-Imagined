@@ -137,7 +137,7 @@ func _test_current_action_field_slot_skips_forced_struggle() -> void:
 	var bm := BattleManager.new()
 	add_child(bm)
 
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = party
 	bs._bm = bm
 	bs._slot_acted = [false]

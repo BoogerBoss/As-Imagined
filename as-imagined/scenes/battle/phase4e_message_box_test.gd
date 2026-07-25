@@ -50,7 +50,7 @@ func _chk(label: String, cond: bool) -> void:
 
 func _test_key_color_detection() -> void:
 	_chk("A.01 exact key color matches",
-			BattleScreen._is_message_box_key_color(Color8(115, 205, 164, 255)))
+			BattleScreenShared._is_message_box_key_color(Color8(115, 205, 164, 255)))
 	# [Correction during test-writing] Color.is_equal_approx's default
 	# epsilon is far tighter than a single 8-bit channel step (~0.0039 in
 	# normalized float space) — a real palette-indexed PNG's key color is
@@ -59,12 +59,12 @@ func _test_key_color_detection() -> void:
 	# behavior; this case confirms a genuinely different nearby color is
 	# NOT swept up by too-loose a match.
 	_chk("A.02 a visibly-different nearby green does not match",
-			not BattleScreen._is_message_box_key_color(Color8(115, 205, 174, 255)))
-	_chk("A.03 white does not match", not BattleScreen._is_message_box_key_color(Color.WHITE))
+			not BattleScreenShared._is_message_box_key_color(Color8(115, 205, 174, 255)))
+	_chk("A.03 white does not match", not BattleScreenShared._is_message_box_key_color(Color.WHITE))
 	_chk("A.04 the border's own dark gray does not match",
-			not BattleScreen._is_message_box_key_color(Color8(98, 115, 123, 255)))
+			not BattleScreenShared._is_message_box_key_color(Color8(98, 115, 123, 255)))
 	_chk("A.05 fully transparent black does not match",
-			not BattleScreen._is_message_box_key_color(Color(0, 0, 0, 0)))
+			not BattleScreenShared._is_message_box_key_color(Color(0, 0, 0, 0)))
 
 
 # ── B. _color_keyed_texture on a small synthetic image (no disk I/O) ────
@@ -76,7 +76,7 @@ func _test_color_keyed_texture_synthetic() -> void:
 	img.set_pixel(2, 0, Color.BLACK)                  # untouched
 	img.set_pixel(3, 0, Color8(115, 205, 164, 255))   # key color -> should become transparent
 
-	var tex: ImageTexture = BattleScreen._color_keyed_texture(img)
+	var tex: ImageTexture = BattleScreenShared._color_keyed_texture(img)
 	var result: Image = tex.get_image()
 
 	_chk("B.01 key-colored pixel 0 becomes fully transparent", result.get_pixel(0, 0).a == 0.0)
@@ -93,7 +93,7 @@ func _test_color_keyed_texture_real_asset() -> void:
 	var raw: Image = load("res://assets/sprites/battle_ui/text_window/std.png").get_image()
 	_chk("C.01 real std.png loads and is 24x24", raw.get_width() == 24 and raw.get_height() == 24)
 
-	var tex: ImageTexture = BattleScreen._color_keyed_texture(raw)
+	var tex: ImageTexture = BattleScreenShared._color_keyed_texture(raw)
 	var result: Image = tex.get_image()
 
 	var any_opaque_key_pixel_remains := false
@@ -103,7 +103,7 @@ func _test_color_keyed_texture_real_asset() -> void:
 			var px: Color = result.get_pixel(x, y)
 			if px.a == 0.0:
 				any_transparent_pixel_found = true
-			elif BattleScreen._is_message_box_key_color(px) and px.a > 0.0:
+			elif BattleScreenShared._is_message_box_key_color(px) and px.a > 0.0:
 				any_opaque_key_pixel_remains = true
 
 	_chk("C.02 no opaque key-colored pixel remains anywhere in the real asset",

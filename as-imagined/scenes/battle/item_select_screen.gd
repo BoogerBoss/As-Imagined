@@ -144,16 +144,16 @@ const _ITEMS := [
 # the child nodes instantiate() already created regardless of tree
 # membership, so it works in both the real (tree-added) and test
 # (bare-instance) cases with no special-casing.
-# [Doubles-split roadmap, step 5] Deliberately UNTYPED, not the specific
-# BattleScreen class -- battle_screen_shared.gd's own BattleScreenShared
-# (used by the new battle_screen_singles.tscn/_doubles.tscn) is an
-# unrelated class, not a BattleScreen subclass, so a strict BattleScreen
-# type here would reject it, and a looser `Control` type would still fail
-# GDScript's static member-access checking for the custom fields/methods
-# this overlay calls on it (_font_menu/_style_menu_button/_player_party/
-# etc., none of which exist on plain Control). Both real classes expose the
-# same duck-typed interface here, resolved dynamically at runtime either
-# way.
+# [Doubles-split roadmap, step 5] Deliberately UNTYPED -- a strict
+# BattleScreenShared type here would work fine on its own (the sole caller
+# since step 7 retired the old monolithic BattleScreen class), but a plain
+# `Control` type would still fail GDScript's static member-access checking
+# for the custom fields/methods this overlay calls on it
+# (_font_menu/_style_menu_button/_player_party/etc., none of which exist on
+# plain Control). Left untyped rather than re-tightened to BattleScreenShared
+# specifically, since nothing about this overlay's own logic actually needs
+# the stricter type -- it just calls whatever duck-typed interface its
+# caller provides.
 var _parent_bs = null
 var _field_slot: int = 0
 
@@ -171,7 +171,7 @@ func _build() -> void:
 	header.text = _HEADER_TEXT
 	if _parent_bs != null:
 		header.add_theme_font_override("font", _parent_bs._font_menu)
-		header.add_theme_font_size_override("font_size", BattleScreen._FONT_NORMAL_SIZE)
+		header.add_theme_font_size_override("font_size", BattleScreenShared._FONT_NORMAL_SIZE)
 		header.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 
 	var buttons: Array[Button] = []
@@ -205,7 +205,7 @@ func _build() -> void:
 		qty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		if _parent_bs != null:
 			qty_label.add_theme_font_override("font", _parent_bs._font_menu)
-			qty_label.add_theme_font_size_override("font_size", BattleScreen._FONT_NORMAL_SIZE)
+			qty_label.add_theme_font_size_override("font_size", BattleScreenShared._FONT_NORMAL_SIZE)
 			qty_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 		row.add_child(qty_label)
 

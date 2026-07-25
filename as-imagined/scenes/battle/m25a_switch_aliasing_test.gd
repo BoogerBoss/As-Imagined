@@ -276,15 +276,15 @@ func _test_switch_buttons_auto_resolves_when_no_candidate() -> void:
 	# would previously see zero switch buttons and no way to proceed.
 	var no_bench_party := _doubles_party([fainted, alive])
 	_chk("a fainted doubles slot with zero bench has no valid switch candidate",
-			not BattleScreen._party_has_switch_candidate(no_bench_party))
+			not BattleScreenShared._party_has_switch_candidate(no_bench_party))
 
 	var bench := _make_mon("Bench", 100)
 	var with_bench_party := _doubles_party([fainted, alive, bench])
 	_chk("a real bench member is correctly detected as a valid candidate",
-			BattleScreen._party_has_switch_candidate(with_bench_party))
+			BattleScreenShared._party_has_switch_candidate(with_bench_party))
 
 	var bench_but_fainted := _make_mon("FaintedBench", 100)
 	bench_but_fainted.fainted = true
 	var all_fainted_bench_party := _doubles_party([fainted, alive, bench_but_fainted])
 	_chk("a fainted bench member does not count as a valid candidate",
-			not BattleScreen._party_has_switch_candidate(all_fainted_bench_party))
+			not BattleScreenShared._party_has_switch_candidate(all_fainted_bench_party))

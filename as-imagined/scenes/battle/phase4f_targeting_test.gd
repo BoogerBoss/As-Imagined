@@ -443,7 +443,7 @@ func _test_singles_regression_shape() -> void:
 	sbm.queue_free()
 
 
-# ── Section H: BattleScreen._needs_target_select (pure, no scene needed) ───
+# ── Section H: BattleScreenShared._needs_target_select (pure, no scene needed) ───
 
 func _test_needs_target_select() -> void:
 	var tackle: MoveData = _load_move(TACKLE_ID)
@@ -452,18 +452,18 @@ func _test_needs_target_select() -> void:
 	var acupressure: MoveData = _load_move(ACUPRESSURE_ID)
 
 	_chk("ordinary move, singles (1 candidate): no picker",
-			not BattleScreen._needs_target_select(tackle, 1))
+			not BattleScreenShared._needs_target_select(tackle, 1))
 	_chk("ordinary move, doubles (2 candidates): picker needed",
-			BattleScreen._needs_target_select(tackle, 2))
+			BattleScreenShared._needs_target_select(tackle, 2))
 	_chk("ordinary move, 0 candidates: no picker (defensive)",
-			not BattleScreen._needs_target_select(tackle, 0))
+			not BattleScreenShared._needs_target_select(tackle, 0))
 	_chk("spread move, 2 candidates: never a picker",
-			not BattleScreen._needs_target_select(surf, 2))
+			not BattleScreenShared._needs_target_select(surf, 2))
 	_chk("TARGET_ALLY move, 1 candidate (auto-resolve): no picker",
-			not BattleScreen._needs_target_select(helping_hand, 1))
+			not BattleScreenShared._needs_target_select(helping_hand, 1))
 	_chk("TARGET_ALLY move, 0 candidates (no ally): no picker",
-			not BattleScreen._needs_target_select(helping_hand, 0))
+			not BattleScreenShared._needs_target_select(helping_hand, 0))
 	_chk("TARGET_USER_OR_ALLY move, 2 candidates (self+ally): picker needed",
-			BattleScreen._needs_target_select(acupressure, 2))
+			BattleScreenShared._needs_target_select(acupressure, 2))
 	_chk("TARGET_USER_OR_ALLY move, 1 candidate (self only): no picker",
-			not BattleScreen._needs_target_select(acupressure, 1))
+			not BattleScreenShared._needs_target_select(acupressure, 1))

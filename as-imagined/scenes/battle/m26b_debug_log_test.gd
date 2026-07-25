@@ -87,7 +87,7 @@ func _singles_party(mon: BattlePokemon) -> BattleParty:
 	return p
 
 
-func _entries_of(bs: BattleScreen, category: int) -> Array:
+func _entries_of(bs: BattleScreenShared, category: int) -> Array:
 	var out := []
 	for entry in bs._debug_entries:
 		if entry["category"] == category:
@@ -98,30 +98,30 @@ func _entries_of(bs: BattleScreen, category: int) -> Array:
 # ── 1-2. Default category state / toggle row construction ──────────────
 
 func _test_default_category_state() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._setup_debug_overlay()
 
-	for category in BattleScreen._DEBUG_CATEGORY_ORDER:
-		var expected: bool = BattleScreen._DEBUG_CATEGORY_DEFAULT_ON[category]
+	for category in BattleScreenShared._DEBUG_CATEGORY_ORDER:
+		var expected: bool = BattleScreenShared._DEBUG_CATEGORY_DEFAULT_ON[category]
 		_chk("category %d default-on state matches the locked design" % category,
 				bs._debug_category_on[category] == expected)
 
 	_chk("Niche/Situational is the one category default-off, per the locked design",
-			bs._debug_category_on[BattleScreen.DebugCategory.NICHE] == false)
+			bs._debug_category_on[BattleScreenShared.DebugCategory.NICHE] == false)
 	_chk("Narrative Text is default-on (today's existing content, unchanged)",
-			bs._debug_category_on[BattleScreen.DebugCategory.NARRATIVE] == true)
+			bs._debug_category_on[BattleScreenShared.DebugCategory.NARRATIVE] == true)
 	_chk("Damage Math is default-on (today's existing content, unchanged)",
-			bs._debug_category_on[BattleScreen.DebugCategory.DAMAGE_MATH] == true)
+			bs._debug_category_on[BattleScreenShared.DebugCategory.DAMAGE_MATH] == true)
 
 
 func _test_toggle_row_built_with_all_categories() -> void:
-	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
-	var instance: BattleScreen = scene.instantiate()
+	var scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
+	var instance: BattleScreenShared = scene.instantiate()
 	add_child(instance)
 
 	var toggle_row: HFlowContainer = instance.get_node("SharedChrome/DebugOverlay/VBox/ToggleRow")
 	_chk("the toggle row has one CheckBox per category",
-			toggle_row.get_child_count() == BattleScreen._DEBUG_CATEGORY_ORDER.size())
+			toggle_row.get_child_count() == BattleScreenShared._DEBUG_CATEGORY_ORDER.size())
 
 	var all_checkboxes := true
 	for child in toggle_row.get_children():
@@ -147,13 +147,13 @@ func _test_toggle_row_built_with_all_categories() -> void:
 # ── 3. Entries accumulate regardless of panel visibility (never discarded) ──
 
 func _test_add_debug_entry_accumulates_regardless_of_visibility() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._setup_debug_overlay()
 	# _debug_overlay stays null on this bare instance -- _add_debug_entry's
 	# own null guard means nothing renders, but the entry itself must still
 	# be recorded (the "full history is never discarded" requirement).
-	bs._add_debug_entry(BattleScreen.DebugCategory.NARRATIVE, "line one")
-	bs._add_debug_entry(BattleScreen.DebugCategory.NARRATIVE, "line two")
+	bs._add_debug_entry(BattleScreenShared.DebugCategory.NARRATIVE, "line one")
+	bs._add_debug_entry(BattleScreenShared.DebugCategory.NARRATIVE, "line two")
 	_chk("entries accumulate even with no overlay/renderer attached at all",
 			bs._debug_entries.size() == 2)
 	_chk("entry order is preserved", bs._debug_entries[0]["text"] == "line one" \
@@ -163,12 +163,12 @@ func _test_add_debug_entry_accumulates_regardless_of_visibility() -> void:
 # ── 4-6. Rendering: category filter, turn separators, recompute-on-toggle ──
 
 func _test_render_filters_by_category_toggle() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._setup_debug_overlay()
 	bs._debug_body = RichTextLabel.new()
 
-	bs._add_debug_entry(BattleScreen.DebugCategory.NARRATIVE, "a narrative line")
-	bs._add_debug_entry(BattleScreen.DebugCategory.NICHE, "a niche line")
+	bs._add_debug_entry(BattleScreenShared.DebugCategory.NARRATIVE, "a narrative line")
+	bs._add_debug_entry(BattleScreenShared.DebugCategory.NICHE, "a niche line")
 	bs._render_debug_overlay()
 
 	_chk("a default-on category's entry is rendered", "a narrative line" in bs._debug_body.text)
@@ -179,14 +179,14 @@ func _test_render_filters_by_category_toggle() -> void:
 
 
 func _test_render_inserts_turn_separator_on_change() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._setup_debug_overlay()
 	bs._debug_body = RichTextLabel.new()
 
 	bs._on_log_turn_started(1)
-	bs._add_debug_entry(BattleScreen.DebugCategory.NARRATIVE, "turn 1 event")
+	bs._add_debug_entry(BattleScreenShared.DebugCategory.NARRATIVE, "turn 1 event")
 	bs._on_log_turn_started(2)
-	bs._add_debug_entry(BattleScreen.DebugCategory.NARRATIVE, "turn 2 event")
+	bs._add_debug_entry(BattleScreenShared.DebugCategory.NARRATIVE, "turn 2 event")
 	bs._render_debug_overlay()
 
 	_chk("a separator for turn 1 is rendered", "Turn 1" in bs._debug_body.text)
@@ -200,21 +200,21 @@ func _test_render_recomputes_separators_after_toggle() -> void:
 	# on -- confirms the separator logic is based on what's actually being
 	# RENDERED, not a fixed pre-baked line, per the locked design's own
 	# "toggling a category recomputes correctly" requirement.
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._setup_debug_overlay()
 	bs._debug_body = RichTextLabel.new()
 
 	bs._on_log_turn_started(1)
-	bs._add_debug_entry(BattleScreen.DebugCategory.NICHE, "turn 1 niche-only event")
+	bs._add_debug_entry(BattleScreenShared.DebugCategory.NICHE, "turn 1 niche-only event")
 	bs._on_log_turn_started(2)
-	bs._add_debug_entry(BattleScreen.DebugCategory.NARRATIVE, "turn 2 narrative event")
+	bs._add_debug_entry(BattleScreenShared.DebugCategory.NARRATIVE, "turn 2 narrative event")
 	bs._render_debug_overlay()
 
 	_chk("with Niche off (default), turn 1 (niche-only) produces no separator at all",
 			not ("Turn 1" in bs._debug_body.text))
 	_chk("turn 2's own separator is still correctly rendered", "Turn 2" in bs._debug_body.text)
 
-	bs._on_debug_category_toggled(true, BattleScreen.DebugCategory.NICHE)
+	bs._on_debug_category_toggled(true, BattleScreenShared.DebugCategory.NICHE)
 	_chk("toggling Niche on re-renders immediately when the panel is (simulated) visible",
 			not ("Turn 1" in bs._debug_body.text))  # _debug_overlay is still null -> no auto re-render
 
@@ -228,18 +228,18 @@ func _test_render_recomputes_separators_after_toggle() -> void:
 func _test_rng_gap_disclosure_and_partial_coverage() -> void:
 	var bm := BattleManager.new()
 	var attacker := _make_mon("Wired1", TypeChart.TYPE_NORMAL)
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._player_party = _singles_party(attacker)
 	bs._setup_debug_overlay()
 	bs._wire_debug_signals()
 
-	var rng_before := _entries_of(bs, BattleScreen.DebugCategory.RNG)
+	var rng_before := _entries_of(bs, BattleScreenShared.DebugCategory.RNG)
 	_chk("a one-time gap-disclosure entry is present in RNG as soon as debug signals are wired",
 			rng_before.size() == 1 and "aren't exposed" in rng_before[0])
 
 	bm.move_missed.emit(attacker, "accuracy")
-	var rng_after := _entries_of(bs, BattleScreen.DebugCategory.RNG)
+	var rng_after := _entries_of(bs, BattleScreenShared.DebugCategory.RNG)
 	_chk("a real accuracy-miss OUTCOME is captured under RNG (roll value itself remains unavailable)",
 			rng_after.size() == 2 and "accuracy check failed" in rng_after[1])
 	_chk("the entry text has no vacuous self-referential parenthetical (no roll/threshold to show)",
@@ -255,24 +255,24 @@ func _test_rng_gap_disclosure_and_partial_coverage() -> void:
 			"semi_invulnerable", "ohko_failed", "sturdy_blocks_ohko"]:
 		bm.move_missed.emit(attacker, reason)
 	_chk("none of the 7 deterministic move_missed reasons produce an RNG entry",
-			_entries_of(bs, BattleScreen.DebugCategory.RNG).size() == 2)
+			_entries_of(bs, BattleScreenShared.DebugCategory.RNG).size() == 2)
 
 
 func _test_turn_order_gap_disclosure_and_partial_coverage() -> void:
 	var bm := BattleManager.new()
 	var mover := _make_mon("Wired2", TypeChart.TYPE_NORMAL)
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._player_party = _singles_party(mover)
 	bs._setup_debug_overlay()
 	bs._wire_debug_signals()
 
-	var before := _entries_of(bs, BattleScreen.DebugCategory.TURN_ORDER)
+	var before := _entries_of(bs, BattleScreenShared.DebugCategory.TURN_ORDER)
 	_chk("a one-time gap-disclosure entry is present in Turn Order as soon as debug signals are wired",
 			before.size() == 1 and "isn't exposed" in before[0])
 
 	bm.turn_order_changed.emit(mover, "after_you")
-	var after := _entries_of(bs, BattleScreen.DebugCategory.TURN_ORDER)
+	var after := _entries_of(bs, BattleScreenShared.DebugCategory.TURN_ORDER)
 	_chk("a real After You/Quash splice IS captured (the one real-coverage case)",
 			after.size() == 2 and "after_you" in after[1])
 
@@ -282,31 +282,31 @@ func _test_turn_order_gap_disclosure_and_partial_coverage() -> void:
 func _test_durations_trick_room() -> void:
 	var bm := BattleManager.new()
 	bm.trick_room_turns = 5
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._setup_debug_overlay()
 	bs._wire_debug_signals()
 
 	bm.trick_room_set.emit()
-	var entries := _entries_of(bs, BattleScreen.DebugCategory.DURATIONS)
+	var entries := _entries_of(bs, BattleScreenShared.DebugCategory.DURATIONS)
 	_chk("Trick Room's real remaining-turn count (5) is reported, not just that it activated",
 			"5 turns" in entries[-1])
 
 	bm.trick_room_ended.emit()
-	entries = _entries_of(bs, BattleScreen.DebugCategory.DURATIONS)
+	entries = _entries_of(bs, BattleScreenShared.DebugCategory.DURATIONS)
 	_chk("Trick Room ending is also reported", "ended" in entries[-1])
 
 
 func _test_durations_screen_with_real_duration() -> void:
 	var bm := BattleManager.new()
 	bm._side_conditions[0]["reflect_turns"] = 5
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._setup_debug_overlay()
 	bs._wire_debug_signals()
 
 	bm.screen_set.emit(0, "reflect")
-	var entries := _entries_of(bs, BattleScreen.DebugCategory.DURATIONS)
+	var entries := _entries_of(bs, BattleScreenShared.DebugCategory.DURATIONS)
 	_chk("Reflect's real starting duration (read from _side_conditions right after the signal fires) is reported",
 			"5 turns" in entries[-1] and "Reflect" in entries[-1])
 
@@ -317,14 +317,14 @@ func _test_stat_changes_before_after() -> void:
 	var bm := BattleManager.new()
 	var mon := _make_mon("StatMon", TypeChart.TYPE_NORMAL)
 	mon.stat_stages[BattlePokemon.STAGE_ATK] = 2  # the AFTER value, matching how the real signal fires post-mutation
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._player_party = _singles_party(mon)
 	bs._setup_debug_overlay()
 	bs._wire_debug_signals()
 
 	bm.stat_stage_changed.emit(mon, BattlePokemon.STAGE_ATK, 2)
-	var entries := _entries_of(bs, BattleScreen.DebugCategory.STAT_CHANGES)
+	var entries := _entries_of(bs, BattleScreenShared.DebugCategory.STAT_CHANGES)
 	_chk("a real before->after stage transition is reported (0 -> +2), not just 'rose'",
 			"+0 -> +2" in entries[-1])
 
@@ -332,7 +332,7 @@ func _test_stat_changes_before_after() -> void:
 func _test_stat_changes_zero_delta_skipped() -> void:
 	var bm := BattleManager.new()
 	var mon := _make_mon("StatMon2", TypeChart.TYPE_NORMAL)
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._player_party = _singles_party(mon)
 	bs._setup_debug_overlay()
@@ -340,7 +340,7 @@ func _test_stat_changes_zero_delta_skipped() -> void:
 
 	bm.stat_stage_changed.emit(mon, BattlePokemon.STAGE_ATK, 0)
 	_chk("a zero-delta stat change (already maxed/blocked) produces no Stat Changes entry",
-			_entries_of(bs, BattleScreen.DebugCategory.STAT_CHANGES).is_empty())
+			_entries_of(bs, BattleScreenShared.DebugCategory.STAT_CHANGES).is_empty())
 
 
 # ── 13. Items & Berries — real HP context at the moment of the trigger ──
@@ -349,14 +349,14 @@ func _test_items_berries_hp_context() -> void:
 	var bm := BattleManager.new()
 	var mon := _make_mon("ItemMon", TypeChart.TYPE_NORMAL, 100)
 	mon.current_hp = 42
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._player_party = _singles_party(mon)
 	bs._setup_debug_overlay()
 	bs._wire_debug_signals()
 
 	bm.item_healed.emit(mon, 20)
-	var entries := _entries_of(bs, BattleScreen.DebugCategory.ITEMS_BERRIES)
+	var entries := _entries_of(bs, BattleScreenShared.DebugCategory.ITEMS_BERRIES)
 	_chk("the real HP value at the moment the item fired is reported, not just the amount",
 			"42/%d HP" % mon.max_hp in entries[-1])
 
@@ -367,14 +367,14 @@ func _test_multi_hit_aggregate_disclaimer() -> void:
 	var bm := BattleManager.new()
 	var attacker := _make_mon("MultiAtk", TypeChart.TYPE_NORMAL)
 	var target := _make_mon("MultiDef", TypeChart.TYPE_NORMAL)
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._player_party = _singles_party(attacker)
 	bs._setup_debug_overlay()
 	bs._wire_debug_signals()
 
 	bm.multi_hit_sequence_finished.emit(attacker, target, 3, 45)
-	var entries := _entries_of(bs, BattleScreen.DebugCategory.MULTI_HIT)
+	var entries := _entries_of(bs, BattleScreenShared.DebugCategory.MULTI_HIT)
 	_chk("the real hit count and total damage are reported", "3 hits" in entries[-1] and "45 total damage" in entries[-1])
 	_chk("the aggregate-only limitation is disclosed inline, not presented as a full per-hit breakdown",
 			"aggregate only" in entries[-1])
@@ -388,7 +388,7 @@ func _test_delayed_effects_scheduled_and_resolved() -> void:
 	var target := _make_mon("Target", TypeChart.TYPE_NORMAL)
 	var move := MoveData.new()
 	move.move_name = "Future Sight"
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._player_party = _singles_party(caster)
 	bs._setup_debug_overlay()
@@ -396,7 +396,7 @@ func _test_delayed_effects_scheduled_and_resolved() -> void:
 
 	bm.future_sight_scheduled.emit(caster, target, move)
 	bm.future_sight_resolved.emit(caster, target, move, 55)
-	var entries := _entries_of(bs, BattleScreen.DebugCategory.DELAYED)
+	var entries := _entries_of(bs, BattleScreenShared.DebugCategory.DELAYED)
 	_chk("the schedule event is recorded", "scheduled" in entries[0])
 	_chk("the later resolve event is recorded with its real damage", "55 damage" in entries[1])
 
@@ -406,7 +406,7 @@ func _test_delayed_effects_scheduled_and_resolved() -> void:
 func _test_ability_immunity_retagged_from_narrative() -> void:
 	var bm := BattleManager.new()
 	var mon := _make_mon("AbilityMon", TypeChart.TYPE_NORMAL)
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._player_party = _singles_party(mon)
 	bs._setup_debug_overlay()
@@ -414,9 +414,9 @@ func _test_ability_immunity_retagged_from_narrative() -> void:
 
 	bm.ability_triggered.emit(mon, "intimidate")
 	_chk("an ability_triggered signal produces an Ability & Immunity entry",
-			not _entries_of(bs, BattleScreen.DebugCategory.ABILITY_IMMUNITY).is_empty())
+			not _entries_of(bs, BattleScreenShared.DebugCategory.ABILITY_IMMUNITY).is_empty())
 	_chk("it does NOT also land in Narrative (moved, not duplicated)",
-			_entries_of(bs, BattleScreen.DebugCategory.NARRATIVE).is_empty())
+			_entries_of(bs, BattleScreenShared.DebugCategory.NARRATIVE).is_empty())
 
 
 # ── 17. Niche/Situational — default-off but still recorded ──────────────
@@ -425,7 +425,7 @@ func _test_niche_default_off_but_still_recorded() -> void:
 	var bm := BattleManager.new()
 	var target := _make_mon("LeechTarget", TypeChart.TYPE_NORMAL)
 	var source := _make_mon("LeechSource", TypeChart.TYPE_GRASS)
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._player_party = _singles_party(target)
 	bs._setup_debug_overlay()
@@ -434,7 +434,7 @@ func _test_niche_default_off_but_still_recorded() -> void:
 
 	bm.leech_seed_drained.emit(target, source, 12)
 	_chk("a Niche-category event is still recorded in the permanent history even though the toggle is off",
-			not _entries_of(bs, BattleScreen.DebugCategory.NICHE).is_empty())
+			not _entries_of(bs, BattleScreenShared.DebugCategory.NICHE).is_empty())
 
 	bs._render_debug_overlay()
 	_chk("but it does NOT render by default, matching the toggle's own default-off state",
@@ -451,13 +451,13 @@ func _test_damage_math_no_longer_has_redundant_header() -> void:
 	move.move_name = "Water Gun"
 	move.power = 40
 	move.accuracy = 100
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._setup_debug_overlay()
 
 	var breakdown := {"damage": 30, "is_crit": false, "effectiveness": 2.0}
 	bs._on_debug_move_damage_breakdown(attacker, defender, move, breakdown)
-	var entries := _entries_of(bs, BattleScreen.DebugCategory.DAMAGE_MATH)
+	var entries := _entries_of(bs, BattleScreenShared.DebugCategory.DAMAGE_MATH)
 	_chk("a real damage breakdown lands as a DAMAGE_MATH entry",
 			entries.size() == 1 and "DmgAtk -> DmgDef" in entries[0])
 	_chk("the per-entry text no longer repeats the panel's own static 'Combat Debug' header",
@@ -494,7 +494,7 @@ func _test_real_battle_end_to_end_debug_wiring() -> void:
 	bm.set_human_controlled(0, true)
 	bm.set_human_controlled(1, true)
 
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._bm = bm
 	bs._player_party = _singles_party(attacker)
 	bs._opp_party = _singles_party(opp)
@@ -517,8 +517,8 @@ func _test_real_battle_end_to_end_debug_wiring() -> void:
 	bm.advance()
 
 	_chk("a real battle turn produced at least one Narrative entry",
-			not _entries_of(bs, BattleScreen.DebugCategory.NARRATIVE).is_empty())
+			not _entries_of(bs, BattleScreenShared.DebugCategory.NARRATIVE).is_empty())
 	_chk("a real battle turn produced at least one Stat Changes entry (Growl's -1 Attack)",
-			not _entries_of(bs, BattleScreen.DebugCategory.STAT_CHANGES).is_empty())
+			not _entries_of(bs, BattleScreenShared.DebugCategory.STAT_CHANGES).is_empty())
 
 	bm.queue_free()

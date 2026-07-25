@@ -87,11 +87,33 @@ func _singles_party(mon: BattlePokemon, bench: Array = []) -> BattleParty:
 
 
 func _button_texts(container: Container) -> Array:
+	# [Doubles-split roadmap, step 8] Filters to VISIBLE buttons only --
+	# _new_button_grid now permanently holds 8 children (TOP's 4 + FIGHT's
+	# 4-slot move pool), only 4 of which are ever meant to be "in" the menu
+	# currently being shown; the rest are hidden, not absent. Harmless for
+	# _button_area/_new_button_area, whose children are still fully cleared
+	# and rebuilt each call (never hold a hidden child to begin with).
 	var texts: Array = []
 	for child in container.get_children():
-		if child is Button:
+		if child is Button and (child as Button).visible:
 			texts.append((child as Button).text)
 	return texts
+
+
+# [Doubles-split roadmap, step 8] _build_top_menu()/_build_fight_menu() now
+# reuse 9 permanent Button nodes authored directly in shared_battle_chrome
+# .tscn (_top_fight_btn/_top_item_btn/_top_switch_btn/_top_run_btn/
+# _move_buttons) instead of creating fresh ones -- real @onready-equivalent
+# fields that never resolve on a bare instance, so every test calling either
+# builder needs stand-ins wired manually first, matching this file's own
+# established convention for every other @onready field.
+func _wire_menu_buttons(bs: BattleScreenShared) -> void:
+	bs._top_fight_btn = Button.new()
+	bs._top_item_btn = Button.new()
+	bs._top_switch_btn = Button.new()
+	bs._top_run_btn = Button.new()
+	var move_buttons: Array[Button] = [Button.new(), Button.new(), Button.new(), Button.new()]
+	bs._move_buttons = move_buttons
 
 
 # ── 1-3. Real .tscn structure — instantiated but never added to the tree,
@@ -99,7 +121,7 @@ func _button_texts(container: Container) -> Array:
 # for checking real node properties without needing a live scene. ────────
 
 func _test_action_region_anchored_to_real_proportion() -> void:
-	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
+	var scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
 	var instance: Node = scene.instantiate()
 	var region: Control = instance.get_node("SharedChrome/ActionRegion")
 	_chk("ActionRegion's top anchor matches source's own B_WIN_MSG proportion (tilemapTop=15/160=0.75)",
@@ -110,7 +132,7 @@ func _test_action_region_anchored_to_real_proportion() -> void:
 
 
 func _test_new_button_area_is_distinct_node_from_old() -> void:
-	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
+	var scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
 	var instance: Node = scene.instantiate()
 	var new_area: Node = instance.get_node("SharedChrome/ActionRegion/ActionPanel/ActionVBox/NewButtonArea")
 	var old_area: Node = instance.get_node("SharedChrome/VBox/ButtonArea")
@@ -122,7 +144,7 @@ func _test_new_button_area_is_distinct_node_from_old() -> void:
 
 
 func _test_side_labels_deleted() -> void:
-	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
+	var scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
 	var instance: Node = scene.instantiate()
 	var vbox: Node = instance.get_node("SharedChrome/VBox")
 	_chk("Side0Label is gone (confirmed redundant M23.2-era scaffolding + real doubles bug)",
@@ -134,7 +156,7 @@ func _test_side_labels_deleted() -> void:
 
 
 func _test_status_label_relocated_into_action_region() -> void:
-	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
+	var scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
 	var instance: Node = scene.instantiate()
 	_chk("StatusLabel now lives under ActionRegion/ActionPanel/ActionVBox (same node, new parent)",
 			instance.has_node("SharedChrome/ActionRegion/ActionPanel/ActionVBox/StatusLabel"))
@@ -146,10 +168,11 @@ func _test_status_label_relocated_into_action_region() -> void:
 func _test_top_menu_builds_into_new_area_not_old() -> void:
 	var mon := _make_mon("Solo")
 	mon.add_move(_load_move(33))
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon)
 	bs._new_button_grid = GridContainer.new()
 	bs._button_area = VBoxContainer.new()
+	_wire_menu_buttons(bs)
 
 	bs._build_top_menu(0)
 
@@ -165,11 +188,17 @@ func _test_top_menu_builds_into_new_area_not_old() -> void:
 func _test_fight_menu_builds_into_new_area_not_old() -> void:
 	var mon := _make_mon("Mover")
 	mon.add_move(_load_move(33))
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon)
 	bs._new_button_grid = GridContainer.new()
 	bs._new_button_area = VBoxContainer.new()
 	bs._button_area = VBoxContainer.new()
+	_wire_menu_buttons(bs)
+	# [M26c-3 real-proportion fix] _build_fight_menu() also calls
+	# _on_fight_move_hovered() for the default-selected move -- see
+	# m25h1_3_cursor_test.gd's own identical fix for this same gap.
+	bs._move_info_type_label = Label.new()
+	bs._move_info_pp_label = Label.new()
 
 	bs._build_fight_menu(0)
 
@@ -199,10 +228,9 @@ func _test_target_select_builds_into_new_area_not_old() -> void:
 	var opp0 := _make_mon("Opp0")
 	var opp1 := _make_mon("Opp1")
 
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._new_button_area = VBoxContainer.new()
 	bs._button_area = VBoxContainer.new()
-	bs._is_doubles_mode = true
 
 	var bm := BattleManager.new()
 	add_child(bm)
@@ -222,17 +250,24 @@ func _test_target_select_builds_into_new_area_not_old() -> void:
 	bs._bm = bm
 
 	# _health_group_for()/_field_slot_for() need real party objects (not the
-	# null defaults a bare BattleScreen.new() carries) -- see
+	# null defaults a bare BattleScreenShared.new() carries) -- see
 	# m25h1_3_cursor_test.gd's own fix for the duplicate-group bug this
-	# omission caused there.
+	# omission caused there. [Doubles-split roadmap, step 6] The old
+	# doubles-only _opp_groups_d/_ply_groups_d/_opp_sprites_d/_ply_sprites_d
+	# arrays are gone -- BattleScreenShared reads the same generic
+	# _opp_panels/_ply_panels/_opp_sprites/_ply_sprites arrays regardless of
+	# format, sized 2 here for doubles. _panel_for() does `panels[slot] as
+	# HealthGroupPanel` -- a plain Control stand-in fails that runtime cast
+	# and silently resolves to null (the exact bug m25h1_3_cursor_test.gd's
+	# own target-select test hit and fixed), so real HealthGroupPanel
+	# instances are needed for the panel arrays; plain Control stubs are
+	# still fine for the sprite arrays.
 	bs._player_party = ally_party
 	bs._opp_party = opp_party
-	bs._opp_groups_d = [Control.new(), Control.new()]
-	bs._ply_groups_d = [Control.new(), Control.new()]
-	# [Phase B: sprite hover/click] _sprite_node_for() needs these too, the
-	# same manual-wiring requirement as _opp_groups_d/_ply_groups_d above.
-	bs._opp_sprites_d = [Control.new(), Control.new()]
-	bs._ply_sprites_d = [Control.new(), Control.new()]
+	bs._opp_panels = [HealthGroupPanel.new(), HealthGroupPanel.new()]
+	bs._ply_panels = [HealthGroupPanel.new(), HealthGroupPanel.new()]
+	bs._opp_sprites = [Control.new(), Control.new()]
+	bs._ply_sprites = [Control.new(), Control.new()]
 
 	bs._build_target_select_buttons(0, 0)
 
@@ -261,7 +296,7 @@ func _test_target_select_builds_into_new_area_not_old() -> void:
 func _test_switch_opens_a_real_overlay_not_the_old_button_areas() -> void:
 	var mon := _make_mon("SwitchTester")
 	var bench := _make_mon("Bench")
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon, [bench])
 	bs._new_button_area = VBoxContainer.new()
 	bs._button_area = VBoxContainer.new()
@@ -288,7 +323,7 @@ func _test_switch_opens_a_real_overlay_not_the_old_button_areas() -> void:
 # instead of the old inline-panel assumption.
 func _test_item_opens_a_real_overlay_not_the_old_button_areas() -> void:
 	var mon := _make_mon("ItemTester")
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon)
 	bs._new_button_area = VBoxContainer.new()
 	bs._button_area = VBoxContainer.new()
@@ -306,44 +341,56 @@ func _test_item_opens_a_real_overlay_not_the_old_button_areas() -> void:
 
 
 # ── 9. Doubles clearance re-check — the exact real anchor/offset values,
-# not the recon's own earlier estimate. Deliberately does NOT instantiate
-# battle_screen.tscn into this process's own live tree to check this via
+# re-measured directly against the current .tscn rather than trusted from
+# an old screenshot. Deliberately does NOT instantiate battle_screen_doubles
+# .tscn into this process's own live tree to check this via
 # get_global_rect() -- count_assertions.sh appends --autoplay to every
 # scene invocation process-wide (see m25b_menu_test.gd's own established
-# "never embed battle_screen.tscn in an autoplay-swept test" precedent),
-# and a real BattleScreen instance entering the tree would see that flag
-# and call _run_autoplay() -> get_tree().quit(), killing this whole test
-# process. Reads the two nodes' own real anchor/offset values directly
-# instead and reproduces Godot's own point-anchor math by hand -- verified
-# to match a real screenshot's own measured pixel values exactly (486.0/
-# 474.64, 11.36px clearance) during this session's own manual verification.
+# "never embed a real battle screen in an autoplay-swept test" precedent),
+# and a real BattleScreenShared instance entering the tree would see that
+# flag and call _run_autoplay() -> get_tree().quit(), killing this whole
+# test process. Reads the two nodes' own real anchor/offset values directly
+# instead and reproduces Godot's own point-anchor math by hand.
+# [Doubles-split roadmap, step 7] Retargeted from the old monolithic
+# battle_screen.tscn (which combined singles/doubles health groups behind
+# an _is_doubles_mode flag) to battle_screen_doubles.tscn specifically --
+# the OLD `PlayerHealthGroupD1` raw health-group node no longer exists at
+# all; step 5's panel-extraction refactor replaced it with `PlayerPanel1`,
+# a real HealthGroupPanel instance at a new anchor/offset (this file's own
+# node-not-found crash on the stale path is exactly what caught this).
+# Every other test in this file reads SharedChrome/ActionRegion instead
+# (present, identical, on both split scenes) and is retargeted to
+# battle_screen_singles.tscn.
+# [Value re-measured, not carried forward] The OLD 11.36px figure was
+# screenshot-measured against the pre-split battle_screen.tscn's own
+# PlayerHealthGroupD1 node, whose own anchor/offset values had ALSO already
+# drifted independently (see CLAUDE.md's own M26c-1 entry: an external
+# Godot-editor GUI edit changed that node's offset_bottom sometime before
+# this session, landing its own real clearance around ~40px instead) --
+# neither the node identity nor its old measured value can be trusted to
+# still apply here. Recomputed directly from PlayerPanel1/ActionRegion's own
+# CURRENT anchor_top/offset values in battle_screen_doubles.tscn instead:
+# (0.68*768 + 5.3599854) vs (0.75*768) = 527.5999854 vs 576.0, a genuine
+# ~48.4px clearance -- ample room, no overlap.
 func _test_player_health_group_d1_clears_action_region() -> void:
-	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
+	var scene: PackedScene = load("res://scenes/battle/battle_screen_doubles.tscn")
 	var instance: Node = scene.instantiate()
-	var d1: Control = instance.get_node("BattleStage/PlayerHealthGroupD1")
+	var d1: Control = instance.get_node("BattleStage/PlayerPanel1")
 	var region: Control = instance.get_node("SharedChrome/ActionRegion")
 
-	# PlayerHealthGroupD1 is a POINT anchor (anchor_top == anchor_bottom);
-	# its own real bottom edge, as a fraction of viewport height, is
-	# anchor_top + (its own local offset_bottom / viewport_height).
-	# [M26a] Updated from 648.0 (the pre-M26a implicit engine-default
-	# viewport height) to 768.0, matching the real base resolution now set
-	# explicitly in project.godot (1024x768). The original 11.36px
-	# clearance figure was screenshot-measured against the OLD 648px
-	# canvas and is NOT assumed to still hold true here -- PlayerHealthGroupD1
-	# and ActionRegion's own anchor/offset values are unchanged (both still
-	# among the 13 confirmed M26a-audit findings explicitly deferred to
-	# M26c, not touched by this fix), so the real clearance in PIXELS
-	# changes once VIEWPORT_HEIGHT does, even though nothing about the
-	# node tree itself moved.
+	# PlayerPanel1 is a POINT anchor (anchor_top == anchor_bottom); its own
+	# real bottom edge, as a fraction of viewport height, is anchor_top +
+	# (its own local offset_bottom / viewport_height). VIEWPORT_HEIGHT
+	# matches the real base resolution set explicitly in project.godot
+	# (1024x768, since M26a).
 	const VIEWPORT_HEIGHT := 768.0
 	var d1_bottom_px: float = d1.anchor_top * VIEWPORT_HEIGHT + d1.offset_bottom
 	var region_top_px: float = region.anchor_top * VIEWPORT_HEIGHT
 
-	_chk("PlayerHealthGroupD1's own bottom edge clears ActionRegion's own top edge (no overlap)",
+	_chk("PlayerPanel1's own bottom edge clears ActionRegion's own top edge (no overlap)",
 			d1_bottom_px < region_top_px)
-	_chk("the real clearance matches this session's own screenshot-measured ~11.36px, not just 'some' positive gap",
-			abs((region_top_px - d1_bottom_px) - 11.36) < 0.1)
+	_chk("the real clearance matches this session's own re-measured ~48.4px, not just 'some' positive gap",
+			abs((region_top_px - d1_bottom_px) - 48.4000146) < 0.1)
 
 	instance.queue_free()
 
@@ -351,7 +398,7 @@ func _test_player_health_group_d1_clears_action_region() -> void:
 # ── 10-14. [M25h-1.1] Real window art for the new region ─────────────────
 
 func _test_action_panel_exists_as_panel_container() -> void:
-	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
+	var scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
 	var instance: Node = scene.instantiate()
 	var panel: Node = instance.get_node("SharedChrome/ActionRegion/ActionPanel")
 	_chk("ActionPanel exists", panel != null)
@@ -371,7 +418,7 @@ func _test_action_panel_has_real_window_art_stylebox() -> void:
 	# and call _run_autoplay() -> get_tree().quit(), killing this whole test
 	# process — see m25b_menu_test.gd's own established precedent for the
 	# same reasoning).
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._action_panel = PanelContainer.new()
 	bs._status_label = Label.new()
 	# [M25h-1.2, font itself since migrated] _setup_action_region_panel()
@@ -386,6 +433,16 @@ func _test_action_panel_has_real_window_art_stylebox() -> void:
 	# currently holds, not what type it is (that's the OTHER test's job).
 	bs._font_message = FontFile.new()
 	bs._font_message.load_bitmap_font("res://assets/fonts/latin_normal_message.fnt")
+	# [M26c-3 real-proportion fix] _setup_action_region_panel() now also
+	# styles MoveInfoType/MoveInfoPP with the real "menu" font -- real
+	# @onready fields that never resolve on a bare instance (see
+	# m25h1_3_cursor_test.gd's own identical fix for _build_fight_menu's own
+	# MoveInfoPanel wiring gap). add_theme_font_override logs a real engine
+	# error on a null font, same as _status_label's own font above.
+	bs._font_menu = FontFile.new()
+	bs._font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
+	bs._move_info_type_label = Label.new()
+	bs._move_info_pp_label = Label.new()
 
 	bs._setup_action_region_panel()
 
@@ -396,7 +453,7 @@ func _test_action_panel_has_real_window_art_stylebox() -> void:
 		_chk("the applied texture is a real, non-null ImageTexture (the color-keyed text_window/1.png pull)",
 				(style as StyleBoxTexture).texture != null)
 		_chk("the applied margins match this session's own measured 6px corner (not std.png's own 5px)",
-				(style as StyleBoxTexture).texture_margin_left == BattleScreen._ACTION_PANEL_MARGIN)
+				(style as StyleBoxTexture).texture_margin_left == BattleScreenShared._ACTION_PANEL_MARGIN)
 
 
 func _test_action_panel_key_color_is_distinct_from_message_box_key_color() -> void:
@@ -407,14 +464,14 @@ func _test_action_panel_key_color_is_distinct_from_message_box_key_color() -> vo
 	# from std.png's own (the file Phase 4e's _setup_message_box already
 	# uses for the separately-styled, untouched-by-this-session log) --
 	# confirms these are two distinct real assets, not the same file reused.
-	var action_key := BattleScreen._ACTION_PANEL_KEY_COLOR
-	var message_key := BattleScreen._MESSAGE_BOX_KEY_COLOR
+	var action_key := BattleScreenShared._ACTION_PANEL_KEY_COLOR
+	var message_key := BattleScreenShared._MESSAGE_BOX_KEY_COLOR
 	_chk("text_window/1.png's own key color is confirmed different from std.png's own",
 			not action_key.is_equal_approx(message_key))
 	_chk("text_window/1.png's own key color matches this session's own direct pixel inspection (98,197,98,255)",
 			action_key.is_equal_approx(Color8(98, 197, 98, 255)))
 	_chk("text_window/1.png's own margin (6px) is confirmed different from std.png's own (5px)",
-			not is_equal_approx(BattleScreen._ACTION_PANEL_MARGIN, BattleScreen._MESSAGE_BOX_MARGIN))
+			not is_equal_approx(BattleScreenShared._ACTION_PANEL_MARGIN, BattleScreenShared._MESSAGE_BOX_MARGIN))
 
 
 func _test_color_keyed_texture_generalizes_to_a_custom_key_color() -> void:
@@ -427,7 +484,7 @@ func _test_color_keyed_texture_generalizes_to_a_custom_key_color() -> void:
 	img.set_pixel(0, 0, custom_key)
 	img.set_pixel(1, 0, Color.WHITE)
 
-	var tex: ImageTexture = BattleScreen._color_keyed_texture(img, custom_key)
+	var tex: ImageTexture = BattleScreenShared._color_keyed_texture(img, custom_key)
 	var result: Image = tex.get_image()
 
 	_chk("a custom key color's own matching pixel becomes real alpha=0",
@@ -435,7 +492,7 @@ func _test_color_keyed_texture_generalizes_to_a_custom_key_color() -> void:
 	_chk("a non-matching pixel (white) is left untouched",
 			result.get_pixel(1, 0).is_equal_approx(Color.WHITE))
 	_chk("the SAME custom key color is correctly NOT matched by the default (std.png) key check",
-			not BattleScreen._is_message_box_key_color(custom_key))
+			not BattleScreenShared._is_message_box_key_color(custom_key))
 
 
 func _test_status_label_has_real_message_color_override() -> void:
@@ -462,11 +519,15 @@ func _test_status_label_has_real_message_color_override() -> void:
 	# bitmap-font stub, since the whole point here is confirming the real
 	# TTF's color scheme) so _setup_action_region_panel's font-override
 	# lines have a real resource to apply.
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._action_panel = PanelContainer.new()
 	var label := Label.new()
 	bs._status_label = label
 	bs._load_battle_fonts()
+	# [M26c-3 real-proportion fix] Same MoveInfoPanel wiring gap as the test
+	# above -- see that test's own comment.
+	bs._move_info_type_label = Label.new()
+	bs._move_info_pp_label = Label.new()
 
 	bs._setup_action_region_panel()
 
@@ -477,9 +538,9 @@ func _test_status_label_has_real_message_color_override() -> void:
 	if label.has_theme_color_override("font_color"):
 		var c: Color = label.get_theme_color("font_color")
 		_chk("the override is the real message color (red), not a neutral pass-through -- this TTF has no baked-in color",
-				c.is_equal_approx(BattleScreen._MESSAGE_FONT_COLOR))
+				c.is_equal_approx(BattleScreenShared._MESSAGE_FONT_COLOR))
 	_chk("StatusLabel also has a real font_shadow_color override (the TTF has no baked-in shadow either)",
 			label.has_theme_color_override("font_shadow_color"))
 	if label.has_theme_color_override("font_shadow_color"):
 		_chk("the shadow override is the real message shadow color (black)",
-				label.get_theme_color("font_shadow_color").is_equal_approx(BattleScreen._MESSAGE_FONT_SHADOW_COLOR))
+				label.get_theme_color("font_shadow_color").is_equal_approx(BattleScreenShared._MESSAGE_FONT_SHADOW_COLOR))

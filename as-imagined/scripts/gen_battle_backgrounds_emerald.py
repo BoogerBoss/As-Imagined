@@ -1,38 +1,46 @@
 #!/usr/bin/env python3
 """
-Replaces this project's 11 battle-background PNGs
-(assets/sprites/battle_backgrounds/<id>.png) with real, composited flat
-images built from the vendored Emerald UI Pack
+Populates this project's battle-background assets
+(assets/sprites/battle_backgrounds/<id>_{bg,base0,base1}.png) from the
+vendored Emerald UI Pack
 (assets/Emerald UI Pack 1.2/Graphics/Battlebacks/<name>_{bg,base0,base1}.png).
 
-Supersedes M25e's own CFRU-pull for the 9 ids it covered, and finally
-replaces sky/underwater's long-standing flawed Phase 5a reconstruction
-(the two ids M25e explicitly could not find an acceptable CFRU replacement
-for) -- every one of this project's 11 ids now sources from this one pack.
+[M26 polish batch, item 1 -- supersedes this script's own earlier
+compositing approach] Previously this script FLATTENED all three source
+layers into one composited <id>.png per background, baked at generation
+time via a hardcoded PLAYER_POS/ENEMY_POS approximation. Per explicit
+request, the three layers are no longer merged into one texture at all --
+_bg is the single full-screen backdrop (already 512x288, no per-side
+positioning need of its own), while _base0 (player-side platform, 512x64)
+and _base1 (enemy-side platform, 256x128) are each pulled as their OWN
+separate file and wired to their OWN separate, independently-positioned
+TextureRect node in the scene (Background/PlayerBase/EnemyBase under
+BattleStage in battle_screen_singles.tscn/battle_screen_doubles.tscn) --
+editable/repositionable per-background in the Godot editor, not baked into
+one flattened image the way the old approach required a full regeneration
+pass to adjust.
 
-[Compositing, added in a same-day follow-up to this script's own first cut]
-The `_bg` file ALONE is a flat, feature-less gradient with zero terrain
-detail (confirmed via direct pixel inspection AND a real in-scene
-screenshot pass -- every environment's `_bg` is visually just a colored
-horizontal-stripe gradient, indistinguishable in character from any other).
-All of the real per-environment texture (grass blades, water ripples, rock
-pebbles, sand grain) lives in the two platform-oval layers instead:
-`_base0` (512x64) and `_base1` (256x128). This project's own vendored copy
-of the pack's real compositing script
-(Plugins/Emerald UI Pack/003_Battle.rb :: pbCreateBackdropSprites) confirms
-these are meant to be layered together, not used alone:
-    battleBG   = <name>_bg
-    playerBase = <name>_base0   (ox = width/2, oy = height   -- bottom-anchored)
-    enemyBase  = <name>_base1   (ox = width/2, oy = height/2 -- center-anchored)
-The script's own real absolute pixel coordinates (`Battle::Scene.
-pbBattlerPosition`) live in the base Essentials engine, not this
-graphics-only pack, so the exact per-side (x, y) isn't available here --
-PLAYER_POS/ENEMY_POS below are a reasonable, source-informed approximation
-(player lower-left/bottom-anchored, enemy upper-right/center-anchored,
-matching both the script's own anchor convention AND this project's own
-already-established sprite layout) rather than a literal engine value,
-verified visually via this session's own real screenshot pass and adjusted
-only if it looked wrong (it didn't).
+This is a pure per-file copy now, not a composite -- confirmed via direct
+PIL inspection that every one of the 11 mapped source names' three files
+are already uniformly sized (bg=512x288, base0=512x64, base1=256x128), so
+no resizing step is needed either.
+
+Supersedes M25e's own CFRU-pull for the 9 ids it covered, and replaces
+sky/underwater's long-standing flawed Phase 5a reconstruction (the two ids
+M25e explicitly could not find an acceptable CFRU replacement for) -- every
+one of this project's 11 ids still sources from this one pack, just as 3
+separate files each instead of 1 flattened composite.
+
+PLAYER_POS/ENEMY_POS below are kept only as the STARTING anchor/offset
+values baked into the two new .tscn nodes at authoring time (see
+battle_screen_singles.tscn/battle_screen_doubles.tscn's own PlayerBase/
+EnemyBase nodes) -- a reasonable, source-informed approximation (player
+lower-left/bottom-anchored, enemy upper-right/center-anchored, matching
+Plugins/Emerald UI Pack/003_Battle.rb :: pbCreateBackdropSprites' own real
+anchor convention) rather than a literal engine value, since the real
+absolute pixel coordinates (`Battle::Scene.pbBattlerPosition`) live in the
+base Essentials engine, not this graphics-only pack. Editable per-background
+afterward directly in the editor, which is the whole point of this change.
 
 Mapping rationale (this pack has no per-id 1:1 name match -- these are
 16 generic Essentials-style gradient backdrops, not scene-specific art):
@@ -58,16 +66,16 @@ Mapping rationale (this pack has no per-id 1:1 name match -- these are
 Usage (from project root):
     python3 scripts/gen_battle_backgrounds_emerald.py
 
-Idempotent: overwrites the 11 destination files unconditionally, so
-reruns are safe. A forced Godot editor reimport pass is required
-afterward -- these files change PIXEL DIMENSIONS (512x288, vs. the prior
-240x160/256x112 files), and Godot's own .import cache does NOT
-automatically pick up a changed dimension on a plain file overwrite (the
-exact gotcha M25e's own session already hit and documented).
+Idempotent: overwrites the 33 destination files (11 ids x 3 layers)
+unconditionally, so reruns are safe. A forced Godot editor reimport pass is
+required afterward if any file's own pixel dimensions changed since the
+last run -- Godot's own .import cache does NOT automatically pick up a
+changed dimension on a plain file overwrite (the exact gotcha M25e's own
+session already hit and documented).
 """
 
 import os
-from PIL import Image
+import shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACK_DIR = os.path.join(ROOT, "assets", "Emerald UI Pack 1.2", "Graphics", "Battlebacks")
@@ -87,39 +95,28 @@ MAPPING = {
     "water": "water",
 }
 
-CANVAS_SIZE = (512, 288)
-# (center_x, anchor_y) -- player is bottom-anchored (oy = height, matching
-# the real script's own anchor), enemy is center-anchored (oy = height/2).
-PLAYER_POS = (95, 284)
-ENEMY_POS = (372, 108)
+# [Scene-authoring reference only -- see this file's own doc comment above]
+# Not used by this script itself anymore; kept here as the single source of
+# truth for the values PlayerBase/EnemyBase were authored with in the .tscn
+# files, so a future re-tuning pass has the original reasoning in one place.
+PLAYER_POS = (95, 284)  # bottom-anchored (oy = full canvas height)
+ENEMY_POS = (372, 108)  # center-anchored (oy = canvas height / 2)
 
-
-def composite(name: str) -> Image.Image:
-    bg = Image.open(os.path.join(PACK_DIR, f"{name}_bg.png")).convert("RGBA")
-    canvas = bg.resize(CANVAS_SIZE) if bg.size != CANVAS_SIZE else bg.copy()
-
-    player = Image.open(os.path.join(PACK_DIR, f"{name}_base0.png")).convert("RGBA")
-    px = PLAYER_POS[0] - player.width // 2
-    py = PLAYER_POS[1] - player.height
-    canvas.alpha_composite(player, (px, py))
-
-    enemy = Image.open(os.path.join(PACK_DIR, f"{name}_base1.png")).convert("RGBA")
-    ex = ENEMY_POS[0] - enemy.width // 2
-    ey = ENEMY_POS[1] - enemy.height // 2
-    canvas.alpha_composite(enemy, (ex, ey))
-
-    return canvas
+LAYERS = ("bg", "base0", "base1")
 
 
 def main():
+    os.makedirs(OUT_DIR, exist_ok=True)
     for battle_id, source_name in sorted(MAPPING.items()):
-        img = composite(source_name)
-        dst = os.path.join(OUT_DIR, f"{battle_id}.png")
-        img.save(dst)
-        print(f"{battle_id}.png <- {source_name}_{{bg,base0,base1}}.png")
+        for layer in LAYERS:
+            src = os.path.join(PACK_DIR, f"{source_name}_{layer}.png")
+            dst = os.path.join(OUT_DIR, f"{battle_id}_{layer}.png")
+            shutil.copyfile(src, dst)
+        print(f"{battle_id}_{{bg,base0,base1}}.png <- {source_name}_{{bg,base0,base1}}.png")
 
-    print(f"\n{len(MAPPING)} battle backgrounds replaced with composited Emerald UI Pack art.")
-    print("Run a Godot editor reimport pass now (dimensions changed):")
+    print(f"\n{len(MAPPING)} battle backgrounds populated as 3 separate layers each "
+          f"({len(MAPPING) * 3} files) from the Emerald UI Pack.")
+    print("Run a Godot editor reimport pass now if any dimensions changed:")
     print('  /home/rob/Godot_v4.7.1-stable_linux.x86_64 --headless --editor --quit --path '
           f'{ROOT}')
 

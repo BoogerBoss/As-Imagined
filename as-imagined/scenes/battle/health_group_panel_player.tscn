@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3 uid="uid://healthgrouppanelplayer"]
+[gd_scene load_steps=5 format=3 uid="uid://healthgrouppanelplayer"]
 
 [ext_resource type="Script" path="res://scenes/battle/health_group_panel.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://assets/sprites/battle_ui/interface/databox_player.png" id="2_databox"]
 [ext_resource type="Texture2D" path="res://assets/sprites/battle_ui/interface/status.png" id="3_status"]
+[ext_resource type="FontFile" uid="uid://b5d6qxd5ayq23" path="res://assets/fonts/latin_small_healthbox.fnt" id="4_font"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_status_preview"]
 atlas = ExtResource("3_status")
@@ -54,7 +55,8 @@ offset_left = 320.0
 offset_top = 185.0
 offset_right = 600.0
 offset_bottom = 243.0
-theme_override_font_sizes/font_size = 32
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 64
 text = "100/100"
 horizontal_alignment = 2
 
@@ -72,6 +74,7 @@ offset_left = 190.0
 offset_top = 95.0
 offset_right = 480.0
 offset_bottom = 170.0
+theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 64
 text = "Pokémon"
 
@@ -81,6 +84,7 @@ offset_left = 480.0
 offset_top = 95.0
 offset_right = 550.0
 offset_bottom = 170.0
+theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 64
 
 [node name="LevelLabel" type="Label" parent="."]
@@ -89,6 +93,7 @@ offset_left = 190.0
 offset_top = 95.0
 offset_right = 600.0
 offset_bottom = 170.0
+theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 64
 text = "Lv50"
 horizontal_alignment = 2

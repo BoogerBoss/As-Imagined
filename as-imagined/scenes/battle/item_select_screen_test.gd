@@ -82,8 +82,8 @@ func _singles_party(mon: BattlePokemon, bench: Array = []) -> BattleParty:
 	return p
 
 
-func _make_battle_screen_with_font() -> BattleScreen:
-	var bs := BattleScreen.new()
+func _make_battle_screen_with_font() -> BattleScreenShared:
+	var bs := BattleScreenShared.new()
 	bs._font_menu = FontFile.new()
 	bs._font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
 	return bs
@@ -96,7 +96,7 @@ func _is_chrome_stripped(btn: Button) -> bool:
 	return true
 
 
-func _make_overlay(bs: BattleScreen, field_slot: int = 0) -> ItemSelectScreen:
+func _make_overlay(bs: BattleScreenShared, field_slot: int = 0) -> ItemSelectScreen:
 	var scene: PackedScene = load("res://scenes/battle/item_select_screen.tscn")
 	var overlay: ItemSelectScreen = scene.instantiate()
 	overlay.setup(bs, field_slot)
@@ -117,7 +117,7 @@ func _test_overlay_builds_item_list_plus_cancel() -> void:
 	_chk("overlay has exactly 4 buttons (3 items + Cancel)", buttons.size() == 4)
 	var texts: Array = []
 	for b in buttons:
-		texts.append(b.text.substr(BattleScreen._CURSOR_PREFIX.length()))
+		texts.append(b.text.substr(BattleScreenShared._CURSOR_PREFIX.length()))
 	_chk("Potion is present", texts.any(func(t): return (t as String).begins_with("Potion")))
 	_chk("Full Heal is present", texts.any(func(t): return (t as String).begins_with("Full Heal")))
 	_chk("X Attack is present", texts.any(func(t): return (t as String).begins_with("X Attack")))
@@ -152,7 +152,7 @@ func _test_overlay_buttons_use_real_font_chrome_and_cursor() -> void:
 			all_stripped)
 	_chk("every button uses the real menu-context bitmap font (M25h-1.2)", all_font)
 	_chk("the first item (Potion) is the default-selected cursor position",
-			buttons[0].text == BattleScreen._CURSOR_PREFIX + "Potion (heal)")
+			buttons[0].text == BattleScreenShared._CURSOR_PREFIX + "Potion (heal)")
 
 
 # ── C. Pressing an item button emits item_chosen with the real item id ────
@@ -276,7 +276,7 @@ func _test_field_slot_propagates_correctly_to_bound_handlers() -> void:
 # exact same args _on_item_screen_item_chosen would supply it ─────────────
 #
 # [Deliberately NOT calling _on_item_screen_item_chosen/_on_item_pressed
-# directly] Both end in _refresh_ui(), which needs BattleScreen's full live
+# directly] Both end in _refresh_ui(), which needs BattleScreenShared's full live
 # @onready UI tree (health bars, sprites, message box) to run without
 # erroring -- matching every other button-handler test's own established
 # restraint in this file (see Test J's own doc comment for the same
@@ -314,7 +314,7 @@ func _test_item_chosen_reaches_real_queue_item_for_end_to_end() -> void:
 	bm.item_healed.connect(func(mon, amount): healed_events.append([mon, amount]))
 
 	# The exact same 2 calls _on_item_pressed's own unchanged body makes.
-	bm.queue_item_for(0, BattleScreen.POTION_ITEM_ID)
+	bm.queue_item_for(0, BattleScreenShared.POTION_ITEM_ID)
 	bm.advance()
 
 	_chk("Potion's real heal effect fired through the real queue_item_for()/advance() pipeline _on_item_pressed calls",
@@ -329,7 +329,7 @@ func _test_cancelled_reaches_real_menu_reset_end_to_end() -> void:
 	var mon := _make_mon("CancelTester")
 	var bs := _make_battle_screen_with_font()
 	bs._player_party = _singles_party(mon)
-	bs._menu = BattleScreen.Menu.ITEM
+	bs._menu = BattleScreenShared.Menu.ITEM
 
 	bs._build_item_buttons(0)
 	_chk("an overlay was really created before cancelling", bs._item_select_overlay != null)
@@ -345,7 +345,7 @@ func _test_cancelled_reaches_real_menu_reset_end_to_end() -> void:
 	# `_close_item_select_overlay(); _menu = Menu.TOP; _refresh_ui()` --
 	# a 3-line function with no branching to hide a bug in.
 	_chk("_menu starts at ITEM (about to be reset by a real Cancel press)",
-			bs._menu == BattleScreen.Menu.ITEM)
+			bs._menu == BattleScreenShared.Menu.ITEM)
 
 
 # ── K. [Pocket-sorting investigation, same day] Real pocket data ──────────

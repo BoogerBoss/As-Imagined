@@ -15,7 +15,7 @@ extends Node
 # message box), matching phase4d_doubles_visual_test.gd's own established
 # precedent. This suite calls _build_top_menu/_build_fight_menu/
 # _build_switch_buttons/_build_item_buttons directly on a bare
-# BattleScreen.new() with only the specific fields each one touches
+# BattleScreenShared.new() with only the specific fields each one touches
 # manually assigned (_player_party, plus _new_button_area for TOP/FIGHT) --
 # Switch and Item (M25h-1.5/M25h-1.4) no longer touch _button_area at all,
 # opening a real overlay instead; see switch_select_screen_test.gd/
@@ -108,15 +108,37 @@ func _button_texts(container: Container) -> Array:
 	# or _new_button_area (VBoxContainer), or concatenate both results
 	# when a test needs the FIGHT menu's combined grid-cells-plus-Back-row
 	# content.
+	# [Doubles-split roadmap, step 8] Filters to VISIBLE buttons only --
+	# _new_button_grid now permanently holds 8 children (TOP's 4 + FIGHT's
+	# 4-slot move pool), only 4 of which are ever meant to be "in" the menu
+	# currently being shown; the rest are hidden, not absent. Harmless for
+	# _button_area/_new_button_area, whose children are still fully cleared
+	# and rebuilt each call (never hold a hidden child to begin with).
 	var texts: Array = []
 	for child in container.get_children():
-		if child is Button:
+		if child is Button and (child as Button).visible:
 			texts.append(_base_text((child as Button).text))
 	return texts
 
 
 func _base_text(t: String) -> String:
-	return t.substr(BattleScreen._CURSOR_PREFIX.length())
+	return t.substr(BattleScreenShared._CURSOR_PREFIX.length())
+
+
+# [Doubles-split roadmap, step 8] _build_top_menu()/_build_fight_menu() now
+# reuse 9 permanent Button nodes authored directly in shared_battle_chrome
+# .tscn (_top_fight_btn/_top_item_btn/_top_switch_btn/_top_run_btn/
+# _move_buttons) instead of creating fresh ones -- real @onready-equivalent
+# fields that never resolve on a bare instance, so every test calling either
+# builder needs stand-ins wired manually first, matching this file's own
+# established convention for every other @onready field.
+func _wire_menu_buttons(bs: BattleScreenShared) -> void:
+	bs._top_fight_btn = Button.new()
+	bs._top_item_btn = Button.new()
+	bs._top_switch_btn = Button.new()
+	bs._top_run_btn = Button.new()
+	var move_buttons: Array[Button] = [Button.new(), Button.new(), Button.new(), Button.new()]
+	bs._move_buttons = move_buttons
 
 
 # ── 1. The top menu shows exactly Fight/Switch/Item/Run ─────────────────
@@ -124,9 +146,10 @@ func _base_text(t: String) -> String:
 func _test_top_menu_has_four_options() -> void:
 	var mon := _make_mon("Solo")
 	mon.add_move(_load_move(33))
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon)
 	bs._new_button_grid = GridContainer.new()
+	_wire_menu_buttons(bs)
 
 	bs._build_top_menu(0)
 
@@ -151,14 +174,15 @@ func _test_top_menu_has_four_options() -> void:
 func _test_fight_button_switches_to_fight_menu() -> void:
 	var mon := _make_mon("Solo2")
 	mon.add_move(_load_move(33))
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon)
 	bs._new_button_grid = GridContainer.new()
-	bs._menu = BattleScreen.Menu.TOP
+	bs._menu = BattleScreenShared.Menu.TOP
+	_wire_menu_buttons(bs)
 
 	bs._build_top_menu(0)
 	var fight_btn: Button = bs._new_button_grid.get_children().filter(
-			func(c): return c is Button and _base_text(c.text) == "Fight")[0]
+			func(c): return c is Button and c.visible and _base_text(c.text) == "Fight")[0]
 	# _refresh_ui() itself needs a live scene (see this file's own top doc
 	# comment) -- disconnect it isn't possible cleanly, so instead confirm
 	# the callable directly captures the right target state by invoking
@@ -176,10 +200,16 @@ func _test_fight_menu_shows_moves_and_back_button() -> void:
 	var mon := _make_mon("Mover")
 	mon.add_move(_load_move(33))  # Tackle
 	mon.add_move(_load_move(52))  # Ember
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon)
 	bs._new_button_grid = GridContainer.new()
 	bs._new_button_area = VBoxContainer.new()
+	_wire_menu_buttons(bs)
+	# [M26c-3 real-proportion fix] _build_fight_menu() also calls
+	# _on_fight_move_hovered() for the default-selected move -- see
+	# m25h1_3_cursor_test.gd's own identical fix for this same gap.
+	bs._move_info_type_label = Label.new()
+	bs._move_info_pp_label = Label.new()
 
 	bs._build_fight_menu(0)
 
@@ -200,11 +230,14 @@ func _test_fight_menu_shows_moves_and_back_button() -> void:
 func _test_fight_menu_back_returns_to_top() -> void:
 	var mon := _make_mon("Mover2")
 	mon.add_move(_load_move(33))
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon)
 	bs._new_button_grid = GridContainer.new()
 	bs._new_button_area = VBoxContainer.new()
-	bs._menu = BattleScreen.Menu.FIGHT
+	bs._menu = BattleScreenShared.Menu.FIGHT
+	_wire_menu_buttons(bs)
+	bs._move_info_type_label = Label.new()
+	bs._move_info_pp_label = Label.new()
 
 	bs._build_fight_menu(0)
 	var back_btn: Button = bs._new_button_area.get_children().filter(
@@ -229,22 +262,24 @@ func _test_fight_menu_back_returns_to_top() -> void:
 func _test_switch_button_disabled_without_valid_target() -> void:
 	var mon := _make_mon("NoBench")
 	mon.add_move(_load_move(33))
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon)  # no bench at all
 	bs._new_button_grid = GridContainer.new()
+	_wire_menu_buttons(bs)
 
 	bs._build_top_menu(0)
 	var switch_btn: Button = bs._new_button_grid.get_children().filter(
-			func(c): return c is Button and _base_text(c.text) == "Switch")[0]
+			func(c): return c is Button and c.visible and _base_text(c.text) == "Switch")[0]
 	_chk("Switch is disabled on TOP with no valid bench target", switch_btn.disabled)
 
 	var bench := _make_mon("Bench")
-	var bs2 := BattleScreen.new()
+	var bs2 := BattleScreenShared.new()
 	bs2._player_party = _singles_party(mon, [bench])
 	bs2._new_button_grid = GridContainer.new()
+	_wire_menu_buttons(bs2)
 	bs2._build_top_menu(0)
 	var switch_btn2: Button = bs2._new_button_grid.get_children().filter(
-			func(c): return c is Button and _base_text(c.text) == "Switch")[0]
+			func(c): return c is Button and c.visible and _base_text(c.text) == "Switch")[0]
 	_chk("Switch is enabled on TOP with a real bench member", not switch_btn2.disabled)
 
 
@@ -260,9 +295,9 @@ func _test_switch_button_disabled_without_valid_target() -> void:
 func _test_switch_opens_a_real_overlay() -> void:
 	var mon := _make_mon("SwitchTester")
 	var bench := _make_mon("Bench2")
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon, [bench])
-	bs._menu = BattleScreen.Menu.SWITCH
+	bs._menu = BattleScreenShared.Menu.SWITCH
 	bs._font_menu = FontFile.new()
 	bs._font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
 
@@ -286,9 +321,9 @@ func _test_switch_opens_a_real_overlay() -> void:
 # still open must not stack a duplicate).
 func _test_item_back_returns_to_top() -> void:
 	var mon := _make_mon("ItemTester")
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon)
-	bs._menu = BattleScreen.Menu.ITEM
+	bs._menu = BattleScreenShared.Menu.ITEM
 	bs._font_menu = FontFile.new()
 	bs._font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
 
@@ -323,18 +358,34 @@ func _test_target_select_back_returns_to_fight_not_top() -> void:
 	var opp0 := _make_mon("Opp0")
 	var opp1 := _make_mon("Opp1")
 
-	var bs := BattleScreen.new()
-	bs._player_party = _singles_party(attacker)
+	var bs := BattleScreenShared.new()
 	bs._new_button_area = VBoxContainer.new()
-	bs._menu = BattleScreen.Menu.TARGET_SELECT
+	bs._menu = BattleScreenShared.Menu.TARGET_SELECT
 	bs._pending_move_index = 0
 
 	var bm := BattleManager.new()
 	add_child(bm)
 	bm.set_human_controlled(0, true)
 	bm.set_human_controlled(1, true)
-	bm.start_battle_doubles(_doubles_party([attacker, _make_mon("Ally")]), _doubles_party([opp0, opp1]))
+	var p1 := _doubles_party([attacker, _make_mon("Ally")])
+	var p2 := _doubles_party([opp0, opp1])
+	bm.start_battle_doubles(p1, p2)
 	bs._bm = bm
+
+	# [Doubles-split roadmap, step 7] _health_group_for()/_sprite_node_for()
+	# read the generic _opp_panels/_ply_panels/_opp_sprites/_ply_sprites
+	# arrays via _field_slot_for(), which needs the SAME real party objects
+	# start_battle_doubles built (not a null _opp_party, which crashes
+	# num_active() outright) -- see m25h1_3_cursor_test.gd's own identical
+	# fix. _panel_for() also does `panels[slot] as HealthGroupPanel`, which
+	# silently fails for a plain Control stand-in, so real HealthGroupPanel
+	# instances are needed for the panel arrays specifically.
+	bs._player_party = p1
+	bs._opp_party = p2
+	bs._opp_panels = [HealthGroupPanel.new(), HealthGroupPanel.new()]
+	bs._ply_panels = [HealthGroupPanel.new(), HealthGroupPanel.new()]
+	bs._opp_sprites = [Control.new(), Control.new()]
+	bs._ply_sprites = [Control.new(), Control.new()]
 
 	bs._build_target_select_buttons(0, 0)
 	var back_btn: Button = bs._new_button_area.get_children().filter(
@@ -357,13 +408,14 @@ func _test_target_select_back_returns_to_fight_not_top() -> void:
 func _test_run_button_present_and_wired() -> void:
 	var mon := _make_mon("RunTester")
 	mon.add_move(_load_move(33))
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon)
 	bs._new_button_grid = GridContainer.new()
+	_wire_menu_buttons(bs)
 
 	bs._build_top_menu(0)
 	var run_btn: Button = bs._new_button_grid.get_children().filter(
-			func(c): return c is Button and _base_text(c.text) == "Run")[0]
+			func(c): return c is Button and c.visible and _base_text(c.text) == "Run")[0]
 	_chk("Run button exists and has a real pressed connection",
 			run_btn.pressed.get_connections().size() > 0)
 	_chk("Run is connected specifically to _on_run_pressed",
@@ -382,7 +434,7 @@ func _test_run_button_present_and_wired() -> void:
 # -- the real end-to-end proof of Run actually ending a battle and
 # returning to setup is this session's own real screenshot verification.
 func _test_run_pressed_clears_hit_effects_safely() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._active_hit_effect_nodes = []
 	bs._clear_active_hit_effects()
 	_chk("_clear_active_hit_effects() runs safely with nothing active (Run's own real side effect)",
@@ -393,14 +445,14 @@ func _test_run_pressed_clears_hit_effects_safely() -> void:
 
 func _test_new_turn_resets_to_top_menu() -> void:
 	var mon := _make_mon("FreshTurn")
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _singles_party(mon)
-	bs._menu = BattleScreen.Menu.ITEM  # simulate having been left mid-navigation
+	bs._menu = BattleScreenShared.Menu.ITEM  # simulate having been left mid-navigation
 	bs._slot_acted = [true]  # simulate the prior turn's own slot already resolved
 
 	bs._ensure_slot_tracking_for_new_turn()
 
-	_chk("a detected fresh turn resets _menu to TOP", bs._menu == BattleScreen.Menu.TOP)
+	_chk("a detected fresh turn resets _menu to TOP", bs._menu == BattleScreenShared.Menu.TOP)
 	_chk("a detected fresh turn resets _slot_acted", bs._slot_acted == [false])
 
 
@@ -413,9 +465,10 @@ func _test_doubles_top_menu_independent_per_slot() -> void:
 	m0.add_move(_load_move(33))
 	var m1 := _make_mon("D1")
 	m1.add_move(_load_move(33))
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._player_party = _doubles_party([m0, m1])
 	bs._new_button_grid = GridContainer.new()
+	_wire_menu_buttons(bs)
 
 	# Slot 0's own top menu.
 	bs._build_top_menu(0)
@@ -426,7 +479,6 @@ func _test_doubles_top_menu_independent_per_slot() -> void:
 	# how _refresh_ui's own per-slot sequencing already drives this —
 	# Phase 4f's own single-flat-_menu-variable design, confirmed still
 	# correct under M25b: nothing here is keyed to slot 0 specifically).
-	bs._new_button_grid = GridContainer.new()
 	bs._build_top_menu(1)
 	var slot1_texts := _button_texts(bs._new_button_grid)
 	_chk("doubles slot 1 also gets its own real 4-option top menu", slot1_texts.size() == 4)
@@ -435,8 +487,9 @@ func _test_doubles_top_menu_independent_per_slot() -> void:
 	# slots -- confirms the field_slot threading through _build_fight_menu
 	# still resolves the correct active mon per slot.
 	m1.add_move(_load_move(52))  # give slot 1's own mon a second move
-	bs._new_button_grid = GridContainer.new()
 	bs._new_button_area = VBoxContainer.new()
+	bs._move_info_type_label = Label.new()
+	bs._move_info_pp_label = Label.new()
 	bs._build_fight_menu(1)
 	var slot1_fight_texts := _button_texts(bs._new_button_grid) + _button_texts(bs._new_button_area)
 	_chk("doubles slot 1's own Fight menu reflects ITS mon's own moveset (2 moves + Back), not slot 0's",
@@ -446,7 +499,7 @@ func _test_doubles_top_menu_independent_per_slot() -> void:
 # ── 11. The idle-animation Timer is now one-shot (M25b bugfix) ──────────
 
 func _test_idle_timer_is_one_shot() -> void:
-	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
+	var scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
 	var instance: Node = scene.instantiate()
 	var timer: Timer = instance.get_node("OpponentAnimTimer")
 	_chk("OpponentAnimTimer is one_shot (stops looping after playing through once)",

@@ -1,8 +1,6 @@
-[gd_scene load_steps=2 format=3 uid="uid://sharedbattlechrome"]
+[gd_scene format=3 uid="uid://dad4jum0ut4ey"]
 
-[ext_resource type="Texture2D" uid="uid://dlln17tpesyg" path="res://assets/sprites/battle_ui/category/physical.png" id="20_category_physical"]
-
-[node name="SharedChrome" type="Control"]
+[node name="SharedChrome" type="Control" unique_id=579030500]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -11,7 +9,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="VBox" type="VBoxContainer" parent="."]
+[node name="VBox" type="VBoxContainer" parent="." unique_id=2013241976]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
@@ -20,10 +18,10 @@ anchor_right = 0.5
 anchor_bottom = 0.04
 grow_horizontal = 2
 
-[node name="ButtonArea" type="VBoxContainer" parent="VBox"]
+[node name="ButtonArea" type="VBoxContainer" parent="VBox" unique_id=333213742]
 layout_mode = 2
 
-[node name="ActionRegion" type="Control" parent="."]
+[node name="ActionRegion" type="Control" parent="." unique_id=2041430101]
 layout_mode = 1
 anchor_top = 0.75
 anchor_right = 1.0
@@ -36,7 +34,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="ActionPanel" type="PanelContainer" parent="ActionRegion"]
+[node name="ActionPanel" type="PanelContainer" parent="ActionRegion" unique_id=1363492009]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -44,78 +42,123 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="ActionVBox" type="VBoxContainer" parent="ActionRegion/ActionPanel"]
+[node name="ActionVBox" type="VBoxContainer" parent="ActionRegion/ActionPanel" unique_id=358265137]
 layout_mode = 2
 
-[node name="StatusLabel" type="Label" parent="ActionRegion/ActionPanel/ActionVBox"]
+[node name="StatusLabel" type="Label" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=824230056]
 layout_mode = 2
 text = "..."
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="TopActionHBox" type="HBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox"]
+[node name="TopActionHBox" type="HBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=299960530]
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 16
 
-[node name="TopPromptSlot" type="MarginContainer" parent="ActionRegion/ActionPanel/ActionVBox/TopActionHBox"]
+[node name="TopPromptSlot" type="MarginContainer" parent="ActionRegion/ActionPanel/ActionVBox/TopActionHBox" unique_id=1662960917]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.17
 
-[node name="TopGridSlot" type="MarginContainer" parent="ActionRegion/ActionPanel/ActionVBox/TopActionHBox"]
+[node name="TopGridSlot" type="MarginContainer" parent="ActionRegion/ActionPanel/ActionVBox/TopActionHBox" unique_id=371419224]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="FightActionHBox" type="HBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox"]
+[node name="FightActionHBox" type="HBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=730796285]
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 16
 
-[node name="FightGridSlot" type="MarginContainer" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox"]
+[node name="FightGridSlot" type="MarginContainer" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox" unique_id=518107482]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 4.25
 
-[node name="MoveInfoPanel" type="VBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox"]
+[node name="MoveInfoPanel" type="VBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox" unique_id=597942260]
 layout_mode = 2
 size_flags_horizontal = 3
 alignment = 1
 
-[node name="MoveInfoCategory" type="TextureRect" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel"]
-custom_minimum_size = Vector2(40, 40)
-layout_mode = 2
-size_flags_horizontal = 4
-texture = ExtResource("20_category_physical")
-expand_mode = 1
-stretch_mode = 4
-
-[node name="MoveInfoType" type="Label" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel"]
+[node name="MoveInfoType" type="Label" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel" unique_id=949118180]
 layout_mode = 2
 horizontal_alignment = 1
 
-[node name="MoveInfoPP" type="Label" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel"]
+[node name="MoveInfoPP" type="Label" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel" unique_id=482616670]
 layout_mode = 2
 horizontal_alignment = 1
 
-[node name="NewButtonGrid" type="GridContainer" parent="ActionRegion/ActionPanel/ActionVBox"]
+[node name="NewButtonGrid" type="GridContainer" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=700932750]
 layout_mode = 2
 theme_override_constants/h_separation = 24
 theme_override_constants/v_separation = 4
 columns = 2
 
-[node name="NewButtonArea" type="VBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox"]
+[node name="TopFightButton" type="Button" parent="ActionRegion/ActionPanel/ActionVBox/NewButtonGrid" unique_id=2098504593]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+text = "Fight"
+
+[node name="TopItemButton" type="Button" parent="ActionRegion/ActionPanel/ActionVBox/NewButtonGrid" unique_id=4830612]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+text = "Item"
+
+[node name="TopSwitchButton" type="Button" parent="ActionRegion/ActionPanel/ActionVBox/NewButtonGrid" unique_id=135095668]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+text = "Switch"
+
+[node name="TopRunButton" type="Button" parent="ActionRegion/ActionPanel/ActionVBox/NewButtonGrid" unique_id=495687664]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+text = "Run"
+
+[node name="Move0Button" type="Button" parent="ActionRegion/ActionPanel/ActionVBox/NewButtonGrid" unique_id=1202173702]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+text = "Move 1"
+
+[node name="Move1Button" type="Button" parent="ActionRegion/ActionPanel/ActionVBox/NewButtonGrid" unique_id=1798219901]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+text = "Move 2"
+
+[node name="Move2Button" type="Button" parent="ActionRegion/ActionPanel/ActionVBox/NewButtonGrid" unique_id=428844955]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+text = "Move 3"
+
+[node name="Move3Button" type="Button" parent="ActionRegion/ActionPanel/ActionVBox/NewButtonGrid" unique_id=849211294]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+text = "Move 4"
+
+[node name="NewButtonArea" type="VBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=416775796]
 layout_mode = 2
 
-[node name="MessageLabel" type="RichTextLabel" parent="ActionRegion/ActionPanel/ActionVBox"]
+[node name="MessageLabel" type="RichTextLabel" parent="ActionRegion/ActionPanel/ActionVBox" unique_id=919437252]
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
 scroll_active = false
 
-[node name="DebugOverlay" type="Control" parent="."]
+[node name="DebugOverlay" type="Control" parent="." unique_id=1628067868]
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -129,7 +172,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 1
 
-[node name="Background" type="ColorRect" parent="DebugOverlay"]
+[node name="Background" type="ColorRect" parent="DebugOverlay" unique_id=598979272]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -139,7 +182,7 @@ grow_vertical = 2
 mouse_filter = 2
 color = Color(0, 0, 0, 0.85)
 
-[node name="VBox" type="VBoxContainer" parent="DebugOverlay"]
+[node name="VBox" type="VBoxContainer" parent="DebugOverlay" unique_id=215553204]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -152,21 +195,21 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Header" type="Label" parent="DebugOverlay/VBox"]
+[node name="Header" type="Label" parent="DebugOverlay/VBox" unique_id=1740648827]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.2, 1, 0.4, 1)
 theme_override_font_sizes/font_size = 16
 text = "Combat Debug (F3 to toggle) — category filters below"
 autowrap_mode = 3
 
-[node name="ToggleRow" type="HFlowContainer" parent="DebugOverlay/VBox"]
+[node name="ToggleRow" type="HFlowContainer" parent="DebugOverlay/VBox" unique_id=2083595478]
 layout_mode = 2
 
-[node name="Scroll" type="ScrollContainer" parent="DebugOverlay/VBox"]
+[node name="Scroll" type="ScrollContainer" parent="DebugOverlay/VBox" unique_id=1810139530]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Body" type="RichTextLabel" parent="DebugOverlay/VBox/Scroll"]
+[node name="Body" type="RichTextLabel" parent="DebugOverlay/VBox/Scroll" unique_id=854540057]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3

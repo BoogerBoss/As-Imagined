@@ -156,9 +156,12 @@ func _test_compute_frame_layout() -> void:
 			irregular["frame_size"] == Vector2(16, 40))
 
 
-# ── battle_screen.gd sprite-node targeting (pure lookup, no live tree
-# required -- mirrors phase4d_doubles_visual_test.gd's own BattleScreen
-# .new() + plain-node pattern) ──────────────────────────────────────────
+# ── battle_screen_shared.gd sprite-node targeting (pure lookup, no live
+# tree required -- mirrors phase4d_doubles_visual_test.gd's own
+# BattleScreenShared.new() + plain-node pattern). [Doubles-split roadmap,
+# step 6] _sprite_node_for is now fully generic over slot count (no
+# _is_doubles_mode branch at all) -- singles and doubles both read the SAME
+# _opp_sprites/_ply_sprites arrays, just sized 1 or 2. ───────────────────
 
 static func _make_mon(mon_name: String) -> BattlePokemon:
 	var sp := PokemonSpecies.new()
@@ -187,39 +190,38 @@ static func _make_party(mons: Array, active: Array) -> BattleParty:
 
 
 func _test_sprite_node_for_singles() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	var ply := _make_mon("Ply")
 	var opp := _make_mon("Opp")
 	bs._player_party = _make_party([ply], [0])
 	bs._opp_party = _make_party([opp], [0])
-	bs._is_doubles_mode = false
 	var ply_node := TextureRect.new()
 	var opp_node := TextureRect.new()
-	bs._player_sprite = ply_node
-	bs._opponent_sprite = opp_node
+	bs._ply_sprites = [ply_node]
+	bs._opp_sprites = [opp_node]
 
 	_chk("singles: player mon resolves to the singles player sprite node",
 			bs._sprite_node_for(ply) == ply_node)
 	_chk("singles: opponent mon resolves to the singles opponent sprite node",
 			bs._sprite_node_for(opp) == opp_node)
 	_chk("singles: null mon resolves to null", bs._sprite_node_for(null) == null)
+	bs.free()
 
 
 func _test_sprite_node_for_doubles() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	var ply0 := _make_mon("Ply0")
 	var ply1 := _make_mon("Ply1")
 	var opp0 := _make_mon("Opp0")
 	var opp1 := _make_mon("Opp1")
 	bs._player_party = _make_party([ply0, ply1], [0, 1])
 	bs._opp_party = _make_party([opp0, opp1], [0, 1])
-	bs._is_doubles_mode = true
 	var ply_d0 := TextureRect.new()
 	var ply_d1 := TextureRect.new()
 	var opp_d0 := TextureRect.new()
 	var opp_d1 := TextureRect.new()
-	bs._ply_sprites_d = [ply_d0, ply_d1]
-	bs._opp_sprites_d = [opp_d0, opp_d1]
+	bs._ply_sprites = [ply_d0, ply_d1]
+	bs._opp_sprites = [opp_d0, opp_d1]
 
 	_chk("doubles: player slot 0 mon resolves to D0 node", bs._sprite_node_for(ply0) == ply_d0)
 	_chk("doubles: player slot 1 mon resolves to D1 node", bs._sprite_node_for(ply1) == ply_d1)
@@ -227,10 +229,11 @@ func _test_sprite_node_for_doubles() -> void:
 	_chk("doubles: opponent slot 1 mon resolves to D1 node", bs._sprite_node_for(opp1) == opp_d1)
 	_chk("doubles: a benched (inactive) mon still resolves rather than crashing",
 			bs._sprite_node_for(_make_mon("Benched")) != null)
+	bs.free()
 
 
 func _test_field_slot_for() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	var mon0 := _make_mon("A")
 	var mon1 := _make_mon("B")
 	var party := _make_party([mon0, mon1], [0, 1])
@@ -238,3 +241,4 @@ func _test_field_slot_for() -> void:
 	_chk("_field_slot_for finds slot 1", bs._field_slot_for(mon1, party) == 1)
 	_chk("_field_slot_for defaults to 0 for an unmatched mon",
 			bs._field_slot_for(_make_mon("C"), party) == 0)
+	bs.free()

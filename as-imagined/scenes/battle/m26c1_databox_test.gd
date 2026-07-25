@@ -72,7 +72,7 @@ func _test_databox_asset_dimensions() -> void:
 # ── 2. HP bar color thresholds — real sourced values, not invented ──────
 
 func _test_hp_bar_color_real_sourced_values() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	_chk(">50% HP uses the pack's real green highlight (115,255,173)",
 			bs._hp_bar_color(51, 100) == Color8(115, 255, 173))
 	_chk(">20% (and <=50%) HP uses the pack's real yellow highlight (255,231,57)",
@@ -86,14 +86,18 @@ func _test_hp_bar_color_real_sourced_values() -> void:
 # ── 3. EXP bar color — real sourced value ────────────────────────────────
 
 func _test_exp_bar_color_real_sourced_value() -> void:
+	# [Doubles-split roadmap, step 6] _EXP_BAR_COLOR moved from
+	# BattleScreen(Shared) to HealthGroupPanel in step 5's dead-code cleanup
+	# -- the fill-bar setup itself now lives entirely inside the panel
+	# component, not the parent screen script.
 	_chk("EXP bar tint matches the pack's own real overlay_exp.png color",
-			BattleScreen._EXP_BAR_COLOR == Color8(66, 206, 255))
+			HealthGroupPanel._EXP_BAR_COLOR == Color8(66, 206, 255))
 
 
 # ── 4-8. _exp_bar_fraction ────────────────────────────────────────────────
 
 func _test_exp_bar_fraction_unknown_species_returns_zero() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	var sp := PokemonSpecies.new()
 	sp.species_name = "Fixture"
 	sp.types.append(TypeChart.TYPE_NORMAL)
@@ -111,14 +115,14 @@ func _test_exp_bar_fraction_unknown_species_returns_zero() -> void:
 
 
 func _test_exp_bar_fraction_level_100_returns_zero() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	var mon: BattlePokemon = PokemonFactory.create_battle_pokemon(1, 100)  # Bulbasaur
 	_chk("a level-100 mon (nothing left to progress toward) returns an empty bar",
 			bs._exp_bar_fraction(mon) == 0.0)
 
 
 func _test_exp_bar_fraction_real_species_midpoint() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	var mon: BattlePokemon = PokemonFactory.create_battle_pokemon(1, 10)  # Bulbasaur, real growth-rate data
 	var species_data: Dictionary = PokemonRegistry.get_species(1)
 	var growth_rate: String = species_data.get("growth_rate", "")
@@ -131,7 +135,7 @@ func _test_exp_bar_fraction_real_species_midpoint() -> void:
 
 
 func _test_exp_bar_fraction_real_species_at_threshold() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	var mon: BattlePokemon = PokemonFactory.create_battle_pokemon(1, 10)
 	var species_data: Dictionary = PokemonRegistry.get_species(1)
 	var growth_rate: String = species_data.get("growth_rate", "")
@@ -141,7 +145,7 @@ func _test_exp_bar_fraction_real_species_at_threshold() -> void:
 
 
 func _test_exp_bar_fraction_clamped_non_negative() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	var mon: BattlePokemon = PokemonFactory.create_battle_pokemon(1, 10)
 	# A deliberately-out-of-normal-range value (current_exp below this
 	# level's own threshold) -- shouldn't happen in real gameplay, but the
@@ -152,156 +156,145 @@ func _test_exp_bar_fraction_clamped_non_negative() -> void:
 	_chk("an out-of-range current_exp clamps to a non-negative fraction", frac >= 0.0)
 
 
-# ── 9. Real scene structure — the EXP bar exists ONLY on the singles
-# player group, matching the real games' own scope exactly (confirmed via
-# gen_databox_sprites.py's own Step 0: no EXP-ledge variant exists for
-# either the opponent box or either doubles box). The old HpLabel overlay
-# node is gone everywhere, not just unused. ──────────────────────────────
+# ── 9-11. [Doubles-split roadmap, step 6] Retargeted from the old
+# monolithic battle_screen.tscn (which combined singles OpponentHealthGroup/
+# PlayerHealthGroup and doubles ...D0/...D1 groups behind an _is_doubles_mode
+# flag) to the two real production scenes that replaced it,
+# battle_screen_singles.tscn/battle_screen_doubles.tscn — each now instances
+# a real, reusable HealthGroupPanel component (OpponentPanel0/PlayerPanel0
+# in singles; OpponentPanel0/1/PlayerPanel0/1 in doubles) rather than
+# inlining raw Background/NameLabel/StatusIcon/etc. nodes directly under
+# battle_screen.gd itself.
+#
+# [Deliberately NOT re-tested here] The panel's own internal structure,
+# _ready()-driven asset wiring (databox texture, status-icon default
+# preview, EXP-fill color/range, font application), and refresh() behavior
+# — health_group_panel_test.gd already covers all four panel variants for
+# exactly this, and PackedScene.instantiate() without add_child() (required
+# here per every other test in this file's own established --autoplay-race
+# precedent) never fires NOTIFICATION_READY anyway, so HealthGroupPanel's
+# own _ready() wiring couldn't be observed at this level even if re-tested.
+# What IS unique to this level, and worth checking here: that each
+# production scene instances the CORRECT panel template at the right node
+# path (not the singles template pasted into the doubles scene or vice
+# versa), that the ExpFill/no-ExpFill split lands on the right nodes in
+# each real scene, and that BattleScreenShared._setup_health_ui() (the
+# generic slot-probing loop that replaced the old per-field @onready
+# wiring) discovers the correct number of panels per side for each format.
 
 func _test_real_scene_structure() -> void:
 	# [Established precedent — see m25b_menu_test.gd/phase4d_doubles_visual_
 	# test.gd/phase4e_message_box_test.gd's own doc comments] Deliberately
-	# NOT add_child()-ing the instantiated scene: count_assertions.sh
-	# appends --autoplay process-wide, and battle_screen.gd's own _ready()
-	# ends by calling _run_autoplay() -> get_tree().quit() once a real
-	# BattleManager child actually starts advancing — entering the live
-	# tree here would race and kill this whole test process. instantiate()
-	# DOES fully build the real node subtree (every child node genuinely
-	# exists), it just never fires NOTIFICATION_READY (so @onready vars are
-	# NOT yet populated on `instance` itself) — worked around by calling
-	# _setup_health_ui() directly with its own required @onready fields
-	# assigned by hand first, the same "manually wire the one function
-	# under test" pattern phase4e_message_box_test.gd's own
-	# _test_setup_message_box_applies_stylebox established, just reading
-	# the REAL child nodes via get_node() rather than fake stand-ins, since
-	# the whole real subtree already genuinely exists.
-	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
-	var instance: BattleScreen = scene.instantiate()
+	# NOT add_child()-ing either instantiated scene: count_assertions.sh
+	# appends --autoplay process-wide, and battle_screen_shared.gd's own
+	# _ready() ends by calling _run_autoplay() -> get_tree().quit() once a
+	# real BattleManager child actually starts advancing — entering the
+	# live tree here would race and kill this whole test process.
+	# instantiate() DOES fully build the real node subtree (every child
+	# node genuinely exists, including each panel's own static ExpFill
+	# child where the .tscn declares one), it just never fires
+	# NOTIFICATION_READY.
+	var singles_scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
+	var singles: Node = singles_scene.instantiate()
+	var doubles_scene: PackedScene = load("res://scenes/battle/battle_screen_doubles.tscn")
+	var doubles: Node = doubles_scene.instantiate()
 
-	_chk("PlayerHealthGroup has a real ExpFill node",
-			instance.has_node("BattleStage/PlayerHealthGroup/ExpFill"))
-	_chk("OpponentHealthGroup has NO ExpFill node (opponent mons never show an EXP bar)",
-			not instance.has_node("BattleStage/OpponentHealthGroup/ExpFill"))
-	_chk("doubles player group has NO ExpFill node (no EXP bar in doubles at all)",
-			not instance.has_node("BattleStage/PlayerHealthGroupD0/ExpFill"))
-	_chk("doubles opponent group has NO ExpFill node",
-			not instance.has_node("BattleStage/OpponentHealthGroupD0/ExpFill"))
+	_chk("singles OpponentPanel0 exists and is a real HealthGroupPanel",
+			singles.has_node("BattleStage/OpponentPanel0")
+			and singles.get_node("BattleStage/OpponentPanel0") is HealthGroupPanel)
+	_chk("singles PlayerPanel0 exists and is a real HealthGroupPanel",
+			singles.has_node("BattleStage/PlayerPanel0")
+			and singles.get_node("BattleStage/PlayerPanel0") is HealthGroupPanel)
+	for path in ["BattleStage/OpponentPanel0", "BattleStage/PlayerPanel0",
+			"BattleStage/OpponentPanel1", "BattleStage/PlayerPanel1"]:
+		_chk("doubles %s exists and is a real HealthGroupPanel" % path,
+				doubles.has_node(path) and doubles.get_node(path) is HealthGroupPanel)
 
-	for path in ["BattleStage/OpponentHealthGroup/HpLabel", "BattleStage/PlayerHealthGroup/HpLabel",
-			"BattleStage/OpponentHealthGroupD0/HpLabel", "BattleStage/OpponentHealthGroupD1/HpLabel",
-			"BattleStage/PlayerHealthGroupD0/HpLabel", "BattleStage/PlayerHealthGroupD1/HpLabel"]:
-		_chk("%s no longer exists (HP text is baked into the new box art)" % path,
-				not instance.has_node(path))
+	_chk("singles PlayerPanel0 has a real ExpFill node",
+			singles.has_node("BattleStage/PlayerPanel0/ExpFill"))
+	_chk("singles OpponentPanel0 has NO ExpFill node (opponent mons never show an EXP bar)",
+			not singles.has_node("BattleStage/OpponentPanel0/ExpFill"))
+	for path in ["BattleStage/OpponentPanel0/ExpFill", "BattleStage/OpponentPanel1/ExpFill",
+			"BattleStage/PlayerPanel0/ExpFill", "BattleStage/PlayerPanel1/ExpFill"]:
+		_chk("doubles %s does NOT exist (no EXP bar in doubles at all)" % path,
+				not doubles.has_node(path))
 
-	# Manually assign every @onready field _setup_health_ui() itself reads
-	# directly (not via $-paths) from the REAL nodes already present in this
-	# instantiated (but not tree-entered) subtree, then call it directly --
-	# proves the real function actually wires the new art/colors correctly.
-	instance._font_healthbox = FontFile.new()
-	instance._font_healthbox.load_bitmap_font("res://assets/fonts/latin_small_healthbox.fnt")
-	# [M26c-1 follow-up] NameLevelLabel split into NameLabel + LevelLabel.
-	instance._opponent_name_label = instance.get_node("BattleStage/OpponentHealthGroup/NameLabel")
-	instance._opponent_level_label = instance.get_node("BattleStage/OpponentHealthGroup/LevelLabel")
-	instance._player_name_label = instance.get_node("BattleStage/PlayerHealthGroup/NameLabel")
-	instance._player_level_label = instance.get_node("BattleStage/PlayerHealthGroup/LevelLabel")
-	# [M26c battle-UI polish] The new separate GenderLabel nodes -- also
-	# manually wired here since _setup_health_ui() now iterates over them
-	# too (font/color override loop), matching every other label above.
-	instance._opponent_gender_label = instance.get_node("BattleStage/OpponentHealthGroup/GenderLabel")
-	instance._player_gender_label = instance.get_node("BattleStage/PlayerHealthGroup/GenderLabel")
-	instance._opponent_health_bg = instance.get_node("BattleStage/OpponentHealthGroup/Background")
-	instance._player_health_bg = instance.get_node("BattleStage/PlayerHealthGroup/Background")
-	instance._opponent_hp_fill = instance.get_node("BattleStage/OpponentHealthGroup/HpFill")
-	instance._player_hp_fill = instance.get_node("BattleStage/PlayerHealthGroup/HpFill")
-	instance._player_exp_fill = instance.get_node("BattleStage/PlayerHealthGroup/ExpFill")
-	# [M26c-3] Numeric HP readout -- also manually wired here since
-	# _setup_health_ui() now iterates over it too (font/color override loop).
-	instance._player_hp_number_label = instance.get_node("BattleStage/PlayerHealthGroup/HpNumberLabel")
-	instance._opponent_status_icon = instance.get_node("BattleStage/OpponentHealthGroup/StatusIcon")
-	instance._player_status_icon = instance.get_node("BattleStage/PlayerHealthGroup/StatusIcon")
+	# _setup_health_ui() is pure has_node()/get_node() slot-probing -- no
+	# dependency on the panels' own _ready() having fired, safe to call
+	# directly on these instantiated-but-not-tree-entered instances.
+	singles._setup_health_ui()
+	doubles._setup_health_ui()
+	_chk("singles _setup_health_ui() discovers exactly 1 opponent panel",
+			singles._opp_panels.size() == 1)
+	_chk("singles _setup_health_ui() discovers exactly 1 player panel",
+			singles._ply_panels.size() == 1)
+	_chk("doubles _setup_health_ui() discovers exactly 2 opponent panels",
+			doubles._opp_panels.size() == 2)
+	_chk("doubles _setup_health_ui() discovers exactly 2 player panels",
+			doubles._ply_panels.size() == 2)
+	_chk("singles is not mistaken for doubles (_is_doubles() reads panel count, not a stored flag)",
+			not singles._is_doubles())
+	_chk("doubles is genuinely recognized as doubles",
+			doubles._is_doubles())
 
-	instance._setup_health_ui()
+	singles.queue_free()
+	doubles.queue_free()
 
-	var player_bg: TextureRect = instance._player_health_bg
-	var opp_bg: TextureRect = instance._opponent_health_bg
-	_chk("PlayerHealthGroup's real Background texture is the new databox_player.png",
-			player_bg.texture != null and "databox_player" in player_bg.texture.resource_path)
-	_chk("OpponentHealthGroup's real Background texture is the new databox_opponent.png",
-			opp_bg.texture != null and "databox_opponent" in opp_bg.texture.resource_path)
-
-	_chk("the real ExpFill node is tinted with the pack's own real EXP color",
-			instance._player_exp_fill.tint_progress == BattleScreen._EXP_BAR_COLOR)
-	_chk("the real ExpFill node's range is 0.0-1.0 (a fraction, not an HP-style raw value)",
-			instance._player_exp_fill.min_value == 0.0 and instance._player_exp_fill.max_value == 1.0)
-
-	instance.queue_free()
-
-
-# ── 10. StatusIcon default preview texture — a real AtlasTexture sub-
-# resource assigned directly in the .tscn (region 0 = the Poison row) so
-# every StatusIcon node renders real pack-sourced pixel content in the
-# Godot editor viewport with no need to run the scene. _setup_health_ui()
-# still overwrites each node's .texture with its own freshly-created
-# AtlasTexture at runtime (unchanged — the region is genuinely dynamic,
-# mutated per-refresh by _update_status_icon) -- this test checks the
-# state BEFORE that ever runs, i.e. what the editor itself would show.
-# ──────────────────────────────────────────────────────────────────────
 
 func _test_status_icon_default_preview_texture() -> void:
-	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
-	var instance: BattleScreen = scene.instantiate()
+	# [Doubles-split roadmap, step 6] Each StatusIcon's own real
+	# AtlasTexture-sourced-from-status.png/status2.png default preview is
+	# now set once, inside the shared health_group_panel*.tscn templates
+	# themselves (already covered per-variant by
+	# health_group_panel_test.gd's own _test_ready_wires_default_databox_and_status
+	# and its doubles-variant equivalent) -- confirmed here only at the
+	# level unique to this file: that both real production scenes actually
+	# instance those templates (not a stripped-down or stubbed copy) by
+	# checking the StatusIcon node genuinely exists inside each real
+	# instanced panel.
+	var singles_scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
+	var singles: Node = singles_scene.instantiate()
+	var doubles_scene: PackedScene = load("res://scenes/battle/battle_screen_doubles.tscn")
+	var doubles: Node = doubles_scene.instantiate()
 
-	var opponent_paths := [
-		"BattleStage/OpponentHealthGroup/StatusIcon",
-		"BattleStage/OpponentHealthGroupD0/StatusIcon",
-		"BattleStage/OpponentHealthGroupD1/StatusIcon",
-	]
-	var player_paths := [
-		"BattleStage/PlayerHealthGroup/StatusIcon",
-		"BattleStage/PlayerHealthGroupD0/StatusIcon",
-		"BattleStage/PlayerHealthGroupD1/StatusIcon",
-	]
+	for path in ["BattleStage/OpponentPanel0/StatusIcon", "BattleStage/PlayerPanel0/StatusIcon"]:
+		_chk("singles %s exists" % path, singles.has_node(path))
+	for path in ["BattleStage/OpponentPanel0/StatusIcon", "BattleStage/OpponentPanel1/StatusIcon",
+			"BattleStage/PlayerPanel0/StatusIcon", "BattleStage/PlayerPanel1/StatusIcon"]:
+		_chk("doubles %s exists" % path, doubles.has_node(path))
 
-	for path in opponent_paths:
-		var icon: TextureRect = instance.get_node(path)
-		var atlas := icon.texture as AtlasTexture
-		_chk("%s has a real AtlasTexture assigned pre-runtime (editor-previewable)" % path,
-				atlas != null)
-		if atlas != null:
-			_chk("%s's preview atlas sources status2.png (opponent sheet)" % path,
-					atlas.atlas != null and "status2" in atlas.atlas.resource_path)
+	singles.queue_free()
+	doubles.queue_free()
 
-	for path in player_paths:
-		var icon: TextureRect = instance.get_node(path)
-		var atlas := icon.texture as AtlasTexture
-		_chk("%s has a real AtlasTexture assigned pre-runtime (editor-previewable)" % path,
-				atlas != null)
-		if atlas != null:
-			_chk("%s's preview atlas sources status.png (player sheet)" % path,
-					atlas.atlas != null and "status.png" in atlas.atlas.resource_path)
-
-	instance.queue_free()
-
-
-# ── 11. Split NameLabel/LevelLabel — real, separately-existing nodes for
-# all 6 health groups (singles opponent/player + 4 doubles slots), with the
-# old combined NameLevelLabel node gone everywhere. ──────────────────────
 
 func _test_split_name_level_labels_exist() -> void:
-	var scene: PackedScene = load("res://scenes/battle/battle_screen.tscn")
-	var instance: BattleScreen = scene.instantiate()
+	# [Doubles-split roadmap, step 6] Same reasoning as the test above --
+	# the NameLabel/LevelLabel split itself (and the old combined
+	# NameLevelLabel node's absence) is already covered per-variant by
+	# health_group_panel_test.gd; this confirms only that both real
+	# production scenes instance panels carrying these real child nodes.
+	var singles_scene: PackedScene = load("res://scenes/battle/battle_screen_singles.tscn")
+	var singles: Node = singles_scene.instantiate()
+	var doubles_scene: PackedScene = load("res://scenes/battle/battle_screen_doubles.tscn")
+	var doubles: Node = doubles_scene.instantiate()
 
-	var groups := [
-		"BattleStage/OpponentHealthGroup", "BattleStage/PlayerHealthGroup",
-		"BattleStage/OpponentHealthGroupD0", "BattleStage/OpponentHealthGroupD1",
-		"BattleStage/PlayerHealthGroupD0", "BattleStage/PlayerHealthGroupD1",
-	]
-	for group_path in groups:
-		_chk("%s/NameLabel exists" % group_path,
-				instance.has_node(group_path + "/NameLabel"))
-		_chk("%s/LevelLabel exists" % group_path,
-				instance.has_node(group_path + "/LevelLabel"))
-		_chk("%s/NameLevelLabel (the old combined node) no longer exists" % group_path,
-				not instance.has_node(group_path + "/NameLevelLabel"))
+	var singles_groups := ["BattleStage/OpponentPanel0", "BattleStage/PlayerPanel0"]
+	var doubles_groups := ["BattleStage/OpponentPanel0", "BattleStage/OpponentPanel1",
+			"BattleStage/PlayerPanel0", "BattleStage/PlayerPanel1"]
+	for group_path in singles_groups:
+		_chk("singles %s/NameLabel exists" % group_path,
+				singles.has_node(group_path + "/NameLabel"))
+		_chk("singles %s/LevelLabel exists" % group_path,
+				singles.has_node(group_path + "/LevelLabel"))
+		_chk("singles %s/NameLevelLabel (the old combined node) no longer exists" % group_path,
+				not singles.has_node(group_path + "/NameLevelLabel"))
+	for group_path in doubles_groups:
+		_chk("doubles %s/NameLabel exists" % group_path,
+				doubles.has_node(group_path + "/NameLabel"))
+		_chk("doubles %s/LevelLabel exists" % group_path,
+				doubles.has_node(group_path + "/LevelLabel"))
+		_chk("doubles %s/NameLevelLabel (the old combined node) no longer exists" % group_path,
+				not doubles.has_node(group_path + "/NameLevelLabel"))
 
-	instance.queue_free()
+	singles.queue_free()
+	doubles.queue_free()

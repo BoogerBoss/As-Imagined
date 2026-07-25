@@ -2,7 +2,7 @@ extends Node
 
 # [M26l/M26q-1/M26o] Regression suite for the 3 combined M26 UI additions:
 # trainer-intro portrait banner, Fight-screen move-category icon, and the
-# compact 6-pokéball party status row. Bare off-tree BattleScreen instances
+# compact 6-pokéball party status row. Bare off-tree BattleScreenShared instances
 # throughout (never ran _ready(), so every @onready node used here is
 # stubbed by hand first) -- matching message_pacing_test.gd's own
 # established precedent for this exact class of test.
@@ -12,7 +12,6 @@ var _fail := 0
 
 
 func _ready() -> void:
-	_test_category_icon_texture_by_move_category()
 	_test_party_ball_texture_priority()
 	_test_refresh_party_status_row_reads_real_party()
 	_test_refresh_party_status_row_pads_short_party_with_empty()
@@ -69,24 +68,11 @@ func _make_ball_row() -> HBoxContainer:
 	return row
 
 
-# ── M26q-1: category icon ─────────────────────────────────────────────────
-
-func _test_category_icon_texture_by_move_category() -> void:
-	var phys := BattleScreen._category_icon_texture(0)
-	var spec := BattleScreen._category_icon_texture(1)
-	var stat := BattleScreen._category_icon_texture(2)
-	_chk("category 0 resolves to a real texture", phys != null)
-	_chk("category 1 resolves to a real texture", spec != null)
-	_chk("category 2 resolves to a real texture", stat != null)
-	_chk("physical/special textures are distinct", phys != spec)
-	_chk("physical/status textures are distinct", phys != stat)
-	_chk("special/status textures are distinct", spec != stat)
-	_chk("physical icon path is the physical.png pull",
-			"category/physical.png" in phys.resource_path)
-	_chk("special icon path is the special.png pull",
-			"category/special.png" in spec.resource_path)
-	_chk("status icon path is the status.png pull",
-			"category/status.png" in stat.resource_path)
+# [M26 polish batch, item 3] The old "M26q-1: category icon" section (a
+# direct test of _category_icon_texture()) is gone -- that function and the
+# MoveInfoCategory node it fed were removed per explicit request. Nothing
+# here duplicates coverage of the party-ball row below, which is a wholly
+# separate feature (_party_ball_texture, M26o) and was left untouched.
 
 
 # ── M26o: party ball state priority ───────────────────────────────────────
@@ -99,24 +85,24 @@ func _test_party_ball_texture_priority() -> void:
 	fainted.fainted = true
 
 	_chk("null slot -> empty ball",
-			"ball_empty" in BattleScreen._party_ball_texture(null).resource_path)
+			"ball_empty" in BattleScreenShared._party_ball_texture(null).resource_path)
 	_chk("fainted mon -> fainted ball",
-			"ball_fainted" in BattleScreen._party_ball_texture(fainted).resource_path)
+			"ball_fainted" in BattleScreenShared._party_ball_texture(fainted).resource_path)
 	_chk("statused mon -> status ball",
-			"ball_status" in BattleScreen._party_ball_texture(statused).resource_path)
+			"ball_status" in BattleScreenShared._party_ball_texture(statused).resource_path)
 	_chk("healthy mon -> normal ball",
-			"ball_normal" in BattleScreen._party_ball_texture(healthy).resource_path)
+			"ball_normal" in BattleScreenShared._party_ball_texture(healthy).resource_path)
 	# Priority: fainted beats status, matching source's own real check order
 	# (fainted checked before status in CreatePartyStatusSummarySprites).
 	var fainted_and_statused := _make_mon("Both")
 	fainted_and_statused.status = BattlePokemon.STATUS_POISON
 	fainted_and_statused.fainted = true
 	_chk("fainted beats status when both are true",
-			"ball_fainted" in BattleScreen._party_ball_texture(fainted_and_statused).resource_path)
+			"ball_fainted" in BattleScreenShared._party_ball_texture(fainted_and_statused).resource_path)
 
 
 func _test_refresh_party_status_row_reads_real_party() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	var row := _make_ball_row()
 	var healthy := _make_mon("A")
 	var fainted := _make_mon("B")
@@ -130,7 +116,7 @@ func _test_refresh_party_status_row_reads_real_party() -> void:
 
 
 func _test_refresh_party_status_row_pads_short_party_with_empty() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	var row := _make_ball_row()
 	var members: Array[BattlePokemon] = [_make_mon("OnlyOne")]
 	bs._refresh_party_status_row(row, _party_of(members))
@@ -140,7 +126,7 @@ func _test_refresh_party_status_row_pads_short_party_with_empty() -> void:
 
 
 func _test_show_party_status_summary_bypassed_when_not_in_tree() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._party_status_opponent = _make_ball_row()
 	bs._party_status_player = _make_ball_row()
 	# Bare Control.new() defaults visible=true (only the .tscn-authored real
@@ -163,7 +149,7 @@ func _test_show_party_status_summary_bypassed_when_not_in_tree() -> void:
 # ── M26l: trainer intro banner ────────────────────────────────────────────
 
 func _test_show_trainer_intro_noop_for_null_trainer() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._trainer_intro_banner = Control.new()
 	bs._trainer_intro_banner.visible = false  # bare Control.new() defaults true
 	bs._trainer_intro_portrait = TextureRect.new()
@@ -175,7 +161,7 @@ func _test_show_trainer_intro_noop_for_null_trainer() -> void:
 
 
 func _test_show_trainer_intro_sets_portrait_and_name_when_not_in_tree() -> void:
-	var bs := BattleScreen.new()
+	var bs := BattleScreenShared.new()
 	bs._trainer_intro_banner = Control.new()
 	bs._trainer_intro_banner.visible = false  # bare Control.new() defaults true
 	bs._trainer_intro_portrait = TextureRect.new()

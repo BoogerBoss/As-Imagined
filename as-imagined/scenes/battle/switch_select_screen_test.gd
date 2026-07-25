@@ -21,7 +21,7 @@ extends Node
 #
 # [Deliberately NOT calling _build_switch_buttons for the zero-candidate
 # scenario] That branch's own final statements are _bm.advance() followed
-# by _refresh_ui(), which needs BattleScreen's full live @onready UI tree
+# by _refresh_ui(), which needs BattleScreenShared's full live @onready UI tree
 # to run without erroring — matching every other _refresh_ui()-ending
 # handler's own established restraint in this project's test suites (see
 # item_select_screen_test.gd's Test I/J doc comments for the identical
@@ -111,8 +111,8 @@ func _singles_party_with_bench(active_mon: BattlePokemon, bench: Array) -> Battl
 	return p
 
 
-func _make_battle_screen_with_font() -> BattleScreen:
-	var bs := BattleScreen.new()
+func _make_battle_screen_with_font() -> BattleScreenShared:
+	var bs := BattleScreenShared.new()
 	bs._font_menu = FontFile.new()
 	bs._font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
 	return bs
@@ -125,7 +125,7 @@ func _is_chrome_stripped(btn: Button) -> bool:
 	return true
 
 
-func _make_overlay(bs: BattleScreen, field_slot: int, is_forced_replacement: bool) -> SwitchSelectScreen:
+func _make_overlay(bs: BattleScreenShared, field_slot: int, is_forced_replacement: bool) -> SwitchSelectScreen:
 	var scene: PackedScene = load("res://scenes/battle/switch_select_screen.tscn")
 	var overlay: SwitchSelectScreen = scene.instantiate()
 	overlay.setup(bs, field_slot, is_forced_replacement)
@@ -140,7 +140,7 @@ func _collect_buttons(node: Node, out: Array[Button]) -> void:
 
 
 func _base_text(btn: Button) -> String:
-	return btn.text.substr(BattleScreen._CURSOR_PREFIX.length())
+	return btn.text.substr(BattleScreenShared._CURSOR_PREFIX.length())
 
 
 # ── A. Voluntary switch: overlay builds one row per eligible bench member,
@@ -207,7 +207,7 @@ func _test_overlay_buttons_use_real_font_chrome_and_cursor() -> void:
 			all_stripped)
 	_chk("every button uses the real menu-context bitmap font (M25h-1.2)", all_font)
 	_chk("the first row (Bench3) is the default-selected cursor position",
-			buttons[0].text.begins_with(BattleScreen._CURSOR_PREFIX))
+			buttons[0].text.begins_with(BattleScreenShared._CURSOR_PREFIX))
 
 
 # ── D. Pressing a mon row emits mon_chosen with the real party slot index ──
@@ -366,7 +366,7 @@ func _test_field_slot_propagates_correctly_to_bound_handlers() -> void:
 # pre-existing logic) ────────────────────────────────────────────────────────
 #
 # [Deliberately NOT calling _on_switch_screen_mon_chosen/_on_switch_pressed
-# directly] Both end in _refresh_ui(), which needs BattleScreen's full live
+# directly] Both end in _refresh_ui(), which needs BattleScreenShared's full live
 # @onready UI tree -- matching item_select_screen_test.gd's own established
 # restraint (see that file's Test I doc comment for the identical
 # reasoning). The real wiring from the overlay's signal to this exact call
@@ -449,7 +449,7 @@ func _test_cancelled_reaches_real_menu_reset_end_to_end() -> void:
 	var bench := _make_mon("CancelBench")
 	var bs := _make_battle_screen_with_font()
 	bs._player_party = _singles_party_with_bench(active, [bench])
-	bs._menu = BattleScreen.Menu.SWITCH
+	bs._menu = BattleScreenShared.Menu.SWITCH
 
 	bs._build_switch_buttons(false, 0)
 	_chk("an overlay was really created before cancelling", bs._switch_select_overlay != null)
@@ -461,7 +461,7 @@ func _test_cancelled_reaches_real_menu_reset_end_to_end() -> void:
 	# `_close_switch_select_overlay(); _menu = Menu.TOP; _refresh_ui()` --
 	# a 3-line function with no branching to hide a bug in.
 	_chk("_menu starts at SWITCH (about to be reset by a real Cancel press)",
-			bs._menu == BattleScreen.Menu.SWITCH)
+			bs._menu == BattleScreenShared.Menu.SWITCH)
 
 
 # ── N. The header shows the real source string (gText_ChoosePokemon,
