@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3 uid="uid://battlescreendoubles"]
+[gd_scene load_steps=15 format=3 uid="uid://battlescreendoubles"]
 
 [ext_resource type="Script" path="res://scenes/battle/battle_screen_shared.gd" id="1_screen"]
 [ext_resource type="Script" uid="uid://by21x2021is5s" path="res://scripts/battle/core/battle_manager.gd" id="2_bm"]
@@ -14,6 +14,11 @@
 [ext_resource type="Texture2D" uid="uid://u5nenbe1yr5i" path="res://assets/sprites/battle_ui/party_status/ball_empty.png" id="24_ball_empty"]
 [ext_resource type="Texture2D" uid="uid://c4lgygj6twkss" path="res://assets/sprites/trainers/portraits/0039_leader_brawly.png" id="25_trainer_portrait_sample"]
 [ext_resource type="PackedScene" path="res://scenes/battle/shared_battle_chrome.tscn" id="30_shared_chrome"]
+[ext_resource type="Texture2D" path="res://assets/sprites/trainers/back_pics/leaf.png" id="31_player_back_pic"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_player_trainer_frame0"]
+atlas = ExtResource("31_player_back_pic")
+region = Rect2(0, 0, 64, 64)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_opp_sprite_preview"]
 atlas = ExtResource("5_charizard_front")
@@ -156,6 +161,22 @@ offset_bottom = 398.44
 texture = ExtResource("4_pikachu_back")
 expand_mode = 1
 stretch_mode = 4
+
+[node name="PlayerTrainerSprite" type="TextureRect" parent="BattleStage"]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.14
+anchor_top = 0.22
+anchor_right = 0.14
+anchor_bottom = 0.22
+offset_left = 123.72
+offset_top = 267.44
+offset_right = 254.72
+offset_bottom = 398.44
+texture = SubResource("AtlasTexture_player_trainer_frame0")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="PlayerPanel0" parent="BattleStage" instance=ExtResource("7_ply_panel")]
 layout_mode = 1
@@ -313,20 +334,18 @@ texture = ExtResource("24_ball_empty")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="TrainerSprite" type="TextureRect" parent="BattleStage" unique_id=679750074]
+[node name="OpponentTrainerSprite" type="TextureRect" parent="BattleStage" unique_id=679750074]
 visible = false
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.66200006
-anchor_top = 0.615
-anchor_right = 0.66200006
-anchor_bottom = 0.615
-offset_left = -86.88806
-offset_top = -512.32
-offset_right = 205.27222
-offset_bottom = -220.16003
-grow_horizontal = 2
-grow_vertical = 0
+anchor_left = 0.83
+anchor_top = 0.06
+anchor_right = 0.83
+anchor_bottom = 0.06
+offset_left = -220.15997
+offset_top = 143.12
+offset_right = -89.160034
+offset_bottom = 274.12
 texture = ExtResource("25_trainer_portrait_sample")
 expand_mode = 1
 stretch_mode = 5

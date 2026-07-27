@@ -479,7 +479,13 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # the Pokemon will occupy (singles x=176,y=40 == the opponent mon's own
 # {176,40}), reusing the Pokemon battle-sprite template outright
 # (src/pokemon.c:1923-1932). See CLAUDE.md's M26B3 entry for the full recon.
-@onready var _trainer_sprite: TextureRect = $BattleStage/TrainerSprite
+@onready var _opponent_trainer_sprite: TextureRect = $BattleStage/OpponentTrainerSprite
+
+# [M26B3-3] The player's own trainer back sprite. Unlike the opponent's
+# (a static single frame, `gAnims_Trainer` is two entries both frame 0),
+# this one is genuinely multi-frame: it plays a real throw animation before
+# the Pokémon appears. See _show_player_send_out().
+@onready var _player_trainer_sprite: TextureRect = $BattleStage/PlayerTrainerSprite
 
 # [Doubles-split roadmap, step 5] Bottom-anchor baseline -- each opponent
 # sprite slot's own ORIGINAL (.tscn-authored) offset_top/offset_bottom,
@@ -633,12 +639,70 @@ const _PARTY_STATUS_HOLD_SECONDS := 1.6
 # slide-in/out animation, which this project has no infrastructure for.
 const _TRAINER_INTRO_HOLD_SECONDS := 1.6
 
-# [M26B3-2] Slide geometry/timing. Distance is a full stage width so the
-# sprite is genuinely off-screen at both ends regardless of resolution (the
-# reference uses GBA-space -DISPLAY_WIDTH in, x=280 out). Durations
-# approximate source's frame counts at 60fps: slide-in 2px/frame over 240px
-# (~120 frames), slide-out a fixed 35 frames.
-const _TRAINER_SLIDE_DISTANCE := 1024.0
+# [M26B3-2] Slide geometry/timing. The opponent enters from the RIGHT and
+# exits to the RIGHT — confirmed directly from source's own opponent branch
+# (`battle_controllers.c:2513-2524`): `x2 = 96` (a POSITIVE offset, i.e.
+# starting right of rest) paired with `sSpeedX = -2` (travelling left into
+# place); the player-side branch immediately above it is the exact mirror
+# (`x2 = -96`, `sSpeedX = 2`). Exit is `data[2] = 280` for a non-player
+# battler (`:2535`), likewise off the right edge.
+#
+# Distance is "just off the right edge," NOT a full stage width: source's
+# own 96px offset against its 240px screen puts the 64px sprite exactly
+# clear of the edge, so a full-width slide would travel ~2.3x too far for
+# the same duration and read as a much faster whipping motion. 440 clears
+# the right edge for BOTH scenes' sprite rects (singles rest spans x≈591-883,
+# doubles x≈630-761, stage width 1024). Durations approximate source's frame
+# counts at 60fps: slide-in 2px/frame over 96px, slide-out a fixed 35 frames.
+const _TRAINER_SLIDE_DISTANCE := 440.0
+
+# [M26B3-3] The PLACEHOLDER player character, Rob's call 2026-07-26. This
+# project has no player-identity concept of any kind (no trainer id, no
+# gender, no name — confirmed by direct grep), so there is nothing to
+# resolve this from at runtime; it is a single hardcoded constant by
+# design, and the natural thing for a future player-character system
+# (M27 territory) to replace. Leaf is a Kanto back pic, matching this
+# project's own Kanto setting; red.png sits beside it, already pulled, if
+# the male counterpart is wanted instead — `gen_trainer_back_pics.py`
+# pulls all 11 regardless of which one is selected here.
+const _PLAYER_BACK_PIC := "res://assets/sprites/trainers/back_pics/leaf.png"
+
+# [M26B3-3] Leaf's real throw animation, ported frame-for-frame from
+# `sAnimCmd_Kanto` (`src/data/graphics/trainers.h:500-508`), which her own
+# `TRAINER_BACK_PIC(5, ..., sBackAnims_Kanto)` entry (`:608-612`) selects.
+# Source's ANIMCMD_FRAME(index, duration) pairs, in order, durations in
+# 60fps frames: (1,20) (2,6) (3,6) (4,24) (0,1). Red shares this exact
+# sequence — both Kanto back pics are 5-frame and both use sBackAnims_Kanto.
+const _PLAYER_THROW_FRAMES := [
+	{"frame": 1, "hold": 20},
+	{"frame": 2, "hold": 6},
+	{"frame": 3, "hold": 6},
+	{"frame": 4, "hold": 24},
+	{"frame": 0, "hold": 1},
+]
+
+# [M26B3-3] Frame 31 is when the BALL LAUNCHES — it is NOT when the Pokémon
+# appears. Getting this wrong is easy and I did it first time round; the
+# screenshot pass caught it (the mon materialised on top of a trainer still
+# mid-follow-through) and source settled it:
+#
+#   - `PlayerHandleIntroTrainerBallThrow` passes 31 as `framesToWait`
+#     (`battle_controller_player.c:2298-2302`), which feeds
+#     `Task_StartSendOutAnim` (`battle_controllers.c:2887-2889`) — i.e. 31
+#     frames in, the ball-throw animation STARTS.
+#   - The mon sprite is loaded by `SpriteCB_FreePlayerSpriteLoadMonSprite`
+#     (`battle_controllers.c`), which frees the trainer sprite and loads the
+#     mon in the SAME callback — its own two comments are literally "Free
+#     player trainer sprite" then "Load mon sprite". So the swap is
+#     simultaneous and the two never overlap on screen.
+#
+# Consequently this constant drives nothing yet. It is recorded because
+# M26B3-6 (ball throw + open + emerge) is exactly the piece that will need
+# it, and re-deriving it later would mean re-walking the same three call
+# sites. The interim without a ball is: full throw, then trainer and mon
+# swap in one instant.
+const _PLAYER_BALL_LAUNCH_FRAME := 31
+const _ANIM_FRAME_SECONDS := 1.0 / 60.0
 const _TRAINER_SLIDE_IN_SECONDS := 0.55
 const _TRAINER_SLIDE_OUT_SECONDS := 0.58
 
@@ -690,6 +754,31 @@ const _FONT_SMALL_SIZE := 13
 # scaling that shared constant directly -- only the battle menu text and the
 # Fight/Switch/Item/Run button labels were asked to grow 4x, not the PP/Type
 # info panel next to them. 60 = 15 * 4.
+#
+# STANDING INVARIANT — this must stay an EXACT INTEGER MULTIPLE of
+# _FONT_NORMAL_SIZE (the .fnt's own declared `size=15`). These are extracted
+# GBA bitmap glyphs, not a scalable outline font: at an integer multiple
+# every source pixel maps to a whole NxN block and the art stays sharp; at a
+# fractional one (50 = 3.33x, 70 = 4.67x) the resampler has to blend across
+# glyph edges and the pixel art visibly softens. Only integer multiples are
+# safe to pick here -- treat any non-multiple as a rendering regression even
+# though nothing will fail loudly.
+#
+# Verified empirically 2026-07-26, not assumed: a real non-headless capture
+# of the built TOP menu, zoomed 5x, shows hard pixel edges and a clean baked
+# drop-shadow at 60 -- no bilinear smear. (Both halves of that check needed
+# real care: the extracted font only appears once _build_top_menu() has run,
+# so any screenshot taken during the trainer intro shows the .tscn's own
+# authored placeholder buttons in Godot's DEFAULT font at the theme's
+# default_font_size=20 instead, which reads as blurry and is easy to
+# misattribute to this constant.)
+#
+# NOTE: `m25h1_2_font_test.gd`'s Section F still asserts font_size ==
+# _FONT_NORMAL_SIZE and therefore FAILS (26/27) -- it predates this change
+# and encodes the older "always render at native size" intent. Left failing
+# deliberately rather than quietly retargeted; the replacement worth writing
+# asserts the invariant above (an exact integer multiple), since that is the
+# property that actually protects crispness, not the specific value.
 const _MENU_BUTTON_FONT_SIZE := 60
 
 # [Message-box font migration] All-message-box text (both real "message
@@ -763,9 +852,27 @@ func _load_battle_fonts() -> void:
 	# [M26 polish batch, item 4 -- real bug found] _font_menu had this exact
 	# same gap and nobody had noticed: EVERY menu-button font_size request
 	# (buttons AND MoveInfoType/PP) was being silently ignored, always
-	# rendering at the .fnt's own native ~13px regardless of the requested
-	# size (15, barely different from native, so the gap was imperceptible
-	# until this session's 4x request made it obvious). Same fix as above.
+	# rendering at the .fnt's own native size regardless of what was asked
+	# for. Same fix as above.
+	#
+	# [Correction, 2026-07-26] This comment previously said that native size
+	# was "~13px". It is 15 -- `latin_normal_menu.fnt`'s own header line
+	# reads `size=15 ... lineHeight=15 base=13`, so 13 is the BASELINE
+	# offset, not the glyph size. The 13 was almost certainly carried
+	# forward from the healthbox paragraph directly above (whose font
+	# genuinely IS size=13 -- `latin_small_healthbox.fnt`: `size=13 base=11`),
+	# which this block's own "Same fix as above" hands off from.
+	#
+	# Why the gap stayed invisible for so long: the only size ever requested
+	# was _FONT_NORMAL_SIZE (15), which is exactly native -- and requesting
+	# the native size is indistinguishable from having your request
+	# discarded. Nothing rendered differently either way, so there was no
+	# symptom to notice until item 4 asked for 4x.
+	#
+	# The correction matters because it is what makes 60 safe: 60 = 15 * 4
+	# exactly. Against a 13px native it would be 4.6x -- fractional, and
+	# fractional resampling of hard-edged pixel glyphs visibly smears them.
+	# See _MENU_BUTTON_FONT_SIZE's own comment for the standing invariant.
 	_font_menu.fixed_size_scale_mode = 2
 
 
@@ -1165,6 +1272,11 @@ func _ready() -> void:
 	# battle, trainer or wild" call site.
 	await _show_trainer_intro(opp_trainer_data)
 	await _show_party_status_summary()
+	# [M26B3-3] Sequenced AFTER the party summary, matching source's own
+	# phase order (sprite -> party summary -> intro text -> send-out ->
+	# ball throw, `include/battle_main.h:28-50`). B3-5 owns correcting the
+	# TEXT half of that order; this is only the throw's own position in it.
+	await _show_player_send_out()
 
 	# [Autoplay] No existing CLI-arg/env-var convention exists anywhere in
 	# this codebase for a headless-vs-interactive toggle — every one of the
@@ -3066,7 +3178,7 @@ func _show_trainer_intro(trainer: TrainerData) -> void:
 		return
 	var portrait := TrainerPicRegistry.get_portrait_texture(trainer.trainer_pic_id)
 	if portrait != null:
-		_trainer_sprite.texture = portrait
+		_opponent_trainer_sprite.texture = portrait
 
 	# The trainer stands where the mon will stand, so the mon must not be on
 	# screen yet -- in the reference it genuinely does not exist until the ball
@@ -3079,11 +3191,11 @@ func _show_trainer_intro(trainer: TrainerData) -> void:
 
 	_queue_trainer_intro_message(trainer)
 
-	var rest_x := _trainer_sprite.position.x
-	_trainer_sprite.position.x = rest_x - _TRAINER_SLIDE_DISTANCE
-	_trainer_sprite.visible = true
+	var rest_x := _opponent_trainer_sprite.position.x
+	_opponent_trainer_sprite.position.x = rest_x + _TRAINER_SLIDE_DISTANCE
+	_opponent_trainer_sprite.visible = true
 	var slide_in := create_tween()
-	slide_in.tween_property(_trainer_sprite, "position:x", rest_x, _TRAINER_SLIDE_IN_SECONDS)
+	slide_in.tween_property(_opponent_trainer_sprite, "position:x", rest_x, _TRAINER_SLIDE_IN_SECONDS)
 	await slide_in.finished
 
 	await get_tree().create_timer(_TRAINER_INTRO_HOLD_SECONDS).timeout
@@ -3092,25 +3204,116 @@ func _show_trainer_intro(trainer: TrainerData) -> void:
 	# time, not after -- matching source's concurrency (the trainer is still
 	# sliding out while the ball is already in flight).
 	var slide_out := create_tween()
-	slide_out.tween_property(_trainer_sprite, "position:x",
+	slide_out.tween_property(_opponent_trainer_sprite, "position:x",
 			rest_x + _TRAINER_SLIDE_DISTANCE, _TRAINER_SLIDE_OUT_SECONDS)
 	_set_opponent_mon_sprites_visible(true)
 	await slide_out.finished
-	_trainer_sprite.visible = false
-	_trainer_sprite.position.x = rest_x
+	_opponent_trainer_sprite.visible = false
+	_opponent_trainer_sprite.position.x = rest_x
 
 
 # [M26B3-2] Every opponent-side mon sprite this scene has (1 singles, 2
 # doubles) -- generic over slot count, same lookup convention as
 # _sprite_node_for()/_health_group_for().
 func _set_opponent_mon_sprites_visible(vis: bool) -> void:
+	_set_side_mon_sprites_visible("Opponent", vis)
+
+
+# [M26B3-3] The player-side twin, needed once the player's own trainer
+# stands where its Pokémon will. Same generic slot walk, so doubles needs
+# no second code path here either.
+func _set_player_mon_sprites_visible(vis: bool) -> void:
+	_set_side_mon_sprites_visible("Player", vis)
+
+
+# Walks OpponentSprite0/1/... or PlayerSprite0/1/... until the next slot
+# doesn't exist, so singles (1 slot) and doubles (2) both work unchanged.
+func _set_side_mon_sprites_visible(node_prefix: String, vis: bool) -> void:
 	var slot := 0
 	while true:
-		var n := get_node_or_null("BattleStage/OpponentSprite%d" % slot)
+		var n := get_node_or_null("BattleStage/%sSprite%d" % [node_prefix, slot])
 		if n == null:
 			break
 		(n as CanvasItem).visible = vis
 		slot += 1
+
+
+# [M26B3-3] Swaps which 64x64 cell of the back-pic strip is showing. The
+# sheets are VERTICAL strips (Leaf: 64x320 = 5 frames), so only the region's
+# Y moves. Reuses the same AtlasTexture-region mechanism the idle bob has
+# used since Phase 4c — this is not new infrastructure, just more frames
+# and a timed sequence rather than a two-state toggle.
+func _set_player_trainer_frame(frame_index: int) -> void:
+	if _player_trainer_sprite == null:
+		return
+	var atlas := _player_trainer_sprite.texture as AtlasTexture
+	if atlas == null:
+		return
+	atlas.region = Rect2(0, frame_index * 64, 64, 64)
+
+
+func _wait_anim_frames(frames: int) -> void:
+	if frames <= 0:
+		return
+	await get_tree().create_timer(frames * _ANIM_FRAME_SECONDS).timeout
+
+
+# [M26B3-3] The player's own send-out: the trainer slides in from the LEFT,
+# plays the real 5-frame throw, and the Pokémon appears partway through it.
+#
+# Direction is source-confirmed and is the mirror of B3-2's opponent, whose
+# own direction I got backwards first time: the player branch of
+# `BtlController_HandleTrainerSlide` sets `x2 = -96` (NEGATIVE — starting
+# LEFT of rest) with `sSpeedX = 2` (travelling right into place)
+# (`battle_controllers.c:2497-2512`); the opponent branch immediately below
+# is `x2 = 96` / `sSpeedX = -2`.
+#
+# DISCLOSED INCOMPLETE (Rob's call 2026-07-26): there is no pokéball. The
+# trainer performs the full throw and the Pokémon simply appears at frame
+# 31 with nothing having left their hand. The ball arc/open/emerge is
+# M26B3-6, deliberately deferred; this interim was accepted knowingly
+# rather than overlooked.
+func _show_player_send_out() -> void:
+	if _player_trainer_sprite == null:
+		return
+	var back_pic := load(_PLAYER_BACK_PIC) as Texture2D
+	if back_pic != null:
+		var atlas := AtlasTexture.new()
+		atlas.atlas = back_pic
+		atlas.region = Rect2(0, 0, 64, 64)
+		_player_trainer_sprite.texture = atlas
+
+	# The trainer occupies the slot the Pokémon will, so the mon must not be
+	# on screen yet — same reasoning as the opponent's in _show_trainer_intro.
+	_set_player_mon_sprites_visible(false)
+
+	if _is_autoplay_run or not is_inside_tree():
+		_set_player_mon_sprites_visible(true)
+		return
+
+	var rest_x := _player_trainer_sprite.position.x
+	_player_trainer_sprite.position.x = rest_x - _TRAINER_SLIDE_DISTANCE
+	_player_trainer_sprite.visible = true
+	var slide_in := create_tween()
+	slide_in.tween_property(_player_trainer_sprite, "position:x", rest_x,
+			_TRAINER_SLIDE_IN_SECONDS)
+	await slide_in.finished
+
+	# Walk the real frame sequence straight through.
+	for step: Dictionary in _PLAYER_THROW_FRAMES:
+		_set_player_trainer_frame(step["frame"])
+		await _wait_anim_frames(step["hold"])
+
+	# Trainer out, mon in — the SAME instant, matching
+	# SpriteCB_FreePlayerSpriteLoadMonSprite doing both in one callback. The
+	# player's trainer, unlike the opponent's, never slides back out; it is
+	# simply gone the moment the mon is standing there. Confirmed it never
+	# returns for mid-battle switches either (those spawn a bare ball with no
+	# trainer at all, `pokeball.c:432-437`), so nothing re-shows this.
+	_player_trainer_sprite.visible = false
+	_set_player_mon_sprites_visible(true)
+	_player_trainer_sprite.position.x = rest_x
+	_set_player_trainer_frame(0)
 
 
 # [M26B3-2] Minimal preservation of the retired banner's caption -- see

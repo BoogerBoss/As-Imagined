@@ -1,8 +1,9 @@
 extends Node
 
-# [M26l/M26q-1/M26o] Regression suite for the 3 combined M26 UI additions:
-# trainer-intro portrait banner, Fight-screen move-category icon, and the
-# compact 6-pokéball party status row. Bare off-tree BattleScreenShared instances
+# [M26B3/M26C4/M26B5] Regression suite for the 3 combined M26 UI additions:
+# the opponent trainer battlefield sprite (M26B3-2 — the retired portrait
+# banner's replacement), Fight-screen move-category icon, and the compact
+# 6-pokéball party status row. Bare off-tree BattleScreenShared instances
 # throughout (never ran _ready(), so every @onready node used here is
 # stubbed by hand first) -- matching message_pacing_test.gd's own
 # established precedent for this exact class of test.
@@ -21,6 +22,11 @@ func _ready() -> void:
 	_test_trainer_sprite_shares_opponent_mon_geometry()
 	_test_intro_banner_is_retired_from_both_scenes()
 	_test_opponent_mon_visibility_helper_covers_every_slot()
+	_test_player_trainer_sprite_shares_player_mon_geometry()
+	_test_player_throw_matches_source_frame_sequence()
+	_test_player_trainer_frame_stepping_walks_the_strip()
+	await _test_player_send_out_bypassed_when_not_in_tree()
+	_test_player_mon_visibility_helper_covers_every_slot()
 	_test_battle_setup_context_trainer_id_round_trip()
 	_test_battle_manager_get_trainer_data_round_trip()
 	_test_real_trainer_and_portrait_pipeline_resolves()
@@ -160,24 +166,24 @@ func _test_show_party_status_summary_bypassed_when_not_in_tree() -> void:
 
 func _test_show_trainer_intro_noop_for_null_trainer() -> void:
 	var bs := BattleScreenShared.new()
-	bs._trainer_sprite = TextureRect.new()
-	bs._trainer_sprite.visible = false
+	bs._opponent_trainer_sprite = TextureRect.new()
+	bs._opponent_trainer_sprite.visible = false
 	await bs._show_trainer_intro(null)
 	_chk("null trainer leaves the sprite hidden (early-return before anything)",
-			not bs._trainer_sprite.visible)
-	_chk("null trainer sets no texture", bs._trainer_sprite.texture == null)
+			not bs._opponent_trainer_sprite.visible)
+	_chk("null trainer sets no texture", bs._opponent_trainer_sprite.texture == null)
 
 
 func _test_show_trainer_intro_sets_sprite_texture_when_not_in_tree() -> void:
 	var bs := BattleScreenShared.new()
-	bs._trainer_sprite = TextureRect.new()
-	bs._trainer_sprite.visible = false
+	bs._opponent_trainer_sprite = TextureRect.new()
+	bs._opponent_trainer_sprite.visible = false
 	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_BRAWLY_1")
 	_chk("fixture trainer resolves", trainer != null)
 	await bs._show_trainer_intro(trainer)
-	_chk("real trainer sets the sprite texture", bs._trainer_sprite.texture != null)
+	_chk("real trainer sets the sprite texture", bs._opponent_trainer_sprite.texture != null)
 	_chk("sprite stays hidden on the not-in-tree bypass (no tween possible)",
-			not bs._trainer_sprite.visible)
+			not bs._opponent_trainer_sprite.visible)
 
 
 # The sprite must occupy the SAME battlefield slot as the opponent mon -- this
@@ -188,10 +194,10 @@ func _test_trainer_sprite_shares_opponent_mon_geometry() -> void:
 			"res://scenes/battle/battle_screen_doubles.tscn"]:
 		var packed: PackedScene = load(scene_path)
 		var root: Node = packed.instantiate()
-		var trainer: Control = root.get_node_or_null("BattleStage/TrainerSprite")
+		var trainer: Control = root.get_node_or_null("BattleStage/OpponentTrainerSprite")
 		var mon: Control = root.get_node_or_null("BattleStage/OpponentSprite0")
-		var label := scene_path.get_file()
-		_chk("%s has a TrainerSprite" % label, trainer != null)
+		var label: String = scene_path.get_file()
+		_chk("%s has an OpponentTrainerSprite" % label, trainer != null)
 		_chk("%s still has OpponentSprite0" % label, mon != null)
 		if trainer != null and mon != null:
 			_chk("%s trainer sprite shares the mon's anchors" % label,
@@ -202,6 +208,112 @@ func _test_trainer_sprite_shares_opponent_mon_geometry() -> void:
 					and is_equal_approx(trainer.offset_top, mon.offset_top))
 			_chk("%s trainer sprite starts hidden" % label, not trainer.visible)
 		root.free()
+
+
+# ── M26B3-3: player trainer back sprite + throw animation ────────────────
+
+# Same geometry contract as the opponent's, mirrored: the player's trainer
+# stands where the player's own Pokémon will.
+func _test_player_trainer_sprite_shares_player_mon_geometry() -> void:
+	for scene_path in ["res://scenes/battle/battle_screen_singles.tscn",
+			"res://scenes/battle/battle_screen_doubles.tscn"]:
+		var root: Node = (load(scene_path) as PackedScene).instantiate()
+		var trainer: Control = root.get_node_or_null("BattleStage/PlayerTrainerSprite")
+		var mon: Control = root.get_node_or_null("BattleStage/PlayerSprite0")
+		var label: String = scene_path.get_file()
+		_chk("%s has a PlayerTrainerSprite" % label, trainer != null)
+		_chk("%s still has PlayerSprite0" % label, mon != null)
+		if trainer != null and mon != null:
+			_chk("%s player trainer shares the mon's anchors" % label,
+					is_equal_approx(trainer.anchor_left, mon.anchor_left)
+					and is_equal_approx(trainer.anchor_top, mon.anchor_top))
+			_chk("%s player trainer shares the mon's offsets" % label,
+					is_equal_approx(trainer.offset_left, mon.offset_left)
+					and is_equal_approx(trainer.offset_top, mon.offset_top))
+			_chk("%s player trainer starts hidden" % label, not trainer.visible)
+		root.free()
+
+
+# The throw sequence is ported frame-for-frame from sAnimCmd_Kanto. These
+# numbers are the whole point of the port, so they get asserted directly
+# rather than left to a screenshot that can't measure them.
+func _test_player_throw_matches_source_frame_sequence() -> void:
+	var frames := BattleScreenShared._PLAYER_THROW_FRAMES
+	_chk("throw has 5 steps (sAnimCmd_Kanto's own count)", frames.size() == 5)
+	var expected_frames := [1, 2, 3, 4, 0]
+	var expected_holds := [20, 6, 6, 24, 1]
+	var ok_f := true
+	var ok_h := true
+	for i in range(min(frames.size(), 5)):
+		if frames[i]["frame"] != expected_frames[i]:
+			ok_f = false
+		if frames[i]["hold"] != expected_holds[i]:
+			ok_h = false
+	_chk("frame indices match source (1,2,3,4,0)", ok_f)
+	_chk("frame durations match source (20,6,6,24,1)", ok_h)
+
+	var total := 0
+	for step in frames:
+		total += int(step["hold"])
+	_chk("full throw runs 57 frames", total == 57)
+	# 31 is the BALL LAUNCH frame (Task_StartSendOutAnim), NOT the moment the
+	# mon appears -- the mon is loaded by the same callback that frees the
+	# trainer, so those two are simultaneous. An earlier draft revealed the
+	# mon at 31 and the screenshot pass caught the resulting overlap; this
+	# assertion exists so that misreading can't quietly return.
+	_chk("ball-launch frame is 31, source's own framesToWait",
+			BattleScreenShared._PLAYER_BALL_LAUNCH_FRAME == 31)
+	_chk("ball launch lands strictly inside the throw (it is not the end)",
+			BattleScreenShared._PLAYER_BALL_LAUNCH_FRAME < total)
+
+
+# Frame stepping walks a VERTICAL strip, so only region.y moves.
+func _test_player_trainer_frame_stepping_walks_the_strip() -> void:
+	var bs := BattleScreenShared.new()
+	bs._player_trainer_sprite = TextureRect.new()
+	var atlas := AtlasTexture.new()
+	atlas.atlas = load(BattleScreenShared._PLAYER_BACK_PIC) as Texture2D
+	atlas.region = Rect2(0, 0, 64, 64)
+	bs._player_trainer_sprite.texture = atlas
+	_chk("placeholder back pic (Leaf) is a real 5-frame 64x320 strip",
+			atlas.atlas != null and atlas.atlas.get_height() == 320
+			and atlas.atlas.get_width() == 64)
+	bs._set_player_trainer_frame(3)
+	_chk("frame 3 selects region y=192", is_equal_approx(atlas.region.position.y, 192.0))
+	_chk("frame 3 leaves region x at 0 (vertical strip)",
+			is_equal_approx(atlas.region.position.x, 0.0))
+	bs._set_player_trainer_frame(0)
+	_chk("frame 0 returns to y=0", is_equal_approx(atlas.region.position.y, 0.0))
+
+
+func _test_player_send_out_bypassed_when_not_in_tree() -> void:
+	var bs := BattleScreenShared.new()
+	bs._player_trainer_sprite = TextureRect.new()
+	bs._player_trainer_sprite.visible = false
+	_chk("bare instance is genuinely not in the tree", not bs.is_inside_tree())
+	await bs._show_player_send_out()
+	_chk("texture still gets set before the bypass returns",
+			bs._player_trainer_sprite.texture != null)
+	_chk("sprite stays hidden on the not-in-tree bypass",
+			not bs._player_trainer_sprite.visible)
+
+
+func _test_player_mon_visibility_helper_covers_every_slot() -> void:
+	var root: Node = (load("res://scenes/battle/battle_screen_doubles.tscn") as PackedScene).instantiate()
+	root._set_player_mon_sprites_visible(false)
+	var s0: CanvasItem = root.get_node_or_null("BattleStage/PlayerSprite0")
+	var s1: CanvasItem = root.get_node_or_null("BattleStage/PlayerSprite1")
+	_chk("doubles player slot 0 hidden", s0 != null and not s0.visible)
+	_chk("doubles player slot 1 hidden", s1 != null and not s1.visible)
+	root._set_player_mon_sprites_visible(true)
+	_chk("doubles player slot 0 revealed", s0 != null and s0.visible)
+	_chk("doubles player slot 1 revealed", s1 != null and s1.visible)
+	# The opponent walk must not have been broken by the shared refactor.
+	root._set_opponent_mon_sprites_visible(false)
+	var o1: CanvasItem = root.get_node_or_null("BattleStage/OpponentSprite1")
+	_chk("opponent walk still independent after the shared refactor",
+			o1 != null and not o1.visible and s0.visible)
+	root.free()
 
 
 # The retired banner must be genuinely gone from both scenes, not just unused.

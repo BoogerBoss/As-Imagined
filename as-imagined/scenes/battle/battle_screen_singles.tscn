@@ -14,6 +14,11 @@
 [ext_resource type="Texture2D" uid="uid://u5nenbe1yr5i" path="res://assets/sprites/battle_ui/party_status/ball_empty.png" id="24_ball_empty"]
 [ext_resource type="Texture2D" uid="uid://c4lgygj6twkss" path="res://assets/sprites/trainers/portraits/0039_leader_brawly.png" id="25_trainer_portrait_sample"]
 [ext_resource type="PackedScene" uid="uid://dad4jum0ut4ey" path="res://scenes/battle/shared_battle_chrome.tscn" id="30_shared_chrome"]
+[ext_resource type="Texture2D" path="res://assets/sprites/trainers/back_pics/leaf.png" id="31_player_back_pic"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_player_trainer_frame0"]
+atlas = ExtResource("31_player_back_pic")
+region = Rect2(0, 0, 64, 64)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_opp_sprite_preview"]
 atlas = ExtResource("5_charizard_front")
@@ -130,6 +135,22 @@ offset_bottom = 375.59998
 texture = ExtResource("4_pikachu_back")
 expand_mode = 1
 stretch_mode = 4
+
+[node name="PlayerTrainerSprite" type="TextureRect" parent="BattleStage"]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.03
+anchor_top = 0.3
+anchor_right = 0.03
+anchor_bottom = 0.3
+offset_left = 43.28
+offset_top = 142.59999
+offset_right = 276.28
+offset_bottom = 375.59998
+texture = SubResource("AtlasTexture_player_trainer_frame0")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="PlayerPanel0" parent="BattleStage" unique_id=688733453 instance=ExtResource("7_ply_panel")]
 anchor_left = 0.03
@@ -261,7 +282,7 @@ texture = ExtResource("24_ball_empty")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="TrainerSprite" type="TextureRect" parent="BattleStage" unique_id=679750074]
+[node name="OpponentTrainerSprite" type="TextureRect" parent="BattleStage" unique_id=679750074]
 visible = false
 layout_mode = 1
 anchors_preset = -1
