@@ -32,6 +32,7 @@ func _ready() -> void:
 	_test_player_send_out_message_singles_and_doubles()
 	await _test_intro_split_lets_text_print_while_trainer_stands()
 	_test_recall_constants_match_source()
+	_test_ball_particle_wobble_matches_source_anim()
 	await _test_recall_bypass_hides_sprite_and_panel_together()
 	_test_recall_finds_the_right_slot_in_doubles()
 	_test_faint_queues_a_recall_beat()
@@ -346,6 +347,25 @@ func _test_recall_constants_match_source() -> void:
 	var c := BattleScreenShared._RECALL_FADE_COLOR
 	_chk("fade colour is BALL_POKE's real openFadeColor, 5-bit scaled",
 			c.r8 == 255 and c.g8 == 181 and c.b8 == 247)
+
+
+func _test_ball_particle_wobble_matches_source_anim() -> void:
+	# sAnim_RegularBall (battle_anim_throw.c:163-172), BALL_POKE's animNums=0:
+	#   FRAME(0,1) FRAME(1,1) FRAME(2,1) FRAME(0,1,hFlip) FRAME(2,1) FRAME(1,1)
+	# The hFlip on step 4 is what reads as the back-and-forth wobble; the
+	# first cut rendered a static frame 0 and had no wobble at all.
+	var a := BattleScreenShared._BALL_PARTICLE_ANIM
+	_chk("wobble cycle is source's own 6 steps", a.size() == 6)
+	var frames: Array = []
+	for cmd: Dictionary in a:
+		frames.append(cmd["frame"])
+	_chk("frame order matches sAnim_RegularBall (0,1,2,0,2,1)",
+			frames == [0, 1, 2, 0, 2, 1])
+	var flips: Array = []
+	for cmd: Dictionary in a:
+		flips.append(cmd["flip"])
+	_chk("exactly one step is horizontally flipped", flips.count(true) == 1)
+	_chk("the flip is on step 4, as in source", flips[3] == true)
 
 
 func _test_recall_bypass_hides_sprite_and_panel_together() -> void:

@@ -729,6 +729,31 @@ const _BALL_PARTICLE_TRAVEL_FRAMES := 25
 const _BALL_PARTICLE_RADIUS := 200.0
 const _BALL_PARTICLE_DISPLAY_SIZE := 32.0
 
+# [Corrected 2026-07-26, Rob's review] Each particle WOBBLES — it plays its
+# own looping sprite animation while flying. Rob described "different angles
+# and sort of wobble back and forth"; that is not motion (the Poke Ball's
+# path is a fixed straight spoke) but this, which the first cut missed by
+# rendering a static frame 0.
+#
+# `sAnim_RegularBall` (`battle_anim_throw.c:163-172`), which BALL_POKE
+# selects via `animNums = 0`:
+#     FRAME(0,1) FRAME(1,1) FRAME(2,1) FRAME(0,1, hFlip=TRUE)
+#     FRAME(2,1) FRAME(1,1) JUMP(0)
+# — six steps, one tick each, looping forever, with a HORIZONTAL FLIP on the
+# fourth. The flip is what reads as the back-and-forth.
+#
+# Note this is the "regular ball" anim specifically. Most other balls do NOT
+# wobble: Master (frame 3), Net/Dive (4), Nest (5) and Ultra/Repeat/Timer (7)
+# are single static frames; only Luxury/Premier alternates (6<->7, 4 ticks).
+const _BALL_PARTICLE_ANIM := [
+	{"frame": 0, "flip": false},
+	{"frame": 1, "flip": false},
+	{"frame": 2, "flip": false},
+	{"frame": 0, "flip": true},
+	{"frame": 2, "flip": false},
+	{"frame": 1, "flip": false},
+]
+
 # ── [M26B3-6b] Send-out: ball throw + emerge ─────────────────────────────
 #
 # The mirror of the recall above, and it closes the gap B3-3 knowingly left
@@ -3724,7 +3749,16 @@ func _play_send_out(mon: BattlePokemon) -> void:
 
 # [M26B3-6a] The ball-open burst. Deliberately fire-and-forget (not awaited)
 # -- source spawns these as independent sprites that outlive the task that
-# created them, and the shrink must not wait on them.
+# created them, and the shrink must not wait on them. That is doubly true
+# now that this staggers over 16 frames rather than returning immediately.
+#
+# NO ROTATION, deliberately: `PokeBallOpenParticleAnimation_Step2` never
+# modifies `data[0]`, so a Poke Ball's particles travel STRAIGHT radial
+# spokes at a fixed angle. The rotating/spiral behaviour belongs to the
+# fan-out family (Great/Ultra/Safari/Master/Dive/Timer), whose own step
+# function does `data[0] += data[4]` every frame -- adding it here would
+# make this ball behave like a Great Ball. See CLAUDE.md's own per-ball
+# table for the full nine-variant breakdown.
 func _spawn_ball_open_particles(center: Vector2) -> void:
 	var sheet := load(_BALL_PARTICLES) as Texture2D
 	if sheet == null:
@@ -3734,6 +3768,27 @@ func _spawn_ball_open_particles(center: Vector2) -> void:
 		return
 	var travel := _BALL_PARTICLE_TRAVEL_FRAMES * _ANIM_FRAME_SECONDS
 	for i in range(_BALL_PARTICLE_COUNT):
+		# [Corrected 2026-07-26] ONE PARTICLE PER FRAME, not all at once.
+		# `PokeBallOpenParticleAnimation` is a TASK: it runs once per frame
+		# and creates a single particle each time, for 16 frames. Since each
+		# starts at radius 0 and grows 2px/frame, at any instant the 16 sit
+		# at 16 DIFFERENT radii, which is what gives the burst its scattered,
+		# trailing look.
+		#
+		# A first cut spawned all 16 simultaneously with identical travel,
+		# producing a perfectly synchronised evenly-spaced expanding ring --
+		# noticeably more mechanical than source. Rob spotted it on review and
+		# read it as randomness; it is not (there is no RNG in ANY of the nine
+		# ball particle functions, checked directly) -- it is this stagger.
+		# One per 1/60s of WALL CLOCK, deliberately NOT `process_frame`.
+		# Source is 60fps-locked hardware, so "one particle per frame" means
+		# a 267ms burst (16 / 60). Tying this to the real frame rate instead
+		# makes the burst faster on a high-refresh display and slower on a
+		# low one: measured directly on this machine at ~144fps, the
+		# process_frame version spawned every ~7ms and finished the whole
+		# burst in 97ms -- 2.75x too fast.
+		if i > 0:
+			await _wait_anim_frames(1)
 		var atlas := AtlasTexture.new()
 		atlas.atlas = sheet
 		atlas.region = Rect2(0, 0, _BALL_PARTICLE_FRAME, _BALL_PARTICLE_FRAME)
@@ -3765,6 +3820,20 @@ func _spawn_ball_open_particles(center: Vector2) -> void:
 			if is_instance_valid(p):
 				_active_hit_effect_nodes.erase(p)
 				p.queue_free())
+
+		# The per-particle wobble loop -- fire-and-forget, and it ends by
+		# itself once the particle is freed by the tween above.
+		var wobble: Callable = func() -> void:
+			var step := 0
+			while is_instance_valid(p):
+				var cmd: Dictionary = _BALL_PARTICLE_ANIM[step % _BALL_PARTICLE_ANIM.size()]
+				var region_y: int = int(cmd["frame"]) * _BALL_PARTICLE_FRAME
+				atlas.region = Rect2(0, region_y,
+						_BALL_PARTICLE_FRAME, _BALL_PARTICLE_FRAME)
+				p.flip_h = cmd["flip"]
+				step += 1
+				await _wait_anim_frames(1)
+		wobble.call()
 
 
 # Locates which on-field slot a BattlePokemon currently occupies, returning
