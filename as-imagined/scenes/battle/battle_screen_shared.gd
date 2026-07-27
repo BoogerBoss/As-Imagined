@@ -1382,6 +1382,103 @@ func _on_battle_ended(winner_side: int) -> void:
 	# just above -- a focus tween is one more Tween object that could
 	# otherwise outlive the node it's animating across a scene teardown.
 	_clear_target_select_hover_wiring()
+	# [M26B3-4] Deliberately LAST, after both synchronous teardown calls
+	# above: this one awaits, and --autoplay's own get_tree().quit() fires
+	# on this same call stack the instant BATTLE_END is reached. Anything
+	# that must happen before that quit has to run before the first await.
+	# (_show_trainer_battle_end bypasses itself entirely under autoplay
+	# anyway, but the ordering is what makes that safe rather than lucky.)
+	await _show_trainer_battle_end(winner_side)
+
+
+# [M26B3-4] The opponent trainer returns for the post-battle speech.
+#
+# Source is two different scripts, and they are NOT mirror images:
+#
+#   WIN  (`BattleScript_LocalTrainerBattleWon` -> `..._LocalBattleWonLose
+#        Texts`, data/battle_scripts_1.s:2868-2884): print "You defeated
+#        <trainer>!" FIRST, then `trainerslidein BS_OPPONENT1`, then the
+#        trainer's own lose speech. No mon recall -- the opponent's
+#        Pokémon has already fainted, so the slot is empty by definition.
+#
+#   LOSS (`BattleScript_LocalBattleLostPrintTrainersWinText`, :2940-2950):
+#        `returnopponentmon1toball` + `returnopponentmon2toball` FIRST --
+#        the opponent's Pokémon are still alive and standing there, so
+#        they are recalled BEFORE the trainer slides into that same slot
+#        -- then `trainerslidein BS_OPPONENT1`, then the win speech.
+#
+# The recall-first step is easy to miss (the roadmap's own B3-4 note did),
+# and without it the trainer would slide in on top of a live Pokémon --
+# the exact overlap B3-3 already had to correct once.
+#
+# NO slide-out: for a single opponent neither script ever calls
+# `trainerslideout` (it appears only in the two-opponent branches, which
+# are out of scope per Rob's own call). The trainer simply stays on screen
+# as the battle ends.
+#
+# TEXT, disclosed gap: the trainer's actual speech (STRINGID_TRAINER1LOSE
+# TEXT / ...WINTEXT) resolves to `{B_TRAINER1_LOSE_TEXT}`, a placeholder
+# filled from the MAP SCRIPT that started the battle -- `trainerbattle_
+# single TRAINER_X, <intro_text>, <lose_text>` (asm/macros/event.inc:787).
+# It is per-encounter authored dialogue, not trainer data, so it is NOT in
+# `trainers.party` and this project has no source for it. Deliberately not
+# pulled rather than merely unbuilt: it is Hoenn dialogue bound to an
+# overworld this project doesn't have, for a game whose own Kanto roster
+# will be authored, so importing it would be actively wrong. The generic
+# "You defeated ...!" line IS a real template and is reproduced.
+func _show_trainer_battle_end(winner_side: int) -> void:
+	if _opponent_trainer_sprite == null:
+		return
+	var trainer := _bm.get_trainer_data(1) if _bm != null else null
+	if trainer == null:
+		return  # wild/fixture battle -- no trainer to bring back
+
+	if winner_side == 0:
+		# Win: generic template, the one piece of real post-battle text
+		# this project has the data for.
+		# `sText_PlayerDefeatedLinkTrainerTrainer1` = "You defeated
+		# {B_TRAINER1_NAME_WITH_CLASS}!" (src/battle_message.c:88).
+		_queue_text_beat("You defeated %s!" % _trainer_name_with_class(trainer))
+
+	# Clear the slot on BOTH paths, which is a deliberate divergence from
+	# source's own script structure -- and the divergence exists precisely
+	# to match source's RESULT.
+	#
+	# Source only recalls on the loss path (`returnopponentmon1toball`); its
+	# win path needs no recall because a fainted Pokémon's sprite has already
+	# been destroyed by then, so the slot is genuinely empty. THIS project
+	# doesn't destroy it -- `_refresh_ui()` dims a fainted mon to
+	# `Color(1, 1, 1, 0.3)` and leaves it drawn. Following source's script
+	# literally would therefore slide the trainer straight through a
+	# 30%-alpha ghost of the Pokémon it just beat.
+	#
+	# Found by asking what the win path actually renders rather than trusting
+	# that "source does no recall here" transferred -- it doesn't, because
+	# the precondition it relies on isn't true in this project.
+	_set_opponent_mon_sprites_visible(false)
+
+	if _is_autoplay_run or not is_inside_tree():
+		return
+
+	var rest_x := _opponent_trainer_sprite.position.x
+	_opponent_trainer_sprite.position.x = rest_x + _TRAINER_SLIDE_DISTANCE
+	_opponent_trainer_sprite.visible = true
+	var slide_in := create_tween()
+	slide_in.tween_property(_opponent_trainer_sprite, "position:x", rest_x,
+			_TRAINER_SLIDE_IN_SECONDS)
+	await slide_in.finished
+	# Left standing deliberately -- see the no-slide-out note above.
+
+
+# "{B_TRAINER1_NAME_WITH_CLASS}" -- the class prefix plus the name, e.g.
+# "Gym Leader Roxanne". Falls back to the bare name if the class doesn't
+# resolve, rather than emitting a stray leading space.
+func _trainer_name_with_class(trainer: TrainerData) -> String:
+	var display := trainer.trainer_name.capitalize()
+	var cls := TrainerClassRegistry.get_trainer_class(trainer.trainer_class_id)
+	if cls != null and cls.class_name_text != "":
+		return "%s %s" % [cls.class_name_text, display]
+	return display
 
 
 # [M23.11 Phase 5c] See _active_hit_effect_nodes' own doc comment.
@@ -3321,10 +3418,15 @@ func _show_player_send_out() -> void:
 # an overlay label, which is where source puts it (STRINGID_INTROMSG prints
 # into B_WIN_MSG while the sprite stands on the field).
 func _queue_trainer_intro_message(trainer: TrainerData) -> void:
-	_pending_beats.append({
-		"kind": "text",
-		"text": "%s wants to battle!" % trainer.trainer_name.capitalize(),
-	})
+	_queue_text_beat("%s wants to battle!" % trainer.trainer_name.capitalize())
+
+
+# [M26B3-4] Extracted from _queue_trainer_intro_message, which was the only
+# thing appending a bare text beat when B3-2 wrote it. B3-4 needs the same
+# one-line append for its own post-battle line, so the shape is shared
+# rather than copied.
+func _queue_text_beat(text: String) -> void:
+	_pending_beats.append({"kind": "text", "text": text})
 
 
 

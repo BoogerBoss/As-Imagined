@@ -27,6 +27,9 @@ func _ready() -> void:
 	_test_player_trainer_frame_stepping_walks_the_strip()
 	await _test_player_send_out_bypassed_when_not_in_tree()
 	_test_player_mon_visibility_helper_covers_every_slot()
+	await _test_battle_end_win_queues_the_real_defeat_template()
+	await _test_battle_end_loss_recalls_mons_and_queues_no_line()
+	await _test_battle_end_noop_without_a_trainer()
 	_test_battle_setup_context_trainer_id_round_trip()
 	_test_battle_manager_get_trainer_data_round_trip()
 	_test_real_trainer_and_portrait_pipeline_resolves()
@@ -208,6 +211,98 @@ func _test_trainer_sprite_shares_opponent_mon_geometry() -> void:
 					and is_equal_approx(trainer.offset_top, mon.offset_top))
 			_chk("%s trainer sprite starts hidden" % label, not trainer.visible)
 		root.free()
+
+
+# ── M26B3-4: opponent trainer returns for the post-battle speech ─────────
+
+func _bs_with_trainer_end_stubs() -> BattleScreenShared:
+	var bs := BattleScreenShared.new()
+	bs._opponent_trainer_sprite = TextureRect.new()
+	bs._opponent_trainer_sprite.visible = false
+	bs._bm = BattleManager.new()
+	return bs
+
+
+func _stage_with_opponent_mon(bs: BattleScreenShared) -> TextureRect:
+	var stage := Control.new()
+	stage.name = "BattleStage"
+	bs.add_child(stage)
+	var mon := TextureRect.new()
+	mon.name = "OpponentSprite0"
+	mon.visible = true
+	stage.add_child(mon)
+	return mon
+
+
+func _test_battle_end_win_queues_the_real_defeat_template() -> void:
+	var bs := _bs_with_trainer_end_stubs()
+	var mon := _stage_with_opponent_mon(bs)
+	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1")
+	_chk("Roxanne fixture resolves", trainer != null)
+	bs._bm.set_trainer_data(1, trainer)
+	await bs._show_trainer_battle_end(0)
+	# This project DIMS a fainted mon (alpha 0.3) rather than destroying its
+	# sprite the way source does, so the win path must clear the slot too --
+	# otherwise the returning trainer overlaps a ghost of the mon it beat.
+	_chk("win also clears the slot (this project dims fainted mons, source destroys them)",
+			not mon.visible)
+	var texts: Array = []
+	for beat: Dictionary in bs._pending_beats:
+		if beat.get("kind", "") == "text":
+			texts.append(beat["text"])
+	_chk("win queues exactly one post-battle line", texts.size() == 1)
+	if texts.size() == 1:
+		var line: String = texts[0]
+		# Source template is "You defeated {B_TRAINER1_NAME_WITH_CLASS}!" --
+		# name WITH class, so both halves must be present.
+		_chk("line uses source's own 'You defeated ...!' template",
+				line.begins_with("You defeated ") and line.ends_with("!"))
+		_chk("line carries the trainer's own name", "Roxanne" in line)
+		_chk("line carries the CLASS too, not just the bare name",
+				line != "You defeated Roxanne!")
+	bs._bm.free()
+
+
+func _test_battle_end_loss_recalls_mons_and_queues_no_line() -> void:
+	# Built by hand rather than from the real .tscn: an instantiated-but-
+	# never-added scene has NO @onready vars resolved (_bm would be null),
+	# and adding a real battle screen to this test's own tree would let
+	# --autoplay's process-wide quit kill the suite (see this file's own
+	# header). An earlier draft did instantiate the scene, and the resulting
+	# "Invalid call ... in base 'Nil'" aborted the whole test function --
+	# every assertion below silently never ran while the suite still
+	# reported a pass.
+	var root := _bs_with_trainer_end_stubs()
+	var mon := _stage_with_opponent_mon(root)
+	root._bm.set_trainer_data(1, TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1"))
+	await root._show_trainer_battle_end(1)
+	# The recall-first step: on a LOSS the opponent's mon is still alive and
+	# standing in the slot the trainer is about to occupy, so source recalls
+	# it before sliding in (returnopponentmon1toball). Without this the
+	# trainer would overlap a live Pokemon.
+	_chk("loss hides the still-living opponent mon before the slide-in",
+			not mon.visible)
+	var texts := 0
+	for beat: Dictionary in root._pending_beats:
+		if beat.get("kind", "") == "text":
+			texts += 1
+	# The trainer's WIN speech is per-encounter map-script dialogue this
+	# project has no data for -- so the loss path must queue nothing rather
+	# than invent a line.
+	_chk("loss queues no post-battle line (no data source for the speech)",
+			texts == 0)
+	root._bm.free()
+	root.free()
+
+
+func _test_battle_end_noop_without_a_trainer() -> void:
+	var bs := _bs_with_trainer_end_stubs()
+	await bs._show_trainer_battle_end(0)
+	_chk("wild/fixture battle queues no post-battle line",
+			bs._pending_beats.is_empty())
+	_chk("wild/fixture battle leaves the trainer sprite hidden",
+			not bs._opponent_trainer_sprite.visible)
+	bs._bm.free()
 
 
 # ── M26B3-3: player trainer back sprite + throw animation ────────────────
