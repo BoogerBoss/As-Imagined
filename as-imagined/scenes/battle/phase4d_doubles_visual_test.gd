@@ -177,10 +177,18 @@ func _test_refresh_battlefield_side_independent_fade_and_status() -> void:
 
 	var healthy_sprite: TextureRect = bs._opp_sprites[0]
 	var fainted_sprite: TextureRect = bs._opp_sprites[1]
+	# [M26B3-6a] REWRITTEN 2026-07-26. These previously asserted a fainted
+	# slot fades to 0.3 alpha. That dim was this project's own invention with
+	# no basis in source (neither faint path touches alpha at all), and it is
+	# now gone: a fainting Pokemon is RECALLED to its ball and leaves the
+	# field, so _refresh_battlefield_side no longer distinguishes the two by
+	# modulate. Asserting the removal directly, rather than deleting the
+	# coverage, so the dim can't quietly return.
 	_chk("healthy slot stays fully opaque", healthy_sprite.modulate.a == 1.0)
-	_chk("fainted slot fades to 0.3 alpha", is_equal_approx(fainted_sprite.modulate.a, 0.3))
-	_chk("healthy slot's own modulate unaffected by teammate fainting",
-			healthy_sprite.modulate.a != fainted_sprite.modulate.a)
+	_chk("fainted slot is NOT dimmed -- the invented 0.3 alpha is retired",
+			is_equal_approx(fainted_sprite.modulate.a, 1.0))
+	_chk("neither slot is distinguished by modulate any more",
+			is_equal_approx(healthy_sprite.modulate.a, fainted_sprite.modulate.a))
 
 	var panel0: HealthGroupPanel = bs._opp_panels[0]
 	var panel1: HealthGroupPanel = bs._opp_panels[1]

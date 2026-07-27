@@ -656,6 +656,127 @@ const _TRAINER_INTRO_HOLD_SECONDS := 1.6
 # counts at 60fps: slide-in 2px/frame over 96px, slide-out a fixed 35 frames.
 const _TRAINER_SLIDE_DISTANCE := 440.0
 
+# ── [M26B3-6a] Recall-to-ball ────────────────────────────────────────────
+#
+# Rob's design decision 2026-07-26: a fainting Pokémon is RECALLED to its
+# ball. That is a deliberate, disclosed invention — source does not do it.
+# Source's faint is a sink-and-vanish with NO recall and no alpha work at
+# all (`BtlController_HandleFaintAnimation` -> `SpriteCB_FaintSlideAnim`,
+# `battle_main.c:2799`, a pure `y2 += 5` translation; the opponent variant
+# `SpriteCB_AnimFaintOpponent` instead erases the sprite's own bottom rows
+# each step, its source comment calling it "a smooth illusion of mon
+# falling down"). Recall-to-ball (`ReturnMonToBall`) fires only for a
+# LIVING switch-out. Chosen anyway for game feel; recorded so a later
+# session doesn't "correct" it back and think it found a bug.
+#
+# The recall animation ITSELF is reproduced faithfully, from
+# `gBattleAnimSpecial_SwitchOutPlayerMon` (data/battle_anim_scripts.s:
+# 29942), whose opponent twin is byte-identical:
+#     createvisualtask AnimTask_SwitchOutBallEffect   # ball + particles + fade
+#     delay 10
+#     createvisualtask AnimTask_SwitchOutShrinkMon    # the shrink
+const _RECALL_BALL_LEAD_FRAMES := 10
+
+# `AnimTask_SwitchOutShrinkMon` steps an affine scale by 0x30 per frame
+# from 0x100 to 0x2D0. GBA affine scale is INVERTED (a larger value draws
+# a SMALLER sprite), so that is a shrink, and it lands in
+# (0x2D0 - 0x100) / 0x30 = ~10 frames, after which the sprite is set
+# invisible.
+const _RECALL_SHRINK_FRAMES := 10
+
+# `LaunchBallFadeMonTask` blends the mon's palette toward the ball's own
+# `openFadeColor` while it is drawn in. BALL_POKE's is `RGB(31, 22, 30)`
+# (`battle_anim_throw.c:249`) — GBA 5-bit channels, so
+# (31, 22, 30) * 255/31 = (255, 181, 247), the classic pink draw-in tint.
+# Kept deliberately: Rob's "no fade" note was about the FAINT SINK (correct
+# — that path has no fade), not about the recall, which genuinely has one.
+const _RECALL_FADE_COLOR := Color8(255, 181, 247)
+
+const _BALL_SPRITE := "res://assets/sprites/battle_ui/balls/poke.png"
+const _BALL_FRAME_SIZE := 16
+const _BALL_DISPLAY_SIZE := 64.0
+
+# The 3 frames of a 16x48 ball sheet, confirmed by direct pixel inspection
+# rather than assumed from their order:
+#   0 = CLOSED ball (red top, white bottom)
+#   1 = OPEN ball   (lid up, dark interior)
+#   2 = a solid WHITE square, 256/256 opaque -- a flash frame, NOT "more
+#       open". The first cut of this code read frame 2 as the open state and
+#       rendered a white blob on screen; the screenshot pass caught it.
+const _BALL_FRAME_CLOSED := 0
+const _BALL_FRAME_OPEN := 1
+
+# [M26B3-6a] The ball-open particle burst, ported from
+# `PokeBallOpenParticleAnimation` + `..._Step2` (`battle_anim_throw.c`).
+# ONE shared sheet serves every ball type (all 29 POKE_BALL_ANIMATION
+# entries pass `gBattleAnimSpriteGfx_Particles`); its own embedded palette
+# was confirmed byte-identical to the `circle_impact.png` palette source
+# pairs it with, so no separate palette pull is needed.
+#
+# Source spawns 16 particles, one per frame, each assigned an angle of
+# `(i % 8) * 32` on a 256-unit circle -- i.e. 8 directions 45 degrees
+# apart, gone round twice. Each then fans outward from the ball:
+#     x2 = Sin(angle, radius); y2 = Cos(angle, radius); radius += 2
+# destroyed at radius 50, so 25 frames of travel.
+const _BALL_PARTICLES := "res://assets/sprites/battle_ui/balls/particles.png"
+const _BALL_PARTICLE_FRAME := 8
+const _BALL_PARTICLE_COUNT := 16
+const _BALL_PARTICLE_DIRECTIONS := 8
+const _BALL_PARTICLE_TRAVEL_FRAMES := 25
+# Radius 50 is GBA-space against a 240px-wide screen. This stage is 1024
+# wide and draws a 16px ball at 64px, so distances scale by the same 4x
+# the ball itself does.
+const _BALL_PARTICLE_RADIUS := 200.0
+const _BALL_PARTICLE_DISPLAY_SIZE := 32.0
+
+# ── [M26B3-6b] Send-out: ball throw + emerge ─────────────────────────────
+#
+# The mirror of the recall above, and it closes the gap B3-3 knowingly left
+# (a trainer throwing nothing). Ported from `SpriteCB_MonSendOut_1`
+# (`src/pokeball.c`): the ball is given `data[0] = 25` (duration), a target
+# of the battler's own sprite coords, and `data[5] = -30` (arc height), then
+# `InitAnimArcTranslation` flies it there while it spins.
+const _SENDOUT_ARC_FRAMES := 25
+# -30 in GBA space against a 240px-wide screen; this stage draws at 4x, the
+# same scale factor the ball and the particle radius already use.
+const _SENDOUT_ARC_HEIGHT := -120.0
+const _SENDOUT_BALL_SPIN_TURNS := 2.0
+
+# On arrival `SpriteCB_ReleaseMonFromBall` opens the ball (`StartSpriteAnim`
+# frame 1), fires the same `AnimateBallOpenParticles` burst the recall uses,
+# and calls `LaunchBallFadeMonTask(TRUE, ...)` -- note the TRUE, the
+# UNFADE direction: the Pokemon starts tinted in the ball's own colour and
+# returns to normal, the exact reverse of the recall's fade.
+#
+# Source's emerge itself (`SpriteCB_ReleasedMonFlyOut`) grows the mon via a
+# BATTLER_AFFINE_EMERGE affine animation while interpolating it from the
+# ball's position to its final slot over 128 trig steps. The affine anim's
+# own frame count was NOT pinned down, so this mirrors the recall's own 10
+# frames for symmetry -- a disclosed choice, not a measured port.
+const _SENDOUT_EMERGE_FRAMES := 10
+
+# Where the ball is thrown FROM, as an offset from the destination slot's
+# own centre. It is NOT the trainer's position: source creates the player's
+# ball at a fixed (24, 68) (`pokeball.c`'s POKEBALL_PLAYER_SENDOUT case)
+# while the player's own singles slot is (72, 80) (`sBattlerCoords`,
+# `battle_anim_mons.c:41`) -- i.e. (-48, -12) away, left and slightly above.
+# At this stage's 4x that is (-192, -48).
+#
+# This matters because the trainer STANDS on the mon's slot in this project
+# (B3-2's own geometry contract). A first cut threw the ball from the
+# trainer's own centre, which is the destination, so it had nowhere to
+# travel and no arc was visible at all.
+#
+# Source additionally lands the ball at `coord + 24` (below the slot centre,
+# roughly the mon's feet). Not reproduced: this project's sprite boxes are
+# ~292px tall and bottom-anchored, so centre already reads as ground level.
+#
+# ADJUSTED from that literal 4x figure: this project's player slot sits at
+# ~18.5% of stage width where source's sits at ~30% of a 240px screen, so
+# the source-relative offset put the ball at x ~= -2, off the left edge and
+# invisible for the first third of its flight. Pulled in to stay on screen.
+const _SENDOUT_BALL_ORIGIN_OFFSET := Vector2(-120.0, -60.0)
+
 # [M26B3-3] The PLACEHOLDER player character, Rob's call 2026-07-26. This
 # project has no player-identity concept of any kind (no trainer id, no
 # gender, no name — confirmed by direct grep), so there is nothing to
@@ -702,6 +823,25 @@ const _PLAYER_THROW_FRAMES := [
 # sites. The interim without a ball is: full throw, then trainer and mon
 # swap in one instant.
 const _PLAYER_BALL_LAUNCH_FRAME := 31
+
+# [M26B3-3 correction, 2026-07-26] The player's trainer SLIDES OFF while
+# throwing — she does not simply vanish, which is what B3-3 first built on
+# the mistaken claim that "the player's trainer never slides back out".
+# She never slides back IN (confirmed: every battle-end `trainerslidein`
+# targets the opponent; the only player-side ones are the Wally tutorial,
+# a partner trainer's mid-battle line, and the rival script) — but she very
+# much slides OUT.
+#
+# `BtlController_HandleIntroTrainerBallThrow` (`battle_controllers.c:2856-
+# 2876`) sets, BEFORE its per-side branch:
+#     player:   data[0] = 50 frames, data[2] = -40   (off the LEFT edge)
+#     opponent: data[0] = 35 frames, data[2] = 280   (off the RIGHT edge)
+# then `callback = StartAnimLinearTranslation` — so the slide begins
+# immediately and runs CONCURRENTLY with the throw animation, and
+# `StoreSpriteCallbackInData6` only frees the sprite once that slide
+# finishes. 50 frames against the throw's own 57 means she is sliding for
+# essentially the whole throw.
+const _PLAYER_SLIDE_OUT_FRAMES := 50
 const _ANIM_FRAME_SECONDS := 1.0 / 60.0
 const _TRAINER_SLIDE_IN_SECONDS := 0.55
 const _TRAINER_SLIDE_OUT_SECONDS := 0.58
@@ -1263,6 +1403,27 @@ func _ready() -> void:
 	_refresh_battlefield_side(_opp_party, false)
 	_refresh_battlefield_side(_player_party, true)
 
+	# [M26B3-5 fix, found in review] Clear the field BEFORE the intro runs.
+	#
+	# The refresh above sets every sprite and health box visible, and until
+	# now nothing hid the PLAYER's until `_show_player_send_out()` began --
+	# which is several seconds later, after the opponent's whole intro, the
+	# party summary and both messages. The result was a real, visible bug:
+	# the player's Pokemon sat on the field from the first frame, vanished
+	# when the send-out finally started, then emerged from the ball again.
+	#
+	# Hiding at the START of each send-out was always the wrong place; the
+	# field simply should not be occupied before anyone has sent anything
+	# out. Each send-out reveals its own side (_play_send_out), so this only
+	# needs to establish the empty starting state.
+	#
+	# Deliberately skipped under --autoplay / off-tree, where the send-out
+	# animations bypass themselves and nothing would ever re-show these.
+	if not (_is_autoplay_run or not is_inside_tree()):
+		_set_opponent_mon_sprites_visible(false)
+		_set_player_mon_sprites_visible(false)
+		_set_health_panels_visible(false)
+
 	# [M26l/M26o] Real send-out/party-summary beats, played once before the
 	# first real menu ever appears — matching source's own isBattleStart=
 	# TRUE call. Trainer intro only plays when a real opp_trainer_data was
@@ -1270,12 +1431,30 @@ func _ready() -> void:
 	# leaves opp_trainer_data null, so this stays a no-op for them); the
 	# party status row always plays, matching source's own "every real
 	# battle, trainer or wild" call site.
+	# [M26B3-5] The full intro sequence, in source's own phase order
+	# (`BattleIntroStates`, `include/battle_main.h:28-50`):
+	#   DRAW_SPRITES              -> the opponent trainer arrives, and STAYS
+	#   DRAW_PARTY_SUMMARY        -> the 6-ball rows
+	#   INTRO_TEXT                -> "You are challenged by X!"
+	#   TRAINER_SEND_OUT_TEXT     -> "X sent out Y!"
+	#   TRAINER_1_SEND_OUT_ANIM   -> she leaves; her Pokemon is sent out
+	#   PRINT_PLAYER_SEND_OUT_TEXT-> "Go! Z!"   (a SEPARATE, later phase)
+	#   ...then the player's own throw.
+	#
+	# Both opponent messages print while she is still standing there, which
+	# is the whole point of the split between _show_trainer_intro and
+	# _dismiss_trainer_intro -- the text never was a caption on a banner.
+	# Each text beat is drained before the next step so the ordering is real
+	# rather than everything queueing up and racing.
 	await _show_trainer_intro(opp_trainer_data)
 	await _show_party_status_summary()
-	# [M26B3-3] Sequenced AFTER the party summary, matching source's own
-	# phase order (sprite -> party summary -> intro text -> send-out ->
-	# ball throw, `include/battle_main.h:28-50`). B3-5 owns correcting the
-	# TEXT half of that order; this is only the throw's own position in it.
+	if opp_trainer_data != null:
+		_queue_trainer_intro_message(opp_trainer_data)
+		_queue_trainer_send_out_message(opp_trainer_data)
+		await _run_message_pacing()
+	await _dismiss_trainer_intro()
+	_queue_player_send_out_message()
+	await _run_message_pacing()
 	await _show_player_send_out()
 
 	# [Autoplay] No existing CLI-arg/env-var convention exists anywhere in
@@ -1552,7 +1731,13 @@ func _wire_log_signals() -> void:
 	_bm.move_missed_target.connect(func(_attacker: BattlePokemon, target: BattlePokemon, _reason: String):
 		_log("%s avoided the attack!" % _mon_label(target)))
 	_bm.pokemon_fainted.connect(func(mon: BattlePokemon):
-		_log("%s fainted!" % _mon_label(mon)))
+		_log("%s fainted!" % _mon_label(mon))
+		# [M26B3-6a] Queued as a beat rather than awaited inline: this is a
+		# signal handler, and a third listener is already attached to
+		# pokemon_fainted (the M26o party-summary re-show). Sequencing the
+		# recall through _pending_beats keeps it ordered against the summary
+		# and every other beat instead of racing them.
+		_pending_beats.append({"kind": "recall", "mon": mon}))
 	_bm.pokemon_switched_out.connect(func(mon: BattlePokemon, _side: int):
 		_log("%s was withdrawn!" % _mon_label(mon)))
 	_bm.pokemon_switched_in.connect(func(mon: BattlePokemon, _side: int, _slot: int):
@@ -3201,6 +3386,14 @@ func _run_message_pacing() -> void:
 				var reveal_party: BattleParty = beat.get("party", null)
 				if reveal_party != null:
 					_refresh_battlefield_side(reveal_party, beat.get("is_player", false))
+			"recall":
+				# [M26B3-6a] The fainting Pokémon is drawn back into its
+				# ball. Sequenced here rather than run straight off the
+				# signal so it orders correctly against the party-summary
+				# re-show and any text beats from the same resolution.
+				var recalled: BattlePokemon = beat.get("mon", null)
+				if recalled != null:
+					await _play_recall_to_ball(recalled)
 
 	_pending_beats.clear()
 	_exit_message_mode()
@@ -3286,8 +3479,14 @@ func _show_trainer_intro(trainer: TrainerData) -> void:
 		_set_opponent_mon_sprites_visible(true)
 		return
 
-	_queue_trainer_intro_message(trainer)
-
+	# [M26B3-5] The trainer arrives and STAYS. She used to hold briefly then
+	# leave inside this same function, which put her exit before the intro
+	# text instead of after it. Source's own phase order
+	# (`BattleIntroStates`, `include/battle_main.h:28-50`) is:
+	#   DRAW_SPRITES -> DRAW_PARTY_SUMMARY -> INTRO_TEXT ->
+	#   TRAINER_SEND_OUT_TEXT -> TRAINER_1_SEND_OUT_ANIM
+	# i.e. both messages print while she is standing there, and only then
+	# does she leave. _dismiss_trainer_intro() is the second half.
 	var rest_x := _opponent_trainer_sprite.position.x
 	_opponent_trainer_sprite.position.x = rest_x + _TRAINER_SLIDE_DISTANCE
 	_opponent_trainer_sprite.visible = true
@@ -3295,15 +3494,27 @@ func _show_trainer_intro(trainer: TrainerData) -> void:
 	slide_in.tween_property(_opponent_trainer_sprite, "position:x", rest_x, _TRAINER_SLIDE_IN_SECONDS)
 	await slide_in.finished
 
-	await get_tree().create_timer(_TRAINER_INTRO_HOLD_SECONDS).timeout
 
-	# Exit: slide off the far edge and hide. The mon is revealed at the SAME
-	# time, not after -- matching source's concurrency (the trainer is still
-	# sliding out while the ball is already in flight).
+# [M26B3-5] The second half: she leaves and her Pokemon is sent out. Split
+# from _show_trainer_intro so the two intro messages can print in between,
+# which is where source puts them.
+func _dismiss_trainer_intro() -> void:
+	if _opponent_trainer_sprite == null or not _opponent_trainer_sprite.visible:
+		return
+	var rest_x := _opponent_trainer_sprite.position.x
+	# Concurrent, not sequential: she is still sliding out while the ball is
+	# already in flight (opponent `framesToWait = 0`).
 	var slide_out := create_tween()
 	slide_out.tween_property(_opponent_trainer_sprite, "position:x",
 			rest_x + _TRAINER_SLIDE_DISTANCE, _TRAINER_SLIDE_OUT_SECONDS)
-	_set_opponent_mon_sprites_visible(true)
+	if _opp_party != null:
+		for slot in range(_opp_party.num_active()):
+			var sent: BattlePokemon = _opp_party.get_active_at(slot)
+			if sent == null:
+				continue
+			var send: Callable = func() -> void:
+				await _play_send_out(sent)
+			send.call()
 	await slide_out.finished
 	_opponent_trainer_sprite.visible = false
 	_opponent_trainer_sprite.position.x = rest_x
@@ -3325,6 +3536,17 @@ func _set_player_mon_sprites_visible(vis: bool) -> void:
 
 # Walks OpponentSprite0/1/... or PlayerSprite0/1/... until the next slot
 # doesn't exist, so singles (1 slot) and doubles (2) both work unchanged.
+# [M26B3-5 fix] Health boxes belong to the same "nothing is on the field
+# yet" state as the sprites -- source slides each one in with its own
+# Pokemon's send-out, so showing them before anyone has been sent out is the
+# same bug in a different node. Each _play_send_out reveals its own again.
+func _set_health_panels_visible(vis: bool) -> void:
+	for panels: Array in [_opp_panels, _ply_panels]:
+		for panel: Variant in panels:
+			if panel != null and is_instance_valid(panel):
+				(panel as CanvasItem).visible = vis
+
+
 func _set_side_mon_sprites_visible(node_prefix: String, vis: bool) -> void:
 	var slot := 0
 	while true:
@@ -3340,6 +3562,260 @@ func _set_side_mon_sprites_visible(node_prefix: String, vis: bool) -> void:
 # Y moves. Reuses the same AtlasTexture-region mechanism the idle bob has
 # used since Phase 4c — this is not new infrastructure, just more frames
 # and a timed sequence rather than a two-state toggle.
+# [M26B3-6a] Plays the recall on whichever slot the given mon occupies.
+# Returns immediately (doing nothing visible) when there is no live tree or
+# under --autoplay, matching every other animation helper in this file.
+#
+# Health-box hiding is sequenced to the END of the shrink, not its start --
+# source hides it only once the sprite is actually gone
+# (`SetHealthboxSpriteInvisible` sits in `Controller_FaintPlayerMon`, which
+# runs after the sprite has left, not in the handler that starts the
+# animation). Rob confirmed this ordering explicitly.
+func _play_recall_to_ball(mon: BattlePokemon) -> void:
+	var found := _find_mon_slot(mon)
+	if found.is_empty():
+		return
+	var sprite: TextureRect = found["sprite"]
+	var panel: Node = found["panel"]
+
+	if _is_autoplay_run or not is_inside_tree():
+		sprite.visible = false
+		if panel != null:
+			(panel as CanvasItem).visible = false
+		return
+
+	var center := sprite.get_global_rect().get_center()
+	var ball := _make_ball_sprite(center)
+	if ball != null:
+		_active_hit_effect_nodes.append(ball)
+	_spawn_ball_open_particles(center)
+
+	# Ball appears and opens first; the mon only starts shrinking after
+	# source's own 10-frame lead.
+	await _wait_anim_frames(_RECALL_BALL_LEAD_FRAMES)
+
+	var start_scale := sprite.scale
+	var pivot := sprite.size * 0.5
+	sprite.pivot_offset = pivot
+	var shrink := create_tween()
+	shrink.set_parallel(true)
+	shrink.tween_property(sprite, "scale", Vector2.ZERO,
+			_RECALL_SHRINK_FRAMES * _ANIM_FRAME_SECONDS)
+	# The authentic palette-blend toward the ball colour, kept per Rob's
+	# correction. Godot's modulate MULTIPLIES rather than blending a
+	# palette, so this tints toward the same pink rather than reproducing
+	# BlendPalette exactly -- a disclosed approximation, not a port.
+	shrink.tween_property(sprite, "modulate", _RECALL_FADE_COLOR,
+			_RECALL_SHRINK_FRAMES * _ANIM_FRAME_SECONDS)
+	await shrink.finished
+
+	sprite.visible = false
+	if panel != null:
+		(panel as CanvasItem).visible = false
+	# Restore the node's own transform so the slot is reusable -- the mon is
+	# hidden, not destroyed, unlike source which frees the sprite outright.
+	sprite.scale = start_scale
+	sprite.modulate = Color(1, 1, 1, 1)
+
+	# Ball shuts once the Pokemon is inside, then goes.
+	if is_instance_valid(ball):
+		var closed := ball.texture as AtlasTexture
+		if closed != null:
+			closed.region = Rect2(0, _BALL_FRAME_CLOSED * _BALL_FRAME_SIZE,
+					_BALL_FRAME_SIZE, _BALL_FRAME_SIZE)
+	await _wait_anim_frames(_RECALL_BALL_LEAD_FRAMES)
+	if is_instance_valid(ball):
+		_active_hit_effect_nodes.erase(ball)
+		ball.queue_free()
+
+
+# [M26B3-6b] Throws a ball from `origin` to the given Pokemon's slot, opens
+# it, and grows the Pokemon out of it. The reverse of _play_recall_to_ball,
+# and it reuses that function's own ball sprite, particle burst and fade
+# colour rather than duplicating them.
+#
+# The health box is revealed at the END of the emerge, mirroring the recall
+# hiding it at the end of the shrink.
+func _play_send_out(mon: BattlePokemon) -> void:
+	var found := _find_mon_slot(mon)
+	if found.is_empty():
+		return
+	var sprite: TextureRect = found["sprite"]
+	var panel: Node = found["panel"]
+
+	if _is_autoplay_run or not is_inside_tree():
+		sprite.visible = true
+		if panel != null:
+			(panel as CanvasItem).visible = true
+		return
+
+	var center := sprite.get_global_rect().get_center()
+
+	# The Pokemon is not on the field until the ball opens.
+	sprite.visible = false
+	if panel != null:
+		(panel as CanvasItem).visible = false
+
+	var ball := _make_ball_sprite(center + _SENDOUT_BALL_ORIGIN_OFFSET)
+	if ball == null:
+		sprite.visible = true
+		if panel != null:
+			(panel as CanvasItem).visible = true
+		return
+	_active_hit_effect_nodes.append(ball)
+	# Closed while in flight -- it only opens on arrival.
+	var flying := ball.texture as AtlasTexture
+	if flying != null:
+		flying.region = Rect2(0, _BALL_FRAME_CLOSED * _BALL_FRAME_SIZE,
+				_BALL_FRAME_SIZE, _BALL_FRAME_SIZE)
+
+	var arc_seconds := _SENDOUT_ARC_FRAMES * _ANIM_FRAME_SECONDS
+	var dest := center - ball.size * 0.5
+	# X and spin run flat out; Y arcs up then back down. These MUST be two
+	# separate Tweens -- a first cut put both Y legs in one parallel tween
+	# alongside X, so two tweens drove position:y simultaneously and fought
+	# each other, producing no arc at all.
+	var start_y := ball.position.y
+	var throw_tween := create_tween()
+	throw_tween.set_parallel(true)
+	throw_tween.tween_property(ball, "position:x", dest.x, arc_seconds)
+	throw_tween.tween_property(ball, "rotation",
+			TAU * _SENDOUT_BALL_SPIN_TURNS, arc_seconds)
+
+	# InitAnimArcTranslation is a parabola; up-then-down with sine easing on
+	# each leg is the closest tween equivalent without hand-stepping frames.
+	var arc_tween := create_tween()
+	arc_tween.tween_property(ball, "position:y",
+			min(start_y, dest.y) + _SENDOUT_ARC_HEIGHT, arc_seconds * 0.5) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	arc_tween.tween_property(ball, "position:y", dest.y, arc_seconds * 0.5) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+
+	ball.set_meta("_hit_effect_tween", throw_tween)
+	await throw_tween.finished
+
+	# Arrival: open, burst, and grow the Pokemon out of it.
+	if is_instance_valid(ball):
+		var opened := ball.texture as AtlasTexture
+		if opened != null:
+			opened.region = Rect2(0, _BALL_FRAME_OPEN * _BALL_FRAME_SIZE,
+					_BALL_FRAME_SIZE, _BALL_FRAME_SIZE)
+	_spawn_ball_open_particles(center)
+
+	sprite.pivot_offset = sprite.size * 0.5
+	sprite.scale = Vector2.ZERO
+	sprite.modulate = _RECALL_FADE_COLOR
+	sprite.visible = true
+	var emerge := create_tween()
+	emerge.set_parallel(true)
+	emerge.tween_property(sprite, "scale", Vector2.ONE,
+			_SENDOUT_EMERGE_FRAMES * _ANIM_FRAME_SECONDS)
+	# LaunchBallFadeMonTask(TRUE, ...) -- the unfade direction.
+	emerge.tween_property(sprite, "modulate", Color(1, 1, 1, 1),
+			_SENDOUT_EMERGE_FRAMES * _ANIM_FRAME_SECONDS)
+	await emerge.finished
+
+	if panel != null:
+		(panel as CanvasItem).visible = true
+	if is_instance_valid(ball):
+		_active_hit_effect_nodes.erase(ball)
+		ball.queue_free()
+
+
+# [M26B3-6a] The ball-open burst. Deliberately fire-and-forget (not awaited)
+# -- source spawns these as independent sprites that outlive the task that
+# created them, and the shrink must not wait on them.
+func _spawn_ball_open_particles(center: Vector2) -> void:
+	var sheet := load(_BALL_PARTICLES) as Texture2D
+	if sheet == null:
+		return
+	var layer := get_node_or_null("BattleStage/EffectLayer")
+	if layer == null:
+		return
+	var travel := _BALL_PARTICLE_TRAVEL_FRAMES * _ANIM_FRAME_SECONDS
+	for i in range(_BALL_PARTICLE_COUNT):
+		var atlas := AtlasTexture.new()
+		atlas.atlas = sheet
+		atlas.region = Rect2(0, 0, _BALL_PARTICLE_FRAME, _BALL_PARTICLE_FRAME)
+		var p := TextureRect.new()
+		p.texture = atlas
+		p.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		p.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		p.size = Vector2(_BALL_PARTICLE_DISPLAY_SIZE, _BALL_PARTICLE_DISPLAY_SIZE)
+		p.position = center - p.size * 0.5
+		p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.add_child(p)
+		_active_hit_effect_nodes.append(p)
+
+		# `(i % 8) * 32` over a 256-unit circle == 45 degrees apart.
+		var angle := float(i % _BALL_PARTICLE_DIRECTIONS) * TAU \
+				/ float(_BALL_PARTICLE_DIRECTIONS)
+		var dest := center + Vector2(sin(angle), cos(angle)) * _BALL_PARTICLE_RADIUS \
+				- p.size * 0.5
+		var t := create_tween()
+		t.set_parallel(true)
+		t.tween_property(p, "position", dest, travel)
+		# Not in source (its particles simply vanish at radius 50), but
+		# without it 16 sprites pop out of existence mid-flight, which reads
+		# worse on a 4x-scaled stage than it does at GBA size. Disclosed
+		# addition, not a port.
+		t.tween_property(p, "modulate:a", 0.0, travel)
+		p.set_meta("_hit_effect_tween", t)
+		t.finished.connect(func() -> void:
+			if is_instance_valid(p):
+				_active_hit_effect_nodes.erase(p)
+				p.queue_free())
+
+
+# Locates which on-field slot a BattlePokemon currently occupies, returning
+# its sprite and health panel together (they must be hidden as a pair).
+func _find_mon_slot(mon: BattlePokemon) -> Dictionary:
+	for is_player in [true, false]:
+		var party: BattleParty = _player_party if is_player else _opp_party
+		var sprites: Array = _ply_sprites if is_player else _opp_sprites
+		var panels: Array = _ply_panels if is_player else _opp_panels
+		if party == null:
+			continue
+		for slot in range(party.num_active()):
+			if party.get_active_at(slot) != mon:
+				continue
+			if slot >= sprites.size():
+				continue
+			return {
+				"sprite": sprites[slot],
+				"panel": (panels[slot] if slot < panels.size() else null),
+			}
+	return {}
+
+
+# The ball itself, shown open (frame 2 of the 3-frame 16x48 sheet) at the
+# recalled Pokémon's own position.
+func _make_ball_sprite(center: Vector2) -> TextureRect:
+	var sheet := load(_BALL_SPRITE) as Texture2D
+	if sheet == null:
+		return null
+	var atlas := AtlasTexture.new()
+	atlas.atlas = sheet
+	atlas.region = Rect2(0, _BALL_FRAME_OPEN * _BALL_FRAME_SIZE, _BALL_FRAME_SIZE, _BALL_FRAME_SIZE)
+	var rect := TextureRect.new()
+	rect.texture = atlas
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rect.size = Vector2(_BALL_DISPLAY_SIZE, _BALL_DISPLAY_SIZE)
+	# Spin about the middle, not the top-left corner. Without this the
+	# send-out ball ORBITS its own corner while flying, which visibly
+	# displaces it from its tweened path (caught by comparing the rendered
+	# position against the tween's own start/end x in a screenshot).
+	rect.pivot_offset = rect.size * 0.5
+	rect.position = center - rect.size * 0.5
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var layer := get_node_or_null("BattleStage/EffectLayer")
+	if layer == null:
+		return null
+	layer.add_child(rect)
+	return rect
+
+
 func _set_player_trainer_frame(frame_index: int) -> void:
 	if _player_trainer_sprite == null:
 		return
@@ -3396,19 +3872,59 @@ func _show_player_send_out() -> void:
 			_TRAINER_SLIDE_IN_SECONDS)
 	await slide_in.finished
 
-	# Walk the real frame sequence straight through.
+	# [M26B3-3 correction] She slides off to the LEFT for the whole throw,
+	# started here so it runs concurrently with the frame walk below rather
+	# than after it -- source assigns StartAnimLinearTranslation before the
+	# throw anim and only frees the sprite when the slide completes.
+	var slide_out := create_tween()
+	slide_out.tween_property(_player_trainer_sprite, "position:x",
+			rest_x - _TRAINER_SLIDE_DISTANCE,
+			_PLAYER_SLIDE_OUT_FRAMES * _ANIM_FRAME_SECONDS)
+
+	# [M26B3-6b] Walk the frame sequence, launching the ball at frame 31 --
+	# `_PLAYER_BALL_LAUNCH_FRAME`, which B3-6a recorded for exactly this and
+	# which until now drove nothing. Source's own `framesToWait = 31` feeds
+	# `Task_StartSendOutAnim`, i.e. the throw animation is still running when
+	# the ball leaves; splitting whichever hold that frame lands inside.
+	var elapsed := 0
+	var launched := false
 	for step: Dictionary in _PLAYER_THROW_FRAMES:
 		_set_player_trainer_frame(step["frame"])
-		await _wait_anim_frames(step["hold"])
+		var hold: int = step["hold"]
+		if not launched and elapsed + hold >= _PLAYER_BALL_LAUNCH_FRAME:
+			var before: int = _PLAYER_BALL_LAUNCH_FRAME - elapsed
+			await _wait_anim_frames(before)
+			# Thrown from the trainer's own hand position, and NOT awaited --
+			# the ball flies while she follows through, which is the whole
+			# point of source launching it mid-animation.
+			# Every active slot gets its own ball, matching source's
+			# `TwoMonsAtSendOut` branch in `Task_StartSendOutAnim`, which
+			# calls StartSendOutAnim for the battler AND its partner. In
+			# singles this loop simply runs once.
+			for slot in range(_player_party.num_active()):
+				var sent: BattlePokemon = _player_party.get_active_at(slot)
+				if sent == null:
+					continue
+				var send: Callable = func() -> void:
+					await _play_send_out(sent)
+				send.call()
+			launched = true
+			await _wait_anim_frames(hold - before)
+		else:
+			await _wait_anim_frames(hold)
+		elapsed += hold
 
-	# Trainer out, mon in — the SAME instant, matching
-	# SpriteCB_FreePlayerSpriteLoadMonSprite doing both in one callback. The
-	# player's trainer, unlike the opponent's, never slides back out; it is
-	# simply gone the moment the mon is standing there. Confirmed it never
-	# returns for mid-battle switches either (those spawn a bare ball with no
-	# trainer at all, `pokeball.c:432-437`), so nothing re-shows this.
+	# Freed only once the SLIDE finishes, not merely when the throw frames
+	# run out -- source's own free callback is stored via
+	# StoreSpriteCallbackInData6 against the translation, so it fires at the
+	# end of the slide. The throw is 57 frames and the slide 50, so in
+	# practice the slide has usually already finished; awaiting it is what
+	# makes that ordering correct rather than incidental.
+	if slide_out.is_valid():
+		await slide_out.finished
+	# The Pokemon is NOT revealed here -- _play_send_out owns that, and
+	# reveals it when the ball actually opens.
 	_player_trainer_sprite.visible = false
-	_set_player_mon_sprites_visible(true)
 	_player_trainer_sprite.position.x = rest_x
 	_set_player_trainer_frame(0)
 
@@ -3417,8 +3933,59 @@ func _show_player_send_out() -> void:
 # _show_trainer_intro's own scope note. Uses the real message box rather than
 # an overlay label, which is where source puts it (STRINGID_INTROMSG prints
 # into B_WIN_MSG while the sprite stands on the field).
+# [M26B3-5] STRINGID_INTROMSG. The real single-trainer template is
+# `sText_Trainer1WantsToBattle` = "You are challenged by
+# {B_TRAINER1_NAME_WITH_CLASS}!" (`src/battle_message.c:96`).
+#
+# CORRECTION: B3-2 shipped "<Name> wants to battle!". That phrasing is real
+# but belongs to the LINK / TWO-TRAINER variants
+# (`sText_LinkTrainerWantsToBattle`, `sText_TwoTrainersWantToBattle`) --
+# never to a plain single-trainer battle, which is the only kind this
+# project has. It also dropped the class prefix.
 func _queue_trainer_intro_message(trainer: TrainerData) -> void:
-	_queue_text_beat("%s wants to battle!" % trainer.trainer_name.capitalize())
+	_queue_text_beat("You are challenged by %s!" % _trainer_name_with_class(trainer))
+
+
+# [M26B3-5] STRINGID_INTROSENDOUT, opponent side: `sText_Trainer1SentOutPkmn`
+# = "{B_TRAINER1_NAME_WITH_CLASS} sent out {B_OPPONENT_MON1_NAME}!"
+# (`battle_message.c:99`), with `sText_Trainer1SentOutTwoPkmn` (`:100`)
+# joining two names with " and " in doubles.
+func _queue_trainer_send_out_message(trainer: TrainerData) -> void:
+	if _opp_party == null:
+		return
+	var names: Array[String] = []
+	for slot in range(_opp_party.num_active()):
+		var mon: BattlePokemon = _opp_party.get_active_at(slot)
+		if mon != null:
+			names.append(mon.species.species_name)
+	if names.is_empty():
+		return
+	_queue_text_beat("%s sent out %s!" % [
+			_trainer_name_with_class(trainer), _join_mon_names(names)])
+
+
+# [M26B3-5] The player's own send-out line, a SEPARATE later phase in
+# source (`BATTLE_INTRO_STATE_PRINT_PLAYER_SEND_OUT_TEXT`, well after the
+# opponent's): `sText_GoPkmn` = "Go! {B_PLAYER_MON1_NAME}!"
+# (`battle_message.c:109`), `sText_GoTwoPkmn` (`:110`) for doubles.
+func _queue_player_send_out_message() -> void:
+	if _player_party == null:
+		return
+	var names: Array[String] = []
+	for slot in range(_player_party.num_active()):
+		var mon: BattlePokemon = _player_party.get_active_at(slot)
+		if mon != null:
+			names.append(mon.species.species_name)
+	if names.is_empty():
+		return
+	_queue_text_beat("Go! %s!" % _join_mon_names(names))
+
+
+# Both two-Pokemon templates join with " and ".
+func _join_mon_names(names: Array[String]) -> String:
+	if names.size() >= 2:
+		return "%s and %s" % [names[0], names[1]]
+	return names[0]
 
 
 # [M26B3-4] Extracted from _queue_trainer_intro_message, which was the only
@@ -3460,7 +4027,16 @@ func _refresh_battlefield_side(party: BattleParty, is_player: bool) -> void:
 			_opp_anim_frame[slot] = 0
 			_apply_bottom_anchored_front_sprite(sprite, mon.species.national_dex_num, 0,
 					_opp_sprite_base_top[slot], _opp_sprite_base_bottom[slot])
-		sprite.modulate = Color(1, 1, 1, 0.3) if mon.fainted else Color(1, 1, 1, 1)
+		# [M26B3-6a] The old `Color(1, 1, 1, 0.3) if mon.fainted` dim is GONE.
+		# It had no basis in source at all -- confirmed by direct read that
+		# neither faint path touches alpha or the blend registers (the player
+		# sprite slides off-screen at full opacity; the opponent's is clipped
+		# row-by-row). It was this project's own invention, and it was what
+		# forced M26B3-4's win-path slot-clear special case, since a fainted
+		# mon stayed drawn at 30% alpha for a returning trainer to overlap.
+		# A fainted Pokémon is now recalled to its ball instead
+		# (_play_recall_to_ball) and genuinely leaves the field.
+		sprite.modulate = Color(1, 1, 1, 1)
 		# [Doubles-split roadmap, step 5] exp_fraction is passed unconditionally
 		# for the player side -- a panel with no ExpFill/HpNumberLabel node
 		# (opponent panels, and both doubles panel shapes) simply ignores it,

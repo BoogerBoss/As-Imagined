@@ -27,6 +27,14 @@ func _ready() -> void:
 	_test_player_trainer_frame_stepping_walks_the_strip()
 	await _test_player_send_out_bypassed_when_not_in_tree()
 	_test_player_mon_visibility_helper_covers_every_slot()
+	_test_intro_message_uses_the_real_challenge_template()
+	_test_opponent_send_out_message_singles_and_doubles()
+	_test_player_send_out_message_singles_and_doubles()
+	await _test_intro_split_lets_text_print_while_trainer_stands()
+	_test_recall_constants_match_source()
+	await _test_recall_bypass_hides_sprite_and_panel_together()
+	_test_recall_finds_the_right_slot_in_doubles()
+	_test_faint_queues_a_recall_beat()
 	await _test_battle_end_win_queues_the_real_defeat_template()
 	await _test_battle_end_loss_recalls_mons_and_queues_no_line()
 	await _test_battle_end_noop_without_a_trainer()
@@ -213,6 +221,198 @@ func _test_trainer_sprite_shares_opponent_mon_geometry() -> void:
 		root.free()
 
 
+# ── M26B3-5: intro sequencing + the real messages ────────────────────────
+
+func _bs_with_parties(opp_names: Array, ply_names: Array) -> BattleScreenShared:
+	var bs := BattleScreenShared.new()
+	var opp: Array[BattlePokemon] = []
+	for n: String in opp_names:
+		opp.append(_make_mon(n))
+	var ply: Array[BattlePokemon] = []
+	for n: String in ply_names:
+		ply.append(_make_mon(n))
+	# Typed-array assignment from a ternary silently fails (this project's own
+	# documented GDScript gotcha) -- an earlier draft did exactly that, left
+	# `bs` null, and every message assertion below aborted while the suite
+	# still reported green. Explicit branches instead.
+	var oi: Array[int] = [0]
+	if opp.size() > 1:
+		oi = [0, 1]
+	var pi: Array[int] = [0]
+	if ply.size() > 1:
+		pi = [0, 1]
+	var op := BattleParty.new()
+	op.members = opp
+	op.active_indices = oi
+	var pp := BattleParty.new()
+	pp.members = ply
+	pp.active_indices = pi
+	bs._opp_party = op
+	bs._player_party = pp
+	return bs
+
+
+func _texts_of(bs: BattleScreenShared) -> Array:
+	var out: Array = []
+	for beat: Dictionary in bs._pending_beats:
+		if beat.get("kind", "") == "text":
+			out.append(beat["text"])
+	return out
+
+
+func _test_intro_message_uses_the_real_challenge_template() -> void:
+	var bs := _bs_with_parties(["Foe"], ["Mine"])
+	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1")
+	bs._queue_trainer_intro_message(trainer)
+	var t: Array = _texts_of(bs)
+	_chk("intro queues one line", t.size() == 1)
+	if t.size() == 1:
+		# sText_Trainer1WantsToBattle = "You are challenged by
+		# {B_TRAINER1_NAME_WITH_CLASS}!". B3-2 shipped "X wants to battle!",
+		# which is the LINK/two-trainer phrasing, not this one -- guarded so
+		# the wrong template can't come back.
+		_chk("uses source's real single-trainer template",
+				(t[0] as String).begins_with("You are challenged by "))
+		_chk("does NOT use the link/two-trainer 'wants to battle' phrasing",
+				not ("wants to battle" in (t[0] as String)))
+		_chk("carries the class as well as the name", "Roxanne" in t[0] and t[0] != "You are challenged by Roxanne!")
+
+
+func _test_opponent_send_out_message_singles_and_doubles() -> void:
+	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1")
+	var singles := _bs_with_parties(["Geodude"], ["Mine"])
+	singles._queue_trainer_send_out_message(trainer)
+	var st: Array = _texts_of(singles)
+	_chk("singles send-out queues one line", st.size() == 1)
+	if st.size() == 1:
+		_chk("singles names the mon sent out",
+				"sent out " in st[0] and "Geodude" in st[0])
+		_chk("singles does not use the two-mon 'and' form", not (" and " in st[0]))
+
+	var doubles := _bs_with_parties(["Geodude", "Nosepass"], ["A", "B"])
+	doubles._queue_trainer_send_out_message(trainer)
+	var dt: Array = _texts_of(doubles)
+	if dt.size() == 1:
+		# sText_Trainer1SentOutTwoPkmn joins the two with " and ".
+		_chk("doubles names BOTH mons joined with 'and'",
+				"Geodude and Nosepass" in dt[0])
+
+
+func _test_player_send_out_message_singles_and_doubles() -> void:
+	var singles := _bs_with_parties(["Foe"], ["Blaze"])
+	singles._queue_player_send_out_message()
+	var st: Array = _texts_of(singles)
+	_chk("player send-out uses source's 'Go!' template",
+			st.size() == 1 and st[0] == "Go! Blaze!")
+
+	var doubles := _bs_with_parties(["A", "B"], ["Blaze", "Torrent"])
+	doubles._queue_player_send_out_message()
+	var dt: Array = _texts_of(doubles)
+	_chk("doubles joins both player mons with 'and'",
+			dt.size() == 1 and dt[0] == "Go! Blaze and Torrent!")
+
+
+func _test_intro_split_lets_text_print_while_trainer_stands() -> void:
+	# The whole point of splitting _show_trainer_intro/_dismiss_trainer_intro
+	# is that both opponent messages print while she is still on screen.
+	# _dismiss on a hidden sprite must be a no-op so the order can't silently
+	# invert.
+	var bs := BattleScreenShared.new()
+	bs._opponent_trainer_sprite = TextureRect.new()
+	bs._opponent_trainer_sprite.visible = false
+	await bs._dismiss_trainer_intro()
+	_chk("dismissing a trainer who never arrived is a no-op",
+			not bs._opponent_trainer_sprite.visible)
+
+
+# ── M26B3-6a: recall-to-ball on faint ────────────────────────────────────
+
+func _test_recall_constants_match_source() -> void:
+	# The recall animation is ported from gBattleAnimSpecial_SwitchOutPlayerMon
+	# (its opponent twin is byte-identical). The numbers are the port, so they
+	# are asserted directly.
+	_chk("ball leads the shrink by source's own 10-frame delay",
+			BattleScreenShared._RECALL_BALL_LEAD_FRAMES == 10)
+	# AnimTask_SwitchOutShrinkMon: 0x100 -> 0x2D0 stepping 0x30 per frame.
+	# (0x2D0-0x100)/0x30 is 9.67, and the loop runs until the value REACHES
+	# the threshold -- so it takes 10 frames, not 9. Integer division here
+	# truncates to 9 and would assert the wrong number; ceil is the correct
+	# derivation and this comment exists because the first draft got it wrong.
+	_chk("shrink runs ceil((0x2D0-0x100)/0x30) = 10 frames",
+			BattleScreenShared._RECALL_SHRINK_FRAMES
+			== ceili((0x2D0 - 0x100) / float(0x30)))
+	# LaunchBallFadeMonTask blends toward BALL_POKE's own openFadeColor,
+	# RGB(31,22,30) in GBA 5-bit channels -> (255,181,247).
+	var c := BattleScreenShared._RECALL_FADE_COLOR
+	_chk("fade colour is BALL_POKE's real openFadeColor, 5-bit scaled",
+			c.r8 == 255 and c.g8 == 181 and c.b8 == 247)
+
+
+func _test_recall_bypass_hides_sprite_and_panel_together() -> void:
+	# Under the not-in-tree/--autoplay bypass the recall still has to leave
+	# the slot in its final state, or a fainted mon stays drawn.
+	var bs := BattleScreenShared.new()
+	var mon := _make_mon("Fainter")
+	var members: Array[BattlePokemon] = [mon]
+	bs._opp_party = _party_of(members)
+	var sprite := TextureRect.new()
+	sprite.visible = true
+	var panel := Control.new()
+	panel.visible = true
+	bs._opp_sprites = [sprite]
+	bs._opp_panels = [panel]
+	_chk("bare instance is genuinely not in the tree", not bs.is_inside_tree())
+	await bs._play_recall_to_ball(mon)
+	_chk("bypass hides the recalled sprite", not sprite.visible)
+	_chk("bypass hides its health box too", not panel.visible)
+
+
+func _test_recall_finds_the_right_slot_in_doubles() -> void:
+	var bs := BattleScreenShared.new()
+	var a := _make_mon("SlotZero")
+	var b := _make_mon("SlotOne")
+	var members: Array[BattlePokemon] = [a, b]
+	var party := BattleParty.new()
+	party.members = members
+	var idx: Array[int] = [0, 1]
+	party.active_indices = idx
+	bs._opp_party = party
+	var s0 := TextureRect.new()
+	var s1 := TextureRect.new()
+	bs._opp_sprites = [s0, s1]
+	bs._opp_panels = []
+	var found := bs._find_mon_slot(b)
+	_chk("slot lookup resolves the correct doubles slot",
+			not found.is_empty() and found["sprite"] == s1)
+	var missing := bs._find_mon_slot(_make_mon("NotOnField"))
+	_chk("a mon that isn't on the field resolves to nothing",
+			missing.is_empty())
+
+
+func _test_faint_queues_a_recall_beat() -> void:
+	# The recall is queued as a beat rather than run straight off the signal,
+	# so it orders against the M26o party-summary re-show already listening
+	# to pokemon_fainted rather than racing it.
+	var bs := BattleScreenShared.new()
+	bs._bm = BattleManager.new()
+	# _mon_label() (used by the faint log line) reads both parties to decide
+	# the "Foe X" prefix, so both must exist before the signal fires.
+	var mon := _make_mon("Fainter")
+	var opp_members: Array[BattlePokemon] = [mon]
+	bs._opp_party = _party_of(opp_members)
+	var ply_members: Array[BattlePokemon] = [_make_mon("Mine")]
+	bs._player_party = _party_of(ply_members)
+	bs._wire_log_signals()
+	bs._bm.pokemon_fainted.emit(mon)
+	var recalls := 0
+	for beat: Dictionary in bs._pending_beats:
+		if beat.get("kind", "") == "recall":
+			recalls += 1
+			_chk("recall beat carries the fainted mon", beat.get("mon", null) == mon)
+	_chk("a faint queues exactly one recall beat", recalls == 1)
+	bs._bm.free()
+
+
 # ── M26B3-4: opponent trainer returns for the post-battle speech ─────────
 
 func _bs_with_trainer_end_stubs() -> BattleScreenShared:
@@ -360,6 +560,14 @@ func _test_player_throw_matches_source_frame_sequence() -> void:
 			BattleScreenShared._PLAYER_BALL_LAUNCH_FRAME == 31)
 	_chk("ball launch lands strictly inside the throw (it is not the end)",
 			BattleScreenShared._PLAYER_BALL_LAUNCH_FRAME < total)
+	# [B3-3 correction] She slides off LEFT over 50 frames while throwing --
+	# source's own player-side data[0]. B3-3 first shipped her simply
+	# vanishing, on the mistaken claim that the player's trainer never
+	# slides out. Pinned so that claim can't return.
+	_chk("player slide-out is source's own 50 frames",
+			BattleScreenShared._PLAYER_SLIDE_OUT_FRAMES == 50)
+	_chk("the slide runs concurrently with the throw, not after it",
+			BattleScreenShared._PLAYER_SLIDE_OUT_FRAMES < total)
 
 
 # Frame stepping walks a VERTICAL strip, so only region.y moves.
