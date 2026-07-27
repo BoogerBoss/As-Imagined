@@ -490,6 +490,43 @@ static func step(st: Dictionary) -> void:
 		"jolt_right": _jolt_right(st)
 		"flash_yellow": _flash_yellow(st)
 		"shake_glow": _shake_glow(st)
+		# --- [M26B3-6c-2] front-side additions ---
+		"v_squish_bounce": _v_squish_bounce(st)
+		"circular_stretch": _circular_stretch(st)
+		"v_slide": _v_slide(st)
+		"bounce_rotate": _bounce_rotate(st)
+		"v_jumps_h_jumps": _v_jumps_h_jumps(st)
+		"rotate_to_sides": _rotate_to_sides(st)
+		"grow_vibrate": _grow_vibrate(st)
+		"zigzag": _zigzag(st)
+		"zigzag_slow": _zigzag_slow(st)
+		"swing_concave": _swing_concave(st)
+		"swing_convex": _swing_convex(st)
+		"v_shake": _v_shake(st)
+		"circular_vibrate": _circular_vibrate(st)
+		"twist": _twist(st)
+		"glow_color": _glow_color(st)
+		"h_stretch_front": _h_stretch_front(st)
+		"v_stretch_front": _v_stretch_front(st)
+		"rising_wobble": _rising_wobble(st)
+		"v_shake_twice": _v_shake_twice(st)
+		"tip_move_forward": _tip_move_forward(st)
+		"h_pivot": _h_pivot(st)
+		"v_slide_wobble": _v_slide_wobble(st)
+		"h_slide_wobble": _h_slide_wobble(st)
+		"v_jumps": _v_jumps(st)
+		"spin": _spin(st)
+		"back_and_lunge": _back_and_lunge(st)
+		"figure8": _figure8(st)
+		"flash_yellow_front": _flash_yellow_front(st)
+		"rotate_up_slam_down": _rotate_up_slam_down(st)
+		"deep_v_squish": _deep_v_squish(st)
+		"h_jumps": _h_jumps(st)
+		"h_jumps_v_stretch": _h_jumps_v_stretch(st)
+		"rotate_up_to_sides": _rotate_up_to_sides(st)
+		"flicker_increasing": _flicker_increasing(st)
+		"circle_into_bg": _circle_into_bg(st)
+		"tumbling_front_flip": _tumbling_front_flip(st)
 		_:
 			push_error("MonAnimator: unknown step fn %s" % st["fn"])
 			st["done"] = true
@@ -1065,6 +1102,855 @@ static func _shake_glow(st: Dictionary) -> void:
 				st["x2"] = sign_ * sin_g((d[5] * 384 / d[0]) % 256, 6)
 				d[5] += 1
 	d[2] += 1
+
+
+# ======================================================================
+# [M26B3-6c-2] FRONT animations -- the opponent's own per-species entry
+# animation, the twin of everything above.
+#
+# Source: `DoMonFrontSpriteAnimation` (pokemon.c:5686-5731), whose battle
+# call site is `pokeball.c:1218-1220`.
+#
+# THREE WAYS FRONT DIFFERS FROM BACK, all confirmed at Step 0:
+#
+# 1. NO NATURE VARIANT. `LaunchAnimationTaskForFrontSprite` indexes
+#    `sMonAnimFunctions[frontAnimId]` directly -- a flat id -> animation
+#    map, not a set-of-three. So there is no front equivalent of
+#    NATURE_BACK_VARIANT and `start_front()` takes no nature.
+#
+# 2. IT LAYERS ON TOP OF THE 2-FRAME BOB RATHER THAN REPLACING IT.
+#    `DoMonFrontSpriteAnimation` fires BOTH: `StartSpriteAnim(sprite, 1)`
+#    (the frame swap [M26B3-6b] already ships) immediately, and the
+#    transform animation after `frontAnimDelay` frames. B3-6b built one of
+#    the two without knowing the other existed; this adds the other.
+#
+# 3. THE `sAnims` SIDE POOL IS LOAD-BEARING HERE. Back only needed it for
+#    one family (inlined). Front's BounceRotateToSides / RotateToSides /
+#    SwingConcave / SwingConvex / Twist / TumblingFrontFlip all read
+#    `sAnims[id].runs` as a real repeat counter, plus `.delay`, `.data`,
+#    `.rotation` and `.speed`. Those five live in the state dict as
+#    "runs"/"delay"/"adata"/"arot"/"aspeed" rather than a separate pool --
+#    with one animation live per sprite, the pool is pure indirection.
+#
+# Rotation is used far more heavily than on the back side (SwingConcave's
+# `Sin(index, 3276)` is ~18 degrees), so `godot_rotation()` matters more
+# here; see AMPLITUDE_SCALE's own note for the review-this-on-screen point.
+
+# sBounceRotateToSidesData[2][8][3] -- {xStart, xEnd, duration} per leg.
+const BOUNCE_ROTATE_DATA: Array = [
+	[[0, 8, 8], [8, -8, 12], [-8, 8, 12], [8, -8, 12],
+	 [-8, 8, 12], [8, -8, 12], [-8, 0, 12], [0, 0, 0]],
+	[[0, 8, 16], [8, -8, 24], [-8, 8, 24], [8, -8, 24],
+	 [-8, 8, 24], [8, -8, 24], [-8, 0, 24], [0, 0, 0]],
+]
+
+# sZigzagData -- {dx, dy, duration}; a zero duration ends the animation.
+const ZIGZAG_DATA: Array = [
+	[-1, -1, 6], [2, 0, 6], [-2, 2, 6], [2, 0, 6], [-2, -2, 6],
+	[2, 0, 6], [-2, 2, 6], [2, 0, 6], [-1, -1, 6], [0, 0, 0],
+]
+
+# sYellowFlashData -- ANIM_FLASH_YELLOW's own table, DISTINCT from
+# sShakeYellowFlashData above (which belongs to the back-side shake
+# family). {isYellow, time}; 255 ((u8)-1) terminates.
+const YELLOW_FLASH_DATA: Array = [
+	[0, 5], [1, 1], [0, 15], [1, 4], [0, 2], [1, 2], [0, 2],
+	[1, 2], [0, 2], [1, 2], [0, 2], [1, 2], [0, 2], [0, 255],
+]
+
+# GlowColor(color, colorIncrement, speed) -- pokemon_animation.c:1134, a
+# macro rather than a function. RGB555 expanded to 8-bit.
+const GLOW_BLACK := Color8(0, 0, 0)
+const GLOW_ORANGE := Color8(255, 181, 0)   # RGB(31, 22, 0)
+const GLOW_BLUE := Color8(0, 0, 255)
+const GLOW_YELLOW := Color8(255, 255, 0)
+
+# A 64x64 battle sprite's own centerToCornerVecX, used by
+# Anim_RotateUpSlamDown's `-(14 * centerToCornerVecX / 10)`.
+const CENTER_TO_CORNER_X := -32
+
+## front anim id -> {fn, seed data, sAnims-pool seeds}.
+const FRONT_ANIM_SETUP: Dictionary = {
+	0: {"fn": "v_squish_bounce", "d": {0: 16}},
+	1: {"fn": "circular_stretch", "d": {}},
+	2: {"fn": "h_vibrate", "d": {7: 6}},                       # reused from back
+	3: {"fn": "h_slide", "d": {0: 40}},                        # reused
+	4: {"fn": "v_slide", "d": {0: 40}},
+	5: {"fn": "bounce_rotate", "d": {}, "arot": 4096, "adata": 0},
+	6: {"fn": "v_jumps_h_jumps", "d": {}},
+	8: {"fn": "rotate_to_sides", "d": {}, "arot": 4, "runs": 2},
+	9: {"fn": "grow_vibrate", "d": {}},
+	10: {"fn": "zigzag", "d": {}},
+	11: {"fn": "swing_concave", "d": {}, "adata": 100, "runs": 1},
+	12: {"fn": "swing_concave", "d": {}, "adata": 50, "runs": 2},
+	13: {"fn": "swing_convex", "d": {}, "adata": 100, "runs": 1},
+	14: {"fn": "swing_convex", "d": {}, "adata": 50, "runs": 2},
+	15: {"fn": "h_shake", "d": {0: 60, 7: 3}},                 # reused
+	16: {"fn": "v_shake", "d": {0: 60}},
+	17: {"fn": "circular_vibrate", "d": {}},
+	18: {"fn": "twist", "d": {}, "arot": 512, "delay": 0, "runs": 1},
+	19: {"fn": "shrink_grow", "d": {7: 3, 6: 8}},              # reused
+	21: {"fn": "glow_color", "d": {}, "glow": 0},
+	22: {"fn": "h_stretch_front", "d": {}},
+	23: {"fn": "v_stretch_front", "d": {}},
+	24: {"fn": "rising_wobble", "d": {0: 5}},
+	25: {"fn": "v_shake_twice", "d": {0: 48}},
+	26: {"fn": "tip_move_forward", "d": {}},
+	27: {"fn": "h_pivot", "d": {}},
+	28: {"fn": "v_slide_wobble", "d": {0: 10}},
+	29: {"fn": "h_slide_wobble", "d": {}},
+	30: {"fn": "v_jumps", "d": {0: 4}},
+	31: {"fn": "spin", "d": {}, "delay": 60, "adata": 20},
+	32: {"fn": "glow_color", "d": {}, "glow": 1},
+	34: {"fn": "glow_color", "d": {}, "glow": 2},
+	37: {"fn": "back_and_lunge", "d": {}},
+	43: {"fn": "figure8", "d": {}},
+	44: {"fn": "flash_yellow_front", "d": {}},
+	45: {"fn": "swing_concave", "d": {}, "adata": 50, "runs": 1},
+	47: {"fn": "rotate_up_slam_down", "d": {}},
+	48: {"fn": "deep_v_squish", "d": {}, "arot": 4, "runs": 1},
+	49: {"fn": "h_jumps", "d": {}},
+	50: {"fn": "h_jumps_v_stretch", "d": {}, "adata": -1, "runs": 1},
+	52: {"fn": "rotate_up_to_sides", "d": {}},
+	53: {"fn": "flicker_increasing", "d": {}},
+	58: {"fn": "grow_in_stages", "d": {7: 0, 6: 0, 5: 0}},     # reused
+	66: {"fn": "circle_into_bg", "d": {}},
+	69: {"fn": "v_squish_bounce", "d": {0: 32}},
+	70: {"fn": "h_slide", "d": {0: 80}},                       # reused
+	71: {"fn": "v_slide", "d": {0: 80}},
+	72: {"fn": "bounce_rotate", "d": {}, "arot": 2048, "adata": 0},
+	73: {"fn": "bounce_rotate", "d": {}, "arot": 4096, "adata": 1},
+	74: {"fn": "bounce_rotate", "d": {}, "arot": 2048, "adata": 1},
+	75: {"fn": "zigzag_slow", "d": {}},
+	76: {"fn": "h_shake", "d": {0: 30, 7: 3}},                 # reused
+	78: {"fn": "twist", "d": {}, "arot": 1024, "delay": 0, "runs": 2},
+	79: {"fn": "circle_ccw", "d": {5: 512, 4: 3, 3: 12}},      # reused
+	81: {"fn": "v_slide_wobble", "d": {0: 5}},
+	82: {"fn": "v_jumps", "d": {0: 3}},
+	84: {"fn": "tumbling_front_flip", "d": {}, "aspeed": 1, "runs": 2},
+	86: {"fn": "h_jumps_v_stretch", "d": {}, "adata": 1, "runs": 2},
+	135: {"fn": "sgv", "d": {6: 80, 7: 80}, "y2": 2},          # reused
+}
+
+const GLOW_COLORS: Array = [GLOW_BLACK, GLOW_ORANGE, GLOW_BLUE, GLOW_YELLOW]
+# {colorIncrement, speed} per GlowColor call site.
+const GLOW_PARAMS: Array = [[16, 1], [12, 2], [12, 2], [12, 2]]
+
+
+## Seed a front animation. Unlike `start()` this takes no nature -- front
+## ids map straight to one animation. Returns {} for an unknown id, which
+## callers treat as "play nothing" (the 2-frame bob still runs).
+static func start_front(front_anim_id: int) -> Dictionary:
+	if not FRONT_ANIM_SETUP.has(front_anim_id):
+		return {}
+	var setup: Dictionary = FRONT_ANIM_SETUP[front_anim_id]
+	var st := {
+		"key": "front_%d" % front_anim_id,
+		"fn": setup["fn"],
+		"d": [0, 0, 0, 0, 0, 0, 0, 0],
+		"x2": 0, "y2": int(setup.get("y2", 0)),
+		"sx": 256, "sy": 256, "rot": 0,
+		"blend_coeff": 0, "blend_color": Color(1, 1, 1, 1),
+		"jolt": 0, "frames": 0, "done": false,
+		# sAnims-pool equivalents (see this section's own header note).
+		"runs": int(setup.get("runs", 1)),
+		"delay": int(setup.get("delay", 0)),
+		"adata": int(setup.get("adata", 0)),
+		"arot": int(setup.get("arot", 0)),
+		"aspeed": int(setup.get("aspeed", 0)),
+		"glow": int(setup.get("glow", 0)),
+		"visible": true,
+	}
+	st["d"][1] = 1
+	for slot in setup["d"]:
+		st["d"][slot] = setup["d"][slot]
+	return st
+
+
+# --- Front motion functions -------------------------------------------
+# One per source function, same porting rules as the back set: TryFlipX
+# omitted (no-op in battle), affine values stored raw and inverted once in
+# godot_scale(), `!sDontFlip` branches take the ELSE form.
+
+# VerticalSquishBounce
+static func _v_squish_bounce(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > d[0] * 3:
+		st["sx"] = 256; st["sy"] = 256; st["y2"] = 0; st["done"] = true
+		return
+	var y_scale: int = sin_g(d[4], 32) + 256
+	if d[2] > d[0] and d[2] < d[0] * 2:
+		d[3] += (128 / d[0])
+	var pos_y: int = 0
+	if y_scale > 256:
+		pos_y = (256 - y_scale) / 8
+	st["y2"] = -sin_g(d[3], 10) - pos_y
+	st["sx"] = 256 - sin_g(d[4], 32)
+	st["sy"] = y_scale
+	d[2] += 1
+	d[4] = (d[4] + 128 / d[0]) & 0xFF
+
+
+# Anim_CircularStretchTwice
+static func _circular_stretch(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > 40:
+		st["sx"] = 256; st["sy"] = 256; st["done"] = true
+	else:
+		var v: int = (d[2] * 512 / 40) % 256
+		st["sx"] = sin_g(v, 32) + 256
+		st["sy"] = cos_g(v, 32) + 256
+	d[2] += 1
+
+
+# VerticalSlide
+static func _v_slide(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > d[0]:
+		st["done"] = true; st["y2"] = 0
+	else:
+		st["y2"] = -sin_g((d[2] * 384 / d[0]) % 256, 6)
+	d[2] += 1
+
+
+# BounceRotateToSides
+static func _bounce_rotate(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	var arr: Array = BOUNCE_ROTATE_DATA[st["adata"]]
+	if d[4] >= arr.size():
+		st["done"] = true; return
+	var leg: Array = arr[d[4]]
+	var x0: int = leg[0]
+	var span: int = leg[1] - x0
+	var dur: int = leg[2]
+	if dur == 0:
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = 0
+		st["x2"] = 0; st["y2"] = 0; st["done"] = true
+		return
+	var t: int = d[3]
+	st["y2"] = -sin_g(t * 128 / dur, 10)
+	st["x2"] = (span * t / dur) + x0
+	st["rot"] = -(int(st["arot"]) * int(st["x2"])) / 8
+	st["sx"] = 256; st["sy"] = 256
+	if t == dur:
+		d[4] += 1; d[3] = 0
+	else:
+		d[3] += 1
+
+
+# Anim_VerticalJumpsHorizontalJumps
+static func _v_jumps_h_jumps(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	var c: int = d[2]
+	if c > 768:
+		st["done"] = true; st["x2"] = 0; st["y2"] = 0
+	else:
+		match c / 128:
+			0, 1: st["x2"] = 0
+			2: c = 0
+			3: st["x2"] = -(c % 128 * 8) / 128
+			4: st["x2"] = (c % 128) / 8 - 8
+			5: st["x2"] = -(c % 128 * 8) / 128 + 8
+		st["y2"] = -sin_g(c % 128, 8)
+	d[2] += 12
+
+
+# RotateToSides
+static func _rotate_to_sides(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[7] > 254:
+		st["x2"] = 0; st["y2"] = 0; st["sx"] = 256; st["sy"] = 256; st["rot"] = 0
+		if int(st["runs"]) > 1:
+			st["runs"] = int(st["runs"]) - 1
+			d[2] = 0; d[7] = 0
+		else:
+			st["done"] = true
+	else:
+		st["x2"] = -sin_g(d[7], 16)
+		st["rot"] = sin_g(d[7], 32) << 8
+		st["sx"] = 256; st["sy"] = 256
+		d[7] += int(st["arot"])
+
+
+# Anim_GrowVibrate
+static func _grow_vibrate(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > 40:
+		st["sx"] = 256; st["sy"] = 256; st["done"] = true
+	else:
+		var index: int = (d[2] * 256 / 40) % 256
+		var amp: int = 32 if d[2] % 2 == 0 else 8
+		st["sx"] = sin_g(index, amp) + 256
+		st["sy"] = sin_g(index, amp) + 256
+	d[2] += 1
+
+
+# Zigzag
+static func _zigzag(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] == 0:
+		d[3] = 0
+	if d[3] >= ZIGZAG_DATA.size():
+		st["done"] = true; return
+	if ZIGZAG_DATA[d[3]][2] == d[2]:
+		if ZIGZAG_DATA[d[3]][2] == 0:
+			st["done"] = true; return
+		d[3] += 1; d[2] = 0
+	if d[3] >= ZIGZAG_DATA.size() or ZIGZAG_DATA[d[3]][2] == 0:
+		st["done"] = true
+	else:
+		st["x2"] = int(st["x2"]) + ZIGZAG_DATA[d[3]][0]
+		st["y2"] = int(st["y2"]) + ZIGZAG_DATA[d[3]][1]
+		d[2] += 1
+
+
+# Anim_ZigzagSlow -- runs Zigzag every other frame.
+static func _zigzag_slow(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] == 0:
+		d[0] = 0
+	if d[0] <= 0:
+		_zigzag(st)
+		d[0] = 1
+	else:
+		d[0] -= 1
+
+
+# SwingConcave
+static func _swing_concave(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > int(st["adata"]):
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = 0; st["x2"] = 0
+		if int(st["runs"]) > 1:
+			st["runs"] = int(st["runs"]) - 1
+			d[2] = 0
+		else:
+			st["done"] = true
+	else:
+		var index: int = (d[2] * 256) / int(st["adata"])
+		st["x2"] = -sin_g(index, 10)
+		st["sx"] = 256; st["sy"] = 256
+		st["rot"] = sin_g(index, 3276)
+	d[2] += 1
+
+
+# SwingConvex -- identical to SwingConcave but the rotation is negated.
+static func _swing_convex(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > int(st["adata"]):
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = 0; st["x2"] = 0
+		if int(st["runs"]) > 1:
+			st["runs"] = int(st["runs"]) - 1
+			d[2] = 0
+		else:
+			st["done"] = true
+	else:
+		var index: int = (d[2] * 256) / int(st["adata"])
+		st["x2"] = -sin_g(index, 10)
+		st["sx"] = 256; st["sy"] = 256
+		st["rot"] = -sin_g(index, 3276)
+	d[2] += 1
+
+
+# VerticalShake -- the FRONT variant (amplitude 3, no +amp offset), which
+# is a different function from the back side's VerticalShakeBack.
+static func _v_shake(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > 2304:
+		st["done"] = true; st["y2"] = 0
+	else:
+		st["y2"] = sin_g(d[2] % 256, 3)
+	d[2] += d[0]
+
+
+# Anim_CircularVibrate
+static func _circular_vibrate(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > 512:
+		st["done"] = true; st["x2"] = 0; st["y2"] = 0
+	else:
+		var sign_: int = 1 if (d[2] & 1) == 0 else -1
+		var amplitude: int = sin_g(d[2] / 4, 8)
+		var index: int = d[2] % 256
+		st["y2"] = sin_g(index, amplitude) * sign_
+		st["x2"] = cos_g(index, amplitude) * sign_
+	d[2] += 9
+
+
+# Twist
+static func _twist(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if int(st["delay"]) != 0:
+		st["delay"] = int(st["delay"]) - 1
+		return
+	if d[2] > int(st["arot"]):
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = 0
+		if int(st["runs"]) > 1:
+			st["runs"] = int(st["runs"]) - 1
+			st["delay"] = 10
+			d[2] = 0
+		else:
+			st["done"] = true
+	else:
+		d[6] = sin_g(d[2] % 256, 4096)
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = d[6]
+	d[2] += 16
+
+
+# GlowColor macro (pokemon_animation.c:1134)
+static func _glow_color(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	var g: int = int(st["glow"])
+	var increment: int = GLOW_PARAMS[g][0]
+	var speed: int = GLOW_PARAMS[g][1]
+	st["blend_color"] = GLOW_COLORS[g]
+	if d[2] > 128:
+		st["blend_coeff"] = 0
+		st["done"] = true
+	else:
+		d[6] = sin_g(d[2], increment)
+		st["blend_coeff"] = d[6]
+	d[2] += speed
+
+
+# Anim_HorizontalStretch (front) -- distinct from the back's
+# HorizontalStretchFar.
+static func _h_stretch_front(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > 40:
+		st["sx"] = 256; st["sy"] = 256; st["done"] = true
+	else:
+		var index1: int = 0
+		var index2: int = (d[2] * 128) / 40
+		if d[2] >= 10 and d[2] <= 29:
+			d[7] += 51
+			index1 = 0xFF & d[7]
+		st["sx"] = (256 - sin_g(index2, 40)) - sin_g(index1, 16)
+		st["sy"] = sin_g(index2, 16) + 256
+	d[2] += 1
+
+
+# Anim_VerticalStretch (front) -- distinct from V_STRETCH_BOTH_ENDS.
+static func _v_stretch_front(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > 40:
+		st["sx"] = 256; st["sy"] = 256; st["done"] = true; st["y2"] = 0
+	else:
+		var index1: int = 0
+		var index2: int = (d[2] * 128) / 40
+		if d[2] >= 10 and d[2] <= 29:
+			d[7] += 51
+			index1 = 0xFF & d[7]
+		st["sx"] = sin_g(index2, 16) + 256
+		st["sy"] = (256 - sin_g(index2, 40)) - sin_g(index1, 8)
+		var pos_y: int = 0
+		if int(st["sy"]) != 256:
+			pos_y = (256 - int(st["sy"])) / 8
+		st["y2"] = -pos_y
+	d[2] += 1
+
+
+# RisingWobble
+static func _rising_wobble(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > 100:
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = 0; st["y2"] = 0
+		st["done"] = true
+	else:
+		var index: int = (d[2] * 256) / 100
+		var v: int = ((d[2] * 512) / 100) & 0xFF
+		st["y2"] = -sin_g(index / 2, d[0] * 2)
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = sin_g(v, 3276)
+	d[2] += 1
+
+
+# VerticalShakeTwice
+static func _v_shake_twice(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[5] < 0 or d[5] >= V_SHAKE_DATA.size():
+		st["done"] = true; st["y2"] = 0; return
+	var row: Array = V_SHAKE_DATA[d[5]]
+	var v5: int = row[0]
+	var v6: int = row[1]
+	var amplitude: int = 0
+	if v5 != V_SHAKE_SENTINEL_ZERO and v6 != 0:
+		amplitude = (v6 - d[6]) * v5 / v6
+	if v5 == V_SHAKE_SENTINEL_END:
+		st["done"] = true; st["y2"] = 0
+		return
+	st["y2"] = sin_g(d[2] % 256, amplitude)
+	if d[6] == v6:
+		d[5] += 1; d[6] = 0
+	else:
+		d[2] += d[0]; d[6] += 1
+
+
+# Anim_TipMoveForward
+static func _tip_move_forward(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	var counter: int = d[2]
+	if counter > 35:
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = 0; st["x2"] = 0
+		st["done"] = true
+	else:
+		var index: int = ((counter - 10) * 128) / 20
+		if counter < 10:
+			st["rot"] = counter / 2 * 512
+		elif counter <= 29:
+			st["x2"] = -sin_g(index, 5)
+		else:
+			st["rot"] = (35 - counter) / 2 * 1024
+	d[2] += 1
+
+
+# Anim_HorizontalPivot
+static func _h_pivot(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > 100:
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = 0; st["y2"] = 0
+		st["done"] = true
+	else:
+		var index: int = (d[2] * 256) / 100
+		st["y2"] = sin_g(index, 10)
+		st["rot"] = sin_g(index, 3276)
+	d[2] += 1
+
+
+# VerticalSlideWobble
+static func _v_slide_wobble(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > 100:
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = 0; st["y2"] = 0
+		st["done"] = true
+	else:
+		var index: int = (d[2] * 256) / 100
+		var v: int = ((d[2] * 512) / 100) & 0xFF
+		st["y2"] = sin_g(index, d[0])
+		st["rot"] = sin_g(v, 3276)
+	d[2] += 1
+
+
+# Anim_HorizontalSlideWobble
+static func _h_slide_wobble(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > 100:
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = 0; st["x2"] = 0
+		st["done"] = true
+	else:
+		var index: int = (d[2] * 256) / 100
+		var v: int = ((d[2] * 512) / 100) & 0xFF
+		st["x2"] = sin_g(index, 8)
+		st["rot"] = sin_g(v, 3276)
+	d[2] += 1
+
+
+# VerticalJumps
+static func _v_jumps(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	var counter: int = d[2]
+	if counter > 384:
+		st["done"] = true; st["x2"] = 0; st["y2"] = 0
+	else:
+		match counter / 128:
+			0, 1: st["y2"] = -sin_g(counter % 128, d[0] * 2)
+			2, 3:
+				counter -= 256
+				st["y2"] = -sin_g(counter, d[0] * 3)
+	d[2] += 12
+
+
+# Spin
+static func _spin(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] > int(st["delay"]):
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = 0; st["done"] = true
+	else:
+		d[6] = (65536 / int(st["adata"])) * d[2]
+		st["rot"] = d[6]
+	d[2] += 1
+
+
+# BackAndLunge_0.._4 -- a 5-state machine like jolt_right.
+static func _back_and_lunge(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	var x: int = int(st["x2"])
+	match int(st["jolt"]):
+		0:
+			x += 1
+			if x > 7:
+				x = 8; d[7] = 2; st["jolt"] = 1
+		1:
+			x -= d[7]; d[7] += 1
+			if x <= 0:
+				var sub: int = x
+				var v: int = d[7]
+				d[6] = 0
+				while true:
+					sub -= v; d[6] += 1; v += 1
+					if sub <= -8:
+						break
+				d[5] = 1; st["jolt"] = 2
+		2:
+			x -= d[7]; d[7] += 1
+			var rotation: int = (d[5] * 6) / maxi(d[6], 1)
+			d[5] += 1
+			if d[5] > d[6]:
+				d[5] = d[6]
+			st["rot"] = rotation * 256
+			if x < -8:
+				x = -8; d[4] = 2; d[3] = 0; d[2] = rotation
+				st["jolt"] = 3
+		3:
+			if d[3] > 11:
+				d[2] -= 2
+				if d[2] < 0:
+					d[2] = 0
+				st["rot"] = d[2] << 8
+				if d[2] == 0:
+					st["jolt"] = 4
+			else:
+				x += d[4]; d[4] *= -1; d[3] += 1
+		4:
+			x += 2
+			if x > 0:
+				x = 0; st["done"] = true
+	st["x2"] = x
+
+
+# Figure8
+static func _figure8(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	d[6] += 4
+	st["x2"] = -sin_g(d[6], 16)
+	st["y2"] = -sin_g((d[6] * 2) & 0xFF, 8)
+	if d[6] > 192 and d[7] == 1:
+		st["sx"] = 256; st["sy"] = 256; d[7] += 1
+	elif d[6] > 64 and d[7] == 0:
+		# Source flips the sprite here (xScale -256). With sDontFlip TRUE in
+		# battle that negation is the ONLY place a negative scale appears,
+		# so it is stored as a real mirror rather than dropped.
+		st["sx"] = -256; st["sy"] = 256; d[7] += 1
+	if d[6] > 255:
+		st["x2"] = 0; st["y2"] = 0
+		st["sx"] = 256; st["sy"] = 256; st["done"] = true
+
+
+# Anim_FlashYellow -- uses sYellowFlashData, not the shake table.
+static func _flash_yellow_front(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[6] >= YELLOW_FLASH_DATA.size() or YELLOW_FLASH_DATA[d[6]][1] == 255:
+		st["blend_coeff"] = 0
+		st["done"] = true
+		return
+	if d[4] == 1:
+		st["blend_color"] = GLOW_YELLOW
+		st["blend_coeff"] = 16 if YELLOW_FLASH_DATA[d[6]][0] == 1 else 0
+		d[4] = 0
+	if YELLOW_FLASH_DATA[d[6]][1] == d[5]:
+		d[4] = 1; d[5] = 0; d[6] += 1
+	else:
+		d[5] += 1
+
+
+# RotateUpSlamDown_0.._2, then source chains into Anim_VerticalShake.
+static func _rotate_up_slam_down(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	match int(st["jolt"]):
+		0:
+			if d[6] == 0:
+				d[6] = -(14 * CENTER_TO_CORNER_X / 10)
+				d[7] = 128
+			d[7] -= 1
+			st["x2"] = d[6] + cos_g(d[7], d[6])
+			st["y2"] = -sin_g(d[7], d[6])
+			st["rot"] = (d[7] - 128) << 8
+			if d[7] <= 120:
+				d[7] = 120; d[3] = 0; st["jolt"] = 1
+		1:
+			if d[3] == 20:
+				st["jolt"] = 2; d[3] = 0
+			d[3] += 1
+		2:
+			d[7] += 2
+			st["x2"] = d[6] + cos_g(d[7], d[6])
+			st["y2"] = -sin_g(d[7], d[6])
+			st["rot"] = (d[7] - 128) << 8
+			if d[7] >= 128:
+				st["x2"] = 0; st["y2"] = 0; st["rot"] = 0
+				# Source hands off to Anim_VerticalShake here rather than
+				# ending -- the slam is followed by a real shake.
+				d[2] = 0; d[0] = 60
+				st["fn"] = "v_shake"
+				st["jolt"] = 3
+
+
+# DeepVerticalSquishBounce
+static func _deep_v_squish(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if int(st["delay"]) != 0:
+		st["delay"] = int(st["delay"]) - 1
+		return
+	if d[5] == 0:
+		d[7] = sin_g(d[4], 256)
+		st["y2"] = sin_g(d[4], 16)
+		d[6] = sin_g(d[4], 32)
+		st["sx"] = 256 - d[6]
+		st["sy"] = 256 + d[7]
+		if d[4] == 128:
+			d[4] = 0; d[5] = 1
+	elif d[5] == 1:
+		d[7] = sin_g(d[4], 32)
+		st["y2"] = -sin_g(d[4], 8)
+		d[6] = sin_g(d[4], 128)
+		st["sx"] = 256 + d[6]
+		st["sy"] = 256 - d[7]
+		if d[4] == 128:
+			if int(st["runs"]) > 1:
+				st["runs"] = int(st["runs"]) - 1
+				st["delay"] = 10; d[4] = 0; d[5] = 0
+			else:
+				st["sx"] = 256; st["sy"] = 256; st["done"] = true
+				return
+	d[4] += int(st["arot"])
+
+
+# Anim_HorizontalJumps
+static func _h_jumps(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	var counter: int = d[2]
+	if counter > 512:
+		st["done"] = true; st["x2"] = 0; st["y2"] = 0
+	else:
+		match d[2] / 128:
+			0: st["x2"] = -(counter % 128 * 8) / 128
+			1: st["x2"] = (counter % 128 / 16) - 8
+			2: st["x2"] = (counter % 128 / 16)
+			3: st["x2"] = -(counter % 128 * 8) / 128 + 8
+		st["y2"] = -sin_g(counter % 128, 8)
+	d[2] += 12
+
+
+# HorizontalJumpsVerticalStretch_0.._2
+static func _h_jumps_v_stretch(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if int(st["delay"]) != 0:
+		st["delay"] = int(st["delay"]) - 1
+		return
+	match int(st["jolt"]):
+		0:
+			var counter: int = d[2]
+			if d[2] > 128:
+				d[2] = 0; st["jolt"] = 1
+			else:
+				var v: int = 8 * int(st["adata"])
+				st["x2"] = v * (counter % 128) / 128
+				st["y2"] = -sin_g(counter % 128, 8)
+				d[2] += 12
+		1:
+			if d[2] > 48:
+				st["sx"] = 256; st["sy"] = 256; st["y2"] = 0
+				d[2] = 0; st["jolt"] = 2
+			else:
+				var y_scale: int = sin_g(d[4], 64) + 256
+				if d[2] >= 16 and d[2] <= 31:
+					d[3] += 8
+					st["x2"] = int(st["x2"]) - int(st["adata"])
+				var y_delta: int = 0
+				if y_scale > 256:
+					y_delta = (256 - y_scale) / 8
+				st["y2"] = -sin_g(d[3], 20) - y_delta
+				st["sx"] = 256 - sin_g(d[4], 32)
+				st["sy"] = y_scale
+				d[2] += 1
+				d[4] = (d[4] + 8) & 0xFF
+		2:
+			var c2: int = d[2]
+			if c2 > 128:
+				if int(st["runs"]) > 1:
+					st["runs"] = int(st["runs"]) - 1
+					st["delay"] = 10
+					d[3] = 0; d[2] = 0; d[4] = 0
+					st["jolt"] = 0
+				else:
+					st["done"] = true
+				st["x2"] = 0; st["y2"] = 0
+			else:
+				var v2: int = int(st["adata"])
+				st["x2"] = v2 * ((c2 % 128) * 8) / 128 + 8 * -v2
+				st["y2"] = -sin_g(c2 % 128, 8)
+			d[2] += 12
+
+
+# Anim_RotateUpToSides
+static func _rotate_up_to_sides(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[7] > 254:
+		st["x2"] = 0; st["y2"] = 0
+		st["sx"] = 256; st["sy"] = 256; st["rot"] = 0
+		st["done"] = true
+	else:
+		st["x2"] = -sin_g(d[7], 16)
+		st["y2"] = -sin_g(d[7] % 128, 16)
+		st["rot"] = sin_g(d[7], 32) << 8
+		d[7] += 8
+
+
+# Anim_FlickerIncreasing -- the only animation that toggles VISIBILITY
+# rather than a transform, so it drives st["visible"].
+static func _flicker_increasing(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[2] == 0:
+		d[7] = 0
+	if d[2] == d[7]:
+		d[7] = 0; d[2] += 1; st["visible"] = true
+	else:
+		d[7] += 1; st["visible"] = false
+	if d[2] > 10:
+		st["visible"] = true
+		st["done"] = true
+
+
+# Anim_CircleIntoBackground
+static func _circle_into_bg(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if d[7] > 512:
+		st["x2"] = 0; st["sx"] = 256; st["sy"] = 256; st["done"] = true
+	else:
+		st["x2"] = -sin_g(d[7] % 256, 8)
+		d[7] += 8
+		var scale: int = sin_g((d[7] % 256) / 2, 96)
+		st["sx"] = 256 + scale
+		st["sy"] = 256 + scale
+
+
+# TumblingFrontFlip
+static func _tumbling_front_flip(st: Dictionary) -> void:
+	var d: Array = st["d"]
+	if int(st["delay"]) != 0:
+		st["delay"] = int(st["delay"]) - 1
+		return
+	if d[2] == 0:
+		d[2] = 1
+		d[7] = int(st["aspeed"])
+		d[3] = -1; d[4] = -1; d[5] = 0; d[6] = 0
+	st["x2"] = int(st["x2"]) + (d[7] * 2 * d[3])
+	st["y2"] = int(st["y2"]) + (d[7] * d[4])
+	d[6] += 8
+	if int(st["x2"]) <= -16 or int(st["x2"]) >= 16:
+		st["x2"] = d[3] * 16
+		d[3] *= -1; d[5] += 1
+	elif int(st["y2"]) <= -16 or int(st["y2"]) >= 16:
+		st["y2"] = d[4] * 16
+		d[4] *= -1; d[5] += 1
+	if d[5] > 5 and int(st["x2"]) <= 0:
+		st["x2"] = 0; st["y2"] = 0
+		if int(st["runs"]) > 1:
+			st["runs"] = int(st["runs"]) - 1
+			d[5] = 0; d[6] = 0
+			st["delay"] = 10
+		else:
+			st["done"] = true
+	st["rot"] = d[6] << 8
 
 
 # --- Wall-clock driver ------------------------------------------------

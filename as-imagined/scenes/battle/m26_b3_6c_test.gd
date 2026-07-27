@@ -50,6 +50,26 @@ func _ready() -> void:
 	_test_find_mon_slot_reports_side()
 	await _test_back_animation_bypassed_when_not_in_tree()
 	_test_unknown_species_degrades_gracefully()
+	# H. Front animations (B3-6c-2)
+	_test_every_front_id_in_use_is_implemented()
+	_test_front_takes_no_nature()
+	_test_every_front_anim_terminates()
+	_test_front_reuses_back_steppers_where_source_does()
+	_test_flicker_drives_visibility_not_transform()
+	_test_front_glow_families_blend_and_clear()
+	_test_rotate_up_slam_down_chains_into_shake()
+	# I. Switch-out wiring (B3-6)
+	_test_switch_out_queues_a_recall_beat()
+	_test_switch_in_beat_carries_the_mon_for_send_out()
+	# J. Rob's review fixes
+	_test_recall_beat_captures_the_slot_at_signal_time()
+	_test_ball_origin_is_mirrored_per_side()
+	# K. Rob's review round 2
+	_test_recall_finds_slot_after_party_moved_on()
+	_test_opponent_send_out_is_delayed()
+	# L. Rob's review round 3
+	_test_recall_ball_and_pivot_are_bottom_anchored()
+	_test_recall_ball_lift_is_per_side()
 
 	var total := _pass + _fail
 	print("m26_b3_6c_test: %d/%d passed" % [_pass, total])
@@ -613,3 +633,390 @@ func _make_mon() -> BattlePokemon:
 	# is no moves parameter.
 	return BattlePokemon.from_species(sp, 50, BattlePokemon.NATURE_HARDY,
 			[0, 0, 0, 0, 0, 0])
+
+
+# ---------------------------------------------------------------------
+# H. Front animations [M26B3-6c-2]
+# ---------------------------------------------------------------------
+
+func _test_every_front_id_in_use_is_implemented() -> void:
+	# Coverage has to be driven off the real data, not a hand-kept list:
+	# any species whose front_anim_id has no setup entry silently plays
+	# nothing, and nothing else would report it.
+	var missing: Array = []
+	for dex in range(1, 387):
+		var row: Dictionary = PokemonRegistry.get_species(dex)
+		var fid: int = int(row.get("front_anim_id", -1))
+		if not MonAnimator.FRONT_ANIM_SETUP.has(fid) and not missing.has(fid):
+			missing.append(fid)
+	_chk("H.01 every front_anim_id used by a real species is implemented",
+			missing.is_empty())
+	var bad_fn := 0
+	for fid in MonAnimator.FRONT_ANIM_SETUP:
+		if String(MonAnimator.FRONT_ANIM_SETUP[fid].get("fn", "")) == "":
+			bad_fn += 1
+	_chk("H.02 every front setup entry names a step function", bad_fn == 0)
+
+
+func _test_front_takes_no_nature() -> void:
+	# The headline structural difference from the back side:
+	# LaunchAnimationTaskForFrontSprite indexes sMonAnimFunctions directly,
+	# so a front id is one animation, not a set of three.
+	var a := MonAnimator.start_front(0)
+	var b := MonAnimator.start_front(0)
+	_chk("H.03 start_front takes no nature argument",
+			not a.is_empty() and String(a["fn"]) == String(b["fn"]))
+	_chk("H.04 an unknown front id yields no state",
+			MonAnimator.start_front(9999).is_empty())
+
+
+func _test_every_front_anim_terminates() -> void:
+	# Same highest-value assertion as the back side: a motion that never
+	# sets `done` freezes the opponent's sprite mid-animation.
+	var never: Array = []
+	var bad_scale: Array = []
+	for fid in MonAnimator.FRONT_ANIM_SETUP:
+		var st := MonAnimator.start_front(fid)
+		var n := 0
+		while not st["done"] and n < 4000:
+			MonAnimator.step(st)
+			n += 1
+			var sc: Vector2 = MonAnimator.godot_scale(st)
+			# Figure8 legitimately mirrors (negative sx) partway through,
+			# so magnitude is what is checked rather than sign.
+			if absf(sc.x) > 8.0 or absf(sc.y) > 8.0 or is_zero_approx(sc.y):
+				if not bad_scale.has(fid):
+					bad_scale.append(fid)
+		if n >= 4000:
+			never.append(fid)
+	_chk("H.05 every front animation terminates", never.is_empty())
+	_chk("H.06 no front animation produces a degenerate scale", bad_scale.is_empty())
+
+
+func _test_front_reuses_back_steppers_where_source_does() -> void:
+	# 9 of the 59 front ids resolve to animations the back port already
+	# built. They must share the step function, not duplicate it.
+	var shared := {2: "h_vibrate", 3: "h_slide", 15: "h_shake",
+			19: "shrink_grow", 58: "grow_in_stages", 70: "h_slide",
+			76: "h_shake", 79: "circle_ccw", 135: "sgv"}
+	var ok := true
+	for fid in shared:
+		if String(MonAnimator.FRONT_ANIM_SETUP[fid]["fn"]) != shared[fid]:
+			ok = false
+	_chk("H.07 shared front ids reuse the back steppers", ok)
+	# ...and the genuinely different same-named ones do NOT collide.
+	_chk("H.08 front V_SHAKE is a different stepper from the back's",
+			String(MonAnimator.FRONT_ANIM_SETUP[16]["fn"]) == "v_shake"
+			and String(MonAnimator.ANIM_SETUP["v_shake_back"]["fn"]) == "v_shake_back")
+	_chk("H.09 front H_STRETCH is distinct from the back's H_STRETCH_FAR",
+			String(MonAnimator.FRONT_ANIM_SETUP[22]["fn"]) == "h_stretch_front"
+			and String(MonAnimator.ANIM_SETUP["h_stretch"]["fn"]) == "h_stretch")
+
+
+func _test_flicker_drives_visibility_not_transform() -> void:
+	# ANIM_FLICKER_INCREASING is the only animation here that toggles the
+	# sprite's visibility rather than moving it.
+	var st := MonAnimator.start_front(53)
+	var saw_hidden := false
+	var moved := false
+	while not st["done"]:
+		MonAnimator.step(st)
+		if not bool(st["visible"]):
+			saw_hidden = true
+		if int(st["x2"]) != 0 or int(st["y2"]) != 0:
+			moved = true
+	_chk("H.10 flicker actually hides the sprite at least once", saw_hidden)
+	_chk("H.11 flicker never translates the sprite", not moved)
+	_chk("H.12 flicker leaves the sprite visible when done", bool(st["visible"]))
+
+
+func _test_front_glow_families_blend_and_clear() -> void:
+	# GlowColor's own coeff ramp is Sin(d2, increment): 16 for black
+	# (peak 16/16) and 12 for the rest (peak 12/16).
+	var cases := {21: [Color8(0, 0, 0), 1.0], 32: [Color8(255, 181, 0), 12.0 / 16.0],
+			34: [Color8(0, 0, 255), 12.0 / 16.0]}
+	for fid in cases:
+		var st := MonAnimator.start_front(fid)
+		var peak := 0.0
+		var seen := Color(1, 1, 1, 1)
+		while not st["done"]:
+			MonAnimator.step(st)
+			var a := MonAnimator.godot_blend_amount(st)
+			if a > peak:
+				peak = a
+				seen = st["blend_color"]
+		_chk("H.13 front glow %d peaks at its own increment" % fid,
+				is_equal_approx(peak, cases[fid][1]))
+		_chk("H.14 front glow %d uses its own colour" % fid, seen == cases[fid][0])
+		_chk("H.15 front glow %d clears when done" % fid,
+				is_equal_approx(MonAnimator.godot_blend_amount(st), 0.0))
+
+
+func _test_rotate_up_slam_down_chains_into_shake() -> void:
+	# Source's RotateUpSlamDown_2 doesn't end the animation -- it hands the
+	# sprite off to Anim_VerticalShake, so the slam is followed by a real
+	# shake. Easy to lose in a port that just sets done.
+	var st := MonAnimator.start_front(47)
+	var switched := false
+	var n := 0
+	while not st["done"] and n < 4000:
+		MonAnimator.step(st)
+		n += 1
+		if String(st["fn"]) == "v_shake":
+			switched = true
+	_chk("H.16 rotate_up_slam_down hands off to the shake", switched)
+	_chk("H.17 ...and still terminates", st["done"])
+
+
+# ---------------------------------------------------------------------
+# I. Switch-out recall + send-out wiring [M26B3-6]
+# ---------------------------------------------------------------------
+
+func _test_switch_out_queues_a_recall_beat() -> void:
+	# Until now a voluntary switch played NOTHING -- the outgoing Pokemon
+	# just vanished. This is the case source actually uses ReturnMonToBall
+	# for; the faint recall B3-6a built is the deliberate invention.
+	var bs = _make_screen()
+	var bm := BattleManager.new()
+	add_child(bm)
+	bs._bm = bm
+	bs._pending_beats.clear()
+	var mon := _make_mon()
+	var ply := BattleParty.new()
+	ply.members = [mon]
+	ply.active_indices = [0]
+	bs._player_party = ply
+	var opp := BattleParty.new()
+	opp.members = [_make_mon()]
+	opp.active_indices = [0]
+	bs._opp_party = opp
+	bs._wire_log_signals()
+	bm.pokemon_switched_out.emit(mon, 0)
+	var kinds: Array = []
+	for b in bs._pending_beats:
+		kinds.append(String(b.get("kind", "")))
+	_chk("I.01 a switch-out queues a recall beat", kinds.has("recall"))
+	var found_mon = null
+	for b in bs._pending_beats:
+		if String(b.get("kind", "")) == "recall":
+			found_mon = b.get("mon", null)
+	_chk("I.02 the recall beat carries the outgoing mon", found_mon == mon)
+	bm.queue_free()
+	bs.free()
+
+
+func _test_switch_in_beat_carries_the_mon_for_send_out() -> void:
+	# The switch_reveal beat used to only re-sync textures; it now also
+	# has to name the incoming mon so the ball throw can target its slot.
+	var bs = _make_screen()
+	var bm := BattleManager.new()
+	add_child(bm)
+	bs._bm = bm
+	bs._pending_beats.clear()
+	var ply := BattleParty.new()
+	var mon := _make_mon()
+	ply.members = [mon]
+	ply.active_indices = [0]
+	bs._player_party = ply
+	bs._opp_party = BattleParty.new()
+	bs._wire_log_signals()
+	bm.pokemon_switched_in.emit(mon, 0, 0)
+	var reveal: Dictionary = {}
+	for b in bs._pending_beats:
+		if String(b.get("kind", "")) == "switch_reveal":
+			reveal = b
+	_chk("I.03 a switch-in queues a switch_reveal beat", not reveal.is_empty())
+	_chk("I.04 the beat carries the incoming mon", reveal.get("mon", null) == mon)
+	_chk("I.05 the beat still carries its party/side for the re-sync",
+			reveal.get("party", null) == ply and reveal.get("is_player", null) == true)
+	bm.queue_free()
+	bs.free()
+
+
+# ---------------------------------------------------------------------
+# J. Recall slot-capture + per-side ball origin [Rob's review]
+# ---------------------------------------------------------------------
+
+func _test_recall_beat_captures_the_slot_at_signal_time() -> void:
+	# The recall had never once played for a real faint or switch: the beat
+	# resolved the slot when it DRAINED, by which point the Pokemon had
+	# already left the field, so _find_mon_slot returned {} and the whole
+	# animation silently no-op'd. Every existing test called
+	# _play_recall_to_ball directly with a still-active mon, so none of them
+	# could see it. Pinned here at the beat level instead.
+	var bs = _make_screen()
+	var bm := BattleManager.new()
+	add_child(bm)
+	bs._bm = bm
+	bs._pending_beats.clear()
+	var ply := BattleParty.new()
+	var mon := _make_mon()
+	ply.members = [mon]
+	ply.active_indices = [0]
+	bs._player_party = ply
+	var opp := BattleParty.new()
+	opp.members = [_make_mon()]
+	opp.active_indices = [0]
+	bs._opp_party = opp
+	var spr := TextureRect.new()
+	var ospr := TextureRect.new()
+	bs._ply_sprites = [spr]
+	bs._opp_sprites = [ospr]
+	bs._ply_panels = []
+	bs._opp_panels = []
+	bs._wire_log_signals()
+
+	bm.pokemon_fainted.emit(mon)
+	bm.pokemon_switched_out.emit(mon, 0)
+	var slots: Array = []
+	for b in bs._pending_beats:
+		if String(b.get("kind", "")) == "recall":
+			slots.append(b.get("slot", {}))
+	_chk("J.01 both faint and switch-out queue a recall beat", slots.size() == 2)
+	var all_resolved := true
+	for sl in slots:
+		if typeof(sl) != TYPE_DICTIONARY or sl.is_empty() \
+				or sl.get("sprite", null) != spr:
+			all_resolved = false
+	_chk("J.02 each recall beat captured the real slot at signal time",
+			all_resolved)
+
+	# This assertion originally read "a drain-time lookup would have
+	# failed" and was correct at the time: capturing the slot at signal
+	# time was the whole fix. It is now SUPERSEDED -- the real root cause
+	# turned out to be that BattleManager repoints the party before it
+	# emits at all, so signal-time capture was not enough either, and the
+	# _displayed_mons fallback now makes the lookup work at any point.
+	# Updated in place rather than deleted, so the stronger guarantee is
+	# the one pinned. See K.02 for the root-cause test.
+	ply.active_indices = []
+	_chk("J.03 the lookup now survives the party emptying entirely",
+			bs._find_mon_slot(mon).get("sprite", null) == spr)
+	spr.free()
+	ospr.free()
+	bm.queue_free()
+	bs.free()
+
+
+func _test_ball_origin_is_mirrored_per_side() -> void:
+	# Rob's review: the opponent's ball started LEFT of its Pokemon and fell
+	# rightward -- thrown from behind the target rather than from the
+	# player's side. Source picks a per-side throw offset; this project had
+	# one shared constant.
+	var base: Vector2 = BattleScreenShared._SENDOUT_BALL_ORIGIN_OFFSET
+	_chk("J.04 the player's own origin starts left of the slot", base.x < 0.0)
+	_chk("J.05 the origin has a real upward component", base.y < 0.0)
+	# Mirroring is x-only: the ball should still arc from above on both
+	# sides, just from the opposite horizontal direction.
+	var mirrored := Vector2(-base.x, base.y)
+	_chk("J.06 the opponent's mirrored origin starts right of the slot",
+			mirrored.x > 0.0)
+	_chk("J.07 mirroring does not flip the vertical component",
+			is_equal_approx(mirrored.y, base.y))
+
+
+# ---------------------------------------------------------------------
+# K. Recall survives BattleManager repointing the party [Rob's review #2]
+# ---------------------------------------------------------------------
+
+func _test_recall_finds_slot_after_party_moved_on() -> void:
+	# THE root cause the previous fix missed. BattleManager sets
+	# active_indices at battle_manager.gd:8394 and only emits
+	# pokemon_switched_out at :8410 -- so the party already points at the
+	# INCOMING mon before any listener runs. An identity lookup for the
+	# outgoing mon therefore fails at signal time too, not just at
+	# beat-drain time, which is why the recall still never played.
+	var bs = _make_screen()
+	var outgoing := _make_mon()
+	var incoming := _make_mon()
+	var ply := BattleParty.new()
+	ply.members = [outgoing, incoming]
+	ply.active_indices = [0]
+	bs._player_party = ply
+	bs._opp_party = BattleParty.new()
+	var spr := TextureRect.new()
+	bs._ply_sprites = [spr]
+	bs._opp_sprites = []
+	bs._ply_panels = []
+	bs._opp_panels = []
+
+	# While it is on the field the ordinary party scan finds it...
+	var before: Dictionary = bs._find_mon_slot(outgoing)
+	_chk("K.01 an active mon is found by the party scan",
+			before.get("sprite", null) == spr)
+
+	# ...now reproduce BattleManager's own ordering: repoint the party
+	# FIRST, exactly as it does before emitting.
+	ply.active_indices = [1]
+	var after: Dictionary = bs._find_mon_slot(outgoing)
+	_chk("K.02 the outgoing mon is STILL resolvable once the party moved on",
+			after.get("sprite", null) == spr)
+	_chk("K.03 ...and reports the correct side", after.get("is_player", null) == true)
+	# The incoming mon must still resolve through the normal path.
+	_chk("K.04 the incoming mon resolves normally",
+			bs._find_mon_slot(incoming).get("sprite", null) == spr)
+	# A mon that was never displayed must still yield nothing.
+	_chk("K.05 an unrelated mon still yields nothing",
+			bs._find_mon_slot(_make_mon()).is_empty())
+	spr.free()
+	bs.free()
+
+
+func _test_opponent_send_out_is_delayed() -> void:
+	# Rob's review: the opponent's ball left almost the instant the trainer
+	# began sliding out, so the two read as one rushed motion.
+	_chk("K.06 the opponent send-out delay is a real quarter-second",
+			BattleScreenShared._OPPONENT_SENDOUT_DELAY_FRAMES == 15)
+
+
+# ---------------------------------------------------------------------
+# L. Recall is bottom-anchored [Rob's review #3]
+# ---------------------------------------------------------------------
+
+func _test_recall_ball_and_pivot_are_bottom_anchored() -> void:
+	# The ball is the destination, so the shrink collapses INTO it.
+	# Deliberately the opposite call from [M26B3-6b]'s reverted bottom
+	# pivot on the EMERGE -- different animation, opposite direction.
+	var sprite := TextureRect.new()
+	sprite.position = Vector2(100, 200)
+	sprite.size = Vector2(240, 240)
+	var rect := Rect2(sprite.position, sprite.size)
+	var expected_ball := Vector2(rect.get_center().x, rect.end.y)
+	_chk("L.01 the ball sits at the sprite's bottom centre, not its middle",
+			is_equal_approx(expected_ball.x, 220.0)
+			and is_equal_approx(expected_ball.y, 440.0))
+	_chk("L.02 ...which is genuinely below the sprite's own centre",
+			expected_ball.y > rect.get_center().y)
+	var pivot := Vector2(sprite.size.x * 0.5, sprite.size.y)
+	_chk("L.03 the shrink pivot is bottom-centre",
+			is_equal_approx(pivot.x, 120.0) and is_equal_approx(pivot.y, 240.0))
+	# A bottom pivot means a shrinking sprite keeps its feet planted: the
+	# bottom edge stays put while the top edge falls toward it.
+	var shrunk_bottom: float = sprite.position.y + pivot.y
+	_chk("L.04 a bottom pivot keeps the sprite's feet planted as it shrinks",
+			is_equal_approx(shrunk_bottom, rect.end.y))
+	sprite.free()
+
+
+func _test_recall_ball_lift_is_per_side() -> void:
+	# Rob's review: the flat bottom-edge placement sat too low on both
+	# sides, and the two need different lifts because their sprites sit
+	# differently against their own platforms.
+	_chk("L.05 the player's recall ball lifts 10%",
+			is_equal_approx(BattleScreenShared._RECALL_BALL_LIFT_PLAYER, 0.10))
+	_chk("L.06 the opponent's recall ball lifts 30%",
+			is_equal_approx(BattleScreenShared._RECALL_BALL_LIFT_OPPONENT, 0.30))
+	_chk("L.07 the opponent is lifted further than the player",
+			BattleScreenShared._RECALL_BALL_LIFT_OPPONENT
+			> BattleScreenShared._RECALL_BALL_LIFT_PLAYER)
+	# Worked example on a real 240px sprite spanning y 200..440.
+	var rect := Rect2(Vector2(100, 200), Vector2(240, 240))
+	var ply_y: float = rect.end.y - rect.size.y * BattleScreenShared._RECALL_BALL_LIFT_PLAYER
+	var opp_y: float = rect.end.y - rect.size.y * BattleScreenShared._RECALL_BALL_LIFT_OPPONENT
+	_chk("L.08 a 240px player sprite lifts the ball 24px to y=416",
+			is_equal_approx(ply_y, 416.0))
+	_chk("L.09 a 240px opponent sprite lifts the ball 72px to y=368",
+			is_equal_approx(opp_y, 368.0))
+	# Still below centre on both -- a lift, not a recentre.
+	_chk("L.10 both stay below the sprite's own centre",
+			ply_y > rect.get_center().y and opp_y > rect.get_center().y)

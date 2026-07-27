@@ -858,6 +858,18 @@ const _ENTRY_BOB_FRAMES := 30
 # invisible for the first third of its flight. Pulled in to stay on screen.
 const _SENDOUT_BALL_ORIGIN_OFFSET := Vector2(-120.0, -60.0)
 
+# [Rob's review] The opponent's ball used to leave almost the instant the
+# trainer started sliding out, so the two read as one rushed motion. This
+# holds the throw back a beat and lets the slide get properly under way
+# first. Opponent-only -- the player's own throw is already paced by its
+# 57-frame trainer animation.
+const _OPPONENT_SENDOUT_DELAY_FRAMES := 15  # 0.25s at 60fps
+
+# How far the RECALL ball sits above the sprite's bottom edge, as a
+# fraction of that sprite's own height. Per side, Rob's review.
+const _RECALL_BALL_LIFT_PLAYER := 0.10
+const _RECALL_BALL_LIFT_OPPONENT := 0.30
+
 # [M26B3-3] The PLACEHOLDER player character, Rob's call 2026-07-26. This
 # project has no player-identity concept of any kind (no trainer id, no
 # gender, no name — confirmed by direct grep), so there is nothing to
@@ -1823,9 +1835,21 @@ func _wire_log_signals() -> void:
 		# pokemon_fainted (the M26o party-summary re-show). Sequencing the
 		# recall through _pending_beats keeps it ordered against the summary
 		# and every other beat instead of racing them.
-		_pending_beats.append({"kind": "recall", "mon": mon}))
+		_pending_beats.append({"kind": "recall", "mon": mon,
+			"slot": _find_mon_slot(mon)}))
 	_bm.pokemon_switched_out.connect(func(mon: BattlePokemon, _side: int):
-		_log("%s was withdrawn!" % _mon_label(mon)))
+		_log("%s was withdrawn!" % _mon_label(mon))
+		# [M26B3-6] The recall animation belongs HERE, not just on faint.
+		# Source's `ReturnMonToBall` fires only for a LIVING switch-out --
+		# a fainting Pokemon is slid off-screen instead. So B3-6a's
+		# faint recall is the deliberate invention (Rob's call) and this
+		# is the source-accurate case, which until now played nothing at
+		# all: the outgoing Pokemon simply vanished.
+		# Queued as a beat for the same reason the faint recall is --
+		# ordering against the party summary and the text beats rather
+		# than racing them off the signal.
+		_pending_beats.append({"kind": "recall", "mon": mon,
+			"slot": _find_mon_slot(mon)}))
 	_bm.pokemon_switched_in.connect(func(mon: BattlePokemon, _side: int, _slot: int):
 		_log("Go, %s!" % _mon_label(mon))
 		# [M26 polish batch, item 7a] Sprite/HP-panel textures are otherwise
@@ -1840,7 +1864,8 @@ func _wire_log_signals() -> void:
 		# correct point in the sequence, before any later beat plays.
 		var is_player: bool = _player_party.members.has(mon)
 		var party: BattleParty = _player_party if is_player else _opp_party
-		_pending_beats.append({"kind": "switch_reveal", "party": party, "is_player": is_player}))
+		_pending_beats.append({"kind": "switch_reveal", "party": party,
+				"is_player": is_player, "mon": mon}))
 	_bm.stat_stage_changed.connect(_on_log_stat_stage_changed)
 	_bm.secondary_applied.connect(_on_log_secondary_applied)
 	_bm.status_cured.connect(func(mon: BattlePokemon):
@@ -3507,6 +3532,25 @@ func _run_message_pacing() -> void:
 				var reveal_party: BattleParty = beat.get("party", null)
 				if reveal_party != null:
 					_refresh_battlefield_side(reveal_party, beat.get("is_player", false))
+				# [M26B3-6] ...and then the incoming Pokemon is actually
+				# SENT OUT rather than snapped onto the field.
+				# _refresh_battlefield_side above syncs the texture (and
+				# shows it); _play_send_out immediately re-hides it,
+				# throws the ball, and reveals it when the ball opens --
+				# so the ordering falls out without a special case.
+				#
+				# Disclosed divergence: source's mid-battle player
+				# send-out throws from a FIXED screen position
+				# (`gSprites[ballSpriteId].x = 24; y = 68`,
+				# pokeball.c:432-437) because there is no trainer on
+				# screen to throw it from. This reuses the intro's own
+				# slot-relative origin instead -- Rob's call, since the
+				# literal source figure is a long diagonal at this
+				# project's 4x, exactly the shape that made B3-6b's own
+				# fly-out swing read badly.
+				var reveal_mon: BattlePokemon = beat.get("mon", null)
+				if reveal_mon != null:
+					await _play_send_out(reveal_mon)
 			"recall":
 				# [M26B3-6a] The fainting Pokémon is drawn back into its
 				# ball. Sequenced here rather than run straight off the
@@ -3711,8 +3755,15 @@ func _set_side_mon_sprites_visible(node_prefix: String, vis: bool) -> void:
 # (`SetHealthboxSpriteInvisible` sits in `Controller_FaintPlayerMon`, which
 # runs after the sprite has left, not in the handler that starts the
 # animation). Rob confirmed this ordering explicitly.
-func _play_recall_to_ball(mon: BattlePokemon) -> void:
-	var found := _find_mon_slot(mon)
+# `pre_found` MUST be supplied by anything queuing this as a beat. By the
+# time the beat drains the Pokemon has already left the field, so a
+# _find_mon_slot() done HERE returns {} and the whole animation silently
+# no-ops. That is exactly what was happening: the recall had never once
+# played for a real faint or switch, and the suite could not see it
+# because every test calls this function directly while the mon is still
+# active. Resolve the slot at signal time and carry it through the beat.
+func _play_recall_to_ball(mon: BattlePokemon, pre_found: Dictionary = {}) -> void:
+	var found := pre_found if not pre_found.is_empty() else _find_mon_slot(mon)
 	if found.is_empty():
 		return
 	var sprite: TextureRect = found["sprite"]
@@ -3724,7 +3775,27 @@ func _play_recall_to_ball(mon: BattlePokemon) -> void:
 			(panel as CanvasItem).visible = false
 		return
 
-	var center := sprite.get_global_rect().get_center()
+	# [Rob's review] The ball sits at the BOTTOM of the sprite, not its
+	# centre, and the Pokemon shrinks down INTO it (see the pivot below).
+	#
+	# Deliberately NOT the same call [M26B3-6b] made and reverted: that was
+	# a bottom pivot on the EMERGE, where the Pokemon grows OUT of a ball
+	# already sitting at the slot centre, and it looked wrong. The recall
+	# is the opposite motion -- the ball is the destination, so anchoring
+	# the shrink to it is what makes the Pokemon read as going in rather
+	# than just deflating in place. Do not "restore" this to centre on the
+	# strength of B3-6b's own note; different animation, opposite call.
+	# [Rob's review] ...lifted off the very bottom edge by a fraction of
+	# the sprite's own height, per side. A flat bottom-edge placement put
+	# the ball too low on both, and the two sides need different amounts
+	# because their sprites sit differently against their platforms --
+	# the opponent's is further from its own feet. Expressed as a fraction
+	# of sprite height rather than a pixel value so it holds regardless of
+	# species sprite size. RECALL ONLY; the send-out throw is unaffected.
+	var rect := sprite.get_global_rect()
+	var lift: float = _RECALL_BALL_LIFT_PLAYER if found.get("is_player", false) \
+			else _RECALL_BALL_LIFT_OPPONENT
+	var center := Vector2(rect.get_center().x, rect.end.y - rect.size.y * lift)
 	var ball := _make_ball_sprite(center)
 	if ball != null:
 		_active_hit_effect_nodes.append(ball)
@@ -3735,7 +3806,9 @@ func _play_recall_to_ball(mon: BattlePokemon) -> void:
 	await _wait_anim_frames(_RECALL_BALL_LEAD_FRAMES)
 
 	var start_scale := sprite.scale
-	var pivot := sprite.size * 0.5
+	# Bottom-centre pivot so the shrink collapses toward the ball rather
+	# than toward the sprite's own middle.
+	var pivot := Vector2(sprite.size.x * 0.5, sprite.size.y)
 	sprite.pivot_offset = pivot
 	var shrink := create_tween()
 	shrink.set_parallel(true)
@@ -3791,6 +3864,11 @@ func _play_send_out(mon: BattlePokemon) -> void:
 			(panel as CanvasItem).visible = true
 		return
 
+	if not found.get("is_player", false):
+		await _wait_anim_frames(_OPPONENT_SENDOUT_DELAY_FRAMES)
+		if not is_instance_valid(sprite) or not is_inside_tree():
+			return
+
 	var center := sprite.get_global_rect().get_center()
 
 	# The Pokemon is not on the field until the ball opens.
@@ -3798,7 +3876,16 @@ func _play_send_out(mon: BattlePokemon) -> void:
 	if panel != null:
 		(panel as CanvasItem).visible = false
 
-	var ball := _make_ball_sprite(center + _SENDOUT_BALL_ORIGIN_OFFSET)
+	# [M26B3-6, Rob's review] The origin is MIRRORED per side. Source picks
+	# a per-side throw offset (`GetBattlerSpriteCoord(battler, X) +
+	# throwXoffset`, pokeball.c) rather than one shared value; using the
+	# player's own offset for both put the opponent's ball left of its
+	# Pokemon falling rightward, i.e. thrown from behind the target
+	# instead of from the player's side of the field.
+	var origin := _SENDOUT_BALL_ORIGIN_OFFSET
+	if not found.get("is_player", false):
+		origin.x = -origin.x
+	var ball := _make_ball_sprite(center + origin)
 	if ball == null:
 		sprite.visible = true
 		if panel != null:
@@ -3884,8 +3971,8 @@ func _play_send_out(mon: BattlePokemon) -> void:
 	# Deliberately NOT awaited -- these run 20-130 frames depending on the
 	# species and its nature, and source lets the battle carry on over them.
 	await _wait_anim_frames(_SENDOUT_EMERGE_FRAMES)
-	if found.get("is_player", false):
-		_play_back_entry_animation(mon, sprite, emerge)
+	_play_species_entry_animation(mon, sprite, emerge,
+			found.get("is_player", false))
 
 	await emerge.finished
 
@@ -3929,6 +4016,41 @@ func _play_send_out(mon: BattlePokemon) -> void:
 # however many whole 1/60s steps have actually passed, so the animation
 # lasts the same wall-clock time at any refresh rate and a stalled frame
 # catches up rather than dropping motion.
+# [M26B3-6c-2] Side-aware entry point. The player's Pokemon plays its
+# BACK animation (`backAnimId`, nature-picked); the opponent's plays its
+# FRONT one (`frontAnimId`, no nature) after that species' own
+# `frontAnimDelay`. Two different source tables and two different dispatch
+# functions -- see MonAnimator's own front-section header.
+#
+# The opponent's 2-frame bob (_play_entry_bob) is NOT replaced by this:
+# `DoMonFrontSpriteAnimation` fires both, the frame swap immediately and
+# the transform after the delay.
+func _play_species_entry_animation(mon: BattlePokemon, sprite: TextureRect,
+		emerge_tween: Tween, is_player: bool) -> void:
+	if mon == null or sprite == null or not is_instance_valid(sprite):
+		return
+	if _is_autoplay_run or not is_inside_tree():
+		return
+	if mon.species == null:
+		return
+	var row: Dictionary = PokemonRegistry.get_species(mon.species.national_dex_num)
+	if row == null or row.is_empty():
+		return
+	if is_player:
+		_play_back_entry_animation(mon, sprite, emerge_tween)
+		return
+	var delay: int = int(row.get("front_anim_delay", 0))
+	if delay > 0:
+		await _wait_anim_frames(delay)
+		if not is_instance_valid(sprite) or not is_inside_tree():
+			return
+	var st: Dictionary = MonAnimator.start_front(
+			int(row.get("front_anim_id", -1)))
+	if st.is_empty():
+		return
+	_drive_mon_animation(st, sprite, emerge_tween)
+
+
 func _play_back_entry_animation(mon: BattlePokemon, sprite: TextureRect,
 		emerge_tween: Tween) -> void:
 	if mon == null or sprite == null or not is_instance_valid(sprite):
@@ -3950,6 +4072,17 @@ func _play_back_entry_animation(mon: BattlePokemon, sprite: TextureRect,
 	if st.is_empty():
 		return
 
+	_drive_mon_animation(st, sprite, emerge_tween)
+
+
+# Shared per-frame driver for BOTH the back and front entry animations --
+# read a frame count off the wall clock, step that many GBA frames, push
+# the result onto the sprite. See _play_species_entry_animation's own note
+# for which side gets which animation.
+func _drive_mon_animation(st: Dictionary, sprite: TextureRect,
+		emerge_tween: Tween) -> void:
+	if st.is_empty() or sprite == null or not is_instance_valid(sprite):
+		return
 	# Supersession guard: a second send-out into the SAME slot (doubles, or a
 	# faint replacement) must not leave two coroutines fighting over one
 	# sprite's transform. The newer one wins and the older exits silently.
@@ -3976,6 +4109,9 @@ func _play_back_entry_animation(mon: BattlePokemon, sprite: TextureRect,
 		sprite.position = base_pos + MonAnimator.godot_offset(st)
 		sprite.scale = base_scale * MonAnimator.godot_scale(st)
 		sprite.rotation = base_rot + MonAnimator.godot_rotation(st)
+		# ANIM_FLICKER_INCREASING is the one animation that drives
+		# visibility rather than a transform.
+		sprite.visible = bool(st.get("visible", true))
 
 		# The glow/flash families blend the sprite's colour, reusing the very
 		# same mix() shader [M26B3-6a] built for the recall/emerge pink.
@@ -4001,6 +4137,9 @@ func _play_back_entry_animation(mon: BattlePokemon, sprite: TextureRect,
 		sprite.position = base_pos
 		sprite.scale = base_scale
 		sprite.rotation = base_rot
+		# Defensive: the flicker animation ends on visible=true itself, but
+		# a superseded/aborted run must never leave the sprite hidden.
+		sprite.visible = true
 		if touched_blend:
 			sprite.material = null
 
@@ -4096,6 +4235,20 @@ func _spawn_ball_open_particles(center: Vector2) -> void:
 
 # Locates which on-field slot a BattlePokemon currently occupies, returning
 # its sprite and health panel together (they must be hidden as a pair).
+# Which mon each sprite slot was last drawn with. BattleManager mutates
+# `active_indices` BEFORE it emits pokemon_switched_out (battle_manager.gd
+# :8394 vs :8410), so by the time any listener runs, the party already
+# points at the INCOMING mon and an identity lookup for the outgoing one
+# fails -- at signal time just as much as at beat-drain time. That is why
+# the recall never played. This cache is keyed by what was actually on
+# screen, so it survives the party moving on.
+var _displayed_mons: Dictionary = {}
+
+
+func _remember_displayed(is_player: bool, slot: int, mon: BattlePokemon) -> void:
+	_displayed_mons["%s%d" % ["p" if is_player else "o", slot]] = mon
+
+
 func _find_mon_slot(mon: BattlePokemon) -> Dictionary:
 	for is_player in [true, false]:
 		var party: BattleParty = _player_party if is_player else _opp_party
@@ -4104,10 +4257,18 @@ func _find_mon_slot(mon: BattlePokemon) -> Dictionary:
 		if party == null:
 			continue
 		for slot in range(party.num_active()):
+			# Guard added once _find_mon_slot started being called from
+			# signal handlers (the recall beat's own slot capture): a party
+			# can be mid-mutation at that moment, with active_indices
+			# pointing past a members list that has not caught up yet.
+			# get_active_at() would index out of bounds.
+			if slot >= party.members.size():
+				continue
 			if party.get_active_at(slot) != mon:
 				continue
 			if slot >= sprites.size():
 				continue
+			_remember_displayed(is_player, slot, mon)
 			return {
 				"sprite": sprites[slot],
 				"panel": (panels[slot] if slot < panels.size() else null),
@@ -4118,6 +4279,22 @@ func _find_mon_slot(mon: BattlePokemon) -> Dictionary:
 				# and two different dispatch functions. Only the back half
 				# is built (B3-6c-1); the front half is B3-6c-2.
 				"is_player": is_player,
+			}
+	# Party scan failed -- fall back to whatever this mon was last DRAWN
+	# as. See _displayed_mons' own note: for a switch-out the party has
+	# already moved on, so this is the only way left to find the slot.
+	for key in _displayed_mons:
+		if _displayed_mons[key] != mon:
+			continue
+		var was_player: bool = String(key).begins_with("p")
+		var idx: int = int(String(key).substr(1))
+		var sp: Array = _ply_sprites if was_player else _opp_sprites
+		var pn: Array = _ply_panels if was_player else _opp_panels
+		if idx < sp.size():
+			return {
+				"sprite": sp[idx],
+				"panel": (pn[idx] if idx < pn.size() else null),
+				"is_player": was_player,
 			}
 	return {}
 
