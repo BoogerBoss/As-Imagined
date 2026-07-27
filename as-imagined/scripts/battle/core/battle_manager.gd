@@ -211,6 +211,14 @@ signal replacement_needed(side: int)                                       # fai
 signal weather_set(by_pokemon: BattlePokemon, weather_type: int)          # weather changed
 signal weather_expired(weather_type: int)                                  # weather duration ran out
 signal weather_damage(pokemon: BattlePokemon, amount: int)                 # sandstorm/hail chip
+# [M26B4-0] Fires once per end-of-turn for weather that is active and did NOT
+# just expire this turn -- source's own EndOrContinueWeather else-branch
+# (battle_util.c L244-270), which drives BattleScript_WeatherContinues:
+# the "Rain continues to fall." message AND (M26B4-3) the weather animation
+# replay. This is source's entire mechanism for communicating that weather is
+# still active -- there is no persistent weather renderer anywhere in the
+# reference (full recon: docs/m26_b4_recon.md).
+signal weather_continues(weather_type: int)                                # still active at end of turn
 # M18.5f signals
 signal wrap_damage(pokemon: BattlePokemon, amount: int)                    # Bind/Wrap-family end-of-turn tick
 signal curse_damage(pokemon: BattlePokemon, amount: int)                   # [D4 Bundle 7] Curse's own end-of-turn tick
@@ -6484,13 +6492,35 @@ func _phase_end_of_turn() -> void:
 	# Source: HandleEndTurnWeather → EndOrContinueWeather (battle_util.c L244):
 	#   if (weatherDuration > 0 && --weatherDuration == 0) → gBattleWeather = B_WEATHER_NONE
 	# Tick fires BEFORE weather chip damage and BEFORE status damage.
-	if weather != WEATHER_NONE and weather_duration > 0:
-		weather_duration -= 1
-		if weather_duration == 0:
-			var expired_w: int = weather
-			weather = WEATHER_NONE
-			weather_expired.emit(expired_w)
-			_notify_weather_changed()
+	# [M26B4-0] Restructured to mirror source's own if/else exactly, including
+	# its short-circuit. Source's condition is
+	#   `weatherDuration > 0 && --weatherDuration == 0`
+	# so the ELSE branch (weather continues) catches TWO cases: weather with
+	# turns still remaining after the decrement, AND permanent weather
+	# (duration 0), which short-circuits before decrementing and so never
+	# expires. Behaviour for every reachable case here is byte-identical to the
+	# previous `if weather != NONE and weather_duration > 0:` form.
+	#
+	# The permanent case is currently UNREACHABLE in this project: weather_duration
+	# is assigned at exactly one site (_try_set_weather), from
+	# ItemManager.weather_duration, which returns only WEATHER_DURATION_DEFAULT (5)
+	# or WEATHER_DURATION_ROCK (8) for a real weather -- 0 only when clearing to
+	# WEATHER_NONE. Primal weather is NOT modelled as permanent here (a gap already
+	# flagged by [D2 batch], deliberately not fixed). Written in source's shape
+	# anyway so that whenever primal permanence IS built, weather_continues keeps
+	# firing correctly with no further change needed here.
+	if weather != WEATHER_NONE:
+		var weather_expired_this_turn: bool = false
+		if weather_duration > 0:
+			weather_duration -= 1
+			if weather_duration == 0:
+				var expired_w: int = weather
+				weather = WEATHER_NONE
+				weather_expired.emit(expired_w)
+				_notify_weather_changed()
+				weather_expired_this_turn = true
+		if not weather_expired_this_turn:
+			weather_continues.emit(weather)
 
 	# ── [D4 Bundle 5] Mud Sport / Water Sport — FIELD-WIDE 5-turn countdown ──
 	# Source: HandleEndTurnMudSport/HandleEndTurnWaterSport (battle_end_turn.c

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m26d35residualtickstest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m26_d3_5_residual_ticks_test.gd" id="1_m26d35test"]
+
+[node name="M26D35ResidualTicksTest" type="Node"]
+script = ExtResource("1_m26d35test")

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m26b41weatherassettest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m26_b4_1_weather_asset_test.gd" id="1_m26b41test"]
+
+[node name="M26B41WeatherAssetTest" type="Node"]
+script = ExtResource("1_m26b41test")

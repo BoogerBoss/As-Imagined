@@ -70,6 +70,14 @@ func _ready() -> void:
 	# L. Rob's review round 3
 	_test_recall_ball_and_pivot_are_bottom_anchored()
 	_test_recall_ball_lift_is_per_side()
+	# M. Party summary pacing (B5 item 1)
+	_test_faint_no_longer_triggers_the_party_row()
+	_test_switch_out_queues_the_summary_after_the_recall()
+	_test_summary_is_switching_side_only()
+	_test_hide_clears_both_rows()
+	# N. Party row entry animation (B5 items 2+4)
+	_test_ball_entry_delay_fans_per_side()
+	_test_entry_constants_match_source()
 
 	var total := _pass + _fail
 	print("m26_b3_6c_test: %d/%d passed" % [_pass, total])
@@ -1020,3 +1028,164 @@ func _test_recall_ball_lift_is_per_side() -> void:
 	# Still below centre on both -- a lift, not a recentre.
 	_chk("L.10 both stay below the sprite's own centre",
 			ply_y > rect.get_center().y and opp_y > rect.get_center().y)
+
+
+# ---------------------------------------------------------------------
+# M. Party status summary pacing [M26B5 item 1]
+# ---------------------------------------------------------------------
+
+func _party_test_screen(out_is_player: bool) -> Array:
+	var bs = _make_screen()
+	var bm := BattleManager.new()
+	add_child(bm)
+	bs._bm = bm
+	bs._pending_beats.clear()
+	var ply := BattleParty.new()
+	ply.members = [_make_mon(), _make_mon()]
+	ply.active_indices = [0]
+	var opp := BattleParty.new()
+	opp.members = [_make_mon(), _make_mon()]
+	opp.active_indices = [0]
+	bs._player_party = ply
+	bs._opp_party = opp
+	var ps := TextureRect.new()
+	var os_ := TextureRect.new()
+	bs._ply_sprites = [ps]
+	bs._opp_sprites = [os_]
+	bs._ply_panels = []
+	bs._opp_panels = []
+	bs._wire_log_signals()
+	var mon: BattlePokemon = (ply if out_is_player else opp).members[0]
+	bm.pokemon_switched_out.emit(mon, 0 if out_is_player else 1)
+	return [bs, bm, ps, os_]
+
+
+func _test_faint_no_longer_triggers_the_party_row() -> void:
+	# The old pokemon_fainted listener fired during move resolution, so the
+	# row appeared over the attack animation and vanished when it ended.
+	# Source never triggers on the faint at all.
+	var bs = _make_screen()
+	var bm := BattleManager.new()
+	add_child(bm)
+	bs._bm = bm
+	bs._pending_beats.clear()
+	var ply := BattleParty.new()
+	ply.members = [_make_mon()]
+	ply.active_indices = [0]
+	bs._player_party = ply
+	var opp := BattleParty.new()
+	opp.members = [_make_mon()]
+	opp.active_indices = [0]
+	bs._opp_party = opp
+	bs._ply_sprites = []
+	bs._opp_sprites = []
+	bs._ply_panels = []
+	bs._opp_panels = []
+	bs._wire_log_signals()
+	bm.pokemon_fainted.emit(ply.members[0])
+	var kinds: Array = []
+	for b in bs._pending_beats:
+		kinds.append(String(b.get("kind", "")))
+	_chk("M.01 a faint no longer queues a party-summary beat",
+			not kinds.has("party_summary_show"))
+	_chk("M.02 ...but still queues its recall", kinds.has("recall"))
+	bm.queue_free()
+	bs.free()
+
+
+func _test_switch_out_queues_the_summary_after_the_recall() -> void:
+	# Source's order is returnatktoball -> drawpartystatussummary, so the
+	# row must sit AFTER the recall beat in the queue, not before it.
+	var parts: Array = _party_test_screen(true)
+	var bs = parts[0]
+	var order: Array = []
+	for b in bs._pending_beats:
+		order.append(String(b.get("kind", "")))
+	var i_recall: int = order.find("recall")
+	var i_summary: int = order.find("party_summary_show")
+	_chk("M.03 a switch-out queues both a recall and a summary beat",
+			i_recall >= 0 and i_summary >= 0)
+	_chk("M.04 the summary is queued AFTER the recall", i_summary > i_recall)
+	parts[2].free(); parts[3].free(); parts[1].queue_free(); bs.free()
+
+
+func _test_summary_is_switching_side_only() -> void:
+	# `drawpartystatussummary BS_ATTACKER` names ONE battler -- mid-battle
+	# only the switching side's row is drawn, unlike battle start.
+	var p1: Array = _party_test_screen(true)
+	var got_player = null
+	for b in p1[0]._pending_beats:
+		if String(b.get("kind", "")) == "party_summary_show":
+			got_player = b.get("is_player", null)
+	_chk("M.05 a player switch draws the player's row", got_player == true)
+	p1[2].free(); p1[3].free(); p1[1].queue_free(); p1[0].free()
+
+	var p2: Array = _party_test_screen(false)
+	var got_opp = null
+	for b in p2[0]._pending_beats:
+		if String(b.get("kind", "")) == "party_summary_show":
+			got_opp = b.get("is_player", null)
+	_chk("M.06 an opponent switch draws the opponent's row", got_opp == false)
+	p2[2].free(); p2[3].free(); p2[1].queue_free(); p2[0].free()
+
+
+func _test_hide_clears_both_rows() -> void:
+	# hidepartystatussummary runs immediately before switchinanim, so the
+	# row must be gone by the time the ball is thrown.
+	var bs = _make_screen()
+	var a := Control.new()
+	var b := Control.new()
+	a.visible = true
+	b.visible = true
+	bs._party_status_opponent = a
+	bs._party_status_player = b
+	bs._hide_party_status_rows()
+	_chk("M.07 hiding clears the opponent row", not a.visible)
+	_chk("M.08 hiding clears the player row", not b.visible)
+	a.free(); b.free(); bs.free()
+
+
+# ---------------------------------------------------------------------
+# N. Party row entry animation [M26B5 items 2+4]
+# ---------------------------------------------------------------------
+
+func _test_ball_entry_delay_fans_per_side() -> void:
+	# `data[1] = i * 7 + 10` (player) vs `(6 - i) * 7 + 10` (opponent) --
+	# each side fans in from its own outer edge inward, so the two are
+	# mirror images rather than the same sequence.
+	var ply: Array = []
+	var opp: Array = []
+	for i in range(6):
+		ply.append(BattleScreenShared._party_ball_entry_delay(i, true))
+		opp.append(BattleScreenShared._party_ball_entry_delay(i, false))
+	_chk("N.01 player delays match source's i*7+10", ply == [10, 17, 24, 31, 38, 45])
+	_chk("N.02 opponent delays match source's (6-i)*7+10",
+			opp == [52, 45, 38, 31, 24, 17])
+	_chk("N.03 the player fans left-to-right", ply[0] < ply[5])
+	_chk("N.04 the opponent fans right-to-left", opp[0] > opp[5])
+	# The stagger is the whole point -- a uniform delay would defeat it.
+	var uniform := true
+	for i in range(1, 6):
+		if ply[i] != ply[0]:
+			uniform = false
+	_chk("N.05 the delays are genuinely staggered, not uniform", not uniform)
+
+
+func _test_entry_constants_match_source() -> void:
+	_chk("N.06 bar entry offset is source's bar_pos2_X",
+			is_equal_approx(BattleScreenShared._PARTY_BAR_ENTRY_OFFSET, 100.0))
+	_chk("N.07 bar step is source's bar_data0",
+			is_equal_approx(BattleScreenShared._PARTY_BAR_ENTRY_STEP, 5.0))
+	_chk("N.08 ball entry offset is source's x2 = 120",
+			is_equal_approx(BattleScreenShared._PARTY_BALL_ENTRY_OFFSET, 120.0))
+	_chk("N.09 ball step is the accumulator's own 2px/frame",
+			is_equal_approx(BattleScreenShared._PARTY_BALL_ENTRY_STEP, 2.0))
+	# The bar reaches rest well before the last ball does -- it is the
+	# backdrop the balls land on, so it must not arrive last.
+	var bar_frames: float = BattleScreenShared._PARTY_BAR_ENTRY_OFFSET \
+			/ BattleScreenShared._PARTY_BAR_ENTRY_STEP
+	var last_ball: float = BattleScreenShared._party_ball_entry_delay(5, true) \
+			+ BattleScreenShared._PARTY_BALL_ENTRY_OFFSET \
+			/ BattleScreenShared._PARTY_BALL_ENTRY_STEP
+	_chk("N.10 the bar settles before the last ball lands",
+			bar_frames < last_ball)

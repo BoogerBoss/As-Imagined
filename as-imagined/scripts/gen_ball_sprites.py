@@ -132,3 +132,24 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# [M26B5] The party-status BAR -- the black gradient strip that sits BEHIND
+# the 6 ball icons (`sStatusSummaryBarSpriteTemplates`, battle_interface.c
+# :1266, created at layer 10 vs the balls' 9). Sourced from
+# graphics/battle_interface/ball_status_bar.png, 128x8 mode-"P".
+#
+# Same index-0 transparency rule as the ball sheets above -- no tRNS chunk,
+# palette index 0 is the intended background. A plain shutil.copyfile ships
+# it opaque.
+BALL_STATUS_BAR_SRC = os.path.join(
+    REF, "graphics", "battle_interface", "ball_status_bar.png")
+
+
+def pull_status_bar() -> None:
+    out_dir = os.path.normpath(os.path.join(
+        _HERE, "..", "assets", "sprites", "battle_ui", "party_status"))
+    os.makedirs(out_dir, exist_ok=True)
+    dst = os.path.join(out_dir, "ball_status_bar.png")
+    _copy_with_index0_transparent(BALL_STATUS_BAR_SRC, dst)
+    print("  party status bar -> %s" % dst)

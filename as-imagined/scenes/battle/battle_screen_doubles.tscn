@@ -230,7 +230,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="PartyStatusOpponent" type="HBoxContainer" parent="BattleStage"]
+[node name="PartyStatusOpponent" type="Control" parent="BattleStage"]
 visible = false
 layout_mode = 1
 anchor_left = 0.58
@@ -239,52 +239,45 @@ anchor_right = 0.58
 anchor_bottom = 0.04
 offset_right = 216.0
 offset_bottom = 30.0
-theme_override_constants/separation = 6
 mouse_filter = 2
 
 [node name="Ball0" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
+layout_mode = 0
 texture = ExtResource("21_ball_normal")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="Ball1" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
+layout_mode = 0
 texture = ExtResource("22_ball_status")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="Ball2" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
+layout_mode = 0
 texture = ExtResource("23_ball_fainted")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="Ball3" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
+layout_mode = 0
 texture = ExtResource("21_ball_normal")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="Ball4" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
+layout_mode = 0
 texture = ExtResource("21_ball_normal")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="Ball5" type="TextureRect" parent="BattleStage/PartyStatusOpponent"]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
+layout_mode = 0
 texture = ExtResource("24_ball_empty")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="PartyStatusPlayer" type="HBoxContainer" parent="BattleStage"]
+[node name="PartyStatusPlayer" type="Control" parent="BattleStage"]
 visible = false
 layout_mode = 1
 anchor_left = 0.05
@@ -293,47 +286,40 @@ anchor_right = 0.05
 anchor_bottom = 0.68
 offset_right = 216.0
 offset_bottom = 30.0
-theme_override_constants/separation = 6
 mouse_filter = 2
 
 [node name="Ball0" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
+layout_mode = 0
 texture = ExtResource("21_ball_normal")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="Ball1" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
+layout_mode = 0
 texture = ExtResource("21_ball_normal")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="Ball2" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
+layout_mode = 0
 texture = ExtResource("22_ball_status")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="Ball3" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
+layout_mode = 0
 texture = ExtResource("21_ball_normal")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="Ball4" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
+layout_mode = 0
 texture = ExtResource("23_ball_fainted")
 expand_mode = 1
 stretch_mode = 4
 
 [node name="Ball5" type="TextureRect" parent="BattleStage/PartyStatusPlayer"]
-custom_minimum_size = Vector2(30, 30)
-layout_mode = 2
+layout_mode = 0
 texture = ExtResource("24_ball_empty")
 expand_mode = 1
 stretch_mode = 4

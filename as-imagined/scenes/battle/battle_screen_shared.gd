@@ -72,6 +72,150 @@ const _WEATHER_END_TEXT: Dictionary = {
 	DamageCalculator.WEATHER_HAIL: "The hail stopped.",
 	DamageCalculator.WEATHER_STRONG_WINDS: "The mysterious air currents faded.",
 }
+# [M26B4-0] The per-turn "weather is still active" line, printed at end of turn
+# by source's BattleScript_WeatherContinues. Strings taken verbatim from
+# gWeatherTurnStringIds (battle_message.c L1039-1049) and their own STRINGID
+# entries: RAINCONTINUES (L397), SANDSTORMRAGES (L401), SUNLIGHTSTRONG (L404),
+# HAILCONTINUES (L407), MYSTERIOUSAIRCURRENTBLOWSON (L715).
+#
+# Note the trailing periods rather than exclamation marks -- that is source's
+# own punctuation for these six, and it differs from the start/end tables above
+# deliberately, not by oversight.
+#
+# Two of these carry a `//not in gen 5+` comment in source, meaning the real
+# GAMES stopped showing them from Gen 5 on. This reference engine still prints
+# them unconditionally (BattleScript_WeatherContinues' `printfromtable` has no
+# generation gate at all -- checked), so they are reproduced. Source's
+# DOWNPOUR/SNOW/FOG entries have no equivalent here: this project has no
+# downpour or fog weather, and [D2 batch] permanently collapsed Snow into
+# WEATHER_HAIL.
+const _WEATHER_CONTINUES_TEXT: Dictionary = {
+	DamageCalculator.WEATHER_RAIN: "Rain continues to fall.",
+	DamageCalculator.WEATHER_SUN: "The sunlight is strong.",
+	DamageCalculator.WEATHER_SANDSTORM: "The sandstorm is raging.",
+	DamageCalculator.WEATHER_HAIL: "The hail is crashing down.",
+	DamageCalculator.WEATHER_STRONG_WINDS: "The mysterious strong winds blow on regardless!",
+}
+# [M26D3-1] Why a Pokemon didn't get to move.
+#
+# `move_skipped(pokemon, reason)` carries SIXTEEN distinct outcomes on one
+# signal -- 8 from StatusManager.pre_move_check via _phase_pre_move_checks
+# (recharging/loafing/flinched/paralyzed/asleep/frozen/infatuated/confused) and
+# 8 from their own dedicated emit sites (disabled/taunt/tormented/imprison/
+# throat_chop/assault_vest/cant_use_twice/sky_drop_held). Until now it had NO
+# listener at all, in either the message box or the F3 panel: a Pokemon that
+# could not move produced complete silence, with the turn simply passing.
+# Wiring this one signal is the single highest-leverage dialogue fix in M26
+# (see docs/m26_d3_recon.md §5).
+#
+# Strings are source's own, from battle_message.c, with `{B_ATK_NAME_WITH_PREFIX}`
+# rendered through this project's existing _mon_label() and source's own
+# trailing `\p` (page-break) dropped -- this project's message box paces by
+# beat, not by page.
+#
+# THREE deliberate substitutions, all the same cause. Assault Vest, Blood
+# Moon's "twice in a row" and Sky-Drop-held have no dedicated STRINGID: source
+# prevents those at SELECTION time (the move is not offerable), whereas this
+# project has no menu-legality filter at all and fails them at EXECUTION -- a
+# documented, long-standing architectural difference, not a gap introduced
+# here. They therefore fall back to source's own generic failure line,
+# STRINGID_BUTITFAILED ("But it failed!"), which is what source itself uses
+# when a move is attempted and does not go through. Flagged rather than
+# invented: if a menu-legality filter is ever built, these three should stop
+# being reachable rather than getting better text.
+const _MOVE_SKIPPED_TEXT: Dictionary = {
+	"recharging": "%s must recharge!",
+	"loafing": "%s is loafing around!",
+	"flinched": "%s flinched and couldn't move!",
+	"paralyzed": "%s couldn't move because it's paralyzed!",
+	"asleep": "%s is fast asleep.",
+	"frozen": "%s is frozen solid!",
+	"infatuated": "%s is immobilized by love!",
+	"confused": "It hurt itself in its confusion!",
+	"disabled": "%s's move is disabled!",
+	"taunt": "%s can't use that move after the taunt!",
+	"tormented": "%s can't use the same move twice in a row due to the torment!",
+	"imprison": "%s can't use its sealed move!",
+	"throat_chop": "The effects of Throat Chop prevent %s from using certain moves!",
+	"assault_vest": "But it failed!",
+	"cant_use_twice": "But it failed!",
+	"sky_drop_held": "But it failed!",
+}
+# [M26D3-3] Two-turn charge text, keyed by move id.
+#
+# Source has NO shared "charging" string and no `twoTurnAttackStringId` field
+# (checked) — each two-turn move prints its OWN line from its OWN battle
+# script, so this is genuinely a per-move table and not a lookup that could be
+# derived from a flag. Strings are source's own (battle_message.c).
+#
+# Freeze Shock/Ice Burn and Shadow Force/Phantom Force each legitimately SHARE
+# a line in source; Solar Beam/Solar Blade likewise. That is not duplication to
+# be factored out — it is what the reference prints.
+const _CHARGE_TEXT: Dictionary = {
+	13: "%s whipped up a whirlwind!",              # Razor Wind
+	19: "%s flew up high!",                         # Fly
+	76: "%s absorbed light!",                       # Solar Beam
+	91: "%s burrowed its way under the ground!",    # Dig
+	130: "%s tucked in its head!",                  # Skull Bash
+	143: "%s became cloaked in a harsh light!",     # Sky Attack
+	291: "%s hid underwater!",                      # Dive
+	340: "%s sprang up!",                           # Bounce
+	467: "%s vanished instantly!",                  # Shadow Force
+	553: "%s became cloaked in a freezing light!",  # Freeze Shock
+	554: "%s became cloaked in a freezing light!",  # Ice Burn
+	566: "%s vanished instantly!",                  # Phantom Force
+	601: "%s is absorbing power!",                  # Geomancy
+	632: "%s absorbed light!",                      # Solar Blade
+	728: "%s is overflowing with space power!",     # Meteor Beam
+	833: "%s absorbed electricity!",                # Electro Shot
+}
+# Sky Drop names its TARGET as well as its user, so it can't share the
+# single-slot shape above and is handled at its own call site.
+const _SKY_DROP_MOVE_ID := 507
+
+# [M26D3-6] Field and delayed effects. Every one of these was DEBUG-ONLY before
+# this sub-phase — wired to the F3 panel, which is off by default — so Trick
+# Room, Tailwind, Safeguard, Mist, the Sports, Wish, Future Sight and Healing
+# Wish/Lunar Dance were all completely unannounced in normal play despite being
+# strategically significant. Strings are source's own (battle_message.c),
+# with `{B_ATK_TEAM1}`/`{B_ATK_TEAM2}` rendered via _side_label().
+const _SIDE_CONDITION_SET_TEXT: Dictionary = {
+	"tailwind": "The Tailwind blew from behind %s team!",
+	"safeguard": "%s team cloaked itself in a mystical veil!",
+	"mist": "%s team became shrouded in mist!",
+}
+const _SIDE_CONDITION_END_TEXT: Dictionary = {
+	"tailwind": "%s team's Tailwind petered out!",
+	"safeguard": "%s team is no longer protected by Safeguard!",
+	"mist": "%s team is no longer shrouded in mist!",
+}
+# gBattleAnimMove_MudSport/WaterSport's own effect text — source phrases these
+# as a statement about the weakened TYPE, not about the user or the field.
+const _FIELD_SPORT_TEXT: Dictionary = {
+	"mud_sport": "Electricity's power was weakened!",
+	"water_sport": "Fire's power was weakened!",
+}
+# healing_wish_activated's `kind` is "healing_wish" or "lunar_dance".
+const _HEALING_WISH_TEXT: Dictionary = {
+	"healing_wish": "The healing wish came true for %s!",
+	"lunar_dance": "%s became cloaked in mystical moonlight!",
+}
+# [M26D3-7] Item-effect trigger text, keyed by `item_effect_triggered`'s own
+# `effect_key`. Strings are source's own (battle_message.c). Several of
+# source's lines name the ITEM via `{B_LAST_ITEM}` or the target, neither of
+# which this signal carries -- those are rephrased rather than passed off as
+# verbatim source wording.
+const _ITEM_EFFECT_TEXT: Dictionary = {
+	"focus_band": "%s hung on using its held item!",
+	"focus_sash": "%s hung on using its held item!",
+	"power_herb": "%s became fully charged due to its held item!",
+	"air_balloon_pop": "%s's Air Balloon popped!",
+	"knock_off": "%s knocked off its target's item!",
+	"incinerate_destroyed": "%s's Berry was incinerated!",
+	"mental_herb_disable": "%s cured its disable problem using its held item!",
+	"mental_herb_encore": "%s cured its encore problem using its held item!",
+	"stuff_cheeks_berry": "%s stuffed its cheeks with its Berry!",
+}
 const _HAZARD_NAMES: Dictionary = {
 	"spikes": "Spikes", "toxic_spikes": "Toxic Spikes",
 	"stealth_rock": "Stealth Rock", "sticky_web": "Sticky Web",
@@ -469,8 +613,8 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # [M26o] Compact 6-pokéball party status row -- one per side, mirroring
 # source's CreatePartyStatusSummarySprites (battle_interface.c:1206). Hidden
 # by default; shown at battle start and refreshed after every KO.
-@onready var _party_status_opponent: HBoxContainer = $BattleStage/PartyStatusOpponent
-@onready var _party_status_player: HBoxContainer = $BattleStage/PartyStatusPlayer
+@onready var _party_status_opponent: Control = $BattleStage/PartyStatusOpponent
+@onready var _party_status_player: Control = $BattleStage/PartyStatusPlayer
 
 # [M26B3-2] The opponent trainer's real battle sprite. Replaces the retired
 # TrainerIntroBanner (portrait + caption over a dark backdrop), which had no
@@ -1461,12 +1605,26 @@ func _ready() -> void:
 	# a separate Label wholesale.
 	_bm.move_damage_breakdown.connect(_on_debug_move_damage_breakdown)
 
-	# [M26o] A SEPARATE, additional connect() on pokemon_fainted — the same
-	# "additive, not exclusive" shape move_executed/move_damage_breakdown
-	# already establish above — re-shows the party status row reactively
-	# after every KO, matching source's own second real call site.
-	_bm.pokemon_fainted.connect(func(_mon: BattlePokemon):
-		_show_party_status_summary())
+	# [M26B5, Rob's review] The pokemon_fainted trigger that used to live
+	# here is RETIRED. It fired during move resolution, so the row appeared
+	# over the attack animation and was torn down when that animation
+	# ended -- the pacing defect Rob reported.
+	#
+	# Source does not trigger on the faint at all. It draws the row
+	# POSITIONALLY in the switch script, between the recall and the
+	# send-out (battle_scripts_1.s:2790-2804):
+	#
+	#     returnatktoball                     <- recall
+	#     drawpartystatussummary BS_ATTACKER  <- row appears
+	#     printstring STRINGID_SWITCHINMON    <- "Go, X!"
+	#     hidepartystatussummary BS_ATTACKER  <- row vanishes
+	#     switchinanim BS_ATTACKER            <- send-out
+	#
+	# This project's beat queue already has that exact window (the "recall"
+	# beat then the "switch_reveal" beat), so the row is queued into it
+	# rather than hung off a signal. That also fixes a second bug for free:
+	# a faint-only listener never fired for a VOLUNTARY switch, which
+	# source covers with the same three scripts.
 
 	# start_battle_with_parties()/start_battle_doubles() both call advance()
 	# internally — this already stalls at MOVE_SELECTION (side 0 is human-
@@ -1848,8 +2006,13 @@ func _wire_log_signals() -> void:
 		# Queued as a beat for the same reason the faint recall is --
 		# ordering against the party summary and the text beats rather
 		# than racing them off the signal.
-		_pending_beats.append({"kind": "recall", "mon": mon,
-			"slot": _find_mon_slot(mon)}))
+		var out_slot: Dictionary = _find_mon_slot(mon)
+		_pending_beats.append({"kind": "recall", "mon": mon, "slot": out_slot})
+		# Source names ONE battler (`drawpartystatussummary BS_ATTACKER`),
+		# so mid-battle only the switching side's row is drawn -- unlike
+		# battle start, which draws both.
+		_pending_beats.append({"kind": "party_summary_show",
+			"is_player": out_slot.get("is_player", true)}))
 	_bm.pokemon_switched_in.connect(func(mon: BattlePokemon, _side: int, _slot: int):
 		_log("Go, %s!" % _mon_label(mon))
 		# [M26 polish batch, item 7a] Sprite/HP-panel textures are otherwise
@@ -1890,6 +2053,373 @@ func _wire_log_signals() -> void:
 		_log(_WEATHER_START_TEXT.get(weather_type, "The weather changed!")))
 	_bm.weather_expired.connect(func(weather_type: int):
 		_log(_WEATHER_END_TEXT.get(weather_type, "The weather returned to normal.")))
+	# [M26B4-0] Per-turn "still active" line. M26B4-3 will append the weather
+	# animation as an `anim` beat immediately after this text beat, reproducing
+	# BattleScript_WeatherContinues' own printfromtable -> waitmessage ->
+	# playanimation_var order; _log()'s text beat already carries the
+	# _WAIT_TIME_LONG hold that maps to source's `waitmessage B_WAIT_TIME_LONG`.
+	# ── [M26D3-3] Move outcome ──
+	_bm.protected.connect(func(defender: BattlePokemon):
+		_log("%s protected itself!" % _mon_label(defender)))
+	_bm.protect_broken.connect(func(defender: BattlePokemon):
+		_log("%s fell for the feint!" % _mon_label(defender)))
+	_bm.substitute_created.connect(func(attacker: BattlePokemon, _sub_hp: int):
+		_log("%s put in a substitute!" % _mon_label(attacker)))
+	_bm.substitute_broke.connect(func(defender: BattlePokemon):
+		_log("%s's substitute faded!" % _mon_label(defender)))
+	# Source's own generic failure line, printed whenever an attempted move
+	# doesn't go through — the `reason` ("stat_limit"/"immune"/"already_status")
+	# is engine detail with no player-facing equivalent, so it stays in the
+	# debug panel's remit rather than being surfaced as text the reference
+	# never shows.
+	_bm.move_effect_failed.connect(func(_target: BattlePokemon, _reason: String):
+		_log("But it failed!"))
+	_bm.crash_damage.connect(func(attacker: BattlePokemon, _amount: int):
+		_log("%s kept going and crashed!" % _mon_label(attacker)))
+	_bm.endured.connect(func(mon: BattlePokemon):
+		_log("%s endured the hit!" % _mon_label(mon)))
+	_bm.pokemon_thawed.connect(func(pokemon: BattlePokemon):
+		_log("%s thawed out!" % _mon_label(pokemon)))
+	# Two-turn charge. Per-move text (see _CHARGE_TEXT); Sky Drop is the one
+	# move whose line names its target as well as its user.
+	_bm.charge_started.connect(func(attacker: BattlePokemon, move: MoveData):
+		var move_id := HitEffectRegistry.move_id_of(move)
+		if move_id == _SKY_DROP_MOVE_ID:
+			_log("%s took its target into the sky!" % _mon_label(attacker))
+		else:
+			var t: String = _CHARGE_TEXT.get(move_id, "%s began charging its move!")
+			_log(t % _mon_label(attacker)))
+	# Metronome/Mirror Move/Sleep Talk/Assist/Copycat/Me First. This does NOT
+	# duplicate the existing announcement: `move_announced` fires early
+	# (battle_manager.gd:1854, before dispatch) and so names the CALLING move,
+	# while `move_called` fires during dispatch (:3418+) and names what was
+	# actually picked. Source prints both lines too.
+	_bm.move_called.connect(func(attacker: BattlePokemon, called_move: MoveData):
+		_log("%s used %s!" % [_mon_label(attacker), called_move.move_name]))
+	_bm.bide_started.connect(func(attacker: BattlePokemon):
+		_log("%s is storing energy!" % _mon_label(attacker)))
+	# Source prints the SAME "is storing energy!" line on each waiting turn --
+	# it is not a distinct message, and Bide's own script reprints it.
+	_bm.bide_storing.connect(func(attacker: BattlePokemon):
+		_log("%s is storing energy!" % _mon_label(attacker)))
+	_bm.bide_released.connect(func(attacker: BattlePokemon, _damage: int):
+		_log("%s unleashed its energy!" % _mon_label(attacker)))
+	_bm.move_bounced.connect(func(holder: BattlePokemon, _new_target: BattlePokemon):
+		_log("%s's move was bounced back!" % _mon_label(holder)))
+	_bm.move_stolen.connect(func(stealer: BattlePokemon,
+			original_caster: BattlePokemon, _move: MoveData):
+		_log("%s snatched %s's move!" % [_mon_label(stealer), _mon_label(original_caster)]))
+	_bm.multi_hit_sequence_finished.connect(func(_attacker: BattlePokemon,
+			_target: BattlePokemon, hits_landed: int, _total_damage: int):
+		_log("The Pokémon was hit %d time(s)!" % hits_landed))
+
+	# ── [M26D3-7] Item interactions ──
+	# All previously debug-only. Several of source's lines name an item or a
+	# second battler that the corresponding signal does not carry; those are
+	# rephrased rather than passed off as verbatim -- the same disclosure shape
+	# used throughout D3.
+	_bm.item_stolen.connect(func(stealer: BattlePokemon, victim: BattlePokemon):
+		_log("%s stole %s's item!" % [_mon_label(stealer), _mon_label(victim)]))
+	_bm.items_swapped.connect(func(attacker: BattlePokemon, _defender: BattlePokemon):
+		_log("%s switched items with its target!" % _mon_label(attacker)))
+	# Pluck / Bug Bite: consumed in place, NOT a possession transfer -- which
+	# is exactly why source gives it its own "stole and ate" line rather than
+	# reusing the plain steal one.
+	_bm.berry_stolen_and_eaten.connect(func(_victim: BattlePokemon,
+			beneficiary: BattlePokemon, item: ItemData):
+		_log("%s stole and ate its target's %s!"
+				% [_mon_label(beneficiary), item.item_name]))
+	_bm.item_transferred.connect(func(_from_mon: BattlePokemon,
+			to_mon: BattlePokemon, item: ItemData):
+		_log("%s obtained %s." % [_mon_label(to_mon), item.item_name]))
+	_bm.item_recycled.connect(func(mon: BattlePokemon, item: ItemData):
+		_log("%s found one %s!" % [_mon_label(mon), item.item_name]))
+	_bm.item_regenerated.connect(func(pokemon: BattlePokemon, item: ItemData):
+		_log("%s harvested its %s!" % [_mon_label(pokemon), item.item_name]))
+	# Life Orb / Jaboca / Rowap / Rocky Helmet / Sticky Barb. Source names the
+	# item; this signal carries only an amount.
+	_bm.item_damage.connect(func(pokemon: BattlePokemon, _amount: int):
+		_log("%s was hurt by its held item!" % _mon_label(pokemon)))
+	_bm.item_effect_triggered.connect(func(pokemon: BattlePokemon, effect_key: String):
+		var t: String = _ITEM_EFFECT_TEXT.get(effect_key, "")
+		if t != "":
+			_log(t % _mon_label(pokemon)))
+	#
+	# DELIBERATELY SILENT: `item_consumed`. It fires for EVERY one-use item,
+	# but this project already narrates each consumption's own EFFECT --
+	# `item_healed` and `status_cured` are both log-wired, and stat-raise
+	# berries surface through `stat_stage_changed`. Source likewise prints ONE
+	# combined effect line per berry ("{mon} restored health using its
+	# {berry}!"), not an effect line plus a separate "used up" line. Wiring a
+	# generic used-up message would double-report every berry. Ninth instance
+	# of D3's "silence is correct" pattern.
+
+	# ── [M26D3-4] Volatile infliction — the long tail ──
+	# 32 signals, all previously unwired. Strings are source's own
+	# (battle_message.c). FOUR are deliberately left SILENT — see the block at
+	# the end of this section for each one's reason.
+	_bm.disabled.connect(func(target: BattlePokemon, move: MoveData):
+		_log("%s's %s was disabled!" % [_mon_label(target), move.move_name]))
+	_bm.encored.connect(func(target: BattlePokemon, _move: MoveData):
+		_log("%s must do an encore!" % _mon_label(target)))
+	_bm.taunted.connect(func(target: BattlePokemon, _turns: int):
+		_log("%s fell for the taunt!" % _mon_label(target)))
+	_bm.tormented.connect(func(target: BattlePokemon):
+		_log("%s was subjected to torment!" % _mon_label(target)))
+	_bm.infatuated.connect(func(mon: BattlePokemon):
+		_log("%s fell in love!" % _mon_label(mon)))
+	_bm.leech_seeded.connect(func(target: BattlePokemon, _source: BattlePokemon):
+		_log("%s was seeded!" % _mon_label(target)))
+	_bm.nightmare_set.connect(func(target: BattlePokemon):
+		_log("%s began having a nightmare!" % _mon_label(target)))
+	# DISCLOSED: source's line is a COMBINED cost+effect sentence naming both
+	# battlers ("{caster} cut its own HP and put a curse on {target}!"), but
+	# this signal carries only the target. A target-side rephrasing is used
+	# rather than passing a half-line off as verbatim -- same judgement as
+	# D3-6's Trick Room and D3-5's wrap lines.
+	_bm.curse_set.connect(func(target: BattlePokemon):
+		_log("%s was cursed!" % _mon_label(target)))
+	_bm.escape_prevented.connect(func(target: BattlePokemon, _source: BattlePokemon):
+		_log("%s can no longer escape!" % _mon_label(target)))
+	_bm.octolock_set.connect(func(target: BattlePokemon, _caster: BattlePokemon):
+		_log("%s can no longer escape because of Octolock!" % _mon_label(target)))
+	_bm.foresight_set.connect(func(target: BattlePokemon):
+		_log("%s was identified!" % _mon_label(target)))
+	_bm.telekinesis_set.connect(func(target: BattlePokemon):
+		_log("%s was hurled into the air!" % _mon_label(target)))
+	_bm.magnet_rise_set.connect(func(mon: BattlePokemon):
+		_log("%s levitated with electromagnetism!" % _mon_label(mon)))
+	_bm.smack_down_set.connect(func(mon: BattlePokemon):
+		_log("%s fell straight down!" % _mon_label(mon)))
+	_bm.ingrain_set.connect(func(mon: BattlePokemon):
+		_log("%s planted its roots!" % _mon_label(mon)))
+	_bm.aqua_ring_set.connect(func(mon: BattlePokemon):
+		_log("%s surrounded itself with a veil of water!" % _mon_label(mon)))
+	_bm.tar_shot_set.connect(func(target: BattlePokemon):
+		_log("%s became weaker to fire!" % _mon_label(target)))
+	_bm.imprison_set.connect(func(mon: BattlePokemon):
+		_log("%s sealed any moves its target shares with it!" % _mon_label(mon)))
+	# Source's line is field-wide and names no battler, but this signal fires
+	# once PER affected combatant. Printing it per-mon would repeat the same
+	# sentence up to four times in doubles, so the per-mon phrasing is used.
+	_bm.perish_song_activated.connect(func(pokemon: BattlePokemon):
+		_log("%s will faint in three turns!" % _mon_label(pokemon)))
+	_bm.sure_hit_set.connect(func(attacker: BattlePokemon, target: BattlePokemon):
+		_log("%s took aim at %s!" % [_mon_label(attacker), _mon_label(target)]))
+	_bm.laser_focus_set.connect(func(mon: BattlePokemon):
+		_log("%s concentrated intensely!" % _mon_label(mon)))
+	_bm.charge_set.connect(func(mon: BattlePokemon):
+		_log("%s began charging power!" % _mon_label(mon)))
+	_bm.stockpile_gained.connect(func(mon: BattlePokemon, count: int):
+		_log("%s stockpiled %d!" % [_mon_label(mon), count]))
+	_bm.stockpile_released.connect(func(mon: BattlePokemon, _count: int):
+		_log("%s's stockpiled effect wore off!" % _mon_label(mon)))
+	# Only the fatigue-confusion half is announced; see the silent block below
+	# for why the lock STARTING is not.
+	_bm.rampage_lock_ended.connect(func(attacker: BattlePokemon, _move: MoveData,
+			confused: bool):
+		if confused:
+			_log("%s became confused due to fatigue!" % _mon_label(attacker)))
+	_bm.yawn_set.connect(func(target: BattlePokemon):
+		_log("%s grew drowsy!" % _mon_label(target)))
+	_bm.destiny_bond_set.connect(func(attacker: BattlePokemon):
+		_log("%s is hoping to take its attacker down with it!" % _mon_label(attacker)))
+	_bm.destiny_bond_triggered.connect(func(fainted_mon: BattlePokemon,
+			_killer: BattlePokemon):
+		_log("%s took its attacker down with it!" % _mon_label(fainted_mon)))
+	_bm.type_changed.connect(func(pokemon: BattlePokemon, new_type: int):
+		_log("%s transformed into the %s type!"
+				% [_mon_label(pokemon), TypeChart.type_name(new_type)]))
+	# Reflect Type only. Roost's own two reasons are silent -- see below.
+	_bm.types_changed.connect(func(mon: BattlePokemon, new_types: Array,
+			reason: String):
+		if reason == "reflect_type" and not new_types.is_empty():
+			_log("%s transformed into the %s type!"
+					% [_mon_label(mon), TypeChart.type_name(new_types[0])]))
+	#
+	# DELIBERATELY SILENT (4), each verified against source rather than
+	# assumed -- this is the fifth through eighth instance of D3's recurring
+	# "silence is correct" pattern:
+	#   * `charge_cleared` — fires when Charge's flag is CONSUMED by a later
+	#     Electric move. Source has no consumption line; the boosted move
+	#     announces itself normally.
+	#   * `rampage_lock_started` — Thrash/Outrage/Uproar announce the MOVE
+	#     normally and source prints nothing extra for the lock itself. Only
+	#     the lock ENDING has a line, and only for the fatigue-confusion case.
+	#   * `types_changed` with reason "roost" / "roost_restore" — Roost's
+	#     one-turn type removal and its restore are INVISIBLE in source
+	#     (zero Roost strings anywhere in battle_message.c, checked).
+	#   * `stockpile_released`'s `count` — the released stack size is engine
+	#     detail; source's line reports only that the effect wore off.
+
+	# ── [M26D3-9] Switch and support ──
+	# Step 0 finding that shaped this group: `_do_forced_switch_in` emits
+	# NOTHING (no pokemon_switched_in/out), so forced_switch,
+	# hit_escape_switch and hit_switch_target are the ONLY narration those
+	# switches ever get -- they are genuine silence, not duplicates of the
+	# already-wired voluntary-switch text. `baton_passed` is the opposite case
+	# and is deliberately left unwired (see below).
+	_bm.forced_switch.connect(func(old_mon: BattlePokemon, _new_mon: BattlePokemon):
+		_log("%s was dragged out!" % _mon_label(old_mon)))
+	# Circle Throw / Dragon Tail -- same source line as Roar's; it is the same
+	# outcome from the defender's point of view.
+	_bm.hit_switch_target.connect(func(old_mon: BattlePokemon, _new_mon: BattlePokemon):
+		_log("%s was dragged out!" % _mon_label(old_mon)))
+	# U-turn / Volt Switch / Flip Turn: the user leaves voluntarily, so
+	# "dragged out" would be wrong. Source narrates this as an ordinary
+	# switch-out, which this path does not emit -- hence its own line.
+	_bm.hit_escape_switch.connect(func(old_mon: BattlePokemon, _new_mon: BattlePokemon):
+		_log("%s went back to its Trainer!" % _mon_label(old_mon)))
+	# `baton_passed` is deliberately NOT wired: it fires ALONGSIDE
+	# pokemon_switched_out + pokemon_switched_in (battle_manager.gd:3302-3304),
+	# both already narrated, and source has NO Baton-Pass-specific string at
+	# all (checked: zero matches). Wiring it would add a third line to an
+	# already-narrated switch. Third instance of the D3 "silence is correct"
+	# pattern, after wish_scheduled and passive_hp_lost.
+	_bm.helping_hand_used.connect(func(user: BattlePokemon, ally: BattlePokemon):
+		_log("%s is ready to help %s!" % [_mon_label(user), _mon_label(ally)]))
+	_bm.follow_me_used.connect(func(user: BattlePokemon):
+		_log("%s became the center of attention!" % _mon_label(user)))
+	_bm.pokemon_transformed.connect(func(pokemon: BattlePokemon,
+			copied_from: BattlePokemon):
+		_log("%s transformed into %s!" % [_mon_label(pokemon), _mon_label(copied_from)]))
+	_bm.stat_changes_copied.connect(func(user: BattlePokemon, from_mon: BattlePokemon):
+		_log("%s copied %s's stat changes!" % [_mon_label(user), _mon_label(from_mon)]))
+	_bm.pain_split_used.connect(func(_attacker: BattlePokemon, _defender: BattlePokemon):
+		_log("The battlers shared their pain!"))
+	# After You / Quash -- two genuinely different source lines on one signal,
+	# so the `reason` tag selects between them.
+	# NOTE: written as if/elif, NOT `match`. A multi-line `match` inside a
+	# connected lambda does not parse in GDScript -- it broke this whole file's
+	# parse when first written that way, which surfaced only as a hung test
+	# rather than a clean error.
+	_bm.turn_order_changed.connect(func(mover: BattlePokemon, reason: String):
+		if reason == "after_you":
+			_log("%s took the kind offer!" % _mon_label(mover))
+		elif reason == "quash":
+			_log("%s's move was postponed!" % _mon_label(mover)))
+
+	# ── [M26D3-5] Residual damage / heal ticks ──
+	# These fire EVERY turn while their volatile is up, so they are the group
+	# most likely to affect turn length — see docs/m26_d3_recon.md §7(3) and
+	# M26G2, which owns that judgement. Strings are source's own.
+	_bm.curse_damage.connect(func(pokemon: BattlePokemon, _amount: int):
+		_log("%s is afflicted by the curse!" % _mon_label(pokemon)))
+	_bm.nightmare_damage.connect(func(target: BattlePokemon, _amount: int):
+		_log("%s is locked in a nightmare!" % _mon_label(target)))
+	_bm.leech_seed_drained.connect(func(target: BattlePokemon,
+			_source: BattlePokemon, _amount: int):
+		_log("%s's health is sapped by Leech Seed!" % _mon_label(target)))
+	# DISCLOSED: source's line names the binding move
+	# ("{mon} is hurt by {move}!" / "{mon} was freed from {move}!"), but this
+	# project's `wrap_damage`/`wrap_ended` carry only the victim -- and
+	# BattlePokemon.wrapped_by holds the SOURCE BATTLER, not the move, so the
+	# name is not recoverable without widening the signal. A move-less
+	# rephrasing is used rather than passing off a partial line as verbatim.
+	_bm.wrap_damage.connect(func(pokemon: BattlePokemon, _amount: int):
+		_log("%s is hurt by the attack!" % _mon_label(pokemon)))
+	_bm.wrap_ended.connect(func(pokemon: BattlePokemon):
+		_log("%s was freed!" % _mon_label(pokemon)))
+	# Aqua Ring and Ingrain share one signal here but have DIFFERENT lines in
+	# source, so the holder's own volatile flags disambiguate. Ingrain is
+	# checked first: a mon can legitimately have both, and source's Ingrain
+	# tick is the one that runs in that case.
+	_bm.ring_heal_tick.connect(func(mon: BattlePokemon, _amount: int):
+		if mon.ingrain_active:
+			_log("%s absorbed nutrients with its roots!" % _mon_label(mon))
+		else:
+			_log("A veil of water restored %s's HP!" % _mon_label(mon)))
+	_bm.pp_drained.connect(func(mon: BattlePokemon, move: MoveData):
+		_log("%s lost all of %s's PP due to the grudge!"
+				% [_mon_label(mon), move.move_name]))
+	_bm.pp_reduced.connect(func(target: BattlePokemon, move: MoveData, amount: int):
+		_log("%s lost %d PP from %s!" % [_mon_label(target), amount, move.move_name]))
+	_bm.pp_restored.connect(func(pokemon: BattlePokemon, _move_index: int,
+			_new_pp: int):
+		_log("%s restored PP to its move!" % _mon_label(pokemon)))
+	# `passive_hp_lost` (Belly Drum / Fillet Away / Clangorous Soul's HP cost)
+	# is deliberately NOT wired. Source has no standalone "lost HP" line for
+	# these -- it prints ONE combined line covering cost AND effect
+	# ("{mon} cut its own HP and maximized its Attack!"), and this project
+	# already narrates the effect half via stat_stage_changed. Adding a
+	# separate HP line would be inventing text the reference does not have and
+	# double-reporting one event. Same shape as D3-6's wish_scheduled finding.
+
+	# ── [M26D3-6] Field and delayed effects ──
+	# Trick Room. Source's set line is "{mon} twisted the dimensions!", but this
+	# project's `trick_room_set()` carries NO caster argument, so the caster
+	# cannot be named without widening the signal. DISCLOSED: a caster-less
+	# rephrasing is used rather than silently dropping the name from source's
+	# own wording. The END line needs no name and matches source exactly.
+	_bm.trick_room_set.connect(func():
+		_log("The dimensions were twisted!"))
+	_bm.trick_room_ended.connect(func():
+		_log("The twisted dimensions returned to normal!"))
+
+	_bm.side_condition_set.connect(func(side: int, condition_name: String):
+		var t: String = _SIDE_CONDITION_SET_TEXT.get(condition_name, "")
+		if t != "":
+			_log(t % _side_label(side)))
+	_bm.side_condition_expired.connect(func(side: int, condition_name: String):
+		var t: String = _SIDE_CONDITION_END_TEXT.get(condition_name, "")
+		if t != "":
+			_log(t % _side_label(side)))
+	_bm.field_sport_set.connect(func(sport_name: String):
+		var t: String = _FIELD_SPORT_TEXT.get(sport_name, "")
+		if t != "":
+			_log(t))
+
+	# Future Sight / Doom Desire: source announces BOTH ends —
+	# "{mon} foresaw an attack!" at cast, "{mon} took the {move} attack!" on
+	# resolution. The resolution line fires even at damage 0 (fizzle/immune),
+	# matching the signal's own documented contract.
+	_bm.future_sight_scheduled.connect(func(caster: BattlePokemon,
+			_target: BattlePokemon, _move: MoveData):
+		_log("%s foresaw an attack!" % _mon_label(caster)))
+	_bm.future_sight_resolved.connect(func(_caster: BattlePokemon,
+			target: BattlePokemon, move: MoveData, _damage: int):
+		_log("%s took the %s attack!" % [_mon_label(target), move.move_name]))
+
+	# Wish: resolution ONLY. Source's BattleScript_EffectWish is
+	# `attackcanceler / trywish / attackanimation / MoveEnd` — it contains no
+	# printstring at all, so the cast is genuinely SILENT in the reference and
+	# `wish_scheduled` is deliberately left unwired here. Confirmed by reading
+	# the script directly, not inferred from the absence of a STRINGID.
+	_bm.wish_resolved.connect(func(recipient: BattlePokemon, _healed: int):
+		_log("%s's wish came true!" % _mon_label(recipient)))
+
+	_bm.healing_wish_activated.connect(func(recipient: BattlePokemon, kind: String,
+			_healed: int, _cured: bool, _pp_restored: bool):
+		var t: String = _HEALING_WISH_TEXT.get(kind, "")
+		if t != "":
+			_log(t % _mon_label(recipient)))
+
+	# [M26D3-1] Why a Pokemon didn't move -- 16 outcomes on one signal. See
+	# _MOVE_SKIPPED_TEXT's own doc comment. An unrecognised reason falls back to
+	# a generic line rather than printing nothing, so a future reason string
+	# added to BattleManager degrades to "something stopped it" instead of
+	# silently reintroducing the exact silence this fixes.
+	_bm.move_skipped.connect(func(pokemon: BattlePokemon, reason: String):
+		var template: String = _MOVE_SKIPPED_TEXT.get(reason, "%s can't move!")
+		_log((template % _mon_label(pokemon)) if "%s" in template else template))
+	_bm.weather_continues.connect(func(weather_type: int):
+		_log(_WEATHER_CONTINUES_TEXT.get(weather_type, "The weather continues."))
+		# [M26B4-3] Queued AFTER the text beat _log() just pushed, reproducing
+		# BattleScript_WeatherContinues' own printfromtable -> waitmessage ->
+		# playanimation_var order directly in the beat queue.
+		_pending_beats.append({"kind": "anim_async", "start": func():
+			await _play_weather_effect(weather_type, false)}))
+	# [M26B4-3] An ABILITY setting weather plays the same `*_CONTINUES` form
+	# (TryChangeBattleWeather sets animArg1 only on the ability branch,
+	# battle_util.c:1999-2007). A MOVE-driven set is skipped here because
+	# _on_hit_effect_move_executed already played the move's own animation.
+	_bm.weather_set.connect(func(by_pokemon: BattlePokemon, weather_type: int):
+		if by_pokemon == null or by_pokemon.ability == null:
+			return
+		if not _WEATHER_SETTER_ABILITIES.has(by_pokemon.ability.ability_id):
+			return
+		_pending_beats.append({"kind": "anim_async", "start": func():
+			await _play_weather_effect(weather_type, false)}))
 	_bm.weather_damage.connect(func(mon: BattlePokemon, amount: int):
 		_log("%s was buffeted by the weather! (%d damage)" % [_mon_label(mon), amount]))
 
@@ -2106,6 +2636,32 @@ func _on_hit_effect_move_executed(attacker: BattlePokemon, defender: BattlePokem
 		move: MoveData, _damage: int) -> void:
 	if move == null:
 		return
+	var move_id := HitEffectRegistry.move_id_of(move)
+
+	# [M26B4-3] Weather-setting moves play their OWN full-screen weather
+	# animation instead of a targeted hit effect. Keyed off `weather_type`
+	# rather than a hardcoded move-id list, so it covers every weather move
+	# this project has (and any added later) with no further wiring.
+	#
+	# Checked BEFORE the target-sprite lookup below, deliberately: a weather
+	# animation is full-screen and has no target, so requiring a resolvable
+	# target sprite would be wrong here even though it is correct for every
+	# targeted hit effect.
+	#
+	# Snowscape is the one id-specific case: it sets WEATHER_HAIL here because
+	# [D2 batch] collapsed Snow into Hail, but Rob's 2026-07-27 call was to
+	# keep its own authentic snowflake animation. Handled by id precisely
+	# because the weather STATE can no longer distinguish it.
+	if move.weather_type != DamageCalculator.WEATHER_NONE:
+		var weather_for_move: int = move.weather_type
+		var is_snowscape: bool = move_id == _MOVE_ID_SNOWSCAPE
+		_pending_beats.append({"kind": "anim_async", "start": func():
+			if is_snowscape:
+				await _play_weather_snow()
+			else:
+				await _play_weather_effect(weather_for_move, true)})
+		return
+
 	# Self-targeting moves (Swords Dance, Rest, etc.) resolve defender ==
 	# attacker at the BattleManager layer already -- target_mon naturally
 	# becomes the attacker in that case with no special-casing needed here.
@@ -2116,7 +2672,6 @@ func _on_hit_effect_move_executed(attacker: BattlePokemon, defender: BattlePokem
 	if target_node == null:
 		return
 
-	var move_id := HitEffectRegistry.move_id_of(move)
 	var start_effect: Callable
 	match move_id:
 		HitEffectRegistry.MOVE_ID_FLAMETHROWER:
@@ -2625,6 +3180,20 @@ func _wire_debug_signals() -> void:
 				"Weather %d set (%d turns)" % [weather_type, _bm.weather_duration]))
 	_bm.weather_expired.connect(func(_weather_type: int):
 		_add_debug_entry(DebugCategory.DURATIONS, "Weather expired"))
+	# [M26B4-0] The remaining-turn counter is exactly what this category exists
+	# for, and until now it was only ever visible at set/expiry -- never during.
+	_bm.weather_continues.connect(func(weather_type: int):
+		_add_debug_entry(DebugCategory.DURATIONS,
+				"Weather %d continues (%d turns left)" % [weather_type, _bm.weather_duration]))
+	# [M26D3-1] Also tagged RNG, because 4 of the 16 reasons (flinched,
+	# paralyzed, asleep, confused) ARE the observable OUTCOME of the very rolls
+	# this category was created for -- M26A2's own category note names
+	# "confusion/paralysis/flinch rolls" explicitly. The raw roll values remain
+	# unexposed (that is M26A2's own disclosed gap, unchanged here), but the
+	# outcome is now visible where a reader would look for it.
+	_bm.move_skipped.connect(func(pokemon: BattlePokemon, reason: String):
+		_add_debug_entry(DebugCategory.RNG,
+				"%s skipped its move (%s)" % [_mon_label(pokemon), reason]))
 	_bm.side_condition_set.connect(func(side: int, condition_name: String):
 		_add_debug_entry(DebugCategory.DURATIONS,
 				"%s set on %s side" % [condition_name.capitalize(), _side_label(side)]))
@@ -3502,6 +4071,15 @@ func _run_message_pacing() -> void:
 					var tween: Variant = start.call()
 					if tween != null:
 						await (tween as Tween).finished
+			# [M26B4-3] Like "anim", but for effects that are a multi-phase
+			# COROUTINE rather than a single Tween (the weather animations:
+			# tint ramp -> staggered particle spawns -> tint release). Awaited
+			# for the same reason "anim" is -- source's own Cmd_playanimation
+			# blocks the battle script until the controller finishes.
+			"anim_async":
+				var run: Callable = beat.get("start", Callable())
+				if run.is_valid():
+					await run.call()
 			"flash":
 				var flash_sprite: Control = beat.get("sprite", null)
 				if flash_sprite != null:
@@ -3548,9 +4126,19 @@ func _run_message_pacing() -> void:
 				# literal source figure is a long diagonal at this
 				# project's 4x, exactly the shape that made B3-6b's own
 				# fly-out swing read badly.
+				# hidepartystatussummary sits immediately before
+				# switchinanim in every one of source's three switch
+				# scripts, so the row clears as the ball is thrown.
+				_hide_party_status_rows()
 				var reveal_mon: BattlePokemon = beat.get("mon", null)
 				if reveal_mon != null:
 					await _play_send_out(reveal_mon)
+			"party_summary_show":
+				# Mid-battle: one side only, and it STAYS up until the
+				# send-out clears it rather than self-hiding on a timer.
+				# That is what makes it occupy the recall -> send-out gap
+				# instead of overlapping the attack.
+				_show_party_status_side(beat.get("is_player", true))
 			"recall":
 				# [M26B3-6a] The fainting Pokémon is drawn back into its
 				# ball. Sequenced here rather than run straight off the
@@ -3580,11 +4168,124 @@ static func _party_ball_texture(mon: BattlePokemon) -> Texture2D:
 	return load("res://assets/sprites/battle_ui/party_status/ball_normal.png")
 
 
-func _refresh_party_status_row(row: HBoxContainer, party: BattleParty) -> void:
-	for i in range(row.get_child_count()):
-		var ball := row.get_child(i) as TextureRect
-		var mon: BattlePokemon = party.members[i] if i < party.members.size() else null
+# [M26B5] Party-status row geometry, DERIVED FROM THE HEALTHBOX rather
+# than hand-anchored.
+#
+# Source positions this row by hardcoded pixel coordinates against the
+# healthbox slot it temporarily replaces (`bar_X`/`bar_Y`,
+# battle_interface.c:1206-1248) -- the row belongs TO that slot, and the
+# two are mutually exclusive: the balls fill the healthbox's space
+# precisely during the windows when no Pokemon occupies it. Deriving the
+# position from the real panel rect reproduces that relationship at this
+# project's own resolution instead of re-deriving GBA pixel values that
+# would not transfer, and means the row follows automatically whenever a
+# health panel moves rather than needing a second manual pairing kept in
+# sync by hand.
+#
+# THE HBoxContainer IS RETIRED. Source fans the balls in individually --
+# `data[1] = i * 7 + 10` is a per-ball DELAY and `x2 = 120` a per-ball
+# animation offset, so the six arrive in sequence rather than together.
+# A Container rewrites every child's `position` on each
+# NOTIFICATION_SORT_CHILDREN (fired on resize, visibility and theme
+# changes), so a per-ball slide cannot survive inside one -- and would
+# fail exactly during M26G3's own non-native-window-size pass. This is
+# the same Container-owns-its-children mechanism that produced the
+# M25h-1.1 zero-height bug. The balls are free-positioned Controls now,
+# consistent with every other element on BattleStage (sprites, bases,
+# panels are all anchored/offset -- nothing else there uses a container).
+const _PARTY_BALL_SIZE := 28.0
+const _PARTY_BALL_GAP := 6.0
+const _PARTY_BAR_HEIGHT := 16.0
+
+# [M26B5] The black gradient strip the balls sit ON. A real source sprite
+# (`sStatusSummaryBarSpriteTemplates`, battle_interface.c:1266), created
+# at layer 10 against the balls' 9 -- i.e. explicitly BEHIND them --
+# which is why it is inserted as child index 0 below.
+const _PARTY_STATUS_BAR_TEX := "res://assets/sprites/battle_ui/party_status/ball_status_bar.png"
+
+
+## Ensures a row has its bar child, creating it on first use. Built in
+## code rather than authored into both .tscn files so the two scenes
+## cannot drift apart on it, and so a missing/unimported texture degrades
+## to "no bar" rather than breaking the whole row.
+func _ensure_party_status_bar(row: Control) -> TextureRect:
+	var bar := row.get_node_or_null("StatusBar") as TextureRect
+	if bar != null:
+		return bar
+	if not ResourceLoader.exists(_PARTY_STATUS_BAR_TEX):
+		return null
+	var tex := load(_PARTY_STATUS_BAR_TEX) as Texture2D
+	if tex == null:
+		return null
+	bar = TextureRect.new()
+	bar.name = "StatusBar"
+	bar.texture = tex
+	bar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bar.stretch_mode = TextureRect.STRETCH_SCALE
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(bar)
+	# Behind the balls, matching source's own layer 10 vs 9.
+	row.move_child(bar, 0)
+	return bar
+
+
+## Where one side's row sits, in BattleStage-local coordinates, derived
+## from that side's own health panel. Falls back to a sane offset if the
+## panel is missing (bare test instances have no panels wired).
+func _party_row_origin(is_player: bool) -> Vector2:
+	var panels: Array = _ply_panels if is_player else _opp_panels
+	if panels.is_empty() or not is_instance_valid(panels[0]):
+		return Vector2(60.0 if is_player else 560.0, 40.0)
+	var panel := panels[0] as Control
+	var r := panel.get_rect()
+	# Left-aligned with the panel it replaces, vertically centred on it --
+	# the balls occupy the healthbox's own slot, which is the whole point.
+	var row_w := _PARTY_BALL_SIZE * 6.0 + _PARTY_BALL_GAP * 5.0
+	return Vector2(r.position.x + (r.size.x - row_w) * 0.5,
+			r.position.y + (r.size.y - _PARTY_BALL_SIZE) * 0.5)
+
+
+## Resting position of ball `i` within a row. Uniform spacing is correct
+## (source's own `x += 10 * i + 24`); it is the ARRIVAL that is staggered.
+func _party_ball_position(origin: Vector2, i: int) -> Vector2:
+	return origin + Vector2(i * (_PARTY_BALL_SIZE + _PARTY_BALL_GAP), 0.0)
+
+
+func _refresh_party_status_row(row: Control, party: BattleParty) -> void:
+	# The bar is itself a TextureRect and is child 0, so it MUST be skipped
+	# explicitly and the ball index counted separately -- a plain
+	# get_child(i) loop hands the bar a ball texture and shifts every ball
+	# by one. Only surfaced once the bar's own .import existed and it
+	# started being created at all.
+	var idx := 0
+	for c in row.get_children():
+		var ball := c as TextureRect
+		if ball == null or ball.name == "StatusBar":
+			continue
+		var mon: BattlePokemon = party.members[idx] if idx < party.members.size() else null
 		ball.texture = _party_ball_texture(mon)
+		idx += 1
+
+
+## Re-lays one side's row against its current healthbox position, and
+## sizes/places the bar strip behind it.
+func _layout_party_status_row(row: Control, is_player: bool) -> void:
+	var origin := _party_row_origin(is_player)
+	var row_w := _PARTY_BALL_SIZE * 6.0 + _PARTY_BALL_GAP * 5.0
+	row.position = Vector2.ZERO
+	var bar := _ensure_party_status_bar(row)
+	if bar != null:
+		bar.position = Vector2(origin.x, origin.y
+				+ (_PARTY_BALL_SIZE - _PARTY_BAR_HEIGHT) * 0.5)
+		bar.size = Vector2(row_w, _PARTY_BAR_HEIGHT)
+	var idx := 0
+	for c in row.get_children():
+		var ball := c as TextureRect
+		if ball == null or ball == bar or ball.name == "StatusBar":
+			continue
+		ball.position = _party_ball_position(origin, idx)
+		ball.size = Vector2(_PARTY_BALL_SIZE, _PARTY_BALL_SIZE)
+		idx += 1
 
 
 # [M26o] Transient row, matching source's own two real call sites: battle
@@ -3594,13 +4295,148 @@ func _refresh_party_status_row(row: HBoxContainer, party: BattleParty) -> void:
 # interactive run -- bypassed (icons refreshed, no visible hold) for
 # `--autoplay` runs and bare test instances, the same precedent
 # _run_message_pacing() already established for this exact class of bypass.
+# [M26B5 items 2+4] Entry-animation constants, ported from
+# CreatePartyStatusSummarySprites (battle_interface.c:1261-1310) and the
+# two entry callbacks (SpriteCB_StatusSummaryBar_Enter :1591,
+# SpriteCB_StatusSummaryBalls_Enter :1611).
+#
+# The bar starts offset and walks toward rest at a fixed rate; the balls
+# each wait their own delay, then slide in at 2px/frame. That per-ball
+# delay is the fan -- `data[1] = i * 7 + 10` on the player's side and
+# `(6 - i) * 7 + 10` on the opponent's, so each side fans in from its own
+# outer edge inward.
+#
+# Offsets are GBA pixels against a 60px-wide source row; ours is ~198px,
+# so they are scaled by that ratio rather than used literally.
+const _PARTY_ENTRY_SCALE := 3.3
+const _PARTY_BAR_ENTRY_OFFSET := 100.0   # bar_pos2_X, sign per side
+const _PARTY_BAR_ENTRY_STEP := 5.0       # bar_data0, px per GBA frame
+const _PARTY_BALL_ENTRY_OFFSET := 120.0  # ball x2, sign per side
+const _PARTY_BALL_ENTRY_STEP := 2.0      # data[1] accumulator -> 2px/frame
+
+
+## Per-ball entry delay in GBA frames. Player fans left-to-right, opponent
+## right-to-left -- source uses a different expression per side.
+static func _party_ball_entry_delay(i: int, is_player: bool) -> int:
+	return (i * 7 + 10) if is_player else ((6 - i) * 7 + 10)
+
+
+## Slides the bar and fans the balls in. `staggered` is source's own
+## `isBattleStart`: the battle-start entry fans each ball in on its own
+## delay, while a mid-battle switch brings them in together.
+##
+## DISCLOSED APPROXIMATION: source's mid-battle path swaps the ball
+## callback to SpriteCB_StatusSummaryBalls_OnSwitchout, whose body was not
+## ported -- the quick non-staggered slide here stands in for it. The
+## battle-start path IS the real ported one. Flagged rather than presented
+## as complete.
+func _animate_party_row_entry(row: Control, is_player: bool, staggered: bool) -> void:
+	if row == null or not is_instance_valid(row) or not is_inside_tree():
+		return
+	var sign_ := 1.0 if is_player else -1.0
+	var bar := row.get_node_or_null("StatusBar") as TextureRect
+	var balls: Array = []
+	for c in row.get_children():
+		var b := c as TextureRect
+		if b != null and b != bar:
+			balls.append(b)
+
+	var rest_bar: Vector2 = bar.position if bar != null else Vector2.ZERO
+	var rest: Array = []
+	for b in balls:
+		rest.append(b.position)
+	# Seed every element at its own entry offset.
+	if bar != null:
+		bar.position = rest_bar + Vector2(sign_ * _PARTY_BAR_ENTRY_OFFSET * _PARTY_ENTRY_SCALE, 0.0)
+	var delays: Array = []
+	for i in range(balls.size()):
+		balls[i].position = rest[i] + Vector2(
+				sign_ * _PARTY_BALL_ENTRY_OFFSET * _PARTY_ENTRY_SCALE, 0.0)
+		delays.append(_party_ball_entry_delay(i, is_player) if staggered else 0)
+
+	# Stepped on the same wall-clock accumulator the entry animations use,
+	# so the fan lasts the same real time at any refresh rate (M26G4).
+	var clock := MonAnimator.Clock.new()
+	var elapsed := 0
+	var guard := 0
+	while guard < 400:
+		await get_tree().process_frame
+		if not is_instance_valid(row) or not is_inside_tree():
+			return
+		guard += 1
+		var steps: int = clock.advance(get_process_delta_time())
+		if steps <= 0:
+			continue
+		elapsed += steps
+		var settled := true
+		if bar != null and is_instance_valid(bar):
+			var dx: float = rest_bar.x - bar.position.x
+			var move: float = _PARTY_BAR_ENTRY_STEP * _PARTY_ENTRY_SCALE * steps
+			if absf(dx) <= move:
+				bar.position = rest_bar
+			else:
+				bar.position.x += signf(dx) * move
+				settled = false
+		for i in range(balls.size()):
+			if not is_instance_valid(balls[i]):
+				continue
+			if elapsed < int(delays[i]):
+				settled = false
+				continue
+			var bdx: float = rest[i].x - balls[i].position.x
+			var bmove: float = _PARTY_BALL_ENTRY_STEP * _PARTY_ENTRY_SCALE * steps
+			if absf(bdx) <= bmove:
+				balls[i].position = rest[i]
+			else:
+				balls[i].position.x += signf(bdx) * bmove
+				settled = false
+		if settled:
+			return
+
+
+## Mid-battle show: one side, no timed hold. The row is cleared by
+## _hide_party_status_rows() when the send-out begins, mirroring
+## hidepartystatussummary's own position in the switch scripts.
+func _show_party_status_side(is_player: bool) -> void:
+	var row: Control = _party_status_player if is_player else _party_status_opponent
+	var party: BattleParty = _player_party if is_player else _opp_party
+	if row == null or party == null:
+		return
+	_refresh_party_status_row(row, party)
+	if _is_autoplay_run or not is_inside_tree():
+		return
+	_layout_party_status_row(row, is_player)
+	row.visible = true
+	await _animate_party_row_entry(row, is_player, false)
+
+
+func _hide_party_status_rows() -> void:
+	if _party_status_opponent != null:
+		_party_status_opponent.visible = false
+	if _party_status_player != null:
+		_party_status_player.visible = false
+
+
 func _show_party_status_summary() -> void:
 	_refresh_party_status_row(_party_status_opponent, _opp_party)
 	_refresh_party_status_row(_party_status_player, _player_party)
 	if _is_autoplay_run or not is_inside_tree():
 		return
+	# Re-derived every time rather than cached: a health panel can move
+	# between showings (doubles, or Rob repositioning one in the editor),
+	# and the whole point of deriving is that the row follows.
+	#
+	# Deliberately AFTER the bypass: this creates the bar node as a side
+	# effect, and the bypassed path is meant to refresh icon state and do
+	# no visual work at all. Placing it before the return also shifted
+	# every ball's child index on bare test instances.
+	_layout_party_status_row(_party_status_opponent, false)
+	_layout_party_status_row(_party_status_player, true)
 	_party_status_opponent.visible = true
 	_party_status_player.visible = true
+	# isBattleStart == TRUE: the balls fan in individually.
+	_animate_party_row_entry(_party_status_opponent, false, true)
+	await _animate_party_row_entry(_party_status_player, true, true)
 	await get_tree().create_timer(_PARTY_STATUS_HOLD_SECONDS).timeout
 	_party_status_opponent.visible = false
 	_party_status_player.visible = false
@@ -4354,6 +5190,640 @@ func _wait_anim_frames(frames: int) -> void:
 	if frames <= 0:
 		return
 	await get_tree().create_timer(frames * _ANIM_FRAME_SECONDS).timeout
+
+
+# ── [M26B4-2] In-battle weather animations ───────────────────────────────
+#
+# Source has NO persistent weather renderer (proven five ways in
+# docs/m26_b4_recon.md §1 -- battle_bg.c has zero weather references, and
+# CB2_InitBattleInternal destroys the entire field-weather task/sprite set at
+# battle entry). Instead it REPLAYS a finite animation every turn, from
+# BattleScript_WeatherContinues. These are those animations.
+#
+# For Sun the per-turn "continues" script is a literal `goto` into the MOVE's
+# own script -- the same animation, not a variant. Only RAIN has a separate,
+# deliberately shorter per-turn routine (`RainDrops`, ~66 frames against Rain
+# Dance's ~166), which is what `is_move_variant` selects between.
+#
+# GBA blend coefficients are out of 16 (`AnimTask_BlendBattleAnimPal`'s own
+# target_blend_y), so coefficient/16 maps straight onto an alpha.
+const _WEATHER_FX_DIR := "res://assets/sprites/battle_effects/weather/"
+const _WEATHER_GBA_SIZE := Vector2(240.0, 160.0)
+const _MOVE_ID_SNOWSCAPE := 809
+
+# [M26B4-3] The abilities that set weather on switch-in / on being hit. Used
+# only to tell an ABILITY-driven `weather_set` from a MOVE-driven one, which
+# the signal itself does not distinguish: source plays the shorter
+# `*_CONTINUES` form for an ability and the move's own longer animation for a
+# move. Deliberately derived from the setter's own ability rather than by
+# adding a parameter to `weather_set` (5 emit sites, 2 live listeners).
+#
+# Disclosed edge case: a Drizzle holder USING Rain Dance is classified as
+# ability-driven and so plays the shorter rain form. Both are rain animations
+# differing only in length, and the move handler above returns before this
+# fires, so the visible cost is bounded to that.
+const _WEATHER_SETTER_ABILITIES: Array[int] = [
+	AbilityManager.ABILITY_DRIZZLE,
+	AbilityManager.ABILITY_DROUGHT,
+	AbilityManager.ABILITY_SAND_STREAM,
+	AbilityManager.ABILITY_SNOW_WARNING,
+	AbilityManager.ABILITY_SAND_SPIT,
+	AbilityManager.ABILITY_PRIMORDIAL_SEA,
+	AbilityManager.ABILITY_DESOLATE_LAND,
+	AbilityManager.ABILITY_DELTA_STREAM,
+]
+
+# Rain -- gBattleAnimMove_RainDance / RainDrops (battle_anim_scripts.s:24096, :29148)
+const _RAIN_TINT := Color(0.0, 0.0, 0.0)          # RGB_BLACK
+const _RAIN_TINT_AMOUNT := 4.0 / 16.0             # blend_y 0->4
+const _RAIN_TINT_FRAMES := 8                      # 4 steps @ delay 2
+const _RAIN_TASKS := 2                            # two AnimTask_CreateRaindrops
+const _RAIN_SPAWN_INTERVAL := 3                   # arg1: one drop every 3 frames
+const _RAIN_DURATION_MOVE := 120                  # arg2, move variant
+const _RAIN_DURATION_CONTINUES := 60              # arg2, per-turn variant
+const _RAIN_HOLD_MOVE := 150                      # `delay 120` + `delay 30`
+const _RAIN_HOLD_CONTINUES := 50                  # `delay 50`
+const _RAIN_FALL_FRAMES := 13                     # AnimRainDrop_Step's own `<= 13`
+const _RAIN_FALL_STEP := Vector2(1.0, 4.0)        # x2++, y2 += 4 per frame
+
+# Sun -- gBattleAnimMove_SunnyDay (battle_anim_scripts.s:25469)
+const _SUN_TINT := Color(1.0, 1.0, 1.0)           # RGB_WHITE
+const _SUN_TINT_AMOUNT := 6.0 / 16.0              # blend_y 0->6
+const _SUN_TINT_FRAMES := 6                       # 6 steps @ delay 1
+const _SUN_RAY_COUNT := 4                         # four SunnyDayLightRay calls
+const _SUN_RAY_GAP := 6                           # `delay 6` between them
+const _SUN_RAY_TRAVEL := 60                       # AnimSunlight data[0]
+const _SUN_RAY_TO := Vector2(140.0, 80.0)         # AnimSunlight data[2]/data[4]
+const _SUN_RAY_ALPHA := 13.0 / 16.0               # script's own `setalpha 13, 3`
+const _SUN_RAY_AFFINE_START := 80.0               # sAffineAnim_SunlightRay 0x50
+const _SUN_RAY_AFFINE_STEP := 2.0                 # ...then +0x2 per frame
+const _SUN_RAY_ROT_STEP := 10                     # ...and +10 rotation per frame
+
+
+# Scale factor from GBA screen space onto this project's real stage.
+func _weather_stage_scale() -> Vector2:
+	if _effect_layer == null:
+		return Vector2.ONE
+	var s: Vector2 = _effect_layer.size
+	if s.x <= 0.0 or s.y <= 0.0:
+		return Vector2.ONE
+	return s / _WEATHER_GBA_SIZE
+
+
+# The whole-screen tint.
+#
+# DELIBERATELY a full-screen ColorRect rather than `_apply_blend_material`,
+# which the roadmap originally suggested. Two reasons, both real:
+#   1. `_apply_blend_material` is PER-CanvasItem and hardcodes the recall pink;
+#      it tints one node's own texture.
+#   2. Source's `AnimTask_BlendBattleAnimPal` blends whole PALETTES
+#      (F_PAL_BG | F_PAL_BATTLERS_2) -- a hardware blend of entire layers
+#      toward a colour. A single translucent overlay reproduces that directly,
+#      and does so for the background AND every sprite at once, which is what
+#      the flag pair actually means.
+#
+# Added as the FIRST child of the effect layer so particles spawned afterwards
+# draw on top of it, matching source's own ordering (the tint is a background
+# blend, the particles are OBJ-layer sprites above it).
+#
+# KNOWN, disclosed: this also tints the health boxes, which source's own two
+# palette flags do not cover. Left for M26G2's polish pass rather than
+# special-cased here -- see docs/m26_b4_recon.md §4.
+# `bg_only` reproduces Hail's own narrower blend, which targets `F_PAL_BG`
+# alone rather than Rain/Sun's `F_PAL_BG | F_PAL_BATTLERS_2`: the tint is
+# parented directly into BattleStage at index 1 -- above `Background` (its
+# first child) but BELOW every sprite and health box -- so the backdrop dims
+# and the Pokemon do not. A real per-weather asymmetry, not an oversight.
+func _weather_make_tint(color: Color, bg_only: bool = false) -> ColorRect:
+	if _effect_layer == null:
+		return null
+	var parent: Node = _effect_layer
+	if bg_only:
+		parent = get_node_or_null("BattleStage")
+		if parent == null:
+			return null
+	var rect := ColorRect.new()
+	rect.color = Color(color.r, color.g, color.b, 0.0)
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(rect)
+	parent.move_child(rect, 1 if bg_only else 0)
+	_active_hit_effect_nodes.append(rect)
+	rect.tree_exited.connect(func(): _active_hit_effect_nodes.erase(rect))
+	return rect
+
+
+func _weather_tween_tint(rect: ColorRect, to_alpha: float, frames: int) -> void:
+	if rect == null or not is_instance_valid(rect):
+		return
+	var tw := create_tween()
+	rect.set_meta("weather_tint_tween", tw)
+	tw.tween_property(rect, "color:a", to_alpha, frames * _ANIM_FRAME_SECONDS)
+	await tw.finished
+
+
+# One raindrop: spawns at a uniformly random x over the full width and y over
+# the TOP HALF only (`Random2() % DISPLAY_WIDTH`, `% (DISPLAY_HEIGHT / 2)` --
+# AnimTask_CreateRaindrops, battle_anim_water.c:641-643), then falls
+# down-and-right for 13 frames (AnimRainDrop_Step).
+func _weather_spawn_raindrop(sheet: Texture2D) -> void:
+	if _effect_layer == null or sheet == null:
+		return
+	var scale := _weather_stage_scale()
+	var frame_h: int = int(sheet.get_height() / 7.0)  # 16x224 => 7 stacked frames
+	var atlas := AtlasTexture.new()
+	atlas.atlas = sheet
+	atlas.region = Rect2(0, 0, sheet.get_width(), frame_h)
+
+	var drop := TextureRect.new()
+	drop.texture = atlas
+	drop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	drop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	drop.size = Vector2(sheet.get_width(), frame_h) * scale
+	drop.position = Vector2(
+			randf() * _WEATHER_GBA_SIZE.x,
+			randf() * (_WEATHER_GBA_SIZE.y * 0.5)) * scale
+	drop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_effect_layer.add_child(drop)
+	_active_hit_effect_nodes.append(drop)
+	drop.tree_exited.connect(func(): _active_hit_effect_nodes.erase(drop))
+
+	var travel: Vector2 = _RAIN_FALL_STEP * float(_RAIN_FALL_FRAMES) * scale
+	var tw := create_tween()
+	drop.set_meta("weather_tween", tw)
+	tw.tween_property(drop, "position", drop.position + travel,
+			_RAIN_FALL_FRAMES * _ANIM_FRAME_SECONDS)
+	tw.tween_callback(func():
+		if is_instance_valid(drop):
+			drop.queue_free())
+
+
+# One sunlight ray: AnimSunlight pins it to (0,0) then linear-translates to
+# (140, 80) over 60 frames and destroys it (battle_anim_fire.c:654-663).
+func _weather_spawn_sun_ray(sheet: Texture2D) -> void:
+	if _effect_layer == null or sheet == null:
+		return
+	var scale := _weather_stage_scale()
+	var ray := TextureRect.new()
+	ray.texture = sheet
+	ray.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ray.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	ray.size = sheet.get_size() * scale
+	ray.pivot_offset = ray.size * 0.5
+	ray.position = Vector2.ZERO
+	# `setalpha 13, 3` in gBattleAnimMove_SunnyDay, against the ray's own
+	# ObjBlend OAM mode: the sprite contributes 13/16. Without this the ray
+	# renders as an opaque slab rather than a beam of light -- which is
+	# exactly how it looked in this sub-phase's first capture pass.
+	ray.modulate.a = _SUN_RAY_ALPHA
+	ray.scale = Vector2.ONE * (256.0 / _SUN_RAY_AFFINE_START)
+	ray.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_effect_layer.add_child(ray)
+	_active_hit_effect_nodes.append(ray)
+	ray.tree_exited.connect(func(): _active_hit_effect_nodes.erase(ray))
+
+	# sAffineAnim_SunlightRay: set the affine param to 0x50, then add 2 and
+	# rotate 10 every frame, looping. GBA affine scale is INVERTED (256/param,
+	# the same rule MonAnimator.godot_scale encodes), so a RISING param means
+	# the ray SHRINKS as it travels -- 3.2x down to ~1.28x over its 60 frames.
+	# Rotation uses this project's established /65536*TAU convention.
+	var end_param: float = _SUN_RAY_AFFINE_START \
+			+ _SUN_RAY_AFFINE_STEP * float(_SUN_RAY_TRAVEL)
+	var duration: float = _SUN_RAY_TRAVEL * _ANIM_FRAME_SECONDS
+	var tw := create_tween()
+	tw.set_parallel(true)
+	ray.set_meta("weather_tween", tw)
+	tw.tween_property(ray, "position", _SUN_RAY_TO * scale, duration)
+	tw.tween_property(ray, "scale", Vector2.ONE * (256.0 / end_param), duration)
+	tw.tween_property(ray, "rotation",
+			float(_SUN_RAY_ROT_STEP * _SUN_RAY_TRAVEL) / 65536.0 * TAU, duration)
+	tw.chain().tween_callback(func():
+		if is_instance_valid(ray):
+			ray.queue_free())
+
+
+# Snowscape (move 809) -- gBattleAnimMove_Snowscape (battle_anim_scripts.s:14166).
+#
+# Reachable ONLY as a move animation, never as a per-turn replay: [D2 batch]
+# permanently collapsed source's Snow into this project's WEATHER_HAIL, so the
+# weather STATE Snowscape sets is hail and the per-turn replay is hail's. Rob's
+# call (2026-07-27) was to keep Snowscape's own authentic move animation
+# anyway. See docs/m26_b4_recon.md and the M35 roadmap note.
+const _SNOW_TINT := Color8(88, 144, 176)          # RGB(11, 18, 22), 5-bit -> 8-bit
+const _SNOW_TINT_AMOUNT := 4.0 / 16.0             # blend_y 0->4
+const _SNOW_TINT_FRAMES := 8                      # 4 steps @ delay 2
+const _SNOW_TASKS := 3                            # three AnimTask_CreateSnowflakes
+const _SNOW_SPAWN_INTERVAL := 3
+const _SNOW_DURATION := 120
+const _SNOW_HOLD := 150                           # `delay 120` + `delay 30`
+const _SNOW_FALL_FRAMES := 13
+# AnimSnowflakes_Step is literally `x2++; y2 += 2; x2--` -- the x increment and
+# decrement CANCEL, so a snowflake falls straight down at 2px/frame. A real
+# source quirk, reproduced rather than "corrected" to a diagonal drift.
+const _SNOW_FALL_STEP := Vector2(0.0, 2.0)
+
+
+func _weather_spawn_snowflake(sheet: Texture2D) -> void:
+	if _effect_layer == null or sheet == null:
+		return
+	var scale := _weather_stage_scale()
+	var frame_h: int = int(sheet.get_height() / 7.0)  # 16x224 => 7 stacked frames
+	var atlas := AtlasTexture.new()
+	atlas.atlas = sheet
+	atlas.region = Rect2(0, 0, sheet.get_width(), frame_h)
+
+	var flake := TextureRect.new()
+	flake.texture = atlas
+	flake.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	flake.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	flake.size = Vector2(sheet.get_width(), frame_h) * scale
+	flake.position = Vector2(
+			randf() * _WEATHER_GBA_SIZE.x,
+			randf() * (_WEATHER_GBA_SIZE.y * 0.5)) * scale
+	flake.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_effect_layer.add_child(flake)
+	_active_hit_effect_nodes.append(flake)
+	flake.tree_exited.connect(func(): _active_hit_effect_nodes.erase(flake))
+
+	var travel: Vector2 = _SNOW_FALL_STEP * float(_SNOW_FALL_FRAMES) * scale
+	var tw := create_tween()
+	flake.set_meta("weather_tween", tw)
+	tw.tween_property(flake, "position", flake.position + travel,
+			_SNOW_FALL_FRAMES * _ANIM_FRAME_SECONDS)
+	tw.tween_callback(func():
+		if is_instance_valid(flake):
+			flake.queue_free())
+
+
+func _play_weather_snow() -> void:
+	var sheet := load(_WEATHER_FX_DIR + "snowflakes.png") as Texture2D
+	if sheet == null:
+		return
+	var tint := _weather_make_tint(_SNOW_TINT)
+	await _weather_tween_tint(tint, _SNOW_TINT_AMOUNT, _SNOW_TINT_FRAMES)
+	var spawns: int = int(_SNOW_DURATION / float(_SNOW_SPAWN_INTERVAL))
+	for i in range(spawns):
+		if not is_instance_valid(self) or not is_inside_tree():
+			return
+		for _t in range(_SNOW_TASKS):
+			_weather_spawn_snowflake(sheet)
+		await _wait_anim_frames(_SNOW_SPAWN_INTERVAL)
+	await _wait_anim_frames(maxi(0, _SNOW_HOLD - _SNOW_DURATION))
+	await _weather_tween_tint(tint, 0.0, _SNOW_TINT_FRAMES)
+	if is_instance_valid(tint):
+		tint.queue_free()
+
+
+# Plays the weather animation for `weather_type`.
+#
+# `is_move_variant` selects Rain Dance's own longer form over the shorter
+# per-turn `RainDrops` routine; it is a no-op for every other weather, whose
+# per-turn script is a literal `goto` into the move's own.
+#
+# [CORRECTED at M26B4-3] An earlier draft of this comment claimed these are
+# "deliberately NOT awaited by callers -- source lets the battle carry on over
+# these". That was an assumption and it is WRONG. `Cmd_playanimation` calls
+# `BtlController_EmitBattleAnimation` + `MarkBattlerForControllerExec`, and the
+# main battle loop blocks on `gBattleControllerExecFlags` until the controller
+# reports done -- so source genuinely DOES wait for a weather animation to
+# finish before the script advances. Callers therefore await, via the
+# `anim_async` beat kind. That is also what "ship it source-faithful" means
+# here: the turn really does pause for the animation.
+func _play_weather_effect(weather_type: int, is_move_variant: bool = false) -> void:
+	if _effect_layer == null or not is_inside_tree():
+		return
+	match weather_type:
+		DamageCalculator.WEATHER_RAIN:
+			await _play_weather_rain(is_move_variant)
+		DamageCalculator.WEATHER_SUN:
+			await _play_weather_sun()
+		DamageCalculator.WEATHER_HAIL:
+			await _play_weather_hail()
+		DamageCalculator.WEATHER_SANDSTORM:
+			await _play_weather_sandstorm()
+		_:
+			# Strong Winds (Delta Stream) has no animation in source at all --
+			# it is not one of gWeatherTurnStringIds' animated entries. No-op
+			# rather than inventing a stand-in.
+			return
+
+
+func _play_weather_rain(is_move_variant: bool) -> void:
+	var sheet := load(_WEATHER_FX_DIR + "rain_drops.png") as Texture2D
+	if sheet == null:
+		return
+	var duration: int = _RAIN_DURATION_MOVE if is_move_variant else _RAIN_DURATION_CONTINUES
+	var hold: int = _RAIN_HOLD_MOVE if is_move_variant else _RAIN_HOLD_CONTINUES
+	var tint := _weather_make_tint(_RAIN_TINT)
+	await _weather_tween_tint(tint, _RAIN_TINT_AMOUNT, _RAIN_TINT_FRAMES)
+
+	# Both tasks run concurrently, each spawning one drop every
+	# _RAIN_SPAWN_INTERVAL frames for `duration` frames -- so the drops sit at
+	# many different fall depths at any instant rather than in lockstep. Timed
+	# off the wall clock, not process_frame: [M26B3-6a] measured a
+	# frame-tied stagger running 2.75x too fast on a 144Hz display.
+	var spawns: int = int(duration / float(_RAIN_SPAWN_INTERVAL))
+	for i in range(spawns):
+		if not is_instance_valid(self) or not is_inside_tree():
+			return
+		for _t in range(_RAIN_TASKS):
+			_weather_spawn_raindrop(sheet)
+		await _wait_anim_frames(_RAIN_SPAWN_INTERVAL)
+
+	await _wait_anim_frames(maxi(0, hold - duration))
+	await _weather_tween_tint(tint, 0.0, _RAIN_TINT_FRAMES)
+	if is_instance_valid(tint):
+		tint.queue_free()
+
+
+func _play_weather_sun() -> void:
+	var sheet := load(_WEATHER_FX_DIR + "sunlight.png") as Texture2D
+	if sheet == null:
+		return
+	var tint := _weather_make_tint(_SUN_TINT)
+	await _weather_tween_tint(tint, _SUN_TINT_AMOUNT, _SUN_TINT_FRAMES)
+	for i in range(_SUN_RAY_COUNT):
+		if not is_instance_valid(self) or not is_inside_tree():
+			return
+		_weather_spawn_sun_ray(sheet)
+		await _wait_anim_frames(_SUN_RAY_GAP)
+	await _wait_anim_frames(_SUN_RAY_TRAVEL - _SUN_RAY_COUNT * _SUN_RAY_GAP)
+	await _weather_tween_tint(tint, 0.0, _SUN_TINT_FRAMES)
+	if is_instance_valid(tint):
+		tint.queue_free()
+
+
+# ── [M26B4-2b] Hail ──────────────────────────────────────────────────────
+#
+# Unlike Rain/Sun this is NOT a free-particle animation. GenerateHailParticle
+# (battle_anim_ice.c:1493-1545) walks a fixed coordinate table, resolves each
+# entry against a real BATTLER's on-field sprite where one is visible, spawns
+# the particle OFF-SCREEN ABOVE, and drives it down-and-right onto that
+# battler -- which is why hail visibly lands ON the Pokemon.
+const _HAIL_TINT := Color(0.0, 0.0, 0.0)          # RGB_BLACK
+const _HAIL_TINT_AMOUNT := 6.0 / 16.0             # blend_y 0->6
+const _HAIL_TINT_FRAMES := 18                     # 6 steps @ delay 3
+const _HAIL_GROUP_DELAY := 3                      # state 0's `++timer > 2`
+const _HAIL_SPAWN_GAP := 2                        # tHailSpawnTimer = 1
+const _HAIL_SPAWN_Y := -8.0                       # CreateSprite(..., -8, ...)
+const _HAIL_FALL_STEP := Vector2(4.0, 8.0)        # AnimHailBegin: x += 4, y += 8
+# sAffineAnims_HailParticle: 0x100 / 0xF0 / 0xE0. GBA affine scale is INVERTED
+# (smaller value = BIGGER sprite), so these are 256/value -- the same rule
+# MonAnimator.godot_scale already encodes.
+const _HAIL_AFFINE_SCALES: Array[float] = [1.0, 256.0 / 240.0, 256.0 / 224.0]
+# sHailCoordData (battle_anim_ice.c:357-369). `side` 0 = player, 1 = opponent;
+# `slot` 0 = LEFT, 1 = RIGHT; `mod` -1/0/+1 = NEGATIVE/FIXED/POSITIVE_POS_MOD.
+# A FIXED entry never looks a battler up at all; the other two fall back to
+# their own x/y when that battler's sprite is not visible.
+const _HAIL_COORDS: Array[Dictionary] = [
+	{"x": 100.0, "y": 120.0, "side": 0, "slot": 0, "mod": 0},
+	{"x": 85.0, "y": 120.0, "side": 0, "slot": 0, "mod": -1},
+	{"x": 242.0, "y": 120.0, "side": 1, "slot": 0, "mod": 1},
+	{"x": 66.0, "y": 120.0, "side": 0, "slot": 1, "mod": 1},
+	{"x": 182.0, "y": 120.0, "side": 1, "slot": 1, "mod": -1},
+	{"x": 60.0, "y": 120.0, "side": 0, "slot": 0, "mod": 0},
+	{"x": 214.0, "y": 120.0, "side": 1, "slot": 0, "mod": -1},
+	{"x": 113.0, "y": 120.0, "side": 0, "slot": 0, "mod": 1},
+	{"x": 210.0, "y": 120.0, "side": 1, "slot": 1, "mod": 1},
+	{"x": 38.0, "y": 120.0, "side": 0, "slot": 1, "mod": -1},
+]
+
+
+# Resolves one sHailCoordData entry to a real on-stage target point, in this
+# project's own stage pixels. Mirrors GenerateHailParticle's own branch:
+# FIXED entries always use the table coordinate; the others use the battler's
+# sprite centre offset by ±width/6, ±height/6, falling back to the table
+# coordinate when that battler has no visible sprite (which is every RIGHT
+# slot in singles).
+func _hail_target_point(entry: Dictionary, scale: Vector2) -> Vector2:
+	var fixed := Vector2(entry["x"], entry["y"]) * scale
+	var mod: int = entry["mod"]
+	if mod == 0:
+		return fixed
+	var sprites: Array = _ply_sprites if entry["side"] == 0 else _opp_sprites
+	var slot: int = entry["slot"]
+	if slot >= sprites.size():
+		return fixed
+	var sprite: TextureRect = sprites[slot]
+	if sprite == null or not is_instance_valid(sprite) or not sprite.visible:
+		return fixed
+	var rect: Rect2 = sprite.get_global_rect()
+	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
+		return fixed
+	var centre: Vector2 = rect.get_center()
+	if _effect_layer != null:
+		centre -= _effect_layer.get_global_rect().position
+	return centre + Vector2(rect.size.x / 6.0, rect.size.y / 6.0) * float(mod)
+
+
+func _weather_spawn_hail_particle(sheet: Texture2D, target: Vector2,
+		particle_scale: float, scale: Vector2) -> void:
+	if _effect_layer == null or sheet == null:
+		return
+	var spawn_y: float = _HAIL_SPAWN_Y * scale.y
+	# The x offset is not arbitrary: falling at 4:8 for (target.y - spawn_y)
+	# advances exactly half that in x, so starting half the drop to the LEFT is
+	# what makes the particle land on the target. Source precomputes the same
+	# thing as `battlerX - ((battlerY + 8) / 2)`.
+	var drop: float = target.y - spawn_y
+	var start := Vector2(
+			target.x - drop * (_HAIL_FALL_STEP.x / _HAIL_FALL_STEP.y),
+			spawn_y)
+
+	var p := TextureRect.new()
+	p.texture = sheet
+	p.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	p.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	p.size = sheet.get_size() * scale * particle_scale
+	p.position = start - p.size * 0.5
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_effect_layer.add_child(p)
+	_active_hit_effect_nodes.append(p)
+	p.tree_exited.connect(func(): _active_hit_effect_nodes.erase(p))
+
+	var frames: float = drop / (_HAIL_FALL_STEP.y * scale.y)
+	var tw := create_tween()
+	p.set_meta("weather_tween", tw)
+	tw.tween_property(p, "position", target - p.size * 0.5,
+			maxf(1.0, frames) * _ANIM_FRAME_SECONDS)
+	tw.tween_callback(func():
+		if is_instance_valid(p):
+			p.queue_free())
+
+
+func _play_weather_hail() -> void:
+	var sheet := load(_WEATHER_FX_DIR + "hail.png") as Texture2D
+	if sheet == null:
+		return
+	var scale := _weather_stage_scale()
+	# BG-only blend — see _weather_make_tint's own `bg_only` note.
+	var tint := _weather_make_tint(_HAIL_TINT, true)
+	await _weather_tween_tint(tint, _HAIL_TINT_AMOUNT, _HAIL_TINT_FRAMES)
+
+	# AnimTask_Hail2's own two-level walk: for each of the 10 coordinate
+	# entries, spawn one particle per affine variant 2 frames apart, then wait
+	# the 3-frame group delay before starting the next entry.
+	for entry: Dictionary in _HAIL_COORDS:
+		if not is_instance_valid(self) or not is_inside_tree():
+			return
+		var target: Vector2 = _hail_target_point(entry, scale)
+		for variant in range(_HAIL_AFFINE_SCALES.size()):
+			_weather_spawn_hail_particle(sheet, target,
+					_HAIL_AFFINE_SCALES[variant], scale)
+			await _wait_anim_frames(_HAIL_SPAWN_GAP)
+		await _wait_anim_frames(_HAIL_GROUP_DELAY)
+
+	await _weather_tween_tint(tint, 0.0, _HAIL_TINT_FRAMES)
+	if is_instance_valid(tint):
+		tint.queue_free()
+
+
+# ── [M26B4-2b] Sandstorm ─────────────────────────────────────────────────
+#
+# The only one of the four built on a scrolling BACKGROUND LAYER rather than
+# particles alone: AnimTask_LoadSandstormBackground (battle_anim_rock.c:478)
+# installs the tilemap on BG1 and its _Step (:509) scrolls it every frame
+# while ramping BLDALPHA, with 7 crescent sprites flying across on top.
+const _SAND_SCROLL := Vector2(-6.0, -1.0)         # gBattle_BG1_X/Y per frame
+const _SAND_BLEND_STEP_FRAMES := 4                # `++tBlendTimer == 4`
+const _SAND_BLEND_MAX := 7                        # ramps to BLDALPHA_BLEND(7, 9)
+const _SAND_HOLD_FRAMES := 101                    # `++tFullAlphaTimer == 101`
+const _SAND_FIRST_CRESCENT_DELAY := 16            # script's own `delay 16`
+const _SAND_CRESCENT_GAP := 10                    # `delay 10` between spawns
+const _SAND_SPAWN_X := -64.0                      # sprite->x = -64
+const _SAND_DESPAWN_X := 272.0                    # DISPLAY_WIDTH + 32
+const _SAND_CRESCENT_VEL_Y := 96.0                # arg2, all seven
+# (y, velocityX) per crescent, in script order. Velocities are 8.8 fixed
+# point -- AnimFlyingSandCrescent accumulates then shifts >> 8 -- so 2304
+# is 9 px/frame.
+const _SAND_CRESCENTS: Array[Vector2] = [
+	Vector2(10.0, 2304.0), Vector2(90.0, 2048.0), Vector2(50.0, 2560.0),
+	Vector2(20.0, 2304.0), Vector2(70.0, 1984.0), Vector2(0.0, 2816.0),
+	Vector2(60.0, 2560.0),
+]
+
+
+# One crescent. The source sprite is a 32x32 sheet drawn through a 2-entry
+# subsprite table (sFlyingSandSubsprites, battle_anim_rock.c:117-120) as two
+# 32x16 halves placed at x=-16 and x=+16 -- i.e. the sheet's top half and
+# bottom half laid SIDE BY SIDE to form a 64x16 crescent, not a 32x32 square.
+func _weather_spawn_sand_crescent(sheet: Texture2D, spec: Vector2,
+		scale: Vector2) -> void:
+	if _effect_layer == null or sheet == null:
+		return
+	var half_h: float = sheet.get_height() / 2.0
+	var holder := Control.new()
+	holder.size = Vector2(sheet.get_width() * 2.0, half_h) * scale
+	holder.position = Vector2(_SAND_SPAWN_X * scale.x, spec.x * scale.y)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for i in range(2):
+		var atlas := AtlasTexture.new()
+		atlas.atlas = sheet
+		atlas.region = Rect2(0, i * half_h, sheet.get_width(), half_h)
+		var half := TextureRect.new()
+		half.texture = atlas
+		half.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		half.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		half.size = Vector2(sheet.get_width(), half_h) * scale
+		half.position = Vector2(i * sheet.get_width() * scale.x, 0.0)
+		half.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.add_child(half)
+	_effect_layer.add_child(holder)
+	_active_hit_effect_nodes.append(holder)
+	holder.tree_exited.connect(func(): _active_hit_effect_nodes.erase(holder))
+
+	var vel := Vector2(spec.y, _SAND_CRESCENT_VEL_Y) / 256.0  # 8.8 fixed point
+	var frames: float = (_SAND_DESPAWN_X - _SAND_SPAWN_X) / vel.x
+	var travel := Vector2(vel.x * frames, vel.y * frames) * scale
+	var tw := create_tween()
+	holder.set_meta("weather_tween", tw)
+	tw.tween_property(holder, "position", holder.position + travel,
+			frames * _ANIM_FRAME_SECONDS)
+	tw.tween_callback(func():
+		if is_instance_valid(holder):
+			holder.queue_free())
+
+
+func _play_weather_sandstorm() -> void:
+	var bg := load(_WEATHER_FX_DIR + "sandstorm_bg.png") as Texture2D
+	var crescent := load(_WEATHER_FX_DIR + "flying_dirt.png") as Texture2D
+	if bg == null or crescent == null or _effect_layer == null:
+		return
+	var scale := _weather_stage_scale()
+	var tile: Vector2 = bg.get_size() * scale
+
+	# The scrolling layer. Oversized by one tile in each axis and wrapped
+	# modulo the tile size, so it can scroll indefinitely without exposing an
+	# edge -- the direct equivalent of source scrolling a repeating BG.
+	#
+	# ── DELIBERATE DEVIATION FROM SOURCE — Rob's call, 2026-07-27 ──
+	# This layer is hosted in _effect_layer (the LAST child of BattleStage), so
+	# it draws OVER the Pokemon sprites and health boxes and tints the whole
+	# scene sand-coloured.
+	#
+	# Source puts it BEHIND the battlers: AnimTask_LoadSandstormBackground
+	# installs it on BG1 at `SetAnimBgAttribute(1, BG_ANIM_PRIORITY, 1)`. The
+	# faithful version would parent it into BattleStage at index 1 -- above
+	# `Background`, below every sprite -- exactly as hail's own BG-only tint
+	# already does (see _weather_make_tint's `bg_only`).
+	#
+	# The difference was identified in M26B4's first capture pass (side by side
+	# with hail, which layers correctly) and a fix was written. Rob reviewed the
+	# screenshot and preferred the over-everything look, so the fix was BACKED
+	# OUT and the current behaviour kept on purpose.
+	#
+	# DO NOT "correct" this to match source without asking. It is a known,
+	# reviewed, accepted divergence -- not the layering bug it resembles.
+	# The crescent sprites are unaffected either way: those are real OBJ-layer
+	# sprites and belong on top regardless.
+	var layer := TextureRect.new()
+	layer.texture = bg
+	layer.stretch_mode = TextureRect.STRETCH_TILE
+	layer.size = _effect_layer.size + tile
+	layer.position = -tile
+	layer.modulate.a = 0.0
+	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_effect_layer.add_child(layer)
+	_effect_layer.move_child(layer, 0)
+	_active_hit_effect_nodes.append(layer)
+	layer.tree_exited.connect(func(): _active_hit_effect_nodes.erase(layer))
+
+	var ramp: int = _SAND_BLEND_MAX * _SAND_BLEND_STEP_FRAMES  # 28
+	var total: int = ramp + _SAND_HOLD_FRAMES + ramp
+	var crescents_spawned := 0
+	var next_crescent := _SAND_FIRST_CRESCENT_DELAY
+
+	for f in range(total):
+		if not is_instance_valid(self) or not is_inside_tree() \
+				or not is_instance_valid(layer):
+			return
+		# Scroll, wrapped so position stays within one tile of the origin.
+		var off := Vector2(
+				fposmod(float(f) * _SAND_SCROLL.x * scale.x, tile.x),
+				fposmod(float(f) * _SAND_SCROLL.y * scale.y, tile.y))
+		layer.position = off - tile
+
+		# BLDALPHA ramp: one step every 4 frames up to 7/16, hold, then back.
+		var blend: float
+		if f < ramp:
+			blend = float(f / _SAND_BLEND_STEP_FRAMES + 1)
+		elif f < ramp + _SAND_HOLD_FRAMES:
+			blend = float(_SAND_BLEND_MAX)
+		else:
+			blend = float(_SAND_BLEND_MAX - (f - ramp - _SAND_HOLD_FRAMES)
+					/ _SAND_BLEND_STEP_FRAMES)
+		layer.modulate.a = clampf(blend, 0.0, float(_SAND_BLEND_MAX)) / 16.0
+
+		if crescents_spawned < _SAND_CRESCENTS.size() and f >= next_crescent:
+			_weather_spawn_sand_crescent(crescent,
+					_SAND_CRESCENTS[crescents_spawned], scale)
+			crescents_spawned += 1
+			next_crescent += _SAND_CRESCENT_GAP
+
+		await _wait_anim_frames(1)
+
+	if is_instance_valid(layer):
+		layer.queue_free()
 
 
 # [M26B3-3] The player's own send-out: the trainer slides in from the LEFT,

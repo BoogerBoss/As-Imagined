@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m26d34volatilestest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m26_d3_4_volatiles_test.gd" id="1_m26d34test"]
+
+[node name="M26D34VolatilesTest" type="Node"]
+script = ExtResource("1_m26d34test")

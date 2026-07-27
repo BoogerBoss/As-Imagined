@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m26d31moveskippedtest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m26_d3_1_move_skipped_test.gd" id="1_m26d31test"]
+
+[node name="M26D31MoveSkippedTest" type="Node"]
+script = ExtResource("1_m26d31test")
