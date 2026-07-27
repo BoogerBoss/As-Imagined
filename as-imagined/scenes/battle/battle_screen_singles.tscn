@@ -3,8 +3,10 @@
 [ext_resource type="Script" uid="uid://bw8op4f3uioqo" path="res://scenes/battle/battle_screen_shared.gd" id="1_screen"]
 [ext_resource type="Script" uid="uid://by21x2021is5s" path="res://scripts/battle/core/battle_manager.gd" id="2_bm"]
 [ext_resource type="Theme" path="res://scenes/main_theme.tres" id="3_theme"]
+[ext_resource type="Texture2D" uid="uid://cnwgolgexoe0v" path="res://assets/sprites/battle_backgrounds/building_base1.png" id="4_enemy_base_preview"]
 [ext_resource type="Texture2D" uid="uid://dbv7by4kbgmqj" path="res://assets/sprites/pokemon/back/0025_pikachu.png" id="4_pikachu_back"]
-[ext_resource type="Texture2D" uid="uid://p40biqq41hsj" path="res://assets/sprites/battle_backgrounds/building.png" id="4_y1o2w"]
+[ext_resource type="Texture2D" uid="uid://cenajc6pybpsf" path="res://assets/sprites/battle_backgrounds/building_base0.png" id="4_player_base_preview"]
+[ext_resource type="Texture2D" uid="uid://d0e6ljyscxpin" path="res://assets/sprites/battle_backgrounds/building_bg.png" id="4_y1o2w"]
 [ext_resource type="Texture2D" uid="uid://oa5advdirqvm" path="res://assets/sprites/pokemon/front/0006_charizard.png" id="5_charizard_front"]
 [ext_resource type="PackedScene" uid="uid://d1gbrvetcb2t4" path="res://scenes/battle/health_group_panel.tscn" id="6_opp_panel"]
 [ext_resource type="PackedScene" uid="uid://dscsnlvercuer" path="res://scenes/battle/health_group_panel_player.tscn" id="7_ply_panel"]
@@ -14,14 +16,14 @@
 [ext_resource type="Texture2D" uid="uid://u5nenbe1yr5i" path="res://assets/sprites/battle_ui/party_status/ball_empty.png" id="24_ball_empty"]
 [ext_resource type="Texture2D" uid="uid://c4lgygj6twkss" path="res://assets/sprites/trainers/portraits/0039_leader_brawly.png" id="25_trainer_portrait_sample"]
 [ext_resource type="PackedScene" uid="uid://dad4jum0ut4ey" path="res://scenes/battle/shared_battle_chrome.tscn" id="30_shared_chrome"]
-[ext_resource type="Texture2D" path="res://assets/sprites/trainers/back_pics/leaf.png" id="31_player_back_pic"]
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_player_trainer_frame0"]
-atlas = ExtResource("31_player_back_pic")
-region = Rect2(0, 0, 64, 64)
+[ext_resource type="Texture2D" uid="uid://de07smweruh8r" path="res://assets/sprites/trainers/back_pics/leaf.png" id="31_player_back_pic"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_opp_sprite_preview"]
 atlas = ExtResource("5_charizard_front")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_player_trainer_frame0"]
+atlas = ExtResource("31_player_back_pic")
 region = Rect2(0, 0, 64, 64)
 
 [node name="BattleScreen" type="Control" unique_id=1326083943]
@@ -65,31 +67,36 @@ texture = ExtResource("4_y1o2w")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="PlayerBase" type="TextureRect" parent="BattleStage"]
+[node name="PlayerBase" type="TextureRect" parent="BattleStage" unique_id=847874676]
 layout_mode = 1
+anchors_preset = -1
 anchor_left = 0.05
 anchor_top = 0.52
 anchor_right = 0.05
 anchor_bottom = 0.52
-offset_left = -220.0
-offset_top = -35.0
-offset_right = 280.0
-offset_bottom = 105.0
+offset_left = -329.2
+offset_top = 16.640045
+offset_right = 170.8
+offset_bottom = 156.93005
+scale = Vector2(1.9, 1.9)
 mouse_filter = 2
+texture = ExtResource("4_player_base_preview")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="EnemyBase" type="TextureRect" parent="BattleStage"]
+[node name="EnemyBase" type="TextureRect" parent="BattleStage" unique_id=361783443]
 layout_mode = 1
+anchors_preset = -1
 anchor_left = 0.72
 anchor_top = 0.28
 anchor_right = 0.72
 anchor_bottom = 0.28
 offset_left = -260.0
-offset_top = -85.0
+offset_top = -23.0
 offset_right = 260.0
-offset_bottom = 85.0
+offset_bottom = 147.0
 mouse_filter = 2
+texture = ExtResource("4_enemy_base_preview")
 expand_mode = 1
 stretch_mode = 5
 
@@ -100,10 +107,10 @@ anchor_left = 0.66200006
 anchor_top = 0.615
 anchor_right = 0.66200006
 anchor_bottom = 0.615
-offset_left = -86.88806
-offset_top = -512.32
-offset_right = 205.27222
-offset_bottom = -220.16003
+offset_left = -87.88806
+offset_top = -465.32
+offset_right = 204.27222
+offset_bottom = -173.16003
 grow_horizontal = 2
 grow_vertical = 0
 texture = SubResource("AtlasTexture_opp_sprite_preview")
@@ -136,7 +143,7 @@ texture = ExtResource("4_pikachu_back")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="PlayerTrainerSprite" type="TextureRect" parent="BattleStage"]
+[node name="PlayerTrainerSprite" type="TextureRect" parent="BattleStage" unique_id=1884406931]
 visible = false
 layout_mode = 1
 anchors_preset = -1
@@ -290,10 +297,10 @@ anchor_left = 0.66200006
 anchor_top = 0.615
 anchor_right = 0.66200006
 anchor_bottom = 0.615
-offset_left = -86.88806
-offset_top = -512.32
-offset_right = 205.27222
-offset_bottom = -220.16003
+offset_left = -87.88806
+offset_top = -465.32
+offset_right = 204.27222
+offset_bottom = -173.16003
 grow_horizontal = 2
 grow_vertical = 0
 texture = ExtResource("25_trainer_portrait_sample")

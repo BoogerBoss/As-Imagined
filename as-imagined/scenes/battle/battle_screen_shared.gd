@@ -692,6 +692,31 @@ const _RECALL_SHRINK_FRAMES := 10
 # — that path has no fade), not about the recall, which genuinely has one.
 const _RECALL_FADE_COLOR := Color8(255, 181, 247)
 
+# [Corrected 2026-07-26, Rob's review] The ball-colour fade must be a COLOUR
+# BLEND, not a modulate multiply.
+#
+# `BlendPalette`'s own math (`src/palette.c:790-801`) is
+# `r + (((newR - r) * coeff) >> 5)` with `coeff *= 2` first -- so at source's
+# `coeff = 16` the term is `(newR - r) * 32 / 32`, i.e. the channel is
+# REPLACED outright. `LaunchBallFadeMonTask(TRUE, ...)` starts there: the
+# emerging Pokemon is a SOLID pink silhouette that unblends to normal over
+# 16 frames.
+#
+# A first cut used `modulate`, which multiplies: (1.0, 0.71, 0.97) against a
+# sprite's own colours only slightly reduces green, which is why Rob reported
+# the pink as invisible twice. Godot has no built-in colour-replace, so this
+# is a two-line shader doing the same `mix()` BlendPalette does.
+const _BLEND_SHADER_CODE := """
+shader_type canvas_item;
+uniform vec4 blend_color : source_color = vec4(1.0);
+uniform float blend_amount : hint_range(0.0, 1.0) = 0.0;
+void fragment() {
+	vec4 c = texture(TEXTURE, UV);
+	COLOR = vec4(mix(c.rgb, blend_color.rgb, blend_amount), c.a);
+}
+"""
+static var _blend_shader: Shader = null
+
 const _BALL_SPRITE := "res://assets/sprites/battle_ui/balls/poke.png"
 const _BALL_FRAME_SIZE := 16
 const _BALL_DISPLAY_SIZE := 64.0
@@ -779,6 +804,37 @@ const _SENDOUT_BALL_SPIN_TURNS := 2.0
 # own frame count was NOT pinned down, so this mirrors the recall's own 10
 # frames for symmetry -- a disclosed choice, not a measured port.
 const _SENDOUT_EMERGE_FRAMES := 10
+
+# [Corrected 2026-07-26, Rob's review] The tint must OUTLAST the grow, or it
+# is invisible: at 10 frames the Pokemon is still nearly zero-sized while the
+# colour is strongest, and already back to normal by the time it is big
+# enough to see. Source runs the two as SEPARATE tasks with different
+# lengths -- `Task_FadeMon_ToNormal` issues
+# `BeginNormalPaletteFade(pals, 0, 16, 0, RGB_WHITE)`, a 16-frame unfade at
+# one coefficient step per frame, against a ~10-frame grow.
+const _SENDOUT_UNFADE_FRAMES := 16
+
+# [M26B3-6b, Rob's review] The emerge is NOT a scale-up in place. Source's
+# `SpriteCB_ReleasedMonFlyOut` (`src/pokeball.c:1178-1224`) also displaces
+# the Pokemon along a sine arc while it grows:
+#     sine = -(gSineTable[sTrigIdx] / 8);  x2 = sine;  y2 = sine;
+#     sTrigIdx += 4                        // 0 -> 128, so 32 frames
+# `gSineTable` peaks at `Q_8_8(1.0)` = 256 (`src/trig.c`), so the excursion
+# reaches -32px at the midpoint and returns to 0 -- and because x2 and y2
+# take the SAME value it is a diagonal up-and-left swing out and back. That
+# is the "shaking / moving back and forth" Rob saw. 4x for this stage.
+# UNUSED, kept as the recorded research: the excursion was implemented,
+# looked wrong at 4x (a 181px diagonal lurch), and was reverted at Rob's
+# call. Retained so a future session knows the real numbers exist and does
+# not re-derive them, and knows the omission is deliberate.
+const _SENDOUT_FLYOUT_FRAMES := 32
+const _SENDOUT_FLYOUT_PEAK := 128.0
+
+# How long the entry bob holds frame 1 before settling back to frame 0.
+# Source drives this off each species' own `frontAnimId`/`frontAnimDelay`
+# table, which this project has never pulled; a flat hold is the disclosed
+# simplification, matching the existing idle-bob's own 0.5s cadence.
+const _ENTRY_BOB_FRAMES := 30
 
 # Where the ball is thrown FROM, as an offset from the destination slot's
 # own centre. It is NOT the trainer's position: source creates the player's
@@ -1471,6 +1527,11 @@ func _ready() -> void:
 	# _dismiss_trainer_intro -- the text never was a caption on a banner.
 	# Each text beat is drained before the next step so the ordering is real
 	# rather than everything queueing up and racing.
+	# [M26B3-3 correction] Both trainers are placed at the SAME early phase
+	# in source (`DRAW_SPRITES`), so the player's is on the field from the
+	# start rather than walking on later. Her slide-OUT still happens with
+	# the throw, in _show_player_send_out().
+	_show_player_trainer()
 	await _show_trainer_intro(opp_trainer_data)
 	await _show_party_status_summary()
 	if opp_trainer_data != null:
@@ -2921,6 +2982,41 @@ func _unhandled_input(event: InputEvent) -> void:
 			_render_debug_overlay()
 
 
+# [M26B3-6b, Rob's review] The one-shot entry animation a Pokemon plays as
+# it lands, ported from `DoMonFrontSpriteAnimation` (`src/pokemon.c`): it
+# plays the cry and, when `HasTwoFramesAnimation(species)`, does
+# `StartSpriteAnim(sprite, 1)` -- the 1->2 frame bob.
+#
+# FRONT SPRITES ONLY, which matches source (the function is named for it)
+# and matches this project's own assets: front sheets are 64x128 = 2 frames
+# while back sheets are 64x64 = 1, so the player's own Pokemon has no second
+# frame to bob to. That is why Rob saw this missing on the OPPOSING side
+# specifically.
+#
+# No cry: this project has no audio infrastructure at all (flagged in the
+# 2026-07-24 display-gaps recon, still unscoped).
+func _play_entry_bob(mon: BattlePokemon) -> void:
+	if _opp_party == null or mon == null:
+		return
+	for slot in range(_opp_party.num_active()):
+		if _opp_party.get_active_at(slot) != mon:
+			continue
+		if slot >= _opp_sprites.size():
+			return
+		# Frame 1, then back to 0 -- the 1->2 bob, one shot.
+		_opp_anim_frame[slot] = 1
+		_apply_bottom_anchored_front_sprite(_opp_sprites[slot],
+				mon.species.national_dex_num, 1,
+				_opp_sprite_base_top[slot], _opp_sprite_base_bottom[slot])
+		await _wait_anim_frames(_ENTRY_BOB_FRAMES)
+		if slot < _opp_sprites.size():
+			_opp_anim_frame[slot] = 0
+			_apply_bottom_anchored_front_sprite(_opp_sprites[slot],
+					mon.species.national_dex_num, 0,
+					_opp_sprite_base_top[slot], _opp_sprite_base_bottom[slot])
+		return
+
+
 func _on_opponent_anim_timer_timeout() -> void:
 	if _opp_party == null:
 		return
@@ -3520,6 +3616,25 @@ func _show_trainer_intro(trainer: TrainerData) -> void:
 	await slide_in.finished
 
 
+# [M26B3-3 correction] Puts the player's trainer on the field at the start
+# of the intro, matching source drawing BOTH trainers at `DRAW_SPRITES`.
+# She simply appears at her rest position; the only movement she makes is
+# the slide-OUT during her own throw.
+func _show_player_trainer() -> void:
+	if _player_trainer_sprite == null:
+		return
+	if _is_autoplay_run or not is_inside_tree():
+		return
+	var back_pic := load(_PLAYER_BACK_PIC) as Texture2D
+	if back_pic != null:
+		var atlas := AtlasTexture.new()
+		atlas.atlas = back_pic
+		atlas.region = Rect2(0, 0, 64, 64)
+		_player_trainer_sprite.texture = atlas
+	_set_player_mon_sprites_visible(false)
+	_player_trainer_sprite.visible = true
+
+
 # [M26B3-5] The second half: she leaves and her Pokemon is sent out. Split
 # from _show_trainer_intro so the two intro messages can print in between,
 # which is where source puts them.
@@ -3626,11 +3741,13 @@ func _play_recall_to_ball(mon: BattlePokemon) -> void:
 	shrink.set_parallel(true)
 	shrink.tween_property(sprite, "scale", Vector2.ZERO,
 			_RECALL_SHRINK_FRAMES * _ANIM_FRAME_SECONDS)
-	# The authentic palette-blend toward the ball colour, kept per Rob's
-	# correction. Godot's modulate MULTIPLIES rather than blending a
-	# palette, so this tints toward the same pink rather than reproducing
-	# BlendPalette exactly -- a disclosed approximation, not a port.
-	shrink.tween_property(sprite, "modulate", _RECALL_FADE_COLOR,
+	# The authentic palette blend toward the ball colour, running the same
+	# direction source does for a recall (`tdCoeff = 1`, blending 0 -> 16 as
+	# the Pokemon is drawn in). Uses the real mix() shader rather than
+	# modulate, for the same reason the send-out does -- see
+	# _BLEND_SHADER_CODE's own note.
+	var recall_mat := _apply_blend_material(sprite, 0.0)
+	shrink.tween_property(recall_mat, "shader_parameter/blend_amount", 1.0,
 			_RECALL_SHRINK_FRAMES * _ANIM_FRAME_SECONDS)
 	await shrink.finished
 
@@ -3640,7 +3757,7 @@ func _play_recall_to_ball(mon: BattlePokemon) -> void:
 	# Restore the node's own transform so the slot is reusable -- the mon is
 	# hidden, not destroyed, unlike source which frees the sprite outright.
 	sprite.scale = start_scale
-	sprite.modulate = Color(1, 1, 1, 1)
+	sprite.material = null
 
 	# Ball shuts once the Pokemon is inside, then goes.
 	if is_instance_valid(ball):
@@ -3727,24 +3844,165 @@ func _play_send_out(mon: BattlePokemon) -> void:
 					_BALL_FRAME_SIZE, _BALL_FRAME_SIZE)
 	_spawn_ball_open_particles(center)
 
+	# [REVERTED 2026-07-26] A bottom-centre pivot was tried here and looked
+	# WORSE on screen (Rob's review), so this stays centre-pivoted. Recorded
+	# rather than silently undone: the reported symptom -- the image's bottom
+	# looking cut off during the grow -- is therefore NOT caused by the pivot,
+	# and the likelier cause is that the player's sprite rect already extends
+	# below the visible battlefield (it spans roughly y=373..606 while the
+	# bottom action region starts at y=576), so the lower part of the artwork
+	# passes behind the menu panel as it scales. That is pre-existing and
+	# affects the resting sprite too, not just the emerge.
 	sprite.pivot_offset = sprite.size * 0.5
 	sprite.scale = Vector2.ZERO
-	sprite.modulate = _RECALL_FADE_COLOR
+	# Starts FULLY the ball colour (coeff 16), exactly as source does.
+	var blend_mat := _apply_blend_material(sprite, 1.0)
 	sprite.visible = true
+	# [REVERTED 2026-07-26, Rob's call] The sine fly-out excursion that used
+	# to run here is gone. Source does have one (SpriteCB_ReleasedMonFlyOut's
+	# `sine = -(gSineTable[sTrigIdx] / 8)` on both x2 and y2, ~32px diagonal
+	# over 32 frames -- see the constants below, kept for reference), but at
+	# this project's 4x it read as a 181px lurch and looked wrong on screen.
+	# The emerge is a grow in place. Disclosed divergence, not an oversight.
 	var emerge := create_tween()
 	emerge.set_parallel(true)
 	emerge.tween_property(sprite, "scale", Vector2.ONE,
 			_SENDOUT_EMERGE_FRAMES * _ANIM_FRAME_SECONDS)
-	# LaunchBallFadeMonTask(TRUE, ...) -- the unfade direction.
-	emerge.tween_property(sprite, "modulate", Color(1, 1, 1, 1),
-			_SENDOUT_EMERGE_FRAMES * _ANIM_FRAME_SECONDS)
+	# LaunchBallFadeMonTask(TRUE, ...) -- the unfade direction, given its own
+	# longer duration so the colour is on screen at a visible size rather
+	# than finishing while the sprite is still tiny.
+	emerge.tween_property(blend_mat, "shader_parameter/blend_amount", 0.0,
+			_SENDOUT_UNFADE_FRAMES * _ANIM_FRAME_SECONDS)
+
+	# [M26B3-6c-1] The species' own BACK animation fires HERE -- at the end
+	# of the GROW, not the end of the unfade. Source gates it on
+	# `affineAnimEnded` (`SpriteCB_PlayerMonFromBall`, battle_main.c:2902-2906),
+	# which is the 10-frame emerge scale; the unfade runs 16 frames in
+	# parallel, so the animation genuinely begins while the sprite is still
+	# pink. That is exactly the behaviour Rob described.
+	#
+	# Deliberately NOT awaited -- these run 20-130 frames depending on the
+	# species and its nature, and source lets the battle carry on over them.
+	await _wait_anim_frames(_SENDOUT_EMERGE_FRAMES)
+	if found.get("is_player", false):
+		_play_back_entry_animation(mon, sprite, emerge)
+
 	await emerge.finished
 
+	# [Rob's review] The entry bob fires HERE, on emerge completion --
+	# source calls `DoMonFrontSpriteAnimation` only once
+	# `animEnded && emergeAnimFinished && atFinalPosition` all hold
+	# (`pokeball.c:1215-1222`), which is still inside the 16-frame unfade,
+	# so it genuinely begins while the Pokemon is pink.
+	#
+	# Previously this project's only bob was an autostart 0.5s one-shot
+	# Timer left over from Phase 4c, which fired near scene start -- long
+	# before any send-out existed, and while the sprite was still hidden.
+	# That is why no entry bob was visible at all.
+	_play_entry_bob(mon)
+
+	sprite.material = null
 	if panel != null:
 		(panel as CanvasItem).visible = true
 	if is_instance_valid(ball):
 		_active_hit_effect_nodes.erase(ball)
 		ball.queue_free()
+
+
+# [M26B3-6c-1] Drives one species' BACK entry animation on the player's own
+# Pokemon -- the left/right motion Rob observed while the sprite was pink.
+#
+# Which animation plays is a function of BOTH the species and the individual
+# Pokemon's NATURE: `backAnimId` names a SET of three variants and
+# `gNaturesInfo[nature].backAnim` picks one (see MonAnimator's own header).
+# So two of the same species with different natures genuinely differ here.
+#
+# All the motion maths lives in MonAnimator as a pure state machine; this
+# function is only the driver -- read a frame count off the wall clock,
+# step that many GBA frames, push the result onto the sprite.
+#
+# REFRESH-RATE INDEPENDENT BY CONSTRUCTION. Every earlier discrete stepper
+# in this file ties one animation frame to one `create_timer`, which
+# quantises up to a display frame and measurably drifts (M26G4's own audit
+# found the particle burst running ~10% slow at 144Hz and half-speed at
+# 30Hz). `MonAnimator.Clock` accumulates real elapsed seconds and advances
+# however many whole 1/60s steps have actually passed, so the animation
+# lasts the same wall-clock time at any refresh rate and a stalled frame
+# catches up rather than dropping motion.
+func _play_back_entry_animation(mon: BattlePokemon, sprite: TextureRect,
+		emerge_tween: Tween) -> void:
+	if mon == null or sprite == null or not is_instance_valid(sprite):
+		return
+	# Same bypass as every other animation here: --autoplay and the
+	# off-tree unit-test instantiation both skip straight past the visuals.
+	if _is_autoplay_run or not is_inside_tree():
+		return
+	if mon.species == null:
+		return
+	var row: Dictionary = PokemonRegistry.get_species(mon.species.national_dex_num)
+	if row == null or row.is_empty():
+		# A hand-built test fixture (dex 0, no registry row) simply gets no
+		# entry animation. Same disclosed degrade-gracefully shape as
+		# [M26B1]'s own EXP bar for an unknown species -- not an error.
+		return
+	var st: Dictionary = MonAnimator.start(
+			int(row.get("back_anim_id", MonAnimator.BACK_ANIM_NONE)), mon.nature)
+	if st.is_empty():
+		return
+
+	# Supersession guard: a second send-out into the SAME slot (doubles, or a
+	# faint replacement) must not leave two coroutines fighting over one
+	# sprite's transform. The newer one wins and the older exits silently.
+	var generation: int = int(sprite.get_meta("_back_anim_gen", 0)) + 1
+	sprite.set_meta("_back_anim_gen", generation)
+
+	var base_pos: Vector2 = sprite.position
+	var base_scale: Vector2 = sprite.scale
+	var base_rot: float = sprite.rotation
+	var clock := MonAnimator.Clock.new()
+	var touched_blend := false
+
+	while not st["done"]:
+		await get_tree().process_frame
+		if not is_instance_valid(sprite) or not is_inside_tree():
+			return
+		if int(sprite.get_meta("_back_anim_gen", 0)) != generation:
+			return
+		var frames: int = clock.advance(get_process_delta_time())
+		for _i in range(frames):
+			MonAnimator.step(st)
+			if st["done"]:
+				break
+		sprite.position = base_pos + MonAnimator.godot_offset(st)
+		sprite.scale = base_scale * MonAnimator.godot_scale(st)
+		sprite.rotation = base_rot + MonAnimator.godot_rotation(st)
+
+		# The glow/flash families blend the sprite's colour, reusing the very
+		# same mix() shader [M26B3-6a] built for the recall/emerge pink.
+		# Held off while the emerge's own unfade tween is still driving
+		# `blend_amount` on that material, so the two never fight over one
+		# shader parameter -- the animation starts 6 frames before the
+		# unfade ends.
+		var amount: float = MonAnimator.godot_blend_amount(st)
+		var emerge_busy: bool = emerge_tween != null \
+				and is_instance_valid(emerge_tween) and emerge_tween.is_running()
+		if not emerge_busy and (amount > 0.0 or touched_blend):
+			var mat := sprite.material as ShaderMaterial
+			if mat == null:
+				mat = _apply_blend_material(sprite, 0.0)
+			mat.set_shader_parameter("blend_color", st["blend_color"])
+			mat.set_shader_parameter("blend_amount", amount)
+			touched_blend = true
+
+	# Settle back exactly where the sprite started rather than wherever the
+	# last stepped frame happened to leave it.
+	if is_instance_valid(sprite) \
+			and int(sprite.get_meta("_back_anim_gen", 0)) == generation:
+		sprite.position = base_pos
+		sprite.scale = base_scale
+		sprite.rotation = base_rot
+		if touched_blend:
+			sprite.material = null
 
 
 # [M26B3-6a] The ball-open burst. Deliberately fire-and-forget (not awaited)
@@ -3853,6 +4111,13 @@ func _find_mon_slot(mon: BattlePokemon) -> Dictionary:
 			return {
 				"sprite": sprites[slot],
 				"panel": (panels[slot] if slot < panels.size() else null),
+				# [M26B3-6c-1] Which side the mon is on. Needed because the
+				# per-species entry animation is side-asymmetric: the player
+				# gets its BACK animation (`backAnimId`), the opponent its
+				# FRONT one (`frontAnimId`) -- two different source tables
+				# and two different dispatch functions. Only the back half
+				# is built (B3-6c-1); the front half is B3-6c-2.
+				"is_player": is_player,
 			}
 	return {}
 
@@ -3894,6 +4159,20 @@ func _set_player_trainer_frame(frame_index: int) -> void:
 	atlas.region = Rect2(0, frame_index * 64, 64, 64)
 
 
+# Attaches the ball-colour blend shader and returns the material, so a tween
+# can drive `shader_parameter/blend_amount`. Compiled once and shared.
+func _apply_blend_material(node: CanvasItem, amount: float) -> ShaderMaterial:
+	if _blend_shader == null:
+		_blend_shader = Shader.new()
+		_blend_shader.code = _BLEND_SHADER_CODE
+	var mat := ShaderMaterial.new()
+	mat.shader = _blend_shader
+	mat.set_shader_parameter("blend_color", _RECALL_FADE_COLOR)
+	mat.set_shader_parameter("blend_amount", amount)
+	node.material = mat
+	return mat
+
+
 func _wait_anim_frames(frames: int) -> void:
 	if frames <= 0:
 		return
@@ -3933,13 +4212,17 @@ func _show_player_send_out() -> void:
 		_set_player_mon_sprites_visible(true)
 		return
 
+	# [Corrected 2026-07-26, Rob's review] NO SLIDE-IN HERE. She is already
+	# standing on the field by this point -- _show_player_trainer() puts her
+	# there at the very start of the intro, which is where source draws her.
+	#
+	# Source creates BOTH trainers at the same early DRAW_SPRITES phase, via
+	# `HandleDrawTrainerPic` (`battle_controllers.c`), and their slide-in is
+	# part of the scene's own intro transition. Sliding her in HERE meant she
+	# arrived only after the opponent's entire intro and both messages had
+	# played -- a sequencing error that read as a spurious second entrance.
 	var rest_x := _player_trainer_sprite.position.x
-	_player_trainer_sprite.position.x = rest_x - _TRAINER_SLIDE_DISTANCE
 	_player_trainer_sprite.visible = true
-	var slide_in := create_tween()
-	slide_in.tween_property(_player_trainer_sprite, "position:x", rest_x,
-			_TRAINER_SLIDE_IN_SECONDS)
-	await slide_in.finished
 
 	# [M26B3-3 correction] She slides off to the LEFT for the whole throw,
 	# started here so it runs concurrently with the frame walk below rather

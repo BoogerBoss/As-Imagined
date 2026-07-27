@@ -4,7 +4,9 @@
 [ext_resource type="Script" uid="uid://by21x2021is5s" path="res://scripts/battle/core/battle_manager.gd" id="2_bm"]
 [ext_resource type="Theme" path="res://scenes/main_theme.tres" id="3_theme"]
 [ext_resource type="Texture2D" uid="uid://dbv7by4kbgmqj" path="res://assets/sprites/pokemon/back/0025_pikachu.png" id="4_pikachu_back"]
-[ext_resource type="Texture2D" uid="uid://p40biqq41hsj" path="res://assets/sprites/battle_backgrounds/building.png" id="4_y1o2w"]
+[ext_resource type="Texture2D" uid="uid://d0e6ljyscxpin" path="res://assets/sprites/battle_backgrounds/building_bg.png" id="4_y1o2w"]
+[ext_resource type="Texture2D" uid="uid://cenajc6pybpsf" path="res://assets/sprites/battle_backgrounds/building_base0.png" id="4_player_base_preview"]
+[ext_resource type="Texture2D" uid="uid://cnwgolgexoe0v" path="res://assets/sprites/battle_backgrounds/building_base1.png" id="4_enemy_base_preview"]
 [ext_resource type="Texture2D" uid="uid://oa5advdirqvm" path="res://assets/sprites/pokemon/front/0006_charizard.png" id="5_charizard_front"]
 [ext_resource type="PackedScene" path="res://scenes/battle/health_group_panel_doubles_opponent.tscn" id="6_opp_panel"]
 [ext_resource type="PackedScene" path="res://scenes/battle/health_group_panel_doubles_player.tscn" id="7_ply_panel"]
@@ -76,6 +78,7 @@ offset_top = -35.0
 offset_right = 340.0
 offset_bottom = 105.0
 mouse_filter = 2
+texture = ExtResource("4_player_base_preview")
 expand_mode = 1
 stretch_mode = 5
 
@@ -90,6 +93,7 @@ offset_top = -85.0
 offset_right = 320.0
 offset_bottom = 85.0
 mouse_filter = 2
+texture = ExtResource("4_enemy_base_preview")
 expand_mode = 1
 stretch_mode = 5
 
