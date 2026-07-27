@@ -17,7 +17,10 @@ func _ready() -> void:
 	_test_refresh_party_status_row_pads_short_party_with_empty()
 	_test_show_party_status_summary_bypassed_when_not_in_tree()
 	_test_show_trainer_intro_noop_for_null_trainer()
-	_test_show_trainer_intro_sets_portrait_and_name_when_not_in_tree()
+	_test_show_trainer_intro_sets_sprite_texture_when_not_in_tree()
+	_test_trainer_sprite_shares_opponent_mon_geometry()
+	_test_intro_banner_is_retired_from_both_scenes()
+	_test_opponent_mon_visibility_helper_covers_every_slot()
 	_test_battle_setup_context_trainer_id_round_trip()
 	_test_battle_manager_get_trainer_data_round_trip()
 	_test_real_trainer_and_portrait_pipeline_resolves()
@@ -146,33 +149,85 @@ func _test_show_party_status_summary_bypassed_when_not_in_tree() -> void:
 			not bs._party_status_opponent.visible)
 
 
-# ── M26l: trainer intro banner ────────────────────────────────────────────
+# ── M26B3-2: trainer sprite (replaces the retired intro banner) ───────────
+#
+# These assertions were REWRITTEN 2026-07-26. They previously encoded the
+# portrait-banner implementation (a caption label + a framed portrait over a
+# dark backdrop), which the M26B3 recon established has no basis in source at
+# all. A passing suite against a wrong implementation is exactly the trap
+# CLAUDE.md's own C/T/A note warns about, so the old assertions are gone
+# rather than adapted.
 
 func _test_show_trainer_intro_noop_for_null_trainer() -> void:
 	var bs := BattleScreenShared.new()
-	bs._trainer_intro_banner = Control.new()
-	bs._trainer_intro_banner.visible = false  # bare Control.new() defaults true
-	bs._trainer_intro_portrait = TextureRect.new()
-	bs._trainer_intro_name_label = Label.new()
+	bs._trainer_sprite = TextureRect.new()
+	bs._trainer_sprite.visible = false
 	await bs._show_trainer_intro(null)
-	_chk("null trainer leaves the name label untouched", bs._trainer_intro_name_label.text == "")
-	_chk("null trainer leaves the banner untouched (early-return before it's ever shown)",
-			not bs._trainer_intro_banner.visible)
+	_chk("null trainer leaves the sprite hidden (early-return before anything)",
+			not bs._trainer_sprite.visible)
+	_chk("null trainer sets no texture", bs._trainer_sprite.texture == null)
 
 
-func _test_show_trainer_intro_sets_portrait_and_name_when_not_in_tree() -> void:
+func _test_show_trainer_intro_sets_sprite_texture_when_not_in_tree() -> void:
 	var bs := BattleScreenShared.new()
-	bs._trainer_intro_banner = Control.new()
-	bs._trainer_intro_banner.visible = false  # bare Control.new() defaults true
-	bs._trainer_intro_portrait = TextureRect.new()
-	bs._trainer_intro_name_label = Label.new()
+	bs._trainer_sprite = TextureRect.new()
+	bs._trainer_sprite.visible = false
 	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_BRAWLY_1")
 	_chk("fixture trainer resolves", trainer != null)
 	await bs._show_trainer_intro(trainer)
-	_chk("name label mentions the trainer's real name", "Brawly" in bs._trainer_intro_name_label.text)
-	_chk("portrait texture was set", bs._trainer_intro_portrait.texture != null)
-	_chk("banner stays hidden since the not-in-tree bypass returns before ever showing it",
-			not bs._trainer_intro_banner.visible)
+	_chk("real trainer sets the sprite texture", bs._trainer_sprite.texture != null)
+	_chk("sprite stays hidden on the not-in-tree bypass (no tween possible)",
+			not bs._trainer_sprite.visible)
+
+
+# The sprite must occupy the SAME battlefield slot as the opponent mon -- this
+# is the core of what B3-2 corrected, so it gets a direct geometry assertion
+# rather than being left to a screenshot.
+func _test_trainer_sprite_shares_opponent_mon_geometry() -> void:
+	for scene_path in ["res://scenes/battle/battle_screen_singles.tscn",
+			"res://scenes/battle/battle_screen_doubles.tscn"]:
+		var packed: PackedScene = load(scene_path)
+		var root: Node = packed.instantiate()
+		var trainer: Control = root.get_node_or_null("BattleStage/TrainerSprite")
+		var mon: Control = root.get_node_or_null("BattleStage/OpponentSprite0")
+		var label := scene_path.get_file()
+		_chk("%s has a TrainerSprite" % label, trainer != null)
+		_chk("%s still has OpponentSprite0" % label, mon != null)
+		if trainer != null and mon != null:
+			_chk("%s trainer sprite shares the mon's anchors" % label,
+					is_equal_approx(trainer.anchor_left, mon.anchor_left)
+					and is_equal_approx(trainer.anchor_top, mon.anchor_top))
+			_chk("%s trainer sprite shares the mon's offsets" % label,
+					is_equal_approx(trainer.offset_left, mon.offset_left)
+					and is_equal_approx(trainer.offset_top, mon.offset_top))
+			_chk("%s trainer sprite starts hidden" % label, not trainer.visible)
+		root.free()
+
+
+# The retired banner must be genuinely gone from both scenes, not just unused.
+func _test_intro_banner_is_retired_from_both_scenes() -> void:
+	for scene_path in ["res://scenes/battle/battle_screen_singles.tscn",
+			"res://scenes/battle/battle_screen_doubles.tscn"]:
+		var root: Node = (load(scene_path) as PackedScene).instantiate()
+		_chk("%s no longer has TrainerIntroBanner" % scene_path.get_file(),
+				root.get_node_or_null("BattleStage/TrainerIntroBanner") == null)
+		root.free()
+
+
+# Hiding/revealing the opponent mon must be generic over slot count -- 1 in
+# singles, 2 in doubles.
+func _test_opponent_mon_visibility_helper_covers_every_slot() -> void:
+	var root: Node = (load("res://scenes/battle/battle_screen_doubles.tscn") as PackedScene).instantiate()
+	root._set_opponent_mon_sprites_visible(false)
+	var s0: CanvasItem = root.get_node_or_null("BattleStage/OpponentSprite0")
+	var s1: CanvasItem = root.get_node_or_null("BattleStage/OpponentSprite1")
+	_chk("doubles slot 0 hidden", s0 != null and not s0.visible)
+	_chk("doubles slot 1 hidden", s1 != null and not s1.visible)
+	root._set_opponent_mon_sprites_visible(true)
+	_chk("doubles slot 0 revealed", s0 != null and s0.visible)
+	_chk("doubles slot 1 revealed", s1 != null and s1.visible)
+	root.free()
+
 
 
 # ── Plumbing: BattleSetupContext / BattleManager ──────────────────────────

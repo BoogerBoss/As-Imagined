@@ -261,55 +261,23 @@ texture = ExtResource("24_ball_empty")
 expand_mode = 1
 stretch_mode = 4
 
-[node name="TrainerIntroBanner" type="Control" parent="BattleStage" unique_id=679750074]
+[node name="TrainerSprite" type="TextureRect" parent="BattleStage" unique_id=679750074]
 visible = false
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
+anchors_preset = -1
+anchor_left = 0.66200006
+anchor_top = 0.615
+anchor_right = 0.66200006
+anchor_bottom = 0.615
+offset_left = -86.88806
+offset_top = -512.32
+offset_right = 205.27222
+offset_bottom = -220.16003
 grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-
-[node name="Backdrop" type="ColorRect" parent="BattleStage/TrainerIntroBanner" unique_id=112133969]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-color = Color(0, 0, 0, 0.55)
-
-[node name="Portrait" type="TextureRect" parent="BattleStage/TrainerIntroBanner" unique_id=390924470]
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -96.0
-offset_top = -176.0
-offset_right = 96.0
-offset_bottom = 16.0
+grow_vertical = 0
 texture = ExtResource("25_trainer_portrait_sample")
 expand_mode = 1
-stretch_mode = 4
-
-[node name="NameLabel" type="Label" parent="BattleStage/TrainerIntroBanner" unique_id=2035788936]
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -160.0
-offset_top = 26.0
-offset_right = 160.0
-offset_bottom = 76.0
-theme_override_font_sizes/font_size = 36
-text = "Leader Brawly wants to battle!"
-horizontal_alignment = 1
+stretch_mode = 5
 
 [node name="SharedChrome" parent="." unique_id=1509682598 instance=ExtResource("30_shared_chrome")]
 layout_mode = 1

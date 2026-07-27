@@ -1,3 +1,33 @@
+> # ⚠️ DEPRECATED — DO NOT USE
+>
+> **This file is archived and is no longer the project guide.**
+> **Canonical file: `as-imagined/CLAUDE.md`.**
+>
+> Archived 2026-07-26 as part of the CLAUDE.md rewrite. This copy belongs to
+> the deprecated Godot 4.3 project tree (`as-imagined-(4.3)/`), which is itself
+> superseded — see the canonical file's "Standing infrastructure note: Godot
+> engine version" for the 4.3 → 4.7.1 migration.
+>
+> A full extraction audit (2026-07-26) confirmed this file is a **strict
+> subset** of the canonical one: every rule-bearing section is byte-identical,
+> with exactly two stale variants and no unique content of its own:
+>
+> 1. **Project purpose** — this file opens "Emerald Battle Engine Clone… A
+>    standalone recreation of Pokémon Emerald's turn-based battle system."
+>    That framing is **wrong and superseded**: the project is "As Imagined,"
+>    a Kanto-set original-story Pokémon project shipping two co-equal products
+>    (a full RPG and a standalone battle simulator) on one shared engine.
+> 2. **Godot binary path** — every example here uses
+>    `/home/rob/Godot_v4.3-stable_linux.x86_64`. The canonical binary is
+>    `/home/rob/Godot_v4.7.1-stable_linux.x86_64`.
+>
+> Kept on disk rather than deleted, matching this project's own precedent for
+> the deprecated 4.3 binary: no ongoing purpose, costs nothing to retain,
+> preserves the option of a historical comparison. **Do not merge from this
+> file. Do not cite it. Do not use it for new work.**
+
+---
+
 # Emerald Battle Engine Clone — Project Guide for Claude Code
 
 ## What this project is

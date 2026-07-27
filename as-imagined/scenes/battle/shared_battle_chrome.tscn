@@ -57,12 +57,12 @@ layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 16
 
-[node name="TopPromptSlot" type="MarginContainer" parent="ActionRegion/ActionPanel/ActionVBox/TopActionHBox" unique_id=1662960917]
+[node name="TopPromptSlot" type="PanelContainer" parent="ActionRegion/ActionPanel/ActionVBox/TopActionHBox" unique_id=1662960917]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.17
 
-[node name="TopGridSlot" type="MarginContainer" parent="ActionRegion/ActionPanel/ActionVBox/TopActionHBox" unique_id=371419224]
+[node name="TopGridSlot" type="PanelContainer" parent="ActionRegion/ActionPanel/ActionVBox/TopActionHBox" unique_id=371419224]
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -72,21 +72,24 @@ layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 16
 
-[node name="FightGridSlot" type="MarginContainer" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox" unique_id=518107482]
+[node name="FightGridSlot" type="PanelContainer" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox" unique_id=518107482]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 4.25
 
-[node name="MoveInfoPanel" type="VBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox" unique_id=597942260]
+[node name="MoveInfoBorder" type="PanelContainer" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox" unique_id=597942261]
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="MoveInfoPanel" type="VBoxContainer" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoBorder" unique_id=597942260]
+layout_mode = 2
 alignment = 1
 
-[node name="MoveInfoType" type="Label" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel" unique_id=949118180]
+[node name="MoveInfoType" type="Label" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoBorder/MoveInfoPanel" unique_id=949118180]
 layout_mode = 2
 horizontal_alignment = 1
 
-[node name="MoveInfoPP" type="Label" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel" unique_id=482616670]
+[node name="MoveInfoPP" type="Label" parent="ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoBorder/MoveInfoPanel" unique_id=482616670]
 layout_mode = 2
 horizontal_alignment = 1
 

@@ -390,11 +390,18 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # LEFT of B_WIN_PP (left=21,width=4) -- ratio ~17:4.25, reproduced by
 # FightGridSlot/MoveInfoPanel. Both HBoxes default to `visible=false`;
 # exactly one is shown at a time by `_layout_action_menu_for()`.
+# [M26 polish batch, item 1/A1] TopPromptSlot/TopGridSlot/FightGridSlot were
+# plain MarginContainers (no border of their own -- ActionPanel's single
+# shared panel was the only visible frame). Retyped to PanelContainer so
+# each can carry its own independent border, matching the real two-box
+# reference layout (overlay_fight.png/overlay_command.png, Emerald UI Pack)
+# instead of one shared panel behind both regions -- see
+# _setup_action_region_panel()'s own doc comment for the styling.
 @onready var _top_action_hbox: HBoxContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/TopActionHBox
-@onready var _top_prompt_slot: MarginContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/TopActionHBox/TopPromptSlot
-@onready var _top_grid_slot: MarginContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/TopActionHBox/TopGridSlot
+@onready var _top_prompt_slot: PanelContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/TopActionHBox/TopPromptSlot
+@onready var _top_grid_slot: PanelContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/TopActionHBox/TopGridSlot
 @onready var _fight_action_hbox: HBoxContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox
-@onready var _fight_grid_slot: MarginContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/FightGridSlot
+@onready var _fight_grid_slot: PanelContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/FightGridSlot
 # [M26c-3 real-proportion fix, pulls M26q-3 forward] Source shows a real
 # B_WIN_PP sub-window (PP only) next to the move grid; this project also
 # folds in the move's Type here (M26q-2's own already-pulled, previously
@@ -406,9 +413,15 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 # icon) removed per explicit request -- the node itself, its ext_resource,
 # _move_info_category_rect, and _category_icon_texture() are all gone; only
 # MoveInfoType/MoveInfoPP remain in MoveInfoPanel.
-@onready var _move_info_panel: VBoxContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel
-@onready var _move_info_type_label: Label = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel/MoveInfoType
-@onready var _move_info_pp_label: Label = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoPanel/MoveInfoPP
+# [M26 polish batch, item 1/A1] MoveInfoPanel itself stays a plain
+# VBoxContainer (it needs real top-to-bottom layout for its 2 labels, which
+# PanelContainer doesn't provide) -- wrapped in a new MoveInfoBorder
+# PanelContainer instead of retyping MoveInfoPanel directly, giving it the
+# same independent border as TopPromptSlot/TopGridSlot/FightGridSlot above.
+@onready var _move_info_border: PanelContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoBorder
+@onready var _move_info_panel: VBoxContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoBorder/MoveInfoPanel
+@onready var _move_info_type_label: Label = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoBorder/MoveInfoPanel/MoveInfoType
+@onready var _move_info_pp_label: Label = $SharedChrome/ActionRegion/ActionPanel/ActionVBox/FightActionHBox/MoveInfoBorder/MoveInfoPanel/MoveInfoPP
 
 @onready var _action_panel: PanelContainer = $SharedChrome/ActionRegion/ActionPanel
 @onready var _action_vbox: VBoxContainer = $SharedChrome/ActionRegion/ActionPanel/ActionVBox
@@ -459,13 +472,14 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 @onready var _party_status_opponent: HBoxContainer = $BattleStage/PartyStatusOpponent
 @onready var _party_status_player: HBoxContainer = $BattleStage/PartyStatusPlayer
 
-# [M26l] Opponent trainer-intro portrait banner. Hidden by default -- only
-# shown when BattleSetupContext carried a real opp_trainer_id (every
-# pre-existing caller leaves it at -1, i.e. a wild/untrainered test battle,
-# so this stays inert for them).
-@onready var _trainer_intro_banner: Control = $BattleStage/TrainerIntroBanner
-@onready var _trainer_intro_portrait: TextureRect = $BattleStage/TrainerIntroBanner/Portrait
-@onready var _trainer_intro_name_label: Label = $BattleStage/TrainerIntroBanner/NameLabel
+# [M26B3-2] The opponent trainer's real battle sprite. Replaces the retired
+# TrainerIntroBanner (portrait + caption over a dark backdrop), which had no
+# basis in source at all. Geometry is deliberately IDENTICAL to
+# OpponentSprite0's: in the reference the trainer stands in the exact slot
+# the Pokemon will occupy (singles x=176,y=40 == the opponent mon's own
+# {176,40}), reusing the Pokemon battle-sprite template outright
+# (src/pokemon.c:1923-1932). See CLAUDE.md's M26B3 entry for the full recon.
+@onready var _trainer_sprite: TextureRect = $BattleStage/TrainerSprite
 
 # [Doubles-split roadmap, step 5] Bottom-anchor baseline -- each opponent
 # sprite slot's own ORIGINAL (.tscn-authored) offset_top/offset_bottom,
@@ -619,6 +633,15 @@ const _PARTY_STATUS_HOLD_SECONDS := 1.6
 # slide-in/out animation, which this project has no infrastructure for.
 const _TRAINER_INTRO_HOLD_SECONDS := 1.6
 
+# [M26B3-2] Slide geometry/timing. Distance is a full stage width so the
+# sprite is genuinely off-screen at both ends regardless of resolution (the
+# reference uses GBA-space -DISPLAY_WIDTH in, x=280 out). Durations
+# approximate source's frame counts at 60fps: slide-in 2px/frame over 240px
+# (~120 frames), slide-out a fixed 35 frames.
+const _TRAINER_SLIDE_DISTANCE := 1024.0
+const _TRAINER_SLIDE_IN_SECONDS := 0.55
+const _TRAINER_SLIDE_OUT_SECONDS := 0.58
+
 # [Message pacing] The buffered sequence of "beats" for the events fired by
 # the CURRENT advance() call, drained by _run_message_pacing() afterward.
 # Populated by _wire_log_signals()'s own handlers (alongside their existing,
@@ -686,15 +709,32 @@ const _MENU_BUTTON_FONT_SIZE := 60
 # variants (styled for menus/constrained UI, not full message prose) or the
 # "red and blue(/intl)"/"red and green" variants (styled after Gen I/II).
 # Unlike the bitmap font, a TTF carries no baked-in color -- the real
-# message/action-prompt color scheme (red foreground, black shadow; see
-# M25h-1.2's own Step 0 citation) is reproduced via real Label/RichTextLabel
-# theme color+shadow overrides instead (this project's first use of
-# font_shadow_color/shadow_offset_*, anticipated by the M26e-1 roadmap's own
-# "likely Godot's own font_shadow_color/font_shadow_offset" note) rather
-# than baked into the font asset itself.
+# message/action-prompt color scheme is reproduced via real Label/
+# RichTextLabel theme color+shadow overrides instead (this project's first
+# use of font_shadow_color/shadow_offset_*, anticipated by the M26e-1
+# roadmap's own "likely Godot's own font_shadow_color/font_shadow_offset"
+# note) rather than baked into the font asset itself.
+#
+# [CORRECTED 2026-07-26 -- see docs/font_recon.md] These were red-on-black,
+# sourced from M25h-1.2's Step 0, which resolved B_WIN_MSG's color indices
+# against the WRONG palette file. The indices it read (fg 1 / shadow 6) were
+# right; the palette was not. Source, verified directly:
+#   sStandardBattleWindowTemplates[B_WIN_MSG].paletteNum = 0   (battle_bg.c)
+#   LoadPalette(gBattleTextboxPalette,     BG_PLTT_ID(0), ...) (battle_bg.c:989)
+#   LoadPalette(gBattleWindowTextPalette,  BG_PLTT_ID(5), ...) (battle_bg.c:966)
+# So B_WIN_MSG resolves against textbox_0.pal (palette 0), NOT text.pal
+# (palette 5). text.pal's index 1 IS red -- that is where the red came from --
+# but no message-box text ever indexes it. Both palettes happen to carry
+# plausible entries at 1/6/15, which is exactly why the error rendered as
+# something believable and survived the M26D1 TTF migration untouched (the
+# font changed; the color was carried forward as already-known-good).
+# Correct values, from textbox_0.pal: fg idx1 = (255,255,255) white,
+# shadow idx6 = (106,90,115). The reference ALSO has a background/accent
+# (idx15 = (106,164,164) teal) that this two-constant model has no slot for
+# -- see M26D1 in CLAUDE.md, still open.
 const _MESSAGE_FONT_SIZE := 20
-const _MESSAGE_FONT_COLOR := Color8(255, 0, 0)
-const _MESSAGE_FONT_SHADOW_COLOR := Color8(0, 0, 0)
+const _MESSAGE_FONT_COLOR := Color8(255, 255, 255)
+const _MESSAGE_FONT_SHADOW_COLOR := Color8(106, 90, 115)
 const _MESSAGE_FONT_SHADOW_OFFSET := Vector2(1, 1)
 
 
@@ -999,6 +1039,19 @@ func _ready() -> void:
 		BattleSetupContext.clear()
 	else:
 		is_doubles_battle = _build_teams()
+	# [M26 default-trainer pilot] No launch path currently threads a real
+	# trainer_id through for any of Random Team / saved-team / direct-launch
+	# opponents -- opp_trainer_id stays -1 (unset) unconditionally, so the
+	# fully-built trainer-intro pipeline (_show_trainer_intro, portrait, name
+	# banner) never actually fires for any real player flow. Deliberately
+	# narrow, portrait-only pilot: does NOT change which Pokemon team the
+	# opponent uses (still whatever Random/saved/fixture source was already
+	# resolved above) -- only which trainer identity is shown in the intro
+	# banner. Roxanne (702, TRAINER_ROXANNE_1) for singles, Brawly (84,
+	# TRAINER_BRAWLY_5, a real in-game doubles-format rematch) for doubles --
+	# both confirmed to resolve real portrait art.
+	if opp_trainer_id < 0:
+		opp_trainer_id = 84 if is_doubles_battle else 702
 	_apply_background(background_id)
 
 	# [M26l] Resolve BEFORE start_battle_*() below so BattleManager already
@@ -2673,6 +2726,17 @@ const _MESSAGE_OVERLAY_MARGIN_BOTTOM := 8.0
 # _enter_message_mode()/_exit_message_mode() below.
 var _action_panel_menu_style: StyleBoxTexture = null
 var _action_panel_message_style: StyleBoxTexture = null
+# [M26 polish batch, item 1/A1] A THIRD state ActionPanel's own stylebox
+# swaps to: TOP/FIGHT now draw their border via the two independent
+# TopPromptSlot/TopGridSlot (or FightGridSlot/MoveInfoBorder) panels
+# instead, matching the reference's real two-box layout (no third outer
+# frame wrapping both boxes) -- ActionPanel itself goes visually empty
+# behind them. Toggled by _layout_action_menu_for(), not the message-mode
+# pair above; the two toggles never run at the same moment (message mode
+# always restores _action_panel_menu_style before _refresh_ui() ->
+# _layout_action_menu_for() runs again with the real state), so there's no
+# ordering conflict between them.
+var _action_panel_split_style: StyleBoxEmpty = null
 
 # [M23.11 Phase 4e] Pure function (no scene/Image-loading side effects of its
 # own) so a headless test can verify the color-matching logic directly
@@ -2750,6 +2814,20 @@ func _setup_action_region_panel() -> void:
 
 	_action_panel_menu_style = panel_style
 	_action_panel.add_theme_stylebox_override("panel", panel_style)
+
+	# [M26 polish batch, item 1/A1] Real two-box layout: TopPromptSlot/
+	# TopGridSlot (TOP) and FightGridSlot/MoveInfoBorder (FIGHT) each get
+	# their OWN border, reusing the exact same StyleBoxTexture RESOURCE
+	# instance ActionPanel itself just got -- a Resource can back multiple
+	# nodes' theme overrides simultaneously with no per-node copy needed,
+	# and reusing it keeps every bordered box on this screen pulling from
+	# one shared style rather than 5 independent (but identical-looking)
+	# instances. _action_panel itself is toggled to _action_panel_split_style
+	# (built below) whenever one of these four is the visible content --
+	# see _layout_action_menu_for()'s own doc comment.
+	for slot: PanelContainer in [_top_prompt_slot, _top_grid_slot, _fight_grid_slot, _move_info_border]:
+		slot.add_theme_stylebox_override("panel", panel_style)
+	_action_panel_split_style = StyleBoxEmpty.new()
 
 	# [Message-box font migration] StatusLabel shows the "What will X do?"
 	# style prompt text, matching source's B_WIN_ACTION_PROMPT (the SAME
@@ -2961,24 +3039,90 @@ func _show_party_status_summary() -> void:
 	_party_status_player.visible = false
 
 
-# [M26l] Opponent trainer-intro portrait banner. A no-op when trainer is
-# null (every pre-existing wild/test-fixture caller) — TrainerPicRegistry
-# returning null for an unresolvable pic id is also handled gracefully
-# (banner just keeps whatever texture the .tscn's own sample portrait left
-# it at, matching TrainerPicRegistry.get_portrait_texture()'s own documented
-# "return null, let the caller decide the fallback" convention).
+# [M26B3-2] Opponent trainer sprite -- entry, hold, exit. Replaces the
+# retired portrait-banner implementation entirely.
+#
+# Reference behaviour reproduced (full citations in CLAUDE.md's M26B3 entry):
+#   * a 64x64 sprite standing ON the battlefield in the slot the Pokemon will
+#     later occupy -- NOT an overlay, banner or portrait; no such concept
+#     exists anywhere in the reference
+#   * slides in from off-screen (SpriteCB_TrainerSlideIn, x2 = -DISPLAY_WIDTH
+#     -> 0), static while visible (gAnims_Trainer is two entries both frame 0)
+#   * on send-out it slide-translates OFF the far edge and is destroyed
+#     (SpriteCB_FreeOpponentSprite), CONCURRENTLY with the ball throw rather
+#     than before it -- the opponent's own framesToWait is 0
+#
+# Deliberately NOT in this sub-phase: the player back sprite (B3-3, blocked on
+# an asset pull -- this project has zero back pics), the battle-end slide-in
+# (B3-4), and the intro-phase reordering with both real messages (B3-5).
+#
+# Scope note: the "wants to battle!" string is routed through the REAL message
+# box purely so retiring the banner doesn't silently drop text that was
+# already on screen. That is minimal preservation, NOT B3-5 -- the second
+# message (STRINGID_INTROSENDOUT) and the correct DRAW_SPRITES -> ... ->
+# TRAINER_1_SEND_OUT_ANIM phase ordering are still outstanding.
 func _show_trainer_intro(trainer: TrainerData) -> void:
 	if trainer == null:
 		return
 	var portrait := TrainerPicRegistry.get_portrait_texture(trainer.trainer_pic_id)
 	if portrait != null:
-		_trainer_intro_portrait.texture = portrait
-	_trainer_intro_name_label.text = "%s wants to battle!" % trainer.trainer_name.capitalize()
+		_trainer_sprite.texture = portrait
+
+	# The trainer stands where the mon will stand, so the mon must not be on
+	# screen yet -- in the reference it genuinely does not exist until the ball
+	# throw. _refresh_battlefield_side() already ran, so hide it explicitly.
+	_set_opponent_mon_sprites_visible(false)
+
 	if _is_autoplay_run or not is_inside_tree():
+		_set_opponent_mon_sprites_visible(true)
 		return
-	_trainer_intro_banner.visible = true
+
+	_queue_trainer_intro_message(trainer)
+
+	var rest_x := _trainer_sprite.position.x
+	_trainer_sprite.position.x = rest_x - _TRAINER_SLIDE_DISTANCE
+	_trainer_sprite.visible = true
+	var slide_in := create_tween()
+	slide_in.tween_property(_trainer_sprite, "position:x", rest_x, _TRAINER_SLIDE_IN_SECONDS)
+	await slide_in.finished
+
 	await get_tree().create_timer(_TRAINER_INTRO_HOLD_SECONDS).timeout
-	_trainer_intro_banner.visible = false
+
+	# Exit: slide off the far edge and hide. The mon is revealed at the SAME
+	# time, not after -- matching source's concurrency (the trainer is still
+	# sliding out while the ball is already in flight).
+	var slide_out := create_tween()
+	slide_out.tween_property(_trainer_sprite, "position:x",
+			rest_x + _TRAINER_SLIDE_DISTANCE, _TRAINER_SLIDE_OUT_SECONDS)
+	_set_opponent_mon_sprites_visible(true)
+	await slide_out.finished
+	_trainer_sprite.visible = false
+	_trainer_sprite.position.x = rest_x
+
+
+# [M26B3-2] Every opponent-side mon sprite this scene has (1 singles, 2
+# doubles) -- generic over slot count, same lookup convention as
+# _sprite_node_for()/_health_group_for().
+func _set_opponent_mon_sprites_visible(vis: bool) -> void:
+	var slot := 0
+	while true:
+		var n := get_node_or_null("BattleStage/OpponentSprite%d" % slot)
+		if n == null:
+			break
+		(n as CanvasItem).visible = vis
+		slot += 1
+
+
+# [M26B3-2] Minimal preservation of the retired banner's caption -- see
+# _show_trainer_intro's own scope note. Uses the real message box rather than
+# an overlay label, which is where source puts it (STRINGID_INTROMSG prints
+# into B_WIN_MSG while the sprite stands on the field).
+func _queue_trainer_intro_message(trainer: TrainerData) -> void:
+	_pending_beats.append({
+		"kind": "text",
+		"text": "%s wants to battle!" % trainer.trainer_name.capitalize(),
+	})
+
 
 
 # [Doubles-split roadmap, step 5] Generalized per-side battlefield refresh —
@@ -3040,6 +3184,15 @@ func _refresh_battlefield_side(party: BattleParty, is_player: bool) -> void:
 # MOVE_SELECTION's own `match _menu:` block only for the two cases that
 # need something different (TOP, FIGHT).
 func _layout_action_menu_for(is_top: bool, is_fight: bool) -> void:
+	# [M26 polish batch, item 1/A1] TOP/FIGHT draw their own border via
+	# TopPromptSlot/TopGridSlot or FightGridSlot/MoveInfoBorder instead --
+	# ActionPanel itself goes empty so there's no third outer frame wrapping
+	# both boxes, matching the real two-box reference layout. Every other
+	# state (this function's own (false, false) safe-default call) keeps
+	# ActionPanel's normal single-box border.
+	_action_panel.add_theme_stylebox_override("panel",
+			_action_panel_split_style if (is_top or is_fight) else _action_panel_menu_style)
+
 	_top_action_hbox.visible = is_top
 	_fight_action_hbox.visible = is_fight
 

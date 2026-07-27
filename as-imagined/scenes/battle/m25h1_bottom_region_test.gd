@@ -443,6 +443,14 @@ func _test_action_panel_has_real_window_art_stylebox() -> void:
 	bs._font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
 	bs._move_info_type_label = Label.new()
 	bs._move_info_pp_label = Label.new()
+	# [M26 polish batch, item 1/A1] _setup_action_region_panel() now also
+	# applies the shared stylebox to these 4 new independently-bordered
+	# panels -- real @onready fields that never resolve on a bare instance,
+	# same class of gap as _move_info_type_label/_move_info_pp_label above.
+	bs._top_prompt_slot = PanelContainer.new()
+	bs._top_grid_slot = PanelContainer.new()
+	bs._fight_grid_slot = PanelContainer.new()
+	bs._move_info_border = PanelContainer.new()
 
 	bs._setup_action_region_panel()
 
@@ -528,6 +536,12 @@ func _test_status_label_has_real_message_color_override() -> void:
 	# above -- see that test's own comment.
 	bs._move_info_type_label = Label.new()
 	bs._move_info_pp_label = Label.new()
+	# [M26 polish batch, item 1/A1] Same 4-panel wiring gap as the test
+	# above -- see that test's own comment.
+	bs._top_prompt_slot = PanelContainer.new()
+	bs._top_grid_slot = PanelContainer.new()
+	bs._fight_grid_slot = PanelContainer.new()
+	bs._move_info_border = PanelContainer.new()
 
 	bs._setup_action_region_panel()
 
