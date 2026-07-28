@@ -1523,23 +1523,27 @@ func _ready() -> void:
 		BattleSetupContext.clear()
 	else:
 		is_doubles_battle = _build_teams()
-	# [M26 default-trainer pilot] No launch path currently threads a real
-	# trainer through for any of Random Team / saved-team / direct-launch
-	# opponents -- opp_trainer_key stays "" (unset) unconditionally, so the
-	# fully-built trainer-intro pipeline (_show_trainer_intro, portrait, name
-	# banner) never actually fires for any real player flow. Deliberately
-	# narrow, portrait-only pilot: does NOT change which Pokemon team the
-	# opponent uses (still whatever Random/saved/fixture source was already
-	# resolved above) -- only which trainer identity is shown in the intro
-	# banner. Roxanne for singles, Brawly (a real in-game doubles-format
-	# rematch) for doubles -- both confirmed to resolve real portrait art.
+	# [Step 3] NO default opponent trainer. A simulator opponent gets exactly
+	# the resources the user configured -- the team, nothing else.
 	#
-	# [Step 1] Named by canonical KEY. These were raw trainer_id ints (702 and
-	# 84) until that id space was retired: it was a sorted-alphabetical index
-	# this project minted, so adding a second roster renumbered it and a stale
-	# int would have resolved to a DIFFERENT trainer rather than failing.
-	const _DEFAULT_OPP_KEY_SINGLES := "TRAINER_ROXANNE_1_RSE"
-	const _DEFAULT_OPP_KEY_DOUBLES := "TRAINER_BRAWLY_5_RSE"
+	# This previously fell back to a real gym leader (Roxanne singles / Brawly
+	# doubles) so the trainer-intro portrait had something to show. That was
+	# described as a portrait-only pilot, but set_trainer_data() does two things
+	# beyond the banner: it stocks the AI's battle items and it arms the
+	# money-reward branch. Roxanne carries 2x Potion, so every default simulator
+	# battle silently handed the opponent two heals -- a real resource the user
+	# never chose, usable via should_use_item()'s below-25%-HP heuristic.
+	#
+	# Passing nothing is the smaller diff AND the correct semantics: both
+	# _trainer_data[side] and _trainer_battle_item_stock[side] already default
+	# to null/{}, so simply not calling set_trainer_data leaves the AI with an
+	# empty stock and the money branch disarmed.
+	#
+	# Disclosed consequence: with no trainer attached, the intro banner/portrait
+	# does not fire in simulator mode. Accepted -- a placeholder identity the
+	# user never picked is not worth paying for in AI resources. A launch path
+	# that threads a real opp_trainer_key (RPG trainer battles, M27) still gets
+	# the full intro, unchanged.
 	_apply_background(background_id)
 
 	# [M26l] Resolve BEFORE start_battle_*() below so BattleManager already
@@ -1549,9 +1553,6 @@ func _ready() -> void:
 	var opp_trainer_data: TrainerData = null
 	if opp_trainer_key != "":
 		opp_trainer_data = TrainerRegistry.get_trainer_by_key(opp_trainer_key)
-	else:
-		opp_trainer_data = TrainerRegistry.get_trainer_by_key(
-				_DEFAULT_OPP_KEY_DOUBLES if is_doubles_battle else _DEFAULT_OPP_KEY_SINGLES)
 
 
 	var ai := TrainerAI.new()

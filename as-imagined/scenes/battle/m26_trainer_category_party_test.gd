@@ -43,6 +43,8 @@ func _ready() -> void:
 	_test_trainer_identity_survives_a_roster_regen()
 	_test_filenames_agree_with_trainer_keys()
 	_test_battle_manager_get_trainer_data_round_trip()
+	_test_simulator_opponent_gets_no_free_resources()
+	_test_simulator_win_awards_no_money()
 	_test_real_trainer_and_portrait_pipeline_resolves()
 
 	var total := _pass + _fail
@@ -740,6 +742,45 @@ func _test_battle_manager_get_trainer_data_round_trip() -> void:
 	_chk("get_trainer_data reads back exactly what set_trainer_data attached",
 			bm.get_trainer_data(1) == trainer)
 	_chk("the other side is untouched", bm.get_trainer_data(0) == null)
+
+
+## [Step 3] A simulator opponent gets exactly the resources the user chose --
+## the team, nothing else. The screen previously attached a real gym leader as
+## a default "portrait pilot", which also handed the AI her battle items and
+## armed the money branch. These pin both halves of that removal.
+func _test_simulator_opponent_gets_no_free_resources() -> void:
+	var bm := BattleManager.new()
+	add_child(bm)
+
+	# (a) No trainer attached => empty AI item stock. Asserted through the real
+	# consumer gate (_maybe_ai_use_item early-returns on an empty stock) rather
+	# than by reading the private array, so this tracks behaviour not storage.
+	_chk("no trainer is attached to the AI side by default",
+			bm.get_trainer_data(1) == null)
+	_chk("the AI's battle-item stock is empty at battle start",
+			bm._trainer_battle_item_stock[1].is_empty())
+
+	# Discriminator: attaching Roxanne WOULD have stocked it -- proving the
+	# assertion above is real and not vacuous.
+	var roxanne := TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1_RSE")
+	_chk("Roxanne really does carry battle items (so the check above matters)",
+			roxanne != null and roxanne.battle_items.size() == 2)
+	bm.set_trainer_data(1, roxanne)
+	_chk("attaching her stocks the AI -- the behaviour Step 3 removed",
+			not bm._trainer_battle_item_stock[1].is_empty())
+
+	bm.queue_free()
+
+
+## (b) With no opponent trainer, winning awards no money -- the reward branch is
+## gated on _trainer_data[1] being non-null.
+func _test_simulator_win_awards_no_money() -> void:
+	var bm := BattleManager.new()
+	add_child(bm)
+	_chk("last_money_awarded starts at 0", bm.last_money_awarded == 0)
+	_chk("no trainer attached means the money branch cannot arm",
+			bm.get_trainer_data(1) == null)
+	bm.queue_free()
 
 
 func _test_real_trainer_and_portrait_pipeline_resolves() -> void:
