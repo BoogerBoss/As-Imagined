@@ -22,13 +22,19 @@ import sys
 
 from PIL import Image
 
-from ref_path import REF
+from ref_path import PROJECT, REF, assert_inside_project
 from trainer_keys import canonical_key
 
-OUT = "/home/rob/GodotAsImagined/as-imagined/assets/maps"
+# [Step 5 follow-up] Derived, not hardcoded. These were absolute paths into the
+# main checkout, so running this script from a worktree or a clone elsewhere
+# silently wrote its output into the ORIGINAL tree -- the same
+# wrong-tree-by-hardcoded-path class ref_path.py exists to kill, missed by that
+# sweep because these are OUTPUT paths rather than reference paths.
+OUT = assert_inside_project(os.path.join(PROJECT, "assets", "maps"), "OUT")
 # Atlases are shared per tileset PAIR and are real runtime dependencies of
 # tracked scenes, so they live apart from the regenerable per-map output.
-ATLAS_OUT = "/home/rob/GodotAsImagined/as-imagined/assets/map_atlases"
+ATLAS_OUT = assert_inside_project(
+    os.path.join(PROJECT, "assets", "map_atlases"), "ATLAS_OUT")
 
 # include/fieldmap.h — the FRLG split, NOT the Hoenn one (512/512/6).
 NUM_TILES_IN_PRIMARY_FRLG = 640
@@ -157,7 +163,9 @@ def gen_behavior_constants():
         "const LEDGE_WEST := MB_JUMP_WEST",
         "",
     ]
-    p = "/home/rob/GodotAsImagined/as-imagined/scripts/overworld/metatile_behavior.gd"
+    p = assert_inside_project(
+        os.path.join(PROJECT, "scripts", "overworld", "metatile_behavior.gd"),
+        "metatile_behavior.gd output")
     os.makedirs(os.path.dirname(p), exist_ok=True)
     open(p, "w").write("\n".join(out))
     print("behaviors: %s  (%d constants)" % (p, len(names)))

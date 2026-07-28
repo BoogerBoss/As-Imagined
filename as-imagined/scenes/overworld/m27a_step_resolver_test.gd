@@ -14,6 +14,18 @@ const MAP_JSON := "res://assets/maps/PalletTown_Frlg.json"
 
 var _passed := 0
 var _total := 0
+var _gated := 0
+
+## [Step 5 follow-up] Section A asserts against the IMPORTED map JSON, which is
+## a generated build input and gitignored by design (docs/overworld_scope.md
+## §1.9's generated-vs-tracked split). A fresh clone therefore has none of the
+## 421 files, and section A cannot run.
+##
+## It used to fail: A.01 loaded null and reported FAILED, then early-returned,
+## silently taking A.02-A.08 with it -- a clean checkout read 62/63, which
+## trains people to treat this suite's red as normal. Gated explicitly instead,
+## so a fresh clone reads a clean 62/62 and says why the total is smaller.
+const MAP_DATA_ASSERTIONS := 8
 
 
 func _chk(label: String, cond: bool) -> void:
@@ -51,13 +63,25 @@ func _ready() -> void:
 	_test_baked_artifacts()
 	_test_object_events()
 
+	if _gated > 0:
+		print("m27a_step_resolver_test: fresh-checkout mode — %d map-data "
+				% _gated
+				+ "assertions gated (run `python3 scripts/gen_map_import.py all` "
+				+ "to enable)")
 	print("m27a_step_resolver_test: %d/%d passed" % [_passed, _total])
 	if OS.has_feature("headless") or "--autoplay" in OS.get_cmdline_args():
 		get_tree().quit()
 
 
 # --- A. the imported artifact itself ---------------------------------------
+func _map_data_available() -> bool:
+	return FileAccess.file_exists(MAP_JSON)
+
+
 func _test_import_integrity() -> void:
+	if not _map_data_available():
+		_gated += MAP_DATA_ASSERTIONS
+		return
 	var m := MapData.load_from(MAP_JSON)
 	_chk("A.01 map loads", m != null)
 	if m == null:

@@ -33,6 +33,32 @@ REPO_ROOT = os.path.dirname(PROJECT)
 REF = os.path.join(REPO_ROOT, "reference", "pokeemerald_expansion")
 
 
+def assert_inside_project(path, label):
+    """Fail at import if a generated OUTPUT path escapes the project.
+
+    The mirror of _verify() above, and for the same reason. _verify() guards
+    the reference path against resolving into the wrong tree; this guards the
+    output paths against the same class in the opposite direction.
+
+    It exists because that class recurred: `gen_map_import.py` hardcoded
+    absolute output paths into one specific checkout, so running it from a
+    worktree silently wrote 421 map JSONs into the ORIGINAL tree and left the
+    worktree empty. The reference-path sweep missed it precisely because these
+    are outputs, not references.
+
+    A future refactor that breaks the derivation now dies loudly here rather
+    than writing hundreds of files into whatever tree sits at a stale path.
+    """
+    real = os.path.realpath(path)
+    root = os.path.realpath(PROJECT)
+    if real != root and not real.startswith(root + os.sep):
+        raise SystemExit(
+            "ref_path: %s resolves OUTSIDE the project (%s). Generated output "
+            "must land inside %s -- derive it from PROJECT rather than "
+            "hardcoding a path." % (label, real, root))
+    return path
+
+
 def _verify():
     if not os.path.isdir(REF):
         raise SystemExit(

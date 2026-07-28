@@ -2637,6 +2637,13 @@ name is `TRAINER_NONE`, excluded from both), and the helper asserts that at
 build time so a future expansion update that introduces a collision fails
 loudly instead of resolving by dict order.
 
+**Node names are DERIVED from the key, never styled.** A baked trainer node is
+`LassRobinFrlg_40_11`, suffix included. Trimming `Frlg` for tidiness would
+create a second cosmetic identity diverging from the real one — a miniature of
+the two-names-per-trainer problem the no-alias clause below exists to prevent.
+Origin visible in the scene tree, and greppable straight from test output to
+node, are both features. Decided and closed; no code change.
+
 **Bare, unsuffixed keys do not resolve. No alias layer, no fallback.** Two
 spellings per trainer would make the origin suffix optional, which defeats it.
 
@@ -2770,6 +2777,33 @@ I.14/I.15 asserted the roster was unconverted; they now assert it resolves and
 raises no warning. Proven non-vacuous by removing `TRAINER_LASS_ROBIN_FRLG.tres`
 and confirming both fail.
 
+**The 800-char indexer cap, accounted for.** The label indexer once capped each
+script body at 800 characters. It was removed during the follow-up-notes pass
+BEFORE this five-step sequence, and `gen_map_import.py` was first committed
+already uncapped (`0611738c`) — so the capped form never existed in tracked
+history, and Step 5's verification measured the uncapped one.
+
+Measured both ways against the current code, because "the removal was probably
+harmless" is not a finding:
+
+| | capped (800) | uncapped |
+|---|---|---|
+| labels indexed | 17,638 | 18,315 |
+| **Kanto placements resolved** | **432/432** | **432/432** |
+| all-region placements resolved | 869/974 | 910/974 |
+| mis-keyed (wrong trainer) | **0** | **0** |
+
+**Uncapping was NOT necessary to reach 432/432** — the capped form scores
+identically on Kanto, with zero differing placements. So the removal is
+harmless for this milestone's scope, and the 432/432 claim holds under either.
+
+It was not pointless either: the cap costs **41 Hoenn placements** (Route102's
+Allen, Route103's Isabelle, Route104's Darian and 38 more), whose
+`trainerbattle` sits deeper than 800 chars into a shared script file. Note the
+cap did not TRUNCATE those bodies — it made the whole match fail, dropping 677
+labels outright. Every one of the 41 is a MISS, never a wrong key: the cap
+failed safe in every case in the tree, which is the property that mattered.
+
 **Placements carry canonical keys.** `gen_map_import.py::trainer_key_for` routes
 through the same `canonical_key()` the trainer converter uses, so an emitted
 placement is `TRAINER_LASS_ROBIN_FRLG`. Re-verified at full scale with the
@@ -2783,6 +2817,55 @@ maps produced a 201-line diff of which only 26 lines are semantic (13
 normalised away, **6 of the 8 scenes are byte-identical** and the two that
 differ contain only the trainer changes. A real edit could hide in that churn;
 diff with `sed -E 's/ unique_id=[0-9]+//'` when reviewing a re-bake.
+
+### Regeneration chain — the expected clean-clone baseline
+
+`assets/maps/` is a generated build input and gitignored (§1.9's
+generated-vs-tracked split), so a fresh checkout has none of the 421 map JSONs
+and section A of `m27a_step_resolver_test` cannot run.
+
+| state | result |
+|---|---|
+| fresh checkout, as cloned | **62/62** — 8 map-data assertions gated, announced in one line |
+| after `python3 scripts/gen_map_import.py all` | **70/70** |
+
+The suite detects the absence itself and prints
+`fresh-checkout mode — 8 map-data assertions gated (run ...)`, so the smaller
+total is self-explaining rather than tribal knowledge. It used to read **62/63**:
+`A.01` failed on a null load and early-returned, silently taking `A.02`–`A.08`
+with it. A suite that fails by design on every clean checkout teaches people to
+ignore its red, so those 8 are now gated together.
+
+**Two prerequisites a genuine fresh clone needs**, both found by actually
+running this end to end rather than assuming:
+
+1. **`reference/pokeemerald_expansion` is a git SUBMODULE** (gitlink, pinned at
+   `74e40e03`). `git clone` and `git worktree add` both create the directory
+   empty — run `git submodule update --init` or no generator can run at all.
+2. Generators must be run from the checkout you intend to write to. `OUT` and
+   `ATLAS_OUT` in `gen_map_import.py` were **hardcoded absolute paths into the
+   main checkout**, so running it from a worktree silently wrote 421 JSONs into
+   the *original* tree — the same wrong-tree-by-hardcoded-path class
+   `ref_path.py` exists to kill, missed by that sweep because these are OUTPUT
+   paths. Now derived from `PROJECT` **and asserted**: `assert_inside_project()`
+   is the mirror of `ref_path`'s own inside-the-project guard, so a future
+   refactor that breaks the derivation dies at import instead of writing 421
+   files into whatever tree sits at a stale path. Verified in both directions.
+
+**That workaround is now a tool: `scripts/check_bake_diff.py`.** It bakes to a
+scratch copy, normalises `unique_id` away, diffs against the tracked scene, and
+exits nonzero with a readable diff when they differ semantically:
+
+    python3 scripts/check_bake_diff.py Route3_Frlg PalletTown_Frlg
+    python3 scripts/check_bake_diff.py --all
+
+This is the concrete detection method for the re-import-vs-hand-edits risk
+§1.9 raised: a scene that is no longer reproducible is one carrying
+hand-authored content a `--force` re-bake would silently overwrite. It is
+**non-destructive** (the scene is restored either way) and deliberately **not
+wired into the baker** — a standalone check a re-bake session runs first.
+Verified in both directions: clean corridor exits 0, an injected hand-placed
+node exits 1 and is named in the diff.
 
 ### Roadmap fit
 
