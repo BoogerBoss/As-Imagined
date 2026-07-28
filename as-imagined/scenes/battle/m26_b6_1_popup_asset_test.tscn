@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://m26b61popupassettest"]
+
+[ext_resource type="Script" path="res://scenes/battle/m26_b6_1_popup_asset_test.gd" id="1_m26b61test"]
+
+[node name="M26B61PopupAssetTest" type="Node"]
+script = ExtResource("1_m26b61test")

@@ -5261,6 +5261,208 @@ const _SUN_RAY_ROT_STEP := 10                     # ...and +10 rotation per fram
 
 
 # Scale factor from GBA screen space onto this project's real stage.
+# ── [M26B6-2] Ability activation popup — node and slide animation ────────
+#
+# Source: CreateAbilityPopUp / SpriteCb_AbilityPopUp (battle_interface.c
+# :2573, :2645). Full recon: docs/m26_b6_recon.md.
+#
+# Source builds this as TWO 64x32 sprites side by side (the second gets
+# `oam.tileNum += 32`) purely because of a GBA OAM size limit -- the visual is
+# one 128x32 panel, so ONE node reproduces it exactly. Not a simplification.
+#
+# TEXT IS NOT DRAWN HERE. Source prints two lines onto the panel (the holder's
+# possessive name, then the ability name); that is B6-3. B6-2 is the panel and
+# its motion only.
+const _ABILITY_POPUP_TEX := "res://assets/sprites/battle_ui/interface/ability_pop_up.png"
+const _ABILITY_POPUP_SIZE := Vector2(128.0, 32.0)
+const _ABILITY_POPUP_SLIDE := 128.0   # ABILITY_POP_UP_POS_X_SLIDE
+const _ABILITY_POPUP_SPEED := 4.0     # ABILITY_POP_UP_POS_X_SPEED, px/frame
+const _ABILITY_POPUP_HOLD := 48       # ABILITY_POP_UP_WAIT_FRAMES
+# sAbilityPopUpCoordsSingles / ...Doubles, in GBA screen space. Indexed by
+# battler POSITION in source; here by (side, field slot), which is the same
+# thing. Note singles-player and doubles-player-RIGHT share (24, 97).
+const _ABILITY_POPUP_COORDS_SINGLES: Array[Vector2] = [
+	Vector2(24.0, 97.0),    # player
+	Vector2(178.0, 57.0),   # opponent
+]
+const _ABILITY_POPUP_COORDS_DOUBLES: Array[Vector2] = [
+	Vector2(24.0, 80.0),    # player left   (slot 0)
+	Vector2(24.0, 97.0),    # player right  (slot 1)
+	Vector2(178.0, 19.0),   # opponent left (slot 0)
+	Vector2(178.0, 36.0),   # opponent right(slot 1)
+]
+
+
+# ── [M26B6-3] Popup text — two lines ─────────────────────────────────────
+#
+# Source prints the holder's POSSESSIVE name then the ability name
+# (PrintBattlerOnAbilityPopUp / PrintAbilityOnAbilityPopUp). Band geometry and
+# colours below were derived EMPIRICALLY from the panel art rather than from
+# source's GBA VRAM tile offsets, which are a tile-addressing detail that does
+# not transfer: a per-row scan of ability_pop_up.png shows a dark band at rows
+# 3-12 (palette index 5) and a light band at rows 15-24 (index 7), with rows
+# 28-31 fully transparent and content spanning x 0-103 of the 128px sheet.
+# That matches source's own text colours exactly -- the name is near-white
+# (index 7) on the dark band, the ability black (index 9) on the light one --
+# which is the cross-check that the bands were read correctly.
+const _ABILITY_POPUP_NAME_RECT := Rect2(6.0, 3.0, 92.0, 10.0)     # GBA space
+const _ABILITY_POPUP_ABILITY_RECT := Rect2(6.0, 15.0, 92.0, 10.0)
+const _ABILITY_POPUP_NAME_COLOR := Color8(249, 253, 255)   # source index 7
+const _ABILITY_POPUP_ABILITY_COLOR := Color8(0, 0, 0)      # source index 9
+const _ABILITY_POPUP_SHADOW_COLOR := Color8(143, 129, 149) # source index 1
+# latin_small_healthbox.fnt IS this project's FONT_SMALL extraction, which is
+# the font source itself uses here (GetFontIdToFit starts at FONT_SMALL). Its
+# native size is 13; per the standing invariant that an extracted bitmap font
+# must only ever be scaled by an EXACT INTEGER MULTIPLE (fractional resampling
+# visibly smears hard-edged GBA glyphs), the size below is derived as the
+# largest whole multiple that still fits the band rather than hardcoded.
+const _ABILITY_POPUP_FONT_NATIVE := 13
+
+
+# "Pikachu" -> "Pikachu's", but "Chansey" -> "Chansey'".
+# Source appends the apostrophe unconditionally and adds `s` only when the
+# name does not already end in s/S (PrintBattlerOnAbilityPopUp).
+static func _possessive_name(mon_name: String) -> String:
+	if mon_name.is_empty():
+		return mon_name
+	var last := mon_name.substr(mon_name.length() - 1, 1)
+	return mon_name + ("'" if last == "s" or last == "S" else "'s")
+
+
+func _make_ability_popup_label(rect: Rect2, scale: Vector2, colour: Color) -> Label:
+	var lbl := Label.new()
+	lbl.position = Vector2(rect.position.x * scale.x, rect.position.y * scale.y)
+	lbl.size = Vector2(rect.size.x * scale.x, rect.size.y * scale.y)
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.clip_text = true
+	if _font_healthbox != null:
+		lbl.add_theme_font_override("font", _font_healthbox)
+		var mult: int = maxi(1, int(lbl.size.y / float(_ABILITY_POPUP_FONT_NATIVE)))
+		lbl.add_theme_font_size_override("font_size",
+				_ABILITY_POPUP_FONT_NATIVE * mult)
+	lbl.add_theme_color_override("font_color", colour)
+	lbl.add_theme_color_override("font_shadow_color", _ABILITY_POPUP_SHADOW_COLOR)
+	lbl.add_theme_constant_override("shadow_offset_x", 1)
+	lbl.add_theme_constant_override("shadow_offset_y", 1)
+	return lbl
+
+
+# The ability label is kept on the panel's metadata because B6-4 needs to
+# REWRITE it on an already-visible popup rather than spawning a second one --
+# source's own UpdateAbilityPopup, which is why PrintAbilityOnAbilityPopUp
+# blanks its line before printing.
+func _build_ability_popup_text(panel: Control, mon: BattlePokemon,
+		scale: Vector2) -> void:
+	var name_lbl := _make_ability_popup_label(
+			_ABILITY_POPUP_NAME_RECT, scale, _ABILITY_POPUP_NAME_COLOR)
+	name_lbl.text = _possessive_name(mon.species.species_name if mon.species != null else "")
+	panel.add_child(name_lbl)
+
+	var ability_lbl := _make_ability_popup_label(
+			_ABILITY_POPUP_ABILITY_RECT, scale, _ABILITY_POPUP_ABILITY_COLOR)
+	ability_lbl.text = _ability_popup_name_for(mon)
+	panel.add_child(ability_lbl)
+	panel.set_meta("ability_popup_label", ability_lbl)
+
+
+func _ability_popup_name_for(mon: BattlePokemon) -> String:
+	if mon == null or mon.ability == null:
+		return ""
+	return mon.ability.ability_name
+
+
+# B6-4's UpdateAbilityPopup equivalent: rewrite the ability on a live popup.
+func _set_ability_popup_ability(panel: Control, ability_name: String) -> void:
+	if panel == null or not is_instance_valid(panel):
+		return
+	if not panel.has_meta("ability_popup_label"):
+		return
+	var lbl: Label = panel.get_meta("ability_popup_label")
+	if lbl != null and is_instance_valid(lbl):
+		lbl.text = ability_name
+
+
+# Which side/slot a mon occupies, for popup placement. Deliberately NOT
+# _find_mon_slot(): that returns sprite/panel nodes but not the slot INDEX,
+# which doubles placement needs.
+func _ability_popup_slot(mon: BattlePokemon) -> Dictionary:
+	for is_player in [true, false]:
+		var party: BattleParty = _player_party if is_player else _opp_party
+		if party == null:
+			continue
+		for slot in range(party.num_active()):
+			if slot >= party.members.size():
+				continue
+			if party.get_active_at(slot) == mon:
+				return {"is_player": is_player, "slot": slot}
+	return {}
+
+
+# Resting position in this project's stage pixels, scaled from GBA space.
+func _ability_popup_target(is_player: bool, slot: int) -> Vector2:
+	var scale := _weather_stage_scale()
+	var gba: Vector2
+	if _is_doubles():
+		var idx: int = (0 if is_player else 2) + clampi(slot, 0, 1)
+		gba = _ABILITY_POPUP_COORDS_DOUBLES[idx]
+	else:
+		gba = _ABILITY_POPUP_COORDS_SINGLES[0 if is_player else 1]
+	return gba * scale
+
+
+# Slides the panel in from off-screen, holds, and slides it back out.
+#
+# Player-side popups enter from the LEFT and opponent-side from the RIGHT --
+# source's own `xSlide` sign flip, with the slide-out simply reversing it, so
+# the panel leaves the way it came rather than crossing the screen.
+#
+# Timing is source's exactly: 128 px at 4 px/frame = 32 frames in, 48 held,
+# 32 out (~112 frames, ~1.87 s). Tween-driven rather than frame-walked so it
+# stays exact at any refresh rate -- the same reasoning M26G4's audit applied
+# to B4's own tween-vs-stepper split.
+func _play_ability_popup(mon: BattlePokemon) -> void:
+	if _effect_layer == null or not is_inside_tree() or mon == null:
+		return
+	var where := _ability_popup_slot(mon)
+	if where.is_empty():
+		return
+	var tex := load(_ABILITY_POPUP_TEX) as Texture2D
+	if tex == null:
+		return
+
+	var scale := _weather_stage_scale()
+	var is_player: bool = where["is_player"]
+	var target := _ability_popup_target(is_player, where["slot"])
+	var offset := _ABILITY_POPUP_SLIDE * scale.x * (-1.0 if is_player else 1.0)
+	var start := Vector2(target.x + offset, target.y)
+
+	var panel := TextureRect.new()
+	panel.texture = tex
+	panel.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	panel.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	panel.size = _ABILITY_POPUP_SIZE * scale
+	panel.position = start
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_effect_layer.add_child(panel)
+	_active_hit_effect_nodes.append(panel)
+	panel.tree_exited.connect(func(): _active_hit_effect_nodes.erase(panel))
+	panel.set_meta("ability_popup_mon", mon)
+	_build_ability_popup_text(panel, mon, scale)
+
+	var slide_time: float = (_ABILITY_POPUP_SLIDE / _ABILITY_POPUP_SPEED) \
+			* _ANIM_FRAME_SECONDS
+	var tw := create_tween()
+	panel.set_meta("ability_popup_tween", tw)
+	tw.tween_property(panel, "position", target, slide_time)
+	tw.tween_interval(_ABILITY_POPUP_HOLD * _ANIM_FRAME_SECONDS)
+	tw.tween_property(panel, "position", start, slide_time)
+	tw.tween_callback(func():
+		if is_instance_valid(panel):
+			panel.queue_free())
+	await tw.finished
+
+
 func _weather_stage_scale() -> Vector2:
 	if _effect_layer == null:
 		return Vector2.ONE
