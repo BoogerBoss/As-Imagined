@@ -25,6 +25,7 @@ func _ready() -> void:
 	_test_every_portrait_loads()
 	_test_dangling_stem_count()
 	_test_spot_check_known_portraits()
+	_test_spot_check_kanto_portraits()
 	_test_upstream_verbatim_edge_cases()
 	_test_missing_stem_fails_loudly()
 
@@ -55,9 +56,9 @@ func _test_every_portrait_loads() -> void:
 			stems[t.pic_stem] = true
 	_chk("roster references %d distinct portrait stems (got %d)"
 			% [PORTRAIT_STEM_COUNT, stems.size()], stems.size() == PORTRAIT_STEM_COUNT)
-	# Only stems whose art is actually pulled are load-checked; the not-yet-
-	# pulled Kanto ones are counted by _test_dangling_stem_count instead, so a
-	# known gap does not masquerade as 62 individual failures.
+	# Every referenced stem now resolves, so this guard skips nothing today.
+	# Kept because it is what stops a future unpulled roster from reporting one
+	# failure per trainer instead of a single counted gap below.
 	for stem in stems:
 		if not TrainerPicRegistry.has_portrait(stem):
 			continue
@@ -71,21 +72,25 @@ func _test_every_portrait_loads() -> void:
 ## on disk. Zero now. Converting the Kanto roster raises it to 86 (the unpulled
 ## FRLG sprites, [M26B3-1]); pulling them returns it to 0. A number that moves
 ## is the point — the gap stays visible instead of becoming a silent blank.
-## [Step 4] Two numbers, because they answer different questions and the
-## distinction was easy to get wrong:
+## Two numbers, because they answer different questions:
 ##
-##   EXPECTED_DANGLING_STEMS  -- distinct art files still to pull (the work)
-##   EXPECTED_DANGLING_TRAINERS -- trainers currently without a portrait (the blast radius)
+##   EXPECTED_DANGLING_STEMS    -- distinct art files still to pull (the work)
+##   EXPECTED_DANGLING_TRAINERS -- trainers without a portrait (the blast radius)
 ##
-## 62, not 86: the reference ships 86 _frlg front pics, but only 62 are
-## referenced by any converted trainer. The other 24 have no consumer in either
-## roster -- so pulling 62 satisfies the whole roster, and [M26B3-1]'s "86
-## sprites" is the size of the available art, not the size of the gap.
+## Both are 0: every trainer in both rosters resolves to real art on disk.
 ##
-## Both return to 0 when the Kanto sprites are pulled. Numbers that move, by
-## design -- the gap stays visible rather than becoming a silent blank.
-const EXPECTED_DANGLING_STEMS := 62
-const EXPECTED_DANGLING_TRAINERS := 623
+## They have moved twice, by design, which was the point of counting rather than
+## asserting a bare "no gaps". 0/0 before the Kanto roster converted; 62/623
+## once 623 Kanto trainers referenced art that had never been pulled; 0/0 again
+## now that the 62 sprites are in. A gap that changes a number stays visible; a
+## gap that renders as a blank portrait does not.
+##
+## Worth keeping straight if this moves again: the reference ships 86 _frlg
+## front pics, but only 62 are referenced by any converted trainer -- the other
+## 24 have no consumer in either roster. 62 was the size of the gap; 86 is the
+## size of the available art.
+const EXPECTED_DANGLING_STEMS := 0
+const EXPECTED_DANGLING_TRAINERS := 0
 
 func _test_dangling_stem_count() -> void:
 	var dangling_trainers := 0
@@ -138,6 +143,36 @@ func _test_spot_check_known_portraits() -> void:
 				declan.pic_stem == "swimmer_m")
 	if roxanne != null:
 		_chk("Roxanne's pic_stem is leader_roxanne", roxanne.pic_stem == "leader_roxanne")
+
+
+## Kanto anchor. The Hoenn spot-checks above would all still pass with zero
+## _frlg art on disk, so at least one Kanto trainer has to resolve real pixels.
+func _test_spot_check_kanto_portraits() -> void:
+	var robin: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_LASS_ROBIN_FRLG")
+	if robin == null:
+		_chk("TRAINER_LASS_ROBIN_FRLG resolves", false)
+		return
+	_chk("Robin's pic_stem is lass_frlg (Rule B, upstream verbatim)",
+			robin.pic_stem == "lass_frlg")
+	var tex := TrainerPicRegistry.get_portrait_texture(robin.pic_stem, robin.trainer_key)
+	_chk("Robin's portrait loads as a real 64x64 texture",
+			tex != null and tex.get_width() == 64 and tex.get_height() == 64)
+
+	# A Kanto-EXCLUSIVE class, with no Hoenn equivalent — proof the pull covered
+	# the genuinely new art and not just _frlg variants of sprites we already had.
+	_chk("channeler_frlg is on disk (a Kanto-exclusive class)",
+			TrainerPicRegistry.has_portrait("channeler_frlg"))
+	var ch := TrainerPicRegistry.get_portrait_texture("channeler_frlg")
+	_chk("and loads at 64x64", ch != null and ch.get_width() == 64 and ch.get_height() == 64)
+
+	# The counter's own arithmetic, asserted rather than described.
+	var frlg_stems := {}
+	for key in TrainerRegistry.all_keys():
+		var t := TrainerRegistry.get_trainer_by_key(key)
+		if t != null and t.pic_stem.ends_with("_frlg"):
+			frlg_stems[t.pic_stem] = true
+	_chk("the roster references 62 distinct Kanto stems (got %d)" % frlg_stems.size(),
+			frlg_stems.size() == 62)
 
 
 ## [Rule B] The two stems a naive slug of the `Pic:` string gets WRONG. Source

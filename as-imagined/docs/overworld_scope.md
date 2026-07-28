@@ -2769,8 +2769,26 @@ the other **24 have no consumer in either roster**. So `[M26B3-1]`'s "86
 sprites" is the size of the *available art*, not the size of the *gap* —
 pulling 62 satisfies the whole roster. Tracked by the dangling-stem counter as
 two numbers: **62 distinct stems** (the work) and **623 trainers** (the blast
-radius), both returning to 0 when the sprites are pulled. That pull is the
-remaining half of `[M26B3-1]` and is now unblocked.
+radius), both returning to 0 when the sprites are pulled. **That pull is now DONE** — see below.
+
+### ✅ Kanto portraits pulled — `[M26B3-1]` closed
+
+All **62** referenced `_frlg` front pics are in
+`assets/sprites/trainers/portraits/`, bringing the directory to **155**. Flat
+copy, no decode: every source file is 64×64 palette-mode and already carries
+`tRNS = 0`, so `shutil.copyfile` preserves transparency (unlike the ball sheets,
+which needed explicit index-0 tagging). Verified byte-identical to source for
+all 62.
+
+**62, not 86.** The reference ships 86 `_frlg` front pics; the other **24 have
+no consumer in either roster**, so they are deliberately not pulled — 86 was
+always the size of the available art, not the size of the gap.
+
+**The dangling-stem counter closes the loop it was built for.** It read 0/0
+before the Kanto roster converted, **62 stems / 623 trainers** once those
+trainers referenced art nobody had pulled, and **0/0** again now. A gap that
+moves a number stays visible; a gap that renders as a blank portrait does not.
+Its constants are updated with that history recorded at the assertion.
 
 **The tripwire flip happened, as designed.** `m27a_step_resolver_test`'s
 I.14/I.15 asserted the roster was unconverted; they now assert it resolves and
