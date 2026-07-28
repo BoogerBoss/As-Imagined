@@ -1,0 +1,46 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 130
+level = 68
+move_ids = Array[int]([63, 349, 89, 86])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 149
+level = 66
+move_ids = Array[int]([63, 89, 337, 53])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 230
+level = 66
+move_ids = Array[int]([63, 349, 57, 58])
+
+[sub_resource type="Resource" id="PartyMon_3"]
+script = ExtResource("2")
+species_dex = 142
+level = 70
+move_ids = Array[int]([63, 246, 332, 89])
+
+[sub_resource type="Resource" id="PartyMon_4"]
+script = ExtResource("2")
+species_dex = 149
+level = 72
+move_ids = Array[int]([63, 200, 85, 58])
+held_item_id = 521
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_ELITE_FOUR_LANCE_2_FRLG"
+trainer_name = "LANCE"
+trainer_class_id = 96
+pic_stem = "elite_four_lance_frlg"
+gender = 0
+ai_flags = 3
+mugshot_color = "Blue"
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2"), SubResource("PartyMon_3"), SubResource("PartyMon_4")])

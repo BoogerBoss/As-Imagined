@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 177
+level = 52
+move_ids = Array[int]([94, 109, 248, 273])
+ivs = Array[int]([26, 26, 26, 26, 26, 26])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 80
+level = 52
+move_ids = Array[int]([94, 29, 133, 281])
+ivs = Array[int]([26, 26, 26, 26, 26, 26])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 64
+level = 54
+move_ids = Array[int]([94, 248, 105, 115])
+ivs = Array[int]([26, 26, 26, 26, 26, 26])
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_PSYCHIC_JACLYN_2_FRLG"
+trainer_name = "JACLYN"
+trainer_class_id = 84
+pic_stem = "psychic_f_frlg"
+gender = 0
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2")])

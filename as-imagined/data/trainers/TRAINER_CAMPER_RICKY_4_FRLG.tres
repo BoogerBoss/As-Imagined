@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 8
+level = 55
+move_ids = Array[int]([182, 240, 130, 56])
+ivs = Array[int]([14, 14, 14, 14, 14, 14])
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_CAMPER_RICKY_4_FRLG"
+trainer_name = "RICKY"
+trainer_class_id = 70
+pic_stem = "camper_frlg"
+gender = 0
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0")])

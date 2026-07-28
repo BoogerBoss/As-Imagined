@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 89
+level = 52
+move_ids = Array[int]([188, 103, 107, 317])
+ivs = Array[int]([18, 18, 18, 18, 18, 18])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 24
+level = 53
+move_ids = Array[int]([188, 44, 89, 231])
+ivs = Array[int]([18, 18, 18, 18, 18, 18])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 45
+level = 54
+move_ids = Array[int]([188, 202, 79, 78])
+ivs = Array[int]([18, 18, 18, 18, 18, 18])
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_TEAM_ROCKET_ADMIN_FRLG"
+trainer_name = "ADMIN"
+trainer_class_id = 94
+pic_stem = "rocket_grunt_f_frlg"
+gender = 0
+ai_flags = 3
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2")])

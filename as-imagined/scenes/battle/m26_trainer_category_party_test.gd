@@ -708,8 +708,8 @@ func _test_trainer_identity_survives_a_roster_regen() -> void:
 	_chk("the bare, unsuffixed key does NOT resolve",
 			not TrainerRegistry.has_trainer_key("TRAINER_ROXANNE_1"))
 	var keys := TrainerRegistry.all_keys()
-	_chk("all_keys() lists the roster, sorted",
-			keys.size() == 854 and keys[0] < keys[1])
+	_chk("all_keys() lists both rosters, sorted",
+			keys.size() == 1477 and keys[0] < keys[1])
 
 	# The real regen hazard was a persisted int. TeamStorage is this project's
 	# only writer of player-authored data, and its spec must never carry one.
@@ -731,7 +731,7 @@ func _test_filenames_agree_with_trainer_keys() -> void:
 		if t == null or t.trainer_key != key:
 			mismatches += 1
 	_chk("every filename matches its resource's own trainer_key", mismatches == 0)
-	_chk("the sweep actually covered the roster", keys.size() == 854)
+	_chk("the sweep actually covered both rosters", keys.size() == 1477)
 
 
 func _test_battle_manager_get_trainer_data_round_trip() -> void:

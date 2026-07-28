@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 32
+level = 21
+move_ids = Array[int]([116, 24, 40, 30])
+ivs = Array[int]([0, 0, 0, 0, 0, 0])
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_YOUNGSTER_TYLER_FRLG"
+trainer_name = "TYLER"
+trainer_class_id = 66
+pic_stem = "youngster_frlg"
+gender = 0
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0")])

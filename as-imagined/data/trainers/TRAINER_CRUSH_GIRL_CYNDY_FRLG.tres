@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 57
+level = 48
+move_ids = Array[int]([116, 99, 69, 238])
+held_item_id = 431
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 237
+level = 48
+move_ids = Array[int]([229, 68, 97, 197])
+held_item_id = 431
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 67
+level = 48
+move_ids = Array[int]([279, 233, 66, 238])
+held_item_id = 431
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_CRUSH_GIRL_CYNDY_FRLG"
+trainer_name = "CYNDY"
+trainer_class_id = 108
+pic_stem = "crush_girl_frlg"
+gender = 0
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2")])

@@ -1,0 +1,51 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 95
+level = 51
+move_ids = Array[int]([89, 317, 231, 46])
+ivs = Array[int]([30, 30, 30, 30, 30, 30])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 107
+level = 53
+move_ids = Array[int]([327, 183, 317, 68])
+ivs = Array[int]([30, 30, 30, 30, 30, 30])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 106
+level = 53
+move_ids = Array[int]([25, 193, 280, 263])
+ivs = Array[int]([30, 30, 30, 30, 30, 30])
+
+[sub_resource type="Resource" id="PartyMon_3"]
+script = ExtResource("2")
+species_dex = 95
+level = 54
+move_ids = Array[int]([38, 89, 231, 328])
+ivs = Array[int]([30, 30, 30, 30, 30, 30])
+
+[sub_resource type="Resource" id="PartyMon_4"]
+script = ExtResource("2")
+species_dex = 68
+level = 56
+move_ids = Array[int]([238, 339, 184, 317])
+held_item_id = 523
+ivs = Array[int]([30, 30, 30, 30, 30, 30])
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_ELITE_FOUR_BRUNO_FRLG"
+trainer_name = "BRUNO"
+trainer_class_id = 96
+pic_stem = "elite_four_bruno_frlg"
+gender = 0
+ai_flags = 3
+mugshot_color = "Green"
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2"), SubResource("PartyMon_3"), SubResource("PartyMon_4")])

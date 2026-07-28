@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 5
+level = 40
+move_ids = Array[int]([108, 99, 184, 53])
+ivs = Array[int]([3, 3, 3, 3, 3, 3])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 131
+level = 40
+move_ids = Array[int]([109, 195, 58, 240])
+ivs = Array[int]([3, 3, 3, 3, 3, 3])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 108
+level = 40
+move_ids = Array[int]([23, 35, 50, 21])
+ivs = Array[int]([3, 3, 3, 3, 3, 3])
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_POKEMANIAC_DAWSON_FRLG"
+trainer_name = "DAWSON"
+trainer_class_id = 72
+pic_stem = "pokemaniac_frlg"
+gender = 0
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2")])

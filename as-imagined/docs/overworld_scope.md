@@ -2722,56 +2722,48 @@ Wiring it is M27/M35 scope, not a bug.
 all out of scope. Any future Battle Frontier work designs its roster selection
 natively rather than resurrecting a numeric id space to inherit those ranges.
 
-### ⚠ Blocker found rev 30 — the 624 Kanto trainers were never converted
+### ✅ RESOLVED — the Kanto roster is converted (was: the ⚠ blocker)
 
-Emitting object events surfaced a real gap. All **13 trainer placements** in
-the baked early-game corridor resolve to a `TRAINER_X` constant correctly — and
-**none of the 13 exists in this project's trainer data.**
+**Closed Step 4.** `gen_trainer_data.py` now reads both rosters:
+`trainers.party` (854, `_RSE`) and `trainers_frlg.party` (**623**, `_FRLG`) —
+1,477 trainer files. `TRAINER_LASS_ROBIN_FRLG` and its 12 corridor peers
+resolve against real party data.
 
-Cause: M24a converted `src/data/trainers.party`, which is the **Hoenn/Emerald**
-set (855 trainers). Kanto's live in a **separate file the project has never
-read**: `src/data/trainers_frlg.party`, **624 trainers**, with its own
-constants header `include/constants/opponents_frlg.h`.
+**623, not 624.** The earlier figure came from `grep -c "^Name:"`, which counts
+`TRAINER_NONE`'s blank sentinel entry — excluded from the Kanto roster exactly
+as it already was from Hoenn.
 
-The format is identical — same `Name: / Class: / Pic: / Gender: / Music: /
-Double Battle:` keys, same party block shape — so `gen_trainer_data.py` should
-extend to it rather than needing a second converter.
+**Purely additive, which was the whole point of the Step 1 re-keying.** After
+regenerating: **623 new files, 0 modified, 0 deleted.** Under the retired
+`trainer_id` scheme this same merge would have rewritten **808 of 854** existing
+files. The acceptance check is worth keeping for any future roster addition: if
+an existing `_RSE` file changes, the key scheme has a bug.
 
-**Two things to decide when it is picked up**, neither of which is obvious:
+**Three converter gaps the Kanto roster exposed**, none of which Hoenn had ever
+reached:
 
-1. **ID space.** `trainer_id` is a sorted-alphabetical index within its source
-   file, so merging 624 FRLG trainers into the existing 854 would renumber
-   everything. `trainer_key` is unaffected — which is exactly why M27D
-   references trainers by key (§32), and this is the concrete payoff of that
-   decision.
-2. **Whether both sets ship.** The Hoenn 855 are what the battle simulator
-   currently uses; the Kanto 624 are what the RPG needs. They are not
-   alternatives — both have consumers.
+1. **Nidoran.** `pokemon.json` names the gendered forms `Nidoran♀`/`Nidoran♂`,
+   and the converter's `normalize()` strips non-alphanumerics — so **both
+   collapsed to `NIDORAN` and collided**, one silently overwriting the other.
+   Compounding it, the party file spells them `Nidoran F`/`Nidoran M`, matching
+   neither. Latent purely because **zero Hoenn trainers use Nidoran and 19
+   Kanto ones do**. Fixed with explicit aliases resolved *by symbol* from the
+   data, so a pokédex renumber fails loudly instead of mis-mapping.
+2. **`Faint Attack`** is the pre-Gen-VI spelling of Feint Attack — source says
+   so itself: `MOVE_FAINT_ATTACK = MOVE_FEINT_ATTACK, // Pre-Gen VI name`. A
+   rename, not a second move, so it resolves to the same move id 185.
+3. **`Stardust`** stays unresolved, correctly. It has no `holdEffect` in source
+   — a `POCKET_ITEMS` treasure with only a price — so it sits outside this
+   project's held-item roster for the same reason Nugget already did.
 
-**This is the same shape as `[M26B3-1]`'s 86 unpulled Kanto trainer sprites**,
-and the two want doing together: the sprites are the art for exactly these
-trainers.
-
-Until it lands, `TrainerNPC` placements carry a valid `trainer_key` that
-resolves to nothing, which the node surfaces as a configuration warning rather
-than a silent no-battle.
-
-**⚠ Converting the roster WILL break two tests, by design.**
-`m27a_step_resolver_test`'s `I.14` asserts the Kanto roster is still
-unconverted, and `I.15` asserts the resulting configuration warning fires.
-They are tripwires: they exist so the gap cannot close silently. **When the 624
-FRLG trainers are converted, both are EXPECTED to flip — invert them (assert the
-key now resolves, and that no warning fires) rather than treating them as a
-regression to debug.**
-
-**Already done, so the conversion session does not redo it:** nothing persists
-`trainer_id` across a regen. `TeamStorage` saves only
-`{dex, level, move_ids, nature, evs, ivs, ability_slot}`, no `.tres` written by
-the team builder carries one, and the two hardcoded default-opponent ints in
-`battle_screen_shared.gd` (`702`/`84`) are now keyed by `TRAINER_ROXANNE_1`/
-`TRAINER_BRAWLY_5` instead. `_test_trainer_identity_survives_a_roster_regen`
-pins all of it. The remaining renumbering risk is therefore **zero known
-consumers** — but re-run that test after the regen to confirm.
+**Portrait gap, and a correction to its size.** The reference ships **86**
+`_frlg` front pics, but only **62** are referenced by any converted trainer;
+the other **24 have no consumer in either roster**. So `[M26B3-1]`'s "86
+sprites" is the size of the *available art*, not the size of the *gap* —
+pulling 62 satisfies the whole roster. Tracked by the dangling-stem counter as
+two numbers: **62 distinct stems** (the work) and **623 trainers** (the blast
+radius), both returning to 0 when the sprites are pulled. That pull is the
+remaining half of `[M26B3-1]` and is now unblocked.
 
 ### Roadmap fit
 

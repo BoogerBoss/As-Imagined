@@ -67,6 +67,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
 
 TRAINERS_PARTY = os.path.join(REF, "src", "data", "trainers.party")
+# [Step 4] The Kanto roster is a SEPARATE file with its own constants header
+# (include/constants/opponents_frlg.h). Same format, measured -- the only thing
+# that differs is which suffix canonical_key() assigns. TRAINER_NONE is excluded
+# from this one exactly as it already was from Hoenn, which is why the real
+# count is 623 and not the 624 a naive `grep -c "^Name:"` reports.
+TRAINERS_PARTY_FRLG = os.path.join(REF, "src", "data", "trainers_frlg.party")
 BATTLE_MAIN_C = os.path.join(REF, "src", "battle_main.c")
 TRAINERS_H = os.path.join(REF, "include", "constants", "trainers.h")
 
@@ -128,7 +134,37 @@ def load_species_map():
     m = {}
     for sp in species:
         m[normalize(sp["name"])] = sp["dex"]
+
+    # [Step 4] The two gendered Nidoran forms need explicit aliases, for two
+    # compounding reasons found while converting the Kanto roster:
+    #
+    #   1. pokemon.json names them "Nidoran\u2640"/"Nidoran\u2642", and normalize()
+    #      strips non-alphanumerics -- so BOTH collapse to "NIDORAN" and collide,
+    #      one silently overwriting the other in the map above.
+    #   2. trainers_frlg.party spells them "Nidoran F"/"Nidoran M", which
+    #      normalize to NIDORANF/NIDORANM and match neither.
+    #
+    # Latent until now purely because zero Hoenn trainers use Nidoran and 19
+    # Kanto ones do. Resolved from the data by symbol rather than hardcoding a
+    # dex number, so a pokedex renumber fails loudly instead of mis-mapping.
+    for sp in species:
+        if "\u2642" in sp["name"]:
+            m["NIDORANM"] = sp["dex"]
+        elif "\u2640" in sp["name"]:
+            m["NIDORANF"] = sp["dex"]
+    for want in ("NIDORANM", "NIDORANF"):
+        if want not in m:
+            raise SystemExit(
+                "gen_trainer_data: could not resolve %s -- the gendered Nidoran "
+                "forms are missing or renamed in pokemon.json" % want)
     return m
+
+
+# Pre-Gen-VI -> modern move names, each confirmed in source as an alias of the
+# same constant rather than a distinct move.
+_LEGACY_MOVE_NAMES = {
+    "Faint Attack": "Feint Attack",
+}
 
 
 def load_tres_name_map(subdir: str, name_field: str):
@@ -149,6 +185,18 @@ def load_tres_name_map(subdir: str, name_field: str):
         namem = name_pat.search(text)
         if namem:
             m[normalize(namem.group(1))] = fid
+
+    # [Step 4] Pre-Gen-VI move spellings the Kanto roster still uses. Source
+    # declares these as literal aliases of the modern constant, e.g.
+    #   MOVE_FAINT_ATTACK = MOVE_FEINT_ATTACK, // Pre-Gen VI name
+    # so this is a rename, not a second move -- resolving it here keeps one
+    # move id rather than inventing a duplicate. Applied only when the modern
+    # name is present, so a genuinely missing move still reports unresolved.
+    if subdir == "moves":
+        for old_name, modern in _LEGACY_MOVE_NAMES.items():
+            key = normalize(modern)
+            if key in m:
+                m.setdefault(normalize(old_name), m[key])
     return m
 
 
@@ -302,8 +350,8 @@ def strip_comments(text: str) -> str:
     return re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
 
 
-def parse_trainers_party():
-    with open(TRAINERS_PARTY, encoding="utf-8") as f:
+def parse_trainers_party(path=None):
+    with open(path or TRAINERS_PARTY, encoding="utf-8") as f:
         raw = f.read()
     text = strip_comments(raw)
 
@@ -682,7 +730,10 @@ def main():
     class_id_by_key, class_count = emit_trainer_classes()
 
     resolver = NameResolver()
-    raw_trainers = parse_trainers_party()
+    # Both rosters, parsed identically. canonical_key() is what tells them
+    # apart, from the constants headers rather than from which file they came
+    # out of -- so the two lists can simply be concatenated here.
+    raw_trainers = parse_trainers_party() + parse_trainers_party(TRAINERS_PARTY_FRLG)
 
     parsed = [parse_trainer(key, body, resolver, class_id_by_key) for key, body in raw_trainers]
 
@@ -714,7 +765,9 @@ def main():
         print(f"UNRESOLVED PORTRAIT STEMS: {len(unresolved_stems)}")
         for key, raw in unresolved_stems[:10]:
             print(f"  [{key}] Pic: {raw!r}")
-    print(f"trainers: {len(parsed)} emitted")
+    rse = sum(1 for t in parsed if t["canonical_key"].endswith("_RSE"))
+    frlg = sum(1 for t in parsed if t["canonical_key"].endswith("_FRLG"))
+    print(f"trainers: {len(parsed)} emitted ({rse} _RSE, {frlg} _FRLG)")
     if resolver.unresolved:
         print(f"UNRESOLVED NAMES: {len(resolver.unresolved)}")
         seen = set()

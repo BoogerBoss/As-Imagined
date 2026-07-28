@@ -1,0 +1,42 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 17
+level = 19
+move_ids = Array[int]([16, 28, 16, 98])
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 20
+level = 16
+move_ids = Array[int]([39, 98, 98, 158])
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 64
+level = 18
+move_ids = Array[int]([134, 93, 93, 50])
+ivs = Array[int]([6, 6, 6, 6, 6, 6])
+
+[sub_resource type="Resource" id="PartyMon_3"]
+script = ExtResource("2")
+species_dex = 5
+level = 20
+move_ids = Array[int]([52, 52, 108, 99])
+ivs = Array[int]([12, 12, 12, 12, 12, 12])
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_RIVAL_SS_ANNE_CHARMANDER_FRLG"
+trainer_name = "TERRY"
+trainer_class_id = 98
+pic_stem = "rival_late_frlg"
+gender = 0
+ai_flags = 3
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2"), SubResource("PartyMon_3")])

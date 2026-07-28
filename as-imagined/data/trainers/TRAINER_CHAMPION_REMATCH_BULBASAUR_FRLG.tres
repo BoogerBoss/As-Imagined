@@ -1,0 +1,52 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 214
+level = 72
+move_ids = Array[int]([224, 89, 68, 317])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 65
+level = 73
+move_ids = Array[int]([94, 247, 347, 115])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 248
+level = 72
+move_ids = Array[int]([242, 89, 85, 332])
+
+[sub_resource type="Resource" id="PartyMon_3"]
+script = ExtResource("2")
+species_dex = 130
+level = 73
+move_ids = Array[int]([56, 349, 89, 63])
+
+[sub_resource type="Resource" id="PartyMon_4"]
+script = ExtResource("2")
+species_dex = 59
+level = 73
+move_ids = Array[int]([245, 315, 332, 231])
+
+[sub_resource type="Resource" id="PartyMon_5"]
+script = ExtResource("2")
+species_dex = 3
+level = 75
+move_ids = Array[int]([76, 188, 89, 241])
+held_item_id = 523
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_CHAMPION_REMATCH_BULBASAUR_FRLG"
+trainer_name = "TERRY"
+trainer_class_id = 99
+pic_stem = "champion_rival_frlg"
+gender = 0
+ai_flags = 3
+mugshot_color = "Yellow"
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2"), SubResource("PartyMon_3"), SubResource("PartyMon_4"), SubResource("PartyMon_5")])

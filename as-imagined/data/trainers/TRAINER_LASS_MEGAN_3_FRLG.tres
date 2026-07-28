@@ -1,0 +1,49 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 18
+level = 46
+move_ids = Array[int]([98, 18, 17, 297])
+ivs = Array[int]([9, 9, 9, 9, 9, 9])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 20
+level = 47
+move_ids = Array[int]([158, 184, 228, 162])
+ivs = Array[int]([9, 9, 9, 9, 9, 9])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 33
+level = 47
+move_ids = Array[int]([30, 270, 31, 260])
+ivs = Array[int]([9, 9, 9, 9, 9, 9])
+
+[sub_resource type="Resource" id="PartyMon_3"]
+script = ExtResource("2")
+species_dex = 53
+level = 47
+move_ids = Array[int]([6, 185, 103, 154])
+ivs = Array[int]([9, 9, 9, 9, 9, 9])
+
+[sub_resource type="Resource" id="PartyMon_4"]
+script = ExtResource("2")
+species_dex = 26
+level = 48
+move_ids = Array[int]([84, 39, 98, 85])
+ivs = Array[int]([9, 9, 9, 9, 9, 9])
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_LASS_MEGAN_3_FRLG"
+trainer_name = "MEGAN"
+trainer_class_id = 68
+pic_stem = "lass_frlg"
+gender = 0
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2"), SubResource("PartyMon_3"), SubResource("PartyMon_4")])

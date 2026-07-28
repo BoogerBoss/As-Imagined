@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 31
+level = 45
+move_ids = Array[int]([276, 34, 24, 40])
+ivs = Array[int]([12, 12, 12, 12, 12, 12])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 34
+level = 45
+move_ids = Array[int]([224, 37, 24, 40])
+ivs = Array[int]([12, 12, 12, 12, 12, 12])
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_COOL_COUPLE_RAY_TYRA_FRLG"
+trainer_name = "RAY & TYRA"
+trainer_class_id = 102
+pic_stem = "cool_couple_frlg"
+gender = 0
+is_doubles = true
+ai_flags = 3
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1")])

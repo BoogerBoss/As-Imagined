@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 28
+level = 52
+move_ids = Array[int]([163, 129, 154, 328])
+ivs = Array[int]([19, 19, 19, 19, 19, 19])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 108
+level = 52
+move_ids = Array[int]([50, 21, 103, 287])
+ivs = Array[int]([19, 19, 19, 19, 19, 19])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 217
+level = 55
+move_ids = Array[int]([156, 163, 173, 37])
+ivs = Array[int]([19, 19, 19, 19, 19, 19])
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_TAMER_EVAN_2_FRLG"
+trainer_name = "EVAN"
+trainer_class_id = 87
+pic_stem = "tamer_frlg"
+gender = 0
+ai_flags = 1
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2")])

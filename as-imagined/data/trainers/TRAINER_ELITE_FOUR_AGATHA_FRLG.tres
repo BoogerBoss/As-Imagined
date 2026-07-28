@@ -1,0 +1,51 @@
+[gd_resource type="Resource" script_class="TrainerData" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/trainer_data.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/data/trainer_party_mon.gd" id="2"]
+
+[sub_resource type="Resource" id="PartyMon_0"]
+script = ExtResource("2")
+species_dex = 94
+level = 54
+move_ids = Array[int]([325, 109, 92, 104])
+ivs = Array[int]([30, 30, 30, 30, 30, 30])
+
+[sub_resource type="Resource" id="PartyMon_1"]
+script = ExtResource("2")
+species_dex = 42
+level = 54
+move_ids = Array[int]([109, 305, 314, 44])
+ivs = Array[int]([30, 30, 30, 30, 30, 30])
+
+[sub_resource type="Resource" id="PartyMon_2"]
+script = ExtResource("2")
+species_dex = 93
+level = 53
+move_ids = Array[int]([95, 138, 174, 212])
+ivs = Array[int]([30, 30, 30, 30, 30, 30])
+
+[sub_resource type="Resource" id="PartyMon_3"]
+script = ExtResource("2")
+species_dex = 24
+level = 56
+move_ids = Array[int]([188, 103, 231, 44])
+ivs = Array[int]([30, 30, 30, 30, 30, 30])
+
+[sub_resource type="Resource" id="PartyMon_4"]
+script = ExtResource("2")
+species_dex = 94
+level = 58
+move_ids = Array[int]([247, 188, 95, 171])
+held_item_id = 523
+ivs = Array[int]([30, 30, 30, 30, 30, 30])
+
+[resource]
+script = ExtResource("1")
+trainer_key = "TRAINER_ELITE_FOUR_AGATHA_FRLG"
+trainer_name = "AGATHA"
+trainer_class_id = 96
+pic_stem = "elite_four_agatha_frlg"
+gender = 0
+ai_flags = 3
+mugshot_color = "Pink"
+party = Array[Resource]([SubResource("PartyMon_0"), SubResource("PartyMon_1"), SubResource("PartyMon_2"), SubResource("PartyMon_3"), SubResource("PartyMon_4")])
