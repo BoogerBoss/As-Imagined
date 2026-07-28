@@ -23,6 +23,7 @@ import sys
 from PIL import Image
 
 from ref_path import REF
+from trainer_keys import canonical_key
 
 OUT = "/home/rob/GodotAsImagined/as-imagined/assets/maps"
 # Atlases are shared per tileset PAIR and are real runtime dependencies of
@@ -218,11 +219,24 @@ def _trainer_key_in(body):
 
 
 def trainer_key_for(label):
-    """The TRAINER_X constant a trainer placement's script fights with."""
-    import re
+    """The CANONICAL trainer key a placement's script fights with.
+
+    [Step 5] Routed through canonical_key(), so an emitted placement carries
+    TRAINER_LASS_ROBIN_FRLG rather than the bare source constant. The suffix
+    rule lives only in scripts/trainer_keys.py -- reproducing it here would be
+    the exact drift that makes a placement point at a trainer that does not
+    exist (Rule A, docs/overworld_scope.md).
+    """
     if not label or label in ("0x0", "NULL"):
         return ""
-    return _trainer_key_in(build_script_index().get(label, ""))
+    raw = _trainer_key_in(build_script_index().get(label, ""))
+    if not raw:
+        return ""
+    # canonical_key() raises on a constant neither header defines. Deliberately
+    # not caught: that means the script index and the constants headers
+    # disagree, which is a real finding and should stop the build rather than
+    # emit a placement nobody can resolve.
+    return canonical_key(raw)
 
 
 def extract_events(mp):

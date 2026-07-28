@@ -9,11 +9,9 @@ extends NPC
 ## time and shifts whenever the roster is regenerated, while the key is source's
 ## own stable constant (docs/overworld_scope.md §32).
 ##
-## ⚠ The Kanto roster this references does not exist yet. M24a converted
-## `trainers.party` (Hoenn/Emerald, 855); Kanto's 624 live in a separate
-## never-converted file, `trainers_frlg.party`. Every imported Kanto placement
-## therefore carries a valid key that resolves to nothing — surfaced below as a
-## configuration warning rather than a silent no-battle.
+## Keys are canonical and origin-suffixed (Rule A): TRAINER_LASS_ROBIN_FRLG,
+## not the bare source constant. The suffix is applied at import time by
+## scripts/trainer_keys.py, the single owner of that rule.
 
 ## Source's own TRAINER_* constant, recovered from the placement's script body
 ## by the importer's whole-tree label index (the map.json placement itself
@@ -36,10 +34,8 @@ func _get_configuration_warnings() -> PackedStringArray:
 	if trainer_key == "":
 		out.append("No trainer_key — this trainer cannot start a battle.")
 	elif not has_registry_entry():
-		out.append(
-			("trainer_key '%s' does not resolve against TrainerRegistry. " % trainer_key)
-			+ "The 624 Kanto trainers in trainers_frlg.party have not been converted yet."
-		)
+		out.append("trainer_key '%s' does not resolve against TrainerRegistry."
+				% trainer_key)
 	if sight_range < 0:
 		out.append("sight_range %d is negative." % sight_range)
 	return out

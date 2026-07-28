@@ -2765,6 +2765,25 @@ two numbers: **62 distinct stems** (the work) and **623 trainers** (the blast
 radius), both returning to 0 when the sprites are pulled. That pull is the
 remaining half of `[M26B3-1]` and is now unblocked.
 
+**The tripwire flip happened, as designed.** `m27a_step_resolver_test`'s
+I.14/I.15 asserted the roster was unconverted; they now assert it resolves and
+raises no warning. Proven non-vacuous by removing `TRAINER_LASS_ROBIN_FRLG.tres`
+and confirming both fail.
+
+**Placements carry canonical keys.** `gen_map_import.py::trainer_key_for` routes
+through the same `canonical_key()` the trainer converter uses, so an emitted
+placement is `TRAINER_LASS_ROBIN_FRLG`. Re-verified at full scale with the
+current importer: **432/432 Kanto trainer placements resolve, all `_FRLG`** —
+none accidentally landing on an `_RSE` trainer.
+
+**Known re-bake churn, worth knowing before reviewing any future bake.** Godot
+regenerates every node's `unique_id` on each bake, so re-baking the 8 corridor
+maps produced a 201-line diff of which only 26 lines are semantic (13
+`trainer_key` values and the 13 node names derived from them). With `unique_id`
+normalised away, **6 of the 8 scenes are byte-identical** and the two that
+differ contain only the trainer changes. A real edit could hide in that churn;
+diff with `sed -E 's/ unique_id=[0-9]+//'` when reviewing a re-bake.
+
 ### Roadmap fit
 
 | Part | Lands in |

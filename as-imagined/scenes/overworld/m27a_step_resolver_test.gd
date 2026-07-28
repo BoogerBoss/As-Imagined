@@ -334,9 +334,9 @@ func _test_object_events() -> void:
 
 	var robin: TrainerNPC = null
 	for t in trainers:
-		if t.trainer_key == "TRAINER_LASS_ROBIN":
+		if t.trainer_key == "TRAINER_LASS_ROBIN_FRLG":
 			robin = t
-	_chk("I.07 Robin resolved to a real trainer key", robin != null)
+	_chk("I.07 Robin resolved to a canonical, origin-suffixed key", robin != null)
 	if robin != null:
 		_chk("I.08 her cell survived the bake", robin.cell == Vector2i(40, 11))
 		_chk("I.09 position is derived from the cell, not stored separately",
@@ -348,17 +348,15 @@ func _test_object_events() -> void:
 				robin.movement_type == "MOVEMENT_TYPE_WANDER_UP_AND_DOWN")
 		_chk("I.13 script label recorded for M27G to route later",
 				robin.script_label == "Route3_EventScript_Robin")
-		# TRIPWIRE, not a regression: a valid key that resolves to nothing,
-		# because the 624 Kanto trainers in trainers_frlg.party were never
-		# converted. I.14/I.15 exist so that gap cannot close silently.
-		# ⚠ CONVERTING THE ROSTER IS EXPECTED TO FLIP BOTH. Invert them then
-		# (assert the key resolves and no warning fires) -- do not "fix" them
-		# by chasing a bug. See docs/overworld_scope.md §32.
-		_chk("I.14 the Kanto roster is still unconverted (see scope §32)",
-				not robin.has_registry_entry())
-		_chk("I.15 that unresolved key raises a configuration warning",
-				_warns_about(robin, "trainers_frlg"))
-
+		# [Step 5] These two FLIPPED, by design. Until the Kanto roster was
+		# converted they were tripwires asserting the gap could not close
+		# silently; now they assert it HAS closed. Both directions matter --
+		# a placement carrying a valid key that resolves to nothing is the
+		# failure mode this whole arc existed to remove.
+		_chk("I.14 the key resolves against the converted Kanto roster",
+				robin.has_registry_entry())
+		_chk("I.15 and therefore raises NO configuration warning",
+				not _warns_about(robin, "does not resolve"))
 	# Every trainer placement resolved to SOME key — an unresolved placement
 	# would be an importer failure, distinct from the roster gap above.
 	var keyed := 0

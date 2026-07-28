@@ -128,9 +128,58 @@ def clean_token(raw: str, prefix: str) -> str:
 # Name-resolution maps, built from this project's OWN existing data pipeline
 # ---------------------------------------------------------------------------
 
+# Collisions that are KNOWN and already resolved by an explicit alias below.
+# Anything not listed here stops the build. Keep this list as short as the
+# facts allow -- each entry is a place where a lookup would otherwise be
+# decided by dict insertion order.
+_KNOWN_NAME_COLLISIONS = {
+    # Nidoran\u2640 / Nidoran\u2642 both normalize to NIDORAN. Harmless only because
+    # load_species_map() adds explicit NIDORANF/NIDORANM aliases keyed off the
+    # gender symbols, which is what the roster files actually spell.
+    "NIDORAN",
+}
+
+
+def _assert_no_normalize_collisions(pairs, what):
+    """Fail loudly if two distinct source names normalize to the same key.
+
+    [Step 5] normalize() strips every non-alphanumeric, so any two names
+    differing only in punctuation, spacing or a symbol collapse together --
+    and a plain dict build lets insertion order silently pick a winner. That
+    is exactly how Nidoran\u2640/Nidoran\u2642 both became "NIDORAN" and one
+    overwrote the other, undetected until the Kanto roster finally referenced
+    them (see load_species_map).
+
+    Generalised here rather than patched per-case: the alias fix cured the one
+    collision that exists today, this kills the class. Same discipline as
+    canonical_key()'s roster-disjointness assert and ref_path's
+    inside-the-project assert -- an ambiguity that would resolve arbitrarily
+    should stop the build, not pick.
+    """
+    seen = {}
+    clashes = []
+    for name, ident in pairs:
+        key = normalize(name)
+        if key in seen and seen[key][1] != ident:
+            if key not in _KNOWN_NAME_COLLISIONS:
+                clashes.append((key, seen[key], (name, ident)))
+        else:
+            seen.setdefault(key, (name, ident))
+    if clashes:
+        lines = ["gen_trainer_data: %d normalize() collision(s) in %s --" % (len(clashes), what)]
+        for key, a, b in clashes[:10]:
+            lines.append("    %r <- %r (id %s) AND %r (id %s)" % (key, a[0], a[1], b[0], b[1]))
+        lines.append("  Two distinct names collapse to one lookup key; resolution would")
+        lines.append("  depend on insertion order. Add an explicit alias (see the Nidoran")
+        lines.append("  case) or disambiguate the names before regenerating.")
+        raise SystemExit("\n".join(lines))
+
+
 def load_species_map():
     with open(os.path.join(DATA, "pokemon.json"), encoding="utf-8") as f:
         species = json.load(f)
+    _assert_no_normalize_collisions(
+        [(sp["name"], sp["dex"]) for sp in species], "data/pokemon.json species names")
     m = {}
     for sp in species:
         m[normalize(sp["name"])] = sp["dex"]
@@ -172,6 +221,7 @@ def load_tres_name_map(subdir: str, name_field: str):
     string value) -> id (from the filename's own zero-padded number, the
     same path-convention every Registry in this project already uses)."""
     m = {}
+    collected = []
     dirpath = os.path.join(DATA, subdir)
     name_pat = re.compile(rf'^{re.escape(name_field)}\s*=\s*"(.*)"\s*$', re.M)
     for fn in sorted(os.listdir(dirpath)):
@@ -184,7 +234,9 @@ def load_tres_name_map(subdir: str, name_field: str):
         text = open(os.path.join(dirpath, fn), encoding="utf-8").read()
         namem = name_pat.search(text)
         if namem:
+            collected.append((namem.group(1), fid))
             m[normalize(namem.group(1))] = fid
+    _assert_no_normalize_collisions(collected, "data/%s/ %s values" % (subdir, name_field))
 
     # [Step 4] Pre-Gen-VI move spellings the Kanto roster still uses. Source
     # declares these as literal aliases of the modern constant, e.g.
