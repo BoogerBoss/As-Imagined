@@ -2844,8 +2844,20 @@ and section A of `m27a_step_resolver_test` cannot run.
 
 | state | result |
 |---|---|
-| fresh checkout, as cloned | **62/62** — 8 map-data assertions gated, announced in one line |
-| after `python3 scripts/gen_map_import.py all` | **70/70** |
+| fresh checkout, as cloned | **79/79** — 12 map-data assertions gated, announced in one line |
+| after `python3 scripts/gen_map_import.py all` | **91/91** |
+
+Only the assertions that read the gitignored **JSON** gate. Section J's
+round-trip checks read the baked `.tres`, which IS tracked, so they run in a
+clean clone — which is why the fresh baseline rose from 62 to 79 when Change 3
+landed rather than staying flat.
+
+**The suite asserts its own arithmetic** (`Z.99`): `_total + _gated` must equal
+a hardcoded `EXPECTED_TOTAL`. This retires a failure family that bit three
+times — an assertion *vanishing* instead of failing, leaving a green suite with
+a quietly smaller total (the 62/63 early-return, a parse error that hung Godot
+with no result, and a crash-aborted function). Update `EXPECTED_TOTAL` when
+adding assertions; drift is the signal, not the problem.
 
 The suite detects the absence itself and prints
 `fresh-checkout mode — 8 map-data assertions gated (run ...)`, so the smaller
@@ -2860,7 +2872,18 @@ running this end to end rather than assuming:
 1. **`reference/pokeemerald_expansion` is a git SUBMODULE** (gitlink, pinned at
    `74e40e03`). `git clone` and `git worktree add` both create the directory
    empty — run `git submodule update --init` or no generator can run at all.
-2. Generators must be run from the checkout you intend to write to. `OUT` and
+2. **Fixed rev 31 — `gen_map_import.py all` used to emit unbakeable JSON.**
+   `convert()` wrote the JSON before atlas resolution and only rewrote it with
+   the atlas name when `render` was set, so the all-corpus mode produced maps
+   the baker rejected (`missing atlas res://assets/map_atlases/_ground.png`,
+   `0/8 baked`) — and the fresh-checkout announce line tells people to run
+   exactly that mode, so the trap sat in the documented path. `atlas_slug()` is
+   a computed string needing no image work, so the atlas name is now emitted
+   for **every** map and `render` gates only PNG generation. The two
+   `json.dump` sites are collapsed to one: two writers that can disagree about
+   the same file is its own bug class, and these did. Guarded by `J.20`;
+   verified by baking the corridor 8/8 straight from `all`-mode output.
+3. Generators must be run from the checkout you intend to write to. `OUT` and
    `ATLAS_OUT` in `gen_map_import.py` were **hardcoded absolute paths into the
    main checkout**, so running it from a worktree silently wrote 421 JSONs into
    the *original* tree — the same wrong-tree-by-hardcoded-path class

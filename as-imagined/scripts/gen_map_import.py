@@ -527,8 +527,19 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
         map_dir, len(bad_m), ts.count - 1)
 
     slug = mp["name"]
+    prim = dirmap[lay["primary_tileset"]]
+    sec = dirmap[lay["secondary_tileset"]]
+    # [Rider 2] The atlas name is a computed string -- atlas_slug() does no image
+    # work -- so it is emitted for EVERY map regardless of `render`. It used to be
+    # added only on the render path, which meant `gen_map_import.py all` wrote
+    # JSON with no atlas field and the baker died on
+    # "missing atlas res://assets/map_atlases/_ground.png". The fresh-checkout
+    # announce line tells people to run exactly that mode, so the trap was
+    # directly in the documented path. `render` now gates only PNG generation.
+    aslug = atlas_slug(prim, sec)
     data = {
         "name": mp["name"], "layout": lay["id"], "width": w, "height": h,
+        "atlas": aslug,
         "metatile": mids, "collision": coll, "elevation": elev,
         "behavior": [ts.behavior(m) for m in mids],
         "layer_type": [ts.layer_type(m) for m in mids],
@@ -553,12 +564,9 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
              "beh": len({ts.behavior(m) for m in mids})}
 
     if render:
-        prim = dirmap[lay["primary_tileset"]]
-        sec = dirmap[lay["secondary_tileset"]]
-        aslug = atlas_slug(prim, sec)
-        data["atlas"] = aslug
-        json.dump(data, open(os.path.join(OUT, "%s.json" % slug), "w"))
-
+        # [Rider 2] One writer only. Two json.dump sites that could disagree
+        # about the same file is its own bug class -- and did in fact disagree,
+        # which is how the atlas field went missing on the all-corpus path.
         imgs, _ = build_atlases(ts)
         for img, nm in zip(imgs, ["ground", "objects", "overhangs"]):
             ap = os.path.join(ATLAS_OUT, "%s_%s.png" % (aslug, nm))

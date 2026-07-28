@@ -27,6 +27,23 @@ var _gated := 0
 ## so a fresh clone reads a clean 62/62 and says why the total is smaller.
 const MAP_DATA_ASSERTIONS := 8
 
+## [Rider 1] The suite asserts its own arithmetic, retiring a whole failure
+## family rather than another instance of it.
+##
+## Three separate times, an assertion VANISHED instead of failing, and each time
+## the suite still looked green with a quietly smaller total: the fresh-checkout
+## 62/63 early-return, a parse error that made Godot hang with no result at all,
+## and J.17 crash-aborting its own function on a broken read-back (87/87 ->
+## 86/86, nothing named). A pass count is only trustworthy alongside the count
+## that was SUPPOSED to run.
+##
+## `_gated` is added back in so fresh-checkout mode balances too — a clean clone
+## runs fewer assertions but must still account for all of them.
+##
+## Update this when adding or removing assertions. If it drifts, that is the
+## point: a number nobody maintains is a number nobody trusts.
+const EXPECTED_TOTAL := 90
+
 
 func _chk(label: String, cond: bool) -> void:
 	_total += 1
@@ -64,6 +81,13 @@ func _ready() -> void:
 	_test_object_events()
 	_test_marks_survive_round_trip()
 	_test_importer_stamps_explicit()
+
+	# Counted BEFORE Z.99 itself, so EXPECTED_TOTAL stays the count of real
+	# assertions rather than including this bookkeeping one.
+	var accounted := _total + _gated
+	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
+			% [_total, _gated, EXPECTED_TOTAL],
+			accounted == EXPECTED_TOTAL)
 
 	if _gated > 0:
 		print("m27a_step_resolver_test: fresh-checkout mode — %d map-data "
@@ -364,7 +388,7 @@ func _test_marks_survive_round_trip() -> void:
 func _test_importer_stamps_explicit() -> void:
 	# Reads the JSON build input, so it gates with section A on a fresh clone.
 	if not _map_data_available():
-		_gated += 3
+		_gated += 4
 		return
 	var m := MapData.load_from(MAP_JSON)
 	if m == null:
@@ -387,6 +411,12 @@ func _test_importer_stamps_explicit() -> void:
 			non_explicit += 1
 	_chk("J.19 the importer stamps every imported cell explicit on both attributes",
 			non_explicit == 0)
+	# [Rider 2] The atlas name used to be written only on the render path, so
+	# `gen_map_import.py all` -- the mode the fresh-checkout announce line tells
+	# people to run -- emitted JSON the baker could not consume. Guarded here
+	# because the symptom appeared two steps downstream, at bake time.
+	_chk("J.20 the imported JSON carries a non-empty atlas name (got %r)" % m.atlas,
+			m.atlas != "")
 
 
 # --- G. debug toggle --------------------------------------------------------
