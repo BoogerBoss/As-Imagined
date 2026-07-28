@@ -1509,33 +1509,37 @@ func _ready() -> void:
 	var background_id := ""
 	var is_doubles_battle := false
 	# [M26l] Read the same way background_id/is_doubles_battle are above — a
-	# local captured before .clear() wipes the static holder. -1 (unset)
+	# local captured before .clear() wipes the static holder. "" (unset)
 	# covers every pre-existing caller (nothing has ever picked a trainer
 	# identity before this), matching those two fields' own established
 	# "harmless default for every old caller" convention.
-	var opp_trainer_id := -1
+	var opp_trainer_key := ""
 	if BattleSetupContext.has_pending():
 		_player_party = BattleSetupContext.player_party
 		_opp_party = BattleSetupContext.opp_party
 		is_doubles_battle = BattleSetupContext.is_doubles
 		background_id = BattleSetupContext.background_id
-		opp_trainer_id = BattleSetupContext.opp_trainer_id
+		opp_trainer_key = BattleSetupContext.opp_trainer_key
 		BattleSetupContext.clear()
 	else:
 		is_doubles_battle = _build_teams()
 	# [M26 default-trainer pilot] No launch path currently threads a real
-	# trainer_id through for any of Random Team / saved-team / direct-launch
-	# opponents -- opp_trainer_id stays -1 (unset) unconditionally, so the
+	# trainer through for any of Random Team / saved-team / direct-launch
+	# opponents -- opp_trainer_key stays "" (unset) unconditionally, so the
 	# fully-built trainer-intro pipeline (_show_trainer_intro, portrait, name
 	# banner) never actually fires for any real player flow. Deliberately
 	# narrow, portrait-only pilot: does NOT change which Pokemon team the
 	# opponent uses (still whatever Random/saved/fixture source was already
 	# resolved above) -- only which trainer identity is shown in the intro
-	# banner. Roxanne (702, TRAINER_ROXANNE_1) for singles, Brawly (84,
-	# TRAINER_BRAWLY_5, a real in-game doubles-format rematch) for doubles --
-	# both confirmed to resolve real portrait art.
-	if opp_trainer_id < 0:
-		opp_trainer_id = 84 if is_doubles_battle else 702
+	# banner. Roxanne for singles, Brawly (a real in-game doubles-format
+	# rematch) for doubles -- both confirmed to resolve real portrait art.
+	#
+	# [Step 1] Named by canonical KEY. These were raw trainer_id ints (702 and
+	# 84) until that id space was retired: it was a sorted-alphabetical index
+	# this project minted, so adding a second roster renumbered it and a stale
+	# int would have resolved to a DIFFERENT trainer rather than failing.
+	const _DEFAULT_OPP_KEY_SINGLES := "TRAINER_ROXANNE_1_RSE"
+	const _DEFAULT_OPP_KEY_DOUBLES := "TRAINER_BRAWLY_5_RSE"
 	_apply_background(background_id)
 
 	# [M26l] Resolve BEFORE start_battle_*() below so BattleManager already
@@ -1543,8 +1547,11 @@ func _ready() -> void:
 	# set_trainer_ai()/set_human_controlled() below are also both set up
 	# before start_battle_*() is called, not after.
 	var opp_trainer_data: TrainerData = null
-	if opp_trainer_id >= 0:
-		opp_trainer_data = TrainerRegistry.get_trainer(opp_trainer_id)
+	if opp_trainer_key != "":
+		opp_trainer_data = TrainerRegistry.get_trainer_by_key(opp_trainer_key)
+	else:
+		opp_trainer_data = TrainerRegistry.get_trainer_by_key(
+				_DEFAULT_OPP_KEY_DOUBLES if is_doubles_battle else _DEFAULT_OPP_KEY_SINGLES)
 
 
 	var ai := TrainerAI.new()
@@ -4467,7 +4474,7 @@ func _show_party_status_summary() -> void:
 func _show_trainer_intro(trainer: TrainerData) -> void:
 	if trainer == null:
 		return
-	var portrait := TrainerPicRegistry.get_portrait_texture(trainer.trainer_pic_id)
+	var portrait := TrainerPicRegistry.get_portrait_texture(trainer.pic_stem, trainer.trainer_key)
 	if portrait != null:
 		_opponent_trainer_sprite.texture = portrait
 

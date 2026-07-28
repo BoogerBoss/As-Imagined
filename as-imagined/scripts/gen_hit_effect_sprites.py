@@ -117,8 +117,9 @@ import struct
 
 from PIL import Image
 
+from ref_path import REF
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REF = os.path.join(ROOT, "reference", "pokeemerald_expansion")
 SPRITES_SRC = os.path.join(REF, "graphics", "battle_anims", "sprites")
 BACKGROUNDS_SRC = os.path.join(REF, "graphics", "battle_anims", "backgrounds")
 

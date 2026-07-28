@@ -31,7 +31,11 @@ even though they aren't stored in the output map.
 import json
 import re
 
-SRC = "reference/pokeemerald_expansion/include/constants/moves.h"
+import os
+
+from ref_path import REF
+
+SRC = os.path.join(REF, "include", "constants", "moves.h")
 OUT = "data/move_name_to_id.json"
 
 ENTRY_RE = re.compile(r"^\s*([A-Z_][A-Z0-9_]*)\s*(?:=\s*([^,]+?))?\s*,?\s*$")

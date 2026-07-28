@@ -18,11 +18,20 @@ extends Resource
 #     rematch_group_id/rematch_tier below are static source data only;
 #     save-state progression is M33/M34 territory (§6.5), out of scope here.
 
-@export var trainer_id: int = 0        # stable id: sorted-alphabetical index of trainer_key (see gen_trainer_data.py)
-@export var trainer_key: String = ""   # the literal TRAINER_XXXX name, e.g. "TRAINER_BRAWLY_1"
+# [Step 1] There is no trainer_id. It was an index this project minted by
+# sorting keys, so a second roster renumbered 94.6% of it. The canonical,
+# origin-suffixed trainer_key below is the identifier, and it is also the
+# filename -- see scripts/trainer_keys.py for the suffix rule.
+@export var trainer_key: String = ""   # canonical origin-suffixed key, e.g. "TRAINER_BRAWLY_1_RSE"
 @export var trainer_name: String = ""  # the in-battle display name, e.g. "Brawly"
 @export var trainer_class_id: int = 0  # -> TrainerClassData
-@export var trainer_pic_id: int = 0    # -> TrainerPicData (separate id space — see docs/m24_recon.md §1.4)
+# [Step 2 / Rule B] Upstream's own graphics/trainers/front_pics/<stem>.png
+# filename stem, verbatim — "leader_roxanne", "brendan_rs", "channeler_frlg".
+# Never re-slugified: the stem's whole value is direct traceability to the
+# exact source file. Resolves to assets/sprites/trainers/portraits/<stem>.png.
+# Replaced trainer_pic_id, a second minted index with the same renumbering
+# defect as trainer_id (92.5% of pic ids shift once the Kanto pics land).
+@export var pic_stem: String = ""
 
 @export var gender: int = -1           # BattlePokemon.GENDER_* of the trainer themself; -1 if unspecified/not applicable
 @export var is_doubles: bool = false

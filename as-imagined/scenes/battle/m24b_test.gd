@@ -99,7 +99,7 @@ func _test_section_a_smoke_ball() -> void:
 	_chk("A.03 Smoke Ball's hold_effect is HOLD_EFFECT_CAN_ALWAYS_RUN (36)",
 			smoke_ball != null and smoke_ball.hold_effect == ItemManager.HOLD_EFFECT_CAN_ALWAYS_RUN)
 
-	var weezing_trainer: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_LAO_5")
+	var weezing_trainer: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_LAO_5_RSE")
 	_chk("A.04 TRAINER_LAO_5 resolves", weezing_trainer != null)
 	if weezing_trainer != null:
 		var weezing: TrainerPartyMon = weezing_trainer.party[weezing_trainer.party.size() - 1]
@@ -269,7 +269,7 @@ func _test_section_d_money_formula_integration() -> void:
 # ── Section E: BattlePokemon.from_trainer_mon() ────────────────────────────
 
 func _test_section_e_from_trainer_mon() -> void:
-	var brawly: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_BRAWLY_1")
+	var brawly: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_BRAWLY_1_RSE")
 	_chk("E.01 TRAINER_BRAWLY_1 resolves", brawly != null)
 	if brawly == null:
 		return
@@ -304,7 +304,7 @@ func _test_section_e_from_trainer_mon() -> void:
 	# pre-computed by gen_trainer_data.py — confirms from_trainer_mon doesn't
 	# need its own separate fallback logic, just resolves whatever move_ids
 	# already contains.
-	var declan: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_DECLAN")
+	var declan: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_DECLAN_RSE")
 	if declan != null:
 		var gyarados_bp: BattlePokemon = BattlePokemon.from_trainer_mon(declan.party[0])
 		_chk("E.14 Declan's Gyarados resolves its pre-computed fallback moveset (4 moves)",

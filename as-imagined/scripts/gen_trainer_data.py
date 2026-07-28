@@ -53,8 +53,17 @@ import json
 import os
 import re
 
+from trainer_keys import canonical_key
+from trainer_pics import stem_for_pic_name
+
+from ref_path import REF
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REF = os.path.join(ROOT, "reference", "pokeemerald_expansion")
+# [Step 1] The CANONICAL clone sits one level ABOVE the Godot project. This
+# previously resolved to as-imagined/reference/, the stale copy CLAUDE.md's own
+# "Ground truth" table marks do-not-use. Verified byte-identical for every file
+# this script reads, so the repoint is inert -- but the shared trainer_keys
+# helper must agree with it, and there can only be one REF.
 DATA = os.path.join(ROOT, "data")
 
 TRAINERS_PARTY = os.path.join(REF, "src", "data", "trainers.party")
@@ -616,7 +625,7 @@ def render_party_mon_sub_resource(sub_id: str, mon: dict) -> str:
     return "\n".join(lines)
 
 
-def render_trainer_tres(trainer_id: int, t: dict, pic_id_by_name: dict) -> str:
+def render_trainer_tres(t: dict) -> str:
     n = len(t["party"])
     load_steps = 2 + n + 1  # main script + party-mon script + N sub-resources
     lines = []
@@ -635,15 +644,20 @@ def render_trainer_tres(trainer_id: int, t: dict, pic_id_by_name: dict) -> str:
 
     lines.append("[resource]")
     lines.append('script = ExtResource("1")')
-    lines.append(f"trainer_id = {trainer_id}")
-    lines.append(f'trainer_key = "{t["trainer_key"]}"')
+    # [Step 1] No trainer_id field at all. It was a sorted-alphabetical index
+    # WE minted, so merging a second roster renumbered 94.6% of it; the
+    # canonical key is stable and is also the filename.
+    lines.append(f'trainer_key = "{t["canonical_key"]}"')
     if t["trainer_name"]:
         lines.append(f'trainer_name = "{escape_tres_string(t["trainer_name"])}"')
     if t["trainer_class_id"]:
         lines.append(f"trainer_class_id = {t['trainer_class_id']}")
-    pic_id = pic_id_by_name.get(t["pic_raw"], 0)
-    if pic_id:
-        lines.append(f"trainer_pic_id = {pic_id}")
+    # [Step 2 / Rule B] Upstream's own front_pics stem, copied verbatim. The
+    # old trainer_pic_id was a second index we minted, with the same defect as
+    # trainer_id: 92.5% of them shift when the Kanto pics land, and a stale one
+    # renders the WRONG trainer's portrait rather than failing.
+    if t["pic_stem"]:
+        lines.append(f'pic_stem = "{t["pic_stem"]}"')
     if t["gender"] != -1:
         lines.append(f"gender = {t['gender']}")
     if t["is_doubles"]:
@@ -661,28 +675,9 @@ def render_trainer_tres(trainer_id: int, t: dict, pic_id_by_name: dict) -> str:
     return "\n".join(lines)
 
 
-def render_trainer_pic_tres(pic_id: int, pic_name: str) -> str:
-    lines = []
-    lines.append('[gd_resource type="Resource" script_class="TrainerPicData" load_steps=2 format=3]')
-    lines.append("")
-    lines.append('[ext_resource type="Script" path="res://scripts/data/trainer_pic_data.gd" id="1"]')
-    lines.append("")
-    lines.append("[resource]")
-    lines.append('script = ExtResource("1")')
-    lines.append(f"pic_id = {pic_id}")
-    lines.append(f'pic_name = "{escape_tres_string(pic_name)}"')
-    lines.append("")
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# main
-# ---------------------------------------------------------------------------
-
 def main():
     os.makedirs(OUT_TRAINERS, exist_ok=True)
     os.makedirs(OUT_TRAINER_CLASSES, exist_ok=True)
-    os.makedirs(OUT_TRAINER_PICS, exist_ok=True)
 
     class_id_by_key, class_count = emit_trainer_classes()
 
@@ -691,28 +686,34 @@ def main():
 
     parsed = [parse_trainer(key, body, resolver, class_id_by_key) for key, body in raw_trainers]
 
-    # Stable IDs: sorted-alphabetical index of the trainer_key strings (per
-    # docs/m24_recon.md's own recommendation) -- NOT raw file order.
-    parsed.sort(key=lambda t: t["trainer_key"])
+    # [Step 1] Sorted for deterministic emission order only -- nothing derives
+    # an identifier from position any more.
+    for t in parsed:
+        t["canonical_key"] = canonical_key(t["trainer_key"])
+    parsed.sort(key=lambda t: t["canonical_key"])
 
-    # Trainer-pic IDs: a SEPARATE id space, likewise sorted-alphabetical by
-    # the distinct Pic string itself.
-    distinct_pics = sorted({t["pic_raw"] for t in parsed if t["pic_raw"]})
-    pic_id_by_name = {name: idx for idx, name in enumerate(distinct_pics)}
-    for idx, name in enumerate(distinct_pics):
-        text = render_trainer_pic_tres(idx, name)
-        out_path = os.path.join(OUT_TRAINER_PICS, f"trainer_pic_{idx:04d}.tres")
+    # [Step 2 / Rule B] Portrait stems, resolved through the shared
+    # trainer_pics helper. There is no pic id space and no TrainerPicData: the
+    # stem is upstream's own filename and needs no indirection table.
+    unresolved_stems = []
+    for t in parsed:
+        t["pic_stem"] = stem_for_pic_name(t["pic_raw"])
+        if t["pic_raw"] and not t["pic_stem"]:
+            unresolved_stems.append((t["canonical_key"], t["pic_raw"]))
+
+    for t in parsed:
+        text = render_trainer_tres(t)
+        out_path = os.path.join(OUT_TRAINERS, f"{t['canonical_key']}.tres")
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(text)
 
-    for trainer_id, t in enumerate(parsed):
-        text = render_trainer_tres(trainer_id, t, pic_id_by_name)
-        out_path = os.path.join(OUT_TRAINERS, f"trainer_{trainer_id:04d}.tres")
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(text)
-
+    distinct_stems = sorted({t["pic_stem"] for t in parsed if t["pic_stem"]})
     print(f"trainer classes: {class_count} emitted")
-    print(f"trainer pics: {len(distinct_pics)} distinct emitted")
+    print(f"portrait stems: {len(distinct_stems)} distinct referenced")
+    if unresolved_stems:
+        print(f"UNRESOLVED PORTRAIT STEMS: {len(unresolved_stems)}")
+        for key, raw in unresolved_stems[:10]:
+            print(f"  [{key}] Pic: {raw!r}")
     print(f"trainers: {len(parsed)} emitted")
     if resolver.unresolved:
         print(f"UNRESOLVED NAMES: {len(resolver.unresolved)}")

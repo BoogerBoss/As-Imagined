@@ -70,10 +70,12 @@ import os
 import re
 import shutil
 
+from ref_path import REF
+from trainer_pics import stem_for_pic_name
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REF = os.path.join(ROOT, "reference", "pokeemerald_expansion")
 TRAINERS_GFX_H = os.path.join(REF, "src", "data", "graphics", "trainers.h")
-TRAINER_PICS_DIR = os.path.join(ROOT, "data", "trainer_pics")
+OUT_TRAINERS_DIR = os.path.join(ROOT, "data", "trainers")
 OUT_DIR = os.path.join(ROOT, "assets", "sprites", "trainers", "portraits")
 
 
@@ -114,41 +116,51 @@ def build_pic_to_file_map():
     return pic_to_file
 
 
+def referenced_stems():
+    """Every pic_stem the emitted roster actually references.
+
+    [Step 2] Driven by the trainer files themselves rather than the retired
+    data/trainer_pics/ table: the stem now lives on TrainerData, so the roster
+    IS the list of art to pull, and a trainer added later is picked up with no
+    second catalogue to keep in sync.
+    """
+    stems = {}
+    for fn in sorted(os.listdir(OUT_TRAINERS_DIR)):
+        if not fn.endswith(".tres"):
+            continue
+        text = open(os.path.join(OUT_TRAINERS_DIR, fn), encoding="utf-8").read()
+        m = re.search(r'pic_stem = "([^"]*)"', text)
+        if m and m.group(1):
+            stems.setdefault(m.group(1), []).append(fn[:-5])
+    return stems
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    pic_to_file = build_pic_to_file_map()
+    stem_to_file = {
+        os.path.splitext(os.path.basename(rel))[0]: rel
+        for rel in build_pic_to_file_map().values()
+    }
 
     copied = 0
     unresolved = []
-    for fn in sorted(os.listdir(TRAINER_PICS_DIR)):
-        if not fn.endswith(".tres"):
-            continue
-        idm = re.search(r"_(\d+)\.tres$", fn)
-        pic_id = int(idm.group(1))
-        text = open(os.path.join(TRAINER_PICS_DIR, fn), encoding="utf-8").read()
-        name_m = re.search(r'pic_name = "(.*)"', text)
-        pic_name = name_m.group(1)
-
-        const = normalize_to_constant(pic_name)
-        rel_path = pic_to_file.get(const)
+    for stem, users in sorted(referenced_stems().items()):
+        rel_path = stem_to_file.get(stem)
         if not rel_path:
-            unresolved.append((pic_id, pic_name, const))
+            unresolved.append((stem, users, "no front_pics entry"))
             continue
-
         src_path = os.path.join(REF, rel_path)
         if not os.path.exists(src_path):
-            unresolved.append((pic_id, pic_name, const + " (file missing: " + rel_path + ")"))
+            unresolved.append((stem, users, "file missing: " + rel_path))
             continue
-
-        source_stem = os.path.splitext(os.path.basename(rel_path))[0]
-        dst_name = f"{pic_id:04d}_{source_stem}.png"
-        dst_path = os.path.join(OUT_DIR, dst_name)
-        shutil.copyfile(src_path, dst_path)
+        # [Rule B] The destination filename IS upstream's stem, verbatim.
+        shutil.copyfile(src_path, os.path.join(OUT_DIR, stem + ".png"))
         copied += 1
 
     print(f"trainer portraits: {copied} copied, {len(unresolved)} unresolved")
-    for pic_id, pic_name, const in unresolved:
-        print(f"  UNRESOLVED [{pic_id}] {pic_name!r} -> {const}")
+    for stem, users, why in unresolved:
+        print(f"  UNRESOLVED {stem!r} ({why}) — wanted by {len(users)} trainer(s), "
+              f"e.g. {users[0]}")
 
 
 if __name__ == "__main__":

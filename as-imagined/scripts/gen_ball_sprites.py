@@ -57,7 +57,8 @@ screen inside an opaque white box.
 import os
 import shutil
 
-REF = "/home/rob/GodotAsImagined/reference/pokeemerald_expansion"
+from ref_path import REF
+
 BALLS_SRC = os.path.join(REF, "graphics", "balls")
 PARTICLES_SRC = os.path.join(
     REF, "graphics", "battle_anims", "sprites", "particles.png")

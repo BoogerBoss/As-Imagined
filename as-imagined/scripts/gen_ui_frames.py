@@ -86,8 +86,9 @@ import struct
 
 from PIL import Image
 
+from ref_path import REF
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REF = os.path.join(ROOT, "reference", "pokeemerald_expansion")
 OUT_DIR = os.path.join(ROOT, "assets", "sprites", "battle_ui", "screens")
 
 SCREEN_BLOCK_TILES = 32

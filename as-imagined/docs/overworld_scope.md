@@ -886,6 +886,105 @@ added without touching the resolver's signature.
 
 ---
 
+### 1.9 Hand-authoring on top of imported maps *(measured rev 28)*
+
+"Import first, author tweaks after" (§0) was a decision; this is what it costs
+to implement, and it changes two things in M27B.
+
+**The measurement that forces it.** Across all 421 maps / 230,619 cells:
+
+| Property | Varies by placement | Can a painted tile carry it? |
+|---|---|---|
+| **Collision** | **52.0%** of metatiles | **No** |
+| **Elevation** | **52.1%** of metatiles | **No** |
+| Behaviour | 0% — per-metatile by construction | **Yes** |
+
+A per-metatile collision *default* would mis-set **29,827 of 230,619 cells
+(12.93%)**. So "paint a tile and infer its collision" is not a viable
+shortcut — the same metatile is genuinely solid in one place and walkable in
+another. Painting gives you the art and the behaviour free; collision and
+elevation must still be set for the cell.
+
+**⚠ And in the M27A proof of concept, hand-painting is silently destroyed.**
+`pallet_town.gd::_paint()` writes every cell from JSON at `_ready()`, so
+anything painted in the editor is overwritten the moment the scene runs, with
+no warning. That is fine for a skeleton whose only job was proving the import;
+it is not a shape to build authoring on.
+
+#### Change 1 — bake tiles into the `.tscn` at import time
+
+The scene becomes the artifact and the JSON becomes a build *input* rather than
+a runtime one. Painting is then just editing the real scene, which is what
+"author tweaks after" has to mean in practice. Cheap to do now with one map;
+steadily more annoying across 421.
+
+#### Re-import policy — per-map, refuse-unless-forced, no merge *(decided rev 29)*
+
+Baking tiles into the scene reintroduces the destruction problem one level up:
+a generated-and-then-hand-edited scene is clobbered by rerunning the importer
+on it. **But re-import is per-map, not bulk**, which collapses the problem —
+it is a usage question, not an architecture one. You re-import the map you mean
+to, and authored maps simply are not in that set.
+
+So: **no merge machinery.** A three-way merge keyed on provenance was designed
+and then dropped as solving a problem that only exists if re-import is
+all-or-nothing.
+
+**What is kept is the cheap guard**: the importer refuses to overwrite a map
+containing any `AUTHORED` cell unless `--force` is passed. ~5 lines, no merge
+logic, and it converts "silently destroyed your afternoon" into "importer
+declined; pass --force if you meant it." It reads the provenance field Change 3
+requires anyway, so it costs nothing extra.
+
+**Why re-import will happen at all, rarely:** four importer bugs surfaced in
+M27A/M27B alone — the naive lowercase directory guess, `gTileset_BuildingFrlg`
+→ `gMetatiles_Building_Frlg`, SilphCo borrowing its graphics from
+Condominiums, and an output-filename change that broke two consumers. A fifth
+is likelier than not, and when it lands the affected maps get re-imported —
+most of which will never have been hand-touched.
+
+**Still open at implementation time**: cells authored *outside* the source
+map's bounds (extending a map edge) have no source counterpart, so
+refresh-vs-preserve does not apply. Either always preserved, or resizing an
+imported map is disallowed. Leaning always-preserved.
+
+#### Generated vs tracked output *(settled rev 29)*
+
+Two directories, split on whether the artifact is a runtime dependency:
+
+| Path | Git | Why |
+|---|---|---|
+| `assets/maps/` | **ignored wholesale** | 421 per-map JSON plus `_preview`/`_above` validation renders. All regenerable; ignored as a *directory* so a new kind of generated output cannot quietly start being tracked |
+| `assets/map_atlases/` | **tracked** | Shared per tileset PAIR — **60 pairs for 421 maps**. Real runtime dependencies of tracked scenes, and Godot convention is to commit texture + `.import` |
+
+The shared-atlas layout is a **7x reduction**: 180 PNGs (360 files with
+sidecars) instead of 1,263 (2,526). `gTileset_BuildingFrlg +
+gTileset_GenericBuilding2` alone backs 51 maps, so per-map atlases would have
+stored that byte-identical image 51 times. Nearly free to adopt because
+`get_tileset()` already cached by pair — only the *filenames* were per-map.
+
+#### Change 2 — the debug overlay becomes an editor, not just a viewer
+
+§20 scoped it as a validation surface for *reading* behaviour and elevation.
+Given the measurement above it must also be where collision and elevation are
+*set*, because nothing else in the pipeline can infer them for a newly painted
+cell. Without this there is no way to author a walkable house at all.
+
+#### Change 3 — defaults are offered, and visibly marked as defaults
+
+Inheriting collision and elevation from the cell painted over — or from the
+metatile's most common value — is right **~87%** of the time. That makes it a
+genuinely useful authoring assist and a genuinely dangerous silent behaviour:
+the remaining **13%** would be wrong in a way nobody can see.
+
+So the overlay must distinguish **defaulted** cells from **explicitly set**
+ones, and the map format needs somewhere to record which is which. This is a
+data-shape requirement, not just a UI one — it cannot be retrofitted onto a
+format that only stores final values, which is why it belongs alongside
+Change 1 rather than after it.
+
+---
+
 ### 1.5 Remaining
 
 - **Tile animations** — Animated terrain (water, flowers, waterfall) via
@@ -1629,8 +1728,10 @@ compile-time layout toggles, an encryption key obfuscating several fields).
   "spike-then-decide": the decision is made (§0), so this is core
   infrastructure. Still prototype it first on one real map before
   industrialising, because it determines the entire content and tooling budget.
-- **Behavior/elevation overlay (wanted)** — `@tool` x-ray view reading the real
-  `cell_info()` resolver: color-coded behavior fills, ledge direction arrows,
+- **Behavior/elevation overlay — a READ AND WRITE surface** *(scope raised rev
+  28, see §1.9)*: collision and elevation cannot be inferred for a
+  hand-painted cell, so this is where they are set, not merely inspected.
+  `@tool` x-ray view reading the real `cell_info()` resolver: color-coded behavior fills, ledge direction arrows,
   elevation letters, live redraw while painting, bright magenta for untagged
   tiles, distinct hatch for skirt cells. Same node runs in-game behind a debug
   key (F3 cycles modes) and validates stitching across chunk seams. **This
@@ -2514,6 +2615,163 @@ script body. That is a genuinely new pipeline stage — but a tractable one:
 key, sight range, sprite, cell, elevation, movement, visibility flag — and the
 editor exists for tweaking and for authoring *new* content, which is where the
 original story actually needs it.
+
+### Rule A — trainer keys are OUR identifiers, and carry their roster of origin
+
+**Adopted Step 1.** A trainer key is a name this project owns, and every one
+names the roster that defined it:
+
+| source | raw constant | canonical key | file |
+|---|---|---|---|
+| `src/data/trainers.party` | `TRAINER_ROXANNE_1` | `TRAINER_ROXANNE_1_RSE` | `data/trainers/TRAINER_ROXANNE_1_RSE.tres` |
+| `src/data/trainers_frlg.party` | `TRAINER_LASS_ROBIN` | `TRAINER_LASS_ROBIN_FRLG` | `data/trainers/TRAINER_LASS_ROBIN_FRLG.tres` |
+
+**The filename IS the key.** Lookup is a direct path build — no id, no scan, no
+cached index.
+
+The suffix rule lives in exactly one place, `scripts/trainer_keys.py`, imported
+by both `gen_trainer_data.py` and `gen_map_import.py`. It must never be
+duplicated: two copies drift, and a drifted copy points a placement at a
+trainer that does not exist. The rosters are measured disjoint (the only shared
+name is `TRAINER_NONE`, excluded from both), and the helper asserts that at
+build time so a future expansion update that introduces a collision fails
+loudly instead of resolving by dict order.
+
+**Bare, unsuffixed keys do not resolve. No alias layer, no fallback.** Two
+spellings per trainer would make the origin suffix optional, which defeats it.
+
+**Design constraint for whenever save-format work lands (M27L):** a save
+references trainers **by key**, never by a minted int. The int is gone precisely
+because it could not survive a roster regen; reintroducing one inside a save
+file would recreate the same defect in the one place it is least recoverable —
+a player's own file, which cannot be regenerated. Stated now so the future
+session inherits it rather than rediscovering it.
+
+**What this replaced, and why.** `trainer_id` was a sorted-alphabetical index
+this project minted. Measured: merging the second roster changes **808 of 854
+(94.6%)** existing ids, so a regen rewrites 808 files and silently repoints
+anything holding one. The field is now deleted outright — not deprecated, not
+kept "in case". Anything wanting a count counts the directory.
+
+The rule generalises: **do not mint an index we own.** Use upstream's stable
+identifier, or none. `trainer_class_id` is untouched precisely because it
+inherits source's own enum declaration order rather than inventing a sort.
+
+### Rule B — portrait stems are UPSTREAM's identifiers, verbatim
+
+**Adopted Step 2.** A trainer's portrait is referenced by the reference tree's
+own `graphics/trainers/front_pics/<stem>.png` filename stem, copied byte-for-byte:
+
+| roster `Pic:` | stem | file |
+|---|---|---|
+| `Leader Roxanne` | `leader_roxanne` | `assets/sprites/trainers/portraits/leader_roxanne.png` |
+| `RS Brendan` | `brendan_rs` | …`/brendan_rs.png` |
+| `Bug Catcher Frlg` | `bug_catcher_frlg` | …`/bug_catcher_frlg.png` |
+
+**We never add, strip, or re-case anything.** The stem's entire value is direct
+traceability to the exact source file. `brendan_rs`/`may_rs` are the standing
+proof: a naive `lower().replace(" ","_")` of the `Pic:` value yields
+`rs_brendan`, which is not a real file. Both are pinned by test.
+
+Hoenn stems carry no suffix and FRLG stems carry `_frlg` **only because upstream
+wrote them that way**. All 180 stems in the reference are unique (measured), so
+this cannot collide.
+
+Resolution is a direct path build. `trainer_pic_id`, `TrainerPicData` and
+`data/trainer_pics/` are deleted: a second minted index with the same defect as
+`trainer_id` (**92.5% of pic ids shift** once the Kanto pics land, and a stale
+one renders the *wrong* trainer's portrait rather than failing), plus a 93-file
+table whose only job was turning that int back into a string we already had.
+
+A missing stem fails **loudly** — a warning naming the stem and the trainer that
+asked, plus a visible magenta placeholder — never a silent null.
+
+### The Rule A / Rule B pair — the asymmetry is a decision
+
+These two rules deliberately disagree, and the reason is worth stating so
+neither gets "fixed" into matching the other:
+
+| | Rule A (trainer keys) | Rule B (portrait stems) |
+|---|---|---|
+| whose identifier | **ours** | **upstream's** |
+| suffix | we add `_RSE` / `_FRLG` | only what upstream already wrote |
+| why | two rosters, separate files, ambiguous without it | traceability to the exact source file |
+
+**Retiring the int id spaces is the shared pattern. It does NOT mean trainer
+keys adopt Rule B's verbatim-unsuffixed form.** Trainer files are
+`TRAINER_X_RSE` / `TRAINER_X_FRLG`, full stop.
+
+The generalisation behind both: **do not mint an index we own.** Use upstream's
+stable identifier, or a name we define deliberately — never a positional index.
+`trainer_class_id` survives untouched precisely because it inherits source's own
+enum declaration order rather than inventing a sort.
+
+### Parked by design — two things a future session should not "fix"
+
+**`ai_flags` is populated and intentionally unconsumed.** Every trainer carries
+real flags (Roxanne: 7), but `battle_screen_shared.gd` sets
+`ai.tier = TrainerAI.Tier.SMART` explicitly and never threads them through.
+That is deliberate until RPG trainer battles exist — the simulator's difficulty
+is a user-facing setting, not something a data file should silently override.
+Wiring it is M27/M35 scope, not a bug.
+
+**Source's numeric trainer-id partitioning is facility code only.** The ranges
+(`FRONTIER_TRAINERS_COUNT`, `TRAINER_RECORD_MIXING_APPRENTICE`,
+`TRAINER_PARTNER(...)`) appear exclusively in `battle_frontier.c`,
+`battle_tower.c`, `battle_factory.c`, `battle_tent.c` and `battle_partner.c` —
+all out of scope. Any future Battle Frontier work designs its roster selection
+natively rather than resurrecting a numeric id space to inherit those ranges.
+
+### ⚠ Blocker found rev 30 — the 624 Kanto trainers were never converted
+
+Emitting object events surfaced a real gap. All **13 trainer placements** in
+the baked early-game corridor resolve to a `TRAINER_X` constant correctly — and
+**none of the 13 exists in this project's trainer data.**
+
+Cause: M24a converted `src/data/trainers.party`, which is the **Hoenn/Emerald**
+set (855 trainers). Kanto's live in a **separate file the project has never
+read**: `src/data/trainers_frlg.party`, **624 trainers**, with its own
+constants header `include/constants/opponents_frlg.h`.
+
+The format is identical — same `Name: / Class: / Pic: / Gender: / Music: /
+Double Battle:` keys, same party block shape — so `gen_trainer_data.py` should
+extend to it rather than needing a second converter.
+
+**Two things to decide when it is picked up**, neither of which is obvious:
+
+1. **ID space.** `trainer_id` is a sorted-alphabetical index within its source
+   file, so merging 624 FRLG trainers into the existing 854 would renumber
+   everything. `trainer_key` is unaffected — which is exactly why M27D
+   references trainers by key (§32), and this is the concrete payoff of that
+   decision.
+2. **Whether both sets ship.** The Hoenn 855 are what the battle simulator
+   currently uses; the Kanto 624 are what the RPG needs. They are not
+   alternatives — both have consumers.
+
+**This is the same shape as `[M26B3-1]`'s 86 unpulled Kanto trainer sprites**,
+and the two want doing together: the sprites are the art for exactly these
+trainers.
+
+Until it lands, `TrainerNPC` placements carry a valid `trainer_key` that
+resolves to nothing, which the node surfaces as a configuration warning rather
+than a silent no-battle.
+
+**⚠ Converting the roster WILL break two tests, by design.**
+`m27a_step_resolver_test`'s `I.14` asserts the Kanto roster is still
+unconverted, and `I.15` asserts the resulting configuration warning fires.
+They are tripwires: they exist so the gap cannot close silently. **When the 624
+FRLG trainers are converted, both are EXPECTED to flip — invert them (assert the
+key now resolves, and that no warning fires) rather than treating them as a
+regression to debug.**
+
+**Already done, so the conversion session does not redo it:** nothing persists
+`trainer_id` across a regen. `TeamStorage` saves only
+`{dex, level, move_ids, nature, evs, ivs, ability_slot}`, no `.tres` written by
+the team builder carries one, and the two hardcoded default-opponent ints in
+`battle_screen_shared.gd` (`702`/`84`) are now keyed by `TRAINER_ROXANNE_1`/
+`TRAINER_BRAWLY_5` instead. `_test_trainer_identity_survives_a_roster_regen`
+pins all of it. The remaining renumbering risk is therefore **zero known
+consumers** — but re-run that test after the regen to confirm.
 
 ### Roadmap fit
 

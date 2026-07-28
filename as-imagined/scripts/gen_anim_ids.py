@@ -55,8 +55,9 @@ import json
 import os
 import re
 
+from ref_path import REF
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REF = os.path.join(ROOT, "..", "reference", "pokeemerald_expansion")
 POKEDEX_H = os.path.join(REF, "include", "constants", "pokedex.h")
 ANIM_H = os.path.join(REF, "include", "pokemon_animation.h")
 FAMILY_FILES = [

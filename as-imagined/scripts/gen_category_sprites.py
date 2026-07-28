@@ -31,8 +31,10 @@ Step 0 findings:
 from pathlib import Path
 from PIL import Image
 
+from ref_path import REF
+
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "reference/pokeemerald_expansion/graphics/interface/category_icons.png"
+SRC = Path(REF) / "graphics/interface/category_icons.png"
 DST_DIR = ROOT / "assets/sprites/battle_ui/category"
 
 FRAME_SIZE = 16

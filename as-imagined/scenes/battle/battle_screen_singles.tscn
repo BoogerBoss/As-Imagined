@@ -14,7 +14,7 @@
 [ext_resource type="Texture2D" uid="uid://c27v35tiu3pc" path="res://assets/sprites/battle_ui/party_status/ball_status.png" id="22_ball_status"]
 [ext_resource type="Texture2D" uid="uid://b2hk8ympj8i5h" path="res://assets/sprites/battle_ui/party_status/ball_fainted.png" id="23_ball_fainted"]
 [ext_resource type="Texture2D" uid="uid://u5nenbe1yr5i" path="res://assets/sprites/battle_ui/party_status/ball_empty.png" id="24_ball_empty"]
-[ext_resource type="Texture2D" uid="uid://c4lgygj6twkss" path="res://assets/sprites/trainers/portraits/0039_leader_brawly.png" id="25_trainer_portrait_sample"]
+[ext_resource type="Texture2D" path="res://assets/sprites/trainers/portraits/leader_brawly.png" id="25_trainer_portrait_sample"]
 [ext_resource type="PackedScene" uid="uid://dad4jum0ut4ey" path="res://scenes/battle/shared_battle_chrome.tscn" id="30_shared_chrome"]
 [ext_resource type="Texture2D" uid="uid://de07smweruh8r" path="res://assets/sprites/trainers/back_pics/leaf.png" id="31_player_back_pic"]
 

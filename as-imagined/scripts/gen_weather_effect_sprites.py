@@ -90,7 +90,8 @@ import struct
 
 from PIL import Image
 
-REF = "/home/rob/GodotAsImagined/reference/pokeemerald_expansion"
+from ref_path import REF
+
 OUT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "assets/sprites/battle_effects/weather",

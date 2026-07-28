@@ -44,7 +44,8 @@ import os
 
 from PIL import Image
 
-REF = "/home/rob/GodotAsImagined/reference/pokeemerald_expansion"
+from ref_path import REF
+
 SRC = os.path.join(REF, "graphics/battle_interface/ability_pop_up.png")
 PAL = os.path.join(REF, "graphics/battle_interface/ability_pop_up.pal")
 OUT = os.path.normpath(os.path.join(

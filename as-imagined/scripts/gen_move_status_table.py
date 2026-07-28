@@ -20,9 +20,11 @@ import re
 import os
 from pathlib import Path
 
+from ref_path import REF as _REF
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = PROJECT_ROOT.parent
-REF = REPO_ROOT / "reference" / "pokeemerald_expansion"
+REF = Path(_REF)
 MOVES_H = REF / "include" / "constants" / "moves.h"
 MOVES_INFO_H = REF / "src" / "data" / "moves_info.h"
 DATA_MOVES = PROJECT_ROOT / "data" / "moves"

@@ -47,8 +47,10 @@ choice -- it pulls everything; the selection lives in battle_screen_shared
 import os
 import shutil
 
+from ref_path import REF
+
 REFERENCE_DIR = (
-    "/home/rob/GodotAsImagined/reference/pokeemerald_expansion/"
+    REF + "/"
     "graphics/trainers/back_pics"
 )
 OUT_DIR = os.path.join(

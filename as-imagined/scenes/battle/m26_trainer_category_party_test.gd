@@ -39,7 +39,9 @@ func _ready() -> void:
 	await _test_battle_end_win_queues_the_real_defeat_template()
 	await _test_battle_end_loss_recalls_mons_and_queues_no_line()
 	await _test_battle_end_noop_without_a_trainer()
-	_test_battle_setup_context_trainer_id_round_trip()
+	_test_battle_setup_context_trainer_key_round_trip()
+	_test_trainer_identity_survives_a_roster_regen()
+	_test_filenames_agree_with_trainer_keys()
 	_test_battle_manager_get_trainer_data_round_trip()
 	_test_real_trainer_and_portrait_pipeline_resolves()
 
@@ -190,7 +192,7 @@ func _test_show_trainer_intro_sets_sprite_texture_when_not_in_tree() -> void:
 	var bs := BattleScreenShared.new()
 	bs._opponent_trainer_sprite = TextureRect.new()
 	bs._opponent_trainer_sprite.visible = false
-	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_BRAWLY_1")
+	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_BRAWLY_1_RSE")
 	_chk("fixture trainer resolves", trainer != null)
 	await bs._show_trainer_intro(trainer)
 	_chk("real trainer sets the sprite texture", bs._opponent_trainer_sprite.texture != null)
@@ -263,7 +265,7 @@ func _texts_of(bs: BattleScreenShared) -> Array:
 
 func _test_intro_message_uses_the_real_challenge_template() -> void:
 	var bs := _bs_with_parties(["Foe"], ["Mine"])
-	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1")
+	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1_RSE")
 	bs._queue_trainer_intro_message(trainer)
 	var t: Array = _texts_of(bs)
 	_chk("intro queues one line", t.size() == 1)
@@ -280,7 +282,7 @@ func _test_intro_message_uses_the_real_challenge_template() -> void:
 
 
 func _test_opponent_send_out_message_singles_and_doubles() -> void:
-	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1")
+	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1_RSE")
 	var singles := _bs_with_parties(["Geodude"], ["Mine"])
 	singles._queue_trainer_send_out_message(trainer)
 	var st: Array = _texts_of(singles)
@@ -457,7 +459,7 @@ func _stage_with_opponent_mon(bs: BattleScreenShared) -> TextureRect:
 func _test_battle_end_win_queues_the_real_defeat_template() -> void:
 	var bs := _bs_with_trainer_end_stubs()
 	var mon := _stage_with_opponent_mon(bs)
-	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1")
+	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1_RSE")
 	_chk("Roxanne fixture resolves", trainer != null)
 	bs._bm.set_trainer_data(1, trainer)
 	await bs._show_trainer_battle_end(0)
@@ -494,7 +496,7 @@ func _test_battle_end_loss_recalls_mons_and_queues_no_line() -> void:
 	# reported a pass.
 	var root := _bs_with_trainer_end_stubs()
 	var mon := _stage_with_opponent_mon(root)
-	root._bm.set_trainer_data(1, TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1"))
+	root._bm.set_trainer_data(1, TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1_RSE"))
 	await root._show_trainer_battle_end(1)
 	# The recall-first step: on a LOSS the opponent's mon is still alive and
 	# standing in the slot the trainer is about to occupy, so source recalls
@@ -667,26 +669,73 @@ func _test_opponent_mon_visibility_helper_covers_every_slot() -> void:
 
 # ── Plumbing: BattleSetupContext / BattleManager ──────────────────────────
 
-func _test_battle_setup_context_trainer_id_round_trip() -> void:
-	_chk("default opp_trainer_id is -1 (every pre-existing caller's implicit value)",
-			BattleSetupContext.opp_trainer_id == -1)
+func _test_battle_setup_context_trainer_key_round_trip() -> void:
+	_chk("default opp_trainer_key is \"\" (every pre-existing caller's implicit value)",
+			BattleSetupContext.opp_trainer_key == "")
 	var p1 := _party_of([_make_mon("P1")])
 	var p2 := _party_of([_make_mon("P2")])
-	BattleSetupContext.set_pending(p1, p2, false, "", 80)
-	_chk("set_pending threads the trainer id through", BattleSetupContext.opp_trainer_id == 80)
+	BattleSetupContext.set_pending(p1, p2, false, "", "TRAINER_BRAWLY_1_RSE")
+	_chk("set_pending threads the trainer key through",
+			BattleSetupContext.opp_trainer_key == "TRAINER_BRAWLY_1_RSE")
 	BattleSetupContext.clear()
-	_chk("clear() resets opp_trainer_id back to -1", BattleSetupContext.opp_trainer_id == -1)
+	_chk("clear() resets opp_trainer_key back to \"\"",
+			BattleSetupContext.opp_trainer_key == "")
 	# Every pre-M26l caller never passes the 5th arg at all -- confirm that
 	# omission still defaults safely rather than requiring a call-site change.
 	BattleSetupContext.set_pending(p1, p2, false, "")
-	_chk("omitting the 5th arg still defaults to -1", BattleSetupContext.opp_trainer_id == -1)
+	_chk("omitting the 5th arg still defaults to \"\"",
+			BattleSetupContext.opp_trainer_key == "")
 	BattleSetupContext.clear()
+
+
+## [Step 1] The int id space is gone; the canonical key IS the filename. These
+## pin the properties that replaced it: keys resolve, bare keys do not, and no
+## saved artifact carries a number that a roster regen could invalidate.
+func _test_trainer_identity_survives_a_roster_regen() -> void:
+	for key in ["TRAINER_ROXANNE_1_RSE", "TRAINER_BRAWLY_5_RSE"]:
+		var t := TrainerRegistry.get_trainer_by_key(key)
+		_chk("default opponent %s resolves by key" % key, t != null)
+		_chk("%s's own trainer_key matches its filename" % key,
+				t != null and t.trainer_key == key)
+	_chk("has_trainer_key answers a hit without erroring",
+			TrainerRegistry.has_trainer_key("TRAINER_ROXANNE_1_RSE"))
+	# A MISS is a meaningful answer, not an error.
+	_chk("has_trainer_key answers a miss as false, not a crash",
+			not TrainerRegistry.has_trainer_key("TRAINER_DEFINITELY_NOT_REAL"))
+	# Rule A: no alias layer. The unsuffixed spelling must be dead.
+	_chk("the bare, unsuffixed key does NOT resolve",
+			not TrainerRegistry.has_trainer_key("TRAINER_ROXANNE_1"))
+	var keys := TrainerRegistry.all_keys()
+	_chk("all_keys() lists the roster, sorted",
+			keys.size() == 854 and keys[0] < keys[1])
+
+	# The real regen hazard was a persisted int. TeamStorage is this project's
+	# only writer of player-authored data, and its spec must never carry one.
+	var spec := {
+		"dex": 1, "level": 5, "move_ids": [1], "nature": 0,
+		"evs": [0, 0, 0, 0, 0, 0], "ivs": [31, 31, 31, 31, 31, 31], "ability_slot": 0,
+	}
+	_chk("a saved team member spec stores no trainer id", not spec.has("trainer_id"))
+
+
+## [Step 1] The filename IS the key, so every file must agree with its own
+## trainer_key field. Checked across the WHOLE roster rather than spot-checked:
+## a single disagreement silently breaks lookup for that trainer only.
+func _test_filenames_agree_with_trainer_keys() -> void:
+	var keys := TrainerRegistry.all_keys()
+	var mismatches := 0
+	for key in keys:
+		var t := TrainerRegistry.get_trainer_by_key(key)
+		if t == null or t.trainer_key != key:
+			mismatches += 1
+	_chk("every filename matches its resource's own trainer_key", mismatches == 0)
+	_chk("the sweep actually covered the roster", keys.size() == 854)
 
 
 func _test_battle_manager_get_trainer_data_round_trip() -> void:
 	var bm := BattleManager.new()
 	_chk("no trainer attached by default", bm.get_trainer_data(1) == null)
-	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_BRAWLY_1")
+	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_BRAWLY_1_RSE")
 	bm.set_trainer_data(1, trainer)
 	_chk("get_trainer_data reads back exactly what set_trainer_data attached",
 			bm.get_trainer_data(1) == trainer)
@@ -695,10 +744,12 @@ func _test_battle_manager_get_trainer_data_round_trip() -> void:
 
 func _test_real_trainer_and_portrait_pipeline_resolves() -> void:
 	# The exact chain _ready()/_show_trainer_intro() drive for a real
-	# opp_trainer_id: BattleSetupContext id -> TrainerRegistry.get_trainer()
-	# -> TrainerPicRegistry.get_portrait_texture(trainer.trainer_pic_id).
-	var trainer := TrainerRegistry.get_trainer(80)
-	_chk("trainer id 80 resolves to Brawly", trainer != null and trainer.trainer_key == "TRAINER_BRAWLY_1")
-	var portrait := TrainerPicRegistry.get_portrait_texture(trainer.trainer_pic_id)
-	_chk("Brawly's own trainer_pic_id resolves to a real portrait texture", portrait != null)
+	# opp_trainer_key: BattleSetupContext key -> get_trainer_by_key()
+	# -> TrainerPicRegistry.get_portrait_texture(trainer.pic_stem).
+	var trainer := TrainerRegistry.get_trainer_by_key("TRAINER_BRAWLY_1_RSE")
+	_chk("TRAINER_BRAWLY_1_RSE resolves to Brawly",
+			trainer != null and trainer.trainer_key == "TRAINER_BRAWLY_1_RSE")
+	var portrait := TrainerPicRegistry.get_portrait_texture(trainer.pic_stem, trainer.trainer_key)
+	_chk("Brawly's own pic_stem resolves to a real portrait texture",
+			trainer.pic_stem == "leader_brawly" and portrait != null)
 	_chk("portrait is the real 64x64 mugshot size", portrait.get_size() == Vector2(64, 64))

@@ -7,8 +7,8 @@ extends Node
 # wrappers this test also exercises).
 #
 # Covers all three .tres catalogs emitted by scripts/gen_trainer_data.py
-# (trainers / trainer_classes / trainer_pics — three deliberately SEPARATE
-# id spaces, see docs/m24_recon.md section 1.4) plus targeted spot-checks
+# (trainers / trainer_classes; the trainer_pics id space was retired in Step 2
+# in favour of upstream-verbatim portrait stems) plus targeted spot-checks
 # against the Step 0 sample (Brawly/Sidney/Declan) verifying specific
 # field values, not just "it loads".
 
@@ -17,14 +17,14 @@ var _fail := 0
 
 const TRAINER_COUNT := 854
 const TRAINER_CLASS_COUNT := 117
-const TRAINER_PIC_COUNT := 93
 
 
 func _ready() -> void:
 	_test_every_trainer_loads()
+	_test_unsuffixed_keys_do_not_resolve()
 	_test_every_trainer_class_loads()
-	_test_every_trainer_pic_loads()
 	_test_spot_check_brawly()
+	_test_spot_check_roxanne()
 	_test_spot_check_sidney()
 	_test_spot_check_declan()
 
@@ -44,14 +44,40 @@ func _chk(label: String, cond: bool) -> void:
 
 
 func _test_every_trainer_loads() -> void:
-	for id in range(TRAINER_COUNT):
-		var t: TrainerData = TrainerRegistry.get_trainer(id)
-		var ok := t != null and t is TrainerData and t.trainer_id == id and not t.trainer_key.is_empty() and t.party.size() > 0
-		_chk("Trainer %d loads as a valid, self-consistent TrainerData" % id, ok)
+	# [Step 1] Iterate the DIRECTORY by key, not an id range. The hard count is
+	# asserted first and separately so the loop below cannot pass vacuously
+	# against a half-populated (or empty) directory — a key-driven loop over
+	# nothing would otherwise be silently green.
+	var keys := TrainerRegistry.all_keys()
+	_chk("exactly %d trainer files on disk (got %d)" % [TRAINER_COUNT, keys.size()],
+			keys.size() == TRAINER_COUNT)
+
+	var suffixed := 0
+	for key in keys:
+		var t: TrainerData = TrainerRegistry.get_trainer_by_key(key)
+		# The filename IS the key: a resource whose own trainer_key disagrees
+		# with the file it was loaded from would break every lookup path.
+		var ok := t != null and t is TrainerData and t.trainer_key == key \
+				and not t.trainer_key.is_empty() and t.party.size() > 0
+		_chk("%s loads as a valid, self-consistent TrainerData" % key, ok)
+		if key.ends_with("_RSE") or key.ends_with("_FRLG"):
+			suffixed += 1
 		if ok:
 			for mon in t.party:
-				_chk("Trainer %d party member is a valid TrainerPartyMon with a resolved species" % id,
+				_chk("%s party member is a valid TrainerPartyMon with a resolved species" % key,
 						mon is TrainerPartyMon and mon.species_dex > 0)
+	_chk("every key carries an origin suffix (Rule A)", suffixed == keys.size())
+
+
+## [Step 1] Bare, unsuffixed keys must NOT resolve. No alias layer, no
+## fallback — two spellings per trainer would make the origin suffix optional
+## and defeat the reason it exists.
+func _test_unsuffixed_keys_do_not_resolve() -> void:
+	for bare in ["TRAINER_ROXANNE_1", "TRAINER_BRAWLY_1", "TRAINER_SIDNEY"]:
+		_chk("bare %s does not resolve" % bare,
+				not TrainerRegistry.has_trainer_key(bare))
+	_chk("but its canonical form does",
+			TrainerRegistry.has_trainer_key("TRAINER_ROXANNE_1_RSE"))
 
 
 func _test_every_trainer_class_loads() -> void:
@@ -61,17 +87,10 @@ func _test_every_trainer_class_loads() -> void:
 				tc != null and tc is TrainerClassData and tc.trainer_class_id == id)
 
 
-func _test_every_trainer_pic_loads() -> void:
-	for id in range(TRAINER_PIC_COUNT):
-		var tp: TrainerPicData = TrainerPicRegistry.get_trainer_pic(id)
-		_chk("TrainerPic %d loads as a valid, self-consistent TrainerPicData" % id,
-				tp != null and tp is TrainerPicData and tp.pic_id == id and not tp.pic_name.is_empty())
-
-
 func _test_spot_check_brawly() -> void:
-	var t: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_BRAWLY_1")
+	var t: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_BRAWLY_1_RSE")
 	if t == null:
-		_chk("TRAINER_BRAWLY_1 resolves via get_trainer_by_key", false)
+		_chk("TRAINER_BRAWLY_1_RSE resolves via get_trainer_by_key", false)
 		return
 	_chk("Brawly: trainer_name is BRAWLY", t.trainer_name == "BRAWLY")
 	_chk("Brawly: party has 3 members", t.party.size() == 3)
@@ -82,8 +101,8 @@ func _test_spot_check_brawly() -> void:
 	_chk("Brawly: trainer class is LEADER", tc != null and tc.class_name_text == "LEADER")
 	_chk("Brawly: trainer class ball is Ultra", tc != null and tc.ball_name == "Ultra")
 
-	var tp: TrainerPicData = TrainerPicRegistry.get_trainer_pic(t.trainer_pic_id)
-	_chk("Brawly: pic is Leader Brawly", tp != null and tp.pic_name == "Leader Brawly")
+	_chk("Brawly: pic_stem is leader_brawly (Rule B, upstream verbatim)",
+			t.pic_stem == "leader_brawly")
 
 	if t.party.size() == 3:
 		var machop: TrainerPartyMon = t.party[0]
@@ -96,10 +115,35 @@ func _test_spot_check_brawly() -> void:
 		_chk("Brawly Makuhita: holds Sitrus Berry (item 523)", makuhita.held_item_id == 523)
 
 
-func _test_spot_check_sidney() -> void:
-	var t: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_SIDNEY")
+func _test_spot_check_roxanne() -> void:
+	var t: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_ROXANNE_1_RSE")
 	if t == null:
-		_chk("TRAINER_SIDNEY resolves via get_trainer_by_key", false)
+		_chk("TRAINER_ROXANNE_1_RSE resolves via get_trainer_by_key", false)
+		return
+	_chk("Roxanne: trainer_name is ROXANNE", t.trainer_name == "ROXANNE")
+	_chk("Roxanne: party has 3 members", t.party.size() == 3)
+	_chk("Roxanne: ai_flags is Basic Trainer (7)", t.ai_flags == 7)
+	_chk("Roxanne: carries 2 battle items", t.battle_items.size() == 2)
+	if t.party.size() == 3:
+		var geodude_a: TrainerPartyMon = t.party[0]
+		var geodude_b: TrainerPartyMon = t.party[1]
+		var nosepass: TrainerPartyMon = t.party[2]
+		_chk("Roxanne #1 Geodude: dex 74 at level 12",
+				geodude_a.species_dex == 74 and geodude_a.level == 12)
+		_chk("Roxanne #2 Geodude: dex 74 at level 12",
+				geodude_b.species_dex == 74 and geodude_b.level == 12)
+		_chk("Roxanne #3 Nosepass: dex 299 at level 15",
+				nosepass.species_dex == 299 and nosepass.level == 15)
+		_chk("Roxanne Nosepass holds item 520", nosepass.held_item_id == 520)
+		_chk("Roxanne Nosepass has its 4 real moves",
+				nosepass.move_ids == [335, 106, 33, 317])
+		_chk("Roxanne Geodude ivs are all 12", geodude_a.ivs == [12, 12, 12, 12, 12, 12])
+
+
+func _test_spot_check_sidney() -> void:
+	var t: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_SIDNEY_RSE")
+	if t == null:
+		_chk("TRAINER_SIDNEY_RSE resolves via get_trainer_by_key", false)
 		return
 	_chk("Sidney: trainer_name is SIDNEY", t.trainer_name == "SIDNEY")
 	_chk("Sidney: party has 5 members", t.party.size() == 5)
@@ -121,9 +165,9 @@ func _test_spot_check_sidney() -> void:
 
 
 func _test_spot_check_declan() -> void:
-	var t: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_DECLAN")
+	var t: TrainerData = TrainerRegistry.get_trainer_by_key("TRAINER_DECLAN_RSE")
 	if t == null:
-		_chk("TRAINER_DECLAN resolves via get_trainer_by_key", false)
+		_chk("TRAINER_DECLAN_RSE resolves via get_trainer_by_key", false)
 		return
 	_chk("Declan: trainer_name is DECLAN", t.trainer_name == "DECLAN")
 	_chk("Declan: party has 1 member (Gyarados)", t.party.size() == 1)

@@ -82,9 +82,11 @@ import re
 from pathlib import Path
 from PIL import Image
 
+from ref_path import REF
+
 ROOT = Path(__file__).resolve().parent.parent
-REF_FONTS = ROOT / "reference/pokeemerald_expansion/graphics/fonts"
-FONTS_C = ROOT / "reference/pokeemerald_expansion/src/fonts.c"
+REF_FONTS = Path(REF) / "graphics/fonts"
+FONTS_C = Path(REF) / "src/fonts.c"
 OUT_DIR = ROOT / "assets/fonts"
 
 GLYPH_CELL = 16  # source grid cell size, both axes, both font variants

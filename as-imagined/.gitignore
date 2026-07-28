@@ -17,3 +17,26 @@ Thumbs.db
 # Reference source clone — large, and not ours to version
 reference/pokeemerald_expansion/
 reference/team_aquas_battle_backgrounds/
+
+# Python bytecode from the gen_*.py data-pipeline scripts. Was tracked, so
+# every script run dirtied the tree; untracked and ignored 2026-07-28.
+__pycache__/
+*.pyc
+
+# [M27A] Imported map data — ALL regenerable build output.
+#
+# The whole directory is generated: 421 per-map JSON files plus the
+# _preview/_above validation renders. `python3 scripts/gen_map_import.py all`
+# reproduces it deterministically from the reference clone.
+#
+# Ignored as a DIRECTORY rather than by file pattern so a new kind of
+# generated output can't quietly start being tracked.
+#
+# NOTE: the reference clone is itself gitignored above, so a fresh checkout
+# needs the clone in place before this can be regenerated — see CLAUDE.md's
+# "Ground truth / reference" section.
+#
+# What is NOT ignored: assets/map_atlases/. Those are shared per tileset pair
+# (60 pairs for 421 maps), are runtime dependencies of tracked scenes, and
+# follow Godot convention of committing texture + .import together.
+assets/maps/

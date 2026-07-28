@@ -24,9 +24,11 @@ Usage (from project root):
 import pathlib
 import re
 
+from ref_path import REF
+
 REPO_ROOT = pathlib.Path(__file__).parent.parent
-ABILITIES_H = REPO_ROOT.parent / "reference" / "pokeemerald_expansion" / "include" / "constants" / "abilities.h"
-NAMES_H = REPO_ROOT.parent / "reference" / "pokeemerald_expansion" / "src" / "data" / "abilities.h"
+ABILITIES_H = pathlib.Path(REF) / "include" / "constants" / "abilities.h"
+NAMES_H = pathlib.Path(REF) / "src" / "data" / "abilities.h"
 OUT_DIR = REPO_ROOT / "data" / "abilities"
 
 HEADER = """\

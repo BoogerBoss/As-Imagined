@@ -43,8 +43,9 @@ import os
 import re
 import shutil
 
+from ref_path import REF
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REF = os.path.join(ROOT, "..", "reference", "pokeemerald_expansion")
 ITEMS_CONST_H = os.path.join(REF, "include", "constants", "items.h")
 ITEMS_H = os.path.join(REF, "src", "data", "items.h")
 GRAPHICS_H = os.path.join(REF, "src", "data", "graphics", "items.h")
