@@ -33,12 +33,101 @@ enum Provenance { IMPORTED, AUTHORED }
 @export var provenance: PackedByteArray = PackedByteArray()
 
 
+## [M27B Change 3] Which per-cell attributes a HUMAN actually decided.
+##
+## Collision and elevation cannot be inferred from a painted tile: measured
+## across all 421 maps, collision varies by placement for 52.0% of metatiles and
+## elevation for 52.1%, and a per-metatile collision default would mis-set
+## 29,827 cells (12.93%). So a newly painted cell gets a *guess* — inherited
+## from the cell painted over — which is right roughly 87% of the time. The
+## remaining 13% is exactly what has to stay visible.
+##
+## Recorded per ATTRIBUTE rather than per cell, because the two are set
+## independently: an author may pin elevation on a bridge tile while leaving its
+## collision inherited. Folding this into Provenance would lose that.
+##
+## An IMPORTED cell counts as explicit on both — its values came from source and
+## are authoritative, not a guess. A newly AUTHORED cell starts with neither bit
+## until someone sets it, so "needs review" is precisely
+## `AUTHORED and not explicit`.
+##
+## Bitflags rather than two arrays so behaviour can join later without another
+## format change.
+enum AttrFlag {
+	COLLISION_EXPLICIT = 1,
+	ELEVATION_EXPLICIT = 2,
+}
+const ATTR_ALL_EXPLICIT := AttrFlag.COLLISION_EXPLICIT | AttrFlag.ELEVATION_EXPLICIT
+
+@export var attr_explicit: PackedByteArray = PackedByteArray()
+
+
 ## True if any cell has been hand-authored — the re-import guard.
 func has_authored_cells() -> bool:
 	for p in provenance:
 		if p == Provenance.AUTHORED:
 			return true
 	return false
+
+
+func _flags_at(x: int, y: int) -> int:
+	if not in_bounds(x, y):
+		return 0
+	var i := _idx(x, y)
+	return attr_explicit[i] if i < attr_explicit.size() else 0
+
+
+func collision_is_explicit(x: int, y: int) -> bool:
+	return (_flags_at(x, y) & AttrFlag.COLLISION_EXPLICIT) != 0
+
+
+func elevation_is_explicit(x: int, y: int) -> bool:
+	return (_flags_at(x, y) & AttrFlag.ELEVATION_EXPLICIT) != 0
+
+
+## A cell a human painted but never decided the movement rules for. This is the
+## overlay's whole reason to exist — these are invisible in the rendered map and
+## wrong ~13% of the time.
+func needs_review(x: int, y: int) -> bool:
+	if not in_bounds(x, y):
+		return false
+	var i := _idx(x, y)
+	if i >= provenance.size() or provenance[i] != Provenance.AUTHORED:
+		return false
+	return _flags_at(x, y) != ATTR_ALL_EXPLICIT
+
+
+func review_cells() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for y in range(height):
+		for x in range(width):
+			if needs_review(x, y):
+				out.append(Vector2i(x, y))
+	return out
+
+
+func set_attr_explicit(x: int, y: int, flag: int, value: bool = true) -> void:
+	if not in_bounds(x, y):
+		return
+	var i := _idx(x, y)
+	if attr_explicit.size() != metatile.size():
+		_resize_attr_explicit()
+	attr_explicit[i] = (attr_explicit[i] | flag) if value else (attr_explicit[i] & ~flag)
+
+
+func _resize_attr_explicit() -> void:
+	var old := attr_explicit
+	attr_explicit = PackedByteArray()
+	attr_explicit.resize(metatile.size())
+	for i in range(metatile.size()):
+		# A cell with no recorded flags is only trustworthy if it came from the
+		# importer; anything else defaults to "not yet decided".
+		if i < old.size():
+			attr_explicit[i] = old[i]
+		elif i < provenance.size() and provenance[i] == Provenance.IMPORTED:
+			attr_explicit[i] = ATTR_ALL_EXPLICIT
+		else:
+			attr_explicit[i] = 0
 
 
 ## Entity draw priority for a cell, from source's own sElevationToPriority.
@@ -81,6 +170,21 @@ static func load_from(path: String) -> MapData:
 		m.provenance = _to_bytes([])
 		m.provenance.resize(m.metatile.size())
 		m.provenance.fill(Provenance.IMPORTED)
+
+	# [Change 3] Read back explicitly, with the same fail-safe shape provenance
+	# uses: a missing/short array on an IMPORTED map means "source said so",
+	# which is explicit, not a guess.
+	#
+	# Read-back is called out because Change 1 nearly shipped provenance
+	# write-only — declared and written to JSON but never read here, so it
+	# persisted empty and the re-import guard could not have fired. That was
+	# caught and fixed inside Change 1 by its own test; provenance round-trips
+	# correctly today, verified against a real baked .tres. The lesson kept is
+	# that a field which round-trips only halfway is worse than no field,
+	# because it looks present.
+	m.attr_explicit = _to_bytes(d.get("attr_explicit", []))
+	if m.attr_explicit.size() != m.metatile.size():
+		m._resize_attr_explicit()
 	return m
 
 

@@ -535,6 +535,10 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
         # every freshly imported cell is IMPORTED; the overlay flips cells to
         # AUTHORED as they are hand-edited (§1.9 Change 3)
         "provenance": [0] * len(mids),
+        # [Change 3] Imported cells are explicit on both attributes: their
+        # values came from source and are authoritative, not a guess. Only
+        # hand-painted cells start un-decided.
+        "attr_explicit": [3] * len(mids),
         "events": extract_events(mp),
     }
     os.makedirs(OUT, exist_ok=True)

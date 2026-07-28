@@ -62,6 +62,8 @@ func _ready() -> void:
 	_test_debug_toggle()
 	_test_baked_artifacts()
 	_test_object_events()
+	_test_marks_survive_round_trip()
+	_test_importer_stamps_explicit()
 
 	if _gated > 0:
 		print("m27a_step_resolver_test: fresh-checkout mode — %d map-data "
@@ -303,6 +305,88 @@ func _test_baked_artifacts() -> void:
 	_chk("H.13 non-drawn events live in a separate trailing container",
 			names.size() == 6 and names[5] == "Triggers")
 	root.free()
+
+
+# --- J. per-cell marks survive the full save/load chain (M27B Change 3) ------
+## The gap section C found: H.10/H.11 assert has_authored_cells() on SYNTHETIC
+## in-memory MapData, so nothing guarded save/load fidelity — and Change 1
+## nearly shipped provenance write-only for exactly that reason. Both fields are
+## only worth anything if a mark set today is still there tomorrow, so this
+## drives the real chain: baked .tres -> mutate -> save -> reload.
+func _test_marks_survive_round_trip() -> void:
+	const BAKED_DATA := "res://scenes/maps/PalletTown_Frlg_data.tres"
+	var d: MapData = load(BAKED_DATA) as MapData
+	_chk("J.01 baked map data loads", d != null)
+	if d == null:
+		return
+	var cells := d.metatile.size()
+	_chk("J.02 provenance is full length", d.provenance.size() == cells)
+	_chk("J.03 attr_explicit is full length", d.attr_explicit.size() == cells)
+
+	# An imported cell is explicit on BOTH attributes: its values came from
+	# source and are authoritative, not a guess.
+	_chk("J.04 imported cells are explicit on collision", d.collision_is_explicit(0, 0))
+	_chk("J.05 imported cells are explicit on elevation", d.elevation_is_explicit(0, 0))
+	_chk("J.06 an imported cell therefore needs no review", not d.needs_review(0, 0))
+	_chk("J.07 a fully imported map has no review backlog", d.review_cells().is_empty())
+
+	# Now author one cell and half-decide it, which is the state the overlay
+	# exists to make visible: painted, but its movement rules never confirmed.
+	d.provenance[0] = MapData.Provenance.AUTHORED
+	d.attr_explicit[0] = MapData.AttrFlag.ELEVATION_EXPLICIT  # collision left a guess
+	_chk("J.08 a half-decided authored cell needs review", d.needs_review(0, 0))
+	_chk("J.09 ...and reports which half is still a guess",
+			d.elevation_is_explicit(0, 0) and not d.collision_is_explicit(0, 0))
+	var review := d.review_cells()
+	_chk("J.10 review_cells() finds exactly it",
+			review.size() == 1 and review[0] == Vector2i(0, 0))
+
+	var tmp := "user://m27b_round_trip.tres"
+	_chk("J.11 saves", ResourceSaver.save(d, tmp) == OK)
+	var back: MapData = ResourceLoader.load(tmp, "", ResourceLoader.CACHE_MODE_IGNORE) as MapData
+	_chk("J.12 reloads", back != null)
+	if back == null:
+		return
+	# The assertions that would have caught Change 1's write-only provenance.
+	_chk("J.13 provenance survived the round trip",
+			back.provenance.size() == cells
+			and back.provenance[0] == MapData.Provenance.AUTHORED)
+	_chk("J.14 attr_explicit survived the round trip",
+			back.attr_explicit.size() == cells
+			and back.attr_explicit[0] == MapData.AttrFlag.ELEVATION_EXPLICIT)
+	_chk("J.15 has_authored_cells() still fires after reload", back.has_authored_cells())
+	_chk("J.16 the half-decided cell is still flagged for review", back.needs_review(0, 0))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp))
+
+
+## The importer's own emission, read straight off the JSON build input rather
+## than the baked artifact — the two can disagree, and only this catches it.
+func _test_importer_stamps_explicit() -> void:
+	# Reads the JSON build input, so it gates with section A on a fresh clone.
+	if not _map_data_available():
+		_gated += 3
+		return
+	var m := MapData.load_from(MAP_JSON)
+	if m == null:
+		return
+	# Length is asserted FIRST and separately. Indexing straight into
+	# attr_explicit would abort this function on a broken read-back, which
+	# LOOKS like a passing suite with a smaller total — proven by deliberately
+	# breaking load_from and watching 87/87 become 86/86 with no failure named.
+	# This is the assertion that actually guards Change 1's failure mode.
+	_chk("J.17 load_from() reads attr_explicit back at full length (got %d, want %d)"
+			% [m.attr_explicit.size(), m.metatile.size()],
+			m.attr_explicit.size() == m.metatile.size())
+	_chk("J.18 load_from() reads provenance back at full length",
+			m.provenance.size() == m.metatile.size())
+	if m.attr_explicit.size() != m.metatile.size():
+		return
+	var non_explicit := 0
+	for i in range(m.metatile.size()):
+		if m.attr_explicit[i] != MapData.ATTR_ALL_EXPLICIT:
+			non_explicit += 1
+	_chk("J.19 the importer stamps every imported cell explicit on both attributes",
+			non_explicit == 0)
 
 
 # --- G. debug toggle --------------------------------------------------------
