@@ -27552,3 +27552,36 @@ No commit made this session — per standing instruction, Rob commits.
   the attacker's charging state rather than a true per-hit counter, so
   multi-hit variation (Double Slap's alternating direction) still needs the
   real counter in M36C.
+
+---
+
+## [M36D] Batch sequencing — the greedy rule, and two moves gated on M36E
+
+- Source: `src/battle_anim_water.c:985` (`AnimTask_CreateSurfWave`),
+  `src/battle_anim_dark.c:906` (`AnimTask_MetallicShine`), plus the
+  particle/task set ported in this batch
+- Behavior: three decisions worth recording from the first M36D pass:
+  1. **Sequence batches by what COMPLETES moves, not by what is most
+     referenced.** A behavior shared by a hundred moves unblocks none of them
+     if each still needs five others. `m36_coverage_report.tscn` implements
+     this as a greedy pass and is the intended way to plan any M36D batch.
+  2. **Pick by FAMILY, not by individual rank.** M36C measured the best next
+     behavior at ~6 moves and predicted a roughly linear one-behavior-per-
+     one-to-three-moves grind. The first M36D batch got 62 moves from 20
+     behaviors (better than 3:1) because porting a family retires the shared
+     helpers its neighbours also need. The linear expectation was too
+     pessimistic; family-grouping is why.
+  3. **Surf and Metallic Shine are M36E dependencies, and were deliberately
+     not faked.** `AnimTask_CreateSurfWave` is entirely background-layer work
+     — a scrolling BG1 tilemap, a rotating palette cycle, and a per-scanline
+     BLDALPHA table, with NO sprite motion at all. `AnimTask_MetallicShine`
+     needs an OBJWIN mask clipped to the mon's silhouette. Both would have
+     been easy to approximate with a plausible-looking sprite effect; both
+     were left on the fallback instead, because Surf in particular is the
+     move M23.11 Phase 5b already flagged as looking wrong, and replacing one
+     inaccurate Surf with another would retire the flag without fixing it.
+- Notes: verified 2026-07-29. Gen 1-3 tier boundary taken from the reference's
+  own enum rather than assumed: `MOVE_PSYCHO_BOOST = 354` with
+  `MOVES_COUNT_GEN3` immediately after, so Gen 1-3 is move ids 1-354. The
+  "iconic" subset is an explicit editorial judgment; its criteria are written
+  into the tool so the list is auditable rather than tacit.

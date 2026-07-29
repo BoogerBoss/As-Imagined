@@ -579,6 +579,52 @@ no-op because each beam particle carries its own phase, as the per-sprite data
 slots do upstream; BG-selector palette blends consume their frames but draw
 nothing until M36E builds the background layer.
 
+### M36D — first expansion batch, 2026-07-29 (ONGOING sub-tier)
+
+M36D is the open-ended batch tier, so this records the first pass rather than
+a completion. `m36d_batch_test` **66/66**; full regression sweep green
+(13 suites, including all prior M36 work).
+
+**New tool: `scenes/battle/m36_coverage_report.tscn`.** Not a test — the
+sequencing instrument the recon called for. It tiers the roster per Rob's
+decision 5 (**Gen 1-3 verified from source as move ids 1-354**:
+`MOVE_PSYCHO_BOOST = 354`, `MOVES_COUNT_GEN3` follows), reports playable
+counts per tier, and — the part that actually drives decisions — runs a
+**greedy "what to port next"** pass. That matters because the most-*referenced*
+behavior is usually a poor choice: it may be shared by a hundred moves that
+each still need five others. The greedy pass instead asks which behavior would
+*complete* the most moves, which is the question that predicts coverage
+movement. The iconic set is an explicit editorial judgment with its criteria
+written into the tool, so it is auditable rather than tacit.
+
+**20 more behaviors ported**, chosen by that report: the powder/spore
+families, vortex particles, the slice family, Bite, Vine Whip, the
+Ember/travel-diagonally family, Fire Spread, the fist/foot set, Endure energy,
+the absorption orb, bubbles, single-sine-wave travel, and the mon tasks
+(scale-and-restore, sway, elliptical translation and its side-respecting
+variant), plus shared arc-travel and cel-lifetime helpers.
+
+**Coverage: 23 -> 85 of 932 (2.5% -> 9.1%).** Per tier: iconic Gen 1-3
+**3 -> 12 of 70 (17.1%)**, remaining Gen 1-3 12 -> 37 of 283 (13.1%),
+Gen 4+ 8 -> 36 of 579 (6.2%).
+
+**This revises M36C's "linear grind" expectation upward.** M36C measured the
+best next behavior as unlocking ~6 moves and concluded progress would be
+roughly one behavior per one-to-three moves. In practice 20 behaviors bought
+62 moves — better than 3:1 — because porting a *family* retires the shared
+helpers its neighbours also need. The lesson for later batches: pick by
+family, not by individual rank.
+
+**Two iconic moves are gated on M36E, not on more behaviors.** `Surf` and
+`Metallic Shine` were investigated and deliberately NOT faked:
+`AnimTask_CreateSurfWave` is **100% background-layer work** — a scrolling BG1
+tilemap with a rotating palette cycle and a per-scanline BLDALPHA table, with
+*no sprite motion whatsoever* — and `AnimTask_MetallicShine` needs an OBJWIN
+mask clipped to the mon's silhouette. Both are real M36E dependencies, and
+Surf is exactly the move M23.11 Phase 5b flagged as looking wrong today, so it
+stays on the fallback until the background layer exists rather than getting a
+plausible-looking substitute.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.
