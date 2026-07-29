@@ -48,6 +48,16 @@ BAKER_SCENE = "scenes/overworld/map_baker.tscn"
 # reproducible scene still shows up as a large diff.
 _UNIQUE_ID = re.compile(r" unique_id=\d+")
 
+# The three places Godot writes a scene-local resource label: the declaration's
+# own ` id="…"`, and the two reference forms. Deliberately keep the type stem
+# and drop only the random suffix -- see normalize()'s own docstring for why
+# this is safe, and map_baker.gd::_normalise_text, which must stay in step.
+_RES_LABELS = [
+    (re.compile(r' id="([A-Za-z0-9]+)_[a-z0-9]+"'), r' id="\1"'),
+    (re.compile(r'ExtResource\("([A-Za-z0-9]+)_[a-z0-9]+"\)'), r'ExtResource("\1")'),
+    (re.compile(r'SubResource\("([A-Za-z0-9]+)_[a-z0-9]+"\)'), r'SubResource("\1")'),
+]
+
 
 def normalize(text):
     """Strip the churn, and ONLY the churn.
@@ -55,6 +65,30 @@ def normalize(text):
     `unique_id` is safe to strip: Godot regenerates it every bake and nothing
     references it. It is the entire reason a byte-reproducible scene still
     shows up as a 200-line diff.
+
+    RESOURCE LABELS are stripped too, and this reverses an earlier decision
+    that was recorded here as settled. This docstring used to say the labels
+    must NOT be normalised, on the reasoning that this script "compares two
+    saves to the same path, where the ids are stable and a difference would be
+    real." MEASURED 2026-07-29, and the premise is false: `Route1_Frlg` was
+    reported non-reproducible for four `sub_resource` ids and nothing else, and
+    a fresh bake produced the SAME four ids on every run. They are not random
+    and they are not content-derived -- they are assigned per ResourceSaver
+    call in process order, so a guarded bake (which saves a scratch copy first,
+    map_baker.gd::_scene_divergence) hands the real save a different set than a
+    `--force` bake does. The value therefore records how many times the saver
+    ran, not anything about the scene.
+
+    Left unstripped, that produced a permanent false positive on every map
+    baked without `--force`, one more with each bake -- and a guard that cries
+    wolf is worse than no guard, because `--force` becomes reflexive. Which is
+    the exact failure map_baker.gd's own diff-text-is-the-point comment exists
+    to prevent.
+
+    Keeping the type stem is what makes this safe rather than merely quiet: a
+    sub-resource genuinely added or removed changes the number of
+    `[sub_resource ...]` lines, and a repointed `ext_resource` changes its
+    `path=` -- both survive normalisation. Only the suffix goes.
 
     DO NOT add `uid="uid://..."` here, even though it looks like the same kind
     of noise. It is the opposite: the baker PRESERVES a scene's existing UID
@@ -72,7 +106,10 @@ def normalize(text):
     diff`, precisely because normalize() leaves it alone; the instrument that
     catches a MISSING one is check_uids() below.
     """
-    return _UNIQUE_ID.sub("", text)
+    text = _UNIQUE_ID.sub("", text)
+    for pattern, replacement in _RES_LABELS:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 def check_uids(names):

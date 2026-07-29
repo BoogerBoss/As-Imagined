@@ -200,8 +200,13 @@ func _scene_divergence(packed: PackedScene, scene_path: String,
 	if not FileAccess.file_exists(scene_path):
 		return ""
 
-	# user:// so a stray scratch file can never land in scenes/maps/ and be
-	# picked up as a map by anything globbing *.tscn.
+	# Beside the real file, NOT user://: the save has to happen in the same
+	# directory for ext-id preservation to behave identically. That is also why
+	# _remove_scratch() runs on every exit path — a stray .bakecheck.tscn left in
+	# scenes/maps/ would be picked up as a map by anything globbing *.tscn,
+	# check_bake_diff.py --all included. (This comment previously claimed the
+	# scratch lived in user://, contradicting both the line below it and
+	# _remove_scratch()'s own docstring.)
 	var scratch := scene_path.get_basename() + ".bakecheck.tscn"
 
 	if ResourceSaver.save(packed, scratch) != OK:
@@ -256,8 +261,18 @@ static func _remove_scratch(scratch: String) -> void:
 ## Stripping only the random suffix and keeping the ordinal prefix is what
 ## makes that safe: an ext_resource genuinely added, removed or repointed still
 ## changes either the numbering or the `path=` on that line, both of which
-## survive this. check_bake_diff.py must NOT adopt this — it compares two saves
-## to the same path, where the ids are stable and a difference would be real.
+## survive this.
+##
+## check_bake_diff.py NOW USES THE SAME THREE RULES. This comment previously
+## said it must NOT, on the reasoning that it compares two saves to the same
+## path, where the ids are stable and a difference would be real. Measured
+## 2026-07-29: false. `sub_resource` ids are assigned per ResourceSaver call in
+## process order, so a guarded bake (scratch save first) and a `--force` bake
+## produce different sets for a byte-identical scene — deterministic, but a
+## record of how many times the saver ran rather than of anything in the map.
+## Route1_Frlg had been permanently flagged for four such ids and nothing else.
+## The two tools must stay in step; a rule that differed between them is exactly
+## how that false positive survived.
 static func _normalised_scene_text(path: String) -> String:
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
