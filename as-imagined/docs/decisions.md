@@ -27450,3 +27450,71 @@ than re-diagnosing from scratch:
    process note, not a bug to fix in this codebase.
 
 No commit made this session — per standing instruction, Rob commits.
+
+---
+
+## [M26F1 → M36] Move-animation implementation decisions (Rob, 2026-07-29)
+
+- Source: `docs/m26_f1_recon.md` (the M26F1 research recon; §7 records these
+  resolutions in full, §5 is the proposal they approve)
+- Behavior: Rob resolved all 5 open decisions from the move-animation recon:
+  1. **GO on the full tiered port** (extraction → VM → behavior batches, with the
+     graceful-fallback contract) — the hand-tune-3-bespoke-moves alternative is dead.
+  2. **Split out to a NEW MILESTONE, M36 "Move Animation Engine"** (sub-tiers
+     M36A–M36E + M36-S; row added to CLAUDE.md's roadmap the same day). M26F1
+     retains only its balance/setup fix (random-opponent level matching); M26 can
+     close without waiting on animation work. M32/M34 remain retired tombstones —
+     M36 is the next genuinely free number.
+  3. **Sound deferred with structured no-ops, amended**: M36-S owns the future
+     move-anim audio pass (SE ids + pans preserved in the extracted JSON) AND must
+     begin with a recon of the project's ENTIRE missing audio surface — the project
+     currently ships no audio of any kind (battle music, cries, UI SEs, fanfares).
+     Move-anim SFX is M36-S's first consumer, not its whole scope.
+  4. **Fidelity bar = 1× GBA frame-accurate** (60fps frame-for-frame against source
+     constants — the MonAnimator/weather-anim precedent).
+  5. **Phase-D batch order** (supersedes the recon's Kanto-encounter-surface
+     recommendation): full 717-roster coverage, ordered **iconic Gen 1–3 moves
+     first → remaining Gen 1–3 moves → the rest of the 717**. The coverage-report
+     tooling still gets built; it ranks by this ordering.
+- Notes: decisions gathered interactively 2026-07-29; no code or asset work done in
+  that session. The recon doc, CLAUDE.md's M26F1 note, and the new M36 row were all
+  updated the same day and cross-reference each other.
+
+---
+
+## [M36A] Battle-animation extraction — source realities found during implementation
+
+- Source: `data/battle_anim_scripts.s`, `asm/macros/battle_anim_script.inc`,
+  `src/data/battle_anim.h`, `src/battle_anim*.c`, `src/graphics.c`,
+  `graphics_file_rules.mk`
+- Behavior: six properties of the reference's animation data that the M26F1
+  recon did not record, each found by a failing extraction run or by
+  `m36a_anim_extract_test`'s cross-reference checks rather than assumed:
+  1. **GAS macro arguments separate on commas OR whitespace**, while macro
+     bodies emit spaced arithmetic (`256 * \x_velocity`) that must stay one
+     argument. Splitting requires operator-adjacency re-merging.
+  2. **Constants live in enums as well as `#define`s** (`SHAKE_MON_Y`, the
+     `AnimBattler` set), so a define-only loader silently fails.
+  3. **`.if/.else/.endif` occur at top level in the `.s` file**, not only in
+     macro bodies (`B_UPDATED_MOVE_DATA >= GEN_7` gates two script variants).
+  4. **`ANIM_BATTLER` is used but defined nowhere in the tree.** It assembles
+     because `createsprite` never emits the battler symbol as data — it is
+     only symbol-identity-compared against `ANIM_TARGET`, and an undefined
+     symbol compares unequal. Net semantics: attacker-side subpriority basis.
+  5. **The five composite sheets concatenate TILE DATA, not images.** Their
+     parts have different pixel dimensions (spark_0 8x64 + spark_1 16x64;
+     ice_cube 64x64/64x32/32x64/32x32), so image stacking is wrong; parts must
+     be decomposed to 8x8 tiles, streamed, and re-laid-out. Tile count is
+     asserted against the tag's declared VRAM size.
+  6. **Three C reference patterns beyond "symbol in the same file"**: two
+     frame-sequence symbols are file-scoped statics that COLLIDE across
+     translation units (`sAnimCmdAnimatedSpark2`, `sSpriteAffineAnim_DoNothing`)
+     so keys must be file-qualified; some frame tables are non-static globals
+     referenced cross-file (`gSolarBeamBigOrbAnimTable`); and some templates
+     point part-way into a shared table (`.anims = &gAnims_PoisonProjectile[1]`),
+     which must be preserved as an explicit offset or the wrong frames play.
+     Also one upstream typo: a stray `goto ParabolicChargeHeal;` semicolon.
+- Notes: verified 2026-07-29 against pokeemerald-expansion v1.16.2. Also
+  corrects the recon's "3,110 ANIMCMD_FRAME" — that counts all of `src/*.c`
+  (3,032); within `src/battle_anim*.c` it is 1,431 total = **784 plain + 647
+  affine**, both reproduced exactly by the extraction and pinned by the suite.
