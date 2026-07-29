@@ -1438,6 +1438,13 @@ var _item_select_overlay: Control = null
 # real Switch/Party overlay.
 var _switch_select_overlay: Control = null
 
+# [M36B] The move-animation engine's entry point. Null only if its extracted
+# data is missing (a fresh checkout before the generators run), in which case
+# every move takes the legacy hit-effect path -- the same graceful-absence
+# posture the other asset registries take.
+var _anim_dispatcher: AnimDispatcher = null
+var _anim_behaviors := AnimBehaviorRegistry.new()
+
 # [M26c-4] TARGET_SELECT click-to-target — real health-box hover zones
 # instead of a text button per candidate, matching source's own real
 # targeting cue in spirit (a bounce on the current candidate's health box)
@@ -1589,6 +1596,11 @@ func _ready() -> void:
 	# to its relative ORDERING. Wired unconditionally (interactive +
 	# --autoplay both), matching every other signal wire-up in this file.
 	_bm.move_executed.connect(_on_hit_effect_move_executed)
+	# [M36B] Built once per battle. The behavior registry is deliberately
+	# EMPTY here: M36C is what fills it, and until then every move's
+	# pre-flight check fails and falls back, which is the contract.
+	if AnimData.ensure_loaded():
+		_anim_dispatcher = AnimDispatcher.new(_anim_behaviors)
 
 	# [M23.2, retargeted M26b] Wired unconditionally — interactive AND
 	# autoplay both populate the merged debug/log history; only whether F3
@@ -2680,6 +2692,20 @@ func _on_hit_effect_move_executed(attacker: BattlePokemon, defender: BattlePokem
 	if target_node == null:
 		return
 
+	# [M36B] The ported animation engine gets first refusal on every move.
+	# `_anim_dispatcher` answers from the extracted scripts plus whatever
+	# behaviors are registered right now; with none registered (M36B ships
+	# that way, M36C lands the first batch) every move declines here and the
+	# legacy hit-effect below runs exactly as before. The seam is live and
+	# tested from the start so that turning a move on later is a registration,
+	# not a rewiring. See scripts/battle/anim/anim_dispatcher.gd.
+	if _anim_dispatcher != null and _anim_dispatcher.can_play_move(move_id):
+		var vm_stage := _make_anim_stage(attacker, target_mon)
+		var anim_turn := _anim_turn_for(attacker)
+		_pending_beats.append({"kind": "anim_async", "start": func():
+			await _run_anim_script(move_id, vm_stage, anim_turn)})
+		return
+
 	var start_effect: Callable
 	match move_id:
 		HitEffectRegistry.MOVE_ID_FLAMETHROWER:
@@ -2705,6 +2731,63 @@ func _on_hit_effect_move_executed(attacker: BattlePokemon, defender: BattlePokem
 		# BattleScript_Hit_RetFromAtkAnimation's real attackanimation+
 		# waitanimation ordering. See _pending_beats' own doc comment.
 		_pending_beats.append({"kind": "anim", "start": start_effect})
+
+
+# [M36B] Builds the coordinate/scene bridge the VM's behaviors work through.
+# Partners are resolved so doubles-aware scripts (ANIM_ATK_PARTNER and
+# ANIM_DEF_PARTNER) address the right sprite; in singles they are simply null.
+func _make_anim_stage(attacker: BattlePokemon,
+		target_mon: BattlePokemon) -> AnimStage:
+	var stage := AnimStage.new(
+			func(mon): return _sprite_node_for(mon),
+			func(): return _effect_layer)
+	stage.set_participants(attacker, target_mon,
+			_partner_of(attacker), _partner_of(target_mon))
+	return stage
+
+
+# The other active mon on `mon`'s own side, or null in singles.
+func _partner_of(mon: BattlePokemon) -> BattlePokemon:
+	if mon == null or not _is_doubles():
+		return null
+	var party: BattleParty = _player_party if _player_party.members.has(mon) \
+			else _opp_party
+	for slot in range(party.num_active()):
+		var other := party.get_active_at(slot)
+		if other != null and other != mon:
+			return other
+	return null
+
+
+# gAnimMoveTurn: the engine increments this per attackanimation, so two-turn
+# moves alternate charge/unleash and multi-hit moves vary per hit. This
+# project has no such counter yet, so it is derived from the attacker's
+# charging state -- correct for the two-turn case (the only one a script
+# branches on via choosetwoturnanim) and 0 otherwise. A real per-hit counter
+# arrives with M36C's multi-hit work; recorded here so it is not mistaken
+# for complete.
+func _anim_turn_for(attacker: BattlePokemon) -> int:
+	if attacker == null:
+		return 0
+	return 1 if attacker.charging_move != null else 0
+
+
+# Pumps a VM at the real GBA frame rate until it finishes. Runs inside an
+# "anim_async" beat, so the reference's damage -> anim -> flicker -> HP-drain
+# ordering is preserved untouched: this simply occupies the same slot the
+# legacy hit-effect tween did.
+func _run_anim_script(move_id: int, stage: AnimStage, anim_turn: int) -> void:
+	var vm := _anim_dispatcher.make_vm(move_id, stage, anim_turn)
+	if vm == null:
+		return
+	while vm.is_running():
+		vm.step()
+		await get_tree().create_timer(_ANIM_FRAME_SECONDS).timeout
+	if vm.state == AnimScriptVM.State.ERROR:
+		# The animation aborted mid-run. The battle continues -- an animation
+		# is cosmetic -- but it is surfaced rather than swallowed.
+		push_warning("move %d animation aborted: %s" % [move_id,
+				vm.error_text])
 
 
 # Resolves which field slot `mon` currently occupies within `party`'s own

@@ -27518,3 +27518,37 @@ No commit made this session — per standing instruction, Rob commits.
   corrects the recon's "3,110 ANIMCMD_FRAME" — that counts all of `src/*.c`
   (3,032); within `src/battle_anim*.c` it is 1,431 total = **784 plain + 647
   affine**, both reproduced exactly by the extraction and pinned by the suite.
+
+---
+
+## [M36B] Animation runtime — the fallback contract, and two findings
+
+- Source: `src/battle_anim.c` (the VM this ports), plus the M36A extraction
+- Behavior: the runtime core landed with the fallback contract enforced from
+  the start — every move routes through `AnimDispatcher` first, and with an
+  empty behavior registry all 932 bound moves decline and take the existing
+  M23.11 hit-effect path. So M36B changes no pixels while making the seam
+  real and tested. Two decisions are recorded because neither was obvious:
+  1. **Partial registration still falls back.** If a script needs five
+     behaviors and four are ported, the move plays the generic effect, not
+     four-fifths of the animation. A half-played script (sprites that never
+     move, waits that never resolve) is worse than the effect it replaces,
+     and all-or-nothing is what keeps every intermediate state of the port
+     shippable — the basis on which the tiered approach was approved.
+  2. **An empty script falls back too** (`Reason.EMPTY_SCRIPT`).
+     `gBattleAnimMove_SecretPower`'s body is literally just `end`; upstream
+     that is legal because `LaunchBattleAnimation` REMAPS Secret Power at
+     launch to whichever script the terrain calls for, so the placeholder is
+     never executed. This project does not model that remap (Secret Power is
+     permanently excluded anyway), and running the placeholder would render
+     nothing where the generic effect renders something. It is the only move
+     in that bucket.
+- Notes: verified 2026-07-29. The suite measured the remaining port from the
+  real data — **587 distinct behaviors across 932 move scripts**, with
+  `AnimTask_ShakeMon` (436 moves), `AnimHitSplatBasic` (386) and
+  `AnimTask_ShakeMon2` (368) as the top blockers. That trio is M36C's batch,
+  now confirmed by measurement rather than the recon's estimate.
+  Disclosed incomplete: `_anim_turn_for()` derives the two-turn phase from
+  the attacker's charging state rather than a true per-hit counter, so
+  multi-hit variation (Double Slap's alternating direction) still needs the
+  real counter in M36C.

@@ -488,6 +488,49 @@ evaluation) so a future reference update introducing an inexact negative
 division fails loudly instead of shifting an animation offset by one pixel
 unnoticed. Output is byte-identical after the fix; suite still 71/71.
 
+### M36B — COMPLETE 2026-07-29
+
+The runtime core. `m36b_anim_vm_test` **53/53**; regression across every
+battle-screen-dependent suite green (m36a 71/71, hit_effect dispatch 40/40 +
+smoke 91/91, trainer/category/party 128/128, b3_6c 168/168, ui_polish 26/26,
+item_select 31/31, switch_select 42/42, debug_log 57/57, weather_asset 33/33).
+
+| File | Role |
+|---|---|
+| `scripts/battle/anim/anim_data.gd` | Loads/caches the four M36A products + sheet textures; resolves a template's frame sequences through its file-qualified key and offset |
+| `scripts/battle/anim/anim_behavior_registry.gd` | `symbol -> Callable`, plus the **static walk** that decides fallback |
+| `scripts/battle/anim/anim_script_vm.gd` | The interpreter: frame-pumped execution, 8-slot arg register file, 4-deep call stack, completion accounting, runaway guards |
+| `scripts/battle/anim/anim_stage.gd` | Anim-battler -> real sprite node bridge (centres, rects, facing sign, partner resolution) |
+| `scripts/battle/anim/anim_dispatcher.gd` | The verdict + VM construction + the coverage report M36D sequences from |
+
+**The fallback contract is live and enforced.** Every move now routes through
+the dispatcher first; with an empty registry all 932 bound moves decline and
+take the existing hit-effect path, so this sub-tier changes no pixels while
+making the seam real and tested. Verified directly: `playable == 0` across the
+whole roster, and a script whose behaviors are only PARTLY registered still
+falls back (all-or-nothing per move -- a half-played script is worse than the
+generic effect it replaces).
+
+**Sized by the suite, from the real data**: **587 distinct behaviors** across
+**932 move scripts**. Top blockers -- `AnimTask_ShakeMon` (436 moves),
+`AnimHitSplatBasic` (386), `AnimTask_ShakeMon2` (368) -- which is the M36C
+batch, confirmed by measurement rather than the recon's estimate.
+
+**One upstream reality found by the suite**: `gBattleAnimMove_SecretPower`'s
+body is literally just `end`. Upstream that is legal because
+`LaunchBattleAnimation` REMAPS Secret Power at launch to whichever script the
+terrain calls for, so the placeholder never executes. We do not model that
+remap (Secret Power is permanently excluded from this project), and running an
+empty script would render nothing where the generic effect renders something
+-- a silent regression. So `Reason.EMPTY_SCRIPT` was added and such scripts
+fall back too. It is the only move in that bucket.
+
+**Disclosed as incomplete, not hidden**: `_anim_turn_for()` derives
+`gAnimMoveTurn` from the attacker's charging state. That is correct for the
+two-turn branch (`choosetwoturnanim`, the only thing a script branches on)
+but not a true per-hit counter, so multi-hit variation (Double Slap's
+alternating direction) will need the real counter in M36C.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.
