@@ -37,8 +37,13 @@ const _SPRITE_OPS := {
 const _TASK_OPS := {
 	"createvisualtask": true,
 	"createvisualtaskontargets": true,
-	"createsoundtask": true,
 }
+
+# `createsoundtask` is deliberately NOT a behavior op. The VM handles it
+# itself -- it records the cue for M36-S and moves on -- and upstream those
+# tasks report to a SEPARATE counter (gAnimSoundTaskCount) that
+# `waitforvisualfinish` does not wait on. Demanding a registered behavior for
+# them would block moves on symbols nothing ever calls.
 
 # Opcodes that move the program counter somewhere other than the next command.
 const _JUMP_OPS := {"call": 1, "goto": 1, "jumpifcontest": 1}

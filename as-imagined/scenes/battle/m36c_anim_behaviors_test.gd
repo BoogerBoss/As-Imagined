@@ -68,8 +68,15 @@ class FakeStage extends RefCounted:
 	func _init() -> void:
 		layer_node = Control.new()
 		layer_node.size = Vector2(1024, 768)
+		# TextureRects with a real texture, because that is what the battle
+		# scene actually uses (OpponentSprite0 / PlayerSprite0 are
+		# TextureRects) -- a plain Control double silently hid the fact that
+		# afterimage cloning needs a texture to copy.
+		var placeholder := PlaceholderTexture2D.new()
+		placeholder.size = Vector2(64, 64)
 		for i in range(4):
-			var n := Control.new()
+			var n := TextureRect.new()
+			n.texture = placeholder
 			n.size = Vector2(64, 64)
 			n.position = Vector2(100 + i * 200, 300)
 			layer_node.add_child(n)
@@ -244,8 +251,12 @@ func _test_hit_splat() -> void:
 	var sp: AnimSprite = sprites[0]
 	_chk("...positioned at the target's centre",
 			sp.centre.is_equal_approx(stage.center_of(1)))
+	# The affine preset is a multiplier ON TOP of the stage's pixel scale
+	# (sprites render at the same scale their offsets use), so compare the
+	# ratio rather than the absolute value.
+	var variant_ratio := sp.scale.x / stage.pixel_scale()
 	_chk("...scaled by affine variant 2 (256/176 ~= 1.45x, got %.2f)"
-			% sp.scale.x, absf(sp.scale.x - 256.0 / 176.0) < 0.01)
+			% variant_ratio, absf(variant_ratio - 256.0 / 176.0) < 0.01)
 	_chk("...blended per the script's setalpha 12,8 (alpha %.2f)"
 			% sp.modulate.a, absf(sp.modulate.a - 0.75) < 0.01)
 	_chk("...and counts against the VM's completion counter",

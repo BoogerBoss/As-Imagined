@@ -604,9 +604,32 @@ the absorption orb, bubbles, single-sine-wave travel, and the mon tasks
 (scale-and-restore, sway, elliptical translation and its side-respecting
 variant), plus shared arc-travel and cel-lifetime helpers.
 
-**Coverage: 23 -> 85 of 932 (2.5% -> 9.1%).** Per tier: iconic Gen 1-3
-**3 -> 12 of 70 (17.1%)**, remaining Gen 1-3 12 -> 37 of 283 (13.1%),
-Gen 4+ 8 -> 36 of 579 (6.2%).
+**Coverage after batch 1: 23 -> 85 of 932 (2.5% -> 9.1%).** Per tier: iconic
+Gen 1-3 **3 -> 12 of 70**, remaining Gen 1-3 12 -> 37, Gen 4+ 8 -> 36.
+
+**Batch 2 (same session): 85 -> 138 of 932 (9.1% -> 14.8%).** Iconic Gen 1-3
+**12 -> 18 of 70 (25.7%)**, remaining Gen 1-3 37 -> 56 (19.8%), Gen 4+
+36 -> 64 (11.1%). 29 more behaviors, again family-grouped: the projectile
+family (Shadow Ball, water-bubble, bone-hit, stinger, missile-arc), the
+seed/leaf/rock family (Leech Seed's three phases, razor-leaf flutter, falling
+rock, frenzy-plant root), mon visuals (afterimage tracing, fly-up, jump-kick,
+dizzy-punch duck, claw slash, on-mon-for-duration, shake-and-sink), the
+complex palette blend and grayscale ops, the defensive wall (Reflect/Light
+Screen), and the sound-task set.
+
+**A third bug in the fallback walk, found while porting batch 2**:
+`createsoundtask` symbols were treated as required behaviors, but the VM
+handles that opcode itself (it records the cue for M36-S and moves on) and
+upstream those tasks report to a SEPARATE counter that `waitforvisualfinish`
+never waits on. Moves were being blocked on symbols nothing would ever call.
+Removing them from the walk unblocked 3 moves immediately.
+
+**Sound is deferred but TIMING is not.** The sound tasks are registered as
+structured no-ops that still reproduce their frame cost, because upstream the
+distinction is real: most are single-frame, but the cry tasks block a script
+until the cry finishes. With no audio a cry is "finished" immediately after
+its two warm-up frames, so that is what the port costs. Collapsing every
+sound cue to zero frames would have quietly sped up a number of scripts.
 
 **This revises M36C's "linear grind" expectation upward.** M36C measured the
 best next behavior as unlocking ~6 moves and concluded progress would be
@@ -614,6 +637,16 @@ roughly one behavior per one-to-three moves. In practice 20 behaviors bought
 62 moves — better than 3:1 — because porting a *family* retires the shared
 helpers its neighbours also need. The lesson for later batches: pick by
 family, not by individual rank.
+
+**A fidelity bug the test doubles were hiding, found by inspecting the real
+scene.** Offsets were scaled by `pixel_scale()` (the stage is ~4.3x the GBA
+canvas) but the sprites themselves were not, so a 32x32 particle drew 32 px
+wide on a 1024-wide stage while being flung 4x further than it should -- a
+"beam" would have rendered as a scatter of specks. Sprites now render at the
+same scale their offsets use. Related: the test doubles used plain `Control`
+nodes for battlers where the real scene uses `TextureRect`, which silently
+hid that afterimage cloning needs a texture to copy; the doubles were made
+faithful rather than the code loosened.
 
 **Two iconic moves are gated on M36E, not on more behaviors.** `Surf` and
 `Metallic Shine` were investigated and deliberately NOT faked:

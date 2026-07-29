@@ -31,6 +31,11 @@ func _ready() -> void:
 	_test_slice_lifetime()
 	_test_mon_tasks_restore()
 	_test_elliptical_closes()
+	_test_batch2_projectiles()
+	_test_batch2_leech_seed_phases()
+	_test_batch2_afterimages()
+	_test_batch2_sound_tasks()
+	_test_batch2_defensive_wall()
 	_test_iconic_moves_run()
 
 	var total := _pass + _fail
@@ -54,8 +59,15 @@ class FakeStage extends RefCounted:
 	func _init() -> void:
 		layer_node = Control.new()
 		layer_node.size = Vector2(1024, 768)
+		# TextureRects with a real texture, because that is what the battle
+		# scene actually uses (OpponentSprite0 / PlayerSprite0 are
+		# TextureRects) -- a plain Control double silently hid the fact that
+		# afterimage cloning needs a texture to copy.
+		var placeholder := PlaceholderTexture2D.new()
+		placeholder.size = Vector2(64, 64)
 		for i in range(4):
-			var n := Control.new()
+			var n := TextureRect.new()
+			n.texture = placeholder
 			n.size = Vector2(64, 64)
 			# Attacker low-left, target high-right: a real singles layout, so
 			# direction-of-travel assertions are meaningful.
@@ -107,10 +119,10 @@ func _test_coverage_grew() -> void:
 	var playable := int(cov["playable"])
 	print("  [M36D] %d/%d playable (%.1f%%)"
 			% [playable, ids.size(), 100.0 * playable / maxi(1, ids.size())])
-	# M36C ended at 23. This batch must have moved it materially; the floor
-	# guards against a regression rather than expressing ambition.
-	_chk("the batch grew coverage well past M36C's 23 (%d)" % playable,
-			playable >= 75)
+	# M36C ended at 23; batch 1 reached 85; batch 2 reaches ~138. The floor
+	# guards against regression rather than expressing ambition.
+	_chk("coverage holds at the batches' measured level (%d)" % playable,
+			playable >= 130)
 
 
 func _test_powder_drift() -> void:
@@ -304,6 +316,131 @@ func _test_elliptical_closes() -> void:
 	_chk("elliptical orbit begins at the mon's own position (%.1f px off)"
 			% node.position.distance_to(base),
 			node.position.distance_to(base) < 30.0)
+
+
+func _test_batch2_projectiles() -> void:
+	# Shadow Ball has three phases and must reach the target by the end --
+	# a projectile that stops at the midpoint (its phase-1 resting place)
+	# would be a plausible-looking but wrong port.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimShadowBall", [10, 5, 15],
+			"gShadowBallSpriteTemplate")
+	var sp: AnimSprite = r["sprite"]
+	if sp == null:
+		_chk("shadow ball spawns", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var atk := stage.center_of(0)
+	var tgt := stage.center_of(1)
+	_chk("shadow ball starts at the attacker",
+			sp.centre.distance_to(atk) < sp.centre.distance_to(tgt))
+	for i in range(10):
+		vm._step_behaviors()
+	var mid := sp.centre
+	_chk("...gathers toward the midpoint first (%.0f from atk, %.0f from tgt)"
+			% [mid.distance_to(atk), mid.distance_to(tgt)],
+			mid.distance_to(atk) > 1.0 and mid.distance_to(tgt) > 1.0)
+	for i in range(40):
+		vm._step_behaviors()
+	_chk("...and completes rather than stalling mid-flight",
+			vm.visual_count() == 0)
+
+	# The stinger rotates to face its direction of travel.
+	var stage2 := FakeStage.new()
+	var r2 := _spawn(stage2, "AnimTranslateStinger", [0, 0, 0, 0, 10],
+			"gLinearStingerSpriteTemplate")
+	var sp2: AnimSprite = r2["sprite"]
+	if sp2 != null:
+		_chk("stinger rotates toward its target rather than flying sideways",
+				not is_zero_approx(sp2.rotation))
+
+
+func _test_batch2_leech_seed_phases() -> void:
+	# Leech Seed is a three-phase script in ONE behavior: arc, hide, sprout.
+	# The hidden phase is the one a naive port drops.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimLeechSeed", [0, 0, 0, 0, 12, 20],
+			"gLeechSeedSpriteTemplate")
+	var sp: AnimSprite = r["sprite"]
+	if sp == null:
+		_chk("leech seed spawns", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	for i in range(12):
+		vm._step_behaviors()
+	_chk("leech seed lands and then HIDES before sprouting",
+			not sp.visible)
+	for i in range(11):
+		vm._step_behaviors()
+	_chk("...then reappears to sprout", sp.visible)
+	for i in range(70):
+		vm._step_behaviors()
+	_chk("...and finishes after the sprout phase", vm.visual_count() == 0)
+
+
+func _test_batch2_afterimages() -> void:
+	# TraceMonBlended makes real afterimages; it must also clean every one up.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0
+	vm.args[1] = 1
+	vm.args[2] = 4
+	vm.args[3] = 3
+	_registry.get_behavior("AnimTask_TraceMonBlended").call(vm, {})
+	var peak := 0
+	for i in range(40):
+		vm._step_behaviors()
+		var clones := 0
+		for child in stage.layer_node.get_children():
+			if child.has_meta("_anim_trace"):
+				clones += 1
+		peak = maxi(peak, clones)
+		if vm.visual_count() == 0:
+			break
+	_chk("trace task produced afterimages (peak %d)" % peak, peak > 0)
+	_chk("...and terminated", vm.visual_count() == 0)
+	var leftover := 0
+	for child in stage.layer_node.get_children():
+		if child.has_meta("_anim_trace") and is_instance_valid(child) \
+				and not child.is_queued_for_deletion():
+			leftover += 1
+	_chk("...leaving no afterimage behind (%d)" % leftover, leftover == 0)
+
+
+func _test_batch2_sound_tasks() -> void:
+	# Sound is deferred, but TIMING is not: single-frame cues must not stall a
+	# script, and cry waits must cost their real warm-up frames.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_registry.get_behavior("SoundTask_PlaySE1WithPanning").call(vm, {})
+	_chk("a single-frame sound cue costs the script nothing",
+			vm.visual_count() == 0)
+
+	var vm2 := _vm(stage)
+	_registry.get_behavior("SoundTask_WaitForCry").call(vm2, {})
+	_chk("a cry wait does hold the script briefly", vm2.visual_count() == 1)
+	vm2._step_behaviors()
+	vm2._step_behaviors()
+	_chk("...and releases once the (silent) cry is done",
+			vm2.visual_count() == 0)
+
+
+func _test_batch2_defensive_wall() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimDefensiveWall", [0, 0, 0],
+			"gReflectSpriteTemplate")
+	var sp: AnimSprite = r["sprite"]
+	if sp == null:
+		return
+	var vm: AnimScriptVM = r["vm"]
+	_chk("the wall starts invisible and fades IN", is_zero_approx(
+			sp.modulate.a))
+	for i in range(13):
+		vm._step_behaviors()
+	_chk("...reaching full opacity", sp.modulate.a > 0.9)
+	for i in range(60):
+		vm._step_behaviors()
+	_chk("...then fading out and ending", vm.visual_count() == 0)
 
 
 func _test_iconic_moves_run() -> void:
