@@ -21,3 +21,17 @@ extends OverworldEntity
 ## Source's own per-map local id, used by its scripts to address this object
 ## (applymovement, etc.). Blank when the map declares none.
 @export var local_id: String = ""
+
+
+## `movement_type` is a free-text String, and retyping it in the inspector is
+## the fastest way to turn a rotating trainer into a fixed-facing one. That
+## makes a typo cheap to introduce and, without this, invisible: MapOverlay's
+## events mode draws sight lines off this string, so a misspelling silently
+## removes the trainer's ray, which looks identical to a trainer who correctly
+## has none. Checked against the generated set rather than a hand-kept list.
+func _get_configuration_warnings() -> PackedStringArray:
+	var out := super()
+	if movement_type != "" and not MovementTypes.is_known(movement_type):
+		out.append("movement_type '%s' is not a type source defines — typo?"
+				% movement_type)
+	return out

@@ -22,8 +22,9 @@ const MAP_DIR := "res://assets/maps/"
 const ATLAS_DIR := "res://assets/map_atlases/"
 const OUT_DIR := "res://scenes/maps/"
 
-## Exactly how Godot writes it into a `[gd_scene …]` header.
+## Exactly how Godot writes them.
 const UID_KEY := "uid=\""
+const PATH_KEY := "path=\""
 const PLANE_NAMES := ["ground", "objects", "overhangs"]
 
 # §1.6 routing: layer_type -> [[half, plane], ...]
@@ -72,8 +73,13 @@ func _bake(map_name: String) -> bool:
 	var scene_path := OUT_DIR + map_name + ".tscn"
 	var data_path := OUT_DIR + map_name + "_data.tres"
 
-	# Read BEFORE the save overwrites it -- see _preserve_or_mint_uid().
+	# Read BEFORE the save overwrites them -- see _preserve_or_mint_uid().
+	# BOTH artifacts need it: the .tres is a real resource other things
+	# reference by uid too, and it was losing its own on every bake.
 	var prior_uid := _existing_uid(scene_path)
+	var prior_data_uid := _existing_uid(data_path)
+	var prior_scene_ext := _existing_ext_uids(scene_path)
+	var prior_data_ext := _existing_ext_uids(data_path)
 
 	# §1.9 re-import guard: never clobber hand-authored work. Per-map by
 	# construction, so this is a usage check, not a merge.
@@ -136,17 +142,183 @@ func _bake(map_name: String) -> bool:
 	if packed.pack(root) != OK:
 		push_error("map_baker: pack failed for %s" % map_name)
 		return false
+
+	# §1.9 re-import guard, second half: hand edits to the SCENE.
+	#
+	# The cell guard above protects MapData, which records provenance per cell.
+	# Entity nodes record none -- a hand-tuned sight_range or movement_type is
+	# just a value in the .tscn, and a re-bake would overwrite it in silence.
+	if not _forced():
+		var diff := _scene_divergence(packed, scene_path, prior_uid, prior_scene_ext)
+		if diff != "":
+			push_warning("map_baker: %s on disk is not what this bake would "
+					% map_name
+					+ "produce — refusing to overwrite (use --force).\n" + diff)
+			root.free()
+			return false
+
 	if ResourceSaver.save(packed, scene_path) != OK:
 		push_error("map_baker: could not write %s" % scene_path)
 		return false
 	_preserve_or_mint_uid(scene_path, prior_uid)
+	_restore_ext_resource_uids(scene_path, prior_scene_ext)
 	if ResourceSaver.save(src, data_path) != OK:
 		push_error("map_baker: could not write %s" % data_path)
 		return false
+	_preserve_or_mint_uid(data_path, prior_data_uid)
+	_restore_ext_resource_uids(data_path, prior_data_ext)
 
 	print("  %-34s %2dx%-3d  atlas=%s" % [map_name, src.width, src.height, src.atlas])
 	root.free()
 	return true
+
+
+## Empty when the tracked scene is exactly what this bake would write.
+## Otherwise a short, readable account of what differs.
+##
+## DERIVED, not declared. The obvious alternative — a per-entity `authored`
+## flag mirroring MapData's own per-cell provenance — is worse: `@export`
+## setters fire on every scene load, so it cannot be set automatically without
+## false-positiving, which leaves it manual, and a provenance flag you must
+## remember to tick is one that eventually is not. Baking to scratch and
+## comparing cannot drift, and it covers added nodes, deleted nodes and moved
+## cells as well — not merely the fields someone thought to enumerate.
+##
+## Same method as scripts/check_bake_diff.py, which remains the standalone
+## audit form (it can answer "is this reproducible?" across every map without
+## intending to bake). Its own docstring records that nothing was wired into
+## the baker; this is that wiring.
+##
+## THE DIFF TEXT IS THE POINT, not decoration. This check cannot tell a hand
+## edit from an importer change — both make the tracked scene stop matching.
+## Refusing without saying WHAT changed would make `--force` reflexive, and a
+## guard everyone bypasses by habit is worse than none. `sight_range = 3`
+## means someone tuned a trainer; a wall of tile data means the importer moved.
+func _scene_divergence(packed: PackedScene, scene_path: String,
+		prior_uid: String, prior_ext: Dictionary) -> String:
+	# A map with nothing on disk has nothing to lose.
+	if not FileAccess.file_exists(scene_path):
+		return ""
+
+	# user:// so a stray scratch file can never land in scenes/maps/ and be
+	# picked up as a map by anything globbing *.tscn.
+	var scratch := scene_path.get_basename() + ".bakecheck.tscn"
+
+	if ResourceSaver.save(packed, scratch) != OK:
+		# Unverifiable is not the same as unchanged. Refuse rather than assume.
+		_remove_scratch(scratch)
+		return "    (could not write a scratch bake to compare against)"
+	# The real save runs both of these afterwards, so the comparison has to as
+	# well or every scene would look changed by its own uid handling.
+	_preserve_or_mint_uid(scratch, prior_uid)
+	_restore_ext_resource_uids(scratch, prior_ext)
+
+	var on_disk := _normalised_scene_text(scene_path)
+	var would_write := _normalised_scene_text(scratch)
+	_remove_scratch(scratch)
+
+	if on_disk == would_write:
+		return ""
+	return _first_differences(on_disk, would_write)
+
+
+## Scratch files live in scenes/maps/ (the save has to happen beside the real
+## file for ext-id preservation to behave identically), so leaving one behind
+## would put a bogus map where check_bake_diff.py --all and anything else
+## globbing *.tscn would find it. Removed on every exit path, including the
+## failure ones.
+static func _remove_scratch(scratch: String) -> void:
+	var g := ProjectSettings.globalize_path(scratch)
+	DirAccess.remove_absolute(g)
+	# ResourceSaver may drop a .uid sidecar beside it.
+	if FileAccess.file_exists(scratch + ".uid"):
+		DirAccess.remove_absolute(g + ".uid")
+
+
+## Scene text with the two per-save labels stripped.
+##
+## `unique_id` — regenerated on every bake, referenced by nothing. Same strip
+## check_bake_diff.py makes, and the reason a byte-reproducible scene otherwise
+## shows up as a 200-line diff.
+##
+## `[ext_resource ... id="1_7t5wp"]` and its `ExtResource("1_7t5wp")` uses —
+## this one goes FURTHER than check_bake_diff.py, deliberately, because this
+## comparison faces a problem that script never does.
+##
+## ResourceSaver PRESERVES those ids when overwriting a text scene Godot
+## already knows (verified: a real `--force` bake of Route 3 left all six
+## untouched) and mints fresh ones when writing a path it does not — and a
+## scratch path is never a known resource, since a raw file copy does not
+## register one. So the scratch bake differs from the tracked scene in six
+## meaningless labels on EVERY map, which would make this guard fire always
+## and therefore mean nothing.
+##
+## Stripping only the random suffix and keeping the ordinal prefix is what
+## makes that safe: an ext_resource genuinely added, removed or repointed still
+## changes either the numbering or the `path=` on that line, both of which
+## survive this. check_bake_diff.py must NOT adopt this — it compares two saves
+## to the same path, where the ids are stable and a difference would be real.
+static func _normalised_scene_text(path: String) -> String:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return ""
+	var t := f.get_as_text()
+	f.close()
+	return _normalise_text(t)
+
+
+## The rules themselves, split from the file read so they can be driven against
+## scratch strings. The guard shipped with no automated coverage at all and is
+## now the only thing standing between a re-bake and hand-edited entity data;
+## a rule this easy to over-scope needs to be testable without baking anything.
+static func _normalise_text(t: String) -> String:
+	var uid_re := RegEx.new()
+	uid_re.compile(" unique_id=\\d+")
+	t = uid_re.sub(t, "", true)
+	# Only the three places Godot writes a resource label: the declaration's own
+	# ` id="…"`, and the two reference forms. Scoping it this tightly is what
+	# makes it safe -- a broad "quoted NAME_suffix" rule could reach a real
+	# property value (script_label, graphics_id, a node name), and this cannot.
+	# The random suffix goes, the meaningful stem stays, so a genuinely added,
+	# removed or repointed resource still shows up.
+	const LABELS := [
+		[" id=\"([A-Za-z0-9]+)_[a-z0-9]+\"", " id=\"$1\""],
+		["ExtResource\\(\"([A-Za-z0-9]+)_[a-z0-9]+\"\\)", "ExtResource(\"$1\")"],
+		["SubResource\\(\"([A-Za-z0-9]+)_[a-z0-9]+\"\\)", "SubResource(\"$1\")"],
+	]
+	for pair in LABELS:
+		var re := RegEx.new()
+		re.compile(pair[0])
+		t = re.sub(t, pair[1], true)
+	return t
+
+
+## A few differing lines, enough to tell a tuned trainer from a moved importer.
+## Deliberately capped: the full diff is what check_bake_diff.py is for.
+static func _first_differences(a: String, b: String, limit: int = 4) -> String:
+	var la := a.split("\n")
+	var lb := b.split("\n")
+	var out := PackedStringArray()
+	var n: int = maxi(la.size(), lb.size())
+	for i in range(n):
+		var x: String = la[i] if i < la.size() else "<absent>"
+		var y: String = lb[i] if i < lb.size() else "<absent>"
+		if x == y:
+			continue
+		# Windowed on the first differing CHARACTER, not the start of the line.
+		# Tile blobs and ext_resource lines are long and share a prefix, so
+		# head-truncating shows two identical-looking strings and explains
+		# nothing -- which is exactly how this renderer first shipped.
+		var at := 0
+		while at < x.length() and at < y.length() and x[at] == y[at]:
+			at += 1
+		var from: int = maxi(0, at - 20)
+		out.append("    line %d, col %d\n      on disk:    …%s\n      bake would: …%s"
+				% [i + 1, at + 1, x.substr(from, 60), y.substr(from, 60)])
+		if out.size() >= limit:
+			out.append("    ... (run scripts/check_bake_diff.py for the full diff)")
+			break
+	return "\n".join(out)
 
 
 ## The UID already on disk, or "" if the scene is new or carries none.
@@ -162,16 +334,91 @@ static func _existing_uid(scene_path: String) -> String:
 	return _uid_in_header(header)
 
 
-## Parses `uid="uid://…"` out of a `[gd_scene …]` header line.
+## Parses `uid="uid://…"` out of a `[gd_scene …]`/`[gd_resource …]` header.
 static func _uid_in_header(header: String) -> String:
-	if not header.begins_with("[gd_scene"):
+	if not (header.begins_with("[gd_scene") or header.begins_with("[gd_resource")):
 		return ""
-	var i := header.find(UID_KEY)
+	return _quoted_after(header, UID_KEY)
+
+
+## The quoted value following `key` (which must include its own `="`).
+static func _quoted_after(line: String, key: String) -> String:
+	var i := line.find(key)
 	if i < 0:
 		return ""
-	var start := i + UID_KEY.length()
-	var end := header.find("\"", start)
-	return header.substr(start, end - start) if end > start else ""
+	var start := i + key.length()
+	var end := line.find("\"", start)
+	return line.substr(start, end - start) if end > start else ""
+
+
+## `res://path -> uid://…` for every ext_resource line that carries one.
+## Read BEFORE the save, like the header uid.
+static func _existing_ext_uids(res_path: String) -> Dictionary:
+	var out := {}
+	if not FileAccess.file_exists(res_path):
+		return out
+	var f := FileAccess.open(res_path, FileAccess.READ)
+	if f == null:
+		return out
+	while not f.eof_reached():
+		var line := f.get_line()
+		if not line.begins_with("[ext_resource"):
+			continue
+		var u := _quoted_after(line, UID_KEY)
+		var pth := _quoted_after(line, PATH_KEY)
+		if u != "" and pth != "":
+			out[pth] = u
+	f.close()
+	return out
+
+
+## [M27B] The third and last level of the same UID class.
+##
+## Levels one and two were the scene header and the .tres header. This is the
+## `[ext_resource …]` lines inside them: `ResourceSaver` writes them WITHOUT a
+## uid, the editor writes them WITH one, so an editor-touched scene diffed
+## against baker output shows permanent churn on every reference line —
+## landing exactly where check_bake_diff and git review look, which is the
+## same failure the unique_id normalisation exists to prevent.
+##
+## Deliberately RESTORE-ONLY, never mint. A uid belongs to the resource being
+## POINTED AT, not to the scene doing the pointing — its owner is that
+## resource's own importer or editor. Inventing one here would be this baker
+## asserting an identity it has no authority over, and would write a value
+## that disagrees with the real one the moment the editor touches the target.
+## Restoring what was already there is the whole job; absent stays absent.
+static func _restore_ext_resource_uids(res_path: String, prior: Dictionary) -> void:
+	if prior.is_empty():
+		return
+	var f := FileAccess.open(res_path, FileAccess.READ)
+	if f == null:
+		return
+	var text := f.get_as_text()
+	f.close()
+
+	var lines := text.split("\n")
+	var touched := false
+	for i in range(lines.size()):
+		var line: String = lines[i]
+		if not line.begins_with("[ext_resource") or line.contains(UID_KEY):
+			continue
+		var pth := _quoted_after(line, PATH_KEY)
+		if pth == "" or not prior.has(pth):
+			continue
+		# Godot writes uid before path; match that so an editor re-save is a
+		# no-op rather than a reordering diff.
+		var at := line.find(PATH_KEY)
+		lines[i] = line.substr(0, at) + "%s%s\" " % [UID_KEY, prior[pth]] + line.substr(at)
+		touched = true
+
+	if not touched:
+		return
+	var out := FileAccess.open(res_path, FileAccess.WRITE)
+	if out == null:
+		push_error("map_baker: could not rewrite ext_resource uids of %s" % res_path)
+		return
+	out.store_string("\n".join(lines))
+	out.close()
 
 
 ## [M27B] Scene UIDs — preserve or mint, never re-mint.
@@ -202,8 +449,10 @@ static func _preserve_or_mint_uid(scene_path: String, prior_uid: String) -> void
 	if nl < 0:
 		return
 	var header := text.substr(0, nl)
-	if not header.begins_with("[gd_scene") or header.contains(UID_KEY):
-		return  # not a scene header, or the saver already wrote one
+	var is_header := (header.begins_with("[gd_scene")
+			or header.begins_with("[gd_resource"))
+	if not is_header or header.contains(UID_KEY):
+		return  # not a resource header, or the saver already wrote one
 
 	var uid_text := prior_uid
 	if uid_text == "":

@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="MapData" format=4]
+[gd_resource type="Resource" script_class="MapData" format=4 uid="uid://c0mk3g47gosgx"]
 
 [ext_resource type="Script" path="res://scripts/overworld/map_data.gd" id="1_exnqu"]
 

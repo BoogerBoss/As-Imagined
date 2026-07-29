@@ -19,8 +19,12 @@ each bake. Re-baking the 8-map corridor produced a 201-line diff of which only
 This normalises `unique_id` away before comparing, which is the difference
 between a reviewable answer and a wall of noise.
 
-NON-DESTRUCTIVE: the current scene is restored afterwards whether the check
-passes or fails, so running this never costs you an edit. Nothing is wired into
+NON-DESTRUCTIVE: the scene AND its <Map>_data.tres are both restored afterwards,
+whether the check passes or fails, so running this never costs you an edit.
+The .tres restore was missing originally -- the baker writes it too, so running
+this checker silently overwrote exactly the file Step D's per-cell edits live
+in. A tool that exists to protect hand-authored work must not be the thing
+that destroys it. Nothing is wired into
 the baker itself -- this is a standalone check a re-bake session runs first.
 """
 
@@ -93,6 +97,13 @@ def scene_path(map_name):
     return os.path.join(MAPS_DIR, map_name + ".tscn")
 
 
+def data_path(map_name):
+    """The baker writes this alongside the scene, and it holds the per-cell
+    collision/elevation/provenance a human edits. Must be stashed and restored
+    exactly like the scene."""
+    return os.path.join(MAPS_DIR, map_name + "_data.tres")
+
+
 def all_map_names():
     if not os.path.isdir(MAPS_DIR):
         return []
@@ -131,6 +142,8 @@ def main():
         before = {}
         for n in names:
             shutil.copy(scene_path(n), os.path.join(stash, n + ".tscn"))
+            if os.path.exists(data_path(n)):
+                shutil.copy(data_path(n), os.path.join(stash, n + "_data.tres"))
             before[n] = open(scene_path(n), encoding="utf-8").read()
 
         bake(names)
@@ -141,9 +154,12 @@ def main():
             if normalize(before[n]) != normalize(after):
                 drifted.append(n)
 
-        # Always restore: this is a check, not a rebuild.
+        # Always restore BOTH artifacts: this is a check, not a rebuild.
         for n in names:
             shutil.copy(os.path.join(stash, n + ".tscn"), scene_path(n))
+            stashed_data = os.path.join(stash, n + "_data.tres")
+            if os.path.exists(stashed_data):
+                shutil.copy(stashed_data, data_path(n))
 
         missing_uid = check_uids(names)
         if missing_uid:
@@ -172,6 +188,9 @@ def main():
             rebaked = normalize(
                 open(scene_path(n), encoding="utf-8").read()).splitlines(keepends=True)
             shutil.copy(os.path.join(stash, n + ".tscn"), scene_path(n))
+            stashed_data = os.path.join(stash, n + "_data.tres")
+            if os.path.exists(stashed_data):
+                shutil.copy(stashed_data, data_path(n))
             print("=== %s (unique_id normalised away) ===" % n)
             sys.stdout.writelines(
                 difflib.unified_diff(rebaked, fresh,

@@ -91,14 +91,25 @@ func elevation_is_explicit(x: int, y: int) -> bool:
 	return (_flags_at(x, y) & AttrFlag.ELEVATION_EXPLICIT) != 0
 
 
+## Has a human touched this cell at all?
+##
+## Deliberately WIDER than `needs_review`, which is the narrower "touched but
+## not yet decided" case — a fully confirmed cell is still authored. That width
+## is the point: the baker's re-import guard keys on this, not on review state,
+## so a cell can be entirely unremarkable to look at and still be the reason a
+## map refuses to re-bake.
+func is_authored(x: int, y: int) -> bool:
+	if not in_bounds(x, y):
+		return false
+	var i := _idx(x, y)
+	return i < provenance.size() and provenance[i] == Provenance.AUTHORED
+
+
 ## A cell a human painted but never decided the movement rules for. This is the
 ## overlay's whole reason to exist — these are invisible in the rendered map and
 ## wrong ~13% of the time.
 func needs_review(x: int, y: int) -> bool:
-	if not in_bounds(x, y):
-		return false
-	var i := _idx(x, y)
-	if i >= provenance.size() or provenance[i] != Provenance.AUTHORED:
+	if not is_authored(x, y):
 		return false
 	return _flags_at(x, y) != ATTR_ALL_EXPLICIT
 
@@ -119,6 +130,69 @@ func set_attr_explicit(x: int, y: int, flag: int, value: bool = true) -> void:
 	if attr_explicit.size() != metatile.size():
 		_resize_attr_explicit()
 	attr_explicit[i] = (attr_explicit[i] | flag) if value else (attr_explicit[i] & ~flag)
+
+
+## [M27B Change 2 — write half] Set a cell's collision and record that a HUMAN
+## decided it. Always paired: a value written without the explicit bit is
+## indistinguishable from a guess, which is the whole thing §1.9 exists to
+## prevent. Marks the cell AUTHORED, because a cell someone has decided about
+## is by definition no longer purely imported.
+func set_collision(x: int, y: int, value: int) -> void:
+	if not in_bounds(x, y):
+		return
+	collision[_idx(x, y)] = value
+	set_attr_explicit(x, y, AttrFlag.COLLISION_EXPLICIT, true)
+	_mark_authored(x, y)
+
+
+func set_elevation(x: int, y: int, value: int) -> void:
+	if not in_bounds(x, y):
+		return
+	elevation[_idx(x, y)] = value
+	set_attr_explicit(x, y, AttrFlag.ELEVATION_EXPLICIT, true)
+	_mark_authored(x, y)
+
+
+## Mark a cell hand-authored and give it INHERITED defaults, explicitly NOT
+## marked explicit.
+##
+## This is the case §1.9 is really about. Collision and elevation cannot be
+## inferred from a painted tile — measured across all 421 maps, collision
+## varies by placement for 52.0% of metatiles and elevation for 52.1%, and a
+## per-metatile default would mis-set 29,827 cells (12.93%). So a newly painted
+## cell gets a GUESS, inherited from a neighbour, right roughly 87% of the
+## time. The remaining 13% is what has to stay visible, which is exactly what
+## leaving the explicit bits clear does: the cell reads as `needs_review` until
+## a human confirms each attribute.
+##
+## Returns false if there was no in-bounds neighbour to inherit from.
+func author_cell_with_defaults(x: int, y: int) -> bool:
+	if not in_bounds(x, y):
+		return false
+	var src := _nearest_neighbour(x, y)
+	if src == Vector2i(-1, -1):
+		return false
+	var i := _idx(x, y)
+	collision[i] = collision_at(src.x, src.y)
+	elevation[i] = elevation_at(src.x, src.y)
+	_mark_authored(x, y)
+	# Deliberately CLEARED, not set: these are guesses until confirmed.
+	set_attr_explicit(x, y, ATTR_ALL_EXPLICIT, false)
+	return true
+
+
+## Nearest orthogonal neighbour, in a fixed order so authoring is reproducible.
+func _nearest_neighbour(x: int, y: int) -> Vector2i:
+	for d in [Vector2i(0, 1), Vector2i(0, -1), Vector2i(-1, 0), Vector2i(1, 0)]:
+		if in_bounds(x + d.x, y + d.y):
+			return Vector2i(x + d.x, y + d.y)
+	return Vector2i(-1, -1)
+
+
+func _mark_authored(x: int, y: int) -> void:
+	if provenance.size() != metatile.size():
+		provenance.resize(metatile.size())
+	provenance[_idx(x, y)] = Provenance.AUTHORED
 
 
 func _resize_attr_explicit() -> void:

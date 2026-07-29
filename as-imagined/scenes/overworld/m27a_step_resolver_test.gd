@@ -42,7 +42,18 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## Update this when adding or removing assertions. If it drifts, that is the
 ## point: a number nobody maintains is a number nobody trusts.
-const EXPECTED_TOTAL := 133
+## MEASURED-CONSTANT RULE: this number, and every per-section constant below,
+## comes from a REAL RUN -- never from grepping `_chk(` call sites. Those two
+## disagree, and they disagreed here: `_test_object_events` has 26 call sites
+## and runs 25, because I.18 is a fail-fast pair where exactly one of the two
+## ever executes. A branch, a loop, or an early return breaks static counting,
+## and a constant derived the wrong way makes Z.99 fail for a reason that has
+## nothing to do with the code under test -- which is worse than no check,
+## because it trains you to adjust the number until it goes green.
+##
+## To re-measure after adding assertions: temporarily print `_total` around
+## each section call in `_ready()` and read the deltas.
+const EXPECTED_TOTAL := 294
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -67,6 +78,22 @@ const BAKED_ARTIFACT_ASSERTIONS := 13
 ## number was measured from a real run.
 const OBJECT_EVENT_ASSERTIONS := 25
 const ROUND_TRIP_ASSERTIONS := 16
+
+## S.11-S.25 read placed entities out of the baked corridor. S.01-S.10 do NOT
+## gate: the MAP_* table is generated but committed, like metatile_behavior.gd,
+## so a fresh clone can still assert the lookup it depends on.
+const EVENTS_MODE_ASSERTIONS := 15
+
+## U.01-U.04 read a placed entity out of the baked corridor. Section T is fully
+## synthetic and does NOT gate — sight-line maths needs no baked map.
+const ENTITY_AT_ASSERTIONS := 4
+
+## V.01-V.13 use the REAL corridor overlaps as fixtures (Viridian City's Gym
+## door, Route 22's three trigger pairs), so they gate with the baked scenes.
+## V.14 is synthetic and would run either way; it is inside the gate only
+## because splitting one section across two counters is worse than a slightly
+## conservative number. Section W is fully synthetic and does NOT gate.
+const STACK_ASSERTIONS := 14
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -96,6 +123,17 @@ func _synth(w: int, h: int, beh: Array, coll: Array = [], elev: Array = []) -> M
 		m.collision.append(int(coll[i]) if i < coll.size() else 0)
 		m.elevation.append(int(elev[i]) if i < elev.size() else 3)
 		m.layer_type.append(0)
+		# Provenance must be FULL LENGTH, like real imported data. It was left
+		# empty, and R.06 read index 0 of an empty PackedByteArray: GDScript
+		# logged an error and returned 0, which happens to equal
+		# Provenance.IMPORTED -- so the assertion passed for entirely the wrong
+		# reason. Found by the ERROR-lines-are-failures guard, not by the
+		# assertion count, which is exactly the case that guard exists for.
+		#
+		# attr_explicit is deliberately left empty: _flags_at() treats a short
+		# array as "no flags", which is the correct starting point for a
+		# fixture whose cells have not been decided yet.
+		m.provenance.append(MapData.Provenance.IMPORTED)
 	return m
 
 
@@ -116,6 +154,17 @@ func _ready() -> void:
 	_test_tool_chain()
 	_test_baked_scene_uids()
 	_test_overlay_never_baked()
+	_test_events_mode_table()
+	_test_events_mode_entities()
+	_test_trainer_sight()
+	_test_entity_at()
+	_test_stacks_and_counts()
+	_test_bake_guard()
+	_test_gesture_lifecycle()
+	_test_clip_math()
+	_test_write_half()
+	_test_author_save_reload()
+	_test_undo_symmetry()
 
 	# Counted BEFORE Z.99 itself, so EXPECTED_TOTAL stays the count of real
 	# assertions rather than including this bookkeeping one.
@@ -318,7 +367,14 @@ func _test_ledges() -> void:
 func _test_baked_artifacts() -> void:
 	const SCENE := "res://scenes/maps/PalletTown_Frlg.tscn"
 	const DATA := "res://scenes/maps/PalletTown_Frlg_data.tres"
-	if not ResourceLoader.exists(DATA):
+	# [Rider C] Gates on BOTH artifacts, not just the .tres. It gated on the
+	# .tres while asserting on the .tscn, so a partially-baked tree — data
+	# written, bake interrupted before the scene — hard-failed H.01 instead of
+	# gating, and then bare-returned, taking the rest of the section with it.
+	# That is the misleading-red family this file's own header describes: a red
+	# that means "you have not baked yet" trains people to ignore reds that
+	# mean something.
+	if not ResourceLoader.exists(DATA) or not ResourceLoader.exists(SCENE):
 		_gated += BAKED_ARTIFACT_ASSERTIONS
 		return
 	_chk("H.01 baked scene exists", ResourceLoader.exists(SCENE))
@@ -370,9 +426,16 @@ func _test_baked_artifacts() -> void:
 			== ["Ground", "Objects", "Entities_P2", "Overhangs", "Entities_P1"])
 	# Asserts the baker's OWN six containers and their order -- deliberately not
 	# `names.size() == 6`. A baked scene is also hand-editable (§1.9), and an
-	# added child is legitimate content, not a defect: this very map now carries
-	# a hand-instanced MapOverlay. Forbidding extras would make every legitimate
-	# edit look like a regression.
+	# added child is legitimate content, not a defect: dropping a MapOverlay
+	# into a map to inspect it is the intended workflow, and events mode is
+	# built around exactly that (MapOverlay.entity_root() falls back to its
+	# parent). Forbidding extras would make every legitimate edit look like a
+	# regression.
+	#
+	# [Rider D] This previously claimed Pallet Town carries such an overlay.
+	# It does not, and Section N asserts that no baked map does — a comment
+	# contradicting a test in the same file. The reasoning above survives; only
+	# the example was false.
 	_chk("H.13 non-drawn events live in a separate trailing container",
 			names.size() >= 6 and names[5] == "Triggers")
 	root.free()
@@ -397,23 +460,64 @@ func _test_marks_survive_round_trip() -> void:
 	_chk("J.02 provenance is full length", d.provenance.size() == cells)
 	_chk("J.03 attr_explicit is full length", d.attr_explicit.size() == cells)
 
-	# An imported cell is explicit on BOTH attributes: its values came from
-	# source and are authoritative, not a guess.
-	_chk("J.04 imported cells are explicit on collision", d.collision_is_explicit(0, 0))
-	_chk("J.05 imported cells are explicit on elevation", d.elevation_is_explicit(0, 0))
-	_chk("J.06 an imported cell therefore needs no review", not d.needs_review(0, 0))
-	_chk("J.07 a fully imported map has no review backlog", d.review_cells().is_empty())
+	# THIS MAP IS A LIVE EDITING TARGET. The overlay authors into it by design,
+	# so a saved AUTHOR-mode paint legitimately leaves cells in the backlog and
+	# legitimately makes a given coordinate no longer imported. The original
+	# assertions here read cell (0,0) and demanded an empty backlog — both true
+	# only while nobody had used the tool yet, which is not a property worth
+	# defending. They now assert the invariants that hold however much the map
+	# has been painted.
+	var probe := Vector2i(-1, -1)
+	for y in range(d.height):
+		for x in range(d.width):
+			if not d.is_authored(x, y):
+				probe = Vector2i(x, y)
+				break
+		if probe.x >= 0:
+			break
+
+	if probe.x < 0:
+		# Every cell hand-authored: there is no imported cell left to describe.
+		_gated += 3
+	else:
+		# An imported cell is explicit on BOTH attributes: its values came from
+		# source and are authoritative, not a guess.
+		_chk("J.04 imported cells are explicit on collision",
+				d.collision_is_explicit(probe.x, probe.y))
+		_chk("J.05 imported cells are explicit on elevation",
+				d.elevation_is_explicit(probe.x, probe.y))
+		_chk("J.06 an imported cell therefore needs no review",
+				not d.needs_review(probe.x, probe.y))
+
+	# The importer must never MANUFACTURE a review cell — every cell it emitted
+	# is stamped explicit on both attributes. Strictly stronger than the old
+	# "backlog is empty" for the imported subset, and it survives painting,
+	# because it only ever looks at cells a human has not touched.
+	var imported_all_explicit := true
+	for y in range(d.height):
+		for x in range(d.width):
+			if d.is_authored(x, y):
+				continue
+			if not (d.collision_is_explicit(x, y) and d.elevation_is_explicit(x, y)):
+				imported_all_explicit = false
+	_chk("J.07 the importer emits no half-decided cells", imported_all_explicit)
 
 	# Now author one cell and half-decide it, which is the state the overlay
 	# exists to make visible: painted, but its movement rules never confirmed.
+	var review_before := d.review_cells()
 	d.provenance[0] = MapData.Provenance.AUTHORED
 	d.attr_explicit[0] = MapData.AttrFlag.ELEVATION_EXPLICIT  # collision left a guess
 	_chk("J.08 a half-decided authored cell needs review", d.needs_review(0, 0))
 	_chk("J.09 ...and reports which half is still a guess",
 			d.elevation_is_explicit(0, 0) and not d.collision_is_explicit(0, 0))
+	# A DELTA, not an absolute: whatever the last save left in the backlog is
+	# the baseline, and this cell is the only thing that may have joined it.
+	# (0,0) may already have been in there, in which case the size holds.
 	var review := d.review_cells()
-	_chk("J.10 review_cells() finds exactly it",
-			review.size() == 1 and review[0] == Vector2i(0, 0))
+	var grew_by := 0 if review_before.has(Vector2i(0, 0)) else 1
+	_chk("J.10 review_cells() picks up exactly the cell just half-decided",
+			review.has(Vector2i(0, 0))
+			and review.size() == review_before.size() + grew_by)
 
 	var tmp := "user://m27b_round_trip.tres"
 	_chk("J.11 saves", ResourceSaver.save(d, tmp) == OK)
@@ -723,11 +827,25 @@ func _test_object_events() -> void:
 ## metatile_behavior.gd is GENERATED — its @tool comes from the emitter in
 ## gen_map_import.py, not a hand-added line, which a re-run would wipe.
 func _test_tool_chain() -> void:
+	# Events mode widened this chain: the overlay now resolves warp
+	# destinations through MapConstants (generated, so its @tool comes from the
+	# emitter) and type-tests every entity class by name. A non-@tool script
+	# anywhere in here is instantiated as a placeholder and takes the whole
+	# overlay down with it in the editor.
 	const CHAIN := [
 		"res://scripts/overworld/map_overlay.gd",
 		"res://scripts/overworld/step_resolver.gd",
 		"res://scripts/overworld/map_data.gd",
 		"res://scripts/overworld/metatile_behavior.gd",
+		"res://scripts/overworld/map_constants.gd",
+		"res://scripts/overworld/movement_types.gd",
+		"res://scripts/overworld/entities/overworld_entity.gd",
+		"res://scripts/overworld/entities/npc.gd",
+		"res://scripts/overworld/entities/trainer_npc.gd",
+		"res://scripts/overworld/entities/item_ball.gd",
+		"res://scripts/overworld/entities/warp.gd",
+		"res://scripts/overworld/entities/trigger.gd",
+		"res://scripts/overworld/entities/sign.gd",
 	]
 	var i := 0
 	for path in CHAIN:
@@ -795,6 +913,39 @@ func _test_baked_scene_uids() -> void:
 	_chk("M.12 a second bake preserves the minted UID",
 			bk._existing_uid(fresh) == minted)
 
+	# --- ext_resource uids: restore-only, never mint (the third level) ---
+	var ext_src := dir + "ext_src.tscn"
+	_write_text(ext_src,
+			"[gd_scene format=4 uid=\"uid://bkkkkkkkkkkkk\"]\n"
+			+ "[ext_resource type=\"Texture2D\" uid=\"uid://batlas0000001\" path=\"res://a.png\" id=\"1\"]\n"
+			+ "[ext_resource type=\"Script\" path=\"res://b.gd\" id=\"2\"]\n")
+	var ext_map: Dictionary = bk._existing_ext_uids(ext_src)
+	_chk("M.14 ext_resource uids are read keyed by path (%s)" % ext_map,
+			ext_map.size() == 1 and ext_map.get("res://a.png", "") == "uid://batlas0000001")
+
+	# What a programmatic save produces: every uid dropped.
+	var ext_saved := dir + "ext_saved.tscn"
+	_write_text(ext_saved,
+			"[gd_scene format=4]\n"
+			+ "[ext_resource type=\"Texture2D\" path=\"res://a.png\" id=\"1\"]\n"
+			+ "[ext_resource type=\"Script\" path=\"res://b.gd\" id=\"2\"]\n"
+			+ "[ext_resource type=\"Texture2D\" path=\"res://never_seen.png\" id=\"3\"]\n")
+	bk._restore_ext_resource_uids(ext_saved, ext_map)
+	var restored := FileAccess.open(ext_saved, FileAccess.READ).get_as_text()
+	_chk("M.15 a known path gets its uid put back",
+			restored.contains("uid=\"uid://batlas0000001\" path=\"res://a.png\""))
+	# `path=` still sits immediately after `type=`, i.e. no uid was inserted.
+	_chk("M.16 a path with no prior uid is left alone, not invented",
+			restored.contains("[ext_resource type=\"Script\" path=\"res://b.gd\""))
+	_chk("M.17 a path absent from the prior file is left alone too",
+			restored.contains("[ext_resource type=\"Texture2D\" path=\"res://never_seen.png\""))
+
+	# Idempotence: re-running must not double-insert.
+	bk._restore_ext_resource_uids(ext_saved, ext_map)
+	var again := FileAccess.open(ext_saved, FileAccess.READ).get_as_text()
+	_chk("M.18 restoring twice is a no-op, not a double insertion",
+			again == restored and again.count("uid://batlas0000001") == 1)
+
 	# The rest of the file must survive the header rewrite intact.
 	var f := FileAccess.open(fresh, FileAccess.READ)
 	var body := f.get_as_text() if f != null else ""
@@ -832,6 +983,839 @@ func _test_overlay_never_baked() -> void:
 		_chk("N.%02d %s does not bake in the overlay" % [i, nm],
 				not text.contains("scenes/overworld/map_overlay.tscn")
 				and not text.contains("scripts/overworld/map_overlay.gd"))
+
+
+## Section S — events mode: markers and dead doors.
+##
+## Two things are under test and they fail differently. The MAP_* -> map-name
+## table is a generated FACT about the reference and is committed, so it runs
+## on a fresh clone. Everything that reads a placed entity needs the corridor
+## baked, and gates.
+##
+## The dead-door check has three outcomes, not two, and keeping them apart is
+## the whole point: a real map that is not baked yet is the expected M27C gap,
+## while a constant source does not define is an importer bug wearing the same
+## costume. A test that only asserted "not baked" would pass for both.
+func _test_events_mode_table() -> void:
+	_chk("S.01 the map table covers every region, not just Kanto",
+			MapConstants.NAME_BY_CONSTANT.size() == 939)
+	# The case that proves the table has to EXIST: no casing rule turns
+	# MAP_SSANNE_EXTERIOR into SSAnne_Exterior_Frlg.
+	_chk("S.02 a name no string transform could derive resolves",
+			MapConstants.map_name_for("MAP_SSANNE_EXTERIOR")
+					== "SSAnne_Exterior_Frlg")
+	_chk("S.03 an ordinary route resolves",
+			MapConstants.map_name_for("MAP_ROUTE3") == "Route3_Frlg")
+	# Empty, never a guess. A guessed name would make an importer bug look like
+	# an unbaked map, which is exactly the confusion this table removes.
+	_chk("S.04 an undefined constant resolves to nothing, not a guess",
+			MapConstants.map_name_for("MAP_NOT_A_REAL_PLACE") == "")
+	_chk("S.05 scene_path_for builds the baker's own path",
+			MapConstants.scene_path_for("MAP_ROUTE3")
+					== "res://scenes/maps/Route3_Frlg.tscn")
+	_chk("S.06 and stays empty for an undefined constant",
+			MapConstants.scene_path_for("MAP_NOT_A_REAL_PLACE") == "")
+	# A known interior nobody has baked: the dangling stem this mode draws.
+	_chk("S.07 a known-but-unbaked interior reads as not baked",
+			not MapConstants.is_baked("MAP_VIRIDIAN_CITY_GYM"))
+
+	# The overlay must survive being asked about events with no map under it.
+	var orphan := MapOverlay.new()
+	_chk("S.08 an overlay with no map reports no entity source",
+			not orphan.has_entity_source())
+	_chk("S.09 and returns no entities rather than failing",
+			orphan.entities().is_empty())
+
+	# Appending EVENTS to the enum has to have joined the F3 cycle; if it did
+	# not, the mode is unreachable at runtime no matter how well it draws.
+	var seen_events := false
+	for _i in range(MapOverlay.Mode.size() + 1):
+		orphan.next_mode()
+		if orphan.mode == MapOverlay.Mode.EVENTS:
+			seen_events = true
+	_chk("S.10 EVENTS is reachable by cycling modes", seen_events)
+	orphan.free()
+
+
+func _test_events_mode_entities() -> void:
+	if not ResourceLoader.exists("res://scenes/maps/Route3_Frlg.tscn"):
+		_gated += EVENTS_MODE_ASSERTIONS
+		return
+	_chk("S.11 a baked corridor map reads as baked",
+			MapConstants.is_baked("MAP_ROUTE3"))
+
+	var root: Node2D = (load("res://scenes/maps/Route3_Frlg.tscn")
+			as PackedScene).instantiate()
+	var ov := MapOverlay.new()
+	# No map_root assigned: this is the expected placement, and the fallback to
+	# get_parent() is what makes events mode work by just dropping the overlay
+	# into the map scene.
+	root.add_child(ov)
+	_chk("S.12 the parent fallback finds the map", ov.has_entity_source())
+	var found := ov.entities()
+	_chk("S.13 both entity strata and the trigger container are walked",
+			found.size() == 11)
+
+	var kinds := {}
+	for e in found:
+		var k := ov.entity_kind(e)
+		kinds[k] = int(kinds.get(k, 0)) + 1
+	# The subclass trap: TrainerNPC extends NPC, so a naive `is NPC` first
+	# would file all 8 trainers as plain people and the marker layer would be
+	# quietly, plausibly wrong.
+	_chk("S.14 trainers are not filed as plain NPCs", int(kinds.get("trainer", 0)) == 8)
+	_chk("S.15 the one plain NPC is still an NPC", int(kinds.get("npc", 0)) == 1)
+	_chk("S.16 signs are their own kind", int(kinds.get("sign", 0)) == 2)
+	# Every kind drawn must have a marker letter, or it renders blank.
+	var lettered := true
+	for k in kinds:
+		if not MapOverlay.ENTITY_LETTERS.has(k):
+			lettered = false
+	_chk("S.17 every kind present has a marker letter", lettered)
+
+	# An explicit map_root must win over the parent, or an overlay placed
+	# outside the map scene can never be pointed at one.
+	var stray := MapOverlay.new()
+	add_child(stray)
+	_chk("S.18 an overlay parented elsewhere sees nothing by default",
+			not stray.has_entity_source())
+	stray.map_root = root
+	_chk("S.19 an explicit map_root overrides the parent fallback",
+			stray.has_entity_source() and stray.entities().size() == 11)
+	stray.queue_free()
+	root.free()
+
+	# Warps live on Viridian City, and all 5 lead to interiors nobody has baked.
+	var vroot: Node2D = (load("res://scenes/maps/ViridianCity_Frlg.tscn")
+			as PackedScene).instantiate()
+	var vov := MapOverlay.new()
+	vroot.add_child(vov)
+	var warps: Array[Warp] = []
+	for e in vov.entities():
+		if e is Warp:
+			warps.append(e)
+	_chk("S.20 Viridian City's warps are found", warps.size() == 5)
+
+	var states := {}
+	for w in warps:
+		var s := vov.warp_state(w)
+		states[s] = int(states.get(s, 0)) + 1
+	_chk("S.21 every real warp names a map source defines",
+			int(states.get("unknown", 0)) == 0)
+	# A TRIPWIRE, and it is meant to flip. When M27C bakes these interiors this
+	# assertion fails, and that failure is the correct signal — the same shape
+	# as I.14/I.15, which asserted a gap could not close silently until it did.
+	# Re-point it at the new count; do not delete it.
+	_chk("S.22 all 5 lead to unbaked interiors — the dangling stems",
+			int(states.get("unbaked", 0)) == 5)
+
+	# The three states, driven directly. Synthetic warps because the corridor
+	# has no example of the other two: nothing warps to a baked map yet, and an
+	# undefined constant would be a bug rather than data.
+	var good := Warp.new()
+	good.dest_map = "MAP_ROUTE3"
+	_chk("S.23 a warp to a baked map reads baked", vov.warp_state(good) == "baked")
+	var bogus := Warp.new()
+	bogus.dest_map = "MAP_NOT_A_REAL_PLACE"
+	_chk("S.24 a warp to an undefined constant is an importer bug, not a gap",
+			vov.warp_state(bogus) == "unknown")
+	var blank := Warp.new()
+	_chk("S.25 a warp with no destination at all is caught too",
+			vov.warp_state(blank) == "unknown")
+	good.free()
+	bogus.free()
+	blank.free()
+	vroot.free()
+
+
+## Section T — trainer sight lines.
+##
+## Rays are drawn ONLY for the four fixed-facing movement types. Everything
+## else either rotates in place or walks, and source resolves its facing from
+## live object state at check time, so there is no single honest line to draw.
+## The tests below are mostly about the NEGATIVE cases: once rays are
+## conditional, "no ray" has five distinct meanings and a tool that renders
+## them identically is worse than one that draws nothing.
+func _test_trainer_sight() -> void:
+	_chk("T.01 exactly four movement types have a fixed facing",
+			MovementTypes.FIXED_FACING.size() == 4)
+	# y is DOWN in cell space. Getting this inverted would point every ray the
+	# wrong way while still looking plausible on a symmetric map.
+	_chk("T.02 FACE_UP steps to -y, not +y",
+			MovementTypes.FIXED_FACING["MOVEMENT_TYPE_FACE_UP"] == Vector2i(0, -1))
+	_chk("T.03 FACE_DOWN steps to +y",
+			MovementTypes.FIXED_FACING["MOVEMENT_TYPE_FACE_DOWN"] == Vector2i(0, 1))
+	_chk("T.04 the full movement-type set was generated, not hand-typed",
+			MovementTypes.ALL.size() == 89)
+	_chk("T.05 a rotating type is known but has no fixed facing",
+			MovementTypes.is_known("MOVEMENT_TYPE_LOOK_AROUND")
+			and not MovementTypes.has_fixed_facing("MOVEMENT_TYPE_LOOK_AROUND"))
+	_chk("T.06 a typo is not a known movement type",
+			not MovementTypes.is_known("MOVEMENT_TYPE_FACE_LEFTT"))
+
+	# Open 7x7 field, trainer dead centre facing east.
+	var ov := MapOverlay.new()
+	ov.map_data = _synth(7, 7, [])
+	var t := TrainerNPC.new()
+	t.cell = Vector2i(3, 3)
+	t.sight_range = 3
+	t.movement_type = "MOVEMENT_TYPE_FACE_RIGHT"
+	_chk("T.07 a clear line covers exactly sight_range cells",
+			ov.trainer_sight_cells(t).size() == 3)
+	_chk("T.08 and starts on the cell in front, not the trainer's own",
+			ov.trainer_sight_cells(t)[0] == Vector2i(4, 3))
+	_chk("T.09 state reads as shown", ov.trainer_sight_state(t) == "shown")
+
+	# The correction that makes this a tool rather than a compass: source
+	# abandons the check on the first collision, so a wall truncates the
+	# corridor. A trainer with range 3 behind a wall does not cover 3 cells.
+	var walled := _synth(7, 7, [])
+	walled.collision[3 * 7 + 5] = 1        # two cells east of the trainer
+	ov.map_data = walled
+	var cells := ov.trainer_sight_cells(t)
+	_chk("T.10 a wall truncates the corridor short of sight_range",
+			cells.size() == 1 and cells[0] == Vector2i(4, 3))
+	# The wall cell itself is excluded: nobody can stand in it, so it is not a
+	# cell you can be caught on.
+	var blocked_cells := ov.trainer_sight_cells(t)
+	var has_wall := false
+	for c in blocked_cells:
+		if c == Vector2i(5, 3):
+			has_wall = true
+	_chk("T.11 the blocking cell itself is not part of the corridor", not has_wall)
+
+	# Wall immediately in front: a real finding, and distinct from 'blind'.
+	var adjacent := _synth(7, 7, [])
+	adjacent.collision[3 * 7 + 4] = 1
+	ov.map_data = adjacent
+	_chk("T.12 a wall in the face reads as blocked, not as shown",
+			ov.trainer_sight_state(t) == "blocked")
+	_chk("T.13 and yields no cells", ov.trainer_sight_cells(t).is_empty())
+
+	# The map edge truncates exactly like a wall.
+	ov.map_data = _synth(7, 7, [])
+	var edge := TrainerNPC.new()
+	edge.cell = Vector2i(5, 3)
+	edge.sight_range = 5
+	edge.movement_type = "MOVEMENT_TYPE_FACE_RIGHT"
+	_chk("T.14 the map edge truncates the corridor",
+			ov.trainer_sight_cells(edge).size() == 1)
+	edge.free()
+
+	# The four no-ray states, each distinguishable.
+	var rot := TrainerNPC.new()
+	rot.cell = Vector2i(3, 3)
+	rot.sight_range = 4
+	rot.movement_type = "MOVEMENT_TYPE_WANDER_UP_AND_DOWN"
+	_chk("T.15 a wanderer gets no line even with a real range",
+			ov.trainer_sight_state(rot) == "rotates"
+			and ov.trainer_sight_cells(rot).is_empty())
+	rot.movement_type = "MOVEMENT_TYPE_LOOK_AROUND"
+	_chk("T.16 a rotator in place gets no line either",
+			ov.trainer_sight_state(rot) == "rotates")
+	# 22 real Kanto trainers. Blind is NOT the same as rotating, and a tool
+	# that conflated them would hide a genuine fact about the route.
+	rot.movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+	rot.sight_range = 0
+	_chk("T.17 sight_range 0 reads as blind, not as rotating",
+			ov.trainer_sight_state(rot) == "blind")
+	# The typo case — the exact failure a free-text movement_type invites.
+	rot.sight_range = 3
+	rot.movement_type = "MOVEMENT_TYPE_FACE_DOWNN"
+	_chk("T.18 a typo'd movement type is called out, not silently no-lined",
+			ov.trainer_sight_state(rot) == "unknown")
+	_chk("T.19 and the node itself raises a configuration warning",
+			_warns_about(rot, "not a type source defines"))
+	rot.movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+	_chk("T.20 a real movement type raises no such warning",
+			not _warns_about(rot, "not a type source defines"))
+	rot.free()
+	t.free()
+	ov.free()
+
+
+## Section U — click-to-select's hit test.
+##
+## The plugin turns a viewport click into a cell and asks the overlay what is
+## there. Only the lookup is testable headlessly; the click plumbing itself is
+## editor-only. A null return is as load-bearing as a hit: the plugin returns
+## false on null so the click falls through to the editor, and swallowing it
+## instead would make everything else in the viewport unselectable.
+func _test_entity_at() -> void:
+	if not ResourceLoader.exists("res://scenes/maps/Route3_Frlg.tscn"):
+		_gated += ENTITY_AT_ASSERTIONS
+		return
+	var root: Node2D = (load("res://scenes/maps/Route3_Frlg.tscn")
+			as PackedScene).instantiate()
+	var ov := MapOverlay.new()
+	root.add_child(ov)
+
+	var robin: TrainerNPC = null
+	for e in ov.entities():
+		if e is TrainerNPC and (e as TrainerNPC).trainer_key == "TRAINER_LASS_ROBIN_FRLG":
+			robin = e
+	_chk("U.01 the fixture trainer is present", robin != null)
+	if robin != null:
+		var hit := ov.next_in_stack(robin.cell, null)
+		_chk("U.02 a click on her cell finds her, not merely something",
+				hit == robin)
+	# An empty cell must return null so the plugin can decline the click.
+	_chk("U.03 an empty cell yields null",
+			ov.next_in_stack(Vector2i(0, 0), null) == null
+			and ov.entities_at(Vector2i(0, 0)).is_empty())
+	_chk("U.04 an out-of-bounds cell yields null rather than erroring",
+			ov.next_in_stack(Vector2i(-5, -5), null) == null)
+	root.free()
+
+
+## Section V — stacked cells, the click cycle, and the counts banner.
+##
+## Fixtures are the REAL corridor overlaps rather than synthetic ones, so this
+## gates on a baked tree. Viridian City (36,10) is a Gym door that is both a
+## warp and a readable sign; Route 22 carries three cells of paired
+## coord_events gated on the same VAR. All 22 such cells in Kanto were read
+## and every one is deliberate authoring, which is why the marker is calm and
+## the banner counts them without colouring its border.
+func _test_stacks_and_counts() -> void:
+	# Gates on BOTH maps it asserts against — the same mistake Rider C fixed in
+	# section H. A tree with one baked and not the other would otherwise run
+	# part of this section and credit none of it, which Z.99 then reports as an
+	# arithmetic failure pointing nowhere near the real cause.
+	if not ResourceLoader.exists("res://scenes/maps/ViridianCity_Frlg.tscn") \
+			or not ResourceLoader.exists("res://scenes/maps/Route22_Frlg.tscn"):
+		_gated += STACK_ASSERTIONS
+		return
+
+	var vroot: Node2D = (load("res://scenes/maps/ViridianCity_Frlg.tscn")
+			as PackedScene).instantiate()
+	var ov := MapOverlay.new()
+	ov.map_data = load("res://scenes/maps/ViridianCity_Frlg_data.tres")
+	vroot.add_child(ov)
+
+	var gym_door := Vector2i(36, 10)
+	var stack := ov.entities_at(gym_door)
+	_chk("V.01 the Gym door really does hold two events", stack.size() == 2)
+	var kinds := {}
+	for e in stack:
+		kinds[ov.entity_kind(e)] = true
+	_chk("V.02 and they are the warp and the sign, not two of one kind",
+			kinds.has("warp") and kinds.has("sign"))
+	_chk("V.03 a single-entity cell still returns exactly one",
+			ov.entities_at(stack[0].cell if stack.size() < 2 else Vector2i(0, 0)).size() <= 1)
+
+	# The cycle: first click takes the top, the next takes the one under it,
+	# and the one after wraps. Without wrap the second event is unreachable.
+	var first := ov.next_in_stack(gym_door, null)
+	_chk("V.04 a first click selects the top of the stack", first == stack[0])
+	var second := ov.next_in_stack(gym_door, first)
+	_chk("V.05 clicking again moves DOWN the stack, not nowhere",
+			second == stack[1] and second != first)
+	_chk("V.06 and a third click wraps rather than dead-ending",
+			ov.next_in_stack(gym_door, second) == first)
+	# A selection sitting on a different cell is the ordinary case of clicking
+	# somewhere new; it must not be treated as "already in this stack".
+	_chk("V.07 a selection elsewhere restarts at the top",
+			ov.next_in_stack(gym_door, vroot) == stack[0])
+	_chk("V.08 an empty cell yields nothing to select",
+			ov.next_in_stack(Vector2i(1, 1), null) == null)
+
+	var counts := ov.events_counts()
+	_chk("V.09 the banner counts the one stacked cell here",
+			int(counts["stacked"]) == 1)
+	# Viridian City's five warps all lead to unbaked interiors. PENDING, not
+	# broken — the banner must not colour its border for these.
+	_chk("V.10 all five warps count as pending dead doors",
+			int(counts["dead_doors"]) == 5)
+	_chk("V.11 and none of them counts as a defect",
+			int(counts["broken_warps"]) == 0 and int(counts["typo_trainers"]) == 0)
+	vroot.free()
+
+	# Route 22: three stacked cells, all paired triggers on one VAR. Not
+	# conditional — the gate above already covers this map.
+	var rroot: Node2D = (load("res://scenes/maps/Route22_Frlg.tscn")
+			as PackedScene).instantiate()
+	var rov := MapOverlay.new()
+	rov.map_data = load("res://scenes/maps/Route22_Frlg_data.tres")
+	rroot.add_child(rov)
+	var rc := rov.events_counts()
+	_chk("V.12 Route 22's three trigger pairs are counted once each",
+			int(rc["stacked"]) == 3)
+	_chk("V.13 stacked triggers are not miscounted as defects",
+			int(rc["broken_warps"]) == 0 and int(rc["typo_trainers"]) == 0)
+	rroot.free()
+
+	# A genuine defect DOES colour the verdict. Synthetic, because no real map
+	# carries one — which is the point.
+	var bad := MapOverlay.new()
+	bad.map_data = _synth(4, 4, [])
+	var holder := Node2D.new()
+	var container := Node2D.new()
+	container.name = "Triggers"
+	holder.add_child(container)
+	var w := Warp.new()
+	w.cell = Vector2i(1, 1)
+	w.dest_map = "MAP_NOT_A_REAL_PLACE"
+	container.add_child(w)
+	holder.add_child(bad)
+	var bc := bad.events_counts()
+	_chk("V.14 an undefined destination counts as a defect, not as pending",
+			int(bc["broken_warps"]) == 1 and int(bc["dead_doors"]) == 0)
+	holder.free()
+
+
+## Section X — the paint-gesture lifecycle.
+##
+## [Step 5] Moved off the plugin, which is the one surface here with no
+## automated coverage and which has now shipped three defects. The rule worth
+## protecting is narrow: an empty snapshot must NOT produce an undo action.
+## `restore_cells()` early-returns on `{}`, so committing one anyway leaves an
+## entry in the editor's history that silently reverts nothing — and Section R
+## cannot see that, because it drives snapshot/restore as pure functions and
+## never asserts when they are called.
+##
+## Diagnosed live in the editor before this landed: the capture was in fact
+## happening (`pre_drag=4`), so this is a guard against a fault that has not
+## occurred, put on the tested side while the shape of it is still known.
+func _test_gesture_lifecycle() -> void:
+	var ov := MapOverlay.new()
+
+	# No map: nothing to capture, and the caller must be told so.
+	_chk("X.01 a gesture with no map reports nothing to capture",
+			not ov.begin_edit_gesture())
+	_chk("X.02 and leaves no gesture open", not ov.gesture_is_open())
+	_chk("X.03 closing it yields an empty snapshot, not junk",
+			ov.end_edit_gesture().is_empty())
+
+	ov.map_data = _synth(4, 4, [], [], [])
+	_chk("X.04 a gesture with a real map captures", ov.begin_edit_gesture())
+	_chk("X.05 and reports itself open", ov.gesture_is_open())
+
+	# The captured state must be the state BEFORE the paint, or undo returns to
+	# the wrong place — the whole point of capturing at mouse-down.
+	ov.edit_mode = MapOverlay.EditMode.COLLISION
+	ov.paint_collision = 1
+	ov.apply_edit(Vector2i(1, 1))
+	var pre := ov.end_edit_gesture()
+	_chk("X.06 the snapshot predates the paint",
+			int(pre["collision"][1 * 4 + 1]) == 0)
+	_chk("X.07 while the live map carries it",
+			ov.map_data.collision_at(1, 1) == 1)
+	_chk("X.08 closing clears the gesture", not ov.gesture_is_open())
+	_chk("X.09 and closing twice does not resurrect it",
+			ov.end_edit_gesture().is_empty())
+
+	# Restoring that snapshot must actually undo the paint.
+	ov.restore_cells(pre)
+	_chk("X.10 restoring the captured snapshot reverts the paint",
+			ov.map_data.collision_at(1, 1) == 0)
+
+	# The save result must be readable after the fact: painting no longer
+	# writes, so a deliberate save failing is the only way an edit is lost, and
+	# the plugin reports on this rather than guessing.
+	ov.save_map_data()
+	_chk("X.11 a pathless MapData records its failure rather than hiding it",
+			ov.last_save_error == ERR_FILE_BAD_PATH)
+
+	# --- the dirty invariant, which is what makes stop-saving-on-paint safe ---
+	# Every one of these was previously unobservable: while painting saved,
+	# "has the file kept up" was never a question anything could ask.
+	var md2 := _synth(4, 4, [], [], [])
+	ov.map_data = md2
+	ov.save_map_data()          # clears whatever the fixtures left set
+	md2.resource_path = "user://_x_dirty_test.tres"
+	_chk("X.12 a saved overlay starts clean",
+			ov.save_map_data() == OK and not ov.has_unsaved_edits())
+
+	ov.edit_mode = MapOverlay.EditMode.COLLISION
+	ov.paint_collision = 1
+	ov.apply_edit(Vector2i(2, 2))
+	_chk("X.13 painting marks the file behind the view", ov.has_unsaved_edits())
+	_chk("X.14 and saving clears it",
+			ov.save_map_data() == OK and not ov.has_unsaved_edits())
+
+	# An undo moves memory AWAY from disk just as a paint does, so it must
+	# dirty rather than clear. Getting this backwards would show "saved" over a
+	# view the file does not match — the exact divergence the removed
+	# save-on-undo used to prevent by writing.
+	ov.restore_cells(pre)
+	_chk("X.15 an undo dirties rather than cleans", ov.has_unsaved_edits())
+
+	# A failed save must NOT clear the flag, or the banner goes quiet while the
+	# work is still only in memory — the worst of the three states.
+	md2.resource_path = ""
+	_chk("X.16 a failed save leaves the warning standing",
+			ov.save_map_data() != OK and ov.has_unsaved_edits())
+
+	ov.map_data = null
+	ov.save_map_data()
+	_chk("X.17 an absent MapData records its own distinct code",
+			ov.last_save_error == ERR_UNCONFIGURED)
+
+	# --- a paint that changes no VALUE still changes PROVENANCE ---
+	# Found on a real editing pass, not by reading: 8 of 38 authored cells came
+	# from repainting a value that was already correct. `set_collision` marks the
+	# cell authored unconditionally, but `changed` asked only about the value and
+	# the explicit bit — so those 8 flipped IMPORTED -> AUTHORED with the banner
+	# off and no undo entry, and an AUTHORED cell is precisely what makes the
+	# baker refuse a re-bake without `--force`.
+	#
+	# The fixture has to match REAL imported data, which `_synth` alone does not:
+	# imported cells arrive explicit on BOTH attributes. Left at `_synth`'s empty
+	# `attr_explicit`, the pre-existing `not ..._is_explicit` clause would catch
+	# this by accident and the test would prove nothing.
+	var md3 := _synth(4, 4, [], [], [])
+	md3.attr_explicit.resize(md3.metatile.size())
+	md3.attr_explicit.fill(MapData.ATTR_ALL_EXPLICIT)
+	md3.resource_path = "user://_x_authored_test.tres"
+	ov.map_data = md3
+	ov.edit_mode = MapOverlay.EditMode.COLLISION
+	ov.paint_collision = md3.collision_at(1, 1)   # deliberately the SAME value
+
+	_chk("X.18 an imported cell starts unauthored", not md3.is_authored(1, 1))
+	_chk("X.19 and out of bounds reports unauthored rather than erroring",
+			not md3.is_authored(-1, 0))
+	_chk("X.20 the fixture starts clean",
+			ov.save_map_data() == OK and not ov.has_unsaved_edits())
+	_chk("X.21 repainting the value already there still reports a change",
+			ov.apply_edit(Vector2i(1, 1)))
+	_chk("X.22 because it flipped provenance", md3.is_authored(1, 1))
+	_chk("X.23 and that dirties the file like any other edit",
+			ov.has_unsaved_edits())
+	# The discriminator: without this the new clause could just be "always true".
+	_chk("X.24 a second identical repaint is then a genuine no-op",
+			not ov.apply_edit(Vector2i(1, 1)))
+
+	DirAccess.remove_absolute(
+			ProjectSettings.globalize_path("user://_x_dirty_test.tres"))
+	DirAccess.remove_absolute(
+			ProjectSettings.globalize_path("user://_x_authored_test.tres"))
+	ov.free()
+
+
+## Section W — the baker's own re-bake guard.
+##
+## [Rider A] The guard shipped verified by hand only: one field, one map, one
+## direction. It is now the sole automated defender of hand-edited entity data,
+## so its normalisation is driven directly against scratch strings — the same
+## shape `_test_baked_scene_uids` uses to test UID preservation without running
+## real bakes.
+##
+## The risk being tested is SCOPE. The normalisation strips per-save resource
+## labels so the check does not fire on every map; strip one character too
+## much and the guard goes quietly blind to a real change. W.04 is that case:
+## this project has already eaten a break where a batch refactor renamed atlas
+## outputs without updating consumers, which is precisely an `[ext_resource]`
+## `path=` moving.
+func _test_bake_guard() -> void:
+	var baker: GDScript = load("res://scenes/overworld/map_baker.gd")
+
+	const A := "[ext_resource type=\"Texture2D\" path=\"res://a.png\" id=\"1_7t5wp\"]\n" \
+			+ "[node name=\"X\" type=\"Node2D\" unique_id=2044649524]\n" \
+			+ "tile = SubResource(\"TileSetAtlasSource_vwmun\")\n" \
+			+ "script = ExtResource(\"1_7t5wp\")\n" \
+			+ "sight_range = 3\n"
+	# Same content, every per-save label different — what a scratch bake of an
+	# unchanged map actually produces.
+	const B := "[ext_resource type=\"Texture2D\" path=\"res://a.png\" id=\"1_kcfnn\"]\n" \
+			+ "[node name=\"X\" type=\"Node2D\" unique_id=99999]\n" \
+			+ "tile = SubResource(\"TileSetAtlasSource_nmk7p\")\n" \
+			+ "script = ExtResource(\"1_kcfnn\")\n" \
+			+ "sight_range = 3\n"
+	_chk("W.01 per-save labels alone do not count as a change",
+			baker._normalise_text(A) == baker._normalise_text(B))
+
+	# The case the guard exists for.
+	var edited := A.replace("sight_range = 3", "sight_range = 9")
+	_chk("W.02 a hand-tuned sight_range IS a change",
+			baker._normalise_text(A) != baker._normalise_text(edited))
+	_chk("W.03 and the report names the field rather than dumping the file",
+			baker._first_differences(baker._normalise_text(A),
+					baker._normalise_text(edited)).contains("sight_range"))
+
+	# [Rider A] Scope check. `path=` sits on the same line as the id that gets
+	# normalised, so an over-broad rule would swallow it.
+	var repathed := A.replace("res://a.png", "res://renamed.png")
+	_chk("W.04 a repointed ext_resource path is NOT masked by normalisation",
+			baker._normalise_text(A) != baker._normalise_text(repathed))
+	# A stem carries meaning even though the suffix does not: losing the whole
+	# label would hide a resource being swapped for a different KIND.
+	var restyled := A.replace("SubResource(\"TileSetAtlasSource_vwmun\")",
+			"SubResource(\"TileSet_vwmun\")")
+	_chk("W.05 a changed resource stem is not masked either",
+			baker._normalise_text(A) != baker._normalise_text(restyled))
+	# Property values must survive untouched — they can look like labels.
+	const PROPS := "script_label = \"Route3_EventScript_Robin\"\n" \
+			+ "graphics_id = \"OBJ_EVENT_GFX_LASS_FRLG\"\n" \
+			+ "trainer_key = \"TRAINER_LASS_ROBIN_FRLG\"\n"
+	_chk("W.06 real property strings are left alone by the label rules",
+			baker._normalise_text(PROPS) == PROPS)
+	# A node added by hand is the other thing a re-bake would eat.
+	var extra := A + "[node name=\"MapOverlay\" type=\"Node2D\" parent=\".\"]\n"
+	_chk("W.07 an added node counts as a change",
+			baker._normalise_text(A) != baker._normalise_text(extra))
+	_chk("W.08 an unchanged file reports no differences at all",
+			baker._first_differences(baker._normalise_text(A),
+					baker._normalise_text(B)) == "")
+
+
+## Section O — the runtime clip math, and its fallback.
+##
+## The editor path no longer exercises clipping at all (it draws the whole map
+## on purpose), so without this the runtime clip is code nothing checks. It is
+## also where the original defect lived: an empty clip rect made the overlay
+## render NOTHING, which reads as "the tool is broken" rather than "the tool
+## drew zero cells".
+func _test_clip_math() -> void:
+	var ov := MapOverlay.new()
+	ov.map_data = _synth(24, 20, [], [], [])
+
+	# The override is the seam that lets a region be pinned without a camera.
+	ov.visible_rect_override = Rect2i(4, 4, 6, 6)
+	_chk("O.01 an override clips to exactly the requested region",
+			ov._visible_cells() == Rect2i(4, 4, 6, 6))
+
+	ov.visible_rect_override = Rect2i(20, 16, 40, 40)
+	_chk("O.02 an override is clamped to the map, not trusted",
+			ov._visible_cells() == Rect2i(20, 16, 4, 4))
+
+	# Zero size means "unset", not "draw nothing" -- Rect2i() is the default.
+	ov.visible_rect_override = Rect2i()
+	_chk("O.03 a zero-size override falls through to the full map",
+			ov._visible_cells() == Rect2i(0, 0, 24, 20))
+
+	# An EXPLICIT off-map override is a request, not a lying transform, and is
+	# honoured as one. The fallback below is deliberately not applied here --
+	# conflating the two would make O.02's clamping meaningless.
+	ov.visible_rect_override = Rect2i(100, 100, 5, 5)
+	_chk("O.04 an explicit off-map override is honoured, not overridden",
+			ov._visible_cells().size == Vector2i.ZERO)
+
+	# The degenerate-fallback branch itself: a node in a real tree, parked far
+	# enough away that the viewport maps to cells nowhere near the map, so the
+	# intersection is empty. Drawing everything is wrong-but-visible; drawing
+	# nothing reads as a broken tool, which is exactly how this first shipped.
+	ov.visible_rect_override = Rect2i()
+	add_child(ov)
+	ov.position = Vector2(1_000_000, 1_000_000)
+	_chk("O.05 a degenerate clip falls back to the full map, never to nothing",
+			ov._visible_cells() == Rect2i(0, 0, 24, 20))
+	remove_child(ov)
+
+	ov.map_data = null
+	_chk("O.06 no map data yields an empty rect rather than crashing",
+			ov._visible_cells() == Rect2i())
+	ov.map_data = null
+	ov.free()
+
+
+## Section P — the write half.
+##
+## Driven through `apply_edit()`, not `paint()`: paint()'s editor gate is
+## absolute and a headless run is not the editor, so going through it could
+## only ever assert that it refused. P.01 asserts exactly that, and everything
+## below tests the dispatch underneath it.
+func _test_write_half() -> void:
+	var ov := MapOverlay.new()
+	var md := _synth(4, 4, [], [], [])
+	ov.map_data = md
+
+	ov.edit_mode = MapOverlay.EditMode.COLLISION
+	ov.paint_collision = 1
+	_chk("P.01 paint() refuses outside the editor, whatever the mode",
+			ov.paint(Vector2i(1, 1)) == false)
+	_chk("P.02 and refusing leaves the cell untouched",
+			md.collision_at(1, 1) == 0 and not md.collision_is_explicit(1, 1))
+
+	# --- collision ---
+	_chk("P.03 apply_edit sets collision", ov.apply_edit(Vector2i(1, 1)))
+	_chk("P.04 the value landed", md.collision_at(1, 1) == 1)
+	_chk("P.05 and is marked EXPLICIT, not a guess",
+			md.collision_is_explicit(1, 1))
+	# An IMPORTED cell is explicit on BOTH from the start -- its values came
+	# from source and are authoritative, not a guess (§1.9). This assertion
+	# used to claim the opposite and only passed because the fixture left
+	# provenance empty, so _resize_attr_explicit's IMPORTED branch never ran.
+	# The "one paint does not confirm the other attribute" proof that was
+	# intended here lives at P.20, on a cell where it is actually meaningful.
+	_chk("P.06 an IMPORTED cell was already explicit on both",
+			md.elevation_is_explicit(1, 1))
+	_chk("P.07 the cell is now AUTHORED",
+			md.provenance[1 * 4 + 1] == MapData.Provenance.AUTHORED)
+	_chk("P.08 a repeat of the same edit reports no change",
+			ov.apply_edit(Vector2i(1, 1)) == false)
+
+	# --- elevation ---
+	ov.edit_mode = MapOverlay.EditMode.ELEVATION
+	ov.paint_elevation = 4
+	_chk("P.09 apply_edit sets elevation", ov.apply_edit(Vector2i(1, 1)))
+	_chk("P.10 the value landed", md.elevation_at(1, 1) == 4)
+	_chk("P.11 and is marked EXPLICIT", md.elevation_is_explicit(1, 1))
+	_chk("P.12 both attributes confirmed clears needs_review",
+			not md.needs_review(1, 1))
+
+	# --- author-with-inherited-defaults: the 87%-right guess ---
+	ov.edit_mode = MapOverlay.EditMode.AUTHOR
+	# Fully confirmed, both attributes: set_collision alone would leave THIS
+	# cell's elevation unconfirmed and it would count as review itself.
+	md.set_collision(2, 3, 1)
+	md.set_elevation(2, 3, 3)
+	_chk("P.13 authoring a cell succeeds", ov.apply_edit(Vector2i(2, 2)))
+	_chk("P.14 it is AUTHORED", md.provenance[2 * 4 + 2] == MapData.Provenance.AUTHORED)
+	_chk("P.15 collision was INHERITED, not left at zero",
+			md.collision_at(2, 2) == 1)
+	_chk("P.16 but is NOT marked explicit -- it is a guess",
+			not md.collision_is_explicit(2, 2))
+	_chk("P.17 nor is elevation", not md.elevation_is_explicit(2, 2))
+	_chk("P.18 so the cell reads as needing review", md.needs_review(2, 2))
+	_chk("P.19 review_count sees it", ov.review_count() == 1)
+
+	# Confirming one attribute is not enough; that is the whole point of
+	# tracking them separately.
+	ov.edit_mode = MapOverlay.EditMode.COLLISION
+	ov.apply_edit(Vector2i(2, 2))
+	_chk("P.20 confirming ONLY collision still leaves it under review",
+			md.needs_review(2, 2) and ov.review_count() == 1)
+	ov.edit_mode = MapOverlay.EditMode.ELEVATION
+	ov.apply_edit(Vector2i(2, 2))
+	_chk("P.21 confirming both clears it", ov.review_count() == 0)
+
+	# --- guards ---
+	ov.edit_mode = MapOverlay.EditMode.NONE
+	_chk("P.22 EditMode.NONE is inert", ov.apply_edit(Vector2i(0, 0)) == false)
+	ov.edit_mode = MapOverlay.EditMode.COLLISION
+	_chk("P.23 an out-of-bounds cell is refused",
+			ov.apply_edit(Vector2i(99, 99)) == false)
+	_chk("P.24 cell_at maps a local point to its cell",
+			ov.cell_at(Vector2(33.0, 17.0)) == Vector2i(2, 1))
+	ov.map_data = null
+	ov.free()
+
+
+## Section Q — author, save, reload.
+##
+## The round trip is the claim that matters: an edit is worthless if it does
+## not survive the file. Runs against a real .tres on disk via the same
+## ResourceSaver/load pair the editor uses, not an in-memory copy.
+func _test_author_save_reload() -> void:
+	const PATH := "user://m27b_round_trip.tres"
+	var ov := MapOverlay.new()
+	var md := _synth(4, 4, [], [], [])
+	ov.map_data = md
+
+	ov.edit_mode = MapOverlay.EditMode.ELEVATION
+	ov.paint_elevation = 5
+	ov.apply_edit(Vector2i(3, 1))
+	ov.edit_mode = MapOverlay.EditMode.AUTHOR
+	ov.apply_edit(Vector2i(0, 0))
+	var before := ov.review_count()
+
+	_chk("Q.01 saving without a resource_path is refused, not silently lost",
+			ov.save_map_data() == ERR_FILE_BAD_PATH)
+
+	md.take_over_path(PATH)
+	_chk("Q.02 save succeeds once there is a path", ov.save_map_data() == OK)
+	_chk("Q.03 the file exists", FileAccess.file_exists(PATH))
+
+	var reloaded: MapData = ResourceLoader.load(
+			PATH, "", ResourceLoader.CACHE_MODE_IGNORE) as MapData
+	_chk("Q.04 it reloads as a MapData", reloaded != null)
+	if reloaded != null:
+		_chk("Q.05 the confirmed elevation survived", reloaded.elevation_at(3, 1) == 5)
+		_chk("Q.06 its EXPLICIT bit survived -- a value without it is a guess",
+				reloaded.elevation_is_explicit(3, 1))
+		# The AUTHORED cell is where "unconfirmed" is meaningful: an imported
+		# one starts explicit on both, so asserting the absence there proved
+		# nothing except that the fixture was unrealistic.
+		_chk("Q.07 the AUTHORED cell round-trips with BOTH attributes unconfirmed",
+				not reloaded.collision_is_explicit(0, 0)
+				and not reloaded.elevation_is_explicit(0, 0))
+		_chk("Q.08 AUTHORED provenance survived",
+				reloaded.provenance[0] == MapData.Provenance.AUTHORED)
+		_chk("Q.09 the unconfirmed count survived the round trip (%d)" % before,
+				reloaded.review_cells().size() == before)
+		_chk("Q.10 an untouched cell is still IMPORTED",
+				reloaded.provenance[3 * 4 + 3] == MapData.Provenance.IMPORTED)
+	ov.map_data = null
+	ov.free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
+
+
+## Section R — undo.
+##
+## The Ctrl+Z keystroke itself is an in-editor check, but the thing it depends
+## on is testable here: `snapshot_cells()` / `restore_cells()` are literally
+## what the undo action's do and undo methods call, with different data. If
+## those are not symmetric, undo is broken no matter how the keystroke is
+## wired.
+##
+## Undo was NOT wired when the write half first shipped. That is worse than it
+## sounds: the editor's history stays live, so Ctrl+Z would have undone some
+## unrelated earlier action while the paint remained applied.
+func _test_undo_symmetry() -> void:
+	var ov := MapOverlay.new()
+	var md := _synth(4, 4, [], [], [])
+	ov.map_data = md
+
+	var probe: Dictionary = ov.snapshot_cells()
+	_chk("R.01 a snapshot captures all four mutable arrays",
+			probe.has("collision") and probe.has("elevation")
+			and probe.has("provenance") and probe.has("attr_explicit"))
+	# Packed arrays compare by VALUE in GDScript, so `snap != live` proves
+	# nothing about aliasing. Mutate the live array and see if the snapshot
+	# follows -- a plain element write, so no provenance/explicit side effects.
+	md.collision[3 * 4 + 3] = 1
+	_chk("R.02 the snapshot is a COPY -- a live reference would make undo a no-op",
+			probe["collision"][3 * 4 + 3] == 0)
+
+	var before: Dictionary = ov.snapshot_cells()
+
+	# A drag's worth of edits, mixing both kinds.
+	ov.edit_mode = MapOverlay.EditMode.COLLISION
+	ov.paint_collision = 1
+	for c in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]:
+		ov.apply_edit(c)
+	ov.edit_mode = MapOverlay.EditMode.AUTHOR
+	ov.apply_edit(Vector2i(1, 1))
+	var after: Dictionary = ov.snapshot_cells()
+	var review_after := ov.review_count()
+	_chk("R.03 the drag actually changed something", review_after > 0)
+
+	# undo
+	ov.restore_cells(before)
+	_chk("R.04 undo restores the value", md.collision_at(0, 0) == 0)
+	_chk("R.05 undo restores the EXPLICIT bit, not just the value",
+			not md.collision_is_explicit(0, 0))
+	_chk("R.06 undo restores provenance",
+			md.provenance[0] == MapData.Provenance.IMPORTED)
+	_chk("R.07 and therefore the unconfirmed-defaults counter",
+			ov.review_count() == 0)
+
+	# redo -- the same method, the other snapshot
+	ov.restore_cells(after)
+	_chk("R.08 redo re-applies the value", md.collision_at(0, 0) == 1)
+	_chk("R.09 redo re-applies the explicit bit", md.collision_is_explicit(0, 0))
+	_chk("R.10 redo restores the counter", ov.review_count() == review_after)
+
+	# Round-tripping must be exactly reversible, not approximately.
+	ov.restore_cells(before)
+	ov.restore_cells(after)
+	ov.restore_cells(before)
+	_chk("R.11 repeated undo/redo does not drift",
+			md.collision == before["collision"]
+			and md.elevation == before["elevation"]
+			and md.provenance == before["provenance"]
+			and md.attr_explicit == before["attr_explicit"])
+
+	_chk("R.12 an empty snapshot is ignored rather than wiping the map",
+			_no_change_on_empty_restore(ov, md))
+	ov.map_data = null
+	ov.free()
+
+
+func _no_change_on_empty_restore(ov: MapOverlay, md: MapData) -> bool:
+	var keep := md.collision.duplicate()
+	ov.restore_cells({})
+	return md.collision == keep
 
 
 func _write_text(path: String, text: String) -> void:

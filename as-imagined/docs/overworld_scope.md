@@ -1779,11 +1779,34 @@ nothing about what was actually wrong. Now asserted by name across all baked
 maps (§N), matching both the scene path and the script path so a bare node with
 the script attached cannot slip past.
 
+**Rule 4 — programmatic saves drop UIDs at THREE levels, and all three are
+churn.** `ResourceSaver` writes neither the resource header's own `uid` nor the
+`uid` on each `[ext_resource]` line; the editor writes both. So a baker-produced
+artifact and an editor-touched one differ permanently on those lines — landing
+exactly where `check_bake_diff` and git review look, which is the same failure
+`unique_id` normalisation exists to prevent. Closed at all three:
+
+| Level | Rule | Why |
+|---|---|---|
+| Scene header (`.tscn`) | preserve, mint if absent | a scene with no UID is invisible to the editor's resource pickers |
+| Resource header (`.tres`) | preserve, mint if absent | same, one artifact down; it holds the per-cell data Step D edits |
+| `[ext_resource]` lines | **preserve only, never mint** | the UID belongs to the resource being *pointed at*, not the scene pointing at it — inventing one asserts an identity the baker has no authority over |
+
 **Corollary on baked scenes.** A baked map is *also* hand-editable (§1.9), so an
 added child is legitimate content, not a defect — assertions about baked
 structure must check the baker's own containers and their order, never "and
 nothing else". Rule 3 is the deliberate exception, and it is enforced by
 identity rather than by count.
+
+### 20.2 "Untagged", defined *(new rev 29)*
+
+**An untagged cell is one whose behaviour value has no `MB_*` name.** Measured
+across all 421 imported maps: **zero cells are untagged**, so the bright magenta
+fill can only ever mean one of two things — a hand-painted cell whose behaviour
+was never set, or an importer regression. It is never a normal state of imported
+data, which is precisely why it is worth shouting about.
+
+---
 
 - **Connection ghost preview (wanted, lower priority)** — `@tool` script
   instancing semi-transparent neighbor maps at true offsets from connection
