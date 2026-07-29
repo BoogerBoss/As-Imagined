@@ -1791,9 +1791,12 @@ this form is mandatory, not stylistic):
 ```
 
 **Fresh-checkout baseline:** `scenes/overworld/m27a_step_resolver_test.tscn`
-reads **62/62** in a clean clone and **70/70** only after
-`python3 scripts/gen_map_import.py all` regenerates the gitignored map JSONs —
-it announces which mode it is in. Note `reference/pokeemerald_expansion` is a
+reads **44/44** (90 gated) in a clean clone, and **134/134** only after
+`python3 scripts/gen_map_import.py all` regenerates the gitignored map JSONs
+AND the corridor is baked — it announces which mode it is in. Both totals must
+balance against `EXPECTED_TOTAL` via Z.99; a section that bails without
+crediting `_gated` silently drops assertions the balance check then cannot
+see, which is exactly how ~50 of them went missing once. Note `reference/pokeemerald_expansion` is a
 git submodule, so a fresh clone needs `git submodule update --init` before any
 generator runs. See docs/overworld_scope.md's "Regeneration chain" note.
 

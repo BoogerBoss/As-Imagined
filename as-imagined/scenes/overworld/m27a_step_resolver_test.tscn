@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=2 format=3 uid="uid://cvqqox82opara"]
 
 [ext_resource type="Script" path="res://scenes/overworld/m27a_step_resolver_test.gd" id="1"]
 

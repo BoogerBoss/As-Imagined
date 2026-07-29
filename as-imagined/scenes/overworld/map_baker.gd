@@ -21,6 +21,9 @@ const ATLAS_COLS := 32
 const MAP_DIR := "res://assets/maps/"
 const ATLAS_DIR := "res://assets/map_atlases/"
 const OUT_DIR := "res://scenes/maps/"
+
+## Exactly how Godot writes it into a `[gd_scene …]` header.
+const UID_KEY := "uid=\""
 const PLANE_NAMES := ["ground", "objects", "overhangs"]
 
 # §1.6 routing: layer_type -> [[half, plane], ...]
@@ -68,6 +71,9 @@ func _bake(map_name: String) -> bool:
 
 	var scene_path := OUT_DIR + map_name + ".tscn"
 	var data_path := OUT_DIR + map_name + "_data.tres"
+
+	# Read BEFORE the save overwrites it -- see _preserve_or_mint_uid().
+	var prior_uid := _existing_uid(scene_path)
 
 	# §1.9 re-import guard: never clobber hand-authored work. Per-map by
 	# construction, so this is a usage check, not a merge.
@@ -133,6 +139,7 @@ func _bake(map_name: String) -> bool:
 	if ResourceSaver.save(packed, scene_path) != OK:
 		push_error("map_baker: could not write %s" % scene_path)
 		return false
+	_preserve_or_mint_uid(scene_path, prior_uid)
 	if ResourceSaver.save(src, data_path) != OK:
 		push_error("map_baker: could not write %s" % data_path)
 		return false
@@ -140,6 +147,78 @@ func _bake(map_name: String) -> bool:
 	print("  %-34s %2dx%-3d  atlas=%s" % [map_name, src.width, src.height, src.atlas])
 	root.free()
 	return true
+
+
+## The UID already on disk, or "" if the scene is new or carries none.
+## Must be read BEFORE ResourceSaver.save() overwrites the file.
+static func _existing_uid(scene_path: String) -> String:
+	if not FileAccess.file_exists(scene_path):
+		return ""
+	var f := FileAccess.open(scene_path, FileAccess.READ)
+	if f == null:
+		return ""
+	var header := f.get_line()
+	f.close()
+	return _uid_in_header(header)
+
+
+## Parses `uid="uid://…"` out of a `[gd_scene …]` header line.
+static func _uid_in_header(header: String) -> String:
+	if not header.begins_with("[gd_scene"):
+		return ""
+	var i := header.find(UID_KEY)
+	if i < 0:
+		return ""
+	var start := i + UID_KEY.length()
+	var end := header.find("\"", start)
+	return header.substr(start, end - start) if end > start else ""
+
+
+## [M27B] Scene UIDs — preserve or mint, never re-mint.
+##
+## `ResourceSaver.save()` does not write a `uid=` into a scene it saves
+## programmatically. The editor DOES mint one when it saves a scene itself —
+## which is why PalletTown_Frlg.tscn, the one map opened by hand, already had
+## one while the other seven did not. A scene with no UID is invisible to the
+## editor's resource pickers, so it cannot be selected as an instanced child.
+##
+## **The one rule that makes this a fix rather than a new churn source: a UID
+## is assigned once per map, forever.** Minting fresh each bake would change
+## every scene's identity on every re-bake — the `unique_id` churn problem
+## reintroduced one line higher, and worse, because a UID is a reference other
+## scenes resolve against. So the existing UID is read off disk first and put
+## straight back; a new one is minted only when there genuinely isn't one.
+##
+## A CHANGED uid is therefore a semantic diff and check_bake_diff.py must not
+## normalise it away — under this rule it can only ever mean a bug.
+static func _preserve_or_mint_uid(scene_path: String, prior_uid: String) -> void:
+	var f := FileAccess.open(scene_path, FileAccess.READ)
+	if f == null:
+		return
+	var text := f.get_as_text()
+	f.close()
+
+	var nl := text.find("\n")
+	if nl < 0:
+		return
+	var header := text.substr(0, nl)
+	if not header.begins_with("[gd_scene") or header.contains(UID_KEY):
+		return  # not a scene header, or the saver already wrote one
+
+	var uid_text := prior_uid
+	if uid_text == "":
+		var id := ResourceUID.create_id()
+		uid_text = ResourceUID.id_to_text(id)
+		if not ResourceUID.has_id(id):
+			ResourceUID.add_id(id, scene_path)
+
+	var patched := header.trim_suffix("]") + " %s%s\"]" % [UID_KEY, uid_text]
+	var out := FileAccess.open(scene_path, FileAccess.WRITE)
+	if out == null:
+		push_error("map_baker: could not rewrite header of %s" % scene_path)
+		return
+	out.store_string(patched + text.substr(nl))
+	out.close()
 
 
 func _set_owner_recursive(n: Node, root: Node) -> void:

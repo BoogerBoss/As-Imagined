@@ -1,3 +1,9 @@
+@tool
+# @tool because MapOverlay is an editor surface and Godot instantiates a
+# NON-@tool script as a PLACEHOLDER in the editor -- calling into one throws
+# "Attempt to call a method on a placeholder instance". The whole read chain
+# behind the overlay must therefore be @tool. Safe: nothing here mutates
+# state or touches the scene tree.
 class_name StepResolver
 extends RefCounted
 
@@ -127,3 +133,78 @@ func _elevation_mismatch(from_elev: int, to: Vector2i) -> bool:
 
 static func _r(outcome: int, to: Vector2i) -> Dictionary:
 	return {"outcome": outcome, "to": to}
+
+
+# --- cell_info: the overlay's read seam (M27B Change 2) ----------------------
+#
+# §20 requires the overlay to read "the real cell_info() resolver". This is it,
+# and it lives on StepResolver deliberately: the overlay holds a resolver and
+# asks it, so there is one implementation of what a cell MEANS rather than a
+# renderer that re-derives movement rules from raw arrays and drifts.
+#
+# Nothing here resolves anything new. Per-cell values are delegated to MapData;
+# the movement semantics come from the SAME EXIT_BLOCKED / ENTRY_BLOCKED /
+# LEDGE_FOR tables resolve() itself consumes. If those tables change, the
+# overlay changes with them for free — which is the entire point.
+
+## A behaviour value with no MB_* name. Measured: **zero** of the 83 behaviours
+## present across all 421 imported maps are unnamed, so this can only ever flag
+## a hand-painted cell whose behaviour was never set — which is exactly what
+## §20's "bright magenta for untagged tiles" is for. Magenta on imported data
+## means the importer or the constants table regressed.
+static func is_untagged_behavior(beh: int) -> bool:
+	return not MetatileBehavior.NAME_BY_ID.has(beh)
+
+
+## Everything the overlay needs to draw one cell, in one call.
+##
+## Returns a Dictionary rather than a typed object to match this project's own
+## convention for multi-value returns (resolve() above, BattleManager's result
+## dicts). `in_bounds` is always present; every other key is only meaningful
+## when it is true.
+func cell_info(cell: Vector2i) -> Dictionary:
+	if not _map.in_bounds(cell.x, cell.y):
+		return {"cell": cell, "in_bounds": false}
+
+	var beh: int = _map.behavior_at(cell.x, cell.y)
+	var elev: int = _map.elevation_at(cell.x, cell.y)
+
+	# Derived from the resolver's own tables, not from a second opinion about
+	# which behaviours block which way.
+	var exits_blocked: Array[int] = []
+	var entries_blocked: Array[int] = []
+	for dir in [Dir.SOUTH, Dir.NORTH, Dir.WEST, Dir.EAST]:
+		if beh in EXIT_BLOCKED[dir]:
+			exits_blocked.append(dir)
+		if beh in ENTRY_BLOCKED[dir]:
+			entries_blocked.append(dir)
+
+	var ledge_dir := -1
+	for dir in LEDGE_FOR:
+		if beh == LEDGE_FOR[dir]:
+			ledge_dir = dir
+			break
+
+	var i := cell.y * _map.width + cell.x
+	return {
+		"cell": cell,
+		"in_bounds": true,
+		"metatile": _map.metatile_at(cell.x, cell.y),
+		"behavior": beh,
+		"behavior_name": MetatileBehavior.NAME_BY_ID.get(beh, ""),
+		"untagged": is_untagged_behavior(beh),
+		"collision": _map.collision_at(cell.x, cell.y),
+		"elevation": elev,
+		# 0 and 15 short-circuit every elevation comparison; 0 alone is 56% of
+		# Kanto and means "unconstrained here", not "staircase" (§1.4).
+		"elevation_wildcard": elev == ELEVATION_TRANSITION or elev == ELEVATION_MULTI_LEVEL,
+		"layer_type": _map.layer_type_at(cell.x, cell.y),
+		"priority": _map.priority_at(cell.x, cell.y),
+		"exits_blocked": exits_blocked,
+		"entries_blocked": entries_blocked,
+		"ledge_dir": ledge_dir,
+		"provenance": _map.provenance[i] if i < _map.provenance.size() else 0,
+		"collision_explicit": _map.collision_is_explicit(cell.x, cell.y),
+		"elevation_explicit": _map.elevation_is_explicit(cell.x, cell.y),
+		"needs_review": _map.needs_review(cell.x, cell.y),
+	}

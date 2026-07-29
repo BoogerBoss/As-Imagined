@@ -1738,6 +1738,53 @@ compile-time layout toggles, an encryption key obfuscating several fields).
   becomes MORE valuable under the import-first decision, not less** — it is the
   primary way to validate importer output, including the §1.4 elevation
   mapping.
+
+### 20.1 Rules for `@tool` surfaces *(new rev 29 — all three earned the hard way)*
+
+Three defects shipped in the overlay's own read half, in one afternoon. Every
+one was invisible to the runtime screenshots that "verified" it, and every one
+was found by a human opening the editor. They are recorded as rules rather than
+as an anecdote because the next `@tool` surface will hit the same three.
+
+**Rule 1 — a `@tool` surface's checkpoint includes in-editor verification, not
+just runtime screenshots; and its dependency chain is asserted `@tool` by
+test.** Godot instantiates a NON-`@tool` script as a *placeholder* in the
+editor: any call into one throws `Attempt to call a method on a placeholder
+instance`. So it is not enough for the tool node itself to carry `@tool` — every
+script it reads through must too (here: `map_overlay` → `step_resolver` →
+`map_data` → `metatile_behavior`). Runtime screenshots cannot catch this,
+because at runtime nothing is a placeholder. Asserted by reading the first line
+of each file (`m27a_step_resolver_test.gd` §L) — cheap, and it would have caught
+this for free. Note `metatile_behavior.gd` is GENERATED: its `@tool` comes from
+the emitter in `gen_map_import.py`, since a hand-added line there is wiped on
+the next importer run.
+
+**Rule 2 — editor mode draws everything; runtime clips; a degenerate clip falls
+back to full, never to nothing.** `get_viewport_transform()` does not track the
+2D editor camera for a node in the edited scene, so clipping against it in the
+editor yields an empty rect and the tool renders *nothing* — which reads as "the
+tool is broken" rather than "the tool drew zero cells". The clip exists for the
+runtime case, where a moving camera redraws constantly; in-editor the redraw is
+property-driven, so drawing the whole map is free even at Viridian Forest's
+3,726 cells.
+
+**Rule 3 — the overlay is never baked into a map scene, and a test says so.**
+It lives in its own scene and is instanced conditionally. That is not a style
+preference: a persisted instance ships inside the map scene *unconditionally*,
+bypassing the `OS.is_debug_build()` gate entirely and putting a developer x-ray
+in a shipped build. This already happened once — an editor session autosaved
+`PalletTown_Frlg.tscn` with the overlay instanced inside it, and the only thing
+that noticed was a container-count assertion about draw order, which says
+nothing about what was actually wrong. Now asserted by name across all baked
+maps (§N), matching both the scene path and the script path so a bare node with
+the script attached cannot slip past.
+
+**Corollary on baked scenes.** A baked map is *also* hand-editable (§1.9), so an
+added child is legitimate content, not a defect — assertions about baked
+structure must check the baker's own containers and their order, never "and
+nothing else". Rule 3 is the deliberate exception, and it is enforced by
+identity rather than by count.
+
 - **Connection ghost preview (wanted, lower priority)** — `@tool` script
   instancing semi-transparent neighbor maps at true offsets from connection
   metadata (never saved into the scene); Porymap's connection view in the Godot

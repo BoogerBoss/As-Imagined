@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://d3kwq54ex38qr"]
+
+[ext_resource type="Script" path="res://scripts/overworld/map_overlay.gd" id="1"]
+
+[node name="MapOverlay" type="Node2D"]
+script = ExtResource("1")

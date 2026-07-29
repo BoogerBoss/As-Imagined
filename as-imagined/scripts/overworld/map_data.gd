@@ -1,3 +1,9 @@
+@tool
+# @tool because MapOverlay is an editor surface and Godot instantiates a
+# NON-@tool script as a PLACEHOLDER in the editor -- calling into one throws
+# "Attempt to call a method on a placeholder instance". The whole read chain
+# behind the overlay must therefore be @tool. Safe: nothing here mutates
+# state or touches the scene tree.
 class_name MapData
 extends Resource
 

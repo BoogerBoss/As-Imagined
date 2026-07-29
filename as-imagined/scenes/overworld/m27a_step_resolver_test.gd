@@ -42,7 +42,37 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## Update this when adding or removing assertions. If it drifts, that is the
 ## point: a number nobody maintains is a number nobody trusts.
-const EXPECTED_TOTAL := 90
+const EXPECTED_TOTAL := 133
+
+## K.01-K.07 read the imported JSON, so they gate with section A.
+const CELL_INFO_MAP_ASSERTIONS := 7
+
+## M.01-M.09 read the baked corridor scenes, which a fresh checkout has not
+## produced yet. Gated the same way section A gates on the imported JSON.
+const BAKED_SCENE_ASSERTIONS := 9
+
+## N.01-N.08, same gate: one per baked corridor map.
+const OVERLAY_ASSERTIONS := 8
+
+## Sections H/I/J read BAKED SCENES, which a fresh checkout has not produced.
+## They used to assert existence and then bare-`return`, so on a fresh tree they
+## reported four hard FAILURES and silently dropped ~50 assertions from Z.99's
+## accounting — the balance check cannot catch what it is never told about.
+## Gated properly now: on a fresh tree they contribute nothing and credit their
+## full count instead.
+const BAKED_ARTIFACT_ASSERTIONS := 13
+## 25, not the 26 `_chk(` call sites you can grep for: I.18 is written as a
+## fail-fast pair (one call site inside the loop, one after it) and exactly one
+## of the two ever runs. A static grep is the wrong instrument here — this
+## number was measured from a real run.
+const OBJECT_EVENT_ASSERTIONS := 25
+const ROUND_TRIP_ASSERTIONS := 16
+
+## The eight maps chosen for the M27B render/bake subset.
+const CORRIDOR_MAPS := [
+	"PalletTown_Frlg", "PewterCity_Frlg", "Route1_Frlg", "Route22_Frlg",
+	"Route2_Frlg", "Route3_Frlg", "ViridianCity_Frlg", "ViridianForest_Frlg",
+]
 
 
 func _chk(label: String, cond: bool) -> void:
@@ -81,6 +111,11 @@ func _ready() -> void:
 	_test_object_events()
 	_test_marks_survive_round_trip()
 	_test_importer_stamps_explicit()
+	_test_cell_info_against_a_real_map()
+	_test_cell_info_synthetic_edges()
+	_test_tool_chain()
+	_test_baked_scene_uids()
+	_test_overlay_never_baked()
 
 	# Counted BEFORE Z.99 itself, so EXPECTED_TOTAL stays the count of real
 	# assertions rather than including this bookkeeping one.
@@ -95,8 +130,14 @@ func _ready() -> void:
 				+ "assertions gated (run `python3 scripts/gen_map_import.py all` "
 				+ "to enable)")
 	print("m27a_step_resolver_test: %d/%d passed" % [_passed, _total])
-	if OS.has_feature("headless") or "--autoplay" in OS.get_cmdline_args():
-		get_tree().quit()
+	# Unconditional. This used to be gated on
+	# `OS.has_feature("headless") or "--autoplay" in ...`, and the headless half
+	# is simply FALSE in 4.7 -- so the quit only ever fired via the flag, and an
+	# invocation without it printed every result and then sat there forever.
+	# That is the silent-hang family: a run that finished its work and looks
+	# like a deadlock. A test scene has nothing to do after reporting, so it
+	# exits, and no flag can change that.
+	get_tree().quit()
 
 
 # --- A. the imported artifact itself ---------------------------------------
@@ -277,10 +318,11 @@ func _test_ledges() -> void:
 func _test_baked_artifacts() -> void:
 	const SCENE := "res://scenes/maps/PalletTown_Frlg.tscn"
 	const DATA := "res://scenes/maps/PalletTown_Frlg_data.tres"
+	if not ResourceLoader.exists(DATA):
+		_gated += BAKED_ARTIFACT_ASSERTIONS
+		return
 	_chk("H.01 baked scene exists", ResourceLoader.exists(SCENE))
 	_chk("H.02 baked MapData resource exists", ResourceLoader.exists(DATA))
-	if not ResourceLoader.exists(DATA):
-		return
 
 	var d: MapData = load(DATA)
 	_chk("H.03 baked data is a MapData", d != null)
@@ -326,8 +368,13 @@ func _test_baked_artifacts() -> void:
 	_chk("H.12 draw order is Ground/Objects/Entities_P2/Overhangs/Entities_P1",
 			names.slice(0, 5)
 			== ["Ground", "Objects", "Entities_P2", "Overhangs", "Entities_P1"])
+	# Asserts the baker's OWN six containers and their order -- deliberately not
+	# `names.size() == 6`. A baked scene is also hand-editable (§1.9), and an
+	# added child is legitimate content, not a defect: this very map now carries
+	# a hand-instanced MapOverlay. Forbidding extras would make every legitimate
+	# edit look like a regression.
 	_chk("H.13 non-drawn events live in a separate trailing container",
-			names.size() == 6 and names[5] == "Triggers")
+			names.size() >= 6 and names[5] == "Triggers")
 	root.free()
 
 
@@ -339,6 +386,9 @@ func _test_baked_artifacts() -> void:
 ## drives the real chain: baked .tres -> mutate -> save -> reload.
 func _test_marks_survive_round_trip() -> void:
 	const BAKED_DATA := "res://scenes/maps/PalletTown_Frlg_data.tres"
+	if not ResourceLoader.exists(BAKED_DATA):
+		_gated += ROUND_TRIP_ASSERTIONS
+		return
 	var d: MapData = load(BAKED_DATA) as MapData
 	_chk("J.01 baked map data loads", d != null)
 	if d == null:
@@ -415,8 +465,105 @@ func _test_importer_stamps_explicit() -> void:
 	# `gen_map_import.py all` -- the mode the fresh-checkout announce line tells
 	# people to run -- emitted JSON the baker could not consume. Guarded here
 	# because the symptom appeared two steps downstream, at bake time.
-	_chk("J.20 the imported JSON carries a non-empty atlas name (got %r)" % m.atlas,
+	_chk("J.20 the imported JSON carries a non-empty atlas name (got %s)" % m.atlas,
 			m.atlas != "")
+
+
+
+# --- K. cell_info(): the overlay's read seam (M27B Change 2) ----------------
+## §20 requires the overlay to read the REAL resolver. These assert the seam
+## bundles what MapData and StepResolver already know WITHOUT re-deriving any
+## of it — the failure mode being a renderer that grows its own opinion about
+## which behaviours block which way and then drifts from the resolver.
+func _test_cell_info_against_a_real_map() -> void:
+	var m := MapData.load_from(MAP_JSON)
+	if m == null:
+		_gated += CELL_INFO_MAP_ASSERTIONS
+		return
+	var r := StepResolver.new(m)
+
+	var ci := r.cell_info(Vector2i(0, 0))
+	_chk("K.01 reports in_bounds for a real cell", ci["in_bounds"])
+	_chk("K.02 out-of-bounds is reported, not crashed",
+			not r.cell_info(Vector2i(-1, 0))["in_bounds"])
+	_chk("K.03 out-of-bounds carries no other keys to misread",
+			r.cell_info(Vector2i(999, 999)).size() == 2)
+
+	# Every field must agree with the source it delegates to — the seam adds no
+	# opinions of its own.
+	var agree := true
+	for y in range(m.height):
+		for x in range(m.width):
+			var c := r.cell_info(Vector2i(x, y))
+			if c["behavior"] != m.behavior_at(x, y) \
+					or c["collision"] != m.collision_at(x, y) \
+					or c["elevation"] != m.elevation_at(x, y) \
+					or c["layer_type"] != m.layer_type_at(x, y) \
+					or c["priority"] != m.priority_at(x, y) \
+					or c["needs_review"] != m.needs_review(x, y):
+				agree = false
+				break
+	_chk("K.04 every cell agrees with MapData across the whole map", agree)
+
+	# Imported data is fully named, so magenta never fires on it. This is the
+	# assertion that gives "untagged" its meaning.
+	var untagged := 0
+	for y in range(m.height):
+		for x in range(m.width):
+			if r.cell_info(Vector2i(x, y))["untagged"]:
+				untagged += 1
+	_chk("K.05 no imported cell is untagged (magenta means hand-painted)",
+			untagged == 0)
+	_chk("K.06 a real cell carries its MB_* name",
+			str(ci["behavior_name"]).begins_with("MB_"))
+	_chk("K.07 imported cells report both attributes explicit",
+			ci["collision_explicit"] and ci["elevation_explicit"])
+
+
+## Synthetic edges: behaviours the corridor does not contain, and the untagged
+## case that cannot exist in imported data at all.
+func _test_cell_info_synthetic_edges() -> void:
+	var N := MetatileBehavior.MB_IMPASSABLE_NORTH
+	var L := MetatileBehavior.MB_JUMP_SOUTH
+	var m := _synth(3, 1, [N, L, 0])
+	var r := StepResolver.new(m)
+
+	# Two-sided blocking, read straight off the resolver's own tables.
+	var n := r.cell_info(Vector2i(0, 0))
+	_chk("K.08 a north-blocked tile cannot be ENTERED heading south",
+			StepResolver.Dir.SOUTH in n["entries_blocked"])
+	_chk("K.09 ...and cannot be LEFT heading north",
+			StepResolver.Dir.NORTH in n["exits_blocked"])
+	_chk("K.10 ...and is unrestricted east/west",
+			not (StepResolver.Dir.EAST in n["exits_blocked"])
+			and not (StepResolver.Dir.WEST in n["exits_blocked"]))
+
+	var l := r.cell_info(Vector2i(1, 0))
+	_chk("K.11 a ledge reports its direction", l["ledge_dir"] == StepResolver.Dir.SOUTH)
+	_chk("K.12 a plain tile reports no ledge", r.cell_info(Vector2i(2, 0))["ledge_dir"] == -1)
+
+	# The untagged case. 240 constants cover 0..239, so anything above is
+	# genuinely unnamed — the only way magenta can ever appear.
+	var u := _synth(1, 1, [250])
+	_chk("K.13 a behaviour with no MB_* name is untagged",
+			StepResolver.new(u).cell_info(Vector2i(0, 0))["untagged"])
+	_chk("K.14 ...and a named one is not", not StepResolver.is_untagged_behavior(0))
+
+	# Elevation wildcards: 0 is 56% of Kanto and means unconstrained, not stairs.
+	var w := _synth(2, 1, [], [], [0, 3])
+	var rw := StepResolver.new(w)
+	_chk("K.15 elevation 0 is reported as a wildcard",
+			rw.cell_info(Vector2i(0, 0))["elevation_wildcard"])
+	_chk("K.16 a real elevation is not",
+			not rw.cell_info(Vector2i(1, 0))["elevation_wildcard"])
+
+	# A half-decided authored cell — the state the overlay exists to surface.
+	m.provenance = PackedByteArray([MapData.Provenance.AUTHORED, 0, 0])
+	m.attr_explicit = PackedByteArray([MapData.AttrFlag.ELEVATION_EXPLICIT, 3, 3])
+	var hd := StepResolver.new(m).cell_info(Vector2i(0, 0))
+	_chk("K.17 a half-decided cell reports needs_review", hd["needs_review"])
+	_chk("K.18 ...naming which attribute is still a guess",
+			hd["elevation_explicit"] and not hd["collision_explicit"])
 
 
 # --- G. debug toggle --------------------------------------------------------
@@ -435,6 +582,9 @@ func _test_debug_toggle() -> void:
 ## scene is the artifact, so a node that fails to persist (a missing owner, a
 ## dropped export) has to fail here rather than pass against the input.
 func _test_object_events() -> void:
+	if not ResourceLoader.exists("res://scenes/maps/Route3_Frlg.tscn"):
+		_gated += OBJECT_EVENT_ASSERTIONS
+		return
 	var packed: PackedScene = load("res://scenes/maps/Route3_Frlg.tscn") as PackedScene
 	_chk("I.01 Route 3 baked scene loads", packed != null)
 	if packed == null:
@@ -555,6 +705,140 @@ func _test_object_events() -> void:
 	_chk("I.25 an unflagged NPC has an EMPTY flag, not the literal \"0\"",
 			plain_npc != null and plain_npc.visibility_flag == "")
 	vroot.free()
+
+
+## Section L — the @tool dependency chain.
+##
+## MapOverlay is an editor surface, and Godot instantiates a NON-@tool script
+## as a PLACEHOLDER in the editor: any call into one throws "Attempt to call a
+## method on a placeholder instance". So it is not enough for the overlay
+## itself to be @tool — every script it reads through must be too.
+##
+## This shipped broken. The overlay could not render in the editor at all,
+## because StepResolver and MapData were placeholders there, and the runtime
+## screenshots that "verified" Step C could never have caught it: at runtime
+## nothing is a placeholder. Reading the first line of four files is cheap and
+## would have caught it for free, so it is a test rather than a note.
+##
+## metatile_behavior.gd is GENERATED — its @tool comes from the emitter in
+## gen_map_import.py, not a hand-added line, which a re-run would wipe.
+func _test_tool_chain() -> void:
+	const CHAIN := [
+		"res://scripts/overworld/map_overlay.gd",
+		"res://scripts/overworld/step_resolver.gd",
+		"res://scripts/overworld/map_data.gd",
+		"res://scripts/overworld/metatile_behavior.gd",
+	]
+	var i := 0
+	for path in CHAIN:
+		i += 1
+		var f := FileAccess.open(path, FileAccess.READ)
+		var first := f.get_line() if f != null else "<missing>"
+		if f != null:
+			f.close()
+		_chk("L.%02d %s starts with @tool (got %s)"
+				% [i, path.get_file(), first],
+				first.strip_edges() == "@tool")
+
+
+## Section M — baked scenes carry a stable UID.
+##
+## A scene with no UID is invisible to the editor's resource pickers, so it
+## cannot be selected as an instanced child. `ResourceSaver` does not write
+## one; the baker adds it.
+##
+## M.10-M.13 are the half that matters. The UID must be PRESERVED across a
+## re-bake, not re-minted: a baker that mints fresh each bake changes every
+## scene's identity per re-bake — the `unique_id` churn problem one line
+## higher up, and worse, because other scenes resolve references against a
+## UID. These drive the baker's own helper against scratch files rather than
+## running a real bake, so the RULE is tested directly and cheaply.
+func _test_baked_scene_uids() -> void:
+	var baker: GDScript = load("res://scenes/overworld/map_baker.gd")
+
+	if not FileAccess.file_exists("res://scenes/maps/PalletTown_Frlg.tscn"):
+		_gated += BAKED_SCENE_ASSERTIONS
+	else:
+		var seen := {}
+		var i := 0
+		for nm in CORRIDOR_MAPS:
+			i += 1
+			var uid: String = baker._existing_uid("res://scenes/maps/%s.tscn" % nm)
+			_chk("M.%02d %s carries a uid (got %s)" % [i, nm, uid],
+					uid.begins_with("uid://") and uid.length() > 6)
+			seen[uid] = nm
+		# Distinctness is the cheap proof they were not all minted from one
+		# shared constant — which the per-file check above would sail past.
+		_chk("M.09 all 8 baked UIDs are distinct (%d unique)" % seen.size(),
+				seen.size() == CORRIDOR_MAPS.size())
+
+	# --- the preserve-or-mint rule itself, on scratch files ---
+	var dir := "user://uid_rule_test/"
+	DirAccess.make_dir_recursive_absolute(dir)
+
+	var kept := dir + "kept.tscn"
+	_write_text(kept, "[gd_scene format=4 uid=\"uid://bqqqqqqqqqqqq\"]\n\n[node name=\"R\" type=\"Node2D\"]\n")
+	var bk: GDScript = baker
+	bk._preserve_or_mint_uid(kept, bk._existing_uid(kept))
+	_chk("M.10 an existing UID survives untouched",
+			bk._existing_uid(kept) == "uid://bqqqqqqqqqqqq")
+
+	var fresh := dir + "fresh.tscn"
+	_write_text(fresh, "[gd_scene format=4]\n\n[node name=\"R\" type=\"Node2D\"]\n")
+	bk._preserve_or_mint_uid(fresh, "")
+	var minted: String = bk._existing_uid(fresh)
+	_chk("M.11 a scene with no UID gets one minted (got %s)" % minted,
+			minted.begins_with("uid://") and minted.length() > 6)
+
+	# Idempotence IS the preserve rule: baking twice must not change identity.
+	bk._preserve_or_mint_uid(fresh, minted)
+	_chk("M.12 a second bake preserves the minted UID",
+			bk._existing_uid(fresh) == minted)
+
+	# The rest of the file must survive the header rewrite intact.
+	var f := FileAccess.open(fresh, FileAccess.READ)
+	var body := f.get_as_text() if f != null else ""
+	if f != null:
+		f.close()
+	_chk("M.13 the header rewrite leaves the scene body intact",
+			body.contains("[node name=\"R\" type=\"Node2D\"]"))
+
+
+## Section N — the overlay is never baked into a map scene.
+##
+## MapOverlay lives in its own scene and is instanced conditionally. That is
+## not a style preference: a persisted instance ships inside the map scene
+## unconditionally, which bypasses the `OS.is_debug_build()` gate entirely and
+## puts a developer x-ray in a shipped build.
+##
+## This is here because it already happened. An editor session saved
+## PalletTown_Frlg.tscn with the overlay instanced inside it, and the only
+## reason anything noticed was H.13's container count going from 6 to 7 — a
+## side effect, in a test about draw order, that says nothing about what was
+## actually wrong. This names it.
+func _test_overlay_never_baked() -> void:
+	if not FileAccess.file_exists("res://scenes/maps/PalletTown_Frlg.tscn"):
+		_gated += OVERLAY_ASSERTIONS
+		return
+	var i := 0
+	for nm in CORRIDOR_MAPS:
+		i += 1
+		var f := FileAccess.open("res://scenes/maps/%s.tscn" % nm, FileAccess.READ)
+		var text := f.get_as_text() if f != null else ""
+		if f != null:
+			f.close()
+		# Catch it by scene path AND by script path: an instance references the
+		# .tscn, but a bare Node2D with the script attached would slip past that.
+		_chk("N.%02d %s does not bake in the overlay" % [i, nm],
+				not text.contains("scenes/overworld/map_overlay.tscn")
+				and not text.contains("scripts/overworld/map_overlay.gd"))
+
+
+func _write_text(path: String, text: String) -> void:
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f != null:
+		f.store_string(text)
+		f.close()
 
 
 func _warns_about(node: Node, needle: String) -> bool:

@@ -46,7 +46,47 @@ _UNIQUE_ID = re.compile(r" unique_id=\d+")
 
 
 def normalize(text):
+    """Strip the churn, and ONLY the churn.
+
+    `unique_id` is safe to strip: Godot regenerates it every bake and nothing
+    references it. It is the entire reason a byte-reproducible scene still
+    shows up as a 200-line diff.
+
+    DO NOT add `uid="uid://..."` here, even though it looks like the same kind
+    of noise. It is the opposite: the baker PRESERVES a scene's existing UID
+    and mints one only when absent (map_baker.gd::_preserve_or_mint_uid), so a
+    uid is stable across re-bakes and other scenes resolve references against
+    it. Normalising it away would hide an identity change that silently breaks
+    every link to the scene while every visible node stays identical.
+
+    KNOWN LIMITATION, measured rather than assumed: this script cannot detect a
+    changed uid either way. Its comparison is tracked-scene vs. freshly-baked
+    scene, and the fresh bake READS the tracked uid off disk and puts it back —
+    so the two agree by construction no matter what the value is. Verified by
+    hand-editing a uid to a bogus value and watching this script report the
+    scene reproducible. The instrument that catches a changed uid is `git
+    diff`, precisely because normalize() leaves it alone; the instrument that
+    catches a MISSING one is check_uids() below.
+    """
     return _UNIQUE_ID.sub("", text)
+
+
+def check_uids(names):
+    """Every baked scene must carry a UID.
+
+    This is the bug that started the whole exercise: ResourceSaver does not
+    write a `uid=` into a scene saved programmatically, so all eight baked maps
+    shipped without one and were invisible to the editor's resource pickers —
+    they could not be selected as an instanced child at all. Cheap to check,
+    and unlike the diff above it is something this script genuinely can see.
+    """
+    missing = []
+    for n in names:
+        with open(scene_path(n), encoding="utf-8") as fh:
+            header = fh.readline()
+        if 'uid="uid://' not in header:
+            missing.append(n)
+    return missing
 
 
 def scene_path(map_name):
@@ -105,9 +145,18 @@ def main():
         for n in names:
             shutil.copy(os.path.join(stash, n + ".tscn"), scene_path(n))
 
+        missing_uid = check_uids(names)
+        if missing_uid:
+            print("check_bake_diff: %d scene(s) carry NO uid — invisible to the "
+                  "editor's resource pickers:" % len(missing_uid))
+            for n in missing_uid:
+                print("  %s" % n)
+            print("\nRe-bake them; map_baker mints a uid when one is absent.")
+            return 1
+
         if not drifted:
             print("check_bake_diff: %d scene(s) reproducible — a re-bake would "
-                  "lose nothing." % len(names))
+                  "lose nothing (all carry a uid)." % len(names))
             return 0
 
         print("check_bake_diff: %d of %d scene(s) are NOT reproducible.\n"
