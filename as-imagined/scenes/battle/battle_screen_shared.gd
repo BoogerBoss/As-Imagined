@@ -1600,6 +1600,9 @@ func _ready() -> void:
 	# EMPTY here: M36C is what fills it, and until then every move's
 	# pre-flight check fails and falls back, which is the contract.
 	if AnimData.ensure_loaded():
+		# [M36C] The core behavior batch. Every move whose script needs only
+		# these now plays its real animation; everything else still falls back.
+		AnimBehaviors.register_all(_anim_behaviors)
 		_anim_dispatcher = AnimDispatcher.new(_anim_behaviors)
 
 	# [M23.2, retargeted M26b] Wired unconditionally — interactive AND

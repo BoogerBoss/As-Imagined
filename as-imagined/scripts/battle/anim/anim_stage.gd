@@ -108,6 +108,20 @@ func facing_sign() -> float:
 	return 1.0 if attacker_is_player_side() else -1.0
 
 
+# The scripts' offsets are GBA-screen pixels (a 240x160 canvas). This project
+# renders far larger, so an offset of "8 px toward the target" has to be
+# scaled or every effect would cluster invisibly at the sprite's centre.
+# Derived from the effect layer's real width rather than hardcoded, so it
+# stays correct under M26A1's resolution change and any future one.
+const GBA_SCREEN_WIDTH := 240.0
+
+func pixel_scale() -> float:
+	var l := layer()
+	if l == null or l.size.x <= 0.0:
+		return 1.0
+	return maxf(1.0, l.size.x / GBA_SCREEN_WIDTH)
+
+
 func layer() -> Control:
 	return _effect_layer.call() as Control if _effect_layer.is_valid() else null
 

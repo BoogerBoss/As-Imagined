@@ -531,6 +531,54 @@ two-turn branch (`choosetwoturnanim`, the only thing a script branches on)
 but not a true per-hit counter, so multi-hit variation (Double Slap's
 alternating direction) will need the real counter in M36C.
 
+### M36C — COMPLETE 2026-07-29
+
+The first real behavior port. `m36c_anim_behaviors_test` **66/66**; full
+regression sweep green (m36a 71/71, m36b 53/53, hit_effect 40/40 + 91/91,
+trainer/category/party 128/128, b3_6c 168/168, ui_polish 26/26, switch 42/42,
+item 31/31, debug_log 57/57).
+
+**24 behaviors ported**, line-for-line from the C, in two new files:
+`anim_sprite.gd` (the OAM-sprite stand-in: tile-offset framing, centre-origin
+positioning, x2/y2 offsets) and `anim_behaviors.gd` (the batch itself) —
+shakes (ShakeMon / ShakeMon2 / ShakeMonInPlace), the hitsplat family with its
+four affine size presets, `AnimToTargetInSinWave` (Flamethrower's beam),
+linear travel, the invisible controller sprites (lunge / dip / slide), the
+palette-blend family, and the single-frame query tasks.
+
+**Acceptance set met**: Pound, Tackle and **Flamethrower** now play their real
+scripts — verified end to end, including that Flamethrower spawns its full
+**22-flame stream** with several airborne at once, rather than the single
+static puff the legacy hit-effect showed.
+
+**The headline finding — coverage climbs slowly at first, and that is
+structural.** The batch moved the roster from 0 to **23 of 932** playable
+(2.5%). That is not underperformance: a move plays only when EVERY behavior
+its script reaches is ported, so the most common behavior unblocks almost
+nothing alone — each script also needs its own particular effects. Two
+consequences worth carrying into M36D: (1) batch value should be judged by
+how much *shared machinery* it retires, not by the immediate move count, and
+(2) the count accelerates as the shared core fills in and only per-move
+specifics remain. Post-batch top blockers are already far smaller than
+pre-batch (`AnimTask_StartSlidingBg` 83 moves, down from `AnimTask_ShakeMon`'s
+436).
+
+**A real bug in M36B's fallback walk, found by this suite**: the walk did not
+stop at `return`, so it ran off the end of a `call` subroutine into whatever
+script sat next in the command array — Flamethrower appeared to require
+SANDSTORM tasks. Conservative (it over-blocked rather than mis-played), but it
+suppressed coverage and made the blocker ranking wrong: the pre-fix "top
+blockers" figures in M36B's own notes are inflated for that reason. Fixed;
+`_finish()` now also zeroes the completion counter so an aborted run leaves
+nothing behind.
+
+**Disclosed approximations** (each visible in the code at its site):
+`AnimTask_BlendParticle` tints the live sprites of a tag rather than a palette
+(Godot has no runtime palette indirection); `AnimTask_StartSinAnimTimer` is a
+no-op because each beam particle carries its own phase, as the per-sprite data
+slots do upstream; BG-selector palette blends consume their frames but draw
+nothing until M36E builds the background layer.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.

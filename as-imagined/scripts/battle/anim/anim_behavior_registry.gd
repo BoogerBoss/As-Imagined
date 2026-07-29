@@ -151,7 +151,12 @@ func _walk(label: String, found: Dictionary, visited: Dictionary) -> void:
 				_walk_from_label(target, found, visited)
 				return
 			_walk_from_label(target, found, visited)
-		elif op == "end":
+		elif op == "end" or op == "return":
+			# `return` ends this body just as `end` does. Without stopping
+			# here the walk runs off the end of a `call` subroutine and into
+			# whatever script happens to sit next in the command array --
+			# which made moves look blocked on behaviors they never reference
+			# (Flamethrower appeared to need SANDSTORM tasks).
 			return
 
 		pc += 1

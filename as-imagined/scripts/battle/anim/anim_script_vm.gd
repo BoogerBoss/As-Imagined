@@ -70,6 +70,13 @@ var _blend: Dictionary = {"eva": 16, "evb": 0}
 var _sound_cues: Array[Dictionary] = []
 var _spawned: Array = []
 
+# Active per-frame steppers. Upstream, a sprite callback or task function is
+# re-entered every frame until it destroys itself; a Callable invoked once
+# cannot express that, so a behavior that lasts more than a frame registers a
+# stepper here. Each returns true when it is finished, which is the port of
+# calling DestroyAnimSprite/DestroyAnimVisualTask.
+var _steppers: Array = []
+
 
 func _init() -> void:
 	args.resize(ARG_COUNT)
@@ -92,6 +99,7 @@ func start(label: String) -> bool:
 	_frame_budget = 0
 	_sound_cues.clear()
 	_spawned.clear()
+	_steppers.clear()
 	state = State.RUNNING
 	error_text = ""
 	return true
@@ -113,6 +121,8 @@ func step() -> void:
 				% _MAX_FRAMES)
 		return
 
+	_step_behaviors()
+
 	if _frames_to_wait > 0:
 		_frames_to_wait -= 1
 		return
@@ -131,6 +141,34 @@ func step() -> void:
 		_execute(_commands[_pc])
 
 
+# Runs every live behavior one GBA frame. A stepper returning true has
+# finished and releases its slot on the completion counter -- which is what
+# waitforvisualfinish and `end` are waiting for.
+func _step_behaviors() -> void:
+	if _steppers.is_empty():
+		return
+	var survivors: Array = []
+	for entry in _steppers:
+		var fn: Callable = entry
+		var done: bool = false
+		if fn.is_valid():
+			done = bool(fn.call())
+		else:
+			done = true
+		if done:
+			_visual_count = maxi(0, _visual_count - 1)
+		else:
+			survivors.append(entry)
+	_steppers = survivors
+
+
+# Behaviors that span multiple frames register here instead of finishing
+# inline. Counts against the same completion counter a sprite would.
+func add_stepper(fn: Callable) -> void:
+	_visual_count += 1
+	_steppers.append(fn)
+
+
 func _finish(err: String = "") -> void:
 	if err != "":
 		state = State.ERROR
@@ -139,6 +177,11 @@ func _finish(err: String = "") -> void:
 	else:
 		state = State.DONE
 	# Whatever is still alive is cleaned up, mirroring `end`'s own auto-free.
+	# Nothing is live once the run is over, so the completion counter goes
+	# with the steppers -- otherwise an aborted animation would leave a
+	# non-zero count behind for anything inspecting the finished VM.
+	_steppers.clear()
+	_visual_count = 0
 	for node in _spawned:
 		if is_instance_valid(node):
 			node.queue_free()
