@@ -100,6 +100,15 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 16] —
+		"AnimTask_GetTimeOfDay": _get_time_of_day,
+		"AnimViceGripPincer": _vice_grip_pincer,
+		"AnimStompFoot": _stomp_foot,
+		"AnimBounceBallLand": _bounce_ball_land,
+		"AnimWeatherBallUp": _weather_ball_up,
+		"AnimWhirlwindLine": _whirlwind_line,
+		"AnimRockScatter": _rock_scatter,
+		"AnimGhostStatusSprite": _ghost_status_sprite,
 		"AnimDiveBall": _dive_ball,
 		"AnimDiveWaterSplash": _dive_water_splash,
 		"SpriteCB_ToxicThreadWrap": _toxic_thread_wrap,
@@ -10287,3 +10296,275 @@ static func _sprite_on_mon_until_affine_ends(vm: AnimScriptVM,
 		return
 	node.centre = _battler_centre(vm, target)
 	_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+
+
+# ── [M36D batch 16] ───────────────────────────────────────────────────────
+#
+# ⚠️ **A SECOND "looks like an alias and is not", one batch after the first.**
+# `AnimViceGripPincer` (battle_anim_effects_2.c:1839) has batch 10's
+# `AnimGuillotinePincer` setup BYTE FOR BYTE -- the same 32/-32 start offsets,
+# the same 16/-16 rest offsets, the same arg-0 mirroring, the same 6-frame
+# converge. Its STEP is completely different: Guillotine grinds in place for
+# 51 frames and then retreats; ViceGrip simply arrives and dies when its own
+# frame sequence ends.
+#
+# Batch 15's Petal Dance pair taught this the first time; this is the sharper
+# case, because there the setups merely resembled each other and here they are
+# identical. The rule holds: COMPARE THE STEP, NOT THE SETUP.
+
+
+# AnimTask_GetTimeOfDay (battle_anim_new.c:7565). Writes 0 day / 1 night /
+# 2 evening into arg 0 so a script can branch on it.
+#
+# Upstream reads the GBA cartridge's real-time clock, so the faithful port is
+# the SYSTEM clock rather than anything battle-derived -- Sunny Day and its
+# neighbours genuinely look different at 3am. Boundaries reproduced exactly:
+# night is >= 20:00 or < 04:00, evening is 17:00-19:59, everything else day.
+static func _get_time_of_day(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var hour: int = int(Time.get_datetime_dict_from_system().get("hour", 12))
+	var slot := 0
+	if hour >= 20 or hour < 4:
+		slot = 1
+	elif hour >= 17 and hour < 20:
+		slot = 2
+	vm.args[0] = slot
+
+
+# AnimViceGripPincer (battle_anim_effects_2.c:1839, step :1863). args:
+# 0 which pincer. Converges on the target over 6 frames and stops -- see the
+# section note above for why this is NOT Guillotine despite sharing its setup.
+static func _vice_grip_pincer(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var second: bool = vm.args[0] != 0
+	var start_off := Vector2(-32.0, 32.0) if second else Vector2(32.0, -32.0)
+	var end_off := Vector2(-16.0, 16.0) if second else Vector2(16.0, -16.0)
+	var target := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var start := target + start_off * scale
+	node.centre = start
+	_linear_travel(vm, node, start, target + end_off * scale,
+			_PINCER_CONVERGE_FRAMES)
+
+
+# AnimStompFoot (battle_anim_fight.c:664, steps :672/:685). args: 0/1 offset,
+# 2 delay before the stomp.
+#
+# Three beats: it hangs above the target for `arg2` frames, drops onto it over
+# 6, and then HOLDS for 15 -- the hold is the impact reading, and a port that
+# ends on landing loses the weight of it.
+static func _stomp_foot(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_TARGET, vm.args[0],
+			vm.args[1], scale)
+	var rest := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	node.centre = start
+	var delay: int = maxi(0, vm.args[2])
+
+	var st := {"phase": 0, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		match int(st["phase"]):
+			0:
+				if t >= delay:
+					st["t"] = 0; st["phase"] = 1
+			1:
+				node.centre = start.lerp(rest, float(t) / 6.0)
+				if t >= 6:
+					node.centre = rest
+					st["t"] = 0; st["phase"] = 2
+			_:
+				if t >= 15:      # the impact hold
+					node.finish()
+					return true
+		return false)
+
+
+# AnimBounceBallLand (battle_anim_flying.c:981). No args.
+#
+# **Bounce's counterpart to Fly's `AnimFlyBallAttack` -- it is the REVEAL
+# half.** The ball drops onto the target from off-screen at 10px a frame,
+# bounces straight back up at the same rate, and reveals the attacker as it
+# clears the top. Routed through the tracked setter, so a run ending mid-bounce
+# still restores the Pokemon.
+static func _bounce_ball_land(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var rest := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var top := -32.0 * scale
+	node.centre = Vector2(rest.x, top)
+
+	var st := {"y": top - rest.y, "down": true, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		st["y"] = float(st["y"]) + (10.0 if bool(st["down"]) else -10.0) * scale
+		if bool(st["down"]) and float(st["y"]) >= 0.0:
+			st["y"] = 0.0
+			st["down"] = false
+		node.centre = rest + Vector2(0.0, float(st["y"]))
+		if not bool(st["down"]) and node.centre.y < top:
+			# The reveal -- this is what brings the Pokemon back after Bounce.
+			vm.set_battler_visible_tracked(AnimStage.ANIM_ATTACKER, true)
+			node.finish()
+			return true
+		return int(st["t"]) >= _ANIM_END_CAP)
+
+
+# AnimWeatherBallUp (battle_anim_mons.c:2434, step :2446). No args.
+#
+# Rises while DECELERATING: the vertical velocity starts at -40 and creeps
+# back toward -20 by one per frame, so the ball slows as it climbs rather than
+# accelerating away. Its horizontal drift is side-dependent and asymmetric --
+# +5 for a player-side attacker against -10 for an opponent-side one, which is
+# twice the drift in the other direction, not a mirror. Offsets are scaled by
+# TEN, not by 256 like most of this engine's fixed-point.
+static func _weather_ball_up(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	node.centre = start
+	# Deliberately asymmetric: +5 one way, -10 the other.
+	var dx: int = 5 if _is_player_side(vm) else -10
+
+	var st := {"ax": 0, "ay": 0, "vy": -40, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["ax"] = int(st["ax"]) + dx
+		st["ay"] = int(st["ay"]) + int(st["vy"])
+		node.centre = start + Vector2(float(int(st["ax"])) / 10.0,
+				float(int(st["ay"])) / 10.0) * scale
+		if int(st["vy"]) < -20:
+			st["vy"] = int(st["vy"]) + 1   # decelerating, not accelerating
+		st["t"] = int(st["t"]) + 1
+		if node.centre.y < -32.0 * scale or int(st["t"]) >= _ANIM_END_CAP:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimWhirlwindLine (battle_anim_flying.c:893, step :921). args: 2 battler,
+# 3 lifetime, 4 lane index.
+#
+# Several lines run at once, offset by `12 * laneIndex`, each sliding right at
+# a fixed 0x0ccc per frame in 8.8 fixed point and SNAPPING back to zero every
+# 6 frames -- the snap is what produces the repeating streak rather than a
+# single sliding sprite.
+static func _whirlwind_line(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var which := vm.args[2]
+	var base := _battler_centre(vm, which)
+	if _battler_is_player_side(vm, which):
+		base.x += 8.0 * scale
+	base.x -= 32.0 * scale
+	var lane: int = vm.args[4]
+	var start := base + Vector2(float(12 * lane), 0.0) * scale
+	node.centre = start
+	var life: int = maxi(1, vm.args[3])
+
+	var st := {"acc": 0, "since": lane, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["acc"] = int(st["acc"]) + 0x0CCC
+		node.centre = start + Vector2(float(int(st["acc"]) >> 8), 0.0) * scale
+		st["since"] = int(st["since"]) + 1
+		if int(st["since"]) >= 6:
+			st["since"] = 0
+			st["acc"] = 0            # the snap back
+			node.centre = start
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= life:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimRockScatter (battle_anim_rock.c:939, step :954). args: 0/1 spawn offset,
+# 2 hop height.
+#
+# Spawns on the target and hops OUTWARD along the direction it was offset in
+# -- the offset doubles as the velocity, so a rock spawned up-left flies
+# up-left. The vertical component is a sine hop rather than a fall, and the
+# whole thing lives a fixed ~18 frames (phase 0 -> 140 at 8 per frame).
+static func _rock_scatter(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_TARGET, vm.args[0],
+			vm.args[1], scale)
+	node.centre = start
+	# The spawn offset IS the velocity -- rocks fly the way they were placed.
+	var vx := float(vm.args[0])
+	var hop := float(vm.args[2])
+
+	var st := {"phase": 0.0, "ax": 0.0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["phase"] = float(st["phase"]) + 8.0
+		st["ax"] = float(st["ax"]) + vx
+		node.centre = start + Vector2(float(st["ax"]) / 40.0,
+				-_gba_sin(float(st["phase"]), hop)) * scale
+		if float(st["phase"]) > 140.0:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimGhostStatusSprite (battle_anim_ghost.c:1186). No args.
+#
+# Rises while swaying on a sine of amplitude 12, with the sway MIRRORED by the
+# attacker's side so the ghost always drifts away from its own trainer. The
+# rise accelerates in 8.8 fixed point.
+static func _ghost_status_sprite(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := node.centre
+	var mirror := 1.0 if _is_player_side(vm) else -1.0
+
+	var st := {"phase": 0.0, "rise": 0, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["rise"] = int(st["rise"]) + 0x100
+		node.centre = start + Vector2(
+				_gba_sin(float(st["phase"]), 12.0) * mirror,
+				-float(int(st["rise"]) >> 8)) * scale
+		st["phase"] = fmod(float(st["phase"]) + 6.0, 256.0)
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= 60:
+			node.finish()
+			return true
+		return false)
+
+
+# DEFERRED, and stated precisely per standing rule (6) -- these are UNREAD,
+# not unfindable: `AnimTask_SquishTarget` (drives `sSquishTargetAffineAnimCmds`,
+# an affine table not yet read), `AnimBrickBreakWall`, `AnimRazorWindTornado`,
+# `AnimTask_NightShadeClone`.

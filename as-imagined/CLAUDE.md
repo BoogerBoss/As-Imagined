@@ -1332,6 +1332,18 @@ That fix inferred the exit from COLLISION: *a solid arrival tile is a doorway, s
 
 **Tests.** Section **AI**, 6 assertions, `EXPECTED_TOTAL` **410 → 416**. AI.02 records that this case defeats BOTH inference rules tried so far — the tile is walkable, so the solid-tile fallback misses it exactly as the collision rule missed the escalator. Verified by ignoring the sentinel, which fails AI.05.
 
+**[M27C C5-4 follow-up — directional stairs, and the step-on exclusion] COMPLETE — 2026-07-30.** Rob: *"the stairs in the museum warps one grid space before I would expect, instead of walking into the stairs it warps right in front of the stairs."*
+
+Exactly right, and the cause generalises well past the stairs. **Source's step-on set (`IsWarpMetatileBehavior`) contains NO arrow or stair behaviour** — every one of them is checked inside `TryArrowWarp`, which reads the tile the player is ALREADY STANDING ON. This project fired every warp on step-on, so a DIRECTIONAL warp triggered merely by being walked over.
+
+**The museum is where it shows because of the geometry**: that stair's warp sits on the tile IN FRONT of the staircase art — `(9,8)` is solid and the art is drawn on it — and the tile is reachable from the north and south. So walking past the stairs took them, from a direction the stair does not even answer to.
+
+**Directional stairs ride the arrow dispatch**, which is source's own arrangement rather than a convenience: `IsDirectionalStairWarpMetatileBehavior` (`field_screen_effect.c:1715`) is called from inside `TryArrowWarp`, and answers only for **WEST** (up-left, down-left) and **EAST** (up-right, down-right) — never north or south. Stamped into `arrow_dir` alongside the four arrow behaviours.
+
+**Nothing is lost by waiting.** Movement polls a HELD direction, so arriving on an arrow tile while still holding it fires on the very next poll — which is exactly how source feels, since `TryArrowWarp` runs off `input->heldDirection`. The interior exits and the forest gate are unaffected in feel.
+
+**Tests.** Section **AJ**, 7 assertions, `EXPECTED_TOTAL` **416 → 423**. AJ.02 pins the geometry that makes this visible (the tile is in front of solid art) rather than only the rule, and AJ.03 is the reported bug directly — verified by restoring step-on firing, which fails it. AJ.06/AJ.07 check the floor above answers to the MIRRORED direction, so a stair that worked one way only would not pass.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **A thirteenth M27 block, orthogonal to C's stitching work.** Added because this is Kanto with an ORIGINAL story: the region's 421 maps are imported, but new maps and new art are inevitable, and **there is currently no way to create either.** Scope of record while this is unbuilt: the approved mockup at `https://claude.ai/code/artifact/0cc55049-a0d4-4675-8b0c-eb33853611b0`. Nothing here is implemented.

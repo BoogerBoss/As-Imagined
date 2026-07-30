@@ -240,7 +240,16 @@ func _try_step(dir: int) -> void:
 		if _warping:
 			return
 		var w := manager.warp_at(_cell)
-		if w != null:
+		# A DIRECTIONAL warp is not a step-on warp. Source's own step-on set
+		# (`IsWarpMetatileBehavior`) excludes every arrow and stair behaviour —
+		# they live in `TryArrowWarp`, which reads the tile you are already on.
+		#
+		# Firing them here made the museum stairs trigger a tile early: their
+		# warp sits IN FRONT of the staircase art, reachable from the north and
+		# south, so walking past one warped you. Held movement means nothing is
+		# lost by waiting — arrive on the tile still holding the direction and
+		# the next poll fires it.
+		if w != null and w.arrow_dir < 0:
 			_do_warp(w)
 	)
 

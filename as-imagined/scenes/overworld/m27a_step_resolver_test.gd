@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 416
+const EXPECTED_TOTAL := 423
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -115,6 +115,9 @@ const ESCALATOR_ASSERTIONS := 8
 
 ## [M27C C5-4] Section AI drives the Route 2 forest gate.
 const NON_ANIM_DOOR_ASSERTIONS := 6
+
+## [M27C C5-4] Section AJ drives the Pewter Museum stairs.
+const STAIR_ASSERTIONS := 7
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -198,6 +201,7 @@ func _ready() -> void:
 	await _test_leaving_a_building()
 	await _test_escalator()
 	await _test_non_anim_doors()
+	await _test_directional_stairs()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -2851,3 +2855,75 @@ func _test_non_anim_doors() -> void:
 		root.free()
 	_chk("AI.06 Viridian Forest has no connections, so warps are the only way in",
 			data != null and data.connections.is_empty() and ways_in > 0)
+
+
+## Section AJ — [M27C C5-4] directional stair warps, and the step-on exclusion.
+##
+## Rob: "the stairs in the museum warps one grid space before I would expect,
+## instead of walking into the stairs it warps right in front of the stairs."
+##
+## Exactly right, and for a reason that generalises past the stairs. Source's
+## step-on set (`IsWarpMetatileBehavior`) contains NO arrow or stair behaviour —
+## they are checked inside `TryArrowWarp`, which reads the tile the player is
+## already standing on. This project was firing every warp on step-on, so a
+## DIRECTIONAL warp triggered merely by being walked over.
+##
+## The museum is where it shows, because that stair's tile is the one IN FRONT
+## of the staircase art — (9,8) is solid, the art sits on it — and the tile is
+## reachable from the north and south. So walking past the stairs took them.
+##
+## Nothing is lost by waiting: movement polls a HELD direction, so arriving on
+## the tile still holding it fires on the very next poll.
+func _test_directional_stairs() -> void:
+	if not ResourceLoader.exists("res://scenes/maps/PewterCity_Museum_1F_Frlg.tscn"):
+		_gated += STAIR_ASSERTIONS
+		return
+
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	ow.start_map = "PewterCity_Museum_1F_Frlg"
+	add_child(ow)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var man: MapManager = ow.manager
+	var o := man.origin_of("PewterCity_Museum_1F_Frlg")
+	var stair: Vector2i = o + Vector2i(8, 8)
+
+	var w := man.warp_at(stair)
+	_chk("AJ.01 the museum stair is an EAST-directional warp",
+			w != null and w.arrow_dir == StepResolver.Dir.EAST)
+	# The geometry that makes the bug visible: the tile is in FRONT of the art.
+	_chk("AJ.02 sitting in front of the staircase art, which is solid",
+			man.collision_at(o + Vector2i(9, 8)) != 0)
+
+	# THE REPORTED BUG: reachable from the north, so walking past took it.
+	_stand_at(ow, stair + Vector2i(0, -1))
+	ow._try_step(StepResolver.Dir.SOUTH)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AJ.03 stepping onto it from the north does NOT warp",
+			man.chunk_owning(ow._cell) == "PewterCity_Museum_1F_Frlg"
+			and ow._cell == stair)
+
+	# Wrong direction from the right tile: still just walking.
+	ow._try_step(StepResolver.Dir.WEST)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AJ.04 nor does pressing the opposite direction on it",
+			man.chunk_owning(ow._cell) == "PewterCity_Museum_1F_Frlg")
+
+	# --- the real gesture ---
+	_stand_at(ow, stair)
+	ow._try_step(StepResolver.Dir.EAST)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AJ.05 pressing EAST on it goes up",
+			man.chunk_owning(ow._cell) == "PewterCity_Museum_2F_Frlg")
+
+	# Down-left upstairs, so the return gesture is the mirror.
+	var down := man.warp_at(ow._cell)
+	_chk("AJ.06 and the floor above answers to WEST, the mirrored stair",
+			down != null and down.arrow_dir == StepResolver.Dir.WEST)
+	ow._try_step(StepResolver.Dir.WEST)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AJ.07 which brings you back to the tile you left",
+			man.chunk_owning(ow._cell) == "PewterCity_Museum_1F_Frlg"
+			and ow._cell == stair)
+
+	ow.queue_free()

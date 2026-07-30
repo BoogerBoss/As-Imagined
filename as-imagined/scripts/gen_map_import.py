@@ -834,6 +834,13 @@ ARROW_WARP_DIRS = {
     101: 0, 109: 0, 28: 0,   # SOUTH_ARROW_WARP, WATER_SOUTH_ARROW_WARP, SHOAL_CAVE_ENTRANCE
     99: 2,                   # WEST_ARROW_WARP
     98: 3,                   # EAST_ARROW_WARP
+    # Directional STAIR warps ride the same dispatch: source checks them inside
+    # TryArrowWarp itself, via IsDirectionalStairWarpMetatileBehavior
+    # (field_screen_effect.c:1715), which only ever answers for WEST and EAST.
+    # The tile is the one IN FRONT of the staircase art, so pressing into it is
+    # the gesture; stepping onto it is not.
+    236: 2, 238: 2,          # UP_LEFT_STAIR_WARP, DOWN_LEFT_STAIR_WARP  -> WEST
+    235: 3, 237: 3,          # UP_RIGHT_STAIR_WARP, DOWN_RIGHT_STAIR_WARP -> EAST
 }
 
 
