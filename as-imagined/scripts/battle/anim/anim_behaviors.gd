@@ -2284,7 +2284,10 @@ static func _teleport(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 		st["y"] = float(st["y"]) - 8.0 * scale
 		mon.apply(Vector2(0.0, float(st["y"])))
 		if t >= rises:
-			node.visible = false
+			# Routed through the VM so the hide is registered and undone when
+			# the animation ends -- upstream the engine's own visibility
+			# re-sync brings the mon back, and nothing else here would.
+			vm.hide_battler(AnimStage.ANIM_ATTACKER)
 			node.scale = base_scale
 			node.pivot_offset = base_pivot
 			mon.restore()

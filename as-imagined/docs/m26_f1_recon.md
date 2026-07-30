@@ -685,6 +685,43 @@ Surf is exactly the move M23.11 Phase 5b flagged as looking wrong today, so it
 stays on the fallback until the background layer exists rather than getting a
 plausible-looking substitute.
 
+### Regression found in real play, fixed 2026-07-29 — the visibility leak
+
+Rob played a battle and reported the opposing side not appearing. Real bug,
+mine, and the mechanism is worth recording because the whole class was
+invisible to the test suite:
+
+**Animation scripts hide battlers and rely on the ENGINE to put them back.**
+`invisible`/`visible` are ordinary opcodes, and 35 move scripts (Feint Attack,
+Shadow Force, Sky Drop, Phantom Force, Fusion Bolt, Dragon Ascent, ...) end
+with a battler still marked invisible on the path taken. Upstream that is
+perfectly safe: the battle controller calls
+`CopyAllBattleSpritesInvisibilities` (`src/battle_controllers.c:2146`)
+immediately after every animation, re-syncing each sprite from real battle
+state. **This port had no such re-sync, so one animation could remove a
+Pokemon from the screen for the rest of the battle.**
+
+Fixed at three levels, deliberately belt-and-braces because the failure is
+silent and permanent:
+1. The VM records every battler it hides and restores them in `_finish()`,
+   so no code path can outlive its own hide.
+2. `AnimTask_Teleport`'s deliberate hide now routes through that same
+   tracked call rather than setting `visible` directly.
+3. The battle screen calls `_refresh_ui()` after every animation — the direct
+   analogue of the reference's own post-animation re-sync, which also
+   restores health boxes and anything else an animation might disturb.
+
+**Two lessons recorded rather than the fix alone.** First, the suite could
+not have caught this: every test drove behaviors in isolation, and the leak
+only manifests across an animation boundary in a live battle. There is now a
+general invariant test ("no animation may leave a battler invisible once it
+is over") plus an end-to-end run of Feint Attack specifically. Second, the
+test double hid it twice over — its `set_battler_visible` was a no-op, so the
+new tests initially passed while asserting nothing. That is the second time an
+unfaithful double masked a real defect (the first was plain `Control` nodes
+where the scene uses `TextureRect`), so doubles here are now written to
+actually apply what they are asked to do.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.

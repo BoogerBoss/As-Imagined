@@ -94,7 +94,38 @@ func _ready() -> void:
 	_report_tier("TIER 2  remaining Gen 1-3", rest_gen13, dispatcher, registry)
 	_report_tier("TIER 3  Gen 4+", later, dispatcher, registry)
 	_report_tier("ALL", all_ids, dispatcher, registry)
+	_list_playable(all_ids, dispatcher)
 	get_tree().quit(0)
+
+
+# Names every move that currently plays its real animation, so a human can
+# pick one in a battle and see the port working. Ordered by move id.
+func _list_playable(ids: Array, dispatcher: AnimDispatcher) -> void:
+	var names := {}
+	var f := FileAccess.open("res://data/moves.json", FileAccess.READ)
+	if f != null:
+		var parsed: Variant = JSON.parse_string(f.get_as_text())
+		f.close()
+		if parsed is Array:
+			for row in parsed:
+				if row is Dictionary and row.has("id") and row.has("name"):
+					names[int(row["id"])] = str(row["name"])
+	print("")
+	print("=== PLAYABLE MOVES (these use the ported engine in a real battle) ===")
+	var line := ""
+	var n := 0
+	for id in ids:
+		if not dispatcher.can_play_move(int(id)):
+			continue
+		n += 1
+		var label: String = "%s(%d)" % [names.get(int(id), "move"), int(id)]
+		line += label.rpad(26)
+		if n % 3 == 0:
+			print("  " + line)
+			line = ""
+	if line != "":
+		print("  " + line)
+	print("  total: %d" % n)
 
 
 func _bound_move_ids() -> Array:

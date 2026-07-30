@@ -77,6 +77,16 @@ var _spawned: Array = []
 # calling DestroyAnimSprite/DestroyAnimVisualTask.
 var _steppers: Array = []
 
+# Battlers this run hid. Upstream, a script may end with a battler still
+# marked invisible because the battle controller re-syncs every sprite's
+# visibility right after the animation completes
+# (CopyAllBattleSpritesInvisibilities, src/battle_controllers.c:2146). This
+# port has no such engine-side re-sync, so without undoing them here a single
+# animation could hide a Pokemon for the REST OF THE BATTLE -- which is
+# exactly what happened: 35 move scripts (Feint Attack, Shadow Force, Sky
+# Drop, ...) hide a battler with no matching `visible` on the path taken.
+var _hidden_battlers: Dictionary = {}
+
 
 func _init() -> void:
 	args.resize(ARG_COUNT)
@@ -100,6 +110,7 @@ func start(label: String) -> bool:
 	_sound_cues.clear()
 	_spawned.clear()
 	_steppers.clear()
+	_hidden_battlers.clear()
 	state = State.RUNNING
 	error_text = ""
 	return true
@@ -182,6 +193,10 @@ func _finish(err: String = "") -> void:
 	# non-zero count behind for anything inspecting the finished VM.
 	_steppers.clear()
 	_visual_count = 0
+	# Undo any visibility this run took away, before freeing anything.
+	for battler in _hidden_battlers:
+		_set_battler_visible(int(battler), true)
+	_hidden_battlers.clear()
 	for node in _spawned:
 		if is_instance_valid(node):
 			node.queue_free()
@@ -305,10 +320,10 @@ func _execute(cmd: Array) -> void:
 
 		# — battler visibility —
 		"invisible":
-			_set_battler_visible(int(cmd[1]), false)
+			hide_battler(int(cmd[1]))
 			_pc += 1
 		"visible":
-			_set_battler_visible(int(cmd[1]), true)
+			show_battler(int(cmd[1]))
 			_pc += 1
 
 		# — sound: recorded, not played (M36-S) —
@@ -407,3 +422,16 @@ func _spawn_behavior(symbol: String, _argv: Array, ctx: Dictionary) -> void:
 func _set_battler_visible(anim_battler: int, visible: bool) -> void:
 	if stage != null and stage.has_method("set_battler_visible"):
 		stage.set_battler_visible(anim_battler, visible)
+
+
+# The opcode path, which additionally REMEMBERS a hide so `_finish` can undo
+# it. Behaviors that hide a battler (Teleport) go through here too, so no
+# code path can leave a Pokemon invisible once the animation is over.
+func hide_battler(anim_battler: int) -> void:
+	_hidden_battlers[anim_battler] = true
+	_set_battler_visible(anim_battler, false)
+
+
+func show_battler(anim_battler: int) -> void:
+	_hidden_battlers.erase(anim_battler)
+	_set_battler_visible(anim_battler, true)

@@ -38,7 +38,8 @@ func _ready() -> void:
 	_test_batch2_defensive_wall()
 	_test_batch3_mon_tasks_restore()
 	_test_batch3_rotation_actually_rotates()
-	_test_batch3_teleport_hides_mon()
+	_test_batch3_teleport_hide_is_temporary()
+	_test_visibility_never_leaks()
 	_test_batch3_particles()
 	_test_batch3_raindrops_clean_up()
 	_test_iconic_moves_run()
@@ -88,7 +89,12 @@ class FakeStage extends RefCounted:
 	func pixel_scale() -> float: return maxf(1.0, layer_node.size.x / 240.0)
 	func facing_sign() -> float: return 1.0
 	func attacker_is_player_side() -> bool: return true
-	func set_battler_visible(_b: int, _v: bool) -> void: pass
+	func set_battler_visible(b: int, v: bool) -> void:
+		# Really applies it: a no-op here would have silently passed the
+		# visibility-leak tests, which are the whole point of this double.
+		var n: Control = nodes.get(b, null)
+		if n != null:
+			n.visible = v
 
 
 func _vm(stage: FakeStage) -> AnimScriptVM:
@@ -498,9 +504,15 @@ func _test_batch3_rotation_actually_rotates() -> void:
 			absf(node.rotation) > 0.01)
 
 
-func _test_batch3_teleport_hides_mon() -> void:
-	# Teleport is the one task that ENDS with the mon hidden -- that is the
-	# point of it, and a restore-everything reflex would break the effect.
+func _test_batch3_teleport_hide_is_temporary() -> void:
+	# Teleport hides the attacker -- that IS the effect -- but the hide must
+	# not outlive the animation. Upstream that is guaranteed by the battle
+	# controller re-syncing every sprite's visibility once an animation ends
+	# (CopyAllBattleSpritesInvisibilities); this port guarantees it by having
+	# the VM undo any hide it made. Without that, one Teleport removes a
+	# Pokemon from the screen for the rest of the battle -- the exact class of
+	# bug 35 scripts (Feint Attack, Shadow Force, Sky Drop, ...) would trip,
+	# because they end with a battler still marked invisible.
 	var stage := FakeStage.new()
 	var node: Control = stage.nodes[0]
 	var vm := _vm(stage)
@@ -510,10 +522,40 @@ func _test_batch3_teleport_hides_mon() -> void:
 		if vm.visual_count() == 0:
 			break
 	_chk("teleport terminates", vm.visual_count() == 0)
-	_chk("teleport leaves the attacker HIDDEN (that is the effect)",
-			not node.visible)
+	_chk("teleport hides the attacker while it runs", not node.visible)
 	_chk("...with its scale restored so the next reveal is clean",
 			node.scale.is_equal_approx(Vector2.ONE))
+	vm._finish()
+	_chk("...and the hide is UNDONE when the animation ends", node.visible)
+
+
+func _test_visibility_never_leaks() -> void:
+	# The general invariant, asserted directly rather than per-behavior: no
+	# animation may leave a battler invisible once it is over.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.hide_battler(AnimStage.ANIM_TARGET)
+	_chk("a script can hide a battler mid-animation",
+			not (stage.nodes[1] as Control).visible)
+	vm._finish()
+	_chk("...and the VM restores it when the run ends",
+			(stage.nodes[1] as Control).visible)
+
+	# And a whole real script that ends mid-hide must leave nothing hidden.
+	var stage2 := FakeStage.new()
+	if _dispatcher.can_play_move(185):  # Feint Attack: invisible with no show
+		var vm2 := _dispatcher.make_vm(185, stage2, 0)
+		if vm2 != null:
+			var frames := 0
+			while vm2.is_running() and frames < 2000:
+				vm2.step()
+				frames += 1
+			var all_visible := true
+			for i in range(4):
+				if not (stage2.nodes[i] as Control).visible:
+					all_visible = false
+			_chk("Feint Attack (hides with no matching show) leaves every "
+					+ "battler visible afterwards", all_visible)
 
 
 func _test_batch3_particles() -> void:

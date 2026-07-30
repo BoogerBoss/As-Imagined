@@ -2786,6 +2786,12 @@ func _run_anim_script(move_id: int, stage: AnimStage, anim_turn: int) -> void:
 	while vm.is_running():
 		vm.step()
 		await get_tree().create_timer(_ANIM_FRAME_SECONDS).timeout
+	# [M36] The port of CopyAllBattleSpritesInvisibilities
+	# (src/battle_controllers.c:2146): the reference re-syncs every battler's
+	# sprite state right after an animation, which is what makes it safe for
+	# a script to end mid-`invisible`. Without this a single animation could
+	# leave a Pokemon (or its health box) hidden for the rest of the battle.
+	_refresh_ui()
 	if vm.state == AnimScriptVM.State.ERROR:
 		# The animation aborted mid-run. The battle continues -- an animation
 		# is cosmetic -- but it is surfaced rather than swallowed.
