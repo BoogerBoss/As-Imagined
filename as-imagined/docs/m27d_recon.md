@@ -177,19 +177,107 @@ M27F owns dialogue.
 
 ---
 
-## 5. Decisions for Rob
+## 5. Decisions
 
-1. **Player party for D5** — a hardcoded debug party, or pull M27K's starter
-   choice forward? Debug party is faster and throwaway; starter choice is real
-   work that has to happen anyway and makes the slice a genuine alpha.
+### 1. Player party for D5 — DECIDED (Rob, 2026-07-30)
 
-2. **`OBJ_EVENT_GFX_VAR_0`** — one corridor NPC whose sprite is script-chosen.
-   Render a visible placeholder until M27G, or leave it invisible? A
-   placeholder is honest; invisible is a silent hole.
+**Debug party for the pre-alpha; widen to a real one as the slice grows into
+the full alpha.** So D5 proves the seam without waiting on M27K's starter
+choice, and starter choice lands later against a seam already known to work.
 
-3. **The empty `movement_type`** — one entity carries `""`. Treat as
-   `FACE_DOWN` (source's own default), or surface it as a data defect?
+### 2. `OBJ_EVENT_GFX_VAR_*` — bigger than one NPC, and source supplies the answer
 
-4. **Scope of "defeated"** — D5 needs to remember a beaten trainer. That is
-   the first persistent world state in the project, and M27L owns save/load.
-   In-memory only for the slice, or does this force the save shape early?
+Not a one-off: **44 region-wide across all 8 slots** (VAR_0 ×13, VAR_1/2/3 ×9
+each, VAR_4..7 ×1 each). One is in the corridor — Viridian City (21,6),
+`ViridianCity_EventScript_Tut...`, the tutorial man.
+
+`GetObjectEventGraphicsInfo` resolves them through
+`VarGetObjectEventGraphicsId(id - OBJ_EVENT_GFX_VARS)`, i.e. a script variable
+picks the sprite. **They cannot be pulled, only dispatched**, and the variable
+that drives them is set by field scripts (M27G).
+
+**Source already answers what to draw meanwhile.** The same function ends:
+
+```c
+if (graphicsId >= NUM_OBJ_EVENT_GFX)
+    graphicsId = OBJ_EVENT_GFX_NINJA_BOY;
+```
+
+— an unresolvable id falls back to a real, visible sprite rather than nothing.
+**Recommendation: adopt source's own fallback.** It is visible (so a hole is
+obvious rather than silent), it needs no invented placeholder art, and when
+M27G lands the VAR lookup slots in ahead of the fallback with nothing to undo.
+
+### 3. Empty `movement_type` — not a defect, and it exposes a bigger finding
+
+**9 region-wide**, and the make-up is the point: **6 are
+`OBJ_EVENT_GFX_CUTTABLE_TREE_FRLG`** plus 3 humans (`COOLTRAINER_M` ×2,
+`FAT_MAN_FRLG`). The corridor's one instance is a cuttable tree on Route 2.
+
+A cuttable tree has no movement type because **it is not a character** — it is
+scenery with a script. Source's absent value is `MOVEMENT_TYPE_NONE`, which
+means "hold the initial facing and never move", so **treating empty as NONE is
+source behaviour, not a workaround.** Recommendation: do that, and do not
+surface it as a data defect.
+
+⚠️ **The finding underneath is worth more than the decision.** HM obstacles are
+**object events, not tiles** — region-wide: 97 `BREAKABLE_ROCK_FRLG`, 55
+`CUTTABLE_TREE_FRLG`, 43 `PUSHABLE_BOULDER`, 15 `PUSHABLE_BOULDER_FRLG` — **210
+entities** that exist to block movement until a field move clears them.
+
+Two consequences. **D2 gets them for free**: they import as `npc` kind, so the
+`npc`/`trainer`/`item` occupancy rule already blocks them, and a cuttable tree
+will be solid the moment occupancy lands, with no obstacle-specific code.
+And **M27E (field moves) is partly an entity problem**, not a terrain one —
+worth knowing before that block is scoped.
+
+### 4. Remembering a beaten trainer — the data is already imported, the store is not
+
+Source is one flag per trainer: `HasTrainerBeenFought(id)` is
+`FlagGet(TRAINER_FLAGS_START + trainerId)`, and winning calls `FlagSet` on the
+same bit (`battle_setup.c:1287-1294`).
+
+**This project has no flag or var store — but it already imports the data for
+both.** Measured on the corridor: **31 of 132 object events carry a visibility
+flag**, and **30 triggers reference 9 distinct VARs**
+(`VAR_MAP_SCENE_PEWTER_CITY`, `VAR_MAP_SCENE_ROUTE22`, and so on). The
+importer extracts them, the baker writes them, and nothing reads them.
+
+So this is not really "should the slice persist anything". **One flag/var store
+answers three separate needs at once:**
+
+- D4/D5 — has this trainer been beaten
+- D1/D3 — 31 corridor NPCs are currently drawn unconditionally when their own
+  flag says some should be hidden
+- M27G — field scripts are mostly flag and var manipulation; this is their
+  substrate
+
+**Recommendation: build it in D4, in memory, shaped for serialisation.** It is
+small (a flag set and a var dictionary), it is needed three times over, and
+M27L's job then becomes writing it to disk rather than designing it. The
+alternative — an ad-hoc "defeated trainers" set for the slice — is the same
+work done twice and thrown away once.
+
+---
+
+## 6. D1 scope addendum — pull the whole sprite set (Rob, 2026-07-30)
+
+**Pull all object-event sprites, not just the 46 the corridor names.**
+
+Measured: **449 PNGs totalling 0.5 MB**, covering **387 graphics ids** of which
+only **26 are `_FRLG`-suffixed** — the other 361 are Hoenn/shared, which is
+what "the Emerald sprites" means here. None of them are currently in this
+project.
+
+At half a megabyte the selective pull saves nothing and costs a second
+session later. This project has already run that experiment: `[M26B3-1]`
+pulled 93 trainer front pics, and the Kanto roster then forced a second pull of
+62 more. The dangling-stem counter exists because of it.
+
+Non-people directories come along for free and are wanted eventually anyway —
+`berry_trees` (47), `misc` (63), `dolls`/`cushions` (51, secret-base
+decorations), `pokemon_old` (63).
+
+The generated `graphics_id -> (sheet, frame size, palette)` table should cover
+all 387 ids for the same reason, so a map baked later never hits an id the
+table does not know.
