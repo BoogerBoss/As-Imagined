@@ -45,6 +45,21 @@ var _facing := StepResolver.Dir.SOUTH
 ## directional check whose two tiles live in different MapDatas at a boundary.
 var _resolver: StepResolver
 
+## True from the moment a warp starts until the player is standing at the far
+## end. Input and further warps are refused meanwhile, so a door cannot be
+## re-entered mid-fade.
+var _warping := false
+var _fade: ColorRect
+
+## [M27C C5] A FEEL value, not a ported constant. Source fades with
+## `BeginNormalPaletteFade` at durations that vary per call site, and nothing
+## depends on matching one — so this is chosen, and C5-4 owns tuning it.
+##
+## It only has to outlast the load it hides: Pallet plus neighbours measured
+## ~112 ms threaded, comfortably inside one leg. If a large map ever exceeds it,
+## hold the fade until the load reports done rather than raising this blindly.
+const FADE_SECONDS := 0.25
+
 ## The camera is NOT a child of the player, deliberately.
 ##
 ## [M27C C4] It was, and crossing a seam produced a fast pan from the new
@@ -71,6 +86,7 @@ func _ready() -> void:
 	var added := manager.load_neighbours(start_map)
 	_spawn_player()
 	_add_camera()
+	_add_fade()
 	var d := manager.data_at(_cell)
 	print("overworld: in %s at %s (%d chunk(s) live: %s)"
 			% [manager.chunk_owning(_cell), _cell, manager.loaded_chunks().size(),
@@ -90,21 +106,8 @@ func _ready() -> void:
 ## parameter, so a fixed spawn coordinate would be wrong for every map but one.
 ## A real spawn point is warp/heal-location data — C5 and beyond.
 func _spawn_player() -> void:
-	var origin := manager.origin_of(start_map)
-	var d := manager.data_at(origin)
-	if d == null:
-		return
-	var found := false
-	for y in range(d.height):
-		for x in range(d.width):
-			var g := origin + Vector2i(x, y)
-			if manager.collision_at(g) == 0:
-				_cell = g
-				_elev = manager.elevation_at(g)
-				found = true
-				break
-		if found:
-			break
+	_cell = _first_walkable(start_map)
+	_elev = manager.elevation_at(_cell)
 
 	_player = Node2D.new()
 	_player.name = "Player"
@@ -163,7 +166,7 @@ func _process(_delta: float) -> void:
 	# Every frame, including mid-step: the tween is when following matters most.
 	if _camera != null:
 		_camera.global_position = _player.global_position
-	if _moving:
+	if _moving or _warping:
 		return
 	var dir := _held_direction()
 	if dir >= 0:
@@ -218,4 +221,108 @@ func _try_step(dir: int) -> void:
 	var t := create_tween()
 	var dur := 0.16 if outcome == StepResolver.Outcome.NONE else 0.26
 	t.tween_property(_player, "position", manager.local_pixel_of(_cell), dur)
-	t.finished.connect(func() -> void: _moving = false)
+	# [M27C C5] THE WARP CHECK LIVES HERE, on the completion of a real step, and
+	# nowhere else. Source fires warps from `TryStartStepBasedScript` under
+	# `input->tookStep`, and that is the entire reason arriving on a warp tile
+	# needs no guard against bouncing straight back: arriving is not a step. A
+	# per-frame "am I standing on a warp" poll would look equivalent and would
+	# ping-pong the player between two doors forever.
+	t.finished.connect(func() -> void:
+		_moving = false
+		if _warping:
+			return
+		var w := manager.warp_at(_cell)
+		if w != null:
+			_do_warp(w)
+	)
+
+
+## A full-screen black rect on its own CanvasLayer, so it covers the world
+## regardless of where the camera is looking or what the chunk tree is doing.
+func _add_fade() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 100
+	add_child(layer)
+	_fade = ColorRect.new()
+	_fade.color = Color(0, 0, 0, 0)
+	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(_fade)
+
+
+func _fade_to(alpha: float) -> void:
+	if _fade == null:
+		return
+	var t := create_tween()
+	t.tween_property(_fade, "color:a", alpha, FADE_SECONDS)
+	await t.finished
+
+
+## Take a warp. Fade out, drop the whole region, load the destination alone,
+## put the player on the far side, fade back in.
+##
+## [M27C C5] The unload is the point. A warp is a hard boundary, so nothing
+## survives it — which is why the destination can always be placed at (0, 0)
+## and why the Camera2D smoothing reset that cost C4 a real bug at a 24-cell
+## seam is invisible here: it happens behind a black screen at a moment we pick.
+func _do_warp(w: Warp) -> void:
+	var dest := MapConstants.map_name_for(w.dest_map)
+	# A dead door — a real destination this project has simply not baked yet.
+	# Refused before anything is torn down, so the player keeps standing where
+	# they are rather than being stranded in an empty region.
+	if dest == "" or not MapConstants.is_baked(w.dest_map):
+		print("overworld: warp to %s is not baked — staying put" % w.dest_map)
+		return
+
+	_warping = true
+	await _fade_to(1.0)
+
+	# The player is parented INTO a chunk for draw order, and unload_all frees
+	# chunk roots. Moving it out first is not tidying — it is the difference
+	# between a warp and deleting the player.
+	if _player != null and _player.get_parent() != null:
+		_player.reparent(self)
+	manager.unload_all()
+	manager.load_chunk(dest, Vector2i.ZERO)
+
+	var arrival := manager.warp_arrival(dest, w.dest_warp_id)
+	if arrival.is_empty():
+		# Resolvable map, unresolvable slot. Degrade to a walkable cell rather
+		# than leaving the player on whatever (0,0) happens to be, and say so —
+		# this means the data disagrees with itself.
+		push_warning("overworld: %s has no warp %d — falling back to first walkable"
+				% [dest, w.dest_warp_id])
+		_cell = _first_walkable(dest)
+	else:
+		_cell = Vector2i(arrival["cell"])
+	_elev = manager.elevation_at(_cell)
+
+	_reparent_for_elevation()
+	_player.position = manager.local_pixel_of(_cell)
+	if _camera != null:
+		_camera.global_position = _player.global_position
+		_camera.reset_smoothing()
+	# An interior has none; an outdoor destination needs its own back.
+	manager.load_neighbours(dest)
+	manager.refresh_skirts()
+
+	await _fade_to(0.0)
+	_warping = false
+
+
+## First walkable cell of a loaded chunk, in global coordinates.
+##
+## Shared with spawning: both answer "somewhere valid in this map" with no
+## better information, and having one implementation means a fallback arrival
+## cannot drift from where a fresh start would put you.
+func _first_walkable(map_name: String) -> Vector2i:
+	var origin := manager.origin_of(map_name)
+	var d := manager.data_at(origin)
+	if d == null:
+		return origin
+	for y in range(d.height):
+		for x in range(d.width):
+			var g := origin + Vector2i(x, y)
+			if manager.collision_at(g) == 0:
+				return g
+	return origin

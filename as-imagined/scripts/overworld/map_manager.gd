@@ -366,6 +366,29 @@ func loaded_chunks() -> Array:
 	return _chunks.keys()
 
 
+## Drop every live chunk. Used by a warp, which is a HARD boundary.
+##
+## [M27C C5] A connection is continuous — the player walks across it, so it has
+## to stream. A warp is not: the player takes a door and expects a cut, so the
+## whole registry is cleared and the destination is loaded on its own. That is
+## also closer to source than the streaming is, since `LoadMapFromCameraTransition`
+## keeps ONE map live and swaps it wholesale.
+##
+## The payoff is that the destination can always go at (0, 0): with nothing else
+## live there is nothing to collide with, so free-origin allocation and the
+## overlap constraint on `chunk_owning()` — first match over an UNORDERED
+## Dictionary, and so nondeterministic if two chunks ever overlapped — both stop
+## being problems rather than being solved.
+##
+## ANYTHING PARENTED INTO A CHUNK IS FREED WITH IT. The player lives inside one
+## for draw order, so a caller must move it out first; the camera already lives
+## outside for exactly this reason (see overworld.gd).
+func unload_all() -> void:
+	# Copied: unload_chunk erases from the dictionary being iterated.
+	for map_name in loaded_chunks().duplicate():
+		unload_chunk(map_name)
+
+
 func origin_of(map_name: String) -> Vector2i:
 	if not _chunks.has(map_name):
 		return Vector2i.ZERO

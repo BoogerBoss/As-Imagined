@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 371
+const EXPECTED_TOTAL := 387
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -100,6 +100,9 @@ const CONNECTION_ASSERTIONS := 13
 ## [M27C C5-1] Section AD needs the baked corridor: resolution reads real Warp
 ## nodes, because the alternative is a second copy of every warp position.
 const WARP_ASSERTIONS := 15
+
+## [M27C C5-3] Section AE drives a real warp, so it needs the corridor too.
+const WARP_DISPATCH_ASSERTIONS := 16
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -178,6 +181,7 @@ func _ready() -> void:
 	_test_neighbour_placement()
 	_test_connections_and_border()
 	_test_warp_resolution()
+	await _test_warp_dispatch()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -2376,3 +2380,108 @@ func _baked_map_names() -> Array[String]:
 			out.append(f.substr(0, f.length() - 5))
 	out.sort()
 	return out
+
+
+## Section AE — [M27C C5-3] warp dispatch.
+##
+## A warp is a HARD boundary: fade, drop the whole region, load the destination
+## alone. The assertions worth having are the ones about that teardown, because
+## its failure modes are severe and quiet — the player is parented INTO a chunk
+## for draw order, so unloading without moving it out first does not misplace
+## the player, it DELETES them.
+##
+## Awaited rather than fire-and-forget: `_do_warp` fades, and a test that did
+## not wait would assert against the state before any of it happened.
+func _test_warp_dispatch() -> void:
+	if not (ResourceLoader.exists("res://scenes/maps/PalletTown_Frlg.tscn")
+			and ResourceLoader.exists(
+				"res://scenes/maps/PalletTown_ProfessorOaksLab_Frlg.tscn")):
+		_gated += WARP_DISPATCH_ASSERTIONS
+		return
+
+	# --- unload_all, on its own ---
+	var mm := MapManager.new()
+	add_child(mm)
+	mm.load_chunk("PalletTown_Frlg", Vector2i.ZERO)
+	mm.load_chunk("PalletTown_ProfessorOaksLab_Frlg", Vector2i(300, 400))
+	_chk("AE.01 two chunks live before the warp", mm.loaded_chunks().size() == 2)
+	mm.unload_all()
+	_chk("AE.02 unload_all leaves nothing", mm.loaded_chunks().is_empty())
+	mm.unload_all()
+	_chk("AE.03 and is a no-op on an already-empty registry",
+			mm.loaded_chunks().is_empty())
+
+	# THE HAZARD, PROVEN REAL rather than assumed. Unloading frees chunk ROOTS,
+	# so anything parented into one goes with it — which is why _do_warp moves
+	# the player out first.
+	#
+	# This is asserted directly because the obvious test does not work: the free
+	# is deferred, and _do_warp reparents into the new chunk in the same frame,
+	# so removing the guard from production code leaves the player alive anyway
+	# and every assertion still passes. Confirmed by trying it. The guard is
+	# therefore protecting against a frame boundary nobody has introduced YET —
+	# a threaded load in that window would be enough — and the hazard has to be
+	# pinned on its own or it is pinned nowhere.
+	mm.load_chunk("PalletTown_Frlg", Vector2i.ZERO)
+	var stowaway := Node2D.new()
+	mm.get_node("PalletTown_Frlg").add_child(stowaway)
+	mm.unload_all()
+	await get_tree().process_frame
+	_chk("AE.04 anything left parented inside a chunk is freed with it",
+			not is_instance_valid(stowaway))
+	mm.queue_free()
+
+	# --- the real thing, driven through the overworld ---
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	add_child(ow)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var man: MapManager = ow.manager
+	var start_cell: Vector2i = ow._cell
+	var door_cell: Vector2i = man.origin_of("PalletTown_Frlg") + Vector2i(16, 13)
+	var door := man.warp_at(door_cell)
+	_chk("AE.05 the lab door is a live warp", door != null)
+
+	# A destination that exists in source but nobody has baked. Refused BEFORE
+	# anything is torn down — otherwise a dead door strands the player in an
+	# empty region rather than simply doing nothing.
+	var chunks_before: int = man.loaded_chunks().size()
+	var dead := Warp.new()
+	dead.dest_map = "MAP_PEWTER_CITY_GYM"
+	await ow._do_warp(dead)
+	_chk("AE.06 a dead door changes nothing rather than stranding the player",
+			man.loaded_chunks().size() == chunks_before
+			and ow._cell == start_cell)
+	dead.free()
+
+	ow._cell = door_cell
+	await ow._do_warp(door)
+
+	_chk("AE.07 warping drops every other chunk",
+			man.loaded_chunks() == ["PalletTown_ProfessorOaksLab_Frlg"])
+	_chk("AE.08 and lands on the destination warp's own tile",
+			ow._cell == Vector2i(6, 12))
+	# The severe one: the player lives inside a chunk root, and unload frees it.
+	_chk("AE.09 and the player did NOT — it was moved out first",
+			is_instance_valid(ow._player) and ow._player.is_inside_tree())
+	_chk("AE.10 re-parented into the ARRIVAL chunk, not the one just freed",
+			man.chunk_owning(ow._cell) == "PalletTown_ProfessorOaksLab_Frlg")
+	_chk("AE.11 standing somewhere walkable", man.collision_at(ow._cell) == 0)
+	# Snapped, not smoothed. This is C4's camera bug, hidden behind the fade —
+	# a pan across the region would be invisible in the totals but obvious on
+	# screen, so it is pinned here.
+	_chk("AE.12 the camera snapped rather than panning",
+			ow._camera.global_position == ow._player.global_position)
+	_chk("AE.13 and the screen faded back in", is_equal_approx(ow._fade.color.a, 0.0))
+
+	# --- back out, which is where an origin or index error shows up ---
+	var back := man.warp_at(ow._cell)
+	_chk("AE.14 the arrival tile is itself a warp home", back != null)
+	await ow._do_warp(back)
+	_chk("AE.15 returning puts us on the exact cell we left", ow._cell == door_cell)
+	_chk("AE.16 with the outdoor neighbours restored",
+			man.loaded_chunks().has("PalletTown_Frlg")
+			and man.loaded_chunks().size() > 1)
+
+	ow.queue_free()
