@@ -1030,8 +1030,10 @@ func _test_events_mode_table() -> void:
 	_chk("S.06 and stays empty for an undefined constant",
 			MapConstants.scene_path_for("MAP_NOT_A_REAL_PLACE") == "")
 	# A known interior nobody has baked: the dangling stem this mode draws.
+	# Was Viridian City's gym until M27C baked it; Pewter's is the same shape
+	# and still unbaked. This whole assertion retires once every interior is in.
 	_chk("S.07 a known-but-unbaked interior reads as not baked",
-			not MapConstants.is_baked("MAP_VIRIDIAN_CITY_GYM"))
+			not MapConstants.is_baked("MAP_PEWTER_CITY_GYM"))
 
 	# The overlay must survive being asked about events with no map under it.
 	var orphan := MapOverlay.new()
@@ -1116,12 +1118,13 @@ func _test_events_mode_entities() -> void:
 		states[s] = int(states.get(s, 0)) + 1
 	_chk("S.21 every real warp names a map source defines",
 			int(states.get("unknown", 0)) == 0)
-	# A TRIPWIRE, and it is meant to flip. When M27C bakes these interiors this
-	# assertion fails, and that failure is the correct signal — the same shape
-	# as I.14/I.15, which asserted a gap could not close silently until it did.
-	# Re-point it at the new count; do not delete it.
-	_chk("S.22 all 5 lead to unbaked interiors — the dangling stems",
-			int(states.get("unbaked", 0)) == 5)
+	# THE TRIPWIRE FIRED, exactly as its own comment predicted: M27C baked
+	# Viridian City's five interiors and this flipped from 5 unbaked to 5 baked.
+	# Re-pointed rather than deleted, per that instruction — it now guards the
+	# opposite direction, so a destination silently LOSING its scene is caught
+	# the same way the gap closing was.
+	_chk("S.22 all 5 now resolve to baked interiors — the stems are joined",
+			int(states.get("baked", 0)) == 5 and int(states.get("unbaked", 0)) == 0)
 
 	# The three states, driven directly. Synthetic warps because the corridor
 	# has no example of the other two: nothing warps to a baked map yet, and an
@@ -1336,10 +1339,11 @@ func _test_stacks_and_counts() -> void:
 	var counts := ov.events_counts()
 	_chk("V.09 the banner counts the one stacked cell here",
 			int(counts["stacked"]) == 1)
-	# Viridian City's five warps all lead to unbaked interiors. PENDING, not
-	# broken — the banner must not colour its border for these.
-	_chk("V.10 all five warps count as pending dead doors",
-			int(counts["dead_doors"]) == 5)
+	# Was five pending dead doors; M27C baked all five interiors, so the banner
+	# has nothing left to flag here. Still asserted, because a count going back
+	# UP means a destination lost its scene.
+	_chk("V.10 no dead doors remain now the interiors are baked",
+			int(counts["dead_doors"]) == 0)
 	_chk("V.11 and none of them counts as a defect",
 			int(counts["broken_warps"]) == 0 and int(counts["typo_trainers"]) == 0)
 	vroot.free()

@@ -27618,3 +27618,23 @@ No commit made this session — per standing instruction, Rob commits.
   `assets/sprites/trainers/portraits/`), and `TrainerPicRegistry` falls back
   to a placeholder rather than null, so a missing portrait could not have
   caused this. Fixed 2026-07-29.
+
+## [M27C] TradeCenter and UnionRoom excluded from the interior bake (Rob, 2026-07-30)
+
+- Decision: the two Viridian link rooms are **permanently excluded** from the
+  map bake, not deferred. They are link-cable multiplayer rooms — no wild
+  encounters, no NPCs, no story triggers, and reachable only through
+  trade/link infrastructure this project does not have and has no roadmap
+  slot for. Trading and link/Union Room are already named among
+  `docs/overworld_scope.md`'s own confirmed exclusions (~67,000 lines of
+  reference source), so this is that exclusion reaching the map layer, not a
+  new scope call.
+- Why it is recorded: it is a judgment call that leaves two unbaked interiors
+  sitting inside an otherwise fully-baked Viridian. A future session should
+  read that as intentional rather than as a gap to close. It is also the
+  reason the Pallet/Viridian interior count is 10 rather than 12.
+- Revisit only if link/trade is ever scoped. Nothing else depends on it: both
+  rooms are warp-only, carry no connections, and appear in no other map's
+  connection graph, so excluding them changes no neighbour placement and
+  leaves no dangling stitch — only two warp destinations that will resolve as
+  unbaked, the same state every not-yet-baked map is already in.

@@ -105,14 +105,23 @@ def _elev_priority():
     return "[%s]" % ", ".join(str(v) for v in vals)
 
 
-def gen_behavior_constants():
-    """
-    Emit all 240 MB_* metatile-behaviour constants as GDScript.
+_BEHAVIOR_NAMES = None
 
-    Generated, never hand-typed: §1.3 counts 240 constants (213 named, 27
-    UNUSED), and the directional/ledge subset the step resolver depends on
-    sits at non-obvious indices (MB_JUMP_SOUTH = 59, MB_IMPASSABLE_NORTH = 50).
+
+def behavior_names():
+    """id -> MB_* name, parsed once from the real enum.
+
+    Shared with gen_behavior_constants() rather than re-derived: two parses of
+    the same header that could disagree is the drift this project keeps paying
+    for elsewhere.
     """
+    global _BEHAVIOR_NAMES
+    if _BEHAVIOR_NAMES is None:
+        _BEHAVIOR_NAMES = {i: n for i, n in enumerate(_behavior_name_list())}
+    return _BEHAVIOR_NAMES
+
+
+def _behavior_name_list():
     import re
     txt = open(os.path.join(REF, "include/constants/metatile_behaviors.h")).read()
     body = re.search(r"enum\s*\{(.*?)\};", txt, re.S).group(1)
@@ -123,6 +132,18 @@ def gen_behavior_constants():
             if m.group(2):
                 names = names[:int(m.group(2))]
             names.append(m.group(1))
+    return names
+
+
+def gen_behavior_constants():
+    """
+    Emit all 240 MB_* metatile-behaviour constants as GDScript.
+
+    Generated, never hand-typed: §1.3 counts 240 constants (213 named, 27
+    UNUSED), and the directional/ledge subset the step resolver depends on
+    sits at non-obvious indices (MB_JUMP_SOUTH = 59, MB_IMPASSABLE_NORTH = 50).
+    """
+    names = _behavior_name_list()
 
     out = [
         # @tool must be the FIRST line -- Godot requires the annotation ahead of
@@ -705,6 +726,31 @@ CONNECTION_DIRS = {"down": 1, "up": 2, "left": 3, "right": 4, "dive": 5, "emerge
 DEFAULT_BORDER_W, DEFAULT_BORDER_H = 2, 2
 
 
+# [M27C C5] Behaviours the reference will actually fire a warp from, gathered
+# from FOUR separate code paths in field_control_avatar.c — missing any one of
+# them silently marks real warps inert:
+#   IsWarpMetatileBehavior      step-on: doors, ladders, escalators, holes
+#   IsArrowWarpMetatileBehavior direction-gated arrows
+#   IsDirectionalStairWarp...   stair warps, a path of its own (103 region-wide)
+#   TryDoorWarp                 animated doors, north only
+#
+# Names taken from the predicates rather than guessed: IsUnionRoomWarp is
+# MB_BRIDGE_OVER_OCEAN, IsNorthArrowWarp includes MB_STAIRS_OUTSIDE_ABANDONED_SHIP,
+# and IsSouthArrowWarp includes MB_SHOAL_CAVE_ENTRANCE — none of which read as
+# warps from the constant name alone.
+WARP_TRIGGER_BEHAVIORS = {
+    "MB_ANIMATED_DOOR", "MB_LADDER", "MB_UP_ESCALATOR", "MB_DOWN_ESCALATOR",
+    "MB_NON_ANIMATED_DOOR", "MB_WATER_DOOR", "MB_DEEP_SOUTH_WARP",
+    "MB_SOUTH_ARROW_WARP", "MB_WATER_SOUTH_ARROW_WARP", "MB_SHOAL_CAVE_ENTRANCE",
+    "MB_NORTH_ARROW_WARP", "MB_STAIRS_OUTSIDE_ABANDONED_SHIP",
+    "MB_WEST_ARROW_WARP", "MB_EAST_ARROW_WARP",
+    "MB_DOWN_LEFT_STAIR_WARP", "MB_DOWN_RIGHT_STAIR_WARP",
+    "MB_UP_LEFT_STAIR_WARP", "MB_UP_RIGHT_STAIR_WARP",
+    "MB_AQUA_HIDEOUT_WARP", "MB_MT_PYRE_HOLE", "MB_BRIDGE_OVER_OCEAN",
+    "MB_MOSSDEEP_GYM_WARP", "MB_LAVARIDGE_GYM_B1F_WARP", "MB_LAVARIDGE_GYM_1F_WARP",
+}
+
+
 def extract_connections(mp):
     """map.json's connection list -> normalised {direction, map, offset}.
 
@@ -730,6 +776,33 @@ def extract_connections(mp):
             "offset": int(c.get("offset", 0)),
         })
     return out
+
+
+def _stamp_warp_triggers(events, mids, ts, w, h):
+    """Record whether the REFERENCE would fire each warp from its own tile.
+
+    [M27C C5] This project decouples "a warp exists here" from "this tile is a
+    door", because the coupling means a hand-placed warp on an ordinary tile
+    silently never fires — the failure class §1.9 already exists to prevent for
+    collision. So presence decides, and this flag carries the imported fidelity.
+
+    Measured: 214 of 1294 warps sit on MB_NORMAL and are fired by nothing. They
+    are not arrival points either — the flanking tiles of a multi-tile doorway,
+    where exactly one tile carries the arrow behaviour that actually triggers.
+    Oak's Lab is the worked example: (6,12) is MB_SOUTH_ARROW_WARP, while
+    (5,12) and (7,12) are inert. Importing those as triggers would silently
+    widen every doorway in Kanto; hand-placed warps default to true instead.
+    """
+    names = behavior_names()
+    for e in events:
+        if e.get("kind") != "warp":
+            continue
+        x, y = int(e["x"]), int(e["y"])
+        beh_name = ""
+        if 0 <= x < w and 0 <= y < h:
+            beh_name = names.get(ts.behavior(mids[y * w + x]), "")
+        e["triggers"] = beh_name in WARP_TRIGGER_BEHAVIORS
+    return events
 
 
 def convert(map_dir, dirmap, layouts, render=False, quiet=False):
@@ -810,7 +883,7 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
         # values came from source and are authoritative, not a guess. Only
         # hand-painted cells start un-decided.
         "attr_explicit": [3] * len(mids),
-        "events": extract_events(mp),
+        "events": _stamp_warp_triggers(extract_events(mp), mids, ts, w, h),
         # [M27C C1] Stitching metadata. Emitted for every map, consumed by
         # nothing yet — C2/C4 build the loader that reads it.
         "connections": extract_connections(mp),

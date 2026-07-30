@@ -512,6 +512,9 @@ func _emit_events(root: Node2D, map_name: String, ent_low: Node2D, ent_high: Nod
 	root.add_child(triggers)
 
 	var counts := {}
+	# Names claimed so far, so a second entity on the same CELL gets a suffix
+	# rather than colliding. See _node_name().
+	var used := {}
 	for item in (raw as Array):
 		if typeof(item) != TYPE_DICTIONARY:
 			continue
@@ -519,6 +522,7 @@ func _emit_events(root: Node2D, map_name: String, ent_low: Node2D, ent_high: Nod
 		var node := _build_event_node(e)
 		if node == null:
 			continue
+		node.name = _unique_name(_node_name(e, node), used)
 		var kind := str(e.get("kind", ""))
 		# Two strata, keyed by the source's own sElevationToPriority — elevation
 		# 4 draws above the overhang plane, but 5 returns to ground level.
@@ -565,6 +569,9 @@ func _build_event_node(e: Dictionary) -> OverworldEntity:
 			var w := Warp.new()
 			w.dest_map = str(e.get("dest_map", ""))
 			w.dest_warp_id = int(str(e.get("dest_warp_id", "0")))
+			# Absent means true: a hand-added warp, or data predating the flag,
+			# should fire rather than be silently inert.
+			w.triggers = bool(e.get("triggers", true))
 			node = w
 		"trigger":
 			var g := Trigger.new()
@@ -584,7 +591,6 @@ func _build_event_node(e: Dictionary) -> OverworldEntity:
 	node.elevation = int(e.get("elevation", 3))
 	node.visibility_flag = _real_flag(str(e.get("flag", "")))
 	node.script_label = str(e.get("script", ""))
-	node.name = _node_name(e, node)
 	return node
 
 
@@ -603,6 +609,26 @@ func _real_flag(flag: String) -> String:
 ## Names are for the editor's own sake, so they lead with the kind and stay
 ## unique per map — Godot silently renames a collision, which would make an
 ## authored reference to a node break on the next re-bake.
+## Make a base name unique within the map, deterministically.
+##
+## [M27C] Names are derived from the CELL, and stacked entities are real — 22
+## cells in Kanto carry two events, and Route 22 has two triggers on (33,6)
+## gated on different values of one VAR. The second collided, and GODOT
+## SILENTLY RENAMED IT to `@Node2D@N` from a PROCESS-WIDE counter: the same map
+## baked alone and baked in a batch produced different names, so a batch bake
+## was never byte-reproducible. Caught by check_bake_diff flagging Route 22 in
+## an 18-map run while passing when checked on its own.
+##
+## The suffix is positional and therefore stable, because event order is source
+## order — the same input always produces the same names.
+static func _unique_name(base: String, used: Dictionary) -> String:
+	if not used.has(base):
+		used[base] = 1
+		return base
+	used[base] = int(used[base]) + 1
+	return "%s_%d" % [base, used[base]]
+
+
 func _node_name(e: Dictionary, node: OverworldEntity) -> String:
 	var kind := str(e.get("kind", "event")).capitalize().replace(" ", "")
 	if node is TrainerNPC and (node as TrainerNPC).trainer_key != "":
