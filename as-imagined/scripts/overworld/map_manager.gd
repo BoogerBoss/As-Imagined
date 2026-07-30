@@ -26,6 +26,48 @@ extends Node2D
 
 const CELL := 16
 
+## Atlas geometry, matching map_baker.gd — the skirt paints from the same
+## atlas the chunk's own Ground layer uses, so a border metatile id converts
+## to atlas coords exactly as a map cell does.
+const ATLAS_COLS := 32
+
+## How far past a chunk's own bounds the skirt reaches, in cells.
+##
+## MEASURED, not picked: the canvas is 1024x768 (M26A1) and the overworld
+## camera runs at zoom 3, so the visible region is 341x256 world px = 21.3 x 16
+## cells, i.e. a ~11 x 8 half-extent when the player stands on an edge cell.
+## 16 covers the wider axis with headroom for the camera's own position
+## smoothing overshooting the player, and for the non-native window sizes
+## M26G3 flags as a real case. Cost is bounded: a 24x20 map skirted at 16 is
+## 56x52 cells of TileMapLayer, which is nothing.
+const SKIRT_DEPTH := 16
+
+## The layers MapManager paints the skirt into, one per draw plane.
+##
+## Created at load time and NEVER baked. The baked scene is a reproducible
+## artifact (map_baker's own guard depends on that), and which edges need a
+## skirt is not a property of the map anyway — it changes at runtime as C4
+## loads and unloads neighbours.
+##
+## THREE of them, not one, and that is not symmetry for its own sake: a
+## metatile routes to one or two of the three planes by §1.6, so a skirt
+## painted into the ground plane alone renders half of each block. Pallet
+## Town's own border is the worked example — ids 28/29 are COVERED
+## (ground+objects) but 20/21 are NORMAL (objects+overhangs, nothing on ground
+## at all), so a ground-only skirt left every other row blank. The cell COUNT
+## was already correct; only a screenshot could see it.
+const SKIRT_LAYERS := ["BorderSkirt_Ground", "BorderSkirt_Objects",
+		"BorderSkirt_Overhangs"]
+
+## §1.6 routing, matching map_baker.gd's own table: layer_type -> the planes a
+## metatile paints into. Both halves use the same atlas coords; the per-plane
+## atlas already holds the right half.
+const ROUTING := {
+	0: [1, 2],  # NORMAL  : objects + overhangs
+	1: [0, 1],  # COVERED : ground  + objects
+	2: [0, 2],  # SPLIT   : ground  + overhangs
+}
+
 ## map name -> {"data": MapData, "root": Node2D, "origin": Vector2i}
 ##
 ## Keyed by the map's own directory name (`Route1_Frlg`), which is what
@@ -56,6 +98,10 @@ func load_chunk(map_name: String, origin: Vector2i = Vector2i.ZERO) -> bool:
 		return false
 	add_child(root)
 	register_chunk(map_name, data, root, origin)
+	# Every chunk's skirt, not just this one's: a newly loaded neighbour takes
+	# ownership of cells an existing chunk was skirting over, so the seam only
+	# closes if the OTHER side repaints too.
+	refresh_skirts()
 	return true
 
 
@@ -67,6 +113,107 @@ func register_chunk(map_name: String, data: MapData, root: Node2D,
 	_chunks[map_name] = {"data": data, "root": root, "origin": origin}
 	if root != null:
 		root.position = Vector2(origin) * CELL
+
+
+## Which border metatile falls at a given LOCAL cell, including negative ones.
+##
+## Ported from `GetBorderBlockAt` (src/fieldmap.c:53-70): the block tiles by
+## modulo on the map's own local coordinates, so the pattern's parity runs
+## continuously outward rather than restarting at the map edge.
+##
+## Source biases by `8 * borderWidth` before taking the modulo, because C's `%`
+## keeps the sign of the dividend and a negative index would read out of the
+## array. GDScript's `%` has exactly the same behaviour, so the guard is
+## needed here too — written as a general positive modulo rather than a copied
+## magic bias, which also drops source's implicit assumption that no
+## coordinate is more than 8 blocks outside the map.
+static func border_metatile_at(d: MapData, local: Vector2i) -> int:
+	if d == null or d.border.is_empty():
+		return -1
+	var bw: int = maxi(1, d.border_width)
+	var bh: int = maxi(1, d.border_height)
+	var xp := ((local.x % bw) + bw) % bw
+	var yp := ((local.y % bh) + bh) % bh
+	var i := xp + yp * bw
+	return d.border[i] if i < d.border.size() else -1
+
+
+## The layer type of the border metatile at a local cell, tiled identically to
+## `border_metatile_at` so the two never disagree about which entry they mean.
+static func border_layer_type_at(d: MapData, local: Vector2i) -> int:
+	if d == null or d.border_layer_type.is_empty():
+		return -1
+	var bw: int = maxi(1, d.border_width)
+	var bh: int = maxi(1, d.border_height)
+	var xp := ((local.x % bw) + bw) % bw
+	var yp := ((local.y % bh) + bh) % bh
+	var i := xp + yp * bw
+	return d.border_layer_type[i] if i < d.border_layer_type.size() else -1
+
+
+## Paint every chunk's skirt over ground nobody owns.
+##
+## Deliberately "wherever no chunk owns the cell" rather than "on edges with no
+## connection". The two differ in ways that matter: the corridor has 3 dangling
+## connections whose neighbours are real in source but unbaked, and those edges
+## need a skirt exactly like an edge with no connection at all. It also means
+## C4 needs no new edge logic — when a neighbour loads, its cells acquire an
+## owner and re-running this clears the skirt that covered them.
+func refresh_skirts() -> void:
+	for map_name in _chunks:
+		_paint_skirt(map_name)
+
+
+func _paint_skirt(map_name: String) -> void:
+	var c: Dictionary = _chunks[map_name]
+	var d: MapData = c["data"]
+	var root: Node2D = c["root"]
+	if d == null or root == null or not is_instance_valid(root) or d.border.is_empty():
+		return
+	var ground: TileMapLayer = root.get_node_or_null("Ground") as TileMapLayer
+	if ground == null:
+		return
+
+	# One layer per plane. All three share the chunk's single TileSet — the
+	# baker gives every baked layer the same one, with the three atlases as
+	# sources 0/1/2 — so the plane index doubles as the source id, exactly as
+	# in map_baker's own set_cell call.
+	var skirts: Array[TileMapLayer] = []
+	for plane in range(SKIRT_LAYERS.size()):
+		var nm: String = SKIRT_LAYERS[plane]
+		var layer: TileMapLayer = root.get_node_or_null(nm) as TileMapLayer
+		if layer == null:
+			layer = TileMapLayer.new()
+			layer.name = nm
+			layer.tile_set = ground.tile_set
+			root.add_child(layer)
+			# Below every baked layer, in plane order among themselves. Skirt
+			# cells never overlap map cells, so skirt-vs-map order is free;
+			# skirt-vs-skirt order is not, or an overhang would draw under its
+			# own ground. add_child appends, so each has to be moved.
+			root.move_child(layer, plane)
+		layer.clear()
+		skirts.append(layer)
+
+	var origin: Vector2i = c["origin"]
+	var has_types := d.border_layer_type.size() == d.border.size()
+	for y in range(-SKIRT_DEPTH, d.height + SKIRT_DEPTH):
+		for x in range(-SKIRT_DEPTH, d.width + SKIRT_DEPTH):
+			var local := Vector2i(x, y)
+			# Skip anything a chunk owns — this chunk's own cells, and (once C4
+			# lands) a neighbour's, which is what makes a seam close up.
+			if chunk_owning(origin + local) != "":
+				continue
+			var mid := border_metatile_at(d, local)
+			if mid < 0:
+				continue
+			var coords := Vector2i(mid % ATLAS_COLS, int(mid / ATLAS_COLS))
+			# A map imported before border_layer_type existed has none; fall
+			# back to the ground plane rather than painting nothing, so an old
+			# artifact degrades to the previous behaviour instead of a void.
+			var lt: int = border_layer_type_at(d, local) if has_types else 1
+			for plane in ROUTING.get(lt, [0]):
+				skirts[plane].set_cell(local, plane, coords)
 
 
 func unload_chunk(map_name: String) -> void:

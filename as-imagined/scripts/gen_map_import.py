@@ -774,6 +774,14 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
     assert len(braw) == bw * bh, "%s: border.bin %d cells, layout says %dx%d" % (
         map_dir, len(braw), bw, bh)
     border = [v & MAPGRID_METATILE_ID_MASK for v in braw]
+    # The border's own layer types, for the same reason the map has them: a
+    # metatile routes to one or two of the three planes by §1.6, and a skirt
+    # that paints only the ground plane renders HALF A BLOCK. Pallet Town's own
+    # border is the worked example -- ids 28/29 are COVERED (ground+objects)
+    # while 20/21 are NORMAL (objects+overhangs, nothing on ground at all), so
+    # painting ground-only left every other row blank. Found by screenshot; the
+    # cell COUNT was already correct, which is exactly what a count cannot see.
+    border_layer_type = [ts.layer_type(m) for m in border]
     bad_b = [m for m in border if m >= ts.count]
     assert not bad_b, "%s: %d border metatile ids past the tileset (max %d)" % (
         map_dir, len(bad_b), ts.count - 1)
@@ -807,6 +815,7 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
         # nothing yet — C2/C4 build the loader that reads it.
         "connections": extract_connections(mp),
         "border": border, "border_width": bw, "border_height": bh,
+        "border_layer_type": border_layer_type,
     }
     os.makedirs(OUT, exist_ok=True)
     os.makedirs(ATLAS_OUT, exist_ok=True)

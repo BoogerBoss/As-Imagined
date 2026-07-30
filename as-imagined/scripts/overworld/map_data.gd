@@ -99,6 +99,11 @@ enum Connection { NONE, SOUTH, NORTH, WEST, EAST, DIVE, EMERGE }
 ## border.bin. Seven declare 3x2, which is why these are fields rather than
 ## constants.
 @export var border: PackedInt32Array = PackedInt32Array()
+
+## Per-border-metatile layer type, parallel to `border`. Needed because a
+## metatile routes to one or two of the three draw planes (§1.6) and a skirt
+## painted into the ground plane alone shows half of each block.
+@export var border_layer_type: PackedInt32Array = PackedInt32Array()
 @export var border_width: int = 2
 @export var border_height: int = 2
 
@@ -325,6 +330,7 @@ static func load_from(path: String) -> MapData:
 	# array and the guard depending on it could never fire. A field that
 	# round-trips halfway is worse than no field, because it looks present.
 	m.border = _to_ints(d.get("border", []))
+	m.border_layer_type = _to_ints(d.get("border_layer_type", []))
 	m.border_width = int(d.get("border_width", 2))
 	m.border_height = int(d.get("border_height", 2))
 

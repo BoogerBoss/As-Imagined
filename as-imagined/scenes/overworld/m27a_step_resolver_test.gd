@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 321
+const EXPECTED_TOTAL := 334
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -170,6 +170,7 @@ func _ready() -> void:
 	_test_entity_at()
 	_test_stacks_and_counts()
 	_test_map_manager()
+	_test_border_skirt()
 	_test_connections_and_border()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
@@ -1582,6 +1583,80 @@ func _test_map_manager() -> void:
 	if is_instance_valid(root_b):
 		root_b.free()
 	root_a.free()
+
+
+## Section AB — [M27C C3] the border skirt.
+##
+## Two things are worth testing here and they are both arithmetic, so this is
+## ungated like AA.
+##
+## The FIRST is the negative modulo. Source's `GetBorderBlockAt` biases by
+## `8 * borderWidth` before taking `%` purely because C keeps the sign of the
+## dividend — and GDScript does exactly the same, so a direct transliteration
+## without that guard reads a negative index. Every cell the skirt paints is
+## outside the map, which means roughly half of them have a negative local
+## coordinate on at least one axis: this is the common case, not an edge case.
+##
+## The SECOND is that the skirt keys on OWNERSHIP, not on connections. An edge
+## whose connection points at an unbaked map needs a skirt exactly like an edge
+## with no connection at all, and the corridor has 3 of the former.
+func _test_border_skirt() -> void:
+	# A 2x2 border with four distinct ids, so any wrong index is visible rather
+	# than coincidentally right — the same reason AA's two chunks differ.
+	var d := _synth(4, 4, [], [], [])
+	d.border = PackedInt32Array([10, 11, 12, 13])
+	d.border_width = 2
+	d.border_height = 2
+
+	_chk("AB.01 local (0,0) reads the block's first entry",
+			MapManager.border_metatile_at(d, Vector2i(0, 0)) == 10)
+	_chk("AB.02 and (1,1) its last",
+			MapManager.border_metatile_at(d, Vector2i(1, 1)) == 13)
+	_chk("AB.03 the pattern repeats forward",
+			MapManager.border_metatile_at(d, Vector2i(2, 2)) == 10)
+
+	# The whole point. A sign-preserving `%` gives -1 here and reads out of the
+	# array; the correct answer continues the parity leftward.
+	_chk("AB.04 a negative x wraps to the far column, not a negative index",
+			MapManager.border_metatile_at(d, Vector2i(-1, 0)) == 11)
+	_chk("AB.05 a negative y likewise",
+			MapManager.border_metatile_at(d, Vector2i(0, -1)) == 12)
+	_chk("AB.06 both negative",
+			MapManager.border_metatile_at(d, Vector2i(-1, -1)) == 13)
+	_chk("AB.07 and it stays periodic a long way out",
+			MapManager.border_metatile_at(d, Vector2i(-16, -16)) == 10)
+
+	# 3x2 is real — 7 layouts declare it and Viridian Forest is one of them, so
+	# a 2x2 assumption would mis-tile a map already in the corridor.
+	var d3 := _synth(4, 4, [], [], [])
+	d3.border = PackedInt32Array([1, 2, 3, 4, 5, 6])
+	d3.border_width = 3
+	d3.border_height = 2
+	_chk("AB.08 a 3x2 block indexes by its own width",
+			MapManager.border_metatile_at(d3, Vector2i(2, 1)) == 6)
+	_chk("AB.09 and wraps on 3, not 2",
+			MapManager.border_metatile_at(d3, Vector2i(3, 0)) == 1
+			and MapManager.border_metatile_at(d3, Vector2i(-1, 0)) == 3)
+
+	_chk("AB.10 a map with no border block yields no tile rather than crashing",
+			MapManager.border_metatile_at(_synth(2, 2, [], [], []), Vector2i(0, 0)) == -1)
+
+	# --- the ownership rule, which is what makes C4 need no new edge logic ---
+	var mm := MapManager.new()
+	var ra := Node2D.new()
+	var rb := Node2D.new()
+	mm.register_chunk("A", d, ra, Vector2i.ZERO)
+	_chk("AB.11 a cell just outside a lone chunk is unowned, so it gets skirt",
+			mm.chunk_owning(Vector2i(-1, 0)) == "")
+	# Put a second chunk exactly where the first one's skirt would have gone.
+	mm.register_chunk("B", d, rb, Vector2i(-4, 0))
+	_chk("AB.12 once a neighbour owns that cell the skirt must yield to it",
+			mm.chunk_owning(Vector2i(-1, 0)) == "B")
+	_chk("AB.13 while a cell beyond BOTH stays unowned",
+			mm.chunk_owning(Vector2i(-5, 0)) == "")
+	mm.free()
+	ra.free()
+	rb.free()
 
 
 ## Section Y — [M27C C1] connections and the border block.
