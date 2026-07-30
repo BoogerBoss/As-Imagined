@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 448
+const EXPECTED_TOTAL := 462
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -127,6 +127,9 @@ const SPRITE_ASSERTIONS := 14
 
 ## [M27D D2] Section AM — entity occupancy.
 const OCCUPANCY_ASSERTIONS := 9
+
+## [M27D D3] Section AN — NPC movement.
+const MOVEMENT_ASSERTIONS := 14
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -214,6 +217,7 @@ func _ready() -> void:
 	_test_every_warp_is_reachable()
 	_test_object_event_sprites()
 	_test_entity_occupancy()
+	_test_npc_movement()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -3231,4 +3235,115 @@ func _test_entity_occupancy() -> void:
 	mm.unload_chunk("PalletTown_Frlg")
 	_chk("AM.09 and unloading releases it rather than leaking one per map",
 			not mm._occupancy.has("PalletTown_Frlg"))
+	mm.queue_free()
+
+
+## Section AN — [M27D D3] NPC movement.
+##
+## Source spreads four behaviours across separate function tables, but they are
+## ONE state machine with two parameters: which direction set, and whether
+## choosing a direction also steps. `MovementType_LookAround_Step4` and
+## `MovementType_FaceDownAndUp_Step4` differ only in the table they memcpy;
+## `MovementType_WanderAround_Step4` differs only in going on to walk.
+##
+## AN.04 is the one that would have pinned the region: a range of 0 means
+## UNCONSTRAINED on that axis, not a zero-size box.
+func _test_npc_movement() -> void:
+	var n := NPC.new()
+
+	n.movement_type = "MOVEMENT_TYPE_LOOK_AROUND"
+	_chk("AN.01 LOOK_AROUND chooses from all four directions",
+			n.direction_choices().size() == 4 and not n.wanders())
+	n.movement_type = "MOVEMENT_TYPE_FACE_DOWN_AND_UP"
+	_chk("AN.02 FACE_DOWN_AND_UP is the same machine, restricted to two",
+			n.direction_choices() == [StepResolver.Dir.SOUTH, StepResolver.Dir.NORTH]
+			and not n.wanders())
+	n.movement_type = "MOVEMENT_TYPE_WANDER_LEFT_AND_RIGHT"
+	_chk("AN.03 WANDER_LEFT_AND_RIGHT restricts the same way but STEPS",
+			n.direction_choices() == [StepResolver.Dir.WEST, StepResolver.Dir.EAST]
+			and n.wanders())
+	n.movement_type = "MOVEMENT_TYPE_FACE_DOWN"
+	_chk("AN.04 a fixed-facing NPC has no choices at all",
+			n.direction_choices().is_empty())
+
+	# --- the range, which is a half-extent from spawn, per axis
+	n.movement_type = "MOVEMENT_TYPE_WANDER_AROUND"
+	n.cell = Vector2i(10, 10)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1
+	n.tick(0.0, rng)  # first tick records the spawn
+	n.range_x = 2
+	n.range_y = 1
+	_chk("AN.05 range is a half-extent from spawn, inclusive",
+			n.within_range(Vector2i(12, 11)) and n.within_range(Vector2i(8, 9)))
+	_chk("AN.06 and excludes one cell further out",
+			not n.within_range(Vector2i(13, 10))
+			and not n.within_range(Vector2i(10, 12)))
+	# THE ONE THAT MATTERS. IsCoordOutsideObjectEventMovementRange skips the
+	# check entirely for a zero range; reading it as a zero-size box would pin
+	# every NPC whose data says 0 — which is most of them.
+	n.range_x = 0
+	n.range_y = 0
+	_chk("AN.07 a range of 0 is UNCONSTRAINED, not a zero-size box",
+			n.within_range(Vector2i(999, -999)))
+
+	# --- delays are wall-clock, not frames
+	_chk("AN.08 delays are source's frame counts converted to seconds",
+			is_equal_approx(NPC._DELAYS[0], 32.0 / 60.0)
+			and is_equal_approx(NPC._DELAYS[3], 128.0 / 60.0))
+
+	# --- a fixed-facing NPC never proposes a move, however long it runs
+	var fixed := NPC.new()
+	fixed.movement_type = "MOVEMENT_TYPE_FACE_UP"
+	fixed.cell = Vector2i(4, 4)
+	var wandered := false
+	for i in range(200):
+		if fixed.tick(0.1, rng) != Vector2i(4, 4):
+			wandered = true
+	_chk("AN.09 a fixed-facing NPC never proposes a move", not wandered)
+
+	# --- a look-around NPC turns but stays put
+	var looker := NPC.new()
+	looker.movement_type = "MOVEMENT_TYPE_LOOK_AROUND"
+	looker.cell = Vector2i(4, 4)
+	var turned := {}
+	var looker_moved := false
+	for i in range(200):
+		if looker.tick(0.1, rng) != Vector2i(4, 4):
+			looker_moved = true
+		turned[looker.facing()] = true
+	_chk("AN.10 a look-around NPC turns to several directions", turned.size() >= 2)
+	_chk("AN.11 but never proposes a move", not looker_moved)
+	fixed.free()
+	looker.free()
+
+	# --- and a wanderer does
+	var w := NPC.new()
+	w.movement_type = "MOVEMENT_TYPE_WANDER_AROUND"
+	w.cell = Vector2i(4, 4)
+	var proposed := false
+	for i in range(200):
+		if w.tick(0.1, rng) != Vector2i(4, 4):
+			proposed = true
+	_chk("AN.12 a wanderer does propose moves", proposed)
+	w.free()
+	n.free()
+
+	# --- occupancy stays true as an entity moves
+	if not ResourceLoader.exists("res://scenes/maps/PalletTown_Frlg.tscn"):
+		_gated += MOVEMENT_ASSERTIONS - 12
+		return
+	var mm := MapManager.new()
+	add_child(mm)
+	mm.load_chunk("PalletTown_Frlg", Vector2i.ZERO)
+	var subject: NPC = null
+	for node in mm.get_node("PalletTown_Frlg").find_children("*", "NPC", true, false):
+		subject = node as NPC
+		break
+	var from: Vector2i = subject.cell
+	var to: Vector2i = from + Vector2i(0, 1)
+	mm.move_entity("PalletTown_Frlg", subject, to)
+	_chk("AN.13 moving an entity frees the cell it left",
+			not mm.entity_at(from))
+	_chk("AN.14 and claims the one it arrived on", mm.entity_at(to))
 	mm.queue_free()

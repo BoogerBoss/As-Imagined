@@ -1424,6 +1424,24 @@ Sprites are built with **no `owner`**, so Godot never serialises them and a bake
 
 ⚠️ **One assertion was written vacuous and caught by trying to break it — the third time this arc.** "Unloading releases every cell it was blocking" passed with the release REMOVED, because `entity_at()` asks `chunk_owning()` first and that already answers `""` for an unloaded chunk, so a stale set is unreachable through the public path. The leak is real regardless — a warp unloads every chunk, so a session accumulates one dead set per map entered — so it is now asserted against the manager's own state instead. **A second break was more informative than its own assertion**: letting warps and signs block breaks four WARP tests (AH.06, AI.03, AI.04, AJ.03), because you can no longer step onto a warp tile — the occupancy rule turns out to be load-bearing for warp dispatch, which nothing had recorded.
 
+**[M27D D3 — NPC movement] COMPLETE — 2026-07-30. The corridor is alive.**
+
+**Source's four behaviours are ONE state machine with two parameters** — which direction set, and whether choosing a direction also steps. `MovementType_LookAround_Step4` and `MovementType_FaceDownAndUp_Step4` differ only in the table they `memcpy`; `MovementType_WanderAround_Step4` differs only in going on to walk. Reproducing four behaviours would have been reproducing the table layout rather than the mechanic. A blocked wander turns without moving, which is source's own `if (GetCollisionInDirection(...)) sTypeFuncId = 1`.
+
+⚠️ **`movement_range_x/y` existed in source's map data and this project was not importing it.** Without it a wandering NPC walks until terrain happens to stop it, which is a different map. Now extracted, baked and honoured — and the semantics are the trap: it is a **HALF-EXTENT from the spawn cell, per axis, where 0 means UNCONSTRAINED**, not a zero-size box. `IsCoordOutsideObjectEventMovementRange` skips the check entirely for a zero range, and most NPCs carry 0 on at least one axis, so reading it as a box would have pinned much of the region in place. AN.07 pins it; breaking it fails immediately.
+
+Delays are source's `sMovementDelaysMedium` — `{32, 64, 96, 128}` frames — **converted to seconds**, because source is 60fps-locked and this project is not: `[M26G4]` measured frame-tied stepping running ~10% slow at 144Hz and half speed at 30Hz.
+
+**Movement is driven by `MapManager`, not by each NPC's own `_process`**, because moving one is not a private act: the destination must clear terrain, the wander box AND every other entity, and the occupancy set has to stay true afterwards. An NPC cannot answer any of that alone, and a back-reference per entity would be the same coupling in 100 copies. Every wanderer walks through the **same resolver the player does**, so it obeys ledges, directional tiles and elevation identically. Occupancy is updated incrementally rather than rebuilt — a per-NPC-per-step rebuild is the per-cell cost C4 already paid for once with the skirt repaint.
+
+**Disclosed, and left in**: two NPCs ticking in the same frame can both see a cell empty and both claim it, because the occupancy set only updates after a move. A per-tick reservation set narrows it; it does not close it. Rare, and permanent when it lands — two sprites in one square.
+
+Verified live over 8 seconds on the corridor: **4 wanderers moved, the fixed-facing NPC never did, 0 left their range, occupancy correct throughout, no two NPCs sharing a cell.**
+
+⚠️ **A first run reported one NPC escaping its range, and the bug was in the MEASUREMENT.** The driver recorded each "spawn" two frames after load — by which point NPCs had already ticked and moved — so it compared against a post-move cell. Re-measured against each NPC's own recorded spawn: zero escapes. Worth recording because a wrong measurement that accuses correct code costs the same as a real bug until you check which it is.
+
+**Tests.** Section **AN**, 14 assertions, `EXPECTED_TOTAL` **448 → 462**. Three breaks verified: reading range 0 as a box fails AN.07, letting look-around step fails AN.11, and forgetting to free the cell an entity left fails AN.13.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **A thirteenth M27 block, orthogonal to C's stitching work.** Added because this is Kanto with an ORIGINAL story: the region's 421 maps are imported, but new maps and new art are inevitable, and **there is currently no way to create either.** Scope of record while this is unbuilt: the approved mockup at `https://claude.ai/code/artifact/0cc55049-a0d4-4675-8b0c-eb33853611b0`. Nothing here is implemented.
