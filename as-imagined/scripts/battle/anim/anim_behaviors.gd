@@ -100,6 +100,10 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		"AnimDiveBall": _dive_ball,
+		"AnimDiveWaterSplash": _dive_water_splash,
+		"SpriteCB_ToxicThreadWrap": _toxic_thread_wrap,
+		"SpriteCB_SpriteOnMonUntilAffineAnimEnds": _sprite_on_mon_until_affine_ends,
 		# — [M36D batch 15] —
 		"AnimGrowingShockWaveOrbOnTarget": _growing_shock_wave_orb_on_target,
 		"AnimPetalDanceBigFlower": _petal_dance_big_flower,
@@ -10106,3 +10110,180 @@ static func _brick_break_wall_shard(vm: AnimScriptVM, ctx: Dictionary) -> void:
 #   * `SpriteCB_ToxicThreadWrap` -- hands over to `AnimStringWrap_Step`, which
 #     this pass could not locate in the expected file.
 #   * `SpriteCB_SpriteOnMonUntilAffineAnimEnds`.
+
+
+# ── Batch 15's deferrals, cleared same-day ────────────────────────────────
+#
+# ⚠️ THREE OF THESE FOUR WERE DEFERRED FOR A BAD REASON, and the reason is
+# worth recording because it is the same defect that produced batch 13's
+# eight wrong template names: **a grep pattern that fails silently, read as
+# evidence the code is hard.**
+#
+#   * `AnimStringWrap_Step` was "not locatable" -- it is at
+#     `battle_anim_bug.c:287`. The pattern required `static void`; it is
+#     declared plain `void`.
+#   * `SpriteCB_SpriteOnMonUntilAffineAnimEnds` "found nothing" -- it is at
+#     `battle_anim_new.c:7934`, written `struct Sprite* sprite` with the
+#     asterisk on the TYPE, which the pattern did not match.
+#   * The Dive pair was called "a two-stage pair" as though that implied
+#     size; it is about seventy lines in total.
+#
+# Only `AnimFallingFeather` was ever genuinely hard, and even that turned out
+# to be one block copy-pasted four times. The lesson: "grep found nothing" is
+# a statement about the PATTERN, not about the source.
+
+
+# AnimDiveBall (battle_anim_flying.c:1010, steps :1019/:1038). args:
+# 2 launch delay, 3 acceleration.
+#
+# **Dive's counterpart to Fly's `AnimFlyBallUp`, and it goes further:** the
+# ball accelerates UP on the same 8.8 accumulator, hides once clear of the
+# screen top, waits 20 frames, and then comes back DOWN, reappearing as it
+# re-enters. So one behavior covers the whole descend-and-return arc.
+#
+# It hides the attacker on spawn and, like Fly's up-half, never reveals it --
+# that is a later script step's job, with the VM's visibility net behind it.
+static func _dive_ball(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	node.centre = start
+	vm.set_battler_visible_tracked(AnimStage.ANIM_ATTACKER, false)
+	var delay: int = maxi(0, vm.args[2])
+	var accel: int = vm.args[3]
+	var top := -32.0 * scale
+
+	var st := {"delay": delay, "vel": 0, "y": 0.0, "phase": 0, "wait": 0,
+			"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		match int(st["phase"]):
+			0:  # rise, accelerating
+				if int(st["delay"]) > 0:
+					st["delay"] = int(st["delay"]) - 1
+				else:
+					st["vel"] = int(st["vel"]) + accel
+					st["y"] = float(st["y"]) - float(int(st["vel"]) >> 8) * scale
+					node.centre = start + Vector2(0.0, float(st["y"]))
+					if node.centre.y <= top:
+						node.visible = false
+						st["phase"] = 1
+			1:  # off-screen hold
+				st["wait"] = int(st["wait"]) + 1
+				if int(st["wait"]) > 20:
+					st["phase"] = 2
+			_:  # and back down, reappearing as it re-enters
+				st["y"] = float(st["y"]) + float(int(st["vel"]) >> 8) * scale
+				node.centre = start + Vector2(0.0, float(st["y"]))
+				if node.centre.y > top:
+					node.visible = true
+				if float(st["y"]) > 0.0:
+					node.finish()
+					return true
+		return int(st["t"]) >= _ANIM_END_CAP * 2)
+
+
+# AnimDiveWaterSplash (battle_anim_flying.c:1050). args: 0 which battler.
+#
+# A vertical SCALE pulse, not a moving sprite: the affine y-parameter starts
+# at 0x200 and falls by 40 a frame for 12 frames, then climbs back. GBA affine
+# scale is INVERTED, so a falling parameter means the splash STRETCHES upward
+# -- from half height to roughly eight times it and back. The y offset is
+# derived from the current scale so the column grows from a fixed base rather
+# than about its centre.
+const _DIVE_SPLASH_HALF := 12
+const _DIVE_SPLASH_STEP := 40
+const _DIVE_SPLASH_START := 0x200
+
+static func _dive_water_splash(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var which := AnimStage.ANIM_TARGET if vm.args[0] != 0 \
+			else AnimStage.ANIM_ATTACKER
+	var base := _battler_centre(vm, which)
+	node.centre = base
+	var base_scale := node.scale
+
+	var st := {"t": 0, "param": _DIVE_SPLASH_START}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"])
+		st["t"] = t + 1
+		# Falls for the first half, climbs back for the second.
+		st["param"] = maxi(1, int(st["param"])
+				+ (-_DIVE_SPLASH_STEP if t <= _DIVE_SPLASH_HALF
+					else _DIVE_SPLASH_STEP))
+		var ys := 256.0 / float(int(st["param"]))
+		node.scale = Vector2(base_scale.x, base_scale.y * ys)
+		# Anchor the column's foot rather than its middle.
+		node.centre = base + Vector2(0.0,
+				-(ys - 1.0) * node.size.y * 0.5 * base_scale.y)
+		if int(st["t"]) >= _DIVE_SPLASH_HALF * 2:
+			node.scale = base_scale
+			node.finish()
+			return true
+		return false)
+
+
+# SpriteCB_ToxicThreadWrap (battle_anim_new.c:6599) via `AnimStringWrap_Step`
+# (battle_anim_bug.c:287). args: 0/1 offset.
+#
+# Positioned relative to the TARGET, with an extra 8px nudge when the target
+# is on the player's side, then flickers on a 3-frame cycle for exactly 51
+# frames. The flicker rate is the whole look -- a solid thread reads as a
+# static sprite pasted on the Pokemon.
+static func _toxic_thread_wrap(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var mirror := 1.0 if _is_player_side(vm) else -1.0
+	var pos := _battler_centre(vm, AnimStage.ANIM_TARGET) + Vector2(
+			float(vm.args[0]) * mirror, float(vm.args[1])) * scale
+	if _battler_is_player_side(vm, AnimStage.ANIM_TARGET):
+		pos.y += 8.0 * scale
+	node.centre = pos
+
+	var st := {"tick": 0, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["tick"] = int(st["tick"]) + 1
+		if int(st["tick"]) >= 3:
+			st["tick"] = 0
+			node.visible = not node.visible
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= 51:
+			node.finish()
+			return true
+		return false)
+
+
+# SpriteCB_SpriteOnMonUntilAffineAnimEnds (battle_anim_new.c:7934). args:
+# 0 which battler.
+#
+# Sits on the battler and plays out. The one detail worth keeping: it destroys
+# itself IMMEDIATELY if that battler's sprite is not visible, rather than
+# playing to an empty slot -- so a script that fires it at a Pokemon mid-Fly
+# or mid-Dig draws nothing at all.
+static func _sprite_on_mon_until_affine_ends(vm: AnimScriptVM,
+		ctx: Dictionary) -> void:
+	var target := vm.args[0]
+	var mon := _battler_node(vm, target)
+	if mon == null or not mon.visible:
+		return  # upstream destroys it outright
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	node.centre = _battler_centre(vm, target)
+	_play_until_anim_ends(vm, node, _ANIM_END_CAP)

@@ -94,6 +94,7 @@ func _ready() -> void:
 	_test_batch14_shapes()
 	_test_falling_feather()
 	_test_batch15()
+	_test_batch15_deferrals_cleared()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -3322,9 +3323,13 @@ func _test_batch14_shapes() -> void:
 	_chk("roster coverage is at least 593 moves (%d)"
 			% int(cov.get("playable", 0)),
 			int(cov.get("playable", 0)) >= 593)
-	for sym in ["AnimDiveBall", "AnimDiveWaterSplash"]:
-		_chk("%s is deliberately deferred" % sym,
-				_registry.get_behavior(sym) == Callable())
+	# Batch 15 deferred four; all four were cleared the same day once the
+	# search failures behind three of them were found. Nothing is deferred.
+	for sym in ["AnimDiveBall", "AnimDiveWaterSplash",
+			"SpriteCB_ToxicThreadWrap",
+			"SpriteCB_SpriteOnMonUntilAffineAnimEnds"]:
+		_chk("%s is now ported (deferral was a search failure)" % sym,
+				_registry.get_behavior(sym) != Callable())
 	# Deferred by batches 12, 13 AND 14, then taken directly.
 	_chk("AnimFallingFeather is ported (thrice-deferred, taken directly)",
 			_registry.get_behavior("AnimFallingFeather") != Callable())
@@ -3599,3 +3604,90 @@ func _test_batch15() -> void:
 	_chk("roster coverage is at least 615 moves (%d)"
 			% int(cov.get("playable", 0)),
 			int(cov.get("playable", 0)) >= 615)
+
+
+func _test_batch15_deferrals_cleared() -> void:
+	# AnimDiveBall is Dive's counterpart to Fly's ball -- but it goes FURTHER
+	# than Fly's up-half: it rises, hides off-screen, waits, and comes back
+	# DOWN. A port that stops at the rise covers only half the arc.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0; vm.args[1] = 0; vm.args[2] = 2; vm.args[3] = 200
+	_run_b5(vm, "AnimDiveBall", "gDiveBallSpriteTemplate")
+	var ball := _b5_last
+	_chk("dive ball spawns", ball != null)
+	if ball != null:
+		_chk("...and hides the attacker",
+				not stage.nodes[AnimStage.ANIM_ATTACKER].visible)
+		var y0 := ball.centre.y
+		var lowest := y0
+		var highest := y0
+		for i in range(300):
+			_step(vm, 1)
+			if not is_instance_valid(ball) or vm.visual_count() == 0:
+				break
+			lowest = maxf(lowest, ball.centre.y)
+			highest = minf(highest, ball.centre.y)
+		_chk("...rises well clear of where it started (%.0f px)" % (y0 - highest),
+				highest < y0 - 20.0)
+		_chk("...and comes back DOWN again, not just up (%.0f px returned)"
+				% (lowest - highest), lowest > highest + 20.0)
+		vm._finish()
+		_chk("...with the attacker restored by the net",
+				stage.nodes[AnimStage.ANIM_ATTACKER].visible)
+
+	# DiveWaterSplash is a vertical SCALE pulse, not a moving sprite -- and
+	# under the inverted affine rule a falling parameter STRETCHES it.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	vm2.args[0] = 0
+	_run_b5(vm2, "AnimDiveWaterSplash", "gDiveWaterSplashSpriteTemplate")
+	var splash := _b5_last
+	if splash != null:
+		var s0 := splash.scale.y
+		var tallest := s0
+		for i in range(30):
+			_step(vm2, 1)
+			if is_instance_valid(splash):
+				tallest = maxf(tallest, splash.scale.y)
+		_chk("water splash STRETCHES upward (%.2f -> %.2f)" % [s0, tallest],
+				tallest > s0)
+		_step(vm2, 20)
+		_chk("...and ends", vm2.visual_count() == 0)
+
+	# ToxicThreadWrap's 3-frame flicker is the whole look; a solid thread reads
+	# as a static sprite pasted onto the Pokemon.
+	var stage3 := FakeStage.new()
+	var vm3 := _vm(stage3)
+	vm3.args[0] = 0; vm3.args[1] = 0
+	_run_b5(vm3, "SpriteCB_ToxicThreadWrap", "gStringWrapSpriteTemplate")
+	var thread := _b5_last
+	if thread != null:
+		var flips := 0
+		var was := thread.visible
+		for i in range(30):
+			_step(vm3, 1)
+			if is_instance_valid(thread) and thread.visible != was:
+				flips += 1
+				was = thread.visible
+		# 30 frames at one flip per 3 frames -> about ten.
+		_chk("toxic thread flickers on a 3-frame cycle (%d flips in 30)"
+				% flips, flips >= 8 and flips <= 12)
+		_step(vm3, 30)
+		_chk("...and ends at its own 51 frames", vm3.visual_count() == 0)
+
+	# SpriteOnMonUntilAffineAnimEnds destroys itself outright if the battler is
+	# not visible, rather than playing to an empty slot.
+	var stage4 := FakeStage.new()
+	var vm4 := _vm(stage4)
+	vm4.args[0] = AnimStage.ANIM_TARGET
+	_run_b5(vm4, "SpriteCB_SpriteOnMonUntilAffineAnimEnds",
+			"gBasicHitSplatSpriteTemplate")
+	_chk("sprite-on-mon spawns for a VISIBLE battler", _b5_last != null)
+	var stage5 := FakeStage.new()
+	stage5.nodes[AnimStage.ANIM_TARGET].visible = false
+	var vm5 := _vm(stage5)
+	vm5.args[0] = AnimStage.ANIM_TARGET
+	_run_b5(vm5, "SpriteCB_SpriteOnMonUntilAffineAnimEnds",
+			"gBasicHitSplatSpriteTemplate")
+	_chk("...and draws NOTHING for a hidden one", _b5_last == null)
