@@ -1273,6 +1273,73 @@ Where it IS a real fallback:
 Neither use requires adopting the pack's animation system; both are asset
 sourcing plus, at most, reading its timing data as a reference.
 
+### M36D batch 7 — COMPLETE 2026-07-30. THE ICONIC TIER IS CLOSED.
+
+`m36d_batch_test` 246 -> **279/279** (first run, no failures); 16-suite sweep
+green. Coverage **401 -> 419 of 932 (45.0%)**, and iconic Gen 1-3
+**91.4% -> 100% (70/70)**.
+
+21 behaviors closing the last six blocked iconic moves: Thunder, Confuse Ray,
+Frustration, Volt Tackle, Dragon Dance and Extreme Speed (the most expensive
+single move in the tier, at 6 behaviors).
+
+**Step 0 was asked up front which of the 21 mutate a BATTLER rather than
+spawning particles**, because that is the leak class M36 has now hit four
+times. The answer was much better than Dig's four-call chain: **only TWO
+pairings are required** — `AttackerStretchAndDisappear` ->
+`ExtremeSpeedMonReappear` for visibility, and `VoltTackleOrbSlide` ->
+`VoltTackleAttackerReappear` for a displacement that drags the attacker ~320px
+off-screen. Everything else self-restores. Both pairings still route through
+`MonOffset` and the tracked visibility setter, and **the suite asserts the
+broken-pair case for each** — omit the partner, end the run, and the mon is
+still on its mark and visible.
+
+**A detail worth pinning, and exactly the sort a port gets wrong silently:**
+`AnimTask_SetAttackerInvisibleWaitForSignal` releases on `arg 7 == 0x1000`
+(4096), **not** the `-1` sentinel every other waiting behavior in this engine
+uses. The suite asserts that -1 does NOT release it and 0x1000 does. It also
+decrements the visual task count by hand upstream — so the script cannot
+deadlock waiting on a task that is waiting on the script — reproduced here as
+an uncounted stepper.
+
+**`AnimTask_InvertScreenColor` is genuinely un-portable as written**, and is
+the second such case after batch 5's exclude-blend. Upstream it is
+`InvertPlttBuffer` (palette.c:384) — a bitwise NOT of every entry of the
+selected palettes, of BGR555 words including bit 15, not of pixels. There is
+no palette indirection here, so it became a per-pixel inversion in the recolor
+shader. The property that matters is that it is an **INVOLUTION which restores
+nothing**: Thunder calls it an EVEN number of times and relies on the second
+call undoing the first, so it is ported as a TOGGLE. A port that always
+inverted would leave the screen wrong after any odd count — asserted directly.
+
+**Other faithful details kept rather than tidied:** Frustration's power bands
+are INVERTED relative to Return's (0 is the strongest, since low friendship
+means a stronger Frustration); `ShakeTargetInPattern` walks a fixed 10-entry
+direction table, and its vertical mode takes an ABSOLUTE value so the target
+only ever bounces downward — a real asymmetry between its two modes, asserted;
+`ConfuseRayBallSpiral` orbits on an ELLIPSE (32 across, 8 down) while drifting
+downward, so a circular port would read wrong; and `AnimHitSplatOnMonEdge`
+positions from the battler sprite's ORIGIN rather than its centre, which is
+the whole "on mon edge" part.
+
+**Approximated, and recorded as such:** `AnimTask_DragonDanceWaver` is a
+per-scanline horizontal offset on the BG layer the script has moved the
+attacker into — a heat-haze. There are no scanlines here, so it became a
+horizontal wobble of the attacker on the same ramp-in / hold / ramp-out
+envelope. The timing is source-exact; the mechanism is not.
+
+**Verification, stated precisely.** Extreme Speed captured on a real windowed
+run (the harness triggered at frame 687, on the animation): the mid-animation
+frame shows the screen darkened with the attacker correctly hidden, and the
+final frame shows the screen fully restored with the target back to normal
+colours. **The attacker-visibility pairing itself is confirmed by TEST, not by
+that capture** — the harness has never shown the player's Pokemon in any run,
+a pre-existing intro artifact flagged earlier and unrelated to this batch.
+
+**M36D's iconic phase is complete.** Decision 5 ordered iconic Gen 1-3 first,
+then remaining Gen 1-3, then the rest; that first phase is now finished, and
+the next batch would be a different character of work.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.

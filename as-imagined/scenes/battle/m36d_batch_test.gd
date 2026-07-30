@@ -57,6 +57,9 @@ func _ready() -> void:
 	_test_batch6_script_terminated()
 	_test_batch6_dig_sequence_never_strands()
 	_test_batch6_coverage()
+	_test_batch7_pairings_and_signal()
+	_test_batch7_faithful_details()
+	_test_batch7_closes_the_iconic_tier()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -1500,3 +1503,167 @@ func _test_batch6_coverage() -> void:
 			[188, "Sludge Bomb"], [90, "Fissure"], [91, "Dig"]]:
 		_chk("%s is playable" % str(pair[1]),
 				_dispatcher.can_play_move(int(pair[0])))
+
+
+# ─── batch 7 — closing the iconic tier ────────────────────────────────────
+
+# Step 0 was asked which behaviors mutate a BATTLER, because that is the leak
+# class M36 has hit repeatedly. The answer was TWO required pairings. This
+# tests both, and — more importantly — that breaking either is still caught.
+func _test_batch7_pairings_and_signal() -> void:
+	# Pairing 1: AttackerStretchAndDisappear deliberately leaves the attacker
+	# HIDDEN for ExtremeSpeedMonReappear to undo.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var node: Control = stage.nodes[0]
+	var base_scale := node.scale
+	_run_b5(vm, "AnimTask_AttackerStretchAndDisappear", "")
+	_step(vm, 12)
+	_chk("the stretch restores the attacker's SCALE by itself",
+			node.scale.is_equal_approx(base_scale))
+	_chk("...but deliberately leaves it hidden for its partner",
+			not node.visible)
+	_run_b5(vm, "AnimTask_ExtremeSpeedMonReappear", "")
+	_step(vm, 40)
+	_chk("...and the partner brings it back", node.visible)
+
+	# The same, with the partner NEVER called — the leak case.
+	var s2 := FakeStage.new()
+	var vm2 := _vm(s2)
+	var n2: Control = s2.nodes[0]
+	_run_b5(vm2, "AnimTask_AttackerStretchAndDisappear", "")
+	_step(vm2, 12)
+	vm2._finish()
+	_chk("a MISSING reappear still leaves the mon visible, because the VM "
+			+ "restores what the script forgot", n2.visible)
+
+	# Pairing 2: VoltTackleOrbSlide drags the attacker ~320px off-screen and
+	# never puts it back; VoltTackleAttackerReappear is the restore.
+	var s3 := FakeStage.new()
+	var vm3 := _vm(s3)
+	var n3: Control = s3.nodes[0]
+	var home := n3.position
+	_run_b5(vm3, "AnimVoltTackleOrbSlide", "gVoltTackleOrbSlideSpriteTemplate")
+	_step(vm3, 120)
+	_chk("the orb slide drags the attacker far off its mark",
+			absf(n3.position.x - home.x) > 50.0)
+	_run_b5(vm3, "AnimTask_VoltTackleAttackerReappear", "")
+	_step(vm3, 200)
+	_chk("...and its partner walks it back to exactly home",
+			n3.position.is_equal_approx(home))
+	_chk("...leaving it visible", n3.visible)
+
+	# And the broken-pair case for that one too.
+	var s4 := FakeStage.new()
+	var vm4 := _vm(s4)
+	var n4: Control = s4.nodes[0]
+	var home4 := n4.position
+	_run_b5(vm4, "AnimVoltTackleOrbSlide", "gVoltTackleOrbSlideSpriteTemplate")
+	_step(vm4, 120)
+	vm4._finish()
+	_chk("a MISSING volt-tackle reappear still leaves the mon on its mark",
+			n4.position.is_equal_approx(home4))
+
+	# The signal is 0x1000, NOT the -1 sentinel every other waiting behavior
+	# in this engine uses. Pinned because that is exactly the sort of detail
+	# a port gets wrong silently.
+	var s5 := FakeStage.new()
+	var vm5 := _vm(s5)
+	var n5: Control = s5.nodes[0]
+	var before := vm5.visual_count()
+	_run_b5(vm5, "AnimTask_SetAttackerInvisibleWaitForSignal", "")
+	_chk("the wait does not count toward completion (it would deadlock the "
+			+ "script that must release it)", vm5.visual_count() == before)
+	_chk("...and hides the attacker", not n5.visible)
+	vm5.args[AnimScriptVM.ARG_RET] = -1
+	_step(vm5, 5)
+	_chk("...and -1 does NOT release it", not n5.visible)
+	vm5.args[AnimScriptVM.ARG_RET] = 0x1000
+	_step(vm5, 2)
+	_chk("...only 0x1000 does", n5.visible)
+
+
+func _test_batch7_faithful_details() -> void:
+	# InvertScreenColor is an INVOLUTION and restores nothing: Thunder relies
+	# on calling it an even number of times. A port that always inverted would
+	# leave the screen wrong after an odd count.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0x4     # invert the target
+	var target: Control = stage.nodes[1]
+	_run_b5(vm, "AnimTask_InvertScreenColor", "")
+	var m1 := target.material as ShaderMaterial
+	_chk("inverting once applies an inversion",
+			m1 != null and float(m1.get_shader_parameter("invert")) > 0.5)
+	_run_b5(vm, "AnimTask_InvertScreenColor", "")
+	_chk("...and inverting again undoes it, because it is an involution",
+			m1 != null and float(m1.get_shader_parameter("invert")) < 0.5)
+
+	# ShakeTargetInPattern walks a fixed table, and its VERTICAL mode takes an
+	# absolute value so the target only ever bounces DOWNWARD -- a real
+	# asymmetry between the two modes.
+	var s2 := FakeStage.new()
+	var vm2 := _vm(s2)
+	var n2: Control = s2.nodes[1]
+	var home := n2.position
+	vm2.args[0] = 30
+	vm2.args[1] = 3
+	vm2.args[2] = 1      # vertical
+	_run_b5(vm2, "AnimTask_ShakeTargetInPattern", "")
+	var went_up := false
+	for i in range(30):
+		_step(vm2, 1)
+		if n2.position.y < home.y - 0.01:
+			went_up = true
+	_chk("a vertical pattern shake never moves the target UP "
+			+ "(the absolute value is real)", not went_up)
+	_chk("...and restores it exactly", n2.position.is_equal_approx(home))
+
+	# Frustration's power bands are INVERTED relative to Return's -- 0 is the
+	# STRONGEST here, because low friendship means a stronger Frustration.
+	for pair in [[0, 0], [30, 0], [31, 1], [100, 1], [101, 2], [200, 2],
+			[201, 3], [255, 3]]:
+		var s3 := FakeStage.new()
+		var vm3 := _vm(s3)
+		vm3.friendship = int(pair[0])
+		_run_b5(vm3, "AnimTask_GetFrustrationPowerLevel", "")
+		_chk("friendship %d -> frustration band %d (0 = strongest)"
+				% [int(pair[0]), int(pair[1])],
+				vm3.args[AnimScriptVM.ARG_RET] == int(pair[1]))
+
+	# ConfuseRayBallSpiral orbits on an ELLIPSE -- 32 across but only 8 down --
+	# and drifts downward. A circular port would look wrong.
+	var s4 := FakeStage.new()
+	var vm4 := _vm(s4)
+	_run_b5(vm4, "AnimConfuseRayBallSpiral",
+			"gConfuseRayBallSpiralSpriteTemplate")
+	var n4 := _b5_last
+	if n4 != null:
+		var xs := [n4.centre.x]
+		var ys := [n4.centre.y]
+		for i in range(20):
+			_step(vm4, 1)
+			if is_instance_valid(n4):
+				xs.append(n4.centre.x); ys.append(n4.centre.y)
+		var xr: float = (xs.max() as float) - (xs.min() as float)
+		var yr: float = (ys.max() as float) - (ys.min() as float)
+		_chk("the spiral is wider than it is tall (%.0f vs %.0f)" % [xr, yr],
+				xr > yr)
+	_step(vm4, 80)
+	_chk("...and ends on its own 61 frames", vm4.visual_count() == 0)
+
+
+func _test_batch7_closes_the_iconic_tier() -> void:
+	for pair in [[87, "Thunder"], [109, "Confuse Ray"], [218, "Frustration"],
+			[344, "Volt Tackle"], [349, "Dragon Dance"],
+			[245, "Extreme Speed"]]:
+		_chk("%s is playable" % str(pair[1]),
+				_dispatcher.can_play_move(int(pair[0])))
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov: Dictionary = _dispatcher.coverage(ids)
+	_chk("roster coverage is at least 419 moves (%d)"
+			% int(cov.get("playable", 0)),
+			int(cov.get("playable", 0)) >= 419)
