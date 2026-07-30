@@ -1338,6 +1338,7 @@ deferring them was for.
 | `AnimTask_Rollout` (b11) | Per-interval dirt sprites not spawned. | The attacker's own motion is what the frames are spent on and what every one of these moves shares. |
 | `AnimSparkElectricity` (b8) | arg 5 coord variant and arg 6 BG-priority bump are no-ops. | Both resolve to this stage's sprite centre / have no per-sprite equivalent. |
 | `AnimHyperVoiceRing` (b9) | Subpriority ordering not modelled. | No per-sprite draw-order equivalent. |
+| `AnimMudSportDirt` (b12) | Falling branch ported from its SETUP only; its step function was not read. | The setup fully determines start and end. The rising branch — the one scripts spawn in bulk — is fully ported. |
 | `AnimTask_SpiteTargetShadow` (b11) | Per-scanline BG waver ported as a horizontal wobble of the whole clone, on the source-exact envelope. | Second use of the approximation batch 7 disclosed for `AnimTask_DragonDanceWaver` — the same per-scanline heat-haze mechanism. Consistent rather than novel. |
 | `AnimTask_SurfWaveScanlineEffect` (E3) | Unported — the wave is a clean sweep, not rippled. | Per-scanline HBlank offset with no hook to port to. |
 | MetallicShine OBJWIN stencil (E3) | Approximated with a duplicate of the battler's texture. | No stencil equivalent. |
@@ -1389,6 +1390,63 @@ recoverable. **Closing it needs sprite-palette data the extraction does not
 currently produce** — not a tuning change. Faking it with a hue shift would
 invent motion the reference does not describe. Frame cost is exact and pinned
 by test, so script pacing is unaffected.
+
+### M36D batch 12 — COMPLETE 2026-07-30
+
+`m36d_batch_test` 431 -> **455/455** (first run); 9-suite sweep green.
+Coverage **553 -> 571 of 932 (61.3%)** — +18 from 9 behaviors (2.0 each), the
+flattened curve holding steady.
+
+**9 of 14 candidates. FIVE DEFERRED** for unread step functions, per the rule
+batch 10 established and batch 11 vindicated: `AnimFallingFeather` (drives a
+packed `FeatherDanceData` bitfield struct), `AnimFlyingParticle`,
+`SpriteCB_Geyser`, `AnimTrickBag`, `AnimSuperpowerFireball`. Guarded by test,
+same as batch 10's were.
+
+**Two more near-aliases of already-ported work — the third batch running to
+turn one up.** This is now a pattern worth expecting at Step 0 rather than
+discovering mid-implementation.
+
+- **`AnimLargeFlame` IS batch 9's `AnimFirePlume` with exactly ONE SIGN
+  INVERTED** — the x drift. Same step function, same both counters, same every
+  argument. So they sweep OPPOSITE ways from the same spawn. This is the
+  sharpest collapse risk yet seen here: registering them as one behavior would
+  look correct in a still frame and be wrong in motion. Ported through one
+  shared body with that sign as the only parameter (`_fire_plume_common`), and
+  **the suite demands they genuinely diverge** — both drift, in opposite
+  directions, and are not the same registered implementation.
+- **`AnimGuardRing` IS batch 10's `SpriteCB_SurroundingRing`** plus a
+  doubles-centre branch: identical `data[0]=13`, +40 spawn, -72 rise. Ported as
+  the general case with the plain variant delegating.
+
+**Shapes pinned by test:**
+
+- **`AnimMudSportDirt` rises EVERY frame but drifts sideways only every
+  OTHER** — the uneven rate is deliberate and a smooth diagonal reads wrong.
+  It also dies by clearing the screen top rather than on a counter, so its
+  lifetime depends on where it spawned.
+- **`AnimTask_BlendNonAttackerPalettes` SHIFTS ITS ARGS RIGHT BY ONE** before
+  delegating (`args[5..1] = args[4..0]`), because the shared blend entry point
+  expects a selector in slot 0 that this task supplies itself. Reading them
+  unshifted applies the wrong delay, coefficients AND colour — a silent
+  mis-blend, not a crash.
+- **`AnimBlockX`'s drop height is side-dependent** — 144px onto a player-side
+  target against 96px onto an opponent-side one.
+- **`AnimPoisonJabProjectile` rotates to FACE its target** (`ArcTan2Neg`), so
+  the jab points along its own flight path; without it the sprite arrives
+  sideways.
+- **`AnimParticleBurst` wanders on a sine rather than arcing**, and fades out
+  entirely with VISIBILITY — no alpha involved — flickering past phase 100 and
+  dying at 120.
+- `AnimTask_IsPowerOver99` is a one-frame query; the boundary is asserted on
+  both sides, since an off-by-one silently picks the wrong script branch.
+
+**DISCLOSED:** `AnimMudSportDirt`'s FALLING branch step function was not read.
+Its setup fully determines start and end (`y = arg2`, `y2 = -arg2` — it begins
+at the screen top and settles to its resting y) and that is what is ported; the
+RISING branch is the one Mud Sport scripts actually spawn in bulk.
+
+**NOT screenshot-verified.**
 
 ### M36D batch 11 — COMPLETE 2026-07-30. Batch 10's deferrals, and a fourth restore net.
 

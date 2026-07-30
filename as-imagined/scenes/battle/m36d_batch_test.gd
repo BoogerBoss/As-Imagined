@@ -85,6 +85,9 @@ func _ready() -> void:
 	_test_batch11_rollout_windup()
 	_test_batch11_spite_overturns_deferral()
 	_test_batch11_coverage()
+	_test_batch12_near_aliases()
+	_test_batch12_shapes()
+	_test_batch12_coverage()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -2823,3 +2826,204 @@ func _test_batch11_spite_overturns_deferral() -> void:
 			not is_instance_valid(ghost) or ghost.is_queued_for_deletion())
 	_chk("...and the target's tint is released", node.material == null)
 	_chk("...and the task ends", vm.visual_count() == 0)
+
+
+# ── [M36D batch 12] ───────────────────────────────────────────────────────
+#
+# 9 of 14; five deferred for unread step functions. Step 0 turned up two more
+# near-aliases of already-ported work -- the third batch running to do so --
+# and the sharper of the two is a pair that differ by exactly ONE SIGN, which
+# is precisely the kind of thing that gets collapsed into a single wrong
+# implementation.
+
+
+func _test_batch12_near_aliases() -> void:
+	# AnimLargeFlame and AnimFirePlume share their step function, both
+	# counters and every argument. They differ by ONE inverted sign on the x
+	# drift, so they sweep OPPOSITE ways from the same spawn. Registering them
+	# as the same behavior would look right in a still frame and be wrong in
+	# motion -- so the test demands they genuinely diverge.
+	var drifts: Array = []
+	for symbol in ["AnimFirePlume", "AnimLargeFlame"]:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		vm.args[0] = 0; vm.args[1] = 0
+		vm.args[2] = 30; vm.args[3] = 20
+		vm.args[4] = 8; vm.args[5] = 0
+		_run_b5(vm, symbol, "gLargeFlameSpriteTemplate")
+		var n := _b5_last
+		if n == null:
+			_chk("%s spawns" % symbol, false)
+			drifts.append(0.0)
+			continue
+		var x0 := n.centre.x
+		_step(vm, 10)
+		drifts.append(n.centre.x - x0)
+	_chk("FirePlume and LargeFlame both drift (%.1f / %.1f)"
+			% [drifts[0], drifts[1]],
+			not is_zero_approx(drifts[0]) and not is_zero_approx(drifts[1]))
+	_chk("...in OPPOSITE directions -- the one inverted sign",
+			signf(drifts[0]) != signf(drifts[1]))
+	_chk("...and are NOT registered as the same implementation",
+			_registry.get_behavior("AnimFirePlume")
+			!= _registry.get_behavior("AnimLargeFlame"))
+
+	# AnimGuardRing is SpriteCB_SurroundingRing plus a doubles-centre branch:
+	# both sit 40px below the attacker and rise 72px over 13 frames.
+	for symbol in ["SpriteCB_SurroundingRing", "AnimGuardRing"]:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		vm.args[0] = 0
+		_run_b5(vm, symbol, "gGuardRingSpriteTemplate")
+		var n := _b5_last
+		if n == null:
+			continue
+		var c := stage.center_of(AnimStage.ANIM_ATTACKER)
+		_chk("%s starts below the attacker" % symbol, n.centre.y > c.y)
+		_step(vm, 13)
+		_chk("%s ends above where it began" % symbol, n.centre.y < c.y)
+
+	# GuardRing's arg 0 centres it between the pair; SurroundingRing has no
+	# such branch, which is the only real difference between them.
+	var s2 := FakeStage.new()
+	var v2 := _vm(s2)
+	v2.args[0] = 1
+	_run_b5(v2, "AnimGuardRing", "gGuardRingSpriteTemplate")
+	var centred := _b5_last
+	var s3 := FakeStage.new()
+	var v3 := _vm(s3)
+	v3.args[0] = 0
+	_run_b5(v3, "AnimGuardRing", "gGuardRingSpriteTemplate")
+	var plain := _b5_last
+	if centred != null and plain != null:
+		_chk("GuardRing arg 0 genuinely moves it (doubles centre)",
+				not is_equal_approx(centred.centre.x, plain.centre.x))
+
+
+func _test_batch12_shapes() -> void:
+	# IsPowerOver99 -- boundary asserted on both sides, since an off-by-one
+	# here silently picks the wrong branch of a script.
+	for pair in [[99, 0], [100, 1], [40, 0], [250, 1]]:
+		var vm := _vm(FakeStage.new())
+		vm.move_power = int(pair[0])
+		_registry.get_behavior("AnimTask_IsPowerOver99").call(vm, {})
+		_chk("power %d -> over99 = %d" % [int(pair[0]), int(pair[1])],
+				vm.args[AnimScriptVM.ARG_RET] == int(pair[1]))
+
+	# MudSportDirt rising: up EVERY frame, sideways every OTHER frame. A
+	# smooth diagonal would read wrong.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0; vm.args[1] = 8; vm.args[2] = 0
+	_run_b5(vm, "AnimMudSportDirt", "gMudSportDirtSpriteTemplate")
+	var dirt := _b5_last
+	if dirt != null:
+		var y0 := dirt.centre.y
+		var x0 := dirt.centre.x
+		_step(vm, 1)
+		var moved_x_first := not is_equal_approx(dirt.centre.x, x0)
+		_chk("mud rises immediately", dirt.centre.y < y0)
+		_chk("...but drifts only on alternate frames", not moved_x_first)
+		_step(vm, 1)
+		_chk("...drifting on the second", not is_equal_approx(dirt.centre.x, x0))
+
+	# ParticleBurst wanders on a sine rather than arcing, and fades out with
+	# VISIBILITY, never alpha.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	vm2.args[0] = 256; vm2.args[1] = 12
+	_run_b5(vm2, "AnimParticleBurst", "gParticleBurstSpriteTemplate")
+	var burst := _b5_last
+	if burst != null:
+		var ys: Array = []
+		for i in range(30):
+			_step(vm2, 1)
+			if is_instance_valid(burst):
+				ys.append(burst.centre.y)
+		var yr: float = (ys.max() as float) - (ys.min() as float)
+		_chk("particle burst oscillates vertically (%.1f px)" % yr, yr > 1.0)
+		var flicked := false
+		for i in range(20):
+			_step(vm2, 1)
+			if is_instance_valid(burst) and not burst.visible:
+				flicked = true
+		_chk("...and flickers out late in its life", flicked)
+		_step(vm2, 20)
+		_chk("...then dies", vm2.visual_count() == 0)
+
+	# PoisonJab ROTATES TO FACE its target -- without it the jab arrives
+	# sideways.
+	var stage3 := FakeStage.new()
+	var vm3 := _vm(stage3)
+	vm3.args[0] = 40; vm3.args[1] = -40; vm3.args[2] = 10
+	_run_b5(vm3, "AnimPoisonJabProjectile", "gPoisonJabProjectileSpriteTemplate")
+	var jab := _b5_last
+	if jab != null:
+		var to_t := stage3.center_of(AnimStage.ANIM_TARGET) - jab.centre
+		var want := atan2(to_t.y, to_t.x)
+		_chk("poison jab points along its own flight path",
+				absf(angle_difference(jab.rotation, want)) < 0.05)
+
+	# PowerSwap ARCS, and its direction flag swaps both endpoints together.
+	var stage4 := FakeStage.new()
+	var vm4 := _vm(stage4)
+	vm4.args[2] = 0; vm4.args[3] = 0; vm4.args[4] = 20; vm4.args[5] = 40
+	_run_b5(vm4, "AnimMovePowerSwapGuardSwap", "gPowerSwapGuardSwapSpriteTemplate")
+	var orb := _b5_last
+	if orb != null:
+		var a := stage4.center_of(AnimStage.ANIM_ATTACKER)
+		var b := stage4.center_of(AnimStage.ANIM_TARGET)
+		_step(vm4, 10)
+		var straight_y := a.y + (b.y - a.y) * 0.5
+		_chk("power swap ARCS rather than travelling straight",
+				not is_equal_approx(orb.centre.y, straight_y))
+	var stage5 := FakeStage.new()
+	var vm5 := _vm(stage5)
+	vm5.args[2] = 0; vm5.args[3] = 1; vm5.args[4] = 20; vm5.args[5] = 40
+	_run_b5(vm5, "AnimMovePowerSwapGuardSwap", "gPowerSwapGuardSwapSpriteTemplate")
+	var rev := _b5_last
+	if rev != null:
+		_chk("...and its direction flag starts it at the OTHER battler",
+				rev.centre.distance_to(stage5.center_of(AnimStage.ANIM_TARGET))
+				< rev.centre.distance_to(stage5.center_of(AnimStage.ANIM_ATTACKER)))
+
+	# BlockX's drop height is SIDE-DEPENDENT: 144px player, 96px opponent.
+	var heights: Array = []
+	for player in [true, false]:
+		var st := FakeStage.new()
+		st.player_side = not player   # target is on the player's side when
+		var v := _vm(st)              # the attacker is not
+		_run_b5(v, "AnimBlockX", "gBlockXSpriteTemplate")
+		var x := _b5_last
+		heights.append(0.0 if x == null
+				else st.center_of(AnimStage.ANIM_TARGET).y - x.centre.y)
+	_chk("BlockX's drop height differs by side (%.0f vs %.0f)"
+			% [heights[0], heights[1]],
+			not is_equal_approx(heights[0], heights[1]))
+
+	# BlendNonAttackerPalettes must blend everyone EXCEPT the attacker.
+	var stage6 := FakeStage.new()
+	var vm6 := _vm(stage6)
+	vm6.args[0] = 0; vm6.args[1] = 0; vm6.args[2] = 16; vm6.args[3] = 0x7C00
+	_registry.get_behavior("AnimTask_BlendNonAttackerPalettes").call(vm6, {})
+	_step(vm6, 20)
+	_chk("blend skips the ATTACKER",
+			stage6.nodes[AnimStage.ANIM_ATTACKER].material == null)
+	_chk("...and reaches the target",
+			stage6.nodes[AnimStage.ANIM_TARGET].material != null)
+
+
+func _test_batch12_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov: Dictionary = _dispatcher.coverage(ids)
+	_chk("roster coverage is at least 571 moves (%d)"
+			% int(cov.get("playable", 0)),
+			int(cov.get("playable", 0)) >= 571)
+	# Batch 12's own five deferrals, guarded the same way batch 10's were.
+	for sym in ["AnimFallingFeather", "AnimFlyingParticle", "SpriteCB_Geyser",
+			"AnimTrickBag", "AnimSuperpowerFireball"]:
+		_chk("%s is deliberately deferred (step fn unread)" % sym,
+				_registry.get_behavior(sym) == Callable())

@@ -100,6 +100,16 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 12] —
+		"AnimGuardRing": _guard_ring,
+		"AnimLargeFlame": _large_flame,
+		"AnimTask_IsPowerOver99": _is_power_over_99,
+		"AnimMudSportDirt": _mud_sport_dirt,
+		"AnimParticleBurst": _particle_burst,
+		"AnimPoisonJabProjectile": _poison_jab_projectile,
+		"AnimMovePowerSwapGuardSwap": _power_swap_guard_swap,
+		"AnimBlockX": _block_x,
+		"AnimTask_BlendNonAttackerPalettes": _blend_non_attacker_palettes,
 		"AnimTask_SpiteTargetShadow": _spite_target_shadow,
 		# — [M36D batch 11] four of batch 10's five deferrals —
 		"AnimTask_ShrinkTargetCopy": _shrink_target_copy,
@@ -8113,34 +8123,7 @@ static func _gust_to_target(vm: AnimScriptVM, ctx: Dictionary) -> void:
 # halt and then hangs there before dying. Collapsing them into one duration
 # loses the hang.
 static func _fire_plume(vm: AnimScriptVM, ctx: Dictionary) -> void:
-	var node := _make_sprite(vm, ctx)
-	if node == null:
-		return
-	var scale := _scale(vm)
-	var player := _is_player_side(vm)
-	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER) + Vector2(
-			float(vm.args[0]) * (1.0 if player else -1.0),
-			float(vm.args[1])) * scale
-	var drift := Vector2(float(vm.args[4]) * (1.0 if player else -1.0),
-			float(vm.args[5])) * scale
-	var life: int = maxi(1, vm.args[2])
-	var drift_frames: int = maxi(0, vm.args[3])
-	node.centre = start
-
-	var st := {"t": 0, "pos": start}
-	vm.add_stepper(func() -> bool:
-		if not is_instance_valid(node):
-			return true
-		node.advance_frame()
-		var t: int = int(st["t"]) + 1
-		st["t"] = t
-		if t < drift_frames:
-			st["pos"] = (st["pos"] as Vector2) + drift
-			node.centre = st["pos"]
-		if t >= life:
-			node.finish()
-			return true
-		return false)
+	_fire_plume_common(vm, ctx, 1.0)
 
 
 # AnimDragonRageFirePlume (battle_anim_dragon.c:443). args: 0 battler,
@@ -9100,3 +9083,265 @@ static func _spite_target_shadow(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 			_clear_blend(node)
 			return true
 		return false)
+
+
+# ── [M36D batch 12] ───────────────────────────────────────────────────────
+#
+# 9 of 14 candidates. FIVE DEFERRED for unread step functions, per the rule
+# batch 10 established and batch 11 vindicated: `AnimFallingFeather` (drives
+# a packed `FeatherDanceData` bitfield struct), `AnimFlyingParticle`,
+# `SpriteCB_Geyser`, `AnimTrickBag` and `AnimSuperpowerFireball`.
+#
+# Step 0 found TWO more near-aliases of already-ported work, which is now the
+# third batch running to turn one up:
+#   * `AnimGuardRing` IS batch 10's `SpriteCB_SurroundingRing` plus a
+#     doubles-centre branch -- identical data[0]=13, y+40, y-72 travel.
+#   * `AnimLargeFlame` IS batch 9's `AnimFirePlume` with EXACTLY ONE SIGN
+#     INVERTED: the x drift. Everything else -- the offsets, both counters,
+#     the step function itself -- is shared.
+
+
+# AnimGuardRing (battle_anim_effects_2.c:3758) and batch 10's
+# `SpriteCB_SurroundingRing` share one body: sit 40px below the attacker and
+# rise 72px over 13 frames. GuardRing adds one branch -- in a doubles battle
+# with a visible partner, and only when arg 0 is set, it centres between the
+# pair instead. Registered as the general case with the plain variant
+# delegating, so the two cannot drift apart.
+static func _guard_ring(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var base := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	if vm.args[0] != 0:
+		var partner := _battler_node(vm, AnimStage.ANIM_ATK_PARTNER)
+		if partner != null:
+			base = (base + _battler_centre(vm, AnimStage.ANIM_ATK_PARTNER)) * 0.5
+	var start := base + Vector2(0.0, 40.0) * scale
+	node.centre = start
+	_linear_travel(vm, node, start, start - Vector2(0.0, 72.0) * scale, 13)
+
+
+# AnimLargeFlame (battle_anim_fire.c:568) shares `AnimLargeFlame_Step` and
+# every argument with batch 9's `AnimFirePlume` (:544) -- the two differ by a
+# single inverted sign on the x drift, so the flames sweep opposite ways from
+# the same spawn. Ported through one implementation with that sign as the only
+# parameter, and the suite asserts they genuinely travel in opposite
+# directions rather than being registered as the same thing by mistake.
+static func _large_flame(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_fire_plume_common(vm, ctx, -1.0)
+
+
+static func _fire_plume_common(vm: AnimScriptVM, ctx: Dictionary,
+		drift_sign: float) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var player := _is_player_side(vm)
+	var side := 1.0 if player else -1.0
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER) + Vector2(
+			float(vm.args[0]) * side, float(vm.args[1])) * scale
+	var drift := Vector2(float(vm.args[4]) * side * drift_sign,
+			float(vm.args[5])) * scale
+	var life: int = maxi(1, vm.args[2])
+	var drift_frames: int = maxi(0, vm.args[3])
+	node.centre = start
+
+	var st := {"t": 0, "pos": start}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		if t < drift_frames:
+			st["pos"] = (st["pos"] as Vector2) + drift
+			node.centre = st["pos"]
+		if t >= life:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimTask_IsPowerOver99 (battle_anim_ground.c:728). A one-frame query that
+# writes `move power > 99` into the return register, so a script can branch
+# on whether the move is a heavy hitter. Reuses the same ARG_RET channel the
+# other query tasks use.
+static func _is_power_over_99(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	vm.args[AnimScriptVM.ARG_RET] = 1 if vm.move_power > 99 else 0
+
+
+# AnimMudSportDirt (battle_anim_ground.c:226, rising step :245). args:
+# 0 mode, 1/2 offsets.
+#
+# Two modes off one symbol. RISING (mode 0) spawns on the attacker and climbs
+# 4px per frame while drifting sideways ONE pixel every OTHER frame -- the
+# uneven rate is deliberate, and a smooth diagonal would read wrong. It dies
+# when it clears the top of the screen, so its lifetime depends on where it
+# started rather than on a counter.
+#
+# DISCLOSED: the FALLING branch's own step function was not read; its setup
+# fully determines the start and end (`y = arg2`, `y2 = -arg2`, so it begins
+# at screen top and falls to its resting y), and that is what is ported. The
+# rising branch is the one every Mud Sport script actually spawns in bulk.
+static func _mud_sport_dirt(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	if vm.args[0] == 0:
+		var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER,
+				vm.args[1], vm.args[2], scale)
+		node.centre = start
+		var dx := 1.0 if vm.args[1] > 0 else -1.0
+		var st := {"t": 0, "x": 0.0, "y": 0.0}
+		vm.add_stepper(func() -> bool:
+			if not is_instance_valid(node):
+				return true
+			node.advance_frame()
+			st["t"] = int(st["t"]) + 1
+			# Sideways only every OTHER frame; upward every frame.
+			if int(st["t"]) % 2 == 0:
+				st["x"] = float(st["x"]) + dx
+			st["y"] = float(st["y"]) - 4.0
+			node.centre = start + Vector2(float(st["x"]), float(st["y"])) * scale
+			if node.centre.y < -4.0 * scale or int(st["t"]) >= _ANIM_END_CAP:
+				node.finish()
+				return true
+			return false)
+		return
+	# Falling: begins at the screen top and settles to its resting y.
+	var rest := Vector2(float(vm.args[1]), float(vm.args[2])) * scale
+	node.centre = rest - Vector2(0.0, float(vm.args[2])) * scale
+	_linear_travel(vm, node, node.centre, rest, 20)
+
+
+# AnimParticleBurst (battle_anim_effects_2.c:3152). args: 0 x speed in 8.8
+# fixed point, 1 vertical amplitude.
+#
+# Drifts steadily sideways while OSCILLATING vertically on a sine whose phase
+# advances 3 per frame -- so it wanders rather than arcs. Past phase 100 it
+# starts flickering on alternate frames, and dies at 120: a fade-out done
+# entirely with visibility, no alpha involved.
+static func _particle_burst(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := node.centre
+	var speed: int = vm.args[0]
+	var amp := float(vm.args[1])
+
+	var st := {"acc": 0, "phase": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["acc"] = int(st["acc"]) + speed
+		var phase: int = int(st["phase"])
+		node.centre = start + Vector2(float(int(st["acc"]) >> 8),
+				_gba_sin(float(phase), amp)) * scale
+		phase = (phase + 3) & 0xFF
+		st["phase"] = phase
+		if phase > 100:
+			node.visible = (phase % 2) == 0
+		if phase > 120:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimPoisonJabProjectile (battle_anim_effects_1.c:7286). args: 0/1 spawn
+# offset from the target, 2 travel frames.
+#
+# Spawns offset from the target and ROTATES TO FACE IT before travelling --
+# `ArcTan2Neg(dx, dy)` -- so the jab always points along its own flight path
+# rather than at a fixed angle. Without that the sprite arrives sideways.
+static func _poison_jab_projectile(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var start := _positioned_centre(vm, AnimStage.ANIM_TARGET, vm.args[0],
+			vm.args[1], scale)
+	node.centre = start
+	var delta := dest - start
+	if delta.length_squared() > 0.0:
+		node.rotation = atan2(delta.y, delta.x)
+	_linear_travel(vm, node, start, dest, maxi(1, vm.args[2]))
+
+
+# AnimMovePowerSwapGuardSwap (battle_anim_normal.c:289). args: 2 sprite anim
+# variant, 3 direction (0 = attacker to target, else the reverse), 4 duration,
+# 5 arc height. An ARC rather than a straight line, and the direction flag
+# swaps both endpoints together -- which is what makes the pair of orbs read
+# as a swap rather than two independent throws.
+static func _power_swap_guard_swap(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	_apply_anim_variant(node, ctx, vm.args[2])
+	var forward: bool = vm.args[3] == 0
+	var from_b := AnimStage.ANIM_ATTACKER if forward else AnimStage.ANIM_TARGET
+	var to_b := AnimStage.ANIM_TARGET if forward else AnimStage.ANIM_ATTACKER
+	var start := _battler_centre(vm, from_b)
+	var dest := _battler_centre(vm, to_b)
+	node.centre = start
+	_arc_travel(vm, node, start, dest, maxi(1, vm.args[4]), float(vm.args[5]))
+
+
+# AnimBlockX (battle_anim_effects_3.c:5059, step :5079). No positional args.
+#
+# Drops onto the target from above at 10px per frame -- and the drop HEIGHT
+# is side-dependent, 144px for a player-side target against 96px for an
+# opponent-side one, so it falls noticeably longer on the player's side. Once
+# it lands it holds rather than bouncing.
+static func _block_x(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var rest := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var drop := 144.0 if _battler_is_player_side(vm, AnimStage.ANIM_TARGET) \
+			else 96.0
+	node.centre = rest - Vector2(0.0, drop * scale)
+
+	var st := {"y": -drop, "t": 0, "landed": false}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if not bool(st["landed"]):
+			st["y"] = minf(float(st["y"]) + 10.0, 0.0)
+			node.centre = rest + Vector2(0.0, float(st["y"]) * scale)
+			if is_zero_approx(float(st["y"])):
+				st["landed"] = true
+			return false
+		if int(st["t"]) >= _ANIM_END_CAP:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimTask_BlendNonAttackerPalettes (battle_anim_utility_funcs.c:682). Blends
+# every battler EXCEPT the attacker.
+#
+# Worth pinning: it SHIFTS ITS ARGUMENTS RIGHT BY ONE before delegating
+# (`args[5..1] = args[4..0]`), because the shared blend entry point expects a
+# selector in slot 0 that this task supplies itself. Reading the args in their
+# unshifted positions would apply the wrong delay, coefficients and colour --
+# a silent mis-blend rather than a crash.
+static func _blend_non_attacker_palettes(vm: AnimScriptVM,
+		_ctx: Dictionary) -> void:
+	var nodes: Array[Control] = []
+	for i in range(4):
+		if i == AnimStage.ANIM_ATTACKER:
+			continue
+		var n := _battler_node(vm, i)
+		if n != null:
+			nodes.append(n)
+	# The right-shift: this task's own args[0..4] are the blend's args[1..5].
+	_run_blend_nodes(vm, nodes, vm.args[0], vm.args[1], vm.args[2], vm.args[3])
