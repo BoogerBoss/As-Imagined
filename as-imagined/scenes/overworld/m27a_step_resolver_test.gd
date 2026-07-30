@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 307
+const EXPECTED_TOTAL := 321
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -114,6 +114,14 @@ func _chk(label: String, cond: bool) -> void:
 
 ## Synthetic map: `beh` is a width*height behaviour grid, everything else
 ## defaults to open ground at ELEVATION_DEFAULT unless overridden.
+## Small helper: an Array of `n` copies of `v`, for synthetic per-cell fixtures.
+func _filled(n: int, v: int) -> Array:
+	var out: Array = []
+	for _i in range(n):
+		out.append(v)
+	return out
+
+
 func _synth(w: int, h: int, beh: Array, coll: Array = [], elev: Array = []) -> MapData:
 	var m := MapData.new()
 	m.map_name = "synthetic"
@@ -161,6 +169,7 @@ func _ready() -> void:
 	_test_trainer_sight()
 	_test_entity_at()
 	_test_stacks_and_counts()
+	_test_map_manager()
 	_test_connections_and_border()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
@@ -1493,6 +1502,86 @@ func _test_gesture_lifecycle() -> void:
 	DirAccess.remove_absolute(
 			ProjectSettings.globalize_path("user://_x_authored_test.tres"))
 	ov.free()
+
+
+## Section AA — [M27C C2] the global coordinate space.
+##
+## Runs on synthetic MapData, so it is NOT gated: the maths has nothing to do
+## with baked artifacts, and gating it would leave a fresh checkout with no
+## coverage of the one thing C2 exists to introduce.
+##
+## EVERY POSITIONAL ASSERTION USES A NONZERO ORIGIN, deliberately. At runtime
+## today exactly one chunk is live and its origin is (0,0), which makes global
+## and local cells equal — so a manager that had forgotten to convert at all
+## would pass every test written against the live configuration and fail the
+## moment C4 loads a second chunk. AA.06 is the explicit guard: it asserts the
+## conversion is NOT the identity there.
+func _test_map_manager() -> void:
+	var mm := MapManager.new()
+	_chk("AA.01 a fresh manager owns nothing", mm.chunk_owning(Vector2i(0, 0)) == "")
+
+	# Two 4x4 chunks with deliberately DIFFERENT per-cell values, so a query
+	# reaching the wrong chunk gives a wrong answer rather than a right one by
+	# coincidence — the whole point of routing.
+	var a := _synth(4, 4, [], [], [])                                # collision 0, elev 3
+	var b := _synth(4, 4, [], _filled(16, 1), _filled(16, 4))        # collision 1, elev 4
+	var root_a := Node2D.new()
+	var root_b := Node2D.new()
+	mm.register_chunk("A", a, root_a, Vector2i.ZERO)
+	mm.register_chunk("B", b, root_b, Vector2i(10, 5))
+
+	_chk("AA.02 a registered chunk owns its own cells",
+			mm.chunk_owning(Vector2i(1, 1)) == "A")
+	_chk("AA.03 and not a cell outside its bounds",
+			mm.chunk_owning(Vector2i(5, 5)) == "")
+	_chk("AA.04 a chunk at a nonzero origin is found at its GLOBAL cells",
+			mm.chunk_owning(Vector2i(11, 6)) == "B")
+	_chk("AA.05 local_of subtracts that origin",
+			mm.local_of(Vector2i(11, 6)) == Vector2i(1, 1))
+	# The discriminator: with origin (0,0) a missing conversion is invisible.
+	_chk("AA.06 and is genuinely not the identity there",
+			mm.local_of(Vector2i(11, 6)) != Vector2i(11, 6))
+	_chk("AA.07 two chunks each own only their own cells",
+			mm.chunk_owning(Vector2i(3, 3)) == "A"
+			and mm.chunk_owning(Vector2i(13, 8)) == "B")
+
+	# Routing proven by the values differing per chunk, not just by not crashing.
+	_chk("AA.08 collision_at routes to the owning chunk",
+			mm.collision_at(Vector2i(1, 1)) == 0
+			and mm.collision_at(Vector2i(11, 6)) == 1)
+	_chk("AA.09 elevation_at routes too",
+			mm.elevation_at(Vector2i(1, 1)) == 3
+			and mm.elevation_at(Vector2i(11, 6)) == 4)
+
+	# Unowned cells fail SAFE in both directions: a step into nowhere is
+	# refused, and nothing falls through the world before C3's skirt exists.
+	_chk("AA.10 an unowned cell reports solid, not walkable",
+			mm.collision_at(Vector2i(50, 50)) == 1)
+	_chk("AA.11 and is out of bounds", not mm.in_bounds(Vector2i(50, 50)))
+	_chk("AA.12 origin_of returns what was registered",
+			mm.origin_of("B") == Vector2i(10, 5))
+
+	# strata_at is looked up per cell because at a seam the correct parent
+	# belongs to a DIFFERENT chunk — a reference cached at spawn would keep
+	# parenting into the map the player started in.
+	var p2 := Node2D.new()
+	p2.name = "Entities_P2"
+	root_b.add_child(p2)
+	_chk("AA.13 strata_at returns the OWNING chunk's containers",
+			mm.strata_at(Vector2i(11, 6)).get(2) == p2
+			and mm.strata_at(Vector2i(1, 1)).get(2) == null)
+
+	mm.unload_chunk("B")
+	_chk("AA.14 unloading removes ownership",
+			mm.chunk_owning(Vector2i(11, 6)) == "" and mm.loaded_chunks().size() == 1)
+	# register_chunk() deliberately does NOT parent the root — only load_chunk()
+	# does, because a synthetic chunk has no scene to own it. So these roots are
+	# this test's to free; leaving them to mm.free() leaked a Node2D (caught by
+	# the leak warning on this section's first run, not by any assertion).
+	mm.free()
+	if is_instance_valid(root_b):
+		root_b.free()
+	root_a.free()
 
 
 ## Section Y — [M27C C1] connections and the border block.
