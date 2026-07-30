@@ -68,6 +68,33 @@ const ROUTING := {
 	2: [0, 2],  # SPLIT   : ground  + overhangs
 }
 
+## §1.6's plane order, expressed as z_index so it is GLOBAL across chunks.
+##
+## [M27C C4] Without this, draw order is pure scene-tree order, which is
+## CHUNK-major: every layer of the chunk loaded first draws beneath every layer
+## of the next. Reparenting the player into the lower chunk mid-step then puts
+## it behind the other chunk's ground while it is still visually overlapping it
+## — seen crossing Route 1 back into Pallet Town as the character snapping
+## behind the grass for a frame. Only in that direction, because Pallet Town
+## happened to load first.
+##
+## Chunk roots stay at z 0 and `z_as_relative` is on, so a layer's effective z
+## is its own — a plane therefore sorts identically no matter which chunk owns
+## it, which is what docs/overworld_scope.md means by sorting being "global
+## across stitched maps so sorting never breaks at seams".
+##
+## Entities sit at 2 and 4, straddling Overhangs at 3, preserving the whole
+## point of the two strata: elevation-4 entities draw above the overhang plane
+## and everything else below it.
+const PLANE_Z := {
+	"BorderSkirt_Ground": 0, "Ground": 0,
+	"BorderSkirt_Objects": 1, "Objects": 1,
+	"Entities_P2": 2,
+	"BorderSkirt_Overhangs": 3, "Overhangs": 3,
+	"Entities_P1": 4,
+}
+
+
 ## map name -> {"data": MapData, "root": Node2D, "origin": Vector2i}
 ##
 ## Keyed by the map's own directory name (`Route1_Frlg`), which is what
@@ -113,6 +140,7 @@ func register_chunk(map_name: String, data: MapData, root: Node2D,
 	_chunks[map_name] = {"data": data, "root": root, "origin": origin}
 	if root != null:
 		root.position = Vector2(origin) * CELL
+		apply_plane_z(root)
 
 
 ## Which border metatile falls at a given LOCAL cell, including negative ones.
@@ -194,6 +222,7 @@ func _paint_skirt(map_name: String) -> void:
 			root.move_child(layer, plane)
 		layer.clear()
 		skirts.append(layer)
+	apply_plane_z(root)
 
 	var origin: Vector2i = c["origin"]
 	var has_types := d.border_layer_type.size() == d.border.size()
@@ -216,6 +245,17 @@ func _paint_skirt(map_name: String) -> void:
 				skirts[plane].set_cell(local, plane, coords)
 
 
+## Give a chunk's layers their plane z. Idempotent, and silent about children
+## it does not recognise — a synthetic chunk in a test has none of these, and a
+## baked one gains its skirt layers later.
+static func apply_plane_z(root: Node2D) -> void:
+	if root == null or not is_instance_valid(root):
+		return
+	for c in root.get_children():
+		if c is CanvasItem and PLANE_Z.has(c.name):
+			(c as CanvasItem).z_index = PLANE_Z[c.name]
+
+
 func unload_chunk(map_name: String) -> void:
 	if not _chunks.has(map_name):
 		return
@@ -223,6 +263,12 @@ func unload_chunk(map_name: String) -> void:
 	if root != null and is_instance_valid(root):
 		root.queue_free()
 	_chunks.erase(map_name)
+	# [M27C C4] Repaint what is left. Cells this chunk owned are now unowned, so
+	# whichever neighbour was skirting up to that seam has to extend over them
+	# again — otherwise unloading leaves a hole exactly where the map used to be.
+	# Flagged as debt when the skirt landed in C3, unreachable until now because
+	# only one chunk was ever live.
+	refresh_skirts()
 
 
 func loaded_chunks() -> Array:
@@ -263,6 +309,23 @@ func local_of(gcell: Vector2i) -> Vector2i:
 	return gcell - Vector2i(_chunks[map_name]["origin"])
 
 
+## Where a node PARENTED INTO a chunk must sit to appear at `gcell`.
+##
+## [M27C C4] Chunk roots are positioned at `origin * CELL`, so a child's
+## `position` is already relative to that — assigning a GLOBAL cell's pixels
+## there displaces the node by the whole origin. That is not hypothetical: the
+## player teleported to the top of Route 1 on the first real seam crossing,
+## exactly `Route1.height` cells off, because the step tween targeted
+## `Vector2(global_cell) * CELL` while the node had just been reparented into a
+## chunk whose root is at y = -640.
+##
+## Invisible until C4 for the same reason everything else in this class was: at
+## origin (0,0) local and global pixels are equal, so the wrong version and the
+## right one are indistinguishable on a single map.
+func local_pixel_of(gcell: Vector2i) -> Vector2:
+	return Vector2(local_of(gcell)) * CELL
+
+
 func data_at(gcell: Vector2i) -> MapData:
 	var map_name := chunk_owning(gcell)
 	return _chunks[map_name]["data"] if map_name != "" else null
@@ -299,6 +362,113 @@ func priority_at(gcell: Vector2i) -> int:
 
 func in_bounds(gcell: Vector2i) -> bool:
 	return chunk_owning(gcell) != ""
+
+
+## --- the StepResolver cell-source seam, in GLOBAL cells -----------------------
+##
+## [M27C C4] Four methods, `(x, y) -> value`, matching MapData's own signatures
+## so a StepResolver built on this manager runs the identical step rules across
+## a chunk seam that it runs inside one map. See StepResolver's `_cells`.
+##
+## `behavior_at` is what makes ledges and §1.7's directional rules work at a
+## seam; C2 routed collision, elevation and priority but not this, because
+## nothing had yet needed to resolve a step through the manager.
+func behavior_at(gcell: Vector2i) -> int:
+	var d := data_at(gcell)
+	if d == null:
+		return -1
+	var l := local_of(gcell)
+	return d.behavior_at(l.x, l.y)
+
+
+## `GlobalCells(manager)` is what you hand to StepResolver.
+##
+## This manager speaks Vector2i throughout; StepResolver's seam speaks (x, y),
+## matching MapData's own signatures. Rather than rely on the two happening to
+## agree — which would make the seam an accident of naming, and would break
+## silently the first time either side changed a signature — the adaptation is
+## an explicit object whose whole job is the conversion.
+class GlobalCells extends RefCounted:
+	var _mm: MapManager
+
+	func _init(mm: MapManager) -> void:
+		_mm = mm
+
+	func in_bounds(x: int, y: int) -> bool:
+		return _mm.in_bounds(Vector2i(x, y))
+
+	func collision_at(x: int, y: int) -> int:
+		return _mm.collision_at(Vector2i(x, y))
+
+	func elevation_at(x: int, y: int) -> int:
+		return _mm.elevation_at(Vector2i(x, y))
+
+	func behavior_at(x: int, y: int) -> int:
+		return _mm.behavior_at(Vector2i(x, y))
+
+
+## A resolver that steps in GLOBAL cells, across seams, using the same rules.
+func global_resolver() -> StepResolver:
+	return StepResolver.new(GlobalCells.new(self))
+
+
+## Where a neighbour's own (0,0) sits, given a connection on `host`.
+##
+## Ported from FillSouthConnection / FillNorthConnection / FillWestConnection /
+## FillEastConnection (src/fieldmap.c). Source expresses these as fills into a
+## padded backup grid; dropping MAP_OFFSET (7), which is only that padding,
+## leaves the relation between two maps' origins.
+##
+## THE ASYMMETRY IS REAL AND LOAD-BEARING. `offset` always shifts along the
+## SHARED EDGE — x for north/south, y for west/east. But the perpendicular term
+## uses the HOST's dimension going south/east (push the neighbour past this map)
+## and the NEIGHBOUR's going north/west (pull it back by its own extent).
+## Written uniformly it would look tidy and stitch the region inside out.
+##
+## Validated by walking the corridor's connection graph from Pallet Town: 12
+## edges, ZERO reciprocal conflicts, and the resulting layout is real Kanto
+## geography — Viridian City lands at x = -12 precisely because it is 48 wide
+## against Route 1's 24.
+static func neighbour_origin(host_origin: Vector2i, host: MapData,
+		conn: Dictionary, neighbour: MapData) -> Vector2i:
+	var off: int = int(conn.get("offset", 0))
+	match int(conn.get("direction", MapData.Connection.NONE)):
+		MapData.Connection.NORTH:
+			return host_origin + Vector2i(off, -neighbour.height)
+		MapData.Connection.SOUTH:
+			return host_origin + Vector2i(off, host.height)
+		MapData.Connection.WEST:
+			return host_origin + Vector2i(-neighbour.width, off)
+		MapData.Connection.EAST:
+			return host_origin + Vector2i(host.width, off)
+	# DIVE/EMERGE warp rather than stitching, and loadable_connections() already
+	# drops them — reaching here means a caller bypassed it.
+	return host_origin
+
+
+## Load every baked neighbour of an already-loaded chunk.
+##
+## Returns the names loaded. Uses `loadable_connections()`, so DIVE/EMERGE and
+## unbaked destinations are excluded by the same rule the skirt keys on: an
+## edge that yields nothing here is an edge that stays skirted.
+func load_neighbours(map_name: String) -> Array[String]:
+	var added: Array[String] = []
+	if not _chunks.has(map_name):
+		return added
+	var host: MapData = _chunks[map_name]["data"]
+	var host_origin: Vector2i = _chunks[map_name]["origin"]
+	if host == null:
+		return added
+	for c in host.loadable_connections():
+		var nb := MapConstants.map_name_for(str(c.get("map", "")))
+		if nb == "" or _chunks.has(nb):
+			continue
+		var nb_data: MapData = load("res://scenes/maps/%s_data.tres" % nb) as MapData
+		if nb_data == null:
+			continue
+		if load_chunk(nb, neighbour_origin(host_origin, host, c, nb_data)):
+			added.append(nb)
+	return added
 
 
 ## The two entity containers of whichever chunk owns this cell, keyed by draw

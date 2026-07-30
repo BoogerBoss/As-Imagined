@@ -72,12 +72,32 @@ const LEDGE_FOR: Dictionary = {
 const ELEVATION_TRANSITION := 0
 const ELEVATION_MULTI_LEVEL := 15
 
-var _map: MapData
+## The cell source. Deliberately untyped rather than `MapData`.
+##
+## [M27C C4] `resolve()` and its two helpers touch exactly FOUR methods —
+## `in_bounds`, `behavior_at`, `collision_at`, `elevation_at` — all of them
+## `(x, y) -> value`. Anything providing those four can drive the step rules,
+## which is what lets a `MapManager` supply them in GLOBAL coordinates and
+## makes a step across a chunk seam use the same code as one inside a map.
+##
+## That matters because of §1.7's TWO-SIDED directional rule: the exit rule
+## applies to the tile being left and the entry rule to the tile being entered,
+## and at a seam those two tiles live in different `MapData`s. A second
+## implementation of that rule for the cross-seam case would be two hand-kept
+## copies of one rule set — the exact shape that produced this milestone's
+## `check_bake_diff` false positive — so there is one implementation and the
+## source of cells varies instead.
+##
+## `cell_info()` below is NOT part of that seam. It is the overlay's per-map
+## read surface and needs `MapData` specifically (provenance, explicit bits,
+## the metatile). The overlay always edits one map, so that is not a limitation.
+var _cells
+
 var no_collision: bool = false  ## §20 debug toggle; mirrors OW_FLAG_NO_COLLISION
 
 
-func _init(map: MapData) -> void:
-	_map = map
+func _init(cells) -> void:
+	_cells = cells
 
 
 ## Resolve one step. Returns { outcome, to, ledge_to }.
@@ -89,22 +109,22 @@ func resolve(from: Vector2i, dir: int, elevation: int) -> Dictionary:
 	if no_collision:
 		return _r(Outcome.NONE, to)
 
-	if not _map.in_bounds(to.x, to.y):
+	if not _cells.in_bounds(to.x, to.y):
 		return _r(Outcome.OUTSIDE_RANGE, from)
 
 	# Ledge is checked BEFORE impassability: a ledge tile is solid to walk
 	# onto but jumpable in its own direction, so it must not be rejected by
 	# the collision bit first.
-	if _map.behavior_at(to.x, to.y) == LEDGE_FOR[dir]:
+	if _cells.behavior_at(to.x, to.y) == LEDGE_FOR[dir]:
 		var land: Vector2i = to + delta
-		if _map.in_bounds(land.x, land.y):
+		if _cells.in_bounds(land.x, land.y):
 			return _r(Outcome.LEDGE_JUMP, land)
 		return _r(Outcome.IMPASSABLE, from)
 
 	# Order matches GetVanillaCollision: solidity (bit OR directional) before
 	# elevation, so a mismatch is only ever reported for an otherwise-enterable
 	# cell (§1.7).
-	if _map.collision_at(to.x, to.y) != 0:
+	if _cells.collision_at(to.x, to.y) != 0:
 		return _r(Outcome.IMPASSABLE, from)
 	if _directionally_impassable(from, to, dir):
 		return _r(Outcome.IMPASSABLE, from)
@@ -115,8 +135,8 @@ func resolve(from: Vector2i, dir: int, elevation: int) -> Dictionary:
 
 
 func _directionally_impassable(from: Vector2i, to: Vector2i, dir: int) -> bool:
-	var here: int = _map.behavior_at(from.x, from.y)
-	var there: int = _map.behavior_at(to.x, to.y)
+	var here: int = _cells.behavior_at(from.x, from.y)
+	var there: int = _cells.behavior_at(to.x, to.y)
 	return (here in EXIT_BLOCKED[dir]) or (there in ENTRY_BLOCKED[dir])
 
 
@@ -125,7 +145,7 @@ func _directionally_impassable(from: Vector2i, to: Vector2i, dir: int) -> bool:
 func _elevation_mismatch(from_elev: int, to: Vector2i) -> bool:
 	if from_elev == ELEVATION_TRANSITION:
 		return false
-	var e: int = _map.elevation_at(to.x, to.y)
+	var e: int = _cells.elevation_at(to.x, to.y)
 	if e == ELEVATION_TRANSITION or e == ELEVATION_MULTI_LEVEL:
 		return false
 	return e != from_elev
@@ -163,6 +183,11 @@ static func is_untagged_behavior(beh: int) -> bool:
 ## dicts). `in_bounds` is always present; every other key is only meaningful
 ## when it is true.
 func cell_info(cell: Vector2i) -> Dictionary:
+	# MapData specifically -- see `_cells`. A resolver built on a MapManager
+	# steps fine but cannot answer this, and says so rather than half-answering.
+	var _map: MapData = _cells as MapData
+	if _map == null:
+		return {"cell": cell, "in_bounds": false, "no_map_data": true}
 	if not _map.in_bounds(cell.x, cell.y):
 		return {"cell": cell, "in_bounds": false}
 

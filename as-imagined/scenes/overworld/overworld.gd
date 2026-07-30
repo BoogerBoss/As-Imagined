@@ -31,26 +31,53 @@ const CELL := 16
 @onready var manager: MapManager = $MapManager
 
 var _player: Node2D
+var _camera: Camera2D
 var _cell := Vector2i(0, 0)          # GLOBAL, not map-local
 var _elev := 3
 var _moving := false
 var _facing := StepResolver.Dir.SOUTH
-## One resolver per loaded chunk. StepResolver is built against a single
-## MapData and works in that map's own local cells, so it cannot span a seam —
-## crossing one is C4's problem, and caching per chunk is the shape that will
-## still be right when it does.
-var _resolvers: Dictionary = {}
+## ONE resolver, stepping in global cells across every loaded chunk.
+##
+## [M27C C4] Was a resolver per chunk, because StepResolver took a single
+## MapData and could not span a seam. It now takes a cell SOURCE, and
+## MapManager supplies one in global coordinates — so a step across a seam runs
+## the identical rules as a step inside a map, including §1.7's two-sided
+## directional check whose two tiles live in different MapDatas at a boundary.
+var _resolver: StepResolver
+
+## The camera is NOT a child of the player, deliberately.
+##
+## [M27C C4] It was, and crossing a seam produced a fast pan from the new
+## chunk's top-left corner. Reparenting the player moves the camera with it, and
+## a Camera2D carries its SMOOTHING state as a position that gets reinterpreted
+## in the new parent's space — measured jumping to (192, -640), precisely Route
+## 1's origin, while its actual global position was correct at (192, -16).
+##
+## Following the player from outside the chunk tree fixes it at the root rather
+## than papering over it with reset_smoothing(), and removes a second hazard on
+## the way: a chunk root is freed on unload, so anything parented into one is
+## freed with it. The player has to live there for §1.6 draw order; the camera
+## has no such reason.
 
 
 func _ready() -> void:
 	if not manager.load_chunk(start_map):
 		push_error("overworld: %s is not baked — run map_baker.tscn" % start_map)
 		return
+	_resolver = manager.global_resolver()
+	# Neighbours up front. Hysteresis-based loading as the player moves is the
+	# remaining half of C4; loading the starting map's neighbours is what makes
+	# a seam crossable at all, and is what the corridor is for.
+	var added := manager.load_neighbours(start_map)
 	_spawn_player()
 	_add_camera()
 	var d := manager.data_at(_cell)
-	print("overworld: in %s at %s (%d chunk(s) live)"
-			% [manager.chunk_owning(_cell), _cell, manager.loaded_chunks().size()])
+	print("overworld: in %s at %s (%d chunk(s) live: %s)"
+			% [manager.chunk_owning(_cell), _cell, manager.loaded_chunks().size(),
+			", ".join(manager.loaded_chunks())])
+	if not added.is_empty():
+		for nb in added:
+			print("  neighbour %-22s origin %s" % [nb, manager.origin_of(nb)])
 	if d != null:
 		print("  %s %dx%d, %d connection(s), %d loadable"
 				% [d.map_name, d.width, d.height, d.connections.size(),
@@ -87,7 +114,9 @@ func _spawn_player() -> void:
 	body.position = Vector2(3, 1)
 	_player.add_child(body)
 	_reparent_for_elevation()
-	_player.position = Vector2(_cell) * CELL
+	# The chunk's LOCAL pixels, not the global cell's — the player is a child of
+	# a chunk root that is itself offset by that chunk's origin.
+	_player.position = manager.local_pixel_of(_cell)
 
 
 ## Moving between draw priorities moves the entity between containers. Driven
@@ -115,11 +144,13 @@ func _reparent_for_elevation() -> void:
 func _add_camera() -> void:
 	if _player == null:
 		return
-	var cam := Camera2D.new()
-	cam.zoom = Vector2(3, 3)
-	cam.position_smoothing_enabled = true
-	_player.add_child(cam)
-	cam.make_current()
+	_camera = Camera2D.new()
+	_camera.zoom = Vector2(3, 3)
+	_camera.position_smoothing_enabled = true
+	add_child(_camera)
+	_camera.global_position = _player.global_position
+	_camera.reset_smoothing()
+	_camera.make_current()
 
 
 ## Grid-locked movement polls a HELD direction every frame rather than
@@ -127,7 +158,12 @@ func _add_camera() -> void:
 ## event, so holding a direction produced a single step (plus erratic OS key
 ## repeat) — correct per-step logic, unplayable feel.
 func _process(_delta: float) -> void:
-	if _moving or _player == null:
+	if _player == null:
+		return
+	# Every frame, including mid-step: the tween is when following matters most.
+	if _camera != null:
+		_camera.global_position = _player.global_position
+	if _moving:
 		return
 	var dir := _held_direction()
 	if dir >= 0:
@@ -147,24 +183,14 @@ func _held_direction() -> int:
 	return -1
 
 
-## Resolve a step in GLOBAL cells by handing the owning chunk its own local
-## ones and translating the answer back. Split out and public-shaped so the
-## conversion is testable without input, a tween or a camera — with one chunk
-## at origin (0,0) the translation is identity, and an identity conversion is
-## indistinguishable from a missing one unless something exercises it offset.
+## Resolve a step in GLOBAL cells. Split out and public-shaped so stepping is
+## testable without input, a tween or a camera.
 func resolve_step(gcell: Vector2i, dir: int, elev: int) -> Dictionary:
-	var map_name := manager.chunk_owning(gcell)
-	if map_name == "":
-		# OUTSIDE_RANGE, whose own definition is "off the map / no connection" —
-		# precisely a cell no loaded chunk owns.
+	if _resolver == null:
 		return {"outcome": StepResolver.Outcome.OUTSIDE_RANGE, "to": gcell}
-	if not _resolvers.has(map_name):
-		_resolvers[map_name] = StepResolver.new(manager.data_at(gcell))
-	var origin := manager.origin_of(map_name)
-	var resolver: StepResolver = _resolvers[map_name]
-	var r: Dictionary = resolver.resolve(gcell - origin, dir, elev)
-	r["to"] = Vector2i(r["to"]) + origin
-	return r
+	# No conversion left to do: the resolver already works in global cells, so a
+	# step out of one chunk and into the next is just a step.
+	return _resolver.resolve(gcell, dir, elev)
 
 
 ## A step is a request: resolve first, then tween. Logic position is truth;
@@ -180,5 +206,5 @@ func _try_step(dir: int) -> void:
 	_moving = true
 	var t := create_tween()
 	var dur := 0.16 if outcome == StepResolver.Outcome.NONE else 0.26
-	t.tween_property(_player, "position", Vector2(_cell) * CELL, dur)
+	t.tween_property(_player, "position", manager.local_pixel_of(_cell), dur)
 	t.finished.connect(func() -> void: _moving = false)

@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 334
+const EXPECTED_TOTAL := 356
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -171,6 +171,7 @@ func _ready() -> void:
 	_test_stacks_and_counts()
 	_test_map_manager()
 	_test_border_skirt()
+	_test_neighbour_placement()
 	_test_connections_and_border()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
@@ -1583,6 +1584,161 @@ func _test_map_manager() -> void:
 	if is_instance_valid(root_b):
 		root_b.free()
 	root_a.free()
+
+
+## Section AC — [M27C C4] neighbour placement and stepping across a seam.
+##
+## The origin maths is the whole of this section's risk. `offset` shifts along
+## the SHARED EDGE, but the perpendicular term uses the HOST's dimension going
+## south/east and the NEIGHBOUR's going north/west — an asymmetry that reads
+## like a typo and would stitch the region inside out if made uniform. AC.05
+## and AC.06 are the discriminators: they use maps of DIFFERENT heights and
+## widths, because with equal dimensions both formulas agree and the test
+## proves nothing.
+func _test_neighbour_placement() -> void:
+	# Host 4 wide, 6 tall; neighbour 3 wide, 5 tall — every dimension distinct,
+	# so a formula reaching for the wrong map's is visible.
+	var host := _synth(4, 6, [], [], [])
+	var nb := _synth(3, 5, [], [], [])
+	var at := Vector2i(100, 200)
+
+	_chk("AC.01 south places the neighbour past the HOST's height",
+			MapManager.neighbour_origin(at, host,
+					{"direction": MapData.Connection.SOUTH, "offset": 0}, nb)
+			== at + Vector2i(0, 6))
+	_chk("AC.02 north pulls it back by the NEIGHBOUR's height",
+			MapManager.neighbour_origin(at, host,
+					{"direction": MapData.Connection.NORTH, "offset": 0}, nb)
+			== at + Vector2i(0, -5))
+	_chk("AC.03 east places it past the HOST's width",
+			MapManager.neighbour_origin(at, host,
+					{"direction": MapData.Connection.EAST, "offset": 0}, nb)
+			== at + Vector2i(4, 0))
+	_chk("AC.04 west pulls it back by the NEIGHBOUR's width",
+			MapManager.neighbour_origin(at, host,
+					{"direction": MapData.Connection.WEST, "offset": 0}, nb)
+			== at + Vector2i(-3, 0))
+	# If north/south both used the same map's height these two would collide.
+	_chk("AC.05 north and south do NOT use the same height",
+			MapManager.neighbour_origin(at, host,
+					{"direction": MapData.Connection.NORTH, "offset": 0}, nb).y
+			!= at.y - host.height)
+	_chk("AC.06 nor west and east the same width",
+			MapManager.neighbour_origin(at, host,
+					{"direction": MapData.Connection.WEST, "offset": 0}, nb).x
+			!= at.x - host.width)
+
+	# Offset shifts along the shared edge only, and carries its sign.
+	_chk("AC.07 a north/south offset moves x, never y",
+			MapManager.neighbour_origin(at, host,
+					{"direction": MapData.Connection.SOUTH, "offset": -12}, nb)
+			== at + Vector2i(-12, 6))
+	_chk("AC.08 a west/east offset moves y, never x",
+			MapManager.neighbour_origin(at, host,
+					{"direction": MapData.Connection.EAST, "offset": 7}, nb)
+			== at + Vector2i(4, 7))
+	# DIVE/EMERGE warp rather than stitching; loadable_connections() drops them,
+	# so reaching the formula at all means a caller bypassed that.
+	_chk("AC.09 a dive connection places nothing",
+			MapManager.neighbour_origin(at, host,
+					{"direction": MapData.Connection.DIVE, "offset": 3}, nb) == at)
+
+	# --- reciprocity: the property the corridor was validated against ---
+	# Pallet-shaped host with Route-1-shaped neighbour to the north; placing the
+	# host from the NEIGHBOUR's frame must land back on the host's own origin.
+	var nb_origin := MapManager.neighbour_origin(at, host,
+			{"direction": MapData.Connection.NORTH, "offset": 5}, nb)
+	var back := MapManager.neighbour_origin(nb_origin, nb,
+			{"direction": MapData.Connection.SOUTH, "offset": -5}, host)
+	_chk("AC.10 a connection and its reverse agree on where both maps sit",
+			back == at)
+
+	# --- the global cell source, which is what lets a step cross a seam ---
+	var mm := MapManager.new()
+	var ra := Node2D.new()
+	var rb := Node2D.new()
+	# Two chunks touching: A at origin, B directly north of it.
+	var a := _synth(4, 4, [], [], [])
+	var b := _synth(4, 4, [], [], _filled(16, 4))   # elevation 4, A is 3
+	mm.register_chunk("A", a, ra, Vector2i.ZERO)
+	mm.register_chunk("B", b, rb, Vector2i(0, -4))
+
+	var cells := MapManager.GlobalCells.new(mm)
+	_chk("AC.11 the cell source answers in global cells",
+			cells.in_bounds(0, 0) and cells.in_bounds(0, -1)
+			and not cells.in_bounds(0, -5))
+	_chk("AC.12 and routes to the owning chunk, not the first one",
+			cells.elevation_at(0, 0) == 3 and cells.elevation_at(0, -1) == 4)
+
+	# The payoff: one resolver, one rule set, a step that leaves A and lands in B.
+	var res := mm.global_resolver()
+	var r: Dictionary = res.resolve(Vector2i(1, 0), StepResolver.Dir.NORTH, 0)
+	_chk("AC.13 a step crosses the seam rather than reporting OUTSIDE_RANGE",
+			int(r["outcome"]) == StepResolver.Outcome.NONE
+			and Vector2i(r["to"]) == Vector2i(1, -1)
+			and mm.chunk_owning(Vector2i(r["to"])) == "B")
+	# Elevation 3 into elevation 4 with no wildcard is a real mismatch, and it
+	# must be reported ACROSS the seam too — proving the rules genuinely run
+	# rather than the step being waved through because the chunk changed.
+	var r2: Dictionary = res.resolve(Vector2i(1, 0), StepResolver.Dir.NORTH, 3)
+	_chk("AC.14 and still applies the rules once across it",
+			int(r2["outcome"]) == StepResolver.Outcome.ELEVATION_MISMATCH)
+	# Off the far edge of B there is no chunk at all.
+	var r3: Dictionary = res.resolve(Vector2i(1, -4), StepResolver.Dir.NORTH, 0)
+	_chk("AC.15 beyond every chunk it still reports OUTSIDE_RANGE",
+			int(r3["outcome"]) == StepResolver.Outcome.OUTSIDE_RANGE)
+
+	# --- rendering, which is a SEPARATE conversion from the query one ---
+	# Found by Rob on the first real seam crossing: the player teleported to the
+	# top of Route 1, exactly that map's height off. Chunk roots sit at
+	# origin * CELL, so a child's `position` is already relative to the origin —
+	# assigning a GLOBAL cell's pixels there adds the origin a second time. The
+	# queries above were all correct; the render was not, and nothing here could
+	# see it because AA/AC test coordinates rather than placement.
+	_chk("AC.16 a node in a chunk is positioned in that chunk's LOCAL pixels",
+			mm.local_pixel_of(Vector2i(1, -3)) == Vector2(1, 1) * MapManager.CELL)
+	_chk("AC.17 which is not the global pixel position — the bug's whole shape",
+			mm.local_pixel_of(Vector2i(1, -3)) != Vector2(Vector2i(1, -3)) * MapManager.CELL)
+	_chk("AC.18 and is the identity only for a chunk at the origin",
+			mm.local_pixel_of(Vector2i(1, 1)) == Vector2(Vector2i(1, 1)) * MapManager.CELL)
+
+	# --- draw order must be PLANE-major, not chunk-major ---
+	# Scene-tree order sorts whole chunks against each other, so the player,
+	# reparented into the lower chunk mid-step, drew behind the other chunk's
+	# ground while still overlapping it. Found crossing Route 1 back into Pallet
+	# Town; only in that direction, because Pallet Town happened to load first.
+	var zroot := Node2D.new()
+	for nm in ["Ground", "Objects", "Entities_P2", "Overhangs", "Entities_P1",
+			"BorderSkirt_Ground", "BorderSkirt_Objects", "BorderSkirt_Overhangs"]:
+		var n := Node2D.new()
+		n.name = nm
+		zroot.add_child(n)
+	MapManager.apply_plane_z(zroot)
+	var z := func(nm: String) -> int: return (zroot.get_node(nm) as CanvasItem).z_index
+	_chk("AC.19 the planes stack in §1.6 order",
+			z.call("Ground") < z.call("Objects")
+			and z.call("Objects") < z.call("Entities_P2")
+			and z.call("Entities_P2") < z.call("Overhangs")
+			and z.call("Overhangs") < z.call("Entities_P1"))
+	# The property that fixes the seam: an entity outranks ANY chunk's ground,
+	# because z is compared before tree order.
+	_chk("AC.20 an entity outranks ground and objects wherever they live",
+			z.call("Entities_P2") > z.call("Ground")
+			and z.call("Entities_P2") > z.call("Objects"))
+	# ...while still passing UNDER an overhang, which is the whole point of the
+	# two strata and would be lost by simply putting entities on top.
+	_chk("AC.21 but still passes under overhangs, keeping the two strata apart",
+			z.call("Entities_P2") < z.call("Overhangs")
+			and z.call("Entities_P1") > z.call("Overhangs"))
+	_chk("AC.22 skirt layers share their plane's z rather than sitting below all",
+			z.call("BorderSkirt_Ground") == z.call("Ground")
+			and z.call("BorderSkirt_Objects") == z.call("Objects")
+			and z.call("BorderSkirt_Overhangs") == z.call("Overhangs"))
+	zroot.free()
+
+	mm.free()
+	ra.free()
+	rb.free()
 
 
 ## Section AB — [M27C C3] the border skirt.
