@@ -525,6 +525,19 @@ func bg_fade_state() -> int:
 # palette-cycling behaviors, which need to know WHICH background's palette they
 # are rotating -- the script installs it with `fadetobg` several commands
 # earlier, so the behavior cannot derive it from its own arguments.
+# Public wrapper over the VM's own visibility tracking, so a BEHAVIOR that
+# hides a battler is covered by the same end-of-run restore the `invisible`
+# opcode is. The Dig family and SetAllNonAttackersInvisiblity all deliberately
+# leave a battler hidden for a later call to undo; this is what stops a script
+# that never makes that call from hiding a Pokemon for the rest of the battle.
+func set_battler_visible_tracked(battler: int, visible: bool) -> void:
+	_set_battler_visible(battler, visible)
+	if visible:
+		_hidden_battlers.erase(battler)
+	else:
+		_hidden_battlers[battler] = true
+
+
 func current_background_name() -> String:
 	return _bg_name
 

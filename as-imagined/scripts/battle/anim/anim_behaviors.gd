@@ -67,6 +67,38 @@ class MonOffset:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 6] move-targeted: the remaining blocked iconic set —
+		"AnimTask_SetAllNonAttackersInvisiblity": _set_all_non_attackers_invisible,
+		"AnimIceBeamParticle": _ice_beam_particle,
+		"AnimIceEffectParticle": _ice_effect_particle,
+		"AnimMoveParticleBeyondTarget": _particle_beyond_target,
+		"AnimSwirlingSnowball": _swirling_snowball,
+		"AnimThrowProjectile": _throw_projectile,
+		"AnimWaterGunDroplet": _water_gun_droplet,
+		"AnimAuroraBeamRings": _aurora_beam_rings,
+		"AnimTask_RotateAuroraRingColors": _rotate_aurora_ring_colors,
+		"AnimSparkElectricityFlashing": _spark_electricity_flashing,
+		"AnimThunderboltOrb": _thunderbolt_orb,
+		"AnimSolarBeamBigOrb": _solar_beam_big_orb,
+		"AnimTask_CreateSmallSolarBeamOrbs": _create_small_solar_beam_orbs,
+		"AnimSolarBeamSmallOrb": _solar_beam_small_orb,
+		"AnimBowMon": _bow_mon,
+		"AnimTask_DrillPeckHitSplats": _drill_peck_hit_splats,
+		"AnimFireCross": _fire_cross,
+		"AnimFireRing": _fire_ring,
+		"AnimWaterPulseBubble": _water_pulse_bubble,
+		"AnimWaterPulseRing": _water_pulse_ring,
+		"AnimOrbitFast": _orbit_fast,
+		"AnimOrbitScatter": _orbit_scatter,
+		"AnimTauntFinger": _taunt_finger,
+		"AnimThoughtBubble": _thought_bubble,
+		"AnimSludgeBombHitParticle": _sludge_bomb_hit_particle,
+		"AnimSludgeProjectile": _sludge_projectile,
+		"AnimDirtPlumeParticle": _dirt_plume_particle,
+		"AnimTask_PositionFissureBgOnBattler": _position_fissure_bg,
+		"AnimDigDirtMound": _dig_dirt_mound,
+		"AnimTask_DigDownMovement": _dig_down_movement,
+		"AnimTask_DigUpMovement": _dig_up_movement,
 		# — [M36D batch 5] water / ice —
 		"AnimTask_FrozenIceCube": _frozen_ice_cube,
 		"AnimTask_FrozenIceCubeAttacker": _frozen_ice_cube_attacker,
@@ -5495,5 +5527,989 @@ static func _locking_jaw(vm: AnimScriptVM, ctx: Dictionary) -> void:
 		st["down"] = int(st["down"]) - 1
 		if int(st["down"]) <= -hold:
 			node.finish()
+			return true
+		return false)
+
+
+# ─── [M36D batch 6] ───────────────────────────────────────────────────────
+#
+# MOVE-targeted rather than family-targeted, and that is a deliberate change
+# from batch 5. Reading each blocked iconic move's ACTUAL missing set (rather
+# than inferring it from a family name, which is how batch 5 picked an ice
+# cluster that did not unblock Ice Beam) showed there is almost no sharing
+# left: only AnimIceEffectParticle (Ice Beam + Blizzard) and
+# AnimDirtPlumeParticle (Fissure + Dig) block two moves each. Everything else
+# blocks exactly one. So this batch is a list of moves, not of families.
+#
+# Three existing helpers absorbed a good part of it, per Step 0:
+#   * `_linear_travel`  -- IceBeamParticle, WaterGunDroplet, SolarBeamBigOrb
+#   * `_arc_travel`     -- ThrowProjectile, SludgeProjectile, DirtPlumeParticle
+#                          (all three share ONE step function upstream)
+#   * `_velocity_travel`-- SludgeBombHitParticle, with a decay term on top
+
+
+# AnimTask_SetAllNonAttackersInvisiblity (battle_anim_utility_funcs.c:760).
+# arg0 is the boolean written into `.invisible`. One frame, and it RESTORES
+# NOTHING -- it is a raw setter, and the script is responsible for the paired
+# call with arg0 = 0. Routed through the VM's own visibility tracking so that
+# a script which never makes that second call cannot leave a Pokemon hidden
+# for the rest of the battle.
+static func _set_all_non_attackers_invisible(vm: AnimScriptVM,
+		_ctx: Dictionary) -> void:
+	var hide: bool = vm.args[0] != 0
+	for i in range(4):
+		if i == AnimStage.ANIM_ATTACKER:
+			continue
+		var n := _battler_node(vm, i)
+		if n != null and is_instance_valid(n):
+			vm.set_battler_visible_tracked(i, not hide)
+
+
+# AnimIceBeamParticle (battle_anim_ice.c:665). args: 0/1 start offset,
+# 2/3 destination offset, 4 duration. The canonical linear-translation shape,
+# with the destination's x offset mirrored for an opponent-side attacker.
+static func _ice_beam_particle(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	var dx := float(vm.args[2]) * (1.0 if _is_player_side(vm) else -1.0)
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(dx, float(vm.args[3])) * scale
+	node.centre = start
+	_linear_travel(vm, node, start, dest, maxi(1, vm.args[4]))
+
+
+# AnimIceEffectParticle (battle_anim_ice.c:686, step :706). args: 0/1 offset,
+# 2 average-both-targets flag. Plays its affine anim, then FLICKERS for
+# exactly 20 frames before dying -- the flicker is the whole tell that the
+# target is freezing rather than just being hit.
+#
+# Shared by Ice Beam and Blizzard, and by five more scripts besides.
+static func _ice_effect_particle(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var x := float(vm.args[0])
+	if vm.args[2] != 0 and not _is_player_side(vm):
+		x = -x
+	node.centre = _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(x, float(vm.args[1])) * scale
+	var st := {"phase": 0, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		if int(st["phase"]) == 0:
+			st["t"] = int(st["t"]) + 1
+			if node.anim_ended() or int(st["t"]) >= _ANIM_END_CAP:
+				st["phase"] = 1
+				st["t"] = 0
+			return false
+		node.visible = not node.visible
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= 20:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimMoveParticleBeyondTarget (battle_anim_ice.c:843, step :902) and
+# AnimSwirlingSnowball (:721). Step 0 found these share ~90% of their setup.
+#
+# Both do something genuinely odd that has to be reproduced or the effect is
+# wrong: they run a BLOCKING pre-simulation that walks the sprite BACKWARDS
+# until it is off-screen behind the attacker, bake that as the real start, and
+# only then run forward. That is what lets the particle pass THROUGH the
+# target and exit the far side rather than stopping on it.
+#
+# Ported as the equivalent closed form -- project backwards along the travel
+# direction until outside the stage -- rather than as a literal while-loop,
+# because a blocking loop inside a per-frame stepper would stall the frame.
+static func _particle_beyond_target(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_beyond_target_common(vm, ctx, false)
+
+
+static func _swirling_snowball(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_beyond_target_common(vm, ctx, true)
+
+
+static func _beyond_target_common(vm: AnimScriptVM, ctx: Dictionary,
+		swirl: bool) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var layer: Control = vm.stage.layer() if vm.stage != null \
+			and vm.stage.has_method("layer") else null
+	var bounds := layer.size if layer != null else Vector2(1024, 768)
+	var origin := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	var dx := float(vm.args[2]) * (1.0 if _is_player_side(vm) else -1.0)
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(dx, float(vm.args[3])) * scale
+	var dir := (dest - origin).normalized()
+	if dir == Vector2.ZERO:
+		dir = Vector2(1, 0)
+	# The pre-simulation's closed form: far enough back to be off-stage.
+	var back := bounds.length()
+	var start := origin - dir * back
+	node.centre = start
+	var speed := maxf(1.0, float(vm.args[4])) / 16.0 * scale
+	var amp := float(vm.args[5]) * scale
+	var freq: int = vm.args[6]
+	var st := {"pos": start, "wave": 0, "phase": 0, "t": 0, "orbit": 128}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		if swirl and int(st["phase"]) == 1:
+			# AnimSwirlingSnowball_Step2: two full revolutions in exactly 32
+			# frames (16 units of 256 per frame), then carry on outward.
+			st["orbit"] = (int(st["orbit"]) + 16) & 0xFF
+			st["t"] = int(st["t"]) + 1
+			node.centre = (st["pos"] as Vector2) + Vector2(
+					_gba_sin(int(st["orbit"]), 20.0 * scale),
+					_gba_cos(int(st["orbit"]), 15.0 * scale))
+			if int(st["t"]) >= 32:
+				st["phase"] = 2
+			return false
+		var p: Vector2 = (st["pos"] as Vector2) + dir * speed
+		st["pos"] = p
+		var off := Vector2.ZERO
+		if not swirl:
+			off.y = _gba_sin(int(st["wave"]), amp)
+			st["wave"] = (int(st["wave"]) + freq) & 0xFF
+		node.centre = p + off
+		if swirl and int(st["phase"]) == 0 \
+				and p.distance_to(dest) < speed * 2.0:
+			st["phase"] = 1
+			st["t"] = 0
+		# Terminated only by leaving the screen, never by a frame count.
+		if p.x < -32.0 * scale or p.x > bounds.x + 32.0 * scale \
+				or p.y < -32.0 * scale or p.y > bounds.y + 32.0 * scale:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimThrowProjectile (battle_anim_mons.c:1530). args: 0/1 start offset,
+# 2/3 end offset, 4 duration, 5 arc amplitude.
+#
+# Step 0 found its step function is byte-identical to SludgeProjectile's and
+# DirtPlumeParticle's -- all three are `if (TranslateAnimHorizontalArc)
+# DestroyAnimSprite`, so all three are one call to the existing `_arc_travel`.
+static func _throw_projectile(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	var dx := float(vm.args[2]) * (1.0 if _is_player_side(vm) else -1.0)
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(dx, float(vm.args[3])) * scale
+	node.centre = start
+	_arc_travel(vm, node, start, dest, maxi(1, vm.args[4]),
+			float(vm.args[5]) * scale)
+
+
+# AnimWaterGunDroplet (battle_anim_water.c:951). args: 0/1 offset, 2 x delta,
+# and 4 as BOTH the duration and the y delta -- arg 3 is unused. Reproduced as
+# written; it is the kind of arg aliasing that looks like a typo but is what
+# the scripts were authored against.
+static func _water_gun_droplet(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_TARGET, vm.args[0],
+			vm.args[1], scale)
+	node.centre = start
+	_linear_travel(vm, node, start, start
+			+ Vector2(float(vm.args[2]), float(vm.args[4])) * scale,
+			maxi(1, vm.args[4]))
+
+
+# AnimAuroraBeamRings (battle_anim_water.c:747, step :767). args: 0/1 start
+# offset, 2/3 destination offset, 4 duration -- plus arg 7 read LIVE as a
+# signal. The ring travels with its affine anim FROZEN, and the script
+# unfreezes it by writing -1 into arg 7, which is how the beam's end is
+# synchronised with the rings already in flight.
+static func _aurora_beam_rings(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	var dx := float(vm.args[2]) * (1.0 if _is_player_side(vm) else -1.0)
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(dx, float(vm.args[3])) * scale
+	node.centre = start
+	var duration: int = maxi(1, vm.args[4])
+	var st := {"t": 0, "released": false}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		if not bool(st["released"]) \
+				and vm.args[AnimScriptVM.ARG_RET] == -1:
+			st["released"] = true
+			node.advance_frame()
+		elif bool(st["released"]):
+			node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		node.centre = start.lerp(dest, float(st["t"]) / float(duration))
+		if int(st["t"]) >= duration:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimTask_RotateAuroraRingColors (battle_anim_water.c:779, step :786).
+# arg0 = duration. Rotates 8 palette entries LEFT once every 3 frames, which
+# is what makes the rings appear to flow. Same mechanism as the psychic
+# background cycle from M36E3, over the ring sheet's own palette.
+#
+# Upstream never restores the rotation -- it is invisible because the sprite
+# palette is freed with the animation. Here the tint goes with the sprites, so
+# there is likewise nothing to leak.
+static func _rotate_aurora_ring_colors(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var stage = vm.stage
+	if stage == null or not stage.has_method("layer"):
+		return
+	var layer: Control = stage.layer()
+	if layer == null:
+		return
+	var duration: int = maxi(1, vm.args[0])
+	var st := {"t": 0, "tick": 0, "step": 0}
+	vm.add_stepper(func() -> bool:
+		st["t"] = int(st["t"]) + 1
+		st["tick"] = int(st["tick"]) + 1
+		if int(st["tick"]) >= 3:
+			st["tick"] = 0
+			st["step"] = int(st["step"]) + 1
+			# The visible consequence of an 8-entry rotate on a ring sheet is
+			# a hue sweep; applied per-sprite since there is no palette here.
+			var h := fmod(float(st["step"]) / 8.0, 1.0)
+			for child in layer.get_children():
+				if child is AnimSprite:
+					(child as AnimSprite).modulate = Color.from_hsv(h, 0.35,
+							1.0, (child as AnimSprite).modulate.a)
+		if int(st["t"]) >= duration:
+			for child in layer.get_children():
+				if child is AnimSprite:
+					(child as AnimSprite).modulate = Color(1, 1, 1,
+							(child as AnimSprite).modulate.a)
+			return true
+		return false)
+
+
+# AnimSparkElectricityFlashing (battle_anim_electric.c:760, step :787). args:
+# 0/1 offset, 2 radius, 3 lifetime, 4 initial angle, 5 angular step,
+# 6 tile selector, 7 a BITFIELD -- bit 15 picks the target instead of the
+# attacker, and the low 15 bits are the flicker modulus.
+static func _spark_electricity_flashing(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var flags: int = vm.args[7]
+	var battler: int = AnimStage.ANIM_TARGET if (flags & 0x8000) != 0 \
+			else AnimStage.ANIM_ATTACKER
+	var x := float(vm.args[0])
+	if _is_player_side(vm):
+		x = -x
+	var base := _battler_centre(vm, battler) \
+			+ Vector2(x, float(vm.args[1])) * scale
+	node.set_tile_offset(vm.args[6] * 4)
+	var radius := float(vm.args[2]) * scale
+	var modulus: int = maxi(1, flags & 0x7FFF)
+	var life: int = maxi(1, vm.args[3])
+	var st := {"angle": vm.args[4], "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		var a: int = int(st["angle"])
+		node.centre = base + Vector2(_gba_sin(a, radius), _gba_cos(a, radius))
+		st["angle"] = (a + vm.args[5]) & 0xFF
+		if int(st["angle"]) % modulus == 0:
+			node.visible = not node.visible
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) > life:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimThunderboltOrb (battle_anim_electric.c:748, step :737). args: 0 lifetime,
+# 1/2 offset, 3 flicker interval. Static and flickering. Note upstream does NOT
+# invoke its step on the setup frame, so the first frame is a pure wait.
+static func _thunderbolt_orb(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var x := float(vm.args[1])
+	if _is_player_side(vm):
+		x = -x
+	node.centre = _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(x, float(vm.args[2])) * scale
+	var interval: int = maxi(1, vm.args[3])
+	var life: int = maxi(1, vm.args[0])
+	var st := {"t": 0, "flick": interval}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		st["flick"] = int(st["flick"]) - 1
+		if int(st["flick"]) < 0:
+			node.visible = not node.visible
+			st["flick"] = interval
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) > life:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimSolarBeamBigOrb (battle_anim_effects_1.c:3084). args: 0/1 offset,
+# 2 duration, 3 anim index. Straight linear travel with no per-side fudge at
+# all -- unusual in this batch, and deliberate upstream.
+static func _solar_beam_big_orb(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	_apply_anim_variant(node, ctx, vm.args[3])
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	node.centre = start
+	_linear_travel(vm, node, start,
+			_battler_centre(vm, AnimStage.ANIM_TARGET),
+			maxi(1, vm.args[2]))
+
+
+# AnimTask_CreateSmallSolarBeamOrbs (battle_anim_effects_1.c:3146). No args in
+# -- and it CLOBBERS gBattleAnimArgs[0..3] for each spawn, permanently. Spawns
+# 15 orbs, one every 7 frames (~99 frames). The source comment says a 7-frame
+# delay; the code uses 6, which with the -1 wrap is 7 frames between spawns.
+static func _create_small_solar_beam_orbs(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var st := {"t": 0, "made": 0}
+	vm.add_stepper(func() -> bool:
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) % 7 == 1 and int(st["made"]) < 15:
+			vm.args[0] = 15
+			vm.args[1] = 0
+			vm.args[2] = 80
+			vm.args[3] = 0
+			_solar_beam_small_orb(vm, ctx)
+			st["made"] = int(st["made"]) + 1
+		return int(st["made"]) >= 15 and int(st["t"]) > 15 * 7)
+
+
+# AnimSolarBeamSmallOrb (battle_anim_effects_1.c:3099, step :3124). Travels to
+# the target over 80 frames while weaving, and passes behind or in front of it
+# depending on which half of the weave it is in.
+static func _solar_beam_small_orb(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	node.centre = start
+	var st := {"t": 0, "wave": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= 80:
+			node.finish()
+			return true
+		var pos := start.lerp(dest, float(st["t"]) / 80.0)
+		pos += Vector2(_gba_sin(int(st["wave"]), 5.0 * scale),
+				_gba_cos(int(st["wave"]), 14.0 * scale))
+		st["wave"] = (int(st["wave"]) + 15) & 0xFF
+		node.centre = pos
+		return false)
+
+
+# AnimBowMon (battle_anim_effects_1.c:5709). arg0 selects one of four modes.
+#
+# This is a CONTROLLER sprite: it is invisible and never draws. What it moves
+# is the ATTACKER'S OWN battler sprite. Mode 0 pulls back and tilts, mode 1
+# lunges forward, mode 2 waits then untilts -- and mode 0 deliberately leaves
+# the tilt applied, so the scripts must pair 0 with 2. Neither mode zeroes the
+# displacement, which is why the VM's own end-of-run restore matters here.
+static func _bow_mon(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var mon := MonOffset.new(node)
+	var away := 1.0 if not _is_player_side(vm) else -1.0
+	match vm.args[0]:
+		0:
+			var st := {"t": 0}
+			vm.add_stepper(func() -> bool:
+				if not is_instance_valid(node):
+					return true
+				st["t"] = int(st["t"]) + 1
+				mon.apply(Vector2(2.0 * away * float(st["t"]) * scale, 0.0))
+				if int(st["t"]) >= 6:
+					# The tilt, deliberately left applied for mode 2 to undo.
+					node.rotation = _gba_rot_to_radians(3072) * away
+					return true
+				return false)
+		1:
+			var st2 := {"t": 0}
+			vm.add_stepper(func() -> bool:
+				if not is_instance_valid(node):
+					return true
+				st2["t"] = int(st2["t"]) + 1
+				mon.apply(Vector2(-3.0 * away * float(st2["t"]) * scale, 0.0))
+				return int(st2["t"]) >= 4)
+		2:
+			var st3 := {"t": 0, "phase": 0}
+			vm.add_stepper(func() -> bool:
+				if not is_instance_valid(node):
+					return true
+				st3["t"] = int(st3["t"]) + 1
+				if int(st3["phase"]) == 0:
+					if int(st3["t"]) > 8:
+						st3["phase"] = 1
+						st3["t"] = 0
+					return false
+				node.rotation = lerpf(_gba_rot_to_radians(3072) * away, 0.0,
+						clampf(float(st3["t"]) / 3.0, 0.0, 1.0))
+				if int(st3["t"]) >= 3:
+					node.rotation = 0.0
+					mon.restore()
+					return true
+				return false)
+		_:
+			pass
+
+
+# AnimTask_DrillPeckHitSplats (battle_anim_flying.c:936). No args in; it WRITES
+# args 0..3 per spawn. Eight splats at 45 degrees apart on a radius-13 circle,
+# one every 4th frame, over 32 frames. The radius is NEGATIVE upstream, which
+# inverts the points -- reproduced rather than tidied.
+static func _drill_peck_hit_splats(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var scale := _scale(vm)
+	var centre := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var st := {"angle": 0}
+	vm.add_stepper(func() -> bool:
+		var a: int = int(st["angle"])
+		if a % 32 == 0:
+			var splat := _make_sprite(vm, ctx)
+			if splat != null:
+				splat.centre = centre + Vector2(_gba_sin(a, -13.0 * scale),
+						_gba_cos(a, -13.0 * scale))
+				_flashing_splat_life(vm, splat)
+		st["angle"] = a + 8
+		return int(st["angle"]) > 255)
+
+
+static func _flashing_splat_life(vm: AnimScriptVM, node: AnimSprite) -> void:
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.visible = not node.visible
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) > 13:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimFireCross (battle_anim_fire.c:774). args: 0/1 offset from the TARGET's
+# centre (it never calls a position helper), 2 duration, 3/4 per-frame delta.
+# Integer velocity, no side mirroring at all.
+static func _fire_cross(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(float(vm.args[0]), float(vm.args[1])) * scale
+	node.centre = start
+	var vel := Vector2(float(vm.args[3]), float(vm.args[4])) * scale
+	var life: int = maxi(1, vm.args[2])
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		node.centre = start + vel * float(st["t"])
+		if int(st["t"]) >= life:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimFireRing (battle_anim_fire.c:701). args: 0/1 offset, 2 initial phase.
+# Three real phases totalling 74 frames: circle the attacker for 18, travel to
+# the target for 25 with the circle still riding on top, then circle the
+# target for 31. Radius 28, 20/256 per frame throughout.
+static func _fire_ring(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var origin := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	node.centre = origin
+	var st := {"phase": 0, "t": 0, "ang": vm.args[2]}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var a: int = int(st["ang"])
+		var circle := Vector2(_gba_sin(a, 28.0 * scale),
+				_gba_cos(a, 28.0 * scale))
+		st["ang"] = (a + 20) & 0xFF
+		st["t"] = int(st["t"]) + 1
+		match int(st["phase"]):
+			0:
+				node.centre = origin + circle
+				if int(st["t"]) >= 18:
+					st["phase"] = 1
+					st["t"] = 0
+			1:
+				node.centre = origin.lerp(dest,
+						float(st["t"]) / 25.0) + circle
+				if int(st["t"]) >= 25:
+					st["phase"] = 2
+					st["t"] = 0
+			2:
+				node.centre = dest + circle
+				if int(st["t"]) >= 31:
+					node.finish()
+					return true
+		return false)
+
+
+# AnimWaterPulseBubble (battle_anim_water.c:1781, step :1792). args: 0/1 are
+# ABSOLUTE coordinates, not offsets -- the one behavior in this batch that
+# does not position relative to a battler. 2 rise speed, 3 sine step,
+# 4 amplitude, 5 lifetime.
+static func _water_pulse_bubble(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var base := Vector2(float(vm.args[0]), float(vm.args[1])) * scale
+	node.centre = base
+	var life: int = maxi(1, vm.args[5])
+	var st := {"t": 0, "rise": 0, "wave": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["rise"] = int(st["rise"]) - vm.args[2]
+		st["wave"] = (int(st["wave"]) + vm.args[3]) & 0xFF
+		node.centre = base + Vector2(
+				_gba_sin(int(st["wave"]), float(vm.args[4]) * scale),
+				float(int(st["rise"])) / 10.0 * scale)
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= life:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimWaterPulseRing (battle_anim_water.c:1815, step :1832). args: 0/1 offset,
+# 2 duration, 3 bubble-spawn interval. Uses a direct fractional lerp rather
+# than the translation helper, and sheds a PAIR of bubbles every interval.
+static func _water_pulse_ring(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	node.centre = start
+	var duration: int = maxi(1, vm.args[2])
+	var interval: int = maxi(1, vm.args[3])
+	var st := {"t": 0, "since": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		var f := float(st["t"]) / float(duration)
+		node.centre = start.lerp(dest, f)
+		st["since"] = int(st["since"]) + 1
+		if int(st["since"]) >= interval:
+			st["since"] = 0
+			_spawn_pulse_bubbles(vm, ctx, node.centre, scale)
+		if int(st["t"]) >= duration:
+			node.finish()
+			return true
+		return false)
+
+
+# CreateWaterPulseRingBubbles (battle_anim_water.c:1849): two bubbles per
+# spawn, drifting in opposite directions with a random jitter, 20 frames each.
+static func _spawn_pulse_bubbles(vm: AnimScriptVM, ctx: Dictionary,
+		at: Vector2, scale: float) -> void:
+	for i in range(2):
+		var b := _make_sprite(vm, ctx)
+		if b == null:
+			continue
+		b.centre = at
+		var jitter := float(randi() % 10 - 5)
+		var vel := Vector2(jitter * (1.0 if i == 0 else -1.0),
+				jitter) * scale
+		_velocity_travel(vm, b, at, vel, 20)
+
+
+# AnimOrbitFast (battle_anim_effects_2.c:3373, step :3385). args: 0 half-period
+# of the grow/shrink, 1 initial phase -- and arg 7 read LIVE as the kill
+# switch, so this is registered UNCOUNTED: it orbits forever until the script
+# stops it, and a counted stepper would hang waitforvisualfinish.
+static func _orbit_fast(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var base := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	node.centre = base
+	var half: int = maxi(1, vm.args[0])
+	var st := {"ang": vm.args[1], "rx": 0.0, "ry": 0.0, "t": 0, "phase": 0}
+	var step := func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		if vm.args[AnimScriptVM.ARG_RET] == -1:
+			node.finish()
+			return true
+		match int(st["phase"]):
+			0:
+				st["rx"] = float(st["rx"]) + 4.0
+				st["ry"] = float(st["ry"]) + 1.0
+				st["t"] = int(st["t"]) + 1
+				if int(st["t"]) >= half:
+					st["t"] = 0
+					st["phase"] = 1
+			1:
+				st["rx"] = maxf(0.0, float(st["rx"]) - 4.0)
+				st["ry"] = maxf(0.0, float(st["ry"]) - 1.0)
+				st["t"] = int(st["t"]) + 1
+				if int(st["t"]) >= half:
+					st["phase"] = 2
+		var a: int = int(st["ang"])
+		node.centre = base + Vector2(_gba_sin(a, float(st["rx"]) * scale),
+				_gba_cos(a, float(st["ry"]) * scale))
+		st["ang"] = (a + 9) & 0xFF
+		return false
+	vm.add_stepper(step, false)
+
+
+# AnimOrbitScatter (battle_anim_effects_2.c:3424, step :3433). arg0 is the
+# launch angle only. Constant velocity outward from the attacker until it
+# leaves the screen -- the scatter half of Hidden Power's orbit-then-burst.
+static func _orbit_scatter(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var layer: Control = vm.stage.layer() if vm.stage != null \
+			and vm.stage.has_method("layer") else null
+	var bounds := layer.size if layer != null else Vector2(1024, 768)
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	node.centre = start
+	var vel := Vector2(_gba_sin(vm.args[0], 10.0), _gba_cos(vm.args[0], 7.0)) \
+			* scale
+	var st := {"pos": start}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var p: Vector2 = (st["pos"] as Vector2) + vel
+		st["pos"] = p
+		node.centre = p
+		if p.x < -32.0 * scale or p.x > bounds.x + 32.0 * scale \
+				or p.y < -32.0 * scale or p.y > bounds.y + 32.0 * scale:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimTauntFinger (battle_anim_effects_1.c:7217) and AnimThoughtBubble (:7101)
+# share SetSpriteNextToMonHead (:7091) -- placed beside the mon's head, on the
+# side away from it. Both are appear / hold / disappear sequences.
+static func _taunt_finger(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	node.centre = _next_to_mon_head(vm, vm.args[0])
+	_apply_anim_variant(node, ctx, 0 if _is_player_side(vm) else 1)
+	var st := {"phase": 0, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		match int(st["phase"]):
+			0:
+				if int(st["t"]) > 10:
+					st["phase"] = 1
+					st["t"] = 0
+			1:
+				if node.anim_ended() or int(st["t"]) >= _ANIM_END_CAP:
+					st["phase"] = 2
+					st["t"] = 0
+			2:
+				if int(st["t"]) > 5:
+					node.finish()
+					return true
+		return false)
+
+
+static func _thought_bubble(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	node.centre = _next_to_mon_head(vm, vm.args[0])
+	_apply_anim_variant(node, ctx, 0 if _is_player_side(vm) else 1)
+	var hold: int = maxi(1, vm.args[1])
+	var st := {"phase": 0, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		match int(st["phase"]):
+			0:
+				if node.anim_ended() or int(st["t"]) >= _ANIM_END_CAP:
+					st["phase"] = 1
+					st["t"] = 0
+			1:
+				if int(st["t"]) >= hold:
+					st["phase"] = 2
+					st["t"] = 0
+			2:
+				if int(st["t"]) >= 12:
+					node.finish()
+					return true
+		return false)
+
+
+# SetSpriteNextToMonHead (battle_anim_effects_1.c:7091): beside the head, on
+# the outward side, a quarter of the mon's height above its centre.
+static func _next_to_mon_head(vm: AnimScriptVM, which: int) -> Vector2:
+	var battler: int = AnimStage.ANIM_ATTACKER if which == 0 \
+			else AnimStage.ANIM_TARGET
+	var node := _battler_node(vm, battler)
+	var c := _battler_centre(vm, battler)
+	var box := node.size if node != null else Vector2(64, 64)
+	var side := 1.0 if _is_player_side(vm) else -1.0
+	return c + Vector2(box.x * 0.5 * side + 8.0 * side, -box.y * 0.25)
+
+
+# AnimSludgeBombHitParticle (battle_anim_poison.c:577, step :593). args:
+# 0/1 delta, 2 duration. A DECELERATING spray: the velocity is ramped linearly
+# to zero over the duration, which is what makes it splatter rather than fly.
+static func _sludge_bomb_hit_particle(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	node.centre = start
+	var duration: int = maxi(1, vm.args[2])
+	var total := Vector2(float(vm.args[0]), float(vm.args[1])) * scale
+	var st := {"t": 0, "pos": start, "vel": total / float(duration) * 2.0}
+	var decay := (st["vel"] as Vector2) / float(duration)
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["pos"] = (st["pos"] as Vector2) + (st["vel"] as Vector2)
+		st["vel"] = (st["vel"] as Vector2) - decay
+		node.centre = st["pos"]
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= duration:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimSludgeProjectile (battle_anim_poison.c:491). args: 0/1 offset,
+# 2 duration, 3 anim selector, 4 prefer-the-target's-partner flag. The arc
+# amplitude is hardcoded -30 (upward), not an argument.
+static func _sludge_projectile(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	if vm.args[3] == 0:
+		_apply_anim_variant(node, ctx, 2)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	node.centre = start
+	_arc_travel(vm, node, start, _battler_centre(vm, AnimStage.ANIM_TARGET),
+			maxi(1, vm.args[2]), -30.0 * scale)
+
+
+# AnimDirtPlumeParticle (battle_anim_ground.c:498). args: 0 which mon, 1 which
+# side, 2/3 destination offset, 4 arc amplitude, 5 duration. Shared by Fissure
+# and Dig. Note it MUTATES args[2] in place when the right-hand side is picked.
+static func _dirt_plume_particle(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var battler: int = AnimStage.ANIM_ATTACKER if vm.args[0] == 0 \
+			else AnimStage.ANIM_TARGET
+	var x_off := 24.0
+	var dx := float(vm.args[2])
+	if vm.args[1] == 1:
+		x_off = -x_off
+		dx = -dx
+	var mon := _battler_node(vm, battler)
+	var below := (mon.size.y * 0.5) if mon != null else 32.0
+	var start := _battler_centre(vm, battler) \
+			+ Vector2(x_off * scale, below + 30.0 * scale)
+	node.centre = start
+	_arc_travel(vm, node, start,
+			start + Vector2(dx, float(vm.args[3])) * scale,
+			maxi(1, vm.args[5]), float(vm.args[4]) * scale)
+
+
+# AnimTask_PositionFissureBgOnBattler (battle_anim_ground.c:734). args:
+# 0 battler selector, 1 priority, 2 the sentinel that ends it.
+#
+# Upstream this offsets the BG3 scroll so the fissure lines up under the
+# battler, and a spawned helper task holds it there until the script writes
+# the sentinel into arg 7 -- at which point it DOES restore BG3 to 0/0. That
+# restore is conditional on the script, so the VM's own end-of-run background
+# reset is the net if a script never gets there.
+static func _position_fissure_bg(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var stage = vm.stage
+	if stage == null or not stage.has_method("set_background_scroll"):
+		return
+	var scale := _scale(vm)
+	var battler: int = AnimStage.ANIM_TARGET if vm.args[0] != 0 \
+			else AnimStage.ANIM_ATTACKER
+	var c := _battler_centre(vm, battler)
+	var offset := Vector2(32.0 * scale - c.x, 64.0 * scale - c.y)
+	var sentinel: int = vm.args[2]
+	stage.set_background_scroll(offset)
+	var step := func() -> bool:
+		if vm.args[AnimScriptVM.ARG_RET] == sentinel:
+			stage.set_background_scroll(Vector2.ZERO)
+			return true
+		# Re-asserted every frame, as upstream does.
+		stage.set_background_scroll(offset)
+		return false
+	vm.add_stepper(step, false)
+
+
+# AnimDigDirtMound (battle_anim_ground.c:537). args: 0 which mon, 1 which half,
+# 2 duration. A static sprite for its duration -- the degenerate case of the
+# linear-translation shape, with no movement at all. Two are spawned side by
+# side to make one mound.
+static func _dig_dirt_mound(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var battler: int = AnimStage.ANIM_ATTACKER if vm.args[0] == 0 \
+			else AnimStage.ANIM_TARGET
+	var mon := _battler_node(vm, battler)
+	var below := (mon.size.y * 0.5) if mon != null else 32.0
+	node.centre = _battler_centre(vm, battler) + Vector2(
+			(-16.0 + float(vm.args[1]) * 32.0) * scale,
+			below + 32.0 * scale)
+	node.set_tile_offset(vm.args[1] * 8)
+	var life: int = maxi(1, vm.args[2])
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= life:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimTask_DigDownMovement (battle_anim_ground.c:282) and
+# AnimTask_DigUpMovement (:380). arg0 selects a half of each.
+#
+# THE MOST LEAK-PRONE PAIR IN THE BATCH, and Step 0 was asked about it
+# specifically. Together they are a FOUR-CALL sequence -- down(false),
+# down(true), up(false), up(true) -- and omitting any one strands the
+# attacker: a huge horizontal offset, or parked below the screen, or simply
+# invisible. Upstream relies entirely on the script getting all four right.
+#
+# Every displacement here goes through MonOffset and every visibility change
+# through the VM's tracked setter, so the end-of-run restores catch a script
+# that does not complete the sequence. That safety net is why this pair is
+# safe to port at all.
+static func _dig_down_movement(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var mon := MonOffset.new(node)
+	if vm.args[0] != 0:
+		# The cleanup half: position restored, but STILL hidden -- that is the
+		# underground state, and it is deliberate upstream.
+		mon.restore()
+		vm.set_battler_visible_tracked(AnimStage.ANIM_ATTACKER, false)
+		return
+	vm.set_battler_visible_tracked(AnimStage.ANIM_ATTACKER, false)
+	var layer: Control = vm.stage.layer() if vm.stage != null \
+			and vm.stage.has_method("layer") else null
+	var width: float = layer.size.x if layer != null else 1024.0
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= 20:
+			# Shoved past the right edge, exactly as upstream leaves it.
+			mon.apply(Vector2(width + 32.0 * scale - node.position.x, 0.0))
+			return true
+		return false)
+
+
+static func _dig_up_movement(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var mon := MonOffset.new(node)
+	var layer: Control = vm.stage.layer() if vm.stage != null \
+			and vm.stage.has_method("layer") else null
+	var height: float = layer.size.y if layer != null else 768.0
+	if vm.args[0] == 0:
+		# Visible again, but parked below the screen -- still underground.
+		vm.set_battler_visible_tracked(AnimStage.ANIM_ATTACKER, true)
+		mon.apply(Vector2(0.0, height - node.position.y))
+		return
+	# The rise: exactly 12 frames at 8px, ending precisely level.
+	var st := {"t": 0}
+	mon.apply(Vector2(0.0, 96.0 * scale))
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		st["t"] = int(st["t"]) + 1
+		var y := maxf(0.0, 96.0 - 8.0 * float(st["t"])) * scale
+		mon.apply(Vector2(0.0, y))
+		if int(st["t"]) >= 12:
+			mon.restore()
 			return true
 		return false)

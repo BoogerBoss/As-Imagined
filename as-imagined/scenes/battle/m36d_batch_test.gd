@@ -53,6 +53,10 @@ func _ready() -> void:
 	_test_batch5_timing_shapes()
 	_test_batch5_mon_tasks_restore()
 	_test_batch5_palette_group()
+	_test_batch6_helper_reuse()
+	_test_batch6_script_terminated()
+	_test_batch6_dig_sequence_never_strands()
+	_test_batch6_coverage()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -1317,3 +1321,182 @@ func _sprites_of(stage: FakeStage) -> Array:
 		if child is AnimSprite and is_instance_valid(child):
 			out.append(child)
 	return out
+
+
+# ─── batch 6 ──────────────────────────────────────────────────────────────
+
+# Step 0 found three behaviors sharing ONE step function upstream (all are
+# `if (TranslateAnimHorizontalArc) DestroyAnimSprite`) and four reducing to the
+# linear-translation shape. Asserted so the reuse is not "tidied" into
+# divergent copies later.
+func _test_batch6_helper_reuse() -> void:
+	# The three arc users must actually arc -- leave the straight line between
+	# their endpoints at mid-flight, which a linear port would not.
+	for entry in [["AnimThrowProjectile", "gBlackBallSpriteTemplate", 5],
+			["AnimSludgeProjectile", "gSludgeProjectileSpriteTemplate", -1],
+			["AnimDirtPlumeParticle", "gDirtPlumeSpriteTemplate", 4]]:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		vm.args[2] = 40
+		vm.args[3] = 0
+		vm.args[4] = 20 if int(entry[2]) == 4 else 30
+		vm.args[5] = 20 if int(entry[2]) != 4 else 20
+		if int(entry[2]) >= 0:
+			vm.args[int(entry[2])] = 30
+		_run_b5(vm, str(entry[0]), str(entry[1]))
+		var node := _b5_last
+		if node == null:
+			_chk("%s spawns" % str(entry[0]), false)
+			continue
+		var start := node.centre
+		var mids: Array = []
+		for i in range(30):
+			_step(vm, 1)
+			if is_instance_valid(node):
+				mids.append(node.centre)
+		var departed := false
+		if mids.size() >= 4:
+			var a: Vector2 = start
+			var b: Vector2 = mids[mids.size() - 1]
+			var m: Vector2 = mids[mids.size() / 2]
+			var chord := a.lerp(b, 0.5)
+			departed = m.distance_to(chord) > 0.5
+		_chk("%s arcs rather than travelling straight" % str(entry[0]),
+				departed)
+
+	# The four linear collapses must simply ARRIVE.
+	for entry in [["AnimIceBeamParticle", "gIceBeamInnerCrystalSpriteTemplate"],
+			["AnimSolarBeamBigOrb", "gSolarBeamBigOrbSpriteTemplate"],
+			["AnimWaterGunDroplet", "gWaterGunDropletSpriteTemplate"]]:
+		var s2 := FakeStage.new()
+		var vm2 := _vm(s2)
+		vm2.args[2] = 12
+		vm2.args[4] = 12
+		_run_b5(vm2, str(entry[0]), str(entry[1]))
+		var before := vm2.visual_count()
+		_step(vm2, 40)
+		_chk("%s completes its travel and cleans up" % str(entry[0]),
+				before > 0 and vm2.visual_count() == 0)
+
+	# The beyond-target particles start OFF-SCREEN behind the attacker, which
+	# is what lets them pass through the target rather than stopping on it.
+	var s3 := FakeStage.new()
+	var vm3 := _vm(s3)
+	vm3.args[4] = 40
+	_run_b5(vm3, "AnimMoveParticleBeyondTarget",
+			"gBlizzardIceCrystalSpriteTemplate")
+	var n3 := _b5_last
+	if n3 != null:
+		var layer: Control = s3.layer()
+		var outside := n3.centre.x < 0.0 or n3.centre.x > layer.size.x \
+				or n3.centre.y < 0.0 or n3.centre.y > layer.size.y
+		_chk("the beyond-target particle starts off-screen, not at the "
+				+ "attacker", outside)
+	_step(vm3, 600)
+	_chk("...and terminates by leaving the screen, with no frame count",
+			vm3.visual_count() == 0)
+
+
+# Two behaviors in this batch are ended by the SCRIPT (arg 7), not by any
+# internal counter. Registered uncounted, or waitforvisualfinish would hang.
+func _test_batch6_script_terminated() -> void:
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 6
+	var before := vm.visual_count()
+	_run_b5(vm, "AnimOrbitFast", "gElectricTerrainOrbsTemplate")
+	_chk("the fast orbit does not count toward completion "
+			+ "(it orbits until the script stops it)",
+			vm.visual_count() == before)
+	_step(vm, 300)
+	_chk("...and is still orbiting after 300 frames",
+			vm.visual_count() == before)
+	vm.args[AnimScriptVM.ARG_RET] = -1
+	_step(vm, 2)
+	_chk("...ending only when arg 7 says so",
+			not _b5_last.visible or _b5_last.is_finished())
+
+	# AuroraBeamRings reads arg 7 live too, but still ends on its own duration.
+	var s2 := FakeStage.new()
+	var vm2 := _vm(s2)
+	vm2.args[4] = 15
+	_run_b5(vm2, "AnimAuroraBeamRings", "gAuroraBeamRingSpriteTemplate")
+	_step(vm2, 40)
+	_chk("the aurora ring still completes on its own duration",
+			vm2.visual_count() == 0)
+
+
+# THE headline risk of this batch. Dig is a four-call sequence upstream and
+# omitting any one call strands the attacker -- shoved off the right edge,
+# parked below the screen, or simply invisible. Upstream relies entirely on
+# the script being correct; here the VM's own end-of-run restores are the net,
+# and this is the test that proves the net works.
+func _test_batch6_dig_sequence_never_strands() -> void:
+	for omit in range(4):
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		var node: Control = stage.nodes[0]
+		var home := node.position
+		var calls := [["AnimTask_DigDownMovement", 0],
+				["AnimTask_DigDownMovement", 1],
+				["AnimTask_DigUpMovement", 0],
+				["AnimTask_DigUpMovement", 1]]
+		for i in range(calls.size()):
+			if i == omit:
+				continue   # deliberately break the sequence
+			vm.args[0] = int(calls[i][1])
+			_run_b5(vm, str(calls[i][0]), "")
+			_step(vm, 30)
+		# Whatever state the broken sequence left, ending the run must undo it.
+		vm._finish()
+		_chk("Dig with call %d omitted still leaves the mon on-screen" % omit,
+				node.position.is_equal_approx(home))
+		_chk("...and visible" % [], node.visible)
+
+	# The complete sequence should also land level and visible on its own.
+	var s2 := FakeStage.new()
+	var vm2 := _vm(s2)
+	var n2: Control = s2.nodes[0]
+	var home2 := n2.position
+	for pair in [["AnimTask_DigDownMovement", 0],
+			["AnimTask_DigDownMovement", 1],
+			["AnimTask_DigUpMovement", 0], ["AnimTask_DigUpMovement", 1]]:
+		vm2.args[0] = int(pair[1])
+		_run_b5(vm2, str(pair[0]), "")
+		_step(vm2, 30)
+	_chk("a COMPLETE Dig sequence returns the mon home by itself",
+			n2.position.is_equal_approx(home2))
+	_chk("...and visible", n2.visible)
+
+	# SetAllNonAttackersInvisiblity is the same shape: a raw setter with no
+	# restore of its own, relying on a paired call the script may never make.
+	var s3 := FakeStage.new()
+	var vm3 := _vm(s3)
+	vm3.args[0] = 1
+	_run_b5(vm3, "AnimTask_SetAllNonAttackersInvisiblity", "")
+	_chk("hiding non-attackers leaves the attacker alone",
+			(s3.nodes[0] as Control).visible)
+	_chk("...and genuinely hides the others",
+			not (s3.nodes[1] as Control).visible)
+	vm3._finish()
+	_chk("...and the end-of-run restore un-hides them even with no paired call",
+			(s3.nodes[1] as Control).visible)
+
+
+func _test_batch6_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov: Dictionary = _dispatcher.coverage(ids)
+	_chk("roster coverage is at least 401 moves (%d)"
+			% int(cov.get("playable", 0)),
+			int(cov.get("playable", 0)) >= 401)
+	# The moves this batch was picked to unblock, by name.
+	for pair in [[347, "Aeroblast"], [58, "Ice Beam"], [59, "Blizzard"],
+			[55, "Water Gun"], [62, "Aurora Beam"], [85, "Thunderbolt"],
+			[76, "Solar Beam"], [65, "Drill Peck"], [126, "Fire Blast"],
+			[352, "Water Pulse"], [237, "Hidden Power"], [269, "Taunt"],
+			[188, "Sludge Bomb"], [90, "Fissure"], [91, "Dig"]]:
+		_chk("%s is playable" % str(pair[1]),
+				_dispatcher.can_play_move(int(pair[0])))

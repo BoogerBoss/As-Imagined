@@ -1143,6 +1143,70 @@ Verified by capturing Mega Kick and landing squarely mid-animation on the
 impact background at full brightness — a window that was simply unreachable
 before this change.
 
+### M36D batch 6 — COMPLETE 2026-07-30
+
+`m36d_batch_test` 205 -> **246/246**; 16-suite sweep green. Coverage
+**356 -> 401 of 932 (43.0%)**, iconic Gen 1-3 **70.0% -> 91.4%** (64/70).
+
+**Selection changed again, and this time it was a correction.** Batch 5's
+recorded miss was picking an ice/water CLUSTER that did not unblock Ice Beam,
+because the targets were inferred from a family name rather than read. So
+batch 6 began by querying each blocked iconic move's ACTUAL missing set. That
+showed there is almost no sharing left — only `AnimIceEffectParticle` (Ice
+Beam + Blizzard) and `AnimDirtPlumeParticle` (Fissure + Dig) block two moves
+each; every other blocker blocks exactly one. Batch 6 is therefore a list of
+MOVES, not of families, and it landed on its 15 targets exactly.
+
+**Three existing helpers absorbed a third of the batch**, per Step 0:
+`_arc_travel` covers ThrowProjectile, SludgeProjectile and DirtPlumeParticle —
+which share ONE step function upstream, byte-for-byte; `_linear_travel` covers
+IceBeamParticle, WaterGunDroplet, SolarBeamBigOrb and (degenerately, with no
+movement at all) DigDirtMound; `_velocity_travel` covers SludgeBombHitParticle,
+with a decay term making it a decelerating spray.
+
+**The leak-prone pair, asked about at Step 0 precisely because of this
+project's history.** `AnimTask_DigDownMovement` / `AnimTask_DigUpMovement` are
+a FOUR-CALL sequence upstream — down(false), down(true), up(false), up(true) —
+and omitting any one strands the attacker: shoved past the right edge, parked
+below the screen, or simply invisible. Upstream relies entirely on the script
+getting all four right. Here every displacement goes through `MonOffset` and
+every visibility change through a new tracked setter, so the VM's own
+end-of-run restores catch a broken sequence. **The suite proves that net by
+running the sequence four times, omitting a different call each time, and
+asserting the mon still ends up on-screen and visible.**
+`AnimTask_SetAllNonAttackersInvisiblity` is the same shape — a raw setter with
+no restore, relying on a paired call the script may never make — and is
+covered the same way.
+
+**Two script-terminated behaviors** (`AnimOrbitFast`, and `AuroraBeamRings`
+which reads arg 7 live) are registered UNCOUNTED, since a counted stepper on
+an effect that orbits until the script stops it would hang
+`waitforvisualfinish` forever.
+
+**Faithful oddities reproduced rather than tidied**: `AnimWaterGunDroplet`
+uses arg 4 as BOTH duration and y-delta while arg 3 goes unused;
+`AnimTask_CreateSmallSolarBeamOrbs` clobbers args 0-3 permanently on every
+spawn; `AnimDrillPeckHitSplats` uses a NEGATIVE radius, inverting its points;
+and `AnimBowMon` is an invisible CONTROLLER sprite that moves the attacker's
+own body, deliberately leaving its tilt applied for a later paired call.
+
+**An accounting correction to my own earlier note.** I had said Hail sits in
+the iconic tier's 70-move denominator as permanently unblockable. It does not:
+the table has 71 entries, and the tier is built only from moves with a bound
+script, so Hail (which has none) is excluded and 64/70 is self-consistent. The
+underlying finding still stands — Hail and Snowscape have no animation script
+and are handled by M26B4's weather path — as does its converse: Rain Dance,
+Sunny Day and Sandstorm DO have scripts and count toward coverage while being
+intercepted before the engine ever runs them.
+
+Verified by real capture with the now-reliable harness: Ice Beam renders a
+crystal stream from attacker to target with the target tinted icy, and the
+harness triggered at frame 672, exactly on the animation.
+
+**Remaining blocked iconic (6):** Thunder (3), Confuse Ray (3), Frustration
+(3), Volt Tackle (3), Dragon Dance (3), Extreme Speed (6) — the last being by
+some way the most expensive single move left in the tier.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.
