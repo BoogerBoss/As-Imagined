@@ -10404,7 +10404,12 @@ static func _bounce_ball_land(vm: AnimScriptVM, ctx: Dictionary) -> void:
 	var top := -32.0 * scale
 	node.centre = Vector2(rest.x, top)
 
-	var st := {"y": top - rest.y, "down": true, "t": 0}
+	# Tracked as an OFFSET from the target, and the exit test compares against
+	# that same offset -- "off the top" means back where it came from. An
+	# absolute screen-y comparison would depend on where the target happens to
+	# stand and can fire on the very first frame.
+	var start_off := top - rest.y
+	var st := {"y": start_off, "down": true, "t": 0}
 	vm.add_stepper(func() -> bool:
 		if not is_instance_valid(node):
 			return true
@@ -10415,7 +10420,7 @@ static func _bounce_ball_land(vm: AnimScriptVM, ctx: Dictionary) -> void:
 			st["y"] = 0.0
 			st["down"] = false
 		node.centre = rest + Vector2(0.0, float(st["y"]))
-		if not bool(st["down"]) and node.centre.y < top:
+		if not bool(st["down"]) and float(st["y"]) <= start_off:
 			# The reveal -- this is what brings the Pokemon back after Bounce.
 			vm.set_battler_visible_tracked(AnimStage.ANIM_ATTACKER, true)
 			node.finish()

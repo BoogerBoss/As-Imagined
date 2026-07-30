@@ -3700,183 +3700,212 @@ func _test_batch15_deferrals_cleared() -> void:
 			"gBasicHitSplatSpriteTemplate")
 	_chk("...and draws NOTHING for a hidden one", _b5_last == null)
 
+
+func _b16_alive(n: Object) -> bool:
+	# NOT is_inside_tree(): FakeStage's layer is detached, so that answers
+	# "dead" for every sprite and makes both directions of a liveness
+	# assertion vacuous. finish() calls queue_free(), which flips this at once.
+	return is_instance_valid(n) and not (n as Node).is_queued_for_deletion()
+
+
 # ── [M36D batch 16] ───────────────────────────────────────────────────────
 
 func _test_b16_vice_grip_is_not_guillotine() -> void:
-	# The whole point of this behavior. Both pincers use the SAME setup, so a
-	# start-position check would pass on an alias and prove nothing -- the
-	# assertion has to be about the STEP.
-	var vm_v := _vm()
-	AnimBehaviors.call("_vice_grip_pincer", vm_v, {"template": "gViceGripSpriteTemplate"})
-	var vg: Node = vm_v.stage.sprites[-1]
-	var vm_g := _vm()
-	AnimBehaviors.call("_guillotine_pincer", vm_g, {"template": "gGuillotineSpriteTemplate"})
-	var gl: Node = vm_g.stage.sprites[-1]
+	# THE point of this behavior. Both pincers share their setup byte for
+	# byte, so a start-position check would pass on an alias and prove
+	# nothing -- the assertion has to be about the STEP.
+	var sv := FakeStage.new()
+	var rv := _spawn(sv, "AnimViceGripPincer", [0], "gViceGripSpriteTemplate")
+	var vg: AnimSprite = rv["sprite"]
+	var sg := FakeStage.new()
+	var rg := _spawn(sg, "AnimGuillotinePincer", [0], "gGuillotineSpriteTemplate")
+	var gl: AnimSprite = rg["sprite"]
+	if vg == null or gl == null:
+		_chk("b16 both pincers spawned", false)
+		return
 
-	_chk("b16 vice grip and guillotine start at the SAME place (shared setup)",
+	_chk("b16 vice grip and guillotine START at the same place (shared setup)",
 			vg.centre.distance_to(gl.centre) < 0.01)
 
-	# Converge together...
-	for i in range(6 + 2):
-		vm_v.tick(); vm_g.tick()
-	_chk("b16 both have converged after the shared %d-frame arrival" % 6,
-			vg.centre.distance_to(gl.centre) < 1.0)
+	# Converge together over the shared 6-frame arrival. Sampled at frame 5,
+	# the last frame BOTH are provably still mid-converge -- ViceGrip dies the
+	# moment it lands, so frame 6+ compares a live sprite against a freed one.
+	_step(rv["vm"], 5)
+	_step(rg["vm"], 5)
+	_chk("b16 both converge identically over the shared 6 frames",
+			is_instance_valid(vg) and is_instance_valid(gl)
+			and vg.centre.distance_to(gl.centre) < 1.0)
 
-	# ...then diverge. ViceGrip is DONE; Guillotine grinds on and retreats.
-	for i in range(40):
-		vm_v.tick(); vm_g.tick()
-	_chk("b16 vice grip has finished by frame ~46 (converge and die)",
-			vm_v.finished_sprites.has(vg) or not is_instance_valid(vg))
-	_chk("b16 guillotine is STILL running at frame ~46 (51-frame grind)",
-			not vm_g.finished_sprites.has(gl))
+	# Then they diverge: ViceGrip dies on arrival, Guillotine grinds 51 more.
+	_step(rv["vm"], 25)
+	_step(rg["vm"], 25)
+	_chk("b16 vice grip has FINISHED by ~frame 30 (converge and die)",
+			not _b16_alive(vg))
+	_chk("b16 guillotine is STILL running at ~frame 30 (51-frame grind)",
+			_b16_alive(gl))
 
 
 func _test_b16_time_of_day_reads_the_system_clock() -> void:
-	var vm := _vm()
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
 	vm.args[0] = -1
-	AnimBehaviors.call("_get_time_of_day", vm, {})
+	_registry.get_behavior("AnimTask_GetTimeOfDay").call(vm, {})
 	var slot: int = int(vm.args[0])
 	_chk("b16 time of day writes a valid slot (got %d)" % slot,
 			slot == 0 or slot == 1 or slot == 2)
 
-	# Cross-check the boundaries against the clock we actually read, so this
-	# fails if the >=20 / <4 / 17-19 bands are ever reworded.
+	# Cross-check against the clock we actually read, so this fails if the
+	# >=20 / <4 / 17-19 bands are ever reworded.
 	var hour: int = int(Time.get_datetime_dict_from_system().get("hour", 12))
 	var want := 0
 	if hour >= 20 or hour < 4:
 		want = 1
 	elif hour >= 17:
 		want = 2
-	_chk("b16 slot matches the real hour %d (want %d, got %d)" % [hour, want, slot],
-			slot == want)
+	_chk("b16 slot matches the real hour %d (want %d, got %d)"
+			% [hour, want, slot], slot == want)
 
 
 func _test_b16_stomp_foot_holds_after_landing() -> void:
-	# Three beats; the HOLD is the impact reading and is the easiest to drop.
-	var vm := _vm()
-	vm.args = [0, 0, 8, 0, 0, 0, 0, 0]
-	AnimBehaviors.call("_stomp_foot", vm, {"template": "gStompFootSpriteTemplate"})
-	var node: Node = vm.stage.sprites[-1]
+	# Three beats; the HOLD is the impact reading and the easiest to drop.
+	var stage := FakeStage.new()
+	# Offsets are load-bearing: at (0,0) the start IS the target, so the travel
+	# beat would be a zero-length journey and the test would prove nothing.
+	var r := _spawn(stage, "AnimStompFoot", [0, -40, 8], "gStompFootSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b16 stomp foot spawned", false)
+		return
 	var start: Vector2 = node.centre
 
-	for i in range(7):
-		vm.tick()
-	_chk("b16 stomp foot has NOT moved during its 8-frame delay",
-			node.centre.distance_to(start) < 0.01)
+	_step(r["vm"], 7)
+	_chk("b16 stomp foot does NOT move during its 8-frame delay",
+			is_instance_valid(node) and node.centre.distance_to(start) < 0.01)
 
-	for i in range(8):
-		vm.tick()
+	_step(r["vm"], 8)
 	var landed: Vector2 = node.centre
-	_chk("b16 stomp foot has travelled to the target after the delay",
+	_chk("b16 stomp foot travels to the target once the delay elapses",
 			landed.distance_to(start) > 1.0)
 
-	for i in range(10):
-		vm.tick()
-	_chk("b16 stomp foot HOLDS on the target (not gone at +10 frames)",
-			not vm.finished_sprites.has(node)
-			and node.centre.distance_to(landed) < 0.01)
-	for i in range(10):
-		vm.tick()
-	_chk("b16 stomp foot ends after its 15-frame hold", vm.finished_sprites.has(node))
+	_step(r["vm"], 10)
+	_chk("b16 stomp foot HOLDS on the target (still present, not moving)",
+			_b16_alive(node) and node.centre.distance_to(landed) < 0.01)
+	_step(r["vm"], 12)
+	_chk("b16 stomp foot ends after its 15-frame hold", not _b16_alive(node))
 
 
 func _test_b16_bounce_ball_land_reveals_the_attacker() -> void:
-	# Bounce's counterpart to Fly's reveal half. Down, then UP, then reveal.
-	var vm := _vm()
-	vm.stage.set_battler_visible(AnimStage.ANIM_ATTACKER, false)
-	AnimBehaviors.call("_bounce_ball_land", vm, {"template": "gBounceBallSpriteTemplate"})
-	var node: Node = vm.stage.sprites[-1]
+	# Bounce's counterpart to Fly's reveal half: down, then UP, then reveal.
+	var stage := FakeStage.new()
+	stage.set_battler_visible(AnimStage.ANIM_ATTACKER, false)
+	var r := _spawn(stage, "AnimBounceBallLand", [], "gBounceBallLandSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b16 bounce ball spawned", false)
+		return
 	var first: float = node.centre.y
 
-	vm.tick()
-	_chk("b16 bounce ball falls DOWNWARD on its first frames",
-			node.centre.y > first)
+	_step(r["vm"], 1)
+	_chk("b16 bounce ball falls DOWNWARD first",
+			is_instance_valid(node) and node.centre.y > first)
 
-	# Run to the bottom of the drop and past the bounce.
-	var lowest := node.centre.y
-	for i in range(200):
-		vm.tick()
-		if not is_instance_valid(node) or vm.finished_sprites.has(node):
+	var lowest := first
+	for i in range(300):
+		_step(r["vm"], 1)
+		if not _b16_alive(node):
 			break
 		lowest = maxf(lowest, node.centre.y)
 	_chk("b16 bounce ball reversed direction (bounced back up past its low point)",
 			lowest > first + 1.0)
+	var atk: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
 	_chk("b16 bounce ball REVEALED the attacker on completion",
-			vm.stage.sprite_for(AnimStage.ANIM_ATTACKER).visible == true)
+			atk != null and atk.visible)
 
 
 func _test_b16_weather_ball_up_decelerates() -> void:
-	# The defining detail: velocity creeps toward -20, so each frame moves the
-	# ball LESS than the last. An accelerating port passes a plain "it rises".
-	var vm := _vm()
-	AnimBehaviors.call("_weather_ball_up", vm, {"template": "gWeatherBallUpSpriteTemplate"})
-	var node: Node = vm.stage.sprites[-1]
+	# The defining detail: vertical velocity creeps back toward -20, so each
+	# frame moves LESS than the last. An accelerating port passes "it rises".
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimWeatherBallUp", [], "gWeatherBallUpSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b16 weather ball spawned", false)
+		return
 	var y0: float = node.centre.y
-	vm.tick()
+	_step(r["vm"], 1)
 	var y1: float = node.centre.y
-	for i in range(14):
-		vm.tick()
+	_step(r["vm"], 14)
 	var y15: float = node.centre.y
-	vm.tick()
+	_step(r["vm"], 1)
 	var y16: float = node.centre.y
 
 	var first_step := absf(y1 - y0)
 	var late_step := absf(y16 - y15)
 	_chk("b16 weather ball rises", y1 < y0)
-	_chk("b16 weather ball DECELERATES (first %.2f > late %.2f)"
+	_chk("b16 weather ball DECELERATES (first %.3f > late %.3f)"
 			% [first_step, late_step], late_step < first_step)
 
 
 func _test_b16_whirlwind_line_snaps_back() -> void:
-	# The snap every 6 frames is what makes a repeating streak instead of one
-	# sprite sliding away. Without it the line just exits stage right.
-	var vm := _vm()
-	vm.args = [0, 0, AnimStage.ANIM_TARGET, 60, 0, 0, 0, 0]
-	AnimBehaviors.call("_whirlwind_line", vm, {"template": "gWhirlwindLineSpriteTemplate"})
-	var node: Node = vm.stage.sprites[-1]
+	# The 6-frame snap is what makes a repeating streak instead of one sprite
+	# sliding off-stage. Without it the line just exits right and never returns.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimWhirlwindLine",
+			[0, 0, AnimStage.ANIM_TARGET, 60, 0], "gWhirlwindLineSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b16 whirlwind line spawned", false)
+		return
 	var start: Vector2 = node.centre
 
-	for i in range(5):
-		vm.tick()
+	_step(r["vm"], 5)
 	var drifted: float = node.centre.x
 	_chk("b16 whirlwind line drifts right before the snap", drifted > start.x)
-	vm.tick()
+	_step(r["vm"], 1)
 	_chk("b16 whirlwind line SNAPPED back to its start on the 6th frame",
 			absf(node.centre.x - start.x) < 0.01)
 
 
 func _test_b16_rock_scatter_flies_the_way_it_spawned() -> void:
-	# The spawn offset doubles as the velocity, so the sign of arg 0 decides
-	# the direction. Two rocks with mirrored offsets must diverge.
-	var vm := _vm()
-	vm.args = [24, -8, 20, 0, 0, 0, 0, 0]
-	AnimBehaviors.call("_rock_scatter", vm, {"template": "gRockScatterSpriteTemplate"})
-	var right: Node = vm.stage.sprites[-1]
+	# The spawn offset doubles as the velocity, so arg 0's SIGN decides the
+	# direction. Two rocks placed opposite each other must diverge.
+	var s1 := FakeStage.new()
+	var r1 := _spawn(s1, "AnimRockScatter", [24, -8, 20], "gRockScatterSpriteTemplate")
+	var right: AnimSprite = r1["sprite"]
+	var s2 := FakeStage.new()
+	var r2 := _spawn(s2, "AnimRockScatter", [-24, -8, 20], "gRockScatterSpriteTemplate")
+	var left: AnimSprite = r2["sprite"]
+	if right == null or left == null:
+		_chk("b16 both rocks spawned", false)
+		return
 	var r0: float = right.centre.x
-
-	var vm2 := _vm()
-	vm2.args = [-24, -8, 20, 0, 0, 0, 0, 0]
-	AnimBehaviors.call("_rock_scatter", vm2, {"template": "gRockScatterSpriteTemplate"})
-	var left: Node = vm2.stage.sprites[-1]
 	var l0: float = left.centre.x
 
-	for i in range(12):
-		vm.tick(); vm2.tick()
-	_chk("b16 rock spawned to the right flies further RIGHT", right.centre.x > r0)
-	_chk("b16 rock spawned to the left flies further LEFT", left.centre.x < l0)
+	_step(r1["vm"], 12)
+	_step(r2["vm"], 12)
+	_chk("b16 rock spawned to the RIGHT flies further right",
+			is_instance_valid(right) and right.centre.x > r0)
+	_chk("b16 rock spawned to the LEFT flies further left",
+			is_instance_valid(left) and left.centre.x < l0)
 
 
 func _test_b16_ghost_status_rises_while_swaying() -> void:
-	var vm := _vm()
-	AnimBehaviors.call("_ghost_status_sprite", vm, {"template": "gGhostStatusSpriteTemplate"})
-	var node: Node = vm.stage.sprites[-1]
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimGhostStatusSprite", [], "gCurseGhostSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b16 ghost status sprite spawned", false)
+		return
 	var start: Vector2 = node.centre
 	var min_x := start.x
 	var max_x := start.x
 	for i in range(40):
-		vm.tick()
+		_step(r["vm"], 1)
+		if not is_instance_valid(node):
+			break
 		min_x = minf(min_x, node.centre.x)
 		max_x = maxf(max_x, node.centre.x)
-	_chk("b16 ghost status sprite rises", node.centre.y < start.y - 1.0)
+	_chk("b16 ghost status sprite RISES",
+			is_instance_valid(node) and node.centre.y < start.y - 1.0)
 	_chk("b16 ghost status sprite SWAYS horizontally (span %.1f px)"
 			% (max_x - min_x), max_x - min_x > 4.0)

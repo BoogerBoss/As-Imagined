@@ -1324,6 +1324,11 @@ pinned by test.
 | ~~`AnimTask_SpiteTargetShadow`~~ | b10, again in b11 | **CLOSED 2026-07-30 — both deferrals OVERTURNED.** Reading Step1 case 1 through Step2 in full showed the earlier call was wrong: the tint lands on the REAL target, the echo and its 128-frame sine pulse are directly expressible, and only the per-scanline nature of the waver is lost — which batch 7 had already approximated and disclosed for Dragon Dance's identical mechanism. Ported. | — |
 | `AnimTask_SecretPower` / terrain family | M19-era | `gBattleEnvironment` has no analogue — no overworld. | — |
 
+| `AnimTask_SquishTarget` | b16 | Drives `sSquishTargetAffineAnimCmds`, an affine table not yet read. **UNREAD, not unfindable.** | small |
+| `AnimBrickBreakWall` | b16 | Step function not read in full. **UNREAD, not unfindable.** | small |
+| `AnimRazorWindTornado` | b16 | Step function not read in full. **UNREAD, not unfindable.** | small |
+| `AnimTask_NightShadeClone` | b16 | Step function not read in full. **UNREAD, not unfindable.** | small |
+
 **`AnimFallingFeather` — deferred by batches 12, 13 and 14, then taken
 directly on 2026-07-30. See its own section. The list now holds only
 short-lived, current-batch deferrals.**
@@ -1446,6 +1451,73 @@ is harness-specific, not a shipped bug.
 **Also observed, pre-existing and NOT M36:** the attacker's back sprite is
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
+
+### M36D batch 16 — COMPLETE 2026-07-30. A second false alias, and four vacuous assertions.
+
+**8 behaviors, +12 moves (623 → 635 of 932, 66.8% → 68.1%).** Iconic Gen 1-3
+stays closed at 70/70; Tier 2 61.5%, Tier 3 67.5%.
+
+`AnimTask_GetTimeOfDay` · `AnimViceGripPincer` · `AnimStompFoot` ·
+`AnimBounceBallLand` · `AnimWeatherBallUp` · `AnimWhirlwindLine` ·
+`AnimRockScatter` · `AnimGhostStatusSprite`.
+
+**A SECOND "looks like an alias and is not", one batch after the first.**
+`AnimViceGripPincer` (`battle_anim_effects_2.c:1839`) carries
+`AnimGuillotinePincer`'s setup **byte for byte** — the same 32/−32 start
+offsets, the same 16/−16 rest offsets, the same arg-0 mirroring, the same
+6-frame converge. Its step is entirely different: Guillotine grinds in place
+for 51 frames then retreats; ViceGrip arrives and dies. Batch 15's Petal Dance
+pair taught this first, but there the setups merely *resembled* each other —
+here they are identical, which is the sharper case. **Compare the step, not
+the setup.** The suite asserts the two diverge, and that guard was proven
+non-vacuous by aliasing ViceGrip to Guillotine (fails) and restoring (passes).
+
+**`AnimBounceBallLand` is the REVEAL half** — Bounce's counterpart to Fly's
+`AnimFlyBallAttack`. The ball drops onto the target, bounces straight back up
+and reveals the attacker as it clears the top, routed through the tracked
+visibility setter so a run ending mid-bounce still restores the Pokémon.
+
+**`AnimTask_GetTimeOfDay`** reads the GBA's real-time clock upstream, so the
+faithful port is the SYSTEM clock: 0 = day, 1 = night (≥20:00 or <04:00),
+2 = evening (17:00–19:59). Boundaries reproduced exactly.
+
+**`AnimWeatherBallUp`** rises while DECELERATING (velocity creeps from −40 back
+toward −20), with an asymmetric drift — +5 player-side against −10
+opponent-side, twice the distance the other way rather than a mirror — and
+offsets scaled by TEN, not the usual 256.
+
+⚠️ **TWO BUGS MY OWN TESTS FOUND, the second worth more than the batch.**
+
+(1) *`AnimBounceBallLand` finished on frame 1.* Its exit test compared an
+ABSOLUTE screen-y against a fixture-relative position, so whenever the target
+sat above the −32px line the ball was already "off the top" before it moved.
+Rewritten to compare against the ball's own starting offset — which is what
+"off the top" means in source terms and does not depend on where the target
+stands.
+
+(2) **`is_inside_tree()` is ALWAYS FALSE in this fixture.** `FakeStage`'s layer
+is deliberately detached, so every liveness assertion built on it was vacuous
+in *both* directions: "has finished" passed trivially and "is still running"
+could never pass at all. Four assertions across three tests were proving
+nothing. Replaced with a shared `_b16_alive()` helper on
+`is_queued_for_deletion()`, which flips the instant `finish()` runs.
+**This is the same family as batch 13's `if node != null:` skip and batch 15's
+no-op string replace: a check that cannot fail is indistinguishable from a
+check that passes.**
+
+The suite's own template guard again caught two guessed names
+(`gBounceBallSpriteTemplate`, `gGhostStatusSpriteTemplate`) — both resolved by
+**callback** from `templates.json` to `gBounceBallLandSpriteTemplate` and
+`gCurseGhostSpriteTemplate`. Never by name-guessing.
+
+**Deferred, and stated precisely per standing rule (6) — these are UNREAD step
+functions, not failed searches:** `AnimTask_SquishTarget` (drives
+`sSquishTargetAffineAnimCmds`, an affine table not yet read),
+`AnimBrickBreakWall`, `AnimRazorWindTornado`, `AnimTask_NightShadeClone`.
+
+**Tests:** `m36d_batch_test` 549 → **570/570**. Regression green: `m36c` 66/66,
+`m36b` 53/53, `m36a` 71/71, `m36e_background_runtime` 30/30, `m36e3` 52/52,
+`m36e_background_asset` 20/20, `hit_effect_dispatch` 40/40.
 
 ### M36D batch 15 deferrals — cleared same-day, and why they should not have been deferred
 
