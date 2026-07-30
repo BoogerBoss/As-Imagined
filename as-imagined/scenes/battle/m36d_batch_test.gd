@@ -36,6 +36,11 @@ func _ready() -> void:
 	_test_batch2_afterimages()
 	_test_batch2_sound_tasks()
 	_test_batch2_defensive_wall()
+	_test_batch3_mon_tasks_restore()
+	_test_batch3_rotation_actually_rotates()
+	_test_batch3_teleport_hides_mon()
+	_test_batch3_particles()
+	_test_batch3_raindrops_clean_up()
 	_test_iconic_moves_run()
 
 	var total := _pass + _fail
@@ -122,7 +127,7 @@ func _test_coverage_grew() -> void:
 	# M36C ended at 23; batch 1 reached 85; batch 2 reaches ~138. The floor
 	# guards against regression rather than expressing ambition.
 	_chk("coverage holds at the batches' measured level (%d)" % playable,
-			playable >= 130)
+			playable >= 195)
 
 
 func _test_powder_drift() -> void:
@@ -441,6 +446,127 @@ func _test_batch2_defensive_wall() -> void:
 	for i in range(60):
 		vm._step_behaviors()
 	_chk("...then fading out and ending", vm.visual_count() == 0)
+
+
+func _test_batch3_mon_tasks_restore() -> void:
+	# Every batch-3 mon task must put the battler back -- position, scale AND
+	# rotation this time, since these are the first behaviors to rotate one.
+	for entry in [["AnimTask_HorizontalShake", [1, 4, 6]],
+			["AnimTask_WindUpLunge", [0, 8, 4, 6, 2, 12, 6]],
+			["AnimTask_RotateMonSpriteToSide", [8, 512, 1, 2]],
+			["AnimTask_RotateMonToSideAndRestore", [8, 512, 1, 0]],
+			["AnimTask_DynamaxGrowth", [1]],
+			["AnimTask_BlendMonInAndOut", [1, 31, 8, 1, 2]],
+			["AnimShakeMonOrBattlePlatforms", [4, 1, 12, 2, 2]]]:
+		var symbol: String = str(entry[0])
+		var stage := FakeStage.new()
+		var node: Control = stage.nodes[1]
+		var base := node.position
+		var base_scale := node.scale
+		var base_rot := node.rotation
+		var vm := _vm(stage)
+		var args: Array = entry[1]
+		for i in range(args.size()):
+			vm.args[i] = int(args[i])
+		_registry.get_behavior(symbol).call(vm, {})
+		for i in range(600):
+			vm._step_behaviors()
+			if vm.visual_count() == 0:
+				break
+		_chk("%s terminates" % symbol, vm.visual_count() == 0)
+		_chk("%s restores position" % symbol,
+				node.position.is_equal_approx(base))
+		_chk("%s restores scale" % symbol,
+				node.scale.is_equal_approx(base_scale))
+		_chk("%s restores rotation" % symbol,
+				is_equal_approx(node.rotation, base_rot))
+
+
+func _test_batch3_rotation_actually_rotates() -> void:
+	# Guard against a "restores perfectly because it never moved" pass.
+	var stage := FakeStage.new()
+	var node: Control = stage.nodes[1]
+	var vm := _vm(stage)
+	vm.args[0] = 20
+	vm.args[1] = 1024
+	vm.args[2] = 1
+	vm.args[3] = 2
+	_registry.get_behavior("AnimTask_RotateMonSpriteToSide").call(vm, {})
+	for i in range(10):
+		vm._step_behaviors()
+	_chk("rotation task genuinely rotates the mon (%.3f rad)" % node.rotation,
+			absf(node.rotation) > 0.01)
+
+
+func _test_batch3_teleport_hides_mon() -> void:
+	# Teleport is the one task that ENDS with the mon hidden -- that is the
+	# point of it, and a restore-everything reflex would break the effect.
+	var stage := FakeStage.new()
+	var node: Control = stage.nodes[0]
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_Teleport").call(vm, {})
+	for i in range(60):
+		vm._step_behaviors()
+		if vm.visual_count() == 0:
+			break
+	_chk("teleport terminates", vm.visual_count() == 0)
+	_chk("teleport leaves the attacker HIDDEN (that is the effect)",
+			not node.visible)
+	_chk("...with its scale restored so the next reveal is clean",
+			node.scale.is_equal_approx(Vector2.ONE))
+
+
+func _test_batch3_particles() -> void:
+	# Roar's noise line is exactly 14 frames at a fixed speed.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimRoarNoiseLine", [0, 0, 0],
+			"gHorizontalLungeSpriteTemplate")
+	var vm: AnimScriptVM = r["vm"]
+	if r["sprite"] != null:
+		for i in range(13):
+			vm._step_behaviors()
+		_chk("roar noise line still alive at 13 frames",
+				vm.visual_count() == 1)
+		vm._step_behaviors()
+		_chk("...and ends at exactly 14", vm.visual_count() == 0)
+
+	# The fire spiral stays INVISIBLE for its initial wait, then appears.
+	var stage2 := FakeStage.new()
+	var r2 := _spawn(stage2, "AnimFireSpiralOutward", [0, 0, 20, 6],
+			"gFlamethrowerFlameSpriteTemplate")
+	var sp2: AnimSprite = r2["sprite"]
+	var vm2: AnimScriptVM = r2["vm"]
+	if sp2 != null:
+		_chk("fire spiral starts hidden during its wait", not sp2.visible)
+		for i in range(7):
+			vm2._step_behaviors()
+		_chk("...then becomes visible and spirals", sp2.visible)
+		var off1 := sp2.offset
+		for i in range(6):
+			vm2._step_behaviors()
+		_chk("...with a growing radius",
+				sp2.offset.length() > off1.length())
+
+
+func _test_batch3_raindrops_clean_up() -> void:
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[1] = 4
+	vm.args[2] = 30
+	_registry.get_behavior("AnimTask_CreateRaindrops").call(vm, {})
+	var peak := 0
+	for i in range(200):
+		vm._step_behaviors()
+		var live := 0
+		for child in stage.layer_node.get_children():
+			if child is AnimSprite and not (child as AnimSprite).is_finished():
+				live += 1
+		peak = maxi(peak, live)
+		if vm.visual_count() == 0:
+			break
+	_chk("raindrops spawned (peak %d)" % peak, peak > 0)
+	_chk("rain task terminates and clears its drops",
+			vm.visual_count() == 0)
 
 
 func _test_iconic_moves_run() -> void:

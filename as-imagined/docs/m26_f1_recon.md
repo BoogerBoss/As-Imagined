@@ -617,6 +617,22 @@ dizzy-punch duck, claw slash, on-mon-for-duration, shake-and-sink), the
 complex palette blend and grayscale ops, the defensive wall (Reflect/Light
 Screen), and the sound-task set.
 
+**Batch 3 (same session): 138 -> 200 of 932 (14.8% -> 21.5%).** Iconic
+Gen 1-3 **18 -> 31 of 70 (44.3%)**, remaining Gen 1-3 56 -> 68 (24.0%),
+Gen 4+ 64 -> 101 (17.4%). 22 more behaviors: the mon-task family (horizontal
+shake with its ring-down, wind-up lunge, sprite rotation and its restoring
+variant, teleport, Dynamax growth, blend-in-and-out, the shake controller
+sprite) and a particle set (wall sparkle, bullet seed's fly-then-scatter,
+sunlight, raindrops, dirt scatter, roar noise lines, rock fragments, twister
+particles, fire spiral, Protect's shield, revenge scratch, assist pawprint,
+swirling fog).
+
+**The family rule keeps holding, and the trend is now clear**: batch 1 got
+62 moves from 20 behaviors, batch 2 got 53 from 29, batch 3 got 62 from 22.
+Roughly 2-3 moves per behavior, sustained -- so M36C's "one behavior per one-
+to-three moves" was right in magnitude but pessimistic about which end of
+that range family-grouping lands on.
+
 **A third bug in the fallback walk, found while porting batch 2**:
 `createsoundtask` symbols were treated as required behaviors, but the VM
 handles that opcode itself (it records the cue for M36-S and moves on) and
@@ -647,6 +663,17 @@ same scale their offsets use. Related: the test doubles used plain `Control`
 nodes for battlers where the real scene uses `TextureRect`, which silently
 hid that afterimage cloning needs a texture to copy; the doubles were made
 faithful rather than the code loosened.
+
+**The M36E-gated set is now well defined**, and it is the single biggest
+remaining blocker: `AnimTask_SetPsychicBackground` (8 moves),
+`AnimTask_MetallicShine` (5), `AnimTask_StartSlidingBg`, the platform-shake
+paths of `AnimTask_HorizontalShake` (arg 0 == 5) and
+`AnimShakeMonOrBattlePlatforms` (SHAKE_BG_X/Y, which write `gBattle_BG3_X/Y`),
+and `AnimTask_HazeScrollingFog`. Those two shake paths are implemented for
+their SPRITE variants and consume their frames for the BG variants, so script
+pacing stays right and only the visual is missing. Note the fog case was
+checked rather than assumed: `InitSwirlingFogAnim` is a pure sprite and was
+ported; it is `AnimTask_HazeScrollingFog` that is the BG one.
 
 **Two iconic moves are gated on M36E, not on more behaviors.** `Surf` and
 `Metallic Shine` were investigated and deliberately NOT faked:
