@@ -83,6 +83,7 @@ func _ready() -> void:
 	_test_batch11_scale_leak_net()
 	_test_batch11_decay_and_drift()
 	_test_batch11_rollout_windup()
+	_test_batch11_spite_overturns_deferral()
 	_test_batch11_coverage()
 
 	var total := _pass + _fail
@@ -2581,8 +2582,10 @@ func _test_batch10_coverage() -> void:
 			"AnimTask_NightmareClone", "AnimTask_ShrinkTargetCopy"]:
 		_chk("%s was deferred by batch 10 and is now ported" % sym,
 				_registry.get_behavior(sym) != Callable())
-	_chk("AnimTask_SpiteTargetShadow is STILL deferred (scanline + BG-layer)",
-			_registry.get_behavior("AnimTask_SpiteTargetShadow") == Callable())
+	# Batch 11 asserted SpiteTargetShadow stayed deferred. Reading its steps in
+	# full overturned that call -- see _test_batch11_spite_overturns_deferral.
+	_chk("AnimTask_SpiteTargetShadow is now ported (deferral overturned)",
+			_registry.get_behavior("AnimTask_SpiteTargetShadow") != Callable())
 
 
 # ── [M36D batch 11] ───────────────────────────────────────────────────────
@@ -2762,3 +2765,61 @@ func _test_batch11_coverage() -> void:
 	_chk("roster coverage is at least 551 moves (%d)"
 			% int(cov.get("playable", 0)),
 			int(cov.get("playable", 0)) >= 551)
+
+
+func _test_batch11_spite_overturns_deferral() -> void:
+	# Batches 10 and 11 both deferred this, the second time on the reading
+	# that porting it would ship "the least characteristic third". Reading
+	# Step1 case 1 through Step2 in full showed that was wrong. The assertions
+	# below are the specific claims that reading produced.
+	var stage := FakeStage.new()
+	var node: Control = stage.nodes[AnimStage.ANIM_TARGET]
+	var vm := _vm(stage)
+	var before := stage.layer_node.get_child_count()
+	_registry.get_behavior("AnimTask_SpiteTargetShadow").call(vm, {})
+
+	# 1. The tint lands on the REAL TARGET, not the clone -- upstream blends
+	#    the mon's own palette, which is the detail that makes the move read
+	#    as the target draining rather than as a ghost appearing.
+	_chk("Spite tints the REAL target", node.material != null)
+
+	# 2. An un-tinted echo is left behind it.
+	_chk("...and leaves a clone behind",
+			stage.layer_node.get_child_count() > before)
+	var ghost: Control = null
+	for c in stage.layer_node.get_children():
+		if c is Control and c.has_meta("_anim_trace"):
+			ghost = c
+	_chk("...which is findable as an anim-owned clone", ghost != null)
+	if ghost == null:
+		return
+	_chk("...and is NOT itself tinted", ghost.material == null)
+
+	# 3. The echo swells in and back out ONCE on a sine envelope, rather than
+	#    fading monotonically. Sampled across the full 128 frames.
+	var alphas: Array = []
+	var xs: Array = []
+	for i in range(128):
+		_step(vm, 1)
+		if is_instance_valid(ghost):
+			alphas.append(ghost.modulate.a)
+			xs.append(ghost.position.x)
+	if alphas.size() > 90:
+		var peak: float = alphas.max()
+		var mid: float = alphas[64] if alphas.size() > 64 else 0.0
+		var late: float = alphas[alphas.size() - 5]
+		_chk("...the echo swells in (peak %.2f)" % peak, peak > 0.1)
+		_chk("...peaking mid-run rather than at the end (%.2f > %.2f)"
+				% [mid, late], mid > late)
+		var xr: float = (xs.max() as float) - (xs.min() as float)
+		_chk("...and wavers horizontally (%.1f px)" % xr, xr > 1.0)
+
+	# 4. Cleanup: the clone goes and the target's tint is released.
+	_step(vm, 10)
+	# queue_free() defers to end-of-frame, and this suite steps the VM by hand
+	# without yielding to the tree -- so the node stays instance-valid and the
+	# accurate check is whether it was queued, not whether it is gone yet.
+	_chk("...then the echo is queued for release",
+			not is_instance_valid(ghost) or ghost.is_queued_for_deletion())
+	_chk("...and the target's tint is released", node.material == null)
+	_chk("...and the task ends", vm.visual_count() == 0)

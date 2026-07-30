@@ -1321,7 +1321,7 @@ pinned by test.
 
 | Behavior | Deferred by | Reason | Cost |
 |---|---|---|---|
-| `AnimTask_SpiteTargetShadow` | b10, again in b11 | **Capability gap.** Clears a hardware BG layer by the target's priority rank and drives a per-scanline effect. Same class as the gust palette. Porting only its purple clone would ship the least characteristic third while claiming the behavior. | ~2 moves |
+| ~~`AnimTask_SpiteTargetShadow`~~ | b10, again in b11 | **CLOSED 2026-07-30 — both deferrals OVERTURNED.** Reading Step1 case 1 through Step2 in full showed the earlier call was wrong: the tint lands on the REAL target, the echo and its 128-frame sine pulse are directly expressible, and only the per-scanline nature of the waver is lost — which batch 7 had already approximated and disclosed for Dragon Dance's identical mechanism. Ported. | — |
 | `AnimTask_SecretPower` / terrain family | M19-era | `gBattleEnvironment` has no analogue — no overworld. | — |
 
 Batch 10 also deferred `AnimTask_Rollout`, `AnimTask_FlailMovement`,
@@ -1338,6 +1338,7 @@ deferring them was for.
 | `AnimTask_Rollout` (b11) | Per-interval dirt sprites not spawned. | The attacker's own motion is what the frames are spent on and what every one of these moves shares. |
 | `AnimSparkElectricity` (b8) | arg 5 coord variant and arg 6 BG-priority bump are no-ops. | Both resolve to this stage's sprite centre / have no per-sprite equivalent. |
 | `AnimHyperVoiceRing` (b9) | Subpriority ordering not modelled. | No per-sprite draw-order equivalent. |
+| `AnimTask_SpiteTargetShadow` (b11) | Per-scanline BG waver ported as a horizontal wobble of the whole clone, on the source-exact envelope. | Second use of the approximation batch 7 disclosed for `AnimTask_DragonDanceWaver` — the same per-scanline heat-haze mechanism. Consistent rather than novel. |
 | `AnimTask_SurfWaveScanlineEffect` (E3) | Unported — the wave is a clean sweep, not rippled. | Per-scanline HBlank offset with no hook to port to. |
 | MetallicShine OBJWIN stencil (E3) | Approximated with a duplicate of the battler's texture. | No stencil equivalent. |
 
@@ -1455,6 +1456,16 @@ NightmareClone test looked for a `_anim_clone` meta; the real key is
 while the suite reported 418/418. Fixed, plus a guard assertion that the clone
 is findable at all — 418 -> 421, the delta being the guard and the two that had
 never been running.
+
+**REVERSAL, same day.** The `AnimTask_SpiteTargetShadow` deferral recorded
+above was **overturned** once its remaining steps were read in full. The
+paragraph above is left as written — this project does not rewrite a historical
+entry — but its conclusion is superseded: the characteristic parts (a violet
+tint on the REAL target, an un-tinted echo behind it, a 128-frame sine pulse
+between them) are all directly expressible, and the one piece that is not (the
+per-scanline waver) already had a disclosed precedent in batch 7's Dragon Dance
+port of the identical mechanism. Ported; coverage 551 -> 553. **All five of
+batch 10's deferrals are now closed.**
 
 **NOT screenshot-verified.**
 

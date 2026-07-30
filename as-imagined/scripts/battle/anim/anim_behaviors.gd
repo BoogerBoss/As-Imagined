@@ -100,6 +100,7 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		"AnimTask_SpiteTargetShadow": _spite_target_shadow,
 		# — [M36D batch 11] four of batch 10's five deferrals —
 		"AnimTask_ShrinkTargetCopy": _shrink_target_copy,
 		"AnimTask_FlailMovement": _flail_movement,
@@ -9023,17 +9024,79 @@ static func _rollout(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 		return false)
 
 
-# AnimTask_SpiteTargetShadow (battle_anim_ghost.c:621, step :631) is DEFERRED
-# AGAIN, and this time with a specific reason rather than an unread step
-# function. Its Step1 allocates a fresh sprite palette, clones the target,
-# copies the mon's live palette into it, blends that copy toward RGB(13,0,15),
-# CLEARS A HARDWARE BG LAYER (`ClearGpuRegBits(REG_OFFSET_DISPCNT, ...)`)
-# chosen by the target's BG priority rank, and then drives a per-scanline
-# effect from the target sprite's current y.
+# AnimTask_SpiteTargetShadow (battle_anim_ghost.c:621, steps :631/:700).
+# No args.
 #
-# The scanline and BG-layer halves are the same class of gap as M36D batch 8's
-# gust palette: they need per-sprite palette indices and hardware layer
-# control that composited PNGs and a single background layer cannot express.
-# Porting only the purple clone would ship the least characteristic third of
-# the effect while claiming the behavior. Left unregistered so the moves that
-# need it keep falling back rather than playing something wrong.
+# ⚠️ THIS OVERTURNS BATCH 10's AND BATCH 11's OWN DEFERRALS. Both declined it
+# on the reading that it was mostly hardware work and that porting it would
+# ship "the least characteristic third of the effect while claiming the
+# behavior". Reading Step1 case 1 through Step2 in full shows that was wrong:
+# the characteristic part is fully expressible, and the one piece that is not
+# already has a disclosed precedent in this project.
+#
+# What it actually does:
+#   1. Tints the REAL TARGET purple -- `BlendPalette(mon palette, 16, 10,
+#      RGB(13,0,15))`, i.e. coefficient 10/16 toward a violet. Note this hits
+#      the target's own palette, NOT the clone's.
+#   2. Leaves an UN-TINTED clone of the target behind it, on a BG layer.
+#   3. Wavers that layer horizontally over a 64px band starting at the
+#      target's own y - 32 (`ScanlineEffect_InitWave`).
+#   4. Pulses the blend between the two for 128 frames on a SINE envelope --
+#      `gSineTable[t]/18`, with the two coefficients updating on alternate
+#      frames, so the ghost swells in and back out exactly once.
+#
+# So the move reads as the target draining to a violet husk while a wavering
+# echo of its former self shows through. Steps 1, 2 and 4 are all directly
+# expressible here.
+#
+# DISCLOSED, with precedent: the waver is per-scanline upstream and is ported
+# as a horizontal wobble of the whole clone on the same source-exact envelope
+# -- exactly the approximation [M36D batch 7] already made and disclosed for
+# AnimTask_DragonDanceWaver, which is the same per-scanline BG heat-haze
+# mechanism. Approximating it a second time is consistent rather than novel.
+const _SPITE_FRAMES := 128
+const _SPITE_TINT_COEFF := 10.0 / 16.0
+const _SPITE_WAVE_BAND := 64.0
+
+static func _spite_target_shadow(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, AnimStage.ANIM_TARGET)
+	if node == null:
+		return
+	var layer: Control = null
+	if vm.stage != null and vm.stage.has_method("layer"):
+		layer = vm.stage.layer()
+	if layer == null:
+		return
+	var clone := _clone_battler_visual(node, layer)
+	if clone == null:
+		return
+
+	var scale := _scale(vm)
+	# RGB(13,0,15) in the reference's own 5-bit channels.
+	var violet := Color(13.0 / 31.0, 0.0, 15.0 / 31.0)
+	_apply_blend_amount(node, violet, _SPITE_TINT_COEFF)
+	var clone_home := clone.position
+	clone.modulate.a = 0.0
+
+	var st := {"t": 0, "eva": 0.0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		# The sine envelope: gSineTable peaks at 256, /18 gives a 0..14 swing
+		# over the 128 frames, so the echo swells in and back out once.
+		var env := _gba_sin(float(t), 1.0) * 256.0 / 18.0
+		if (t & 1) == 0:
+			st["eva"] = env
+		if is_instance_valid(clone):
+			clone.modulate.a = clampf(float(st["eva"]) / 16.0, 0.0, 1.0)
+			# The waver -- per-scanline upstream, a whole-clone wobble here.
+			clone.position = clone_home + Vector2(
+					sin(float(t) * 0.5) * 6.0 * scale, 0.0)
+		if t >= _SPITE_FRAMES:
+			if is_instance_valid(clone):
+				clone.queue_free()
+			_clear_blend(node)
+			return true
+		return false)
