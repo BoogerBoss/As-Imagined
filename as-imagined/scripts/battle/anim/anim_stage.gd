@@ -126,6 +126,99 @@ func layer() -> Control:
 	return _effect_layer.call() as Control if _effect_layer.is_valid() else null
 
 
+# ── [M36E2] The animation background layer ────────────────────────────────
+#
+# On hardware a move animation swaps the whole battle BACKGROUND (BG1/BG3) and
+# fades the screen through black to do it. Reproduced with two nodes created
+# lazily inside BattleStage:
+#
+#   AnimBgLayer      a full-rect TextureRect inserted just above the battle
+#                    backdrop and BELOW the bases and battlers, so a swapped
+#                    background sits behind the Pokemon exactly as it does
+#                    upstream.
+#   AnimFadeOverlay  a black full-rect ColorRect added LAST, so it covers the
+#                    battlers and effect layer too. The reference's fade is a
+#                    hardware palette fade over every palette, which darkens
+#                    everything on screen -- not just the background.
+#
+# Created on demand rather than authored into the two battle scenes, so the
+# scenes stay untouched and doubles/singles need no separate edit.
+
+const _BG_LAYER_NAME := "AnimBgLayer"
+const _FADE_OVERLAY_NAME := "AnimFadeOverlay"
+
+
+func _stage_root() -> Control:
+	var l := layer()
+	return l.get_parent() as Control if l != null else null
+
+
+func background_layer() -> TextureRect:
+	var root := _stage_root()
+	if root == null:
+		return null
+	var existing := root.get_node_or_null(_BG_LAYER_NAME)
+	if existing != null:
+		return existing as TextureRect
+	var node := TextureRect.new()
+	node.name = _BG_LAYER_NAME
+	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	node.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	node.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	node.stretch_mode = TextureRect.STRETCH_SCALE
+	node.set_anchors_preset(Control.PRESET_FULL_RECT)
+	node.visible = false
+	root.add_child(node)
+	# Directly above the battle backdrop, below everything else.
+	root.move_child(node, 1)
+	return node
+
+
+func fade_overlay() -> ColorRect:
+	var root := _stage_root()
+	if root == null:
+		return null
+	var existing := root.get_node_or_null(_FADE_OVERLAY_NAME)
+	if existing != null:
+		return existing as ColorRect
+	var node := ColorRect.new()
+	node.name = _FADE_OVERLAY_NAME
+	node.color = Color(0, 0, 0, 0)
+	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	node.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(node)
+	root.move_child(node, root.get_child_count() - 1)
+	return node
+
+
+# Shows a background by its BG_* name. Returns false when the name has no
+# pulled asset, so a caller can decide rather than silently showing nothing.
+func set_background(bg_name: String) -> bool:
+	var node := background_layer()
+	if node == null:
+		return false
+	var tex := AnimData.background_texture(bg_name)
+	if tex == null:
+		return false
+	node.texture = tex
+	node.visible = true
+	return true
+
+
+func clear_background() -> void:
+	var node := background_layer()
+	if node != null:
+		node.visible = false
+		node.texture = null
+
+
+# 0.0 = normal, 1.0 = fully black. The port of the hardware palette fade.
+func set_fade(amount: float) -> void:
+	var node := fade_overlay()
+	if node != null:
+		node.color = Color(0, 0, 0, clampf(amount, 0.0, 1.0))
+
+
 func set_battler_visible(anim_battler: int, visible: bool) -> void:
 	var node := sprite_for(anim_battler)
 	if node != null:

@@ -15,6 +15,7 @@ extends RefCounted
 
 const DATA_DIR := "res://data/battle_anims"
 const SHEET_DIR := "res://assets/sprites/battle_anims"
+const BG_DIR := "res://assets/sprites/battle_anims/backgrounds"
 
 static var _scripts: Dictionary = {}
 static var _tags: Dictionary = {}
@@ -22,6 +23,9 @@ static var _templates: Dictionary = {}
 static var _frames: Dictionary = {}
 static var _sheet_index: Dictionary = {}
 static var _sheet_cache: Dictionary = {}
+static var _bg_index: Dictionary = {}
+static var _bg_cache: Dictionary = {}
+static var _bg_by_id: Dictionary = {}
 static var _loaded := false
 static var _load_error := ""
 
@@ -49,6 +53,7 @@ static func ensure_loaded() -> bool:
 	var templates := _read_json(DATA_DIR + "/templates.json")
 	var frames := _read_json(DATA_DIR + "/frames.json")
 	var index := _read_json(SHEET_DIR + "/index.json")
+	var bg_index := _read_json(BG_DIR + "/index.json")
 
 	for pair in [["scripts.json", scripts], ["tags.json", tags],
 			["templates.json", templates], ["frames.json", frames],
@@ -63,6 +68,17 @@ static func ensure_loaded() -> bool:
 	_templates = templates.get("templates", {})
 	_frames = frames
 	_sheet_index = index.get("sprites", {})
+	# Backgrounds are optional: M36E1 added them, and an older checkout that
+	# has not run the generator should degrade to "no background" rather than
+	# refusing to load the whole animation system.
+	_bg_index = bg_index.get("backgrounds", {})
+	# BG_* ids arrive in the command stream as the INTEGER the assembler
+	# emitted, so the reverse map is built from the same constant table the
+	# extractor recorded -- no second source of truth.
+	for name in _scripts.get("constants", {}):
+		var key := str(name)
+		if key.begins_with("BG_"):
+			_bg_by_id[int(_scripts["constants"][key])] = key
 	return true
 
 
@@ -141,6 +157,33 @@ static func sheet_for_tag(tag_name: String) -> Texture2D:
 	return tex
 
 
+# ── Backgrounds (M36E) ────────────────────────────────────────────────────
+
+# The BG_* name for the integer a `fadetobg` carries, or "" if unknown.
+static func bg_name_for_id(bg_id: int) -> String:
+	return str(_bg_by_id.get(bg_id, ""))
+
+
+static func has_background(bg_name: String) -> bool:
+	return _bg_index.has(bg_name)
+
+
+static func background_texture(bg_name: String) -> Texture2D:
+	if _bg_cache.has(bg_name):
+		return _bg_cache[bg_name]
+	var row: Dictionary = _bg_index.get(bg_name, {})
+	if row.is_empty():
+		_bg_cache[bg_name] = null
+		return null
+	var tex := load("%s/%s" % [BG_DIR, row.get("file", "")]) as Texture2D
+	_bg_cache[bg_name] = tex
+	return tex
+
+
+static func background_count() -> int:
+	return _bg_index.size()
+
+
 static func sheet_row(tag_name: String) -> Dictionary:
 	return _sheet_index.get(tag_name, {})
 
@@ -183,5 +226,8 @@ static func _reset_for_tests() -> void:
 	_frames = {}
 	_sheet_index = {}
 	_sheet_cache = {}
+	_bg_index = {}
+	_bg_cache = {}
+	_bg_by_id = {}
 	_loaded = false
 	_load_error = ""

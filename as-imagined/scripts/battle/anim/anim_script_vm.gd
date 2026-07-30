@@ -42,6 +42,16 @@ const _MAX_FRAMES := 1800  # 30s at 60fps
 
 enum State { IDLE, RUNNING, DONE, ERROR }
 
+# [M36E2] Background-fade phases, mirroring Task_FadeToBg's own state machine
+# (src/battle_anim.c:1750-1785): fade the screen to black, swap the
+# background, fade back. `waitbgfadeout` blocks until FADED_OUT and
+# `waitbgfadein` until IDLE, which is exactly what the two opcodes wait on
+# upstream via sAnimBackgroundFadeState.
+enum BgFade { IDLE, FADING_OUT, FADED_OUT, FADING_IN }
+
+# BeginHardwarePaletteFade(..., 16, 0): 16 steps each way.
+const BG_FADE_FRAMES := 16
+
 var state: int = State.IDLE
 var error_text: String = ""
 
@@ -67,6 +77,12 @@ var _visual_count := 0
 var _sound_count := 0
 var _frame_budget := 0
 var _blend: Dictionary = {"eva": 16, "evb": 0}
+var _bg_fade: int = BgFade.IDLE
+# The background this run swapped in, so `end` can put the battle's own
+# backdrop back -- upstream LoadDefaultBg does that via restorebg, but a
+# script that ends without restoring would otherwise leave the field wearing
+# a move's background for the rest of the battle.
+var _bg_changed := false
 var _sound_cues: Array[Dictionary] = []
 var _spawned: Array = []
 
@@ -111,6 +127,8 @@ func start(label: String) -> bool:
 	_spawned.clear()
 	_steppers.clear()
 	_hidden_battlers.clear()
+	_bg_fade = BgFade.IDLE
+	_bg_changed = false
 	state = State.RUNNING
 	error_text = ""
 	return true
@@ -197,6 +215,14 @@ func _finish(err: String = "") -> void:
 	for battler in _hidden_battlers:
 		_set_battler_visible(int(battler), true)
 	_hidden_battlers.clear()
+	# Same reasoning as the visibility restore: a script that ends while its
+	# background is still up would leave the battlefield permanently altered.
+	if _bg_changed and stage != null:
+		if stage.has_method("clear_background"):
+			stage.clear_background()
+		if stage.has_method("set_fade"):
+			stage.set_fade(0.0)
+		_bg_changed = false
 	for node in _spawned:
 		if is_instance_valid(node):
 			node.queue_free()
@@ -337,12 +363,42 @@ func _execute(cmd: Array) -> void:
 		"stopsound":
 			_pc += 1
 
-		# — no-ops: GBA-only plumbing or deferred to M36E —
+		# — [M36E2] backgrounds —
+		"fadetobg":
+			_start_bg_fade(AnimData.bg_name_for_id(int(cmd[1])))
+			_pc += 1
+		"fadetobgfromset":
+			# opponent / player / contest variants of one background. Contest
+			# is unreachable here, so the choice is by attacking side.
+			var pick: int = int(cmd[1]) if not _attacker_is_player() \
+					else int(cmd[2])
+			_start_bg_fade(AnimData.bg_name_for_id(pick))
+			_pc += 1
+		"changebg":
+			# Immediate swap, no fade (LoadMoveBg without Task_FadeToBg).
+			if stage != null and stage.has_method("set_background"):
+				if stage.set_background(AnimData.bg_name_for_id(int(cmd[1]))):
+					_bg_changed = true
+			_pc += 1
+		"restorebg":
+			_start_bg_restore()
+			_pc += 1
+		"waitbgfadeout":
+			if _bg_fade == BgFade.FADING_OUT:
+				_frames_to_wait = 1
+			else:
+				_pc += 1
+		"waitbgfadein":
+			if _bg_fade == BgFade.FADING_IN or _bg_fade == BgFade.FADING_OUT \
+					or _bg_fade == BgFade.FADED_OUT:
+				_frames_to_wait = 1
+			else:
+				_pc += 1
+
+		# — no-ops: GBA-only plumbing with no Godot equivalent —
 		"monbg", "clearmonbg", "monbg_static", "clearmonbg_static", \
 		"splitbgprio", "splitbgprio_all", "splitbgprio_foes", \
 		"unloadspritegfx", "unloadspritepal", "unloadallspritepals", \
-		"fadetobg", "fadetobgfromset", "restorebg", "changebg", \
-		"waitbgfadein", "waitbgfadeout", \
 		"teamattack_moveback", "teamattack_movefwd":
 			_pc += 1
 
@@ -353,6 +409,83 @@ func _execute(cmd: Array) -> void:
 
 		_:
 			_finish("unimplemented opcode: %s" % op)
+
+
+func _attacker_is_player() -> bool:
+	if stage != null and stage.has_method("attacker_is_player_side"):
+		return stage.attacker_is_player_side()
+	return true
+
+
+# Fades to black, swaps the background, fades back -- the port of
+# Task_FadeToBg. Registered as a stepper so it advances on the VM's own frame
+# clock and so `end` cannot finish while a fade is still mid-flight.
+func _start_bg_fade(bg_name: String) -> void:
+	if stage == null or not stage.has_method("set_fade"):
+		return
+	if bg_name == "" or not AnimData.has_background(bg_name):
+		# No pulled asset for this id (three legitimately span two palette
+		# banks, and contest-only ids are never pulled). Consume the fade's
+		# frames anyway so the script's pacing is unchanged.
+		bg_name = ""
+	_bg_fade = BgFade.FADING_OUT
+	var st := {"t": 0, "phase": 0}
+	add_stepper(func() -> bool:
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		if int(st["phase"]) == 0:
+			stage.set_fade(float(t) / float(BG_FADE_FRAMES))
+			if t >= BG_FADE_FRAMES:
+				_bg_fade = BgFade.FADED_OUT
+				if bg_name != "" and stage.has_method("set_background"):
+					if stage.set_background(bg_name):
+						_bg_changed = true
+				st["phase"] = 1
+				st["t"] = 0
+				_bg_fade = BgFade.FADING_IN
+			return false
+		stage.set_fade(1.0 - float(t) / float(BG_FADE_FRAMES))
+		if t >= BG_FADE_FRAMES:
+			stage.set_fade(0.0)
+			_bg_fade = BgFade.IDLE
+			return true
+		return false)
+
+
+# restorebg: the same fade, back to the battle's own backdrop.
+func _start_bg_restore() -> void:
+	if stage == null or not stage.has_method("set_fade"):
+		return
+	_bg_fade = BgFade.FADING_OUT
+	var st := {"t": 0, "phase": 0}
+	add_stepper(func() -> bool:
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		if int(st["phase"]) == 0:
+			stage.set_fade(float(t) / float(BG_FADE_FRAMES))
+			if t >= BG_FADE_FRAMES:
+				_bg_fade = BgFade.FADED_OUT
+				if stage.has_method("clear_background"):
+					stage.clear_background()
+				_bg_changed = false
+				st["phase"] = 1
+				st["t"] = 0
+				_bg_fade = BgFade.FADING_IN
+			return false
+		stage.set_fade(1.0 - float(t) / float(BG_FADE_FRAMES))
+		if t >= BG_FADE_FRAMES:
+			stage.set_fade(0.0)
+			_bg_fade = BgFade.IDLE
+			return true
+		return false)
+
+
+func bg_fade_state() -> int:
+	return _bg_fade
+
+
+func background_changed() -> bool:
+	return _bg_changed
 
 
 func _jump_to(label: String) -> void:

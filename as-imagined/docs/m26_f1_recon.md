@@ -763,6 +763,43 @@ no-ops), then the BG-dependent behaviors — `AnimTask_SetPsychicBackground`
 `AnimTask_CreateSurfWave` (Surf), the scrolling fog, and the platform-shake
 paths whose sprite variants already work.
 
+### M36E2 — background runtime, COMPLETE 2026-07-29
+
+`m36e_background_runtime_test` **30/30**; 14-suite sweep green.
+
+The six background opcodes were timing-only no-ops; they now really work.
+`fadetobg`, `fadetobgfromset`, `changebg`, `restorebg`, `waitbgfadeout` and
+`waitbgfadein` drive a real fade state machine ported from `Task_FadeToBg`
+(`src/battle_anim.c:1750`): 16 frames to black, swap, 16 frames back, with the
+two wait opcodes blocking on different phases exactly as
+`sAnimBackgroundFadeState` makes them upstream.
+
+Two nodes are created lazily inside `BattleStage` rather than authored into
+both battle scenes: `AnimBgLayer` (inserted just above the battle backdrop and
+BELOW the bases and battlers, so a swapped background sits behind the Pokemon
+as it does on hardware) and `AnimFadeOverlay` (added last, so the fade darkens
+the battlers and effect layer too -- upstream's is a hardware palette fade
+across every palette, not a background-only dim).
+
+**BG ids resolve through the extractor's own constant table**, not a second
+hand-maintained map: `fadetobg` carries the integer the assembler emitted, and
+`AnimData.bg_name_for_id` reverses it from the 74 `BG_*` constants M36A
+already recorded.
+
+**The leak lesson from the visibility bug was applied pre-emptively.** A
+script that ends while its background is still up would leave the battlefield
+permanently wearing a move's background — the same class of defect, with the
+same silent-and-permanent character. So `_finish()` clears any background this
+run swapped in and resets the fade, and the suite asserts that invariant
+directly rather than trusting the scripts to call `restorebg`.
+
+**Coverage is unchanged at 200/932, and that is correct**: these opcodes never
+blocked a move (they were no-ops, not missing behaviors), so E2 buys FIDELITY
+rather than coverage — the 198 `fadetobg` sites in already-playable scripts
+now actually render. Unknown or unpulled background ids still consume the
+fade's frames, so a script referencing one keeps its real pacing instead of
+running measurably fast.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.
