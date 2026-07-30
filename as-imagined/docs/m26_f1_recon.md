@@ -956,6 +956,79 @@ Beam 2, Blizzard 3. The port's cost per iconic move is rising, which is the
 context that makes **M36-H** (hand-authored animations as a per-move escape
 hatch) worth evaluating now rather than later.
 
+### M36D batch 5 — COMPLETE 2026-07-30
+
+`m36d_batch_test` 165 -> **204/204**; 18-suite sweep green. Coverage
+**290 -> 356 of 932 (38.2%)**, iconic Gen 1-3 **62.9% -> 70.0%**.
+
+**The selection method changed, and that is the point.** Batch 4 had taken
+nearly all the cheap wins, so the greedy value had flattened from +6 to +3 and
+the coverage tool had begun reporting a new category — behaviors that BLOCK
+moves while being worth nothing alone (`AnimTask_ElectricBolt`, "blocks 3,
+none one-away"). Picking by greedy value would score those zero and skip them
+forever. So batch 5 was **cluster-driven**: whole elemental families, chosen so
+co-blockers land together.
+
+It beat its own projection (~330-340 estimated, 356 actual), which is the
+family rule holding: porting a family retires the shared helpers its
+neighbours also need.
+
+**Step 0 corrected an expectation before any code was written.** Only ONE of
+the 31 (`AnimSwordsDanceBlade`'s second phase) collapses onto the
+`_linear_travel` helper M36C built. The rest use genuinely different
+translation machinery — arc, fast-linear-with-speed, or raw 8.8 velocity — so
+they were deliberately NOT forced onto one helper. One new shared shape did
+fall out: `_velocity_travel`, the port of `TranslateSpriteLinearFixedPoint`.
+Four alias groups were also found and registered against single
+implementations (SkillSwap/HeartSwap; Stockpile/SpitUp/Swallow deform; the
+three FrozenIceCube variants; Stretch target/attacker).
+
+**The palette group needed a real judgement, and the answer differed per
+behavior**, which is why it was worth asking up front:
+
+* `AnimFlashingHitSplat` does **no palette work at all** — it toggles
+  visibility for 14 frames. It is in that group by name association only.
+* `AnimTask_FlashAnimTagWithColor` touches exactly one OBJ palette, which here
+  is 1:1 with a sprite sheet, so it maps cleanly onto tinting every live
+  sprite of that tag. Disclosed: upstream also catches sprites spawned LATER
+  while the blend is applied; that is not emulated.
+* `AnimTask_BlendBattleAnimPalExclude` is **genuinely un-portable as a palette
+  operation** — it blends by palette SLOT, a set that includes the
+  battle-background palettes and in which two battlers can share a slot, so it
+  does not decompose into a per-object list. Ported as the nearest thing a
+  compositing engine can express: tint the background layer and every battler
+  except the excluded one, on the same coefficient ramp.
+
+**Reused rather than duplicated:** an earlier batch already had a blend ramp
+(`_run_blend`). The exclude-variant was routed through it via a new node-list
+core rather than shipping a parallel implementation — matching upstream, where
+both variants also share one function.
+
+**FLAGGED, NOT FIXED** (pre-existing, predates this batch): that shared ramp
+blends through `modulate`, which MULTIPLIES rather than replacing — the same
+weakness behind MetallicShine's no-op grayscale and the twice-invisible recall
+pink. It is less wrong here (a blend toward a colour still shifts a multiplied
+sprite) and the correct shader now exists, but switching it would change
+values M36C's own suite asserts, so it is left for a deliberate pass rather
+than changed underneath a batch.
+
+**A miss worth recording honestly:** the water/ice cluster was chosen partly
+to unblock Water Gun / Ice Beam / Aurora Beam / Blizzard, and it did **not** —
+their real blockers are `AnimIceBeamParticle` and `AnimIceEffectParticle`, not
+the FrozenIceCube/bubble behaviors picked. Coverage still beat projection, and
+Swords Dance and Hyper Beam *were* unblocked, but the specific iconic targets
+were not verified against their actual blocker lists before picking. Next
+batch should read each target move's own missing set rather than inferring it
+from a family name.
+
+**Verified**: Swords Dance captured on a real windowed run, rendering
+correctly. The lilac tint visible on the opponent mid-animation is the
+exclude-blend working as intended, and it was checked rather than assumed —
+a full run leaves every battler back at neutral, because the script pairs its
+blend calls exactly as source does. That check is now a permanent assertion,
+since this would have been the third leak of its class in M36 after visibility
+and displacement.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.

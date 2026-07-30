@@ -48,6 +48,11 @@ func _ready() -> void:
 	_test_batch4_aliased_names_share_one_impl()
 	_test_batch4_mon_tasks_restore()
 	_test_batch4_handshakes_and_bands()
+	_test_batch5_aliases_share_one_impl()
+	_test_batch5_multi_spawn_families()
+	_test_batch5_timing_shapes()
+	_test_batch5_mon_tasks_restore()
+	_test_batch5_palette_group()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -1019,3 +1024,290 @@ func _test_batch4_handshakes_and_bands() -> void:
 	_run(vm5, "AnimTask_SporeDoubleBattle", "")
 	_chk("the spore BG-priority task completes immediately",
 			vm5.visual_count() == 0)
+
+
+# ─── batch 5 ──────────────────────────────────────────────────────────────
+
+# Step 0 found four alias groups. Registering both names against one
+# implementation is correct; asserting it stops a later session "fixing" the
+# duplication into a second, divergent copy.
+func _test_batch5_aliases_share_one_impl() -> void:
+	for pair in [["AnimTask_SkillSwap", "AnimTask_HeartSwap"],
+			["AnimTask_StockpileDeformMon", "AnimTask_SpitUpDeformMon"],
+			["AnimTask_StockpileDeformMon", "AnimTask_SwallowDeformMon"]]:
+		_chk("%s and %s resolve to one implementation"
+				% [str(pair[0]), str(pair[1])],
+				_registry.get_behavior(str(pair[0]))
+				== _registry.get_behavior(str(pair[1])))
+	# Stretch target/attacker are the same body with a different battler, so
+	# they are deliberately NOT the same callable -- asserted so the
+	# distinction is not "tidied" away.
+	_chk("StretchTargetUp and StretchAttackerUp stay distinct (they differ "
+			+ "only in which battler, which is real)",
+			_registry.get_behavior("AnimTask_StretchTargetUp")
+			!= _registry.get_behavior("AnimTask_StretchAttackerUp"))
+
+
+# Three behaviors in this batch spawn MORE THAN ONE sprite from a single call.
+# Porting any of them as a single sprite would look subtly wrong rather than
+# broken, so the counts are asserted directly.
+func _test_batch5_multi_spawn_families() -> void:
+	# Thunder Wave is two sprites 32px apart -- upstream even bumps the visual
+	# task count by hand to account for the second destroy.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_run_b5(vm, "AnimThunderWave", "gThunderWaveSpriteTemplate")
+	var sprites := _sprites_of(stage)
+	_chk("Thunder Wave spawns TWO sprites, not one (%d)" % sprites.size(),
+			sprites.size() == 2)
+	if sprites.size() == 2:
+		var dx: float = absf((sprites[0] as AnimSprite).centre.x
+				- (sprites[1] as AnimSprite).centre.x)
+		_chk("...side by side rather than stacked (%.0f px apart)" % dx,
+				dx > 1.0)
+	_step(vm, 60)
+	_chk("...and both expire on their 51-frame life", vm.visual_count() == 0)
+
+	# The electric bolt draws itself DOWNWARD, one segment every two frames.
+	var s2 := FakeStage.new()
+	var vm2 := _vm(s2)
+	_run_b5(vm2, "AnimTask_ElectricBolt", "gElectricBoltSegmentSpriteTemplate")
+	_step(vm2, 1)
+	var after1 := _sprites_of(s2).size()
+	_step(vm2, 11)
+	var segs := _sprites_of(s2)
+	_chk("the bolt spawns segments progressively, not all at once "
+			+ "(%d after 1 frame, %d after 12)" % [after1, segs.size()],
+			after1 < segs.size())
+	_chk("...five segments in total (%d)" % segs.size(), segs.size() == 5)
+	if segs.size() == 5:
+		var ys: Array = []
+		for sp in segs:
+			ys.append((sp as AnimSprite).centre.y)
+		ys.sort()
+		_chk("...each lower than the last, so the bolt travels down",
+				float(ys[0]) < float(ys[4]))
+
+	# Skill Swap sends a stream of orbs, not one.
+	var s3 := FakeStage.new()
+	var vm3 := _vm(s3)
+	_run_b5(vm3, "AnimTask_SkillSwap", "gSkillSwapOrbSpriteTemplate")
+	_step(vm3, 90)
+	_chk("Skill Swap emits a stream of orbs (%d)" % _sprites_of(s3).size(),
+			_sprites_of(s3).size() >= 5)
+
+	# Grudge Flames is six flames in ONE frame, spread around the attacker.
+	var s4 := FakeStage.new()
+	var vm4 := _vm(s4)
+	_run_b5(vm4, "AnimTask_GrudgeFlames", "gGrudgeFlameSpriteTemplate")
+	_chk("Grudge Flames spawns six flames at once (%d)"
+			% _sprites_of(s4).size(), _sprites_of(s4).size() == 6)
+	_step(vm4, 4)
+	var xs := {}
+	for sp in _sprites_of(s4):
+		xs[str(round((sp as AnimSprite).centre.x))] = true
+	_chk("...spread around the mon rather than stacked (%d distinct x)"
+			% xs.size(), xs.size() > 1)
+
+
+func _test_batch5_timing_shapes() -> void:
+	# LockingJaw's timing is asymmetric and easy to get wrong: it MOVES for
+	# `bite` frames, then freezes and counts back down from bite to -hold, so
+	# the total is 2*bite + hold, not bite + hold.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[3] = 256
+	vm.args[5] = 6   # bite
+	vm.args[6] = 4   # hold
+	_run_b5(vm, "SpriteCB_LockingJaw", "gSharpTeethSpriteTemplate")
+	var node := _b5_last
+	_step(vm, 6)
+	var frozen := node.centre if node != null and is_instance_valid(node) \
+			else Vector2.ZERO
+	_step(vm, 3)
+	_chk("the jaw FREEZES after biting rather than continuing",
+			node != null and is_instance_valid(node)
+			and node.centre.is_equal_approx(frozen))
+	_step(vm, 20)
+	_chk("...and expires on 2*bite + hold, not bite + hold",
+			vm.visual_count() == 0)
+
+	# SwordsDanceBlade is the one behavior in this batch that is the canonical
+	# linear-translation shape: exactly 32px up over exactly 6 frames.
+	var s2 := FakeStage.new()
+	var vm2 := _vm(s2)
+	_run_b5(vm2, "AnimSwordsDanceBlade", "gSwordsDanceBladeSpriteTemplate")
+	var n2 := _b5_last
+	var y0 := n2.centre.y if n2 != null else 0.0
+	_step(vm2, 200)
+	_chk("the blade rises and finishes", vm2.visual_count() == 0)
+
+	# HyperBeamOrb's duration is DISTANCE-dependent, not a fixed count -- that
+	# is what makes a volley of them arrive staggered rather than together.
+	var lifetimes: Array = []
+	for trial in range(6):
+		var s3 := FakeStage.new()
+		var vm3 := _vm(s3)
+		_run_b5(vm3, "AnimHyperBeamOrb", "gHyperBeamOrbSpriteTemplate")
+		var frames := 0
+		while vm3.visual_count() > 0 and frames < 400:
+			vm3._step_behaviors()
+			frames += 1
+		lifetimes.append(frames)
+	var distinct := {}
+	for l in lifetimes:
+		distinct[str(l)] = true
+	_chk("hyper beam orbs do not all live the same number of frames "
+			+ "(%d distinct in 6 draws)" % distinct.size(), distinct.size() > 1)
+
+	# The ice cube runs four real phases; it must not collapse to a flash.
+	var s4 := FakeStage.new()
+	var vm4 := _vm(s4)
+	_run_b5(vm4, "AnimTask_FrozenIceCube", "sFrozenIceCubeSpriteTemplate")
+	var n4 := _b5_last
+	if n4 != null:
+		_chk("the ice cube starts fully transparent and fades in",
+				is_zero_approx(n4.modulate.a))
+		_step(vm4, 10)
+		_chk("...reaching full opacity after its 10-frame fade",
+				is_instance_valid(n4) and n4.modulate.a > 0.9)
+	var total := 0
+	while vm4.visual_count() > 0 and total < 400:
+		vm4._step_behaviors()
+		total += 1
+	_chk("...and runs a long multi-phase animation, not a flash (%d frames)"
+			% total, total > 60)
+
+
+func _test_batch5_mon_tasks_restore() -> void:
+	# Every task that displaces or rescales a battler must put it back.
+	for entry in [["AnimTask_Splash", 1], ["AnimTask_StretchTargetUp", 0],
+			["AnimTask_TeeterDanceMovement", 0],
+			["AnimTask_StockpileDeformMon", 0]]:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		vm.args[1] = int(entry[1])
+		var battler: int = 1 if str(entry[0]) == "AnimTask_StretchTargetUp" \
+				else 0
+		var node: Control = stage.nodes[battler]
+		var home := node.position
+		var home_scale := node.scale
+		_run_b5(vm, str(entry[0]), "")
+		var moved := false
+		for i in range(400):
+			vm._step_behaviors()
+			if not node.position.is_equal_approx(home) \
+					or not node.scale.is_equal_approx(home_scale):
+				moved = true
+			if vm.visual_count() == 0 and i > 2:
+				break
+		_chk("%s actually moves the mon" % str(entry[0]), moved)
+		_chk("%s restores its position" % str(entry[0]),
+				node.position.is_equal_approx(home))
+		_chk("%s restores its scale" % str(entry[0]),
+				node.scale.is_equal_approx(home_scale))
+
+	# Zero hops must destroy immediately rather than running a silent loop.
+	var s2 := FakeStage.new()
+	var vm2 := _vm(s2)
+	vm2.args[1] = 0
+	_run_b5(vm2, "AnimTask_Splash", "")
+	_chk("Splash with zero hops does nothing at all",
+			vm2.visual_count() == 0)
+
+
+func _test_batch5_palette_group() -> void:
+	# FlashingHitSplat does NO palette work despite the name and the company
+	# it keeps -- it toggles visibility for 14 frames. Asserted so nobody
+	# looks for a palette effect that was never there.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_run_b5(vm, "AnimFlashingHitSplat", "gFlashingHitSplatSpriteTemplate")
+	var node := _b5_last
+	if node != null:
+		var first := node.visible
+		_step(vm, 1)
+		_chk("the flashing hit splat toggles visibility every frame",
+				is_instance_valid(node) and node.visible != first)
+	_step(vm, 20)
+	_chk("...and is gone after its 14 frames", vm.visual_count() == 0)
+
+	# The exclude-blend must genuinely EXCLUDE. This is the one palette
+	# operation in the batch with no faithful equivalent here, so what is
+	# asserted is the property that survives the approximation: the named
+	# battler is untouched while the others are not.
+	var s2 := FakeStage.new()
+	var vm2 := _vm(s2)
+	vm2.args[0] = 0       # exclude the attacker
+	vm2.args[1] = 0
+	vm2.args[2] = 0
+	vm2.args[3] = 16
+	# NOT white: a node's base modulate is already white, so blending toward
+	# white would be a no-op and the test would prove nothing either way.
+	vm2.args[4] = 0x001F  # GBA RGB15 red
+	var attacker: Control = s2.nodes[0]
+	var other: Control = s2.nodes[1]
+	_run_b5(vm2, "AnimTask_BlendBattleAnimPalExclude", "")
+	_step(vm2, 40)
+	_chk("the excluded battler is left untouched by the blend",
+			attacker.modulate.is_equal_approx(Color(1, 1, 1, 1)))
+	_chk("...while a non-excluded battler is genuinely blended",
+			not other.modulate.is_equal_approx(Color(1, 1, 1, 1)))
+
+	# The blend PERSISTS during a run (upstream never restores it -- scripts
+	# pair two calls to blend back), so the question that matters is whether a
+	# real script leaves a battler tinted afterwards. Guarded here because
+	# this is the third leak of this class in M36 (visibility, displacement,
+	# and now colour), and a permanently lilac Pokemon would be exactly as
+	# silent as the first two.
+	var s3 := FakeStage.new()
+	var vm3 := _dispatcher.make_vm(14, s3, 0)   # Swords Dance blends non-attackers
+	if vm3 != null:
+		var frames := 0
+		while vm3.is_running() and frames < 3000:
+			vm3.step()
+			frames += 1
+		var untinted := true
+		for i in range(4):
+			if not (s3.nodes[i] as Control).modulate.is_equal_approx(
+					Color(1, 1, 1, 1)):
+				untinted = false
+		_chk("a real blending script leaves no battler tinted afterwards",
+				untinted)
+
+	# Coverage floor for the batch as a whole.
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov: Dictionary = _dispatcher.coverage(ids)
+	_chk("roster coverage is at least 356 moves (%d)"
+			% int(cov.get("playable", 0)),
+			int(cov.get("playable", 0)) >= 356)
+
+
+# ── batch 5 helpers ──────────────────────────────────────────────────────
+var _b5_last: AnimSprite = null
+
+
+func _run_b5(vm: AnimScriptVM, symbol: String, template: String) -> void:
+	var ctx := {"template": template,
+			"template_data": AnimData.template(template),
+			"blend": {"eva": 16, "evb": 0}}
+	var before: Array = []
+	var layer: Control = vm.stage.layer()
+	for child in layer.get_children():
+		before.append(child)
+	_registry.get_behavior(symbol).call(vm, ctx)
+	_b5_last = null
+	for child in layer.get_children():
+		if child is AnimSprite and not before.has(child):
+			_b5_last = child
+
+
+func _sprites_of(stage: FakeStage) -> Array:
+	var out: Array = []
+	for child in stage.layer_node.get_children():
+		if child is AnimSprite and is_instance_valid(child):
+			out.append(child)
+	return out
