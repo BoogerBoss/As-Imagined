@@ -1443,6 +1443,62 @@ is harness-specific, not a shipped bug.
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
 
+### M36D batch 14 — COMPLETE 2026-07-30
+
+`m36d_batch_test` 489 -> **510/510**; 7-suite sweep green. Coverage
+**580 -> 593 of 932 (63.6%)**. 7 of 14 candidates; seven deferred.
+
+**A FIFTH alias family, and the first that is a family rather than a pair.**
+`AnimPsychoCut`, `AnimSonicBoomProjectile` and `AnimTealAlert` are all "spawn,
+rotate to FACE the destination, travel there in a straight line" — differing
+ONLY in a constant added to the computed angle (`0xC000` / `0xF000` /
+`0x6000` in 1/65536 turns). Batch 12's `AnimPoisonJabProjectile` is the same
+shape with a zero constant, so it was **rerouted through the shared helper**
+rather than left as a fourth copy.
+
+The constant is a **per-sheet rest-angle correction**, not a motion
+difference: each sprite's artwork points a different way at rest. Getting it
+wrong leaves the projectile travelling the correct path while flying sideways
+— a defect that reads as an art bug rather than an animation one, which is
+exactly why the suite demands the same geometry produce **four DISTINCT
+rotations**.
+
+⚠️ **That distinctness test immediately found a real fidelity gap of my own.**
+The first cut applied the correction only when the travel delta was non-zero.
+But `TealAlert` and `PoisonJab` genuinely spawn ON the target, so their delta
+IS zero, and both came back unrotated — 3 distinct rotations out of 4. Source
+adds the correction unconditionally (`ArcTan2Neg(0,0)` returns 0 and the
+constant is still added), because it corrects the SHEET, not the path. Fixed:
+the facing term is conditional, the correction never is.
+
+**Shapes pinned:**
+
+- **`AnimRedHeartProjectile` has NO duration argument** — a fixed 95 frames,
+  unusually long for a projectile, which is what gives Attract its unhurried
+  drift. It sways vertically on a sine as it goes.
+- **`AnimHitSplatRandom` scatters in a deliberately ASYMMETRIC box** — ±24
+  across but only ±12 down, so repeated hits spread ALONG the target rather
+  than around it. Asserted over 40 samples.
+- **`AnimSpiderWeb` holds 20 dead frames** at full opacity before fading, and
+  then fades one step every OTHER frame, so the 16-step fade takes 32. ~52
+  frames total, of which the first 20 are perfectly still.
+- **`AnimTranslateWebThread`'s arg 2 is a SPEED, not a duration**
+  (`InitAnimLinearTranslationWithSpeed`). Travel time therefore depends on
+  distance, and a port that treats it as a frame count gets doubles pacing
+  wrong where the per-slot distance differs. Asserted by requiring a farther
+  target to take longer.
+
+**Screenshot-verified in-batch** (the process change the screenshot pass
+earned): Psycho Cut's charge spiral renders correctly over the attacker. The
+crescent's own flight was not captured in the window used — partial, not full,
+visual verification.
+
+**Deferred (7):** `AnimFallingFeather` (247-line packed-struct step, now
+deferred three times and genuinely wanting its own session),
+`AnimPetalDanceBigFlower`/`SmallFlower` (near-identical setups but two unread
+step functions determine the sway), `AnimDiveBall`, `AnimDiveWaterSplash`,
+`AnimAcrobaticsSlashes`, `SpriteCB_ToxicThreadWrap`.
+
 ### M36D batch 13 — COMPLETE 2026-07-30. Deferrals cleared, and a real test-quality bug found.
 
 `m36d_batch_test` 455 -> **489/489**; 8-suite sweep green. Coverage

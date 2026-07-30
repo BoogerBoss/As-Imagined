@@ -100,6 +100,14 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 14] the rotate-and-travel family —
+		"AnimPsychoCut": _psycho_cut,
+		"AnimSonicBoomProjectile": _sonic_boom_projectile,
+		"AnimTealAlert": _teal_alert,
+		"AnimRedHeartProjectile": _red_heart_projectile,
+		"AnimHitSplatRandom": _hit_splat_random,
+		"AnimSpiderWeb": _spider_web,
+		"AnimTranslateWebThread": _translate_web_thread,
 		# — [M36D batch 13] clearing batch 12's deferrals —
 		"SpriteCB_Geyser": _geyser,
 		"AnimSuperpowerFireball": _growing_superpower,
@@ -9275,18 +9283,10 @@ static func _particle_burst(vm: AnimScriptVM, ctx: Dictionary) -> void:
 # `ArcTan2Neg(dx, dy)` -- so the jab always points along its own flight path
 # rather than at a fixed angle. Without that the sprite arrives sideways.
 static func _poison_jab_projectile(vm: AnimScriptVM, ctx: Dictionary) -> void:
-	var node := _make_sprite(vm, ctx)
-	if node == null:
-		return
-	var scale := _scale(vm)
-	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET)
-	var start := _positioned_centre(vm, AnimStage.ANIM_TARGET, vm.args[0],
-			vm.args[1], scale)
-	node.centre = start
-	var delta := dest - start
-	if delta.length_squared() > 0.0:
-		node.rotation = atan2(delta.y, delta.x)
-	_linear_travel(vm, node, start, dest, maxi(1, vm.args[2]))
+	# Same rotate-and-travel shape as batch 14's family, with a ZERO rest-angle
+	# correction -- rerouted through the shared helper so the four cannot drift.
+	_rotated_projectile(vm, ctx, vm.args[0], vm.args[1], 0, 0, vm.args[2],
+			0, true)
 
 
 # AnimMovePowerSwapGuardSwap (battle_anim_normal.c:289). args: 2 sprite anim
@@ -9536,3 +9536,209 @@ static func _trick_bag(vm: AnimScriptVM, ctx: Dictionary) -> void:
 # struct aliased over the sprite's own data array -- a genuinely different
 # order of complexity from anything else in this tier, and not something to
 # port between two other behaviors. It wants its own pass.
+
+
+# ── [M36D batch 14] the rotate-and-travel family ──────────────────────────
+#
+# 7 of 14 candidates. Seven deferred for unread step functions, listed at the
+# bottom of this section.
+#
+# Step 0 found a FIFTH alias family, and this one is a genuine family rather
+# than a pair: `AnimPsychoCut`, `AnimSonicBoomProjectile` and `AnimTealAlert`
+# are all "spawn, rotate to FACE the destination, travel there in a straight
+# line" -- and differ ONLY in a constant added to the computed angle
+# (0xC000 / 0xF000 / 0x6000 in 1/65536 turns). Batch 12's
+# `AnimPoisonJabProjectile` is the same shape with a zero offset, so it is
+# rerouted through the shared helper here too.
+#
+# The offset exists because each sprite's ARTWORK points a different way at
+# rest, so the constant is a per-sheet correction rather than a motion
+# difference. Getting it wrong leaves the projectile flying sideways while
+# still travelling the correct path -- a defect that looks like an art bug.
+
+
+# The shared body. `rot_turns` is the reference's own constant in 1/65536
+# turns; `from_target` spawns relative to the target instead of the attacker.
+static func _rotated_projectile(vm: AnimScriptVM, ctx: Dictionary,
+		off_x: int, off_y: int, dest_dx: int, dest_dy: int, frames: int,
+		rot_turns: int, from_target: bool) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var origin := AnimStage.ANIM_TARGET if from_target \
+			else AnimStage.ANIM_ATTACKER
+	var start := _positioned_centre(vm, origin, off_x, off_y, scale)
+	var mirror := 1.0 if _is_player_side(vm) else -1.0
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET) + Vector2(
+			float(dest_dx) * mirror, float(dest_dy)) * scale
+	node.centre = start
+	# The rest-angle correction is UNCONDITIONAL -- upstream adds it even when
+	# the facing term is zero, because it corrects the sprite sheet's own rest
+	# orientation rather than the flight path. Skipping it on a zero delta
+	# (spawn == destination, which TealAlert and PoisonJab genuinely do) leaves
+	# those sheets unrotated. Caught by the family's own distinctness test.
+	var delta := dest - start
+	var facing := 0.0
+	if delta.length_squared() > 0.0:
+		facing = atan2(delta.y, delta.x)
+	node.rotation = facing + float(rot_turns) * TAU / 65536.0
+	_linear_travel(vm, node, start, dest, maxi(1, frames))
+
+
+# AnimPsychoCut (battle_anim_psychic.c:435). args: 0/1 spawn offset,
+# 2/3 destination offset, 4 duration. Rotation correction 0xC000.
+static func _psycho_cut(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_rotated_projectile(vm, ctx, vm.args[0], vm.args[1], vm.args[2],
+			vm.args[3], vm.args[4], 0xC000, false)
+
+
+# AnimSonicBoomProjectile (battle_anim_effects_2.c:1423). Same arguments and
+# the same shape; correction 0xF000.
+static func _sonic_boom_projectile(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_rotated_projectile(vm, ctx, vm.args[0], vm.args[1], vm.args[2],
+			vm.args[3], vm.args[4], 0xF000, false)
+
+
+# AnimTealAlert (battle_anim_effects_3.c:1321). args: 0/1 spawn offset,
+# 2 duration. Spawns relative to the TARGET rather than the attacker and
+# converges on it; correction 0x6000.
+static func _teal_alert(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_rotated_projectile(vm, ctx, vm.args[0], vm.args[1], 0, 0, vm.args[2],
+			0x6000, true)
+
+
+# AnimRedHeartProjectile (battle_anim_effects_2.c:3127, step :3139). No
+# duration argument -- it is a fixed 95 frames, which is unusually long for a
+# projectile and is what gives Attract its drifting, unhurried feel. Travels
+# to the target while swaying vertically on a sine of amplitude 14.
+static func _red_heart_projectile(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := node.centre
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var st := {"t": 0, "phase": 0.0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		var base := start.lerp(dest, float(t) / 95.0)
+		node.centre = base + Vector2(0.0,
+				_gba_sin(float(st["phase"]), 14.0) * scale)
+		st["phase"] = fmod(float(st["phase"]) + 4.0, 256.0)
+		if t >= 95:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimHitSplatRandom (battle_anim_normal.c:1138). args: 0 battler,
+# 1 affine variant, or -1 to pick one at RANDOM.
+#
+# Scatters within a deliberately asymmetric box -- +/-24 horizontally but only
+# +/-12 vertically, so repeated hits spread along the target rather than
+# around it. Reuses M36C's own hit-splat machinery for the splat itself.
+static func _hit_splat_random(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var variant: int = vm.args[1]
+	if variant < 0:
+		variant = randi() % 4
+	var dx := (randi() % 48) - 24
+	var dy := (randi() % 24) - 12
+	_spawn_hit_splat(vm, ctx, dx, dy, vm.args[0], variant, 0)
+
+
+# AnimSpiderWeb (battle_anim_bug.c:304, step :308). args: 0/1 offset,
+# 2 centre between both targets.
+#
+# Three beats, and the middle one is easy to drop: it appears fully opaque,
+# HOLDS for 20 dead frames, and only then fades -- one step of alpha every
+# OTHER frame, so the 16-step fade takes 32 frames rather than 16. Total
+# roughly 52 frames of which the first 20 are perfectly still.
+static func _spider_web(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var base := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	if vm.args[2] != 0:
+		var partner := _battler_node(vm, AnimStage.ANIM_DEF_PARTNER)
+		if partner != null:
+			base = (base + _battler_centre(vm, AnimStage.ANIM_DEF_PARTNER)) * 0.5
+	var mirror := 1.0 if _is_player_side(vm) else -1.0
+	node.centre = base + Vector2(float(vm.args[0]) * mirror,
+			float(vm.args[1])) * scale
+
+	var st := {"hold": 0, "tick": 0, "alpha": 16}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		if int(st["hold"]) < 20:
+			st["hold"] = int(st["hold"]) + 1
+			return false
+		st["tick"] = int(st["tick"]) + 1
+		if (int(st["tick"]) & 1) == 0:
+			return false                      # one step every OTHER frame
+		st["alpha"] = int(st["alpha"]) - 1
+		node.modulate.a = float(st["alpha"]) / 16.0
+		if int(st["alpha"]) <= 0:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimTranslateWebThread (battle_anim_bug.c:230, step :257). args: 0/1 spawn
+# offset, 2 travel SPEED (not duration), 3 sway amplitude, 4 target both.
+#
+# Note arg 2 is a speed rather than a frame count -- upstream calls
+# `InitAnimLinearTranslationWithSpeed`, so the travel time depends on the
+# distance and a port that treats it as a duration gets the pacing wrong in
+# doubles, where the distance differs per slot. The thread also sways
+# HORIZONTALLY as it flies, phase advancing 13 per frame.
+static func _translate_web_thread(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	if vm.args[4] != 0:
+		var partner := _battler_node(vm, AnimStage.ANIM_DEF_PARTNER)
+		if partner != null:
+			dest = (dest + _battler_centre(vm, AnimStage.ANIM_DEF_PARTNER)) * 0.5
+	node.centre = start
+	# Speed -> duration, so distance genuinely drives the travel time.
+	var speed := maxf(1.0, float(vm.args[2]) * scale)
+	var frames: int = maxi(1, int(start.distance_to(dest) / speed))
+	var amp := float(vm.args[3])
+
+	var st := {"t": 0, "phase": 0.0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		node.centre = start.lerp(dest, float(t) / float(frames)) \
+				+ Vector2(_gba_sin(float(st["phase"]), amp) * scale, 0.0)
+		st["phase"] = fmod(float(st["phase"]) + 13.0, 256.0)
+		if t >= frames:
+			node.finish()
+			return true
+		return false)
+
+
+# DEFERRED from this batch, all for unread step functions except the first:
+#   * `AnimFallingFeather` -- 247 lines of state machine over a packed
+#     `FeatherDanceData` bitfield struct. Deferred three times now, and it
+#     genuinely wants its own session rather than a slot in a batch.
+#   * `AnimPetalDanceBigFlower` / `AnimPetalDanceSmallFlower` -- their setups
+#     are near-identical (they differ only in whether the spawn respects side)
+#     but the two step functions determine the sway and were not read.
+#   * `AnimDiveBall`, `AnimDiveWaterSplash`, `AnimAcrobaticsSlashes`,
+#     `SpriteCB_ToxicThreadWrap`.

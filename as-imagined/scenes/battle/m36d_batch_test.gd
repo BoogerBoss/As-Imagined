@@ -90,6 +90,8 @@ func _ready() -> void:
 	_test_batch12_shapes()
 	_test_batch12_coverage()
 	_test_batch13_deferrals_cleared()
+	_test_batch14_rotate_and_travel()
+	_test_batch14_shapes()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -3172,3 +3174,153 @@ func _test_every_template_name_resolves() -> void:
 	_chk("all %d template names in this suite resolve (bad: %s)"
 			% [seen.size(), ", ".join(bad) if not bad.is_empty() else "none"],
 			bad.is_empty())
+
+
+# ── [M36D batch 14] ───────────────────────────────────────────────────────
+
+func _test_batch14_rotate_and_travel() -> void:
+	# The fifth alias family, and the first that is a family rather than a
+	# pair: PsychoCut, SonicBoom, TealAlert and (rerouted) PoisonJab all
+	# "rotate to face the destination, then travel", differing ONLY in a
+	# rest-angle correction constant per sprite sheet.
+	#
+	# The failure this guards is a copy-paste: reuse one constant for all four
+	# and every path is still correct while the artwork flies sideways. So the
+	# test demands the SAME geometry produce FOUR DISTINCT rotations.
+	var rots := {}
+	var cases := [
+		["AnimPsychoCut", "gPsychoCutSpriteTemplate", false],
+		["AnimSonicBoomProjectile", "gSonicBoomSpriteTemplate", false],
+		["AnimTealAlert", "gTealAlertSpriteTemplate", true],
+		["AnimPoisonJabProjectile", "gPoisonJabProjectileSpriteTemplate", true],
+	]
+	for c in cases:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		# Non-zero spawn offsets, so the facing term is real for all four
+		# rather than degenerate for the two that spawn on the target.
+		vm.args[0] = 30; vm.args[1] = -20; vm.args[2] = 10
+		vm.args[3] = 0; vm.args[4] = 10
+		_run_b5(vm, str(c[0]), str(c[1]))
+		var n := _b5_last
+		if n == null:
+			_chk("%s spawns" % str(c[0]), false)
+			continue
+		_chk("%s spawns" % str(c[0]), true)
+		rots[str(c[0])] = n.rotation
+	var vals: Array = rots.values()
+	var distinct := {}
+	for v in vals:
+		distinct[snappedf(float(v), 0.001)] = true
+	_chk("all four rest-angle corrections are DISTINCT (%d/%d unique)"
+			% [distinct.size(), vals.size()],
+			distinct.size() == vals.size() and vals.size() == 4)
+
+	# And each must genuinely point along its own flight path, not at a fixed
+	# screen angle -- checked by giving one a different destination and
+	# requiring its rotation to move with it.
+	var seen: Array = []
+	for dy in [-40, 40]:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		vm.args[0] = 0; vm.args[1] = 0; vm.args[2] = 0
+		vm.args[3] = dy; vm.args[4] = 10
+		_run_b5(vm, "AnimPsychoCut", "gPsychoCutSpriteTemplate")
+		if _b5_last != null:
+			seen.append(_b5_last.rotation)
+	if seen.size() == 2:
+		_chk("...and the angle tracks the destination, not a fixed screen angle",
+				not is_equal_approx(seen[0], seen[1]))
+
+
+func _test_batch14_shapes() -> void:
+	# RedHeartProjectile has NO duration argument -- a fixed 95 frames, which
+	# is what gives Attract its unhurried drift.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_run_b5(vm, "AnimRedHeartProjectile", "gRedHeartProjectileSpriteTemplate")
+	var heart := _b5_last
+	if heart != null:
+		var ys: Array = []
+		for i in range(40):
+			_step(vm, 1)
+			if is_instance_valid(heart):
+				ys.append(heart.centre.y)
+		_chk("red heart sways vertically in flight",
+				(ys.max() as float) - (ys.min() as float) > 1.0)
+		_step(vm, 50)
+		_chk("...still alive just before frame 95", vm.visual_count() > 0)
+		_step(vm, 10)
+		_chk("...and ends at its fixed 95", vm.visual_count() == 0)
+
+	# HitSplatRandom scatters in a DELIBERATELY ASYMMETRIC box: +/-24 across
+	# but only +/-12 down, so repeated hits spread ALONG the target.
+	var xs: Array = []
+	var ys2: Array = []
+	for i in range(40):
+		var st := FakeStage.new()
+		var v := _vm(st)
+		v.args[0] = AnimStage.ANIM_TARGET; v.args[1] = -1
+		_run_b5(v, "AnimHitSplatRandom", "gBasicHitSplatSpriteTemplate")
+		if _b5_last != null:
+			var c := st.center_of(AnimStage.ANIM_TARGET)
+			xs.append(_b5_last.centre.x - c.x)
+			ys2.append(_b5_last.centre.y - c.y)
+	if xs.size() > 20:
+		var xspread: float = (xs.max() as float) - (xs.min() as float)
+		var yspread: float = (ys2.max() as float) - (ys2.min() as float)
+		_chk("hit splats scatter (%.0f x %.0f px over %d samples)"
+				% [xspread, yspread, xs.size()], xspread > 0.0)
+		_chk("...wider than they are tall -- along the target, not around it",
+				xspread > yspread)
+
+	# SpiderWeb HOLDS 20 dead frames before fading, and fades one step every
+	# OTHER frame so the 16-step fade takes 32.
+	var stage3 := FakeStage.new()
+	var vm3 := _vm(stage3)
+	vm3.args[0] = 0; vm3.args[1] = 0; vm3.args[2] = 0
+	_run_b5(vm3, "AnimSpiderWeb", "gSpiderWebSpriteTemplate")
+	var web := _b5_last
+	if web != null:
+		_step(vm3, 18)
+		_chk("spider web holds fully opaque through its dead frames",
+				is_equal_approx(web.modulate.a, 1.0))
+		_step(vm3, 20)
+		_chk("...then begins fading", web.modulate.a < 1.0)
+		_chk("...still fading at frame 38 (one step every OTHER frame)",
+				vm3.visual_count() > 0)
+		_step(vm3, 40)
+		_chk("...and is gone by ~52", vm3.visual_count() == 0)
+
+	# WebThread's arg 2 is a SPEED, not a duration -- so a farther target must
+	# take LONGER. A port that treats it as a frame count ties here.
+	var times: Array = []
+	for far in [false, true]:
+		var st := FakeStage.new()
+		if far:
+			st.nodes[AnimStage.ANIM_TARGET].position += Vector2(400, 0)
+		var v := _vm(st)
+		v.args[0] = 0; v.args[1] = 0; v.args[2] = 4; v.args[3] = 6; v.args[4] = 0
+		_run_b5(v, "AnimTranslateWebThread", "gWebThreadSpriteTemplate")
+		var n := 0
+		for i in range(600):
+			_step(v, 1)
+			n += 1
+			if v.visual_count() == 0:
+				break
+		times.append(n)
+	_chk("web thread's arg 2 is a SPEED -- farther takes longer (%d < %d)"
+			% [times[0], times[1]], times[1] > times[0])
+
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov: Dictionary = _dispatcher.coverage(ids)
+	_chk("roster coverage is at least 593 moves (%d)"
+			% int(cov.get("playable", 0)),
+			int(cov.get("playable", 0)) >= 593)
+	for sym in ["AnimFallingFeather", "AnimPetalDanceBigFlower",
+			"AnimDiveBall", "AnimAcrobaticsSlashes"]:
+		_chk("%s is deliberately deferred" % sym,
+				_registry.get_behavior(sym) == Callable())
