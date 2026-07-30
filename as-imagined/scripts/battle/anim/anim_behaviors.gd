@@ -693,22 +693,24 @@ static func _run_blend(vm: AnimScriptVM, selector: int, delay: int,
 # exclude-variant can supply "everything but one battler" without duplicating
 # the walk.
 #
-# FLAGGED, NOT FIXED (pre-existing, predates this batch): this blends through
-# `modulate`, which MULTIPLIES rather than replacing -- the same weakness that
-# made MetallicShine's grayscale a no-op and the recall pink invisible twice.
-# It is less wrong here because a blend TOWARD a colour still shifts a
-# multiplied sprite, but it is not the reference's replace semantics. The
-# shader that does it properly now exists (`_apply_blend_amount`); switching
-# this over would change values M36C's own suite asserts, so it is left for a
-# deliberate pass rather than changed underneath a batch.
+# The blend ramp, over an explicit node set. Split out so the exclude-variant
+# can supply "everything but one battler" without duplicating the walk.
+#
+# This blends through a SHADER, not `modulate`, and the difference is not
+# cosmetic. BlendPalette (util.c:224) REPLACES a channel toward the target;
+# `modulate` MULTIPLIES. Multiplying a white-modulated sprite toward white is
+# the identity, so every blend toward white rendered as nothing at all --
+# measured across the extracted scripts as 126 of 777 blend sites, with pure
+# white the second most common blend colour in the whole roster after black.
+# Another 141 sites toward other light colours were visibly weakened.
+#
+# This is the third time this project has hit the modulate-multiply trap, after
+# the twice-invisible recall pink and MetallicShine's no-op grayscale, so the
+# fix is the same `mix()` shader the second of those introduced.
 static func _run_blend_nodes(vm: AnimScriptVM, nodes: Array[Control],
 		delay: int, start_coeff: int, target_coeff: int,
 		rgb15: int) -> void:
 	var colour := _rgb15_to_color(rgb15)
-	var bases: Array[Color] = []
-	for n in nodes:
-		bases.append(n.modulate)
-
 	var st := {"coeff": start_coeff, "timer": 0}
 	var step_delay: int = maxi(0, delay)
 
@@ -718,17 +720,21 @@ static func _run_blend_nodes(vm: AnimScriptVM, nodes: Array[Control],
 			return false
 		st["timer"] = 0
 		var c: int = int(st["coeff"])
-		for i in range(nodes.size()):
-			var n: Control = nodes[i]
+		for n in nodes:
 			if is_instance_valid(n):
-				n.modulate = (bases[i] as Color).lerp(colour,
-						clampf(c / 16.0, 0.0, 1.0))
+				_apply_blend_amount(n, colour, clampf(c / 16.0, 0.0, 1.0))
 		if c < target_coeff:
 			st["coeff"] = c + 1
 			return false
 		if c > target_coeff:
 			st["coeff"] = c - 1
 			return false
+		# A ramp that lands on 0 has blended fully back; drop the material so
+		# nothing is left shadered for the rest of the battle.
+		if c == 0:
+			for n in nodes:
+				if is_instance_valid(n):
+					_clear_blend(n)
 		return true)
 
 
@@ -745,9 +751,6 @@ static func _blend_color_cycle(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 	var high: int = vm.args[4]
 	var colour := _rgb15_to_color(vm.args[5])
 	var nodes := _blend_nodes(vm, selector)
-	var bases: Array[Color] = []
-	for n in nodes:
-		bases.append(n.modulate)
 
 	# One "blend" is a full up-and-down sweep; the coefficient walks 1 step
 	# every (delay + 1) frames, exactly as the reference's stepper does.
@@ -758,11 +761,9 @@ static func _blend_color_cycle(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 			return false
 		st["timer"] = 0
 		var c: int = int(st["coeff"])
-		for i in range(nodes.size()):
-			var n: Control = nodes[i]
+		for n in nodes:
 			if is_instance_valid(n):
-				n.modulate = (bases[i] as Color).lerp(colour,
-						clampf(c / 16.0, 0.0, 1.0))
+				_apply_blend_amount(n, colour, clampf(c / 16.0, 0.0, 1.0))
 		c += int(st["dir"])
 		if c >= high and int(st["dir"]) > 0:
 			c = high
@@ -772,10 +773,9 @@ static func _blend_color_cycle(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 			st["dir"] = 1
 			st["left"] = int(st["left"]) - 1
 			if int(st["left"]) <= 0:
-				for i in range(nodes.size()):
-					var n2: Control = nodes[i]
+				for n2 in nodes:
 					if is_instance_valid(n2):
-						n2.modulate = bases[i]
+						_clear_blend(n2)
 				return true
 		st["coeff"] = c
 		return false)
@@ -3347,11 +3347,11 @@ static func _make_shine_overlay(vm: AnimScriptVM, node: Control) -> Control:
 
 
 # A GBA RGB15 literal (RGB(r,g,b), 5 bits each) as a Color.
+# GBA RGB15 -> Color. Kept as a thin alias: _rgb15_to_color predates it and is
+# the same conversion, so this exists only so the batch-4/5 call sites read in
+# their own source's vocabulary.
 static func _gba_rgb_to_color(packed: int) -> Color:
-	var r := (packed & 0x1F) / 31.0
-	var g := ((packed >> 5) & 0x1F) / 31.0
-	var b := ((packed >> 10) & 0x1F) / 31.0
-	return Color(r, g, b)
+	return _rgb15_to_color(packed)
 
 
 # AnimTask_CreateSurfWave (battle_anim_water.c:985, steps at :1077 / :1120).
@@ -4820,6 +4820,13 @@ static func _blend_pal_exclude(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 			nodes.append(bg)
 	_run_blend_nodes(vm, nodes, vm.args[1], vm.args[2], vm.args[3],
 			vm.args[4])
+
+
+# Removes a blend, restoring the node to how it renders untouched.
+static func _clear_blend(node: CanvasItem) -> void:
+	if node.material is ShaderMaterial \
+			and (node.material as ShaderMaterial).shader == _recolor_shader:
+		node.material = null
 
 
 # A per-node colour blend at a coefficient, reusing the recolor shader the

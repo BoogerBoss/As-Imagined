@@ -1029,6 +1029,76 @@ blend calls exactly as source does. That check is now a permanent assertion,
 since this would have been the third leak of its class in M36 after visibility
 and displacement.
 
+### M36 blend ramp — replace-semantics fix, COMPLETE 2026-07-30
+
+`m36d_batch_test` 204 -> **205/205**; 16-suite sweep green. **Coverage
+deliberately unchanged at 356/932** — this is a FIDELITY fix, not a coverage
+one, and that is the whole point of doing it.
+
+**The defect.** The shared blend ramp (`AnimTask_BlendBattleAnimPal`, its
+Exclude variant, and `AnimTask_BlendColorCycle`) blended through `modulate`,
+which MULTIPLIES. `BlendPalette` (util.c:224) REPLACES a channel toward the
+target. Multiplying a white-modulated sprite toward white is the identity, so
+**every blend toward white rendered as nothing at all**.
+
+**Measured before deciding, not asserted.** Across the extracted scripts:
+126 of 777 blend call sites (16%) target white or near-white and rendered
+nothing; another 141 (18%) target other light colours and were visibly
+weakened; 261 (34%) target dark colours and were already correct. Pure white
+is the second most common blend colour in the entire roster after black.
+
+This is the **third** time this project has hit the modulate-multiply trap,
+after the twice-invisible recall pink and MetallicShine's no-op grayscale, so
+the fix is the same `mix()` shader the second of those introduced.
+
+**Why it was worth doing before more batches**: it degrades moves ALREADY
+counted as playable, so the coverage figure was overstating what actually
+renders. It is also a fair-comparison prerequisite for M36-H — judging a
+hand-authored animation against a ported one that is silently missing its
+flash would rig that comparison before anyone looked at it.
+
+**A blast-radius claim of mine turned out to be wrong, in the good
+direction.** Batch 5 flagged this as "would change values M36C's own suite
+asserts". It does not: M36C's only `modulate` assertion is about sprite ALPHA
+via `setalpha`, unrelated to the palette ramp. The only dependent assertions
+were the two written in batch 5 itself.
+
+**A second correction, this one to my own measurement.** An initial count
+claimed 278 moves blend toward white. That was inflated 3.3x by a naive walk
+that scanned 120 commands past each move's label without stopping at
+`end`/`return` — so it attributed later scripts' blends to earlier moves, the
+same walk bug M36C hit in the fallback checker. Re-walked properly (stop at
+`end`/`return`, follow `call`/`goto`, depth-limited): **83 moves** genuinely
+reach a white blend. The 126-of-777 CALL SITE figure is unaffected, since that
+counts blend commands directly rather than walking scripts.
+
+**Also fixed while here**: the VM now clears any blend still applied to a
+battler when a run ends (`_clear_battler_blends`), the third member of the same
+family as the visibility and displacement restores. A ramp that ends on a
+non-zero coefficient leaves the tint deliberately — upstream never restores it
+either, scripts pair a second call to blend back — so this is the net for a run
+that ENDS mid-ramp, which would otherwise leave a Pokemon permanently tinted.
+And a duplicate RGB15 converter introduced in E3 (`_gba_rgb_to_color`) is now a
+thin alias of the pre-existing `_rgb15_to_color`.
+
+**VERIFICATION, stated precisely.** The mechanism is confirmed by a headless
+probe that runs real moves' VMs and samples the shader parameter on real
+battler nodes: Mega Punch and Mega Kick both reach a peak tint of 0.44, so the
+blend genuinely fires and applies. The suite additionally asserts that a blend
+toward WHITE now yields a visible tint, which is the exact case that was
+previously the multiply identity.
+
+**NOT verified: a screenshot of a white flash specifically.** Three capture
+attempts failed to time one. The harness takes a fixed number of shots at a
+fixed gap and the battle intro alone consumes ~830 frames, so hitting a
+particular blend's peak inside a ~100-frame animation is largely luck. What
+the captures DO show is the animation window rendering (the impact background
+and a heavy screen darken on Mega Punch, whose blend is toward black rather
+than white — which is also why an earlier attempt measured the region
+darkening instead of flashing). Flagged as a harness limitation worth fixing
+before the next visual check: it needs a "start capturing when the move
+actually begins" trigger rather than a fixed gap.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.

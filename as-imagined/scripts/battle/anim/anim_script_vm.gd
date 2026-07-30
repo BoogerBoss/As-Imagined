@@ -247,6 +247,7 @@ func _finish(err: String = "") -> void:
 	# fix. MonOffset records each battler's true base the first time anything
 	# moves it, which is what makes this recoverable at all.
 	_restore_displaced_battlers()
+	_clear_battler_blends()
 	# Same reasoning as the visibility restore: a script that ends while its
 	# background is still up would leave the battlefield permanently altered.
 	if _bg_changed and stage != null:
@@ -533,6 +534,21 @@ func current_background_name() -> String:
 # guarantee the opcodes get.
 func notify_background_changed() -> void:
 	_bg_changed = true
+
+
+# Drops any colour blend still applied to a battler. A ramp that ends on a
+# non-zero coefficient leaves the tint deliberately (upstream never restores
+# it either -- scripts pair a second call to blend back), so this is the net
+# for a run that ENDS mid-ramp, which would otherwise leave a Pokemon
+# permanently tinted. Third member of the same family as the visibility and
+# displacement restores.
+func _clear_battler_blends() -> void:
+	if stage == null or not stage.has_method("sprite_for"):
+		return
+	for i in range(4):
+		var node: Control = stage.sprite_for(i)
+		if node != null and is_instance_valid(node):
+			AnimBehaviors._clear_blend(node)
 
 
 # Puts every battler this run displaced back on its recorded base. Reads the

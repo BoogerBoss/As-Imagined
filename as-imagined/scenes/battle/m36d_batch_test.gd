@@ -1242,17 +1242,23 @@ func _test_batch5_palette_group() -> void:
 	vm2.args[1] = 0
 	vm2.args[2] = 0
 	vm2.args[3] = 16
-	# NOT white: a node's base modulate is already white, so blending toward
-	# white would be a no-op and the test would prove nothing either way.
-	vm2.args[4] = 0x001F  # GBA RGB15 red
+	vm2.args[4] = 0x7FFF  # pure white -- the case that used to render NOTHING
 	var attacker: Control = s2.nodes[0]
 	var other: Control = s2.nodes[1]
 	_run_b5(vm2, "AnimTask_BlendBattleAnimPalExclude", "")
 	_step(vm2, 40)
+	# The blend now REPLACES rather than multiplies, so it lives in a shader
+	# material rather than in modulate. Asserted on white specifically: under
+	# the old multiply this exact case was the identity and rendered nothing,
+	# which is what made 126 of the roster's 777 blend sites invisible.
 	_chk("the excluded battler is left untouched by the blend",
-			attacker.modulate.is_equal_approx(Color(1, 1, 1, 1)))
+			attacker.material == null)
+	var om := other.material as ShaderMaterial
 	_chk("...while a non-excluded battler is genuinely blended",
-			not other.modulate.is_equal_approx(Color(1, 1, 1, 1)))
+			om != null)
+	_chk("...a blend toward WHITE is now visible rather than a no-op "
+			+ "(the multiply identity that hid 126 sites)",
+			om != null and float(om.get_shader_parameter("tint_amount")) > 0.5)
 
 	# The blend PERSISTS during a run (upstream never restores it -- scripts
 	# pair two calls to blend back), so the question that matters is whether a
