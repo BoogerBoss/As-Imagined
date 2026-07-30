@@ -4627,14 +4627,34 @@ func _show_player_trainer() -> void:
 # from _show_trainer_intro so the two intro messages can print in between,
 # which is where source puts them.
 func _dismiss_trainer_intro() -> void:
-	if _opponent_trainer_sprite == null or not _opponent_trainer_sprite.visible:
-		return
-	var rest_x := _opponent_trainer_sprite.position.x
-	# Concurrent, not sequential: she is still sliding out while the ball is
-	# already in flight (opponent `framesToWait = 0`).
-	var slide_out := create_tween()
-	slide_out.tween_property(_opponent_trainer_sprite, "position:x",
-			rest_x + _TRAINER_SLIDE_DISTANCE, _TRAINER_SLIDE_OUT_SECONDS)
+	# [Fix] The opponent's send-out is NOT conditional on there being a
+	# trainer to dismiss. It used to be: this function opened by returning
+	# early whenever the trainer sprite was absent or hidden, which is the
+	# case for every battle with no opp_trainer_data -- i.e. every fixture and
+	# random-team battle the simulator can start.
+	#
+	# _ready() unconditionally hides the opponent's mon sprites and BOTH
+	# health boxes to establish the "empty field" state, and this function is
+	# the only thing that ever puts the opponent's lead back. So skipping it
+	# left the opposing Pokemon and its health box hidden for the whole
+	# battle, with no trainer intro either -- exactly the symptom Rob hit.
+	# A mid-battle switch looked fine because it reaches _play_send_out by a
+	# different route (the "switch_reveal" beat), which is what localised it.
+	#
+	# So: the SLIDE-OUT is what depends on a visible trainer; the send-out
+	# always runs.
+	var has_trainer: bool = _opponent_trainer_sprite != null \
+			and _opponent_trainer_sprite.visible
+	var rest_x := 0.0
+	var slide_out: Tween = null
+	if has_trainer:
+		rest_x = _opponent_trainer_sprite.position.x
+		# Concurrent, not sequential: she is still sliding out while the ball
+		# is already in flight (opponent `framesToWait = 0`).
+		slide_out = create_tween()
+		slide_out.tween_property(_opponent_trainer_sprite, "position:x",
+				rest_x + _TRAINER_SLIDE_DISTANCE, _TRAINER_SLIDE_OUT_SECONDS)
+
 	if _opp_party != null:
 		for slot in range(_opp_party.num_active()):
 			var sent: BattlePokemon = _opp_party.get_active_at(slot)
@@ -4643,6 +4663,9 @@ func _dismiss_trainer_intro() -> void:
 			var send: Callable = func() -> void:
 				await _play_send_out(sent)
 			send.call()
+
+	if not has_trainer:
+		return
 	await slide_out.finished
 	_opponent_trainer_sprite.visible = false
 	_opponent_trainer_sprite.position.x = rest_x

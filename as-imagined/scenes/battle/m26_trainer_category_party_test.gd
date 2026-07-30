@@ -35,6 +35,7 @@ func _ready() -> void:
 	_test_ball_particle_wobble_matches_source_anim()
 	await _test_recall_bypass_hides_sprite_and_panel_together()
 	_test_recall_finds_the_right_slot_in_doubles()
+	_test_opponent_send_out_runs_without_a_trainer()
 	_test_faint_queues_a_recall_beat()
 	await _test_battle_end_win_queues_the_real_defeat_template()
 	await _test_battle_end_loss_recalls_mons_and_queues_no_line()
@@ -411,6 +412,48 @@ func _test_recall_finds_the_right_slot_in_doubles() -> void:
 	var missing := bs._find_mon_slot(_make_mon("NotOnField"))
 	_chk("a mon that isn't on the field resolves to nothing",
 			missing.is_empty())
+
+
+# [Fix, 2026-07-29] The opponent's send-out must NOT depend on there being a
+# trainer to dismiss.
+#
+# Regression guard for a real defect Rob hit in play: with no
+# opp_trainer_data -- which is EVERY fixture and random-team battle the
+# simulator can start -- _dismiss_trainer_intro() returned early, and since
+# _ready() unconditionally hides the opponent's sprites and both health
+# boxes, nothing ever put the opposing Pokemon back. It stayed invisible,
+# with no health box, for the whole battle. A mid-battle switch looked
+# correct throughout, because that path reaches _play_send_out via the
+# "switch_reveal" beat instead -- which is what localised the bug.
+class _SendOutSpy extends BattleScreenShared:
+	var sent: Array = []
+	# Overrides the real send-out so the test observes WHETHER the dismissal
+	# path reaches it, without needing a live scene tree to animate in.
+	func _play_send_out(mon) -> void:
+		sent.append(mon)
+
+
+func _test_opponent_send_out_runs_without_a_trainer() -> void:
+	var bs := _SendOutSpy.new()
+	# No trainer sprite at all -- the fixture/random-battle shape.
+	bs._opponent_trainer_sprite = null
+
+	var party := BattleParty.new()
+	var mon := PokemonFactory.create_battle_pokemon(1, 5, [33])
+	if mon == null:
+		_chk("fixture mon builds for the no-trainer send-out check", false)
+		bs.free()
+		return
+	party.members = [mon] as Array[BattlePokemon]
+	party.active_indices = [0] as Array[int]
+	bs._opp_party = party
+
+	await bs._dismiss_trainer_intro()
+	_chk("with NO opponent trainer, the lead is STILL sent out (got %d)"
+			% bs.sent.size(), bs.sent.size() == 1)
+	_chk("...and it is the correct Pokemon",
+			bs.sent.size() == 1 and bs.sent[0] == mon)
+	bs.free()
 
 
 func _test_faint_queues_a_recall_beat() -> void:

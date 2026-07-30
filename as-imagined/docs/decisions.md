@@ -27585,3 +27585,36 @@ No commit made this session — per standing instruction, Rob commits.
   `MOVES_COUNT_GEN3` immediately after, so Gen 1-3 is move ids 1-354. The
   "iconic" subset is an explicit editorial judgment; its criteria are written
   into the tool so the list is auditable rather than tacit.
+
+---
+
+## [M26B3 fix] Opponent send-out must not depend on a trainer intro
+
+- Source: `scenes/battle/battle_screen_shared.gd`
+  (`_ready()` lines ~1705-1707, `_dismiss_trainer_intro()`); defect introduced
+  by `357969b5` "unpolished trainer and pokemon entry animations" (2026-07-27)
+- Behavior: found by Rob in real play while testing M36's animations, and
+  initially suspected to be an M36 regression. It is not — M36's diff to that
+  file is purely additive. The real mechanism:
+  `_ready()` unconditionally hides the opponent's mon sprites AND both health
+  boxes to establish an "empty field" starting state, and
+  `_dismiss_trainer_intro()` is the only thing that ever puts the opponent's
+  lead back. That function opened by returning early whenever the trainer
+  sprite was absent or hidden — which is the case for every battle with no
+  `opp_trainer_data`, i.e. **every fixture and random-team battle the
+  simulator can start**. Result: the opposing Pokemon and its health box
+  stayed hidden for the entire battle, with no trainer intro either.
+  A mid-battle switch looked perfectly correct throughout, because that path
+  reaches `_play_send_out` through the `switch_reveal` beat instead. That
+  asymmetry — "the second Pokemon appears, the first never does" — is what
+  localised it, and is worth remembering as a diagnostic shape: when one
+  entry path works and another does not, compare the two callers rather than
+  suspecting the thing they share.
+- Fix: the SLIDE-OUT is what depends on a visible trainer; the send-out loop
+  now always runs. Guarded by a regression test that was verified to FAIL on
+  the pre-fix code (0 send-outs) and pass after — a test that passed both
+  ways would have proven nothing.
+- Notes: the trainer art was checked and is intact (310 files under
+  `assets/sprites/trainers/portraits/`), and `TrainerPicRegistry` falls back
+  to a placeholder rather than null, so a missing portrait could not have
+  caused this. Fixed 2026-07-29.
