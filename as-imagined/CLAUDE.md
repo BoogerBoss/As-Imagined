@@ -1316,6 +1316,22 @@ That fix inferred the exit from COLLISION: *a solid arrival tile is a doorway, s
 
 **Tests.** Section **AH**, 8 assertions, `EXPECTED_TOTAL` **402 → 410**. AH.02/AH.03 are the pair that would have caught the original miss — the tile is walkable, and the direction comes from data. Verified by reverting to the collision-only rule: AH.07 and AH.08 both fail. `MB_NON_ANIMATED_DOOR` is deliberately unstamped and flagged — `Task_ExitNonAnimDoor` walks in the player's FACING direction, which is not a fixed value the table can hold, and all 90 arrive on walkable tiles so nobody is stranded.
 
+**[M27C — corridor bake: 18 → 32 maps] COMPLETE — 2026-07-30.** Every door in the playable area now leads somewhere.
+
+**The bake was 14, not the 12 asked for**, and the two extra are stated rather than slipped in: Pewter's Museum 2F and Pokécentre 2F sit *inside* buildings this batch opened, so leaving them would have put a dead escalator in the first Pokécentre after the escalator fix. Diglett's Cave B1F and Route 23 are deliberately NOT included — those are whole new regions rather than closures, and they are the boundary.
+
+**Warp coverage 36/63 (57%) → 104/110 (95%).** The remaining 6 are 2 real region edges (Diglett's B1F, Route 23) and 4 into the permanently-excluded link rooms.
+
+⚠️ **VIRIDIAN FOREST WAS BAKED AND COMPLETELY UNREACHABLE, and nothing said so.** It has **no connections at all**, so warps are the only way in, and both its entrances are gate buildings that were not baked — a 54x69 map, the largest in the corridor, with no way to it. AI.06 pins the structural fact so it cannot silently recur.
+
+**Two atlases were new** (`museum`, `pewter_gym`), which needs `gen_map_import.py <maps>` to render them and then a Godot `--import` pass before `ResourceLoader` can see them — the same gotcha the interiors bake hit. 32/32 reproducible afterwards.
+
+**Non-animated doors closed too, and the reason is the lesson repeating.** `Task_ExitNonAnimDoor` walks in the player's FACING direction, which no fixed value can hold, so it was left unstamped and flagged as unreachable. **Growing the corridor made it reachable — 13 of them, five on Route 2 and three inside the forest.** Now stamped as `Warp.EXIT_DIR_FACING` (-2). It falls out correct without special-casing: you enter walking north and continue north off the mat; you leave the forest walking south and continue south into the gate. **`exit_dir` now covers all four of source's arrival kinds** — door SOUTH, escalator EAST, non-anim door FACING, everything else stay put (`Task_ExitNonDoor` genuinely moves nobody, which is why an arrow-warp arrival correctly leaves you standing on it: you press its direction to go back, needing no step off).
+
+⚠️ **TWO TESTS HAD BEEN USING A NOT-YET-BAKED MAP AS A FIXTURE, and the bake broke both.** S.07 and AE.06 both named Pewter's gym as "known unbaked" — so once it was baked, AE.06's dead door WARPED FOR REAL, unloading the chunk that owned the Warp node the rest of the section held and taking **ten further assertions down with it** (visible only as Z.99 failing to balance; the section reported no failures of its own). This fixture had already moved once, from Viridian's gym to Pewter's. **Both now point at `MAP_TRADE_CENTER_FRLG`, which is permanently excluded by decision** — "known but never baked" is now a property of the fixture rather than a race against the bake list. A fixture that CAN be baked is a fixture that will be.
+
+**Tests.** Section **AI**, 6 assertions, `EXPECTED_TOTAL` **410 → 416**. AI.02 records that this case defeats BOTH inference rules tried so far — the tile is walkable, so the solid-tile fallback misses it exactly as the collision rule missed the escalator. Verified by ignoring the sentinel, which fails AI.05.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **A thirteenth M27 block, orthogonal to C's stitching work.** Added because this is Kanto with an ORIGINAL story: the region's 421 maps are imported, but new maps and new art are inevitable, and **there is currently no way to create either.** Scope of record while this is unbuilt: the approved mockup at `https://claude.ai/code/artifact/0cc55049-a0d4-4675-8b0c-eb33853611b0`. Nothing here is implemented.

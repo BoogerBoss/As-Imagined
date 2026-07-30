@@ -428,7 +428,11 @@ func _exit_arrival(w: Variant) -> void:
 		return
 	var dir := -1
 	var warp := w as Warp
-	if warp != null and warp.exit_dir >= 0:
+	if warp != null and warp.exit_dir == Warp.EXIT_DIR_FACING:
+		# Task_ExitNonAnimDoor: no fixed direction, just keep going the way you
+		# were already walking.
+		dir = _facing
+	elif warp != null and warp.exit_dir >= 0:
 		dir = warp.exit_dir
 	elif manager.collision_at(_cell) != 0:
 		dir = StepResolver.Dir.SOUTH

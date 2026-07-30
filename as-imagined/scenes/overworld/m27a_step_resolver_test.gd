@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 410
+const EXPECTED_TOTAL := 416
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -112,6 +112,9 @@ const EXIT_ASSERTIONS := 10
 
 ## [M27C C5-4] Section AH drives the Pokecentre escalator.
 const ESCALATOR_ASSERTIONS := 8
+
+## [M27C C5-4] Section AI drives the Route 2 forest gate.
+const NON_ANIM_DOOR_ASSERTIONS := 6
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -194,6 +197,7 @@ func _ready() -> void:
 	await _test_door_geometry()
 	await _test_leaving_a_building()
 	await _test_escalator()
+	await _test_non_anim_doors()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -1051,10 +1055,13 @@ func _test_events_mode_table() -> void:
 	_chk("S.06 and stays empty for an undefined constant",
 			MapConstants.scene_path_for("MAP_NOT_A_REAL_PLACE") == "")
 	# A known interior nobody has baked: the dangling stem this mode draws.
-	# Was Viridian City's gym until M27C baked it; Pewter's is the same shape
-	# and still unbaked. This whole assertion retires once every interior is in.
-	_chk("S.07 a known-but-unbaked interior reads as not baked",
-			not MapConstants.is_baked("MAP_PEWTER_CITY_GYM"))
+	# This fixture has now moved TWICE — Viridian's gym, then Pewter's, each
+	# baked out from under it. So it is pinned to a map that cannot move:
+	# TradeCenter and UnionRoom are PERMANENTLY excluded (link-cable rooms, see
+	# decisions.md), which makes "known but never baked" a property of the
+	# fixture rather than a race against the bake list.
+	_chk("S.07 a permanently-excluded map reads as not baked",
+			not MapConstants.is_baked("MAP_TRADE_CENTER_FRLG"))
 
 	# The overlay must survive being asked about events with no map under it.
 	var orphan := MapOverlay.new()
@@ -2460,7 +2467,12 @@ func _test_warp_dispatch() -> void:
 	# empty region rather than simply doing nothing.
 	var chunks_before: int = man.loaded_chunks().size()
 	var dead := Warp.new()
-	dead.dest_map = "MAP_PEWTER_CITY_GYM"
+	# Permanently excluded rather than merely not-yet-baked. Pewter's gym was
+	# used here and then got baked, at which point this "dead door" warped for
+	# real — unloading the chunk that owned `door` and taking the remaining ten
+	# assertions of this section down with it. A fixture that can be baked is a
+	# fixture that will be.
+	dead.dest_map = "MAP_TRADE_CENTER_FRLG"
 	await ow._do_warp(dead)
 	_chk("AE.06 a dead door changes nothing rather than stranding the player",
 			man.loaded_chunks().size() == chunks_before
@@ -2761,3 +2773,81 @@ func _test_escalator() -> void:
 			man.chunk_owning(ow._cell) == "ViridianCity_PokemonCenter_1F_Frlg")
 
 	ow.queue_free()
+
+
+## Section AI — [M27C C5-4] non-animated doors, and Viridian Forest's reachability.
+##
+## `exit_dir` now covers all four of source's arrival kinds, and this section
+## exists for the one that needed a sentinel: `Task_ExitNonAnimDoor` walks in
+## the player's FACING direction, which no fixed value can hold. It was left
+## unstamped as unreachable — and stopped being unreachable the moment the
+## corridor grew to 32 maps, which put 13 of them in play, five on Route 2 and
+## three inside the forest.
+##
+## AI.05 pins something the bake nearly shipped without: Viridian Forest has NO
+## connections at all, so it is reachable only through gate buildings. With
+## those unbaked it was a 54x69 map with no way in, and nothing would have said
+## so.
+func _test_non_anim_doors() -> void:
+	if not ResourceLoader.exists(
+			"res://scenes/maps/Route2_ViridianForest_SouthEntrance_Frlg.tscn"):
+		_gated += NON_ANIM_DOOR_ASSERTIONS
+		return
+
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	ow.start_map = "Route2_ViridianForest_SouthEntrance_Frlg"
+	add_child(ow)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var man: MapManager = ow.manager
+	var o := man.origin_of("Route2_ViridianForest_SouthEntrance_Frlg")
+	var gate_door: Vector2i = o + Vector2i(7, 1)
+
+	var w := man.warp_at(gate_door)
+	_chk("AI.01 the gate's forest door carries the FACING sentinel",
+			w != null and w.exit_dir == Warp.EXIT_DIR_FACING)
+	# Unlike a door, it is walkable — so the solid-tile fallback could never
+	# have covered it either. Both inference rules missed this one.
+	_chk("AI.02 on a walkable tile, so neither exit rule would have caught it",
+			man.collision_at(gate_door) == 0)
+
+	# --- in ---
+	_stand_at(ow, gate_door + Vector2i(0, 1))
+	ow._facing = StepResolver.Dir.NORTH
+	ow._try_step(StepResolver.Dir.NORTH)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AI.03 walking north into it enters Viridian Forest",
+			man.chunk_owning(ow._cell) == "ViridianForest_Frlg")
+	# The forest side is an ARROW warp, and source moves nobody off one
+	# (Task_ExitNonDoor). Staying on it is correct: you press south to go back,
+	# which needs no step off first.
+	var here := man.warp_at(ow._cell)
+	_chk("AI.04 arriving on an arrow warp deliberately does NOT step off",
+			here != null and here.exit_dir == -1
+			and here.arrow_dir == StepResolver.Dir.SOUTH)
+
+	# --- back, which is where the sentinel earns its place ---
+	ow._facing = StepResolver.Dir.SOUTH
+	ow._try_step(StepResolver.Dir.SOUTH)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AI.05 and returning steps off the door the way you were walking",
+			man.chunk_owning(ow._cell)
+				== "Route2_ViridianForest_SouthEntrance_Frlg"
+			and man.warp_at(ow._cell) == null)
+
+	ow.queue_free()
+
+	# Structural, not driven: the forest has no connections, so if nothing baked
+	# warps into it there is no way in and no error either.
+	var data := load("res://scenes/maps/ViridianForest_Frlg_data.tres") as MapData
+	var ways_in := 0
+	for f in DirAccess.open("res://scenes/maps").get_files():
+		if not f.ends_with(".tscn"):
+			continue
+		var root: Node2D = (load("res://scenes/maps/%s" % f) as PackedScene).instantiate() as Node2D
+		for n in root.find_children("*", "Warp", true, false):
+			if MapConstants.map_name_for((n as Warp).dest_map) == "ViridianForest_Frlg":
+				ways_in += 1
+		root.free()
+	_chk("AI.06 Viridian Forest has no connections, so warps are the only way in",
+			data != null and data.connections.is_empty() and ways_in > 0)

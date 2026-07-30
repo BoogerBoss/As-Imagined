@@ -7,20 +7,20 @@
 [ext_resource type="Script" path="res://scripts/overworld/entities/trigger.gd" id="5_x016o"]
 [ext_resource type="Script" path="res://scripts/overworld/entities/sign.gd" id="6_eutyo"]
 
-[node name="PalletTown_ProfessorOaksLab_Frlg" type="Node2D" unique_id=599342487]
+[node name="PalletTown_ProfessorOaksLab_Frlg" type="Node2D" unique_id=702373837]
 
-[node name="Ground" type="TileMapLayer" parent="." unique_id=2028122615]
+[node name="Ground" type="TileMapLayer" parent="." unique_id=1324678086]
 tile_map_data = PackedByteArray("AAAAAAAAAAAdABQAAAABAAAAAAANAAMAAAACAAAAAAANAAMAAAADAAAAAAAOAAMAAAAEAAAAAAAJAAMAAAAFAAAAAAAJAAMAAAAGAAAAAAANABQAAAAHAAAAAAANABQAAAAIAAAAAAAYAAQAAAAJAAAAAAALAAMAAAAKAAAAAAAMAAMAAAALAAAAAAALAAMAAAAMAAAAAAAMAAMAAAAAAAEAAAANABUAAAABAAEAAAAGABUAAAACAAEAAAAVAAMAAAADAAEAAAAWAAMAAAAEAAEAAAAFAAQAAAAFAAEAAAAGAAQAAAAGAAEAAAAVABQAAAAHAAEAAAAVABQAAAAIAAEAAAAAAAUAAAAJAAEAAAATAAMAAAAKAAEAAAAUAAMAAAALAAEAAAATAAMAAAAMAAEAAAAUAAMAAAAAAAIAAAAVABUAAAABAAIAAAAWABUAAAACAAIAAAAFABQAAAADAAIAAAAGABQAAAAEAAIAAAAFABQAAAAFAAIAAAAGABQAAAAGAAIAAAABABQAAAAHAAIAAAABABQAAAAIAAIAAAABABQAAAAJAAIAAAADABQAAAAKAAIAAAAEABQAAAALAAIAAAADABQAAAAMAAIAAAAEABQAAAAAAAMAAAAfABQAAAAAAAQAAAAfABQAAAABAAQAAAALABUAAAACAAQAAAAMABUAAAAIAAQAAAAIABUAAAAJAAQAAAAJABUAAAAKAAQAAAAKABUAAAABAAUAAAATABUAAAACAAUAAAAUABUAAAAIAAUAAAAQABUAAAAJAAUAAAARABUAAAAKAAUAAAASABUAAAAAAAgAAAATAAMAAAABAAgAAAATAAMAAAACAAgAAAAUAAMAAAADAAgAAAATAAMAAAAEAAgAAAAUAAMAAAAIAAgAAAATAAMAAAAJAAgAAAAUAAMAAAAKAAgAAAATAAMAAAALAAgAAAAUAAMAAAAMAAgAAAAUAAMAAAAAAAkAAAAHABQAAAABAAkAAAADABQAAAACAAkAAAAEABQAAAADAAkAAAADABQAAAAEAAkAAAAEABQAAAAIAAkAAAADABQAAAAJAAkAAAAEABQAAAAKAAkAAAADABQAAAALAAkAAAAEABQAAAAMAAkAAAAEABQAAAAAAAwAAAAbABQAAAAFAAwAAAAQABQAAAAGAAwAAAARABQAAAAHAAwAAAASABQAAAAMAAwAAAAcABQAAAAFAA0AAAAYABQAAAAGAA0AAAAZABQAAAAHAA0AAAAaABQAAAA=")
 tile_set = ExtResource("1_hij28")
 
-[node name="Objects" type="TileMapLayer" parent="." unique_id=1397594226]
+[node name="Objects" type="TileMapLayer" parent="." unique_id=775105150]
 tile_map_data = PackedByteArray("AAAAAAAAAQAdABQAAAABAAAAAQANAAMAAAACAAAAAQANAAMAAAADAAAAAQAOAAMAAAAEAAAAAQAJAAMAAAAFAAAAAQAJAAMAAAAGAAAAAQANABQAAAAHAAAAAQANABQAAAAIAAAAAQAYAAQAAAAJAAAAAQALAAMAAAAKAAAAAQAMAAMAAAALAAAAAQALAAMAAAAMAAAAAQAMAAMAAAAAAAEAAQANABUAAAABAAEAAQAGABUAAAACAAEAAQAVAAMAAAADAAEAAQAWAAMAAAAEAAEAAQAFAAQAAAAFAAEAAQAGAAQAAAAGAAEAAQAVABQAAAAHAAEAAQAVABQAAAAIAAEAAQAAAAUAAAAJAAEAAQATAAMAAAAKAAEAAQAUAAMAAAALAAEAAQATAAMAAAAMAAEAAQAUAAMAAAAAAAIAAQAVABUAAAABAAIAAQAWABUAAAACAAIAAQAFABQAAAADAAIAAQAGABQAAAAEAAIAAQAFABQAAAAFAAIAAQAGABQAAAAGAAIAAQABABQAAAAHAAIAAQABABQAAAAIAAIAAQABABQAAAAJAAIAAQADABQAAAAKAAIAAQAEABQAAAALAAIAAQADABQAAAAMAAIAAQAEABQAAAAAAAMAAQAfABQAAAABAAMAAQADABUAAAACAAMAAQAEABUAAAADAAMAAQAJABQAAAAEAAMAAQAJABQAAAAFAAMAAQAJABQAAAAGAAMAAQAJABQAAAAHAAMAAQAJABQAAAAIAAMAAQAJABQAAAAJAAMAAQAJABQAAAAKAAMAAQAJABQAAAALAAMAAQAJABQAAAAMAAMAAQAJABQAAAAAAAQAAQAfABQAAAABAAQAAQALABUAAAACAAQAAQAMABUAAAADAAQAAQAJABQAAAAEAAQAAQAJABQAAAAFAAQAAQAJABQAAAAGAAQAAQAJABQAAAAHAAQAAQAJABQAAAAIAAQAAQAIABUAAAAJAAQAAQAJABUAAAAKAAQAAQAKABUAAAALAAQAAQAJABQAAAAMAAQAAQAJABQAAAAAAAUAAQAIABQAAAABAAUAAQATABUAAAACAAUAAQAUABUAAAADAAUAAQAJABQAAAAEAAUAAQAJABQAAAAFAAUAAQAJABQAAAAGAAUAAQAJABQAAAAHAAUAAQAJABQAAAAIAAUAAQAQABUAAAAJAAUAAQARABUAAAAKAAUAAQASABUAAAALAAUAAQAJABQAAAAMAAUAAQAJABQAAAAAAAYAAQAIABQAAAABAAYAAQAJABQAAAACAAYAAQAJABQAAAADAAYAAQAJABQAAAAEAAYAAQAJABQAAAAFAAYAAQAJABQAAAAGAAYAAQAJABQAAAAHAAYAAQAJABQAAAAIAAYAAQAJABQAAAAJAAYAAQAJABQAAAAKAAYAAQAJABQAAAALAAYAAQAJABQAAAAMAAYAAQAJABQAAAAAAAcAAQAaABUAAAABAAcAAQALABQAAAACAAcAAQAMABQAAAADAAcAAQALABQAAAAEAAcAAQAMABQAAAAFAAcAAQAJABQAAAAGAAcAAQAJABQAAAAHAAcAAQAJABQAAAAIAAcAAQALABQAAAAJAAcAAQAMABQAAAAKAAcAAQALABQAAAALAAcAAQAMABQAAAAMAAcAAQAMABQAAAAAAAgAAQATAAMAAAABAAgAAQATAAMAAAACAAgAAQAUAAMAAAADAAgAAQATAAMAAAAEAAgAAQAUAAMAAAAFAAgAAQAJABQAAAAGAAgAAQAJABQAAAAHAAgAAQAJABQAAAAIAAgAAQATAAMAAAAJAAgAAQAUAAMAAAAKAAgAAQATAAMAAAALAAgAAQAUAAMAAAAMAAgAAQAUAAMAAAAAAAkAAQAHABQAAAABAAkAAQADABQAAAACAAkAAQAEABQAAAADAAkAAQADABQAAAAEAAkAAQAEABQAAAAFAAkAAQAJABQAAAAGAAkAAQAJABQAAAAHAAkAAQAJABQAAAAIAAkAAQADABQAAAAJAAkAAQAEABQAAAAKAAkAAQADABQAAAALAAkAAQAEABQAAAAMAAkAAQAEABQAAAAAAAoAAQAIABQAAAABAAoAAQAJABQAAAACAAoAAQAJABQAAAADAAoAAQAJABQAAAAEAAoAAQAJABQAAAAFAAoAAQAJABQAAAAGAAoAAQAJABQAAAAHAAoAAQAJABQAAAAIAAoAAQAJABQAAAAJAAoAAQAJABQAAAAKAAoAAQAJABQAAAALAAoAAQAJABQAAAAMAAoAAQAJABQAAAAAAAsAAQATABQAAAABAAsAAQAJABQAAAACAAsAAQAJABQAAAADAAsAAQAJABQAAAAEAAsAAQAJABQAAAAFAAsAAQAJABQAAAAGAAsAAQAJABQAAAAHAAsAAQAJABQAAAAIAAsAAQAJABQAAAAJAAsAAQAJABQAAAAKAAsAAQAJABQAAAALAAsAAQAJABQAAAAMAAsAAQAUABQAAAAAAAwAAQAbABQAAAABAAwAAQAJABQAAAACAAwAAQAJABQAAAADAAwAAQAJABQAAAAEAAwAAQAJABQAAAAFAAwAAQAQABQAAAAGAAwAAQARABQAAAAHAAwAAQASABQAAAAIAAwAAQAJABQAAAAJAAwAAQAJABQAAAAKAAwAAQAJABQAAAALAAwAAQAJABQAAAAMAAwAAQAcABQAAAAAAA0AAQAIAAAAAAABAA0AAQAIAAAAAAACAA0AAQAIAAAAAAADAA0AAQAIAAAAAAAEAA0AAQAIAAAAAAAFAA0AAQAYABQAAAAGAA0AAQAZABQAAAAHAA0AAQAaABQAAAAIAA0AAQAIAAAAAAAJAA0AAQAIAAAAAAAKAA0AAQAIAAAAAAALAA0AAQAIAAAAAAAMAA0AAQAIAAAAAAA=")
 tile_set = ExtResource("1_hij28")
 
-[node name="Entities_P2" type="Node2D" parent="." unique_id=374149524]
+[node name="Entities_P2" type="Node2D" parent="." unique_id=247717194]
 y_sort_enabled = true
 
-[node name="Npc_3_11" type="Node2D" parent="Entities_P2" unique_id=883083606]
+[node name="Npc_3_11" type="Node2D" parent="Entities_P2" unique_id=18779657]
 position = Vector2(48, 176)
 script = ExtResource("2_3g7t1")
 graphics_id = "OBJ_EVENT_GFX_SCIENTIST"
@@ -28,7 +28,7 @@ movement_type = "MOVEMENT_TYPE_LOOK_AROUND"
 cell = Vector2i(3, 11)
 script_label = "PalletTown_ProfessorOaksLab_EventScript_Aide1"
 
-[node name="Npc_2_10" type="Node2D" parent="Entities_P2" unique_id=1597298640]
+[node name="Npc_2_10" type="Node2D" parent="Entities_P2" unique_id=1466156589]
 position = Vector2(32, 160)
 script = ExtResource("2_3g7t1")
 graphics_id = "OBJ_EVENT_GFX_WORKER_F"
@@ -36,7 +36,7 @@ movement_type = "MOVEMENT_TYPE_WANDER_UP_AND_DOWN"
 cell = Vector2i(2, 10)
 script_label = "PalletTown_ProfessorOaksLab_EventScript_Aide3"
 
-[node name="Npc_11_10" type="Node2D" parent="Entities_P2" unique_id=1483780377]
+[node name="Npc_11_10" type="Node2D" parent="Entities_P2" unique_id=162267848]
 position = Vector2(176, 160)
 script = ExtResource("2_3g7t1")
 graphics_id = "OBJ_EVENT_GFX_SCIENTIST"
@@ -44,7 +44,7 @@ movement_type = "MOVEMENT_TYPE_LOOK_AROUND"
 cell = Vector2i(11, 10)
 script_label = "PalletTown_ProfessorOaksLab_EventScript_Aide2"
 
-[node name="Npc_6_3" type="Node2D" parent="Entities_P2" unique_id=1736468299]
+[node name="Npc_6_3" type="Node2D" parent="Entities_P2" unique_id=319044930]
 position = Vector2(96, 48)
 script = ExtResource("2_3g7t1")
 graphics_id = "OBJ_EVENT_GFX_PROF_OAK"
@@ -54,7 +54,7 @@ cell = Vector2i(6, 3)
 visibility_flag = "FLAG_HIDE_OAK_IN_HIS_LAB"
 script_label = "PalletTown_ProfessorOaksLab_EventScript_ProfOak"
 
-[node name="ItemBall_8_4" type="Node2D" parent="Entities_P2" unique_id=1123261450]
+[node name="ItemBall_8_4" type="Node2D" parent="Entities_P2" unique_id=2090174443]
 position = Vector2(128, 64)
 script = ExtResource("3_cso3j")
 local_id = "LOCALID_BULBASAUR_BALL"
@@ -63,7 +63,7 @@ elevation = 0
 visibility_flag = "FLAG_HIDE_BULBASAUR_BALL"
 script_label = "PalletTown_ProfessorOaksLab_EventScript_BulbasaurBall"
 
-[node name="ItemBall_9_4" type="Node2D" parent="Entities_P2" unique_id=1589007605]
+[node name="ItemBall_9_4" type="Node2D" parent="Entities_P2" unique_id=1607007224]
 position = Vector2(144, 64)
 script = ExtResource("3_cso3j")
 local_id = "LOCALID_SQUIRTLE_BALL"
@@ -72,7 +72,7 @@ elevation = 0
 visibility_flag = "FLAG_HIDE_SQUIRTLE_BALL"
 script_label = "PalletTown_ProfessorOaksLab_EventScript_SquirtleBall"
 
-[node name="ItemBall_10_4" type="Node2D" parent="Entities_P2" unique_id=977430565]
+[node name="ItemBall_10_4" type="Node2D" parent="Entities_P2" unique_id=1324184865]
 position = Vector2(160, 64)
 script = ExtResource("3_cso3j")
 local_id = "LOCALID_CHARMANDER_BALL"
@@ -81,7 +81,7 @@ elevation = 0
 visibility_flag = "FLAG_HIDE_CHARMANDER_BALL"
 script_label = "PalletTown_ProfessorOaksLab_EventScript_CharmanderBall"
 
-[node name="Npc_5_4" type="Node2D" parent="Entities_P2" unique_id=1914981604]
+[node name="Npc_5_4" type="Node2D" parent="Entities_P2" unique_id=1921887926]
 position = Vector2(80, 64)
 script = ExtResource("2_3g7t1")
 graphics_id = "OBJ_EVENT_GFX_BLUE"
@@ -91,7 +91,7 @@ cell = Vector2i(5, 4)
 visibility_flag = "FLAG_HIDE_RIVAL_IN_LAB"
 script_label = "PalletTown_ProfessorOaksLab_EventScript_Rival"
 
-[node name="Npc_4_1" type="Node2D" parent="Entities_P2" unique_id=1710279841]
+[node name="Npc_4_1" type="Node2D" parent="Entities_P2" unique_id=1958214692]
 position = Vector2(64, 16)
 script = ExtResource("2_3g7t1")
 graphics_id = "OBJ_EVENT_GFX_POKEDEX"
@@ -102,7 +102,7 @@ elevation = 0
 visibility_flag = "FLAG_HIDE_POKEDEX"
 script_label = "PalletTown_ProfessorOaksLab_EventScript_Pokedex"
 
-[node name="Npc_5_1" type="Node2D" parent="Entities_P2" unique_id=759249422]
+[node name="Npc_5_1" type="Node2D" parent="Entities_P2" unique_id=1170539521]
 position = Vector2(80, 16)
 script = ExtResource("2_3g7t1")
 graphics_id = "OBJ_EVENT_GFX_POKEDEX"
@@ -113,16 +113,16 @@ elevation = 0
 visibility_flag = "FLAG_HIDE_POKEDEX"
 script_label = "PalletTown_ProfessorOaksLab_EventScript_Pokedex"
 
-[node name="Overhangs" type="TileMapLayer" parent="." unique_id=1606940834]
+[node name="Overhangs" type="TileMapLayer" parent="." unique_id=1842890043]
 tile_map_data = PackedByteArray("AAABAAMAAgADABUAAAACAAMAAgAEABUAAAADAAMAAgAJABQAAAAEAAMAAgAJABQAAAAFAAMAAgAJABQAAAAGAAMAAgAJABQAAAAHAAMAAgAJABQAAAAIAAMAAgAJABQAAAAJAAMAAgAJABQAAAAKAAMAAgAJABQAAAALAAMAAgAJABQAAAAMAAMAAgAJABQAAAADAAQAAgAJABQAAAAEAAQAAgAJABQAAAAFAAQAAgAJABQAAAAGAAQAAgAJABQAAAAHAAQAAgAJABQAAAALAAQAAgAJABQAAAAMAAQAAgAJABQAAAAAAAUAAgAIABQAAAADAAUAAgAJABQAAAAEAAUAAgAJABQAAAAFAAUAAgAJABQAAAAGAAUAAgAJABQAAAAHAAUAAgAJABQAAAALAAUAAgAJABQAAAAMAAUAAgAJABQAAAAAAAYAAgAIABQAAAABAAYAAgAJABQAAAACAAYAAgAJABQAAAADAAYAAgAJABQAAAAEAAYAAgAJABQAAAAFAAYAAgAJABQAAAAGAAYAAgAJABQAAAAHAAYAAgAJABQAAAAIAAYAAgAJABQAAAAJAAYAAgAJABQAAAAKAAYAAgAJABQAAAALAAYAAgAJABQAAAAMAAYAAgAJABQAAAAAAAcAAgAaABUAAAABAAcAAgALABQAAAACAAcAAgAMABQAAAADAAcAAgALABQAAAAEAAcAAgAMABQAAAAFAAcAAgAJABQAAAAGAAcAAgAJABQAAAAHAAcAAgAJABQAAAAIAAcAAgALABQAAAAJAAcAAgAMABQAAAAKAAcAAgALABQAAAALAAcAAgAMABQAAAAMAAcAAgAMABQAAAAFAAgAAgAJABQAAAAGAAgAAgAJABQAAAAHAAgAAgAJABQAAAAFAAkAAgAJABQAAAAGAAkAAgAJABQAAAAHAAkAAgAJABQAAAAAAAoAAgAIABQAAAABAAoAAgAJABQAAAACAAoAAgAJABQAAAADAAoAAgAJABQAAAAEAAoAAgAJABQAAAAFAAoAAgAJABQAAAAGAAoAAgAJABQAAAAHAAoAAgAJABQAAAAIAAoAAgAJABQAAAAJAAoAAgAJABQAAAAKAAoAAgAJABQAAAALAAoAAgAJABQAAAAMAAoAAgAJABQAAAAAAAsAAgATABQAAAABAAsAAgAJABQAAAACAAsAAgAJABQAAAADAAsAAgAJABQAAAAEAAsAAgAJABQAAAAFAAsAAgAJABQAAAAGAAsAAgAJABQAAAAHAAsAAgAJABQAAAAIAAsAAgAJABQAAAAJAAsAAgAJABQAAAAKAAsAAgAJABQAAAALAAsAAgAJABQAAAAMAAsAAgAUABQAAAABAAwAAgAJABQAAAACAAwAAgAJABQAAAADAAwAAgAJABQAAAAEAAwAAgAJABQAAAAIAAwAAgAJABQAAAAJAAwAAgAJABQAAAAKAAwAAgAJABQAAAALAAwAAgAJABQAAAAAAA0AAgAIAAAAAAABAA0AAgAIAAAAAAACAA0AAgAIAAAAAAADAA0AAgAIAAAAAAAEAA0AAgAIAAAAAAAIAA0AAgAIAAAAAAAJAA0AAgAIAAAAAAAKAA0AAgAIAAAAAAALAA0AAgAIAAAAAAAMAA0AAgAIAAAAAAA=")
 tile_set = ExtResource("1_hij28")
 
-[node name="Entities_P1" type="Node2D" parent="." unique_id=41245914]
+[node name="Entities_P1" type="Node2D" parent="." unique_id=1939674947]
 y_sort_enabled = true
 
-[node name="Triggers" type="Node2D" parent="." unique_id=1082852921]
+[node name="Triggers" type="Node2D" parent="." unique_id=1445080807]
 
-[node name="Warp_6_12" type="Node2D" parent="Triggers" unique_id=954684950]
+[node name="Warp_6_12" type="Node2D" parent="Triggers" unique_id=869685883]
 position = Vector2(96, 192)
 script = ExtResource("4_f7uh1")
 warp_id = 0
@@ -131,7 +131,7 @@ dest_warp_id = 2
 arrow_dir = 0
 cell = Vector2i(6, 12)
 
-[node name="Warp_7_12" type="Node2D" parent="Triggers" unique_id=1652868204]
+[node name="Warp_7_12" type="Node2D" parent="Triggers" unique_id=1077319431]
 position = Vector2(112, 192)
 script = ExtResource("4_f7uh1")
 warp_id = 1
@@ -140,7 +140,7 @@ dest_warp_id = 2
 triggers = false
 cell = Vector2i(7, 12)
 
-[node name="Warp_5_12" type="Node2D" parent="Triggers" unique_id=1896969514]
+[node name="Warp_5_12" type="Node2D" parent="Triggers" unique_id=1011940787]
 position = Vector2(80, 192)
 script = ExtResource("4_f7uh1")
 warp_id = 2
@@ -149,7 +149,7 @@ dest_warp_id = 2
 triggers = false
 cell = Vector2i(5, 12)
 
-[node name="Trigger_5_8" type="Node2D" parent="Triggers" unique_id=185968563]
+[node name="Trigger_5_8" type="Node2D" parent="Triggers" unique_id=1705608553]
 position = Vector2(80, 128)
 script = ExtResource("5_x016o")
 var_name = "VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB"
@@ -157,7 +157,7 @@ var_value = 2
 cell = Vector2i(5, 8)
 script_label = "PalletTown_ProfessorOaksLab_EventScript_LeaveStarterSceneTrigger"
 
-[node name="Trigger_6_8" type="Node2D" parent="Triggers" unique_id=1132464781]
+[node name="Trigger_6_8" type="Node2D" parent="Triggers" unique_id=873708231]
 position = Vector2(96, 128)
 script = ExtResource("5_x016o")
 var_name = "VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB"
@@ -165,7 +165,7 @@ var_value = 2
 cell = Vector2i(6, 8)
 script_label = "PalletTown_ProfessorOaksLab_EventScript_LeaveStarterSceneTrigger"
 
-[node name="Trigger_7_8" type="Node2D" parent="Triggers" unique_id=1665099504]
+[node name="Trigger_7_8" type="Node2D" parent="Triggers" unique_id=128363624]
 position = Vector2(112, 128)
 script = ExtResource("5_x016o")
 var_name = "VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB"
@@ -173,7 +173,7 @@ var_value = 2
 cell = Vector2i(7, 8)
 script_label = "PalletTown_ProfessorOaksLab_EventScript_LeaveStarterSceneTrigger"
 
-[node name="Trigger_5_8_2" type="Node2D" parent="Triggers" unique_id=1851896447]
+[node name="Trigger_5_8_2" type="Node2D" parent="Triggers" unique_id=424409524]
 position = Vector2(80, 128)
 script = ExtResource("5_x016o")
 var_name = "VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB"
@@ -181,7 +181,7 @@ var_value = 3
 cell = Vector2i(5, 8)
 script_label = "PalletTown_ProfessorOaksLab_EventScript_RivalBattleTriggerLeft"
 
-[node name="Trigger_6_8_2" type="Node2D" parent="Triggers" unique_id=837120557]
+[node name="Trigger_6_8_2" type="Node2D" parent="Triggers" unique_id=293712424]
 position = Vector2(96, 128)
 script = ExtResource("5_x016o")
 var_name = "VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB"
@@ -189,7 +189,7 @@ var_value = 3
 cell = Vector2i(6, 8)
 script_label = "PalletTown_ProfessorOaksLab_EventScript_RivalBattleTriggerMid"
 
-[node name="Trigger_7_8_2" type="Node2D" parent="Triggers" unique_id=1489466193]
+[node name="Trigger_7_8_2" type="Node2D" parent="Triggers" unique_id=518964847]
 position = Vector2(112, 128)
 script = ExtResource("5_x016o")
 var_name = "VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB"
@@ -197,28 +197,28 @@ var_value = 3
 cell = Vector2i(7, 8)
 script_label = "PalletTown_ProfessorOaksLab_EventScript_RivalBattleTriggerRight"
 
-[node name="Sign_2_1" type="Node2D" parent="Triggers" unique_id=894522626]
+[node name="Sign_2_1" type="Node2D" parent="Triggers" unique_id=1046627273]
 position = Vector2(32, 16)
 script = ExtResource("6_eutyo")
 cell = Vector2i(2, 1)
 elevation = 0
 script_label = "PalletTown_ProfessorOaksLab_EventScript_Computer"
 
-[node name="Sign_3_1" type="Node2D" parent="Triggers" unique_id=725377514]
+[node name="Sign_3_1" type="Node2D" parent="Triggers" unique_id=2039998451]
 position = Vector2(48, 16)
 script = ExtResource("6_eutyo")
 cell = Vector2i(3, 1)
 elevation = 0
 script_label = "PalletTown_ProfessorOaksLab_EventScript_Computer"
 
-[node name="Sign_6_1" type="Node2D" parent="Triggers" unique_id=569183465]
+[node name="Sign_6_1" type="Node2D" parent="Triggers" unique_id=1231954413]
 position = Vector2(96, 16)
 script = ExtResource("6_eutyo")
 cell = Vector2i(6, 1)
 elevation = 0
 script_label = "PalletTown_ProfessorOaksLab_EventScript_LeftSign"
 
-[node name="Sign_7_1" type="Node2D" parent="Triggers" unique_id=459364041]
+[node name="Sign_7_1" type="Node2D" parent="Triggers" unique_id=612849502]
 position = Vector2(112, 16)
 script = ExtResource("6_eutyo")
 cell = Vector2i(7, 1)

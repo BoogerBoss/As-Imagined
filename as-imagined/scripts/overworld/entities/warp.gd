@@ -64,6 +64,14 @@ extends OverworldEntity
 ## doors, and then again for the Pokecentre escalator.
 @export var exit_dir: int = -1
 
+## `exit_dir` sentinel: walk whichever way the player is already facing.
+##
+## `Task_ExitNonAnimDoor` uses `GetPlayerFacingDirection()`, so there is no
+## fixed direction to store. It also falls out correct: you enter a building
+## walking north and continue north off the mat; you leave the forest walking
+## south and continue south into the gate.
+const EXIT_DIR_FACING := -2
+
 ## Does stepping here actually warp you?
 ##
 ## [M27C C5] This project DECOUPLES "a warp is here" from "this tile is a door".

@@ -815,13 +815,17 @@ def extract_connections(mp):
 # elevation-4 shelf entered only from the east, so walking east off one is
 # exactly the reverse of getting on.
 #
-# MB_NON_ANIMATED_DOOR is deliberately absent. `Task_ExitNonAnimDoor` walks in
-# the player's FACING direction, which is not a fixed value this table can hold;
-# all 90 of them arrive on walkable tiles, so leaving them unstamped strands
-# nobody. Flagged rather than guessed.
+# MB_NON_ANIMATED_DOOR was left out at first because `Task_ExitNonAnimDoor`
+# walks in the player's FACING direction, which no fixed value can express. It
+# is in now, as the -2 sentinel: the gap stopped being theoretical the moment
+# the corridor grew to 32 maps, which put 13 of them in reachable territory —
+# five on Route 2 and three inside Viridian Forest.
+# -2 = walk whichever way the player is already facing, which no fixed value
+# can express. See Warp.EXIT_DIR_FACING.
 EXIT_WARP_DIRS = {
-    105: 0,           # ANIMATED_DOOR   -> SOUTH (Task_ExitDoor)
-    106: 3, 107: 3,   # UP/DOWN_ESCALATOR -> EAST (EscalatorWarpIn_End)
+    105: 0,           # ANIMATED_DOOR      -> SOUTH  (Task_ExitDoor)
+    106: 3, 107: 3,   # UP/DOWN_ESCALATOR  -> EAST   (EscalatorWarpIn_End)
+    96: -2,           # NON_ANIMATED_DOOR  -> FACING (Task_ExitNonAnimDoor)
 }
 
 
