@@ -800,6 +800,31 @@ def extract_connections(mp):
 # Sets are source's own (`MetatileBehavior_Is*ArrowWarp`), which are wider than
 # the ARROW_WARP names alone — water-south and the shoal entrance count as
 # south, the abandoned-ship stairs as north.
+# [M27C C5-4] Which way you are walked when you ARRIVE on a warp. Distinct from
+# ARROW_WARP_DIRS above, which is the direction you PRESS to depart — both live
+# on the same warp and describe opposite halves of using it.
+#
+# Source spreads this across two files and four tasks, which is why the first
+# cut only found half of it: `SetUpWarpExitTask` (field_screen_effect.c) sends a
+# door to `Task_ExitDoor` -> WALK_NORMAL_DOWN and everything else to
+# `Task_ExitNonDoor` -> no movement, while an escalator never reaches that
+# dispatch at all and is instead ridden in by `Task_EscalatorWarpIn`
+# (field_effect.c), whose `EscalatorWarpIn_End` issues DIR_EAST.
+#
+# The escalator direction is corroborated by geometry: all 38 in Kanto sit on an
+# elevation-4 shelf entered only from the east, so walking east off one is
+# exactly the reverse of getting on.
+#
+# MB_NON_ANIMATED_DOOR is deliberately absent. `Task_ExitNonAnimDoor` walks in
+# the player's FACING direction, which is not a fixed value this table can hold;
+# all 90 of them arrive on walkable tiles, so leaving them unstamped strands
+# nobody. Flagged rather than guessed.
+EXIT_WARP_DIRS = {
+    105: 0,           # ANIMATED_DOOR   -> SOUTH (Task_ExitDoor)
+    106: 3, 107: 3,   # UP/DOWN_ESCALATOR -> EAST (EscalatorWarpIn_End)
+}
+
+
 ARROW_WARP_DIRS = {
     100: 1, 27: 1,           # NORTH_ARROW_WARP, STAIRS_OUTSIDE_ABANDONED_SHIP
     101: 0, 109: 0, 28: 0,   # SOUTH_ARROW_WARP, WATER_SOUTH_ARROW_WARP, SHOAL_CAVE_ENTRANCE
@@ -836,6 +861,7 @@ def _stamp_warp_triggers(events, mids, ts, w, h):
         # than a second pass, so the two cannot disagree about a cell.
         beh_id = ts.behavior(mids[y * w + x]) if 0 <= x < w and 0 <= y < h else -1
         e["arrow_dir"] = ARROW_WARP_DIRS.get(beh_id, -1)
+        e["exit_dir"] = EXIT_WARP_DIRS.get(beh_id, -1)
     return events
 
 

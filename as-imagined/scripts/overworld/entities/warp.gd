@@ -50,6 +50,20 @@ extends OverworldEntity
 ## Values are StepResolver.Dir (SOUTH 0, NORTH 1, WEST 2, EAST 3).
 @export var arrow_dir: int = -1
 
+## Which way the player is walked when they ARRIVE on this warp. -1 = stay put.
+##
+## [M27C C5-4] The opposite half of `arrow_dir`: that one is the direction you
+## PRESS to leave, this is the direction you are carried when you land. Source
+## spreads it across two files and four tasks — `SetUpWarpExitTask` sends a door
+## to `Task_ExitDoor` (WALK_NORMAL_DOWN) and everything else to
+## `Task_ExitNonDoor` (no movement), while an escalator bypasses that dispatch
+## entirely and is ridden in by `Task_EscalatorWarpIn`, ending on DIR_EAST.
+##
+## Without it the player is left standing on the thing they just used, which
+## costs a step off and back on to use it again — the defect Rob reported for
+## doors, and then again for the Pokecentre escalator.
+@export var exit_dir: int = -1
+
 ## Does stepping here actually warp you?
 ##
 ## [M27C C5] This project DECOUPLES "a warp is here" from "this tile is a door".

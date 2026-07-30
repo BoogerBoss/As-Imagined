@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 402
+const EXPECTED_TOTAL := 410
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -109,6 +109,9 @@ const DOOR_ASSERTIONS := 5
 
 ## [M27C C5-4] Section AG drives a full enter/leave cycle.
 const EXIT_ASSERTIONS := 10
+
+## [M27C C5-4] Section AH drives the Pokecentre escalator.
+const ESCALATOR_ASSERTIONS := 8
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -190,6 +193,7 @@ func _ready() -> void:
 	await _test_warp_dispatch()
 	await _test_door_geometry()
 	await _test_leaving_a_building()
+	await _test_escalator()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -2692,5 +2696,68 @@ func _test_leaving_a_building() -> void:
 	await get_tree().create_timer(FADE_WAIT).timeout
 	_chk("AG.10 so walking straight back north re-enters, with no step off first",
 			man.chunk_owning(ow._cell) == "PalletTown_ProfessorOaksLab_Frlg")
+
+	ow.queue_free()
+
+
+## Section AH — [M27C C5-4] the escalator, and exit_dir as data.
+##
+## Rob, after the door fix landed: "Excellent except the escalator in the
+## pokecenter." Same defect, different direction — and the reason the door fix
+## missed it is worth pinning: that fix inferred the exit from COLLISION ("a
+## solid arrival tile is a doorway, step south"), which is right for every door
+## in Kanto and says nothing about an escalator, whose tile is walkable.
+##
+## Source keeps the two apart as well, in different files: `SetUpWarpExitTask`
+## never sees an escalator at all, because `Task_EscalatorWarpIn` rides the
+## player in and ends on `DIR_EAST`. So the direction is stamped per warp rather
+## than derived, and AH.03 is the assertion that would have caught the miss.
+func _test_escalator() -> void:
+	if not ResourceLoader.exists(
+			"res://scenes/maps/ViridianCity_PokemonCenter_1F_Frlg.tscn"):
+		_gated += ESCALATOR_ASSERTIONS
+		return
+
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	ow.start_map = "ViridianCity_PokemonCenter_1F_Frlg"
+	add_child(ow)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var man: MapManager = ow.manager
+	var o := man.origin_of("ViridianCity_PokemonCenter_1F_Frlg")
+	var esc: Vector2i = o + Vector2i(1, 6)
+	var shelf: Vector2i = o + Vector2i(2, 6)
+
+	var w := man.warp_at(esc)
+	_chk("AH.01 the escalator is a live warp", w != null)
+	# The premise the door rule got wrong: this tile is perfectly walkable, so
+	# "solid means step off" can never fire for it.
+	_chk("AH.02 on a WALKABLE tile, unlike a door", man.collision_at(esc) == 0)
+	_chk("AH.03 carrying exit_dir EAST, source's own EscalatorWarpIn_End",
+			w != null and w.exit_dir == StepResolver.Dir.EAST)
+
+	# Elevation is why it is only reachable from one side, and why approaching
+	# from below reads as "broken" without being wrong.
+	_chk("AH.04 it sits on an elevation-4 shelf, not the floor's elevation 3",
+			man.elevation_at(esc) == 4 and man.elevation_at(o + Vector2i(1, 7)) == 3)
+	_chk("AH.05 so a step from directly below is a genuine elevation mismatch",
+			ow.resolve_step(o + Vector2i(1, 7), StepResolver.Dir.NORTH, 3)["outcome"]
+			== StepResolver.Outcome.ELEVATION_MISMATCH)
+
+	# --- up ---
+	_stand_at(ow, shelf)
+	ow._try_step(StepResolver.Dir.WEST)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AH.06 stepping onto it from the shelf goes up a floor",
+			man.chunk_owning(ow._cell) == "ViridianCity_PokemonCenter_2F_Frlg")
+	_chk("AH.07 and walks the player EAST off it rather than leaving them on it",
+			man.warp_at(ow._cell) == null and ow._cell == man.origin_of(
+					"ViridianCity_PokemonCenter_2F_Frlg") + Vector2i(2, 6))
+
+	# --- and straight back down, which is the whole complaint ---
+	ow._try_step(StepResolver.Dir.WEST)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AH.08 so one step west goes straight back down, with no shuffling",
+			man.chunk_owning(ow._cell) == "ViridianCity_PokemonCenter_1F_Frlg")
 
 	ow.queue_free()

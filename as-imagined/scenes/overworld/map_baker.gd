@@ -574,6 +574,7 @@ func _build_event_node(e: Dictionary) -> OverworldEntity:
 			# wrong tile silently. See Warp.warp_id.
 			w.warp_id = int(e.get("warp_id", -1))
 			w.arrow_dir = int(e.get("arrow_dir", -1))
+			w.exit_dir = int(e.get("exit_dir", -1))
 			# Absent means true: a hand-added warp, or data predating the flag,
 			# should fire rather than be silently inert.
 			w.triggers = bool(e.get("triggers", true))

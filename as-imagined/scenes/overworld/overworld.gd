@@ -378,7 +378,7 @@ func _do_warp(w: Warp) -> void:
 	manager.refresh_skirts()
 
 	await _fade_to(0.0)
-	await _exit_doorway()
+	await _exit_arrival(arrival.get("warp"))
 	_warping = false
 
 
@@ -400,44 +400,49 @@ func _first_walkable(map_name: String) -> Vector2i:
 	return origin
 
 
-## Step out of the doorway you arrived in.
+## Walk off the thing you just arrived on.
 ##
-## [M27C C5-4] Source lands the player ON the destination warp's tile and then
-## MOVES THEM OFF IT — `SetUpWarpExitTask` picks an exit task by tile kind
-## (`field_screen_effect.c`), and for a door that is `Task_ExitDoor`, which
-## waits for the fade to finish and then issues a literal
-## `MOVEMENT_ACTION_WALK_NORMAL_DOWN`. Omitting it left the player standing in
-## the doorway: it reads wrong, and re-entering needed a step off and back on.
+## [M27C C5-4] Source does this in two unrelated places, which is why the first
+## cut only found one: `SetUpWarpExitTask` (`field_screen_effect.c`) picks an
+## exit task by arrival-tile kind — a door gets `Task_ExitDoor`, which waits for
+## the fade and issues a literal `MOVEMENT_ACTION_WALK_NORMAL_DOWN`, while a
+## ladder or floor warp gets `Task_ExitNonDoor` and moves NOWHERE — and an
+## escalator never reaches that dispatch at all, being ridden in by
+## `Task_EscalatorWarpIn` (`field_effect.c`), which ends on `DIR_EAST`.
 ##
-## The other exit tasks are why this is conditional rather than universal:
-## `Task_ExitNonDoor` — ladders, cave mouths, floor warps — moves the player
-## NOWHERE, and those are exactly the arrivals that are already standing on
-## walkable ground. So the condition is the same one the door ENTRY path uses:
-## a solid arrival tile is a doorway, a walkable one is not. That also makes it
-## a correctness fix rather than presentation — a player left on a solid tile is
-## standing inside a wall.
+## So the direction is a property of the warp you land on, stamped at import
+## (see Warp.exit_dir) rather than inferred here. Inferring it is what produced
+## the escalator bug: the doorway rule below reads "solid arrival tile means
+## step south", which is right for every door and says nothing at all about an
+## escalator, whose tile is perfectly walkable.
 ##
-## SOUTH is source's own literal (`WALK_NORMAL_DOWN`, not the facing direction —
-## that is `Task_ExitNonAnimDoor`'s rule, for a different tile kind), and it is
-## the mirror of the north-only entry rule: measured, every one of the 193
-## animated doors in Kanto has exactly one walkable neighbour and it is the tile
-## to the south.
+## The solid-tile fallback is kept underneath as a safety net for hand-placed
+## warps, which carry no stamp: being left on a solid tile is standing inside a
+## wall, so stepping off is a correctness fix rather than presentation.
 ##
-## Deliberately NOT routed through `_try_step`: this is a scripted movement, not
-## player input, so it must not run the warp check at the far end. Same
-## principle as arriving not counting as a step.
-func _exit_doorway() -> void:
-	if _player == null or manager.collision_at(_cell) == 0:
+## Deliberately NOT routed through `_try_step`: this is scripted movement, not
+## player input, so it must not fire a warp at the far end. Same principle as
+## arriving not counting as a step.
+func _exit_arrival(w: Variant) -> void:
+	if _player == null:
 		return
-	var out: Vector2i = _cell + StepResolver.STEP[StepResolver.Dir.SOUTH]
-	# A doorway with nowhere to step is data this project should not invent a
-	# recovery for — leaving the player put is visible, which is the point.
-	if manager.collision_at(out) != 0 or not manager.in_bounds(out):
-		push_warning("overworld: doorway at %s has no walkable tile south" % _cell)
+	var dir := -1
+	var warp := w as Warp
+	if warp != null and warp.exit_dir >= 0:
+		dir = warp.exit_dir
+	elif manager.collision_at(_cell) != 0:
+		dir = StepResolver.Dir.SOUTH
+	if dir < 0:
+		return
+	var out: Vector2i = _cell + StepResolver.STEP[dir]
+	# Nowhere to step is data this project should not invent a recovery for.
+	# Leaving the player put is visible, which is the point.
+	if not manager.in_bounds(out) or manager.collision_at(out) != 0:
+		push_warning("overworld: arrival at %s cannot step out (dir %d)" % [_cell, dir])
 		return
 	_cell = out
 	_elev = manager.elevation_at(_cell)
-	_facing = StepResolver.Dir.SOUTH
+	_facing = dir
 	_reparent_for_elevation()
 	var t := create_tween()
 	t.tween_property(_player, "position", manager.local_pixel_of(_cell), 0.16)

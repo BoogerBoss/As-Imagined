@@ -1304,6 +1304,18 @@ New `_try_door_warp()` fires on a BLOCKED step, keyed on **collision rather than
 
 **Tests.** Section **AG**, 10 assertions, `EXPECTED_TOTAL` **392 → 402**. AG.01 pins that the outdoor door tile is SOLID, which is why the exit step is correctness rather than polish; AG.05 pins that the interior exit faces a wall, which is why a step-based check could never fire there. Both breaks verified — removing the exit step fails AG.08/AG.09/AG.10, removing arrow dispatch fails AG.07/AG.09. **AE.15 was updated, not weakened**: it asserted the player returns to the door cell, which encoded the bug; it now asserts they end up outside it on walkable ground.
 
+**[M27C C5-4 follow-up — the escalator] COMPLETE — 2026-07-30.** Rob: *"Excellent except the escalator in the pokecenter."* Same defect as the door, different direction — **and the reason the door fix missed it is the lesson.**
+
+That fix inferred the exit from COLLISION: *a solid arrival tile is a doorway, so step south.* Right for all 193 doors in Kanto, and it says nothing whatever about an escalator, whose tile is **walkable**. An inference that happens to be correct across one whole category is not a rule, and this is what it costs to find that out.
+
+**Source keeps them apart too, in different files, which is why one read found only half.** `SetUpWarpExitTask` (`field_screen_effect.c`) never sees an escalator at all — it is ridden in by `Task_EscalatorWarpIn` (`field_effect.c`), whose `EscalatorWarpIn_End` issues `GetWalkNormalMovementAction(DIR_EAST)`. So the exit direction is now **stamped per warp** (`Warp.exit_dir`) rather than derived: `MB_ANIMATED_DOOR` → SOUTH, `MB_UP/DOWN_ESCALATOR` → EAST, everything else → stay put (`Task_ExitNonDoor` genuinely moves nobody). The collision rule survives only as a fallback for hand-placed warps, which carry no stamp.
+
+**Corroborated by geometry rather than trusted from one function:** all **38** escalators in Kanto are identical — elevation 4, at local `(1,6)`, and reachable from exactly one tile, the same-elevation shelf to the EAST. So walking east off one is precisely the reverse of getting on.
+
+**A second finding that is NOT a bug, recorded so it is not "fixed" later:** the escalator sits on an elevation-4 shelf while the floor around it is elevation 3, so **stepping at it from directly below is a real `ELEVATION_MISMATCH`** — source blocks it identically (`IsElevationMismatchAt` treats only 0 and 15 as wildcards). It reads as "the escalator is broken" when you walk into it from the south, and it is correct. AH.04/AH.05 pin it so a later session does not relax the elevation check to "fix" a non-bug.
+
+**Tests.** Section **AH**, 8 assertions, `EXPECTED_TOTAL` **402 → 410**. AH.02/AH.03 are the pair that would have caught the original miss — the tile is walkable, and the direction comes from data. Verified by reverting to the collision-only rule: AH.07 and AH.08 both fail. `MB_NON_ANIMATED_DOOR` is deliberately unstamped and flagged — `Task_ExitNonAnimDoor` walks in the player's FACING direction, which is not a fixed value the table can hold, and all 90 arrive on walkable tiles so nobody is stranded.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **A thirteenth M27 block, orthogonal to C's stitching work.** Added because this is Kanto with an ORIGINAL story: the region's 421 maps are imported, but new maps and new art are inevitable, and **there is currently no way to create either.** Scope of record while this is unbuilt: the approved mockup at `https://claude.ai/code/artifact/0cc55049-a0d4-4675-8b0c-eb33853611b0`. Nothing here is implemented.

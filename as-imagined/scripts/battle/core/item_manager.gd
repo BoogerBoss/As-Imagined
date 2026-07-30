@@ -41,10 +41,10 @@ const HOLD_EFFECT_CHOICE_SCARF:  int = 49
 const HOLD_EFFECT_CHOICE_SPECS:  int = 50
 const HOLD_EFFECT_DAMP_ROCK:     int = 51   # Rain → 8 turns
 const HOLD_EFFECT_GRIP_CLAW:     int = 52   # [M18.5i] Fixes binding-move duration to 7 turns
-                                            # instead of the random 4-5 roll — SetWrapTurns,
-                                            # battle_util.c L10726-10738, B_WRAP_TURNS constant
-                                            # (include/config/battle.h L213). Deferred from
-                                            # [M18.5f], which built the binding mechanic itself.
+											# instead of the random 4-5 roll — SetWrapTurns,
+											# battle_util.c L10726-10738, B_WRAP_TURNS constant
+											# (include/config/battle.h L213). Deferred from
+											# [M18.5f], which built the binding mechanic itself.
 const HOLD_EFFECT_HEAT_ROCK:     int = 53   # Sun → 8 turns
 const HOLD_EFFECT_ICY_ROCK:      int = 54   # Hail → 8 turns
 const HOLD_EFFECT_SMOOTH_ROCK:   int = 56   # Sandstorm → 8 turns
@@ -56,20 +56,20 @@ const HOLD_EFFECT_HEAVY_DUTY_BOOTS: int = 119  # full immunity to entry hazards 
 const HOLD_EFFECT_PLATE:         int = 89  # Multitype's held-item type source (M17n-4)
 const HOLD_EFFECT_TYPE_POWER:    int = 43  # M18a: Charcoal family / Incenses / Silk Scarf / Fairy Feather
 const HOLD_EFFECT_SCOPE_LENS:    int = 40  # M18e: Scope Lens AND Razor Claw — literally the same
-                                            # holdEffect value in source (src/data/items.h), not two
-                                            # separate constants; both grant the identical +1 crit stage
-                                            # with no move-category condition (GetHoldEffectCritChanceIncrease,
-                                            # battle_util.c L7795-7810)
+											# holdEffect value in source (src/data/items.h), not two
+											# separate constants; both grant the identical +1 crit stage
+											# with no move-category condition (GetHoldEffectCritChanceIncrease,
+											# battle_util.c L7795-7810)
 const HOLD_EFFECT_QUICK_CLAW:    int = 26  # M18l: probabilistic act-first, param=20 (20%, read
-                                            # dynamically from hold_effect_param — NOT gated on move
-                                            # category, unlike Quick Draw's ability equivalent
-                                            # (battle_main.c L5191 has no IsBattleMoveStatus check here)
+											# dynamically from hold_effect_param — NOT gated on move
+											# category, unlike Quick Draw's ability equivalent
+											# (battle_main.c L5191 has no IsBattleMoveStatus check here)
 const HOLD_EFFECT_LAGGING_TAIL:  int = 66  # M18l: Full Incense AND Lagging Tail — literally the same
-                                            # holdEffect value in source (src/data/items.h L8543/L10270),
-                                            # not two separate constants; both grant unconditional
-                                            # always-act-last, matching Stall's shape exactly (battle_main.c
-                                            # L4409-4410, no move-category gate — unlike Mycelium Might's
-                                            # narrower ability equivalent)
+											# holdEffect value in source (src/data/items.h L8543/L10270),
+											# not two separate constants; both grant unconditional
+											# always-act-last, matching Stall's shape exactly (battle_main.c
+											# L4409-4410, no move-category gate — unlike Mycelium Might's
+											# narrower ability equivalent)
 
 # M18c: Berry HP-threshold effects (10 items). All 8 of the 25%-threshold berries
 # below (5 flat-stat + Lansat + Starf + Custap) share holdEffectParam=4, confirmed
@@ -80,89 +80,89 @@ const HOLD_EFFECT_SPEED_UP:      int = 17  # Salac Berry — +1 Speed (Ripen: +2
 const HOLD_EFFECT_SP_ATTACK_UP:  int = 18  # Petaya Berry — +1 SpAtk (Ripen: +2)
 const HOLD_EFFECT_SP_DEFENSE_UP: int = 19  # Apicot Berry — +1 SpDef (Ripen: +2)
 const HOLD_EFFECT_CRITICAL_UP:   int = 20  # Lansat Berry — sets focus_energy (NOT
-                                            # crit_stage_bonus()/M18e's mechanism — a
-                                            # real correction, confirmed via source:
-                                            # CriticalHitRatioUp sets
-                                            # volatiles.focusEnergy=TRUE directly, the
-                                            # SAME flag Focus Energy the move sets.
-                                            # Ripen does NOT affect this one (confirmed
-                                            # absent from source, unlike the 6 stat berries).
+											# crit_stage_bonus()/M18e's mechanism — a
+											# real correction, confirmed via source:
+											# CriticalHitRatioUp sets
+											# volatiles.focusEnergy=TRUE directly, the
+											# SAME flag Focus Energy the move sets.
+											# Ripen does NOT affect this one (confirmed
+											# absent from source, unlike the 6 stat berries).
 const HOLD_EFFECT_RANDOM_STAT_UP: int = 21 # Starf Berry — +2 to one random non-maxed
-                                            # stat from {Atk,Def,SpAtk,SpDef,Speed}
-                                            # (Ripen: +4) — EXCLUDES Accuracy/Evasion,
-                                            # unlike Moody's own broader pool.
+											# stat from {Atk,Def,SpAtk,SpDef,Speed}
+											# (Ripen: +4) — EXCLUDES Accuracy/Evasion,
+											# unlike Moody's own broader pool.
 const HOLD_EFFECT_ENIGMA_BERRY:  int = 79  # heals 25% max HP (Ripen: 50%) when hit
-                                            # DIRECTLY (not absorbed by Substitute) by a
-                                            # move that resolves super-effective — NOT an
-                                            # HP threshold, NOT the resist-berry TYPE-match
-                                            # check; reads the actual computed
-                                            # effectiveness after damage, architecturally
-                                            # separate from every other item in this file.
+											# DIRECTLY (not absorbed by Substitute) by a
+											# move that resolves super-effective — NOT an
+											# HP threshold, NOT the resist-berry TYPE-match
+											# check; reads the actual computed
+											# effectiveness after damage, architecturally
+											# separate from every other item in this file.
 const HOLD_EFFECT_MICLE_BERRY:   int = 83  # one-shot ×1.2 accuracy (Ripen: ×1.4) on the
-                                            # holder's NEXT accuracy check only.
+											# holder's NEXT accuracy check only.
 const HOLD_EFFECT_CUSTAP_BERRY:  int = 84  # deterministic (no roll) act-first at the HP
-                                            # threshold — reuses M18l's quick_effect dict.
-                                            # CORRECTION: source's turn-order check has NO
-                                            # IsUnnerveBlocked call at all (a separate code
-                                            # path from the general berry dispatcher) —
-                                            # Custap bypasses Unnerve while Klutz/Gluttony
-                                            # still apply normally.
+											# threshold — reuses M18l's quick_effect dict.
+											# CORRECTION: source's turn-order check has NO
+											# IsUnnerveBlocked call at all (a separate code
+											# path from the general berry dispatcher) —
+											# Custap bypasses Unnerve while Klutz/Gluttony
+											# still apply normally.
 
 # M18d: Leppa Berry / Jaboca Berry / Rowap Berry (3 items).
 const HOLD_EFFECT_RESTORE_PP:    int = 7   # Leppa Berry — restores 10 PP (Ripen: 20)
-                                            # to the FIRST zero-PP move in slot order,
-                                            # checked at MoveEnd for the ATTACKER (the
-                                            # mon that just acted), not tied to whether
-                                            # THIS move was the one that hit 0.
+											# to the FIRST zero-PP move in slot order,
+											# checked at MoveEnd for the ATTACKER (the
+											# mon that just acted), not tied to whether
+											# THIS move was the one that hit 0.
 const HOLD_EFFECT_JABOCA_BERRY:  int = 85  # 1/8 attacker's max HP (Ripen: 1/4) on any
-                                            # PHYSICAL-category hit. CORRECTION: source
-                                            # (TryJabocaBerry, battle_hold_effects.c
-                                            # L332-353) checks ONLY IsBattleMovePhysical —
-                                            # no IsMoveMakingContact call anywhere. Fires
-                                            # even on a non-contact physical move.
+											# PHYSICAL-category hit. CORRECTION: source
+											# (TryJabocaBerry, battle_hold_effects.c
+											# L332-353) checks ONLY IsBattleMovePhysical —
+											# no IsMoveMakingContact call anywhere. Fires
+											# even on a non-contact physical move.
 const HOLD_EFFECT_ROWAP_BERRY:   int = 86  # Same as Jaboca but SPECIAL-category — same
-                                            # correction applies (TryRowapBerry,
-                                            # battle_hold_effects.c L355-376, checks only
-                                            # IsBattleMoveSpecial, no contact check).
+											# correction applies (TryRowapBerry,
+											# battle_hold_effects.c L355-376, checks only
+											# IsBattleMoveSpecial, no contact check).
 
 # M18g: species-gated stat/crit items + Soul Dew (9 items). CORRECTION: [M17n-4]
 # (cited by the plan as the species-gate precedent) establishes NO species-gate
 # mechanism at all — Multitype's own held-item read is a Plate-TYPE check, not a
 # species check. No prior precedent exists in this codebase; built fresh here.
 const HOLD_EFFECT_SOUL_DEW:      int = 33  # Latios/Latias — TYPE-BOOST ONLY under this
-                                            # project's B_SOUL_DEW_BOOST=GEN_LATEST config
-                                            # (>=GEN_7 resolution); NOT a SpDef stat boost
-                                            # (that's the pre-Gen7 behavior, a different
-                                            # mechanism this project does not implement).
+											# project's B_SOUL_DEW_BOOST=GEN_LATEST config
+											# (>=GEN_7 resolution); NOT a SpDef stat boost
+											# (that's the pre-Gen7 behavior, a different
+											# mechanism this project does not implement).
 const HOLD_EFFECT_DEEP_SEA_TOOTH: int = 34 # Clamperl — ×2.0 Sp.Attack, special-only.
 const HOLD_EFFECT_DEEP_SEA_SCALE: int = 35 # Clamperl — ×2.0 Sp.Defense, special-only.
-                                            # CORRECTION: lives in CalcDefenseStat (the
-                                            # raw-stat-before-formula stage, same as
-                                            # Choice Band/Specs), NOT
-                                            # GetDefenseStatModifier's post-effectiveness
-                                            # stage where Thick Fat/Marvel Scale/etc.
-                                            # already live via AbilityManager.
-                                            # defense_damage_modifier_uq412 — a
-                                            # similarly-named but different function.
+											# CORRECTION: lives in CalcDefenseStat (the
+											# raw-stat-before-formula stage, same as
+											# Choice Band/Specs), NOT
+											# GetDefenseStatModifier's post-effectiveness
+											# stage where Thick Fat/Marvel Scale/etc.
+											# already live via AbilityManager.
+											# defense_damage_modifier_uq412 — a
+											# similarly-named but different function.
 const HOLD_EFFECT_LIGHT_BALL:    int = 42  # Pikachu — ×2.0 BOTH Attack and Sp.Attack,
-                                            # unconditional on move category (config-gated
-                                            # true under GEN_LATEST).
+											# unconditional on move category (config-gated
+											# true under GEN_LATEST).
 const HOLD_EFFECT_LUCKY_PUNCH:   int = 45  # Chansey ONLY (NOT Blissey) — +2 crit stage.
 const HOLD_EFFECT_METAL_POWDER:  int = 46  # Ditto — ×2.0 DEFENSE (not SpDef), physical-only.
-                                            # CORRECTION: a real distinction from Quick
-                                            # Powder — the two are NOT the same stat.
-                                            # "Untransformed" condition is untestable in
-                                            # this project: no Transform/Imposter mechanic
-                                            # exists (confirmed via grep), so this gate is
-                                            # vacuously always satisfied — flagged, not
-                                            # silently omitted.
+											# CORRECTION: a real distinction from Quick
+											# Powder — the two are NOT the same stat.
+											# "Untransformed" condition is untestable in
+											# this project: no Transform/Imposter mechanic
+											# exists (confirmed via grep), so this gate is
+											# vacuously always satisfied — flagged, not
+											# silently omitted.
 const HOLD_EFFECT_THICK_CLUB:    int = 47  # Cubone OR Marowak — ×2.0 Attack, physical-only.
 const HOLD_EFFECT_LEEK:          int = 48  # Farfetch'd [+ Sirfetch'd(865), absent from
-                                            # this project's 386-species/Gen-3-capped
-                                            # roster, confirmed via direct dex lookup] —
-                                            # +2 crit stage.
+											# this project's 386-species/Gen-3-capped
+											# roster, confirmed via direct dex lookup] —
+											# +2 crit stage.
 const HOLD_EFFECT_QUICK_POWDER:  int = 75  # Ditto — ×2.0 SPEED (not Defense). Same
-                                            # untransformed-untestable note as Metal Powder.
+											# untransformed-untestable note as Metal Powder.
 
 # M18g: national_dex_num values (must match data/pokemon.json / PokemonSpecies).
 const SPECIES_PIKACHU:    int = 25
@@ -206,7 +206,7 @@ const HOLD_EFFECT_POWER_ITEM:  int = 81  # Power Weight/Bracer/Belt/Lens/Band/An
 # built here.
 const HOLD_EFFECT_FLAME_ORB: int = 68  # self-inflicts STATUS_BURN
 const HOLD_EFFECT_TOXIC_ORB: int = 69  # self-inflicts STATUS_TOXIC (badly poisoned,
-                                        # NOT regular STATUS_POISON)
+										# NOT regular STATUS_POISON)
 
 # M18j: Power/accuracy flat-modifier misc (7 items).
 # CORRECTION found at Step 0: Expert Belt is NOT in the same pipeline stage as
@@ -217,82 +217,82 @@ const HOLD_EFFECT_TOXIC_ORB: int = 69  # self-inflicts STATUS_TOXIC (badly poiso
 # Muscle Band/Wise Glasses (and move_power_modifier_uq412) live.
 const HOLD_EFFECT_MUSCLE_BAND: int = 62   # physical power x1.1, FLOORED rounding
 const HOLD_EFFECT_WISE_GLASSES: int = 64  # special power x1.1, FLOORED rounding —
-                                           # CORRECTION: source calls
-                                           # PercentToUQ4_12_Floored ((4096*pct)/100,
-                                           # no rounding) for these two, a DIFFERENT
-                                           # formula than M18a's Charcoal-family items
-                                           # (PercentToUQ4_12, (4096*pct+50)/100,
-                                           # rounds) — a genuine 1-unit difference at
-                                           # 10% (4505 floored vs. 4506 rounded).
+										   # CORRECTION: source calls
+										   # PercentToUQ4_12_Floored ((4096*pct)/100,
+										   # no rounding) for these two, a DIFFERENT
+										   # formula than M18a's Charcoal-family items
+										   # (PercentToUQ4_12, (4096*pct+50)/100,
+										   # rounds) — a genuine 1-unit difference at
+										   # 10% (4505 floored vs. 4506 rounded).
 const HOLD_EFFECT_EXPERT_BELT: int = 59   # flat x1.2 when effectiveness>=2.0 (2x OR
-                                           # 4x, uniform — no extra stacking at 4x).
-                                           # holdEffectParam=20 in source data but
-                                           # NOT actually read — the dispatch function
-                                           # hardcodes UQ_4_12(1.2)=4915 directly.
+										   # 4x, uniform — no extra stacking at 4x).
+										   # holdEffectParam=20 in source data but
+										   # NOT actually read — the dispatch function
+										   # hardcodes UQ_4_12(1.2)=4915 directly.
 const HOLD_EFFECT_WIDE_LENS: int = 63     # attacker accuracy x1.10, unconditional
 const HOLD_EFFECT_ZOOM_LENS: int = 65     # attacker accuracy x1.20, ONLY if the
-                                           # target has already acted this turn —
-                                           # confirmed checkable via this project's
-                                           # existing _turn_order/_current_actor_index
-                                           # position tracking (same infrastructure
-                                           # _is_last_to_move already established for
-                                           # Analytic, [M17n-5]), NOT a blocker.
+										   # target has already acted this turn —
+										   # confirmed checkable via this project's
+										   # existing _turn_order/_current_actor_index
+										   # position tracking (same infrastructure
+										   # _is_last_to_move already established for
+										   # Analytic, [M17n-5]), NOT a blocker.
 const HOLD_EFFECT_EVASION_UP: int = 22    # Bright Powder AND Lax Incense — literal
-                                           # same constant, both holdEffectParam=10
-                                           # under this reference clone's
-                                           # I_LAX_INCENSE_BOOST>=GEN_4 config —
-                                           # confirmed genuinely identical, not
-                                           # assumed. Defender-side accuracy x0.90
+										   # same constant, both holdEffectParam=10
+										   # under this reference clone's
+										   # I_LAX_INCENSE_BOOST>=GEN_4 config —
+										   # confirmed genuinely identical, not
+										   # assumed. Defender-side accuracy x0.90
 const HOLD_EFFECT_RED_CARD: int = 97      # M18n: forces the ATTACKER to switch —
-                                           # closes the exact gap
-                                           # AbilityManager.blocks_forced_switch's own
-                                           # doc comment already anticipated ("this
-                                           # project has no Red Card item").
+										   # closes the exact gap
+										   # AbilityManager.blocks_forced_switch's own
+										   # doc comment already anticipated ("this
+										   # project has no Red Card item").
 const HOLD_EFFECT_EJECT_BUTTON: int = 100 # M18n: forces the HOLDER itself to switch —
-                                           # NOT Guard-Dog-blocked, unlike Red Card
-                                           # (confirmed absent from source: Guard Dog
-                                           # only blocks being forced out BY AN
-                                           # OPPONENT's effect).
+										   # NOT Guard-Dog-blocked, unlike Red Card
+										   # (confirmed absent from source: Guard Dog
+										   # only blocks being forced out BY AN
+										   # OPPONENT's effect).
 const HOLD_EFFECT_FOCUS_BAND: int = 38    # M18o: probabilistic (param=10, 10%) survive-
-                                           # lethal, NO HP gate — genuinely different
-                                           # shape from Focus Sash despite the similar
-                                           # name, confirmed via source: same `else if`
-                                           # chain as Sturdy, checked BEFORE Focus Sash,
-                                           # NOT consumed (repeatable every hit).
+										   # lethal, NO HP gate — genuinely different
+										   # shape from Focus Sash despite the similar
+										   # name, confirmed via source: same `else if`
+										   # chain as Sturdy, checked BEFORE Focus Sash,
+										   # NOT consumed (repeatable every hit).
 const HOLD_EFFECT_SHELL_BELL: int = 44    # M18q: heals 1/8 (param=8) of the FINAL
-                                           # damage just dealt, gated on not-already-
-                                           # at-max-HP.
+										   # damage just dealt, gated on not-already-
+										   # at-max-HP.
 const HOLD_EFFECT_BIG_ROOT: int = 58      # M18q: +30% (param=30) to move-drain healing
-                                           # — source's own formula is (hp*1300)/1000,
-                                           # deliberately NOT UQ4.12 despite nearly every
-                                           # other item modifier in this file being so.
+										   # — source's own formula is (hp*1300)/1000,
+										   # deliberately NOT UQ4.12 despite nearly every
+										   # other item modifier in this file being so.
 const HOLD_EFFECT_FOCUS_SASH: int = 67    # M18o: full-HP-gated (IsBattlerAtMaxHp, same
-                                           # gate Sturdy uses), NO param/roll at all —
-                                           # unconditional given full HP. SINGLE-USE,
-                                           # unlike Focus Band (confirmed via
-                                           # docs/changelogs/1.8.x/1.8.4.md's own "Focus
-                                           # Sash but not consuming the item" bugfix
-                                           # entry — no differentiating consumption call
-                                           # exists in GetAdjustedDamage itself, both
-                                           # items' own hold_effects.h timing entries are
-                                           # empty).
+										   # gate Sturdy uses), NO param/roll at all —
+										   # unconditional given full HP. SINGLE-USE,
+										   # unlike Focus Band (confirmed via
+										   # docs/changelogs/1.8.x/1.8.4.md's own "Focus
+										   # Sash but not consuming the item" bugfix
+										   # entry — no differentiating consumption call
+										   # exists in GetAdjustedDamage itself, both
+										   # items' own hold_effects.h timing entries are
+										   # empty).
 const HOLD_EFFECT_FLINCH: int = 30        # M18k: King's Rock AND Razor Fang — literal
-                                           # same constant, both holdEffectParam=10
-                                           # (src/data/items.h), confirmed genuinely
-                                           # identical. Adds a flinch roll to a move
-                                           # that has NO native flinch effect of its
-                                           # own (MUTUALLY EXCLUSIVE with an existing
-                                           # SE_FLINCH move, not additive/stacking —
-                                           # source's TryKingsRock guard is
-                                           # !MoveHasAdditionalEffect(move,
-                                           # MOVE_EFFECT_FLINCH)). Architecturally
-                                           # separate from try_secondary_effect
-                                           # entirely — dispatched from source's
-                                           # onAttackerAfterHit item pipeline, not the
-                                           # move-effect pipeline Sheer Force/Shield
-                                           # Dust hook into, so neither interacts with
-                                           # this item's roll.
-                                           # against the holder.
+										   # same constant, both holdEffectParam=10
+										   # (src/data/items.h), confirmed genuinely
+										   # identical. Adds a flinch roll to a move
+										   # that has NO native flinch effect of its
+										   # own (MUTUALLY EXCLUSIVE with an existing
+										   # SE_FLINCH move, not additive/stacking —
+										   # source's TryKingsRock guard is
+										   # !MoveHasAdditionalEffect(move,
+										   # MOVE_EFFECT_FLINCH)). Architecturally
+										   # separate from try_secondary_effect
+										   # entirely — dispatched from source's
+										   # onAttackerAfterHit item pipeline, not the
+										   # move-effect pipeline Sheer Force/Shield
+										   # Dust hook into, so neither interacts with
+										   # this item's roll.
+										   # against the holder.
 
 # M18r: Standalone reuses (7 items, 7 different existing mechanisms — grouped only
 # for scheduling convenience, per docs/m18_subtier_plan.md's own framing). Values
@@ -301,166 +301,166 @@ const HOLD_EFFECT_FLINCH: int = 30        # M18k: King's Rock AND Razor Fang —
 # (MACHO_BRACE=24, QUICK_CLAW=26, FOCUS_BAND=38, SHELL_BELL=44, BIG_ROOT=58,
 # FOCUS_SASH=67, RED_CARD=97, EJECT_BUTTON=100) with zero mismatches.
 const HOLD_EFFECT_LIGHT_CLAY: int = 55      # Reflect/Light Screen/Aurora Veil timer:
-                                             # 8 turns instead of 5, checked on the
-                                             # SETTER at set time (TrySetReflect/
-                                             # TrySetLightScreen/BS_SetAuroraVeil,
-                                             # battle_script_commands.c). Passive,
-                                             # never consumed.
+											 # 8 turns instead of 5, checked on the
+											 # SETTER at set time (TrySetReflect/
+											 # TrySetLightScreen/BS_SetAuroraVeil,
+											 # battle_script_commands.c). Passive,
+											 # never consumed.
 const HOLD_EFFECT_POWER_HERB: int = 57      # Skips the charge turn of a two-turn move
-                                             # once (CancelerCharging, battle_move_
-                                             # resolution.c L1778), consumed on use.
-                                             # Semi-invulnerable moves (Fly/Dig/Dive/
-                                             # Bounce) CAN fire early via this too —
-                                             # source's check has no semi-inv carve-out,
-                                             # unlike Solar Beam's separate sun-only
-                                             # skip.
+											 # once (CancelerCharging, battle_move_
+											 # resolution.c L1778), consumed on use.
+											 # Semi-invulnerable moves (Fly/Dig/Dive/
+											 # Bounce) CAN fire early via this too —
+											 # source's check has no semi-inv carve-out,
+											 # unlike Solar Beam's separate sun-only
+											 # skip.
 const HOLD_EFFECT_BLACK_SLUDGE: int = 72    # Poison-type holder: heals maxHP/16 (reuses
-                                             # TryLeftovers exactly — Leftovers-shape).
-                                             # Non-Poison holder: DAMAGES maxHP/8 (NOT
-                                             # 1/16 — a correction to this tier's own
-                                             # plan doc, confirmed via TryBlackSludge
-                                             # Damage, battle_hold_effects.c L650),
-                                             # gated by Magic Guard (the damage side
-                                             # only — the heal side has no Magic Guard
-                                             # interaction since it's not damage).
+											 # TryLeftovers exactly — Leftovers-shape).
+											 # Non-Poison holder: DAMAGES maxHP/8 (NOT
+											 # 1/16 — a correction to this tier's own
+											 # plan doc, confirmed via TryBlackSludge
+											 # Damage, battle_hold_effects.c L650),
+											 # gated by Magic Guard (the damage side
+											 # only — the heal side has no Magic Guard
+											 # interaction since it's not damage).
 const HOLD_EFFECT_SHED_SHELL: int = 74      # Bypasses ability-based trapping (Shadow
-                                             # Tag/Arena Trap/Magnet Pull) for VOLUNTARY
-                                             # switch selection only — CanBattlerEscape,
-                                             # battle_main.c L4234/4238. Passive, never
-                                             # consumed. Baton Pass/faint-replacement/
-                                             # forced switches (Roar etc.) already
-                                             # bypass is_trapped() architecturally, per
-                                             # its own doc comment, so no change needed
-                                             # at those call sites.
+											 # Tag/Arena Trap/Magnet Pull) for VOLUNTARY
+											 # switch selection only — CanBattlerEscape,
+											 # battle_main.c L4234/4238. Passive, never
+											 # consumed. Baton Pass/faint-replacement/
+											 # forced switches (Roar etc.) already
+											 # bypass is_trapped() architecturally, per
+											 # its own doc comment, so no change needed
+											 # at those call sites.
 const HOLD_EFFECT_SAFETY_GOGGLES: int = 104 # TWO independent exemptions, checked at
-                                             # the SAME source sites Overcoat/Grass-type
-                                             # already occupy: (1) full sandstorm/hail
-                                             # chip immunity (battle_end_turn.c L151,
-                                             # L174 — the exact Overcoat check site),
-                                             # (2) full powder-move immunity
-                                             # (IsAffectedByPowderMove, battle_util.c
-                                             # L10545-10552 — the exact Overcoat/Grass-
-                                             # type check site). Passive, never consumed.
+											 # the SAME source sites Overcoat/Grass-type
+											 # already occupy: (1) full sandstorm/hail
+											 # chip immunity (battle_end_turn.c L151,
+											 # L174 — the exact Overcoat check site),
+											 # (2) full powder-move immunity
+											 # (IsAffectedByPowderMove, battle_util.c
+											 # L10545-10552 — the exact Overcoat/Grass-
+											 # type check site). Passive, never consumed.
 const HOLD_EFFECT_ROOM_SERVICE: int = 117   # -1 Speed (if not already at -6) while
-                                             # Trick Room is active. TWO independent
-                                             # triggers confirmed from hold_effects.h's
-                                             # own table (.onSwitchIn=TRUE AND
-                                             # .onEffect=TRUE) — a correction to this
-                                             # tier's own plan doc, which named only the
-                                             # switch-in half: also fires the instant
-                                             # Trick Room is SET, looping over every
-                                             # battler already on the field (Battle
-                                             # Script_EffectTrickRoom's unconditional
-                                             # BattleScript_TryRoomServiceLoop call,
-                                             # right after setroom). Single-use,
-                                             # consumed on either trigger (removeitem in
-                                             # BattleScript_ConsumableItemStatRaise).
+											 # Trick Room is active. TWO independent
+											 # triggers confirmed from hold_effects.h's
+											 # own table (.onSwitchIn=TRUE AND
+											 # .onEffect=TRUE) — a correction to this
+											 # tier's own plan doc, which named only the
+											 # switch-in half: also fires the instant
+											 # Trick Room is SET, looping over every
+											 # battler already on the field (Battle
+											 # Script_EffectTrickRoom's unconditional
+											 # BattleScript_TryRoomServiceLoop call,
+											 # right after setroom). Single-use,
+											 # consumed on either trigger (removeitem in
+											 # BattleScript_ConsumableItemStatRaise).
 const HOLD_EFFECT_BLUNDER_POLICY: int = 118 # +2 Speed (if not already at +6) when the
-                                             # HOLDER's own move misses via a genuine
-                                             # accuracy check. Explicitly excludes OHKO
-                                             # moves (cv->moveEffect != EFFECT_OHKO,
-                                             # battle_move_resolution.c L2212) — this
-                                             # project's OHKO-miss path emits the exact
-                                             # same move_missed reason=="accuracy"
-                                             # string as a normal miss, so the OHKO
-                                             # exclusion needs an explicit move.is_ohko
-                                             # check, not just a reason-string filter.
-                                             # Source's multi-hit exclusion
-                                             # (!isMultiHitOn) is structurally moot here
-                                             # — no multi-hit move mechanic exists
-                                             # anywhere in this project (confirmed
-                                             # dormant per [M17n-5]). Source's
-                                             # !redCardSwitched guard (this same
-                                             # resolution's attacker was NOT just forced
-                                             # out by Red Card) is a real cross-tier
-                                             # interaction NOT modeled here — flagged,
-                                             # not built, same class as [M18n]/[M18q]'s
-                                             # own flagged doubles/spread-move gaps.
-                                             # Consumed only if Speed actually rose
-                                             # (source's CompareStat(...,MAX_STAT_STAGE,
-                                             # CMP_LESS_THAN,...) guards the whole
-                                             # trigger, not just the stat-change call).
+											 # HOLDER's own move misses via a genuine
+											 # accuracy check. Explicitly excludes OHKO
+											 # moves (cv->moveEffect != EFFECT_OHKO,
+											 # battle_move_resolution.c L2212) — this
+											 # project's OHKO-miss path emits the exact
+											 # same move_missed reason=="accuracy"
+											 # string as a normal miss, so the OHKO
+											 # exclusion needs an explicit move.is_ohko
+											 # check, not just a reason-string filter.
+											 # Source's multi-hit exclusion
+											 # (!isMultiHitOn) is structurally moot here
+											 # — no multi-hit move mechanic exists
+											 # anywhere in this project (confirmed
+											 # dormant per [M17n-5]). Source's
+											 # !redCardSwitched guard (this same
+											 # resolution's attacker was NOT just forced
+											 # out by Red Card) is a real cross-tier
+											 # interaction NOT modeled here — flagged,
+											 # not built, same class as [M18n]/[M18q]'s
+											 # own flagged doubles/spread-move gaps.
+											 # Consumed only if Speed actually rose
+											 # (source's CompareStat(...,MAX_STAT_STAGE,
+											 # CMP_LESS_THAN,...) guards the whole
+											 # trigger, not just the stat-change call).
 
 # M18s/M18u/M18w combined session (6 items). Values re-derived programmatically
 # from include/constants/hold_effects.h's enum position, cross-validated against
 # 7 pre-existing project constants with zero mismatches.
 const HOLD_EFFECT_EVIOLITE: int = 91        # M18s: +50% Def AND SpDef (both categories,
-                                             # unconditional) if CanEvolve(species) —
-                                             # CalcDefenseStat (battle_util.c L7173-7180),
-                                             # the SAME function Deep Sea Scale/Metal
-                                             # Powder already occupy. "Not fully evolved"
-                                             # = PokemonRegistry.get_evolutions(dex).size()
-                                             # > 0, confirmed to exactly match source's
-                                             # CanEvolve (a species with a real further
-                                             # evolution; a species with ZERO possible
-                                             # evolutions, e.g. Ditto, correctly gets NO
-                                             # boost — same code path as fully-evolved).
-                                             # Transform-species substitution
-                                             # (gBattleMons[...].volatiles.transformed)
-                                             # is N/A — no Transform mechanic exists here.
+											 # unconditional) if CanEvolve(species) —
+											 # CalcDefenseStat (battle_util.c L7173-7180),
+											 # the SAME function Deep Sea Scale/Metal
+											 # Powder already occupy. "Not fully evolved"
+											 # = PokemonRegistry.get_evolutions(dex).size()
+											 # > 0, confirmed to exactly match source's
+											 # CanEvolve (a species with a real further
+											 # evolution; a species with ZERO possible
+											 # evolutions, e.g. Ditto, correctly gets NO
+											 # boost — same code path as fully-evolved).
+											 # Transform-species substitution
+											 # (gBattleMons[...].volatiles.transformed)
+											 # is N/A — no Transform mechanic exists here.
 const HOLD_EFFECT_ASSAULT_VEST: int = 92    # M18s: +50% SpDef only (`!usesDefStat`,
-                                             # special hits) — SAME function as Eviolite,
-                                             # unconditional (no species/category gate on
-                                             # the damage-reduction half). The move-
-                                             # restriction half (status moves unusable)
-                                             # is a SEPARATE mechanism — see
-                                             # holds_assault_vest's own doc comment.
+											 # special hits) — SAME function as Eviolite,
+											 # unconditional (no species/category gate on
+											 # the damage-reduction half). The move-
+											 # restriction half (status moves unusable)
+											 # is a SEPARATE mechanism — see
+											 # holds_assault_vest's own doc comment.
 const HOLD_EFFECT_BERSERK_GENE: int = 129   # M18u: switch-in only (.onSwitchIn=TRUE,
-                                             # no .onEffect — hold_effects.h). +2 Atk,
-                                             # NO-OP entirely (no consumption, no
-                                             # confusion) if Atk is already at +6
-                                             # (CompareStat(...,MAX_STAT_STAGE,
-                                             # CMP_EQUAL,...) guards the WHOLE function,
-                                             # battle_hold_effects.c L137-138). Confusion
-                                             # is INFINITE (see StatusManager.
-                                             # try_apply_confusion's `infinite` param) —
-                                             # a real correction to this tier's own "reuse
-                                             # the existing generic confusion mechanic"
-                                             # framing, found by reading TryBerserkGene
-                                             # directly rather than assumed standard.
-                                             # Consumed regardless of whether confusion
-                                             # actually lands (Own Tempo block, etc.) —
-                                             # `removeitem` sits at the battle script's
-                                             # shared end label all three branches reach.
+											 # no .onEffect — hold_effects.h). +2 Atk,
+											 # NO-OP entirely (no consumption, no
+											 # confusion) if Atk is already at +6
+											 # (CompareStat(...,MAX_STAT_STAGE,
+											 # CMP_EQUAL,...) guards the WHOLE function,
+											 # battle_hold_effects.c L137-138). Confusion
+											 # is INFINITE (see StatusManager.
+											 # try_apply_confusion's `infinite` param) —
+											 # a real correction to this tier's own "reuse
+											 # the existing generic confusion mechanic"
+											 # framing, found by reading TryBerserkGene
+											 # directly rather than assumed standard.
+											 # Consumed regardless of whether confusion
+											 # actually lands (Own Tempo block, etc.) —
+											 # `removeitem` sits at the battle script's
+											 # shared end label all three branches reach.
 const HOLD_EFFECT_METRONOME: int = 61       # M18u: +20%/consecutive same-move use,
-                                             # capped at 5 uses (+100% max). Source:
-                                             # GetAttackerItemsModifier (battle_util.c
-                                             # L7486-7491) — the SAME function/pipeline
-                                             # stage Life Orb/Expert Belt already occupy
-                                             # (post_roll_modifier_uq412 here), NOT a new
-                                             # stage. Counter incremented/reset at the
-                                             # exact site source colocates its own reset
-                                             # check (battle_move_resolution.c L1006-1008,
-                                             # right before PP deduction) — this project's
-                                             # simplified reset condition is "the move
-                                             # differs from last_move_used" only; source's
-                                             # broader "OR unableToUseMove" half (Disable/
-                                             # Taunt/no-PP/etc. all also reset it) is NOT
-                                             # replicated — flagged, not built, given how
-                                             # many distinct block-reasons that would mean
-                                             # threading through. A miss does NOT reset
-                                             # the counter (matches source: the reset
-                                             # check runs before accuracy is ever rolled).
+											 # capped at 5 uses (+100% max). Source:
+											 # GetAttackerItemsModifier (battle_util.c
+											 # L7486-7491) — the SAME function/pipeline
+											 # stage Life Orb/Expert Belt already occupy
+											 # (post_roll_modifier_uq412 here), NOT a new
+											 # stage. Counter incremented/reset at the
+											 # exact site source colocates its own reset
+											 # check (battle_move_resolution.c L1006-1008,
+											 # right before PP deduction) — this project's
+											 # simplified reset condition is "the move
+											 # differs from last_move_used" only; source's
+											 # broader "OR unableToUseMove" half (Disable/
+											 # Taunt/no-PP/etc. all also reset it) is NOT
+											 # replicated — flagged, not built, given how
+											 # many distinct block-reasons that would mean
+											 # threading through. A miss does NOT reset
+											 # the counter (matches source: the reset
+											 # check runs before accuracy is ever rolled).
 const HOLD_EFFECT_PRIMAL_ORB: int = 108     # M18w: Red Orb AND Blue Orb share this
-                                             # EXACT holdEffect value in source (src/data/
-                                             # items.h) — species-differentiated via each
-                                             # item's own required_species (Groudon/
-                                             # Kyogre), the SAME ItemData field/mechanism
-                                             # M18g's species-gated items already use, NOT
-                                             # a per-item holdEffect split. CORRECTION:
-                                             # real Primal Reversion is a full species/
-                                             # stat/type swap (SPECIES_GROUDON_PRIMAL/
-                                             # SPECIES_KYOGRE_PRIMAL are literally
-                                             # different species entries in source) — the
-                                             # same shape as Mega Evolution, which this
-                                             # project has already structurally excluded
-                                             # (no form/species-swap-mid-battle
-                                             # infrastructure exists). In-scope deliverable
-                                             # is ability-set ONLY (Desolate Land/
-                                             # Primordial Sea on switch-in), matching this
-                                             # tier's own narrower "form-change + set-
-                                             # ability" framing and its own note that only
-                                             # the ability half was missing.
+											 # EXACT holdEffect value in source (src/data/
+											 # items.h) — species-differentiated via each
+											 # item's own required_species (Groudon/
+											 # Kyogre), the SAME ItemData field/mechanism
+											 # M18g's species-gated items already use, NOT
+											 # a per-item holdEffect split. CORRECTION:
+											 # real Primal Reversion is a full species/
+											 # stat/type swap (SPECIES_GROUDON_PRIMAL/
+											 # SPECIES_KYOGRE_PRIMAL are literally
+											 # different species entries in source) — the
+											 # same shape as Mega Evolution, which this
+											 # project has already structurally excluded
+											 # (no form/species-swap-mid-battle
+											 # infrastructure exists). In-scope deliverable
+											 # is ability-set ONLY (Desolate Land/
+											 # Primordial Sea on switch-in), matching this
+											 # tier's own narrower "form-change + set-
+											 # ability" framing and its own note that only
+											 # the ability half was missing.
 
 # M18m: Stat-change-reactive consumed items (4 items). Values re-derived
 # programmatically, cross-validated against 7 pre-existing constants with zero
@@ -468,98 +468,98 @@ const HOLD_EFFECT_PRIMAL_ORB: int = 108     # M18w: Red Orb AND Blue Orb share t
 # NOT all the same trigger shape — verified individually per the "never assume
 # symmetry" discipline.
 const HOLD_EFFECT_WEAKNESS_POLICY: int = 107 # +2 Atk AND +2 SpAtk (both,
-                                              # unconditional) on taking a
-                                              # super-effective hit. Source:
-                                              # TryWeaknessPolicy
-                                              # (battle_hold_effects.c L256-269) —
-                                              # the SAME on-hit dispatch site
-                                              # Enigma Berry ([M18c]) already
-                                              # occupies (IsBattlerTurnDamaged +
-                                              # a MOVE_RESULT_SUPER_EFFECTIVE-
-                                              # equivalent effectiveness>1.0
-                                              # check), not a new choke point.
+											  # unconditional) on taking a
+											  # super-effective hit. Source:
+											  # TryWeaknessPolicy
+											  # (battle_hold_effects.c L256-269) —
+											  # the SAME on-hit dispatch site
+											  # Enigma Berry ([M18c]) already
+											  # occupies (IsBattlerTurnDamaged +
+											  # a MOVE_RESULT_SUPER_EFFECTIVE-
+											  # equivalent effectiveness>1.0
+											  # check), not a new choke point.
 const HOLD_EFFECT_WHITE_HERB: int = 23       # Resets ALL currently-negative stat
-                                              # stages to 0. Source:
-                                              # RestoreWhiteHerbStats
-                                              # (battle_hold_effects.c L148-164)
-                                              # UNCONDITIONALLY scans every stat
-                                              # at every MoveEnd — genuinely NOT
-                                              # gated on "a decrease just
-                                              # happened THIS move," unlike Eject
-                                              # Pack below despite both being
-                                              # grouped as "any stat lowered" by
-                                              # this tier's own plan doc. Needs no
-                                              # snapshot/diff — a plain scan of
-                                              # current `stat_stages` at this
-                                              # project's own MoveEnd-equivalent
-                                              # checkpoint (`_phase_faint_check`,
-                                              # which already runs once per
-                                              # resolved move regardless of
-                                              # outcome) reproduces this exactly.
+											  # stages to 0. Source:
+											  # RestoreWhiteHerbStats
+											  # (battle_hold_effects.c L148-164)
+											  # UNCONDITIONALLY scans every stat
+											  # at every MoveEnd — genuinely NOT
+											  # gated on "a decrease just
+											  # happened THIS move," unlike Eject
+											  # Pack below despite both being
+											  # grouped as "any stat lowered" by
+											  # this tier's own plan doc. Needs no
+											  # snapshot/diff — a plain scan of
+											  # current `stat_stages` at this
+											  # project's own MoveEnd-equivalent
+											  # checkpoint (`_phase_faint_check`,
+											  # which already runs once per
+											  # resolved move regardless of
+											  # outcome) reproduces this exactly.
 const HOLD_EFFECT_EJECT_PACK: int = 116      # Forces the HOLDER to switch when a
-                                              # stat decrease is JUST applied to
-                                              # it, from ANY source (the holder's
-                                              # own move, an opponent's move,
-                                              # hazards, etc. — confirmed NOT
-                                              # opponent-only). Source: TryEjectPack
-                                              # (battle_move_resolution.c
-                                              # L4069-4088) checks a
-                                              # `tryEjectPack` volatile flag SET
-                                              # only at the exact moment of
-                                              # application (battle_stat_change.c
-                                              # L365-368) and cleared frequently —
-                                              # a genuine "just happened this
-                                              # resolution" trigger, reproduced
-                                              # here via a stat_stages snapshot-
-                                              # diff taken at the same MoveEnd-
-                                              # equivalent checkpoint White Herb
-                                              # uses. Reuses `_do_forced_switch_in`
-                                              # and the random-replacement-pick
-                                              # shape [M18n]'s Red Card/Eject
-                                              # Button already established — NOT
-                                              # Guard-Dog-blockable (the holder
-                                              # switches itself; Guard Dog only
-                                              # blocks being forced out BY an
-                                              # opponent, same reasoning [M18n]'s
-                                              # Eject Button already confirmed).
-                                              # Source's IsPursuitTargetSet()/
-                                              # HasAnyBattlerQueuedSwitch()/Sky-
-                                              # Drop/Commander/Parting-Shot
-                                              # exclusions are all N/A — none of
-                                              # those mechanics (queued switches,
-                                              # Sky Drop, Commander, Parting Shot)
-                                              # exist in this project.
+											  # stat decrease is JUST applied to
+											  # it, from ANY source (the holder's
+											  # own move, an opponent's move,
+											  # hazards, etc. — confirmed NOT
+											  # opponent-only). Source: TryEjectPack
+											  # (battle_move_resolution.c
+											  # L4069-4088) checks a
+											  # `tryEjectPack` volatile flag SET
+											  # only at the exact moment of
+											  # application (battle_stat_change.c
+											  # L365-368) and cleared frequently —
+											  # a genuine "just happened this
+											  # resolution" trigger, reproduced
+											  # here via a stat_stages snapshot-
+											  # diff taken at the same MoveEnd-
+											  # equivalent checkpoint White Herb
+											  # uses. Reuses `_do_forced_switch_in`
+											  # and the random-replacement-pick
+											  # shape [M18n]'s Red Card/Eject
+											  # Button already established — NOT
+											  # Guard-Dog-blockable (the holder
+											  # switches itself; Guard Dog only
+											  # blocks being forced out BY an
+											  # opponent, same reasoning [M18n]'s
+											  # Eject Button already confirmed).
+											  # Source's IsPursuitTargetSet()/
+											  # HasAnyBattlerQueuedSwitch()/Sky-
+											  # Drop/Commander/Parting-Shot
+											  # exclusions are all N/A — none of
+											  # those mechanics (queued switches,
+											  # Sky Drop, Commander, Parting Shot)
+											  # exist in this project.
 const HOLD_EFFECT_MIRROR_HERB: int = 123     # Copies an opponent's move-driven
-                                              # stat INCREASE onto the holder,
-                                              # once, consumed. Source confirms
-                                              # this is a genuine structural twin
-                                              # of Opportunist ([M17n-8]) at the
-                                              # SOURCE level, not just "similar
-                                              # enough to reuse" — both are
-                                              # checked in the LITERAL SAME loop
-                                              # (battle_stat_change.c L430-449),
-                                              # so Opportunist's own documented
-                                              # scope limit ("primary move-driven
-                                              # stat increases only, not
-                                              # Moxie/Download-style ability-
-                                              # driven ones") is a shared source-
-                                              # level limitation, correctly
-                                              # inherited here too, not a new
-                                              # simplification. Source additionally
-                                              # QUEUES and batches the copy until
-                                              # MoveEnd (gQueuedStatBoosts,
-                                              # src/battle_main.c) since Mirror
-                                              # Herb is single-use unlike
-                                              # Opportunist's permanent-ability
-                                              # repeatability — simplified here to
-                                              # an immediate copy-and-consume
-                                              # (matching Opportunist's own
-                                              # immediate-apply shape), since this
-                                              # project's one-stat-per-move
-                                              # architecture means a second
-                                              # qualifying trigger could never
-                                              # occur before the single-use item
-                                              # is already spent.
+											  # stat INCREASE onto the holder,
+											  # once, consumed. Source confirms
+											  # this is a genuine structural twin
+											  # of Opportunist ([M17n-8]) at the
+											  # SOURCE level, not just "similar
+											  # enough to reuse" — both are
+											  # checked in the LITERAL SAME loop
+											  # (battle_stat_change.c L430-449),
+											  # so Opportunist's own documented
+											  # scope limit ("primary move-driven
+											  # stat increases only, not
+											  # Moxie/Download-style ability-
+											  # driven ones") is a shared source-
+											  # level limitation, correctly
+											  # inherited here too, not a new
+											  # simplification. Source additionally
+											  # QUEUES and batches the copy until
+											  # MoveEnd (gQueuedStatBoosts,
+											  # src/battle_main.c) since Mirror
+											  # Herb is single-use unlike
+											  # Opportunist's permanent-ability
+											  # repeatability — simplified here to
+											  # an immediate copy-and-consume
+											  # (matching Opportunist's own
+											  # immediate-apply shape), since this
+											  # project's one-stat-per-move
+											  # architecture means a second
+											  # qualifying trigger could never
+											  # occur before the single-use item
+											  # is already spent.
 
 # M18p: Contact-reactive damage family (4 items). Values re-derived
 # programmatically, cross-validated against 6 pre-existing constants
@@ -573,262 +573,262 @@ const HOLD_EFFECT_MIRROR_HERB: int = 123     # Copies an opponent's move-driven
 # citation; this is the real "don't assume family symmetry" finding for this
 # tier, not a contact-vs-category confusion like [M18d]'s.
 const HOLD_EFFECT_STICKY_BARB: int = 70       # TWO independent triggers, source-
-                                               # confirmed genuinely unrelated to
-                                               # each other beyond sharing an
-                                               # item: (a) TryStickyBarbOnTargetHit
-                                               # (battle_hold_effects.c L564-583) —
-                                               # contact-gated, transfers the item
-                                               # from holder to attacker, explicitly
-                                               # "No sticky hold checks" in source
-                                               # (confirmed: CanStealItem/
-                                               # CanBattlerGetOrLoseItem, read in
-                                               # full, have ZERO Sticky Hold
-                                               # reference anywhere — a genuine
-                                               # exception to this project's own
-                                               # _try_steal_item's baked-in Sticky
-                                               # Hold gate, which Pickpocket/
-                                               # Magician both rely on unmodified);
-                                               # (b) TryStickyBarbOnEndTurn
-                                               # (L585-599) — unconditional maxHP/8
-                                               # self-damage every end of turn,
-                                               # gated by the HOLDER's own Magic
-                                               # Guard, dispatched via IsOrbsActivation
-                                               # alongside Flame/Toxic Orb — NOT
-                                               # contact-related at all.
+											   # confirmed genuinely unrelated to
+											   # each other beyond sharing an
+											   # item: (a) TryStickyBarbOnTargetHit
+											   # (battle_hold_effects.c L564-583) —
+											   # contact-gated, transfers the item
+											   # from holder to attacker, explicitly
+											   # "No sticky hold checks" in source
+											   # (confirmed: CanStealItem/
+											   # CanBattlerGetOrLoseItem, read in
+											   # full, have ZERO Sticky Hold
+											   # reference anywhere — a genuine
+											   # exception to this project's own
+											   # _try_steal_item's baked-in Sticky
+											   # Hold gate, which Pickpocket/
+											   # Magician both rely on unmodified);
+											   # (b) TryStickyBarbOnEndTurn
+											   # (L585-599) — unconditional maxHP/8
+											   # self-damage every end of turn,
+											   # gated by the HOLDER's own Magic
+											   # Guard, dispatched via IsOrbsActivation
+											   # alongside Flame/Toxic Orb — NOT
+											   # contact-related at all.
 const HOLD_EFFECT_ROCKY_HELMET: int = 95      # Contact-gated ONLY (no category
-                                               # check) — TryRockyHelmet
-                                               # (battle_hold_effects.c L236-254):
-                                               # holder takes direct damage from a
-                                               # contact move → maxHP/6 retaliation
-                                               # to the ATTACKER, gated on attacker
-                                               # alive and the ATTACKER's own Magic
-                                               # Guard (not the holder's — same
-                                               # shape [M18d]'s Jaboca/Rowap already
-                                               # established for "who takes the
-                                               # damage owns the Magic Guard check").
-                                               # Not consumed (holdEffectParam=0,
-                                               # passive item).
+											   # check) — TryRockyHelmet
+											   # (battle_hold_effects.c L236-254):
+											   # holder takes direct damage from a
+											   # contact move → maxHP/6 retaliation
+											   # to the ATTACKER, gated on attacker
+											   # alive and the ATTACKER's own Magic
+											   # Guard (not the holder's — same
+											   # shape [M18d]'s Jaboca/Rowap already
+											   # established for "who takes the
+											   # damage owns the Magic Guard check").
+											   # Not consumed (holdEffectParam=0,
+											   # passive item).
 const HOLD_EFFECT_PROTECTIVE_PADS: int = 109  # Has NO ItemBattleEffects case of
-                                               # its own — confirmed via grep, it's
-                                               # purely a gate inside
-                                               # CanBattlerAvoidContactEffects
-                                               # (battle_util.c L5717-5726), ONE
-                                               # LEVEL ABOVE IsMoveMakingContact,
-                                               # applied at every genuine
-                                               # contact-RETALIATION site (Rough
-                                               # Skin/Iron Barbs/Static/Flame Body/
-                                               # Poison Point/Effect Spore/Mummy/
-                                               # Wandering Spirit/Gooey/Tangling
-                                               # Hair/Pickpocket/Rocky Helmet/Sticky
-                                               # Barb-transfer/Aftermath — confirmed
-                                               # by reading every
-                                               # CanBattlerAvoidContactEffects call
-                                               # site directly). Deliberately does
-                                               # NOT apply to Tough Claws' power
-                                               # boost, Poison Touch's own contact
-                                               # check, or Fluffy's defense
-                                               # modifier — those three call the
-                                               # narrower IsMoveMakingContact
-                                               # directly in source, bypassing the
-                                               # Protective Pads gate entirely
-                                               # (confirmed via direct grep of every
-                                               # raw IsMoveMakingContact call site).
+											   # its own — confirmed via grep, it's
+											   # purely a gate inside
+											   # CanBattlerAvoidContactEffects
+											   # (battle_util.c L5717-5726), ONE
+											   # LEVEL ABOVE IsMoveMakingContact,
+											   # applied at every genuine
+											   # contact-RETALIATION site (Rough
+											   # Skin/Iron Barbs/Static/Flame Body/
+											   # Poison Point/Effect Spore/Mummy/
+											   # Wandering Spirit/Gooey/Tangling
+											   # Hair/Pickpocket/Rocky Helmet/Sticky
+											   # Barb-transfer/Aftermath — confirmed
+											   # by reading every
+											   # CanBattlerAvoidContactEffects call
+											   # site directly). Deliberately does
+											   # NOT apply to Tough Claws' power
+											   # boost, Poison Touch's own contact
+											   # check, or Fluffy's defense
+											   # modifier — those three call the
+											   # narrower IsMoveMakingContact
+											   # directly in source, bypassing the
+											   # Protective Pads gate entirely
+											   # (confirmed via direct grep of every
+											   # raw IsMoveMakingContact call site).
 const HOLD_EFFECT_PUNCHING_GLOVE: int = 124   # TWO parts, source-confirmed
-                                               # genuinely different in scope from
-                                               # Protective Pads above despite the
-                                               # family resemblance: (a) ×1.1 power
-                                               # on punching moves
-                                               # (GetAttackerItemsModifier,
-                                               # battle_util.c L6664-6666), same
-                                               # modifier chain as Iron Fist
-                                               # ([M17n-5]'s move_power_modifier_uq412,
-                                               # reusing the already-wired
-                                               # `punching_move` MoveData flag); (b)
-                                               # strips the contact flag from the
-                                               # HOLDER's own punching moves —
-                                               # lives INSIDE IsMoveMakingContact
-                                               # itself (battle_util.c L5735-5738),
-                                               # the SAME level as Long Reach's
-                                               # exemption, so it universally
-                                               # affects EVERY consumer of
-                                               # move_makes_contact (Tough Claws
-                                               # included), unlike Protective Pads'
-                                               # narrower retaliation-only scope.
+											   # genuinely different in scope from
+											   # Protective Pads above despite the
+											   # family resemblance: (a) ×1.1 power
+											   # on punching moves
+											   # (GetAttackerItemsModifier,
+											   # battle_util.c L6664-6666), same
+											   # modifier chain as Iron Fist
+											   # ([M17n-5]'s move_power_modifier_uq412,
+											   # reusing the already-wired
+											   # `punching_move` MoveData flag); (b)
+											   # strips the contact flag from the
+											   # HOLDER's own punching moves —
+											   # lives INSIDE IsMoveMakingContact
+											   # itself (battle_util.c L5735-5738),
+											   # the SAME level as Long Reach's
+											   # exemption, so it universally
+											   # affects EVERY consumer of
+											   # move_makes_contact (Tough Claws
+											   # included), unlike Protective Pads'
+											   # narrower retaliation-only scope.
 
 # M18t: Iron Ball / Air Balloon. Values re-derived programmatically,
 # cross-validated against 6 pre-existing constants, zero mismatches.
 const HOLD_EFFECT_IRON_BALL: int = 71    # TWO independent effects, confirmed
-                                          # from source not to share any code
-                                          # path: (a) unconditionally grounds
-                                          # the holder — highest-priority
-                                          # override in source's own
-                                          # IsBattlerGroundedInverseCheck chain
-                                          # (battle_util.c L5879-5894), beating
-                                          # even Levitate/Air Balloon/Flying-
-                                          # type; wired into BOTH
-                                          # AbilityManager.is_grounded (hazards/
-                                          # Arena Trap) and
-                                          # .blocks_move_type/TypeChart's new
-                                          # grounded_override param (damage-calc
-                                          # Ground-move immunity, both the
-                                          # Levitate ability-check AND the raw
-                                          # Flying-type table entry); (b) halves
-                                          # Speed, unconditional, SAME magnitude
-                                          # as Macho Brace/Power Item
-                                          # (battle_main.c L4701-4702) — a
-                                          # wholly separate pipeline stage, no
-                                          # shared code with the grounding half.
+										  # from source not to share any code
+										  # path: (a) unconditionally grounds
+										  # the holder — highest-priority
+										  # override in source's own
+										  # IsBattlerGroundedInverseCheck chain
+										  # (battle_util.c L5879-5894), beating
+										  # even Levitate/Air Balloon/Flying-
+										  # type; wired into BOTH
+										  # AbilityManager.is_grounded (hazards/
+										  # Arena Trap) and
+										  # .blocks_move_type/TypeChart's new
+										  # grounded_override param (damage-calc
+										  # Ground-move immunity, both the
+										  # Levitate ability-check AND the raw
+										  # Flying-type table entry); (b) halves
+										  # Speed, unconditional, SAME magnitude
+										  # as Macho Brace/Power Item
+										  # (battle_main.c L4701-4702) — a
+										  # wholly separate pipeline stage, no
+										  # shared code with the grounding half.
 const HOLD_EFFECT_AIR_BALLOON: int = 96  # Grants Ground-move immunity (added
-                                          # to the "ungrounded" set alongside
-                                          # Levitate — TryAirBalloon,
-                                          # battle_hold_effects.c L213-234).
-                                          # CORRECTION to a plausible wrong
-                                          # assumption: consumption is NOT
-                                          # "this Pokemon just blocked a Ground
-                                          # move" — it's `IsBattlerTurnDamaged
-                                          # (battler, INCLUDING_SUBSTITUTES)`,
-                                          # i.e. pops from ANY damaging hit
-                                          # landing (Ground-type or not), even
-                                          # one absorbed entirely by
-                                          # Substitute. A blocked Ground hit
-                                          # deals 0 damage so it correctly
-                                          # never pops from the hit it just
-                                          # deflected. The INCLUDING_SUBSTITUTES
-                                          # semantic means this project's
-                                          # consumption check must sit BEFORE
-                                          # the existing `went_to_sub` early-
-                                          # return in `_do_damaging_hit` — same
-                                          # placement Rapid Spin already
-                                          # established for the identical
-                                          # reason. Source's switch-in flavor-
-                                          # text half (TryAirBalloon's `else if
-                                          # switchIn` branch) is a pure message,
-                                          # no mechanical effect — confirmed
-                                          # out of scope, matching this
-                                          # project's established cosmetic-
-                                          # no-op precedent ([M17c]'s
-                                          # Anticipation/Forewarn/Frisk).
+										  # to the "ungrounded" set alongside
+										  # Levitate — TryAirBalloon,
+										  # battle_hold_effects.c L213-234).
+										  # CORRECTION to a plausible wrong
+										  # assumption: consumption is NOT
+										  # "this Pokemon just blocked a Ground
+										  # move" — it's `IsBattlerTurnDamaged
+										  # (battler, INCLUDING_SUBSTITUTES)`,
+										  # i.e. pops from ANY damaging hit
+										  # landing (Ground-type or not), even
+										  # one absorbed entirely by
+										  # Substitute. A blocked Ground hit
+										  # deals 0 damage so it correctly
+										  # never pops from the hit it just
+										  # deflected. The INCLUDING_SUBSTITUTES
+										  # semantic means this project's
+										  # consumption check must sit BEFORE
+										  # the existing `went_to_sub` early-
+										  # return in `_do_damaging_hit` — same
+										  # placement Rapid Spin already
+										  # established for the identical
+										  # reason. Source's switch-in flavor-
+										  # text half (TryAirBalloon's `else if
+										  # switchIn` branch) is a pure message,
+										  # no mechanical effect — confirmed
+										  # out of scope, matching this
+										  # project's established cosmetic-
+										  # no-op precedent ([M17c]'s
+										  # Anticipation/Forewarn/Frisk).
 
 # M18v: Mental Herb. Value re-derived programmatically, cross-validated
 # against 6 pre-existing constants, zero mismatches.
 const HOLD_EFFECT_MENTAL_HERB: int = 28  # Source: TryMentalHerb
-                                          # (battle_hold_effects.c L416-476)
-                                          # cures SIX volatiles in current-gen
-                                          # source, unconditionally, in ONE
-                                          # scan: Infatuation, Torment,
-                                          # Disable, Heal Block, Encore, Taunt
-                                          # — NOT just "Disable/Encore" as the
-                                          # plan doc's own prose loosely
-                                          # summarized (it omitted Infatuation
-                                          # from that specific list). Of those
-                                          # six, this project implements only
-                                          # Disable (`disabled_move`/
-                                          # `disable_turns`) and Encore
-                                          # (`encored_move`/`encore_turns`) —
-                                          # Infatuation/Torment/Heal
-                                          # Block/Taunt all confirmed absent
-                                          # (no code anywhere references any
-                                          # of them as a real mechanic), so
-                                          # the tier table's narrowing DOES
-                                          # hold up, just via a fuller source
-                                          # citation than its own summary gave.
-                                          # `.onTargetAfterHit`/
-                                          # `.onAttackerAfterHit` dispatch
-                                          # (hold_effects.h L162-167), and
-                                          # TryMentalHerb's own body never
-                                          # branches on which — an
-                                          # UNCONDITIONAL per-checkpoint scan,
-                                          # the SAME shape as White Herb
-                                          # ([M18m]), not a "just happened"
-                                          # gated trigger — reuses the exact
-                                          # same `_phase_faint_check()`
-                                          # insertion point. Consumed ONCE if
-                                          # EITHER condition was cured (source
-                                          # sets a single `effect` flag
-                                          # regardless of how many of the
-                                          # (up to 6) conditions matched).
+										  # (battle_hold_effects.c L416-476)
+										  # cures SIX volatiles in current-gen
+										  # source, unconditionally, in ONE
+										  # scan: Infatuation, Torment,
+										  # Disable, Heal Block, Encore, Taunt
+										  # — NOT just "Disable/Encore" as the
+										  # plan doc's own prose loosely
+										  # summarized (it omitted Infatuation
+										  # from that specific list). Of those
+										  # six, this project implements only
+										  # Disable (`disabled_move`/
+										  # `disable_turns`) and Encore
+										  # (`encored_move`/`encore_turns`) —
+										  # Infatuation/Torment/Heal
+										  # Block/Taunt all confirmed absent
+										  # (no code anywhere references any
+										  # of them as a real mechanic), so
+										  # the tier table's narrowing DOES
+										  # hold up, just via a fuller source
+										  # citation than its own summary gave.
+										  # `.onTargetAfterHit`/
+										  # `.onAttackerAfterHit` dispatch
+										  # (hold_effects.h L162-167), and
+										  # TryMentalHerb's own body never
+										  # branches on which — an
+										  # UNCONDITIONAL per-checkpoint scan,
+										  # the SAME shape as White Herb
+										  # ([M18m]), not a "just happened"
+										  # gated trigger — reuses the exact
+										  # same `_phase_faint_check()`
+										  # insertion point. Consumed ONCE if
+										  # EITHER condition was cured (source
+										  # sets a single `effect` flag
+										  # regardless of how many of the
+										  # (up to 6) conditions matched).
 
 # M18x: Covert Cloak. Value re-derived programmatically, cross-validated
 # against 7 pre-existing constants, zero mismatches.
 const HOLD_EFFECT_COVERT_CLOAK: int = 125  # Source: IsMoveEffectBlockedByTarget
-                                            # (battle_util.c L9811-9825) — the
-                                            # LITERAL SAME function as Shield
-                                            # Dust (ABILITY_SHIELD_DUST=19,
-                                            # ability_manager.gd), an
-                                            # if/else-if chain checking
-                                            # ability first, then item, both
-                                            # returning the identical block.
-                                            # Blocks a move's own PROBABILISTIC
-                                            # secondary effect (status
-                                            # infliction/confusion/flinch)
-                                            # landing on the holder as the
-                                            # DEFENDER — same
-                                            # `is_true_secondary`-gated scope
-                                            # as this project's existing
-                                            # Shield Dust check
-                                            # (status_manager.gd's
-                                            # try_secondary_effect), which
-                                            # already correctly exempts
-                                            # guaranteed/primary status-move
-                                            # effects (Thunder Wave/Toxic/
-                                            # Confuse Ray/Will-O-Wisp, all
-                                            # secondary_chance=0) and pure
-                                            # stat-change moves (Growl/Swords
-                                            # Dance — this project's
-                                            # `stat_change_stat` schema has NO
-                                            # probability field at all, so no
-                                            # damaging move can carry a
-                                            # probabilistic stat-lowering
-                                            # secondary effect here). NOT
-                                            # wired into try_contact_effects's
-                                            # Poison Touch branch: real source
-                                            # ALSO gates Poison Touch through
-                                            # this same check (battle_util.c
-                                            # L4286), but this project's
-                                            # EXISTING Shield Dust
-                                            # implementation has no such gate
-                                            # there (a pre-existing gap from
-                                            # [M17c], predating this tier) —
-                                            # Covert Cloak deliberately
-                                            # matches Shield Dust's CURRENT
-                                            # actual scope, not source's full
-                                            # scope, to avoid introducing a
-                                            # NEW asymmetry between the two.
-                                            # Toxic Chain (source's other
-                                            # gated ability) is excluded from
-                                            # this project entirely ([M17c]).
-                                            # Sheer Force: confirmed unrelated
-                                            # — a separate, sequential check
-                                            # keyed on the ATTACKER's own
-                                            # ability, no interaction either
-                                            # way. Permanent modifier, NEVER
-                                            # consumed — `IsMoveEffectBlockedByTarget`
-                                            # is a pure predicate with no
-                                            # item-removal call anywhere near
-                                            # it, matching Shield Dust's own
-                                            # passive-ability shape.
+											# (battle_util.c L9811-9825) — the
+											# LITERAL SAME function as Shield
+											# Dust (ABILITY_SHIELD_DUST=19,
+											# ability_manager.gd), an
+											# if/else-if chain checking
+											# ability first, then item, both
+											# returning the identical block.
+											# Blocks a move's own PROBABILISTIC
+											# secondary effect (status
+											# infliction/confusion/flinch)
+											# landing on the holder as the
+											# DEFENDER — same
+											# `is_true_secondary`-gated scope
+											# as this project's existing
+											# Shield Dust check
+											# (status_manager.gd's
+											# try_secondary_effect), which
+											# already correctly exempts
+											# guaranteed/primary status-move
+											# effects (Thunder Wave/Toxic/
+											# Confuse Ray/Will-O-Wisp, all
+											# secondary_chance=0) and pure
+											# stat-change moves (Growl/Swords
+											# Dance — this project's
+											# `stat_change_stat` schema has NO
+											# probability field at all, so no
+											# damaging move can carry a
+											# probabilistic stat-lowering
+											# secondary effect here). NOT
+											# wired into try_contact_effects's
+											# Poison Touch branch: real source
+											# ALSO gates Poison Touch through
+											# this same check (battle_util.c
+											# L4286), but this project's
+											# EXISTING Shield Dust
+											# implementation has no such gate
+											# there (a pre-existing gap from
+											# [M17c], predating this tier) —
+											# Covert Cloak deliberately
+											# matches Shield Dust's CURRENT
+											# actual scope, not source's full
+											# scope, to avoid introducing a
+											# NEW asymmetry between the two.
+											# Toxic Chain (source's other
+											# gated ability) is excluded from
+											# this project entirely ([M17c]).
+											# Sheer Force: confirmed unrelated
+											# — a separate, sequential check
+											# keyed on the ATTACKER's own
+											# ability, no interaction either
+											# way. Permanent modifier, NEVER
+											# consumed — `IsMoveEffectBlockedByTarget`
+											# is a pure predicate with no
+											# item-removal call anywhere near
+											# it, matching Shield Dust's own
+											# passive-ability shape.
 
 # [M18.5i] Loaded Dice. Value re-derived programmatically (COVERT_CLOAK=125
 # is the immediately preceding enum entry in include/constants/hold_effects.h,
 # so LOADED_DICE=126), cross-validated against MIRROR_HERB=123/
 # PUNCHING_GLOVE=124's own already-confirmed sequential values.
 const HOLD_EFFECT_LOADED_DICE:  int = 126  # Source: SetRandomMultiHitCounter
-                                            # (battle_move_resolution.c
-                                            # L2306-2307) — for TRUE variable-
-                                            # multi-hit moves only (move.multi_hit,
-                                            # NOT move.strike_count fixed-hit
-                                            # moves — Population Bomb is the one
-                                            # exception, excluded from this
-                                            # project's scope per [M18.5g]),
-                                            # replaces the standard weighted
-                                            # 2/3/4/5 roll with a flat
-                                            # RandomUniform(4,5) — biases toward
-                                            # the top of the range (50/50 between
-                                            # 4 and 5 hits) rather than forcing a
-                                            # single fixed value, genuinely
-                                            # distinct from Skill Link's own
-                                            # deterministic-5 effect
-                                            # (ability_manager.gd).
+											# (battle_move_resolution.c
+											# L2306-2307) — for TRUE variable-
+											# multi-hit moves only (move.multi_hit,
+											# NOT move.strike_count fixed-hit
+											# moves — Population Bomb is the one
+											# exception, excluded from this
+											# project's scope per [M18.5g]),
+											# replaces the standard weighted
+											# 2/3/4/5 roll with a flat
+											# RandomUniform(4,5) — biases toward
+											# the top of the range (50/50 between
+											# 4 and 5 hits) rather than forcing a
+											# single fixed value, genuinely
+											# distinct from Skill Link's own
+											# deterministic-5 effect
+											# (ability_manager.gd).
 
 # [M24b rollover] Smoke Ball. CORRECTION to this item's own commonly-assumed
 # "trap prevention" framing: direct source read (battle_util.c L558,
@@ -909,20 +909,20 @@ const UQ412_RIPEN_RESIST_BERRY: int = 1024  # 0.25 × — Resist Berry halving, 
 const UQ412_TYPE_BOOST: int      = 4915   # 1.2 × — matching-type held item (M18a)
 const UQ412_DOUBLE: int          = 8192   # 2.0 × — M18g species-gated stat items
 const UQ412_EXPERT_BELT: int     = 4915   # 1.2 × (hardcoded UQ_4_12(1.2) in source,
-                                           # NOT read from hold_effect_param despite
-                                           # items.h storing 20 there) — numerically
-                                           # identical to UQ412_TYPE_BOOST but a
-                                           # separate constant: different function,
-                                           # different pipeline stage, different
-                                           # source formula (plain macro rounding,
-                                           # not PercentToUQ4_12)
+										   # NOT read from hold_effect_param despite
+										   # items.h storing 20 there) — numerically
+										   # identical to UQ412_TYPE_BOOST but a
+										   # separate constant: different function,
+										   # different pipeline stage, different
+										   # source formula (plain macro rounding,
+										   # not PercentToUQ4_12)
 const UQ412_PUNCHING_GLOVE: int  = 4506   # 1.1 × (M18p) — round(1.1*4096)=4506, a
-                                           # hardcoded UQ_4_12(1.1) literal in source
-                                           # (battle_util.c L6664-6666), NOT the
-                                           # FLOORED param-driven formula Muscle
-                                           # Band/Wise Glasses use — verified
-                                           # directly, not assumed to share their
-                                           # rounding.
+										   # hardcoded UQ_4_12(1.1) literal in source
+										   # (battle_util.c L6664-6666), NOT the
+										   # FLOORED param-driven formula Muscle
+										   # Band/Wise Glasses use — verified
+										   # directly, not assumed to share their
+										   # rounding.
 
 
 # ── Attack-stat item modifier (applied to stat, BEFORE base formula) ──────────
