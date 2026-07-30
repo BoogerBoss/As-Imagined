@@ -4309,8 +4309,10 @@ func _test_b20_glare_divisor_is_pair_max_minus_one() -> void:
 	var mid := AnimBehaviors._glare_dot_point(start, finish, 6)
 	var by_eleven: float = 1100.0 * 6.0 / 11.0
 	var by_twelve: float = 1100.0 * 6.0 / 12.0
-	_chk("b20 glare interpolates over pairMax-1 = 11 (%.1f, not %.1f)"
-			% [mid.x, by_twelve], absf(mid.x - by_eleven) < 1.0)
+	# Names BOTH values, so a real failure is self-diagnosing rather than
+	# printing "550.0, not 550.0" -- the same wording trap batch 18 hit.
+	_chk("b20 glare interpolates over pairMax-1 -- want %.1f, got %.1f (%.1f = the /12 off-by-one)"
+			% [by_eleven, mid.x, by_twelve], absf(mid.x - by_eleven) < 1.0)
 
 	# Endpoints are SPECIAL-CASED, not interpolated -- so pair 0 is exactly
 	# the start and the last pair is exactly the target, with no rounding.
@@ -4382,7 +4384,7 @@ func _test_b20_destiny_bond_shadows_travel_to_their_own_foe() -> void:
 	if shadows.size() < 2:
 		_chk("b20 destiny bond spawned two shadows to track", false)
 		return
-	var same_start := shadows[0].centre.is_equal_approx(shadows[1].centre)
+	var same_start: bool = shadows[0].centre.is_equal_approx(shadows[1].centre)
 	_chk("b20 both shadows start together at the attacker", same_start)
 	_step(vm, 8)
 	var alive: Array = shadows.filter(func(s): return _b16_alive(s))

@@ -100,6 +100,11 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 21] —
+		"AnimTask_SnatchOpposingMonMove": _snatch_opposing_mon_move,
+		"AnimTask_PurpleFlamesOnTarget": _purple_flames_on_target,
+		"SpriteCB_SteelRoller": _steel_roller,
+		"SpriteCB_FlippableSlash": _flippable_slash,
 		# — [M36D batch 20] —
 		"AnimTask_GlareEyeDots": _glare_eye_dots,
 		"AnimTask_DestinyBondWhiteShadow": _destiny_bond_white_shadow,
@@ -11290,6 +11295,12 @@ static func _destiny_bond_white_shadow(vm: AnimScriptVM, ctx: Dictionary) -> voi
 	var base := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
 	var frames: int = maxi(1, vm.args[1])
 
+	# NOT _linear_travel: that helper destroys its sprite on arrival, which is
+	# right for a projectile and wrong here. Upstream's step stops moving when
+	# its frame count runs out and leaves the shadow STANDING on the foe for
+	# the rest of the task -- caught by this batch's own travel test, which
+	# found the shadows gone the instant they arrived.
+	var shadows: Array = []
 	for i in range(4):
 		if i == AnimStage.ANIM_ATTACKER or i == AnimStage.ANIM_ATK_PARTNER:
 			continue
@@ -11300,7 +11311,8 @@ static func _destiny_bond_white_shadow(vm: AnimScriptVM, ctx: Dictionary) -> voi
 		if shadow == null:
 			continue
 		shadow.centre = base
-		_linear_travel(vm, shadow, base, _battler_centre(vm, i), frames)
+		shadows.append(shadow)
+		_travel_and_hold(vm, shadow, base, _battler_centre(vm, i), frames)
 
 	# The blend ramp moves eva and evb on ALTERNATE steps, not together --
 	# eva rises on odd ticks, evb falls on even ones, so the fade takes twice
@@ -11323,7 +11335,29 @@ static func _destiny_bond_white_shadow(vm: AnimScriptVM, ctx: Dictionary) -> voi
 					clampf(float(st["eva"]) / 16.0, 0.0, 1.0))
 		if int(st["n"]) >= 24:
 			_clear_blend(atk)
+			for sh in shadows:
+				if is_instance_valid(sh):
+					(sh as AnimSprite).finish()
 			return true
+		return false)
+
+
+# Travels a sprite and then LEAVES IT THERE. Distinct from _linear_travel,
+# which destroys on arrival -- the difference matters for any behavior whose
+# sprite is torn down by its owning task rather than by its own motion.
+static func _travel_and_hold(vm: AnimScriptVM, node: AnimSprite,
+		start: Vector2, finish_pos: Vector2, duration: int) -> void:
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		if t >= duration:
+			node.centre = finish_pos
+			return true          # stop stepping; do NOT finish the sprite
+		node.centre = start.lerp(finish_pos, float(t) / float(duration))
 		return false)
 
 
@@ -11355,3 +11389,226 @@ static func _attacker_fade_to_invisible(vm: AnimScriptVM, _ctx: Dictionary) -> v
 			vm.set_battler_visible_tracked(AnimStage.ANIM_ATTACKER, false)
 			return true
 		return false)
+
+
+# ── [M36D batch 21] ───────────────────────────────────────────────────────
+
+
+# AnimTask_SnatchOpposingMonMove (battle_anim_effects_3.c:5258). No args in,
+# but it WRITES arg 7 mid-flight (see below).
+#
+# The Snatch gag, and a genuine five-state sequence: the attacker slides off
+# its OWN side, a look-alike crosses the whole screen from the FAR side, the
+# look-alike leaves, and the attacker slides back in from the side it left
+# through. Getting any state's direction backwards still animates, just
+# nonsensically.
+#
+# ⚠️ **It signals the waiting script by WRITING `gBattleAnimArgs[7] = -1`**
+# the moment the crossing look-alike passes the target's x — the same
+# arg-register protocol `AnimTask_SetPsychicBackground` watches from the other
+# end. A port that skips the write leaves any script polling arg 7 waiting
+# forever.
+#
+# Speed is 0x800 per frame in 8.8 with the low byte carried (`&= 0xFF`), i.e.
+# a flat 8px/frame, not an acceleration.
+const _SNATCH_SPEED := 8.0
+
+
+static func _snatch_opposing_mon_move(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var atk := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	if atk == null:
+		return
+	var scale := _scale(vm)
+	var mo := MonOffset.new(atk)
+	var player_side := _is_player_side(vm)
+	# The attacker exits toward its OWN side and returns from there; the
+	# look-alike crosses the other way. One sign drives both.
+	var exit_dir := 1.0 if player_side else -1.0
+	var width := 240.0 * scale
+	var edge := 32.0 * scale
+	var target_x: float = _battler_centre(vm, AnimStage.ANIM_TARGET).x
+	var base_x: float = _battler_centre(vm, AnimStage.ANIM_ATTACKER).x
+	var layer: Control = vm.stage.layer() if vm.stage != null else null
+
+	var st := {"phase": 0, "x": 0.0, "clone": null, "cx": 0.0, "signalled": false}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(atk):
+			return true
+		match int(st["phase"]):
+			0:
+				st["x"] = float(st["x"]) + exit_dir * _SNATCH_SPEED * scale
+				mo.apply(Vector2(float(st["x"]), 0.0))
+				var here := base_x + float(st["x"])
+				if here < -edge or here > width + edge:
+					st["phase"] = 1
+			1:
+				# The look-alike enters from the FAR side, at the target's row.
+				var clone := _clone_battler_visual(atk, layer)
+				if clone == null:
+					mo.restore()
+					return true
+				var start_x := (width + edge) if player_side else -edge
+				var ty: float = _battler_centre(vm, AnimStage.ANIM_TARGET).y
+				clone.position = Vector2(start_x - clone.size.x * 0.5,
+						ty - clone.size.y * 0.5)
+				st["clone"] = clone
+				st["cx"] = start_x
+				st["phase"] = 2
+			2:
+				var clone = st["clone"]
+				if clone == null or not is_instance_valid(clone):
+					st["phase"] = 3
+					return false
+				st["cx"] = float(st["cx"]) - exit_dir * _SNATCH_SPEED * scale
+				clone.position.x = float(st["cx"]) - clone.size.x * 0.5
+				# The signal: fired ONCE, as it passes the target.
+				if not bool(st["signalled"]):
+					var passed := float(st["cx"]) < target_x if player_side \
+							else float(st["cx"]) > target_x
+					if passed:
+						st["signalled"] = true
+						vm.args[7] = -1
+				if float(st["cx"]) < -edge or float(st["cx"]) > width + edge:
+					st["phase"] = 3
+			3:
+				var clone = st["clone"]
+				if clone != null and is_instance_valid(clone):
+					clone.queue_free()
+				st["clone"] = null
+				# Teleport the attacker to the far edge so it can walk back in.
+				st["x"] = ((-base_x - edge) if player_side
+						else (width + edge - base_x))
+				mo.apply(Vector2(float(st["x"]), 0.0))
+				st["phase"] = 4
+			_:
+				st["x"] = float(st["x"]) + exit_dir * _SNATCH_SPEED * scale
+				var home := (base_x + float(st["x"]) >= base_x) if player_side \
+						else (base_x + float(st["x"]) <= base_x)
+				if home:
+					mo.restore()
+					return true
+				mo.apply(Vector2(float(st["x"]), 0.0))
+		return false)
+
+
+# AnimTask_PurpleFlamesOnTarget (battle_anim_new.c:7685) ->
+# AnimTask_GrudgeFlames_Step (battle_anim_ghost.c:1261), flame step :1346.
+#
+# Six flames evenly spread around the target at phases `i * 42` on the 256
+# table, each also carrying an `i * 6` head start on its own vertical bob.
+#
+# ⚠️ **Each flame flips its DRAW ORDER at the sine midpoint** — upstream
+# computes `index = phase - 65` as UNSIGNED and puts the flame behind the mon
+# while `index < 127`, in front otherwise. That front/behind swap is what
+# makes the six read as ORBITING the Pokemon rather than sliding across it,
+# and it is invisible in any test that only checks position.
+const _GRUDGE_FLAME_COUNT := 6
+const _GRUDGE_PHASE_STEP := 42
+const _GRUDGE_BOB_AMPLITUDE := 7.0
+
+
+static func _purple_flames_on_target(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var scale := _scale(vm)
+	var centre := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var target_node := _battler_node(vm, AnimStage.ANIM_TARGET)
+	var radius := 24.0
+	if target_node != null:
+		radius = target_node.size.x * 0.5 / scale + 8.0
+	var forward := _is_player_side(vm)
+
+	for i in range(_GRUDGE_FLAME_COUNT):
+		var flame := _make_sprite(vm, ctx)
+		if flame == null:
+			continue
+		var st := {"phase": float((i * _GRUDGE_PHASE_STEP) % 256),
+				"bob": i * 6, "t": 0}
+		vm.add_stepper(func() -> bool:
+			if not is_instance_valid(flame):
+				return true
+			flame.advance_frame()
+			# Sweeps one way or the other depending on the attacker's side.
+			var p := float(st["phase"]) + (2.0 if forward else -2.0)
+			st["phase"] = fmod(p + 256.0, 256.0)
+			st["bob"] = int(st["bob"]) + 1
+			flame.centre = centre + Vector2(
+					_gba_sin(float(st["phase"]), radius),
+					_gba_sin(float((int(st["bob"]) * 8) % 256),
+							_GRUDGE_BOB_AMPLITUDE)) * scale
+			# The front/behind swap, reproduced from the unsigned compare.
+			var idx := int(st["phase"]) - 65
+			if idx < 0:
+				idx += 65536
+			flame.z_index = -1 if idx < 127 else 1
+			st["t"] = int(st["t"]) + 1
+			if int(st["t"]) >= _ANIM_END_CAP:
+				flame.finish()
+				return true
+			return false)
+
+
+# SpriteCB_SteelRoller (battle_anim_new.c:8026, steps :8041/:8051).
+# args: 0/1 spawn offset, 2 fall speed, 3 sweep distance, 4 sweep speed.
+#
+# Falls onto the target and then hands itself to the SAME left/right sweep
+# batch 18 ported for `SpriteCB_LeftRightSlice` -- upstream literally sets
+# that callback, so this reuses the ported motion rather than restating it.
+static func _steel_roller(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var rest := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var start := rest + Vector2(float(vm.args[0]), float(vm.args[1])) * scale
+	node.centre = start
+	var fall: float = maxf(1.0, float(vm.args[2]))
+	var half: float = absf(float(vm.args[3]))
+	var sweep: float = maxf(1.0, float(vm.args[4]))
+	var landed := rest + Vector2(float(vm.args[0]), 0.0) * scale
+
+	var st := {"y": float(vm.args[1]), "down": true, "x": 0.0, "back": false}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		if bool(st["down"]):
+			st["y"] = float(st["y"]) + fall
+			if float(st["y"]) >= 0.0:
+				st["y"] = 0.0
+				st["down"] = false
+				st["x"] = -half
+			node.centre = rest + Vector2(float(vm.args[0]),
+					float(st["y"])) * scale
+			return false
+		# The sweep, out then back, exactly as the slice does it.
+		if not bool(st["back"]):
+			st["x"] = float(st["x"]) + sweep
+			if float(st["x"]) >= half:
+				st["x"] = half
+				st["back"] = true
+		else:
+			st["x"] = float(st["x"]) - sweep
+			if float(st["x"]) <= -half:
+				node.finish()
+				return true
+		node.centre = landed + Vector2(float(st["x"]), 0.0) * scale
+		return false)
+
+
+# SpriteCB_FlippableSlash (battle_anim_new.c:8060). args: 0/1 offset,
+# 2 flip X, 3 flip Y.
+#
+# Positioned on the target and mirrored per-axis by its own args -- the flips
+# are INDEPENDENT, so a port that ties them to the battler's side loses the
+# per-call control the whole behavior exists to provide. Lives until its own
+# frame sequence ends.
+static func _flippable_slash(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	node.centre = _positioned_centre(vm, AnimStage.ANIM_TARGET,
+			vm.args[0], vm.args[1], _scale(vm))
+	if vm.args[2] != 0:
+		node.scale.x = -absf(node.scale.x)
+	if vm.args[3] != 0:
+		node.scale.y = -absf(node.scale.y)
+	_play_until_anim_ends(vm, node, _ANIM_END_CAP)

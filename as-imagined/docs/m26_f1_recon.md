@@ -1326,8 +1326,9 @@ pinned by test.
 
 | ~~all four b16 deferrals~~ | b16 | **CLOSED in b17** — `AnimTask_SquishTarget`, `AnimBrickBreakWall`, `AnimRazorWindTornado`, `AnimTask_NightShadeClone` all ported once read. They were the board's top three picks by yield, which is what deferring them was for. | — |
 | ~~`AnimTask_ScaryFace`~~ | b17, b18 | **CLOSED in b19 — and the stated reason was WRONG both times.** Not "absent from the pull": REFUSED by the pull's own two-palette-bank guard, which measured the off-screen scroll margin. Narrowed to the visible 30x20 and re-proved on a synthetic case. | — |
-| `AnimTask_GlareEyeDots` (+2) | b18 | Multi-step task spawner; setup read, `_Step` tail not. **UNREAD, not unfindable.** | medium |
-| `AnimTask_DestinyBondWhiteShadow` (+2) | b18 | Same shape as above. **UNREAD, not unfindable.** | medium |
+| ~~`AnimTask_GlareEyeDots`~~ | b18 | **CLOSED in b20** once the `_Step` tail was read. | — |
+| ~~`AnimTask_DestinyBondWhiteShadow`~~ | b18 | **CLOSED in b20.** | — |
+| `AnimTask_PurpleFlamesOnTarget` (+2) | b20 | Setup read; `AnimTask_GrudgeFlames_Step` not. **UNREAD, not unfindable.** | medium |
 | `AnimTask_FakeOut` (+1) | b18 | **SCREEN-EFFECT gap.** WIN0/BLDY window-darken, closer to M36E's surface than a sprite behavior. | M36E-shaped |
 
 **`AnimFallingFeather` — deferred by batches 12, 13 and 14, then taken
@@ -1452,6 +1453,63 @@ is harness-specific, not a shipped bug.
 **Also observed, pre-existing and NOT M36:** the attacker's back sprite is
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
+
+### M36D batch 20 — COMPLETE 2026-07-30. Batch 18's deferrals, and a helper that was quietly wrong for one caller.
+
+**3 behaviors, +5 moves (660 → 665 of 932, 70.8% → 71.4%).** Tier 2 65.4%,
+Tier 3 70.8%; iconic Gen 1-3 still closed at 70/70.
+
+`AnimTask_GlareEyeDots` · `AnimTask_DestinyBondWhiteShadow` ·
+`AnimTask_AttackerFadeToInvisible`. The first two were batch 18's own
+deferrals, back near the top of the ranking — the same pattern as batches 11,
+17 and 19, which is what deferring them was for.
+
+⚠️ **`_linear_travel` destroys its sprite on arrival, and that is wrong for
+this caller.** `AnimDestinyBondWhiteShadow_Step` stops moving when its frame
+count runs out and leaves the shadow STANDING on the foe for the rest of the
+task. Reusing the existing helper made every shadow vanish the instant it
+arrived — **found by this batch's own travel test, not by reading**. New
+`_travel_and_hold` sits beside it; the distinction (does the sprite's own
+motion end it, or does its owning task?) is worth having named, because the
+two are indistinguishable in any test that only checks the destination.
+
+**`AnimTask_GlareEyeDots` — three details a plausible port gets wrong:**
+
+1. **The interpolation divisor is `pairMax - 1`, not `pairMax`.** With 12
+   pairs the span is divided by ELEVEN. Using 12 shortens the whole trail so
+   it never quite reaches the target — and looks entirely reasonable in
+   motion. Proven by injecting the off-by-one (600.0 → 550.0 at the midpoint).
+2. **The endpoints are special-cased, not interpolated** — pair 0 sits exactly
+   on the start, pair ≥ pairMax exactly on the target.
+3. **Dots come in diagonal PAIRS offset by ±3**, not singly.
+
+**`AnimTask_DestinyBondWhiteShadow` spawns one shadow PER OPPOSING VISIBLE
+battler** — skipping the attacker *and* the attacker's partner, and skipping
+anything not currently visible. A "spawn one" port and a "spawn for every
+slot" port are wrong in opposite directions, so the suite pins both: two
+shadows in the default layout, one fewer when a foe is hidden. Its blend ramp
+also moves eva and evb on **alternate** steps, so the fade takes twice as long
+as moving both each step would.
+
+**`AnimTask_AttackerFadeToInvisible` deliberately does NOT restore** — it ends
+with the mon hidden and the paired script call fades it back. Routed through
+the tracked visibility setter so a run ending there still leaves a usable
+stage.
+
+**Two small quality fixes to my own recent work**, neither behavioural:
+a dead variable in the DestinyBond setup (read only by a no-op `if … pass`)
+was removed rather than left with a comment excusing it; and the new divisor
+assertion's label was reworded to name both the wanted and the wrong value,
+after it first printed the same self-referential `"550.0, not 550.0"` that
+batch 18's fall-through guard did.
+
+**Template names were resolved by callback UP FRONT this time**, rather than
+guessed and then caught — three consecutive batches of the guard firing was
+enough evidence to change the order of work.
+
+**Tests:** `m36d_batch_test` 605 → **621/621**. Regression green: `m36c`
+66/66, `m36b` 53/53, `m36a` 71/71, `m36e_background_runtime` 30/30, `m36e3`
+60/60, `m36e_background_asset` 24/24, `hit_effect_dispatch` 40/40.
 
 ### M36D batch 19 — COMPLETE 2026-07-30. A deferral reason that was wrong, and a guard narrowed then re-proved.
 

@@ -127,7 +127,13 @@ var _pending: Dictionary = {}
 ## They are independent, and a freshly loaded neighbour is a whole map away
 ## from the player, so its skirt can wait a frame. The SYNC path still paints
 ## immediately: startup and the tests want a chunk fully formed on return.
-var _skirt_queue: Array[Rect2i] = []
+## Chunk NAMES waiting for a skirt repaint, at most one paid per frame.
+##
+## [M27D perf] Was a queue of RECTS, and one rect could repaint several chunks
+## in a single call — measured at 4.8 ms for one, and a chunk's skirt is 4-7k
+## `set_cell` calls (2256 cells x 3 planes for Viridian City). Splitting per
+## chunk turns one spike into several cheap frames.
+var _skirt_queue: Array[String] = []
 
 ## map_name -> { local Vector2i : true } for every cell an entity blocks.
 ##
@@ -184,7 +190,12 @@ func _install_chunk(map_name: String, data: MapData, packed: PackedScene,
 	# cells an existing chunk was skirting over, so the seam only closes if the
 	# OTHER side repaints too. Scoped to chunks that reach these cells.
 	if defer_skirt:
-		_skirt_queue.append(chunk_rect(map_name))
+		# The new chunk first: its own tiles are the ones a neighbour's stale
+		# skirt is currently painted over, so repainting it first is what
+		# shortens the visible seam rather than merely spreading the cost.
+		_enqueue_skirt(map_name)
+		for other in _chunks_reaching(chunk_rect(map_name)):
+			_enqueue_skirt(other)
 	else:
 		refresh_skirts_near(chunk_rect(map_name))
 	return true
@@ -269,13 +280,27 @@ func chunk_rect(map_name: String) -> Rect2i:
 ## skirt only differs if its own skirt REGION — its bounds grown by the skirt
 ## depth — reaches into the cells that changed hands.
 func refresh_skirts_near(rect: Rect2i) -> void:
+	for map_name in _chunks_reaching(rect):
+		_paint_skirt(map_name)
+
+
+## Which live chunks' skirt regions reach into `rect`.
+func _chunks_reaching(rect: Rect2i) -> Array[String]:
 	var grow := Vector2i(SKIRT_DEPTH_X, SKIRT_DEPTH_Y)
+	var out: Array[String] = []
 	for map_name in _chunks:
 		var r := chunk_rect(map_name)
 		if r.size == Vector2i.ZERO:
 			continue
 		if Rect2i(r.position - grow, r.size + grow * 2).intersects(rect):
-			_paint_skirt(map_name)
+			out.append(map_name)
+	return out
+
+
+## Queue a chunk's skirt for a later frame, without queuing it twice.
+func _enqueue_skirt(map_name: String) -> void:
+	if not _skirt_queue.has(map_name):
+		_skirt_queue.append(map_name)
 
 
 func _paint_skirt(map_name: String) -> void:
@@ -626,7 +651,7 @@ func _process(_delta: float) -> void:
 	# Skirts first, and only when nothing installed this frame — the two are the
 	# frame's two expensive jobs and doing both at once is what this avoids.
 	if not _skirt_queue.is_empty():
-		refresh_skirts_near(_skirt_queue.pop_front())
+		_paint_skirt(_skirt_queue.pop_front())
 		return
 	_poll_pending()
 
