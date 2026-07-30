@@ -1408,6 +1408,22 @@ Sprites are built with **no `owner`**, so Godot never serialises them and a bake
 
 **Tests.** Section **AL**, 14 assertions, `EXPECTED_TOTAL` **425 → 439**. AL.04 is the roster sweep for the layout bug; AL.08 and AL.14 are split so a layout defect and a missing mirror report separately rather than one assertion covering both. Both verified by reintroducing each break. AL.12 initially failed by being too strict — it caught the corridor's real `VAR_0` NPC — and now asserts the exception explicitly rather than being loosened.
 
+**[M27D D2 — entity occupancy] COMPLETE — 2026-07-30. NPCs are solid.**
+
+`StepResolver` gained a fifth cell-source method, `entity_at`, and a new `Outcome.OBJECT_EVENT`. **The rule is source's, not a choice**: `DoesObjectCollideWithObjectAt` consults the `object_events` array and nothing else, so `npc`/`trainer`/`item_ball` block while warps, triggers and signs occupy no collision slot — which is precisely why a trainer sees over a doormat and why you can stand on one.
+
+⚠️ **THE CHECK GOES LAST, AFTER ELEVATION**, matching `GetVanillaCollision`'s own precedence (range → terrain/directional → elevation → object event). Walking at an NPC standing on a different stratum therefore reports `ELEVATION_MISMATCH`, not `OBJECT_EVENT`. Both block, so **nothing in play can tell the two apart** — only a test can, which is why AM.03 exists.
+
+**The 210 HM obstacles became solid for free** (97 breakable rocks, 55 cuttable trees, 58 pushable boulders). They import as `npc` kind, so the existing rule covers them with no obstacle-specific code — the consequence flagged when the empty-`movement_type` question was answered.
+
+`MapData.entity_at()` returns false **and that is correct rather than a stub**: entities are scene NODES while `MapData` is the per-cell terrain resource, so the editor overlay's own view genuinely has nobody standing on it. Occupancy is a per-chunk SET rebuilt at install rather than a per-step scan of the scene tree — a step already costs a resolve, and walking every entity of every live chunk per step is the same per-cell cost that made C4's skirt repaint 4000 dictionary walks. It is also the shape D3 needs once NPCs move.
+
+**Not yet gated on `visibility_flag`** — source hides a flagged-away object event and stops it colliding; nothing reads flags until the store lands in D4, so every placed entity currently blocks. Recorded rather than silently assumed.
+
+**Tests.** Section **AM**, 9 assertions, `EXPECTED_TOTAL` **439 → 448**. Precedence is tested against a synthetic cell source, because `MapData` always answers false and the corridor may not happen to place an NPC on a mismatched stratum.
+
+⚠️ **One assertion was written vacuous and caught by trying to break it — the third time this arc.** "Unloading releases every cell it was blocking" passed with the release REMOVED, because `entity_at()` asks `chunk_owning()` first and that already answers `""` for an unloaded chunk, so a stale set is unreachable through the public path. The leak is real regardless — a warp unloads every chunk, so a session accumulates one dead set per map entered — so it is now asserted against the manager's own state instead. **A second break was more informative than its own assertion**: letting warps and signs block breaks four WARP tests (AH.06, AI.03, AI.04, AJ.03), because you can no longer step onto a warp tile — the occupancy rule turns out to be load-bearing for warp dispatch, which nothing had recorded.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **A thirteenth M27 block, orthogonal to C's stitching work.** Added because this is Kanto with an ORIGINAL story: the region's 421 maps are imported, but new maps and new art are inevitable, and **there is currently no way to create either.** Scope of record while this is unbuilt: the approved mockup at `https://claude.ai/code/artifact/0cc55049-a0d4-4675-8b0c-eb33853611b0`. Nothing here is implemented.

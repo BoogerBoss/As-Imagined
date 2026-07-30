@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 447
+const EXPECTED_TOTAL := 448
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -126,7 +126,7 @@ const REACHABILITY_ASSERTIONS := 2
 const SPRITE_ASSERTIONS := 14
 
 ## [M27D D2] Section AM — entity occupancy.
-const OCCUPANCY_ASSERTIONS := 8
+const OCCUPANCY_ASSERTIONS := 9
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -3218,13 +3218,17 @@ func _test_entity_occupancy() -> void:
 	_chk("AM.07 and the block comes from the ENTITY, not the ground under it",
 			npc_on_walkable_ground)
 
-	# Unloading must take the occupancy with it, or a freed chunk keeps
-	# blocking cells that no longer belong to anything.
+	# Unloading must take the occupancy set with it. Asserted against the
+	# manager's OWN state, not through entity_at(): that asks chunk_owning()
+	# first, which already answers "" for an unloaded chunk, so a stale set is
+	# unreachable and an entity_at-based check cannot fail. Verified by removing
+	# the erase — the check passed anyway, which is why it is written this way.
+	#
+	# The leak is real even though it is invisible: a warp unloads every chunk,
+	# so a play session would accumulate one dead set per map entered.
+	_chk("AM.08 a loaded chunk has an occupancy set",
+			mm._occupancy.has("PalletTown_Frlg"))
 	mm.unload_chunk("PalletTown_Frlg")
-	var leaked := false
-	for y in range(20):
-		for x in range(24):
-			if mm.entity_at(Vector2i(x, y)):
-				leaked = true
-	_chk("AM.08 unloading a chunk releases every cell it was blocking", not leaked)
+	_chk("AM.09 and unloading releases it rather than leaking one per map",
+			not mm._occupancy.has("PalletTown_Frlg"))
 	mm.queue_free()
