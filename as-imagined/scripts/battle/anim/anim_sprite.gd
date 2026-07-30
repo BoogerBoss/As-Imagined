@@ -55,6 +55,11 @@ var data: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0]
 var followup: Callable = Callable()
 
 var _finished := false
+# The port of `sprite->animEnded`. An entire upstream idiom depends on it --
+# RunStoredCallbackWhenAnimEnds is how Fang, Slash, Knock Off and the whole
+# False Swipe / Cut family decide they are done, with no frame count anywhere.
+# Without this those behaviors have nothing to wait on and run forever.
+var _anim_ended := false
 
 
 static func create(vm_ref: AnimScriptVM, tag_name: String,
@@ -103,6 +108,7 @@ func play_sequence(sequence: Array) -> void:
 	_sequence = sequence
 	_seq_index = 0
 	_seq_timer = 0
+	_anim_ended = false
 	_apply_current_frame()
 
 
@@ -124,6 +130,7 @@ func advance_frame() -> void:
 		var nxt: Variant = _sequence[_seq_index]
 		if nxt is String and str(nxt) == "end":
 			_seq_index -= 1  # hold the last real frame
+			_anim_ended = true
 			return
 		if nxt is Dictionary and (nxt as Dictionary).has("jump"):
 			_seq_index = int((nxt as Dictionary)["jump"])
@@ -134,6 +141,7 @@ func advance_frame() -> void:
 		break
 	if _seq_index >= _sequence.size():
 		_seq_index = _sequence.size() - 1
+		_anim_ended = true
 	_apply_current_frame()
 
 
@@ -172,3 +180,10 @@ func finish() -> void:
 
 func is_finished() -> bool:
 	return _finished
+
+
+# True once the sprite's own frame sequence has played through to its `end`.
+# A LOOPING sequence never sets this, exactly as on hardware -- which is why
+# behaviors that wait on it also carry a frame cap.
+func anim_ended() -> bool:
+	return _anim_ended

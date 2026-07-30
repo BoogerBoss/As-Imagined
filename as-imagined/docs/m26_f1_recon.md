@@ -886,6 +886,76 @@ does NOT wait for them, because they are open-ended effects torn down by an
 explicit `setarg 7, -1`. Counting them would hang the script forever, which is
 why the suite asserts the accounting directly.
 
+### M36D batch 4 — COMPLETE 2026-07-30
+
+`m36d_batch_test` 121 -> **165/165**; 18-suite sweep green. Coverage
+**228 -> 290 of 932 (31.1%)**, iconic Gen 1-3 **50.0% -> 62.9%** — the
+largest single batch so far.
+
+23 behaviors across 8 families. **Step 0 did most of the work by collapsing
+the list**: four of them (PowerAbsorptionOrb, RaiseSprite, AirWaveCrescent,
+DragonFireToTarget) are literally the same shape upstream — set a start, set
+duration/destination, hand off to `StartAnimLinearTranslation` with a stored
+destroy-callback — so all four are one call to the `_linear_travel` helper
+M36C already built. And three PAIRS are the same function under two names
+(Fang/WhipHit_WaitEnd; KnockOffStrike/LashOutStrike; NeedleArmSpike/
+MindBlownExplosion share a step). Registering both names against one
+implementation is correct, and the suite asserts it so a later session doesn't
+"fix" the duplication by writing a second, divergent copy.
+
+**Two real defects, both found by the tests, both systemic rather than
+per-behavior.**
+
+*(a) `AnimSprite` had no `animEnded` concept at all.* `is_finished()` only
+ever reported whether `finish()` had been CALLED — nothing set it when a frame
+sequence actually ran out. An entire upstream idiom depends on that flag
+(`RunStoredCallbackWhenAnimEnds` is how Fang, Slash, Knock Off and the whole
+False Swipe / Cut family decide they are done, with no frame count anywhere),
+so those behaviors had nothing to wait on and ran forever. Added a real
+`anim_ended()` driven by the sequence hitting its `end`, plus a frame cap as a
+safety net — because a LOOPING sequence never ends, on hardware or here.
+
+*(b) The VM restored visibility and backgrounds but never DISPLACEMENT.*
+`AnimTask_SlideOffScreen` deliberately leaves the battler off-screen — upstream
+the script that used it always followed up — so it would have parked a Pokemon
+off the edge of the battlefield for the rest of the battle. That is the exact
+silent-and-permanent shape as the M36D visibility leak, so it got the same
+treatment: `_finish()` now restores every battler carrying MonOffset's own
+recorded base, a systemic net rather than a per-task patch. It reads the meta
+MonOffset already writes, so it cannot disagree with whatever moved the sprite.
+
+**Three upstream oddities reproduced deliberately rather than tidied**, each
+recorded at its code site: `DragonFireToTarget` takes its opponent-side
+horizontal offset from `args[1]` (the Y argument) — very likely a typo in the
+reference, but the scripts were authored against the result;
+`RandomCentredHits` genuinely aliases args 0 and 1 as both selector/variant and
+x/y offset; and `GetReturnPowerLevel`'s thresholds leave a gap at exactly 60
+which falls through to the weakest band, because upstream's comparisons are
+sequential rather than `else`-chained.
+
+**One upstream bug NOT reproduced**, also recorded: `AttackerPunchWithTrace`
+subtracts the SPRITE ID from `x2` during setup, mixing an object handle into a
+coordinate. It is masked by the explicit `x2 = 0` at the end of the return leg,
+so porting it would add a garbage displacement with no visible intent.
+
+**Disclosed simplifications:** `AnimTask_SporeDoubleBattle` is a genuine
+structured no-op — upstream it only reorders per-battler BG priority ranks, a
+concept this port does not have — registered anyway precisely so it stops
+gating the moves that call it. And friendship is not modelled on the battle
+side, so `GetReturnPowerLevel` reports the weakest band and Return plays its
+smallest burst rather than being blocked.
+
+**Verified visually**: a real windowed capture of Slash shows the slash marks
+landing on the target with correct positioning.
+
+**Sequencing note for whatever comes next**: this batch took nearly all the
+cheap iconic wins. Exactly ONE one-away behavior remains (`AnimPsychoBoost`),
+and every other still-blocked iconic move now needs 2+ new behaviors — Swords
+Dance 2, Water Gun 2, Ice Beam 2, Aurora Beam 2, Hyper Beam 2, Slash 2, Solar
+Beam 2, Blizzard 3. The port's cost per iconic move is rising, which is the
+context that makes **M36-H** (hand-authored animations as a per-move escape
+hatch) worth evaluating now rather than later.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.

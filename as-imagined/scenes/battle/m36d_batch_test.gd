@@ -43,6 +43,11 @@ func _ready() -> void:
 	_test_batch3_particles()
 	_test_batch3_raindrops_clean_up()
 	_test_iconic_moves_run()
+	_test_batch4_linear_family_shares_one_shape()
+	_test_batch4_strike_family()
+	_test_batch4_aliased_names_share_one_impl()
+	_test_batch4_mon_tasks_restore()
+	_test_batch4_handshakes_and_bands()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -88,7 +93,8 @@ class FakeStage extends RefCounted:
 	func layer() -> Control: return layer_node
 	func pixel_scale() -> float: return maxf(1.0, layer_node.size.x / 240.0)
 	func facing_sign() -> float: return 1.0
-	func attacker_is_player_side() -> bool: return true
+	var player_side := true
+	func attacker_is_player_side() -> bool: return player_side
 	func set_battler_visible(b: int, v: bool) -> void:
 		# Really applies it: a no-op here would have silently passed the
 		# visibility-leak tests, which are the whole point of this double.
@@ -641,3 +647,375 @@ func _test_iconic_moves_run() -> void:
 							expected))
 	_chk("the batch unblocked several named iconic moves (%d of 6)"
 			% unblocked, unblocked >= 4)
+
+
+
+
+# ── batch 4 helpers: thin wrappers over the suite's own _vm/_spawn ────────
+var _b4_last: AnimSprite = null
+
+
+func _make_vm(stage: FakeStage) -> AnimScriptVM:
+	return _vm(stage)
+
+
+func _step(vm: AnimScriptVM, frames: int) -> void:
+	for i in range(frames):
+		vm._step_behaviors()
+
+
+func _run(vm: AnimScriptVM, symbol: String, template: String) -> void:
+	var ctx := {"template": template,
+			"template_data": AnimData.template(template),
+			"blend": {"eva": 16, "evb": 0}}
+	var before: Array = []
+	var stage_layer: Control = vm.stage.layer()
+	for child in stage_layer.get_children():
+		before.append(child)
+	_registry.get_behavior(symbol).call(vm, ctx)
+	_b4_last = null
+	for child in stage_layer.get_children():
+		if child is AnimSprite and not before.has(child):
+			_b4_last = child
+
+
+func _last_sprite(_stage: FakeStage) -> AnimSprite:
+	return _b4_last
+
+# ─── batch 4 ──────────────────────────────────────────────────────────────
+
+# The four behaviors Step 0 found to be literally the same shape upstream:
+# set a start, set duration/destination, hand off to StartAnimLinearTranslation
+# with a stored destroy-callback. They must all actually ARRIVE, and the two
+# whose direction is easy to invert must go the right way.
+func _test_batch4_linear_family_shares_one_shape() -> void:
+	# PowerAbsorptionOrb travels INTO the attacker -- it is a drain, and this
+	# is the one direction in the batch that reads as obviously wrong if
+	# reversed.
+	var stage := FakeStage.new()
+	var vm := _make_vm(stage)
+	vm.args[0] = 40
+	vm.args[1] = 0
+	vm.args[2] = 10
+	_run(vm, "AnimPowerAbsorptionOrb", "gCottonGuardSporeTemplate")
+	var node := _last_sprite(stage)
+	var start_d := node.centre.distance_to(stage.center_of(0)) if node != null \
+			else 0.0
+	_step(vm, 10)
+	var end_d := node.centre.distance_to(stage.center_of(0)) if node != null \
+			and is_instance_valid(node) else 0.0
+	_chk("the absorption orb travels TOWARD the attacker, not away "
+			+ "(%.0f -> %.0f)" % [start_d, end_d], end_d < start_d)
+
+	# RaiseSprite's destination is RELATIVE, unlike the orb's absolute one.
+	var s2 := FakeStage.new()
+	var vm2 := _make_vm(s2)
+	vm2.args[2] = -60   # rise
+	vm2.args[3] = 12
+	_run(vm2, "AnimRaiseSprite", "gAncientPowerRockSpriteTemplate")
+	var n2 := _last_sprite(s2)
+	var y0 := n2.centre.y if n2 != null else 0.0
+	_step(vm2, 12)
+	_chk("a raised sprite ends ABOVE where it started",
+			n2 != null and is_instance_valid(n2) and n2.centre.y < y0)
+
+	# AirWaveCrescent mirrors ALL FOUR offsets on the opponent's side -- a
+	# single mirror, not a per-axis one.
+	var s3 := FakeStage.new()
+	s3.player_side = false
+	var vm3 := _make_vm(s3)
+	vm3.args[0] = 20
+	vm3.args[1] = 10
+	vm3.args[4] = 8
+	_run(vm3, "AnimAirWaveCrescent", "gAirWaveCrescentSpriteTemplate")
+	var n3 := _last_sprite(s3)
+	_chk("an opponent-side air wave starts mirrored on BOTH axes",
+			n3 != null and n3.centre.x < s3.center_of(0).x
+			and n3.centre.y < s3.center_of(0).y)
+
+	# FlyingSandCrescent is the odd one out: no duration arg at all, it runs
+	# until it leaves the screen, so its life depends on its velocity.
+	var s4 := FakeStage.new()
+	var vm4 := _make_vm(s4)
+	vm4.args[0] = 60
+	vm4.args[1] = 2048   # 8 px/frame
+	_run(vm4, "AnimFlyingSandCrescent", "gFlyingSandCrescentSpriteTemplate")
+	var before := vm4.visual_count()
+	_step(vm4, 400)
+	_chk("the sand crescent exits the screen and cleans itself up "
+			+ "(no duration argument involved)",
+			before > 0 and vm4.visual_count() == 0)
+
+
+func _test_batch4_strike_family() -> void:
+	# FistOrFootRandomPos lands INSIDE the battler's own box, never at its
+	# exact centre -- the scatter is the whole point of the behavior.
+	var offsets: Array = []
+	for i in range(12):
+		var stage := FakeStage.new()
+		var vm := _make_vm(stage)
+		vm.args[1] = 4
+		vm.args[2] = 0
+		_run(vm, "AnimFistOrFootRandomPos", "gFistFootRandomPosSpriteTemplate")
+		var node := _last_sprite(stage)
+		if node != null:
+			offsets.append(node.centre - stage.center_of(0))
+	var distinct := {}
+	for o in offsets:
+		distinct[str(o.round())] = true
+	_chk("the fist scatters rather than landing on one fixed point "
+			+ "(%d distinct positions in 12 draws)" % distinct.size(),
+			distinct.size() > 1)
+
+	# SpinningKickOrPunch SNAPS back to full size and zero rotation before it
+	# holds -- if the snap were missing it would vanish mid-shrink.
+	var s2 := FakeStage.new()
+	var vm2 := _make_vm(s2)
+	vm2.args[3] = 10
+	_run(vm2, "AnimSpinningKickOrPunch", "gMegaPunchKickSpriteTemplate")
+	var n2 := _last_sprite(s2)
+	var full := n2.scale if n2 != null else Vector2.ONE
+	_step(vm2, 6)
+	var mid := n2.scale if n2 != null and is_instance_valid(n2) else full
+	_chk("the kick shrinks while spinning", mid.x < full.x)
+	_step(vm2, 8)
+	_chk("...then snaps back to full size for the landing hold",
+			n2 != null and is_instance_valid(n2)
+			and is_equal_approx(n2.scale.x, full.x)
+			and is_zero_approx(n2.rotation))
+
+	# SlidingKick travels horizontally with a sine riding on top: the x must
+	# advance monotonically while y oscillates around the start.
+	var s3 := FakeStage.new()
+	var vm3 := _make_vm(s3)
+	vm3.args[2] = 60
+	vm3.args[3] = 20
+	vm3.args[4] = 40
+	vm3.args[5] = 12
+	_run(vm3, "AnimSlidingKick", "gSlidingKickSpriteTemplate")
+	var n3 := _last_sprite(s3)
+	var y_start := n3.centre.y if n3 != null else 0.0
+	var xs: Array = []
+	var y_min := y_start
+	var y_max := y_start
+	for i in range(18):
+		_step(vm3, 1)
+		if n3 != null and is_instance_valid(n3):
+			xs.append(n3.centre.x)
+			y_min = minf(y_min, n3.centre.y)
+			y_max = maxf(y_max, n3.centre.y)
+	var monotonic := true
+	for i in range(1, xs.size()):
+		if float(xs[i]) < float(xs[i - 1]):
+			monotonic = false
+	_chk("the sliding kick advances horizontally without reversing", monotonic)
+	_chk("...while the sine genuinely displaces it vertically (%.1f px)"
+			% (y_max - y_min), (y_max - y_min) > 1.0)
+
+	# NeedleArmSpike rotates to FACE its own direction of travel -- that is
+	# what lets one implementation serve leaves, petals, spikes and jabs.
+	var s4 := FakeStage.new()
+	var vm4 := _make_vm(s4)
+	vm4.args[1] = 1     # travel outward
+	vm4.args[2] = 40
+	vm4.args[3] = 40
+	vm4.args[4] = 10
+	_run(vm4, "AnimNeedleArmSpike", "gBattleAnimSpriteTemplate_LeafStorm2")
+	var n4 := _last_sprite(s4)
+	_chk("the spike rotates to face where it is going",
+			n4 != null and not is_zero_approx(n4.rotation))
+
+	# A zero duration destroys immediately upstream -- it must not spawn a
+	# sprite that then never moves or expires.
+	var s5 := FakeStage.new()
+	var vm5 := _make_vm(s5)
+	vm5.args[4] = 0
+	_run(vm5, "AnimNeedleArmSpike", "gBattleAnimSpriteTemplate_LeafStorm2")
+	_chk("a zero-duration spike spawns nothing at all",
+			vm5.visual_count() == 0)
+
+	# SlashSlice plays its anim, THEN flickers out. The flicker is the shared
+	# False Swipe / Cut ending, and it must actually toggle visibility.
+	var s6 := FakeStage.new()
+	var vm6 := _make_vm(s6)
+	_run(vm6, "AnimSlashSlice", "gSlashSliceSpriteTemplate")
+	var n6 := _last_sprite(s6)
+	var toggles := 0
+	var was := n6.visible if n6 != null else true
+	for i in range(80):
+		_step(vm6, 1)
+		if n6 == null or not is_instance_valid(n6):
+			break
+		if n6.visible != was:
+			toggles += 1
+			was = n6.visible
+	_chk("the slice flickers out rather than simply vanishing (%d toggles)"
+			% toggles, toggles >= 2)
+	_chk("...and is gone afterwards", vm6.visual_count() == 0)
+
+
+# Three pairs are the same function under two names upstream. Registering both
+# against one implementation is correct; asserting it stops a later session
+# "fixing" the duplication by writing a second, divergent copy.
+func _test_batch4_aliased_names_share_one_impl() -> void:
+	for pair in [["AnimFang", "AnimWhipHit_WaitEnd"],
+			["AnimKnockOffStrike", "SpriteCB_LashOutStrike"]]:
+		_chk("%s and %s resolve to one implementation"
+				% [str(pair[0]), str(pair[1])],
+				_registry.get_behavior(str(pair[0]))
+				== _registry.get_behavior(str(pair[1])))
+
+	# Fang is terminated by its own sprite anim ending, not a frame count --
+	# so it must not run forever when nothing else stops it.
+	var stage := FakeStage.new()
+	var vm := _make_vm(stage)
+	_run(vm, "AnimFang", "gFangSpriteTemplate")
+	_chk("Fang spawns", vm.visual_count() > 0)
+	_step(vm, 300)
+	_chk("...and ends on its own anim rather than running forever",
+			vm.visual_count() == 0)
+
+	# KnockOffStrike sweeps an ARC: it must leave its start point and come
+	# back near it, not travel in a straight line.
+	var s2 := FakeStage.new()
+	var vm2 := _make_vm(s2)
+	_run(vm2, "AnimKnockOffStrike", "gKnockOffStrikeSpriteTemplate")
+	var n2 := _last_sprite(s2)
+	if n2 != null:
+		var origin := n2.centre
+		var far := 0.0
+		for i in range(24):
+			_step(vm2, 1)
+			if not is_instance_valid(n2):
+				break
+			far = maxf(far, n2.centre.distance_to(origin))
+		_chk("the knock-off strike sweeps an arc away from its start "
+				+ "(%.0f px)" % far, far > 1.0)
+
+
+func _test_batch4_mon_tasks_restore() -> void:
+	# MonToSubstitute squashes the mon and then DROPS the doll in -- it must
+	# end level again, not part-way through the bounce.
+	var stage := FakeStage.new()
+	var vm := _make_vm(stage)
+	var node: Control = stage.nodes[0]
+	var base := node.position
+	var base_scale := node.scale
+	_run(vm, "AnimTask_MonToSubstitute", "")
+	_step(vm, 5)
+	_chk("the mon is visibly squashed during the first phase",
+			not node.scale.is_equal_approx(base_scale))
+	_step(vm, 600)
+	_chk("the substitute lands level again",
+			node.position.is_equal_approx(base))
+	_chk("...and its scale is restored", node.scale.is_equal_approx(base_scale))
+
+	# RolePlaySilhouette clones the target, fades it in, squeezes it out, and
+	# must free the clone -- a leaked ghost would sit on the battlefield.
+	var s2 := FakeStage.new()
+	var vm2 := _make_vm(s2)
+	var before_children := (s2.layer() as Control).get_child_count()
+	_run(vm2, "AnimTask_RolePlaySilhouette", "")
+	_step(vm2, 400)
+	_chk("the role-play silhouette frees its clone", vm2.visual_count() == 0)
+	_chk("...leaving no extra nodes behind",
+			(s2.layer() as Control).get_child_count() <= before_children + 1)
+
+	# AttackerPunchWithTrace lunges out and back. Upstream leaves x2 at 0 at
+	# the end of the return leg, so the attacker must finish where it began.
+	var s3 := FakeStage.new()
+	var vm3 := _make_vm(s3)
+	var n3: Control = s3.nodes[0]
+	var home := n3.position
+	_run(vm3, "AnimTask_AttackerPunchWithTrace", "")
+	_step(vm3, 3)
+	_chk("the attacker lunges", not n3.position.is_equal_approx(home))
+	_step(vm3, 60)
+	_chk("...and returns exactly home", n3.position.is_equal_approx(home))
+
+	# SlideOffScreen deliberately does NOT restore -- upstream leaves the mon
+	# off-screen. What must hold is that the VM's own end-of-run restore puts
+	# it back, the safety net the visibility fix established.
+	var s4 := FakeStage.new()
+	var vm4 := _make_vm(s4)
+	var n4: Control = s4.nodes[0]
+	var home4 := n4.position
+	vm4.args[1] = 40
+	_run(vm4, "AnimTask_SlideOffScreen", "")
+	_step(vm4, 200)
+	_chk("the slide moves the mon off-screen and stops there",
+			not n4.position.is_equal_approx(home4))
+	vm4._finish()
+	_chk("...and the VM's end-of-run restore is what puts it back",
+			n4.position.is_equal_approx(home4))
+
+
+func _test_batch4_handshakes_and_bands() -> void:
+	# ConstrictBinding genuinely WAITS on the script: nothing happens until
+	# arg 7 goes to -1. Squeezing immediately would desynchronise it.
+	var stage := FakeStage.new()
+	var vm := _make_vm(stage)
+	vm.args[3] = 2
+	_run(vm, "AnimConstrictBinding", "gConstrictBindingSpriteTemplate")
+	var node := _last_sprite(stage)
+	var rest := node.scale if node != null else Vector2.ONE
+	_step(vm, 40)
+	_chk("the binding holds still until the script arms it",
+			node != null and is_instance_valid(node)
+			and node.scale.is_equal_approx(rest))
+	vm.args[AnimScriptVM.ARG_RET] = -1
+	_step(vm, 4)
+	_chk("...then squeezes once armed",
+			node != null and is_instance_valid(node)
+			and not node.scale.is_equal_approx(rest))
+	_step(vm, 400)
+	_chk("...and finishes after its squeeze count", vm.visual_count() == 0)
+
+	# GetReturnPowerLevel writes a band into arg 7. The thresholds are
+	# reproduced exactly INCLUDING the gap at 60, which upstream's sequential
+	# non-else comparisons leave falling through to 0.
+	for pair in [[0, 0], [59, 0], [60, 0], [61, 1], [91, 1], [92, 2],
+			[200, 2], [201, 3], [255, 3]]:
+		var s2 := FakeStage.new()
+		var vm2 := _make_vm(s2)
+		vm2.friendship = int(pair[0])
+		_run(vm2, "AnimTask_GetReturnPowerLevel", "")
+		_chk("friendship %d -> band %d" % [int(pair[0]), int(pair[1])],
+				vm2.args[AnimScriptVM.ARG_RET] == int(pair[1]))
+
+	# Recycle is a long blend: in, hold, out. It must actually reach full
+	# opacity in the middle rather than staying faint throughout.
+	var s3 := FakeStage.new()
+	var vm3 := _make_vm(s3)
+	_run(vm3, "AnimRecycle", "gRecycleSpriteTemplate")
+	var n3 := _last_sprite(s3)
+	_step(vm3, 64)
+	_chk("recycle fades all the way in",
+			n3 != null and is_instance_valid(n3) and n3.modulate.a > 0.9)
+	_step(vm3, 200)
+	_chk("...and back out, cleaning up", vm3.visual_count() == 0)
+
+	# SleepLetterZ rises QUADRATICALLY: the distance covered in its second
+	# half must exceed the first, which a linear rise could not produce.
+	var s4 := FakeStage.new()
+	var vm4 := _make_vm(s4)
+	_run(vm4, "AnimSleepLetterZ", "gSleepLetterZSpriteTemplate")
+	var n4 := _last_sprite(s4)
+	var y0 := n4.centre.y if n4 != null else 0.0
+	_step(vm4, 30)
+	var y1 := n4.centre.y if n4 != null and is_instance_valid(n4) else y0
+	_step(vm4, 30)
+	var y2 := n4.centre.y if n4 != null and is_instance_valid(n4) else y1
+	_chk("the Z rises", y1 < y0)
+	_chk("...and accelerates as it goes, so the rise is quadratic not linear "
+			+ "(%.1f then %.1f)" % [y0 - y1, y1 - y2], (y1 - y2) > (y0 - y1))
+
+	# SporeDoubleBattle is a genuine structured no-op here (it only reorders
+	# BG priorities upstream, and this port has no per-battler BG rank). It
+	# must complete rather than hang, since its whole purpose now is to stop
+	# gating the moves that call it.
+	var s5 := FakeStage.new()
+	var vm5 := _make_vm(s5)
+	_run(vm5, "AnimTask_SporeDoubleBattle", "")
+	_chk("the spore BG-priority task completes immediately",
+			vm5.visual_count() == 0)

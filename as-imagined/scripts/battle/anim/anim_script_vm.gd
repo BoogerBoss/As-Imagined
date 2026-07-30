@@ -63,6 +63,9 @@ var registry: AnimBehaviorRegistry = null
 # Per-run inputs mirroring the reference's globals.
 var move_turn := 0        # gAnimMoveTurn: two-turn phase / multi-hit counter
 var move_power := 0       # gAnimMovePower
+# gAnimFriendship. Not modelled by the battle side yet, so it reads 0 and
+# AnimTask_GetReturnPowerLevel reports the weakest band -- see that behavior.
+var friendship := 0
 var move_damage := 0      # gAnimMoveDmg
 var move_type := -1       # for jumpifmovetypeequal
 var is_contest := false   # always false here; kept for script branches
@@ -235,6 +238,15 @@ func _finish(err: String = "") -> void:
 	for battler in _hidden_battlers:
 		_set_battler_visible(int(battler), true)
 	_hidden_battlers.clear()
+	# ...and any DISPLACEMENT, for the same reason. Some tasks deliberately
+	# never restore -- AnimTask_SlideOffScreen leaves the battler off-screen
+	# on purpose, because upstream the script that used it always followed up.
+	# Here that leaves a Pokemon parked off the edge of the battlefield for the
+	# rest of the battle: the exact silent-and-permanent shape as the M36D
+	# visibility leak, so it gets the same safety net rather than a per-task
+	# fix. MonOffset records each battler's true base the first time anything
+	# moves it, which is what makes this recoverable at all.
+	_restore_displaced_battlers()
 	# Same reasoning as the visibility restore: a script that ends while its
 	# background is still up would leave the battlefield permanently altered.
 	if _bg_changed and stage != null:
@@ -521,6 +533,19 @@ func current_background_name() -> String:
 # guarantee the opcodes get.
 func notify_background_changed() -> void:
 	_bg_changed = true
+
+
+# Puts every battler this run displaced back on its recorded base. Reads the
+# meta MonOffset writes, so it needs no bookkeeping of its own and cannot
+# disagree with whatever actually moved the sprite.
+func _restore_displaced_battlers() -> void:
+	if stage == null or not stage.has_method("sprite_for"):
+		return
+	for i in range(4):
+		var node: Control = stage.sprite_for(i)
+		if node != null and is_instance_valid(node) \
+				and node.has_meta("_anim_mon_base"):
+			node.position = node.get_meta("_anim_mon_base")
 
 
 func background_changed() -> bool:
