@@ -1447,6 +1447,46 @@ is harness-specific, not a shipped bug.
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
 
+### M36D batch 15 deferrals — cleared same-day, and why they should not have been deferred
+
+Coverage **615 -> 623 of 932 (66.8%)**; `m36d_batch_test` 536 -> **549/549**.
+All four of batch 15's deferrals ported. **Nothing is currently deferred.**
+
+WARNING: **three of the four were deferred for a bad reason, and it is the same
+defect that produced batch 13's eight wrong template names: a grep pattern that
+fails silently, read as evidence the code is hard.**
+
+| Deferred as | Actually |
+|---|---|
+| `AnimStringWrap_Step` "not locatable in the expected file" | `battle_anim_bug.c:287`. The pattern required `static void`; it is declared plain `void`. |
+| `SpriteCB_SpriteOnMonUntilAffineAnimEnds` — grep "found nothing" | `battle_anim_new.c:7934`, written `struct Sprite* sprite` with the asterisk on the TYPE. The pattern demanded `struct Sprite *sprite`. |
+| The Dive pair — "a two-stage pair" | ~70 lines in total. "Two-stage" described the shape, not the size, and was allowed to imply cost. |
+
+**Only `AnimFallingFeather` was ever genuinely hard** — and even that turned out
+to be one block copy-pasted into four switch arms.
+
+**The standing lesson: "grep found nothing" is a statement about the PATTERN,
+not about the source.** Deferring is the right call for an unread step
+function; it is the wrong call for an unsuccessful search, and the two are easy
+to confuse because they produce the same empty terminal.
+
+**What the four turned out to be:**
+
+- **`AnimDiveBall` goes FURTHER than Fly's up-half.** It rises on the same 8.8
+  accumulator, hides once clear of the screen top, waits 20 frames, and comes
+  back DOWN, reappearing as it re-enters — one behavior covering the whole
+  descend-and-return arc. Like Fly's ball it hides the attacker and never
+  reveals it; the VM's visibility net is behind that, and the suite asserts it.
+- **`AnimDiveWaterSplash` is a vertical SCALE pulse, not a moving sprite.** The
+  affine y-parameter falls 40/frame for 12 frames then climbs back, and under
+  the inverted rule a falling parameter STRETCHES — half height to roughly
+  eight times it and back, anchored at its foot rather than its centre.
+- **`SpriteCB_ToxicThreadWrap`** flickers on a 3-frame cycle for exactly 51
+  frames. The flicker is the whole look; solid, it reads as a static sprite.
+- **`SpriteCB_SpriteOnMonUntilAffineAnimEnds`** destroys itself outright if the
+  battler is not visible rather than playing to an empty slot — so a script
+  firing it at a Pokemon mid-Fly or mid-Dig draws nothing. Asserted both ways.
+
 ### M36D batch 15 — COMPLETE 2026-07-30
 
 `m36d_batch_test` 520 -> **536/536**; 6-suite sweep green. Coverage
