@@ -67,6 +67,21 @@ class MonOffset:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 8] the highest-share shared blockers —
+		"AnimTask_AllBattlersVisible": _all_battlers_visible,
+		"AnimTask_AllBattlersInvisible": _all_battlers_invisible,
+		"AnimTask_AllBattlersInvisibleExceptAttackerAndTarget":
+				_all_battlers_invisible_except_pair,
+		"AnimTask_ShakeTargetBasedOnMovePowerOrDmg":
+				_shake_target_by_power_or_dmg,
+		"AnimTask_RockMonBackAndForth": _rock_mon_back_and_forth,
+		"AnimTask_ShakeBattlePlatforms": _shake_battle_platforms,
+		"AnimFlyBallUp": _fly_ball_up,
+		"AnimSparkElectricity": _spark_electricity,
+		"AnimTask_ElectricChargingParticles": _electric_charging_particles,
+		"AnimGrowingShockWaveOrb": _growing_shock_wave_orb,
+		"AnimTask_AnimateGustTornadoPalette": _animate_gust_tornado_palette,
+		"AnimCrossImpact": _cross_impact,
 		# — [M36D batch 7] the last blocked iconic moves —
 		"AnimLightning": _lightning,
 		"AnimTask_InvertScreenColor": _invert_screen_color,
@@ -7243,6 +7258,532 @@ static func _hit_splat_on_mon_edge(vm: AnimScriptVM, ctx: Dictionary) -> void:
 			return true
 		st["t"] = int(st["t"]) + 1
 		if int(st["t"]) >= 8:
+			node.finish()
+			return true
+		return false)
+
+
+# Creates a loose sprite from an extracted template, for the tasks that spawn
+# their own particles rather than being spawned by a `createsprite` opcode.
+# Mirrors what `_make_sprite` does for the opcode path, but takes the template
+# by name because a visual task's ctx carries no sprite of its own.
+static func _spawn_template_sprite(vm: AnimScriptVM, layer: Control,
+		template_name: String, centre: Vector2) -> AnimSprite:
+	var tmpl := AnimData.template(template_name)
+	var tag := str((tmpl.get("tile_tag", {}) as Dictionary).get("name", ""))
+	if tag == "" or layer == null:
+		return null
+	var node := AnimSprite.create(vm, tag, 16, 16)
+	if node == null:
+		return null
+	layer.add_child(node)
+	node.scale = Vector2.ONE * _scale(vm)
+	node.centre = centre
+	var seqs := AnimData.anim_sequences_for(template_name)
+	if not seqs.is_empty():
+		node.play_sequence(seqs[0])
+	return node
+
+
+# ── [M36D batch 8] the shared blockers ────────────────────────────────────
+#
+# Selection changed character here. Batches 1-7 worked the iconic Gen 1-3
+# tier, which is now closed at 70/70, so this batch is picked purely by how
+# many BLOCKED moves each behavior appears in -- 231 move-slots across
+# twelve. The visibility trio alone accounts for 72 of those and is the
+# cheapest kind of behavior there is.
+
+
+# Resolves whether a given anim-battler sits on the player's side. The
+# attacker's side is known outright; the others are the opposite of it unless
+# the stage resolves them to the same Pokemon (a self- or ally-target).
+static func _battler_is_player_side(vm: AnimScriptVM, anim_battler: int) -> bool:
+	var atk_is_player := _is_player_side(vm)
+	if anim_battler == AnimStage.ANIM_ATTACKER \
+			or anim_battler == AnimStage.ANIM_ATK_PARTNER:
+		return atk_is_player
+	if vm.stage != null and vm.stage.has_method("mon_for"):
+		var atk: Variant = vm.stage.mon_for(AnimStage.ANIM_ATTACKER)
+		var other: Variant = vm.stage.mon_for(anim_battler)
+		if atk != null and atk == other:
+			return atk_is_player
+	return not atk_is_player
+
+
+# ── Whole-field visibility ────────────────────────────────────────────────
+#
+# All three are one-frame raw setters that RESTORE NOTHING -- upstream relies
+# entirely on the script making the paired call, with no net of any kind. All
+# three therefore route through the VM's tracked setter, so a script that
+# ends early (or a behavior it depends on that is not yet ported) cannot
+# strand a Pokemon invisible for the rest of the battle. Same treatment as
+# `_set_all_non_attackers_invisible` and the Dig pair.
+
+# AnimTask_AllBattlersInvisible (battle_anim_new.c:7422).
+static func _all_battlers_invisible(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	for i in range(4):
+		if _battler_node(vm, i) != null:
+			vm.set_battler_visible_tracked(i, false)
+
+
+# AnimTask_AllBattlersVisible (:7434) -- the paired restore.
+static func _all_battlers_visible(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	for i in range(4):
+		if _battler_node(vm, i) != null:
+			vm.set_battler_visible_tracked(i, true)
+
+
+# AnimTask_AllBattlersInvisibleExceptAttackerAndTarget (:7447). Upstream
+# compares SPRITE IDS, not battler ids -- so any slot resolving to the same
+# sprite as the attacker or target is skipped rather than hidden. Reproduced
+# by comparing the resolved nodes, which keeps singles (where the partner
+# slots have no sprite at all) and an ally-target both behaving correctly.
+static func _all_battlers_invisible_except_pair(vm: AnimScriptVM,
+		_ctx: Dictionary) -> void:
+	var keep: Array[Control] = []
+	for b in [AnimStage.ANIM_ATTACKER, AnimStage.ANIM_TARGET]:
+		var n := _battler_node(vm, b)
+		if n != null:
+			keep.append(n)
+	for i in range(4):
+		var node := _battler_node(vm, i)
+		if node == null or keep.has(node):
+			continue
+		vm.set_battler_visible_tracked(i, false)
+
+
+# ── Power/damage-scaled shake ─────────────────────────────────────────────
+
+# AnimTask_ShakeTargetBasedOnMovePowerOrDmg (battle_anim_mon_movement.c:1169,
+# setup :1119, step :1176). args: 0 source (0 = move power, 1 = damage dealt),
+# 1 delay between steps, 2 number of steps, 3 shake horizontally,
+# 4 shake vertically.
+#
+# The magnitude is `source / 12` clamped to 1..16, and it is then split
+# ASYMMETRICALLY: the sprite moves +ceil(mag/2) one way and -floor(mag/2) the
+# other, so an odd magnitude leans in the positive direction rather than
+# rocking evenly. Reproduced exactly.
+#
+# The horizontal and vertical halves are also not written the same way, which
+# is a real upstream quirk rather than a simplification here: x is offset
+# FROM the sprite's captured displacement, while y is assigned ABSOLUTELY
+# (`y2 = mag` / `y2 = 0`), discarding whatever vertical offset was already in
+# place. Both are ported as written.
+static func _shake_target_by_power_or_dmg(vm: AnimScriptVM,
+		_ctx: Dictionary) -> void:
+	var node := _battler_node(vm, AnimStage.ANIM_TARGET)
+	if node == null:
+		return
+	var source: int = vm.move_damage if vm.args[0] != 0 else vm.move_power
+	var mag: int = clampi(source / 12, 1, 16)
+	var down: int = mag / 2
+	var up: int = down + (mag & 1)
+	var delay: int = maxi(0, vm.args[1])
+	var steps: int = maxi(1, vm.args[2])
+	var horizontal: bool = vm.args[3] != 0
+	var vertical: bool = vm.args[4] != 0
+	var scale := _scale(vm)
+	var mon := MonOffset.new(node)
+	var captured := node.position - mon.base
+
+	var st := {"t": 0, "phase": 0, "left": steps}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) <= delay:
+			return false
+		st["t"] = 0
+		st["phase"] = (int(st["phase"]) + 1) & 1
+		var on: bool = int(st["phase"]) == 1
+		var offset := captured
+		if horizontal:
+			offset.x = captured.x + (float(up) if on else -float(down)) * scale
+		if vertical:
+			offset.y = float(mag) * scale if on else 0.0
+		mon.apply(offset)
+		st["left"] = int(st["left"]) - 1
+		if int(st["left"]) <= 0:
+			mon.restore()  # upstream forces BOTH offsets to zero here
+			return true
+		return false)
+
+
+# ── Rocking with rotation ─────────────────────────────────────────────────
+
+# AnimTask_RockMonBackAndForth (battle_anim_effects_3.c:2887, step :2929).
+# args: 0 battler, 1 number of rocks, 2 intensity (clamped 0..2).
+#
+# A four-state walk whose three motion phases are out / back-twice / out
+# again, so the horizontal travel and the rotation both cancel EXACTLY over
+# one cycle rather than needing a restore -- the final state resets the
+# matrix and ends. A count of zero destroys the task with no motion at all,
+# which is a real early-out and not an error.
+#
+# Intensity drives all three numbers at once, and the result is not what the
+# constants suggest: it shortens each phase (8 - 2*i frames) exactly as fast
+# as it widens the horizontal step (i + 2 px), so the peak travel lands at
+# 16 / 18 / 16 px across the three tiers and is not even monotonic. Total
+# rotation per phase behaves the same way (2048 / 2304 / 2048, in 1/65536
+# turns). What intensity ACTUALLY controls is how fast the mon rocks --
+# a full cycle is 4 * (8 - 2*i) frames. An opponent-side battler mirrors both
+# the rotation and the travel.
+static func _rock_mon_back_and_forth(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, vm.args[0])
+	if node == null:
+		return
+	if vm.args[1] == 0:
+		return  # upstream destroys the task immediately
+	var intensity: int = clampi(vm.args[2], 0, 2)
+	var phase_frames: int = 8 - 2 * intensity
+	var rot_step: int = 0x100 + intensity * 128
+	var x_step: int = intensity + 2
+	if not _battler_is_player_side(vm, vm.args[0]):
+		rot_step = -rot_step
+		x_step = -x_step
+
+	var scale := _scale(vm)
+	var mon := MonOffset.new(node)
+	var base_rot := node.rotation
+	var base_pivot := node.pivot_offset
+	node.pivot_offset = node.size * 0.5
+
+	var st := {"phase": 0, "t": 0, "cycles": vm.args[1] - 1, "x": 0, "rot": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		var phase: int = int(st["phase"])
+		if phase == 3:
+			node.rotation = base_rot
+			node.pivot_offset = base_pivot
+			mon.restore()
+			return true
+
+		# Phase 1 travels back; 0 and 2 travel out. Rotation is the mirror.
+		var dir := -1 if phase == 1 else 1
+		st["x"] = int(st["x"]) + x_step * dir
+		st["rot"] = int(st["rot"]) - rot_step * dir
+		mon.apply(Vector2(float(st["x"]) * scale, 0.0))
+		node.rotation = base_rot + float(st["rot"]) * TAU / 65536.0
+
+		st["t"] = int(st["t"]) + 1
+		var limit: int = phase_frames * 2 if phase == 1 else phase_frames
+		if int(st["t"]) < limit:
+			return false
+		st["t"] = 0
+		if phase < 2:
+			st["phase"] = phase + 1
+		elif int(st["cycles"]) > 0:
+			st["cycles"] = int(st["cycles"]) - 1
+			st["phase"] = 0
+		else:
+			st["phase"] = 3
+		return false)
+
+
+# ── Platform shake ────────────────────────────────────────────────────────
+
+# AnimTask_ShakeBattlePlatforms (battle_anim_normal.c:1042, step :1056).
+# args: 0 x offset, 1 y offset, 2 number of shakes, 3 delay.
+#
+# Drives the platform background layer, not any sprite. Two details worth
+# keeping: setup writes the offset and then calls its own step function
+# immediately, so with a delay of 0 the first toggle lands on the same frame;
+# and the two axes toggle differently -- x flips between +offset and -offset
+# while y alternates between -offset and ZERO, never going positive.
+#
+# Scroll is applied relative to whatever the background was already showing
+# (a scroll may be in progress) and restored to exactly that, matching the
+# capture-and-restore rule M36E3's own platform shake established.
+static func _shake_battle_platforms(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var stage = vm.stage
+	if stage == null or not stage.has_method("set_background_scroll"):
+		return
+	var scale := _scale(vm)
+	var off := Vector2(float(vm.args[0]), float(vm.args[1])) * scale
+	var shakes: int = maxi(1, vm.args[2])
+	var delay: int = maxi(0, vm.args[3])
+	var initial: Vector2 = stage.background_scroll()
+	stage.set_background_scroll(initial + off)
+
+	var st := {"timer": delay, "left": shakes, "x_pos": true, "y_down": true}
+	vm.add_stepper(func() -> bool:
+		if int(st["timer"]) > 0:
+			st["timer"] = int(st["timer"]) - 1
+			return false
+		st["x_pos"] = not bool(st["x_pos"])
+		st["y_down"] = not bool(st["y_down"])
+		st["timer"] = delay
+		st["left"] = int(st["left"]) - 1
+		if int(st["left"]) <= 0:
+			stage.set_background_scroll(initial)
+			return true
+		var x := off.x if bool(st["x_pos"]) else -off.x
+		var y := -off.y if bool(st["y_down"]) else 0.0
+		stage.set_background_scroll(initial + Vector2(x, y))
+		return false)
+
+
+# ── Fly ───────────────────────────────────────────────────────────────────
+
+# AnimFlyBallUp (battle_anim_flying.c:458, step :467). args: 0/1 spawn offset,
+# 2 hold frames before launch, 3 acceleration in 8.8 fixed point.
+#
+# The ball hangs still for `hold` frames, then ACCELERATES upward: the
+# velocity accumulator gains `accel` every frame and the sprite rises by the
+# accumulator's whole-pixel part, so travel is quadratic rather than linear.
+#
+# It also hides the attacker and never shows it again -- the paired reveal
+# belongs to the script's later `AnimFlyBallAttack`/reappear step. Routed
+# through the tracked setter so a run that ends between the two cannot leave
+# the Pokemon invisible.
+static func _fly_ball_up(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	node.centre = start
+	vm.set_battler_visible_tracked(AnimStage.ANIM_ATTACKER, false)
+
+	var hold: int = maxi(0, vm.args[2])
+	var accel: int = vm.args[3]
+	var st := {"hold": hold, "vel": 0, "y": 0.0, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if int(st["hold"]) > 0:
+			st["hold"] = int(st["hold"]) - 1
+		else:
+			st["vel"] = int(st["vel"]) + accel
+			st["y"] = float(st["y"]) - float(int(st["vel"]) >> 8) * scale
+			node.centre = start + Vector2(0.0, float(st["y"]))
+		# Upstream frees the sprite once it clears the top of the screen.
+		if node.centre.y < -32.0 * scale or int(st["t"]) >= _ANIM_END_CAP:
+			node.finish()
+			return true
+		return false)
+
+
+# ── Electric ──────────────────────────────────────────────────────────────
+
+# AnimSparkElectricity (battle_anim_electric.c:646). args: 0 angle index
+# (256 steps), 1 radius, 2 rotation index, 3 lifetime, 4 battler, 5 coord
+# variant, 6 flags.
+#
+# Places a spark on a ring around the chosen battler -- note x uses sine and
+# y uses COSINE of the same index, so index 0 sits directly below the centre
+# rather than to its right -- rotates it to a fixed angle, and destroys it
+# after a fixed lifetime. It never moves.
+#
+# Two disclosed no-ops: arg 5 selects between two GBA coordinate conventions
+# that both resolve to this stage's sprite centre, and arg 6 bit 0 bumps the
+# sprite's BG priority, which has no per-sprite equivalent here.
+static func _spark_electricity(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var centre := _battler_centre(vm, vm.args[4])
+	var radius: float = float(vm.args[1])
+	node.centre = centre + Vector2(
+			_gba_sin(float(vm.args[0]), radius),
+			_gba_cos(float(vm.args[0]), radius)) * scale
+	node.rotation = float(vm.args[2]) * TAU / _SIN_STEPS
+
+	var life: int = maxi(1, vm.args[3])
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= life:
+			node.finish()
+			return true
+		return false)
+
+
+# The 16 spawn offsets particles converge from, in fixed order
+# (sElectricChargingParticleCoordOffsets, battle_anim_electric.c:226).
+const _CHARGING_PARTICLE_OFFSETS := [
+	Vector2(58, -60), Vector2(-56, -36), Vector2(8, -56), Vector2(-16, 56),
+	Vector2(58, -10), Vector2(-58, 10), Vector2(48, -18), Vector2(-8, 56),
+	Vector2(16, -56), Vector2(-58, -42), Vector2(58, 30), Vector2(-48, 40),
+	Vector2(12, -48), Vector2(48, -12), Vector2(-56, 18), Vector2(48, 48),
+]
+
+
+# AnimTask_ElectricChargingParticles (battle_anim_electric.c:949, step :988).
+# args: 0 battler, 1 total particles, 2 frames between spawns, 3 spawns per
+# speed-up.
+#
+# Particles spawn one at a time from the fixed 16-entry offset ring above and
+# converge on the battler. The travel time SHORTENS as the effect runs --
+# `40 - tier*5` frames, with the tier rising every `arg3` spawns and capped
+# at 6 -- so the charge visibly accelerates rather than being a steady
+# stream. The task only ends once the last particle has landed, not when the
+# last one spawns, which is what makes it safe to wait on.
+static func _electric_charging_particles(vm: AnimScriptVM,
+		_ctx: Dictionary) -> void:
+	var layer: Control = null
+	if vm.stage != null and vm.stage.has_method("layer"):
+		layer = vm.stage.layer()
+	if layer == null:
+		return
+	var scale := _scale(vm)
+	var centre := _battler_centre(vm, vm.args[0])
+	var remaining: int = maxi(0, vm.args[1])
+	var interval: int = maxi(0, vm.args[2])
+	var per_tier: int = maxi(1, vm.args[3])
+	const TMPL := "gElectricChargingParticlesSpriteTemplate"
+
+	var st := {
+		"timer": 0, "left": remaining, "idx": 0, "tier": 0, "since": 0,
+		"live": [], "t": 0,
+	}
+	vm.add_stepper(func() -> bool:
+		st["t"] = int(st["t"]) + 1
+		# Advance every particle already in flight.
+		var alive: Array = []
+		for entry in (st["live"] as Array):
+			var e: Dictionary = entry
+			var p: AnimSprite = e["node"]
+			if not is_instance_valid(p):
+				continue
+			e["age"] = int(e["age"]) + 1
+			var dur: int = int(e["dur"])
+			if int(e["age"]) >= dur:
+				p.finish()
+				continue
+			p.centre = (e["from"] as Vector2).lerp(centre,
+					float(e["age"]) / float(dur))
+			p.advance_frame()
+			alive.append(e)
+		st["live"] = alive
+
+		if int(st["left"]) > 0:
+			st["timer"] = int(st["timer"]) + 1
+			if int(st["timer"]) > interval:
+				st["timer"] = 0
+				var idx: int = int(st["idx"])
+				var from: Vector2 = centre \
+						+ (_CHARGING_PARTICLE_OFFSETS[idx] as Vector2) * scale
+				var p := _spawn_template_sprite(vm, layer, TMPL, from)
+				if p != null:
+					(st["live"] as Array).append({
+						"node": p, "from": from, "age": 0,
+						"dur": maxi(1, 40 - int(st["tier"]) * 5),
+					})
+				st["idx"] = (idx + 1) % _CHARGING_PARTICLE_OFFSETS.size()
+				st["since"] = int(st["since"]) + 1
+				if int(st["since"]) >= per_tier:
+					st["since"] = 0
+					if int(st["tier"]) <= 5:
+						st["tier"] = int(st["tier"]) + 1
+				st["left"] = int(st["left"]) - 1
+			return false
+		# Ends only once the field is clear, not when spawning stops.
+		if (st["live"] as Array).is_empty():
+			return true
+		return int(st["t"]) >= _ANIM_END_CAP)
+
+
+# AnimGrowingShockWaveOrb (battle_anim_electric.c:1334). No args -- it sits on
+# the attacker and plays affine anim 2 of gAffineAnims_GrowingElectricOrb
+# (:308), which is a 60-frame contract-then-expand: the affine parameter runs
+# 0x10 -> 0x100 over 30 frames and back over 30. GBA affine scale is INVERTED
+# (256 = identity, SMALLER = BIGGER), so the orb starts large, draws in to
+# native size, and blows back out -- the charge-and-release read the move's
+# own name describes.
+#
+# DISCLOSED: 0x10 is a 16x magnification. That is what the table says, and it
+# is reproduced rather than invented down, but this project draws at 4x on a
+# 1024px canvas where source drew at 1x on 240px -- the same carries-badly
+# risk M36E3's Sun ray hit at a much milder 3.2x. Most likely thing in this
+# batch to read wrong on screen; a look-call, not a correctness gap.
+const _SHOCKWAVE_ORB_PARAM_START := 0x10
+const _SHOCKWAVE_ORB_PARAM_STEP := 0x8
+const _SHOCKWAVE_ORB_PHASE_FRAMES := 30
+
+static func _growing_shock_wave_orb(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	node.centre = _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var st := {"t": 0, "param": _SHOCKWAVE_ORB_PARAM_START}
+	node.scale = Vector2.ONE * (256.0 / float(_SHOCKWAVE_ORB_PARAM_START))
+
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		var step := _SHOCKWAVE_ORB_PARAM_STEP
+		if t > _SHOCKWAVE_ORB_PHASE_FRAMES:
+			step = -step
+		st["param"] = maxi(1, int(st["param"]) + step)
+		node.scale = Vector2.ONE * (256.0 / float(st["param"]))
+		if t >= _SHOCKWAVE_ORB_PHASE_FRAMES * 2:
+			node.finish()
+			return true
+		return false)
+
+
+# ── Gust palette ──────────────────────────────────────────────────────────
+
+# AnimTask_AnimateGustTornadoPalette (battle_anim_flying.c:361, step :369).
+# args: 0 frames between rotations, 1 total lifetime in frames.
+#
+# Upstream rotates 8 entries of the ANIM_TAG_GUST OBJ palette by one slot
+# every `arg0` frames, which is what makes the tornado appear to spin without
+# any sprite motion at all.
+#
+# STRUCTURED NO-OP, and this one is a real capability gap rather than a
+# choice. M36E3 built palette remapping for BACKGROUNDS, driven by the
+# per-background `palette_colors` the extractor emits; there is no equivalent
+# for sprites, because the pulled sheets are composited PNGs and the index a
+# pixel came from is not recoverable from them. Faking it with a hue shift
+# would be inventing motion the reference does not describe.
+#
+# The frame COST is reproduced exactly, which is the part that matters for
+# script pacing -- a `waitforvisualfinish` after this task must still wait
+# the full lifetime. The tornado's own frame sequence supplies the bulk of
+# the visible motion regardless; what is missing is the palette spin on top.
+static func _animate_gust_tornado_palette(vm: AnimScriptVM,
+		_ctx: Dictionary) -> void:
+	var life: int = maxi(1, vm.args[1])
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		st["t"] = int(st["t"]) + 1
+		return int(st["t"]) >= life)
+
+
+# ── Cross impact ──────────────────────────────────────────────────────────
+
+# AnimCrossImpact (battle_anim_normal.c:1172). args: 0/1 offset, 2 battler,
+# 3 duration. Positioned and then held perfectly still for `duration` frames
+# before being freed -- no motion, no scaling, no flicker. It is a timing
+# element as much as a visual one, which is why the frame count matters.
+static func _cross_impact(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	node.centre = _positioned_centre(vm, vm.args[2], vm.args[0], vm.args[1],
+			scale)
+	var life: int = maxi(1, vm.args[3])
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= life:
 			node.finish()
 			return true
 		return false)

@@ -1273,6 +1273,138 @@ Where it IS a real fallback:
 Neither use requires adopting the pack's animation system; both are asset
 sourcing plus, at most, reading its timing data as a reference.
 
+### M36 — open look-calls and capability gaps (running list)
+
+Kept here so they are findable without reading every batch entry.
+
+**Look-calls for Rob — appearance judgement, not correctness gaps.** All three
+are the same shape: a source-exact scale or amplitude that reads differently at
+this project's 4x on a 1024px canvas than at source's 1x on 240px.
+
+| Item | State | Levers |
+|---|---|---|
+| M36E3 Sun ray | Mechanically source-accurate; reads as a pale diamond rather than a beam. `sunlight.png` genuinely is a solid 32x32 diamond. | `_SUN_RAY_ALPHA`, `_SUN_RAY_AFFINE_START` |
+| M36D b8 `AnimGrowingShockWaveOrb` | Affine table starts at `0x10` = **16x magnification** under the inverted rule. Reproduced, not invented down. Most extreme of the three. | `_SHOCKWAVE_ORB_PARAM_START`, `_SHOCKWAVE_ORB_PARAM_STEP` |
+| M36B3-6b fly-out excursion | Already REVERTED for this exact reason; constants kept unused so the numbers are not re-derived. Listed so the pattern reads as a pattern. | — |
+
+**Capability gap — a different kind of item.**
+`AnimTask_AnimateGustTornadoPalette` (M36D batch 8) ships as a structured
+no-op. M36E3's palette remapping is BACKGROUND-only, driven by the
+per-background `palette_colors` the extractor emits; the pulled sprite sheets
+are composited PNGs from which a pixel's source palette index is not
+recoverable. **Closing it needs sprite-palette data the extraction does not
+currently produce** — not a tuning change. Faking it with a hue shift would
+invent motion the reference does not describe. Frame cost is exact and pinned
+by test, so script pacing is unaffected.
+
+### M36D batch 8 — COMPLETE 2026-07-30. First batch of the post-iconic grind.
+
+`m36d_batch_test` 279 -> **328/328**; 16-suite sweep green. Coverage
+**419 -> 446 of 932 (47.9%)**.
+
+**The selection rule changed, because it had to.** With the iconic tier closed,
+batches can no longer be picked by naming moves. Rather than extrapolate batch
+7's yield, the remaining work was MEASURED first:
+
+| Blocked moves needing… | Count |
+|---|---|
+| 1 more behavior | **208** |
+| 2 | 174 |
+| 3–4 | 95 |
+| 5–9 | 35 |
+
+**513 blocked moves across 367 distinct behaviors.** The top 12 blockers appear
+in 231 move-slots, and those 12 are this batch.
+
+**Yield was 2.25 moves per behavior — up from batch 7's 0.86, but far below what
+231 move-slots implies.** Unblocking a shared behavior only COMPLETES a move if
+it was that move's LAST missing one; the rest of those 231 are moves that went
+from needing 3 blockers to needing 2. **The greedy ranking measures reach, not
+yield** — worth stating plainly so a future session reads the tool correctly.
+
+**The visibility trio is the cheapest work in the batch and the most dangerous.**
+`AllBattlersVisible` / `AllBattlersInvisible` /
+`AllBattlersInvisibleExceptAttackerAndTarget` (72 move-slots between them) are
+one-frame raw setters that RESTORE NOTHING upstream — the fifth appearance of
+the leak class this project has hit with Dig, `SetAllNonAttackersInvisiblity`,
+Extreme Speed and Volt Tackle. All three route through the VM's tracked setter,
+and **the headline assertion runs each one then ends the VM WITHOUT the paired
+call and requires every battler back.** Same net applied to `AnimFlyBallUp`,
+which hides the attacker and depends entirely on a later script step.
+
+`...ExceptAttackerAndTarget` compares **sprite ids** upstream, not battler ids,
+so any slot resolving to the same sprite as the attacker or target is skipped
+rather than hidden. Ported as a node comparison, which keeps both singles (no
+partner sprites at all) and an ally-target correct.
+
+**Two upstream asymmetries reproduced rather than smoothed:**
+
+- `ShakeTargetBasedOnMovePowerOrDmg` splits its magnitude UNEVENLY —
+  `+ceil(mag/2)` one way, `-floor(mag/2)` the other, so an odd magnitude leans —
+  and writes its two axes differently: **x** offsets from the sprite's captured
+  displacement, **y** is assigned ABSOLUTELY, discarding whatever vertical
+  offset was already in place. Both are asserted.
+- `ShakeBattlePlatforms` flips x between `+offset` and `-offset` but alternates
+  y between `-offset` and **zero**, never going positive. It also restores the
+  scroll offset it CAPTURED rather than zero, per M36E3's rule; the test double
+  seeds a non-zero scroll specifically so those two outcomes are distinguishable.
+
+**A finding that inverts the obvious reading of `RockMonBackAndForth`:
+intensity does NOT widen the motion.** The phase shortens (`8 - 2i` frames)
+exactly as fast as the step widens (`i + 2` px), so peak travel lands at
+**16 / 18 / 16 px** across the three tiers — not even monotonic. Total rotation
+per phase behaves the same way (**2048 / 2304 / 2048**). What intensity actually
+controls is SPEED (a cycle is `4 * (8 - 2i)` frames). A first-draft test
+asserted "intensity 2 rocks further", failed at 68.3 vs 68.3, and the arithmetic
+is now recorded at both the code site and the assertion so it cannot be
+re-guessed. The three motion phases (out / back-twice / out) also cancel
+EXACTLY, so the test requires the mon to land back on its mark with rotation
+restored — no corrective step covering for a drifting port.
+
+**Three more shapes a naive port gets wrong while looking right:**
+
+- **`AnimFlyBallUp` is quadratic, not linear.** The 8.8 velocity accumulator
+  needs 7 frames at accel 40 just to reach one whole pixel, so a linear port
+  passes "does it rise" and is still wrong. Asserted as later steps covering
+  more ground than earlier ones.
+- **`SparkElectricity` takes x from SINE and y from COSINE of the same index**,
+  so index 0 sits directly BELOW the centre. Swapping them puts it to the right
+  and looks entirely plausible.
+- **`ElectricChargingParticles` SPEEDS UP as it runs** (`40 - tier*5` frames,
+  tier rising every `arg3` spawns, capped at 6) and ends only once the last
+  particle LANDS, not when the last one spawns — which is what makes it safe to
+  wait on. New shared `_spawn_template_sprite` for tasks that spawn their own
+  particles, since a visual task's ctx carries no sprite of its own.
+
+⚠️ **`AnimGrowingShockWaveOrb` — DISCLOSED, and the most likely thing in this
+batch to read wrong on screen.** It is a contract-then-expand under the INVERTED
+GBA affine rule (parameter climbs `0x10 -> 0x100` over 30 frames and back, so
+the orb starts large, draws IN, then blows out); asserted on direction, because
+reading the inversion backwards produces exactly the opposite motion.
+**`0x10` is a 16× magnification.** That is what the affine table says and it is
+reproduced rather than invented down — but this project draws at 4× on a 1024px
+canvas where source drew at 1× on 240px, the same carries-badly risk M36E3's Sun
+ray hit at a much milder 3.2×, which is still an open look-call. Rob's judgement,
+not a correctness gap; the two constants are named so it is a one-line change.
+
+⚠️ **`AnimTask_AnimateGustTornadoPalette` ships as a STRUCTURED NO-OP, and this
+is a genuine capability gap rather than a choice.** It rotates 8 entries of the
+`ANIM_TAG_GUST` OBJ palette. M36E3's palette remapping is BACKGROUND-only
+because it is driven by the per-background `palette_colors` the extractor emits;
+the pulled sprite sheets are composited PNGs from which the index a pixel came
+from is not recoverable. Faking it with a hue shift would invent motion the
+reference does not describe. **The frame COST is reproduced exactly and pinned
+by test**, which is what a following `waitforvisualfinish` depends on, and the
+tornado's own frame sequence still supplies the bulk of the visible motion.
+
+**NOT screenshot-verified.**
+
+**Flagged, not fixed:** `m36d_batch_test` leaks ~1600 ObjectDB instances at exit
+because its `FakeStage` doubles are never freed. Confirmed PRE-EXISTING by
+running the pre-batch-8 test file against the current behaviors (16 resources
+before, 17 after — one more placeholder texture), so it is the file's
+long-standing pattern rather than anything behavior-level.
+
 ### M36D batch 7 — COMPLETE 2026-07-30. THE ICONIC TIER IS CLOSED.
 
 `m36d_batch_test` 246 -> **279/279** (first run, no failures); 16-suite sweep

@@ -60,6 +60,15 @@ func _ready() -> void:
 	_test_batch7_pairings_and_signal()
 	_test_batch7_faithful_details()
 	_test_batch7_closes_the_iconic_tier()
+	_test_batch8_visibility_trio()
+	_test_batch8_visibility_never_leaks()
+	_test_batch8_power_scaled_shake()
+	_test_batch8_rock_returns_exactly()
+	_test_batch8_platform_shake_restores_capture()
+	_test_batch8_fly_ball_accelerates()
+	_test_batch8_electric_family()
+	_test_batch8_static_and_timing()
+	_test_batch8_coverage()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -113,6 +122,12 @@ class FakeStage extends RefCounted:
 		var n: Control = nodes.get(b, null)
 		if n != null:
 			n.visible = v
+	# Batch 8's platform shake drives the background layer. Seeded to a
+	# NON-ZERO offset deliberately, so "restores to zero" and "restores to
+	# what it captured" are distinguishable outcomes.
+	var scroll := Vector2(37.0, -11.0)
+	func background_scroll() -> Vector2: return scroll
+	func set_background_scroll(v: Vector2) -> void: scroll = v
 
 
 func _vm(stage: FakeStage) -> AnimScriptVM:
@@ -1667,3 +1682,387 @@ func _test_batch7_closes_the_iconic_tier() -> void:
 	_chk("roster coverage is at least 419 moves (%d)"
 			% int(cov.get("playable", 0)),
 			int(cov.get("playable", 0)) >= 419)
+
+
+# ── [M36D batch 8] ────────────────────────────────────────────────────────
+#
+# This batch was picked by how many BLOCKED moves each behavior appears in
+# rather than by move family, so the tests are shaped by failure mode rather
+# than by theme. Three of the twelve are raw visibility setters that restore
+# NOTHING upstream, which is the leak class this project has now hit four
+# times -- so the headline assertion here is that a run ending mid-sequence
+# still puts every Pokemon back.
+
+
+func _test_batch8_visibility_trio() -> void:
+	var stage := FakeStage.new()
+
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_AllBattlersInvisible").call(vm, {})
+	var hidden := 0
+	for i in range(4):
+		if not stage.nodes[i].visible:
+			hidden += 1
+	_chk("AllBattlersInvisible hides every battler (%d/4)" % hidden,
+			hidden == 4)
+
+	_registry.get_behavior("AnimTask_AllBattlersVisible").call(vm, {})
+	var shown := 0
+	for i in range(4):
+		if stage.nodes[i].visible:
+			shown += 1
+	_chk("AllBattlersVisible is the paired restore (%d/4)" % shown, shown == 4)
+
+	# The except-pair variant compares SPRITES upstream, not battler ids, so
+	# the attacker and target must both survive while the partners go.
+	var vm2 := _vm(stage)
+	_registry.get_behavior(
+			"AnimTask_AllBattlersInvisibleExceptAttackerAndTarget").call(vm2, {})
+	_chk("...except-pair keeps the attacker",
+			stage.nodes[AnimStage.ANIM_ATTACKER].visible)
+	_chk("...and keeps the target",
+			stage.nodes[AnimStage.ANIM_TARGET].visible)
+	_chk("...and hides the attacker's partner",
+			not stage.nodes[AnimStage.ANIM_ATK_PARTNER].visible)
+	_chk("...and hides the target's partner",
+			not stage.nodes[AnimStage.ANIM_DEF_PARTNER].visible)
+
+
+func _test_batch8_visibility_never_leaks() -> void:
+	# The defect these three could ship: a script that hides everyone and
+	# never makes the paired call would strand every Pokemon invisible for
+	# the rest of the battle. Nothing upstream prevents that; the VM's
+	# tracked setter is the net, so it is asserted directly.
+	for symbol in ["AnimTask_AllBattlersInvisible",
+			"AnimTask_AllBattlersInvisibleExceptAttackerAndTarget"]:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		_registry.get_behavior(symbol).call(vm, {})
+		vm._finish()
+		var visible := 0
+		for i in range(4):
+			if stage.nodes[i].visible:
+				visible += 1
+		_chk("%s cannot strand a Pokemon hidden (%d/4 back)"
+				% [symbol, visible], visible == 4)
+
+	# Same net for Fly, which hides the attacker and relies entirely on a
+	# later script step to bring it back.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	_run_b5(vm2, "AnimFlyBallUp", "gFlyBallUpSpriteTemplate")
+	_chk("FlyBallUp hides the attacker",
+			not stage2.nodes[AnimStage.ANIM_ATTACKER].visible)
+	vm2._finish()
+	_chk("...and a run that ends before the reveal still restores it",
+			stage2.nodes[AnimStage.ANIM_ATTACKER].visible)
+
+
+func _test_batch8_power_scaled_shake() -> void:
+	# Magnitude is source/12 clamped 1..16, then split ASYMMETRICALLY:
+	# +ceil(mag/2) one way, -floor(mag/2) the other. An even split would look
+	# almost identical on screen and be wrong.
+	var stage := FakeStage.new()
+	var base: Vector2 = stage.nodes[AnimStage.ANIM_TARGET].position
+
+	var vm := _vm(stage)
+	vm.move_power = 100          # -> mag 8, so +4 / -4 (even: symmetric)
+	vm.args[0] = 0; vm.args[1] = 0; vm.args[2] = 40
+	vm.args[3] = 1; vm.args[4] = 0
+	_registry.get_behavior(
+			"AnimTask_ShakeTargetBasedOnMovePowerOrDmg").call(vm, {})
+	_step(vm, 1)
+	var a: float = stage.nodes[AnimStage.ANIM_TARGET].position.x - base.x
+	_step(vm, 1)
+	var b: float = stage.nodes[AnimStage.ANIM_TARGET].position.x - base.x
+	_chk("power 100 shakes the target horizontally", not is_zero_approx(a))
+	_chk("...and reverses on the next step", signf(a) != signf(b))
+
+	# Odd magnitude: 90/12 = 7 -> +4 / -3, a genuine lean.
+	var stage2 := FakeStage.new()
+	var base2: Vector2 = stage2.nodes[AnimStage.ANIM_TARGET].position
+	var vm2 := _vm(stage2)
+	vm2.move_power = 90
+	vm2.args[0] = 0; vm2.args[1] = 0; vm2.args[2] = 40
+	vm2.args[3] = 1; vm2.args[4] = 0
+	_registry.get_behavior(
+			"AnimTask_ShakeTargetBasedOnMovePowerOrDmg").call(vm2, {})
+	_step(vm2, 1)
+	var up: float = absf(stage2.nodes[AnimStage.ANIM_TARGET].position.x - base2.x)
+	_step(vm2, 1)
+	var down: float = absf(stage2.nodes[AnimStage.ANIM_TARGET].position.x - base2.x)
+	_chk("an odd magnitude leans one way (%.1f vs %.1f)" % [up, down],
+			not is_equal_approx(up, down))
+
+	# arg0 switches the source outright. Damage 0 with power 200 must behave
+	# as damage-derived (mag 1), not power-derived (mag 16).
+	var stage3 := FakeStage.new()
+	var base3: Vector2 = stage3.nodes[AnimStage.ANIM_TARGET].position
+	var vm3 := _vm(stage3)
+	vm3.move_power = 200
+	vm3.move_damage = 0
+	vm3.args[0] = 1; vm3.args[1] = 0; vm3.args[2] = 40
+	vm3.args[3] = 1; vm3.args[4] = 0
+	_registry.get_behavior(
+			"AnimTask_ShakeTargetBasedOnMovePowerOrDmg").call(vm3, {})
+	_step(vm3, 1)
+	var dmg_shift: float = absf(
+			stage3.nodes[AnimStage.ANIM_TARGET].position.x - base3.x)
+	_chk("arg0=1 reads damage, not power (%.1f << %.1f)" % [dmg_shift, up],
+			dmg_shift < up)
+
+	# Vertical is written ABSOLUTELY upstream -- it returns to exactly 0 on
+	# the off-phase rather than to whatever offset was already there.
+	var stage4 := FakeStage.new()
+	var node4: Control = stage4.nodes[AnimStage.ANIM_TARGET]
+	var base4: Vector2 = node4.position
+	var vm4 := _vm(stage4)
+	vm4.move_power = 96
+	vm4.args[0] = 0; vm4.args[1] = 0; vm4.args[2] = 6
+	vm4.args[3] = 0; vm4.args[4] = 1
+	_registry.get_behavior(
+			"AnimTask_ShakeTargetBasedOnMovePowerOrDmg").call(vm4, {})
+	_step(vm4, 1)
+	_chk("vertical mode moves the target on the on-phase",
+			not is_equal_approx(node4.position.y, base4.y))
+	_step(vm4, 1)
+	_chk("...and returns to exactly zero on the off-phase",
+			is_equal_approx(node4.position.y, base4.y))
+	_step(vm4, 20)
+	_chk("...and the mon is fully restored at the end",
+			node4.position.is_equal_approx(base4))
+
+
+func _test_batch8_rock_returns_exactly() -> void:
+	# The three motion phases are out / back-twice / out, so travel and
+	# rotation cancel EXACTLY -- there is no corrective restore doing the work
+	# for a drifting port. Asserted on the raw values, not approximately.
+	var stage := FakeStage.new()
+	var node: Control = stage.nodes[AnimStage.ANIM_ATTACKER]
+	var base := node.position
+	var base_rot := node.rotation
+	var vm := _vm(stage)
+	vm.args[0] = AnimStage.ANIM_ATTACKER; vm.args[1] = 2; vm.args[2] = 1
+	_registry.get_behavior("AnimTask_RockMonBackAndForth").call(vm, {})
+
+	var moved := false
+	var rotated := false
+	for i in range(200):
+		_step(vm, 1)
+		if not node.position.is_equal_approx(base):
+			moved = true
+		if not is_equal_approx(node.rotation, base_rot):
+			rotated = true
+		if vm.visual_count() == 0:
+			break
+	_chk("RockMonBackAndForth actually displaces the mon", moved)
+	_chk("...and actually rotates it", rotated)
+	_chk("...and ends exactly back on its mark",
+			node.position.is_equal_approx(base))
+	_chk("...with rotation exactly restored",
+			is_equal_approx(node.rotation, base_rot))
+
+	# A count of zero is a real early-out upstream, not an error.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	vm2.args[0] = AnimStage.ANIM_ATTACKER; vm2.args[1] = 0; vm2.args[2] = 1
+	_registry.get_behavior("AnimTask_RockMonBackAndForth").call(vm2, {})
+	_chk("a rock count of zero runs nothing at all", vm2.visual_count() == 0)
+
+	# Intensity does NOT widen the excursion, which is worth pinning because
+	# it is the opposite of what the constants suggest at a glance: the phase
+	# shortens (8 - 2i frames) exactly as the step widens (i + 2 px), so the
+	# peak travel lands at 16 / 18 / 16 px across the three tiers and is not
+	# even monotonic. Total rotation per phase behaves the same way
+	# (2048 / 2304 / 2048). What intensity actually controls is SPEED, so
+	# that is what is asserted.
+	var durations: Array = []
+	for intensity in [0, 2]:
+		var st := FakeStage.new()
+		var v := _vm(st)
+		v.args[0] = AnimStage.ANIM_ATTACKER; v.args[1] = 1
+		v.args[2] = intensity
+		_registry.get_behavior("AnimTask_RockMonBackAndForth").call(v, {})
+		var frames := 0
+		for i in range(200):
+			_step(v, 1)
+			frames += 1
+			if v.visual_count() == 0:
+				break
+		durations.append(frames)
+	_chk("intensity 2 rocks FASTER than intensity 0 (%d < %d frames)"
+			% [durations[1], durations[0]], durations[1] < durations[0])
+
+
+func _test_batch8_platform_shake_restores_capture() -> void:
+	# The background may already be mid-scroll, so the shake must restore the
+	# offset it CAPTURED, not zero -- the same rule M36E3's platform shake
+	# established. The stage double seeds a non-zero scroll to tell the two
+	# apart.
+	var stage := FakeStage.new()
+	var initial := stage.background_scroll()
+	var vm := _vm(stage)
+	vm.args[0] = 4; vm.args[1] = 4; vm.args[2] = 6; vm.args[3] = 1
+	_registry.get_behavior("AnimTask_ShakeBattlePlatforms").call(vm, {})
+	_chk("the shake offsets the background immediately",
+			not stage.background_scroll().is_equal_approx(initial))
+
+	var min_y := 0.0
+	for i in range(60):
+		_step(vm, 1)
+		min_y = minf(min_y, stage.background_scroll().y - initial.y)
+		if vm.visual_count() == 0:
+			break
+	_chk("...and restores the CAPTURED offset, not zero",
+			stage.background_scroll().is_equal_approx(initial))
+	# y alternates between -offset and 0 upstream; it never goes positive.
+	_chk("...with the vertical axis only ever going one way (%.1f)" % min_y,
+			min_y < 0.0)
+
+
+func _test_batch8_fly_ball_accelerates() -> void:
+	# The ball is not a linear riser: the velocity accumulator grows every
+	# frame, so later steps cover more ground than earlier ones. A linear
+	# port would pass a naive "does it go up" check and still be wrong.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0; vm.args[1] = 0; vm.args[2] = 5; vm.args[3] = 40
+	_run_b5(vm, "AnimFlyBallUp", "gFlyBallUpSpriteTemplate")
+	var node := _b5_last
+	_chk("FlyBallUp spawns a ball", node != null)
+	if node == null:
+		return
+	var start_y := node.centre.y
+
+	_step(vm, 4)
+	_chk("...which holds still through the launch delay",
+			is_equal_approx(node.centre.y, start_y))
+
+	# The rise is genuinely slow to start: with accel 40 the 8.8 accumulator
+	# needs 7 frames just to reach one whole pixel, which is exactly the
+	# quadratic shape being asserted -- a linear port would move on frame 1.
+	_step(vm, 12)
+	var early := start_y - node.centre.y
+	var mid := node.centre.y
+	_step(vm, 12)
+	var late := mid - node.centre.y
+	_chk("...then rises (%.1f px)" % early, early > 0.0)
+	_chk("...accelerating rather than travelling linearly (%.1f -> %.1f)"
+			% [early, late], late > early)
+
+
+func _test_batch8_electric_family() -> void:
+	# SparkElectricity places x from SINE and y from COSINE of the same index,
+	# so index 0 sits directly BELOW the centre. Swapping the two would put it
+	# to the right and look plausible while being wrong.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0; vm.args[1] = 20; vm.args[2] = 64; vm.args[3] = 12
+	vm.args[4] = AnimStage.ANIM_TARGET
+	_run_b5(vm, "AnimSparkElectricity", "gSparkElectricitySpriteTemplate")
+	var spark := _b5_last
+	_chk("SparkElectricity spawns", spark != null)
+	if spark != null:
+		var c := stage.center_of(AnimStage.ANIM_TARGET)
+		_chk("...at index 0 it sits below the centre, not beside it",
+				absf(spark.centre.y - c.y) > absf(spark.centre.x - c.x))
+		_chk("...and is rotated by arg 2",
+				not is_zero_approx(spark.rotation))
+		_step(vm, 11)
+		_chk("...and lives its full 12 frames", vm.visual_count() > 0)
+		_step(vm, 2)
+		_chk("...then dies on schedule", vm.visual_count() == 0)
+
+	# ElectricChargingParticles converges on the battler and SPEEDS UP as it
+	# runs, and -- the part that makes it safe to wait on -- only ends once
+	# the last particle has landed, not when the last one spawns.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	vm2.args[0] = AnimStage.ANIM_ATTACKER; vm2.args[1] = 8
+	vm2.args[2] = 1; vm2.args[3] = 2
+	_registry.get_behavior(
+			"AnimTask_ElectricChargingParticles").call(vm2, {})
+	var seen := 0
+	var closing := false
+	var prev_far := -1.0
+	var centre := stage2.center_of(AnimStage.ANIM_ATTACKER)
+	for i in range(40):
+		_step(vm2, 1)
+		var live := _sprites_of(stage2)
+		seen = maxi(seen, live.size())
+		if live.size() > 0:
+			var d: float = (live[0] as AnimSprite).centre.distance_to(centre)
+			if prev_far >= 0.0 and d < prev_far:
+				closing = true
+			prev_far = d
+	_chk("charging particles spawn over time (%d at once)" % seen, seen > 0)
+	_chk("...and converge on the battler", closing)
+	var still_running := vm2.visual_count() > 0
+	var still_live := not _sprites_of(stage2).is_empty()
+	_chk("...and the task outlives its last spawn if any are still flying",
+			not still_live or still_running)
+	_step(vm2, 200)
+	_chk("...but does finish", vm2.visual_count() == 0)
+
+
+func _test_batch8_static_and_timing() -> void:
+	# GrowingShockWaveOrb is a contract-then-expand under the INVERTED GBA
+	# affine rule: the parameter climbs, so the rendered orb shrinks first.
+	# Reading the inversion backwards would produce exactly the opposite
+	# motion, which is the whole reason this is asserted on direction.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_run_b5(vm, "AnimGrowingShockWaveOrb",
+			"gGrowingShockWaveOrbSpriteTemplate")
+	var orb := _b5_last
+	_chk("shockwave orb spawns", orb != null)
+	if orb != null:
+		var s0 := orb.scale.x
+		_step(vm, 25)
+		var s1 := orb.scale.x
+		_step(vm, 30)
+		var s2 := orb.scale.x
+		_chk("...contracts first (%.2f -> %.2f)" % [s0, s1], s1 < s0)
+		_chk("...then expands again (%.2f -> %.2f)" % [s1, s2], s2 > s1)
+		_step(vm, 20)
+		_chk("...over 60 frames", vm.visual_count() == 0)
+
+	# CrossImpact is a pure timing element: it must NOT move.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	vm2.args[0] = 0; vm2.args[1] = 0
+	vm2.args[2] = AnimStage.ANIM_TARGET; vm2.args[3] = 10
+	_run_b5(vm2, "AnimCrossImpact", "gCrossImpactSpriteTemplate")
+	var cross := _b5_last
+	if cross != null:
+		var where := cross.centre
+		_step(vm2, 8)
+		_chk("CrossImpact holds perfectly still", cross.centre.is_equal_approx(where))
+		_chk("...for its full duration", vm2.visual_count() > 0)
+		_step(vm2, 4)
+		_chk("...then goes", vm2.visual_count() == 0)
+
+	# The gust palette rotation is a structured no-op (sprite palettes are not
+	# recoverable from composited PNGs) -- but its FRAME COST is the contract
+	# a following waitforvisualfinish depends on, so that is what is pinned.
+	var stage3 := FakeStage.new()
+	var vm3 := _vm(stage3)
+	vm3.args[0] = 3; vm3.args[1] = 30
+	_registry.get_behavior(
+			"AnimTask_AnimateGustTornadoPalette").call(vm3, {})
+	_step(vm3, 29)
+	_chk("the gust palette task still costs its declared frames",
+			vm3.visual_count() > 0)
+	_step(vm3, 2)
+	_chk("...and releases at its declared lifetime", vm3.visual_count() == 0)
+
+
+func _test_batch8_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov: Dictionary = _dispatcher.coverage(ids)
+	_chk("roster coverage is at least 446 moves (%d)"
+			% int(cov.get("playable", 0)),
+			int(cov.get("playable", 0)) >= 446)
