@@ -398,3 +398,14 @@ func behavior_at(x: int, y: int) -> int:
 
 func layer_type_at(x: int, y: int) -> int:
 	return layer_type[_idx(x, y)] if in_bounds(x, y) else -1
+
+
+## Is a placed entity standing on this cell?
+##
+## [M27D D2] Always false, and that is correct rather than a stub: entities are
+## NODES in the baked scene, while MapData is the per-cell terrain resource. A
+## MapData on its own — which is what the editor overlay resolves against —
+## genuinely has no one standing on it. The runtime path answers for real
+## through MapManager, which can see the scene.
+func entity_at(_x: int, _y: int) -> bool:
+	return false

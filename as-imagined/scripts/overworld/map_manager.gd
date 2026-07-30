@@ -129,6 +129,15 @@ var _pending: Dictionary = {}
 ## immediately: startup and the tests want a chunk fully formed on return.
 var _skirt_queue: Array[Rect2i] = []
 
+## map_name -> { local Vector2i : true } for every cell an entity blocks.
+##
+## [M27D D2] A set rather than a per-step scan of the scene tree: a step already
+## costs a resolve, and walking every entity of every live chunk per step is the
+## same per-cell cost that made C4's skirt repaint 4000 dictionary walks. Built
+## once at install, and rebuildable — which is the shape D3 needs when NPCs
+## start moving.
+var _occupancy: Dictionary = {}
+
 
 ## Instantiate a baked map and place it at `origin` in the global grid.
 ##
@@ -177,6 +186,7 @@ func register_chunk(map_name: String, data: MapData, root: Node2D,
 	if root != null:
 		root.position = Vector2(origin) * CELL
 		apply_plane_z(root)
+	rebuild_occupancy(map_name)
 
 
 ## Which border metatile falls at a given LOCAL cell, including negative ones.
@@ -347,6 +357,7 @@ static func apply_plane_z(root: Node2D) -> void:
 func unload_chunk(map_name: String) -> void:
 	if not _chunks.has(map_name):
 		return
+	_occupancy.erase(map_name)
 	var root: Node2D = _chunks[map_name]["root"]
 	if root != null and is_instance_valid(root):
 		root.queue_free()
@@ -519,6 +530,9 @@ class GlobalCells extends RefCounted:
 
 	func behavior_at(x: int, y: int) -> int:
 		return _mm.behavior_at(Vector2i(x, y))
+
+	func entity_at(x: int, y: int) -> bool:
+		return _mm.entity_at(Vector2i(x, y))
 
 
 ## A resolver that steps in GLOBAL cells, across seams, using the same rules.
@@ -720,3 +734,41 @@ func warp_arrival(map_name: String, warp_id: int) -> Dictionary:
 		if w != null and w.warp_id == warp_id:
 			return {"cell": w.cell + Vector2i(_chunks[map_name]["origin"]), "warp": w}
 	return {}
+
+
+## Recompute which cells of a chunk are blocked by a placed entity.
+##
+## [M27D D2] Only `npc`, `trainer` and `item_ball` block, and that is source's
+## rule rather than a choice: `DoesObjectCollideWithObjectAt` consults the
+## `object_events` array and nothing else, so warps, triggers and signs occupy
+## no collision slot — which is why a trainer sees straight over a doormat and
+## why you can stand on one.
+##
+## Falls out of this: the region's 210 HM obstacles (97 breakable rocks, 55
+## cuttable trees, 58 pushable boulders) are object events, so every one becomes
+## solid here with no obstacle-specific code.
+##
+## NOT yet gated on `visibility_flag`. Source hides a flagged-away object event
+## and stops it colliding; nothing reads flags until the store lands in D4, so
+## every placed entity currently blocks. Recorded rather than silently assumed.
+func rebuild_occupancy(map_name: String) -> void:
+	var out := {}
+	if _chunks.has(map_name):
+		var root: Node2D = _chunks[map_name]["root"]
+		if root != null and is_instance_valid(root):
+			for n in root.find_children("*", "OverworldEntity", true, false):
+				var e := n as OverworldEntity
+				if e != null and (e is NPC or e is ItemBall):
+					out[e.cell] = true
+	_occupancy[map_name] = out
+
+
+## Is a placed entity standing on this GLOBAL cell?
+func entity_at(gcell: Vector2i) -> bool:
+	var map_name := chunk_owning(gcell)
+	if map_name == "":
+		return false
+	var occ: Dictionary = _occupancy.get(map_name, {})
+	if occ.is_empty():
+		return false
+	return occ.has(gcell - Vector2i(_chunks[map_name]["origin"]))

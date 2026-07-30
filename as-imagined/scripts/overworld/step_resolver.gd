@@ -31,6 +31,7 @@ enum Outcome {
 	IMPASSABLE,          ## collision bit, or a directional rule
 	ELEVATION_MISMATCH,  ## strata disagree and neither is a wildcard
 	LEDGE_JUMP,          ## redirect: two-tile hop, not a block
+	OBJECT_EVENT,        ## an NPC, trainer or item ball is standing there
 }
 
 const STEP: Dictionary = {
@@ -130,6 +131,13 @@ func resolve(from: Vector2i, dir: int, elevation: int) -> Dictionary:
 		return _r(Outcome.IMPASSABLE, from)
 	if _elevation_mismatch(elevation, to):
 		return _r(Outcome.ELEVATION_MISMATCH, from)
+	# [M27D D2] LAST, matching GetVanillaCollision's own precedence: range,
+	# then terrain and directional, then elevation, THEN object events. The
+	# order is visible rather than cosmetic — walking at an NPC standing on a
+	# different stratum reports ELEVATION_MISMATCH, not OBJECT_EVENT, because
+	# the elevation rule rejects the tile before anyone is asked who is on it.
+	if _cells.entity_at(to.x, to.y):
+		return _r(Outcome.OBJECT_EVENT, from)
 
 	return _r(Outcome.NONE, to)
 

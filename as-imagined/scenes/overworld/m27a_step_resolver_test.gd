@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 439
+const EXPECTED_TOTAL := 447
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -124,6 +124,9 @@ const REACHABILITY_ASSERTIONS := 2
 
 ## [M27D D1] Section AL sweeps the pulled sprite set.
 const SPRITE_ASSERTIONS := 14
+
+## [M27D D2] Section AM — entity occupancy.
+const OCCUPANCY_ASSERTIONS := 8
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -210,6 +213,7 @@ func _ready() -> void:
 	await _test_directional_stairs()
 	_test_every_warp_is_reachable()
 	_test_object_event_sprites()
+	_test_entity_occupancy()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -3119,3 +3123,108 @@ func _test_object_event_sprites() -> void:
 			seen.has("OBJ_EVENT_GFX_VAR_0")
 			and ResourceLoader.exists(
 					ObjectEventGraphics.sheet_path("OBJ_EVENT_GFX_VAR_0")))
+
+
+## A cell source that can answer "someone is standing here".
+##
+## MapData always says no — entities are scene nodes, not resource data — so a
+## synthetic source is the only way to test the PRECEDENCE between an occupied
+## cell and a terrain rule without hunting the corridor for a map that happens
+## to place an NPC on a mismatched stratum.
+class OccupiedCells extends RefCounted:
+	var data: MapData
+	var occupied: Dictionary = {}
+
+	func _init(d: MapData) -> void:
+		data = d
+
+	func in_bounds(x: int, y: int) -> bool:
+		return data.in_bounds(x, y)
+
+	func collision_at(x: int, y: int) -> int:
+		return data.collision_at(x, y)
+
+	func elevation_at(x: int, y: int) -> int:
+		return data.elevation_at(x, y)
+
+	func behavior_at(x: int, y: int) -> int:
+		return data.behavior_at(x, y)
+
+	func entity_at(x: int, y: int) -> bool:
+		return occupied.has(Vector2i(x, y))
+
+
+## Section AM — [M27D D2] entity occupancy.
+##
+## The rule is source's, not a choice: `DoesObjectCollideWithObjectAt` consults
+## the `object_events` array and nothing else, so npc/trainer/item block while
+## warps, triggers and signs occupy no collision slot. That is why a trainer
+## sees over a doormat, and why you can stand on one.
+##
+## AM.05 is the assertion worth having. Source checks object events LAST, after
+## elevation (`GetVanillaCollision`), so walking at an NPC on a different
+## stratum reports ELEVATION_MISMATCH rather than OBJECT_EVENT. Both block, so
+## nothing in play distinguishes them — only a test does.
+func _test_entity_occupancy() -> void:
+	# --- precedence, synthetically, because the corridor may not have the case
+	var d := _synth(3, 3, [], [], _filled(9, 3))
+	var cells := OccupiedCells.new(d)
+	cells.occupied[Vector2i(1, 0)] = true
+	var r := StepResolver.new(cells)
+	_chk("AM.01 stepping onto an occupied cell reports OBJECT_EVENT",
+			r.resolve(Vector2i(1, 1), StepResolver.Dir.NORTH, 3)["outcome"]
+			== StepResolver.Outcome.OBJECT_EVENT)
+	_chk("AM.02 and does not move the stepper",
+			r.resolve(Vector2i(1, 1), StepResolver.Dir.NORTH, 3)["to"] == Vector2i(1, 1))
+	# Same occupied cell, now on a stratum the stepper cannot enter anyway.
+	var d2 := _synth(3, 3, [], [], [3, 4, 3, 3, 3, 3, 3, 3, 3])
+	var cells2 := OccupiedCells.new(d2)
+	cells2.occupied[Vector2i(1, 0)] = true
+	var r2 := StepResolver.new(cells2)
+	_chk("AM.03 elevation is checked FIRST, matching GetVanillaCollision's order",
+			r2.resolve(Vector2i(1, 1), StepResolver.Dir.NORTH, 3)["outcome"]
+			== StepResolver.Outcome.ELEVATION_MISMATCH)
+	# A MapData on its own is the editor's view and has no one standing on it.
+	_chk("AM.04 MapData alone never reports an occupant",
+			not d.entity_at(1, 0) and not d.entity_at(0, 0))
+
+	# --- the real corridor
+	if not ResourceLoader.exists("res://scenes/maps/PalletTown_Frlg.tscn"):
+		_gated += OCCUPANCY_ASSERTIONS - 4
+		return
+	var mm := MapManager.new()
+	add_child(mm)
+	mm.load_chunk("PalletTown_Frlg", Vector2i.ZERO)
+
+	var blocked := 0
+	var pass_through := 0
+	var npc_on_walkable_ground := false
+	for n in mm.get_node("PalletTown_Frlg").find_children("*", "OverworldEntity", true, false):
+		var e := n as OverworldEntity
+		var occupied: bool = mm.entity_at(e.cell)
+		if e is NPC or e is ItemBall:
+			if occupied:
+				blocked += 1
+			# The point of the whole sub-tier: the GROUND is walkable and the
+			# cell is still blocked, so it is the entity doing it.
+			if occupied and mm.collision_at(e.cell) == 0:
+				npc_on_walkable_ground = true
+		elif not occupied:
+			pass_through += 1
+	_chk("AM.05 every npc/trainer/item on the map blocks its cell (%d)" % blocked,
+			blocked > 0)
+	_chk("AM.06 while warps, triggers and signs do not (%d)" % pass_through,
+			pass_through > 0)
+	_chk("AM.07 and the block comes from the ENTITY, not the ground under it",
+			npc_on_walkable_ground)
+
+	# Unloading must take the occupancy with it, or a freed chunk keeps
+	# blocking cells that no longer belong to anything.
+	mm.unload_chunk("PalletTown_Frlg")
+	var leaked := false
+	for y in range(20):
+		for x in range(24):
+			if mm.entity_at(Vector2i(x, y)):
+				leaked = true
+	_chk("AM.08 unloading a chunk releases every cell it was blocking", not leaked)
+	mm.queue_free()

@@ -110,6 +110,14 @@ func _ready() -> void:
 	_test_b17_razor_wind_tornado_orbits()
 	_test_b17_megahorn_mirroring_is_side_asymmetric()
 	_test_b17_cross_chop_hand_returns()
+	_test_b18_baton_pass_switch_falls_through()
+	_test_b18_horizontal_slice_is_distance_bound_not_time_bound()
+	_test_b18_horizontal_slice_direction_arg()
+	_test_b18_left_right_slice_returns()
+	_test_b18_photon_geyser_bails_on_an_invisible_target()
+	_test_b18_letter_z_drift_mirrors_by_side()
+	_test_b18_letter_z_exits_off_either_edge()
+	_test_b18_eye_sparkle_dies_with_its_own_animation()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -4111,3 +4119,174 @@ func _test_b17_cross_chop_hand_returns() -> void:
 	_step(r["vm"], 8)
 	_chk("b17 cross chop hand RETREATS to where it came from",
 			not _b16_alive(node) or node.centre.distance_to(start) < 1.0)
+
+
+# ── [M36D batch 18] ───────────────────────────────────────────────────────
+
+func _test_b18_baton_pass_switch_falls_through() -> void:
+	# THE assertion of this batch. Upstream's case 1 has no `break`, so on
+	# every frame in state 1 BOTH blocks run: the x param gains 96 TWICE.
+	# After one frame it is 256 + 192 = 448 (scale 0.571); reading the switch
+	# as exclusive gives 256 + 96 = 352 (scale 0.727). Both look reasonable
+	# on screen, which is exactly why this needs pinning.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimBatonPassPokeball", [], "gBatonPassPokeballSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	var mon: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	if node == null:
+		_chk("b18 baton pass ball spawned", false)
+		return
+	var base: Vector2 = mon.scale
+
+	_step(r["vm"], 1)
+	var ratio: float = mon.scale.x / base.x
+	# Worded so a real failure is readable: the exclusive-case misreading lands
+	# on 0.727 exactly, so "got 0.727" IS the diagnosis, not a coincidence.
+	_chk("b18 baton pass gains 96 TWICE per frame (fall-through) -- want 0.571, got %.3f (0.727 = the exclusive-case misreading)"
+			% ratio, absf(ratio - 256.0 / 448.0) < 0.01)
+
+	# The counter also advances by two, so state 1 lasts 3 frames, not 5.
+	_step(r["vm"], 20)
+	_chk("b18 baton pass restores the mon's scale when the ball closes",
+			mon.scale.is_equal_approx(base))
+	_chk("b18 baton pass HIDES the attacker (it has just been passed out)",
+			not mon.visible)
+	_step(r["vm"], 200)
+	_chk("b18 baton pass ball leaves upward and ends",
+			not _b16_alive(node))
+
+
+func _test_b18_horizontal_slice_is_distance_bound_not_time_bound() -> void:
+	# It accumulates `speed` per frame until it has covered `distance`, so a
+	# FASTER slice is a SHORTER one. A time-bound port inverts that.
+	var s1 := FakeStage.new()
+	var r1 := _spawn(s1, "SpriteCB_HorizontalSlice", [0, 0, 40, 4, 0],
+			"gSpriteTemplate_StoneAxeSlash")
+	var slow: AnimSprite = r1["sprite"]
+	var s2 := FakeStage.new()
+	var r2 := _spawn(s2, "SpriteCB_HorizontalSlice", [0, 0, 40, 20, 0],
+			"gSpriteTemplate_StoneAxeSlash")
+	var fast: AnimSprite = r2["sprite"]
+	if slow == null or fast == null:
+		_chk("b18 both slices spawned", false)
+		return
+	_step(r1["vm"], 3)
+	_step(r2["vm"], 3)
+	_chk("b18 the FAST slice has already ended at 3 frames", not _b16_alive(fast))
+	_chk("b18 the SLOW slice is still going at 3 frames", _b16_alive(slow))
+
+
+func _test_b18_horizontal_slice_direction_arg() -> void:
+	var sl := FakeStage.new()
+	var rl := _spawn(sl, "SpriteCB_HorizontalSlice", [0, 0, 40, 4, 1],
+			"gSpriteTemplate_StoneAxeSlash")
+	var left: AnimSprite = rl["sprite"]
+	var sr := FakeStage.new()
+	var rr := _spawn(sr, "SpriteCB_HorizontalSlice", [0, 0, 40, 4, 0],
+			"gSpriteTemplate_StoneAxeSlash")
+	var right: AnimSprite = rr["sprite"]
+	var l0: float = left.centre.x
+	var r0: float = right.centre.x
+	_step(rl["vm"], 2)
+	_step(rr["vm"], 2)
+	_chk("b18 slice direction 1 goes LEFT", left.centre.x < l0)
+	_chk("b18 slice direction 0 goes RIGHT", right.centre.x > r0)
+
+
+func _test_b18_left_right_slice_returns() -> void:
+	# Out AND back across the same span. Ending on the far side would read as
+	# the blade simply leaving.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "SpriteCB_LeftRightSlice", [24, 6],
+			"gFishiousRendTeethTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b18 left/right slice spawned", false)
+		return
+	var start: float = node.centre.x
+	var lowest := start
+	for i in range(40):
+		_step(r["vm"], 1)
+		if not _b16_alive(node):
+			break
+		lowest = minf(lowest, node.centre.x)
+	_chk("b18 left/right slice sweeps across to the far side (%.1f px)"
+			% (start - lowest), start - lowest > 8.0)
+	_chk("b18 left/right slice RETURNS and ends rather than leaving",
+			not _b16_alive(node))
+
+
+func _test_b18_photon_geyser_bails_on_an_invisible_target() -> void:
+	# A beam aimed at a semi-invulnerable or fainted battler is not drawn at
+	# all -- not drawn at an empty slot.
+	var vis := FakeStage.new()
+	var r1 := _spawn(vis, "SpriteCB_PhotonGeyserBeam",
+			[0, 0, AnimStage.ANIM_TARGET, 20, 0, 4],
+			"gPhotonGeyserBeam")
+	_chk("b18 photon geyser draws against a VISIBLE target", r1["sprite"] != null)
+
+	var hidden := FakeStage.new()
+	hidden.set_battler_visible(AnimStage.ANIM_TARGET, false)
+	var r2 := _spawn(hidden, "SpriteCB_PhotonGeyserBeam",
+			[0, 0, AnimStage.ANIM_TARGET, 20, 0, 4],
+			"gPhotonGeyserBeam")
+	_chk("b18 photon geyser draws NOTHING against an invisible target",
+			r2["sprite"] == null)
+
+
+func _test_b18_letter_z_drift_mirrors_by_side() -> void:
+	var s1 := FakeStage.new()
+	s1.player_side = true
+	var r1 := _spawn(s1, "AnimLetterZ", [0, 0, 8, 4], "gLetterZSpriteTemplate")
+	var a: AnimSprite = r1["sprite"]
+	var s2 := FakeStage.new()
+	s2.player_side = false
+	var r2 := _spawn(s2, "AnimLetterZ", [0, 0, 8, 4], "gLetterZSpriteTemplate")
+	var b: AnimSprite = r2["sprite"]
+	if a == null or b == null:
+		_chk("b18 letter Z spawned on both sides", false)
+		return
+	var a0: float = a.centre.x
+	var b0: float = b.centre.x
+	_step(r1["vm"], 4)
+	_step(r2["vm"], 4)
+	_chk("b18 letter Z drifts RIGHT from a player-side attacker", a.centre.x > a0)
+	_chk("b18 letter Z drifts LEFT from an opponent-side attacker", b.centre.x < b0)
+
+
+func _test_b18_letter_z_exits_off_either_edge() -> void:
+	# Upstream's u16 cast means a Z drifting off the LEFT edge wraps to a huge
+	# value and also exits -- reproduced as "off either edge", which is what
+	# that cast achieves rather than what it literally says.
+	var stage := FakeStage.new()
+	stage.player_side = false          # drifts left, toward x = 0
+	var r := _spawn(stage, "AnimLetterZ", [0, 0, 60, 0], "gLetterZSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b18 letter Z spawned", false)
+		return
+	for i in range(_ANIM_END_CAP_T + 10):
+		_step(r["vm"], 1)
+		if not _b16_alive(node):
+			break
+	_chk("b18 letter Z drifting LEFT still exits (the u16 wrap, ported by effect)",
+			not _b16_alive(node))
+
+
+func _test_b18_eye_sparkle_dies_with_its_own_animation() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimEyeSparkle", [0, 0], "gEyeSparkleSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b18 eye sparkle spawned", false)
+		return
+	_chk("b18 eye sparkle is alive on spawn", _b16_alive(node))
+	for i in range(_ANIM_END_CAP_T + 10):
+		_step(r["vm"], 1)
+		if not _b16_alive(node):
+			break
+	_chk("b18 eye sparkle ends with its frame sequence rather than running forever",
+			not _b16_alive(node))
+
+
+const _ANIM_END_CAP_T := 120

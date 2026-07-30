@@ -1326,6 +1326,9 @@ pinned by test.
 
 | ~~all four b16 deferrals~~ | b16 | **CLOSED in b17** — `AnimTask_SquishTarget`, `AnimBrickBreakWall`, `AnimRazorWindTornado`, `AnimTask_NightShadeClone` all ported once read. They were the board's top three picks by yield, which is what deferring them was for. | — |
 | `AnimTask_ScaryFace` (+2) | b17 | **ASSET gap, NOT an unread function.** Needs `gBattleAnimBgTilemap_ScaryFacePlayer`/`...Opponent`, absent from M36E1's 84-background pull. Closing it means extending that pull. | M36E-shaped |
+| `AnimTask_GlareEyeDots` (+2) | b18 | Multi-step task spawner; setup read, `_Step` tail not. **UNREAD, not unfindable.** | medium |
+| `AnimTask_DestinyBondWhiteShadow` (+2) | b18 | Same shape as above. **UNREAD, not unfindable.** | medium |
+| `AnimTask_FakeOut` (+1) | b18 | **SCREEN-EFFECT gap.** WIN0/BLDY window-darken, closer to M36E's surface than a sprite behavior. | M36E-shaped |
 
 **`AnimFallingFeather` — deferred by batches 12, 13 and 14, then taken
 directly on 2026-07-30. See its own section. The list now holds only
@@ -1449,6 +1452,73 @@ is harness-specific, not a shipped bug.
 **Also observed, pre-existing and NOT M36:** the attacker's back sprite is
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
+
+### M36D batch 18 — COMPLETE 2026-07-30. Past 70%, and a switch fall-through.
+
+**6 behaviors, +7 moves (650 → 657 of 932, 69.7% → 70.5%).** Tier 2 64.3%,
+Tier 3 69.9%; iconic Gen 1-3 still closed at 70/70.
+
+**The curve has genuinely flattened** — no remaining pick is worth more than
++2 — so this batch went wider and shallower rather than chasing a headline.
+
+`SpriteCB_PhotonGeyserBeam` · `SpriteCB_HorizontalSlice` ·
+`SpriteCB_LeftRightSlice` · `AnimEyeSparkle` · `AnimLetterZ` ·
+`AnimBatonPassPokeball`.
+
+⚠️ **`AnimBatonPassPokeball`'s case 1 FALLS THROUGH into case 2** — upstream
+has no `break` — so on every frame in state 1 BOTH blocks run: the x param
+gains 96 **twice** (192/frame), the y param goes −26 then +48 (net +22), and
+the step counter advances by **two**, making state 1 last 3 frames rather
+than 5.
+
+Reading the switch as if each case were exclusive gives half the horizontal
+stretch and nearly twice the duration — and looks perfectly reasonable on
+screen, which is why it needs pinning rather than eyeballing. Injecting that
+misreading lands the scale on exactly **0.727** against the correct **0.571**,
+failing the guard. The test label names both numbers so a future failure is
+self-diagnosing.
+
+It also mutates the ATTACKER's scale and then hides it — **two leak classes at
+once**, both covered by existing restore nets. The hide is deliberate (the mon
+has just been Baton Passed out) and the paired script call brings it back.
+
+**`SpriteCB_HorizontalSlice` is distance-bound, not time-bound.** It
+accumulates `speed` per frame until it has covered `distance`, so a FASTER
+slice is a SHORTER one — a time-bound port inverts that relationship. Pinned
+by running a fast and a slow slice side by side and asserting the fast one
+finishes first.
+
+**`SpriteCB_PhotonGeyserBeam` bails outright if the chosen target's sprite is
+not visible** — a beam aimed at a semi-invulnerable or already-fainted battler
+is not drawn at all, rather than drawn at an empty slot.
+
+**`SpriteCB_LeftRightSlice` goes out AND back** across the same span; ending
+on the far side would read as the blade simply leaving.
+
+**DISCLOSED — `AnimLetterZ`'s exit test.** Upstream is
+`(u16)(x + x2) > DISPLAY_WIDTH`, and that u16 cast means a Z drifting off the
+LEFT edge wraps to a huge value and also exits. Ported as "off either
+horizontal edge", which is what the cast *achieves* rather than what it
+literally says.
+
+**The template guard earned its keep for the third batch running**, catching
+three guessed names at once. All resolved by **callback** from
+`templates.json`, and two were nowhere near guessable:
+`SpriteCB_HorizontalSlice` → `gSpriteTemplate_StoneAxeSlash`,
+`SpriteCB_LeftRightSlice` → `gFishiousRendTeethTemplate`,
+`SpriteCB_PhotonGeyserBeam` → `gPhotonGeyserBeam` (no `SpriteTemplate`
+suffix at all).
+
+**Deferred, and of three different kinds — worth distinguishing rather than
+lumping:** `AnimTask_GlareEyeDots` (+2) and `AnimTask_DestinyBondWhiteShadow`
+(+2) are multi-step task SPAWNERS whose setup was read but whose `_Step` tails
+were not — **UNREAD, not unfindable**. `AnimTask_FakeOut` (+1) is a WIN0/BLDY
+screen window-darken effect, closer to M36E's surface than to a sprite
+behavior. `AnimTask_ScaryFace` (+2) remains an **asset** gap from batch 17.
+
+**Tests:** `m36d_batch_test` 588 → **605/605**. Regression green: `m36c`
+66/66, `m36b` 53/53, `m36a` 71/71, `m36e_background_runtime` 30/30, `m36e3`
+52/52, `m36e_background_asset` 20/20, `hit_effect_dispatch` 40/40.
 
 ### M36D batch 17 — COMPLETE 2026-07-30. Batch 16's deferrals, and an affine reading that was wrong two ways at once.
 

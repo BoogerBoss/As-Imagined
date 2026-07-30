@@ -100,6 +100,13 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 18] —
+		"SpriteCB_PhotonGeyserBeam": _photon_geyser_beam,
+		"SpriteCB_HorizontalSlice": _horizontal_slice,
+		"SpriteCB_LeftRightSlice": _left_right_slice,
+		"AnimEyeSparkle": _eye_sparkle,
+		"AnimLetterZ": _letter_z,
+		"AnimBatonPassPokeball": _baton_pass_pokeball,
 		# — [M36D batch 17] —
 		"AnimTask_SquishTarget": _squish_target,
 		"AnimTask_SquishTargetShort": _squish_target_short,
@@ -10860,3 +10867,237 @@ static func _cross_chop_hand(vm: AnimScriptVM, ctx: Dictionary) -> void:
 # real ASSET gap. It loads `gBattleAnimBgTilemap_ScaryFacePlayer` /
 # `...Opponent`, neither of which is among M36E1's 84 pulled backgrounds.
 # Closing it means extending that pull, not reading more C.
+
+
+# ── [M36D batch 18] ───────────────────────────────────────────────────────
+#
+# The curve has genuinely flattened -- no pick is worth more than +2 now --
+# so this batch goes wider and shallower rather than chasing a headline.
+
+
+# SpriteCB_PhotonGeyserBeam (battle_anim_new.c:7?, step SpriteCB_BeamUpStep).
+# args: 2 which target, 3 lifetime, 4 frame-sequence index, 5 affine delay.
+#
+# **Bails outright if the chosen target's sprite is not visible** -- a beam
+# aimed at a semi-invulnerable or already-fainted battler is not drawn at all,
+# rather than drawn at an empty slot.
+static func _photon_geyser_beam(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var which := vm.args[2]
+	var target_node := _battler_node(vm, which)
+	if target_node == null or not target_node.visible:
+		return
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	node.centre = _battler_centre(vm, which)
+	var life: int = maxi(1, vm.args[3])
+
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= life:
+			node.finish()
+			return true
+		return false)
+
+
+# SpriteCB_HorizontalSlice (battle_anim_new.c:7820, step :7833).
+# args: 0/1 spawn offset, 2 distance, 3 speed, 4 direction (1 = left).
+#
+# Travels a fixed DISTANCE rather than for a fixed time: the timer accumulates
+# `speed` per frame and the slice ends once it has covered `distance`. So a
+# faster slice is a SHORTER one, not a longer one.
+static func _horizontal_slice(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var base := node.centre + Vector2(float(vm.args[0]), float(vm.args[1])) * scale
+	node.centre = base
+	var distance: float = maxf(1.0, float(vm.args[2]))
+	var speed: float = maxf(1.0, float(vm.args[3]))
+	var dir := -1.0 if vm.args[4] == 1 else 1.0
+
+	var st := {"x": 0.0, "travelled": 0.0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["x"] = float(st["x"]) + dir * speed
+		st["travelled"] = float(st["travelled"]) + speed
+		node.centre = base + Vector2(float(st["x"]), 0.0) * scale
+		if float(st["travelled"]) >= distance:
+			node.finish()
+			return true
+		return false)
+
+
+# SpriteCB_LeftRightSlice (battle_anim_new.c, steps Step0/Step1).
+# args: 0 half-width of the sweep, 1 speed.
+#
+# OUT then BACK across the same span, not a one-way sweep -- it starts at
+# +arg0, slides to -arg0, then returns. Ending on the far side would read as
+# the blade simply leaving.
+static func _left_right_slice(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var base := node.centre
+	var half: float = absf(float(vm.args[0]))
+	var speed: float = maxf(1.0, float(vm.args[1]))
+	node.centre = base + Vector2(half, 0.0) * scale
+
+	var st := {"x": half, "back": false}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		if not bool(st["back"]):
+			st["x"] = float(st["x"]) - speed
+			if float(st["x"]) <= -half:
+				st["x"] = -half
+				st["back"] = true
+		else:
+			st["x"] = float(st["x"]) + speed
+			if float(st["x"]) >= half:
+				node.finish()
+				return true
+		node.centre = base + Vector2(float(st["x"]), 0.0) * scale
+		return false)
+
+
+# AnimEyeSparkle (battle_anim_effects_2.c, step :?). No args beyond position.
+#
+# Its whole step is "die when the frame sequence ends" -- the sprite sheet is
+# the animation. Ported as such rather than given an invented duration.
+static func _eye_sparkle(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	node.centre = _positioned_centre(vm, AnimStage.ANIM_ATTACKER,
+			vm.args[0], vm.args[1], _scale(vm))
+	_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+
+
+# AnimLetterZ (battle_anim_effects_3.c:1551). args: 0 x offset, 2 x drift,
+# 3 y drift.
+#
+# Drifts away from the attacker on a per-frame accumulator HALVED on read
+# (`x2 = data[3] / 2`), with a small sine bob laid over the vertical. Both
+# drift components are negated on the opponent's side.
+#
+# **DISCLOSED:** upstream's exit test is `(u16)(x + x2) > DISPLAY_WIDTH`, and
+# the u16 cast means a sprite drifting off the LEFT edge wraps to a huge
+# value and also exits. Reproduced as "off either horizontal edge", which is
+# what that cast actually achieves rather than what it literally says.
+static func _letter_z(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var base := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0], 0, scale)
+	node.centre = base
+	var dx := float(vm.args[2])
+	var dy := float(vm.args[3])
+	if not _is_player_side(vm):
+		dx = -dx
+		dy = -dy
+	var width := 240.0 * scale
+
+	var st := {"t": 0, "ax": 0.0, "ay": 0.0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		st["ax"] = float(st["ax"]) + dx
+		st["ay"] = float(st["ay"]) + dy
+		var phase := fmod(float(int(st["t"]) * 20), 256.0)
+		node.centre = base + Vector2(float(st["ax"]) * 0.5,
+				_gba_sin(phase, 5.0) + float(st["ay"]) * 0.5) * scale
+		if node.centre.x > width or node.centre.x < 0.0 \
+				or int(st["t"]) >= _ANIM_END_CAP:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimBatonPassPokeball (battle_anim_effects_3.c). No args.
+#
+# ⚠️ **CASE 1 FALLS THROUGH INTO CASE 2 in upstream's switch** -- there is no
+# `break` -- so on every frame in state 1 BOTH blocks run: the x param gains
+# 96 TWICE (192/frame), the y param goes -26 then +48 (net +22), and the step
+# counter advances by TWO. Reading the switch as if each case were exclusive
+# gives half the horizontal stretch and twice the duration, and looks
+# perfectly reasonable on screen. Reproduced literally.
+#
+# Mutates the ATTACKER's scale and then hides it -- two leak classes at once,
+# both covered by the VM's own restore nets. The hide is deliberate (the mon
+# has just been Baton Passed out) and the paired script call brings it back.
+const _BP_STRETCH_X := 96
+const _BP_SQUASH_Y := 26
+const _BP_RELEASE_Y := 48
+
+
+static func _baton_pass_pokeball(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var atk := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	var base := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	node.centre = base
+	var ms := MonScale.new(atk)
+
+	var st := {"phase": 1, "px": 256.0, "py": 256.0, "n": 0, "y": 0.0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		match int(st["phase"]):
+			1:
+				# case 1 ...
+				st["px"] = float(st["px"]) + float(_BP_STRETCH_X)
+				st["py"] = float(st["py"]) - float(_BP_SQUASH_Y)
+				st["n"] = int(st["n"]) + 1
+				if int(st["n"]) == 5:
+					st["phase"] = 2
+				# ... and then case 2 in the SAME frame, no break upstream.
+				st["px"] = float(st["px"]) + float(_BP_STRETCH_X)
+				st["py"] = float(st["py"]) + float(_BP_RELEASE_Y)
+				st["n"] = int(st["n"]) + 1
+				_bp_apply(ms, st)
+			2:
+				st["px"] = float(st["px"]) + float(_BP_STRETCH_X)
+				st["py"] = float(st["py"]) + float(_BP_RELEASE_Y)
+				st["n"] = int(st["n"]) + 1
+				if int(st["n"]) >= 9:
+					ms.restore()
+					vm.set_battler_visible_tracked(AnimStage.ANIM_ATTACKER, false)
+					st["phase"] = 3
+				else:
+					_bp_apply(ms, st)
+			_:
+				st["y"] = float(st["y"]) - 6.0 * scale
+				node.centre = base + Vector2(0.0, float(st["y"]))
+				if node.centre.y < -32.0 * scale:
+					node.finish()
+					return true
+		return false)
+
+
+static func _bp_apply(ms: MonScale, st: Dictionary) -> void:
+	# GBA affine is INVERTED, so a rising param SHRINKS the axis.
+	ms.apply(Vector2(256.0 / maxf(1.0, float(st["px"])),
+			256.0 / maxf(1.0, float(st["py"]))))
+
+
+# DEFERRED, and precisely: `AnimTask_GlareEyeDots` (+2) and
+# `AnimTask_DestinyBondWhiteShadow` (+2) are multi-step task SPAWNERS whose
+# setup was read but whose `_Step` tails were not. UNREAD, not unfindable.
+# `AnimTask_FakeOut` (+1) is a different kind again -- a WIN0/BLDY screen
+# window-darken effect, closer to M36E's surface than to a sprite behavior.
