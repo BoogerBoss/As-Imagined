@@ -12,3 +12,7 @@ extends OverworldEntity
 @export var graphics_id: String = "OBJ_EVENT_GFX_ITEM_BALL"
 
 @export var local_id: String = ""
+
+
+func sprite_graphics_id() -> String:
+	return graphics_id

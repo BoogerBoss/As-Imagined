@@ -103,6 +103,13 @@ func _ready() -> void:
 	_test_b16_whirlwind_line_snaps_back()
 	_test_b16_rock_scatter_flies_the_way_it_spawned()
 	_test_b16_ghost_status_rises_while_swaying()
+	_test_b17_squish_deltas_are_per_frame_not_per_command()
+	_test_b17_squish_short_is_a_different_depth_not_just_faster()
+	_test_b17_night_shade_clone_doubles_then_shrinks_back()
+	_test_b17_brick_break_wall_shakes_only_when_asked()
+	_test_b17_razor_wind_tornado_orbits()
+	_test_b17_megahorn_mirroring_is_side_asymmetric()
+	_test_b17_cross_chop_hand_returns()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -3909,3 +3916,198 @@ func _test_b16_ghost_status_rises_while_swaying() -> void:
 			is_instance_valid(node) and node.centre.y < start.y - 1.0)
 	_chk("b16 ghost status sprite SWAYS horizontally (span %.1f px)"
 			% (max_x - min_x), max_x - min_x > 4.0)
+
+
+# ── [M36D batch 17] ───────────────────────────────────────────────────────
+
+func _test_b17_squish_deltas_are_per_frame_not_per_command() -> void:
+	# THE assertion of this batch. AFFINEANIMCMD_FRAME(0, 64, 0, 16) is +64
+	# EVERY FRAME for 16 frames (+1024), not +64 once. Both readings look
+	# plausible on paper and produce wildly different depths: 256/1280 = 0.2x
+	# height against 256/320 = 0.8x. Anything shallower than ~0.5 can only
+	# come from the per-command misreading.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var mon: Control = stage.sprite_for(AnimStage.ANIM_TARGET)
+	var base: Vector2 = mon.scale
+	_registry.get_behavior("AnimTask_SquishTarget").call(vm, {})
+
+	_step(vm, 16)
+	var flat: float = mon.scale.y / base.y
+	_chk("b17 squish flattens to ~0.2x height, i.e. deltas are PER FRAME (got %.3f)"
+			% flat, flat < 0.35)
+	_chk("b17 squish leaves WIDTH alone (only yScale is stepped)",
+			is_equal_approx(mon.scale.x, base.x))
+
+	# Hold: 64 frames at delta 0, so the flatten must not creep.
+	_step(vm, 30)
+	_chk("b17 squish HOLDS flat rather than continuing to shrink",
+			is_equal_approx(mon.scale.y / base.y, flat))
+
+	# ...then comes all the way back.
+	_step(vm, 120)
+	_chk("b17 squish restores the mon exactly",
+			mon.scale.is_equal_approx(base))
+
+
+func _test_b17_squish_short_is_a_different_depth_not_just_faster() -> void:
+	# Under the per-frame reading the "short" table is BOTH quicker and
+	# shallower (4x64 = +256 -> 0.5x, against 16x64 = +1024 -> 0.2x). Under
+	# the per-command misreading both tables would flatten identically and
+	# this discriminator could not exist at all.
+	var s1 := FakeStage.new()
+	var v1 := _vm(s1)
+	var m1: Control = s1.sprite_for(AnimStage.ANIM_TARGET)
+	var b1: Vector2 = m1.scale
+	_registry.get_behavior("AnimTask_SquishTarget").call(v1, {})
+	_step(v1, 16)
+
+	var s2 := FakeStage.new()
+	var v2 := _vm(s2)
+	var m2: Control = s2.sprite_for(AnimStage.ANIM_TARGET)
+	var b2: Vector2 = m2.scale
+	_registry.get_behavior("AnimTask_SquishTargetShort").call(v2, {})
+	_step(v2, 4)
+
+	var deep: float = m1.scale.y / b1.y
+	var shallow: float = m2.scale.y / b2.y
+	_chk("b17 long squish is DEEPER than short (%.3f vs %.3f)"
+			% [deep, shallow], deep < shallow)
+	_step(v2, 60)
+	_chk("b17 short squish restores too", m2.scale.is_equal_approx(b2))
+
+
+func _test_b17_night_shade_clone_doubles_then_shrinks_back() -> void:
+	# NOT batch 11's _nightmare_clone -- a different function that mutates the
+	# ATTACKER's own scale and blend, so it leans on two restore nets.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0
+	var mon: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var base: Vector2 = mon.scale
+	_registry.get_behavior("AnimTask_NightShadeClone").call(vm, {})
+	_chk("b17 night shade clone starts at DOUBLE size",
+			is_equal_approx(mon.scale.x / base.x, 2.0))
+
+	# 9 blend steps at one per 3 frames, then the 16-frame shrink.
+	_step(vm, 30)
+	var mid: float = mon.scale.x / base.x
+	_chk("b17 night shade clone is still enlarged during the fade-in (%.2f)"
+			% mid, mid > 1.2)
+	_step(vm, 40)
+	_chk("b17 night shade clone shrinks back to normal and restores",
+			mon.scale.is_equal_approx(base))
+
+
+func _test_b17_brick_break_wall_shakes_only_when_asked() -> void:
+	# The real fork: arg4 == 0 dies outright, arg4 > 0 rattles first. A port
+	# that always shakes adds motion to every caller that asked for none.
+	var s1 := FakeStage.new()
+	var r1 := _spawn(s1, "AnimBrickBreakWall", [1, 0, 0, 6, 0],
+			"gBrickBreakWallSpriteTemplate")
+	var quiet: AnimSprite = r1["sprite"]
+	if quiet == null:
+		_chk("b17 brick break wall spawned", false)
+		return
+	var qx: float = quiet.centre.x
+	_step(r1["vm"], 5)
+	_chk("b17 brick wall with shake=0 does NOT move during its hold",
+			absf(quiet.centre.x - qx) < 0.01)
+	_step(r1["vm"], 3)
+	_chk("b17 brick wall with shake=0 dies at the end of the hold",
+			not _b16_alive(quiet))
+
+	var s2 := FakeStage.new()
+	var r2 := _spawn(s2, "AnimBrickBreakWall", [1, 0, 0, 6, 20],
+			"gBrickBreakWallSpriteTemplate")
+	var rattly: AnimSprite = r2["sprite"]
+	var bx: float = rattly.centre.x
+	_step(r2["vm"], 6)
+	var moved := false
+	for i in range(12):
+		_step(r2["vm"], 1)
+		if _b16_alive(rattly) and absf(rattly.centre.x - bx) > 0.5:
+			moved = true
+	_chk("b17 brick wall with shake>0 genuinely rattles after its hold", moved)
+
+
+func _test_b17_razor_wind_tornado_orbits() -> void:
+	# Circular, not linear: it must come back near where it started after a
+	# full 256-step cycle rather than drifting away.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimRazorWindTornado", [0, 0, 0, 20, 200, 16],
+			"gRazorWindTornadoSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b17 razor wind tornado spawned", false)
+		return
+	# Sampled AFTER the first tick: the spawn point is the orbit's CENTRE,
+	# and the sprite only reaches the orbit itself once the stepper runs
+	# (phase 0 puts it at centre + (0, amplitude), not at the centre).
+	_step(r["vm"], 1)
+	var p0: Vector2 = node.centre
+	var far := 0.0
+	for i in range(16):     # speed 16 x 16 frames = one full 256 cycle
+		_step(r["vm"], 1)
+		if _b16_alive(node):
+			far = maxf(far, node.centre.distance_to(p0))
+	_chk("b17 tornado genuinely travels around its orbit (%.1f px)" % far,
+			far > 4.0)
+	_chk("b17 tornado RETURNS to its start after one full cycle (circular, not linear)",
+			_b16_alive(node) and node.centre.distance_to(p0) < 4.0)
+
+
+func _test_b17_megahorn_mirroring_is_side_asymmetric() -> void:
+	# Against a player-side target BOTH offsets flip on BOTH axes; against an
+	# opponent-side target nothing flips. A uniform "mirror by side" would
+	# send the horn the wrong way in half of all uses, so the two sides must
+	# produce genuinely different start points.
+	var s1 := FakeStage.new()
+	s1.player_side = true       # attacker player-side -> target opponent-side
+	var r1 := _spawn(s1, "AnimMegahornHorn", [20, 10, 0, 0, 12],
+			"gMegahornHornSpriteTemplate")
+	var a: AnimSprite = r1["sprite"]
+	var s2 := FakeStage.new()
+	s2.player_side = false      # attacker opponent-side -> target player-side
+	var r2 := _spawn(s2, "AnimMegahornHorn", [20, 10, 0, 0, 12],
+			"gMegahornHornSpriteTemplate")
+	var b: AnimSprite = r2["sprite"]
+	if a == null or b == null:
+		_chk("b17 megahorn spawned on both sides", false)
+		return
+	var ta: Vector2 = _target_centre_of(s1)
+	var tb: Vector2 = _target_centre_of(s2)
+	var oa := a.centre - ta
+	var ob := b.centre - tb
+	_chk("b17 megahorn's spawn offset FLIPS with the target's side (%.0f,%.0f vs %.0f,%.0f)"
+			% [oa.x, oa.y, ob.x, ob.y],
+			absf(oa.x + ob.x) < 0.01 and absf(oa.y + ob.y) < 0.01
+			and absf(oa.x) > 0.01)
+
+
+func _target_centre_of(stage: FakeStage) -> Vector2:
+	var n: Control = stage.sprite_for(AnimStage.ANIM_TARGET)
+	return n.position + n.size * 0.5
+
+
+func _test_b17_cross_chop_hand_returns() -> void:
+	# Three beats. Ending on arrival would read as the hand simply stopping;
+	# the retreat is what reads as the chop connecting.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimCrossChopHand", [0, 0, 0],
+			"gCrossChopHandSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b17 cross chop hand spawned", false)
+		return
+	var start: Vector2 = node.centre
+	_step(r["vm"], 30)
+	var arrived: Vector2 = node.centre
+	_chk("b17 cross chop hand travels in over 30 frames",
+			arrived.distance_to(start) > 4.0)
+	_step(r["vm"], 11)
+	_chk("b17 cross chop hand HOLDS through its 11-frame beat",
+			_b16_alive(node) and node.centre.distance_to(arrived) < 0.01)
+	_step(r["vm"], 8)
+	_chk("b17 cross chop hand RETREATS to where it came from",
+			not _b16_alive(node) or node.centre.distance_to(start) < 1.0)

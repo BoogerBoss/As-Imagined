@@ -100,6 +100,14 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 17] —
+		"AnimTask_SquishTarget": _squish_target,
+		"AnimTask_SquishTargetShort": _squish_target_short,
+		"AnimTask_NightShadeClone": _night_shade_clone,
+		"AnimBrickBreakWall": _brick_break_wall,
+		"AnimRazorWindTornado": _razor_wind_tornado,
+		"AnimMegahornHorn": _megahorn_horn,
+		"AnimCrossChopHand": _cross_chop_hand,
 		# — [M36D batch 16] —
 		"AnimTask_GetTimeOfDay": _get_time_of_day,
 		"AnimViceGripPincer": _vice_grip_pincer,
@@ -10573,3 +10581,282 @@ static func _ghost_status_sprite(vm: AnimScriptVM, ctx: Dictionary) -> void:
 # not unfindable: `AnimTask_SquishTarget` (drives `sSquishTargetAffineAnimCmds`,
 # an affine table not yet read), `AnimBrickBreakWall`, `AnimRazorWindTornado`,
 # `AnimTask_NightShadeClone`.
+
+
+# ── [M36D batch 17] ───────────────────────────────────────────────────────
+#
+# Batch 16's four deferrals, cleared once their step functions were actually
+# read -- which is what deferring them was for. `AnimTask_SquishTarget` alone
+# is the single highest-yield behavior left on the board (+6 moves).
+#
+# **AFFINEANIMCMD_FRAME's deltas are PER FRAME, not per command.** Traced
+# through `AffineAnimDelay` -> `ApplyAffineAnimFrameRelativeAndUpdateMatrix`
+# (`sprite.c`), which re-applies the delta on every tick the counter runs
+# down. So `FRAME(0, 64, 0, 16)` is +1024 total, not +64. Reading it as a
+# per-command total would produce a barely-visible squash instead of a
+# genuine flatten, and BOTH readings look plausible on paper.
+
+
+# The two SquishTarget tables (battle_anim_new.c:105 and :113). Both flatten
+# the TARGET vertically and come back; they differ only in SPEED, which is
+# what makes the "short" variant a variant rather than a weaker squash.
+const _SQUISH_STEP := 64          # per-frame yScale delta
+const _SQUISH_IN_FRAMES := 16
+const _SQUISH_HOLD_FRAMES := 64
+const _SQUISH_SHORT_IN_FRAMES := 4
+const _SQUISH_SHORT_HOLD_FRAMES := 16
+
+
+static func _squish_target(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	_squish_target_common(vm, _SQUISH_IN_FRAMES, _SQUISH_HOLD_FRAMES)
+
+
+static func _squish_target_short(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	_squish_target_common(vm, _SQUISH_SHORT_IN_FRAMES, _SQUISH_SHORT_HOLD_FRAMES)
+
+
+static func _squish_target_common(vm: AnimScriptVM, in_frames: int,
+		hold_frames: int) -> void:
+	var target := _battler_node(vm, AnimStage.ANIM_TARGET)
+	if target == null:
+		return
+	# MonScale captures the base once and the VM's fourth restore net reads
+	# the same meta, so a run ending mid-squash still un-flattens the mon.
+	var ms := MonScale.new(target)
+
+	var st := {"phase": 0, "t": 0, "y": 256.0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(target):
+			return true
+		st["t"] = int(st["t"]) + 1
+		match int(st["phase"]):
+			0:
+				st["y"] = float(st["y"]) + float(_SQUISH_STEP)
+				if int(st["t"]) >= in_frames:
+					st["t"] = 0; st["phase"] = 1
+			1:
+				if int(st["t"]) >= hold_frames:
+					st["t"] = 0; st["phase"] = 2
+			_:
+				st["y"] = float(st["y"]) - float(_SQUISH_STEP)
+				if int(st["t"]) >= in_frames:
+					ms.restore()
+					return true
+		# GBA affine scale is INVERTED: a BIGGER param is a SMALLER sprite.
+		ms.apply(Vector2(1.0, 256.0 / maxf(1.0, float(st["y"]))))
+		return false)
+
+
+# AnimTask_NightShadeClone (battle_anim_ghost.c:371, steps :387/:403).
+# args: 0 pause between the fade-in and the shrink.
+#
+# NOT batch 11's `_nightmare_clone` -- a different function with a different
+# shape, sharing only the word "clone". The ATTACKER ITSELF is doubled in
+# size and made fully transparent, fades in to 9/16 over 27 frames (one blend
+# step every 3), waits, then shrinks back to normal over 16 and restores.
+# Mutates scale AND blend on a battler, so it leans on two restore nets.
+const _NS_CLONE_BLEND_STEPS := 9
+const _NS_CLONE_BLEND_INTERVAL := 3
+const _NS_CLONE_START_PARAM := 128     # 256/128 = 2.0x, i.e. double size
+const _NS_CLONE_SHRINK_STEP := 8
+
+
+static func _night_shade_clone(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var atk := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	if atk == null:
+		return
+	var ms := MonScale.new(atk)
+	ms.apply(Vector2.ONE * (256.0 / float(_NS_CLONE_START_PARAM)))
+	_apply_blend_amount(atk, Color(0, 0, 0), 1.0)
+	var pause: int = maxi(0, vm.args[0])
+
+	var st := {"phase": 0, "t": 0, "eva": 0, "param": float(_NS_CLONE_START_PARAM)}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(atk):
+			return true
+		st["t"] = int(st["t"]) + 1
+		match int(st["phase"]):
+			0:
+				if int(st["t"]) >= _NS_CLONE_BLEND_INTERVAL:
+					st["t"] = 0
+					st["eva"] = int(st["eva"]) + 1
+					# eva rises 0..9 while evb falls 16..7 -- the clone fading
+					# IN, never past 9/16, so it stays visibly ghostly.
+					_apply_blend_amount(atk, Color(0, 0, 0),
+							clampf(1.0 - float(st["eva"]) / 16.0, 0.0, 1.0))
+					if int(st["eva"]) >= _NS_CLONE_BLEND_STEPS:
+						st["t"] = 0; st["phase"] = 1
+			1:
+				if int(st["t"]) > pause:
+					st["t"] = 0; st["phase"] = 2
+			_:
+				st["param"] = float(st["param"]) + float(_NS_CLONE_SHRINK_STEP)
+				if float(st["param"]) > 255.0:
+					ms.restore()
+					_clear_blend(atk)
+					return true
+				ms.apply(Vector2.ONE * (256.0 / float(st["param"])))
+		return false)
+
+
+# AnimBrickBreakWall (battle_anim_fight.c:718, step :741). args: 0 which
+# battler, 1/2 offset, 3 hold frames, 4 shake frames.
+#
+# Two beats and a real fork: it holds for arg3, and then EITHER dies outright
+# (arg4 == 0) or rattles +/-2px every other frame for arg4 more -- the wall
+# shuddering before it breaks. A port that always shakes would add motion to
+# every caller that asked for none.
+static func _brick_break_wall(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var which := AnimStage.ANIM_ATTACKER if vm.args[0] == 0 else AnimStage.ANIM_TARGET
+	var base := _positioned_centre(vm, which, vm.args[1], vm.args[2], scale)
+	node.centre = base
+	var hold: int = maxi(1, vm.args[3])
+	var shake: int = maxi(0, vm.args[4])
+
+	var st := {"phase": 0, "t": 0, "flip": false, "sub": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if int(st["phase"]) == 0:
+			if int(st["t"]) >= hold:
+				if shake == 0:
+					node.finish()
+					return true
+				st["t"] = 0; st["phase"] = 1
+			return false
+		st["sub"] = int(st["sub"]) + 1
+		if int(st["sub"]) > 1:
+			st["sub"] = 0
+			st["flip"] = not bool(st["flip"])
+			node.centre = base + Vector2(2.0 if bool(st["flip"]) else -2.0, 0.0) * scale
+		if int(st["t"]) >= shake:
+			node.finish()
+			return true
+		return false)
+
+
+# TranslateSpriteInCircle (battle_anim_mons.c). The shared circular-orbit
+# translator -- x2 = Sin(pos, amp), y2 = Cos(pos, amp), phase advancing by a
+# fixed speed and wrapping at 256. Extracted because more than one behavior
+# hands its sprite straight to it.
+static func _circle_orbit(vm: AnimScriptVM, node: AnimSprite, base: Vector2,
+		amplitude: float, speed: float, frames: int) -> void:
+	var scale := _scale(vm)
+	var st := {"pos": 0.0, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		node.centre = base + Vector2(
+				_gba_sin(float(st["pos"]), amplitude),
+				_gba_cos(float(st["pos"]), amplitude)) * scale
+		st["pos"] = fmod(float(st["pos"]) + speed + 256.0, 256.0)
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= frames:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimRazorWindTornado (battle_anim_effects_2.c:1821). args: 0/1 spawn offset,
+# 2 initial phase, 3 amplitude, 4 lifetime, 5 phase speed.
+#
+# Spawned on the ATTACKER, nudged 16px down on the player's side only, then
+# handed straight to the circular translator.
+static func _razor_wind_tornado(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var base := _positioned_centre(vm, AnimStage.ANIM_ATTACKER,
+			vm.args[0], vm.args[1], scale)
+	if _is_player_side(vm):
+		base.y += 16.0 * scale
+	node.centre = base
+	_circle_orbit(vm, node, base, float(vm.args[3]), float(vm.args[5]),
+			maxi(1, vm.args[4]))
+
+
+# AnimMegahornHorn (battle_anim_bug.c:171). args: 0/1 spawn offset,
+# 2/3 destination offset, 4 duration.
+#
+# The mirroring is ASYMMETRIC and worth reading twice: against a player-side
+# target BOTH offsets flip on BOTH axes, but against an opponent-side target
+# nothing flips at all -- so a uniform "mirror by side" would send the horn
+# the wrong way in exactly half of all uses.
+static func _megahorn_horn(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var x1 := vm.args[0]
+	var y1 := vm.args[1]
+	var x2 := vm.args[2]
+	var y2 := vm.args[3]
+	if _battler_is_player_side(vm, AnimStage.ANIM_TARGET):
+		x1 = -x1; y1 = -y1; x2 = -x2; y2 = -y2
+	var start := _positioned_centre(vm, AnimStage.ANIM_TARGET, x1, y1, scale)
+	var dest := _positioned_centre(vm, AnimStage.ANIM_TARGET, x2, y2, scale)
+	node.centre = start
+	_linear_travel(vm, node, start, dest, maxi(1, vm.args[4]))
+
+
+# AnimCrossChopHand (battle_anim_fight.c:558, step :578). args: 2 which hand.
+#
+# Two travels, not one: 30 frames IN to a point up and to one side of the
+# target, an 11-frame beat, then 8 frames BACK along the same vector. The
+# retreat is what reads as the chop connecting; ending on arrival would look
+# like the hand simply stopped.
+const _CROSS_CHOP_IN_FRAMES := 30
+const _CROSS_CHOP_BEAT_FRAMES := 11
+const _CROSS_CHOP_OUT_FRAMES := 8
+
+
+static func _cross_chop_hand(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var target := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var second: bool = vm.args[2] != 0
+	var start := target
+	var dest := target + Vector2(20.0 if second else -20.0, -20.0) * scale
+	node.centre = start
+	if second:
+		node.scale.x = -absf(node.scale.x)   # the mirrored hand
+
+	var st := {"phase": 0, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		match int(st["phase"]):
+			0:
+				node.centre = start.lerp(dest,
+						minf(1.0, float(t) / float(_CROSS_CHOP_IN_FRAMES)))
+				if t >= _CROSS_CHOP_IN_FRAMES:
+					st["t"] = 0; st["phase"] = 1
+			1:
+				if t >= _CROSS_CHOP_BEAT_FRAMES:
+					st["t"] = 0; st["phase"] = 2
+			_:
+				node.centre = dest.lerp(start,
+						minf(1.0, float(t) / float(_CROSS_CHOP_OUT_FRAMES)))
+				if t >= _CROSS_CHOP_OUT_FRAMES:
+					node.finish()
+					return true
+		return false)
+
+
+# DEFERRED: `AnimTask_ScaryFace` is NOT an unread step function -- it is a
+# real ASSET gap. It loads `gBattleAnimBgTilemap_ScaryFacePlayer` /
+# `...Opponent`, neither of which is among M36E1's 84 pulled backgrounds.
+# Closing it means extending that pull, not reading more C.

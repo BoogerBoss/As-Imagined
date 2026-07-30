@@ -28,6 +28,10 @@ const CELL := 16
 ## changes it during play, and a warp (C5) changes it on arrival.
 @export var start_map: String = "PalletTown_Frlg"
 
+## [M27D D1] Placeholder, matching the battle side's own `_PLAYER_BACK_PIC`.
+## M27K owns a real player identity; until then the two halves at least agree.
+const PLAYER_GRAPHICS_ID := "OBJ_EVENT_GFX_LEAF"
+
 @onready var manager: MapManager = $MapManager
 
 var _player: Node2D
@@ -111,10 +115,23 @@ func _spawn_player() -> void:
 
 	_player = Node2D.new()
 	_player.name = "Player"
-	var body := ColorRect.new()
-	body.color = Color(1.0, 0.25, 0.25)
-	body.size = Vector2(10, 14)
-	body.position = Vector2(3, 1)
+	# [M27D D1] Was a red ColorRect. Draws from the same sheets and the same
+	# frame maths as every NPC, via OverworldEntity.make_sprite.
+	#
+	# Leaf is a PLACEHOLDER and deliberately matches the battle side's own
+	# `_PLAYER_BACK_PIC` choice, so the two halves agree on who the player is
+	# until M27K builds a real player identity. `red` sits beside her, already
+	# pulled, if the male Kanto counterpart is wanted instead.
+	var body: Node2D = OverworldEntity.make_sprite(PLAYER_GRAPHICS_ID, "SOUTH")
+	if body == null:
+		# Never leave the player invisible: a missing sheet should be obvious,
+		# not a soft-lock where you cannot find yourself on the map.
+		var fallback := ColorRect.new()
+		fallback.color = Color(1.0, 0.25, 0.25)
+		fallback.size = Vector2(10, 14)
+		fallback.position = Vector2(3, 1)
+		body = Node2D.new()
+		body.add_child(fallback)
 	_player.add_child(body)
 	_reparent_for_elevation()
 	# The chunk's LOCAL pixels, not the global cell's — the player is a child of

@@ -35,3 +35,19 @@ func _get_configuration_warnings() -> PackedStringArray:
 		out.append("movement_type '%s' is not a type source defines — typo?"
 				% movement_type)
 	return out
+
+
+func sprite_graphics_id() -> String:
+	return graphics_id
+
+
+## MOVEMENT_TYPE_FACE_* names the direction outright; everything else rests
+## facing south, matching source's own ANIM_STD_FACE_SOUTH default.
+##
+## The FACE_x_AND_y and WANDER types start on their first direction and change
+## later — that is D3's job, not a starting-facing question.
+func initial_facing() -> String:
+	for d in ["DOWN", "UP", "LEFT", "RIGHT"]:
+		if movement_type.begins_with("MOVEMENT_TYPE_FACE_" + d):
+			return {"DOWN": "SOUTH", "UP": "NORTH", "LEFT": "WEST", "RIGHT": "EAST"}[d]
+	return "SOUTH"

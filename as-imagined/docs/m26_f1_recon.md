@@ -1324,10 +1324,8 @@ pinned by test.
 | ~~`AnimTask_SpiteTargetShadow`~~ | b10, again in b11 | **CLOSED 2026-07-30 — both deferrals OVERTURNED.** Reading Step1 case 1 through Step2 in full showed the earlier call was wrong: the tint lands on the REAL target, the echo and its 128-frame sine pulse are directly expressible, and only the per-scanline nature of the waver is lost — which batch 7 had already approximated and disclosed for Dragon Dance's identical mechanism. Ported. | — |
 | `AnimTask_SecretPower` / terrain family | M19-era | `gBattleEnvironment` has no analogue — no overworld. | — |
 
-| `AnimTask_SquishTarget` | b16 | Drives `sSquishTargetAffineAnimCmds`, an affine table not yet read. **UNREAD, not unfindable.** | small |
-| `AnimBrickBreakWall` | b16 | Step function not read in full. **UNREAD, not unfindable.** | small |
-| `AnimRazorWindTornado` | b16 | Step function not read in full. **UNREAD, not unfindable.** | small |
-| `AnimTask_NightShadeClone` | b16 | Step function not read in full. **UNREAD, not unfindable.** | small |
+| ~~all four b16 deferrals~~ | b16 | **CLOSED in b17** — `AnimTask_SquishTarget`, `AnimBrickBreakWall`, `AnimRazorWindTornado`, `AnimTask_NightShadeClone` all ported once read. They were the board's top three picks by yield, which is what deferring them was for. | — |
+| `AnimTask_ScaryFace` (+2) | b17 | **ASSET gap, NOT an unread function.** Needs `gBattleAnimBgTilemap_ScaryFacePlayer`/`...Opponent`, absent from M36E1's 84-background pull. Closing it means extending that pull. | M36E-shaped |
 
 **`AnimFallingFeather` — deferred by batches 12, 13 and 14, then taken
 directly on 2026-07-30. See its own section. The list now holds only
@@ -1451,6 +1449,74 @@ is harness-specific, not a shipped bug.
 **Also observed, pre-existing and NOT M36:** the attacker's back sprite is
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
+
+### M36D batch 17 — COMPLETE 2026-07-30. Batch 16's deferrals, and an affine reading that was wrong two ways at once.
+
+**7 behaviors, +15 moves (635 → 650 of 932, 68.1% → 69.7%).** Tier 2 63.3%,
+Tier 3 69.3%; iconic Gen 1-3 still closed at 70/70.
+
+All four of batch 16's deferrals cleared, plus three one-away wins. The
+deferrals were the top three picks on the board by yield (+6, +3, +2) — which
+is exactly what deferring them was for.
+
+`AnimTask_SquishTarget` · `AnimTask_SquishTargetShort` (free alongside) ·
+`AnimTask_NightShadeClone` · `AnimBrickBreakWall` · `AnimRazorWindTornado` ·
+`AnimMegahornHorn` · `AnimCrossChopHand`.
+
+⚠️ **`AFFINEANIMCMD_FRAME`'s deltas are PER FRAME, not per command — and both
+readings are plausible on paper.** Traced through `AffineAnimDelay` →
+`ApplyAffineAnimFrameRelativeAndUpdateMatrix` (`sprite.c`), which re-applies
+the delta on **every tick the delay counter runs down**, not once when the
+command starts. So `FRAME(0, 64, 0, 16)` is **+1024**, not +64.
+
+The difference is not subtle and is not cosmetic: 256/1280 = **0.2× height**
+(a genuine flatten, matching the table's own `//Flatten` comment) against
+256/320 = 0.8× (a barely-visible nudge). **I reasoned my way to the WRONG
+answer first**, on the grounds that a "short" variant ought to be the same
+squash played faster — under the per-frame reading `sSquishTargetShort` is
+both quicker *and* shallower (4×64 = 0.5×), which felt wrong. Source settled
+it against the intuition. The suite pins the depth AND the long-vs-short
+difference, and both guards were proven by injecting the per-command
+misreading: it produces exactly 0.800 and collapses the two tables to
+identical depth, failing both.
+
+**`AnimTask_NightShadeClone` is NOT batch 11's `_nightmare_clone`** — a
+different function sharing only the word "clone". The ATTACKER ITSELF is
+doubled in size and made fully transparent, fades in to 9/16 over 27 frames
+(one blend step every 3), waits `arg0`, then shrinks back over 16 and
+restores. It mutates scale AND blend on a battler, so it leans on two of the
+VM's four restore nets at once.
+
+**`AnimBrickBreakWall` has a real fork**, not a uniform shape: after its hold
+it EITHER dies outright (`arg4 == 0`) or rattles ±2px every other frame for
+`arg4` more — the wall shuddering before it breaks. A port that always shakes
+would add motion to every caller that asked for none.
+
+**`AnimMegahornHorn`'s mirroring is ASYMMETRIC.** Against a player-side target
+both offsets flip on both axes; against an opponent-side target nothing flips
+at all. A uniform "mirror by side" sends the horn the wrong way in half of all
+uses, so the suite asserts the two sides produce genuinely opposite offsets.
+
+**New shared helper: `_circle_orbit`**, extracted from
+`TranslateSpriteInCircle` (`battle_anim_mons.c`) — `x2 = Sin(pos, amp)`,
+`y2 = Cos(pos, amp)`, phase wrapping at 256. More than one behavior hands its
+sprite straight to it.
+
+**One test bug, mine:** the tornado orbit test sampled its reference point
+BEFORE the first tick, but the spawn point is the orbit's CENTRE — the sprite
+only reaches the orbit itself once the stepper runs (phase 0 puts it at
+centre + (0, amplitude)). Fixed by sampling after one tick. The behavior was
+correct throughout.
+
+**DEFERRED — an ASSET gap, not an unread function.** `AnimTask_ScaryFace`
+(+2) loads `gBattleAnimBgTilemap_ScaryFacePlayer`/`...Opponent`, neither of
+which is among M36E1's 84 pulled backgrounds. Closing it means extending that
+pull, not reading more C — a different kind of work from every other deferral
+on the list, and recorded as such per standing rule (6).
+
+**Tests:** `m36d_batch_test` 570 → **588/588**. Regression green: `m36c`
+66/66, `m36b` 53/53, `m36a` 71/71, `m36e_background_runtime` 30/30, `m36e3`
+52/52, `m36e_background_asset` 20/20, `hit_effect_dispatch` 40/40.
 
 ### M36D batch 16 — COMPLETE 2026-07-30. A second false alias, and four vacuous assertions.
 
