@@ -1378,7 +1378,8 @@ this project's 4x on a 1024px canvas than at source's 1x on 240px.
 | Item | State | Levers |
 |---|---|---|
 | M36E3 Sun ray | Mechanically source-accurate; reads as a pale diamond rather than a beam. `sunlight.png` genuinely is a solid 32x32 diamond. | `_SUN_RAY_ALPHA`, `_SUN_RAY_AFFINE_START` |
-| M36D b8 `AnimGrowingShockWaveOrb` | Affine table starts at `0x10` = **16x magnification** under the inverted rule. Reproduced, not invented down. Most extreme of the three. | `_SHOCKWAVE_ORB_PARAM_START`, `_SHOCKWAVE_ORB_PARAM_STEP` |
+| M36D b8 `AnimGrowingShockWaveOrb` | **SCREENSHOT-CHECKED 2026-07-30 — less alarming than feared.** In context the 16x reads as a ~280px charge aura around the user, not a screen-filler. Recommend leaving source-exact. | `_SHOCKWAVE_ORB_PARAM_START`, `_SHOCKWAVE_ORB_PARAM_STEP` |
+| M36D b11 `AnimTask_Rollout` | **NEW 2026-07-30.** Pull-back clips the attacker off the left edge. Proportionally source-accurate (~18% vs ~13% of screen width) but our attacker sits far closer to the edge. Same class as the reverted fly-out excursion. | clamp the pull-back distance |
 | M36B3-6b fly-out excursion | Already REVERTED for this exact reason; constants kept unused so the numbers are not re-derived. Listed so the pattern reads as a pattern. | — |
 
 **Capability gap — a different kind of item.**
@@ -1390,6 +1391,57 @@ recoverable. **Closing it needs sprite-palette data the extraction does not
 currently produce** — not a tuning change. Faking it with a hue shift would
 invent motion the reference does not describe. Frame cost is exact and pinned
 by test, so script pacing is unaffected.
+
+### M36 — screenshot verification pass, 2026-07-30
+
+The first visual check across batches 8-13 (~70 behaviors, all previously
+marked "NOT screenshot-verified"). Eight moves captured windowed through
+`m36_screenshot_harness.tscn`, chosen to exercise the riskiest work rather
+than the prettiest.
+
+**A HARNESS BUG WAS BLOCKING MOST OF THIS, and it had been noted in passing
+and never chased.** Batch 7 recorded that "the harness has never shown the
+player's Pokemon — a pre-existing intro artifact, unrelated." It was not
+unrelated. `_ready()` clears both sides' sprites and relies on each side's own
+send-out to reveal them (M26B3-5); the opponent's completes, the player's does
+not — its trainer is still mid-sequence in every captured frame.
+
+Consequence: **every attacker-side behavior was unverifiable by screenshot** —
+Defense Curl's squash, Rollout's wind-up, Flail's decay, the whole mon-deform
+family, which is a large share of what batches 8-13 built. Two batches' worth
+of "not screenshot-verified" was partly *could not be*.
+
+Fixed in the HARNESS (an instrument fault, not a licence to change production
+behaviour from a test rig): it now forces the player's side visible before
+triggering. **The underlying send-out stall is real and is flagged separately**
+— normal play reveals the mon correctly per M26B3-5's own verification, so it
+is harness-specific, not a shipped bug.
+
+**What the pass confirmed working:**
+
+| Move | Verified |
+|---|---|
+| Fly (19) | **The batch 8 + batch 9 pair works end to end** — attacker hidden, ball rises, and `AnimFlyBallAttack` brings it back. The reveal is the real script step, exactly as the headless test claimed. |
+| Charge Beam (451) | `ElectricChargingParticles` converge correctly and `AnimGrowingShockWaveOrb` renders. **The 16x orb reads as a charge aura around the user, not the absurd screen-filler feared** — see the look-call note below. |
+| Rollout (205) | The wind-up pull-back is clearly visible and in the right direction. |
+| Spite (180) | Background swap plus a visibly drained, darkened target — the violet tint on the REAL target, as the batch-11 reversal claimed. |
+| Defense Curl (111) | Attacker now visible; the squash is subtle at 4x. |
+
+**Look-calls updated:**
+
+- ⚠️ **`AnimGrowingShockWaveOrb`'s 16x is LESS alarming than feared.** Seen in
+  context it is a charge aura enveloping the user, roughly 280px across, not a
+  screen-filler. Recommend leaving it source-exact. Still Rob's call.
+- ⚠️ **NEW: Rollout's pull-back clips the attacker off the left edge.**
+  Proportionally it matches source (~18% of screen width against source's
+  ~13%), but this project's attacker sits far closer to the screen edge than
+  source's does, so the same proportion runs out of room. Same class as the
+  fly-out excursion reverted in M26B3-6a. Cheap lever: clamp the pull-back
+  distance.
+
+**Also observed, pre-existing and NOT M36:** the attacker's back sprite is
+clipped by the message box (already flagged for M26G), and the player's trainer
+lingers on screen for the whole capture (the send-out stall above).
 
 ### M36D batch 13 — COMPLETE 2026-07-30. Deferrals cleared, and a real test-quality bug found.
 

@@ -127,6 +127,34 @@ func _run() -> void:
 		get_tree().quit(1)
 		return
 
+	# [screenshot pass, 2026-07-30] FORCE THE PLAYER'S SIDE VISIBLE.
+	#
+	# `_ready()` clears both sides' sprites and relies on each side's own
+	# send-out to reveal them (M26B3-5). The opponent's completes here; the
+	# PLAYER's does not -- its trainer is still mid-sequence in every frame,
+	# so the attacker sprite stays hidden for the whole capture.
+	#
+	# That made every attacker-side behavior unverifiable by screenshot --
+	# Defense Curl's squash, Rollout's wind-up, Flail's decay, the whole
+	# mon-deform family -- which is most of what batches 8-13 built. It also
+	# explains batch 7's note that "the harness has never shown the player's
+	# Pokemon".
+	#
+	# Forced here rather than fixed in the battle screen, because this is an
+	# instrument fault to work around, not a licence to change production
+	# behaviour from a harness. The underlying send-out stall is REAL and is
+	# flagged separately -- real play reveals the mon correctly per M26B3-5's
+	# own verification, so it is harness-specific, not a shipped bug.
+	if _screen.has_method("_set_player_mon_sprites_visible"):
+		_screen.call("_set_player_mon_sprites_visible", true)
+	if _screen.has_method("_set_health_panels_visible"):
+		_screen.call("_set_health_panels_visible", true)
+	var stage_node := _screen.get_node_or_null("BattleStage")
+	if stage_node != null:
+		var t := stage_node.get_node_or_null("PlayerTrainerSprite")
+		if t != null:
+			(t as Control).visible = false
+
 	if _disable_anim:
 		_screen.set("_anim_dispatcher", null)
 		print("HARNESS: animation engine DISABLED (counterfactual run)")
