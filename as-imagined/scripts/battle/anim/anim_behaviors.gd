@@ -100,6 +100,10 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 20] —
+		"AnimTask_GlareEyeDots": _glare_eye_dots,
+		"AnimTask_DestinyBondWhiteShadow": _destiny_bond_white_shadow,
+		"AnimTask_AttackerFadeToInvisible": _attacker_fade_to_invisible,
 		# — [M36D batch 19] —
 		"AnimTask_ScaryFace": _scary_face,
 		# — [M36D batch 18] —
@@ -11181,3 +11185,173 @@ static func _scary_face_alpha(stage, a: float) -> void:
 	var layer = stage.background_layer()
 	if layer != null and is_instance_valid(layer):
 		layer.modulate.a = clampf(a, 0.0, 1.0)
+
+
+# ── [M36D batch 20] ───────────────────────────────────────────────────────
+#
+# Batch 18's two deferrals, cleared once their step tails were read, plus one
+# more battler-mutating fade. Same pattern as batches 11, 17 and 19: the
+# previous batch's deferrals come back near the top of the ranking, which is
+# what deferring them was for.
+
+
+# AnimTask_GlareEyeDots (battle_anim_effects_3.c:4155, step :4190).
+#
+# Lays a trail of dot PAIRS from the attacker's eye to the target, one pair
+# every 4 frames, each pair living 36 frames. Three details a plausible port
+# gets wrong:
+#
+#   1. **The interpolation divisor is `pairMax - 1`, not `pairMax`.** With 12
+#      pairs the span is divided by ELEVEN. Using 12 shortens the whole trail
+#      so it never quite reaches the target.
+#   2. **The endpoints are special-cased, not interpolated** -- pair 0 sits
+#      exactly on the start and pair >= pairMax exactly on the end.
+#   3. **Dots come in diagonal PAIRS offset by +/-3**, not singly.
+#
+# The task ends only once every dot it spawned has expired, so its own
+# lifetime is the last spawn plus 36.
+const _GLARE_PAIR_MAX := 12
+const _GLARE_DOT_OFFSET := 3
+const _GLARE_SPAWN_INTERVAL := 4
+const _GLARE_DOT_LIFETIME := 36
+
+
+static func _glare_eye_dots(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var scale := _scale(vm)
+	var atk := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var atk_node := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	var quarter := 16.0 * scale
+	if atk_node != null:
+		quarter = atk_node.size.y * 0.25
+	# Starts at the attacker's own eye level, offset toward the target.
+	var start := atk + Vector2(
+			quarter if _is_player_side(vm) else -quarter, -quarter)
+	var finish := _battler_centre(vm, AnimStage.ANIM_TARGET)
+
+	var st := {"t": 0, "pair": 0, "done": false}
+	vm.add_stepper(func() -> bool:
+		if bool(st["done"]):
+			return true
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) < _GLARE_SPAWN_INTERVAL:
+			return false
+		st["t"] = 0
+		var pair: int = int(st["pair"])
+		var at := _glare_dot_point(start, finish, pair)
+		for i in range(2):
+			var dot := _make_sprite(vm, ctx)
+			if dot == null:
+				continue
+			var off := -_GLARE_DOT_OFFSET if i == 0 else _GLARE_DOT_OFFSET
+			dot.centre = at + Vector2(off, off) * scale
+			_expire_after(vm, dot, _GLARE_DOT_LIFETIME)
+		if pair >= _GLARE_PAIR_MAX:
+			st["done"] = true
+		st["pair"] = pair + 1
+		return false)
+
+
+static func _glare_dot_point(start: Vector2, finish: Vector2,
+		pair: int) -> Vector2:
+	# Endpoints are exact, not interpolated -- and the divisor is pairMax - 1.
+	if pair <= 0:
+		return start
+	if pair >= _GLARE_PAIR_MAX:
+		return finish
+	return start + (finish - start) * (float(pair) / float(_GLARE_PAIR_MAX - 1))
+
+
+static func _expire_after(vm: AnimScriptVM, node: AnimSprite,
+		frames: int) -> void:
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) > frames:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimTask_DestinyBondWhiteShadow (battle_anim_ghost.c:828, steps :?).
+# args: 0 pause after the ramp, 1 travel frames.
+#
+# **One shadow PER opposing visible battler**, not one shadow. It skips the
+# attacker AND the attacker's partner, and skips anything not currently
+# visible -- so in doubles it genuinely spawns two, and against a
+# semi-invulnerable foe it spawns none for that slot.
+#
+# Travel is 4.4 fixed point (`<< 4`), a coarser grid than this engine's usual
+# 8.8, so the per-frame step is computed once at spawn and accumulated.
+static func _destiny_bond_white_shadow(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var scale := _scale(vm)
+	var base := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var frames: int = maxi(1, vm.args[1])
+
+	for i in range(4):
+		if i == AnimStage.ANIM_ATTACKER or i == AnimStage.ANIM_ATK_PARTNER:
+			continue
+		var node_i := _battler_node(vm, i)
+		if node_i == null or not node_i.visible:
+			continue
+		var shadow := _make_sprite(vm, ctx)
+		if shadow == null:
+			continue
+		shadow.centre = base
+		_linear_travel(vm, shadow, base, _battler_centre(vm, i), frames)
+
+	# The blend ramp moves eva and evb on ALTERNATE steps, not together --
+	# eva rises on odd ticks, evb falls on even ones, so the fade takes twice
+	# as long as moving both each step would.
+	var atk := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	if atk == null:
+		return
+	var st := {"t": 0, "n": 0, "eva": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(atk):
+			return true
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) <= 1:
+			return false
+		st["t"] = 0
+		st["n"] = int(st["n"]) + 1
+		if int(st["n"]) % 2 == 1:
+			st["eva"] = mini(16, int(st["eva"]) + 1)
+			_apply_blend_amount(atk, Color(1, 1, 1),
+					clampf(float(st["eva"]) / 16.0, 0.0, 1.0))
+		if int(st["n"]) >= 24:
+			_clear_blend(atk)
+			return true
+		return false)
+
+
+# AnimTask_AttackerFadeToInvisible (battle_anim_dark.c:275, step :293).
+# args: 0 frames between blend steps.
+#
+# Ramps the attacker out and then sets `invisible = TRUE` -- it does NOT
+# restore, by design: the paired script call fades it back. Routed through the
+# tracked visibility setter so a run ending here still leaves a usable stage.
+static func _attacker_fade_to_invisible(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var atk := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	if atk == null:
+		return
+	var delay: int = maxi(0, vm.args[0])
+
+	var st := {"t": 0, "eva": 16}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(atk):
+			return true
+		if int(st["t"]) < delay:
+			st["t"] = int(st["t"]) + 1
+			return false
+		st["t"] = 0
+		st["eva"] = int(st["eva"]) - 1
+		_apply_blend_amount(atk, Color(1, 1, 1),
+				clampf(1.0 - float(st["eva"]) / 16.0, 0.0, 1.0))
+		if int(st["eva"]) <= 0:
+			_clear_blend(atk)
+			vm.set_battler_visible_tracked(AnimStage.ANIM_ATTACKER, false)
+			return true
+		return false)

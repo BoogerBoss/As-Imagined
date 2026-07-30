@@ -36,7 +36,20 @@ const PLAYER_GRAPHICS_ID := "OBJ_EVENT_GFX_LEAF"
 
 var _player: Node2D
 var _camera: Camera2D
-var _cell := Vector2i(0, 0)          # GLOBAL, not map-local
+## GLOBAL, not map-local.
+##
+## [M27D D3 follow-up] A SETTER rather than a plain field, because the manager
+## needs the player's cell to stop NPCs walking into it and two copies of one
+## fact drift. They did: the first cut notified the manager from four call
+## sites, a test helper set `_cell` directly without doing so, and the manager
+## went on blocking the square the player had LEFT — a phantom body that broke
+## two unrelated warp tests. Notifying from the setter makes the drift
+## unrepresentable rather than something to remember at each new call site.
+var _cell := Vector2i(0, 0):
+	set(value):
+		_cell = value
+		if manager != null:
+			manager.set_player_cell(value)
 var _elev := 3
 var _moving := false
 var _facing := StepResolver.Dir.SOUTH

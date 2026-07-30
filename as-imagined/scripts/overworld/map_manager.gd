@@ -138,6 +138,19 @@ var _skirt_queue: Array[Rect2i] = []
 ## start moving.
 var _occupancy: Dictionary = {}
 
+## Where the player is standing, in GLOBAL cells, or a sentinel when unset.
+##
+## [M27D D3 follow-up] The player is not a placed entity — it is spawned by the
+## overworld controller, not baked into a map — so it was absent from the
+## occupancy set entirely and NPCs walked straight through it. Measured: the
+## player's own cell reported `entity_at` false and a step into it resolved to
+## NONE.
+##
+## Kept as one cell rather than by registering a node, because the manager
+## should not need to know what a player IS to know a square is taken. D4 wants
+## the same fact for trainer sight.
+var _player_cell := Vector2i(-2147483648, -2147483648)
+
 
 ## Instantiate a baked map and place it at `origin` in the global grid.
 ##
@@ -764,7 +777,13 @@ func rebuild_occupancy(map_name: String) -> void:
 
 
 ## Is a placed entity standing on this GLOBAL cell?
+func set_player_cell(gcell: Vector2i) -> void:
+	_player_cell = gcell
+
+
 func entity_at(gcell: Vector2i) -> bool:
+	if gcell == _player_cell:
+		return true
 	var map_name := chunk_owning(gcell)
 	if map_name == "":
 		return false
@@ -782,10 +801,12 @@ func entity_at(gcell: Vector2i) -> bool:
 ## afterwards. An NPC cannot answer any of that alone, and giving each a
 ## back-reference to the manager would be the same coupling with more copies.
 ##
-## `_reserved` is a per-tick set, not a substitute for the occupancy set. Two
-## NPCs ticking in the same frame can both find a cell empty and both take it —
-## the occupancy set is only updated after a move, so the second sees stale
-## state. Rare, and permanent when it happens: two sprites in one square.
+## `reserved` is belt-and-braces, NOT the thing preventing double-occupancy.
+## An earlier note here claimed two NPCs ticking in one frame could both take a
+## cell because occupancy updated late — that was wrong, and measuring killed
+## it: `move_entity` runs synchronously inside this loop, so a later NPC in the
+## same tick already sees the cell taken. The set only guards the case of two
+## NPCs wanting a cell neither currently occupies.
 func tick_entities(delta: float, rng: RandomNumberGenerator) -> void:
 	var reserved := {}
 	for map_name in _chunks:

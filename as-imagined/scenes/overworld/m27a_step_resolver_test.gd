@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 462
+const EXPECTED_TOTAL := 466
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -130,6 +130,9 @@ const OCCUPANCY_ASSERTIONS := 9
 
 ## [M27D D3] Section AN — NPC movement.
 const MOVEMENT_ASSERTIONS := 14
+
+## [M27D D3 follow-up] Section AO — the player as an occupant.
+const PLAYER_OCCUPANCY_ASSERTIONS := 4
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -218,6 +221,7 @@ func _ready() -> void:
 	_test_object_event_sprites()
 	_test_entity_occupancy()
 	_test_npc_movement()
+	await _test_player_occupies_its_cell()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -3347,3 +3351,48 @@ func _test_npc_movement() -> void:
 			not mm.entity_at(from))
 	_chk("AN.14 and claims the one it arrived on", mm.entity_at(to))
 	mm.queue_free()
+
+
+## Section AO — [M27D D3 follow-up] the player occupies its own cell.
+##
+## The player is not a placed entity — it is spawned by the overworld
+## controller, not baked into a map — so it was absent from the occupancy set
+## entirely and NPCs walked straight through it. Measured before the fix: the
+## player's own cell reported `entity_at` false and a step into it resolved to
+## NONE.
+##
+## AO.03 is the one that earns its place. The manager's copy of the player's
+## cell and the controller's own `_cell` are the same fact stored twice, and
+## they drifted the moment a call site set one without the other — leaving the
+## manager blocking a square the player had LEFT, which broke two unrelated
+## warp tests. A setter makes that unrepresentable; this checks it stays so.
+func _test_player_occupies_its_cell() -> void:
+	if not ResourceLoader.exists("res://scenes/maps/PalletTown_Frlg.tscn"):
+		_gated += PLAYER_OCCUPANCY_ASSERTIONS
+		return
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	add_child(ow)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var man: MapManager = ow.manager
+
+	_chk("AO.01 the player's own cell reads as occupied",
+			man.entity_at(ow._cell))
+	# An NPC stepping into the player must be refused for the same reason it is
+	# refused by another NPC, so the outcome is OBJECT_EVENT rather than a
+	# player-specific special case.
+	var below: Vector2i = ow._cell + Vector2i(0, 1)
+	_chk("AO.02 and a step into it reports OBJECT_EVENT, not a special case",
+			ow.resolve_step(below, StepResolver.Dir.NORTH,
+					man.elevation_at(below))["outcome"]
+			== StepResolver.Outcome.OBJECT_EVENT)
+
+	# Move the player by assigning _cell directly — the way a test helper or a
+	# future call site would — and the manager must follow without being told.
+	var was: Vector2i = ow._cell
+	ow._cell = was + Vector2i(2, 2)
+	_chk("AO.03 moving the player releases the square it left",
+			not man.entity_at(was))
+	_chk("AO.04 and claims the new one with no explicit notification",
+			man.entity_at(was + Vector2i(2, 2)))
+	ow.queue_free()

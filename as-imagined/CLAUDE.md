@@ -1434,13 +1434,19 @@ Delays are source's `sMovementDelaysMedium` — `{32, 64, 96, 128}` frames — *
 
 **Movement is driven by `MapManager`, not by each NPC's own `_process`**, because moving one is not a private act: the destination must clear terrain, the wander box AND every other entity, and the occupancy set has to stay true afterwards. An NPC cannot answer any of that alone, and a back-reference per entity would be the same coupling in 100 copies. Every wanderer walks through the **same resolver the player does**, so it obeys ledges, directional tiles and elevation identically. Occupancy is updated incrementally rather than rebuilt — a per-NPC-per-step rebuild is the per-cell cost C4 already paid for once with the skirt repaint.
 
-**Disclosed, and left in**: two NPCs ticking in the same frame can both see a cell empty and both claim it, because the occupancy set only updates after a move. A per-tick reservation set narrows it; it does not close it. Rare, and permanent when it lands — two sprites in one square.
+⚠️ **THAT DISCLOSED RACE DOES NOT EXIST, and measuring it found a real bug instead.** The note here claimed two NPCs ticking in one frame could both take a cell "because the occupancy set only updates after a move". Wrong: `move_entity` runs synchronously inside the tick loop, so a later NPC in the same frame already sees the cell taken — verified directly. The `reserved` set is belt-and-braces, not the thing preventing it.
+
+**What the check DID find: NPCs walked straight through the player.** The player is not a placed entity — spawned by the controller, not baked into a map — so it was absent from the occupancy set entirely. Measured: the player's own cell reported `entity_at` false and a step into it resolved to `NONE`. Fixed by giving the manager the player's cell, so an NPC is refused for the same reason another NPC refuses it (`OBJECT_EVENT`) rather than by a player-specific special case.
+
+⚠️ **The first fix introduced a drift bug, and the tests caught it.** Notifying the manager from four call sites left `_cell` and the manager's copy as one fact stored twice; a test helper set `_cell` directly without notifying, and the manager went on blocking the square the player had LEFT — **a phantom body that broke two unrelated warp tests**. `_cell` is now a SETTER that notifies, making the drift unrepresentable rather than something to remember at each new call site. AO.03 pins it.
+
+**Still latent, and genuinely not reachable today**: an NPC crossing a chunk seam would have its occupancy written into the wrong chunk's set, because `move_entity` keys on the NPC's own map. Measured: **0 NPCs in the corridor are both unconstrained on an axis and within one cell of their map edge**, so nothing can currently reach it. Recorded rather than pre-solved.
 
 Verified live over 8 seconds on the corridor: **4 wanderers moved, the fixed-facing NPC never did, 0 left their range, occupancy correct throughout, no two NPCs sharing a cell.**
 
 ⚠️ **A first run reported one NPC escaping its range, and the bug was in the MEASUREMENT.** The driver recorded each "spawn" two frames after load — by which point NPCs had already ticked and moved — so it compared against a post-move cell. Re-measured against each NPC's own recorded spawn: zero escapes. Worth recording because a wrong measurement that accuses correct code costs the same as a real bug until you check which it is.
 
-**Tests.** Section **AN**, 14 assertions, `EXPECTED_TOTAL` **448 → 462**. Three breaks verified: reading range 0 as a box fails AN.07, letting look-around step fails AN.11, and forgetting to free the cell an entity left fails AN.13.
+**Tests.** Sections **AN** (14) and **AO** (4), `EXPECTED_TOTAL` **448 → 466**. Four breaks verified: reading range 0 as a box fails AN.07, letting look-around step fails AN.11, forgetting to free the cell an entity left fails AN.13, and dropping the player notification fails AO.01/AO.02/AO.04.
 
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 

@@ -118,6 +118,12 @@ func _ready() -> void:
 	_test_b18_letter_z_drift_mirrors_by_side()
 	_test_b18_letter_z_exits_off_either_edge()
 	_test_b18_eye_sparkle_dies_with_its_own_animation()
+	_test_b20_glare_divisor_is_pair_max_minus_one()
+	_test_b20_glare_spawns_pairs_not_singles()
+	_test_b20_destiny_bond_spawns_one_shadow_per_visible_foe()
+	_test_b20_destiny_bond_shadows_travel_to_their_own_foe()
+	_test_b20_attacker_fade_ends_hidden_and_does_not_restore()
+	_test_b20_attacker_fade_respects_its_step_delay()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -4290,3 +4296,136 @@ func _test_b18_eye_sparkle_dies_with_its_own_animation() -> void:
 
 
 const _ANIM_END_CAP_T := 120
+
+
+# ── [M36D batch 20] ───────────────────────────────────────────────────────
+
+func _test_b20_glare_divisor_is_pair_max_minus_one() -> void:
+	# THE assertion of this batch. With 12 pairs the span is divided by
+	# ELEVEN, not twelve. Using 12 shortens the whole trail so it never quite
+	# reaches the target -- and looks entirely plausible in motion.
+	var start := Vector2(0, 0)
+	var finish := Vector2(1100, 0)
+	var mid := AnimBehaviors._glare_dot_point(start, finish, 6)
+	var by_eleven: float = 1100.0 * 6.0 / 11.0
+	var by_twelve: float = 1100.0 * 6.0 / 12.0
+	_chk("b20 glare interpolates over pairMax-1 = 11 (%.1f, not %.1f)"
+			% [mid.x, by_twelve], absf(mid.x - by_eleven) < 1.0)
+
+	# Endpoints are SPECIAL-CASED, not interpolated -- so pair 0 is exactly
+	# the start and the last pair is exactly the target, with no rounding.
+	_chk("b20 glare pair 0 sits exactly on the start",
+			AnimBehaviors._glare_dot_point(start, finish, 0).is_equal_approx(start))
+	_chk("b20 glare pair 12 sits exactly on the target",
+			AnimBehaviors._glare_dot_point(start, finish, 12).is_equal_approx(finish))
+
+
+func _test_b20_glare_spawns_pairs_not_singles() -> void:
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var ctx := {"template": "gGlareEyeDotSpriteTemplate",
+			"template_data": AnimData.template("gGlareEyeDotSpriteTemplate"),
+			"blend": {"eva": 16, "evb": 0}}
+	_registry.get_behavior("AnimTask_GlareEyeDots").call(vm, ctx)
+	_chk("b20 glare spawns nothing before its 4-frame interval elapses",
+			_live_sprites(stage).size() == 0)
+	_step(vm, 4)
+	var after_one: Array = _live_sprites(stage)
+	_chk("b20 glare spawns a PAIR per interval, not a single dot (%d)"
+			% after_one.size(), after_one.size() == 2)
+	if after_one.size() == 2:
+		var d: Vector2 = after_one[0].centre - after_one[1].centre
+		_chk("b20 the pair is offset DIAGONALLY (%.1f,%.1f)" % [d.x, d.y],
+				absf(d.x) > 0.5 and absf(d.y) > 0.5
+				and is_equal_approx(d.x, d.y))
+	_step(vm, 4)
+	_chk("b20 glare keeps laying pairs (%d after two intervals)"
+			% _live_sprites(stage).size(), _live_sprites(stage).size() == 4)
+
+
+func _test_b20_destiny_bond_spawns_one_shadow_per_visible_foe() -> void:
+	# One shadow PER opposing VISIBLE battler -- it skips the attacker AND the
+	# attacker's own partner, so a naive "spawn one" or "spawn for all four"
+	# port is wrong in opposite directions.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[1] = 8
+	var ctx := {"template": "gDestinyBondWhiteShadowSpriteTemplate",
+			"template_data": AnimData.template("gDestinyBondWhiteShadowSpriteTemplate"),
+			"blend": {"eva": 16, "evb": 0}}
+	_registry.get_behavior("AnimTask_DestinyBondWhiteShadow").call(vm, ctx)
+	var n_all: int = _live_sprites(stage).size()
+	_chk("b20 destiny bond spawns one shadow per opposing battler, skipping the attacker and its partner (%d)"
+			% n_all, n_all == 2)
+
+	# Hide one foe: it must spawn one fewer, not the same number at an empty
+	# slot. This is the half a "spawn for every slot" port gets wrong.
+	var stage2 := FakeStage.new()
+	stage2.set_battler_visible(AnimStage.ANIM_TARGET, false)
+	var vm2 := _vm(stage2)
+	vm2.args[1] = 8
+	_registry.get_behavior("AnimTask_DestinyBondWhiteShadow").call(vm2, ctx)
+	_chk("b20 destiny bond skips an INVISIBLE foe (%d, was %d)"
+			% [_live_sprites(stage2).size(), n_all],
+			_live_sprites(stage2).size() == n_all - 1)
+
+
+func _test_b20_destiny_bond_shadows_travel_to_their_own_foe() -> void:
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[1] = 8
+	var ctx := {"template": "gDestinyBondWhiteShadowSpriteTemplate",
+			"template_data": AnimData.template("gDestinyBondWhiteShadowSpriteTemplate"),
+			"blend": {"eva": 16, "evb": 0}}
+	_registry.get_behavior("AnimTask_DestinyBondWhiteShadow").call(vm, ctx)
+	var shadows: Array = _live_sprites(stage)
+	if shadows.size() < 2:
+		_chk("b20 destiny bond spawned two shadows to track", false)
+		return
+	var same_start := shadows[0].centre.is_equal_approx(shadows[1].centre)
+	_chk("b20 both shadows start together at the attacker", same_start)
+	_step(vm, 8)
+	var alive: Array = shadows.filter(func(s): return _b16_alive(s))
+	if alive.size() == 2:
+		_chk("b20 the two shadows end up at DIFFERENT foes",
+				not alive[0].centre.is_equal_approx(alive[1].centre))
+	else:
+		_chk("b20 the two shadows survived their travel", false)
+
+
+func _test_b20_attacker_fade_ends_hidden_and_does_not_restore() -> void:
+	# It deliberately does NOT restore: the paired script call fades the mon
+	# back. Routed through the tracked setter so the stage stays usable.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0
+	var mon: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	_chk("b20 attacker starts visible", mon.visible)
+	_registry.get_behavior("AnimTask_AttackerFadeToInvisible").call(vm, {})
+	_step(vm, 8)
+	_chk("b20 attacker is still visible part-way through the fade", mon.visible)
+	_step(vm, 20)
+	_chk("b20 attacker ends HIDDEN once the ramp completes", not mon.visible)
+
+
+func _test_b20_attacker_fade_respects_its_step_delay() -> void:
+	# arg 0 is frames BETWEEN blend steps, so a large delay must still be
+	# mid-fade where a zero delay has already finished.
+	var slow := FakeStage.new()
+	var vs := _vm(slow)
+	vs.args[0] = 6
+	_registry.get_behavior("AnimTask_AttackerFadeToInvisible").call(vs, {})
+	_step(vs, 20)
+	_chk("b20 a delayed fade is still running at 20 frames",
+			slow.sprite_for(AnimStage.ANIM_ATTACKER).visible)
+	_step(vs, 120)
+	_chk("b20 ...and still completes given enough time",
+			not slow.sprite_for(AnimStage.ANIM_ATTACKER).visible)
+
+
+func _live_sprites(stage: FakeStage) -> Array:
+	var out: Array = []
+	for child in stage.layer_node.get_children():
+		if child is AnimSprite and not child.is_queued_for_deletion():
+			out.append(child)
+	return out
