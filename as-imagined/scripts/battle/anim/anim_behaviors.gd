@@ -65,8 +65,46 @@ class MonOffset:
 		apply(Vector2.ZERO)
 
 
+# The scale/rotation counterpart to MonOffset, added in [M36D batch 11]. Records
+# a battler's true scale and rotation on the node the FIRST time any behavior
+# deforms it, so the VM's `_restore_scaled_battlers` net can put it back even if
+# the script ends before its own paired restore. Same meta-driven contract as
+# MonOffset, and deliberately the same shape so the two read alike.
+class MonScale:
+	const META_SCALE := "_anim_mon_scale"
+	const META_ROT := "_anim_mon_rotation"
+	var node: Control
+	var base_scale: Vector2
+	var base_rotation: float
+	func _init(target: Control) -> void:
+		node = target
+		if target == null:
+			base_scale = Vector2.ONE
+			base_rotation = 0.0
+			return
+		if target.has_meta(META_SCALE):
+			base_scale = target.get_meta(META_SCALE)
+			base_rotation = target.get_meta(META_ROT)
+		else:
+			base_scale = target.scale
+			base_rotation = target.rotation
+			target.set_meta(META_SCALE, base_scale)
+			target.set_meta(META_ROT, base_rotation)
+	func apply(mul: Vector2, rot_delta: float = 0.0) -> void:
+		if node != null and is_instance_valid(node):
+			node.scale = base_scale * mul
+			node.rotation = base_rotation + rot_delta
+	func restore() -> void:
+		apply(Vector2.ONE, 0.0)
+
+
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 11] four of batch 10's five deferrals —
+		"AnimTask_ShrinkTargetCopy": _shrink_target_copy,
+		"AnimTask_FlailMovement": _flail_movement,
+		"AnimTask_NightmareClone": _nightmare_clone,
+		"AnimTask_Rollout": _rollout,
 		# — [M36D batch 10] the flattening tail —
 		"AnimTask_Flash": _flash,
 		"AnimReversalOrb": _reversal_orb,
@@ -8757,3 +8795,245 @@ static func _outrage_flame(vm: AnimScriptVM, ctx: Dictionary) -> void:
 			node.finish()
 			return true
 		return false)
+
+
+# ── [M36D batch 11] the deferred four ─────────────────────────────────────
+#
+# Batch 10 deferred five behaviors rather than guess at step functions it had
+# not read. Four of them are ported here now that they have been. The fifth,
+# `AnimTask_SpiteTargetShadow`, is DEFERRED AGAIN and for a better reason
+# than last time -- see its own note at the bottom of this section.
+#
+# The headline finding is a NEW LEAK CLASS. `AnimTask_ShrinkTargetCopy` does
+# not copy anything: it shrinks the REAL target and then waits for the script
+# to signal `arg 7 == -1` before putting it back -- the same wait-for-signal
+# shape as batch 7's Extreme Speed visibility pair, but on SCALE, which none
+# of the VM's three existing restore nets covered. A script ending before its
+# paired signal would have left a Pokemon permanently shrunk. Closed with a
+# fourth net (`_restore_scaled_battlers`) and the `MonScale` helper above,
+# built to the same meta-driven contract as `MonOffset` so the two read alike.
+
+
+# AnimTask_ShrinkTargetCopy (battle_anim_effects_1.c:4058) via
+# `AnimTask_DuplicateAndShrinkToPos_Step1/2` (:4082/:4104). args: 0 sideways
+# drift per frame in 8.8 fixed point, 1 shrink duration in frames.
+#
+# The name is misleading twice over: there is no copy, and it does not shrink
+# "to a position" so much as shrink IN PLACE while drifting sideways. The
+# affine parameter climbs 16 per frame from 0x100, and GBA affine scale is
+# INVERTED, so a rising parameter means the sprite gets SMALLER. The drift is
+# mirrored for an opponent-side target.
+#
+# Then it HOLDS indefinitely until the script writes -1 into arg 7, and only
+# then restores. That wait is the whole reason the new net exists.
+static func _shrink_target_copy(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, AnimStage.ANIM_TARGET)
+	if node == null or not node.visible:
+		return  # upstream destroys the task outright for an invisible target
+	var scale := _scale(vm)
+	var mon := MonOffset.new(node)
+	var deform := MonScale.new(node)
+	var drift: int = vm.args[0]
+	if not _battler_is_player_side(vm, AnimStage.ANIM_TARGET):
+		drift = -drift
+	var frames: int = maxi(1, vm.args[1])
+
+	var st := {"t": 0, "x": 0, "param": 256, "phase": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		if int(st["phase"]) == 0:
+			st["x"] = int(st["x"]) + drift
+			st["param"] = int(st["param"]) + 16
+			mon.apply(Vector2(float(int(st["x"]) >> 8) * scale, 0.0))
+			# Inverted affine: a rising parameter SHRINKS the sprite.
+			deform.apply(Vector2.ONE * (256.0 / float(int(st["param"]))))
+			st["t"] = int(st["t"]) + 1
+			if int(st["t"]) >= frames:
+				st["phase"] = 1
+			return false
+		# Hold until the script signals; the VM's net covers a run that ends
+		# first, so this can wait honestly rather than timing out early.
+		if vm.args[AnimScriptVM.ARG_RET] == -1:
+			deform.restore()
+			mon.restore()
+			return true
+		return false)
+
+
+# AnimTask_FlailMovement (battle_anim_effects_3.c:3031, step :3049). args:
+# 0 battler.
+#
+# A DECAYING rock, which is what makes it read as flailing rather than as a
+# steady wobble: the rotation swings between +/- an amplitude that starts at
+# 0x800 and loses 0x40 every 9 frames, floored at 16, for 32 decrements. The
+# swing rate itself is constant at 0x200 per frame, so the oscillation gets
+# visibly faster as the amplitude shrinks.
+#
+# The horizontal sway is not independent -- it is derived from the current
+# rotation (`x2 = -(rot >> 6)`), so the mon leans into its own tilt rather
+# than sliding separately.
+const _FLAIL_SWING_RATE := 0x200
+const _FLAIL_START_AMPLITUDE := 0x800
+const _FLAIL_DECAY := 0x40
+const _FLAIL_DECAY_COUNT := 32
+const _FLAIL_FRAMES_PER_DECAY := 9
+
+static func _flail_movement(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, vm.args[0])
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var mon := MonOffset.new(node)
+	var deform := MonScale.new(node)
+	node.pivot_offset = node.size * 0.5
+
+	var st := {"rot": 0, "dir": 1, "tick": 0, "amp": _FLAIL_START_AMPLITUDE,
+			"decays": _FLAIL_DECAY_COUNT, "done": false}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		if bool(st["done"]):
+			deform.restore()
+			mon.restore()
+			return true
+		var rot: int = int(st["rot"]) + _FLAIL_SWING_RATE * int(st["dir"])
+		var amp: int = int(st["amp"])
+		if rot >= amp:
+			rot = amp
+			st["dir"] = -1
+		elif rot <= -amp:
+			rot = -amp
+			st["dir"] = 1
+		st["rot"] = rot
+		deform.apply(Vector2.ONE, float(rot) * TAU / 65536.0)
+		# The sway is DERIVED from the tilt, not a separate motion.
+		mon.apply(Vector2(-float(rot >> 6) * scale, 0.0))
+
+		st["tick"] = int(st["tick"]) + 1
+		if int(st["tick"]) > 8:
+			st["tick"] = 0
+			if int(st["decays"]) > 0:
+				st["decays"] = int(st["decays"]) - 1
+				st["amp"] = maxi(16, amp - _FLAIL_DECAY)
+			else:
+				st["done"] = true
+		return false)
+
+
+# AnimTask_NightmareClone (battle_anim_ghost.c:548, step :583). No args.
+#
+# A blended ghost of the target peels away and dissolves. Two things run at
+# once and neither is the obvious one: the clone drifts on a raw 8.8 velocity
+# (-144, 112) mirrored by side -- barely half a pixel a frame, so it creeps --
+# while the GBA blend registers CROSS-FADE, the clone's own coefficient
+# stepping 15 -> 0 and the background's 2 -> 16, each moving only on its own
+# phase of a 4-frame cycle. It ends when BOTH have arrived AND at least 80
+# frames have passed, so the drift always completes.
+static func _nightmare_clone(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, AnimStage.ANIM_TARGET)
+	if node == null:
+		return
+	var layer: Control = null
+	if vm.stage != null and vm.stage.has_method("layer"):
+		layer = vm.stage.layer()
+	if layer == null:
+		return
+	var clone := _clone_battler_visual(node, layer)
+	if clone == null:
+		return
+	var scale := _scale(vm)
+	var player := _battler_is_player_side(vm, AnimStage.ANIM_TARGET)
+	var vel := Vector2(-144.0, 112.0) if player else Vector2(144.0, -112.0)
+	var start := clone.position
+
+	var st := {"t": 0, "acc": Vector2.ZERO, "eva": 15, "evb": 2}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(clone):
+			return true
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		st["acc"] = (st["acc"] as Vector2) + vel
+		clone.position = start + (st["acc"] as Vector2) / 256.0 * scale
+		# Each coefficient moves on its own phase of the 4-frame cycle.
+		var phase := t & 3
+		if phase == 1 and int(st["eva"]) > 0:
+			st["eva"] = int(st["eva"]) - 1
+		if phase == 3 and int(st["evb"]) <= 15:
+			st["evb"] = int(st["evb"]) + 1
+		clone.modulate.a = float(st["eva"]) / 15.0
+		if int(st["eva"]) == 0 and int(st["evb"]) >= 16 and t > 80:
+			clone.queue_free()
+			return true
+		return t >= _ANIM_END_CAP * 2)
+
+
+# AnimTask_Rollout (battle_anim_rock.c:666, step :760). No args of its own --
+# it reads the ROLLOUT COUNTER, which this project already tracks from M16b's
+# own Rollout/Ice Ball implementation.
+#
+# Four phases, and the wind-up is most of the character: the attacker pulls
+# BACK away from the target for 10 frames, HOLDS for 20, returns over 10, and
+# only then charges across. Speed scales with the counter -- `48 - counter*8`
+# frames for the crossing, with the first turn special-cased to 32 -- so a
+# fifth-turn Rollout visibly slams in faster than a first-turn one.
+#
+# Disclosed: the dirt sprites the charge spawns per interval are not created
+# here; the attacker's own motion is the part every one of these moves shares
+# and is what the frames are spent on.
+static func _rollout(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	if node == null:
+		return
+	var mon := MonOffset.new(node)
+	var counter: int = maxi(1, vm.move_turn + 1)
+	var cross: int = 32 if counter == 1 else maxi(8, 48 - counter * 8)
+	var to_target := _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			- _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var per_frame := to_target / float(cross)
+
+	var st := {"t": 0, "phase": 0, "off": Vector2.ZERO}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		match int(st["phase"]):
+			0:  # pull BACK, away from the target
+				st["off"] = (st["off"] as Vector2) - per_frame
+				mon.apply(st["off"])
+				if t >= 10:
+					st["t"] = 0; st["phase"] = 1
+			1:  # the hold -- 20 dead frames, the wind-up's whole weight
+				if t >= 20:
+					st["t"] = 0; st["phase"] = 2
+			2:  # return to the mark
+				st["off"] = (st["off"] as Vector2) + per_frame
+				mon.apply(st["off"])
+				if t >= 10:
+					mon.restore()
+					st["off"] = Vector2.ZERO
+					st["t"] = 0; st["phase"] = 3
+			_:  # charge across, at a speed set by the rollout counter
+				st["off"] = (st["off"] as Vector2) + per_frame
+				mon.apply(st["off"])
+				if t >= cross:
+					mon.restore()
+					return true
+		return false)
+
+
+# AnimTask_SpiteTargetShadow (battle_anim_ghost.c:621, step :631) is DEFERRED
+# AGAIN, and this time with a specific reason rather than an unread step
+# function. Its Step1 allocates a fresh sprite palette, clones the target,
+# copies the mon's live palette into it, blends that copy toward RGB(13,0,15),
+# CLEARS A HARDWARE BG LAYER (`ClearGpuRegBits(REG_OFFSET_DISPCNT, ...)`)
+# chosen by the target's BG priority rank, and then drives a per-scanline
+# effect from the target sprite's current y.
+#
+# The scanline and BG-layer halves are the same class of gap as M36D batch 8's
+# gust palette: they need per-sprite palette indices and hardware layer
+# control that composited PNGs and a single background layer cannot express.
+# Porting only the purple clone would ship the least characteristic third of
+# the effect while claiming the behavior. Left unregistered so the moves that
+# need it keep falling back rather than playing something wrong.

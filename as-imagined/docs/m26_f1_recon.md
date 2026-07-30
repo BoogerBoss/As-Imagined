@@ -1321,6 +1321,75 @@ currently produce** — not a tuning change. Faking it with a hue shift would
 invent motion the reference does not describe. Frame cost is exact and pinned
 by test, so script pacing is unaffected.
 
+### M36D batch 11 — COMPLETE 2026-07-30. Batch 10's deferrals, and a fourth restore net.
+
+`m36d_batch_test` 396 -> **421/421**; 16-suite sweep green. Coverage
+**543 -> 551 of 932 (59.1%)** — +8 from 4 behaviors, the ~2.0/behavior the
+flattened curve now predicts.
+
+**Four of batch 10's five deferrals, ported once their step functions were
+actually read.** That was the whole point of deferring them, and it paid off
+immediately:
+
+⚠️ **A NEW LEAK CLASS, and the fourth of its kind.**
+`AnimTask_ShrinkTargetCopy` does not copy anything — it shrinks the **REAL
+target** and then HOLDS until the script writes `-1` into arg 7 before putting
+it back. That is the same wait-for-signal shape as batch 7's Extreme Speed
+visibility pair, but on **SCALE**, which none of the VM's three existing restore
+nets covered. A script ending before its paired signal would have left a Pokemon
+permanently shrunk for the rest of the battle.
+
+Closed systemically rather than per-behavior: new `_restore_scaled_battlers()`
+on the VM (fourth member of the family, after visibility, displacement and
+blend) plus a `MonScale` helper built to the same meta-driven contract as
+`MonOffset`, so the two read alike and neither can disagree with whatever
+actually changed the sprite. **The suite asserts the net directly** — shrink the
+target, end the run with no signal, require the scale back — and separately
+asserts the signalled path still restores through the behavior itself, so the
+net cannot be masking a behavior that never restores at all.
+
+**`AnimTask_FlailMovement` DECAYS**, which is what makes it flail rather than
+wobble: the rotation amplitude starts at `0x800` and loses `0x40` every 9 frames
+(floored at 16, 32 times) while the swing rate stays constant at `0x200`/frame,
+so the oscillation visibly quickens as it tightens. The horizontal sway is not
+independent — it is derived from the current tilt (`x2 = -(rot >> 6)`), so the
+mon leans into its own rotation rather than sliding separately.
+
+**`AnimTask_Rollout`'s wind-up is most of the move.** The attacker pulls BACK
+away from the target for 10 frames, HOLDS for 20 dead frames, returns over 10,
+and only then charges — at a speed keyed off the rollout counter this project
+already tracks from M16b (`48 - counter*8`, first turn special-cased to 32), so
+a later-turn Rollout visibly slams in faster. A port that only charges arrives
+with no anticipation at all. Disclosed: the per-interval dirt sprites are not
+spawned; the attacker's own motion is what the frames are spent on.
+
+**`AnimTask_NightmareClone`** runs two things at once and neither is the obvious
+one: the blended ghost creeps away on a raw 8.8 velocity of barely half a pixel
+a frame, while the GBA blend coefficients CROSS-FADE (15 -> 0 and 2 -> 16), each
+stepping only on its own phase of a 4-frame cycle. It ends when both have
+arrived AND 80 frames have passed, so the drift always completes.
+
+⚠️ **`AnimTask_SpiteTargetShadow` is DEFERRED AGAIN — with a better reason than
+last time.** Batch 10 deferred it for an unread step function; that has now been
+read, and the answer is that its Step1 allocates a fresh sprite palette, copies
+the mon's live palette into a clone, blends that toward `RGB(13,0,15)`, **clears
+a hardware BG layer** chosen by the target's BG priority rank, and drives a
+per-scanline effect from the target sprite's y. The scanline and BG-layer halves
+are the same class of gap as batch 8's gust palette: they need per-sprite
+palette indices and hardware layer control that composited PNGs and a single
+background layer cannot express. Porting only the purple clone would ship the
+least characteristic third of the effect while claiming the behavior. Left
+unregistered so its moves keep falling back rather than playing something wrong.
+
+**A false pass caught by checking rather than trusting the green.** The
+NightmareClone test looked for a `_anim_clone` meta; the real key is
+`_anim_trace`, so `ghost` was null and two assertions were **silently skipped**
+while the suite reported 418/418. Fixed, plus a guard assertion that the clone
+is findable at all — 418 -> 421, the delta being the guard and the two that had
+never been running.
+
+**NOT screenshot-verified.**
+
 ### M36D batch 10 — COMPLETE 2026-07-30. The curve flattened, as predicted.
 
 `m36d_batch_test` 373 -> **396/396** (first run, no failures); 16-suite sweep

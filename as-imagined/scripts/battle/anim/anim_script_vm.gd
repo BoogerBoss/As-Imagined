@@ -247,6 +247,7 @@ func _finish(err: String = "") -> void:
 	# fix. MonOffset records each battler's true base the first time anything
 	# moves it, which is what makes this recoverable at all.
 	_restore_displaced_battlers()
+	_restore_scaled_battlers()
 	_clear_battler_blends()
 	# Same reasoning as the visibility restore: a script that ends while its
 	# background is still up would leave the battlefield permanently altered.
@@ -575,6 +576,28 @@ func _restore_displaced_battlers() -> void:
 		if node != null and is_instance_valid(node) \
 				and node.has_meta("_anim_mon_base"):
 			node.position = node.get_meta("_anim_mon_base")
+
+
+# Fourth member of the restore family, added in [M36D batch 11] after
+# AnimTask_ShrinkTargetCopy turned out to shrink the REAL target and wait for a
+# script signal to put it back -- exactly the shape as batch 7's Extreme Speed
+# visibility pair, but on SCALE, which nothing here covered. A script that ends
+# before its paired signal would otherwise leave a Pokemon permanently shrunk.
+#
+# Like the displacement net, this reads meta a behavior wrote rather than
+# keeping its own bookkeeping, so it cannot disagree with whatever actually
+# changed the sprite.
+func _restore_scaled_battlers() -> void:
+	if stage == null or not stage.has_method("sprite_for"):
+		return
+	for i in range(4):
+		var node: Control = stage.sprite_for(i)
+		if node == null or not is_instance_valid(node):
+			continue
+		if node.has_meta("_anim_mon_scale"):
+			node.scale = node.get_meta("_anim_mon_scale")
+		if node.has_meta("_anim_mon_rotation"):
+			node.rotation = node.get_meta("_anim_mon_rotation")
 
 
 func background_changed() -> bool:

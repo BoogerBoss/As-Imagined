@@ -80,6 +80,10 @@ func _ready() -> void:
 	_test_batch10_orbit_and_flickers()
 	_test_batch10_phases()
 	_test_batch10_coverage()
+	_test_batch11_scale_leak_net()
+	_test_batch11_decay_and_drift()
+	_test_batch11_rollout_windup()
+	_test_batch11_coverage()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -2568,10 +2572,193 @@ func _test_batch10_coverage() -> void:
 	_chk("roster coverage is at least 543 moves (%d)"
 			% int(cov.get("playable", 0)),
 			int(cov.get("playable", 0)) >= 543)
-	# The five DEFERRED behaviors must stay unregistered -- if one appears
-	# without its step function being read, this catches the shortcut.
+	# Batch 10 deferred five behaviors and asserted all five stayed
+	# unregistered. Batch 11 ported four of them after reading their step
+	# functions, so that assertion is legitimately invalidated -- rewritten
+	# here rather than deleted, and split so the one STILL deferred is
+	# guarded on its own.
 	for sym in ["AnimTask_Rollout", "AnimTask_FlailMovement",
-			"AnimTask_SpiteTargetShadow", "AnimTask_NightmareClone",
-			"AnimTask_ShrinkTargetCopy"]:
-		_chk("%s is deliberately still deferred" % sym,
-				_registry.get_behavior(sym) == Callable())
+			"AnimTask_NightmareClone", "AnimTask_ShrinkTargetCopy"]:
+		_chk("%s was deferred by batch 10 and is now ported" % sym,
+				_registry.get_behavior(sym) != Callable())
+	_chk("AnimTask_SpiteTargetShadow is STILL deferred (scanline + BG-layer)",
+			_registry.get_behavior("AnimTask_SpiteTargetShadow") == Callable())
+
+
+# ── [M36D batch 11] ───────────────────────────────────────────────────────
+#
+# Four of batch 10's five deferrals, ported once their step functions were
+# actually read. The headline is a NEW LEAK CLASS the reading exposed:
+# AnimTask_ShrinkTargetCopy shrinks the REAL target and waits for a script
+# signal to restore it, so a run that ends first would strand a shrunk
+# Pokemon -- the same shape as batch 7's Extreme Speed visibility pair, but
+# on scale, which none of the VM's three existing nets covered.
+
+
+func _test_batch11_scale_leak_net() -> void:
+	var stage := FakeStage.new()
+	var node: Control = stage.nodes[AnimStage.ANIM_TARGET]
+	var base := node.scale
+
+	var vm := _vm(stage)
+	vm.args[0] = 256; vm.args[1] = 8
+	_registry.get_behavior("AnimTask_ShrinkTargetCopy").call(vm, {})
+	_step(vm, 8)
+	# Inverted affine: the parameter CLIMBS, so the sprite must get SMALLER.
+	_chk("ShrinkTargetCopy shrinks the target (%.3f < %.3f)"
+			% [node.scale.x, base.x], node.scale.x < base.x)
+	_chk("...and drifts it sideways",
+			not node.position.is_equal_approx(
+					node.get_meta("_anim_mon_base")))
+	_step(vm, 10)
+	_chk("...then HOLDS, waiting for the script's signal",
+			node.scale.x < base.x and vm.visual_count() > 0)
+
+	# THE NET: end the run without ever signalling. Nothing in the behavior
+	# restores here -- only the VM's fourth restore net can.
+	vm._finish()
+	_chk("...and a run ending before the signal cannot strand it shrunk",
+			node.scale.is_equal_approx(base))
+	_chk("...with its position restored too",
+			node.position.is_equal_approx(node.get_meta("_anim_mon_base")))
+
+	# The signalled path must also work, or the net would be masking a
+	# behavior that never restores at all.
+	var stage2 := FakeStage.new()
+	var node2: Control = stage2.nodes[AnimStage.ANIM_TARGET]
+	var base2 := node2.scale
+	var vm2 := _vm(stage2)
+	vm2.args[0] = 256; vm2.args[1] = 6
+	_registry.get_behavior("AnimTask_ShrinkTargetCopy").call(vm2, {})
+	_step(vm2, 10)
+	_chk("...(shrunk again, second fixture)", node2.scale.x < base2.x)
+	vm2.args[AnimScriptVM.ARG_RET] = -1
+	_step(vm2, 2)
+	_chk("...the -1 signal restores it through the behavior itself",
+			node2.scale.is_equal_approx(base2))
+	_chk("...and the task ends there", vm2.visual_count() == 0)
+
+	# An invisible target is a real early-out upstream, not an error.
+	var stage3 := FakeStage.new()
+	stage3.nodes[AnimStage.ANIM_TARGET].visible = false
+	var vm3 := _vm(stage3)
+	vm3.args[0] = 256; vm3.args[1] = 6
+	_registry.get_behavior("AnimTask_ShrinkTargetCopy").call(vm3, {})
+	_chk("...an invisible target runs nothing at all", vm3.visual_count() == 0)
+
+
+func _test_batch11_decay_and_drift() -> void:
+	# FlailMovement DECAYS -- that is what makes it flail rather than wobble.
+	# The amplitude loses 0x40 every 9 frames, so late swings are visibly
+	# smaller than early ones. A constant-amplitude port looks fine in a
+	# still frame and wrong in motion.
+	var stage := FakeStage.new()
+	var node: Control = stage.nodes[AnimStage.ANIM_ATTACKER]
+	var base_rot := node.rotation
+	var base_pos := node.position
+	var vm := _vm(stage)
+	vm.args[0] = AnimStage.ANIM_ATTACKER
+	_registry.get_behavior("AnimTask_FlailMovement").call(vm, {})
+
+	var early := 0.0
+	for i in range(40):
+		_step(vm, 1)
+		early = maxf(early, absf(node.rotation - base_rot))
+	var late := 0.0
+	for i in range(40):
+		_step(vm, 1)
+		late = maxf(late, absf(node.rotation - base_rot))
+	_chk("flail rotates the mon", early > 0.0)
+	_chk("...and DECAYS over time (%.4f -> %.4f rad)" % [early, late],
+			late < early)
+	# The sway is derived from the tilt, not an independent motion.
+	_chk("...swaying horizontally as it tilts",
+			not node.position.is_equal_approx(base_pos))
+	_step(vm, 400)
+	_chk("...and restores rotation exactly",
+			is_equal_approx(node.rotation, base_rot))
+	_chk("...and position exactly", node.position.is_equal_approx(base_pos))
+
+	# NightmareClone: a blended ghost peels away and dissolves, then cleans up.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	var before := stage2.layer_node.get_child_count()
+	_registry.get_behavior("AnimTask_NightmareClone").call(vm2, {})
+	_chk("nightmare clone is created",
+			stage2.layer_node.get_child_count() > before)
+	var ghost: Control = null
+	for c in stage2.layer_node.get_children():
+		if c is Control and c.has_meta("_anim_trace"):
+			ghost = c
+	# A wrong meta key here silently skips the two assertions below while the
+	# suite still reports green -- the exact false-pass shape this project's
+	# conventions warn about, and it happened on the first draft. Guarded.
+	_chk("...and is findable as an anim-owned clone", ghost != null)
+	if ghost != null:
+		var p0 := ghost.position
+		var a0 := ghost.modulate.a
+		_step(vm2, 40)
+		_chk("...it drifts away from the target",
+				not ghost.position.is_equal_approx(p0))
+		_chk("...fading as it goes (%.2f -> %.2f)" % [a0, ghost.modulate.a],
+				ghost.modulate.a < a0)
+	_step(vm2, 140)
+	_chk("...and the task finishes", vm2.visual_count() == 0)
+
+
+func _test_batch11_rollout_windup() -> void:
+	# The wind-up is most of Rollout's character: pull BACK away from the
+	# target, HOLD 20 dead frames, return, and only then charge. A port that
+	# only charges arrives with no anticipation at all.
+	var stage := FakeStage.new()
+	var node: Control = stage.nodes[AnimStage.ANIM_ATTACKER]
+	var atk := stage.center_of(AnimStage.ANIM_ATTACKER)
+	var tgt := stage.center_of(AnimStage.ANIM_TARGET)
+	var vm := _vm(stage)
+	vm.move_turn = 0
+	_registry.get_behavior("AnimTask_Rollout").call(vm, {})
+
+	_step(vm, 10)
+	var pulled := node.position
+	# Pulling back means moving AWAY from the target.
+	var d_start := atk.distance_to(tgt)
+	var d_pulled := (pulled + node.size * 0.5).distance_to(tgt)
+	_chk("Rollout pulls BACK before charging (%.0f -> %.0f)"
+			% [d_start, d_pulled], d_pulled > d_start)
+
+	_step(vm, 15)
+	_chk("...then HOLDS dead still through the wind-up",
+			node.position.is_equal_approx(pulled))
+	_chk("...still running during the hold", vm.visual_count() > 0)
+
+	_step(vm, 200)
+	_chk("...and ends back on its mark",
+			node.position.is_equal_approx(node.get_meta("_anim_mon_base")))
+
+	# Speed scales with the rollout counter -- a later turn crosses faster.
+	var frames: Array = []
+	for turn in [0, 4]:
+		var st := FakeStage.new()
+		var v := _vm(st)
+		v.move_turn = turn
+		_registry.get_behavior("AnimTask_Rollout").call(v, {})
+		var n := 0
+		for i in range(400):
+			_step(v, 1)
+			n += 1
+			if v.visual_count() == 0:
+				break
+		frames.append(n)
+	_chk("a later-turn Rollout crosses FASTER (%d < %d frames)"
+			% [frames[1], frames[0]], frames[1] < frames[0])
+
+
+func _test_batch11_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov: Dictionary = _dispatcher.coverage(ids)
+	_chk("roster coverage is at least 551 moves (%d)"
+			% int(cov.get("playable", 0)),
+			int(cov.get("playable", 0)) >= 551)
