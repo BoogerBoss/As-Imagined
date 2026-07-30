@@ -1099,6 +1099,50 @@ darkening instead of flashing). Flagged as a harness limitation worth fixing
 before the next visual check: it needs a "start capturing when the move
 actually begins" trigger rather than a fixed gap.
 
+### M36 screenshot harness — trigger-driven capture, FIXED 2026-07-30
+
+13-suite sweep green. Closes the limitation flagged by the blend-ramp fix,
+which lost three verification attempts to it.
+
+**The defect.** The harness captured a fixed number of shots at a fixed frame
+gap, starting the moment the move was queued. But the battle intro — trainer
+sprites, party summary, both send-outs, two messages — drains through
+`_pending_beats` for **~830 frames** before a move's animation begins. So a
+26x26 window landed entirely on the intro, and a shorter window never reached
+the move at all. Every "capture the animation" attempt was effectively a coin
+flip on the numbers chosen.
+
+**The fix** is two signals on the battle screen, `anim_script_started` and
+`anim_script_finished(move_id, frames)`, emitted around `_run_anim_script`.
+The harness waits for the start signal and only then begins shooting.
+Measured: it now triggers at frame ~670-677, exactly where the animation
+begins, versus never reaching it before.
+
+**These are not test-only scaffolding.** M36-H's whole premise is comparing a
+hand-authored animation against the ported one, and any in-editor preview
+(the piece that gates every version of the M36-H "expose the knobs" option)
+needs to know precisely when an animation runs. `anim_script_finished` also
+reports the animation's real length in GBA frames, which makes a capture
+window derivable rather than guessed.
+
+**A mistake made and caught inside this fix.** The first cut also connected
+`move_executed` as a general fallback — and it triggered at frame 0, capturing
+the intro all over again. `move_executed` fires during the battle's
+synchronous resolution inside `advance()`, long before the queued animation
+beat runs. The fallback is now conditional: it is only connected when the
+dispatcher says the engine will NOT play the move, i.e. when the move takes
+the legacy hit-effect path and no `anim_script_started` will ever come.
+
+**A second sizing detail worth recording**: the VM steps on a wall-clock timer
+(`_ANIM_FRAME_SECONDS`), not once per process frame, so a 105-GBA-frame
+animation spans ~1.75s — roughly 250 process frames at 144Hz, not 105. A first
+widened attempt at 24 shots x 4 frames still covered only ~40% of the
+animation. Shots x gap must be sized against wall-clock, not GBA frames.
+
+Verified by capturing Mega Kick and landing squarely mid-animation on the
+impact background at full brightness — a window that was simply unreachable
+before this change.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.

@@ -23,11 +23,17 @@ const SHOT_DIR := "user://m36_shots"
 # Tackle (lunge + hitsplat) and Flamethrower (the 22-flame stream).
 var _move_id := 53
 var _shot_count := 10
-var _frames_between := 6
+var _frames_between := 4
 # Counterfactual switch: nulls the dispatcher so every move takes the legacy
 # hit-effect path. Lets the same harness prove whether a symptom is caused by
 # the animation engine or exists without it.
 var _disable_anim := false
+
+# Trigger state -- see _run()'s own comment on why a fixed gap did not work.
+const _TRIGGER_TIMEOUT := 3000
+var _anim_started := false
+var _anim_frames := 0
+var _move_landed := false
 
 var _screen: Node = null
 var _bm = null
@@ -137,15 +143,53 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(SHOT_DIR)
 	_report_opponent_side("BEFORE move")
 
-	# Force the move rather than clicking through menus: the point is the
-	# animation, not the input path.
+	# THE TRIGGER. Previously this captured at a fixed gap starting the moment
+	# the move was queued, which routinely missed the animation completely:
+	# the battle intro (trainer sprites, party summary, both send-outs, two
+	# messages) drains through _pending_beats for ~830 frames before a move's
+	# animation begins, so a 26x26 window landed on the intro and a shorter
+	# one never reached the move at all. Three separate verification attempts
+	# were lost to this before it was fixed.
+	#
+	# Now the harness waits for the battle screen to say the animation has
+	# actually started, and only then begins shooting.
+	if _screen.has_signal("anim_script_started"):
+		_screen.connect("anim_script_started",
+				func(_id: int): _anim_started = true)
+		_screen.connect("anim_script_finished",
+				func(_id: int, f: int): _anim_frames = f)
+	# A move the engine DECLINES falls through to the legacy hit effect and
+	# never emits anim_script_started, so move_executed is the fallback --
+	# but ONLY then. move_executed fires during the battle's synchronous
+	# resolution inside advance(), long before the queued animation beat
+	# actually runs, so using it for a playable move triggers at frame 0 and
+	# captures the intro all over again. That mistake is what the first cut
+	# of this fix made.
+	var engine_will_play: bool = disp != null and disp.can_play_move(_move_id) \
+			and not _disable_anim
+	if not engine_will_play:
+		_bm.move_executed.connect(func(_a, _b, _m, _d): _move_landed = true)
+
 	_bm.set_human_controlled(0, false)
 	_bm.set_human_controlled(1, false)
 	_bm.queue_move(0, 0)
 	_bm.queue_move(1, 0)
 	_bm.advance()
 
-	# Capture across the animation window.
+	var waited := 0
+	while not _anim_started and not _move_landed and waited < _TRIGGER_TIMEOUT:
+		await get_tree().process_frame
+		waited += 1
+	if not _anim_started and not _move_landed:
+		print("HARNESS: TRIGGER NEVER FIRED after %d frames -- the move never "
+				% waited + "executed. Nothing captured.")
+		get_tree().quit(1)
+		return
+	print("HARNESS: triggered after %d frames (%s)" % [waited,
+			"anim_script_started" if _anim_started
+			else "move_executed fallback"])
+
+	# Capture across the animation window from the moment it began.
 	for shot in range(_shot_count):
 		for f in range(_frames_between):
 			await get_tree().process_frame
@@ -159,6 +203,10 @@ func _run() -> void:
 			print("HARNESS: failed to save %s (err %d)" % [path, err])
 
 	_report_opponent_side("AFTER move")
+	if _anim_frames > 0:
+		print("HARNESS: animation ran %d GBA frames; captured %d shots every "
+				% [_anim_frames, _saved]
+				+ "%d process frames" % _frames_between)
 	print("HARNESS: saved %d/%d shots to %s"
 			% [_saved, _shot_count, ProjectSettings.globalize_path(SHOT_DIR)])
 	get_tree().quit(0 if _saved > 0 else 1)

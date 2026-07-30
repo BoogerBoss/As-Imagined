@@ -1443,6 +1443,13 @@ var _switch_select_overlay: Control = null
 # every move takes the legacy hit-effect path -- the same graceful-absence
 # posture the other asset registries take.
 var _anim_dispatcher: AnimDispatcher = null
+
+# [M36] Fired around a ported animation actually running -- see
+# _run_anim_script. `anim_script_finished` reports the animation's real length
+# in GBA frames, which is what makes a capture window derivable rather than
+# guessed.
+signal anim_script_started(move_id: int)
+signal anim_script_finished(move_id: int, frames: int)
 var _anim_behaviors := AnimBehaviorRegistry.new()
 
 # [M26c-4] TARGET_SELECT click-to-target — real health-box hover zones
@@ -2791,8 +2798,17 @@ func _run_anim_script(move_id: int, stage: AnimStage, anim_turn: int) -> void:
 	var vm := _anim_dispatcher.make_vm(move_id, stage, anim_turn)
 	if vm == null:
 		return
+	# [M36] Emitted around every ported animation. Nothing in normal play
+	# listens, but two things need to know precisely WHEN an animation runs
+	# rather than guessing from a frame count: the screenshot harness (whose
+	# fixed-gap capture kept missing animations entirely, because the battle
+	# intro alone consumes ~830 frames) and, when it is built, M36-H's
+	# side-by-side comparison of a hand-authored animation against this one.
+	anim_script_started.emit(move_id)
+	var anim_frames := 0
 	while vm.is_running():
 		vm.step()
+		anim_frames += 1
 		await get_tree().create_timer(_ANIM_FRAME_SECONDS).timeout
 	# [M36] The port of CopyAllBattleSpritesInvisibilities
 	# (src/battle_controllers.c:2146): the reference re-syncs every battler's
@@ -2805,6 +2821,7 @@ func _run_anim_script(move_id: int, stage: AnimStage, anim_turn: int) -> void:
 		# is cosmetic -- but it is surfaced rather than swallowed.
 		push_warning("move %d animation aborted: %s" % [move_id,
 				vm.error_text])
+	anim_script_finished.emit(move_id, anim_frames)
 
 
 # Resolves which field slot `mon` currently occupies within `party`'s own
