@@ -67,6 +67,19 @@ class MonOffset:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 10] the flattening tail —
+		"AnimTask_Flash": _flash,
+		"AnimReversalOrb": _reversal_orb,
+		"AnimBlackSmoke": _black_smoke,
+		"SpriteCB_SurroundingRing": _surrounding_ring,
+		"SpriteCB_FallingObject": _falling_object,
+		# byte-identical to batch 9's ice-punch particle -- one implementation
+		"AnimFireSpiralInward": _ice_punch_swirling_particle,
+		"AnimGuillotinePincer": _guillotine_pincer,
+		"AnimQuestionMark": _question_mark,
+		"AnimFurySwipes": _fury_swipes,
+		"AnimSpikes": _spikes,
+		"AnimOutrageFlame": _outrage_flame,
 		# — [M36D batch 9] yield-ordered, cross-tier —
 		"AnimHornHit": _horn_hit,
 		"AnimHyperVoiceRing": _hyper_voice_ring,
@@ -8349,5 +8362,398 @@ static func _defense_curl_deform_mon(vm: AnimScriptVM, _ctx: Dictionary) -> void
 		if int(st["t"]) >= total:
 			node.scale = base_scale
 			node.pivot_offset = base_pivot
+			return true
+		return false)
+
+
+# ── [M36D batch 10] the flattening tail ───────────────────────────────────
+#
+# The curve flattened here, exactly as batch 9's closing measurement warned:
+# the 6s, 5s and 4s are gone and the best remaining pick is worth +3. 200
+# moves still sit one behavior away, but each of those behaviors now serves
+# ~2 moves rather than ~5.
+#
+# 11 of the 16 candidates ship here. FIVE ARE DEFERRED TO BATCH 11 rather
+# than guessed at -- `AnimTask_Rollout`, `AnimTask_FlailMovement`,
+# `AnimTask_SpiteTargetShadow`, `AnimTask_NightmareClone` and
+# `AnimTask_ShrinkTargetCopy` each need a step function this pass did not
+# read in full, and a half-read port is how a behavior ships looking right
+# and being wrong. Worth 10 moves between them; they are not lost, just not
+# guessed.
+
+
+# AnimFireSpiralInward (battle_anim_fire.c:511) is BYTE-IDENTICAL to batch 9's
+# AnimIcePunchSwirlingParticle: the same `TranslateSpriteInGrowingCircle`
+# driver with the same four constants (duration 0x3C = 60, amplitude 9,
+# angle step 0x1E = 30, amplitude delta 0xFE00 = -512). Registered against the
+# one implementation, with the suite asserting they stay shared so nobody
+# later "fixes" the duplication into a divergent pair.
+
+
+# ── Screen flash ──────────────────────────────────────────────────────────
+
+# AnimTask_Flash (battle_anim_utility_funcs.c:606, step :621). No args.
+#
+# Slams every battler palette to BLACK and the background to WHITE at once,
+# holds 7 frames, then blends BOTH back over 16 steps at 2 frames each -- so
+# roughly 39 frames total, of which the hold is the part a port drops by
+# accident. The two halves fade in lockstep from one counter.
+const _FLASH_HOLD_FRAMES := 7
+const _FLASH_FADE_STEPS := 16
+const _FLASH_FRAMES_PER_STEP := 2
+
+static func _flash(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var battlers: Array[Control] = []
+	for i in range(4):
+		var n := _battler_node(vm, i)
+		if n != null:
+			battlers.append(n)
+	var stage = vm.stage
+	var has_fade: bool = stage != null and stage.has_method("set_fade")
+
+	for n in battlers:
+		_apply_blend_amount(n, Color.BLACK, 1.0)
+	if has_fade:
+		stage.set_fade(1.0)
+
+	var st := {"hold": _FLASH_HOLD_FRAMES, "coeff": _FLASH_FADE_STEPS,
+			"tick": 0}
+	vm.add_stepper(func() -> bool:
+		if int(st["hold"]) > 0:
+			st["hold"] = int(st["hold"]) - 1
+			return false
+		st["tick"] = int(st["tick"]) + 1
+		if int(st["tick"]) < _FLASH_FRAMES_PER_STEP:
+			return false
+		st["tick"] = 0
+		st["coeff"] = int(st["coeff"]) - 1
+		var amt := float(st["coeff"]) / float(_FLASH_FADE_STEPS)
+		for n in battlers:
+			if is_instance_valid(n):
+				_apply_blend_amount(n, Color.BLACK, amt)
+		if has_fade:
+			stage.set_fade(amt)
+		if int(st["coeff"]) <= 0:
+			for n in battlers:
+				if is_instance_valid(n):
+					_clear_blend(n)
+			if has_fade:
+				stage.set_fade(0.0)
+			return true
+		return false)
+
+
+# ── Orbits and drifts ─────────────────────────────────────────────────────
+
+# AnimReversalOrb (battle_anim_effects_3.c:3328, step :3338). args:
+# 0 half-duration, 1 starting angle.
+#
+# Orbits the attacker on an ellipse that GROWS and then SHRINKS back, so the
+# whole thing is symmetric and self-closing: the x radius gains 0x400 per
+# frame and the y radius only 0x100, i.e. it widens FOUR TIMES as fast as it
+# heightens, for `arg0` frames, then unwinds at the same rates. The angle
+# advances 9 per frame throughout.
+static func _reversal_orb(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var centre := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	node.centre = centre
+	var half: int = maxi(1, vm.args[0])
+
+	var st := {"angle": float(vm.args[1]), "rx": 0, "ry": 0, "t": 0,
+			"out": true}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		node.centre = centre + Vector2(
+				_gba_sin(float(st["angle"]), float(int(st["rx"]) >> 8)),
+				_gba_cos(float(st["angle"]), float(int(st["ry"]) >> 8))) * scale
+		st["angle"] = fmod(float(st["angle"]) + 9.0, 256.0)
+		var dir := 1 if bool(st["out"]) else -1
+		st["rx"] = int(st["rx"]) + 0x400 * dir
+		st["ry"] = int(st["ry"]) + 0x100 * dir
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= half:
+			st["t"] = 0
+			if bool(st["out"]):
+				st["out"] = false
+				return false
+			node.finish()
+			return true
+		return false)
+
+
+# AnimBlackSmoke (battle_anim_effects_3.c:1256, step :1270). args: 0/1 spawn
+# offset, 2 drift speed, 3 reverse the drift, 4 lifetime.
+#
+# Drifts sideways in 8.8 fixed point while FLICKERING EVERY SINGLE FRAME --
+# the flicker is not a decoration, it is what makes the smoke read as smoke
+# rather than a sliding sprite. Lives exactly `arg4` frames.
+static func _black_smoke(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	node.centre = start
+	var speed: int = -vm.args[2] if vm.args[3] != 0 else vm.args[2]
+	var life: int = maxi(1, vm.args[4])
+
+	var st := {"acc": 0, "left": life}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		node.centre = start + Vector2(float(int(st["acc"]) >> 8), 0.0) * scale
+		st["acc"] = int(st["acc"]) + speed
+		node.visible = not node.visible   # every frame, not every Nth
+		st["left"] = int(st["left"]) - 1
+		if int(st["left"]) <= 0:
+			node.finish()
+			return true
+		return false)
+
+
+# SpriteCB_SurroundingRing (battle_anim_new.c). No args. Starts 40px BELOW the
+# attacker's centre and rises 72px over 13 frames -- so it sweeps up THROUGH
+# the mon rather than expanding around it, which is what the name suggests and
+# is not what it does.
+static func _surrounding_ring(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER) \
+			+ Vector2(0.0, 40.0) * scale
+	node.centre = start
+	_linear_travel(vm, node, start, start - Vector2(0.0, 72.0) * scale, 13)
+
+
+# SpriteCB_FallingObject (battle_anim_new.c, step just below it). args:
+# 0 x offset, 1 height to fall from, 2 fall speed, 3 which battler.
+#
+# Two genuinely separate phases: it FALLS at a constant speed until it reaches
+# the target's level, and only then flickers -- 10 toggles, every frame -- and
+# dies. Merging the two loses the landing beat entirely.
+static func _falling_object(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var target := vm.args[3]
+	var rest := _battler_centre(vm, target) \
+			+ Vector2(float(vm.args[0]), 0.0) * scale
+	var drop := float(vm.args[1]) * scale
+	var speed := maxf(1.0, float(vm.args[2])) * scale
+	node.centre = rest - Vector2(0.0, drop)
+
+	var st := {"y": -drop, "phase": 0, "flicks": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		if int(st["phase"]) == 0:
+			st["y"] = float(st["y"]) + speed
+			if float(st["y"]) >= 0.0:
+				st["y"] = 0.0
+				st["phase"] = 1
+			node.centre = rest + Vector2(0.0, float(st["y"]))
+			return false
+		node.visible = not node.visible
+		st["flicks"] = int(st["flicks"]) + 1
+		if int(st["flicks"]) >= 10:
+			node.finish()
+			return true
+		return false)
+
+
+# ── Pincers, marks, swipes ────────────────────────────────────────────────
+
+# AnimGuillotinePincer (battle_anim_effects_2.c:1871, steps :1900+). args:
+# 0 which pincer (0 = upper-right, else lower-left, which also selects the
+# mirrored sprite anim).
+#
+# Three phases, and the middle one is the whole character of the move:
+# converge on the target over 6 frames, then JITTER by +/-2px on both axes
+# EVERY FRAME for 51 frames -- the pincer visibly grinding while it holds --
+# then retreat. Porting only the converge produces a pincer that arrives and
+# politely stops.
+const _PINCER_CONVERGE_FRAMES := 6
+const _PINCER_GRIND_FRAMES := 51
+
+static func _guillotine_pincer(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var second: bool = vm.args[0] != 0
+	var start_off := Vector2(-32.0, 32.0) if second else Vector2(32.0, -32.0)
+	var end_off := Vector2(-16.0, 16.0) if second else Vector2(16.0, -16.0)
+	var target := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var start := target + start_off * scale
+	var rest := target + end_off * scale
+	node.centre = start
+
+	var st := {"t": 0, "phase": 0, "flip": false}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		match int(st["phase"]):
+			0:
+				node.centre = start.lerp(rest,
+						float(t) / float(_PINCER_CONVERGE_FRAMES))
+				if t >= _PINCER_CONVERGE_FRAMES:
+					st["t"] = 0; st["phase"] = 1
+			1:
+				# The grind: +/-2px on both axes, flipping every frame.
+				st["flip"] = not bool(st["flip"])
+				var j := Vector2(2.0, -2.0) * scale
+				node.centre = rest + (j if bool(st["flip"]) else -j)
+				if t >= _PINCER_GRIND_FRAMES:
+					node.centre = rest
+					st["t"] = 0; st["phase"] = 2
+			_:
+				node.centre = rest.lerp(start,
+						float(t) / float(_PINCER_CONVERGE_FRAMES))
+				if t >= _PINCER_CONVERGE_FRAMES:
+					node.finish()
+					return true
+		return false)
+
+
+# AnimQuestionMark (battle_anim_psychic.c:733, steps :751/:760). No args.
+#
+# Placed relative to the attacker's OWN SPRITE SIZE rather than a fixed
+# offset -- half its width to the side, half its height up, mirrored by side
+# and clamped so it never leaves the top of the screen. Then it plays out,
+# spins down through an affine anim, and holds 18 frames before dying.
+static func _question_mark(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var mon := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	var half := Vector2(32.0, 32.0) * scale
+	if mon != null:
+		half = mon.size * 0.5
+	var dx := half.x if _is_player_side(vm) else -half.x
+	var pos := _battler_centre(vm, AnimStage.ANIM_ATTACKER) \
+			+ Vector2(dx, -half.y)
+	pos.y = maxf(pos.y, 16.0 * scale)   # upstream clamps to the screen top
+	node.centre = pos
+	# Play out, then the 18-frame hold before it goes.
+	_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+
+
+# AnimFurySwipes (battle_anim_effects_2.c:3565). args: 0/1 offset, 2 which
+# swipe variant. Positioned once and then simply played out -- no motion of
+# its own; the whole effect is the frame sequence.
+static func _fury_swipes(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	node.centre = _positioned_centre(vm, AnimStage.ANIM_TARGET, vm.args[0],
+			vm.args[1], scale)
+	_apply_anim_variant(node, ctx, vm.args[2])
+	_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+
+
+# ── Spikes, flame ─────────────────────────────────────────────────────────
+
+# AnimSpikes (battle_anim_effects_3.c:1503, steps :1522/:1538). args:
+# 2/3 landing offset, 4 arc duration.
+#
+# Three phases the script depends on in sequence: an ARC from the attacker to
+# the target's side (amplitude -50, so it lobs UP and over), a dead 30-frame
+# WAIT where the spikes just sit there, and only then a 16-frame flicker-out
+# that toggles on ODD frames only -- not every frame like Black Smoke's.
+# Dropping the wait makes the hazard vanish the instant it lands.
+const _SPIKES_WAIT_FRAMES := 30
+const _SPIKES_FLICKER_FRAMES := 16
+
+static func _spikes(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var dx := float(vm.args[2]) * (1.0 if _is_player_side(vm) else -1.0)
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(dx, float(vm.args[3])) * scale
+	node.centre = start
+	var arc_frames: int = maxi(1, vm.args[4])
+
+	var st := {"t": 0, "phase": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		match int(st["phase"]):
+			0:
+				var f := float(t) / float(arc_frames)
+				# amplitude -50 lobs the spikes up and over, not straight across
+				node.centre = start.lerp(dest, f) \
+						- Vector2(0.0, sin(f * PI) * 50.0 * scale)
+				if t >= arc_frames:
+					node.centre = dest
+					st["t"] = 0; st["phase"] = 1
+			1:
+				if t >= _SPIKES_WAIT_FRAMES:   # the dead hold
+					st["t"] = 0; st["phase"] = 2
+			_:
+				if (t & 1) == 1:               # odd frames only
+					node.visible = not node.visible
+				if t >= _SPIKES_FLICKER_FRAMES:
+					node.finish()
+					return true
+		return false)
+
+
+# AnimOutrageFlame (battle_anim_dragon.c:385) via
+# `TranslateSpriteLinearAndFlicker` (battle_anim_mons.c:594). args: 0/1 spawn
+# offset, 2 duration, 3/4 velocity in 8.8 fixed point, 5 flicker period.
+#
+# It STARTS INVISIBLE (`sprite->invisible = TRUE` at setup) and only appears
+# when the flicker first toggles it on -- so the flame blinks into existence
+# mid-flight rather than fading in. Both the position offset and BOTH velocity
+# components are mirrored for an opponent-side attacker.
+static func _outrage_flame(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var player := _is_player_side(vm)
+	var sign_ := 1.0 if player else -1.0
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER) + Vector2(
+			float(vm.args[0]) * sign_, float(vm.args[1])) * scale
+	var vel := Vector2(float(vm.args[3]), float(vm.args[4])) * sign_
+	var life: int = maxi(1, vm.args[2])
+	var period: int = vm.args[5]
+	node.centre = start
+	node.visible = false   # upstream sets invisible at setup
+
+	var st := {"left": life, "acc": Vector2.ZERO}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var left: int = int(st["left"]) - 1
+		st["left"] = left
+		node.centre = start + (st["acc"] as Vector2) / 256.0 * scale
+		st["acc"] = (st["acc"] as Vector2) + vel
+		if period != 0 and left % period == 0:
+			node.visible = not node.visible
+		if left <= 0:
+			node.finish()
 			return true
 		return false)

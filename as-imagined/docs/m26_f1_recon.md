@@ -1321,6 +1321,65 @@ currently produce** — not a tuning change. Faking it with a hue shift would
 invent motion the reference does not describe. Frame cost is exact and pinned
 by test, so script pacing is unaffected.
 
+### M36D batch 10 — COMPLETE 2026-07-30. The curve flattened, as predicted.
+
+`m36d_batch_test` 373 -> **396/396** (first run, no failures); 16-suite sweep
+green. Coverage **516 -> 543 of 932 (58.3%)**.
+
+**Batch 9's closing measurement called this correctly.** The 6s, 5s and 4s are
+gone: the best remaining pick is worth **+3**, and the greedy walk over 16
+candidates returned only 37 moves (2.3 each) against batch 9's 4.4. 200 moves
+still sit one behavior away, but each of those behaviors now serves ~2 moves
+rather than ~5.
+
+**11 of the 16 candidates shipped. FIVE WERE DEFERRED RATHER THAN GUESSED AT** —
+`AnimTask_Rollout`, `AnimTask_FlailMovement`, `AnimTask_SpiteTargetShadow`,
+`AnimTask_NightmareClone` and `AnimTask_ShrinkTargetCopy` each needed a step
+function this pass did not read in full. Worth ~10 moves between them. A
+half-read port is how a behavior ships looking right and being wrong, and the
+suite **asserts all five remain unregistered** so a later session cannot quietly
+take the shortcut.
+
+**A second byte-identical alias, one batch after the first.**
+`AnimFireSpiralInward` (`battle_anim_fire.c:511`) and batch 9's
+`AnimIcePunchSwirlingParticle` are the same `TranslateSpriteInGrowingCircle`
+driver with the **same four constants** — duration `0x3C`=60, amplitude 9,
+angle step `0x1E`=30, amplitude delta `0xFE00`=-512. Registered against one
+implementation, asserted as sharing it.
+
+**Beats a half-read port drops, each pinned by test:**
+
+- **`AnimTask_Flash` HOLDS.** It slams every battler palette to black and the
+  background to white, waits 7 frames, and only then blends both back over 16
+  steps at 2 frames each (~39 total). The hold is the part that gets lost.
+- **`AnimSpikes` has a DEAD 30-frame wait.** Arc (amplitude -50, so it lobs up
+  and over rather than travelling straight), then the spikes sit perfectly
+  still, and only then flicker out over 16 frames — **on odd frames only**,
+  unlike Black Smoke's every-frame flicker. Dropping the wait makes the hazard
+  vanish on landing.
+- **`AnimGuillotinePincer`'s middle phase is the move.** Converge over 6 frames,
+  then **grind for 51 frames**, jittering ±2px on both axes every single frame,
+  then retreat. Porting only the converge gives a pincer that arrives and
+  politely stops.
+- **`SpriteCB_FallingObject` is two phases** — a constant-speed fall, then the
+  flicker-out on landing. Merging them loses the landing beat.
+- **`AnimOutrageFlame` starts INVISIBLE** (`sprite->invisible = TRUE` at setup)
+  and blinks into existence when the flicker first toggles it on.
+- **`AnimBlackSmoke` flickers EVERY frame** — that is what makes it read as
+  smoke rather than a sliding sprite.
+
+**Two shapes whose names mislead:** `SpriteCB_SurroundingRing` does not expand
+around the attacker — it starts 40px BELOW and sweeps 72px UP through it over 13
+frames. And `AnimReversalOrb`'s ellipse **widens four times as fast as it
+heightens** (0x400 vs 0x100 per frame), growing then unwinding symmetrically
+back to nothing.
+
+`AnimQuestionMark` is placed from the attacker's own SPRITE SIZE (half-width to
+the side, half-height up, mirrored and clamped to the screen top) rather than a
+fixed offset, so a larger Pokemon pushes it further out.
+
+**NOT screenshot-verified.**
+
 ### M36D batch 9 — COMPLETE 2026-07-30. First yield-ordered batch.
 
 `m36d_batch_test` 328 -> **373/373**; 16-suite sweep green. Coverage

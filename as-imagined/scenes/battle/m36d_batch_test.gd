@@ -76,6 +76,10 @@ func _ready() -> void:
 	_test_batch9_flicker_and_spiral()
 	_test_batch9_droplet_and_deform()
 	_test_batch9_coverage()
+	_test_batch10_alias_and_flash()
+	_test_batch10_orbit_and_flickers()
+	_test_batch10_phases()
+	_test_batch10_coverage()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -2360,3 +2364,214 @@ func _test_batch9_coverage() -> void:
 			[304, "Hyper Voice"]]:
 		_chk("%s is playable" % str(pair[1]),
 				_dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 10] ───────────────────────────────────────────────────────
+#
+# The curve flattened here as batch 9's closing measurement warned. 11 of 16
+# candidates shipped; five were DEFERRED rather than guessed at, because
+# their step functions were not read in full. What is here is tested on the
+# beats a half-read port would drop -- holds, dead waits, and phase splits.
+
+
+func _test_batch10_alias_and_flash() -> void:
+	# AnimFireSpiralInward is byte-identical to batch 9's ice-punch particle:
+	# same driver, same four constants. Asserted as ONE implementation so the
+	# duplication is not later "fixed" into a divergent pair.
+	_chk("FireSpiralInward and IcePunchSwirlingParticle share one impl",
+			_registry.get_behavior("AnimFireSpiralInward")
+			== _registry.get_behavior("AnimIcePunchSwirlingParticle"))
+
+	# Flash slams to black/white, HOLDS, and only then fades. The hold is the
+	# beat a port drops by accident.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_Flash").call(vm, {})
+	var mon: Control = stage.nodes[AnimStage.ANIM_ATTACKER]
+	_chk("Flash blends the battlers immediately",
+			mon.material != null)
+	_step(vm, 5)
+	_chk("...and HOLDS before fading (still running at frame 5)",
+			vm.visual_count() > 0)
+	_step(vm, 45)
+	_chk("...then finishes on its own ~39 frames", vm.visual_count() == 0)
+	_chk("...leaving no blend behind on the battler", mon.material == null)
+
+
+func _test_batch10_orbit_and_flickers() -> void:
+	# ReversalOrb's ellipse widens FOUR TIMES as fast as it heightens
+	# (0x400 vs 0x100 per frame), then unwinds symmetrically back to nothing.
+	# A circular port, or one that only grows, both look plausible and are
+	# wrong in different ways.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 20; vm.args[1] = 0
+	_run_b5(vm, "AnimReversalOrb", "gReversalOrbSpriteTemplate")
+	var orb := _b5_last
+	_chk("reversal orb spawns", orb != null)
+	if orb != null:
+		var centre := stage.center_of(AnimStage.ANIM_ATTACKER)
+		var xs: Array = []
+		var ys: Array = []
+		for i in range(20):
+			_step(vm, 1)
+			if is_instance_valid(orb):
+				xs.append(absf(orb.centre.x - centre.x))
+				ys.append(absf(orb.centre.y - centre.y))
+		var xmax: float = xs.max()
+		var ymax: float = ys.max()
+		_chk("...orbits far wider than tall (%.0f vs %.0f)" % [xmax, ymax],
+				xmax > ymax * 2.0)
+		_step(vm, 25)
+		_chk("...and unwinds back closed", vm.visual_count() == 0)
+
+	# BlackSmoke flickers EVERY frame -- that is what makes it read as smoke
+	# rather than a sliding sprite.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	vm2.args[0] = 0; vm2.args[1] = 0; vm2.args[2] = 256
+	vm2.args[3] = 0; vm2.args[4] = 12
+	_run_b5(vm2, "AnimBlackSmoke", "gBlackSmokeSpriteTemplate")
+	var smoke := _b5_last
+	if smoke != null:
+		var flips := 0
+		var was := smoke.visible
+		for i in range(8):
+			_step(vm2, 1)
+			if is_instance_valid(smoke) and smoke.visible != was:
+				flips += 1
+				was = smoke.visible
+		_chk("black smoke flickers on EVERY frame (%d/8)" % flips, flips >= 7)
+
+	# OutrageFlame starts INVISIBLE and blinks into existence mid-flight.
+	var stage3 := FakeStage.new()
+	var vm3 := _vm(stage3)
+	vm3.args[0] = 0; vm3.args[1] = 0; vm3.args[2] = 20
+	vm3.args[3] = 256; vm3.args[4] = 0; vm3.args[5] = 3
+	_run_b5(vm3, "AnimOutrageFlame", "gOutrageFlameSpriteTemplate")
+	var flame := _b5_last
+	if flame != null:
+		_chk("outrage flame starts INVISIBLE", not flame.visible)
+		var appeared := false
+		for i in range(12):
+			_step(vm3, 1)
+			if is_instance_valid(flame) and flame.visible:
+				appeared = true
+		_chk("...and blinks into existence mid-flight", appeared)
+
+
+func _test_batch10_phases() -> void:
+	# SurroundingRing starts BELOW the attacker and sweeps up through it --
+	# not an expanding ring, despite the name.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_run_b5(vm, "SpriteCB_SurroundingRing", "gSurroundingRingSpriteTemplate")
+	var ring := _b5_last
+	if ring != null:
+		var c := stage.center_of(AnimStage.ANIM_ATTACKER)
+		_chk("surrounding ring starts BELOW the attacker", ring.centre.y > c.y)
+		_step(vm, 13)
+		_chk("...and ends above where it began", ring.centre.y < c.y)
+
+	# FallingObject has two genuinely separate phases: it FALLS, and only on
+	# landing does it flicker out. Merging them loses the landing beat.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	vm2.args[0] = 0; vm2.args[1] = 40; vm2.args[2] = 4
+	vm2.args[3] = AnimStage.ANIM_TARGET
+	_run_b5(vm2, "SpriteCB_FallingObject", "gFallingObjectSpriteTemplate")
+	var obj := _b5_last
+	if obj != null:
+		var rest := stage2.center_of(AnimStage.ANIM_TARGET)
+		_chk("falling object starts above its target", obj.centre.y < rest.y)
+		var fell := false
+		for i in range(40):
+			_step(vm2, 1)
+			if is_instance_valid(obj) and absf(obj.centre.y - rest.y) < 1.0:
+				fell = true
+				break
+		_chk("...falls to the target's level", fell)
+		_chk("...and is still alive to flicker there", vm2.visual_count() > 0)
+		_step(vm2, 15)
+		_chk("...then goes", vm2.visual_count() == 0)
+
+	# GuillotinePincer's middle phase is the whole character of the move: a
+	# 51-frame grind jittering every frame. Porting only the converge gives a
+	# pincer that arrives and politely stops.
+	var stage3 := FakeStage.new()
+	var vm3 := _vm(stage3)
+	vm3.args[0] = 0
+	_run_b5(vm3, "AnimGuillotinePincer", "gGuillotinePincerSpriteTemplate")
+	var pincer := _b5_last
+	if pincer != null:
+		var target := stage3.center_of(AnimStage.ANIM_TARGET)
+		var d0 := pincer.centre.distance_to(target)
+		_step(vm3, 6)
+		var d1 := pincer.centre.distance_to(target)
+		_chk("pincer converges (%.0f -> %.0f)" % [d0, d1], d1 < d0)
+		# During the grind it must move every frame, never settle.
+		var moves := 0
+		var prev := pincer.centre
+		for i in range(10):
+			_step(vm3, 1)
+			if is_instance_valid(pincer) and not pincer.centre.is_equal_approx(prev):
+				moves += 1
+				prev = pincer.centre
+		_chk("...then GRINDS rather than settling (%d/10 frames moved)" % moves,
+				moves >= 9)
+		_step(vm3, 60)
+		_chk("...and retreats away again", vm3.visual_count() == 0)
+
+	# Spikes: arc, then a DEAD 30-frame hold, then flicker on ODD frames only.
+	var stage4 := FakeStage.new()
+	var vm4 := _vm(stage4)
+	vm4.args[2] = 0; vm4.args[3] = 0; vm4.args[4] = 10
+	_run_b5(vm4, "AnimSpikes", "gSpikesSpriteTemplate")
+	var spike := _b5_last
+	if spike != null:
+		var a := spike.centre
+		var b := stage4.center_of(AnimStage.ANIM_TARGET)
+		_step(vm4, 5)
+		# Mid-arc it must sit ABOVE the straight line between the endpoints.
+		var straight_y: float = a.y + (b.y - a.y) * 0.5
+		_chk("spikes LOB rather than travelling straight (%.0f < %.0f)"
+				% [spike.centre.y, straight_y], spike.centre.y < straight_y)
+		_step(vm4, 5)
+		var landed := spike.centre
+		_step(vm4, 20)
+		_chk("...then sit DEAD STILL for the hold",
+				spike.centre.is_equal_approx(landed))
+		_chk("...still alive during it", vm4.visual_count() > 0)
+		_step(vm4, 30)
+		_chk("...before flickering out", vm4.visual_count() == 0)
+
+	# QuestionMark is placed from the attacker's own SPRITE SIZE, not a fixed
+	# offset -- so a bigger mon puts it further out.
+	var stage5 := FakeStage.new()
+	var vm5 := _vm(stage5)
+	_run_b5(vm5, "AnimQuestionMark", "gQuestionMarkSpriteTemplate")
+	var q := _b5_last
+	if q != null:
+		var mon: Control = stage5.nodes[AnimStage.ANIM_ATTACKER]
+		var c := stage5.center_of(AnimStage.ANIM_ATTACKER)
+		_chk("question mark offsets by the mon's own half-size",
+				is_equal_approx(absf(q.centre.x - c.x), mon.size.x * 0.5))
+		_chk("...and sits above its centre", q.centre.y < c.y)
+
+
+func _test_batch10_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov: Dictionary = _dispatcher.coverage(ids)
+	_chk("roster coverage is at least 543 moves (%d)"
+			% int(cov.get("playable", 0)),
+			int(cov.get("playable", 0)) >= 543)
+	# The five DEFERRED behaviors must stay unregistered -- if one appears
+	# without its step function being read, this catches the shortcut.
+	for sym in ["AnimTask_Rollout", "AnimTask_FlailMovement",
+			"AnimTask_SpiteTargetShadow", "AnimTask_NightmareClone",
+			"AnimTask_ShrinkTargetCopy"]:
+		_chk("%s is deliberately still deferred" % sym,
+				_registry.get_behavior(sym) == Callable())
