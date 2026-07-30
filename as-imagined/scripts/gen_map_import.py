@@ -787,6 +787,27 @@ def extract_connections(mp):
     return out
 
 
+# [M27C C5-4] Arrow warps: a THIRD trigger geometry. You stand ON the tile and
+# press a specific direction — `TryArrowWarp` reads the player's OWN position on
+# a held direction, before any step is attempted, so it fires whether or not the
+# target is walkable. This is how you leave nearly every building in Kanto.
+#
+# The direction has to be stamped rather than derived. The tempting shortcut —
+# "the one blocked neighbour is the exit" — was MEASURED and does not hold: of
+# 345 arrow warps region-wide, 64 have zero or several blocked neighbours, so
+# the guess would fire the wrong way on nearly a fifth of them.
+#
+# Sets are source's own (`MetatileBehavior_Is*ArrowWarp`), which are wider than
+# the ARROW_WARP names alone — water-south and the shoal entrance count as
+# south, the abandoned-ship stairs as north.
+ARROW_WARP_DIRS = {
+    100: 1, 27: 1,           # NORTH_ARROW_WARP, STAIRS_OUTSIDE_ABANDONED_SHIP
+    101: 0, 109: 0, 28: 0,   # SOUTH_ARROW_WARP, WATER_SOUTH_ARROW_WARP, SHOAL_CAVE_ENTRANCE
+    99: 2,                   # WEST_ARROW_WARP
+    98: 3,                   # EAST_ARROW_WARP
+}
+
+
 def _stamp_warp_triggers(events, mids, ts, w, h):
     """Record whether the REFERENCE would fire each warp from its own tile.
 
@@ -811,6 +832,10 @@ def _stamp_warp_triggers(events, mids, ts, w, h):
         if 0 <= x < w and 0 <= y < h:
             beh_name = names.get(ts.behavior(mids[y * w + x]), "")
         e["triggers"] = beh_name in WARP_TRIGGER_BEHAVIORS
+        # -1 = not an arrow warp. Stamped from the same behaviour read rather
+        # than a second pass, so the two cannot disagree about a cell.
+        beh_id = ts.behavior(mids[y * w + x]) if 0 <= x < w and 0 <= y < h else -1
+        e["arrow_dir"] = ARROW_WARP_DIRS.get(beh_id, -1)
     return events
 
 

@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 392
+const EXPECTED_TOTAL := 402
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -106,6 +106,9 @@ const WARP_DISPATCH_ASSERTIONS := 16
 
 ## [M27C C5-3] Section AF drives real doors, so it needs the corridor too.
 const DOOR_ASSERTIONS := 5
+
+## [M27C C5-4] Section AG drives a full enter/leave cycle.
+const EXIT_ASSERTIONS := 10
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -186,6 +189,7 @@ func _ready() -> void:
 	_test_warp_resolution()
 	await _test_warp_dispatch()
 	await _test_door_geometry()
+	await _test_leaving_a_building()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -2483,7 +2487,12 @@ func _test_warp_dispatch() -> void:
 	var back := man.warp_at(ow._cell)
 	_chk("AE.14 the arrival tile is itself a warp home", back != null)
 	await ow._do_warp(back)
-	_chk("AE.15 returning puts us on the exact cell we left", ow._cell == door_cell)
+	# [C5-4] Was `== door_cell`, which encoded the bug: arriving leaves you ON
+	# the solid door tile. `_exit_doorway()` now steps out of it, so the correct
+	# expectation is the tile south — adjacent to the door, standing on ground.
+	_chk("AE.15 returning puts us outside the door rather than inside it",
+			ow._cell == door_cell + Vector2i(0, 1)
+			and man.collision_at(ow._cell) == 0)
 	_chk("AE.16 with the outdoor neighbours restored",
 			man.loaded_chunks().has("PalletTown_Frlg")
 			and man.loaded_chunks().size() > 1)
@@ -2606,3 +2615,82 @@ func _solid_non_warp_north_of(man: MapManager, origin: Vector2i) -> Vector2i:
 					and man.warp_at(north) == null:
 				return here
 	return Vector2i(-9999, -9999)
+
+
+## Section AG — [M27C C5-4] leaving a building: the exit step, and arrow warps.
+##
+## Two additions that answer one complaint. Rob, after C5-3 shipped: "the
+## character comes through to the other side and stays on the warp they landed
+## on... if you try to enter back into the house you need to step off the door
+## then back on."
+##
+## Both halves come from source and both were missing. `SetUpWarpExitTask`
+## dispatches an exit task by arrival-tile kind — a door gets `Task_ExitDoor`,
+## which walks the player DOWN one tile once the fade finishes, while a ladder
+## or floor warp gets `Task_ExitNonDoor`, which moves them nowhere. And
+## `TryArrowWarp` is a third trigger geometry entirely: stand on the tile, press
+## its direction, before any step is attempted.
+##
+## AG.01 pins why the exit step is a CORRECTNESS fix rather than polish: the
+## outdoor door tile is solid, so a player left standing on it is inside a wall.
+func _test_leaving_a_building() -> void:
+	if not (ResourceLoader.exists("res://scenes/maps/PalletTown_Frlg.tscn")
+			and ResourceLoader.exists(
+				"res://scenes/maps/PalletTown_ProfessorOaksLab_Frlg.tscn")):
+		_gated += EXIT_ASSERTIONS
+		return
+
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	add_child(ow)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var man: MapManager = ow.manager
+	var door: Vector2i = man.origin_of("PalletTown_Frlg") + Vector2i(16, 13)
+	var below: Vector2i = door + Vector2i(0, 1)
+
+	_chk("AG.01 the outdoor door tile is SOLID — being left on it is invalid state",
+			man.collision_at(door) != 0)
+
+	# --- in ---
+	_stand_at(ow, below)
+	ow._try_step(StepResolver.Dir.NORTH)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	var inside: Vector2i = ow._cell
+	_chk("AG.02 entering lands inside", man.chunk_owning(inside)
+			== "PalletTown_ProfessorOaksLab_Frlg")
+	# Task_ExitNonDoor moves the player nowhere, and this arrival is walkable.
+	_chk("AG.03 and does NOT auto-step, because the arrival is not a doorway",
+			man.collision_at(inside) == 0 and inside == Vector2i(6, 12))
+
+	var exit_warp := man.warp_at(inside)
+	_chk("AG.04 the exit tile is an arrow warp pointing SOUTH",
+			exit_warp != null and exit_warp.arrow_dir == StepResolver.Dir.SOUTH)
+	# The tile it points at is the map's back wall. An arrow warp firing before
+	# the step is the only reason this is not a dead end.
+	_chk("AG.05 which faces a solid wall, so a step-based check could never fire",
+			man.collision_at(inside + Vector2i(0, 1)) != 0)
+
+	# A direction that is not the arrow's must do nothing.
+	ow._try_step(StepResolver.Dir.EAST)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AG.06 pressing another direction does not leave",
+			man.chunk_owning(ow._cell) == "PalletTown_ProfessorOaksLab_Frlg")
+
+	# --- out ---
+	_stand_at(ow, inside)
+	ow._try_step(StepResolver.Dir.SOUTH)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AG.07 pressing the arrow's direction leaves the building",
+			man.chunk_owning(ow._cell) == "PalletTown_Frlg")
+	_chk("AG.08 and the player is NOT left standing in the doorway",
+			ow._cell != door and man.collision_at(ow._cell) == 0)
+	_chk("AG.09 having stepped one tile south of it, source's own WALK_NORMAL_DOWN",
+			ow._cell == below)
+
+	# The whole point of the complaint: re-entry with one step, no shuffling.
+	ow._try_step(StepResolver.Dir.NORTH)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AG.10 so walking straight back north re-enters, with no step off first",
+			man.chunk_owning(ow._cell) == "PalletTown_ProfessorOaksLab_Frlg")
+
+	ow.queue_free()

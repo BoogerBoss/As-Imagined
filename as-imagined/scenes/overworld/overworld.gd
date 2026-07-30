@@ -199,6 +199,12 @@ func resolve_step(gcell: Vector2i, dir: int, elev: int) -> Dictionary:
 ## A step is a request: resolve first, then tween. Logic position is truth;
 ## the tween is presentation only (§22's testing conventions).
 func _try_step(dir: int) -> void:
+	# Arrow warps resolve BEFORE the step, on the tile already under the player.
+	# Source checks them ahead of movement for the same reason, and it matters:
+	# an interior exit faces the map's bottom wall, so waiting for a step that
+	# can never succeed would make every building a dead end.
+	if _try_arrow_warp(dir):
+		return
 	var r := resolve_step(_cell, dir, _elev)
 	var outcome: int = r["outcome"]
 	if outcome != StepResolver.Outcome.NONE and outcome != StepResolver.Outcome.LEDGE_JUMP:
@@ -237,6 +243,29 @@ func _try_step(dir: int) -> void:
 		if w != null:
 			_do_warp(w)
 	)
+
+
+## An arrow warp: stand ON the tile, press its direction.
+##
+## [M27C C5-4] The third geometry, and the one that leaves a building.
+## `TryArrowWarp` reads the player's OWN position on a held direction, ahead of
+## any movement, so it does not care whether the target is walkable — Oak's Lab
+## exits south into the bottom wall, and every other interior is the same shape.
+##
+## Without this you could still leave, by stepping off the exit tile and back
+## onto it through the step-on path. That is what Rob reported as awkward on the
+## OUTDOOR side of a door, and it is the same awkwardness indoors.
+##
+## The direction is read from the warp rather than inferred, because inferring
+## it is measurably wrong: see Warp.arrow_dir.
+func _try_arrow_warp(dir: int) -> bool:
+	if _warping:
+		return false
+	var w := manager.warp_at(_cell)
+	if w == null or w.arrow_dir != dir:
+		return false
+	_do_warp(w)
+	return true
 
 
 ## A door is WALKED INTO, never stepped onto — a second warp geometry entirely.
@@ -349,6 +378,7 @@ func _do_warp(w: Warp) -> void:
 	manager.refresh_skirts()
 
 	await _fade_to(0.0)
+	await _exit_doorway()
 	_warping = false
 
 
@@ -368,3 +398,47 @@ func _first_walkable(map_name: String) -> Vector2i:
 			if manager.collision_at(g) == 0:
 				return g
 	return origin
+
+
+## Step out of the doorway you arrived in.
+##
+## [M27C C5-4] Source lands the player ON the destination warp's tile and then
+## MOVES THEM OFF IT — `SetUpWarpExitTask` picks an exit task by tile kind
+## (`field_screen_effect.c`), and for a door that is `Task_ExitDoor`, which
+## waits for the fade to finish and then issues a literal
+## `MOVEMENT_ACTION_WALK_NORMAL_DOWN`. Omitting it left the player standing in
+## the doorway: it reads wrong, and re-entering needed a step off and back on.
+##
+## The other exit tasks are why this is conditional rather than universal:
+## `Task_ExitNonDoor` — ladders, cave mouths, floor warps — moves the player
+## NOWHERE, and those are exactly the arrivals that are already standing on
+## walkable ground. So the condition is the same one the door ENTRY path uses:
+## a solid arrival tile is a doorway, a walkable one is not. That also makes it
+## a correctness fix rather than presentation — a player left on a solid tile is
+## standing inside a wall.
+##
+## SOUTH is source's own literal (`WALK_NORMAL_DOWN`, not the facing direction —
+## that is `Task_ExitNonAnimDoor`'s rule, for a different tile kind), and it is
+## the mirror of the north-only entry rule: measured, every one of the 193
+## animated doors in Kanto has exactly one walkable neighbour and it is the tile
+## to the south.
+##
+## Deliberately NOT routed through `_try_step`: this is a scripted movement, not
+## player input, so it must not run the warp check at the far end. Same
+## principle as arriving not counting as a step.
+func _exit_doorway() -> void:
+	if _player == null or manager.collision_at(_cell) == 0:
+		return
+	var out: Vector2i = _cell + StepResolver.STEP[StepResolver.Dir.SOUTH]
+	# A doorway with nowhere to step is data this project should not invent a
+	# recovery for — leaving the player put is visible, which is the point.
+	if manager.collision_at(out) != 0 or not manager.in_bounds(out):
+		push_warning("overworld: doorway at %s has no walkable tile south" % _cell)
+		return
+	_cell = out
+	_elev = manager.elevation_at(_cell)
+	_facing = StepResolver.Dir.SOUTH
+	_reparent_for_elevation()
+	var t := create_tween()
+	t.tween_property(_player, "position", manager.local_pixel_of(_cell), 0.16)
+	await t.finished

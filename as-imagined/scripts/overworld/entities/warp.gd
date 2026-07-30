@@ -33,6 +33,23 @@ extends OverworldEntity
 ## exits from three tiles, all arriving at Pallet Town's warp 2.
 @export var dest_warp_id: int = 0
 
+## If this warp is an ARROW warp, the direction you must press while standing
+## on it. -1 when it is not one.
+##
+## [M27C C5-4] A third trigger geometry, and the one that gets you out of nearly
+## every building: `TryArrowWarp` reads the player's OWN tile on a held
+## direction, BEFORE any step is attempted, so it fires whether or not the
+## target cell is walkable — which is the point, since an interior exit faces
+## the map's bottom wall.
+##
+## Stamped rather than derived. "The one blocked neighbour is the exit" was
+## measured against all 421 maps and does not hold: 64 of 345 arrow warps have
+## zero or several blocked neighbours, so the guess would fire the wrong way on
+## nearly a fifth of them.
+##
+## Values are StepResolver.Dir (SOUTH 0, NORTH 1, WEST 2, EAST 3).
+@export var arrow_dir: int = -1
+
 ## Does stepping here actually warp you?
 ##
 ## [M27C C5] This project DECOUPLES "a warp is here" from "this tile is a door".
