@@ -722,6 +722,47 @@ unfaithful double masked a real defect (the first was plain `Control` nodes
 where the scene uses `TextureRect`), so doubles here are now written to
 actually apply what they are asked to do.
 
+### M36E1 — background asset pull, COMPLETE 2026-07-29
+
+The asset half of the background layer. `m36e_background_asset_test`
+**20/20**; generator verified idempotent.
+
+`scripts/gen_battle_anim_backgrounds.py` composites **89 backgrounds** — all
+**84** `gBattleAnimBackgroundTable` entries plus 5 code-referenced ones (the
+Surf trio, its muddy-water recolor, and sandstorm brew). Unlike the sprite
+pull this must COMPOSITE rather than copy: each background is a tilemap over
+a tile sheet with per-cell flip flags, so it is the GBA screen-entry decode
+this project has now done four times.
+
+**The palette-bank rule was measured, not assumed — and the first cut was
+wrong in the right direction.** It asserted a single palette bank per
+background and consequently refused 19 of them, which is how the real rule
+came to light: a background's CONTENT lives in one bank (2 for table entries,
+8 for a couple of the others) while **bank 0 carries only the blank tile**
+for empty cells. The assertion now allows the blank-tile bank and still
+refuses content spanning two banks, because one 16-colour palette cannot
+render that and it would come out miscoloured. Three assets legitimately fail
+that test and are reported rather than silently dropped: `attract`,
+`scary_face_player`, `scary_face_opponent`.
+
+**Two guessed pairings were checked and removed rather than shipped**:
+`solarbeam.bin` is marked `// Unused` upstream and the real Solar Beam
+backgrounds are ordinary table entries; `fog.bin` has no matching `fog.png`
+at all — its tiles come from another symbol, which the scrolling-fog behavior
+will have to resolve when it is ported.
+
+Decode verified by eye as well as by assertion: `BG_PSYCHIC` renders the
+authentic diagonal wave, and the palette-only variants prove the recolor step
+really applies (Hyper Beam and Hydro Cannon share tiles *and* tilemap
+upstream, and come out visibly different).
+
+**Still to come in M36E**: the runtime background layer plus the
+`fadetobg`/`restorebg`/`changebg`/`waitbgfade*` opcodes (currently timing-only
+no-ops), then the BG-dependent behaviors — `AnimTask_SetPsychicBackground`
+(8 moves), `AnimTask_MetallicShine` (5), `AnimTask_StartSlidingBg`,
+`AnimTask_CreateSurfWave` (Surf), the scrolling fog, and the platform-shake
+paths whose sprite variants already work.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.
