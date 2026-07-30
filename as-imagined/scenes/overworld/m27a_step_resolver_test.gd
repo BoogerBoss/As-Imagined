@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 387
+const EXPECTED_TOTAL := 392
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -103,6 +103,9 @@ const WARP_ASSERTIONS := 15
 
 ## [M27C C5-3] Section AE drives a real warp, so it needs the corridor too.
 const WARP_DISPATCH_ASSERTIONS := 16
+
+## [M27C C5-3] Section AF drives real doors, so it needs the corridor too.
+const DOOR_ASSERTIONS := 5
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -182,6 +185,7 @@ func _ready() -> void:
 	_test_connections_and_border()
 	_test_warp_resolution()
 	await _test_warp_dispatch()
+	await _test_door_geometry()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -2485,3 +2489,120 @@ func _test_warp_dispatch() -> void:
 			and man.loaded_chunks().size() > 1)
 
 	ow.queue_free()
+
+
+## Section AF — [M27C C5-3] door geometry: warps you WALK INTO.
+##
+## This section exists because C5-3 shipped without it and every building in
+## Kanto was sealed. The step-on path was built and tested, and it can never
+## fire for a door: a door tile is SOLID, so the player cannot stand on it.
+##
+## Source has two trigger geometries — `TryStartWarpEventScript` on the
+## player's own tile after a step, and `TryDoorWarp` on the tile IN FRONT — and
+## the first cut ported only the first. AF.01/AF.02 pin the map-data facts that
+## force the distinction, so the reason survives even if the code moves.
+func _test_door_geometry() -> void:
+	if not (ResourceLoader.exists("res://scenes/maps/PalletTown_Frlg.tscn")
+			and ResourceLoader.exists(
+				"res://scenes/maps/PalletTown_ProfessorOaksLab_Frlg.tscn")):
+		_gated += DOOR_ASSERTIONS
+		return
+
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	add_child(ow)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var man: MapManager = ow.manager
+	var origin := man.origin_of("PalletTown_Frlg")
+
+	# --- the premise, measured rather than asserted from memory ---
+	var doors := [Vector2i(6, 7), Vector2i(15, 7), Vector2i(16, 13)]
+	var all_solid := true
+	var all_south_entry := true
+	for local in doors:
+		var g: Vector2i = origin + Vector2i(local)
+		if man.collision_at(g) == 0:
+			all_solid = false
+		var walkable := []
+		for d in [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]:
+			if man.collision_at(g + Vector2i(d)) == 0:
+				walkable.append(d)
+		if walkable != [Vector2i(0, 1)]:
+			all_south_entry = false
+	_chk("AF.01 Pallet's doors are SOLID — a step-on check can never fire",
+			all_solid)
+	# Region-wide this holds for all 193 animated doors, which is why source's
+	# DIR_NORTH restriction is safe to port exactly rather than generalised.
+	_chk("AF.02 and each is reachable from exactly one side, the tile south of it",
+			all_south_entry)
+
+	# --- the gesture that actually opens one ---
+	var door: Vector2i = origin + Vector2i(16, 13)
+	var below: Vector2i = door + Vector2i(0, 1)
+	_stand_at(ow, below)
+	ow._try_step(StepResolver.Dir.NORTH)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AF.03 walking north into a door warps",
+			man.chunk_owning(ow._cell) == "PalletTown_ProfessorOaksLab_Frlg")
+
+	# Back outside for the negative cases.
+	var back := man.warp_at(ow._cell)
+	if back != null:
+		await ow._do_warp(back)
+
+	# The direction rule needs a SYNTHETIC position to test at all, and that is
+	# itself the finding: standing anywhere that aims a non-north direction at a
+	# door is impossible in real data, because every door's other three
+	# neighbours are solid. Walking south from below the door would also fail to
+	# warp, but only because it walks AWAY — proving nothing. So the player is
+	# placed on the door's northern (solid) neighbour, aiming SOUTH at a real
+	# door, which is the one case that distinguishes the rule from "any solid
+	# warp opens". Verified to fail when the restriction is removed.
+	_stand_at(ow, door + Vector2i(0, -1))
+	ow._try_door_warp(StepResolver.Dir.SOUTH)
+	await get_tree().create_timer(FADE_WAIT).timeout
+	_chk("AF.04 aiming a non-north direction AT a door does not open it",
+			man.chunk_owning(ow._cell) != "PalletTown_ProfessorOaksLab_Frlg")
+
+	# A wall is still a wall: the door path must not turn every blocked step
+	# into a warp attempt that happens to find nothing.
+	var wall := _solid_non_warp_north_of(man, origin)
+	if wall != Vector2i(-9999, -9999):
+		_stand_at(ow, wall)
+		ow._try_step(StepResolver.Dir.NORTH)
+		await get_tree().create_timer(FADE_WAIT).timeout
+		_chk("AF.05 a solid tile with no warp still simply blocks",
+				ow._cell == wall
+				and man.chunk_owning(ow._cell) == "PalletTown_Frlg")
+	else:
+		_chk("AF.05 a solid tile with no warp still simply blocks (none found)",
+				false)
+
+	ow.queue_free()
+
+
+## Long enough to outlast a fade if one starts, so a negative case cannot pass
+## merely by being read before the warp it should not have taken.
+const FADE_WAIT := 1.2
+
+
+func _stand_at(ow: Node2D, gcell: Vector2i) -> void:
+	ow._cell = gcell
+	ow._elev = ow.manager.elevation_at(gcell)
+	ow._reparent_for_elevation()
+	ow._player.position = ow.manager.local_pixel_of(gcell)
+
+
+## A walkable cell whose northern neighbour is solid and carries no warp.
+func _solid_non_warp_north_of(man: MapManager, origin: Vector2i) -> Vector2i:
+	var d := man.data_at(origin)
+	if d == null:
+		return Vector2i(-9999, -9999)
+	for y in range(1, d.height):
+		for x in range(d.width):
+			var here := origin + Vector2i(x, y)
+			var north := here + Vector2i(0, -1)
+			if man.collision_at(here) == 0 and man.collision_at(north) != 0 \
+					and man.warp_at(north) == null:
+				return here
+	return Vector2i(-9999, -9999)

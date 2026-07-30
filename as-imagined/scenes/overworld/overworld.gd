@@ -202,6 +202,8 @@ func _try_step(dir: int) -> void:
 	var r := resolve_step(_cell, dir, _elev)
 	var outcome: int = r["outcome"]
 	if outcome != StepResolver.Outcome.NONE and outcome != StepResolver.Outcome.LEDGE_JUMP:
+		# A blocked step is not necessarily a bump — it is how you open a door.
+		_try_door_warp(dir)
 		return
 	var was_in := manager.chunk_owning(_cell)
 	_cell = r["to"]
@@ -235,6 +237,46 @@ func _try_step(dir: int) -> void:
 		if w != null:
 			_do_warp(w)
 	)
+
+
+## A door is WALKED INTO, never stepped onto — a second warp geometry entirely.
+##
+## [M27C C5-3] This was missed on the first cut, which wired only the step-on
+## path and left every building in Kanto sealed. Source has two:
+##
+##   TryStartWarpEventScript  the player's OWN tile, after `tookStep`
+##   TryDoorWarp              the tile IN FRONT, on a held direction
+##
+## The distinction is not stylistic, it is forced by the map data. MEASURED
+## across all 421 maps: of 1294 warps, 1015 sit on walkable tiles and 279 on
+## SOLID ones — 193 of those being MB_ANIMATED_DOOR. A door tile cannot be
+## stood on, so a step-on check can never fire for one.
+##
+## The NORTH restriction is source's (`TryDoorWarp` returns immediately for any
+## other direction) and is safe to port exactly rather than generalise: of the
+## 193 doors, ALL 193 have exactly one walkable neighbour and it is always the
+## tile to the south. Zero have none, zero have more than one. If M27M ever
+## authors a side-entry door this is the line to revisit — it is a real rule
+## about real data, not an assumption.
+##
+## Keyed on COLLISION rather than the door behaviour, consistent with C5's own
+## decoupling: which geometry is even POSSIBLE is decided by whether the tile
+## can be stood on, so a hand-placed warp on a wall becomes a door and one on a
+## floor becomes a step-on warp, with nothing to remember to set. Disclosed
+## divergence: this makes 5 solid non-door warps (4 MB_CAVE, 1 MB_OCEAN_WATER)
+## live where source fires them from nothing. None is in the corridor, and
+## presence-decides is the same call `triggers` already made.
+func _try_door_warp(dir: int) -> void:
+	if _warping or dir != StepResolver.Dir.NORTH:
+		return
+	var target: Vector2i = _cell + StepResolver.STEP[dir]
+	# Only a tile that CANNOT be entered — anything walkable is the step-on
+	# path's business, and firing here as well would double-trigger it.
+	if manager.collision_at(target) == 0:
+		return
+	var w := manager.warp_at(target)
+	if w != null:
+		_do_warp(w)
 
 
 ## A full-screen black rect on its own CanvasLayer, so it covers the world
