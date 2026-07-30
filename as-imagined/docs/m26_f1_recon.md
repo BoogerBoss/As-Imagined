@@ -1207,6 +1207,72 @@ harness triggered at frame 672, exactly on the animation.
 (3), Volt Tackle (3), Dragon Dance (3), Extreme Speed (6) — the last being by
 some way the most expensive single move left in the tier.
 
+### Essentials pack move animations — reviewed 2026-07-30, recorded as a FALLBACK
+
+Reviewed at Rob's request. Findings only; nothing built, nothing adopted.
+Every figure below is measured from the vendored pack
+(`assets/Essentials_v19.1`), not estimated.
+
+**Structure.** Three Ruby-Marshal classes in `Data/PkmnAnimations.rxdata`
+(~1 MB):
+
+* `PBAnimations` — the container, an `@array` of **311** animations.
+* `PBAnimation` — **subclasses Array**, so each animation IS its list of
+  frames, with `@name`, `@graphic` (which sheet), `@position`, `@scope`
+  (single/both targets), `@hue` and `@timing` hung off it as ivars.
+* `PBAnimTiming` — a timed event: `@frame`, `@timingType`, `@name` (the SE
+  file), `@volume`, `@pitch`, `@flashScope`/`@flashColor`/`@flashDuration`,
+  `@colorRed/Green/Blue/Alpha`, `@opacity`, `@bgX`/`@bgY`, `@duration`.
+
+So the model is a **fixed keyframe cel timeline** — each frame lists cells
+(sheet region, position, zoom, angle, opacity) — plus a **separate timing
+track** for sound, flashes and background events keyed to frame numbers.
+Authored in RMXP's visual animation editor, with `animmaker.exe` (documented
+in `animmaker.txt`, XML-driven) for importing sprite sheets.
+
+`Data/move2anim.dat` is the move mapping: **212 of 674 moves** have a bespoke
+animation (31%), plus 18 in a second array.
+
+**Assets**: 97 animation sheets (`Graphics/Animations`), 6 full-screen
+overlays plus 52 ball sprites (`Graphics/Battle animations`), and **137
+animation SFX as real ogg/mp3/wav** (`Audio/SE/Anim`) — some named per-move
+(`Comet Punch.mp3`, `Flail.mp3`), most by effect family (`Fire1-6`,
+`Explosion1-7`, `Blow1-7`, `Earth1-5`).
+
+**Against what M36 ports:**
+
+| | pokeemerald (M36) | Essentials |
+|---|---|---|
+| Model | 54-opcode bytecode VM, procedural per-frame callbacks | keyframe timeline + timing track |
+| Volume | 32,318 commands, 941 scripts, 587 behaviors | 311 animations |
+| Move coverage | **401/932 playable (43%)** | **212/674 shipped (31%)** |
+| Positioning | computed live from battler coords, per-side mirroring | cells in animation space, anchored by `@position`/`@scope` |
+| Sound | SE id + 3-value pan, MIDI-only | real ogg/mp3/wav with volume + pitch |
+| Editing | code | visual editor |
+
+**RECORDED AS A FALLBACK, NOT A DIRECTION.** Adopting it wholesale would be a
+COVERAGE DOWNGRADE — M36 already plays 401 moves to Essentials' 212 — at lower
+fidelity to the reference this project set as ground truth, and in a different
+art style from the GBA sprites used everywhere else. That is the reason it is
+filed here rather than acted on.
+
+Where it IS a real fallback:
+
+1. **M36-S's open asset question.** That sub-tier's blocker was recorded as
+   "the reference's SFX are MIDI-only, so there is nothing to flat-copy, and
+   sourcing is a decision for Rob." The 137 real playable files are a concrete
+   answer to exactly that, and they arrive already organised by effect family,
+   which is the shape a per-move SE mapping wants.
+2. **M36-H's escape hatch, for the expensive tail.** Essentials' model —
+   keyframe timeline plus timing track — is structurally what Godot's
+   `AnimationPlayer` does natively, so it is much closer to a hand-authored
+   Godot animation than the bytecode VM is. Where a move costs a lot to port
+   (Extreme Speed needs 6 behaviors), an Essentials animation is a ready
+   reference or raw material rather than a from-scratch authoring job.
+
+Neither use requires adopting the pack's animation system; both are asset
+sourcing plus, at most, reading its timing data as a reference.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.
