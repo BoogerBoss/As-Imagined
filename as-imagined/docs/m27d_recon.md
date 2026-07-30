@@ -281,3 +281,55 @@ decorations), `pokemon_old` (63).
 The generated `graphics_id -> (sheet, frame size, palette)` table should cover
 all 387 ids for the same reason, so a map baked later never hits an id the
 table does not know.
+
+
+---
+
+## 7. D1 — what else to lump in (Rob, 2026-07-30)
+
+Surveyed the reference for flat, unpulled, plausibly-wanted art. Three groups.
+**Total addition over the 449 object-event sprites: ~55 KB.**
+
+### A. Not optional — the slice needs these
+
+- **`field_effects/pics/emotion_exclamation.png`.** The "!" a trainer shows on
+  spotting you. **D4 has no visual for its own trigger without it.**
+- **`shadow_small/medium/large.png`.** `.shadowSize` is real per-sprite data on
+  **all 393 graphics-info entries** (324 `SHADOW_SIZE_M`, 67 `S`, 1 `L`, 1
+  `NONE`), so a shadow is part of the sprite record rather than decoration.
+- **The player's overworld sprite** — currently a red `ColorRect`. Comes free:
+  `people/brendan`, `may`, `leaf`, `red` are already inside D1's 449.
+
+### B. Free, and wanted by blocks already on the roadmap
+
+**All 66 field effects — 37 KB.** Beyond the three above:
+`tall_grass` / `jump_tall_grass` / `long_grass` (rustle when walking through,
+M27H), `cut_grass` / `surf_blob` / `rock_climb_*` / `ash` (M27E field moves),
+**`shiny_sparkle`** (M27's own flagged shiny gap), `pokeball_glow`, `sparkle`,
+`ripple`, `splash`, and the footprint/track sets.
+
+Taking the lot avoids picking winners for blocks that are not scoped yet, at a
+cost that rounds to nothing.
+
+### C. Closes a known open gap — 25 trainer front pics, 18 KB
+
+Source has 180, the project has 155. The missing 25 are `[M26B3-1]`'s
+"no consumer in either roster" set (`champion_steven_frlg`, `collector_frlg`,
+`expert_f_frlg`, …). Pulling them retires the dangling-stem counter for good
+rather than leaving it armed for the next roster change.
+
+### Nothing to do for battle-side Pokemon art
+
+Already complete: **387 front, 387 back, 386 icons**, 162 items, 155 trainer
+portraits, 11 back pics — 19 MB in `assets/sprites/`. *(Checked twice: a first
+pass looked for `pokemon/icons` and reported a false gap. The directory is
+`pokemon/icon`, and the 386 icons are there.)*
+
+### ⚠️ One gotcha that applies to every file above
+
+**None of them carry a tRNS chunk**, and palette index 0 is the transparency
+key. A plain `shutil.copyfile` renders each one inside an opaque box — exactly
+what happened to the ball sheets in `[M26B3-6a]`. The pull must tag index 0
+transparent, as `gen_ball_sprites.py` and `gen_hit_effect_sprites.py` already
+do. Index 0 is NOT a constant colour across these files, so tag the index
+rather than colour-keying a value.
