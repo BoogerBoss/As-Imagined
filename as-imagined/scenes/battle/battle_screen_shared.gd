@@ -1599,7 +1599,15 @@ func _ready() -> void:
 	# [M36B] Built once per battle. The behavior registry is deliberately
 	# EMPTY here: M36C is what fills it, and until then every move's
 	# pre-flight check fails and falls back, which is the contract.
-	if AnimData.ensure_loaded():
+	# Kill switch: run the game with M36_DISABLE_ANIM=1 in the environment to
+	# take the whole ported animation engine out of the picture, so every move
+	# uses the pre-M36 hit-effect. Exists so a visual defect can be bisected
+	# against this milestone in one run rather than by reverting commits --
+	# added after a report that the opposing side stopped appearing, which
+	# turned out not to be reproducible in the headless harness.
+	if OS.get_environment("M36_DISABLE_ANIM") == "1":
+		push_warning("M36 animation engine disabled via M36_DISABLE_ANIM=1")
+	elif AnimData.ensure_loaded():
 		# [M36C] The core behavior batch. Every move whose script needs only
 		# these now plays its real animation; everything else still falls back.
 		AnimBehaviors.register_all(_anim_behaviors)
