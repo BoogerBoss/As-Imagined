@@ -641,3 +641,59 @@ func strata_at(gcell: Vector2i) -> Dictionary:
 		2: root.get_node_or_null("Entities_P2"),
 		1: root.get_node_or_null("Entities_P1"),
 	}
+
+
+## The triggering warp standing on a global cell, or null.
+##
+## [M27C C5] Scoped to the OWNING chunk rather than every live one, because a
+## warp only exists in its own map's coordinate space and the seam between two
+## chunks is exactly where a whole-registry scan would answer for the wrong one.
+##
+## `triggers == false` reads as absent, not as a disabled warp: those cells are
+## the flanking tiles of multi-tile doorways, where exactly one tile fires.
+## Treating them as present would silently widen every doorway in the region.
+func warp_at(gcell: Vector2i) -> Warp:
+	var map_name := chunk_owning(gcell)
+	if map_name == "":
+		return null
+	var root: Node2D = _chunks[map_name]["root"]
+	if root == null or not is_instance_valid(root):
+		return null
+	var local := gcell - Vector2i(_chunks[map_name]["origin"])
+	for n in root.find_children("*", "Warp", true, false):
+		var w := n as Warp
+		if w != null and w.triggers and w.cell == local:
+			return w
+	return null
+
+
+## Where arriving at `warp_id` on `map_name` puts the player, in GLOBAL cells.
+##
+## [M27C C5] Source lands the player ON the destination warp's own tile —
+## `SetPlayerCoordsFromWarp` (overworld.c:685-687) assigns `warps[warpId].x/y`
+## directly, with no adjacent-tile or facing offset. So entering Oak's Lab
+## leaves you standing on the lab's own door.
+##
+## That does not re-trigger, and needs no guard, because warps fire from
+## `TryStartStepBasedScript` under `input->tookStep` — arriving is not a step.
+## The guard is free ONLY while the check lives in the step path; a per-frame
+## "am I on a warp" poll would bounce the player between two doors forever.
+##
+## The chunk must already be loaded — resolution reads the destination's own
+## live Warp nodes rather than a copy in MapData, so there is one source of
+## truth for a warp's position and no second place to keep in step.
+##
+## Returns {} rather than a sentinel cell when the chunk is absent or carries
+## no such index, so an unresolvable warp fails loudly instead of teleporting
+## the player somewhere arbitrary.
+func warp_arrival(map_name: String, warp_id: int) -> Dictionary:
+	if warp_id < 0 or not _chunks.has(map_name):
+		return {}
+	var root: Node2D = _chunks[map_name]["root"]
+	if root == null or not is_instance_valid(root):
+		return {}
+	for n in root.find_children("*", "Warp", true, false):
+		var w := n as Warp
+		if w != null and w.warp_id == warp_id:
+			return {"cell": w.cell + Vector2i(_chunks[map_name]["origin"]), "warp": w}
+	return {}

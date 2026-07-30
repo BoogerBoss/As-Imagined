@@ -493,9 +493,18 @@ def extract_events(mp):
                 ev["sight_range"] = 0
         out.append(ev)
 
-    for e in mp.get("warp_events", []) or []:
+    # [M27C C5] `warp_id` is this warp's own index in the map's warp array, and
+    # it is emitted rather than re-derived downstream because THIS is the only
+    # place the ordering is authoritative. A `dest_warp_id` addresses a warp by
+    # position, so every consumer needs that same ordering; leaving it implicit
+    # means the baker preserving node order is load-bearing and unasserted, and
+    # a reorder would send every arrival in Kanto to the wrong tile while
+    # looking like a content bug. Recording the index turns an assumption into
+    # data.
+    for i, e in enumerate(mp.get("warp_events", []) or []):
         out.append({"kind": "warp", "x": int(e.get("x", 0)), "y": int(e.get("y", 0)),
                     "elevation": int(e.get("elevation", 3)),
+                    "warp_id": i,
                     "dest_map": str(e.get("dest_map", "")),
                     "dest_warp_id": str(e.get("dest_warp_id", ""))})
 

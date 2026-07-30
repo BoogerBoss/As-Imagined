@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 356
+const EXPECTED_TOTAL := 371
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -96,6 +96,10 @@ const ENTITY_AT_ASSERTIONS := 4
 const STACK_ASSERTIONS := 14
 ## [M27C C1] Section Y reads two real baked artifacts, so it gates like J does.
 const CONNECTION_ASSERTIONS := 13
+
+## [M27C C5-1] Section AD needs the baked corridor: resolution reads real Warp
+## nodes, because the alternative is a second copy of every warp position.
+const WARP_ASSERTIONS := 15
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -173,6 +177,7 @@ func _ready() -> void:
 	_test_border_skirt()
 	_test_neighbour_placement()
 	_test_connections_and_border()
+	_test_warp_resolution()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -2239,3 +2244,135 @@ func _warns_about(node: Node, needle: String) -> bool:
 		if str(w).findn(needle) != -1:
 			return true
 	return false
+
+
+## Section AD — [M27C C5-1] warp resolution.
+##
+## A `dest_warp_id` addresses a warp BY POSITION, so everything here is really
+## one question: do all the consumers agree on the ordering? They did before
+## this section only because the importer appends warps contiguously and the
+## baker emits in array order — true, load-bearing, and asserted nowhere. The
+## failure mode is the bad kind: every arrival in the region lands on the wrong
+## tile, and it reads as a content bug rather than a pipeline one.
+##
+## So AD.01/AD.02 check the index is real and dense across the whole baked
+## corridor rather than spot-checking one map, and AD.13 walks a real reciprocal
+## round trip instead of trusting either direction alone.
+func _test_warp_resolution() -> void:
+	if not (ResourceLoader.exists("res://scenes/maps/PalletTown_Frlg.tscn")
+			and ResourceLoader.exists(
+				"res://scenes/maps/PalletTown_ProfessorOaksLab_Frlg.tscn")):
+		_gated += WARP_ASSERTIONS
+		return
+
+	# --- the ordering invariant, across every baked map rather than one ---
+	var all_indexed := true
+	var all_dense := true
+	var checked := 0
+	for map_name in _baked_map_names():
+		var packed := load("res://scenes/maps/%s.tscn" % map_name) as PackedScene
+		if packed == null:
+			continue
+		var root: Node2D = packed.instantiate() as Node2D
+		var ids: Array[int] = []
+		for n in root.find_children("*", "Warp", true, false):
+			var w := n as Warp
+			if w == null:
+				continue
+			checked += 1
+			if w.warp_id < 0:
+				all_indexed = false
+			ids.append(w.warp_id)
+		ids.sort()
+		var want: Array[int] = []
+		for i in range(ids.size()):
+			want.append(i)
+		if ids != want:
+			all_dense = false
+		root.free()
+	_chk("AD.01 every warp on every baked map carries a real index (%d warps)"
+			% checked, checked > 0 and all_indexed)
+	# Dense 0..n-1 is the actual contract a positional id relies on: a gap or a
+	# duplicate means some dest_warp_id resolves to nothing or to two places.
+	_chk("AD.02 and each map's indices are exactly 0..n-1, no gaps or repeats",
+			all_dense)
+
+	# --- real anchors, not a synthetic fixture ---
+	var mm := MapManager.new()
+	# Deliberately NOT the origin: with (0,0) a missing origin term and a
+	# correct one are indistinguishable, which is the exact shape of the C4
+	# teleport bug.
+	var at := Vector2i(50, 70)
+	mm.load_chunk("PalletTown_Frlg", at)
+
+	var pallet_door := mm.warp_arrival("PalletTown_Frlg", 2)
+	_chk("AD.03 Pallet's warp 2 is the lab door at local (16, 13)",
+			not pallet_door.is_empty()
+			and (pallet_door["warp"] as Warp).cell == Vector2i(16, 13))
+	_chk("AD.04 and it leads to Oak's Lab",
+			not pallet_door.is_empty()
+			and MapConstants.map_name_for(
+					(pallet_door["warp"] as Warp).dest_map)
+				== "PalletTown_ProfessorOaksLab_Frlg")
+	_chk("AD.05 arrival is reported in GLOBAL cells",
+			not pallet_door.is_empty()
+			and Vector2i(pallet_door["cell"]) == at + Vector2i(16, 13))
+	_chk("AD.06 which is NOT the local cell — the origin term is really applied",
+			not pallet_door.is_empty()
+			and Vector2i(pallet_door["cell"]) != Vector2i(16, 13))
+
+	# --- failing loudly rather than landing somewhere arbitrary ---
+	_chk("AD.07 an unloaded map resolves to nothing",
+			mm.warp_arrival("Route3_Frlg", 0).is_empty())
+	_chk("AD.08 an out-of-range index resolves to nothing",
+			mm.warp_arrival("PalletTown_Frlg", 99).is_empty())
+	# -1 is the unaddressable default. Falling back to "the first warp" here is
+	# the tempting bug: it always resolves, and always to the wrong tile.
+	_chk("AD.09 and -1 does NOT fall back to the first warp",
+			mm.warp_arrival("PalletTown_Frlg", -1).is_empty())
+
+	# --- the outgoing side ---
+	var door_cell := at + Vector2i(16, 13)
+	_chk("AD.10 warp_at finds the door standing on its global cell",
+			mm.warp_at(door_cell) != null)
+	_chk("AD.11 and finds nothing on an ordinary walkable cell",
+			mm.warp_at(at + Vector2i(10, 10)) == null)
+	_chk("AD.12 nor anywhere outside every loaded chunk",
+			mm.warp_at(Vector2i(-9999, -9999)) == null)
+
+	# A flanking doorway tile is not a disabled warp — it is not a warp. Reading
+	# it as present would widen every multi-tile door in Kanto by two cells.
+	var door := mm.warp_at(door_cell)
+	door.triggers = false
+	_chk("AD.13 a non-triggering warp reads as absent, not as a blocked warp",
+			mm.warp_at(door_cell) == null)
+	door.triggers = true
+
+	# --- the round trip, walked rather than assumed in one direction ---
+	mm.load_chunk("PalletTown_ProfessorOaksLab_Frlg", Vector2i(300, 400))
+	var into_lab := mm.warp_arrival("PalletTown_ProfessorOaksLab_Frlg",
+			(pallet_door["warp"] as Warp).dest_warp_id)
+	_chk("AD.14 stepping into Oak's Lab lands on the lab's own door tile",
+			not into_lab.is_empty()
+			and (into_lab["warp"] as Warp).cell == Vector2i(6, 12))
+	var back := mm.warp_arrival("PalletTown_Frlg",
+			(into_lab["warp"] as Warp).dest_warp_id)
+	_chk("AD.15 and walking back out returns to the cell we left",
+			not back.is_empty()
+			and Vector2i(back["cell"]) == door_cell)
+
+	mm.free()
+
+
+## The baked corridor, read from disk rather than a hardcoded list, so a map
+## added to the bake is covered without editing this file.
+func _baked_map_names() -> Array[String]:
+	var out: Array[String] = []
+	var d := DirAccess.open("res://scenes/maps")
+	if d == null:
+		return out
+	for f in d.get_files():
+		if f.ends_with(".tscn"):
+			out.append(f.substr(0, f.length() - 5))
+	out.sort()
+	return out

@@ -8,6 +8,21 @@ extends OverworldEntity
 ## map's own warp index — resolving that pair into a live scene is M27C's job,
 ## alongside stitching and connections.
 
+## This warp's OWN index in its map's warp list — what other maps address.
+##
+## [M27C C5] A `dest_warp_id` is positional, so arriving anywhere correct
+## depends on every consumer agreeing on the ordering. Storing the index makes
+## that agreement data instead of an assumption: without it the baker emitting
+## nodes in array order is load-bearing and unasserted, and any reorder sends
+## every arrival in the region to the wrong tile while looking like a content
+## bug rather than a pipeline one.
+##
+## DEFAULTS -1, meaning "not addressable as a destination". A hand-placed warp
+## is a valid exit immediately but is not something another map can name until
+## it is given a real index — so a lookup that finds nothing fails loudly
+## rather than landing the player on whichever warp happened to be first.
+@export var warp_id: int = -1
+
 ## Source's own MAP_* constant (e.g. MAP_VIRIDIAN_CITY_POKEMON_CENTER_1F).
 @export var dest_map: String = ""
 

@@ -569,6 +569,10 @@ func _build_event_node(e: Dictionary) -> OverworldEntity:
 			var w := Warp.new()
 			w.dest_map = str(e.get("dest_map", ""))
 			w.dest_warp_id = int(str(e.get("dest_warp_id", "0")))
+			# -1 rather than a positional fallback: a warp with no recorded index
+			# is not addressable, and guessing one would land arrivals on the
+			# wrong tile silently. See Warp.warp_id.
+			w.warp_id = int(e.get("warp_id", -1))
 			# Absent means true: a hand-added warp, or data predating the flag,
 			# should fire rather than be silently inert.
 			w.triggers = bool(e.get("triggers", true))
