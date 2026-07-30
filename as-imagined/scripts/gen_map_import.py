@@ -686,6 +686,52 @@ def get_tileset(prim, sec):
     return _TS_CACHE[key]
 
 
+
+# map.json spells connection directions as screen words; the reference's own
+# `enum Connection` (include/constants/global.h) is compass-based. These
+# ordinals match that enum exactly, so MapData.Connection can be read straight
+# against source. NOTE the crossover: "up" is NORTH, "down" is SOUTH.
+#
+# Measured across all 939 maps: left 68 / right 68 / up 58 / down 58, and
+# dive 7 / emerge 7. The dive/emerge pair is real but appears nowhere in the
+# Kanto corridor, and per §1 it warps rather than stitching geometry — carried
+# through the data so a later tier need not re-derive it, consumed by nothing.
+CONNECTION_DIRS = {"down": 1, "up": 2, "left": 3, "right": 4, "dive": 5, "emerge": 6}
+
+# 441 of 785 layouts omit border_width/border_height ENTIRELY, and every one of
+# them ships a 4-entry border.bin — so the reference's own default is 2x2.
+# Seven layouts declare 3x2, which is why this is a default rather than a
+# constant: hardcoding 2x2 would silently mis-shape those seven.
+DEFAULT_BORDER_W, DEFAULT_BORDER_H = 2, 2
+
+
+def extract_connections(mp):
+    """map.json's connection list -> normalised {direction, map, offset}.
+
+    `map` stays the raw MAP_* constant rather than a resolved directory, and
+    that is deliberate: it matches what a Warp already stores in `dest_map`, so
+    both kinds of link resolve through the one MapConstants table. Keeping the
+    constant also preserves a distinction resolving here would destroy — a
+    destination source does not define at all (a bug) reads differently from
+    one that is merely unbaked (the expected M27C gap).
+
+    Offset is NOT decorative: 104 of 266 connections across the reference carry
+    a nonzero one. Pallet Town's two are both 0, which makes the corridor a
+    misleading sample to generalise from.
+    """
+    out = []
+    for c in (mp.get("connections") or []):
+        d = str(c.get("direction", ""))
+        assert d in CONNECTION_DIRS, "unknown connection direction %r" % d
+        assert c.get("map"), "connection with no map constant: %r" % c
+        out.append({
+            "direction": CONNECTION_DIRS[d],
+            "map": str(c["map"]),
+            "offset": int(c.get("offset", 0)),
+        })
+    return out
+
+
 def convert(map_dir, dirmap, layouts, render=False, quiet=False):
     """
     Convert one map. Always validates and writes per-cell JSON; only builds
@@ -716,6 +762,22 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
     assert not bad_m, "%s: %d metatile ids past the tileset (max %d)" % (
         map_dir, len(bad_m), ts.count - 1)
 
+    # [M27C C1] The border block: what gets painted outside the map's own
+    # bounds on any edge with no loadable neighbour. Same u16 block format as
+    # map.bin, so it reuses load_u16 and the same metatile-id mask; only the
+    # id is kept, because a skirt cell's impassability is a runtime rule
+    # (§ "Border blocks via programmatic skirt") rather than something read
+    # out of the collision bits here.
+    bw = lay.get("border_width", DEFAULT_BORDER_W)
+    bh = lay.get("border_height", DEFAULT_BORDER_H)
+    braw = load_u16(os.path.join(REF, lay["border_filepath"]))
+    assert len(braw) == bw * bh, "%s: border.bin %d cells, layout says %dx%d" % (
+        map_dir, len(braw), bw, bh)
+    border = [v & MAPGRID_METATILE_ID_MASK for v in braw]
+    bad_b = [m for m in border if m >= ts.count]
+    assert not bad_b, "%s: %d border metatile ids past the tileset (max %d)" % (
+        map_dir, len(bad_b), ts.count - 1)
+
     slug = mp["name"]
     prim = dirmap[lay["primary_tileset"]]
     sec = dirmap[lay["secondary_tileset"]]
@@ -741,6 +803,10 @@ def convert(map_dir, dirmap, layouts, render=False, quiet=False):
         # hand-painted cells start un-decided.
         "attr_explicit": [3] * len(mids),
         "events": extract_events(mp),
+        # [M27C C1] Stitching metadata. Emitted for every map, consumed by
+        # nothing yet — C2/C4 build the loader that reads it.
+        "connections": extract_connections(mp),
+        "border": border, "border_width": bw, "border_height": bh,
     }
     os.makedirs(OUT, exist_ok=True)
     os.makedirs(ATLAS_OUT, exist_ok=True)

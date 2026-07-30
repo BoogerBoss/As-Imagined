@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 294
+const EXPECTED_TOTAL := 307
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -94,6 +94,8 @@ const ENTITY_AT_ASSERTIONS := 4
 ## because splitting one section across two counters is worse than a slightly
 ## conservative number. Section W is fully synthetic and does NOT gate.
 const STACK_ASSERTIONS := 14
+## [M27C C1] Section Y reads two real baked artifacts, so it gates like J does.
+const CONNECTION_ASSERTIONS := 13
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -159,6 +161,7 @@ func _ready() -> void:
 	_test_trainer_sight()
 	_test_entity_at()
 	_test_stacks_and_counts()
+	_test_connections_and_border()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -1490,6 +1493,88 @@ func _test_gesture_lifecycle() -> void:
 	DirAccess.remove_absolute(
 			ProjectSettings.globalize_path("user://_x_authored_test.tres"))
 	ov.free()
+
+
+## Section Y — [M27C C1] connections and the border block.
+##
+## Both fields are new to the format, and this section exists mostly to catch
+## the ONE failure this project has already had once: Change 1 declared
+## provenance, wrote it to JSON, and never read it back, so it round-tripped as
+## an empty array and the guard that depended on it could never fire. Nothing
+## looked wrong. So the assertions that matter here are the ones reading a real
+## baked `.tres`, not a synthetic fixture — a field is only real if it survives
+## the whole importer -> JSON -> bake -> resource chain.
+##
+## Fixtures are chosen for what they discriminate, not convenience: Pallet Town
+## is the only corridor map whose offsets are both 0 (so generalising from it
+## would hide the offset entirely), and Viridian Forest is simultaneously the
+## one map with NO connections and one of the seven 3x2 borders in the whole
+## reference (so it catches both a hardcoded 2x2 and an assumption that every
+## map stitches).
+func _test_connections_and_border() -> void:
+	const PALLET := "res://scenes/maps/PalletTown_Frlg_data.tres"
+	const FOREST := "res://scenes/maps/ViridianForest_Frlg_data.tres"
+	const ROUTE3 := "res://scenes/maps/Route3_Frlg_data.tres"
+	# All THREE, not just the first two: Y.10/Y.11 load Route 3 partway through,
+	# so gating on a subset would let a partial checkout crash on a null rather
+	# than gate cleanly — and the count would then never balance to say so.
+	if not (ResourceLoader.exists(PALLET) and ResourceLoader.exists(FOREST)
+			and ResourceLoader.exists(ROUTE3)):
+		_gated += CONNECTION_ASSERTIONS
+		return
+	var p: MapData = load(PALLET) as MapData
+	var f: MapData = load(FOREST) as MapData
+
+	# --- the border block survived the chain ---
+	_chk("Y.01 border round-trips at its declared size",
+			p.border.size() == p.border_width * p.border_height)
+	_chk("Y.02 and is not empty — the write-only failure mode",
+			p.border.size() == 4 and p.border_width == 2)
+	_chk("Y.03 a 3x2 border is read as 3x2, not defaulted to 2x2",
+			f.border_width == 3 and f.border_height == 2
+			and f.border.size() == 6)
+
+	# --- connections survived, with their real values ---
+	_chk("Y.04 Pallet Town carries both its connections", p.connections.size() == 2)
+	var by_dir := {}
+	for c in p.connections:
+		by_dir[int(c["direction"])] = c
+	# map.json says "up" for the map to the NORTH; getting this crossover
+	# backwards would stitch the region inside out and still look plausible.
+	_chk("Y.05 \"up\" resolved to NORTH, not SOUTH",
+			by_dir.has(MapData.Connection.NORTH)
+			and str(by_dir[MapData.Connection.NORTH]["map"]) == "MAP_ROUTE1")
+	_chk("Y.06 \"down\" resolved to SOUTH",
+			by_dir.has(MapData.Connection.SOUTH)
+			and str(by_dir[MapData.Connection.SOUTH]["map"]) == "MAP_ROUTE21_NORTH")
+	_chk("Y.07 the destination is a MAP_* constant that resolves",
+			MapConstants.map_name_for("MAP_ROUTE1") == "Route1_Frlg")
+
+	# JSON hands back every number as a float and a typed Array[Dictionary]
+	# rejects a raw assignment silently — both this project's own documented
+	# gotchas, and both invisible unless something checks the actual type.
+	_chk("Y.08 offset is a real int, not a JSON float",
+			typeof(p.connections[0]["offset"]) == TYPE_INT)
+	_chk("Y.09 direction is a real int too",
+			typeof(p.connections[0]["direction"]) == TYPE_INT)
+
+	# A nonzero offset is the common case (104 of 266 in the reference, 12 of
+	# 15 in this corridor); Pallet Town's own two are the exception.
+	var route3: MapData = load(ROUTE3) as MapData
+	var offs: Array[int] = []
+	for c in route3.connections:
+		offs.append(int(c["offset"]))
+	_chk("Y.10 a large nonzero offset survives intact", offs.has(60))
+	_chk("Y.11 and a negative one keeps its sign", offs.has(-10))
+
+	# --- loadable_connections() is the question a chunk loader actually asks ---
+	_chk("Y.12 a map with no connections has none to load",
+			f.connections.is_empty() and f.loadable_connections().is_empty())
+	# Pallet Town's south neighbour (Route 21 North) is real in source but not
+	# baked — exactly the dangling-stem case the border skirt has to cover.
+	_chk("Y.13 an unbaked destination is excluded from the loadable set",
+			p.loadable_connections().size() == 1
+			and str(p.loadable_connections()[0]["map"]) == "MAP_ROUTE1")
 
 
 ## Section W — the baker's own re-bake guard.

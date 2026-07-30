@@ -68,6 +68,59 @@ const ATTR_ALL_EXPLICIT := AttrFlag.COLLISION_EXPLICIT | AttrFlag.ELEVATION_EXPL
 @export var attr_explicit: PackedByteArray = PackedByteArray()
 
 
+## [M27C C1] Which maps sit against which edge, and how they line up.
+##
+## Ordinals match the reference's own `enum Connection`
+## (include/constants/global.h) so the two can be read side by side. Note the
+## crossover map.json forces: its "up" is NORTH, its "down" is SOUTH.
+##
+## DIVE/EMERGE are carried because the data has them (7 of each across the
+## reference), but §1 settles that they WARP rather than stitching geometry —
+## a chunk loader must not treat them as adjacency.
+enum Connection { NONE, SOUTH, NORTH, WEST, EAST, DIVE, EMERGE }
+
+## One entry per connected edge: `{direction: int, map: String, offset: int}`.
+##
+## `map` is the raw `MAP_*` constant, matching what `Warp.dest_map` already
+## stores, so both kinds of link resolve through the one `MapConstants` table —
+## and so "source does not define this destination" (a bug) stays
+## distinguishable from "defined but not baked yet" (the expected M27C gap).
+##
+## `offset` shifts the neighbour along the shared edge and is genuinely
+## load-bearing: 104 of 266 connections in the reference carry a nonzero one.
+@export var connections: Array[Dictionary] = []
+
+## The block painted outside the map on any edge with NO loadable neighbour,
+## row-major over `border_width` x `border_height`. Metatile ids only — a skirt
+## cell's impassability is a rule the loader applies, not a value read here.
+##
+## Defaults are 2x2 because that is the reference's own: 441 of 785 layouts
+## omit the dimensions entirely and every one of those ships a 4-entry
+## border.bin. Seven declare 3x2, which is why these are fields rather than
+## constants.
+@export var border: PackedInt32Array = PackedInt32Array()
+@export var border_width: int = 2
+@export var border_height: int = 2
+
+
+## The connected edges a chunk loader can actually act on.
+##
+## Excludes DIVE/EMERGE (warps, not adjacency) and anything whose destination
+## does not resolve to a baked scene. Deliberately one place rather than each
+## caller re-deriving it: the corridor has 15 connections of which 3 dangle,
+## so "has a connection" and "has a neighbour to load" are genuinely different
+## questions, and an edge that fails this test is one that needs a border skirt.
+func loadable_connections() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for c in connections:
+		var dir: int = int(c.get("direction", Connection.NONE))
+		if dir == Connection.DIVE or dir == Connection.EMERGE:
+			continue
+		if MapConstants.is_baked(str(c.get("map", ""))):
+			out.append(c)
+	return out
+
+
 ## True if any cell has been hand-authored — the re-import guard.
 func has_authored_cells() -> bool:
 	for p in provenance:
@@ -265,6 +318,31 @@ static func load_from(path: String) -> MapData:
 	m.attr_explicit = _to_bytes(d.get("attr_explicit", []))
 	if m.attr_explicit.size() != m.metatile.size():
 		m._resize_attr_explicit()
+
+	# [M27C C1] Read back EXPLICITLY, and tested for it — this is the exact
+	# shape Change 1 nearly shipped broken, where provenance was declared and
+	# written to JSON but never read here, so it round-tripped as an empty
+	# array and the guard depending on it could never fire. A field that
+	# round-trips halfway is worse than no field, because it looks present.
+	m.border = _to_ints(d.get("border", []))
+	m.border_width = int(d.get("border_width", 2))
+	m.border_height = int(d.get("border_height", 2))
+
+	# JSON gives untyped Dictionaries; assigning the parsed array straight to a
+	# typed Array[Dictionary] export silently fails (this project's own
+	# documented GDScript gotcha), so it is rebuilt entry by entry — and the
+	# numeric fields need int() because JSON.parse_string returns every number
+	# as a float.
+	m.connections = []
+	for raw_c in d.get("connections", []):
+		if typeof(raw_c) != TYPE_DICTIONARY:
+			continue
+		var c: Dictionary = raw_c
+		m.connections.append({
+			"direction": int(c.get("direction", Connection.NONE)),
+			"map": str(c.get("map", "")),
+			"offset": int(c.get("offset", 0)),
+		})
 	return m
 
 
