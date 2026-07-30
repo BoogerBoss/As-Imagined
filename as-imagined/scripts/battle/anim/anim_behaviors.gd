@@ -67,6 +67,18 @@ class MonOffset:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36E3] background-dependent —
+		"AnimTask_CreateSurfWave": _create_surf_wave,
+		"AnimTask_SetPsychicBackground": _set_psychic_background,
+		"AnimTask_FadeScreenToWhite": _fade_screen_to_white,
+		"AnimTask_StartSlidingBg": _start_sliding_bg,
+		"AnimTask_UpdateSlidingBg": _update_sliding_bg,
+		"AnimTask_ShakePlatforms": _shake_platforms,
+		"AnimTask_HazeScrollingFog": _haze_scrolling_fog,
+		"AnimTask_MistBallFog": _haze_scrolling_fog,
+		"AnimTask_LoadSandstormBackground": _load_sandstorm_background,
+		"AnimTask_LoadWindstormBackground": _load_windstorm_background,
+		"AnimTask_MetallicShine": _metallic_shine,
 		# — the three top blockers —
 		"AnimTask_ShakeMon": _shake_mon,
 		"AnimTask_ShakeMon2": _shake_mon2,
@@ -2786,3 +2798,571 @@ static func _swirling_fog(vm: AnimScriptVM, ctx: Dictionary) -> void:
 		node.z_index = 1 if ((int(ph) - 64) & 0xFF) <= 0x7F else -1
 		st["phase"] = fmod(ph + 3.0, _SIN_STEPS)
 		return false)
+
+
+static func _attacker_is_player(vm: AnimScriptVM) -> bool:
+	if vm.stage != null and vm.stage.has_method("attacker_is_player_side"):
+		return bool(vm.stage.attacker_is_player_side())
+	return true
+
+
+static func _attacker_index(vm: AnimScriptVM) -> int:
+	return AnimStage.ANIM_ATTACKER
+
+
+# ─── [M36E3] background-dependent behaviors ───────────────────────────────
+#
+# These are the tasks M36D's own coverage pass identified as gated on the
+# background layer rather than on more sprite work. The layer itself and its
+# six opcodes landed in M36E2; this is the half that drives them.
+
+
+# AnimTask_SetPsychicBackground (battle_anim_effects_3.c:1446, step at :1452).
+#
+# It loads NO background and writes no scroll register -- the whole effect is a
+# palette CYCLE on the background the script's own `fadetobg BG_PSYCHIC`
+# already installed. Every 4th frame it rotates entries 1..11 of the BG palette
+# upward by one, so the ramp appears to flow; period is 11 * 4 = 44 frames.
+#
+# Two things about its bookkeeping are load-bearing. It decrements the visual
+# task count at setup rather than calling DestroyAnimVisualTask, so a following
+# `waitforvisualfinish` does NOT wait for it -- hence counts=false. And it is
+# UNBOUNDED: it runs until the script sets arg 7 to -1 (`UnsetPsychicBg` does
+# `restorebg` / `waitbgfadeout` / `setarg 7, -1`), which is why the stepper
+# watches the register instead of a frame count.
+#
+# 32 sites reach this via `call SetPsychicBackground`, plus 2 direct ones.
+static func _set_psychic_background(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	_palette_cycle_common(vm)
+
+
+# AnimTask_FadeScreenToWhite (battle_anim_effects_3.c:1471). Byte-identical to
+# the above except it rotates gPlttBufferUnfaded too, so the cycle survives a
+# subsequent screen fade. This port has no faded/unfaded split (there is one
+# texture and one fade overlay), so the two collapse to the same behavior --
+# recorded here rather than left looking like a copy-paste.
+static func _fade_screen_to_white(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	_palette_cycle_common(vm)
+
+
+const _PALETTE_CYCLE_PERIOD := 4
+const _PALETTE_CYCLE_FIRST := 1
+const _PALETTE_CYCLE_COUNT := 11
+
+
+static func _palette_cycle_common(vm: AnimScriptVM,
+		count: int = _PALETTE_CYCLE_COUNT,
+		period: int = _PALETTE_CYCLE_PERIOD) -> void:
+	var stage = vm.stage
+	if stage == null or not stage.has_method("set_background_palette_remap"):
+		return
+	var bg_name: String = vm.current_background_name()
+	var pal: PackedColorArray = AnimData.background_palette(bg_name)
+	if pal.size() < _PALETTE_CYCLE_FIRST + count:
+		# No palette for this background (an unpulled or code-referenced one).
+		# The cycle is purely cosmetic, so skip it -- but still register an
+		# uncounted stepper so nothing about the script's own timing changes.
+		var _idle := func() -> bool:
+			return vm.args[AnimScriptVM.ARG_RET] == -1
+		vm.add_stepper(_idle, false)
+		return
+
+	var from_colors := PackedColorArray()
+	for i in range(count):
+		from_colors.append(pal[_PALETTE_CYCLE_FIRST + i])
+
+	var st := {"timer": 0, "step": 0}
+	var _step := func() -> bool:
+		if vm.args[AnimScriptVM.ARG_RET] == -1:
+			if stage.has_method("clear_background_palette_remap"):
+				stage.clear_background_palette_remap()
+			return true
+		st["timer"] = int(st["timer"]) + 1
+		if int(st["timer"]) < period:
+			return false
+		st["timer"] = 0
+		st["step"] = (int(st["step"]) + 1) % count
+		stage.set_background_palette_remap(
+				from_colors, _rotated_palette(from_colors, int(st["step"])))
+		return false
+	vm.add_stepper(_step, false)
+
+
+# Slot j of the rotated palette shows the colour that was `steps` slots below
+# it, wrapping within the 11-entry window: faded[i+1] = faded[i] applied
+# `steps` times, with faded[first] taking the old last colour each pass.
+static func _rotated_palette(base: PackedColorArray,
+		steps: int) -> PackedColorArray:
+	var out := PackedColorArray()
+	var n := base.size()
+	if n <= 0:
+		return out
+	for j in range(n):
+		out.append(base[posmod(j - steps, n)])
+	return out
+
+
+# AnimTask_StartSlidingBg / AnimTask_UpdateSlidingBg
+# (battle_anim_utility_funcs.c:704 / :723).
+#
+# Scrolls whatever background `fadetobg` already installed -- it loads nothing
+# itself. Args, documented in-source at :700-703:
+#   [0] X velocity, 8.8 fixed point (256 = 1 px/frame)
+#   [1] Y velocity, same
+#   [2] mirror flag: negate both when the attacker is on the opponent side
+#   [3] the sentinel value compared against arg 7 to stop (always -1 in the
+#       scripts, paired with a later `setarg 7, -1`)
+#
+# The starter spawns a separate uncounted task and immediately destroys itself,
+# so `waitforvisualfinish` never waits for the scroll -- reproduced by
+# registering the updater as an uncounted stepper and returning at once.
+#
+# The 8.8 accumulator matters: only whole pixels are applied and the fraction
+# is kept, so a velocity below 256 still scrolls, just slower than one pixel a
+# frame. Truncating instead would freeze every slow scroll outright.
+static func _start_sliding_bg(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_sliding_bg_common(vm, ctx)
+
+
+# Reached only if a script creates the updater directly. Same body -- the
+# starter is a thin wrapper upstream too.
+static func _update_sliding_bg(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_sliding_bg_common(vm, ctx)
+
+
+static func _sliding_bg_common(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var stage = vm.stage
+	if stage == null or not stage.has_method("scroll_background_by"):
+		return
+	var vel_x: int = vm.args[0]
+	var vel_y: int = vm.args[1]
+	if vm.args[2] != 0 and not _attacker_is_player(vm):
+		vel_x = -vel_x
+		vel_y = -vel_y
+	var sentinel: int = vm.args[3]
+	var scale: float = _scale(vm)
+	var st := {"ax": 0, "ay": 0}
+
+	var _step := func() -> bool:
+		if vm.args[AnimScriptVM.ARG_RET] == sentinel:
+			stage.set_background_scroll(Vector2.ZERO)
+			return true
+		st["ax"] = int(st["ax"]) + vel_x
+		st["ay"] = int(st["ay"]) + vel_y
+		var step := Vector2(int(st["ax"]) >> 8, int(st["ay"]) >> 8)
+		st["ax"] = int(st["ax"]) & 0xFF
+		st["ay"] = int(st["ay"]) & 0xFF
+		if step != Vector2.ZERO:
+			stage.scroll_background_by(step * scale)
+		return false
+	vm.add_stepper(_step, false)
+
+
+# AnimTask_ShakePlatforms (battle_anim_ground.c:613), entered from
+# AnimTask_HorizontalShake (:568) when arg0 == ANIM_OPPONENT_LEFT (5).
+#
+# The sprite variants of this shake already work; this is the path that shakes
+# the terrain layer instead, and it is the only one of these tasks that neither
+# loads nor scrolls an image -- it just offsets BG3's X.
+#
+# Args: [1] intensity (0 -> gAnimMovePower / 10), [2] duration.
+# Amplitude is intensity + 3. The register updates every SECOND frame, not
+# every frame, alternating sign; after `duration` updates it rings down, 4
+# updates (8 frames) per amplitude step, until the amplitude reaches 0. The
+# captured starting offset is restored EXACTLY -- not zeroed -- because the
+# background may legitimately be mid-scroll when the shake begins.
+static func _shake_platforms(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var stage = vm.stage
+	if stage == null or not stage.has_method("set_background_scroll"):
+		return
+	var intensity: int = vm.args[1]
+	if intensity == 0:
+		intensity = int(vm.move_power / 10.0)
+	var amplitude: int = intensity + 3
+	var max_time: int = maxi(1, vm.args[2])
+	var scale: float = _scale(vm)
+	var initial: Vector2 = stage.background_scroll()
+
+	var st := {"state": 0, "delay": 0, "timer": 0, "amp": amplitude}
+	vm.add_stepper(func() -> bool:
+		st["delay"] = int(st["delay"]) + 1
+		if int(st["delay"]) <= 1:
+			return false
+		st["delay"] = 0
+		var offset: int = int(st["amp"]) if int(st["state"]) > 0 else amplitude
+		var sign_ := 1.0 if (int(st["timer"]) & 1) == 0 else -1.0
+		stage.set_background_scroll(
+				initial + Vector2(offset * sign_ * scale, 0.0))
+		st["timer"] = int(st["timer"]) + 1
+		if int(st["state"]) == 0:
+			if int(st["timer"]) >= max_time:
+				st["timer"] = 0
+				st["amp"] = int(st["amp"]) - 1
+				st["state"] = 1
+			return false
+		if int(st["timer"]) >= 4:
+			st["timer"] = 0
+			st["amp"] = int(st["amp"]) - 1
+			if int(st["amp"]) <= 0:
+				stage.set_background_scroll(initial)
+				return true
+		return false)
+
+
+# AnimTask_HazeScrollingFog (battle_anim_ice.c:1049) and its twin
+# AnimTask_MistBallFog (:1154), which load the same three assets.
+#
+# This is the one asset pairing M36E1 could not resolve: `fog.bin` has no
+# `fog.png` beside it, because the tilemap is paired with the FIELD-WEATHER
+# tiles -- gWeatherFogHorizontalTiles (graphics/weather/fog_horizontal.png)
+# with gFogPalette (graphics/weather/fog.pal), a cross-directory pairing
+# nothing in the backgrounds directory hints at. That is why E1 removed the
+# orphan rather than guessing.
+#
+# Reads no args. Scrolls 1 px/frame left, forever, through a three-phase alpha
+# ramp: 76 frames in (sHazeBlendAmounts, :330, stepped every 4th frame), 81
+# holding, 36 out -- about 194 frames total. Blend is BG-layer only.
+static func _haze_scrolling_fog(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var stage = vm.stage
+	if stage == null or not stage.has_method("scroll_background_by"):
+		return
+	var scale: float = _scale(vm)
+	var had_bg: bool = stage.has_method("set_background") \
+			and AnimData.has_background("FOG")
+	if had_bg:
+		stage.set_background("FOG")
+		vm.notify_background_changed()
+
+	var st := {"phase": 0, "timer": 0, "idx": 0, "blend": 0}
+	vm.add_stepper(func() -> bool:
+		stage.scroll_background_by(Vector2(-1.0 * scale, 0.0))
+		st["timer"] = int(st["timer"]) + 1
+		match int(st["phase"]):
+			0:
+				if int(st["timer"]) >= 4:
+					st["timer"] = 0
+					st["idx"] = int(st["idx"]) + 1
+					var i: int = mini(int(st["idx"]),
+							_HAZE_BLEND_AMOUNTS.size() - 1)
+					st["blend"] = _HAZE_BLEND_AMOUNTS[i]
+					_apply_haze_blend(stage, int(st["blend"]))
+					if int(st["blend"]) >= 9:
+						st["phase"] = 1
+						st["timer"] = 0
+			1:
+				if int(st["timer"]) >= 81:
+					st["phase"] = 2
+					st["timer"] = 0
+			2:
+				if int(st["timer"]) >= 4:
+					st["timer"] = 0
+					st["blend"] = int(st["blend"]) - 1
+					_apply_haze_blend(stage, int(st["blend"]))
+					if int(st["blend"]) <= 0:
+						if stage.has_method("clear_background"):
+							stage.clear_background()
+						stage.set_background_scroll(Vector2.ZERO)
+						return true
+		return false)
+
+
+# sHazeBlendAmounts (battle_anim_ice.c:330), verbatim -- deliberately not a
+# computed ramp, because it is not linear (it plateaus on 2, 4 and 6).
+const _HAZE_BLEND_AMOUNTS: Array[int] = [
+	0, 1, 2, 2, 2, 2, 3, 4, 4, 4, 5, 6, 6, 6, 6, 7, 8, 8, 8, 9]
+
+
+static func _apply_haze_blend(stage, blend: int) -> void:
+	var node = stage.background_layer() if stage.has_method(
+			"background_layer") else null
+	if node != null:
+		node.modulate.a = clampf(blend / 16.0, 0.0, 1.0)
+
+
+# AnimTask_LoadSandstormBackground (battle_anim_rock.c:478) and
+# AnimTask_LoadWindstormBackground (battle_anim_flying.c:1239). Unlike the
+# tasks above these DO load their own background: the same Sandstorm gfx and
+# tilemap, differing only in which palette is applied -- which the extraction
+# has already baked, so the two resolve to different pulled assets here rather
+# than to a runtime palette swap.
+#
+# arg0 mirrors the scroll for an opponent-side attacker. Steps
+# gBattle_BG1_X += ±6 and gBattle_BG1_Y += -1 every frame, unbounded.
+static func _load_sandstorm_background(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_storm_background_common(vm, ctx, "SANDSTORM_BREW")
+
+
+static func _load_windstorm_background(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_storm_background_common(vm, ctx, "SANDSTORM_BREW")
+
+
+static func _storm_background_common(vm: AnimScriptVM, _ctx: Dictionary,
+		bg_name: String) -> void:
+	var stage = vm.stage
+	if stage == null or not stage.has_method("scroll_background_by"):
+		return
+	if stage.has_method("set_background") and AnimData.has_background(bg_name):
+		stage.set_background(bg_name)
+		vm.notify_background_changed()
+	var dir := 1.0 if _attacker_is_player(vm) else -1.0
+	var scale: float = _scale(vm)
+	if vm.args[0] == 0:
+		dir = 1.0
+	var _step := func() -> bool:
+		if vm.args[AnimScriptVM.ARG_RET] == -1:
+			stage.set_background_scroll(Vector2.ZERO)
+			if stage.has_method("clear_background"):
+				stage.clear_background()
+			return true
+		stage.scroll_background_by(Vector2(6.0 * dir * scale, -1.0 * scale))
+		return false
+	vm.add_stepper(_step, false)
+
+
+# AnimTask_MetallicShine (battle_anim_dark.c:906, step at :972).
+#
+# The one task here that is a MASK effect rather than a background one: BG1
+# carries the metal_shine sheet and a ST_OAM_OBJ_WINDOW clone of the attacker's
+# sprite acts as the stencil, so the sweep is only ever visible INSIDE the
+# mon's silhouette. Nothing is drawn behind or in front of the battler.
+#
+# CMD_ARGS(permanent, useColor, color):
+#   [0] permanent -- if 0, the grayscale/tint is undone at the second sweep
+#   [1] useColor  -- 0 grayscales the mon, nonzero blends toward [2] at 11/16
+#   [2] color     -- the tint (Poison Tail passes RGB(24,6,23))
+#
+# 96 frames: three 32-frame sweeps of 4 px/frame (128/4), with BG1_X snapping
+# back by +128 at each boundary so the sweep repeats. The palette change is
+# reverted at the end of sweep 2, and the mask is torn down there too -- sweep
+# 3 is 32 frames during which nothing is visible, which is real and is why the
+# duration must not be shortened to 64.
+#
+# There is no OBJWIN equivalent here, so the silhouette is reproduced with a
+# duplicate of the battler's own texture used as a mask over a scrolling
+# gradient. Recorded as an approximation of the MECHANISM, not of the maths:
+# every frame count, direction and phase boundary below is source-exact.
+static func _metallic_shine(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, _attacker_index(vm))
+	if node == null:
+		return
+	var permanent: bool = vm.args[0] != 0
+	var use_color: bool = vm.args[1] != 0
+	var tint: Color = _gba_rgb_to_color(vm.args[2])
+	var scale: float = _scale(vm)
+
+	# The palette change the mask sweeps over: grayscale, or an 11/16 blend
+	# toward the requested colour (BlendPalette's own coefficient).
+	#
+	# This CANNOT go through `modulate`. modulate MULTIPLIES the sprite's own
+	# colours, so grayscaling a default (1,1,1) modulate yields (1,1,1) --
+	# literally no change, which is what this project already learned the hard
+	# way in [M26B3-6a] when the recall's pink tint came out invisible twice.
+	# Source's SetGrayscaleOrOriginalPalette REPLACES each palette entry with
+	# its own (r+g+b)/3, and BlendPalette at coeff 11/16 replaces most of the
+	# channel, so the equivalent here is a real per-pixel shader.
+	var prior_material: Material = node.material
+	_apply_recolor(node, use_color, tint)
+
+	var shine := _make_shine_overlay(vm, node)
+	var st := {"x": 0.0, "swept": 0, "reverted": false}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			if is_instance_valid(shine):
+				shine.queue_free()
+			return true
+		st["x"] = float(st["x"]) + 4.0
+		if is_instance_valid(shine):
+			var span := node.size.x + 128.0 * scale
+			shine.position.x = -128.0 * scale + fposmod(
+					float(st["x"]) * scale, span)
+		if fmod(float(st["x"]), 128.0) == 0.0:
+			st["swept"] = int(st["swept"]) + 1
+			if int(st["swept"]) == 2 and not bool(st["reverted"]):
+				st["reverted"] = true
+				if not permanent:
+					node.material = prior_material
+				if is_instance_valid(shine):
+					shine.queue_free()
+			if int(st["swept"]) >= 3:
+				if not permanent:
+					node.material = prior_material
+				if is_instance_valid(shine):
+					shine.queue_free()
+				return true
+		return false)
+
+
+# A real colour REPLACEMENT, not a multiply. `gray` desaturates each pixel to
+# its own (r+g+b)/3 (source's SetGrayscaleOrOriginalPalette); `tint_amount`
+# mixes toward `tint` (source's BlendPalette, whose 11/16 coefficient replaces
+# most of the channel rather than shading it).
+const _RECOLOR_SHADER_CODE := """
+shader_type canvas_item;
+uniform float gray : hint_range(0.0, 1.0) = 0.0;
+uniform vec4 tint : source_color = vec4(1.0);
+uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
+void fragment() {
+	vec4 c = texture(TEXTURE, UV);
+	float lum = (c.r + c.g + c.b) / 3.0;
+	c.rgb = mix(c.rgb, vec3(lum), gray);
+	c.rgb = mix(c.rgb, tint.rgb, tint_amount);
+	COLOR = c;
+}
+"""
+
+static var _recolor_shader: Shader = null
+
+
+static func _apply_recolor(node: CanvasItem, use_color: bool,
+		tint: Color) -> void:
+	if _recolor_shader == null:
+		_recolor_shader = Shader.new()
+		_recolor_shader.code = _RECOLOR_SHADER_CODE
+	var mat := ShaderMaterial.new()
+	mat.shader = _recolor_shader
+	if use_color:
+		mat.set_shader_parameter("gray", 0.0)
+		mat.set_shader_parameter("tint", tint)
+		mat.set_shader_parameter("tint_amount", 11.0 / 16.0)
+	else:
+		mat.set_shader_parameter("gray", 1.0)
+		mat.set_shader_parameter("tint_amount", 0.0)
+	node.material = mat
+
+
+# The stencil: a copy of the battler's own texture, tinted white and additively
+# blended, standing in for the OBJWIN mask upstream builds from a
+# ST_OAM_OBJ_WINDOW sprite clone.
+static func _make_shine_overlay(vm: AnimScriptVM, node: Control) -> Control:
+	var tex: Texture2D = null
+	if node is TextureRect:
+		tex = (node as TextureRect).texture
+	if tex == null:
+		return null
+	var shine := TextureRect.new()
+	shine.texture = tex
+	shine.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shine.stretch_mode = TextureRect.STRETCH_SCALE
+	shine.size = node.size
+	shine.modulate = Color(1.0, 1.0, 1.0, 0.55)
+	shine.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := CanvasItemMaterial.new()
+	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	shine.material = mat
+	node.add_child(shine)
+	vm.notify_spawned(shine)
+	vm.notify_finished(shine)
+	return shine
+
+
+# A GBA RGB15 literal (RGB(r,g,b), 5 bits each) as a Color.
+static func _gba_rgb_to_color(packed: int) -> Color:
+	var r := (packed & 0x1F) / 31.0
+	var g := ((packed >> 5) & 0x1F) / 31.0
+	var b := ((packed >> 10) & 0x1F) / 31.0
+	return Color(r, g, b)
+
+
+# AnimTask_CreateSurfWave (battle_anim_water.c:985, steps at :1077 / :1120).
+#
+# THE headline move of this sub-tier: Surf has been sitting one behavior short
+# of playable since M36D, and it is 100% background work -- no sprite motion at
+# all, which is exactly why no amount of further sprite porting reached it.
+#
+# arg0 selects the palette variant (SURF / MUDDY_WATER / SLUDGE_WAVE). The
+# tilemap is side-dependent -- gBattleAnimBgTilemap_SurfPlayer vs _SurfOpponent
+# -- so the wave sweeps toward whoever is being hit; the extraction already
+# baked both, plus the muddy recolor, as separate assets.
+#
+# Initial offset and velocity, per side (:1044-1059):
+#   player-side attacker:   X 0,    Y -48,  velocity (-2, +1)
+#   opponent-side attacker: X -224, Y 256,  velocity (+2, -1)
+# So the wave always travels diagonally, and mirrored -- getting the sign wrong
+# would send it away from the target rather than over it.
+#
+# Two effects run on top of the scroll. Every 4th frame it rotates palette
+# entries 1..7 upward by one (:1090-1097) -- the same mechanism as the psychic
+# background above, with a 7-entry window instead of 11, which is what makes
+# the water look like it is moving rather than sliding. And a blend ramps in
+# over the first ~26 frames, holds, then ramps out (:1099-1113), which is what
+# ends the animation: roughly 134 frames total.
+#
+# DISCLOSED UNPORTED: AnimTask_SurfWaveScanlineEffect (:1140) is an HBlank
+# per-scanline horizontal offset -- a hardware raster trick that gives the wave
+# its rippled edge. There is no scanline hook to port it to here, so the wave
+# is a clean diagonal sweep rather than a rippled one. The scroll, the palette
+# cycle, the blend ramp and every frame count ARE ported.
+static func _create_surf_wave(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var stage = vm.stage
+	if stage == null or not stage.has_method("scroll_background_by"):
+		return
+	var player_side: bool = _attacker_is_player(vm)
+	var bg_name := _surf_background_name(vm.args[0], player_side)
+	if bg_name != "" and stage.has_method("set_background"):
+		if stage.set_background(bg_name):
+			vm.notify_background_changed()
+	var scale: float = _scale(vm)
+	var vel := Vector2(-2.0, 1.0) if player_side else Vector2(2.0, -1.0)
+	var start := Vector2(0.0, -48.0) if player_side else Vector2(-224.0, 256.0)
+	stage.set_background_scroll(start * scale)
+
+	# The 7-entry palette cycle, reusing the psychic mechanism.
+	var pal: PackedColorArray = AnimData.background_palette(bg_name)
+	var from_colors := PackedColorArray()
+	if pal.size() >= _SURF_CYCLE_FIRST + _SURF_CYCLE_COUNT:
+		for i in range(_SURF_CYCLE_COUNT):
+			from_colors.append(pal[_SURF_CYCLE_FIRST + i])
+
+	var layer = stage.background_layer() if stage.has_method(
+			"background_layer") else null
+	var st := {"frame": 0, "cyc": 0, "step": 0, "blend": 0}
+	vm.add_stepper(func() -> bool:
+		st["frame"] = int(st["frame"]) + 1
+		stage.scroll_background_by(vel * scale)
+
+		# Palette cycle: every 4th frame.
+		st["cyc"] = int(st["cyc"]) + 1
+		if int(st["cyc"]) >= 4:
+			st["cyc"] = 0
+			if not from_colors.is_empty():
+				st["step"] = (int(st["step"]) + 1) % _SURF_CYCLE_COUNT
+				stage.set_background_palette_remap(from_colors,
+						_rotated_palette(from_colors, int(st["step"])))
+
+		# Blend ramp: in over 13 steps of 2 frames, hold, out again. The
+		# animation ends when it has ramped back to nothing.
+		var t: int = int(st["frame"]) / 2
+		if t <= 13:
+			st["blend"] = t
+		elif t > 54:
+			st["blend"] = maxi(0, 13 - (t - 54))
+		if layer != null:
+			layer.modulate.a = clampf(int(st["blend"]) / 13.0, 0.0, 1.0)
+		if t > 54 and int(st["blend"]) <= 0:
+			if layer != null:
+				layer.modulate.a = 1.0
+			if stage.has_method("clear_background_palette_remap"):
+				stage.clear_background_palette_remap()
+			if stage.has_method("clear_background"):
+				stage.clear_background()
+			stage.set_background_scroll(Vector2.ZERO)
+			return true
+		return false)
+
+
+const _SURF_CYCLE_FIRST := 1
+const _SURF_CYCLE_COUNT := 7
+
+
+# The extraction pulled the Surf trio plus the muddy-water recolor as separate
+# composited assets, so the palette branch upstream resolves to an asset choice
+# here. Sludge Wave has no pulled variant -- it falls back to the plain wave
+# rather than playing nothing, since the motion is the same and only the tint
+# differs.
+static func _surf_background_name(palette_arg: int, player_side: bool) -> String:
+	if palette_arg == 1:
+		# ANIM_SURF_PAL_MUDDY_WATER. Only the player-side recolor exists.
+		if player_side and AnimData.has_background("SURF_MUDDY_PLAYER"):
+			return "SURF_MUDDY_PLAYER"
+	var name := "SURF_PLAYER" if player_side else "SURF_OPPONENT"
+	return name if AnimData.has_background(name) else ""

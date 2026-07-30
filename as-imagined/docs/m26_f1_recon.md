@@ -800,6 +800,92 @@ now actually render. Unknown or unpulled background ids still consume the
 fade's frames, so a script referencing one keeps its real pacing instead of
 running measurably fast.
 
+### M36E3 — BG-dependent behaviors, COMPLETE 2026-07-29
+
+`m36e3_bg_behaviors_test` **52/52**; 17-suite sweep green. Coverage
+**200 -> 228 of 932 (24.5%)**, iconic Gen 1-3 **44.3% -> 50.0%**.
+
+**SURF PLAYS.** It had been one behavior short since M36D and no amount of
+further sprite porting could reach it, because `AnimTask_CreateSurfWave` is
+100% background work — there is no sprite motion in that animation at all.
+Ten behaviors landed: the Surf wave, the psychic palette cycle,
+`FadeScreenToWhite`, the sliding-BG pair, the platform shake, the scrolling
+fog (plus its `MistBallFog` twin), the two storm-background loaders, and
+`MetallicShine`.
+
+**Four Step-0 findings reshaped this from its own scoping sketch.**
+
+1. **`AnimTask_SetPsychicBackground` loads no background and scrolls nothing.**
+It is an 11-colour palette ROTATION on the image `fadetobg BG_PSYCHIC` already
+installed — and it runs at **32 call sites**, not the 8 the M36D pass
+estimated. The extracted psychic palette's entries 1-11 are exactly a
+red->purple->magenta ramp, so the rotation *is* the whole visual.
+
+2. **Surf's cycle is the same mechanism with a 7-entry window**, so building
+the psychic cycler delivered Surf's shimmer for free. That is why these two
+shipped together rather than in separate batches.
+
+3. **The orphaned `fog.bin` from E1 is now explained.** It pairs with
+`graphics/weather/fog_horizontal.png` and `graphics/weather/fog.pal` — a
+CROSS-DIRECTORY pairing nothing in the backgrounds directory hints at, which
+is exactly why E1 was right to remove the orphan rather than guess.
+
+4. **`AnimTask_ShakePlatforms` restores its CAPTURED offset, not zero.** The
+background can legitimately be mid-scroll when a shake starts, so zeroing
+would silently cancel it. Pinned by a test that starts the shake on an
+already-scrolled background.
+
+**The palette cycle needed new extracted data.** A composited RGBA image
+records which colour each pixel ended up as, not which palette SLOT it came
+from, so a rotation cannot be derived from the texture. The generator now
+emits each background's 16 colours in palette order, and the runtime does a
+per-pixel colour SUBSTITUTION in a shader — a background is ~40k pixels and
+rebuilding 11 Images on the CPU would stall the frame the effect starts on.
+
+**Two real defects were caught by the work rather than shipped.**
+
+*(a) `MetallicShine`'s recolour was a no-op.* It went through `modulate`,
+which MULTIPLIES — so grayscaling a default `(1,1,1)` modulate yields
+`(1,1,1)` and the effect would have been invisible. This is the identical trap
+`[M26B3-6a]` hit when the recall's pink came out invisible twice; the fix is
+the same answer, a real `mix()` shader. Caught by the suite's own first run.
+
+*(b) The scroll support regressed how EVERY background draws.* Adding scroll
+first switched the layer to `STRETCH_TILE` so a long scroll could wrap. That
+renders a 256px-wide GBA background at native size, tiled — four small copies
+across a 1024px canvas, reading as thin stripes rather than a wave. **Found by
+screenshot, not by any assertion**, and not by the move under test: the tiling
+was wrong for the plain E2 backgrounds too. Fixed by scrolling through a UV
+offset in the shader instead, so the layer still stretches to cover the stage
+while `fract()` does the wrapping the hardware register does. The scroll and
+the palette cycle share ONE shader, because a CanvasItem has one material.
+
+**Verified visually, not just by assertion**: a real windowed capture of Surf
+shows the wave filling the stage with visible crest structure, and 68% of
+sampled pixels change between consecutive frames — it genuinely scrolls and
+cycles rather than sitting still.
+
+**The wave is blue-violet, and that is correct.** It looks wrong against an
+expectation that water is blue, so it was checked rather than assumed:
+`gBattleAnimBgPalette_Surf` *is* `water.png`'s own embedded palette
+(`INCGFX_U16("...water.png", ".gbapal")`) and `B_NEW_SURF_PARTICLE_PALETTE` is
+FALSE, so E1's pull already had the source-exact colours.
+
+**Disclosed unported, both recorded at their code sites:**
+`AnimTask_SurfWaveScanlineEffect` is an HBlank per-scanline offset giving the
+wave its rippled edge — there is no scanline hook to port it to, so the wave
+is a clean diagonal sweep; and `MetallicShine`'s OBJWIN stencil is
+approximated with a duplicate of the battler's own texture, since there is no
+object-window equivalent. Every frame count, direction and phase boundary in
+both IS source-exact.
+
+**Also disclosed**: the sliding-BG updater and the psychic cycle are
+registered as UNCOUNTED steppers. That is not an optimisation — upstream both
+decrement `gAnimVisualTaskCount` at setup precisely so `waitforvisualfinish`
+does NOT wait for them, because they are open-ended effects torn down by an
+explicit `setarg 7, -1`. Counting them would hang the script forever, which is
+why the suite asserts the accounting directly.
+
 **Known gaps carried into later sub-tiers (deliberate, not oversights):**
 - **Backgrounds are not extracted** — the 84-entry `gBattleAnimBackgroundTable`
   and its tiles/tilemaps/palettes belong to **M36E**, per the phase plan.

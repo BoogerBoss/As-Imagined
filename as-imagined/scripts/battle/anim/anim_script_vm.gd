@@ -74,6 +74,8 @@ var _pc := -1
 var _call_stack: Array[int] = []
 var _frames_to_wait := 0
 var _visual_count := 0
+# Steppers registered with counts=false -- see add_stepper().
+var _uncounted: Array = []
 var _sound_count := 0
 var _frame_budget := 0
 var _blend: Dictionary = {"eva": 16, "evb": 0}
@@ -83,6 +85,8 @@ var _bg_fade: int = BgFade.IDLE
 # script that ends without restoring would otherwise leave the field wearing
 # a move's background for the rest of the battle.
 var _bg_changed := false
+# The BG_* name currently installed by this run -- see current_background_name().
+var _bg_name := ""
 var _sound_cues: Array[Dictionary] = []
 var _spawned: Array = []
 
@@ -121,6 +125,8 @@ func start(label: String) -> bool:
 	args.fill(0)
 	_frames_to_wait = 0
 	_visual_count = 0
+	_uncounted.clear()
+	_bg_name = ""
 	_sound_count = 0
 	_frame_budget = 0
 	_sound_cues.clear()
@@ -185,7 +191,10 @@ func _step_behaviors() -> void:
 		else:
 			done = true
 		if done:
-			_visual_count = maxi(0, _visual_count - 1)
+			if _uncounted.has(entry):
+				_uncounted.erase(entry)
+			else:
+				_visual_count = maxi(0, _visual_count - 1)
 		else:
 			survivors.append(entry)
 	_steppers = survivors
@@ -193,8 +202,18 @@ func _step_behaviors() -> void:
 
 # Behaviors that span multiple frames register here instead of finishing
 # inline. Counts against the same completion counter a sprite would.
-func add_stepper(fn: Callable) -> void:
-	_visual_count += 1
+# `counts` mirrors the reference's own bookkeeping choice. A handful of tasks
+# (AnimTask_SetPsychicBackground, AnimTask_StartSlidingBg's updater) decrement
+# gAnimVisualTaskCount at setup and keep running, precisely so a later
+# `waitforvisualfinish` does NOT wait for them -- they are open-ended effects
+# torn down by an explicit `setarg 7, -1`, not by finishing on their own. A
+# stepper registered with counts=false reproduces that: it still steps every
+# frame, but nothing blocks on it.
+func add_stepper(fn: Callable, counts: bool = true) -> void:
+	if counts:
+		_visual_count += 1
+	else:
+		_uncounted.append(fn)
 	_steppers.append(fn)
 
 
@@ -210,6 +229,7 @@ func _finish(err: String = "") -> void:
 	# with the steppers -- otherwise an aborted animation would leave a
 	# non-zero count behind for anything inspecting the finished VM.
 	_steppers.clear()
+	_uncounted.clear()
 	_visual_count = 0
 	# Undo any visibility this run took away, before freeing anything.
 	for battler in _hidden_battlers:
@@ -223,6 +243,7 @@ func _finish(err: String = "") -> void:
 		if stage.has_method("set_fade"):
 			stage.set_fade(0.0)
 		_bg_changed = false
+		_bg_name = ""
 	for node in _spawned:
 		if is_instance_valid(node):
 			node.queue_free()
@@ -377,7 +398,9 @@ func _execute(cmd: Array) -> void:
 		"changebg":
 			# Immediate swap, no fade (LoadMoveBg without Task_FadeToBg).
 			if stage != null and stage.has_method("set_background"):
-				if stage.set_background(AnimData.bg_name_for_id(int(cmd[1]))):
+				var immediate := AnimData.bg_name_for_id(int(cmd[1]))
+				if stage.set_background(immediate):
+					_bg_name = immediate
 					_bg_changed = true
 			_pc += 1
 		"restorebg":
@@ -438,6 +461,7 @@ func _start_bg_fade(bg_name: String) -> void:
 			if t >= BG_FADE_FRAMES:
 				_bg_fade = BgFade.FADED_OUT
 				if bg_name != "" and stage.has_method("set_background"):
+					_bg_name = bg_name
 					if stage.set_background(bg_name):
 						_bg_changed = true
 				st["phase"] = 1
@@ -482,6 +506,21 @@ func _start_bg_restore() -> void:
 
 func bg_fade_state() -> int:
 	return _bg_fade
+
+
+# The BG_* name currently installed by this run, or "" if none. Read by the
+# palette-cycling behaviors, which need to know WHICH background's palette they
+# are rotating -- the script installs it with `fadetobg` several commands
+# earlier, so the behavior cannot derive it from its own arguments.
+func current_background_name() -> String:
+	return _bg_name
+
+
+# Lets a behavior that installs a background itself (the storm/fog loaders,
+# which do NOT go through fadetobg) opt into the same restore-on-finish
+# guarantee the opcodes get.
+func notify_background_changed() -> void:
+	_bg_changed = true
 
 
 func background_changed() -> bool:

@@ -165,7 +165,11 @@ func background_layer() -> TextureRect:
 	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	node.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	node.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	# SCALE, so the background covers the whole battle stage: a GBA background
+	# is 256px wide, which is one full screen on hardware. Scrolling is a UV
+	# offset in the shader rather than a moved rect -- see _BG_SHADER_CODE.
 	node.stretch_mode = TextureRect.STRETCH_SCALE
+	node.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	node.set_anchors_preset(Control.PRESET_FULL_RECT)
 	node.visible = false
 	root.add_child(node)
@@ -202,6 +206,7 @@ func set_background(bg_name: String) -> bool:
 		return false
 	node.texture = tex
 	node.visible = true
+	_apply_bg_scroll(node)
 	return true
 
 
@@ -210,6 +215,124 @@ func clear_background() -> void:
 	if node != null:
 		node.visible = false
 		node.texture = null
+		node.material = null
+		_bg_scroll = Vector2.ZERO
+
+
+# A palette-cycle on the background layer, the port of rotating gPlttBufferFaded
+# entries (AnimTask_SetPsychicBackground). The GBA rotates 11 palette SLOTS and
+# the hardware re-renders; a composited texture has no slots left to rotate, so
+# the equivalent is a per-pixel colour SUBSTITUTION -- match each of the 11
+# source colours and emit the colour now occupying its slot. Done in a shader
+# rather than by rebuilding 11 Images: a background is ~40k pixels and doing
+# that on the CPU would stall the frame the effect starts on.
+# ONE shader, because a CanvasItem has one material and this layer needs two
+# effects at once: a wrapping scroll (the port of writing gBattle_BG1_X/BG3_X)
+# and a palette cycle (the port of rotating gPlttBufferFaded).
+#
+# The scroll is a UV offset rather than a moved/tiled node so the layer can
+# still be STRETCHED to fill the stage. That matters: a GBA background is 256px
+# = 32 tiles wide, which IS one screen on hardware, so it has to cover the
+# whole battle stage. Tiling it at native size instead would draw four little
+# copies across a 1024px canvas -- the wave would read as thin stripes rather
+# than a wave.
+const _BG_SHADER_CODE := """
+shader_type canvas_item;
+uniform vec2 uv_offset = vec2(0.0);
+uniform vec4 pal_from[12];
+uniform vec4 pal_to[12];
+uniform int pal_count = 0;
+void fragment() {
+	vec4 c = texture(TEXTURE, fract(UV + uv_offset));
+	if (c.a > 0.0) {
+		for (int i = 0; i < pal_count; i++) {
+			if (distance(c.rgb, pal_from[i].rgb) < 0.01) {
+				c.rgb = pal_to[i].rgb;
+				break;
+			}
+		}
+	}
+	COLOR = c;
+}
+"""
+
+static var _bg_shader: Shader = null
+
+
+# Lazily attaches the shared background shader, preserving whatever the other
+# effect already put in its uniforms.
+func _bg_material() -> ShaderMaterial:
+	var node := background_layer()
+	if node == null:
+		return null
+	if _bg_shader == null:
+		_bg_shader = Shader.new()
+		_bg_shader.code = _BG_SHADER_CODE
+	var mat := node.material as ShaderMaterial
+	if mat == null or mat.shader != _bg_shader:
+		mat = ShaderMaterial.new()
+		mat.shader = _bg_shader
+		node.material = mat
+	return mat
+
+
+func set_background_palette_remap(from_colors: PackedColorArray,
+		to_colors: PackedColorArray) -> void:
+	var count := mini(from_colors.size(), to_colors.size())
+	if count <= 0:
+		clear_background_palette_remap()
+		return
+	var mat := _bg_material()
+	if mat == null:
+		return
+	mat.set_shader_parameter("pal_from", from_colors)
+	mat.set_shader_parameter("pal_to", to_colors)
+	mat.set_shader_parameter("pal_count", count)
+
+
+func clear_background_palette_remap() -> void:
+	var node := background_layer()
+	var mat := node.material as ShaderMaterial if node != null else null
+	if mat != null:
+		mat.set_shader_parameter("pal_count", 0)
+
+
+# Scrolls the background layer, the port of writing gBattle_BG1_X/BG3_X. The
+# offset wraps by the texture's own size so a long scroll never runs off the
+# tiled area, which is what makes the hardware version seamless.
+var _bg_scroll: Vector2 = Vector2.ZERO
+
+
+func set_background_scroll(offset: Vector2) -> void:
+	var node := background_layer()
+	if node == null:
+		return
+	_bg_scroll = offset
+	_apply_bg_scroll(node)
+
+
+func scroll_background_by(delta: Vector2) -> void:
+	set_background_scroll(_bg_scroll + delta)
+
+
+func background_scroll() -> Vector2:
+	return _bg_scroll
+
+
+func _apply_bg_scroll(node: TextureRect) -> void:
+	if node.texture == null:
+		return
+	# The scroll is expressed in stage pixels; UV is a fraction of the texture
+	# as drawn across the whole layer, so one full layer width of scroll is
+	# exactly 1.0 of UV. fract() in the shader does the wrapping, which is what
+	# makes a long scroll seamless the way the hardware register is.
+	var span := node.size
+	if span.x <= 0.0 or span.y <= 0.0:
+		return
+	var mat := _bg_material()
+	if mat != null:
+		mat.set_shader_parameter("uv_offset",
+				Vector2(-_bg_scroll.x / span.x, -_bg_scroll.y / span.y))
 
 
 # 0.0 = normal, 1.0 = fully black. The port of the hardware palette fade.

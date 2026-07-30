@@ -184,6 +184,21 @@ static func background_count() -> int:
 	return _bg_index.size()
 
 
+# The 16 colours, IN PALETTE ORDER, that the extraction applied to this
+# background. Needed only by the palette-cycling behaviors: a composited RGBA
+# image records which colour each pixel ended up as, not which palette SLOT it
+# came from, so the rotation cannot be derived from the texture alone.
+static func background_palette(bg_name: String) -> PackedColorArray:
+	var out := PackedColorArray()
+	var row: Dictionary = _bg_index.get(bg_name, {})
+	for entry in row.get("palette_colors", []):
+		var rgb: Array = entry
+		if rgb.size() < 3:
+			continue
+		out.append(Color8(int(rgb[0]), int(rgb[1]), int(rgb[2])))
+	return out
+
+
 static func sheet_row(tag_name: String) -> Dictionary:
 	return _sheet_index.get(tag_name, {})
 

@@ -141,24 +141,30 @@ def composite(tiles_rel, tilemap_rel, palette_rel, name):
     map_path = os.path.join(REF, tilemap_rel)
     for p in (tiles_path, map_path):
         if not os.path.exists(p):
-            return None, "missing source %s" % os.path.relpath(p, REF)
+            return None, None, "missing source %s" % os.path.relpath(p, REF)
 
     with Image.open(tiles_path) as sheet:
         if sheet.mode != "P":
-            return None, "tile sheet not indexed"
+            return None, None, "tile sheet not indexed"
         sheet = sheet.copy()
     if palette_rel:
         sheet.putpalette(load_palette(palette_rel))
     tiles = tiles_of(sheet)
+    # The 16 colours this decode actually applies, IN PALETTE ORDER. Emitted
+    # because AnimTask_SetPsychicBackground (and FadeScreenToWhite) animate a
+    # background by ROTATING palette entries 1..11 -- an effect that cannot be
+    # reproduced from a composited RGBA image alone, since the image records
+    # only which colour each pixel ended up as, not which slot it came from.
+    bank_pal = [list(sheet.getpalette()[i * 3:i * 3 + 3]) for i in range(16)]
 
     with open(map_path, "rb") as f:
         raw = f.read()
     if len(raw) % 2:
-        return None, "tilemap length %d is not u16-aligned" % len(raw)
+        return None, None, "tilemap length %d is not u16-aligned" % len(raw)
     cells = struct.unpack("<%dH" % (len(raw) // 2), raw)
     rows = len(cells) // TILEMAP_WIDTH
     if rows * TILEMAP_WIDTH != len(cells):
-        return None, "tilemap %d cells is not a multiple of %d" % (
+        return None, None, "tilemap %d cells is not a multiple of %d" % (
             len(cells), TILEMAP_WIDTH)
 
     # Bank 0 with tile index 0 is an EMPTY cell and carries no colour, so it
@@ -166,7 +172,7 @@ def composite(tiles_rel, tilemap_rel, palette_rel, name):
     # bank -- otherwise a single 16-colour palette cannot render this asset.
     content_banks = {(c >> 12) & 0xF for c in cells if (c & 0x3FF) != 0}
     if len(content_banks) > 1:
-        return None, ("content spans %d palette banks %s -- needs more than "
+        return None, None, ("content spans %d palette banks %s -- needs more than "
                       "the one 16-colour palette this decode applies"
                       % (len(content_banks), sorted(content_banks)))
 
@@ -176,7 +182,7 @@ def composite(tiles_rel, tilemap_rel, palette_rel, name):
     for i, cell in enumerate(cells):
         idx = cell & 0x3FF
         if idx >= len(tiles):
-            return None, "tile index %d exceeds sheet (%d tiles)" % (
+            return None, None, "tile index %d exceeds sheet (%d tiles)" % (
                 idx, len(tiles))
         tile = tiles[idx]
         if cell & (1 << 10):
@@ -195,7 +201,7 @@ def composite(tiles_rel, tilemap_rel, palette_rel, name):
                                  255)
         canvas.paste(rgba, ((i % TILEMAP_WIDTH) * 8,
                             (i // TILEMAP_WIDTH) * 8), rgba)
-    return canvas, None
+    return canvas, bank_pal, None
 
 
 def parse_bg_table(resolver, sym_paths):
@@ -241,7 +247,8 @@ def main():
         # already correct, and re-applying it is a no-op that only risks
         # disagreeing with the source of truth.
         pal_rel = src["palette"] if src["palette"] != src["tiles"] else None
-        img, err = composite(src["tiles"], src["tilemap"], pal_rel, name)
+        img, bank_pal, err = composite(
+            src["tiles"], src["tilemap"], pal_rel, name)
         if img is None:
             skipped.append((bg, err))
             continue
@@ -254,16 +261,17 @@ def main():
             "tiles": src["tiles"],
             "tilemap": src["tilemap"],
             "palette": src["palette"],
+            "palette_colors": bank_pal,
             "source": "table",
         }
         img.close()
         written += 1
 
     for name, (tiles, tilemap, palette) in sorted(CODE_REFERENCED.items()):
-        img, err = composite(os.path.join(BG_DIR_REL, tiles),
-                             os.path.join(BG_DIR_REL, tilemap),
-                             os.path.join(BG_DIR_REL, palette)
-                             if palette else None, name)
+        img, bank_pal, err = composite(
+            os.path.join(BG_DIR_REL, tiles),
+            os.path.join(BG_DIR_REL, tilemap),
+            os.path.join(BG_DIR_REL, palette) if palette else None, name)
         if img is None:
             skipped.append((name, err))
             continue
@@ -276,6 +284,7 @@ def main():
             "tiles": os.path.join(BG_DIR_REL, tiles),
             "tilemap": os.path.join(BG_DIR_REL, tilemap),
             "palette": os.path.join(BG_DIR_REL, palette) if palette else None,
+            "palette_colors": bank_pal,
             "source": "code",
         }
         img.close()
