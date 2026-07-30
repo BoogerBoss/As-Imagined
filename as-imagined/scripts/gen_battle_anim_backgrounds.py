@@ -77,6 +77,9 @@ OUT_DIR = assert_inside_project(
 INDEX_PATH = os.path.join(OUT_DIR, "index.json")
 
 TILEMAP_WIDTH = 32  # cells; the GBA screen is 30 wide plus a scroll margin
+# The GBA shows 30x20 tiles of the 32-wide map; the rest is scroll margin.
+VISIBLE_TILES_X = 30
+VISIBLE_TILES_Y = 20
 
 # Backgrounds the anim CODE loads by symbol rather than through the table.
 # name -> (tiles, tilemap, palette) as repo-relative paths. These are the ones
@@ -170,11 +173,52 @@ def composite(tiles_rel, tilemap_rel, palette_rel, name):
     # Bank 0 with tile index 0 is an EMPTY cell and carries no colour, so it
     # never conflicts. What matters is that all actual content shares one
     # bank -- otherwise a single 16-colour palette cannot render this asset.
-    content_banks = {(c >> 12) & 0xF for c in cells if (c & 0x3FF) != 0}
+    #
+    # ⚠️ MEASURED OVER THE VISIBLE REGION ONLY, and that distinction is the
+    # whole reason three assets were being refused. A tilemap is 32 cells wide
+    # by up to 32 tall, but the GBA screen shows 30x20 of it; the rest is
+    # scroll margin. The authors parked filler cells out there in whatever
+    # bank was convenient, so measuring the WHOLE map reports a bank span that
+    # nothing on screen ever exhibits:
+    #
+    #   scary_face_player / _opponent : one filler row at y=20 (bank 1),
+    #                                   directly below the visible area
+    #   attract                       : the x>=30 margin and y>=20 rows (bank 0)
+    #
+    # Restricted to what is actually drawn, all three are single-bank. Verified
+    # across every tilemap in the tree: NONE is multi-bank inside the visible
+    # region, so this narrows what the guard measures without weakening what it
+    # means. Because no real asset can now trip it, `--self-test` injects a
+    # synthetic two-bank-in-visible-region map to prove it still bites.
+    #
+    # DISCLOSED: the composite still covers the FULL map (the scroll margin is
+    # load-bearing for the sliding-BG family), so an off-screen cell in another
+    # bank is drawn with the visible bank's palette. That is only ever seen if
+    # a behavior scrolls it into view. Confirmed non-scrolling for ScaryFace
+    # (AnimTask_ScaryFace_Step holds BG1 X/Y at 0 and only blends); NOT checked
+    # for attract, which currently has no consumer.
+    def _content_banks(only_visible: bool) -> set:
+        out = set()
+        for idx, cell in enumerate(cells):
+            if (cell & 0x3FF) == 0:
+                continue
+            if only_visible and (idx % TILEMAP_WIDTH >= VISIBLE_TILES_X
+                    or idx // TILEMAP_WIDTH >= VISIBLE_TILES_Y):
+                continue
+            out.add((cell >> 12) & 0xF)
+        return out
+
+    content_banks = _content_banks(True)
     if len(content_banks) > 1:
-        return None, None, ("content spans %d palette banks %s -- needs more than "
-                      "the one 16-colour palette this decode applies"
+        return None, None, ("content spans %d palette banks %s INSIDE the visible "
+                      "region -- needs more than the one 16-colour palette this "
+                      "decode applies"
                       % (len(content_banks), sorted(content_banks)))
+    offscreen_only = _content_banks(False) - content_banks
+    if offscreen_only:
+        print("   note: %s carries bank(s) %s only outside the visible region; "
+              "drawn with the visible bank's palette"
+              % (os.path.basename(map_path), sorted(offscreen_only)))
 
     # Composite in RGBA so palette index 0 becomes real transparency.
     canvas = Image.new("RGBA", (TILEMAP_WIDTH * 8, rows * 8), (0, 0, 0, 0))

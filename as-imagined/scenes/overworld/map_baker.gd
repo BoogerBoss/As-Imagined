@@ -604,6 +604,8 @@ func _fill_npc(n: NPC, e: Dictionary) -> void:
 	n.graphics_id = str(e.get("graphics_id", ""))
 	n.movement_type = str(e.get("movement_type", ""))
 	n.local_id = str(e.get("local_id", ""))
+	n.range_x = int(e.get("range_x", 0))
+	n.range_y = int(e.get("range_y", 0))
 
 
 ## Source writes a literal "0" in the flag field to mean "no flag" — carrying

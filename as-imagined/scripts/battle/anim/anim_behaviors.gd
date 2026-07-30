@@ -100,6 +100,8 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 19] —
+		"AnimTask_ScaryFace": _scary_face,
 		# — [M36D batch 18] —
 		"SpriteCB_PhotonGeyserBeam": _photon_geyser_beam,
 		"SpriteCB_HorizontalSlice": _horizontal_slice,
@@ -11101,3 +11103,81 @@ static func _bp_apply(ms: MonScale, st: Dictionary) -> void:
 # setup was read but whose `_Step` tails were not. UNREAD, not unfindable.
 # `AnimTask_FakeOut` (+1) is a different kind again -- a WIN0/BLDY screen
 # window-darken effect, closer to M36E's surface than to a sprite behavior.
+
+
+# ── [M36D batch 19] ───────────────────────────────────────────────────────
+
+
+# AnimTask_ScaryFace (battle_anim_effects_2.c:3278, step :3311).
+#
+# ⚠️ **This was recorded in batches 17 and 18 as an ASSET gap — "absent from
+# M36E1's 84-background pull". That reason was WRONG.** The pull script has
+# always listed `scary_face_player`/`_opponent`; they were being REFUSED by
+# its own two-palette-bank correctness guard, which measured the whole 32x32
+# tilemap including the off-screen scroll margin. Both variants carry a single
+# filler row at y=20 — one row below the visible area — in a second bank.
+# Restricted to the 30x20 the GBA actually draws, they are single-bank. The
+# guard was narrowed accordingly (and re-proved on a synthetic case, since no
+# real asset can trip it any more); nothing about the assets changed.
+#
+# The behavior itself is a pure BLEND RAMP over a background — it never
+# scrolls, which is what makes the off-screen filler row safe to colour with
+# the visible bank's palette. eva climbs 1..14 one step every 2 frames, holds
+# 21, then unwinds the same way: 28 + 21 + 28 = 77 frames.
+#
+# The VARIANT is chosen by the TARGET's side and reads backwards at first
+# glance: `onPlayer = !IsOnPlayerSide(target)` selects the *Player* tilemap,
+# i.e. "Player" names the viewpoint the face is aimed FROM, not the side it
+# sits on.
+const _SCARY_FACE_PEAK := 14
+const _SCARY_FACE_INTERVAL := 2
+const _SCARY_FACE_HOLD := 21
+
+
+static func _scary_face(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var stage = vm.stage
+	if stage == null or not stage.has_method("set_background"):
+		return
+	var player_variant := not _battler_is_player_side(vm, AnimStage.ANIM_TARGET)
+	# UPPERCASE: AnimData keys backgrounds by BG NAME, not by filename. Checked
+	# against has_background() rather than assumed -- the lowercase filename
+	# form silently returns false and the whole behavior no-ops.
+	var bg := "SCARY_FACE_PLAYER" if player_variant else "SCARY_FACE_OPPONENT"
+	if not stage.set_background(bg):
+		return
+	vm.notify_background_changed()
+	_scary_face_alpha(stage, 0.0)
+
+	var st := {"phase": 0, "t": 0, "eva": 0}
+	vm.add_stepper(func() -> bool:
+		st["t"] = int(st["t"]) + 1
+		match int(st["phase"]):
+			0:
+				if int(st["t"]) >= _SCARY_FACE_INTERVAL:
+					st["t"] = 0
+					st["eva"] = int(st["eva"]) + 1
+					_scary_face_alpha(stage, float(st["eva"]) / 16.0)
+					if int(st["eva"]) >= _SCARY_FACE_PEAK:
+						st["t"] = 0; st["phase"] = 1
+			1:
+				if int(st["t"]) >= _SCARY_FACE_HOLD:
+					st["t"] = 0; st["phase"] = 2
+			_:
+				if int(st["t"]) >= _SCARY_FACE_INTERVAL:
+					st["t"] = 0
+					st["eva"] = int(st["eva"]) - 1
+					_scary_face_alpha(stage, float(st["eva"]) / 16.0)
+					if int(st["eva"]) <= 0:
+						if stage.has_method("clear_background"):
+							stage.clear_background()
+						_scary_face_alpha(stage, 1.0)
+						return true
+		return false)
+
+
+static func _scary_face_alpha(stage, a: float) -> void:
+	if not stage.has_method("background_layer"):
+		return
+	var layer = stage.background_layer()
+	if layer != null and is_instance_valid(layer):
+		layer.modulate.a = clampf(a, 0.0, 1.0)

@@ -76,6 +76,30 @@ func _ready() -> void:
 			"SURF_OPPONENT", "BG_HYPER_BEAM", "BG_DARK", "BG_GHOST"]:
 		_chk("required background present: %s" % required, bgs.has(required))
 
+	# [b19] The three the two-palette-bank guard used to refuse. They were
+	# never missing from the pull -- the guard measured the WHOLE 32x32 map
+	# including the off-screen scroll margin, where the authors parked filler
+	# cells in a second bank. Narrowed to the 30x20 the GBA draws, all three
+	# are single-bank. Pinned so a future re-widening of that guard is caught
+	# here rather than by a move quietly losing its background again.
+	# Keys are the UPPERCASE BG names, not the lowercase filenames -- read
+	# from index.json rather than guessed, which is how the first draft of
+	# this very assertion failed.
+	for recovered in ["SCARY_FACE_PLAYER", "SCARY_FACE_OPPONENT", "ATTRACT"]:
+		_chk("[b19] recovered background present: %s" % recovered,
+				bgs.has(recovered))
+
+	# The two ScaryFace variants share one tile sheet and differ only by
+	# tilemap, so they must composite to genuinely DIFFERENT images -- if the
+	# variant pick were wired to the wrong file nothing else would notice.
+	var sp := _load_png(DIR + "/scary_face_player.png")
+	var so := _load_png(DIR + "/scary_face_opponent.png")
+	if sp != null and so != null:
+		_chk("[b19] the two ScaryFace variants are genuinely different images",
+				not _images_identical(sp, so))
+	else:
+		_chk("[b19] both ScaryFace variants load", false)
+
 	# A composited background must carry REAL imagery, not one flat colour --
 	# the failure mode a broken tile lookup would produce.
 	for name in ["BG_PSYCHIC", "SURF_PLAYER"]:
@@ -140,3 +164,17 @@ func _read_json(path: String) -> Dictionary:
 	var parsed: Variant = JSON.parse_string(f.get_as_text())
 	f.close()
 	return parsed if parsed is Dictionary else {}
+
+func _load_png(path: String) -> Image:
+	var tex := load(path) as Texture2D
+	return tex.get_image() if tex != null else null
+
+
+func _images_identical(a: Image, b: Image) -> bool:
+	if a.get_size() != b.get_size():
+		return false
+	for y in range(0, a.get_height(), 4):
+		for x in range(0, a.get_width(), 4):
+			if a.get_pixel(x, y) != b.get_pixel(x, y):
+				return false
+	return true

@@ -483,6 +483,12 @@ def extract_events(mp):
             "flag": str(e.get("flag", "")),
             "script": str(e.get("script", "")),
             "local_id": str(e.get("local_id", "")),
+            # [M27D D3] Wander bounds, a HALF-EXTENT from the spawn cell per
+            # axis, with 0 meaning unconstrained on that axis
+            # (IsCoordOutsideObjectEventMovementRange). Without it a wandering
+            # NPC walks until terrain stops it, which is a different map.
+            "range_x": int(e.get("movement_range_x", 0) or 0),
+            "range_y": int(e.get("movement_range_y", 0) or 0),
         }
         if kind == "trainer":
             ev["trainer_key"] = trainer_key_for(ev["script"])

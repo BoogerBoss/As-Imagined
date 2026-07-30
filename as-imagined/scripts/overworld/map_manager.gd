@@ -772,3 +772,83 @@ func entity_at(gcell: Vector2i) -> bool:
 	if occ.is_empty():
 		return false
 	return occ.has(gcell - Vector2i(_chunks[map_name]["origin"]))
+
+
+## Advance every live NPC's own movement by one frame.
+##
+## [M27D D3] Driven from here rather than each NPC's own `_process` because
+## moving one is not a private act: the destination has to clear terrain, the
+## wander box AND every other entity, and the occupancy set has to stay true
+## afterwards. An NPC cannot answer any of that alone, and giving each a
+## back-reference to the manager would be the same coupling with more copies.
+##
+## `_reserved` is a per-tick set, not a substitute for the occupancy set. Two
+## NPCs ticking in the same frame can both find a cell empty and both take it —
+## the occupancy set is only updated after a move, so the second sees stale
+## state. Rare, and permanent when it happens: two sprites in one square.
+func tick_entities(delta: float, rng: RandomNumberGenerator) -> void:
+	var reserved := {}
+	for map_name in _chunks:
+		var root: Node2D = _chunks[map_name]["root"]
+		if root == null or not is_instance_valid(root):
+			continue
+		var origin: Vector2i = _chunks[map_name]["origin"]
+		for n in root.find_children("*", "NPC", true, false):
+			var npc := n as NPC
+			if npc == null:
+				continue
+			var want: Vector2i = npc.tick(delta, rng)
+			if want == npc.cell:
+				continue
+			if not npc.within_range(want):
+				continue
+			var g: Vector2i = origin + want
+			if reserved.has(g):
+				continue
+			# Full step rules, not just the collision bit: a wandering NPC obeys
+			# ledges, directional tiles and elevation exactly as the player does,
+			# because it walks through the same resolver.
+			var r := _resolver_for(map_name).resolve(
+					origin + npc.cell, _dir_towards(npc.cell, want), npc.elevation)
+			if int(r["outcome"]) != StepResolver.Outcome.NONE:
+				continue
+			reserved[g] = true
+			move_entity(map_name, npc, want)
+
+
+static func _dir_towards(from: Vector2i, to: Vector2i) -> int:
+	var d := to - from
+	if d.y > 0:
+		return StepResolver.Dir.SOUTH
+	if d.y < 0:
+		return StepResolver.Dir.NORTH
+	if d.x < 0:
+		return StepResolver.Dir.WEST
+	return StepResolver.Dir.EAST
+
+
+var _resolver_cache: Dictionary = {}
+
+
+func _resolver_for(_map_name: String) -> StepResolver:
+	# One global resolver, not one per chunk: a wandering NPC near a seam has to
+	# see the neighbouring map's terrain, and a per-chunk resolver would report
+	# its own edge as out of bounds.
+	if not _resolver_cache.has("global"):
+		_resolver_cache["global"] = global_resolver()
+	return _resolver_cache["global"]
+
+
+## Move a placed entity to a new LOCAL cell, keeping occupancy true.
+##
+## Incremental rather than a rebuild: `rebuild_occupancy` walks every entity of
+## the chunk, and doing that per NPC per step is the per-cell cost C4 already
+## paid for once with the skirt repaint.
+func move_entity(map_name: String, e: OverworldEntity, to: Vector2i) -> void:
+	if not _chunks.has(map_name):
+		return
+	var occ: Dictionary = _occupancy.get(map_name, {})
+	occ.erase(e.cell)
+	e.cell = to
+	occ[to] = true
+	_occupancy[map_name] = occ

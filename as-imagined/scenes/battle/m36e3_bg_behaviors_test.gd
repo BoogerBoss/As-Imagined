@@ -29,6 +29,8 @@ func _ready() -> void:
 	_test_surf_wave()
 	_test_metallic_shine()
 	_test_coverage()
+	_test_b19_scary_face_ramps_holds_and_clears()
+	_test_b19_scary_face_variant_follows_the_target_side()
 
 	var total := _pass + _fail
 	print("m36e3_bg_behaviors_test: %d/%d passed" % [_pass, total])
@@ -448,3 +450,59 @@ func _test_coverage() -> void:
 	# A floor, not an exact match: later batches should only raise this.
 	_chk("roster coverage is at least 228 moves (%d)" % playable,
 			playable >= 228)
+
+
+# ── [M36D batch 19] ScaryFace ─────────────────────────────────────────────
+
+func _test_b19_scary_face_ramps_holds_and_clears() -> void:
+	# A pure BLEND ramp over a background, and the reason the off-screen
+	# filler row is safe to colour with the visible bank's palette: this
+	# behavior never scrolls (upstream holds BG1 X/Y at 0 and only blends).
+	var stage := BgStage.new()
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_ScaryFace").call(vm, {})
+	_chk("b19 scary face installs a background", stage.bg_name != "")
+	var layer := stage.background_layer()
+	_chk("b19 scary face starts fully transparent",
+			is_equal_approx(layer.modulate.a, 0.0))
+
+	# eva climbs 1..14 one step every 2 frames -> 28 frames to the peak.
+	for i in range(28):
+		vm._step_behaviors()
+	var peak: float = layer.modulate.a
+	_chk("b19 scary face peaks at 14/16, NOT fully opaque (got %.3f)" % peak,
+			absf(peak - 14.0 / 16.0) < 0.02)
+
+	# 21-frame hold at the peak.
+	for i in range(20):
+		vm._step_behaviors()
+	_chk("b19 scary face HOLDS at its peak rather than continuing to climb",
+			is_equal_approx(layer.modulate.a, peak))
+
+	# ...then unwinds the same way and clears the background behind it.
+	for i in range(40):
+		vm._step_behaviors()
+	_chk("b19 scary face clears its background when it ends", stage.bg_name == "")
+
+
+func _test_b19_scary_face_variant_follows_the_target_side() -> void:
+	# The pick reads backwards at first glance: !IsOnPlayerSide(target)
+	# selects the *Player* tilemap, so "Player" names the viewpoint the face
+	# is aimed FROM, not the side it sits on. Wiring it the intuitive way
+	# would silently swap the two on every use.
+	var s1 := BgStage.new()
+	s1.player_side = true          # attacker player-side -> target opposing
+	var v1 := _vm(s1)
+	_registry.get_behavior("AnimTask_ScaryFace").call(v1, {})
+
+	var s2 := BgStage.new()
+	s2.player_side = false         # attacker opposing -> target player-side
+	var v2 := _vm(s2)
+	_registry.get_behavior("AnimTask_ScaryFace").call(v2, {})
+
+	_chk("b19 an opposing target selects the PLAYER-viewpoint variant (got '%s')"
+			% s1.bg_name, s1.bg_name == "SCARY_FACE_PLAYER")
+	_chk("b19 a player-side target selects the OPPONENT variant (got '%s')"
+			% s2.bg_name, s2.bg_name == "SCARY_FACE_OPPONENT")
+	_chk("b19 the two sides genuinely pick different backgrounds",
+			s1.bg_name != s2.bg_name)

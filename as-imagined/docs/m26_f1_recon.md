@@ -1325,7 +1325,7 @@ pinned by test.
 | `AnimTask_SecretPower` / terrain family | M19-era | `gBattleEnvironment` has no analogue — no overworld. | — |
 
 | ~~all four b16 deferrals~~ | b16 | **CLOSED in b17** — `AnimTask_SquishTarget`, `AnimBrickBreakWall`, `AnimRazorWindTornado`, `AnimTask_NightShadeClone` all ported once read. They were the board's top three picks by yield, which is what deferring them was for. | — |
-| `AnimTask_ScaryFace` (+2) | b17 | **ASSET gap, NOT an unread function.** Needs `gBattleAnimBgTilemap_ScaryFacePlayer`/`...Opponent`, absent from M36E1's 84-background pull. Closing it means extending that pull. | M36E-shaped |
+| ~~`AnimTask_ScaryFace`~~ | b17, b18 | **CLOSED in b19 — and the stated reason was WRONG both times.** Not "absent from the pull": REFUSED by the pull's own two-palette-bank guard, which measured the off-screen scroll margin. Narrowed to the visible 30x20 and re-proved on a synthetic case. | — |
 | `AnimTask_GlareEyeDots` (+2) | b18 | Multi-step task spawner; setup read, `_Step` tail not. **UNREAD, not unfindable.** | medium |
 | `AnimTask_DestinyBondWhiteShadow` (+2) | b18 | Same shape as above. **UNREAD, not unfindable.** | medium |
 | `AnimTask_FakeOut` (+1) | b18 | **SCREEN-EFFECT gap.** WIN0/BLDY window-darken, closer to M36E's surface than a sprite behavior. | M36E-shaped |
@@ -1452,6 +1452,78 @@ is harness-specific, not a shipped bug.
 **Also observed, pre-existing and NOT M36:** the attacker's back sprite is
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
+
+### M36D batch 19 — COMPLETE 2026-07-30. A deferral reason that was wrong, and a guard narrowed then re-proved.
+
+**1 behavior + 3 recovered background assets, +3 moves (657 → 660 of 932,
+70.5% → 70.8%).** Tier 2 64.7%, Tier 3 70.3%.
+
+⚠️ **CORRECTION TO BATCHES 17 AND 18.** Both recorded `AnimTask_ScaryFace` as
+an ASSET gap — *"needs `gBattleAnimBgTilemap_ScaryFacePlayer`/`...Opponent`,
+absent from M36E1's 84-background pull"*. **That reason was wrong.** The pull
+script has always listed both, and the source `.bin` files have always been in
+the tree. They were being **REFUSED by the pull's own two-palette-bank
+correctness guard**, which printed the real reason on every run — I recorded
+"absent" from an `ls` that found no output file, without ever running the
+generator to ask why. *An empty output directory and a refused asset look
+identical from the outside.*
+
+**The refusal was over-strict, for a precise reason.** A tilemap is 32 cells
+wide by up to 32 tall, but the GBA draws only **30x20** of it; the rest is
+scroll margin. The authors parked filler cells out there in whatever bank was
+convenient, so measuring the WHOLE map reports a bank span nothing on screen
+exhibits:
+
+| asset | whole map | visible region only | what the second bank is |
+|---|---|---|---|
+| `scary_face_player` | banks 1, 8 | **bank 8** | one filler row at y=20, directly below the screen |
+| `scary_face_opponent` | banks 1, 8 | **bank 8** | same |
+| `attract` | banks 0, 8 | **bank 8** | the x>=30 margin and y>=20 rows |
+
+Measured across **every** tilemap in the tree: **none** is multi-bank inside
+the visible region. So the guard was narrowed to what is actually drawn —
+which changes what it *measures*, not what it *means*.
+
+**Narrowing a detector demands proving it still detects, and here real data
+cannot.** Since no asset can trip the narrowed guard any more, a synthetic
+tilemap with genuine content in a second bank at an on-screen cell was
+injected: it is still refused (`content spans 2 palette banks [3, 8] INSIDE
+the visible region`) while the real file passes. Without that, the guard would
+have been indistinguishable from a deleted one — the same vacuous-assertion
+trap this project has now hit in three separate dresses.
+
+**DISCLOSED:** the composite still covers the FULL map (the scroll margin is
+load-bearing for the sliding-BG family), so an off-screen cell in another bank
+is drawn with the visible bank's palette. That is only ever seen if a behavior
+scrolls it into view. Confirmed non-scrolling for ScaryFace —
+`AnimTask_ScaryFace_Step` holds BG1 X/Y at 0 and only blends. **NOT checked
+for `attract`**, which currently has no consumer; stated rather than implied.
+
+**`AnimTask_ScaryFace` itself** is a pure blend ramp: eva climbs 1..14 one
+step every 2 frames, holds 21, unwinds the same way — 28 + 21 + 28 = 77
+frames, peaking at **14/16, never fully opaque**. Its `case 3` also falls
+through into `case 4`, explicitly commented upstream this time.
+
+**The variant pick reads backwards** and is worth pinning: `onPlayer =
+!IsOnPlayerSide(target)` selects the *Player* tilemap, so "Player" names the
+viewpoint the face is aimed FROM, not the side it sits on. Wiring it the
+intuitive way silently swaps the two on every use.
+
+**Three naming misses in one batch, all the same shape.** `AnimData` and
+`index.json` key backgrounds by **UPPERCASE BG NAME**, not by lowercase
+filename — and `set_background()` returns `false` for an unknown name, so the
+lowercase form makes the whole behavior a silent no-op. Caught once in the
+asset test's own first draft and once in the behavior; both fixed by reading
+the index rather than guessing. **The coverage report still counted the move
+as playable throughout**, because it is a static registration walk — coverage
+measures REACH, not that a behavior does anything.
+
+**Tests:** `m36e_background_asset_test` 20 → **24/24** (the three recovered
+assets pinned by name, plus a check that the two ScaryFace variants composite
+to genuinely different images — if the variant pick were wired to the wrong
+file nothing else would notice). `m36e3_bg_behaviors_test` 52 → **60/60**.
+Regression green: `m36d` 605/605, `m36c` 66/66, `m36b` 53/53, `m36a` 71/71,
+`m36e_background_runtime` 30/30, `hit_effect_dispatch` 40/40.
 
 ### M36D batch 18 — COMPLETE 2026-07-30. Past 70%, and a switch fall-through.
 

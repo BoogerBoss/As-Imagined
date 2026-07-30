@@ -53,6 +53,10 @@ var _resolver: StepResolver
 ## end. Input and further warps are refused meanwhile, so a door cannot be
 ## re-entered mid-fade.
 var _warping := false
+
+## Seeded per run rather than global, so NPC wandering is reproducible when a
+## test wants it to be and varied when nobody sets it.
+var _rng := RandomNumberGenerator.new()
 var _fade: ColorRect
 
 ## [M27C C5] A FEEL value, not a ported constant. Source fades with
@@ -183,6 +187,9 @@ func _process(_delta: float) -> void:
 	# Every frame, including mid-step: the tween is when following matters most.
 	if _camera != null:
 		_camera.global_position = _player.global_position
+	# NPCs keep moving while the player is mid-step or mid-warp; freezing the
+	# world during a fade is a scripted-cutscene behaviour, not idle movement.
+	manager.tick_entities(_delta, _rng)
 	if _moving or _warping:
 		return
 	var dir := _held_direction()
