@@ -92,6 +92,7 @@ func _ready() -> void:
 	_test_batch13_deferrals_cleared()
 	_test_batch14_rotate_and_travel()
 	_test_batch14_shapes()
+	_test_falling_feather()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -3033,8 +3034,8 @@ func _test_batch12_coverage() -> void:
 			"AnimSuperpowerFireball"]:
 		_chk("%s was deferred by batch 12 and is now ported" % sym,
 				_registry.get_behavior(sym) != Callable())
-	_chk("AnimFallingFeather is STILL deferred (247-line packed-struct step)",
-			_registry.get_behavior("AnimFallingFeather") == Callable())
+	_chk("AnimFallingFeather was deferred by batch 13 and is now ported",
+			_registry.get_behavior("AnimFallingFeather") != Callable())
 
 
 # ── [M36D batch 13] ───────────────────────────────────────────────────────
@@ -3320,7 +3321,148 @@ func _test_batch14_shapes() -> void:
 	_chk("roster coverage is at least 593 moves (%d)"
 			% int(cov.get("playable", 0)),
 			int(cov.get("playable", 0)) >= 593)
-	for sym in ["AnimFallingFeather", "AnimPetalDanceBigFlower",
-			"AnimDiveBall", "AnimAcrobaticsSlashes"]:
+	for sym in ["AnimPetalDanceBigFlower", "AnimDiveBall",
+			"AnimAcrobaticsSlashes"]:
 		_chk("%s is deliberately deferred" % sym,
 				_registry.get_behavior(sym) == Callable())
+	# Deferred by batches 12, 13 AND 14, then taken directly.
+	_chk("AnimFallingFeather is ported (thrice-deferred, taken directly)",
+			_registry.get_behavior("AnimFallingFeather") != Callable())
+
+
+# ── AnimFallingFeather ────────────────────────────────────────────────────
+#
+# The last deferral, taken directly. Its 247 lines are mostly one flip block
+# copy-pasted into four switch arms; the mechanic underneath is small. These
+# assertions target the three details that make it read as a FEATHER rather
+# than a pendulum -- each is something a plausible-looking port would drop.
+
+
+func _feather_vm(stage: FakeStage, amp_lo: int, amp_hi: int) -> AnimScriptVM:
+	var vm := _vm(stage)
+	vm.args[0] = 0; vm.args[1] = -40
+	vm.args[2] = 0            # phase 0, rotation base 0
+	vm.args[3] = 4            # phase step, ascending
+	vm.args[4] = 96           # fall speed (8.8)
+	vm.args[5] = amp_lo | (amp_hi << 8)
+	vm.args[6] = 120          # y limit
+	vm.args[7] = 0
+	return vm
+
+
+func _test_falling_feather() -> void:
+	# 1. TWO ALTERNATING AMPLITUDES. `unkC` is a two-byte array indexed by a
+	#    flag toggled at one quadrant boundary, so consecutive swings are
+	#    DIFFERENT widths. A port using a single amplitude produces a clean
+	#    sine that looks fine in isolation and wrong over time.
+	var stage := FakeStage.new()
+	var vm := _feather_vm(stage, 6, 40)
+	_run_b5(vm, "AnimFallingFeather", "gFallingFeatherSpriteTemplate")
+	var f := _b5_last
+	_chk("falling feather spawns", f != null)
+	if f == null:
+		return
+	var x0 := f.centre.x
+	var swing_peaks: Array = []
+	var cur := 0.0
+	var prev_sign := 0
+	for i in range(200):
+		_step(vm, 1)
+		if not is_instance_valid(f):
+			break
+		var dx := f.centre.x - x0
+		var sgn := signi(int(dx))
+		if sgn != 0 and prev_sign != 0 and sgn != prev_sign:
+			if cur > 0.0:
+				swing_peaks.append(cur)
+			cur = 0.0
+		if sgn != 0:
+			prev_sign = sgn
+		cur = maxf(cur, absf(dx))
+	var widest := 0.0
+	var narrowest := 99999.0
+	for p in swing_peaks:
+		widest = maxf(widest, float(p))
+		narrowest = minf(narrowest, float(p))
+	_chk("feather swings at least twice (%d)" % swing_peaks.size(),
+			swing_peaks.size() >= 2)
+	if swing_peaks.size() >= 2:
+		_chk("...with ALTERNATING widths, not one clean sine (%.0f vs %.0f)"
+				% [widest, narrowest], widest > narrowest * 1.5)
+
+	# 2. TILT IS DERIVED FROM HORIZONTAL OFFSET, not from elapsed time. So the
+	#    rotation at the sway extreme must differ from the rotation near
+	#    centre -- a time-driven port would keep turning regardless.
+	var stage2 := FakeStage.new()
+	var vm2 := _feather_vm(stage2, 30, 30)
+	_run_b5(vm2, "AnimFallingFeather", "gFallingFeatherSpriteTemplate")
+	var f2 := _b5_last
+	if f2 != null:
+		var bx := f2.centre.x
+		var samples: Array = []
+		for i in range(60):
+			_step(vm2, 1)
+			if is_instance_valid(f2):
+				samples.append([absf(f2.centre.x - bx), f2.rotation])
+		if samples.size() > 30:
+			# Compare the rotation at the widest offset against the narrowest.
+			samples.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
+			var near: float = float(samples[0][1])
+			var far: float = float(samples[samples.size() - 1][1])
+			_chk("feather's tilt tracks its own drift (%.3f vs %.3f rad)"
+					% [near, far], not is_equal_approx(near, far))
+
+	# 3. THE FLIP AND THE DRAW-ORDER SWAP HAPPEN TOGETHER -- the feather
+	#    turning over as it passes in front of or behind the Pokemon.
+	var stage3 := FakeStage.new()
+	var vm3 := _feather_vm(stage3, 30, 30)
+	_run_b5(vm3, "AnimFallingFeather", "gFallingFeatherSpriteTemplate")
+	var f3 := _b5_last
+	if f3 != null:
+		var flips := 0
+		var z_changes := 0
+		var last_sign := signf(f3.scale.x)
+		var last_z := f3.z_index
+		for i in range(200):
+			_step(vm3, 1)
+			if not is_instance_valid(f3):
+				break
+			if signf(f3.scale.x) != last_sign:
+				flips += 1
+				last_sign = signf(f3.scale.x)
+			if f3.z_index != last_z:
+				z_changes += 1
+				last_z = f3.z_index
+		_chk("feather flips over as it falls (%d flips)" % flips, flips > 0)
+		_chk("...and its draw order changes with the flip (%d vs %d)"
+				% [flips, z_changes], z_changes == flips)
+
+	# 4. It falls at a CONSTANT rate and dies at its own y limit, not on a
+	#    frame counter.
+	var stage4 := FakeStage.new()
+	var vm4 := _feather_vm(stage4, 20, 20)
+	_run_b5(vm4, "AnimFallingFeather", "gFallingFeatherSpriteTemplate")
+	var f4 := _b5_last
+	if f4 != null:
+		var y0 := f4.centre.y
+		# Upstream a PAUSED frame skips the whole motion block, so the feather
+		# does not fall on the beat between swings. The descent is therefore
+		# constant BETWEEN pauses, not overall -- a first draft asserting a
+		# flat rate failed at 16.00 vs 14.40, which is exactly nine moving
+		# frames and one paused one. The precise claim is that every frame's
+		# delta is either zero or the SAME constant.
+		var deltas := {}
+		var prev := f4.centre.y
+		for i in range(40):
+			_step(vm4, 1)
+			if not is_instance_valid(f4):
+				break
+			deltas[snappedf(f4.centre.y - prev, 0.01)] = true
+			prev = f4.centre.y
+		_chk("feather falls", prev > y0)
+		_chk("...at one constant rate, with paused frames at zero (%s)"
+				% str(deltas.keys()), deltas.size() <= 2)
+		_chk("...and one of those values is a genuine pause",
+				deltas.has(0.0) or deltas.size() == 1)
+		_step(vm4, 400)
+		_chk("...and ends at its y limit", vm4.visual_count() == 0)

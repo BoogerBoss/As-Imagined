@@ -100,6 +100,7 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		"AnimFallingFeather": _falling_feather,
 		# — [M36D batch 14] the rotate-and-travel family —
 		"AnimPsychoCut": _psycho_cut,
 		"AnimSonicBoomProjectile": _sonic_boom_projectile,
@@ -9742,3 +9743,123 @@ static func _translate_web_thread(vm: AnimScriptVM, ctx: Dictionary) -> void:
 #     but the two step functions determine the sway and were not read.
 #   * `AnimDiveBall`, `AnimDiveWaterSplash`, `AnimAcrobaticsSlashes`,
 #     `SpriteCB_ToxicThreadWrap`.
+
+
+# ── AnimFallingFeather — the last deferral, taken directly ────────────────
+#
+# Deferred by batches 12, 13 and 14 as "247 lines of state machine over a
+# packed `FeatherDanceData` bitfield struct". That description was accurate
+# and, it turns out, misleading: almost all of the length is the SAME
+# twenty-line flip-and-swap block copy-pasted into four `switch` arms. Decoded,
+# the mechanic is small and unusually well-designed, and three details are what
+# make it read as a falling feather rather than a swinging pendulum:
+#
+#   1. IT ALTERNATES BETWEEN TWO SWAY AMPLITUDES. `unkC` is a two-byte array
+#      and the index is a flag (`unk0_0b`) toggled at ONE specific quadrant
+#      boundary. So consecutive swings are different widths and the descent
+#      never settles into a clean sine.
+#   2. ITS TILT IS DERIVED FROM ITS OWN HORIZONTAL OFFSET, not from time:
+#      `sinIndex = (-x2 >> 1) + unkA`. The feather leans into its drift and
+#      levels out at the extremes, which is what selling the "flat object
+#      falling through air" reading depends on.
+#   3. IT FLIPS AND CHANGES DRAW ORDER TOGETHER. At a quadrant boundary it
+#      mirrors horizontally AND swaps its priority relative to the Pokemon --
+#      the feather turning over and passing in front of or behind it.
+#
+# The four `switch` arms differ only in which neighbouring quadrant triggers a
+# flip versus a bare pause, so they collapse into one table.
+#
+# The pause is worth noting because it looks longer than it is: `unk1` starts
+# at 0 and the test is `unk1-- % 256 == 0`, which is true immediately, so a
+# "pause" lasts a single frame. It is a beat between swings, not a hold.
+
+# Per quadrant: [which previous quadrant triggers a FLIP, which triggers a bare
+# PAUSE]. Quadrant 0 additionally toggles the amplitude selector on its pause.
+const _FEATHER_QUADRANTS := [[1, 3], [0, 2], [3, 1], [2, 0]]
+
+static func _falling_feather(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var which := AnimStage.ANIM_ATTACKER if (vm.args[7] & 0x100) != 0 \
+			else AnimStage.ANIM_TARGET
+	var mirror := -1.0 if _battler_is_player_side(vm, which) else 1.0
+
+	# DISCLOSED: upstream reads BATTLER_COORD_ATTR_HEIGHT/WIDTH -- sprite
+	# DIMENSIONS -- and uses them as screen coordinates here. That is almost
+	# certainly an upstream mix-up (every neighbouring behavior uses the
+	# _X_2/_Y_PIC_OFFSET coordinate queries), and it does not transfer to a
+	# stage whose sprites are positioned by the scene rather than by GBA
+	# pixel anchors. Spawned relative to the battler's centre instead.
+	var centre := _battler_centre(vm, which)
+	var start := centre + Vector2(float(vm.args[0]) * mirror,
+			float(vm.args[1])) * scale
+	var y_limit := centre.y + float(vm.args[6]) * scale
+
+	var phase: int = vm.args[2] & 0xFF
+	var rot_base: int = (vm.args[2] >> 8) & 0xFF
+	var raw_delta: int = vm.args[3]
+	var descending: bool = (raw_delta & 0x8000) != 0
+	var phase_step: int = raw_delta & 0x7FFF
+	var fall_speed: int = vm.args[4]
+	# The two amplitudes, packed low byte / high byte into one argument.
+	var amps := [float(vm.args[5] & 0xFF), float((vm.args[5] >> 8) & 0xFF)]
+
+	var st := {
+		"phase": phase, "quadrant": phase >> 6, "amp_sel": 0,
+		"paused": false, "flip_pending": false, "flipped": false,
+		"y": start.y, "front": false, "t": 0,
+	}
+
+	var apply := func() -> void:
+		var amp: float = amps[int(st["amp_sel"])]
+		var x2 := _gba_sin(float(st["phase"]), amp)
+		node.centre = Vector2(start.x + x2 * scale, float(st["y"]))
+		# Tilt follows the CURRENT horizontal offset, not elapsed time.
+		var idx := (-x2 / 2.0) + float(rot_base)
+		node.rotation = idx * TAU / _SIN_STEPS
+		node.scale = Vector2(
+				(-1.0 if bool(st["flipped"]) else 1.0) * absf(node.scale.x),
+				node.scale.y)
+	apply.call()
+
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if bool(st["paused"]):
+			# One frame, not a hold -- see the note above.
+			st["paused"] = false
+			return false
+
+		var q: int = int(st["phase"]) / 64
+		var rule: Array = _FEATHER_QUADRANTS[q]
+		var prev: int = int(st["quadrant"])
+		if prev == int(rule[0]):
+			st["flip_pending"] = true
+			st["paused"] = true
+		elif prev == int(rule[1]):
+			# Quadrant 0's bare pause is also where the amplitude alternates,
+			# which is what keeps consecutive swings different widths.
+			if q == 0:
+				st["amp_sel"] = 1 - int(st["amp_sel"])
+			st["paused"] = true
+		elif bool(st["flip_pending"]):
+			st["flipped"] = not bool(st["flipped"])
+			# The flip and the draw-order swap happen together upstream.
+			st["front"] = not bool(st["front"])
+			node.z_index = 1 if bool(st["front"]) else -1
+			st["flip_pending"] = false
+		st["quadrant"] = q
+
+		st["y"] = float(st["y"]) + float(fall_speed) / 256.0 * scale
+		st["phase"] = posmod(int(st["phase"])
+				+ (-phase_step if descending else phase_step), 256)
+		apply.call()
+
+		if float(st["y"]) >= y_limit or int(st["t"]) >= _ANIM_END_CAP * 2:
+			node.finish()
+			return true
+		return false)

@@ -1324,6 +1324,10 @@ pinned by test.
 | ~~`AnimTask_SpiteTargetShadow`~~ | b10, again in b11 | **CLOSED 2026-07-30 — both deferrals OVERTURNED.** Reading Step1 case 1 through Step2 in full showed the earlier call was wrong: the tint lands on the REAL target, the echo and its 128-frame sine pulse are directly expressible, and only the per-scanline nature of the waver is lost — which batch 7 had already approximated and disclosed for Dragon Dance's identical mechanism. Ported. | — |
 | `AnimTask_SecretPower` / terrain family | M19-era | `gBattleEnvironment` has no analogue — no overworld. | — |
 
+**`AnimFallingFeather` — deferred by batches 12, 13 and 14, then taken
+directly on 2026-07-30. See its own section. The list now holds only
+short-lived, current-batch deferrals.**
+
 Batch 10 also deferred `AnimTask_Rollout`, `AnimTask_FlailMovement`,
 `AnimTask_NightmareClone` and `AnimTask_ShrinkTargetCopy` for unread step
 functions; **all four were ported in batch 11** once read, which is what
@@ -1442,6 +1446,60 @@ is harness-specific, not a shipped bug.
 **Also observed, pre-existing and NOT M36:** the attacker's back sprite is
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
+
+### AnimFallingFeather — the last deferral, taken directly, 2026-07-30
+
+`m36d_batch_test` 510 -> **520/520**; 6-suite sweep green. Coverage
+**593 -> 595 of 932 (63.8%)**. **The M36D deferral list is now empty of
+long-standing items.**
+
+Deferred by batches 12, 13 and 14 as "247 lines of state machine over a packed
+`FeatherDanceData` bitfield struct". That was accurate and, it turns out,
+**misleading**: almost all of the length is the SAME twenty-line
+flip-and-priority block copy-pasted into four `switch` arms, which differ only
+in which neighbouring quadrant triggers a flip versus a bare pause. They
+collapse into a single four-row table.
+
+**Decoded, the mechanic is small and unusually well-designed. Three details
+are what make it read as a falling feather rather than a swinging pendulum,
+and a plausible-looking port drops all three:**
+
+1. **It alternates between TWO sway amplitudes.** `unkC` is a two-byte array
+   and the index is a flag toggled at ONE specific quadrant boundary, so
+   consecutive swings are different widths and the descent never settles into
+   a clean sine.
+2. **Its tilt is derived from its own horizontal offset, not from time** —
+   `sinIndex = (-x2 >> 1) + unkA`. The feather leans into its drift and levels
+   out at the extremes, which is what sells "a flat object falling through
+   air".
+3. **The flip and the draw-order swap happen TOGETHER** — it mirrors
+   horizontally and changes priority relative to the Pokemon in the same
+   frame, so it turns over as it passes in front of or behind it.
+
+All three are asserted directly, including that the flip count and the
+draw-order-change count are EQUAL rather than merely both non-zero.
+
+**A note that looks like a bug and is not:** the pause is one frame. `unk1`
+starts at 0 and the test is `unk1-- % 256 == 0`, true immediately. It is a
+beat between swings, not a hold.
+
+⚠️ **And a test of mine that was wrong where the code was right.** A first
+draft asserted the descent was at a flat constant rate; it failed at 16.00
+against 14.40 over ten frames — which is exactly nine moving frames and one
+paused one. Upstream a paused frame skips the ENTIRE motion block, so the
+feather genuinely does not fall on the beat between swings. The assertion now
+makes the precise claim: every frame's delta is either zero or the same
+constant.
+
+**DISCLOSED:** upstream reads `BATTLER_COORD_ATTR_HEIGHT`/`WIDTH` — sprite
+DIMENSIONS — and uses them as screen coordinates for the spawn point. That is
+almost certainly an upstream mix-up (every neighbouring behavior uses the
+`_X_2`/`_Y_PIC_OFFSET` coordinate queries) and does not transfer to a stage
+whose sprites are positioned by the scene. Spawned relative to the battler's
+centre instead.
+
+**Screenshot-verified**: Feather Dance renders feathers around the target at
+visibly varied tilts, confirming detail 2 on screen.
 
 ### M36D batch 14 — COMPLETE 2026-07-30
 
