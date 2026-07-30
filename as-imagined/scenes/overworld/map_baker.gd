@@ -21,6 +21,9 @@ const ATLAS_COLS := 32
 const MAP_DIR := "res://assets/maps/"
 const ATLAS_DIR := "res://assets/map_atlases/"
 const OUT_DIR := "res://scenes/maps/"
+## [M27M2] Shared TileSets, one per tileset PAIR rather than one embedded in
+## every scene. 60 of these cover all 421 maps.
+const TILESET_DIR := "res://assets/map_tilesets/"
 
 ## Exactly how Godot writes them.
 const UID_KEY := "uid=\""
@@ -90,7 +93,7 @@ func _bake(map_name: String) -> bool:
 					% map_name)
 			return false
 
-	var ts := _build_tileset(src.atlas)
+	var ts := _get_or_build_tileset(src.atlas)
 	if ts == null:
 		return false
 
@@ -617,6 +620,36 @@ func _add_layer(root: Node2D, nm: String, ts: TileSet) -> TileMapLayer:
 
 ## One TileSet, three atlas sources, shared per tileset PAIR — 421 Kanto maps
 ## resolve to 60 pairs, so most maps reuse an existing atlas set.
+## The shared TileSet for a pair, built once and reused.
+##
+## [M27M2] Each baked scene used to embed its own copy as a SubResource, and
+## building one is 2208 create_tile() calls — measured as a flat ~27 ms per
+## scene load regardless of map size, which was the entire mid-step stutter
+## when walking into a neighbouring chunk. Pallet Town and Route 1 share a
+## pair, so crossing between them rebuilt a byte-identical TileSet from scratch.
+##
+## 73% of stitchable connections are between maps sharing a pair, so most
+## crossings now hit the resource cache and skip the build entirely; the rest
+## pay it once and are free on every revisit.
+##
+## take_over_path() rather than a bare save: the instance handed to the layers
+## must carry the resource_path, or ResourceSaver writes it back into the scene
+## as a SubResource and nothing is shared.
+func _get_or_build_tileset(atlas: String) -> TileSet:
+	var path := TILESET_DIR + atlas + ".tres"
+	if ResourceLoader.exists(path):
+		return load(path) as TileSet
+	var ts := _build_tileset(atlas)
+	if ts == null:
+		return null
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(TILESET_DIR))
+	if ResourceSaver.save(ts, path) != OK:
+		push_error("map_baker: could not write shared tileset %s" % path)
+		return ts
+	ts.take_over_path(path)
+	return ts
+
+
 func _build_tileset(atlas: String) -> TileSet:
 	var ts := TileSet.new()
 	ts.tile_size = Vector2i(CELL, CELL)

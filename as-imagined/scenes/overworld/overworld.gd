@@ -200,8 +200,19 @@ func _try_step(dir: int) -> void:
 	var outcome: int = r["outcome"]
 	if outcome != StepResolver.Outcome.NONE and outcome != StepResolver.Outcome.LEDGE_JUMP:
 		return
+	var was_in := manager.chunk_owning(_cell)
 	_cell = r["to"]
 	_elev = manager.elevation_at(_cell)
+	# [M27C C4] Load the new chunk's own neighbours on arrival, and unload
+	# nothing. Rob's call, and the measurements support it: stitchable fan-out
+	# is at most 4 (360 of 421 maps have none at all), so this tops out around 5
+	# live chunks, and unloading buys little against the complexity of deciding
+	# when. The reference offers no guidance either way — it keeps ONE map live
+	# and swaps it wholesale on crossing (LoadMapFromCameraTransition), so this
+	# is deliberate original design, not a port.
+	var now_in := manager.chunk_owning(_cell)
+	if now_in != "" and now_in != was_in:
+		manager.request_neighbours(now_in)
 	_reparent_for_elevation()
 	_moving = true
 	var t := create_tween()

@@ -31,16 +31,24 @@ const CELL := 16
 ## to atlas coords exactly as a map cell does.
 const ATLAS_COLS := 32
 
-## How far past a chunk's own bounds the skirt reaches, in cells.
+## How far past a chunk's own bounds the skirt reaches, PER AXIS.
 ##
-## MEASURED, not picked: the canvas is 1024x768 (M26A1) and the overworld
-## camera runs at zoom 3, so the visible region is 341x256 world px = 21.3 x 16
-## cells, i.e. a ~11 x 8 half-extent when the player stands on an edge cell.
-## 16 covers the wider axis with headroom for the camera's own position
-## smoothing overshooting the player, and for the non-native window sizes
-## M26G3 flags as a real case. Cost is bounded: a 24x20 map skirted at 16 is
-## 56x52 cells of TileMapLayer, which is nothing.
-const SKIRT_DEPTH := 16
+## Measured: the canvas is 1024x768 (M26A1) at camera zoom 3, so the visible
+## region is 21.3 x 16.0 cells and the half-extent from an edge cell is
+## 10.7 x 8.0. Plus one cell for the camera's smoothing lag, measured at 11px
+## (~0.7 cells) crossing a seam.
+##
+## PER AXIS because the screen is wider than it is tall in cells, and a single
+## depth sized for the wider one over-covers the vertical by 100%. At a flat 16
+## a 24x20 map carried 2432 skirt cells around 480 real ones; 12 x 9 makes that
+## 1344, a 45% cut in what is the dominant cost of loading a chunk.
+##
+## An earlier version of this comment justified 16 partly as headroom for
+## "non-native window sizes". That was wrong: stretch mode is `canvas_items`
+## with aspect `keep`, so the visible WORLD area is fixed and letterboxing
+## preserves it rather than revealing more.
+const SKIRT_DEPTH_X := 12
+const SKIRT_DEPTH_Y := 9
 
 ## The layers MapManager paints the skirt into, one per draw plane.
 ##
@@ -103,6 +111,24 @@ const PLANE_Z := {
 ## string with no third naming scheme in between.
 var _chunks: Dictionary = {}
 
+## Neighbours whose resources are being parsed on a background thread.
+##
+## [M27C C4] Loading a neighbour synchronously cost 41 ms inside ONE _try_step
+## — measured crossing into Route 1, which loads VIRIDIAN CITY, not Route 1.
+## That is two and a half frames of blocking during a step, and very visible.
+## Roughly 28 of those 41 ms is ResourceLoader parsing the scene and data, so
+## that part moves off-thread and only instantiate/place/repaint stays.
+var _pending: Dictionary = {}
+
+## Skirt repaints owed, one popped per frame.
+##
+## [M27C C4] Instantiating a chunk and painting its skirt in the same frame
+## measured 14.6 ms for a 48x40 map — a single frame right at the 60fps budget.
+## They are independent, and a freshly loaded neighbour is a whole map away
+## from the player, so its skirt can wait a frame. The SYNC path still paints
+## immediately: startup and the tests want a chunk fully formed on return.
+var _skirt_queue: Array[Rect2i] = []
+
 
 ## Instantiate a baked map and place it at `origin` in the global grid.
 ##
@@ -116,8 +142,15 @@ func load_chunk(map_name: String, origin: Vector2i = Vector2i.ZERO) -> bool:
 	var data_path := "res://scenes/maps/%s_data.tres" % map_name
 	if not (ResourceLoader.exists(scene_path) and ResourceLoader.exists(data_path)):
 		return false
-	var data: MapData = load(data_path) as MapData
-	var packed: PackedScene = load(scene_path) as PackedScene
+	return _install_chunk(map_name, load(data_path) as MapData,
+			load(scene_path) as PackedScene, origin)
+
+
+## The main-thread half of loading: instantiate, place, repaint. Split out so
+## the threaded path can share it, and deliberately small — this is all that
+## still blocks once resource parsing happens off-thread.
+func _install_chunk(map_name: String, data: MapData, packed: PackedScene,
+		origin: Vector2i, defer_skirt: bool = false) -> bool:
 	if data == null or packed == null:
 		return false
 	var root: Node2D = packed.instantiate() as Node2D
@@ -125,10 +158,13 @@ func load_chunk(map_name: String, origin: Vector2i = Vector2i.ZERO) -> bool:
 		return false
 	add_child(root)
 	register_chunk(map_name, data, root, origin)
-	# Every chunk's skirt, not just this one's: a newly loaded neighbour takes
-	# ownership of cells an existing chunk was skirting over, so the seam only
-	# closes if the OTHER side repaints too.
-	refresh_skirts()
+	# Not just this chunk's skirt: a newly loaded neighbour takes ownership of
+	# cells an existing chunk was skirting over, so the seam only closes if the
+	# OTHER side repaints too. Scoped to chunks that reach these cells.
+	if defer_skirt:
+		_skirt_queue.append(chunk_rect(map_name))
+	else:
+		refresh_skirts_near(chunk_rect(map_name))
 	return true
 
 
@@ -192,6 +228,33 @@ func refresh_skirts() -> void:
 		_paint_skirt(map_name)
 
 
+## The cells a chunk covers, and the wider box its skirt can reach into.
+func chunk_rect(map_name: String) -> Rect2i:
+	if not _chunks.has(map_name):
+		return Rect2i()
+	var d: MapData = _chunks[map_name]["data"]
+	if d == null:
+		return Rect2i()
+	return Rect2i(_chunks[map_name]["origin"], Vector2i(d.width, d.height))
+
+
+## Repaint only the chunks a change at `rect` could actually have altered.
+##
+## [M27C C4] The full sweep is O(chunks) per load and became the dominant cost
+## once shared TileSets removed the resource-load stall — 23.8 ms to repaint
+## four chunks when only one or two could possibly have changed. A chunk's
+## skirt only differs if its own skirt REGION — its bounds grown by the skirt
+## depth — reaches into the cells that changed hands.
+func refresh_skirts_near(rect: Rect2i) -> void:
+	var grow := Vector2i(SKIRT_DEPTH_X, SKIRT_DEPTH_Y)
+	for map_name in _chunks:
+		var r := chunk_rect(map_name)
+		if r.size == Vector2i.ZERO:
+			continue
+		if Rect2i(r.position - grow, r.size + grow * 2).intersects(rect):
+			_paint_skirt(map_name)
+
+
 func _paint_skirt(map_name: String) -> void:
 	var c: Dictionary = _chunks[map_name]
 	var d: MapData = c["data"]
@@ -226,12 +289,37 @@ func _paint_skirt(map_name: String) -> void:
 
 	var origin: Vector2i = c["origin"]
 	var has_types := d.border_layer_type.size() == d.border.size()
-	for y in range(-SKIRT_DEPTH, d.height + SKIRT_DEPTH):
-		for x in range(-SKIRT_DEPTH, d.width + SKIRT_DEPTH):
+
+	# Ownership as RECTS in this chunk's own local space, resolved once.
+	#
+	# [M27C C4] This inner loop runs ~4000 times per repaint, and calling
+	# chunk_owning() per cell meant a Dictionary walk, a Vector2i allocation and
+	# a String return every time — measured at ~13 ms for one 48x40 chunk, which
+	# was the whole remaining hitch after resource loading went off-thread.
+	# Rect2i.has_point against a two-entry array is the same answer without any
+	# of that.
+	var own := Rect2i(Vector2i.ZERO, Vector2i(d.width, d.height))
+	var others: Array[Rect2i] = []
+	for other_name in _chunks:
+		if other_name == map_name:
+			continue
+		var r := chunk_rect(other_name)
+		if r.size != Vector2i.ZERO:
+			others.append(Rect2i(r.position - origin, r.size))
+
+	for y in range(-SKIRT_DEPTH_Y, d.height + SKIRT_DEPTH_Y):
+		for x in range(-SKIRT_DEPTH_X, d.width + SKIRT_DEPTH_X):
 			var local := Vector2i(x, y)
-			# Skip anything a chunk owns — this chunk's own cells, and (once C4
-			# lands) a neighbour's, which is what makes a seam close up.
-			if chunk_owning(origin + local) != "":
+			# Skip anything a chunk owns — this chunk's own cells, and a
+			# neighbour's, which is what makes a seam close up.
+			if own.has_point(local):
+				continue
+			var taken := false
+			for r in others:
+				if r.has_point(local):
+					taken = true
+					break
+			if taken:
 				continue
 			var mid := border_metatile_at(d, local)
 			if mid < 0:
@@ -262,13 +350,16 @@ func unload_chunk(map_name: String) -> void:
 	var root: Node2D = _chunks[map_name]["root"]
 	if root != null and is_instance_valid(root):
 		root.queue_free()
+	# Captured BEFORE the erase: the rect is what the repaint scopes to, and it
+	# stops existing the moment the chunk does.
+	var vacated := chunk_rect(map_name)
 	_chunks.erase(map_name)
 	# [M27C C4] Repaint what is left. Cells this chunk owned are now unowned, so
 	# whichever neighbour was skirting up to that seam has to extend over them
 	# again — otherwise unloading leaves a hole exactly where the map used to be.
 	# Flagged as debt when the skirt landed in C3, unreachable until now because
 	# only one chunk was ever live.
-	refresh_skirts()
+	refresh_skirts_near(vacated)
 
 
 func loaded_chunks() -> Array:
@@ -451,6 +542,70 @@ static func neighbour_origin(host_origin: Vector2i, host: MapData,
 ## Returns the names loaded. Uses `loadable_connections()`, so DIVE/EMERGE and
 ## unbaked destinations are excluded by the same rule the skirt keys on: an
 ## edge that yields nothing here is an edge that stays skirted.
+## Start background loads for a chunk's baked neighbours. Non-blocking.
+##
+## Returns how many requests were started. The origin cannot be computed yet —
+## north/west placement needs the NEIGHBOUR's own dimensions — so the host
+## frame is recorded and the origin derived at completion, when its MapData has
+## actually arrived.
+func request_neighbours(map_name: String) -> int:
+	if not _chunks.has(map_name):
+		return 0
+	var host: MapData = _chunks[map_name]["data"]
+	var host_origin: Vector2i = _chunks[map_name]["origin"]
+	if host == null:
+		return 0
+	var started := 0
+	for c in host.loadable_connections():
+		var nb := MapConstants.map_name_for(str(c.get("map", "")))
+		if nb == "" or _chunks.has(nb) or _pending.has(nb):
+			continue
+		var sp := "res://scenes/maps/%s.tscn" % nb
+		var dp := "res://scenes/maps/%s_data.tres" % nb
+		if not (ResourceLoader.exists(sp) and ResourceLoader.exists(dp)):
+			continue
+		ResourceLoader.load_threaded_request(sp)
+		ResourceLoader.load_threaded_request(dp)
+		_pending[nb] = {"scene": sp, "data": dp, "host": host,
+				"host_origin": host_origin, "conn": c}
+		started += 1
+	return started
+
+
+func _process(_delta: float) -> void:
+	# Skirts first, and only when nothing installed this frame — the two are the
+	# frame's two expensive jobs and doing both at once is what this avoids.
+	if not _skirt_queue.is_empty():
+		refresh_skirts_near(_skirt_queue.pop_front())
+		return
+	_poll_pending()
+
+
+## Install at most ONE finished chunk per frame.
+##
+## Deliberately one: two neighbours arriving together would otherwise stack
+## their instantiate-and-repaint cost into a single frame, which is the hitch
+## this exists to remove.
+func _poll_pending() -> void:
+	for nb in _pending.keys():
+		var p: Dictionary = _pending[nb]
+		var s_scene := ResourceLoader.load_threaded_get_status(p["scene"])
+		var s_data := ResourceLoader.load_threaded_get_status(p["data"])
+		if (s_scene == ResourceLoader.THREAD_LOAD_IN_PROGRESS
+				or s_data == ResourceLoader.THREAD_LOAD_IN_PROGRESS):
+			continue
+		_pending.erase(nb)
+		if (s_scene != ResourceLoader.THREAD_LOAD_LOADED
+				or s_data != ResourceLoader.THREAD_LOAD_LOADED):
+			continue
+		var data: MapData = ResourceLoader.load_threaded_get(p["data"]) as MapData
+		var packed: PackedScene = ResourceLoader.load_threaded_get(p["scene"]) as PackedScene
+		if data != null and packed != null:
+			_install_chunk(nb, data, packed,
+					neighbour_origin(p["host_origin"], p["host"], p["conn"], data), true)
+		return
+
+
 func load_neighbours(map_name: String) -> Array[String]:
 	var added: Array[String] = []
 	if not _chunks.has(map_name):
