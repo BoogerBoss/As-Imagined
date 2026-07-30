@@ -95,6 +95,14 @@ func _ready() -> void:
 	_test_falling_feather()
 	_test_batch15()
 	_test_batch15_deferrals_cleared()
+	_test_b16_vice_grip_is_not_guillotine()
+	_test_b16_time_of_day_reads_the_system_clock()
+	_test_b16_stomp_foot_holds_after_landing()
+	_test_b16_bounce_ball_land_reveals_the_attacker()
+	_test_b16_weather_ball_up_decelerates()
+	_test_b16_whirlwind_line_snaps_back()
+	_test_b16_rock_scatter_flies_the_way_it_spawned()
+	_test_b16_ghost_status_rises_while_swaying()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -3691,3 +3699,184 @@ func _test_batch15_deferrals_cleared() -> void:
 	_run_b5(vm5, "SpriteCB_SpriteOnMonUntilAffineAnimEnds",
 			"gBasicHitSplatSpriteTemplate")
 	_chk("...and draws NOTHING for a hidden one", _b5_last == null)
+
+# ── [M36D batch 16] ───────────────────────────────────────────────────────
+
+func _test_b16_vice_grip_is_not_guillotine() -> void:
+	# The whole point of this behavior. Both pincers use the SAME setup, so a
+	# start-position check would pass on an alias and prove nothing -- the
+	# assertion has to be about the STEP.
+	var vm_v := _vm()
+	AnimBehaviors.call("_vice_grip_pincer", vm_v, {"template": "gViceGripSpriteTemplate"})
+	var vg: Node = vm_v.stage.sprites[-1]
+	var vm_g := _vm()
+	AnimBehaviors.call("_guillotine_pincer", vm_g, {"template": "gGuillotineSpriteTemplate"})
+	var gl: Node = vm_g.stage.sprites[-1]
+
+	_chk("b16 vice grip and guillotine start at the SAME place (shared setup)",
+			vg.centre.distance_to(gl.centre) < 0.01)
+
+	# Converge together...
+	for i in range(6 + 2):
+		vm_v.tick(); vm_g.tick()
+	_chk("b16 both have converged after the shared %d-frame arrival" % 6,
+			vg.centre.distance_to(gl.centre) < 1.0)
+
+	# ...then diverge. ViceGrip is DONE; Guillotine grinds on and retreats.
+	for i in range(40):
+		vm_v.tick(); vm_g.tick()
+	_chk("b16 vice grip has finished by frame ~46 (converge and die)",
+			vm_v.finished_sprites.has(vg) or not is_instance_valid(vg))
+	_chk("b16 guillotine is STILL running at frame ~46 (51-frame grind)",
+			not vm_g.finished_sprites.has(gl))
+
+
+func _test_b16_time_of_day_reads_the_system_clock() -> void:
+	var vm := _vm()
+	vm.args[0] = -1
+	AnimBehaviors.call("_get_time_of_day", vm, {})
+	var slot: int = int(vm.args[0])
+	_chk("b16 time of day writes a valid slot (got %d)" % slot,
+			slot == 0 or slot == 1 or slot == 2)
+
+	# Cross-check the boundaries against the clock we actually read, so this
+	# fails if the >=20 / <4 / 17-19 bands are ever reworded.
+	var hour: int = int(Time.get_datetime_dict_from_system().get("hour", 12))
+	var want := 0
+	if hour >= 20 or hour < 4:
+		want = 1
+	elif hour >= 17:
+		want = 2
+	_chk("b16 slot matches the real hour %d (want %d, got %d)" % [hour, want, slot],
+			slot == want)
+
+
+func _test_b16_stomp_foot_holds_after_landing() -> void:
+	# Three beats; the HOLD is the impact reading and is the easiest to drop.
+	var vm := _vm()
+	vm.args = [0, 0, 8, 0, 0, 0, 0, 0]
+	AnimBehaviors.call("_stomp_foot", vm, {"template": "gStompFootSpriteTemplate"})
+	var node: Node = vm.stage.sprites[-1]
+	var start: Vector2 = node.centre
+
+	for i in range(7):
+		vm.tick()
+	_chk("b16 stomp foot has NOT moved during its 8-frame delay",
+			node.centre.distance_to(start) < 0.01)
+
+	for i in range(8):
+		vm.tick()
+	var landed: Vector2 = node.centre
+	_chk("b16 stomp foot has travelled to the target after the delay",
+			landed.distance_to(start) > 1.0)
+
+	for i in range(10):
+		vm.tick()
+	_chk("b16 stomp foot HOLDS on the target (not gone at +10 frames)",
+			not vm.finished_sprites.has(node)
+			and node.centre.distance_to(landed) < 0.01)
+	for i in range(10):
+		vm.tick()
+	_chk("b16 stomp foot ends after its 15-frame hold", vm.finished_sprites.has(node))
+
+
+func _test_b16_bounce_ball_land_reveals_the_attacker() -> void:
+	# Bounce's counterpart to Fly's reveal half. Down, then UP, then reveal.
+	var vm := _vm()
+	vm.stage.set_battler_visible(AnimStage.ANIM_ATTACKER, false)
+	AnimBehaviors.call("_bounce_ball_land", vm, {"template": "gBounceBallSpriteTemplate"})
+	var node: Node = vm.stage.sprites[-1]
+	var first: float = node.centre.y
+
+	vm.tick()
+	_chk("b16 bounce ball falls DOWNWARD on its first frames",
+			node.centre.y > first)
+
+	# Run to the bottom of the drop and past the bounce.
+	var lowest := node.centre.y
+	for i in range(200):
+		vm.tick()
+		if not is_instance_valid(node) or vm.finished_sprites.has(node):
+			break
+		lowest = maxf(lowest, node.centre.y)
+	_chk("b16 bounce ball reversed direction (bounced back up past its low point)",
+			lowest > first + 1.0)
+	_chk("b16 bounce ball REVEALED the attacker on completion",
+			vm.stage.sprite_for(AnimStage.ANIM_ATTACKER).visible == true)
+
+
+func _test_b16_weather_ball_up_decelerates() -> void:
+	# The defining detail: velocity creeps toward -20, so each frame moves the
+	# ball LESS than the last. An accelerating port passes a plain "it rises".
+	var vm := _vm()
+	AnimBehaviors.call("_weather_ball_up", vm, {"template": "gWeatherBallUpSpriteTemplate"})
+	var node: Node = vm.stage.sprites[-1]
+	var y0: float = node.centre.y
+	vm.tick()
+	var y1: float = node.centre.y
+	for i in range(14):
+		vm.tick()
+	var y15: float = node.centre.y
+	vm.tick()
+	var y16: float = node.centre.y
+
+	var first_step := absf(y1 - y0)
+	var late_step := absf(y16 - y15)
+	_chk("b16 weather ball rises", y1 < y0)
+	_chk("b16 weather ball DECELERATES (first %.2f > late %.2f)"
+			% [first_step, late_step], late_step < first_step)
+
+
+func _test_b16_whirlwind_line_snaps_back() -> void:
+	# The snap every 6 frames is what makes a repeating streak instead of one
+	# sprite sliding away. Without it the line just exits stage right.
+	var vm := _vm()
+	vm.args = [0, 0, AnimStage.ANIM_TARGET, 60, 0, 0, 0, 0]
+	AnimBehaviors.call("_whirlwind_line", vm, {"template": "gWhirlwindLineSpriteTemplate"})
+	var node: Node = vm.stage.sprites[-1]
+	var start: Vector2 = node.centre
+
+	for i in range(5):
+		vm.tick()
+	var drifted: float = node.centre.x
+	_chk("b16 whirlwind line drifts right before the snap", drifted > start.x)
+	vm.tick()
+	_chk("b16 whirlwind line SNAPPED back to its start on the 6th frame",
+			absf(node.centre.x - start.x) < 0.01)
+
+
+func _test_b16_rock_scatter_flies_the_way_it_spawned() -> void:
+	# The spawn offset doubles as the velocity, so the sign of arg 0 decides
+	# the direction. Two rocks with mirrored offsets must diverge.
+	var vm := _vm()
+	vm.args = [24, -8, 20, 0, 0, 0, 0, 0]
+	AnimBehaviors.call("_rock_scatter", vm, {"template": "gRockScatterSpriteTemplate"})
+	var right: Node = vm.stage.sprites[-1]
+	var r0: float = right.centre.x
+
+	var vm2 := _vm()
+	vm2.args = [-24, -8, 20, 0, 0, 0, 0, 0]
+	AnimBehaviors.call("_rock_scatter", vm2, {"template": "gRockScatterSpriteTemplate"})
+	var left: Node = vm2.stage.sprites[-1]
+	var l0: float = left.centre.x
+
+	for i in range(12):
+		vm.tick(); vm2.tick()
+	_chk("b16 rock spawned to the right flies further RIGHT", right.centre.x > r0)
+	_chk("b16 rock spawned to the left flies further LEFT", left.centre.x < l0)
+
+
+func _test_b16_ghost_status_rises_while_swaying() -> void:
+	var vm := _vm()
+	AnimBehaviors.call("_ghost_status_sprite", vm, {"template": "gGhostStatusSpriteTemplate"})
+	var node: Node = vm.stage.sprites[-1]
+	var start: Vector2 = node.centre
+	var min_x := start.x
+	var max_x := start.x
+	for i in range(40):
+		vm.tick()
+		min_x = minf(min_x, node.centre.x)
+		max_x = maxf(max_x, node.centre.x)
+	_chk("b16 ghost status sprite rises", node.centre.y < start.y - 1.0)
+	_chk("b16 ghost status sprite SWAYS horizontally (span %.1f px)"
+			% (max_x - min_x), max_x - min_x > 4.0)

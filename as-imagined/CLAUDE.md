@@ -1344,6 +1344,16 @@ Exactly right, and the cause generalises well past the stairs. **Source's step-o
 
 **Tests.** Section **AJ**, 7 assertions, `EXPECTED_TOTAL` **416 → 423**. AJ.02 pins the geometry that makes this visible (the tile is in front of solid art) rather than only the rule, and AJ.03 is the reported bug directly — verified by restoring step-on firing, which fails it. AJ.06/AJ.07 check the floor above answers to the MIRRORED direction, so a stair that worked one way only would not pass.
 
+**[M27C C5 — CLOSED] 2026-07-30.** All three trigger geometries in, all four arrival behaviours in, and the whole thing audited rather than declared done.
+
+**Every warp in the region is reachable by a real gesture — 1294 of 1294, across all 421 maps, zero violations.** Run because four rounds of this arc were the same shape: a warp existed and no gesture the code implemented could fire it. Doors could not be stepped onto; interior exits faced a wall; museum stairs answered a direction nobody had to press. **Each was found by Rob playing, one map at a time**, which is not a way to find the fifth.
+
+The three geometries now PARTITION every warp, which is what makes the invariant checkable at all: a directional warp needs a standable tile, a door needs a walkable tile to its south, a step-on warp needs to be walkable. Anything else is unreachable by construction.
+
+Corridor breakdown (110 warps): **40 inert** flanking tiles · **28** press-south · **20** doors · **18** step-on · **2** press-east and **2** press-west (the museum stairs). Region-wide: 468 directional / 366 step-on / 267 inert / 193 doors.
+
+**Tests.** Section **AK**, 2 assertions, `EXPECTED_TOTAL` **423 → 425**. Deliberately a roster sweep rather than another worked example — it loads every baked map and checks the invariant per warp, so a future bake that introduces an unreachable one fails here instead of in play. Proven to discriminate by flipping the door rule to look north, which names 20 real warps.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **A thirteenth M27 block, orthogonal to C's stitching work.** Added because this is Kanto with an ORIGINAL story: the region's 421 maps are imported, but new maps and new art are inevitable, and **there is currently no way to create either.** Scope of record while this is unbuilt: the approved mockup at `https://claude.ai/code/artifact/0cc55049-a0d4-4675-8b0c-eb33853611b0`. Nothing here is implemented.

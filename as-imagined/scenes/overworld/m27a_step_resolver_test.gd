@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 423
+const EXPECTED_TOTAL := 425
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -118,6 +118,9 @@ const NON_ANIM_DOOR_ASSERTIONS := 6
 
 ## [M27C C5-4] Section AJ drives the Pewter Museum stairs.
 const STAIR_ASSERTIONS := 7
+
+## [M27C C5] Section AK sweeps every baked warp.
+const REACHABILITY_ASSERTIONS := 2
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -202,6 +205,7 @@ func _ready() -> void:
 	await _test_escalator()
 	await _test_non_anim_doors()
 	await _test_directional_stairs()
+	_test_every_warp_is_reachable()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -2927,3 +2931,67 @@ func _test_directional_stairs() -> void:
 			and ow._cell == stair)
 
 	ow.queue_free()
+
+
+## Section AK — [M27C C5] every warp is reachable by some gesture.
+##
+## A roster-wide invariant rather than another worked example, because four
+## rounds of this arc were the same shape: a warp existed, and no gesture the
+## code implemented could fire it. Doors could not be stepped onto; interior
+## exits faced a wall; museum stairs answered a direction nobody was required
+## to press. Each was found by playing, one map at a time.
+##
+## The three trigger geometries now partition every warp, so the invariant is
+## checkable: a DIRECTIONAL warp needs a tile you can stand on, a DOOR needs a
+## walkable tile to its south to be walked into from, and a step-on warp needs
+## to be walkable. Anything else is unreachable by construction.
+##
+## Measured at the time of writing: 0 violations across the 32-map corridor,
+## and 0 across all 1294 warps in all 421 maps — so this holds for maps not yet
+## baked too, and a future bake that breaks it fails here rather than in play.
+func _test_every_warp_is_reachable() -> void:
+	var names := PackedStringArray()
+	var dir := DirAccess.open("res://scenes/maps")
+	if dir == null:
+		_gated += REACHABILITY_ASSERTIONS
+		return
+	for f in dir.get_files():
+		if f.ends_with(".tscn"):
+			names.append(f.substr(0, f.length() - 5))
+	if names.is_empty():
+		_gated += REACHABILITY_ASSERTIONS
+		return
+
+	var mm := MapManager.new()
+	add_child(mm)
+	var checked := 0
+	var unreachable: Array[String] = []
+	for map_name in names:
+		if not mm.load_chunk(map_name, Vector2i.ZERO):
+			continue
+		var d := mm.data_at(Vector2i.ZERO)
+		for n in mm.get_node(map_name).find_children("*", "Warp", true, false):
+			var w := n as Warp
+			if w == null or not w.triggers:
+				continue
+			checked += 1
+			var solid := d.collision_at(w.cell.x, w.cell.y) != 0
+			var ok := false
+			if w.arrow_dir >= 0:
+				# Pressed from the tile itself, so it must be standable.
+				ok = not solid
+			elif solid:
+				# Walked into from the south — the only direction doors answer.
+				ok = d.in_bounds(w.cell.x, w.cell.y + 1) \
+						and d.collision_at(w.cell.x, w.cell.y + 1) == 0
+			else:
+				ok = true
+			if not ok:
+				unreachable.append("%s %s" % [map_name, w.cell])
+		mm.unload_chunk(map_name)
+	mm.queue_free()
+
+	_chk("AK.01 the corridor has warps to check at all (%d)" % checked, checked > 0)
+	_chk("AK.02 and every one of them can be triggered by some gesture%s"
+			% ("" if unreachable.is_empty() else " — " + ", ".join(unreachable)),
+			unreachable.is_empty())
