@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 425
+const EXPECTED_TOTAL := 439
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -121,6 +121,9 @@ const STAIR_ASSERTIONS := 7
 
 ## [M27C C5] Section AK sweeps every baked warp.
 const REACHABILITY_ASSERTIONS := 2
+
+## [M27D D1] Section AL sweeps the pulled sprite set.
+const SPRITE_ASSERTIONS := 14
 
 ## The eight maps chosen for the M27B render/bake subset.
 const CORRIDOR_MAPS := [
@@ -206,6 +209,7 @@ func _ready() -> void:
 	await _test_non_anim_doors()
 	await _test_directional_stairs()
 	_test_every_warp_is_reachable()
+	_test_object_event_sprites()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -2995,3 +2999,123 @@ func _test_every_warp_is_reachable() -> void:
 	_chk("AK.02 and every one of them can be triggered by some gesture%s"
 			% ("" if unreachable.is_empty() else " — " + ", ".join(unreachable)),
 			unreachable.is_empty())
+
+
+## Section AL — [M27D D1] the overworld sprite set.
+##
+## The assertions here are shaped by the one thing that was actually wrong.
+## Sheets are HORIZONTAL strips, and the first cut read them vertically — which
+## renders SOUTH perfectly, because frame 0 sits at the origin either way, and
+## falls off the image for the other three facings. A screenshot of a resting
+## NPC proves nothing about it, so AL.04 checks the layout across every sheet
+## rather than sampling.
+func _test_object_event_sprites() -> void:
+	var dir := DirAccess.open(ObjectEventGraphics.SHEET_DIR)
+	if dir == null:
+		_gated += SPRITE_ASSERTIONS
+		return
+
+	_chk("AL.01 the generated table covers the whole id space (%d)"
+			% ObjectEventGraphics.BY_ID.size(),
+			ObjectEventGraphics.BY_ID.size() > 380)
+
+	# Source's own fallback, not an invented placeholder:
+	# GetObjectEventGraphicsInfo ends `graphicsId = OBJ_EVENT_GFX_NINJA_BOY`.
+	_chk("AL.02 an unknown id falls back to a real, loadable sheet",
+			not ObjectEventGraphics.is_known("OBJ_EVENT_GFX_NOT_A_REAL_THING")
+			and ResourceLoader.exists(
+					ObjectEventGraphics.sheet_path("OBJ_EVENT_GFX_NOT_A_REAL_THING")))
+	# VAR_* is absent BY DESIGN — source picks those at runtime from a script
+	# variable, so they cannot be pulled, only dispatched (M27G).
+	_chk("AL.03 and OBJ_EVENT_GFX_VAR_0 is deliberately not in the table",
+			not ObjectEventGraphics.is_known("OBJ_EVENT_GFX_VAR_0"))
+
+	# THE ONE THAT MATTERED. Every sheet must be a horizontal strip of frames:
+	# height == frame height, width a whole number of frames.
+	var wrong_layout: Array[String] = []
+	var missing: Array[String] = []
+	for gid in ObjectEventGraphics.BY_ID:
+		var path := ObjectEventGraphics.sheet_path(gid)
+		if not ResourceLoader.exists(path):
+			missing.append(gid)
+			continue
+		var tex := load(path) as Texture2D
+		var size := ObjectEventGraphics.frame_size(gid)
+		if tex.get_height() != size.y or size.x <= 0 \
+				or tex.get_width() % size.x != 0:
+			wrong_layout.append(gid)
+	_chk("AL.04 every sheet is a horizontal strip of whole frames%s"
+			% ("" if wrong_layout.is_empty() else " — " + ", ".join(wrong_layout)),
+			wrong_layout.is_empty())
+	_chk("AL.05 and every id in the table resolves to a file on disk%s"
+			% ("" if missing.is_empty() else " — " + ", ".join(missing)),
+			missing.is_empty())
+
+	# include/constants/event_object_movement.h
+	_chk("AL.06 FACE_* map to source's own ANIM_STD frames (0/1/2/2)",
+			ObjectEventGraphics.FACE_FRAME["SOUTH"] == 0
+			and ObjectEventGraphics.FACE_FRAME["NORTH"] == 1
+			and ObjectEventGraphics.FACE_FRAME["WEST"] == 2
+			and ObjectEventGraphics.FACE_FRAME["EAST"] == 2
+			and ObjectEventGraphics.EAST_IS_MIRRORED_WEST)
+
+	# --- the entity side ---
+	var npc := NPC.new()
+	npc.graphics_id = "OBJ_EVENT_GFX_LASS_FRLG"
+	npc.movement_type = "MOVEMENT_TYPE_FACE_RIGHT"
+	add_child(npc)
+	var spr := npc.get_node_or_null("Sprite") as Sprite2D
+	_chk("AL.07 a placed NPC builds a sprite", spr != null)
+	# Split deliberately: a horizontal-layout bug and a missing mirror are
+	# different defects, and one assertion covering both says less when it fires.
+	_chk("AL.08 facing RIGHT reads frame 2 ACROSS the sheet, not down it",
+			spr != null and int(spr.region_rect.position.x)
+				== 2 * int(spr.region_rect.size.x)
+			and int(spr.region_rect.position.y) == 0)
+	_chk("AL.14 and mirrors it, since EAST has no frame of its own",
+			spr != null and spr.flip_h)
+	# No owner, or every baked scene would look hand-edited to check_bake_diff.
+	_chk("AL.09 the sprite has no owner, so it can never be serialised",
+			spr != null and spr.owner == null)
+	# 16x32 on a 16x16 tile: feet on the cell, standing up out of it.
+	_chk("AL.10 and stands on its cell rather than being centred in it",
+			spr != null and spr.position.y == 16 - spr.region_rect.size.y
+			and not spr.centered)
+	npc.queue_free()
+
+	# A warp is a position, not an actor.
+	var w := Warp.new()
+	add_child(w)
+	_chk("AL.11 a warp builds no sprite", w.get_node_or_null("Sprite") == null)
+	w.queue_free()
+
+	# Every id the corridor actually names must resolve, or an NPC somewhere
+	# silently becomes Ninja Boy.
+	var unknown: Array[String] = []
+	var seen := {}
+	var mm := MapManager.new()
+	add_child(mm)
+	for map_name in _baked_map_names():
+		if not mm.load_chunk(map_name, Vector2i.ZERO):
+			continue
+		for n in mm.get_node(map_name).find_children("*", "OverworldEntity", true, false):
+			var gid: String = (n as OverworldEntity).sprite_graphics_id()
+			if gid == "" or seen.has(gid):
+				continue
+			seen[gid] = true
+			# VAR_* is the one legitimate exception: source resolves those from
+			# a script variable at runtime, so there is nothing to pull.
+			if not ObjectEventGraphics.is_known(gid) \
+					and not gid.begins_with("OBJ_EVENT_GFX_VAR_"):
+				unknown.append(gid)
+		mm.unload_chunk(map_name)
+	mm.queue_free()
+	_chk("AL.12 every graphics id the corridor uses resolves, bar VAR_* (%d distinct)%s"
+			% [seen.size(), "" if unknown.is_empty() else " — " + ", ".join(unknown)],
+			seen.size() > 0 and unknown.is_empty())
+	# The corridor really does contain one, so the fallback is a live path
+	# rather than a theoretical one — Viridian City's tutorial NPC.
+	_chk("AL.13 and the corridor's own VAR_* NPC still draws something",
+			seen.has("OBJ_EVENT_GFX_VAR_0")
+			and ResourceLoader.exists(
+					ObjectEventGraphics.sheet_path("OBJ_EVENT_GFX_VAR_0")))

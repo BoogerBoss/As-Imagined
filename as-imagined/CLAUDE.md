@@ -1386,6 +1386,28 @@ Two supporting reasons. **The feedback loop that works is Rob walking around**: 
 
 Proposed **D1** sprite pull + static render · **D2** occupancy (the one change that touches the movement core, so early while the corridor is the only consumer) · **D3** the four movement behaviours · **D4** sight + approach · **D5** the battle round trip. **Four decisions for Rob in that doc's §5**, the load-bearing one being whether D5 uses a debug party or pulls M27K's starter choice forward.
 
+**[M27D D1 — the overworld sprite set] COMPLETE — 2026-07-30. Pallet Town is populated.**
+
+New `gen_object_event_sprites.py` pulls **449 object-event sprites + 66 field effects + the 25 missing trainer front pics** (portraits **155 → 180**, retiring `[M26B3-1]`'s dangling-stem counter) and generates `ObjectEventGraphics` — **385 of 387 ids** with sheet, frame size and frame count. The player is no longer a red `ColorRect`; it draws Leaf through the same builder as every NPC, matching the battle side's own `_PLAYER_BACK_PIC` placeholder so the two halves agree on who the player is until M27K.
+
+⚠️ **THREE BUGS THE PULL WOULD HAVE SHIPPED, EACH FOUND BY CHECKING RATHER THAN ASSUMING.**
+
+**1. Sheets are HORIZONTAL strips and the first cut read them vertically.** Measured across every resolved id: **384 horizontal, 0 vertical**. This renders SOUTH perfectly — frame 0 sits at the origin either way — and reads off the image for the other three facings. **The first screenshot showed two resting NPCs and looked completely correct.** AL.04 now checks the layout across every sheet rather than sampling.
+
+**2. Nine basenames collided across 20 files.** `walking.png` alone is shared by brendan, may and both Ruby/Sapphire variants, so a basename copy silently overwrote all but the last — **four player characters collapsing into one sprite**. Same shape as `[M27C]`'s Route 22 node-name collision: a name derived from partial data, wrong only where two things meet. Stems now flatten the full path below `pics/`, with an assertion that the rule stays injective. Fixing it took the sheet count 347 → 358.
+
+**3. The pic-table name is not derivable from the info symbol.** `gObjectEventGraphicsInfo_Azumarill` points at `sPicTable_AzumarillOld`; deriving cost **48 of 387 ids**. The struct has an explicit `.images` field — read it. Same guess-instead-of-read mistake M27A already paid for with tileset directories. Pic tables also live in **four files**, not one (berry trees and followers have their own).
+
+**7 sprites carry a palette that differs from the PNG they ship in**, `OBJ_EVENT_GFX_WORKER_M` among them — **9 of its 16 entries differ and 5 of those indices are used by real pixels**, so a flat copy renders it green and pink. Each sprite gets its `.paletteTag` applied and the count is REPORTED, because a rising number means the reference changed. Index 0 is also tagged transparent on all 515 files: no source file carries tRNS, and a plain copy draws every sprite inside an opaque box, exactly as the ball sheets did in `[M26B3-6a]`.
+
+**A verification method was itself broken, which is worth more than the bug it hid.** `ImageChops.difference(a, b).getbbox() is None` reported two clearly different frames as identical — **`getbbox()` on RGBA keys off the ALPHA channel**, and both frames share an alpha mask, so it answers "empty" however much the colours differ. It flagged 27 sheets as having no back view and sent a real investigation down a false trail. Compare `tobytes()`. Redone correctly: **208 of 210 people sheets have three genuinely distinct facing frames** (the 2 exceptions are a sitting boy and a watering pose).
+
+**Deliberately absent**: `OBJ_EVENT_GFX_VAR_0..F` (44 region-wide, resolved from a script variable at runtime — nothing to pull until M27G) and `OBJ_EVENT_GFX_OW_MON` (the follower, chosen by species). Both fall back to source's own `OBJ_EVENT_GFX_NINJA_BOY`, a real visible sprite rather than an invented placeholder.
+
+Sprites are built with **no `owner`**, so Godot never serialises them and a baked scene stays byte-identical whether or not it has been opened — 32/32 still reproducible, which matters because `check_bake_diff` would otherwise read 32 maps as hand-edited.
+
+**Tests.** Section **AL**, 14 assertions, `EXPECTED_TOTAL` **425 → 439**. AL.04 is the roster sweep for the layout bug; AL.08 and AL.14 are split so a layout defect and a missing mirror report separately rather than one assertion covering both. Both verified by reintroducing each break. AL.12 initially failed by being too strict — it caught the corridor's real `VAR_0` NPC — and now asserts the exception explicitly rather than being loosened.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **A thirteenth M27 block, orthogonal to C's stitching work.** Added because this is Kanto with an ORIGINAL story: the region's 421 maps are imported, but new maps and new art are inevitable, and **there is currently no way to create either.** Scope of record while this is unbuilt: the approved mockup at `https://claude.ai/code/artifact/0cc55049-a0d4-4675-8b0c-eb33853611b0`. Nothing here is implemented.
