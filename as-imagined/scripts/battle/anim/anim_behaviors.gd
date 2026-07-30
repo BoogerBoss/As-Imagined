@@ -100,6 +100,11 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 13] clearing batch 12's deferrals —
+		"SpriteCB_Geyser": _geyser,
+		"AnimSuperpowerFireball": _growing_superpower,
+		"AnimFlyingParticle": _flying_particle,
+		"AnimTrickBag": _trick_bag,
 		# — [M36D batch 12] —
 		"AnimGuardRing": _guard_ring,
 		"AnimLargeFlame": _large_flame,
@@ -9186,35 +9191,46 @@ static func _is_power_over_99(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 # at screen top and falls to its resting y), and that is what is ported. The
 # rising branch is the one every Mud Sport script actually spawns in bulk.
 static func _mud_sport_dirt(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	if vm.args[0] == 0:
+		_mud_sport_rising(vm, ctx, AnimStage.ANIM_ATTACKER, vm.args[1],
+				vm.args[2])
+		return
+	# Falling: begins at the screen top and settles to its resting y.
 	var node := _make_sprite(vm, ctx)
 	if node == null:
 		return
 	var scale := _scale(vm)
-	if vm.args[0] == 0:
-		var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER,
-				vm.args[1], vm.args[2], scale)
-		node.centre = start
-		var dx := 1.0 if vm.args[1] > 0 else -1.0
-		var st := {"t": 0, "x": 0.0, "y": 0.0}
-		vm.add_stepper(func() -> bool:
-			if not is_instance_valid(node):
-				return true
-			node.advance_frame()
-			st["t"] = int(st["t"]) + 1
-			# Sideways only every OTHER frame; upward every frame.
-			if int(st["t"]) % 2 == 0:
-				st["x"] = float(st["x"]) + dx
-			st["y"] = float(st["y"]) - 4.0
-			node.centre = start + Vector2(float(st["x"]), float(st["y"])) * scale
-			if node.centre.y < -4.0 * scale or int(st["t"]) >= _ANIM_END_CAP:
-				node.finish()
-				return true
-			return false)
-		return
-	# Falling: begins at the screen top and settles to its resting y.
 	var rest := Vector2(float(vm.args[1]), float(vm.args[2])) * scale
 	node.centre = rest - Vector2(0.0, float(vm.args[2])) * scale
 	_linear_travel(vm, node, node.centre, rest, 20)
+
+
+# The rising path, shared by AnimMudSportDirt's mode 0 and by batch 13's
+# SpriteCB_Geyser, which hands straight over to it upstream.
+static func _mud_sport_rising(vm: AnimScriptVM, ctx: Dictionary,
+		battler: int, dx_arg: int, dy_arg: int) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, battler, dx_arg, dy_arg, scale)
+	node.centre = start
+	var dx := 1.0 if dx_arg > 0 else -1.0
+	var st := {"t": 0, "x": 0.0, "y": 0.0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		# Sideways only every OTHER frame; upward every frame.
+		if int(st["t"]) % 2 == 0:
+			st["x"] = float(st["x"]) + dx
+		st["y"] = float(st["y"]) - 4.0
+		node.centre = start + Vector2(float(st["x"]), float(st["y"])) * scale
+		if node.centre.y < -4.0 * scale or int(st["t"]) >= _ANIM_END_CAP:
+			node.finish()
+			return true
+		return false)
 
 
 # AnimParticleBurst (battle_anim_effects_2.c:3152). args: 0 x speed in 8.8
@@ -9345,3 +9361,178 @@ static func _blend_non_attacker_palettes(vm: AnimScriptVM,
 			nodes.append(n)
 	# The right-shift: this task's own args[0..4] are the blend's args[1..5].
 	_run_blend_nodes(vm, nodes, vm.args[0], vm.args[1], vm.args[2], vm.args[3])
+
+
+# ── [M36D batch 13] clearing batch 12's deferrals ─────────────────────────
+#
+# A deliberately small batch: four of batch 12's five deferrals, ported now
+# that their step functions have been read. That leaves ONE genuinely hard
+# item on the whole deferral list (`AnimFallingFeather`, below).
+#
+# The alias pattern held for a FOURTH consecutive batch, and this time both
+# hits are against work from the two batches immediately prior:
+#   * `SpriteCB_Geyser` reuses `AnimMudSportDirtRising` -- batch 12's own
+#     rising path, ported one batch ago.
+#   * `AnimSuperpowerFireball` is batch 9's `SpriteCB_GrowingSuperpower`:
+#     the same 16-frame linear translation between the same endpoints, with
+#     the side-mirror done by OAM flip instead of an affine anim.
+
+
+# SpriteCB_Geyser (battle_anim_new.c:7332). args: 1/2 spawn offset.
+# Positions on the attacker and then hands straight over to
+# `AnimMudSportDirtRising` -- the identical rise-and-drift batch 12 ported.
+# Registered against one implementation, asserted as shared.
+static func _geyser(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_mud_sport_rising(vm, ctx, AnimStage.ANIM_ATTACKER, vm.args[1], vm.args[2])
+
+
+# AnimSuperpowerFireball (battle_anim_fight.c:924). args: 0 direction.
+# A flat 16-frame linear translation between the two battlers, side-mirrored --
+# structurally batch 9's `SpriteCB_GrowingSuperpower`, which is why both route
+# through one body.
+# AnimSuperpowerFireball (battle_anim_fight.c:924) is registered directly
+# against `_growing_superpower`: the same flat 16-frame linear translation
+# between the same two battler endpoints, side-mirrored. Upstream they differ
+# only in HOW the mirror is applied -- an affine anim versus an OAM flip --
+# which is not a behavioural difference here. Sharing the registration rather
+# than wrapping it means the suite's identity assertion is meaningful.
+
+
+# AnimFlyingParticle (battle_anim_effects_1.c:4811). args: 0 y anchor offset,
+# 1 vertical amplitude, 2 starting phase, 3 horizontal speed, 4 phase step,
+# 5 y-anchor mode, 6 which battler.
+#
+# Crosses the WHOLE SCREEN rather than travelling between battlers: it enters
+# from off-screen on the side its battler is NOT on and exits the far edge,
+# which is why it has no duration argument at all -- its lifetime is however
+# long the crossing takes at `arg3` px/frame.
+#
+# The vertical wobble's phase is NOT accumulated. Upstream recomputes it as
+# `(arg4 * elapsed) & 0xFF` from the frame counter each step, so a large
+# `arg4` aliases into a fast flutter rather than a smooth wave. Ported as
+# written.
+static func _flying_particle(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var which := AnimStage.ANIM_TARGET if vm.args[6] != 0 \
+			else AnimStage.ANIM_ATTACKER
+	var layer_w := 1024.0
+	if vm.stage != null and vm.stage.has_method("layer"):
+		var l: Control = vm.stage.layer()
+		if l != null:
+			layer_w = l.size.x
+	# Enters from the side the battler is NOT on.
+	var from_left := not _battler_is_player_side(vm, which)
+	var speed := float(vm.args[3]) * (1.0 if from_left else -1.0)
+	var start_x := -16.0 * scale if from_left else layer_w + 16.0 * scale
+
+	var y := float(vm.args[0]) * scale
+	if vm.args[5] == 2:
+		y = _battler_centre(vm, which).y + float(vm.args[0]) * scale
+	elif vm.args[5] == 3:
+		y = _battler_centre(vm, AnimStage.ANIM_TARGET).y \
+				+ float(vm.args[0]) * scale
+	var start := Vector2(start_x, y)
+	node.centre = start
+
+	var amp := float(vm.args[1])
+	var phase_step := vm.args[4]
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"])
+		st["t"] = t + 1
+		# Phase is RECOMPUTED from the frame count, not accumulated.
+		var phase := float((phase_step * t) & 0xFF)
+		node.centre = start + Vector2(speed * float(t),
+				_gba_sin(phase, amp)) * scale
+		# Dies on clearing the far edge, not on a counter.
+		if from_left and node.centre.x > layer_w + 8.0 * scale:
+			node.finish(); return true
+		if not from_left and node.centre.x < -16.0 * scale:
+			node.finish(); return true
+		return int(st["t"]) >= _ANIM_END_CAP)
+
+
+# The 11-row table AnimTrickBag walks: {angle step, frames, direction}. A
+# direction of 127 is the end sentinel, not a step.
+const _TRICK_BAG_TABLE := [
+	[5, 24, 1], [0, 4, 0], [8, 16, -1], [0, 2, 0], [8, 16, 1], [0, 2, 0],
+	[8, 16, 1], [0, 2, 0], [8, 16, 1], [0, 16, 0], [0, 0, 127],
+]
+
+
+# AnimTrickBag (battle_anim_effects_1.c:4444, steps :4474/:4502). args:
+# 0 initial y, 1 starting wave offset.
+#
+# Three phases. It spawns at SCREEN CENTRE rather than on any battler, falls
+# with real acceleration (`y += speed/10` while `speed += 3`) until it passes
+# y=78, and then ORBITS an ellipse whose angle is driven by the table above --
+# each row supplying a per-frame angle step, a frame count, and a direction,
+# so the bag sweeps one way, pauses, reverses, then circles three more times.
+#
+# Note the axes are the reverse of the usual convention: x is COSINE with a
+# radius of 60 and y is SINE with a radius of 20, giving a wide flat orbit.
+static func _trick_bag(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var layer_w := 1024.0
+	if vm.stage != null and vm.stage.has_method("layer"):
+		var l: Control = vm.stage.layer()
+		if l != null:
+			layer_w = l.size.x
+	var home := Vector2(layer_w * 0.5, float(vm.args[0]) * scale)
+	var angle := float(vm.args[1])
+
+	var st := {"phase": 0, "y": float(vm.args[0]), "speed": 20.0,
+			"angle": angle, "row": 0, "held": 0}
+
+	var place := func(a: float, y: float) -> void:
+		node.centre = Vector2(home.x, y * scale) + Vector2(
+				_gba_cos(a, 60.0), _gba_sin(a, 20.0)) * scale
+	place.call(angle, float(vm.args[0]))
+
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		if int(st["phase"]) == 0:
+			# Accelerating fall -- speed grows by 3 while y advances by
+			# speed/10, so it starts slow and drops away sharply.
+			st["y"] = float(st["y"]) + float(st["speed"]) / 10.0
+			st["speed"] = float(st["speed"]) + 3.0
+			place.call(float(st["angle"]), float(st["y"]))
+			if float(st["y"]) > 78.0:
+				st["phase"] = 1
+			return false
+		var row: int = int(st["row"])
+		if row >= _TRICK_BAG_TABLE.size():
+			node.finish()
+			return true
+		var entry: Array = _TRICK_BAG_TABLE[row]
+		if int(entry[2]) == 127:      # the end sentinel
+			node.finish()
+			return true
+		if int(st["held"]) >= int(entry[1]):
+			st["held"] = 0
+			st["row"] = row + 1
+			return false
+		st["held"] = int(st["held"]) + 1
+		st["angle"] = fposmod(float(st["angle"])
+				+ float(int(entry[0]) * int(entry[2])), 256.0)
+		place.call(float(st["angle"]), float(st["y"]))
+		return false)
+
+
+# AnimFallingFeather (battle_anim_flying.c:561) remains DEFERRED, and is now
+# the only item left on the whole deferral list. Its step function is **247
+# lines** of state machine driven by a packed `FeatherDanceData` bitfield
+# struct aliased over the sprite's own data array -- a genuinely different
+# order of complexity from anything else in this tier, and not something to
+# port between two other behaviors. It wants its own pass.

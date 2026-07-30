@@ -1391,6 +1391,69 @@ currently produce** — not a tuning change. Faking it with a hue shift would
 invent motion the reference does not describe. Frame cost is exact and pinned
 by test, so script pacing is unaffected.
 
+### M36D batch 13 — COMPLETE 2026-07-30. Deferrals cleared, and a real test-quality bug found.
+
+`m36d_batch_test` 455 -> **489/489**; 8-suite sweep green. Coverage
+**571 -> 580 of 932 (62.2%)** — a deliberately small batch, four of batch 12's
+five deferrals.
+
+⚠️ **THE HEADLINE IS NOT THE COVERAGE. Eight template names in the suite were
+WRONG, and 26 assertions across batches 8-13 had never been running.**
+
+Every spawning test guards on `if node != null:`. A template name that fails to
+resolve produces a null sprite, so the guard skips its assertions **silently
+while the suite still reports green**. This is the second time this exact
+false-pass shape has appeared (batch 11's `_anim_clone` meta key was the first)
+and this time it was eight names, not one.
+
+Found by checking a failing assertion's premise rather than patching it: batch
+13's geyser test failed to spawn, and the template it named turned out not to
+exist — which immediately raised the question of how batch 12's mud test, using
+the SAME bad name, had passed. It had not; it had skipped.
+
+The names were then resolved **authoritatively, by callback** — matching each
+behavior's `callback` field in `templates.json` rather than guessing from the
+name, which is what produced the wrong names in the first place. Fixing all
+eight took the suite from 462 to 488 assertions.
+
+**A self-maintaining guard now closes the class.** `_test_every_template_name_resolves`
+reads the suite's own source, extracts every `"g...Template"` string, and
+requires each to resolve in `AnimData`. It is not a hand-kept list, so a future
+batch naming a bad template fails here without anyone remembering to extend
+anything. **Proven non-vacuous**: injecting `gDefinitelyNotARealTemplate` makes
+it fail and name the offender; restoring returns 489/489.
+
+**The alias pattern held for a FOURTH consecutive batch**, both hits against
+work from the two batches immediately prior:
+
+- **`SpriteCB_Geyser` hands straight over to `AnimMudSportDirtRising`** — batch
+  12's own rising path, ported one batch earlier. The rising body was extracted
+  so both share it.
+- **`AnimSuperpowerFireball` IS batch 9's `SpriteCB_GrowingSuperpower`** — the
+  same flat 16-frame translation between the same endpoints, differing only in
+  whether the side-mirror is an affine anim or an OAM flip. **Registered
+  directly against the same function rather than wrapped**, so the suite's
+  identity assertion is meaningful; a wrapper would have passed a "both exist"
+  check while failing a real one, which is exactly what happened on the first
+  run.
+
+**Shapes pinned:** `AnimFlyingParticle` crosses the WHOLE SCREEN and dies at
+the far edge — it has no duration argument at all, and its vertical phase is
+RECOMPUTED as `(step * elapsed) & 0xFF` from the frame counter rather than
+accumulated, so a large step aliases into a flutter. `AnimTrickBag` spawns at
+SCREEN CENTRE rather than on any battler, falls with real acceleration
+(`y += speed/10` while `speed += 3`), then orbits an 11-row table whose rows
+supply an angle step, a frame count and a direction — on a WIDE FLAT ellipse
+(x radius 60, y radius 20; the axes are the reverse of the usual convention).
+
+⚠️ **`AnimFallingFeather` remains deferred and is now the ONLY item left on the
+list.** Its step function is **247 lines** of state machine over a packed
+`FeatherDanceData` bitfield struct aliased onto the sprite's data array — a
+genuinely different order of complexity from anything else in this tier. It
+wants its own pass, not a slot between two other behaviors.
+
+**NOT screenshot-verified.**
+
 ### M36D batch 12 — COMPLETE 2026-07-30
 
 `m36d_batch_test` 431 -> **455/455** (first run); 9-suite sweep green.

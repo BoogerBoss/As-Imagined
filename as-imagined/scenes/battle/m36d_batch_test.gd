@@ -21,6 +21,7 @@ func _ready() -> void:
 	AnimBehaviors.register_all(_registry)
 	_dispatcher = AnimDispatcher.new(_registry)
 
+	_test_every_template_name_resolves()
 	_test_coverage_grew()
 	_test_powder_drift()
 	_test_vortex_rises_and_circles()
@@ -88,6 +89,7 @@ func _ready() -> void:
 	_test_batch12_near_aliases()
 	_test_batch12_shapes()
 	_test_batch12_coverage()
+	_test_batch13_deferrals_cleared()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -491,7 +493,7 @@ func _test_batch2_sound_tasks() -> void:
 func _test_batch2_defensive_wall() -> void:
 	var stage := FakeStage.new()
 	var r := _spawn(stage, "AnimDefensiveWall", [0, 0, 0],
-			"gReflectSpriteTemplate")
+			"gReflectSparkleSpriteTemplate")
 	var sp: AnimSprite = r["sprite"]
 	if sp == null:
 		return
@@ -2269,7 +2271,7 @@ func _test_batch9_flicker_and_spiral() -> void:
 	var vm2 := _vm(stage2)
 	vm2.args[0] = 0
 	_run_b5(vm2, "AnimIcePunchSwirlingParticle",
-			"gIcePunchSwirlingParticleSpriteTemplate")
+			"gIceCrystalSpiralInwardLarge")
 	var ice := _b5_last
 	if ice != null:
 		var centre := stage2.center_of(AnimStage.ANIM_ATTACKER)
@@ -2473,7 +2475,7 @@ func _test_batch10_phases() -> void:
 	# not an expanding ring, despite the name.
 	var stage := FakeStage.new()
 	var vm := _vm(stage)
-	_run_b5(vm, "SpriteCB_SurroundingRing", "gSurroundingRingSpriteTemplate")
+	_run_b5(vm, "SpriteCB_SurroundingRing", "gAuroraVeilRingTemplate")
 	var ring := _b5_last
 	if ring != null:
 		var c := stage.center_of(AnimStage.ANIM_ATTACKER)
@@ -2487,7 +2489,7 @@ func _test_batch10_phases() -> void:
 	var vm2 := _vm(stage2)
 	vm2.args[0] = 0; vm2.args[1] = 40; vm2.args[2] = 4
 	vm2.args[3] = AnimStage.ANIM_TARGET
-	_run_b5(vm2, "SpriteCB_FallingObject", "gFallingObjectSpriteTemplate")
+	_run_b5(vm2, "SpriteCB_FallingObject", "gContinentalCrushBigRockStompSpriteTemplate")
 	var obj := _b5_last
 	if obj != null:
 		var rest := stage2.center_of(AnimStage.ANIM_TARGET)
@@ -2509,7 +2511,7 @@ func _test_batch10_phases() -> void:
 	var stage3 := FakeStage.new()
 	var vm3 := _vm(stage3)
 	vm3.args[0] = 0
-	_run_b5(vm3, "AnimGuillotinePincer", "gGuillotinePincerSpriteTemplate")
+	_run_b5(vm3, "AnimGuillotinePincer", "gGuillotineSpriteTemplate")
 	var pincer := _b5_last
 	if pincer != null:
 		var target := stage3.center_of(AnimStage.ANIM_TARGET)
@@ -2915,7 +2917,7 @@ func _test_batch12_shapes() -> void:
 	var stage := FakeStage.new()
 	var vm := _vm(stage)
 	vm.args[0] = 0; vm.args[1] = 8; vm.args[2] = 0
-	_run_b5(vm, "AnimMudSportDirt", "gMudSportDirtSpriteTemplate")
+	_run_b5(vm, "AnimMudSportDirt", "gMudsportMudSpriteTemplate")
 	var dirt := _b5_last
 	if dirt != null:
 		var y0 := dirt.centre.y
@@ -2932,7 +2934,7 @@ func _test_batch12_shapes() -> void:
 	var stage2 := FakeStage.new()
 	var vm2 := _vm(stage2)
 	vm2.args[0] = 256; vm2.args[1] = 12
-	_run_b5(vm2, "AnimParticleBurst", "gParticleBurstSpriteTemplate")
+	_run_b5(vm2, "AnimParticleBurst", "gRedHeartBurstSpriteTemplate")
 	var burst := _b5_last
 	if burst != null:
 		var ys: Array = []
@@ -3022,8 +3024,151 @@ func _test_batch12_coverage() -> void:
 	_chk("roster coverage is at least 571 moves (%d)"
 			% int(cov.get("playable", 0)),
 			int(cov.get("playable", 0)) >= 571)
-	# Batch 12's own five deferrals, guarded the same way batch 10's were.
-	for sym in ["AnimFallingFeather", "AnimFlyingParticle", "SpriteCB_Geyser",
-			"AnimTrickBag", "AnimSuperpowerFireball"]:
-		_chk("%s is deliberately deferred (step fn unread)" % sym,
-				_registry.get_behavior(sym) == Callable())
+	# Batch 12 deferred five and asserted all five stayed unregistered. Batch
+	# 13 ported four of them, so that assertion is legitimately invalidated --
+	# rewritten, with the one still deferred guarded on its own.
+	for sym in ["AnimFlyingParticle", "SpriteCB_Geyser", "AnimTrickBag",
+			"AnimSuperpowerFireball"]:
+		_chk("%s was deferred by batch 12 and is now ported" % sym,
+				_registry.get_behavior(sym) != Callable())
+	_chk("AnimFallingFeather is STILL deferred (247-line packed-struct step)",
+			_registry.get_behavior("AnimFallingFeather") == Callable())
+
+
+# ── [M36D batch 13] ───────────────────────────────────────────────────────
+#
+# Deliberately small: four of batch 12's five deferrals, ported once their
+# step functions were read. The alias pattern held for a FOURTH consecutive
+# batch, and both hits are against work from the two batches immediately
+# prior -- which is why they are asserted as shared implementations rather
+# than merely as present.
+
+
+func _test_batch13_deferrals_cleared() -> void:
+	# SpriteCB_Geyser hands straight over to AnimMudSportDirtRising upstream,
+	# which batch 12 ported. Same rise-and-drift: up every frame, sideways
+	# only every other.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[1] = 8; vm.args[2] = 0
+	_run_b5(vm, "SpriteCB_Geyser", "gMudsportMudSpriteTemplate")
+	var g := _b5_last
+	_chk("geyser spawns", g != null)
+	if g != null:
+		var y0 := g.centre.y
+		var x0 := g.centre.x
+		_step(vm, 1)
+		_chk("...rises immediately", g.centre.y < y0)
+		_chk("...but does not drift on frame 1",
+				is_equal_approx(g.centre.x, x0))
+		_step(vm, 1)
+		_chk("...drifting on frame 2", not is_equal_approx(g.centre.x, x0))
+
+	# SuperpowerFireball IS GrowingSuperpower -- same 16-frame translation
+	# between the same endpoints. Asserted as ONE implementation.
+	_chk("SuperpowerFireball and GrowingSuperpower share one impl",
+			_registry.get_behavior("AnimSuperpowerFireball")
+			== _registry.get_behavior("SpriteCB_GrowingSuperpower"))
+
+	# FlyingParticle crosses the WHOLE SCREEN and dies at the far edge -- it
+	# has no duration argument at all, which is the tell that a port must not
+	# invent one.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	vm2.args[0] = 60; vm2.args[1] = 8; vm2.args[2] = 0
+	vm2.args[3] = 6; vm2.args[4] = 8; vm2.args[5] = 0; vm2.args[6] = 0
+	_run_b5(vm2, "AnimFlyingParticle", "gAromatherapyBigFlowerSpriteTemplate")
+	var fp := _b5_last
+	if fp != null:
+		var x0 := fp.centre.x
+		_chk("flying particle starts off-screen", x0 < 0.0 or x0 > 1024.0)
+		var ys: Array = []
+		for i in range(30):
+			_step(vm2, 1)
+			if is_instance_valid(fp):
+				ys.append(fp.centre.y)
+		_chk("...travels horizontally", absf(fp.centre.x - x0) > 10.0)
+		var yr: float = (ys.max() as float) - (ys.min() as float)
+		_chk("...wobbling vertically as it goes (%.1f px)" % yr, yr > 1.0)
+		_step(vm2, 400)
+		_chk("...and dies by clearing the far edge, not on a counter",
+				vm2.visual_count() == 0)
+
+	# TrickBag spawns at SCREEN CENTRE rather than on a battler, falls with
+	# real acceleration, then orbits a WIDE FLAT ellipse (x radius 60 against
+	# y radius 20 -- the axes are the reverse of the usual convention).
+	var stage3 := FakeStage.new()
+	var vm3 := _vm(stage3)
+	vm3.args[0] = 8; vm3.args[1] = 0
+	_run_b5(vm3, "AnimTrickBag", "gTrickBagSpriteTemplate")
+	var bag := _b5_last
+	if bag != null:
+		var atk := stage3.center_of(AnimStage.ANIM_ATTACKER)
+		_chk("trick bag spawns at screen centre, not on a battler",
+				absf(bag.centre.x - atk.x) > 50.0)
+		var y0 := bag.centre.y
+		_step(vm3, 1)
+		var d1 := bag.centre.y - y0
+		var y1 := bag.centre.y
+		_step(vm3, 4)
+		var d2 := (bag.centre.y - y1) / 4.0
+		_chk("...falls with real acceleration (%.2f -> %.2f px/frame)"
+				% [d1, d2], d2 > d1)
+		# Once orbiting, the path must be far wider than it is tall.
+		_step(vm3, 40)
+		var xs: Array = []
+		var ys2: Array = []
+		for i in range(40):
+			_step(vm3, 1)
+			if is_instance_valid(bag):
+				xs.append(bag.centre.x); ys2.append(bag.centre.y)
+		if xs.size() > 20:
+			var xr: float = (xs.max() as float) - (xs.min() as float)
+			var yr2: float = (ys2.max() as float) - (ys2.min() as float)
+			_chk("...then orbits a WIDE FLAT ellipse (%.0f vs %.0f)"
+					% [xr, yr2], xr > yr2)
+		_step(vm3, 200)
+		_chk("...and ends at the table's sentinel row",
+				vm3.visual_count() == 0)
+
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov: Dictionary = _dispatcher.coverage(ids)
+	_chk("roster coverage is at least 580 moves (%d)"
+			% int(cov.get("playable", 0)),
+			int(cov.get("playable", 0)) >= 580)
+
+
+# ── Suite self-check ──────────────────────────────────────────────────────
+
+func _test_every_template_name_resolves() -> void:
+	# Eight template names in this suite were WRONG and nobody noticed, because
+	# every spawning test guards on `if node != null:` -- so a name that failed
+	# to resolve skipped its assertions silently while the suite still reported
+	# green. 26 assertions across batches 8-13 were not running.
+	#
+	# This reads the suite's own source and requires every template it names to
+	# resolve, so the failure mode is a red test rather than a quiet skip. It
+	# is self-maintaining: a new batch naming a bad template fails here without
+	# anyone remembering to extend a list.
+	var f := FileAccess.open(
+			"res://scenes/battle/m36d_batch_test.gd", FileAccess.READ)
+	if f == null:
+		_chk("suite source is readable for the template self-check", false)
+		return
+	var src := f.get_as_text()
+	f.close()
+	var re := RegEx.new()
+	re.compile("\"(g[A-Za-z0-9_]*Template)\"")
+	var seen := {}
+	for m in re.search_all(src):
+		seen[m.get_string(1)] = true
+	var bad: Array = []
+	for name in seen:
+		if (AnimData.template(str(name)) as Dictionary).is_empty():
+			bad.append(str(name))
+	_chk("all %d template names in this suite resolve (bad: %s)"
+			% [seen.size(), ", ".join(bad) if not bad.is_empty() else "none"],
+			bad.is_empty())
