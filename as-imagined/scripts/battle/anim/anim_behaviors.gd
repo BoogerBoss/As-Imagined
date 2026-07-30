@@ -67,6 +67,23 @@ class MonOffset:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 9] yield-ordered, cross-tier —
+		"AnimHornHit": _horn_hit,
+		"AnimHyperVoiceRing": _hyper_voice_ring,
+		"AnimRockBlastRock": _rock_blast_rock,
+		"AnimFlyBallAttack": _fly_ball_attack,
+		"AnimZapCannonSpark": _zap_cannon_spark,
+		"AnimMagentaHeart": _magenta_heart,
+		"AnimFirePlume": _fire_plume,
+		"AnimEllipticalGust": _elliptical_gust,
+		"AnimEllipticalGustCentered": _elliptical_gust_centered,
+		"AnimGustToTarget": _gust_to_target,
+		"AnimSprayWaterDroplet": _spray_water_droplet,
+		"SpriteCB_GrowingSuperpower": _growing_superpower,
+		"AnimIcePunchSwirlingParticle": _ice_punch_swirling_particle,
+		"AnimDragonRageFirePlume": _dragon_rage_fire_plume,
+		"AnimTask_DefenseCurlDeformMon": _defense_curl_deform_mon,
+		"AnimMetronomeFinger": _metronome_finger,
 		# — [M36D batch 8] the highest-share shared blockers —
 		"AnimTask_AllBattlersVisible": _all_battlers_visible,
 		"AnimTask_AllBattlersInvisible": _all_battlers_invisible,
@@ -7785,5 +7802,552 @@ static func _cross_impact(vm: AnimScriptVM, ctx: Dictionary) -> void:
 		st["t"] = int(st["t"]) + 1
 		if int(st["t"]) >= life:
 			node.finish()
+			return true
+		return false)
+
+
+# ── [M36D batch 9] yield-ordered picks ────────────────────────────────────
+#
+# Decision 5's phase order (iconic -> remaining Gen 1-3 -> the rest) was
+# AMENDED by Rob after batch 8 measured what the two remaining tiers actually
+# cost: Tier 2's best picks were worth +12 moves against Tier 3's +33, at the
+# same completion percentage. Ordering is now by measured yield rather than by
+# generation, which lands on the cross-tier list -- 16 behaviors completing
+# 70 moves, 4.4 each, roughly double batch 8.
+#
+# Step 0 collapsed a good deal of it before any code was written:
+#   * `AnimRockBlastRock` is `TranslateAnimSpriteToTargetMonLocation` plus a
+#     side-mirrored flip -- M36C's `_translate_to_target` already IS that.
+#   * `AnimEllipticalGust` and `AnimEllipticalGustCentered` share ONE step
+#     function and differ only in where they start. One implementation.
+#   * `AnimGustToTarget`, `SpriteCB_GrowingSuperpower` and `AnimFlyBallAttack`
+#     are all plain linear translations -> `_linear_travel`.
+#   * `AnimDragonRageFirePlume` is position-then-play-out -> the existing
+#     `_play_until_anim_ends`.
+
+
+# ── Fly's second half ─────────────────────────────────────────────────────
+
+# AnimFlyBallAttack (battle_anim_flying.c:483, step :508). args: 0 travel
+# frames, 1 the visibility value to leave the attacker at.
+#
+# THIS IS THE PAIRED REVEAL FOR BATCH 8's `AnimFlyBallUp`. Its teardown does
+# `gSprites[attacker].invisible = sprite->data[5]` -- the attacker's
+# visibility is restored FROM ARG 1 as the ball leaves the screen, which is
+# what actually brings the Pokemon back after Fly's charge turn. Batch 8
+# shipped the hiding half relying on the VM's restore net; this closes the
+# pair properly, and the suite asserts the reveal happens through the real
+# script step rather than the net.
+#
+# The ball enters from off-screen on the side the attacker is NOT on and
+# flies to the target, so a player-side Fly comes in from the left.
+static func _fly_ball_attack(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var layer_w := 1024.0
+	if vm.stage != null and vm.stage.has_method("layer"):
+		var l: Control = vm.stage.layer()
+		if l != null:
+			layer_w = l.size.x
+	var from_left := _is_player_side(vm)
+	var start := Vector2(-32.0 * scale if from_left else layer_w + 32.0 * scale,
+			-32.0 * scale)
+	if not from_left:
+		node.scale = Vector2(-absf(node.scale.x), node.scale.y)
+	node.centre = start
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var frames: int = maxi(1, vm.args[0])
+	var leave_hidden: bool = vm.args[1] != 0
+
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		node.centre = start.lerp(dest, float(t) / float(frames))
+		if t < frames:
+			return false
+		# The reveal is the real payload: upstream assigns arg 1 straight into
+		# the attacker's `invisible`, so arg 1 = 0 brings the mon back.
+		vm.set_battler_visible_tracked(AnimStage.ANIM_ATTACKER,
+				not leave_hidden)
+		node.finish()
+		return true)
+
+
+# ── Horn ──────────────────────────────────────────────────────────────────
+
+# AnimHornHit (battle_anim_effects_1.c:6414, step :6463). args: 0/1 offset
+# from the target, 2 duration (clamped 2..0x7F).
+#
+# A straight sweep in 7-bit fixed point that starts 40px to one side and 20px
+# off vertically, travelling toward the target -- both offsets mirrored by
+# side, with the opponent-side case also flipping the sprite on both axes.
+#
+# The quirk worth pinning: on the SECOND-TO-LAST frame it SNAPS back to its
+# recorded origin (`if (--data[1] == 1) { x = data[6]; y = data[7]; }`) and
+# only then dies. So the horn does not simply arrive -- it jumps to the
+# target's exact position for one frame at the end. Easy to miss, and a port
+# that just interpolates to the destination looks close but never lands.
+static func _horn_hit(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var duration: int = clampi(vm.args[2], 2, 0x7F)
+	var origin := _positioned_centre(vm, AnimStage.ANIM_TARGET, vm.args[0],
+			vm.args[1], scale)
+	# Player-side: start left and below, sweep right/up. Opponent: mirrored.
+	var player := _is_player_side(vm)
+	var offset := Vector2(-40.0, 20.0) if player else Vector2(40.0, -20.0)
+	var start := origin + offset * scale
+	# 0x1400 / duration per frame in 7-bit fixed point, i.e. it covers the
+	# 40/20 px gap in exactly `duration` frames.
+	var per_frame := (origin - start) / float(duration)
+	if not player:
+		node.scale = Vector2(-absf(node.scale.x), -absf(node.scale.y))
+	node.centre = start
+
+	var st := {"left": duration, "pos": start}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["pos"] = (st["pos"] as Vector2) + per_frame
+		node.centre = st["pos"]
+		st["left"] = int(st["left"]) - 1
+		if int(st["left"]) == 1:
+			node.centre = origin  # the snap-back, one frame before death
+			return false
+		if int(st["left"]) <= 0:
+			node.finish()
+			return true
+		return false)
+
+
+# ── Rings and rocks ───────────────────────────────────────────────────────
+
+# AnimHyperVoiceRing (battle_anim_effects_2.c:2540). args: 0/1 start offset,
+# 3/4 destination offset, 5 swap the two battlers, 6 coord variant.
+#
+# Travels from one battler to the other, with arg 5 deciding which way round.
+# The x offsets are applied with the SIGN of the battler's own side at each
+# end -- start offset added on the opponent's side and subtracted on the
+# player's, destination the reverse -- so the ring always widens away from
+# its source rather than drifting in a fixed screen direction.
+#
+# Upstream also computes a subpriority from the partner sprites' draw order
+# and averages the destination across both targets in doubles; the ordering
+# has no per-sprite equivalent here and is a disclosed no-op.
+static func _hyper_voice_ring(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var swap: bool = vm.args[5] != 0
+	var from_b := AnimStage.ANIM_TARGET if swap else AnimStage.ANIM_ATTACKER
+	var to_b := AnimStage.ANIM_ATTACKER if swap else AnimStage.ANIM_TARGET
+	var from_player := _battler_is_player_side(vm, from_b)
+	var to_player := _battler_is_player_side(vm, to_b)
+
+	var start := _battler_centre(vm, from_b) + Vector2(
+			float(vm.args[0]) * (-1.0 if from_player else 1.0),
+			float(vm.args[1])) * scale
+	var dest := _battler_centre(vm, to_b) + Vector2(
+			float(vm.args[3]) * (-1.0 if to_player else 1.0),
+			float(vm.args[4])) * scale
+	node.centre = start
+	# data[0] is seeded from arg 0, not a dedicated duration arg -- an
+	# upstream quirk, reproduced with a floor so a zero offset still moves.
+	_linear_travel(vm, node, start, dest, maxi(1, absi(vm.args[0])))
+
+
+# AnimRockBlastRock (battle_anim_rock.c:931). No args of its own -- it is
+# `TranslateAnimSpriteToTargetMonLocation` with a side-mirrored flip, and
+# M36C already ported exactly that as `_translate_to_target`. Registered as a
+# thin wrapper rather than a second copy, and the suite asserts the two share
+# one implementation so nobody later "fixes" the duplication into a divergent
+# pair.
+static func _rock_blast_rock(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_translate_to_target(vm, ctx)
+
+
+# ── Gust family ───────────────────────────────────────────────────────────
+#
+# `AnimEllipticalGust` (battle_anim_flying.c:341) and
+# `AnimEllipticalGustCentered` (:36 template, body just below it) share ONE
+# step function (`AnimEllipticalGust_Step`, :350) and differ ONLY in where
+# they are placed -- the centred variant averages both targets in doubles and
+# is identical in singles. One implementation, two entry points.
+#
+# The orbit is an ELLIPSE, 32 across but only 8 down, starting at index 191
+# and advancing 5 per frame for 71 frames -- so it circles roughly 1.4 times
+# and is far wider than it is tall. A circular port would read as a bubble
+# rather than a tornado.
+const _GUST_ORBIT_FRAMES := 71
+const _GUST_ORBIT_START := 191
+const _GUST_ORBIT_STEP := 5
+
+static func _elliptical_gust(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_elliptical_gust_common(vm, ctx, false)
+
+
+static func _elliptical_gust_centered(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_elliptical_gust_common(vm, ctx, true)
+
+
+static func _elliptical_gust_common(vm: AnimScriptVM, ctx: Dictionary,
+		centred: bool) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var base := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	if centred:
+		# In doubles the centred variant sits between both targets; in
+		# singles the average of one battler is that battler, so this is
+		# correctly a no-op there.
+		var partner := _battler_node(vm, AnimStage.ANIM_DEF_PARTNER)
+		if partner != null:
+			base = (base + _battler_centre(vm, AnimStage.ANIM_DEF_PARTNER)) * 0.5
+	base += Vector2(0.0, 20.0) * scale
+	node.centre = base
+
+	var st := {"t": 0, "idx": float(_GUST_ORBIT_START)}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		node.centre = base + Vector2(
+				_gba_sin(float(st["idx"]), 32.0),
+				_gba_cos(float(st["idx"]), 8.0)) * scale
+		st["idx"] = fmod(float(st["idx"]) + float(_GUST_ORBIT_STEP), 256.0)
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= _GUST_ORBIT_FRAMES:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimGustToTarget (battle_anim_flying.c:396). args: 2/3 destination offset,
+# 4 duration. A plain attacker-to-target linear translation with the x offset
+# mirrored for an opponent-side attacker -- the canonical `_linear_travel`
+# shape, same as batch 6's ice-beam particle.
+static func _gust_to_target(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var dx := float(vm.args[2]) * (1.0 if _is_player_side(vm) else -1.0)
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(dx, float(vm.args[3])) * scale
+	node.centre = start
+	_linear_travel(vm, node, start, dest, maxi(1, vm.args[4]))
+
+
+# ── Fire ──────────────────────────────────────────────────────────────────
+
+# AnimFirePlume (battle_anim_fire.c:544, step `AnimLargeFlame_Step` :?).
+# args: 0/1 spawn offset, 2 total lifetime, 3 frames of drift, 4 x drift per
+# frame, 5 y drift per frame.
+#
+# Two independent counters, which is the detail a port flattens by accident:
+# the flame DRIFTS for `arg3` frames but LIVES for `arg2`, so it coasts to a
+# halt and then hangs there before dying. Collapsing them into one duration
+# loses the hang.
+static func _fire_plume(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var player := _is_player_side(vm)
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER) + Vector2(
+			float(vm.args[0]) * (1.0 if player else -1.0),
+			float(vm.args[1])) * scale
+	var drift := Vector2(float(vm.args[4]) * (1.0 if player else -1.0),
+			float(vm.args[5])) * scale
+	var life: int = maxi(1, vm.args[2])
+	var drift_frames: int = maxi(0, vm.args[3])
+	node.centre = start
+
+	var st := {"t": 0, "pos": start}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		if t < drift_frames:
+			st["pos"] = (st["pos"] as Vector2) + drift
+			node.centre = st["pos"]
+		if t >= life:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimDragonRageFirePlume (battle_anim_dragon.c:443). args: 0 battler,
+# 1/2 offset. Positioned and then simply played out until its own frame
+# sequence ends -- no motion at all. Reuses `_play_until_anim_ends`.
+static func _dragon_rage_fire_plume(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	node.centre = _positioned_centre(vm, vm.args[0], vm.args[1], vm.args[2],
+			scale)
+	_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+
+
+# ── Electric ──────────────────────────────────────────────────────────────
+
+# AnimZapCannonSpark (battle_anim_electric.c:704, step :721). args: 2 wobble
+# radius, 3 travel frames, 4 starting angle, 5 angle step, 6 tile offset.
+#
+# A linear attacker-to-target flight with a circular wobble laid ON TOP of it,
+# plus a flicker: the sprite toggles visibility every time its angle index
+# divides by 3. Dropping the flicker leaves a smooth spark that reads as the
+# wrong move entirely -- Zap Cannon's spark is meant to stutter.
+static func _zap_cannon_spark(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var dest := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var radius := float(vm.args[2])
+	var frames: int = maxi(1, vm.args[3])
+	var angle := float(vm.args[4])
+	var angle_step := float(vm.args[5])
+	node.centre = start
+
+	var st := {"t": 0, "angle": angle}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		if t >= frames:
+			node.finish()
+			return true
+		var base := start.lerp(dest, float(t) / float(frames))
+		var a := float(st["angle"])
+		node.centre = base + Vector2(_gba_sin(a, radius),
+				_gba_cos(a, radius)) * scale
+		a = fmod(a + angle_step, 256.0)
+		st["angle"] = a
+		# The stutter: upstream toggles `invisible` whenever the angle index
+		# is a multiple of 3.
+		if int(a) % 3 == 0:
+			node.visible = not node.visible
+		return false)
+
+
+# SpriteCB_GrowingSuperpower (battle_anim_new.c). args: 0 direction (0 =
+# attacker to target, else the reverse). A flat 16-frame linear translation
+# between the two battlers, side-mirrored. No growth of its own despite the
+# name -- the scaling lives in the template's affine anim, which the frame
+# sequence plays out.
+static func _growing_superpower(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var from_attacker: bool = vm.args[0] == 0
+	var start := _battler_centre(vm,
+			AnimStage.ANIM_ATTACKER if from_attacker else AnimStage.ANIM_TARGET)
+	var dest := _battler_centre(vm,
+			AnimStage.ANIM_TARGET if from_attacker else AnimStage.ANIM_ATTACKER)
+	if not _is_player_side(vm):
+		node.scale = Vector2(-absf(node.scale.x), node.scale.y)
+	node.centre = start
+	_linear_travel(vm, node, start, dest, 16)
+
+
+# ── Hearts, ice, droplets ─────────────────────────────────────────────────
+
+# AnimMagentaHeart (battle_anim_effects_2.c:3021). No positional args beyond
+# the standard offset. Rises steadily while swaying: y accumulates -0x80 per
+# frame in 8.8 fixed point (so exactly half a pixel a frame) and x is a
+# sine of a phase advancing 7 per frame. Lives exactly 60 frames.
+static func _magenta_heart(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	node.centre = start
+
+	var st := {"t": 0, "phase": 0.0, "rise": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["rise"] = int(st["rise"]) - 0x80
+		node.centre = start + Vector2(
+				_gba_sin(float(st["phase"]), 8.0),
+				float(int(st["rise"]) >> 8)) * scale
+		st["phase"] = fmod(float(st["phase"]) + 7.0, 256.0)
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= 60:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimIcePunchSwirlingParticle (battle_anim_ice.c:647) via
+# `TranslateSpriteInGrowingCircle` (battle_anim_mons.c:381). args: 0 starting
+# angle.
+#
+# Orbits with a radius that GROWS as it goes: the amplitude accumulates -512
+# per frame in 8.8 fixed point on top of a base of 9, over 60 frames at 30
+# angle-units a frame. Negative accumulation with a positive base means the
+# radius passes through zero and back out -- the particle spirals inward,
+# through the centre, and out the far side rather than simply expanding.
+static func _ice_punch_swirling_particle(vm: AnimScriptVM,
+		ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var centre := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	node.centre = centre
+
+	var st := {"angle": float(vm.args[0]), "left": 60, "amp": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var radius := float(int(st["amp"]) >> 8) + 9.0
+		node.centre = centre + Vector2(
+				_gba_sin(float(st["angle"]), radius),
+				_gba_cos(float(st["angle"]), radius)) * scale
+		st["angle"] = fposmod(float(st["angle"]) + 30.0, 256.0)
+		st["amp"] = int(st["amp"]) - 512
+		st["left"] = int(st["left"]) - 1
+		if int(st["left"]) <= 0:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimSprayWaterDroplet (battle_anim_flying.c:1105, step :1119). args:
+# 0 mirror horizontally, 1 spawn on the target rather than the attacker.
+#
+# Randomised launch: x speed is 736 +/- a 9-bit random, y speed 896 +/- a
+# 7-bit one, both in 8.8 fixed point. Spawns 32px BELOW the battler's centre
+# and arcs up and outward for exactly 31 frames.
+#
+# UPSTREAM BUG, reproduced as written: the step does
+# `sprite->data[0] = sprite->data[0];` -- a self-assignment that clearly meant
+# to decay the horizontal speed the way `data[1] -= 32` decays the vertical.
+# It does nothing, so the droplet's sideways speed never falls off while its
+# rise does, and the guard below it (`if (data[0] < 0) data[0] = 0;`) is
+# unreachable. Ported faithfully: x is constant, y decelerates. Fixing it
+# would change the arc's shape away from what the reference draws.
+static func _spray_water_droplet(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var v1 := randi() & 0x1FF
+	var v2 := randi() & 0x7F
+	var vx := 736 + v1 if (v1 % 2) == 1 else 736 - v1
+	var vy := 896 + v2 if (v2 % 2) == 1 else 896 - v2
+	var mirrored: bool = vm.args[0] != 0
+	var which := AnimStage.ANIM_TARGET if vm.args[1] != 0 \
+			else AnimStage.ANIM_ATTACKER
+	var start := _battler_centre(vm, which) + Vector2(0.0, 32.0) * scale
+	if mirrored:
+		node.scale = Vector2(-absf(node.scale.x), node.scale.y)
+	node.centre = start
+
+	var st := {"t": 0, "vy": vy, "pos": Vector2.ZERO}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var p: Vector2 = st["pos"]
+		# x speed never decays (see the upstream self-assignment above).
+		p.x += float(vx >> 8) * (-1.0 if mirrored else 1.0)
+		p.y -= float(int(st["vy"]) >> 8)
+		st["pos"] = p
+		st["vy"] = int(st["vy"]) - 32
+		node.centre = start + p * scale
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= 31:
+			node.finish()
+			return true
+		return false)
+
+
+# ── Metronome finger, Defense Curl ────────────────────────────────────────
+
+# AnimMetronomeFinger (battle_anim_effects_1.c:7131, step :7147). args:
+# 0 battler. Sits beside the mon's head, plays its wag out, holds 16 frames,
+# then plays a second affine anim and goes. Reuses the same head-relative
+# placement batch-era finger behaviors already established.
+static func _metronome_finger(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	node.centre = _next_to_mon_head(vm, vm.args[0])
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		# 16-frame hold after the wag, then the closing anim plays out.
+		if int(st["t"]) >= 16 + 16:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimTask_DefenseCurlDeformMon (battle_anim_effects_3.c:2126) via
+# `DefenseCurlDeformMonAffineAnimCmds` (:472). No args.
+#
+# Squashes the attacker: affine scale (-12, +20) per frame for 8 frames, then
+# (+12, -20) for 8, looped twice -- 32 frames total. The two halves cancel
+# EXACTLY, so it is self-restoring by construction rather than by a corrective
+# final step, and the test asserts the mon's scale returns to precisely what
+# it started at. GBA affine scale is INVERTED, so a NEGATIVE x delta widens
+# the sprite while the positive y delta flattens it: the mon squashes down and
+# out, which is the shape Defense Curl wants.
+const _DEFENSE_CURL_HALF_FRAMES := 8
+const _DEFENSE_CURL_LOOPS := 2
+
+static func _defense_curl_deform_mon(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	if node == null:
+		return
+	var base_scale := node.scale
+	var base_pivot := node.pivot_offset
+	node.pivot_offset = node.size * 0.5
+
+	var st := {"t": 0, "px": 256, "py": 256}
+	var total := _DEFENSE_CURL_HALF_FRAMES * 2 * _DEFENSE_CURL_LOOPS
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		var t: int = int(st["t"])
+		# Which half of the current squash/unsquash cycle we are in.
+		var out_leg := (t / _DEFENSE_CURL_HALF_FRAMES) % 2 == 0
+		st["px"] = int(st["px"]) + (-12 if out_leg else 12)
+		st["py"] = int(st["py"]) + (20 if out_leg else -20)
+		node.scale = Vector2(
+				base_scale.x * 256.0 / float(maxi(1, int(st["px"]))),
+				base_scale.y * 256.0 / float(maxi(1, int(st["py"]))))
+		st["t"] = t + 1
+		if int(st["t"]) >= total:
+			node.scale = base_scale
+			node.pivot_offset = base_pivot
 			return true
 		return false)

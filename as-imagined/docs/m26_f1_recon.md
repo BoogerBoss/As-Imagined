@@ -1273,6 +1273,30 @@ Where it IS a real fallback:
 Neither use requires adopting the pack's animation system; both are asset
 sourcing plus, at most, reading its timing data as a reference.
 
+### M36D batch ordering — Decision 5's phase order AMENDED by Rob, 2026-07-30
+
+Decision 5 (§7) set Phase D's order as **iconic Gen 1-3 -> remaining Gen 1-3 ->
+the rest of the 717**. The iconic tier closed at 70/70 in batch 7. Batch 8 then
+measured what the remaining two tiers actually cost, and the ordering turned out
+to be leaving throughput on the table:
+
+| Tier | Playable after batch 8 | Top-8 greedy picks yield |
+|---|---|---|
+| Tier 2 — remaining Gen 1-3 | 126/283 (44.5%) | **+12 moves** |
+| Tier 3 — Gen 4+ | 250/579 (43.2%) | **+33 moves** |
+
+Tier 2's one-away wins are worth 3/2/2/1/1/1; Tier 3's are 5/5/4/4/4/4 —
+**~2.75x the return per behavior.** The two tiers also sit at essentially the
+same completion percentage, so there is no partially-finished-tier argument for
+holding the order either.
+
+**Rob's call: take Tier 3's high-yield picks next.** The remaining ordering is
+now **by measured yield, not by generation**. Decision 5's tier definitions
+still stand (the coverage report still reports all three), and the iconic-first
+phase it mandated was carried out in full — only the ordering of the two
+REMAINING phases is superseded, and only because the iconic phase completing is
+what made the comparison possible.
+
 ### M36 — open look-calls and capability gaps (running list)
 
 Kept here so they are findable without reading every batch entry.
@@ -1296,6 +1320,74 @@ recoverable. **Closing it needs sprite-palette data the extraction does not
 currently produce** — not a tuning change. Faking it with a hue shift would
 invent motion the reference does not describe. Frame cost is exact and pinned
 by test, so script pacing is unaffected.
+
+### M36D batch 9 — COMPLETE 2026-07-30. First yield-ordered batch.
+
+`m36d_batch_test` 328 -> **373/373**; 16-suite sweep green. Coverage
+**446 -> 516 of 932 (55.4%)** — exactly the +70 the greedy walk predicted.
+**Both remaining tiers crossed 50%** (Tier 2 44.5 -> 50.9%, Tier 3
+43.2 -> 52.2%).
+
+16 behaviors, **4.4 moves each — double batch 8**, which is the ordering
+amendment paying for itself immediately.
+
+**Step 0 collapsed a good deal of the batch before any code was written:**
+
+- `AnimRockBlastRock` is `TranslateAnimSpriteToTargetMonLocation` plus a
+  side-mirrored flip — M36C's `_translate_to_target` already IS that, so it
+  registered as a thin wrapper with a test asserting the shared implementation.
+- **`AnimEllipticalGust` and `AnimEllipticalGustCentered` share ONE step
+  function** and differ only in placement (the centred variant averages both
+  targets in doubles; in singles that average is a no-op). One implementation,
+  two entry points.
+- `AnimGustToTarget`, `SpriteCB_GrowingSuperpower` and `AnimFlyBallAttack` are
+  plain linear translations -> `_linear_travel`.
+- `AnimDragonRageFirePlume` is position-then-play-out -> `_play_until_anim_ends`.
+
+**THE BATCH CLOSES BATCH 8's FLY PAIR.** `AnimFlyBallAttack`'s teardown does
+`gSprites[attacker].invisible = sprite->data[5]` — the attacker's visibility is
+restored FROM ARG 1 as the ball leaves the screen. Batch 8 shipped the hiding
+half relying on the VM's restore net; this is the real script step. The suite
+asserts the reveal happens **with the VM still running**, so a pass cannot be
+the net doing the work, plus the `arg 1 = 1` discriminator proving the reveal
+reads its argument rather than being unconditional.
+
+**Distinctive shapes a port gets wrong while looking plausible:**
+
+- **`AnimHornHit` SNAPS BACK.** On the second-to-last frame it teleports to its
+  recorded origin (`if (--data[1] == 1) { x = data[6]; y = data[7]; }`) and only
+  then dies. A port that merely interpolates toward the destination looks close
+  and never actually lands.
+- **`AnimFirePlume` has TWO independent counters** — it drifts for `arg3` frames
+  but LIVES for `arg2`, so it coasts to a halt and hangs before dying.
+  Collapsing them into one duration loses the hang.
+- **`AnimZapCannonSpark` stutters** — visibility toggles whenever its angle
+  index divides by 3. A smooth port reads as a different move entirely.
+- **`AnimIcePunchSwirlingParticle`'s amplitude accumulates NEGATIVE on a
+  positive base**, so the radius passes through zero and back out: it spirals
+  in, through the centre, and out the far side rather than simply expanding.
+- **The gust orbit is an ELLIPSE** — 32 across, 8 down, 5 units/frame for 71
+  frames (~1.4 turns). A circular port reads as a bubble, not a tornado.
+
+⚠️ **UPSTREAM BUG reproduced as written — `AnimSprayWaterDroplet`.** Its step
+does `sprite->data[0] = sprite->data[0];`, a self-assignment that clearly meant
+to decay the horizontal speed the way `data[1] -= 32` decays the vertical. It
+does nothing, so **x speed never falls off while the rise does**, and the guard
+below it (`if (data[0] < 0) data[0] = 0;`) is unreachable. Ported faithfully and
+**pinned by test**, so a future session does not "fix" the arc into a shape the
+reference never draws.
+
+`AnimTask_DefenseCurlDeformMon`'s two affine halves cancel EXACTLY — self-
+restoring by construction rather than by a corrective final step, and asserted
+as returning to precisely its starting scale. Under the inverted GBA rule its
+NEGATIVE x delta widens the sprite while the positive y delta flattens it, so
+the mon squashes down and out.
+
+**Headliners unblocked** (named in the suite so a regression is legible): Fly,
+Metronome, Ice Punch, Dragon Rage, Gust, Horn Attack, Hyper Voice, Rock Blast,
+Defense Curl.
+
+**NOT screenshot-verified.**
 
 ### M36D batch 8 — COMPLETE 2026-07-30. First batch of the post-iconic grind.
 

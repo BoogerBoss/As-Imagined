@@ -69,6 +69,13 @@ func _ready() -> void:
 	_test_batch8_electric_family()
 	_test_batch8_static_and_timing()
 	_test_batch8_coverage()
+	_test_batch9_closes_the_fly_pair()
+	_test_batch9_horn_snaps_back()
+	_test_batch9_gust_family_shares_one_orbit()
+	_test_batch9_alias_and_two_counters()
+	_test_batch9_flicker_and_spiral()
+	_test_batch9_droplet_and_deform()
+	_test_batch9_coverage()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -2066,3 +2073,290 @@ func _test_batch8_coverage() -> void:
 	_chk("roster coverage is at least 446 moves (%d)"
 			% int(cov.get("playable", 0)),
 			int(cov.get("playable", 0)) >= 446)
+
+
+# ── [M36D batch 9] ────────────────────────────────────────────────────────
+#
+# Picked by measured yield across tiers rather than by generation (Rob's
+# amendment to Decision 5 after batch 8 measured the two remaining tiers).
+# 16 behaviors, 70 moves. Several collapse onto helpers M36C and batches 5-6
+# already built, so the tests concentrate on the handful of genuinely
+# distinctive shapes -- and on the one real pairing this batch closes.
+
+
+func _test_batch9_closes_the_fly_pair() -> void:
+	# Batch 8 shipped AnimFlyBallUp, which hides the attacker and relies on a
+	# later script step to bring it back; until now only the VM's restore net
+	# did that. AnimFlyBallAttack IS that step -- upstream assigns arg 1
+	# straight into the attacker's `invisible` as the ball leaves. Asserted
+	# through the REAL behavior, with the VM still running, so a pass cannot
+	# be the safety net doing the work.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_run_b5(vm, "AnimFlyBallUp", "gFlyBallUpSpriteTemplate")
+	_chk("Fly: the up-half hides the attacker",
+			not stage.nodes[AnimStage.ANIM_ATTACKER].visible)
+
+	vm.args[0] = 8
+	vm.args[1] = 0        # 0 = bring the attacker back
+	_run_b5(vm, "AnimFlyBallAttack", "gFlyBallAttackSpriteTemplate")
+	var ball := _b5_last
+	_chk("Fly: the attack-half spawns a ball", ball != null)
+	_step(vm, 4)
+	_chk("...and the attacker is still hidden mid-flight",
+			not stage.nodes[AnimStage.ANIM_ATTACKER].visible)
+	_step(vm, 8)
+	_chk("...revealed by the real script step, not the VM's net",
+			stage.nodes[AnimStage.ANIM_ATTACKER].visible)
+
+	# arg 1 = 1 means "leave it hidden" -- the discriminator that proves the
+	# reveal reads the argument rather than being unconditional.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	_run_b5(vm2, "AnimFlyBallUp", "gFlyBallUpSpriteTemplate")
+	vm2.args[0] = 6
+	vm2.args[1] = 1
+	_run_b5(vm2, "AnimFlyBallAttack", "gFlyBallAttackSpriteTemplate")
+	_step(vm2, 12)
+	_chk("...and arg 1 = 1 deliberately leaves it hidden",
+			not stage2.nodes[AnimStage.ANIM_ATTACKER].visible)
+	vm2._finish()
+	_chk("...with the net still catching that case at run end",
+			stage2.nodes[AnimStage.ANIM_ATTACKER].visible)
+
+	_chk("Fly (19) is playable", _dispatcher.can_play_move(19))
+
+
+func _test_batch9_horn_snaps_back() -> void:
+	# The quirk: on the SECOND-TO-LAST frame the horn teleports to its
+	# recorded origin and only then dies. A port that merely interpolates
+	# toward the destination looks close and never actually lands there.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0; vm.args[1] = 0; vm.args[2] = 10
+	_run_b5(vm, "AnimHornHit", "gHornHitSpriteTemplate")
+	var horn := _b5_last
+	_chk("horn spawns", horn != null)
+	if horn == null:
+		return
+	var target := stage.center_of(AnimStage.ANIM_TARGET)
+	var start_d := horn.centre.distance_to(target)
+	_chk("...starting off to one side of the target (%.0f px)" % start_d,
+			start_d > 1.0)
+	_step(vm, 5)
+	var mid_d := horn.centre.distance_to(target)
+	_chk("...sweeping toward it (%.0f -> %.0f)" % [start_d, mid_d],
+			mid_d < start_d)
+	# Frame 9 of 10 is the snap.
+	_step(vm, 4)
+	_chk("...then SNAPPING exactly onto its origin before dying (%.2f px)"
+			% horn.centre.distance_to(target),
+			horn.centre.distance_to(target) < 0.01)
+	_step(vm, 2)
+	_chk("...and it is gone on the next frame", vm.visual_count() == 0)
+
+
+func _test_batch9_gust_family_shares_one_orbit() -> void:
+	# EllipticalGust and EllipticalGustCentered share ONE step function
+	# upstream and differ only in placement. Both must therefore trace the
+	# same shape -- and that shape is an ELLIPSE, 32 across but only 8 down.
+	for symbol in ["AnimEllipticalGust", "AnimEllipticalGustCentered"]:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		_run_b5(vm, symbol, "gEllipticalGustSpriteTemplate")
+		var n := _b5_last
+		if n == null:
+			_chk("%s spawns" % symbol, false)
+			continue
+		var xs := [n.centre.x]
+		var ys := [n.centre.y]
+		for i in range(40):
+			_step(vm, 1)
+			if is_instance_valid(n):
+				xs.append(n.centre.x); ys.append(n.centre.y)
+		var xr: float = (xs.max() as float) - (xs.min() as float)
+		var yr: float = (ys.max() as float) - (ys.min() as float)
+		_chk("%s orbits far wider than tall (%.0f vs %.0f)" % [symbol, xr, yr],
+				xr > yr * 2.0)
+		_step(vm, 45)
+		_chk("%s ends on its own 71 frames" % symbol, vm.visual_count() == 0)
+
+	# GustToTarget is the plain linear-travel member of the same family.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	vm2.args[2] = 0; vm2.args[3] = 0; vm2.args[4] = 10
+	_run_b5(vm2, "AnimGustToTarget", "gGustToTargetSpriteTemplate")
+	var g := _b5_last
+	if g != null:
+		var d0 := g.centre.distance_to(stage2.center_of(AnimStage.ANIM_TARGET))
+		_step(vm2, 8)
+		var d1 := g.centre.distance_to(stage2.center_of(AnimStage.ANIM_TARGET))
+		_chk("GustToTarget travels attacker -> target (%.0f -> %.0f)"
+				% [d0, d1], d1 < d0)
+
+
+func _test_batch9_alias_and_two_counters() -> void:
+	# AnimRockBlastRock IS TranslateAnimSpriteToTargetMonLocation, which M36C
+	# already ported. Asserted as one shared implementation so nobody later
+	# "fixes" the duplication into a divergent pair.
+	_chk("RockBlastRock is registered", _registry.get_behavior(
+			"AnimRockBlastRock") != Callable())
+	_chk("Rock Blast (350) is playable", _dispatcher.can_play_move(350))
+
+	# FirePlume has TWO independent counters -- it drifts for arg3 frames but
+	# LIVES for arg2, so it coasts and then hangs. Collapsing them into one
+	# duration is the easy mistake and loses the hang.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0; vm.args[1] = 0
+	vm.args[2] = 30   # lifetime
+	vm.args[3] = 10   # drift frames
+	vm.args[4] = 4; vm.args[5] = -2
+	_run_b5(vm, "AnimFirePlume", "gFirePlumeSpriteTemplate")
+	var plume := _b5_last
+	_chk("fire plume spawns", plume != null)
+	if plume == null:
+		return
+	_step(vm, 9)
+	var drifted := plume.centre
+	_chk("...drifts while its drift counter runs",
+			not drifted.is_equal_approx(Vector2.ZERO))
+	_step(vm, 10)
+	_chk("...then HANGS once drift ends but life has not",
+			plume.centre.is_equal_approx(drifted))
+	_chk("...and is still alive during the hang", vm.visual_count() > 0)
+	_step(vm, 15)
+	_chk("...dying only at its own lifetime", vm.visual_count() == 0)
+
+
+func _test_batch9_flicker_and_spiral() -> void:
+	# ZapCannonSpark's stutter is the whole character of the move: it toggles
+	# visibility whenever its angle index divides by 3. A smooth port reads as
+	# a different move.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[2] = 10; vm.args[3] = 30; vm.args[4] = 0; vm.args[5] = 5
+	_run_b5(vm, "AnimZapCannonSpark", "gZapCannonSparkSpriteTemplate")
+	var spark := _b5_last
+	_chk("zap spark spawns", spark != null)
+	if spark != null:
+		var flips := 0
+		var was := spark.visible
+		for i in range(25):
+			_step(vm, 1)
+			if is_instance_valid(spark) and spark.visible != was:
+				flips += 1
+				was = spark.visible
+		_chk("...and stutters in flight (%d visibility flips)" % flips,
+				flips > 0)
+
+	# IcePunchSwirlingParticle's amplitude accumulates NEGATIVE on a positive
+	# base, so the radius passes through zero and back out -- it spirals in,
+	# through the centre, and out the far side rather than simply expanding.
+	var stage2 := FakeStage.new()
+	var vm2 := _vm(stage2)
+	vm2.args[0] = 0
+	_run_b5(vm2, "AnimIcePunchSwirlingParticle",
+			"gIcePunchSwirlingParticleSpriteTemplate")
+	var ice := _b5_last
+	if ice != null:
+		var centre := stage2.center_of(AnimStage.ANIM_ATTACKER)
+		var radii: Array = []
+		for i in range(50):
+			_step(vm2, 1)
+			if is_instance_valid(ice):
+				radii.append(ice.centre.distance_to(centre))
+		if radii.size() > 10:
+			var lo: float = radii.min()
+			var hi: float = radii.max()
+			_chk("ice particle's radius genuinely varies (%.1f..%.1f)"
+					% [lo, hi], hi - lo > 1.0)
+
+	# MagentaHeart rises steadily while swaying.
+	var stage3 := FakeStage.new()
+	var vm3 := _vm(stage3)
+	_run_b5(vm3, "AnimMagentaHeart", "gMagentaHeartSpriteTemplate")
+	var heart := _b5_last
+	if heart != null:
+		var y0 := heart.centre.y
+		var xs: Array = []
+		for i in range(30):
+			_step(vm3, 1)
+			if is_instance_valid(heart):
+				xs.append(heart.centre.x)
+		_chk("magenta heart rises", heart.centre.y < y0)
+		var xr: float = (xs.max() as float) - (xs.min() as float)
+		_chk("...while swaying sideways (%.1f px)" % xr, xr > 0.5)
+		_step(vm3, 40)
+		_chk("...for exactly 60 frames", vm3.visual_count() == 0)
+
+
+func _test_batch9_droplet_and_deform() -> void:
+	# SprayWaterDroplet carries a real upstream BUG, reproduced as written:
+	# the step self-assigns `data[0] = data[0]` where it clearly meant to
+	# decay the horizontal speed the way it decays the vertical. So y
+	# decelerates and x does not. Pinned so a future session does not "fix"
+	# the arc into a shape the reference never draws.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0; vm.args[1] = 0
+	_run_b5(vm, "AnimSprayWaterDroplet", "gSprayWaterDropletSpriteTemplate")
+	var drop := _b5_last
+	_chk("water droplet spawns", drop != null)
+	if drop != null:
+		var p0 := drop.centre
+		_step(vm, 1)
+		var d1 := drop.centre - p0
+		# The vertical speed is 8.8 fixed point decaying 32/frame from ~896,
+		# so it takes 6 frames to lose a whole pixel -- the same truncation
+		# shape as FlyBallUp. Comparing adjacent frames would tie at 3px and
+		# prove nothing, so the later sample is taken well past that point.
+		_step(vm, 9)
+		var p1 := drop.centre
+		_step(vm, 1)
+		var d2 := drop.centre - p1
+		_chk("...its horizontal speed does NOT decay (upstream bug, kept)",
+				is_equal_approx(absf(d1.x), absf(d2.x)))
+		_chk("...while its rise DOES decelerate (%.1f -> %.1f px/frame)"
+				% [absf(d1.y), absf(d2.y)], absf(d2.y) < absf(d1.y))
+		_step(vm, 30)
+		_chk("...over exactly 31 frames", vm.visual_count() == 0)
+
+	# DefenseCurlDeformMon's two affine halves cancel EXACTLY, so it is
+	# self-restoring by construction rather than by a corrective final step.
+	var stage2 := FakeStage.new()
+	var node: Control = stage2.nodes[AnimStage.ANIM_ATTACKER]
+	var base := node.scale
+	var vm2 := _vm(stage2)
+	_registry.get_behavior("AnimTask_DefenseCurlDeformMon").call(vm2, {})
+	var widest := base.x
+	var flattest := base.y
+	for i in range(40):
+		_step(vm2, 1)
+		widest = maxf(widest, node.scale.x)
+		flattest = minf(flattest, node.scale.y)
+		if vm2.visual_count() == 0:
+			break
+	# Inverted affine: a NEGATIVE x delta widens, the positive y delta flattens.
+	_chk("Defense Curl squashes the mon wider (%.3f > %.3f)"
+			% [widest, base.x], widest > base.x)
+	_chk("...and flatter (%.3f < %.3f)" % [flattest, base.y], flattest < base.y)
+	_chk("...and restores its scale exactly", node.scale.is_equal_approx(base))
+	_chk("Defense Curl (111) is playable", _dispatcher.can_play_move(111))
+
+
+func _test_batch9_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov: Dictionary = _dispatcher.coverage(ids)
+	_chk("roster coverage is at least 516 moves (%d)"
+			% int(cov.get("playable", 0)),
+			int(cov.get("playable", 0)) >= 516)
+	# The headliners this batch unblocked, named so a regression is legible.
+	for pair in [[19, "Fly"], [118, "Metronome"], [8, "Ice Punch"],
+			[82, "Dragon Rage"], [16, "Gust"], [30, "Horn Attack"],
+			[304, "Hyper Voice"]]:
+		_chk("%s is playable" % str(pair[1]),
+				_dispatcher.can_play_move(int(pair[0])))
