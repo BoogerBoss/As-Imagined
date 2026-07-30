@@ -55,7 +55,11 @@ const ICONIC_GEN13 := {
 	347: "Aeroblast", 354: "Psycho Boost", 344: "Volt Tackle",
 	# (d) TM staples with distinctive animations
 	34: "Body Slam", 36: "Take Down", 38: "Double-Edge", 44: "Bite",
-	46: "Roar", 65: "Slash", 70: "Strength", 88: "Rock Throw",
+	# 65 was mislabelled "Slash" -- a transcription slip, since the real Slash
+	# is 163 and is also in this table. 65 is Drill Peck. Corrected rather
+	# than dropped, so the tier denominator does not move silently; whether
+	# Drill Peck belongs in a curated "iconic" set at all is Rob's call.
+	46: "Roar", 65: "Drill Peck", 70: "Strength", 88: "Rock Throw",
 	157: "Rock Slide", 163: "Slash", 247: "Shadow Ball", 188: "Sludge Bomb",
 	189: "Mud-Slap", 202: "Giga Drain", 216: "Return", 218: "Frustration",
 	237: "Hidden Power", 240: "Rain Dance", 241: "Sunny Day",
