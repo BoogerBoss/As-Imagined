@@ -100,6 +100,15 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 15] —
+		"AnimGrowingShockWaveOrbOnTarget": _growing_shock_wave_orb_on_target,
+		"AnimPetalDanceBigFlower": _petal_dance_big_flower,
+		"AnimPetalDanceSmallFlower": _petal_dance_small_flower,
+		"AnimWhiteHalo": _white_halo,
+		"AnimSmokeBallEscapeCloud": _smoke_ball_escape_cloud,
+		"AnimAcrobaticsSlashes": _acrobatics_slashes,
+		"SpriteCB_SunsteelStrikeRings": _sunsteel_strike_rings,
+		"AnimBrickBreakWallShard": _brick_break_wall_shard,
 		"AnimFallingFeather": _falling_feather,
 		# — [M36D batch 14] the rotate-and-travel family —
 		"AnimPsychoCut": _psycho_cut,
@@ -7803,10 +7812,23 @@ const _SHOCKWAVE_ORB_PARAM_STEP := 0x8
 const _SHOCKWAVE_ORB_PHASE_FRAMES := 30
 
 static func _growing_shock_wave_orb(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_shock_wave_orb_on(vm, ctx, AnimStage.ANIM_ATTACKER)
+
+
+# AnimGrowingShockWaveOrbOnTarget (battle_anim_new.c:6467) is byte-identical to
+# AnimGrowingShockWaveOrb apart from which battler it sits on -- the SIXTH
+# alias found at Step 0, and the third against work from an earlier batch.
+static func _growing_shock_wave_orb_on_target(vm: AnimScriptVM,
+		ctx: Dictionary) -> void:
+	_shock_wave_orb_on(vm, ctx, AnimStage.ANIM_TARGET)
+
+
+static func _shock_wave_orb_on(vm: AnimScriptVM, ctx: Dictionary,
+		battler: int) -> void:
 	var node := _make_sprite(vm, ctx)
 	if node == null:
 		return
-	node.centre = _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	node.centre = _battler_centre(vm, battler)
 	var st := {"t": 0, "param": _SHOCKWAVE_ORB_PARAM_START}
 	node.scale = Vector2.ONE * (256.0 / float(_SHOCKWAVE_ORB_PARAM_START))
 
@@ -9863,3 +9885,224 @@ static func _falling_feather(vm: AnimScriptVM, ctx: Dictionary) -> void:
 			node.finish()
 			return true
 		return false)
+
+
+# ── [M36D batch 15] ───────────────────────────────────────────────────────
+#
+# 8 of 12 candidates; four deferred. Includes four of batch 14's own
+# deferrals, now that their step functions have been read.
+#
+# `AnimGrowingShockWaveOrbOnTarget` is handled above, beside the behavior it
+# aliases.
+
+
+# AnimPetalDanceBigFlower (battle_anim_effects_1.c:3630, step :3646) and
+# AnimPetalDanceSmallFlower (:3666, step :3682).
+#
+# Their SETUPS are near-identical -- both travel from the attacker down to
+# `attacker y + targetY` -- which is what made them look like an alias pair.
+# **Their steps are genuinely different, and that is the whole point of the
+# move:** the big flowers sway WIDE (amplitude 32) with a vertical bob
+# (`Cos(phase, -5)`, note the negative) and swap draw order in front of and
+# behind the Pokemon on a half-cycle, while the small ones sway NARROW
+# (amplitude 8), never bob, and instead FLIP horizontally inside two tiny
+# 5-unit phase windows (59-63 and 187-191). Together that reads as heavy
+# blossoms tumbling among light ones.
+#
+# Both advance phase by 5 per frame.
+const _PETAL_PHASE_STEP := 5.0
+
+static func _petal_dance_big_flower(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_petal_dance(vm, ctx, true)
+
+
+static func _petal_dance_small_flower(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_petal_dance(vm, ctx, false)
+
+
+static func _petal_dance(vm: AnimScriptVM, ctx: Dictionary, big: bool) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	var dest := Vector2(start.x,
+			_battler_centre(vm, AnimStage.ANIM_ATTACKER).y
+			+ float(vm.args[2]) * scale)
+	var frames: int = maxi(1, vm.args[3])
+	node.centre = start
+
+	var st := {"t": 0, "phase": 64.0, "flipped": false, "front": false}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		var phase: float = float(st["phase"])
+		var base := start.lerp(dest, float(t) / float(frames))
+		if big:
+			# Wide sway PLUS a vertical bob, and a draw-order swap on the
+			# half-cycle -- the heavy blossom passing around the Pokemon.
+			node.centre = base + Vector2(_gba_sin(phase, 32.0),
+					_gba_cos(phase, -5.0)) * scale
+			var in_front: bool = phase >= 64.0 and phase < 192.0
+			if in_front != bool(st["front"]):
+				st["front"] = in_front
+				node.z_index = 1 if in_front else -1
+		else:
+			node.centre = base + Vector2(_gba_sin(phase, 8.0), 0.0) * scale
+			# Two deliberately NARROW flip windows, not a half-cycle.
+			if (phase >= 59.0 and phase < 64.0) \
+					or (phase >= 187.0 and phase < 192.0):
+				st["flipped"] = not bool(st["flipped"])
+				node.scale = Vector2(
+						(-1.0 if bool(st["flipped"]) else 1.0)
+						* absf(node.scale.x), node.scale.y)
+		st["phase"] = fmod(phase + _PETAL_PHASE_STEP, 256.0)
+		if t >= frames:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimWhiteHalo (battle_anim_effects_3.c:1294, steps :1304/:1316). No args.
+#
+# Holds for a full 90 FRAMES -- a second and a half, which is unusually long
+# and is most of the effect -- and only then fades, one blend step per frame
+# from 7 down to 0. So it is a long steady glow with a quick eight-frame
+# release, not a slow pulse.
+static func _white_halo(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var st := {"hold": 90, "coeff": 7}
+	node.modulate.a = 7.0 / 16.0
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		if int(st["hold"]) > 0:
+			st["hold"] = int(st["hold"]) - 1
+			return false
+		st["coeff"] = int(st["coeff"]) - 1
+		node.modulate.a = maxf(0.0, float(st["coeff"]) / 16.0)
+		if int(st["coeff"]) < 0:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimSmokeBallEscapeCloud (battle_anim_effects_3.c:3732). args: 0 anim
+# variant, 1/2 offset, 3 lifetime.
+#
+# Spawns on the ATTACKER but mirrors its x offset by the TARGET's side -- an
+# asymmetry worth keeping, since every neighbouring behavior mirrors by the
+# attacker's. It then simply sits there for `arg3` frames.
+static func _smoke_ball_escape_cloud(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	_apply_anim_variant(node, ctx, vm.args[0])
+	var scale := _scale(vm)
+	# Mirrored by the TARGET's side, not the attacker's.
+	var mirror := -1.0 if not _battler_is_player_side(vm,
+			AnimStage.ANIM_TARGET) else 1.0
+	node.centre = _battler_centre(vm, AnimStage.ANIM_ATTACKER) + Vector2(
+			float(vm.args[1]) * mirror, float(vm.args[2])) * scale
+	var life: int = maxi(1, vm.args[3])
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= life:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimAcrobaticsSlashes (battle_anim_effects_1.c:7380). args: 0/1 offset.
+# Positioned on the target with a RANDOM affine variant per slash, then simply
+# played out -- the randomness is the effect, giving each slash of the flurry
+# a different angle.
+static func _acrobatics_slashes(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	node.centre = _positioned_centre(vm, AnimStage.ANIM_TARGET, vm.args[0],
+			vm.args[1], scale)
+	node.rotation = float(randi() % 4) * TAU / 8.0
+	_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+
+
+# SpriteCB_SunsteelStrikeRings (battle_anim_new.c:6791). args: 0 duration.
+#
+# Enters from an off-screen top corner -- the side the attacker is NOT on --
+# and drives to the target. Shares `AnimFlyBallAttack_Step` with batch 9's Fly
+# attack, but deliberately NOT the attacker-reveal that step also performs:
+# Fly's own reveal is driven by its `data[5]`, which this behavior never sets,
+# so reusing `_fly_ball_attack` wholesale would make Sunsteel Strike quietly
+# un-hide a Pokemon it never hid.
+static func _sunsteel_strike_rings(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var layer_w := 1024.0
+	if vm.stage != null and vm.stage.has_method("layer"):
+		var l: Control = vm.stage.layer()
+		if l != null:
+			layer_w = l.size.x
+	var from_left := _is_player_side(vm)
+	var start := Vector2(-32.0 * scale if from_left else layer_w + 32.0 * scale,
+			-32.0 * scale)
+	node.centre = start
+	_linear_travel(vm, node, start,
+			_battler_centre(vm, AnimStage.ANIM_TARGET), maxi(1, vm.args[0]))
+
+
+# AnimBrickBreakWallShard (battle_anim_fight.c:772, step :814). args:
+# 0 battler, 1 shard index (0-3), 2/3 offset.
+#
+# Four shards flying to four DIAGONAL corners at a flat 3px per axis per
+# frame, for 40 frames -- arg 1 selects both the sprite tile and which corner,
+# so the index is not cosmetic. An out-of-range index destroys the sprite
+# outright upstream rather than defaulting, which is reproduced.
+const _BRICK_SHARD_DIRS := [Vector2(-3, -3), Vector2(3, -3),
+		Vector2(-3, 3), Vector2(3, 3)]
+
+static func _brick_break_wall_shard(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var idx: int = vm.args[1]
+	if idx < 0 or idx >= _BRICK_SHARD_DIRS.size():
+		return  # upstream destroys it rather than defaulting
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, vm.args[0], vm.args[2], vm.args[3],
+			scale)
+	node.centre = start
+	var vel: Vector2 = (_BRICK_SHARD_DIRS[idx] as Vector2) * scale
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		node.centre = start + vel * float(t)
+		if t > 40:
+			node.finish()
+			return true
+		return false)
+
+
+# DEFERRED from this batch, all for unread step functions:
+#   * `AnimDiveBall` / `AnimDiveWaterSplash` -- a two-stage pair.
+#   * `SpriteCB_ToxicThreadWrap` -- hands over to `AnimStringWrap_Step`, which
+#     this pass could not locate in the expected file.
+#   * `SpriteCB_SpriteOnMonUntilAffineAnimEnds`.

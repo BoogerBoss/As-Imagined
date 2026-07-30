@@ -1447,6 +1447,63 @@ is harness-specific, not a shipped bug.
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
 
+### M36D batch 15 — COMPLETE 2026-07-30
+
+`m36d_batch_test` 520 -> **536/536**; 6-suite sweep green. Coverage
+**595 -> 615 of 932 (66.0%)** — +20 from 8 behaviors, including four of batch
+14's own deferrals now that their step functions have been read.
+
+**A SIXTH alias**: `AnimGrowingShockWaveOrbOnTarget` is byte-identical to batch
+8's `AnimGrowingShockWaveOrb` apart from which battler it anchors to. Shared
+body, battler as a parameter.
+
+⚠️ **And the opposite case, which matters more: a pair that LOOKS like an alias
+and is not.** `AnimPetalDanceBigFlower` and `AnimPetalDanceSmallFlower` have
+near-identical setups — both travel from the attacker down to
+`attacker y + targetY`, both advance phase by 5 — which is exactly why batch 14
+suspected them of being a pair. **Their steps are genuinely different, and the
+difference IS the move:**
+
+- **Big**: sways WIDE (amplitude 32) *and* bobs vertically (`Cos(phase, -5)`,
+  note the negative), and swaps draw order in front of and behind the Pokemon
+  on a half-cycle.
+- **Small**: sways NARROW (amplitude 8), never bobs, and instead flips
+  horizontally inside two tiny 5-unit phase windows (59-63 and 187-191).
+
+Together that reads as heavy blossoms tumbling among light ones. Collapsing
+them into one implementation would have lost the entire texture of the move —
+the same instinct that correctly found six aliases would have been wrong here,
+which is why each candidate pair gets its STEP compared and not just its setup.
+
+**A trap deliberately avoided:** `SpriteCB_SunsteelStrikeRings` shares
+`AnimFlyBallAttack_Step` with batch 9's Fly attack — but Fly's step also
+performs an ATTACKER REVEAL driven by a `data[5]` field this behavior never
+sets. Reusing `_fly_ball_attack` wholesale would have made Sunsteel Strike
+quietly un-hide a Pokemon it never hid. Implemented separately; **the suite
+asserts a hidden attacker STAYS hidden**, with a spawn guard so that assertion
+cannot pass vacuously.
+
+**Other shapes pinned:** `AnimWhiteHalo` is mostly HOLD — 90 frames of steady
+glow then an eight-frame release, so a port that fades throughout reads as a
+slow pulse instead. `AnimBrickBreakWallShard` sends four shards to four
+DIAGONAL corners with the index selecting both tile and direction, and an
+out-of-range index destroys the sprite outright rather than defaulting.
+`AnimSmokeBallEscapeCloud` mirrors its offset by the **TARGET's** side while
+spawning on the attacker — an asymmetry every neighbouring behavior does not
+share.
+
+**The batch-13 template guard earned its keep**: it caught
+`gSunsteelStrikeRingsSpriteTemplate` (not a real name) the first time this
+suite ran, before it could hide assertions. Resolved by callback, as the rule
+requires.
+
+**Screenshot-verified in-batch**: Petal Dance renders big and small flowers at
+distinct sizes and heights.
+
+**Deferred (4):** `AnimDiveBall`/`AnimDiveWaterSplash` (a two-stage pair),
+`SpriteCB_ToxicThreadWrap` (hands to `AnimStringWrap_Step`, not locatable in
+the expected file this pass), `SpriteCB_SpriteOnMonUntilAffineAnimEnds`.
+
 ### AnimFallingFeather — the last deferral, taken directly, 2026-07-30
 
 `m36d_batch_test` 510 -> **520/520**; 6-suite sweep green. Coverage

@@ -93,6 +93,7 @@ func _ready() -> void:
 	_test_batch14_rotate_and_travel()
 	_test_batch14_shapes()
 	_test_falling_feather()
+	_test_batch15()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -3321,8 +3322,7 @@ func _test_batch14_shapes() -> void:
 	_chk("roster coverage is at least 593 moves (%d)"
 			% int(cov.get("playable", 0)),
 			int(cov.get("playable", 0)) >= 593)
-	for sym in ["AnimPetalDanceBigFlower", "AnimDiveBall",
-			"AnimAcrobaticsSlashes"]:
+	for sym in ["AnimDiveBall", "AnimDiveWaterSplash"]:
 		_chk("%s is deliberately deferred" % sym,
 				_registry.get_behavior(sym) == Callable())
 	# Deferred by batches 12, 13 AND 14, then taken directly.
@@ -3466,3 +3466,136 @@ func _test_falling_feather() -> void:
 				deltas.has(0.0) or deltas.size() == 1)
 		_step(vm4, 400)
 		_chk("...and ends at its y limit", vm4.visual_count() == 0)
+
+
+# ── [M36D batch 15] ───────────────────────────────────────────────────────
+
+func _test_batch15() -> void:
+	# The sixth alias: the on-target orb is batch 8's orb on a different
+	# battler. Shared body, different anchor.
+	var orbs := {}
+	for pair in [["AnimGrowingShockWaveOrb", AnimStage.ANIM_ATTACKER],
+			["AnimGrowingShockWaveOrbOnTarget", AnimStage.ANIM_TARGET]]:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		_run_b5(vm, str(pair[0]), "gGrowingShockWaveOrbSpriteTemplate")
+		var n := _b5_last
+		_chk("%s spawns" % str(pair[0]), n != null)
+		if n != null:
+			_chk("...on the right battler",
+					n.centre.distance_to(stage.center_of(int(pair[1]))) < 1.0)
+			orbs[str(pair[0])] = n.centre
+	if orbs.size() == 2:
+		_chk("...and the two anchor to DIFFERENT battlers",
+				not (orbs.values()[0] as Vector2).is_equal_approx(
+						orbs.values()[1] as Vector2))
+
+	# THE HEADLINE: Petal Dance's two flowers have near-identical setups --
+	# which is what made them look like an alias pair -- but genuinely
+	# different steps. Big sways WIDE and bobs vertically; small sways NARROW
+	# and never bobs. Collapsing them would lose the whole texture of the move.
+	var spread := {}
+	for pair in [["AnimPetalDanceBigFlower", "gPetalDanceBigFlowerSpriteTemplate"],
+			["AnimPetalDanceSmallFlower", "gPetalDanceSmallFlowerSpriteTemplate"]]:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		vm.args[0] = 0; vm.args[1] = 0; vm.args[2] = 40; vm.args[3] = 60
+		_run_b5(vm, str(pair[0]), str(pair[1]))
+		var n := _b5_last
+		if n == null:
+			_chk("%s spawns" % str(pair[0]), false)
+			continue
+		_chk("%s spawns" % str(pair[0]), true)
+		var xs: Array = []
+		var dys: Array = []
+		var prev_y := n.centre.y
+		for i in range(50):
+			_step(vm, 1)
+			if not is_instance_valid(n):
+				break
+			xs.append(n.centre.x)
+			dys.append(n.centre.y - prev_y)
+			prev_y = n.centre.y
+		spread[str(pair[0])] = {
+			"x": (xs.max() as float) - (xs.min() as float),
+			"dy": (dys.max() as float) - (dys.min() as float),
+		}
+	if spread.size() == 2:
+		var big: Dictionary = spread["AnimPetalDanceBigFlower"]
+		var small: Dictionary = spread["AnimPetalDanceSmallFlower"]
+		_chk("big flowers sway WIDER than small (%.0f > %.0f)"
+				% [float(big["x"]), float(small["x"])],
+				float(big["x"]) > float(small["x"]))
+		# The small flower's descent is perfectly even; the big one's is not,
+		# because only it carries the vertical bob.
+		_chk("...and only the big one BOBS vertically (%.2f vs %.2f)"
+				% [float(big["dy"]), float(small["dy"])],
+				float(big["dy"]) > float(small["dy"]))
+
+	# WhiteHalo is mostly HOLD -- 90 frames of steady glow, then a quick
+	# eight-frame release. A port that fades throughout would look like a slow
+	# pulse instead.
+	var stage3 := FakeStage.new()
+	var vm3 := _vm(stage3)
+	_run_b5(vm3, "AnimWhiteHalo", "gWhiteHaloSpriteTemplate")
+	var halo := _b5_last
+	if halo != null:
+		var a0 := halo.modulate.a
+		_step(vm3, 80)
+		_chk("white halo holds steady through its 90-frame glow",
+				is_equal_approx(halo.modulate.a, a0))
+		_step(vm3, 20)
+		_chk("...then releases quickly", halo.modulate.a < a0)
+		_step(vm3, 20)
+		_chk("...and is gone", vm3.visual_count() == 0)
+
+	# BrickBreak's four shards fly to four DIAGONAL corners, and an
+	# out-of-range index spawns nothing at all rather than defaulting.
+	var dirs: Array = []
+	for idx in range(4):
+		var st := FakeStage.new()
+		var v := _vm(st)
+		v.args[0] = AnimStage.ANIM_TARGET; v.args[1] = idx
+		v.args[2] = 0; v.args[3] = 0
+		_run_b5(v, "AnimBrickBreakWallShard", "gBrickBreakWallShardSpriteTemplate")
+		var n := _b5_last
+		if n == null:
+			continue
+		var p0 := n.centre
+		_step(v, 10)
+		dirs.append(Vector2(signf(n.centre.x - p0.x), signf(n.centre.y - p0.y)))
+	var uniq := {}
+	for d in dirs:
+		uniq[str(d)] = true
+	_chk("brick shards fly to four DISTINCT diagonals (%d)" % uniq.size(),
+			uniq.size() == 4)
+	var st5 := FakeStage.new()
+	var v5 := _vm(st5)
+	v5.args[0] = AnimStage.ANIM_TARGET; v5.args[1] = 9
+	_run_b5(v5, "AnimBrickBreakWallShard", "gBrickBreakWallShardSpriteTemplate")
+	_chk("...and an out-of-range index spawns nothing", _b5_last == null)
+
+	# SunsteelStrikeRings shares Fly's attack STEP upstream but must NOT
+	# inherit its attacker-reveal -- Fly's reveal is driven by a data field
+	# this behavior never sets. Reusing _fly_ball_attack wholesale would have
+	# it quietly un-hide a Pokemon it never hid.
+	var stage6 := FakeStage.new()
+	stage6.nodes[AnimStage.ANIM_ATTACKER].visible = false
+	var vm6 := _vm(stage6)
+	vm6.args[0] = 10
+	_run_b5(vm6, "SpriteCB_SunsteelStrikeRings", "gSunsteelStrikeRedBeamTemplate")
+	# Guard: without a real sprite the reveal assertion below would pass
+	# vacuously, which is the batch-13 false-pass shape all over again.
+	_chk("Sunsteel Strike spawns", _b5_last != null)
+	_step(vm6, 14)
+	_chk("Sunsteel Strike does NOT reveal a hidden attacker",
+			not stage6.nodes[AnimStage.ANIM_ATTACKER].visible)
+
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov: Dictionary = _dispatcher.coverage(ids)
+	_chk("roster coverage is at least 615 moves (%d)"
+			% int(cov.get("playable", 0)),
+			int(cov.get("playable", 0)) >= 615)
