@@ -67,6 +67,10 @@ var _resolver: StepResolver
 ## re-entered mid-fade.
 var _warping := false
 
+## [M27D D5] Position handed back by OverworldSession after a battle, consumed
+## by _spawn_player. Empty on a normal boot.
+var _resume: Dictionary = {}
+
 ## Seeded per run rather than global, so NPC wandering is reproducible when a
 ## test wants it to be and varied when nobody sets it.
 var _rng := RandomNumberGenerator.new()
@@ -81,9 +85,17 @@ var _fade: ColorRect
 ## hold the fade until the load reports done rather than raising this blindly.
 const FADE_SECONDS := 0.25
 
-## [M27D D4] Persistent flag/var state: beaten trainers, hidden entities,
-## trigger gates. In memory only until M27L; see FlagStore.
-var flags := FlagStore.new()
+## [M27D D4/D5] Persistent flag/var state: beaten trainers, hidden entities,
+## trigger gates.
+##
+## Reads through OverworldSession rather than owning its own — a battle is a
+## `change_scene_to_file`, so an instance var here would be discarded every time
+## one is fought, silently forgetting every trainer already beaten. D4 shipped
+## it as an instance var because nothing swapped scenes yet; D5 is what makes
+## that wrong.
+var flags: FlagStore:
+	get:
+		return OverworldSession.flags
 
 ## True while an approach is playing, so a step landing mid-approach cannot
 ## start a second one.
@@ -91,6 +103,8 @@ var _in_approach := false
 
 signal trainer_spotted(trainer: TrainerNPC)
 signal trainer_approach_finished(trainer: TrainerNPC)
+signal battle_starting(trainer: TrainerNPC)
+signal battle_returned(result: BattleOutcome)
 
 ## Feel values, not ported constants. Source measures the approach in frames
 ## against a 60fps lock (`sTrainerSeeFuncList`'s own per-step waits); this
@@ -138,10 +152,20 @@ func _ready() -> void:
 	# Synchronous. The work is RELOCATED to a moment where a pause is expected,
 	# not reduced — no tile definitions, atlases or .tres content change.
 	MapManager.preload_tilesets()
-	if not manager.load_chunk(start_map):
-		push_error("overworld: %s is not baked — run map_baker.tscn" % start_map)
+
+	# [M27D D5] Returning from a battle resumes where the player stood, rather
+	# than respawning at start_map. Source's own return is the same idea —
+	# CB2_ReturnToFieldContinueScriptPlayMapMusic puts you back on the tile you
+	# were on, with the script continuing.
+	var resume := OverworldSession.take_return()
+	var boot_map: String = str(resume.get("map", "")) if not resume.is_empty() else start_map
+	if boot_map == "":
+		boot_map = start_map
+	if not manager.load_chunk(boot_map):
+		push_error("overworld: %s is not baked — run map_baker.tscn" % boot_map)
 		return
 	_resolver = manager.global_resolver()
+	_resume = resume
 	# Neighbours up front. Hysteresis-based loading as the player moves is the
 	# remaining half of C4; loading the starting map's neighbours is what makes
 	# a seam crossable at all, and is what the corridor is for.
@@ -168,9 +192,24 @@ func _ready() -> void:
 ## parameter, so a fixed spawn coordinate would be wrong for every map but one.
 ## A real spawn point is warp/heal-location data — C5 and beyond.
 func _spawn_player() -> void:
+	# [M27D D5] A pending return wins over a fresh spawn: the player stood
+	# somewhere specific when the battle started and must come back to it.
+	if not _resume.is_empty():
+		_cell = Vector2i(_resume.get("cell", Vector2i.ZERO))
+		_elev = int(_resume.get("elevation", 3))
+		_facing = int(_resume.get("facing", StepResolver.Dir.SOUTH))
+		_resume = {}
+		_build_player_node()
+		_apply_battle_result()
+		return
 	_cell = _first_walkable(start_map)
 	_elev = manager.elevation_at(_cell)
+	_build_player_node()
 
+
+## The player node itself, split out so a battle RETURN reuses it rather than
+## duplicating spawn logic that would then drift.
+func _build_player_node() -> void:
 	_player = Node2D.new()
 	_player.name = "Player"
 	# [M27D D1] Was a red ColorRect. Draws from the same sheets and the same
@@ -394,6 +433,54 @@ func _run_trainer_approach(t: TrainerNPC, dir: int, distance: int) -> void:
 	_facing = OPPOSITE_DIR.get(dir, _facing)
 	_in_approach = false
 	trainer_approach_finished.emit(t)
+	start_trainer_battle(t)
+
+
+## [M27D D5] Hand control to the battle engine.
+##
+## THE SEAM THE WHOLE VERTICAL SLICE EXISTS TO PROVE. Everything before this is
+## an overworld that has never once started a battle.
+##
+## `BattleSetupContext` is the existing injection point — `battle_screen_shared`
+## already consumes it in `_ready()` and already calls `set_trainer_data(1, ...)`
+## for the opponent, so nothing on the battle side changes. What is new is the
+## overworld remembering where it was, because `change_scene_to_file` frees it.
+func start_trainer_battle(t: TrainerNPC) -> void:
+	if t == null or t.trainer_key == "":
+		return
+	var opp := OverworldParty.build_trainer_party(t.trainer_key)
+	if opp == null:
+		# Unresolvable roster entry. Refuse rather than starting a battle with
+		# an empty party, which would end instantly and read as an engine bug.
+		push_warning("overworld: %s has no resolvable party — battle not started"
+				% t.trainer_key)
+		return
+	OverworldSession.save_position(manager.chunk_owning(_cell), _cell, _facing,
+			_elev, t.trainer_key)
+	BattleSetupContext.set_pending(
+			OverworldParty.build_debug_player_party(), opp, false, "", t.trainer_key)
+	battle_starting.emit(t)
+	get_tree().change_scene_to_file("res://scenes/battle/battle_screen.tscn")
+
+
+## [M27D D5] Apply what the battle decided, once, on return.
+##
+## Source does this in `CB2_EndTrainerBattle` (`battle_setup.c:1430`): on the
+## non-defeat branch it returns to the field and calls `SetBattledTrainersFlags`;
+## on defeat it white-outs unless the player still has live Pokémon. A DRAW
+## counts as a defeat there — see BattleOutcome.
+func _apply_battle_result() -> void:
+	var r := OverworldSession.take_result()
+	if r == null:
+		return
+	if r.should_set_defeated_flag():
+		flags.set_trainer_defeated(r.trainer_key)
+	# Whiteout is NOT modelled: it needs a respawn point (a registered Pokécentre)
+	# that M27I/M27K own and this project has no concept of. A loss currently
+	# returns you to where you stood, with the trainer still undefeated — so the
+	# encounter is repeatable, which is the honest interim behaviour rather than
+	# a fake penalty.
+	battle_returned.emit(r)
 
 
 func _owning_map_of(e: OverworldEntity) -> String:

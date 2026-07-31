@@ -1862,6 +1862,30 @@ func _on_battle_ended(winner_side: int) -> void:
 	# (_show_trainer_battle_end bypasses itself entirely under autoplay
 	# anyway, but the ordering is what makes that safe rather than lucky.)
 	await _show_trainer_battle_end(winner_side)
+	_return_to_overworld_if_pending(
+			BattleOutcome.WON if winner_side == 0 else BattleOutcome.LOST)
+
+
+## [M27D D5] Hand control back to the overworld, if that is where we came from.
+##
+## Gated on a pending return so the SIMULATOR path is untouched: a battle
+## launched from battle_setup_screen has none, falls through, and still shows
+## Play Again exactly as before.
+##
+## Source's equivalent is CB2_EndTrainerBattle (`battle_setup.c:1430`), which
+## branches on gBattleOutcome and returns to the field on the non-defeat path.
+## The DEFEAT branch there white-outs; this project has no respawn point to
+## white out TO (that is M27I/M27K), so a loss returns to the same tile — see
+## overworld._apply_battle_result for why that is disclosed rather than faked.
+func _return_to_overworld_if_pending(outcome: int) -> void:
+	if not OverworldSession.has_pending_return():
+		return
+	if _is_autoplay_run:
+		return
+	OverworldSession.set_result(
+			BattleOutcome.make(outcome, OverworldSession.pending_trainer_key))
+	_clear_active_hit_effects()
+	get_tree().change_scene_to_file("res://scenes/overworld/overworld.tscn")
 
 
 # [M26B3-4] The opponent trainer returns for the post-battle speech.
@@ -6890,6 +6914,13 @@ func _on_fight_move_hovered(mon: BattlePokemon, move_index: int) -> void:
 # (matching the exact leak this project's own M25c session already found
 # and fixed for the normal win/loss path).
 func _on_run_pressed() -> void:
+	# [M27D D5] Fleeing a TRAINER battle is a forfeit, and source counts that as
+	# a defeat (`IsPlayerDefeated` includes B_OUTCOME_FORFEITED) — so the
+	# trainer stays undefeated and can be fought again. Only the simulator's own
+	# Run falls through to the setup screen.
+	if OverworldSession.has_pending_return():
+		_return_to_overworld_if_pending(BattleOutcome.FORFEITED)
+		return
 	_clear_active_hit_effects()
 	get_tree().change_scene_to_file("res://scenes/battle/battle_setup_screen.tscn")
 
