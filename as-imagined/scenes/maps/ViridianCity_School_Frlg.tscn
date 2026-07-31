@@ -5,20 +5,20 @@
 [ext_resource type="Script" path="res://scripts/overworld/entities/warp.gd" id="3_artsy"]
 [ext_resource type="Script" path="res://scripts/overworld/entities/sign.gd" id="4_8i7gl"]
 
-[node name="ViridianCity_School_Frlg" type="Node2D" unique_id=719893857]
+[node name="ViridianCity_School_Frlg" type="Node2D" unique_id=619438898]
 
-[node name="Ground" type="TileMapLayer" parent="." unique_id=1059301963]
+[node name="Ground" type="TileMapLayer" parent="." unique_id=1770070574]
 tile_map_data = PackedByteArray("AAAIAAEAAAAbABQAAAAJAAEAAAAcABQAAAAIAAIAAAADABUAAAAJAAIAAAAEABUAAAAEAAQAAAAZABQAAAAFAAQAAAAaABQAAAAEAAUAAAAIABQAAAAFAAUAAAAIABQAAAAEAAYAAAAQABQAAAAFAAYAAAAQABQAAAAAAAcAAAAJABQAAAADAAcAAAAFABUAAAAEAAcAAAAGABUAAAAFAAcAAAAHABUAAAAJAAcAAAAKABQAAAADAAgAAAAaAAAAAAAEAAgAAAAbAAAAAAAFAAgAAAAcAAAAAAA=")
 tile_set = ExtResource("1_mh8qf")
 
-[node name="Objects" type="TileMapLayer" parent="." unique_id=2102762699]
+[node name="Objects" type="TileMapLayer" parent="." unique_id=1884101203]
 tile_map_data = PackedByteArray("AAAAAAAAAQAFABQAAAABAAAAAQAGABQAAAACAAAAAQAGABQAAAADAAAAAQAHABQAAAAEAAAAAQADABQAAAAFAAAAAQAEABQAAAAGAAAAAQAAABUAAAAHAAAAAQABABUAAAAIAAAAAQABABUAAAAJAAAAAQABABUAAAAAAAEAAQANABQAAAABAAEAAQAOABQAAAACAAEAAQAOABQAAAADAAEAAQAPABQAAAAEAAEAAQALABQAAAAFAAEAAQAMABQAAAAGAAEAAQAIABUAAAAHAAEAAQAJABUAAAAIAAEAAQAbABQAAAAJAAEAAQAcABQAAAAAAAIAAQAVABQAAAABAAIAAQAWABQAAAACAAIAAQAWABQAAAADAAIAAQAXABQAAAAEAAIAAQATABQAAAAFAAIAAQAUABQAAAAGAAIAAQAVABQAAAAHAAIAAQAWABQAAAAIAAIAAQADABUAAAAJAAIAAQAEABUAAAAAAAMAAQAdABQAAAABAAMAAQAeABQAAAACAAMAAQAeABQAAAADAAMAAQAeABQAAAAEAAMAAQARABQAAAAFAAMAAQASABQAAAAGAAMAAQAeABQAAAAHAAMAAQAeABQAAAAIAAMAAQAWABQAAAAJAAMAAQAWABQAAAAAAAQAAQAdABQAAAABAAQAAQAeABQAAAACAAQAAQAeABQAAAADAAQAAQAeABQAAAAEAAQAAQAZABQAAAAFAAQAAQAaABQAAAAGAAQAAQAeABQAAAAHAAQAAQAeABQAAAAIAAQAAQAeABQAAAAJAAQAAQAeABQAAAAAAAUAAQAdABQAAAABAAUAAQAeABQAAAACAAUAAQAeABQAAAADAAUAAQAeABQAAAAEAAUAAQAIABQAAAAFAAUAAQAIABQAAAAGAAUAAQAeABQAAAAHAAUAAQAeABQAAAAIAAUAAQAeABQAAAAJAAUAAQAeABQAAAAAAAYAAQABABQAAAABAAYAAQAeABQAAAACAAYAAQAeABQAAAADAAYAAQAeABQAAAAEAAYAAQAQABQAAAAFAAYAAQAQABQAAAAGAAYAAQAeABQAAAAHAAYAAQAeABQAAAAIAAYAAQAeABQAAAAJAAYAAQACABQAAAAAAAcAAQAJABQAAAABAAcAAQAeABQAAAACAAcAAQAeABQAAAADAAcAAQAFABUAAAAEAAcAAQAGABUAAAAFAAcAAQAHABUAAAAGAAcAAQAeABQAAAAHAAcAAQAeABQAAAAIAAcAAQAeABQAAAAJAAcAAQAKABQAAAAAAAgAAQAIAAAAAAABAAgAAQAIAAAAAAACAAgAAQAIAAAAAAADAAgAAQAaAAAAAAAEAAgAAQAbAAAAAAAFAAgAAQAcAAAAAAAGAAgAAQAIAAAAAAAHAAgAAQAIAAAAAAAIAAgAAQAIAAAAAAAJAAgAAQAIAAAAAAA=")
 tile_set = ExtResource("1_mh8qf")
 
-[node name="Entities_P2" type="Node2D" parent="." unique_id=158118150]
+[node name="Entities_P2" type="Node2D" parent="." unique_id=2141631272]
 y_sort_enabled = true
 
-[node name="Npc_6_2" type="Node2D" parent="Entities_P2" unique_id=1598303127]
+[node name="Npc_6_2" type="Node2D" parent="Entities_P2" unique_id=399487773]
 position = Vector2(96, 32)
 script = ExtResource("2_2gdyf")
 graphics_id = "OBJ_EVENT_GFX_WOMAN_2_FRLG"
@@ -29,7 +29,7 @@ range_y = 1
 cell = Vector2i(6, 2)
 script_label = "ViridianCity_School_EventScript_Woman"
 
-[node name="Npc_4_5" type="Node2D" parent="Entities_P2" unique_id=1206683148]
+[node name="Npc_4_5" type="Node2D" parent="Entities_P2" unique_id=33357123]
 position = Vector2(64, 80)
 script = ExtResource("2_2gdyf")
 graphics_id = "OBJ_EVENT_GFX_LASS_FRLG"
@@ -40,16 +40,16 @@ range_y = 1
 cell = Vector2i(4, 5)
 script_label = "ViridianCity_School_EventScript_Lass"
 
-[node name="Overhangs" type="TileMapLayer" parent="." unique_id=608373999]
+[node name="Overhangs" type="TileMapLayer" parent="." unique_id=345449466]
 tile_map_data = PackedByteArray("AAAAAAAAAgAFABQAAAABAAAAAgAGABQAAAACAAAAAgAGABQAAAADAAAAAgAHABQAAAAEAAAAAgADABQAAAAFAAAAAgAEABQAAAAGAAAAAgAAABUAAAAHAAAAAgABABUAAAAIAAAAAgABABUAAAAJAAAAAgABABUAAAAAAAEAAgANABQAAAABAAEAAgAOABQAAAACAAEAAgAOABQAAAADAAEAAgAPABQAAAAEAAEAAgALABQAAAAFAAEAAgAMABQAAAAGAAEAAgAIABUAAAAHAAEAAgAJABUAAAAAAAIAAgAVABQAAAABAAIAAgAWABQAAAACAAIAAgAWABQAAAADAAIAAgAXABQAAAAEAAIAAgATABQAAAAFAAIAAgAUABQAAAAGAAIAAgAVABQAAAAHAAIAAgAWABQAAAAAAAMAAgAdABQAAAABAAMAAgAeABQAAAACAAMAAgAeABQAAAADAAMAAgAeABQAAAAEAAMAAgARABQAAAAFAAMAAgASABQAAAAGAAMAAgAeABQAAAAHAAMAAgAeABQAAAAIAAMAAgAWABQAAAAJAAMAAgAWABQAAAAAAAQAAgAdABQAAAABAAQAAgAeABQAAAACAAQAAgAeABQAAAADAAQAAgAeABQAAAAGAAQAAgAeABQAAAAHAAQAAgAeABQAAAAIAAQAAgAeABQAAAAJAAQAAgAeABQAAAAAAAUAAgAdABQAAAABAAUAAgAeABQAAAACAAUAAgAeABQAAAADAAUAAgAeABQAAAAGAAUAAgAeABQAAAAHAAUAAgAeABQAAAAIAAUAAgAeABQAAAAJAAUAAgAeABQAAAAAAAYAAgABABQAAAABAAYAAgAeABQAAAACAAYAAgAeABQAAAADAAYAAgAeABQAAAAGAAYAAgAeABQAAAAHAAYAAgAeABQAAAAIAAYAAgAeABQAAAAJAAYAAgACABQAAAABAAcAAgAeABQAAAACAAcAAgAeABQAAAAGAAcAAgAeABQAAAAHAAcAAgAeABQAAAAIAAcAAgAeABQAAAAAAAgAAgAIAAAAAAABAAgAAgAIAAAAAAACAAgAAgAIAAAAAAAGAAgAAgAIAAAAAAAHAAgAAgAIAAAAAAAIAAgAAgAIAAAAAAAJAAgAAgAIAAAAAAA=")
 tile_set = ExtResource("1_mh8qf")
 
-[node name="Entities_P1" type="Node2D" parent="." unique_id=1279877017]
+[node name="Entities_P1" type="Node2D" parent="." unique_id=677577368]
 y_sort_enabled = true
 
-[node name="Triggers" type="Node2D" parent="." unique_id=629613812]
+[node name="Triggers" type="Node2D" parent="." unique_id=1734900142]
 
-[node name="Warp_3_7" type="Node2D" parent="Triggers" unique_id=1769606336]
+[node name="Warp_3_7" type="Node2D" parent="Triggers" unique_id=596226400]
 position = Vector2(48, 112)
 script = ExtResource("3_artsy")
 warp_id = 0
@@ -59,7 +59,7 @@ triggers = false
 cell = Vector2i(3, 7)
 elevation = 0
 
-[node name="Warp_4_7" type="Node2D" parent="Triggers" unique_id=1631594220]
+[node name="Warp_4_7" type="Node2D" parent="Triggers" unique_id=1238670429]
 position = Vector2(64, 112)
 script = ExtResource("3_artsy")
 warp_id = 1
@@ -69,7 +69,7 @@ arrow_dir = 0
 cell = Vector2i(4, 7)
 elevation = 0
 
-[node name="Warp_5_7" type="Node2D" parent="Triggers" unique_id=1691532375]
+[node name="Warp_5_7" type="Node2D" parent="Triggers" unique_id=1613137560]
 position = Vector2(80, 112)
 script = ExtResource("3_artsy")
 warp_id = 2
@@ -78,28 +78,28 @@ dest_warp_id = 3
 triggers = false
 cell = Vector2i(5, 7)
 
-[node name="Sign_4_4" type="Node2D" parent="Triggers" unique_id=1067871840]
+[node name="Sign_4_4" type="Node2D" parent="Triggers" unique_id=1230505821]
 position = Vector2(64, 64)
 script = ExtResource("4_8i7gl")
 cell = Vector2i(4, 4)
 elevation = 0
 script_label = "ViridianCity_School_EventScript_Notebook"
 
-[node name="Sign_5_1" type="Node2D" parent="Triggers" unique_id=480462096]
+[node name="Sign_5_1" type="Node2D" parent="Triggers" unique_id=35052591]
 position = Vector2(80, 16)
 script = ExtResource("4_8i7gl")
 cell = Vector2i(5, 1)
 elevation = 0
 script_label = "ViridianCity_School_EventScript_Blackboard"
 
-[node name="Sign_4_1" type="Node2D" parent="Triggers" unique_id=1428370257]
+[node name="Sign_4_1" type="Node2D" parent="Triggers" unique_id=1660164977]
 position = Vector2(64, 16)
 script = ExtResource("4_8i7gl")
 cell = Vector2i(4, 1)
 elevation = 0
 script_label = "ViridianCity_School_EventScript_Blackboard"
 
-[node name="Sign_9_2" type="Node2D" parent="Triggers" unique_id=1305244026]
+[node name="Sign_9_2" type="Node2D" parent="Triggers" unique_id=1980801647]
 position = Vector2(144, 32)
 script = ExtResource("4_8i7gl")
 facing = "BG_EVENT_PLAYER_FACING_NORTH"
@@ -107,7 +107,7 @@ cell = Vector2i(9, 2)
 elevation = 0
 script_label = "ViridianCity_School_EventScript_PokemonJournal"
 
-[node name="Sign_8_2" type="Node2D" parent="Triggers" unique_id=491098499]
+[node name="Sign_8_2" type="Node2D" parent="Triggers" unique_id=797199892]
 position = Vector2(128, 32)
 script = ExtResource("4_8i7gl")
 facing = "BG_EVENT_PLAYER_FACING_NORTH"

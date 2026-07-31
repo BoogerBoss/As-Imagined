@@ -26,6 +26,9 @@ extends Node2D
 
 const CELL := 16
 
+## Where map_baker writes the shared per-pair TileSets (M27M2).
+const TILESET_DIR := "res://assets/map_tilesets/"
+
 ## Atlas geometry, matching map_baker.gd — the skirt paints from the same
 ## atlas the chunk's own Ground layer uses, so a border metatile id converts
 ## to atlas coords exactly as a map cell does.
@@ -898,3 +901,31 @@ func move_entity(map_name: String, e: OverworldEntity, to: Vector2i) -> void:
 	e.cell = to
 	occ[to] = true
 	_occupancy[map_name] = occ
+
+
+## Build every shared TileSet up front, so no map visit pays for one.
+##
+## [M27D perf] MEASURED: a cold TileSet costs **~30 ms**, and it is paid the
+## first time any map using that tileset PAIR is loaded — which is exactly what
+## "hitches when transitioning to a map for the first time" describes, and why
+## the hitch does not recur for that region afterwards. It matches M27M2's own
+## ~27 ms figure for building one (2208 `create_tile()` calls).
+##
+## Sharing the TileSets (M27M2) already removed the per-SCENE cost; this removes
+## the per-PAIR cost too, by moving it somewhere a stall is expected. 14 pairs
+## back the 32-map corridor, 60 the region — bounded, and paid once.
+##
+## Threaded, and NOT awaited: nothing blocks on it. A map reached before its
+## tileset finishes simply pays what it pays today, so the worst case is the
+## current behaviour rather than a new stall.
+func warm_tilesets() -> int:
+	var dir := DirAccess.open(TILESET_DIR)
+	if dir == null:
+		return 0
+	var n := 0
+	for f in dir.get_files():
+		if not f.ends_with(".tres"):
+			continue
+		ResourceLoader.load_threaded_request(TILESET_DIR + f)
+		n += 1
+	return n

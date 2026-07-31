@@ -124,6 +124,12 @@ func _ready() -> void:
 	_test_b20_destiny_bond_shadows_travel_to_their_own_foe()
 	_test_b20_attacker_fade_ends_hidden_and_does_not_restore()
 	_test_b20_attacker_fade_respects_its_step_delay()
+	_test_b21_snatch_signals_the_script_through_arg_7()
+	_test_b21_snatch_runs_all_five_states_and_restores()
+	_test_b21_grudge_flames_flip_draw_order()
+	_test_b21_grudge_flames_start_spread_around_the_target()
+	_test_b21_steel_roller_falls_then_sweeps()
+	_test_b21_flippable_slash_flips_axes_independently()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -4431,3 +4437,180 @@ func _live_sprites(stage: FakeStage) -> Array:
 		if child is AnimSprite and not child.is_queued_for_deletion():
 			out.append(child)
 	return out
+
+
+# ── [M36D batch 21] ───────────────────────────────────────────────────────
+
+func _test_b21_snatch_signals_the_script_through_arg_7() -> void:
+	# THE assertion of this batch, and the one nothing else can stand in for.
+	# Upstream writes gBattleAnimArgs[7] = -1 the moment the crossing
+	# look-alike passes the target. A port that animates perfectly but skips
+	# the write leaves any script polling arg 7 waiting forever -- and the
+	# animation still LOOKS right, which is why this needs pinning.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[7] = 0
+	_registry.get_behavior("AnimTask_SnatchOpposingMonMove").call(vm, {})
+
+	# Not signalled during the attacker's own exit -- the look-alike has not
+	# been created yet, let alone reached the target.
+	_step(vm, 10)
+	_chk("b21 snatch has NOT signalled while the attacker is still leaving",
+			int(vm.args[7]) == 0)
+
+	var signalled := false
+	for i in range(400):
+		_step(vm, 1)
+		if int(vm.args[7]) == -1:
+			signalled = true
+			break
+	_chk("b21 snatch writes arg 7 = -1 as the look-alike passes the target",
+			signalled)
+
+
+func _test_b21_snatch_runs_all_five_states_and_restores() -> void:
+	# The attacker leaves toward its OWN side, a look-alike crosses from the
+	# FAR side, and the attacker returns through the side it left by. Getting
+	# any state's direction backwards still animates, just nonsensically.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var mon: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var home: Vector2 = mon.position
+	_registry.get_behavior("AnimTask_SnatchOpposingMonMove").call(vm, {})
+
+	_step(vm, 12)
+	_chk("b21 the attacker genuinely leaves its resting position",
+			mon.position.distance_to(home) > 8.0)
+
+	# A look-alike must exist at some point -- it is a cloned battler visual,
+	# not an AnimSprite, so it is counted separately from the sprite pool.
+	var saw_clone := false
+	for i in range(400):
+		_step(vm, 1)
+		if _clone_count(stage) > 0:
+			saw_clone = true
+		if mon.position.is_equal_approx(home) and saw_clone:
+			break
+	_chk("b21 a look-alike crossed the screen", saw_clone)
+	_chk("b21 the attacker is put back exactly where it started",
+			mon.position.is_equal_approx(home))
+	_chk("b21 no look-alike is left behind", _clone_count(stage) == 0)
+
+
+func _test_b21_grudge_flames_flip_draw_order() -> void:
+	# Each flame swaps front/behind at the sine midpoint. That swap is what
+	# makes the six read as ORBITING the Pokemon rather than sliding across
+	# it, and it is INVISIBLE to any assertion that only checks position --
+	# which is exactly the kind of detail a position-only test would bless.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var ctx := {"template": "gGrudgeFlameSpriteTemplate",
+			"template_data": AnimData.template("gGrudgeFlameSpriteTemplate"),
+			"blend": {"eva": 16, "evb": 0}}
+	_registry.get_behavior("AnimTask_PurpleFlamesOnTarget").call(vm, ctx)
+
+	var flames: Array = _live_sprites(stage)
+	_chk("b21 grudge spawns exactly 6 flames (%d)" % flames.size(),
+			flames.size() == 6)
+	if flames.is_empty():
+		return
+
+	var tracked: AnimSprite = flames[0]
+	var seen_behind := false
+	var seen_front := false
+	for i in range(160):
+		_step(vm, 1)
+		if not _b16_alive(tracked):
+			break
+		if tracked.z_index < 0:
+			seen_behind = true
+		elif tracked.z_index > 0:
+			seen_front = true
+	_chk("b21 a flame passes BEHIND the Pokemon at some point", seen_behind)
+	_chk("b21 ...and IN FRONT of it at another", seen_front)
+
+
+func _test_b21_grudge_flames_start_spread_around_the_target() -> void:
+	# Phases are i * 42 on the 256 table, so the six start at genuinely
+	# different offsets rather than stacked on one point.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var ctx := {"template": "gGrudgeFlameSpriteTemplate",
+			"template_data": AnimData.template("gGrudgeFlameSpriteTemplate"),
+			"blend": {"eva": 16, "evb": 0}}
+	_registry.get_behavior("AnimTask_PurpleFlamesOnTarget").call(vm, ctx)
+	_step(vm, 1)
+	var xs: Array = []
+	for f in _live_sprites(stage):
+		xs.append(round(f.centre.x))
+	var distinct := {}
+	for x in xs:
+		distinct[x] = true
+	_chk("b21 the flames occupy several distinct x positions, not one (%d of %d)"
+			% [distinct.size(), xs.size()], distinct.size() >= 4)
+
+
+func _test_b21_steel_roller_falls_then_sweeps() -> void:
+	# Two beats: it drops onto the target, and only then sweeps sideways --
+	# upstream literally hands itself to the left/right slice callback batch
+	# 18 already ported.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "SpriteCB_SteelRoller", [0, -40, 4, 24, 6],
+			"gSpriteTemplate_SteelRoller")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b21 steel roller spawned", false)
+		return
+	var start: Vector2 = node.centre
+	var x0: float = node.centre.x
+
+	_step(r["vm"], 3)
+	_chk("b21 steel roller falls before it sweeps",
+			node.centre.y > start.y and absf(node.centre.x - x0) < 0.01)
+
+	# Land, then confirm it starts moving horizontally.
+	for i in range(20):
+		_step(r["vm"], 1)
+		if absf(node.centre.x - x0) > 0.5:
+			break
+	_chk("b21 steel roller sweeps sideways once it has landed",
+			absf(node.centre.x - x0) > 0.5)
+
+
+func _test_b21_flippable_slash_flips_axes_independently() -> void:
+	# The two flips are INDEPENDENT args. A port that ties them to the
+	# battler's side loses the per-call control the behavior exists to give.
+	var combos := [[0, 0], [1, 0], [0, 1], [1, 1]]
+	var results: Array = []
+	for c in combos:
+		var stage := FakeStage.new()
+		var r := _spawn(stage, "SpriteCB_FlippableSlash", [0, 0, c[0], c[1]],
+				"gSpriteTemplate_CeaselessEdgeSlash")
+		var node: AnimSprite = r["sprite"]
+		if node == null:
+			_chk("b21 flippable slash spawned for %s" % str(c), false)
+			return
+		results.append([signf(node.scale.x), signf(node.scale.y)])
+	_chk("b21 flip X alone mirrors only X",
+			results[1][0] < 0 and results[1][1] > 0)
+	_chk("b21 flip Y alone mirrors only Y",
+			results[2][0] > 0 and results[2][1] < 0)
+	_chk("b21 both flags mirror both axes",
+			results[3][0] < 0 and results[3][1] < 0)
+	_chk("b21 neither flag leaves the slash unmirrored",
+			results[0][0] > 0 and results[0][1] > 0)
+
+
+func _clone_count(stage: FakeStage) -> int:
+	# Keyed on the "_anim_trace" meta, which _clone_battler_visual sets for
+	# exactly this purpose ("only these should ever be cleaned up").
+	#
+	# The first draft counted "any TextureRect that is not an AnimSprite",
+	# which also counts the four BATTLER sprites -- so it never reached zero
+	# and "a look-alike crossed the screen" passed vacuously. The helper
+	# already provides the discriminator; not using it was the bug.
+	var n := 0
+	for child in stage.layer_node.get_children():
+		if child.has_meta("_anim_trace") and not child.is_queued_for_deletion():
+			n += 1
+	return n

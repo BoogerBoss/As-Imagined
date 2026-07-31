@@ -1328,7 +1328,7 @@ pinned by test.
 | ~~`AnimTask_ScaryFace`~~ | b17, b18 | **CLOSED in b19 — and the stated reason was WRONG both times.** Not "absent from the pull": REFUSED by the pull's own two-palette-bank guard, which measured the off-screen scroll margin. Narrowed to the visible 30x20 and re-proved on a synthetic case. | — |
 | ~~`AnimTask_GlareEyeDots`~~ | b18 | **CLOSED in b20** once the `_Step` tail was read. | — |
 | ~~`AnimTask_DestinyBondWhiteShadow`~~ | b18 | **CLOSED in b20.** | — |
-| `AnimTask_PurpleFlamesOnTarget` (+2) | b20 | Setup read; `AnimTask_GrudgeFlames_Step` not. **UNREAD, not unfindable.** | medium |
+| ~~`AnimTask_PurpleFlamesOnTarget`~~ | b20 | **CLOSED in b21** once `AnimTask_GrudgeFlames_Step` and the flame step were read. | — |
 | `AnimTask_FakeOut` (+1) | b18 | **SCREEN-EFFECT gap.** WIN0/BLDY window-darken, closer to M36E's surface than a sprite behavior. | M36E-shaped |
 
 **`AnimFallingFeather` — deferred by batches 12, 13 and 14, then taken
@@ -1453,6 +1453,64 @@ is harness-specific, not a shipped bug.
 **Also observed, pre-existing and NOT M36:** the attacker's back sprite is
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
+
+### M36D batch 21 — COMPLETE 2026-07-30. A script signal, and a vacuous assertion caught by its own failure.
+
+**4 behaviors, +5 moves (665 → 670 of 932, 71.4% → 71.9%).** Tier 3 71.7%;
+iconic Gen 1-3 still closed at 70/70.
+
+`AnimTask_SnatchOpposingMonMove` · `AnimTask_PurpleFlamesOnTarget` ·
+`SpriteCB_SteelRoller` · `SpriteCB_FlippableSlash`.
+
+⚠️ **`AnimTask_SnatchOpposingMonMove` SIGNALS THE SCRIPT by writing
+`gBattleAnimArgs[7] = -1`** the moment the crossing look-alike passes the
+target — the same arg-register protocol `AnimTask_SetPsychicBackground`
+watches from the other end. **A port that reproduces every visible motion but
+skips the write leaves any script polling arg 7 waiting forever, and looks
+completely correct while doing it.** Proven by injecting exactly that: motion
+identical, signal dropped, guard fails.
+
+The behavior is a genuine five-state sequence — the attacker slides off its
+OWN side, a look-alike enters from the FAR side and crosses, the look-alike
+leaves, the attacker is teleported to the far edge and walks back in through
+the side it left by. Getting any state's direction backwards still animates,
+just nonsensically, so the suite checks the round trip and the exact restore.
+
+⚠️ **`AnimTask_PurpleFlamesOnTarget`'s flames flip DRAW ORDER at the sine
+midpoint.** Upstream computes `index = phase - 65` as UNSIGNED and puts the
+flame behind the mon while `index < 127`, in front otherwise. That front/behind
+swap is what makes the six read as ORBITING the Pokemon rather than sliding
+across it — **and it is invisible to any assertion that only checks
+position**, which is precisely the kind of detail a position-only test would
+bless. Pinned by tracking one flame through both states.
+
+**`SpriteCB_SteelRoller` hands itself to the left/right sweep batch 18 already
+ported** — upstream literally assigns `SpriteCB_LeftRightSliceStep0` as its
+callback, so this reuses the ported motion rather than restating it.
+
+**`SpriteCB_FlippableSlash`'s two flips are INDEPENDENT args**, not a
+side-derived mirror; a port that ties them to the battler's side loses the
+per-call control the behavior exists to provide. All four combinations are
+pinned.
+
+**A VACUOUS ASSERTION, caught only because a neighbouring one failed.** The
+test's first `_clone_count` counted "any TextureRect that is not an
+AnimSprite" — which also counts the four BATTLER sprites, so it never reached
+zero. "A look-alike crossed the screen" was therefore passing **trivially**,
+and only "no look-alike is left behind" failed and exposed it.
+`_clone_battler_visual` already tags its clones with a `_anim_trace` meta for
+exactly this purpose — its own comment says *"only these should ever be
+cleaned up"* — so the discriminator existed and I did not use it. **Fourth
+distinct dress of the same defect** (batch 13's `if node != null:` skip, batch
+15's no-op replace, batch 16's `is_inside_tree()`, now this).
+
+Also of note: the Python patch that fixed it silently matched nothing on the
+first attempt, and its own `assert` caught that — standing rule (8) working
+rather than being rediscovered.
+
+**Tests:** `m36d_batch_test` 621 → **637/637**. Regression green: `m36c`
+66/66, `m36b` 53/53, `m36a` 71/71, `m36e_background_runtime` 30/30, `m36e3`
+60/60, `m36e_background_asset` 24/24, `hit_effect_dispatch` 40/40.
 
 ### M36D batch 20 — COMPLETE 2026-07-30. Batch 18's deferrals, and a helper that was quietly wrong for one caller.
 

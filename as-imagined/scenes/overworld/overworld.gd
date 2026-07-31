@@ -101,6 +101,11 @@ func _ready() -> void:
 		push_error("overworld: %s is not baked — run map_baker.tscn" % start_map)
 		return
 	_resolver = manager.global_resolver()
+	# Start every shared TileSet building now, off-thread. A cold one costs
+	# ~30 ms and is otherwise paid the first time a map using that pair is
+	# entered — the hitch Rob reported. Not awaited: a map reached first simply
+	# pays what it pays today.
+	manager.warm_tilesets()
 	# Neighbours up front. Hysteresis-based loading as the player moves is the
 	# remaining half of C4; loading the starting map's neighbours is what makes
 	# a seam crossable at all, and is what the corridor is for.
