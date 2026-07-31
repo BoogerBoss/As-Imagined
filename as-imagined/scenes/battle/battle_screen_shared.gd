@@ -1847,6 +1847,15 @@ func _first_switch_slot() -> int:
 	return -1
 
 
+## [M27D D5] True when this screen is running as a CHILD of the overworld
+## rather than as a top-level scene. In overlay mode it must never change or
+## quit the scene — the overworld owns that — so it reports its outcome and
+## lets the overworld tear it down.
+var overlay_mode := false
+
+signal battle_finished(outcome: int)
+
+
 func _on_battle_ended(winner_side: int) -> void:
 	_winner_side = winner_side
 	_log("You win!" if winner_side == 0 else "You lose!")
@@ -1878,14 +1887,12 @@ func _on_battle_ended(winner_side: int) -> void:
 ## white out TO (that is M27I/M27K), so a loss returns to the same tile — see
 ## overworld._apply_battle_result for why that is disclosed rather than faked.
 func _return_to_overworld_if_pending(outcome: int) -> void:
-	if not OverworldSession.has_pending_return():
+	if not overlay_mode or _is_autoplay_run:
 		return
-	if _is_autoplay_run:
-		return
-	OverworldSession.set_result(
-			BattleOutcome.make(outcome, OverworldSession.pending_trainer_key))
 	_clear_active_hit_effects()
-	get_tree().change_scene_to_file("res://scenes/overworld/overworld.tscn")
+	# The overworld is alive underneath and owns the teardown. Emitting rather
+	# than freeing self here keeps the ownership one-directional.
+	battle_finished.emit(outcome)
 
 
 # [M26B3-4] The opponent trainer returns for the post-battle speech.
@@ -6688,6 +6695,13 @@ func _build_battle_end_buttons() -> void:
 
 
 func _on_play_again_pressed() -> void:
+	# [M27D D5] In overlay mode there is no "play again" — the battle is over
+	# and the field resumes. Treated as a win-side dismissal so the overworld
+	# still gets exactly one outcome.
+	if overlay_mode:
+		_return_to_overworld_if_pending(
+				BattleOutcome.WON if _winner_side == 0 else BattleOutcome.LOST)
+		return
 	get_tree().change_scene_to_file("res://scenes/battle/battle_setup_screen.tscn")
 
 
@@ -6918,7 +6932,7 @@ func _on_run_pressed() -> void:
 	# a defeat (`IsPlayerDefeated` includes B_OUTCOME_FORFEITED) — so the
 	# trainer stays undefeated and can be fought again. Only the simulator's own
 	# Run falls through to the setup screen.
-	if OverworldSession.has_pending_return():
+	if overlay_mode:
 		_return_to_overworld_if_pending(BattleOutcome.FORFEITED)
 		return
 	_clear_active_hit_effects()

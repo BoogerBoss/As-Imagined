@@ -71,6 +71,11 @@ var _warping := false
 ## by _spawn_player. Empty on a normal boot.
 var _resume: Dictionary = {}
 
+## [M27D D5] The battle overlay's CanvasLayer while a battle is running, else
+## null. The overworld is not freed during a battle — it is paused underneath.
+var _battle_layer: CanvasLayer = null
+var _in_battle := false
+
 ## Seeded per run rather than global, so NPC wandering is reproducible when a
 ## test wants it to be and varied when nobody sets it.
 var _rng := RandomNumberGenerator.new()
@@ -280,6 +285,11 @@ func _process(_delta: float) -> void:
 	# Every frame, including mid-step: the tween is when following matters most.
 	if _camera != null:
 		_camera.global_position = _player.global_position
+	# [M27D D5] A battle is a scripted takeover: the world underneath freezes.
+	# This is the one case where NPCs must NOT keep wandering — unlike a warp
+	# fade, where they deliberately do.
+	if _in_battle:
+		return
 	# NPCs keep moving while the player is mid-step or mid-warp; freezing the
 	# world during a fade is a scripted-cutscene behaviour, not idle movement.
 	manager.tick_entities(_delta, _rng)
@@ -455,12 +465,38 @@ func start_trainer_battle(t: TrainerNPC) -> void:
 		push_warning("overworld: %s has no resolvable party — battle not started"
 				% t.trainer_key)
 		return
-	OverworldSession.save_position(manager.chunk_owning(_cell), _cell, _facing,
-			_elev, t.trainer_key)
+	# The overworld STAYS ALIVE underneath. No position to save, no chunk to
+	# rebuild, no 66-100 ms reload on the way back — the map, the loaded chunks
+	# and the player are all still exactly where they were.
+	OverworldSession.pending_trainer_key = t.trainer_key
 	BattleSetupContext.set_pending(
 			OverworldParty.build_debug_player_party(), opp, false, "", t.trainer_key)
+
+	var scene_path := "res://scenes/battle/battle_screen_%s.tscn" \
+			% ("doubles" if BattleSetupContext.is_doubles else "singles")
+	var screen: Control = load(scene_path).instantiate() as Control
+	# The battle screen's root is a Control; the overworld is a Node2D. A
+	# CanvasLayer is what puts it in SCREEN space above the world rather than
+	# somewhere in world coordinates behind the tilemap.
+	_battle_layer = CanvasLayer.new()
+	_battle_layer.layer = 100
+	_battle_layer.add_child(screen)
+	screen.overlay_mode = true
+	screen.battle_finished.connect(_on_battle_overlay_finished)
+	add_child(_battle_layer)
+	_in_battle = true
 	battle_starting.emit(t)
-	get_tree().change_scene_to_file("res://scenes/battle/battle_screen.tscn")
+
+
+## The overlay reports its own outcome rather than swapping scenes back.
+func _on_battle_overlay_finished(outcome: int) -> void:
+	OverworldSession.set_result(
+			BattleOutcome.make(outcome, OverworldSession.pending_trainer_key))
+	if _battle_layer != null and is_instance_valid(_battle_layer):
+		_battle_layer.queue_free()
+	_battle_layer = null
+	_in_battle = false
+	_apply_battle_result()
 
 
 ## [M27D D5] Apply what the battle decided, once, on return.
