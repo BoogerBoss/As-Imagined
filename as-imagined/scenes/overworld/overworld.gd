@@ -157,6 +157,10 @@ func _ready() -> void:
 	# Synchronous. The work is RELOCATED to a moment where a pause is expected,
 	# not reduced — no tile definitions, atlases or .tres content change.
 	MapManager.preload_tilesets()
+	# [M27D D5] The battle scene the same way, for the same reason: reported
+	# from play as "the first trainer takes a while, the rest are near
+	# instant" — that is the scene and its textures being cold exactly once.
+	OverworldSession.preload_battle_scenes()
 
 	# [M27D D5] Returning from a battle resumes where the player stood, rather
 	# than respawning at start_map. Source's own return is the same idea —
@@ -293,7 +297,11 @@ func _process(_delta: float) -> void:
 	# NPCs keep moving while the player is mid-step or mid-warp; freezing the
 	# world during a fade is a scripted-cutscene behaviour, not idle movement.
 	manager.tick_entities(_delta, _rng)
-	if _moving or _warping:
+	# [M27D D4 fix] Input is LOCKED during an approach. Source calls
+	# LockPlayerFieldControls() the moment a trainer notices you
+	# (`CheckForTrainersWantingBattle`), and without it you can walk away while
+	# the "!" is still over their head — reported from play.
+	if _moving or _warping or _in_approach:
 		return
 	var dir := _held_direction()
 	if dir >= 0:
@@ -472,9 +480,11 @@ func start_trainer_battle(t: TrainerNPC) -> void:
 	BattleSetupContext.set_pending(
 			OverworldParty.build_debug_player_party(), opp, false, "", t.trainer_key)
 
-	var scene_path := "res://scenes/battle/battle_screen_%s.tscn" \
-			% ("doubles" if BattleSetupContext.is_doubles else "singles")
-	var screen: Control = load(scene_path).instantiate() as Control
+	var packed := OverworldSession.battle_scene(BattleSetupContext.is_doubles)
+	if packed == null:
+		push_error("overworld: battle screen scene missing")
+		return
+	var screen: Control = packed.instantiate() as Control
 	# The battle screen's root is a Control; the overworld is a Node2D. A
 	# CanvasLayer is what puts it in SCREEN space above the world rather than
 	# somewhere in world coordinates behind the tilemap.
@@ -483,19 +493,27 @@ func start_trainer_battle(t: TrainerNPC) -> void:
 	_battle_layer.add_child(screen)
 	screen.overlay_mode = true
 	screen.battle_finished.connect(_on_battle_overlay_finished)
-	add_child(_battle_layer)
 	_in_battle = true
 	battle_starting.emit(t)
+	# Fade out, mount, fade in. Reported from play as being "instantly dumped"
+	# between field and battle. NOT the real transition — source picks one of
+	# several (Mugshot for gym leaders, `GetTrainerBattleTransition`), and that
+	# is M27H's job. This is the minimum that makes the cut deliberate.
+	await _fade_to(1.0)
+	add_child(_battle_layer)
+	await _fade_to(0.0)
 
 
 ## The overlay reports its own outcome rather than swapping scenes back.
 func _on_battle_overlay_finished(outcome: int) -> void:
 	OverworldSession.set_result(
 			BattleOutcome.make(outcome, OverworldSession.pending_trainer_key))
+	await _fade_to(1.0)
 	if _battle_layer != null and is_instance_valid(_battle_layer):
 		_battle_layer.queue_free()
 	_battle_layer = null
 	_in_battle = false
+	await _fade_to(0.0)
 	_apply_battle_result()
 
 
@@ -610,7 +628,10 @@ func _try_door_warp(dir: int) -> void:
 ## regardless of where the camera is looking or what the chunk tree is doing.
 func _add_fade() -> void:
 	var layer := CanvasLayer.new()
-	layer.layer = 100
+	# ABOVE the battle overlay (layer 100), not level with it — same-layer
+	# ordering falls back to tree order, which would make whether the fade
+	# covers a battle transition depend on child insertion order.
+	layer.layer = 200
 	add_child(layer)
 	_fade = ColorRect.new()
 	_fade.color = Color(0, 0, 0, 0)

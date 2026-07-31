@@ -74,6 +74,32 @@ static func take_result() -> BattleOutcome:
 	return r
 
 
+## The battle screens, loaded once and HELD.
+##
+## Same mechanism as MapManager's tileset preload: holding the reference is what
+## guarantees residence, since a cache entry with no live reference can be
+## evicted. Without this the first battle of a session pays the full scene parse
+## plus every texture decode, which is exactly what "the first trainer takes a
+## while, the rest are near instant" describes.
+static var _battle_scenes: Dictionary = {}
+
+
+static func preload_battle_scenes() -> int:
+	for variant in ["singles", "doubles"]:
+		var path := "res://scenes/battle/battle_screen_%s.tscn" % variant
+		if _battle_scenes.has(variant) or not ResourceLoader.exists(path):
+			continue
+		_battle_scenes[variant] = load(path)
+	return _battle_scenes.size()
+
+
+static func battle_scene(is_doubles: bool) -> PackedScene:
+	var key := "doubles" if is_doubles else "singles"
+	if not _battle_scenes.has(key):
+		preload_battle_scenes()
+	return _battle_scenes.get(key, null) as PackedScene
+
+
 ## Tests only. Production never wants this — the flags ARE the save.
 static func reset() -> void:
 	flags = FlagStore.new()
