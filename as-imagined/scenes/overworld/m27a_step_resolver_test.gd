@@ -53,7 +53,7 @@ const MAP_DATA_ASSERTIONS := 8
 ##
 ## To re-measure after adding assertions: temporarily print `_total` around
 ## each section call in `_ready()` and read the deltas.
-const EXPECTED_TOTAL := 466
+const EXPECTED_TOTAL := 513
 
 ## K.01-K.07 read the imported JSON, so they gate with section A.
 const CELL_INFO_MAP_ASSERTIONS := 7
@@ -222,6 +222,9 @@ func _ready() -> void:
 	_test_entity_occupancy()
 	_test_npc_movement()
 	await _test_player_occupies_its_cell()
+	_test_tileset_preload()
+	_test_flag_store()
+	_test_trainer_sight_runtime()
 	_test_bake_guard()
 	_test_gesture_lifecycle()
 	_test_clip_math()
@@ -3173,6 +3176,299 @@ class OccupiedCells extends RefCounted:
 ## elevation (`GetVanillaCollision`), so walking at an NPC on a different
 ## stratum reports ELEVATION_MISMATCH rather than OBJECT_EVENT. Both block, so
 ## nothing in play distinguishes them — only a test does.
+## [M27D preload] Section AR — the boot-time TileSet preload.
+##
+## Gated on the tileset directory existing at all, since a fresh checkout has
+## no baked pairs and the whole section is about what is on disk.
+const PRELOAD_ASSERTIONS := 14
+
+
+func _test_tileset_preload() -> void:
+	var dir := DirAccess.open(MapManager.TILESET_DIR)
+	if dir == null:
+		_gated += PRELOAD_ASSERTIONS
+		return
+	var on_disk: Array[String] = []
+	for f in dir.get_files():
+		if f.ends_with(".tres"):
+			on_disk.append(f.trim_suffix(".tres"))
+	if on_disk.is_empty():
+		_gated += PRELOAD_ASSERTIONS
+		return
+
+	MapManager.clear_preloaded()
+	_chk("AR.01 the dictionary starts empty", MapManager.preloaded_count() == 0)
+
+	var loaded := MapManager.preload_tilesets(MapManager.TILESET_DIR, false)
+	# Exactly the files on disk — not "at least one", not "roughly right".
+	_chk("AR.02 loads exactly the .tres files on disk (%d of %d)"
+			% [loaded, on_disk.size()], loaded == on_disk.size())
+	_chk("AR.03 and the count is nonzero", loaded > 0)
+	_chk("AR.04 the held dictionary matches that count",
+			MapManager.preloaded_count() == on_disk.size())
+
+	var all_present := true
+	var all_real := true
+	for pair in on_disk:
+		var ts := MapManager.preloaded_tileset(pair)
+		if ts == null:
+			all_present = false
+		elif ts.get_source_count() != 3:
+			all_real = false
+	_chk("AR.05 every pair on disk is retrievable by name", all_present)
+	_chk("AR.06 and each holds three real plane sources", all_real)
+
+	# Holding the REFERENCE is the mechanism, so the same instance must come
+	# back — a fresh instance per call would mean nothing was actually retained.
+	var a := MapManager.preloaded_tileset(on_disk[0])
+	var b := MapManager.preloaded_tileset(on_disk[0])
+	_chk("AR.07 repeated lookups return the SAME held instance", a == b)
+	_chk("AR.08 an unknown pair returns null rather than an empty TileSet",
+			MapManager.preloaded_tileset("no_such_pair_frlg") == null)
+
+	# The fallback must be genuinely live, not merely unbroken: clear the
+	# dictionary and confirm the baker still resolves a real pair from disk.
+	var baker = load("res://scenes/overworld/map_baker.gd").new()
+	var via_preload = baker._get_or_build_tileset(on_disk[0])
+	_chk("AR.09 the baker returns the HELD instance while it is preloaded",
+			via_preload == a)
+	MapManager.clear_preloaded()
+	var via_disk = baker._get_or_build_tileset(on_disk[0])
+	_chk("AR.10 with the dictionary cleared it still resolves from disk",
+			via_disk != null and (via_disk as TileSet).get_source_count() == 3)
+	baker.free()
+
+	# Break test: an empty directory must make the guard FIRE, not report a
+	# healthy zero. Run non-strict so the guard records its message instead of
+	# pushing an engine ERROR — run_overworld_tests.sh fails a run on those, and
+	# it is right to, so a deliberate trigger has to be asserted on rather than
+	# emitted. `user://` is writable and guaranteed empty here.
+	var probe := "user://_preload_probe_empty/"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(probe))
+	var none := MapManager.preload_tilesets(probe, false, false)
+	_chk("AR.11 an empty directory warms zero pairs", none == 0)
+	_chk("AR.12 and the guard fires rather than reporting a healthy zero",
+			MapManager.last_diagnostic != "")
+	_chk("AR.13 naming both the condition and the directory",
+			MapManager.last_diagnostic.contains("found 0")
+			and MapManager.last_diagnostic.contains(probe))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(probe))
+
+	# ...and a healthy run must leave no diagnostic, or AR.12 proves nothing.
+	MapManager.preload_tilesets(MapManager.TILESET_DIR, false, false)
+	_chk("AR.14 while a healthy preload records no diagnostic at all",
+			MapManager.last_diagnostic == "")
+
+
+## [M27D D4] Section AP — the flag/var store.
+##
+## Ungated: this is pure state with no dependency on a baked artifact, and
+## gating it would leave a fresh checkout with no coverage of the one thing the
+## rest of D4 is built on.
+func _test_flag_store() -> void:
+	var f := FlagStore.new()
+
+	_chk("AP.01 an unset flag reads false, matching FlagGet's own unknown-id case",
+			not f.flag_get("FLAG_NEVER_TOUCHED"))
+	f.flag_set("FLAG_A")
+	_chk("AP.02 a set flag reads true", f.flag_get("FLAG_A"))
+	f.flag_clear("FLAG_A")
+	_chk("AP.03 a cleared flag reads false again", not f.flag_get("FLAG_A"))
+	f.flag_set("")
+	_chk("AP.04 an empty flag name is ignored rather than stored",
+			f.snapshot()["flags"].is_empty())
+
+	_chk("AP.05 an unset var reads 0", f.var_get("VAR_NEVER_TOUCHED") == 0)
+	f.var_set("VAR_A", 3)
+	_chk("AP.06 a set var reads back", f.var_get("VAR_A") == 3)
+
+	# Beaten trainers. Source keys this on TRAINER_FLAGS_START + trainerId; the
+	# derived name is the same one-bit-per-trainer idea against this project's
+	# own string keys.
+	_chk("AP.07 a trainer starts undefeated",
+			not f.trainer_defeated("TRAINER_LASS_ROBIN_FRLG"))
+	f.set_trainer_defeated("TRAINER_LASS_ROBIN_FRLG")
+	_chk("AP.08 and reads defeated once set",
+			f.trainer_defeated("TRAINER_LASS_ROBIN_FRLG"))
+	_chk("AP.09 without disturbing a different trainer",
+			not f.trainer_defeated("TRAINER_YOUNGSTER_BEN_FRLG"))
+	_chk("AP.10 the defeated flag is derived from the key, not an index",
+			FlagStore.trainer_defeated_flag("TRAINER_X") == "DEFEATED_TRAINER_X")
+
+	# Visibility. The flag means HIDDEN, not shown — every one of source's own is
+	# named FLAG_HIDE_*, and reading it backwards would show exactly the entities
+	# that should be gone.
+	var e := ItemBall.new()
+	_chk("AP.11 an entity with no visibility flag is always present",
+			f.entity_visible(e))
+	e.visibility_flag = "FLAG_HIDE_POTION"
+	_chk("AP.12 and is still present while that flag is UNSET", f.entity_visible(e))
+	f.flag_set("FLAG_HIDE_POTION")
+	_chk("AP.13 SETTING the flag hides it", not f.entity_visible(e))
+	e.free()
+
+	# Trigger gates. Source's own paired triggers sit on one cell gated on the
+	# same VAR at DIFFERENT values, so at most one can ever qualify.
+	var t1 := Trigger.new()
+	var t2 := Trigger.new()
+	t1.var_name = "VAR_GATE"
+	t1.var_value = 0
+	t2.var_name = "VAR_GATE"
+	t2.var_value = 1
+	_chk("AP.14 a trigger matching the var is armed", f.trigger_armed(t1))
+	_chk("AP.15 while its pair on the same cell is not", not f.trigger_armed(t2))
+	f.var_set("VAR_GATE", 1)
+	_chk("AP.16 setting the var flips exactly which one is armed",
+			not f.trigger_armed(t1) and f.trigger_armed(t2))
+	var t3 := Trigger.new()
+	_chk("AP.17 an ungated trigger always fires", f.trigger_armed(t3))
+	t1.free()
+	t2.free()
+	t3.free()
+
+	# Round trip, because M27L will serialise exactly this.
+	var snap: Dictionary = f.snapshot()
+	var g := FlagStore.new()
+	g.restore(snap)
+	_chk("AP.18 restore round-trips flags and vars",
+			g.trainer_defeated("TRAINER_LASS_ROBIN_FRLG") and g.var_get("VAR_GATE") == 1)
+	g.flag_set("FLAG_ONLY_IN_G")
+	_chk("AP.19 and snapshot() copies, so the restored store is independent",
+			not f.flag_get("FLAG_ONLY_IN_G"))
+
+
+## [M27D D4] Section AQ — runtime trainer sight.
+##
+## Synthetic throughout: the corridor's own trainers sit where they sit, and a
+## geometry rule needs cases chosen to DISCRIMINATE (off-axis, out of range,
+## behind, walled, blocked by a body) rather than whichever happen to exist.
+func _test_trainer_sight_runtime() -> void:
+	var mm := MapManager.new()
+	add_child(mm)
+	# 5x5 all-walkable, uniform elevation 3.
+	var d := _synth(5, 5, [], [], _filled(25, 3))
+	var root := Node2D.new()
+	mm.register_chunk("synth", d, root, Vector2i.ZERO)
+
+	var t := TrainerNPC.new()
+	t.cell = Vector2i(2, 0)
+	t.elevation = 3
+	t.sight_range = 3
+	t.local_id = "1"
+	t.set_facing(StepResolver.Dir.SOUTH)
+	root.add_child(t)
+	mm.rebuild_occupancy("synth")
+
+	# Directly in front is distance 1, NOT 0 — the approach walks distance-1
+	# tiles, so an off-by-one here would put the trainer on the player.
+	mm.set_player_cell(Vector2i(2, 1))
+	_chk("AQ.01 the tile directly ahead is distance 1",
+			mm.sight_reaches_player(t.cell, StepResolver.Dir.SOUTH, 3, 3) == 1)
+	mm.set_player_cell(Vector2i(2, 3))
+	_chk("AQ.02 three ahead is distance 3",
+			mm.sight_reaches_player(t.cell, StepResolver.Dir.SOUTH, 3, 3) == 3)
+	mm.set_player_cell(Vector2i(2, 4))
+	_chk("AQ.03 beyond sight_range is not seen",
+			mm.sight_reaches_player(t.cell, StepResolver.Dir.SOUTH, 3, 3) == 0)
+	mm.set_player_cell(Vector2i(3, 2))
+	_chk("AQ.04 off the ray's own axis is not seen",
+			mm.sight_reaches_player(t.cell, StepResolver.Dir.SOUTH, 3, 3) == 0)
+	mm.set_player_cell(Vector2i(2, 0))
+	_chk("AQ.05 the trainer's own cell is not seen",
+			mm.sight_reaches_player(t.cell, StepResolver.Dir.SOUTH, 3, 3) == 0)
+	# Behind: the player is north while the trainer faces south.
+	var behind := TrainerNPC.new()
+	behind.cell = Vector2i(2, 2)
+	behind.elevation = 3
+	behind.sight_range = 3
+	behind.set_facing(StepResolver.Dir.SOUTH)
+	mm.set_player_cell(Vector2i(2, 1))
+	_chk("AQ.06 a player BEHIND the trainer is not seen",
+			mm.sight_reaches_player(behind.cell, StepResolver.Dir.SOUTH, 3, 3) == 0)
+	behind.free()
+
+	# A wall between. Source stops on any collision but OUTSIDE_RANGE, which is
+	# why this routes through the resolver rather than restating the rule.
+	var walled := _synth(5, 5, [], [0, 0, 0, 0, 0,
+									0, 0, 0, 0, 0,
+									0, 0, 1, 0, 0,
+									0, 0, 0, 0, 0,
+									0, 0, 0, 0, 0], _filled(25, 3))
+	var mm2 := MapManager.new()
+	add_child(mm2)
+	var root2 := Node2D.new()
+	mm2.register_chunk("walled", walled, root2, Vector2i.ZERO)
+	mm2.set_player_cell(Vector2i(2, 3))
+	_chk("AQ.07 solid terrain between trainer and player breaks the line",
+			mm2.sight_reaches_player(Vector2i(2, 0), StepResolver.Dir.SOUTH, 3, 3) == 0)
+	mm2.set_player_cell(Vector2i(2, 1))
+	_chk("AQ.08 but a clear stretch in front of that wall still sees",
+			mm2.sight_reaches_player(Vector2i(2, 0), StepResolver.Dir.SOUTH, 3, 3) == 1)
+
+	# A BODY between — the same break, via a different mechanism (object events,
+	# not terrain), which is exactly the pair source's own two collision calls
+	# distinguish.
+	var blocker := NPC.new()
+	blocker.cell = Vector2i(2, 2)
+	root.add_child(blocker)
+	mm.rebuild_occupancy("synth")
+	mm.set_player_cell(Vector2i(2, 3))
+	_chk("AQ.09 another object event between trainer and player breaks the line",
+			mm.sight_reaches_player(t.cell, StepResolver.Dir.SOUTH, 3, 3) == 0)
+	blocker.free()
+	mm.rebuild_occupancy("synth")
+
+	# The live facing, not the template's. This is the case that would silently
+	# blind 39.6% of Kanto's trainers if sight keyed off FIXED_FACING the way the
+	# editor overlay does.
+	t.movement_type = "MOVEMENT_TYPE_LOOK_AROUND"
+	t.set_facing(StepResolver.Dir.EAST)
+	mm.set_player_cell(Vector2i(3, 0))
+	var seen := mm.trainers_seeing_player()
+	_chk("AQ.10 a rotating trainer sees whichever way it is currently turned",
+			seen.size() == 1 and int(seen[0]["dir"]) == StepResolver.Dir.EAST)
+	t.set_facing(StepResolver.Dir.WEST)
+	_chk("AQ.11 and stops seeing once it turns away",
+			mm.trainers_seeing_player().is_empty())
+
+	# sight_range 0 is the real value for every non-trainer NPC, so it must never
+	# produce a sighting.
+	t.set_facing(StepResolver.Dir.EAST)
+	t.sight_range = 0
+	_chk("AQ.12 sight_range 0 never sees",
+			mm.trainers_seeing_player().is_empty())
+	t.sight_range = 3
+
+	# Ordering is source's own: CheckForTrainersWantingBattle sorts candidates by
+	# localId, so which of two simultaneous trainers gets the battle is data.
+	var t2 := TrainerNPC.new()
+	t2.cell = Vector2i(4, 0)
+	t2.elevation = 3
+	t2.sight_range = 3
+	t2.local_id = "0"
+	t2.set_facing(StepResolver.Dir.WEST)
+	root.add_child(t2)
+	mm.rebuild_occupancy("synth")
+	mm.set_player_cell(Vector2i(3, 0))
+	var both := mm.trainers_seeing_player()
+	_chk("AQ.13 two trainers can see the player at once (%d)" % both.size(),
+			both.size() == 2)
+	_chk("AQ.14 and are ordered by local_id, not scene-tree order",
+			_local_id(both[0]) == "0" and _local_id(both[1]) == "1")
+
+	# register_chunk deliberately does not parent the chunk root, so the roots
+	# (and every trainer under them) are this test's to free.
+	root.free()
+	root2.free()
+	mm.free()
+	mm2.free()
+
+
+func _local_id(entry: Dictionary) -> String:
+	var t := entry["trainer"] as TrainerNPC
+	return t.local_id if t != null else ""
+
+
 func _test_entity_occupancy() -> void:
 	# --- precedence, synthetically, because the corridor may not have the case
 	var d := _synth(3, 3, [], [], _filled(9, 3))

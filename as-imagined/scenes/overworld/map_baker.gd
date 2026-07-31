@@ -670,6 +670,14 @@ func _add_layer(root: Node2D, nm: String, ts: TileSet) -> TileMapLayer:
 ## must carry the resource_path, or ResourceSaver writes it back into the scene
 ## as a SubResource and nothing is shared.
 func _get_or_build_tileset(atlas: String) -> TileSet:
+	# [M27D preload] The held reference first. In a normal boot this is a
+	# dictionary hit and costs nothing; in a BAKE run the dictionary is empty
+	# (map_baker.tscn is its own scene and never calls preload_tilesets), so
+	# this falls straight through to the disk load below and behaves exactly as
+	# it did before. Both paths are live, neither is decorative.
+	var held := MapManager.preloaded_tileset(atlas)
+	if held != null:
+		return held
 	var path := TILESET_DIR + atlas + ".tres"
 	if ResourceLoader.exists(path):
 		return load(path) as TileSet

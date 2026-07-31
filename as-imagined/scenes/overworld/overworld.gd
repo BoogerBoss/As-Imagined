@@ -81,6 +81,35 @@ var _fade: ColorRect
 ## hold the fade until the load reports done rather than raising this blindly.
 const FADE_SECONDS := 0.25
 
+## [M27D D4] Persistent flag/var state: beaten trainers, hidden entities,
+## trigger gates. In memory only until M27L; see FlagStore.
+var flags := FlagStore.new()
+
+## True while an approach is playing, so a step landing mid-approach cannot
+## start a second one.
+var _in_approach := false
+
+signal trainer_spotted(trainer: TrainerNPC)
+signal trainer_approach_finished(trainer: TrainerNPC)
+
+## Feel values, not ported constants. Source measures the approach in frames
+## against a 60fps lock (`sTrainerSeeFuncList`'s own per-step waits); this
+## project is not frame-locked, so these are seconds and are tuned by eye.
+const EXCLAMATION_SECONDS := 0.5
+const APPROACH_STEP_SECONDS := 0.18
+const EXCLAMATION_TEXTURE := \
+	"res://assets/sprites/overworld/field_effects/emotion_exclamation.png"
+
+## Facing after being approached: source turns the player to the OPPOSITE of the
+## trainer's own facing (`PlayerFaceApproachingTrainer`), which is the direction
+## that looks back down the sight line.
+const OPPOSITE_DIR := {
+	StepResolver.Dir.SOUTH: StepResolver.Dir.NORTH,
+	StepResolver.Dir.NORTH: StepResolver.Dir.SOUTH,
+	StepResolver.Dir.WEST: StepResolver.Dir.EAST,
+	StepResolver.Dir.EAST: StepResolver.Dir.WEST,
+}
+
 ## The camera is NOT a child of the player, deliberately.
 ##
 ## [M27C C4] It was, and crossing a seam produced a fast pan from the new
@@ -97,15 +126,22 @@ const FADE_SECONDS := 0.25
 
 
 func _ready() -> void:
+	# FIRST, before any chunk loads. Every pair TileSet is loaded once and held
+	# for the process lifetime — measured at 16.4 ms per pair cold (23.6 ms on a
+	# cold OS cache), otherwise paid on the first visit to each map whose pair
+	# has not been built yet. That is the hitch Rob reported.
+	#
+	# Ahead of load_chunk deliberately: the start map's own pair would otherwise
+	# be the one pair that still pays full price, and boot cost is easier to
+	# reason about as one contiguous block than as one block plus a straggler.
+	#
+	# Synchronous. The work is RELOCATED to a moment where a pause is expected,
+	# not reduced — no tile definitions, atlases or .tres content change.
+	MapManager.preload_tilesets()
 	if not manager.load_chunk(start_map):
 		push_error("overworld: %s is not baked — run map_baker.tscn" % start_map)
 		return
 	_resolver = manager.global_resolver()
-	# Start every shared TileSet building now, off-thread. A cold one costs
-	# ~30 ms and is otherwise paid the first time a map using that pair is
-	# entered — the hitch Rob reported. Not awaited: a map reached first simply
-	# pays what it pays today.
-	manager.warm_tilesets()
 	# Neighbours up front. Hysteresis-based loading as the player moves is the
 	# remaining half of C4; loading the starting map's neighbours is what makes
 	# a seam crossable at all, and is what the corridor is for.
@@ -293,7 +329,95 @@ func _try_step(dir: int) -> void:
 		# the next poll fires it.
 		if w != null and w.arrow_dir < 0:
 			_do_warp(w)
+			return
+		check_trainer_sight()
 	)
+
+
+## Does any trainer now see the player? If so, run the approach.
+##
+## [M27D D4] Fires on STEP COMPLETION, the same seam warps use, and for the same
+## source reason: `CheckForTrainersWantingBattle` runs off the field-control
+## step hook, not a per-frame poll. That is also what makes it safe — a trainer
+## whose line the player is standing in is checked once per arrival, so it
+## cannot re-trigger while the player stands still.
+##
+## Returns the trainer that gets the battle, or null. Public and awaitable so a
+## test can drive it without input or a tween.
+func check_trainer_sight() -> TrainerNPC:
+	if _warping or _in_approach:
+		return null
+	var seen := manager.trainers_seeing_player()
+	for entry in seen:
+		var t := entry["trainer"] as TrainerNPC
+		# Source checks the trainer's own flag inside CheckTrainer and simply
+		# skips a beaten one — it does not stop scanning, so a second trainer
+		# behind a beaten one still gets its battle.
+		if flags.trainer_defeated(t.trainer_key):
+			continue
+		if not flags.entity_visible(t):
+			continue
+		await _run_trainer_approach(t, int(entry["dir"]), int(entry["distance"]))
+		return t
+	return null
+
+
+## The approach: exclamation mark, walk up, both parties face each other.
+##
+## Ported from `sTrainerSeeFuncList` (`trainer_see.c`), which is a task-driven
+## state machine — TRSEE_EXCLAMATION, TRSEE_EXCLAMATION_WAIT, TRSEE_MOVE_TO_PLAYER,
+## TRSEE_PLAYER_FACE. Reproduced as a coroutine because this project has no task
+## scheduler and the sequence is strictly linear.
+##
+## THE TRAINER STOPS ADJACENT, NOT ON THE PLAYER. Source hands
+## `InitTrainerApproachTask` a range of `approachDistance - 1`
+## (`trainer_see.c:CheckTrainer`), so a trainer three tiles away walks two. That
+## off-by-one is load-bearing: walking the full distance would put the trainer
+## on the player's own cell.
+func _run_trainer_approach(t: TrainerNPC, dir: int, distance: int) -> void:
+	_in_approach = true
+	trainer_spotted.emit(t)
+	await _show_exclamation(t)
+
+	var step: Vector2i = StepResolver.STEP[dir]
+	var map_name := _owning_map_of(t)
+	# Walk distance-1 tiles toward the player, one cell at a time so occupancy
+	# stays true the whole way.
+	for _i in range(max(0, distance - 1)):
+		manager.move_entity(map_name, t, t.cell + step)
+		await get_tree().create_timer(APPROACH_STEP_SECONDS).timeout
+
+	# Both face each other. Source sets the trainer's movement type so it stays
+	# put afterwards, then turns the player to the OPPOSITE of the trainer's own
+	# facing (`PlayerFaceApproachingTrainer`).
+	t.set_facing(dir)
+	_facing = OPPOSITE_DIR.get(dir, _facing)
+	_in_approach = false
+	trainer_approach_finished.emit(t)
+
+
+func _owning_map_of(e: OverworldEntity) -> String:
+	for map_name in manager.loaded_chunks():
+		var r := manager.chunk_rect(map_name)
+		if r.has_point(e.cell + manager.origin_of(map_name)):
+			return map_name
+	return ""
+
+
+## The "!" over the trainer's head. Source plays FLDEFF_EXCLAMATION_MARK_ICON
+## and waits for it to finish before any movement starts.
+func _show_exclamation(t: TrainerNPC) -> void:
+	var tex_path := EXCLAMATION_TEXTURE
+	if not ResourceLoader.exists(tex_path):
+		await get_tree().create_timer(EXCLAMATION_SECONDS).timeout
+		return
+	var s := Sprite2D.new()
+	s.texture = load(tex_path)
+	s.centered = false
+	s.position = Vector2(0, -CELL)
+	t.add_child(s)
+	await get_tree().create_timer(EXCLAMATION_SECONDS).timeout
+	s.queue_free()
 
 
 ## An arrow warp: stand ON the tile, press its direction.

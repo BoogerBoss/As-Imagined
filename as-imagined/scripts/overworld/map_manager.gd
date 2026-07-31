@@ -821,6 +821,102 @@ func entity_at(gcell: Vector2i) -> bool:
 	return occ.has(gcell - Vector2i(_chunks[map_name]["origin"]))
 
 
+## Every trainer whose sight line currently reaches the player.
+##
+## [M27D D4] Ported from `GetTrainerApproachDistance` + `CheckPathBetweenTrainerAndPlayer`
+## (`trainer_see.c:636,708`). Returns one entry per seeing trainer:
+##   {"trainer": TrainerNPC, "map": String, "dir": int, "distance": int}
+## ordered by `local_id`, which is source's own ordering — `CheckForTrainersWantingBattle`
+## sorts its candidate array by `localId` before walking it, so which of two
+## simultaneous trainers gets the battle is data, not scene-tree order.
+##
+## GEOMETRY ONLY. Whether a seeing trainer should actually battle — already
+## beaten, hidden by a flag — is the caller's question, because this node has no
+## game state and giving it one to answer that would be the wrong seam.
+##
+## THE FACING IS THE LIVE ONE, not the template's. Source reads
+## `trainerObj->facingDirection`, so a rotating trainer genuinely sees whichever
+## way it happens to be turned. `MapOverlay.trainer_sight_cells` draws rays only
+## for FIXED-facing trainers, which is right for a static editor view and wrong
+## here — that restriction would blind the 97 rotating and 74 walking trainers
+## in Kanto (39.6% of the roster) at runtime.
+func trainers_seeing_player() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if _player_cell.x == -2147483648:
+		return out
+	for map_name in _chunks:
+		var root: Node2D = _chunks[map_name]["root"]
+		if root == null or not is_instance_valid(root):
+			continue
+		var origin: Vector2i = _chunks[map_name]["origin"]
+		for n in root.find_children("*", "TrainerNPC", true, false):
+			var t := n as TrainerNPC
+			if t == null or t.sight_range <= 0:
+				continue
+			var hit := sight_reaches_player(t.cell + origin, t.facing(),
+					t.sight_range, t.elevation)
+			if hit <= 0:
+				continue
+			out.append({"trainer": t, "map": map_name, "dir": t.facing(),
+					"distance": hit})
+	out.sort_custom(func(a, b): return _local_id_of(a) < _local_id_of(b))
+	return out
+
+
+static func _local_id_of(entry: Dictionary) -> String:
+	var t := entry["trainer"] as TrainerNPC
+	return t.local_id if t != null else ""
+
+
+## How far ahead the player is along `dir` from `from`, or 0 for no sight.
+##
+## Source splits this across five functions; the four directional ones
+## (`GetTrainerApproachDistanceSouth` and siblings) all reduce to the same test —
+## the player is on the shared axis, strictly beyond the trainer, and within
+## `range` — so they collapse into one here rather than being transcribed four
+## times with the comparison operators permuted.
+##
+## The returned value is a DISTANCE, 1-based: 1 means the player is directly in
+## front. Source relies on that offset (`InitTrainerApproachTask` is handed
+## `approachDistance - 1`, so the trainer walks up to be ADJACENT to the player
+## rather than onto them).
+func sight_reaches_player(from: Vector2i, dir: int, sight_range: int,
+		elevation: int) -> int:
+	if sight_range <= 0 or not StepResolver.STEP.has(dir):
+		return 0
+	var step: Vector2i = StepResolver.STEP[dir]
+	var delta := _player_cell - from
+	# Must be on the ray's own axis, and strictly ahead of it.
+	var distance := delta.x * step.x + delta.y * step.y
+	if distance <= 0 or distance > sight_range:
+		return 0
+	if delta != step * distance:
+		return 0
+
+	# Cells strictly BETWEEN trainer and player must be clear. Source walks
+	# `approachDistance - 1` intermediate cells and stops on any collision but
+	# COLLISION_OUTSIDE_RANGE — i.e. directional impassability, an elevation
+	# mismatch and another object event each break the line, not just terrain.
+	# Routing through the resolver is what makes that true here without
+	# restating any of it: a sight line can never disagree with the movement
+	# rules it describes.
+	var r := global_resolver()
+	if r == null:
+		return 0
+	var c := from
+	for _i in range(distance - 1):
+		var res: Dictionary = r.resolve(c, dir, elevation)
+		if int(res["outcome"]) != StepResolver.Outcome.NONE:
+			return 0
+		c += step
+		if entity_at(c):
+			return 0
+	# Source's final check is that the last cell collides with an OBJECT EVENT —
+	# that is how it confirms the player is really standing there. Here the ray
+	# was derived from the player's own cell, so it holds by construction.
+	return distance
+
+
 ## Advance every live NPC's own movement by one frame.
 ##
 ## [M27D D3] Driven from here rather than each NPC's own `_process` because
@@ -903,29 +999,113 @@ func move_entity(map_name: String, e: OverworldEntity, to: Vector2i) -> void:
 	_occupancy[map_name] = occ
 
 
-## Build every shared TileSet up front, so no map visit pays for one.
+## Every pair TileSet, loaded once at boot and HELD for the process lifetime.
 ##
-## [M27D perf] MEASURED: a cold TileSet costs **~30 ms**, and it is paid the
-## first time any map using that tileset PAIR is loaded — which is exactly what
-## "hitches when transitioning to a map for the first time" describes, and why
-## the hitch does not recur for that region afterwards. It matches M27M2's own
-## ~27 ms figure for building one (2208 `create_tile()` calls).
+## Static deliberately. A `MapManager` is a scene node and dies with its scene —
+## a battle, a title screen, any `change_scene_to_file` — and the whole point is
+## residence across all of that. This project already uses class-level statics
+## for exactly this (`BattleSetupContext`), and they need no autoload
+## registration, so this is the established shape rather than a new one.
 ##
-## Sharing the TileSets (M27M2) already removed the per-SCENE cost; this removes
-## the per-PAIR cost too, by moving it somewhere a stall is expected. 14 pairs
-## back the 32-map corridor, 60 the region — bounded, and paid once.
+## HOLDING THE REFERENCE IS THE MECHANISM. `ResourceLoader`'s own cache is not a
+## guarantee — an entry with no live reference can be evicted, and then the next
+## first visit pays the full cost again with nothing to show why. The dictionary
+## is what makes "loaded once" true.
+static var _preloaded: Dictionary = {}
+
+
+## Load every pair TileSet under `dir` and hold it. Returns pairs loaded.
 ##
-## Threaded, and NOT awaited: nothing blocks on it. A map reached before its
-## tileset finishes simply pays what it pays today, so the worst case is the
-## current behaviour rather than a new stall.
-func warm_tilesets() -> int:
-	var dir := DirAccess.open(TILESET_DIR)
-	if dir == null:
-		return 0
-	var n := 0
-	for f in dir.get_files():
-		if not f.ends_with(".tres"):
+## [M27D perf / preload] MEASURED before writing this: a single pair costs
+## **16.4 ms** cold in a fresh process, and **23.6 ms** when the OS file cache is
+## cold too. That is paid on the first visit to any map whose pair has not been
+## built yet — exactly the "hitch transitioning to a map for the first time"
+## Rob reported. 14 pairs back the 32-map corridor, 60 the region.
+##
+## Work is RELOCATED, not reduced: this is not the M27M trim. No tile definition
+## changes, no atlas or `.tres` content changes. The same milliseconds are spent,
+## once, at boot where a pause is expected, instead of mid-step where it is not.
+##
+## SYNCHRONOUS, replacing the threaded `warm_tilesets` this supersedes. That one
+## fired `load_threaded_request` and kept no reference, so it neither guaranteed
+## residence nor reported whether it had worked; keeping both would be two
+## mechanisms for one job, which is the duplication shape that has bitten this
+## project before (`check_bake_diff` vs `map_baker._normalise_text`).
+##
+## `dir` is a parameter so a test can point the scan somewhere empty and prove
+## the guard below actually fires.
+## `strict` is a TESTING SEAM, not a severity dial. The guard's whole point is
+## to be loud, but `run_overworld_tests.sh` fails a run on any engine ERROR
+## line — correctly, since a stray error means a test function aborted silently.
+## A test that must PROVE the guard fires therefore cannot let it push_error.
+## With `strict = false` the guard records its message in `last_diagnostic`
+## instead, so the test asserts on the text rather than on the absence of a
+## crash. Production never passes false. Same shape as `_force_hit`/`_force_roll`.
+static var last_diagnostic: String = ""
+
+
+static func preload_tilesets(dir_path: String = TILESET_DIR, verbose: bool = true,
+		strict: bool = true) -> int:
+	last_diagnostic = ""
+	var t_start := Time.get_ticks_usec()
+	var dir := DirAccess.open(dir_path)
+	var files: Array[String] = []
+	if dir != null:
+		for f in dir.get_files():
+			if f.ends_with(".tres"):
+				files.append(f)
+	files.sort()
+
+	var loaded := 0
+	var slowest_ms := 0.0
+	var slowest_name := ""
+	for f in files:
+		var t0 := Time.get_ticks_usec()
+		var ts := ResourceLoader.load(dir_path + f) as TileSet
+		var ms := (Time.get_ticks_usec() - t0) / 1000.0
+		if ts == null:
+			push_error("preload_tilesets: %s failed to load as a TileSet" % f)
 			continue
-		ResourceLoader.load_threaded_request(TILESET_DIR + f)
-		n += 1
-	return n
+		_preloaded[f.trim_suffix(".tres")] = ts
+		loaded += 1
+		if ms > slowest_ms:
+			slowest_ms = ms
+			slowest_name = f.trim_suffix(".tres")
+
+	var total_ms := (Time.get_ticks_usec() - t_start) / 1000.0
+
+	# Arithmetic guard, Z.99-style. A boot that warms nothing must FAIL, not
+	# print a green nothing — the failure this is defending against is a
+	# renamed/moved directory silently restoring the per-visit hitch while the
+	# summary line still looks healthy.
+	if files.is_empty():
+		last_diagnostic = ("preload_tilesets: found 0 .tres files under %s — expected at "
+				% dir_path + "least one; every first map visit will now pay the full build cost")
+		if strict:
+			push_error(last_diagnostic)
+		return 0
+	if loaded != files.size():
+		last_diagnostic = ("preload_tilesets: loaded %d of %d files found under %s — %d failed"
+				% [loaded, files.size(), dir_path, files.size() - loaded])
+		if strict:
+			push_error(last_diagnostic)
+
+	if verbose:
+		print("preload_tilesets: %d pair(s), %.1f ms total, slowest %s at %.1f ms"
+				% [loaded, total_ms, slowest_name, slowest_ms])
+	return loaded
+
+
+## The held TileSet for a pair, or null if it was not preloaded.
+static func preloaded_tileset(pair: String) -> TileSet:
+	return _preloaded.get(pair, null) as TileSet
+
+
+static func preloaded_count() -> int:
+	return _preloaded.size()
+
+
+## Drop every held reference. Tests only — production never wants this, since
+## releasing the refs is precisely what reintroduces the hitch.
+static func clear_preloaded() -> void:
+	_preloaded.clear()
