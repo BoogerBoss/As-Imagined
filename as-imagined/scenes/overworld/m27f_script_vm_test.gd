@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 41
+const EXPECTED_TOTAL := 87
 
 var _total := 0
 var _failed := 0
@@ -48,6 +48,40 @@ func _run(vm: ScriptVM, limit: int = 200) -> int:
 	return n
 
 
+## Drive a VM the way the overworld does: resume through message/button waits
+## instead of stopping at the first one. Returns the ops actually executed, so
+## a test can assert on PROGRESS rather than only on the end state -- the
+## distinction F.08 was missing.
+func _drive(vm: ScriptVM, limit: int = 400) -> PackedStringArray:
+	var executed := PackedStringArray()
+	var n := 0
+	while n < limit:
+		if vm.step():
+			executed.append(vm.current_op)
+			n += 1
+			continue
+		if vm.pause_reason == ScriptVM.Pause.WAIT_MESSAGE \
+				or vm.pause_reason == ScriptVM.Pause.WAIT_BUTTON:
+			executed.append(vm.current_op)
+			vm.resume()
+			n += 1
+			continue
+		break
+	return executed
+
+
+## Run one conditional in isolation and hand back the VM. Label "T" is the jump
+## target, so `script_label == "T"` means the branch was taken.
+func _cond_vm(op_name: String, args: Array, flags: FlagStore) -> ScriptVM:
+	var vm := ScriptVM.new(_src({
+		"A": [_op(op_name, args), _op("lockall"), _op("end")],
+		"T": [_op("release"), _op("end")],
+	}), flags)
+	vm.start("A")
+	vm.step()
+	return vm
+
+
 func _ready() -> void:
 	_test_observable_state()
 	_test_pause_kinds()
@@ -55,6 +89,10 @@ func _ready() -> void:
 	_test_call_frames()
 	_test_message_pages()
 	_test_compiled_pipeline()
+	_test_conditionals()
+	_test_interaction()
+	_test_stage2()
+	_test_stage2_real_corpus()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -235,8 +273,11 @@ func _test_compiled_pipeline() -> void:
 	for o in brock:
 		if str(o["op"]) == "trainerbattle_single" and (o["args"] as Array).size() > 0:
 			found_key = str((o["args"] as Array)[0])
-	_chk("F.05 Brock compiles to a trainerbattle carrying his trainer key",
-			found_key == "TRAINER_LEADER_BROCK")
+	# The key is CANONICAL (_FRLG), not the bare source constant. The compiler
+	# suffixes it because the roster is keyed by origin (Rule A); a bare key
+	# resolves to no trainer and the battle silently refuses to start.
+	_chk("F.05 Brock compiles to a trainerbattle carrying his canonical key",
+			found_key == "TRAINER_LEADER_BROCK_FRLG")
 
 	# Real text really does page on \p.
 	var intro: Array = texts.get("PewterCity_Gym_Text_BrockIntro", [])
@@ -245,9 +286,318 @@ func _test_compiled_pipeline() -> void:
 			str(intro[0]).contains("\n"))
 
 	# A real script runs through the real VM without throwing.
+	# ⚠️ REWRITTEN. This used to pass for the WRONG REASON: the `goto_if_eq`
+	# bug made every gated script jump to a VAR name and stop UNRESOLVED,
+	# which satisfied "finished in a named state" while the script had in fact
+	# run almost none of itself.
+	#
+	# But do NOT read this as the guard for that bug -- break-tested, and it is
+	# not. This fixture reaches its `goto_if_set` with the flag UNSET, so the
+	# branch falls through and the label is never read; breaking the label
+	# position leaves F.08 green. Section G holds the real guards (G.04, G.08).
+	# What F.08 is now worth is the weaker but still real claim it makes
+	# honestly: a script off the actual corpus runs to DONE and shows its text.
 	var vm := ScriptVM.new(_src(ops, texts), FlagStore.new())
 	vm.start("PewterCity_Gym_EventScript_GymStatue")
+	var ran := _drive(vm)
+	_chk("F.08 a real compiled script runs to completion when its waits are driven",
+			vm.pause_reason == ScriptVM.Pause.DONE)
+	_chk("F.09 and genuinely showed its text on the way",
+			ran.has("message") and ran.has("releaseall"))
+
+
+## --- G. the conditional family. THE LABEL IS THE LAST ARGUMENT. ---
+##
+## The first cut read `args[0]` as the jump target, so every gated script in
+## the region tried to jump to a VAR name and died UNRESOLVED. It shipped
+## because nothing here exercised a conditional against real data. G.04 is the
+## direct regression guard; the rest pin the three argument shapes apart.
+func _test_conditionals() -> void:
+	var flags := FlagStore.new()
+	flags.var_set("VAR_X", 2)
+
+	var vm := ScriptVM.new(_src({"A": [_op("compare", ["VAR_X", "2"]), _op("end")]}), flags)
+	vm.start("A")
+	vm.step()
+	_chk("G.01 compare sets last_compare", vm.last_compare == 0)
+
+	_chk("G.02 goto_if_eq takes the branch when equal",
+			_cond_vm("goto_if_eq", ["VAR_X", "2", "T"], flags).script_label == "T")
+	_chk("G.03 and falls through when not",
+			_cond_vm("goto_if_eq", ["VAR_X", "9", "T"], flags).script_label == "A")
+
+	# THE BUG, pinned. args[0] is a VAR name, not a label -- reading it as the
+	# jump target is exactly what happened, and it reported UNRESOLVED.
+	var guard := _cond_vm("goto_if_eq", ["VAR_X", "2", "T"], flags)
+	_chk("G.04 the label is the LAST argument, never the first",
+			guard.pause_reason != ScriptVM.Pause.UNRESOLVED and guard.diagnostic == "")
+
+	_chk("G.05 goto_if_ne is the inverse",
+			_cond_vm("goto_if_ne", ["VAR_X", "9", "T"], flags).script_label == "T"
+			and _cond_vm("goto_if_ne", ["VAR_X", "2", "T"], flags).script_label == "A")
+	_chk("G.06 goto_if_lt excludes equality",
+			_cond_vm("goto_if_lt", ["VAR_X", "2", "T"], flags).script_label == "A")
+	_chk("G.07 goto_if_ge includes it",
+			_cond_vm("goto_if_ge", ["VAR_X", "2", "T"], flags).script_label == "T")
+
+	# Flag form: TWO arguments, and the flag is read, not compared.
+	flags.flag_set("FLAG_DONE")
+	_chk("G.08 goto_if_set branches on a set flag",
+			_cond_vm("goto_if_set", ["FLAG_DONE", "T"], flags).script_label == "T")
+	_chk("G.09 and not on an unset one",
+			_cond_vm("goto_if_set", ["FLAG_OTHER", "T"], flags).script_label == "A")
+	_chk("G.10 goto_if_unset is the inverse",
+			_cond_vm("goto_if_unset", ["FLAG_OTHER", "T"], flags).script_label == "T"
+			and _cond_vm("goto_if_unset", ["FLAG_DONE", "T"], flags).script_label == "A")
+
+	# Defeated form reads the SAME key set_trainer_defeated writes -- the seam
+	# that lets a beaten trainer's script take its post-battle branch with
+	# nothing extra wired. Written through the real API, not a hand-built key.
+	flags.set_trainer_defeated("TRAINER_LEADER_BROCK")
+	_chk("G.11 goto_if_defeated reads the key FlagStore actually writes",
+			_cond_vm("goto_if_defeated", ["TRAINER_LEADER_BROCK", "T"], flags).script_label == "T")
+	_chk("G.12 goto_if_not_defeated is the inverse",
+			_cond_vm("goto_if_not_defeated", ["TRAINER_LEADER_BROCK", "T"], flags).script_label == "A"
+			and _cond_vm("goto_if_not_defeated", ["TRAINER_ROCKET", "T"], flags).script_label == "T")
+
+	# call_if_* is the same test with a pushed frame. goto_if_* must NOT push.
+	var called := _cond_vm("call_if_eq", ["VAR_X", "2", "T"], flags)
+	var jumped := _cond_vm("goto_if_eq", ["VAR_X", "2", "T"], flags)
+	_chk("G.13 call_if pushes a frame where goto_if does not",
+			int(called.describe()["depth"]) == 1 and int(jumped.describe()["depth"]) == 0)
+
+	# The ONE-ARGUMENT form, which leans on a preceding compare. The corpus has
+	# exactly 33 `compare` ops and exactly 33 one-argument conditionals; that
+	# pairing is why deleting `compare` as "never emitted" was wrong.
+	var vm1 := ScriptVM.new(_src({
+		"A": [_op("compare", ["VAR_X", "2"]), _op("goto_if_eq", ["T"]), _op("end")],
+		"T": [_op("release"), _op("end")],
+	}), flags)
+	vm1.start("A")
+	vm1.step()
+	vm1.step()
+	_chk("G.14 the one-argument form uses the preceding compare", vm1.script_label == "T")
+
+	# An operand this project never imported must resolve, not halt.
+	var unknown := _cond_vm("goto_if_eq", ["VAR_X", "SOME_UNIMPORTED_CONSTANT", "T"], flags)
+	_chk("G.15 an unrecognised symbolic operand resolves rather than stopping dead",
+			unknown.pause_reason == ScriptVM.Pause.NONE and unknown.script_label == "A")
+
+
+## --- H. what a press of A targets ---
+##
+## ⚠️ THE COUNTER HOP is the assertion that matters. MB_COUNTER is 729 cells
+## across 89 corridor maps, and without the hop every shop clerk, nurse and gym
+## receptionist in the region is unreachable -- while everything outdoors keeps
+## working, so the gap reads as correct until you walk into a Poké Mart.
+func _test_interaction() -> void:
+	var npc := NPC.new()
+	npc.script_label = "TALK_TO_ME"
+	var sign_node := Sign.new()
+	sign_node.script_label = "READ_ME"
+
+	var plain := func(_c: Vector2i) -> int: return 0
+	var at := func(cell: Vector2i, who: Node) -> Callable:
+		return func(c: Vector2i) -> Variant: return who if c == cell else null
+
+	var r: Dictionary = Interaction.resolve(Vector2i(5, 5), StepResolver.Dir.NORTH,
+			plain, at.call(Vector2i(5, 4), npc))
+	_chk("H.01 an entity on the faced tile answers",
+			str(r.get("source", "")) == Interaction.SOURCE_OBJECT
+			and str(r.get("script", "")) == "TALK_TO_ME")
+
+	# The hop: the faced tile is a counter, so the search moves ONE FURTHER.
+	var counter := func(c: Vector2i) -> int:
+		return MetatileBehavior.MB_COUNTER if c == Vector2i(5, 4) else 0
+	var hopped: Dictionary = Interaction.resolve(Vector2i(5, 5), StepResolver.Dir.NORTH,
+			counter, at.call(Vector2i(5, 3), npc))
+	_chk("H.02 a counter tile moves the search one tile further",
+			str(hopped.get("script", "")) == "TALK_TO_ME"
+			and hopped.get("cell", Vector2i.ZERO) == Vector2i(5, 3))
+	# ...and the discriminator: without the hop, THIS is what would have answered.
+	var unhopped: Dictionary = Interaction.resolve(Vector2i(5, 5), StepResolver.Dir.NORTH,
+			counter, at.call(Vector2i(5, 4), npc))
+	_chk("H.03 so an entity standing ON the counter is NOT what answers",
+			unhopped.is_empty())
+
+	var bg: Dictionary = Interaction.resolve(Vector2i(5, 5), StepResolver.Dir.NORTH,
+			plain, at.call(Vector2i(5, 4), sign_node))
+	_chk("H.04 a sign resolves as a background event",
+			str(bg.get("source", "")) == Interaction.SOURCE_BACKGROUND)
+
+	sign_node.facing = "BG_EVENT_PLAYER_FACING_NORTH"
+	_chk("H.05 a facing-gated sign answers the required approach",
+			not Interaction.resolve(Vector2i(5, 5), StepResolver.Dir.NORTH,
+					plain, at.call(Vector2i(5, 4), sign_node)).is_empty())
+	_chk("H.06 and refuses the wrong one",
+			Interaction.resolve(Vector2i(5, 3), StepResolver.Dir.SOUTH,
+					plain, at.call(Vector2i(5, 4), sign_node)).is_empty())
+
+	_chk("H.07 an empty cell resolves to nothing",
+			Interaction.resolve(Vector2i(5, 5), StepResolver.Dir.NORTH,
+					plain, func(_c: Vector2i) -> Variant: return null).is_empty())
+
+	npc.free()
+	sign_node.free()
+
+
+## --- I. Stage 2: the script engine takes control of the battle engine ---
+##
+## `trainerbattle_single` is the first opcode whose pause OUTLIVES the frame it
+## started in, and the first whose RESULT decides where the script goes next.
+func _test_stage2() -> void:
+	var flags := FlagStore.new()
+	var texts := {"Intro": ["Hi.", "Fight me."], "Defeat": ["I lost."]}
+	var battle_ops := {
+		"A": [_op("trainerbattle_single", ["TRAINER_X", "Intro", "Defeat", "POST"]),
+				_op("lockall"), _op("end")],
+		"POST": [_op("release"), _op("end")],
+	}
+
+	var vm := ScriptVM.new(_src({"A": [_op("famechecker", ["FAMECHECKER_BROCK", "1"]),
+			_op("setflag", ["FLAG_A"]), _op("setvar", ["VAR_A", "3"]),
+			_op("clearflag", ["FLAG_A"]), _op("end")]}), flags)
+	vm.start("A")
 	_run(vm)
-	_chk("F.08 a real compiled script runs and stops in a NAMED state",
-			vm.is_finished() and (vm.pause_reason != ScriptVM.Pause.UNKNOWN_OP
-					or vm.diagnostic != ""))
+	_chk("I.01 famechecker is a no-op, not a stall",
+			vm.pause_reason == ScriptVM.Pause.DONE)
+	_chk("I.02 setvar writes through FlagStore", flags.var_get("VAR_A") == 3)
+	_chk("I.03 setflag then clearflag leaves the flag clear",
+			not flags.flag_get("FLAG_A"))
+
+	var b := ScriptVM.new(_src(battle_ops, texts), flags)
+	b.start("A")
+	_run(b)
+	_chk("I.04 trainerbattle_single pauses on WAIT_BATTLE",
+			b.pause_reason == ScriptVM.Pause.WAIT_BATTLE)
+	_chk("I.05 carrying the trainer key", b.pending_trainer_key == "TRAINER_X")
+	_chk("I.06 and the post-battle script from the 4th argument",
+			b.pending_battle_script == "POST")
+	_chk("I.07 and the intro speech, which source shows before the battle",
+			b.pending_pages.size() == 2 and b.pending_pages[0] == "Hi.")
+	_chk("I.08 and the trainer's own defeat speech, for whoever closes M26B3-4",
+			b.pending_battle_defeat_text == "Defeat")
+	_chk("I.09 WAIT_BATTLE counts as waiting", b.is_waiting())
+
+	# ⚠️ A plain resume() must NOT clear it. Doing so would skip the win/loss
+	# branch silently and read as "the post-battle script just did not run".
+	b.resume()
+	_chk("I.10 a plain resume() cannot clear WAIT_BATTLE",
+			b.pause_reason == ScriptVM.Pause.WAIT_BATTLE)
+
+	b.resume_after_battle(true)
+	_chk("I.11 winning jumps to the post-battle script (`gotobeatenscript`)",
+			b.script_label == "POST")
+
+	# THREE arguments is a different battle type with no post-battle script.
+	var short_form := ScriptVM.new(_src({
+		"A": [_op("trainerbattle_single", ["TRAINER_Y", "Intro", "Defeat"]),
+				_op("lockall"), _op("end")],
+	}, texts), flags)
+	short_form.start("A")
+	_run(short_form)
+	_chk("I.12 the 3-argument form carries no post-battle script",
+			short_form.pending_battle_script == "")
+	short_form.resume_after_battle(true)
+	_chk("I.13 so winning ends the script rather than falling through",
+			short_form.pause_reason == ScriptVM.Pause.DONE)
+
+	var lost := ScriptVM.new(_src(battle_ops, texts), flags)
+	lost.start("A")
+	_run(lost)
+	lost.resume_after_battle(false)
+	_chk("I.14 losing ends the script and does NOT run the post-battle script",
+			lost.pause_reason == ScriptVM.Pause.DONE and lost.script_label == "A")
+
+	# THE ALREADY-BEATEN SKIP. Source checks GetTrainerFlag inside the shared
+	# standard script, one level BELOW the command -- which is why Brock's own
+	# script carries no guard and would otherwise re-challenge forever.
+	var beaten := FlagStore.new()
+	beaten.set_trainer_defeated("TRAINER_X")
+	var again := ScriptVM.new(_src(battle_ops, texts), beaten)
+	again.start("A")
+	_run(again)
+	_chk("I.15 an already-beaten trainer starts no battle at all",
+			again.pause_reason != ScriptVM.Pause.WAIT_BATTLE)
+	_chk("I.16 and the calling script continues past the command",
+			again.pause_reason == ScriptVM.Pause.DONE and again.script_label == "A")
+
+	# switch/case -- `compare VAR_0x8000` + the ONE-ARGUMENT goto_if_eq.
+	var sw := FlagStore.new()
+	sw.var_set("VAR_PICK", 2)
+	var swvm := ScriptVM.new(_src({
+		"A": [_op("switch", ["VAR_PICK"]), _op("case", ["1", "ONE"]),
+				_op("case", ["2", "TWO"]), _op("end")],
+		"ONE": [_op("setflag", ["GOT_ONE"]), _op("end")],
+		"TWO": [_op("setflag", ["GOT_TWO"]), _op("end")],
+	}), sw)
+	swvm.start("A")
+	_run(swvm)
+	_chk("I.17 switch/case dispatches to the matching arm",
+			sw.flag_get("GOT_TWO") and not sw.flag_get("GOT_ONE"))
+	sw.var_set("VAR_PICK", 9)
+	var swmiss := ScriptVM.new(_src({
+		"A": [_op("switch", ["VAR_PICK"]), _op("case", ["1", "ONE"]), _op("end")],
+		"ONE": [_op("setflag", ["GOT_ONE"]), _op("end")],
+	}), sw)
+	swmiss.start("A")
+	_run(swmiss)
+	_chk("I.18 and falls through when nothing matches",
+			not sw.flag_get("GOT_ONE") and swmiss.script_label == "A")
+
+	var cv := FlagStore.new()
+	cv.var_set("SRC", 7)
+	var cvvm := ScriptVM.new(_src({"A": [_op("copyvar", ["DST", "SRC"]), _op("end")]}), cv)
+	cvvm.start("A")
+	_run(cvvm)
+	_chk("I.19 copyvar copies var to var", cv.var_get("DST") == 7)
+
+	# settrainerflag writes the SAME key a won battle writes and goto_if_defeated
+	# reads -- one representation of "beaten", three writers.
+	var st := FlagStore.new()
+	var stvm := ScriptVM.new(_src({
+		"A": [_op("settrainerflag", ["TRAINER_Z"]),
+				_op("goto_if_defeated", ["TRAINER_Z", "SEEN"]), _op("end")],
+		"SEEN": [_op("release"), _op("end")],
+	}), st)
+	stvm.start("A")
+	_run(stvm)
+	_chk("I.20 settrainerflag and goto_if_defeated agree on one key",
+			st.trainer_defeated("TRAINER_Z") and stvm.script_label == "SEEN")
+
+
+## --- I (cont). the same thing against Brock's REAL script ---
+func _test_stage2_real_corpus() -> void:
+	if not (FileAccess.file_exists("res://data/map_scripts.json")
+			and FileAccess.file_exists("res://data/map_texts.json")):
+		_gated += 3
+		return
+	var ops: Dictionary = JSON.parse_string(
+			FileAccess.open("res://data/map_scripts.json", FileAccess.READ).get_as_text())
+	var texts: Dictionary = JSON.parse_string(
+			FileAccess.open("res://data/map_texts.json", FileAccess.READ).get_as_text())
+	var flags := FlagStore.new()
+	var vm := ScriptVM.new(_src(ops, texts), flags)
+	vm.start("PewterCity_Gym_EventScript_Brock")
+	_drive(vm)
+	# ⚠️ The _FRLG suffix is load-bearing. Scripts carry the bare source
+	# constant; the roster is keyed by origin (Rule A). Without the compiler
+	# canonicalising it, the party lookup finds nothing and the battle silently
+	# refuses to start -- which is what live-driving Brock actually showed.
+	_chk("I.21 Brock's real script reaches a real battle with a RESOLVABLE key",
+			vm.pause_reason == ScriptVM.Pause.WAIT_BATTLE
+			and vm.pending_trainer_key == "TRAINER_LEADER_BROCK_FRLG"
+			and vm.pending_pages.size() > 1)
+
+	flags.set_trainer_defeated(vm.pending_trainer_key)
+	vm.resume_after_battle(true)
+	_drive(vm)
+	_chk("I.22 and winning awards the badge through the real post-battle chain",
+			flags.flag_get("FLAG_BADGE01_GET")
+			and flags.var_get("VAR_MAP_SCENE_PEWTER_CITY") == 1)
+
+	var again := ScriptVM.new(_src(ops, texts), flags)
+	again.start("PewterCity_Gym_EventScript_Brock")
+	_drive(again)
+	_chk("I.23 talking to a beaten Brock starts no second battle",
+			again.pause_reason != ScriptVM.Pause.WAIT_BATTLE)

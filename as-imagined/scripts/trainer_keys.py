@@ -95,6 +95,19 @@ def canonical_key(raw):
     )
 
 
+def is_trainer_constant(raw):
+    """True if `raw` is a RAW constant naming a real trainer in either roster.
+
+    The map-script compiler needs this because canonical_key() RAISES on
+    anything unrecognised, and a script argument that merely starts with
+    TRAINER_ is often not a trainer at all -- `TRAINER_BATTLE_SINGLE` is a
+    battle-MODE constant, and `setvar`/`case`/`goto_if_eq` carry those. Asking
+    the index is the only safe test, and it lives here so the suffix rule keeps
+    exactly one home (Rule A).
+    """
+    return raw in _build_index()
+
+
 def roster_counts():
     """(rse, frlg) real-trainer counts, for build-time reporting."""
     idx = _build_index()

@@ -917,6 +917,32 @@ func sight_reaches_player(from: Vector2i, dir: int, sight_range: int,
 	return distance
 
 
+## The entity standing on this GLOBAL cell, or null.
+##
+## [M27F] Distinct from `entity_at`, which answers the COLLISION question and so
+## only counts npc/trainer/item — the three kinds source's own
+## `DoesObjectCollideWithObjectAt` consults. Interaction needs SIGNS too, and it
+## needs the node rather than a bool, so this is a separate lookup rather than a
+## widened one: conflating them would make a sign solid.
+##
+## Scans rather than indexes. Interaction happens on a button press, not per
+## step, so the per-cell cost that made C4's skirt repaint expensive does not
+## apply here.
+func entity_node_at(gcell: Vector2i) -> OverworldEntity:
+	var map_name := chunk_owning(gcell)
+	if map_name == "" or not _chunks.has(map_name):
+		return null
+	var root: Node2D = _chunks[map_name]["root"]
+	if root == null or not is_instance_valid(root):
+		return null
+	var local: Vector2i = gcell - Vector2i(_chunks[map_name]["origin"])
+	for n in root.find_children("*", "OverworldEntity", true, false):
+		var e := n as OverworldEntity
+		if e != null and e.cell == local:
+			return e
+	return null
+
+
 ## Advance every live NPC's own movement by one frame.
 ##
 ## [M27D D3] Driven from here rather than each NPC's own `_process` because

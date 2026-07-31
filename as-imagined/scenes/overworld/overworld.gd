@@ -76,6 +76,15 @@ var _resume: Dictionary = {}
 var _battle_layer: CanvasLayer = null
 var _in_battle := false
 
+## [M27F] The field script interpreter and its message box. `_vm` is null when
+## no script is running — that is the "is the player in control" test.
+var _vm: ScriptVM = null
+var _box: MessageBox = null
+var _script_source: ScriptVM.ScriptSource = null
+
+signal script_started(label: String)
+signal script_finished(label: String, pause: String, diagnostic: String)
+
 ## Seeded per run rather than global, so NPC wandering is reproducible when a
 ## test wants it to be and varied when nobody sets it.
 var _rng := RandomNumberGenerator.new()
@@ -157,6 +166,7 @@ func _ready() -> void:
 	# Synchronous. The work is RELOCATED to a moment where a pause is expected,
 	# not reduced — no tile definitions, atlases or .tres content change.
 	MapManager.preload_tilesets()
+	_setup_scripting()
 	# [M27D D5] The battle scene the same way, for the same reason: reported
 	# from play as "the first trainer takes a while, the rest are near
 	# instant" — that is the scene and its textures being cold exactly once.
@@ -294,6 +304,12 @@ func _process(_delta: float) -> void:
 	# fade, where they deliberately do.
 	if _in_battle:
 		return
+	# [M27F] A running script owns input and freezes the world, the same way a
+	# battle does. `lock`/`lockall` are VM no-ops precisely because THIS is where
+	# locking actually lives — the VM has no business knowing about input.
+	if _vm != null:
+		_drive_script()
+		return
 	# NPCs keep moving while the player is mid-step or mid-warp; freezing the
 	# world during a fade is a scripted-cutscene behaviour, not idle movement.
 	manager.tick_entities(_delta, _rng)
@@ -302,6 +318,10 @@ func _process(_delta: float) -> void:
 	# (`CheckForTrainersWantingBattle`), and without it you can walk away while
 	# the "!" is still over their head — reported from play.
 	if _moving or _warping or _in_approach:
+		return
+	# [M27F] A press of A, before movement: interacting with the tile you face
+	# must not also step into it.
+	if Input.is_action_just_pressed("ui_accept") and try_interact():
 		return
 	var dir := _held_direction()
 	if dir >= 0:
@@ -451,7 +471,29 @@ func _run_trainer_approach(t: TrainerNPC, dir: int, distance: int) -> void:
 	_facing = OPPOSITE_DIR.get(dir, _facing)
 	_in_approach = false
 	trainer_approach_finished.emit(t)
+
+	# [M27F Stage 2] Hand off to the trainer's own SCRIPT, not straight to the
+	# battle. Source does the same — the approach ends by running the trainer's
+	# script (`EventScript_StartTrainerApproach` falls through to it), and that
+	# script's own `trainerbattle_single` is what carries the intro speech and
+	# names the post-battle script.
+	#
+	# ⚠️ Going straight to start_trainer_battle() SKIPPED BOTH. Every route
+	# trainer in the corridor battled in total silence and never ran their
+	# post-battle branch, so `goto_if_defeated` never fired for any of them —
+	# and the gap was invisible because the battle itself worked fine.
+	if _run_trainer_script(t):
+		return
+	# No usable script: battle anyway, rather than leaving the player locked in
+	# front of a trainer who noticed them and then did nothing.
 	start_trainer_battle(t)
+
+
+## True if the trainer had a runnable script and it started.
+func _run_trainer_script(t: TrainerNPC) -> bool:
+	if t == null or t.script_label in ["", "0x0", "0"]:
+		return false
+	return run_script(t.script_label, t)
 
 
 ## [M27D D5] Hand control to the battle engine.
@@ -464,26 +506,51 @@ func _run_trainer_approach(t: TrainerNPC, dir: int, distance: int) -> void:
 ## for the opponent, so nothing on the battle side changes. What is new is the
 ## overworld remembering where it was, because `change_scene_to_file` frees it.
 func start_trainer_battle(t: TrainerNPC) -> void:
-	if t == null or t.trainer_key == "":
-		return
-	var opp := OverworldParty.build_trainer_party(t.trainer_key)
+	if t != null:
+		_begin_battle(t.trainer_key, t)
+
+
+## [M27F Stage 2] Start a battle from a trainer KEY, with no placed node.
+##
+## This is the seam `trainerbattle_single` needs: a script names a trainer, and
+## there may be no TrainerNPC involved at all (a gym leader you walked up to and
+## talked to is still an NPC, but the script is what decides to battle).
+func start_script_battle(trainer_key: String) -> bool:
+	return _begin_battle(trainer_key, null)
+
+
+## Returns false WITHOUT having set `_in_battle` if the battle cannot start, so
+## a caller polling every frame does not retry forever.
+func _begin_battle(trainer_key: String, t: TrainerNPC) -> bool:
+	if trainer_key == "":
+		return false
+	var opp := OverworldParty.build_trainer_party(trainer_key)
 	if opp == null:
 		# Unresolvable roster entry. Refuse rather than starting a battle with
 		# an empty party, which would end instantly and read as an engine bug.
 		push_warning("overworld: %s has no resolvable party — battle not started"
-				% t.trainer_key)
-		return
+				% trainer_key)
+		return false
+
 	# The overworld STAYS ALIVE underneath. No position to save, no chunk to
 	# rebuild, no 66-100 ms reload on the way back — the map, the loaded chunks
 	# and the player are all still exactly where they were.
-	OverworldSession.pending_trainer_key = t.trainer_key
+	OverworldSession.pending_trainer_key = trainer_key
 	BattleSetupContext.set_pending(
-			OverworldParty.build_debug_player_party(), opp, false, "", t.trainer_key)
+			OverworldParty.build_debug_player_party(), opp, false, "", trainer_key)
 
 	var packed := OverworldSession.battle_scene(BattleSetupContext.is_doubles)
 	if packed == null:
 		push_error("overworld: battle screen scene missing")
-		return
+		return false
+
+	_in_battle = true
+	battle_starting.emit(t)
+	_mount_battle_overlay(packed)
+	return true
+
+
+func _mount_battle_overlay(packed: PackedScene) -> void:
 	var screen: Control = packed.instantiate() as Control
 	# The battle screen's root is a Control; the overworld is a Node2D. A
 	# CanvasLayer is what puts it in SCREEN space above the world rather than
@@ -493,8 +560,6 @@ func start_trainer_battle(t: TrainerNPC) -> void:
 	_battle_layer.add_child(screen)
 	screen.overlay_mode = true
 	screen.battle_finished.connect(_on_battle_overlay_finished)
-	_in_battle = true
-	battle_starting.emit(t)
 	# Fade out, mount, fade in. Reported from play as being "instantly dumped"
 	# between field and battle. NOT the real transition — source picks one of
 	# several (Mugshot for gym leaders, `GetTrainerBattleTransition`), and that
@@ -512,9 +577,16 @@ func _on_battle_overlay_finished(outcome: int) -> void:
 	if _battle_layer != null and is_instance_valid(_battle_layer):
 		_battle_layer.queue_free()
 	_battle_layer = null
+	# ⚠️ APPLY THE RESULT BEFORE CLEARING `_in_battle`, and never after a fade.
+	# `_in_battle` is the guard that stops `_process` reaching `_drive_script`,
+	# and a script that started this battle is still parked on WAIT_BATTLE until
+	# the result resumes it. Clearing the guard first leaves a multi-frame window
+	# (the whole fade-in) in which the driver sees that same WAIT_BATTLE and
+	# starts a SECOND battle. Found by live-driving Brock: the beaten flag was
+	# set, the badge was not, and the overlay was back on screen.
+	_apply_battle_result()
 	_in_battle = false
 	await _fade_to(0.0)
-	_apply_battle_result()
 
 
 ## [M27D D5] Apply what the battle decided, once, on return.
@@ -534,6 +606,11 @@ func _apply_battle_result() -> void:
 	# returns you to where you stood, with the trainer still undefeated — so the
 	# encounter is repeatable, which is the honest interim behaviour rather than
 	# a fake penalty.
+	# [M27F Stage 2] A script that started this battle is parked on WAIT_BATTLE.
+	# Resumed AFTER the flag is set, so its post-battle branch sees a trainer
+	# that is already recorded as beaten.
+	if _vm != null and _vm.pause_reason == ScriptVM.Pause.WAIT_BATTLE:
+		_vm.resume_after_battle(r.outcome == BattleOutcome.WON)
 	battle_returned.emit(r)
 
 
@@ -559,6 +636,142 @@ func _show_exclamation(t: TrainerNPC) -> void:
 	t.add_child(s)
 	await get_tree().create_timer(EXCLAMATION_SECONDS).timeout
 	s.queue_free()
+
+
+## [M27F] Load the compiled corpora once and build the message box.
+##
+## Both JSONs are read at boot for the same reason the TileSets are: a first
+## interaction should not pay an 8.8 MB parse mid-conversation. Measured at
+## ~200 ms for the scripts, which is boot cost where a pause is expected.
+func _setup_scripting() -> void:
+	_script_source = ScriptVM.ScriptSource.new()
+	_script_source.ops_by_label = _read_json("res://data/map_scripts.json")
+	_script_source.texts = _read_json("res://data/map_texts.json")
+	_box = MessageBox.new()
+	add_child(_box)
+
+
+func _read_json(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		push_warning("overworld: %s missing — scripts will not run" % path)
+		return {}
+	var f := FileAccess.open(path, FileAccess.READ)
+	var parsed = JSON.parse_string(f.get_as_text())
+	return parsed if parsed is Dictionary else {}
+
+
+## Press A: what does it hit?
+##
+## Ported dispatch order and the counter hop live in Interaction; this is the
+## wiring. Returns true if something was started.
+func try_interact() -> bool:
+	if _vm != null or _in_battle or _warping or _moving or _in_approach:
+		return false
+	var hit := Interaction.resolve(_cell, _facing,
+			func(c: Vector2i) -> int: return manager.behavior_at(c),
+			func(c: Vector2i) -> Variant: return manager.entity_node_at(c))
+	if hit.is_empty():
+		return false
+	var label := str(hit.get("script", ""))
+	if label == "" or label == "0x0" or label == "0":
+		# A placed entity with no script is real and common — the importer
+		# records `0x0` for one. Nothing to run, and nothing wrong.
+		return false
+	# `faceplayer` is a VM no-op, so turning the NPC to face the player is done
+	# here, where the scene actually lives.
+	var e := hit.get("entity") as OverworldEntity
+	if e is NPC:
+		(e as NPC).set_facing(OPPOSITE_DIR.get(_facing, StepResolver.Dir.SOUTH))
+	return run_script(label, e)
+
+
+## Start a script. Public so a test — and later a trigger or a warp — can start
+## one without simulating a button press.
+func run_script(label: String, p_subject: OverworldEntity = null) -> bool:
+	_vm = ScriptVM.new(_script_source, flags)
+	if not _vm.start(label, p_subject):
+		# Degrade LOUDLY but without breaking play: the VM named what it could
+		# not resolve, so say so and hand control back.
+		push_warning("overworld: %s" % _vm.diagnostic)
+		script_finished.emit(label, "UNRESOLVED", _vm.diagnostic)
+		_vm = null
+		return false
+	script_started.emit(label)
+	return true
+
+
+## Advance the running script. Called once per frame while `_vm` is live.
+##
+## THIS is what the VM's external state is for. The driver reads `pause_reason`
+## and decides what the scene should do about it — the VM never awaits, never
+## touches the message box, and never knows what a button is.
+func _drive_script() -> void:
+	if _vm == null:
+		return
+
+	# Run until the VM needs something from us.
+	var guard := 0
+	while _vm.step() and guard < 500:
+		guard += 1
+
+	match _vm.pause_reason:
+		ScriptVM.Pause.WAIT_MESSAGE:
+			# `message` only OPENS the box. The compiled msgbox chain is
+			# message -> waitmessage -> waitbuttonpress, so the waiting belongs
+			# to WAIT_BUTTON below; resuming here is what lets the VM reach it.
+			if not _box.is_open:
+				_box.open(_vm.pending_pages)
+			_vm.resume()
+
+		ScriptVM.Pause.WAIT_BUTTON:
+			if _box.is_open:
+				if Input.is_action_just_pressed("ui_accept"):
+					if not _box.advance():
+						_vm.resume()
+			else:
+				_vm.resume()
+
+		ScriptVM.Pause.WAIT_YES_NO:
+			# Stage 1 has no yes/no widget yet. Answer NO and continue rather
+			# than stalling — VAR_RESULT is what the script branches on, and a
+			# stuck VM would soft-lock the player.
+			flags.var_set("VAR_RESULT", 0)
+			_vm.resume()
+
+		ScriptVM.Pause.WAIT_BATTLE:
+			# The trainer's intro speech runs first, then the battle. Source does
+			# the same (`EventScript_ShowTrainerIntroMsg` precedes `dotrainerbattle`).
+			if _vm.pending_pages.size() > 0:
+				if not _box.is_open:
+					_box.open(_vm.pending_pages)
+				elif Input.is_action_just_pressed("ui_accept") and not _box.advance():
+					_box.close()
+					_vm.pending_pages = PackedStringArray()
+				return
+			if not start_script_battle(_vm.pending_trainer_key):
+				# Cannot start (no resolvable party, no scene). End the script
+				# rather than retrying this branch every frame forever.
+				push_warning("overworld: battle vs '%s' could not start"
+					% _vm.pending_trainer_key)
+				_vm.resume_after_battle(false)
+				_finish_script()
+
+		ScriptVM.Pause.DONE, ScriptVM.Pause.UNRESOLVED, ScriptVM.Pause.UNKNOWN_OP:
+			_finish_script()
+
+
+func _finish_script() -> void:
+	if _vm == null:
+		return
+	var d := _vm.describe()
+	if _vm.pause_reason == ScriptVM.Pause.UNKNOWN_OP:
+		# Not an error — 53 opcodes arrive in later stages. Reported so a script
+		# that stops early is visibly a coverage gap rather than a silent no-op.
+		print("overworld: script '%s' stopped at pc=%d — %s"
+				% [d["label"], d["pc"], _vm.diagnostic])
+	_box.close()
+	script_finished.emit(str(d["label"]), str(d["pause"]), str(_vm.diagnostic))
+	_vm = null
 
 
 ## An arrow warp: stand ON the tile, press its direction.

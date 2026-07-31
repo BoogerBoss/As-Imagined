@@ -27,6 +27,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from trainer_keys import canonical_key, is_trainer_constant
+
 REF = "/home/rob/GodotAsImagined/reference/pokeemerald_expansion"
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "map_scripts.json")
 
@@ -79,6 +82,25 @@ def parse_args(rest):
     return [a for a in out if a != ""]
 
 
+def _canonicalise_trainers(args):
+    """Suffix every trainer-key argument with its roster of origin.
+
+    ⚠️ WITHOUT THIS, EVERY TRAINER BATTLE IN KANTO IS UNSTARTABLE. Scripts carry
+    the bare source constant (`TRAINER_LEADER_BROCK`) while the roster this
+    project generates is keyed `TRAINER_LEADER_BROCK_FRLG`, so the lookup finds
+    nothing and the battle silently refuses -- which reads as "the script did
+    not run" rather than as a key mismatch.
+
+    [M27B Step 5] fixed exactly this for PLACEMENTS in gen_map_import.py. This
+    compiler was written later and never got the same treatment; found by
+    live-driving Brock, whose intro speech played and whose battle then never
+    started. Transforms only what the index recognises, so battle-MODE
+    constants and TRAINER_NONE pass through untouched.
+    """
+    return [canonical_key(a) if isinstance(a, str) and is_trainer_constant(a) else a
+            for a in args]
+
+
 def compile_body(body):
     ops = []
     skipping = False
@@ -116,7 +138,7 @@ def compile_body(body):
                 ops.append({"op": sub, "args": [text_label] if sub == "message" else []})
             continue
 
-        ops.append({"op": op, "args": args})
+        ops.append({"op": op, "args": _canonicalise_trainers(args)})
     return ops
 
 
