@@ -282,6 +282,11 @@ func _ready() -> void:
 	_test_b38_slide_mon_returns_only_when_asked()
 	_test_b38_slide_mon_offset_is_restored_on_abort()
 	_test_b38_coverage()
+	_test_b39_eruption_crouches_before_it_erupts()
+	_test_b39_eruption_jitters_the_attacker_both_ways()
+	_test_b39_eruption_rocks_all_launch_upward()
+	_test_b39_eruption_gravity_is_quadratic_and_subpixel()
+	_test_b39_coverage()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -8173,8 +8178,8 @@ func _test_b34_coverage() -> void:
 			[316, "Odor Sleuth"], [345, "Magical Leaf"]]:
 		_chk("b34 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
 	# The spawners this batch deliberately left, asserted as still-blocked.
-	for pair in [[348, "Leaf Blade"], [314, "Air Cutter"], [284, "Eruption"],
-			[139, "Poison Gas"]]:
+	# Eruption came off this list in b39 once its chain was read end to end.
+	for pair in [[348, "Leaf Blade"], [314, "Air Cutter"], [139, "Poison Gas"]]:
 		_chk("b34 %s stays deferred (stated reason)" % pair[1],
 				not _dispatcher.can_play_move(int(pair[0])))
 
@@ -8979,7 +8984,138 @@ func _test_b38_coverage() -> void:
 		_chk("b38 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
 	# The four spawners this batch deliberately left, asserted as still
 	# blocked so a partial port cannot pass quietly.
-	for pair in [[348, "Leaf Blade"], [314, "Air Cutter"], [284, "Eruption"],
-			[139, "Poison Gas"]]:
-		_chk("b38 %s stays deferred (step machine unread)" % pair[1],
+	# b39 read Eruption's chain in full and ported it; the other three each
+	# have their own named blocker recorded at the b39 section header.
+	for pair in [[348, "Leaf Blade"], [314, "Air Cutter"], [139, "Poison Gas"]]:
+		_chk("b38 %s stays deferred (named blocker, see b39)" % pair[1],
 				not _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 39] ───────────────────────────────────────────────────────
+
+func _test_b39_eruption_crouches_before_it_erupts() -> void:
+	# TWO INDEPENDENT HALVES a "spawner" framing hides. The attacker squashes
+	# for 32 frames FIRST; the rocks only fly once that completes.
+	var stage := FakeStage.new()
+	var mon: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_EruptionLaunchRocks").call(vm, {})
+	_step(vm, 16)
+	_chk("b39 Eruption squashes the attacker before launching",
+			mon.scale.y < 0.95)
+	_chk("b39 ...WIDENING as it flattens (the inverted affine rule)",
+			mon.scale.x > 1.0)
+	_chk("b39 ...and no rock has flown yet", _live_sprites(stage).is_empty())
+	_step(vm, 20)
+	_chk("b39 ...then SEVEN rocks launch once the crouch completes",
+			_live_sprites(stage).size() == 7)
+	_chk("b39 ...with the attacker's own deformation restored",
+			mon.scale.is_equal_approx(Vector2.ONE))
+
+
+func _test_b39_eruption_jitters_the_attacker_both_ways() -> void:
+	var stage := FakeStage.new()
+	var mon: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var home: float = mon.position.x
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_EruptionLaunchRocks").call(vm, {})
+	var left := false
+	var right := false
+	for i in range(20):
+		_step(vm, 1)
+		if mon.position.x < home - 1.0:
+			left = true
+		elif mon.position.x > home + 1.0:
+			right = true
+	_chk("b39 the attacker jitters BOTH ways during the crouch", left and right)
+
+
+func _test_b39_eruption_rocks_all_launch_upward() -> void:
+	# Every y in the speed table is negative -- the rocks all launch UP, and
+	# the arc comes entirely from the gravity term. A port that read the
+	# table as a spray would send some straight down.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_EruptionLaunchRocks").call(vm, {})
+	_step(vm, 33)
+	var rocks: Array = _live_sprites(stage)
+	_chk("b39 seven rocks", rocks.size() == 7)
+	var start_ys: Array = []
+	for r in rocks:
+		start_ys.append((r as AnimSprite).centre.y)
+	_step(vm, 2)
+	var all_up := rocks.size() == 7
+	for i in range(rocks.size()):
+		if not is_instance_valid(rocks[i]):
+			continue
+		if (rocks[i] as AnimSprite).centre.y >= float(start_ys[i]):
+			all_up = false
+	_chk("b39 ...and EVERY one of them launches upward", all_up)
+	var xs: Dictionary = {}
+	for r in rocks:
+		if is_instance_valid(r):
+			xs[snappedf((r as AnimSprite).centre.x, 0.5)] = true
+	_chk("b39 ...on genuinely different headings, not one shared arc",
+			xs.size() >= 5)
+
+
+func _test_b39_eruption_gravity_is_quadratic_and_subpixel() -> void:
+	# ⚠️ THE detail, and the one this test got WRONG TWICE.
+	#
+	# Gravity adds `stage * stage` every THIRD frame -- the amount ADDED grows
+	# 1, 4, 9, 16..., so the acceleration is itself accelerating.
+	#
+	# Draft 1 compared consecutive per-frame deltas and demanded monotonic
+	# growth. Gravity lands only every third frame, so correct code makes a
+	# stair and that failed.
+	# Draft 2 compared an early window against a late one. A CONSTANT gravity
+	# (`+= 1` per tick) passed it, because constant gravity accelerates too --
+	# uniformly. "It accelerates" cannot separate the two readings at all.
+	#
+	# What actually separates them is the SECOND difference: sample once per
+	# gravity tick, take the velocity between samples, and require the CHANGE
+	# in that velocity to grow. Quadratic gravity grows it; constant gravity
+	# holds it flat.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_EruptionLaunchRocks").call(vm, {})
+	_step(vm, 33)
+	var rocks: Array = _live_sprites(stage)
+	if rocks.size() < 7:
+		_chk("b39 gravity test has its rocks", false)
+		return
+	# Rock 1 is {-1,-1}, the slowest -- it stays on screen longest, so there
+	# is room to measure a real curve.
+	var rock: AnimSprite = rocks[1]
+	var samples: Array = []
+	for k in range(9):
+		_step(vm, 3)                 # exactly one gravity tick per sample
+		if not is_instance_valid(rock):
+			break
+		samples.append(rock.centre.y)
+	var vel: Array = []
+	for i in range(1, samples.size()):
+		vel.append(float(samples[i]) - float(samples[i - 1]))
+	var acc: Array = []
+	for i in range(1, vel.size()):
+		acc.append(float(vel[i]) - float(vel[i - 1]))
+	var grows := acc.size() >= 4
+	if grows:
+		var first := float(acc[0])
+		var last := float(acc[acc.size() - 1])
+		grows = last > first + 0.001
+	_chk("b39 gravity is QUADRATIC -- the acceleration itself accelerates",
+			grows)
+	_chk("b39 ...and the rock is genuinely still falling by the end",
+			vel.size() >= 4 and float(vel[vel.size() - 1]) > 0.0)
+
+
+func _test_b39_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b39 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 860)
+	_chk("b39 Eruption plays", _dispatcher.can_play_move(284))

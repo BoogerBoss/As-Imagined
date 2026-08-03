@@ -1454,6 +1454,75 @@ is harness-specific, not a shipped bug.
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
 
+### M36D batch 39 — COMPLETE 2026-08-03. One spawner read end to end; the other three get named blockers.
+
+**778 -> 779 of 845 in-scope (92.1% -> 92.2%).** 1 behavior, 1 move —
+Eruption. Behaviors 488 -> 489, suite 1215 -> 1226/1226. The leak harness
+picks Eruption up automatically and it runs clean (785/785).
+
+**One move, deliberately.** Batch 38 deferred four spawners behind a generic
+"step machine unread". Reading them: only Eruption's chain could be read end
+to end within this session. **Rule (4) says defer rather than guess, so the
+other three are still deferred — but the vague note is replaced with a named
+blocker each, so a later session does not re-derive what stopped this one:**
+
+* **`AnimTask_AirCutterProjectile`** — computes its per-frame step by FIXED-
+  POINT DIVISION (`MathUtil_Mul16(xDiff, MathUtil_Inv16(...))`), packs the
+  travel DIRECTION into `data[8]`'s low bit, and packs a subpriority into
+  `args[4]`'s high bit (`& 0x80`, then `- 64`). Three encodings to understand
+  before any motion is written.
+* **`InitPoisonGasCloudAnim`** — a THREE-phase machine: linear travel with a
+  `>> 4` sine wobble, then a re-anchor on the target with a wider `>> 3` sine
+  plus a `(cos * -3) >> 8` vertical term AND per-frame OAM priority flipping
+  as it orbits, then a third phase.
+* **`AnimTask_LeafBlade`** — nine states that re-aim a slash between them
+  while driving the target's own affine table.
+
+**Eruption is TWO independent halves, which the word "spawner" hides.** The
+attacker SQUASHES first — an affine ramp (0x100, 0x100) -> (0xE0, 0x200) over
+32 frames, which under the inverted GBA rule is a widen-and-flatten, a crouch
+— while jittering +-3 px every other frame. Only when that completes do the
+rocks fly. A port that spawned immediately would lose the wind-up entirely.
+
+**The rocks are a FIXED SEVEN on a FIXED TABLE**, not a random spray:
+`{-2,-5} {-1,-1} {3,-6} {4,-2} {2,-8} {-5,-5} {4,-7}`, x mirrored by side.
+Every y is negative — they all launch UPWARD — so the arc comes entirely from
+gravity.
+
+⚠️ **GRAVITY IS QUADRATIC AND SUB-PIXEL**: every third frame a stage counter
+increments and `stage * stage` is added to the 8x fixed-point y. The added
+amount grows 1, 4, 9, 16..., and for the first several frames it is less than
+one whole pixel.
+
+⚠️ **A REAL COORDINATE-SPACE BUG OF MINE, caught by the tests.** The first cut
+spawned the rocks off the bottom of the stage, where they died on frame one.
+Two mistakes at once: source measures from the sprite's TOP EDGE
+(`y + y2 + centerToCornerVecY` IS the top-left corner) and I measured from
+its feet; and the off-screen test scaled source's `120` by `pixel_scale`,
+which is not the floor on a stage whose aspect differs from the GBA's. New
+`_layer_extent()` uses the layer's real bounds. **Worth noting the same
+scaled-GBA-literal pattern exists elsewhere in this port** (batch 36's lava
+plume among them) and is only harmless there because those sprites start near
+the middle of the screen.
+
+⚠️ **RULE (15) A FIFTH CONSECUTIVE BATCH, and this one took TWO attempts.**
+The gravity guard was wrong twice:
+
+1. Draft 1 compared consecutive per-frame deltas and demanded monotonic
+   growth. Gravity lands only every third frame, so correct code makes a
+   stair — it failed against working code.
+2. Draft 2 compared an early window against a late one. **A CONSTANT gravity
+   passed it**, because constant gravity accelerates too, just uniformly.
+   "It accelerates" cannot separate the two readings at all.
+
+What separates them is the SECOND difference: sample once per gravity tick,
+take the velocity between samples, and require the CHANGE in that velocity to
+grow. Quadratic grows it; constant holds it flat. Re-injected and it fails.
+**Five batches running, the injection has found a weak assertion rather than
+weak code — and here it took two rounds to write one that discriminates.**
+
+---
+
 ### M36 VM cleanup fix — COMPLETE 2026-08-03. All 23 leaks closed at the root.
 
 The harness's own finding, fixed. **778/778 scripts now run clean; the

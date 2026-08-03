@@ -100,6 +100,8 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 39] —
+		"AnimTask_EruptionLaunchRocks": _eruption_launch_rocks,
 		# — [M36D batch 38] —
 		"AnimTask_VoltSwitch": _volt_switch,
 		"AnimSuperpowerRock": _superpower_rock,
@@ -16980,3 +16982,166 @@ static func _slide_mon_to_offset_and_back(vm: AnimScriptVM,
 		if comes_back:
 			mon.apply(Vector2.ZERO)
 		return true)
+
+
+# ══ [M36D batch 39] ═══════════════════════════════════════════════════════
+#
+# One spawner, read end to end. Batch 38 deferred four of these behind a
+# generic "step machine unread"; this closes the one that could be read in
+# full and REPLACES that note with a per-behavior account of what each of the
+# other three actually needs, so a later session does not re-derive it:
+#
+#   * `AnimTask_AirCutterProjectile` -- computes its per-frame step by FIXED-
+#     POINT DIVISION (`MathUtil_Mul16(xDiff, MathUtil_Inv16(...))`), packs the
+#     travel DIRECTION into `data[8]`'s low bit, and packs a subpriority into
+#     `args[4]`'s high bit (`& 0x80`, then `- 64`). Porting it needs those
+#     three encodings understood, not just its motion.
+#   * `InitPoisonGasCloudAnim` -- a THREE-phase machine: linear travel with a
+#     `>> 4` sine wobble, then a re-anchor on the target with a wider `>> 3`
+#     sine plus a `(cos * -3) >> 8` vertical term AND per-frame OAM priority
+#     flipping as it orbits, then a third phase.
+#   * `AnimTask_LeafBlade` -- nine states that re-aim a slash between them
+#     while driving the target's own affine table.
+
+
+# AnimTask_EruptionLaunchRocks (battle_anim_fire.c) + its step, plus
+# CreateEruptionLaunchRocks / GetEruptionLaunchRockInitialYPos /
+# InitEruptionLaunchRockCoordData / UpdateEruptionLaunchRockPos. No args.
+#
+# TWO INDEPENDENT HALVES that a "spawner" framing hides. The task first
+# SQUASHES THE ATTACKER -- an affine ramp from (0x100, 0x100) to (0xE0, 0x200)
+# over 32 frames -- while jittering it +-3 px horizontally every other frame.
+# Under the INVERTED GBA affine rule that is a WIDEN-AND-FLATTEN: y 0x100 ->
+# 0x200 is half height, x 0x100 -> 0xE0 is ~1.14x width. The mon crouches
+# before it erupts. Only then do the rocks fly.
+#
+# THE ROCKS ARE A FIXED SEVEN ON A FIXED TABLE, not a random spray:
+# {-2,-5} {-1,-1} {3,-6} {4,-2} {2,-8} {-5,-5} {4,-7}, with x mirrored by the
+# attacker's side. Every y is negative -- they all launch UPWARD -- and the
+# arc comes entirely from the gravity term below.
+#
+# ⚠️ GRAVITY IS QUADRATIC AND SUB-PIXEL. Every third frame a stage counter
+# increments and `stage * stage` is added to the 8x-fixed-point y. So the fall
+# accelerates, and for the first several frames it adds less than one whole
+# pixel -- porting it as a per-frame constant gives a flat lob instead of a
+# real eruption.
+const _ERUPTION_SPEEDS := [
+	[-2, -5], [-1, -1], [3, -6], [4, -2], [2, -8], [-5, -5], [4, -7],
+]
+const _ERUPTION_SQUASH_FRAMES := 32
+const _ERUPTION_SQUASH_TO := Vector2(0xE0, 0x200)
+const _ERUPTION_JITTER := 3.0
+const _ERUPTION_JITTER_EVERY := 2
+const _ERUPTION_GRAVITY_EVERY := 3
+const _ERUPTION_SPAWN_DX_PLAYER := -12.0
+const _ERUPTION_SPAWN_DX_FOE := 16.0
+const _ERUPTION_SPAWN_DY_PLAYER := 74.0
+const _ERUPTION_SPAWN_DY_FOE := 44.0
+const _ERUPTION_CAP := 240
+
+
+# The stage's own drawable extent, for behaviors whose source frees a sprite
+# once it leaves the 240x160 screen. Scaling those literals by `pixel_scale`
+# is wrong on a stage whose aspect differs from the GBA's.
+static func _layer_extent(vm: AnimScriptVM) -> Vector2:
+	if vm.stage != null and vm.stage.has_method("layer"):
+		var l: Control = vm.stage.layer()
+		if l != null and is_instance_valid(l) and l.size.x > 0.0:
+			return l.size
+	return Vector2(240.0, 160.0) * _scale(vm)
+
+
+static func _eruption_launch_rocks(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, AnimStage.ANIM_ATTACKER)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var player := _is_player_side(vm)
+	var deform := MonScale.new(node)
+	var mon := MonOffset.new(node)
+
+	# Half one: the crouch. Ramps to the squash over 32 frames while jittering.
+	var st := {"t": 0, "flip": 0, "spawned": false}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		var f: float = minf(1.0, float(t) / float(_ERUPTION_SQUASH_FRAMES))
+		# GBA affine is INVERTED -- a larger value is a SMALLER sprite.
+		var ax: float = lerpf(_GBA_AFFINE_IDENTITY, _ERUPTION_SQUASH_TO.x, f)
+		var ay: float = lerpf(_GBA_AFFINE_IDENTITY, _ERUPTION_SQUASH_TO.y, f)
+		deform.apply(Vector2(_GBA_AFFINE_IDENTITY / maxf(1.0, ax),
+				_GBA_AFFINE_IDENTITY / maxf(1.0, ay)))
+		if t % _ERUPTION_JITTER_EVERY == 0:
+			st["flip"] = int(st["flip"]) + 1
+			mon.apply(Vector2(_ERUPTION_JITTER * scale
+					* (1.0 if (int(st["flip"]) & 1) == 1 else -1.0), 0.0))
+		if t < _ERUPTION_SQUASH_FRAMES:
+			return false
+		# Half two: the rocks, launched once the crouch completes.
+		if not bool(st["spawned"]):
+			st["spawned"] = true
+			_launch_eruption_rocks(vm, node, player, scale)
+		deform.restore()
+		mon.apply(Vector2.ZERO)
+		return true)
+
+
+static func _launch_eruption_rocks(vm: AnimScriptVM, mon_node: Control,
+		player: bool, scale: float) -> void:
+	var centre := mon_node.position + mon_node.size * mon_node.scale * 0.5
+	# ⚠️ SOURCE MEASURES FROM THE SPRITE'S TOP EDGE, not its centre and not
+	# its feet: `sprite->y + y2 + centerToCornerVecY` IS the top-left corner,
+	# and the +74 / +44 is added to that. Measuring from the bottom puts the
+	# rocks a full sprite-height too low, which on this stage is far enough
+	# to spawn them past the floor and kill them on frame one -- which is
+	# exactly what the first cut did.
+	var top_edge: float = centre.y - mon_node.size.y * mon_node.scale.y * 0.5
+	var origin := Vector2(
+			centre.x + (_ERUPTION_SPAWN_DX_PLAYER if player
+					else _ERUPTION_SPAWN_DX_FOE) * scale,
+			top_edge + (_ERUPTION_SPAWN_DY_PLAYER if player
+					else _ERUPTION_SPAWN_DY_FOE) * scale)
+	var sign: float = 1.0 if player else -1.0
+	for i in range(_ERUPTION_SPEEDS.size()):
+		var rock := _make_sprite_named(vm, "gEruptionLaunchRockSpriteTemplate",
+				vm.blend_context())
+		if rock == null:
+			continue
+		rock.centre = origin
+		var vx: float = float(_ERUPTION_SPEEDS[i][0]) * sign
+		var vy: float = float(_ERUPTION_SPEEDS[i][1])
+		# 8x fixed point, exactly as source: position is `<< 3`, and the
+		# gravity term is added in those same eighth-pixel units.
+		var st := {"x8": origin.x * 8.0, "y8": origin.y * 8.0,
+				"delay": 0, "stage": 0, "t": 0}
+		vm.add_stepper(func() -> bool:
+			if not is_instance_valid(rock):
+				return true
+			rock.advance_frame()
+			st["delay"] = int(st["delay"]) + 1
+			if int(st["delay"]) > _ERUPTION_GRAVITY_EVERY - 1:
+				st["delay"] = 0
+				st["stage"] = int(st["stage"]) + 1
+				# QUADRATIC, and sub-pixel for the first several frames.
+				st["y8"] = float(st["y8"]) \
+						+ float(int(st["stage"]) * int(st["stage"])) * scale
+			st["x8"] = float(st["x8"]) + vx * 8.0 * scale
+			st["y8"] = float(st["y8"]) + vy * 8.0 * scale
+			rock.centre = Vector2(float(st["x8"]) / 8.0, float(st["y8"]) / 8.0)
+			st["t"] = int(st["t"]) + 1
+			# ⚠️ BOUNDS AGAINST THE REAL LAYER, not scaled GBA constants.
+			# Source's 240x160 screen maps onto this stage at DIFFERENT
+			# horizontal and vertical ratios, so `120 * pixel_scale` is not
+			# the floor here -- it lands well above it. Using the layer's own
+			# extents keeps "left the screen" meaning what it says.
+			var bounds: Vector2 = _layer_extent(vm)
+			if rock.centre.x < -8.0 * scale \
+					or rock.centre.x > bounds.x + 8.0 * scale \
+					or rock.centre.y < -8.0 * scale \
+					or rock.centre.y > bounds.y + 8.0 * scale \
+					or int(st["t"]) >= _ERUPTION_CAP:
+				rock.finish()
+				return true
+			return false)
