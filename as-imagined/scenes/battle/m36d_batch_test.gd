@@ -258,6 +258,18 @@ func _ready() -> void:
 	_test_b35_present_heal_particle_drifts_linearly()
 	_test_b35_twinkle_follows_its_selector()
 	_test_b35_coverage()
+	_test_b36_moongeist_and_power_shift_arc_to_the_attacker()
+	_test_b36_power_shift_mirrors_only_its_x_destination()
+	_test_b36_triple_arrow_aims_at_the_target_centre_exactly()
+	_test_b36_glacial_lance_converges_on_the_whole_side()
+	_test_b36_surging_strikes_aims_at_the_target()
+	_test_b36_elliptical_gust_is_flat()
+	_test_b36_smelling_salt_sits_above_its_battler()
+	_test_b36_lava_plume_flies_straight_not_in_an_orbit()
+	_test_b36_searing_shot_rock_refuses_an_invisible_battler()
+	_test_b36_upward_sprite_rises_at_constant_speed()
+	_test_b36_query_tasks_answer_on_arg_zero()
+	_test_b36_coverage()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -8401,3 +8413,237 @@ func _test_b35_coverage() -> void:
 	var cov := _dispatcher.coverage(ids)
 	_chk("b35 coverage reaches the measured level (%d)" % int(cov["playable"]),
 			int(cov["playable"]) >= 839)
+
+
+# ── [M36D batch 36] ───────────────────────────────────────────────────────
+
+func _test_b36_moongeist_and_power_shift_arc_to_the_attacker() -> void:
+	# THE claim of the arc family. Five behaviors share
+	# InitAnimArcTranslation; two of them aim at the USER, not the target,
+	# because they are a charge and a self-buff. "Arc to the target" is the
+	# natural reading and is wrong for exactly these two.
+	for sym in ["SpriteCB_MoongeistCharge", "SpriteCB_PowerShiftBall"]:
+		var tmpl := "gMoongeistBeamChargeTemplate" \
+				if sym == "SpriteCB_MoongeistCharge" \
+				else "gSpriteTemplate_PowerShiftDefenseBall"
+		var stage := FakeStage.new()
+		var r := _spawn(stage, sym, [0, 0, 0, 0, 12, 0], tmpl)
+		var node: AnimSprite = r["sprite"]
+		_step(r["vm"], 12)
+		var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+		var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+		var landed: Vector2 = node.centre if is_instance_valid(node) else atk
+		_chk("b36 %s converges on the ATTACKER, not the target" % sym,
+				landed.distance_to(atk) < landed.distance_to(tgt))
+
+
+func _test_b36_power_shift_mirrors_only_its_x_destination() -> void:
+	# args[2] is negated for an opponent-side user; args[3] is not.
+	var dx: Array = []
+	var dy: Array = []
+	for player in [true, false]:
+		var stage := FakeStage.new()
+		stage.player_side = player
+		var r := _spawn(stage, "SpriteCB_PowerShiftBall", [0, 0, 30, 20, 10, 0],
+				"gSpriteTemplate_PowerShiftDefenseBall")
+		var node: AnimSprite = r["sprite"]
+		_step(r["vm"], 10)
+		var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+		var d: Vector2 = (node.centre if is_instance_valid(node) else atk) - atk
+		dx.append(d.x)
+		dy.append(d.y)
+	_chk("b36 Power Shift's x destination flips with the user's side",
+			dx.size() == 2 and signf(float(dx[0])) != signf(float(dx[1])))
+	_chk("b36 ...while its y destination does NOT",
+			dy.size() == 2 and float(dy[0]) > 0.0 and float(dy[1]) > 0.0)
+
+
+func _test_b36_triple_arrow_aims_at_the_target_centre_exactly() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "SpriteCB_TripleArrowKick", [0, 0, 12, 0],
+			"gSpriteTemplate_TripleArrowKick")
+	var node: AnimSprite = r["sprite"]
+	_step(r["vm"], 12)
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	_chk("b36 Triple Arrows lands on the target's exact centre (no offset)",
+			not is_instance_valid(node) or node.centre.distance_to(tgt) < 6.0)
+
+
+func _test_b36_glacial_lance_converges_on_the_whole_side() -> void:
+	# In doubles the lance is thrown at the SIDE, so it converges on the
+	# midpoint of both targets rather than on the selected one.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "SpriteCB_GlacialLance", [0, 0, 0, 0, 0, 0, 14],
+			"gSpriteTemplate_GlacialLance")
+	var node: AnimSprite = r["sprite"]
+	_step(r["vm"], 14)
+	var t0: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	var t1: Vector2 = stage.center_of(AnimStage.ANIM_DEF_PARTNER)
+	var mid: Vector2 = (t0 + t1) * 0.5
+	var landed: Vector2 = node.centre if is_instance_valid(node) else mid
+	_chk("b36 Glacial Lance converges on the MIDPOINT of both targets",
+			landed.distance_to(mid) < landed.distance_to(t0))
+	_chk("b36 ...and it genuinely left the attacker",
+			landed.distance_to(stage.center_of(AnimStage.ANIM_ATTACKER))
+					> landed.distance_to(mid))
+
+
+func _test_b36_surging_strikes_aims_at_the_target() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "SpriteCB_SurgingStrikes", [0, 0, 0, 0, 12, 0],
+			"gSpriteTemplate_SurgingStrikesImpact")
+	var node: AnimSprite = r["sprite"]
+	_step(r["vm"], 12)
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	var landed: Vector2 = node.centre if is_instance_valid(node) else tgt
+	_chk("b36 Surging Strikes converges on the TARGET (the family's default)",
+			landed.distance_to(tgt) < landed.distance_to(atk))
+
+
+func _test_b36_elliptical_gust_is_flat() -> void:
+	# Amplitudes are 32 in x and only 8 in y -- a horizontal swirl, not a
+	# circle. A port that used one radius for both looks completely different.
+	var stage := FakeStage.new()
+	var base: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	var r := _spawn(stage, "AnimEllipticalGustAttacker", [],
+			"gBloomDoomHurricaneSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	var max_x := 0.0
+	var max_y := 0.0
+	for i in range(60):
+		_step(r["vm"], 1)
+		if not is_instance_valid(node):
+			break
+		max_x = maxf(max_x, absf(node.centre.x - base.x))
+		max_y = maxf(max_y, absf(node.centre.y - base.y
+				- 20.0 * (1024.0 / 240.0)))
+	_chk("b36 the gust genuinely sweeps horizontally", max_x > 50.0)
+	_chk("b36 ...on a FLAT ellipse (x amplitude far exceeds y)",
+			max_x > max_y * 2.5)
+
+
+func _test_b36_smelling_salt_sits_above_its_battler() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimSmellingSaltExclamation", [1, 20],
+			"gSmellingSaltExclamationSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	var tgt: Control = stage.sprite_for(AnimStage.ANIM_TARGET)
+	_chk("b36 the exclamation sits above the battler's TOP edge, not centre",
+			node.centre.y <= tgt.position.y + 1.0)
+	_chk("b36 ...horizontally centred on it",
+			absf(node.centre.x - stage.center_of(AnimStage.ANIM_TARGET).x)
+					< 1.0)
+	# The clamp: a battler high on screen must not push it off the top.
+	var stage2 := FakeStage.new()
+	(stage2.sprite_for(AnimStage.ANIM_TARGET) as Control).position.y = -400.0
+	var r2 := _spawn(stage2, "AnimSmellingSaltExclamation", [1, 20],
+			"gSmellingSaltExclamationSpriteTemplate")
+	_chk("b36 ...and is CLAMPED so it can never leave the top of the screen",
+			(r2["sprite"] as AnimSprite).centre.y >= 0.0)
+
+
+func _test_b36_lava_plume_flies_straight_not_in_an_orbit() -> void:
+	# The name says orbit; the code samples its phase ONCE and never advances
+	# it, so each ember flies a straight line on a fixed heading. The ellipse
+	# is in the SPREAD of headings across embers, not in any one path.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimLavaPlumeOrbitScatter", [40],
+			"gLavaPlumeSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	var pts: Array = []
+	for i in range(6):
+		_step(r["vm"], 1)
+		if not is_instance_valid(node):
+			break
+		pts.append(node.centre)
+	var uniform := true
+	if pts.size() >= 4:
+		var d0: Vector2 = (pts[1] as Vector2) - (pts[0] as Vector2)
+		for i in range(2, pts.size()):
+			var d: Vector2 = (pts[i] as Vector2) - (pts[i - 1] as Vector2)
+			if not d.is_equal_approx(d0):
+				uniform = false
+	_chk("b36 a Lava Plume ember flies a STRAIGHT line at constant velocity",
+			pts.size() >= 4 and uniform)
+	# Different launch phases must genuinely produce different headings.
+	var stage2 := FakeStage.new()
+	var r2 := _spawn(stage2, "AnimLavaPlumeOrbitScatter", [130],
+			"gLavaPlumeSpriteTemplate")
+	_step(r["vm"], 0)
+	_step(r2["vm"], 4)
+	var b0: Vector2 = stage2.center_of(AnimStage.ANIM_ATTACKER)
+	_chk("b36 ...and the launch phase genuinely selects its heading",
+			((r2["sprite"] as AnimSprite).centre - b0).normalized()
+					.distance_to(((pts[3] as Vector2)
+							- stage.center_of(AnimStage.ANIM_ATTACKER))
+							.normalized()) > 0.2)
+
+
+func _test_b36_searing_shot_rock_refuses_an_invisible_battler() -> void:
+	var stage := FakeStage.new()
+	stage.set_battler_visible(AnimStage.ANIM_TARGET, false)
+	var r := _spawn(stage, "SpriteCB_SearingShotRock", [0, 0, 0, 10, 1],
+			"gSearingShotEruptionImpactTemplate")
+	_step(r["vm"], 2)
+	_chk("b36 Searing Shot's rock destroys itself rather than drawing on a "
+			+ "hidden battler", _live_sprites(stage).size() == 0)
+	var stage2 := FakeStage.new()
+	var r2 := _spawn(stage2, "SpriteCB_SearingShotRock", [0, 0, 0, 10, 1],
+			"gSearingShotEruptionImpactTemplate")
+	_step(r2["vm"], 2)
+	_chk("b36 ...but draws normally on a visible one",
+			_live_sprites(stage2).size() == 1)
+
+
+func _test_b36_upward_sprite_rises_at_constant_speed() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "SpriteCB_MoveSpriteUpwardsForDuration",
+			[1, 0, 0, 3, 20], "gSpriteTemplate_BurningJealousyFireBuff")
+	var node: AnimSprite = r["sprite"]
+	var ys: Array = []
+	for i in range(5):
+		_step(r["vm"], 1)
+		ys.append(node.centre.y)
+	var deltas: Array = []
+	for i in range(1, ys.size()):
+		deltas.append(float(ys[i]) - float(ys[i - 1]))
+	var uniform := true
+	for d in deltas:
+		if absf(float(d) - float(deltas[0])) > 0.01:
+			uniform = false
+	_chk("b36 the rising sprite moves UP at a constant rate",
+			deltas.size() >= 3 and uniform and float(deltas[0]) < -1.0)
+
+
+func _test_b36_query_tasks_answer_on_arg_zero() -> void:
+	# ⚠️ RULE (12). Both write gBattleAnimArgs[0], NOT ARG_RET -- their
+	# scripts read them with an immediately-following `jumpargeq 0`, which
+	# does not reload the register file. Normalising them onto arg 7 would
+	# break both consumers while looking tidier.
+	for sym in ["AnimTask_TechnoBlast", "AnimTask_ShellSideArm"]:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		vm.args[0] = 99
+		vm.args[AnimScriptVM.ARG_RET] = 99
+		_registry.get_behavior(sym).call(vm, {})
+		_chk("b36 %s answers on ARG 0" % sym, vm.args[0] == 0)
+		_chk("b36 %s leaves ARG_RET alone" % sym,
+				vm.args[AnimScriptVM.ARG_RET] == 99)
+
+
+func _test_b36_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b36 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 851)
+	for pair in [[746, "Surging Strikes"], [668, "Moongeist Beam"],
+			[757, "Power Shift"], [771, "Triple Arrows"],
+			[752, "Glacial Lance"], [545, "Searing Shot"],
+			[546, "Techno Blast"], [729, "Shell Side Arm"],
+			[436, "Lava Plume"], [358, "Wake-Up Slap"],
+			[735, "Burning Jealousy"], [859, "Bloom Doom"]]:
+		_chk("b36 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))

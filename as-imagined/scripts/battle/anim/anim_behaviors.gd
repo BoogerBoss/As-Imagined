@@ -100,6 +100,19 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 36] —
+		"SpriteCB_SurgingStrikes": _surging_strikes,
+		"SpriteCB_MoongeistCharge": _moongeist_charge,
+		"SpriteCB_PowerShiftBall": _power_shift_ball,
+		"SpriteCB_TripleArrowKick": _triple_arrow_kick,
+		"SpriteCB_GlacialLance": _glacial_lance,
+		"SpriteCB_MoveSpriteUpwardsForDuration": _move_sprite_upwards_for_duration,
+		"SpriteCB_SearingShotRock": _searing_shot_rock,
+		"AnimEllipticalGustAttacker": _elliptical_gust_attacker,
+		"AnimSmellingSaltExclamation": _smelling_salt_exclamation,
+		"AnimLavaPlumeOrbitScatter": _lava_plume_orbit_scatter,
+		"AnimTask_TechnoBlast": _techno_blast,
+		"AnimTask_ShellSideArm": _shell_side_arm,
 		# — [M36D batch 35] —
 		"AnimThrowMistBall": _throw_mist_ball,
 		"AnimSkyDropBallUp": _sky_drop_ball_up,
@@ -16334,3 +16347,307 @@ static func _twinkle_on_battler(vm: AnimScriptVM, ctx: Dictionary) -> void:
 	node.centre = _battler_centre(vm, who)
 	_play_until_anim_ends(vm, node, _ANIM_END_CAP)
 
+
+
+# ══ [M36D batch 36] ═══════════════════════════════════════════════════════
+#
+# The one-away tail. By this point the blocker graph has almost no sharing
+# left -- 43 of the 93 blocked moves need exactly one behavior, and they are
+# 43 DIFFERENT behaviors -- so this batch is chosen for readability rather
+# than yield, and its per-move gain is ~1 apiece by construction.
+#
+# What DOES still share: five of these are `InitAnimArcTranslation` plus an
+# arc step, differing only in where the destination comes from. That
+# difference is the whole port, and it is not cosmetic -- see below.
+
+
+# The shared body for the arc family. `finish_pos` is supplied by the caller
+# precisely because that is where they diverge.
+static func _arc_to_point(vm: AnimScriptVM, node: AnimSprite, start: Vector2,
+		finish_pos: Vector2, duration: int, amplitude: float) -> void:
+	node.centre = start
+	_arc_travel(vm, node, start, finish_pos, maxi(1, duration), amplitude)
+
+
+# SpriteCB_SurgingStrikes (battle_anim_new.c). args: 0/1 spawn offset,
+# 2/3 destination offset from the TARGET, 4 duration, 5 wave amplitude.
+static func _surging_strikes(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	_arc_to_point(vm, node,
+			_positioned_centre(vm, AnimStage.ANIM_TARGET, vm.args[0],
+					vm.args[1], scale),
+			_battler_centre(vm, AnimStage.ANIM_TARGET)
+					+ Vector2(float(vm.args[2]), float(vm.args[3])) * scale,
+			vm.args[4], -float(vm.args[5]) * scale)
+
+
+# SpriteCB_MoongeistCharge (battle_anim_new.c). args: 0/1 spawn offset,
+# 2/3 destination offset, 4 duration, 5 wave amplitude.
+#
+# THE DESTINATION IS THE ATTACKER'S OWN POSITION, not the target's. Both
+# `data[2]` and `data[4]` are computed from `gBattleAnimAttacker` -- this is a
+# CHARGE, so the particles converge on the user before the beam fires. Every
+# other member of this arc family aims at the target, which makes "arc to the
+# target" the natural and wrong reading.
+static func _moongeist_charge(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var atk := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	_arc_to_point(vm, node,
+			atk + Vector2(float(vm.args[0]), float(vm.args[1])) * scale,
+			atk + Vector2(float(vm.args[2]), float(vm.args[3])) * scale,
+			vm.args[4], -float(vm.args[5]) * scale)
+
+
+# SpriteCB_PowerShiftBall (battle_anim_new.c). args: 0/1 spawn offset,
+# 2/3 destination offset from the ATTACKER, 4 duration, 5 wave amplitude.
+#
+# Also a self-arc (Power Shift swaps the user's own stats), and the ONLY
+# member of the family that side-mirrors its destination: args[2] is negated
+# for an opponent-side user. args[3] is not.
+static func _power_shift_ball(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var atk := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var dx := float(vm.args[2])
+	if not _is_player_side(vm):
+		dx = -dx
+	_arc_to_point(vm, node,
+			_positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+					vm.args[1], scale),
+			atk + Vector2(dx, float(vm.args[3])) * scale,
+			vm.args[4], -float(vm.args[5]) * scale)
+
+
+# SpriteCB_TripleArrowKick (battle_anim_new.c). args: 0/1 spawn offset,
+# 2 duration, 3 wave amplitude.
+#
+# Shares PowerShiftBall's own step function -- source says so in a comment --
+# but aims at the TARGET's exact centre with no destination offset at all,
+# and forces frame sequence 1 (the feet, not the arrows).
+const _TRIPLE_ARROW_FEET_VARIANT := 1
+
+
+static func _triple_arrow_kick(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	_apply_anim_variant(node, ctx, _TRIPLE_ARROW_FEET_VARIANT)
+	_arc_to_point(vm, node,
+			_positioned_centre(vm, AnimStage.ANIM_TARGET, vm.args[0],
+					vm.args[1], scale),
+			_battler_centre(vm, AnimStage.ANIM_TARGET),
+			vm.args[2], -float(vm.args[3]) * scale)
+
+
+# SpriteCB_GlacialLance (battle_anim_new.c). args: 0/1 spawn offset,
+# 2/3 destination offset, 4/5 unused here, 6 duration.
+#
+# Spawns on the ATTACKER and converges on the target -- or, in a doubles
+# battle against the opposing side, on the MIDPOINT of both targets, since
+# the lance is thrown at the whole side. An ally-targeting use falls back to
+# the single target.
+static func _glacial_lance(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var dest := _side_centre(vm, AnimStage.ANIM_TARGET,
+			AnimStage.ANIM_DEF_PARTNER)
+	_arc_to_point(vm, node,
+			_positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+					vm.args[1], scale),
+			dest + Vector2(float(vm.args[2]), float(vm.args[3])) * scale,
+			vm.args[6], -float(vm.args[5]) * scale)
+
+
+# SpriteCB_MoveSpriteUpwardsForDuration (battle_anim_new.c). args: 0 battler,
+# 1/2 offset, 3 speed, 4 duration. A plain constant-velocity rise -- no arc,
+# no sine.
+static func _move_sprite_upwards_for_duration(vm: AnimScriptVM,
+		ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var who: int = AnimStage.ANIM_ATTACKER if vm.args[0] == AnimStage.ANIM_ATTACKER \
+			else AnimStage.ANIM_TARGET
+	var start := _battler_centre(vm, who) \
+			+ Vector2(float(vm.args[1]), float(vm.args[2])) * scale
+	node.centre = start
+	var speed := float(vm.args[3])
+	var duration: int = maxi(1, vm.args[4])
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		node.centre = start + Vector2(0.0, -speed * float(st["t"]) * scale)
+		if int(st["t"]) >= duration:
+			node.finish()
+			return true
+		return false)
+
+
+# SpriteCB_SearingShotRock (battle_anim_new.c). args: 0/1 offset,
+# 2 frame variant, 3 duration, 4 battler selector.
+#
+# DESTROYS ITSELF OUTRIGHT if its selected battler has no visible sprite,
+# rather than drawing at a stale position -- the same guard batch 22's
+# `_anim_sprite_on_selected_mon_pos` carries.
+static func _searing_shot_rock(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var who := _anim_battler_from_arg(vm, 4)
+	if not _battler_visible(vm, who):
+		node.finish()
+		return
+	node.centre = _positioned_centre(vm, who, vm.args[0], vm.args[1],
+			_scale(vm))
+	_apply_anim_variant(node, ctx, vm.args[2])
+	var duration: int = maxi(1, vm.args[3])
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= duration:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimEllipticalGustAttacker (battle_anim_flying.c). No args.
+#
+# A FLAT ellipse on the ATTACKER, 20 px below its centre: amplitudes 32 in x
+# and only 8 in y, so it reads as a horizontal swirl rather than a circle.
+# Starts at phase 191 and steps +5, running exactly 71 frames.
+const _ELLIPTICAL_GUST_X := 32.0
+const _ELLIPTICAL_GUST_Y := 8.0
+const _ELLIPTICAL_GUST_DROP := 20.0
+const _ELLIPTICAL_GUST_START := 191
+const _ELLIPTICAL_GUST_STEP := 5
+const _ELLIPTICAL_GUST_FRAMES := 71
+
+
+static func _elliptical_gust_attacker(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var base := _battler_centre(vm, AnimStage.ANIM_ATTACKER) \
+			+ Vector2(0.0, _ELLIPTICAL_GUST_DROP * scale)
+	var st := {"t": 0, "phase": _ELLIPTICAL_GUST_START}
+	# Source calls its own step immediately, so frame 0 is already displaced.
+	node.centre = base + Vector2(
+			_gba_sin(float(st["phase"]), _ELLIPTICAL_GUST_X * scale),
+			_gba_cos(float(st["phase"]), _ELLIPTICAL_GUST_Y * scale))
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		node.centre = base + Vector2(
+				_gba_sin(float(st["phase"]), _ELLIPTICAL_GUST_X * scale),
+				_gba_cos(float(st["phase"]), _ELLIPTICAL_GUST_Y * scale))
+		st["phase"] = (int(st["phase"]) + _ELLIPTICAL_GUST_STEP) & 0xFF
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= _ELLIPTICAL_GUST_FRAMES:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimSmellingSaltExclamation (battle_anim_effects_3.c). args: 0 battler,
+# 1 duration.
+#
+# Sits above its battler's own TOP edge, not its centre -- and is CLAMPED so
+# it can never rise above y = 8, because a tall Pokemon would otherwise push
+# the exclamation mark off the top of the screen.
+const _SMELLING_SALT_MIN_Y := 8.0
+
+
+static func _smelling_salt_exclamation(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var who: int = AnimStage.ANIM_ATTACKER if vm.args[0] == AnimStage.ANIM_ATTACKER \
+			else AnimStage.ANIM_TARGET
+	var mon := _battler_node(vm, who)
+	var centre := _battler_centre(vm, who)
+	var top: float = centre.y
+	if mon != null:
+		top = centre.y - mon.size.y * mon.scale.y * 0.5
+	node.centre = Vector2(centre.x,
+			maxf(top, _SMELLING_SALT_MIN_Y * scale))
+	_play_until_anim_ends(vm, node, maxi(1, vm.args[1]))
+
+
+# AnimLavaPlumeOrbitScatter (battle_anim_fire.c). args: 0 launch phase.
+#
+# Constant velocity, NOT an orbit despite the name: the phase is sampled ONCE
+# to pick a direction (`Sin(phase, 10)`, `Cos(phase, 7)`) and then never
+# advances, so each ember flies straight out on its own fixed heading. The
+# ellipse is in the SPREAD of headings, not in any one ember's path.
+const _LAVA_PLUME_X := 10.0
+const _LAVA_PLUME_Y := 7.0
+
+
+static func _lava_plume_orbit_scatter(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var vel := Vector2(
+			_gba_sin(float(vm.args[0]), _LAVA_PLUME_X),
+			_gba_cos(float(vm.args[0]), _LAVA_PLUME_Y)) * scale
+	node.centre = start
+	var st := {"t": 0, "p": start}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["p"] = (st["p"] as Vector2) + vel
+		node.centre = st["p"] as Vector2
+		st["t"] = int(st["t"]) + 1
+		# Upstream frees it once it leaves the screen box.
+		var p: Vector2 = st["p"]
+		if p.x > 272.0 * scale or p.y > 160.0 * scale or p.y < -16.0 * scale \
+				or int(st["t"]) >= _ANIM_END_CAP:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimTask_TechnoBlast (battle_anim_new.c). No args.
+#
+# ⚠️ ANSWERS ON ARG 0, not ARG_RET -- rule (12). Upstream writes the Drive
+# item's own secondary id so the script can branch to the matching elemental
+# form. This project has no Drive items at all, so it answers 0 (the Normal
+# form), which is also upstream's own no-Drive branch. Structurally correct
+# rather than stubbed: when Drives exist, only the lookup changes.
+static func _techno_blast(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	vm.args[0] = 0
+
+
+# AnimTask_ShellSideArm (battle_anim_new.c). No args.
+#
+# ⚠️ ALSO ANSWERS ON ARG 0. Reports whether the move swapped to the physical
+# category. `gBattleStruct->swapDamageCategory` has no equivalent here, so it
+# answers FALSE -- the special form. Disclosed: a Shell Side Arm that really
+# did swap will play the wrong one of its two animations until the engine
+# exposes the flag.
+static func _shell_side_arm(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	vm.args[0] = 0

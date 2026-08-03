@@ -1454,6 +1454,86 @@ is harness-specific, not a shipped bug.
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
 
+### M36D batch 36 — COMPLETE 2026-08-03. The one-away tail, and one shared family inside it.
+
+**839 -> 851 of 932 (90.0% -> 91.3%). 12 behaviors, 12 moves.** Behaviors
+471 -> 483, suite 1140 -> 1175/1175.
+
+**The blocker graph has essentially stopped sharing.** 43 of the 93 blocked
+moves need exactly one behavior — and they are 43 DIFFERENT behaviors. The
+greedy top has fallen from +19 (batch 33's board) through +3 to a flat +1 for
+nearly everything. This batch is therefore selected for READABILITY rather
+than yield, and its ~1-move-per-behavior ratio is structural, not a miss.
+**Rule (1) inverts here**: from this point the metric that mattered for 30
+batches — machinery retired — no longer distinguishes candidates.
+
+**The one family left: five behaviors are `InitAnimArcTranslation` plus an
+arc step, and they differ ONLY in where the destination comes from.** That
+difference is the entire port:
+
+| Behavior | Destination |
+|---|---|
+| `SpriteCB_SurgingStrikes` | target + offset (the family default) |
+| `SpriteCB_TripleArrowKick` | target's EXACT centre, no offset; forces frame variant 1 (feet) |
+| `SpriteCB_GlacialLance` | the MIDPOINT of both targets in doubles — thrown at the side |
+| **`SpriteCB_MoongeistCharge`** | **the ATTACKER** — it is a charge |
+| **`SpriteCB_PowerShiftBall`** | **the ATTACKER** — a self-buff; and the only one that side-mirrors, on x only |
+
+⚠️ **"Arc to the target" is the natural reading and is wrong for two of the
+five.** Both `data[2]` and `data[4]` in Moongeist Charge are computed from
+`gBattleAnimAttacker`, not the target. Registering these as one shared alias —
+which the identical step function invites — would send a charge animation
+flying at the opponent. Pinned by asserting the landing point is nearer the
+attacker than the target; the injection sends it to the target and fails.
+
+**`AnimLavaPlumeOrbitScatter` does not orbit, despite the name.** The phase is
+sampled ONCE to pick a heading (`Sin(phase, 10)`, `Cos(phase, 7)`) and then
+never advances — each ember flies a straight line at constant velocity. **The
+ellipse is in the SPREAD of headings across embers, not in any one ember's
+path.** Reproducing the name rather than the code gives every ember a circular
+path and loses the burst entirely. Tested by asserting equal per-frame deltas
+AND that two different launch phases yield genuinely different headings.
+
+**`AnimEllipticalGustAttacker` is FLAT** — amplitude 32 in x against only 8 in
+y, so it reads as a horizontal swirl. A single-radius port is a different
+animation; the test requires max-x to exceed max-y by 2.5x.
+
+**`AnimSmellingSaltExclamation` anchors to the battler's TOP edge, not its
+centre, and is CLAMPED at y >= 8** so a tall Pokemon cannot push the mark off
+the top of the screen. Both halves injected and caught.
+
+**`SpriteCB_SearingShotRock` destroys itself outright** if its selected battler
+has no visible sprite, rather than drawing at a stale position — the same guard
+batch 22's `_anim_sprite_on_selected_mon_pos` carries.
+
+⚠️ **RULE (12) AGAIN, and this time for two behaviors at once.**
+`AnimTask_TechnoBlast` and `AnimTask_ShellSideArm` both answer on **arg 0**,
+not ARG_RET, because their scripts read them with an immediately-following
+`jumpargeq 0` which does not reload the register file. Normalising them onto
+arg 7 looks tidier and breaks both consumers; the injection confirms it. Both
+are also **structurally correct rather than stubbed**: Techno Blast returns 0
+because this project has no Drive items, which is upstream's own no-Drive
+branch, and Shell Side Arm returns 0 because `gBattleStruct->swapDamageCategory`
+has no equivalent here. **Disclosed: a Shell Side Arm that really did swap
+category will play the wrong one of its two animations** until the engine
+exposes that flag.
+
+**Injections.** 9 run, 9 caught.
+
+**Where the remaining 81 sit.** ~20 are genuinely blocked on absent
+architecture — the WIN0/WIN1 spotlight family (Encore, Spotlight, Flatter,
+Flower Trick, Oceanic Operetta, Instruct), palette backup buffers (Overheat,
+Burn Up), the Memento shadow, per-scanline DMA (the Rapid Spin family, 5
+moves), seismic-toss BG scroll, mosaic + sheet swap (Transform, Acid Armor),
+and the item-icon surface (Bestow). Terrain (Camouflage, Rising Voltage,
+Terrain Pulse) is VOID by decision, not deferred. **Z-Moves and Max Moves are
+a live question**: several remaining blockers serve only those, and CLAUDE.md
+records that family as permanently excluded at the M19 mechanics level — if
+that exclusion extends to animations, they come off the denominator rather
+than being ported. Rob's call, not assumed here.
+
+---
+
 ### M36D batch 35 — COMPLETE 2026-08-03. Pairs that are not pairs.
 
 **827 -> 839 of 932 (88.7% -> 90.0%). 10 behaviors, 12 moves.** Behaviors
