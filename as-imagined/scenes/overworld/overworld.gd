@@ -796,6 +796,10 @@ func try_interact() -> bool:
 ## one without simulating a button press.
 func run_script(label: String, p_subject: OverworldEntity = null) -> bool:
 	_vm = ScriptVM.new(_script_source, flags)
+	# [M27I I3] The session's bag, not the VM's own default — the same reason
+	# `flags` reads through OverworldSession. A per-script bag would forget
+	# every item the moment the script ended.
+	_vm.bag = OverworldSession.bag
 	if not _vm.start(label, p_subject):
 		# Degrade LOUDLY but without breaking play: the VM named what it could
 		# not resolve, so say so and hand control back.

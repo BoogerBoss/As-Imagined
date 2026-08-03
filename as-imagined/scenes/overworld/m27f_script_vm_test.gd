@@ -151,11 +151,19 @@ func _test_pause_kinds() -> void:
 
 ## --- C. degrading must NAME what it could not do ---
 func _test_degrade_paths() -> void:
-	# `checkitemspace` is the opcode Brock's own post-battle chain really stops
-	# on today (the bag is M27I), so this stays a live example rather than a
-	# hypothetical. It replaced `applymovement`, which Stage 3 implemented --
-	# a genuine correctness change legitimately invalidating a stale fixture.
-	var vm := ScriptVM.new(_src({"A": [_op("checkitemspace", ["ITEM_TM39", "1"])]}),
+	# ⚠️ THIS FIXTURE HAS NOW MOVED TWICE, BOTH TIMES BECAUSE IT WAS IMPLEMENTED:
+	# `applymovement` (Stage 3) -> `checkitemspace` (M27I I3) -> here. Each move
+	# was a genuine correctness change legitimately invalidating a stale
+	# assumption, but picking the next roadblock is picking a fixture with an
+	# expiry date, and [M27C] already paid for that once when a "known unbaked"
+	# map got baked and took ten assertions down with it.
+	#
+	# `frontier_set` is chosen because it belongs to a PERMANENTLY EXCLUDED
+	# subsystem — Battle Frontier facilities, which `docs/overworld_scope.md`
+	# rules out and M35 owns only as trainer data. It is real (162 corpus uses),
+	# so this still tests the VM against data it will genuinely meet, but nothing
+	# on any roadmap will implement it out from under this test.
+	var vm := ScriptVM.new(_src({"A": [_op("frontier_set", ["FRONTIER_DATA_1", "0"])]}),
 			FlagStore.new())
 	_chk("C.01 an unknown label fails start() rather than throwing",
 			not vm.start("NoSuchScript"))
@@ -167,8 +175,8 @@ func _test_degrade_paths() -> void:
 	vm.step()
 	_chk("C.04 an out-of-stage opcode stops on UNKNOWN_OP",
 			vm.pause_reason == ScriptVM.Pause.UNKNOWN_OP)
-	_chk("C.05 naming the opcode", vm.diagnostic.contains("checkitemspace"))
-	_chk("C.06 and current_op still points at it", vm.current_op == "checkitemspace")
+	_chk("C.05 naming the opcode", vm.diagnostic.contains("frontier_set"))
+	_chk("C.06 and current_op still points at it", vm.current_op == "frontier_set")
 
 
 ## --- D. call/return frames. THE BUG: bare PCs across a swapped op array. ---

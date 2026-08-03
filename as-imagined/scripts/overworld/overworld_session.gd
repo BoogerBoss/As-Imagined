@@ -26,6 +26,12 @@ extends RefCounted
 ## valid after one.
 static var flags := FlagStore.new()
 
+## [M27I I3] The player's bag. Static for the same reason `flags` is: a battle
+## is a real scene swap, so anything held on the overworld scene would be
+## discarded — and a bag that forgot itself every trainer fight is worse than
+## no bag at all.
+static var bag := Bag.new()
+
 ## Where to put the player when the overworld next loads, or empty for "use the
 ## scene's own start_map". Written when a battle starts, consumed on return.
 static var pending_return: Dictionary = {}

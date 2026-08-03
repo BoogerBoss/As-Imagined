@@ -97,6 +97,10 @@ var subject: OverworldEntity = null
 ## gStringVar1-3 globals — deliberately NOT in FlagStore, which is save state.
 var buffers := TextBuffers.new()
 
+## [M27I I3] The player's bag. Injected like `_flags` so a test can hand in a
+## fresh one; defaults to a private bag so a VM built without one still runs.
+var bag := Bag.new()
+
 ## Result of the last `compare`: 0 equal, 1 greater, -1 less. Source keeps the
 ## same single-slot comparison result. OBSERVABLE because it decides whether
 ## `goto_if_eq` branches — without it in describe(), a test that froze the VM
@@ -324,6 +328,31 @@ func step() -> bool:
 			_call_stack.push_back({"label": script_label, "pc": pc})
 			return _jump("Common_EventScript_SetGymTrainers_Frlg")
 
+		"additem", "removeitem", "checkitem", "checkitemspace":
+			# All four set VAR_RESULT and scripts branch on it immediately.
+			# ⚠️ Both arguments run through the variable store: `additem
+			# VAR_0x8009` and `checkitemspace VAR_TEMP_0` are real corpus forms.
+			var it := _resolve_item(str(args[0])) if args.size() > 0 else 0
+			var qty := _resolve_number(str(args[1])) if args.size() > 1 else 1
+			var ok := false
+			match current_op:
+				"additem": ok = bag.add(it, qty)
+				"removeitem": ok = bag.remove(it, qty)
+				"checkitem": ok = bag.has_item(it, qty)
+				_: ok = bag.has_space(it, qty)
+			_set_result(ok)
+			return true
+
+		"checkitemtype":
+			# VAR_RESULT is the POCKET here, not a boolean -- the obtain-item
+			# flow switches on it to pick which pocket name to buffer.
+			if _flags != null and args.size() > 0:
+				_flags.var_set("VAR_RESULT", Bag.pocket_of(_resolve_item(str(args[0]))))
+			return true
+
+		"giveitem", "finditem", "giveitem_msg":
+			return _obtain_item(args)
+
 		"bufferitemname", "bufferitemnameplural":
 			# ⚠️ Both the SLOT and the ITEM can arrive as variables. Every arg
 			# in source goes through VarGet, and the corpus really does carry a
@@ -496,6 +525,87 @@ func resume_after_battle(won: bool) -> void:
 ##     takes its post-battle branch with nothing extra to wire.
 ##
 ## `call_if_*` is the same test with a pushed frame instead of a tail jump.
+## Set VAR_RESULT to a boolean outcome. Source writes TRUE/FALSE as 1/0 and
+## every `goto_if_eq VAR_RESULT, TRUE` compares against 1.
+func _set_result(ok: bool) -> void:
+	if _flags != null:
+		_flags.var_set("VAR_RESULT", 1 if ok else 0)
+
+
+## [M27I I3] `giveitem` / `finditem` / `giveitem_msg`.
+##
+## ⚠️ NONE OF THESE IS A PRIMITIVE IN SOURCE. `giveitem` is a macro over
+## `setorcopyvar` x2 + `callstd STD_OBTAIN_ITEM`, and that standard script does
+## the real work: additem -> buffer the pluralised name -> `checkitemtype` ->
+## buffer the POCKET name -> branch on success -> "obtained" + "put away", or
+## "the BAG is full". This project's compiler kept the macro unexpanded, so what
+## is reproduced here is that script's DECISION STRUCTURE — the same approach
+## [M27F Stage 2] took for `trainerbattle_single`, and for the same reason: the
+## real script needs commands (`playfanfare`, `showitemdescription`) this
+## project has no equivalent for, while its branching is exactly the behaviour.
+##
+## The TEXT is not invented — every page is source's own string, already in
+## `map_texts.json` from Stage 1's extraction.
+func _obtain_item(args: Array) -> bool:
+	# giveitem_msg's first argument is its own message label; the other two
+	# forms lead with the item.
+	var msg_label := ""
+	var idx := 0
+	if current_op == "giveitem_msg" and args.size() > 0:
+		msg_label = str(args[0])
+		idx = 1
+	var item_id := _resolve_item(str(args[idx])) if args.size() > idx else 0
+	var qty := _resolve_number(str(args[idx + 1])) if args.size() > idx + 1 else 1
+	if qty <= 0:
+		qty = 1
+
+	var ok := bag.add(item_id, qty)
+	_set_result(ok)
+
+	# STR_VAR_2 is the item, STR_VAR_1 the count, STR_VAR_3 the pocket — the
+	# slots source's own strings read.
+	buffers.set_slot(1, _item_name(item_id, qty))
+	buffers.set_slot(0, str(qty))
+	buffers.set_slot(2, buffers.std_string(_POCKET_STDSTRING.get(
+			Bag.pocket_of(item_id), "STDSTRING_ITEMS")))
+
+	var pages := PackedStringArray()
+	if msg_label != "":
+		# giveitem_msg supplies its own line and skips the standard pair.
+		pages.append_array(_source.pages_for(msg_label))
+	elif not ok:
+		pages.append_array(_source.pages_for("gText_TooBadBagIsFull"
+				if current_op == "finditem" else "gText_TheBagIsFull"))
+	elif current_op == "finditem":
+		pages.append_array(_source.pages_for(
+				"gText_PlayerFoundOneItem" if qty == 1 else "gText_PlayerFoundItems"))
+		pages.append_array(_source.pages_for("gText_PlayerPutItemInBag"))
+	else:
+		pages.append_array(_source.pages_for(
+				"gText_ObtainedTheItem" if qty == 1 else "gText_ObtainedTheItems"))
+		pages.append_array(_source.pages_for("gText_PutItemInPocket"))
+
+	if pages.is_empty():
+		# No text is a data problem worth naming, not a silent success.
+		diagnostic = "no obtain-item text for item %d" % item_id
+		return true
+	pending_pages = pages
+	pending_page_index = 0
+	pause_reason = Pause.WAIT_MESSAGE
+	return true
+
+
+## Pocket ordinal -> the std string naming it, from
+## `EventScript_BufferPocketNameAndTryFanfare`'s own switch.
+const _POCKET_STDSTRING := {
+	ItemManager.POCKET_ITEMS: "STDSTRING_ITEMS",
+	ItemManager.POCKET_KEY_ITEMS: "STDSTRING_KEYITEMS",
+	ItemManager.POCKET_POKE_BALLS: "STDSTRING_POKEBALLS",
+	ItemManager.POCKET_TM_HM: "STDSTRING_TMHMS",
+	ItemManager.POCKET_BERRIES: "STDSTRING_BERRIES",
+}
+
+
 ## [M27I I2] An argument that may be an ITEM_* constant OR a variable holding
 ## an item id. Source runs every one through `VarGet`; 64 corpus args really
 ## are variables, concentrated in the give-and-branch chains.

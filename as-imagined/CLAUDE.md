@@ -1703,6 +1703,34 @@ New `scripts/gen_std_strings.py` -> `data/std_strings.json`: all **39** of `gStd
 
 **Next**: I3 — the bag and the item opcodes, which is what unblocks Brock.
 
+**[M27I I3 — the bag and the item opcodes] COMPLETE — 2026-07-31. BROCK'S REWARD CHAIN RUNS TO THE END.**
+
+The wall the whole vertical slice was stopped against: Brock's win path ran its reward chain and halted on `checkitemspace`. Driven on the REAL compiled script now — `PewterCity_Gym_EventScript_DefeatedBrock` runs **28 ops and ends DONE**, not UNKNOWN_OP, with **TM39 in the bag and `FLAG_BADGE01_GET` set**.
+
+New `scripts/overworld/bag.gd`, held on `OverworldSession` beside `FlagStore` — a battle is a real scene swap, and a bag held on the overworld would be discarded with it.
+
+⚠️ **IT IS A SLOT MODEL, NOT A `{item: count}` DICTIONARY, AND THAT IS THE WHOLE POINT OF `checkitemspace`.** Source's bag is a fixed array of slots per pocket, so "is there room" is a question about SLOTS. A dictionary answers yes forever and makes every bag-full branch in every script dead code. Break-tested: removing the slot limit fails B.14 and D.05.
+
+**Capacities are source's own** (`global.h`): ITEMS 30 · POKE_BALLS 16 · TM_HM 64 · BERRIES 46 · KEY_ITEMS 30, stack cap 999.
+
+⚠️ **TM/HM AND BERRIES TAKE ONE STACK PER ITEM AND REFUSE MORE.** `BagPocket_AddItem` branches those two pockets out specifically — if a count cannot fit one slot it returns FALSE, where every other pocket spills into a second. Treating all five alike would let 1000 Berries into a pocket that must say no. Break-tested: fails C.03/C.04.
+
+⚠️ **ADD AND REMOVE ARE ALL-OR-NOTHING, WHICH IS SOURCE'S CONTRACT, NOT A SIMPLIFICATION.** Source computes into a scratch buffer and only writes real slots once the whole count fits. A partial add leaves a script that branched on "you did not get it" holding some of it.
+
+⚠️ **AND THE OBVIOUS TEST FOR THAT WAS VACUOUS.** B.15 fills a pocket EXACTLY, which cannot overflow anyway — the fill loop simply finds no room — so deleting the up-front space check left B.15 green. The real hazard needs a PART-FULL stack and no free slot: a naive add tops that stack up, then fails, having already banked 499. **B.16 was written specifically because injecting the mistake did not fail the test that looked like it covered it.** Same lesson as `[M27F Stage 3b]`'s K.15.
+
+**`giveitem`/`finditem`/`giveitem_msg` reproduce `STD_OBTAIN_ITEM`'s DECISION STRUCTURE** — add, buffer the pluralised name, resolve the pocket, buffer its name, then branch to "Obtained the ..."/"put away in the ... POCKET" or "The BAG is full". Same approach `[M27F Stage 2]` took for `trainerbattle_single`, and for the same reason: the real script calls `playfanfare`/`showitemdescription`, which have no equivalent here, while its branching IS the behaviour. **The text is not invented** — every page is source's own string, already in `map_texts.json` from Stage 1.
+
+They **pause on WAIT_MESSAGE** like `message` does. A `giveitem` that ran silently would skip the whole obtained beat.
+
+**The four primitives** (`additem`/`removeitem`/`checkitem`/`checkitemspace`) plus `checkitemtype` all set `VAR_RESULT` and run **both** arguments through the variable store — `additem VAR_0x8009`, `checkitemspace VAR_TEMP_0` are real corpus forms, 64 region-wide. `checkitemtype` writes the POCKET rather than a boolean, which is what the obtain flow switches on.
+
+⚠️ **THE UNKNOWN-OPCODE FIXTURE MOVED FOR THE THIRD TIME AND IS NOW PINNED.** `applymovement` (Stage 3) -> `checkitemspace` (here) -> `frontier_set`. Each move was a real correctness change invalidating a stale assumption, but picking the next roadblock is picking a fixture with an expiry date — `[M27C]` already paid for that when a "known unbaked" map got baked and took ten assertions down. `frontier_set` belongs to a PERMANENTLY EXCLUDED subsystem (Battle Frontier facilities), so it is real data nothing will implement out from under the test.
+
+**Tests**: new `m27i_bag_test` **47/47**, four breaks verified. Regression: `m27i_text_buffers_test` 42/42, `m27i_item_identity_test` 31/31, `m27f_script_vm_test` 136/136, `m27a_step_resolver_test` 514/514, `item_registry_test` 309/309, `m18_patch1_test` 21/21, `item_test` 77/77, `check_bake_diff --all` 32/32.
+
+**Not built**: the bag SCREEN (I4) — items go in and out, nothing shows them yet — and the wallet (I3b), so `checkmoney`/`removemoney` still stop a script.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **[M27M-T — trimmed TileSet] SCOPED 2026-07-30, not built. ⚠️ Scope of record is `docs/m27m_trimmed_tileset_recon.md`.** Measured rather than estimated: a real trimmed twin of the Pallet Town pair loads in **1.71 ms against the full set's 15.25 ms — 8.9x**, 25 KB → 6 KB. Region-wide only **11,036 tile definitions are actually placed** against the 132,480 `create_tile()` calls made today (**4.0x**), and all fourteen corridor pairs together would build in **~31 ms** — about what ONE cold tileset costs now. Baked scenes need no re-bake (M27M2 made the TileSet an `ext_resource`), `check_bake_diff` and the overlay are unaffected, and no consumer iterates tiles. **The failure mode is SILENT and is the whole design constraint**: `set_cell` accepts a coord whose tile was never created, stores it faithfully, and renders nothing — so the trim pass must ship with its own coverage proof, not after. Three hazards are recorded there with measurements: the trim set must be computed region-wide per pair rather than per-bake (or a later map silently renders with holes), it must union `border[]` as well as `metatile[]` (**5 border ids region-wide appear in no map body**), and it conflicts head-on with M27M's authoring requirement — resolved by treating `trim`/`expand` as two idempotent operations on ONE artifact rather than shipping two files.
