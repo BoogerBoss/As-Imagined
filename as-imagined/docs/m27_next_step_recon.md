@@ -150,7 +150,41 @@ full" (source's own behaviour when the PC is unavailable) or the PC itself.
 
 ---
 
-## 5. Decisions for Rob
+## 5. Decisions — ALL SIX RESOLVED BY ROB, 2026-08-03
+
+| # | Question | Rob's answer |
+|---|---|---|
+| 1 | Next step | **M27H (wild encounters)**, then I5 |
+| 2 | Is the PC in the slice? | **Defer past the slice** |
+| 3 | Catch with a full party | **Refuse the catch** (source's own no-PC behaviour) |
+| 4 | Repel + encounter-immunity window | **Decline BOTH, record the gap** |
+| 5 | Fleeing | **Real flee odds in H5** |
+| 6 | Who builds Summary | **Whichever milestone reaches it first** |
+
+⚠️ **Decision 4 went AGAINST this document's own recommendation, and that is recorded
+deliberately.** §2.3 recommended porting the post-battle immunity window on the grounds
+that back-to-back encounters read as a bug. Rob declined both. So H ships with a bare
+encounter roll, and **the absence of an immunity window is a decision, not an oversight** —
+a later session finding `RestartWildEncounterImmunitySteps` in source must not "fix" it
+without asking. Same for Repel, which was additionally moot until item use exists (I5-3).
+
+**Consequences for H's own sub-phases**, following from the answers above:
+
+* **H4 (catching) is UNBLOCKED and needs no PC** — decision 3 is what makes decision 2
+  safe rather than merely convenient. A full party refuses, exactly as source does when
+  no storage is available.
+* **H2 gets simpler**: no immunity counter, no repel step counter. The trigger is the
+  encounter-rate roll and nothing else.
+* **H5 is IN**, replacing `[M25b]`'s Run placeholder ("end battle now, return to setup",
+  which always succeeds) with source's real speed-and-attempt-counter escape formula.
+  ⚠️ That placeholder is shared with TRAINER battles, where fleeing must stay impossible —
+  so H5 must not simply repoint it.
+* **Summary is not H's problem**, and when I5 reaches it, `docs/m26_e4_recon.md` is the
+  scope of record either way.
+
+---
+
+## 5b. Original framing of the questions (superseded, kept for the reasoning)
 
 1. **Next step: M27H or I5?** Recommendation **M27H** — it is the last unproven seam, its
    data is complete for the corridor, and it makes 1,223 currently-inert cells live.
