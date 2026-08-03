@@ -44,6 +44,10 @@ enum Pause {
 	## [M27F Stage 3] `waitmovement` — one or more entities are walking. Unlike
 	## WAIT_BATTLE this carries no result, so a plain resume() is correct for it.
 	WAIT_MOVEMENT,
+	## [M27K K-c] The naming screen is open on a Pokémon nickname. Carries a
+	## result (the typed name) like WAIT_YES_NO does, so `resume()` alone is NOT
+	## enough — the caller must go through `answer_naming`.
+	WAIT_NAMING,
 }
 
 ## The one multichoice list Stage 4 implements.
@@ -245,7 +249,7 @@ func is_running() -> bool:
 
 func is_waiting() -> bool:
 	return pause_reason in [Pause.WAIT_MESSAGE, Pause.WAIT_BUTTON, Pause.WAIT_YES_NO,
-			Pause.WAIT_BATTLE, Pause.WAIT_MOVEMENT]
+			Pause.WAIT_BATTLE, Pause.WAIT_MOVEMENT, Pause.WAIT_NAMING]
 
 
 func is_finished() -> bool:
@@ -254,11 +258,12 @@ func is_finished() -> bool:
 
 ## The caller reports that whatever we were waiting on has happened.
 func resume() -> void:
-	# ⚠️ WAIT_BATTLE is deliberately NOT resumable this way. A battle carries a
-	# RESULT the script has to branch on, so clearing it here would silently
-	# skip the win/loss branch and read as "the post-battle script just did not
-	# run". Use resume_after_battle().
-	if is_waiting() and pause_reason != Pause.WAIT_BATTLE:
+	# ⚠️ WAIT_BATTLE and WAIT_NAMING are deliberately NOT resumable this way. Both
+	# carry a RESULT: a battle's win/loss branch, and the typed nickname. Clearing
+	# either here would silently drop it and read as "the script just carried on".
+	# Use resume_after_battle() / answer_naming().
+	if is_waiting() and pause_reason != Pause.WAIT_BATTLE \
+			and pause_reason != Pause.WAIT_NAMING:
 		pause_reason = Pause.NONE
 
 
@@ -384,10 +389,38 @@ func step() -> bool:
 						_resolve_number(str(args[1])))
 			return true
 
+		# [M27K K-c] ⚠️ **A NO-OP, AND THE REASON IS NOT "no fade system exists"
+		# — there IS one** (`_fade_to`, used by warps and the battle round trip).
+		# It is a no-op because **the fade this opcode starts is NEVER closed by
+		# another opcode.** `Common_EventScript_NameReceivedPartyMon` is
+		# `fadescreen FADE_TO_BLACK` / `special ChangePokemonNickname` / `return`,
+		# and the fade back is done by the naming screen's own return callback
+		# (`CB2_ReturnToFieldContinueScriptPlayMapMusic`), which is engine
+		# plumbing this project does not have. So a faithful-looking fade here
+		# would leave the screen black for good — the no-op is the SAFE reading,
+		# not the lazy one.
+		#
+		# 128 corpus uses, 106 of them `FADE_TO_BLACK`. A future session that
+		# implements this properly must pair it with the SCREEN TRANSITION, not
+		# with a matching opcode, because in 106 places there is no matching
+		# opcode to pair with. `fadescreenspeed` (8 uses) and
+		# `fadescreenswapbuffers` (34) are deliberately NOT included — nothing in
+		# this milestone reaches them, and the second genuinely swaps buffers
+		# rather than just fading.
+		"fadescreen":
+			return true
+
 		# [M27F Stage 4] A NARROW carve-out — see FieldSpecials for why an
 		# unknown one halts rather than degrading to a default.
 		"special", "callnative":
 			var fn := str(args[0]) if args.size() > 0 else ""
+			# [M27K K-c] ⚠️ CHECKED BEFORE `FieldSpecials.run`, because this one
+			# cannot be answered synchronously — it opens a screen and waits.
+			# `run()` returns a bool in the same frame, which is the right shape
+			# for HealPlayerParty and wrong for every special that owns the
+			# display. Handled here so the pause lives with the other pauses.
+			if fn == FieldSpecials.NICKNAME_SPECIAL:
+				return _begin_nickname()
 			if FieldSpecials.run(fn):
 				return true
 			pause_reason = Pause.UNKNOWN_OP
@@ -801,6 +834,88 @@ func _give_mon(dex: int, level: int) -> bool:
 		party.active_indices = [0]
 	_set_result(true)
 	return true
+
+
+## [M27K K-c] `special ChangePokemonNickname` — open the keyboard on a party
+## member and pause until `answer_naming` reports what was typed.
+##
+## ⚠️ **THE SLOT IS `VAR_0x8004`, AND IT IS A SLOT INDEX, NOT A FLAG.**
+## `GetSelectedBoxMonFromPcOrParty` (`pokemon.c:6846`) indexes
+## `gParties[B_TRAINER_PLAYER][gSpecialVar_0x8004]` directly, with the single
+## reserved value `PC_MON_CHOSEN` (0xFE, `party_menu.h:4`) diverting to the box
+## instead. So `setvar VAR_0x8004, 0` in `EventScript_GiveNicknameToStarter`
+## means "party slot 0" and nothing more.
+##
+## The PC path HALTS rather than falling back to the party. There is no PC (I5-5,
+## deferred past the slice), and silently renaming a party member when the script
+## asked for a boxed one is the kind of near-miss that reads as working.
+const PC_MON_CHOSEN := 0xFE
+
+
+func _begin_nickname() -> bool:
+	var slot := 0
+	if _flags != null:
+		slot = _flags.var_get("VAR_0x8004")
+	if slot == PC_MON_CHOSEN:
+		pause_reason = Pause.UNKNOWN_OP
+		diagnostic = "ChangePokemonNickname: the PC path needs a PC (I5-5)"
+		return false
+	if slot < 0 or slot >= party.members.size():
+		pause_reason = Pause.UNKNOWN_OP
+		diagnostic = ("ChangePokemonNickname: VAR_0x8004 is %d, and the party "
+				+ "holds %d") % [slot, party.members.size()]
+		return false
+	naming_slot = slot
+	pause_reason = Pause.WAIT_NAMING
+	return true
+
+
+## Which party slot the open naming screen is renaming. Meaningful only while
+## `pause_reason == WAIT_NAMING`.
+var naming_slot := -1
+
+
+## The prompt the naming screen should show.
+##
+## ⚠️ Source builds this in `DrawMonTextEntryBox` (`naming_screen.c:1778`) by
+## prepending `GetSpeciesName(monSpecies)` to `sMonNamingScreenTemplate.title`,
+## which is `"{STR_VAR_1}'s nickname?"` — so the template carries a placeholder
+## AND the draw function substitutes the species itself. I could not resolve from
+## reading alone whether the expansion double-renders there; what is unambiguous
+## is that the species name appears once, followed by "'s nickname?", so that is
+## what this builds. Recorded rather than presented as a clean port.
+##
+## Reads the SPECIES, not `display_name()` — you are being asked about the thing
+## you caught, and after a rename the old nickname is not what identifies it.
+func naming_prompt() -> String:
+	if naming_slot < 0 or naming_slot >= party.members.size():
+		return "Nickname?"
+	var mon: BattlePokemon = party.members[naming_slot]
+	if mon == null or mon.species == null:
+		return "Nickname?"
+	return "%s's nickname?" % mon.species.species_name
+
+
+## The caller reports what the naming screen produced, and the VM resumes.
+##
+## ⚠️ **AN EMPTY STRING MEANS "KEEP WHAT IT HAD" — IT IS NOT A FAILURE.**
+## `SaveInputText` (`naming_screen.c:1921`) writes the typed buffer into the
+## destination only if some character is neither space nor EOS, and the
+## destination was pre-seeded with the current nickname
+## (`ChangePokemonNicknameWithCallback`, `pokemon.c:6892`). So OK-with-nothing-
+## typed leaves the mon named after its species, and that is source's own way of
+## backing out once the keyboard is already open. Refusing here instead would
+## strand the script with no way forward.
+func answer_naming(value: String) -> void:
+	if pause_reason != Pause.WAIT_NAMING:
+		return
+	var trimmed := value.strip_edges()
+	if trimmed != "" and naming_slot >= 0 and naming_slot < party.members.size():
+		var mon: BattlePokemon = party.members[naming_slot]
+		if mon != null:
+			mon.nickname = PlayerIdentity.sanitize(trimmed)
+	naming_slot = -1
+	pause_reason = Pause.NONE
 
 
 func _obtain_item(args: Array) -> bool:

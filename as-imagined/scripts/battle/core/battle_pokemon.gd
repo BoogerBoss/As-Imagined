@@ -85,6 +85,30 @@ var species: PokemonSpecies = null:
 var original_species: PokemonSpecies = null
 var nickname: String = ""
 var level: int = 1
+
+
+## [M27K K-c] The name to SHOW. Until K-c nothing displayed `nickname` at all —
+## every surface read `species.species_name` directly — so a nickname was a field
+## you could write and never see. This is the one accessor those surfaces should
+## use instead.
+##
+## ⚠️ **THE FALLBACK IS FOR HAND-BUILT FIXTURES, NOT FOR REAL MONS.**
+## `from_species` already seeds `nickname` with the species name, so the fallback
+## never fires on anything the factory made; it exists because this project's
+## ~70 `_make_mon`-style test fixtures construct `BattlePokemon.new()` directly
+## and set only the fields they care about.
+##
+## ⚠️ **THIS DIVERGES FROM `species.species_name` ONCE THE SPECIES CAN CHANGE.**
+## A Transformed Ditto reads DITTO here and PIKACHU there, and source agrees with
+## THIS one — the nickname is stored separately and does not follow forms. That
+## is why the battle screen's own call sites are NOT swapped in K-c: the change
+## is correct but it is a visible battle-behaviour change, and it belongs in a
+## pass that can be driven and looked at rather than riding along with a field
+## feature.
+func display_name() -> String:
+	if nickname != "":
+		return nickname
+	return species.species_name if species != null else ""
 # [M18.5d] Rolled once in from_species() (see _roll_gender), matching the
 # species' gender_ratio. Freely reassignable afterward like every other field
 # here — future gender-aware mechanics (Attract, M18.5e) should just set this

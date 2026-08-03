@@ -28,6 +28,19 @@ extends RefCounted
 ## Specials that DO something.
 const HEAL_PLAYER_PARTY := "HealPlayerParty"
 
+## [M27K K-c] ⚠️ **NAMED HERE BUT DELIBERATELY NOT RUN HERE.** `run()` answers in
+## the same frame and returns a bool, which fits `HealPlayerParty` and fits
+## nothing that owns the display: this one opens the keyboard and the script has
+## to wait for it. `ScriptVM` intercepts the name before calling `run()` and
+## raises `Pause.WAIT_NAMING` instead.
+##
+## The constant still lives here so this file stays the single answer to "which
+## specials does the project implement" — the alternative was a bare string
+## literal in the VM and a silent gap in this list. `is_known_special` reports it
+## as known for the same reason; `run()` refuses it, so a caller that ignores the
+## VM's interception gets a halt rather than a script that skips the rename.
+const NICKNAME_SPECIAL := "ChangePokemonNickname"
+
 
 ## Specials deliberately treated as no-ops, each because the system it touches
 ## does not exist here — NOT because it was inconvenient.
@@ -77,7 +90,8 @@ const SPECIALVAR_VALUES := {
 
 
 static func is_known_special(name: String) -> bool:
-	return name == HEAL_PLAYER_PARTY or name in NOOP_SPECIALS
+	return (name == HEAL_PLAYER_PARTY or name == NICKNAME_SPECIAL
+			or name in NOOP_SPECIALS)
 
 
 static func is_known_specialvar(name: String) -> bool:

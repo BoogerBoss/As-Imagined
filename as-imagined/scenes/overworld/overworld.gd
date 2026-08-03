@@ -650,8 +650,10 @@ func _drive_naming() -> void:
 	elif Input.is_action_just_pressed("ui_cancel"):
 		if _naming.mode == NamingScreen.Mode.KEYBOARD:
 			_naming.backspace()
-	elif Input.is_action_just_pressed("ui_text_submit"):
-		_naming.accept()
+	# [M27K K-c] There is deliberately NO `ui_text_submit` branch any more.
+	# Godot binds it to Enter, and so is `ui_accept` — with `ui_accept` tested
+	# first above, this one could never fire, so a typed name could never be
+	# submitted. Accepting is the OK key on the grid now, reached by `confirm`.
 
 
 func _drive_party_screen() -> void:
@@ -1531,8 +1533,28 @@ func _drive_script() -> void:
 			if not _movement_pending():
 				_vm.resume()
 
+		ScriptVM.Pause.WAIT_NAMING:
+			# [M27K K-c] The keyboard, on a party member the script picked.
+			#
+			# ⚠️ `open_keyboard`, NOT `open` — a nickname has no preset list in
+			# source (`sMonNamingScreenTemplate` is a bare keyboard), and it
+			# accepts an empty entry, which is how you back out once the keyboard
+			# is up. `_drive_naming` handles the keys; this branch only opens it
+			# and waits, because `answer_naming` is what actually resumes the VM.
+			if not _naming.is_open and _vm.naming_slot >= 0:
+				if not _naming.name_chosen.is_connected(_on_script_name_chosen):
+					_naming.name_chosen.connect(_on_script_name_chosen)
+				_naming.open_keyboard(_vm.naming_prompt())
+
 		ScriptVM.Pause.DONE, ScriptVM.Pause.UNRESOLVED, ScriptVM.Pause.UNKNOWN_OP:
 			_finish_script()
+
+
+## [M27K K-c] The naming screen reported a name for a script-driven rename.
+## The VM owns the write — it knows the slot, and it knows that "" means keep.
+func _on_script_name_chosen(value: String) -> void:
+	if _vm != null:
+		_vm.answer_naming(value)
 
 
 ## Start every movement the script has asked for since the last drain.

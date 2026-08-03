@@ -143,7 +143,11 @@ func row_texts() -> PackedStringArray:
 	for i in range(_party.members.size()):
 		var m: BattlePokemon = _party.members[i]
 		var mark := "▶ " if i == _index else "   "
-		var name := m.species.species_name if m.species != null else "?"
+		# [M27K K-c] The NICKNAME, via `display_name()` — this screen used to read
+		# `species.species_name`, which meant a mon you had just named still
+		# showed up as its species here. The battle screen's own call sites are
+		# deliberately still on `species_name`; see `display_name`'s note.
+		var name := m.display_name() if m.species != null else "?"
 		var state := ""
 		if m.fainted or m.current_hp <= 0:
 			state = "  FNT"

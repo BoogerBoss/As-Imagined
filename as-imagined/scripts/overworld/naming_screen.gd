@@ -6,11 +6,21 @@ extends CanvasLayer
 ## plain-Panel fidelity, matching the bag and party screens rather than
 ## inventing a third look.
 ##
-## ⚠️ **TWO SCREENS, AND SOURCE SHOWS THE MENU FIRST.** FRLG does not open a
-## keyboard — it offers a list of preset names with **NEW NAME** at the head
-## (`gOtherText_NewName`), and only picking that reaches the keyboard. So this
-## has two modes and opens in CHOICES. Skipping straight to the keyboard would
-## be a different game: nearly every real playthrough takes a preset.
+## ⚠️ **TWO SCREENS, AND SOURCE SHOWS THE MENU FIRST — FOR *PLAYER* NAMES.**
+## FRLG does not open a keyboard for those; it offers a list of preset names with
+## **NEW NAME** at the head (`gOtherText_NewName`), and only picking that reaches
+## the keyboard. So `open()` has two modes and starts in CHOICES. Skipping
+## straight to the keyboard would be a different game: nearly every real
+## playthrough takes a preset.
+##
+## ⚠️ **[M27K K-c] NICKNAMES ARE THE OPPOSITE, AND THAT IS SOURCE TOO.** There is
+## no preset list anywhere for a Pokémon nickname — `sMonNamingScreenTemplate`
+## (`naming_screen.c:2172`) is a plain keyboard, used by both
+## `NAMING_SCREEN_NICKNAME` and `NAMING_SCREEN_CAUGHT_MON`, while only the
+## PLAYER/RIVAL templates get the preset treatment. Hence `open_keyboard()`: a
+## second entry point rather than a flag on the first, because the two really
+## are different screens in source and collapsing them would make one of the two
+## wrong.
 ##
 ## ⚠️ **CAPPED AT `PlayerIdentity.NAME_LENGTH`, WHICH IS 12 AND DELIBERATELY NOT
 ## SOURCE'S 7** — see that class's own header for why. Read the constant here
@@ -34,6 +44,22 @@ const PAGE_UPPER := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 const PAGE_LOWER := "abcdefghijklmnopqrstuvwxyz"
 const PAGE_OTHER := "0123456789 -.,'!?"
 
+## [M27K K-c] ⚠️ **THE OK KEY IS A REAL CELL ON THE GRID, AND IT HAD TO BECOME
+## ONE.** K-b left accepting to a separate `ui_text_submit` binding, and a probe
+## of the actual InputMap found that **`ui_accept` and `ui_text_submit` are BOTH
+## bound to Enter** by Godot's defaults (this project declares no `[input]`
+## section, so those defaults are what ship). `_drive_naming` tests `ui_accept`
+## first in an elif chain, so Enter always typed a character and a typed name
+## could never be submitted at all — the keyboard was unreachable from the
+## keyboard. K-b's live drive missed it because the driver called `accept()`
+## directly rather than pressing keys.
+##
+## The fix is source's own design rather than a fourth binding: `naming_screen.c`
+## puts an **OK key on the grid** that you move to and press A on. So does this —
+## which removes the collision instead of working around it, and means the screen
+## needs exactly the same four actions every other field screen uses.
+const OK_LABEL := "OK"
+
 enum Mode { CHOICES, KEYBOARD }
 
 var _panel: Panel
@@ -50,6 +76,10 @@ var _cursor := 0
 var _typed := ""
 var _prompt_text := ""
 var _open := false
+
+## [M27K K-c] Whether OK on an EMPTY entry is accepted. See `accept()` — the two
+## callers genuinely disagree, and source is the reason.
+var _allow_empty := false
 
 
 var is_open: bool:
@@ -120,6 +150,33 @@ func open(prompt: String, choices: PackedStringArray) -> void:
 	_typed = ""
 	_page = 0
 	_cursor = 0
+	_allow_empty = false
+	_open = true
+	visible = true
+	_refresh()
+
+
+## [M27K K-c] Open straight onto the keyboard, with no preset list — source's
+## `sMonNamingScreenTemplate`, used for nicknames and caught mons.
+##
+## ⚠️ **AND IT ACCEPTS AN EMPTY ENTRY, WHICH `open()` REFUSES.** Not an
+## inconsistency: `SaveInputText` (`naming_screen.c:1921`) copies the typed
+## buffer into the destination **only if some character is neither space nor
+## EOS**, so pressing OK having typed nothing leaves the destination holding
+## whatever it already held. For a nickname that is the species name, which is
+## exactly how "no, I don't want to rename it" is expressed once the keyboard is
+## already open. For a player name the destination starts blank, so the same
+## behaviour would mint an unnamed player — which is why `open()` refuses
+## instead. The caller decides by which entry point it uses.
+func open_keyboard(prompt: String) -> void:
+	_prompt_text = prompt
+	_choices = PackedStringArray()
+	_choice_index = 0
+	_mode = Mode.KEYBOARD
+	_typed = ""
+	_page = 0
+	_cursor = 0
+	_allow_empty = true
 	_open = true
 	visible = true
 	_refresh()
@@ -134,14 +191,22 @@ func close() -> void:
 
 
 ## ⚠️ CLAMPS in both modes, like every other list in this project's field UI.
+##
+## The keyboard's upper bound is `length()`, not `length() - 1`: the extra index
+## is the OK key, which is a cell you move onto like any other.
 func move(delta: int) -> void:
 	if not _open:
 		return
 	if _mode == Mode.CHOICES:
 		_choice_index = clampi(_choice_index + delta, 0, _choices.size() - 1)
 	else:
-		_cursor = clampi(_cursor + delta, 0, _pages[_page].length() - 1)
+		_cursor = clampi(_cursor + delta, 0, _pages[_page].length())
 	_refresh()
+
+
+## True when the cursor is on the OK key rather than on a character.
+func on_ok_key() -> bool:
+	return _mode == Mode.KEYBOARD and _cursor == _pages[_page].length()
 
 
 ## Cycle the keyboard page. Source binds this to SELECT.
@@ -174,6 +239,11 @@ func confirm() -> void:
 			return
 		_finish(picked)
 		return
+	# [M27K K-c] OK is a cell on the grid, so pressing A on it accepts — see
+	# OK_LABEL for why this is a grid key and not its own input binding.
+	if on_ok_key():
+		accept()
+		return
 	# ⚠️ The cap is enforced by REFUSING the keypress past it rather than by
 	# silently dropping the character — the row stays on screen and simply does
 	# nothing, which is what tells the player they are full.
@@ -182,12 +252,16 @@ func confirm() -> void:
 		_refresh()
 
 
-## Accept what has been typed. Source's OK key; an empty name is refused
-## because a blank player would render every `{PLAYER}` as nothing.
+## Accept what has been typed. Source's OK key.
+##
+## ⚠️ **WHETHER AN EMPTY ENTRY IS ACCEPTED DEPENDS ON WHICH `open*` WAS USED**,
+## and both halves are source — see `open_keyboard`'s note on `SaveInputText`.
+## A player name refuses (a blank player renders every `{PLAYER}` as nothing); a
+## nickname accepts and emits "", which the caller reads as "keep what you had".
 func accept() -> bool:
 	if not _open or _mode != Mode.KEYBOARD:
 		return false
-	if PlayerIdentity.sanitize(_typed).is_empty():
+	if PlayerIdentity.sanitize(_typed).is_empty() and not _allow_empty:
 		return false
 	_finish(_typed)
 	return true
@@ -228,6 +302,9 @@ func row_texts() -> PackedStringArray:
 			line += ("[%s]" % page[idx]) if idx == _cursor else (" %s " % page[idx])
 		if line != "":
 			out.append(line)
+	# [M27K K-c] Its own row, below the characters — source puts OK off to the
+	# side of the grid, and a row of its own is this layout's equivalent.
+	out.append(("[%s]" % OK_LABEL) if on_ok_key() else (" %s " % OK_LABEL))
 	return out
 
 
