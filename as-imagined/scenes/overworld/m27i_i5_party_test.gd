@@ -225,9 +225,11 @@ func _test_use_flow() -> void:
 				and OverworldSession.bag.count_of(full_heal) == 0)
 
 	# ⚠️ THE RISK SHOWING FAINTED ROWS INTRODUCES: they are SELECTABLE, so a
-	# Potion can be aimed at one. Source refuses and says so ("It won't have any
-	# effect.", `gText_WontHaveEffect`, party_menu.c:4909); this refuses without
-	# the message — a real, disclosed gap, but the item must not be eaten.
+	# Potion can be aimed at one. The refusal itself is correct — source's own
+	# `RemoveBagItem` sits on the SUCCESS branch only (party_menu.c:4922).
+	# What is missing is the TEXT, both here and on success: see M27I I5-3a,
+	# flagged at `overworld.gd :: _on_party_mon_chosen`. This asserts the
+	# mechanics; nothing here can assert a message that is not built yet.
 	var faint_party := OverworldSession.player_party()
 	faint_party.members[1].current_hp = 0
 	faint_party.members[1].fainted = true

@@ -641,8 +641,22 @@ func _on_bag_item_use(item_id: int) -> void:
 
 
 ## ⚠️ THE ITEM IS CONSUMED ONLY IF IT DID SOMETHING. Source refuses a Potion on a
-## full-HP Pokémon ("It won't have any effect") rather than eating it — so the
-## bag removal is gated on the effect actually landing, not on the pick.
+## full-HP Pokémon rather than eating it — `RemoveBagItem` sits on the SUCCESS
+## branch only (`party_menu.c:4922`) — so the bag removal is gated on the effect
+## actually landing, not on the pick.
+##
+## ⚠️ **OPEN GAP — M27I I5-3a: THIS WHOLE FUNCTION IS SILENT, AND SOURCE IS NOT.**
+## `ItemUseCB_Medicine` announces BOTH outcomes, and this announces neither:
+##   * refused  -> "It won't have any effect." (`gText_WontHaveEffect`, :4909)
+##   * healed   -> "{mon}'s HP was restored by {N} point(s)."
+##                 (`Task_DisplayHPRestoredMessage` -> `gText_PkmnHPRestoredByVar2`)
+##   * cured    -> a per-status line via `GetMedicineItemEffectMessage`
+##                 (e.g. "{mon} was cured of its poisoning.")
+## So using a Potion here reads as "nothing happened" whether it worked or not.
+## NOT blocked on anything — `MessageBox` has existed since [M27F Stage 1] and is
+## already driven from this scene; this is a message-table-plus-await, the same
+## shape `_queue_text_beat` already uses. Deliberately left out of I5-3 to keep
+## that slice to the screen itself, not deferred because it is hard.
 func _on_party_mon_chosen(index: int) -> void:
 	if _pending_use_item < 0:
 		return
