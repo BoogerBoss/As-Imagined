@@ -506,6 +506,46 @@ func step() -> bool:
 				_flags.var_set(str(args[0]), _flags.var_get(str(args[1])))
 			return true
 
+		# [M27K K-c2] ⚠️ **`addvar` AND `subvar` DO NOT RESOLVE THEIR OPERAND THE
+		# SAME WAY, AND THE DIFFERENCE IS LIVE.** `ScrCmd_addvar` is
+		# `*ptr += ScriptReadHalfword(ctx)` — a RAW immediate — while
+		# `ScrCmd_subvar` is `*ptr -= VarGet(ScriptReadHalfword(ctx))`, which
+		# resolves a var reference (`scrcmd.c:589, 601`). Implementing both the
+		# same way would make `subvar VAR_X, VAR_Y` subtract Y's var-ID instead of
+		# Y's value. The corpus really does both: `subvar` has 3 var operands
+		# (`VAR_0x8009`, `VAR_ASH_GATHER_COUNT` twice) against 5 literals.
+		#
+		# ⚠️ DISCLOSED: a SYMBOLIC constant operand resolves to 0. Source's
+		# assembler baked those to numbers; this project has no table for them, so
+		# `BLACK_FLUTE_PRICE`, `ROULETTE_SPECIAL_RATE` and their 7 siblings read 0.
+		# All 9 are shop/roulette scripts belonging to M27G/M35, none in the
+		# corridor — a stated gap rather than a silent one.
+		"addvar":
+			if _flags != null and args.size() > 1:
+				_flags.var_set(str(args[0]),
+						_flags.var_get(str(args[0])) + _literal(str(args[1])))
+			return true
+
+		"subvar":
+			if _flags != null and args.size() > 1:
+				_flags.var_set(str(args[0]),
+						_flags.var_get(str(args[0])) - _resolve_number(str(args[1])))
+			return true
+
+		# [M27K K-c2] ⚠️ **THIS IS HOW EVERY GIFT SCRIPT FINDS THE MON IT JUST
+		# GAVE YOU.** `Common_EventScript_GetGiftMonPartySlot` is
+		# `getpartysize` / `subvar VAR_RESULT, 1` / `copyvar VAR_0x8004, VAR_RESULT`
+		# — the LAST slot, which is where `givemon` appended. Only the STARTER
+		# script hardcodes slot 0, and it can because a new game's party is empty.
+		"getpartysize":
+			_set_result_value(party.members.size())
+			return true
+
+		# [M27K K-c2] The coins counter, mirroring `showmoneybox` above exactly:
+		# display only, and no coins box exists. 32 corpus uses across the three.
+		"showcoinsbox", "hidecoinsbox", "updatecoinsbox":
+			return true
+
 		"settrainerflag":
 			# The same DEFEATED_ key `goto_if_defeated` reads and a won battle
 			# writes -- one representation of "beaten", three writers.
@@ -796,6 +836,14 @@ func _set_result(ok: bool) -> void:
 		_flags.var_set("VAR_RESULT", 1 if ok else 0)
 
 
+## [M27K K-c2] VAR_RESULT as a COUNT rather than a flag. `getpartysize` writes a
+## real number there, which the boolean `_set_result` cannot express — a party of
+## 3 would land as 1 and every gift script would rename the second slot.
+func _set_result_value(value: int) -> void:
+	if _flags != null:
+		_flags.var_set("VAR_RESULT", value)
+
+
 ## [M27I I3] `giveitem` / `finditem` / `giveitem_msg`.
 ##
 ## ⚠️ NONE OF THESE IS A PRIMITIVE IN SOURCE. `giveitem` is a macro over
@@ -816,23 +864,42 @@ func _set_result(ok: bool) -> void:
 ## `species_id_of` covers all 1672 reference constants while the roster is 386.
 ## Both are refused, but they are different failures and the diagnostic says
 ## which, so a Gen 4+ script reads as out-of-roster rather than as a bad parse.
+## [M27K K-c2] ⚠️ **VAR_RESULT HERE IS A THREE-WAY CODE, NOT A BOOLEAN, AND THIS
+## USED TO WRITE THE BOOLEAN.** Source: `MON_GIVEN_TO_PARTY 0` /
+## `MON_GIVEN_TO_PC 1` / `MON_CANT_GIVE 2` (`constants/pokemon.h:167-169`).
+## `_set_result(true)` wrote **1**, which reads as "sent to the PC" — so
+## `EventScript_GiveAerodactyl`, whose next two lines are
+## `goto_if_eq VAR_RESULT, 0 -> NicknameMonParty` and
+## `goto_if_eq VAR_RESULT, 1 -> NicknameMonPC`, took the PC branch on a
+## successful gift to the PARTY. Success and failure were BOTH wrong: a full
+## party wrote 0, which reads as "given to the party".
+const MON_GIVEN_TO_PARTY := 0
+const MON_GIVEN_TO_PC := 1
+const MON_CANT_GIVE := 2
+
+
 func _give_mon(dex: int, level: int) -> bool:
 	if level <= 0:
 		level = 5
 	if dex <= 0 or PokemonRegistry.get_species(dex).is_empty():
-		_set_result(false)
+		_set_result_value(MON_CANT_GIVE)
 		diagnostic = "givemon: no species %d in this project's roster" % dex
 		return true
 	if party.members.size() >= BattleParty.PARTY_SIZE:
 		# No PC exists (I5-5, deferred past the slice), so there is nowhere
 		# else to put it — refuse and say so, as `[M27H H4]` does for a catch.
-		_set_result(false)
+		#
+		# ⚠️ `MON_CANT_GIVE`, deliberately NOT `MON_GIVEN_TO_PC`. Source would
+		# box it and answer 1; with no PC the honest answer is "cannot", and the
+		# scripts branch on it — `Common_EventScript_NoMoreRoomForPokemon` is
+		# exactly where a 2 sends them.
+		_set_result_value(MON_CANT_GIVE)
 		diagnostic = "givemon: party is full and no PC exists"
 		return true
 	party.members.append(PokemonFactory.create_battle_pokemon(dex, level))
 	if party.active_indices.is_empty():
 		party.active_indices = [0]
-	_set_result(true)
+	_set_result_value(MON_GIVEN_TO_PARTY)
 	return true
 
 
@@ -988,12 +1055,26 @@ func _resolve_item(arg: String) -> int:
 
 
 ## A numeric argument, whether written as a literal or held in a variable.
+## An argument as a number: an integer, a VAR reference, or a symbolic constant.
+##
+## ⚠️ **[M27K K-c2] THE CONSTANT FALLBACK WAS MISSING, AND IT SILENTLY BROKE 19
+## OF THE 23 `givemon` CALL SITES.** This used to be integer-or-var only, so
+## `givemon SPECIES_AERODACTYL, 5` resolved the species through `var_get`, found
+## no such var, and handed `_give_mon` a 0 — which refuses and gives nothing. The
+## corpus splits 19 direct `SPECIES_*` constants against 4 var references, and
+## the starter script is one of the 4, which is exactly why `[M27K K-a]` shipped
+## without noticing: the one script it drove took the working path.
+##
+## Order matters and mirrors source. `VarGet` treats its argument as a var when
+## it is at or above `VARS_START` and as an immediate otherwise, so a var
+## reference wins over a constant of the same name — hence `has_var` first. An
+## unset var still reads 0, the same answer as before, so nothing regresses.
 func _resolve_number(arg: String) -> int:
 	if arg.is_valid_int():
 		return int(arg)
-	if _flags != null:
+	if _flags != null and _flags.has_var(arg):
 		return _flags.var_get(arg)
-	return 0
+	return _literal(arg)
 
 
 ## An item's display name, pluralised the way source does.

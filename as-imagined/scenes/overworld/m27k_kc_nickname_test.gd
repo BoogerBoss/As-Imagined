@@ -19,7 +19,7 @@ extends Node
 ##   * `display_name()` is now what the field shows, closing a gap where the
 ##     nickname was a field you could write and never see anywhere.
 
-const EXPECTED_TOTAL := 43
+const EXPECTED_TOTAL := 58
 
 ## Past the cap and past the grid, so a refusal or a clamp is what stops the
 ## loop rather than the loop running out on its own.
@@ -59,7 +59,12 @@ func _screen() -> NamingScreen:
 ## `step()`, so the only honest way to exercise an opcode is to run one.
 func _run_ops(member_count: int, ops: Array) -> ScriptVM:
 	var src := ScriptVM.ScriptSource.new()
-	src.ops_by_label = {"T": ops}
+	# ⚠️ The REAL corpus with the synthetic label added, not a bare dictionary —
+	# a `call` to a `Common_EventScript_*` helper has to resolve, and a source
+	# holding only "T" reports it UNRESOLVED instead.
+	src.ops_by_label = _src.ops_by_label.duplicate()
+	src.texts = _src.texts
+	src.ops_by_label["T"] = ops
 	var vm := ScriptVM.new(src, FlagStore.new())
 	var p := BattleParty.new()
 	for i in range(member_count):
@@ -91,6 +96,7 @@ func _ready() -> void:
 	_test_display_name()
 	_test_vm_plumbing()
 	_test_real_script()
+	_test_gift_scripts()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -297,7 +303,7 @@ func _test_vm_plumbing() -> void:
 ## --- D. Kanto's own script, end to end ---
 func _test_real_script() -> void:
 	if _src.ops_by_label.is_empty():
-		_gated += 9
+		_gated += 12
 		return
 	for lab in ["EventScript_GiveNicknameToStarter",
 			"Common_EventScript_NameReceivedPartyMon"]:
@@ -373,4 +379,128 @@ func _run_starter(nickname_it: bool, type_this: String) -> Dictionary:
 		"prompt": prompt,
 		"halted": halted,
 		"diagnostic": vm.diagnostic,
+	}
+
+
+## --- E. the OTHER four call sites, and the slot mechanism they share ---
+##
+## ⚠️ **THE STARTER IS THE ODD ONE OUT, AND FINDING THAT CHANGED WHAT K-c's OWN
+## DISCLOSURE MEANS.** Every gift script routes through
+## `Common_EventScript_GetGiftMonPartySlot` — `getpartysize` / `subvar
+## VAR_RESULT, 1` / `copyvar VAR_0x8004, VAR_RESULT`, i.e. the LAST slot, which
+## is exactly where `givemon` appended. Only `EventScript_GiveNicknameToStarter`
+## hardcodes 0, and it can only get away with that because a new game's party is
+## empty. So the debug-party hazard K-c recorded is the STARTER's alone; the
+## Eevee, the Game Corner prizes and the three fossils are immune by
+## construction, and E.04 pins that on a party where the two disagree.
+func _test_gift_scripts() -> void:
+	if _src.ops_by_label.is_empty():
+		_gated += 12
+		return
+
+	# The arithmetic the slot helper is built out of. ⚠️ `addvar` takes a RAW
+	# immediate and `subvar` resolves a VAR (`scrcmd.c:589, 601`) — implementing
+	# both alike would make `subvar VAR_X, VAR_Y` subtract Y's var-ID.
+	var vm := _run_ops(0, [
+		{"op": "setvar", "args": ["VAR_TEMP_1", "10"]},
+		{"op": "addvar", "args": ["VAR_TEMP_1", "5"]},
+		{"op": "subvar", "args": ["VAR_TEMP_1", "3"]},
+	])
+	_chk("E.01 addvar and subvar do arithmetic on a var",
+			vm._flags.var_get("VAR_TEMP_1") == 12)
+	var vm2 := _run_ops(0, [
+		{"op": "setvar", "args": ["VAR_TEMP_1", "10"]},
+		{"op": "setvar", "args": ["VAR_TEMP_2", "4"]},
+		{"op": "subvar", "args": ["VAR_TEMP_1", "VAR_TEMP_2"]},
+	])
+	_chk("E.02 and subvar resolves a VAR operand, not its name",
+			vm2._flags.var_get("VAR_TEMP_1") == 6)
+
+	# ⚠️ VAR_RESULT AS A COUNT, NOT A FLAG. A boolean write would land a party of
+	# 3 as 1, and every gift script would rename the second slot.
+	var vm3 := _run_ops(3, [{"op": "getpartysize", "args": []}])
+	_chk("E.03 getpartysize writes the real count, not a 0/1 flag",
+			vm3._flags.var_get("VAR_RESULT") == 3)
+
+	# ⚠️ THE FIXTURE HAS TO HAVE MORE THAN ONE MEMBER, or "last slot" and "slot
+	# 0" agree and the helper is untestable.
+	var vm4 := _run_ops(3, [{"op": "call",
+			"args": ["Common_EventScript_GetGiftMonPartySlot"]}])
+	_chk("E.04 the gift helper picks the LAST slot, where givemon appended",
+			vm4._flags.var_get("VAR_0x8004") == 2)
+
+	# ⚠️ **19 OF THE 23 `givemon` CALL SITES PASS A DIRECT `SPECIES_*` CONSTANT,
+	# AND EVERY ONE SILENTLY GAVE NOTHING** until `_resolve_number` learned to
+	# fall through to `_literal`. K-a shipped without noticing because the
+	# starter passes `PLAYER_STARTER_SPECIES`, a VAR — one of the 4 that worked.
+	var vm5 := _run_ops(0, [{"op": "givemon", "args": ["SPECIES_AERODACTYL", "5"]}])
+	_chk("E.05 givemon resolves a DIRECT species constant, not just a var",
+			vm5.party.members.size() == 1
+			and vm5.party.members[0].species.national_dex_num == 142)
+
+	# ⚠️ **VAR_RESULT IS A THREE-WAY CODE HERE, NOT A BOOLEAN.**
+	# MON_GIVEN_TO_PARTY 0 / MON_GIVEN_TO_PC 1 / MON_CANT_GIVE 2
+	# (`constants/pokemon.h:167`). Writing the boolean made a successful gift
+	# answer 1 — "sent to the PC" — and sent `GiveAerodactyl` down its PC branch.
+	_chk("E.06 a gift to the party answers 0, which is not the boolean 1",
+			vm5._flags.var_get("VAR_RESULT") == ScriptVM.MON_GIVEN_TO_PARTY)
+	var vm6 := _run_ops(BattleParty.PARTY_SIZE,
+			[{"op": "givemon", "args": ["SPECIES_AERODACTYL", "5"]}])
+	_chk("E.07 and a full party answers CANT_GIVE, not the boolean 0",
+			vm6._flags.var_get("VAR_RESULT") == ScriptVM.MON_CANT_GIVE
+			and vm6.party.members.size() == BattleParty.PARTY_SIZE)
+
+	# The four scripts themselves, driven to their nickname pause.
+	for entry in [
+			["CeladonCity_Condominiums_RoofRoom_EventScript_GetEeveeParty", 3],
+			["CeladonCity_GameCorner_PrizeRoom_EventScript_NicknamePartyMon", 3],
+			["CinnabarIsland_PokemonLab_ExperimentRoom_EventScript_NicknameMonParty", 3],
+			["CinnabarIsland_PokemonLab_ExperimentRoom_EventScript_GiveAerodactyl", 0]]:
+		var label := str(entry[0])
+		var seed_count := int(entry[1])
+		var r := _run_gift(label, seed_count)
+		_chk("E.08 %s reaches the keyboard (%s)"
+				% [label.split("_")[-1], r["diagnostic"]],
+				r["reached"] and not r["halted"])
+		_chk("E.09 %s renames the mon it just gave, not the lead"
+				% label.split("_")[-1],
+				r["slot"] == r["party"].size() - 1 and r["slot"] >= 0)
+
+
+## Drive a gift script on a party that already holds `seed_count` members, so
+## "last slot" and "slot 0" are different answers.
+func _run_gift(label: String, seed_count: int) -> Dictionary:
+	var flags := FlagStore.new()
+	var party := BattleParty.new()
+	for i in range(seed_count):
+		party.members.append(PokemonFactory.create_battle_pokemon(1 + i * 3, 5))
+	var vm := ScriptVM.new(_src, flags)
+	vm.party = party
+	vm.start(label)
+	var halted := false
+	var reached := false
+	var slot := -1
+	var guard := 0
+	while guard < 400:
+		guard += 1
+		var inner := 0
+		while vm.step() and inner < 500:
+			inner += 1
+		if vm.pause_reason == ScriptVM.Pause.WAIT_MESSAGE \
+				or vm.pause_reason == ScriptVM.Pause.WAIT_BUTTON:
+			vm.resume()
+		elif vm.pause_reason == ScriptVM.Pause.WAIT_YES_NO:
+			vm.answer_yes_no(true)
+		elif vm.pause_reason == ScriptVM.Pause.WAIT_NAMING:
+			reached = true
+			slot = vm.naming_slot
+			vm.answer_naming("SPUD")
+		else:
+			if vm.pause_reason == ScriptVM.Pause.UNKNOWN_OP \
+					or vm.pause_reason == ScriptVM.Pause.UNRESOLVED:
+				halted = true
+			break
+	return {
+		"party": party.members, "reached": reached, "slot": slot,
+		"halted": halted, "diagnostic": vm.diagnostic,
 	}

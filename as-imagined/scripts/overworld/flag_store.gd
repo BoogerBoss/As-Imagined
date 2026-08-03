@@ -75,6 +75,16 @@ func var_get(var_name: String) -> int:
 	return int(_vars.get(var_name, 0))
 
 
+## [M27K K-c2] Whether this name has ever been written as a var.
+##
+## ⚠️ Exists because `var_get` cannot tell "a var holding 0" from "not a var at
+## all", and one caller genuinely needs to: `ScriptVM._resolve_number` has to
+## decide whether an argument is a var reference or a symbolic CONSTANT, which is
+## the distinction source makes in `VarGet` by comparing against `VARS_START`.
+func has_var(var_name: String) -> bool:
+	return _vars.has(var_name)
+
+
 ## Source: `VarSet`.
 func var_set(var_name: String, value: int) -> void:
 	if var_name == "":
