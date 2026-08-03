@@ -4,14 +4,15 @@ extends Node
 ##
 ## The claims most worth pinning:
 ##
-##   * the party screen shows ALL SIX slots including fainted ones — the battle
-##     screen filters, and copying that here would hide half your team;
+##   * the party screen shows ALL SIX slots including fainted ones — which is
+##     SOURCE (`RenderPartyMenuBoxes` has no eligibility filter at all); the
+##     battle-side `SwitchSelectScreen` is the one that diverges by filtering;
 ##   * item use starts in the BAG, not the party — the party is a target picker,
 ##     which is source's own flow and the E3 recon's own scope boundary;
 ##   * the item is consumed only if it DID something, so a Potion on a full-HP
 ##     Pokémon is refused rather than eaten.
 
-const EXPECTED_TOTAL := 41
+const EXPECTED_TOTAL := 42
 
 var _total := 0
 var _failed := 0
@@ -68,9 +69,12 @@ func _test_rows() -> void:
 	var s := _screen()
 	s.open(p)
 	var rows := s.row_texts()
-	# ⚠️ ALL SIX SLOTS, INCLUDING FAINTED. The battle screen FILTERS to live
-	# non-active candidates because it answers "who can I switch to"; copying
-	# that here would hide half the team from a screen that answers "what have I got".
+	# ⚠️ ALL SIX SLOTS, INCLUDING FAINTED — SOURCE BEHAVIOUR, NOT A DEVIATION.
+	# `RenderPartyMenuBoxes` (party_menu.c:1236-1243) walks 0..PARTY_SIZE with no
+	# eligibility filter anywhere; ineligible mons get a printed REASON instead
+	# ("NOT ABLE" in-box, or a message on selection). Do not "restore" a filter
+	# to match `SwitchSelectScreen` — that screen is the one that is wrong, and
+	# docs/m26_e3_recon.md §2 already scopes the fix into M26E3.
 	_chk("A.01 every slot is shown, fainted included", rows.size() == 3)
 	_chk("A.02 a fainted slot is marked FNT", str(rows[1]).contains("FNT"))
 	_chk("A.03 a statused slot shows its status", str(rows[2]).contains("PSN"))
@@ -180,7 +184,7 @@ func _test_item_actions() -> void:
 func _test_use_flow() -> void:
 	var potion := PokemonRegistry.item_id_of("ITEM_POTION")
 	if potion <= 0:
-		_gated += 8
+		_gated += 9
 		return
 	OverworldSession.reset()
 	var party := OverworldSession.player_party()
@@ -219,6 +223,20 @@ func _test_use_flow() -> void:
 		_chk("D.05 but lands on a poisoned one",
 				mon.status == BattlePokemon.STATUS_NONE
 				and OverworldSession.bag.count_of(full_heal) == 0)
+
+	# ⚠️ THE RISK SHOWING FAINTED ROWS INTRODUCES: they are SELECTABLE, so a
+	# Potion can be aimed at one. Source refuses and says so ("It won't have any
+	# effect.", `gText_WontHaveEffect`, party_menu.c:4909); this refuses without
+	# the message — a real, disclosed gap, but the item must not be eaten.
+	var faint_party := OverworldSession.player_party()
+	faint_party.members[1].current_hp = 0
+	faint_party.members[1].fainted = true
+	var before := OverworldSession.bag.count_of(potion)
+	ow._pending_use_item = potion
+	ow._on_party_mon_chosen(1)
+	_chk("D.06a a Potion aimed at a fainted slot is refused, not eaten",
+			OverworldSession.bag.count_of(potion) == before
+			and faint_party.members[1].current_hp == 0)
 
 	# Cancelling clears the pending item, so the next browse does not apply it.
 	ow._pending_use_item = potion

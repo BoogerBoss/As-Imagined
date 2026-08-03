@@ -6,12 +6,22 @@ extends CanvasLayer
 ## `[M27O O4]` made the party persistent, `[M27H H4]` made it grow by catching,
 ## and nothing has ever displayed it.
 ##
-## ⚠️ **SHOWS ALL SIX SLOTS, INCLUDING FAINTED ONES.** A deliberate design change
-## from the battle-side `SwitchSelectScreen`, which FILTERS to live, non-active
-## candidates because it exists to answer "who can I switch to". This screen
-## answers "what have I got", and `docs/m26_e3_recon.md` §5.2 records the same
-## change for the battle screen — source shows every slot and rejects illegal
-## picks with a message rather than hiding them.
+## ⚠️ **SHOWS ALL SIX SLOTS, INCLUDING FAINTED ONES — AND THAT IS SOURCE, NOT A
+## DEVIATION FROM IT.** Verified directly: `RenderPartyMenuBoxes`
+## (`party_menu.c:1236-1243`) walks slot 0 through `PARTY_SIZE` unconditionally;
+## there is no eligibility filter anywhere in the draw path. Every ineligible
+## case prints a REASON instead of vanishing — at selection time for the battle
+## switch (`:7544-7583`: "has no energy left to battle!" / "is already in
+## battle!" / "An EGG can't battle!" / "has already been selected." / "can't
+## switch out!", each setting a message then returning FALSE), and at draw time
+## for menus that know eligibility up front (`:1101/1125/1148/1198` print
+## **"NOT ABLE"**, `gText_NotAble`, `strings.c:341`).
+##
+## So do NOT "restore" a filter here to match the battle-side
+## `SwitchSelectScreen` — that screen is the one that diverges
+## (`switch_select_screen.gd:189` skips active-or-fainted members), and
+## `docs/m26_e3_recon.md` §2 already records it as a known gap with the fix
+## scoped into M26E3's own design change #2.
 ##
 ## ⚠️ **IT DOES NOT OWN ITEM USE.** Source's flow starts in the BAG — pick an
 ## item, choose USE, and the party menu opens as a TARGET PICKER
