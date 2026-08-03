@@ -1454,6 +1454,654 @@ is harness-specific, not a shipped bug.
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
 
+### M36D batches 31-33 — COMPLETE 2026-07-31. Paired mechanisms, sprite singletons, and the task tail.
+
+**+38 moves across three batches: 781 -> 819 of 932 (83.8% -> 87.9%).**
+415 -> 453 registered. Tier 2 227 -> 240/283 (84.8%); Tier 3 484 -> 509/579
+(87.9%). `m36d_batch_test` 959 -> **1070/1070**.
+
+---
+
+#### Batch 31 — paired mechanisms (+14: 781 -> 795, 16 behaviors)
+
+Eight two-sprite (or sprite-plus-task) effects where neither half means
+anything alone. Three reuse earlier machinery outright: Conversion 2 is
+batch 27's Conversion with the signal **inverted** (its squares carry their
+own delay and fly to the attacker, where Conversion's wait to be killed, and
+the blend ramps the other way); the Perish Song notes are batch 25's music
+family; the partner slides are batch 2's SlideMon pair aimed at a partner
+slot.
+
+**`AnimLockOnMoveTarget` is a WRAPPER, not a duplicate** — it applies one of
+four quadrant offsets with a matching flip and then *calls*
+`AnimLockOnTarget`. Registering them as an alias would drop the quadrant
+work, so the test asserts they are **different** implementations — the
+inverse of the alias assertions in batches 24/27/30.
+
+**`AnimPerishSongMusicNote2` is never drawn.** It sets `invisible = TRUE` on
+its first frame and exists purely as a timer: at `120 - arg0` frames it greys
+the field, 80 later it ends. Porting it as a visible sprite puts a stray note
+on screen that upstream never shows.
+
+Also: the Helping Hand clap uses **absolute screen coordinates** (100/140,
+y 56) like batch 26's moon; `AnimWoodHammerHammer` **waits 37 frames**
+shivering before it swings, which is most of the animation; the Ingrain root
+never moves at all — its whole behavior is a flicker in its last ten frames.
+
+**Deferred**: `AnimTask_SketchDrawMon` is a scanline effect (the pencil
+"drawing" the mon is a per-scanline background shear), and `AnimPencil` is
+deferred with it.
+
+---
+
+#### Batch 32 — sprite singletons (+17: 795 -> 812, 14 behaviors)
+
+One behavior per move, no shared machinery left to retire.
+
+**`AnimSuperpowerOrb` holds for 180 frames** — three seconds, essentially the
+whole animation — and only then crosses to the *other* battler in 16.
+**`AnimDevil`'s orbit both decays and reverses**: the radius shrinks with age
+while the phase runs forward to 128 and back. **`AnimOverheatFlame`'s spray
+is a flattened ellipse** — the vertical amplitude is exactly 3/5 of the
+horizontal — and the speed arg also offsets the *start*. **Happy Hour's coins
+ride a tall narrow ellipse** (amplitudes 16 and -70), arcing up before they
+drop.
+
+**`AnimBounceBallShrink` hides the attacker** — the ball *is* the mon — so it
+goes through the VM's tracked visibility rather than a raw `visible = false`,
+the leak class rule (3) exists for. The test aborts the run mid-flight and
+checks the VM's own net restores it.
+
+**`AnimDragonRushStep`'s two branches are byte-identical**, and source's own
+comment says so. Reproduced as the no-op it is; the side check only matters
+in the init.
+
+---
+
+#### Batch 33 — the task tail (+7: 812 -> 819, 8 behaviors)
+
+**The two Thrash tasks are different effects despite the shared name stem**:
+`AnimTask_ThrashMoveMonHorizontal` is an affine *deformation* (and its table
+carries an `AFFINEANIMCMD_LOOP(2)`, so it runs twice), while
+`AnimTask_ThrashMoveMonVertical` is a plain *displacement*. Sharing one
+implementation gives Thrash the same look twice.
+
+**`AnimTask_FacadeColorBlend` cycles a 24-entry ramp** one entry per frame
+rather than holding a tint. **`AnimTask_SkullBashPosition`'s step is 8.8
+fixed point** — `0xC0` is 0.75 px/frame, so eight frames move the mon six
+pixels; read as raw pixels it flings the mon 1536 px off the field.
+**`AnimTask_MoveHeatWaveTargets` shoves every visible battler on the target's
+side**, not just the target.
+
+`AnimTask_GetStockpileCounter` ships as a **documented stub with its consumer
+named**, per rule (9): it needs a disable-struct surface the anim layer does
+not have, so it answers 0 — wrong but bounded — and the test pins that it
+answers on arg 7 with the documented value rather than an invented one.
+
+**Deferred with reasons rather than skipped**: `AnimTask_LeafBlade`,
+`AnimTask_AirCutterProjectile`, `AnimTask_WaterSport`, `AnimTask_BrineRain`
+and `AnimTask_CreateIons` are multi-phase spawners with their own step
+machines — a batch's work each, not a task; `AnimTask_CreateBestowItem` draws
+the player's real held-item icon, a surface the anim layer cannot reach;
+`AnimTask_OdorSleuthMovement` needs the blended-clone variant this port does
+not have. All five are asserted as still-unplayable.
+
+---
+
+**Four test bugs of mine, all caught by injection rather than shipped.**
+
+1. **The Helping Hand direction guard was vacuous.** It used a player-side
+   stage, where FakeStage puts the partner to the *right* — so the partner
+   rule and the side rule both give -1 and the injection deleting the partner
+   rule passed. Rewritten on an opponent-side stage, where the two disagree.
+2. **The Dragon Rush spin check sampled at the sine's minimum** (phase 192),
+   where stepping either direction moves Y identically. It reported "4.2 vs
+   4.2" for a correct mirror. Moved to X, where cosine is at a zero crossing.
+3. **The Dragon Rush side check only asserted the two sides DIFFER** — true
+   under either reading, since attacker and target are always opposite in
+   singles. The injection swapping to the attacker's side passed. Now pins
+   the direction **absolutely** against source.
+4. **The Facade blend check read a shader parameter that does not exist**
+   (`blend_color`; the real name is `tint`), reporting 0 distinct colours
+   against a correctly cycling blend.
+
+One injection was itself malformed and hung the suite rather than failing it
+— worth noting as a technique caveat: an injection that changes the *shape*
+of a statement can produce a parse error whose symptom is a hang, not a
+failure. Re-run as a one-line change inside the VM's `hide_battler` instead,
+where it correctly caught three assertions.
+
+**Injections.** 9 for batch 31, 8 for batch 32, 6 for batch 33 — each broken,
+confirmed failing, reverted. Regression after all three: `m36a` 71/71,
+`m36b` 53/53, `m36c` 66/66, `m36e_background_asset` 24/24,
+`m36e_background_runtime` 30/30, `m36e3` 60/60, `hit_effect_dispatch` 40/40.
+
+### M36D batches 28-30 — COMPLETE 2026-07-31. Deformations, the sprite tail, and which register a query answers on.
+
+**+41 moves across three batches: 740 -> 781 of 932 (79.4% -> 83.8%).**
+372 -> 415 registered. Tier 2 crossed 80% (203 -> 227/283); Tier 3 467 ->
+484/579 (83.6%). `m36d_batch_test` 831 -> **959/959**.
+
+---
+
+#### Batch 28 — mon deformations (+13: 740 -> 753, 13 behaviors)
+
+Every remaining task whose whole job is to scale, rotate, squash or clone a
+battler. Most are an affine table plus batch 25's shared walk.
+
+**⚠️ A BATCH-25 CLAIM CORRECTED.** That batch recorded the shared walk's
+closing `deform.restore()` as a *disclosed divergence* — "upstream simply
+stops, leaving whatever the table produced". **Wrong.**
+`RunAffineAnimFromTaskData`'s `AFFINEANIMCMDTYPE_END` case calls
+`ResetSpriteRotScale` and zeroes `y2`, so upstream restores at the end of
+every table too. Corrected in place at the code site.
+
+That correction matters because **one real table is genuinely asymmetric**:
+`gShrinkAndGrowAffineAnimCmds` goes out over 12 frames and back over only 6,
+netting +24/+30. It is harmless *because* END resets regardless — which
+reframes the per-table sum assertions as **transcription guards, not leak
+guards**, and the test now pins that table's asymmetry explicitly rather than
+asserting a uniformity that does not hold.
+
+**Two deferred, same surface as before.** `AnimTask_AcidArmor` is a scanline
+DMA effect (the mon "melting" is a shear of the background);
+`AnimTask_TransformMon` drives `REG_OFFSET_MOSAIC` and then calls
+`HandleSpeciesGfxDataChange` to swap the battler's actual sprite sheet.
+
+**`AnimTask_RotateVertically`'s two sides are NOT mirrors**: the player side
+stops at `0x1FFF` (~45 degrees) while the opponent goes to `0x7FFE` (~180,
+fully over). One shared limit gives a player mon that flips when it should
+only tilt. **`AnimTask_Withdraw` rocks by ROTATION, not translation.**
+**Minimize shrinks and drops clones; Double Team leaves the mon alone** and
+sweeps its clones on a sine seeded half a cycle apart — tested together
+because only one of the two deforms.
+
+⚠️ **ONE DISCLOSED SIMPLIFICATION, and it is the highest-value item for a
+screenshot pass.** Upstream calls `SetBattlerSpriteYOffsetFromYScale` after
+every affine step so a scaling mon keeps its **feet planted** rather than
+growing about its centre. Not ported: CLAUDE.md records a bottom-centre
+`pivot_offset` being tried during M26B3-6a and **reverted for looking worse**,
+and this session cannot check a visual change against that. Flagged, not
+guessed at.
+
+---
+
+#### Batch 29 — the simple-sprite tail (+16: 753 -> 769, 16 behaviors)
+
+One behavior per move, mostly a spawn point plus a short motion. Grouped
+because they share no machinery beyond what is already built — **which is
+itself the finding**: at this depth the port is no longer retiring
+mechanisms, it is spending the ones batches 1-28 built.
+
+Shapes worth naming: **Spit Up's spray is elliptical** (amplitudes 10 and 7,
+wider than tall) while **the Angel's loop is circular** (Sin and Cos share
+amplitude 80) — a real distinction between neighbouring behaviors, and both
+are tested for it. **Swallow's orb decelerates** and ends by falling back
+below its launch height, not on a timer. **Bonemerang comes back** — the
+return leg is the whole move. **Wish Star enters from the side opposite the
+caster** and accelerates on both axes. **Milk Bottle and Mean Look Eye both
+open by arming BLDALPHA to (0,16)** and fade themselves in, so a port that
+skips the arming has them pop in at full opacity.
+
+---
+
+#### Batch 30 — query tasks and the misc tail (+12: 769 -> 781, 14 behaviors)
+
+**THE FINDING IS WHICH REGISTER A QUERY ANSWERS ON.** Most write
+`gBattleAnimArgs[ARG_RET_ID]` (7) — the channel batch 24 taught the VM to
+preserve. But **`AnimTask_IsTargetPartner` and `AnimTask_GetLycanrocForm`
+write arg 0**, and that is not an upstream slip: both are read by a
+`jumpargeq 0 ...` on the very next line, and `jumpargeq` does not reload the
+arg registers. They work precisely *because* nothing intervenes. Normalising
+either to arg 7 "for consistency" silently breaks its consumer; normalising
+the others to arg 0 breaks the moment a `createsprite` comes between task and
+jump. Both groups are tested for the register they use *and* for leaving the
+other alone.
+
+**`AnimTask_IsHealingMove` is inverted** — `gAnimMoveDmg > 0` means NOT
+healing. **Doom Desire's query is `== 2`, not `>= 2`.** **`AnimMoveWringOut`'s
+arg 2 is a DIVISOR of a full circle** (256/arg per frame), not a duration,
+and the ring starts a quarter turn in.
+
+**`AnimPunishment` is the FOURTH member of one duplicate chain** — verbatim
+identical to `AnimForcePalm` (batch 27) and `AnimGunkShotImpact` (batch 24).
+Three names, one implementation, asserted by identity.
+
+Two stubs recorded rather than left bare, per rule (9):
+`AnimTask_GetLycanrocForm` always reports the Midday form (no per-battler
+species surface in the anim layer) and
+`AnimTask_SetAnimTargetToAttackerOpposite` is a genuine no-op here
+(`ANIM_TARGET` already resolves to the primary opposing slot, which is what
+`BATTLE_OPPOSITE` names).
+
+---
+
+**Three test bugs of mine, all caught rather than shipped.**
+
+1. **The template-name guard did its job**: `gWringOutSpriteTemplate` does not
+   exist — the real name is `gWringOutHandSpriteTemplate`. This is exactly the
+   failure rule (7) was written for after batch 13.
+2. **The confetti variance check measured one particle twelve times.**
+   `_spawn` returns the layer's FIRST `AnimSprite` child, so spawning twelve
+   onto one stage re-measures particle zero — the same trap batch 24's Hydro
+   Cannon test hit. It reported "2 distinct" no matter how varied the draws
+   were. Fixed with a fresh stage per particle.
+3. **A coverage list that was aspirational.** The first draft asserted Torment
+   and Happy Hour play; `AnimTask_TormentAttacker` and
+   `AnimHappyHourCoinShower` were read at Step 0 but never ported. An
+   over-claimed move list is how a coverage test starts lying, and it failed
+   immediately.
+
+**Injections.** 9 for batch 28, 7 for batch 29, 7 for batch 30 — each broken,
+confirmed failing, reverted. One injection had to be retargeted: `_side_centre`
+appears in batch 22's code first, so the first attempt patched
+`_centred_electricity` and was caught by *that* batch's test instead.
+
+Regression after all three: `m36a` 71/71, `m36b` 53/53, `m36c` 66/66,
+`m36e_background_asset` 24/24, `m36e_background_runtime` 30/30, `m36e3` 60/60,
+`hit_effect_dispatch` 40/40.
+
+### M36D batches 25-27 — COMPLETE 2026-07-31. The sound family, everything that fades, and the Gen 1 long tail.
+
+**+40 moves across three batches: 700 -> 740 of 932 (75.1% -> 79.4%).**
+346 -> 372 registered. Tier 1 closed at 70/70; Tier 2 189 -> 203/283 (71.7%);
+Tier 3 441 -> 467/579 (80.7%). `m36d_batch_test` 718 -> **831/831**.
+
+---
+
+#### Batch 25 — the sound family (+15: 700 -> 715, 8 behaviors)
+
+Music notes that fly off the singer, plus the two affine deformations that
+make a mon look like it is bellowing or inhaling: `AnimJaggedMusicNote`,
+`AnimWavyMusicNotes`, `AnimSlowFlyingMusicNotes`, `AnimBellyDrumHand`,
+`AnimTask_UproarDistortion`, `AnimTask_DeepInhale`, and the two rainbow-blend
+tasks.
+
+**`_run_affine_cmds` retired.** Both deformations drive a battler through an
+`AFFINEANIMCMD_FRAME(dx, dy, drot, frames)` list via
+`PrepareAffineAnimInTaskData`, so the walk is shared. Deltas apply once per
+frame for `frames` frames, and scale is in GBA units where **256 is identity
+and larger means smaller** — the inversion this port already encodes in
+`MonAnimator.godot_scale`.
+
+**Every real affine table sums to exactly identity on both axes**, which is
+the property the tests assert directly: a mis-transcribed or truncated table
+leaves the battler permanently deformed. Disclosed divergence — the shared
+walk restores explicitly on completion where upstream simply stops. The two
+agree on real data; restoring makes a bad table a test failure rather than a
+squashed mon for the rest of the battle.
+
+**`AnimTask_DeepInhale`'s shiver is gated by a u16 UNDERFLOW.**
+`var0 = data[0]; var0 -= 20; if (var0 < 23)` — on frames 0-19 the subtraction
+wraps to ~65516 and fails, so the jitter runs only on frames 20-42. Read as a
+signed comparison it shakes from frame zero, before the inhale has begun.
+
+**`AnimJaggedMusicNote`'s offset is also its velocity.**
+`data[3] = (args[1] << 3) / 8` is args[1] again, accumulated every frame — a
+note spawned 29 px right also drifts right at 29/8 px per frame. One arg, two
+jobs; read as a position only, every Uproar note hangs motionless.
+
+**The rainbow is real, the allocation is not.** Upstream's two blend tasks
+allocate and free GBA palette slots; Godot has no palette-bank surface, so
+they are no-ops — but the colours still reach the notes, which read the
+ported `gParticlesColorBlendTable` directly. Recorded at the stub per rule (9)
+rather than left bare.
+
+⚠️ **A vacuous guard, caught by injection.** The "cycle time 0 holds one
+colour" check stepped 20 frames and compared once. With four colours in the
+table, a note cycling *every* frame lands back on its starting colour at any
+multiple of 4 — so it passed against a port that ignored the cycle arg
+entirely. Now sampled every frame.
+
+---
+
+#### Batch 26 — everything that fades (+10: 715 -> 725, 7 behaviors)
+
+The Moonlight set, the alpha ramps, and Sky Attack's bird.
+
+**⚠️ THE SPOTLIGHT TRIO WAS DROPPED AT STEP 0, and that is the finding.**
+`AnimSpotlight`, `AnimTask_CreateSpotlight` and `AnimTask_RemoveSpotlight`
+are **WIN0/WIN1 hardware-window** effects: they write WININ/WINOUT/DISPCNT
+and mark the sprite `ST_OAM_OBJ_WINDOW` so it acts as a **stencil**, not as
+something drawn. Same surface as the already-deferred `AnimTask_FakeOut` and
+`AnimTask_MoveTargetMementoShadow`. Deferred per rule (4) rather than
+approximated; the three moves it gates are asserted to remain *unplayable*,
+so a half-port cannot pass silently.
+
+**`AnimMoon` uses ABSOLUTE screen coordinates.** Moonlight passes (120, 56) —
+the middle of a 240-wide screen. Every other sprite in this port positions
+relative to a mon, so the tempting read puts the moon on top of the attacker
+instead of in the sky.
+
+**The moon has no lifetime of its own.** It and the sparkles idle until
+`AnimTask_MoonlightEndFade` sets `data[0]` on every sprite built from their
+two templates — a cross-sprite kill, modelled as a mark on the node rather
+than a timer. The kill is **state 1, after the 15-step whiteout completes**,
+so the moon vanishes while the screen is already washed out; killing in state
+0 makes it pop out in plain view and every "the moon dies" assertion still
+passes.
+
+**`AnimTask_AlphaFadeIn` moves its two coefficients ALTERNATELY.** `data[2]`
+is a parity counter — odd ticks advance eva, even ticks evb — so a 0..16 ramp
+takes **32 ticks, not 16**, and the two are never more than one step apart.
+Moving them together halves the duration and changes the curve mid-blend.
+16 ticks is the discriminating sample: half done under the real reading, fully
+done under the wrong one.
+
+**Sky Attack's bird does not stop at the target.** It is *created* at the
+target, teleported to the attacker, and given velocity `(target - attacker)/12`
+with nothing decrementing — it arrives on frame 12 and keeps going until it
+leaves the screen. Stopping on arrival reads as landing rather than swooping
+through.
+
+`AnimScriptVM.set_blend_context` added so a behavior can drive the same
+BLDALPHA state the `setalpha` opcode writes, rather than a private copy the
+sprite host cannot see.
+
+---
+
+#### Batch 27 — Conversion and the Gen 1 long tail (+15: 725 -> 740, 11 behaviors)
+
+**Two of the eleven are ALIASES.** `AnimGrassKnot` is a verbatim duplicate of
+`AnimSuckerPunch` and `AnimForcePalm` of batch 24's `AnimGunkShotImpact` —
+same bodies, same step functions, same args. Registered as aliases with
+identity assertions, the same guard batch 24 put on the gunk-shot particles.
+That is three duplicate pairs found across four batches; it is worth checking
+for one before writing any new sprite behavior.
+
+**`AnimConversion` is the first behavior that could not have worked before
+batch 24.** It has no lifetime: it parks and polls `gBattleAnimArgs[7]`,
+dying only when `AnimTask_ConversionAlphaBlend` writes `0xFFFF` there — and
+`_load_args` used to clear arg 7 on every command, so the signal could never
+survive the `createsprite` that follows it. Source carries a
+`// TODO: gBattleAnimArgs[ARG_RET_ID]?` comment at both ends, the upstream
+authors noticing the same channel. The signal is written **after** the 16-step
+ramp completes, so the squares fade out with the blend rather than popping.
+
+**⚠️ RAPID SPIN DEFERRED, and the name is the trap.**
+`AnimTask_RapinSpinMonElevation` **never touches the mon sprite at all** — it
+writes `gScanlineEffectRegBuffers` and hands `REG_BG1HOFS`/`REG_BG2HOFS` to a
+per-scanline DMA. The "elevation" is a horizontal shear of the *background* in
+a band around the mon. Same surface as the spotlight. `AnimRapidSpin` is
+deferred *with* it rather than ported alone: every move needing the spin
+sprite also needs the elevation, so porting it by itself would add code no
+move can reach and no coverage test can exercise.
+
+**`AnimTriAttackTriangle` has three beats and the middle one is easy to
+miss.** It flickers on alternate frames for 30, then holds **solid** from 31
+to 60 (`data[0] > 30` overrides the parity check rather than sitting beside
+it), and only at frame 61 launches. A port that flickered throughout still
+looks busy.
+
+**`AnimSharpenSphere`'s blink PERIOD GROWS** — `data[1]` starts at 2 and
+increments every second toggle, so it strobes fast then slows to a stop. A
+fixed-rate blink never settles.
+
+⚠️ **A CLAIM I INVENTED, CAUGHT BY MY OWN TEST.** The Sucker Punch test first
+asserted the sprite "waves vertically", reasoning from the `Sin()` call in its
+step function. It failed — and it was right to. **Both real call sites pass
+amplitude ZERO** (`-18, 5, 40, 8, 160, 0`), so the sine term is inert in every
+animation that reaches it and the sprite slides flat. The term is ported
+anyway because a future caller could use it, and the test now pins both halves:
+flat with the real args, moving with a synthetic amplitude, so the code is not
+dead either. **Reading a `Sin()` call as "therefore it waves" is the mistake;
+the args decide.**
+
+---
+
+**Injections.** 8 for batch 25, 8 for batch 26, 8 for batch 27 — every
+headline claim broken and confirmed failing, then reverted. Regression after
+all three: `m36a` 71/71, `m36b` 53/53, `m36c` 66/66, `m36e_background_asset`
+24/24, `m36e_background_runtime` 30/30, `m36e3` 60/60,
+`hit_effect_dispatch` 40/40.
+
+### M36D batch 24 — COMPLETE 2026-07-31. A severed channel in the VM, a duplicate that needed no port, and a speed wearing a duration's clothes.
+
+**+16 moves: 684 -> 700 of 932 (73.4% -> 75.1%)** — the largest single-batch
+gain of the whole M36D arc. 338 -> 346 registered. Tier 1 closed at 70/70;
+Tier 2 189/283 (66.8%); Tier 3 441/579 (76.2%).
+
+**The batch is one family**: a thrown projectile plus the particle that
+scatters where it lands, ported four pairs at a time — Hydro Cannon
+(charge + beam), Acid (bubble + droplet), Gunk Shot (particles + impact),
+Pay Day (throw + falling coin). Chosen over the higher-headcount
+alternatives because the pairs share one mechanism story rather than being
+four unrelated wins that happened to sum.
+
+**THE FINDING, and it is a VM bug the batch only exposed by accident.**
+Source's `Cmd_createsprite` writes **only the args the command supplies** —
+`gBattleAnimArgs` is a persistent global that is never cleared between
+commands. This port's `_load_args` opened with `args.fill(0)`. That reads as
+hygiene and is not: it silently severed the one channel
+`AnimTask_StartSinAnimTimer` uses.
+
+That task runs for 100 frames adding 3 to `gBattleAnimArgs[7]` every frame,
+and every sprite created *while it runs* reads that value as its phase seed.
+**`_to_target_in_sin_wave` has read a permanently-zero seed since the day it
+was ported**, so Flamethrower's 22 flames have been wobbling in lockstep
+instead of forming a staggered stream. The task itself was registered as a
+literal no-op, with a comment stating that nothing consumed it — true when
+written, false ever since. Fixed in the VM (arg 7 now survives a short
+command) and in the behavior (the timer is now a real counted task).
+
+**DISCLOSED DIVERGENCE**: only arg 7 is carried, not all eight. Arg 7 is the
+documented cross-command register — query tasks already write it for a
+following `jumpargeq` — while args 0-6 have no cross-command consumer
+anywhere in this port, and every behavior ported so far was written against
+"an arg my command did not supply reads 0". Carrying all eight would change
+those inputs with no reference call site asking for it.
+
+**`AnimGunkShotParticles` needed no port at all.** It is a **verbatim
+duplicate** of the already-ported `AnimToTargetInSinWave` — same body, same
+step function, same `0xD200 / 30`, same `> 127` amplitude fold — differing
+only in reading `gBattleAnimArgs[ARG_RET_ID]` where the original reads
+`gBattleAnimArgs[7]`, and `ARG_RET_ID` **is** 7. Registered as an alias, with
+a test asserting the two resolve to the same object so a later session cannot
+"port" it into a second copy to keep in step.
+
+**`AnimCoinThrow`'s arg 4 is a SPEED, not a duration.** It flows into
+`InitAnimLinearTranslationWithSpeed`, which **overwrites** `data[0]` with
+`(|dx| << 8) / data[0]` — the value is a divisor and the frame count falls
+out of the distance. Pay Day passes **1152** (4.5 px/frame, ~26 frames). Read
+as a duration that is a coin in flight for **nineteen seconds**. Nothing at
+the call site distinguishes it from `AnimHydroCannonBeam`'s arg 4, which
+*is* a real duration — both are `data[0] = gBattleAnimArgs[4]`. Both are
+tested, side by side, for exactly that reason.
+
+**`AnimAcidPoisonDroplet` has a dead arg, reproduced.**
+`data[4] = sprite->y + sprite->data[0]` reads `data[0]` *after* it was
+overwritten with arg 4, so the fall distance is the DURATION and arg 3 is
+never read. Acid passes 15 and 55 for those two, so the difference is 40 px
+of visible fall, not an academic one. Recorded in the running lists — do not
+"fix" it to arg 3.
+
+**Smaller ported details.** The acid bubble's arc amplitude is a hardcoded
+**-30**, negative so it lifts above the chord and lands back on the target;
+its arg 3 selects the alternate cel sequence when **zero**, inverted from
+what the name suggests. The falling coin is **two bounces with halving
+amplitude**, not one fall, drifting 0.5 px/frame *away* from the player's
+side. Hydro Cannon's charge carries a real per-side **sub-priority** flip
+(+2 player / -2 opponent) that this port has no surface for — recorded and
+skipped rather than approximated with a z-index guess.
+
+**`_packed_coord_flags` retired.** Batch 23 met this packed word on
+`SpriteCB_TranslateAnimSpriteToTargetMonLocationDoubles` and left the decode
+in a comment; `AnimHydroCannonBeam` is the second caller, so it is a function
+now. Hydro Cannon's own **257** (`0x0101`) is exactly the value that hides
+the bug: both fields set, indistinguishable from any other nonzero value
+under a plain-int read.
+
+⚠️ **A GUARD OF MINE SHIPPED VACUOUS AGAIN AND BOTH INJECTIONS PASSED IT.**
+The end-to-end phase test spawned two flames twelve frames apart and compared
+their deviation from the chord — but a flame's phase also advances with its
+**own age**, so two sprites of different ages deviate differently whether or
+not either ever received a seed. Identical shape to batch 23's lattice guard:
+the assertion was true for a reason unrelated to the claim. Rewritten to hold
+age constant and vary only the seed, routed **through** `_load_args` so the VM
+fix is genuinely on the path under test. It now reports `25.85 vs 25.85`
+under the injection — the two paths being the same *is* the failure.
+
+**This is the second batch running where the vacuous guard was found by the
+injection and not by review.** The standing rule holds and is worth
+restating: injecting the plausible misreading is not a formality after the
+tests pass, it is the only thing that distinguishes a guard from a decoration.
+
+**Every headline claim was proven to catch its regression** — 8 injections,
+each reverted after: VM clears all args (3 failures), timer inert (4), coin
+arg 4 as duration, droplet using arg 3 (2), arc amplitude positive (2), coin
+amplitude not decaying, coin drift unmirrored, packed flags as plain int,
+impact ignoring arg 2.
+
+**One further test bug, not a vacuity**: the Hydro Cannon test spawned the
+charge and the beam onto one stage, and `_spawn` returns the layer's FIRST
+`AnimSprite` child — so the beam's travel was measured on the charge, which
+never moves. It reported "221 of 221 left", the failure a shared stage always
+gives.
+
+**Tests.** `m36d_batch_test` 675 -> **718/718**, eleven new test functions.
+Regression: `m36a` 71/71, `m36b` 53/53, `m36c` 66/66, `m36e_background_asset`
+24/24, `m36e_background_runtime` 30/30, `m36e3` 60/60,
+`hit_effect_dispatch` 40/40 — all green, including after the VM change, which
+touches every animation in the project.
+
+### M36D batch 23 — COMPLETE 2026-07-30. A function whose name is the misreading, and two vacuous guards caught by injection.
+
+**+7 moves: 677 -> 684 of 932 (72.6% -> 73.4%).** Five behaviors plus two
+shared helpers, 333 -> 338 registered. Tier 1 closed at 70/70; Tier 2 186/283
+(65.7%); Tier 3 428/579 (73.9%).
+
+**Machinery retired first, per rule (1).** Two helpers now back the batch and
+one earlier behavior:
+
+- **`_anim_battler_from_arg`** — the reference's `LoadBattleAnimTarget`
+  (`battle_anim_new.c:6330`). An arg holds an ANIM_* battler SELECTOR, not a
+  battler, and **in singles both partner values collapse onto the primary**.
+  Reading the arg as a slot index would aim a singles animation at a slot
+  that is not on the field. All three sprite callbacks in this batch take
+  their battler this way.
+- **`_side_centre`** — `InitSpritePosTo{Attackers,Targets}Centre`. Batch 22's
+  `CentredElectricity` open-coded this; it is now refactored onto the shared
+  helper (behavior-preserving, its own tests unchanged and green).
+- **`_make_sprite_named`** — `_make_sprite`'s twin for a TASK that names its
+  own template in C rather than receiving one from the script's `createsprite`.
+
+**THE FINDING: `SpriteCB_AnimSpriteOnTargetSideCentre` anchors on the
+ATTACKER's side centre when the selected battler is an ALLY**, despite the
+name. Taking the name literally — "centre of the target side" — puts every
+ally-directed use on the wrong half of the screen, and it still looks like a
+perfectly plausible effect there. Injecting the literal reading fails both
+assertions; reverting restores 675/675.
+
+**`SpriteCB_TranslateAnimSpriteToTargetMonLocationDoubles`'s arg 5 is TWO
+fields packed in one word** — high byte selects the pic-offset mode, low byte
+the Y coordinate type. Reading it as a plain int makes every nonzero value
+select the same branch and silently loses one of the two. Both resolve to this
+port's single battler centre, so neither is branched on; the decode is
+recorded in the comment rather than shipped as a no-op `if`, so a later
+session adding pic offsets has the packing already worked out. arg 2 is also
+mirrored when the attacker is on the opposing side — upstream writes that back
+into the shared `gBattleAnimArgs`, a real side-effect, reproduced here on the
+local copy only.
+
+**`AnimTask_ShockWaveLightning`** builds a vertical column of segments 32 px
+apart marching DOWN to the target, one every 2 frames. The start point is
+neither the target nor zero: upstream takes `target_y + 32` and subtracts 32
+until the value drops to 16 or below, landing the first segment above the
+screen **on the same lattice the rest of the column sits on**. Starting at the
+target and walking up uses a different lattice and leaves a seam.
+
+**`AnimTask_ShockWaveProgressingBolt`** crosses to the target in 5 columns,
+each a vertical sweep of segments 8 px apart, with **consecutive columns
+sweeping in opposite directions** — that alternation is what reads as a zigzag
+rather than five identical strokes. Each segment also advances the sheet frame
+by one (upstream nudges `oam.tileNum`), walking 7->0 or 0->7 and wrapping.
+
+**TWO GUARDS SHIPPED VACUOUS AND WERE CAUGHT BY THEIR OWN INJECTION — rule (7)
+in two more dresses.** Both passed against deliberately broken code:
+
+1. The lattice check asserted only "starts above the screen" and "even
+   spacing". **Any** downward march on any lattice satisfies both. Fixed by
+   making it two-sided: the first segment must be at or above the 16 px line
+   AND one step earlier must be off-lattice — i.e. it is the LAST such point.
+2. The zigzag check scanned consecutive points globally, so the jump from one
+   column's last segment (near the top) to the next column's first (at the
+   bottom) registered as a downward sweep. **A bolt with no alternation at all
+   reported a zigzag.** Fixed by grouping points into columns by x and
+   measuring direction WITHIN a column, then asserting every consecutive pair
+   alternates.
+
+The lesson generalises past this batch: **a guard whose injection you had to
+hand-pick is a guard you have not tested.** The first lattice injection
+(`target_y - 3*gap`) happened to land on the correct lattice and passed
+honestly; only a clearly-wrong start exposed the gap.
+
+**One further test bug, not a vacuity**: the doubles-translate arrival check
+stepped the full duration, but `_linear_travel` destroys on arrival WITHOUT
+writing the final position (existing convention), so it read a freed node's
+stale value. Rewritten to step to duration-1 and assert the sprite is far
+nearer the selected battler than the default target.
+
+**Tests.** `m36d_batch_test` 652 -> **675/675**, six new test functions. All
+three headline guards proven to catch their regressions by injection.
+Regression: `m36a` 71/71, `m36b` 53/53, `m36c` 66/66, `m36e_background_asset`
+24/24, `m36e_background_runtime` 30/30, `m36e3` 60/60, `hit_effect_dispatch`
+40/40 — all green.
+
+### M36D batch 22 — COMPLETE 2026-07-30. A query behavior, and a halved divisor that reads like a full one.
+
+**+7 moves: 670 -> 677 of 932 (71.9% -> 72.6%).** Four behaviors, 329 -> 333
+registered. Tier 1 stays closed at 70/70; Tier 2 185/283 (65.4%); Tier 3
+422/579 (72.9%).
+
+**Ported.** `AnimTask_IsTargetSameSide` (a pure query, writing `gBattleAnimArgs[7]`);
+`SpriteCB_MindBlownBall`; `SpriteCB_CentredElectricity`;
+`AnimTask_CreateSmallSteelBeamOrbs`.
+
+**Templates resolved by callback up front**, per rule (7), before any test was
+written — `gBreakingSwipeCenteredElectricity`, `gMindBlownHeadTemplate`,
+`gSteelBeamSmallOrbSpriteTemplate`.
+
+**THE FINDING: MindBlownBall's phase-0 divisor is `arg0 << 1` while its
+countdown is `arg0`, so the wind-up covers only HALF the way back to the
+template's own spawn point.** Reading both as `arg0` — the obvious reading, and
+the one every other two-phase behavior in this port actually uses — doubles the
+retreat and still looks like a perfectly reasonable wind-up on screen. Nothing
+about the animation would look broken; it would just be wrong.
+
+That is also the one thing in this batch that is **only discriminable against
+the template's own spawn point**, which the behavior overwrites on its first
+line. The test therefore captures it directly with a bare `_make_sprite()` call
+on a throwaway stage rather than inferring it from the attacker's position.
+Proven non-vacuous by injecting the plain-`arg0` divisor: the guard reports
+`515.2 of 515.2` and fails, and passes again on revert.
+
+**`AnimTask_IsTargetSameSide` needs its POLARITY pinned, not just its presence.**
+Both arms of the branching script animate, so a reversed polarity plays the
+wrong animation rather than no animation — invisible to any "did it write
+arg 7" check. Injecting the inversion fails both assertions.
+
+**`SpriteCB_CentredElectricity`** anchors on the MIDPOINT of the two opposing
+slots in doubles and on the target itself in singles; arg 3 selects one of three
+genuinely different widths. Tested by building both formats and asserting the
+two anchors differ, rather than asserting either in isolation.
+
+**A vacuous assertion caught by its own failure, and the fix is the finding.**
+The steel-orb spawner check asserted peak CONCURRENT sprites reached 15. Each
+orb travels 80 frames and then destroys itself while a new one arrives every 7,
+so no more than ~12 are ever alive at once — the check failed at "peak 12"
+against a correct spawner. **Concurrency is not the quantity the claim is
+about.** Rewritten to accumulate distinct instance IDs across the run, which is
+what "the spawner stops at 15" actually means.
+
+**Deferred: `AnimTask_MoveTargetMementoShadow`** — a WIN0/scanline screen-effect
+gap, the same family as `AnimTask_FakeOut`, not an unread step function.
+
+**Tests.** `m36d_batch_test` 637 -> **652/652**, six new test functions. Both
+headline guards were proven to catch their own regressions by injection before
+being trusted. Regression: `m36a` 71/71, `m36b` 53/53, `m36c` 66/66,
+`m36e_background_asset` 24/24, `m36e_background_runtime` 30/30, `m36e3` 60/60,
+`hit_effect_dispatch` 40/40 — all green.
+
 ### M36D batch 21 — COMPLETE 2026-07-30. A script signal, and a vacuous assertion caught by its own failure.
 
 **4 behaviors, +5 moves (665 → 670 of 932, 71.4% → 71.9%).** Tier 3 71.7%;

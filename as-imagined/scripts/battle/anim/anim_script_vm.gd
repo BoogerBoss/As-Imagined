@@ -531,6 +531,14 @@ func bg_fade_state() -> int:
 # opcode is. The Dig family and SetAllNonAttackersInvisiblity all deliberately
 # leave a battler hidden for a later call to undo; this is what stops a script
 # that never makes that call from hiding a Pokemon for the rest of the battle.
+# The blend context the `setalpha` opcode writes, exposed so a BEHAVIOR can
+# drive it too. AnimTask_AlphaFadeIn ramps BLDALPHA over time rather than
+# setting it once, which is the same register `setalpha` writes -- so it
+# belongs on the same state, not on a private copy the sprite host cannot see.
+func set_blend_context(eva: int, evb: int) -> void:
+	_blend = {"eva": clampi(eva, 0, 16), "evb": clampi(evb, 0, 16)}
+
+
 func set_battler_visible_tracked(battler: int, visible: bool) -> void:
 	_set_battler_visible(battler, visible)
 	if visible:
@@ -619,10 +627,31 @@ func _argv_of(cmd: Array) -> Array:
 
 # Loads argv into the global register file, exactly as every create-command
 # does upstream before the behavior's first invocation.
+# Source's Cmd_createsprite / Cmd_createvisualtask write ONLY the args the
+# command actually supplies (`for (i = 0; i < argsCount; i++)`, battle_anim.c)
+# -- gBattleAnimArgs is a persistent global that is never cleared between
+# commands. That is not incidental: it is the channel
+# AnimTask_StartSinAnimTimer uses. That task runs for 100 frames writing
+# gBattleAnimArgs[7] every frame, and every sprite created WHILE it runs
+# reads that value as its phase seed. Clearing the whole array here looked
+# like hygiene and silently severed it -- `_to_target_in_sin_wave` has read
+# a permanently-zero seed since it was ported, so Flamethrower's flames all
+# wobbled in lockstep instead of forming a staggered stream.
+#
+# DISCLOSED DIVERGENCE: only arg 7 is preserved, not all eight. Arg 7
+# (`ARG_RET`) is the documented cross-command register -- query tasks already
+# write it for a following `jumpargeq` to read -- whereas args 0-6 have no
+# cross-command consumer anywhere in this port, and every behavior ported so
+# far was written against "an arg my command did not supply reads 0".
+# Carrying all eight would change those inputs with no reference call site
+# asking for it. See the running lists.
 func _load_args(argv: Array) -> void:
+	var carried: int = args[ARG_RET]
 	args.fill(0)
 	for i in range(mini(argv.size(), ARG_COUNT)):
 		args[i] = int(argv[i])
+	if argv.size() <= ARG_RET:
+		args[ARG_RET] = carried
 
 
 func _do_createsprite(cmd: Array) -> void:

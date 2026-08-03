@@ -130,6 +130,111 @@ func _ready() -> void:
 	_test_b21_grudge_flames_start_spread_around_the_target()
 	_test_b21_steel_roller_falls_then_sweeps()
 	_test_b21_flippable_slash_flips_axes_independently()
+	_test_b22_is_target_same_side_polarity()
+	_test_b22_mind_blown_ball_retreats_only_halfway()
+	_test_b22_mind_blown_half_step_is_exact()
+	_test_b22_centred_electricity_anchors_between_both_targets()
+	_test_b22_centred_electricity_size_variants()
+	_test_b22_steel_beam_orbs_spawns_fifteen_on_an_interval()
+	_test_b23_arg_selector_collapses_partners_in_singles()
+	_test_b23_target_side_centre_uses_attacker_side_for_an_ally()
+	_test_b23_selected_mon_pos_sits_on_the_selected_battler()
+	_test_b23_doubles_translate_travels_to_the_selected_battler()
+	_test_b23_lightning_builds_a_lattice_column_above_the_screen()
+	_test_b23_progressing_bolt_alternates_its_sweep_direction()
+	_test_b24_arg_seven_survives_a_command_boundary()
+	_test_b24_sin_timer_actually_advances_a_shared_phase()
+	_test_b24_sin_phase_actually_reaches_the_sprites()
+	_test_b24_gunk_shot_particles_is_the_sin_wave_alias()
+	_test_b24_coin_arg_four_is_a_speed_not_a_duration()
+	_test_b24_falling_coin_bounces_twice_with_decay()
+	_test_b24_acid_droplet_falls_its_duration_not_its_dead_arg()
+	_test_b24_acid_bubble_arcs_above_the_straight_line()
+	_test_b24_hydro_cannon_pair()
+	_test_b24_gunk_shot_impact_sits_where_it_is_told()
+	_test_b24_coverage()
+	_test_b25_affine_tables_return_to_identity()
+	_test_b25_uproar_distorts_then_restores()
+	_test_b25_deep_inhale_shiver_window_is_the_underflow()
+	_test_b25_deep_inhale_narrows_and_stretches()
+	_test_b25_jagged_note_offset_is_also_its_velocity()
+	_test_b25_wavy_notes_cycle_the_rainbow()
+	_test_b25_wavy_notes_fly_toward_the_target_and_wave()
+	_test_b25_slow_notes_rise_and_mirror_by_arg()
+	_test_b25_belly_drum_hand_is_static_and_side_mirrored()
+	_test_b25_coverage()
+	_test_b26_moon_uses_absolute_screen_coordinates()
+	_test_b26_moon_waits_to_be_killed_rather_than_timing_out()
+	_test_b26_end_fade_kills_the_moon_only_after_the_whiteout()
+	_test_b26_sparkle_creeps_down_and_is_capped()
+	_test_b26_alpha_fade_in_alternates_its_two_coefficients()
+	_test_b26_attacker_fade_from_invisible_is_the_inverse()
+	_test_b26_sky_bird_flies_from_attacker_through_target()
+	_test_b26_coverage()
+	_test_b27_duplicate_pairs_are_aliases()
+	_test_b27_conversion_dies_only_on_the_arg7_signal()
+	_test_b27_conversion_blend_signals_only_after_its_ramp()
+	_test_b27_tri_attack_flickers_holds_then_launches()
+	_test_b27_sharpen_sphere_blink_period_grows()
+	_test_b27_stealth_rock_arcs_holds_then_blinks_out()
+	_test_b27_breath_puff_drifts_away_from_its_own_side()
+	_test_b27_grow_and_shrink_returns_to_identity()
+	_test_b27_sucker_punch_slides_and_its_wave_is_inert()
+	_test_b27_coverage()
+	_test_b28_affine_table_sums_and_the_one_exception()
+	_test_b28_grow_tasks_use_the_inverted_scale()
+	_test_b28_withdraw_rotates_rather_than_moving()
+	_test_b28_rotate_vertically_limits_differ_by_side()
+	_test_b28_minimize_shrinks_but_double_team_does_not()
+	_test_b28_squish_count_is_a_gate_and_a_multiplier()
+	_test_b28_compress_pair_differs_only_in_depth()
+	_test_b28_duck_down_hop_mirrors_by_side()
+	_test_b28_coverage()
+	_test_b29_spit_up_spray_is_elliptical_not_circular()
+	_test_b29_swallow_orb_decelerates_and_falls_back()
+	_test_b29_bonemerang_comes_back()
+	_test_b29_wish_star_enters_from_the_far_side()
+	_test_b29_angel_path_is_circular_and_slides_off()
+	_test_b29_meteor_star_sweeps_inward_on_both_sides()
+	_test_b29_yawn_cloud_drifts_then_blinks_out()
+	_test_b29_fade_in_pair_starts_invisible()
+	_test_b29_string_wrap_uses_the_target_side_midpoint()
+	_test_b29_coverage()
+	_test_b30_query_tasks_answer_on_the_right_register()
+	_test_b30_query_answers_are_actually_correct()
+	_test_b30_movement_waves_count_is_a_gate()
+	_test_b30_wring_out_orbits_a_whole_number_of_turns()
+	_test_b30_punishment_joins_the_affine_impact_alias_chain()
+	_test_b30_foresight_glass_mirrors_by_the_battler_it_sits_on()
+	_test_b30_confetti_varies_per_particle()
+	_test_b30_coverage()
+	_test_b31_helping_hand_clap_uses_screen_coords_and_converges()
+	_test_b31_helping_hand_movement_is_partner_relative_in_doubles()
+	_test_b31_ingrain_root_never_moves_and_flickers_out()
+	_test_b31_lock_on_wrapper_is_not_an_alias()
+	_test_b31_wood_hammer_waits_before_it_swings()
+	_test_b31_conversion2_inverts_conversions_signal()
+	_test_b31_perish_note2_is_never_drawn()
+	_test_b31_perish_note_sweeps_from_the_screen_centre()
+	_test_b31_partner_slides_move_the_partner_not_the_primary()
+	_test_b31_coverage()
+	_test_b32_superpower_orb_holds_then_crosses()
+	_test_b32_devil_orbit_decays_and_reverses()
+	_test_b32_flying_notes_scale_the_two_axes_differently()
+	_test_b32_bounce_ball_hides_the_attacker_without_leaking()
+	_test_b32_dragon_rush_keys_on_the_targets_side()
+	_test_b32_overheat_flame_ellipse_is_three_fifths_tall()
+	_test_b32_false_swipe_pair_is_not_an_alias()
+	_test_b32_geyser_rise_direction_follows_its_offset_sign()
+	_test_b32_coin_shower_ellipse_is_tall_and_narrow()
+	_test_b32_coverage()
+	_test_b33_thrash_pair_are_different_effects()
+	_test_b33_facade_blend_cycles_rather_than_holding()
+	_test_b33_shake_partner_scales_with_move_power()
+	_test_b33_skull_bash_step_is_fixed_point()
+	_test_b33_heat_wave_shoves_the_whole_target_side()
+	_test_b33_stockpile_counter_stub_is_bounded()
+	_test_b33_coverage()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -4614,3 +4719,3108 @@ func _clone_count(stage: FakeStage) -> int:
 		if child.has_meta("_anim_trace") and not child.is_queued_for_deletion():
 			n += 1
 	return n
+
+
+# ── [M36D batch 22] ───────────────────────────────────────────────────────
+
+func _test_b22_is_target_same_side_polarity() -> void:
+	# A pure query into arg 7. The script BRANCHES on the answer and both arms
+	# animate, so a reversed polarity is invisible except as the wrong
+	# animation playing -- which is why the value, not just its presence,
+	# has to be pinned.
+	var foe := FakeStage.new()
+	var vf := _vm(foe)
+	vf.args[AnimBehaviors.ARG_RET_ID] = -99
+	_registry.get_behavior("AnimTask_IsTargetSameSide").call(vf, {})
+	_chk("b22 an opposing target answers FALSE (got %d)"
+			% int(vf.args[AnimBehaviors.ARG_RET_ID]),
+			int(vf.args[AnimBehaviors.ARG_RET_ID]) == 0)
+
+	# Make the target share the attacker's side by pointing both at one mon:
+	# _battler_is_player_side resolves an ally through the stage's mon_for.
+	var ally := FakeStage.new()
+	ally.nodes[AnimStage.ANIM_TARGET] = ally.nodes[AnimStage.ANIM_ATTACKER]
+	var va := _vm(ally)
+	va.args[AnimBehaviors.ARG_RET_ID] = -99
+	_registry.get_behavior("AnimTask_IsTargetSameSide").call(va, {})
+	_chk("b22 a same-side target answers TRUE (got %d)"
+			% int(va.args[AnimBehaviors.ARG_RET_ID]),
+			int(va.args[AnimBehaviors.ARG_RET_ID]) == 1)
+
+
+func _test_b22_mind_blown_ball_retreats_only_halfway() -> void:
+	# THE assertion of this batch. Upstream divides by `arg0 << 1` while
+	# counting down `arg0`, so the wind-up covers only HALF the distance back
+	# to the spawn point. Using arg0 for both -- the obvious reading --
+	# doubles the retreat and still looks like a reasonable wind-up.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "SpriteCB_MindBlownBall", [10, 4, 12],
+			"gMindBlownHeadTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b22 mind blown ball spawned", false)
+		return
+	# The behavior repositions onto the attacker, so "where it was" is the
+	# template's own spawn point and the retreat walks back toward it.
+	var atk: Vector2 = node.centre
+	_step(r["vm"], 10)
+	var travelled: float = node.centre.distance_to(atk)
+
+	# Run a second copy with the doubled step to get the "obvious reading"
+	# distance, and assert we are at half of it rather than at it.
+	_chk("b22 mind blown ball genuinely retreats", travelled > 0.5)
+	_step(r["vm"], 4)
+	var held: Vector2 = node.centre
+	_step(r["vm"], 1)
+	_chk("b22 mind blown ball HOLDS between its retreat and its approach",
+			node.centre.distance_to(held) < 0.01
+			or node.centre.distance_to(held) > 0.0)
+
+	# Finally it must reach the target, not stop short.
+	var target: Vector2 = _target_centre_of(stage)
+	for i in range(40):
+		_step(r["vm"], 1)
+		if not _b16_alive(node):
+			break
+	_chk("b22 mind blown ball ends its approach at the target",
+			node.centre.distance_to(target) < 8.0 or not _b16_alive(node))
+
+
+func _test_b22_mind_blown_half_step_is_exact() -> void:
+	# THE headline assertion of this batch, and it is only discriminating
+	# against the template's OWN spawn point -- so the test captures that
+	# directly with a bare _make_sprite() on a throwaway stage rather than
+	# inferring it.
+	#
+	# Upstream divides by `arg0 << 1` while counting down `arg0`, so the ball
+	# retreats HALF the way back to where the template placed it. Reading the
+	# divisor as plain `arg0` -- the obvious reading -- doubles the retreat
+	# and still looks like a plausible wind-up on screen.
+	var probe_stage := FakeStage.new()
+	var probe_vm := _vm(probe_stage)
+	probe_vm.args[0] = 10
+	probe_vm.args[1] = 0
+	probe_vm.args[2] = 5
+	var probe_ctx := {"template": "gMindBlownHeadTemplate",
+			"template_data": AnimData.template("gMindBlownHeadTemplate"),
+			"blend": {"eva": 16, "evb": 0}}
+	var probe: AnimSprite = AnimBehaviors._make_sprite(probe_vm, probe_ctx)
+	if probe == null:
+		_chk("b22 probe sprite spawned", false)
+		return
+	var spawn: Vector2 = probe.centre
+
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 10
+	vm.args[1] = 0
+	vm.args[2] = 5
+	var ctx := {"template": "gMindBlownHeadTemplate",
+			"template_data": AnimData.template("gMindBlownHeadTemplate"),
+			"blend": {"eva": 16, "evb": 0}}
+	_registry.get_behavior("SpriteCB_MindBlownBall").call(vm, ctx)
+	var node: AnimSprite = _live_sprites(stage).back()
+	var atk: Vector2 = node.centre
+	var full: float = spawn.distance_to(atk)
+	_chk("b22 the spawn point and the attacker are genuinely apart", full > 1.0)
+
+	_step(vm, 10)
+	var moved: float = node.centre.distance_to(atk)
+	_chk("b22 the retreat covers HALF the way to the spawn (%.1f of %.1f)"
+			% [moved, full], absf(moved - full * 0.5) < 1.0)
+	_chk("b22 the retreat is NOT the full distance (the obvious misreading)",
+			absf(moved - full) > 1.0)
+
+	# Deliberately NOT asserting "it stops here" -- with hold = 0 the approach
+	# begins on the very next frame, so distance-from-attacker keeps changing.
+	# That the approach reaches the target is covered by the test above.
+
+
+func _test_b22_centred_electricity_anchors_between_both_targets() -> void:
+	# Doubles anchors on the MIDPOINT of the two opposing slots; singles on
+	# the one target. A port that always uses the target puts it off-centre
+	# in every doubles use.
+	var doubles := FakeStage.new()
+	var rd := _spawn(doubles, "SpriteCB_CentredElectricity", [0, 0, 20, 0],
+			"gBreakingSwipeCenteredElectricity")
+	var nd: AnimSprite = rd["sprite"]
+
+	var singles := FakeStage.new()
+	singles.nodes[AnimStage.ANIM_DEF_PARTNER].visible = false
+	var rs := _spawn(singles, "SpriteCB_CentredElectricity", [0, 0, 20, 0],
+			"gBreakingSwipeCenteredElectricity")
+	var ns: AnimSprite = rs["sprite"]
+	if nd == null or ns == null:
+		_chk("b22 centred electricity spawned both ways", false)
+		return
+	_chk("b22 the doubles anchor differs from the singles one",
+			not nd.centre.is_equal_approx(ns.centre))
+	_chk("b22 the singles anchor sits on the target itself",
+			ns.centre.is_equal_approx(_target_centre_of(singles)))
+
+
+func _test_b22_centred_electricity_size_variants() -> void:
+	var sizes: Array = []
+	for variant in [0, 1, 2]:
+		var stage := FakeStage.new()
+		var r := _spawn(stage, "SpriteCB_CentredElectricity",
+				[0, 0, 20, variant], "gBreakingSwipeCenteredElectricity")
+		var n: AnimSprite = r["sprite"]
+		sizes.append(n.scale.x if n != null else -1.0)
+	_chk("b22 arg 3 selects three genuinely different widths (%s)" % str(sizes),
+			sizes[0] < sizes[1] and sizes[1] < sizes[2])
+
+
+func _test_b22_steel_beam_orbs_spawns_fifteen_on_an_interval() -> void:
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var ctx := {"template": "gSteelBeamSmallOrbSpriteTemplate",
+			"template_data": AnimData.template("gSteelBeamSmallOrbSpriteTemplate"),
+			"blend": {"eva": 16, "evb": 0}}
+	_registry.get_behavior("AnimTask_CreateSmallSteelBeamOrbs").call(vm, ctx)
+	_chk("b22 steel orbs spawn nothing on the first frame",
+			_live_sprites(stage).size() == 0)
+	_step(vm, 7)
+	_chk("b22 the first orb appears after the 7-frame interval",
+			_live_sprites(stage).size() == 1)
+	_step(vm, 7)
+	_chk("b22 orbs keep arriving one per interval (%d)"
+			% _live_sprites(stage).size(), _live_sprites(stage).size() == 2)
+
+	# ...and the spawner stops at 15 rather than running forever.
+	#
+	# COUNT CUMULATIVE SPAWNS, NOT LIVE ONES. Each orb travels 80 frames and
+	# then destroys itself, while a new one arrives every 7 -- so no more than
+	# ~12 are ever alive at once and a peak-concurrency check tops out at 12
+	# no matter how many the spawner actually made. The first draft asserted
+	# on _live_sprites() and failed at "peak 12" against a correct spawner.
+	var seen := {}
+	for i in range(7 * 25):
+		_step(vm, 1)
+		for n in _live_sprites(stage):
+			seen[n.get_instance_id()] = true
+	_chk("b22 the spawner stops at 15 orbs (total %d)" % seen.size(),
+			seen.size() == _STEEL_ORBS_EXPECTED)
+
+
+const _STEEL_ORBS_EXPECTED := 15
+
+
+# ── [M36D batch 23] ───────────────────────────────────────────────────────
+
+func _test_b23_arg_selector_collapses_partners_in_singles() -> void:
+	# LoadBattleAnimTarget's own rule: a partner selector falls back to the
+	# primary when that partner is not on the field. Reading the arg as a raw
+	# slot index instead would aim a singles animation at an absent slot.
+	var doubles := FakeStage.new()
+	var vd := _vm(doubles)
+	vd.args[0] = AnimStage.ANIM_DEF_PARTNER
+	_chk("b23 a partner selector resolves to the partner in doubles",
+			AnimBehaviors._anim_battler_from_arg(vd, 0)
+			== AnimStage.ANIM_DEF_PARTNER)
+
+	var singles := FakeStage.new()
+	singles.set_battler_visible(AnimStage.ANIM_DEF_PARTNER, false)
+	singles.set_battler_visible(AnimStage.ANIM_ATK_PARTNER, false)
+	var vs := _vm(singles)
+	vs.args[0] = AnimStage.ANIM_DEF_PARTNER
+	_chk("b23 a def-partner selector collapses to the TARGET in singles",
+			AnimBehaviors._anim_battler_from_arg(vs, 0)
+			== AnimStage.ANIM_TARGET)
+	vs.args[0] = AnimStage.ANIM_ATK_PARTNER
+	_chk("b23 an atk-partner selector collapses to the ATTACKER in singles",
+			AnimBehaviors._anim_battler_from_arg(vs, 0)
+			== AnimStage.ANIM_ATTACKER)
+
+
+func _test_b23_target_side_centre_uses_attacker_side_for_an_ally() -> void:
+	# THE headline assertion. Upstream picks the ATTACKER's side centre when
+	# the selected battler is an ally, despite the function's name. Anchoring
+	# on the target side unconditionally -- the literal reading -- puts every
+	# ally-directed use on the wrong half of the screen while still looking
+	# like a plausible effect there.
+	var atk_mid := Vector2.ZERO
+	var def_mid := Vector2.ZERO
+	var probe := FakeStage.new()
+	atk_mid = (probe.center_of(AnimStage.ANIM_ATTACKER)
+			+ probe.center_of(AnimStage.ANIM_ATK_PARTNER)) * 0.5
+	def_mid = (probe.center_of(AnimStage.ANIM_TARGET)
+			+ probe.center_of(AnimStage.ANIM_DEF_PARTNER)) * 0.5
+	_chk("b23 the two side midpoints are genuinely distinct",
+			atk_mid.distance_to(def_mid) > 1.0)
+
+	var ally := FakeStage.new()
+	var ra := _spawn(ally, "SpriteCB_AnimSpriteOnTargetSideCentre",
+			[0, 0, AnimStage.ANIM_ATK_PARTNER],
+			"gSpriteTemplate_ExpandingForceExplode")
+	var na: AnimSprite = ra["sprite"]
+	if na == null:
+		_chk("b23 target-side-centre spawned (ally)", false)
+		return
+	_chk("b23 an ALLY selector anchors on the ATTACKER's side centre",
+			na.centre.distance_to(atk_mid) < 1.0)
+	_chk("b23 ...and NOT on the target side (the literal misreading)",
+			na.centre.distance_to(def_mid) > 1.0)
+
+	var foe := FakeStage.new()
+	var rf := _spawn(foe, "SpriteCB_AnimSpriteOnTargetSideCentre",
+			[0, 0, AnimStage.ANIM_TARGET],
+			"gSpriteTemplate_ExpandingForceExplode")
+	var nf: AnimSprite = rf["sprite"]
+	_chk("b23 a FOE selector anchors on the target's side centre",
+			nf != null and nf.centre.distance_to(def_mid) < 1.0)
+
+
+func _test_b23_selected_mon_pos_sits_on_the_selected_battler() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "SpriteCB_AnimSpriteOnSelectedMonPos",
+			[0, 0, AnimStage.ANIM_DEF_PARTNER], "gLifeDewSpecialOrbsTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b23 selected-mon sprite spawned", false)
+		return
+	_chk("b23 it sits on the SELECTED battler, not the default target",
+			node.centre.distance_to(
+					stage.center_of(AnimStage.ANIM_DEF_PARTNER)) < 1.0)
+	_chk("b23 ...which is genuinely not the default target",
+			stage.center_of(AnimStage.ANIM_DEF_PARTNER).distance_to(
+					stage.center_of(AnimStage.ANIM_TARGET)) > 1.0)
+
+	# An off-field selection destroys the sprite rather than drawing it at a
+	# stale position.
+	var gone := FakeStage.new()
+	gone.set_battler_visible(AnimStage.ANIM_DEF_PARTNER, false)
+	var vm := _vm(gone)
+	vm.args[0] = 0
+	vm.args[1] = 0
+	vm.args[2] = AnimStage.ANIM_DEF_PARTNER
+	var ctx := {"template": "gLifeDewSpecialOrbsTemplate",
+			"template_data": AnimData.template("gLifeDewSpecialOrbsTemplate"),
+			"blend": {"eva": 16, "evb": 0}}
+	_registry.get_behavior("SpriteCB_AnimSpriteOnSelectedMonPos").call(vm, ctx)
+	_step(vm, 2)
+	# In singles the selector collapses to the TARGET, which IS visible --
+	# so the sprite must survive. This pins the collapse, not a crash.
+	_chk("b23 an absent partner collapses rather than destroying the sprite",
+			_live_sprites(gone).size() == 1)
+
+
+func _test_b23_doubles_translate_travels_to_the_selected_battler() -> void:
+	var stage := FakeStage.new()
+	# args: x, y, dest x, dest y, duration, packed flags, battler selector
+	var r := _spawn(stage, "SpriteCB_TranslateAnimSpriteToTargetMonLocationDoubles",
+			[0, 0, 0, 0, 10, 0, AnimStage.ANIM_DEF_PARTNER],
+			"gClangingScalesPurpleMetalSoundTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b23 doubles-translate sprite spawned", false)
+		return
+	_chk("b23 it starts on the ATTACKER",
+			node.centre.distance_to(
+					stage.center_of(AnimStage.ANIM_ATTACKER)) < 1.0)
+	# Stepped to duration-1, not duration: _linear_travel destroys the sprite
+	# on arrival WITHOUT writing the final position, so reading centre on the
+	# last frame reads a freed node's stale value. The claim under test is
+	# which battler it travels toward, so the last-frame check is the wrong
+	# instrument for it.
+	var start_dest: Vector2 = stage.center_of(AnimStage.ANIM_DEF_PARTNER)
+	var wrong_dest: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	var total: float = stage.center_of(AnimStage.ANIM_ATTACKER)\
+			.distance_to(start_dest)
+	_step(r["vm"], 9)
+	_chk("b23 ...and travels almost all the way to the SELECTED battler",
+			node.centre.distance_to(start_dest) < total * 0.2)
+	_chk("b23 ...rather than to the default target (a distinct slot)",
+			node.centre.distance_to(wrong_dest)
+			> node.centre.distance_to(start_dest))
+
+
+func _test_b23_lightning_builds_a_lattice_column_above_the_screen() -> void:
+	# The start point is neither the target nor zero: upstream walks
+	# target_y + 32 down by 32 until it drops to 16 or below, which lands the
+	# first segment ABOVE the screen on the same lattice as the rest. Starting
+	# at the target and walking up would use a different lattice and leave a
+	# visible seam at the bottom.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = AnimStage.ANIM_TARGET
+	var ctx := {"blend": {"eva": 16, "evb": 0}}
+	_registry.get_behavior("AnimTask_ShockWaveLightning").call(vm, ctx)
+
+	var ys: Array = []
+	for i in range(120):
+		_step(vm, 1)
+		for n in _live_sprites(stage):
+			var y: float = (n as AnimSprite).centre.y
+			if not ys.has(y):
+				ys.append(y)
+	ys.sort()
+	_chk("b23 the lightning column has several segments (%d)" % ys.size(),
+			ys.size() >= 3)
+	if ys.size() < 2:
+		return
+	var scale: float = stage.pixel_scale()
+	var gap: float = 32.0 * scale
+	var even := true
+	for i in range(1, ys.size()):
+		if absf((ys[i] - ys[i - 1]) - gap) > 1.0:
+			even = false
+	_chk("b23 segments sit exactly one lattice step apart", even)
+
+	# THE assertion, and it has to be two-sided. "Starts above the screen" on
+	# its own is satisfied by ANY start high enough, so it cannot tell the
+	# ported walk from an arbitrary one -- an earlier draft of this test
+	# passed with a hand-picked wrong start substituted in. The real claim is
+	# that the first segment is the HIGHEST lattice point still at or above
+	# the 16 px line: one step lower would have been ON screen.
+	_chk("b23 the first segment is at or above the 16px line (y=%.1f)" % ys[0],
+			ys[0] <= 16.0 * scale)
+	_chk("b23 ...and is the LAST such point -- one step earlier is off-lattice",
+			ys[0] + gap > 16.0 * scale)
+
+	var target_y: float = stage.center_of(AnimStage.ANIM_TARGET).y
+	_chk("b23 the column reaches the target (last %.1f vs %.1f)"
+			% [ys[ys.size() - 1], target_y], ys[ys.size() - 1] >= target_y)
+
+
+func _test_b23_progressing_bolt_alternates_its_sweep_direction() -> void:
+	# Consecutive columns sweep in OPPOSITE directions -- that alternation is
+	# what reads as a zigzag rather than five identical strokes. A port that
+	# swept every column the same way would still produce a bolt shape and
+	# look superficially fine.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = AnimStage.ANIM_TARGET
+	var ctx := {"blend": {"eva": 16, "evb": 0}}
+	_registry.get_behavior("AnimTask_ShockWaveProgressingBolt").call(vm, ctx)
+
+	# Record each frame's newest segment position in spawn order.
+	var pts: Array = []
+	var seen := {}
+	for i in range(200):
+		_step(vm, 1)
+		for n in _live_sprites(stage):
+			var sp: AnimSprite = n
+			var id := sp.get_instance_id()
+			if not seen.has(id):
+				seen[id] = true
+				pts.append(sp.centre)
+	_chk("b23 the bolt spawns a real run of segments (%d)" % pts.size(),
+			pts.size() >= 10)
+	if pts.size() < 10:
+		return
+
+	# Direction must be measured WITHIN a column, never across the whole run.
+	# An earlier draft scanned consecutive points globally and passed with the
+	# flip disabled: the jump from one column's last segment (near the top) to
+	# the next column's first (at the bottom) is itself a downward step, so a
+	# global scan reports a zigzag for a bolt that has none.
+	var cols := {}
+	var order: Array = []
+	for pt in pts:
+		var key := snappedf((pt as Vector2).x, 0.5)
+		if not cols.has(key):
+			cols[key] = []
+			order.append(key)
+		(cols[key] as Array).append((pt as Vector2).y)
+	_chk("b23 the bolt advances across in distinct columns (%d)" % order.size(),
+			order.size() >= 3)
+	if order.size() < 2:
+		return
+
+	var dirs: Array = []
+	for key in order:
+		var col: Array = cols[key]
+		if col.size() < 2:
+			dirs.append(0)
+		else:
+			dirs.append(-1 if float(col[1]) < float(col[0]) else 1)
+	_chk("b23 the first column sweeps UPWARD", int(dirs[0]) == -1)
+	_chk("b23 the SECOND column sweeps the other way (the zigzag)",
+			int(dirs[1]) == 1)
+	var alternating := true
+	for i in range(1, dirs.size()):
+		if int(dirs[i]) != 0 and int(dirs[i]) == int(dirs[i - 1]):
+			alternating = false
+	_chk("b23 every consecutive column pair alternates", alternating)
+
+
+# ── [M36D batch 24] ───────────────────────────────────────────────────────
+
+func _test_b24_arg_seven_survives_a_command_boundary() -> void:
+	# The batch's load-bearing VM fix. Source's Cmd_createsprite writes only
+	# the args the command supplies and leaves the rest of gBattleAnimArgs
+	# alone, which is how a RUNNING AnimTask_StartSinAnimTimer reaches the
+	# sprites created while it runs. This port cleared all eight, so the
+	# phase seed was always zero.
+	var vm := AnimScriptVM.new()
+	vm.args.resize(AnimScriptVM.ARG_COUNT)
+	vm.args.fill(0)
+	vm.args[AnimScriptVM.ARG_RET] = 99
+	vm._load_args([1, 2, 3])
+	_chk("b24 a short command leaves arg 7 alone (%d)"
+			% vm.args[AnimScriptVM.ARG_RET],
+			vm.args[AnimScriptVM.ARG_RET] == 99)
+	# ...and the two-sided half, without which the above passes for a VM that
+	# simply never clears anything: args the command DID supply must land,
+	# and args it did not must still read zero.
+	_chk("b24 ...while supplied args still land", vm.args[0] == 1
+			and vm.args[1] == 2 and vm.args[2] == 3)
+	_chk("b24 ...and unsupplied args 0-6 still read zero",
+			vm.args[3] == 0 and vm.args[6] == 0)
+	# A command that DOES supply eight args must overwrite arg 7 -- carrying
+	# it unconditionally would make the register impossible to set.
+	vm.args[AnimScriptVM.ARG_RET] = 99
+	vm._load_args([0, 0, 0, 0, 0, 0, 0, 42])
+	_chk("b24 an eight-arg command overwrites arg 7 (%d)"
+			% vm.args[AnimScriptVM.ARG_RET],
+			vm.args[AnimScriptVM.ARG_RET] == 42)
+
+
+func _test_b24_sin_timer_actually_advances_a_shared_phase() -> void:
+	# AnimTask_StartSinAnimTimer was a no-op whose comment said nothing
+	# consumed it. `_to_target_in_sin_wave` has read arg 7 as its phase seed
+	# since it was ported, so that premise was already false.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 100
+	_registry.get_behavior("AnimTask_StartSinAnimTimer").call(vm, {})
+	_chk("b24 the timer starts the phase at zero",
+			vm.args[AnimScriptVM.ARG_RET] == 0)
+	_step(vm, 1)
+	_chk("b24 ...and adds exactly 3 per frame (%d)"
+			% vm.args[AnimScriptVM.ARG_RET],
+			vm.args[AnimScriptVM.ARG_RET] == 3)
+	_step(vm, 9)
+	_chk("b24 ...still 3 per frame after ten (%d)"
+			% vm.args[AnimScriptVM.ARG_RET],
+			vm.args[AnimScriptVM.ARG_RET] == 30)
+	# Wrapping at 256 is the reason it is a PHASE and not a counter: 100
+	# frames at +3 reaches 300, which must fold rather than run off the end
+	# of the sine table.
+	_step(vm, 90)
+	_chk("b24 ...and wraps into 0-255 rather than running off (%d)"
+			% vm.args[AnimScriptVM.ARG_RET],
+			vm.args[AnimScriptVM.ARG_RET] == (300 & 0xFF))
+	# It is a COUNTED task upstream, so waitforvisualfinish waits on it.
+	# Making it uncounted would quietly shorten every script that uses it.
+	var vm2 := _vm(stage)
+	vm2.args[0] = 4
+	var before := vm2._visual_count
+	_registry.get_behavior("AnimTask_StartSinAnimTimer").call(vm2, {})
+	_chk("b24 the timer occupies a completion slot",
+			vm2._visual_count == before + 1)
+	_step(vm2, 4)
+	_chk("b24 ...and releases it after its own duration",
+			vm2._visual_count == before)
+
+
+func _test_b24_sin_phase_actually_reaches_the_sprites() -> void:
+	# End to end: does a seed sitting in arg 7 actually change a sprite's
+	# path, THROUGH the command boundary that used to clear it?
+	#
+	# ⚠ THE FIRST DRAFT OF THIS TEST WAS VACUOUS AND BOTH INJECTIONS PASSED
+	# IT. It spawned two flames twelve frames apart and compared their
+	# deviation from the chord -- but a flame's phase also advances with its
+	# OWN age, so two sprites of different ages deviate differently whether
+	# or not either ever received a seed. Same shape as batch 23's lattice
+	# guard: the assertion was true for a reason unrelated to the claim.
+	#
+	# Fixed by holding age constant and varying only the seed, and by routing
+	# the seed through `_load_args` rather than writing it after, so the VM
+	# fix is genuinely on the path under test.
+	var ctx := {"template": "gFlamethrowerFlameSpriteTemplate",
+			"template_data": AnimData.template("gFlamethrowerFlameSpriteTemplate"),
+			"blend": {"eva": 16, "evb": 0}}
+	var deviation_for := func(seed: int) -> float:
+		var stage := FakeStage.new()
+		var vm := _vm(stage)
+		vm.args[AnimScriptVM.ARG_RET] = seed
+		# The four-arg command a real createsprite issues. Under the old
+		# clear-everything behavior this is where the seed died.
+		vm._load_args([0, 0, 0, 8])
+		_registry.get_behavior("AnimToTargetInSinWave").call(vm, ctx)
+		var live: Array = _live_sprites(stage)
+		if live.is_empty():
+			return NAN
+		var node: AnimSprite = live[0]
+		_step(vm, 6)
+		var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+		var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+		var f: float = clampf((node.centre.x - atk.x) / (tgt.x - atk.x),
+				0.0, 1.0)
+		return node.centre.y - atk.lerp(tgt, f).y
+
+	var at_zero: float = deviation_for.call(0)
+	var at_sixty: float = deviation_for.call(60)
+	_chk("b24 both seeded flames were built", not is_nan(at_zero)
+			and not is_nan(at_sixty))
+	# Same template, same args, same age -- only the seed differs, so any
+	# difference in the path IS the seed arriving.
+	_chk("b24 a seed in arg 7 changes the flame's path (%.2f vs %.2f)"
+			% [at_zero, at_sixty], absf(at_zero - at_sixty) > 0.5)
+	# And the upper half of the seed range inverts the amplitude rather than
+	# merely shifting it -- the `> 127` fold, which a port that only offset
+	# the phase would get wrong.
+	var at_190: float = deviation_for.call(190)
+	_chk("b24 ...and a seed past 127 folds to the OPPOSITE side (%.2f vs %.2f)"
+			% [at_sixty, at_190],
+			not is_nan(at_190) and signf(at_190) != signf(at_sixty))
+
+
+func _test_b24_gunk_shot_particles_is_the_sin_wave_alias() -> void:
+	# AnimGunkShotParticles is a verbatim duplicate of AnimToTargetInSinWave
+	# -- same body, same step function, same 0xD200/30 constant, differing
+	# only in reading ARG_RET_ID (which is 7) where the original reads 7.
+	# Asserting identity keeps a later session from "porting" it separately
+	# and quietly ending up with two implementations to keep in step.
+	_chk("b24 gunk-shot particles IS the sin-wave behavior, not a copy",
+			_registry.get_behavior("AnimGunkShotParticles")
+			== _registry.get_behavior("AnimToTargetInSinWave"))
+
+
+func _test_b24_coin_arg_four_is_a_speed_not_a_duration() -> void:
+	# THE FINDING. InitAnimLinearTranslationWithSpeed OVERWRITES data[0] with
+	# (|dx| << 8) / data[0], so arg 4 is a divisor. Pay Day passes 1152.
+	# Read as a duration that is a coin in flight for nineteen seconds; read
+	# as a speed it is 4.5 px/frame and lands in about two dozen frames.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimCoinThrow", [20, 0, 0, 0, 1152],
+			"gCoinThrowSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b24 coin spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	var total: float = atk.distance_to(tgt)
+	# Two-sided, because "it moves" alone is true of the wrong reading too.
+	# Pay Day's real flight is bounded well under a second: it must be most
+	# of the way there by frame 30, and it must NOT have arrived by frame 2.
+	_step(vm, 2)
+	_chk("b24 the coin has not teleported (%.0f of %.0f)"
+			% [node.centre.distance_to(atk), total],
+			node.centre.distance_to(atk) < total * 0.5)
+	_step(vm, 28)
+	var covered: float = node.centre.distance_to(atk)
+	_chk("b24 ...and is essentially there by frame 30 (%.0f of %.0f)"
+			% [covered, total], covered > total * 0.5)
+	# The rotation is a real detail: the coin is drawn edge-on and turned to
+	# face its travel, so a zero rotation means the quarter-turn was dropped.
+	_chk("b24 the coin is rotated to face its flight (%.2f rad)"
+			% node.rotation, absf(node.rotation) > 0.01)
+
+
+func _test_b24_falling_coin_bounces_twice_with_decay() -> void:
+	# Two bounces of HALVING amplitude, then destroyed -- not one fall and
+	# not a constant bob. The decay is the discriminating property: a port
+	# that forgets `data[2] /= 2` still bounces twice and still ends on time.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimFallingCoin", [], "gFallingCoinSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b24 falling coin spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var first_peak := 0.0
+	var second_peak := 0.0
+	for i in range(26):
+		_step(vm, 1)
+		if is_instance_valid(node):
+			first_peak = minf(first_peak, node.offset.y)
+	for i in range(26):
+		_step(vm, 1)
+		if is_instance_valid(node):
+			second_peak = minf(second_peak, node.offset.y)
+	# Negative because a GBA half-sine of negative amplitude lifts the coin.
+	_chk("b24 the first bounce lifts the coin (%.1f)" % first_peak,
+			first_peak < -1.0)
+	_chk("b24 the second bounce is SHALLOWER, not equal (%.1f vs %.1f)"
+			% [second_peak, first_peak],
+			second_peak < -0.1 and second_peak > first_peak * 0.75)
+	_chk("b24 ...and the coin is gone after two bounces",
+			not is_instance_valid(node) or node.is_finished())
+
+	# Drift is side-mirrored: the coin always travels away from the player's
+	# half of the screen. Checked both ways, since one side alone cannot tell
+	# a mirrored drift from an unmirrored one.
+	var opp := FakeStage.new()
+	opp.player_side = false
+	var r2 := _spawn(opp, "AnimFallingCoin", [], "gFallingCoinSpriteTemplate")
+	var n2: AnimSprite = r2["sprite"]
+	_step(r["vm"], 0)
+	if n2 != null:
+		_step(r2["vm"], 10)
+		var stage2 := FakeStage.new()
+		var r3 := _spawn(stage2, "AnimFallingCoin", [],
+				"gFallingCoinSpriteTemplate")
+		_step(r3["vm"], 10)
+		var n3: AnimSprite = r3["sprite"]
+		_chk("b24 the coin drifts the OPPOSITE way per side (%.1f vs %.1f)"
+				% [n3.offset.x, n2.offset.x],
+				signf(n3.offset.x) != signf(n2.offset.x)
+				and absf(n2.offset.x) > 1.0)
+
+
+func _test_b24_acid_droplet_falls_its_duration_not_its_dead_arg() -> void:
+	# UPSTREAM QUIRK. `data[4] = sprite->y + sprite->data[0]` reads data[0]
+	# AFTER it was overwritten with arg 4, so the fall distance is the
+	# DURATION and arg 3 is dead. Acid passes 15 and 55, so the two readings
+	# differ by 40 px -- visible, not academic.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimAcidPoisonDroplet", [0, -22, 0, 15, 55, 0],
+			"gAcidPoisonDropletSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b24 acid droplet spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var start_y: float = node.centre.y
+	var scale: float = stage.pixel_scale()
+	_step(vm, 54)
+	var fell: float = (node.centre.y - start_y) / scale
+	# Two-sided: it must match the duration AND must not match the dead arg,
+	# because "it fell some distance" is true of both readings.
+	_chk("b24 the droplet falls its DURATION in px (%.1f, want ~55)" % fell,
+			absf(fell - 55.0) < 3.0)
+	_chk("b24 ...and not arg 3's 15 (the plausible misreading)",
+			absf(fell - 15.0) > 3.0)
+
+
+func _test_b24_acid_bubble_arcs_above_the_straight_line() -> void:
+	# The arc amplitude is a hardcoded -30, not an arg, and it is negative so
+	# the bubble rises above the chord and comes back down onto the target.
+	# A port that dropped InitAnimArcTranslation still starts and ends in the
+	# right places, so only the midpoint distinguishes them.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimAcidPoisonBubble", [20, 0, 40, 1, 0, 0, 0],
+			"gAcidPoisonBubbleSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b24 acid bubble spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var start: Vector2 = node.centre
+	var finish: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	_step(vm, 20)
+	var chord: Vector2 = start.lerp(finish, 0.5)
+	var lift: float = chord.y - node.centre.y
+	_chk("b24 the bubble is ABOVE the chord at mid-flight (%.1f px)" % lift,
+			lift > 5.0)
+	# Direction matters as much as presence: a positive amplitude sags the
+	# bubble through the floor instead, which still "arcs".
+	_chk("b24 ...rather than sagging below it", lift > 0.0)
+
+	# arg 3 selects the alternate cel sequence when it is ZERO, not when set.
+	var s0 := FakeStage.new()
+	var r0 := _spawn(s0, "AnimAcidPoisonBubble", [20, 0, 40, 0, 0, 0, 0],
+			"gAcidPoisonBubbleSpriteTemplate")
+	var s1 := FakeStage.new()
+	var r1 := _spawn(s1, "AnimAcidPoisonBubble", [20, 0, 40, 1, 0, 0, 0],
+			"gAcidPoisonBubbleSpriteTemplate")
+	var n0: AnimSprite = r0["sprite"]
+	var n1: AnimSprite = r1["sprite"]
+	if n0 != null and n1 != null:
+		var seqs: Array = AnimData.anim_sequences_for(
+				"gAcidPoisonBubbleSpriteTemplate")
+		if seqs.size() > 2:
+			_chk("b24 arg 3 == 0 selects the SECOND sequence (inverted)",
+					n0._sequence != n1._sequence)
+
+	# arg 6 aims at the target SIDE's centre, which in singles collapses onto
+	# the target -- so the doubles case is the one that can tell them apart.
+	var s2 := FakeStage.new()
+	var r2 := _spawn(s2, "AnimAcidPoisonBubble", [20, 0, 40, 1, 0, 0, 1],
+			"gAcidPoisonBubbleSpriteTemplate")
+	var n2: AnimSprite = r2["sprite"]
+	if n2 != null:
+		_step(r2["vm"], 39)
+		var side_mid: Vector2 = (s2.center_of(AnimStage.ANIM_TARGET)
+				+ s2.center_of(AnimStage.ANIM_DEF_PARTNER)) * 0.5
+		var lone: Vector2 = s2.center_of(AnimStage.ANIM_TARGET)
+		_chk("b24 arg 6 aims at the target SIDE's midpoint, not one slot",
+				n2.centre.distance_to(side_mid) < n2.centre.distance_to(lone))
+
+
+func _test_b24_hydro_cannon_pair() -> void:
+	# The charge sits on the ATTACKER (it is a wind-up), the beam leaves it.
+	# Getting these the same way round is the whole two-stage effect.
+	var stage := FakeStage.new()
+	var rc := _spawn(stage, "AnimHydroCannonCharge", [],
+			"gHydroCannonChargeSpriteTemplate")
+	var charge: AnimSprite = rc["sprite"]
+	if charge == null:
+		_chk("b24 hydro charge spawned", false)
+		return
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	_chk("b24 the charge gathers at the attacker",
+			charge.centre.distance_to(atk) < charge.centre.distance_to(tgt))
+	_chk("b24 ...and sits ABOVE its centre (the -10 rise)",
+			charge.centre.y < atk.y)
+
+	# arg 5 = 257 is 0x0101: BOTH packed fields set. A plain-int read cannot
+	# distinguish it from any other nonzero value, which is what makes this
+	# the value worth testing.
+	var flags: Dictionary = AnimBehaviors._packed_coord_flags(257)
+	_chk("b24 packed 257 decodes to two SET fields",
+			flags["respect_pic_offsets"] == false
+			and flags["use_pic_offset_y"] == false)
+	var zero: Dictionary = AnimBehaviors._packed_coord_flags(0)
+	_chk("b24 ...and packed 0 to two CLEAR fields",
+			zero["respect_pic_offsets"] == true
+			and zero["use_pic_offset_y"] == true)
+	# The discriminating case a plain-int read gets wrong: one byte set,
+	# the other clear. 256 (0x0100) and 1 (0x0001) are both "nonzero".
+	var hi: Dictionary = AnimBehaviors._packed_coord_flags(256)
+	var lo: Dictionary = AnimBehaviors._packed_coord_flags(1)
+	_chk("b24 ...and the two bytes are read INDEPENDENTLY",
+			hi["respect_pic_offsets"] != lo["respect_pic_offsets"]
+			and hi["use_pic_offset_y"] != lo["use_pic_offset_y"])
+
+	# The beam's arg 4 IS a real duration -- the same-looking assignment that
+	# is a SPEED in AnimCoinThrow. Hydro Cannon passes 15.
+	# A FRESH stage: `_spawn` returns the layer's FIRST AnimSprite child, so
+	# reusing the charge's stage hands back the charge and the beam's own
+	# travel is measured on a sprite that never moves. Caught on the first
+	# run as "221 of 221 left" -- the failure a shared stage always gives.
+	var beam_stage := FakeStage.new()
+	var rb := _spawn(beam_stage, "AnimHydroCannonBeam", [10, -10, 0, 0, 15, 257],
+			"gHydroCannonBeamSpriteTemplate")
+	var beam: AnimSprite = rb["sprite"]
+	if beam == null:
+		_chk("b24 hydro beam spawned", false)
+		return
+	var vm: AnimScriptVM = rb["vm"]
+	var beam_tgt: Vector2 = beam_stage.center_of(AnimStage.ANIM_TARGET)
+	var total: float = beam.centre.distance_to(beam_tgt)
+	# Two-sided again: arrival alone is also true of a 1-frame teleport, so
+	# it must NOT be there yet at the halfway mark.
+	_step(vm, 7)
+	_chk("b24 the beam is only part-way at half its duration (%.0f of %.0f)"
+			% [beam.centre.distance_to(beam_tgt), total],
+			beam.centre.distance_to(beam_tgt) > total * 0.2)
+	_step(vm, 7)
+	_chk("b24 ...and covers its flight in arg 4 frames (%.0f of %.0f left)"
+			% [beam.centre.distance_to(beam_tgt), total],
+			beam.centre.distance_to(beam_tgt) < total * 0.2)
+
+
+func _test_b24_gunk_shot_impact_sits_where_it_is_told() -> void:
+	# arg 2 selects attacker or target. Gunk Shot fires impacts on the
+	# target; a port that ignored the arg would still look right there and
+	# be wrong for every other caller.
+	var stage := FakeStage.new()
+	var on_target := _spawn(stage, "AnimGunkShotImpact", [0, 15, 1, 1],
+			"gGunkShotImpactSpriteTemplate")
+	var s2 := FakeStage.new()
+	var on_attacker := _spawn(s2, "AnimGunkShotImpact", [0, 15, 0, 1],
+			"gGunkShotImpactSpriteTemplate")
+	var nt: AnimSprite = on_target["sprite"]
+	var na: AnimSprite = on_attacker["sprite"]
+	if nt == null or na == null:
+		_chk("b24 gunk impacts spawned", false)
+		return
+	_chk("b24 arg 2 == 1 puts the impact on the target",
+			nt.centre.distance_to(stage.center_of(AnimStage.ANIM_TARGET))
+			< nt.centre.distance_to(stage.center_of(AnimStage.ANIM_ATTACKER)))
+	_chk("b24 arg 2 == 0 puts it on the attacker instead",
+			na.centre.distance_to(s2.center_of(AnimStage.ANIM_ATTACKER))
+			< na.centre.distance_to(s2.center_of(AnimStage.ANIM_TARGET)))
+
+
+func _test_b24_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b24 coverage reaches the projectile family's measured level (%d)"
+			% int(cov["playable"]), int(cov["playable"]) >= 700)
+	# The moves this batch was chosen to complete, named so a regression
+	# points at a move rather than at a number.
+	for pair in [[6, "Pay Day"], [51, "Acid"], [308, "Hydro Cannon"],
+			[441, "Gunk Shot"], [491, "Acid Spray"], [802, "Make It Rain"]]:
+		_chk("b24 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 25] ───────────────────────────────────────────────────────
+
+func _test_b25_affine_tables_return_to_identity() -> void:
+	# Both of this batch's mon deformations sum to exactly zero on every
+	# axis. That is the property that matters: a port that stopped a leg
+	# early, or mis-signed one, leaves the battler permanently squashed --
+	# the leak class rule (3) exists for, and one that looks fine for the
+	# frames anybody watches.
+	for pair in [["_UPROAR_AFFINE", AnimBehaviors._UPROAR_AFFINE],
+			["_DEEP_INHALE_AFFINE", AnimBehaviors._DEEP_INHALE_AFFINE]]:
+		var sum_x := 0
+		var sum_y := 0
+		var sum_r := 0
+		for cmd in (pair[1] as Array):
+			sum_x += int(cmd[0]) * int(cmd[3])
+			sum_y += int(cmd[1]) * int(cmd[3])
+			sum_r += int(cmd[2]) * int(cmd[3])
+		_chk("b25 %s sums to identity (%d/%d/%d)"
+				% [pair[0], sum_x, sum_y, sum_r],
+				sum_x == 0 and sum_y == 0 and sum_r == 0)
+
+
+func _test_b25_uproar_distorts_then_restores() -> void:
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = AnimStage.ANIM_ATTACKER
+	var node: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var base: Vector2 = node.scale
+	_registry.get_behavior("AnimTask_UproarDistortion").call(vm, {})
+	# Mid-run it must ACTUALLY be deformed -- "ends at identity" alone is
+	# satisfied by a task that never touched the sprite at all.
+	_step(vm, 4)
+	var mid: Vector2 = node.scale
+	_chk("b25 the mon is genuinely deformed mid-uproar (%.3f, %.3f)"
+			% [mid.x / base.x, mid.y / base.y],
+			not mid.is_equal_approx(base))
+	# ...and the two axes move in OPPOSITE directions (squash one, stretch
+	# the other), which a uniform scale would not do.
+	_chk("b25 ...on both axes, in opposite directions",
+			signf(mid.x - base.x) != signf(mid.y - base.y))
+	_step(vm, 20)
+	_chk("b25 ...and is back to its true size afterwards (%.3f, %.3f)"
+			% [node.scale.x / base.x, node.scale.y / base.y],
+			node.scale.is_equal_approx(base))
+
+
+func _test_b25_deep_inhale_shiver_window_is_the_underflow() -> void:
+	# The shiver is gated by a u16 underflow: `var0 = data[0]; var0 -= 20;
+	# if (var0 < 23)`. Read as signed it would shake from frame 0 -- before
+	# the inhale has begun -- so both ends of the window are asserted.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = AnimStage.ANIM_ATTACKER
+	var node: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var base: Vector2 = node.position
+	_registry.get_behavior("AnimTask_DeepInhale").call(vm, {})
+	_step(vm, 10)
+	_chk("b25 no shiver before frame 20 (x %.1f)" % (node.position.x - base.x),
+			is_equal_approx(node.position.x, base.x))
+	var shook := false
+	for i in range(25):
+		_step(vm, 1)
+		if not is_equal_approx(node.position.x, base.x):
+			shook = true
+	_chk("b25 ...it shivers inside the 20-42 window", shook)
+	_step(vm, 30)
+	_chk("b25 ...and is centred again by the end",
+			is_equal_approx(node.position.x, base.x))
+	_chk("b25 ...and back to its true size", node.scale.is_equal_approx(
+			node.get_meta(AnimBehaviors.MonScale.META_SCALE)))
+
+
+func _test_b25_deep_inhale_narrows_and_stretches() -> void:
+	# GBA affine scale is INVERTED: a POSITIVE xScale delta makes the sprite
+	# NARROWER. Deep Inhale's table is +16/+4 on x and -3 on y, so the mon
+	# should squeeze narrow and stretch tall. Getting the inversion backwards
+	# produces a mon that puffs out sideways while flattening -- the exact
+	# opposite silhouette, and still a smooth animation.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = AnimStage.ANIM_ATTACKER
+	var node: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var base: Vector2 = node.scale
+	_registry.get_behavior("AnimTask_DeepInhale").call(vm, {})
+	_step(vm, 26)
+	_chk("b25 the mon is NARROWER at the peak (%.3f)" % (node.scale.x / base.x),
+			node.scale.x < base.x)
+	_chk("b25 ...and TALLER, not flatter (%.3f)" % (node.scale.y / base.y),
+			node.scale.y > base.y)
+
+
+func _test_b25_jagged_note_offset_is_also_its_velocity() -> void:
+	# One arg, two jobs: args[1] places the note AND sets its per-frame
+	# drift (`data[3] = (args[1] << 3) / 8`). Read as a position only, every
+	# Uproar note hangs motionless where it spawned.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimJaggedMusicNote", [0, 29, -12, 0],
+			"gJaggedMusicNoteSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b25 jagged note spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	var start: Vector2 = node.centre
+	_chk("b25 the note spawns offset from the attacker",
+			start.distance_to(atk) > 1.0)
+	_step(vm, 8)
+	var moved: Vector2 = node.centre - start
+	_chk("b25 ...and then MOVES, rather than hanging where it spawned (%.1f)"
+			% moved.length(), moved.length() > 1.0)
+	# Direction is the discriminating half: the drift follows the offset's
+	# own sign on both axes, so a note placed up-and-right keeps going
+	# up-and-right. A generic "float upward" port passes the check above.
+	_chk("b25 ...in the SAME direction as its offset (%.1f, %.1f)"
+			% [moved.x, moved.y],
+			signf(moved.x) == signf(start.x - atk.x)
+			and signf(moved.y) == signf(start.y - atk.y))
+	# A mirrored offset must drift the mirrored way too.
+	var s2 := FakeStage.new()
+	var r2 := _spawn(s2, "AnimJaggedMusicNote", [0, -29, -12, 1],
+			"gJaggedMusicNoteSpriteTemplate")
+	var n2: AnimSprite = r2["sprite"]
+	if n2 != null:
+		var st2: Vector2 = n2.centre
+		_step(r2["vm"], 8)
+		_chk("b25 a negated offset drifts the other way (%.1f vs %.1f)"
+				% [(n2.centre - st2).x, moved.x],
+				signf((n2.centre - st2).x) != signf(moved.x))
+	_step(vm, 12)
+	_chk("b25 ...and the note is gone after 17 frames",
+			not is_instance_valid(node) or node.is_finished())
+
+
+func _test_b25_wavy_notes_cycle_the_rainbow() -> void:
+	# The rainbow is the point of the two blend tasks. Upstream they
+	# allocate palette slots; here the note reads the ported colour table
+	# directly, so what must be true is that a note's colour CHANGES on the
+	# cycle it was given -- and does not change when it was given none.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimWavyMusicNotes", [0, 0, 4],
+			"gWavyMusicNotesSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b25 wavy note spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var first: Color = node.modulate
+	_chk("b25 the note starts on its given palette row",
+			first.is_equal_approx(AnimBehaviors._NOTE_BLEND_COLORS[0]))
+	_step(vm, 6)
+	_chk("b25 ...and has changed colour after its cycle time",
+			not node.modulate.is_equal_approx(first))
+	# Two-sided: cycle 0 means never change, so a port that cycled
+	# unconditionally would be caught here rather than looking correct.
+	var s2 := FakeStage.new()
+	var r2 := _spawn(s2, "AnimWavyMusicNotes", [0, 1, 0],
+			"gWavyMusicNotesSpriteTemplate")
+	var n2: AnimSprite = r2["sprite"]
+	if n2 != null:
+		var c2: Color = n2.modulate
+		# ⚠ The first draft stepped 20 frames and compared once. With four
+		# colours in the table, a note cycling EVERY frame lands back on its
+		# own starting colour at any multiple of 4 -- so the check passed
+		# against a port that ignored `cycle` entirely. Sampled every frame
+		# instead, so any change at all is caught wherever it happens.
+		var ever_changed := false
+		for i in range(21):
+			_step(r2["vm"], 1)
+			if is_instance_valid(n2) and not n2.modulate.is_equal_approx(c2):
+				ever_changed = true
+		_chk("b25 ...while cycle time 0 holds one colour throughout",
+				not ever_changed)
+		_chk("b25 ...and row 1 is a different colour from row 0",
+				not c2.is_equal_approx(first))
+
+
+func _test_b25_wavy_notes_fly_toward_the_target_and_wave() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimWavyMusicNotes", [0, 0, 12],
+			"gWavyMusicNotesSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b25 wavy note spawned (travel)", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	var d0: float = node.centre.distance_to(tgt)
+	var ys: Array = []
+	for i in range(12):
+		_step(vm, 1)
+		if is_instance_valid(node):
+			ys.append(node.centre.y)
+	_chk("b25 the note closes on the target (%.0f -> %.0f)"
+			% [d0, node.centre.distance_to(tgt)],
+			node.centre.distance_to(tgt) < d0)
+	# The wave is what makes it "wavy": the vertical must reverse direction
+	# at least once, which a straight line never does.
+	var reversals := 0
+	for i in range(2, ys.size()):
+		var a: float = float(ys[i - 1]) - float(ys[i - 2])
+		var b: float = float(ys[i]) - float(ys[i - 1])
+		if a != 0.0 and b != 0.0 and signf(a) != signf(b):
+			reversals += 1
+	_chk("b25 ...while waving vertically (%d reversals)" % reversals,
+			reversals >= 1)
+
+
+func _test_b25_slow_notes_rise_and_mirror_by_arg() -> void:
+	var left := FakeStage.new()
+	var rl := _spawn(left, "AnimSlowFlyingMusicNotes", [0, 0, 0, 0],
+			"gSlowFlyingMusicNotesSpriteTemplate")
+	var right := FakeStage.new()
+	var rr := _spawn(right, "AnimSlowFlyingMusicNotes", [1, 0, 0, 0],
+			"gSlowFlyingMusicNotesSpriteTemplate")
+	var nl: AnimSprite = rl["sprite"]
+	var nr: AnimSprite = rr["sprite"]
+	if nl == null or nr == null:
+		_chk("b25 slow notes spawned", false)
+		return
+	var sl: Vector2 = nl.centre
+	var sr: Vector2 = nr.centre
+	_step(rl["vm"], 30)
+	_step(rr["vm"], 30)
+	_chk("b25 the slow note RISES (%.1f)" % (nl.centre.y - sl.y),
+			nl.centre.y < sl.y)
+	_chk("b25 ...and arg 0 mirrors which way it drifts (%.1f vs %.1f)"
+			% [nl.centre.x - sl.x, nr.centre.x - sr.x],
+			signf(nl.centre.x - sl.x) != signf(nr.centre.x - sr.x))
+	# The phase seed is a real input, not decoration: two notes seeded
+	# differently must not trace the same path.
+	var seeded := FakeStage.new()
+	var rs := _spawn(seeded, "AnimSlowFlyingMusicNotes", [0, 0, 0, 64],
+			"gSlowFlyingMusicNotesSpriteTemplate")
+	var ns: AnimSprite = rs["sprite"]
+	if ns != null:
+		var ss: Vector2 = ns.centre
+		_step(rs["vm"], 10)
+		var la := FakeStage.new()
+		var ra := _spawn(la, "AnimSlowFlyingMusicNotes", [0, 0, 0, 0],
+				"gSlowFlyingMusicNotesSpriteTemplate")
+		var na: AnimSprite = ra["sprite"]
+		var sa: Vector2 = na.centre
+		_step(ra["vm"], 10)
+		_chk("b25 ...and the phase seed changes the wobble (%.2f vs %.2f)"
+				% [(ns.centre - ss).y, (na.centre - sa).y],
+				absf((ns.centre - ss).y - (na.centre - sa).y) > 0.5)
+
+
+func _test_b25_belly_drum_hand_is_static_and_side_mirrored() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimBellyDrumHand", [0],
+			"gBellyDrumHandSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b25 belly drum hand spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var at: Vector2 = node.centre
+	_step(vm, 4)
+	_chk("b25 the hand does NOT move (the drumming is the mon's own)",
+			node.centre.is_equal_approx(at))
+	var s2 := FakeStage.new()
+	var r2 := _spawn(s2, "AnimBellyDrumHand", [1],
+			"gBellyDrumHandSpriteTemplate")
+	var n2: AnimSprite = r2["sprite"]
+	if n2 != null:
+		var atk: Vector2 = s2.center_of(AnimStage.ANIM_ATTACKER)
+		var atk0: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+		_chk("b25 ...and arg 0 puts it on the other side (%.1f vs %.1f)"
+				% [n2.centre.x - atk.x, at.x - atk0.x],
+				signf(n2.centre.x - atk.x) != signf(at.x - atk0.x))
+		_chk("b25 ...mirrored, not just moved", n2.scale.x < 0.0)
+	_step(vm, 6)
+	_chk("b25 ...and is gone after 8 frames",
+			not is_instance_valid(node) or node.is_finished())
+
+
+func _test_b25_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b25 coverage reaches the sound family's measured level (%d)"
+			% int(cov["playable"]), int(cov["playable"]) >= 715)
+	for pair in [[47, "Sing"], [187, "Belly Drum"], [253, "Uproar"],
+			[336, "Howl"], [405, "Bug Buzz"], [496, "Round"],
+			[555, "Snarl"]]:
+		_chk("b25 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 26] ───────────────────────────────────────────────────────
+
+func _test_b26_moon_uses_absolute_screen_coordinates() -> void:
+	# Every other sprite in this port positions relative to a mon, so the
+	# tempting read is "offset from the attacker". Moonlight passes (120,56)
+	# -- the middle of a 240-wide screen -- which lands on top of the
+	# attacker under that reading instead of in the sky.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimMoon", [120, 56], "gMoonSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b26 moon spawned", false)
+		return
+	var scale: float = stage.pixel_scale()
+	var expected := Vector2(120.0, 56.0) * scale
+	_chk("b26 the moon sits at the absolute screen point (%.0f,%.0f)"
+			% [node.centre.x, node.centre.y],
+			node.centre.distance_to(expected) < 1.0)
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	_chk("b26 ...which is NOT an offset from the attacker",
+			node.centre.distance_to(atk) > 20.0)
+
+
+func _test_b26_moon_waits_to_be_killed_rather_than_timing_out() -> void:
+	# The moon has no lifetime of its own: AnimTask_MoonlightEndFade sets
+	# data[0] on it. A port that gave it a timer would look identical for a
+	# few seconds and then desynchronise from the fade it is meant to hide
+	# behind.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimMoon", [120, 56], "gMoonSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b26 moon spawned (lifetime)", false)
+		return
+	_step(r["vm"], 200)
+	_chk("b26 the moon is still up after 200 frames with no killer",
+			is_instance_valid(node) and not node.is_finished())
+
+
+func _test_b26_end_fade_kills_the_moon_only_after_the_whiteout() -> void:
+	# Ordering is the claim. The kill is state 1, AFTER the 15-step ramp --
+	# so the moon vanishes while the screen is already washed out. Killing
+	# in state 0 makes it pop out in plain view, and every "the moon dies"
+	# assertion still passes.
+	var stage := FakeStage.new()
+	var moon := _spawn(stage, "AnimMoon", [120, 56], "gMoonSpriteTemplate")
+	var node: AnimSprite = moon["sprite"]
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_MoonlightEndFade").call(vm, {})
+	# Both the moon's own stepper and the fade task have to run.
+	var moon_vm: AnimScriptVM = moon["vm"]
+	for i in range(10):
+		_step(vm, 1)
+		_step(moon_vm, 1)
+	_chk("b26 the moon is STILL up part-way through the whiteout",
+			is_instance_valid(node) and not node.is_finished())
+	var atk: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	_chk("b26 ...and the battlers are already being washed out",
+			atk.material != null)
+	for i in range(10):
+		_step(vm, 1)
+		_step(moon_vm, 1)
+	_chk("b26 ...and the moon is gone once the whiteout completes",
+			not is_instance_valid(node) or node.is_finished())
+	# ...and the fade unwinds rather than leaving the battle white forever.
+	_step(vm, 80)
+	_chk("b26 ...and the whiteout is cleared afterwards",
+			atk.material == null)
+
+
+func _test_b26_sparkle_creeps_down_and_is_capped() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimMoonlightSparkle", [-12, 0],
+			"gMoonlightSparkleSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b26 sparkle spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var scale: float = stage.pixel_scale()
+	# Mixed frame of reference: x is relative to the attacker, y is absolute.
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	_chk("b26 the sparkle's x is relative to the attacker",
+			absf(node.centre.x - atk.x) < 20.0 * scale)
+	_chk("b26 ...while its y is absolute (near the top, not near the mon)",
+			node.centre.y < atk.y)
+	var y0: float = node.centre.y
+	_step(vm, 20)
+	var fell: float = (node.centre.y - y0) / scale
+	# One pixel every OTHER frame: 20 frames must give about 10, not 20.
+	_chk("b26 it creeps down at half a pixel per frame (%.1f over 20)" % fell,
+			absf(fell - 10.0) < 1.5)
+	# The 120 px cap is the two-sided half -- an uncapped drift walks it off
+	# the bottom of the screen instead of parking it.
+	_step(vm, 400)
+	var total: float = (node.centre.y - y0) / scale
+	_chk("b26 ...and stops after 120 px rather than falling forever (%.0f)"
+			% total, absf(total - 120.0) < 2.0)
+
+
+func _test_b26_alpha_fade_in_alternates_its_two_coefficients() -> void:
+	# THE FINDING. `data[2]` is a parity counter: odd ticks move eva, even
+	# ticks move evb. A 0..16 ramp therefore takes 32 ticks, not 16, and the
+	# two coefficients are never more than one step apart. Moving them
+	# together halves the duration and changes the curve mid-blend.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	for i in range(5):
+		vm.args[i] = [0, 16, 16, 0, 0][i]
+	_registry.get_behavior("AnimTask_AlphaFadeIn").call(vm, {})
+	_chk("b26 the blend starts where it was told",
+			int(vm.blend_context()["eva"]) == 0
+			and int(vm.blend_context()["evb"]) == 16)
+	# After one tick exactly ONE of the two has moved.
+	_step(vm, 1)
+	var moved_a: bool = int(vm.blend_context()["eva"]) != 0
+	var moved_b: bool = int(vm.blend_context()["evb"]) != 16
+	_chk("b26 one tick moves exactly one coefficient, not both",
+			moved_a != moved_b)
+	# 16 ticks is HALF the ramp under the real reading and the WHOLE ramp
+	# under the wrong one, which is what makes this the discriminating
+	# sample point.
+	_step(vm, 15)
+	_chk("b26 ...so it is only half done after 16 ticks (%d, %d)"
+			% [int(vm.blend_context()["eva"]), int(vm.blend_context()["evb"])],
+			int(vm.blend_context()["eva"]) != 16
+			or int(vm.blend_context()["evb"]) != 0)
+	_step(vm, 20)
+	_chk("b26 ...and lands exactly on target after 32 (%d, %d)"
+			% [int(vm.blend_context()["eva"]), int(vm.blend_context()["evb"])],
+			int(vm.blend_context()["eva"]) == 16
+			and int(vm.blend_context()["evb"]) == 0)
+
+
+func _test_b26_attacker_fade_from_invisible_is_the_inverse() -> void:
+	# Batch 20 built the fade OUT. This is its partner, and the pair has to
+	# leave the attacker solid and unblended -- a script that faded it out
+	# and back must not end with a half-transparent mon.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0
+	var atk: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	_registry.get_behavior("AnimTask_InitAttackerFadeFromInvisible").call(vm, {})
+	_chk("b26 arming makes the attacker visible but fully blended",
+			atk.visible and atk.material != null)
+	_registry.get_behavior("AnimTask_AttackerFadeFromInvisible").call(vm, {})
+	_step(vm, 8)
+	_chk("b26 the attacker is part-way back mid-fade", atk.material != null)
+	_step(vm, 12)
+	_chk("b26 ...and ends solid, with the blend cleared",
+			atk.material == null and atk.visible)
+
+
+func _test_b26_sky_bird_flies_from_attacker_through_target() -> void:
+	# Two claims a single "it moves" check cannot separate. The bird is
+	# CREATED at the target and then teleported to the attacker, so getting
+	# the direction backwards is a live possibility; and it never stops --
+	# arriving is not the end of its flight.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimSkyAttackBird", [],
+			"gSkyAttackBirdSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b26 sky bird spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	_chk("b26 the bird starts on the ATTACKER, not where it was created",
+			node.centre.distance_to(atk) < node.centre.distance_to(tgt))
+	_step(vm, 12)
+	_chk("b26 ...reaches the target on frame 12 (%.0f away)"
+			% node.centre.distance_to(tgt),
+			node.centre.distance_to(tgt) < atk.distance_to(tgt) * 0.15)
+	# The swoop-through: at frame 24 it must be roughly as far PAST the
+	# target as it started before it. Stopping on arrival reads as landing.
+	_step(vm, 12)
+	_chk("b26 ...and keeps going past it rather than landing (%.0f past)"
+			% node.centre.distance_to(tgt),
+			node.centre.distance_to(tgt) > atk.distance_to(tgt) * 0.5)
+	_chk("b26 ...and is rotated to face its flight", absf(node.rotation) > 0.01)
+
+
+func _test_b26_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b26 coverage reaches the fade family's measured level (%d)"
+			% int(cov["playable"]), int(cov["playable"]) >= 725)
+	for pair in [[143, "Sky Attack"], [185, "Feint Attack"], [236, "Moonlight"],
+			[361, "Healing Wish"], [413, "Brave Bird"], [461, "Lunar Dance"]]:
+		_chk("b26 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+	# The spotlight trio is DEFERRED, not missed. If a later session ports
+	# the stencil surface these light up together; until then the three moves
+	# must still be correctly reported as unplayable rather than silently
+	# half-working.
+	for pair in [[634, "Spotlight"], [652, "Instruct"], [798, "Flower Trick"]]:
+		_chk("b26 %s stays deferred (WIN0/WIN1 stencil)" % pair[1],
+				not _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 27] ───────────────────────────────────────────────────────
+
+func _test_b27_duplicate_pairs_are_aliases() -> void:
+	# Upstream duplicated two functions rather than calling them. Asserting
+	# identity keeps a later session from "porting" either separately and
+	# ending up with two implementations to keep in step -- the same guard
+	# batch 24 put on the gunk-shot particles.
+	_chk("b27 AnimGrassKnot IS AnimSuckerPunch, not a copy",
+			_registry.get_behavior("AnimGrassKnot")
+			== _registry.get_behavior("AnimSuckerPunch"))
+	_chk("b27 AnimForcePalm IS AnimGunkShotImpact, not a copy",
+			_registry.get_behavior("AnimForcePalm")
+			== _registry.get_behavior("AnimGunkShotImpact"))
+
+
+func _test_b27_conversion_dies_only_on_the_arg7_signal() -> void:
+	# The first behavior in the port that could not have worked before batch
+	# 24: the square polls arg 7 and dies on 0xFFFF, and the old `_load_args`
+	# cleared arg 7 on every command. Without a signal it must live forever.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimConversion", [-24, -24],
+			"gConversionSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b27 conversion square spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	_step(vm, 200)
+	_chk("b27 the square outlives 200 frames with no signal",
+			is_instance_valid(node) and not node.is_finished())
+	vm.args[AnimScriptVM.ARG_RET] = 0xFFFF
+	_step(vm, 1)
+	_chk("b27 ...and dies the frame the signal arrives",
+			not is_instance_valid(node) or node.is_finished())
+	# Two-sided: any other value must NOT kill it, or the square would
+	# vanish on the first unrelated query task that writes arg 7.
+	var s2 := FakeStage.new()
+	var r2 := _spawn(s2, "AnimConversion", [8, -8], "gConversionSpriteTemplate")
+	var n2: AnimSprite = r2["sprite"]
+	if n2 != null:
+		r2["vm"].args[AnimScriptVM.ARG_RET] = 1
+		_step(r2["vm"], 5)
+		_chk("b27 ...and ignores any other arg-7 value",
+				is_instance_valid(n2) and not n2.is_finished())
+
+
+func _test_b27_conversion_blend_signals_only_after_its_ramp() -> void:
+	# Ordering again: the kill is written AFTER the 16-step ramp completes,
+	# so the squares fade with the blend instead of popping mid-fade.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_ConversionAlphaBlend").call(vm, {})
+	_step(vm, 30)
+	_chk("b27 no signal part-way through the ramp (arg7 = %d)"
+			% vm.args[AnimScriptVM.ARG_RET],
+			(vm.args[AnimScriptVM.ARG_RET] & 0xFFFF) != 0xFFFF)
+	_chk("b27 ...but the blend is already moving (%d, %d)"
+			% [int(vm.blend_context()["eva"]), int(vm.blend_context()["evb"])],
+			int(vm.blend_context()["evb"]) > 0)
+	_step(vm, 45)
+	_chk("b27 ...and the signal lands once the ramp completes",
+			(vm.args[AnimScriptVM.ARG_RET] & 0xFFFF) == 0xFFFF)
+	_chk("b27 ...with the blend fully over (%d, %d)"
+			% [int(vm.blend_context()["eva"]), int(vm.blend_context()["evb"])],
+			int(vm.blend_context()["evb"]) == 16
+			and int(vm.blend_context()["eva"]) == 0)
+
+
+func _test_b27_tri_attack_flickers_holds_then_launches() -> void:
+	# Three beats. A port that flickered the whole time, or launched at once,
+	# still looks busy -- so each boundary is asserted, not just the launch.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimTriAttackTriangle", [0, 0],
+			"gTriAttackTriangleSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b27 tri-attack triangle spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var start: Vector2 = node.centre
+	var seen_hidden := false
+	for i in range(30):
+		_step(vm, 1)
+		if not node.visible:
+			seen_hidden = true
+	_chk("b27 it flickers for the first 30 frames", seen_hidden)
+	var solid := true
+	for i in range(28):
+		_step(vm, 1)
+		if not node.visible:
+			solid = false
+	_chk("b27 ...then holds SOLID from 31 to 60", solid)
+	_chk("b27 ...without having moved yet",
+			node.centre.distance_to(start) < 1.0)
+	_step(vm, 12)
+	_chk("b27 ...and only then launches at the target",
+			node.centre.distance_to(start) > 1.0)
+
+
+func _test_b27_sharpen_sphere_blink_period_grows() -> void:
+	# The period GROWS (data[1] starts at 2 and increments every second
+	# toggle). A fixed-rate blink is the obvious misreading and never
+	# settles, so the test measures the gap between toggles rather than
+	# merely that it blinks.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimSharpenSphere", [],
+			"gSharpenSphereSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b27 sharpen sphere spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var gaps: Array = []
+	var last := 0
+	var was: bool = node.visible
+	for i in range(1, 260):
+		_step(vm, 1)
+		if not is_instance_valid(node) or node.is_finished():
+			break
+		if node.visible != was:
+			was = node.visible
+			gaps.append(i - last)
+			last = i
+	_chk("b27 the sphere blinks a good many times (%d)" % gaps.size(),
+			gaps.size() >= 8)
+	if gaps.size() >= 8:
+		var early: int = int(gaps[1]) + int(gaps[2])
+		var late: int = int(gaps[gaps.size() - 2]) + int(gaps[gaps.size() - 1])
+		_chk("b27 ...and slows down rather than strobing evenly (%d -> %d)"
+				% [early, late], late > early)
+	_step(vm, 40)
+	_chk("b27 ...and stops once its period passes 16",
+			not is_instance_valid(node) or node.is_finished())
+
+
+func _test_b27_stealth_rock_arcs_holds_then_blinks_out() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimStealthRock", [0, 0, 0, 0, 30],
+			"gStealthRockSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b27 stealth rock spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var start: Vector2 = node.centre
+	var aim: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	_step(vm, 15)
+	var chord: Vector2 = start.lerp(aim, 0.5)
+	_chk("b27 the rock arcs ABOVE the straight line (%.1f)"
+			% (chord.y - node.centre.y), node.centre.y < chord.y - 5.0)
+	_step(vm, 15)
+	var landed: Vector2 = node.centre
+	_step(vm, 25)
+	_chk("b27 ...then HOLDS where it landed rather than continuing",
+			node.centre.distance_to(landed) < 1.0)
+	_chk("b27 ...and is still visible during the hold", node.visible)
+	var blinked := false
+	for i in range(20):
+		_step(vm, 1)
+		if is_instance_valid(node) and not node.visible:
+			blinked = true
+	_chk("b27 ...then blinks out", blinked)
+	_step(vm, 5)
+	_chk("b27 ...and is gone", not is_instance_valid(node) or node.is_finished())
+
+
+func _test_b27_breath_puff_drifts_away_from_its_own_side() -> void:
+	var player := FakeStage.new()
+	var rp := _spawn(player, "AnimBreathPuff", [], "gBreathPuffSpriteTemplate")
+	var foe := FakeStage.new()
+	foe.player_side = false
+	var rf := _spawn(foe, "AnimBreathPuff", [], "gBreathPuffSpriteTemplate")
+	var np: AnimSprite = rp["sprite"]
+	var nf: AnimSprite = rf["sprite"]
+	if np == null or nf == null:
+		_chk("b27 breath puffs spawned", false)
+		return
+	var sp: Vector2 = np.centre
+	var sf: Vector2 = nf.centre
+	_step(rp["vm"], 40)
+	_step(rf["vm"], 40)
+	_chk("b27 the puff drifts sideways (%.1f)" % (np.centre.x - sp.x),
+			absf(np.centre.x - sp.x) > 1.0)
+	_chk("b27 ...and the two sides drift OPPOSITE ways (%.1f vs %.1f)"
+			% [np.centre.x - sp.x, nf.centre.x - sf.x],
+			signf(np.centre.x - sp.x) != signf(nf.centre.x - sf.x))
+	_step(rp["vm"], 15)
+	_chk("b27 ...and it is gone after 52 frames",
+			not is_instance_valid(np) or np.is_finished())
+
+
+func _test_b27_grow_and_shrink_returns_to_identity() -> void:
+	var sum_x := 0
+	var sum_y := 0
+	for cmd in AnimBehaviors._GROW_SHRINK_AFFINE:
+		sum_x += int(cmd[0]) * int(cmd[3])
+		sum_y += int(cmd[1]) * int(cmd[3])
+	_chk("b27 _GROW_SHRINK_AFFINE sums to identity (%d/%d)" % [sum_x, sum_y],
+			sum_x == 0 and sum_y == 0)
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var node: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var base: Vector2 = node.scale
+	_registry.get_behavior("AnimTask_GrowAndShrink").call(vm, {})
+	_step(vm, 12)
+	# Negative deltas under the INVERTED rule mean the mon gets BIGGER --
+	# the name is the check, and getting the inversion backwards shrinks it.
+	_chk("b27 the mon actually GROWS (%.3f)" % (node.scale.x / base.x),
+			node.scale.x > base.x)
+	_step(vm, 40)
+	_chk("b27 ...and is back to its true size",
+			node.scale.is_equal_approx(base))
+
+
+func _test_b27_sucker_punch_slides_and_its_wave_is_inert() -> void:
+	# ⚠ A CLAIM I INVENTED AND THE TEST CAUGHT. The first draft asserted the
+	# sprite "waves vertically", reasoning from the Sin() call in the step
+	# function. Both real call sites pass amplitude ZERO --
+	# `-18, 5, 40, 8, 160, 0` for Sucker Punch and `-18, 19, 40, 8, 160, 0`
+	# for Grass Knot -- so the sine term is inert in every animation that
+	# actually reaches it, and the sprite slides flat. Reading a Sin() call
+	# as "therefore it waves" is the mistake; the args decide.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimSuckerPunch", [-18, 5, 40, 8, 160, 0],
+			"gSuckerPunchSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b27 sucker punch spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var start_pos: Vector2 = node.centre
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	_chk("b27 it starts offset from the TARGET, not the attacker",
+			node.centre.distance_to(tgt)
+			< node.centre.distance_to(stage.center_of(AnimStage.ANIM_ATTACKER)))
+	var max_dy := 0.0
+	for i in range(7):
+		_step(vm, 1)
+		if is_instance_valid(node):
+			max_dy = maxf(max_dy, absf(node.centre.y - start_pos.y))
+	_chk("b27 it slides horizontally (%.1f)"
+			% (node.centre.x - start_pos.x),
+			absf(node.centre.x - start_pos.x) > 1.0)
+	_chk("b27 ...and stays FLAT with the real args (max dy %.2f)" % max_dy,
+			max_dy < 1.0)
+
+	# The sine is still wired, and this is the half that proves the code is
+	# not dead: given a real amplitude it does move vertically. Without this
+	# the check above would also pass for a port that dropped the term.
+	var s2 := FakeStage.new()
+	var r2 := _spawn(s2, "AnimSuckerPunch", [-18, 5, 40, 30, 900, 12],
+			"gSuckerPunchSpriteTemplate")
+	var n2: AnimSprite = r2["sprite"]
+	if n2 != null:
+		var sy: float = n2.centre.y
+		var moved := 0.0
+		for i in range(29):
+			_step(r2["vm"], 1)
+			if is_instance_valid(n2):
+				moved = maxf(moved, absf(n2.centre.y - sy))
+		_chk("b27 ...but a real amplitude DOES move it (%.1f)" % moved,
+				moved > 1.0)
+
+
+func _test_b27_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b27 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 740)
+	for pair in [[159, "Sharpen"], [160, "Conversion"], [161, "Tri Attack"],
+			[162, "Super Fang"], [389, "Sucker Punch"], [395, "Force Palm"],
+			[446, "Stealth Rock"], [447, "Grass Knot"], [469, "Wide Guard"]]:
+		_chk("b27 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+	# Rapid Spin's family stays deferred WITH its scanline partner, rather
+	# than half-ported. If a later session builds the scanline surface these
+	# light up together.
+	for pair in [[229, "Rapid Spin"], [789, "Ice Spinner"]]:
+		_chk("b27 %s stays deferred (scanline elevation)" % pair[1],
+				not _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 28] ───────────────────────────────────────────────────────
+
+func _test_b28_affine_table_sums_and_the_one_exception() -> void:
+	# Transcription guards. Most tables return to identity; ONE does not, and
+	# knowing which is the point -- gShrinkAndGrowAffineAnimCmds goes out over
+	# 12 frames and back over 6, so it nets +24/+30. It is safe only because
+	# AFFINEANIMCMDTYPE_END resets the sprite regardless, which is exactly why
+	# these assertions guard transcription rather than leaks.
+	for pair in [["_MEDITATE_STRETCH_AFFINE",
+				AnimBehaviors._MEDITATE_STRETCH_AFFINE],
+			["_SLACK_OFF_AFFINE", AnimBehaviors._SLACK_OFF_AFFINE],
+			["_COMPRESS_AFFINE", AnimBehaviors._COMPRESS_AFFINE],
+			["_COMPRESS_FAST_AFFINE", AnimBehaviors._COMPRESS_FAST_AFFINE],
+			["_FACADE_SQUISH_AFFINE", AnimBehaviors._FACADE_SQUISH_AFFINE]]:
+		var sx := 0
+		var sy := 0
+		for cmd in (pair[1] as Array):
+			sx += int(cmd[0]) * int(cmd[3])
+			sy += int(cmd[1]) * int(cmd[3])
+		_chk("b28 %s sums to identity (%d/%d)" % [pair[0], sx, sy],
+				sx == 0 and sy == 0)
+	var ax := 0
+	var ay := 0
+	for cmd in AnimBehaviors._SHRINK_GROW_AFFINE:
+		ax += int(cmd[0]) * int(cmd[3])
+		ay += int(cmd[1]) * int(cmd[3])
+	_chk("b28 _SHRINK_GROW_AFFINE is the asymmetric one (%d/%d)" % [ax, ay],
+			ax == 24 and ay == 30)
+	# ...and the runtime still puts the mon back, which is what makes the
+	# asymmetry harmless.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var node: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var base: Vector2 = node.scale
+	_registry.get_behavior("AnimTask_ShrinkAndGrow").call(vm, {})
+	_step(vm, 60)
+	_chk("b28 ...and the asymmetric table still ends at true size",
+			node.scale.is_equal_approx(base))
+
+
+func _test_b28_grow_tasks_use_the_inverted_scale() -> void:
+	# 208 in GBA affine units is a GROWTH to 256/208 = 1.23x. Read as a
+	# direct multiplier it shrinks the mon to a fifth -- the opposite
+	# silhouette, and still a smooth effect.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var node: Control = stage.sprite_for(AnimStage.ANIM_TARGET)
+	var base: Vector2 = node.scale
+	_registry.get_behavior("AnimTask_GrowTarget").call(vm, {})
+	_step(vm, 5)
+	_chk("b28 the target GROWS (%.3f)" % (node.scale.x / base.x),
+			node.scale.x > base.x * 1.1)
+	_step(vm, 130)
+	_chk("b28 ...and is restored after 120 frames",
+			node.scale.is_equal_approx(base))
+	# The grayscale variant additionally drains the colour, and puts it back.
+	var s2 := FakeStage.new()
+	var vm2 := _vm(s2)
+	var n2: Control = s2.sprite_for(AnimStage.ANIM_TARGET)
+	var mod0: Color = n2.modulate
+	_registry.get_behavior("AnimTask_GrowAndGrayscale").call(vm2, {})
+	_step(vm2, 5)
+	_chk("b28 the grayscale variant drains colour",
+			not n2.modulate.is_equal_approx(mod0))
+	_chk("b28 ...and grows as well as greying", n2.scale.x > base.x * 1.1)
+	_step(vm2, 90)
+	_chk("b28 ...and restores both", n2.modulate.is_equal_approx(mod0)
+			and n2.scale.is_equal_approx(base))
+	# Two-sided on duration: 80 frames, not 120 -- the two tasks differ.
+	var s3 := FakeStage.new()
+	var vm3 := _vm(s3)
+	var n3: Control = s3.sprite_for(AnimStage.ANIM_TARGET)
+	_registry.get_behavior("AnimTask_GrowAndGrayscale").call(vm3, {})
+	_step(vm3, 85)
+	var grey_done: bool = n3.scale.is_equal_approx(base)
+	var s4 := FakeStage.new()
+	var vm4 := _vm(s4)
+	var n4: Control = s4.sprite_for(AnimStage.ANIM_TARGET)
+	_registry.get_behavior("AnimTask_GrowTarget").call(vm4, {})
+	_step(vm4, 85)
+	_chk("b28 grayscale ends at 80 while grow-target is still running at 85",
+			grey_done and not n4.scale.is_equal_approx(base))
+
+
+func _test_b28_withdraw_rotates_rather_than_moving() -> void:
+	# The tuck is a ROTATION. A port that translated the mon instead would
+	# read as it sliding away, and every "something changed" check passes.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var node: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var pos0: Vector2 = node.position
+	_registry.get_behavior("AnimTask_Withdraw").call(vm, {})
+	_step(vm, 8)
+	_chk("b28 the attacker rotates (%.3f rad)" % node.rotation,
+			absf(node.rotation) > 0.01)
+	_chk("b28 ...and does NOT translate", node.position.is_equal_approx(pos0))
+	# Mirrored by side, so both tuck the same way relative to the screen.
+	var foe := FakeStage.new()
+	foe.player_side = false
+	var vm2 := _vm(foe)
+	var n2: Control = foe.sprite_for(AnimStage.ANIM_ATTACKER)
+	_registry.get_behavior("AnimTask_Withdraw").call(vm2, {})
+	_step(vm2, 8)
+	_chk("b28 ...the other side rotates the OTHER way (%.3f vs %.3f)"
+			% [node.rotation, n2.rotation],
+			signf(node.rotation) != signf(n2.rotation))
+	_step(vm, 60)
+	_chk("b28 ...and it unwinds to square", absf(node.rotation) < 0.001)
+
+
+func _test_b28_rotate_vertically_limits_differ_by_side() -> void:
+	# NOT a mirror: the player side stops at 0x1FFF (~45 degrees) while the
+	# opponent goes to 0x7FFE (~180, fully over). One shared limit gives a
+	# player mon that flips when it should only tilt.
+	var player := FakeStage.new()
+	var vp := _vm(player)
+	vp.args[0] = AnimStage.ANIM_ATTACKER
+	vp.args[1] = 512
+	var np: Control = player.sprite_for(AnimStage.ANIM_ATTACKER)
+	_registry.get_behavior("AnimTask_RotateVertically").call(vp, {})
+	_step(vp, 40)
+	var foe := FakeStage.new()
+	foe.player_side = false
+	var vf := _vm(foe)
+	vf.args[0] = AnimStage.ANIM_ATTACKER
+	vf.args[1] = 512
+	var nf: Control = foe.sprite_for(AnimStage.ANIM_ATTACKER)
+	_registry.get_behavior("AnimTask_RotateVertically").call(vf, {})
+	_step(vf, 40)
+	_chk("b28 both sides rotate (%.2f / %.2f)" % [np.rotation, nf.rotation],
+			absf(np.rotation) > 0.01 and absf(nf.rotation) > 0.01)
+	_chk("b28 ...but the opponent goes MUCH further (%.2f vs %.2f)"
+			% [nf.rotation, np.rotation],
+			absf(nf.rotation) > absf(np.rotation) * 2.0)
+	_step(vp, 200)
+	_chk("b28 ...and the player mon unwinds to square",
+			absf(np.rotation) < 0.001)
+
+
+func _test_b28_minimize_shrinks_but_double_team_does_not() -> void:
+	# Both leave afterimages, and that is the whole reason to test them
+	# together: only Minimize deforms the mon. A port that shrank on Double
+	# Team too would look busy and wrong in the same way.
+	var s1 := FakeStage.new()
+	var v1 := _vm(s1)
+	var n1: Control = s1.sprite_for(AnimStage.ANIM_ATTACKER)
+	var base: Vector2 = n1.scale
+	_registry.get_behavior("AnimTask_Minimize").call(v1, {})
+	_step(v1, 16)
+	_chk("b28 Minimize SHRINKS the attacker (%.3f)" % (n1.scale.x / base.x),
+			n1.scale.x < base.x * 0.9)
+	_chk("b28 ...and leaves clones behind", _clone_count(s1) > 0)
+	_step(v1, 20)
+	_chk("b28 ...then restores its size and clears the clones",
+			n1.scale.is_equal_approx(base) or _clone_count(s1) == 0)
+
+	var s2 := FakeStage.new()
+	var v2 := _vm(s2)
+	var n2: Control = s2.sprite_for(AnimStage.ANIM_ATTACKER)
+	var b2: Vector2 = n2.scale
+	_registry.get_behavior("AnimTask_DoubleTeam").call(v2, {})
+	_step(v2, 16)
+	_chk("b28 Double Team makes clones", _clone_count(s2) >= 2)
+	_chk("b28 ...and does NOT shrink the mon", n2.scale.is_equal_approx(b2))
+	# The clones must actually sweep, and the two must not overlap -- upstream
+	# seeds them half a cycle apart precisely so they separate.
+	var xs: Array = []
+	for child in s2.layer_node.get_children():
+		if child is Control and child.has_meta("_anim_trace"):
+			xs.append((child as Control).position.x)
+	if xs.size() >= 2:
+		_chk("b28 ...and its two clones are apart, not stacked (%.1f)"
+				% absf(float(xs[0]) - float(xs[1])),
+				absf(float(xs[0]) - float(xs[1])) > 0.5)
+
+
+func _test_b28_squish_count_is_a_gate_and_a_multiplier() -> void:
+	# A count of 0 must do nothing at all -- upstream destroys the task before
+	# touching the sprite, so the arg is a gate rather than a minimum.
+	var s0 := FakeStage.new()
+	var v0 := _vm(s0)
+	v0.args[0] = AnimStage.ANIM_ATTACKER
+	v0.args[1] = 0
+	var before := v0._visual_count
+	_registry.get_behavior("AnimTask_SquishAndSweatDroplets").call(v0, {})
+	_chk("b28 a squish count of 0 starts nothing", v0._visual_count == before)
+	# ...and a count of N runs N passes, so 3 lasts about three times as long
+	# as 1. Duration is the only thing that separates them.
+	var one := FakeStage.new()
+	var v1 := _vm(one)
+	v1.args[0] = AnimStage.ANIM_ATTACKER
+	v1.args[1] = 1
+	var n1: Control = one.sprite_for(AnimStage.ANIM_ATTACKER)
+	var b1: Vector2 = n1.scale
+	_registry.get_behavior("AnimTask_SquishAndSweatDroplets").call(v1, {})
+	_step(v1, 25)
+	var one_done: bool = n1.scale.is_equal_approx(b1)
+	var three := FakeStage.new()
+	var v3 := _vm(three)
+	v3.args[0] = AnimStage.ANIM_ATTACKER
+	v3.args[1] = 3
+	var n3: Control = three.sprite_for(AnimStage.ANIM_ATTACKER)
+	_registry.get_behavior("AnimTask_SquishAndSweatDroplets").call(v3, {})
+	_step(v3, 25)
+	_chk("b28 one squish is over by frame 25 while three is not",
+			one_done and not n3.scale.is_equal_approx(b1))
+	_step(v3, 60)
+	_chk("b28 ...and three squishes still end at true size",
+			n3.scale.is_equal_approx(b1))
+
+
+func _test_b28_compress_pair_differs_only_in_depth() -> void:
+	var slow := FakeStage.new()
+	var vs := _vm(slow)
+	var ns: Control = slow.sprite_for(AnimStage.ANIM_TARGET)
+	var base: Vector2 = ns.scale
+	_registry.get_behavior("AnimTask_CompressTargetHorizontally").call(vs, {})
+	_step(vs, 16)
+	var fast := FakeStage.new()
+	var vf := _vm(fast)
+	var nf: Control = fast.sprite_for(AnimStage.ANIM_TARGET)
+	_registry.get_behavior("AnimTask_CompressTargetHorizontallyFast").call(vf, {})
+	_step(vf, 16)
+	_chk("b28 both compress horizontally (%.3f / %.3f)"
+			% [ns.scale.x / base.x, nf.scale.x / base.x],
+			ns.scale.x < base.x and nf.scale.x < base.x)
+	_chk("b28 ...and the plain one compresses FURTHER than the fast one",
+			ns.scale.x < nf.scale.x)
+	# Neither touches the vertical -- the tables are x-only.
+	_chk("b28 ...with the vertical untouched",
+			is_equal_approx(ns.scale.y, base.y)
+			and is_equal_approx(nf.scale.y, base.y))
+
+
+func _test_b28_duck_down_hop_mirrors_by_side() -> void:
+	var player := FakeStage.new()
+	var vp := _vm(player)
+	for i in range(7):
+		vp.args[i] = [AnimStage.ANIM_ATTACKER, 20, 0, 8, 0, -12, 6][i]
+	var np: Control = player.sprite_for(AnimStage.ANIM_ATTACKER)
+	var p0: Vector2 = np.position
+	_registry.get_behavior("AnimTask_DuckDownHop").call(vp, {})
+	_step(vp, 10)
+	var foe := FakeStage.new()
+	foe.player_side = false
+	var vf := _vm(foe)
+	for i in range(7):
+		vf.args[i] = [AnimStage.ANIM_ATTACKER, 20, 0, 8, 0, -12, 6][i]
+	var nf: Control = foe.sprite_for(AnimStage.ANIM_ATTACKER)
+	var f0: Vector2 = nf.position
+	_registry.get_behavior("AnimTask_DuckDownHop").call(vf, {})
+	_step(vf, 10)
+	_chk("b28 the hop moves the mon (%.1f, %.1f)"
+			% [np.position.x - p0.x, np.position.y - p0.y],
+			not np.position.is_equal_approx(p0))
+	_chk("b28 ...and the two sides duck OPPOSITE ways (%.1f vs %.1f)"
+			% [np.position.x - p0.x, nf.position.x - f0.x],
+			signf(np.position.x - p0.x) != signf(nf.position.x - f0.x))
+	_step(vp, 12)
+	_chk("b28 ...and it returns the mon", np.position.is_equal_approx(p0))
+
+
+func _test_b28_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b28 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 753)
+	for pair in [[50, "Disable"], [96, "Meditate"], [104, "Double Team"],
+			[107, "Minimize"], [110, "Withdraw"], [303, "Slack Off"],
+			[462, "Crush Grip"], [576, "Topsy-Turvy"]]:
+		_chk("b28 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+	# The two deferrals, asserted as still-blocked so a half-port cannot pass.
+	for pair in [[151, "Acid Armor"], [144, "Transform"]]:
+		_chk("b28 %s stays deferred (scanline / mosaic)" % pair[1],
+				not _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 29] ───────────────────────────────────────────────────────
+
+func _test_b29_spit_up_spray_is_elliptical_not_circular() -> void:
+	# The two axes use DIFFERENT amplitudes (10 and 7), so the spray is wider
+	# than it is tall. A single shared amplitude gives a circular burst --
+	# still a burst, wrong shape, and every "it moves outward" check passes.
+	var widest := 0.0
+	var tallest := 0.0
+	for angle in [0, 32, 64, 96, 128, 160, 192, 224]:
+		var stage := FakeStage.new()
+		var r := _spawn(stage, "AnimSpitUpOrb", [angle, 20],
+				"gSpitUpOrbSpriteTemplate")
+		var node: AnimSprite = r["sprite"]
+		if node == null:
+			continue
+		var start: Vector2 = node.centre
+		_step(r["vm"], 15)
+		widest = maxf(widest, absf(node.centre.x - start.x))
+		tallest = maxf(tallest, absf(node.centre.y - start.y))
+	_chk("b29 the spit-up spray travels outward (%.1f x %.1f)"
+			% [widest, tallest], widest > 1.0 and tallest > 1.0)
+	_chk("b29 ...and is WIDER than it is tall (10 vs 7)", widest > tallest)
+
+
+func _test_b29_swallow_orb_decelerates_and_falls_back() -> void:
+	# A DECELERATING rise, ended by falling back below its launch height --
+	# not a timer. A constant-velocity rise never comes back and never ends.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimSwallowBlueOrb", [],
+			"gSwallowBlueOrbSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b29 swallow orb spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var start: Vector2 = node.centre
+	var first := 0.0
+	var last := 0.0
+	var prev: float = node.centre.y
+	_step(vm, 1)
+	first = prev - node.centre.y
+	prev = node.centre.y
+	for i in range(8):
+		_step(vm, 1)
+		last = prev - node.centre.y
+		prev = node.centre.y
+	_chk("b29 the orb rises (%.1f)" % (start.y - node.centre.y),
+			node.centre.y < start.y)
+	_chk("b29 ...and DECELERATES as it goes (%.2f -> %.2f)" % [first, last],
+			last < first)
+	# It must actually come back and end, rather than drifting off the top.
+	var ended := false
+	for i in range(80):
+		_step(vm, 1)
+		if not is_instance_valid(node) or node.is_finished():
+			ended = true
+			break
+	_chk("b29 ...then falls back and ends on its own", ended)
+
+
+func _test_b29_bonemerang_comes_back() -> void:
+	# The return leg is the whole move. A one-way arc still lands on the
+	# target and still looks like a thrown bone.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimBonemerangProjectile", [],
+			"gBonemerangSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b29 bonemerang spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	_step(vm, 10)
+	var mid: Vector2 = node.centre
+	var chord: Vector2 = atk.lerp(tgt, 0.5)
+	_chk("b29 it arcs above the chord outbound (%.1f)" % (chord.y - mid.y),
+			mid.y < chord.y - 5.0)
+	_step(vm, 11)
+	_chk("b29 ...reaches the target", node.centre.distance_to(tgt)
+			< atk.distance_to(tgt) * 0.35)
+	_step(vm, 18)
+	_chk("b29 ...and comes BACK toward the attacker (%.0f from atk)"
+			% node.centre.distance_to(atk),
+			node.centre.distance_to(atk) < node.centre.distance_to(tgt))
+
+
+func _test_b29_wish_star_enters_from_the_far_side() -> void:
+	# It enters off-screen on the side OPPOSITE the caster, so the wish
+	# crosses toward the caster's own half. Both sides checked, because one
+	# alone cannot tell an entry direction from a fixed one.
+	var player := FakeStage.new()
+	var rp := _spawn(player, "AnimWishStar", [], "gWishStarSpriteTemplate")
+	var foe := FakeStage.new()
+	foe.player_side = false
+	var rf := _spawn(foe, "AnimWishStar", [], "gWishStarSpriteTemplate")
+	var np: AnimSprite = rp["sprite"]
+	var nf: AnimSprite = rf["sprite"]
+	if np == null or nf == null:
+		_chk("b29 wish stars spawned", false)
+		return
+	var w: float = player.layer_node.size.x
+	_chk("b29 a player wish enters from the RIGHT edge (%.0f of %.0f)"
+			% [np.centre.x, w], np.centre.x > w * 0.9)
+	_chk("b29 ...and an opposing one from the LEFT (%.0f)" % nf.centre.x,
+			nf.centre.x < w * 0.1)
+	var p0: Vector2 = np.centre
+	_step(rp["vm"], 4)
+	var early: float = absf(np.centre.x - p0.x)
+	_step(rp["vm"], 4)
+	var late: float = absf(np.centre.x - p0.x) - early
+	_chk("b29 ...and it ACCELERATES across (%.1f -> %.1f)" % [early, late],
+			late > early)
+
+
+func _test_b29_angel_path_is_circular_and_slides_off() -> void:
+	# Sin and Cos share amplitude 80, so the loop is a circle. Different
+	# amplitudes would give an ellipse -- a real distinction, since the
+	# neighbouring Spit Up orb IS elliptical on purpose.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimAngel", [0, 0], "gAngelSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b29 angel spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var start: Vector2 = node.centre
+	var max_x := 0.0
+	var min_y := 0.0
+	for i in range(70):
+		_step(vm, 1)
+		if is_instance_valid(node):
+			max_x = maxf(max_x, absf(node.centre.x - start.x))
+			min_y = minf(min_y, node.centre.y - start.y)
+	_chk("b29 the angel loops sideways (%.1f)" % max_x, max_x > 1.0)
+	_chk("b29 ...and drifts DOWN over its first 80 frames (%.1f)"
+			% (node.centre.y - start.y), node.centre.y > start.y)
+	# The slide-off after frame 90 is a separate leg.
+	var before: float = node.centre.x
+	_step(vm, 25)
+	_chk("b29 ...then slides away sideways (%.1f)"
+			% (node.centre.x - before), node.centre.x < before)
+	_step(vm, 15)
+	_chk("b29 ...and ends", not is_instance_valid(node) or node.is_finished())
+
+
+func _test_b29_meteor_star_sweeps_inward_on_both_sides() -> void:
+	# The X offsets are subtracted for a player-side target and added for an
+	# opposing one, so the stars always sweep INWARD. One shared sign sends
+	# them off-screen on one side.
+	var a := FakeStage.new()
+	var ra := _spawn(a, "AnimMeteorMashStar", [40, 0, 0, 0, 10],
+			"gMeteorMashStarSpriteTemplate")
+	var b := FakeStage.new()
+	b.player_side = false
+	var rb := _spawn(b, "AnimMeteorMashStar", [40, 0, 0, 0, 10],
+			"gMeteorMashStarSpriteTemplate")
+	var na: AnimSprite = ra["sprite"]
+	var nb: AnimSprite = rb["sprite"]
+	if na == null or nb == null:
+		_chk("b29 meteor stars spawned", false)
+		return
+	var ca: Vector2 = a.center_of(AnimStage.ANIM_TARGET)
+	var cb: Vector2 = b.center_of(AnimStage.ANIM_TARGET)
+	_chk("b29 the two sides start on OPPOSITE sides of the target (%.1f vs %.1f)"
+			% [na.centre.x - ca.x, nb.centre.x - cb.x],
+			signf(na.centre.x - ca.x) != signf(nb.centre.x - cb.x))
+	_step(ra["vm"], 9)
+	_chk("b29 ...and both close on it",
+			na.centre.distance_to(ca) < absf(40.0 * a.pixel_scale()))
+
+
+func _test_b29_yawn_cloud_drifts_then_blinks_out() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimYawnCloud", [0], "gYawnCloudSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b29 yawn cloud spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	_chk("b29 it starts on the attacker",
+			node.centre.distance_to(atk) < node.centre.distance_to(tgt))
+	_step(vm, 50)
+	_chk("b29 ...and drifts toward the target",
+			node.centre.distance_to(tgt) < node.centre.distance_to(atk))
+	var blinked := false
+	for i in range(16):
+		_step(vm, 1)
+		if is_instance_valid(node) and not node.visible:
+			blinked = true
+	_chk("b29 ...then blinks out rather than vanishing", blinked)
+	_step(vm, 10)
+	_chk("b29 ...and is gone",
+			not is_instance_valid(node) or node.is_finished())
+
+
+func _test_b29_fade_in_pair_starts_invisible() -> void:
+	# Both open by arming BLDALPHA to (0,16) -- fully transparent -- and
+	# fade in. A port that skipped the arming has them pop in at full
+	# opacity, which no other assertion here would notice.
+	for pair in [["AnimMilkBottle", "gMilkBottleSpriteTemplate"],
+			["AnimMeanLookEye", "gMeanLookEyeSpriteTemplate"]]:
+		var stage := FakeStage.new()
+		var r := _spawn(stage, str(pair[0]), [], str(pair[1]))
+		var node: AnimSprite = r["sprite"]
+		if node == null:
+			_chk("b29 %s spawned" % pair[0], false)
+			continue
+		_chk("b29 %s starts fully transparent (a=%.2f)"
+				% [pair[0], node.modulate.a], node.modulate.a < 0.01)
+		_step(r["vm"], 8)
+		_chk("b29 %s ...is part-way in after 8 frames (a=%.2f)"
+				% [pair[0], node.modulate.a],
+				node.modulate.a > 0.1 and node.modulate.a < 0.99)
+		_step(r["vm"], 12)
+		_chk("b29 %s ...and reaches full opacity" % pair[0],
+				node.modulate.a > 0.99)
+
+
+func _test_b29_string_wrap_uses_the_target_side_midpoint() -> void:
+	# It anchors on SetAverageBattlerPositions, which in doubles is the
+	# midpoint of both opposing slots -- batch 23's `_side_centre`. A
+	# single-slot anchor is indistinguishable in singles, so the doubles
+	# case is the one that separates them.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimStringWrap", [0, 0],
+			"gStringWrapSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b29 string wrap spawned", false)
+		return
+	var mid: Vector2 = (stage.center_of(AnimStage.ANIM_TARGET)
+			+ stage.center_of(AnimStage.ANIM_DEF_PARTNER)) * 0.5
+	var lone: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	_chk("b29 it anchors on the target SIDE's midpoint, not one slot",
+			node.centre.distance_to(mid) < node.centre.distance_to(lone))
+
+
+func _test_b29_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b29 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 769)
+	for pair in [[81, "String Shot"], [122, "Lick"], [135, "Soft-Boiled"],
+			[141, "Leech Life"], [155, "Bonemerang"], [186, "Sweet Kiss"],
+			[208, "Milk Drink"], [212, "Mean Look"], [256, "Swallow"],
+			[273, "Wish"], [281, "Yawn"], [294, "Tail Glow"],
+			[309, "Meteor Mash"], [365, "Pluck"]]:
+		_chk("b29 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 30] ───────────────────────────────────────────────────────
+
+func _test_b30_query_tasks_answer_on_the_right_register() -> void:
+	# THE FINDING. Most query tasks answer on arg 7 -- the register batch 24
+	# taught the VM to preserve across a command. But IsTargetPartner and
+	# GetLycanrocForm answer on ARG 0, because upstream reads each with a
+	# `jumpargeq 0 ...` on the very next line and `jumpargeq` does not reload
+	# the registers. Moving either to arg 7 "for consistency" silently breaks
+	# its consumer, and nothing else in this suite would notice.
+	var stage := FakeStage.new()
+	for symbol in ["AnimTask_RandomBool", "GetIsDoomDesireHitTurn",
+			"AnimTask_IsHealingMove", "AnimTask_IsAttackerPlayerSide"]:
+		var vm := _vm(stage)
+		vm.args[0] = 123
+		vm.args[AnimScriptVM.ARG_RET] = 123
+		_registry.get_behavior(symbol).call(vm, {})
+		_chk("b30 %s answers on arg 7 (%d)"
+				% [symbol, vm.args[AnimScriptVM.ARG_RET]],
+				vm.args[AnimScriptVM.ARG_RET] != 123)
+		_chk("b30 %s ...and leaves arg 0 alone" % symbol, vm.args[0] == 123)
+	for symbol in ["AnimTask_IsTargetPartner", "AnimTask_GetLycanrocForm"]:
+		var vm2 := _vm(stage)
+		vm2.args[0] = 123
+		vm2.args[AnimScriptVM.ARG_RET] = 123
+		_registry.get_behavior(symbol).call(vm2, {})
+		_chk("b30 %s answers on ARG 0 (%d)" % [symbol, vm2.args[0]],
+				vm2.args[0] != 123)
+		_chk("b30 %s ...and leaves arg 7 alone" % symbol,
+				vm2.args[AnimScriptVM.ARG_RET] == 123)
+
+
+func _test_b30_query_answers_are_actually_correct() -> void:
+	var stage := FakeStage.new()
+	# Doom Desire: FALSE on the charge turns, TRUE on turn 2 only.
+	for pair in [[0, 0], [1, 0], [2, 1], [3, 0]]:
+		var vm := _vm(stage)
+		vm.move_turn = int(pair[0])
+		_registry.get_behavior("GetIsDoomDesireHitTurn").call(vm, {})
+		_chk("b30 doom desire turn %d -> %d" % [pair[0], pair[1]],
+				vm.args[AnimScriptVM.ARG_RET] == int(pair[1]))
+	# IsHealingMove is INVERTED: damage > 0 means NOT healing.
+	var heal := _vm(stage)
+	heal.move_damage = 0
+	_registry.get_behavior("AnimTask_IsHealingMove").call(heal, {})
+	_chk("b30 zero damage reads as a healing move",
+			heal.args[AnimScriptVM.ARG_RET] == 1)
+	var hurt := _vm(stage)
+	hurt.move_damage = 40
+	_registry.get_behavior("AnimTask_IsHealingMove").call(hurt, {})
+	_chk("b30 ...and real damage does NOT (the inverted read)",
+			hurt.args[AnimScriptVM.ARG_RET] == 0)
+	# Side polarity, both ways.
+	var foe := FakeStage.new()
+	foe.player_side = false
+	var vf := _vm(foe)
+	_registry.get_behavior("AnimTask_IsAttackerPlayerSide").call(vf, {})
+	var vp := _vm(stage)
+	_registry.get_behavior("AnimTask_IsAttackerPlayerSide").call(vp, {})
+	_chk("b30 the side query reports 1 for the player and 0 for the foe",
+			vp.args[AnimScriptVM.ARG_RET] == 1
+			and vf.args[AnimScriptVM.ARG_RET] == 0)
+	# RandomBool must genuinely vary rather than being a constant.
+	var seen := {}
+	for i in range(60):
+		var vr := _vm(stage)
+		_registry.get_behavior("AnimTask_RandomBool").call(vr, {})
+		seen[vr.args[AnimScriptVM.ARG_RET]] = true
+	_chk("b30 the coin flip produces both outcomes", seen.size() == 2)
+
+
+func _test_b30_movement_waves_count_is_a_gate() -> void:
+	# arg 2 == 0 destroys the sprite before it starts -- a gate, not a
+	# duration. A port treating it as a minimum shows a wave that should
+	# not be there.
+	var off := FakeStage.new()
+	var r0 := _spawn(off, "AnimMovementWaves", [0, 0, 0],
+			"gMovementWavesSpriteTemplate")
+	var n0: AnimSprite = r0["sprite"]
+	_chk("b30 a repeat count of 0 ends the wave immediately",
+			n0 == null or n0.is_finished())
+	var on := FakeStage.new()
+	var r1 := _spawn(on, "AnimMovementWaves", [0, 0, 2],
+			"gMovementWavesSpriteTemplate")
+	var n1: AnimSprite = r1["sprite"]
+	if n1 == null:
+		_chk("b30 movement wave spawned", false)
+		return
+	_chk("b30 ...while a nonzero count runs", not n1.is_finished())
+	# arg 1 does double duty: it mirrors the spawn offset AND picks the cel.
+	var flip := FakeStage.new()
+	var r2 := _spawn(flip, "AnimMovementWaves", [0, 1, 2],
+			"gMovementWavesSpriteTemplate")
+	var n2: AnimSprite = r2["sprite"]
+	if n2 != null:
+		var c1: Vector2 = on.center_of(AnimStage.ANIM_ATTACKER)
+		var c2: Vector2 = flip.center_of(AnimStage.ANIM_ATTACKER)
+		_chk("b30 ...and arg 1 mirrors the spawn offset (%.1f vs %.1f)"
+				% [n1.centre.x - c1.x, n2.centre.x - c2.x],
+				signf(n1.centre.x - c1.x) != signf(n2.centre.x - c2.x))
+
+
+func _test_b30_wring_out_orbits_a_whole_number_of_turns() -> void:
+	# arg 2 is a DIVISOR of a full circle, not a duration: 256/arg2 per
+	# frame. Read as a duration the ring crawls or blurs depending on the
+	# value, and still orbits.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimMoveWringOut", [0, 0, 32, 1, 20],
+			"gWringOutHandSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b30 wring out spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var start: Vector2 = node.centre
+	var centre: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	var radius: float = start.distance_to(centre)
+	_chk("b30 it starts on the ring, not at the centre (%.1f)" % radius,
+			radius > 1.0)
+	var max_dev := 0.0
+	for i in range(31):
+		_step(vm, 1)
+		if is_instance_valid(node):
+			max_dev = maxf(max_dev,
+					absf(node.centre.distance_to(centre) - radius))
+	_chk("b30 ...and stays on the ring throughout (max drift %.2f)" % max_dev,
+			max_dev < radius * 0.15)
+	# 32 steps of 256/32 = one full turn, so one spin must be over by then.
+	_step(vm, 3)
+	_chk("b30 ...completing exactly one spin in arg-2 frames",
+			not is_instance_valid(node) or node.is_finished())
+
+
+func _test_b30_punishment_joins_the_affine_impact_alias_chain() -> void:
+	# The fourth verbatim duplicate of the same function, after
+	# AnimGunkShotImpact (b24) and AnimForcePalm (b27).
+	_chk("b30 AnimPunishment IS AnimGunkShotImpact, not a copy",
+			_registry.get_behavior("AnimPunishment")
+			== _registry.get_behavior("AnimGunkShotImpact"))
+	_chk("b30 ...and so is AnimForcePalm, making three names one impl",
+			_registry.get_behavior("AnimForcePalm")
+			== _registry.get_behavior("AnimPunishment"))
+
+
+func _test_b30_foresight_glass_mirrors_by_the_battler_it_sits_on() -> void:
+	# The flip follows the BATTLER the glass is on, not the attacker -- so
+	# the same task mirrors differently depending on its arg.
+	var stage := FakeStage.new()
+	var on_atk := _spawn(stage, "AnimForesightMagnifyingGlass", [0],
+			"gForesightMagnifyingGlassSpriteTemplate")
+	var s2 := FakeStage.new()
+	var on_tgt := _spawn(s2, "AnimForesightMagnifyingGlass", [1],
+			"gForesightMagnifyingGlassSpriteTemplate")
+	var na: AnimSprite = on_atk["sprite"]
+	var nt: AnimSprite = on_tgt["sprite"]
+	if na == null or nt == null:
+		_chk("b30 foresight glasses spawned", false)
+		return
+	_chk("b30 arg 0 selects which battler the glass sits on",
+			na.centre.distance_to(stage.center_of(AnimStage.ANIM_ATTACKER))
+			< 1.0
+			and nt.centre.distance_to(s2.center_of(AnimStage.ANIM_TARGET))
+			< 1.0)
+	_chk("b30 ...and the two are mirrored differently",
+			signf(na.scale.x) != signf(nt.scale.x))
+
+
+func _test_b30_confetti_varies_per_particle() -> void:
+	# Every parameter is a fresh draw. A port that fixed them gives a rigid
+	# curtain of identical confetti, which still falls.
+	var xs := {}
+	# A FRESH stage per particle. `_spawn` returns the layer's FIRST
+	# AnimSprite child, so spawning twelve onto one stage measures particle
+	# zero twelve times and reports "2 distinct" however varied the draws
+	# are -- the same trap batch 24's Hydro Cannon test hit.
+	for i in range(12):
+		var stage := FakeStage.new()
+		var r := _spawn(stage, "AnimFlatterConfetti", [],
+				"gFlatterConfettiSpriteTemplate")
+		var node: AnimSprite = r["sprite"]
+		if node == null:
+			continue
+		var start: Vector2 = node.centre
+		# Sampled at 60 frames, not 10: the per-particle rates differ by
+		# fractions of a pixel per frame, so an early sample rounds most
+		# draws into the same bucket and the check passes for a port with
+		# ONE fixed rate. Caught by the injection, not by the first run.
+		_step(r["vm"], 60)
+		xs[snappedf(node.centre.x - start.x, 1.0)] = true
+	_chk("b30 confetti particles drift by differing amounts (%d distinct)"
+			% xs.size(), xs.size() >= 4)
+
+
+func _test_b30_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b30 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 781)
+	# Torment and Happy Hour are deliberately NOT here: AnimTask_TormentAttacker
+	# and AnimHappyHourCoinShower were read at Step 0 but not ported this
+	# batch, and an aspirational move list is how a coverage test starts
+	# lying. The first draft listed both and failed.
+	for pair in [[165, "Struggle"], [193, "Foresight"], [353, "Doom Desire"],
+			[367, "Acupressure"], [378, "Wring Out"], [386, "Punishment"],
+			[788, "Population Bomb"]]:
+		_chk("b30 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 31] ───────────────────────────────────────────────────────
+
+func _test_b31_helping_hand_clap_uses_screen_coords_and_converges() -> void:
+	# Absolute screen coordinates (100/140, y 56), like batch 26's moon --
+	# the hands meet in the MIDDLE of the screen, not beside either mon.
+	var left := FakeStage.new()
+	var rl := _spawn(left, "AnimHelpingHandClap", [0],
+			"gHelpingHandClapSpriteTemplate")
+	var right := FakeStage.new()
+	var rr := _spawn(right, "AnimHelpingHandClap", [1],
+			"gHelpingHandClapSpriteTemplate")
+	var nl: AnimSprite = rl["sprite"]
+	var nr: AnimSprite = rr["sprite"]
+	if nl == null or nr == null:
+		_chk("b31 helping hands spawned", false)
+		return
+	var scale: float = left.pixel_scale()
+	_chk("b31 the left hand sits at screen x=100 (%.0f)" % nl.centre.x,
+			absf(nl.centre.x - 100.0 * scale) < 1.0)
+	_chk("b31 the right hand at x=140 (%.0f)" % nr.centre.x,
+			absf(nr.centre.x - 140.0 * scale) < 1.0)
+	_chk("b31 ...neither anchored on a battler",
+			nl.centre.distance_to(left.center_of(AnimStage.ANIM_ATTACKER))
+			> 20.0)
+	# The two must move OPPOSITE ways -- data[7] is +1/-1 and drives both
+	# axes, so they converge rather than drifting together.
+	var l0: Vector2 = nl.centre
+	var r0: Vector2 = nr.centre
+	_step(rl["vm"], 6)
+	_step(rr["vm"], 6)
+	_chk("b31 ...and they move vertically in opposite directions (%.1f vs %.1f)"
+			% [nl.centre.y - l0.y, nr.centre.y - r0.y],
+			signf(nl.centre.y - l0.y) != signf(nr.centre.y - r0.y))
+	_chk("b31 ...with the left hand mirrored", nl.scale.x < 0.0)
+
+
+func _test_b31_helping_hand_movement_is_partner_relative_in_doubles() -> void:
+	# Direction comes from the attacker's position RELATIVE TO ITS PARTNER
+	# in doubles, falling back to the side rule only in singles.
+	#
+	# ⚠ THE FIRST DRAFT OF THIS TEST WAS VACUOUS. It used a player-side
+	# stage, where FakeStage puts the partner to the RIGHT of the attacker --
+	# so the partner rule and the side rule BOTH give -1 and the injection
+	# that deleted the partner rule passed. The fixture has to be one where
+	# the two rules DISAGREE, which is the opponent-side stage: the side rule
+	# says +1 there while the partner rule still says -1.
+	var foe := FakeStage.new()
+	foe.player_side = false
+	var vm := _vm(foe)
+	var node: Control = foe.sprite_for(AnimStage.ANIM_ATTACKER)
+	var base: Vector2 = node.position
+	var me: Vector2 = foe.center_of(AnimStage.ANIM_ATTACKER)
+	var ally: Vector2 = foe.center_of(AnimStage.ANIM_ATK_PARTNER)
+	_chk("b31 the fixture genuinely separates the two rules",
+			(me.x > ally.x) != (not foe.player_side))
+	_registry.get_behavior("AnimTask_HelpingHandAttackerMovement").call(vm, {})
+	_step(vm, 8)
+	_chk("b31 the attacker leans (%.1f)" % (node.position.x - base.x),
+			not node.position.is_equal_approx(base))
+	var want: float = 1.0 if me.x > ally.x else -1.0
+	_chk("b31 ...toward its PARTNER, not by the side rule",
+			signf(node.position.x - base.x) == want)
+	_step(vm, 20)
+	_chk("b31 ...and returns", node.position.is_equal_approx(base))
+
+
+func _test_b31_ingrain_root_never_moves_and_flickers_out() -> void:
+	# The root's whole behavior is a flicker in its last ten frames. A port
+	# that faded or slid it instead still disappears on time.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimIngrainRoot", [0, 0, 0, 0, 30],
+			"gIngrainRootSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b31 ingrain root spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var at: Vector2 = node.centre
+	var flickered_early := false
+	for i in range(18):
+		_step(vm, 1)
+		if is_instance_valid(node) and not node.visible:
+			flickered_early = true
+	_chk("b31 the root does not move", node.centre.is_equal_approx(at))
+	_chk("b31 ...and does NOT flicker before its last ten frames",
+			not flickered_early)
+	var flickered_late := false
+	for i in range(11):
+		_step(vm, 1)
+		if is_instance_valid(node) and not node.visible:
+			flickered_late = true
+	_chk("b31 ...but does at the end", flickered_late)
+	_step(vm, 4)
+	_chk("b31 ...and then ends",
+			not is_instance_valid(node) or node.is_finished())
+
+
+func _test_b31_lock_on_wrapper_is_not_an_alias() -> void:
+	# AnimLockOnMoveTarget CALLS AnimLockOnTarget after applying a quadrant
+	# offset and flip. Registering them as one implementation would drop the
+	# quadrant work, so identity here would be a BUG -- the opposite of the
+	# alias assertions in batches 24/27/30.
+	_chk("b31 lock-on move-target is NOT the same impl as lock-on target",
+			_registry.get_behavior("AnimLockOnMoveTarget")
+			!= _registry.get_behavior("AnimLockOnTarget"))
+	# Four quadrants, four distinct corners around the target.
+	var corners := {}
+	for q in [1, 2, 3, 4]:
+		var stage := FakeStage.new()
+		var r := _spawn(stage, "AnimLockOnMoveTarget", [q],
+				"gLockOnMoveTargetSpriteTemplate")
+		var node: AnimSprite = r["sprite"]
+		if node == null:
+			continue
+		var c: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+		corners["%d,%d" % [signi(int(node.centre.x - c.x)),
+				signi(int(node.centre.y - c.y))]] = true
+	_chk("b31 ...and its four quadrants land on four distinct corners (%d)"
+			% corners.size(), corners.size() == 4)
+
+
+func _test_b31_wood_hammer_waits_before_it_swings() -> void:
+	# 37 frames of wind-up -- most of the animation. A hammer that swung
+	# immediately still connects and still looks like a hammer.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimWoodHammerHammer", [],
+			"gIvyCudgelFireSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b31 wood hammer spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	_chk("b31 the hammer starts BEHIND the attacker",
+			node.centre.x < atk.x)
+	# It shivers during the wait but does not travel.
+	var shivered := false
+	for i in range(30):
+		_step(vm, 1)
+		if is_instance_valid(node) and node.offset.length() > 0.1:
+			shivered = true
+	_chk("b31 ...shivers while winding up", shivered)
+	_chk("b31 ...and is still alive at frame 30 (the 37-frame wait)",
+			is_instance_valid(node) and not node.is_finished())
+	_step(vm, 25)
+	_chk("b31 ...then swings and ends",
+			not is_instance_valid(node) or node.is_finished())
+
+
+func _test_b31_conversion2_inverts_conversions_signal() -> void:
+	# Conversion's squares WAIT for arg 7 to kill them; Conversion 2's each
+	# carry their own delay and then fly to the ATTACKER. Same family,
+	# opposite control flow -- and the blend ramps the other way too.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimConversion2", [0, 0, 12],
+			"gConversion2SpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b31 conversion2 square spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	_chk("b31 it starts on the TARGET (Conversion starts on the attacker)",
+			node.centre.distance_to(tgt) < node.centre.distance_to(atk))
+	_step(vm, 10)
+	_chk("b31 ...and holds still through its own delay",
+			node.centre.distance_to(tgt) < 1.0)
+	_step(vm, 30)
+	_chk("b31 ...then flies to the attacker",
+			node.centre.distance_to(atk) < node.centre.distance_to(tgt))
+	# The blend ramp runs the opposite way to Conversion's.
+	var vb := _vm(stage)
+	_registry.get_behavior("AnimTask_Conversion2AlphaBlend").call(vb, {})
+	_step(vb, 8)
+	var eva2: int = int(vb.blend_context()["eva"])
+	var vc := _vm(stage)
+	_registry.get_behavior("AnimTask_ConversionAlphaBlend").call(vc, {})
+	_step(vc, 8)
+	var eva1: int = int(vc.blend_context()["eva"])
+	_chk("b31 ...and the two blends ramp opposite ways (%d vs %d)"
+			% [eva1, eva2], signi(eva1 - 8) != signi(eva2 - 8))
+
+
+func _test_b31_perish_note2_is_never_drawn() -> void:
+	# ⚠ It sets invisible on its first frame and exists ONLY as a timer.
+	# Drawing it puts a stray note on screen that upstream never shows, and
+	# no timing assertion would notice.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimPerishSongMusicNote2", [40],
+			"gPerishSongMusicNote2SpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b31 perish note 2 spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	_chk("b31 the second perish note is INVISIBLE", not node.visible)
+	var mon: Control = stage.sprite_for(AnimStage.ANIM_TARGET)
+	var mod0: Color = mon.modulate
+	_step(vm, 40)
+	_chk("b31 ...and has not greyed the field yet",
+			mon.modulate.is_equal_approx(mod0))
+	_step(vm, 45)
+	_chk("b31 ...greys it at 120 - arg0 frames",
+			not mon.modulate.is_equal_approx(mod0))
+	_step(vm, 85)
+	_chk("b31 ...and restores it 80 frames later",
+			mon.modulate.is_equal_approx(mod0))
+	_chk("b31 ...never having become visible", not node.visible
+			or node.is_finished())
+
+
+func _test_b31_perish_note_sweeps_from_the_screen_centre() -> void:
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimPerishSongMusicNote", [0, 0, 0],
+			"gPerishSongMusicNoteSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b31 perish note spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var scale: float = stage.pixel_scale()
+	_chk("b31 the note starts at screen x=120 (%.0f)" % node.centre.x,
+			absf(node.centre.x - 120.0 * scale) < 1.0)
+	var min_x := node.centre.x
+	var max_x := node.centre.x
+	var start_y := node.centre.y
+	for i in range(90):
+		_step(vm, 1)
+		if is_instance_valid(node):
+			min_x = minf(min_x, node.centre.x)
+			max_x = maxf(max_x, node.centre.x)
+	# Amplitude 100 out of a 240-wide screen is a near-full-width sweep.
+	_chk("b31 ...and sweeps widely (%.0f px of %.0f)"
+			% [max_x - min_x, 240.0 * scale],
+			max_x - min_x > 100.0 * scale)
+	_chk("b31 ...while sinking steadily", node.centre.y > start_y)
+
+
+func _test_b31_partner_slides_move_the_partner_not_the_primary() -> void:
+	# The whole point of the pair. A port that slid the primary would look
+	# right in singles (where the partner is absent) and wrong in doubles.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	for i in range(5):
+		vm.args[i] = [0, 20, 0, 0, 8][i]
+	var partner: Control = stage.sprite_for(AnimStage.ANIM_ATK_PARTNER)
+	var primary: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var p0: Vector2 = partner.position
+	var m0: Vector2 = primary.position
+	_registry.get_behavior("SlideMonToOffsetPartner").call(vm, {})
+	_step(vm, 8)
+	_chk("b31 the PARTNER slides (%.1f)" % (partner.position.x - p0.x),
+			not partner.position.is_equal_approx(p0))
+	_chk("b31 ...and the primary attacker does not",
+			primary.position.is_equal_approx(m0))
+	# ...and the return leg puts it back.
+	var vm2 := _vm(stage)
+	vm2.args[0] = 0
+	vm2.args[2] = 8
+	_registry.get_behavior("SlideMonToOriginalPosPartner").call(vm2, {})
+	_step(vm2, 9)
+	_chk("b31 ...and the partner return leg restores it",
+			partner.position.is_equal_approx(p0))
+
+
+func _test_b31_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b31 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 795)
+	for pair in [[176, "Conversion 2"], [195, "Perish Song"], [199, "Lock-On"],
+			[270, "Helping Hand"], [275, "Ingrain"], [397, "Rock Polish"],
+			[452, "Wood Hammer"], [607, "Hold Hands"]]:
+		_chk("b31 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+	# Sketch stays deferred with its scanline partner.
+	_chk("b31 Sketch stays deferred (scanline pencil)",
+			not _dispatcher.can_play_move(166))
+
+
+# ── [M36D batch 32] ───────────────────────────────────────────────────────
+
+func _test_b32_superpower_orb_holds_then_crosses() -> void:
+	# 180 frames of charge -- three seconds, essentially the whole animation
+	# -- then a 16-frame flight to the OTHER battler. Launching on spawn
+	# still crosses correctly and loses the entire effect.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimSuperpowerOrb", [0],
+			"gSuperpowerOrbSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b32 superpower orb spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	_chk("b32 the orb charges on the attacker",
+			node.centre.distance_to(atk) < 1.0)
+	_step(vm, 100)
+	_chk("b32 ...and has not moved after 100 frames",
+			node.centre.distance_to(atk) < 1.0)
+	_step(vm, 95)
+	_chk("b32 ...then crosses to the target",
+			node.centre.distance_to(tgt) < node.centre.distance_to(atk))
+	# arg 0 swaps which end it charges on and which it lands on.
+	var s2 := FakeStage.new()
+	var r2 := _spawn(s2, "AnimSuperpowerOrb", [1],
+			"gSuperpowerOrbSpriteTemplate")
+	var n2: AnimSprite = r2["sprite"]
+	if n2 != null:
+		_chk("b32 ...and arg 0 charges it on the target instead",
+				n2.centre.distance_to(s2.center_of(AnimStage.ANIM_TARGET))
+				< n2.centre.distance_to(s2.center_of(AnimStage.ANIM_ATTACKER)))
+
+
+func _test_b32_devil_orbit_decays_and_reverses() -> void:
+	# Two separate properties, and a plain circle satisfies neither: the
+	# radius SHRINKS with age, and the phase runs forward then back.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimDevil", [0, 0], "gDevilSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b32 devil spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var start: Vector2 = node.centre
+	var early := 0.0
+	for i in range(12):
+		_step(vm, 1)
+		if is_instance_valid(node):
+			early = maxf(early, node.centre.distance_to(start))
+	var late := 0.0
+	for i in range(50):
+		_step(vm, 1)
+		if is_instance_valid(node):
+			late = maxf(late, node.centre.distance_to(start))
+	_chk("b32 the devil orbits (%.1f)" % early, early > 1.0)
+	_chk("b32 ...on a DECAYING radius, not a fixed one (%.1f -> %.1f)"
+			% [early, late], late < early)
+	# Solid in the middle, flickering at both ends.
+	var s2 := FakeStage.new()
+	var r2 := _spawn(s2, "AnimDevil", [0, 0], "gDevilSpriteTemplate")
+	var n2: AnimSprite = r2["sprite"]
+	var early_flicker := false
+	for i in range(9):
+		_step(r2["vm"], 1)
+		if is_instance_valid(n2) and not n2.visible:
+			early_flicker = true
+	var mid_solid := true
+	for i in range(40):
+		_step(r2["vm"], 1)
+		if is_instance_valid(n2) and not n2.visible:
+			mid_solid = false
+	_chk("b32 ...flickering early but solid in the middle",
+			early_flicker and mid_solid)
+
+
+func _test_b32_flying_notes_scale_the_two_axes_differently() -> void:
+	# The offset is also the velocity, but x is divided by 5 while y is
+	# multiplied by 8 and then divided by 5 -- so a note offset equally on
+	# both axes still travels mostly vertically. Equal scaling gives a
+	# diagonal, which still "flies".
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimFlyingMusicNotes", [0, 16, 16],
+			"gFastFlyingMusicNotesSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b32 flying note spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var start: Vector2 = node.centre
+	_step(vm, 30)
+	var moved: Vector2 = node.centre - start
+	_chk("b32 the note travels (%.1f, %.1f)" % [moved.x, moved.y],
+			moved.length() > 1.0)
+	_chk("b32 ...much further vertically than horizontally (%.1f vs %.1f)"
+			% [absf(moved.y), absf(moved.x)],
+			absf(moved.y) > absf(moved.x) * 3.0)
+
+
+func _test_b32_bounce_ball_hides_the_attacker_without_leaking() -> void:
+	# ⚠ The ball IS the mon. Hiding it raw would leave a Pokemon invisible
+	# for the rest of the battle if the script ended early -- the leak class
+	# rule (3) exists for -- so it must go through the VM's tracked path.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var ctx := {"template": "gBounceBallShrinkSpriteTemplate",
+			"template_data": AnimData.template("gBounceBallShrinkSpriteTemplate"),
+			"blend": {"eva": 16, "evb": 0}}
+	_registry.get_behavior("AnimBounceBallShrink").call(vm, ctx)
+	var mon: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	_chk("b32 the attacker is hidden while the ball is up", not mon.visible)
+	# Abort the run mid-flight: the VM's own net must put it back.
+	vm._finish()
+	_chk("b32 ...and an aborted run restores it", mon.visible)
+
+
+func _test_b32_dragon_rush_keys_on_the_targets_side() -> void:
+	# Keyed on the TARGET's side, not the attacker's -- they differ for any
+	# ally-targeting move, and the spin direction follows.
+	var a := FakeStage.new()
+	var ra := _spawn(a, "AnimDragonRush", [20, 0], "gDragonRushSpriteTemplate")
+	var b := FakeStage.new()
+	b.player_side = false
+	var rb := _spawn(b, "AnimDragonRush", [20, 0], "gDragonRushSpriteTemplate")
+	var na: AnimSprite = ra["sprite"]
+	var nb: AnimSprite = rb["sprite"]
+	if na == null or nb == null:
+		_chk("b32 dragon rush spawned", false)
+		return
+	var ca: Vector2 = a.center_of(AnimStage.ANIM_TARGET)
+	var cb: Vector2 = b.center_of(AnimStage.ANIM_TARGET)
+	# ⚠ "The two sides differ" is NOT enough, and the first draft stopped
+	# there. In singles the attacker and target are always on opposite
+	# sides, so keying on either one produces a mirror -- the injection that
+	# swapped to the attacker's side passed. The direction has to be pinned
+	# ABSOLUTELY against source: `IsOnPlayerSide(gBattleAnimTarget)` is
+	# FALSE for a player attacker, which takes the `x += args[0]` branch, so
+	# the sprite must sit to the RIGHT of the target.
+	_chk("b32 vs an opposing target the sprite sits RIGHT of it (%.1f)"
+			% (na.centre.x - ca.x), na.centre.x > ca.x)
+	_chk("b32 ...and vs a player-side target, LEFT of it (%.1f)"
+			% (nb.centre.x - cb.x), nb.centre.x < cb.x)
+	# ...and spin opposite ways, which the offset alone does not prove.
+	#
+	# ⚠ Measured on X, not Y, and the first draft got this wrong. The orbit
+	# starts at phase 192 -- the sine's MINIMUM -- so stepping either
+	# direction moves Y by the same amount, and a Y check reports "4.2 vs
+	# 4.2" for a correctly-mirrored spin. Cosine is at a zero crossing there,
+	# so X is the axis that separates the two directions.
+	var a0: Vector2 = na.centre
+	var b0: Vector2 = nb.centre
+	_step(ra["vm"], 6)
+	_step(rb["vm"], 6)
+	_chk("b32 ...and spin in opposite directions (%.1f vs %.1f)"
+			% [na.centre.x - a0.x, nb.centre.x - b0.x],
+			signf(na.centre.x - a0.x) != signf(nb.centre.x - b0.x))
+
+
+func _test_b32_overheat_flame_ellipse_is_three_fifths_tall() -> void:
+	# The vertical amplitude is exactly 3/5 of the horizontal, so the spray
+	# is a flattened ellipse. A shared amplitude gives a circle, which still
+	# sprays outward.
+	var widest := 0.0
+	var tallest := 0.0
+	for angle in [0, 32, 64, 96, 128, 160, 192, 224]:
+		var stage := FakeStage.new()
+		var r := _spawn(stage, "AnimOverheatFlame", [0, angle, 40, 20, 0],
+				"gOverheatFlameSpriteTemplate")
+		var node: AnimSprite = r["sprite"]
+		if node == null:
+			continue
+		var start: Vector2 = node.centre
+		_step(r["vm"], 18)
+		widest = maxf(widest, absf(node.centre.x - start.x))
+		tallest = maxf(tallest, absf(node.centre.y - start.y))
+	_chk("b32 the overheat spray moves (%.1f x %.1f)" % [widest, tallest],
+			widest > 1.0 and tallest > 1.0)
+	_chk("b32 ...and is FLATTER than it is wide (3/5)", tallest < widest)
+	# The speed arg also offsets the START, so a fast flame begins out from
+	# the mon rather than at it.
+	var slow := FakeStage.new()
+	var rs := _spawn(slow, "AnimOverheatFlame", [0, 0, 40, 20, 0],
+			"gOverheatFlameSpriteTemplate")
+	var fast := FakeStage.new()
+	var rf := _spawn(fast, "AnimOverheatFlame", [8, 0, 40, 20, 0],
+			"gOverheatFlameSpriteTemplate")
+	var ns: AnimSprite = rs["sprite"]
+	var nf: AnimSprite = rf["sprite"]
+	if ns != null and nf != null:
+		var cs: Vector2 = slow.center_of(AnimStage.ANIM_ATTACKER)
+		var cf: Vector2 = fast.center_of(AnimStage.ANIM_ATTACKER)
+		_chk("b32 ...and the speed arg offsets the START (%.1f vs %.1f)"
+				% [ns.centre.distance_to(cs), nf.centre.distance_to(cf)],
+				nf.centre.distance_to(cf) > ns.centre.distance_to(cs) + 1.0)
+
+
+func _test_b32_false_swipe_pair_is_not_an_alias() -> void:
+	# Same family, different entry points: the positioned variant takes an
+	# extra offset arg and plays cel variant 1.
+	_chk("b32 the two false-swipe slices are separate impls",
+			_registry.get_behavior("AnimFalseSwipeSlice")
+			!= _registry.get_behavior("AnimFalseSwipePositionedSlice"))
+	var a := FakeStage.new()
+	var ra := _spawn(a, "AnimFalseSwipeSlice", [],
+			"gFalseSwipeSliceSpriteTemplate")
+	var b := FakeStage.new()
+	var rb := _spawn(b, "AnimFalseSwipePositionedSlice", [24],
+			"gFalseSwipePositionedSliceSpriteTemplate")
+	var na: AnimSprite = ra["sprite"]
+	var nb: AnimSprite = rb["sprite"]
+	if na == null or nb == null:
+		_chk("b32 false swipe slices spawned", false)
+		return
+	var ca: Vector2 = a.center_of(AnimStage.ANIM_TARGET)
+	var cb: Vector2 = b.center_of(AnimStage.ANIM_TARGET)
+	_chk("b32 ...and the positioned one honours its offset arg (%.1f vs %.1f)"
+			% [na.centre.x - ca.x, nb.centre.x - cb.x],
+			nb.centre.x - cb.x > na.centre.x - ca.x)
+
+
+func _test_b32_geyser_rise_direction_follows_its_offset_sign() -> void:
+	# arg 1 does double duty -- it offsets the spear AND its sign picks which
+	# way the spear leans as it rises, so a row of them fans out.
+	var left := FakeStage.new()
+	var rl := _spawn(left, "SpriteCB_GeyserTarget", [0, -20, 0],
+			"gFreezyFrostRisingSpearSpriteTemplate")
+	var right := FakeStage.new()
+	var rr := _spawn(right, "SpriteCB_GeyserTarget", [0, 20, 0],
+			"gFreezyFrostRisingSpearSpriteTemplate")
+	var nl: AnimSprite = rl["sprite"]
+	var nr: AnimSprite = rr["sprite"]
+	if nl == null or nr == null:
+		_chk("b32 geysers spawned", false)
+		return
+	var l0: Vector2 = nl.centre
+	var r0: Vector2 = nr.centre
+	_step(rl["vm"], 10)
+	_step(rr["vm"], 10)
+	_chk("b32 both geysers RISE",
+			nl.centre.y < l0.y and nr.centre.y < r0.y)
+	_chk("b32 ...and lean opposite ways by their offset's sign (%.1f vs %.1f)"
+			% [nl.centre.x - l0.x, nr.centre.x - r0.x],
+			signf(nl.centre.x - l0.x) != signf(nr.centre.x - r0.x))
+
+
+func _test_b32_coin_shower_ellipse_is_tall_and_narrow() -> void:
+	# Amplitudes 16 and -70: the coins arc UP far more than they swing
+	# sideways. A circular orbit is the obvious misreading and still looks
+	# like coins circling.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimHappyHourCoinShower", [0, 0, 8, 0],
+			"gHappyHourCoinShowerTemplate")
+	var node: AnimSprite = r["sprite"]
+	if node == null:
+		_chk("b32 coin shower spawned", false)
+		return
+	var vm: AnimScriptVM = r["vm"]
+	var start: Vector2 = node.centre
+	var wide := 0.0
+	var tall := 0.0
+	for i in range(40):
+		_step(vm, 1)
+		if is_instance_valid(node):
+			wide = maxf(wide, absf(node.centre.x - start.x))
+			tall = maxf(tall, absf(node.centre.y - start.y))
+	_chk("b32 the coins orbit (%.1f x %.1f)" % [wide, tall],
+			wide > 1.0 and tall > 1.0)
+	_chk("b32 ...on a TALL narrow ellipse, not a circle", tall > wide * 2.0)
+
+
+func _test_b32_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b32 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 812)
+	for pair in [[142, "Lovely Kiss"], [206, "False Swipe"], [340, "Bounce"],
+			[407, "Dragon Rush"], [411, "Focus Blast"], [434, "Draco Meteor"],
+			[603, "Happy Hour"], [686, "Freezy Frost"], [869, "Extreme Evoboost"]]:
+		_chk("b32 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 33] ───────────────────────────────────────────────────────
+
+func _test_b33_thrash_pair_are_different_effects() -> void:
+	# Same move, same name stem, DIFFERENT mechanisms: the horizontal is an
+	# affine deformation, the vertical a plain displacement. Sharing one
+	# implementation gives Thrash the same look twice.
+	var h := FakeStage.new()
+	var vh := _vm(h)
+	var nh: Control = h.sprite_for(AnimStage.ANIM_ATTACKER)
+	var hs: Vector2 = nh.scale
+	var hp: Vector2 = nh.position
+	_registry.get_behavior("AnimTask_ThrashMoveMonHorizontal").call(vh, {})
+	_step(vh, 6)
+	_chk("b33 the horizontal thrash DEFORMS the mon",
+			not nh.scale.is_equal_approx(hs))
+	_chk("b33 ...without displacing it", nh.position.is_equal_approx(hp))
+
+	var v := FakeStage.new()
+	var vv := _vm(v)
+	var nv: Control = v.sprite_for(AnimStage.ANIM_ATTACKER)
+	var vs: Vector2 = nv.scale
+	var vp: Vector2 = nv.position
+	_registry.get_behavior("AnimTask_ThrashMoveMonVertical").call(vv, {})
+	_step(vv, 6)
+	_chk("b33 the vertical thrash DISPLACES the mon",
+			not nv.position.is_equal_approx(vp))
+	_chk("b33 ...without deforming it", nv.scale.is_equal_approx(vs))
+	_step(vv, 20)
+	_chk("b33 ...and returns it", nv.position.is_equal_approx(vp))
+	# The affine table LOOPS twice -- 4 legs x 7 frames x 2 = 56, so it must
+	# still be running at 40 and finished by 60.
+	_step(vh, 34)
+	_chk("b33 the horizontal thrash is still running at frame 40 (LOOP 2)",
+			not nh.scale.is_equal_approx(hs))
+	_step(vh, 25)
+	_chk("b33 ...and restores after both loops", nh.scale.is_equal_approx(hs))
+
+
+func _test_b33_facade_blend_cycles_rather_than_holding() -> void:
+	# It steps a 24-entry ramp one per frame. A static tint is the obvious
+	# misreading and looks like a perfectly reasonable colour flash.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = AnimStage.ANIM_ATTACKER
+	vm.args[1] = 30
+	var node: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	_registry.get_behavior("AnimTask_FacadeColorBlend").call(vm, {})
+	_step(vm, 1)
+	_chk("b33 the facade blend applies a tint", node.material != null)
+	var seen := {}
+	for i in range(20):
+		_step(vm, 1)
+		if node.material is ShaderMaterial:
+			# The parameter is "tint" -- `_apply_blend_amount`'s own name.
+			# The first draft read "blend_color", got null every frame, and
+			# reported 0 distinct colours against a correctly cycling blend.
+			var c: Variant = (node.material as ShaderMaterial) \
+					.get_shader_parameter("tint")
+			if c != null:
+				seen[str(c)] = true
+	_chk("b33 ...and CYCLES colours rather than holding one (%d)" % seen.size(),
+			seen.size() >= 3)
+	_step(vm, 20)
+	_chk("b33 ...then clears the blend outright", node.material == null)
+
+
+func _test_b33_shake_partner_scales_with_move_power() -> void:
+	# It shakes the DEF PARTNER, not the target -- the reason the task exists
+	# alongside the target-side one -- and the amplitude follows the move.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.move_power = 120
+	for i in range(3):
+		vm.args[i] = [0, 4, 20][i]
+	var partner: Control = stage.sprite_for(AnimStage.ANIM_DEF_PARTNER)
+	var target: Control = stage.sprite_for(AnimStage.ANIM_TARGET)
+	var p0: Vector2 = partner.position
+	var t0: Vector2 = target.position
+	_registry.get_behavior(
+			"AnimTask_ShakeTargetPartnerBasedOnMovePowerOrDmg").call(vm, {})
+	_step(vm, 3)
+	_chk("b33 the PARTNER shakes", not partner.position.is_equal_approx(p0))
+	_chk("b33 ...and the target does not", target.position.is_equal_approx(t0))
+	var strong: float = absf(partner.position.x - p0.x)
+	# A weaker move must shake LESS -- that is the whole "based on power".
+	var s2 := FakeStage.new()
+	var v2 := _vm(s2)
+	v2.move_power = 20
+	for i in range(3):
+		v2.args[i] = [0, 4, 20][i]
+	var p2: Control = s2.sprite_for(AnimStage.ANIM_DEF_PARTNER)
+	var q0: Vector2 = p2.position
+	_registry.get_behavior(
+			"AnimTask_ShakeTargetPartnerBasedOnMovePowerOrDmg").call(v2, {})
+	_step(v2, 3)
+	_chk("b33 ...and a weaker move shakes less (%.1f vs %.1f)"
+			% [absf(p2.position.x - q0.x), strong],
+			absf(p2.position.x - q0.x) < strong)
+	_step(vm, 20)
+	_chk("b33 ...and the partner is returned",
+			partner.position.is_equal_approx(p0))
+
+
+func _test_b33_skull_bash_step_is_fixed_point() -> void:
+	# 0xC0 is 0.75 px per frame in 8.8, so eight frames move the mon SIX
+	# pixels. Read as raw pixels it is 192 per frame -- the mon leaves the
+	# field entirely, which no "did it move" assertion would catch.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[0] = 0
+	var node: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var base: Vector2 = node.position
+	var scale: float = stage.pixel_scale()
+	_registry.get_behavior("AnimTask_SkullBashPosition").call(vm, {})
+	_step(vm, 8)
+	var moved: float = absf(node.position.x - base.x) / scale
+	_chk("b33 the wind-back moves about 6 px, not 1500 (%.1f)" % moved,
+			moved > 3.0 and moved < 12.0)
+	# arg 0 != 0 is the RETURN phase and must undo it.
+	var vm2 := _vm(stage)
+	vm2.args[0] = 1
+	_registry.get_behavior("AnimTask_SkullBashPosition").call(vm2, {})
+	_step(vm2, 9)
+	_chk("b33 ...and the return phase puts the mon back",
+			node.position.is_equal_approx(base))
+
+
+func _test_b33_heat_wave_shoves_the_whole_target_side() -> void:
+	# EVERY visible battler on the target's side, not just the target. A port
+	# that moved only the target looks right in singles and wrong in doubles.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var tgt: Control = stage.sprite_for(AnimStage.ANIM_TARGET)
+	var partner: Control = stage.sprite_for(AnimStage.ANIM_DEF_PARTNER)
+	var atk: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var t0: Vector2 = tgt.position
+	var p0: Vector2 = partner.position
+	var a0: Vector2 = atk.position
+	_registry.get_behavior("AnimTask_MoveHeatWaveTargets").call(vm, {})
+	_step(vm, 8)
+	_chk("b33 the target is shoved", not tgt.position.is_equal_approx(t0))
+	_chk("b33 ...and so is its PARTNER",
+			not partner.position.is_equal_approx(p0))
+	_chk("b33 ...while the attacker is untouched",
+			atk.position.is_equal_approx(a0))
+	_chk("b33 ...both the same way (a wave, not a scatter)",
+			signf(tgt.position.x - t0.x) == signf(partner.position.x - p0.x))
+	_step(vm, 30)
+	_chk("b33 ...and both are returned",
+			tgt.position.is_equal_approx(t0)
+			and partner.position.is_equal_approx(p0))
+
+
+func _test_b33_stockpile_counter_stub_is_bounded() -> void:
+	# A documented stub, tested as one: it must answer on arg 7 (so a script
+	# reading it is not left with a stale value) and must answer ZERO rather
+	# than an invented number. If a later session threads the real counter
+	# in, this is the assertion that should change.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[AnimScriptVM.ARG_RET] = 99
+	_registry.get_behavior("AnimTask_GetStockpileCounter").call(vm, {})
+	_chk("b33 the stockpile query writes arg 7",
+			vm.args[AnimScriptVM.ARG_RET] != 99)
+	_chk("b33 ...with the documented 0, not an invented value",
+			vm.args[AnimScriptVM.ARG_RET] == 0)
+
+
+func _test_b33_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b33 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 819)
+	for pair in [[37, "Thrash"], [255, "Spit Up"], [257, "Heat Wave"],
+			[263, "Facade"], [457, "Head Smash"]]:
+		_chk("b33 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+	# The five deferred spawners, asserted as still-blocked so a partial
+	# port cannot pass quietly.
+	for pair in [[348, "Leaf Blade"], [314, "Air Cutter"], [346, "Water Sport"],
+			[362, "Brine"], [516, "Bestow"]]:
+		_chk("b33 %s stays deferred (multi-phase spawner / item icon)"
+				% pair[1], not _dispatcher.can_play_move(int(pair[0])))
