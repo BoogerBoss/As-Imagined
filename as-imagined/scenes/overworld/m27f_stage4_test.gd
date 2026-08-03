@@ -12,7 +12,7 @@ extends Node
 ##     0 to VAR_RESULT would carry the nurse script through unaided, which is
 ##     exactly why it is tempting and exactly why it is wrong.
 
-const EXPECTED_TOTAL := 51
+const EXPECTED_TOTAL := 58
 
 var _total := 0
 var _failed := 0
@@ -60,6 +60,7 @@ func _ready() -> void:
 	_test_vm_specials()
 	_test_registry()
 	_test_polarity()
+	_test_auto_confirm()
 	_test_nurse_end_to_end()
 
 	var accounted := _total + _gated
@@ -295,6 +296,50 @@ func _test_polarity() -> void:
 			and vm6.diagnostic.contains("MULTI_LEVEL_MODE"))
 
 
+## --- F. auto-confirm: the nurse skips her own prompt ---
+func _test_auto_confirm() -> void:
+	# ⚠️ A DELIBERATE DIVERGENCE FROM SOURCE. Source asks; this does not.
+	_chk("F.01 both nurses are listed",
+			ScriptVM.AUTO_CONFIRM_LABELS.has("EventScript_PkmnCenterNurse_Frlg")
+			and ScriptVM.AUTO_CONFIRM_LABELS.has("Common_EventScript_PkmnCenterNurse"))
+	# ⚠️ The list must stay SHORT and script-keyed. A blanket auto-confirm would
+	# silently answer all 425 yes/no sites — shops, tutors, trades included.
+	_chk("F.02 and the list is short — a blanket skip would answer all 425 sites",
+			ScriptVM.AUTO_CONFIRM_LABELS.size() <= 4)
+
+	# Kanto's form: multichoice, so YES is 0.
+	var f1 := FlagStore.new()
+	var vm1 := ScriptVM.new(_src({"EventScript_PkmnCenterNurse_Frlg": [
+			_op("multichoice", ["19", "8", "MULTI_YESNO", "0"]), _op("end")]}), f1)
+	vm1.start("EventScript_PkmnCenterNurse_Frlg")
+	vm1.step()
+	_chk("F.03 the Kanto nurse does NOT pause for a prompt",
+			vm1.pause_reason != ScriptVM.Pause.WAIT_YES_NO)
+	_chk("F.04 and YES is already written, in multichoice polarity",
+			f1.var_get("VAR_RESULT") == 0)
+
+	# Hoenn's form: yesnobox, so YES is 1 — the auto path must respect the same
+	# split the real prompt does, or one nurse heals and the other does not.
+	var f2 := FlagStore.new()
+	var vm2 := ScriptVM.new(_src({"Common_EventScript_PkmnCenterNurse": [
+			_op("yesnobox"), _op("end")]}), f2)
+	vm2.start("Common_EventScript_PkmnCenterNurse")
+	vm2.step()
+	_chk("F.05 the Hoenn nurse likewise skips it",
+			vm2.pause_reason != ScriptVM.Pause.WAIT_YES_NO)
+	_chk("F.06 with YES in yesnobox polarity — the OPPOSITE value",
+			f2.var_get("VAR_RESULT") == 1)
+
+	# ⚠️ The discriminator that matters: an ordinary script still prompts.
+	var f3 := FlagStore.new()
+	var vm3 := ScriptVM.new(_src({"SomeShopkeeper": [
+			_op("yesnobox"), _op("end")]}), f3)
+	vm3.start("SomeShopkeeper")
+	vm3.step()
+	_chk("F.07 but any OTHER script still gets its real prompt",
+			vm3.pause_reason == ScriptVM.Pause.WAIT_YES_NO)
+
+
 ## --- D. the real nurse script, end to end ---
 func _test_nurse_end_to_end() -> void:
 	if not (FileAccess.file_exists("res://data/map_scripts.json")
@@ -335,7 +380,11 @@ func _test_nurse_end_to_end() -> void:
 				vm.resume(); n += 1
 			_:
 				break
-	_chk("D.02 it reaches a real yes/no prompt", saw_yes_no)
+	# ⚠️ REWRITTEN, NOT DELETED. This asserted the nurse reaches a prompt, which
+	# was true until the auto-confirm follow-up made her heal on contact. The
+	# property worth guarding now is the OPPOSITE one.
+	_chk("D.02 the nurse never prompts — she heals on contact (Rob's call)",
+			not saw_yes_no)
 	_chk("D.03 and runs to completion rather than hitting a gap (%s: %s)"
 			% [vm.pause_reason, vm.diagnostic], vm.pause_reason == ScriptVM.Pause.DONE)
 	var healed := true
@@ -344,8 +393,11 @@ func _test_nurse_end_to_end() -> void:
 			healed = false
 	_chk("D.04 the party is fully healed", healed)
 
-	# ⚠️ Answering NO must NOT heal — otherwise the prompt is decorative and the
-	# 425 call sites it gates are still effectively hardwired.
+	# ⚠️ REWRITTEN, NOT DELETED. This used to answer NO and assert the party was
+	# left alone — the check that the prompt was not decorative. With the nurse
+	# auto-confirming there is no NO to give, so the property worth guarding is
+	# the stronger one: she heals with NOBODY answering anything at all. A
+	# driver that never handles WAIT_YES_NO would hang if the prompt returned.
 	OverworldSession.reset()
 	var party2 := OverworldSession.player_party()
 	party2.members[0].current_hp = 1
@@ -353,20 +405,22 @@ func _test_nurse_end_to_end() -> void:
 	var vm2 := ScriptVM.new(_src(ops, texts), flags2)
 	vm2.start("PewterCity_PokemonCenter_1F_EventScript_Nurse")
 	var n2 := 0
+	var prompted := false
 	while n2 < 400:
 		if vm2.step():
 			n2 += 1
 			continue
 		match vm2.pause_reason:
-			ScriptVM.Pause.WAIT_MESSAGE, ScriptVM.Pause.WAIT_BUTTON:
-				vm2.resume(); n2 += 1
-			ScriptVM.Pause.WAIT_YES_NO:
-				vm2.answer_yes_no(false)
-				n2 += 1
+			ScriptVM.Pause.WAIT_MESSAGE, ScriptVM.Pause.WAIT_BUTTON, \
 			ScriptVM.Pause.WAIT_MOVEMENT:
 				vm2.resume(); n2 += 1
+			ScriptVM.Pause.WAIT_YES_NO:
+				prompted = true
+				break
 			_:
 				break
-	_chk("D.05 answering NO leaves the party unhealed", party2.members[0].current_hp == 1)
+	_chk("D.05 she heals with nobody answering anything",
+			not prompted and party2.members[0].current_hp == party2.members[0].max_hp)
 	_chk("D.06 and still ends cleanly", vm2.pause_reason == ScriptVM.Pause.DONE)
+
 	OverworldSession.reset()

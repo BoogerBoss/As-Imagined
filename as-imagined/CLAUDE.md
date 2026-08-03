@@ -1867,6 +1867,20 @@ Live-driven in the real Pewter Centre: talk to the nurse **over the counter**, p
 
 **Tests**: new `m27f_stage4_test` **52/52**, including the real Pewter nurse end-to-end in both directions (YES heals, **NO leaves the party unhealed** — without which the prompt is decorative). Five headline guards break-tested: a blanket-0 allowlist fails C.07; **swapped polarity fails D.04/D.05, i.e. it heals on NO**; a NO-default cursor fails A.02; no debounce fails six A-section assertions; a degrading unknown special fails B.04/B.05. Regression: `m27o_field_poison_test` 57/57, `m27o_whiteout_test` 33/33, `m27o_respawn_test` 24/24, `m27i_wallet_test` 31/31, `m27i_bag_test` 47/47, `m27i_text_buffers_test` 42/42, `m27i_item_identity_test` 31/31, `m27f_script_vm_test` 136/136, `m27a_step_resolver_test` 514/514, `check_bake_diff --all` 32/32.
 
+**[M27F Stage 4 follow-up — the nurse heals on contact] 2026-08-03.** Rob's call: drop her confirmation. Talking to the nurse has exactly one purpose, so the prompt was a keypress between the player and the only thing they came for.
+
+⚠️ **A DELIBERATE DIVERGENCE FROM SOURCE, RECORDED SO IT IS NOT "FIXED" BACK.** Source really does ask ("Would you like me to heal your POKéMON back to perfect health?") and this really does not. A later session reading `Std_MsgboxYesNo` WILL find the prompt and try to restore it.
+
+**Keyed on the SCRIPT LABEL, never a global setting** (`ScriptVM.AUTO_CONFIRM_LABELS`, both nurses listed). A blanket auto-confirm would silently answer all **425** yes/no sites — shops, tutors, trades — every one of which is a real choice with a real cost. Break-tested: ignoring the label fails F.07 plus four E-section assertions.
+
+**The polarity is now in ONE place** (`_write_yes_no`), shared by the real prompt and the auto path, so the `yesnobox`-writes-1 / `multichoice`-writes-0 split cannot drift between them. Break-tested: making the auto path ignore polarity fails F.04 **and D.04/D.05** — the Kanto nurse silently stops healing.
+
+**Live-driven**: `2/34 psn | 2/31 psn | 0/35 FAINTED` -> all three full, status cleared, revived, **`EVER PROMPTED: false`**.
+
+⚠️ **ONE CONSEQUENCE LEFT AS-IS, FLAGGED RATHER THAN SILENTLY PATCHED**: the script still PRINTS *"Would you like me to heal your POKéMON back to perfect health?"* and then heals without waiting — a rhetorical question. Suppressing it means suppressing authored dialogue, which is a content decision rather than the prompt removal Rob asked for. One line in the same allowlist shape if wanted.
+
+**Tests**: `m27f_stage4_test` 52 -> **59/59**. ⚠️ Two assertions were REWRITTEN, not deleted, because the change legitimately invalidated them: D.02 asserted the nurse *reaches* a prompt (now asserts she never does), and D.05 answered NO to prove the prompt was not decorative (now asserts she heals with **nobody answering anything** — strictly stronger for the new design, and it would hang if the prompt returned). Regression: `m27f_script_vm_test` 136/136, `m27o_field_poison_test` 57/57, `m27o_whiteout_test` 33/33, `m27a_step_resolver_test` 514/514, `m27i_bag_test` 47/47.
+
 **Still open on the slice**: the bag SCREEN (M27I I4 — you win TM39 and cannot look at it), wild encounters (M27H), and the party/Summary screens (M27I I5).
 
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*

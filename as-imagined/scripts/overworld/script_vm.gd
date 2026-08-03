@@ -49,6 +49,27 @@ enum Pause {
 ## The one multichoice list Stage 4 implements.
 const MULTI_YESNO := "MULTI_YESNO"
 
+## [M27F Stage 4 follow-up] Scripts whose yes/no confirmation is SKIPPED —
+## answered YES automatically, with no prompt shown.
+##
+## ⚠️ **A DELIBERATE DIVERGENCE FROM SOURCE, ROB'S CALL.** Source really does
+## ask ("Would you like me to heal your Pokemon?"), and this really does not.
+## The reasoning is that talking to the nurse has exactly one purpose, so the
+## confirmation is a keypress between the player and the only thing they came
+## for. Recorded here rather than left to look like a bug, because a later
+## session reading `Std_MsgboxYesNo` WILL find the prompt in source and try to
+## "restore" it.
+##
+## Deliberately keyed on the SCRIPT LABEL rather than a global "auto-confirm"
+## setting: every other yes/no in the region — shops, tutors, trades — is a real
+## choice with a real cost, and a blanket skip would silently answer all 425 of
+## them. Both nurses are listed because the corridor reaches the Kanto one and
+## the corpus still holds the Hoenn one.
+const AUTO_CONFIRM_LABELS := [
+	"EventScript_PkmnCenterNurse_Frlg",       # Kanto — multichoice MULTI_YESNO
+	"Common_EventScript_PkmnCenterNurse",     # Hoenn — yesnobox
+]
+
 ## Scratch var `switch`/`case` compare through, per event.inc:2115.
 const SWITCH_VAR := "VAR_0x8000"
 
@@ -255,6 +276,9 @@ func step() -> bool:
 			return true
 
 		"yesnobox":
+			if script_label in AUTO_CONFIRM_LABELS:
+				_write_yes_no(true)
+				return true
 			pause_reason = Pause.WAIT_YES_NO
 			return true
 
@@ -266,6 +290,9 @@ func step() -> bool:
 			# guessing at their contents.
 			var list := str(args[2]) if args.size() > 2 else ""
 			if list == MULTI_YESNO:
+				if script_label in AUTO_CONFIRM_LABELS:
+					_write_yes_no(true)
+					return true
 				pause_reason = Pause.WAIT_YES_NO
 				return true
 			pause_reason = Pause.UNKNOWN_OP
@@ -869,12 +896,20 @@ static func _literal(tok: String) -> int:
 func answer_yes_no(yes: bool) -> void:
 	if pause_reason != Pause.WAIT_YES_NO:
 		return
-	if _flags != null:
-		if current_op == "multichoice":
-			_flags.var_set("VAR_RESULT", 0 if yes else 1)
-		else:
-			_flags.var_set("VAR_RESULT", 1 if yes else 0)
+	_write_yes_no(yes)
 	resume()
+
+
+## The polarity, in ONE place. `yesnobox` writes 1 for YES; `multichoice
+## MULTI_YESNO` writes the list index, where 0 is YES. Shared by the real
+## prompt and by the auto-confirm path so the two can never drift.
+func _write_yes_no(yes: bool) -> void:
+	if _flags == null:
+		return
+	if current_op == "multichoice":
+		_flags.var_set("VAR_RESULT", 0 if yes else 1)
+	else:
+		_flags.var_set("VAR_RESULT", 1 if yes else 0)
 
 
 ## B / Escape. `yesnobox` folds this onto NO; `multichoice` has a distinct
