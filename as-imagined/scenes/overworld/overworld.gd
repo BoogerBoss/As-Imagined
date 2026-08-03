@@ -94,6 +94,10 @@ var _resume: Dictionary = {}
 var _battle_layer: CanvasLayer = null
 var _in_battle := false
 
+## [M27O O2] Set when a battle-return spawn decided a whiteout is owed but the
+## fade and camera did not exist yet. Performed at the end of `_ready`.
+var _pending_whiteout := false
+
 ## [M27F] The field script interpreter and its message box. `_vm` is null when
 ## no script is running — that is the "is the player in control" test.
 var _vm: ScriptVM = null
@@ -216,6 +220,9 @@ func _ready() -> void:
 	_spawn_player()
 	_add_camera()
 	_add_fade()
+	if _pending_whiteout:
+		_pending_whiteout = false
+		_do_whiteout()
 	var d := manager.data_at(_cell)
 	print("overworld: in %s at %s (%d chunk(s) live: %s)"
 			% [manager.chunk_owning(_cell), _cell, manager.loaded_chunks().size(),
@@ -243,7 +250,10 @@ func _spawn_player() -> void:
 		_facing = int(_resume.get("facing", StepResolver.Dir.SOUTH))
 		_resume = {}
 		_build_player_node()
-		_apply_battle_result()
+		# ⚠️ Cannot white out HERE. This runs before `_add_camera`/`_add_fade`,
+		# so the overlay it fades and the camera it re-centres do not exist yet.
+		# Recorded and performed at the end of `_ready` instead.
+		_pending_whiteout = _apply_battle_result()
 		return
 	# [M27O O1] A session that has never had `setrespawn` run needs somewhere to
 	# wake up. Resolved from the START MAP rather than hardcoded, so moving
@@ -697,9 +707,14 @@ func _on_battle_overlay_finished(outcome: int) -> void:
 	# (the whole fade-in) in which the driver sees that same WAIT_BATTLE and
 	# starts a SECOND battle. Found by live-driving Brock: the beaten flag was
 	# set, the badge was not, and the overlay was back on screen.
-	_apply_battle_result()
+	# [M27D D5] The guard still holds while the result is applied — clearing it
+	# first left a window in which `_drive_script` saw the still-parked
+	# WAIT_BATTLE and started a SECOND battle.
+	var whiteout := _apply_battle_result()
 	_in_battle = false
 	await _fade_to(0.0)
+	if whiteout:
+		await _do_whiteout()
 
 
 ## [M27D D5] Apply what the battle decided, once, on return.
@@ -708,23 +723,53 @@ func _on_battle_overlay_finished(outcome: int) -> void:
 ## non-defeat branch it returns to the field and calls `SetBattledTrainersFlags`;
 ## on defeat it white-outs unless the player still has live Pokémon. A DRAW
 ## counts as a defeat there — see BattleOutcome.
-func _apply_battle_result() -> void:
+func _apply_battle_result() -> bool:
 	var r := OverworldSession.take_result()
 	if r == null:
-		return
+		return false
 	if r.should_set_defeated_flag():
 		flags.set_trainer_defeated(r.trainer_key)
-	# Whiteout is NOT modelled: it needs a respawn point (a registered Pokécentre)
-	# that M27I/M27K own and this project has no concept of. A loss currently
-	# returns you to where you stood, with the trainer still undefeated — so the
-	# encounter is repeatable, which is the honest interim behaviour rather than
-	# a fake penalty.
+
+	# [M27O O2] A defeat whites out. The flag above is deliberately NOT set on
+	# this path — source only calls `SetBattledTrainersFlags` on its non-defeat
+	# branch, which is what makes losing cost something.
+	#
+	# ⚠️ THE PARKED SCRIPT MUST NOT RESUME. `CB2_WhiteOut` calls
+	# `ScriptContext_Init()`, which wipes the script state outright — the
+	# trainer's post-battle branch does not run after you black out. Resuming it
+	# would hand out the reward for a fight you lost.
+	if r.player_defeated():
+		# ⚠️ Source's gate is `IsPlayerDefeated && NoAliveMonsForPlayer()`, not
+		# defeat alone. That second half is currently UNREACHABLE-BUT-EQUIVALENT
+		# here: with no persistent party, every battle starts at full health, so
+		# a defeat means the party was wiped in that battle and "no alive mons"
+		# is true by construction. It becomes a real distinction the moment a
+		# party survives between battles — M27K/M27L — and belongs here.
+		_abandon_script()
+		battle_returned.emit(r)
+		return true
+
 	# [M27F Stage 2] A script that started this battle is parked on WAIT_BATTLE.
 	# Resumed AFTER the flag is set, so its post-battle branch sees a trainer
 	# that is already recorded as beaten.
 	if _vm != null and _vm.pause_reason == ScriptVM.Pause.WAIT_BATTLE:
 		_vm.resume_after_battle(r.outcome == BattleOutcome.WON)
 	battle_returned.emit(r)
+	return false
+
+
+## Drop a running script without running the rest of it.
+##
+## [M27O O2] Source's `ScriptContext_Init()` inside `CB2_WhiteOut`. Distinct
+## from the normal finish path, which reports where a script stopped — a script
+## abandoned by a blackout did not stop at a coverage gap, so saying so would be
+## noise.
+func _abandon_script() -> void:
+	if _vm == null:
+		return
+	if _box != null:
+		_box.close()
+	_vm = null
 
 
 func _owning_map_of(e: OverworldEntity) -> String:
@@ -1136,13 +1181,7 @@ func _do_warp(w: Warp) -> void:
 	_warping = true
 	await _fade_to(1.0)
 
-	# The player is parented INTO a chunk for draw order, and unload_all frees
-	# chunk roots. Moving it out first is not tidying — it is the difference
-	# between a warp and deleting the player.
-	if _player != null and _player.get_parent() != null:
-		_player.reparent(self)
-	manager.unload_all()
-	manager.load_chunk(dest, Vector2i.ZERO)
+	_teardown_and_load(dest)
 
 	var arrival := manager.warp_arrival(dest, w.dest_warp_id)
 	if arrival.is_empty():
@@ -1154,8 +1193,40 @@ func _do_warp(w: Warp) -> void:
 		_cell = _first_walkable(dest)
 	else:
 		_cell = Vector2i(arrival["cell"])
-	_elev = manager.elevation_at(_cell)
+	_place_player(dest, _cell)
 
+	await _fade_to(0.0)
+	await _exit_arrival(arrival.get("warp"))
+	_warping = false
+
+
+## Tear the region down and stand the player somewhere in a fresh map.
+##
+## [M27O O2] Extracted from `_do_warp` so a whiteout and a door do the same
+## thing — the ordering here is load-bearing and had already been got wrong once
+## (`[M27C C4]`). `_cell` is GLOBAL and must already be resolved by the caller;
+## everything after it is placement.
+func _teardown_and_load(dest: String) -> void:
+	# The player is parented INTO a chunk for draw order, and unload_all frees
+	# chunk roots. Moving it out first is not tidying — it is the difference
+	# between a relocation and deleting the player.
+	if _player != null and _player.get_parent() != null:
+		_player.reparent(self)
+	manager.unload_all()
+	manager.load_chunk(dest, Vector2i.ZERO)
+
+
+## Stand the player at a resolved global cell in an ALREADY-LOADED map.
+##
+## ⚠️ SPLIT FROM THE LOAD ON PURPOSE, and the regression suite is what forced
+## it. A first cut did both in one call, which put `warp_arrival` BEFORE
+## `load_chunk` — so every warp resolved its destination against a chunk that
+## was not loaded yet, got {} and fell back to `_first_walkable`. Seventeen warp
+## assertions failed at once. The destination has to be loaded before anything
+## can ask it where its warps are.
+func _place_player(dest: String, gcell: Vector2i) -> void:
+	_cell = gcell
+	_elev = manager.elevation_at(_cell)
 	_reparent_for_elevation()
 	_player.position = manager.local_pixel_of(_cell)
 	if _camera != null:
@@ -1165,8 +1236,41 @@ func _do_warp(w: Warp) -> void:
 	manager.load_neighbours(dest)
 	manager.refresh_skirts()
 
+
+## [M27O O2] The whiteout: wake up at the respawn point.
+##
+## Source's own sequence is `DoWhiteOut` (`overworld.c:392`):
+##     RunScriptImmediately(EventScript_WhiteOut)   <- money loss (O3)
+##     HealPlayerParty()
+##     Overworld_ResetStateAfterWhiteOut()
+##     SetWarpDestinationToLastHealLocation()
+##     WarpIntoMap()
+##
+## ⚠️ The destination is the RESPAWN point, not the heal point. At this
+## project's config `OW_WHITEOUT_CUTSCENE` is GEN_LATEST, so
+## `SetWarpDestinationToLastHealLocation` takes its `IsWhiteoutCutscene()`
+## branch and warps INSIDE — the Centre, or Pallet's own house. See
+## RespawnPoint for why the two are different places.
+func _do_whiteout() -> void:
+	var warp := OverworldSession.respawn.respawn_warp()
+	var dest := str(warp.get("map", ""))
+	# ⚠️ Only 3 of 42 respawn maps are baked today. Refuse BEFORE tearing the
+	# region down, exactly as a dead door does — being left standing is
+	# recoverable, being stranded in an empty region is not.
+	if dest == "" or not ResourceLoader.exists("res://scenes/maps/%s.tscn" % dest):
+		push_warning("overworld: whiteout respawn '%s' is not baked — staying put" % dest)
+		return
+
+	_warping = true
+	await _fade_to(1.0)
+	# Source heals here, between the money loss and the warp. This project has
+	# NO PERSISTENT PARTY — `OverworldParty.build_debug_player_party()` builds a
+	# fresh full-health one per battle — so there is nothing to heal yet and a
+	# call would be theatre. The order is preserved so M27K/M27L can drop the
+	# real heal in at the right point rather than rediscovering where it goes.
+	_teardown_and_load(dest)
+	_place_player(dest, manager.origin_of(dest) + Vector2i(warp.get("cell", Vector2i.ZERO)))
 	await _fade_to(0.0)
-	await _exit_arrival(arrival.get("warp"))
 	_warping = false
 
 

@@ -1755,6 +1755,28 @@ New `scripts/gen_heal_locations.py` -> `data/heal_locations.json`: 42 entries wi
 
 **Not built**: O2, the loss path itself — losing still leaves the trainer beatable and the player where they fell. O1 is the destination; O2 is the journey.
 
+**[M27O O2 — the loss path] COMPLETE — 2026-07-31. Losing a battle now costs something.**
+
+Live-driven end to end: parked script on WAIT_BATTLE, force a LOSS, and the player wakes at **PewterCity_PokemonCenter_1F_Frlg (7, 4)** — script abandoned, trainer NOT flagged beaten, reward flag NOT leaked.
+
+Source's own sequence is `DoWhiteOut` (`overworld.c:392`): run the money script, heal the party, reset state, warp to the last heal location.
+
+⚠️ **A DEFEAT ALONE DOES NOT WHITE OUT.** `CB2_EndTrainerBattle`'s branch is `IsPlayerDefeated && ... && !NoAliveMonsForPlayer()` — with live Pokémon you simply return to the field. That second half is **currently unreachable-but-equivalent** here: there is NO PERSISTENT PARTY (`build_debug_player_party` builds a fresh full-health one per battle), so a defeat means the party was wiped in that battle and "no alive mons" is true by construction. It becomes a real distinction the moment a party survives between battles — M27K/M27L — and the gate is documented where it belongs rather than silently omitted.
+
+⚠️ **THE PARKED SCRIPT MUST NOT RESUME, AND THAT IS THE REAL PENALTY.** `CB2_WhiteOut` calls `ScriptContext_Init()`, wiping the script state outright — a trainer's post-battle branch does not run after you black out. Resuming it would hand out the reward for a fight you lost. New `_abandon_script()` is distinct from the normal finish path, which reports where a script stopped; a script dropped by a blackout did not stop at a coverage gap, so saying so would be noise.
+
+**The destination is the RESPAWN point, not the heal point** — at this project's config `OW_WHITEOUT_CUTSCENE` is GEN_LATEST, so `SetWarpDestinationToLastHealLocation` takes its `IsWhiteoutCutscene()` branch and warps INSIDE. O1's own headline, now consumed.
+
+**The party heal is deliberately absent, with its position preserved.** Source heals between the money loss and the warp; with no persistent party there is nothing to heal and a call would be theatre. The comment marks the spot so M27K/M27L drop it in rather than rediscovering where it goes. The money loss is O3, still blocked on a wallet.
+
+⚠️ **`_apply_battle_result` REPORTS rather than performs, and that shape was forced by a real hazard.** The battle-return spawn path runs BEFORE `_add_camera`/`_add_fade`, so a whiteout there would fade an overlay and re-centre a camera that do not exist yet. It now returns whether one is owed; the overlay path performs it immediately, the spawn path records `_pending_whiteout` and `_ready` performs it once the scene is whole. The `_in_battle` guard is still held across the call — clearing it first is what let a SECOND battle start in D5.
+
+⚠️ **THE REGRESSION SUITE CAUGHT A REAL ORDERING BUG I INTRODUCED, AND IT IS WORTH RECORDING.** Extracting the shared teardown out of `_do_warp` put `manager.warp_arrival(dest, ...)` BEFORE `manager.load_chunk(dest, ...)` — so every warp resolved its destination against a chunk that was not loaded, got `{}`, and silently fell back to `_first_walkable`. **Seventeen warp assertions failed at once** (AE/AF/AG/AH/AI/AJ). The helper is now split into `_teardown_and_load` and `_place_player` precisely so the load cannot drift ahead of the resolution again, and the reason is recorded at the split. Nothing about the whiteout itself was wrong; the damage was entirely to the door warps it was sharing code with.
+
+**Tests**: new `m27o_whiteout_test` **22/22** — which outcomes are defeats (a DRAW is one), the flag staying unset on every defeat outcome, the destination being the respawn rather than the heal point, and the deferred-whiteout wiring. Regression: `m27a_step_resolver_test` **514/514** (after the fix), `m27o_respawn_test` 24/24, `m27i_bag_test` 47/47, `m27i_text_buffers_test` 42/42, `m27i_item_identity_test` 31/31, `m27f_script_vm_test` 136/136, `check_bake_diff --all` 32/32.
+
+**M27O O1+O2 are done. Still open**: O3 (money loss, blocked on a wallet — I3b) and O4 (the field-poison whiteout, which needs a step counter and a poison tick that do not exist).
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **[M27M-T — trimmed TileSet] SCOPED 2026-07-30, not built. ⚠️ Scope of record is `docs/m27m_trimmed_tileset_recon.md`.** Measured rather than estimated: a real trimmed twin of the Pallet Town pair loads in **1.71 ms against the full set's 15.25 ms — 8.9x**, 25 KB → 6 KB. Region-wide only **11,036 tile definitions are actually placed** against the 132,480 `create_tile()` calls made today (**4.0x**), and all fourteen corridor pairs together would build in **~31 ms** — about what ONE cold tileset costs now. Baked scenes need no re-bake (M27M2 made the TileSet an `ext_resource`), `check_bake_diff` and the overlay are unaffected, and no consumer iterates tiles. **The failure mode is SILENT and is the whole design constraint**: `set_cell` accepts a coord whose tile was never created, stores it faithfully, and renders nothing — so the trim pass must ship with its own coverage proof, not after. Three hazards are recorded there with measurements: the trim set must be computed region-wide per pair rather than per-bake (or a later map silently renders with holes), it must union `border[]` as well as `metatile[]` (**5 border ids region-wide appear in no map body**), and it conflicts head-on with M27M's authoring requirement — resolved by treating `trim`/`expand` as two idempotent operations on ONE artifact rather than shipping two files.
