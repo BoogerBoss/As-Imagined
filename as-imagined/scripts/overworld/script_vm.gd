@@ -104,6 +104,9 @@ var bag := Bag.new()
 ## [M27O O1] The respawn point, injected like `bag` so a test can supply one.
 var respawn := RespawnPoint.new()
 
+## [M27I I3b] Money and coins, injected like `bag`.
+var wallet := Wallet.new()
+
 ## Result of the last `compare`: 0 equal, 1 greater, -1 less. Source keeps the
 ## same single-slot comparison result. OBSERVABLE because it decides whether
 ## `goto_if_eq` branches — without it in describe(), a test that froze the VM
@@ -330,6 +333,68 @@ func step() -> bool:
 				_flags.var_set("VAR_0x8008", _literal(str(args[0])))
 			_call_stack.push_back({"label": script_label, "pc": pc})
 			return _jump("Common_EventScript_SetGymTrainers_Frlg")
+
+		"checkmoney", "addmoney", "removemoney":
+			# ⚠️ MONEY ARGS ARE LITERAL, NOT VARIABLES. Source reads a raw
+			# `ScriptReadWord` here rather than routing through `VarGet` the way
+			# every item argument does, and the corpus agrees — all 54 uses
+			# carry a plain number.
+			#
+			# Honest scope: `_resolve_number` is literal-first, so for the data
+			# that actually exists the two readings agree and swapping them
+			# breaks nothing today. This stays a literal read for fidelity, and
+			# the test asserts the CORPUS FACT that keeps it safe rather than
+			# pretending to a behavioural difference it cannot demonstrate.
+			#
+			# The macro's second `disable` byte defaults to 0 and is never
+			# emitted by any corpus call, so a set one is not modelled.
+			var raw := str(args[0]) if args.size() > 0 else "0"
+			var amount := int(raw) if raw.is_valid_int() else -1
+			if amount < 0:
+				# ⚠️ FAIL CLOSED, AND THIS DIRECTION IS THE WHOLE POINT.
+				# 6 corpus money args are file-scoped assembler constants
+				# (`COINS_PRICE_500`) the script compiler does not resolve yet —
+				# see the note on `_money_arg_unresolved`. Treating an
+				# unresolvable price as 0 would make `checkmoney` report
+				# AFFORDABLE and the following `removemoney` charge nothing:
+				# free goods. Reporting "cannot afford" refuses the purchase
+				# instead, which is the recoverable direction.
+				diagnostic = "unresolved money amount '%s'" % raw
+				if current_op == "checkmoney":
+					_set_result(false)
+				return true
+			match current_op:
+				"checkmoney": _set_result(wallet.can_afford(amount))
+				"addmoney": wallet.earn(amount)
+				# ⚠️ Clamps to zero rather than refusing — see Wallet.
+				_: wallet.spend(amount)
+			return true
+
+		"checkcoins":
+			# ⚠️ Writes into the NAMED VAR, not VAR_RESULT — the one command in
+			# this family that reports somewhere else.
+			if _flags != null and args.size() > 0:
+				_flags.var_set(str(args[0]), wallet.coins)
+			return true
+
+		"addcoins", "removecoins":
+			# Coins DO go through the variable store (`VarGet` in source), the
+			# opposite of money one branch above.
+			var n := _resolve_number(str(args[0])) if args.size() > 0 else 0
+			var ok := wallet.add_coins(n) if current_op == "addcoins" \
+					else wallet.remove_coins(n)
+			# ⚠️ INVERTED. Source sets VAR_RESULT to FALSE on SUCCESS for both
+			# of these -- `if (AddCoins(..) == TRUE) gSpecialVar_Result = FALSE`.
+			# Reading it the natural way round makes every "did that work"
+			# branch in the Game Corner take the wrong path.
+			_set_result(not ok)
+			return true
+
+		"showmoneybox", "hidemoneybox", "updatemoneybox":
+			# Display only, and there is no money box yet. Accepted rather than
+			# halting: `hidemoneybox` alone is 42 corpus uses, so treating them
+			# as unknown would stop scripts that are otherwise fully runnable.
+			return true
 
 		"setrespawn":
 			# [M27O O1] Where a whiteout will send the player. Refuses an ID the

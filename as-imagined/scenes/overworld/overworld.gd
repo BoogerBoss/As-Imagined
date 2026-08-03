@@ -852,6 +852,7 @@ func run_script(label: String, p_subject: OverworldEntity = null) -> bool:
 	# every item the moment the script ended.
 	_vm.bag = OverworldSession.bag
 	_vm.respawn = OverworldSession.respawn
+	_vm.wallet = OverworldSession.wallet
 	if not _vm.start(label, p_subject):
 		# Degrade LOUDLY but without breaking play: the VM named what it could
 		# not resolve, so say so and hand control back.

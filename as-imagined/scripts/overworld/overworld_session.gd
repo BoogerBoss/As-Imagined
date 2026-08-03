@@ -38,6 +38,11 @@ static var bag := Bag.new()
 ## worse than none.
 static var respawn := RespawnPoint.new()
 
+## [M27I I3b] Money and coins. Static for the same reason the bag is — a battle
+## is a scene swap, and prize money that vanished with the fight that earned it
+## would be worse than no wallet.
+static var wallet := Wallet.new()
+
 ## Where to put the player when the overworld next loads, or empty for "use the
 ## scene's own start_map". Written when a battle starts, consumed on return.
 static var pending_return: Dictionary = {}
