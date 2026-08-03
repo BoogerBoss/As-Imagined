@@ -505,6 +505,24 @@ func check_trainer_sight() -> TrainerNPC:
 	return null
 
 
+## [M27I I2] The pending pages with every `{...}` marker expanded.
+##
+## ⚠️ Expansion happens HERE — at the moment the box opens — and not when the
+## `message` opcode runs. Source expands at print time too
+## (`StringExpandPlaceholders` is called by the print path, not the load path),
+## and it matters: a script that buffers, prints, re-buffers and prints again
+## must show two different values. Expanding at execution would freeze the
+## first one, which is most of the corpus, since `STR_VAR_1` is rewritten 176
+## times and read 1369.
+func _expanded_pages() -> PackedStringArray:
+	if _vm == null:
+		return PackedStringArray()
+	var out := PackedStringArray()
+	for page in _vm.pending_pages:
+		out.append(_vm.buffers.expand(str(page)))
+	return out
+
+
 ## Wait for one entity's movement script to finish.
 ##
 ## Bounded rather than open-ended: a runner that never clears — an unimplemented
@@ -815,7 +833,7 @@ func _drive_script() -> void:
 			# message -> waitmessage -> waitbuttonpress, so the waiting belongs
 			# to WAIT_BUTTON below; resuming here is what lets the VM reach it.
 			if not _box.is_open:
-				_box.open(_vm.pending_pages)
+				_box.open(_expanded_pages())
 			_vm.resume()
 
 		ScriptVM.Pause.WAIT_BUTTON:
@@ -838,7 +856,7 @@ func _drive_script() -> void:
 			# the same (`EventScript_ShowTrainerIntroMsg` precedes `dotrainerbattle`).
 			if _vm.pending_pages.size() > 0:
 				if not _box.is_open:
-					_box.open(_vm.pending_pages)
+					_box.open(_expanded_pages())
 				elif Input.is_action_just_pressed("ui_accept") and not _box.advance():
 					_box.close()
 					_vm.pending_pages = PackedStringArray()

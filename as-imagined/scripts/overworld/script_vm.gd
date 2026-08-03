@@ -93,6 +93,10 @@ var pending_wait_target: String = ""
 ## subject. May be null for a map-level script.
 var subject: OverworldEntity = null
 
+## [M27I I2] The three script string buffers. Runtime-only, like source's own
+## gStringVar1-3 globals — deliberately NOT in FlagStore, which is save state.
+var buffers := TextBuffers.new()
+
 ## Result of the last `compare`: 0 equal, 1 greater, -1 less. Source keeps the
 ## same single-slot comparison result. OBSERVABLE because it decides whether
 ## `goto_if_eq` branches — without it in describe(), a test that froze the VM
@@ -320,6 +324,38 @@ func step() -> bool:
 			_call_stack.push_back({"label": script_label, "pc": pc})
 			return _jump("Common_EventScript_SetGymTrainers_Frlg")
 
+		"bufferitemname", "bufferitemnameplural":
+			# ⚠️ Both the SLOT and the ITEM can arrive as variables. Every arg
+			# in source goes through VarGet, and the corpus really does carry a
+			# bare `0` slot and `VAR_0x8009` items — resolving only the named
+			# spellings drops those silently.
+			if args.size() > 1:
+				var slot := TextBuffers.slot_index(str(args[0]))
+				var item_id := _resolve_item(str(args[1]))
+				var qty := 1
+				if current_op == "bufferitemnameplural" and args.size() > 2:
+					qty = _resolve_number(str(args[2]))
+				buffers.set_slot(slot, _item_name(item_id, qty))
+			return true
+
+		"bufferstdstring":
+			if args.size() > 1:
+				buffers.set_slot(TextBuffers.slot_index(str(args[0])),
+						buffers.std_string(str(args[1])))
+			return true
+
+		"buffernumberstring":
+			if args.size() > 1:
+				buffers.set_slot(TextBuffers.slot_index(str(args[0])),
+						str(_resolve_number(str(args[1]))))
+			return true
+
+		"bufferspeciesname":
+			if args.size() > 1:
+				buffers.set_slot(TextBuffers.slot_index(str(args[0])),
+						_species_name(str(args[1])))
+			return true
+
 		"applymovement":
 			# ASYNCHRONOUS, like source. `ScrCmd_applymovement` starts the movement
 			# and returns; the script carries on until a `waitmovement` blocks it.
@@ -460,6 +496,51 @@ func resume_after_battle(won: bool) -> void:
 ##     takes its post-battle branch with nothing extra to wire.
 ##
 ## `call_if_*` is the same test with a pushed frame instead of a tail jump.
+## [M27I I2] An argument that may be an ITEM_* constant OR a variable holding
+## an item id. Source runs every one through `VarGet`; 64 corpus args really
+## are variables, concentrated in the give-and-branch chains.
+func _resolve_item(arg: String) -> int:
+	if arg.begins_with("ITEM_"):
+		return PokemonRegistry.item_id_of(arg)
+	return _resolve_number(arg)
+
+
+## A numeric argument, whether written as a literal or held in a variable.
+func _resolve_number(arg: String) -> int:
+	if arg.is_valid_int():
+		return int(arg)
+	if _flags != null:
+		return _flags.var_get(arg)
+	return 0
+
+
+## An item's display name, pluralised the way source does.
+##
+## ⚠️ The plural rule is not "add S to everything": `CopyItemNameHandlePlural`
+## uses a real per-item plural name when the item has one and only falls back to
+## a suffix otherwise. This project has no plural-name column, so the suffix is
+## the whole rule here — a disclosed simplification, visible only on the eight
+## corpus `bufferitemnameplural` uses, none of which are in the corridor.
+func _item_name(item_id: int, quantity: int) -> String:
+	var info := PokemonRegistry.get_item_identity(item_id)
+	if info.is_empty():
+		return ""
+	var n := str(info.get("name", ""))
+	return n if quantity == 1 or n == "" else n + "s"
+
+
+## A species name from a SPECIES_* constant or a variable holding a dex number.
+func _species_name(arg: String) -> String:
+	var dex := _resolve_number(arg)
+	if dex <= 0 and arg.begins_with("SPECIES_"):
+		# No SPECIES_* constant map exists yet (I1 built the item one); a
+		# species buffer is 6 corridor uses and 0 of them gate anything, so
+		# this reports blank rather than pretending. Closed when M27 needs it.
+		return ""
+	var sp := PokemonRegistry.get_species(dex)
+	return str(sp.get("name", "")) if not sp.is_empty() else ""
+
+
 func _conditional(op_name: String, args: Array) -> bool:
 	var is_call := op_name.begins_with("call_if_")
 	var kind := op_name.substr(8)

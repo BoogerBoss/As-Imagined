@@ -1677,6 +1677,32 @@ New `scripts/gen_item_name_map.py` -> `data/item_name_to_id.json`: **976 constan
 
 **Not built by I1, deliberately**: no bag, no opcodes, no behaviour — identity only.
 
+**[M27I I2 — text buffers and placeholder expansion] COMPLETE — 2026-07-31.**
+
+Source keeps exactly three script string buffers (`sScriptStringVars[] = { gStringVar1, gStringVar2, gStringVar3 }`, `scrcmd.c:102`) and every `buffer*` command writes one. New `scripts/overworld/text_buffers.gd` holds them; the VM gains `bufferitemname`/`bufferitemnameplural`/`bufferstdstring`/`buffernumberstring`/`bufferspeciesname`.
+
+⚠️ **EXPANSION HAPPENS AT PRINT TIME, AND THAT IS THE WHOLE PROPERTY.** Source expands in the print path (`StringExpandPlaceholders`), not the load path. A script buffers, prints, re-buffers and prints again — the second print must show the second value. Expanding when the `message` opcode RUNS would freeze the first, and it is invisible until a script reuses a slot, which most do: **`STR_VAR_1` is written 176 times across the corpus and read 1369.** So `overworld.gd` expands at `_box.open`, not in the VM. Break-tested: handing the box raw pages fails F.02/F.03/F.04.
+
+⚠️ **UNKNOWN MARKERS EXPAND TO EMPTY, WHICH IS SOURCE'S RULE, NOT A CONVENIENCE.** `GetExpandedPlaceholder` returns `gText_ExpandedPlaceholder_Empty` for any id past its table. Break-tested: letting unknowns survive leaks **32 distinct marker kinds** into player-facing text — `{POKEBLOCK}`, `{FONT_NORMAL}`, `{PLAY_BGM ...}`.
+
+⚠️ **`{KUN}` IS GENUINELY EMPTY IN ENGLISH** — `gText_ExpandedPlaceholder_Kun` and `_Chan` are both `_("")` (`strings.c:8-9`). It is a Japanese honorific slot the English build deliberately blanks, not a missing string. **400 corpus uses**, so reading it as a gap would put a stray word in 400 places.
+
+**Placeholders are already in brace form** (`{STR_VAR_1}`, `{PLAYER}`) because M27F Stage 1's extractor resolved source's two-byte `PLACEHOLDER_BEGIN` encoding at extraction time — so this is string substitution, not a byte-stream walk.
+
+⚠️ **BOTH SLOT SPELLINGS ARE REAL**: scripts mostly write `STR_VAR_1`, but the corpus also carries a bare `0`. Handling only the named form drops those silently. Same shape as I1's alias finding, and the same shape as the item args themselves — **`_resolve_item`/`_resolve_number` run every argument through the variable store**, because 64 corpus args are variables rather than constants.
+
+**`{PLAYER}` is 1193 uses and there is no player-identity system** — M27K owns naming. `"LEAF"` matches the overworld sprite AND the battle side's own `_PLAYER_BACK_PIC`, so all three halves agree until then rather than each inventing an answer.
+
+New `scripts/gen_std_strings.py` -> `data/std_strings.json`: all **39** of `gStdStrings[]`, generated rather than hand-typed (two entry forms — inline `COMPOUND_STRING` and `gText_*` references resolved out of `strings.c`) for the same reason `metatile_behavior.gd`'s constants are.
+
+**Disclosed simplifications**: the plural rule is suffix-only (source uses a real per-item plural name when one exists; this project has no plural column — 8 corpus uses, 0 in the corridor), `bufferspeciesname` resolves a dex number but not a `SPECIES_*` constant (no species name map yet; 6 corridor uses, none gating anything), and `bufferpartymonnick`/`bufferdecorationname` are unbuilt.
+
+**The headline guard is E.02**: expanded across **all 11,451 real text entries, no marker survives anywhere** — a survivor is a raw `{...}` shown to a player.
+
+**Tests**: new `m27i_text_buffers_test` **42/42**, three breaks verified. Regression: `m27f_script_vm_test` 136/136, `m27a_step_resolver_test` 514/514, `m27i_item_identity_test` 31/31.
+
+**Next**: I3 — the bag and the item opcodes, which is what unblocks Brock.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **[M27M-T — trimmed TileSet] SCOPED 2026-07-30, not built. ⚠️ Scope of record is `docs/m27m_trimmed_tileset_recon.md`.** Measured rather than estimated: a real trimmed twin of the Pallet Town pair loads in **1.71 ms against the full set's 15.25 ms — 8.9x**, 25 KB → 6 KB. Region-wide only **11,036 tile definitions are actually placed** against the 132,480 `create_tile()` calls made today (**4.0x**), and all fourteen corridor pairs together would build in **~31 ms** — about what ONE cold tileset costs now. Baked scenes need no re-bake (M27M2 made the TileSet an `ext_resource`), `check_bake_diff` and the overlay are unaffected, and no consumer iterates tiles. **The failure mode is SILENT and is the whole design constraint**: `set_cell` accepts a coord whose tile was never created, stores it faithfully, and renders nothing — so the trim pass must ship with its own coverage proof, not after. Three hazards are recorded there with measurements: the trim set must be computed region-wide per pair rather than per-bake (or a later map silently renders with holes), it must union `border[]` as well as `metatile[]` (**5 border ids region-wide appear in no map body**), and it conflicts head-on with M27M's authoring requirement — resolved by treating `trim`/`expand` as two idempotent operations on ONE artifact rather than shipping two files.
