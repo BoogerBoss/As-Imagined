@@ -1454,6 +1454,67 @@ is harness-specific, not a shipped bug.
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
 
+### M36 leak harness — BUILT 2026-08-03. 23 real defects on its first run.
+
+`scenes/battle/m36_leak_harness.tscn`. Built after asking whether a
+15-batch screenshot pass was worth it. **It largely is not** — the honest
+split is that screenshots do two different jobs, and only one of them is
+mechanisable:
+
+* **defect detection** — did it render, leak, wedge? Bulk, unattended, cheap.
+* **fidelity judgement** — does it look like the reference? Needs the
+  reference beside it, and remains a human pass. Every "a screenshot caught
+  it" case in this project's history was either Rob looking or something
+  obviously broken (a white box, a black slab, a 1 px bar) — never a subtle
+  motion error.
+
+So this harness does the first job across the whole roster and makes no claim
+about the second. **A green run here is not "the animations are verified".**
+
+**What it does**: runs all **778 playable in-scope move scripts** end to end
+against one shared stage and checks, per move, that the run terminates, does
+not end in VM ERROR, leaves every battler at its resting position / scale /
+rotation / visibility / modulate / material, leaves no `AnimSprite` or
+`_anim_trace` clone on the layer, and clears the batch-37 scanline band.
+
+**Why no other suite could see this**: every per-behavior test builds a
+fixture and throws it away, so nothing CAN leak into anything. A leak is only
+observable across a whole script run — and it is what a player actually
+suffers, because a battler left displaced, shrunk, hidden or tinted STAYS
+that way into the next turn.
+
+**FIRST RUN: 23 leaks across 22 moves**, and they are one root cause in three
+dresses — **the VM's cleanup nets only cover the TRACKED path**:
+
+| Dress | Moves | Why the net misses it |
+|---|---|---|
+| rotated | 7 (Double-Edge, Arm Thrust, Gyro Ball, Raging Bull, 5 Torques) | `_restore_scaled_battlers` restores rotation only when the `_anim_mon_rotation` meta is set, which only the MonScale deform helper sets. Direct `node.rotation = ...` escapes it. |
+| tinted | 9 (Defense Curl, Iron Tail, Poison Tail, Doom Desire, Metal Burst, Flare Blitz, Iron Head, Shadow Force x4) | `_clear_battler_blends` clears only the recolor SHADER. Direct `node.modulate` writes escape it. |
+| sprites left | 5 (Charge, Flash Cannon, Searing Shot, Lumina Crash, Armor Cannon) | `_finish` frees `_spawned`, but `_make_sprite` never calls `notify_spawned` — so a sprite whose stepper `_finish` clears before it ends is never freed. |
+| scaled | 1 (Overdrive) | Same family: a direct `node.scale` write outside MonScale. |
+
+**PINNED AS A BASELINE, NOT SILENCED.** `KNOWN_LEAKS` records the exact
+23-entry set, and the suite fails if it changes in EITHER direction — a new
+leak from a later batch, or a pinned one that stops leaking without the
+baseline being updated. Green today, and it protects every batch that lands
+on top of it. **Shrinking that dictionary is the definition of done.**
+
+**The fix is deliberately NOT in this change.** Making the nets unconditional
+(snapshot every battler at `start()`, restore at `_finish()`; free every
+sprite on the layer rather than just `_spawned`) is a core-VM change that all
+1215 M36D assertions sit on top of, and it should be its own task rather than
+rushed in beside a batch.
+
+**Detection proven, not assumed**: disabling `_restore_displaced_battlers`
+produces 5 new failures — which also establishes that the displacement net is
+load-bearing for exactly 5 moves, the rest restoring themselves.
+
+**Informational, deliberately not asserted**: 57 scripts spawn no visual at
+all. Some are genuine sound/query-only animations, so there is no source-backed
+number to assert — it is printed so a REGRESSION in the count is visible.
+
+---
+
 ### M36D batch 38 — COMPLETE 2026-08-03. Three names that over-promise.
 
 **775 -> 778 of 845 in-scope (91.7% -> 92.1%).** 3 behaviors, 3 moves — Volt
