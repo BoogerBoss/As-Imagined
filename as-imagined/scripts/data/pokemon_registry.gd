@@ -14,6 +14,7 @@ var _evolutions_by_dex: Dictionary = {}
 var _tmhm_map: Dictionary = {}
 var _exp_curves: Dictionary = {}
 var _item_name_to_id: Dictionary = {}
+var _species_name_to_id: Dictionary = {}
 
 ## [M27I I1] How many of each `tmhm_map.json` holds, in that order (TMs first).
 ## Read rather than assumed: a shifted count would silently map every HM to the
@@ -31,6 +32,7 @@ func _ready() -> void:
 	_load_evolutions()
 	_load_tmhm()
 	_load_item_names()
+	_load_species_names()
 	_load_exp_curves()
 	_smoke_test()
 
@@ -123,6 +125,34 @@ func _load_item_names() -> void:
 	if typeof(data) == TYPE_DICTIONARY:
 		for key in data:
 			_item_name_to_id[str(key)] = int(data[key])
+
+
+func _load_species_names() -> void:
+	var data = _load_json("res://data/species_name_to_id.json")
+	if typeof(data) == TYPE_DICTIONARY:
+		for key in data:
+			_species_name_to_id[str(key)] = int(data[key])
+
+
+## [M27K K-a] National-dex number for a source `SPECIES_*` constant, or -1.
+##
+## Kanto's own scripts name a species only by constant (`givemon
+## PLAYER_STARTER_SPECIES, 5` passes the string "SPECIES_BULBASAUR"), while
+## everything else here uses the dex number. The third instance of this bridge,
+## after `item_id_of` and the move-name map — deliberately the same shape.
+##
+## ⚠️ A KNOWN CONSTANT CAN STILL NAME A SPECIES THIS PROJECT DOES NOT HAVE.
+## The map carries all 1672 constants, so a Gen 4+ name resolves to a real id
+## and then finds no record in `get_species`. That two-step is on purpose: it
+## keeps "unknown constant" (a pipeline bug) apart from "known but out of
+## roster" (a scope boundary). Callers must check both.
+func species_id_of(constant: String) -> int:
+	return int(_species_name_to_id.get(constant, -1))
+
+
+## Every species constant spelling this project knows, for auditing coverage.
+func species_constants() -> Array:
+	return _species_name_to_id.keys()
 
 
 func _load_json(path: String) -> Variant:

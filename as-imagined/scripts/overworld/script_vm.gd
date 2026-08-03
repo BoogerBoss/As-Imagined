@@ -150,6 +150,16 @@ var respawn := RespawnPoint.new()
 ## [M27I I3b] Money and coins, injected like `bag`.
 var wallet := Wallet.new()
 
+## [M27K K-a] The player's party, injected like `bag` — `givemon` puts a real
+## Pokemon in it. Defaults to an empty party so a VM built without one still
+## runs rather than crashing on the first give.
+var party := BattleParty.new()
+
+## [M27K K-a] Object events this script removed (`removeobject`), by the name
+## the script used. The VM cannot reach the scene tree, so it RECORDS and the
+## caller applies — the same split `[M27F Stage 2]` uses for battles.
+var removed_objects: PackedStringArray = PackedStringArray()
+
 ## Result of the last `compare`: 0 equal, 1 greater, -1 less. Source keeps the
 ## same single-slot comparison result. OBSERVABLE because it decides whether
 ## `goto_if_eq` branches — without it in describe(), a test that froze the VM
@@ -331,6 +341,47 @@ func step() -> bool:
 		# for. Listed explicitly rather than falling through to UNKNOWN_OP, so a
 		# real gap stays distinguishable from a known no-op.
 		"incrementgamestat", "hidefollower", "dofieldeffect", "waitfieldeffect":
+			return true
+
+		# [M27K K-a] ⚠️ AUDIO DOES NOT EXIST ANYWHERE IN THIS PROJECT — not a
+		# stub for this scene, a project-wide absence already recorded against
+		# M36-S. A fanfare is a real beat in the starter scene (Oak hands you
+		# the Pokemon to a jingle) and it is genuinely silent here; listed so
+		# that stays a known no-op rather than an UNKNOWN_OP halt.
+		"playfanfare", "waitfanfare", "playse", "playbgm", "fadedefaultbgm":
+			return true
+
+		# [M27K K-a] The mon picture Oak shows while offering the starter. This
+		# project has no picture layer in the field at all — the front sprites
+		# are pulled and battle-only. A no-op loses the flourish, not the scene.
+		"showmonpic", "hidemonpic":
+			return true
+
+		# [M27K K-a] Remove an object event from the map — the Poke Ball you
+		# just took. `VAR_LAST_TALKED` is the object you interacted with, which
+		# is why this needs the interaction to have recorded it.
+		"removeobject":
+			if args.size() > 0:
+				removed_objects.append(str(args[0]))
+			return true
+
+		# [M27K K-a] Put a real Pokemon in the party.
+		#
+		# ⚠️ BOTH ARGUMENTS GO THROUGH THE VARIABLE STORE. The starter script
+		# passes `PLAYER_STARTER_SPECIES`, a VAR holding a species constant —
+		# not a literal — so resolving only literals would give every starter
+		# choice the same (absent) Pokemon.
+		#
+		# ⚠️ A FULL PARTY IS REFUSED, NOT SILENTLY DROPPED. Source's own macro
+		# asks for `PARTY_SIZE` ("assign to first empty slot") and reports
+		# failure in VAR_RESULT; with no PC built (I5-5, deferred past the
+		# slice) there is nowhere else for it to go, so refusing and saying so
+		# is the honest shape — the same call `[M27H H4]` already made for a
+		# full-party catch.
+		"givemon":
+			if args.size() > 1:
+				_give_mon(_resolve_number(str(args[0])),
+						_resolve_number(str(args[1])))
 			return true
 
 		# [M27F Stage 4] A NARROW carve-out — see FieldSpecials for why an
@@ -726,6 +777,32 @@ func _set_result(ok: bool) -> void:
 ##
 ## The TEXT is not invented — every page is source's own string, already in
 ## `map_texts.json` from Stage 1's extraction.
+## [M27K K-a] Put a real Pokemon in the party, reporting success in VAR_RESULT.
+##
+## ⚠️ A KNOWN CONSTANT CAN STILL NAME A SPECIES THIS PROJECT DOES NOT HAVE —
+## `species_id_of` covers all 1672 reference constants while the roster is 386.
+## Both are refused, but they are different failures and the diagnostic says
+## which, so a Gen 4+ script reads as out-of-roster rather than as a bad parse.
+func _give_mon(dex: int, level: int) -> bool:
+	if level <= 0:
+		level = 5
+	if dex <= 0 or PokemonRegistry.get_species(dex).is_empty():
+		_set_result(false)
+		diagnostic = "givemon: no species %d in this project's roster" % dex
+		return true
+	if party.members.size() >= BattleParty.PARTY_SIZE:
+		# No PC exists (I5-5, deferred past the slice), so there is nowhere
+		# else to put it — refuse and say so, as `[M27H H4]` does for a catch.
+		_set_result(false)
+		diagnostic = "givemon: party is full and no PC exists"
+		return true
+	party.members.append(PokemonFactory.create_battle_pokemon(dex, level))
+	if party.active_indices.is_empty():
+		party.active_indices = [0]
+	_set_result(true)
+	return true
+
+
 func _obtain_item(args: Array) -> bool:
 	# giveitem_msg's first argument is its own message label; the other two
 	# forms lead with the item.
@@ -821,12 +898,11 @@ func _item_name(item_id: int, quantity: int) -> String:
 
 ## A species name from a SPECIES_* constant or a variable holding a dex number.
 func _species_name(arg: String) -> String:
+	# [M27K K-a] The SPECIES_* map now exists, so `_resolve_number` resolves a
+	# constant through `_literal` and a variable through the store, uniformly.
+	# [This helper used to return "" for any constant, disclosed as closed when
+	# M27 needed it. It does now — the starter script buffers its own name.]
 	var dex := _resolve_number(arg)
-	if dex <= 0 and arg.begins_with("SPECIES_"):
-		# No SPECIES_* constant map exists yet (I1 built the item one); a
-		# species buffer is 6 corridor uses and 0 of them gate anything, so
-		# this reports blank rather than pretending. Closed when M27 needs it.
-		return ""
 	var sp := PokemonRegistry.get_species(dex)
 	return str(sp.get("name", "")) if not sp.is_empty() else ""
 
@@ -902,6 +978,17 @@ static func _literal(tok: String) -> int:
 		"YES": return 1          # asm/macros/event.inc:2133
 		"NO": return 0
 		"MULTI_B_PRESSED": return 127  # include/constants/script_menu.h:8
+	# ⚠️ [M27K K-a] A SPECIES CONSTANT IS A REAL VALUE, AND 295 CORPUS ARGS ARE
+	# ONE. Before this they all resolved to 0 through the fallthrough below —
+	# `setvar PLAYER_STARTER_SPECIES, SPECIES_BULBASAUR` stored nothing, so the
+	# starter script could not have named its own Pokemon. Exactly the shape of
+	# the YES/NO inversion above: silent, and wrong at every call site at once.
+	# Resolved HERE rather than in `givemon` so setvar/compare/copyvar/switch
+	# all agree, which is what source does — every arg goes through VarGet and
+	# a species constant is just a number by the time it gets there.
+	if tok.begins_with("SPECIES_"):
+		var dex := PokemonRegistry.species_id_of(tok)
+		return dex if dex > 0 else 0
 	return 0
 
 

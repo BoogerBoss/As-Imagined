@@ -1314,6 +1314,8 @@ func run_script(label: String, p_subject: OverworldEntity = null) -> bool:
 	_vm.bag = OverworldSession.bag
 	_vm.respawn = OverworldSession.respawn
 	_vm.wallet = OverworldSession.wallet
+	# [M27K K-a] The session party, for `givemon` — same reason as the bag.
+	_vm.party = OverworldSession.player_party()
 	if not _vm.start(label, p_subject):
 		# Degrade LOUDLY but without breaking play: the VM named what it could
 		# not resolve, so say so and hand control back.
