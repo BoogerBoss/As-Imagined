@@ -495,6 +495,11 @@ func _try_step(dir: int) -> void:
 		_try_door_warp(dir)
 		return
 	var was_in := manager.chunk_owning(_cell)
+	# [M27H H2] Captured BEFORE the move: source's `AllowWildCheckOnNewMetatile`
+	# compares the tile you were on against the one you land on, so reading it
+	# after the step would always compare a tile with itself and make every step
+	# a "same behaviour" one — silently removing the 40% gate entirely.
+	var prev_behavior := manager.behavior_at(_cell)
 	_cell = r["to"]
 	_elev = manager.elevation_at(_cell)
 	# [M27C C4] Load the new chunk's own neighbours on arrival, and unload
@@ -550,6 +555,14 @@ func _try_step(dir: int) -> void:
 		# flag synchronously before its first await, so this reads true already.
 		if not _in_approach and not _in_battle:
 			_poison_step()
+			# [M27H H2/H3] Wild encounters come LAST, and that is source's own
+			# order: `ProcessPlayerFieldInput` runs the trainer check first, then
+			# `TryStartStepBasedScript` (where poison lives), then
+			# `CheckStandardWildEncounter`. Gated on the poison message too — a
+			# tick that just opened a box owns the screen, and starting a battle
+			# over it would strand the message unread.
+			if not _in_battle and (_box == null or not _box.is_open):
+				_wild_step(prev_behavior)
 	)
 
 
@@ -581,6 +594,38 @@ func _drive_bag_screen() -> void:
 
 func _on_start_menu_bag() -> void:
 	_bag_screen.open(OverworldSession.bag)
+
+
+## [M27H H2/H3] One step's worth of wild encounter.
+func _wild_step(prev_behavior: int) -> void:
+	var map_name := manager.chunk_owning(_cell)
+	if map_name == "":
+		return
+	var behavior := manager.behavior_at(_cell)
+	var lead := _lead_ability_id()
+	if not WildEncounters.should_encounter(map_name, behavior, prev_behavior, _rng, lead):
+		return
+	var party := WildEncounters.build_wild_party(map_name, _rng)
+	if party == null:
+		# The table named a species that will not build. Decline the encounter
+		# rather than mount an empty battle, matching how an unresolvable trainer
+		# roster is handled.
+		push_warning("overworld: %s wild table produced no party" % map_name)
+		return
+	begin_wild_battle(party)
+
+
+## The LEAD's ability id, or -1. Source's `WildEncounterCheck` reads
+## `gParties[B_TRAINER_PLAYER][0]` specifically — the first party slot, not the
+## active battler, because out of battle there is no active one.
+func _lead_ability_id() -> int:
+	var party := OverworldSession.party
+	if party == null or party.members.is_empty():
+		return -1
+	var lead: BattlePokemon = party.members[0]
+	if lead == null or lead.ability == null:
+		return -1
+	return int(lead.ability.ability_id)
 
 
 ## One step's worth of field poison.
@@ -780,6 +825,24 @@ func _begin_battle(trainer_key: String, t: TrainerNPC) -> bool:
 		push_warning("overworld: %s has no resolvable party — battle not started"
 				% trainer_key)
 		return false
+	return _mount_battle(opp, trainer_key, t)
+
+
+## [M27H H3] A wild battle: the same mount, no trainer.
+##
+## ⚠️ The empty trainer key is LOAD-BEARING, not a placeholder.
+## `BattleOutcome.should_set_defeated_flag` already reads `trainer_key != ""`, so
+## a wild win correctly records nothing — and `[M27O O3]`'s prize money is 0
+## because `Cmd_getmoneyreward` only pays for a trainer. Both fall out of the
+## empty key rather than needing a wild-specific branch.
+func begin_wild_battle(party: BattleParty) -> bool:
+	if party == null or party.members.is_empty():
+		return false
+	return _mount_battle(party, "", null)
+
+
+## Everything a battle needs regardless of who it is against.
+func _mount_battle(opp: BattleParty, trainer_key: String, t: TrainerNPC) -> bool:
 
 	# The overworld STAYS ALIVE underneath. No position to save, no chunk to
 	# rebuild, no 66-100 ms reload on the way back — the map, the loaded chunks
