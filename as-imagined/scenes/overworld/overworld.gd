@@ -92,6 +92,10 @@ var _resume: Dictionary = {}
 ## [M27D D5] The battle overlay's CanvasLayer while a battle is running, else
 ## null. The overworld is not freed during a battle — it is paused underneath.
 var _battle_layer: CanvasLayer = null
+var _battle_screen: Control = null
+
+## [M27O O3] Highest level in the party that went into the current battle.
+var _battle_party_level := 1
 var _in_battle := false
 
 ## [M27O O2] Set when a battle-return spawn decided a whiteout is owed but the
@@ -120,6 +124,16 @@ var _fade: ColorRect
 ## ~112 ms threaded, comfortably inside one leg. If a large map ever exceeds it,
 ## hold the fade until the load reports done rather than raising this blindly.
 const FADE_SECONDS := 0.25
+
+## [M27O O3] `sWhiteOutBadgeMoney` (`battle_script_commands.c:315`), indexed by
+## how many badges the player holds — nine entries for 0 through 8.
+const WHITEOUT_BADGE_MONEY := [8, 16, 24, 36, 48, 64, 80, 100, 120]
+
+## `gBadgeFlags` (`event_data.c:39`), in order.
+const BADGE_FLAGS := [
+	"FLAG_BADGE01_GET", "FLAG_BADGE02_GET", "FLAG_BADGE03_GET", "FLAG_BADGE04_GET",
+	"FLAG_BADGE05_GET", "FLAG_BADGE06_GET", "FLAG_BADGE07_GET", "FLAG_BADGE08_GET",
+]
 
 ## [M27D D4/D5] Persistent flag/var state: beaten trainers, hidden entities,
 ## trigger gates.
@@ -659,8 +673,13 @@ func _begin_battle(trainer_key: String, t: TrainerNPC) -> bool:
 	# rebuild, no 66-100 ms reload on the way back — the map, the loaded chunks
 	# and the player are all still exactly where they were.
 	OverworldSession.pending_trainer_key = trainer_key
-	BattleSetupContext.set_pending(
-			OverworldParty.build_debug_player_party(), opp, false, "", trainer_key)
+	var player_party := OverworldParty.build_debug_player_party()
+	# [M27O O3] Captured HERE because the field has no persistent party — this
+	# is the only moment the level is known, and the whiteout payout scales by it.
+	_battle_party_level = 1
+	for m in player_party.members:
+		_battle_party_level = maxi(_battle_party_level, int(m.level))
+	BattleSetupContext.set_pending(player_party, opp, false, "", trainer_key)
 
 	var packed := OverworldSession.battle_scene(BattleSetupContext.is_doubles)
 	if packed == null:
@@ -681,6 +700,7 @@ func _mount_battle_overlay(packed: PackedScene) -> void:
 	_battle_layer = CanvasLayer.new()
 	_battle_layer.layer = 100
 	_battle_layer.add_child(screen)
+	_battle_screen = screen
 	screen.overlay_mode = true
 	screen.battle_finished.connect(_on_battle_overlay_finished)
 	# Fade out, mount, fade in. Reported from play as being "instantly dumped"
@@ -694,12 +714,17 @@ func _mount_battle_overlay(packed: PackedScene) -> void:
 
 ## The overlay reports its own outcome rather than swapping scenes back.
 func _on_battle_overlay_finished(outcome: int) -> void:
-	OverworldSession.set_result(
-			BattleOutcome.make(outcome, OverworldSession.pending_trainer_key))
+	var prize := 0
+	if _battle_screen != null and is_instance_valid(_battle_screen) \
+			and _battle_screen.has_method("prize_money"):
+		prize = int(_battle_screen.prize_money())
+	OverworldSession.set_result(BattleOutcome.make(
+			outcome, OverworldSession.pending_trainer_key, prize, _battle_party_level))
 	await _fade_to(1.0)
 	if _battle_layer != null and is_instance_valid(_battle_layer):
 		_battle_layer.queue_free()
 	_battle_layer = null
+	_battle_screen = null
 	# ⚠️ APPLY THE RESULT BEFORE CLEARING `_in_battle`, and never after a fade.
 	# `_in_battle` is the guard that stops `_process` reaching `_drive_script`,
 	# and a script that started this battle is still parked on WAIT_BATTLE until
@@ -730,6 +755,14 @@ func _apply_battle_result() -> bool:
 	if r.should_set_defeated_flag():
 		flags.set_trainer_defeated(r.trainer_key)
 
+	# [M27O O3] Money. Source does BOTH halves in one place
+	# (`Cmd_getmoneyreward`) — the win prize and the loss payout — so they are
+	# applied together here rather than split across the win and whiteout paths.
+	if r.outcome == BattleOutcome.WON:
+		OverworldSession.wallet.earn(r.prize_money)
+	elif r.player_defeated():
+		OverworldSession.wallet.spend(whiteout_payout(r.highest_party_level))
+
 	# [M27O O2] A defeat whites out. The flag above is deliberately NOT set on
 	# this path — source only calls `SetBattledTrainersFlags` on its non-defeat
 	# branch, which is what makes losing cost something.
@@ -756,6 +789,29 @@ func _apply_battle_result() -> bool:
 		_vm.resume_after_battle(r.outcome == BattleOutcome.WON)
 	battle_returned.emit(r)
 	return false
+
+
+## [M27O O3] What losing costs, in money.
+##
+## Source: `Cmd_getmoneyreward`'s defeat branch. At this project's config
+## `B_WHITEOUT_MONEY` is GEN_LATEST, so it is the BADGE TABLE rather than the
+## older "half your money" rule — `sWhiteOutBadgeMoney[badge_count] * level`,
+## where level is the highest in the party.
+##
+## ⚠️ Clamped to what the player actually holds, which is source's own
+## `if (!IsEnoughMoney(..)) money = GetMoney()`. `Wallet.spend` clamps to zero
+## anyway, so this returns the REAL amount taken rather than the amount asked
+## for — the difference matters the moment anything reports it to the player.
+func whiteout_payout(highest_level: int) -> int:
+	var badges := 0
+	for f in BADGE_FLAGS:
+		if flags.flag_get(f):
+			badges += 1
+	# Explicit `: int` — indexing an untyped Array yields Variant, which `:=`
+	# cannot infer from. This project's own documented GDScript gotcha.
+	var asked: int = int(WHITEOUT_BADGE_MONEY[mini(badges, WHITEOUT_BADGE_MONEY.size() - 1)]) \
+			* maxi(1, highest_level)
+	return mini(asked, OverworldSession.wallet.money)
 
 
 ## Drop a running script without running the rest of it.

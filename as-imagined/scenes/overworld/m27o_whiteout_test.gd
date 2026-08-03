@@ -7,7 +7,7 @@ extends Node
 ## must not resume. Either one getting through hands out the reward for a fight
 ## the player lost.
 
-const EXPECTED_TOTAL := 21
+const EXPECTED_TOTAL := 32
 
 var _total := 0
 var _failed := 0
@@ -26,6 +26,7 @@ func _ready() -> void:
 	_test_flag_not_set()
 	_test_destination()
 	_test_scene_wiring()
+	_test_payout()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -126,3 +127,53 @@ func _test_scene_wiring() -> void:
 	# Nothing owed on a fresh scene.
 	_chk("D.06 a fresh overworld owes no whiteout", ow._pending_whiteout == false)
 	ow.free()
+
+
+## --- E. [M27O O3] what losing costs ---
+func _test_payout() -> void:
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	# The table and the flag list, against source.
+	_chk("E.01 the badge table is source's own",
+			ow.WHITEOUT_BADGE_MONEY == [8, 16, 24, 36, 48, 64, 80, 100, 120])
+	_chk("E.02 nine entries, for 0 through 8 badges",
+			ow.WHITEOUT_BADGE_MONEY.size() == 9 and ow.BADGE_FLAGS.size() == 8)
+
+	# A clean session: no badges, so the 0-badge rate.
+	OverworldSession.flags = FlagStore.new()
+	OverworldSession.wallet = Wallet.new()
+	OverworldSession.wallet.earn(100000)
+	_chk("E.03 no badges uses the first rate x level",
+			ow.whiteout_payout(10) == 8 * 10)
+	# One badge moves to the next rate — Brock's own flag, which the corridor
+	# really does set.
+	OverworldSession.flags.flag_set("FLAG_BADGE01_GET")
+	_chk("E.04 one badge moves up the table", ow.whiteout_payout(10) == 16 * 10)
+	OverworldSession.flags.flag_set("FLAG_BADGE02_GET")
+	_chk("E.05 and two badges again", ow.whiteout_payout(10) == 24 * 10)
+	# ⚠️ Level scales it, and a level-0 party must not make losing free.
+	_chk("E.06 the payout scales with the highest party level",
+			ow.whiteout_payout(50) == 24 * 50)
+	_chk("E.07 a zero level is floored at 1, not free", ow.whiteout_payout(0) == 24)
+
+	# ⚠️ CLAMPED TO WHAT THE PLAYER HOLDS — source's own
+	# `if (!IsEnoughMoney(..)) money = GetMoney()`. The returned figure is the
+	# REAL amount taken, which is what any message would have to report.
+	OverworldSession.wallet = Wallet.new()
+	OverworldSession.wallet.earn(100)
+	_chk("E.08 a poor player loses only what they have",
+			ow.whiteout_payout(50) == 100)
+	OverworldSession.wallet = Wallet.new()
+	_chk("E.09 a broke player loses nothing rather than going negative",
+			ow.whiteout_payout(50) == 0)
+
+	# The outcome carries what the field needs, because there is no persistent
+	# party to read a level back off.
+	var won := BattleOutcome.make(BattleOutcome.WON, "T", 1900, 12)
+	_chk("E.10 an outcome carries the prize and the party level",
+			won.prize_money == 1900 and won.highest_party_level == 12)
+	_chk("E.11 and defaults harmlessly when neither is supplied",
+			BattleOutcome.make(BattleOutcome.LOST).prize_money == 0
+			and BattleOutcome.make(BattleOutcome.LOST).highest_party_level == 1)
+	ow.free()
+	OverworldSession.flags = FlagStore.new()
+	OverworldSession.wallet = Wallet.new()

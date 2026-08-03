@@ -430,6 +430,16 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 }
 
 @onready var _bm: BattleManager = $BattleManager
+
+
+## [M27O O3] Prize money this battle awarded, for the overworld to bank.
+##
+## A two-line accessor rather than letting the overworld reach into `_bm`:
+## the amount is computed here (source does it in `Cmd_getmoneyreward`, which
+## owns both the win prize and the loss payout) and the field only needs the
+## number.
+func prize_money() -> int:
+	return _bm.last_money_awarded if _bm != null else 0
 # [M25h-1] Relocated from $SharedChrome/VBox/StatusLabel into the new real-proportion
 # bottom region (ActionRegion — anchor_top=0.75/anchor_bottom=0.95 in the
 # .tscn, matching source's own B_WIN_MSG tilemapTop=15/height=4 tiles =

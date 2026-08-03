@@ -1797,6 +1797,26 @@ New `scripts/overworld/wallet.gd` on `OverworldSession` beside the bag, plus `ch
 
 **M27O O3 IS NOW UNBLOCKED, and its scoping needs one correction**: the whiteout money loss is NOT in `EventScript_WhiteOut` — that script is only state resets. It lives in `Cmd_getmoneyreward` (`battle_script_commands.c:5850`), which handles the win prize AND the loss payout, so it belongs on the battle-return path rather than in `_do_whiteout`. Formula confirmed: `sWhiteOutBadgeMoney[badge_count] * highest_party_level`, clamped to what the player holds.
 
+**[M27O O3 — the money] COMPLETE — 2026-07-31. M27O IS CLOSED except the deferred field-poison path.**
+
+Live-driven both ways: **5000 -> 4808** on a loss (16 x 12 = 192, one badge, level 12) and **4808 -> 6708** on a win (+1900), with the trainer flagged beaten only on the win.
+
+⚠️ **A CORRECTION TO O3'S OWN EARLIER SCOPING, MADE AT STEP 0.** The whiteout money loss is NOT in `EventScript_WhiteOut` — that script is `call ResetEliteFour` / `goto ResetMrBriney` / `end`, state resets only. It lives in **`Cmd_getmoneyreward`** (`battle_script_commands.c:5850`), which owns the win prize AND the loss payout in one place. So both halves are applied together on the battle-return path rather than split across the win path and `_do_whiteout` — which is what the earlier scoping would have had me build.
+
+**The formula**, at this project's `B_WHITEOUT_MONEY = GEN_LATEST`: `sWhiteOutBadgeMoney[badge_count] * highest_party_level`, table `[8, 16, 24, 36, 48, 64, 80, 100, 120]` indexed 0-8 badges, badges counted over `gBadgeFlags`' own eight. **Not** the older "half your money" rule, which is what `<= GEN_3` would give.
+
+**Clamped to what the player holds** (`if (!IsEnoughMoney(..)) money = GetMoney()`). `whiteout_payout` returns the REAL amount taken rather than the amount asked for — `Wallet.spend` clamps anyway, but the difference matters the moment anything reports the figure to the player. A broke player loses 0 rather than going negative; a level-0 party is floored at 1 rather than making a loss free.
+
+⚠️ **THE WIN PRIZE HAD BEEN COMPUTED SINCE M24b AND CONSUMED BY NOTHING.** `money_awarded`/`last_money_awarded` shipped with that milestone, tested at exactly 1900, and no consumer ever existed — there was no wallet to put it in. I3b built one; this banks it. A two-line `prize_money()` accessor on the battle screen keeps the field from reaching into `_bm`.
+
+**`BattleOutcome` carries the prize and the highest party level**, because the field has NO PERSISTENT PARTY — it builds one per battle, so the level is captured at battle setup, the only moment it is known for certain. Source reads it straight off the party inside `Cmd_getmoneyreward`.
+
+**A GDScript gotcha this project has already paid for recurred**: `var asked := WHITEOUT_BADGE_MONEY[...] * ...` failed to parse — indexing an untyped Array yields Variant, which `:=` cannot infer from. Same class as `[M27F Stage 3]`'s own `locked_moved`. Fixed with an explicit `: int`, and the reason recorded at the line.
+
+**Tests**: `m27o_whiteout_test` 22 -> **33/33** (new Section E: the table and flag list against source, badge and level scaling, the level-0 floor, the poor-player and broke-player clamps, and the outcome carrying both values). Regression: `m27o_respawn_test` 24/24, `m27i_wallet_test` 31/31, `m27i_bag_test` 47/47, `m27i_text_buffers_test` 42/42, `m27i_item_identity_test` 31/31, `m27f_script_vm_test` 136/136, `m27a_step_resolver_test` 514/514, `m24b_test` 61/61, `m26_trainer_category_party_test` 130/130, `check_bake_diff --all` 32/32.
+
+**M27O status: O1, O2 and O3 are done.** Only **O4** remains — the FIELD-POISON whiteout, which needs a step counter and a poison tick that do not exist, and which `[M27O]`'s own scoping already deferred as its own sub-item rather than a rider.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **[M27M-T — trimmed TileSet] SCOPED 2026-07-30, not built. ⚠️ Scope of record is `docs/m27m_trimmed_tileset_recon.md`.** Measured rather than estimated: a real trimmed twin of the Pallet Town pair loads in **1.71 ms against the full set's 15.25 ms — 8.9x**, 25 KB → 6 KB. Region-wide only **11,036 tile definitions are actually placed** against the 132,480 `create_tile()` calls made today (**4.0x**), and all fourteen corridor pairs together would build in **~31 ms** — about what ONE cold tileset costs now. Baked scenes need no re-bake (M27M2 made the TileSet an `ext_resource`), `check_bake_diff` and the overlay are unaffected, and no consumer iterates tiles. **The failure mode is SILENT and is the whole design constraint**: `set_cell` accepts a coord whose tile was never created, stores it faithfully, and renders nothing — so the trim pass must ship with its own coverage proof, not after. Three hazards are recorded there with measurements: the trim set must be computed region-wide per pair rather than per-bake (or a later map silently renders with holes), it must union `border[]` as well as `metatile[]` (**5 border ids region-wide appear in no map body**), and it conflicts head-on with M27M's authoring requirement — resolved by treating `trim`/`expand` as two idempotent operations on ONE artifact rather than shipping two files.

@@ -34,10 +34,24 @@ var outcome: int = WON
 var trainer_key: String = ""
 
 
-static func make(p_outcome: int, p_trainer_key: String = "") -> BattleOutcome:
+## [M27O O3] Prize money this battle awarded, banked by the field on a win.
+var prize_money: int = 0
+
+## [M27O O3] The player's highest party level, for the whiteout payout.
+##
+## Carried rather than recomputed because the field has no persistent party —
+## it builds one per battle — so this is the only place the number is known for
+## certain. Source reads it straight off the party inside `Cmd_getmoneyreward`.
+var highest_party_level: int = 1
+
+
+static func make(p_outcome: int, p_trainer_key: String = "",
+		p_prize: int = 0, p_level: int = 1) -> BattleOutcome:
 	var r := BattleOutcome.new()
 	r.outcome = p_outcome
 	r.trainer_key = p_trainer_key
+	r.prize_money = p_prize
+	r.highest_party_level = p_level
 	return r
 
 
