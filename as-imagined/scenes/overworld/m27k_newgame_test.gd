@@ -12,7 +12,10 @@ extends Node
 ##   * `{PLAYER}` now reads the chosen name, retiring a hardcode that lived in
 ##     three places agreeing by luck.
 
-const EXPECTED_TOTAL := 46
+const EXPECTED_TOTAL := 47
+
+## Comfortably past the cap, so the refusal is what stops it and not the loop.
+const NAME_OVERFILL := 20
 
 var _total := 0
 var _failed := 0
@@ -58,13 +61,18 @@ func _test_identity() -> void:
 	_chk("A.04 a name sticks", id.name == "ROB" and id.is_named())
 	_chk("A.05 and {PLAYER} reads it", id.display_name() == "ROB")
 
-	# ⚠️ SOURCE'S OWN CAP — PLAYER_NAME_LENGTH, global.h:159. Truncates rather
-	# than refusing, so a caller that skips the screen cannot mint a name the
-	# save format could not hold.
-	_chk("A.06 the cap is source's 7", PlayerIdentity.NAME_LENGTH == 7)
-	id.set_name("ABCDEFGHIJ")
+	# ⚠️ THE CAP IS DELIBERATELY NOT SOURCE'S 7 — see PlayerIdentity's own
+	# header. Source's limit is a GBA save-block field width this project does
+	# not share; 12 matches POKEMON_NAME_LENGTH so there is one name bound, not
+	# two. Truncates rather than refusing, so a caller that skips the screen
+	# cannot mint a name the save could not hold.
+	_chk("A.06 the cap is 12, not source's 7", PlayerIdentity.NAME_LENGTH == 12)
+	id.set_name("ABCDEFGHIJKLMNOP")
 	_chk("A.07 an over-long name is TRUNCATED, not rejected",
-			id.name == "ABCDEFG" and id.name.length() == 7)
+			id.name == "ABCDEFGHIJKL" and id.name.length() == 12)
+	id.set_name("ABCDEFGH")
+	_chk("A.07b and a name that would have failed source's 7 now fits",
+			id.name == "ABCDEFGH")
 	id.set_name("   ")
 	_chk("A.08 whitespace-only is no name at all", id.name == "")
 
@@ -161,7 +169,7 @@ func _test_keyboard() -> void:
 
 	# ⚠️ THE CAP REFUSES THE 8TH KEYPRESS. Enforced here as well as in
 	# `sanitize`, deliberately — this is what makes the limit visible.
-	for i in range(12):
+	for i in range(NAME_OVERFILL):
 		s.confirm()
 	_chk("D.06 the 8th character is refused, not silently dropped",
 			s.typed.length() == PlayerIdentity.NAME_LENGTH)
@@ -170,7 +178,8 @@ func _test_keyboard() -> void:
 	s.name_chosen.connect(func(v: String) -> void: got.append(v))
 	_chk("D.07 OK accepts what was typed", s.accept())
 	_chk("D.08 reporting it and closing",
-			got.size() == 1 and got[0].length() == 7 and not s.is_open)
+			got.size() == 1 and got[0].length() == PlayerIdentity.NAME_LENGTH
+			and not s.is_open)
 
 	# An empty name is refused — a blank player renders every {PLAYER} as "".
 	var s2 := _screen()

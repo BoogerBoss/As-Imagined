@@ -10,15 +10,30 @@ extends RefCounted
 ## `_PLAYER_BACK_PIC`, and the overworld sprite `[M27D D1]` picked. This is the
 ## one place that owns it, and the three read from here instead.
 ##
-## ⚠️ **NAMES ARE CAPPED AT 7, WHICH IS SOURCE'S OWN LIMIT** —
-## `PLAYER_NAME_LENGTH` (`include/constants/global.h:159`). Not a display
-## convenience: source sizes real save-block fields to it, and M27L will want
-## the same bound. A longer name is TRUNCATED rather than refused, so a caller
-## that skips the naming screen (a test, a debug boot) cannot produce a name
-## the save format could not hold.
-
-## Source: `include/constants/global.h:159`.
-const NAME_LENGTH := 7
+## ⚠️ **THE CAP IS 12, AND IT IS DELIBERATELY *NOT* SOURCE'S 7.** Rob's call,
+## 2026-08-03, after asking whether 7 was necessary or merely inherited. It was
+## inherited: source's `PLAYER_NAME_LENGTH` (`include/constants/global.h:159`)
+## exists because the GBA sizes a fixed save-block field to it, and **this
+## project shares none of that** — checked before changing it:
+##
+##   * no fixed-width slot displays the player's name anywhere; the only
+##     consumers are `{PLAYER}` substitutions inside message text;
+##   * this project saves structured data as JSON (`team_storage.gd`), which
+##     has no field width, and M27L will follow that precedent;
+##   * nothing reserves glyphs for it in the message box.
+##
+## [An earlier draft of this comment claimed "M27L will want the same bound".
+## That was wrong and is corrected here rather than left to justify a number
+## nothing requires.]
+##
+## 12 matches `POKEMON_NAME_LENGTH` (`global.h:156`), which nicknames will want
+## anyway, so the project carries ONE name bound rather than two. A cap remains
+## because the value reaches a save file and authored dialogue is hand-wrapped
+## around short names — unbounded input belongs in neither.
+##
+## A longer name is TRUNCATED rather than refused, so a caller that skips the
+## naming screen (a test, a debug boot) cannot produce an unstorable name.
+const NAME_LENGTH := 12
 
 enum Gender { BOY, GIRL }
 
