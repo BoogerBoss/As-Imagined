@@ -968,6 +968,11 @@ func tick_entities(delta: float, rng: RandomNumberGenerator) -> void:
 			var npc := n as NPC
 			if npc == null:
 				continue
+			# Mid-walk NPCs are not asked for a new decision. Without this the
+			# wander timer would re-fire against a cell the sprite has not
+			# visually reached yet.
+			if _runner.is_busy(npc):
+				continue
 			var want: Vector2i = npc.tick(delta, rng)
 			if want == npc.cell:
 				continue
@@ -984,7 +989,23 @@ func tick_entities(delta: float, rng: RandomNumberGenerator) -> void:
 			if int(r["outcome"]) != StepResolver.Outcome.NONE:
 				continue
 			reserved[g] = true
-			move_entity(map_name, npc, want)
+			# [M27F Stage 3] Hand the already-approved destination to the runner
+			# instead of committing it outright. Occupancy still updates
+			# synchronously (the runner commits at action start), so D3's
+			# "two NPCs cannot claim one tile in a frame" invariant is intact —
+			# what changes is that the sprite now WALKS there instead of
+			# teleporting, which it has done since D3 shipped.
+			start_entity_movement(map_name, npc,
+					[{"op": "walk_" + _ACTION_SUFFIX[_dir_towards(npc.cell, want)]}])
+
+
+## Direction -> the suffix source's own movement actions use.
+const _ACTION_SUFFIX := {
+	StepResolver.Dir.NORTH: "up",
+	StepResolver.Dir.SOUTH: "down",
+	StepResolver.Dir.WEST: "left",
+	StepResolver.Dir.EAST: "right",
+}
 
 
 static func _dir_towards(from: Vector2i, to: Vector2i) -> int:
@@ -1008,6 +1029,102 @@ func _resolver_for(_map_name: String) -> StepResolver:
 	if not _resolver_cache.has("global"):
 		_resolver_cache["global"] = global_resolver()
 	return _resolver_cache["global"]
+
+
+## [M27F Stage 3] The one entity-motion system. Lives here because this node
+## already owns entities and occupancy; the player is driven through the same
+## runner by the overworld, which owns that node instead.
+var _runner := MovementRunner.new()
+
+
+func movement() -> MovementRunner:
+	return _runner
+
+
+## Advance in-flight motion. Called every frame INCLUDING while a script runs —
+## a scripted `applymovement` has to keep moving while the rest of the world is
+## frozen, which is exactly what a cutscene is.
+func tick_movement(delta: float) -> void:
+	_runner.tick(delta)
+
+
+## Walk a placed entity through a movement script (a list of `{"op": ...}`).
+##
+## ⚠️ No collision check, deliberately — see MovementRunner's own header. The
+## wandering caller resolves BEFORE calling this; a scripted caller does not,
+## because source does not.
+func start_entity_movement(map_name: String, e: OverworldEntity, ops: Array) -> void:
+	if e == null or not is_instance_valid(e):
+		return
+	var commit := func(dir: int) -> void:
+		move_entity(map_name, e, e.cell + StepResolver.STEP[dir])
+	var face := Callable()
+	var anim := Callable()
+	var rest := Callable()
+	if e is NPC:
+		face = func(dir: int) -> void: (e as NPC).set_facing(dir)
+		# [M27F Stage 3b] The walk cycle. `anim` advances it every tick a
+		# walking action is in flight; `rest` settles onto the standing frame
+		# once the whole script ends, so nobody is left with one leg out.
+		anim = func(dir: int, ticks: int, delta: float) -> void:
+			(e as NPC).step_anim(dir, ticks, delta)
+		rest = func(dir: int) -> void: (e as NPC).set_facing(dir)
+	_runner.start(e, e, ops, commit, face, anim, rest)
+
+
+## Find a placed entity by its own `local_id`, across every live chunk.
+##
+## `applymovement` addresses its target by LOCALID, which is map data rather
+## than a node path, so this is the one lookup that has to exist. Scans rather
+## than indexes for the same reason `entity_node_at` does: a script command is
+## not a per-frame cost.
+func find_entity_by_local_id(local_id: String) -> OverworldEntity:
+	if local_id == "":
+		return null
+	for map_name in _chunks:
+		var root: Node2D = _chunks[map_name]["root"]
+		if root == null or not is_instance_valid(root):
+			continue
+		for n in root.find_children("*", "OverworldEntity", true, false):
+			if _entity_local_id(n) == local_id:
+				return n as OverworldEntity
+	return null
+
+
+## `local_id` lives on the concrete kinds, not on OverworldEntity — only the
+## three that occupy an object-event slot carry one.
+static func _entity_local_id(n: Node) -> String:
+	if n is NPC:
+		return (n as NPC).local_id
+	if n is ItemBall:
+		return (n as ItemBall).local_id
+	return ""
+
+
+## Which live chunk owns this entity. Needed because occupancy is per-chunk and
+## a mover has to update the right one.
+func map_name_of(e: OverworldEntity) -> String:
+	if e == null or not is_instance_valid(e):
+		return ""
+	for map_name in _chunks:
+		var root: Node2D = _chunks[map_name]["root"]
+		if root != null and is_instance_valid(root) and root.is_ancestor_of(e):
+			return map_name
+	return ""
+
+
+## Start a movement on an entity whose owning chunk is not already known.
+## False when the entity does not belong to any live chunk.
+func start_movement_for_entity(e: OverworldEntity, ops: Array) -> bool:
+	var map_name := map_name_of(e)
+	if map_name == "":
+		return false
+	start_entity_movement(map_name, e, ops)
+	return true
+
+
+func is_entity_moving(e: OverworldEntity) -> bool:
+	return _runner.is_busy(e)
 
 
 ## Move a placed entity to a new LOCAL cell, keeping occupancy true.

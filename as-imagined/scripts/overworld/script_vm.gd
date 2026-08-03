@@ -41,6 +41,9 @@ enum Pause {
 	## pause that outlives the frame it started in -- appended rather than
 	## slotted beside the other WAIT_ values so no existing ordinal shifts.
 	WAIT_BATTLE,
+	## [M27F Stage 3] `waitmovement` — one or more entities are walking. Unlike
+	## WAIT_BATTLE this carries no result, so a plain resume() is correct for it.
+	WAIT_MOVEMENT,
 }
 
 ## Scratch var `switch`/`case` compare through, per event.inc:2115.
@@ -76,6 +79,15 @@ var pending_trainer_key: String = ""
 var pending_battle_intro: String = ""
 var pending_battle_defeat_text: String = ""
 var pending_battle_script: String = ""
+
+## [M27F Stage 3] Movements the script has ASKED for but which the scene has not
+## started yet. `applymovement` is asynchronous in source — it kicks a movement
+## off and the script keeps running; `waitmovement` is the half that blocks. So
+## this is a QUEUE the driver drains, not a pause.
+var pending_movements: Array[Dictionary] = []
+
+## Whose movement `waitmovement` is waiting on. "" means "everything".
+var pending_wait_target: String = ""
 
 ## Which entity this script belongs to, so `faceplayer` and friends have a
 ## subject. May be null for a map-level script.
@@ -147,6 +159,10 @@ func start(label: String, p_subject: OverworldEntity = null) -> bool:
 	pending_battle_intro = ""
 	pending_battle_defeat_text = ""
 	pending_battle_script = ""
+	# ⚠️ .clear(), not `= []` — assigning an untyped array to a typed one
+	# fails SILENTLY in GDScript, a gotcha this project has paid for before.
+	pending_movements.clear()
+	pending_wait_target = ""
 	if _source == null or not _source.has_script(label):
 		pause_reason = Pause.UNRESOLVED
 		diagnostic = "no script named '%s'" % label
@@ -162,7 +178,7 @@ func is_running() -> bool:
 
 func is_waiting() -> bool:
 	return pause_reason in [Pause.WAIT_MESSAGE, Pause.WAIT_BUTTON, Pause.WAIT_YES_NO,
-			Pause.WAIT_BATTLE]
+			Pause.WAIT_BATTLE, Pause.WAIT_MOVEMENT]
 
 
 func is_finished() -> bool:
@@ -303,6 +319,23 @@ func step() -> bool:
 				_flags.var_set("VAR_0x8008", _literal(str(args[0])))
 			_call_stack.push_back({"label": script_label, "pc": pc})
 			return _jump("Common_EventScript_SetGymTrainers_Frlg")
+
+		"applymovement":
+			# ASYNCHRONOUS, like source. `ScrCmd_applymovement` starts the movement
+			# and returns; the script carries on until a `waitmovement` blocks it.
+			# Queueing rather than pausing is what makes two entities able to walk
+			# at once, which most of the corridor's cutscenes do.
+			if args.size() > 1:
+				pending_movements.append({"target": str(args[0]), "script": str(args[1])})
+			return true
+
+		"waitmovement":
+			# `waitmovement 0` is the common form and means "everything in flight",
+			# not "object 0" -- LOCALID_NONE is 0, so there is no object to name.
+			var who := str(args[0]) if args.size() > 0 else ""
+			pending_wait_target = "" if who in ["0", "LOCALID_NONE", ""] else who
+			pause_reason = Pause.WAIT_MOVEMENT
+			return false
 
 		"trainerbattle_single":
 			return _trainer_battle(args)

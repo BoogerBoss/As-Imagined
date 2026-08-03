@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 87
+const EXPECTED_TOTAL := 131
 
 var _total := 0
 var _failed := 0
@@ -93,6 +93,8 @@ func _ready() -> void:
 	_test_interaction()
 	_test_stage2()
 	_test_stage2_real_corpus()
+	_test_stage3_movement()
+	_test_stage3b_walk_anim()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -149,7 +151,12 @@ func _test_pause_kinds() -> void:
 
 ## --- C. degrading must NAME what it could not do ---
 func _test_degrade_paths() -> void:
-	var vm := ScriptVM.new(_src({"A": [_op("applymovement", ["X"])]}), FlagStore.new())
+	# `checkitemspace` is the opcode Brock's own post-battle chain really stops
+	# on today (the bag is M27I), so this stays a live example rather than a
+	# hypothetical. It replaced `applymovement`, which Stage 3 implemented --
+	# a genuine correctness change legitimately invalidating a stale fixture.
+	var vm := ScriptVM.new(_src({"A": [_op("checkitemspace", ["ITEM_TM39", "1"])]}),
+			FlagStore.new())
 	_chk("C.01 an unknown label fails start() rather than throwing",
 			not vm.start("NoSuchScript"))
 	_chk("C.02 and reports UNRESOLVED",
@@ -160,8 +167,8 @@ func _test_degrade_paths() -> void:
 	vm.step()
 	_chk("C.04 an out-of-stage opcode stops on UNKNOWN_OP",
 			vm.pause_reason == ScriptVM.Pause.UNKNOWN_OP)
-	_chk("C.05 naming the opcode", vm.diagnostic.contains("applymovement"))
-	_chk("C.06 and current_op still points at it", vm.current_op == "applymovement")
+	_chk("C.05 naming the opcode", vm.diagnostic.contains("checkitemspace"))
+	_chk("C.06 and current_op still points at it", vm.current_op == "checkitemspace")
 
 
 ## --- D. call/return frames. THE BUG: bare PCs across a swapped op array. ---
@@ -601,3 +608,380 @@ func _test_stage2_real_corpus() -> void:
 	_drive(again)
 	_chk("I.23 talking to a beaten Brock starts no second battle",
 			again.pause_reason != ScriptVM.Pause.WAIT_BATTLE)
+
+
+## --- J. Stage 3: applymovement / waitmovement ---
+##
+## The shape being guarded is the ASYMMETRY between the two halves.
+## `applymovement` must NOT pause (source's own `ScrCmd_applymovement` starts the
+## movement and returns, which is the only reason two entities can walk at once),
+## while `waitmovement` must. Getting that backwards still "works" for a
+## single-mover cutscene and quietly serialises every multi-mover one.
+func _test_stage3_movement() -> void:
+	# -- the action table, against source's own step tables --
+	var walk := MovementRunner.action("walk_down")
+	_chk("J.01 a normal step is 16 frames and displaces",
+			int(walk.get("frames", 0)) == 16 and bool(walk.get("moves", false)))
+
+	# `UpdateWalkSlowAnim` steps one pixel only on EVEN frames and ends after 16
+	# of them, so SLOW is exactly double NORMAL -- not a fraction of it.
+	_chk("J.02 a slow step is 32 frames, twice a normal one",
+			int(MovementRunner.action("walk_slow_down").get("frames", 0)) == 32)
+
+	# The discriminator that matters: same duration, opposite displacement.
+	var ip := MovementRunner.action("walk_in_place_faster_up")
+	var fw := MovementRunner.action("walk_faster_up")
+	_chk("J.03 walk_in_place shares its speed but does NOT displace",
+			int(ip.get("frames", 0)) == int(fw.get("frames", 0))
+			and not bool(ip.get("moves", true)) and bool(fw.get("moves", false)))
+
+	var face := MovementRunner.action("face_left")
+	_chk("J.04 a turn is immediate and does not displace",
+			int(face.get("frames", 0)) == 1 and not bool(face.get("moves", true)))
+
+	_chk("J.05 an unimplemented action resolves to nothing, not a default",
+			MovementRunner.action("cut_tree").is_empty())
+
+	# Facing lock is a FLAG, not a duration -- a locked walk still moves.
+	_chk("J.06 lock/unlock carry a flag rather than a frame cost",
+			MovementRunner.action("lock_facing_direction").get("facing_locked") == true
+			and MovementRunner.action("unlock_facing_direction").get("facing_locked") == false
+			and not MovementRunner.action("lock_facing_direction").has("frames"))
+
+	# -- the VM halves --
+	var vm := ScriptVM.new(_src({"A": [
+			_op("applymovement", ["LOCALID_PLAYER", "M1"]),
+			_op("applymovement", ["4", "M2"]),
+			_op("end"),
+		]}), FlagStore.new())
+	vm.start("A")
+	_drive(vm)
+	_chk("J.07 applymovement does NOT pause -- the script runs on past it",
+			vm.pause_reason == ScriptVM.Pause.DONE)
+	_chk("J.08 and BOTH movements are queued, in order, with target and script",
+			vm.pending_movements.size() == 2
+			and vm.pending_movements[0]["target"] == "LOCALID_PLAYER"
+			and vm.pending_movements[0]["script"] == "M1"
+			and vm.pending_movements[1]["target"] == "4")
+
+	var vm2 := ScriptVM.new(_src({"A": [
+			_op("applymovement", ["4", "M1"]),
+			_op("waitmovement", ["0"]),
+			_op("end"),
+		]}), FlagStore.new())
+	vm2.start("A")
+	_drive(vm2)
+	_chk("J.09 waitmovement is the half that blocks",
+			vm2.pause_reason == ScriptVM.Pause.WAIT_MOVEMENT)
+	# `waitmovement 0` is "everything in flight", not "object 0" -- LOCALID_NONE
+	# is 0, so there is no object to name.
+	_chk("J.10 waitmovement 0 means everything, a named target means only it",
+			vm2.pending_wait_target == "")
+
+	# THE ASYMMETRY. WAIT_BATTLE deliberately refuses a plain resume (resuming it
+	# would skip the win/loss branch); WAIT_MOVEMENT must accept one, because
+	# there is no result to branch on.
+	vm2.resume()
+	_drive(vm2)
+	_chk("J.11 and a plain resume() clears it, unlike WAIT_BATTLE",
+			vm2.pause_reason == ScriptVM.Pause.DONE)
+
+	var vm3 := ScriptVM.new(_src({"A": [_op("waitmovement", ["LOCALID_RIVAL"])],
+			"B": [_op("end")]}), FlagStore.new())
+	vm3.start("A")
+	_drive(vm3)
+	var named_kept := vm3.pending_wait_target == "LOCALID_RIVAL"
+	vm3.start("B")
+	_chk("J.12 a named wait target is preserved, and start() clears stale state",
+			named_kept and vm3.pending_movements.is_empty()
+			and vm3.pending_wait_target == "")
+
+	# -- the runner itself --
+	var runner := MovementRunner.new()
+	var node := Node2D.new()
+	var commits := [0]
+	var faces: Array[int] = []
+	var commit := func(dir: int) -> void:
+		commits[0] += 1
+		node.position += Vector2(StepResolver.STEP[dir]) * 16.0
+	var face_cb := func(dir: int) -> void: faces.append(dir)
+
+	runner.start("p", node, [_op("walk_down"), _op("step_end")], commit, face_cb)
+	# ⚠️ THE ORDERING IS THE TEST. The cell is committed IMMEDIATELY (occupancy
+	# must be true the instant the step is taken, which is D3's invariant), and
+	# the sprite is then REWOUND to interpolate from where it actually was. A
+	# runner that skipped the rewind would teleport and still pass a cell check.
+	_chk("J.13 a step commits once up front and rewinds the sprite to the start",
+			commits[0] == 1 and node.position == Vector2.ZERO)
+
+	runner.tick(MovementRunner.FRAME * 8.0)
+	_chk("J.14 mid-step the sprite is strictly between the two cells",
+			node.position.y > 0.0 and node.position.y < 16.0)
+
+	runner.tick(MovementRunner.FRAME * 8.0)
+	_chk("J.15 it lands exactly on the destination and step_end ends the script",
+			node.position == Vector2(0, 16) and not runner.is_busy("p"))
+
+	# An unknown action must be REPORTED, not silently swallowed -- including in
+	# the first slot, which never reaches tick() at all.
+	var r2 := MovementRunner.new()
+	var n2 := Node2D.new()
+	r2.start("x", n2, [_op("rock_smash_break")], commit, Callable())
+	_chk("J.16 an unimplemented FIRST action stops the mover and names itself",
+			not r2.is_busy("x") and r2.last_unknown() == "rock_smash_break")
+
+	var r3 := MovementRunner.new()
+	var n3 := Node2D.new()
+	var c3 := [0]
+	var commit3 := func(dir: int) -> void:
+		c3[0] += 1
+		n3.position += Vector2(StepResolver.STEP[dir]) * 16.0
+	r3.start("v", n3, [_op("set_invisible"), _op("walk_down"), _op("step_end")],
+			commit3, Callable())
+	# Visibility is instantaneous: it must not consume the frame budget, so the
+	# walk after it has to have already begun.
+	_chk("J.17 set_invisible applies without spending a frame",
+			not n3.visible and c3[0] == 1)
+
+	# Facing lock: source keeps `facingDirectionLocked` as one bit and a locked
+	# walk still MOVES. Both halves are asserted -- a port that skipped the whole
+	# action would move but also turn.
+	var r4 := MovementRunner.new()
+	var n4 := Node2D.new()
+	var c4 := [0]
+	var f4: Array[int] = []
+	var commit4 := func(dir: int) -> void:
+		c4[0] += 1
+		n4.position += Vector2(StepResolver.STEP[dir]) * 16.0
+	r4.start("l", n4, [
+			_op("lock_facing_direction"), _op("walk_down"),
+			_op("unlock_facing_direction"), _op("walk_up"), _op("step_end")],
+			commit4, func(dir: int) -> void: f4.append(dir))
+	var locked_moved: bool = c4[0] == 1 and f4.is_empty()
+	r4.tick(MovementRunner.FRAME * 16.0)
+	_chk("J.18 a locked walk moves without turning, and unlock restores turning",
+			locked_moved and c4[0] == 2 and f4 == [StepResolver.Dir.NORTH])
+
+	# The whole reason applymovement is asynchronous: two movers at once.
+	var r5 := MovementRunner.new()
+	var a5 := Node2D.new()
+	var b5 := Node2D.new()
+	var noop := func(_d: int) -> void: pass
+	r5.start("a", a5, [_op("delay_16"), _op("step_end")], noop, Callable())
+	r5.start("b", b5, [_op("delay_4"), _op("step_end")], noop, Callable())
+	_chk("J.19 two movers run concurrently", r5.is_busy("a") and r5.is_busy("b"))
+	r5.tick(MovementRunner.FRAME * 4.0)
+	_chk("J.20 and is_busy is per-mover, not global",
+			r5.is_busy("a") and not r5.is_busy("b") and r5.is_busy())
+	r5.tick(MovementRunner.FRAME * 12.0)
+	_chk("J.21 until the last one finishes", not r5.is_busy())
+
+	node.free()
+	n2.free()
+	n3.free()
+	n4.free()
+	a5.free()
+	b5.free()
+
+	# -- the real corpus --
+	if not FileAccess.file_exists("res://data/map_scripts.json"):
+		_gated += 2
+		return
+	var ops: Dictionary = JSON.parse_string(
+			FileAccess.open("res://data/map_scripts.json", FileAccess.READ).get_as_text())
+	# Movement scripts are ORDINARY labels -- the compiler indexes every label
+	# uniformly, so applymovement resolves through the same table goto does.
+	# A dangling target would be a cutscene that silently does nothing.
+	var dangling := 0
+	var targets := {}
+	for label in ops:
+		for o in ops[label]:
+			if str(o.get("op", "")) == "applymovement":
+				var a: Array = o.get("args", [])
+				if a.size() > 1:
+					targets[str(a[1])] = true
+					if not ops.has(str(a[1])):
+						dangling += 1
+	_chk("J.22 every applymovement target in the region resolves to a real label (%d targets, %d dangling)"
+			% [targets.size(), dangling], dangling == 0 and targets.size() > 1000)
+
+	var playable := 0
+	for t in targets:
+		var ok := true
+		for o in ops[t]:
+			var name := str(o.get("op", ""))
+			if name != "step_end" and MovementRunner.action(name).is_empty():
+				ok = false
+				break
+		if ok:
+			playable += 1
+	# MEASURED, not estimated: 1270 of 1372. The floor is a regression guard --
+	# it must not silently fall when the action table is touched.
+	_chk("J.23 the great majority of real movement scripts run to completion (%d/%d)"
+			% [playable, targets.size()], playable >= 1270)
+
+
+## Section K -- [M27F Stage 3b] the walk cycle.
+##
+## Stage 3 made entities MOVE; this makes them WALK. The gap between those was
+## invisible to every Stage 3 assertion, because all of them are on cells and
+## pixels and none on which frame is showing.
+func _test_stage3b_walk_anim() -> void:
+	# -- the frame tables, against source --
+	var sf := ObjectEventGraphics.STEP_FRAME
+	_chk("K.01 step frames match sAnim_Go* exactly",
+			sf["SOUTH"] == [3, 4] and sf["NORTH"] == [5, 6] and sf["WEST"] == [7, 8])
+	# EAST has no frames of its own in the sheet -- it is WEST mirrored, the
+	# same rule its idle frame already follows.
+	_chk("K.02 EAST reuses WEST's pair rather than owning frames 9/10",
+			sf["EAST"] == sf["WEST"]
+			and ObjectEventGraphics.FACE_FRAME["EAST"] == ObjectEventGraphics.FACE_FRAME["WEST"])
+	_chk("K.03 cycle-entry lengths match the ANIMCMD_FRAME durations",
+			ObjectEventGraphics.ANIM_TICKS_NORMAL == 8
+			and ObjectEventGraphics.ANIM_TICKS_FAST == 4
+			and ObjectEventGraphics.ANIM_TICKS_FASTER == 2)
+
+	# -- the cycle itself --
+	# ⚠️ THE HEADLINE. The cycle is step, REST, step, REST -- the idle frame is
+	# part of the walk. A port that alternates the two step frames alone looks
+	# like a shuffle and would pass any "does the frame change" check.
+	var T := ObjectEventGraphics.ANIM_TICKS_NORMAL
+	var e := func(i: int) -> int:
+		return WalkAnim.cycle_frame("SOUTH", T, (float(i) + 0.5) * float(T) * WalkAnim.FRAME)
+	_chk("K.04 the cycle is stepA, idle, stepB, idle -- not stepA/stepB",
+			e.call(0) == 3 and e.call(1) == 0 and e.call(2) == 4 and e.call(3) == 0)
+	_chk("K.05 and it loops back round", e.call(4) == 3 and e.call(5) == 0)
+	_chk("K.06 north and west run their own pairs, not south's",
+			WalkAnim.cycle_frame("NORTH", T, 0.0) == 5
+			and WalkAnim.cycle_frame("WEST", T, 0.0) == 7)
+
+	# -- the free-running clock: the hop bug, directly --
+	# Source restarts a walk anim only when the requested anim CHANGES
+	# (StartSpriteAnimIfDifferent). Restarting per step is the obvious
+	# implementation and makes the walker lead with the same foot every tile.
+	var wa := WalkAnim.new()
+	wa.setup("OBJ_EVENT_GFX_NINJA_BOY")
+	_chk("K.07 a nine-frame sheet can animate", wa.animates())
+	var spr := Sprite2D.new()
+	spr.texture = load(ObjectEventGraphics.sheet_path("OBJ_EVENT_GFX_NINJA_BOY"))
+	spr.region_enabled = true
+	var w := ObjectEventGraphics.frame_size("OBJ_EVENT_GFX_NINJA_BOY").x
+	var shown := func() -> int: return int(spr.region_rect.position.x / w)
+	# Walk one full tile (two entries) then keep walking the SAME way.
+	var entry := float(T) * WalkAnim.FRAME
+	wa.step(spr, "SOUTH", T, 0.0)
+	var first: int = shown.call()
+	wa.step(spr, "SOUTH", T, entry)
+	wa.step(spr, "SOUTH", T, entry)
+	var third: int = shown.call()
+	_chk("K.08 a continuous walk keeps advancing rather than restarting",
+			first == 3 and third == 4)
+	# Changing direction is a different anim, so it DOES restart.
+	wa.step(spr, "NORTH", T, 0.0)
+	_chk("K.09 changing direction restarts the cycle at its first step frame",
+			shown.call() == 5)
+
+	# -- resting --
+	wa.rest(spr, "SOUTH")
+	_chk("K.10 resting shows the idle frame", shown.call() == 0)
+	wa.rest(spr, "SOUTH")
+	_chk("K.11 and is idempotent, so a per-frame idle call is free",
+			shown.call() == 0)
+	# Standing still and then walking IS a changed anim (FACE_* -> GO_*), so a
+	# fresh walk starts at stepA rather than resuming mid-stride.
+	wa.step(spr, "SOUTH", T, 0.0)
+	_chk("K.12 a walk after standing still begins at the first step frame",
+			shown.call() == 3)
+
+	# -- sheets that cannot animate --
+	# 70 of 385 ids carry three frames and 96 carry one. Indexing a step frame
+	# on those reads off the end of the sheet.
+	var sign_anim := WalkAnim.new()
+	sign_anim.setup("OBJ_EVENT_GFX_CUTTABLE_TREE")
+	var can: bool = sign_anim.animates()
+	var sspr := Sprite2D.new()
+	sspr.region_enabled = true
+	sign_anim.step(sspr, "SOUTH", T, 0.0)
+	sign_anim.step(sspr, "SOUTH", T, entry)
+	var sw := ObjectEventGraphics.frame_size("OBJ_EVENT_GFX_CUTTABLE_TREE").x
+	_chk("K.13 a sheet without nine frames never indexes a step frame",
+			not can and int(sspr.region_rect.position.x / maxf(1.0, float(sw))) == 0)
+
+	# -- which ACTIONS animate --
+	_chk("K.14 walking animates and turning does not",
+			int(MovementRunner.action("walk_down").get("anim", 0)) == T
+			and int(MovementRunner.action("face_down").get("anim", 0)) == 0
+			and int(MovementRunner.action("delay_16").get("anim", 0)) == 0)
+	# ⚠️ Gating the animation on `moves` would leave every walk-in-place beat
+	# standing perfectly still, which is the one thing it exists to not do.
+	var wip := MovementRunner.action("walk_in_place_down")
+	_chk("K.15 walking in place animates despite not moving",
+			not bool(wip["moves"]) and int(wip.get("anim", 0)) == T)
+	# ⚠️ K.15 reads the TABLE. Injecting the real mistake (gating the animation
+	# on `moves` inside the runner) left it green -- so it proves the data and
+	# nothing about the behaviour. This drives a walk-in-place through the
+	# runner and is what actually fails when that gate is added.
+	var rip := MovementRunner.new()
+	var nip := Node2D.new()
+	var ip_ticks: Array[int] = []
+	var ip_moved := [0]
+	rip.start("ip", nip, [_op("walk_in_place_down"), _op("step_end")],
+			func(_d: int) -> void: ip_moved[0] += 1, Callable(),
+			func(_d: int, t: int, _dt: float) -> void: ip_ticks.append(t), Callable())
+	rip.tick(MovementRunner.FRAME * 4.0)
+	_chk("K.15b and the RUNNER really drives it, without committing a move",
+			ip_ticks.size() == 1 and ip_ticks[0] == T and ip_moved[0] == 0)
+	nip.free()
+	# Source has no GoSlow* anim at all, so a slow walk reuses the NORMAL entry
+	# length -- 32 movement frames play FOUR entries, not two stretched ones.
+	var slow := MovementRunner.action("walk_slow_down")
+	_chk("K.16 a slow walk plays four cycle entries, not two slower ones",
+			int(slow["frames"]) == MovementRunner.FRAMES_SLOW
+			and int(slow.get("anim", 0)) == T
+			and int(slow["frames"]) / int(slow.get("anim", 0)) == 4
+			and int(MovementRunner.action("walk_down")["frames"]) / T == 2)
+
+	# -- the runner drives it --
+	var r := MovementRunner.new()
+	var n := Node2D.new()
+	var ticks: Array[int] = []
+	var rested: Array[int] = []
+	var noop := func(_d: int) -> void: pass
+	r.start("p", n, [_op("walk_down"), _op("step_end")], noop, Callable(),
+			func(_d: int, t: int, _dt: float) -> void: ticks.append(t),
+			func(d: int) -> void: rested.append(d))
+	r.tick(MovementRunner.FRAME * 4.0)
+	_chk("K.17 the runner advances the cycle while a step is in flight",
+			ticks.size() == 1 and ticks[0] == T and rested.is_empty())
+	r.tick(MovementRunner.FRAME * 16.0)
+	_chk("K.18 and settles onto the standing frame once the script ends",
+			rested == [StepResolver.Dir.SOUTH] and not r.is_busy())
+
+	# A face-only caller (the pre-Stage-3b contract) must keep working: without
+	# this, wiring the animation would silently stop older callers turning.
+	var r2 := MovementRunner.new()
+	var n2 := Node2D.new()
+	var faced: Array[int] = []
+	r2.start("q", n2, [_op("walk_up"), _op("step_end")], noop,
+			func(d: int) -> void: faced.append(d))
+	_chk("K.19 a caller supplying only `face` still gets it for a walk",
+			faced == [StepResolver.Dir.NORTH])
+
+	# A locked walk still moves its feet -- source's facingDirectionLocked
+	# blocks the TURN, not the animation.
+	var r3 := MovementRunner.new()
+	var n3 := Node2D.new()
+	var dirs: Array[int] = []
+	r3.start("l", n3, [_op("walk_down"), _op("lock_facing_direction"),
+			_op("walk_up"), _op("step_end")], noop, Callable(),
+			func(d: int, _t: int, _dt: float) -> void: dirs.append(d), Callable())
+	r3.tick(MovementRunner.FRAME * 17.0)
+	r3.tick(MovementRunner.FRAME * 4.0)
+	_chk("K.20 a locked walk keeps animating in its established direction",
+			dirs.size() >= 2 and dirs[dirs.size() - 1] == StepResolver.Dir.SOUTH)
+
+	spr.free()
+	sspr.free()
+	n.free()
+	n2.free()
+	n3.free()

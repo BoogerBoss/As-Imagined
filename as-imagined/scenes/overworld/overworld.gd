@@ -53,6 +53,13 @@ var _cell := Vector2i(0, 0):
 var _elev := 3
 var _moving := false
 var _facing := StepResolver.Dir.SOUTH
+
+## [M27F Stage 3b] The player's walk-cycle clock, and the cadence of the step
+## currently in flight. Same WalkAnim every NPC holds — the player is not an
+## OverworldEntity, but it draws from the same sheets by the same rules, and a
+## second frame implementation is a second place to get the strip layout wrong.
+var _player_anim := WalkAnim.new()
+var _step_ticks := 0
 ## ONE resolver, stepping in global cells across every loaded chunk.
 ##
 ## [M27C C4] Was a resolver per chunk, because StepResolver took a single
@@ -304,6 +311,11 @@ func _process(_delta: float) -> void:
 	# fade, where they deliberately do.
 	if _in_battle:
 		return
+	# [M27F Stage 3] Ordering is load-bearing. In-flight motion keeps advancing
+	# while a script runs — that IS what a cutscene is — so this sits ABOVE the
+	# `_vm` return, while `tick_entities` (which DECIDES on new wandering moves)
+	# sits below it and stays frozen.
+	manager.tick_movement(_delta)
 	# [M27F] A running script owns input and freezes the world, the same way a
 	# battle does. `lock`/`lockall` are VM no-ops precisely because THIS is where
 	# locking actually lives — the VM has no business knowing about input.
@@ -313,6 +325,20 @@ func _process(_delta: float) -> void:
 	# NPCs keep moving while the player is mid-step or mid-warp; freezing the
 	# world during a fade is a scripted-cutscene behaviour, not idle movement.
 	manager.tick_entities(_delta, _rng)
+	# [M27F Stage 3b] The player's own walk cycle, for the INPUT path. Scripted
+	# movement is driven by the runner instead (see `_start_player_movement`).
+	#
+	# ⚠️ Resting is gated on the direction being RELEASED, not merely on the
+	# tween having finished. Between two steps of a held walk there is one frame
+	# where `_moving` is already false and the next `_try_step` has not run yet;
+	# resting there would reset the cycle every tile and the player would lead
+	# with the same foot every step — the hop this whole mechanism exists to
+	# avoid. Holding the key pauses the cycle for that frame instead, which is
+	# invisible, and releasing it settles properly.
+	if _moving:
+		_step_player(_facing, _step_ticks, _delta)
+	elif _held_direction() < 0:
+		_face_player(_facing)
 	# [M27D D4 fix] Input is LOCKED during an approach. Source calls
 	# LockPlayerFieldControls() the moment a trainer notices you
 	# (`CheckForTrainersWantingBattle`), and without it you can walk away while
@@ -383,6 +409,10 @@ func _try_step(dir: int) -> void:
 	_moving = true
 	var t := create_tween()
 	var dur := 0.16 if outcome == StepResolver.Outcome.NONE else 0.26
+	# [M27F Stage 3b] The player's ordinary step is a tween, NOT a MovementRunner
+	# script — the two paths are separate and the walk cycle has to be driven on
+	# both. `_process` advances it while `_moving`; this records the cadence.
+	_step_ticks = _player_step_ticks(dur)
 	t.tween_property(_player, "position", manager.local_pixel_of(_cell), dur)
 	# [M27C C5] THE WARP CHECK LIVES HERE, on the completion of a real step, and
 	# nowhere else. Source fires warps from `TryStartStepBasedScript` under
@@ -714,6 +744,12 @@ func _drive_script() -> void:
 	while _vm.step() and guard < 500:
 		guard += 1
 
+	# [M27F Stage 3] `applymovement` is ASYNCHRONOUS: it queues rather than
+	# pausing, so the script keeps running and a cutscene can start two
+	# entities walking at once. Drained here, after stepping, so everything
+	# queued this frame starts together.
+	_start_pending_movements()
+
 	match _vm.pause_reason:
 		ScriptVM.Pause.WAIT_MESSAGE:
 			# `message` only OPENS the box. The compiled msgbox chain is
@@ -756,8 +792,140 @@ func _drive_script() -> void:
 				_vm.resume_after_battle(false)
 				_finish_script()
 
+		ScriptVM.Pause.WAIT_MOVEMENT:
+			# The blocking half. A plain `resume()` is right here because there
+			# is no RESULT to branch on — unlike WAIT_BATTLE, which must never
+			# be resumed this way or the win/loss branch is silently skipped.
+			if not _movement_pending():
+				_vm.resume()
+
 		ScriptVM.Pause.DONE, ScriptVM.Pause.UNRESOLVED, ScriptVM.Pause.UNKNOWN_OP:
 			_finish_script()
+
+
+## Start every movement the script has asked for since the last drain.
+##
+## Targets are LOCALIDs, not node paths — map data, resolved here rather than in
+## the VM, which has no business knowing what a chunk is.
+func _start_pending_movements() -> void:
+	if _vm == null or _vm.pending_movements.is_empty():
+		return
+	var queued := _vm.pending_movements.duplicate()
+	_vm.pending_movements.clear()
+	for m in queued:
+		var target := str(m.get("target", ""))
+		# Movement scripts are ordinary labels — the compiler indexes every
+		# label uniformly, so `Common_Movement_WalkDown` resolves through the
+		# exact same table `goto` uses. No second pipeline.
+		var ops: Array = _script_source.ops_for(str(m.get("script", "")))
+		if ops.is_empty():
+			push_warning("overworld: movement script '%s' is empty or unresolved"
+					% str(m.get("script", "")))
+			continue
+		if _is_player_target(target):
+			_start_player_movement(target, ops)
+			continue
+		var e := _resolve_movement_entity(target)
+		if e == null or not manager.start_movement_for_entity(e, ops):
+			push_warning("overworld: applymovement target '%s' did not resolve" % target)
+
+
+static func _is_player_target(target: String) -> bool:
+	return target == "LOCALID_PLAYER" or target == "255"
+
+
+## The non-player half. `VAR_LAST_TALKED` is the entity you are talking to,
+## which the VM already carries as `subject` — 15 corridor call sites use it,
+## and resolving it any other way would be a second source of truth.
+func _resolve_movement_entity(target: String) -> OverworldEntity:
+	if target == "VAR_LAST_TALKED":
+		return _vm.subject if _vm != null else null
+	return manager.find_entity_by_local_id(target)
+
+
+## Walk the PLAYER through the same runner every NPC uses.
+##
+## ⚠️ The commit must leave `_player.position` AT the destination — the runner
+## reads it back to learn where it is interpolating TO, then rewinds. Assigning
+## `_cell` is what keeps the manager's own occupancy copy true (its setter
+## notifies), so this cannot be reordered.
+##
+## [M27F Stage 3b] The player now turns and walks like any NPC. The disclosed
+## gap this comment used to carry — "the player sprite does not change facing
+## frame" — is closed: `_face_player`/`_step_player` drive the same [WalkAnim]
+## through the same frame tables, rather than a second implementation.
+func _start_player_movement(key: String, ops: Array) -> void:
+	if _player == null:
+		return
+	var commit := func(dir: int) -> void:
+		_facing = dir
+		_cell = _cell + StepResolver.STEP[dir]
+		_elev = manager.elevation_at(_cell)
+		# Both strata are siblings under one chunk root, so this leaves the
+		# local position the runner is interpolating in untouched.
+		_reparent_for_elevation()
+		_player.position = manager.local_pixel_of(_cell)
+	var face := func(dir: int) -> void:
+		_face_player(dir)
+	var anim := func(dir: int, ticks: int, delta: float) -> void:
+		_step_player(dir, ticks, delta)
+	manager.movement().start(key, _player, ops, commit, face, anim, face)
+
+
+## Cycle-entry length for a player step of `dur` seconds.
+##
+## ⚠️ Derived from the step's own duration rather than copied from source's
+## constant, and that is deliberate. Source pairs a 16-frame walk with 8-tick
+## entries — TWO cycle entries per tile. This project's player step is 0.16s
+## (~9.6 frames), its own tuning choice, so reusing the literal 8 would run the
+## feet at source's rate under a faster body and read as skating. Preserving the
+## INVARIANT (two entries per tile) rather than the CONSTANT keeps the cadence
+## matched to whatever the step duration is tuned to later.
+func _player_step_ticks(dur: float) -> int:
+	return maxi(1, int(roundf(dur * 60.0 / 2.0)))
+
+
+## The player's own sprite, or null before it is built / on the fallback path.
+func _player_sprite() -> Sprite2D:
+	if _player == null:
+		return null
+	return _player.get_node_or_null("Sprite") as Sprite2D
+
+
+## Turn the player and stand still.
+func _face_player(dir: int) -> void:
+	_facing = dir
+	var spr := _player_sprite()
+	if spr == null:
+		return
+	_player_anim.setup(PLAYER_GRAPHICS_ID)
+	_player_anim.rest(spr, WalkAnim.facing_name(dir))
+
+
+## Advance the player's walk cycle one tick.
+func _step_player(dir: int, ticks: int, delta: float) -> void:
+	_facing = dir
+	var spr := _player_sprite()
+	if spr == null:
+		return
+	_player_anim.setup(PLAYER_GRAPHICS_ID)
+	_player_anim.step(spr, WalkAnim.facing_name(dir), ticks, delta)
+
+
+## True while anything `waitmovement` could be waiting on is still walking.
+##
+## `waitmovement 0` means "everything", not "object 0" — LOCALID_NONE is 0, so
+## there is no object to name. A named target waits only on that one mover.
+func _movement_pending() -> bool:
+	if _vm == null:
+		return false
+	var who := _vm.pending_wait_target
+	if who == "":
+		return manager.movement().is_busy()
+	if _is_player_target(who):
+		return manager.movement().is_busy(who)
+	var e := _resolve_movement_entity(who)
+	return e != null and manager.is_entity_moving(e)
 
 
 func _finish_script() -> void:

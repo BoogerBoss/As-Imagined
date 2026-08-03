@@ -57,6 +57,11 @@ var _facing := StepResolver.Dir.SOUTH
 var _delay := 0.0
 var _spawned := false
 
+## [M27F Stage 3b] This NPC's own walk-cycle clock. Per-instance and free-running
+## across steps — see WalkAnim's header for why sharing or resetting it would
+## make every walker lead with the same foot.
+var _anim := WalkAnim.new()
+
 
 ## The directions this NPC may turn to, or [] if it never turns.
 func direction_choices() -> Array:
@@ -94,22 +99,34 @@ func facing() -> int:
 	return _facing
 
 
-## Point the sprite a new way. Cheap: the sheet is one texture and only the
-## region and the mirror change.
+## Point the sprite a new way, at rest. Cheap: the sheet is one texture and
+## only the region and the mirror change.
+##
+## [M27F Stage 3b] Routed through the same [WalkAnim] the walk cycle uses, so
+## "standing still facing west" and "mid-stride facing west" cannot drift into
+## two different ideas of which frame that is.
 func set_facing(dir: int) -> void:
 	_facing = dir
 	var spr := get_node_or_null("Sprite") as Sprite2D
 	if spr == null:
 		return
-	var name_by_dir := {
-		StepResolver.Dir.SOUTH: "SOUTH", StepResolver.Dir.NORTH: "NORTH",
-		StepResolver.Dir.WEST: "WEST", StepResolver.Dir.EAST: "EAST",
-	}
-	var facing_name: String = name_by_dir.get(dir, "SOUTH")
-	var frame: int = int(ObjectEventGraphics.FACE_FRAME.get(facing_name, 0))
-	spr.region_rect = Rect2(frame * spr.region_rect.size.x, 0,
-			spr.region_rect.size.x, spr.region_rect.size.y)
-	spr.flip_h = facing_name == "EAST" and ObjectEventGraphics.EAST_IS_MIRRORED_WEST
+	_anim.setup(graphics_id)
+	_anim.rest(spr, WalkAnim.facing_name(dir))
+
+
+## One tick of this NPC's walk cycle, driven by [MovementRunner].
+##
+## Separate from [method set_facing] because they mean different things: this
+## ADVANCES the cycle, that one parks it. The runner calls this every frame a
+## walking action is in flight and calls `set_facing` once when the whole
+## movement script ends.
+func step_anim(dir: int, ticks: int, delta: float) -> void:
+	_facing = dir
+	var spr := get_node_or_null("Sprite") as Sprite2D
+	if spr == null:
+		return
+	_anim.setup(graphics_id)
+	_anim.step(spr, WalkAnim.facing_name(dir), ticks, delta)
 
 
 ## One frame of this NPC's own movement. Returns the cell it wants to move to,

@@ -23,6 +23,42 @@ const FACE_FRAME := {
 ## True when EAST must be drawn as a horizontally flipped WEST.
 const EAST_IS_MIRRORED_WEST := true
 
+## The two step frames per facing, for the walk cycle.
+##
+## From sAnim_GoSouth/North/West/East. The cycle each one runs is
+## FRAME(stepA) FRAME(idle) FRAME(stepB) FRAME(idle), looping — so the
+## resting frame is part of the walk, not just what precedes it, and a
+## renderer that alternates stepA/stepB alone drops half the animation.
+## EAST reuses WEST's pair mirrored, exactly as its idle frame does.
+const STEP_FRAME := {
+	"SOUTH": [3, 4],
+	"NORTH": [5, 6],
+	"WEST": [7, 8],
+	"EAST": [7, 8],
+}
+
+## Order the four cycle entries are played in: step, rest, step, rest.
+## Indexes into [stepA, idle, stepB, idle] as built by WalkAnim.
+const WALK_CYCLE_LEN := 4
+
+## Ticks each cycle entry is held, by movement speed (the second
+## argument of each ANIMCMD_FRAME).
+##
+## ⚠ There is NO GoSlow* anim in source — the standard table is
+## FACE / GO / GO_FAST / GO_FASTER / GO_FASTEST only. A slow walk reuses
+## the NORMAL anim, so its 32 movement frames play FOUR cycle entries
+## rather than two stretched ones. That asymmetry is real: a slow walk
+## shows more foot movement per tile, not slower foot movement.
+const ANIM_TICKS_NORMAL := 8
+const ANIM_TICKS_FAST := 4
+const ANIM_TICKS_FASTER := 2
+
+## A sheet needs all nine frames to hold a walk cycle. 136 of the 385
+## resolved ids do; 70 carry only the three facing frames (signs, static
+## props) and 96 carry a single frame. Those must draw their idle frame
+## and never index past it.
+const MIN_FRAMES_TO_ANIMATE := 9
+
 ## Source's own fallback for an id it cannot resolve
 ## (GetObjectEventGraphicsInfo: `graphicsId = OBJ_EVENT_GFX_NINJA_BOY`).
 ## A real, visible sprite rather than an invented placeholder — so a hole
@@ -439,6 +475,16 @@ static func frame_size(graphics_id: String) -> Vector2i:
 	if e.is_empty():
 		return Vector2i(16, 32)
 	return Vector2i(int(e["w"]), int(e["h"]))
+
+
+## How many frames this id's sheet actually holds.
+##
+## Read it before indexing a step frame: not every sheet has one.
+static func frame_count(graphics_id: String) -> int:
+	var e: Dictionary = BY_ID.get(graphics_id, BY_ID.get(FALLBACK_ID, {}))
+	if e.is_empty():
+		return 1
+	return int(e["frames"])
 
 
 ## Is this an id this project can actually draw?
