@@ -29,14 +29,21 @@ const SLOTS := 3
 ## in the middle of a sentence would look like a bug to a player.
 const EMPTY := ""
 
-## Identity placeholders this project cannot answer properly yet.
+## [M27K K-b] Identity placeholders. `{PLAYER}` is 1193 corpus uses.
 ##
-## ⚠️ `{PLAYER}` is 1193 corpus uses and there is NO player-identity system —
-## M27K owns naming. "LEAF" matches the overworld sprite and the battle side's
-## own `_PLAYER_BACK_PIC`, so all three halves agree on who the player is until
-## then, rather than each inventing a different answer.
+## ⚠️ **THESE ARE NOW FALLBACKS, NOT THE ANSWER.** `identity` below is, once a
+## new game has run. They stay because a boot that skips the speech entirely —
+## a test, a debug F6 straight into the corridor — must still render a name
+## rather than a blank; `PlayerIdentity.display_name()` returns the same two
+## strings for exactly that reason, so the fallback agrees in both places.
 const PLAYER_NAME := "LEAF"
 const RIVAL_NAME := "BLUE"
+
+## [M27K K-b] Who `{PLAYER}` and `{RIVAL}` mean. Static so every buffer in the
+## process agrees without threading it through ~30 construction sites, and so a
+## test can set it directly — the same shape `BattleSetupContext` already uses.
+## Null until a new game names someone, which is what the fallbacks cover.
+static var identity: PlayerIdentity = null
 
 ## ⚠️ `{KUN}` is genuinely EMPTY in English — `gText_ExpandedPlaceholder_Kun`
 ## and `_Chan` are both `_("")` (`strings.c:8-9`). It is a Japanese honorific
@@ -142,6 +149,11 @@ func _value_for(name: String) -> String:
 	var slot := slot_index(name)
 	if slot >= 0:
 		return _slots[slot]
+	# Identity first: a real named player must win over the placeholder.
+	if identity != null:
+		match name:
+			"PLAYER": return identity.display_name()
+			"RIVAL": return identity.display_rival_name()
 	if FIXED.has(name):
 		return str(FIXED[name])
 	# Control markers the extractor preserved (`{PLAY_BGM}`, `{FONT_NORMAL}`,

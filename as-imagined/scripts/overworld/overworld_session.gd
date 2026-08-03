@@ -43,6 +43,12 @@ static var respawn := RespawnPoint.new()
 ## would be worse than no wallet.
 static var wallet := Wallet.new()
 
+## [M27K K-b] Who the player is — name, gender, and the rival's name. Held here
+## rather than on the overworld for the same reason the bag is: a battle is a
+## real scene swap, and an identity that died with the field would be forgotten
+## the first time you fought anything.
+static var identity := PlayerIdentity.new()
+
 ## [M27O O4] The player's party, held ACROSS battles rather than rebuilt for
 ## each one.
 ##
@@ -192,6 +198,8 @@ static func reset() -> void:
 	bag = Bag.new()
 	wallet = Wallet.new()
 	respawn = RespawnPoint.new()
+	identity = PlayerIdentity.new()
+	TextBuffers.identity = identity
 	pending_return = {}
 	pending_result = null
 	pending_trainer_key = ""

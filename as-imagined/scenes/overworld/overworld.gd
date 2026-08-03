@@ -113,6 +113,8 @@ var _start_menu: FieldStartMenu = null
 var _bag_screen: FieldBagScreen = null
 ## [M27I I5-2] The party, and which item is waiting for a target.
 var _party_screen: FieldPartyScreen = null
+## [M27K K-b] The naming screen, for the player's name and the rival's.
+var _naming: NamingScreen = null
 var _pending_use_item: int = -1
 var _script_source: ScriptVM.ScriptSource = null
 
@@ -418,6 +420,11 @@ func _process(_delta: float) -> void:
 			_box.advance()
 		return
 
+	# [M27K K-b] The naming screen owns input outright while it is up, above
+	# even the message box — it is a screen, not a prompt over one.
+	if _naming != null and _naming.is_open:
+		_drive_naming()
+		return
 	if _party_screen != null and _party_screen.is_open:
 		_drive_party_screen()
 		return
@@ -625,6 +632,28 @@ func _on_start_menu_bag() -> void:
 
 
 ## [M27I I5-2] Party input.
+## [M27K K-b] Input for the naming screen.
+##
+## ⚠️ B DOES NOT CANCEL ON THE KEYBOARD — it backspaces, which is source's own
+## binding. Cancelling out of naming mid-new-game would leave the player
+## unnamed with nothing to re-enter through, so the only way off the keyboard
+## is OK with something typed.
+func _drive_naming() -> void:
+	if Input.is_action_just_pressed("ui_up"):
+		_naming.move(-1)
+	elif Input.is_action_just_pressed("ui_down"):
+		_naming.move(1)
+	elif Input.is_action_just_pressed("ui_accept"):
+		_naming.confirm()
+	elif Input.is_action_just_pressed("ui_focus_next"):
+		_naming.next_page()
+	elif Input.is_action_just_pressed("ui_cancel"):
+		if _naming.mode == NamingScreen.Mode.KEYBOARD:
+			_naming.backspace()
+	elif Input.is_action_just_pressed("ui_text_submit"):
+		_naming.accept()
+
+
 func _drive_party_screen() -> void:
 	if Input.is_action_just_pressed("ui_up"):
 		_party_screen.move(-1)
@@ -641,12 +670,98 @@ func _on_start_menu_pokemon() -> void:
 	_party_screen.open(OverworldSession.player_party())
 
 
+## [M27K K-b] FRLG's Oak intro, verbatim from `data/text/new_game_intro_frlg.inc`
+## (minus the `\p`/`$` page and terminator control codes, which are the message
+## box's own paging here).
+##
+## ⚠️ **THE BEATS AND THEIR ORDER ARE SOURCE'S, NOT A RETELLING** — the task
+## chain in `src/oak_speech.c` runs welcome -> this world -> inhabited far and
+## wide -> I study Pokemon -> tell me about yourself -> gender -> your name ->
+## rival's name -> let's go. Reordering reads fine and is a different scene.
+const OAK_WELCOME := "Hello, there!\nGlad to meet you!"
+const OAK_THIS_WORLD := "This world…"
+const OAK_INHABITED := "…is inhabited far and wide by\ncreatures called POKéMON."
+const OAK_I_STUDY := "For some people, POKéMON are pets.\nOthers use them for battling."
+const OAK_ABOUT_YOURSELF := "But first, tell me a little about\nyourself."
+const OAK_ASK_GENDER := "Now tell me. Are you a boy?\nOr are you a girl?"
+const OAK_YOUR_NAME := "Let's begin with your name.\nWhat is it?"
+const OAK_SO_YOUR_NAME := "Right…\nSo your name is {PLAYER}."
+const OAK_RIVAL_INTRO := "This is my grandson.\nHe's been your rival since you both were babies."
+const OAK_RIVAL_NAME := "…Erm, what was his name now?"
+const OAK_REMEMBER_RIVAL := "That's right! I remember now!\nHis name is {RIVAL}!"
+const OAK_LETS_GO := "{PLAYER}!\nYour very own POKéMON legend is about to unfold!\nA world of dreams and adventures with POKéMON awaits! Let's go!"
+
+
 ## [M27I I5-3a] Source's own field item-use messages (`strings.c:246/280/289`),
 ## with the trailing `{PAUSE_UNTIL_PRESS}` dropped — that is the message box's
 ## own press-to-dismiss behaviour here, not part of the text.
 const ITEM_MSG_NO_EFFECT := "It won't have any effect."
 const ITEM_MSG_HP_RESTORED := "{STR_VAR_1}'s HP was restored\nby {STR_VAR_2} point(s)."
 const ITEM_MSG_BECAME_HEALTHY := "{STR_VAR_1} became healthy."
+
+
+## [M27K K-b] The new-game sequence: Oak's speech, gender, both names.
+##
+## ⚠️ **WHAT THIS DELIBERATELY DOES NOT PORT.** `src/oak_speech.c` is 2193 lines
+## and most of them are theatre this project has no layer for: the Nidoran
+## released from its ball (`Task_OakSpeech_ReleaseNidoranFFromPokeBall`), Oak's
+## and the player's portraits fading in and out, the shrink-into-the-overworld
+## exit. Same call as `showmonpic` in K-a — there is no field picture layer, so
+## a no-op loses the flourish and not the scene. The BEATS, their ORDER and the
+## TEXT are source's.
+##
+## ⚠️ **GENDER IS ASKED BEFORE THE NAME, AND THAT ORDERING IS LOAD-BEARING** —
+## `PlayerIdentity.name_choices()` keys the preset list on it, exactly as
+## source's `sMaleNameChoices`/`sFemaleNameChoices` do, so asking in the other
+## order would offer a list it then has to throw away.
+func run_new_game() -> void:
+	if _box == null or _naming == null or _yes_no == null:
+		return
+	OverworldSession.identity = PlayerIdentity.new()
+	TextBuffers.identity = OverworldSession.identity
+	var id := OverworldSession.identity
+
+	await _say([OAK_WELCOME, OAK_THIS_WORLD, OAK_INHABITED, OAK_I_STUDY,
+			OAK_ABOUT_YOURSELF])
+
+	# Gender. Reuses the yes/no widget rather than building a second two-option
+	# picker — source asks it as one question with two answers, which is the
+	# same shape, and YesNoBox already carries the 5-frame debounce.
+	await _say([OAK_ASK_GENDER])
+	# ⚠️ YES == BOY. Source asks "Are you a boy? Or are you a girl?" as one
+	# question whose FIRST option is the boy — the same polarity `yesnobox`
+	# already carries, so no second convention is introduced.
+	_yes_no.open()
+	var boy: bool = await _yes_no.chosen
+	id.gender = PlayerIdentity.Gender.BOY if boy else PlayerIdentity.Gender.GIRL
+
+	await _say([OAK_YOUR_NAME])
+	id.set_name(await _ask_name("Your name?", id.name_choices()))
+	await _say([OAK_SO_YOUR_NAME])
+
+	await _say([OAK_RIVAL_INTRO, OAK_RIVAL_NAME])
+	id.set_rival_name(await _ask_name("Your rival's name?",
+			PlayerIdentity.RIVAL_NAMES))
+	await _say([OAK_REMEMBER_RIVAL])
+
+	await _say([OAK_LETS_GO])
+
+
+## Show pages and wait for them to be dismissed. Expanded at print time, like
+## every other message — `{PLAYER}` must read the name just chosen.
+func _say(pages: Array) -> void:
+	var out := PackedStringArray()
+	var buffers := TextBuffers.new()
+	for p in pages:
+		out.append(buffers.expand(str(p)))
+	_box.open(out)
+	await _box.closed
+
+
+## Offer the presets, then the keyboard if NEW NAME is picked.
+func _ask_name(prompt: String, choices: PackedStringArray) -> String:
+	_naming.open(prompt, choices)
+	return await _naming.name_chosen
 
 
 ## [M27I I5-3] USE was chosen in the bag: the party opens as a TARGET PICKER.
@@ -1259,6 +1374,8 @@ func _setup_scripting() -> void:
 	add_child(_yes_no)
 	_start_menu = FieldStartMenu.new()
 	add_child(_start_menu)
+	_naming = NamingScreen.new()
+	add_child(_naming)
 	_bag_screen = FieldBagScreen.new()
 	add_child(_bag_screen)
 	_party_screen = FieldPartyScreen.new()
