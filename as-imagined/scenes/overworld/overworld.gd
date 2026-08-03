@@ -111,6 +111,9 @@ var _yes_no: YesNoBox = null
 ## [M27I I4] The START menu and the bag it opens.
 var _start_menu: FieldStartMenu = null
 var _bag_screen: FieldBagScreen = null
+## [M27I I5-2] The party, and which item is waiting for a target.
+var _party_screen: FieldPartyScreen = null
+var _pending_use_item: int = -1
 var _script_source: ScriptVM.ScriptSource = null
 
 signal script_started(label: String)
@@ -394,6 +397,9 @@ func _process(_delta: float) -> void:
 	# world freezes behind them — source's own bag/start-menu callbacks are full
 	# screen swaps, so nothing underneath keeps running. Ordered bag-first: the
 	# bag is opened FROM the menu, so it sits on top of it.
+	if _party_screen != null and _party_screen.is_open:
+		_drive_party_screen()
+		return
 	if _bag_screen != null and _bag_screen.is_open:
 		_drive_bag_screen()
 		return
@@ -580,6 +586,20 @@ func _drive_start_menu() -> void:
 
 ## [M27I I4] Bag input. Left/right switch pockets, up/down move the cursor.
 func _drive_bag_screen() -> void:
+	# [M27I I5-3] The action menu owns input while it is up.
+	if _bag_screen.actions_open:
+		if Input.is_action_just_pressed("ui_up"):
+			_bag_screen.move_action(-1)
+		elif Input.is_action_just_pressed("ui_down"):
+			_bag_screen.move_action(1)
+		elif Input.is_action_just_pressed("ui_accept"):
+			_bag_screen.confirm_action()
+		elif Input.is_action_just_pressed("ui_cancel"):
+			_bag_screen.close_actions()
+		return
+	if Input.is_action_just_pressed("ui_accept"):
+		_bag_screen.open_actions()
+		return
 	if Input.is_action_just_pressed("ui_left"):
 		_bag_screen.next_pocket(-1)
 	elif Input.is_action_just_pressed("ui_right"):
@@ -594,6 +614,59 @@ func _drive_bag_screen() -> void:
 
 func _on_start_menu_bag() -> void:
 	_bag_screen.open(OverworldSession.bag)
+
+
+## [M27I I5-2] Party input.
+func _drive_party_screen() -> void:
+	if Input.is_action_just_pressed("ui_up"):
+		_party_screen.move(-1)
+	elif Input.is_action_just_pressed("ui_down"):
+		_party_screen.move(1)
+	elif Input.is_action_just_pressed("ui_accept"):
+		_party_screen.confirm()
+	elif Input.is_action_just_pressed("ui_cancel"):
+		_party_screen.close()
+
+
+func _on_start_menu_pokemon() -> void:
+	_pending_use_item = -1
+	_party_screen.open(OverworldSession.player_party())
+
+
+## [M27I I5-3] USE was chosen in the bag: the party opens as a TARGET PICKER.
+func _on_bag_item_use(item_id: int) -> void:
+	_pending_use_item = item_id
+	var identity: Dictionary = PokemonRegistry.get_item_identity(item_id)
+	_party_screen.open(OverworldSession.player_party(), str(identity.get("name", "")))
+
+
+## ⚠️ THE ITEM IS CONSUMED ONLY IF IT DID SOMETHING. Source refuses a Potion on a
+## full-HP Pokémon ("It won't have any effect") rather than eating it — so the
+## bag removal is gated on the effect actually landing, not on the pick.
+func _on_party_mon_chosen(index: int) -> void:
+	if _pending_use_item < 0:
+		return
+	var item_id := _pending_use_item
+	_pending_use_item = -1
+	var party := OverworldSession.player_party()
+	if index < 0 or index >= party.members.size():
+		return
+	var mon: BattlePokemon = party.members[index]
+	var item := ItemRegistry.get_item(item_id)
+	if item == null:
+		return
+	var worked := false
+	match item.battle_usage:
+		ItemManager.BATTLE_USE_RESTORE_HP:
+			worked = ItemManager.bag_item_heal(mon, item) > 0
+		ItemManager.BATTLE_USE_CURE_STATUS:
+			worked = ItemManager.bag_item_cure_status(mon, item)
+	if worked:
+		OverworldSession.bag.remove(item_id, 1)
+
+
+func _on_party_cancelled() -> void:
+	_pending_use_item = -1
 
 
 ## [M27H H2/H3] One step's worth of wild encounter.
@@ -1095,7 +1168,13 @@ func _setup_scripting() -> void:
 	add_child(_start_menu)
 	_bag_screen = FieldBagScreen.new()
 	add_child(_bag_screen)
+	_party_screen = FieldPartyScreen.new()
+	add_child(_party_screen)
 	_start_menu.bag_selected.connect(_on_start_menu_bag)
+	_start_menu.pokemon_selected.connect(_on_start_menu_pokemon)
+	_bag_screen.item_use_requested.connect(_on_bag_item_use)
+	_party_screen.mon_chosen.connect(_on_party_mon_chosen)
+	_party_screen.cancelled.connect(_on_party_cancelled)
 
 
 func _read_json(path: String) -> Dictionary:

@@ -21,6 +21,9 @@ extends CanvasLayer
 ## listed here so a future session adds it rather than rediscovering the gap.
 
 signal bag_selected()
+## [M27I I5-2] POKéMON is gated on `FLAG_SYS_POKEMON_GET` exactly as source
+## gates it, so it appears the moment that flag is set rather than needing code.
+signal pokemon_selected()
 signal closed()
 
 const MARGIN := 32
@@ -129,6 +132,9 @@ func confirm() -> int:
 		Entry.BAG:
 			close()
 			bag_selected.emit()
+		Entry.POKEMON:
+			close()
+			pokemon_selected.emit()
 		Entry.EXIT:
 			close()
 		_:

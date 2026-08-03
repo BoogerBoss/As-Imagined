@@ -20,6 +20,10 @@ extends CanvasLayer
 ## part of that.
 
 signal closed()
+## [M27I I5-3] The player chose USE on an item. The bag does NOT apply it — the
+## caller opens the party screen as a target picker, matching source's own flow
+## (`ItemUseOutOfBattle_Medicine` -> party menu).
+signal item_use_requested(item_id: int)
 
 const MARGIN := 40
 
@@ -50,6 +54,27 @@ var _panel: Panel
 var _tab_label: Label
 var _rows_box: VBoxContainer
 var _desc_label: Label
+
+## [M27I I5-3] Which battle usages have a field use at all.
+##
+## ⚠️ **DERIVED, BECAUSE THE REAL FIELD-USE DATA IS NOT IN THE PIPELINE.** Source
+## carries `.fieldUseFunc` per item (`ItemUseOutOfBattle_Medicine` on Potion, and
+## NOTHING on X Attack — verified directly), but `items.json` holds only
+## description/hold_effect/pocket/price. The derivation is exact for every item
+## this project has: medicine has a field use, X items and balls do not.
+## **Flagged for a future items-pipeline pass**, not guessed at — the mapping is
+## checked against source rather than assumed from the name.
+const FIELD_USABLE_BATTLE_USAGES := [
+	ItemManager.BATTLE_USE_RESTORE_HP,
+	ItemManager.BATTLE_USE_CURE_STATUS,
+]
+
+## The action menu, when open. Source builds this per item
+## (`OpenContextMenu`) and simply OMITS actions the item does not support —
+## which is why an unusable item needs no "you can't use that" text.
+var _actions: PackedStringArray = PackedStringArray()
+var _action_index := 0
+var _actions_open := false
 
 var _bag: Bag = null
 var _pocket_index := 0
@@ -224,6 +249,71 @@ func description_text() -> String:
 	return str(identity.get("description", "")).replace("\\n", " ")
 
 
+## Is the highlighted item usable outside battle?
+static func is_field_usable(item_id: int) -> bool:
+	var item := ItemRegistry.get_item(item_id)
+	if item == null:
+		return false
+	return item.battle_usage in FIELD_USABLE_BATTLE_USAGES
+
+
+var actions_open: bool:
+	get:
+		return _actions_open
+
+var action_index: int:
+	get:
+		return _action_index
+
+
+## Open the per-item action menu. Returns false when there is nothing to open.
+func open_actions() -> bool:
+	if not _open or selected_item_id() < 0:
+		return false
+	_actions = PackedStringArray()
+	if is_field_usable(selected_item_id()):
+		_actions.append("USE")
+	# ⚠️ GIVE and TOSS are source actions deliberately NOT offered: GIVE needs a
+	# held-item UI and TOSS needs a quantity prompt, neither of which exists.
+	# Omitted rather than shown-and-broken.
+	_actions.append("CANCEL")
+	_action_index = 0
+	_actions_open = true
+	_refresh()
+	return true
+
+
+func move_action(delta: int) -> void:
+	if not _actions_open or _actions.is_empty():
+		return
+	_action_index = clampi(_action_index + delta, 0, _actions.size() - 1)
+	_refresh()
+
+
+func action_texts() -> PackedStringArray:
+	var out := PackedStringArray()
+	for i in range(_actions.size()):
+		out.append(("▶ " if i == _action_index else "   ") + _actions[i])
+	return out
+
+
+## Activate the highlighted action. Returns the action name.
+func confirm_action() -> String:
+	if not _actions_open or _actions.is_empty():
+		return ""
+	var a: String = _actions[_action_index]
+	_actions_open = false
+	if a == "USE":
+		item_use_requested.emit(selected_item_id())
+	_refresh()
+	return a
+
+
+func close_actions() -> void:
+	_actions_open = false
+	_refresh()
+
+
 func _refresh() -> void:
 	if _tab_label == null:
 		return
@@ -234,4 +324,7 @@ func _refresh() -> void:
 		var row := Label.new()
 		row.text = t
 		_rows_box.add_child(row)
-	_desc_label.text = description_text()
+	if _actions_open:
+		_desc_label.text = "  ".join(action_texts())
+	else:
+		_desc_label.text = description_text()
