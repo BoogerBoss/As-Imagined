@@ -108,6 +108,9 @@ var _vm: ScriptVM = null
 var _box: MessageBox = null
 ## [M27F Stage 4] The yes/no prompt, built alongside the message box.
 var _yes_no: YesNoBox = null
+## [M27I I4] The START menu and the bag it opens.
+var _start_menu: FieldStartMenu = null
+var _bag_screen: FieldBagScreen = null
 var _script_source: ScriptVM.ScriptSource = null
 
 signal script_started(label: String)
@@ -387,6 +390,17 @@ func _process(_delta: float) -> void:
 	# [M27F] A running script owns input and freezes the world, the same way a
 	# battle does. `lock`/`lockall` are VM no-ops precisely because THIS is where
 	# locking actually lives — the VM has no business knowing about input.
+	# [M27I I4] The bag and the START menu own input while they are up, and the
+	# world freezes behind them — source's own bag/start-menu callbacks are full
+	# screen swaps, so nothing underneath keeps running. Ordered bag-first: the
+	# bag is opened FROM the menu, so it sits on top of it.
+	if _bag_screen != null and _bag_screen.is_open:
+		_drive_bag_screen()
+		return
+	if _start_menu != null and _start_menu.is_open:
+		_drive_start_menu()
+		return
+
 	# [M27O O4] A message box with no script behind it. The poison notice is the
 	# only one today, and freezing the world for it is the faithful shape rather
 	# than a shortcut — source runs it as a real script and
@@ -426,6 +440,13 @@ func _process(_delta: float) -> void:
 	# the "!" is still over their head — reported from play.
 	if _moving or _warping or _in_approach:
 		return
+	# [M27I I4] START. Source binds this to the START button; this project has no
+	# gamepad mapping yet (M26C8 owns that), so Escape stands in — the same key
+	# the Item/Switch overlays already use for "open/close a menu".
+	if Input.is_action_just_pressed("ui_cancel"):
+		_start_menu.open(flags)
+		return
+
 	# [M27F] A press of A, before movement: interacting with the tile you face
 	# must not also step into it.
 	if Input.is_action_just_pressed("ui_accept") and try_interact():
@@ -530,6 +551,36 @@ func _try_step(dir: int) -> void:
 		if not _in_approach and not _in_battle:
 			_poison_step()
 	)
+
+
+## [M27I I4] START menu input.
+func _drive_start_menu() -> void:
+	if Input.is_action_just_pressed("ui_up"):
+		_start_menu.move(-1)
+	elif Input.is_action_just_pressed("ui_down"):
+		_start_menu.move(1)
+	elif Input.is_action_just_pressed("ui_accept"):
+		_start_menu.confirm()
+	elif Input.is_action_just_pressed("ui_cancel"):
+		_start_menu.close()
+
+
+## [M27I I4] Bag input. Left/right switch pockets, up/down move the cursor.
+func _drive_bag_screen() -> void:
+	if Input.is_action_just_pressed("ui_left"):
+		_bag_screen.next_pocket(-1)
+	elif Input.is_action_just_pressed("ui_right"):
+		_bag_screen.next_pocket(1)
+	elif Input.is_action_just_pressed("ui_up"):
+		_bag_screen.move_row(-1)
+	elif Input.is_action_just_pressed("ui_down"):
+		_bag_screen.move_row(1)
+	elif Input.is_action_just_pressed("ui_cancel"):
+		_bag_screen.close()
+
+
+func _on_start_menu_bag() -> void:
+	_bag_screen.open(OverworldSession.bag)
 
 
 ## One step's worth of field poison.
@@ -947,6 +998,11 @@ func _setup_scripting() -> void:
 	add_child(_box)
 	_yes_no = YesNoBox.new()
 	add_child(_yes_no)
+	_start_menu = FieldStartMenu.new()
+	add_child(_start_menu)
+	_bag_screen = FieldBagScreen.new()
+	add_child(_bag_screen)
+	_start_menu.bag_selected.connect(_on_start_menu_bag)
 
 
 func _read_json(path: String) -> Dictionary:

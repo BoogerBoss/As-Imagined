@@ -12,7 +12,7 @@ extends Node
 ##     0 to VAR_RESULT would carry the nurse script through unaided, which is
 ##     exactly why it is tempting and exactly why it is wrong.
 
-const EXPECTED_TOTAL := 58
+const EXPECTED_TOTAL := 62
 
 var _total := 0
 var _failed := 0
@@ -61,6 +61,7 @@ func _ready() -> void:
 	_test_registry()
 	_test_polarity()
 	_test_auto_confirm()
+	_test_text_override()
 	_test_nurse_end_to_end()
 
 	var accounted := _total + _gated
@@ -338,6 +339,26 @@ func _test_auto_confirm() -> void:
 	vm3.step()
 	_chk("F.07 but any OTHER script still gets its real prompt",
 			vm3.pause_reason == ScriptVM.Pause.WAIT_YES_NO)
+
+
+## --- G. the authored text override ---
+func _test_text_override() -> void:
+	# ⚠️ CONTENT, not mechanism — the first place this project overrides
+	# reference dialogue, and deliberately keyed on the TEXT SYMBOL so the same
+	# line reads the same way everywhere it is used.
+	_chk("G.01 the nurse question is overridden",
+			ScriptVM.TEXT_OVERRIDES.has("Text_WelcomeWantToHealPkmn_Frlg"))
+	var vm := ScriptVM.new(_src(
+			{"A": [_op("message", ["Text_WelcomeWantToHealPkmn_Frlg"]), _op("end")]},
+			{"Text_WelcomeWantToHealPkmn_Frlg": ["Welcome!", "Would you like me to heal?"]}),
+			FlagStore.new())
+	vm.start("A"); vm.step()
+	_chk("G.02 the override replaces the corpus text, not appends to it",
+			vm.pending_pages.size() == 1)
+	_chk("G.03 the greeting survives",
+			str(vm.pending_pages[0]).begins_with("Welcome"))
+	_chk("G.04 and the question is gone",
+			not str(vm.pending_pages[0]).to_lower().contains("would you like"))
 
 
 ## --- D. the real nurse script, end to end ---
