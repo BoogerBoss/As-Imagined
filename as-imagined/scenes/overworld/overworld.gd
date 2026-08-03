@@ -106,6 +106,8 @@ var _pending_whiteout := false
 ## no script is running — that is the "is the player in control" test.
 var _vm: ScriptVM = null
 var _box: MessageBox = null
+## [M27F Stage 4] The yes/no prompt, built alongside the message box.
+var _yes_no: YesNoBox = null
 var _script_source: ScriptVM.ScriptSource = null
 
 signal script_started(label: String)
@@ -390,7 +392,8 @@ func _process(_delta: float) -> void:
 	# than a shortcut — source runs it as a real script and
 	# `EventScript_FieldPoison` opens with `lockall`. This project simply has no
 	# VM to park it on, so the same lock is expressed by returning here.
-	if _vm == null and _box != null and _box.is_open:
+	if _vm == null and _box != null and _box.is_open \
+			and (_yes_no == null or not _yes_no.is_open):
 		# `advance` skips the typewriter on the first press (source lets you
 		# skip) and closes itself once past the last page, so this is the whole
 		# interaction — the same shape as the VM's own WAIT_BUTTON branch.
@@ -942,6 +945,8 @@ func _setup_scripting() -> void:
 	_script_source.texts = _read_json("res://data/map_texts.json")
 	_box = MessageBox.new()
 	add_child(_box)
+	_yes_no = YesNoBox.new()
+	add_child(_yes_no)
 
 
 func _read_json(path: String) -> Dictionary:
@@ -1037,11 +1042,29 @@ func _drive_script() -> void:
 				_vm.resume()
 
 		ScriptVM.Pause.WAIT_YES_NO:
-			# Stage 1 has no yes/no widget yet. Answer NO and continue rather
-			# than stalling — VAR_RESULT is what the script branches on, and a
-			# stuck VM would soft-lock the player.
-			flags.var_set("VAR_RESULT", 0)
-			_vm.resume()
+			# [M27F Stage 4] A REAL prompt. Stage 1 answered NO unconditionally
+			# as a disclosed stopgap, which made every one of the corpus's 425
+			# yes/no call sites unreachable past the question.
+			#
+			# ⚠️ YES = 1, NO = 0 (`Task_HandleYesNoInput` writes
+			# `gSpecialVar_Result` 1 for row 0 and 0 for row 1 or B). The two are
+			# not interchangeable: `goto_if_eq VAR_RESULT, YES` is what every
+			# call site branches on.
+			if not _yes_no.is_open:
+				_yes_no.open()
+			elif _yes_no.accepts_input:
+				if Input.is_action_just_pressed("ui_up"):
+					_yes_no.move(-1)
+				elif Input.is_action_just_pressed("ui_down"):
+					_yes_no.move(1)
+				elif Input.is_action_just_pressed("ui_cancel"):
+					_yes_no.cancel()
+					_vm.cancel_yes_no()
+				elif Input.is_action_just_pressed("ui_accept"):
+					# ⚠️ The VM writes VAR_RESULT, not this — `yesnobox` and
+					# `multichoice MULTI_YESNO` use OPPOSITE polarity and only
+					# the VM knows which opcode paused.
+					_vm.answer_yes_no(_yes_no.confirm())
 
 		ScriptVM.Pause.WAIT_BATTLE:
 			# The trainer's intro speech runs first, then the battle. Source does

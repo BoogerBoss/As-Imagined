@@ -46,6 +46,9 @@ enum Pause {
 	WAIT_MOVEMENT,
 }
 
+## The one multichoice list Stage 4 implements.
+const MULTI_YESNO := "MULTI_YESNO"
+
 ## Scratch var `switch`/`case` compare through, per event.inc:2115.
 const SWITCH_VAR := "VAR_0x8000"
 
@@ -254,6 +257,54 @@ func step() -> bool:
 		"yesnobox":
 			pause_reason = Pause.WAIT_YES_NO
 			return true
+
+		"multichoice":
+			# [M27F Stage 4] ⚠️ ONLY the yes/no list, and the polarity is the
+			# OPPOSITE of `yesnobox`'s — see `answer_yes_no`. Every other list
+			# halts: 204 corpus uses, overwhelmingly battle-facility menus that
+			# belong to M35, and inventing a picker for them here would be
+			# guessing at their contents.
+			var list := str(args[2]) if args.size() > 2 else ""
+			if list == MULTI_YESNO:
+				pause_reason = Pause.WAIT_YES_NO
+				return true
+			pause_reason = Pause.UNKNOWN_OP
+			diagnostic = "multichoice list '%s' is not implemented" % list
+			return false
+
+		# [M27F Stage 4] Presentation-only commands with no system behind them
+		# here. `incrementgamestat` is a pure counter; `hidefollower` has no
+		# followers to hide; `dofieldeffect`/`waitfieldeffect` are the heal
+		# animation and its wait, which this project has no field-effect layer
+		# for. Listed explicitly rather than falling through to UNKNOWN_OP, so a
+		# real gap stays distinguishable from a known no-op.
+		"incrementgamestat", "hidefollower", "dofieldeffect", "waitfieldeffect":
+			return true
+
+		# [M27F Stage 4] A NARROW carve-out — see FieldSpecials for why an
+		# unknown one halts rather than degrading to a default.
+		"special", "callnative":
+			var fn := str(args[0]) if args.size() > 0 else ""
+			if FieldSpecials.run(fn):
+				return true
+			pause_reason = Pause.UNKNOWN_OP
+			diagnostic = "special '%s' is not implemented" % fn
+			return false
+
+		"specialvar":
+			# ⚠️ ARGUMENT ORDER: `specialvar VAR_RESULT, Fn` — the destination
+			# var comes FIRST and the function second, the opposite of the way
+			# it reads aloud. Getting it backwards resolves the var name as a
+			# function and reports every call site as an unimplemented special.
+			var dest := str(args[0]) if args.size() > 0 else "VAR_RESULT"
+			var vfn := str(args[1]) if args.size() > 1 else ""
+			if FieldSpecials.is_known_specialvar(vfn):
+				if _flags != null:
+					_flags.var_set(dest, FieldSpecials.specialvar_value(vfn))
+				return true
+			pause_reason = Pause.UNKNOWN_OP
+			diagnostic = "specialvar '%s' is not implemented" % vfn
+			return false
 
 		"call":
 			_call_stack.push_back({"label": script_label, "pc": pc})
@@ -792,7 +843,51 @@ static func _literal(tok: String) -> int:
 	match tok:
 		"TRUE": return 1
 		"FALSE": return 0
+		# [M27F Stage 4] ⚠️ 753 corpus args are one of these three, and every
+		# one of them resolved to 0 before this. `goto_if_eq VAR_RESULT, YES`
+		# compared against 0, so answering NO took the YES branch — inverted at
+		# every yes/no call site in the region, silently.
+		"YES": return 1          # asm/macros/event.inc:2133
+		"NO": return 0
+		"MULTI_B_PRESSED": return 127  # include/constants/script_menu.h:8
 	return 0
+
+
+## [M27F Stage 4] Answer a yes/no prompt and resume.
+##
+## ⚠️ **THE TWO OPCODES HAVE OPPOSITE POLARITY, AND THIS IS WHY THE CALLER MUST
+## NOT WRITE VAR_RESULT ITSELF.** `yesnobox` writes **1 for YES**
+## (`Task_HandleYesNoInput` sets `gSpecialVar_Result = 1` for row 0), while
+## `multichoice MULTI_YESNO` writes the **LIST INDEX**, and
+## `MultichoiceList_YesNo` is `{Yes, NO}` — so **0 is YES** there.
+##
+## Kanto's own Pokecentre nurse uses the multichoice form
+## (`EventScript_PkmnCenterNurse_Frlg`), Hoenn's uses `yesnobox`, and the two
+## sit behind one identical-looking prompt. A caller that picked one convention
+## would heal on NO in half the region. Keeping the decision here means the
+## opcode that paused is what decides.
+func answer_yes_no(yes: bool) -> void:
+	if pause_reason != Pause.WAIT_YES_NO:
+		return
+	if _flags != null:
+		if current_op == "multichoice":
+			_flags.var_set("VAR_RESULT", 0 if yes else 1)
+		else:
+			_flags.var_set("VAR_RESULT", 1 if yes else 0)
+	resume()
+
+
+## B / Escape. `yesnobox` folds this onto NO; `multichoice` has a distinct
+## MULTI_B_PRESSED (127) that scripts really do branch on separately.
+func cancel_yes_no() -> void:
+	if pause_reason != Pause.WAIT_YES_NO:
+		return
+	if current_op == "multichoice":
+		if _flags != null:
+			_flags.var_set("VAR_RESULT", 127)
+		resume()
+	else:
+		answer_yes_no(false)
 
 
 func _jump(label: String) -> bool:
