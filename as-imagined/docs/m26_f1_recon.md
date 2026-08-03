@@ -1454,6 +1454,85 @@ is harness-specific, not a shipped bug.
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
 
+### M36D batch 37 — COMPLETE 2026-08-03. The scanline surface, and a deferral reason that was half wrong for five batches.
+
+**851 -> 856 of 932; against the NEW in-scope denominator, 770 -> 775 of 845
+(91.1% -> 91.7%).** 2 behaviors, 5 moves — Rapid Spin, Ice Spinner, Spin Out,
+Mortal Spin, Aqua Step. Behaviors 483 -> 485, suite 1175 -> 1193/1193.
+
+**SCOPE CHANGE, Rob 2026-08-03: Z-Moves and Max Moves are out of scope
+entirely.** The boundary is exact and taken from source, not eyeballed:
+`FIRST_Z_MOVE = MOVES_COUNT_GEN9` (`include/constants/moves.h:913`), so id 847
+(Malignant Chain) is the last in-scope move and 848 (Breakneck Blitz) the
+first excluded one. **87 of the 932 bound moves are Z/Max, leaving 845
+in-scope.** Note coverage went DOWN when restated (91.3% -> 91.1%): 12 of the
+87 were already playable, so the exclusion removed more numerator than
+denominator. That is the honest figure and it is recorded rather than
+presented as a gain.
+
+⚠️ **THE DEFERRAL REASON WAS HALF WRONG, AND HAD BEEN INHERITED UNCHECKED
+SINCE BATCH 27.** These five moves were recorded across five batches as
+blocked on "per-scanline DMA". Reading both behaviors in full:
+**`AnimRapidSpin` never touches a scanline register.** It is a plain sprite
+behavior — position on a battler, oscillate x, drift y, die on a threshold —
+and needed no new surface at all. Only `AnimTask_RapinSpinMonElevation` is the
+scanline effect. The two were filed together because the same five moves need
+both, **which is not the same thing as sharing a mechanism.** Rule (6)'s
+family: a stated reason outlives the reading that produced it, and gets
+re-cited as fact. The test that pins this deliberately runs Rapid Spin with no
+background surface present.
+
+**The surface itself is small, and it is the mechanism rather than an
+approximation of it.** The hardware points a DMA at `REG_BG1HOFS`/`REG_BG2HOFS`
+and feeds it a per-scanline buffer — that is, a horizontal background scroll
+that VARIES BY ROW. This project's background was already a UV-scrolled
+shader, so the port is three uniforms (`band_top`, `band_bottom`,
+`band_offset`) and one branch offsetting `u` as a function of `v`. New
+`AnimStage.set_background_band` / `clear_background_band` /
+`background_band`, following `set_background_scroll`'s own stage-pixels-to-UV
+convention.
+
+**The motion**: a band spanning the mon (`y-33` to `y+36`) whose top and bottom
+edges both sweep UPWARD at `args[1]` px/frame, the bottom edge starting 8
+frames later so the band has real depth while it travels.
+
+⚠️ **+240 ON A 256 px BACKGROUND IS NOT A SCREEN-WIDTH JUMP — it wraps to
+-16.** The visible effect is a 16 px horizontal SHIMMER alternating every two
+frames. Porting the literal 240 displaces the band nearly a full screen and
+reads as a tearing bug rather than a spin. Pinned by asserting the offset's
+magnitude stays under 40 px.
+
+**Disclosed divergence**: source only tears the scanline effect down when
+`args[2]` asks, leaving it installed otherwise for a following script step to
+reuse. This port ALWAYS clears the band — a displaced strip of background left
+on screen after the move is the same leak class rule (3) exists for, and no
+script in this corpus relies on the carry-over. `args[2]` is therefore
+deliberately unread, stated at the code site rather than silently ignored.
+
+⚠️ **RULE (15), TWICE MORE — AND BOTH TIMES IT WAS MY ASSERTION AT FAULT.**
+Five injections were run; four failed immediately. The fifth revealed **two
+weak guards of my own**:
+
+1. *"a falling Rapid Spin ends on its threshold"* asserted only THAT it ended.
+   Injecting a hardcoded crossing direction still ends the falling case — on
+   frame 1, because it starts already past that test. Now measures the frame
+   COUNT (both legs travel 40 px at 3 px/frame, so ~13 frames each), which is
+   what separates a captured direction from a hardcoded one.
+2. *"the band is cleared when done"* asserted `bottom <= top`. The two edges
+   converge on the same y BY CONSTRUCTION, so that is true whether or not
+   anything cleared it — it passed against an injection that removed the clear
+   entirely. Now checks the explicit reset to `Vector3.ZERO`, which the sweep
+   alone can never produce because the top edge converges on a real on-screen
+   y, never 0.
+
+Both were re-injected after strengthening and both now fail. **Rule (15) has
+now fired in three consecutive batches, each in a different shape** — two
+source facts where only one is observable (b34), a stage double that cannot
+express the axis (b35), and here an assertion that is satisfied by the
+degenerate case it was meant to exclude.
+
+---
+
 ### M36D batch 36 — COMPLETE 2026-08-03. The one-away tail, and one shared family inside it.
 
 **839 -> 851 of 932 (90.0% -> 91.3%). 12 behaviors, 12 moves.** Behaviors

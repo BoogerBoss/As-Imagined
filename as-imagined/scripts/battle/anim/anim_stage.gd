@@ -242,8 +242,20 @@ uniform vec2 uv_offset = vec2(0.0);
 uniform vec4 pal_from[12];
 uniform vec4 pal_to[12];
 uniform int pal_count = 0;
+// The per-scanline band: rows in [band_top, band_bottom) take an EXTRA
+// horizontal offset. This is what `ScanlineEffect_SetParams` pointed at
+// REG_BG1HOFS/REG_BG2HOFS actually is -- a horizontal scroll that varies
+// with the scanline -- so expressing it as u-offset-as-a-function-of-v is
+// the mechanism, not an approximation of it.
+uniform float band_top = 0.0;
+uniform float band_bottom = 0.0;
+uniform float band_offset = 0.0;
 void fragment() {
-	vec4 c = texture(TEXTURE, fract(UV + uv_offset));
+	vec2 uv = UV + uv_offset;
+	if (band_bottom > band_top && UV.y >= band_top && UV.y < band_bottom) {
+		uv.x += band_offset;
+	}
+	vec4 c = texture(TEXTURE, fract(uv));
 	if (c.a > 0.0) {
 		for (int i = 0; i < pal_count; i++) {
 			if (distance(c.rgb, pal_from[i].rgb) < 0.01) {
@@ -317,6 +329,43 @@ func scroll_background_by(delta: Vector2) -> void:
 
 func background_scroll() -> Vector2:
 	return _bg_scroll
+
+
+# ── Per-scanline band (the ScanlineEffect surface) ────────────────────────
+#
+# `top`/`bottom` are STAGE pixels; `offset_x` is a stage-pixel horizontal
+# displacement applied to those rows only. An empty band (bottom <= top)
+# disables it, which is also how it is cleared.
+var _bg_band := Vector3.ZERO   # (top, bottom, offset_x), stage pixels
+
+
+func set_background_band(top: float, bottom: float, offset_x: float) -> void:
+	var node := background_layer()
+	if node == null:
+		return
+	_bg_band = Vector3(top, bottom, offset_x)
+	_apply_bg_band(node)
+
+
+func clear_background_band() -> void:
+	set_background_band(0.0, 0.0, 0.0)
+
+
+func background_band() -> Vector3:
+	return _bg_band
+
+
+func _apply_bg_band(node: TextureRect) -> void:
+	var mat := node.material as ShaderMaterial
+	if mat == null:
+		return
+	var span := node.size
+	if span.x <= 0.0 or span.y <= 0.0:
+		return
+	# Same stage-pixels-to-UV convention `_apply_bg_scroll` uses.
+	mat.set_shader_parameter("band_top", _bg_band.x / span.y)
+	mat.set_shader_parameter("band_bottom", _bg_band.y / span.y)
+	mat.set_shader_parameter("band_offset", _bg_band.z / span.x)
 
 
 func _apply_bg_scroll(node: TextureRect) -> void:

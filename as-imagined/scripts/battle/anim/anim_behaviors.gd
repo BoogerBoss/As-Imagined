@@ -100,6 +100,9 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 37] —
+		"AnimRapidSpin": _rapid_spin,
+		"AnimTask_RapinSpinMonElevation": _rapid_spin_mon_elevation,
 		# — [M36D batch 36] —
 		"SpriteCB_SurgingStrikes": _surging_strikes,
 		"SpriteCB_MoongeistCharge": _moongeist_charge,
@@ -16651,3 +16654,146 @@ static func _techno_blast(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 # exposes the flag.
 static func _shell_side_arm(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 	vm.args[0] = 0
+
+
+# ══ [M36D batch 37] ═══════════════════════════════════════════════════════
+#
+# The Rapid Spin family, deferred since batch 27 as "per-scanline DMA".
+#
+# ⚠️ THAT DEFERRAL WAS HALF WRONG, and it had been inherited unchecked across
+# five batches. `AnimRapidSpin` is a PLAIN SPRITE BEHAVIOR -- it never touches
+# a scanline register, and needed no new surface at all. Only
+# `AnimTask_RapinSpinMonElevation` is the scanline effect. The two were
+# recorded together because the same five moves need both, which is not the
+# same thing as sharing a mechanism. Rule (6)'s family: a stated reason
+# outlives the reading that produced it.
+
+
+# AnimRapidSpin (battle_anim_effects_3.c). args: 0 battler, 1 x offset,
+# 2 starting y offset, 3 y threshold to end on, 4 phase step, 5 y velocity.
+#
+# Oscillates horizontally off `gSineTable[phase] >> 4` -- the raw table read
+# shifted, so the amplitude is 256 >> 4 = 16 px, NOT the args-supplied value
+# every other sine user in this port takes. Meanwhile y drifts at a constant
+# velocity, and the sprite dies when y2 CROSSES args[3].
+#
+# The crossing direction is decided ONCE at spawn (`data[0] = y2 > args[3]`),
+# so the same behavior serves both a rising and a falling spin depending on
+# which side of the threshold it starts. Testing only one direction would
+# miss half of it.
+const _RAPID_SPIN_AMPLITUDE := 16.0
+const _RAPID_SPIN_CAP := 240
+
+
+static func _rapid_spin(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var who: int = AnimStage.ANIM_ATTACKER if vm.args[0] == 0 \
+			else AnimStage.ANIM_TARGET
+	var base := _battler_centre(vm, who) \
+			+ Vector2(float(vm.args[1]), 0.0) * scale
+	var threshold := float(vm.args[3])
+	var step: int = vm.args[4]
+	var vel := float(vm.args[5])
+	# Captured at spawn, exactly as source does.
+	var falling: bool = float(vm.args[2]) > threshold
+	var st := {"phase": 0, "y": float(vm.args[2]), "t": 0}
+	node.centre = base + Vector2(0.0, float(st["y"]) * scale)
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["phase"] = (int(st["phase"]) + step) & 0xFF
+		st["y"] = float(st["y"]) + vel
+		node.centre = base + Vector2(
+				_gba_sin(float(st["phase"]), _RAPID_SPIN_AMPLITUDE) * scale,
+				float(st["y"]) * scale)
+		st["t"] = int(st["t"]) + 1
+		var done: bool = float(st["y"]) < threshold if falling \
+				else float(st["y"]) > threshold
+		if done or int(st["t"]) >= _RAPID_SPIN_CAP:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimTask_RapinSpinMonElevation (battle_anim_effects_3.c). args: 0 battler,
+# 1 sweep speed, 2 whether to tear the effect down at the end.
+#
+# (The name's typo -- "Rapin" -- is upstream's. Kept verbatim: it is the
+# registry key the extracted scripts actually reference.)
+#
+# THE SCANLINE EFFECT, and the first behavior in this port to use one. What
+# the hardware does: point a DMA at REG_BG1HOFS/REG_BG2HOFS and feed it a
+# per-scanline buffer, so the background's horizontal scroll VARIES BY ROW.
+# `AnimStage.set_background_band` expresses exactly that as a u-offset that is
+# a function of v -- the mechanism itself, not an approximation of it.
+#
+# The motion: a band spanning the mon (y-33 to y+36) whose TOP and BOTTOM
+# edges both sweep upward at `args[1]` px/frame, the bottom edge starting 8
+# frames later. Inside the swept region the background's offset ALTERNATES
+# every two frames between its own scroll and that scroll plus a full
+# DISPLAY_WIDTH.
+#
+# ⚠️ +240 ON A 256 px BACKGROUND IS NOT A SCREEN-WIDTH JUMP -- it wraps to
+# -16. The visible effect is a 16 px horizontal SHIMMER, and porting the
+# literal 240 without the wrap would displace the whole band nearly a screen
+# and look like a tearing bug rather than a spin.
+const _SPIN_ELEV_ABOVE := 33.0
+const _SPIN_ELEV_BELOW := 36.0
+const _SPIN_ELEV_BOTTOM_DELAY := 8
+const _SPIN_ELEV_FLICKER_EVERY := 2
+const _SPIN_ELEV_BG_WIDTH := 256.0
+const _SPIN_ELEV_SHIFT := 240.0
+const _SPIN_ELEV_CAP := 240
+
+
+static func _rapid_spin_mon_elevation(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	if vm.stage == null or not vm.stage.has_method("set_background_band"):
+		return
+	var scale := _scale(vm)
+	var who: int = AnimStage.ANIM_ATTACKER if vm.args[0] == 0 \
+			else AnimStage.ANIM_TARGET
+	var centre_y: float = _battler_centre(vm, who).y
+	var top_limit: float = maxf(0.0, centre_y - _SPIN_ELEV_ABOVE * scale)
+	var speed: float = maxf(1.0, float(vm.args[1])) * scale
+	# The wrap: +240 on a 256-wide background is -16, a shimmer.
+	var shift: float = fposmod(_SPIN_ELEV_SHIFT, _SPIN_ELEV_BG_WIDTH) * scale
+	if shift > _SPIN_ELEV_BG_WIDTH * scale * 0.5:
+		shift -= _SPIN_ELEV_BG_WIDTH * scale
+	var st := {
+		"top": centre_y + _SPIN_ELEV_BELOW * scale,
+		"bottom": centre_y + _SPIN_ELEV_BELOW * scale,
+		"delay": _SPIN_ELEV_BOTTOM_DELAY,
+		"sub": 0, "on": false, "t": 0,
+	}
+	vm.add_stepper(func() -> bool:
+		st["top"] = maxf(float(st["top"]) - speed, top_limit)
+		var finished := false
+		if int(st["delay"]) > 0:
+			st["delay"] = int(st["delay"]) - 1
+		else:
+			st["bottom"] = maxf(float(st["bottom"]) - speed, top_limit)
+			if is_equal_approx(float(st["bottom"]), top_limit):
+				finished = true
+		st["sub"] = int(st["sub"]) + 1
+		if int(st["sub"]) >= _SPIN_ELEV_FLICKER_EVERY:
+			st["sub"] = 0
+			st["on"] = not bool(st["on"])
+		vm.stage.set_background_band(float(st["top"]), float(st["bottom"]),
+				shift if bool(st["on"]) else 0.0)
+		st["t"] = int(st["t"]) + 1
+		if finished or int(st["t"]) >= _SPIN_ELEV_CAP:
+			# DISCLOSED DIVERGENCE: source only tears the scanline effect down
+			# when args[2] asks (`gScanlineEffect.state = 3`), leaving it
+			# installed otherwise for a following script step to reuse. This
+			# port ALWAYS clears the band -- a displaced strip of background
+			# left on screen after the move is the same leak class rule (3)
+			# exists for, and no script in this port's corpus relies on the
+			# carry-over. args[2] is therefore deliberately UNREAD -- stated
+			# here rather than left as a silently ignored argument.
+			vm.stage.clear_background_band()
+			return true
+		return false)

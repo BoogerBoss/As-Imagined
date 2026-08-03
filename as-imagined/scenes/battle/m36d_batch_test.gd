@@ -270,6 +270,12 @@ func _ready() -> void:
 	_test_b36_upward_sprite_rises_at_constant_speed()
 	_test_b36_query_tasks_answer_on_arg_zero()
 	_test_b36_coverage()
+	_test_b37_rapid_spin_needs_no_scanline_surface()
+	_test_b37_rapid_spin_ends_on_a_threshold_in_either_direction()
+	_test_b37_elevation_band_sweeps_upward()
+	_test_b37_elevation_offset_is_a_shimmer_not_a_screen_jump()
+	_test_b37_elevation_clears_its_band_when_done()
+	_test_b37_coverage()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -313,6 +319,13 @@ class FakeStage extends RefCounted:
 		var n: Control = nodes.get(b, null)
 		return n.position + n.size * 0.5 if n != null else Vector2.ZERO
 	func layer() -> Control: return layer_node
+	# The batch-37 scanline surface, recorded so a test can observe it.
+	var band: Vector3 = Vector3.ZERO
+	func set_background_band(top: float, bottom: float, offset_x: float) -> void:
+		band = Vector3(top, bottom, offset_x)
+	func clear_background_band() -> void:
+		band = Vector3.ZERO
+	func background_band() -> Vector3: return band
 	func pixel_scale() -> float: return maxf(1.0, layer_node.size.x / 240.0)
 	func facing_sign() -> float: return 1.0
 	var player_side := true
@@ -6352,12 +6365,12 @@ func _test_b27_coverage() -> void:
 			[162, "Super Fang"], [389, "Sucker Punch"], [395, "Force Palm"],
 			[446, "Stealth Rock"], [447, "Grass Knot"], [469, "Wide Guard"]]:
 		_chk("b27 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
-	# Rapid Spin's family stays deferred WITH its scanline partner, rather
-	# than half-ported. If a later session builds the scanline surface these
-	# light up together.
+	# Rapid Spin's family was deferred here WITH its scanline partner rather
+	# than half-ported; batch 37 built that surface, so they now PLAY. The
+	# prediction ("these light up together") held exactly.
 	for pair in [[229, "Rapid Spin"], [789, "Ice Spinner"]]:
-		_chk("b27 %s stays deferred (scanline elevation)" % pair[1],
-				not _dispatcher.can_play_move(int(pair[0])))
+		_chk("b27 %s plays (scanline surface built in b37)" % pair[1],
+				_dispatcher.can_play_move(int(pair[0])))
 
 
 # ── [M36D batch 28] ───────────────────────────────────────────────────────
@@ -8647,3 +8660,156 @@ func _test_b36_coverage() -> void:
 			[436, "Lava Plume"], [358, "Wake-Up Slap"],
 			[735, "Burning Jealousy"], [859, "Bloom Doom"]]:
 		_chk("b36 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 37] ───────────────────────────────────────────────────────
+
+func _test_b37_rapid_spin_needs_no_scanline_surface() -> void:
+	# The Step 0 correction this batch turns on: AnimRapidSpin is a plain
+	# sprite behavior. It must run correctly with NO background layer at all,
+	# which is what proves the five-batch-old "both are scanline" deferral
+	# reason was inherited rather than checked.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimRapidSpin", [0, 0, -20, 20, 20, 3],
+			"gRapidSpinSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	_chk("b37 Rapid Spin spawns without any background surface", node != null)
+	var xs: Array = []
+	for i in range(8):
+		_step(r["vm"], 1)
+		if not is_instance_valid(node):
+			break
+		xs.append(node.centre.x)
+	var moved_both_ways := false
+	if xs.size() >= 4:
+		var up := false
+		var down := false
+		for i in range(1, xs.size()):
+			if float(xs[i]) > float(xs[i - 1]):
+				up = true
+			elif float(xs[i]) < float(xs[i - 1]):
+				down = true
+		moved_both_ways = up and down
+	_chk("b37 ...and genuinely oscillates horizontally", moved_both_ways)
+
+
+func _test_b37_rapid_spin_ends_on_a_threshold_in_either_direction() -> void:
+	# The crossing direction is captured ONCE at spawn from whether the
+	# starting y is already past the threshold, so the same behavior serves a
+	# rising AND a falling spin. Testing one direction misses half of it.
+	var ended: Array = []
+	# rising: start below (-20), climb (+3) toward +20 -> ends by exceeding it
+	# falling: start above (+20), sink (-3) toward -20 -> ends by dropping under
+	for cfg in [[-20, 20, 3], [20, -20, -3]]:
+		var stage := FakeStage.new()
+		var r := _spawn(stage, "AnimRapidSpin",
+				[0, 0, int(cfg[0]), int(cfg[1]), 20, int(cfg[2])],
+				"gRapidSpinSpriteTemplate")
+		var node: AnimSprite = r["sprite"]
+		var frames := -1
+		for i in range(60):
+			_step(r["vm"], 1)
+			if not is_instance_valid(node) or node.is_queued_for_deletion():
+				frames = i + 1
+				break
+		ended.append(frames)
+	# ⚠️ MEASURED, not merely "did it end". Injecting a FIXED crossing
+	# direction (`y > threshold` for both) still ends the falling case -- on
+	# frame 1, because it starts already past that test. Asserting only
+	# "it ended" passed against that injection; the frame count is what
+	# separates a captured direction from a hardcoded one. Rule (15).
+	# Both legs travel 40 px at 3 px/frame, so ~13 frames each.
+	_chk("b37 a RISING Rapid Spin ends ON its threshold, not immediately",
+			ended.size() == 2 and int(ended[0]) >= 10 and int(ended[0]) <= 20)
+	_chk("b37 a FALLING one ends on its own, OPPOSITE threshold, and takes "
+			+ "just as long",
+			ended.size() == 2 and int(ended[1]) >= 10 and int(ended[1]) <= 20)
+
+
+func _test_b37_elevation_band_sweeps_upward() -> void:
+	# The scanline surface. The band spans the mon and both its edges march
+	# UP; a port that swept down, or held the band still, is the plausible
+	# misreading and would look like a tear rather than a lift.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[1] = 4
+	_registry.get_behavior("AnimTask_RapinSpinMonElevation").call(vm, {})
+	var tops: Array = []
+	var bottoms: Array = []
+	for i in range(10):
+		_step(vm, 1)
+		var band: Vector3 = stage.band
+		tops.append(band.x)
+		bottoms.append(band.y)
+	var top_rises := true
+	for i in range(1, tops.size()):
+		if float(tops[i]) > float(tops[i - 1]) + 0.001:
+			top_rises = false
+	_chk("b37 the elevation band's top edge sweeps UPWARD", top_rises
+			and float(tops[tops.size() - 1]) < float(tops[0]))
+	_chk("b37 ...starting BELOW the mon's centre",
+			float(tops[0]) > stage.center_of(AnimStage.ANIM_ATTACKER).y)
+	# The bottom edge is delayed 8 frames, so early on the band has real depth.
+	_chk("b37 ...with its bottom edge lagging (the band has real depth)",
+			float(bottoms[4]) > float(tops[4]))
+
+
+func _test_b37_elevation_offset_is_a_shimmer_not_a_screen_jump() -> void:
+	# +240 on a 256 px background WRAPS to -16. Porting the literal 240 would
+	# displace the band nearly a full screen and read as a tearing bug.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[1] = 4
+	_registry.get_behavior("AnimTask_RapinSpinMonElevation").call(vm, {})
+	var offsets: Array = []
+	for i in range(8):
+		_step(vm, 1)
+		offsets.append((stage.band as Vector3).z)
+	var peak := 0.0
+	for o in offsets:
+		peak = maxf(peak, absf(float(o)))
+	var scale: float = 1024.0 / 240.0
+	_chk("b37 the band's offset is a ~16 px shimmer, not a ~240 px jump",
+			peak > 1.0 and peak < 40.0 * scale)
+	var toggled := false
+	for i in range(1, offsets.size()):
+		if not is_equal_approx(float(offsets[i]), float(offsets[i - 1])):
+			toggled = true
+	_chk("b37 ...and it alternates rather than holding", toggled)
+
+
+func _test_b37_elevation_clears_its_band_when_done() -> void:
+	# Leaving a displaced strip of background on screen after the move is the
+	# same leak class rule (3) exists for.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[1] = 6
+	_registry.get_behavior("AnimTask_RapinSpinMonElevation").call(vm, {})
+	_step(vm, 4)
+	_chk("b37 the band is live mid-effect",
+			(stage.band as Vector3).y > (stage.band as Vector3).x)
+	_step(vm, 300)
+	var band: Vector3 = stage.band
+	# ⚠️ CHECKED AGAINST THE EXPLICIT RESET, not just a zero-height band.
+	# The two edges converge on the same y by construction, so "bottom <= top"
+	# is true whether or not anything cleared it -- that assertion passed
+	# against an injection that removed the clear entirely. A real clear sets
+	# the whole vector to zero, and the top edge can never reach 0 on its own
+	# because it converges on a real on-screen y. Rule (15).
+	_chk("b37 ...and is EXPLICITLY cleared once the sweep completes",
+			band.is_equal_approx(Vector3.ZERO))
+	_chk("b37 ...which the sweep alone could never produce",
+			stage.center_of(AnimStage.ANIM_ATTACKER).y > 1.0)
+
+
+func _test_b37_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b37 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 856)
+	for pair in [[229, "Rapid Spin"], [789, "Ice Spinner"], [787, "Spin Out"],
+			[794, "Mortal Spin"], [800, "Aqua Step"]]:
+		_chk("b37 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
