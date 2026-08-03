@@ -1907,6 +1907,24 @@ Live-driven in the real overworld: START -> BAG shows **`Potion x4`** / **`Poké
 
 ⚠️ **DISCLOSED, NOT BUILT**: the bag is READ-ONLY. There is no use / give / toss, no item-use from the field at all — a TM cannot be taught, a Potion cannot be drunk. Using an item needs a party screen to use it ON, which is **I5**, so this is a real ordering dependency rather than an omission. **Chrome is plain Godot `Panel`**, not the real `bag_frame.png` this project already has: M26E1 owns the visual rework and would redo it. **M27I status: I1, I2, I3, I3b and I4 are done; I5 (party/Summary/PC) is what remains.**
 
+**[M27 next-step scoping] RECON ONLY — 2026-08-03. ⚠️ Scope of record is `docs/m27_next_step_recon.md`.** No code written.
+
+**Recommendation: M27H (wild encounters) next, then M27I I5.**
+
+**M27H is the last genuinely UNPROVEN seam in the slice.** `[M27D D5]` proved the TRAINER path; a wild battle is a different shape — no trainer, no prize money, catching, fleeing — and `ItemManager.attempt_catch` plus `catch_attempted` have existed since M22 and **have never run outside a test**.
+
+**Its data is already complete for the corridor**, measured rather than assumed: **7 of the 32 baked maps carry a land encounter table, and they are exactly the 7 outdoor ones** (Pallet, Viridian City, Viridian Forest, Routes 1/2/3/22). Corridor grass is **1,223 cells, all `MB_TALL_GRASS`** — `MB_LONG_GRASS`, `MB_SHORT_GRASS` and the ash/cycling variants appear **zero** times, so the trigger has one behaviour to recognise, not six.
+
+⚠️ **A CORRECTION TO THIS ROADMAP'S OWN M27/M29 ROWS.** They describe Kanto's encounters as "imported (264 of 388 entries)", which reads as done. **`data/wild_encounters.json` is the RAW reference dump** — 1.0 MB, 388 entries, 240 maps, no per-map lookup, no consumer. Exactly the state `heal_locations` was in before `[M27O O1]` built its generator, so H starts with a pipeline task.
+
+⚠️ **A CORRECTION TO `docs/m26_e4_recon.md`**, whose conclusion is unaffected but whose statement of fact is wrong: it says "item descriptions are empty". Precisely — **`items.json` has all 816** and the **`.tres` pipeline has 0 of 162**. `[M27I I4]`'s description box works because `PokemonRegistry` reads the JSON. **E4's real blocker IS confirmed still open: `moves.json` has descriptions on 0 of 935 moves.**
+
+**Why not I5 first**: it is bigger, `docs/m26_e3_recon.md` and `m26_e4_recon.md` already scope Party and Summary thoroughly (both recommending the Emerald UI Pack) — but **for the BATTLE screens**, and the roadmap's own "Summary built once and shared with M26E4" means I5 should consume those rather than re-derive them. Its highest-value half, item use, depends on the party screen those recons scope for battle.
+
+⚠️ **A REAL TWO-WAY ORDERING DEPENDENCY WORTH DECIDING BEFORE EITHER**: catching (H4) needs somewhere for a 7th Pokémon to go, and the PC (I5-5) is **10,137 lines** in reference with **no consumer before a full party**. Source's own answer without a PC is to REFUSE the catch — recommended, which unblocks H4 without needing I5-5 at all.
+
+**Six decisions in that doc's §5**, the load-bearing ones being the next step itself, whether the PC is in the slice at all, and what a full-party catch does. **Explicitly not proposed**: M27E (nothing in the corridor needs Cut/Surf to reach Pewter), M27G (its own session; nothing in the slice is blocked on it), M27L (the slice survives a replay).
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **[M27M-T — trimmed TileSet] SCOPED 2026-07-30, not built. ⚠️ Scope of record is `docs/m27m_trimmed_tileset_recon.md`.** Measured rather than estimated: a real trimmed twin of the Pallet Town pair loads in **1.71 ms against the full set's 15.25 ms — 8.9x**, 25 KB → 6 KB. Region-wide only **11,036 tile definitions are actually placed** against the 132,480 `create_tile()` calls made today (**4.0x**), and all fourteen corridor pairs together would build in **~31 ms** — about what ONE cold tileset costs now. Baked scenes need no re-bake (M27M2 made the TileSet an `ext_resource`), `check_bake_diff` and the overlay are unaffected, and no consumer iterates tiles. **The failure mode is SILENT and is the whole design constraint**: `set_cell` accepts a coord whose tile was never created, stores it faithfully, and renders nothing — so the trim pass must ship with its own coverage proof, not after. Three hazards are recorded there with measurements: the trim set must be computed region-wide per pair rather than per-bake (or a later map silently renders with holes), it must union `border[]` as well as `metatile[]` (**5 border ids region-wide appear in no map body**), and it conflicts head-on with M27M's authoring requirement — resolved by treating `trim`/`expand` as two idempotent operations on ONE artifact rather than shipping two files.
