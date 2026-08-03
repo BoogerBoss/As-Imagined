@@ -235,6 +235,29 @@ func _ready() -> void:
 	_test_b33_heat_wave_shoves_the_whole_target_side()
 	_test_b33_stockpile_counter_stub_is_bounded()
 	_test_b33_coverage()
+	_test_b34_torment_cadence_is_not_uniform()
+	_test_b34_torment_bubbles_alternate_and_converge()
+	_test_b34_barrage_strobes_out_rather_than_fading()
+	_test_b34_water_sport_sprays_away_from_the_user()
+	_test_b34_brine_rains_through_a_side_dependent_band()
+	_test_b34_brine_stops_at_ten_drops()
+	_test_b34_ions_fall_across_the_sky_not_on_a_battler()
+	_test_b34_smokescreen_lands_down_right_of_the_target()
+	_test_b34_odor_sleuth_clones_are_mirror_images()
+	_test_b34_odor_sleuth_shrinks_away_after_holding()
+	_test_b34_magical_leaf_ramps_into_each_colour_then_cuts()
+	_test_b34_coverage()
+	_test_b35_mist_ball_ignores_its_spawn_offset()
+	_test_b35_sky_drop_spawns_on_target_but_hides_the_attacker()
+	_test_b35_will_o_wisp_orbs_drift_away_from_their_source()
+	_test_b35_will_o_wisp_fire_spiral_grows()
+	_test_b35_knock_off_tail_side_branch_is_not_a_mirror()
+	_test_b35_zen_headbutt_offset_is_fixed_and_unmirrored()
+	_test_b35_aqua_tail_spawns_on_either_battler()
+	_test_b35_present_lands_below_the_target()
+	_test_b35_present_heal_particle_drifts_linearly()
+	_test_b35_twinkle_follows_its_selector()
+	_test_b35_coverage()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -7818,9 +7841,563 @@ func _test_b33_coverage() -> void:
 	for pair in [[37, "Thrash"], [255, "Spit Up"], [257, "Heat Wave"],
 			[263, "Facade"], [457, "Head Smash"]]:
 		_chk("b33 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
-	# The five deferred spawners, asserted as still-blocked so a partial
-	# port cannot pass quietly.
-	for pair in [[348, "Leaf Blade"], [314, "Air Cutter"], [346, "Water Sport"],
-			[362, "Brine"], [516, "Bestow"]]:
+	# The deferred spawners, asserted as still-blocked so a partial port
+	# cannot pass quietly. Water Sport (346) and Brine (362) were on this
+	# list until batch 34 ported them; they are asserted as PLAYING there.
+	for pair in [[348, "Leaf Blade"], [314, "Air Cutter"], [516, "Bestow"]]:
 		_chk("b33 %s stays deferred (multi-phase spawner / item icon)"
 				% pair[1], not _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 34] ───────────────────────────────────────────────────────
+
+func _test_b34_torment_cadence_is_not_uniform() -> void:
+	# THE claim of this port. Upstream tests `data[1] <= 2` AFTER the
+	# increment, so the extra 10-frame hold applies to bubbles 0 and 1 ONLY.
+	# A reading that applies it to the first THREE (or to all six, or to
+	# none) still produces six bubbles in the right places -- the cadence is
+	# the only thing that separates the readings.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_TormentAttacker").call(vm, {})
+	var spawn_frames: Array = []
+	var seen := 0
+	for f in range(120):
+		_step(vm, 1)
+		var n: int = _live_sprites(stage).size()
+		while seen < n:
+			spawn_frames.append(f)
+			seen += 1
+	_chk("b34 Torment makes SIX thought bubbles", spawn_frames.size() == 6)
+	_chk("b34 ...on frames 0/22/44/56/68/80 (slow open, fast tail)",
+			spawn_frames == [0, 22, 44, 56, 68, 80])
+
+
+func _test_b34_torment_bubbles_alternate_and_converge() -> void:
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	_registry.get_behavior("AnimTask_TormentAttacker").call(vm, {})
+	_step(vm, 90)
+	var bubbles: Array = _live_sprites(stage)
+	_chk("b34 all six bubbles are still up", bubbles.size() == 6)
+	if bubbles.size() != 6:
+		return
+	var alternates := true
+	var converges := true
+	var prev_mag := 1.0e9
+	for i in range(6):
+		var dx: float = bubbles[i].centre.x - atk.x
+		var want_right: bool = (i % 2) == 0
+		if (dx > 0.0) != want_right:
+			alternates = false
+		if (i % 2) == 0:
+			if absf(dx) > prev_mag + 0.001:
+				converges = false
+			prev_mag = absf(dx)
+	_chk("b34 bubbles alternate right/left of the attacker", alternates)
+	_chk("b34 ...and each PAIR sits closer in than the last", converges)
+	_chk("b34 ...climbing as they close (the last is above the first)",
+			bubbles[5].centre.y < bubbles[0].centre.y)
+
+
+func _test_b34_barrage_strobes_out_rather_than_fading() -> void:
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	_registry.get_behavior("AnimTask_BarrageBall").call(vm, {})
+	var balls: Array = _live_sprites(stage)
+	_chk("b34 Barrage makes one ball", balls.size() == 1)
+	if balls.is_empty():
+		return
+	var ball: AnimSprite = balls[0]
+	_step(vm, 16)
+	_chk("b34 ...which lands BELOW the target's centre, not on it",
+			ball.centre.y > tgt.y + 1.0)
+	var alpha_before: float = ball.modulate.a
+	var toggles := 0
+	var was: bool = ball.visible
+	for i in range(40):
+		_step(vm, 1)
+		if not is_instance_valid(ball):
+			break
+		if ball.visible != was:
+			toggles += 1
+			was = ball.visible
+	_chk("b34 ...then STROBES out (visibility toggles, many times)",
+			toggles >= 8)
+	_chk("b34 ...without ever fading (alpha untouched)",
+			is_instance_valid(ball) == false
+			or is_equal_approx(ball.modulate.a, alpha_before))
+
+
+func _test_b34_water_sport_sprays_away_from_the_user() -> void:
+	# The sweep sign is `IsOnPlayerSide(attacker) ? 1 : -1`. Pinned
+	# ABSOLUTELY on each side rather than "the two sides differ", which is
+	# true under the inverted reading too.
+	var out: Array = []
+	for player in [true, false]:
+		var stage := FakeStage.new()
+		stage.player_side = player
+		var vm := _vm(stage)
+		var origin: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+		_registry.get_behavior("AnimTask_WaterSport").call(vm, {})
+		_step(vm, 6)
+		var drops: Array = _live_sprites(stage)
+		if drops.is_empty():
+			out.append(0.0)
+			continue
+		out.append(drops[0].centre.x - origin.x)
+	_chk("b34 a PLAYER-side Water Sport sprays to the right",
+			out.size() == 2 and float(out[0]) > 0.0)
+	_chk("b34 ...and an OPPONENT-side one to the left",
+			out.size() == 2 and float(out[1]) < 0.0)
+
+
+func _test_b34_brine_rains_through_a_side_dependent_band() -> void:
+	# Player side rains 0..40, opponent side 40..90. The bands do not merely
+	# differ -- the opponent's STARTS where the player's ENDS, because the
+	# opposing mon sits higher on screen.
+	var tops: Array = []
+	for player in [true, false]:
+		var stage := FakeStage.new()
+		stage.player_side = player
+		var vm := _vm(stage)
+		_registry.get_behavior("AnimTask_BrineRain").call(vm, {})
+		_step(vm, 1)
+		var drops: Array = _live_sprites(stage)
+		tops.append(drops[0].centre.y if not drops.is_empty() else -1.0)
+	# Asserted as a DELTA rather than two absolute y values: the drop has
+	# already taken its first fall step by the time it is measurable, so the
+	# absolute figures carry that step while the 40 px band offset does not.
+	var scale: float = 1024.0 / 240.0
+	_chk("b34 both sides genuinely spawn rain", tops.size() == 2
+			and float(tops[0]) >= 0.0 and float(tops[1]) >= 0.0)
+	_chk("b34 an OPPONENT-side Brine starts its band 40 px LOWER than a "
+			+ "player-side one",
+			tops.size() == 2
+			and absf((float(tops[1]) - float(tops[0])) - 40.0 * scale) < 2.0)
+
+
+func _test_b34_brine_stops_at_ten_drops() -> void:
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_BrineRain").call(vm, {})
+	var peak := 0
+	for i in range(200):
+		_step(vm, 1)
+		peak = maxi(peak, _live_sprites(stage).size())
+	# Splats are spawned too, so the ceiling is not exactly 10 -- but the
+	# task must stop, and it must not run away.
+	_chk("b34 Brine's rain is bounded (10 drops, not an endless stream)",
+			peak > 0 and peak <= 20)
+	_chk("b34 ...and the task finishes", not vm.is_running()
+			or _live_sprites(stage).size() == 0)
+
+
+func _test_b34_ions_fall_across_the_sky_not_on_a_battler() -> void:
+	# Two claims that a battler-anchored port would fail: the ions cover the
+	# full screen WIDTH, and they never leave the TOP HALF.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	vm.args[1] = 2
+	vm.args[2] = 40
+	_registry.get_behavior("AnimTask_CreateIons").call(vm, {})
+	_step(vm, 40)
+	var ions: Array = _live_sprites(stage)
+	_chk("b34 Ion Deluge spawns a stream of ions", ions.size() >= 10)
+	var scale: float = 1024.0 / 240.0
+	var half: float = 80.0 * scale
+	var all_high := true
+	var lo := 1.0e9
+	var hi := -1.0e9
+	for s in ions:
+		if s.centre.y > half + 1.0:
+			all_high = false
+		lo = minf(lo, s.centre.x)
+		hi = maxf(hi, s.centre.x)
+	_chk("b34 ...every one of them in the TOP HALF of the screen", all_high)
+	_chk("b34 ...spread across the width, not stacked on a battler",
+			hi - lo > 100.0 * scale)
+
+
+func _test_b34_smokescreen_lands_down_right_of_the_target() -> void:
+	# `+8, +8` -- both positive. A centred port, or one that read the offset
+	# as a mon-pic correction and dropped it, fails both halves.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	_registry.get_behavior("AnimTask_SmokescreenImpact").call(vm, {})
+	var puffs: Array = _live_sprites(stage)
+	_chk("b34 Smokescreen makes an impact burst", puffs.size() == 1)
+	if puffs.is_empty():
+		return
+	_chk("b34 ...offset DOWN and RIGHT of the target, not centred on it",
+			puffs[0].centre.x > tgt.x + 1.0 and puffs[0].centre.y > tgt.y + 1.0)
+
+
+func _test_b34_odor_sleuth_clones_are_mirror_images() -> void:
+	# The two clones' x offsets are always exact negatives. THE 180-DEGREE
+	# STARTING OFFSET is what carries that, NOT the opposite phase-step signs
+	# -- injecting the same-direction misreading was tried and PASSED, because
+	# only x is drawn and cos(t+128) == -cos(t) whichever way the phases walk.
+	# So this pins the offset (the observable claim) and deliberately does not
+	# pretend to test the step directions, which this port cannot see.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	var tgt: Control = stage.sprite_for(AnimStage.ANIM_TARGET)
+	var home: Vector2 = tgt.position
+	_registry.get_behavior("AnimTask_OdorSleuthMovement").call(vm, {})
+	_chk("b34 Odor Sleuth makes TWO clones", _clone_count(stage) == 2)
+	var clones: Array = []
+	for child in stage.layer_node.get_children():
+		if child.has_meta("_anim_trace"):
+			clones.append(child)
+	if clones.size() != 2:
+		return
+	var mirrored := true
+	var ever_apart := false
+	var single_visible := true
+	for f in range(20):
+		_step(vm, 1)
+		var da: float = clones[0].position.x - home.x
+		var db: float = clones[1].position.x - home.x
+		if absf(da + db) > 1.0:
+			mirrored = false
+		if absf(da - db) > 4.0:
+			ever_apart = true
+		if clones[0].visible == clones[1].visible:
+			single_visible = false
+	_chk("b34 ...whose x offsets are exact negatives at every frame", mirrored)
+	_chk("b34 ...and which genuinely separate (not both pinned at 0)",
+			ever_apart)
+	_chk("b34 ...with exactly ONE of the two on screen at a time",
+			single_visible)
+
+
+func _test_b34_odor_sleuth_shrinks_away_after_holding() -> void:
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	_registry.get_behavior("AnimTask_OdorSleuthMovement").call(vm, {})
+	_step(vm, 50)
+	_chk("b34 the clones are still up through the 60-frame hold",
+			_clone_count(stage) == 2)
+	_step(vm, 90)
+	_chk("b34 ...then shrink to nothing and are cleaned up",
+			_clone_count(stage) == 0)
+
+
+func _test_b34_magical_leaf_ramps_into_each_colour_then_cuts() -> void:
+	# 7 colours x 17 steps. Within a colour the strength walks 0..16; at the
+	# boundary it SNAPS back to 0 with a new colour. A cross-fade port (the
+	# plausible misreading of "cycle") never returns to 0 mid-run.
+	var stage := FakeStage.new()
+	var vm := _vm(stage)
+	# Borrow this batch's own one-shot burst to get a live anim sprite for
+	# the ramp to act on.
+	_registry.get_behavior("AnimTask_SmokescreenImpact").call(vm, {})
+	var sprites: Array = _live_sprites(stage)
+	if sprites.is_empty():
+		_chk("b34 Magical Leaf has a sprite to tint", false)
+		return
+	var s: AnimSprite = sprites[0]
+	var cycle_vm := _vm(stage)
+	_registry.get_behavior("AnimTask_CycleMagicalLeafPal").call(cycle_vm, {})
+	var amounts: Array = []
+	var colours: Array = []
+	for f in range(34):
+		_step(cycle_vm, 1)
+		var mat: ShaderMaterial = s.material as ShaderMaterial
+		if mat == null:
+			amounts.append(-1.0)
+			colours.append(Color.BLACK)
+			continue
+		amounts.append(float(mat.get_shader_parameter("tint_amount")))
+		colours.append(mat.get_shader_parameter("tint") as Color)
+	_chk("b34 the blend ramps up within a colour",
+			float(amounts[5]) > float(amounts[1]))
+	_chk("b34 ...reaches full strength at the end of the colour",
+			is_equal_approx(float(amounts[16]), 1.0))
+	_chk("b34 ...then SNAPS back to zero rather than cross-fading",
+			absf(float(amounts[17])) < 0.001)
+	_chk("b34 ...on a DIFFERENT colour", colours[17] != colours[16])
+	_chk("b34 ...and there are seven colours in the ramp",
+			colours[0] != colours[17]
+			and colours.size() == 34)
+	_step(cycle_vm, 200)
+	_chk("b34 ...with the tint cleared when the ramp is done",
+			s.material == null)
+
+
+func _test_b34_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b34 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 827)
+	for pair in [[259, "Torment"], [140, "Barrage"], [346, "Water Sport"],
+			[362, "Brine"], [569, "Ion Deluge"], [108, "Smokescreen"],
+			[316, "Odor Sleuth"], [345, "Magical Leaf"]]:
+		_chk("b34 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+	# The spawners this batch deliberately left, asserted as still-blocked.
+	for pair in [[348, "Leaf Blade"], [314, "Air Cutter"], [284, "Eruption"],
+			[139, "Poison Gas"]]:
+		_chk("b34 %s stays deferred (stated reason)" % pair[1],
+				not _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 35] ───────────────────────────────────────────────────────
+
+func _test_b35_mist_ball_ignores_its_spawn_offset() -> void:
+	# THE claim. AnimThrowMistBall overwrites the sprite position with the
+	# attacker's own coordinates BEFORE delegating to the shared translate
+	# callback, so args 0/1 -- honoured by every OTHER user of that callback
+	# -- are discarded. A port that just aliased the shared behavior would
+	# spawn the ball at an offset and look correct in isolation.
+	var out: Array = []
+	for off in [0, 60]:
+		var stage := FakeStage.new()
+		var r := _spawn(stage, "AnimThrowMistBall", [off, off, 0, 0, 20],
+				"gMistBallSpriteTemplate")
+		out.append((r["sprite"] as AnimSprite).centre)
+	_chk("b35 Mist Ball spawns identically regardless of args 0/1",
+			out.size() == 2 and (out[0] as Vector2).is_equal_approx(out[1]))
+	var stage2 := FakeStage.new()
+	var r2 := _spawn(stage2, "AnimThrowMistBall", [0, 0, 0, 0, 20],
+			"gMistBallSpriteTemplate")
+	_chk("b35 ...at the attacker's own centre",
+			(r2["sprite"] as AnimSprite).centre.is_equal_approx(
+					stage2.center_of(AnimStage.ANIM_ATTACKER)))
+	_step(r2["vm"], 20)
+	_chk("b35 ...and it genuinely travels to the target",
+			absf((r2["sprite"] as AnimSprite).centre.x
+					- stage2.center_of(AnimStage.ANIM_TARGET).x) < 40.0
+			or not is_instance_valid(r2["sprite"]))
+
+
+func _test_b35_sky_drop_spawns_on_target_but_hides_the_attacker() -> void:
+	# The asymmetry: it shares AnimFlyBallUp's step exactly, so the tempting
+	# port is "Fly, for the target" -- which would hide the wrong Pokemon.
+	var stage := FakeStage.new()
+	var atk: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var tgt: Control = stage.sprite_for(AnimStage.ANIM_TARGET)
+	var r := _spawn(stage, "AnimSkyDropBallUp", [0, 0, 2, 128],
+			"gSkyDropTargetFlyingTemplate")
+	var ball: AnimSprite = r["sprite"]
+	_chk("b35 Sky Drop's ball spawns on the TARGET",
+			absf(ball.centre.x - stage.center_of(AnimStage.ANIM_TARGET).x)
+					< absf(ball.centre.x
+							- stage.center_of(AnimStage.ANIM_ATTACKER).x))
+	_chk("b35 ...while the ATTACKER is the one hidden", not atk.visible)
+	_chk("b35 ...and the target stays visible", tgt.visible)
+	var y0: float = ball.centre.y
+	_step(r["vm"], 8)
+	_chk("b35 ...and it accelerates upward",
+			not is_instance_valid(ball) or ball.centre.y < y0 - 1.0)
+	(r["vm"] as AnimScriptVM)._finish()
+	_chk("b35 ...with the hidden attacker restored when the run ends",
+			atk.visible)
+
+
+func _test_b35_will_o_wisp_orbs_drift_away_from_their_source() -> void:
+	# Keyed on the ATTACKER's own side, not on the direction of travel toward
+	# the target. Pinned ABSOLUTELY per side -- rule (13).
+	var out: Array = []
+	for player in [true, false]:
+		var stage := FakeStage.new()
+		stage.player_side = player
+		var r := _spawn(stage, "AnimWillOWispOrb", [0, 0, 0],
+				"gWillOWispOrbSpriteTemplate")
+		var node: AnimSprite = r["sprite"]
+		var x0: float = node.centre.x
+		_step(r["vm"], 6)
+		out.append(node.centre.x - x0)
+	_chk("b35 a PLAYER-side Will-O-Wisp's orbs drift LEFT",
+			out.size() == 2 and float(out[0]) < -1.0)
+	_chk("b35 ...and an OPPONENT-side one's drift RIGHT",
+			out.size() == 2 and float(out[1]) > 1.0)
+
+
+func _test_b35_will_o_wisp_fire_spiral_grows() -> void:
+	# THE claim of this behavior. Both ellipse amplitudes are ACCUMULATORS,
+	# not constants -- the flame spirals outward rather than circling at a
+	# fixed radius. A fixed-radius port is a different move entirely.
+	var stage := FakeStage.new()
+	var centre: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	var r := _spawn(stage, "AnimWillOWispFire", [0],
+			"gWillOWispFireSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	var radii: Array = []
+	var xs: Array = []
+	var ys: Array = []
+	for i in range(40):
+		_step(r["vm"], 1)
+		if not is_instance_valid(node):
+			break
+		var d: Vector2 = node.centre - centre
+		radii.append(d.length())
+		xs.append(absf(d.x))
+		ys.append(absf(d.y))
+	_chk("b35 Will-O-Wisp's flame starts near the target", radii.size() > 20
+			and float(radii[0]) < 40.0)
+	var late: float = 0.0
+	for i in range(radii.size() - 8, radii.size()):
+		late = maxf(late, float(radii[i]))
+	var early: float = 0.0
+	for i in range(mini(8, radii.size())):
+		early = maxf(early, float(radii[i]))
+	_chk("b35 ...and the spiral GROWS rather than circling at a fixed radius",
+			late > early * 2.0)
+	var max_x := 0.0
+	var max_y := 0.0
+	for i in range(xs.size()):
+		max_x = maxf(max_x, float(xs[i]))
+		max_y = maxf(max_y, float(ys[i]))
+	_chk("b35 ...growing FASTER horizontally than vertically (0x180 vs 0xA0)",
+			max_x > max_y)
+
+
+func _test_b35_knock_off_tail_side_branch_is_not_a_mirror() -> void:
+	# Source subtracts the x delta and reverses the orbit for a PLAYER-side
+	# target, but ADDS the y delta either way. Reading it as a plain sign flip
+	# on both axes puts the tail on the wrong side in one of the two cases.
+	var dx: Array = []
+	var dy: Array = []
+	var spin: Array = []
+	for player_attacker in [true, false]:
+		var stage := FakeStage.new()
+		stage.player_side = player_attacker
+		var r := _spawn(stage, "AnimKnockOffAquaTail", [24, 12],
+				"gAquaTailKnockOffSpriteTemplate")
+		var node: AnimSprite = r["sprite"]
+		var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+		# The spawn frame's own base, before the first orbit step.
+		var d0: Vector2 = node.centre - tgt
+		dx.append(d0.x)
+		dy.append(d0.y)
+		# Sampled on X: the orbit starts at phase 192, the sine's own
+		# minimum, where stepping either direction moves Y identically --
+		# rule (14). Cosine is at its steepest there, so X separates them.
+		var a0: float = node.centre.x
+		_step(r["vm"], 1)
+		spin.append(node.centre.x - a0)
+	_chk("b35 the x delta genuinely flips with the TARGET's side",
+			dx.size() == 2 and signf(float(dx[0])) != signf(float(dx[1])))
+	_chk("b35 ...while the y delta does NOT (both positive, not mirrored)",
+			dy.size() == 2 and float(dy[0]) > 0.0 and float(dy[1]) > 0.0)
+	_chk("b35 ...and the orbit runs the opposite way per side",
+			spin.size() == 2
+			and signf(float(spin[0])) != signf(float(spin[1])))
+
+
+func _test_b35_zen_headbutt_offset_is_fixed_and_unmirrored() -> void:
+	# +18 y is a constant in the code, not an argument, and not side-mirrored.
+	#
+	# ⚠️ THE "NOT MIRRORED" HALF IS NOT TESTED HERE, and injecting a mirror
+	# PASSED. `FakeStage.facing_sign()` returns a fixed 1.0, so no stage
+	# double in this suite can observe a facing flip -- the claim rests on the
+	# source read alone. What IS pinned is the magnitude and the battler
+	# selector. Rule (15): a green test must not be read as covering it.
+	var offs: Array = []
+	for player in [true, false]:
+		var stage := FakeStage.new()
+		stage.player_side = player
+		var r := _spawn(stage, "AnimateZenHeadbutt", [1],
+				"gZenHeadbuttSpriteTemplate")
+		offs.append((r["sprite"] as AnimSprite).centre
+				- stage.center_of(AnimStage.ANIM_TARGET))
+	var scale: float = 1024.0 / 240.0
+	_chk("b35 Zen Headbutt sits +18 px BELOW its battler",
+			offs.size() == 2
+			and absf((offs[0] as Vector2).y - 18.0 * scale) < 2.0)
+	_chk("b35 ...identically on both sides (not mirrored)",
+			offs.size() == 2
+			and (offs[0] as Vector2).is_equal_approx(offs[1] as Vector2))
+	var stage2 := FakeStage.new()
+	var r2 := _spawn(stage2, "AnimateZenHeadbutt", [0],
+			"gZenHeadbuttSpriteTemplate")
+	_chk("b35 ...and arg 0 selects the ATTACKER instead",
+			absf((r2["sprite"] as AnimSprite).centre.x
+					- stage2.center_of(AnimStage.ANIM_ATTACKER).x) < 1.0)
+
+
+func _test_b35_aqua_tail_spawns_on_either_battler() -> void:
+	var out: Array = []
+	for which in [0, 1]:
+		var stage := FakeStage.new()
+		var r := _spawn(stage, "AnimAquaTail", [0, 0, which, 0],
+				"gAquaTailHitSpriteTemplate")
+		out.append((r["sprite"] as AnimSprite).centre.x
+				- stage.center_of(AnimStage.ANIM_ATTACKER if which == 0
+						else AnimStage.ANIM_TARGET).x)
+	_chk("b35 Aqua Tail's arg 2 genuinely selects the battler",
+			out.size() == 2 and absf(float(out[0])) < 1.0
+			and absf(float(out[1])) < 1.0)
+
+
+func _test_b35_present_lands_below_the_target() -> void:
+	var stage := FakeStage.new()
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	var r := _spawn(stage, "AnimPresent", [], "gPresentSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	_chk("b35 Present leaves the attacker",
+			node.centre.is_equal_approx(
+					stage.center_of(AnimStage.ANIM_ATTACKER)))
+	var peak := node.centre.y
+	for i in range(30):
+		_step(r["vm"], 1)
+		if not is_instance_valid(node):
+			break
+		peak = minf(peak, node.centre.y)
+	_chk("b35 ...on a real ARC (it rises above both endpoints first)",
+			peak < minf(stage.center_of(AnimStage.ANIM_ATTACKER).y, tgt.y) - 5.0)
+	_step(r["vm"], 60)
+	_chk("b35 ...and lands BELOW the target's centre, not on it",
+			not is_instance_valid(node) or node.centre.y > tgt.y)
+
+
+func _test_b35_present_heal_particle_drifts_linearly() -> void:
+	# `y2 = velocity * age` -- no easing, no sine. Equal per-frame steps is
+	# the whole claim; an eased port would fail it.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimPresentHealParticle", [0, 0, 3],
+			"gPresentHealParticleSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	var ys: Array = []
+	for i in range(6):
+		_step(r["vm"], 1)
+		ys.append(node.centre.y)
+	var deltas: Array = []
+	for i in range(1, ys.size()):
+		deltas.append(float(ys[i]) - float(ys[i - 1]))
+	var uniform := true
+	for d in deltas:
+		if absf(float(d) - float(deltas[0])) > 0.01:
+			uniform = false
+	_chk("b35 the heal particle drifts at a CONSTANT rate (linear, not eased)",
+			deltas.size() >= 4 and uniform and absf(float(deltas[0])) > 1.0)
+
+
+func _test_b35_twinkle_follows_its_selector() -> void:
+	var out: Array = []
+	for who in [AnimStage.ANIM_ATTACKER, AnimStage.ANIM_TARGET]:
+		var stage := FakeStage.new()
+		var r := _spawn(stage, "SpriteCB_TwinkleOnBattler", [0, 0, who],
+				"gTargetTwinkleSpriteTemplate")
+		out.append((r["sprite"] as AnimSprite).centre.x
+				- stage.center_of(who).x)
+	_chk("b35 the twinkle sits on whichever battler arg 2 names",
+			out.size() == 2 and absf(float(out[0])) < 1.0
+			and absf(float(out[1])) < 1.0)
+
+
+func _test_b35_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b35 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 839)

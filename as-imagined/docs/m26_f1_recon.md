@@ -1454,6 +1454,165 @@ is harness-specific, not a shipped bug.
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
 
+### M36D batch 35 — COMPLETE 2026-08-03. Pairs that are not pairs.
+
+**827 -> 839 of 932 (88.7% -> 90.0%). 10 behaviors, 12 moves.** Behaviors
+461 -> 471, suite 1114 -> 1140/1140. **The 90% line is crossed.**
+
+The batch's shape: behaviors whose sibling is already ported, or whose twin
+ships alongside. **Three of the five pairs diverge somewhere that matters**,
+which is the finding — a shared name or a shared step function does not imply
+a shared mechanism, and every one of those divergences is the kind that looks
+correct in isolation.
+
+**`AnimThrowMistBall` IS the shared translate callback, with one difference.**
+It OVERWRITES the sprite position with the attacker's own coordinates BEFORE
+delegating, so args 0/1 — the spawn offset every other user of that callback
+honours — are discarded. Registering it as a plain alias would spawn the ball
+at an offset and look fine on its own. Pinned by spawning with args 0/1 at 0
+and at 60 and asserting the two positions are identical.
+
+**`AnimSkyDropBallUp` shares `AnimFlyBallUp`'s step exactly and hides the
+OTHER mon.** It spawns on the TARGET while hiding the ATTACKER — Sky Drop
+carries the victim up, so the ball marks where they were and the user is what
+vanishes. "Fly, but for the target" hides the wrong Pokemon. The shared body
+was factored into `_fly_ball_up_from(spawn_on)`; batch 8's own entry point and
+tests are untouched. Routed through the VM's tracked visibility, rule (3).
+
+**`AnimWillOWispFire`'s ellipse GROWS.** Both amplitudes are accumulators, not
+constants (`data[3] += 0xC0 * 2`, `data[4] += 0xA0`, each read `>> 8`), so the
+flame spirals OUTWARD from the target rather than circling at a fixed radius —
+and it widens faster horizontally than vertically, so the spiral flattens as it
+grows. A fixed-radius port is a different move; the test asserts the late
+radius exceeds the early one by more than 2x AND that max-x exceeds max-y.
+
+⚠️ **DISCLOSED, and it is a deliberate omission rather than a miss**: source
+additionally re-centres that spiral between both targets — but only when the
+battle is doubles AND the move's own target type is `TARGET_BOTH`. This port
+has no move-target information at the behavior layer, and applying the
+side-centre unconditionally moves the flame off a single target in every
+singles battle. Centred on the target itself; the doubles case is not modelled.
+The first cut DID apply it unconditionally and the test caught it.
+
+**`AnimKnockOffAquaTail`'s side branch is not a mirror.** Against a PLAYER-side
+target the x delta is SUBTRACTED and the orbit runs BACKWARDS (phase step -11);
+against an opponent-side one the same delta is ADDED and the orbit runs
+forwards. **The y delta is added either way** — not mirrored, unlike x. Reading
+it as a plain sign flip on both axes puts the tail on the wrong side of the mon
+in one of the two cases, and the injection confirms it.
+
+⚠️ **RULE (14) FIRED AGAIN, in the same shape as batch 32.** The orbit-direction
+check first sampled Y — and the orbit starts at phase 192, the sine's own
+minimum, where stepping either direction moves Y identically. Moved to X, where
+cosine is steepest.
+
+**`AnimWillOWispOrb`'s drift is keyed on the ATTACKER's own side**, not on the
+direction of travel toward the target: the orbs fan AWAY from their source
+(-4 px/frame player-side, +4 opponent-side). Pinned absolutely per side.
+
+**`AnimPresent` arcs to a point 10 px BELOW the target's centre** — the box
+lands at the feet, not the face — and its args are unused, which source's own
+comment says outright. **`AnimPresentHealParticle` is a plain LINEAR drift**
+(`y2 = velocity * age`, no easing and no sine anywhere); an eased port fails
+the equal-per-frame-step assertion.
+
+**`AnimateZenHeadbutt`'s +18 y is a constant, not an argument.**
+
+⚠️ **AND ITS "NOT MIRRORED" HALF IS UNTESTED — injecting a mirror PASSED.**
+`FakeStage.facing_sign()` returns a fixed 1.0, so no stage double in this suite
+can observe a facing flip. The magnitude and the battler selector are pinned;
+the un-mirrored claim rests on the source read alone, and the test says so.
+Second occurrence of rule (15) in two batches — worth noticing that the rule
+earns its place by catching a DIFFERENT shape each time (batch 34: two source
+facts, only one observable; here: a stage double that cannot express the axis).
+
+**Injections.** 8 run, 8 caught, plus the Zen Headbutt mirror which passed and
+is now documented as uncovered rather than left implying coverage.
+
+---
+
+### M36D batch 34 — COMPLETE 2026-08-03. The multi-phase spawners batch 33 deferred.
+
+**819 -> 827 of 932 (87.9% -> 88.7%). 8 behaviors, 8 moves** — Torment(259),
+Barrage(140), Water Sport(346), Brine(362), Ion Deluge(569), Smokescreen(108),
+Odor Sleuth(316), Magical Leaf(345). Behaviors 453 -> 461, suite 1070 ->
+1114/1114.
+
+Batch 33 deferred five of these as "multi-phase SPAWNERS ... a batch's work on
+its own rather than a task." Four of the five are now closed; the other,
+`AnimTask_LeafBlade`, genuinely is a batch on its own (a nine-state machine
+that re-aims a slash between states while driving the target's own affine
+table) and stays deferred alongside `AnimTask_AirCutterProjectile` and
+`AnimTask_EruptionLaunchRocks`, both of which build per-sprite coordinate
+tables through helpers that need their own reading pass.
+
+**What makes these a class**: the TASK, not the script, decides how many
+sprites exist and where each goes. They share no code with each other.
+
+**THE CADENCE IS THE PORT, for Torment.** Six thought bubbles alternating
+right/left, converging inward and climbing in pairs (32/-20, 26/-26, 20/-32) --
+but the timing is what a plausible misreading gets wrong. Between bubbles the
+attacker runs a 12-frame affine wobble, and `data[1] <= 2` is tested AFTER the
+increment, so the extra 10-frame hold applies to bubbles 0 and 1 ONLY. Torment
+opens slowly and then rattles off the last four: frames 0/22/44/56/68/80.
+Applying the hold uniformly still produces six correctly-placed bubbles, which
+is why the test pins the frame list rather than the layout.
+
+**Barrage STROBES, it does not fade** — sixteen invisibility toggles at one per
+two frames, and its arc lands BELOW the target's centre by a quarter of the
+target's height, because the egg bounces off the body rather than the face.
+Injecting an alpha ramp (the natural-looking alternative) fails both halves.
+
+**Water Sport's spray direction is side-dependent** (`data[7]` is +1 on the
+player's side, -1 on the opponent's), and the sweep reverses when it leaves the
+-16..256 band, three times, before the task stops spawning. Pinned absolutely
+per side rather than "the two sides differ" — rule (13).
+
+**Brine's rain band is side-dependent too, and not merely different**: player
+side rains y=0..40, opponent side y=40..90 — the opposing mon sits higher on
+screen, so the shorter, lower band keeps drops on the mon instead of above it.
+Asserted as the 40 px DELTA rather than two absolute values, because the drop
+has already taken its first fall step by the time it is measurable.
+
+**Ion Deluge is not anchored to a battler at all** — random x across the full
+240 px width, random y in the TOP HALF only (`Random2() % (DISPLAY_HEIGHT / 2)`),
+because it charges the sky. The spawn test is `data[0] % interval == 1` after
+the increment, so the first ion lands on frame 1.
+
+**Smokescreen's burst is offset (+8, +8)** — down AND right, not centred; the
+task destroys itself the same frame it fires, so the burst outlives it.
+
+⚠️ **AN OVER-CLAIM CAUGHT BY ITS OWN INJECTION, and it is the most useful thing
+in this batch.** Odor Sleuth's two blended clones are exact mirror images, and
+the first write attributed that to their OPPOSITE phase steps (+16 / -16). The
+injection — step both the same way — **PASSED**. Only x is drawn
+(`Cos(phase, radius)`), and `cos(t+128) == -cos(t)` whichever way the phases
+walk, so the mirror comes entirely from the **180-degree starting offset**, and
+the step directions are unobservable in this port. The comment and the test now
+say so explicitly, and the offset (which the same injection method DOES catch)
+is what is pinned. A passing mirror test is not evidence the directions are
+right.
+
+Odor Sleuth also carries a **dead store worth not porting**: upstream sets
+`x2 += 24` / `x2 -= 24` at init, then overwrites x2 with `Cos(phase, radius)` on
+the very first frame. Porting those as a persistent offset would double the
+separation; they are invisible upstream only because `Cos(0,24)` and
+`Cos(128,24)` happen to equal exactly +24 and -24. The flicker is the other
+half: each clone toggles visibility every two frames, starting in opposite
+states, so exactly ONE is on screen at a time.
+
+**Magical Leaf fades IN to each colour and then cuts** — seven colours, 17
+frames each (strength 0..16 then snap to 0), 119 total. A cross-fade never
+returns to 0 mid-run, which is what the injection checks. Disclosed: upstream
+reaches two specific palette slots; this port has no palette indirection, so
+the ramp applies to every live anim sprite — during Magical Leaf those are
+exactly the leaves.
+
+**Injections.** 9 run, 8 caught, 1 revealed the over-claim above. Every headline
+claim is now either injection-verified or explicitly documented as unobservable.
+
+---
+
 ### M36D batches 31-33 — COMPLETE 2026-07-31. Paired mechanisms, sprite singletons, and the task tail.
 
 **+38 moves across three batches: 781 -> 819 of 932 (83.8% -> 87.9%).**

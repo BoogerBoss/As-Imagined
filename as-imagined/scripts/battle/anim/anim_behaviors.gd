@@ -100,6 +100,26 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 35] —
+		"AnimThrowMistBall": _throw_mist_ball,
+		"AnimSkyDropBallUp": _sky_drop_ball_up,
+		"AnimWillOWispOrb": _will_o_wisp_orb,
+		"AnimWillOWispFire": _will_o_wisp_fire,
+		"AnimAquaTail": _aqua_tail,
+		"AnimKnockOffAquaTail": _knock_off_aqua_tail,
+		"AnimateZenHeadbutt": _animate_zen_headbutt,
+		"AnimPresent": _present,
+		"AnimPresentHealParticle": _present_heal_particle,
+		"SpriteCB_TwinkleOnBattler": _twinkle_on_battler,
+		# — [M36D batch 34] —
+		"AnimTask_TormentAttacker": _torment_attacker,
+		"AnimTask_BarrageBall": _barrage_ball,
+		"AnimTask_WaterSport": _water_sport,
+		"AnimTask_BrineRain": _brine_rain,
+		"AnimTask_CreateIons": _create_ions,
+		"AnimTask_SmokescreenImpact": _smokescreen_impact,
+		"AnimTask_OdorSleuthMovement": _odor_sleuth_movement,
+		"AnimTask_CycleMagicalLeafPal": _cycle_magical_leaf_pal,
 		# — [M36D batch 33] —
 		"AnimTask_ThrashMoveMonHorizontal": _thrash_move_mon_horizontal,
 		"AnimTask_ThrashMoveMonVertical": _thrash_move_mon_vertical,
@@ -15595,3 +15615,722 @@ static func _move_heat_wave_targets(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 # AnimScriptVM plus a write at the dispatch site.
 static func _get_stockpile_counter(vm: AnimScriptVM, _ctx: Dictionary) -> void:
 	vm.args[ARG_RET_ID] = 0
+
+
+# ══ [M36D batch 34] ═══════════════════════════════════════════════════════
+#
+# The multi-phase SPAWNERS batch 33 deferred: tasks whose step machines
+# create their own sprites over several states rather than being handed one
+# by the script's `createsprite`. They share no code with each other; what
+# they share is that the task, not the script, decides how many sprites
+# exist and where each one goes.
+#
+# STILL DEFERRED, with reasons:
+#   * `AnimTask_LeafBlade` -- a nine-state machine that re-aims a slash
+#     sprite between states while driving the target's own affine table. It
+#     is genuinely a batch on its own.
+#   * `AnimTask_AirCutterProjectile` and `AnimTask_EruptionLaunchRocks` --
+#     both build per-sprite coordinate tables through helpers
+#     (`InitEruptionLaunchRockCoordData`, the contest-mirrored arg rewrite)
+#     that need their own porting pass to avoid guessing.
+#   * `InitPoisonGasCloudAnim` -- a sprite callback, not a task; it belongs
+#     with the SpriteCB tail rather than here.
+
+
+# AnimTask_TormentAttacker (battle_anim_effects_3.c:5100) + TormentAttacker_Step.
+# No args.
+#
+# SIX thought bubbles, alternating right/left of the attacker, converging
+# inward and climbing as they go. The offsets start at (+-32, -20) and BOTH
+# shrink by 6 after every ODD-indexed bubble -- so bubbles pair up: two at
+# 32/-20, two at 26/-26, two at 20/-32.
+#
+# The cadence is not uniform. Between bubbles the attacker runs a 12-frame
+# affine wobble, and after the FIRST TWO bubbles only there is an extra
+# 10-frame hold (`data[1] <= 2` is tested AFTER the increment, so it is true
+# for bubbles 0 and 1 and false from bubble 2 on). Torment therefore opens
+# slowly and then rattles off the last four.
+const _TORMENT_BUBBLES := 6
+const _TORMENT_X := 32.0
+const _TORMENT_Y := -20.0
+const _TORMENT_SHRINK := 6.0
+const _TORMENT_AFFINE := [[-12, 8, 0, 4], [20, -20, 0, 4], [-8, 12, 0, 4]]
+const _TORMENT_HOLD := 10
+const _TORMENT_SLOW_BUBBLES := 2
+const _TORMENT_TAIL := 8
+
+
+# The frame each bubble is spawned on, derived from the step machine above.
+static func _torment_spawn_frames() -> Array:
+	var out: Array = []
+	var t := 0
+	for i in range(_TORMENT_BUBBLES):
+		out.append(t)
+		t += 12  # the affine wobble, 4+4+4
+		if i < _TORMENT_SLOW_BUBBLES:
+			t += _TORMENT_HOLD
+	return out
+
+
+# Offsets for bubble `i`: sign alternates, magnitude shrinks after odd ones.
+static func _torment_offset(i: int) -> Vector2:
+	var shrink := float((i / 2) * int(_TORMENT_SHRINK))
+	var x := _TORMENT_X - shrink
+	var y := _TORMENT_Y + shrink * -1.0
+	return Vector2(x if (i & 1) == 0 else -x, y)
+
+
+static func _torment_attacker(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var at := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var scale := _scale(vm)
+	var frames := _torment_spawn_frames()
+	var last: int = int(frames[frames.size() - 1])
+	var cmds: Array = []
+	for i in range(_TORMENT_BUBBLES):
+		for c in _TORMENT_AFFINE:
+			cmds.append(c)
+		if i < _TORMENT_SLOW_BUBBLES:
+			cmds.append([0, 0, 0, _TORMENT_HOLD])
+	_run_affine_cmds(vm, _battler_node(vm, AnimStage.ANIM_ATTACKER), cmds)
+	var st := {"t": 0, "i": 0}
+	vm.add_stepper(func() -> bool:
+		var t: int = int(st["t"])
+		var i: int = int(st["i"])
+		if i < frames.size() and t == int(frames[i]):
+			var node := _make_sprite_named(vm, "gThoughtBubbleSpriteTemplate",
+					vm.blend_context())
+			if node != null:
+				node.centre = at + _torment_offset(i) * scale
+				node.flip_h = (i & 1) == 1
+				_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+			st["i"] = i + 1
+		st["t"] = t + 1
+		return t >= last + _TORMENT_TAIL)
+
+
+# AnimTask_BarrageBall (battle_anim_effects_2.c) + AnimTask_BarrageBall_Step.
+# No args.
+#
+# An arcing ball from the attacker to the target, then SIXTEEN invisibility
+# toggles at one toggle per two frames -- the ball does not fade or shrink,
+# it strobes out. The arc's landing point is BELOW the target's centre by a
+# quarter of the target's height (BATTLER_COORD_ATTR_HEIGHT / 4), because
+# Barrage bounces the egg off the mon's body rather than its face.
+const _BARRAGE_DURATION := 16
+const _BARRAGE_ARC := -32.0
+const _BARRAGE_BLINKS := 16
+const _BARRAGE_BLINK_EVERY := 2
+const _BARRAGE_LAND_FRACTION := 0.25
+
+
+static func _barrage_ball(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _make_sprite_named(vm, "gBarrageBallSpriteTemplate",
+			vm.blend_context())
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var finish_pos := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var tgt := _battler_node(vm, AnimStage.ANIM_TARGET)
+	if tgt != null:
+		finish_pos.y += tgt.size.y * tgt.scale.y * _BARRAGE_LAND_FRACTION
+	node.centre = start
+	var st := {"t": 0, "blink": 0, "landed": false}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		var t: int = int(st["t"]) + 1
+		st["t"] = t
+		if not bool(st["landed"]):
+			if t >= _BARRAGE_DURATION:
+				st["landed"] = true
+				st["t"] = 0
+				node.centre = finish_pos
+				return false
+			var f := float(t) / float(_BARRAGE_DURATION)
+			var pos := start.lerp(finish_pos, f)
+			pos.y += _gba_sin(f * 128.0, _BARRAGE_ARC * scale)
+			node.centre = pos
+			return false
+		if t % _BARRAGE_BLINK_EVERY != 0:
+			return false
+		st["blink"] = int(st["blink"]) + 1
+		node.visible = (int(st["blink"]) & 1) == 0
+		if int(st["blink"]) >= _BARRAGE_BLINKS:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimTask_WaterSport (battle_anim_water.c) + AnimTask_WaterSport_Step +
+# CreateWaterSportDroplet. No args.
+#
+# Droplets leave the ATTACKER every OTHER frame (`if (++data[2] > 1)`) and
+# arc toward a landing point that SWEEPS across the field: the sweep step is
+# `data[7] * 6` per frame where data[7] is +1 on the player side and -1 on
+# the opponent's, so the spray always fans away from the user. The sweep
+# reverses when it leaves the -16..256 band, and after THREE reversals the
+# task stops spawning and waits for the survivors.
+const _WATER_SPORT_EVERY := 2
+const _WATER_SPORT_SWEEP := 6.0
+const _WATER_SPORT_ARC := -32.0
+const _WATER_SPORT_DURATION := 16
+const _WATER_SPORT_LEAD := 8.0
+const _WATER_SPORT_REVERSALS := 3
+const _WATER_SPORT_LO := -16.0
+const _WATER_SPORT_HI := 256.0
+
+
+static func _water_sport(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var scale := _scale(vm)
+	var origin := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var dir: float = 1.0 if _is_player_side(vm) else -1.0
+	# GBA-space sweep cursor, so the -16..256 band is the real screen band.
+	var st := {"sweep": (origin.x / scale) + dir * _WATER_SPORT_LEAD,
+			"step": dir, "sub": 0, "turns": 0}
+	vm.add_stepper(func() -> bool:
+		st["sub"] = int(st["sub"]) + 1
+		if int(st["sub"]) >= _WATER_SPORT_EVERY:
+			st["sub"] = 0
+			var node := _make_sprite_named(vm, "gSmallWaterOrbSpriteTemplate",
+					vm.blend_context())
+			if node != null:
+				node.centre = origin
+				var land := Vector2(float(st["sweep"]) * scale,
+						origin.y - dir * _WATER_SPORT_LEAD * scale)
+				_arc_travel(vm, node, origin, land, _WATER_SPORT_DURATION,
+						_WATER_SPORT_ARC * scale)
+		st["sweep"] = float(st["sweep"]) + float(st["step"]) * _WATER_SPORT_SWEEP
+		if float(st["sweep"]) < _WATER_SPORT_LO \
+				or float(st["sweep"]) > _WATER_SPORT_HI:
+			st["step"] = -float(st["step"])
+			st["turns"] = int(st["turns"]) + 1
+			if int(st["turns"]) > _WATER_SPORT_REVERSALS:
+				return true
+		return false)
+
+
+# AnimTask_BrineRain (battle_anim_water.c). No args.
+#
+# Rain over the TARGET, and the band it falls through is side-dependent:
+# an attacker on the PLAYER's side rains from y=0 down to y=40, an attacker
+# on the opponent's rains from y=40 to y=90. That is not cosmetic -- the
+# opponent's mon sits higher on screen, so the shorter, lower band keeps the
+# drops on the mon instead of above it. Ten drops, spread +-40 px in x
+# around the target's centre.
+const _BRINE_DROPS := 10
+const _BRINE_X_RANGE := 40.0
+const _BRINE_EVERY := 4
+const _BRINE_FALL_SPEED := 4.0
+const _BRINE_PLAYER_BAND := Vector2(0.0, 40.0)
+const _BRINE_FOE_BAND := Vector2(40.0, 90.0)
+
+
+static func _brine_rain(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var scale := _scale(vm)
+	var centre := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var band: Vector2 = _BRINE_PLAYER_BAND if _is_player_side(vm) \
+			else _BRINE_FOE_BAND
+	var st := {"t": 0, "made": 0}
+	vm.add_stepper(func() -> bool:
+		var t: int = int(st["t"])
+		st["t"] = t + 1
+		if t % _BRINE_EVERY != 0:
+			return int(st["made"]) >= _BRINE_DROPS
+		var node := _make_sprite_named(vm, "gSmallWaterOrbSpriteTemplate",
+				vm.blend_context())
+		st["made"] = int(st["made"]) + 1
+		if node != null:
+			var x := centre.x + randf_range(-_BRINE_X_RANGE, _BRINE_X_RANGE) * scale
+			var top := band.x * scale
+			var bottom := band.y * scale
+			node.centre = Vector2(x, top)
+			var fall := {"y": top}
+			vm.add_stepper(func() -> bool:
+				if not is_instance_valid(node):
+					return true
+				node.advance_frame()
+				fall["y"] = float(fall["y"]) + _BRINE_FALL_SPEED * scale
+				node.centre = Vector2(x, float(fall["y"]))
+				if float(fall["y"]) >= bottom:
+					var splat := _make_sprite_named(vm,
+							"gWaterHitSplatSpriteTemplate", vm.blend_context())
+					if splat != null:
+						splat.centre = Vector2(x, bottom)
+						_play_until_anim_ends(vm, splat, _ANIM_END_CAP)
+					node.finish()
+					return true
+				return false)
+		return int(st["made"]) >= _BRINE_DROPS)
+
+
+# AnimTask_CreateIons (battle_anim_electric.c). args: 0 unused, 1 spawn
+# interval in frames, 2 total duration in frames.
+#
+# Ions appear at RANDOM screen positions rather than being anchored to a
+# battler -- and only in the TOP HALF (`Random2() % (DISPLAY_HEIGHT / 2)`),
+# because Ion Deluge charges the sky, not the ground. The spawn test is
+# `data[0] % interval == 1` after the increment, so the first ion lands on
+# frame 1, not frame 0.
+const _ION_DISPLAY_WIDTH := 240.0
+const _ION_DISPLAY_HEIGHT := 160.0
+
+
+static func _create_ions(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var interval: int = maxi(1, vm.args[1])
+	var duration: int = maxi(1, vm.args[2])
+	var scale := _scale(vm)
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		st["t"] = int(st["t"]) + 1
+		var t: int = int(st["t"])
+		if t % interval == 1 % interval:
+			var node := _make_sprite_named(vm, "gIonSpriteTemplate",
+					vm.blend_context())
+			if node != null:
+				node.centre = Vector2(
+						randf_range(0.0, _ION_DISPLAY_WIDTH) * scale,
+						randf_range(0.0, _ION_DISPLAY_HEIGHT * 0.5) * scale)
+				_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+		return t >= duration)
+
+
+# AnimTask_SmokescreenImpact (battle_anim_effects_3.c:1285). No args.
+#
+# A one-shot impact burst on the TARGET, offset (+8, +8) from the target's
+# coordinate pair -- down-right, not centred. The task destroys itself the
+# same frame it fires, so the burst outlives the task that made it.
+const _SMOKESCREEN_OFFSET := Vector2(8.0, 8.0)
+
+
+static func _smokescreen_impact(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _make_sprite_named(vm, "gBlackSmokeSpriteTemplate",
+			vm.blend_context())
+	if node == null:
+		return
+	node.centre = _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ _SMOKESCREEN_OFFSET * _scale(vm)
+	_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+
+
+# AnimTask_OdorSleuthMovement (battle_anim_effects_3.c:5160) +
+# MoveOdorSleuthClone. No args.
+#
+# Two blended clones of the TARGET orbiting horizontally in OPPOSITE
+# directions (phase steps +16 and -16) starting 180 degrees apart (phases 0
+# and 128) with a 24 px radius -- so they are always mirror images of each
+# other, one at +x when the other is at -x.
+#
+# WHICH of those two facts carries the mirror: the 180-DEGREE OFFSET, not the
+# opposite step directions. Only x is drawn (`Cos(phase, radius)`), and
+# cos(t+128) == -cos(t) whichever way the phases walk, so stepping both the
+# same way would look IDENTICAL here. The opposite signs are ported because
+# source has them, but nothing in this port can observe them -- do not read a
+# passing mirror test as evidence the directions are right.
+#
+# THE DEAD STORE: upstream sets `x2 += 24` / `x2 -= 24` on the two clones at
+# init, then MoveOdorSleuthClone overwrites x2 with `Cos(phase, radius)` on
+# its very first frame. Porting those two lines as a persistent offset would
+# double the separation. They are invisible upstream only because Cos(0,24)
+# and Cos(128,24) happen to equal exactly +24 and -24.
+#
+# The flicker is the other half of the effect: each clone toggles visibility
+# every two frames, and they start in opposite states, so exactly ONE clone
+# is on screen at a time. After 60 frames the radius shrinks by 2 per frame
+# until it goes negative and both are destroyed.
+const _ODOR_RADIUS := 24.0
+const _ODOR_PHASE_STEP := 16.0
+const _ODOR_HOLD := 60
+const _ODOR_SHRINK := 2.0
+const _ODOR_FLICKER_EVERY := 2
+
+
+static func _odor_sleuth_movement(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var node := _battler_node(vm, AnimStage.ANIM_TARGET)
+	var layer: Control = null
+	if vm.stage != null and vm.stage.has_method("layer"):
+		layer = vm.stage.layer()
+	if node == null or layer == null:
+		return
+	var a := _clone_battler_visual(node, layer)
+	var b := _clone_battler_visual(node, layer)
+	if a == null or b == null:
+		if a != null:
+			a.queue_free()
+		if b != null:
+			b.queue_free()
+		return
+	var scale := _scale(vm)
+	var home := node.position
+	a.visible = true
+	b.visible = false
+	var st := {"t": 0, "pa": 0.0, "pb": 128.0, "r": _ODOR_RADIUS,
+			"phase": 0, "flick": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(a) or not is_instance_valid(b):
+			return true
+		st["flick"] = int(st["flick"]) + 1
+		if int(st["flick"]) >= _ODOR_FLICKER_EVERY:
+			st["flick"] = 0
+			a.visible = not a.visible
+			b.visible = not b.visible
+		var r := float(st["r"])
+		st["pa"] = fmod(float(st["pa"]) + _ODOR_PHASE_STEP, 256.0)
+		st["pb"] = fmod(float(st["pb"]) - _ODOR_PHASE_STEP + 256.0, 256.0)
+		a.position = home + Vector2(_gba_cos(float(st["pa"]), r) * scale, 0.0)
+		b.position = home + Vector2(_gba_cos(float(st["pb"]), r) * scale, 0.0)
+		st["t"] = int(st["t"]) + 1
+		if int(st["phase"]) == 0:
+			if int(st["t"]) >= _ODOR_HOLD:
+				st["phase"] = 1
+			return false
+		st["r"] = r - _ODOR_SHRINK
+		if float(st["r"]) < 0.0:
+			a.queue_free()
+			b.queue_free()
+			return true
+		return false)
+
+
+# AnimTask_CycleMagicalLeafPal (battle_anim_effects_1.c). No args.
+#
+# A rainbow ramp over the leaf sprites: SEVEN colours, and for each one the
+# blend strength walks 0..16 one step per frame before snapping to 0 and
+# moving to the next colour. That is 17 frames per colour, 119 total -- the
+# leaves do not cross-fade between colours, they fade IN to each one and
+# then cut.
+#
+# PORT NOTE: upstream reaches two specific palette slots (ANIM_TAG_LEAF and
+# ANIM_TAG_RAZOR_LEAF). This port has no palette indirection, so the ramp is
+# applied to every live anim sprite -- during Magical Leaf those are exactly
+# the leaves.
+const _MAGICAL_LEAF_COLORS := [
+	Color(1.0, 0.0, 0.0),          # RGB_RED
+	Color(1.0, 0.613, 0.0),        # RGB(31, 19, 0)
+	Color(1.0, 1.0, 0.0),          # RGB_YELLOW
+	Color(0.0, 1.0, 0.0),          # RGB_GREEN
+	Color(0.161, 0.452, 1.0),      # RGB(5, 14, 31)
+	Color(0.710, 0.323, 1.0),      # RGB(22, 10, 31)
+	Color(0.710, 0.677, 1.0),      # RGB(22, 21, 31)
+]
+const _MAGICAL_LEAF_STEPS := 17
+
+
+static func _cycle_magical_leaf_pal(vm: AnimScriptVM, _ctx: Dictionary) -> void:
+	var layer: Control = null
+	if vm.stage != null and vm.stage.has_method("layer"):
+		layer = vm.stage.layer()
+	if layer == null:
+		return
+	var total: int = _MAGICAL_LEAF_COLORS.size() * _MAGICAL_LEAF_STEPS
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		var t: int = int(st["t"])
+		st["t"] = t + 1
+		var colour: Color = _MAGICAL_LEAF_COLORS[
+				(t / _MAGICAL_LEAF_STEPS) % _MAGICAL_LEAF_COLORS.size()]
+		var amount := float(t % _MAGICAL_LEAF_STEPS) / 16.0
+		for child in layer.get_children():
+			var s := child as AnimSprite
+			if s == null:
+				continue
+			if t + 1 >= total:
+				_clear_blend(s)
+			else:
+				_apply_blend_amount(s, colour, amount)
+		return t + 1 >= total)
+
+
+# ══ [M36D batch 35] ═══════════════════════════════════════════════════════
+#
+# Pairs and near-pairs: behaviors whose sibling is already ported, or whose
+# twin ships alongside it here. The recurring finding is that a shared name
+# or a shared script does NOT imply a shared mechanism -- three of the five
+# pairs below diverge somewhere that matters.
+
+
+# AnimThrowMistBall (battle_anim_ice.c:1146). args: as
+# TranslateAnimSpriteToTargetMonLocation.
+#
+# It IS that behavior, with one difference that is easy to miss and changes
+# every throw: it OVERWRITES the sprite's position with the attacker's own
+# coordinates BEFORE delegating, so args 0/1 -- the spawn offset every other
+# user of that callback honours -- are discarded. The ball always leaves from
+# the attacker's centre.
+static func _throw_mist_ball(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var finish_pos := _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(float(vm.args[2]) * _facing(vm), float(vm.args[3])) * scale
+	node.centre = start
+	_linear_travel(vm, node, start, finish_pos, maxi(1, vm.args[4]))
+
+
+# AnimSkyDropBallUp (battle_anim_new.c:7281). args: 0/1 spawn offset,
+# 2 hold frames, 3 acceleration (8.8).
+#
+# `AnimFlyBallUp`'s twin, sharing its exact step function -- but it spawns on
+# the TARGET while still hiding the ATTACKER. Sky Drop carries the target up,
+# so the ball marks where the victim was and the user is the one that
+# vanishes. Porting it as "Fly, but for the target" would hide the wrong mon.
+static func _sky_drop_ball_up(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	_fly_ball_up_from(vm, ctx, AnimStage.ANIM_TARGET)
+
+
+# The shared body. `_fly_ball_up` keeps its own entry point so batch 8's
+# behavior and its tests are untouched.
+static func _fly_ball_up_from(vm: AnimScriptVM, ctx: Dictionary,
+		spawn_on: int) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, spawn_on, vm.args[0], vm.args[1], scale)
+	node.centre = start
+	vm.set_battler_visible_tracked(AnimStage.ANIM_ATTACKER, false)
+	var hold: int = maxi(0, vm.args[2])
+	var accel: int = vm.args[3]
+	var st := {"hold": hold, "vel": 0, "y": 0.0, "t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if int(st["hold"]) > 0:
+			st["hold"] = int(st["hold"]) - 1
+		else:
+			st["vel"] = int(st["vel"]) + accel
+			st["y"] = float(st["y"]) - float(int(st["vel"]) >> 8) * scale
+			node.centre = start + Vector2(0.0, float(st["y"]))
+		if node.centre.y < -32.0 * scale or int(st["t"]) >= _ANIM_END_CAP:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimWillOWispOrb (battle_anim_fire.c:1157). args: 0/1 spawn offset,
+# 2 frame-sequence variant.
+#
+# Drifts sideways AWAY from the attacker's own side (+4 px/frame for an
+# opponent-side user, -4 for a player-side one) while its phase accumulator
+# runs, so the wisps fan outward before the fire lands.
+const _WISP_ORB_DRIFT := 4.0
+const _WISP_ORB_PHASE_STEP := 192
+const _WISP_ORB_FRAMES := 40
+
+
+static func _will_o_wisp_orb(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	node.centre = start
+	_apply_anim_variant(node, ctx, vm.args[2])
+	# Sign is keyed on the ATTACKER's own side, not on the direction of
+	# travel toward the target -- the orbs spread away from their source.
+	var drift: float = -_WISP_ORB_DRIFT if _is_player_side(vm) \
+			else _WISP_ORB_DRIFT
+	var st := {"t": 0, "phase": 0, "x": 0.0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["phase"] = int(st["phase"]) + _WISP_ORB_PHASE_STEP
+		st["x"] = float(st["x"]) + drift * scale
+		node.centre = start + Vector2(float(st["x"]),
+				_gba_sin(float(int(st["phase"]) >> 8), 8.0 * scale))
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= _WISP_ORB_FRAMES:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimWillOWispFire (battle_anim_fire.c:1245). args: 0 starting phase.
+#
+# THE ELLIPSE GROWS. Both amplitudes are accumulators, not constants
+# (`data[3] += 0xC0 * 2`, `data[4] += 0xA0`, each read as `>> 8`), so the
+# flame spirals OUTWARD from the target rather than circling it at a fixed
+# radius -- and it grows faster horizontally than vertically (0x180/frame vs
+# 0xA0), so the spiral flattens as it widens. A fixed-radius port looks
+# like a completely different move.
+const _WISP_FIRE_DX := 0xC0 * 2
+const _WISP_FIRE_DY := 0xA0
+const _WISP_FIRE_PHASE_STEP := 7
+const _WISP_FIRE_FRAMES := 60
+
+
+static func _will_o_wisp_fire(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	# DISCLOSED: source additionally re-centres the spiral between both
+	# targets, but only when the battle is doubles AND the move's own target
+	# type is TARGET_BOTH. This port has no move-target information at the
+	# behavior layer, so applying `_side_centre` unconditionally would move
+	# the flame off a single target in every singles battle -- worse than
+	# omitting the doubles case. Centred on the target itself.
+	var centre := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	node.centre = centre
+	var st := {"t": 0, "phase": vm.args[0] & 0xFF, "ax": 0, "ay": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["ax"] = int(st["ax"]) + _WISP_FIRE_DX
+		st["ay"] = int(st["ay"]) + _WISP_FIRE_DY
+		node.centre = centre + Vector2(
+				_gba_sin(float(st["phase"]), float(int(st["ax"]) >> 8) * scale),
+				_gba_cos(float(st["phase"]), float(int(st["ay"]) >> 8) * scale))
+		st["phase"] = (int(st["phase"]) + _WISP_FIRE_PHASE_STEP) & 0xFF
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= _WISP_FIRE_FRAMES:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimAquaTail (battle_anim_water.c:571). args: 0/1 offset, 2 which battler,
+# 3 affine variant. A one-shot deformation that lives exactly as long as its
+# own affine table, spawned on either battler per arg 2.
+static func _aqua_tail(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var battler: int = AnimStage.ANIM_ATTACKER if vm.args[2] == 0 \
+			else AnimStage.ANIM_TARGET
+	node.centre = _positioned_centre(vm, battler, vm.args[0], vm.args[1],
+			_scale(vm))
+	_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+
+
+# AnimKnockOffAquaTail (battle_anim_water.c:585, step :607). args: 0 x delta,
+# 1 y delta.
+#
+# THE SIDE BRANCH IS NOT A MIRROR. Against a PLAYER-side target the x delta is
+# SUBTRACTED and the orbit runs BACKWARDS (phase step -11); against an
+# opponent-side one the same delta is ADDED and the orbit runs forwards (+11).
+# The y delta is added either way -- it is NOT mirrored, unlike x. Reading
+# this as a plain sign flip on both axes puts the tail on the wrong side of
+# the mon in one of the two cases.
+const _KNOCK_OFF_TAIL_RADIUS := 20.0
+const _KNOCK_OFF_TAIL_STEP := 11
+const _KNOCK_OFF_TAIL_START_PHASE := 192
+const _KNOCK_OFF_TAIL_FRAMES := 40
+
+
+static func _knock_off_aqua_tail(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	# The target's own side, not the attacker's.
+	var target_is_player: bool = not _is_player_side(vm)
+	var dx: float = -float(vm.args[0]) if target_is_player \
+			else float(vm.args[0])
+	var step: int = -_KNOCK_OFF_TAIL_STEP if target_is_player \
+			else _KNOCK_OFF_TAIL_STEP
+	var base := _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(dx, float(vm.args[1])) * scale
+	var st := {"t": 0, "phase": _KNOCK_OFF_TAIL_START_PHASE}
+	node.centre = base
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["phase"] = (int(st["phase"]) + step) & 0xFF
+		node.centre = base + Vector2(
+				_gba_cos(float(st["phase"]), _KNOCK_OFF_TAIL_RADIUS * scale),
+				_gba_sin(float(st["phase"]), _KNOCK_OFF_TAIL_RADIUS * scale))
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) >= _KNOCK_OFF_TAIL_FRAMES:
+			node.finish()
+			return true
+		return false)
+
+
+# AnimateZenHeadbutt (battle_anim_effects_1.c). args: 0 which battler.
+#
+# Positions on the chosen battler with a FIXED +18 y offset -- a constant in
+# the code, not an argument, and not side-mirrored -- then lives exactly as
+# long as its own affine table.
+const _ZEN_HEADBUTT_Y := 18.0
+
+
+static func _animate_zen_headbutt(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var battler: int = AnimStage.ANIM_ATTACKER if vm.args[0] == 0 \
+			else AnimStage.ANIM_TARGET
+	node.centre = _battler_centre(vm, battler) \
+			+ Vector2(0.0, _ZEN_HEADBUTT_Y * _scale(vm))
+	_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+
+
+# AnimPresent (battle_anim_effects_1.c). Args are UNUSED -- source says so in
+# its own comment. Arcs from the attacker to a point 10 px BELOW the target's
+# centre (the box lands at the feet, not the face).
+const _PRESENT_DURATION := 60
+const _PRESENT_ARC := -30.0
+const _PRESENT_DROP := 10.0
+
+
+static func _present(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var finish_pos := _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(0.0, _PRESENT_DROP * scale)
+	node.centre = start
+	_arc_travel(vm, node, start, finish_pos, _PRESENT_DURATION,
+			_PRESENT_ARC * scale)
+
+
+# AnimPresentHealParticle (battle_anim_effects_1.c). args: 0/1 offset,
+# 2 y velocity. A plain LINEAR drift -- `y2 = velocity * age`, no easing and
+# no sine anywhere -- from the target, living until its own frames end.
+static func _present_heal_particle(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_TARGET, vm.args[0],
+			vm.args[1], scale)
+	node.centre = start
+	var vel := float(vm.args[2])
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		node.centre = start + Vector2(0.0, vel * float(st["t"]) * scale)
+		if int(st["t"]) >= _ANIM_END_CAP:
+			node.finish()
+			return true
+		return false)
+
+
+# SpriteCB_TwinkleOnBattler (battle_anim_new.c). args: 2 battler selector.
+#
+# Copies the chosen battler's position INCLUDING its live x2/y2 displacement,
+# so a twinkle placed on a mon that is mid-shake rides the shake. Read once at
+# spawn, not tracked per frame -- source assigns and then hands off.
+static func _twinkle_on_battler(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var who: int = AnimStage.ANIM_TARGET if vm.args[2] == AnimStage.ANIM_TARGET \
+			else AnimStage.ANIM_ATTACKER
+	node.centre = _battler_centre(vm, who)
+	_play_until_anim_ends(vm, node, _ANIM_END_CAP)
+
