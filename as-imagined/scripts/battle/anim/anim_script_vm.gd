@@ -92,6 +92,15 @@ var _bg_changed := false
 var _bg_name := ""
 var _sound_cues: Array[Dictionary] = []
 var _spawned: Array = []
+# Every battler's full visual state as it was when this run STARTED. The
+# meta-driven nets below only cover behaviors that went through MonOffset /
+# MonScale / the recolor shader; a behavior writing `node.rotation`,
+# `node.modulate` or `node.scale` DIRECTLY escaped all of them, which is the
+# leak class `m36_leak_harness` measured across the roster. This snapshot is
+# the unconditional backstop. Empty when the VM was driven without `start()`
+# (the direct-dispatch test convention), in which case the meta nets stand
+# alone exactly as before.
+var _battler_baseline: Array = []
 
 # Active per-frame steppers. Upstream, a sprite callback or task function is
 # re-entered every frame until it destroys itself; a Callable invoked once
@@ -138,6 +147,7 @@ func start(label: String) -> bool:
 	_hidden_battlers.clear()
 	_bg_fade = BgFade.IDLE
 	_bg_changed = false
+	_capture_battler_baseline()
 	state = State.RUNNING
 	error_text = ""
 	return true
@@ -262,6 +272,9 @@ func _finish(err: String = "") -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 	_spawned.clear()
+	# The unconditional backstops, AFTER the meta-driven nets so they win.
+	_restore_battler_baseline()
+	_free_layer_visuals()
 
 
 # Behaviors call these to report lifecycle, mirroring the reference's
@@ -595,6 +608,71 @@ func _restore_displaced_battlers() -> void:
 # Like the displacement net, this reads meta a behavior wrote rather than
 # keeping its own bookkeeping, so it cannot disagree with whatever actually
 # changed the sprite.
+# Snapshotted at `start()`, applied at `_finish()`. Deliberately records the
+# WHOLE visual state rather than the specific properties known to leak today:
+# the failure mode this exists for is a behavior touching something nobody
+# thought to track, so enumerating today's list would rebuild the same gap.
+func _capture_battler_baseline() -> void:
+	_battler_baseline.clear()
+	if stage == null or not stage.has_method("sprite_for"):
+		return
+	for i in range(4):
+		var node: Control = stage.sprite_for(i)
+		if node == null or not is_instance_valid(node):
+			_battler_baseline.append({})
+			continue
+		_battler_baseline.append({
+			"pos": node.position,
+			"scale": node.scale,
+			"rot": node.rotation,
+			"vis": node.visible,
+			"mod": node.modulate,
+			"mat": node.material,
+		})
+
+
+func _restore_battler_baseline() -> void:
+	if _battler_baseline.is_empty() or stage == null \
+			or not stage.has_method("sprite_for"):
+		return
+	for i in range(mini(4, _battler_baseline.size())):
+		var snap: Dictionary = _battler_baseline[i]
+		if snap.is_empty():
+			continue
+		var node: Control = stage.sprite_for(i)
+		if node == null or not is_instance_valid(node):
+			continue
+		node.position = snap["pos"]
+		node.scale = snap["scale"]
+		node.rotation = snap["rot"]
+		node.visible = snap["vis"]
+		node.modulate = snap["mod"]
+		node.material = snap["mat"]
+	_battler_baseline.clear()
+
+
+# Frees anything this port put on the anim layer. `_spawned` only holds nodes
+# a behavior explicitly registered via `notify_spawned`, and `_make_sprite`
+# never does -- so a sprite whose stepper `_finish` has just cleared would
+# otherwise survive the run that owns it.
+#
+# ⚠️ Scoped by TYPE and by TAG, never "every child": on a real stage the
+# battler sprites share this parent. An AnimSprite is anim-owned by
+# construction, and `_anim_trace` is the meta `_clone_battler_visual` sets
+# for exactly this purpose.
+func _free_layer_visuals() -> void:
+	if stage == null or not stage.has_method("layer"):
+		return
+	var layer: Control = stage.layer()
+	if layer == null or not is_instance_valid(layer):
+		return
+	for child in layer.get_children():
+		if not is_instance_valid(child) or child.is_queued_for_deletion():
+			continue
+		if child is AnimSprite or child.has_meta("_anim_trace"):
+			child.queue_free()
+
+
 func _restore_scaled_battlers() -> void:
 	if stage == null or not stage.has_method("sprite_for"):
 		return

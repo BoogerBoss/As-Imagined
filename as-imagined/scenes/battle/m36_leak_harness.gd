@@ -56,29 +56,12 @@ const FRAME_CEILING := 1200    # 20 s at 60 fps; a real script never nears it
 # is deliberately left as its own task rather than rushed in alongside a
 # batch.** Shrinking this dictionary is the definition of done.
 const KNOWN_LEAKS := {
-	38: "battler 0 rotated, battler 1 rotated",
-	111: "battler 0 tinted",
-	231: "battler 0 tinted",
-	268: "7 sprite(s) left on the layer",
-	292: "battler 0 rotated, 1 sprite(s) left on the layer",
-	342: "battler 0 tinted",
-	353: "battler 1 tinted",
-	360: "battler 0 rotated, battler 1 rotated",
-	368: "battler 0 tinted",
-	394: "battler 1 tinted",
-	430: "7 sprite(s) left on the layer",
-	442: "battler 0 tinted",
-	467: "battler 0 tinted, battler 1 tinted, battler 2 tinted, battler 3 tinted",
-	545: "7 sprite(s) left on the layer",
-	714: "battler 0 scaled",
-	783: "7 sprite(s) left on the layer",
-	801: "battler 0 rotated, battler 1 rotated",
-	816: "7 sprite(s) left on the layer",
-	822: "battler 0 rotated, battler 1 rotated",
-	823: "battler 0 rotated, battler 1 rotated",
-	824: "battler 0 rotated, battler 1 rotated",
-	825: "battler 0 rotated, battler 1 rotated",
-	826: "battler 0 rotated, battler 1 rotated",
+	# EMPTIED 2026-08-03 by the core-VM cleanup fix. All 23 are gone: the VM
+	# now snapshots every battler's whole visual state at `start()` and
+	# restores it unconditionally at `_finish()`, and frees every AnimSprite
+	# and `_anim_trace` clone left on the layer rather than only the nodes a
+	# behavior remembered to register. Keep this dictionary EMPTY -- an entry
+	# reappearing means a batch reintroduced the leak class.
 }
 
 var _pass := 0

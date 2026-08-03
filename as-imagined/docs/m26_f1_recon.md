@@ -1454,6 +1454,55 @@ is harness-specific, not a shipped bug.
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
 
+### M36 VM cleanup fix — COMPLETE 2026-08-03. All 23 leaks closed at the root.
+
+The harness's own finding, fixed. **778/778 scripts now run clean; the
+`KNOWN_LEAKS` baseline is EMPTY.**
+
+**One root cause, so one fix rather than 22.** The VM's cleanup nets only
+covered the TRACKED path — `MonOffset`/`MonScale`'s metas and the recolor
+shader — so a behavior writing `node.rotation`, `node.modulate` or
+`node.scale` directly, or spawning a sprite that never reached
+`notify_spawned`, escaped every one of them. Two additions to
+`AnimScriptVM`:
+
+* **`_capture_battler_baseline()` at `start()` / `_restore_battler_baseline()`
+  at `_finish()`** — snapshots every battler's position, scale, rotation,
+  visibility, modulate AND material, and puts them back unconditionally.
+* **`_free_layer_visuals()` at `_finish()`** — frees every `AnimSprite` and
+  every `_anim_trace` clone left on the layer, not just the nodes a behavior
+  remembered to register.
+
+**Deliberately records the WHOLE visual state**, not the specific properties
+known to leak today. The failure mode this exists for is a behavior touching
+something nobody thought to track; enumerating today's list would rebuild the
+same gap one property along.
+
+⚠️ **The meta-driven nets are KEPT as a fallback, not replaced.** Tests that
+drive the VM directly set `state = RUNNING` without calling `start()` — the
+project's own established direct-dispatch convention — so no baseline exists
+for them and the old nets must still stand alone. Ordering in `_finish` is
+meta nets first, snapshot second, so the snapshot wins where both apply.
+
+⚠️ **`_free_layer_visuals` is scoped by TYPE and TAG, never "every child".**
+On a real stage the battler sprites share that parent. An `AnimSprite` is
+anim-owned by construction and `_anim_trace` is the meta
+`_clone_battler_visual` already sets for exactly this purpose.
+
+**Both nets proven load-bearing rather than assumed**: disabling the baseline
+restore produces 21 failures, disabling the layer free produces 9. The
+overlap (30 against 23 leaking moves) is moves that leak both ways — Arm
+Thrust leaves a rotation AND a sprite.
+
+**Regression**: all 8 M36 suites unchanged (m36d_batch_test 1215/1215), plus
+six battle-screen-adjacent suites that consume the anim engine —
+`phase4d_doubles_visual` 27/27, `m26_b4_3_weather_trigger` 24/24,
+`m25b_menu` 32/32, `m26c1_databox` 60/60, `m26_b3_6c` 168/168,
+`hit_effect_smoke` 91/91. Nothing depended on the old partial-restore
+semantics.
+
+---
+
 ### M36 leak harness — BUILT 2026-08-03. 23 real defects on its first run.
 
 `scenes/battle/m36_leak_harness.tscn`. Built after asking whether a
