@@ -1454,6 +1454,66 @@ is harness-specific, not a shipped bug.
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
 
+### Rule (15) reframed — 2026-08-03. The rule was the wrong shape.
+
+Docs-only. Rule (15) as originally written ("when an injection PASSES, the
+claim is wrong before the code is") fired in five consecutive batches, which
+is the tell: **a rule that keeps firing is not preventing anything.** Reviewed
+it and found three real problems.
+
+**It mostly duplicated rules (7) and (13).** Mapping its own instances: the
+b37 "did the falling spin end" and "band cleared" guards are rule (7) — an
+assertion that cannot meaningfully fail. The b38 "it moved horizontally" and
+b39 "it accelerates" guards are rule (13) — both competing readings agree.
+**Four of six were already covered.** Responding to a recurrence by adding a
+label, rather than asking why (7) and (13) were not being applied, is a worse
+process failure than the defect it labelled.
+
+**Its wording misdiagnosed its own cases.** "The claim is wrong before the
+code is" — but in most instances the claim was RIGHT. Quadratic gravity is
+correct; Odor Sleuth's mirror is correct. What was weak was the assertion's
+discriminating power. Calling that a wrong claim sends the next session to
+re-read source when the fix belongs in the test file.
+
+**It had no proactive trigger.** Rules (2), (3), (4) and (6) all say "at Step
+0, do X". Rule (15) said "when you observe Y, conclude Z" — it could only fire
+after a bad guard already existed.
+
+**The two genuinely new instances are about something else entirely**: claims
+the port or the fixture physically CANNOT express. Odor Sleuth's phase
+directions are invisible because only x is drawn; Zen Headbutt's mirror is
+invisible because `FakeStage.facing_sign()` is a fixed 1.0. That idea deserved
+a crisp rule and was buried under a catch-all.
+
+**Changes made in CLAUDE.md:**
+
+* **(15) reframed** to the observability rule it should have been: *a fixture
+  that cannot express a claim's negation must say so at the assertion.*
+  Explicitly distinguished from (7)/(13), where the assertion is merely weak
+  and can be strengthened.
+* **(7) gained THE PREVENTIVE FORM** — the one change that would have caught
+  every (7)/(13) instance at authoring time: **derive each assertion from the
+  NEGATION, not from the truth.** The habit that produces weak guards is
+  writing "what does the correct version do?" and asserting it. Ask "what
+  would the specific plausible WRONG version do differently?" and assert the
+  difference — ideally by writing the injection BEFORE the assertion.
+* **(13) cross-referenced** to that preventive form, citing b38 and b39 as the
+  same shape, and noting b39's guard took two rewrites to discriminate at all.
+* **A duplicated paragraph removed from (7)** — the batch-23 lattice/zigzag
+  example and its conclusion appeared TWICE in the same rule.
+
+⚠️ **Net effect on file size: +696 characters.** I predicted this change would
+shrink the rule list and it did not — the rule COUNT is unchanged at 15, and
+the new preventive discipline costs words even after removing the duplicate.
+Recorded because CLAUDE.md is flagged as near its size cap and the prediction
+was part of the justification.
+
+**Historical batch entries above are NOT rewritten** — per this file's own
+convention — so they still cite the old framing. Read them against this
+section rather than acting on the wording.
+
+---
+
 ### M36D batch 39 — COMPLETE 2026-08-03. One spawner read end to end; the other three get named blockers.
 
 **778 -> 779 of 845 in-scope (92.1% -> 92.2%).** 1 behavior, 1 move —
