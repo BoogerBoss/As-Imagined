@@ -440,6 +440,17 @@ const _ABILITY_TRIGGER_TEXT: Dictionary = {
 ## number.
 func prize_money() -> int:
 	return _bm.last_money_awarded if _bm != null else 0
+
+
+## [M27O O4] Hand a persisting party back with its battle-only state stripped.
+##
+## A two-line accessor for the same reason `prize_money` above is one: it keeps
+## the field out of `_bm`'s privates, and the overworld already holds the party
+## object so it need not learn which of BattleManager's own fields is the
+## player's side.
+func restore_party(party: BattleParty) -> void:
+	if _bm != null:
+		_bm.restore_party_after_battle(party)
 # [M25h-1] Relocated from $SharedChrome/VBox/StatusLabel into the new real-proportion
 # bottom region (ActionRegion — anchor_top=0.75/anchor_bottom=0.95 in the
 # .tscn, matching source's own B_WIN_MSG tilemapTop=15/height=4 tiles =

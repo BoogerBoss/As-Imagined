@@ -385,6 +385,18 @@ func _process(_delta: float) -> void:
 	# [M27F] A running script owns input and freezes the world, the same way a
 	# battle does. `lock`/`lockall` are VM no-ops precisely because THIS is where
 	# locking actually lives — the VM has no business knowing about input.
+	# [M27O O4] A message box with no script behind it. The poison notice is the
+	# only one today, and freezing the world for it is the faithful shape rather
+	# than a shortcut — source runs it as a real script and
+	# `EventScript_FieldPoison` opens with `lockall`. This project simply has no
+	# VM to park it on, so the same lock is expressed by returning here.
+	if _vm == null and _box != null and _box.is_open:
+		# `advance` skips the typewriter on the first press (source lets you
+		# skip) and closes itself once past the last page, so this is the whole
+		# interaction — the same shape as the VM's own WAIT_BUTTON branch.
+		if Input.is_action_just_pressed("ui_accept"):
+			_box.advance()
+		return
 	if _vm != null:
 		_drive_script()
 		return
@@ -504,7 +516,53 @@ func _try_step(dir: int) -> void:
 			_do_warp(w)
 			return
 		check_trainer_sight()
+		# [M27O O4] Poison ticks LAST, and the order is source's own:
+		# `ProcessPlayerFieldInput` runs `CheckForTrainersWantingBattle` at its
+		# very top, before it even tests `input->tookStep` — so a trainer who
+		# just spotted you takes precedence over the step's own scripts, which
+		# is where poison lives (`TryStartStepBasedScript` ->
+		# `TryStartStepCountScript`). Gating on `_in_approach` rather than the
+		# return value because `check_trainer_sight` is a coroutine; it sets the
+		# flag synchronously before its first await, so this reads true already.
+		if not _in_approach and not _in_battle:
+			_poison_step()
 	)
+
+
+## One step's worth of field poison.
+##
+## ⚠️ **TWO SOURCE GATES ARE ABSENT BECAUSE NOTHING HERE CAN TRIP THEM YET, NOT
+## BECAUSE THEY WERE DROPPED.** `UpdatePoisonStepCounter` skips
+## `MAP_TYPE_SECRET_BASE` maps (this project has no secret bases and no map-type
+## concept), and its caller skips the step entirely while
+## `PLAYER_AVATAR_FLAG_FORCED_MOVE` is set or the tile is a forced-movement one
+## — ice, currents, spin tiles — which is **M27E**'s territory and unbuilt. When
+## forced movement lands, this call needs that guard; recorded here so it is
+## found rather than rediscovered.
+func _poison_step() -> void:
+	if not FieldPoison.advance_counter(flags):
+		return
+	var party := OverworldSession.party
+	if party == null:
+		return
+	if FieldPoison.tick(party) != FieldPoison.RESULT_AT_ONE_HP:
+		# Ordinary ticks are SILENT. Source returns FALSE for both FLDPSN_NONE
+		# and FLDPSN_PSN, so no script runs and no message prints — only the
+		# screen flash, which this project has no equivalent for. Damage still
+		# happened; the player just is not told about it.
+		return
+	var pages := PackedStringArray()
+	for mon: BattlePokemon in FieldPoison.cure_at_one_hp(party):
+		# [M27I I2] Through the real buffer/expansion path rather than a format
+		# string, because the message IS `{STR_VAR_1}`-shaped in source and the
+		# nickname genuinely goes through `StringGet_Nickname` into gStringVar1.
+		var buffers := TextBuffers.new()
+		buffers.set_slot(0, mon.species.species_name if mon.species != null else "")
+		pages.append(buffers.expand(FieldPoison.MESSAGE))
+	if pages.is_empty():
+		return
+	if _box != null:
+		_box.open(pages)
 
 
 ## Does any trainer now see the player? If so, run the approach.
@@ -673,12 +731,27 @@ func _begin_battle(trainer_key: String, t: TrainerNPC) -> bool:
 	# rebuild, no 66-100 ms reload on the way back — the map, the loaded chunks
 	# and the player are all still exactly where they were.
 	OverworldSession.pending_trainer_key = trainer_key
-	var player_party := OverworldParty.build_debug_player_party()
-	# [M27O O3] Captured HERE because the field has no persistent party — this
-	# is the only moment the level is known, and the whiteout payout scales by it.
+	# [M27O O4] The SAME party every time now, not a fresh one — see
+	# OverworldSession.party. HP and status carry in as well as out, which is
+	# the whole reason field poison can exist.
+	var player_party := OverworldSession.player_party()
+	# ⚠️ A fainted lead would start the battle with a dead active slot. Source
+	# never has to think about this (`HealPlayerParty` on whiteout guarantees a
+	# live party), but a poisoned, battle-worn party reaches here by paths a
+	# rebuilt-every-time one could not.
+	for i in range(player_party.members.size()):
+		if not player_party.members[i].fainted:
+			player_party.active_indices = [i]
+			break
+	# [M27O O3] Captured here because the payout scales by it. Still captured
+	# per battle rather than read later: levelling mid-battle is real, and the
+	# figure source uses is the one at the moment the reward is computed.
 	_battle_party_level = 1
 	for m in player_party.members:
 		_battle_party_level = maxi(_battle_party_level, int(m.level))
+	# Source clears the poison counter at every battle entry
+	# (`battle_setup.c:262, 298, 986`), so a partial step does not carry across.
+	FieldPoison.clear_counter(flags)
 	BattleSetupContext.set_pending(player_party, opp, false, "", trainer_key)
 
 	var packed := OverworldSession.battle_scene(BattleSetupContext.is_doubles)
@@ -718,6 +791,12 @@ func _on_battle_overlay_finished(outcome: int) -> void:
 	if _battle_screen != null and is_instance_valid(_battle_screen) \
 			and _battle_screen.has_method("prize_money"):
 		prize = int(_battle_screen.prize_money())
+	# [M27O O4] Strip the battle-only state BEFORE the screen is freed — the
+	# BattleManager that owns the clearing logic dies with it. HP, status and
+	# faints deliberately survive; that is the point of a persistent party.
+	if _battle_screen != null and is_instance_valid(_battle_screen) \
+			and _battle_screen.has_method("restore_party"):
+		_battle_screen.restore_party(OverworldSession.party)
 	OverworldSession.set_result(BattleOutcome.make(
 			outcome, OverworldSession.pending_trainer_key, prize, _battle_party_level))
 	await _fade_to(1.0)
@@ -1320,11 +1399,16 @@ func _do_whiteout() -> void:
 
 	_warping = true
 	await _fade_to(1.0)
-	# Source heals here, between the money loss and the warp. This project has
-	# NO PERSISTENT PARTY — `OverworldParty.build_debug_player_party()` builds a
-	# fresh full-health one per battle — so there is nothing to heal yet and a
-	# call would be theatre. The order is preserved so M27K/M27L can drop the
-	# real heal in at the right point rather than rediscovering where it goes.
+	# [M27O O4] The heal, at source's own position — `DoWhiteOut` runs it
+	# between the money loss and the warp (`overworld.c:392`).
+	#
+	# ⚠️ THIS WAS DELIBERATELY OMITTED BY O2, WHICH CALLED IT "THEATRE", AND
+	# THAT WAS CORRECT AT THE TIME — with a party rebuilt per battle there was
+	# nothing to heal. O4's persistent party makes it LOAD-BEARING: without it
+	# the player wakes at the Centre with the same wiped team and the next
+	# battle starts on a fainted lead. The slot O2 left is exactly the right one.
+	OverworldSession.heal_party()
+	FieldPoison.clear_counter(flags)
 	_teardown_and_load(dest)
 	_place_player(dest, manager.origin_of(dest) + Vector2i(warp.get("cell", Vector2i.ZERO)))
 	await _fade_to(0.0)

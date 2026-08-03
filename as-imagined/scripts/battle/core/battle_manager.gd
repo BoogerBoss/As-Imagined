@@ -8361,6 +8361,32 @@ func _apply_switch_out_abilities(mon: BattlePokemon) -> void:
 		ability_triggered.emit(mon, "natural_cure")
 
 
+## [M27O O4] Strip the battle-only state off a party that OUTLIVES this battle.
+##
+## ⚠️ **THIS IS THE EQUIVALENT OF SOURCE'S COPY-BACK, AND IT IS MANDATORY THE
+## MOMENT A PARTY PERSISTS.** Source keeps two structs — `gPlayerParty` holds
+## what survives (HP, status1, PP) and `gBattleMons` holds the volatiles — so
+## ending a battle simply discards the latter. This project conflates both into
+## one `BattlePokemon`, so "discard the volatiles" has to be an explicit pass.
+## Without it a +6 Swords Dance, a live Substitute or a Disable counter would
+## follow the player straight into the next fight.
+##
+## Deliberately reuses `_switch_out_clear` rather than enumerating the ~60
+## volatile fields a second time: two hand-kept copies of one rule is the drift
+## this project already paid for once with `check_bake_diff`. Idempotent, so a
+## mon already cleared by its own faint is unharmed.
+##
+## HP, `status`, `toxic_counter` and `fainted` are deliberately NOT touched —
+## they are precisely what has to survive. Healing is the whiteout's job
+## (`OverworldSession.heal_party`), not this function's.
+func restore_party_after_battle(party: BattleParty) -> void:
+	if party == null:
+		return
+	for mon: BattlePokemon in party.members:
+		_switch_out_clear(mon)
+	party.active_indices = [0]
+
+
 func _switch_out_clear(mon: BattlePokemon) -> void:
 	_clear_volatiles(mon)
 	for _si in range(mon.stat_stages.size()):

@@ -43,6 +43,63 @@ static var respawn := RespawnPoint.new()
 ## would be worse than no wallet.
 static var wallet := Wallet.new()
 
+## [M27O O4] The player's party, held ACROSS battles rather than rebuilt for
+## each one.
+##
+## ⚠️ **THIS CHANGED A REAL ASSUMPTION SEVERAL EARLIER ENTRIES WERE WRITTEN
+## AGAINST.** Until now `OverworldParty.build_debug_player_party()` was called
+## fresh at every battle, so every fight started at full health with no status —
+## which is why `[M27O O2]`'s whiteout heal was "theatre", why `[M27O O3]`
+## captured the party level at battle setup, and why field poison had nothing to
+## act on. Persisting it is what makes O4 possible at all: a party that forgets
+## its own poison the moment a battle ends can never be poisoned in the field.
+##
+## Still the DEBUG party — `[M27D D5]`'s hand-picked team. M27K's starter choice
+## replaces it wholesale and M27L saves it; this only changes where it lives and
+## how long it lives, not what it is.
+##
+## Held by REFERENCE and mutated in place by the battle, which is what carries HP
+## and status back out. Source keeps the two separate — `gPlayerParty` holds the
+## persistent facts and `gBattleMons` the battle-only ones, with a copy-back at
+## the end — while this project conflates both into one `BattlePokemon`. So the
+## copy-back's equivalent is a real clearing pass on the way out; see
+## `BattleManager.restore_party_after_battle`, without which a +6 Swords Dance
+## would follow the player into the next fight.
+static var party: BattleParty = null
+
+
+## The party, built on first use.
+##
+## Lazy rather than eager because `OverworldParty` reaches into `PokemonFactory`
+## and the registries, and a static initialiser would run that at class-load
+## time — before a test has had any chance to substitute one.
+static func player_party() -> BattleParty:
+	if party == null:
+		party = OverworldParty.build_debug_player_party()
+	return party
+
+
+## Full restore: HP, status, PP. Source's `HealPlayerParty`, called by
+## `DoWhiteOut` between the money loss and the warp.
+##
+## ⚠️ **NOW LOAD-BEARING, WHERE `[M27O O2]` COULD CORRECTLY CALL IT THEATRE.**
+## With a persistent party a whiteout that did not heal would drop the player at
+## the Centre with the same wiped team, and the next battle would start with a
+## fainted lead — a soft-lock, not a lost fight.
+static func heal_party() -> void:
+	if party == null:
+		return
+	for mon: BattlePokemon in party.members:
+		mon.current_hp = mon.max_hp
+		mon.status = BattlePokemon.STATUS_NONE
+		mon.toxic_counter = 0
+		mon.fainted = false
+		for i in range(mon.current_pp.size()):
+			if i < mon.moves.size() and mon.moves[i] != null:
+				mon.current_pp[i] = int(mon.moves[i].pp)
+	party.active_indices = [0]
+
+
 ## Where to put the player when the overworld next loads, or empty for "use the
 ## scene's own start_map". Written when a battle starts, consumed on return.
 static var pending_return: Dictionary = {}
@@ -120,6 +177,7 @@ static func battle_scene(is_doubles: bool) -> PackedScene:
 ## Tests only. Production never wants this — the flags ARE the save.
 static func reset() -> void:
 	flags = FlagStore.new()
+	party = null
 	pending_return = {}
 	pending_result = null
 	pending_trainer_key = ""
