@@ -32,6 +32,12 @@ static var flags := FlagStore.new()
 ## no bag at all.
 static var bag := Bag.new()
 
+## [M27O O1] Where a whiteout sends the player. Static for the same reason the
+## bag and the flags are — it must survive the scene swap a battle performs,
+## and a respawn point forgotten by the fight that caused the whiteout would be
+## worse than none.
+static var respawn := RespawnPoint.new()
+
 ## Where to put the player when the overworld next loads, or empty for "use the
 ## scene's own start_map". Written when a battle starts, consumed on return.
 static var pending_return: Dictionary = {}

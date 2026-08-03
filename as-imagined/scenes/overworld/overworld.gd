@@ -245,6 +245,12 @@ func _spawn_player() -> void:
 		_build_player_node()
 		_apply_battle_result()
 		return
+	# [M27O O1] A session that has never had `setrespawn` run needs somewhere to
+	# wake up. Resolved from the START MAP rather than hardcoded, so moving
+	# `start_map` for a playtest moves the respawn with it instead of stranding
+	# the session back in Pallet. M27K's new-game flow replaces this.
+	if OverworldSession.respawn.current == "":
+		OverworldSession.respawn.default_for(start_map)
 	_cell = _resolve_start_cell()
 	_elev = manager.elevation_at(_cell)
 	_build_player_node()
@@ -800,6 +806,7 @@ func run_script(label: String, p_subject: OverworldEntity = null) -> bool:
 	# `flags` reads through OverworldSession. A per-script bag would forget
 	# every item the moment the script ended.
 	_vm.bag = OverworldSession.bag
+	_vm.respawn = OverworldSession.respawn
 	if not _vm.start(label, p_subject):
 		# Degrade LOUDLY but without breaking play: the VM named what it could
 		# not resolve, so say so and hand control back.

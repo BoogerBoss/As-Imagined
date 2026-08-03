@@ -101,6 +101,9 @@ var buffers := TextBuffers.new()
 ## fresh one; defaults to a private bag so a VM built without one still runs.
 var bag := Bag.new()
 
+## [M27O O1] The respawn point, injected like `bag` so a test can supply one.
+var respawn := RespawnPoint.new()
+
 ## Result of the last `compare`: 0 equal, 1 greater, -1 less. Source keeps the
 ## same single-slot comparison result. OBSERVABLE because it decides whether
 ## `goto_if_eq` branches — without it in describe(), a test that froze the VM
@@ -327,6 +330,15 @@ func step() -> bool:
 				_flags.var_set("VAR_0x8008", _literal(str(args[0])))
 			_call_stack.push_back({"label": script_label, "pc": pc})
 			return _jump("Common_EventScript_SetGymTrainers_Frlg")
+
+		"setrespawn":
+			# [M27O O1] Where a whiteout will send the player. Refuses an ID the
+			# table does not know rather than storing it: an unresolvable
+			# respawn surfaces at the worst possible moment, when the player is
+			# already fainted and has nowhere to go.
+			if args.size() > 0 and not respawn.set_to(str(args[0])):
+				diagnostic = "unknown heal location '%s'" % str(args[0])
+			return true
 
 		"additem", "removeitem", "checkitem", "checkitemspace":
 			# All four set VAR_RESULT and scripts branch on it immediately.

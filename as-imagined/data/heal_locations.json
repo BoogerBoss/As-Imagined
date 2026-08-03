@@ -1,0 +1,338 @@
+{
+	"HEAL_LOCATION_BATTLE_FRONTIER_OUTSIDE_EAST": {
+		"map": "BattleFrontier_OutsideEast",
+		"respawn_map": "BattleFrontier_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 3,
+		"y": 52
+	},
+	"HEAL_LOCATION_CELADON_CITY": {
+		"map": "CeladonCity_Frlg",
+		"respawn_map": "CeladonCity_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 48,
+		"y": 12
+	},
+	"HEAL_LOCATION_CERULEAN_CITY": {
+		"map": "CeruleanCity_Frlg",
+		"respawn_map": "CeruleanCity_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 22,
+		"y": 20
+	},
+	"HEAL_LOCATION_CINNABAR_ISLAND": {
+		"map": "CinnabarIsland_Frlg",
+		"respawn_map": "CinnabarIsland_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 14,
+		"y": 12
+	},
+	"HEAL_LOCATION_DEWFORD_TOWN": {
+		"map": "DewfordTown",
+		"respawn_map": "DewfordTown_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 2,
+		"y": 11
+	},
+	"HEAL_LOCATION_EVER_GRANDE_CITY": {
+		"map": "EverGrandeCity",
+		"respawn_map": "EverGrandeCity_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 27,
+		"y": 49
+	},
+	"HEAL_LOCATION_EVER_GRANDE_CITY_POKEMON_LEAGUE": {
+		"map": "EverGrandeCity",
+		"respawn_map": "EverGrandeCity_PokemonLeague_1F",
+		"respawn_x": 3,
+		"respawn_y": 4,
+		"x": 18,
+		"y": 6
+	},
+	"HEAL_LOCATION_FALLARBOR_TOWN": {
+		"map": "FallarborTown",
+		"respawn_map": "FallarborTown_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 14,
+		"y": 8
+	},
+	"HEAL_LOCATION_FIVE_ISLAND": {
+		"map": "FiveIsland_Frlg",
+		"respawn_map": "FiveIsland_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 18,
+		"y": 7
+	},
+	"HEAL_LOCATION_FORTREE_CITY": {
+		"map": "FortreeCity",
+		"respawn_map": "FortreeCity_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 5,
+		"y": 7
+	},
+	"HEAL_LOCATION_FOUR_ISLAND": {
+		"map": "FourIsland_Frlg",
+		"respawn_map": "FourIsland_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 18,
+		"y": 21
+	},
+	"HEAL_LOCATION_FUCHSIA_CITY": {
+		"map": "FuchsiaCity_Frlg",
+		"respawn_map": "FuchsiaCity_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 25,
+		"y": 32
+	},
+	"HEAL_LOCATION_INDIGO_PLATEAU": {
+		"map": "IndigoPlateau_Exterior_Frlg",
+		"respawn_map": "IndigoPlateau_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 11,
+		"y": 7
+	},
+	"HEAL_LOCATION_LAVARIDGE_TOWN": {
+		"map": "LavaridgeTown",
+		"respawn_map": "LavaridgeTown_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 9,
+		"y": 7
+	},
+	"HEAL_LOCATION_LAVENDER_TOWN": {
+		"map": "LavenderTown_Frlg",
+		"respawn_map": "LavenderTown_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 6,
+		"y": 6
+	},
+	"HEAL_LOCATION_LILYCOVE_CITY": {
+		"map": "LilycoveCity",
+		"respawn_map": "LilycoveCity_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 24,
+		"y": 15
+	},
+	"HEAL_LOCATION_LITTLEROOT_TOWN_BRENDANS_HOUSE": {
+		"map": "LittlerootTown",
+		"respawn_map": "LittlerootTown_BrendansHouse_1F",
+		"respawn_x": 2,
+		"respawn_y": 7,
+		"x": 5,
+		"y": 9
+	},
+	"HEAL_LOCATION_LITTLEROOT_TOWN_BRENDANS_HOUSE_2F": {
+		"map": "LittlerootTown_BrendansHouse_2F",
+		"respawn_map": "LittlerootTown_BrendansHouse_1F",
+		"respawn_x": 2,
+		"respawn_y": 7,
+		"x": 4,
+		"y": 2
+	},
+	"HEAL_LOCATION_LITTLEROOT_TOWN_MAYS_HOUSE": {
+		"map": "LittlerootTown",
+		"respawn_map": "LittlerootTown_MaysHouse_1F",
+		"respawn_x": 8,
+		"respawn_y": 7,
+		"x": 14,
+		"y": 9
+	},
+	"HEAL_LOCATION_LITTLEROOT_TOWN_MAYS_HOUSE_2F": {
+		"map": "LittlerootTown_MaysHouse_2F",
+		"respawn_map": "LittlerootTown_MaysHouse_1F",
+		"respawn_x": 8,
+		"respawn_y": 7,
+		"x": 4,
+		"y": 2
+	},
+	"HEAL_LOCATION_MAUVILLE_CITY": {
+		"map": "MauvilleCity",
+		"respawn_map": "MauvilleCity_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 22,
+		"y": 6
+	},
+	"HEAL_LOCATION_MOSSDEEP_CITY": {
+		"map": "MossdeepCity",
+		"respawn_map": "MossdeepCity_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 28,
+		"y": 17
+	},
+	"HEAL_LOCATION_OLDALE_TOWN": {
+		"map": "OldaleTown",
+		"respawn_map": "OldaleTown_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 6,
+		"y": 17
+	},
+	"HEAL_LOCATION_ONE_ISLAND": {
+		"map": "OneIsland_Frlg",
+		"respawn_map": "OneIsland_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 14,
+		"y": 6
+	},
+	"HEAL_LOCATION_PACIFIDLOG_TOWN": {
+		"map": "PacifidlogTown",
+		"respawn_map": "PacifidlogTown_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 8,
+		"y": 16
+	},
+	"HEAL_LOCATION_PALLET_TOWN": {
+		"map": "PalletTown_Frlg",
+		"respawn_map": "PalletTown_PlayersHouse_1F_Frlg",
+		"respawn_x": 8,
+		"respawn_y": 5,
+		"x": 6,
+		"y": 8
+	},
+	"HEAL_LOCATION_PETALBURG_CITY": {
+		"map": "PetalburgCity",
+		"respawn_map": "PetalburgCity_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 20,
+		"y": 17
+	},
+	"HEAL_LOCATION_PEWTER_CITY": {
+		"map": "PewterCity_Frlg",
+		"respawn_map": "PewterCity_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 17,
+		"y": 26
+	},
+	"HEAL_LOCATION_ROUTE10": {
+		"map": "Route10_Frlg",
+		"respawn_map": "Route10_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 13,
+		"y": 21
+	},
+	"HEAL_LOCATION_ROUTE4": {
+		"map": "Route4_Frlg",
+		"respawn_map": "Route4_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 12,
+		"y": 6
+	},
+	"HEAL_LOCATION_RUSTBORO_CITY": {
+		"map": "RustboroCity",
+		"respawn_map": "RustboroCity_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 16,
+		"y": 39
+	},
+	"HEAL_LOCATION_SAFFRON_CITY": {
+		"map": "SaffronCity_Frlg",
+		"respawn_map": "SaffronCity_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 24,
+		"y": 39
+	},
+	"HEAL_LOCATION_SEVEN_ISLAND": {
+		"map": "SevenIsland_Frlg",
+		"respawn_map": "SevenIsland_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 12,
+		"y": 4
+	},
+	"HEAL_LOCATION_SIX_ISLAND": {
+		"map": "SixIsland_Frlg",
+		"respawn_map": "SixIsland_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 11,
+		"y": 12
+	},
+	"HEAL_LOCATION_SLATEPORT_CITY": {
+		"map": "SlateportCity",
+		"respawn_map": "SlateportCity_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 19,
+		"y": 20
+	},
+	"HEAL_LOCATION_SOOTOPOLIS_CITY": {
+		"map": "SootopolisCity",
+		"respawn_map": "SootopolisCity_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 43,
+		"y": 32
+	},
+	"HEAL_LOCATION_SOUTHERN_ISLAND_EXTERIOR": {
+		"map": "SouthernIsland_Exterior",
+		"respawn_map": "SouthernIsland_Exterior",
+		"respawn_x": 15,
+		"respawn_y": 20,
+		"x": 15,
+		"y": 20
+	},
+	"HEAL_LOCATION_THREE_ISLAND": {
+		"map": "ThreeIsland_Frlg",
+		"respawn_map": "ThreeIsland_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 14,
+		"y": 28
+	},
+	"HEAL_LOCATION_TWO_ISLAND": {
+		"map": "TwoIsland_Frlg",
+		"respawn_map": "TwoIsland_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 21,
+		"y": 8
+	},
+	"HEAL_LOCATION_VERDANTURF_TOWN": {
+		"map": "VerdanturfTown",
+		"respawn_map": "VerdanturfTown_PokemonCenter_1F",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 16,
+		"y": 4
+	},
+	"HEAL_LOCATION_VERMILION_CITY": {
+		"map": "VermilionCity_Frlg",
+		"respawn_map": "VermilionCity_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 15,
+		"y": 7
+	},
+	"HEAL_LOCATION_VIRIDIAN_CITY": {
+		"map": "ViridianCity_Frlg",
+		"respawn_map": "ViridianCity_PokemonCenter_1F_Frlg",
+		"respawn_x": 7,
+		"respawn_y": 4,
+		"x": 26,
+		"y": 27
+	}
+}

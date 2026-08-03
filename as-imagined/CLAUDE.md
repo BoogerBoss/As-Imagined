@@ -1731,6 +1731,30 @@ They **pause on WAIT_MESSAGE** like `message` does. A `giveitem` that ran silent
 
 **Not built**: the bag SCREEN (I4) — items go in and out, nothing shows them yet — and the wallet (I3b), so `checkmoney`/`removemoney` still stop a script.
 
+**[M27O O1 — the respawn point] COMPLETE — 2026-07-31.**
+
+`setrespawn` now stores where a whiteout will send the player. New `scripts/overworld/respawn_point.gd`, held on `OverworldSession` beside the bag and the flags — it has to survive the scene swap a battle performs, and a respawn point forgotten by the very fight that caused the whiteout would be worse than none.
+
+⚠️ **THE HEAL POINT AND THE RESPAWN POINT ARE DIFFERENT PLACES, AND SOURCE KEEPS TWO TABLES FOR IT.** A heal location's `map`/`x`/`y` is the OUTDOOR tile the Pokémon Centre stands on — what Teleport and fly use. Its `respawn_map` is INSIDE: the Centre, or **for Pallet the player's own house**, which is the one entry where a "respawn == Pokémon Centre" assumption is simply wrong. Collapsing them drops the player outdoors after a whiteout instead of in front of a nurse. Break-tested: fails A.06/B.02/B.03/B.04.
+
+⚠️ **`respawn_x`/`respawn_y` ARE OPTIONAL AND THEIR DEFAULT IS REAL.** Most entries omit them because every Centre has the same interior, and source's template fills `DEFAULT_POKEMON_CENTER_X 7` / `_Y 4`. Reading a missing coordinate as 0 puts the player in the wall. The generator reads both defaults out of the template rather than hardcoding them. Break-tested: fails A.05.
+
+⚠️ **A CORRECTION MADE MID-STEP-0, WORTH RECORDING BECAUSE IT NEARLY RESHAPED THE PHASE.** A first pass concluded the heal-location table was Hoenn-only and Kanto had none — which would have meant inventing the data. It was a bad filter: it looked for an `FRLG` suffix in the map name, and Kanto entries carry none (`MAP_PALLET_TOWN`, not `MAP_PALLET_TOWN_FRLG`). **20 of the 42 entries are Kanto**, and all four the corridor sets are among them. Checking rather than acting on the first result is what saved a phase built on fabricated data.
+
+New `scripts/gen_heal_locations.py` -> `data/heal_locations.json`: 42 entries with map constants already resolved to this project's own names through the `MapConstants` table `[M27B]` generated, so nothing downstream re-derives that mapping. Idempotent.
+
+**An unknown location is REFUSED, not stored.** Keeping it would turn into an unresolvable warp at whiteout time — the worst possible moment, with the player already fainted and nowhere to go. The opcode names it in `diagnostic` instead, the same degrade-and-report contract every other opcode here follows. Break-tested: fails C.04/D.03/D.04.
+
+**The starting respawn resolves from `start_map`** rather than being hardcoded, so moving the start for a playtest moves the respawn with it instead of stranding a Pewter session back in Pallet; a start map with no heal location of its own falls back to the story's first. That is a **stand-in for M27K's new-game flow**, not a mechanic — source sets the first respawn from its opening sequence.
+
+**Headline guard E.02/E.03**: every one of the **39 distinct locations the corpus sets** is known AND resolves to a real respawn map. A script setting a respawn the player can never be sent to is a bug that only appears the first time someone loses.
+
+⚠️ **Only 3 of 42 respawn maps are baked today** (the corridor's own). That is expected — the rest are outside the vertical slice — but it means O2 must handle "respawn map not baked" as a real case rather than assuming the destination exists.
+
+**Tests**: new `m27o_respawn_test` **24/24**, three breaks verified. Regression: `m27i_bag_test` 47/47, `m27i_text_buffers_test` 42/42, `m27i_item_identity_test` 31/31, `m27f_script_vm_test` 136/136, `m27a_step_resolver_test` 514/514, `check_bake_diff --all` 32/32.
+
+**Not built**: O2, the loss path itself — losing still leaves the trainer beatable and the player where they fell. O1 is the destination; O2 is the journey.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **[M27M-T — trimmed TileSet] SCOPED 2026-07-30, not built. ⚠️ Scope of record is `docs/m27m_trimmed_tileset_recon.md`.** Measured rather than estimated: a real trimmed twin of the Pallet Town pair loads in **1.71 ms against the full set's 15.25 ms — 8.9x**, 25 KB → 6 KB. Region-wide only **11,036 tile definitions are actually placed** against the 132,480 `create_tile()` calls made today (**4.0x**), and all fourteen corridor pairs together would build in **~31 ms** — about what ONE cold tileset costs now. Baked scenes need no re-bake (M27M2 made the TileSet an `ext_resource`), `check_bake_diff` and the overlay are unaffected, and no consumer iterates tiles. **The failure mode is SILENT and is the whole design constraint**: `set_cell` accepts a coord whose tile was never created, stores it faithfully, and renders nothing — so the trim pass must ship with its own coverage proof, not after. Three hazards are recorded there with measurements: the trim set must be computed region-wide per pair rather than per-bake (or a later map silently renders with holes), it must union `border[]` as well as `metatile[]` (**5 border ids region-wide appear in no map body**), and it conflicts head-on with M27M's authoring requirement — resolved by treating `trim`/`expand` as two idempotent operations on ONE artifact rather than shipping two files.
