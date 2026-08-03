@@ -100,6 +100,10 @@ class MonScale:
 
 static func register_all(registry: AnimBehaviorRegistry) -> void:
 	registry.register_many({
+		# — [M36D batch 38] —
+		"AnimTask_VoltSwitch": _volt_switch,
+		"AnimSuperpowerRock": _superpower_rock,
+		"SlideMonToOffsetAndBack": _slide_mon_to_offset_and_back,
 		# — [M36D batch 37] —
 		"AnimRapidSpin": _rapid_spin,
 		"AnimTask_RapinSpinMonElevation": _rapid_spin_mon_elevation,
@@ -16797,3 +16801,182 @@ static func _rapid_spin_mon_elevation(vm: AnimScriptVM, _ctx: Dictionary) -> voi
 			vm.stage.clear_background_band()
 			return true
 		return false)
+
+
+# ══ [M36D batch 38] ═══════════════════════════════════════════════════════
+#
+# Three behaviors whose NAMES each promise something the code qualifies.
+#
+# STILL DEFERRED, and for a read-it-properly reason rather than a hard one:
+# `AnimTask_LeafBlade`, `AnimTask_AirCutterProjectile`,
+# `AnimTask_EruptionLaunchRocks` and `InitPoisonGasCloudAnim` are all
+# multi-state spawners whose step machines were not read in full this batch.
+# Rule (4): defer rather than guess. They are portable and remain the largest
+# readable block left.
+
+
+# AnimTask_VoltSwitch (battle_anim_new.c) + VoltSwitch_Step.
+#
+# ⚠️ NOT A TASK. Its signature is `void AnimTask_VoltSwitch(struct Sprite *)`
+# -- a SPRITE callback wearing a task's name. Registered under the name the
+# extracted scripts actually reference, but do not reach for `add_stepper`
+# expecting a task's argument conventions.
+#
+# THE RETURN TRIP IS THE MOVE. It arcs to the target, then immediately arcs
+# BACK to the attacker over a fixed 0x14 = 20 frames -- Volt Switch is the
+# move where the user leaves, and a one-way port drops its whole signature.
+#
+# The side branches do DIFFERENT work, not mirrored work: an opponent-side
+# user negates args[2], while a player-side user instead nudges the spawn
+# 10 px DOWN. Neither branch does the other's job.
+const _VOLT_SWITCH_RETURN_FRAMES := 20
+const _VOLT_SWITCH_PLAYER_DROP := 10.0
+
+
+static func _volt_switch(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	var player := _is_player_side(vm)
+	var start := _positioned_centre(vm, AnimStage.ANIM_ATTACKER, vm.args[0],
+			vm.args[1], scale)
+	if player:
+		start.y += _VOLT_SWITCH_PLAYER_DROP * scale
+	var dx := float(vm.args[2])
+	if not player:
+		dx = -dx
+	var apex := _battler_centre(vm, AnimStage.ANIM_TARGET) \
+			+ Vector2(dx, float(vm.args[3])) * scale
+	var home := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var amp := -float(vm.args[5]) * scale
+	node.centre = start
+	_arc_travel(vm, node, start, apex, maxi(1, vm.args[4]), amp)
+	# The return leg, queued behind the outbound one. `_arc_travel` finishes
+	# its own node, so the second leg gets a fresh sprite at the apex.
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		st["t"] = int(st["t"]) + 1
+		if int(st["t"]) < maxi(1, vm.args[4]):
+			return false
+		var back := _make_sprite(vm, ctx)
+		if back != null:
+			back.centre = apex
+			_arc_travel(vm, back, apex, home, _VOLT_SWITCH_RETURN_FRAMES, amp)
+		return true)
+
+
+# AnimSuperpowerRock (battle_anim_effects_2.c) + its two steps. args:
+# 0 spawn x, 1 rise speed (8.8), 2 frame variant, 3 rise frames.
+#
+# TWO PHASES WITH DIFFERENT FIXED-POINT SCALES, which is the detail to get
+# right: the rise accumulates in 8.8 (`>> 8`), the flight in 4.4 (`>> 4`).
+# Using one scale for both makes the second phase 16x too fast or the first
+# 16x too slow.
+#
+# The rock starts at y = 120 -- SCREEN BOTTOM, not the attacker -- rises for
+# `args[3]` frames, and only THEN takes its heading, which is the raw
+# attacker-to-target delta applied per frame. So the flight time is set by
+# how far apart the battlers are, and is not an argument at all.
+const _SUPERPOWER_ROCK_START_Y := 120.0
+const _SUPERPOWER_ROCK_CAP := 180
+
+
+static func _superpower_rock(vm: AnimScriptVM, ctx: Dictionary) -> void:
+	var node := _make_sprite(vm, ctx)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	_apply_anim_variant(node, ctx, vm.args[2])
+	var x := float(vm.args[0]) * scale
+	var start_y := _SUPERPOWER_ROCK_START_Y * scale
+	node.centre = Vector2(x, start_y)
+	var rise: int = maxi(0, vm.args[3])
+	var rise_speed: int = vm.args[1]
+	var atk := _battler_centre(vm, AnimStage.ANIM_ATTACKER)
+	var tgt := _battler_centre(vm, AnimStage.ANIM_TARGET)
+	var st := {
+		"phase": 0, "left": rise, "y88": int(start_y) << 8,
+		"p": Vector2.ZERO, "v": Vector2.ZERO, "t": 0,
+	}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		node.advance_frame()
+		st["t"] = int(st["t"]) + 1
+		if int(st["phase"]) == 0:
+			if int(st["left"]) > 0:
+				st["y88"] = int(st["y88"]) - rise_speed
+				node.centre = Vector2(x, float(int(st["y88"]) >> 8))
+				st["left"] = int(st["left"]) - 1
+				if node.centre.y < -8.0 * scale:
+					node.finish()
+					return true
+			else:
+				# The heading is taken ONCE, here, from the live battler gap.
+				st["phase"] = 1
+				st["v"] = tgt - atk
+				st["p"] = node.centre * 16.0
+		else:
+			st["p"] = (st["p"] as Vector2) + (st["v"] as Vector2)
+			var pos: Vector2 = (st["p"] as Vector2) / 16.0
+			node.centre = pos
+			if pos.x + 8.0 * scale > 256.0 * scale or pos.y < -8.0 * scale \
+					or pos.y > 120.0 * scale:
+				node.finish()
+				return true
+		if int(st["t"]) >= _SUPERPOWER_ROCK_CAP:
+			node.finish()
+			return true
+		return false)
+
+
+# SlideMonToOffsetAndBack (battle_anim_mon_movement.c:659). args: 0 battler,
+# 1 x offset, 2 y offset, 3 mirror-y flag, 4 duration, 5 return flag.
+#
+# ⚠️ THE NAME OVER-PROMISES. "AndBack" happens ONLY when args[5] is nonzero
+# -- source stores `DestroyAnimSprite` as the completion callback otherwise,
+# leaving the mon exactly where it was slid to. A port that always returned
+# would be reading the name rather than the code, and would cancel the
+# displacement half its callers want.
+#
+# The sprite itself is INVISIBLE: it is a controller that drags the battler,
+# so this goes through the VM's tracked mon offset (rule (3)) -- an aborted
+# run must not leave the Pokemon parked off its mark.
+#
+# The y mirror is CONDITIONAL on args[3], while the x mirror is not: an
+# opponent-side battler always negates args[1], but only negates args[2] when
+# args[3] == 1.
+static func _slide_mon_to_offset_and_back(vm: AnimScriptVM,
+		_ctx: Dictionary) -> void:
+	var who: int = AnimStage.ANIM_ATTACKER if vm.args[0] == 0 \
+			else AnimStage.ANIM_TARGET
+	var node := _battler_node(vm, who)
+	if node == null:
+		return
+	var scale := _scale(vm)
+	# Keyed on the moved battler's OWN side, not the attacker's.
+	var battler_is_player: bool = _is_player_side(vm) \
+			if who == AnimStage.ANIM_ATTACKER else not _is_player_side(vm)
+	var dx := float(vm.args[1])
+	var dy := float(vm.args[2])
+	if not battler_is_player:
+		dx = -dx
+		if vm.args[3] == 1:
+			dy = -dy
+	var target := Vector2(dx, dy) * scale
+	var duration: int = maxi(1, vm.args[4])
+	var comes_back: bool = vm.args[5] != 0
+	var mon := MonOffset.new(node)
+	var st := {"t": 0}
+	vm.add_stepper(func() -> bool:
+		if not is_instance_valid(node):
+			return true
+		st["t"] = int(st["t"]) + 1
+		var f: float = minf(1.0, float(st["t"]) / float(duration))
+		mon.apply(target * f)
+		if int(st["t"]) < duration:
+			return false
+		if comes_back:
+			mon.apply(Vector2.ZERO)
+		return true)

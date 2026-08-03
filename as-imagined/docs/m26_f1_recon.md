@@ -1454,6 +1454,59 @@ is harness-specific, not a shipped bug.
 clipped by the message box (already flagged for M26G), and the player's trainer
 lingers on screen for the whole capture (the send-out stall above).
 
+### M36D batch 38 — COMPLETE 2026-08-03. Three names that over-promise.
+
+**775 -> 778 of 845 in-scope (91.7% -> 92.1%).** 3 behaviors, 3 moves — Volt
+Switch, Superpower, Skull Bash. Behaviors 485 -> 488, suite 1193 -> 1215/1215.
+
+A small batch on purpose. The unifying thread is that **each behavior's NAME
+promises something the code qualifies**, and in all three cases the plausible
+port is the one that believes the name.
+
+**`AnimTask_VoltSwitch` is not a task.** Its signature is
+`void AnimTask_VoltSwitch(struct Sprite *)` -- a sprite callback wearing a
+task's name. Registered under the name the extracted scripts reference, with
+the trap stated at the code site.
+
+**And the return trip IS the move.** It arcs to the target, then immediately
+arcs BACK to the attacker over a fixed 0x14 = 20 frames -- Volt Switch is the
+move where the user leaves. A one-way port drops its entire signature and
+still looks like a perfectly good projectile. Its side branches also do
+DIFFERENT work rather than mirrored work: an opponent-side user negates
+args[2], while a player-side one instead nudges the spawn 10 px DOWN. Neither
+branch does the other's job, so a plain mirror is wrong in both directions.
+
+**`AnimSuperpowerRock` runs two phases at two DIFFERENT fixed-point scales** --
+8.8 for the rise, 4.4 for the flight. Using one for both makes a phase 16x too
+fast or too slow. It also starts at **y = 120, screen bottom**, not on the
+attacker, and takes its heading ONCE, from the live attacker-to-target delta,
+so the flight time is set by how far apart the battlers are and is not an
+argument at all.
+
+**`SlideMonToOffsetAndBack` only comes back when args[5] says so.** Source
+stores `DestroyAnimSprite` as the completion callback otherwise, leaving the
+mon exactly where it was slid to. **Reading the name rather than the code
+cancels the displacement half the callers want.** The sprite itself is
+invisible -- a controller that drags the battler -- so it goes through the
+VM's tracked mon offset per rule (3), and an aborted run restores. The y
+mirror is conditional on args[3] while the x mirror is unconditional.
+
+⚠️ **RULE (15) A FOURTH CONSECUTIVE BATCH, again my assertion.** Five
+injections; four failed at once. The fifth -- the wrong fixed-point scale for
+the flight phase -- PASSED, because the guard asked only whether x changed,
+which is true at any scale (16x too fast is still "moved"). Now measures the
+per-frame step SIZE against the battler gap: one frame of flight is gap/16,
+tens of pixels, never hundreds. Re-injected and it fails.
+
+**Still deferred, and for a read-it-properly reason rather than a hard one**:
+`AnimTask_LeafBlade`, `AnimTask_AirCutterProjectile`,
+`AnimTask_EruptionLaunchRocks` and `InitPoisonGasCloudAnim` are multi-state
+spawners whose step machines were not read in full this batch. Rule (4):
+defer rather than guess. They remain the largest readable block left, and all
+four are asserted as still-blocked so a partial port cannot pass quietly.
+
+---
+
 ### M36D batch 37 — COMPLETE 2026-08-03. The scanline surface, and a deferral reason that was half wrong for five batches.
 
 **851 -> 856 of 932; against the NEW in-scope denominator, 770 -> 775 of 845

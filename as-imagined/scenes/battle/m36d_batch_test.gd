@@ -276,6 +276,12 @@ func _ready() -> void:
 	_test_b37_elevation_offset_is_a_shimmer_not_a_screen_jump()
 	_test_b37_elevation_clears_its_band_when_done()
 	_test_b37_coverage()
+	_test_b38_volt_switch_comes_back()
+	_test_b38_volt_switch_side_branches_do_different_work()
+	_test_b38_superpower_rock_rises_then_takes_its_heading()
+	_test_b38_slide_mon_returns_only_when_asked()
+	_test_b38_slide_mon_offset_is_restored_on_abort()
+	_test_b38_coverage()
 
 	var total := _pass + _fail
 	print("m36d_batch_test: %d/%d passed" % [_pass, total])
@@ -8813,3 +8819,167 @@ func _test_b37_coverage() -> void:
 	for pair in [[229, "Rapid Spin"], [789, "Ice Spinner"], [787, "Spin Out"],
 			[794, "Mortal Spin"], [800, "Aqua Step"]]:
 		_chk("b37 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+
+
+# ── [M36D batch 38] ───────────────────────────────────────────────────────
+
+func _test_b38_volt_switch_comes_back() -> void:
+	# THE claim. Volt Switch is the move where the user leaves; a one-way arc
+	# drops its whole signature. Source arcs to the target then immediately
+	# arcs BACK over a fixed 20 frames.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimTask_VoltSwitch", [0, 0, 0, 0, 14, 0],
+			"gVoltSwitchSpriteTemplate")
+	var atk: Vector2 = stage.center_of(AnimStage.ANIM_ATTACKER)
+	var tgt: Vector2 = stage.center_of(AnimStage.ANIM_TARGET)
+	# Outbound leg.
+	_step(r["vm"], 13)
+	var out_far := 0.0
+	for s in _live_sprites(stage):
+		out_far = maxf(out_far, atk.distance_to((s as AnimSprite).centre))
+	_chk("b38 Volt Switch's bolt travels away from the attacker",
+			out_far > atk.distance_to(tgt) * 0.5)
+	# Return leg: a second sprite is spawned at the apex and comes home.
+	_step(r["vm"], 6)
+	_chk("b38 ...and a RETURN leg is spawned once it arrives",
+			_live_sprites(stage).size() >= 1)
+	_step(r["vm"], 22)
+	var home_near := 1.0e9
+	for s in _live_sprites(stage):
+		home_near = minf(home_near, atk.distance_to((s as AnimSprite).centre))
+	_chk("b38 ...which ends back at the ATTACKER, not the target",
+			_live_sprites(stage).is_empty() or home_near < out_far * 0.6)
+
+
+func _test_b38_volt_switch_side_branches_do_different_work() -> void:
+	# An opponent-side user negates args[2]; a player-side one instead nudges
+	# the spawn 10 px down. Neither branch does the other's job, so a plain
+	# mirror is wrong in both directions.
+	var ys: Array = []
+	for player in [true, false]:
+		var stage := FakeStage.new()
+		stage.player_side = player
+		var r := _spawn(stage, "AnimTask_VoltSwitch", [0, 0, 30, 0, 14, 0],
+				"gVoltSwitchSpriteTemplate")
+		var node: AnimSprite = r["sprite"]
+		ys.append(node.centre.y
+				- stage.center_of(AnimStage.ANIM_ATTACKER).y)
+	var scale: float = 1024.0 / 240.0
+	_chk("b38 a PLAYER-side Volt Switch spawns 10 px lower",
+			ys.size() == 2 and absf(float(ys[0]) - 10.0 * scale) < 2.0)
+	_chk("b38 ...while an OPPONENT-side one does NOT drop at all",
+			ys.size() == 2 and absf(float(ys[1])) < 2.0)
+
+
+func _test_b38_superpower_rock_rises_then_takes_its_heading() -> void:
+	# Two phases with DIFFERENT fixed-point scales -- 8.8 for the rise, 4.4
+	# for the flight. The rock starts at screen bottom, not on the attacker.
+	var stage := FakeStage.new()
+	var r := _spawn(stage, "AnimSuperpowerRock", [60, 512, 0, 6],
+			"gSuperpowerRockSpriteTemplate")
+	var node: AnimSprite = r["sprite"]
+	var scale: float = 1024.0 / 240.0
+	_chk("b38 the rock starts at SCREEN BOTTOM, not on the attacker",
+			absf(node.centre.y - 120.0 * scale) < 3.0)
+	var ys: Array = []
+	for i in range(6):
+		_step(r["vm"], 1)
+		if not is_instance_valid(node):
+			break
+		ys.append(node.centre.y)
+	var rising := ys.size() >= 4
+	for i in range(1, ys.size()):
+		if float(ys[i]) >= float(ys[i - 1]):
+			rising = false
+	_chk("b38 ...rises during its rise phase", rising)
+	# ⚠️ MEASURED PER-FRAME, not just "did x change". Injecting the WRONG
+	# fixed-point scale for the flight phase (8.8 where source uses 4.4) still
+	# moves it horizontally -- 16x too fast, straight off screen on frame one.
+	# "It moved" passed against that; the step SIZE is what separates the two.
+	# The heading is the raw battler gap applied at 4.4, so one frame of
+	# flight is gap/16 -- tens of pixels, never hundreds.
+	var gap: float = stage.center_of(AnimStage.ANIM_ATTACKER).distance_to(
+			stage.center_of(AnimStage.ANIM_TARGET))
+	var prev: Vector2 = node.centre if is_instance_valid(node) else Vector2.ZERO
+	var flight_step := 0.0
+	var moved_x := false
+	for i in range(4):
+		_step(r["vm"], 1)
+		if not is_instance_valid(node):
+			break
+		var d: Vector2 = node.centre - prev
+		if absf(d.x) > 0.5:
+			moved_x = true
+			flight_step = maxf(flight_step, d.length())
+		prev = node.centre
+	_chk("b38 ...then takes a HEADING and moves horizontally too", moved_x)
+	_chk("b38 ...at the 4.4 flight scale (about gap/16 a frame, not gap)",
+			flight_step > 0.0 and flight_step < gap / 4.0)
+
+
+func _test_b38_slide_mon_returns_only_when_asked() -> void:
+	# ⚠️ THE NAME OVER-PROMISES: "AndBack" happens only when args[5] is
+	# nonzero. Source stores DestroyAnimSprite otherwise, leaving the mon
+	# where it was slid to. Reading the name rather than the code would
+	# cancel the displacement half the callers want.
+	var rested: Array = []
+	for back in [1, 0]:
+		var stage := FakeStage.new()
+		var mon: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+		var home: Vector2 = mon.position
+		var vm := _vm(stage)
+		vm.args[0] = 0
+		vm.args[1] = 24
+		vm.args[2] = 0
+		vm.args[3] = 0
+		vm.args[4] = 8
+		vm.args[5] = back
+		_registry.get_behavior("SlideMonToOffsetAndBack").call(vm, {})
+		_step(vm, 4)
+		var mid_moved: bool = not mon.position.is_equal_approx(home)
+		_step(vm, 10)
+		rested.append([mid_moved, mon.position.is_equal_approx(home)])
+	_chk("b38 the mon genuinely slides while the effect runs",
+			bool((rested[0] as Array)[0]) and bool((rested[1] as Array)[0]))
+	_chk("b38 args[5] = 1 slides the mon AND brings it back",
+			bool((rested[0] as Array)[1]))
+	_chk("b38 args[5] = 0 leaves it displaced (the name over-promises)",
+			not bool((rested[1] as Array)[1]))
+
+
+func _test_b38_slide_mon_offset_is_restored_on_abort() -> void:
+	# Rule (3): the controller sprite drags a BATTLER, so an aborted run must
+	# not leave the Pokemon parked off its mark.
+	var stage := FakeStage.new()
+	var mon: Control = stage.sprite_for(AnimStage.ANIM_ATTACKER)
+	var home: Vector2 = mon.position
+	var vm := _vm(stage)
+	vm.args[0] = 0
+	vm.args[1] = 24
+	vm.args[4] = 20
+	vm.args[5] = 0
+	_registry.get_behavior("SlideMonToOffsetAndBack").call(vm, {})
+	_step(vm, 5)
+	_chk("b38 the mon is displaced mid-slide",
+			not mon.position.is_equal_approx(home))
+	vm._finish()
+	_chk("b38 ...and the VM's own net restores it when the run ends",
+			mon.position.is_equal_approx(home))
+
+
+func _test_b38_coverage() -> void:
+	var ids: Array = []
+	for id in range(1, 1000):
+		if AnimData.script_for_move(id) != "":
+			ids.append(id)
+	var cov := _dispatcher.coverage(ids)
+	_chk("b38 coverage reaches the measured level (%d)" % int(cov["playable"]),
+			int(cov["playable"]) >= 859)
+	for pair in [[521, "Volt Switch"], [276, "Superpower"], [130, "Skull Bash"]]:
+		_chk("b38 %s plays" % pair[1], _dispatcher.can_play_move(int(pair[0])))
+	# The four spawners this batch deliberately left, asserted as still
+	# blocked so a partial port cannot pass quietly.
+	for pair in [[348, "Leaf Blade"], [314, "Air Cutter"], [284, "Eruption"],
+			[139, "Poison Gas"]]:
+		_chk("b38 %s stays deferred (step machine unread)" % pair[1],
+				not _dispatcher.can_play_move(int(pair[0])))
