@@ -175,9 +175,23 @@ static func battle_scene(is_doubles: bool) -> PackedScene:
 
 
 ## Tests only. Production never wants this — the flags ARE the save.
+##
+## ⚠️ **EVERY PIECE OF SESSION STATE, NOT MOST OF THEM.** This used to reset 5
+## of 8 and leave `bag`/`wallet`/`respawn` standing, which leaks across tests AND
+## across suites in one process — and since the only callers are tests, "give me
+## a clean session" is the whole contract, so a partial reset was simply wrong.
+##
+## Found the expensive way during `[M27I I5-3a]`: a section added 2 Potions after
+## calling this, then removed 2, and was left holding 1 from an earlier section
+## — the assertion failed for a reason that had nothing to do with the code under
+## test. Anything added here later must be reset here too; the cost of forgetting
+## is a test that fails somewhere else.
 static func reset() -> void:
 	flags = FlagStore.new()
 	party = null
+	bag = Bag.new()
+	wallet = Wallet.new()
+	respawn = RespawnPoint.new()
 	pending_return = {}
 	pending_result = null
 	pending_trainer_key = ""

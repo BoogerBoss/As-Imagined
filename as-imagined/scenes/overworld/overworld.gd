@@ -397,19 +397,16 @@ func _process(_delta: float) -> void:
 	# world freezes behind them — source's own bag/start-menu callbacks are full
 	# screen swaps, so nothing underneath keeps running. Ordered bag-first: the
 	# bag is opened FROM the menu, so it sits on top of it.
-	if _party_screen != null and _party_screen.is_open:
-		_drive_party_screen()
-		return
-	if _bag_screen != null and _bag_screen.is_open:
-		_drive_bag_screen()
-		return
-	if _start_menu != null and _start_menu.is_open:
-		_drive_start_menu()
-		return
-
-	# [M27O O4] A message box with no script behind it. The poison notice is the
-	# only one today, and freezing the world for it is the faithful shape rather
-	# than a shortcut — source runs it as a real script and
+	# ⚠️ [M27I I5-3a] THIS SITS ABOVE THE MENUS, AND THAT ORDERING IS LOAD-BEARING.
+	# It used to sit below them, which was fine while the poison notice was the
+	# only script-less box — that fires while walking, with no menu up. Item use
+	# announces its result with the BAG still open underneath, so leaving this
+	# below `_drive_bag_screen` would let the bag eat every press and the box
+	# would never dismiss. Source has the same precedence: the party menu's own
+	# message window takes input (`{PAUSE_UNTIL_PRESS}`) while the menu freezes.
+	# [M27O O4] A message box with no script behind it. Freezing the world for
+	# it is the faithful shape rather than a shortcut — source runs the poison
+	# notice as a real script and
 	# `EventScript_FieldPoison` opens with `lockall`. This project simply has no
 	# VM to park it on, so the same lock is expressed by returning here.
 	if _vm == null and _box != null and _box.is_open \
@@ -420,6 +417,17 @@ func _process(_delta: float) -> void:
 		if Input.is_action_just_pressed("ui_accept"):
 			_box.advance()
 		return
+
+	if _party_screen != null and _party_screen.is_open:
+		_drive_party_screen()
+		return
+	if _bag_screen != null and _bag_screen.is_open:
+		_drive_bag_screen()
+		return
+	if _start_menu != null and _start_menu.is_open:
+		_drive_start_menu()
+		return
+
 	if _vm != null:
 		_drive_script()
 		return
@@ -633,6 +641,14 @@ func _on_start_menu_pokemon() -> void:
 	_party_screen.open(OverworldSession.player_party())
 
 
+## [M27I I5-3a] Source's own field item-use messages (`strings.c:246/280/289`),
+## with the trailing `{PAUSE_UNTIL_PRESS}` dropped — that is the message box's
+## own press-to-dismiss behaviour here, not part of the text.
+const ITEM_MSG_NO_EFFECT := "It won't have any effect."
+const ITEM_MSG_HP_RESTORED := "{STR_VAR_1}'s HP was restored\nby {STR_VAR_2} point(s)."
+const ITEM_MSG_BECAME_HEALTHY := "{STR_VAR_1} became healthy."
+
+
 ## [M27I I5-3] USE was chosen in the bag: the party opens as a TARGET PICKER.
 func _on_bag_item_use(item_id: int) -> void:
 	_pending_use_item = item_id
@@ -645,18 +661,9 @@ func _on_bag_item_use(item_id: int) -> void:
 ## branch only (`party_menu.c:4922`) — so the bag removal is gated on the effect
 ## actually landing, not on the pick.
 ##
-## ⚠️ **OPEN GAP — M27I I5-3a: THIS WHOLE FUNCTION IS SILENT, AND SOURCE IS NOT.**
-## `ItemUseCB_Medicine` announces BOTH outcomes, and this announces neither:
-##   * refused  -> "It won't have any effect." (`gText_WontHaveEffect`, :4909)
-##   * healed   -> "{mon}'s HP was restored by {N} point(s)."
-##                 (`Task_DisplayHPRestoredMessage` -> `gText_PkmnHPRestoredByVar2`)
-##   * cured    -> a per-status line via `GetMedicineItemEffectMessage`
-##                 (e.g. "{mon} was cured of its poisoning.")
-## So using a Potion here reads as "nothing happened" whether it worked or not.
-## NOT blocked on anything — `MessageBox` has existed since [M27F Stage 1] and is
-## already driven from this scene; this is a message-table-plus-await, the same
-## shape `_queue_text_beat` already uses. Deliberately left out of I5-3 to keep
-## that slice to the screen itself, not deferred because it is hard.
+## [M27I I5-3a] Both outcomes are ANNOUNCED, matching `ItemUseCB_Medicine`, and
+## the flow afterwards is source's own conditional — see `_announce_item_use`
+## and `_reopen_party_after_item` for the two findings that shaped this.
 func _on_party_mon_chosen(index: int) -> void:
 	if _pending_use_item < 0:
 		return
@@ -669,14 +676,86 @@ func _on_party_mon_chosen(index: int) -> void:
 	var item := ItemRegistry.get_item(item_id)
 	if item == null:
 		return
-	var worked := false
+	var healed := 0
+	var cured := false
 	match item.battle_usage:
 		ItemManager.BATTLE_USE_RESTORE_HP:
-			worked = ItemManager.bag_item_heal(mon, item) > 0
+			healed = ItemManager.bag_item_heal(mon, item)
 		ItemManager.BATTLE_USE_CURE_STATUS:
-			worked = ItemManager.bag_item_cure_status(mon, item)
-	if worked:
+			cured = ItemManager.bag_item_cure_status(mon, item)
+	if healed > 0 or cured:
 		OverworldSession.bag.remove(item_id, 1)
+
+	var pages := item_use_pages(mon, item, healed, cured)
+	if _box == null or pages.is_empty():
+		_reopen_party_after_item(item_id)
+		return
+	_box.open(pages)
+	await _box.closed
+	_reopen_party_after_item(item_id)
+
+
+## The text for one item use. Returns a single page, or nothing if the item was
+## not one this screen knows how to announce.
+##
+## ⚠️ **KEYED ON THE ITEM, NOT ON WHICH STATUS WAS CURED.** The natural guess —
+## look up the ailment that went away — is wrong: `GetMedicineItemEffectMessage`
+## (`party_menu.c:4764`) switches on `GetItemEffectType(item)`, so a Full Heal
+## (`ITEM_EFFECT_CURE_ALL_STATUS`) always prints "became healthy" even when the
+## only thing it cured was poison. Its `statusCured` argument is consulted by
+## exactly ONE case, freeze-vs-frostbite, to split two ailments that share a
+## single item effect type — a distinction this project's roster cannot reach.
+##
+## Strings are source's own (`strings.c:246/280/289`), minus the trailing
+## `{PAUSE_UNTIL_PRESS}` control code, which is the message box's own
+## press-to-dismiss behaviour here rather than something baked into the text.
+static func item_use_pages(mon: BattlePokemon, item: ItemData, healed: int,
+		cured: bool) -> PackedStringArray:
+	var pages := PackedStringArray()
+	if item == null:
+		return pages
+	var buffers := TextBuffers.new()
+	buffers.set_slot(0, mon.species.species_name if mon.species != null else "")
+	match item.battle_usage:
+		ItemManager.BATTLE_USE_RESTORE_HP:
+			if healed > 0:
+				buffers.set_slot(1, str(healed))
+				pages.append(buffers.expand(ITEM_MSG_HP_RESTORED))
+			else:
+				pages.append(ITEM_MSG_NO_EFFECT)
+		ItemManager.BATTLE_USE_CURE_STATUS:
+			pages.append(buffers.expand(ITEM_MSG_BECAME_HEALTHY)
+					if cured else ITEM_MSG_NO_EFFECT)
+	return pages
+
+
+## ⚠️ **YOU STAY IN THE PARTY MENU IF YOU STILL HOLD THE ITEM.** Source decides
+## this per use, not once: `Task_DisplayHPRestoredMessage` (`:5249`) and the cure
+## branch (`:4946`) both hand off to `Task_ReturnToChooseMonAfterText` when
+## `menuType == PARTY_MENU_TYPE_FIELD && CheckBagHasItem(item, 1)`, and to
+## `Task_ClosePartyMenuAfterText` otherwise; a REFUSAL returns unconditionally
+## (`:4910`), which the same count check covers, since a refused item was never
+## consumed. So "use two Potions in a row" needs no second trip through the bag.
+##
+## [This corrects an earlier claim of mine that source "returns you to the bag
+## afterwards". That is only the last-one-used case, which is the one the first
+## live drive happened to exercise.]
+##
+## ⚠️ Deliberately NOT reproduced: source ALSO resets the prompt to "Choose a
+## POKéMON." on the way back (`Task_ReturnToChooseMonAfterText` -> `:2065`), so
+## the second use of a Potion is prompted as if you were merely browsing. That
+## reads as a bug rather than a feature, and this screen keeps naming the item.
+func _reopen_party_after_item(item_id: int) -> void:
+	# The DECISION is the count, and nothing else — kept ahead of the node check
+	# so it stays testable on a bare instance, where no screen exists.
+	if OverworldSession.bag.count_of(item_id) <= 0:
+		return
+	_pending_use_item = item_id
+	if _party_screen == null:
+		return
+	var identity: Dictionary = PokemonRegistry.get_item_identity(item_id)
+	_party_screen.open(OverworldSession.player_party(),
+			str(identity.get("name", "")))
 
 
 func _on_party_cancelled() -> void:

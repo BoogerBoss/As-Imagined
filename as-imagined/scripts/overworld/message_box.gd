@@ -47,9 +47,18 @@ var is_typing: bool:
 
 
 func _init() -> void:
-	# Above the world, BELOW the fade (200) and below the battle overlay (100),
-	# so a battle or a transition covers the box rather than the reverse.
-	layer = 50
+	# ⚠️ [M27I I5-3a] RAISED 50 -> 80, ABOVE THE FIELD MENUS. Item use announces
+	# its result with the party screen (75) and bag (70) still drawn, and at 50
+	# the box rendered UNDERNEATH both — invisible exactly when it matters. In
+	# source the message window belongs to the party menu and draws over it
+	# (`WIN_MSG`), so on-top is the faithful order, not a workaround.
+	#
+	# Full field stack, and the reason for each neighbour: start menu 65 < bag
+	# 70 (opened FROM the menu) < party 75 (opened FROM the bag) < THIS 80 <
+	# yes/no 85 (a prompt sits over the question it asks) < battle overlay 100 <
+	# fade 200 (a transition covers everything). `m27i_i5_party_test` Section F
+	# pins the whole ordering so a future screen cannot quietly slot in wrong.
+	layer = 80
 
 
 func _ready() -> void:

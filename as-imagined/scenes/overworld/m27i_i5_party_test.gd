@@ -12,7 +12,7 @@ extends Node
 ##   * the item is consumed only if it DID something, so a Potion on a full-HP
 ##     Pokémon is refused rather than eaten.
 
-const EXPECTED_TOTAL := 42
+const EXPECTED_TOTAL := 57
 
 var _total := 0
 var _failed := 0
@@ -52,6 +52,8 @@ func _ready() -> void:
 	_test_item_actions()
 	_test_use_flow()
 	_test_wiring()
+	_test_messages()
+	_test_layers()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -286,3 +288,97 @@ func _test_wiring() -> void:
 	m.confirm()
 	_chk("E.07 choosing it emits the signal", got[0])
 	m.free()
+
+
+## --- F. the layer stack (I5-3a) ---
+##
+## A message that renders UNDER the screen it is about is invisible exactly when
+## it matters, and nothing else in the project would catch it — every other
+## assertion here runs on bare instances with no draw order at all. So the whole
+## field stack is pinned, not just the two nodes that moved.
+func _test_layers() -> void:
+	var box := MessageBox.new()
+	var yn := YesNoBox.new()
+	var menu := FieldStartMenu.new()
+	var bag := FieldBagScreen.new()
+	var party := FieldPartyScreen.new()
+	_chk("F.01 the menus stack in the order they open (start < bag < party)",
+			menu.layer < bag.layer and bag.layer < party.layer)
+	# ⚠️ THE ONE THAT WAS BROKEN: at its old layer the box drew under both.
+	_chk("F.02 a message draws OVER the bag and the party screen",
+			box.layer > bag.layer and box.layer > party.layer)
+	_chk("F.03 a yes/no prompt still sits over its own question",
+			yn.layer > box.layer)
+	# The battle overlay (100) and fade (200) must still cover everything.
+	_chk("F.04 and both stay under the battle overlay and the fade",
+			yn.layer < 100 and box.layer < 100)
+	box.free(); yn.free(); menu.free(); bag.free(); party.free()
+
+
+## --- G. the item-use messages (I5-3a) ---
+func _test_messages() -> void:
+	var potion_id := PokemonRegistry.item_id_of("ITEM_POTION")
+	var full_heal_id := PokemonRegistry.item_id_of("ITEM_FULL_HEAL")
+	if potion_id <= 0 or full_heal_id <= 0:
+		_gated += 11
+		return
+	var potion := ItemRegistry.get_item(potion_id)
+	var full_heal := ItemRegistry.get_item(full_heal_id)
+	var mon := PokemonFactory.create_battle_pokemon(1, 10)
+	var name := mon.species.species_name
+	# `overworld.gd` carries no `class_name`, so the static text builder and its
+	# constants are reached through an instance. Deliberately NOT added to the
+	# tree — `_ready()` would boot the whole region for a string check.
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+
+	# Source's own strings, minus the {PAUSE_UNTIL_PRESS} control code.
+	var healed: PackedStringArray = ow.item_use_pages(mon, potion, 20, false)
+	_chk("G.01 a heal names the Pokémon and the exact amount",
+			healed.size() == 1 and str(healed[0]).contains(name)
+			and str(healed[0]).contains("20")
+			and str(healed[0]).contains("HP was restored"))
+	_chk("G.02 and it is one page, not a run-on",
+			healed.size() == 1)
+
+	# ⚠️ THE REFUSAL IS ANNOUNCED, NOT SILENT — the whole point of I5-3a.
+	var refused: PackedStringArray = ow.item_use_pages(mon, potion, 0, false)
+	_chk("G.03 a heal that did nothing says so",
+			refused.size() == 1 and str(refused[0]) == ow.ITEM_MSG_NO_EFFECT)
+	_chk("G.04 and the refusal names no Pokémon — source's line is impersonal",
+			not str(refused[0]).contains(name))
+
+	# ⚠️ KEYED ON THE ITEM, NOT THE STATUS. GetMedicineItemEffectMessage switches
+	# on GetItemEffectType(item), so a Full Heal always says "became healthy"
+	# whatever it actually cured. The plausible misreading — look up the ailment
+	# — would produce "was cured of its poisoning" here.
+	var cured: PackedStringArray = ow.item_use_pages(mon, full_heal, 0, true)
+	_chk("G.05 a cure reports the ITEM's effect, not the ailment",
+			cured.size() == 1 and str(cured[0]).contains("became healthy"))
+	_chk("G.06 naming the Pokémon", str(cured[0]).contains(name))
+	_chk("G.07 a cure that did nothing is refused out loud",
+			str(ow.item_use_pages(mon, full_heal, 0, false)[0])
+			== ow.ITEM_MSG_NO_EFFECT)
+
+	# An item this screen cannot announce produces nothing rather than a wrong
+	# line — the same degrade-and-say-nothing shape as an unusable item's menu.
+	var ball := ItemRegistry.get_item(1)
+	_chk("G.08 an item with no field use announces nothing",
+			ow.item_use_pages(mon, ball, 0, false).is_empty())
+	_chk("G.09 and neither does a null item",
+			ow.item_use_pages(mon, null, 0, false).is_empty())
+
+	# ⚠️ YOU STAY IN THE PARTY MENU IF YOU STILL HOLD THE ITEM. Source decides
+	# this per use (`party_menu.c:5249`/`:4946`), so two Potions in a row need no
+	# second trip through the bag.
+	OverworldSession.reset()
+	OverworldSession.bag.add(potion_id, 2)
+	ow._reopen_party_after_item(potion_id)
+	_chk("G.10 holding more of the item re-arms the picker",
+			ow._pending_use_item == potion_id)
+	OverworldSession.bag.remove(potion_id, OverworldSession.bag.count_of(potion_id))
+	ow._pending_use_item = -1
+	ow._reopen_party_after_item(potion_id)
+	_chk("G.11 using the last one does not",
+			ow._pending_use_item == -1)
+	ow.free()
+	OverworldSession.reset()

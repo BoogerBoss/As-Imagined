@@ -61,9 +61,13 @@ var accepts_input: bool:
 
 
 func _init() -> void:
-	# Above the message box (50) so the prompt sits over the question, but still
-	# below the fade (200) and the battle overlay (100).
-	layer = 60
+	# Above the message box (80) so the prompt sits over the question, but still
+	# below the battle overlay (100) and the fade (200).
+	# ⚠️ [M27I I5-3a] Moved 60 -> 85 IN LOCKSTEP with the message box's own
+	# 50 -> 80. The absolute values do not matter; staying above the box does —
+	# leaving this at 60 while the box rose to 80 would have flipped the nurse
+	# prompt behind its own question.
+	layer = 85
 
 
 func _ready() -> void:
