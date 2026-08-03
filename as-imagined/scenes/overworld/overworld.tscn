@@ -5,6 +5,8 @@
 
 [node name="Overworld" type="Node2D"]
 script = ExtResource("1")
+start_map = "PewterCity_Frlg"
+start_cell = Vector2i(45, 21)
 
 [node name="MapManager" type="Node2D" parent="."]
 script = ExtResource("2")

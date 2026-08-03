@@ -14,7 +14,7 @@ extends Node
 ##     its trailing `return` made that `return` exit the CALLER.
 ## Neither had a test when it was found. Both do now.
 
-const EXPECTED_TOTAL := 131
+const EXPECTED_TOTAL := 135
 
 var _total := 0
 var _failed := 0
@@ -979,6 +979,56 @@ func _test_stage3b_walk_anim() -> void:
 	r3.tick(MovementRunner.FRAME * 4.0)
 	_chk("K.20 a locked walk keeps animating in its established direction",
 			dirs.size() >= 2 and dirs[dirs.size() - 1] == StepResolver.Dir.SOUTH)
+
+	# -- [M27F Stage 3c] the shared walk-script builder --
+	# The trainer approach was the LAST caller still committing cells directly,
+	# which is why an approaching trainer kept teleporting after Stage 3 fixed
+	# wandering. Both callers now build their script here, so they cannot drift.
+	var mm := MapManager.new()
+	var ops3 := mm.walk_ops(StepResolver.Dir.WEST, 3)
+	_chk("K.21 walk_ops builds one walk per tile and terminates",
+			ops3.size() == 4
+			and str(ops3[0]["op"]) == "walk_left" and str(ops3[2]["op"]) == "walk_left"
+			and str(ops3[3]["op"]) == "step_end")
+	# ⚠️ A trainer standing ADJACENT already has distance-1 == 0. It must produce
+	# a script that ends immediately rather than one stray step onto the player.
+	var ops0 := mm.walk_ops(StepResolver.Dir.NORTH, 0)
+	_chk("K.22 an adjacent trainer walks nowhere rather than onto the player",
+			ops0.size() == 1 and str(ops0[0]["op"]) == "step_end")
+	_chk("K.23 and the ops it builds are real animating walk actions",
+			int(MovementRunner.action("walk_left").get("anim", 0)) > 0
+			and bool(MovementRunner.action("walk_left")["moves"]))
+	# ⚠️ THE MULTI-TILE CASE, which is what an approach actually is. K.08 proves
+	# the clock free-runs across `step` calls; this proves it also survives the
+	# ACTION BOUNDARY inside one script. If `_begin` reset it per action -- or
+	# called `face`, which parks it -- a three-tile approach would play
+	# stepA,idle,stepA,idle,stepA,idle and the trainer would hop toward you.
+	var rmt := MovementRunner.new()
+	var nmt := Node2D.new()
+	var wam := WalkAnim.new()
+	wam.setup("OBJ_EVENT_GFX_NINJA_BOY")
+	var sprm := Sprite2D.new()
+	sprm.region_enabled = true
+	var wm := ObjectEventGraphics.frame_size("OBJ_EVENT_GFX_NINJA_BOY").x
+	var seq: Array[int] = []
+	rmt.start("m", nmt, mm.walk_ops(StepResolver.Dir.SOUTH, 3),
+			func(_d: int) -> void: pass, Callable(),
+			func(d: int, tk: int, dt: float) -> void:
+				wam.step(sprm, WalkAnim.facing_name(d), tk, dt)
+				var f := int(sprm.region_rect.position.x / maxi(1, wm))
+				if seq.is_empty() or seq[seq.size() - 1] != f:
+					seq.append(f),
+			Callable())
+	# Three tiles at 16 frames each, stepped finely enough to sample every entry.
+	for _i in range(48):
+		rmt.tick(MovementRunner.FRAME)
+	_chk("K.24 the cycle survives the action boundary inside one walk script",
+			seq.size() >= 6 and seq[0] == 3 and seq[1] == 0 and seq[2] == 4
+			and seq[3] == 0 and seq[4] == 3)
+	sprm.free()
+	nmt.free()
+
+	mm.free()
 
 	spr.free()
 	sspr.free()

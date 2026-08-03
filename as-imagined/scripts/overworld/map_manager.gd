@@ -996,7 +996,22 @@ func tick_entities(delta: float, rng: RandomNumberGenerator) -> void:
 			# what changes is that the sprite now WALKS there instead of
 			# teleporting, which it has done since D3 shipped.
 			start_entity_movement(map_name, npc,
-					[{"op": "walk_" + _ACTION_SUFFIX[_dir_towards(npc.cell, want)]}])
+					walk_ops(_dir_towards(npc.cell, want)))
+
+
+## A movement script of `count` normal walks in one direction.
+##
+## Shared so the two callers that build one — wandering, and the trainer
+## approach — cannot drift into two spellings of the same thing. Normal speed
+## is what source uses for both: the approach hands its object
+## `GetWalkNormalMovementAction` (`trainer_see.c`), not a fast variant.
+func walk_ops(dir: int, count: int = 1) -> Array:
+	var suffix: String = _ACTION_SUFFIX.get(dir, "down")
+	var ops: Array = []
+	for _i in range(maxi(0, count)):
+		ops.append({"op": "walk_" + suffix})
+	ops.append({"op": "step_end"})
+	return ops
 
 
 ## Direction -> the suffix source's own movement actions use.

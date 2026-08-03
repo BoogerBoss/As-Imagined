@@ -28,6 +28,17 @@ const CELL := 16
 ## changes it during play, and a warp (C5) changes it on arrival.
 @export var start_map: String = "PalletTown_Frlg"
 
+## Where in `start_map` to spawn, in that map's own LOCAL cells.
+##
+## `(-1, -1)` means "pick one", which falls back to `_first_walkable` — a
+## row-major scan, so it lands on whatever the map's top-left-most walkable tile
+## happens to be. Fine for a smoke test, arbitrary for play: in Pewter City it
+## puts you on the north edge, 52 tiles from the nearest trainer.
+##
+## Set explicitly for a real starting point. A cell that is out of bounds or
+## solid falls back rather than dropping the player inside scenery.
+@export var start_cell: Vector2i = Vector2i(-1, -1)
+
 ## [M27D D1] Placeholder, matching the battle side's own `_PLAYER_BACK_PIC`.
 ## M27K owns a real player identity; until then the two halves at least agree.
 const PLAYER_GRAPHICS_ID := "OBJ_EVENT_GFX_LEAF"
@@ -127,11 +138,17 @@ signal trainer_approach_finished(trainer: TrainerNPC)
 signal battle_starting(trainer: TrainerNPC)
 signal battle_returned(result: BattleOutcome)
 
-## Feel values, not ported constants. Source measures the approach in frames
-## against a 60fps lock (`sTrainerSeeFuncList`'s own per-step waits); this
-## project is not frame-locked, so these are seconds and are tuned by eye.
+## A feel value, not a ported constant. Source measures the exclamation in
+## frames against a 60fps lock (`sTrainerSeeFuncList`'s own wait); this project
+## is not frame-locked, so this is seconds and is tuned by eye.
+##
+## [M27F Stage 3c] Its sibling `APPROACH_STEP_SECONDS` (0.18) is RETIRED, not
+## merely unused: the approach now walks through the MovementRunner, so its
+## cadence comes from the walk itself. That is strictly more accurate than the
+## invented value — source hands the approaching object
+## `GetWalkNormalMovementAction` (`trainer_see.c`), a NORMAL walk, which is
+## 16 frames a tile rather than 0.18s.
 const EXCLAMATION_SECONDS := 0.5
-const APPROACH_STEP_SECONDS := 0.18
 const EXCLAMATION_TEXTURE := \
 	"res://assets/sprites/overworld/field_effects/emotion_exclamation.png"
 
@@ -228,9 +245,28 @@ func _spawn_player() -> void:
 		_build_player_node()
 		_apply_battle_result()
 		return
-	_cell = _first_walkable(start_map)
+	_cell = _resolve_start_cell()
 	_elev = manager.elevation_at(_cell)
 	_build_player_node()
+
+
+## The cell to spawn on: `start_cell` if it is set AND actually standable,
+## otherwise the map's first walkable tile.
+##
+## Validated rather than trusted, because the failure is silent and nasty — an
+## unwalkable start_cell would drop the player inside scenery, where the step
+## resolver refuses every direction and the only way out is a warp they cannot
+## reach. Falling back is always recoverable; being stuck is not.
+func _resolve_start_cell() -> Vector2i:
+	if start_cell.x < 0 or start_cell.y < 0:
+		return _first_walkable(start_map)
+	var origin := manager.origin_of(start_map)
+	var g := origin + start_cell
+	if manager.chunk_owning(g) == start_map and manager.collision_at(g) == 0:
+		return g
+	push_warning("start_cell %s is not standable in %s — falling back."
+			% [str(start_cell), start_map])
+	return _first_walkable(start_map)
 
 
 ## The player node itself, split out so a battle RETURN reuses it rather than
@@ -469,6 +505,21 @@ func check_trainer_sight() -> TrainerNPC:
 	return null
 
 
+## Wait for one entity's movement script to finish.
+##
+## Bounded rather than open-ended: a runner that never clears — an unimplemented
+## action, a freed node — would otherwise hang the approach forever with input
+## still locked, which is unrecoverable for the player. The cap is generous
+## (twice the walk's own wall-clock cost plus a second) so it can only ever fire
+## on a genuine fault, never on slow frames.
+func _await_movement(e: OverworldEntity, tiles: int) -> void:
+	var budget := (float(tiles) * MovementRunner.FRAMES_NORMAL * MovementRunner.FRAME) * 2.0 + 1.0
+	var waited := 0.0
+	while manager.movement().is_busy(e) and waited < budget:
+		waited += get_process_delta_time()
+		await get_tree().process_frame
+
+
 ## The approach: exclamation mark, walk up, both parties face each other.
 ##
 ## Ported from `sTrainerSeeFuncList` (`trainer_see.c`), which is a task-driven
@@ -486,13 +537,21 @@ func _run_trainer_approach(t: TrainerNPC, dir: int, distance: int) -> void:
 	trainer_spotted.emit(t)
 	await _show_exclamation(t)
 
-	var step: Vector2i = StepResolver.STEP[dir]
 	var map_name := _owning_map_of(t)
-	# Walk distance-1 tiles toward the player, one cell at a time so occupancy
-	# stays true the whole way.
-	for _i in range(max(0, distance - 1)):
-		manager.move_entity(map_name, t, t.cell + step)
-		await get_tree().create_timer(APPROACH_STEP_SECONDS).timeout
+	# [M27F Stage 3c] Walk distance-1 tiles through the MovementRunner.
+	#
+	# ⚠️ This was the LAST place still calling `move_entity` directly, and it is
+	# why an approaching trainer kept teleporting after Stage 3 fixed wandering:
+	# `move_entity` assigns `cell`, whose setter snaps `position`, so the sprite
+	# jumped a whole tile per timer tick with no interpolation and — after
+	# Stage 3b — no walk cycle either. Stage 3's own note said "two consumers";
+	# there were three. D4 built this path before the runner existed.
+	#
+	# Occupancy is unchanged: the runner commits the cell at each action's START,
+	# so D3's "two entities cannot claim one tile in a frame" invariant holds
+	# exactly as it did with the direct call.
+	manager.start_entity_movement(map_name, t, manager.walk_ops(dir, distance - 1))
+	await _await_movement(t, distance - 1)
 
 	# Both face each other. Source sets the trainer's movement type so it stays
 	# put afterwards, then turns the player to the OPPOSITE of the trainer's own

@@ -1613,6 +1613,40 @@ Stage 3 made entities MOVE; this makes them WALK. **The gap between those two wa
 
 Regression: `m27a_step_resolver_test` **514/514**, `check_bake_diff --all` **32/32 reproducible** (the new NPC field is not exported, so no baked scene changed).
 
+**[M27F Stage 3c — the trainer approach, migrated onto the runner] COMPLETE — 2026-07-31. The last teleporter is gone.**
+
+Rob, after Stage 3b: *"research why trainers on approach are still not animated."* **Because the approach never went through the MovementRunner.** `_run_trainer_approach` stepped with a bare `manager.move_entity(...)` on a 0.18s timer — D3's raw commit, which assigns `cell` and lets the setter snap `position` — so an approaching trainer jumped a whole tile per tick with no interpolation and, after Stage 3b, no walk cycle either.
+
+⚠️ **STAGE 3'S OWN RECORD SAID "TWO CONSUMERS". THERE WERE THREE.** Wandering and scripted `applymovement` were both migrated; the approach was missed because **D4 built it before the runner existed** and nothing pointed the two at each other. Enumerated now, so the next one cannot hide: the only remaining direct `move_entity` callers are the runner's own commit closure (correct by construction) and one occupancy test (deliberate).
+
+**The migration also made the pacing MORE accurate, which was not the goal.** `APPROACH_STEP_SECONDS = 0.18` was an invented feel value; source hands the approaching object `GetWalkNormalMovementAction` (`trainer_see.c`) — a NORMAL walk, 16 frames a tile. Routing through the runner therefore replaces a guess with source's real cadence, and the constant is **retired** rather than left dangling.
+
+**New shared `MapManager.walk_ops(dir, count)`** builds the script for both callers, so wandering and the approach cannot drift into two spellings of the same thing. ⚠️ **`count` is `distance - 1`** — the adjacent-stop off-by-one D4 ported from `CheckTrainer` — and a trainer already adjacent must yield a script that ends immediately rather than one stray step onto the player.
+
+**`_await_movement` is bounded, not open-ended.** A runner that never clears — an unimplemented action, a freed node — would otherwise hang the approach forever *with input still locked*, which is unrecoverable for the player. The budget is twice the walk's own wall-clock cost plus a second, so it can only fire on a genuine fault.
+
+**Occupancy is unchanged**: the runner commits each cell at its action's START, so D3's "two entities cannot claim one tile in a frame" invariant holds exactly as it did with the direct call.
+
+**Live-driven.** A real approach on Route 3 (Lass Robin, sight 3): **115 per-frame moves, 0.05–0.43 px, ZERO whole-cell jumps**, the walk cycle running throughout, ending adjacent to the player. Before this change the same approach was two moves of exactly 16.0 px.
+
+⚠️ **THE PROBE RAISED A QUESTION IT COULD NOT ANSWER, AND THE ANSWER BECAME A TEST.** Its frame trace showed an extra step-pair, which is the signature of a cycle restart. Chasing it through the probe was a dead end — that trainer also WANDERS, so most of the trace was wandering, not approach. The real question — *does the cycle survive the action boundary inside one multi-tile script?* — is now pinned deterministically by **K.24** instead of inferred from a noisy trace. It does; a restart there would make a three-tile approach hop toward you.
+
+**Tests**: `m27f_script_vm_test` 132 → **136/136** (K.21–K.24: the shared builder, the adjacent-trainer zero-step case, and the action-boundary continuity). K.24 break-tested — restarting the cycle per action fails it and K.08 together.
+
+Regression: `m27a_step_resolver_test` **514/514**, `check_bake_diff --all` **32/32 reproducible**.
+
+**[M27F — configurable start point] 2026-07-31. Play now begins in Pewter City, by the Route 3 gate.**
+
+Rob: *"change my starting location to Pewter City so I don't have to walk so far to get to trainers."* Set on the SCENE (`overworld.tscn`), not as the script default — the code default stays `PalletTown_Frlg`, so anything constructing the controller directly is unchanged.
+
+**Changing the map alone was not enough.** `_spawn_player` used `_first_walkable`, a row-major scan, which in Pewter lands on the north edge at (23, 1) — **52 tiles from the nearest trainer**, which defeats the point. New `start_cell` export spawns at (45, 21) beside the Route 3 gate instead: **20 tiles**, with Route 2 and Route 3 both loading as neighbours and all 8 of Route 3's trainers reachable without a warp.
+
+⚠️ **`start_cell` is VALIDATED, not trusted, and the failure it prevents is nasty.** An unwalkable cell would drop the player inside scenery, where the step resolver refuses every direction and the only escape is a warp they cannot reach — unrecoverable, and silent. It falls back to `_first_walkable` and warns by name. Break-tested against a genuinely solid tile: warns, falls back, still spawns walkable.
+
+⚠️ **FOUR TESTS DEPENDED ON THE START MAP IMPLICITLY** — they instantiated `overworld.tscn` and asserted Pallet-specific things without ever setting `start_map`, so a play-convenience change would have broken them. Now explicit. This is the same fixture fragility `[M27C]` already paid for once, when a "known unbaked" map got baked and took ten assertions down with it: **a fixture that depends on a default someone may reasonably change is a fixture that will break.**
+
+Regression: `m27a_step_resolver_test` **514/514**, `m27f_script_vm_test` **136/136**, `check_bake_diff --all` **32/32**.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **[M27M-T — trimmed TileSet] SCOPED 2026-07-30, not built. ⚠️ Scope of record is `docs/m27m_trimmed_tileset_recon.md`.** Measured rather than estimated: a real trimmed twin of the Pallet Town pair loads in **1.71 ms against the full set's 15.25 ms — 8.9x**, 25 KB → 6 KB. Region-wide only **11,036 tile definitions are actually placed** against the 132,480 `create_tile()` calls made today (**4.0x**), and all fourteen corridor pairs together would build in **~31 ms** — about what ONE cold tileset costs now. Baked scenes need no re-bake (M27M2 made the TileSet an `ext_resource`), `check_bake_diff` and the overlay are unaffected, and no consumer iterates tiles. **The failure mode is SILENT and is the whole design constraint**: `set_cell` accepts a coord whose tile was never created, stores it faithfully, and renders nothing — so the trim pass must ship with its own coverage proof, not after. Three hazards are recorded there with measurements: the trim set must be computed region-wide per pair rather than per-bake (or a later map silently renders with holes), it must union `border[]` as well as `metatile[]` (**5 border ids region-wide appear in no map body**), and it conflicts head-on with M27M's authoring requirement — resolved by treating `trim`/`expand` as two idempotent operations on ONE artifact rather than shipping two files.

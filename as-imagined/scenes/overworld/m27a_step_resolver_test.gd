@@ -2479,6 +2479,7 @@ func _test_warp_dispatch() -> void:
 
 	# --- the real thing, driven through the overworld ---
 	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	ow.start_map = "PalletTown_Frlg"  # explicit: the scene default is a play-convenience and may move
 	add_child(ow)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -2561,6 +2562,7 @@ func _test_door_geometry() -> void:
 		return
 
 	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	ow.start_map = "PalletTown_Frlg"  # explicit: the scene default is a play-convenience and may move
 	add_child(ow)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -2684,6 +2686,7 @@ func _test_leaving_a_building() -> void:
 		return
 
 	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	ow.start_map = "PalletTown_Frlg"  # explicit: the scene default is a play-convenience and may move
 	add_child(ow)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -3667,6 +3670,7 @@ func _test_player_occupies_its_cell() -> void:
 		_gated += PLAYER_OCCUPANCY_ASSERTIONS
 		return
 	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	ow.start_map = "PalletTown_Frlg"  # explicit: the scene default is a play-convenience and may move
 	add_child(ow)
 	await get_tree().process_frame
 	await get_tree().process_frame
