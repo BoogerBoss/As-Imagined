@@ -24,6 +24,27 @@ const POCKET_BERRIES: int = 3
 # comment for why this didn't turn into multi-tab pocket-switching UI).
 const POCKET_ITEMS: int = 0
 
+# [M27I I1] The remaining three, from the same enum (include/constants/item.h:
+# ITEMS, POKE_BALLS, TM_HM, BERRIES, KEY_ITEMS). Added because the overworld
+# BAG genuinely needs all five -- unlike battle, which only ever had to tell a
+# berry from a non-berry. The two that already existed are unchanged and were
+# already correct against source's own ordinals.
+const POCKET_POKE_BALLS: int = 1
+const POCKET_TM_HM: int = 2
+const POCKET_KEY_ITEMS: int = 4
+
+
+## `items.json` stores a pocket as a STRING; every consumer here wants the
+## ordinal. Unknown spellings fall back to POCKET_ITEMS, which is both the
+## enum's own zero and the pocket a miscategorised item is least harmful in.
+static func pocket_from_name(pocket_name: String) -> int:
+	match pocket_name:
+		"poke_balls": return POCKET_POKE_BALLS
+		"tm_hm": return POCKET_TM_HM
+		"berries": return POCKET_BERRIES
+		"key_items": return POCKET_KEY_ITEMS
+		_: return POCKET_ITEMS
+
 # ── Hold-effect constants ─────────────────────────────────────────────────────
 # Source: include/constants/hold_effects.h
 const HOLD_EFFECT_NONE:          int = 0

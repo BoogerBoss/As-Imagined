@@ -13,6 +13,13 @@ var _items_by_id: Dictionary = {}
 var _evolutions_by_dex: Dictionary = {}
 var _tmhm_map: Dictionary = {}
 var _exp_curves: Dictionary = {}
+var _item_name_to_id: Dictionary = {}
+
+## [M27I I1] How many of each `tmhm_map.json` holds, in that order (TMs first).
+## Read rather than assumed: a shifted count would silently map every HM to the
+## wrong move.
+const TM_COUNT := 50
+const HM_COUNT := 8
 
 
 func _ready() -> void:
@@ -23,6 +30,7 @@ func _ready() -> void:
 	_load_items()
 	_load_evolutions()
 	_load_tmhm()
+	_load_item_names()
 	_load_exp_curves()
 	_smoke_test()
 
@@ -110,6 +118,13 @@ func _name_to_learnable_key(name: String) -> String:
 	return s
 
 
+func _load_item_names() -> void:
+	var data = _load_json("res://data/item_name_to_id.json")
+	if typeof(data) == TYPE_DICTIONARY:
+		for key in data:
+			_item_name_to_id[str(key)] = int(data[key])
+
+
 func _load_json(path: String) -> Variant:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
@@ -168,6 +183,70 @@ func get_learnable_moves(dex_number: int) -> Array:
 
 func get_item(item_id: int) -> Dictionary:
 	return _items_by_id.get(item_id, {})
+
+
+## [M27I I1] Numeric id for a source `ITEM_*` constant, or -1 if unknown.
+##
+## Map scripts identify an item ONLY by constant name (`giveitem ITEM_TM39`),
+## while everything else here uses ids. This is the bridge.
+##
+## ⚠️ Alias spellings resolve to the SAME id on purpose — `ITEM_ITEMFINDER` and
+## `ITEM_DOWSING_MACHINE` are one item, and the corridor's scripts use both.
+func item_id_of(constant: String) -> int:
+	return int(_item_name_to_id.get(constant, -1))
+
+
+## Every constant spelling this project knows, for auditing coverage.
+func item_constants() -> Array:
+	return _item_name_to_id.keys()
+
+
+## Identity for an item id: `{name, pocket, price, description}`, or {} if the
+## id is unknown. `pocket` is the numeric ordinal, not the JSON's own string.
+##
+## ⚠️ TMs AND HMs ARE NOT IN `items.json` AT ALL. That file has real gaps at
+## 582-631 and 682-689 — all 58 of them, TM39 (Brock's own reward) included —
+## because the M15 pipeline routed TM/HM identity into `tmhm_map.json` instead,
+## keyed by TM NUMBER rather than item id. Neither file is wrong; they simply
+## never met. This bridges them, so a caller asking about ITEM_TM39 gets a real
+## answer instead of an empty dictionary it would have to special-case.
+func get_item_identity(item_id: int) -> Dictionary:
+	var e: Dictionary = _items_by_id.get(item_id, {})
+	if not e.is_empty():
+		return {
+			"name": str(e.get("name", "")),
+			"pocket": ItemManager.pocket_from_name(str(e.get("pocket", ""))),
+			"price": int(e.get("price", 0)),
+			"description": str(e.get("description", "")),
+		}
+	var n := _tmhm_number_for(item_id)
+	if n < 0:
+		return {}
+	var tm: Dictionary = _tmhm_map.get(str(n), {})
+	if tm.is_empty():
+		return {}
+	# The bag shows "TM39", not "Rock Tomb" — the move is what it teaches, and
+	# I2's `bufferitemname` needs the item's own name, not the move's.
+	return {
+		"name": str(tm.get("tm_name", "")),
+		"pocket": ItemManager.POCKET_TM_HM,
+		"price": 0,
+		"description": "Teaches %s." % str(tm.get("name", "")),
+		"move_id": int(tm.get("move_id", 0)),
+	}
+
+
+## `tmhm_map.json`'s own 1-58 index for an item id, or -1 if it is not a TM/HM.
+##
+## The map runs TM01-TM50 then HM01-HM08, so an HM's index is 50 + its number.
+func _tmhm_number_for(item_id: int) -> int:
+	var tm01 := item_id_of("ITEM_TM01")
+	var hm01 := item_id_of("ITEM_HM01")
+	if tm01 >= 0 and item_id >= tm01 and item_id < tm01 + TM_COUNT:
+		return item_id - tm01 + 1
+	if hm01 >= 0 and item_id >= hm01 and item_id < hm01 + HM_COUNT:
+		return TM_COUNT + (item_id - hm01 + 1)
+	return -1
 
 
 func get_evolutions(dex_number: int) -> Array:

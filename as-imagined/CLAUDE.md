@@ -1647,6 +1647,36 @@ Rob: *"change my starting location to Pewter City so I don't have to walk so far
 
 Regression: `m27a_step_resolver_test` **514/514**, `m27f_script_vm_test` **136/136**, `check_bake_diff --all` **32/32**.
 
+## M27I — Field UI & menus *(scoped 2026-07-31; I1 built)*
+
+**Step 0 first, reported before building.** `M27I` as a block is start menu / Bag / Party / Summary / PC / options / region map. The immediate need is narrower: **Brock's win path runs its whole reward chain and stops at `checkitemspace`**, the only wall the corridor has actually hit.
+
+⚠️ **`giveitem` IS NOT A PRIMITIVE.** It is a macro over `setorcopyvar` x2 + `callstd STD_OBTAIN_ITEM`, and that standard script does real work: `additem` -> buffer the pluralised name -> `checkitemtype` -> buffer the POCKET name -> branch on success -> fanfare + "obtained", or "no room". This project's compiler kept it unexpanded as an opcode, so implementing it means reproducing that script's DECISION STRUCTURE natively — the precedent Stage 2 set for `trainerbattle_single`.
+
+⚠️ **ARGUMENTS ARE OFTEN VARIABLES, NOT ITEM CONSTANTS.** Every arg goes through `VarGet` — `additem VAR_0x8009`, `checkitemspace VAR_TEMP_0`, **64 region-wide**. An implementation assuming `ITEM_*` literals breaks on exactly the scripted give-and-branch chains this exists to serve.
+
+**Measured scope** — region-wide 729 item-opcode uses / 267 distinct items; **corridor 137 uses / 69 items**. Shops are nearly absent from the corridor (`pokemart` 2, money 3+3), so they are genuinely deferrable.
+
+**Phases**: **I1** item identity · **I2** text buffers + `{STR_VAR_n}` substitution · **I3** the bag + the opcodes (**unblocks Brock**) · **I3b** wallet + money opcodes (unblocks M27O's O3) · **I4** the bag screen · **I5** party/Summary/PC. **I2 is a real phase, not a rider on I3**: the message box has ZERO substitution today, and `STD_OBTAIN_ITEM` itself buffers two strings, so a `giveitem` without it prints raw placeholders.
+
+**[M27I I1 — item identity] COMPLETE — 2026-07-31.**
+
+New `scripts/gen_item_name_map.py` -> `data/item_name_to_id.json`: **976 constants over 875 distinct ids, so 101 are alias spellings.** Mirrors `gen_move_name_map.py`, which solved the identical problem for moves. Idempotent (byte-identical on re-run).
+
+⚠️ **THE ALIASES ARE LOAD-BEARING AND THE CORRIDOR USES BOTH SIDES.** `ITEM_ITEMFINDER = ITEM_DOWSING_MACHINE`, `ITEM_OAKS_PARCEL = ITEM_PARCEL` — same class as `[M27B Step 4]`'s `MOVE_FAINT_ATTACK = MOVE_FEINT_ATTACK`. Break-tested: parsing only `= <int>` leaves **43 corpus items unresolvable**.
+
+**TMs and HMs are a preprocessor zip, not constants** (`ENUM_TM(n, id)` over `FOREACH_TM`), so rather than emulate the preprocessor the generator reads the ordered move list and pairs entry n with `ITEM_TM<n>` — source documents the result itself (`ITEM_TM_FOCUS_PUNCH = ITEM_TM01`).
+
+⚠️ **A REAL DATA GAP FOUND BY I1'S OWN GUARD: `items.json` CONTAINS NO TM OR HM AT ALL.** Genuine holes at ids 582-631 and 682-689 — **all 58, TM39 (Brock's own reward) included**. Not corruption: the M15 pipeline routed TM/HM identity into `tmhm_map.json`, keyed by TM NUMBER rather than item id, and the two files never met. `get_item_identity()` bridges them (`tm_number = id - ITEM_TM01 + 1`; an HM's index is 50 + its number). Break-tested: without the bridge **85 corpus items resolve to an id and then have no record** — the failure moves one step later rather than away.
+
+**Lookup lives on `PokemonRegistry`**, which already owned both files, rather than a second loader over the same JSON. New `item_id_of()` / `get_item_identity()` / `item_constants()`. `ItemManager` gains the three missing pocket ordinals (`POKE_BALLS`/`TM_HM`/`KEY_ITEMS`) — battle only ever needed to tell a berry from a non-berry; a bag needs all five — plus `pocket_from_name()`, since `items.json` stores a pocket as a string and every consumer wants the ordinal. The two pre-existing constants were already correct against source.
+
+**The headline guard is E.02/E.03**: **every one of the 267 item constants the corpus names resolves to an id AND to a real identity record.** An unresolvable item is a script that cannot run, found at play time rather than here.
+
+**Tests**: new `m27i_item_identity_test` **31/31**. Regression: `m27a_step_resolver_test` 514/514, `m27f_script_vm_test` 136/136, `item_registry_test` 309/309, `m18_patch1_test` 21/21.
+
+**Not built by I1, deliberately**: no bag, no opcodes, no behaviour — identity only.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **[M27M-T — trimmed TileSet] SCOPED 2026-07-30, not built. ⚠️ Scope of record is `docs/m27m_trimmed_tileset_recon.md`.** Measured rather than estimated: a real trimmed twin of the Pallet Town pair loads in **1.71 ms against the full set's 15.25 ms — 8.9x**, 25 KB → 6 KB. Region-wide only **11,036 tile definitions are actually placed** against the 132,480 `create_tile()` calls made today (**4.0x**), and all fourteen corridor pairs together would build in **~31 ms** — about what ONE cold tileset costs now. Baked scenes need no re-bake (M27M2 made the TileSet an `ext_resource`), `check_bake_diff` and the overlay are unaffected, and no consumer iterates tiles. **The failure mode is SILENT and is the whole design constraint**: `set_cell` accepts a coord whose tile was never created, stores it faithfully, and renders nothing — so the trim pass must ship with its own coverage proof, not after. Three hazards are recorded there with measurements: the trim set must be computed region-wide per pair rather than per-bake (or a later map silently renders with holes), it must union `border[]` as well as `metatile[]` (**5 border ids region-wide appear in no map body**), and it conflicts head-on with M27M's authoring requirement — resolved by treating `trim`/`expand` as two idempotent operations on ONE artifact rather than shipping two files.
