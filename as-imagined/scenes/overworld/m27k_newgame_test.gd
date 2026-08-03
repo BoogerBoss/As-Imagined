@@ -7,8 +7,9 @@ extends Node
 ##   * gender is asked BEFORE the name, because the preset list is keyed on it;
 ##   * the preset MENU comes first and the keyboard only on NEW NAME — source
 ##     never opens a keyboard, and most real playthroughs never see one;
-##   * the 7-character cap is source's `PLAYER_NAME_LENGTH`, enforced twice on
-##     purpose (refuse the 8th keypress; truncate anything handed in);
+##   * the cap is 12, deliberately NOT source's 7 (Rob's call — see
+##     `PlayerIdentity`'s header), enforced twice on purpose: refuse the keypress
+##     past it, and truncate anything handed in;
 ##   * `{PLAYER}` now reads the chosen name, retiring a hardcode that lived in
 ##     three places agreeing by luck.
 
@@ -167,11 +168,12 @@ func _test_keyboard() -> void:
 	s.backspace()
 	_chk("D.05 and backspacing an empty name is harmless", s.typed == "")
 
-	# ⚠️ THE CAP REFUSES THE 8TH KEYPRESS. Enforced here as well as in
-	# `sanitize`, deliberately — this is what makes the limit visible.
+	# ⚠️ THE CAP REFUSES THE KEYPRESS PAST IT. Enforced here as well as in
+	# `sanitize`, deliberately — this is what makes the limit visible. Reads the
+	# constant, so raising the cap again cannot leave a stale literal behind.
 	for i in range(NAME_OVERFILL):
 		s.confirm()
-	_chk("D.06 the 8th character is refused, not silently dropped",
+	_chk("D.06 typing past the cap is refused, not silently dropped",
 			s.typed.length() == PlayerIdentity.NAME_LENGTH)
 
 	var got: Array[String] = []

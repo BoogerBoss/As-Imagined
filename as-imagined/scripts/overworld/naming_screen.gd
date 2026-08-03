@@ -12,11 +12,15 @@ extends CanvasLayer
 ## has two modes and opens in CHOICES. Skipping straight to the keyboard would
 ## be a different game: nearly every real playthrough takes a preset.
 ##
-## ⚠️ **CAPPED AT 7**, source's own `PLAYER_NAME_LENGTH`. Enforced HERE as well
-## as in `PlayerIdentity.sanitize`, deliberately: this stops the player typing
-## an 8th character (so the cap is visible), and that one truncates whatever it
-## is handed (so a caller bypassing this screen still cannot mint an
-## unstorable name). Two different jobs, not a duplicated check.
+## ⚠️ **CAPPED AT `PlayerIdentity.NAME_LENGTH`, WHICH IS 12 AND DELIBERATELY NOT
+## SOURCE'S 7** — see that class's own header for why. Read the constant here
+## rather than repeating the number: the 7 -> 12 change caught a hardcoded `7`
+## in the suite, and this file would have been the next one.
+##
+## Enforced HERE as well as in `PlayerIdentity.sanitize`, deliberately: this
+## refuses the keypress past the cap (so the limit is visible), and that one
+## truncates whatever it is handed (so a caller bypassing this screen still
+## cannot mint an unstorable name). Two different jobs, not a duplicated check.
 
 signal name_chosen(value: String)
 signal cancelled()
@@ -170,9 +174,9 @@ func confirm() -> void:
 			return
 		_finish(picked)
 		return
-	# ⚠️ The cap is enforced by REFUSING the 8th character rather than by
-	# silently dropping it — the row stays on screen and simply does nothing,
-	# which is what tells the player they are full.
+	# ⚠️ The cap is enforced by REFUSING the keypress past it rather than by
+	# silently dropping the character — the row stays on screen and simply does
+	# nothing, which is what tells the player they are full.
 	if _typed.length() < PlayerIdentity.NAME_LENGTH:
 		_typed += _pages[_page][_cursor]
 		_refresh()
