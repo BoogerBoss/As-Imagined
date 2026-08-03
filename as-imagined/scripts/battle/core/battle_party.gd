@@ -8,6 +8,10 @@ extends RefCounted
 #         gBattlerPartyIndexes[MAX_BATTLERS_COUNT] (battle.h L978)
 #         PARTY_SIZE = 6 (constants/global.h L82)
 
+## Source: `PARTY_SIZE` (`include/constants/global.h:82`). Cited in this file's
+## own header since M1 and never declared until [M27H H4] needed to test against it.
+const PARTY_SIZE := 6
+
 var members: Array[BattlePokemon] = []
 var active_indices: Array[int] = [0]
 

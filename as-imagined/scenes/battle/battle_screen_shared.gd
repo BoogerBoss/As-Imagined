@@ -448,6 +448,11 @@ func prize_money() -> int:
 ## the field out of `_bm`'s privates, and the overworld already holds the party
 ## object so it need not learn which of BattleManager's own fields is the
 ## player's side.
+## [M27H H4] The Pokémon caught this battle, or null.
+func caught_pokemon() -> BattlePokemon:
+	return _bm.caught_pokemon if _bm != null else null
+
+
 func restore_party(party: BattleParty) -> void:
 	if _bm != null:
 		_bm.restore_party_after_battle(party)
@@ -1597,6 +1602,12 @@ func _ready() -> void:
 	_bm.battle_ended.connect(_on_battle_ended)
 	if opp_trainer_data != null:
 		_bm.set_trainer_data(1, opp_trainer_data)
+	# [M27H H4] Catch inputs, handed over at the same point the trainer data is.
+	_bm.badge_count = BattleSetupContext.badge_count
+	_bm.party_has_room = BattleSetupContext.party_has_room
+	# [M27H H5] A battle with no trainer on the opposing side is a wild one.
+	_bm.is_wild_battle = BattleSetupContext.opp_trainer_key == "" \
+			and OverworldSession.has_pending_return()
 
 	# [M25c] Computed once, ahead of _wire_log_signals() below, since the very
 	# first log lines (switch-in/hazard/ability messages from start_battle_*
@@ -1892,8 +1903,14 @@ func _on_battle_ended(winner_side: int) -> void:
 	# (_show_trainer_battle_end bypasses itself entirely under autoplay
 	# anyway, but the ordering is what makes that safe rather than lucky.)
 	await _show_trainer_battle_end(winner_side)
-	_return_to_overworld_if_pending(
-			BattleOutcome.WON if winner_side == 0 else BattleOutcome.LOST)
+	# [M27H H4] ⚠️ A CATCH IS NOT A WIN, even though the wild side is empty and
+	# `winner_side` therefore reads 0. `BattleOutcome` keeps them distinct
+	# (CAUGHT is in neither the defeat set nor the win set), and the difference
+	# is real: a win pays prize money and can set a defeated-trainer flag.
+	var outcome := BattleOutcome.WON if winner_side == 0 else BattleOutcome.LOST
+	if _bm != null and _bm.caught_pokemon != null:
+		outcome = BattleOutcome.CAUGHT
+	_return_to_overworld_if_pending(outcome)
 
 
 ## [M27D D5] Hand control back to the overworld, if that is where we came from.
@@ -6954,6 +6971,25 @@ func _on_run_pressed() -> void:
 	# trainer stays undefeated and can be fought again. Only the simulator's own
 	# Run falls through to the setup screen.
 	if overlay_mode:
+		# [M27H H5] ⚠️ A WILD BATTLE IS NOT A FORFEIT. Running from a trainer
+		# counts as a defeat (`IsPlayerDefeated` includes B_OUTCOME_FORFEITED),
+		# which whites the player out; running from a wild Pokémon costs
+		# nothing. `[M25b]`'s placeholder could not simply be repointed because
+		# this same button serves both.
+		if _bm != null and _bm.is_wild_battle:
+			var me: BattlePokemon = _bm.get_active_player_mon()
+			var foe: BattlePokemon = _bm.get_active_opponent_mon()
+			if _bm.try_flee(me, foe):
+				_log("Got away safely!")
+				_return_to_overworld_if_pending(BattleOutcome.RAN)
+			else:
+				# ⚠️ DISCLOSED GAP: source SPENDS the turn on a failed escape.
+				# This project has no "do nothing" action to queue, so the player
+				# simply picks again — which makes fleeing free, only slower.
+				# Closing it needs a real skip-turn action in the turn queue,
+				# which is a turn-machine change rather than an escape one.
+				_log("Couldn't escape!")
+			return
 		_return_to_overworld_if_pending(BattleOutcome.FORFEITED)
 		return
 	_clear_active_hit_effects()

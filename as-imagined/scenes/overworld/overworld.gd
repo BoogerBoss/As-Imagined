@@ -869,6 +869,12 @@ func _mount_battle(opp: BattleParty, trainer_key: String, t: TrainerNPC) -> bool
 	# Source clears the poison counter at every battle entry
 	# (`battle_setup.c:262, 298, 986`), so a partial step does not carry across.
 	FieldPoison.clear_counter(flags)
+	# [M27H H4] Catch inputs. Badges scale the catch malus; party room decides
+	# whether a throw is allowed at all — Rob's decision that a full party
+	# REFUSES, which is source's own behaviour with no PC and is what lets the
+	# PC be deferred past the slice.
+	BattleSetupContext.badge_count = badge_count()
+	BattleSetupContext.party_has_room = player_party.members.size() < BattleParty.PARTY_SIZE
 	BattleSetupContext.set_pending(player_party, opp, false, "", trainer_key)
 
 	var packed := OverworldSession.battle_scene(BattleSetupContext.is_doubles)
@@ -914,8 +920,13 @@ func _on_battle_overlay_finished(outcome: int) -> void:
 	if _battle_screen != null and is_instance_valid(_battle_screen) \
 			and _battle_screen.has_method("restore_party"):
 		_battle_screen.restore_party(OverworldSession.party)
+	var caught: BattlePokemon = null
+	if _battle_screen != null and is_instance_valid(_battle_screen) \
+			and _battle_screen.has_method("caught_pokemon"):
+		caught = _battle_screen.caught_pokemon()
 	OverworldSession.set_result(BattleOutcome.make(
-			outcome, OverworldSession.pending_trainer_key, prize, _battle_party_level))
+			outcome, OverworldSession.pending_trainer_key, prize, _battle_party_level,
+			caught))
 	await _fade_to(1.0)
 	if _battle_layer != null and is_instance_valid(_battle_layer):
 		_battle_layer.queue_free()
@@ -954,6 +965,15 @@ func _apply_battle_result() -> bool:
 	# [M27O O3] Money. Source does BOTH halves in one place
 	# (`Cmd_getmoneyreward`) — the win prize and the loss payout — so they are
 	# applied together here rather than split across the win and whiteout paths.
+	# [M27H H4] A caught Pokémon joins the party. The refusal happens BEFORE the
+	# throw (see `party_has_room`), so reaching here with a full party would mean
+	# that gate failed — refuse again rather than silently dropping the mon.
+	if r.caught_pokemon != null:
+		var party := OverworldSession.player_party()
+		if party.members.size() < BattleParty.PARTY_SIZE:
+			party.members.append(r.caught_pokemon)
+		else:
+			push_warning("overworld: caught a Pokémon with a full party — refused")
 	if r.outcome == BattleOutcome.WON:
 		OverworldSession.wallet.earn(r.prize_money)
 	elif r.player_defeated():
@@ -998,11 +1018,21 @@ func _apply_battle_result() -> bool:
 ## `if (!IsEnoughMoney(..)) money = GetMoney()`. `Wallet.spend` clamps to zero
 ## anyway, so this returns the REAL amount taken rather than the amount asked
 ## for — the difference matters the moment anything reports it to the player.
-func whiteout_payout(highest_level: int) -> int:
-	var badges := 0
+## [M27H H4] How many badges the player holds.
+##
+## Extracted from `whiteout_payout`, which counted them inline — two consumers
+## now, and two hand-kept copies of one rule is the drift this project already
+## paid for once with `check_bake_diff`.
+func badge_count() -> int:
+	var n := 0
 	for f in BADGE_FLAGS:
 		if flags.flag_get(f):
-			badges += 1
+			n += 1
+	return n
+
+
+func whiteout_payout(highest_level: int) -> int:
+	var badges := badge_count()
 	# Explicit `: int` — indexing an untyped Array yields Variant, which `:=`
 	# cannot infer from. This project's own documented GDScript gotcha.
 	var asked: int = int(WHITEOUT_BADGE_MONEY[mini(badges, WHITEOUT_BADGE_MONEY.size() - 1)]) \

@@ -31,6 +31,11 @@ static var opp_party: BattleParty = null
 # why the Doubles toggle itself is NOT re-enabled here) is unaffected.
 static var is_doubles: bool = false
 
+## [M27H H4] Catch inputs the battle engine cannot know on its own — badge count
+## lives in the overworld's flag store, party room is an overworld question.
+static var badge_count: int = 0
+static var party_has_room: bool = true
+
 # [M23.11 Phase 5a] The manually-picked battle background id (a
 # BattleBackgroundRegistry key, e.g. "rock" — see battle_background
 # _registry.gd), or "" for unset. Optional, defaults to "" so every

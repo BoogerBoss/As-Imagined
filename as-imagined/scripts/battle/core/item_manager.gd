@@ -1382,8 +1382,102 @@ static func bag_item_cure_status(target: BattlePokemon, item: ItemData) -> bool:
 # call site in BattleManager._do_item_use, the catch_attempted signal, and
 # the action-queue integration built in M22 need zero rework when that
 # session lands the real formula.
-static func attempt_catch(target: BattlePokemon, item: ItemData) -> bool:
-	return false  # M27 will replace this with the real formula.
+## [M27H H4] `odds == CAPTURE_GUARANTEED` short-circuits every roll. Only the
+## Master Ball reaches it, which this project has no item for — so it is
+## unreachable today and present because the branch it guards is.
+const CAPTURE_GUARANTEED := 0xFFFFFFFF
+
+## Source's own `sBadgeLevel` (`battle_script_commands.c:9900`): the level each
+## badge count tolerates before the Gen 9 catch malus starts biting.
+const BADGE_LEVEL := [25, 30, 35, 40, 45, 50, 55, 60, 100]
+
+
+## [M27H H4] `ComputeCaptureOdds` (`battle_script_commands.c:9912`).
+##
+## ⚠️ **THE ORDER OF THE TERMS IS THE FORMULA.** Every step is integer division,
+## so reordering them changes the result — this is not algebra that can be tidied.
+##
+## `badge_count` and `thrower_level` are passed in rather than read: the battle
+## engine has no flag store and no overworld, and reaching for one would couple
+## it to a field it deliberately knows nothing about.
+static func compute_capture_odds(target: BattlePokemon, item: ItemData,
+		badge_count: int, thrower_level: int) -> int:
+	if target == null or target.species == null:
+		return 0
+	# Only the Poké Ball exists as an item here, so multiplier/divider are 100/100
+	# and `flatBonus` is 0. The terms are kept so a ball roster drops straight in.
+	var mult := 100
+	var divi := 100
+	var flat := 0
+
+	var odds := target.max_hp * 3 - target.current_hp * 2
+	var catch_rate := int(target.species.catch_rate) + flat
+	odds = odds * catch_rate / (target.max_hp * 3)
+	odds = odds * mult / divi
+
+	# ⚠️ THE BADGE MALUS IS A LOOP, NOT A SINGLE MULTIPLY. At this project's
+	# `B_MISSING_BADGE_CATCH_MALUS = GEN_LATEST` it applies x4/5 ONCE PER BADGE
+	# YOU DO NOT HAVE whose level threshold the target exceeds — so a high-level
+	# target caught on no badges is penalised several times over.
+	if badge_count < BADGE_LEVEL.size():
+		var i := badge_count
+		while i < BADGE_LEVEL.size() and target.level > int(BADGE_LEVEL[i]):
+			odds = odds * 4 / 5
+			i += 1
+
+	# `B_LOW_LEVEL_CATCH_BONUS = GEN_LATEST` -> the Gen 9 branch: level <= 13,
+	# NOT the Gen 8 one (level <= 20 with a different coefficient).
+	if target.level <= 13:
+		odds = odds * (36 - target.level * 2) / 10
+
+	# ⚠️ TWO DIFFERENT STATUS BONUSES, and they are mutually exclusive because a
+	# mon has one status. Sleep/freeze is x2.5 at `B_INCAPACITATED_CATCH_BONUS =
+	# GEN_LATEST` (x2 pre-Gen 5); everything else that still lets it move is x1.5.
+	match target.status:
+		BattlePokemon.STATUS_SLEEP, BattlePokemon.STATUS_FREEZE:
+			odds = odds * 25 / 10
+		BattlePokemon.STATUS_POISON, BattlePokemon.STATUS_BURN, \
+		BattlePokemon.STATUS_PARALYSIS, BattlePokemon.STATUS_TOXIC:
+			odds = odds * 15 / 10
+	return odds
+
+
+## `ComputeBallShakeOdds`: the threshold each of the three shakes is rolled against.
+static func shake_threshold(odds: int) -> int:
+	if odds <= 0:
+		return 0
+	return int(1048560.0 / sqrt(sqrt(16711680.0 / float(odds))))
+
+
+## [M27H H4] Throw a ball.
+##
+## Returns `{caught, shakes, odds}` rather than a bare bool. ⚠️ **THE SHAKE COUNT
+## IS FOR M26B7**, whose recon (`docs/m26_b7_recon.md` §0.4) flags that
+## `catch_attempted` "carries no shake count" and proposes adding a presentation
+## seam for exactly this. Emitting it now means the catch ANIMATION has nothing
+## to retrofit when it is built — 0-2 shakes is a break-free, 3 is a capture.
+static func attempt_catch(target: BattlePokemon, item: ItemData,
+		badge_count: int = 0, thrower_level: int = 1,
+		rng: RandomNumberGenerator = null) -> Dictionary:
+	var odds := compute_capture_odds(target, item, badge_count, thrower_level)
+	# Source checks `odds > 254` AFTER the critical-capture roll and treats it as
+	# an outright capture — no shakes rolled at all.
+	if odds > 254:
+		return {"caught": true, "shakes": 3, "odds": odds}
+	if odds <= 0:
+		return {"caught": false, "shakes": 0, "odds": 0}
+
+	var r := rng
+	if r == null:
+		r = RandomNumberGenerator.new()
+		r.randomize()
+	var threshold := shake_threshold(odds)
+	var shakes := 0
+	while shakes < 3:
+		if r.randi_range(0, 65535) >= threshold:
+			break
+		shakes += 1
+	return {"caught": shakes == 3, "shakes": shakes, "odds": odds}
 
 
 # ── Status-cure berries (Lum / Cheri / Chesto / Pecha / Rawst / Aspear) ────────

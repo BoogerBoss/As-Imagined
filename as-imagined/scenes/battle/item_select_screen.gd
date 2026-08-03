@@ -119,6 +119,11 @@ const _ITEMS := [
 	{"id": 28, "label": "Potion (heal)", "pocket": 0},
 	{"id": 48, "label": "Full Heal (cure status)", "pocket": 0},
 	{"id": 121, "label": "X Attack (+1 Attack)", "pocket": 0},
+	# [M27H H4] Without this a catch is unreachable in play — the formula exists
+	# and nothing can throw a ball. Inherits this list's own already-disclosed
+	# simplification (hardcoded, unlimited uses, no real bag inventory); wiring
+	# it to `OverworldSession.bag` for real is M26E1/E2's rework.
+	{"id": 1, "label": "Poké Ball (catch)", "pocket": 1},
 ]
 
 # [M25h-4-follow-up] The screen's own structural/positioning nodes

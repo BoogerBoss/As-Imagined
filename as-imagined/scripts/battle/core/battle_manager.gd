@@ -333,7 +333,13 @@ signal item_action_used(user: BattlePokemon, item: ItemData, target: BattlePokem
 # type, Ball included) — this one exists specifically so a future M27
 # session (and this session's own tests) can observe the catch outcome
 # without needing a new generic signal shape.
-signal catch_attempted(user: BattlePokemon, target: BattlePokemon, item: ItemData, caught: bool)
+## [M27H H4] `shakes` is 0-2 for a break-free and 3 for a capture. Carried so
+## M26B7's animation has nothing to retrofit — its own recon flags that this
+## signal "carries no shake count" as the engine gap it must work around.
+signal catch_attempted(user: BattlePokemon, target: BattlePokemon, item: ItemData, caught: bool, shakes: int)
+
+## [M27H H4] Refused before any roll — the player has nowhere to put it.
+signal catch_refused(user: BattlePokemon, item: ItemData)
 
 signal side_condition_set(side: int, condition_name: String)  # [D4 Bundle 4] Tailwind/Safeguard/Mist went up ("tailwind"/"safeguard"/"mist")
 signal side_condition_expired(side: int, condition_name: String)  # [D4 Bundle 4] duration ran out
@@ -354,6 +360,95 @@ var _phase: BattlePhase = BattlePhase.BATTLE_START
 # M9: per-side party objects. _combatants[i] = _parties[i].get_active().
 var _parties: Array[BattleParty] = []
 # Index 0 = player side, index 1 = opponent side — always the ACTIVE Pokémon.
+## [M27H H4] Catch inputs the ENGINE cannot know. Badge count lives in the
+## overworld's flag store and party room is an overworld question; both are set
+## by the caller at battle setup rather than reached for, keeping the engine
+## free of any overworld dependency.
+var badge_count: int = 0
+## ⚠️ False means a throw is REFUSED OUTRIGHT, before any roll — Rob's decision
+## (2026-08-03) that a full party refuses, which is source's own behaviour when
+## no PC is available and is what lets the PC be deferred past the slice.
+var party_has_room: bool = true
+
+## [M27H H5] The active mon on each side. Public because the Run button needs
+## both to compare speeds and reaching into `_parties` from the screen would
+## couple it to the engine's own internals.
+func get_active_player_mon() -> BattlePokemon:
+	if _parties.size() < 1 or _parties[0] == null or _parties[0].members.is_empty():
+		return null
+	return _parties[0].get_active()
+
+
+func get_active_opponent_mon() -> BattlePokemon:
+	if _parties.size() < 2 or _parties[1] == null or _parties[1].members.is_empty():
+		return null
+	return _parties[1].get_active()
+
+
+## [M27H H5] Is this a wild battle? Fleeing is only possible in one.
+##
+## ⚠️ Source refuses a normal trainer battle outright
+## (`CanPlayerForfeitNormalTrainerBattle` is false by default), which is why
+## `[M25b]`'s always-succeeds Run placeholder could not simply be repointed —
+## it is shared with trainer battles, where escaping must stay impossible.
+var is_wild_battle: bool = false
+
+## `gBattleStruct->runTries`. Each failed attempt makes the next likelier, which
+## is what stops a slow Pokémon being trapped by bad luck indefinitely.
+var run_tries: int = 0
+
+signal flee_attempted(battler: BattlePokemon, success: bool)
+
+## [M27H H5] Try to escape. Source: `TryRunFromBattle` (`battle_util.c:540`).
+##
+## ⚠️ **EQUAL SPEED SUCCEEDS.** The comparison is `speed < opponent speed` for
+## the roll — anything faster OR EQUAL escapes outright, so a naive `>` would
+## make same-speed encounters roll unnecessarily.
+##
+## `rng` is injected for the same reason the catch roll's is.
+func try_flee(battler: BattlePokemon, opponent: BattlePokemon,
+		rng: RandomNumberGenerator = null) -> bool:
+	if not is_wild_battle:
+		flee_attempted.emit(battler, false)
+		return false
+	var success := false
+	if battler == null or opponent == null:
+		success = false
+	elif ItemManager.effective_held_item(battler) != null \
+			and ItemManager.effective_held_item(battler).hold_effect \
+					== ItemManager.HOLD_EFFECT_CAN_ALWAYS_RUN:
+		# Smoke Ball. Shipped data-only in [M24b] with a note that no flee
+		# mechanic existed to consume it; this is that mechanic.
+		success = true
+	elif battler.species != null and TypeChart.TYPE_GHOST in battler.species.types:
+		# `B_GHOSTS_ESCAPE >= GEN_6` at this project's config: a Ghost always
+		# escapes, the same rule that already exempts them from trapping.
+		success = true
+	else:
+		var own := StatusManager.effective_speed(battler)
+		var theirs := StatusManager.effective_speed(opponent)
+		if own >= theirs or theirs <= 0:
+			success = true
+		else:
+			var r := rng
+			if r == null:
+				r = RandomNumberGenerator.new()
+				r.randomize()
+			var speed_var := (own * 128) / theirs + run_tries * 30
+			success = speed_var > r.randi_range(0, 255)
+		run_tries += 1
+	flee_attempted.emit(battler, success)
+	return success
+
+
+## [M27H H4] Set when a throw succeeds, so the caller can take the Pokémon.
+## Read by the overworld on return; null in every other battle.
+var caught_pokemon: BattlePokemon = null
+
+## Injected so a test can force the shake rolls, matching `_force_roll`/
+## `_force_crit`'s own precedent rather than inventing a new seam shape.
+var _catch_rng: RandomNumberGenerator = null
+
 var _combatants: Array[BattlePokemon] = []
 var _turn_order: Array[BattlePokemon] = []
 # [Turn-order-splice trio, item 13] The per-turn priority/quick-slow-effect/
@@ -8503,8 +8598,26 @@ func _do_item_use(actor_idx: int, item: ItemData, party_target: int) -> void:
 	if item.battle_usage == ItemManager.BATTLE_USE_THROW_BALL:
 		var opponent: BattlePokemon = _combatants[_chosen_targets[actor_idx]]
 		item_action_used.emit(user, item, opponent)
-		var caught: bool = ItemManager.attempt_catch(opponent, item)
-		catch_attempted.emit(user, opponent, item, caught)
+		if not party_has_room:
+			# Refused before the roll, so a full party never sees a ball wobble
+			# and then lose the Pokémon anyway.
+			catch_refused.emit(user, item)
+			return
+		var thrower_level: int = user.level if user != null else 1
+		var result: Dictionary = ItemManager.attempt_catch(
+				opponent, item, badge_count, thrower_level, _catch_rng)
+		var caught: bool = bool(result.get("caught", false))
+		catch_attempted.emit(user, opponent, item, caught, int(result.get("shakes", 0)))
+		if caught:
+			# ⚠️ ENDING VIA THE PHASE MACHINE, not a new "battle over" flag.
+			# `_phase_battle_end_check` ends a battle when a side is fully
+			# fainted, and a caught Pokémon leaves the wild side with nothing
+			# able to act — which is exactly the state that check already
+			# understands. Marking it fainted is how source gets there too
+			# (`FinalizeCapture` removes it from the battle outright).
+			caught_pokemon = opponent
+			opponent.current_hp = 0
+			opponent.fainted = true
 		return
 
 	var target_mon: BattlePokemon = _parties[side].members[party_target]

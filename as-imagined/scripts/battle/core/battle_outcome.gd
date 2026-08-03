@@ -44,14 +44,21 @@ var prize_money: int = 0
 ## certain. Source reads it straight off the party inside `Cmd_getmoneyreward`.
 var highest_party_level: int = 1
 
+## [M27H H4] The Pokémon caught this battle, or null. Carried on the outcome
+## rather than fetched from the battle screen, because the screen is freed
+## before the overworld finishes applying the result.
+var caught_pokemon: BattlePokemon = null
+
 
 static func make(p_outcome: int, p_trainer_key: String = "",
-		p_prize: int = 0, p_level: int = 1) -> BattleOutcome:
+		p_prize: int = 0, p_level: int = 1,
+		p_caught: BattlePokemon = null) -> BattleOutcome:
 	var r := BattleOutcome.new()
 	r.outcome = p_outcome
 	r.trainer_key = p_trainer_key
 	r.prize_money = p_prize
 	r.highest_party_level = p_level
+	r.caught_pokemon = p_caught
 	return r
 
 

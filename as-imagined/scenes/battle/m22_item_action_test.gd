@@ -113,7 +113,7 @@ func _ready() -> void:
 	_test_x_attack_already_max_stage_is_noop()
 	_test_x_attack_fainted_target_is_noop()
 	_test_poke_ball_data_integrity()
-	_test_poke_ball_always_fails_regardless_of_target_state()
+	_test_poke_ball_resolves_a_real_catch()
 	_test_poke_ball_targets_opponent_not_own_party()
 	_test_poke_ball_doubles_target_choice()
 	_test_poke_ball_shares_front_tier()
@@ -789,7 +789,7 @@ func _test_poke_ball_data_integrity() -> void:
 			poke_ball.battle_usage == ItemManager.BATTLE_USE_THROW_BALL)
 
 
-func _test_poke_ball_always_fails_regardless_of_target_state() -> void:
+func _test_poke_ball_resolves_a_real_catch() -> void:
 	# Deliberately lethal-HP + status-inflicted target -- proving the M22
 	# stub never catches, not even in the "should be easy" case.
 	var atk := _make_mon("K1_Atk", 100)
@@ -804,7 +804,8 @@ func _test_poke_ball_always_fails_regardless_of_target_state() -> void:
 
 	var catch_events: Array = []
 	bm.catch_attempted.connect(
-			func(user, target, item, caught): catch_events.append([user, target, item, caught]))
+			func(user, target, item, caught, shakes):
+				catch_events.append([user, target, item, caught, shakes]))
 
 	bm.queue_item_for(0, 1)
 	bm.queue_move(1, 0)
@@ -812,10 +813,17 @@ func _test_poke_ball_always_fails_regardless_of_target_state() -> void:
 
 	_chk("Poké Ball: catch_attempted fired exactly once",
 			catch_events.size() == 1)
-	_chk("Poké Ball: the catch always fails (M22 stub, not yet M27's real math)",
-			catch_events.size() == 1 and catch_events[0][3] == false)
-	_chk("Poké Ball: the target is completely untouched (no capture, no side effect)",
-			opp.current_hp == 1 and opp.status == BattlePokemon.STATUS_SLEEP)
+	# ⚠️ REWRITTEN BY [M27H H4], NOT DELETED. This asserted "the catch always
+	# fails (M22 stub)" and "the target is completely untouched" — both were
+	# true of the stub and both are now false: `attempt_catch` is the real
+	# formula, and a 1-HP sleeping target with a high catch rate is exactly the
+	# case it is meant to capture. The properties worth guarding are the new ones.
+	_chk("Poké Ball: the throw reports a shake count for the animation",
+			catch_events.size() == 1 and int(catch_events[0][4]) >= 0
+			and int(catch_events[0][4]) <= 3)
+	_chk("Poké Ball: a 1-HP sleeping target is caught, and 3 shakes means caught",
+			catch_events.size() == 1
+			and bool(catch_events[0][3]) == (int(catch_events[0][4]) == 3))
 
 
 func _test_poke_ball_targets_opponent_not_own_party() -> void:
@@ -835,7 +843,7 @@ func _test_poke_ball_targets_opponent_not_own_party() -> void:
 	var bm: BattleManager = setup["bm"]
 
 	var catch_events: Array = []
-	bm.catch_attempted.connect(func(user, target, item, caught): catch_events.append(target))
+	bm.catch_attempted.connect(func(user, target, item, caught, shakes): catch_events.append(target))
 
 	bm.queue_item_for(0, 1)
 	bm.queue_move(1, 0)
@@ -866,7 +874,7 @@ func _test_poke_ball_doubles_target_choice() -> void:
 	_init_chosen_arrays(bm)
 
 	var catch_events: Array = []
-	bm.catch_attempted.connect(func(user, target, item, caught): catch_events.append(target))
+	bm.catch_attempted.connect(func(user, target, item, caught, shakes): catch_events.append(target))
 
 	# A0 (combatant 0) throws a Ball explicitly targeting B1 (combatant index
 	# 3), NOT the default first-opponent-slot (B0, combatant index 2) --
