@@ -14,7 +14,7 @@ extends Node
 ##   * a save file is UNTRUSTED: corrupt, truncated, future-versioned and
 ##     hand-edited payloads all fail closed rather than half-loading.
 
-const EXPECTED_TOTAL := 86
+const EXPECTED_TOTAL := 94
 
 ## A slot index deliberately outside SLOT_COUNT.
 const BAD_SLOT := 9
@@ -44,6 +44,7 @@ func _ready() -> void:
 	_test_save_affordance()
 	_test_drive_findings()
 	_test_title_screen()
+	_test_boot_path()
 
 	for i in range(SaveManager.SLOT_COUNT):
 		SaveManager.erase(i)
@@ -585,3 +586,50 @@ func _test_title_screen() -> void:
 	_chk("I.14b and the attempt leaves the live playthrough alone",
 			OverworldSession.identity.name == "STILLHERE")
 	SaveManager.erase(2)
+
+
+## --- J. [M27L L4] the boot path ---
+func _test_boot_path() -> void:
+	# ⚠️ **A SECOND ENTRY POINT, NOT A REPLACEMENT — Rob's call.** `main_scene`
+	# stays the SIMULATOR's; repointing it would change what launching the
+	# project means for the half that has used it since [M23.0b].
+	_chk("J.01 main_scene is still the simulator's own entry point",
+			str(ProjectSettings.get_setting("application/run/main_scene"))
+			== "res://scenes/main.tscn")
+	var main: Control = load("res://scenes/main.tscn").instantiate() as Control
+	_chk("J.02 and it offers BOTH, as real scene-tree nodes",
+			main.get_node_or_null("VBoxContainer/PingButton") != null
+			and main.get_node_or_null("VBoxContainer/AdventureButton") != null)
+	# Both targets must actually exist — a boot button pointing at a missing
+	# scene fails at the press, which is the worst moment to find out.
+	_chk("J.03 both destinations resolve",
+			ResourceLoader.exists(str(main.BATTLE_SCENE))
+			and ResourceLoader.exists(str(main.RPG_SCENE)))
+	_chk("J.04 and the RPG one leads to slot selection, not straight to the field",
+			str(main.RPG_SCENE).contains("title"))
+	main.free()
+
+	# ⚠️ THE SLOT MUST SURVIVE A BATTLE. It lived on the overworld in L2, which a
+	# scene swap discards — the next SAVE would then write to slot 0 whatever the
+	# player had chosen.
+	OverworldSession.reset()
+	OverworldSession.active_slot = 2
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	_chk("J.05 the field reads its slot from the SESSION, not its own copy",
+			ow.active_slot == 2)
+	ow.free()
+
+	# ⚠️ CONSUMED ON READ. A flag left set would re-run Oak's speech every time
+	# the overworld rebuilt — which is after every single battle.
+	OverworldSession.pending_new_game = true
+	_chk("J.06 the new-game flag is taken once", OverworldSession.take_new_game())
+	_chk("J.07 and is gone the second time, so a battle cannot re-run the speech",
+			not OverworldSession.take_new_game()
+			and not OverworldSession.pending_new_game)
+	# And reset clears both, so a fresh session cannot inherit either.
+	OverworldSession.active_slot = 1
+	OverworldSession.pending_new_game = true
+	OverworldSession.reset()
+	_chk("J.08 reset clears the slot and the flag together",
+			OverworldSession.active_slot == 0
+			and not OverworldSession.pending_new_game)

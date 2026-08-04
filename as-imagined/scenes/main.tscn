@@ -31,3 +31,7 @@ horizontal_alignment = 1
 [node name="PingButton" type="Button" parent="VBoxContainer"]
 layout_mode = 2
 text = "Press me"
+
+[node name="AdventureButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Press me too"

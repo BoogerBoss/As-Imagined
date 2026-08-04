@@ -241,6 +241,12 @@ func _ready() -> void:
 	if _pending_whiteout:
 		_pending_whiteout = false
 		_do_whiteout()
+	# [M27L L4] A new game runs its speech once the field exists — the naming
+	# screen and message box are children of THIS scene, so it cannot run any
+	# earlier. Consumed on read, so the rebuild after every battle does not
+	# re-run Oak.
+	if OverworldSession.take_new_game():
+		run_new_game.call_deferred()
 	var d := manager.data_at(_cell)
 	print("overworld: in %s at %s (%d chunk(s) live: %s)"
 			% [manager.chunk_owning(_cell), _cell, manager.loaded_chunks().size(),
@@ -718,12 +724,12 @@ const SAVE_DONE := "{PLAYER} saved the game."
 const SAVE_FAILED := ["Save error.", "Please exchange the\nbackup memory."]
 
 
-## Which slot the field writes to.
-##
-## ⚠️ A STAND-IN, and a stated one: until L3's slot selection exists there is
-## nothing that could have chosen a slot, so the field saves to 0. L3 replaces
-## this with the slot the player picked at the title screen.
-var active_slot := 0
+## [M27L L4] The slot the field writes to now lives on `OverworldSession`, where
+## it survives the scene swap a battle performs — L2's stand-in here would have
+## reverted to 0 after the first trainer fight.
+var active_slot: int:
+	get:
+		return OverworldSession.active_slot
 
 
 func _on_start_menu_save() -> void:

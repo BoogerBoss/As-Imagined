@@ -106,6 +106,28 @@ static func heal_party() -> void:
 	party.active_indices = [0]
 
 
+## [M27L L4] Which save slot this playthrough belongs to.
+##
+## ⚠️ Static, and it has to be: a battle is a real scene swap, so a slot held on
+## the overworld would be forgotten by the first trainer fought — and the next
+## SAVE would then write to slot 0 regardless of which one the player chose.
+## Replaces `Overworld.active_slot`, which was L2's stated stand-in.
+static var active_slot: int = 0
+
+## [M27L L4] The overworld should run Oak's speech as soon as it loads.
+##
+## ⚠️ A one-shot CONSUMED on read, the same shape as `pending_return`. A flag
+## that stayed set would re-run the new game every time the overworld rebuilt —
+## which is every single battle.
+static var pending_new_game: bool = false
+
+
+static func take_new_game() -> bool:
+	var v := pending_new_game
+	pending_new_game = false
+	return v
+
+
 ## [M27L L2] Seconds of play in THIS playthrough.
 ##
 ## ⚠️ Static for the same reason the bag is — a battle is a real scene swap, and
@@ -232,6 +254,8 @@ static func reset() -> void:
 	identity = PlayerIdentity.new()
 	TextBuffers.identity = identity
 	playtime = 0.0
+	active_slot = 0
+	pending_new_game = false
 	pending_return = {}
 	pending_result = null
 	pending_trainer_key = ""

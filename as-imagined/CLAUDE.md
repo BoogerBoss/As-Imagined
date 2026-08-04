@@ -2168,6 +2168,33 @@ Live-driven in the real scene: START → **SAVE** → *"Would you like to save t
 
 ⚠️ **NOT WIRED TO BOOT, AND THAT IS A DECISION FOR ROB, NOT AN OVERSIGHT.** `project.godot`'s `main_scene` is `scenes/main.tscn`, which is the **battle SIMULATOR's** entry point ("Start Battle") — the RPG has never had a boot path at all. Pointing the project at a title screen would change what launching the project *means* for the simulator half, so `TitleScreen` ships reachable and tested but not installed. `Overworld.active_slot` remains a stated stand-in at 0 until that wiring exists.
 
+**[M27L L4 — the boot path] COMPLETE — 2026-08-03. The RPG is launchable.**
+
+Live-driven end to end, both branches: `main.tscn` → **Start Adventure** → the slot list → a slot → the field. **NEW GAME** on empty slot 0 lands in the overworld with Oak's speech running; **CONTINUE** on slot 2 shows the real card —
+
+```
+   SLOT 3
+      CONTINUE
+      PLAYER   ROB
+      TIME     1:02
+      POKéDEX  0  (not yet tracked)
+      BADGES   1
+```
+
+— and arrives in the field as ROB with the saved party and its **lead still on 7 HP**.
+
+⚠️ **A SECOND ENTRY POINT, NOT A REPLACEMENT — Rob's call, 2026-08-03.** `run/main_scene` stays `scenes/main.tscn`, which is the battle SIMULATOR's entry and has been the only thing it launched since `[M23.0b]`. This project is two things sharing one binary, and repointing the boot scene would have changed what launching it MEANS for the simulator half. So `main.tscn` now offers **Start Battle** and **Start Adventure** side by side, both as real scene-tree nodes per this file's standing UI preference. J.01 pins that `main_scene` is unchanged, J.03 that both destinations actually resolve — a boot button pointing at a missing scene fails at the press, which is the worst moment to find out.
+
+⚠️ **`active_slot` MOVED FROM THE OVERWORLD TO `OverworldSession`, AND IT HAD TO.** L2 held it on the field as a stated stand-in; a battle is a real scene swap, so the chosen slot would have been discarded by the first trainer fought and **the next SAVE would have written to slot 0** whatever the player picked. Break-tested: keeping the field's own copy fails J.05.
+
+⚠️ **`pending_new_game` IS CONSUMED ON READ**, the same shape as `pending_return`. A flag left set would re-run Oak's speech **every time the overworld rebuilt — which is after every single battle**. Break-tested: reading without consuming fails J.07. The speech is fired `call_deferred` from `_ready` because the naming screen and message box are children of the field scene and cannot exist earlier.
+
+**Starting a NEW GAME resets the session first**, so choosing it over a slot loaded earlier in the same run cannot inherit that slot's party and flags. A CONTINUE whose slot vanished between the listing and the press **re-opens the list** rather than loading an empty playthrough.
+
+**Tests**: `m27l_save_test` 87 → **95/95**, new section J. Four guards break-tested, each failing exactly one assertion (field-local slot → J.05; unconsumed flag → J.07; `reset()` forgetting both → J.08; the RPG button skipping slot selection → J.04). Regression: all overworld suites green.
+
+⚠️ **STILL OPEN, AND VISIBLE IN THE DRIVE:** a NEW GAME still lands with `[M27D D5]`'s **3-member debug party**, because `player_party()` lazily builds it whenever the party is null. That is the same scaffolding `[M27K K-c]`'s starter-slot hazard depends on, and it is what makes that hazard reachable — a real new game should start with an EMPTY party and receive the starter from Oak's script. Not new to L4, but L4 is the first thing that shows it to a player.
+
 ## M27M — Map authoring tooling *(new block, scoped and approved 2026-07-30)*
 
 **[M27M-T — trimmed TileSet] SCOPED 2026-07-30, not built. ⚠️ Scope of record is `docs/m27m_trimmed_tileset_recon.md`.** Measured rather than estimated: a real trimmed twin of the Pallet Town pair loads in **1.71 ms against the full set's 15.25 ms — 8.9x**, 25 KB → 6 KB. Region-wide only **11,036 tile definitions are actually placed** against the 132,480 `create_tile()` calls made today (**4.0x**), and all fourteen corridor pairs together would build in **~31 ms** — about what ONE cold tileset costs now. Baked scenes need no re-bake (M27M2 made the TileSet an `ext_resource`), `check_bake_diff` and the overlay are unaffected, and no consumer iterates tiles. **The failure mode is SILENT and is the whole design constraint**: `set_cell` accepts a coord whose tile was never created, stores it faithfully, and renders nothing — so the trim pass must ship with its own coverage proof, not after. Three hazards are recorded there with measurements: the trim set must be computed region-wide per pair rather than per-bake (or a later map silently renders with holes), it must union `border[]` as well as `metatile[]` (**5 border ids region-wide appear in no map body**), and it conflicts head-on with M27M's authoring requirement — resolved by treating `trim`/`expand` as two idempotent operations on ONE artifact rather than shipping two files.
