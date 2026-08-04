@@ -56,15 +56,29 @@ static var background_id: String = ""
 # is false.
 static var opp_trainer_key: String = ""
 
+## [M27H H5 fix] Is this battle being run FROM THE OVERWORLD?
+##
+## ⚠️ **THE CONTEXT IS THE ONLY THING RELIABLY SET BEFORE THE SCREEN'S `_ready`,
+## WHICH IS WHY THIS LIVES HERE.** `overlay_mode` is assigned by the overworld
+## AFTER `add_child()` — and `add_child` is what fires `_ready` — so reading it
+## during setup answers false for every battle. `OverworldSession
+## .has_pending_return()` was used instead and is false too, for a different
+## reason: the overlay design deliberately saves no position ("the overworld
+## STAYS ALIVE underneath"). Two plausible-looking signals, both wrong at the
+## one moment they were being read.
+static var is_overworld_battle: bool = false
+
 
 static func set_pending(p_player_party: BattleParty, p_opp_party: BattleParty,
 		p_is_doubles: bool = false, p_background_id: String = "",
-		p_opp_trainer_key: String = "") -> void:
+		p_opp_trainer_key: String = "",
+		p_is_overworld_battle: bool = false) -> void:
 	player_party = p_player_party
 	opp_party = p_opp_party
 	is_doubles = p_is_doubles
 	background_id = p_background_id
 	opp_trainer_key = p_opp_trainer_key
+	is_overworld_battle = p_is_overworld_battle
 
 
 static func has_pending() -> bool:
@@ -77,3 +91,4 @@ static func clear() -> void:
 	is_doubles = false
 	background_id = ""
 	opp_trainer_key = ""
+	is_overworld_battle = false

@@ -164,10 +164,23 @@ FONT_SOURCES = {
 }
 
 # context name -> (font variant, foreground RGB, shadow RGB, bulk-fill RGBA)
+#
+# [M26B6-3.1] The two popup contexts exist because the healthbox context's
+# baked colours (dark-grey fg / cream shadow, chosen for the LIGHT healthbox
+# art) read muddy on the ability popup's own bands — found by B6's first real
+# capture pass, see docs/m26_b6_recon.md §6. Colours are source's own
+# per-line palette indices (battle_interface.c's popup TextColor tables,
+# resolved against ability_pop_up.png's embedded palette): name line fg =
+# index 7 (249,253,255) near-white on the DARK band, ability line fg =
+# index 9 (0,0,0) black on the LIGHT band, both shadowed by index 1
+# (143,129,149). Background/accent transparent, same as healthbox — the
+# panel's own band art shows through the glyph cells.
 COLOR_CONTEXTS = {
     "latin_normal_message": ("normal", (255, 0, 0), (0, 0, 0), (213, 213, 205, 255)),
     "latin_normal_menu": ("normal", (74, 74, 74), (213, 213, 205), (255, 255, 255, 255)),
     "latin_small_healthbox": ("small", (65, 65, 65), (222, 213, 180), (0, 0, 0, 0)),
+    "latin_small_popup_name": ("small", (249, 253, 255), (143, 129, 149), (0, 0, 0, 0)),
+    "latin_small_popup_ability": ("small", (0, 0, 0), (143, 129, 149), (0, 0, 0, 0)),
 }
 
 

@@ -442,17 +442,27 @@ func prize_money() -> int:
 	return _bm.last_money_awarded if _bm != null else 0
 
 
+## [M27H H4] The Pokémon caught this battle, or null.
+##
+## ⚠️ Goes through `take_caught_pokemon()`, NOT the raw `caught_pokemon` field:
+## the catch ends the battle by fainting that very object, so the raw field is a
+## 0-HP corpse. See BattleManager's own note.
+##
+## ⚠️ **AND THAT IS THE WHOLE POINT OF THIS ACCESSOR — reported from play as
+## "caught Pokémon join the party fainted".** The H4 fix built
+## `take_caught_pokemon()` and documented it HERE, but left this body reading
+## the raw field, so the restore never ran for the one caller that matters.
+## The doc comment is not the fix; the call is.
+func caught_pokemon() -> BattlePokemon:
+	return _bm.take_caught_pokemon() if _bm != null else null
+
+
 ## [M27O O4] Hand a persisting party back with its battle-only state stripped.
 ##
 ## A two-line accessor for the same reason `prize_money` above is one: it keeps
 ## the field out of `_bm`'s privates, and the overworld already holds the party
 ## object so it need not learn which of BattleManager's own fields is the
 ## player's side.
-## [M27H H4] The Pokémon caught this battle, or null.
-func caught_pokemon() -> BattlePokemon:
-	return _bm.caught_pokemon if _bm != null else null
-
-
 func restore_party(party: BattleParty) -> void:
 	if _bm != null:
 		_bm.restore_party_after_battle(party)
@@ -619,6 +629,23 @@ func restore_party(party: BattleParty) -> void:
 @onready var _debug_toggle_row: HFlowContainer = $SharedChrome/DebugOverlay/VBox/ToggleRow
 @onready var _debug_body: RichTextLabel = $SharedChrome/DebugOverlay/VBox/Scroll/Body
 
+# [M26E5-1] The matchup overlay's own trigger (decision 1, Rob 2026-08-04) —
+# unlike the F3 debug toggle above (key-only, zero visual footprint by
+# design, dev-only), this is a real, always-visible, mouse-first button, per
+# the recon's own recommendation. Deliberately NOT chrome-stripped —
+# _strip_button_chrome's own established boundary (see _build_switch_
+# buttons'/_build_item_buttons' doc comments) is real window art behind a
+# button; this button sits directly on the bare battle stage with nothing
+# behind it, so keeping Godot's default chrome is what keeps it legible and
+# readable as a real clickable affordance rather than dropping styled-but-
+# backgroundless text onto the battlefield.
+@onready var _info_tab_btn: Button = $SharedChrome/InfoTabButton
+# Idempotency guard, same shape as _item_select_overlay/_switch_select_
+# overlay: a re-entrant _refresh_ui() (e.g. a doubles-mode refresh from the
+# OTHER field slot) must never stack a second overlay on top of an already-
+# open one.
+var _matchup_overlay: Control = null
+
 # [M23.11 Phase 4a] Visual battle stage -- additive alongside the existing
 # text-based UI above, not a replacement (Side0Label/Side1Label stayed as
 # they were at the time, per this phase's own explicit scope -- LogLabel
@@ -691,6 +718,12 @@ var _opp_sprite_base_bottom: Array = []
 # warning this phase's own regression check caught -- confirmed absent on
 # the pre-Phase-5c code via a direct git-stash comparison).
 var _active_hit_effect_nodes: Array = []
+
+# [M26B6-4] One popup per battler at a time — source's own
+# `activeAbilityPopUps` guard. Maps a BattlePokemon to its live panel; a
+# second trigger while that panel lives REWRITES its ability line
+# (source's UpdateAbilityPopup) instead of stacking a second banner.
+var _active_ability_popups: Dictionary = {}
 
 # [Doubles-split roadmap, step 5] Real health-box art now lives inside each
 # HealthGroupPanel instance (health_group_panel.gd) rather than as raw
@@ -1166,6 +1199,15 @@ var _current_debug_turn: int = 0
 var _font_message: FontFile
 var _font_menu: FontFile
 var _font_healthbox: FontFile
+# [M26B6-3.1] The ability popup's own two baked contexts — near-white-on-dark
+# for the name band, black-on-light for the ability band (source's own
+# per-line popup palette indices; see gen_battle_fonts.py's COLOR_CONTEXTS
+# entry for the citation). Exist because the healthbox context's dark-grey/
+# cream bake read muddy on the popup's dark band, and Godot's font_color
+# override MULTIPLIES against baked pixels rather than replacing them — the
+# same trap M25h-1.2 documented for the message box.
+var _font_popup_name: FontFile
+var _font_popup_ability: FontFile
 
 const _FONT_NORMAL_SIZE := 15
 const _FONT_SMALL_SIZE := 13
@@ -1253,6 +1295,15 @@ func _load_battle_fonts() -> void:
 	_font_menu.load_bitmap_font("res://assets/fonts/latin_normal_menu.fnt")
 	_font_healthbox = FontFile.new()
 	_font_healthbox.load_bitmap_font("res://assets/fonts/latin_small_healthbox.fnt")
+	# [M26B6-3.1] Popup contexts — same FONT_SMALL extraction, popup-specific
+	# baked colours (see the field declarations' own doc comment). Same
+	# scale_mode=2 treatment as the two fonts below, for the same reason.
+	_font_popup_name = FontFile.new()
+	_font_popup_name.load_bitmap_font("res://assets/fonts/latin_small_popup_name.fnt")
+	_font_popup_name.fixed_size_scale_mode = 2
+	_font_popup_ability = FontFile.new()
+	_font_popup_ability.load_bitmap_font("res://assets/fonts/latin_small_popup_ability.fnt")
+	_font_popup_ability.fixed_size_scale_mode = 2
 	# [M26c battle-UI polish] load_bitmap_font() leaves fixed_size_scale_mode
 	# at its default (0, DISABLE) -- confirmed via a direct isolated probe
 	# (four Labels sharing this font at font_size 9/13/24/48 rendered
@@ -1529,6 +1580,7 @@ func _ready() -> void:
 	_setup_action_region_panel()
 	_setup_message_overlay_panel()
 	_setup_debug_overlay()
+	_setup_info_tab_button()
 	_opponent_anim_timer.timeout.connect(_on_opponent_anim_timer_timeout)
 
 	# [M23.6 injection point] BattleSetupContext is a plain static-var
@@ -1571,12 +1623,17 @@ func _ready() -> void:
 	# identity before this), matching those two fields' own established
 	# "harmless default for every old caller" convention.
 	var opp_trainer_key := ""
+	# ⚠️ CAPTURED BEFORE `clear()`, like every other field here. Reading the
+	# static AFTER this block gets the RESET value, not the real one — see the
+	# `is_wild_battle` note below for what that cost.
+	var is_overworld_battle := false
 	if BattleSetupContext.has_pending():
 		_player_party = BattleSetupContext.player_party
 		_opp_party = BattleSetupContext.opp_party
 		is_doubles_battle = BattleSetupContext.is_doubles
 		background_id = BattleSetupContext.background_id
 		opp_trainer_key = BattleSetupContext.opp_trainer_key
+		is_overworld_battle = BattleSetupContext.is_overworld_battle
 		BattleSetupContext.clear()
 	else:
 		is_doubles_battle = _build_teams()
@@ -1623,8 +1680,28 @@ func _ready() -> void:
 	_bm.badge_count = BattleSetupContext.badge_count
 	_bm.party_has_room = BattleSetupContext.party_has_room
 	# [M27H H5] A battle with no trainer on the opposing side is a wild one.
-	_bm.is_wild_battle = BattleSetupContext.opp_trainer_key == "" \
-			and OverworldSession.has_pending_return()
+	#
+	# ⚠️ **THE SECOND HALF WAS `OverworldSession.has_pending_return()` AND WAS
+	# ALWAYS FALSE, SO NO BATTLE WAS EVER WILD.** Reported from play as "running
+	# from a wild battle sends me to the heal spot". `try_flee` refuses outright
+	# unless `is_wild_battle` (`battle_manager.gd:411`), so Run never even rolled
+	# — it fell through to the FORFEITED branch, which `IsPlayerDefeated` counts
+	# as a defeat, which whites you out and charges the payout.
+	#
+	# The condition was written when a battle was a real scene swap and the
+	# overworld saved its position first; the overlay design that replaced it
+	# deliberately saves NO position ("the overworld STAYS ALIVE underneath"),
+	# so the signal it was reading stopped existing while still compiling. The
+	# `overlay_mode` cannot stand in either: the overworld assigns it AFTER
+	# `add_child()`, and `add_child` is what fires `_ready`, so it is false here.
+	#
+	# ⚠️ **AND BOTH HALVES READ THE STATIC AFTER `clear()` HAD ALREADY RESET IT**
+	# (see the capture block above). `opp_trainer_key == ""` was therefore
+	# `"" == ""` — vacuously TRUE for every battle, including trainer ones —
+	# while the other half was vacuously false. Two bugs cancelling into a
+	# constant `false`, which is why no battle was ever wild and why fixing only
+	# the second half changed nothing. Reads the CAPTURED locals now.
+	_bm.is_wild_battle = opp_trainer_key == "" and is_overworld_battle
 
 	# [M25c] Computed once, ahead of _wire_log_signals() below, since the very
 	# first log lines (switch-in/hazard/ability messages from start_battle_*
@@ -2094,6 +2171,10 @@ func _clear_active_hit_effects() -> void:
 				(tween as Tween).kill()
 			node.free()
 	_active_hit_effect_nodes.clear()
+	# [M26B6-4] Popup panels live in _active_hit_effect_nodes too (freed
+	# above); this just drops the per-battler guard references so a
+	# post-teardown trigger can't try to update a freed panel.
+	_active_ability_popups.clear()
 
 
 # ── Battle log [M23.2, broadened in the M23.2 addendum] ────────────────────
@@ -2138,6 +2219,12 @@ func _clear_active_hit_effects() -> void:
 # for a negligible-cost feature.
 
 func _wire_log_signals() -> void:
+	# [M26B6-4] The ability banner. A separate listener from the F3 debug
+	# panel's own ability_triggered connect (_wire_debug_signals) — the
+	# banner shows the ability NAME while the message box narrates only the
+	# EFFECT, source's own split (BattleScript_IntimidateActivates is
+	# popup + trystatchanges, no "activated!" text — see the B6 recon's §1).
+	_bm.ability_triggered.connect(_on_popup_ability_triggered)
 	# [M25c] turn_started/move_announced/move_effectiveness_computed are all
 	# new this session — see each signal's own doc comment in battle_manager.gd
 	# for exactly when/why each fires.
@@ -3486,7 +3573,10 @@ func _wire_debug_signals() -> void:
 	_bm.trick_room_ended.connect(func():
 		_add_debug_entry(DebugCategory.DURATIONS, "Trick Room ended"))
 	_bm.screen_set.connect(func(side: int, screen_name: String):
-		var turns: int = _bm._side_conditions[side].get(screen_name + "_turns", 0)
+		# [M26E5-1] Migrated from the direct `_bm._side_conditions[side].get(...)`
+		# reach-in to the real public getter now that one exists — this was the
+		# one private-field read the recon flagged for migration.
+		var turns: int = _bm.get_side_condition_turns(side, screen_name)
 		_add_debug_entry(DebugCategory.DURATIONS,
 				"%s up on %s side (%d turns)" % [_SCREEN_NAMES.get(screen_name, screen_name), _side_label(side), turns]))
 	_bm.screen_expired.connect(func(side: int, screen_name: String):
@@ -3899,6 +3989,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _debug_overlay.visible:
 			_render_debug_overlay()
 
+	# [M26E5-1, decision 1] TAB toggles the matchup overlay -- the SINGLE
+	# place this toggle is decided (see matchup_overlay.gd's own
+	# _unhandled_input doc comment for why it's not split across both
+	# scripts). Gated the same way the button itself is (_info_tab_btn.
+	# disabled, kept in sync by _refresh_ui()) so the key can't open the
+	# overlay in a phase the button itself would refuse.
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_TAB:
+		if _matchup_overlay != null and is_instance_valid(_matchup_overlay):
+			_on_matchup_overlay_closed()
+		elif not _info_tab_btn.disabled:
+			_on_info_tab_pressed()
+
 
 # [M26B3-6b, Rob's review] The one-shot entry animation a Pokemon plays as
 # it lands, ported from `DoMonFrontSpriteAnimation` (`src/pokemon.c`): it
@@ -3971,6 +4074,102 @@ func _hp_bar_color(current: int, max_hp: int) -> Color:
 	elif frac > 0.2:
 		return Color8(255, 231, 57)
 	return Color8(255, 90, 57)
+
+
+# [M26E5-1] Renders a stat-stage integer as the REAL ratio the engine
+# actually applies — DamageCalculator.STAGE_RATIOS, ported verbatim from
+# gStatStageRatios — per Rob's own brief for the matchup overlay: exact
+# multipliers ("2.0x"), not arrows. Always 2 decimal places rather than the
+# brief's own illustrative 1-decimal example: -6/-5/-4 are 0.25/0.2857/0.3333,
+# which COLLIDE at "0.3x" with only 1 decimal place — the entire point of
+# showing a real multiplier instead of an arrow is to disambiguate exactly
+# this, so precision isn't optional here. `stage` is clamped to [-6, 6] the
+# same way DamageCalculator._apply_stage() already clamps it, so a
+# theoretically-out-of-range value degrades to the nearest real endpoint
+# rather than indexing out of bounds.
+func _stage_multiplier_text(stage: int) -> String:
+	var idx: int = clampi(stage, -6, 6) + 6
+	var ratio: Array = DamageCalculator.STAGE_RATIOS[idx]
+	return "%.2fx" % (float(ratio[0]) / float(ratio[1]))
+
+
+# [M26E5-1] Raw stage text ("+1"/"-2"/"+0"), used for Accuracy/Evasion —
+# decision 4 (Rob, 2026-08-04): stages only, not a multiplier. There is no
+# real per-mon accuracy multiplier in the mechanics (StatusManager.
+# ACCURACY_STAGE_RATIOS is indexed by the COMBINED attacker-minus-target
+# stage, not a single mon's own), so showing one here would either be
+# meaningless in isolation or need a selected target the overlay doesn't
+# always have — the raw stage is the one honest thing to show.
+func _stage_text(stage: int) -> String:
+	return "%+d" % clampi(stage, -6, 6)
+
+
+# [M26C4/C5, wired here per M26E5-1] Type-id -> the real badge asset's own
+# file stem in assets/sprites/battle_ui/types/ (18 real types + none/mystery,
+# confirmed via a direct directory listing — Stellar has no pulled badge at
+# all, since Tera is excluded project-wide same as every other Tera/Mega
+# asset). Deliberately NOT a plain TypeChart.type_name(type_id).to_lower() —
+# that collides on two real, confirmed exceptions: Fighting's own file is
+# "fight.png" (not "fighting.png") and Mystery's display name is the literal
+# glyph "???" (its file is "mystery.png", by name, not by lowercasing "???").
+# Empty string for anything unmapped (Stellar, or an invalid id) rather than
+# guessing a filename — callers treat an empty stem as "no badge to show",
+# matching this project's own established degrade-gracefully convention.
+static func _type_badge_stem(type_id: int) -> String:
+	if type_id == TypeChart.TYPE_FIGHTING:
+		return "fight"
+	if type_id == TypeChart.TYPE_MYSTERY:
+		return "mystery"
+	if type_id == TypeChart.TYPE_STELLAR:
+		return ""
+	var name := TypeChart.type_name(type_id).to_lower()
+	if name == "unknown":
+		return ""
+	return name
+
+
+# Loads the real badge texture for a type id, or null if none exists (see
+# _type_badge_stem's own doc comment for when that happens).
+func _type_badge_texture(type_id: int) -> Texture2D:
+	var stem := _type_badge_stem(type_id)
+	if stem.is_empty():
+		return null
+	var path := "res://assets/sprites/battle_ui/types/%s.png" % stem
+	if not ResourceLoader.exists(path):
+		return null
+	return load(path) as Texture2D
+
+
+# [M26C4, wired here per M26E5-2] MoveData.category -> the real category
+# icon's own file stem in assets/sprites/battle_ui/category/ (recreates the
+# old MoveInfoCategory helper the M26 polish batch deleted -- see that
+# function's own doc comment, cited at _move_info_panel's declaration above).
+# MoveData.category has no named constants of its own; the raw int values
+# (0/1/2) match scripts/gen_moves.py's own PHYS/SPEC/STAT constants exactly,
+# which is what actually populated every .tres this reads. Empty string for
+# anything else, matching _type_badge_stem's own degrade-gracefully
+# convention for an unmapped id.
+static func _category_icon_stem(category: int) -> String:
+	match category:
+		0:
+			return "physical"
+		1:
+			return "special"
+		2:
+			return "status"
+	return ""
+
+
+# Loads the real category icon texture for a move, or null if none exists
+# (see _category_icon_stem's own doc comment for when that happens).
+func _category_icon_texture(category: int) -> Texture2D:
+	var stem := _category_icon_stem(category)
+	if stem.is_empty():
+		return null
+	var path := "res://assets/sprites/battle_ui/category/%s.png" % stem
+	if not ResourceLoader.exists(path):
+		return null
+	return load(path) as Texture2D
 
 
 # [M26c-1] Real progress-to-next-level fraction, reusing M20's own already-
@@ -4289,6 +4488,17 @@ func _setup_action_region_panel() -> void:
 		lbl.add_theme_color_override("font_color", Color(1, 1, 1, 1))
 
 
+# [M26E5-1] Styles the always-visible INFO tab and wires it -- called once
+# from _ready(), matching the shape every other _setup_*() function here
+# uses. Deliberately keeps Godot's default button chrome (see the field's
+# own doc comment for why) -- only the font is overridden, matching
+# _style_menu_button's own font/size but not its chrome-adjacent pieces.
+func _setup_info_tab_button() -> void:
+	_info_tab_btn.add_theme_font_override("font", _font_menu)
+	_info_tab_btn.add_theme_font_size_override("font_size", _FONT_NORMAL_SIZE)
+	_info_tab_btn.pressed.connect(_on_info_tab_pressed)
+
+
 # [Message pacing] Builds the SECOND cached StyleBoxTexture ActionPanel
 # swaps to whenever paced narration is playing -- see
 # _MESSAGE_OVERLAY_KEY_COLOR's own doc comment for the asset citation.
@@ -4413,6 +4623,18 @@ func _run_message_pacing() -> void:
 				var run: Callable = beat.get("start", Callable())
 				if run.is_valid():
 					await run.call()
+			"ability_popup":
+				# [M26B6-4] The banner launches fire-and-forget — source's
+				# own script continues while the popup holds (a
+				# `call BattleScript_AbilityPopUp` returns and the effect's
+				# narration prints alongside the banner) — but pauses this
+				# beat queue by source's own post-show wait:
+				# BattleScript_AbilityPopUp is `showabilitypopup` then
+				# `pause B_WAIT_TIME_SHORT` (data/battle_scripts_1.s).
+				var popup_mon: BattlePokemon = beat.get("mon", null)
+				if popup_mon != null:
+					_play_ability_popup(popup_mon)
+					await get_tree().create_timer(_WAIT_TIME_SHORT).timeout
 			"flash":
 				var flash_sprite: Control = beat.get("sprite", null)
 				if flash_sprite != null:
@@ -5631,9 +5853,50 @@ const _SUN_RAY_ROT_STEP := 10                     # ...and +10 rotation per fram
 # its motion only.
 const _ABILITY_POPUP_TEX := "res://assets/sprites/battle_ui/interface/ability_pop_up.png"
 const _ABILITY_POPUP_SIZE := Vector2(128.0, 32.0)
+# [M26B6-2.1] The panel renders at a UNIFORM 4x — the same integer scale
+# every other GBA-native asset on the stage uses (balls, sprites, health-box
+# art: "resize the panel, don't stretch the asset"). It previously stretched
+# by _weather_stage_scale() (1024/240 x 768/160 = 4.267 x 4.8): non-integer,
+# so nearest-neighbour produced uneven pixel columns, and non-uniform, so the
+# art was drawn 12.5% taller than its own aspect. Only the panel's anchor
+# POINT maps through the stage scale (so placement stays battlefield-relative
+# like the weather effects); the art itself keeps square pixels.
+const _ABILITY_POPUP_RENDER_SCALE := 4.0
 const _ABILITY_POPUP_SLIDE := 128.0   # ABILITY_POP_UP_POS_X_SLIDE
 const _ABILITY_POPUP_SPEED := 4.0     # ABILITY_POP_UP_POS_X_SPEED, px/frame
 const _ABILITY_POPUP_HOLD := 48       # ABILITY_POP_UP_WAIT_FRAMES
+# [M26B6-4] Deliberate deviation, Rob's call 2026-08-03: the banner runs at
+# 2/3 of source's own pace — ~75 frames total (~1.25 s) against source's 112
+# (~1.87 s) — trimming ~33% off the third-biggest contributor to turn length
+# (alongside B4's weather pause and D3-5's tick lines, the M26G2 pacing
+# watch item). The three source constants above are kept at their real
+# values as documentation; this one factor is the whole deviation.
+const _ABILITY_POPUP_TIME_SCALE := 2.0 / 3.0
+
+# [M26B6-4] Which `ability_triggered` effect keys do NOT raise a banner.
+# Policy is SOURCE PARITY (Rob's call, 2026-08-03): every key whose source
+# activation runs `BattleScript_AbilityPopUp`/`showabilitypopup` pops; the
+# audit walked all 109 emit sites' keys against the 126 popup call sites in
+# `data/battle_scripts_1.s`. Exactly five keys fail that test:
+#   - lansat_berry / micle_berry: ITEM triggers riding the ability signal —
+#     the `*_Ripen` popup variants in source exist for the RIPEN ability,
+#     not the berry itself; there is no ability name to print.
+#   - magic_coat: a MOVE (its sibling magic_bounce, the ability, DOES pop).
+#   - natural_cure / regenerator: pure C-side switch-out handling
+#     (Cmd_switchoutabilities, battle_script_commands.c:9341/9352 —
+#     EmitSetMonData only, no battle script, no popup; the mon is leaving
+#     the field, so source has nowhere to hang a banner).
+# Every other key — including every block/immunity and every per-turn tick,
+# which source genuinely banners — pops. A NEW key added to BattleManager
+# defaults to popping (the source-default), and the suite's pinned key list
+# fails until the new key has been classified here or accepted there.
+const _ABILITY_POPUP_EXCLUDED_KEYS := {
+	"lansat_berry": true,
+	"micle_berry": true,
+	"magic_coat": true,
+	"natural_cure": true,
+	"regenerator": true,
+}
 # sAbilityPopUpCoordsSingles / ...Doubles, in GBA screen space. Indexed by
 # battler POSITION in source; here by (side, field slot), which is the same
 # thing. Note singles-player and doubles-player-RIGHT share (24, 97).
@@ -5663,6 +5926,11 @@ const _ABILITY_POPUP_COORDS_DOUBLES: Array[Vector2] = [
 # which is the cross-check that the bands were read correctly.
 const _ABILITY_POPUP_NAME_RECT := Rect2(6.0, 3.0, 92.0, 10.0)     # GBA space
 const _ABILITY_POPUP_ABILITY_RECT := Rect2(6.0, 15.0, 92.0, 10.0)
+# [M26B6-3.1] These three are DOCUMENTATION of the colours now BAKED into
+# the two popup font contexts (gen_battle_fonts.py's latin_small_popup_*
+# entries), no longer runtime overrides — kept because the test suite
+# asserts them against source's palette indices, pinning the generator's
+# own colour choices from the consumer side.
 const _ABILITY_POPUP_NAME_COLOR := Color8(249, 253, 255)   # source index 7
 const _ABILITY_POPUP_ABILITY_COLOR := Color8(0, 0, 0)      # source index 9
 const _ABILITY_POPUP_SHADOW_COLOR := Color8(143, 129, 149) # source index 1
@@ -5685,22 +5953,27 @@ static func _possessive_name(mon_name: String) -> String:
 	return mon_name + ("'" if last == "s" or last == "S" else "'s")
 
 
-func _make_ability_popup_label(rect: Rect2, scale: Vector2, colour: Color) -> Label:
+# [M26B6-3.1] Takes the LINE's own baked font context rather than a colour:
+# the popup fonts carry their real per-line colours and drop-shadow baked
+# into the atlas pixels (gen_battle_fonts.py's popup contexts), so the old
+# font_color/font_shadow_color overrides are gone — Godot's overrides
+# MULTIPLY against baked pixels rather than replacing them, which is what
+# made the first cut's text read muddy on the dark band (the same trap
+# M25h-1.2 documented for the message box). A null font (bare-instance
+# tests that never ran _load_battle_fonts) just skips the override,
+# matching _style_menu_button's own established null-guard convention.
+func _make_ability_popup_label(rect: Rect2, scale: Vector2, font: FontFile) -> Label:
 	var lbl := Label.new()
 	lbl.position = Vector2(rect.position.x * scale.x, rect.position.y * scale.y)
 	lbl.size = Vector2(rect.size.x * scale.x, rect.size.y * scale.y)
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lbl.clip_text = true
-	if _font_healthbox != null:
-		lbl.add_theme_font_override("font", _font_healthbox)
+	if font != null:
+		lbl.add_theme_font_override("font", font)
 		var mult: int = maxi(1, int(lbl.size.y / float(_ABILITY_POPUP_FONT_NATIVE)))
 		lbl.add_theme_font_size_override("font_size",
 				_ABILITY_POPUP_FONT_NATIVE * mult)
-	lbl.add_theme_color_override("font_color", colour)
-	lbl.add_theme_color_override("font_shadow_color", _ABILITY_POPUP_SHADOW_COLOR)
-	lbl.add_theme_constant_override("shadow_offset_x", 1)
-	lbl.add_theme_constant_override("shadow_offset_y", 1)
 	return lbl
 
 
@@ -5711,12 +5984,12 @@ func _make_ability_popup_label(rect: Rect2, scale: Vector2, colour: Color) -> La
 func _build_ability_popup_text(panel: Control, mon: BattlePokemon,
 		scale: Vector2) -> void:
 	var name_lbl := _make_ability_popup_label(
-			_ABILITY_POPUP_NAME_RECT, scale, _ABILITY_POPUP_NAME_COLOR)
+			_ABILITY_POPUP_NAME_RECT, scale, _font_popup_name)
 	name_lbl.text = _possessive_name(mon.species.species_name if mon.species != null else "")
 	panel.add_child(name_lbl)
 
 	var ability_lbl := _make_ability_popup_label(
-			_ABILITY_POPUP_ABILITY_RECT, scale, _ABILITY_POPUP_ABILITY_COLOR)
+			_ABILITY_POPUP_ABILITY_RECT, scale, _font_popup_ability)
 	ability_lbl.text = _ability_popup_name_for(mon)
 	panel.add_child(ability_lbl)
 	panel.set_meta("ability_popup_label", ability_lbl)
@@ -5757,6 +6030,13 @@ func _ability_popup_slot(mon: BattlePokemon) -> Dictionary:
 
 # Resting position in this project's stage pixels, scaled from GBA space.
 func _ability_popup_target(is_player: bool, slot: int) -> Vector2:
+	# [M26B6-2.1] Returns the panel's resting CENTER in stage pixels, not its
+	# top-left. pokeemerald sprite coordinates are CENTERS, and
+	# CreateAbilityPopUp places a two-sprite pair (centers at table.x and
+	# table.x + 64, both 64x32), so the PAIR's own center is
+	# (table.x + 32, table.y). The first cut read the table values as the
+	# panel's top-left, which parked the popup 32 GBA px right and 16 GBA px
+	# low of the source-equivalent spot.
 	var scale := _weather_stage_scale()
 	var gba: Vector2
 	if _is_doubles():
@@ -5764,7 +6044,28 @@ func _ability_popup_target(is_player: bool, slot: int) -> Vector2:
 		gba = _ABILITY_POPUP_COORDS_DOUBLES[idx]
 	else:
 		gba = _ABILITY_POPUP_COORDS_SINGLES[0 if is_player else 1]
-	return gba * scale
+	return (gba + Vector2(32.0, 0.0)) * scale
+
+
+# [M26B6-2.1] The panel's resting rect: anchor point stage-mapped (above),
+# art at its own uniform 4x. Split out from _play_ability_popup so the
+# geometry is directly assertable on a bare instance.
+func _ability_popup_rest_rect(is_player: bool, slot: int) -> Rect2:
+	var size := _ABILITY_POPUP_SIZE * _ABILITY_POPUP_RENDER_SCALE
+	return Rect2(_ability_popup_target(is_player, slot) - size / 2.0, size)
+
+
+# [M26B6-4] ability_triggered -> a banner beat, at the signal's own position
+# in the narrative sequence (so the popup coincides with its effect's own
+# text, and battle-START triggers ride the stash/replay to their
+# source-correct post-send-out slot). Per-EFFECT keys that are not ability
+# activations in source are filtered here — see _ABILITY_POPUP_EXCLUDED_KEYS.
+# The one-popup-per-battler guard in _play_ability_popup absorbs an
+# activation that emits several keys in quick succession.
+func _on_popup_ability_triggered(mon: BattlePokemon, effect_key: String) -> void:
+	if mon == null or _ABILITY_POPUP_EXCLUDED_KEYS.has(effect_key):
+		return
+	_pending_beats.append({"kind": "ability_popup", "mon": mon})
 
 
 # Slides the panel in from off-screen, holds, and slides it back out.
@@ -5778,40 +6079,73 @@ func _ability_popup_target(is_player: bool, slot: int) -> Vector2:
 # stays exact at any refresh rate -- the same reasoning M26G4's audit applied
 # to B4's own tween-vs-stepper split.
 func _play_ability_popup(mon: BattlePokemon) -> void:
-	if _effect_layer == null or not is_inside_tree() or mon == null:
+	if mon == null:
 		return
 	var where := _ability_popup_slot(mon)
 	if where.is_empty():
+		return
+	# [M26B6-4] Source's activeAbilityPopUps guard: one live popup per
+	# battler. A re-trigger rewrites the ability line on the existing panel
+	# (UpdateAbilityPopup — the reason PrintAbilityOnAbilityPopUp blanks its
+	# line before printing) rather than stacking a second banner. Checked
+	# BEFORE the tree/layer gate below deliberately: updating a live
+	# panel's label needs no tree access, which is also what makes the
+	# guard unit-testable on a bare off-tree instance (panel CREATION
+	# stays tree-gated and is covered by the capture pass, per this
+	# project's own live-SceneTree testing convention).
+	var live: Variant = _active_ability_popups.get(mon)
+	if live is Control and is_instance_valid(live):
+		_set_ability_popup_ability(live, _ability_popup_name_for(mon))
+		return
+	if _effect_layer == null or not is_inside_tree():
 		return
 	var tex := load(_ABILITY_POPUP_TEX) as Texture2D
 	if tex == null:
 		return
 
-	var scale := _weather_stage_scale()
 	var is_player: bool = where["is_player"]
-	var target := _ability_popup_target(is_player, where["slot"])
-	var offset := _ABILITY_POPUP_SLIDE * scale.x * (-1.0 if is_player else 1.0)
-	var start := Vector2(target.x + offset, target.y)
+	var rest := _ability_popup_rest_rect(is_player, where["slot"])
+	# [M26B6-2.1] Slide distance is the panel's own width (128 GBA px at the
+	# same uniform 4x the art renders at) — source's slide is exactly the
+	# popup's own width, so the panel starts just fully clear of its rest
+	# position, matching the same "scale the motion to the art, not the
+	# screen" call B3-2's trainer slide already made.
+	var offset := _ABILITY_POPUP_SLIDE * _ABILITY_POPUP_RENDER_SCALE \
+			* (-1.0 if is_player else 1.0)
+	var start := Vector2(rest.position.x + offset, rest.position.y)
 
 	var panel := TextureRect.new()
 	panel.texture = tex
 	panel.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	panel.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	panel.size = _ABILITY_POPUP_SIZE * scale
+	panel.size = rest.size
 	panel.position = start
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_effect_layer.add_child(panel)
 	_active_hit_effect_nodes.append(panel)
-	panel.tree_exited.connect(func(): _active_hit_effect_nodes.erase(panel))
+	_active_ability_popups[mon] = panel
+	panel.tree_exited.connect(func():
+		_active_hit_effect_nodes.erase(panel)
+		if _active_ability_popups.get(mon) == panel:
+			_active_ability_popups.erase(mon))
 	panel.set_meta("ability_popup_mon", mon)
-	_build_ability_popup_text(panel, mon, scale)
+	_build_ability_popup_text(panel, mon,
+			Vector2(_ABILITY_POPUP_RENDER_SCALE, _ABILITY_POPUP_RENDER_SCALE))
 
+	# [M26B6-4] One time-scale factor applies the ~33%-faster pacing (Rob's
+	# call) to all three phases uniformly — the source constants stay real.
 	var slide_time: float = (_ABILITY_POPUP_SLIDE / _ABILITY_POPUP_SPEED) \
-			* _ANIM_FRAME_SECONDS
+			* _ANIM_FRAME_SECONDS * _ABILITY_POPUP_TIME_SCALE
 	var tw := create_tween()
 	panel.set_meta("ability_popup_tween", tw)
-	tw.tween_property(panel, "position", target, slide_time)
-	tw.tween_interval(_ABILITY_POPUP_HOLD * _ANIM_FRAME_SECONDS)
+	# Also under the key _clear_active_hit_effects() actually kills tweens
+	# by — without this, battle-end teardown freed a live popup with its
+	# tween still queued (the exact freed-node bug that helper's own doc
+	# comment describes), a gap B6-2 shipped and this closes.
+	panel.set_meta("_hit_effect_tween", tw)
+	tw.tween_property(panel, "position", rest.position, slide_time)
+	tw.tween_interval(_ABILITY_POPUP_HOLD * _ANIM_FRAME_SECONDS \
+			* _ABILITY_POPUP_TIME_SCALE)
 	tw.tween_property(panel, "position", start, slide_time)
 	tw.tween_callback(func():
 		if is_instance_valid(panel):
@@ -6668,6 +7002,14 @@ func _layout_action_menu_for(is_top: bool, is_fight: bool) -> void:
 
 
 func _refresh_ui() -> void:
+	# [M26E5-1, decision 2] Command phase only for this first cut — disabled
+	# (not hidden) outside MOVE_SELECTION, matching the recon's own
+	# recommendation: an always-visible-but-sometimes-disabled affordance
+	# reads clearer than one that vanishes and reappears. A future "any
+	# time" availability pass (deferred, same decision) would only need to
+	# widen this one condition, not restructure the trigger itself.
+	_info_tab_btn.disabled = (_bm == null or _bm.get_phase() != BattleManager.BattlePhase.MOVE_SELECTION)
+
 	# [M25h-1, extended M26c-3] _button_area/_new_button_area are cleared
 	# unconditionally every call — only whichever one _menu actually needs
 	# gets repopulated below, so the others stay empty (visually absent)
@@ -7268,6 +7610,35 @@ func _close_item_select_overlay() -> void:
 	if _item_select_overlay != null and is_instance_valid(_item_select_overlay):
 		_item_select_overlay.queue_free()
 	_item_select_overlay = null
+
+
+# [M26E5-1] Same overlay-lifecycle shape as _build_item_buttons/_build_
+# switch_buttons above (a full-viewport CHILD overlay on the still-alive
+# battle_screen instance, idempotency-guarded) — but this one has no
+# BattleManager-side effect at all (no queue_*/advance() call): opening or
+# closing the matchup dashboard is pure UI, it never consumes a turn or
+# submits an action, so there's no phase transition to drive here, only the
+# overlay's own lifecycle.
+func _on_info_tab_pressed() -> void:
+	# [M26E5-1, decision 2] Command phase only for this first cut — the
+	# button is disabled outside it (see _refresh_ui()'s own gating), so
+	# this is a defensive re-check, not the primary guard.
+	if _bm == null or _bm.get_phase() != BattleManager.BattlePhase.MOVE_SELECTION:
+		return
+	if _matchup_overlay != null and is_instance_valid(_matchup_overlay):
+		return
+	var overlay_scene: PackedScene = load("res://scenes/battle/matchup_overlay.tscn")
+	var overlay: MatchupOverlay = overlay_scene.instantiate()
+	add_child(overlay)
+	overlay.closed.connect(_on_matchup_overlay_closed)
+	overlay.setup(self)
+	_matchup_overlay = overlay
+
+
+func _on_matchup_overlay_closed() -> void:
+	if _matchup_overlay != null and is_instance_valid(_matchup_overlay):
+		_matchup_overlay.queue_free()
+	_matchup_overlay = null
 
 
 # [M26c-4] Starts the hover-focus bounce/bob for `mon`, tearing down

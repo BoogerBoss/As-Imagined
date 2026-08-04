@@ -52,9 +52,66 @@ var _boot_map := ""
 ## solid falls back rather than dropping the player inside scenery.
 @export var start_cell: Vector2i = Vector2i(-1, -1)
 
+## [M27E E1c] Flags to set on the DEBUG BOOT ONLY, so an F6 into this scene can
+## reach content the corridor does not yet award.
+##
+## ⚠️ **SCAFFOLDING, AND IT MUST STAY UNABLE TO REACH THE REAL GAME.** Applied
+## only when this is a fresh F6 boot — not a new game, not a battle return, not
+## a loaded save (see `_ready`) — so a slot cannot inherit a badge it never
+## earned, which would be a save-corrupting kind of convenience. The code
+## default is EMPTY; the value lives on `overworld.tscn`, exactly as `start_map`
+## and `start_cell` do, for the same reason: this scene IS the debug boot.
+##
+## Currently: the Soul Badge, because surfing is gated on it (E0) and the
+## 32-map slice stops at Pewter, which awards badge 01. Retire this the moment
+## the roster actually reaches Fuchsia.
+@export var debug_flags: PackedStringArray = PackedStringArray()
+
+## [M27E E1c] Seed the debug team on the DEBUG BOOT ONLY.
+##
+## ⚠️ **WITHOUT THIS, F6 STARTS WITH NO PARTY AND THE FIRST PATCH OF GRASS IS A
+## BLACK SCREEN.** `[M27L L5]` correctly retired the lazily-built debug team as
+## the DEFAULT — a new game must start empty, and Oak's script gives you the
+## starter — but the debug boot never runs Oak, so it inherited the empty party
+## and nothing put one back. Reported from play as a hang on encountering a wild
+## Pokemon, and reproduced headlessly: an empty party reaches `BattleManager`
+## and every `get_active()` dereference fails.
+##
+## Same gating as `debug_flags`, and the same reason: this must never be able to
+## hand a real save a team it was not given. `build_debug_player_party()` was
+## kept alive by L5 for exactly this.
+##
+## ⚠️ This is a WORKAROUND for the debug path, NOT a fix for the underlying
+## defect: starting a battle with an unusable party is still unguarded, and any
+## other route to an empty party still black-screens. See CLAUDE.md.
+@export var debug_party: bool = false
+
 ## [M27D D1] Placeholder, matching the battle side's own `_PLAYER_BACK_PIC`.
 ## M27K owns a real player identity; until then the two halves at least agree.
-const PLAYER_GRAPHICS_ID := "OBJ_EVENT_GFX_LEAF"
+##
+## ⚠️ **[M27E E2] WAS `OBJ_EVENT_GFX_LEAF`, AND THAT ID CANNOT RUN.** Rob's call,
+## 2026-08-04, after seeing both sprites side by side. The two are genuinely
+## different art, and the one in use was the wrong half of a real split in the
+## reference: `pics/people/leaf.png` is a STANDALONE cameo sprite whose pic table
+## is a bare `overworld_ascending_frames(...)` macro — 9 frames, no bike, no
+## surf, no run, nothing else. `pics/people/leaf/` is the FRLG PLAYER SET
+## (green_normal / green_bike / green_surf / green_surf_run / green_fish /
+## green_item), and `sPicTable_GreenNormal` is the 20-entry table carrying the
+## run frames.
+##
+## So this also closes an inconsistency that predates running: the player was
+## already SURFING as `OBJ_EVENT_GFX_GREEN_SURF` (below) while WALKING as a
+## different character's sprite. Both halves now come from one set.
+const PLAYER_GRAPHICS_ID := "OBJ_EVENT_GFX_GREEN_NORMAL"
+
+## [M27E E1c] The player's sheet while riding the blob. Leaf's surf sheet, for
+## the same placeholder reason as above; `OBJ_EVENT_GFX_RED_SURF` sits beside
+## it already pulled if the male counterpart is ever wanted. The graphics table
+## deliberately declares these ids as 3 frames (see gen_object_event_sprites'
+## FRAME_OVERRIDES): source's own surf pic table maps every walking frame back
+## onto the three facing poses, so WalkAnim's rest-only path IS the faithful
+## behaviour — no walk cycle on water.
+const PLAYER_SURF_GRAPHICS_ID := "OBJ_EVENT_GFX_GREEN_SURF"
 
 @onready var manager: MapManager = $MapManager
 
@@ -84,6 +141,69 @@ var _facing := StepResolver.Dir.SOUTH
 ## second frame implementation is a second place to get the strip layout wrong.
 var _player_anim := WalkAnim.new()
 var _step_ticks := 0
+## [M27E E1c] The blob under the player while surfing, or null on foot. Owned
+## HERE, not on the session — it is presentation, and a battle's scene swap is
+## supposed to destroy and rebuild it (which `_build_player_node` does).
+var _surf_blob: SurfBlob = null
+## Set when a dismount lands while the step tween is still in flight, so the
+## blob is removed when the player ARRIVES ashore rather than mid-glide.
+var _surf_exit_pending := false
+## [M27E E1e] The mount jump's vertical arc — `sJumpY_High`, verbatim
+## (`event_object_movement.c:10876`). Source's surf mount is
+## `InitJumpSpecial` -> `InitJump(..., JUMP_DISTANCE_NORMAL, JUMP_TYPE_HIGH)`,
+## so this is the HIGH table, not the normal one: 16 frames peaking at -12px.
+##
+## Ported rather than computed, matching this project's standing practice for
+## source tables (`gSineTable`'s 320 entries, `EXP_SCALING_FACTORS`' 211) — a
+## parabola fitted by eye would be close and would not be this.
+const _JUMP_Y_HIGH: Array[int] = [
+	-4, -6, -8, -10, -11, -12, -12, -12,
+	-11, -10, -9, -8, -6, -4, 0, 0,
+]
+## 16 frames at 60fps, wall clock — the table's own length, not a feel value.
+const _MOUNT_JUMP_SECONDS := 16.0 / 60.0
+## True while the mount jump is in flight, so `_update_surf_visuals` holds the
+## blob back until the player lands on it. The mirror of `_surf_exit_pending`.
+var _mount_jump_active := false
+## [M27E E1f] How much higher the rider sits than an ordinary walker. Derived
+## from FRLG's own combined surf sprite — see `_swap_player_sheet`.
+const _SURF_RIDER_LIFT := 8
+## [M27E E1f] How long a field-move announcement stays up before dismissing
+## itself. A feel value, not a ported one — source has no auto-close at all.
+const _USED_MOVE_MESSAGE_SECONDS := 0.5
+
+## [M27E E2] RUNNING.
+##
+## ⚠️ **THE SPEED IS EXACTLY DOUBLE, AND THAT RATIO IS PORTED WHILE THE ABSOLUTE
+## VALUES ARE NOT.** Source runs at `MOVE_SPEED_FAST_1`, whose step table
+## (`sStep2Funcs`) is 8 entries against the walk's 16 (`sStep1Funcs`) —
+## `event_object_movement.c:10669-10731`, counted rather than assumed. This
+## project's walk is its own tuned 0.16s rather than source's 16 frames, so the
+## RATIO is what gets preserved, the same reasoning `_player_step_ticks` already
+## records for the walk cycle.
+const _WALK_STEP_SECONDS := 0.16
+const _RUN_STEP_SECONDS := _WALK_STEP_SECONDS / 2.0
+
+## Source gates running on the B button. B is already spoken for here — it is
+## `ui_cancel`, which opens the START menu in the field — so running takes SHIFT
+## instead, read as a raw held key rather than an InputMap action.
+##
+## ⚠️ That is the established shape in this project, not a shortcut: there is no
+## `[input]` section in `project.godot` at all, and the battle screen's own F3
+## toggle already reads a raw keycode for the same reason. **M26C8 owns real
+## input mapping** and is where this should become a rebindable action.
+const _RUN_KEY := KEY_SHIFT
+
+## Source's Running Shoes flag (`FLAG_SYS_B_DASH`, `flags_frlg.h:1346`). No
+## in-game event grants it yet — see `debug_flags`, which is how it is reachable.
+const RUN_FLAG := "FLAG_SYS_B_DASH"
+
+## Whether the step in flight is a RUN, latched when the step is committed.
+##
+## ⚠️ Latched rather than re-read per frame so the animation and the step
+## duration cannot disagree partway through a tile: releasing Shift mid-step
+## would otherwise leave a half-length step playing a walk cycle.
+var _running := false
 ## ONE resolver, stepping in global cells across every loaded chunk.
 ##
 ## [M27C C4] Was a resolver per chunk, because StepResolver took a single
@@ -254,6 +374,22 @@ func _ready() -> void:
 	if OverworldSession.pending_new_game:
 		boot_map = NEW_GAME_MAP
 		start_cell = NEW_GAME_CELL
+	# [M27E E1c] Debug-boot flags, gated to the F6 case alone. A new game has
+	# `pending_new_game` set; a battle return and a CONTINUE both arrive with a
+	# non-empty `resume`. What is left is someone running this scene directly,
+	# which is the only place this scaffolding is allowed to act.
+	elif resume.is_empty():
+		for f in debug_flags:
+			OverworldSession.flags.flag_set(String(f))
+		if not debug_flags.is_empty():
+			print("overworld: DEBUG BOOT — set %d flag(s): %s"
+					% [debug_flags.size(), ", ".join(debug_flags)])
+		# Only when there is nothing to lose: a debug boot that somehow already
+		# has a team keeps it rather than being overwritten.
+		if debug_party and OverworldSession.player_party().members.is_empty():
+			OverworldSession.party = OverworldParty.build_debug_player_party()
+			print("overworld: DEBUG BOOT — seeded a %d-member debug party"
+					% OverworldSession.party.members.size())
 	_boot_map = boot_map
 	if not manager.load_chunk(boot_map):
 		push_error("overworld: %s is not baked — run map_baker.tscn" % boot_map)
@@ -374,6 +510,11 @@ func _build_player_node() -> void:
 	# The chunk's LOCAL pixels, not the global cell's — the player is a child of
 	# a chunk root that is itself offset by that chunk's origin.
 	_player.position = manager.local_pixel_of(_cell)
+	# [M27E E1c] A battle return and a loaded save rebuild this node with the
+	# session's surf flag already set — the same reason `_ready` re-pushes the
+	# resolver flag. Without this, a player who was surfing arrives standing on
+	# the water in walking clothes with no blob.
+	_update_surf_visuals()
 
 
 ## Moving between draw priorities moves the entity between containers. Driven
@@ -437,6 +578,11 @@ func _process(_delta: float) -> void:
 	# `_vm` return, while `tick_entities` (which DECIDES on new wandering moves)
 	# sits below it and stays frozen.
 	manager.tick_movement(_delta)
+	# [M27E E1c] The blob bobs through message boxes and menus — source's field
+	# effects keep running under windows — so this sits ABOVE the input gates.
+	# Only a battle freezes it, and a battle is a different scene anyway.
+	if _surf_blob != null and is_instance_valid(_surf_blob):
+		_surf_blob.tick(_delta)
 	# [M27F] A running script owns input and freezes the world, the same way a
 	# battle does. `lock`/`lockall` are VM no-ops precisely because THIS is where
 	# locking actually lives — the VM has no business knowing about input.
@@ -580,7 +726,13 @@ func _try_step(dir: int) -> void:
 		return
 	var r := resolve_step(_cell, dir, _elev)
 	var outcome: int = r["outcome"]
-	if outcome != StepResolver.Outcome.NONE and outcome != StepResolver.Outcome.LEDGE_JUMP:
+	# [M27E E1d] STOP_SURFING is a PERMITTED outcome, not a refusal: it is the
+	# resolver saying "this step lands you ashore and ends the surf". The
+	# dismount itself still falls out of `should_dismount` below, which reads the
+	# landed tile — this only has to stop treating the step as blocked.
+	if outcome != StepResolver.Outcome.NONE \
+			and outcome != StepResolver.Outcome.LEDGE_JUMP \
+			and outcome != StepResolver.Outcome.STOP_SURFING:
 		# A blocked step is not necessarily a bump — it is how you open a door.
 		_try_door_warp(dir)
 		return
@@ -592,6 +744,14 @@ func _try_step(dir: int) -> void:
 	var prev_behavior := manager.behavior_at(_cell)
 	_cell = r["to"]
 	_elev = manager.elevation_at(_cell)
+	# [M27E E1d] ⚠️ SET BEFORE THE DISMOUNT CHECK, AND THAT ORDERING IS THE WHOLE
+	# REASON THE DEFERRAL EXISTS. `_update_surf_visuals` holds the blob until the
+	# step lands by testing `_moving`, and this used to be assigned *below* the
+	# check — so the flag was still false, the blob came off at step START, and
+	# the deferred path was unreachable in play. E1c's own F.07 guard set
+	# `_moving` by hand and so proved only that the mechanism worked in
+	# isolation. Found by driving the real map, not by the suite.
+	_moving = true
 	# [M27E E1b] ⚠️ RIDE ASHORE AND THE BLOB GOES AWAY — source has no "get off"
 	# key. `[E1a]` only lets a surfing player reach a tile that was already
 	# walkable, so "landed somewhere unsurfable" IS "landed ashore" and needs no
@@ -601,7 +761,12 @@ func _try_step(dir: int) -> void:
 	if FieldMoves.should_dismount(manager.behavior_at(_cell),
 			OverworldSession.surfing):
 		OverworldSession.surfing = false
+		_begin_dismount()
 		_sync_surfing()
+	elif _surf_blob != null and is_instance_valid(_surf_blob):
+		# [M27E E1c] Still on the water: retune the bob to the destination's own
+		# shore adjacency, source's per-arrival `SynchronizeSurfPosition` check.
+		_surf_blob.set_near_shore(_surf_shore_adjacent(_cell))
 	# [M27C C4] Load the new chunk's own neighbours on arrival, and unload
 	# nothing. Rob's call, and the measurements support it: stitchable fan-out
 	# is at most 4 (360 of 421 maps have none at all), so this tops out around 5
@@ -613,14 +778,31 @@ func _try_step(dir: int) -> void:
 	if now_in != "" and now_in != was_in:
 		manager.request_neighbours(now_in)
 	_reparent_for_elevation()
-	_moving = true
 	var t := create_tween()
-	var dur := 0.16 if outcome == StepResolver.Outcome.NONE else 0.26
+	# [M27E E2] ⚠️ LATCHED HERE, AGAINST THE TILE THE PLAYER IS STANDING ON.
+	# Source reads `currentMetatileBehavior` — the tile you are LEAVING, not the
+	# one you are entering (`field_player_avatar.c:911`) — so this reuses
+	# `prev_behavior`, captured above before `_cell` moved, rather than reading
+	# the destination. Latching before the tween is built is what keeps the
+	# duration and the cycle in agreement for the whole tile.
+	_running = _can_run(prev_behavior, outcome)
+	# [M27E E1d] STOP_SURFING is an ordinary-speed step, not a ledge hop — the
+	# 0.26 is the hop's own arc duration and would read as a stumble ashore.
+	var dur := 0.26 if outcome == StepResolver.Outcome.LEDGE_JUMP \
+			else (_RUN_STEP_SECONDS if _running else _WALK_STEP_SECONDS)
 	# [M27F Stage 3b] The player's ordinary step is a tween, NOT a MovementRunner
 	# script — the two paths are separate and the walk cycle has to be driven on
 	# both. `_process` advances it while `_moving`; this records the cadence.
 	_step_ticks = _player_step_ticks(dur)
+	t.set_parallel(true)
 	t.tween_property(_player, "position", manager.local_pixel_of(_cell), dur)
+	# [M27E E1f] Riding ashore is a JUMP, not a walk — `Task_StopSurfingInit`
+	# issues the same `GetJumpSpecialMovementAction` the mount does. Reported
+	# from play as "no jump animation when ending surf".
+	if _surf_exit_pending:
+		var jspr := _player_sprite()
+		if jspr != null:
+			_add_jump_arc(t, jspr, jspr.position.y, dur)
 	# [M27C C5] THE WARP CHECK LIVES HERE, on the completion of a real step, and
 	# nowhere else. Source fires warps from `TryStartStepBasedScript` under
 	# `input->tookStep`, and that is the entire reason arriving on a warp tile
@@ -629,6 +811,12 @@ func _try_step(dir: int) -> void:
 	# ping-pong the player between two doors forever.
 	t.finished.connect(func() -> void:
 		_moving = false
+		# [M27E E1c] The deferred half of a ride-ashore: the flag flipped at
+		# step start, the blob comes off now that the player has ARRIVED. Runs
+		# before the warp bail — the visual state must settle either way.
+		if _surf_exit_pending:
+			_surf_exit_pending = false
+			_update_surf_visuals()
 		if _warping:
 			return
 		var w := manager.warp_at(_cell)
@@ -1020,6 +1208,15 @@ func _wild_step(prev_behavior: int) -> void:
 	var map_name := manager.chunk_owning(_cell)
 	if map_name == "":
 		return
+	# [M27E follow-up] No usable party, no encounter — checked BEFORE the roll
+	# rather than leaving it to the mount guard below. Two reasons: the roll
+	# consumes RNG and reads the lead's ability, neither of which should happen
+	# for a battle that cannot occur; and being dragged into an encounter that
+	# then silently declines is worse to watch than simply walking through the
+	# grass. The mount guard stays as the backstop for every OTHER battle path
+	# (trainer, scripted), which this one cannot cover.
+	if not _party_can_battle():
+		return
 	var behavior := manager.behavior_at(_cell)
 	var lead := _lead_ability_id()
 	if not WildEncounters.should_encounter(map_name, behavior, prev_behavior, _rng, lead):
@@ -1032,6 +1229,24 @@ func _wild_step(prev_behavior: int) -> void:
 		push_warning("overworld: %s wild table produced no party" % map_name)
 		return
 	begin_wild_battle(party)
+
+
+## [M27E follow-up] Is there anything to fight WITH?
+##
+## Two states answer no and they are genuinely different in origin, even though
+## both black-screen identically: an EMPTY party (a debug boot, or a new game
+## before Oak's script has run) and an ALL-FAINTED one (unreachable in correct
+## play, since a wipe whites you out — but a guard that trusted that would be
+## trusting the very thing that broke).
+##
+## ⚠️ `is_fully_fainted()` already answers BOTH, because its loop is vacuously
+## true on an empty party. Relying on that silently would be too clever by half,
+## so the empty case is tested explicitly and the intent is written down.
+func _party_can_battle() -> bool:
+	var p := OverworldSession.player_party()
+	if p == null or p.members.is_empty():
+		return false
+	return not p.is_fully_fainted()
 
 
 ## The LEAD's ability id, or -1. Source's `WildEncounterCheck` reads
@@ -1262,6 +1477,29 @@ func begin_wild_battle(party: BattleParty) -> bool:
 
 ## Everything a battle needs regardless of who it is against.
 func _mount_battle(opp: BattleParty, trainer_key: String, t: TrainerNPC) -> bool:
+	# [M27E follow-up] ⚠️ **REFUSE BEFORE MUTATING ANYTHING.** A battle mounted
+	# with nothing to fight with is an UNRECOVERABLE BLACK SCREEN, not a lost
+	# fight: `BattleManager` dereferences the active slot immediately
+	# (`Out of bounds get index '0'`, then a cascade of `Invalid access ... on a
+	# base object of type 'Nil'`), and the field is left behind an overlay that
+	# never becomes usable. Reported from play; reproduced headlessly.
+	#
+	# ⚠️ **THIS GUARD IS ORIGINAL, NOT A PORT, AND THAT IS WORTH KNOWING.**
+	# Source has no equivalent: `WildEncounterCheck` reads
+	# `gParties[B_TRAINER_PLAYER][0]` unconditionally (`wild_encounter.c:349`)
+	# because the state is unreachable there — Oak blocks Route 1 until you have
+	# a starter, and a wipe always whites you out. Here it IS reachable: a debug
+	# boot has no party, and a new game has none until Oak's script runs.
+	#
+	# Sits at the very top so a refusal cannot leave `pending_trainer_key` set,
+	# `_in_battle` true or `battle_starting` emitted. `push_warning`, not
+	# `push_error`: this is a handled degrade, and `run_overworld_tests.sh`
+	# fails a run on ERROR lines, so a test exercising the guard would fail the
+	# whole suite rather than pass.
+	if not _party_can_battle():
+		push_warning("overworld: refusing to start a battle with no usable "
+				+ "party — this would black-screen. Nothing was mounted.")
+		return false
 
 	# The overworld STAYS ALIVE underneath. No position to save, no chunk to
 	# rebuild, no 66-100 ms reload on the way back — the map, the loaded chunks
@@ -1294,7 +1532,11 @@ func _mount_battle(opp: BattleParty, trainer_key: String, t: TrainerNPC) -> bool
 	# PC be deferred past the slice.
 	BattleSetupContext.badge_count = badge_count()
 	BattleSetupContext.party_has_room = player_party.members.size() < BattleParty.PARTY_SIZE
-	BattleSetupContext.set_pending(player_party, opp, false, "", trainer_key)
+	# ⚠️ The trailing `true` is what marks this an OVERWORLD battle, and it is
+	# load-bearing: it is the only signal the battle screen can trust at `_ready`
+	# time to tell a wild encounter from a simulator battle. Without it Run
+	# forfeits instead of fleeing, and a forfeit whites the player out.
+	BattleSetupContext.set_pending(player_party, opp, false, "", trainer_key, true)
 
 	var packed := OverworldSession.battle_scene(BattleSetupContext.is_doubles)
 	if packed == null:
@@ -1787,14 +2029,67 @@ func _player_sprite() -> Sprite2D:
 	return _player.get_node_or_null("Sprite") as Sprite2D
 
 
+## [M27E E2] May the player RUN out of `current_behavior` right now?
+##
+## Ported from the run branch of `PlayerAllowForcedMovementIfMovingSameDirection`'s
+## caller (`field_player_avatar.c:906-919`), keeping source's own gate order and
+## dropping only the parts with nothing here to check.
+##
+## Deliberately NOT modelled, each for a stated reason rather than by omission:
+##   * `!(flags & PLAYER_AVATAR_FLAG_UNDERWATER)` — there is no underwater state;
+##   * `ObjectMovingOnRockStairs` (which picks `PlayerRunSlow`) — no rock-stair
+##     behaviour is imported, so the slow-run variant is unreachable;
+##   * `FollowerNPCComingThroughDoor` / `I_ORAS_DOWSING_FLAG` — neither system
+##     exists here.
+##
+## ⚠️ SURFING RETURNS FALSE BECAUSE SOURCE NEVER REACHES THE RUN BRANCH WHILE
+## SURFING — it returns one block earlier, at `PLAYER_AVATAR_FLAG_SURFING`, having
+## already moved at `PlayerWalkFast`. So a surfing player is not "a runner who is
+## refused"; the question is never asked. Same for a ledge hop, which source
+## resolves and returns from further up still.
+func _can_run(current_behavior: int, outcome: int) -> bool:
+	return _can_run_with(current_behavior, outcome, Input.is_key_pressed(_RUN_KEY))
+
+
+## The gate itself, with the held-key state passed in.
+##
+## ⚠️ Split out so every condition is testable deterministically. `Input`'s own
+## key state cannot be driven from a headless test — this project has already
+## paid for that twice (K-b's naming screen was unreachable FROM THE KEYBOARD
+## because its driver called the handler directly, and L2's yes/no repeated the
+## mistake), so the seam is here rather than a driver reaching past it. **The one
+## thing this shape does NOT cover is the key read in `_can_run` above**; that is
+## a live-drive check, and is called out as such.
+func _can_run_with(current_behavior: int, outcome: int, run_held: bool) -> bool:
+	if OverworldSession.surfing:
+		return false
+	if outcome == StepResolver.Outcome.LEDGE_JUMP:
+		return false
+	if not run_held:
+		return false
+	if not flags.flag_get(RUN_FLAG):
+		return false
+	if MetatileBehavior.is_running_disallowed(current_behavior):
+		return false
+	# The sheet has the final say: only a composited player sheet carries the
+	# run frames at all, so this is false for every graphics id but the player's.
+	_player_anim.setup(_player_graphics_id())
+	return _player_anim.can_run()
+
+
 ## Turn the player and stand still.
 func _face_player(dir: int) -> void:
 	_facing = dir
+	# Resting ends the run — the cycle must settle on the STANDING frame, which
+	# is not one of the run frames.
+	_running = false
 	var spr := _player_sprite()
 	if spr == null:
 		return
-	_player_anim.setup(PLAYER_GRAPHICS_ID)
+	_player_anim.setup(_player_graphics_id())
 	_player_anim.rest(spr, WalkAnim.facing_name(dir))
+	if _surf_blob != null and is_instance_valid(_surf_blob):
+		_surf_blob.face(WalkAnim.facing_name(dir))
 
 
 ## Advance the player's walk cycle one tick.
@@ -1803,8 +2098,16 @@ func _step_player(dir: int, ticks: int, delta: float) -> void:
 	var spr := _player_sprite()
 	if spr == null:
 		return
-	_player_anim.setup(PLAYER_GRAPHICS_ID)
-	_player_anim.step(spr, WalkAnim.facing_name(dir), ticks, delta)
+	_player_anim.setup(_player_graphics_id())
+	# [M27E E2] `ticks` is the WALK cadence and is meaningless to the run cycle,
+	# which is timed against the step's own duration instead — see
+	# `WalkAnim.run_cycle_frame` for why the 5:3 split cannot survive ticks here.
+	if _running:
+		_player_anim.run_step(spr, WalkAnim.facing_name(dir), _RUN_STEP_SECONDS, delta)
+	else:
+		_player_anim.step(spr, WalkAnim.facing_name(dir), ticks, delta)
+	if _surf_blob != null and is_instance_valid(_surf_blob):
+		_surf_blob.face(WalkAnim.facing_name(dir))
 
 
 ## True while anything `waitmovement` could be waiting on is still walking.
@@ -2147,15 +2450,140 @@ func _mount_surf() -> void:
 	_box.close()
 	if not yes:
 		return
+	_ride_out()
+
+
+## [M27E E1c] Everything a confirmed mount actually DOES, split out of the
+## awaiting shell above so the effect is reachable without driving a yes/no
+## prompt — the await is the one part a test cannot step through.
+##
+## ⚠️ **THE STEP ONTO THE WATER IS PART OF MOUNTING, NOT A SEPARATE ACTION.**
+## Source's `EventScript_UseSurf` jumps the player onto the water tile as the
+## mount itself; without it the blob appears under a player still standing on
+## the shore, which reads as a broken mount rather than a missing flourish. The
+## ordinary step machinery does the move — with `surfing` now true the resolver
+## allows it, and it is a real step in every sense (sight checks, step scripts),
+## which source's jump also is. Disclosed divergence: a glide, not the jump arc,
+## since this project has no jump animation. The open message box blocks INPUT,
+## not a programmatic step.
+func _ride_out() -> void:
 	OverworldSession.surfing = true
+	# [M27E E1e] Set BEFORE `_sync_surfing()`: that swaps the player onto the
+	# surf sheet (which source also does before the jump,
+	# `ObjectEventSetGraphicsId` in `SurfFieldEffect_JumpOnSurfBlob`) and would
+	# otherwise attach the blob immediately, leaving it to arc along as a child.
+	_mount_jump_active = true
 	_sync_surfing()
 	# ⚠️ `{PLAYER}`, expanded at print time — the badge-only gate leaves no
 	# Pokemon to name, so the player is the subject.
 	# ⚠️ Expanded through `TextBuffers`, not `_expanded_pages()` — that one reads
 	# the VM's own pending pages and there is no VM behind this.
-	_box.open(PackedStringArray([
-			TextBuffers.new().expand(FieldMoves.used_message(
-					FieldMoves.Ability.SURF))]))
+	if _box != null:
+		# [M27E E1f] Auto-closes — Rob's call from live play. This is an
+		# announcement, not a conversation, and requiring a press to dismiss
+		# "{PLAYER} used SURF!" puts a keypress between the player and the thing
+		# they just asked for. A disclosed divergence from source, which waits
+		# for a press on essentially every message; see MessageBox.open.
+		_box.open(PackedStringArray([
+				TextBuffers.new().expand(FieldMoves.used_message(
+						FieldMoves.Ability.SURF))]), _USED_MOVE_MESSAGE_SECONDS)
+	_jump_onto_water(_facing)
+
+
+## [M27E E1d] The mount's own move, and it is a JUMP — it does not consult the
+## step resolver at all.
+##
+## ⚠️ **THIS CANNOT GO THROUGH `_try_step`, AND E1c's FIRST CUT DID.** Kanto's
+## water is elevation 1 against land's 3, so the ordinary rules refuse the step
+## onto it — correctly, and source refuses it too. Source's mount is
+## `GetJumpSpecialMovementAction` (`SurfFieldEffect_JumpOnSurfBlob`,
+## `src/field_effect.c`), a held movement that bypasses collision and elevation
+## exactly as this project's own scripted `applymovement` already does
+## (`[M27F Stage 3]`: "SCRIPTED MOVEMENT IGNORES COLLISION, DELIBERATELY").
+## Going through the resolver looked right, passed a suite built on
+## uniform-elevation fixtures, and could never move the player on a real map.
+##
+## Deliberately skips the step-completion scripts (warp, sight, poison,
+## encounter): you are landing on water, where source has none of them, and
+## water encounters are not wired yet regardless.
+func _jump_onto_water(dir: int) -> void:
+	if _player == null or _moving:
+		return
+	_cell = _cell + Vector2i(StepResolver.STEP[dir])
+	_elev = manager.elevation_at(_cell)
+	_reparent_for_elevation()
+	_moving = true
+	_step_ticks = _player_step_ticks(_MOUNT_JUMP_SECONDS)
+	var t := create_tween()
+	t.set_parallel(true)
+	t.tween_property(_player, "position", manager.local_pixel_of(_cell),
+			_MOUNT_JUMP_SECONDS)
+	# ⚠️ **THE ARC IS ON THE BODY SPRITE, NOT ON `_player`.** The blob is a CHILD
+	# of `_player`, so arcing the node would hop the water with you — and source
+	# does the opposite: `SurfFieldEffect_JumpOnSurfBlob` creates the blob at the
+	# DESTINATION coords while the player arcs onto it. Driving the sprite alone
+	# keeps the blob still, and `_mount_jump_active` holds it back until landing
+	# so there is nothing to fight over `position.y` mid-flight.
+	var spr := _player_sprite()
+	var base_y := spr.position.y if spr != null else 0.0
+	_add_jump_arc(t, spr, base_y, _MOUNT_JUMP_SECONDS)
+	t.finished.connect(func() -> void: _finish_mount_jump(spr, base_y))
+
+
+## Add source's jump arc to an existing tween, driving `spr`'s own y.
+##
+## Shared by the mount and the dismount because source uses the identical
+## movement for both — `GetJumpSpecialMovementAction` in
+## `SurfFieldEffect_JumpOnSurfBlob` and again in `Task_StopSurfingInit`.
+func _add_jump_arc(t: Tween, spr: Sprite2D, base_y: float, secs: float) -> void:
+	if spr == null:
+		return
+	t.tween_method(
+			func(p: float) -> void:
+				if not is_instance_valid(spr):
+					return
+				var i := clampi(int(p * float(_JUMP_Y_HIGH.size())), 0,
+						_JUMP_Y_HIGH.size() - 1)
+				spr.position.y = base_y + float(_JUMP_Y_HIGH[i]),
+			0.0, 1.0, secs)
+
+
+## [M27E E1f] Start riding ashore, ported from `Task_StopSurfingInit`
+## (`field_player_avatar.c:1997`).
+##
+## ⚠️ **THE BLOB STOPS FOLLOWING THE MOMENT THE DISMOUNT BEGINS.** Reported from
+## play as "the blob follows the player onto land for half a grid space", and
+## source is explicit about why it should not: `UpdateBobbingEffect` only runs
+## `sprite->x = playerSprite->x` inside `if (bobState != BOB_JUST_MON)`, and the
+## dismount's first act is `SetSurfBlob_BobState(..., BOB_JUST_MON)`. So the blob
+## keeps bobbing on the water while the player leaves it, and is destroyed only
+## when the jump lands (`Task_WaitStopSurfing`'s `DestroySprite`).
+##
+## Here the blob is a CHILD of the player, so "stops following" means `top_level`
+## — it keeps its current global position and ignores the parent's motion.
+## BOB_JUST_MON's other half (stop driving the player's own y) falls out of
+## releasing the body sprite at the same time.
+func _begin_dismount() -> void:
+	_surf_exit_pending = true
+	if _surf_blob != null and is_instance_valid(_surf_blob):
+		_surf_blob.stay_behind()
+
+
+## The landing. Split out of the tween's own callback so it is reachable without
+## a live SceneTree — `create_tween()` needs one, and this project's suites drive
+## bare off-tree instances, so a test could otherwise never see the blob attach.
+func _finish_mount_jump(spr: Sprite2D, base_y: float) -> void:
+	_moving = false
+	# Land on the CAPTURED base rather than trusting the sampled index to have
+	# reached the table's final 0 — a dropped frame would otherwise leave the
+	# player permanently floating.
+	if spr != null and is_instance_valid(spr):
+		spr.position.y = base_y
+	_mount_jump_active = false
+	# NOW the blob appears, under a player who has arrived on it.
+	_update_surf_visuals()
+	if _surf_blob != null and is_instance_valid(_surf_blob):
+		_surf_blob.set_near_shore(_surf_shore_adjacent(_cell))
 
 
 ## Push the session's surf state onto the resolver, which is what actually
@@ -2167,3 +2595,94 @@ func _mount_surf() -> void:
 func _sync_surfing() -> void:
 	if _resolver != null:
 		_resolver.surfing = OverworldSession.surfing
+	# [M27E E1c] The visuals follow the same one flag from the same one writer,
+	# so a mount that half-took cannot leave the sheet and the rules disagreeing.
+	_update_surf_visuals()
+
+
+## [M27E E1c] Make what the player LOOKS like agree with whether they are
+## surfing: the surf sheet plus the blob on the water, the walking sheet and no
+## blob on land. Idempotent — safe to call from every site that touches the
+## flag, and from `_build_player_node` on a rebuild.
+func _update_surf_visuals() -> void:
+	if _player == null:
+		return
+	var spr := _player_sprite()
+	if spr == null:
+		return
+	var has_blob := _surf_blob != null and is_instance_valid(_surf_blob)
+	if OverworldSession.surfing and not has_blob:
+		_surf_exit_pending = false
+		_swap_player_sheet(spr, PLAYER_SURF_GRAPHICS_ID)
+		# [M27E E1e] The sheet swaps now, the blob waits for the landing. Source
+		# does the same split: the graphics id changes before the jump starts,
+		# the blob is created at the destination. Attaching it here would make
+		# it a child that arcs along with the player.
+		if _mount_jump_active:
+			return
+		_surf_blob = SurfBlob.attach(_player, spr, WalkAnim.facing_name(_facing))
+	elif not OverworldSession.surfing and has_blob:
+		# Riding ashore flips the flag at step START (`_try_step` updates `_cell`
+		# before the tween runs), and yanking the blob at that instant reads as
+		# it sinking while the player is still visibly on the water. Held until
+		# the step's own tween lands — which is also source's own timing:
+		# `Task_WaitStopSurfing` destroys the blob when the JUMP finishes, not
+		# when it starts. `_begin_dismount` has already stopped it following.
+		if _moving:
+			_surf_exit_pending = true
+			return
+		_surf_exit_pending = false
+		_surf_blob.detach()
+		_surf_blob = null
+		_swap_player_sheet(spr, PLAYER_GRAPHICS_ID)
+
+
+## Swap the player's sprite sheet and rebind the walk-cycle clock to it in one
+## place — the texture and the anim's own frame table must never disagree,
+## because the surf sheet's frames 3+ are FRLG's unrelated run cycle.
+func _swap_player_sheet(spr: Sprite2D, gid: String) -> void:
+	var path := ObjectEventGraphics.sheet_path(gid)
+	if path != "" and ResourceLoader.exists(path):
+		var tex := load(path) as Texture2D
+		if tex != null:
+			spr.texture = tex
+	# [M27E E1f] ⚠️ **THE RIDER SITS 8px HIGHER, AND THE FIGURE IS DERIVED, NOT
+	# TUNED BY EYE.** Reported from play as "the player sits too low on the
+	# blob". FRLG ships a COMBINED 32x32 surfing sprite (`green_surf.png`,
+	# unreferenced in source like the Kanto blob itself) where the character and
+	# the blob are drawn as one piece — that art is the authored answer to how
+	# the two sit together. Leaf's hat crown is at y4 there and at y12 on the
+	# standalone 16x32 sheet this project draws, so the rider is exactly 8px low.
+	#
+	# The combined sprite is deliberately NOT used instead: it cannot be taken
+	# apart, and the dismount needs the blob to STAY on the water while the
+	# player jumps ashore (see `_begin_dismount`).
+	var size := ObjectEventGraphics.frame_size(gid)
+	spr.position.y = float(SurfBlob.CELL - size.y)
+	if gid == PLAYER_SURF_GRAPHICS_ID:
+		spr.position.y -= float(_SURF_RIDER_LIFT)
+	_player_anim.setup(gid)
+	_player_anim.rest(spr, WalkAnim.facing_name(_facing))
+
+
+## Which sheet the player's anim should be driving RIGHT NOW. Keyed on the
+## blob's presence, not the session flag — during the deferred dismount the
+## flag is already false while the surf texture is still on the sprite, and
+## keying on the flag there would run walk-cycle frame indices against the
+## surf sheet's run frames.
+func _player_graphics_id() -> String:
+	if _surf_blob != null and is_instance_valid(_surf_blob):
+		return PLAYER_SURF_GRAPHICS_ID
+	return PLAYER_GRAPHICS_ID
+
+
+## [M27E E1c] Is any cardinal neighbour dismountable land? Source's
+## `SynchronizeSurfPosition` scans DIR_SOUTH..DIR_EAST for
+## ELEVATION_DEFAULT (3, `global.fieldmap.h:18`) and slows the bob when one
+## matches — the "bobs slower while dismounting" nuance.
+func _surf_shore_adjacent(gcell: Vector2i) -> bool:
+	for d in [StepResolver.Dir.SOUTH, StepResolver.Dir.NORTH,
+			StepResolver.Dir.WEST, StepResolver.Dir.EAST]:
+		if manager.elevation_at(gcell + Vector2i(StepResolver.STEP[d])) == 3:
+			return true
+	return false

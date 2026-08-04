@@ -1,0 +1,17 @@
+[remap]
+
+importer="font_data_bmfont"
+type="FontFile"
+uid="uid://un8fljbihsv0"
+path="res://.godot/imported/latin_small_popup_ability.fnt-9e8cd75c6f5fd9ac961f6dd92ac6fda8.fontdata"
+
+[deps]
+
+source_file="res://assets/fonts/latin_small_popup_ability.fnt"
+dest_files=["res://.godot/imported/latin_small_popup_ability.fnt-9e8cd75c6f5fd9ac961f6dd92ac6fda8.fontdata"]
+
+[params]
+
+fallbacks=[]
+compress=true
+scaling_mode=2

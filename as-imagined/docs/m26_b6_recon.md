@@ -279,6 +279,39 @@ state verified:
   `(249,253,255)` on dark for the name, black `(0,0,0)` on light for the
   ability, both with shadow `(143,129,149)`. The `_make_ability_popup_label()`
   colour overrides should then be dropped rather than fought.
+  **BUILT 2026-08-03.** Two new `COLOR_CONTEXTS` entries in
+  `gen_battle_fonts.py` (`latin_small_popup_name` near-white
+  `(249,253,255)`, `latin_small_popup_ability` black, both shadowed
+  `(143,129,149)`, background/accent transparent like the healthbox
+  context); `_make_ability_popup_label()` now takes the LINE's own FontFile
+  and carries zero colour/shadow overrides — the three colour constants stay
+  as documentation, asserted by the suite so the generator's choices are
+  pinned from the consumer side. Suite grew to **44/44** (Section F: both
+  contexts load, are genuinely different bakes, wire to the right lines,
+  and no colour override exists on either label — the multiply-trap guard).
+  Capture-verified on both sides: "Gyarados'" crisp near-white on the dark
+  band, "Rock Head" black on the light one.
+- **B6-2.1 — render geometry: uniform 4x + center anchor. NEW, found by a
+  rescale review 2026-08-03 (Rob's ask), BUILT same day.** Two real defects
+  in B6-2's own shipped geometry: (1) the panel stretched by
+  `_weather_stage_scale()` (1024/240 x 768/160 = **4.267 x 4.8**) —
+  non-integer, so nearest-neighbour produced uneven pixel columns, and
+  non-uniform, so the art drew 12.5% taller than its own aspect; (2) the
+  coordinate tables were read as the panel's TOP-LEFT, but pokeemerald
+  sprite coords are CENTERS and `CreateAbilityPopUp` places a two-sprite
+  pair whose own center is `(table.x + 32, table.y)` — parking the popup
+  32 GBA px right and 16 low of the source spot. Now: the anchor point maps
+  through the stage scale (placement stays battlefield-relative, like the
+  weather effects), the art renders at the same uniform 4x every other
+  GBA-native asset uses, the slide distance is the panel's own width at
+  that same 4x (B3-2's "scale the motion to the art" precedent), and a new
+  `_ability_popup_rest_rect()` makes the geometry assertable on a bare
+  instance (Section E, incl. the center-anchor pins E.04/E.05 so the
+  top-left misread cannot silently return). A bonus of the uniform scale:
+  the 10-row text bands scale to exactly 40px, fitting the native-13
+  FONT_SMALL at a clean 3x = 39 under the integer-multiple invariant
+  (pinned by F.07). The right-edge tail clip at rest is source-faithful
+  (source's own pair overhangs its 240px screen by ~10 GBA px).
 - **B6-4 — trigger wiring + the one-popup-per-battler guard**, with an
   `UpdateAbilityPopup` equivalent that rewrites an active popup's ability line
   instead of stacking a second. Includes the per-key audit from §4.

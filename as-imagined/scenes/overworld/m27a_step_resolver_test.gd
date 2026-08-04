@@ -2480,6 +2480,15 @@ func _test_warp_dispatch() -> void:
 	# --- the real thing, driven through the overworld ---
 	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
 	ow.start_map = "PalletTown_Frlg"  # explicit: the scene default is a play-convenience and may move
+	# ⚠️ AND `start_cell` TOO — the same lesson, one level deeper. These fixtures
+	# made the MAP explicit and left the CELL implicit, which worked only because
+	# the scene's own default happened to be out of bounds in Pallet and fell
+	# back to `_first_walkable`. E1c pointed the debug boot at a real Pallet
+	# BEACH tile, and AO.02 (which asserts on the player's SOUTHERN neighbour)
+	# started reading ELEVATION_MISMATCH: that neighbour is now ocean, and the
+	# elevation check runs BEFORE the object-event one. `(-1, -1)` restores the
+	# scan these tests were actually relying on, now stated rather than inherited.
+	ow.start_cell = Vector2i(-1, -1)
 	add_child(ow)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -2563,6 +2572,15 @@ func _test_door_geometry() -> void:
 
 	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
 	ow.start_map = "PalletTown_Frlg"  # explicit: the scene default is a play-convenience and may move
+	# ⚠️ AND `start_cell` TOO — the same lesson, one level deeper. These fixtures
+	# made the MAP explicit and left the CELL implicit, which worked only because
+	# the scene's own default happened to be out of bounds in Pallet and fell
+	# back to `_first_walkable`. E1c pointed the debug boot at a real Pallet
+	# BEACH tile, and AO.02 (which asserts on the player's SOUTHERN neighbour)
+	# started reading ELEVATION_MISMATCH: that neighbour is now ocean, and the
+	# elevation check runs BEFORE the object-event one. `(-1, -1)` restores the
+	# scan these tests were actually relying on, now stated rather than inherited.
+	ow.start_cell = Vector2i(-1, -1)
 	add_child(ow)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -2687,6 +2705,15 @@ func _test_leaving_a_building() -> void:
 
 	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
 	ow.start_map = "PalletTown_Frlg"  # explicit: the scene default is a play-convenience and may move
+	# ⚠️ AND `start_cell` TOO — the same lesson, one level deeper. These fixtures
+	# made the MAP explicit and left the CELL implicit, which worked only because
+	# the scene's own default happened to be out of bounds in Pallet and fell
+	# back to `_first_walkable`. E1c pointed the debug boot at a real Pallet
+	# BEACH tile, and AO.02 (which asserts on the player's SOUTHERN neighbour)
+	# started reading ELEVATION_MISMATCH: that neighbour is now ocean, and the
+	# elevation check runs BEFORE the object-event one. `(-1, -1)` restores the
+	# scan these tests were actually relying on, now stated rather than inherited.
+	ow.start_cell = Vector2i(-1, -1)
 	add_child(ow)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -3671,6 +3698,15 @@ func _test_player_occupies_its_cell() -> void:
 		return
 	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
 	ow.start_map = "PalletTown_Frlg"  # explicit: the scene default is a play-convenience and may move
+	# ⚠️ AND `start_cell` TOO — the same lesson, one level deeper. These fixtures
+	# made the MAP explicit and left the CELL implicit, which worked only because
+	# the scene's own default happened to be out of bounds in Pallet and fell
+	# back to `_first_walkable`. E1c pointed the debug boot at a real Pallet
+	# BEACH tile, and AO.02 (which asserts on the player's SOUTHERN neighbour)
+	# started reading ELEVATION_MISMATCH: that neighbour is now ocean, and the
+	# elevation check runs BEFORE the object-event one. `(-1, -1)` restores the
+	# scan these tests were actually relying on, now stated rather than inherited.
+	ow.start_cell = Vector2i(-1, -1)
 	add_child(ow)
 	await get_tree().process_frame
 	await get_tree().process_frame

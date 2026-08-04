@@ -94,12 +94,39 @@ func _ready() -> void:
 
 
 ## Show a message. `pages` is already split on \p by the text pipeline.
-func open(pages: PackedStringArray) -> void:
+##
+## `auto_close_after` > 0 dismisses the box itself that many seconds after the
+## last page finishes typing, with no keypress.
+##
+## ⚠️ **A DELIBERATE DIVERGENCE FROM SOURCE, RECORDED SO IT IS NOT "FIXED" BACK.**
+## Source waits for a press on essentially every message (`msgbox` defaults to
+## MSGBOX_DEFAULT). Rob's call from live play: a field-move flourish like
+## "{PLAYER} used SURF!" is not a conversation, and making the player dismiss it
+## puts a keypress between them and the thing they just asked for. Used only
+## where the message is an announcement nobody needs to acknowledge.
+func open(pages: PackedStringArray, auto_close_after: float = 0.0) -> void:
 	_pages = pages if pages.size() > 0 else PackedStringArray([""])
 	_index = 0
 	_open = true
 	visible = true
 	_show_current()
+	if auto_close_after > 0.0:
+		_start_auto_close(auto_close_after)
+
+
+## Dismiss without a keypress once the text has finished typing.
+##
+## Guarded on `_open` AND on the page set being unchanged, so a box that was
+## closed and reopened in the meantime is not shut by a stale timer.
+func _start_auto_close(after: float) -> void:
+	var pages_when_started := _pages
+	if _typer != null and _typer.is_typing:
+		await _typer.finished_typing
+	if not _open or _pages != pages_when_started:
+		return
+	await get_tree().create_timer(after).timeout
+	if _open and _pages == pages_when_started:
+		close()
 
 
 ## The player pressed on. Either reveals the rest of a typing page (source lets

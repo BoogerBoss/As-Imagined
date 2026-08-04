@@ -32,6 +32,10 @@ enum Outcome {
 	ELEVATION_MISMATCH,  ## strata disagree and neither is a wildcard
 	LEDGE_JUMP,          ## redirect: two-tile hop, not a block
 	OBJECT_EVENT,        ## an NPC, trainer or item ball is standing there
+	## [M27E E1d] Riding ashore: allowed, AND it ends the surf.
+	##
+	## Appended rather than inserted so serialised ints do not shift.
+	STOP_SURFING,
 }
 
 const STEP: Dictionary = {
@@ -72,6 +76,9 @@ const LEDGE_FOR: Dictionary = {
 ## not "this is a staircase" (§1.4).
 const ELEVATION_TRANSITION := 0
 const ELEVATION_MULTI_LEVEL := 15
+## [M27E E1d] Ordinary walkable ground (`global.fieldmap.h:18`). Not a wildcard —
+## it is the specific stratum `CanStopSurfing` requires you to be riding onto.
+const ELEVATION_DEFAULT := 3
 
 ## The cell source. Deliberately untyped rather than `MapData`.
 ##
@@ -142,7 +149,7 @@ func resolve(from: Vector2i, dir: int, elevation: int) -> Dictionary:
 	var to_surfable := MetatileBehavior.is_surfable(_cells.behavior_at(to.x, to.y))
 	if surfing and to_surfable:
 		if _elevation_mismatch(elevation, to):
-			return _r(Outcome.ELEVATION_MISMATCH, from)
+			return _mismatch(to, from)
 		if _cells.entity_at(to.x, to.y):
 			return _r(Outcome.OBJECT_EVENT, from)
 		return _r(Outcome.NONE, to)
@@ -151,7 +158,7 @@ func resolve(from: Vector2i, dir: int, elevation: int) -> Dictionary:
 	if _directionally_impassable(from, to, dir):
 		return _r(Outcome.IMPASSABLE, from)
 	if _elevation_mismatch(elevation, to):
-		return _r(Outcome.ELEVATION_MISMATCH, from)
+		return _mismatch(to, from)
 	# [M27D D2] LAST, matching GetVanillaCollision's own precedence: range,
 	# then terrain and directional, then elevation, THEN object events. The
 	# order is visible rather than cosmetic — walking at an NPC standing on a
@@ -167,6 +174,35 @@ func _directionally_impassable(from: Vector2i, to: Vector2i, dir: int) -> bool:
 	var here: int = _cells.behavior_at(from.x, from.y)
 	var there: int = _cells.behavior_at(to.x, to.y)
 	return (here in EXIT_BLOCKED[dir]) or (there in ENTRY_BLOCKED[dir])
+
+
+## What an elevation mismatch MEANS — which, while surfing, is usually "you
+## just rode ashore" rather than "you are blocked".
+##
+## ⚠️ **THE MISMATCH IS THE MECHANISM, NOT AN OBSTACLE, AND THAT INVERSION IS
+## THE WHOLE POINT.** Kanto's water is elevation 1 and its land is elevation 3,
+## with no transition tiles at the shoreline (measured: all 66 surfable cells in
+## the corridor are elevation 1). So EVERY shoreline crossing, in either
+## direction, is an elevation mismatch by the ordinary rule — and source leans on
+## exactly that. `CheckForObjectEventCollision` (`field_player_avatar.c:966`)
+## reinterprets `COLLISION_ELEVATION_MISMATCH` as `COLLISION_STOP_SURFING` when
+## `CanStopSurfing` (`:1000`) agrees, and the mount's own precondition is
+## literally the same mismatch read the other way (`IsPlayerFacingSurfableFishableWater`,
+## `:1645` — mismatch AND the player at ELEVATION_DEFAULT AND the faced tile
+## surfable).
+##
+## `CanStopSurfing`'s conditions, ported exactly: surfing, the DESTINATION at
+## ELEVATION_DEFAULT (3), and nobody standing on it. The destination being
+## otherwise enterable is guaranteed by position — `GetCollisionAtCoords` returns
+## its FIRST failure, so a mismatch can only be reported for a cell whose
+## collision bit and directional rules already passed, which is exactly where
+## both call sites sit.
+func _mismatch(to: Vector2i, from: Vector2i) -> Dictionary:
+	if surfing \
+			and _cells.elevation_at(to.x, to.y) == ELEVATION_DEFAULT \
+			and not _cells.entity_at(to.x, to.y):
+		return _r(Outcome.STOP_SURFING, to)
+	return _r(Outcome.ELEVATION_MISMATCH, from)
 
 
 ## Ported from IsElevationMismatchAt: either side being a wildcard means

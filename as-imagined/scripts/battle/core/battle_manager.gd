@@ -385,6 +385,34 @@ func get_active_opponent_mon() -> BattlePokemon:
 	return _parties[1].get_active()
 
 
+## [M26E5-1] Thin public reads over `_side_conditions`, replacing the F3
+## debug overlay's own direct `_side_conditions[side][...]` access
+## (`battle_screen_shared.gd`'s `_wire_debug_signals`) with a real API any UI
+## consumer can use rather than a second private-field reach-in — the
+## matchup overlay is the second consumer this was built to serve.
+## `condition_name` is the condition's own key prefix, matching
+## `_side_conditions`' own key shape exactly (e.g. "reflect", "tailwind").
+## Three shapes because the dict itself has three: a countdown of turns
+## remaining (screens/Tailwind/Safeguard/Mist), a layer count (Spikes 0-3/
+## Toxic Spikes 0-2), or a plain flag (Stealth Rock/Sticky Web).
+func get_side_condition_turns(side: int, condition_name: String) -> int:
+	if side < 0 or side >= _side_conditions.size():
+		return 0
+	return _side_conditions[side].get(condition_name + "_turns", 0)
+
+
+func get_side_condition_layers(side: int, condition_name: String) -> int:
+	if side < 0 or side >= _side_conditions.size():
+		return 0
+	return _side_conditions[side].get(condition_name + "_layers", 0)
+
+
+func get_side_condition_flag(side: int, condition_name: String) -> bool:
+	if side < 0 or side >= _side_conditions.size():
+		return false
+	return _side_conditions[side].get(condition_name, false)
+
+
 ## [M27H H5] Is this a wild battle? Fleeing is only possible in one.
 ##
 ## ⚠️ Source refuses a normal trainer battle outright
@@ -444,6 +472,20 @@ func try_flee(battler: BattlePokemon, opponent: BattlePokemon,
 ## [M27H H4] Set when a throw succeeds, so the caller can take the Pokémon.
 ## Read by the overworld on return; null in every other battle.
 var caught_pokemon: BattlePokemon = null
+
+## [M27H H4 fix] The HP the caught Pokémon actually had when the ball landed.
+##
+## ⚠️ **NEEDED BECAUSE THE CATCH ENDS THE BATTLE BY FAINTING THE MON, AND
+## `caught_pokemon` IS THAT SAME OBJECT.** `BattlePokemon` is `RefCounted`, so
+## there is no copy — zeroing the opponent's HP to end the battle zeroes the
+## Pokémon the player is about to receive. Reported from play as "I can't use
+## any Pokémon I catch — they join the party fainted".
+##
+## Source has no such collision: `FinalizeCapture` REMOVES the battler from the
+## battle outright rather than fainting it, so nothing it hands back was ever
+## marked dead. Fainting is this project's own stand-in for that removal (see the
+## catch site), and this is the state that stand-in has to give back.
+var caught_hp: int = 0
 
 ## Injected so a test can force the shake rolls, matching `_force_roll`/
 ## `_force_crit`'s own precedent rather than inventing a new seam shape.
@@ -8474,6 +8516,33 @@ func _apply_switch_out_abilities(mon: BattlePokemon) -> void:
 ## HP, `status`, `toxic_counter` and `fainted` are deliberately NOT touched —
 ## they are precisely what has to survive. Healing is the whiteout's job
 ## (`OverworldSession.heal_party`), not this function's.
+## [M27H H4 fix] Hand the caught Pokémon over in a state it can actually be used
+## in, undoing the battle-ending faint this project uses in place of source's
+## own removal.
+##
+## Three things have to be undone, and only the first was obvious:
+##   * the zeroed HP and the `fainted` flag (see `caught_hp`);
+##   * the battle volatiles — confusion, a Substitute, a rampage lock. The
+##     player's own party is cleaned by `restore_party_after_battle`, but the
+##     caught mon is appended AFTER that has already run, so it would carry a
+##     whole battle's state into the party unless cleaned here;
+##   * stat stages, for the same reason — a wild mon that used a boosting move
+##     should not arrive permanently buffed.
+##
+## `status` and `toxic_counter` are deliberately KEPT: source's capture does not
+## cure anything, and a Pokémon caught asleep stays asleep.
+##
+## Floors at 1 HP: the mon was alive when the ball landed, and a rounding path
+## that handed back 0 would recreate the very bug this exists to fix.
+func take_caught_pokemon() -> BattlePokemon:
+	if caught_pokemon == null:
+		return null
+	_switch_out_clear(caught_pokemon)
+	caught_pokemon.fainted = false
+	caught_pokemon.current_hp = clampi(maxi(1, caught_hp), 1, caught_pokemon.max_hp)
+	return caught_pokemon
+
+
 func restore_party_after_battle(party: BattleParty) -> void:
 	if party == null:
 		return
@@ -8616,6 +8685,11 @@ func _do_item_use(actor_idx: int, item: ItemData, party_target: int) -> void:
 			# understands. Marking it fainted is how source gets there too
 			# (`FinalizeCapture` removes it from the battle outright).
 			caught_pokemon = opponent
+			# ⚠️ RECORDED BEFORE THE MUTATION BELOW UNDOES IT. The next two lines
+			# faint this very object to end the battle, and `caught_pokemon` is
+			# the same reference — so without this the player receives a 0-HP,
+			# fainted Pokémon. `take_caught_pokemon()` puts it back.
+			caught_hp = opponent.current_hp
 			opponent.current_hp = 0
 			opponent.fainted = true
 		return

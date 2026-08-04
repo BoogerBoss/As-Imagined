@@ -26,6 +26,9 @@ func _ready() -> void:
 	_test_possessive_name_rule()
 	_test_text_layout_constants()
 	_test_ability_line_is_rewritable()
+	_test_render_geometry_uniform_and_center_anchored()
+	_test_popup_font_contexts()
+	await _test_trigger_wiring_and_guard()
 
 	var total := _pass + _fail
 	print("m26_b6_2_popup_node_test: %d/%d passed" % [_pass, total])
@@ -163,8 +166,10 @@ func _test_target_positions_differ_by_side_and_slot() -> void:
 	# panel enters from the LEFT (start x < target x) and the opponent's from
 	# the RIGHT (start x > target x).
 	var sng := _make_bs([p0], [o0], false)
-	var scale: Vector2 = sng._weather_stage_scale()
-	var slide: float = BattleScreenShared._ABILITY_POPUP_SLIDE * scale.x
+	# [M26B6-2.1] The slide is scaled by the art's own uniform render scale,
+	# not the stage scale — see _play_ability_popup's own comment.
+	var slide: float = BattleScreenShared._ABILITY_POPUP_SLIDE \
+			* BattleScreenShared._ABILITY_POPUP_RENDER_SCALE
 
 	var ply_target: Vector2 = sng._ability_popup_target(true, 0)
 	var opp_target: Vector2 = sng._ability_popup_target(false, 0)
@@ -248,4 +253,203 @@ func _test_ability_line_is_rewritable() -> void:
 
 	bare.free()
 	panel.free()
+	bs.free()
+
+
+# ── E. [M26B6-2.1] Render geometry — uniform 4x, center-anchored ─────────
+
+func _test_render_geometry_uniform_and_center_anchored() -> void:
+	_chk("E.01 render scale is the uniform GBA-art 4x",
+			BattleScreenShared._ABILITY_POPUP_RENDER_SCALE == 4.0)
+
+	var p0 := _make_mon("P0")
+	var o0 := _make_mon("O0")
+	var sng := _make_bs([p0], [o0], false)
+
+	var rect: Rect2 = sng._ability_popup_rest_rect(false, 0)
+	_chk("E.02 the panel renders at exactly 4x its 128x32 art",
+			rect.size == Vector2(512.0, 128.0))
+	_chk("E.03 the rest rect is CENTERED on the target point",
+			rect.get_center().is_equal_approx(sng._ability_popup_target(false, 0)))
+
+	# The regression that must not return: pokeemerald sprite coords are
+	# CENTERS, and the popup is a two-sprite pair whose own center is
+	# (table.x + 32, table.y). The first cut read the table as the panel's
+	# top-left, parking the popup 32 GBA px right and 16 low. On a bare
+	# instance the stage scale is ONE, so the target is directly comparable
+	# to the table in GBA units.
+	_chk("E.04 singles-opponent target is the sprite-PAIR center (table + (32,0))",
+			sng._ability_popup_target(false, 0)
+				== BattleScreenShared._ABILITY_POPUP_COORDS_SINGLES[1] + Vector2(32.0, 0.0))
+	_chk("E.05 singles-player target likewise",
+			sng._ability_popup_target(true, 0)
+				== BattleScreenShared._ABILITY_POPUP_COORDS_SINGLES[0] + Vector2(32.0, 0.0))
+	sng.free()
+
+
+# ── F. [M26B6-3.1] Popup font contexts — baked colours, no overrides ─────
+
+func _test_popup_font_contexts() -> void:
+	var name_font := FontFile.new()
+	_chk("F.01 the popup NAME font context loads",
+			name_font.load_bitmap_font("res://assets/fonts/latin_small_popup_name.fnt") == OK)
+	var ability_font := FontFile.new()
+	_chk("F.02 the popup ABILITY font context loads",
+			ability_font.load_bitmap_font("res://assets/fonts/latin_small_popup_ability.fnt") == OK)
+
+	# Two genuinely distinct bakes, not one file emitted twice — the atlases
+	# must differ (near-white-on-dark vs black-on-light glyph pixels).
+	var name_png := FileAccess.get_file_as_bytes("res://assets/fonts/latin_small_popup_name.png")
+	var ability_png := FileAccess.get_file_as_bytes("res://assets/fonts/latin_small_popup_ability.png")
+	_chk("F.03 the two contexts are genuinely different bakes",
+			not name_png.is_empty() and name_png != ability_png)
+
+	var p0 := _make_mon("Pika")
+	var o0 := _make_mon("O0")
+	var sng := _make_bs([p0], [o0], false)
+	sng._load_battle_fonts()
+	_chk("F.04 _load_battle_fonts populates both popup fonts with real scaling",
+			sng._font_popup_name != null and sng._font_popup_ability != null
+				and sng._font_popup_name.fixed_size_scale_mode == 2
+				and sng._font_popup_ability.fixed_size_scale_mode == 2)
+
+	var panel := Control.new()
+	sng._build_ability_popup_text(panel, p0,
+			Vector2(BattleScreenShared._ABILITY_POPUP_RENDER_SCALE,
+					BattleScreenShared._ABILITY_POPUP_RENDER_SCALE))
+	var name_lbl: Label = panel.get_child(0)
+	var ability_lbl: Label = panel.get_child(1)
+	_chk("F.05 the name label uses the NAME context and the ability label the ABILITY context",
+			name_lbl.get_theme_font("font") == sng._font_popup_name
+				and ability_lbl.get_theme_font("font") == sng._font_popup_ability)
+
+	# THE guard: no font_color/font_shadow_color overrides may exist. Godot's
+	# overrides MULTIPLY against baked glyph pixels rather than replacing
+	# them — reintroducing one is exactly what made the first cut's text
+	# read muddy (the M25h-1.2 message-box trap in popup form).
+	_chk("F.06 no colour override on either label (colours live in the bake)",
+			not name_lbl.has_theme_color_override("font_color")
+				and not ability_lbl.has_theme_color_override("font_color")
+				and not name_lbl.has_theme_color_override("font_shadow_color")
+				and not ability_lbl.has_theme_color_override("font_shadow_color"))
+
+	# Uniform 4x makes the band/font math exact: 10-row bands scale to 40px,
+	# fitting the native-13 font at exactly 3x = 39 under the standing
+	# integer-multiple-only invariant.
+	_chk("F.07 band height at 4x fits the font at an exact 3x multiple (39 in 40)",
+			name_lbl.get_theme_font_size("font_size") == 39)
+	panel.free()
+	sng.free()
+
+
+# ── G. [M26B6-4] Trigger wiring, key policy, and the per-battler guard ───
+
+func _test_trigger_wiring_and_guard() -> void:
+	# G.01 — the deliberate ~33% pacing deviation (Rob, 2026-08-03). Source's
+	# own constants stay untouched above; ONE factor carries the whole
+	# deviation, and the resulting total is ~74.7 frames (~1.25 s).
+	_chk("G.01 time scale is 2/3 and yields a ~74.7-frame total",
+			is_equal_approx(BattleScreenShared._ABILITY_POPUP_TIME_SCALE, 2.0 / 3.0)
+				and is_equal_approx(
+					(32.0 * 2.0 + 48.0) * BattleScreenShared._ABILITY_POPUP_TIME_SCALE,
+					74.0 + 2.0 / 3.0))
+
+	# G.02 — the exclusion set is EXACTLY the five keys the source audit
+	# failed: two items, one move, and the two switch-out abilities whose
+	# source handling is pure C with no battle script (no popup exists).
+	var excl: Dictionary = BattleScreenShared._ABILITY_POPUP_EXCLUDED_KEYS
+	_chk("G.02 exclusion set is exactly the 5 audited non-popup keys",
+			excl.size() == 5 and excl.has("lansat_berry") and excl.has("micle_berry")
+				and excl.has("magic_coat") and excl.has("natural_cure")
+				and excl.has("regenerator"))
+
+	# G.03 — data-driven audit guard: re-derive the emit surface from
+	# battle_manager.gd itself. A NEW emit site or key fails here until it
+	# has been classified against source (the D3-style discipline). Counts
+	# pinned at the 2026-08-03 audit: 109 sites, 68 literal keys, 10
+	# variable-carrying sites.
+	var src := FileAccess.get_file_as_string("res://scripts/battle/core/battle_manager.gd")
+	var site_re := RegEx.create_from_string("ability_triggered\\.emit\\(([^)]*)\\)")
+	var key_re := RegEx.create_from_string(",\\s*\"([^\"]+)\"")
+	var sites := site_re.search_all(src)
+	var lit := {}
+	var variable_sites := 0
+	for m in sites:
+		var km := key_re.search(m.get_string(1))
+		if km != null:
+			lit[km.get_string(1)] = true
+		else:
+			variable_sites += 1
+	_chk("G.03 emit surface matches the audited 109 sites / 68 literal keys / 10 variable sites",
+			sites.size() == 109 and lit.size() == 68 and variable_sites == 10)
+	var unclassified: Array = []
+	for k: String in lit:
+		# Every literal key must be either popped (default) or explicitly
+		# excluded — an excluded key that no longer exists is equally a bug.
+		if excl.has(k):
+			unclassified.append("")  # excluded and present: fine
+	for k: String in excl:
+		if k != "natural_cure" and k != "regenerator" and k != "magic_coat" \
+				and not lit.has(k):
+			unclassified.append(k)
+	_chk("G.03b every non-variable excluded key exists in the emit surface",
+			unclassified.filter(func(x): return x != "").is_empty())
+
+	# G.04 — the handler's own policy: included keys queue a banner beat,
+	# excluded keys and null mons queue nothing.
+	var p0 := _make_mon("P0")
+	var o0 := _make_mon("O0")
+	var pol := _make_bs([p0], [o0], false)
+	pol._on_popup_ability_triggered(p0, "intimidate")
+	pol._on_popup_ability_triggered(p0, "lansat_berry")
+	pol._on_popup_ability_triggered(null, "intimidate")
+	var popup_beats: Array = pol._pending_beats.filter(
+			func(b): return b.get("kind") == "ability_popup")
+	_chk("G.04 included key queues exactly one banner beat; excluded/null queue none",
+			popup_beats.size() == 1 and popup_beats[0].get("mon") == p0)
+	pol.free()
+
+	# G.05 — the one-popup-per-battler guard, live: a second trigger for the
+	# same mon REWRITES the live panel's ability line instead of stacking.
+	var g_p0 := _make_mon("Gyarados")
+	var ab := AbilityData.new()
+	ab.ability_name = "Intimidate"
+	g_p0.ability = ab
+	var g_o0 := _make_mon("O0")
+	var bs := _make_bs([g_p0], [g_o0], false)
+	var layer := Control.new()
+	layer.size = Vector2(960.0, 480.0)
+	bs._effect_layer = layer
+	# _play_ability_popup's create_tween() call needs a live SceneTree, but
+	# only reachable via the node the tween is created ON (panel, added as a
+	# child of _effect_layer). Adding `layer` to this test's own tree gives
+	# every node parented under it (including panels _play_ability_popup
+	# creates later) that live tree — WITHOUT adding `bs` itself, which is a
+	# bare BattleScreenShared.new() instance whose _ready() assumes the real
+	# .tscn's node tree exists and crashes on null @onready refs otherwise.
+	add_child(layer)
+
+	bs._play_ability_popup(g_p0)  # fire-and-forget, panel exists synchronously
+	_chk("G.05 first trigger creates one live panel",
+			layer.get_child_count() == 1
+				and bs._active_ability_popups.get(g_p0) == layer.get_child(0))
+	var ab2 := AbilityData.new()
+	ab2.ability_name = "Moxie"
+	g_p0.ability = ab2
+	bs._play_ability_popup(g_p0)
+	_chk("G.05b second trigger does NOT stack a second panel",
+			layer.get_child_count() == 1)
+	var panel: Control = layer.get_child(0)
+	var lbl: Label = panel.get_meta("ability_popup_label")
+	_chk("G.05c ...it rewrites the live panel's ability line (UpdateAbilityPopup)",
+			lbl != null and lbl.text == "Moxie")
+
+	# G.06 — battle-end teardown kills the popup's tween via the shared
+	# meta key and drops the guard reference (the B6-2 gap this closes).
+	_chk("G.06 popup tween is registered under the teardown's own meta key",
+			panel.get_meta("_hit_effect_tween", null) is Tween)
+	bs._clear_active_hit_effects()
+	_chk("G.06b teardown frees the panel and clears the guard",
+			layer.get_child_count() == 0 and bs._active_ability_popups.is_empty())
+	remove_child(bs)
 	bs.free()

@@ -14,7 +14,7 @@ extends Node
 ##   * a catch is NOT a win — CAUGHT is its own outcome, and conflating them
 ##     would pay prize money and could set a defeated-trainer flag.
 
-const EXPECTED_TOTAL := 48
+const EXPECTED_TOTAL := 56
 
 var _total := 0
 var _failed := 0
@@ -210,6 +210,44 @@ func _test_outcome() -> void:
 	_chk("D.05 an ordinary outcome carries no Pokémon",
 			BattleOutcome.make(BattleOutcome.WON, "T").caught_pokemon == null)
 
+	# --- [M27H H4 fix] the caught Pokémon has to be USABLE ---
+	#
+	# ⚠️ **REPORTED FROM PLAY: "I can't use any Pokémon I catch — they join the
+	# party fainted".** The catch ends the battle by fainting the opponent (this
+	# project's stand-in for source's `FinalizeCapture`, which REMOVES the
+	# battler outright), and `BattlePokemon` is `RefCounted` — so
+	# `caught_pokemon` is that same zeroed object, not a copy. Nothing here
+	# asserted its state, which is exactly how it shipped.
+	var bm := BattleManager.new()
+	var wild := _target(255, 8, 1.0)
+	wild.current_hp = 7
+	wild.status = BattlePokemon.STATUS_SLEEP
+	wild.stat_stages[BattlePokemon.STAT_ATK] = 2
+	wild.confusion_turns = 3
+	bm.caught_pokemon = wild
+	bm.caught_hp = wild.current_hp
+	# The battle-ending mutation the catch site performs, reproduced exactly.
+	wild.current_hp = 0
+	wild.fainted = true
+
+	var got: BattlePokemon = bm.take_caught_pokemon()
+	_chk("D.06 the caught Pokémon is handed over ALIVE, not fainted",
+			got != null and not got.fainted and got.current_hp > 0)
+	_chk("D.07 with the HP it actually had when the ball landed",
+			got.current_hp == 7)
+	# ⚠️ KEPT, not cured — source's capture cures nothing, and a Pokémon caught
+	# asleep stays asleep. The discriminator that separates "restores it" from
+	# "heals it".
+	_chk("D.08 keeping its status — a capture is not a heal",
+			got.status == BattlePokemon.STATUS_SLEEP)
+	# ⚠️ The half that is easy to miss: the caught mon is appended AFTER
+	# `restore_party_after_battle` has already cleaned the player's party, so
+	# nothing else would ever strip its battle state.
+	_chk("D.09 and its battle-only state stripped, since nothing else will",
+			got.stat_stages[BattlePokemon.STAT_ATK] == 0
+			and got.confusion_turns == 0)
+	bm.free()
+
 
 ## --- E. wiring ---
 func _test_wiring() -> void:
@@ -234,6 +272,41 @@ func _test_wiring() -> void:
 
 	var bs: Control = load("res://scenes/battle/battle_screen_singles.tscn").instantiate() as Control
 	_chk("E.05 the battle screen reports a caught Pokémon", bs.has_method("caught_pokemon"))
+
+	# --- [M27H H4 follow-up] the ACCESSOR, not just the function behind it ---
+	#
+	# ⚠️ **THE H4 FIX BUILT `take_caught_pokemon()` AND THEN DID NOT CALL IT.**
+	# `caught_pokemon()` kept returning the raw field, so the restore never ran
+	# for the one caller that matters and caught Pokémon still joined the party
+	# fainted — reported from play a second time. D.06-D.09 all passed
+	# throughout, because they call `take_caught_pokemon()` DIRECTLY and never
+	# go through the accessor the overworld actually uses.
+	#
+	# ⚠️ Deliberately NOT added to the tree, so `_bm` (an `@onready`) is null and
+	# is assigned by hand — the same bare-instance shape E.04 uses above.
+	var bm2 := BattleManager.new()
+	var caught := _target(255, 8, 1.0)
+	caught.current_hp = 7
+	caught.status = BattlePokemon.STATUS_SLEEP
+	caught.stat_stages[BattlePokemon.STAT_ATK] = 2
+	bm2.caught_pokemon = caught
+	bm2.caught_hp = caught.current_hp
+	caught.current_hp = 0
+	caught.fainted = true
+	bs._bm = bm2
+
+	var handed: BattlePokemon = bs.caught_pokemon()
+	_chk("E.05b the ACCESSOR hands over a usable Pokémon, not the raw corpse",
+			handed != null and not handed.fainted and handed.current_hp == 7)
+	_chk("E.05c still keeping its status, so the accessor restores and never heals",
+			handed.status == BattlePokemon.STATUS_SLEEP)
+	_chk("E.05d and strips the battle-only state, since nothing downstream will",
+			handed.stat_stages[BattlePokemon.STAT_ATK] == 0)
+	# The degrade path the accessor has always had, kept honest by the change.
+	bs._bm = null
+	_chk("E.05e and reports nothing when there is no battle behind it",
+			bs.caught_pokemon() == null)
+	bm2.free()
 	bs.free()
 
 	# A caught Pokémon joins a party that has room, and the party is the SAME

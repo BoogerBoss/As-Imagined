@@ -53,6 +53,41 @@ const ANIM_TICKS_NORMAL := 8
 const ANIM_TICKS_FAST := 4
 const ANIM_TICKS_FASTER := 2
 
+## [M27E E2] The RUN cycle's own frames, from sAnim_Run*Frlg.
+##
+## ⚠ Indices 9-17 -- the RUN half of a COMPOSITED sheet, which only
+## the two player ids have (sPicTable_Green/RedNormal each span two pic
+## symbols). Every other id stops at 8, so `can_run()` gates on this.
+##
+## The neutral pose is a RUN-specific frame, NOT the standing FACE frame
+## the walk cycle rests on -- a runner never shows its standing sprite.
+const RUN_IDLE_FRAME := {
+	"SOUTH": 9,
+	"NORTH": 12,
+	"WEST": 15,
+	"EAST": 15,
+}
+
+## The two leg frames per facing, from the same four anims.
+const RUN_STEP_FRAME := {
+	"SOUTH": [10, 11],
+	"NORTH": [13, 14],
+	"WEST": [16, 17],
+	"EAST": [16, 17],
+}
+
+## Ticks per cycle entry: [neutral, legA, neutral, legB].
+##
+## ⚠ UNEVEN, unlike every walk anim in this file -- source holds the
+## neutral pose 5 frames and each leg 3. Averaging them to 4 would run at
+## the right overall cadence and read wrong, because the leg would be up
+## as long as the body is level.
+const RUN_TICKS := [5, 3, 5, 3]
+
+## A sheet needs 18 frames to hold a run cycle (indices 0-17).
+## Only the two player ids do; every NPC stops at 9.
+const MIN_FRAMES_TO_RUN := 18
+
 ## A sheet needs all nine frames to hold a walk cycle. 136 of the 385
 ## resolved ids do; 70 carry only the three facing frames (signs, static
 ## props) and 96 carry a single frame. Those must draw their idle frame
@@ -195,8 +230,8 @@ const BY_ID := {
 	"OBJ_EVENT_GFX_GREEN_BIKE": {"sheet": "people_leaf_green_bike", "w": 32, "h": 32, "frames": 9},
 	"OBJ_EVENT_GFX_GREEN_FIELD_MOVE": {"sheet": "people_leaf_green_item", "w": 16, "h": 32, "frames": 9},
 	"OBJ_EVENT_GFX_GREEN_FISH": {"sheet": "people_leaf_green_fish", "w": 32, "h": 32, "frames": 12},
-	"OBJ_EVENT_GFX_GREEN_NORMAL": {"sheet": "people_leaf_green_normal", "w": 16, "h": 32, "frames": 9},
-	"OBJ_EVENT_GFX_GREEN_SURF": {"sheet": "people_leaf_green_surf_run", "w": 16, "h": 32, "frames": 14},
+	"OBJ_EVENT_GFX_GREEN_NORMAL": {"sheet": "people_leaf_green_normal", "w": 16, "h": 32, "frames": 20},
+	"OBJ_EVENT_GFX_GREEN_SURF": {"sheet": "people_leaf_green_surf_run", "w": 16, "h": 32, "frames": 3},
 	"OBJ_EVENT_GFX_GREEN_VS_SEEKER": {"sheet": "people_leaf_green_item", "w": 16, "h": 32, "frames": 9},
 	"OBJ_EVENT_GFX_GREEN_VS_SEEKER_BIKE": {"sheet": "people_leaf_green_vs_seeker_bike", "w": 32, "h": 32, "frames": 6},
 	"OBJ_EVENT_GFX_GRETA": {"sheet": "people_frontier_brains_greta", "w": 16, "h": 32, "frames": 9},
@@ -299,7 +334,7 @@ const BY_ID := {
 	"OBJ_EVENT_GFX_OLD_AMBER": {"sheet": "misc_old_amber", "w": 16, "h": 16, "frames": 1},
 	"OBJ_EVENT_GFX_OLD_MAN": {"sheet": "people_old_man", "w": 16, "h": 32, "frames": 3},
 	"OBJ_EVENT_GFX_OLD_MAN_1": {"sheet": "people_old_man_1", "w": 16, "h": 32, "frames": 10},
-	"OBJ_EVENT_GFX_OLD_MAN_2": {"sheet": "people_old_man_2", "w": 16, "h": 32, "frames": 9},
+	"OBJ_EVENT_GFX_OLD_MAN_2": {"sheet": "people_old_man_2", "w": 16, "h": 32, "frames": 10},
 	"OBJ_EVENT_GFX_OLD_MAN_LYING_DOWN": {"sheet": "people_old_man_lying_down", "w": 32, "h": 32, "frames": 1},
 	"OBJ_EVENT_GFX_OLD_WOMAN": {"sheet": "people_old_woman", "w": 16, "h": 32, "frames": 9},
 	"OBJ_EVENT_GFX_OLD_WOMAN_FRLG": {"sheet": "people_old_woman_frlg", "w": 16, "h": 32, "frames": 9},
@@ -336,8 +371,8 @@ const BY_ID := {
 	"OBJ_EVENT_GFX_RED_BIKE": {"sheet": "people_red_red_bike", "w": 32, "h": 32, "frames": 9},
 	"OBJ_EVENT_GFX_RED_FIELD_MOVE": {"sheet": "people_red_red_item", "w": 16, "h": 32, "frames": 9},
 	"OBJ_EVENT_GFX_RED_FISH": {"sheet": "people_red_red_fish", "w": 32, "h": 32, "frames": 12},
-	"OBJ_EVENT_GFX_RED_NORMAL": {"sheet": "people_red_red_normal", "w": 16, "h": 32, "frames": 9},
-	"OBJ_EVENT_GFX_RED_SURF": {"sheet": "people_red_red_surf_run", "w": 16, "h": 32, "frames": 14},
+	"OBJ_EVENT_GFX_RED_NORMAL": {"sheet": "people_red_red_normal", "w": 16, "h": 32, "frames": 20},
+	"OBJ_EVENT_GFX_RED_SURF": {"sheet": "people_red_red_surf_run", "w": 16, "h": 32, "frames": 3},
 	"OBJ_EVENT_GFX_RED_VS_SEEKER": {"sheet": "people_red_red_item", "w": 16, "h": 32, "frames": 9},
 	"OBJ_EVENT_GFX_RED_VS_SEEKER_BIKE": {"sheet": "people_red_red_vs_seeker_bike", "w": 32, "h": 32, "frames": 6},
 	"OBJ_EVENT_GFX_REGICE": {"sheet": "pokemon_old_regi", "w": 32, "h": 32, "frames": 1},

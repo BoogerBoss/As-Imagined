@@ -87,6 +87,68 @@ func step(sprite: Sprite2D, facing: String, ticks: int, delta: float) -> void:
 	_draw(sprite, facing, cycle_frame(facing, ticks, _elapsed))
 
 
+## [M27E E2] Can this sheet hold a RUN cycle?
+##
+## Only the two player ids can — running draws from pic-table indices 9-17,
+## which exist solely on the composited player sheets (see the composite note in
+## `gen_object_event_sprites.py`). Every NPC stops at 9 frames, so this is false
+## for all of them and no NPC can ever be asked to run.
+func can_run() -> bool:
+	return _frames >= ObjectEventGraphics.MIN_FRAMES_TO_RUN
+
+
+## Advance the RUN cycle and show the frame it lands on.
+##
+## `step_seconds` is how long ONE TILE takes, not one cycle entry — see
+## `run_cycle_frame` for why running is timed differently from walking.
+func run_step(sprite: Sprite2D, facing: String, step_seconds: float, delta: float) -> void:
+	if not can_run():
+		# Should be unreachable (the caller gates on `can_run`), but a sheet
+		# without run frames must degrade to a walk rather than index off the
+		# end of its own strip.
+		step(sprite, facing, ObjectEventGraphics.ANIM_TICKS_FAST, delta)
+		return
+	var key := "run:%s:%.4f" % [facing, step_seconds]
+	if key != _key:
+		_key = key
+		_elapsed = 0.0
+	else:
+		_elapsed += delta
+	_draw(sprite, facing, run_cycle_frame(facing, step_seconds, _elapsed))
+
+
+## Which sheet frame the RUN cycle is on after `elapsed` seconds.
+##
+## ⚠️ **TIMED IN SECONDS AGAINST THE STEP, NOT IN FIXED TICKS LIKE THE WALK, AND
+## THAT IS FORCED BY THE 5:3 SPLIT.** Source runs a tile in 8 frames and holds
+## its four anim entries for 5,3,5,3 — so the same "two cycle entries per tile"
+## invariant the walk keeps also holds for the run, but the two entries are
+## UNEVEN. This project's step is its own tuned duration rather than source's 8
+## frames, and at ~4.8 frames a tile an integer-tick split of 5:3 would round to
+## 3:2 or 2:1 and visibly distort the gait. Scaling the ratio instead keeps the
+## asymmetry exact at any step duration.
+##
+## Free-running across steps for the same reason the walk does — see the header.
+static func run_cycle_frame(facing: String, step_seconds: float, elapsed: float) -> int:
+	var idle: int = int(ObjectEventGraphics.RUN_IDLE_FRAME.get(facing, 9))
+	var pair: Array = ObjectEventGraphics.RUN_STEP_FRAME.get(facing, [idle, idle])
+	var ticks: Array = ObjectEventGraphics.RUN_TICKS
+	# One source frame of the run anim, scaled to this project's own step: the
+	# four entries span 16 source frames and exactly two tiles.
+	var unit := maxf(step_seconds, FRAME) / float(ticks[0] + ticks[1])
+	var total: float = float(ticks[0] + ticks[1] + ticks[2] + ticks[3])
+	var t := fposmod(elapsed / unit, total)
+	# [neutral, legA, neutral, legB] — the neutral is a RUN frame, never the
+	# standing pose the walk rests on.
+	if t < float(ticks[0]):
+		return idle
+	if t < float(ticks[0] + ticks[1]):
+		return int(pair[0])
+	if t < float(ticks[0] + ticks[1] + ticks[2]):
+		return idle
+	return int(pair[1])
+
+
 ## Which sheet frame this facing/speed is on after `elapsed` seconds.
 ##
 ## Pure and static so the cycle maths is testable without a Sprite2D, a

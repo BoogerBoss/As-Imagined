@@ -12,7 +12,7 @@ extends Node
 ##   * a wild battle carries an EMPTY trainer key, which is what makes the
 ##     no-flag and no-prize-money behaviour fall out rather than be special-cased.
 
-const EXPECTED_TOTAL := 48
+const EXPECTED_TOTAL := 55
 
 var _total := 0
 var _failed := 0
@@ -231,4 +231,72 @@ func _test_party_and_mount() -> void:
 			ow.has_method("_lead_ability_id"))
 	_chk("E.13 an empty party is refused rather than mounted",
 			ow.begin_wild_battle(null) == false)
+
+	# --- [M27E follow-up] the black-screen guard ---
+	#
+	# ⚠️ **E.13 ABOVE GUARDS THE OPPONENT PARTY. NOTHING GUARDED THE PLAYER'S**,
+	# and that is the entire defect: `begin_wild_battle` returned TRUE with a
+	# 0-member player party, the overlay mounted, and `BattleManager` threw
+	# `Out of bounds get index '0'` on the active slot — an unrecoverable black
+	# screen. Reported from play, reproduced headlessly. The two guards read
+	# almost identically and protect opposite sides; keeping them adjacent is
+	# deliberate so the asymmetry cannot come back unnoticed.
+	var opp := BattleParty.new()
+	opp.members.append(PokemonFactory.create_battle_pokemon(16, 5, []))
+	opp.active_indices = [0]
+
+	OverworldSession.reset()          # empty party — a debug boot, or pre-Oak
+	_chk("E.14 a real opponent is STILL refused when the player has no party",
+			ow.begin_wild_battle(opp) == false)
+	_chk("E.15 and nothing was mounted: no battle, no pending trainer key",
+			not ow._in_battle and OverworldSession.pending_trainer_key == "")
+
+	# ⚠️ THE DISCRIMINATOR. Without it this section cannot tell "refuses when it
+	# should" from "refuses always", which is the failure mode a guard placed
+	# one line too high would produce.
+	OverworldSession.party = OverworldParty.build_debug_player_party()
+	_chk("E.16 whereas a real party is accepted — the guard is not a blanket no",
+			ow._party_can_battle())
+
+	# An ALL-FAINTED party is a different origin with the same consequence.
+	# Unreachable in correct play (a wipe whites you out), but a guard that
+	# trusted that would be trusting the thing that already broke once.
+	for m: BattlePokemon in OverworldSession.party.members:
+		m.fainted = true
+	_chk("E.17 an all-fainted party is refused too, not just an empty one",
+			not ow._party_can_battle())
+	# --- [M27H H5 fix] the battle must know it is WILD ---
+	#
+	# ⚠️ **REPORTED FROM PLAY AS "RUNNING FROM A WILD BATTLE SENDS ME TO THE HEAL
+	# SPOT".** `try_flee` refuses outright unless `is_wild_battle`
+	# (`battle_manager.gd:411`), so Run never rolled — it fell through to
+	# FORFEITED, which `IsPlayerDefeated` counts as a defeat, which whites the
+	# player out and charges the payout.
+	#
+	# The screen derived `is_wild_battle` from two signals that were BOTH read
+	# after `BattleSetupContext.clear()` had already reset them: `opp_trainer_key
+	# == ""` was vacuously true for every battle, and the other half vacuously
+	# false. The context is now captured before the clear, and the overworld
+	# marks its own battles explicitly. This asserts the half the overworld owns
+	# — the flag is still set when the screen goes to read it.
+	OverworldSession.party = OverworldParty.build_debug_player_party()
+	BattleSetupContext.clear()
+	var wild := BattleParty.new()
+	wild.members.append(PokemonFactory.create_battle_pokemon(16, 5, []))
+	wild.active_indices = [0]
+	ow.begin_wild_battle(wild)
+	_chk("E.18 a wild battle marks the context as an OVERWORLD battle",
+			BattleSetupContext.is_overworld_battle)
+	_chk("E.19 with an empty trainer key, which is what makes it WILD rather"
+			+ " than merely from the overworld",
+			BattleSetupContext.opp_trainer_key == "")
+	# ⚠️ THE DISCRIMINATOR. Without it this cannot tell "marks overworld
+	# battles" from "is simply always true" — which is exactly the shape of the
+	# bug it replaces, a condition that read the same for every battle.
+	BattleSetupContext.clear()
+	_chk("E.20 and a cleared context does NOT claim to be an overworld battle",
+			not BattleSetupContext.is_overworld_battle)
+
+	OverworldSession.reset()
+	BattleSetupContext.clear()
 	ow.free()

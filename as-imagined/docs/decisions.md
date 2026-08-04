@@ -27638,3 +27638,201 @@ No commit made this session — per standing instruction, Rob commits.
   connection graph, so excluding them changes no neighbour placement and
   leaves no dangling stitch — only two warp destinations that will resolve as
   unbaked, the same state every not-yet-baked map is already in.
+
+## [M27E E1c] The surf blob, the player's surf sprite, and the ride out
+
+Closes the "pulled, neither wired" half of E1's own scoping note. Not
+live-driven — see CLAUDE.md's E1b/E1c entries; Rob is driving both together.
+
+**Sources read**
+- `src/field_effect_helpers.c:1199-1330` — `FldEff_SurfBlob`,
+  `UpdateSurfBlobFieldEffect`, `SynchronizeSurfAnim`, `SynchronizeSurfPosition`,
+  `UpdateBobbingEffect`.
+- `src/data/field_effects/field_effect_objects.h:211-256` — the blob's pic
+  table, its four anims and the 32x32 template.
+- `src/data/object_events/object_event_pic_tables.h:1449` — `sPicTable_GreenSurf`.
+- `src/data/object_events/object_event_graphics_info.h:4700` — `GreenSurf`,
+  which uses the ordinary `sAnimTable_Surfing`.
+- `include/global.fieldmap.h:18` — `ELEVATION_DEFAULT = 3`.
+
+**Findings that changed the implementation**
+
+1. **Two blob sheets exist and the bigger one is dead.** `misc_surf_blob.png`
+   (192x32, 6 frames) vs `field_effects/surf_blob.png` (96x32, 3 frames). The
+   field effect uses the latter; `gObjectEventPic_SurfBlob` — the 6-frame
+   symbol — has no graphics-info consumer anywhere in source. Confirmed by
+   grep, not inferred from the directory name.
+
+2. **The surf sheet's frame count is a pic-table fact, not a sheet fact.** 14
+   raw frames, of which the pic table references 0/1/2 only. Surfing has no
+   walk cycle in source. Emitting 3 makes `WalkAnim.animates()` false, which
+   reproduces that with no branch in the anim path. `FRAME_OVERRIDES` in
+   `gen_object_event_sprites.py` carries the reason at the constant.
+
+3. **The bob's frame-16 ordering is load-bearing.** Step first (old velocity),
+   flip after — a naive flip-then-step overshoots to -5.
+
+4. **The shore-adjacent mask halves the amplitude as well as the rate.** Mask 7
+   means only frames 8 and 16 step before the flip, so the wave is 0..-2, not a
+   slower 0..-4. Testing only the rate would miss a wrong mask.
+
+5. **Mounting moves the player.** The step onto the water is part of
+   `EventScript_UseSurf`, not a separate action.
+
+**Disclosed divergences** (do not "fix" without asking)
+- The mount is a glide, not source's jump arc; likewise the ride ashore. No
+  jump animation exists in this project.
+- Diagonal facings are not modelled (this project has none); source collapses
+  them onto WEST/EAST in `SynchronizeSurfAnim` if they are ever added.
+- `BOB_JUST_MON` / `SetSurfBlob_PlayerOffset` are not modelled: both are driven
+  by dive and the Wailmer-ferry cutscene, neither of which exists here.
+
+**Testing note.** The suite passed 52/52 on its first run and was still green
+with the mount's own step deleted — the most visible behaviour in the tier had
+no guard at all. Found by injection, not by review. Section G (a real
+`MapManager` over a synthetic land/water/water strip) now pins it, and all
+seven headline guards were confirmed to fail on their own injection before
+being trusted.
+
+## [M27E E1d] The shoreline is an elevation change
+
+Fixes the defect E1c flagged: surfing could not enter or leave water on any
+real map. Found by driving the debug boot on real map data, not by any suite.
+
+**The finding, and it inverts E1c's own framing.** Kanto's water is elevation 1
+and its land is elevation 3, with no transition tiles at the shoreline
+(measured: all 66 surfable cells in the corridor are elevation 1). So every
+crossing is an elevation mismatch by the ordinary rule. That is not an obstacle
+source works around — it is the signal source keys BOTH halves of surfing on:
+
+- `IsPlayerFacingSurfableFishableWater` (`field_player_avatar.c:1645`): the
+  mount precondition is `collision == COLLISION_ELEVATION_MISMATCH` AND
+  `PlayerGetElevation() == ELEVATION_DEFAULT` AND the faced tile surfable.
+- `CheckForObjectEventCollision` (`:966`): a mismatch becomes
+  `COLLISION_STOP_SURFING` when `CanStopSurfing` (`:1000`) agrees — surfing,
+  destination at ELEVATION_DEFAULT, and no object event on it.
+- `SurfFieldEffect_JumpOnSurfBlob` (`field_effect.c`): the mount MOVE is
+  `GetJumpSpecialMovementAction`, a held movement that bypasses collision and
+  elevation entirely. The ordinary rules refuse land -> water in source too.
+
+**Ported as**: a new `Outcome.STOP_SURFING` (appended, so serialised ints do not
+shift) returned from one `_mismatch()` helper shared by both mismatch sites; and
+`_jump_onto_water()`, which does not consult the resolver at all.
+
+**Why no test could see it.** Every surf fixture since E1a used a uniform
+elevation 3, which makes the elevation rule and the surfing rule agree on every
+cell — and two competing rules that agree cannot discriminate. This is the
+`[M36]` rule-(13) trap ("a fixture where two competing rules AGREE cannot tell
+them apart") in a new dress, and it survived three tiers. Section H now uses real
+elevations and H.01 pins the fixture against the baked Pallet artifact so it
+cannot drift back into fiction.
+
+**A second bug the same drive exposed.** E1c's deferred dismount was unreachable
+in play: `_update_surf_visuals` holds the blob by testing `_moving`, and that
+assignment sat below the dismount check, so the blob came off at step start.
+Only E1c's own F.07 — which set `_moving` by hand — ever ran the deferral.
+
+**And G.06, the guard written FOR that bug, was itself vacuous.** The mount jump
+leaves `_moving` true (its tween never completes off-tree), so the deferral fired
+for that reason instead of the one under test; reintroducing the ordering bug
+left the suite green. Only clearing `_moving` first distinguishes the orderings.
+Third vacuous guard in this arc, all three caught by injection rather than
+review — the preventive form is to write the injection before the assertion.
+
+**Still open, untouched**: starting a battle with an empty party is unguarded and
+black-screens. `debug_party` works around it for the F6 boot only.
+
+## [M27E follow-up] The empty-party black screen
+
+`begin_wild_battle` guarded the opponent party and nothing guarded the player's,
+so a 0-member party mounted a battle and `BattleManager` dereferenced the active
+slot immediately — an unrecoverable black screen. Reported from play, reproduced
+headlessly.
+
+**Step 0 finding: source has no equivalent guard, and that is not permission to
+skip one.** `WildEncounterCheck` reads `gParties[B_TRAINER_PLAYER][0]`
+unconditionally (`wild_encounter.c:349`); the state is unreachable in source
+because Oak blocks Route 1 until you hold a starter and a wipe whites you out.
+It is reachable here — a debug boot has no party since `[M27L L5]`, and a new
+game has none until Oak's script runs — so the guard is original defensive
+design, recorded as such at the code site.
+
+**Two placements, on purpose.** `_mount_battle` refuses at the very top, before
+any state is mutated, which covers every battle path (wild, trainer, scripted).
+`_wild_step` refuses before the roll so an impossible battle does not consume RNG
+or read the lead's ability. The first is the safety net; the second is only
+allowed to be politeness because the first exists.
+
+**Disclosed consequence**: a trainer who spots you with no usable party walks
+over and nothing happens. Better than a black screen, still a dead end.
+
+**Not separately tested**: `_wild_step`'s early return shares its predicate with
+the mount guard, so deleting it alone fails nothing. Recorded rather than given a
+test that would only restate the mount guard's own.
+
+## [M27E E1e / M27H H5 fix] Three findings from the first live playthrough
+
+**1. The blob was Emerald's.** Two sheets exist; E1c picked the one source's
+field-effect template uses, which is right as a port and wrong for a Kanto
+project. The Kanto sheet has no anim table in source, so its frame mapping
+(three facings x two bob frames) is read off the art and is the first suspect if
+a facing looks wrong on screen.
+
+**2. The mount jump arc.** `sJumpY_High`, verbatim — source's mount is
+JUMP_TYPE_HIGH, 16 frames peaking at -12px. Driven on the body sprite rather
+than the player node, because the blob is a child and would otherwise hop too;
+source creates the blob at the destination while the player arcs onto it.
+
+**3. `is_wild_battle` was always false — two bugs multiplying to a constant.**
+Both halves of the condition read `BattleSetupContext` AFTER `clear()` had reset
+it: `opp_trainer_key == ""` was vacuously true for every battle, and
+`has_pending_return()` vacuously false (the overlay design saves no position).
+`try_flee` refuses unless `is_wild_battle`, so Run forfeited, and a forfeit is a
+defeat, so running from a wild Pokemon whited the player out.
+
+⚠️ **The lesson is the shape, not the fields.** Fixing only the second half
+changed nothing, because the first was broken too — a condition can be wrong in
+two directions at once and still compile, still read plausibly, and still be
+constant. When a boolean is suspected of never firing, check every term against
+the state at the moment it is READ, not the moment it was written.
+
+## [M27E E1f] Four findings from the second live playthrough
+
+1. **Message auto-close** — a disclosed divergence; source waits for a press.
+2. **Rider 8px too low.** FRLG's `green_surf.png` is a combined 32x32
+   character+blob sprite (unreferenced in source). Leaf's hat is at y4 there and
+   y12 on the standalone sheet, so the offset is measured, not tuned. The
+   combined sprite is not used because finding 4 needs the two separable.
+3. **Dismount jump** — `Task_StopSurfingInit` uses the same jump action as the
+   mount; the arc is now shared.
+4. **Blob followed ashore.** `UpdateBobbingEffect` syncs the blob's x to the
+   player only while NOT `BOB_JUST_MON`, and the dismount sets that state first.
+
+⚠️ **The vacuous-guard lesson, third variant.** The rebase in `stay_behind()`
+survived three injections. x-only missed it (the teleport is vertical); x+y
+missed it too, because the fixture's chunk sits at origin so LOCAL and GLOBAL Y
+coincide there. A fixture can neutralise a discriminator through its own
+coordinate choice, not just through its data. Fixed by testing on a parent with
+a real offset.
+
+⚠️ **And a parse error hangs a suite rather than failing it**: the script fails
+to load, `_ready` never runs, nothing calls `quit()`, and the run times out with
+no summary line. Worth recognising the shape — a timeout is not always a slow
+test.
+
+## [M27H H4 fix] Caught Pokemon were handed over fainted
+
+The catch site ends the battle by setting the opponent's HP to 0 and `fainted`
+true — this project's stand-in for source's `FinalizeCapture`, which removes the
+battler from the battle outright. `BattlePokemon` is `RefCounted`, so
+`caught_pokemon` is that same object: the player received a 0-HP corpse.
+
+`take_caught_pokemon()` restores the recorded pre-catch HP, clears `fainted`,
+and additionally strips volatiles and stat stages — the caught mon is appended
+AFTER `restore_party_after_battle` has cleaned the player's party, so nothing
+else would ever do it. Status is deliberately kept; a capture is not a heal.
+
+⚠️ **The test gap is the interesting part.** The suite asserted that the outcome
+CARRIES a caught Pokemon and never that it was usable, so a mechanic that could
+not work at all passed its own tests. When a feature hands an object across a
+boundary, assert the object's STATE on arrival, not just its presence.

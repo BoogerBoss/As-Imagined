@@ -80,6 +80,41 @@ STEP_FRAME = {"SOUTH": (3, 4), "NORTH": (5, 6), "WEST": (7, 8), "EAST": (7, 8)}
 
 FACE_FLIP_EAST = True
 
+# [M27E E2] The RUN cycle, from sAnim_Run{South,North,West,East}Frlg
+# (src/data/object_events/object_event_anims.h:681-711). The FRLG variants
+# specifically -- gObjectEventImageAnimTable_Standard selects them via
+# `IS_FRLG ? sAnim_RunSouthFrlg : sAnim_RunSouth`, and the two differ.
+#
+# ⚠️ **THESE ARE PIC-TABLE INDICES 9-17, WHICH IS THE SECOND HALF OF A
+# COMPOSITED SHEET** -- see the composite note in build_index. They do not exist
+# on the walking sheet at all, which is why running needed the generator change
+# before it could need any renderer change.
+#
+# Each anim is FRAME(neutral,5) FRAME(legA,3) FRAME(neutral,5) FRAME(legB,3),
+# looping -- the same four-entry shape as the walk, but with TWO differences
+# that matter: the neutral pose is a RUN-specific frame rather than the standing
+# FACE frame, and the entries are UNEVEN (5/3), so the neutral is held longer
+# than the leg. EAST is WEST hFlipped, the same convention every other anim in
+# this file already uses.
+RUN_IDLE_FRAME = {"SOUTH": 9, "NORTH": 12, "WEST": 15, "EAST": 15}
+RUN_STEP_FRAME = {"SOUTH": (10, 11), "NORTH": (13, 14), "WEST": (16, 17), "EAST": (16, 17)}
+RUN_TICKS = (5, 3, 5, 3)
+
+# [M27E E1c] A sheet's raw frame count is not always the graphics id's own
+# frame count. The two player surf ids draw from the 14-frame *_surf_run
+# sheets, but their pic tables (sPicTable_GreenSurf/sPicTable_RedSurf,
+# src/data/object_events/object_event_pic_tables.h:1449) only ever reference
+# raw frames 0-2 — every one of the 12 logical walking frames maps back onto
+# the three facing poses, so surfing shows NO walk cycle in source. Emitting
+# the sheet's own 14 here would let WalkAnim's cycle index the sheet's unused
+# RUN frames (3+) instead. 3 is the honest port of the pic table, and it makes
+# WalkAnim.animates() false — which reproduces the facing-only surf behaviour
+# with zero special-casing in the anim path.
+FRAME_OVERRIDES = {
+    "OBJ_EVENT_GFX_GREEN_SURF": 3,
+    "OBJ_EVENT_GFX_RED_SURF": 3,
+}
+
 
 def _read(path):
     with open(os.path.join(OE_DIR, path)) as f:
@@ -155,6 +190,7 @@ def build_index():
         r"(gObjectEventPic_\w+)\[\]\s*=\s*INC(?:BIN|GFX)_U\d+\(\"([^\"]+)\"", graphics))
 
     out, unresolved, clamped = {}, [], []
+    mixed_geometry = []
     stem_source = {}
     for gid, sym in sorted(id2sym.items()):
         body = blocks.get(sym)
@@ -217,6 +253,70 @@ def build_index():
             fw, fh = min(fw, sheet_w), min(fh, sheet_h)
             clamped.append(gid)
         frames = max(1, sheet_w // fw)
+        # See FRAME_OVERRIDES at the top: a pic table can use fewer frames than
+        # its sheet holds, and the table is what the id's behaviour follows.
+        frames = FRAME_OVERRIDES.get(gid, frames)
+
+        # [M27E E2] A PIC TABLE MAY SPAN MORE THAN ONE PIC SYMBOL, and when it
+        # does, NO single file on disk is the id's real frame set.
+        #
+        # MEASURED across the whole reference tree: exactly THREE tables do this
+        # -- sPicTable_GreenNormal, sPicTable_RedNormal (each 9 frames of the
+        # character's walking sheet followed by 11 RUN frames living inside the
+        # *_surf_run sheet) and sPicTable_OldMan2. Everything else resolves to
+        # one file, which is why taking `first` alone was right for 384 ids and
+        # silently wrong for these.
+        #
+        # ⚠️ **THE TABLE IS AN ORDER, NOT A CONCATENATION.** GreenNormal's
+        # second half starts at raw frame 3 (frames 0-2 of that sheet are the
+        # SURF poses), and OldMan2 both REPEATS and REORDERS (0,1,2,0,0,1,1,2,2
+        # then one OldWoman frame). So the composite is built by walking the
+        # entries in order, never by appending whole files.
+        #
+        # Gated on there being MORE THAN ONE symbol so the macro-expanded tables
+        # are untouched: `overworld_ascending_frames(...)` emits no
+        # `overworld_frame` call sites at all, so `entries` is empty for them and
+        # the image-derived count above still stands -- the exact reason the
+        # comment at the top of this block says frame count comes from the image.
+        entries = re.findall(
+            r"overworld_frame\((gObjectEventPic_\w+)\s*,\s*\d+\s*,\s*\d+\s*,\s*(\d+)\)",
+            pm.group(1))
+        composite = None
+        if len({s for s, _ in entries}) > 1:
+            composite = []
+            for sym_name, idx in entries:
+                sub_raw = incbin.get(sym_name, "")
+                sub_png = re.sub(r"\.4bpp$", "", sub_raw)
+                if sub_png and not sub_png.endswith(".png"):
+                    sub_png += ".png"
+                sub_full = os.path.join(REF, sub_png) if sub_png else ""
+                if not sub_full or not os.path.exists(sub_full):
+                    composite = None
+                    unresolved.append((gid, "composite: missing %s" % sym_name))
+                    break
+                # ⚠️ **EVERY SOURCE MUST AGREE ON THE FRAME GEOMETRY, AND MOST DO
+                # NOT.** 48 tables span several pic symbols, but only the ones
+                # whose files share the declared frame size can be laid end to
+                # end. A berry tree is the counter-example that forced this
+                # guard: `gPicTable_CheriBerryTree` draws from a 16x16 dirt
+                # pile, a 32x16 sprout AND a 96x32 tree, and the declared size
+                # clamps to the FIRST of those — so compositing it would crop
+                # every grown stage to its top-left 16x16 corner and look
+                # plausible in a directory listing while being visibly wrong on
+                # screen. Refused and REPORTED rather than silently cropped;
+                # see `mixed_geometry` in the run report.
+                sub_w, sub_h = Image.open(sub_full).size
+                if sub_h != fh or sub_w % fw != 0 or (int(idx) + 1) * fw > sub_w:
+                    composite = None
+                    mixed_geometry.append(
+                        (gid, "%s is %dx%d, frame is %dx%d"
+                         % (sym_name, sub_w, sub_h, fw, fh)))
+                    break
+                composite.append((sub_full, int(idx)))
+        if composite:
+            # The table IS the frame set here, so its own length is the count --
+            # not the width of whichever file happened to be listed first.
+            frames = FRAME_OVERRIDES.get(gid, len(composite))
 
         out[gid] = {
             "png": full,
@@ -225,6 +325,7 @@ def build_index():
             "height": fh,
             "frames": frames,
             "pal": pal,
+            "composite": composite,
         }
     # A stem that maps to two different source files means the flattening rule
     # has stopped being injective, and a copy would silently drop one of them.
@@ -232,7 +333,42 @@ def build_index():
         prev = stem_source.setdefault(e["stem"], e["png"])
         assert prev == e["png"], (
             "stem %r maps to two files: %s and %s" % (e["stem"], prev, e["png"]))
-    return out, unresolved, clamped
+    return out, unresolved, clamped, mixed_geometry
+
+
+def _write_composite(e, dst):
+    """[M27E E2] Assemble a sheet whose pic table spans several source files.
+
+    One frame per table entry, in the table's own order -- see the note at the
+    detection site for why order matters and concatenation would be wrong.
+
+    Index 0 is the transparency key here exactly as it is everywhere else in
+    this pull, and it is applied PER SOURCE FILE before flattening, because the
+    two halves do not share a palette and so do not share a colour at index 0.
+    """
+    fw, fh = e["width"], e["height"]
+    want = load_pal(e["pal"]) if e["pal"] else None
+    cache = {}
+    sheet = Image.new("RGBA", (fw * len(e["composite"]), fh), (0, 0, 0, 0))
+    for slot, (src, idx) in enumerate(e["composite"]):
+        rgba = cache.get(src)
+        if rgba is None:
+            im = Image.open(src)
+            if want is not None and im.mode == "P":
+                pal = im.getpalette()
+                pal[:len(want)] = want
+                im.putpalette(pal)
+            if im.mode == "P":
+                im.info["transparency"] = 0
+            rgba = im.convert("RGBA")
+            cache[src] = rgba
+        box = (idx * fw, 0, idx * fw + fw, fh)
+        if box[2] > rgba.width or box[3] > rgba.height:
+            raise AssertionError(
+                "composite frame %d out of bounds in %s (%dx%d)"
+                % (idx, src, rgba.width, rgba.height))
+        sheet.paste(rgba.crop(box), (slot * fw, 0))
+    sheet.save(dst)
 
 
 def pull_object_events(index):
@@ -245,6 +381,16 @@ def pull_object_events(index):
         if e["stem"] in seen:
             continue
         seen[e["stem"]] = True
+        if e.get("composite"):
+            # [M27E E2] Built frame-by-frame from the pic table's own order, so
+            # the emitted sheet IS the id's real frame set. Written RGBA rather
+            # than palette-indexed: the sources are separate files with separate
+            # palettes, so there is no one index space to keep, and flattening
+            # each frame through its own tagged palette first is what makes the
+            # halves agree on screen.
+            _write_composite(e, dst)
+            copied += 1
+            continue
         im = Image.open(e["png"])
         if e["pal"]:
             want = load_pal(e["pal"])
@@ -366,6 +512,41 @@ def render_gd(index):
         "const ANIM_TICKS_FAST := 4",
         "const ANIM_TICKS_FASTER := 2",
         "",
+        "## [M27E E2] The RUN cycle's own frames, from sAnim_Run*Frlg.",
+        "##",
+        "## ⚠ Indices 9-17 -- the RUN half of a COMPOSITED sheet, which only",
+        "## the two player ids have (sPicTable_Green/RedNormal each span two pic",
+        "## symbols). Every other id stops at 8, so `can_run()` gates on this.",
+        "##",
+        "## The neutral pose is a RUN-specific frame, NOT the standing FACE frame",
+        "## the walk cycle rests on -- a runner never shows its standing sprite.",
+        "const RUN_IDLE_FRAME := {",
+    ]
+    for k in ("SOUTH", "NORTH", "WEST", "EAST"):
+        lines.append("\t\"%s\": %d," % (k, RUN_IDLE_FRAME[k]))
+    lines += [
+        "}",
+        "",
+        "## The two leg frames per facing, from the same four anims.",
+        "const RUN_STEP_FRAME := {",
+    ]
+    for k in ("SOUTH", "NORTH", "WEST", "EAST"):
+        lines.append("\t\"%s\": [%d, %d]," % (k, RUN_STEP_FRAME[k][0], RUN_STEP_FRAME[k][1]))
+    lines += [
+        "}",
+        "",
+        "## Ticks per cycle entry: [neutral, legA, neutral, legB].",
+        "##",
+        "## ⚠ UNEVEN, unlike every walk anim in this file -- source holds the",
+        "## neutral pose 5 frames and each leg 3. Averaging them to 4 would run at",
+        "## the right overall cadence and read wrong, because the leg would be up",
+        "## as long as the body is level.",
+        "const RUN_TICKS := [%d, %d, %d, %d]" % RUN_TICKS,
+        "",
+        "## A sheet needs 18 frames to hold a run cycle (indices 0-17).",
+        "## Only the two player ids do; every NPC stops at 9.",
+        "const MIN_FRAMES_TO_RUN := 18",
+        "",
         "## A sheet needs all nine frames to hold a walk cycle. 136 of the 385",
         "## resolved ids do; 70 carry only the three facing frames (signs, static",
         "## props) and 96 carry a single frame. Those must draw their idle frame",
@@ -437,7 +618,7 @@ def render_gd(index):
 
 
 def main():
-    index, unresolved, clamped = build_index()
+    index, unresolved, clamped, mixed_geometry = build_index()
     copied, recoloured, extra = pull_object_events(index)
     fx = pull_field_effects()
     tr = pull_missing_trainer_pics()
@@ -451,6 +632,23 @@ def main():
     if clamped:
         print("clamped       : %d (declared frame larger than its sheet) — %s"
               % (len(clamped), ", ".join(clamped)))
+    composited = sorted(g for g, e in index.items() if e.get("composite"))
+    print("composited    : %d id(s) whose pic table spans several pic files — %s"
+          % (len(composited), ", ".join(composited) if composited else "none"))
+    if mixed_geometry:
+        # ⚠️ NOT a failure — a REAL, still-open finding. Each of these ids draws
+        # from several files that disagree on frame size, so its emitted sheet
+        # is still just the FIRST file and the rest of its frames are missing.
+        # Berry trees are the whole of this list today: a tree renders its dirt
+        # pile and never its grown stages. Fixing it needs per-entry frame
+        # geometry, which is its own task — see M27E E2's own note.
+        print("mixed geom    : %d id(s) NOT composited (sources disagree on "
+              "frame size; still emitting the first file only)"
+              % len(mixed_geometry))
+        for gid, why in mixed_geometry[:5]:
+            print("    %-38s %s" % (gid, why))
+        if len(mixed_geometry) > 5:
+            print("    ... and %d more" % (len(mixed_geometry) - 5))
     if unresolved:
         print("unresolved    : %d" % len(unresolved))
         for gid, why in unresolved[:10]:

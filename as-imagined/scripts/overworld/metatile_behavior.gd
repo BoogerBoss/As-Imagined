@@ -277,6 +277,36 @@ static func is_surfable(behavior: int) -> bool:
 	return behavior in SURFABLE
 
 
+## [M27E E2] Tiles you cannot RUN on — source's `MetatileBehavior_IsRunningDisallowed`
+## (`metatile_behavior.c`), which is 3 named behaviours plus the Pacifidlog logs.
+##
+## ⚠️ **THE MAP-HEADER HALF OF SOURCE'S GATE IS DEAD AT THIS PROJECT'S CONFIG AND
+## IS DELIBERATELY NOT MODELLED.** `IsRunningDisallowed` (`bike.c:1370`) is
+## `(OW_RUNNING_INDOORS == GEN_3 && !gMapHeader.allowRunning) || <this>`, and
+## `OW_RUNNING_INDOORS` is **GEN_LATEST** (`include/config/overworld.h:5`, whose
+## own comment reads "In Gen4+, players are allowed to run indoors") — so that
+## first clause can never be true and running indoors is simply allowed. Worth
+## stating plainly because the obvious reading is that a per-map `allowRunning`
+## flag has to be imported: it does not, and `gen_map_import.py` needed no change.
+##
+## Long grass is the one entry that reads like an oversight and is not — source
+## really does stop you running through it, and `MB_LONG_GRASS_SOUTH_EDGE` is a
+## SEPARATE behaviour that is NOT listed, so the edge tile stays runnable.
+static func is_running_disallowed(behavior: int) -> bool:
+	return behavior == MB_NO_RUNNING \
+			or behavior == MB_LONG_GRASS \
+			or behavior == MB_HOT_SPRINGS \
+			or is_pacifidlog_log(behavior)
+
+
+## Source: `MetatileBehavior_IsPacifidlogLog` — all four log halves.
+static func is_pacifidlog_log(behavior: int) -> bool:
+	return behavior == MB_PACIFIDLOG_VERTICAL_LOG_TOP \
+			or behavior == MB_PACIFIDLOG_VERTICAL_LOG_BOTTOM \
+			or behavior == MB_PACIFIDLOG_HORIZONTAL_LOG_LEFT \
+			or behavior == MB_PACIFIDLOG_HORIZONTAL_LOG_RIGHT
+
+
 const NAME_BY_ID := {
 	0: "MB_NORMAL",
 	1: "MB_SECRET_BASE_WALL",
