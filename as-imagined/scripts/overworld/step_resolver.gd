@@ -96,6 +96,17 @@ var _cells
 
 var no_collision: bool = false  ## §20 debug toggle; mirrors OW_FLAG_NO_COLLISION
 
+## [M27E E1] Is the player on the water right now?
+##
+## ⚠️ **THIS INVERTS THE COLLISION RULE RATHER THAN RELAXING IT.** On foot, water
+## is impassable because its collision bit is set. Surfing does NOT simply ignore
+## collision — that would let the player ride the blob through walls. It makes
+## SURFABLE tiles passable *despite* the bit, and leaves everything else exactly
+## as strict as it was, so the only non-water tile you can reach from the water
+## is one that was already walkable: the shore. Dismounting therefore needs no
+## rule of its own, which is why there isn't one.
+var surfing: bool = false
+
 
 func _init(cells) -> void:
 	_cells = cells
@@ -125,6 +136,16 @@ func resolve(from: Vector2i, dir: int, elevation: int) -> Dictionary:
 	# Order matches GetVanillaCollision: solidity (bit OR directional) before
 	# elevation, so a mismatch is only ever reported for an otherwise-enterable
 	# cell (§1.7).
+	# [M27E E1] Water first, and only while surfing. A surfable tile carries a
+	# collision bit exactly so it stops you on foot, so the bit has to be
+	# overridden here rather than tested and then forgiven below.
+	var to_surfable := MetatileBehavior.is_surfable(_cells.behavior_at(to.x, to.y))
+	if surfing and to_surfable:
+		if _elevation_mismatch(elevation, to):
+			return _r(Outcome.ELEVATION_MISMATCH, from)
+		if _cells.entity_at(to.x, to.y):
+			return _r(Outcome.OBJECT_EVENT, from)
+		return _r(Outcome.NONE, to)
 	if _cells.collision_at(to.x, to.y) != 0:
 		return _r(Outcome.IMPASSABLE, from)
 	if _directionally_impassable(from, to, dir):

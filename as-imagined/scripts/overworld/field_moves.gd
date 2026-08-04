@@ -90,13 +90,19 @@ static func ability_name(ability: int) -> String:
 
 ## What the world says when you use one.
 ##
-## ⚠️ **GENERIC BY DESIGN — Rob's call, 2026-08-03.** Source prints
-## `{STR_VAR_1} used CUT!`, naming the Pokémon that did it. There is no such
-## Pokémon here, so there is nobody to name; inventing one would put a lie in the
-## message box. The `field_move_streaks` flourish `[M27D D1]` already pulled
-## still plays — it just has no subject.
+## ⚠️ **`{PLAYER}` USED IT, NOT A POKéMON — Rob's call, 2026-08-03.** Source
+## prints `{STR_VAR_1} used CUT!`, naming the Pokémon that did it. Under this
+## project's badge-only gate there IS no such Pokémon, so the subject moves to
+## the only actor left: the player. That reads better than the first draft's
+## subjectless "Used CUT!" and it costs nothing — `{PLAYER}` is already a real
+## placeholder `[M27I I2]` expands, backed by `[M27K K-b]`'s identity.
+##
+## ⚠️ Returned UNEXPANDED. Every other message in this project reaches the box as
+## a template and is expanded at print time, which is what lets a rename take
+## effect immediately; expanding here would bake the name in at call time.
+## `field_move_streaks`, pulled by `[M27D D1]`, still plays over it.
 static func used_message(ability: int) -> String:
-	return "Used %s!" % ability_name(ability)
+	return "{PLAYER} used %s!" % ability_name(ability)
 
 
 ## What it says when you cannot.

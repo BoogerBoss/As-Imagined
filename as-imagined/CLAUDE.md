@@ -2042,6 +2042,24 @@ Live-driven in the real scene: **20 steps through Viridian Forest produced a wil
 
 **Tests**: new `m27e_field_moves_test` **21/21**. Four guards break-tested: any-badge-unlocks-all fails A.03, a shared badge fails 5 (A.02/A.04/B.02/B.03/B.04), a restored `{STR_VAR_1}` fails C.02, naming the badge in the refusal fails C.05.
 
+**[M27E E1a — surfing: the traversal rules] COMPLETE — 2026-08-03.**
+
+⚠️ **SURFING INVERTS THE COLLISION RULE RATHER THAN RELAXING IT.** On foot, water stops you because its collision bit is set — so surfing cannot simply *ignore* collision, or the blob would ride through walls. It makes **SURFABLE tiles passable despite the bit** and leaves everything else exactly as strict. B.04/B.05 are the pair that pin this: a wall (land WITH a collision bit) stays impassable while surfing, and the real `no_collision` debug toggle passes it — so the two are demonstrably different mechanisms. Break-tested: degrading surfing to `no_collision` fails B.04.
+
+⚠️ **DISMOUNTING NEEDS NO RULE, AND THERE DELIBERATELY ISN'T ONE.** Because only *surfable* tiles get the override, the only non-water tile reachable from the water is one that was already walkable — which is the shore. B.03 asserts stepping ashore works with nothing written for it.
+
+⚠️ **`MB_SHALLOW_WATER` IS NOT SURFABLE, AND IT LOOKS LIKE AN OMISSION.** Source is explicit — it carries no `TILE_FLAG_SURFABLE` in `sTileBitAttributes` (`metatile_behavior.c:25+`) because it is water you **wade** through on foot. Adding it "for consistency" would let the player mount a blob in a puddle and would put 747 already-walkable cells across 16 Kanto maps at risk. The 17-entry set is **extracted verbatim from source rather than reasoned from the names**, which is what caught this. Break-tested: adding shallow water fails C.03 and C.05.
+
+**Of the 17, Kanto uses 8**: OCEAN_WATER (31,501 cells), FAST_WATER (2,831), CYCLING_ROAD_WATER (751), POND_WATER (635), the three used currents (229 between them) and WATERFALL (80). The other 9 are Hoenn's — including `MB_DEEP_WATER`/`MB_NO_SURFACING`/`MB_SEAWEED*`, the same absence that leaves Dive siteless.
+
+`surfing` defaults **off** (A.03) — break-tested, since defaulting on would make every existing map swimmable the moment it shipped.
+
+**Also this session, Rob's call**: the field-move flourish is now **`{PLAYER} used CUT!`** rather than the first draft's subjectless *"Used CUT!"*. Source names the Pokémon (`{STR_VAR_1}`); the badge-only gate leaves no such Pokémon, so the subject moves to the only actor left. Returned **unexpanded** and expanded at print time like every other message, so a rename takes effect immediately (C.02b).
+
+**Tests**: new `m27e_surf_test` **16/16**; `m27e_field_moves_test` 21 → **22/22**. Three guards break-tested. Regression: `m27a_step_resolver` 514/514 green, which matters most here — this changed `resolve()` itself.
+
+⚠️ **WHAT REMAINS OF E1, AND IT IS THE MAJORITY OF THE PLAYER-FACING WORK**: the mount/dismount interaction (facing water + A + the Soul Badge, with source's own "Would you like to SURF?" prompt), the surf blob sprite and the player's `surf_run` frames (both pulled, neither wired), water wild encounters (data already imported — `water_mons` on 98 Kanto maps), and the state actually living on the overworld rather than only on the resolver. **E1a is the RULES only** — nothing in play can surf yet.
+
 ## M27K — Game flow
 
 **[M27K K-a — the starter] COMPLETE — 2026-08-03. Kanto's own Oak's Lab script gives you a real Pokémon.**

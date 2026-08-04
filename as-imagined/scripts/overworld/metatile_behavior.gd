@@ -247,6 +247,36 @@ const MB_DOWN_LEFT_STAIR_WARP := 238
 const MB_ROCK_CLIMB := 239
 
 ## id -> MB_* name. Generated with the constants above; see StepResolver.is_untagged_behavior().
+
+## [M27E E1] The behaviours you can SURF on — source's own `TILE_FLAG_SURFABLE`
+## set, extracted verbatim from `sTileBitAttributes` (`metatile_behavior.c:25+`)
+## rather than reasoned from the names.
+##
+## ⚠️ **`MB_SHALLOW_WATER` IS DELIBERATELY ABSENT, AND IT LOOKS LIKE AN OMISSION.**
+## It is water you WADE through on foot — source does not flag it surfable, so
+## adding it "for consistency" would let the player mount a blob in a puddle and,
+## worse, make 747 already-walkable cells across 16 Kanto maps stop working on
+## foot the moment the surfing rule treats non-surfable tiles as exits.
+##
+## Of these 18, **Kanto uses 8**: OCEAN_WATER (31,501 cells), FAST_WATER (2,831),
+## POND_WATER (635), WATERFALL (80), NORTHWARD/SOUTHWARD/EASTWARD_CURRENT (229
+## between them) and CYCLING_ROAD_WATER (751). The other 10 are Hoenn's, and
+## `MB_DEEP_WATER`/`MB_NO_SURFACING`/`MB_SEAWEED*` are the ones M27E measured at
+## zero — the same absence that makes Dive siteless here.
+const SURFABLE := [
+	MB_POND_WATER, MB_INTERIOR_DEEP_WATER, MB_DEEP_WATER, MB_WATERFALL,
+	MB_SOOTOPOLIS_DEEP_WATER, MB_OCEAN_WATER, MB_NO_SURFACING, MB_SEAWEED,
+	MB_SEAWEED_NO_SURFACING, MB_EASTWARD_CURRENT, MB_WESTWARD_CURRENT,
+	MB_NORTHWARD_CURRENT, MB_SOUTHWARD_CURRENT, MB_WATER_DOOR,
+	MB_WATER_SOUTH_ARROW_WARP, MB_FAST_WATER, MB_CYCLING_ROAD_WATER,
+]
+
+
+## Source: `MetatileBehavior_IsSurfableWaterOrUnderwater`.
+static func is_surfable(behavior: int) -> bool:
+	return behavior in SURFABLE
+
+
 const NAME_BY_ID := {
 	0: "MB_NORMAL",
 	1: "MB_SECRET_BASE_WALL",

@@ -11,7 +11,7 @@ extends Node
 ##   * Dive's assignment is an INVENTION, kept in scope on Rob's call despite
 ##     zero Dive cells on zero of the 421 Kanto maps.
 
-const EXPECTED_TOTAL := 20
+const EXPECTED_TOTAL := 21
 
 var _total := 0
 var _failed := 0
@@ -111,12 +111,21 @@ func _test_mapping() -> void:
 
 ## --- C. the messages ---
 func _test_messages() -> void:
-	# ⚠️ GENERIC BY DESIGN. Source names the Pokemon (`{STR_VAR_1} used CUT!`);
-	# there is no such Pokemon here, so naming one would put a lie in the box.
+	# ⚠️ THE PLAYER IS THE SUBJECT, NOT A POKEMON. Source names the Pokemon
+	# (`{STR_VAR_1} used CUT!`); the badge-only gate leaves no such Pokemon, so
+	# the only actor left is the player.
 	var used := FieldMoves.used_message(FieldMoves.Ability.CUT)
 	_chk("C.01 the use message names the ABILITY", used.contains("CUT"))
-	_chk("C.02 and names no Pokemon and no placeholder for one",
-			not used.contains("{") and not used.contains("STR_VAR"))
+	_chk("C.02 and the SUBJECT is {PLAYER}, never a Pokemon placeholder",
+			used.contains("{PLAYER}") and not used.contains("STR_VAR"))
+	# ⚠️ UNEXPANDED at this layer, expanded at print time like every other
+	# message — otherwise a rename would not take effect on an already-built one.
+	OverworldSession.reset()
+	OverworldSession.identity.set_name("ROB")
+	TextBuffers.identity = OverworldSession.identity
+	_chk("C.02b and it expands to the real player name at print time",
+			TextBuffers.new().expand(used) == "ROB used CUT!")
+	OverworldSession.reset()
 	_chk("C.03 a two-word ability reads correctly",
 			FieldMoves.used_message(FieldMoves.Ability.ROCK_SMASH)
 					.contains("ROCK SMASH"))
