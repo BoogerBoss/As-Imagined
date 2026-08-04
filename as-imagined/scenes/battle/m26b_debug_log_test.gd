@@ -45,6 +45,8 @@ func _ready() -> void:
 	_test_multi_hit_aggregate_disclaimer()
 	_test_delayed_effects_scheduled_and_resolved()
 	_test_ability_immunity_retagged_from_narrative()
+	_test_ability_changed_reports_the_new_ability()
+	_test_ability_changed_is_the_only_narration_for_move_effect_mechanics()
 	_test_niche_default_off_but_still_recorded()
 	_test_damage_math_no_longer_has_redundant_header()
 	_test_real_battle_end_to_end_debug_wiring()
@@ -416,6 +418,57 @@ func _test_ability_immunity_retagged_from_narrative() -> void:
 	_chk("an ability_triggered signal produces an Ability & Immunity entry",
 			not _entries_of(bs, BattleScreenShared.DebugCategory.ABILITY_IMMUNITY).is_empty())
 	_chk("it does NOT also land in Narrative (moved, not duplicated)",
+			_entries_of(bs, BattleScreenShared.DebugCategory.NARRATIVE).is_empty())
+
+
+# ── 16b. Ability & Immunity — ability_changed (M26B6-5, the last of the two
+# residual signals D3-2's retirement handed to B6) ──────────────────────
+#
+# ability_changed only ever carries (pokemon, new_ability_id) -- not who the
+# ability came from or which of the 8 mechanics fired it (Trace/Mummy/
+# Lingering Aroma/Wandering Spirit/Receiver/Power of Alchemy/Skill Swap/Role
+# Play/Worry Seed/the Primal-orb switch-in). Confirmed via battle_manager.gd's
+# own real emit call sites, per this handler's own doc comment. So what's
+# tested here is exactly the one fact the signal DOES carry: the resulting
+# ability's real name, loaded from the real .tres a live battle would load
+# too (ability_%04d.tres, id 22 = Intimidate, matching the on-disk file
+# directly rather than a hand-authored AbilityData stand-in).
+
+func _test_ability_changed_reports_the_new_ability() -> void:
+	var bm := BattleManager.new()
+	var mon := _make_mon("Ditto", TypeChart.TYPE_NORMAL)
+	var bs := BattleScreenShared.new()
+	bs._bm = bm
+	bs._player_party = _singles_party(mon)
+	bs._setup_debug_overlay()
+	bs._wire_debug_signals()
+
+	bm.ability_changed.emit(mon, 22)  # Intimidate — real data/abilities/ability_0022.tres
+	var entries := _entries_of(bs, BattleScreenShared.DebugCategory.ABILITY_IMMUNITY)
+	_chk("an ability_changed signal produces an Ability & Immunity entry", entries.size() == 1)
+	_chk("it names the real ability loaded from disk, not a guessed/hardcoded string",
+			"Intimidate" in entries[0])
+	_chk("it names the mon it happened to", "Ditto" in entries[0])
+
+
+func _test_ability_changed_is_the_only_narration_for_move_effect_mechanics() -> void:
+	# Skill Swap/Role Play/Worry Seed are MOVE effects, not ability
+	# activations -- battle_manager.gd's own call sites for all three emit
+	# ability_changed with NO accompanying ability_triggered (confirmed:
+	# unlike Trace/Mummy/Receiver/Wandering Spirit, which always pair the
+	# two). So this is the only text these three mechanics ever produce.
+	var bm := BattleManager.new()
+	var swapper := _make_mon("Swapper", TypeChart.TYPE_PSYCHIC)
+	var bs := BattleScreenShared.new()
+	bs._bm = bm
+	bs._player_party = _singles_party(swapper)
+	bs._setup_debug_overlay()
+	bs._wire_debug_signals()
+
+	bm.ability_changed.emit(swapper, 22)  # Intimidate, standing in for a real swap target
+	_chk("a move-effect ability change (no ability_triggered pair) still narrates",
+			not _entries_of(bs, BattleScreenShared.DebugCategory.ABILITY_IMMUNITY).is_empty())
+	_chk("and it does not leak into Narrative either",
 			_entries_of(bs, BattleScreenShared.DebugCategory.NARRATIVE).is_empty())
 
 

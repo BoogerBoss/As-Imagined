@@ -2763,6 +2763,43 @@ func _on_log_ability_healed(mon: BattlePokemon, amount: int) -> void:
 				"%s was hurt by its ability! (%d damage)" % [_mon_label(mon), -amount])
 
 
+# [M26B6-5] The other residual signal D3-2's retirement handed to B6 — see
+# this file's own M26B6 roadmap entry. `ability_changed` carries only
+# (pokemon, new_ability_id); it does NOT carry who the ability came from or
+# which mechanic caused it (battle_manager.gd's own emit call sites confirm
+# this — Trace/Receiver/Mummy/Wandering Spirit/Lingering Aroma each already
+# pair their emit with an ability_triggered call the popup/_ABILITY_TRIGGER_
+# TEXT table narrates, e.g. "X's Trace copied the opponent's ability!"; Role
+# Play/Skill Swap/Worry Seed/the Primal-orb switch-in do NOT, since those are
+# move effects or item effects, not ability activations, so this is their
+# ONLY narration). What no existing text says, for any of the 8 mechanics
+# this signal covers, is WHICH ability the holder now has -- that's the one
+# fact this signal uniquely carries, so that's what this reports.
+#
+# Deliberately ONE generic template rather than 8 source-exact ones: real
+# source's own strings for these mechanics are NOT one shared shape --
+# STRINGID_PKMNTRACED never names the Tracer at all ("It traced X's Y!");
+# STRINGID_ATTACKERACQUIREDABILITY (Mummy) speaks from the ATTACKER's own
+# perspective even though Mummy is a defensive ability; STRINGID_
+# RECEIVERABILITYTAKEOVER (Receiver) names the fainted DONOR, not the
+# receiving mon; Wandering Spirit and Skill Swap each print exactly ONE line
+# for a two-sided swap, from two DIFFERENT battlers' perspectives
+# (B_DEF_NAME vs B_ATK_NAME) despite near-identical English wording
+# (`battle_message.c` :349/:356/:376/:541/:610/:671/:723 — see this commit's
+# own research pass for the full per-string trace). None of that per-
+# mechanism framing is reconstructable from this signal's own 2-value
+# payload without widening it -- a real battle_manager.gd change, out of
+# scope for a debug-panel line -- so this reports the one fact that IS in
+# the payload rather than fabricating a "traced"/"copied"/"swapped" verb the
+# signal can't actually back up.
+func _on_log_ability_changed(mon: BattlePokemon, new_ability_id: int) -> void:
+	var ability: AbilityData = load("res://data/abilities/ability_%04d.tres" % new_ability_id) as AbilityData
+	if ability == null:
+		return
+	_add_debug_entry(DebugCategory.ABILITY_IMMUNITY,
+			"%s's ability is now %s!" % [_mon_label(mon), ability.ability_name])
+
+
 # [ability_triggered message quality pass, retagged M26b] Looks up a readable
 # message from _ABILITY_TRIGGER_TEXT; falls back to the old generic
 # underscore-to-space formatter for any effect_key not in the table
@@ -3555,6 +3592,7 @@ func _wire_debug_signals() -> void:
 	# mechanism needed, just a different category than Narrative.
 	_bm.ability_triggered.connect(_on_log_ability_triggered)
 	_bm.ability_healed.connect(_on_log_ability_healed)
+	_bm.ability_changed.connect(_on_log_ability_changed)
 
 	# ── Niche/Situational (default-off) — trapping-check reasoning has no
 	# exposing signal (skipped, same gap shape as RNG/Turn Order above); the
@@ -5778,7 +5816,13 @@ func _play_ability_popup(mon: BattlePokemon) -> void:
 	tw.tween_callback(func():
 		if is_instance_valid(panel):
 			panel.queue_free())
-	await tw.finished
+	# Deliberately NOT awaited: this function is itself called fire-and-forget
+	# (see the "ability_popup" beat case), and the animation (~1.24s) routinely
+	# outlives _clear_active_hit_effects()'s own teardown window. Awaiting
+	# tw.finished here left the coroutine permanently suspended whenever
+	# teardown reached tw.kill() first -- Tween.kill() does not emit
+	# `finished` (confirmed empirically), so nothing ever resumed it. Nothing
+	# downstream of this call needs to know when the animation ends.
 
 
 func _weather_stage_scale() -> Vector2:
