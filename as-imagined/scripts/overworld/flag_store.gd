@@ -51,6 +51,30 @@ var _vars: Dictionary = {}
 const TRAINER_DEFEATED_PREFIX := "DEFEATED_"
 
 
+## [M27L L1] `gBadgeFlags` (`event_data.c:39`), in order.
+##
+## ⚠️ **MOVED HERE FROM `overworld.gd`, WHERE IT WAS UNREACHABLE BY THE ONE
+## OTHER READER THAT NEEDS IT.** The save-slot summary has to count badges for
+## the CONTINUE card *before any field scene exists*, and `overworld.gd` carries
+## no `class_name`, so the constant simply could not be seen from there. A flag
+## list belongs to the flag store in any case; the alternative was a second copy,
+## which is the drift `badge_count()` was extracted to prevent in the first place.
+const BADGE_FLAGS := [
+	"FLAG_BADGE01_GET", "FLAG_BADGE02_GET", "FLAG_BADGE03_GET", "FLAG_BADGE04_GET",
+	"FLAG_BADGE05_GET", "FLAG_BADGE06_GET", "FLAG_BADGE07_GET", "FLAG_BADGE08_GET",
+]
+
+
+## How many badges this store records. ONE implementation, two callers — the
+## overworld's whiteout payout and the save-slot summary.
+func badge_count() -> int:
+	var n := 0
+	for f in BADGE_FLAGS:
+		if flag_get(str(f)):
+			n += 1
+	return n
+
+
 ## Source: `FlagGet` (`event_data.c`). Unknown/unset reads FALSE, never errors.
 func flag_get(flag_name: String) -> bool:
 	return bool(_flags.get(flag_name, false))
@@ -152,3 +176,33 @@ func restore(data: Dictionary) -> void:
 func clear() -> void:
 	_flags.clear()
 	_vars.clear()
+
+
+## [M27L L1] Flags and vars, for a save slot.
+##
+## ⚠️ **DELEGATES TO `snapshot()` RATHER THAN REPEATING IT.** A first draft of
+## this returned the same two duplicated dictionaries verbatim, which is a second
+## copy of one rule — exactly the drift `badge_count()` was extracted to avoid.
+## The NAME earns its place (Bag/Wallet/RespawnPoint all expose `to_save`, so the
+## slot writer can treat them uniformly); the BODY does not.
+##
+## Badges need no field of their own: `badge_count()` counts `BADGE_FLAGS` out of
+## this store, so they persist here for free.
+func to_save() -> Dictionary:
+	return snapshot()
+
+
+## ⚠️ **NOT `restore()`, AND THE DIFFERENCE IS THE WHOLE POINT.** `restore`
+## duplicates whatever it is handed; this COERCES every value, because a save
+## file can be hand-edited or shared and a var holding a String would otherwise
+## reach `var_get`'s `int()` cast at some random later moment. Keys are
+## deliberately NOT filtered — a flag this build does not know is harmless since
+## nothing reads it, whereas dropping unknown keys would silently discard a newer
+## save's progress on an older build.
+func from_save(data: Dictionary) -> void:
+	_flags = {}
+	_vars = {}
+	for k in data.get("flags", {}):
+		_flags[str(k)] = bool(data["flags"][k])
+	for k in data.get("vars", {}):
+		_vars[str(k)] = int(data["vars"][k])

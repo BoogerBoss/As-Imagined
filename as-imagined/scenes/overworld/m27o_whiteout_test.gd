@@ -136,7 +136,10 @@ func _test_payout() -> void:
 	_chk("E.01 the badge table is source's own",
 			ow.WHITEOUT_BADGE_MONEY == [8, 16, 24, 36, 48, 64, 80, 100, 120])
 	_chk("E.02 nine entries, for 0 through 8 badges",
-			ow.WHITEOUT_BADGE_MONEY.size() == 9 and ow.BADGE_FLAGS.size() == 8)
+			ow.WHITEOUT_BADGE_MONEY.size() == 9
+			# [M27L L1] BADGE_FLAGS moved to FlagStore, so the save-slot summary
+			# can count badges with no field scene loaded. Same list, new home.
+			and FlagStore.BADGE_FLAGS.size() == 8)
 
 	# A clean session: no badges, so the 0-badge rate.
 	OverworldSession.flags = FlagStore.new()

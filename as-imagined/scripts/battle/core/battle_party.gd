@@ -84,3 +84,38 @@ static func single(mon: BattlePokemon) -> BattleParty:
 	p.members = [mon]
 	p.active_indices = [0]
 	return p
+
+
+## [M27L L1] The party, for a save slot.
+##
+## ⚠️ `active_indices` is deliberately NOT saved. It is a BATTLE concept — which
+## slots are on the field right now — and a save is only ever written from the
+## overworld, where the answer is always the lead. Restoring a stale one would
+## put a doubles layout on a singles field.
+func to_save() -> Array:
+	var out: Array = []
+	for m in members:
+		if m != null:
+			out.append(m.to_save())
+	return out
+
+
+## ⚠️ **A MEMBER THAT FAILS TO REBUILD IS DROPPED, NOT SUBSTITUTED.** A save can
+## be hand-edited or carry a species this project no longer implements, and a
+## placeholder Pokémon appearing in someone's party is worse than a shorter one.
+## The count is reported by the caller so a lossy load can be surfaced rather
+## than discovered later.
+func from_save(rows: Array) -> int:
+	members.clear()
+	var dropped := 0
+	for row in rows:
+		if typeof(row) != TYPE_DICTIONARY or members.size() >= PARTY_SIZE:
+			dropped += 1
+			continue
+		var mon := BattlePokemon.from_save(row)
+		if mon == null:
+			dropped += 1
+			continue
+		members.append(mon)
+	active_indices = [0]
+	return dropped

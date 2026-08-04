@@ -1415,3 +1415,120 @@ func _apply_nature(stat_value: int, stat_index: int) -> int:
 	if stat_index == pair[1]:
 		return floori(stat_value * 90.0 / 100.0)
 	return stat_value
+
+
+## [M27L L1] The PERSISTENT half of this Pokémon, for a save slot.
+##
+## ⚠️ **THIS DELIBERATELY SAVES ~16 FIELDS OUT OF ~80, AND THE CUT IS SOURCE'S
+## OWN.** The reference splits `gPlayerParty` (what a Pokémon *is*) from
+## `gBattleMons` (what is happening to it *right now*) and copies back at the end
+## of a battle; this project conflates both into this one class, so the split has
+## to be made HERE instead. Everything volatile — `confusion_turns`,
+## `wrapped_by`, `perish_song_timer`, `substitute_hp`, `transformed`, every stat
+## stage and every `*_active` flag — is **absent on purpose**. Saving them would
+## let a mid-battle state survive a reload, and `BattleManager
+## .restore_party_after_battle` exists precisely to clear them on the way out.
+##
+## ⚠️ **STATS ARE NOT SAVED, THEY ARE RECOMPUTED.** `_calculate_stats()` derives
+## all six from species + level + IVs + EVs + nature, so storing them would be
+## storing a second copy of a derived value — the drift this project has already
+## paid for elsewhere. Only `current_hp` is real state.
+##
+## ⚠️ **`original_species` AND `original_ability`, NOT the live ones.** Transform,
+## Conversion and Multitype all mutate `species`/`ability` in place. Saving the
+## live value would make a reload inherit a mid-battle mutation as permanent
+## truth, which is exactly the bug the `original_*` fields exist to prevent.
+func to_save() -> Dictionary:
+	var species_for_save := original_species if original_species != null else species
+	var move_ids: Array[int] = []
+	for m in moves:
+		move_ids.append(MoveRegistry.id_of(m as MoveData))
+	return {
+		"dex": species_for_save.national_dex_num if species_for_save != null else 0,
+		"nickname": nickname,
+		"level": level,
+		"gender": gender,
+		"nature": nature,
+		"friendship": friendship,
+		"exp": current_exp,
+		"ivs": ivs.duplicate(),
+		"evs": evs.duplicate(),
+		"moves": move_ids,
+		"pp": current_pp.duplicate(),
+		"hp": current_hp,
+		"status": status,
+		"sleep_turns": sleep_turns,
+		"toxic_counter": toxic_counter,
+		"item": held_item.item_id if held_item != null else 0,
+		"ability_slot": _saved_ability_slot(),
+	}
+
+
+## Which of the species' three ability slots this Pokémon uses.
+##
+## Derived rather than stored, because nothing on this class records it — the
+## factory picks a slot and keeps only the resulting `AbilityData`. Matched
+## against `original_ability` so a Trace/Skill-Swap/Multitype mutation cannot be
+## written back as the mon's permanent ability.
+func _saved_ability_slot() -> int:
+	var a := original_ability if original_ability != null else ability
+	var s := original_species if original_species != null else species
+	if a == null or s == null:
+		return 0
+	for i in range(s.abilities.size()):
+		if int(s.abilities[i]) == a.ability_id:
+			return i
+	return 0
+
+
+## Rebuild from a save payload.
+##
+## ⚠️ **BUILDS THROUGH THE FACTORY AND THEN OVERWRITES, RATHER THAN ASSIGNING 16
+## FIELDS ONTO A BARE INSTANCE.** The factory is what resolves species, moves and
+## ability and what calls `_calculate_stats()`; hand-assembling would duplicate
+## all of that and drift from it the first time the factory changes.
+##
+## ⚠️ **UNTRUSTED INPUT.** A save file can be hand-edited or shared, so every
+## value is clamped or defaulted and a bad `dex` returns null rather than a
+## half-built Pokémon. Source stores an executable script buffer inside its save;
+## this project's scope doc explicitly refuses to inherit that, and this is the
+## same principle applied to ordinary fields.
+static func from_save(data: Dictionary) -> BattlePokemon:
+	var dex := int(data.get("dex", 0))
+	if dex <= 0 or PokemonRegistry.get_species(dex).is_empty():
+		return null
+	var level := clampi(int(data.get("level", 1)), 1, 100)
+	var move_ids: Array = data.get("moves", [])
+	var mon := PokemonFactory.create_battle_pokemon(
+			dex, level, move_ids, int(data.get("nature", NATURE_HARDY)),
+			data.get("ivs", null), int(data.get("friendship", 50)),
+			data.get("evs", null), int(data.get("ability_slot", 0)))
+	if mon == null:
+		return null
+
+	var nick := PlayerIdentity.sanitize(str(data.get("nickname", "")))
+	if nick != "":
+		mon.nickname = nick
+	mon.gender = clampi(int(data.get("gender", GENDER_MALE)),
+			GENDER_MALE, GENDER_GENDERLESS)
+	mon.current_exp = maxi(0, int(data.get("exp", 0)))
+	mon.status = clampi(int(data.get("status", STATUS_NONE)),
+			STATUS_NONE, STATUS_SLEEP)
+	mon.sleep_turns = maxi(0, int(data.get("sleep_turns", 0)))
+	mon.toxic_counter = maxi(0, int(data.get("toxic_counter", 0)))
+
+	# ⚠️ AFTER the factory, so `max_hp` is the recomputed value and not the
+	# stale one a hand-edited save might claim. 0 is a legal, meaningful HP —
+	# a fainted party member — so it is clamped, never defaulted to full.
+	mon.current_hp = clampi(int(data.get("hp", mon.max_hp)), 0, mon.max_hp)
+	mon.fainted = mon.current_hp <= 0
+
+	var pp: Array = data.get("pp", [])
+	for i in range(mon.current_pp.size()):
+		if i < pp.size() and mon.moves[i] != null:
+			mon.current_pp[i] = clampi(int(pp[i]), 0, int(mon.moves[i].pp))
+
+	var item_id := int(data.get("item", 0))
+	if item_id > 0:
+		mon.held_item = ItemRegistry.get_item(item_id)
+	return mon

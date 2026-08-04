@@ -139,12 +139,6 @@ const FADE_SECONDS := 0.25
 ## how many badges the player holds — nine entries for 0 through 8.
 const WHITEOUT_BADGE_MONEY := [8, 16, 24, 36, 48, 64, 80, 100, 120]
 
-## `gBadgeFlags` (`event_data.c:39`), in order.
-const BADGE_FLAGS := [
-	"FLAG_BADGE01_GET", "FLAG_BADGE02_GET", "FLAG_BADGE03_GET", "FLAG_BADGE04_GET",
-	"FLAG_BADGE05_GET", "FLAG_BADGE06_GET", "FLAG_BADGE07_GET", "FLAG_BADGE08_GET",
-]
-
 ## [M27D D4/D5] Persistent flag/var state: beaten trainers, hidden entities,
 ## trigger gates.
 ##
@@ -1307,11 +1301,9 @@ func _apply_battle_result() -> bool:
 ## now, and two hand-kept copies of one rule is the drift this project already
 ## paid for once with `check_bake_diff`.
 func badge_count() -> int:
-	var n := 0
-	for f in BADGE_FLAGS:
-		if flags.flag_get(f):
-			n += 1
-	return n
+	# [M27L L1] Delegates — the list and the count both moved to `FlagStore`, so
+	# the save-slot summary can count badges with no field scene loaded.
+	return flags.badge_count()
 
 
 func whiteout_payout(highest_level: int) -> int:

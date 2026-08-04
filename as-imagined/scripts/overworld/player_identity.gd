@@ -125,3 +125,18 @@ func display_rival_name() -> String:
 ## both pulled at `[M26B3-3]`. Gender picks between them; there is no third.
 func back_pic_stem() -> String:
 	return "leaf" if gender == Gender.GIRL else "red"
+
+
+## [M27L L1] Who the player is, for a save slot.
+func to_save() -> Dictionary:
+	return {"name": name, "gender": gender, "rival": rival_name}
+
+
+## ⚠️ Goes through `set_name`/`set_rival_name` rather than assigning, so a
+## hand-edited save cannot smuggle in a name longer than the cap that every
+## other path enforces.
+func from_save(data: Dictionary) -> void:
+	set_name(str(data.get("name", "")))
+	set_rival_name(str(data.get("rival", "")))
+	gender = Gender.GIRL if int(data.get("gender", Gender.BOY)) == Gender.GIRL \
+			else Gender.BOY

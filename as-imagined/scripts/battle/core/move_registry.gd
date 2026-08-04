@@ -28,3 +28,22 @@ static func get_move(id: int) -> MoveData:
 		push_warning("MoveRegistry: no file for move id %d (%s)" % [id, path])
 		return null
 	return ResourceLoader.load(path) as MoveData
+
+
+## [M27L L1] The id of a LOADED move, recovered from its path.
+##
+## ⚠️ **THE PATH IS THE ID, BY THIS FILE'S OWN CONVENTION** — `move_%04d.tres`,
+## stated at the top as the whole loader design. So no reverse table is needed
+## and, more importantly, none is possible to get out of step: `MoveData` carries
+## no id field at all, and adding one would mean regenerating 935 `.tres` files
+## to store what the filename already says.
+##
+## ⚠️ Returns 0 for a hand-built `MoveData.new()`, which has no `resource_path`.
+## That is every move fixture in this project's battle tests — real enough to
+## matter, so a caller serialising one gets 0 rather than a wrong id.
+static func id_of(move: MoveData) -> int:
+	if move == null or move.resource_path == "":
+		return 0
+	var stem := move.resource_path.get_file().get_basename()
+	var digits := stem.substr(stem.rfind("_") + 1)
+	return int(digits) if digits.is_valid_int() else 0
