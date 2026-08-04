@@ -41,6 +41,8 @@ func _ready() -> void:
 	_test_pacing_bypassed_and_cleared_when_not_in_tree()
 	_test_pacing_bypassed_and_cleared_when_autoplay()
 	_test_pacing_noop_when_no_beats()
+	_test_exit_message_mode_held_during_intro_then_released()
+	_test_battle_start_beats_stash_and_restore()
 	_test_real_battle_beat_ordering_end_to_end()
 
 	var total := _pass + _fail
@@ -326,6 +328,77 @@ func _test_pacing_noop_when_no_beats() -> void:
 
 
 # ── 15. Real end-to-end beat ordering ─────────────────────────────────────
+
+func _test_exit_message_mode_held_during_intro_then_released() -> void:
+	# [Intro menu-artifact fix] While _intro_active, _exit_message_mode()
+	# must be a no-op: the intro's own pacing runs each end with an exit
+	# call, and letting one through would flash the .tscn's authored
+	# UNSTYLED placeholder menu (default-font/default-chrome Fight/Item/Run
+	# + the "..." prompt) back on screen mid-intro — the exact artifact
+	# Rob's real-play report caught (2026-08-03). Once the flag clears, the
+	# identical call must restore the menu content exactly as it always
+	# did, so mid-battle beat replays are untouched by the fix.
+	var bs := BattleScreenShared.new()
+	bs._message_label = RichTextLabel.new()
+	# The real scene authors MessageLabel `visible = false` (a fresh
+	# RichTextLabel.new() defaults visible) — without this the fixture trips
+	# _enter_message_mode()'s own already-in-message-mode no-op guard.
+	bs._message_label.visible = false
+	bs._action_panel = PanelContainer.new()
+	bs._status_label = Label.new()
+	bs._new_button_grid = GridContainer.new()
+	bs._new_button_area = VBoxContainer.new()
+	bs._action_panel_message_style = StyleBoxTexture.new()
+	bs._action_panel_menu_style = StyleBoxTexture.new()
+	bs._enter_message_mode()
+	_chk("setup: message mode genuinely entered",
+			bs._message_label.visible and not bs._new_button_grid.visible)
+	bs._intro_active = true
+	bs._exit_message_mode()
+	_chk("intro hold: message label stays visible", bs._message_label.visible)
+	_chk("intro hold: placeholder grid stays hidden", not bs._new_button_grid.visible)
+	_chk("intro hold: status label stays hidden", not bs._status_label.visible)
+	_chk("intro hold: button area stays hidden", not bs._new_button_area.visible)
+	bs._intro_active = false
+	bs._exit_message_mode()
+	_chk("released: message label hidden again", not bs._message_label.visible)
+	_chk("released: grid visibility restored", bs._new_button_grid.visible)
+	_chk("released: status label restored", bs._status_label.visible)
+	_chk("released: button area restored", bs._new_button_area.visible)
+
+
+func _test_battle_start_beats_stash_and_restore() -> void:
+	# [Battle-start message-order fix] The engine's battle-start events
+	# (switch-in abilities, lead weather) queue beats BEFORE the intro's own
+	# messages exist; source prints them AFTER the whole intro
+	# (TryDoEventsBeforeFirstTurn, battle_main.c:3697/3834). The stash must
+	# hand back exactly what was queued (leaving the queue empty for the
+	# intro's own messages), and the restore must re-append IN ORDER and
+	# also flush any buffered stat/status lines those same events produced
+	# (Intimidate's shape — otherwise they attach to the first move
+	# announcement, even later than the old wrong order).
+	var bs := BattleScreenShared.new()
+	var beat_a := {"kind": "text", "text": "Rain began to fall!", "hold": 1.0}
+	var beat_b := {"kind": "anim_async", "start": Callable()}
+	bs._pending_beats.append(beat_a)
+	bs._pending_beats.append(beat_b)
+	bs._pending_effect_lines.append("Gyarados's Attack fell!")
+	var stash := bs._stash_battle_start_beats()
+	_chk("stash carries both beats in order", stash.size() == 2
+			and stash[0] == beat_a and stash[1] == beat_b)
+	_chk("queue left empty for the intro's own messages", bs._pending_beats.is_empty())
+	_chk("buffered effect line NOT consumed by the stash",
+			bs._pending_effect_lines.size() == 1)
+	# The intro's own messages queue and drain in between — simulate the
+	# drained state (empty queue) and restore.
+	bs._restore_battle_start_beats(stash)
+	_chk("restore re-appends both beats in order", bs._pending_beats.size() == 3
+			and bs._pending_beats[0] == beat_a and bs._pending_beats[1] == beat_b)
+	_chk("restore flushes the buffered line AFTER the replayed beats",
+			bs._pending_beats[2].get("kind") == "text"
+			and bs._pending_beats[2].get("text") == "Gyarados's Attack fell!")
+	_chk("effect-line buffer cleared by the restore", bs._pending_effect_lines.is_empty())
+
 
 func _test_real_battle_beat_ordering_end_to_end() -> void:
 	var attacker := _make_typed_mon("RealAngler", TypeChart.TYPE_WATER)

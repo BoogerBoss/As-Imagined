@@ -1122,6 +1122,23 @@ const _TRAINER_SLIDE_OUT_SECONDS := 0.58
 # {"kind":"hp_drain","bar":TextureProgressBar,"from_frac":float,"to_frac":float,"color":Color}.
 var _pending_beats: Array[Dictionary] = []
 
+# [Intro menu-artifact fix] True from the moment _ready()'s intro block
+# starts until right before its final _refresh_ui(). While true,
+# _exit_message_mode() refuses to leave message mode, so the .tscn's own
+# AUTHORED placeholder menu (default-font/default-chrome Fight/Item/Run
+# buttons + the "..." StatusLabel — the pre-M25h look, never styled until
+# _build_top_menu() first runs) can never flash on screen mid-intro. Found
+# via real play (Rob, 2026-08-03): the whole intro previously showed that
+# placeholder menu, because _ready() hid the mon sprites and health panels
+# for the intro but never touched the ActionPanel, and the first
+# _refresh_ui() only runs after the entire intro sequence. Source shows
+# the message box (B_WIN_MSG) for the whole intro and only ever draws the
+# action menu at "Choose an action" — message mode across the full intro
+# is the faithful shape, not just a patch. Never set under --autoplay or
+# off-tree (the same guard the sprite/panel hiding uses), so bare-instance
+# tests and the sweep's own autoplay runs see the pre-existing behavior.
+var _intro_active: bool = false
+
 # [M26b] The full, permanently-accumulating category-tagged history — never
 # discarded, never trimmed. `_debug_category_on` filters what's RENDERED
 # only (see _render_debug_overlay()); scrolling back through turns and
@@ -1724,6 +1741,15 @@ func _ready() -> void:
 	_refresh_battlefield_side(_opp_party, false)
 	_refresh_battlefield_side(_player_party, true)
 
+	# [Battle-start message-order fix] start_battle_*() above already ran
+	# the engine's battle-start events (switch-in abilities, lead weather),
+	# and anything they logged is sitting at the head of _pending_beats
+	# right now. Stash it so the intro's own messages drain first, and
+	# replay it after the send-outs — where source's own
+	# TryDoEventsBeforeFirstTurn prints these — see
+	# _stash_battle_start_beats()'s doc comment for the full citation.
+	var battle_start_beats := _stash_battle_start_beats()
+
 	# [M26B3-5 fix, found in review] Clear the field BEFORE the intro runs.
 	#
 	# The refresh above sets every sprite and health box visible, and until
@@ -1744,6 +1770,16 @@ func _ready() -> void:
 		_set_opponent_mon_sprites_visible(false)
 		_set_player_mon_sprites_visible(false)
 		_set_health_panels_visible(false)
+		# [Intro menu-artifact fix] The ActionPanel needs the same
+		# treatment: without this, the .tscn's authored placeholder menu
+		# (default font/chrome, no Switch, "..." prompt) sits in plain view
+		# for the whole intro. Enter message mode now — an empty message
+		# box on the real message skin, matching source's own intro-long
+		# B_WIN_MSG — and hold it there via _intro_active until the final
+		# _refresh_ui() below builds the first real menu.
+		_intro_active = true
+		_message_label.text = ""
+		_enter_message_mode()
 
 	# [M26l/M26o] Real send-out/party-summary beats, played once before the
 	# first real menu ever appears — matching source's own isBattleStart=
@@ -1783,6 +1819,18 @@ func _ready() -> void:
 	await _run_message_pacing()
 	await _show_player_send_out()
 
+	# [Battle-start message-order fix] Both mons are on the field — replay
+	# the stashed battle-start beats now, matching source's own sequencing
+	# (TryDoEventsBeforeFirstTurn runs here, after the whole intro; the
+	# first action menu only comes after it). Still inside the
+	# _intro_active hold, so these messages print in message mode with no
+	# menu flash between "Go! X!" and them — source's message region
+	# likewise stays up until ChooseAction. Under --autoplay/off-tree the
+	# pacing call clears the queue instantly, the same net effect the old
+	# (wrongly-ordered) first intro drain had.
+	_restore_battle_start_beats(battle_start_beats)
+	await _run_message_pacing()
+
 	# [Autoplay] No existing CLI-arg/env-var convention exists anywhere in
 	# this codebase for a headless-vs-interactive toggle — every one of the
 	# 137 pre-existing test scenes is ALWAYS in "test mode," so there was
@@ -1798,6 +1846,14 @@ func _ready() -> void:
 		_run_autoplay()
 		return
 
+	# [Intro menu-artifact fix] The intro is over — release the message-mode
+	# hold and exit it NOW, in this order (_exit_message_mode() is gated on
+	# the flag), so _refresh_ui() below builds the first real menu onto a
+	# panel already back on the menu skin. Under --autoplay the flag was
+	# never set and _exit_message_mode() is a no-op (message label never
+	# shown), so this is safe unconditionally.
+	_intro_active = false
+	_exit_message_mode()
 	_refresh_ui()
 
 
@@ -3195,6 +3251,42 @@ func _flush_pending_effect_lines() -> void:
 	_pending_effect_lines.clear()
 
 
+# [Battle-start message-order fix, 2026-08-03] Source runs its first-turn
+# events — switch-in abilities, lead weather-setters, hazards — only AFTER
+# the entire intro (`TryDoEventsBeforeFirstTurn`, battle_main.c:3697,
+# installed at :3691 once the intro state machine finishes; the first
+# action menu comes later still, :3834 -> HandleTurnActionSelectionState).
+# This project's engine runs the same events inside start_battle_*(),
+# BEFORE the visual intro, so their beats used to sit at the head of
+# _pending_beats and drain ahead of "You are challenged by X!" — the
+# reverse of source's message order. _ready() stashes the queue right
+# after start_battle returns and restores it after the send-outs, so the
+# intro's own messages print first and the battle-start events print where
+# source prints them: last, right before the first menu.
+func _stash_battle_start_beats() -> Array[Dictionary]:
+	# duplicate()+clear(), never `= []` — assigning a fresh untyped literal
+	# to a typed Array field silently fails (this project's own documented
+	# GDScript gotcha, the exact bug class m26_b3_6c's suite once caught).
+	var stash: Array[Dictionary] = _pending_beats.duplicate()
+	_pending_beats.clear()
+	return stash
+
+
+# Re-appends the stashed battle-start beats and flushes any stat/status
+# lines those same events buffered into _pending_effect_lines (Intimidate's
+# "Attack fell!" shape — otherwise they'd surface even later, attached to
+# the first move announcement). Relative order between the two groups is a
+# disclosed simplification: source interleaves per-battler in switch-in
+# order, but the buffered lines lost their queue position the moment they
+# were buffered, so direct-logged beats replay first, buffered lines after.
+# Deliberately does NOT run the pacing itself — the caller awaits
+# _run_message_pacing() like every other intro step, and a bare-instance
+# test can inspect the rebuilt queue order directly.
+func _restore_battle_start_beats(stash: Array[Dictionary]) -> void:
+	_pending_beats.append_array(stash)
+	_flush_pending_effect_lines()
+
+
 # [M26b] Every pre-existing call site below this function in the file is
 # completely unchanged (text construction/wording/ordering all stayed
 # exactly as M25c built it) — only WHERE the text ends up changed: it used
@@ -4211,6 +4303,15 @@ func _enter_message_mode() -> void:
 # keeps this function safe to call unconditionally).
 func _exit_message_mode() -> void:
 	if not _message_label.visible:
+		return
+	# [Intro menu-artifact fix] While the intro is still playing, stay in
+	# message mode: the intro's own pacing runs (the two trainer messages,
+	# "Go! X!") each end with _run_message_pacing()'s trailing call to this
+	# function, and letting any of them restore the grid would flash the
+	# authored UNSTYLED placeholder buttons back on screen between beats
+	# (the real menu doesn't exist until the intro's final _refresh_ui()).
+	# _ready() clears the flag and calls this explicitly right before that.
+	if _intro_active:
 		return
 	_message_label.visible = false
 	_action_panel.add_theme_stylebox_override("panel", _action_panel_menu_style)
