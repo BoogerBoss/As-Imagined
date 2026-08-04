@@ -26,6 +26,19 @@ const CELL := 16
 ## Which map the player starts in. An @export rather than a constant because
 ## this is exactly the thing that stopped being fixed at authoring time — C4
 ## changes it during play, and a warp (C5) changes it on arrival.
+## [M27L L5] Where a NEW GAME begins — source's own `WarpToTruck` destination
+## for FRLG (`new_game.c:138`): the player's bedroom in Pallet Town at (6, 6).
+## Separate from `start_map`, which is the debug/corridor boot.
+const NEW_GAME_MAP := "PalletTown_PlayersHouse_2F_Frlg"
+const NEW_GAME_CELL := Vector2i(6, 6)
+
+## The map actually booted into, which is NOT always `start_map` — a battle
+## return and a new game both name their own. Held because `_resolve_start_cell`
+## has to validate against the map the player is really standing in; resolving
+## `start_cell` against `start_map` while booting elsewhere put the spawn check
+## in a different town from the spawn.
+var _boot_map := ""
+
 @export var start_map: String = "PalletTown_Frlg"
 
 ## Where in `start_map` to spawn, in that map's own LOCAL cells.
@@ -226,6 +239,22 @@ func _ready() -> void:
 	var boot_map: String = str(resume.get("map", "")) if not resume.is_empty() else start_map
 	if boot_map == "":
 		boot_map = start_map
+	# [M27L L5] ⚠️ **A NEW GAME STARTS IN THE PLAYER'S BEDROOM, NOT AT
+	# `start_map`.** Source is exact: `WarpToTruck` (`new_game.c:136`) sends FRLG
+	# to `MAP_PALLET_TOWN_PLAYERS_HOUSE_2F` at (6, 6) — the truck is Hoenn's
+	# opening and Kanto's is the bedroom.
+	#
+	# ⚠️ PEEKED here, not consumed — `take_new_game()` below is what consumes it,
+	# and the speech has to be fired after the field exists. Reading the flag in
+	# two places is deliberate: this one decides WHERE, that one decides WHEN.
+	#
+	# `start_map` is deliberately untouched. It is the DEBUG boot (F6 into the
+	# corridor) and the corridor is what M27C's seam work is built on; repointing
+	# it would move that scaffolding to answer a question about the new game.
+	if OverworldSession.pending_new_game:
+		boot_map = NEW_GAME_MAP
+		start_cell = NEW_GAME_CELL
+	_boot_map = boot_map
 	if not manager.load_chunk(boot_map):
 		push_error("overworld: %s is not baked — run map_baker.tscn" % boot_map)
 		return
@@ -234,7 +263,10 @@ func _ready() -> void:
 	# Neighbours up front. Hysteresis-based loading as the player moves is the
 	# remaining half of C4; loading the starting map's neighbours is what makes
 	# a seam crossable at all, and is what the corridor is for.
-	var added := manager.load_neighbours(start_map)
+	# [M27L L5] `boot_map`, not `start_map` — a new game boots somewhere
+	# start_map does not name, and loading the wrong map's neighbours would
+	# leave the real one's seams unloaded.
+	var added := manager.load_neighbours(boot_map)
 	_spawn_player()
 	_add_camera()
 	_add_fade()
@@ -298,15 +330,16 @@ func _spawn_player() -> void:
 ## resolver refuses every direction and the only way out is a warp they cannot
 ## reach. Falling back is always recoverable; being stuck is not.
 func _resolve_start_cell() -> Vector2i:
+	var where := _boot_map if _boot_map != "" else start_map
 	if start_cell.x < 0 or start_cell.y < 0:
-		return _first_walkable(start_map)
-	var origin := manager.origin_of(start_map)
+		return _first_walkable(where)
+	var origin := manager.origin_of(where)
 	var g := origin + start_cell
-	if manager.chunk_owning(g) == start_map and manager.collision_at(g) == 0:
+	if manager.chunk_owning(g) == where and manager.collision_at(g) == 0:
 		return g
 	push_warning("start_cell %s is not standable in %s — falling back."
-			% [str(start_cell), start_map])
-	return _first_walkable(start_map)
+			% [str(start_cell), where])
+	return _first_walkable(where)
 
 
 ## The player node itself, split out so a battle RETURN reuses it rather than

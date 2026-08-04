@@ -79,9 +79,21 @@ static var party: BattleParty = null
 ## Lazy rather than eager because `OverworldParty` reaches into `PokemonFactory`
 ## and the registries, and a static initialiser would run that at class-load
 ## time — before a test has had any chance to substitute one.
+## ⚠️ **[M27L L5] BUILDS AN EMPTY PARTY, NOT `[M27D D5]`'s DEBUG TEAM.** Source's
+## `NewGameInitData` calls `ZeroPlayerPartyMons()` (`new_game.c:155`): you start
+## with nothing and Oak's script gives you the starter. This used to lazily build
+## a 3-member debug team whenever the party was null, which meant **a brand new
+## game arrived holding a team it was never given** — and that is what made
+## `[M27K K-c]`'s starter-slot hazard reachable at all, since `givemon` appended
+## at slot 3 while the script renamed slot 0.
+##
+## Still lazy, and still never null: every caller here treats "no party" as an
+## empty party rather than a missing one, and a null would mean adding a check to
+## all of them. `OverworldParty.build_debug_player_party()` survives for tests and
+## debug boots that want a team — it is simply no longer the DEFAULT.
 static func player_party() -> BattleParty:
 	if party == null:
-		party = OverworldParty.build_debug_player_party()
+		party = BattleParty.new()
 	return party
 
 

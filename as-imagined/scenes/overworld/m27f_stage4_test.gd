@@ -126,6 +126,12 @@ func _test_yes_no_widget() -> void:
 func _test_vm_specials() -> void:
 	# `special HealPlayerParty` on a real, damaged party.
 	OverworldSession.reset()
+	# [M27L L5] Seeded EXPLICITLY. `player_party()` no longer lazily builds
+	# `[M27D D5]`'s debug team — a new game starts empty, like source's own
+	# `ZeroPlayerPartyMons()`. The team still exists for tests like this one;
+	# it is simply no longer what you get by default.
+	if OverworldSession.party == null or OverworldSession.party.members.is_empty():
+		OverworldSession.party = OverworldParty.build_debug_player_party()
 	var party := OverworldSession.player_party()
 	var lead: BattlePokemon = party.members[0]
 	lead.current_hp = 1
@@ -375,6 +381,12 @@ func _test_nurse_end_to_end() -> void:
 			ops.has("PewterCity_PokemonCenter_1F_EventScript_Nurse"))
 
 	OverworldSession.reset()
+	# [M27L L5] Seeded EXPLICITLY. `player_party()` no longer lazily builds
+	# `[M27D D5]`'s debug team — a new game starts empty, like source's own
+	# `ZeroPlayerPartyMons()`. The team still exists for tests like this one;
+	# it is simply no longer what you get by default.
+	if OverworldSession.party == null or OverworldSession.party.members.is_empty():
+		OverworldSession.party = OverworldParty.build_debug_player_party()
 	var party := OverworldSession.player_party()
 	for m: BattlePokemon in party.members:
 		m.current_hp = 1
@@ -420,6 +432,12 @@ func _test_nurse_end_to_end() -> void:
 	# the stronger one: she heals with NOBODY answering anything at all. A
 	# driver that never handles WAIT_YES_NO would hang if the prompt returned.
 	OverworldSession.reset()
+	# [M27L L5] Seeded EXPLICITLY. `player_party()` no longer lazily builds
+	# `[M27D D5]`'s debug team — a new game starts empty, like source's own
+	# `ZeroPlayerPartyMons()`. The team still exists for tests like this one;
+	# it is simply no longer what you get by default.
+	if OverworldSession.party == null or OverworldSession.party.members.is_empty():
+		OverworldSession.party = OverworldParty.build_debug_player_party()
 	var party2 := OverworldSession.player_party()
 	party2.members[0].current_hp = 1
 	var flags2 := FlagStore.new()

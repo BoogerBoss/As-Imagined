@@ -14,7 +14,7 @@ extends Node
 ##   * a save file is UNTRUSTED: corrupt, truncated, future-versioned and
 ##     hand-edited payloads all fail closed rather than half-loading.
 
-const EXPECTED_TOTAL := 94
+const EXPECTED_TOTAL := 104
 
 ## A slot index deliberately outside SLOT_COUNT.
 const BAD_SLOT := 9
@@ -45,6 +45,8 @@ func _ready() -> void:
 	_test_drive_findings()
 	_test_title_screen()
 	_test_boot_path()
+	_test_new_game_start()
+	await _test_new_game_boot()
 
 	for i in range(SaveManager.SLOT_COUNT):
 		SaveManager.erase(i)
@@ -633,3 +635,71 @@ func _test_boot_path() -> void:
 	_chk("J.08 reset clears the slot and the flag together",
 			OverworldSession.active_slot == 0
 			and not OverworldSession.pending_new_game)
+
+
+## --- K. [M27L L5] a new game starts the way source starts one ---
+func _test_new_game_start() -> void:
+	# ⚠️ **`ZeroPlayerPartyMons()` (`new_game.c:155`) — YOU START WITH NOTHING.**
+	# `player_party()` used to lazily build `[M27D D5]`'s 3-member debug team, so
+	# a brand new game arrived holding a team it was never given. That is what
+	# made `[M27K K-c]`'s starter-slot hazard reachable: `givemon` appended at
+	# slot 3 while the script renamed slot 0.
+	OverworldSession.reset()
+	_chk("K.01 a fresh session has an EMPTY party, not a debug team",
+			OverworldSession.player_party().members.size() == 0)
+	_chk("K.02 and it is empty rather than null, so callers need no new check",
+			OverworldSession.player_party() != null)
+	# ⚠️ The debug team still EXISTS — it is no longer the default, which is a
+	# different thing from being deleted. Tests and debug boots still want one.
+	_chk("K.03 the debug team survives for tests, just not as the default",
+			OverworldParty.build_debug_player_party().members.size() > 0)
+
+	# ⚠️ **AND THE STARTER NOW LANDS IN SLOT 0**, which is what the starter
+	# script hardcodes. This is the K-c hazard closing, asserted directly.
+	var src := ScriptVM.ScriptSource.new()
+	var vm := ScriptVM.new(src, FlagStore.new())
+	vm.party = OverworldSession.player_party()
+	vm._give_mon(1, 5)
+	_chk("K.04 so the starter lands in slot 0, where the script renames",
+			vm.party.members.size() == 1
+			and vm.party.members[0].species.national_dex_num == 1)
+
+	# ⚠️ **THE BEDROOM, NOT `start_map`.** Source: `WarpToTruck`
+	# (`new_game.c:136`) sends FRLG to MAP_PALLET_TOWN_PLAYERS_HOUSE_2F at (6, 6)
+	# — the truck is Hoenn's opening and Kanto's is the bedroom.
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	_chk("K.05 the new-game start is source's own map and cell",
+			str(ow.NEW_GAME_MAP) == "PalletTown_PlayersHouse_2F_Frlg"
+			and ow.NEW_GAME_CELL == Vector2i(6, 6))
+	# ⚠️ It must be a DIFFERENT map from the debug boot, or this assertion could
+	# not tell "starts in the bedroom" from "starts wherever start_map points".
+	_chk("K.06 and is genuinely not where the debug boot goes",
+			str(ow.NEW_GAME_MAP) != str(ow.start_map))
+	_chk("K.07 the bedroom is baked and loadable",
+			ResourceLoader.exists("res://scenes/maps/%s.tscn" % str(ow.NEW_GAME_MAP)))
+	ow.free()
+
+
+## ⚠️ **BOOTS THE REAL FIELD, because the constants alone proved nothing.**
+## K.05-K.07 assert what `NEW_GAME_MAP`/`NEW_GAME_CELL` hold; break-testing found
+## that deleting the code which USES them failed no assertion at all. A claim
+## about where a new game starts can only be made by starting one.
+func _test_new_game_boot() -> void:
+	OverworldSession.reset()
+	OverworldSession.pending_new_game = true
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	add_child(ow)
+	for i in range(30):
+		await get_tree().process_frame
+	var here: String = str(ow.manager.chunk_owning(ow._cell))
+	var local: Vector2i = Vector2i(ow._cell) - Vector2i(ow.manager.origin_of(here))
+	_chk("K.08 a new game really BOOTS in the bedroom, not just names it",
+			here == str(ow.NEW_GAME_MAP) and here != str(ow.start_map))
+	# ⚠️ The cell must be resolved against the BOOT map. Validating `start_cell`
+	# against `start_map` while booting elsewhere put the spawn check in a
+	# different town from the spawn, and fell back to "first walkable".
+	_chk("K.09 on source's own cell, resolved against the map it booted into",
+			local == ow.NEW_GAME_CELL)
+	_chk("K.10 and it is standable, so the player is not spawned inside scenery",
+			ow.manager.collision_at(ow._cell) == 0)
+	ow.queue_free()

@@ -211,6 +211,12 @@ func _test_reannounce_loop() -> void:
 ## --- E. the persistent party ---
 func _test_party_persistence() -> void:
 	OverworldSession.reset()
+	# [M27L L5] Seeded EXPLICITLY. `player_party()` no longer lazily builds
+	# `[M27D D5]`'s debug team — a new game starts empty, like source's own
+	# `ZeroPlayerPartyMons()`. The team still exists for tests like this one;
+	# it is simply no longer what you get by default.
+	if OverworldSession.party == null or OverworldSession.party.members.is_empty():
+		OverworldSession.party = OverworldParty.build_debug_player_party()
 	var p1 := OverworldSession.player_party()
 	var p2 := OverworldSession.player_party()
 	# ⚠️ THE SAME OBJECT, not an equal one. Identity is the whole mechanism:

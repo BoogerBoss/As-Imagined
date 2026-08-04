@@ -189,6 +189,12 @@ func _test_use_flow() -> void:
 		_gated += 9
 		return
 	OverworldSession.reset()
+	# [M27L L5] Seeded EXPLICITLY. `player_party()` no longer lazily builds
+	# `[M27D D5]`'s debug team — a new game starts empty, like source's own
+	# `ZeroPlayerPartyMons()`. The team still exists for tests like this one;
+	# it is simply no longer what you get by default.
+	if OverworldSession.party == null or OverworldSession.party.members.is_empty():
+		OverworldSession.party = OverworldParty.build_debug_player_party()
 	var party := OverworldSession.player_party()
 	OverworldSession.bag.add(potion, 2)
 	var mon: BattlePokemon = party.members[0]
@@ -232,6 +238,12 @@ func _test_use_flow() -> void:
 	# What is missing is the TEXT, both here and on success: see M27I I5-3a,
 	# flagged at `overworld.gd :: _on_party_mon_chosen`. This asserts the
 	# mechanics; nothing here can assert a message that is not built yet.
+	# [M27L L5] Seeded EXPLICITLY. `player_party()` no longer lazily builds
+	# `[M27D D5]`'s debug team — a new game starts empty, like source's own
+	# `ZeroPlayerPartyMons()`. The team still exists for tests like this one;
+	# it is simply no longer what you get by default.
+	if OverworldSession.party == null or OverworldSession.party.members.is_empty():
+		OverworldSession.party = OverworldParty.build_debug_player_party()
 	var faint_party := OverworldSession.player_party()
 	faint_party.members[1].current_hp = 0
 	faint_party.members[1].fainted = true
