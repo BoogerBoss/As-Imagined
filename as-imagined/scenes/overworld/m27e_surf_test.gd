@@ -12,7 +12,7 @@ extends Node
 ##   * `MB_SHALLOW_WATER` is NOT surfable, which source is explicit about and
 ##     which looks like an omission if you reason from the name.
 
-const EXPECTED_TOTAL := 15
+const EXPECTED_TOTAL := 27
 
 var _total := 0
 var _failed := 0
@@ -63,6 +63,7 @@ func _ready() -> void:
 	_test_on_foot()
 	_test_surfing()
 	_test_behaviour_set()
+	_test_mount()
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
 			% [_total, _gated, EXPECTED_TOTAL], accounted == EXPECTED_TOTAL)
@@ -155,3 +156,52 @@ func _test_behaviour_set() -> void:
 	# Kanto's own 8, so a later trim cannot quietly drop one that is in use.
 	_chk("C.06 every behaviour Kanto actually uses is in it",
 			MetatileBehavior.is_surfable(MetatileBehavior.MB_CYCLING_ROAD_WATER))
+
+
+## --- D. [M27E E1b] mounting and dismounting ---
+func _test_mount() -> void:
+	var f := FlagStore.new()
+	# ⚠️ FOUR INDEPENDENT REFUSALS, each with its own cause — a bool return would
+	# make the caller re-derive which sentence to print.
+	_chk("D.01 facing water without the badge refuses for the RIGHT reason",
+			FieldMoves.can_mount(f, W, false) == FieldMoves.Mount.NO_BADGE)
+	_chk("D.02 facing land refuses as NOT_WATER, a different cause",
+			FieldMoves.can_mount(f, L, false) == FieldMoves.Mount.NOT_WATER)
+	f.flag_set("FLAG_BADGE05_GET")
+	_chk("D.03 the Soul Badge alone makes facing water mountable",
+			FieldMoves.can_mount(f, W, false) == FieldMoves.Mount.OK)
+	# ⚠️ AND ONLY THE SOUL BADGE. A fixture holding every badge could not tell
+	# "reads the Surf badge" from "reads any badge".
+	var f2 := FlagStore.new()
+	f2.flag_set("FLAG_BADGE02_GET")   # Cut's badge, not Surf's
+	_chk("D.04 a DIFFERENT badge does not unlock surfing",
+			FieldMoves.can_mount(f2, W, false) == FieldMoves.Mount.NO_BADGE)
+	_chk("D.05 already surfing is its own answer, not OK repeated",
+			FieldMoves.can_mount(f, W, true) == FieldMoves.Mount.ALREADY_SURFING)
+	# ⚠️ SHALLOW WATER IS NOT MOUNTABLE — it is walkable, so a prompt there would
+	# offer to surf on a tile you can already stand on.
+	_chk("D.06 shallow water offers no prompt, being walkable already",
+			FieldMoves.can_mount(f, S, false) == FieldMoves.Mount.NOT_WATER)
+
+	# ⚠️ DISMOUNT IS DECIDED BY WHERE YOU LANDED. Source has no "get off" key.
+	_chk("D.07 landing ashore dismounts", FieldMoves.should_dismount(L, true))
+	_chk("D.08 staying on water does not", not FieldMoves.should_dismount(W, true))
+	_chk("D.09 and landing ashore on foot is not a dismount",
+			not FieldMoves.should_dismount(L, false))
+
+	# Source's own wording, verbatim — the first line reads like scene-setting
+	# and is easy to drop.
+	_chk("D.10 the prompt is source's own, both lines",
+			FieldMoves.SURF_PROMPT.contains("dyed a deep blue")
+			and FieldMoves.SURF_PROMPT.contains("Would you like to SURF?"))
+
+	# ⚠️ THE STATE IS ON THE SESSION, NOT THE FIELD. A water encounter is a real
+	# scene swap; surfing held on the overworld would clear on the first attack
+	# and drop the player onto water on foot, refused in every direction.
+	OverworldSession.reset()
+	_chk("D.11 surfing starts off and lives on the session",
+			not OverworldSession.surfing)
+	OverworldSession.surfing = true
+	OverworldSession.reset()
+	_chk("D.12 and reset clears it, so a new game cannot inherit the water",
+			not OverworldSession.surfing)

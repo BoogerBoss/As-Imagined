@@ -72,6 +72,18 @@ const BADGE_FOR := {
 }
 
 
+## [M27E E1b] Source's own wording, verbatim from `data/text/surf.inc`.
+##
+## ⚠️ The second line is source's; the FIRST is too, and it is easy to drop
+## because it reads like scene-setting rather than part of the prompt.
+const SURF_PROMPT := "The water is dyed a deep blue…\nWould you like to SURF?"
+
+## `Text_CurrentTooFast` (`surf.inc`) — verbatim. Kept even though nothing reaches
+## it yet: `MB_FAST_WATER` is 2,831 cells over 12 Kanto maps, so E3's currents
+## will want it, and source's own wording is cheaper to keep than to re-find.
+const CURRENT_TOO_FAST := "The current is much too fast!\nSURF can't be used here…"
+
+
 ## The only question this class exists to answer.
 ##
 ## ⚠️ Takes a `FlagStore` rather than reading `OverworldSession` directly, so a
@@ -112,3 +124,36 @@ static func used_message(ability: int) -> String:
 ## region's own progression; "not yet" is the whole message.
 static func blocked_message(ability: int) -> String:
 	return "This needs %s, and you cannot use it yet." % ability_name(ability)
+
+
+## [M27E E1b] May the player mount the water they are facing?
+##
+## ⚠️ **PURE, AND TAKES THE FACED BEHAVIOUR RATHER THAN READING THE MAP.** The
+## decision has four independent parts — already surfing, is it water, is it
+## *surfable* water, do you hold the badge — and a version that reached into
+## `MapManager` could only be tested by standing up a map. Every one of these is
+## a real refusal with its own cause.
+##
+## ⚠️ Returns a REASON, not a bool. "You cannot surf here" and "you cannot surf
+## yet" are different sentences to the player, and collapsing them to false would
+## make the caller re-derive which one to print.
+enum Mount { OK, ALREADY_SURFING, NOT_WATER, NO_BADGE }
+
+
+static func can_mount(flags: FlagStore, faced_behavior: int,
+		already_surfing: bool) -> int:
+	if already_surfing:
+		return Mount.ALREADY_SURFING
+	if not MetatileBehavior.is_surfable(faced_behavior):
+		return Mount.NOT_WATER
+	if not can_use(flags, Ability.SURF):
+		return Mount.NO_BADGE
+	return Mount.OK
+
+
+## ⚠️ **DISMOUNT IS DECIDED BY WHERE YOU LANDED, NOT BY A KEY.** Source has no
+## "get off" button — you ride ashore and the blob goes away. Since `[E1a]` only
+## lets you reach a tile that was already walkable, "not surfable" is exactly
+## "ashore", so this needs nothing else to know.
+static func should_dismount(landed_behavior: int, surfing: bool) -> bool:
+	return surfing and not MetatileBehavior.is_surfable(landed_behavior)

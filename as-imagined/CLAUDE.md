@@ -2060,6 +2060,24 @@ Live-driven in the real scene: **20 steps through Viridian Forest produced a wil
 
 ⚠️ **WHAT REMAINS OF E1, AND IT IS THE MAJORITY OF THE PLAYER-FACING WORK**: the mount/dismount interaction (facing water + A + the Soul Badge, with source's own "Would you like to SURF?" prompt), the surf blob sprite and the player's `surf_run` frames (both pulled, neither wired), water wild encounters (data already imported — `water_mons` on 98 Kanto maps), and the state actually living on the overworld rather than only on the resolver. **E1a is the RULES only** — nothing in play can surf yet.
 
+**[M27E E1b — mounting and dismounting] COMPLETE — 2026-08-03. ⚠️ NOT LIVE-DRIVEN; see the caveat at the end of this entry.**
+
+⚠️ **THE SURF STATE IS ON `OverworldSession`, AND THAT ONE IS NOT OPTIONAL.** A wild encounter can start while surfing — `water_mons` is imported for **98 Kanto maps** — and a battle is a real scene swap. Held on the overworld, the flag would clear the first time something attacked, dumping the player **onto water on foot, on a tile the step resolver refuses in every direction**. That is the same soft-lock `[M27C]`'s `start_cell` guard exists to prevent, arrived at from a new angle. `_resolver.surfing` is therefore pushed on **every boot**, not just on a mount, so a battle return or a loaded save arrives still on the water.
+
+⚠️ **THE SURF CHECK RUNS BEFORE `Interaction.resolve`, AND HAS TO.** Water carries no script and no entity, so `resolve` returns empty and the press would be eaten with nothing to show. Source reaches surfing through the ordinary interact path too (`EventScript_UseSurf`), not a dedicated key.
+
+**`can_mount` returns a REASON, not a bool** — four independent refusals (already surfing / not water / no badge / OK), because *"you cannot surf here"* and *"you cannot surf yet"* are different sentences and collapsing them would make the caller re-derive which to print. It is **pure and takes the faced behaviour** rather than reaching into `MapManager`, so it is testable without standing up a map. ⚠️ **Only NO_BADGE speaks**; facing land or already surfing fall through silently, or every press at a wall would answer a question about surfing.
+
+⚠️ **SHALLOW WATER OFFERS NO PROMPT** (D.06) — it is walkable, so a prompt there would offer to surf onto a tile you can already stand on. This is `[E1a]`'s non-surfable finding paying off a second time.
+
+**Dismount is decided by where you LANDED, not by a key** — source has no "get off". Since `[E1a]` only lets a surfing player reach a tile that was already walkable, *"landed somewhere unsurfable"* **is** *"landed ashore"*. Checked on the INPUT step path only; scripted `applymovement` is an authored cutscene and source's own forced walks off water do their own dismount.
+
+**Text is verbatim** from `data/text/surf.inc` — including the first line of the prompt (*"The water is dyed a deep blue…"*), which reads like scene-setting and is easy to drop. `Text_CurrentTooFast` is kept unused against E3's currents (`MB_FAST_WATER` is 2,831 cells over 12 Kanto maps). The ride message is **`{PLAYER} used SURF!`**, expanded through `TextBuffers` rather than `_expanded_pages()` — that one reads the VM's pending pages and there is no VM behind this.
+
+**Tests**: `m27e_surf_test` 16 → **28/28**. ⚠️ A parse error in `overworld.gd` (an untyped `Vector2i` inference, this project's own recorded GDScript gotcha) took `m27a_step_resolver` to 461/462 and `m27l_save_test` to 92/93 with their totals DROPPING — the aborted-function signature. Caught by the sweep, fixed; both back to **514/514** and **105/105**.
+
+⚠️ **THE WIRING IS NOT LIVE-DRIVEN, AND THIS IS THE ONE REAL GAP.** The suites cover the pure decision logic — `can_mount`, `should_dismount`, the behaviour set, the resolver rules — but the end-to-end path (face water → press A → prompt → YES → mount → ride → step ashore → dismount) has **never been run in the real scene**. Every previous tier this session that skipped a live drive had a defect the suites could not see: K-b's keyboard was unreachable from the keyboard, and L4's boot path needed three driver rewrites. **Assume the same here until it is driven.** That is the first thing the next session should do, before any new E-tier.
+
 ## M27K — Game flow
 
 **[M27K K-a — the starter] COMPLETE — 2026-08-03. Kanto's own Oak's Lab script gives you a real Pokémon.**

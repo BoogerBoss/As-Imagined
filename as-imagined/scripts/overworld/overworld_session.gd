@@ -118,6 +118,17 @@ static func heal_party() -> void:
 	party.active_indices = [0]
 
 
+## [M27E E1b] Is the player on the water?
+##
+## ⚠️ **STATIC, AND THIS ONE IS NOT OPTIONAL.** A wild encounter can start while
+## surfing — `water_mons` is imported for 98 Kanto maps — and a battle is a real
+## scene swap. Held on the overworld, this would clear itself the first time
+## something attacked, dumping the player onto the water on foot, standing on a
+## tile the step resolver refuses in every direction. That is the soft-lock
+## `[M27C]`'s own start_cell guard exists to avoid, arrived at from a new angle.
+static var surfing: bool = false
+
+
 ## [M27L L4] Which save slot this playthrough belongs to.
 ##
 ## ⚠️ Static, and it has to be: a battle is a real scene swap, so a slot held on
@@ -267,6 +278,7 @@ static func reset() -> void:
 	TextBuffers.identity = identity
 	playtime = 0.0
 	active_slot = 0
+	surfing = false
 	pending_new_game = false
 	pending_return = {}
 	pending_result = null

@@ -259,6 +259,11 @@ func _ready() -> void:
 		push_error("overworld: %s is not baked — run map_baker.tscn" % boot_map)
 		return
 	_resolver = manager.global_resolver()
+	# [M27E E1b] ⚠️ Pushed on EVERY boot, not just a mount. A battle return and a
+	# loaded save both rebuild this scene, and a player who was surfing must
+	# arrive still surfing — otherwise they land on water on foot, which the step
+	# resolver refuses in every direction.
+	_resolver.surfing = OverworldSession.surfing
 	_resume = resume
 	# Neighbours up front. Hysteresis-based loading as the player moves is the
 	# remaining half of C4; loading the starting map's neighbours is what makes
@@ -587,6 +592,16 @@ func _try_step(dir: int) -> void:
 	var prev_behavior := manager.behavior_at(_cell)
 	_cell = r["to"]
 	_elev = manager.elevation_at(_cell)
+	# [M27E E1b] ⚠️ RIDE ASHORE AND THE BLOB GOES AWAY — source has no "get off"
+	# key. `[E1a]` only lets a surfing player reach a tile that was already
+	# walkable, so "landed somewhere unsurfable" IS "landed ashore" and needs no
+	# rule of its own. Checked on the INPUT step path only; scripted movement
+	# (`applymovement`) is a cutscene the author controls, and source's own
+	# forced walks off water do their own dismount.
+	if FieldMoves.should_dismount(manager.behavior_at(_cell),
+			OverworldSession.surfing):
+		OverworldSession.surfing = false
+		_sync_surfing()
 	# [M27C C4] Load the new chunk's own neighbours on arrival, and unload
 	# nothing. Rob's call, and the measurements support it: stitchable fan-out
 	# is at most 4 (360 of 421 maps have none at all), so this tops out around 5
@@ -1525,6 +1540,12 @@ func _read_json(path: String) -> Dictionary:
 func try_interact() -> bool:
 	if _vm != null or _in_battle or _warping or _moving or _in_approach:
 		return false
+	# [M27E E1b] ⚠️ CHECKED BEFORE `Interaction.resolve`, because water carries no
+	# script and no entity — it would return empty and the press would be eaten
+	# with nothing to show for it. Source reaches surfing the same way, through
+	# the ordinary interact path (`EventScript_UseSurf`), not a dedicated key.
+	if _try_surf():
+		return true
 	var hit := Interaction.resolve(_cell, _facing,
 			func(c: Vector2i) -> int: return manager.behavior_at(c),
 			func(c: Vector2i) -> Variant: return manager.entity_node_at(c))
@@ -2089,3 +2110,60 @@ func _exit_arrival(w: Variant) -> void:
 	var t := create_tween()
 	t.tween_property(_player, "position", manager.local_pixel_of(_cell), 0.16)
 	await t.finished
+
+
+## [M27E E1b] Face water, press A, ride out — if the badge says so.
+##
+## ⚠️ **SILENT ON EVERY REFUSAL EXCEPT THE BADGE ONE.** Facing ordinary land, or
+## already surfing, must fall through to the normal interact path rather than
+## printing anything — otherwise every press at a wall would answer about surfing.
+## Only NO_BADGE speaks, because that is the one case where the player did aim at
+## water and deserves to know why nothing happened.
+func _try_surf() -> bool:
+	if _box == null or _yes_no == null:
+		return false
+	var faced: Vector2i = _cell + Vector2i(StepResolver.STEP[_facing])
+	var m := FieldMoves.can_mount(flags, manager.behavior_at(faced),
+			OverworldSession.surfing)
+	if m == FieldMoves.Mount.NOT_WATER or m == FieldMoves.Mount.ALREADY_SURFING:
+		return false
+	if m == FieldMoves.Mount.NO_BADGE:
+		_box.open(PackedStringArray([
+				FieldMoves.blocked_message(FieldMoves.Ability.SURF)]))
+		return true
+	_mount_surf.call_deferred()
+	return true
+
+
+## The prompt, then the ride. Deferred out of `try_interact` so the await does
+## not run inside the input handler that started it.
+func _mount_surf() -> void:
+	# The SAVE flow's own shape: the box and the prompt open together and the box
+	# closes on the answer. Awaiting `_box.closed` first would deadlock — nothing
+	# can close it, because the yes/no that takes the keypress is not up yet.
+	_box.open(PackedStringArray([FieldMoves.SURF_PROMPT]))
+	_yes_no.open()
+	var yes: bool = await _yes_no.chosen
+	_box.close()
+	if not yes:
+		return
+	OverworldSession.surfing = true
+	_sync_surfing()
+	# ⚠️ `{PLAYER}`, expanded at print time — the badge-only gate leaves no
+	# Pokemon to name, so the player is the subject.
+	# ⚠️ Expanded through `TextBuffers`, not `_expanded_pages()` — that one reads
+	# the VM's own pending pages and there is no VM behind this.
+	_box.open(PackedStringArray([
+			TextBuffers.new().expand(FieldMoves.used_message(
+					FieldMoves.Ability.SURF))]))
+
+
+## Push the session's surf state onto the resolver, which is what actually
+## decides whether water is passable.
+##
+## ⚠️ ONE WRITER. The resolver's flag is deliberately never set anywhere else —
+## two places deciding whether the player is on water is exactly how a mount that
+## half-took would happen.
+func _sync_surfing() -> void:
+	if _resolver != null:
+		_resolver.surfing = OverworldSession.surfing
