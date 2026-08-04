@@ -24,6 +24,9 @@ signal bag_selected()
 ## [M27I I5-2] POKéMON is gated on `FLAG_SYS_POKEMON_GET` exactly as source
 ## gates it, so it appears the moment that flag is set rather than needing code.
 signal pokemon_selected()
+## [M27L L2] SAVE was picked. The overworld owns the confirm/write/report flow;
+## this menu only reports the choice, exactly as it does for BAG and POKéMON.
+signal save_selected()
 signal closed()
 
 const MARGIN := 32
@@ -31,12 +34,13 @@ const WIDTH := 260
 const ROW_HEIGHT := 48
 
 ## Entry ids, in source's own order.
-enum Entry { POKEDEX, POKEMON, BAG, EXIT }
+enum Entry { POKEDEX, POKEMON, BAG, SAVE, EXIT }
 
 const ENTRY_TEXT := {
 	Entry.POKEDEX: "POKéDEX",
 	Entry.POKEMON: "POKéMON",
 	Entry.BAG: "BAG",
+	Entry.SAVE: "SAVE",
 	Entry.EXIT: "EXIT",
 }
 
@@ -95,6 +99,13 @@ static func build_entries(flags: FlagStore) -> Array[int]:
 	if flags != null and flags.flag_get("FLAG_SYS_POKEMON_GET"):
 		out.append(Entry.POKEMON)
 	out.append(Entry.BAG)   # unconditional in source
+	# [M27L L2] ⚠️ UNCONDITIONAL, and worth stating because the two entries above
+	# it are not. `BuildNormalStartMenu` gates POKéDEX and POKéMON on flags and
+	# then adds SAVE with no condition at all (`start_menu.c:349`) — you can save
+	# before you own a single Pokémon. Source's own PLAYER, POKéNAV and OPTION
+	# entries sit around it and are still absent here; SAVE is added now because
+	# M27L gives it something to do, not because the list is being completed.
+	out.append(Entry.SAVE)
 	out.append(Entry.EXIT)  # unconditional in source
 	return out
 
@@ -135,6 +146,9 @@ func confirm() -> int:
 		Entry.POKEMON:
 			close()
 			pokemon_selected.emit()
+		Entry.SAVE:
+			close()
+			save_selected.emit()
 		Entry.EXIT:
 			close()
 		_:

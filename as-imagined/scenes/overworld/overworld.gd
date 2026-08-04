@@ -381,6 +381,13 @@ func _process(_delta: float) -> void:
 	# fade, where they deliberately do.
 	if _in_battle:
 		return
+	# [M27L L2] ⚠️ TICKS HERE, ABOVE every menu and script gate, because a menu
+	# open or a cutscene running is still time the player has spent — source
+	# counts the whole session, not just the walking. It sits BELOW the
+	# `_in_battle` return only because a battle is a different scene that will
+	# tick its own time when M27L reaches it; noted so the omission is a known
+	# one rather than a hole.
+	OverworldSession.tick_playtime(_delta)
 	# [M27F Stage 3] Ordering is load-bearing. In-flight motion keeps advancing
 	# while a script runs — that IS what a cutscene is — so this sits ABOVE the
 	# `_vm` return, while `tick_entities` (which DECIDES on new wandering moves)
@@ -405,6 +412,30 @@ func _process(_delta: float) -> void:
 	# notice as a real script and
 	# `EventScript_FieldPoison` opens with `lockall`. This project simply has no
 	# VM to park it on, so the same lock is expressed by returning here.
+	# [M27L L2] ⚠️ **A YES/NO OPENED OUTSIDE THE SCRIPT VM HAD NO INPUT DRIVER AT
+	# ALL, AND THAT IS A REAL DEFECT OLDER THAN L2.** The only driver lived inside
+	# `_drive_script`'s WAIT_YES_NO branch, so `[M27K K-b]`'s own gender question
+	# ("Are you a boy? Or are you a girl?") — which does `_yes_no.open()` then
+	# `await _yes_no.chosen` with no VM running — could never be answered from the
+	# keyboard. K-b's live drive missed it for the same reason its keyboard bug
+	# was missed: the driver called `confirm()` directly instead of pressing keys.
+	# **A driver that reaches past the input layer cannot test the input layer.**
+	#
+	# Sits ABOVE the message-box block because a yes/no draws OVER the message it
+	# is asking about (layer 85 vs 80) and must take the input first — which is
+	# exactly what the condition below already assumed by excluding itself.
+	if _vm == null and _yes_no != null and _yes_no.is_open:
+		if _yes_no.accepts_input:
+			if Input.is_action_just_pressed("ui_up"):
+				_yes_no.move(-1)
+			elif Input.is_action_just_pressed("ui_down"):
+				_yes_no.move(1)
+			elif Input.is_action_just_pressed("ui_cancel"):
+				_yes_no.cancel()
+			elif Input.is_action_just_pressed("ui_accept"):
+				_yes_no.confirm()
+		return
+
 	if _vm == null and _box != null and _box.is_open \
 			and (_yes_no == null or not _yes_no.is_open):
 		# `advance` skips the typewriter on the first press (source lets you
@@ -659,6 +690,63 @@ func _drive_party_screen() -> void:
 		_party_screen.confirm()
 	elif Input.is_action_just_pressed("ui_cancel"):
 		_party_screen.close()
+
+
+## [M27L L2] SAVE, from the start menu. Source's own flow and its own text
+## (`data/text/save.inc`), in source's own order: confirm, then the SAVING
+## notice, then the report.
+##
+## ⚠️ **THE "SAVING… DON'T TURN OFF THE POWER" PAGE IS SHOWN EVEN THOUGH THIS
+## WRITE IS INSTANT.** On the GBA it is a real warning about real flash memory;
+## here `SaveManager.save` returns in under a millisecond. It is kept because it
+## is the beat the player expects between the yes and the confirmation, and
+## because dropping it would make a successful save read as if nothing happened.
+## Recorded as a deliberate keep rather than left to look like a stray page.
+##
+## ⚠️ `gText_AlreadySavedFile` ("There is already a saved file. Is it okay to
+## overwrite it?") is **deliberately not asked**. Source asks it because the GBA
+## has ONE save; with three slots the overwrite question belongs to slot
+## SELECTION (L3), and asking it here would be asking about a slot the player
+## never chose.
+const SAVE_CONFIRM := "Would you like to save the game?"
+const SAVE_IN_PROGRESS := "SAVING…\nDON'T TURN OFF THE POWER."
+const SAVE_DONE := "{PLAYER} saved the game."
+## ⚠️ TWO PAGES, not one string with a `\p` in it. Source's `\p` is a
+## PAGE-BREAK control code, not a character — GDScript reads it as an invalid
+## escape and refuses to parse the file. Every other multi-page line in this
+## scene is already an Array for the same reason.
+const SAVE_FAILED := ["Save error.", "Please exchange the\nbackup memory."]
+
+
+## Which slot the field writes to.
+##
+## ⚠️ A STAND-IN, and a stated one: until L3's slot selection exists there is
+## nothing that could have chosen a slot, so the field saves to 0. L3 replaces
+## this with the slot the player picked at the title screen.
+var active_slot := 0
+
+
+func _on_start_menu_save() -> void:
+	if _box == null or _yes_no == null:
+		return
+	# ⚠️ The box stays OPEN under the prompt rather than being dismissed first —
+	# the same shape the VM's own WAIT_YES_NO path uses, so the question is still
+	# on screen while it is being answered. `_say` would await `closed` and make
+	# the player press A just to reach the choice.
+	_box.open(PackedStringArray([TextBuffers.new().expand(SAVE_CONFIRM)]))
+	_yes_no.open()
+	var yes: bool = await _yes_no.chosen
+	_box.close()
+	if not yes:
+		return
+	await _say([SAVE_IN_PROGRESS])
+	var ok := SaveManager.save(active_slot, SaveManager.build_payload(
+			manager.chunk_owning(_cell), _cell, _facing, _elev,
+			OverworldSession.playtime_seconds()))
+	# ⚠️ Expanded through TextBuffers, so `{PLAYER}` is the name the player chose
+	# at `[M27K K-b]` rather than a hardcoded one — this is the same line source
+	# writes as `gText_PlayerSavedGame`.
+	await _say([SAVE_DONE] if ok else SAVE_FAILED)
 
 
 func _on_start_menu_pokemon() -> void:
@@ -1375,6 +1463,7 @@ func _setup_scripting() -> void:
 	_party_screen = FieldPartyScreen.new()
 	add_child(_party_screen)
 	_start_menu.bag_selected.connect(_on_start_menu_bag)
+	_start_menu.save_selected.connect(_on_start_menu_save)
 	_start_menu.pokemon_selected.connect(_on_start_menu_pokemon)
 	_bag_screen.item_use_requested.connect(_on_bag_item_use)
 	_party_screen.mon_chosen.connect(_on_party_mon_chosen)

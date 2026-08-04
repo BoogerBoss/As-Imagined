@@ -226,7 +226,12 @@ func _test_start_menu() -> void:
 	var e := FieldStartMenu.build_entries(flags)
 	# ⚠️ SHORT IS SOURCE'S OWN RESULT, NOT A STUB. BuildNormalStartMenu gates
 	# POKéDEX and POKéMON on flags that are genuinely unset here.
-	_chk("E.01 a fresh save shows only BAG and EXIT", e.size() == 2)
+	# [M27L L2] BAG, SAVE, EXIT — SAVE joined the unconditional set, which is
+	# source's own shape (`start_menu.c:349` adds it with no flag test at all).
+	# The CLAIM here is unchanged: the list is short because two entries are
+	# genuinely gated off, not because it is a stub.
+	_chk("E.01 a fresh save shows only the unconditional entries", e.size() == 3
+			and e.has(FieldStartMenu.Entry.SAVE))
 	_chk("E.02 BAG is unconditional", e.has(FieldStartMenu.Entry.BAG))
 	_chk("E.03 so is EXIT", e.has(FieldStartMenu.Entry.EXIT))
 	_chk("E.04 POKéDEX is absent until its flag is set",
@@ -246,10 +251,14 @@ func _test_start_menu() -> void:
 	_chk("E.08 it opens on the first entry", m.is_open and m.index == 0)
 	# Source's start menu WRAPS, unlike the bag's item list.
 	m.move(-1)
-	_chk("E.09 and WRAPS, unlike the bag's rows", m.index == 1)
+	# [M27L L2] Wraps to the LAST entry, whatever that is — read from the list
+	# rather than hardcoded, so adding an entry cannot make this assert the wrong
+	# index again.
+	_chk("E.09 and WRAPS, unlike the bag's rows",
+			m.index == m.entries.size() - 1 and m.entries.size() > 1)
 	var got := [false]
 	m.bag_selected.connect(func() -> void: got[0] = true)
-	m.move(-1)
+	m.move(1)
 	_chk("E.10 back on BAG", m.index == 0)
 	var chosen: int = m.confirm()
 	_chk("E.11 confirming BAG emits it", chosen == FieldStartMenu.Entry.BAG and got[0])

@@ -106,6 +106,26 @@ static func heal_party() -> void:
 	party.active_indices = [0]
 
 
+## [M27L L2] Seconds of play in THIS playthrough.
+##
+## ⚠️ Static for the same reason the bag is — a battle is a real scene swap, and
+## a counter living on the overworld would reset every fight, so the CONTINUE
+## card would report the time since the last battle rather than the playthrough.
+##
+## ⚠️ Accumulated as a FLOAT and reported as an int. Ticking `+= delta` into an
+## int truncates every frame, which at 60 fps loses most of an hour per hour —
+## the kind of drift that looks like a working counter.
+static var playtime: float = 0.0
+
+
+static func tick_playtime(delta: float) -> void:
+	playtime += maxf(0.0, delta)
+
+
+static func playtime_seconds() -> int:
+	return int(playtime)
+
+
 ## Where to put the player when the overworld next loads, or empty for "use the
 ## scene's own start_map". Written when a battle starts, consumed on return.
 static var pending_return: Dictionary = {}
@@ -200,6 +220,7 @@ static func reset() -> void:
 	respawn = RespawnPoint.new()
 	identity = PlayerIdentity.new()
 	TextBuffers.identity = identity
+	playtime = 0.0
 	pending_return = {}
 	pending_result = null
 	pending_trainer_key = ""

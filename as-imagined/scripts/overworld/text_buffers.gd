@@ -43,7 +43,28 @@ const RIVAL_NAME := "BLUE"
 ## process agrees without threading it through ~30 construction sites, and so a
 ## test can set it directly — the same shape `BattleSetupContext` already uses.
 ## Null until a new game names someone, which is what the fallbacks cover.
+##
+## ⚠️ **[M27L L2] AN OVERRIDE NOW, NOT THE ONLY SOURCE — see `active_identity()`.**
+## It used to be the only source, and that was a real bug: it is written in
+## exactly ONE place (`OverworldSession.reset()`), so a session whose identity was
+## named through any other path left this pointing elsewhere and `{PLAYER}`
+## silently rendered the fallback. Found by L2's live drive, which saved as a
+## player called ROB and printed *"LEAF saved the game."*
 static var identity: PlayerIdentity = null
+
+
+## Who `{PLAYER}` actually resolves against.
+##
+## ⚠️ Prefers the explicit override, then falls back to the SESSION's own.
+## `OverworldSession.identity` is the one true answer in production; the static
+## above stays because test sites set it directly and a battle-side test has no
+## session to speak of. Reading the session here is what stops the two diverging
+## — the previous arrangement kept two references in step by hand, and therefore
+## did not.
+static func active_identity() -> PlayerIdentity:
+	if identity != null:
+		return identity
+	return OverworldSession.identity
 
 ## ⚠️ `{KUN}` is genuinely EMPTY in English — `gText_ExpandedPlaceholder_Kun`
 ## and `_Chan` are both `_("")` (`strings.c:8-9`). It is a Japanese honorific
@@ -150,10 +171,11 @@ func _value_for(name: String) -> String:
 	if slot >= 0:
 		return _slots[slot]
 	# Identity first: a real named player must win over the placeholder.
-	if identity != null:
+	var who := active_identity()
+	if who != null:
 		match name:
-			"PLAYER": return identity.display_name()
-			"RIVAL": return identity.display_rival_name()
+			"PLAYER": return who.display_name()
+			"RIVAL": return who.display_rival_name()
 	if FIXED.has(name):
 		return str(FIXED[name])
 	# Control markers the extractor preserved (`{PLAY_BGM}`, `{FONT_NORMAL}`,

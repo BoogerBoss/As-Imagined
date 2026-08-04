@@ -14,7 +14,7 @@ extends Node
 ##   * a save file is UNTRUSTED: corrupt, truncated, future-versioned and
 ##     hand-edited payloads all fail closed rather than half-loading.
 
-const EXPECTED_TOTAL := 54
+const EXPECTED_TOTAL := 69
 
 ## A slot index deliberately outside SLOT_COUNT.
 const BAD_SLOT := 9
@@ -41,6 +41,8 @@ func _ready() -> void:
 	_test_round_trip()
 	_test_untrusted()
 	_test_summary()
+	_test_save_affordance()
+	_test_drive_findings()
 
 	for i in range(SaveManager.SLOT_COUNT):
 		SaveManager.erase(i)
@@ -353,3 +355,113 @@ func _test_summary() -> void:
 	_chk("F.06 an empty slot has no summary at all",
 			SaveManager.summary(1).is_empty())
 	SaveManager.erase(0)
+
+
+## --- G. [M27L L2] the SAVE affordance and the playtime counter ---
+func _test_save_affordance() -> void:
+	# ⚠️ **UNCONDITIONAL, WHERE THE TWO ENTRIES ABOVE IT ARE NOT.**
+	# `BuildNormalStartMenu` gates POKéDEX and POKéMON on flags and then adds
+	# SAVE with no condition at all (`start_menu.c:349`) — you can save before you
+	# own a single Pokémon. A fixture with the flags SET could not tell an
+	# unconditional entry from a gated one, so this uses an empty store.
+	var bare := FieldStartMenu.build_entries(FlagStore.new())
+	_chk("G.01 SAVE is offered with no flags set at all",
+			bare.has(FieldStartMenu.Entry.SAVE))
+	_chk("G.02 while POKeDEX and POKeMON are still correctly absent",
+			not bare.has(FieldStartMenu.Entry.POKEDEX)
+			and not bare.has(FieldStartMenu.Entry.POKEMON))
+	# ⚠️ Source's order: ... BAG, [PLAYER], SAVE, [OPTION], EXIT. SAVE sits
+	# BEFORE EXIT, and a list that appended it last would still contain it.
+	var full := FlagStore.new()
+	full.flag_set("FLAG_SYS_POKEDEX_GET")
+	full.flag_set("FLAG_SYS_POKEMON_GET")
+	var entries := FieldStartMenu.build_entries(full)
+	_chk("G.03 and it sits before EXIT, in source's own order",
+			entries.find(FieldStartMenu.Entry.SAVE)
+			< entries.find(FieldStartMenu.Entry.EXIT)
+			and entries.find(FieldStartMenu.Entry.SAVE)
+			> entries.find(FieldStartMenu.Entry.BAG))
+
+	var menu := FieldStartMenu.new()
+	add_child(menu)
+	menu.open(full)
+	var fired: Array[bool] = []
+	menu.save_selected.connect(func() -> void: fired.append(true))
+	# Walk down to SAVE the way a player would, rather than reaching past the
+	# widget to set the index — the cursor has to be able to REACH it.
+	for i in range(entries.size()):
+		if entries[menu.index] == FieldStartMenu.Entry.SAVE:
+			break
+		menu.move(1)
+	_chk("G.03b and the cursor can actually reach it",
+			entries[menu.index] == FieldStartMenu.Entry.SAVE)
+	menu.confirm()
+	_chk("G.04 picking it reports the choice and closes",
+			fired.size() == 1 and not menu.is_open)
+	menu.free()
+
+	# ⚠️ ACCUMULATED AS A FLOAT. Ticking `+= delta` into an int truncates every
+	# frame — at 60 fps that loses most of an hour per hour, which looks like a
+	# working counter right up until someone reads it.
+	OverworldSession.reset()
+	_chk("G.05 a new playthrough starts at zero",
+			OverworldSession.playtime_seconds() == 0)
+	for i in range(600):
+		OverworldSession.tick_playtime(1.0 / 60.0)
+	_chk("G.06 sub-second ticks accumulate rather than truncating to zero",
+			OverworldSession.playtime_seconds() == 10)
+	# The overworld's own text is source's, verbatim from `data/text/save.inc`.
+	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
+	_chk("G.07 the save flow uses source's own three lines",
+			str(ow.SAVE_CONFIRM) == "Would you like to save the game?"
+			and str(ow.SAVE_IN_PROGRESS).contains("DON'T TURN OFF THE POWER")
+			and str(ow.SAVE_DONE).contains("{PLAYER}"))
+	_chk("G.08 and the report is a PLACEHOLDER, expanded at print time",
+			TextBuffers.new().expand(str(ow.SAVE_DONE)).contains("saved the game")
+			and not str(ow.SAVE_DONE).contains("LEAF"))
+	ow.free()
+
+
+## --- H. two bugs the L2 LIVE DRIVE found, neither of them L2's own ---
+func _test_drive_findings() -> void:
+	# ⚠️ **`{PLAYER}` RENDERED THE FALLBACK FOR A NAMED PLAYER.**
+	# `TextBuffers.identity` is written in exactly ONE place
+	# (`OverworldSession.reset()`), so a session named through any other path left
+	# it pointing elsewhere — the drive saved as ROB and printed "LEAF saved the
+	# game." A fixture that SET `TextBuffers.identity` could not see this, which
+	# is why this one deliberately clears it.
+	OverworldSession.reset()
+	TextBuffers.identity = null
+	OverworldSession.identity.set_name("ROB")
+	_chk("H.01 {PLAYER} follows the SESSION even with no override set",
+			TextBuffers.new().expand("{PLAYER}") == "ROB")
+	var other := PlayerIdentity.new()
+	other.set_name("OTHER")
+	TextBuffers.identity = other
+	_chk("H.02 and an explicit override still wins, for the test sites that use it",
+			TextBuffers.new().expand("{PLAYER}") == "OTHER")
+	TextBuffers.identity = null
+	# And with nothing named anywhere, the fallback is still a name.
+	OverworldSession.reset()
+	TextBuffers.identity = null
+	_chk("H.03 with nobody named at all it still reads as a name, not a blank",
+			TextBuffers.new().expand("{PLAYER}") != "")
+
+	# ⚠️ **A YES/NO OPENED OUTSIDE THE SCRIPT VM HAD NO INPUT DRIVER.** The only
+	# one lived in `_drive_script`'s WAIT_YES_NO branch, so `[M27K K-b]`'s gender
+	# question could never be answered from the keyboard. Asserted on the SHAPE of
+	# `_process`, which is all a headless test can reach — the behaviour itself
+	# was confirmed by the live drive.
+	var src := FileAccess.open("res://scenes/overworld/overworld.gd",
+			FileAccess.READ).get_as_text()
+	var vm_branch := src.find("ScriptVM.Pause.WAIT_YES_NO")
+	var free_branch := src.find("_vm == null and _yes_no != null and _yes_no.is_open")
+	_chk("H.04 a yes/no outside the VM has an input driver at all",
+			free_branch >= 0)
+	_chk("H.05 and it is a SECOND one, not the VM's own branch moved",
+			vm_branch >= 0 and free_branch < vm_branch)
+	# ⚠️ It must sit ABOVE the message-box block, because a yes/no draws OVER the
+	# message it is asking about and has to take the input first.
+	var box_branch := src.find("_vm == null and _box != null and _box.is_open")
+	_chk("H.06 and it takes input BEFORE the message box underneath it",
+			box_branch >= 0 and free_branch < box_branch)
