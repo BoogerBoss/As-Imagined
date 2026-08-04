@@ -122,6 +122,17 @@ static func tick_playtime(delta: float) -> void:
 	playtime += maxf(0.0, delta)
 
 
+## ⚠️ **TRUNCATES, AND MUST KEEP TRUNCATING.** Verified against the wall clock in
+## the real scene (2.001 s elapsed -> 1.998 s counted over 290 frames, and it
+## keeps counting with a menu open). The one artifact: summing 3600 ticks of
+## exactly 1.0/60.0 lands on 59.999999999999986, so this reports **59, not 60**.
+##
+## That is float accumulation, not a counter bug, and truncation is the RIGHT
+## semantics — "whole seconds played" should never claim a second the player has
+## not finished. Do NOT "fix" it with `round()`: that would over-report by up to
+## half a second at every read, which is a worse answer than under-reporting by
+## microseconds. The error is bounded below one second in total and the card
+## displays H:MM, so it is invisible where it is actually shown.
 static func playtime_seconds() -> int:
 	return int(playtime)
 

@@ -14,7 +14,7 @@ extends Node
 ##   * a save file is UNTRUSTED: corrupt, truncated, future-versioned and
 ##     hand-edited payloads all fail closed rather than half-loading.
 
-const EXPECTED_TOTAL := 69
+const EXPECTED_TOTAL := 86
 
 ## A slot index deliberately outside SLOT_COUNT.
 const BAD_SLOT := 9
@@ -43,6 +43,7 @@ func _ready() -> void:
 	_test_summary()
 	_test_save_affordance()
 	_test_drive_findings()
+	_test_title_screen()
 
 	for i in range(SaveManager.SLOT_COUNT):
 		SaveManager.erase(i)
@@ -410,6 +411,22 @@ func _test_save_affordance() -> void:
 		OverworldSession.tick_playtime(1.0 / 60.0)
 	_chk("G.06 sub-second ticks accumulate rather than truncating to zero",
 			OverworldSession.playtime_seconds() == 10)
+	# ⚠️ **TRUNCATES, NEVER ROUNDS UP.** Summing exact 1/60 ticks lands epsilon
+	# BELOW the integer (3600 of them give 59.999999999999986), so an hour of
+	# play can report one second short. That is the correct direction: "whole
+	# seconds played" must never claim a second the player has not finished.
+	# This pins the direction so a later session cannot "fix" it with `round()`,
+	# which would over-report at every single read.
+	OverworldSession.reset()
+	for i in range(3600):
+		OverworldSession.tick_playtime(1.0 / 60.0)
+	var secs := OverworldSession.playtime_seconds()
+	_chk("G.06b and it never reports MORE time than was played",
+			secs <= 60 and secs >= 59)
+	OverworldSession.reset()
+	OverworldSession.tick_playtime(9.99)
+	_chk("G.06c a part-second is dropped, not rounded up to the next one",
+			OverworldSession.playtime_seconds() == 9)
 	# The overworld's own text is source's, verbatim from `data/text/save.inc`.
 	var ow: Node2D = load("res://scenes/overworld/overworld.tscn").instantiate() as Node2D
 	_chk("G.07 the save flow uses source's own three lines",
@@ -465,3 +482,106 @@ func _test_drive_findings() -> void:
 	var box_branch := src.find("_vm == null and _box != null and _box.is_open")
 	_chk("H.06 and it takes input BEFORE the message box underneath it",
 			box_branch >= 0 and free_branch < box_branch)
+
+
+## --- I. [M27L L3] the title screen and slot selection ---
+func _test_title_screen() -> void:
+	for i in range(SaveManager.SLOT_COUNT):
+		SaveManager.erase(i)
+
+	var t := TitleScreen.new()
+	add_child(t)
+	t.open()
+	_chk("I.01 it opens on the first slot", t.is_open and t.index == 0)
+	# ⚠️ AN EMPTY SLOT IS ONE LINE, NOT A CARD OF BLANKS. Four empty fields read
+	# as a broken save rather than a free slot.
+	_chk("I.02 an empty slot offers NEW GAME and nothing else",
+			t.card_lines(0).size() == 1
+			and str(t.card_lines(0)[0]) == TitleScreen.NEW_GAME)
+	_chk("I.03 and reports itself as having no save", not t.slot_has_save(0))
+
+	# ⚠️ CLAMPS rather than wrapping — deliberately unlike source's start menu.
+	# A wrap on a three-item list makes it easy to overshoot onto a save you did
+	# not mean to overwrite.
+	t.move(-1)
+	_chk("I.04 up on the first slot CLAMPS rather than wrapping to the last",
+			t.index == 0)
+	t.move(99)
+	_chk("I.05 and down clamps at the last", t.index == SaveManager.SLOT_COUNT - 1)
+
+	var got: Array = []
+	t.slot_chosen.connect(func(s: int, is_new: bool) -> void: got.append([s, is_new]))
+	t.confirm()
+	_chk("I.06 confirming an empty slot reports it as a NEW GAME",
+			got.size() == 1 and int(got[0][0]) == SaveManager.SLOT_COUNT - 1
+			and bool(got[0][1]))
+	t.free()
+
+	# Now put a real save in slot 1 and check the card.
+	OverworldSession.reset()
+	OverworldSession.identity.set_name("ROB")
+	OverworldSession.flags.flag_set("FLAG_BADGE01_GET")
+	OverworldSession.flags.flag_set("FLAG_BADGE02_GET")
+	var party := BattleParty.new()
+	party.members.append(_damaged_mon())
+	OverworldSession.party = party
+	SaveManager.save(1, SaveManager.build_payload(
+			"PalletTown_Frlg", Vector2i(5, 7), 2, 3, 3725))
+
+	var t2 := TitleScreen.new()
+	add_child(t2)
+	t2.open()
+	_chk("I.07 a filled slot reports itself as having a save",
+			t2.slot_has_save(1) and not t2.slot_has_save(0))
+	var card := " | ".join(t2.card_lines(1))
+	# Source's own four fields, in source's own order (`main_menu.c:274-277`).
+	_chk("I.08 its card is CONTINUE plus source's own fields",
+			card.begins_with(TitleScreen.CONTINUE) and card.contains("PLAYER")
+			and card.contains("TIME") and card.contains("BADGES"))
+	_chk("I.09 with the real player, time and badge count on it",
+			card.contains("ROB") and card.contains("1:02") and card.contains("2"))
+	# ⚠️ THE POKeDEX ROW IS A STUB AND SAYS SO ON THE CARD. Source would omit the
+	# row entirely (`main_menu.c:2193` gates it on FLAG_SYS_POKEDEX_GET); Rob's
+	# call was to show it marked. This pins that it is LABELLED, so no later
+	# session reads the 0 as a real count.
+	_chk("I.10 and a POKeDEX row that is visibly not yet real",
+			card.contains("POKéDEX") and card.contains("not yet tracked"))
+
+	# ⚠️ The screen must reflect DISK, not memory — a slot deleted since the last
+	# open has to read empty.
+	SaveManager.erase(1)
+	t2.open()
+	_chk("I.11 re-opening re-reads disk rather than trusting what it had",
+			not t2.slot_has_save(1))
+	t2.free()
+
+	# --- CONTINUE itself ---
+	SaveManager.save(2, SaveManager.build_payload(
+			"PalletTown_Frlg", Vector2i(5, 7), 2, 3, 3725))
+	OverworldSession.reset()
+	TextBuffers.identity = null
+	var resume := TitleScreen.begin_continue(2)
+	_chk("I.12 continuing loads the playthrough back into the session",
+			OverworldSession.identity.name == "ROB"
+			and OverworldSession.party.members.size() == 1
+			and OverworldSession.party.members[0].current_hp == 7)
+	# ⚠️ RETURNS `pending_return`'s OWN SHAPE, so the overworld's existing
+	# post-battle resume path consumes it unchanged rather than growing a second.
+	_chk("I.13 and hands back a resume position in pending_return's shape",
+			str(resume.get("map", "")) == "PalletTown_Frlg"
+			and resume.get("cell") == Vector2i(5, 7)
+			and resume.has("facing") and resume.has("elevation"))
+	# ⚠️ **THE EMPTY RETURN IS NOT THE POINT — THE SESSION SURVIVING IS.** A first
+	# version asserted only `begin_continue(0).is_empty()` and was VACUOUS:
+	# deleting the guard still returns empty, because `position_of({})` is empty
+	# too. The real damage of dropping it is that `apply({})` runs and WIPES the
+	# live playthrough, so a mis-aimed CONTINUE on a blank slot would erase the
+	# session in memory. That is what this checks.
+	OverworldSession.reset()
+	OverworldSession.identity.set_name("STILLHERE")
+	var untouched := TitleScreen.begin_continue(0)
+	_chk("I.14 an empty slot cannot be continued into",
+			untouched.is_empty())
+	_chk("I.14b and the attempt leaves the live playthrough alone",
+			OverworldSession.identity.name == "STILLHERE")
+	SaveManager.erase(2)
