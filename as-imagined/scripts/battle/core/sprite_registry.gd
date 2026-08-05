@@ -16,9 +16,10 @@ extends RefCounted
 # battle_screen.gd's own dex-0 "unknown" fallback handling). This registry
 # is a pure lookup, not a fallback-substitution policy-maker.
 #
-# get_icon() deliberately NOT built -- nothing in this project's UI
-# consumes party icons yet (the switch menu is still text buttons); adding
-# it now would be unused, untested surface.
+# [M26E3-2] get_icon() -- the 386 already-pulled party icon sheets' first
+# real consumer (SwitchSelectScreen). Mirrors get_front()'s exact frame-
+# slicing shape: a 32x64 2-frame vertical sheet, frame 0/1 selected the
+# same way get_front() already does for its own 2-frame idle-bob.
 #
 # Two explicit resolution functions rather than one generic
 # field-name-driven helper -- GDScript's Object.get()/set() reflection on
@@ -28,6 +29,8 @@ extends RefCounted
 
 const FRONT_DIR := "res://assets/sprites/pokemon/front"
 const BACK_DIR := "res://assets/sprites/pokemon/back"
+const ICON_DIR := "res://assets/sprites/pokemon/icon"
+const ICON_FRAME_SIZE := Vector2(32, 32)
 
 # Every front/back sprite sheet has a fixed 64x64-per-frame canvas
 # (confirmed via direct pixel inspection, uniform across every species
@@ -55,8 +58,10 @@ const Y_OFFSET_PATH := "res://data/sprite_y_offsets.json"
 
 static var _front_path_by_dex: Dictionary = {}
 static var _back_path_by_dex: Dictionary = {}
+static var _icon_path_by_dex: Dictionary = {}
 static var _front_scanned := false
 static var _back_scanned := false
+static var _icon_scanned := false
 static var _y_offset_by_dex: Dictionary = {}
 static var _y_offset_loaded := false
 
@@ -109,6 +114,24 @@ static func get_front(dex: int, frame: int = 0) -> Texture2D:
 	var atlas := AtlasTexture.new()
 	atlas.atlas = full_sheet
 	atlas.region = Rect2(0, actual_frame * FRAME_SIZE.y, FRAME_SIZE.x, FRAME_SIZE.y)
+	return atlas
+
+
+static func get_icon(dex: int, frame: int = 0) -> Texture2D:
+	if not _icon_scanned:
+		_scan_dir(ICON_DIR, _icon_path_by_dex)
+		_icon_scanned = true
+	var path: String = _icon_path_by_dex.get(dex, "")
+	if path.is_empty():
+		return null
+	var full_sheet: Texture2D = load(path)
+	if full_sheet == null:
+		return null
+	var has_second_frame: bool = full_sheet.get_height() >= ICON_FRAME_SIZE.y * 2
+	var actual_frame: int = frame if has_second_frame else 0
+	var atlas := AtlasTexture.new()
+	atlas.atlas = full_sheet
+	atlas.region = Rect2(0, actual_frame * ICON_FRAME_SIZE.y, ICON_FRAME_SIZE.x, ICON_FRAME_SIZE.y)
 	return atlas
 
 

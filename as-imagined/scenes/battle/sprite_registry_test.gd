@@ -32,6 +32,7 @@ func _ready() -> void:
 	_test_unknown_fallback()
 	_test_invalid_dex()
 	_test_frame_1_animation()
+	_test_get_icon()
 
 	var total := _pass + _fail
 	print("sprite_registry_test: %d/%d passed" % [_pass, total])
@@ -110,3 +111,37 @@ func _check_frame_pair(dex: int) -> void:
 	else:
 		_chk("dex %d: frame 1's region is genuinely distinct from frame 0's" % dex,
 				frame1.region != frame0.region)
+
+
+# [M26E3-2] get_icon() -- the 386-icon pull's first real consumer
+# (SwitchSelectScreen). Confirmed via direct pixel inspection that EVERY
+# one of the 386 icon sheets is uniformly 32x64 (no single-frame exception
+# the way get_front's own 2-frame idle-bob has Unown/Castform) -- so unlike
+# _test_frame_1_animation above, no SINGLE_FRAME_DEX carve-out is needed
+# here.
+const EXPECTED_ICON_FRAME_SIZE := Vector2(32, 32)
+
+
+func _test_get_icon() -> void:
+	for dex in range(DEX_MIN, DEX_MAX + 1):
+		var frame0: Texture2D = SpriteRegistry.get_icon(dex, 0)
+		var frame1: Texture2D = SpriteRegistry.get_icon(dex, 1)
+		_chk("dex %d: get_icon frame 0 resolves to a non-null Texture2D" % dex, frame0 != null)
+		_chk("dex %d: get_icon frame 1 resolves to a non-null Texture2D" % dex, frame1 != null)
+		if frame0 == null or frame1 == null:
+			continue
+		_chk("dex %d: get_icon frame 0 is exactly 32x32" % dex, frame0.get_size() == EXPECTED_ICON_FRAME_SIZE)
+		_chk("dex %d: get_icon frame 1 is exactly 32x32" % dex, frame1.get_size() == EXPECTED_ICON_FRAME_SIZE)
+		_chk("dex %d: get_icon frame 1's region is genuinely distinct from frame 0's" % dex,
+				(frame1 as AtlasTexture).region != (frame0 as AtlasTexture).region)
+
+	# [Real finding, this session] Unlike front/back sprites, there is no
+	# dex-0 "unknown.png" fallback icon anywhere in the 386-file pull --
+	# get_icon(0) must gracefully return null (a caller-visible "no icon",
+	# not a crash), matching get_front/get_back's own established
+	# null-on-unresolvable convention rather than inventing a placeholder
+	# asset that doesn't exist.
+	_chk("dex 0 (no icon fallback exists): get_icon returns null, not a crash",
+			SpriteRegistry.get_icon(0) == null)
+	_chk("invalid dex %d: get_icon returns null, not a crash" % INVALID_DEX,
+			SpriteRegistry.get_icon(INVALID_DEX) == null)

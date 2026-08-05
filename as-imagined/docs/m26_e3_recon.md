@@ -161,6 +161,246 @@ remain open.
 
 ---
 
+## 0c. E3-2 "Dynamics" — SHIPPED 2026-08-05
+
+**A real correction to this doc's own §1.3, found by this session's own Step 0 —
+not silently absorbed.** §1.3 claimed the mon icon's 5-tier `sMonIconAnims[]`
+speed array (`src/pokemon_icon.c:48-92`, delays 6/8/14/22/29 GBA frames,
+confirmed real) is selected by HP fraction. It is not, for the party-menu/
+in-battle icon context: a full search of every `StartSpriteAnim` call
+touching a party-menu mon-icon sprite (`party_menu.c`) found none of them
+ever choosing anything but tier 0 (the default `animNum`) — there is no
+HP-fraction-driven tier-selection call anywhere in this reference tree for
+this context. Every icon here therefore animates at the one real, confirmed
+tier-0 cadence (6-frame delay, i.e. `6/60` seconds) rather than a fictitious
+HP-tiered one. The recon's own §1.3 line is left as originally written per
+this project's no-retroactive-edit convention; this section is the correction
+record.
+
+**Real per-species mon icons** — the 386-icon pull's first consumer.
+New `SpriteRegistry.get_icon(dex, frame) -> Texture2D` mirrors `get_front()`'s
+exact frame-slicing shape (a 32×64 2-frame vertical sheet, frame 0/1 sliced
+via `AtlasTexture`); confirmed via direct pixel inspection that all 386 icon
+files are uniformly 32×64 with no single-frame exception (unlike `get_front`'s
+own Unown/Castform carve-out). Icons render at 2× (64×64 on-screen), centered
+at the real `004_Party.rb` `refresh_pokemon_icon` offsets (active:
+`self.x+20, self.y+38`; bench: `self.x+8, self.y+26`, both `CENTER`-anchored,
+doubled), and animate via one shared `_process()` timer driving every icon in
+lockstep — a deliberate simplification over source's independent per-sprite
+`animDelayCounter`, behaviorally indistinguishable here since every icon
+shares the identical real cadence.
+
+**Selection bounce**, from `SpriteCB_BouncePartyMonIcon`/
+`AnimateSelectedPartyIcon`: the currently-selected mon's icon bobs
+`y2 = -3/+1` (doubled `-6/+2`) synced to the frame flip; every unselected icon
+sits at a fixed `-4px` (doubled `-8px`) offset instead — reproduced as a
+y-shift for the round/active panel's icon and an x-shift for bench icons,
+matching the two real branches' own differing offset axis.
+
+**The ball-icon cursor marker** — resolves the E3-1 recon's own flagged
+discrepancy (§1.3's "32×32 closed/open" GBA-source citation vs. the
+44×56 two-file pack pull). Confirmed directly against `004_Party.rb`'s
+`refresh_ball_graphic`: the PACK's own real mechanism is a plain two-state
+(`sel`/`desel`) `ChangelingSprite` swap, not an animated open/close cursor —
+this project follows the pack's real mechanism (Route B, decision 1), not the
+raw GBA source's different one. `party_ball_icon.png`/`party_ball_icon_sel.png`
+swap on real cursor-driven selection (wired via each mon button's own
+`mouse_entered`, alongside — not instead of — the existing `_wire_cursor_group`
+"▶"-text mechanism), defaulting to slot 0 selected exactly like the shared
+cursor group's own default.
+
+**Real `overlay_hp_back`/`overlay_hp` HP-bar compositing** — a real trough
+background (`party_hp_trough.png`/`_faint.png`, per-state) plus a
+live-cropped zone-color fill (`party_hp_zones.png`, 3 stacked 8px
+green/yellow/red bands, confirmed via direct pixel sample top-to-bottom)
+replacing the plain-text-only HP display; the numeric "HP cur/max" text is
+KEPT alongside it, matching source's own `draw_hp` (which draws both). Zone
+selection uses this project's own already-decided 50%/20% thresholds (§0a
+decision 4 — `_hp_bar_color`'s existing thresholds), not the pack's own
+slightly different ½/¼ bands, applied to the *same* 3-band asset. Fill width
+rounds to the nearest 2 native px, matching `004_Party.rb`'s own
+`w = ((w / 2).round) * 2` rule exactly. Trough and fill positions were
+confirmed, not guessed, via direct pixel inspection of `party_hp_trough.png`'s
+own baked-in "HP" label glyph — the fill's real relative offset
+(`(178,16)` bench / `(50,64)` active, from `draw_hp`'s own blit call) sits
+cleanly inside the trough's own box, leaving exactly the gap the label
+occupies.
+
+**The panel `_sel` state swap** — bench row art now swaps
+`panel_rect_base.png` → `panel_rect_sel.png` on real cursor-driven selection
+(the active round panel is never selectable in this sub-phase's own scope, so
+it never swaps). A new per-button `StyleBoxEmpty` with its own
+`content_margin_left` (not the shared static empty-chrome style every other
+menu button uses) shifts each row's text clear of the new icon/ball graphics,
+which — per the real measured coordinates — sit partly to the LEFT of the
+row's own bounding rect by design (matching source's own overlapping
+icon+ball-over-row-edge composition, not a layout bug).
+
+**Real, non-headless screenshot verification** (singles + doubles, both a
+resting state and a live simulated hover via the real button `mouse_entered`
+signal — not a direct internal-function call, so the shared "▶" text cursor,
+the ball swap, and the panel `_sel` swap were all confirmed moving together
+exactly as they will in real interactive play): icons render correctly
+per-species in every slot (active and bench, legal or not); the HP-bar fill
+composites correctly at all three zone colors (a 15%-HP mon showing a short
+real red/pink fill, a 60%-HP mon full green, a 35%-HP mon yellow, a fainted
+mon showing the real faint trough with no fill at all); the ball icon swaps
+between its real desel (red/grey) and sel (orange/tan) art on hover; the
+bench row's panel art swaps to its real orange-bordered `_sel` state on
+hover; and — in doubles — hovering onto Cancel correctly clears every mon's
+own visual selection (ball/panel both revert), a real code path this
+session's own screenshot pass exercised incidentally.
+
+New tests: `sprite_registry_test.gd` gained `_test_get_icon` (all 386
+species' frame 0/1, the real "no dex-0 fallback icon exists" finding, an
+invalid-dex negative case) — 5030/5030. `switch_select_screen_test.gd` grew
+82 assertions (was 51): one icon entry tracked per slot shown; ball
+sel/desel defaults and hover-driven swaps; panel `_sel` swap on hover;
+Cancel-hover clearing all mon visual selection; HP-bar trough+fill presence
+and correct zone selection (including a fainted row showing no fill); the
+real tier-0 animation cadence advancing a live icon's frame over real
+elapsed time; and the selection-bounce/fixed-unselected-shift pair, both
+before and after a frame flip. One real test-authoring bug was caught and
+fixed on the first run — a hardcoded HP literal (`current_hp = 30` against
+an assumed `max_hp == 100`) landed in the wrong zone once the real HP
+formula's actual `max_hp` (≈160 at level 50) was accounted for, the same
+pitfall this file's own Test O already hit once before; fixed by computing
+the target fraction from each mon's own real post-construction `max_hp`
+rather than a hardcoded literal.
+
+Two full regression sweeps: 210 files, GRAND TOTAL 31613 both times, 0
+failures.
+
+---
+
+## 0d. E3-3 "Full roster + legality + submenu" — SHIPPED 2026-08-05
+
+**Step 0, `party_menu.c`'s own `TrySwitchInPokemon` (L7526-7593), read in its
+exact real order** — this is the legality gauntlet this sub-phase's own
+rejection flow reproduces, not a summary re-derived from memory:
+
+1. Multi-battle partner check (L7538-7543) — N/A, excluded (no multi-battle
+   support, §0a decision 5).
+2. `GetMonData(HP)==0` (L7544-7549) → `gText_PkmnHasNoEnergy` — "{mon} has no
+   energy left to battle!".
+3. Already active on this side, looped over battlers (L7550-7560) →
+   `gText_PkmnAlreadyInBattle` — "{mon} is already in battle!".
+4. Egg check (L7561-7565) — N/A, excluded (no egg concept).
+5. `BattlersShareParty(...) && battlePartyId == prevSelectedPartySlot`
+   (L7566-7572, doubles-only sibling-already-picked-this-round) →
+   `gText_PkmnAlreadySelected` — "{mon} has already been selected.".
+6. `gPartyMenu.action == PARTY_ACTION_ABILITY_PREVENTS` (L7573-7577) →
+   `SetMonPreventsSwitchingString()`, which names the ABILITY HOLDER/trapper
+   (not the trapped mon, not the picked replacement) via
+   `gText_PkmnsXPreventsSwitching` (`battle_message.c:74`) — "{trapper} is
+   preventing switching out with its {ability} Ability!".
+7. `gPartyMenu.action == PARTY_ACTION_CANT_SWITCH` (L7578-7584) →
+   `gText_PkmnCantSwitchOut`, naming the currently-ACTIVE (battling) mon, not
+   the picked replacement — "{active mon} can't be switched out!".
+
+**Critical real finding**: checks 6/7 are independent of which slot was
+picked — they concern the ACTIVE/outgoing mon's own trapped state (ability or
+move-based), matching source's own pre-set `gPartyMenu.action` flag set
+before the menu even opens. Reproduced here as a single `_rejection_message`
+function checked in this exact order against the picked slot, falling
+through to the active mon's own trapped-state check only once every
+picked-slot-specific reason clears.
+
+**Trapper recovery** — `AbilityManager.is_trapped()` (`[M17f]`) is
+deliberately NOT widened to return which ability trapped the mon (too many
+existing call sites to risk). A new, small, DELIBERATELY DUPLICATED static
+`_find_trapping_opponent()` mirrors just its own ability-loop tail (Shadow
+Tag mirror-exemption, Arena Trap grounded-gate, Magnet Pull Steel-gate) to
+recover the real trapper for message purposes only.
+
+**Full-roster clickability, superseding E3-1's "only a live bench mon is
+clickable" restriction** (§0a decision 2 already called for this; this is
+where it lands): every one of the six slots — both active round panel(s) and
+every bench row, fainted included — is now a real, clickable, cursor-
+selectable `Button`. `_mon_visual_entries` (icon/ball/panel-`_sel` machinery
+from E3-2) widened to match; `_build_active_panel`/`_build_bench_row` were
+unified into one `_build_slot()` so active and bench rows share one real-art/
+button/icon/HP-bar/overlay construction path instead of two divergent ones.
+
+**Default cursor position — a real source finding, not carried over from
+E3-1/E3-2**: `004_Party.rb`'s own `pbStartScene` sets `@activecmd = 0` and
+selects `@sprites["pokemon0"]` — the ACTIVE mon's own slot, not the first
+bench candidate. Reproduced by building the active panel(s) FIRST in the
+button/cursor-group array, so cursor index 0 (the shared group's own default)
+lands there, a deliberate change from E3-1/E3-2's "first legal bench mon"
+default (which predated the active slot's own becoming selectable at all).
+
+**Action submenu — §0a decision 3**: a legal pick opens a real
+Shift/Summary/Cancel (voluntary) or Send Out/Summary/Cancel (forced)
+submenu instead of immediately emitting `mon_chosen`. Summary is a real,
+positioned, `disabled = true` button (the stub M26E4 will later wire up, not
+an omitted feature); the submenu's own Cancel returns to the party list
+without closing the whole screen (a separate, always-available step from the
+screen's own top-level voluntary-only Cancel). The list's slot buttons +
+top-level Cancel are disabled while the submenu is open. Pressing Shift/Send
+Out closes the submenu and emits `mon_chosen(picked_slot)` — preserving
+`battle_screen_shared.gd`'s own existing external contract byte-for-byte;
+confirmed and unchanged this session, since every consumer of that signal
+still only cares that it eventually fires with the right slot, not when.
+
+**Cancel/ESC behavior, unchanged from E3-1/E3-2, re-verified**: a forced
+replacement still has NO top-level Cancel button and ESC is a no-op at the
+top level — but ESC now closes an open action submenu first (a new,
+always-available step, matching the submenu's own Cancel button, regardless
+of voluntary/forced), falling through to the existing top-level behavior only
+once no submenu is open.
+
+**`battle_screen_shared.gd` needed zero changes** — confirmed directly:
+`_build_switch_buttons`/`_on_switch_screen_mon_chosen`/`_on_switch_pressed`
+are all untouched, since every new legality/submenu mechanism lives entirely
+inside `switch_select_screen.gd` and the external `mon_chosen(slot)`/
+`cancelled()` signal contract is unchanged.
+
+**Test-suite rewrite** — the whole file was rewritten (not patched) to match
+the new architecture, since the old E3-1/E3-2-era suite's own button-count/
+clickability/default-cursor assumptions were architecturally invalidated by
+this session's changes: 82 → 111 assertions. New coverage: exact slot-button
+counts in both formats (singles 6 = 1 active + 5 bench, doubles 6 = 2 active
++ 4 bench, both + Cancel); the default cursor landing on the active panel;
+all 4 real rejection cases (fainted, already-active, doubles-sibling-already-
+selected via a bare `BattleManager` with `_chosen_switch_slots` manually
+preset — confirmed safe since `_get_live_opponents`/`_is_neutralizing_gas_
+active` both degrade to empty/false against an empty `_combatants` array,
+verified by direct source read before relying on it; ability-trapped via a
+real end-to-end Shadow Tag battle; move/self-trapped via Ingrain); the full
+submenu lifecycle (open-on-legal-pick, correct Shift/Send-Out label per
+context, Summary's disabled stub, primary press emits `mon_chosen` and
+closes, Cancel press closes without emitting anything and re-enables the
+list); ESC's new submenu-first-then-fallback behavior in both directions;
+message auto-revert via direct `_process` advancement; and every still-
+relevant E3-1/E3-2 test (real pack asset dimensions including the new
+`faint_sel` variants, status-icon mapping, held-item icon, the fainted-dim
+helper, icon animation, HP-bar zones, ball/panel-`_sel` swap, selection
+bounce) re-indexed for the new unified slot layout.
+
+**Real, non-headless screenshot verification** (5 shots via a disposable
+scratch driver, deleted after use): singles voluntary list (active Snorlax
+selected by default, live Pikachu bench row, fainted Charizard bench row
+with its own faint icon/trough, top-level Cancel); the action submenu opened
+on a legal pick (Shift/Summary-disabled/Cancel, list disabled behind it); the
+rejection message on a fainted-slot pick ("Charizard has no energy left to
+battle!", no submenu, list still enabled); the forced-replacement submenu
+variant (active panel shown fainted, no top-level Cancel, submenu reads
+"Send Out"); and the doubles list (2 round active panels + 2 bench rows +
+Cancel). One real test-mon-construction gotcha found and fixed before any
+of this was verifiable: test mons need a real move (not zero moves), since a
+moveless mon forces Struggle on both sides every turn and `start_battle_
+with_parties()`'s own internal `advance()` call then auto-resolves the whole
+battle to completion before the screen can ever be reached — not a
+production bug, a scratch-driver fixture gap.
+
+Two full regression sweeps: 210 files, GRAND TOTAL 31641 both times, 0
+failures.
+
+**M26E3 is now fully shipped — E3-1, E3-2, and E3-3 are all complete.**
+
+---
+
 ## 0. TL;DR
 
 1. The reference party screen is an 8,620-line, 428-function system, but most of that is
