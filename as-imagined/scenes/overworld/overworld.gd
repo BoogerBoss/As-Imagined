@@ -89,20 +89,35 @@ var _boot_map := ""
 ## [M27D D1] Placeholder, matching the battle side's own `_PLAYER_BACK_PIC`.
 ## M27K owns a real player identity; until then the two halves at least agree.
 ##
-## ⚠️ **[M27E E2] WAS `OBJ_EVENT_GFX_LEAF`, AND THAT ID CANNOT RUN.** Rob's call,
-## 2026-08-04, after seeing both sprites side by side. The two are genuinely
-## different art, and the one in use was the wrong half of a real split in the
-## reference: `pics/people/leaf.png` is a STANDALONE cameo sprite whose pic table
-## is a bare `overworld_ascending_frames(...)` macro — 9 frames, no bike, no
+## ⚠️ **[M27E E2] WAS `OBJ_EVENT_GFX_LEAF`, WHICH IS THE WRONG HALF OF A REAL
+## SPLIT.** Rob's call, 2026-08-04, after seeing both sprites side by side.
+## `pics/people/leaf.png` is a STANDALONE cameo sprite — 9 frames, no bike, no
 ## surf, no run, nothing else. `pics/people/leaf/` is the FRLG PLAYER SET
 ## (green_normal / green_bike / green_surf / green_surf_run / green_fish /
-## green_item), and `sPicTable_GreenNormal` is the 20-entry table carrying the
-## run frames.
+## green_item), and only that set has run art.
 ##
-## So this also closes an inconsistency that predates running: the player was
-## already SURFING as `OBJ_EVENT_GFX_GREEN_SURF` (below) while WALKING as a
-## different character's sprite. Both halves now come from one set.
+## ⚠️ This is load-bearing for RUNNING SPECIFICALLY, not just tidiness: the run
+## frames live on `green_surf_run.png` and are swapped in mid-step, so if the
+## walking sprite were a different character the player would visibly change
+## design every time they held Shift.
+##
+## It also closes an inconsistency that predates running — the player already
+## SURFED as `OBJ_EVENT_GFX_GREEN_SURF` (below) while WALKING as someone else.
 const PLAYER_GRAPHICS_ID := "OBJ_EVENT_GFX_GREEN_NORMAL"
+
+## [M27E E2] The sheet the player's RUN frames live on.
+##
+## ⚠️ **THIS IS THE SAME FILE THE SURF ID DRAWS FROM, AND THAT IS NOT A REUSE
+## HACK — IT IS HOW KANTO SHIPS IT.** `leaf/green_surf_run.png` holds the three
+## surf poses at raw frames 0-2 and the eleven run frames at 3-13. Source
+## stitches those eleven onto the walking sheet via `sPicTable_GreenNormal` and
+## numbers them 9-19; this project reads the file directly instead, so the run
+## tables carry raw indices (6 lower) and nothing has to be regenerated.
+##
+## Named separately from `PLAYER_SURF_GRAPHICS_ID` even though both resolve to
+## one file: they are different questions, and a future sheet split should not
+## have to guess which of the two a call site meant.
+const PLAYER_RUN_SHEET_ID := "OBJ_EVENT_GFX_GREEN_SURF"
 
 ## [M27E E1c] The player's sheet while riding the blob. Leaf's surf sheet, for
 ## the same placeholder reason as above; `OBJ_EVENT_GFX_RED_SURF` sits beside
@@ -345,6 +360,17 @@ func _ready() -> void:
 	# Synchronous. The work is RELOCATED to a moment where a pause is expected,
 	# not reduced — no tile definitions, atlases or .tres content change.
 	MapManager.preload_tilesets()
+	# [Map-edge hitch] A SEPARATE cost from the resource preload just above —
+	# that one warms the CPU-side Resource, this one warms whatever the renderer
+	# pays the first time a tileset is actually DRAWN. Every pair, not just one:
+	# see `warm_tilemap_draws`' own doc comment for why the earlier
+	# "process-global, so one is enough" reading does not survive a real GPU,
+	# and why the Route 1 crossing is exactly where that shows. Awaited, so
+	# `boot_map`'s own `load_chunk` below is what benefits — without the await
+	# this would still be in flight when that chunk's own TileMapLayers get
+	# their first real draw, paying the cost live anyway. `self` is what it
+	# hangs the throwaway layers and frame waits off.
+	await MapManager.warm_tilemap_draws(self)
 	_setup_scripting()
 	# [M27D D5] The battle scene the same way, for the same reason: reported
 	# from play as "the first trainer takes a while, the rest are near
@@ -544,11 +570,68 @@ func _add_camera() -> void:
 		return
 	_camera = Camera2D.new()
 	_camera.zoom = Vector2(3, 3)
-	_camera.position_smoothing_enabled = true
+	# Smoothing OFF, deliberately. The player's own movement is already the
+	# tween — layering Camera2D's built-in smoothing on top means the camera is
+	# forever lerping toward a continuously-moving target, which never lands on
+	# a whole pixel. Confirmed directly: with smoothing on and pixel snapping
+	# project settings on, `get_viewport().canvas_transform.origin` still had a
+	# real, continuously-varying fractional remainder every frame while walking
+	# (e.g. 0.496, -0.441, 0.240 px) — snap_2d_transforms_to_pixel only snaps
+	# each CanvasItem's own local transform, never the camera/view transform,
+	# so nothing about that project setting was ever going to fix this. A hard
+	# follow to a rounded position (`_snap_camera_to_player`) is what actually
+	# keeps the whole scene pixel-aligned during ordinary movement.
+	_camera.position_smoothing_enabled = false
 	add_child(_camera)
-	_camera.global_position = _player.global_position
+	_snap_camera_to_player()
 	_camera.reset_smoothing()
 	_camera.make_current()
+
+
+## The one place the camera's position is ever set, so a future call site
+## cannot reintroduce the sub-pixel drift by copying `_player.global_position`
+## raw. Rounds in WORLD space (not screen space) — correct as long as camera
+## zoom is an integer, which it is (3), so an integer world position can only
+## ever land on an integer screen position.
+func _snap_camera_to_player() -> void:
+	if _camera == null or _player == null:
+		return
+	_camera.global_position = _player.global_position.round()
+
+
+## Tween `_player.position` toward `target_local` over `dur` seconds, snapping
+## the camera on every single interpolation step rather than leaving it to a
+## separate per-frame poll.
+##
+## ⚠️ **THIS IS NOT A STYLE PREFERENCE — A `_process()`-SIDE POLL CANNOT KEEP
+## UP WITH A BUILT-IN `Tween`, AT ALL, EVEN DEFERRED.** Measured directly by
+## sampling `_player.global_position` / `_camera.global_position` from
+## `RenderingServer.frame_pre_draw` (the actual instant a frame's contents are
+## final): with the camera snap called plainly from `_process()`, `round()` of
+## the player's real position disagreed with the camera's for every sample
+## taken while a step was in flight — the camera was always exactly one
+## render-frame stale. Moving the same call to `call_deferred` did not help
+## either, and re-measuring the same way proved it did not: Godot's built-in
+## Tweens advance AFTER a frame's node `_process()` calls (deferred or not)
+## have already run, so nothing scheduled from a node's own per-frame
+## processing can ever observe a Tween's update for that same frame — the
+## Tween itself is the last thing to move `_player.position` before the frame
+## is drawn. The only way to land in the render's own timing is to be driven
+## BY that Tween, not to chase it from outside.
+##
+## `tween_method` (not `tween_property`) is what makes that possible: it hands
+## the interpolated value to a callback on every step the Tween itself takes,
+## so the camera snap runs in the exact call that just moved the player,
+## whatever frame-processing order the engine happens to use that build.
+func _tween_player_position(t: Tween, target_local: Vector2, dur: float) -> void:
+	t.tween_method(_apply_player_position, _player.position, target_local, dur)
+
+
+func _apply_player_position(pos: Vector2) -> void:
+	if _player == null:
+		return
+	_player.position = pos
+	_snap_camera_to_player()
 
 
 ## Grid-locked movement polls a HELD direction every frame rather than
@@ -558,9 +641,17 @@ func _add_camera() -> void:
 func _process(_delta: float) -> void:
 	if _player == null:
 		return
-	# Every frame, including mid-step: the tween is when following matters most.
-	if _camera != null:
-		_camera.global_position = _player.global_position
+	# Every frame, including mid-step. ⚠️ This alone is NOT what keeps the
+	# camera in sync during a step — that is `_tween_player_position`'s own
+	# `tween_method` callback, which fires from inside the same Tween that
+	# moves `_player.position` and so can never read a stale value the way a
+	# `_process()`-side poll of a Tween-driven position provably can (measured
+	# directly via `RenderingServer.frame_pre_draw`; see that function's own
+	# comment for the full story, including why `call_deferred` did not help
+	# either). This call is what still matters for every OTHER frame — most of
+	# them, since a walker spends most of its time not mid-step — and for any
+	# future position change that doesn't go through the tween helper.
+	_snap_camera_to_player()
 	# [M27D D5] A battle is a scripted takeover: the world underneath freezes.
 	# This is the one case where NPCs must NOT keep wandering — unlike a warp
 	# fade, where they deliberately do.
@@ -795,7 +886,7 @@ func _try_step(dir: int) -> void:
 	# both. `_process` advances it while `_moving`; this records the cadence.
 	_step_ticks = _player_step_ticks(dur)
 	t.set_parallel(true)
-	t.tween_property(_player, "position", manager.local_pixel_of(_cell), dur)
+	_tween_player_position(t, manager.local_pixel_of(_cell), dur)
 	# [M27E E1f] Riding ashore is a JUMP, not a walk — `Task_StopSurfingInit`
 	# issues the same `GetJumpSpecialMovementAction` the mount does. Reported
 	# from play as "no jump animation when ending surf".
@@ -2071,9 +2162,11 @@ func _can_run_with(current_behavior: int, outcome: int, run_held: bool) -> bool:
 		return false
 	if MetatileBehavior.is_running_disallowed(current_behavior):
 		return false
-	# The sheet has the final say: only a composited player sheet carries the
-	# run frames at all, so this is false for every graphics id but the player's.
+	# The sheet has the final say. Bound here rather than at build time because
+	# `_player_anim` is re-`setup()` on every surf swap, and a walker with no run
+	# sheet bound answers false — which is what keeps every NPC from running.
 	_player_anim.setup(_player_graphics_id())
+	_player_anim.setup_run(PLAYER_RUN_SHEET_ID)
 	return _player_anim.can_run()
 
 
@@ -2103,6 +2196,7 @@ func _step_player(dir: int, ticks: int, delta: float) -> void:
 	# which is timed against the step's own duration instead — see
 	# `WalkAnim.run_cycle_frame` for why the 5:3 split cannot survive ticks here.
 	if _running:
+		_player_anim.setup_run(PLAYER_RUN_SHEET_ID)
 		_player_anim.run_step(spr, WalkAnim.facing_name(dir), _RUN_STEP_SECONDS, delta)
 	else:
 		_player_anim.step(spr, WalkAnim.facing_name(dir), ticks, delta)
@@ -2294,8 +2388,8 @@ func _place_player(dest: String, gcell: Vector2i) -> void:
 	_elev = manager.elevation_at(_cell)
 	_reparent_for_elevation()
 	_player.position = manager.local_pixel_of(_cell)
+	_snap_camera_to_player()
 	if _camera != null:
-		_camera.global_position = _player.global_position
 		_camera.reset_smoothing()
 	# An interior has none; an outdoor destination needs its own back.
 	manager.load_neighbours(dest)
@@ -2411,7 +2505,7 @@ func _exit_arrival(w: Variant) -> void:
 	_facing = dir
 	_reparent_for_elevation()
 	var t := create_tween()
-	t.tween_property(_player, "position", manager.local_pixel_of(_cell), 0.16)
+	_tween_player_position(t, manager.local_pixel_of(_cell), 0.16)
 	await t.finished
 
 
@@ -2516,8 +2610,7 @@ func _jump_onto_water(dir: int) -> void:
 	_step_ticks = _player_step_ticks(_MOUNT_JUMP_SECONDS)
 	var t := create_tween()
 	t.set_parallel(true)
-	t.tween_property(_player, "position", manager.local_pixel_of(_cell),
-			_MOUNT_JUMP_SECONDS)
+	_tween_player_position(t, manager.local_pixel_of(_cell), _MOUNT_JUMP_SECONDS)
 	# ⚠️ **THE ARC IS ON THE BODY SPRITE, NOT ON `_player`.** The blob is a CHILD
 	# of `_player`, so arcing the node would hop the water with you — and source
 	# does the opposite: `SurfFieldEffect_JumpOnSurfBlob` creates the blob at the

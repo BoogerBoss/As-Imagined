@@ -9,3 +9,4 @@ item_id = 515
 item_name = "Chesto Berry"
 hold_effect = 3
 pocket = 3
+battle_usage = 2

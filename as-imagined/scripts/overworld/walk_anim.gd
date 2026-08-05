@@ -30,6 +30,15 @@ var _frames := 0
 var _key := ""
 var _elapsed := 0.0
 
+## [M27E E2] The RUN sheet, bound separately — see `setup_run`.
+var _run_graphics_id := ""
+var _run_texture: Texture2D = null
+var _run_frames := 0
+var _walk_texture: Texture2D = null
+## Which sheet is currently on the sprite, so the swap only costs an assignment
+## when the cycle actually crosses between them.
+var _sheet_applied := ""
+
 
 ## Bind this to a graphics id. Safe to call again; it resets if the id changed.
 func setup(graphics_id: String) -> void:
@@ -39,6 +48,15 @@ func setup(graphics_id: String) -> void:
 	_frames = ObjectEventGraphics.frame_count(graphics_id)
 	_key = ""
 	_elapsed = 0.0
+	# [M27E E2] Cached so a run can swap back without a load, and cleared so the
+	# next draw re-applies it — the surf path assigns `sprite.texture` directly
+	# (`_swap_player_sheet`), so this class must never assume the sheet it last
+	# applied is still the one on the sprite.
+	_sheet_applied = ""
+	_walk_texture = null
+	var path := ObjectEventGraphics.sheet_path(graphics_id)
+	if path != "" and ResourceLoader.exists(path):
+		_walk_texture = load(path) as Texture2D
 
 
 ## Can this sheet hold a walk cycle at all?
@@ -87,14 +105,45 @@ func step(sprite: Sprite2D, facing: String, ticks: int, delta: float) -> void:
 	_draw(sprite, facing, cycle_frame(facing, ticks, _elapsed))
 
 
-## [M27E E2] Can this sheet hold a RUN cycle?
+## [M27E E2] Bind the sheet the RUN cycle draws from.
 ##
-## Only the two player ids can — running draws from pic-table indices 9-17,
-## which exist solely on the composited player sheets (see the composite note in
-## `gen_object_event_sprites.py`). Every NPC stops at 9 frames, so this is false
-## for all of them and no NPC can ever be asked to run.
+## ⚠️ **RUNNING USES A DIFFERENT SHEET FROM WALKING, AND THAT IS THE WHOLE SHAPE
+## OF IT.** Kanto packs the player's run frames into `leaf/green_surf_run.png`
+## alongside the surf poses; source stitches them onto the walking sheet through
+## `sPicTable_GreenNormal` and calls them frames 9-19. This project does NOT
+## materialise that stitched sheet (Rob's call — the file is already on disk), so
+## the run frames are read from the second sheet directly and this class swaps
+## the sprite's texture for the duration of a run.
+##
+## ⚠️ THE FRAME COUNT IS MEASURED FROM THE TEXTURE, not taken from the id's own
+## declared `frames`. `FRAME_OVERRIDES` deliberately reports 3 for the surf ids
+## (their pic table only uses the three facing poses), so asking the table would
+## refuse the very sheet the run frames live on.
+func setup_run(run_graphics_id: String) -> void:
+	if run_graphics_id == _run_graphics_id:
+		return
+	_run_graphics_id = run_graphics_id
+	_run_texture = null
+	_run_frames = 0
+	var path := ObjectEventGraphics.sheet_path(run_graphics_id)
+	if path == "" or not ResourceLoader.exists(path):
+		return
+	var tex := load(path) as Texture2D
+	if tex == null:
+		return
+	var size := ObjectEventGraphics.frame_size(run_graphics_id)
+	if size.x <= 0:
+		return
+	_run_texture = tex
+	_run_frames = int(tex.get_width() / size.x)
+
+
+## Can the bound run sheet hold a run cycle?
+##
+## False until `setup_run` has bound a real sheet, so a walker that was never
+## given one — every NPC — can never be asked for a frame it does not have.
 func can_run() -> bool:
-	return _frames >= ObjectEventGraphics.MIN_FRAMES_TO_RUN
+	return _run_frames >= ObjectEventGraphics.MIN_RAW_FRAMES_TO_RUN
 
 
 ## Advance the RUN cycle and show the frame it lands on.
@@ -103,9 +152,9 @@ func can_run() -> bool:
 ## `run_cycle_frame` for why running is timed differently from walking.
 func run_step(sprite: Sprite2D, facing: String, step_seconds: float, delta: float) -> void:
 	if not can_run():
-		# Should be unreachable (the caller gates on `can_run`), but a sheet
-		# without run frames must degrade to a walk rather than index off the
-		# end of its own strip.
+		# Should be unreachable (the caller gates on `can_run`), but a walker
+		# with no run sheet bound must degrade to a walk rather than index off
+		# the end of the strip it does have.
 		step(sprite, facing, ObjectEventGraphics.ANIM_TICKS_FAST, delta)
 		return
 	var key := "run:%s:%.4f" % [facing, step_seconds]
@@ -114,7 +163,7 @@ func run_step(sprite: Sprite2D, facing: String, step_seconds: float, delta: floa
 		_elapsed = 0.0
 	else:
 		_elapsed += delta
-	_draw(sprite, facing, run_cycle_frame(facing, step_seconds, _elapsed))
+	_draw(sprite, facing, run_cycle_frame(facing, step_seconds, _elapsed), true)
 
 
 ## Which sheet frame the RUN cycle is on after `elapsed` seconds.
@@ -165,10 +214,19 @@ static func cycle_frame(facing: String, ticks: int, elapsed: float) -> int:
 		_: return idle
 
 
-func _draw(sprite: Sprite2D, facing: String, frame: int) -> void:
+func _draw(sprite: Sprite2D, facing: String, frame: int, run := false) -> void:
 	if sprite == null or not is_instance_valid(sprite):
 		return
-	var size := ObjectEventGraphics.frame_size(_graphics_id)
+	# [M27E E2] A run frame lives on a different sheet, so the texture has to
+	# follow the cycle. Guarded on the id actually changing: this runs every
+	# frame of every walk in the game.
+	var gid := _run_graphics_id if run else _graphics_id
+	if gid != _sheet_applied:
+		var tex: Texture2D = _run_texture if run else _walk_texture
+		if tex != null:
+			sprite.texture = tex
+			_sheet_applied = gid
+	var size := ObjectEventGraphics.frame_size(gid)
 	sprite.region_rect = Rect2(frame * size.x, 0, size.x, size.y)
 	sprite.flip_h = facing == "EAST" and ObjectEventGraphics.EAST_IS_MIRRORED_WEST
 

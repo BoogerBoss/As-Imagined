@@ -4,10 +4,11 @@ extends Node
 ##
 ## The claims most worth pinning:
 ##
-##   * the RUN FRAMES DID NOT EXIST until the generator learned to composite a
-##     pic table that spans several pic files — indices 9-17 come out of the
-##     *surf_run* sheet, not the walking one, and the composite is an ORDER
-##     rather than a concatenation (it starts at that file's frame 3);
+##   * the run frames live on a DIFFERENT SHEET from the walk (`green_surf_run`,
+##     raw frames 3-13, alongside the surf poses at 0-2), swapped in for the
+##     duration of a run rather than composited into a new sheet — Rob's call,
+##     and the -6 shift from source's own pic indices is the one place an
+##     off-by-six can hide, so it is pinned twice (arithmetic AND pixels);
 ##   * the speed is EXACTLY double, ported as a ratio because this project's
 ##     walk is its own tuned duration rather than source's 16 frames;
 ##   * the run cycle rests on a RUN-specific neutral frame, never the standing
@@ -15,7 +16,7 @@ extends Node
 ##   * every gate condition refuses independently, so "runs when it should" is
 ##     never satisfied by "always runs".
 
-const EXPECTED_TOTAL := 44
+const EXPECTED_TOTAL := 45
 
 var _total := 0
 var _failed := 0
@@ -38,52 +39,77 @@ func _ready() -> void:
 	get_tree().quit()
 
 
-## --- A. the composited sheet ---
+## --- A. the run sheet, read directly rather than composited ---
 func _test_sheet() -> void:
-	var e: Dictionary = ObjectEventGraphics.BY_ID.get("OBJ_EVENT_GFX_GREEN_NORMAL", {})
-	_chk("A.01 the player's id resolves", not e.is_empty())
-	if e.is_empty():
+	# ⚠️ **THE PLAYER'S OWN SHEET IS UNCHANGED, AND THAT IS THE POINT.** An
+	# earlier cut of this feature materialised a 20-frame composite of the two
+	# files; Rob's call was to read the run sheet where it already sits. If this
+	# ever reports 20 again, a composite has come back and the assets churned.
+	var walk: Dictionary = ObjectEventGraphics.BY_ID.get("OBJ_EVENT_GFX_GREEN_NORMAL", {})
+	_chk("A.01 the player's walk sheet is untouched at its own 9 frames",
+			not walk.is_empty() and int(walk.get("frames", 0)) == 9)
+
+	var run_id := "OBJ_EVENT_GFX_GREEN_SURF"
+	var path := ObjectEventGraphics.sheet_path(run_id)
+	var tex: Texture2D = load(path) as Texture2D if path != "" else null
+	_chk("A.02 the run sheet resolves", tex != null)
+	if tex == null:
 		_gated += 5
 		return
-	# ⚠️ 20, NOT 9. sPicTable_GreenNormal is 9 walking frames followed by 11 run
-	# frames living in a DIFFERENT file; before the composite this id reported
-	# its walking sheet's own 9 and the run frames were unreachable.
-	_chk("A.02 it carries all 20 pic-table frames, not just the walking sheet's 9",
-			int(e.get("frames", 0)) == 20)
-	_chk("A.03 which is enough to run", int(e.get("frames", 0))
-			>= ObjectEventGraphics.MIN_FRAMES_TO_RUN)
+	var size := ObjectEventGraphics.frame_size(run_id)
+	var raw := int(tex.get_width() / size.x)
+	# 14 on disk: 3 surf poses + 11 run frames.
+	_chk("A.03 and carries enough RAW frames to run",
+			raw >= ObjectEventGraphics.MIN_RAW_FRAMES_TO_RUN)
 
-	var tex: Texture2D = load(SHEET_DIR + str(e.get("sheet", "")) + ".png") as Texture2D
-	_chk("A.04 and the sheet on disk loads", tex != null)
-	if tex == null:
-		_gated += 2
-		return
-	# The sheet must be as wide as the table is long, or the run frames would
-	# index off the end and silently draw nothing.
-	_chk("A.05 the sheet is 20 frames wide on disk",
-			tex.get_width() == int(e.get("w", 16)) * 20
-			and tex.get_height() == int(e.get("h", 32)))
+	var lowest := 99
+	var highest := 0
+	for k in ["SOUTH", "NORTH", "WEST", "EAST"]:
+		var idxs: Array = [int(ObjectEventGraphics.RUN_IDLE_FRAME[k])]
+		for f in ObjectEventGraphics.RUN_STEP_FRAME[k]:
+			idxs.append(int(f))
+		for i in idxs:
+			lowest = mini(lowest, i)
+			highest = maxi(highest, i)
+	_chk("A.04 every run index is inside the sheet", highest < raw)
+	# ⚠️ **THE OFF-BY-SIX GUARD.** Raw frames 0-2 are the SURF poses. If the
+	# tables ever carried source's own pic indices (9/12/15) unshifted, A.04
+	# would catch it; if they were shifted too far, this catches it.
+	_chk("A.05 and none of them lands on a surf pose", lowest >= 3)
 
-	# ⚠️ AN NPC MUST NOT BE ABLE TO RUN. Every other id stops at 9 frames, so the
-	# `can_run` gate is a property of the sheet rather than a rule to remember.
-	var npc: Dictionary = ObjectEventGraphics.BY_ID.get("OBJ_EVENT_GFX_NINJA_BOY", {})
-	_chk("A.06 an ordinary NPC sheet has no run frames",
-			not npc.is_empty()
-			and int(npc.get("frames", 0)) < ObjectEventGraphics.MIN_FRAMES_TO_RUN)
+	# Pixel proof rather than arithmetic: the three neutral poses must be real,
+	# distinct art, and none of them may be a surf pose wearing a run label.
+	var img := tex.get_image()
+	var f3 := _frame_bytes(img, int(ObjectEventGraphics.RUN_IDLE_FRAME["SOUTH"]), size)
+	var f6 := _frame_bytes(img, int(ObjectEventGraphics.RUN_IDLE_FRAME["NORTH"]), size)
+	var f9 := _frame_bytes(img, int(ObjectEventGraphics.RUN_IDLE_FRAME["WEST"]), size)
+	_chk("A.06 the three run neutrals are genuinely different art",
+			f3 != f6 and f6 != f9 and f3 != f9)
+	var surf0 := _frame_bytes(img, 0, size)
+	var surf1 := _frame_bytes(img, 1, size)
+	var surf2 := _frame_bytes(img, 2, size)
+	_chk("A.07 and none of them is one of the surf poses",
+			f3 != surf0 and f3 != surf1 and f3 != surf2
+			and f6 != surf0 and f6 != surf1 and f6 != surf2
+			and f9 != surf0 and f9 != surf1 and f9 != surf2)
+
+
+func _frame_bytes(img: Image, idx: int, size: Vector2i) -> PackedByteArray:
+	return img.get_region(Rect2i(idx * size.x, 0, size.x, size.y)).get_data()
 
 
 ## --- B. the frame tables ---
 func _test_frame_tables() -> void:
 	# Straight from sAnim_Run*Frlg. Wrong indices here would draw the surf poses
 	# or read past the sheet, and both look like "running is broken".
-	_chk("B.01 the run neutral frames are 9/12/15",
-			int(ObjectEventGraphics.RUN_IDLE_FRAME["SOUTH"]) == 9
-			and int(ObjectEventGraphics.RUN_IDLE_FRAME["NORTH"]) == 12
-			and int(ObjectEventGraphics.RUN_IDLE_FRAME["WEST"]) == 15)
-	_chk("B.02 the leg pairs are 10/11, 13/14, 16/17",
-			ObjectEventGraphics.RUN_STEP_FRAME["SOUTH"] == [10, 11]
-			and ObjectEventGraphics.RUN_STEP_FRAME["NORTH"] == [13, 14]
-			and ObjectEventGraphics.RUN_STEP_FRAME["WEST"] == [16, 17])
+	_chk("B.01 the run neutral frames are 3/6/9",
+			int(ObjectEventGraphics.RUN_IDLE_FRAME["SOUTH"]) == 3
+			and int(ObjectEventGraphics.RUN_IDLE_FRAME["NORTH"]) == 6
+			and int(ObjectEventGraphics.RUN_IDLE_FRAME["WEST"]) == 9)
+	_chk("B.02 the leg pairs are 4/5, 7/8, 10/11",
+			ObjectEventGraphics.RUN_STEP_FRAME["SOUTH"] == [4, 5]
+			and ObjectEventGraphics.RUN_STEP_FRAME["NORTH"] == [7, 8]
+			and ObjectEventGraphics.RUN_STEP_FRAME["WEST"] == [10, 11])
 	# ⚠️ EAST IS WEST MIRRORED — the same convention every other anim uses. A
 	# fourth set of frames does not exist on the sheet.
 	_chk("B.03 EAST reuses WEST's frames, mirrored",
@@ -105,16 +131,19 @@ func _test_frame_tables() -> void:
 			standing_reused = true
 	_chk("B.05 the run neutral is its own frame, not the standing pose",
 			not standing_reused)
-	# Every index the run tables name must exist on the player's sheet.
-	var frames: int = int(ObjectEventGraphics.BY_ID
-			.get("OBJ_EVENT_GFX_GREEN_NORMAL", {}).get("frames", 0))
-	var highest := 0
-	for k in ["SOUTH", "NORTH", "WEST", "EAST"]:
-		highest = maxi(highest, int(ObjectEventGraphics.RUN_IDLE_FRAME[k]))
-		for f in ObjectEventGraphics.RUN_STEP_FRAME[k]:
-			highest = maxi(highest, int(f))
-	_chk("B.06 every run frame index is inside the player's sheet",
-			highest < frames)
+	# ⚠️ **THE -6 RELATIONSHIP TO SOURCE, PINNED EXPLICITLY.** Source's own
+	# sAnim_Run*Frlg quote 9/12/15 because `sPicTable_GreenNormal` stitches 11
+	# frames of this file onto the 9-frame walking sheet. This project reads the
+	# file directly, so every index is exactly 6 lower. Written as arithmetic
+	# against source's real numbers so the shift is a stated fact rather than
+	# three constants someone has to trust.
+	const PIC_TO_RAW := 6
+	_chk("B.06 the raw indices are source's pic indices minus 6",
+			int(ObjectEventGraphics.RUN_IDLE_FRAME["SOUTH"]) == 9 - PIC_TO_RAW
+			and int(ObjectEventGraphics.RUN_IDLE_FRAME["NORTH"]) == 12 - PIC_TO_RAW
+			and int(ObjectEventGraphics.RUN_IDLE_FRAME["WEST"]) == 15 - PIC_TO_RAW
+			and ObjectEventGraphics.RUN_STEP_FRAME["SOUTH"]
+					== [10 - PIC_TO_RAW, 11 - PIC_TO_RAW])
 
 
 ## --- C. tiles you cannot run on ---
@@ -156,43 +185,43 @@ func _test_cycle() -> void:
 	var unit := step / 8.0
 	# The four entries land at 0..5, 5..8, 8..13, 13..16 units.
 	_chk("D.01 the cycle opens on the run neutral",
-			WalkAnim.run_cycle_frame("SOUTH", step, unit * 1.0) == 9)
+			WalkAnim.run_cycle_frame("SOUTH", step, unit * 1.0) == 3)
 	_chk("D.02 then the first leg",
-			WalkAnim.run_cycle_frame("SOUTH", step, unit * 6.0) == 10)
+			WalkAnim.run_cycle_frame("SOUTH", step, unit * 6.0) == 4)
 	# ⚠️ THE NEUTRAL RETURNS BETWEEN THE LEGS — the cycle is four entries, not
 	# two. Alternating the legs alone reads as a shuffle, the same failure the
 	# walk cycle already documents.
 	_chk("D.03 then the neutral again, not the other leg",
-			WalkAnim.run_cycle_frame("SOUTH", step, unit * 10.0) == 9)
+			WalkAnim.run_cycle_frame("SOUTH", step, unit * 10.0) == 3)
 	_chk("D.04 then the OTHER leg",
-			WalkAnim.run_cycle_frame("SOUTH", step, unit * 14.0) == 11)
+			WalkAnim.run_cycle_frame("SOUTH", step, unit * 14.0) == 5)
 	_chk("D.05 and it loops",
-			WalkAnim.run_cycle_frame("SOUTH", step, unit * 17.0) == 9)
+			WalkAnim.run_cycle_frame("SOUTH", step, unit * 17.0) == 3)
 
 	# ⚠️ **THE 5:3 SPLIT IS THE ASSERTION, NOT THE FRAME ORDER.** An even 4/4
 	# split would pass D.01-D.05 and still be wrong; this is the sample that
 	# separates them, sitting inside entry 0 only because it is 5 units long.
 	_chk("D.06 the neutral is held LONGER than the leg (5:3, not 4:4)",
-			WalkAnim.run_cycle_frame("SOUTH", step, unit * 4.5) == 9
-			and WalkAnim.run_cycle_frame("SOUTH", step, unit * 7.5) == 10)
+			WalkAnim.run_cycle_frame("SOUTH", step, unit * 4.5) == 3
+			and WalkAnim.run_cycle_frame("SOUTH", step, unit * 7.5) == 4)
 
 	# ⚠️ SCALED, NOT FIXED. The same phase of the cycle must be reached at the
 	# same FRACTION of the step whatever the step's own duration is — the whole
 	# reason the run is timed in seconds rather than integer ticks.
 	var slow := 0.32
 	_chk("D.07 the cycle scales with the step duration",
-			WalkAnim.run_cycle_frame("SOUTH", slow, (slow / 8.0) * 6.0) == 10)
+			WalkAnim.run_cycle_frame("SOUTH", slow, (slow / 8.0) * 6.0) == 4)
 
 	_chk("D.08 each facing runs its own frames",
-			WalkAnim.run_cycle_frame("NORTH", step, unit * 6.0) == 13
-			and WalkAnim.run_cycle_frame("WEST", step, unit * 6.0) == 16)
+			WalkAnim.run_cycle_frame("NORTH", step, unit * 6.0) == 7
+			and WalkAnim.run_cycle_frame("WEST", step, unit * 6.0) == 10)
 	# EAST shares WEST's indices; the mirroring is the renderer's flip_h, so the
 	# frame number itself must match rather than differ.
 	_chk("D.09 EAST draws WEST's frame (the flip is the renderer's job)",
-			WalkAnim.run_cycle_frame("EAST", step, unit * 6.0) == 16)
+			WalkAnim.run_cycle_frame("EAST", step, unit * 6.0) == 10)
 	# Defensive: a zero/negative duration must not divide by zero.
 	_chk("D.10 a zero-length step degrades rather than dividing by zero",
-			WalkAnim.run_cycle_frame("SOUTH", 0.0, 0.0) == 9)
+			WalkAnim.run_cycle_frame("SOUTH", 0.0, 0.0) == 3)
 
 	# The walk cycle must be untouched by any of this.
 	_chk("D.11 the WALK cycle still rests on the standing frame",
@@ -233,23 +262,25 @@ func _test_gate() -> void:
 	_chk("E.07 and setting it again restores the run",
 			ow._can_run_with(normal, none, true))
 
-	# ⚠️ **THE PLAYER'S OWN ID MUST BE THE RUN-CAPABLE ONE, AND IT WAS NOT.**
-	# This shipped pointing at `OBJ_EVENT_GFX_LEAF`, a standalone cameo sprite
-	# with 9 frames and no run art anywhere in source — so every other gate
-	# below could pass and running would still be impossible. Pinned because it
-	# is a one-word change that silently disables the whole feature.
-	_chk("E.08 the player's graphics id is one that can actually run",
-			int(ObjectEventGraphics.BY_ID.get(ow.PLAYER_GRAPHICS_ID, {})
-					.get("frames", 0)) >= ObjectEventGraphics.MIN_FRAMES_TO_RUN)
-	# ⚠️ THE SHEET IS THE LAST GATE, and it is asserted HERE rather than through
-	# `_can_run_with` — that function re-resolves the real player id every call,
-	# so a stubbed NPC sheet cannot survive into it. Tested on WalkAnim directly,
-	# which is the exact object the gate consults.
+	# ⚠️ **THE PLAYER MUST NOT BE THE CAMEO SPRITE.** This shipped pointing at
+	# `OBJ_EVENT_GFX_LEAF`, a different character — and because the run frames
+	# are SWAPPED IN from `green_surf_run.png`, that would make the player
+	# visibly change design every time they held Shift. Pinned because it is a
+	# one-word change with a very visible consequence.
+	_chk("E.08 the player walks as the same character the run sheet draws",
+			ow.PLAYER_GRAPHICS_ID == "OBJ_EVENT_GFX_GREEN_NORMAL"
+			and ow.PLAYER_RUN_SHEET_ID == "OBJ_EVENT_GFX_GREEN_SURF")
+	# ⚠️ THE RUN SHEET IS THE LAST GATE, and it is asserted HERE rather than
+	# through `_can_run_with` — that function re-binds the real ids every call,
+	# so a stubbed sheet cannot survive into it. Tested on WalkAnim directly,
+	# which is the exact object the gate consults. A walker with NO run sheet
+	# bound is every NPC in the game.
 	var npc_anim := WalkAnim.new()
 	npc_anim.setup("OBJ_EVENT_GFX_NINJA_BOY")
 	var player_anim := WalkAnim.new()
 	player_anim.setup(ow.PLAYER_GRAPHICS_ID)
-	_chk("E.09 and a sheet without run frames refuses while the player's allows",
+	player_anim.setup_run(ow.PLAYER_RUN_SHEET_ID)
+	_chk("E.09 a walker with no run sheet bound refuses, one with it allows",
 			not npc_anim.can_run() and player_anim.can_run())
 
 	OverworldSession.reset()

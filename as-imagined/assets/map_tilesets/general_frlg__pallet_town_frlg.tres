@@ -1,8 +1,8 @@
-[gd_resource type="TileSet" format=3]
+[gd_resource type="TileSet" format=3 uid="uid://dr42k2fa88ewu"]
 
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg__pallet_town_frlg_ground.png" id="1_1b2de"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg__pallet_town_frlg_objects.png" id="2_6uay4"]
-[ext_resource type="Texture2D" path="res://assets/map_atlases/general_frlg__pallet_town_frlg_overhangs.png" id="3_w7fvk"]
+[ext_resource type="Texture2D" uid="uid://csoxhpbhv64sn" path="res://assets/map_atlases/general_frlg__pallet_town_frlg_ground.png" id="1_1b2de"]
+[ext_resource type="Texture2D" uid="uid://qcw5b4vtl338" path="res://assets/map_atlases/general_frlg__pallet_town_frlg_objects.png" id="2_6uay4"]
+[ext_resource type="Texture2D" uid="uid://qnfwx0rvougm" path="res://assets/map_atlases/general_frlg__pallet_town_frlg_overhangs.png" id="3_w7fvk"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_23yrr"]
 texture = ExtResource("1_1b2de")

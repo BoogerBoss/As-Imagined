@@ -8,11 +8,16 @@ extends CanvasLayer
 ## has no way to look at it.
 ##
 ## ⚠️ **DELIBERATELY NOT A REUSE OF `ItemSelectScreen`.** That screen
-## (`[M25h-1.4]`) is the BATTLE bag: three hardcoded battle items, one pocket,
-## wired to a `BattleScreen` parent it calls back into. Its visual conventions
-## are reused here — the real `bag_frame.png`, the header, chrome-stripped rows,
-## the "▶" cursor — but its data path is not, and reworking it is **M26E1/E2**'s
-## job. Touching it now would risk the battle screen for no gain here.
+## (`[M25h-1.4]`, reworked at `[M26E1]`) is the BATTLE bag: a real,
+## battle-legality-filtered slice of the same underlying `Bag`, wired to a
+## `BattleScreen` parent it calls back into. Its visual conventions are reused
+## here — the real Emerald UI Pack `bg_m.png` background (as of `[M26E1]`, was
+## `bag_frame.png` before), the header, chrome-stripped rows — but this screen
+## has no `BattleScreen` parent to borrow `_style_menu_button`/`_font_menu`
+## from, so it stays a self-contained `Panel`/`TextureRect` build. Real
+## multi-pocket TAB-SWITCHING chrome (this screen already HAS the underlying
+## pocket-cycling logic, `next_pocket`/`move_row` below) is **M26E2**'s own
+## job — this session only replaces the plain `Panel` background with real art.
 ##
 ## Source: `GoToBagMenu(ITEMMENULOCATION_FIELD, POCKETS_COUNT, ...)`
 ## (`item_menu.c:593`) — the field bag opens with ALL pockets, unlike battle's
@@ -52,6 +57,7 @@ const EMPTY_TEXT := "No items."
 
 var _panel: Panel
 var _tab_label: Label
+var _dot_row: HBoxContainer
 var _rows_box: VBoxContainer
 var _desc_label: Label
 
@@ -108,7 +114,22 @@ func _ready() -> void:
 	_panel.offset_top = MARGIN
 	_panel.offset_right = -MARGIN
 	_panel.offset_bottom = -MARGIN
+	# [M26E1] The plain grey Panel stylebox is now purely a hit-test/layout
+	# anchor — a real background image (the same bg_m.png ItemSelectScreen
+	# wired, `[M26E1]`) sits behind everything else as this Panel's own
+	# first child, so it draws under the tab/rows/description labels added
+	# below without needing a separate top-level node. StyleBoxEmpty removes
+	# Godot's own default Panel chrome, which would otherwise show through
+	# at the real art's own transparent/rounded edges.
+	_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	add_child(_panel)
+
+	var bg := TextureRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.texture = load("res://assets/sprites/battle_ui/bag/bag_bg_male.png")
+	bg.stretch_mode = TextureRect.STRETCH_SCALE
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_panel.add_child(bg)
 
 	_tab_label = Label.new()
 	_tab_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
@@ -117,10 +138,22 @@ func _ready() -> void:
 	_tab_label.offset_bottom = 56
 	_panel.add_child(_tab_label)
 
+	# [M26E2] Real pocket-POSITION indicator (not per-pocket iconography —
+	# see `ItemManager.pocket_dot_region`'s own doc comment for the measured
+	# reason). Input is already fully wired (`next_pocket`, driven by
+	# `overworld.gd`'s `ui_left`/`ui_right`) — this was the one missing
+	# visual piece.
+	_dot_row = HBoxContainer.new()
+	_dot_row.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_dot_row.offset_left = 20
+	_dot_row.offset_top = 58
+	_dot_row.offset_bottom = 70
+	_panel.add_child(_dot_row)
+
 	_rows_box = VBoxContainer.new()
 	_rows_box.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_rows_box.offset_left = 24
-	_rows_box.offset_top = 72
+	_rows_box.offset_top = 76
 	_rows_box.offset_right = -24
 	_rows_box.offset_bottom = -120
 	_panel.add_child(_rows_box)
@@ -249,6 +282,25 @@ func description_text() -> String:
 	return str(identity.get("description", "")).replace("\\n", " ")
 
 
+## [M26E2] The real region a given dot in the position row is currently
+## cropped to — test-only surface, mirroring `ItemManager.pocket_dot_region`'s
+## own (slot_index, selected) shape so a test can assert against it directly
+## rather than reaching into the private `_dot_row` node.
+func dot_region(index: int) -> Rect2:
+	if _dot_row == null or index < 0 or index >= _dot_row.get_child_count():
+		return Rect2()
+	var dot: TextureRect = _dot_row.get_child(index)
+	var atlas := dot.texture as AtlasTexture
+	return atlas.region if atlas != null else Rect2()
+
+
+## [M26E2] How many pocket-position dots are currently drawn — should always
+## equal `POCKET_ORDER.size()`.
+var dot_count: int:
+	get:
+		return _dot_row.get_child_count() if _dot_row != null else 0
+
+
 ## Is the highlighted item usable outside battle?
 static func is_field_usable(item_id: int) -> bool:
 	var item := ItemRegistry.get_item(item_id)
@@ -318,6 +370,7 @@ func _refresh() -> void:
 	if _tab_label == null:
 		return
 	_tab_label.text = str(POCKET_NAMES.get(pocket, "?"))
+	_refresh_dot_row()
 	for c in _rows_box.get_children():
 		c.queue_free()
 	for t in row_texts():
@@ -328,3 +381,32 @@ func _refresh() -> void:
 		_desc_label.text = "  ".join(action_texts())
 	else:
 		_desc_label.text = description_text()
+
+
+## [M26E2] One dot per pocket in `POCKET_ORDER`, cropped from
+## `bag_pocket_icons.png` via `ItemManager.pocket_dot_region` — see that
+## function's own doc comment for the measured region shapes (a big square
+## for the SELECTED pocket, a small dot for the rest — this is a plain
+## position indicator, not per-pocket art).
+func _refresh_dot_row() -> void:
+	if _dot_row == null:
+		return
+	# Removed IMMEDIATELY (`remove_child` before `queue_free`), not just
+	# queue_free()'d on its own — `open()`/`next_pocket()` can both call
+	# `_refresh()` back-to-back with no frame processed in between (this
+	# project's own established bare-instance test convention), and a
+	# deferred-only free would leave the PREVIOUS pocket's dots still
+	# counted by a synchronous `get_children()`/`dot_region()` read right
+	# after — the exact bug `ItemSelectScreen`'s own dot row hit first.
+	for c in _dot_row.get_children():
+		_dot_row.remove_child(c)
+		c.queue_free()
+	var sheet: Texture2D = load("res://assets/sprites/battle_ui/bag/bag_pocket_icons.png")
+	for i in range(POCKET_ORDER.size()):
+		var dot := TextureRect.new()
+		var atlas := AtlasTexture.new()
+		atlas.atlas = sheet
+		atlas.region = ItemManager.pocket_dot_region(i, i == _pocket_index)
+		dot.texture = atlas
+		dot.custom_minimum_size = Vector2(16, 16)
+		_dot_row.add_child(dot)

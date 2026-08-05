@@ -358,18 +358,36 @@ ITEMS = [
     #    hold_effect_param needed — the hold_effect itself fully specifies which
     #    status is cured (confirmed via src/data/items.h: none of these 6 set
     #    .holdEffectParam at all, unlike the type-keyed resist berries below).
-    {"id": 514, "name": "Cheri Berry",    "hold_effect": HOLD_EFFECT_CURE_PAR, "pocket": POCKET_BERRIES},
-    {"id": 515, "name": "Chesto Berry",   "hold_effect": HOLD_EFFECT_CURE_SLP, "pocket": POCKET_BERRIES},
-    {"id": 516, "name": "Pecha Berry",    "hold_effect": HOLD_EFFECT_CURE_PSN, "pocket": POCKET_BERRIES},
-    {"id": 517, "name": "Rawst Berry",    "hold_effect": HOLD_EFFECT_CURE_BRN, "pocket": POCKET_BERRIES},
-    {"id": 518, "name": "Aspear Berry",   "hold_effect": HOLD_EFFECT_CURE_FRZ, "pocket": POCKET_BERRIES},
-    {"id": 521, "name": "Persim Berry",   "hold_effect": HOLD_EFFECT_CURE_CONFUSION, "pocket": POCKET_BERRIES},
+    #
+    #    [M26E1] battle_usage=BATTLE_USE_CURE_STATUS added on all 6 (plus Persim
+    #    just below) -- src/data/items.h confirms each carries a real
+    #    `.battleUsage = EFFECT_ITEM_CURE_STATUS`, the SAME dispatch category
+    #    Full Heal uses, making these genuinely bag-feedable mid-battle in the
+    #    real games -- NOT a new mechanism invented for this project. See
+    #    ItemManager.bag_berry_effect's own doc comment for how this project's
+    #    dispatch tells these apart from Full Heal's own broader "cure
+    #    everything" scope despite sharing one battle_usage value.
+    {"id": 514, "name": "Cheri Berry",    "hold_effect": HOLD_EFFECT_CURE_PAR,
+        "battle_usage": BATTLE_USE_CURE_STATUS, "pocket": POCKET_BERRIES},
+    {"id": 515, "name": "Chesto Berry",   "hold_effect": HOLD_EFFECT_CURE_SLP,
+        "battle_usage": BATTLE_USE_CURE_STATUS, "pocket": POCKET_BERRIES},
+    {"id": 516, "name": "Pecha Berry",    "hold_effect": HOLD_EFFECT_CURE_PSN,
+        "battle_usage": BATTLE_USE_CURE_STATUS, "pocket": POCKET_BERRIES},
+    {"id": 517, "name": "Rawst Berry",    "hold_effect": HOLD_EFFECT_CURE_BRN,
+        "battle_usage": BATTLE_USE_CURE_STATUS, "pocket": POCKET_BERRIES},
+    {"id": 518, "name": "Aspear Berry",   "hold_effect": HOLD_EFFECT_CURE_FRZ,
+        "battle_usage": BATTLE_USE_CURE_STATUS, "pocket": POCKET_BERRIES},
+    {"id": 521, "name": "Persim Berry",   "hold_effect": HOLD_EFFECT_CURE_CONFUSION,
+        "battle_usage": BATTLE_USE_CURE_STATUS, "pocket": POCKET_BERRIES},
 
     # ── M18b: Oran Berry — flat 10 HP heal, same <=50%-max-HP threshold as Sitrus
     #    Berry (HasEnoughHpToEatBerry(..., 2, ...) in source, shared by both), but
     #    a DISTINCT hold_effect from Sitrus's HOLD_EFFECT_RESTORE_PCT_HP(82) — this
     #    one is HOLD_EFFECT_RESTORE_HP(1), param=10 is a flat HP amount not a percent.
-    {"id": 520, "name": "Oran Berry",     "hold_effect": HOLD_EFFECT_RESTORE_HP, "hold_effect_param": 10, "pocket": POCKET_BERRIES},
+    #    [M26E1] battle_usage=BATTLE_USE_RESTORE_HP added — src/data/items.h
+    #    confirms `.battleUsage = EFFECT_ITEM_RESTORE_HP`, same as Sitrus below.
+    {"id": 520, "name": "Oran Berry",     "hold_effect": HOLD_EFFECT_RESTORE_HP,
+        "hold_effect_param": 10, "battle_usage": BATTLE_USE_RESTORE_HP, "pocket": POCKET_BERRIES},
 
     # ── M18b: type-resist berries (16) — HOLD_EFFECT_RESIST_BERRY, the exact same
     #    generic dispatch Occa Berry(Fire)/Chilan Berry(Normal) already use (those
@@ -600,11 +618,13 @@ ITEMS = [
     #    HOLD_EFFECT_CURE_STATUS/HOLD_EFFECT_RESTORE_PCT_HP, just never given
     #    a .tres entry until now.
     {"id": 472, "name": "Leftovers",          "hold_effect": HOLD_EFFECT_LEFTOVERS},
+    # [M26E1] battle_usage set on both -- see the M18b berry block above's own
+    # citation; Lum/Sitrus carry the identical real .battleUsage fields.
     {"id": 522, "name": "Lum Berry",          "hold_effect": HOLD_EFFECT_CURE_STATUS,
-        "pocket": POCKET_BERRIES},
+        "battle_usage": BATTLE_USE_CURE_STATUS, "pocket": POCKET_BERRIES},
     {"id": 442, "name": "Choice Band",        "hold_effect": HOLD_EFFECT_CHOICE_BAND},
     {"id": 523, "name": "Sitrus Berry",       "hold_effect": HOLD_EFFECT_RESTORE_PCT_HP,
-        "hold_effect_param": 25, "pocket": POCKET_BERRIES},
+        "hold_effect_param": 25, "battle_usage": BATTLE_USE_RESTORE_HP, "pocket": POCKET_BERRIES},
     {"id": 443, "name": "Choice Specs",       "hold_effect": HOLD_EFFECT_CHOICE_SPECS},
     {"id": 444, "name": "Choice Scarf",       "hold_effect": HOLD_EFFECT_CHOICE_SCARF},
     {"id": 447, "name": "Damp Rock",          "hold_effect": HOLD_EFFECT_DAMP_ROCK},

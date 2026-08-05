@@ -783,6 +783,17 @@ var _player_party: BattleParty
 var _opp_party: BattleParty
 var _winner_side: int = -1
 
+## [M26E1] Promoted from a `_ready()`-local (which is all `is_doubles_battle`/
+## `background_id`/`opp_trainer_key` still are — this one alone needed to
+## outlive `_ready()`) to a real member field: `ItemSelectScreen._ensure_
+## debug_stock()` needs to read it well after `_ready()` has already run and
+## `BattleSetupContext.clear()` has already reset the static it was copied
+## from. Defaults false, matching the local it replaces — every pre-existing
+## caller (a direct/`--autoplay` launch, or the still-singles-only
+## `battle_setup_screen.gd` "Start Battle" flow, neither of which ever sets
+## `BattleSetupContext.is_overworld_battle` true) is unaffected.
+var is_overworld_battle: bool = false
+
 # [M23.2 addendum] Log-ordering fix — see _flush_pending_effect_lines()'s own
 # doc comment for the full mechanism.
 var _pending_effect_lines: Array[String] = []
@@ -1626,7 +1637,8 @@ func _ready() -> void:
 	# ⚠️ CAPTURED BEFORE `clear()`, like every other field here. Reading the
 	# static AFTER this block gets the RESET value, not the real one — see the
 	# `is_wild_battle` note below for what that cost.
-	var is_overworld_battle := false
+	# [M26E1] No longer a local — see the class-level `is_overworld_battle`
+	# field's own doc comment for why it now needs to survive past `_ready()`.
 	if BattleSetupContext.has_pending():
 		_player_party = BattleSetupContext.player_party
 		_opp_party = BattleSetupContext.opp_party
@@ -2289,6 +2301,15 @@ func _wire_log_signals() -> void:
 		_log("%s used %s!" % [_mon_label(user), item.item_name]))
 	_bm.item_healed.connect(func(mon: BattlePokemon, amount: int):
 		_log("%s recovered %d HP!" % [_mon_label(mon), amount]))
+	# [M26E1] The one place a real bag item is actually removed from
+	# OverworldSession.bag — see bag_item_consumed's own doc comment on
+	# BattleManager for why the engine itself never touches OverworldSession.
+	# `Bag.remove()` is safe to call unconditionally: it gracefully no-ops
+	# (returns false, changes nothing) if the item genuinely isn't present,
+	# which never happens for a real item this UI just offered from the
+	# real Bag, but keeps this call harmless in every other context too.
+	_bm.bag_item_consumed.connect(func(item: ItemData):
+		OverworldSession.bag.remove(item.item_id, 1))
 	_bm.recoil_damage.connect(func(mon: BattlePokemon, amount: int):
 		_log("%s was hurt by recoil! (%d damage)" % [_mon_label(mon), amount]))
 	_bm.drain_heal.connect(func(mon: BattlePokemon, amount: int):
@@ -4533,6 +4554,18 @@ func _setup_message_overlay_panel() -> void:
 # individual narration lines, only once nothing else needs to show). A
 # no-op if already in message mode, so repeated calls across several beats
 # in the same replay are safe.
+#
+# [Bugfix] _top_action_hbox/_fight_action_hbox (M26c-3's real-position split)
+# postdate this function and were never added here -- if a message beat ran
+# while TOP or FIGHT was the last-built menu, that HBox's own visible=true
+# from _layout_action_menu_for() was never cleared, so its two bordered
+# panel children (TopPromptSlot/TopGridSlot or FightGridSlot/MoveInfoBorder)
+# stayed on screen -- empty (their content is hidden below) but still drawn,
+# squeezing MessageLabel into whatever room was left in ActionVBox rather
+# than the action box actually being hidden. No restore needed in
+# _exit_message_mode() -- both of _exit_message_mode()'s call sites are
+# immediately followed by a synchronous _refresh_ui(), whose
+# _layout_action_menu_for() call sets these from the real _menu state.
 func _enter_message_mode() -> void:
 	if _message_label.visible:
 		return
@@ -4540,6 +4573,8 @@ func _enter_message_mode() -> void:
 	_status_label.visible = false
 	_new_button_grid.visible = false
 	_new_button_area.visible = false
+	_top_action_hbox.visible = false
+	_fight_action_hbox.visible = false
 	_message_label.visible = true
 
 
@@ -4865,15 +4900,17 @@ func _layout_party_status_row(row: Control, is_player: bool) -> void:
 # so they are scaled by that ratio rather than used literally.
 const _PARTY_ENTRY_SCALE := 3.3
 const _PARTY_BAR_ENTRY_OFFSET := 100.0   # bar_pos2_X, sign per side
-const _PARTY_BAR_ENTRY_STEP := 5.0       # bar_data0, px per GBA frame
+const _PARTY_BAR_ENTRY_STEP := 10.0      # bar_data0, px per GBA frame (2x source -- Rob's call, halves entry time)
 const _PARTY_BALL_ENTRY_OFFSET := 120.0  # ball x2, sign per side
-const _PARTY_BALL_ENTRY_STEP := 2.0      # data[1] accumulator -> 2px/frame
+const _PARTY_BALL_ENTRY_STEP := 4.0      # data[1] accumulator -> 4px/frame (2x source -- Rob's call, halves entry time)
 
 
 ## Per-ball entry delay in GBA frames. Player fans left-to-right, opponent
-## right-to-left -- source uses a different expression per side.
+## right-to-left -- source uses a different expression per side. Halved
+## (integer division) alongside the doubled step constants above, per Rob's
+## call to cut the whole entry animation's real-world duration in half.
 static func _party_ball_entry_delay(i: int, is_player: bool) -> int:
-	return (i * 7 + 10) if is_player else ((6 - i) * 7 + 10)
+	return ((i * 7 + 10) if is_player else ((6 - i) * 7 + 10)) / 2
 
 
 ## Slides the bar and fans the balls in. `staggered` is source's own

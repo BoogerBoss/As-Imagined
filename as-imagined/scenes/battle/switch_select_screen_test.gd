@@ -1,23 +1,20 @@
 extends Node
 
-# [M25h-1.5, extended M25h-4] Regression suite for the real separate
-# Switch/Party full-screen overlay — see switch_select_screen.gd's own doc
-# comment for the full architecture rationale (a child overlay on the
-# still-alive battle_screen instance, matching M25h-1.4's Item overlay
-# exactly) and Step 0 source citations (gText_ChoosePokemon header,
-# HandleChooseMonCancel's real voluntary-vs-forced cancel behavior). M25h-4
-# later succeeded at the tilemap-decode reconstruction M25h-1.5 had
-# originally declined (party_menu/bg.png's own raw tileset) -- see
-# gen_ui_frames.py's own doc comment for that session's full writeup; the
-# real decoded frame/slot art, HP-fraction color tint, party-specific
-# status icons, and held-item icons are all covered by this suite's own
-# later sections (K onward).
+# [M25h-1.5, extended M25h-4, rewritten M26E3-1] Regression suite for the
+# real separate Switch/Party full-screen overlay — see switch_select_
+# screen.gd's own doc comment for the full architecture rationale (a child
+# overlay on the still-alive battle_screen instance, matching M25h-1.4's
+# Item overlay exactly), Step 0 source citations (gText_ChoosePokemon
+# header, HandleChooseMonCancel's real voluntary-vs-forced cancel
+# behavior), and the M26E3-1 scope boundary (real Emerald UI Pack art,
+# format-dependent singles/doubles layout, all six party slots shown, but
+# real legality-rejection messages/the action submenu are E3-3's job).
 #
 # [Deliberately NOT tested here] The real on-screen visual result (real
-# window art, HP-bar/status-icon placement, legible text) — matches every
-# prior M25h suite's own established precedent of scoping automated
-# coverage to pure logic + bare-instance direct calls, leaving the real
-# end-to-end proof to this session's own mandatory real screenshot pass.
+# window art, panel positions, legible text) — matches every prior M25h
+# suite's own established precedent of scoping automated coverage to pure
+# logic + bare-instance direct calls, leaving the real end-to-end proof to
+# this session's own mandatory real screenshot pass.
 #
 # [Deliberately NOT calling _build_switch_buttons for the zero-candidate
 # scenario] That branch's own final statements are _bm.advance() followed
@@ -30,12 +27,7 @@ extends Node
 # session — still the exact M25a fix, still covered by
 # m25a_switch_aliasing_test.gd's own _test_switch_buttons_auto_resolves_
 # when_no_candidate (the pure _party_has_switch_candidate predicate) and
-# its doc comment's disclosed 180-battle stress-test verification. What
-# THIS session changed is only that the early-return now precedes overlay
-# construction instead of button construction — confirmed by direct
-# reading of _build_switch_buttons' own body (the any_candidate check and
-# `return` both appear textually before the overlay's `load()`/
-# `instantiate()` calls, so the zero-candidate path can never reach them).
+# its doc comment's disclosed 180-battle stress-test verification.
 
 var _pass := 0
 var _fail := 0
@@ -56,12 +48,14 @@ func _ready() -> void:
 	_test_mon_chosen_reaches_real_queue_replacement_for_end_to_end()
 	_test_cancelled_reaches_real_menu_reset_end_to_end()
 	_test_header_shows_the_real_source_string()
-	_test_row_includes_real_hp_bar_and_status_icon_children()
-	_test_fainted_and_active_members_excluded_from_rows()
-	_test_frame_and_slot_art_assets_exist_with_real_dimensions()
+	_test_row_includes_real_hp_text_and_status_icon_children()
+	_test_all_six_slots_shown_but_only_live_bench_is_clickable()
+	_test_real_pack_assets_exist_with_real_dimensions()
 	_test_party_status_icon_row_mapping_matches_real_ailment_order()
 	_test_held_item_icon_shown_only_when_holding_an_item()
 	_test_fainted_dim_helper_darkens_slot_art()
+	_test_singles_layout_shape()
+	_test_doubles_layout_shape()
 
 	var total := _pass + _fail
 	print("switch_select_screen_test: %d/%d passed" % [_pass, total])
@@ -143,6 +137,21 @@ func _base_text(btn: Button) -> String:
 	return btn.text.substr(BattleScreenShared._CURSOR_PREFIX.length())
 
 
+# Recursively searches every Label/Button in the tree for a substring --
+# used to confirm a slot is genuinely RENDERED somewhere (M26E3-1's "show
+# all six slots" behavior) independent of whether it's also a clickable
+# Button.
+func _tree_contains_text(node: Node, needle: String) -> bool:
+	if node is Label and (node as Label).text.contains(needle):
+		return true
+	if node is Button and (node as Button).text.contains(needle):
+		return true
+	for child in node.get_children():
+		if _tree_contains_text(child, needle):
+			return true
+	return false
+
+
 # ── A. Voluntary switch: overlay builds one row per eligible bench member,
 # plus Cancel as the last entry (matches Item's own LIST_CANCEL-style
 # structure, deliberately reused here) ──────────────────────────────────
@@ -179,7 +188,7 @@ func _test_overlay_omits_cancel_for_forced_replacement() -> void:
 	var buttons: Array[Button] = []
 	_collect_buttons(overlay, buttons)
 
-	_chk("forced replacement shows exactly 1 row (the only bench member), no Cancel",
+	_chk("forced replacement shows exactly 1 clickable row (the only live bench member), no Cancel",
 			buttons.size() == 1)
 	_chk("the one row is the real bench member", _base_text(buttons[0]).begins_with("OnlyBench"))
 
@@ -473,20 +482,13 @@ func _test_header_shows_the_real_source_string() -> void:
 			SwitchSelectScreen._HEADER_TEXT == "Choose a POKéMON.")
 
 
-# ── O. Each row carries a real HP bar (hpbar.png, Phase 4b) and, when
-# statused, a real status icon (status.png, Phase 4b) as child nodes ──────
+# ── O. [M26E3-1 REWRITE] Each row's own button text carries the real
+# current/max HP fraction (the HP-tint ColorRect this section used to check
+# is retired -- HP-bar-overlay compositing is explicitly E3-2 scope, see
+# switch_select_screen.gd's own scope-boundary doc comment), and a real
+# panel-art background + status icon are still real child TextureRects ────
 
-# [M25h-4, Part A/B/C rewrite] Rewritten from the old TextureProgressBar/
-# Phase-4b-hpbar.png assumption -- M25h-4 replaced the HP bar with a real
-# color-tinted overlay (ColorRect) positioned over the decoded slot art's
-# own known bar-fill pixel region, and moved it (plus the status icon) from
-# being a child of the row's Button to a child of the row's own outer
-# Control (a sibling of the Button, not nested inside it -- see
-# _build_mon_row's own doc comment for why). Matches this project's own
-# established "a genuine architecture change legitimately invalidates a
-# stale test assumption" precedent (M25h-1.4's own item_select_screen_test
-# rewrite, M25h-1.5's own m25h1_bottom_region_test/m25b_menu_test rewrites).
-func _test_row_includes_real_hp_bar_and_status_icon_children() -> void:
+func _test_row_includes_real_hp_text_and_status_icon_children() -> void:
 	var active := _make_mon("HpRowActive")
 	var bench := _make_mon("HpRowBench", 100)
 	bench.current_hp = 40
@@ -499,32 +501,28 @@ func _test_row_includes_real_hp_bar_and_status_icon_children() -> void:
 	_collect_buttons(overlay, buttons)
 	var row_container: Node = buttons[0].get_parent()
 
-	var has_hp_tint := false
+	_chk("the row's own button text carries the real current/max HP fraction",
+			buttons[0].text.contains("HP %d/%d" % [bench.current_hp, bench.max_hp]))
+
 	var texture_rect_count := 0
 	for child in row_container.get_children():
-		if child is ColorRect:
-			has_hp_tint = true
-			var expected := bs._hp_bar_color(bench.current_hp, bench.max_hp)
-			var actual: Color = (child as ColorRect).color
-			_chk("the row's HP tint reflects the real current/max HP threshold color",
-					is_equal_approx(actual.r, expected.r) and is_equal_approx(actual.g, expected.g)
-					and is_equal_approx(actual.b, expected.b))
 		if child is TextureRect:
 			texture_rect_count += 1
-	_chk("the row carries a real HP-fraction color tint (M25h-4 Part B)", has_hp_tint)
-	_chk("the row carries both the real slot-art background AND a status icon for a statused mon (M25h-4 Parts A/C)",
+	_chk("the row carries both the real panel-art background AND a status icon for a statused mon",
 			texture_rect_count >= 2)
 
 
-# ── P. Active and fainted party members never appear as switch rows
-# (unchanged pre-existing filter, now feeding the real screen instead of
-# _button_area) ──────────────────────────────────────────────────────────
+# ── P. [M26E3-1] ALL SIX SLOTS are shown (§0a decision 2) -- active and
+# fainted members render with their own real panel state, but only a live,
+# non-active bench member is a real clickable Button (E3-3 will add real
+# legality-rejection messages for the others, per this screen's own
+# disclosed scope boundary) ─────────────────────────────────────────────────
 
-func _test_fainted_and_active_members_excluded_from_rows() -> void:
-	var active := _make_mon("ExclActive")
-	var fainted_bench := _make_mon("ExclFaintedBench")
+func _test_all_six_slots_shown_but_only_live_bench_is_clickable() -> void:
+	var active := _make_mon("ActiveShown")
+	var fainted_bench := _make_mon("FaintedBenchShown")
 	fainted_bench.fainted = true
-	var live_bench := _make_mon("ExclLiveBench")
+	var live_bench := _make_mon("LiveBenchShown")
 	var bs := _make_battle_screen_with_font()
 	bs._player_party = _singles_party_with_bench(active, [fainted_bench, live_bench])
 	var overlay := _make_overlay(bs, 0, false)
@@ -535,24 +533,46 @@ func _test_fainted_and_active_members_excluded_from_rows() -> void:
 	for b in buttons:
 		texts.append(_base_text(b))
 
-	_chk("the active member never appears as a row", not texts.any(func(t): return (t as String).begins_with("ExclActive")))
-	_chk("a fainted bench member never appears as a row", not texts.any(func(t): return (t as String).begins_with("ExclFaintedBench")))
-	_chk("a live bench member appears as a row", texts.any(func(t): return (t as String).begins_with("ExclLiveBench")))
+	_chk("the active member is never a clickable Button (illegal pick, real rejection is E3-3's job)",
+			not texts.any(func(t): return (t as String).begins_with("ActiveShown")))
+	_chk("a fainted bench member is never a clickable Button either",
+			not texts.any(func(t): return (t as String).begins_with("FaintedBenchShown")))
+	_chk("a live bench member IS a clickable Button",
+			texts.any(func(t): return (t as String).begins_with("LiveBenchShown")))
+
+	# But all three are genuinely RENDERED somewhere -- the new "show all
+	# six slots" behavior, a real regression guard against the old
+	# filtered-list behavior silently returning.
+	_chk("the active member is genuinely rendered (not hidden from the screen entirely)",
+			_tree_contains_text(overlay, "ActiveShown"))
+	_chk("the fainted bench member is genuinely rendered (not hidden from the screen entirely)",
+			_tree_contains_text(overlay, "FaintedBenchShown"))
 
 
-# ── Q. [M25h-4, Part A] The real decoded frame/slot art assets exist and
-# have plausible real dimensions -- a lightweight sanity check that
-# gen_ui_frames.py's own output is present and non-trivial (the actual
-# decode correctness is a Python-side concern verified via this session's
-# own report, not re-derivable from GDScript) ────────────────────────────
+# ── Q. [M26E3-1] The real Emerald UI Pack assets this screen actually
+# consumes exist at their real pack dimensions -- a lightweight sanity
+# check scoped to THIS screen's own consumption (the exhaustive pull-wide
+# check is party_screen_sprite_smoke_test.gd's own job) ────────────────────
 
-func _test_frame_and_slot_art_assets_exist_with_real_dimensions() -> void:
-	var frame: Texture2D = load("res://assets/sprites/battle_ui/screens/party_frame.png")
-	var slot: Texture2D = load("res://assets/sprites/battle_ui/screens/party_slot_wide.png")
-	_chk("party_frame.png loads as a real, non-trivial texture",
-			frame != null and frame.get_width() > 32 and frame.get_height() > 32)
-	_chk("party_slot_wide.png loads at its real decoded dimensions (144x24)",
-			slot != null and slot.get_width() == 144 and slot.get_height() == 24)
+func _test_real_pack_assets_exist_with_real_dimensions() -> void:
+	var bg_singles: Texture2D = load("res://assets/sprites/battle_ui/party/party_bg_singles.png")
+	var bg_doubles: Texture2D = load("res://assets/sprites/battle_ui/party/party_bg_doubles.png")
+	var round_base: Texture2D = load("res://assets/sprites/battle_ui/party/panel_round_base.png")
+	var round_faint: Texture2D = load("res://assets/sprites/battle_ui/party/panel_round_faint.png")
+	var rect_base: Texture2D = load("res://assets/sprites/battle_ui/party/panel_rect_base.png")
+	var rect_faint: Texture2D = load("res://assets/sprites/battle_ui/party/panel_rect_faint.png")
+	_chk("party_bg_singles.png loads at its real pack dimensions (512x384)",
+			bg_singles != null and bg_singles.get_width() == 512 and bg_singles.get_height() == 384)
+	_chk("party_bg_doubles.png loads at its real pack dimensions (512x384)",
+			bg_doubles != null and bg_doubles.get_width() == 512 and bg_doubles.get_height() == 384)
+	_chk("panel_round_base.png loads at its real pack dimensions (156x98)",
+			round_base != null and round_base.get_width() == 156 and round_base.get_height() == 98)
+	_chk("panel_round_faint.png loads at its real pack dimensions (156x98)",
+			round_faint != null and round_faint.get_width() == 156 and round_faint.get_height() == 98)
+	_chk("panel_rect_base.png loads at its real pack dimensions (288x48)",
+			rect_base != null and rect_base.get_width() == 288 and rect_base.get_height() == 48)
+	_chk("panel_rect_faint.png loads at its real pack dimensions (288x48)",
+			rect_faint != null and rect_faint.get_width() == 288 and rect_faint.get_height() == 48)
 
 
 # ── R. [M25h-4, Part C] _party_status_icon_row's own real AILMENT-order
@@ -620,13 +640,68 @@ func _test_held_item_icon_shown_only_when_holding_an_item() -> void:
 			holder_texture_rects == non_holder_texture_rects + 1)
 
 
-# ── T. [M25h-4, Part B] The fainted-slot dim helper itself works correctly
-# (disclosed: no current row can reach it, since fainted members are never
-# listed as rows at all -- see _apply_fainted_dim's own doc comment) ──────
+# ── T. [M25h-4, Part B] The fainted-slot dim helper itself still works
+# correctly (superseded -- the real panel_*_faint.png pack states now
+# render this directly, per switch_select_screen.gd's own updated doc
+# comment; kept only as a fallback for a future bare-panel-art context) ───
 
 func _test_fainted_dim_helper_darkens_slot_art() -> void:
 	var slot_art := TextureRect.new()
 	slot_art.modulate = Color(1, 1, 1, 1)
 	SwitchSelectScreen._apply_fainted_dim(slot_art)
-	_chk("the fainted-dim helper darkens the slot art's own modulate (mechanism works, even though this screen's own row list never currently shows a fainted member)",
+	_chk("the fainted-dim helper still darkens the slot art's own modulate (a superseded fallback, not the active mechanism)",
 			slot_art.modulate.r < 1.0 and slot_art.modulate.a == 1.0)
+
+
+# ── U. [M26E3-1] Singles shape: 1 round active panel + 5 rect bench rows --
+# a genuinely different shape from doubles, not a reflow of the same list ──
+
+func _test_singles_layout_shape() -> void:
+	var active := _make_mon("SinglesActive")
+	var bench_members: Array = []
+	for i in range(5):
+		bench_members.append(_make_mon("SinglesBench%d" % i))
+	var bs := _make_battle_screen_with_font()
+	bs._player_party = _singles_party_with_bench(active, bench_members)
+	var overlay := _make_overlay(bs, 0, false)
+
+	var buttons: Array[Button] = []
+	_collect_buttons(overlay, buttons)
+	_chk("singles shows 5 clickable bench rows + Cancel (6 buttons total)",
+			buttons.size() == 6)
+
+	var bg: TextureRect = overlay.get_child(0)
+	_chk("the background used is the real singles mockup",
+			bg.texture != null and bg.texture.resource_path.ends_with("party_bg_singles.png"))
+
+
+# ── V. [M26E3-1] Doubles shape: 2 round active panels + 4 rect bench rows ──
+
+func _test_doubles_layout_shape() -> void:
+	var m0 := _make_mon("DoublesActive0")
+	var m1 := _make_mon("DoublesActive1")
+	var bs := _make_battle_screen_with_font()
+	var doubles_party := BattleParty.new()
+	var members: Array[BattlePokemon] = [m0, m1]
+	for i in range(4):
+		members.append(_make_mon("DoublesBench%d" % i))
+	doubles_party.members = members
+	var active_idx: Array[int] = [0, 1]
+	doubles_party.active_indices = active_idx
+	bs._player_party = doubles_party
+	# _is_doubles() derives from _opp_panels.size() > 1 (Doubles-split
+	# roadmap, step 5) -- a bare BattleScreenShared.new() never runs the
+	# real @onready-populated _ready(), so it's set directly here to
+	# exercise the doubles branch, matching this project's own established
+	# bare-instance test convention.
+	bs._opp_panels = [Control.new(), Control.new()]
+	var overlay := _make_overlay(bs, 0, false)
+
+	var buttons: Array[Button] = []
+	_collect_buttons(overlay, buttons)
+	_chk("doubles shows 4 clickable bench rows + Cancel (5 buttons total)",
+			buttons.size() == 5)
+
+	var bg: TextureRect = overlay.get_child(0)
+	_chk("the background used is the real doubles mockup",
+			bg.texture != null and bg.texture.resource_path.ends_with("party_bg_doubles.png"))

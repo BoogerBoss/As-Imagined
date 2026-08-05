@@ -51,6 +51,7 @@ func _ready() -> void:
 	_test_i10_utility_umbrella()
 	_test_i11_chilan_berry()
 	_test_i12_heavy_duty_boots()
+	_test_i13_bag_berry_feeding()
 
 	var total := _pass + _fail
 	print("item_test: %d/%d passed" % [_pass, total])
@@ -980,3 +981,102 @@ func _test_i12_heavy_duty_boots() -> void:
 	# combo) → maxHP/4 per _stealth_rock_damage's table (M16d).
 	_chk("I12.09 Item absence doesn't suppress Stealth Rock for everyone (non-holder still hit)",
 			sr_dmg_nonholder.size() == 1 and sr_dmg_nonholder[0] == sr_nonholder.max_hp / 4)
+
+
+# ── I13: [M26E1] ItemManager.bag_berry_effect — the real feed-a-berry-from-
+# the-bag mechanic, tested as a pure function (no battle needed). Source:
+# src/data/items.h confirms Cheri/Chesto/Pecha/Rawst/Aspear/Persim/Lum
+# carry `.battleUsage = EFFECT_ITEM_CURE_STATUS` and Oran/Sitrus carry
+# `.battleUsage = EFFECT_ITEM_RESTORE_HP` — see the function's own doc
+# comment. Every stat-raise berry (Liechi et al.) carries no `.battleUsage`
+# at all and must be a pure no-op through this function.
+
+func _make_berry(hold_effect: int, param: int = 0) -> ItemData:
+	var item := ItemData.new()
+	item.hold_effect = hold_effect
+	item.hold_effect_param = param
+	item.pocket = ItemManager.POCKET_BERRIES
+	return item
+
+
+func _test_i13_bag_berry_feeding() -> void:
+	# I13.01: Oran Berry — flat 10 HP, mirrors hp_threshold_berry_heal's own
+	# flat branch, fed directly (no HP-threshold gate, unlike the auto-eat
+	# case tested in I6/I7 above).
+	var oran := _make_berry(ItemManager.HOLD_EFFECT_RESTORE_HP, 10)
+	var damaged := _make_mon("BerryHP1", TypeChart.TYPE_NORMAL)
+	damaged.current_hp = damaged.max_hp - 50
+	var result_oran := ItemManager.bag_berry_effect(damaged, oran)
+	_chk("I13.01 Oran Berry fed directly heals a flat 10 HP",
+			int(result_oran.get("healed", 0)) == 10 and not bool(result_oran.get("cured", false)))
+	_chk("I13.01b the heal is actually applied to current_hp",
+			damaged.current_hp == damaged.max_hp - 40)
+
+	# I13.02: Sitrus Berry — percent-based (max_hp*25/100), fed directly —
+	# the case bag_item_heal's own flat-only shape would get WRONG if
+	# naively reused for a berry (see bag_berry_effect's own doc comment).
+	var sitrus := _make_berry(ItemManager.HOLD_EFFECT_RESTORE_PCT_HP, 25)
+	var damaged2 := _make_mon("BerryHP2", TypeChart.TYPE_NORMAL, TypeChart.TYPE_NONE, 200)
+	damaged2.current_hp = 10
+	var result_sitrus := ItemManager.bag_berry_effect(damaged2, sitrus)
+	_chk("I13.02 Sitrus Berry fed directly heals max_hp*25/100, not a flat amount",
+			int(result_sitrus.get("healed", 0)) == damaged2.max_hp * 25 / 100)
+
+	# I13.03: already-full-HP target — a pure no-op, matching source's own
+	# `!(override && hp == maxHP)` exception (the one check even the
+	# override branch still enforces).
+	var full_hp := _make_mon("BerryHP3", TypeChart.TYPE_NORMAL)
+	var result_noop := ItemManager.bag_berry_effect(full_hp, oran)
+	_chk("I13.03 Feeding a heal berry to an already-full-HP target is a no-op",
+			int(result_noop.get("healed", 0)) == 0 and not bool(result_noop.get("cured", false)))
+
+	# I13.04: Cheri Berry — a specific-status cure (paralysis only).
+	var cheri := _make_berry(ItemManager.HOLD_EFFECT_CURE_PAR)
+	var paralyzed := _make_mon("BerryStatus1", TypeChart.TYPE_NORMAL)
+	paralyzed.status = BattlePokemon.STATUS_PARALYSIS
+	var result_cheri := ItemManager.bag_berry_effect(paralyzed, cheri)
+	_chk("I13.04 Cheri Berry fed directly cures paralysis",
+			bool(result_cheri.get("cured", false)) and paralyzed.status == BattlePokemon.STATUS_NONE)
+
+	# I13.05: Cheri Berry does NOT cure an unrelated status (burn) — a real
+	# per-status discriminator, not Full Heal's own blanket cure-everything.
+	var cheri2 := _make_berry(ItemManager.HOLD_EFFECT_CURE_PAR)
+	var burned := _make_mon("BerryStatus2", TypeChart.TYPE_NORMAL)
+	burned.status = BattlePokemon.STATUS_BURN
+	var result_cheri2 := ItemManager.bag_berry_effect(burned, cheri2)
+	_chk("I13.05 Cheri Berry does NOT cure burn (per-status, not blanket like Full Heal)",
+			not bool(result_cheri2.get("cured", false)) and burned.status == BattlePokemon.STATUS_BURN)
+
+	# I13.06: Persim Berry — confusion, architecturally separate from .status.
+	var persim := _make_berry(ItemManager.HOLD_EFFECT_CURE_CONFUSION)
+	var confused := _make_mon("BerryConf", TypeChart.TYPE_NORMAL)
+	confused.confusion_turns = 3
+	var result_persim := ItemManager.bag_berry_effect(confused, persim)
+	_chk("I13.06 Persim Berry fed directly cures confusion",
+			bool(result_persim.get("cured", false)) and confused.confusion_turns == 0)
+
+	# I13.07: a stat-raise berry (Liechi — HOLD_EFFECT_ATTACK_UP) has no real
+	# battle_usage in source and must be a pure no-op through this function,
+	# confirming it can never be fed even if somehow passed in directly.
+	var liechi := _make_berry(ItemManager.HOLD_EFFECT_ATTACK_UP, 4)
+	var any_mon := _make_mon("BerryStatRaise", TypeChart.TYPE_NORMAL)
+	var result_liechi := ItemManager.bag_berry_effect(any_mon, liechi)
+	_chk("I13.07 A stat-raise berry (Liechi) is a no-op — not real-games bag-feedable",
+			int(result_liechi.get("healed", 0)) == 0 and not bool(result_liechi.get("cured", false)))
+
+	# I13.08: a non-berry item (wrong pocket) is a no-op through this
+	# function regardless of hold_effect — the pocket gate is checked first.
+	var potion_shaped := ItemData.new()
+	potion_shaped.hold_effect = ItemManager.HOLD_EFFECT_RESTORE_HP
+	potion_shaped.hold_effect_param = 20
+	potion_shaped.pocket = ItemManager.POCKET_ITEMS
+	var any_mon2 := _make_mon("BerryWrongPocket", TypeChart.TYPE_NORMAL)
+	any_mon2.current_hp = any_mon2.max_hp - 30
+	var result_wrong_pocket := ItemManager.bag_berry_effect(any_mon2, potion_shaped)
+	_chk("I13.08 A non-berry (POCKET_ITEMS) item is a no-op through bag_berry_effect",
+			int(result_wrong_pocket.get("healed", 0)) == 0)
+
+	# I13.09: null item guard.
+	var result_null := ItemManager.bag_berry_effect(any_mon2, null)
+	_chk("I13.09 A null item is a graceful no-op, not a crash",
+			int(result_null.get("healed", 0)) == 0 and not bool(result_null.get("cured", false)))

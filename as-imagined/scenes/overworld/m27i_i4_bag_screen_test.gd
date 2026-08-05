@@ -11,7 +11,7 @@ extends Node
 ##   * the START menu's short entry list is source's own CONDITIONAL result,
 ##     not a stub, and three unconditional entries are deliberately omitted.
 
-const EXPECTED_TOTAL := 47
+const EXPECTED_TOTAL := 52
 
 var _total := 0
 var _failed := 0
@@ -42,6 +42,7 @@ func _ready() -> void:
 	_test_description()
 	_test_start_menu()
 	_test_wiring()
+	_test_dot_row()
 
 	var accounted := _total + _gated
 	_chk("Z.99 every expected assertion ran (%d + %d gated == %d)"
@@ -291,3 +292,24 @@ func _test_wiring() -> void:
 				str(s.row_texts()[0]).contains("TM39"))
 		s.free()
 	OverworldSession.reset()
+
+
+## --- G. [M26E2] the pocket-position dot row ---
+func _test_dot_row() -> void:
+	var bag := Bag.new()
+	var s := _screen()
+	s.open(bag)
+
+	_chk("G.01 one dot per pocket (5, matching POCKET_ORDER)",
+			s.dot_count == FieldBagScreen.POCKET_ORDER.size())
+	_chk("G.02 the first dot (ITEMS, the default pocket) uses the SELECTED region",
+			s.dot_region(0) == ItemManager.pocket_dot_region(0, true))
+	_chk("G.03 an unselected dot uses the UNSELECTED region",
+			s.dot_region(1) == ItemManager.pocket_dot_region(1, false))
+
+	s.next_pocket(1)
+	_chk("G.04 after cycling, the FIRST dot switches to the UNSELECTED region",
+			s.dot_region(0) == ItemManager.pocket_dot_region(0, false))
+	_chk("G.05 and the NEW current dot switches to the SELECTED region",
+			s.dot_region(1) == ItemManager.pocket_dot_region(1, true))
+	s.free()

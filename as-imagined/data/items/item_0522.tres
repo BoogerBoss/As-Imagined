@@ -9,3 +9,4 @@ item_id = 522
 item_name = "Lum Berry"
 hold_effect = 9
 pocket = 3
+battle_usage = 2

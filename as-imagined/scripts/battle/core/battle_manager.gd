@@ -327,6 +327,28 @@ signal items_swapped(attacker: BattlePokemon, defender: BattlePokemon)  # [D1 ea
 # existing item_healed signal below, since that one's semantics ("this mon
 # was healed by this amount due to an item") genuinely do apply unchanged.
 signal item_action_used(user: BattlePokemon, item: ItemData, target: BattlePokemon)
+
+## [M26E1] A bag item was genuinely consumed — the effect actually did
+## something (a real heal/cure/stat-change landed) or, for a thrown Poké
+## Ball, the ball always leaves the bag regardless of catch outcome
+## (matching the real games — you lose the ball whether you catch or not).
+## Deliberately NOT fired for a no-op use (e.g. a Potion on an already-full-
+## HP target) — this project has no menu-legality layer to refuse an
+## invalid selection up front (see bag_item_heal's own doc comment), so a
+## no-op use is a real possible outcome, and it would be wrong to spend a
+## real inventory item on nothing happening. `item_action_used` above still
+## fires unconditionally either way (it only reports "this item was
+## selected," not "this item worked").
+##
+## Engine-only: this signal reports a battle fact, it does not touch
+## persistence — BattleManager has no reference to OverworldSession
+## anywhere (confirmed via grep before adding this), and this signal keeps
+## it that way. The UI layer (battle_screen_shared.gd) is what actually
+## removes the item from the real Bag, the same separation of concerns
+## already used for money/EXP (BattleManager computes and reports; the
+## overworld-facing layer persists).
+signal bag_item_consumed(item: ItemData)
+
 # [M22 Phase 2] a Poké Ball was thrown and the (currently always-stubbed,
 # see ItemManager.attempt_catch) catch attempt resolved. Fired IN ADDITION
 # TO item_action_used above (which already fires generically for every item
@@ -8650,6 +8672,10 @@ func _do_voluntary_switch(combatant_idx: int, slot: int) -> void:
 # EFFECT_ITEM_INCREASE_STAT (X Attack), EFFECT_ITEM_THROW_BALL (Poké Ball
 # placeholder) — see ItemManager.BATTLE_USE_* for the full source enum this
 # dispatch could still grow into for M25's future full item roster.
+# [M26E1] The RESTORE_HP/CURE_STATUS branches below now also cover the 9
+# real bag-feedable berries (item.pocket == POCKET_BERRIES routes through
+# ItemManager.bag_berry_effect instead of bag_item_heal/bag_item_cure_
+# status) — see that function's own doc comment for the source citation.
 func _do_item_use(actor_idx: int, item: ItemData, party_target: int) -> void:
 	var side: int = actor_idx / _active_per_side
 	var user: BattlePokemon = _combatants[actor_idx]
@@ -8669,9 +8695,15 @@ func _do_item_use(actor_idx: int, item: ItemData, party_target: int) -> void:
 		item_action_used.emit(user, item, opponent)
 		if not party_has_room:
 			# Refused before the roll, so a full party never sees a ball wobble
-			# and then lose the Pokémon anyway.
+			# and then lose the Pokémon anyway — and, correspondingly, never
+			# loses the ball either (a genuine attempt is what consumes it).
 			catch_refused.emit(user, item)
 			return
+		# [M26E1] The ball leaves the bag the moment it's actually thrown,
+		# whether the catch succeeds or not — matching the real games (you
+		# lose the ball either way; a capture just means it becomes the
+		# caught Pokémon's own ball rather than returning to the bag).
+		bag_item_consumed.emit(item)
 		var thrower_level: int = user.level if user != null else 1
 		var result: Dictionary = ItemManager.attempt_catch(
 				opponent, item, badge_count, thrower_level, _catch_rng)
@@ -8696,13 +8728,34 @@ func _do_item_use(actor_idx: int, item: ItemData, party_target: int) -> void:
 
 	var target_mon: BattlePokemon = _parties[side].members[party_target]
 	item_action_used.emit(user, item, target_mon)
+	# [M26E1] Berries route through bag_berry_effect (Cheri/Chesto/Pecha/
+	# Rawst/Aspear/Persim/Lum/Oran/Sitrus, the 9 real bag-feedable berries),
+	# NOT bag_item_heal/bag_item_cure_status — those two are Potion/Full
+	# Heal's own flat/blanket shape (a flat hold_effect_param heal; an
+	# unconditional cure-everything), wrong for a berry whose heal can be
+	# percent-based (Sitrus) and whose cure is per-status (Cheri etc.), not
+	# blanket. `item.pocket` is already the correct real discriminator —
+	# every non-berry item this project has is POCKET_ITEMS.
 	if item.battle_usage == ItemManager.BATTLE_USE_RESTORE_HP:
-		var healed: int = ItemManager.bag_item_heal(target_mon, item)
+		var healed: int
+		if item.pocket == ItemManager.POCKET_BERRIES:
+			var berry_heal: Dictionary = ItemManager.bag_berry_effect(target_mon, item)
+			healed = int(berry_heal.get("healed", 0))
+		else:
+			healed = ItemManager.bag_item_heal(target_mon, item)
 		if healed > 0:
 			item_healed.emit(target_mon, healed)
+			bag_item_consumed.emit(item)
 	elif item.battle_usage == ItemManager.BATTLE_USE_CURE_STATUS:
-		if ItemManager.bag_item_cure_status(target_mon, item):
+		var cured: bool
+		if item.pocket == ItemManager.POCKET_BERRIES:
+			var berry_cure: Dictionary = ItemManager.bag_berry_effect(target_mon, item)
+			cured = bool(berry_cure.get("cured", false))
+		else:
+			cured = ItemManager.bag_item_cure_status(target_mon, item)
+		if cured:
 			party_status_cured.emit(target_mon)
+			bag_item_consumed.emit(item)
 	elif item.battle_usage == ItemManager.BATTLE_USE_INCREASE_STAT:
 		# Source: CannotUseItemsInBattle's EFFECT_ITEM_INCREASE_STAT case gates
 		# on `hp == 0` (menu-legality) — reproduced as a pure no-op here,
@@ -8713,6 +8766,7 @@ func _do_item_use(actor_idx: int, item: ItemData, party_target: int) -> void:
 					target_mon, item.stat_boost_stage, ItemManager.X_ITEM_STAGES)
 			if actual != 0:
 				stat_stage_changed.emit(target_mon, item.stat_boost_stage, actual)
+				bag_item_consumed.emit(item)
 
 
 # M9/M14b: forced switch-in for Roar/Whirlwind — forces out the combatant at

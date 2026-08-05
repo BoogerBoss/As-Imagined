@@ -11,6 +11,43 @@ class_name SwitchSelectScreen
 # survive the trip; see that file's own doc comment for the full rationale,
 # unchanged here).
 #
+# [M26E3-1 REWRITE] Real Emerald UI Pack art (Route B, decided
+# docs/m26_e3_recon.md §0a) replaces M25h-4's own decoded-tilemap art
+# (party_frame.png/party_slot_wide.png, which stay on disk but are no
+# longer consumed here) and the old single-flat-row-list layout. Real,
+# format-DEPENDENT layout now: singles = 1 large round "active" panel +
+# 5 rect bench rows; doubles = 2 round panels + 4 rect rows -- a genuinely
+# different shape, not a reflow, confirmed via direct pixel-scan of the
+# pack's own bg.PNG/bg_double.png mockups (see the layout constants below
+# for the exact measured coordinates). **All six party slots are now shown**
+# (§0a decision 2) -- active and fainted members included, each in the
+# correct real panel STATE (base/faint) -- superseding the old behavior of
+# filtering them out of the list entirely.
+#
+# [Scope boundary, disclosed] This is E3-1's own "static layout" scope,
+# not the full E3 arc:
+#   - The active round panel(s) and any FAINTED bench row are rendered as
+#     PURE VISUALS (no Button, not in the cursor group) -- clicking an
+#     illegal slot and seeing source's own real rejection message
+#     ("is already in battle!", "has no energy left to battle!", etc.) is
+#     E3-3's job, not built yet. Only a live, non-active, non-fainted bench
+#     mon is a real clickable row, exactly matching this screen's own
+#     pre-existing selectable-candidate scope.
+#   - Mon icons (32x64, HP-tier animation cadence, selection bounce), the
+#     ball-open cursor marker, the real overlay_hp_back/overlay_hp HP-bar
+#     compositing, and the panel _sel state swap on cursor movement are ALL
+#     explicitly E3-2 ("Dynamics") scope, per the recon's own phasing table
+#     -- this screen keeps its existing plain-text name/level/HP display
+#     and the existing "▶"-prefix cursor convention (M25h-1.3) for now,
+#     rather than inventing approximate pixel offsets for a composite this
+#     project doesn't have real 004_Party.rb text/HP-bar coordinates for
+#     yet.
+#   - Status icon + held-item icon (M25h-4 Part C) are kept UNCHANGED --
+#     both are already real, already-tested, purely static per-row
+#     displays, so carrying them over is continuity, not new E3-2 work.
+#   - The action submenu (SHIFT/SUMMARY/CANCEL) is E3-3 scope; picking a
+#     legal mon still emits `mon_chosen` directly, exactly as before.
+#
 # [Real source structural findings, reused directly rather than invented]
 # - The real in-battle party screen (`OpenPartyMenuInBattle`) always shows
 #   the SAME header message regardless of voluntary-vs-forced context --
@@ -36,45 +73,46 @@ class_name SwitchSelectScreen
 # - Party rows in real source show name/level, an HP bar, and a status
 #   condition icon per Pokémon (`GetMonStatusAndPokerus`/health bar draw in
 #   party_menu.c) -- reused here via this project's OWN already-pulled real
-#   assets from Phase 4b (hpbar.png's label/fill regions, status.png's
-#   6-row status icon sheet, `_hp_bar_color`'s threshold coloring), not a
-#   new asset pull, exactly mirroring M25h-1.4's own "reuse already-real
-#   assets in a new context" pattern.
+#   assets from Phase 4b (status.png's 6-row status icon sheet via the
+#   party-specific party_status_icons.png, M25h-4 Part C), not a new asset
+#   pull.
 #
-# [M25h-4, Part A -- supersedes the note below] A 3rd tilemap-decode
-# attempt (gen_ui_frames.py) succeeded cleanly this time (unlike Phase 5a's
-# own flagged-incorrect battle-background reconstruction) -- see that
-# script's own doc comment for the full Step 0 writeup on why this attempt
-# was warranted despite Phase 5a's history. This screen now uses the real
-# decoded `graphics/party_menu/bg.png`+`bg.bin` frame (party_frame.png) and
-# the real per-row "wide" slot art (`slot_wide.bin`, party_slot_wide.png --
-# confirmed via direct read of BlitBitmapToPartyWindow to be exactly
-# source's own multi-mon-list-row format, the correct match for this
-# screen's own scrollable single-column list), replacing the text_window
-# reuse this section originally shipped with. The original text_window
-# note is kept below, struck through in spirit rather than deleted, since
-# the REASONING it documents (why a 3rd attempt wasn't obviously safe) is
-# still real project history worth keeping visible.
-#
-# [Original M25h-1.5 note, now superseded] Source's real Party screen has a
-# genuine dedicated background/slot-frame graphic (`graphics/party_menu/
-# bg.png`, `slot_main.bin`/`slot_wide.bin`) -- confirmed via direct source
-# read to be raw GBA tilesets/tilemaps (INCGFX_U32 4bpp + separate binary
-# tilemap data), the SAME class of asset M25h-1.4 already declined to
-# reconstruct for the Bag screen's own `bag/menu.png` (and the same class
-# Phase 5a already tried once and abandoned as disproportionate for battle
-# backgrounds). This screen reuses the already-pulled, already-flat
-# `text_window/1.png` panel art (h-1.1) instead, matching Item's own
-# precedent exactly.
-#
-# [M25h-4, Part C] Held-item icons ARE now shown (`hold_icons.png`,
-# confirmed a flat, simple 2-icon sheet -- item/mail -- not a raw tileset,
-# unlike the frame art above) -- this project's first-ever held-item UI,
-# reading `BattlePokemon.held_item` directly (already-populated real data,
-# confirmed via direct grep, never displayed anywhere before now). This
-# project has no Mail item concept (confirmed via grep), so the generic
-# item icon (sheet index 0) is used unconditionally whenever held_item !=
-# null, never the mail icon (index 1).
+# [Layout constants -- Step 0, measured directly] The pack's own
+# 004_Party.rb assembly recipe gives singles coordinates directly (panel_
+# round.png at (18,62); panel_rect.png at (222, 30/90/150/210/270), 60px
+# pitch) -- but the doubles half is NOT in that Ruby file (its own doubles-
+# bg-selection logic lives in base Essentials, absent from this pack), so
+# those coordinates come from a direct border-color pixel scan of bg_
+# double.png instead (this session's own measurement, cross-checked against
+# the singles scan using the identical method, confirmed internally
+# consistent: same rect-column x/width, same 60px row pitch, a clean 124px
+# round-panel-to-round-panel pitch = 98px panel height + 26px gap). All
+# values below are the native 512x384 pack-canvas coordinates doubled to
+# this project's own 1024x768 base canvas (M26A1) -- a clean 2x, matching
+# how bg.PNG/bg_double.png themselves are exactly half that canvas.
+const _ROUND_PANEL_SIZE := Vector2(312, 196)
+const _RECT_PANEL_SIZE := Vector2(576, 96)
+const _ROUND_PANEL_POS := Vector2(36, 124)
+const _ROUND_PANEL_2_POS := Vector2(36, 372)
+const _RECT_PANEL_X := 444.0
+const _RECT_PANEL_PITCH := 120.0
+const _SINGLES_RECT_FIRST_Y := 60.0
+const _DOUBLES_RECT_FIRST_Y := 100.0
+const _CANCEL_SIZE := Vector2(224, 72)
+
+# [Real screenshot verification, caught a real overflow bug] `_style_menu_
+# button`'s own font_size (`_MENU_BUTTON_FONT_SIZE`, 4x `_FONT_NORMAL_SIZE`
+# = 60) was sized for SHORT menu labels ("Fight"/"Cancel"/a move name) --
+# applying it unmodified to a full "Name♂ Lv50   HP 999/999"-shaped row
+# string overflowed well past the real rect panel's own 576px width (and
+# the round panel's narrower 312px), confirmed via a real non-headless
+# screenshot. `_ROW_FONT_SIZE` is a SMALLER explicit override applied on
+# top of `_style_menu_button`'s own call, kept an exact integer multiple of
+# `_FONT_NORMAL_SIZE` (2x, matching the standing invariant recorded at that
+# constant's own declaration -- a non-multiple would visibly smear this
+# extracted bitmap font).
+const _ROW_FONT_SIZE := 30
+
 signal mon_chosen(slot: int)
 signal cancelled()
 
@@ -91,15 +129,6 @@ const _STATUS_ICON_DISPLAY_SIZE := Vector2(24, 8)
 # PKRS=6, FNT=7, FRB=8 -- so anim index (row) = AILMENT value - 1.
 const _PARTY_STATUS_ICON_SIZE := Vector2(32, 8)
 const _PARTY_STATUS_ROW_FNT := 6
-
-# [M25h-4, Part A] The real decoded per-row slot art's own known pixel
-# layout within its 144x24 native canvas (measured directly against
-# party_slot_wide.png -- see this session's own report for the visual
-# confirmation): the baked "HP" label sits at roughly x=[74,92], and the
-# bar's own empty fill rectangle -- the region Part B's HP-fraction color
-# tint overlays -- sits at roughly x=[94,134], y=[9,15].
-const _SLOT_ART_SIZE := Vector2(144, 24)
-const _SLOT_HP_FILL_RECT := Rect2(94, 9, 40, 6)
 
 # [Doubles-split roadmap, step 5] Deliberately UNTYPED -- see
 # item_select_screen.gd's own identical field for the full rationale
@@ -124,84 +153,75 @@ func _build() -> void:
 	anchor_bottom = 1.0
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
-	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.05, 0.05, 0.05, 1.0)
-	backdrop.anchor_right = 1.0
-	backdrop.anchor_bottom = 1.0
-	add_child(backdrop)
+	var is_doubles: bool = _parent_bs != null and _parent_bs._is_doubles()
 
-	# [M25h-4, Part A] Real decoded Party-screen frame art (gen_ui_frames.py,
-	# from graphics/party_menu/bg.png+bg.bin), replacing text_window reuse.
-	# party_frame.png is a fixed 240x192 composition (a rounded-corner olive
-	# list panel), rendered the same STRETCH_SCALE way bag_frame.png is on
-	# the Item screen -- see that screen's own _build() doc comment for the
-	# shared precedent citation (M25e's stretch convention).
-	# [Panel-sizing follow-up] anchor_right was originally 0.48 (paired with
-	# anchor_bottom=0.75), giving a near-1:1 box that stretched
-	# party_frame.png away from its own real 240x192 (5:4) proportions.
-	# Recomputed to preserve the panel's original HEIGHT (anchor_bottom
-	# unchanged) while deriving width from the real 5:4 ratio instead, the
-	# same "resize the box to the asset's own real aspect ratio rather than
-	# stretch the asset to fit an arbitrary box" fix applied to the Item
-	# screen's own Panel.
-	var panel := Control.new()
-	panel.anchor_left = 0.08
-	panel.anchor_top = 0.06
-	panel.anchor_right = 0.565
-	panel.anchor_bottom = 0.75
-	add_child(panel)
-
-	var frame_rect := TextureRect.new()
-	frame_rect.texture = load("res://assets/sprites/battle_ui/screens/party_frame.png")
-	frame_rect.anchor_right = 1.0
-	frame_rect.anchor_bottom = 1.0
-	frame_rect.stretch_mode = TextureRect.STRETCH_SCALE
-	frame_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(frame_rect)
-
-	var margin := MarginContainer.new()
-	margin.anchor_right = 1.0
-	margin.anchor_bottom = 1.0
-	margin.add_theme_constant_override("margin_left", 16)
-	margin.add_theme_constant_override("margin_top", 12)
-	margin.add_theme_constant_override("margin_right", 16)
-	margin.add_theme_constant_override("margin_bottom", 12)
-	panel.add_child(margin)
-
-	var vbox := VBoxContainer.new()
-	margin.add_child(vbox)
+	var bg := TextureRect.new()
+	bg.texture = load("res://assets/sprites/battle_ui/party/party_bg_doubles.png") \
+			if is_doubles else load("res://assets/sprites/battle_ui/party/party_bg_singles.png")
+	bg.anchor_right = 1.0
+	bg.anchor_bottom = 1.0
+	bg.stretch_mode = TextureRect.STRETCH_SCALE
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(bg)
 
 	var header := Label.new()
 	header.text = _HEADER_TEXT
+	header.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	header.offset_left = 16
+	header.offset_top = 8
+	header.offset_bottom = 40
 	if _parent_bs != null:
 		header.add_theme_font_override("font", _parent_bs._font_menu)
 		header.add_theme_font_size_override("font_size", BattleScreenShared._FONT_NORMAL_SIZE)
 		header.add_theme_color_override("font_color", Color(1, 1, 1, 1))
-	vbox.add_child(header)
-
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 8)
-	vbox.add_child(spacer)
+		header.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+		header.add_theme_constant_override("shadow_offset_x", 1)
+		header.add_theme_constant_override("shadow_offset_y", 1)
+	add_child(header)
 
 	var party: BattleParty = _parent_bs._player_party
+	var active: Array = party.active_indices
+
+	# Active mon(s) -- real round panel(s), pure visual (no Button; picking
+	# one is always illegal and its real rejection text is E3-3's job).
+	var round_positions := [_ROUND_PANEL_POS, _ROUND_PANEL_2_POS]
+	for i in range(active.size()):
+		var mon: BattlePokemon = party.members[active[i]]
+		add_child(_build_active_panel(mon, round_positions[i]))
+
+	# Bench -- every OTHER party member, in index order, one real rect row
+	# each. All six slots are shown (§0a decision 2): a fainted bench mon
+	# still gets a row, in the real "faint" panel state, just with no
+	# Button (illegal pick, real rejection text is E3-3's job).
+	var first_y: float = _DOUBLES_RECT_FIRST_Y if is_doubles else _SINGLES_RECT_FIRST_Y
 	var buttons: Array[Button] = []
+	var bench_row := 0
 	for i in range(party.members.size()):
-		if party.active_indices.has(i) or party.members[i].fainted:
+		if active.has(i):
 			continue
 		var mon: BattlePokemon = party.members[i]
-		var row := _build_mon_row(mon, i)
-		vbox.add_child(row.container)
-		buttons.append(row.button)
+		var pos := Vector2(_RECT_PANEL_X, first_y + bench_row * _RECT_PANEL_PITCH)
+		var built := _build_bench_row(mon, i, pos)
+		add_child(built.container)
+		if built.button != null:
+			buttons.append(built.button)
+		bench_row += 1
 
 	if not _is_forced_replacement:
+		var cancel_pos := Vector2(_RECT_PANEL_X + (_RECT_PANEL_SIZE.x - _CANCEL_SIZE.x) / 2.0,
+				first_y + bench_row * _RECT_PANEL_PITCH + 12.0)
 		var cancel_btn := Button.new()
 		if _parent_bs != null:
 			_parent_bs._style_menu_button(cancel_btn)
 			_parent_bs._strip_button_chrome(cancel_btn)
-		cancel_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		cancel_btn.text = "Cancel"
+		cancel_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		cancel_btn.offset_left = cancel_pos.x
+		cancel_btn.offset_top = cancel_pos.y
+		cancel_btn.offset_right = cancel_pos.x + _CANCEL_SIZE.x
+		cancel_btn.offset_bottom = cancel_pos.y + _CANCEL_SIZE.y
 		cancel_btn.pressed.connect(_on_cancel_pressed)
-		vbox.add_child(cancel_btn)
+		add_child(cancel_btn)
 		buttons.append(cancel_btn)
 
 	if _parent_bs != null:
@@ -232,142 +252,156 @@ static func _party_status_icon_row(mon: BattlePokemon) -> int:
 			return -1
 
 
-# Builds one clickable party row: a real decoded slot-art background
-# (party_slot_wide.png, M25h-4 Part A) with a chrome-stripped,
-# cursor-group-eligible Button layered on top carrying the row's own text
-# (name/level/HP fraction) -- Button.text drives cursor-group selection
-# (_wire_cursor_group/_set_cursor_selected rewrite .text directly), so the
-# background/overlay children, added separately as row siblings (not
-# button children), are never touched by that rewrite. Godot draws sibling
-# Controls in child order, so the background TextureRect is added FIRST
-# (drawn first = appears behind) and the Button second (its own chrome is
-# already fully transparent via _strip_button_chrome, so only its text
-# shows, sitting naturally on top of the slot art).
-func _build_mon_row(mon: BattlePokemon, slot: int) -> Dictionary:
-	var row := Control.new()
-	row.custom_minimum_size = Vector2(0, 36)
-
-	if _parent_bs != null:
-		var slot_art := TextureRect.new()
-		slot_art.texture = load("res://assets/sprites/battle_ui/screens/party_slot_wide.png")
-		slot_art.anchor_left = 0.0
-		slot_art.anchor_right = 0.85
-		slot_art.anchor_top = 0.0
-		slot_art.anchor_bottom = 1.0
-		slot_art.stretch_mode = TextureRect.STRETCH_SCALE
-		slot_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(slot_art)
-
-		# [M25h-4, Part B] Real HP-fraction color as a tinted overlay
-		# positioned over the slot art's own known bar-fill pixel region
-		# (_SLOT_HP_FILL_RECT), reusing _hp_bar_color's existing threshold
-		# logic -- see this session's own report for why this is a
-		# disclosed EQUIVALENT to source's real mechanism (a narrow
-		# palette-slot swap applied to the baked tile art,
-		# DisplayPartyPokemonHPBar/party_menu.c:2726) rather than a literal
-		# reproduction: Godot has no baked-tile-palette-bank concept, so a
-		# semi-transparent color-tinted rectangle over the SAME pixel
-		# region the real bar occupies is the direct equivalent available
-		# here, not a simplification of a simplification.
-		var hp_tint := ColorRect.new()
-		hp_tint.color = _parent_bs._hp_bar_color(mon.current_hp, mon.max_hp)
-		hp_tint.color.a = 0.85
-		hp_tint.anchor_left = _SLOT_HP_FILL_RECT.position.x / _SLOT_ART_SIZE.x * 0.85
-		hp_tint.anchor_right = (_SLOT_HP_FILL_RECT.position.x + _SLOT_HP_FILL_RECT.size.x) / _SLOT_ART_SIZE.x * 0.85
-		hp_tint.anchor_top = _SLOT_HP_FILL_RECT.position.y / _SLOT_ART_SIZE.y
-		hp_tint.anchor_bottom = (_SLOT_HP_FILL_RECT.position.y + _SLOT_HP_FILL_RECT.size.y) / _SLOT_ART_SIZE.y
-		hp_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(hp_tint)
-
-	var btn := Button.new()
-	if _parent_bs != null:
-		_parent_bs._style_menu_button(btn)
-		_parent_bs._strip_button_chrome(btn)
-	# [M26c-1 follow-up, updated M26c battle-UI polish] _name_level_text was
-	# split into _name_text + _level_text on BattleScreen; _name_text() no
-	# longer appends the gender glyph itself (that's now rendered by a
-	# separate GenderLabel node in the main health-box UI) -- this screen has
-	# no such separate node, so the glyph is appended back inline here via
-	# _gender_glyph() directly, preserving this row's own existing
-	# "Name♂ Lv##" display exactly as before.
+func _mon_info_text(mon: BattlePokemon) -> String:
 	var name_level: String = ("%s%s %s" % [_parent_bs._name_text(mon),
 			_parent_bs._gender_glyph(mon.gender), _parent_bs._level_text(mon)]) \
 			if _parent_bs != null else "%s Lv%d" % [mon.species.species_name, mon.level]
-	btn.text = "%s   HP %d/%d" % [name_level, mon.current_hp, mon.max_hp]
-	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	btn.anchor_right = 0.85
-	btn.anchor_bottom = 1.0
-	btn.pressed.connect(_on_mon_button_pressed.bind(slot))
-	row.add_child(btn)
+	return "%s   HP %d/%d" % [name_level, mon.current_hp, mon.max_hp]
 
-	# [M25h-4, Part C] Real party-list status icon (distinct sheet from the
-	# in-battle status.png, matching source's own real convention of using
-	# a different icon style in this context -- see _party_status_icon_row's
-	# own doc comment). Positioned in the space to the right of the slot
-	# art itself (source's own status icon is a separate sprite layered
-	# near the slot box, not baked into its tile art, so placing it outside
-	# the decoded slot_wide.png bounds is source-accurate in spirit, not
-	# just a layout convenience).
+
+# Adds the status-icon + held-item-icon overlays a slot Control needs,
+# anchored to that Control's own top-right corner -- shared by both the
+# active round panel and the bench rect rows so the two don't duplicate
+# this logic (M25h-4, Part C; unchanged behavior, just factored out of the
+# old single _build_mon_row).
+func _add_slot_overlays(slot: Control, mon: BattlePokemon) -> void:
+	var status_row := _party_status_icon_row(mon)
+	if status_row >= 0:
+		var status_sheet: Texture2D = load("res://assets/sprites/battle_ui/interface/party_status_icons.png")
+		var status_atlas := AtlasTexture.new()
+		status_atlas.atlas = status_sheet
+		status_atlas.region = Rect2(0, status_row * _PARTY_STATUS_ICON_SIZE.y, _PARTY_STATUS_ICON_SIZE.x, _PARTY_STATUS_ICON_SIZE.y)
+		var status_icon := TextureRect.new()
+		status_icon.texture = status_atlas
+		status_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		status_icon.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		status_icon.offset_left = -_STATUS_ICON_DISPLAY_SIZE.x - 28
+		status_icon.offset_top = 10
+		status_icon.offset_right = -28
+		status_icon.offset_bottom = 10 + _STATUS_ICON_DISPLAY_SIZE.y
+		status_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(status_icon)
+
+	if mon.held_item != null:
+		var hold_sheet: Texture2D = load("res://assets/sprites/battle_ui/interface/party_hold_icons.png")
+		var hold_atlas := AtlasTexture.new()
+		hold_atlas.atlas = hold_sheet
+		hold_atlas.region = Rect2(0, 0, 8, 8)
+		var hold_icon := TextureRect.new()
+		hold_icon.texture = hold_atlas
+		hold_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		hold_icon.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		hold_icon.offset_left = -24
+		hold_icon.offset_top = 8
+		hold_icon.offset_right = -8
+		hold_icon.offset_bottom = 24
+		hold_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(hold_icon)
+
+
+# The active mon's own large round panel -- real panel art (base/faint),
+# pure visual, no Button (see this file's own scope-boundary doc comment).
+func _build_active_panel(mon: BattlePokemon, pos: Vector2) -> Control:
+	var panel := Control.new()
+	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	panel.offset_left = pos.x
+	panel.offset_top = pos.y
+	panel.offset_right = pos.x + _ROUND_PANEL_SIZE.x
+	panel.offset_bottom = pos.y + _ROUND_PANEL_SIZE.y
+
+	var art := TextureRect.new()
+	var art_name := "panel_round_faint.png" if mon.fainted else "panel_round_base.png"
+	art.texture = load("res://assets/sprites/battle_ui/party/%s" % art_name)
+	art.anchor_right = 1.0
+	art.anchor_bottom = 1.0
+	art.stretch_mode = TextureRect.STRETCH_SCALE
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(art)
+
+	var label := Label.new()
+	label.text = _mon_info_text(mon)
+	label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	label.offset_left = 16
+	label.offset_top = 16
+	label.offset_right = -16
+	label.offset_bottom = -16
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	if _parent_bs != null:
-		var status_row := _party_status_icon_row(mon)
-		if status_row >= 0:
-			var status_sheet: Texture2D = load("res://assets/sprites/battle_ui/interface/party_status_icons.png")
-			var status_atlas := AtlasTexture.new()
-			status_atlas.atlas = status_sheet
-			status_atlas.region = Rect2(0, status_row * _PARTY_STATUS_ICON_SIZE.y, _PARTY_STATUS_ICON_SIZE.x, _PARTY_STATUS_ICON_SIZE.y)
-			var status_icon := TextureRect.new()
-			status_icon.texture = status_atlas
-			status_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			status_icon.anchor_left = 0.87
-			status_icon.anchor_right = 0.87
-			status_icon.anchor_top = 0.5
-			status_icon.anchor_bottom = 0.5
-			status_icon.offset_left = 0
-			status_icon.offset_top = -_STATUS_ICON_DISPLAY_SIZE.y / 2.0
-			status_icon.offset_right = _STATUS_ICON_DISPLAY_SIZE.x
-			status_icon.offset_bottom = _STATUS_ICON_DISPLAY_SIZE.y / 2.0
-			status_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			row.add_child(status_icon)
+		label.add_theme_font_override("font", _parent_bs._font_menu)
+		label.add_theme_font_size_override("font_size", _ROW_FONT_SIZE)
+		label.add_theme_color_override("font_color", Color(0.15, 0.15, 0.15, 1))
+	panel.add_child(label)
 
-		# [M25h-4, Part C] This project's first-ever held-item UI display --
-		# BattlePokemon.held_item is real, already-populated data (M12/M18's
-		# own item system) that had simply never been shown in any screen
-		# before now. No Mail concept exists anywhere in this project
-		# (confirmed via grep), so the generic item icon (sheet index 0) is
-		# the only one ever used.
-		if mon.held_item != null:
-			var hold_sheet: Texture2D = load("res://assets/sprites/battle_ui/interface/party_hold_icons.png")
-			var hold_atlas := AtlasTexture.new()
-			hold_atlas.atlas = hold_sheet
-			hold_atlas.region = Rect2(0, 0, 8, 8)
-			var hold_icon := TextureRect.new()
-			hold_icon.texture = hold_atlas
-			hold_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			hold_icon.anchor_left = 0.96
-			hold_icon.anchor_right = 0.96
-			hold_icon.anchor_top = 0.5
-			hold_icon.anchor_bottom = 0.5
-			hold_icon.offset_left = 0
-			hold_icon.offset_top = -8.0
-			hold_icon.offset_right = 16.0
-			hold_icon.offset_bottom = 8.0
-			hold_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			row.add_child(hold_icon)
+	_add_slot_overlays(panel, mon)
+	return panel
 
+
+# One clickable (if legal) bench row: real rect panel art (base/faint) with
+# a chrome-stripped Button carrying the row's own text layered on top, only
+# added to the cursor group when the mon is a real legal candidate (not
+# fainted -- and never the active mon, since bench rows by construction
+# exclude every index in `active`).
+func _build_bench_row(mon: BattlePokemon, slot: int, pos: Vector2) -> Dictionary:
+	var row := Control.new()
+	row.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	row.offset_left = pos.x
+	row.offset_top = pos.y
+	row.offset_right = pos.x + _RECT_PANEL_SIZE.x
+	row.offset_bottom = pos.y + _RECT_PANEL_SIZE.y
+
+	var art := TextureRect.new()
+	var art_name := "panel_rect_faint.png" if mon.fainted else "panel_rect_base.png"
+	art.texture = load("res://assets/sprites/battle_ui/party/%s" % art_name)
+	art.anchor_right = 1.0
+	art.anchor_bottom = 1.0
+	art.stretch_mode = TextureRect.STRETCH_SCALE
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(art)
+
+	var btn: Button = null
+	if mon.fainted:
+		# Illegal pick -- shown, not clickable. Real rejection text
+		# ("has no energy left to battle!") is E3-3's job; a plain Label
+		# still shows the row's own info so the slot doesn't read as blank.
+		var label := Label.new()
+		label.text = _mon_info_text(mon)
+		label.set_anchors_preset(Control.PRESET_FULL_RECT)
+		label.offset_left = 16
+		label.offset_right = -16
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		if _parent_bs != null:
+			label.add_theme_font_override("font", _parent_bs._font_menu)
+			label.add_theme_font_size_override("font_size", _ROW_FONT_SIZE)
+			label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.4, 1))
+		row.add_child(label)
+	else:
+		btn = Button.new()
+		if _parent_bs != null:
+			_parent_bs._style_menu_button(btn)
+			_parent_bs._strip_button_chrome(btn)
+			# [Overflow fix, see _ROW_FONT_SIZE's own doc comment] Shrunk
+			# back down from _style_menu_button's own 60px (sized for a
+			# short menu label, not this row's longer info string).
+			btn.add_theme_font_size_override("font_size", _ROW_FONT_SIZE)
+		btn.text = _mon_info_text(mon)
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.anchor_right = 1.0
+		btn.anchor_bottom = 1.0
+		btn.pressed.connect(_on_mon_button_pressed.bind(slot))
+		row.add_child(btn)
+
+	_add_slot_overlays(row, mon)
 	return {"container": row, "button": btn}
 
 
 # [M25h-4, Part B] Real fainted-slot dimming, mirroring GetPartyBoxPalette
 # Flags' own PARTY_PAL_FAINTED effect (party_menu.c) -- a whole-slot
-# darkening, reproduced here as a modulate darken on the row's own real
-# slot art. [Disclosed: no current call site] This screen's own row list
-# (both _build() and the pre-existing _party_has_switch_candidate filter,
-# unchanged since M25h-1.5) never includes a fainted party member as a
-# row -- only live, non-active bench candidates are ever listed, matching
-# this screen's own deliberate "candidates only" scope. Implemented here
-# for correctness/reusability and because Part B's own task explicitly
-# asked for the mechanism, but there is no fainted row in this project's
-# actual UI today for it to visibly apply to.
+# darkening. [Superseded by M26E3-1] The real `panel_round_faint.png`/
+# `panel_rect_faint.png` pack states now render this directly, so the
+# modulate-darken equivalent this function provided is no longer needed --
+# kept only as a fallback for any future bare-panel-art context that hasn't
+# got a dedicated faint pack file of its own.
 static func _apply_fainted_dim(slot_art: TextureRect) -> void:
 	slot_art.modulate = Color(0.55, 0.55, 0.55, 1.0)
 

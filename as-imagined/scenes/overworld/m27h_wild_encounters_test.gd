@@ -58,11 +58,13 @@ func _test_table() -> void:
 	# Source picks a slot with `Random() % ENCOUNTER_CHANCE_LAND_MONS_TOTAL`, and
 	# these are the per-slot chances. A table that did not sum to 100 would make
 	# the last slot unreachable.
-	_chk("A.02 there are 12 land slots", rates.size() == 12)
+	# [Widened 2026-08-04, Rob's own design call — see gen_wild_encounters.py's
+	# LAND_SLOT_RATES comment.] 15 slots, not source's own 12.
+	_chk("A.02 there are 15 land slots", rates.size() == 15)
 	_chk("A.03 whose chances sum to 100",
 			rates.reduce(func(a, b): return a + int(b), 0) == 100)
-	_chk("A.04 front-loaded, as source's own table is",
-			int(rates[0]) == 20 and int(rates[11]) == 1)
+	_chk("A.04 front-loaded, matching this project's own widened table",
+			int(rates[0]) == 15 and int(rates[14]) == 1)
 
 	# ⚠️ The 5 corridor maps with a LAND table. Pallet Town and Viridian City
 	# carry tables too, but WATER only — surfing, which is M27E — so a check for
@@ -74,8 +76,8 @@ func _test_table() -> void:
 			not WildEncounters.has_table("PalletTown_Frlg"))
 
 	var vf := WildEncounters.table_for("ViridianForest_Frlg")
-	_chk("A.07 with a real rate and 12 resolved slots",
-			int(vf.get("encounter_rate", 0)) > 0 and vf.get("slots", []).size() == 12)
+	_chk("A.07 with a real rate and 15 resolved slots",
+			int(vf.get("encounter_rate", 0)) > 0 and vf.get("slots", []).size() == 15)
 	# Species are resolved to dex numbers at GENERATION time, reusing
 	# gen_trainer_data's own map — so nothing resolves names at runtime.
 	var slot0: Dictionary = vf["slots"][0]
@@ -177,10 +179,13 @@ func _test_slot_and_level() -> void:
 		if idx == 0:
 			slot0 += 1
 	_chk("D.01 several slots are reachable", seen.size() >= 6)
+	# [Widened 2026-08-04.] Slot 0's own share dropped from source's 20% to this
+	# project's own 15% (expected ~300 of 2000); band widened accordingly, still
+	# well clear of the ~133 a uniform 15-slot pick would give.
 	_chk("D.02 and slot 0 is far commoner than uniform (%d of 2000)" % slot0,
-			slot0 > 300 and slot0 < 500)
+			slot0 > 200 and slot0 < 400)
 	_chk("D.03 no slot index escapes the table",
-			seen.keys().all(func(k: int) -> bool: return k >= 0 and k < 12))
+			seen.keys().all(func(k: int) -> bool: return k >= 0 and k < 15))
 
 	_chk("D.04 a fixed-level slot always gives that level",
 			WildEncounters.choose_level({"min": 4, "max": 4}, _rng(7)) == 4)

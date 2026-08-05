@@ -138,6 +138,26 @@ var _pending: Dictionary = {}
 ## chunk turns one spike into several cheap frames.
 var _skirt_queue: Array[String] = []
 
+## map_name -> a signature of everything that chunk's painted skirt depends on.
+##
+## ⚠️ **[Map-edge hitch] A REPAINT THAT WRITES IDENTICAL CELLS IS NOT FREE — IT
+## COSTS AS MUCH AS THE FIRST ONE.** Measured with the real renderer: the frame
+## after any `_paint_skirt` runs costs 18.8-22.3 ms against a 7.0 ms baseline,
+## and passes 2 and 3 over unchanged chunks cost the SAME as pass 1. So this is
+## a recurring cost, not a warm-up — the old `clear()`-then-repaint destroyed
+## and rebuilt every skirt canvas item on every call, and Godot charges that on
+## the following frame where no GDScript timing around the call can see it.
+##
+## Two crossings' worth of that landed back to back on the exact step into Route
+## 1 (the two costliest frames of an entire 23-step walk), which at 60 Hz is two
+## dropped frames mid-tween — the "hitch and the player jumps" report.
+##
+## The signature is the fix's first half: skip the call entirely when the result
+## cannot have changed. `_paint_skirt`'s output depends only on the chunk's own
+## border data (fixed at bake), its origin, and the rects of other chunks that
+## reach its skirt region — nothing else, so nothing else belongs here.
+var _skirt_sig: Dictionary = {}
+
 ## map_name -> { local Vector2i : true } for every cell an entity blocks.
 ##
 ## [M27D D2] A set rather than a per-step scan of the scene tree: a step already
@@ -192,6 +212,16 @@ func _install_chunk(map_name: String, data: MapData, packed: PackedScene,
 	# Not just this chunk's skirt: a newly loaded neighbour takes ownership of
 	# cells an existing chunk was skirting over, so the seam only closes if the
 	# OTHER side repaints too. Scoped to chunks that reach these cells.
+	#
+	# ⚠️ **PAINTING THE NEW CHUNK'S SKIRT BEFORE `add_child` WAS TRIED AND
+	# BACKED OUT — DO NOT "OPTIMISE" IT BACK.** The reasoning was sound (a
+	# TileMapLayer outside the tree only marks itself dirty and builds once on
+	# entry, so the skirt would ride along with the map layers' own build) and
+	# it does merge the two builds — but measured on the real crossing it did
+	# not make them cheaper, it only concentrated them: two frames of 11.5 and
+	# 12.5 ms became one of 16.4. The skirt layers are separate nodes that build
+	# exactly once either way, so there was never a duplicate build to save, and
+	# at 60 Hz two frames inside the budget beat one that blows it.
 	if defer_skirt:
 		# The new chunk first: its own tiles are the ones a neighbour's stale
 		# skirt is currently painted over, so repainting it first is what
@@ -210,6 +240,10 @@ func _install_chunk(map_name: String, data: MapData, packed: PackedScene,
 func register_chunk(map_name: String, data: MapData, root: Node2D,
 		origin: Vector2i = Vector2i.ZERO) -> void:
 	_chunks[map_name] = {"data": data, "root": root, "origin": origin}
+	# A re-register can move a chunk or hand it a different root, and both
+	# change what its skirt should hold — drop the cached signature so the next
+	# paint is not skipped as "unchanged".
+	_skirt_sig.erase(map_name)
 	if root != null:
 		root.position = Vector2(origin) * CELL
 		apply_plane_z(root)
@@ -316,6 +350,46 @@ func _paint_skirt(map_name: String) -> void:
 	if ground == null:
 		return
 
+	var origin: Vector2i = c["origin"]
+	var has_types := d.border_layer_type.size() == d.border.size()
+
+	# Ownership as RECTS in this chunk's own local space, resolved once.
+	#
+	# [M27C C4] This inner loop runs ~4000 times per repaint, and calling
+	# chunk_owning() per cell meant a Dictionary walk, a Vector2i allocation and
+	# a String return every time — measured at ~13 ms for one 48x40 chunk, which
+	# was the whole remaining hitch after resource loading went off-thread.
+	# Rect2i.has_point against a two-entry array is the same answer without any
+	# of that.
+	var own := Rect2i(Vector2i.ZERO, Vector2i(d.width, d.height))
+	# Only a chunk reaching this one's own skirt REGION can change a painted
+	# cell. Filtering here is what lets the signature below be stable: a chunk
+	# loading on the far side of the region must not read as a change.
+	var region := Rect2i(-Vector2i(SKIRT_DEPTH_X, SKIRT_DEPTH_Y),
+			Vector2i(d.width + SKIRT_DEPTH_X * 2, d.height + SKIRT_DEPTH_Y * 2))
+	var others: Array[Rect2i] = []
+	var sig_parts: Array[String] = []
+	for other_name in _chunks:
+		if other_name == map_name:
+			continue
+		var r := chunk_rect(other_name)
+		if r.size == Vector2i.ZERO:
+			continue
+		var local_r := Rect2i(r.position - origin, r.size)
+		if not region.intersects(local_r):
+			continue
+		others.append(local_r)
+		sig_parts.append(str(local_r))
+
+	# [Map-edge hitch] Sorted so dictionary insertion order cannot make an
+	# unchanged ownership set look changed. See `_skirt_sig`'s own comment for
+	# why skipping matters this much.
+	sig_parts.sort()
+	var sig := str(origin) + "|" + "|".join(sig_parts)
+	var have_layers := root.get_node_or_null(SKIRT_LAYERS[0]) != null
+	if have_layers and _skirt_sig.get(map_name, "") == sig:
+		return
+
 	# One layer per plane. All three share the chunk's single TileSet — the
 	# baker gives every baked layer the same one, with the three atlases as
 	# sources 0/1/2 — so the plane index doubles as the source id, exactly as
@@ -334,30 +408,11 @@ func _paint_skirt(map_name: String) -> void:
 			# skirt-vs-skirt order is not, or an overhang would draw under its
 			# own ground. add_child appends, so each has to be moved.
 			root.move_child(layer, plane)
-		layer.clear()
 		skirts.append(layer)
 	apply_plane_z(root)
 
-	var origin: Vector2i = c["origin"]
-	var has_types := d.border_layer_type.size() == d.border.size()
-
-	# Ownership as RECTS in this chunk's own local space, resolved once.
-	#
-	# [M27C C4] This inner loop runs ~4000 times per repaint, and calling
-	# chunk_owning() per cell meant a Dictionary walk, a Vector2i allocation and
-	# a String return every time — measured at ~13 ms for one 48x40 chunk, which
-	# was the whole remaining hitch after resource loading went off-thread.
-	# Rect2i.has_point against a two-entry array is the same answer without any
-	# of that.
-	var own := Rect2i(Vector2i.ZERO, Vector2i(d.width, d.height))
-	var others: Array[Rect2i] = []
-	for other_name in _chunks:
-		if other_name == map_name:
-			continue
-		var r := chunk_rect(other_name)
-		if r.size != Vector2i.ZERO:
-			others.append(Rect2i(r.position - origin, r.size))
-
+	# What the skirt SHOULD hold, computed before anything is written.
+	var want: Array[Dictionary] = [{}, {}, {}]
 	for y in range(-SKIRT_DEPTH_Y, d.height + SKIRT_DEPTH_Y):
 		for x in range(-SKIRT_DEPTH_X, d.width + SKIRT_DEPTH_X):
 			var local := Vector2i(x, y)
@@ -381,7 +436,28 @@ func _paint_skirt(map_name: String) -> void:
 			# artifact degrades to the previous behaviour instead of a void.
 			var lt: int = border_layer_type_at(d, local) if has_types else 1
 			for plane in ROUTING.get(lt, [0]):
-				skirts[plane].set_cell(local, plane, coords)
+				want[plane][local] = coords
+
+	# ⚠️ **RECONCILE, NEVER `clear()`.** `clear()` drops every cell, which makes
+	# Godot destroy and rebuild the layer's whole canvas-item set — the 12-15 ms
+	# next-frame cost measured above, paid in full even when the repaint would
+	# write back exactly what it just erased. Writing only the differences
+	# dirties only the cells that genuinely changed hands, which for the usual
+	# case (a neighbour appears and takes over one edge band) is a couple of
+	# hundred cells instead of a couple of thousand.
+	for plane in range(SKIRT_LAYERS.size()):
+		var layer: TileMapLayer = skirts[plane]
+		var wanted: Dictionary = want[plane]
+		for cell in layer.get_used_cells():
+			if not wanted.has(cell):
+				layer.erase_cell(cell)
+		for cell in wanted:
+			var coords: Vector2i = wanted[cell]
+			if layer.get_cell_source_id(cell) != plane \
+					or layer.get_cell_atlas_coords(cell) != coords:
+				layer.set_cell(cell, plane, coords)
+
+	_skirt_sig[map_name] = sig
 
 
 ## Give a chunk's layers their plane z. Idempotent, and silent about children
@@ -406,6 +482,7 @@ func unload_chunk(map_name: String) -> void:
 	# stops existing the moment the chunk does.
 	var vacated := chunk_rect(map_name)
 	_chunks.erase(map_name)
+	_skirt_sig.erase(map_name)
 	# [M27C C4] Repaint what is left. Cells this chunk owned are now unowned, so
 	# whichever neighbour was skirting up to that seam has to extend over them
 	# again — otherwise unloading leaves a hole exactly where the map used to be.
@@ -1267,3 +1344,71 @@ static func preloaded_count() -> int:
 ## releasing the refs is precisely what reintroduces the hitch.
 static func clear_preloaded() -> void:
 	_preloaded.clear()
+
+
+## True once `warm_tilemap_draws` has actually paid its cost, so a second boot
+## in the same process (a battle return, any `change_scene_to_file`) does not
+## pay it again for nothing.
+static var _first_draw_warmed := false
+
+
+## [Map-edge hitch] Force whatever Godot pays on a tileset's FIRST
+## `TileMapLayer` draw to happen HERE, off-screen at boot, instead of live at
+## the first real chunk a player's camera actually reaches.
+##
+## ⚠️ **THIS IS A DIFFERENT COST FROM `preload_tilesets`, AND CONFUSING THE TWO
+## IS WHAT LEFT IT UNFIXED.** `preload_tilesets` warms the CPU-side `TileSet`
+## *Resource* — parsing the `.tres`, decoding the atlas `Image`s. This warms
+## the RENDER-side cost of the first `TileMapLayer` *draw* — measured directly
+## (`RenderingServer` timing around `await process_frame` × 2, `--headless`, so
+## no GPU rasterization is even involved — confirming this is Godot's own
+## CPU-side bookkeeping, not shader/driver compilation) at ~37 ms for whichever
+## map happens to be the first one a fresh process ever draws, and near-zero
+## for every map after it, REGARDLESS OF TILESET — proven by warming with one
+## throwaway cell from an unrelated pair and watching every real corridor map
+## probed afterward (480 to 3726 cells, 5 different tilesets) drop to the same
+## few milliseconds a bare 2-frame wait costs in this environment anyway.
+##
+## ⚠️ **THAT "PROCESS-GLOBAL, NOT PER-TILESET" CONCLUSION IS NOT SAFE, AND THIS
+## NOW WARMS ALL OF THEM.** It was measured `--headless`, where there is no GPU
+## and therefore no texture upload and no pipeline state to create — exactly the
+## per-atlas costs it was claiming to have ruled out. Rob ships on Windows under
+## `d3d12` (`project.godot`), and the map that reveals this is the crossing into
+## Route 1: Pallet Town and Route 1 SHARE the `general_frlg__pallet_town_frlg`
+## pair, while the neighbour that loads on that step, Viridian City, is the
+## first chunk in the corridor drawn from a DIFFERENT atlas. Warming one
+## arbitrary pair — `_preloaded.values()[0]` — cannot cover that by
+## construction, which is consistent with the hitch surviving the original fix.
+##
+## Every source of every pair, because a pair's three sources are three separate
+## plane atlases and so three separate textures. 14 pairs x 3 is 42 throwaway
+## cells and two frame waits TOTAL, so if the original process-global reading
+## was right this costs nothing extra, and if it was wrong this is the fix.
+##
+## Needs a real node to hang the throwaway layers and the frame waits off —
+## static, matching `preload_tilesets`, but callers pass whatever's on hand at
+## boot (`self` from `overworld.gd`'s own `_ready`).
+static func warm_tilemap_draws(host: Node) -> void:
+	if _first_draw_warmed or host == null or not is_instance_valid(host) \
+			or _preloaded.is_empty():
+		return
+	_first_draw_warmed = true
+	var layers: Array[TileMapLayer] = []
+	for pair in _preloaded:
+		var ts: TileSet = _preloaded[pair] as TileSet
+		if ts == null or ts.get_source_count() == 0:
+			continue
+		var layer := TileMapLayer.new()
+		layer.tile_set = ts
+		# Off in world space rather than merely `visible = false` — the cost
+		# this warms is paid by a real draw, and an invisible CanvasItem is
+		# exactly the kind of thing a renderer is entitled to skip.
+		layer.position = Vector2(-1000000, -1000000)
+		host.add_child(layer)
+		for i in range(ts.get_source_count()):
+			layer.set_cell(Vector2i(i, 0), ts.get_source_id(i), Vector2i.ZERO)
+		layers.append(layer)
+	await host.get_tree().process_frame
+	await host.get_tree().process_frame
+	for layer in layers:
+		layer.queue_free()

@@ -348,11 +348,22 @@ func _test_exit_message_mode_held_during_intro_then_released() -> void:
 	bs._status_label = Label.new()
 	bs._new_button_grid = GridContainer.new()
 	bs._new_button_area = VBoxContainer.new()
+	bs._top_action_hbox = HBoxContainer.new()
+	bs._fight_action_hbox = HBoxContainer.new()
 	bs._action_panel_message_style = StyleBoxTexture.new()
 	bs._action_panel_menu_style = StyleBoxTexture.new()
+	# [Bugfix regression guard] Simulate the exact real-play scenario: the
+	# FIGHT menu was the last thing _layout_action_menu_for() built before
+	# this message beat started (its own bordered grid slot left visible),
+	# which is what let the "action box" stay on screen, shrunken, instead
+	# of being hidden. _enter_message_mode() must clear it.
+	bs._fight_action_hbox.visible = true
 	bs._enter_message_mode()
 	_chk("setup: message mode genuinely entered",
 			bs._message_label.visible and not bs._new_button_grid.visible)
+	_chk("bugfix: FIGHT's bordered grid box is hidden, not left shrunken",
+			not bs._fight_action_hbox.visible)
+	_chk("bugfix: TOP's own HBox stays hidden too", not bs._top_action_hbox.visible)
 	bs._intro_active = true
 	bs._exit_message_mode()
 	_chk("intro hold: message label stays visible", bs._message_label.visible)

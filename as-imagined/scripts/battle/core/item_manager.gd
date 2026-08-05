@@ -34,6 +34,24 @@ const POCKET_TM_HM: int = 2
 const POCKET_KEY_ITEMS: int = 4
 
 
+## [M26E2] The real pocket-tab position indicator. Measured directly from
+## the pulled `bag_pocket_icons.png` (168x48) rather than assumed from the
+## recon's own "16x16 per cell, two rows" guess (which was close but not
+## exact): 6 available slots at x-stride 16, a big 8x8 SELECTED square in
+## the y=0-16 band, and a small 4x4 UNSELECTED dot in the y=32-48 band —
+## confirmed via a full opacity scan, not eyeballed. This is a plain
+## POSITION indicator, not per-pocket iconography — matching source's own
+## real mechanism (a solid-color tilemap square, already noted in
+## item_select_screen.gd's own doc comment), not a picture-per-pocket
+## design. `slot_index` is which of the up-to-6 available cells to use —
+## callers assign 0..N-1 across however many pockets they're actually
+## showing (5 for the field bag, 2-3 for the battle bag), not a fixed
+## per-pocket-id mapping.
+static func pocket_dot_region(slot_index: int, selected: bool) -> Rect2:
+	var y := 0 if selected else 32
+	return Rect2(slot_index * 16, y, 16, 16)
+
+
 ## `items.json` stores a pocket as a STRING; every consumer here wants the
 ## ordinal. Unknown spellings fall back to POCKET_ITEMS, which is both the
 ## enum's own zero and the pocket a miscategorised item is least harmful in.
@@ -1547,6 +1565,53 @@ static func confusion_cure_berry_cures(mon: BattlePokemon, ng_active: bool = fal
 	if override_item == null and unnerve_active:
 		return false
 	return mon.confusion_turns > 0
+
+
+# ── Feed a Berry from the bag, mid-battle ──────────────────────────────────────
+#
+# [M26E1] Source (src/data/items.h): Cheri/Chesto/Pecha/Rawst/Aspear/Persim/Lum
+#   Berry all carry `.battleUsage = EFFECT_ITEM_CURE_STATUS`, and Oran/Sitrus
+#   Berry both carry `.battleUsage = EFFECT_ITEM_RESTORE_HP` -- the SAME
+#   dispatch category Full Heal/Potion already use in this project
+#   (ItemManager.BATTLE_USE_CURE_STATUS/BATTLE_USE_RESTORE_HP). Every
+#   stat-raise/passive-only berry (Liechi, Ganlon, Salac, Petaya, Apicot,
+#   Starf, Lansat, Custap, Micle, Enigma) carries NO `.battleUsage` field at
+#   all in source -- confirmed via direct read, not assumed -- so this
+#   function is deliberately scoped to exactly these 9 already-implemented
+#   berries; nothing else can ever be fed from the bag.
+#
+# Reuses hp_threshold_berry_heal/status_cure_berry_cures/confusion_cure_berry
+# _cures via their own pre-existing `override_item` bypass, built for Cud
+# Chew's re-trigger ([M17n-7]). Passing the berry directly as `override_item`
+# skips BOTH the HP-threshold gate AND `unnerve_active` -- which is exactly
+# right here, not a side effect to work around: Unnerve blocks a HELD berry
+# from auto-triggering, not a bag-fed one, and the HP threshold is precisely
+# what makes auto-consumption "automatic" in the first place. Klutz is
+# bypassed the same way and for the same reason (Klutz suppresses a HELD
+# item; a fed berry was never held) -- `effective_held_item` is never
+# consulted at all once `override_item` is supplied.
+#
+# Returns {"healed": int, "cured": bool}. A single berry can never do both
+# (the heal-shaped and cure-shaped hold_effect sets are disjoint), but one
+# uniform return shape keeps the call site (BattleManager._do_item_use)
+# simple. A non-berry item, or a berry whose hold_effect this function does
+# not recognize (every stat-raise berry above), returns
+# {"healed": 0, "cured": false} -- a pure no-op, not an error.
+static func bag_berry_effect(target: BattlePokemon, item: ItemData) -> Dictionary:
+	if item == null or item.pocket != POCKET_BERRIES:
+		return {"healed": 0, "cured": false}
+	var healed: int = hp_threshold_berry_heal(target, false, false, item)
+	if healed > 0:
+		target.current_hp = mini(target.max_hp, target.current_hp + healed)
+		return {"healed": healed, "cured": false}
+	if item.hold_effect == HOLD_EFFECT_CURE_CONFUSION:
+		if confusion_cure_berry_cures(target, false, false, item):
+			target.confusion_turns = 0
+			return {"healed": 0, "cured": true}
+	elif status_cure_berry_cures(target, false, false, item):
+		target.status = BattlePokemon.STATUS_NONE
+		return {"healed": 0, "cured": true}
+	return {"healed": 0, "cured": false}
 
 
 # ── Weather duration ──────────────────────────────────────────────────────────

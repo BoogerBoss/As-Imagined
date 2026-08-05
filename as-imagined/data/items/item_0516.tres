@@ -9,3 +9,4 @@ item_id = 516
 item_name = "Pecha Berry"
 hold_effect = 4
 pocket = 3
+battle_usage = 2
