@@ -505,10 +505,81 @@ any lacks text — same guard shape as D3-1's A.02 and D3-3's C.01.
 `item_recycled`, `item_regenerated`.
 Also all debug-only. Confirm Recycle's exact source string here (§3).
 
-### D3-8 — Meta-progression (5) — 🚧 **BLOCKED on M27 (overworld). Rob's call, 2026-07-27.**
+### D3-8 — Meta-progression (5) — **COMPLETE — closes M26D3 in full.**
 
 `exp_gained`, `level_up`, `money_awarded`, `move_learned`,
 `move_learn_skipped`.
+
+**The BLOCKED framing below is superseded, not rewritten — kept per this
+doc's own convention of not rewriting a historical entry.** The block was
+scheduling, not design: "wiring the text now would bake a placement
+decision against a battle-end flow that M27 is expected to replace
+outright." M27 has since shipped in full (M27A-O), and it did **not**
+replace that flow — the overworld reuses this project's exact BATTLE_END
+screen as its own landing point (`overworld._on_battle_overlay_finished`
+mounts the same `battle_screen`; `overlay_mode`'s Play-Again button just
+relabels to a dismissal, `_on_play_again_pressed`). Checked directly, not
+assumed: neither the overworld's own money/EXP/level handling
+(`OverworldSession.wallet.earn`, the battle-return party-restore path) nor
+anything else anywhere connects to any of these five signals — confirmed
+via grep across `scripts/overworld/*.gd`/`scenes/overworld/*.gd`. So this
+was, in practice, still just silence: a real overworld trainer battle
+(M27F/H) gains real EXP, levels up, and earns real money with **zero
+on-screen confirmation of any of it**, exactly as in the standalone
+simulator. The placement question resolves the same way every other D3
+phase already did: the message box this project already has, via
+`_wire_log_signals()` — `money_awarded` already fires immediately before
+`battle_ended` in source order (`_phase_battle_end_check`), so it lands
+right before "You win!" with zero engine-ordering change needed.
+
+**The Mimic/Sketch carve-out this entry flagged in advance turned out to
+matter for real, not just architecturally.** Re-verified against
+`data/battle_scripts_1.s` directly rather than trusted from this doc's own
+earlier citation: level-up and Mimic DO both render "{mon} learned
+{move}!" — but from **two different STRINGIDs** (`STRINGID_PKMNLEARNEDMOVE`
+for level-up, `STRINGID_PKMNLEARNEDMOVE2` for Mimic) that happen to share
+rendered text, not the single shared STRINGID this doc's §3 first pass
+assumed. **Sketch does NOT share either one** — it has its own distinct
+string, `STRINGID_PKMNSKETCHEDMOVE` = *"{mon} sketched {move}!"* — a real
+wording difference, not a formatting nuance. Since `move_learned` is one
+shared signal firing from all three call sites (Mimic, Sketch, and
+level-up/`_try_learn_move_at_level`) with no way for a listener to tell
+them apart, the signal itself needed widening with a `kind: String` param
+(`"level_up"` / `"mimic"` / `"sketch"`) — a real breaking change, not
+just an additive one: Godot 4 confirmed directly (a throwaway probe
+script) to **error**, not silently discard, when a connected listener has
+fewer parameters than a widened signal emits. Every pre-existing listener
+(`m20b_test.gd`'s 5, `mimic_sketch_test.gd`'s 1) was updated alongside it.
+
+**Disclosed simplification**: source's gained-EXP line
+(`STRINGID_PKMNGAINEDEXP`) carries a second buffer slot for a "boosted"
+qualifier (Lucky Egg / trainer bonus / Exp Charm) — omitted, since this
+project has no such per-recipient multiplier concept distinct from the
+plain computed amount, matching the precedent every other D3 phase set
+for a signal that doesn't carry a source nuance.
+
+New `scenes/battle/m26_d3_8_meta_progression_test.gd`/`.tscn`: **15/15**,
+stable across repeated runs — direct-emit text checks for all 5 signals,
+the level-up-vs-Mimic-vs-Sketch wording distinction (including a
+discriminator that Sketch's line does NOT contain "learned"), a real
+end-to-end integration test through the actual `_award_exp_for_fainted_
+opponent()` call site (proving EXP narrates before the level-up it
+triggers, matching source's own per-recipient order), a real full-battle
+win proving `money_awarded`'s line precedes "You win!" in the rendered
+log — not just in raw signal-emission order — and a regression guard
+(no attached opponent `TrainerData` → no money line, mirroring `[M24b]`'s
+own already-established D3 case). Full regression: `m20b_test` 30/30,
+`mimic_sketch_test` 46/46, `m24b_test` 61/61, all 8 prior COMPLETE D3
+suites, `m25c_message_log_test` 19/19, `m26b_debug_log_test` 62/62,
+`message_pacing_test` 69/69, `m20_exp_test` 37/37, `m20a_data_test`
+387/387, `m26_trainer_category_party_test` 130/130, and both
+`battle_screen_*.tscn --autoplay` runs 1/1 — all clean.
+
+**This closes M26D3 — every one of its 9 sub-phases is now either shipped
+(D3-1/3/4/5/6/7/8/9) or retired into M26B6 (D3-2), with nothing buildable
+left open.**
+
+*Original BLOCKED framing follows, superseded above.*
 
 **Do not build this until the overworld lands.** It was started and then
 **deliberately reverted** — the wiring was written, then backed out at Rob's

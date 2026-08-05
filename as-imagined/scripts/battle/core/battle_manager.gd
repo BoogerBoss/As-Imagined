@@ -239,7 +239,17 @@ signal item_effect_triggered(pokemon: BattlePokemon, effect_key: String)   # M18
                                                                              # ability_triggered's shape for
                                                                              # items with no dedicated signal)
 signal pp_restored(pokemon: BattlePokemon, move_index: int, new_pp: int)   # M18d: Leppa Berry
-signal move_learned(pokemon: BattlePokemon, slot: int, new_move: MoveData)  # Mimic/Sketch overwrote a move slot, or M20b level-up learned/replaced one
+# [M26D3-8] `kind` distinguishes "level_up" / "mimic" / "sketch" -- a real
+# source-verified distinction, not decoration: Sketch's own real string
+# (STRINGID_PKMNSKETCHEDMOVE, "{mon} sketched {move}!") genuinely differs
+# from level-up's and Mimic's ("{mon} learned {move}!", STRINGID_
+# PKMNLEARNEDMOVE / ...2 respectively -- two different STRINGIDs that
+# happen to render identical text). A signal listener can't tell these three
+# emit sites apart without this param -- Godot signals error rather than
+# silently discard extra args for a listener with fewer declared params
+# (confirmed directly), so every one of this signal's existing listeners was
+# updated alongside this widening, not left to find out at runtime.
+signal move_learned(pokemon: BattlePokemon, slot: int, new_move: MoveData, kind: String)  # Mimic/Sketch overwrote a move slot, or M20b level-up learned/replaced one
 signal move_learn_skipped(pokemon: BattlePokemon, move: MoveData)  # [M20b] 4 moves already known, no forced replacement slot set
 signal perish_song_activated(pokemon: BattlePokemon)  # Perish Song set a 3-turn countdown on this combatant
 signal pokemon_transformed(pokemon: BattlePokemon, copied_from: BattlePokemon)  # Transform succeeded
@@ -6219,7 +6229,7 @@ func _phase_move_execution() -> void:
 				attacker.mimicked_original_pp = attacker.current_pp[mimic_slot]
 				attacker.moves[mimic_slot] = mimic_target
 				attacker.current_pp[mimic_slot] = min(mimic_target.pp, 5)
-				move_learned.emit(attacker, mimic_slot, mimic_target)
+				move_learned.emit(attacker, mimic_slot, mimic_target, "mimic")
 			else:
 				move_effect_failed.emit(attacker, "mimic_failed")
 			move_executed.emit(attacker, defender, move, 0)
@@ -6244,7 +6254,7 @@ func _phase_move_execution() -> void:
 			if sketch_ok:
 				attacker.moves[sketch_slot] = sketch_target
 				attacker.current_pp[sketch_slot] = sketch_target.pp
-				move_learned.emit(attacker, sketch_slot, sketch_target)
+				move_learned.emit(attacker, sketch_slot, sketch_target, "sketch")
 			else:
 				move_effect_failed.emit(attacker, "sketch_failed")
 			move_executed.emit(attacker, defender, move, 0)
@@ -7709,12 +7719,12 @@ func _try_learn_move_at_level(recipient: BattlePokemon, move_id: int) -> void:
 		return
 	if recipient.moves.size() < 4:
 		recipient.add_move(candidate)
-		move_learned.emit(recipient, recipient.moves.size() - 1, candidate)
+		move_learned.emit(recipient, recipient.moves.size() - 1, candidate, "level_up")
 		return
 	if _force_move_replacement_slot != null:
 		var slot: int = clampi(int(_force_move_replacement_slot), 0, 3)
 		recipient.replace_move(slot, candidate)
-		move_learned.emit(recipient, slot, candidate)
+		move_learned.emit(recipient, slot, candidate, "level_up")
 	else:
 		move_learn_skipped.emit(recipient, candidate)
 

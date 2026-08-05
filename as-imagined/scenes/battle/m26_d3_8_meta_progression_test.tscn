@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://e1ba3v2a7dad"]
+
+[ext_resource type="Script" path="res://scenes/battle/m26_d3_8_meta_progression_test.gd" id="1_m26d38test"]
+
+[node name="M26D38MetaProgressionTest" type="Node"]
+script = ExtResource("1_m26d38test")

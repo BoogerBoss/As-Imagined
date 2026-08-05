@@ -2714,6 +2714,49 @@ func _wire_log_signals() -> void:
 	_bm.screens_broken.connect(func(side: int):
 		_log("The screens shattered on %s side!" % _side_label(side)))
 
+	# ── [M26D3-8] Meta-progression ──
+	# Was blocked on "the overworld landing" (2026-07-27) — that's since
+	# shipped in full (M27A-O) and re-checked: the overworld reuses this exact
+	# BATTLE_END screen as its own landing point (overlay_mode's Play-Again
+	# button just relabels to a dismissal, `_on_play_again_pressed`), and
+	# neither the overworld's own money/EXP/level-up handling
+	# (`overworld._on_battle_overlay_finished`/`OverworldSession.wallet.earn`)
+	# nor anything else anywhere prints a line for any of this — it's
+	# currently 100% silent in real play, gaining EXP/leveling/earning money
+	# with zero on-screen confirmation. So the blocker's premise (a
+	# battle-end flow M27 might replace outright) never happened; M27 reused
+	# this one, and the placement question §7(1) raised resolves to "the same
+	# message box every other D3 phase already uses" — money_awarded already
+	# fires immediately before battle_ended in source order (_phase_battle_
+	# end_check), so it naturally lands right before "You win!" with no
+	# engine change needed.
+	#
+	# Strings are source's own (STRINGID_PKMNGAINEDEXP/GREWTOLV/PLAYERGOTMONEY/
+	# LEARNEDMOVE/DIDNOTLEARNMOVE, battle_message.c). DISCLOSED simplification:
+	# source's gained-EXP line has a second buffer slot for a "boosted"
+	# qualifier (Lucky Egg/trainer bonus/Exp Charm) this project has no
+	# equivalent multiplier concept for distinctly from the plain amount —
+	# omitted, matching every other D3 phase's own precedent for a signal
+	# that doesn't carry a source nuance.
+	#
+	# move_learned's `kind` param (widened this session) is a REAL source
+	# distinction, not decoration: Mimic and level-up both render "{mon}
+	# learned {move}!" (two different STRINGIDs, PKMNLEARNEDMOVE / ...2, that
+	# happen to share rendered text), but Sketch genuinely differs
+	# (STRINGID_PKMNSKETCHEDMOVE, "{mon} sketched {move}!") — verified
+	# directly against data/battle_scripts_1.s rather than assumed uniform.
+	_bm.exp_gained.connect(func(recipient: BattlePokemon, amount: int):
+		_log("%s gained %d Exp. Points!" % [_mon_label(recipient), amount]))
+	_bm.level_up.connect(func(pokemon: BattlePokemon, new_level: int):
+		_log("%s grew to Lv. %d!" % [_mon_label(pokemon), new_level]))
+	_bm.money_awarded.connect(func(amount: int):
+		_log("You got ¥%d for winning!" % amount))
+	_bm.move_learned.connect(func(pokemon: BattlePokemon, _slot: int, new_move: MoveData, kind: String):
+		var verb: String = "sketched" if kind == "sketch" else "learned"
+		_log("%s %s %s!" % [_mon_label(pokemon), verb, new_move.move_name]))
+	_bm.move_learn_skipped.connect(func(pokemon: BattlePokemon, move: MoveData):
+		_log("%s did not learn %s." % [_mon_label(pokemon), move.move_name]))
+
 	# [M26b] ability_triggered/ability_healed moved to _wire_debug_signals()
 	# below — the locked design puts ability-trigger/immunity text in its own
 	# "Ability & Immunity" category, not Narrative.

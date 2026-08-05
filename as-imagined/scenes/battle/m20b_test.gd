@@ -169,7 +169,7 @@ func _test_no_level_up_negative_control() -> void:
 	var levels: Array = []
 	var learned: Array = []
 	bm.level_up.connect(func(_p, lvl): levels.append(lvl))
-	bm.move_learned.connect(func(_p, _s, _m): learned.append(true))
+	bm.move_learned.connect(func(_p, _s, _m, _k): learned.append(true))
 	bm._check_level_up(mon)
 	_chk("negative control: level unchanged (still 8) when Exp is one short of the next threshold",
 			mon.level == 8)
@@ -191,7 +191,7 @@ func _test_multi_move_per_level() -> void:
 	# "Bulbasaur-style multi-move-per-level" case.
 	mon.current_exp = 2035
 	var learned_ids: Array = []
-	bm.move_learned.connect(func(_p, _slot, new_move: MoveData): learned_ids.append(new_move))
+	bm.move_learned.connect(func(_p, _slot, new_move: MoveData, _k): learned_ids.append(new_move))
 	bm._check_level_up(mon)
 	_chk("multi-move-per-level: reached level 15",
 			mon.level == 15)
@@ -223,7 +223,7 @@ func _test_already_known_move_skip() -> void:
 	mon.add_move(MoveRegistry.get_move(73))  # already knows Leech Seed early
 	mon.current_exp = 236  # curve[7], Bulbasaur's own level-7 entry is Leech Seed
 	var learned: Array = []
-	bm.move_learned.connect(func(_p, _s, _m): learned.append(true))
+	bm.move_learned.connect(func(_p, _s, _m, _k): learned.append(true))
 	bm._check_level_up(mon)
 	_chk("already-known-move: no duplicate added, still exactly 1 move slot used",
 			mon.moves.size() == 1)
@@ -241,7 +241,7 @@ func _test_four_moves_known_skip() -> void:
 	var skipped: Array = []
 	var learned: Array = []
 	bm.move_learn_skipped.connect(func(_p, move: MoveData): skipped.append(move))
-	bm.move_learned.connect(func(_p, _s, _m): learned.append(true))
+	bm.move_learned.connect(func(_p, _s, _m, _k): learned.append(true))
 	bm._check_level_up(mon)
 	_chk("4-moves-known, no forced slot: default is auto-skip, moveset untouched",
 			mon.moves.size() == 4 and not mon.moves.has(MoveRegistry.get_move(75)))
@@ -258,7 +258,7 @@ func _test_four_moves_known_forced_replacement() -> void:
 	mon.current_exp = 5460  # curve[20], Razor Leaf(75)
 	bm._force_move_replacement_slot = 2  # overwrite the Leech Seed slot
 	var learned_slots: Array = []
-	bm.move_learned.connect(func(_p, slot: int, _m): learned_slots.append(slot))
+	bm.move_learned.connect(func(_p, slot: int, _m, _k): learned_slots.append(slot))
 	bm._check_level_up(mon)
 	_chk("4-moves-known, forced slot 2: Razor Leaf overwrote slot 2 (was Leech Seed)",
 			mon.moves[2] == MoveRegistry.get_move(75) and mon.moves.size() == 4)

@@ -361,7 +361,7 @@ func _test_negative_control() -> void:
 	def.add_move(tackle)
 	var bm := _make_bm()
 	var learned_fired := [false]
-	bm.move_learned.connect(func(_m, _s, _mv): learned_fired[0] = true)
+	bm.move_learned.connect(func(_m, _s, _mv, _k): learned_fired[0] = true)
 	bm.queue_move(0, 0)
 	bm.queue_move(1, 0)
 	bm.start_battle_with_parties(BattleParty.single(atk), BattleParty.single(def))
